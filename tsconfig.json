@@ -10,6 +10,7 @@
     "build",
     ".next",
     "coverage",
-    "packages/**/prisma/**"
+    "packages/**/prisma/**",
+    "packages/**/scripts/**"
   ]
 }

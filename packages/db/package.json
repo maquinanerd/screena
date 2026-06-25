@@ -21,13 +21,15 @@
     "db:generate": "prisma generate",
     "db:migrate:dev": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "db:validate:real": "tsx scripts/validate-real-postgres.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.1.0",
     "@screena/config": "workspace:*"
   },
   "devDependencies": {
+    "embedded-postgres": "16.14.0-beta.17",
     "prisma": "^6.1.0",
     "tsx": "^4.19.0"
   }
