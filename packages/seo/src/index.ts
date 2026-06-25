@@ -9,3 +9,4 @@
 
 export * from "./value-blocks.js";
 export * from "./indexability.js";
+export * from "./language-index-guard.js";

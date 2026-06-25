@@ -4,5 +4,12 @@
     "noEmit": true
   },
   "include": ["packages/**/*.ts", "tests/**/*.ts"],
-  "exclude": ["node_modules", "dist", "build", ".next", "coverage"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "build",
+    ".next",
+    "coverage",
+    "packages/**/prisma/**"
+  ]
 }
