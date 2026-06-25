@@ -316,7 +316,6 @@ model Episode {
   seasonId       BigInt    @map("season_id")
   tvShowId       BigInt    @map("tv_show_id")
   tmdbId         Int?      @map("tmdb_id")
-  seasonNumber   Int       @map("season_number")
   episodeNumber  Int       @map("episode_number")
   name           String?
   overview       String?
@@ -327,7 +326,10 @@ model Episode {
   updatedAt      DateTime  @updatedAt @map("updated_at")
   lastSyncedAt   DateTime? @map("last_synced_at")
 
-  // FK COMPOSTA: garante que tv_show_id do episodio bate com o da season (achado do revisor).
+  // Episode NAO armazena season_number: ele e DERIVADO de seasons via season_id
+  // (evita divergencia episodio x temporada). A FK COMPOSTA abaixo tambem garante
+  // que o tv_show_id do episodio bate com o da season (denormalizacao controlada,
+  // sem dado de temporada redundante).
   season Season @relation(fields: [seasonId, tvShowId], references: [id, tvShowId], onDelete: Cascade)
 
   @@unique([seasonId, episodeNumber])

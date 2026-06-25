@@ -42,7 +42,7 @@
 
 ```
 SEMENTE/REFERÊNCIA: languages(code) · countries(code) · rating_sources(key) · api_providers(key,kind:ProviderKind) · source_licenses(id)
-MÍDIA:              movies(id) · tv_shows(id) · seasons(id→tv_shows[Cascade]) · episodes(id→seasons[Cascade] via FK composta) · people(id)
+MÍDIA:              movies(id) · tv_shows(id) · seasons(id→tv_shows[Cascade], season_number) · episodes(id→seasons[Cascade] via FK composta; episode_number + season_id, SEM season_number) · people(id)
 CRÉDITOS:           cast_members(id→people, [poly]) · crew_members(id→people, [poly])
 IDENTIDADE/ROTAS:   entity_external_ids([poly]) · slugs([poly]→languages) · redirects(from_path uniq) · entity_translations([poly]→languages)
 EDITORIAL/IA:       content_blocks([poly]→languages) · entity_writer_jobs([poly]→content_blocks?) · entity_writer_logs(→jobs)
@@ -52,6 +52,8 @@ INFRA:              api_cache(→api_providers) · api_sync_logs(→api_provider
 ```
 
 **FKs reais:** `seasons→tv_shows`(Cascade); `episodes→seasons` via **FK composta `(season_id, tv_show_id) → seasons(id, tv_show_id)`** + `@@unique([id, tvShowId])` em `seasons` (impede `tv_show_id` divergir da season); `cast/crew→people`; `entity_writer_logs→entity_writer_jobs`; `entity_writer_jobs.result_block_id→content_blocks` (nullable); FKs para sementes.
+
+**Normalização de `episodes` (correção do PR #1):** `episodes` armazena apenas `episode_number` e `season_id`; a **unicidade de episódio por temporada** é `@@unique([season_id, episode_number])`. `episodes` **NÃO armazena `season_number`** — o número da temporada é **derivado de `seasons.season_number` via `episodes.season_id`**. Isso elimina o risco de `episodes.season_number` divergir de `seasons.season_number` (dado redundante removido). A FK composta `(season_id, tv_show_id)` mantém apenas a denormalização controlada de `tv_show_id` (para query), garantindo que ele não divirja do show da season. Hierarquia: `tv_shows → seasons (season_number) → episodes (episode_number, season_id)`. Travado por `tests/governance/episode-no-season-number.test.ts`.
 
 **Polimórficas (sem FK, app-enforced + índice composto):** cast_members, crew_members, entity_external_ids, slugs, entity_translations, content_blocks, entity_writer_jobs, entity_writer_logs, external_ratings, watch_availability, page_indexability_decisions.
 

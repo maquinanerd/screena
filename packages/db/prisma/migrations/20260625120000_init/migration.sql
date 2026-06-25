@@ -177,7 +177,6 @@ CREATE TABLE "episodes" (
     "season_id" BIGINT NOT NULL,
     "tv_show_id" BIGINT NOT NULL,
     "tmdb_id" INTEGER,
-    "season_number" INTEGER NOT NULL,
     "episode_number" INTEGER NOT NULL,
     "name" TEXT,
     "overview" TEXT,
