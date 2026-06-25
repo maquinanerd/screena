@@ -132,8 +132,11 @@ internos; `tmdbId`←`id`; `episodeNumber`←`episode_number` (upsert por
 `billingOrder`←`order`; crew: `department`, `job`; `creditId`←`credit_id`.
 Idempotencia por **replace-set por entidade** (secao 8).
 
-`entity_external_ids`: por entidade, `source='tmdb'` (+url canonica TMDB) e
-`source='imdb'` quando houver `imdb_id`. Upsert por `(entityType, entityId, source)`.
+`entity_external_ids`: por entidade, `source` namespaceado por tipo
+(`tmdb_movie`/`tmdb_tv`/`tmdb_person`, +url canonica TMDB) e `source='imdb'` quando houver
+`imdb_id`. Upsert por `(entityType, entityId, source)`. O TMDB reusa o espaco numerico de
+ids entre tipos, logo um unico `tmdb` colidiria no unique `(source, external_id)`.
+(`provider_api='tmdb'` em `api_cache`/`api_sync_logs` permanece sem namespace.)
 
 ## 7. `api_cache` e `api_sync_logs`
 
@@ -153,7 +156,9 @@ pipeline.
 
 - `movies`/`tv_shows`/`people`: upsert por `tmdbId`.
 - `seasons`: `(tvShowId, seasonNumber)`; `episodes`: `(seasonId, episodeNumber)`.
-- `entity_external_ids`: `(entityType, entityId, source)`.
+- `entity_external_ids`: `(entityType, entityId, source)`; **sem `skipDuplicates`** —
+  conflito no unique `(source, external_id)` (outra entidade ja com o id) FALHA e e
+  surfaçado (reverte a transacao), nunca mascarado.
 - **cast/crew**: em transacao, **apaga os creditos da entidade e reinsere** do
   payload fresco (remove creditos retirados upstream, evita duplicata, nao
   depende de `credit_id` presente). `credit_id @unique` fica como guarda extra.

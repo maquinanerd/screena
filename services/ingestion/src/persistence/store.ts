@@ -35,6 +35,10 @@ async function replaceExternalIds(
 ): Promise<void> {
   await tx.entityExternalId.deleteMany({ where: { entityType, entityId } })
   if (ids.length > 0) {
+    // SEM skipDuplicates: um conflito no unique (source, external_id) significa
+    // que OUTRA entidade ja reivindica esse id externo — isso e um problema de
+    // integridade que deve FALHAR/aparecer (e reverter a transacao), nunca ser
+    // mascarado silenciosamente. (O delete acima ja limpou os ids desta entidade.)
     await tx.entityExternalId.createMany({
       data: ids.map((id) => ({
         entityType,
@@ -43,7 +47,6 @@ async function replaceExternalIds(
         externalId: id.externalId,
         url: id.url,
       })),
-      skipDuplicates: true,
     })
   }
 }

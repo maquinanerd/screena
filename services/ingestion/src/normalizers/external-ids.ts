@@ -6,7 +6,12 @@
  * rating (invariantes 1/2).
  */
 
-import { TMDB_PROVIDER_API, imdbWebUrl, tmdbWebUrl, type TmdbEntityKind } from '@screena/tmdb-client'
+import {
+  imdbWebUrl,
+  tmdbExternalIdSource,
+  tmdbWebUrl,
+  type TmdbEntityKind,
+} from '@screena/tmdb-client'
 import type { ExternalIdInput } from '../types.js'
 import { normalizeImdbId } from '../utils/normalize.js'
 
@@ -16,8 +21,10 @@ export function buildExternalIds(
   tmdbId: number,
   imdbIdRaw: string | null | undefined,
 ): ExternalIdInput[] {
+  // source namespaceado por tipo (tmdb_movie/tmdb_tv/tmdb_person) — ver
+  // tmdbExternalIdSource: o TMDB reusa ids entre tipos.
   const ids: ExternalIdInput[] = [
-    { source: TMDB_PROVIDER_API, externalId: String(tmdbId), url: tmdbWebUrl(kind, tmdbId) },
+    { source: tmdbExternalIdSource(kind), externalId: String(tmdbId), url: tmdbWebUrl(kind, tmdbId) },
   ]
   const imdbId = normalizeImdbId(imdbIdRaw)
   if (imdbId !== null) {

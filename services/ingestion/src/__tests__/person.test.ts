@@ -30,8 +30,13 @@ describe('normalizePerson', () => {
     expect(person.placeOfBirth).toBe('Shawnee, Oklahoma, USA')
   })
 
-  it('gera external id imdb de pessoa com /name/', () => {
+  it('gera external ids namespaceados (tmdb_person) + imdb com /name/', () => {
     const { externalIds } = normalizePerson(PERSON)
+    expect(externalIds).toContainEqual({
+      source: 'tmdb_person',
+      externalId: '287',
+      url: 'https://www.themoviedb.org/person/287',
+    })
     expect(externalIds).toContainEqual({
       source: 'imdb',
       externalId: 'nm0000093',

@@ -1,16 +1,18 @@
 # api-clients/tmdb
 
-Cliente do **TMDB (The Movie Database)** — fornecedor tecnico primario de metadados de
-entidades (filmes, series, temporadas, episodios, pessoas, imagens, trailers) e da base de
+Cliente do **TMDB (The Movie Database)** — fornecedor tecnico primario de metadados
+estruturais de entidades (filmes, series, temporadas, episodios, pessoas) e da base de
 mapeamento de IDs externos.
 
 ## Papel
 - Fonte tecnica de metadados consumida por `services/ingestion`.
 - Resolve `tmdb_id` <-> IDs canonicos e fornece `imdb_id` de referencia quando disponivel.
-- Abastece `images` e `trailers` com material de catalogo.
+- Fornece caminhos de imagem (`poster_path`/`backdrop_path`/`still_path`/`profile_path`),
+  guardados como caminho na propria entidade. Galerias de `images`/`trailers` ficam fora da
+  Fase 2 (sem tabela alvo no schema).
 
 ## Worker-only
-- Usado **somente por workers offline (Python 3.12)**, agendados por systemd timers.
+- Usado **somente por workers/CLIs offline (TypeScript/Node)**, agendados por systemd timers.
 - **NUNCA chamado no render publico** — paginas indexaveis leem apenas PostgreSQL/cache.
 
 ## Requisitos tecnicos obrigatorios

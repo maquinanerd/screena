@@ -14,5 +14,8 @@
   "dependencies": {
     "@screena/db": "workspace:*",
     "@screena/ingestion": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0"
   }
 }

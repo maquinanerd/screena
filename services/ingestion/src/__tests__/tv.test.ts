@@ -45,8 +45,13 @@ describe('normalizeTvShow', () => {
     expect(seasonNumbers).toEqual([0, 1, 2])
   })
 
-  it('gera external id imdb com URL canonica', () => {
+  it('gera external ids namespaceados (tmdb_tv) + imdb com URLs canonicas', () => {
     const { externalIds } = normalizeTvShow(TV)
+    expect(externalIds).toContainEqual({
+      source: 'tmdb_tv',
+      externalId: '1399',
+      url: 'https://www.themoviedb.org/tv/1399',
+    })
     expect(externalIds).toContainEqual({
       source: 'imdb',
       externalId: 'tt0944947',

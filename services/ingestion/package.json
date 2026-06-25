@@ -15,5 +15,8 @@
   "dependencies": {
     "@screena/db": "workspace:*",
     "@screena/tmdb-client": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0"
   }
 }

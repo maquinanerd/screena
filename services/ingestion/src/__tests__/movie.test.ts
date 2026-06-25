@@ -65,7 +65,7 @@ describe('normalizeMovie', () => {
   it('gera external ids tmdb + imdb com URLs canonicas', () => {
     const { externalIds } = normalizeMovie(FIXTURE)
     expect(externalIds).toEqual([
-      { source: 'tmdb', externalId: '27205', url: 'https://www.themoviedb.org/movie/27205' },
+      { source: 'tmdb_movie', externalId: '27205', url: 'https://www.themoviedb.org/movie/27205' },
       { source: 'imdb', externalId: 'tt1375666', url: 'https://www.imdb.com/title/tt1375666/' },
     ])
   })

@@ -28,3 +28,17 @@ export function imdbWebUrl(imdbId: string): string {
   const segment = imdbId.startsWith('nm') ? 'name' : 'title'
   return `https://www.imdb.com/${segment}/${imdbId}/`
 }
+
+/**
+ * Fonte (entity_external_ids.source) NAMESPACEADA por tipo: tmdb_movie /
+ * tmdb_tv / tmdb_person.
+ *
+ * O TMDB reutiliza o mesmo espaco numerico de ids entre movie/tv/person
+ * (um filme e uma serie podem ter o mesmo tmdb_id). Como entity_external_ids
+ * tem unique (source, external_id), um unico 'tmdb' colidiria entre tipos.
+ * O namespace evita a colisao. (Distinto de provider_api='tmdb', que e a chave
+ * do fornecedor tecnico em api_cache/api_sync_logs.)
+ */
+export function tmdbExternalIdSource(kind: TmdbEntityKind): string {
+  return `tmdb_${kind}`
+}
