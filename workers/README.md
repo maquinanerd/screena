@@ -8,6 +8,15 @@ banco. Nenhuma API externa e chamada no render.
 > apenas registra `"Fase 0: nao implementado"` via `logging` e nao faz nenhuma
 > chamada de rede, banco ou IA.
 
+> **Atualizacao Fase 2 (decisao D2.1/D2.4 em `docs/PHASE_2_TMDB_PLAN.md`):** a
+> ingestao **TMDB** foi implementada em **TypeScript/Node + Prisma** em
+> `api-clients/tmdb`, `services/ingestion` e `services/sync` (persistencia via
+> Prisma, mesmo ecossistema de testes/lint/typecheck). `workers/tmdb_worker.py`
+> e `workers/scheduler.py` permanecem como **legado/scaffold**: nesta fase NAO
+> implementam persistencia TMDB e podem, no futuro, virar apenas shims de
+> systemd que invocam o CLI Node. Os demais workers (ratings, streaming, news,
+> entity_writer) seguem o roadmap original.
+
 ## Fluxo geral
 
 ```

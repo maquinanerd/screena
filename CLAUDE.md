@@ -58,7 +58,7 @@ Fluxo mental: **API externa -> worker (offline, com log) -> PostgreSQL -> [Entit
 - **Frontend**: Next.js App Router, RSC, ISR/revalidate.
 - **Estilo**: Tailwind CSS com tokens de cor da Screena.
 - **Banco**: PostgreSQL. ORM recomendado: **Prisma** (alternativa documentada: Drizzle). **Na Fase 0 nao crie schema real nem migrations.**
-- **Workers**: Python 3.12 (apenas esqueletos nesta fase).
+- **Workers**: Python 3.12 para os esqueletos legados (`workers/*.py`). **Excecao registrada (Fase 2):** a ingestao TMDB roda em **TypeScript/Node + Prisma** (`services/ingestion`, `api-clients/tmdb`, `services/sync`), por decisao aprovada em `docs/PHASE_2_TMDB_PLAN.md` (D2.1/D2.4) — persistencia via Prisma, no mesmo ecossistema de testes/lint/typecheck.
 - **IA**: Gemini — **apenas offline**, nunca no render.
 - **Deploy**: VPS + CloudPanel; Next via Node/PM2/systemd; workers via systemd timers.
 - Qualidade: ESLint + Prettier; testes com Vitest (`pnpm test`); `pnpm typecheck`, `pnpm lint`, `pnpm audit:invariants` / `pnpm audit:render`.

@@ -1,0 +1,21 @@
+# Screena — refresh de catalogo TMDB (stale), OFFLINE / worker-only.
+# Instalar em /etc/systemd/system/ no VPS (CloudPanel). Ilustrativo: ajuste
+# WorkingDirectory, usuario e o comando conforme o deploy (Node 22 + pnpm).
+#
+# INVARIANTES: roda fora do render; chaves SO via EnvironmentFile (nunca no front);
+# todo sync gera log em api_sync_logs.
+
+[Unit]
+Description=Screena TMDB catalog refresh (stale, offline)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=screena
+WorkingDirectory=/srv/screena
+EnvironmentFile=/srv/screena/.env
+# Em producao, prefira um entrypoint compilado; tsx e usado aqui por simplicidade.
+ExecStart=/usr/bin/env pnpm --filter @screena/sync exec tsx bin/run.ts 50
+Nice=10
+TimeoutStartSec=1800

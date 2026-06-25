@@ -15,7 +15,10 @@ controla agendamento, ordem de dependencia e observabilidade central de todo syn
   `page_indexability_decisions` em estado `stale`).
 
 ## Como roda
-- **Worker Python 3.12, sempre offline.** Executado por **systemd timers** na VPS.
+- **TypeScript/Node, sempre offline** (Fase 2, `docs/PHASE_2_TMDB_PLAN.md`).
+  `src/stale-policy.ts` e a politica de frescor PURA (testada); `bin/run.ts` e o runner
+  que seleciona entidades stale e reimporta via `@screena/ingestion`. Disparado por
+  **systemd timers** (`systemd/*.service` + `*.timer`) na VPS.
 - **NUNCA e chamado no render publico.** Nenhuma pagina indexavel aciona sync.
 
 ## Resiliencia obrigatoria

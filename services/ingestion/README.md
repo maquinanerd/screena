@@ -16,9 +16,19 @@ e tabelas de mapeamento (`entity_external_ids`, `slugs`).
   entity-writer) atraves de `updated_at` e jobs.
 
 ## Como roda
-- **Worker Python 3.12, sempre offline.** Executado por **systemd timers** na VPS.
+- **TypeScript/Node + Prisma, sempre offline** (Fase 2, `docs/PHASE_2_TMDB_PLAN.md`).
+  CLI `bin/import.ts` (por ID ou `--seed`), disparado por **systemd timers** na VPS via
+  `services/sync`. Arquitetura ports/adapters: normalizers puros (tipados/testados) +
+  adapters Prisma isolados (`src/persistence/*`, fora do typecheck).
 - **NUNCA e chamado no render publico.** Paginas indexaveis leem apenas PostgreSQL/cache
   local — nenhuma chamada a este servico ou a APIs externas acontece durante o render.
+
+## Estrutura (Fase 2)
+- `src/normalizers/*` — TMDB -> input canonico (PUROS, testados).
+- `src/import/*` — orquestracao por ID via ports (testada com fakes).
+- `src/persistence/*` — adapters Prisma (api_cache, api_sync_logs, upsert idempotente).
+- `src/ports.ts` / `src/types.ts` — contratos; `src/seed-ids.ts` — lista curada de dev.
+- `bin/import.ts` / `src/composition.ts` — wiring runtime (worker-only).
 
 ## Resiliencia obrigatoria
 - **Cache** local de respostas (`api_cache`) para evitar refetch desnecessario.

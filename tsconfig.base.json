@@ -17,7 +17,8 @@
       "@screena/seo": ["packages/seo/src/index.ts"],
       "@screena/ui": ["packages/ui/src/index.ts"],
       "@screena/types": ["packages/types/src/index.ts"],
-      "@screena/db": ["packages/db/src/index.ts"]
+      "@screena/db": ["packages/db/src/index.ts"],
+      "@screena/tmdb-client": ["api-clients/tmdb/src/index.ts"]
     }
   }
 }
