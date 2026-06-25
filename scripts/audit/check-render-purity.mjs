@@ -92,7 +92,17 @@ const IMPORT_PATTERNS = [
   },
   {
     name: "import direto do contrato de DB ('@screena/db')",
-    regex: /\b(?:import|require)\b[^\n;]*['"`]@screena\/db['"`]/,
+    regex: /\b(?:import|require)\b[^\n;]*['"`]@screena\/db(?:\/server)?['"`]/,
+  },
+  {
+    name: "import de service de ingestao/sync ('services/ingestion' | 'services/sync' | '@screena/ingestion' | '@screena/sync')",
+    regex:
+      /\b(?:import|require)\b[^\n;]*['"`](?:[./]*services\/(?:ingestion|sync)|@screena\/(?:ingestion|sync))[^'"`]*['"`]/,
+  },
+  {
+    name: "import do client TMDB ('@screena/tmdb-client' / 'api-clients/tmdb')",
+    regex:
+      /\b(?:import|require)\b[^\n;]*['"`](?:[./]*api-clients\/tmdb|@screena\/tmdb-client)[^'"`]*['"`]/,
   },
 ];
 

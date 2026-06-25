@@ -3,7 +3,12 @@
   "compilerOptions": {
     "noEmit": true
   },
-  "include": ["packages/**/*.ts", "tests/**/*.ts"],
+  "include": [
+    "packages/**/*.ts",
+    "api-clients/**/*.ts",
+    "services/**/*.ts",
+    "tests/**/*.ts"
+  ],
   "exclude": [
     "node_modules",
     "dist",
@@ -11,6 +16,11 @@
     ".next",
     "coverage",
     "packages/**/prisma/**",
-    "packages/**/scripts/**"
+    "packages/**/scripts/**",
+    "packages/db/src/server.ts",
+    "api-clients/**/bin/**",
+    "services/**/persistence/**",
+    "services/**/bin/**",
+    "services/ingestion/src/composition.ts"
   ]
 }

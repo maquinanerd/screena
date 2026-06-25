@@ -1,0 +1,14 @@
+# Agenda o refresh de catalogo TMDB da Screena (janela-alvo: 7-14 dias por
+# entidade; o runner so reprocessa o que esta stale). Persistent=true recupera
+# execucoes perdidas apos downtime do VPS.
+
+[Unit]
+Description=Agenda o refresh de catalogo TMDB da Screena
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+Persistent=true
+RandomizedDelaySec=900
+
+[Install]
+WantedBy=timers.target
