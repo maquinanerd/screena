@@ -11,11 +11,14 @@ banco. Nenhuma API externa e chamada no render.
 > **Atualizacao Fase 2 (decisao D2.1/D2.4 em `docs/PHASE_2_TMDB_PLAN.md`):** a
 > ingestao **TMDB** foi implementada em **TypeScript/Node + Prisma** em
 > `api-clients/tmdb`, `services/ingestion` e `services/sync` (persistencia via
-> Prisma, mesmo ecossistema de testes/lint/typecheck). `workers/tmdb_worker.py`
-> e `workers/scheduler.py` permanecem como **legado/scaffold**: nesta fase NAO
+> Prisma, mesmo ecossistema de testes/lint/typecheck). Nesta fase a importacao
+> TMDB e **por ID explicito + lista curada pequena de dev** (sem discovery):
+> **popular/trending/changes ficam para fase futura**. `workers/tmdb_worker.py`
+> e `workers/scheduler.py` permanecem como **legado/scaffold** — nesta fase NAO
 > implementam persistencia TMDB e podem, no futuro, virar apenas shims de
-> systemd que invocam o CLI Node. Os demais workers (ratings, streaming, news,
-> entity_writer) seguem o roadmap original.
+> systemd que invocam o CLI Node. Os workers Python seguem no roadmap para
+> **ratings, streaming, RSSPRIME e Entity Writer** (fases futuras), mas NAO sao
+> a implementacao TMDB da Fase 2.
 
 ## Fluxo geral
 
@@ -32,6 +35,9 @@ RSSPRIME (upstream)  --->  rssprime_worker.py     │                           
 
 - **Ingestao -> PostgreSQL -> Next le.** O render publico nunca toca em API
   externa nem em Gemini.
+- **Nota:** o ramo **TMDB** do diagrama acima e historico (Python). Na Fase 2 a
+  ingestao TMDB roda em **TS/Node** (`services/ingestion`, por ID + lista curada);
+  ver a nota da Fase 2 no topo.
 - O **Entity Writer** e o unico que aciona o Gemini, e SEMPRE offline, a partir
   de um payload controlado do PostgreSQL, com validacao anti-alucinacao e sem
   publicacao automatica.
@@ -40,7 +46,7 @@ RSSPRIME (upstream)  --->  rssprime_worker.py     │                           
 
 | Arquivo | Papel | Periodicidade (referencia) |
 |---|---|---|
-| `tmdb_worker.py` | Ingestao de catalogo (filmes/series/temporadas/episodios/pessoas) | populares: diario; catalogo: 7-14 dias; trending: 6-12h |
+| `tmdb_worker.py` | **Legado/scaffold** — a ingestao TMDB da Fase 2 roda em TS/Node (`services/ingestion`, por ID + lista curada) | n/a nesta fase (popular/trending/changes = fase futura) |
 | `ratings_worker.py` | Ratings externos atribuidos (IMDb, RT, Metacritic, ...) | quentes: 12-24h; catalogo: 7 dias |
 | `streaming_worker.py` | Onde assistir por pais (so destinos legais) | catalogo por pais: diario |
 | `rssprime_worker.py` | Noticias via upstream RSSPRIME, em clusters | coleta: 15-30min |

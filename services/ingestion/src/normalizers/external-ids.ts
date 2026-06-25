@@ -1,8 +1,11 @@
 /**
  * external-ids.ts — Constroi `entity_external_ids` para uma entidade.
  *
- * Sempre grava o id TMDB (source='tmdb'); grava 'imdb' apenas quando ha
- * imdb_id valido. IMDb aqui e SO identificador/referencia — NUNCA fonte de
+ * `entity_external_ids.source` usa NAMESPACE por tipo: `tmdb_movie`, `tmdb_tv`,
+ * `tmdb_person` — nunca um `'tmdb'` generico. O TMDB usa espacos de id separados
+ * por entidade, entao um unico `'tmdb'` colidiria no unique `(source, external_id)`.
+ * `provider_api='tmdb'` (cache/logs) e separado disto. Grava `imdb` apenas quando
+ * ha imdb_id valido — IMDb aqui e SO identificador/referencia, NUNCA fonte de
  * rating (invariantes 1/2).
  */
 
