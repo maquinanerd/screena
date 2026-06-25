@@ -1,0 +1,17 @@
+{
+  "name": "@screena/schemas",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Validacao canonica da Screena: integridade de ratings (fonte != provider_api, escala por fonte, anti cross-label) e saida do Entity Writer (formas, tipos e checagem anti-alucinacao contra payload controlado).",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "sideEffects": false,
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@screena/config": "workspace:*"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noUncheckedIndexedAccess": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "baseUrl": ".",
+    "paths": {
+      "@screena/config": ["packages/config/src/index.ts"],
+      "@screena/schemas": ["packages/schemas/src/index.ts"],
+      "@screena/seo": ["packages/seo/src/index.ts"],
+      "@screena/ui": ["packages/ui/src/index.ts"],
+      "@screena/types": ["packages/types/src/index.ts"],
+      "@screena/db": ["packages/db/src/index.ts"]
+    }
+  }
+}

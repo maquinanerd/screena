@@ -1,0 +1,29 @@
+{
+  "name": "@screena/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "App publico da Screena (Next.js App Router). Renderiza paginas indexaveis lendo apenas PostgreSQL/cache local. Zero API externa e zero Gemini no render.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "^15.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "@screena/seo": "workspace:*",
+    "@screena/ui": "workspace:*",
+    "@screena/types": "workspace:*",
+    "@screena/db": "workspace:*"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5.5.0",
+    "@types/react": "^19.0.0",
+    "@types/node": "^22.0.0"
+  }
+}

@@ -1,0 +1,26 @@
+# Dependencias
+node_modules
+.pnpm-store
+
+# Build / output
+.next
+dist
+build
+coverage
+.turbo
+.vitest
+
+# Ambiente — chaves vivem SO em env vars, nunca versionadas
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# Python workers
+__pycache__/
+.venv/
+
+# Sistema
+.DS_Store

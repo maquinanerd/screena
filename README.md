@@ -1,0 +1,155 @@
+# Screena
+
+> **Movies, series, ratings and where to watch.**
+
+Screena é uma **base global de entretenimento _entity-first_**: filmes, séries, temporadas, episódios, pessoas, ratings externos, onde assistir, reviews e notícias — organizados em torno da **entidade** (a obra), e não de uma página solta. Sobre esses dados, a Screena escreve uma **camada editorial própria**, em português (pt-BR) primeiro, com `en`/`es` nascendo em rascunho.
+
+Domínio: **screena.media**
+
+---
+
+## O que é
+
+A Screena trata cada obra como uma **entidade canônica** com identidade estável (slug, IDs externos, schema.org) e agrega ao seu redor tudo o que importa para quem decide o que assistir:
+
+- ficha da obra (filme / série / temporada / episódio / pessoa);
+- **ratings externos atribuídos** (IMDb, Rotten Tomatoes, Metacritic, Letterboxd, FilmAffinity…), sempre com fonte, escala e atribuição corretas;
+- **onde assistir** por país, com licença e disponibilidade reais;
+- **camada editorial própria** (introduções, contexto, comparações, FAQ, reviews) gerada e revisada offline.
+
+O resultado é um produto que **não é um agregador cru de API**: cada página indexável precisa carregar valor editorial próprio.
+
+## Posicionamento
+
+> **As APIs fornecem os dados. A Screena escreve a camada editorial.**
+
+Fornecedores externos (TMDB, provedores de rating via RapidAPI, etc.) são **fontes de dados técnicos**. Eles não são, e nunca aparecem como, a voz editorial da Screena. O valor do produto está na curadoria, na contextualização e na escrita própria — construída sobre dados licenciados e atribuídos corretamente.
+
+## Regra central
+
+> **Zero API externa no render. Zero Gemini no render.**
+
+Toda página pública indexável lê **apenas PostgreSQL/cache local**. Nenhuma chamada a TMDB, a provedores de rating ou ao Gemini acontece durante a renderização. A IA (Gemini) só gera blocos de conteúdo **offline**, que são salvos, validados e revisados antes de qualquer publicação. Sincronização externa e geração de conteúdo são pipelines _separados_ do render.
+
+---
+
+## Mapa do monorepo
+
+Monorepo **pnpm** com workspaces (`apps/*`, `packages/*`). Estrutura de alto nível:
+
+| Diretório       | Conteúdo                                                                                  |
+| --------------- | ----------------------------------------------------------------------------------------- |
+| `apps/`         | Aplicações Next.js: `@screena/web` (site público) e `@screena/admin` (painel editorial).  |
+| `packages/`     | Pacotes compartilhados: `config`, `schemas`, `seo`, `ui`, `types` (e `db` futuramente).   |
+| `services/`     | Serviços de domínio (sincronização, indexação, orquestração) — esqueletos nesta fase.     |
+| `workers/`      | Workers Python 3.12 (Entity Writer, sync jobs) — apenas esqueletos nesta fase.            |
+| `api-clients/`  | Clientes de APIs externas (TMDB, provedores de rating) — contratos/esqueletos, sem rede.  |
+| `database/`     | Modelagem, referência de tabelas e (futuramente) migrations. Sem schema real na Fase 0.   |
+| `seo/`          | Regras de SEO programático, indexabilidade e geração de sitemaps/metadados.               |
+| `prompts/`      | Prompts versionados do Entity Writer e demais agentes de IA (offline).                     |
+| `tests/`        | Testes de invariantes e utilitários puros (Vitest).                                       |
+| `scripts/`      | Scripts de auditoria e automação (ex.: checagem de invariantes e pureza de render).        |
+| `docs/`         | Documentação canônica (SPEC, plano de build, fontes de API, SEO, deploy…).                |
+| `.claude/`      | Governança operacional: regras, skills e agents que guiam a construção assistida por IA.   |
+
+### Convenção de pacotes
+
+- **Pacotes:** `@screena/config`, `@screena/schemas`, `@screena/seo`, `@screena/ui`, `@screena/types`, `@screena/db`.
+- **Apps:** `@screena/web`, `@screena/admin`.
+
+Cada pacote expõe `src/index.ts` (`"main": "./src/index.ts"`, `"type": "module"`), estende `tsconfig.base.json` e traz seu próprio `README.md`.
+
+---
+
+## Stack
+
+- **Monorepo:** pnpm (workspaces `apps/*`, `packages/*`).
+- **Frontend:** Next.js App Router, TypeScript **strict**, React Server Components, ISR/`revalidate`.
+- **Estilo:** Tailwind CSS com tokens de cor da Screena.
+- **Banco:** PostgreSQL. ORM recomendado: **Prisma** (alternativa documentada: Drizzle). _Sem schema/migrations reais na Fase 0._
+- **Workers:** Python **3.12** (apenas esqueletos nesta fase).
+- **IA:** Gemini — **somente offline**, nunca no render.
+- **Deploy:** VPS + CloudPanel; Next via Node/PM2/systemd; workers via systemd timers.
+- **Runtime:** Node **22 LTS**, pnpm, TypeScript strict.
+
+## Pré-requisitos
+
+- **Node 22 LTS** (ver `.nvmrc`).
+- **pnpm 9+**.
+- **Python 3.12** (para os workers; não necessário na Fase 0).
+- **PostgreSQL** (não necessário na Fase 0).
+
+## Comandos
+
+> **Fase 0 — Fundação.** A estrutura, as regras e os pacotes existem; o app ainda **não** roda como produto. `pnpm dev` e a aplicação final serão implementados nas próximas fases.
+
+| Comando          | O que faz                                                                 |
+| ---------------- | ------------------------------------------------------------------------- |
+| `pnpm install`   | Instala as dependências do monorepo.                                      |
+| `pnpm dev`       | _Será implementado nas próximas fases_ (servidor de desenvolvimento do app). |
+| `pnpm test`      | Roda os testes (Vitest): invariantes e utilitários puros.                 |
+| `pnpm lint`      | Roda o ESLint em todo o repositório.                                      |
+| `pnpm typecheck` | Checagem de tipos (`tsc --noEmit`).                                       |
+| `pnpm audit:invariants`     | Audita as invariantes do projeto (ex.: pureza de render, atribuição).      |
+
+---
+
+## Invariantes (resumo)
+
+As 13 invariantes inegociáveis que governam todo o produto. A íntegra está em `CLAUDE.md` e em `.claude/rules`.
+
+1. **IMDb ≠ Rotten Tomatoes** — nunca misturar fontes, escalas, ícones ou linguagem.
+2. **provider_api ≠ rating_source** — o fornecedor técnico (ex.: RapidAPI) nunca é a fonte editorial.
+3. **Zero API externa no render** — páginas indexáveis leem apenas PostgreSQL/cache local.
+4. **Zero Gemini no render** — a IA só gera `content_blocks` offline, salvos e validados.
+5. **Página fina recebe `noindex`** — sem ao menos 2 blocos de valor próprios além do dado cru, não indexa.
+6. **Sem licença clara, não aparece** — `license_status` `unknown`/`blocked` ou `display_allowed=false` ⇒ fora de página indexável.
+7. **pt-BR publica primeiro** — `en`/`es` nascem em draft/`noindex` até revisão humana.
+8. **Sem pirataria** — nada de torrent, IPTV, player ilegal, link de download ou embed pirata.
+9. **Filmes usam acento vermelho** (`--screena-movie-red`).
+10. **Séries usam acento verde** (`--screena-series-green`).
+11. **Filme vs. série nunca depende só da cor** — sempre label + badge + breadcrumb + schema + URL.
+12. **Entity Writer só escreve com payload controlado** do PostgreSQL — não inventa fatos, não cria entidades, não chama APIs, não publica sozinho.
+13. **`content_blocks` são versionados e revisáveis** — `prompt_version`, `input_hash`, `output_hash`, `model_provider`, `model_name` e `review_status` obrigatórios.
+
+---
+
+## Governança
+
+A construção da Screena é guiada por regras explícitas e versionadas, que valem tanto para pessoas quanto para agentes de IA:
+
+- **`CLAUDE.md`** — contexto canônico do projeto e fonte da verdade das invariantes.
+- **`.claude/rules/`** — regras operacionais detalhadas (render, ratings, indexabilidade, i18n, legal).
+- **`.claude/skills/`** — habilidades reutilizáveis para tarefas recorrentes da Screena.
+- **`.claude/agents/`** — definições dos agentes (ex.: Entity Writer) e seus limites de atuação.
+
+Regra geral de escrita: **docs, regras e prompts em pt-BR**; **código e identificadores em inglês** (comentários podem ser em pt-BR). Utilitários TypeScript são puros, sem rede/DB/IO.
+
+## Legal
+
+- **Sem pirataria.** Nenhum torrent, IPTV, player ilegal, link de download ou embed pirata — em nenhuma hipótese.
+- **Atribuição de ratings.** Toda nota externa carrega fonte, escala e atribuição corretas. Nota IMDb **nunca** vira Tomatometer; Tomatometer/Popcornmeter pertencem apenas ao Rotten Tomatoes. Nada de `AggregateRating` fingindo nota própria.
+- **Licenças.** Dados sem licença clara (`license_status` `unknown`/`blocked` ou `display_allowed=false`) não aparecem em páginas indexáveis. Flags de exibição, logo, score, citação de review, atribuição e linkback são respeitadas conforme `source_licenses`.
+- **Chaves de API.** Sempre em variáveis de ambiente, nunca no frontend. Todo sync externo gera log.
+
+---
+
+## Documentação
+
+A documentação canônica vive em [`docs/`](./docs):
+
+- [`docs/SPEC.md`](./docs/SPEC.md) — especificação do produto e do modelo de entidades.
+- [`docs/BUILD_PLAN.md`](./docs/BUILD_PLAN.md) — plano de construção por fases.
+- [`docs/API_SOURCES.md`](./docs/API_SOURCES.md) — fontes de dados externas e seus contratos.
+- [`docs/SEO_PROGRAMMATIC.md`](./docs/SEO_PROGRAMMATIC.md) — SEO programático, indexabilidade e gate anti-thin.
+- [`docs/RATING_ATTRIBUTION.md`](./docs/RATING_ATTRIBUTION.md) — regras de atribuição de ratings e licenças.
+- [`docs/ENTITY_WRITER.md`](./docs/ENTITY_WRITER.md) — o agente editorial offline e seus limites.
+- [`docs/CLOUDPANEL_DEPLOY.md`](./docs/CLOUDPANEL_DEPLOY.md) — deploy em VPS + CloudPanel.
+
+---
+
+## Status do projeto
+
+**Fase 0 — Fundação: concluída.** ✅
+
+A fundação do monorepo está em pé: estrutura de diretórios, pacotes compartilhados (`config`, `schemas`, `seo`, `ui`, `types`), apps (`web`, `admin`), governança (`CLAUDE.md`, `.claude/`), tooling (TypeScript strict, ESLint, Prettier, Vitest) e as 13 invariantes documentadas. **Ainda não há** banco real, migrations, clientes TMDB/Gemini funcionais ou app publicável — esses itens chegam nas próximas fases.

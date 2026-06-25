@@ -1,0 +1,17 @@
+{
+  "name": "@screena/seo",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Gate anti-thin e decisao de indexabilidade da Screena: conta blocos de valor proprios e decide index/noindex/draft/blocked conforme as invariantes (5, 6, 7). Funcoes puras, deterministas, sem rede/DB/IO.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "sideEffects": false,
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@screena/config": "workspace:*"
+  }
+}

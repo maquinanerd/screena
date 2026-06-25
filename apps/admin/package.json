@@ -1,0 +1,7 @@
+{
+  "name": "@screena/admin",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Painel interno da Screena. Pode chamar endpoints internos (sync, ratings, content-blocks, entity-writer). Nunca exposto como pagina publica indexavel."
+}

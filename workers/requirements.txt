@@ -1,0 +1,16 @@
+# Dependencias dos workers Screena (Python 3.12).
+#
+# Fase 0: estas dependencias sao apenas DECLARADAS. NAO instale agora.
+# Elas serao instaladas em fases futuras, quando os workers tiverem implementacao
+# real (cliente HTTP, acesso ao PostgreSQL, cliente Gemini offline, etc.).
+# Nesta fase os modulos usam apenas a stdlib (logging).
+#
+# Versoes ficam livres de propósito (sem pin) ate o congelamento na fase de build.
+
+httpx                 # cliente HTTP assincrono para ingestao (TMDB, ratings, streaming, RSSPRIME)
+tenacity              # retry/backoff resiliente em chamadas externas
+pydantic              # validacao/normalizacao de payloads controlados
+psycopg[binary]       # driver PostgreSQL (fila de jobs, persistencia)
+python-dotenv         # carregamento de variaveis de ambiente (API keys SO em env)
+google-generativeai   # cliente Gemini (apenas offline, no Entity Writer)
+structlog             # logging estruturado para os logs de sync
