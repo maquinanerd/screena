@@ -177,3 +177,22 @@ export const COLOR_TOKENS = {
  * Tipo derivado de um nome de token de cor valido.
  */
 export type ColorToken = keyof typeof COLOR_TOKENS;
+
+/**
+ * Tipos de fornecedor tecnico (api_providers.kind). Espelha o enum Postgres
+ * ProviderKind do schema (Fase 1, decisao D3). O fornecedor tecnico
+ * (provider_api) NUNCA e a fonte editorial (rating_source) — ver invariante 2.
+ *
+ * - data:      provedor de metadados estruturais (ex.: tmdb).
+ * - ratings:   provedor tecnico que transporta notas de uma fonte editorial
+ *              (ex.: imdb236 entrega a nota cuja rating_source e 'imdb').
+ * - streaming: provedor de disponibilidade legal (ex.: streaming_availability).
+ * - ai:        provedor de modelo de IA usado offline (ex.: gemini).
+ * - news:      provedor de noticias/clusters.
+ */
+export const PROVIDER_KINDS = ["data", "ratings", "streaming", "ai", "news"] as const;
+
+/**
+ * Tipo derivado de um ProviderKind valido.
+ */
+export type ProviderKind = (typeof PROVIDER_KINDS)[number];

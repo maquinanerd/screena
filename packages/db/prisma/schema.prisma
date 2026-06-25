@@ -1,0 +1,708 @@
+// Screena — Schema PostgreSQL (Fase 1).
+//
+// Convencoes (ver docs/PHASE_1_DATABASE_PLAN.md):
+//  - Modelos PascalCase singular + @@map para tabela snake_case plural.
+//  - Campos camelCase + @map para coluna snake_case.
+//  - PK interna = BigInt autoincrement (D6); tabelas-semente usam chave natural.
+//  - Refs polimorficas = (entityType + entityId) SEM FK, com @@index composto (D1).
+//  - rating_source e provider_api sao FKs DISTINTAS para tabelas DISTINTAS (invariante 2).
+//  - Default seguro: tudo nasce noindex / display_allowed=false / unknown / draft.
+//
+// Restricoes que o Prisma NAO expressa (CHECKs condicionais e indices unicos
+// PARCIAIS) sao aplicadas via SQL bruto na migration (D5); ver a secao
+// "Database governance constraints not fully represented by Prisma" no plano.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// ENUMS (13)
+// ============================================================
+
+enum EntityType {
+  movie
+  tv
+  season
+  episode
+  person
+}
+
+enum ContentBlockType {
+  editorial_intro
+  summary_without_spoilers
+  ratings_explanation
+  where_to_watch_text
+  cast_intro
+  similar_titles_intro
+  franchise_context
+  season_guide
+  episode_context
+  faq
+  news_context
+  review_summary
+}
+
+enum ContentSource {
+  ai
+  human
+  hybrid
+}
+
+enum ReviewStatus {
+  draft
+  ai_generated
+  needs_review
+  human_reviewed
+  published
+  needs_update
+  blocked
+  archived
+}
+
+enum TranslationStatus {
+  draft
+  generated
+  reviewed
+  published
+  noindex
+  archived
+}
+
+enum IndexDecision {
+  index
+  noindex
+  draft
+  stale
+  blocked
+}
+
+enum JobType {
+  generate_block
+  regenerate_block
+  translate_block
+}
+
+enum JobStatus {
+  queued
+  claimed
+  running
+  completed
+  failed
+  blocked
+  cancelled
+}
+
+enum LicenseStatus {
+  official
+  licensed
+  third_party
+  unknown
+  blocked
+}
+
+enum OfferType {
+  subscription
+  rent
+  buy
+  free
+  ads
+  cinema
+}
+
+enum SyncStatus {
+  success
+  partial
+  failed
+  empty
+  aborted
+}
+
+enum ValidationStatus {
+  passed
+  warnings
+  failed
+}
+
+enum ProviderKind {
+  data
+  ratings
+  streaming
+  ai
+  news
+}
+
+// ============================================================
+// SEMENTE / REFERENCIA (chave natural como PK)
+// ============================================================
+
+model Language {
+  code         String   @id // BCP-47 (pt-BR, en, es)
+  namePt       String   @map("name_pt")
+  nameEn       String   @map("name_en")
+  isPublished  Boolean  @default(false) @map("is_published") // so pt-BR publica no MVP (inv. 9)
+  indexDefault Boolean  @default(false) @map("index_default") // so pt-BR indexa por padrao (inv. 7/9)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  movies         Movie[]
+  tvShows        TvShow[]
+  translations   EntityTranslation[]
+  slugs          Slug[]
+  redirects      Redirect[]
+  contentBlocks  ContentBlock[]
+  writerJobs     EntityWriterJob[]
+  indexDecisions PageIndexabilityDecision[]
+
+  @@map("languages")
+}
+
+model Country {
+  code      String   @id // ISO 3166-1 alpha-2
+  namePt    String   @map("name_pt")
+  nameEn    String   @map("name_en")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  watchAvailability WatchAvailability[]
+
+  @@map("countries")
+}
+
+model RatingSource {
+  key         String   @id // fonte editorial: imdb, rotten_tomatoes, metacritic, letterboxd, filmaffinity
+  label       String
+  scale       Int // espelha RATING_SCALES de @screena/config (travado por teste)
+  homepageUrl String?  @map("homepage_url")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  ratings ExternalRating[]
+
+  @@map("rating_sources")
+}
+
+model ApiProvider {
+  key         String       @id // fornecedor tecnico: tmdb, gemini, imdb236, streaming_availability
+  name        String
+  kind        ProviderKind
+  homepageUrl String?      @map("homepage_url")
+  createdAt   DateTime     @default(now()) @map("created_at")
+
+  ratings      ExternalRating[]
+  syncLogs     ApiSyncLog[]
+  cacheEntries ApiCache[]
+
+  @@map("api_providers")
+}
+
+model SourceLicense {
+  id                  BigInt        @id @default(autoincrement())
+  sourceKey           String        @map("source_key")
+  providerKey         String?       @map("provider_key")
+  licenseStatus       LicenseStatus @default(unknown) @map("license_status") // default seguro (inv. 6)
+  displayAllowed      Boolean       @default(false) @map("display_allowed")
+  logoAllowed         Boolean       @default(false) @map("logo_allowed")
+  scoreAllowed        Boolean       @default(false) @map("score_allowed")
+  reviewQuoteAllowed  Boolean       @default(false) @map("review_quote_allowed")
+  requiresAttribution Boolean       @default(true) @map("requires_attribution")
+  requiresLinkback    Boolean       @default(true) @map("requires_linkback")
+  attributionText     String?       @map("attribution_text")
+  termsUrl            String?       @map("terms_url")
+  notes               String?
+  createdAt           DateTime      @default(now()) @map("created_at")
+  updatedAt           DateTime      @updatedAt @map("updated_at")
+
+  // Unique parcial (source_key WHERE provider_key IS NULL) aplicado via SQL bruto.
+  @@index([sourceKey])
+  @@map("source_licenses")
+}
+
+// ============================================================
+// MIDIA (entidades-raiz)
+// ============================================================
+
+model Movie {
+  id               BigInt    @id @default(autoincrement())
+  tmdbId           Int       @unique @map("tmdb_id")
+  imdbId           String?   @unique @map("imdb_id") // 'tt#######'; identificador, NAO fonte de rating
+  titleOriginal    String    @map("title_original")
+  originalLanguage String?   @map("original_language")
+  releaseDate      DateTime? @map("release_date") @db.Date
+  runtimeMinutes   Int?      @map("runtime_minutes")
+  status           String?
+  popularity       Decimal?
+  voteAverageTmdb  Decimal?  @map("vote_average_tmdb") // dado tecnico TMDB; NUNCA nota editorial (inv. 1/2)
+  voteCountTmdb    Int?      @map("vote_count_tmdb")
+  posterPath       String?   @map("poster_path")
+  backdropPath     String?   @map("backdrop_path")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  lastSyncedAt     DateTime? @map("last_synced_at")
+  staleAfter       DateTime? @map("stale_after")
+
+  language Language? @relation(fields: [originalLanguage], references: [code])
+
+  @@index([status])
+  @@index([updatedAt])
+  @@index([releaseDate])
+  @@index([popularity])
+  @@index([staleAfter])
+  @@index([originalLanguage])
+  @@map("movies")
+}
+
+model TvShow {
+  id               BigInt    @id @default(autoincrement())
+  tmdbId           Int       @unique @map("tmdb_id")
+  imdbId           String?   @unique @map("imdb_id")
+  nameOriginal     String    @map("name_original")
+  originalLanguage String?   @map("original_language")
+  firstAirDate     DateTime? @map("first_air_date") @db.Date
+  lastAirDate      DateTime? @map("last_air_date") @db.Date
+  status           String?
+  numberOfSeasons  Int?      @map("number_of_seasons")
+  numberOfEpisodes Int?      @map("number_of_episodes")
+  popularity       Decimal?
+  voteAverageTmdb  Decimal?  @map("vote_average_tmdb")
+  voteCountTmdb    Int?      @map("vote_count_tmdb")
+  posterPath       String?   @map("poster_path")
+  backdropPath     String?   @map("backdrop_path")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  lastSyncedAt     DateTime? @map("last_synced_at")
+  staleAfter       DateTime? @map("stale_after")
+
+  language Language? @relation(fields: [originalLanguage], references: [code])
+  seasons  Season[]
+
+  @@index([status])
+  @@index([updatedAt])
+  @@index([firstAirDate])
+  @@index([lastAirDate])
+  @@index([popularity])
+  @@index([staleAfter])
+  @@index([originalLanguage])
+  @@map("tv_shows")
+}
+
+model Season {
+  id           BigInt    @id @default(autoincrement())
+  tvShowId     BigInt    @map("tv_show_id")
+  tmdbId       Int?      @map("tmdb_id")
+  seasonNumber Int       @map("season_number")
+  name         String?
+  overview     String?
+  airDate      DateTime? @map("air_date") @db.Date
+  episodeCount Int?      @map("episode_count")
+  posterPath   String?   @map("poster_path")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  lastSyncedAt DateTime? @map("last_synced_at")
+
+  tvShow   TvShow    @relation(fields: [tvShowId], references: [id], onDelete: Cascade)
+  episodes Episode[]
+
+  @@unique([id, tvShowId]) // alvo da FK composta de episodes (forca tv_show_id coerente)
+  @@unique([tvShowId, seasonNumber])
+  @@index([tvShowId])
+  @@map("seasons")
+}
+
+model Episode {
+  id             BigInt    @id @default(autoincrement())
+  seasonId       BigInt    @map("season_id")
+  tvShowId       BigInt    @map("tv_show_id")
+  tmdbId         Int?      @map("tmdb_id")
+  episodeNumber  Int       @map("episode_number")
+  name           String?
+  overview       String?
+  airDate        DateTime? @map("air_date") @db.Date
+  runtimeMinutes Int?      @map("runtime_minutes")
+  stillPath      String?   @map("still_path")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  lastSyncedAt   DateTime? @map("last_synced_at")
+
+  // Episode NAO armazena season_number: ele e DERIVADO de seasons via season_id
+  // (evita divergencia episodio x temporada). A FK COMPOSTA abaixo tambem garante
+  // que o tv_show_id do episodio bate com o da season (denormalizacao controlada,
+  // sem dado de temporada redundante).
+  season Season @relation(fields: [seasonId, tvShowId], references: [id, tvShowId], onDelete: Cascade)
+
+  @@unique([seasonId, episodeNumber])
+  @@index([tvShowId])
+  @@map("episodes")
+}
+
+model Person {
+  id                    BigInt        @id @default(autoincrement())
+  tmdbId                Int           @unique @map("tmdb_id")
+  imdbId                String?       @unique @map("imdb_id")
+  name                  String
+  knownForDepartment    String?       @map("known_for_department")
+  gender                Int?
+  birthday              DateTime?     @db.Date
+  deathday              DateTime?     @db.Date
+  placeOfBirth          String?       @map("place_of_birth")
+  profilePath           String?       @map("profile_path")
+  biographySourceStatus LicenseStatus @default(unknown) @map("biography_source_status") // governa EXIBICAO da bio (inv. 6)
+  createdAt             DateTime      @default(now()) @map("created_at")
+  updatedAt             DateTime      @updatedAt @map("updated_at")
+  lastSyncedAt          DateTime?     @map("last_synced_at")
+
+  castCredits CastMember[]
+  crewCredits CrewMember[]
+
+  @@index([updatedAt])
+  @@map("people")
+}
+
+// ============================================================
+// CREDITOS (polimorfico -> movie | tv)
+// ============================================================
+
+model CastMember {
+  id           BigInt     @id @default(autoincrement())
+  personId     BigInt     @map("person_id")
+  entityType   EntityType @map("entity_type")
+  entityId     BigInt     @map("entity_id")
+  character    String?
+  billingOrder Int?       @map("billing_order")
+  creditId     String?    @unique @map("credit_id")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@index([entityType, entityId])
+  @@index([personId])
+  @@map("cast_members")
+}
+
+model CrewMember {
+  id         BigInt     @id @default(autoincrement())
+  personId   BigInt     @map("person_id")
+  entityType EntityType @map("entity_type")
+  entityId   BigInt     @map("entity_id")
+  department String?
+  job        String?
+  creditId   String?    @unique @map("credit_id")
+  createdAt  DateTime   @default(now()) @map("created_at")
+  updatedAt  DateTime   @updatedAt @map("updated_at")
+
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@index([entityType, entityId])
+  @@index([personId])
+  @@map("crew_members")
+}
+
+// ============================================================
+// IDENTIDADE / ROTAS (polimorfico)
+// ============================================================
+
+model EntityExternalId {
+  id         BigInt     @id @default(autoincrement())
+  entityType EntityType @map("entity_type")
+  entityId   BigInt     @map("entity_id")
+  source     String // tmdb, imdb, ...
+  externalId String     @map("external_id")
+  url        String?
+  createdAt  DateTime   @default(now()) @map("created_at")
+
+  @@unique([entityType, entityId, source])
+  @@unique([source, externalId])
+  @@index([entityType, entityId])
+  @@map("entity_external_ids")
+}
+
+model Slug {
+  id           BigInt     @id @default(autoincrement())
+  entityType   EntityType @map("entity_type")
+  entityId     BigInt     @map("entity_id")
+  languageCode String     @map("language_code")
+  slug         String
+  isCanonical  Boolean    @default(false) @map("is_canonical")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  language Language @relation(fields: [languageCode], references: [code])
+
+  // Unique parcial (1 canonico por entidade/idioma WHERE is_canonical) via SQL bruto.
+  @@unique([entityType, languageCode, slug])
+  @@index([entityType, entityId, languageCode])
+  @@index([languageCode])
+  @@map("slugs")
+}
+
+model Redirect {
+  id           BigInt   @id @default(autoincrement())
+  fromPath     String   @unique @map("from_path")
+  toPath       String   @map("to_path")
+  statusCode   Int      @default(301) @map("status_code")
+  languageCode String?  @map("language_code")
+  reason       String?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  language Language? @relation(fields: [languageCode], references: [code])
+
+  // CHECK (from_path <> to_path) via SQL bruto.
+  @@index([toPath])
+  @@map("redirects")
+}
+
+model EntityTranslation {
+  id              BigInt            @id @default(autoincrement())
+  entityType      EntityType        @map("entity_type")
+  entityId        BigInt            @map("entity_id")
+  languageCode    String            @map("language_code")
+  title           String?
+  metaTitle       String?           @map("meta_title")
+  metaDescription String?           @map("meta_description")
+  summary         String?
+  editorialIntro  String?           @map("editorial_intro")
+  faqJson         Json?             @map("faq_json")
+  status          TranslationStatus @default(draft) // en/es nascem draft (inv. 9)
+  indexStatus     IndexDecision     @default(noindex) @map("index_status") // e noindex
+  reviewedBy      String?           @map("reviewed_by")
+  publishedAt     DateTime?         @map("published_at")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  // D4: slug NAO mora aqui — 'slugs' e a unica fonte autoritativa.
+  language Language @relation(fields: [languageCode], references: [code])
+
+  @@unique([entityType, entityId, languageCode])
+  @@index([entityType, entityId])
+  @@index([languageCode])
+  @@map("entity_translations")
+}
+
+// ============================================================
+// EDITORIAL / IA (polimorfico)
+// ============================================================
+
+model ContentBlock {
+  id            BigInt           @id @default(autoincrement())
+  entityType    EntityType       @map("entity_type")
+  entityId      BigInt           @map("entity_id")
+  languageCode  String           @map("language_code")
+  blockType     ContentBlockType @map("block_type")
+  content       String
+  sourceType    ContentSource    @default(ai) @map("source_type")
+  modelProvider String?          @map("model_provider") // obrigatorio se source_type != human (CHECK via SQL)
+  modelName     String?          @map("model_name")
+  promptVersion String           @map("prompt_version") // versionamento obrigatorio (inv. 8/13)
+  inputHash     String           @map("input_hash")
+  outputHash    String           @map("output_hash")
+  reviewStatus  ReviewStatus     @default(draft) @map("review_status")
+  warningsJson  Json?            @map("warnings_json")
+  publishedAt   DateTime?        @map("published_at")
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @updatedAt @map("updated_at")
+
+  language       Language          @relation(fields: [languageCode], references: [code])
+  producedByJobs EntityWriterJob[]
+
+  @@index([entityType, entityId, languageCode])
+  @@index([reviewStatus])
+  @@map("content_blocks")
+}
+
+model EntityWriterJob {
+  id            BigInt     @id @default(autoincrement())
+  entityType    EntityType @map("entity_type")
+  entityId      BigInt     @map("entity_id")
+  languageCode  String     @map("language_code")
+  jobType       JobType    @map("job_type")
+  status        JobStatus  @default(queued)
+  priority      Int        @default(0)
+  payloadHash   String?    @map("payload_hash")
+  promptVersion String?    @map("prompt_version")
+  modelProvider String?    @map("model_provider")
+  modelName     String?    @map("model_name")
+  attempts      Int        @default(0)
+  lastError     String?    @map("last_error")
+  resultBlockId BigInt?    @map("result_block_id")
+  claimedAt     DateTime?  @map("claimed_at")
+  completedAt   DateTime?  @map("completed_at")
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+
+  language    Language          @relation(fields: [languageCode], references: [code])
+  resultBlock ContentBlock?     @relation(fields: [resultBlockId], references: [id])
+  logs        EntityWriterLog[]
+
+  // Unique parcial (1 job ativo por alvo WHERE status IN queued/claimed/running) via SQL bruto.
+  @@index([entityType, entityId, languageCode])
+  @@index([status])
+  @@map("entity_writer_jobs")
+}
+
+model EntityWriterLog {
+  id               BigInt            @id @default(autoincrement())
+  jobId            BigInt            @map("job_id")
+  entityType       EntityType        @map("entity_type")
+  entityId         BigInt            @map("entity_id")
+  languageCode     String            @map("language_code")
+  modelProvider    String?           @map("model_provider")
+  modelName        String?           @map("model_name")
+  promptVersion    String?           @map("prompt_version")
+  inputHash        String?           @map("input_hash")
+  outputHash       String?           @map("output_hash")
+  tokenInput       Int?              @map("token_input")
+  tokenOutput      Int?              @map("token_output")
+  validationStatus ValidationStatus? @map("validation_status")
+  warningsJson     Json?             @map("warnings_json")
+  errorMessage     String?           @map("error_message")
+  createdAt        DateTime          @default(now()) @map("created_at")
+
+  job EntityWriterJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+  @@index([entityType, entityId])
+  @@map("entity_writer_logs")
+}
+
+// ============================================================
+// RATINGS / LICENCA (polimorfico)
+// ============================================================
+
+model ExternalRating {
+  id                  BigInt        @id @default(autoincrement())
+  entityType          EntityType    @map("entity_type")
+  entityId            BigInt        @map("entity_id")
+  ratingSource        String        @map("rating_source") // FK -> rating_sources.key (fonte editorial)
+  ratingLabel         String        @map("rating_label")
+  metric              String
+  ratingValue         Decimal       @map("rating_value")
+  ratingScale         Int           @map("rating_scale") // deve casar com rating_sources.scale (teste)
+  ratingCount         Int?          @map("rating_count")
+  ratingUrl           String?       @map("rating_url")
+  providerApi         String        @map("provider_api") // FK -> api_providers.key (fornecedor tecnico)
+  providerPayloadHash String?       @map("provider_payload_hash")
+  fetchedAt           DateTime?     @map("fetched_at")
+  attributionText     String?       @map("attribution_text")
+  attributionUrl      String?       @map("attribution_url")
+  licenseStatus       LicenseStatus @default(unknown) @map("license_status")
+  displayAllowed      Boolean       @default(false) @map("display_allowed") // default seguro (inv. 6)
+  createdAt           DateTime      @default(now()) @map("created_at")
+  updatedAt           DateTime      @updatedAt @map("updated_at")
+
+  // Invariante 2 materializada: rating_source e provider_api -> tabelas DISTINTAS.
+  source   RatingSource @relation(fields: [ratingSource], references: [key])
+  provider ApiProvider  @relation(fields: [providerApi], references: [key])
+
+  @@unique([entityType, entityId, ratingSource, metric])
+  @@index([entityType, entityId])
+  @@index([ratingSource])
+  @@index([providerApi])
+  @@map("external_ratings")
+}
+
+// ============================================================
+// DISPONIBILIDADE / SEO (polimorfico)
+// ============================================================
+
+model WatchAvailability {
+  id             BigInt     @id @default(autoincrement())
+  entityType     EntityType @map("entity_type")
+  entityId       BigInt     @map("entity_id")
+  countryCode    String     @map("country_code")
+  providerKey    String?    @map("provider_key") // D2: provider como texto ate a fase de streaming
+  providerName   String     @map("provider_name")
+  offerType      OfferType  @map("offer_type") // so modalidades LEGAIS (inv. 10)
+  deepLink       String?    @map("deep_link") // destino legal; nunca torrent/IPTV/player pirata
+  price          Decimal?
+  currency       String?    @db.Char(3) // CHECK (price IS NULL OR currency IS NOT NULL) via SQL
+  quality        String?
+  availableFrom  DateTime?  @map("available_from")
+  availableUntil DateTime?  @map("available_until")
+  fetchedAt      DateTime?  @map("fetched_at")
+  staleAfter     DateTime?  @map("stale_after")
+  providerApi    String?    @map("provider_api")
+  displayAllowed Boolean    @default(false) @map("display_allowed") // default seguro (inv. 6)
+  createdAt      DateTime   @default(now()) @map("created_at")
+  updatedAt      DateTime   @updatedAt @map("updated_at")
+
+  country Country @relation(fields: [countryCode], references: [code])
+
+  @@index([entityType, entityId, countryCode])
+  @@index([countryCode])
+  @@map("watch_availability")
+}
+
+model PageIndexabilityDecision {
+  id               BigInt        @id @default(autoincrement())
+  entityType       EntityType    @map("entity_type")
+  entityId         BigInt        @map("entity_id")
+  languageCode     String        @map("language_code")
+  url              String
+  decision         IndexDecision @default(noindex) // default seguro (inv. 5)
+  reason           String?
+  valueBlocksCount Int           @default(0) @map("value_blocks_count")
+  hasUniqueIntro   Boolean       @default(false) @map("has_unique_intro")
+  hasWatchData     Boolean       @default(false) @map("has_watch_data")
+  hasRatings       Boolean       @default(false) @map("has_ratings")
+  hasNews          Boolean       @default(false) @map("has_news")
+  hasReview        Boolean       @default(false) @map("has_review")
+  hasFaq           Boolean       @default(false) @map("has_faq")
+  hasTrailer       Boolean       @default(false) @map("has_trailer")
+  thinContentScore Float?        @map("thin_content_score")
+  decidedAt        DateTime?     @map("decided_at")
+  createdAt        DateTime      @default(now()) @map("created_at")
+
+  language Language @relation(fields: [languageCode], references: [code])
+
+  @@index([entityType, entityId, languageCode])
+  @@index([decision])
+  @@index([languageCode])
+  @@map("page_indexability_decisions")
+}
+
+// ============================================================
+// INFRA / INGESTAO
+// ============================================================
+
+model ApiCache {
+  id          BigInt    @id @default(autoincrement())
+  providerApi String    @map("provider_api")
+  endpoint    String
+  requestKey  String    @map("request_key")
+  paramsHash  String    @map("params_hash")
+  payload     Json
+  payloadHash String    @map("payload_hash")
+  fetchedAt   DateTime  @default(now()) @map("fetched_at")
+  expiresAt   DateTime? @map("expires_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  provider ApiProvider @relation(fields: [providerApi], references: [key])
+
+  @@unique([providerApi, requestKey, paramsHash])
+  @@index([expiresAt])
+  @@map("api_cache")
+}
+
+model ApiSyncLog {
+  id             BigInt     @id @default(autoincrement())
+  providerApi    String     @map("provider_api")
+  endpoint       String
+  status         SyncStatus
+  errorCode      String?    @map("error_code")
+  itemsProcessed Int        @default(0) @map("items_processed")
+  itemsCreated   Int        @default(0) @map("items_created")
+  itemsUpdated   Int        @default(0) @map("items_updated")
+  durationMs     Int?       @map("duration_ms")
+  quotaCost      Int?       @map("quota_cost")
+  payloadHash    String?    @map("payload_hash")
+  createdAt      DateTime   @default(now()) @map("created_at")
+
+  provider ApiProvider @relation(fields: [providerApi], references: [key])
+
+  @@index([providerApi])
+  @@index([createdAt])
+  @@map("api_sync_logs")
+}

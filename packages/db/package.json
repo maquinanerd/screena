@@ -3,12 +3,34 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Camada de dados da Screena. Na Fase 1 guardara o schema Prisma e o client (workers escrevem, web le). NENHUM client de DB ou API no render publico: uso somente server-side/admin/ISR.",
+  "description": "Camada de dados da Screena (Fase 1): schema Prisma, migrations, seeds e dados de semente tipados. Workers escrevem, web le. NENHUM client de DB ou API no render publico: uso somente server-side/admin/ISR.",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts"
   },
   "sideEffects": false,
-  "license": "UNLICENSED"
+  "license": "UNLICENSED",
+  "prisma": {
+    "schema": "prisma/schema.prisma",
+    "seed": "tsx prisma/seed.ts"
+  },
+  "scripts": {
+    "db:validate": "prisma validate",
+    "db:format": "prisma format",
+    "db:generate": "prisma generate",
+    "db:migrate:dev": "prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:validate:real": "tsx scripts/validate-real-postgres.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.1.0",
+    "@screena/config": "workspace:*"
+  },
+  "devDependencies": {
+    "embedded-postgres": "16.14.0-beta.17",
+    "prisma": "^6.1.0",
+    "tsx": "^4.19.0"
+  }
 }
