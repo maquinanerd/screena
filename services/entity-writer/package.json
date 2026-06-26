@@ -8,6 +8,7 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./gemini": "./src/gemini/adapter.ts",
     "./runtime": "./src/persistence/index.ts"
   },
   "sideEffects": false,
