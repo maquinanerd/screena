@@ -176,6 +176,56 @@ describe("GeminiAdapter", () => {
     expect(slept).toContain(500);
   });
 
+  it("erro de rede (transport rejeita) e transitorio: aciona retry/backoff e tem sucesso", async () => {
+    const { adapter, calls, slept } = makeAdapter([new Error("ECONNRESET"), envelope('{"ok":1}')], {
+      GEMINI_MAX_RPS: "1000",
+    });
+    const out = await adapter.generate(input);
+    expect(out.raw).toBe('{"ok":1}');
+    expect(calls).toHaveLength(2); // retentou apos a falha de rede
+    expect(slept.length).toBeGreaterThan(0); // houve backoff entre as tentativas
+  });
+
+  it("erro de rede persistente: propaga, registra falha no breaker e nao vaza a chave", async () => {
+    const { adapter, calls } = makeAdapter([new Error("ETIMEDOUT"), new Error("ETIMEDOUT")], {
+      GEMINI_MAX_RETRIES: "0",
+      GEMINI_BREAKER_THRESHOLD: "1",
+      GEMINI_MAX_RPS: "1000",
+    });
+    let thrown: unknown;
+    try {
+      await adapter.generate(input);
+      expect.unreachable("deveria ter lancado");
+    } catch (error) {
+      thrown = error;
+    }
+    expect(String(thrown)).not.toContain(API_KEY); // erro de rede nao expoe a chave
+    expect(adapter.isCircuitOpen()).toBe(true); // breaker registrou a falha
+    // circuito aberto: a proxima chamada e suspensa antes de tocar o transporte.
+    await expect(adapter.generate(input)).rejects.toBeInstanceOf(GeminiCircuitOpenError);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("monta o body estruturalmente: contents[0].parts[0].text com prompt + payload", async () => {
+    const { adapter, calls } = makeAdapter([envelope("{}")], { GEMINI_MAX_RPS: "1000" });
+    await adapter.generate(input);
+
+    const req = calls[0];
+    expect(req).toBeDefined();
+    const body = JSON.parse(req?.body ?? "{}") as {
+      contents?: Array<{ role?: string; parts?: Array<{ text?: string }> }>;
+    };
+    expect(Array.isArray(body.contents)).toBe(true);
+    const text = body.contents?.[0]?.parts?.[0]?.text;
+    expect(text).toBeDefined();
+    expect(text).toContain("PROMPT-3A"); // inclui o prompt
+    expect(text).toContain(JSON.stringify(payload)); // inclui o payload serializado
+    // a chave NAO vai no body nem na URL; vai SO no header.
+    expect(req?.body).not.toContain(API_KEY);
+    expect(req?.url).not.toContain(API_KEY);
+    expect(req?.headers["x-goog-api-key"]).toBe(API_KEY);
+  });
+
   it("a chave NUNCA aparece no erro lancado (mas e enviada no header)", async () => {
     const { adapter, calls } = makeAdapter([fail(500)], {
       GEMINI_MAX_RETRIES: "0",

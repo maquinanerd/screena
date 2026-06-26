@@ -45,6 +45,15 @@ function readNonEmpty(raw: string | undefined): string | undefined {
   return trimmed === "" ? undefined : trimmed;
 }
 
+/**
+ * Remove TODAS as barras finais da base URL (ex.: `.../v1beta/` -> `.../v1beta`)
+ * para evitar `//models` ao concatenar o path. So mexe na(s) barra(s) final(is);
+ * o esquema (`https://`) e o path interno ficam intactos.
+ */
+function normalizeBaseUrl(url: string): string {
+  return url.replace(/\/+$/, "");
+}
+
 /** Le inteiro positivo (>= 1) de env; cai no default se ausente/invalido. */
 function readPositiveInt(raw: string | undefined, fallback: number): number {
   if (raw == null || raw.trim() === "") return fallback;
@@ -88,7 +97,7 @@ export function loadGeminiConfig(env: GeminiEnv = process.env): GeminiConfig {
   return {
     apiKey,
     model,
-    baseUrl: readNonEmpty(env.GEMINI_API_BASE_URL) ?? GEMINI_DEFAULT_BASE_URL,
+    baseUrl: normalizeBaseUrl(readNonEmpty(env.GEMINI_API_BASE_URL) ?? GEMINI_DEFAULT_BASE_URL),
     maxRps: readPositiveInt(env.GEMINI_MAX_RPS, 1),
     maxRetries: readNonNegativeInt(env.GEMINI_MAX_RETRIES, 3),
     breakerThreshold: readPositiveInt(env.GEMINI_BREAKER_THRESHOLD, 5),

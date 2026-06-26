@@ -44,6 +44,25 @@ describe("loadGeminiConfig", () => {
     expect(config.breakerCooldownMs).toBe(1000);
   });
 
+  it("normaliza barra(s) final(is) da base URL (evita //models)", () => {
+    const one = loadGeminiConfig({
+      GEMINI_API_KEY: "k",
+      GEMINI_MODEL: "m",
+      GEMINI_API_BASE_URL: "https://x.test/v1beta/",
+    });
+    expect(one.baseUrl).toBe("https://x.test/v1beta");
+
+    const many = loadGeminiConfig({
+      GEMINI_API_KEY: "k",
+      GEMINI_MODEL: "m",
+      GEMINI_API_BASE_URL: "https://x.test/v1beta///",
+    });
+    expect(many.baseUrl).toBe("https://x.test/v1beta");
+
+    // esquema e path interno permanecem intactos (so a barra final some).
+    expect(many.baseUrl.startsWith("https://")).toBe(true);
+  });
+
   it("a mensagem de erro NUNCA inclui o valor da chave", () => {
     try {
       loadGeminiConfig({ GEMINI_MODEL: "m" });
