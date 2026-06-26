@@ -128,3 +128,32 @@ export interface JobCompletionInput {
 export interface EntityWriterJobStorePort {
   finishJob(input: JobCompletionInput): Promise<void>;
 }
+
+/** Job reivindicado para processamento (subconjunto de `entity_writer_jobs`). */
+export interface ClaimedJob {
+  readonly id: string;
+  readonly entityType: EntityType;
+  readonly entityId: string;
+  readonly languageCode: string;
+}
+
+/** Opcoes de claim de um job. */
+export interface ClaimOptions {
+  /** Filtra por idioma (a Fase 3A usa `pt-BR`). */
+  readonly languageCode?: string;
+  /** Reivindica um job especifico por id (modo `--job-id`). */
+  readonly jobId?: string;
+  /**
+   * Modo somente-leitura: faz "peek" de um job `queued` SEM muta-lo (nao marca
+   * `running`/`claimed_at`/`attempts`). Usado pelo `--dry-run`.
+   */
+  readonly dryRun?: boolean;
+}
+
+/**
+ * Porta de reivindicacao de jobs de `entity_writer_jobs`. O adapter real usa
+ * `FOR UPDATE SKIP LOCKED` para claim concorrente seguro; em `dryRun` apenas le.
+ */
+export interface JobClaimPort {
+  claimNext(options: ClaimOptions): Promise<ClaimedJob | null>;
+}
