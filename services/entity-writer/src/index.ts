@@ -9,3 +9,7 @@
 
 export * from "./types.js";
 export * from "./ports.js";
+export * from "./utils/hash.js";
+export * from "./prompt/select-prompt.js";
+export * from "./gemini/fake.js";
+export * from "./pipeline/decide-status.js";
