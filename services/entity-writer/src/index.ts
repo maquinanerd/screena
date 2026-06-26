@@ -14,3 +14,4 @@ export * from "./prompt/select-prompt.js";
 export * from "./gemini/fake.js";
 export * from "./pipeline/decide-status.js";
 export * from "./pipeline/run-generation.js";
+export * from "./pipeline/persistence-plan.js";

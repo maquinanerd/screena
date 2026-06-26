@@ -104,3 +104,27 @@ export interface EntityWriterLogInput {
 export interface EntityWriterLogPort {
   write(input: EntityWriterLogInput): Promise<void>;
 }
+
+/**
+ * Estados terminais que o writer atribui a um job ao finalizar uma tentativa.
+ * Subconjunto do enum JobStatus (queued/claimed/running sao da fase de claim).
+ */
+export type JobTerminalStatus = "completed" | "failed" | "blocked";
+
+/** Entrada para finalizar um job em `entity_writer_jobs` (campos reais do schema). */
+export interface JobCompletionInput {
+  readonly jobId: string;
+  readonly status: JobTerminalStatus;
+  /** Bloco resultante (quando houve insert); vira `result_block_id`. */
+  readonly resultBlockId?: string | null;
+  /** Mensagem de erro/bloqueio; vira `last_error`. */
+  readonly lastError?: string | null;
+}
+
+/**
+ * Porta de atualizacao de `entity_writer_jobs` (adapter Prisma futuro). So
+ * marca o estado terminal de um job — claim/enfileiramento ficam fora.
+ */
+export interface EntityWriterJobStorePort {
+  finishJob(input: JobCompletionInput): Promise<void>;
+}

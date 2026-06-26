@@ -114,6 +114,9 @@ importers:
 
   services/entity-writer:
     dependencies:
+      '@screena/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       '@screena/schemas':
         specifier: workspace:*
         version: link:../../packages/schemas
