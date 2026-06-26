@@ -20,11 +20,27 @@ import type {
 } from "../types.js";
 
 /**
- * Estados que a IA "possui" e pode arquivar ao regenerar. Versoes
- * `human_reviewed`/`published` sao decisao humana e NUNCA sao arquivadas
- * automaticamente; `blocked`/`archived` ja nao sao ativas.
+ * `source_type` que a IA pode arquivar automaticamente. SO `ai`: blocos
+ * `human` ou `hybrid` carregam decisao humana e NUNCA sao arquivados pelo
+ * writer, mesmo em `needs_review`.
+ */
+const ARCHIVABLE_SOURCE_TYPE = "ai";
+
+/**
+ * Estados que a IA "possui" e pode arquivar ao regenerar — combinados com
+ * `source_type = ai`. Versoes `human_reviewed`/`published` sao decisao humana e
+ * NUNCA sao arquivadas automaticamente; `blocked`/`archived` ja nao sao ativas.
  */
 const AI_OWNED_ACTIVE_STATES: ReadonlySet<string> = new Set(["ai_generated", "needs_review"]);
+
+/**
+ * Decide se um bloco existente e substituivel automaticamente pela IA: precisa
+ * ser `source_type = ai` E estar num estado ativo de IA
+ * (`ai_generated`/`needs_review`). Qualquer outra combinacao e preservada.
+ */
+function isAiArchivable(block: ExistingBlock): boolean {
+  return block.sourceType === ARCHIVABLE_SOURCE_TYPE && AI_OWNED_ACTIVE_STATES.has(block.reviewStatus);
+}
 
 /** Estados que o writer JAMAIS pode persistir (publicacao nao e automatica). */
 const FORBIDDEN_WRITE_STATES: ReadonlySet<string> = new Set(["published", "human_reviewed"]);
@@ -55,6 +71,8 @@ export interface ContentBlockCreateData {
 export interface ExistingBlock {
   readonly id: string;
   readonly reviewStatus: string;
+  /** Origem do bloco (`ai`/`human`/`hybrid`); so `ai` e arquivavel automaticamente. */
+  readonly sourceType: string;
 }
 
 /** Plano de persistencia de UM bloco: arquivar versoes ativas + inserir a nova. */
@@ -89,17 +107,16 @@ function toCreateData(record: ContentBlockRecord): ContentBlockCreateData {
 
 /**
  * Decide o plano de regeneracao para um bloco: arquiva as versoes ATIVAS de IA
- * do mesmo alvo (mesma entidade/idioma/block_type) e insere a nova versao.
- * Nunca apaga fisicamente; nunca arquiva versao revisada/publicada por humano.
+ * (`source_type = ai` E `ai_generated`/`needs_review`) do mesmo alvo e insere a
+ * nova versao. Nunca apaga fisicamente; nunca arquiva bloco `human`/`hybrid`
+ * nem versao revisada/publicada por humano.
  */
 export function planBlockPersistence(
   existing: readonly ExistingBlock[],
   candidate: ContentBlockRecord,
 ): BlockPersistencePlan {
   const create = toCreateData(candidate);
-  const archiveBlockIds = existing
-    .filter((block) => AI_OWNED_ACTIVE_STATES.has(block.reviewStatus))
-    .map((block) => block.id);
+  const archiveBlockIds = existing.filter(isAiArchivable).map((block) => block.id);
   return { archiveBlockIds, create };
 }
 

@@ -27,17 +27,28 @@ export function createPrismaContentBlockStore(prisma: PrismaClient): ContentBloc
             blockType: record.blockType,
             reviewStatus: { not: "archived" },
           },
-          select: { id: true, reviewStatus: true },
+          select: { id: true, reviewStatus: true, sourceType: true },
         });
 
         const plan = planBlockPersistence(
-          existing.map((block) => ({ id: block.id.toString(), reviewStatus: block.reviewStatus })),
+          existing.map((block) => ({
+            id: block.id.toString(),
+            reviewStatus: block.reviewStatus,
+            sourceType: block.sourceType,
+          })),
           record,
         );
 
         if (plan.archiveBlockIds.length > 0) {
+          // Guarda defensiva: mesmo com o planner ja filtrando, o update so toca
+          // blocos de IA substituiveis. Se houver mudanca concorrente entre a
+          // leitura e o update, um bloco human/hybrid NUNCA e arquivado por acidente.
           await tx.contentBlock.updateMany({
-            where: { id: { in: plan.archiveBlockIds.map((id) => BigInt(id)) } },
+            where: {
+              id: { in: plan.archiveBlockIds.map((id) => BigInt(id)) },
+              sourceType: "ai",
+              reviewStatus: { in: ["ai_generated", "needs_review"] },
+            },
             data: { reviewStatus: "archived" },
           });
         }

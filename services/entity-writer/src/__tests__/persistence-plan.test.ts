@@ -66,20 +66,47 @@ describe("planBlockPersistence (archive + insert)", () => {
     expect(planBlockPersistence([], candidate).archiveBlockIds).toEqual([]);
   });
 
-  it("arquiva versoes ATIVAS de IA (ai_generated/needs_review) do mesmo alvo", () => {
+  it("arquiva versoes de IA substituiveis (source_type=ai + ai_generated/needs_review)", () => {
     const existing: ExistingBlock[] = [
-      { id: "1", reviewStatus: "ai_generated" },
-      { id: "2", reviewStatus: "needs_review" },
+      { id: "1", reviewStatus: "ai_generated", sourceType: "ai" },
+      { id: "2", reviewStatus: "needs_review", sourceType: "ai" },
     ];
     expect(planBlockPersistence(existing, candidate).archiveBlockIds).toEqual(["1", "2"]);
   });
 
   it("NUNCA arquiva versao human_reviewed/published/blocked/archived (decisao humana)", () => {
     const existing: ExistingBlock[] = [
-      { id: "3", reviewStatus: "human_reviewed" },
-      { id: "4", reviewStatus: "published" },
-      { id: "5", reviewStatus: "blocked" },
-      { id: "6", reviewStatus: "archived" },
+      { id: "3", reviewStatus: "human_reviewed", sourceType: "ai" },
+      { id: "4", reviewStatus: "published", sourceType: "ai" },
+      { id: "5", reviewStatus: "blocked", sourceType: "ai" },
+      { id: "6", reviewStatus: "archived", sourceType: "ai" },
+    ];
+    expect(planBlockPersistence(existing, candidate).archiveBlockIds).toEqual([]);
+  });
+
+  it("NUNCA arquiva bloco human/hybrid mesmo em needs_review (preserva decisao humana)", () => {
+    const existing: ExistingBlock[] = [
+      { id: "10", reviewStatus: "needs_review", sourceType: "human" },
+      { id: "11", reviewStatus: "needs_review", sourceType: "hybrid" },
+      { id: "12", reviewStatus: "ai_generated", sourceType: "human" },
+    ];
+    expect(planBlockPersistence(existing, candidate).archiveBlockIds).toEqual([]);
+  });
+
+  it("arquiva so o bloco de IA quando ha mistura de fontes no mesmo alvo", () => {
+    const existing: ExistingBlock[] = [
+      { id: "20", reviewStatus: "needs_review", sourceType: "ai" },
+      { id: "21", reviewStatus: "needs_review", sourceType: "human" },
+      { id: "22", reviewStatus: "needs_review", sourceType: "hybrid" },
+    ];
+    expect(planBlockPersistence(existing, candidate).archiveBlockIds).toEqual(["20"]);
+  });
+
+  it("nunca arquiva automaticamente sourceType diferente de ai", () => {
+    const existing: ExistingBlock[] = [
+      { id: "30", reviewStatus: "ai_generated", sourceType: "human" },
+      { id: "31", reviewStatus: "ai_generated", sourceType: "hybrid" },
+      { id: "32", reviewStatus: "ai_generated", sourceType: "outro" },
     ];
     expect(planBlockPersistence(existing, candidate).archiveBlockIds).toEqual([]);
   });
