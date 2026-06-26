@@ -12,8 +12,9 @@
  * A checagem anti-alucinacao e deliberadamente simples e baseada apenas em
  * comparacao de strings: extrai nomes proprios (sequencias capitalizadas)
  * citados em cast_intro/editorial_intro e exige que cada um exista no
- * payload (director ou cast). Qualquer nome citado fora do payload vira
- * warning. Nao substitui revisao humana; e um gate barato de primeira linha.
+ * payload (director, cast, castMembers[].name/character ou title). Qualquer
+ * nome citado fora do payload vira warning. Nao substitui revisao humana; e
+ * um gate barato de primeira linha.
  */
 
 /**
@@ -41,12 +42,43 @@ export interface EntityWriterOutput {
 }
 
 /**
+ * Tipo de entidade canonica (espelha o enum EntityType do PostgreSQL:
+ * movie, tv, season, episode, person).
+ */
+export type EntityType = "movie" | "tv" | "season" | "episode" | "person";
+
+/**
+ * Membro de elenco com papel e ordem de credito opcionais. O nome e o
+ * personagem (quando presente) tambem sao fatos permitidos para o writer.
+ */
+export interface CastMember {
+  readonly name: string;
+  readonly character?: string;
+  readonly billingOrder?: number;
+}
+
+/**
  * Payload controlado (subconjunto vindo do PostgreSQL) usado como unica
  * fonte de fatos permitida para o Entity Writer.
+ *
+ * `director` e `cast` sao obrigatorios (contrato historico). Os demais
+ * campos sao OPCIONAIS e mantem compatibilidade com o payload minimo
+ * `{ director, cast }`. Eles ampliam o conjunto de fatos permitidos sem
+ * afrouxar a anti-alucinacao: `title`, `castMembers[].name` e
+ * `castMembers[].character` passam a ser reconhecidos como fatos validos.
+ * Campos puramente contextuais (`entityType`, `year`, `runtimeMinutes`,
+ * `languageCode`) fazem parte do contrato, mas nao entram na checagem de
+ * nomes.
  */
 export interface EntityPayload {
   readonly director: string;
   readonly cast: string[];
+  readonly entityType?: EntityType;
+  readonly title?: string;
+  readonly year?: number;
+  readonly runtimeMinutes?: number;
+  readonly languageCode?: string;
+  readonly castMembers?: readonly CastMember[];
 }
 
 /**
@@ -237,12 +269,16 @@ function normalizeName(name: string): string {
 
 /**
  * Detecta alucinacao simples comparando nomes proprios citados em
- * cast_intro e editorial_intro contra os nomes permitidos no payload
- * (director + cast).
+ * cast_intro e editorial_intro contra os fatos permitidos no payload:
+ * `director`, `cast`, `castMembers[].name`, `castMembers[].character`
+ * (quando houver) e `title` (quando houver).
  *
  * Para cada nome citado que NAO corresponda (por substring normalizada) a
- * nenhum nome do payload, emite o warning:
+ * nenhum fato do payload, emite o warning:
  *   "fato fora do payload: <nome>"
+ *
+ * Os campos opcionais apenas AMPLIAM o conjunto permitido; nao afrouxam a
+ * checagem: qualquer fato fora do payload continua virando warning.
  *
  * Funcao pura, baseada apenas em comparacao de strings. Nao deduplica
  * agressivamente alem de evitar o mesmo nome citado repetido.
@@ -251,7 +287,16 @@ export function validateAgainstPayload(
   payload: EntityPayload,
   output: EntityWriterOutput,
 ): WarningsResult {
-  const allowedNames = [payload.director, ...payload.cast]
+  const castMemberFacts = (payload.castMembers ?? []).flatMap((member) =>
+    member.character ? [member.name, member.character] : [member.name],
+  );
+
+  const allowedNames = [
+    payload.director,
+    ...payload.cast,
+    ...castMemberFacts,
+    ...(payload.title ? [payload.title] : []),
+  ]
     .map(normalizeName)
     .filter((n) => n.length > 0);
 

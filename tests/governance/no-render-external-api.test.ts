@@ -39,6 +39,14 @@ const API_CLIENT_IMPORT = /(?:import\b[^;]*?from\s*|require\s*\(\s*)[`'"][^`'"]*
 /** import/require do pacote de banco `@screena/db`. */
 const DB_IMPORT = /(?:import\b[^;]*?from\s*|require\s*\(\s*)[`'"]@screena\/db[`'"/]/i
 
+/** import/require do Entity Writer worker-only (`services/entity-writer` / `@screena/entity-writer`). */
+const ENTITY_WRITER_IMPORT =
+  /(?:import\b[^;]*?from\s*|require\s*\(\s*)[`'"][^`'"]*(?:services\/entity-writer|@screena\/entity-writer)/i
+
+/** import/require de SDK/client Gemini (Google GenAI / api-clients/gemini / @screena/gemini-client). */
+const GEMINI_IMPORT =
+  /(?:import\b[^;]*?from\s*|require\s*\(\s*)[`'"](?:@google\/(?:generative-ai|genai)|google-generativeai|[^`'"]*api-clients\/gemini|@screena\/gemini-client)/i
+
 interface Violation {
   file: string
   rule: string
@@ -85,6 +93,8 @@ async function findViolations(): Promise<Violation[]> {
         [EXTERNAL_FETCH, 'fetch para host externo no render'],
         [API_CLIENT_IMPORT, 'import de api-clients/ no render'],
         [DB_IMPORT, 'import de @screena/db no render'],
+        [ENTITY_WRITER_IMPORT, 'import de services/entity-writer no render'],
+        [GEMINI_IMPORT, 'import de SDK/client Gemini no render'],
       ]
       for (const [pattern, rule] of checks) {
         if (pattern.test(line)) {
@@ -130,6 +140,22 @@ describe('governanca: render de apps/web/app e puro de IO externo (invariante 3)
     expect(
       offenders,
       `Render nao acessa o banco diretamente; le via camada de dados/cache. Ocorrencias: ${JSON.stringify(offenders, null, 2)}`,
+    ).toEqual([])
+  })
+
+  it('nao importa o Entity Writer (worker-only) no render', () => {
+    const offenders = violations.filter((v) => v.rule.includes('entity-writer'))
+    expect(
+      offenders,
+      `Render nao pode importar o Entity Writer (offline-only). Ocorrencias: ${JSON.stringify(offenders, null, 2)}`,
+    ).toEqual([])
+  })
+
+  it('nao importa SDK/client Gemini no render', () => {
+    const offenders = violations.filter((v) => v.rule.includes('Gemini'))
+    expect(
+      offenders,
+      `Render nao pode importar Gemini (zero Gemini no render). Ocorrencias: ${JSON.stringify(offenders, null, 2)}`,
     ).toEqual([])
   })
 
