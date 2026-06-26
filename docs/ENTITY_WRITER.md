@@ -12,9 +12,9 @@ render_), **12** (_só escreve com base em payload controlado do PostgreSQL; nã
 fatos, não cria entidades, não chama APIs externas, não publica sozinho_) e **13**
 (_`content_blocks` são versionados e revisáveis_).
 
-> **Fase 0.** Este é um documento de especificação. **Não** há implementação real,
-> migrations, cliente Gemini funcional ou worker rodando nesta fase. O que segue define o
-> contrato que a Fase 1+ deve cumprir.
+> **Fase 3A / Etapa 0.** Esta etapa reconcilia apenas contrato documental e prompt.
+> **Não** há implementação de runtime, cliente Gemini funcional, schema/migration, app
+> público ou publicação automática nesta rodada.
 
 ---
 
@@ -28,12 +28,15 @@ seu contexto e seu valor, e não um acontecimento datado.
 
 Cada execução:
 
-1. recebe um **payload controlado**, montado a partir das tabelas canônicas (entidade,
-   elenco, ratings atribuídos, disponibilidade, notícias relacionadas);
+1. recebe um **payload controlado**, montado a partir das tabelas canônicas do
+   PostgreSQL. Na **Fase 3A**, esse payload fica restrito ao recorte necessário para
+   `editorial_intro` e `cast_intro`; ratings, streaming e notícias ficam para fases
+   futuras;
 2. chama o **Gemini offline** para gerar blocos dos tipos suportados;
 3. **valida** a saída contra o payload (anti-alucinação);
 4. **persiste** o resultado em `content_blocks`, versionado e auditável;
-5. registra cada passo em `entity_writer_logs`.
+5. registra a tentativa de geração/validação em `entity_writer_logs`, usando somente as
+   colunas reais do schema atual.
 
 O Entity Writer **nunca** decide sozinho publicar, **nunca** chama APIs externas e
 **nunca** roda no caminho de render de uma página pública. A IA (Gemini) só toca conteúdo
@@ -41,7 +44,8 @@ O Entity Writer **nunca** decide sozinho publicar, **nunca** chama APIs externas
 
 ### Onde vive no monorepo
 
-- **Worker:** `services/entity-writer/` (worker Python 3.12, agendado por systemd timers).
+- **Serviço planejado:** `services/entity-writer/` (offline, fora do render; runtime da
+  Fase 3A definido no plano da fase).
 - **Prompts versionados:** `prompts/` (ex.: `entity_intro_pt.md`, `ratings_explanation_pt.md`,
   `where_to_watch_pt.md`, `faq_entity_pt.md`).
 - **Tabelas:** `content_blocks`, `entity_writer_jobs`, `entity_writer_logs`
@@ -105,138 +109,87 @@ não está no payload, ele **não existe** para o Entity Writer.
 **Detalhamento das etapas:**
 
 1. **Payload controlado.** O worker consome um job de `entity_writer_jobs`, resolve a
-   entidade e monta um payload **somente** a partir do PostgreSQL: ficha da entidade,
-   elenco, ratings **atribuídos** (com fonte, escala e licença), disponibilidade por país e
-   notícias relacionadas. **Nenhuma chamada externa** ocorre aqui.
-2. **Gemini (offline).** O prompt versionado correspondente ao `block_type` é resolvido em
-   `prompts/`, combinado com o payload, e enviado ao Gemini **fora do render**. O modelo só
-   pode usar o que está no payload.
+   entidade e monta um payload **somente** a partir do PostgreSQL. Na **Fase 3A**, o
+   payload usado pelo contrato atual contém `director` e `cast`; campos contextuais
+   opcionais podem ser adicionados em etapa própria, desde que continuem controlados e
+   validados. **Nenhuma chamada externa** ocorre aqui.
+2. **Gemini (offline).** O prompt versionado da fase é resolvido em `prompts/`, combinado
+   com o payload, e enviado ao Gemini **fora do render**. O modelo só pode usar o que está
+   no payload.
 3. **JSON.** O Gemini responde **exclusivamente** em JSON válido, no formato da seção 5.
    Qualquer coisa fora do JSON é descartada.
-4. **Validação vs payload.** Cada nome, data, número, nota, plataforma e fato citado é
-   conferido contra o payload. Notas externas precisam bater em **fonte, escala e valor**.
-   Sinopses longas externas não podem ser copiadas.
+4. **Validação vs payload.** Na Fase 3A, os nomes citados em `editorial_intro` e
+   `cast_intro` são conferidos contra `director` e `cast`. Validações de nota,
+   plataforma, overview/sinopse, gêneros e fatos mais ricos ficam para fases futuras,
+   quando esses campos entrarem no payload controlado.
 5. **Bloqueio de alucinação.** Se a validação encontra fato que **não existe** no payload,
-   nota com fonte/escala trocada, mistura de IMDb com Rotten Tomatoes, ou streaming afirmado
-   sem `watch_availability`, o bloco recebe `warnings_json` e vai para `needs_review` ou
-   `blocked`. **Não publica.**
+   o bloco recebe `warnings_json` e vai para `needs_review` ou `blocked`. **Não publica.**
 6. **content_blocks.** O bloco aprovado é persistido com versionamento completo
    (`prompt_version`, `input_hash`, `output_hash`, `model_provider`, `model_name`,
    `review_status`) — invariante 13.
-7. **Gate anti-thin.** Antes de qualquer indexação, a página precisa de **≥ 2 blocos de
-   valor próprios** além do dado cru de API (invariante 5; ver seção 11).
-8. **noindex / publish.** A decisão de indexabilidade é registrada em
-   `page_indexability_decisions` (`index | noindex | draft | stale | blocked`). Sem 2
-   blocos de valor, a página recebe `noindex`.
-9. **Revisão humana.** Publicação exige `review_status` permitido. Páginas prioritárias e
-   todo conteúdo `en`/`es` nascem em `draft`/`noindex` e só publicam após **revisão humana**
+7. **Gate anti-thin.** Fora da Fase 3A. Antes de qualquer indexação futura, a página
+   precisa de **≥ 2 blocos de valor próprios** além do dado cru de API (invariante 5; ver
+   seção 11).
+8. **noindex / publish.** Fora da Fase 3A. A decisão de indexabilidade futura é registrada
+   em `page_indexability_decisions` (`index | noindex | draft | stale | blocked`).
+9. **Revisão humana.** Publicação fica fora da Fase 3A. Páginas prioritárias e todo
+   conteúdo `en`/`es` nascem em `draft`/`noindex` e só publicam após **revisão humana**
    (invariante 7).
 
 ---
 
-## 4. Exemplo de payload
+## 4. Payload controlado
 
-Payload de exemplo para um **filme**. Todos os campos são montados a partir do PostgreSQL;
-o Entity Writer **só** pode usar o que está aqui.
+O payload é sempre montado a partir do PostgreSQL. O Entity Writer **só** pode usar o que
+está nesse payload; qualquer fato ausente deve ser omitido ou registrado em `warnings`.
+
+Na **Fase 3A / Etapa 0**, o contrato textual acompanha o `EntityPayload` atual de
+`@screena/schemas`:
 
 ```json
 {
-  "entity_type": "movie",
-  "entity_id": "mv_0abc123",
-  "language_code": "pt-BR",
-  "title": "Duna: Parte Dois",
-  "year": 2024,
   "director": "Denis Villeneuve",
   "cast": [
     "Timothée Chalamet",
     "Zendaya",
     "Rebecca Ferguson",
     "Javier Bardem"
-  ],
-  "genres": ["Ficção científica", "Aventura", "Drama"],
-  "runtime_minutes": 166,
-  "tmdb_summary": "Paul Atreides se une aos Fremen em uma jornada de vingança contra os conspiradores que destruíram sua família.",
-  "imdb_rating": {
-    "value": 8.5,
-    "scale": 10,
-    "source": "imdb",
-    "url": "https://www.imdb.com/title/tt15239678/",
-    "fetched_at": "2026-06-20T03:00:00Z"
-  },
-  "rotten_tomatometer": {
-    "value": 92,
-    "scale": 100,
-    "source": "rotten_tomatoes",
-    "metric": "tomatometer",
-    "url": "https://www.rottentomatoes.com/m/dune_part_two",
-    "fetched_at": "2026-06-20T03:00:00Z"
-  },
-  "watch_availability": [
-    {
-      "country": "BR",
-      "platform": "Max",
-      "modality": "subscription",
-      "url": "https://www.max.com/br",
-      "license_status": "licensed",
-      "display_allowed": true
-    },
-    {
-      "country": "BR",
-      "platform": "Apple TV",
-      "modality": "rent",
-      "url": "https://tv.apple.com/br",
-      "license_status": "official",
-      "display_allowed": true
-    }
   ]
 }
 ```
 
-**Notas de uso do payload:**
+Campos contextuais opcionais (por exemplo `entityType`, `title`, `year`,
+`runtimeMinutes`, `languageCode` e `castMembers`) podem entrar em etapa posterior da Fase
+3A, junto com a extensão correspondente de `EntityPayload` e dos testes. Enquanto isso, o
+prompt **não** deve exigir esses campos.
 
-- `tmdb_summary` é **referência de fato**, não texto para copiar. O bloco reescreve com voz
-  própria, sem reproduzir a sinopse externa (invariante anti-cópia).
-- `imdb_rating` e `rotten_tomatometer` são **fontes distintas** (invariante 1). Nunca somar,
-  nunca converter uma na outra, nunca chamar a nota do IMDb de "Tomatometer".
-- `watch_availability` é a **única** base para afirmar onde assistir. Sem entrada para um
-  país/plataforma, **não** se afirma disponibilidade ali. Itens com `display_allowed=false`
-  ou `license_status` `unknown`/`blocked` **não** entram em texto indexável (invariante 6).
-- O `provider_api` (fornecedor técnico) **não** aparece no payload editorial como fonte —
-  ele nunca é citado como voz ou autoridade (invariante 2).
+Ficam **fora da Fase 3A** como insumo do writer:
+
+- ratings externos (`imdb_rating`, Rotten Tomatoes, Metacritic etc.);
+- disponibilidade/streaming (`watch_availability`, onde assistir);
+- slugs, URLs públicas, redirects e páginas;
+- overview/sinopse crua, `tmdb_summary` e cópia de texto externo;
+- gêneros, franquias, similares, notícias e reviews;
+- idiomas `en`/`es`.
 
 ---
 
 ## 5. Saída JSON obrigatória
 
-O Gemini responde **exclusivamente** em JSON válido. A forma canônica para um payload de
-filme cobre os blocos abaixo. Cada execução pode pedir um subconjunto, mas o formato de cada
-bloco é fixo.
+O Gemini responde **exclusivamente** em JSON válido. O contrato canônico é o
+`EntityWriterOutput` de `packages/schemas/src/entity-writer-output.ts`: **flat**, com campos
+de bloco no topo do objeto e `warnings` obrigatório. O formato aninhado `blocks: {}` **não**
+é contrato de saída.
+
+Na **Fase 3A**, a saída permitida fica restrita a `editorial_intro`, `cast_intro` e
+`warnings`:
 
 ```json
 {
-  "entity_type": "movie",
-  "entity_id": "mv_0abc123",
-  "language_code": "pt-BR",
-  "blocks": {
-    "editorial_intro": "Introdução editorial própria, 1–2 parágrafos, sem spoiler, sem clichê de IA.",
-    "summary_without_spoilers": "Resumo do enredo sem revelar reviravoltas, com voz editorial própria.",
-    "ratings_explanation": "Explicação das notas externas, cada uma atribuída à sua fonte e escala, sem misturar IMDb e Rotten Tomatoes.",
-    "where_to_watch_text": "Texto sobre onde assistir, baseado SOMENTE em watch_availability, por país e modalidade.",
-    "cast_intro": "Apresentação comentada do elenco principal, com base apenas nos nomes do payload.",
-    "similar_titles_intro": "Introdução a obras parecidas, sem inventar títulos fora do payload."
-  },
-  "faq": [
-    {
-      "question": "Onde assistir Duna: Parte Dois no Brasil?",
-      "answer": "Resposta baseada apenas em watch_availability (Max por assinatura; Apple TV por aluguel)."
-    },
-    {
-      "question": "Qual a nota de Duna: Parte Dois no IMDb?",
-      "answer": "8,5/10 no IMDb (fonte atribuída, escala explícita)."
-    }
-  ],
+  "editorial_intro": "Introdução editorial própria em pt-BR, curta, factual e sem spoiler.",
+  "cast_intro": "Apresentação comentada do elenco, baseada apenas em director e cast.",
   "warnings": [
-    "string — dados faltantes, ambiguidades ou qualquer divergência detectada na geração"
+    "string — dados faltantes, ambiguidades ou qualquer fato que o modelo não conseguiu sustentar no payload"
   ]
 }
 ```
@@ -244,16 +197,31 @@ bloco é fixo.
 **Regras da saída:**
 
 - Nada fora do JSON. Sem markdown, sem comentários, sem texto de moldura.
-- `faq` só vira `FAQPage` no schema se as perguntas/respostas forem **visíveis** na página.
-- `warnings` é **sempre** preenchido quando há dado faltante ou ambiguidade — ele alimenta o
-  bloqueio de alucinação e o `warnings_json` do bloco.
+- Não incluir `entity_type`, `entity_id`, `language_code`, `block_type`, `content` nem
+  `blocks`. Esses dados pertencem ao job/persistência, não ao `EntityWriterOutput` flat.
+- `warnings` é **sempre** um array (pode ser `[]`). Quando há dado faltante, ambiguidade ou
+  tentativa de citar fato fora do payload, o aviso alimenta o bloqueio de alucinação e o
+  `warnings_json` do bloco.
 - Campos ausentes no payload **não** geram texto. Dado que falta **não** é mencionado.
+- Campos do contrato que existem em `EntityWriterOutput`, mas ficam fora da Fase 3A
+  (`summary_without_spoilers`, `ratings_explanation`, `where_to_watch_text`,
+  `similar_titles_intro`, `faq`), continuam opcionais e **não** devem ser exigidos pelo
+  prompt da 3A.
+- **Saída sem nenhum bloco textual** (ex.: `{"warnings": []}` sem `editorial_intro`
+  nem `cast_intro`) é **inválida para persistência**: o pipeline **não** gera
+  `content_blocks`. O job vai para `blocked` (saída formalmente válida, porém sem
+  bloco útil) ou `failed` (erro técnico/parsing/modelo), e a tentativa é registrada
+  em `entity_writer_logs` com `validation_status = failed` e o motivo em
+  `warnings_json`/`error_message`. Esse comportamento é exigido como teste na
+  implementação (ver o plano da fase).
 
 ---
 
 ## 6. Tipos de bloco
 
-O `block_type` de cada `content_block` é um destes valores canônicos:
+O `block_type` de cada `content_block` é um destes valores canônicos. Na **Fase 3A**,
+apenas `editorial_intro` e `cast_intro` são gerados; os demais permanecem para fases
+posteriores.
 
 | `block_type`               | Conteúdo                                                              |
 | -------------------------- | -------------------------------------------------------------------- |
@@ -287,7 +255,7 @@ Armazena cada bloco editorial gerado, versionado e auditável (invariante 13).
 | `language_code`  | Idioma do bloco (`pt-BR`, `en`, `es`).                                          |
 | `block_type`     | Tipo do bloco (ver seção 6).                                                    |
 | `content`        | Texto do bloco.                                                                 |
-| `source_type`    | Origem (`ai_generated`, `human`, etc.).                                         |
+| `source_type`    | Origem (`ai`, `human`, `hybrid`).                                               |
 | `model_provider` | Provedor do modelo (ex.: `google`).                                            |
 | `model_name`     | Nome/versão do modelo (ex.: `gemini-...`).                                     |
 | `prompt_version` | Versão do prompt usado (rastreável em `prompts/`).                             |
@@ -300,8 +268,9 @@ Armazena cada bloco editorial gerado, versionado e auditável (invariante 13).
 | `updated_at`     | Última atualização.                                                            |
 
 **Estados de bloco (`review_status`):** `draft`, `ai_generated`, `needs_review`,
-`human_reviewed`, `published`, `needs_update`, `blocked`, `archived`. A publicação exige
-um estado permitido e **revisão humana** nos casos prioritários e em `en`/`es`.
+`human_reviewed`, `published`, `needs_update`, `blocked`, `archived`. Na Fase 3A, blocos
+gerados por IA podem nascer apenas como `ai_generated`, `needs_review` ou `blocked`;
+`published` exige fluxo futuro e revisão humana.
 
 ---
 
@@ -329,31 +298,43 @@ Fila de trabalho do Entity Writer.
 
 ## 9. Tabela `entity_writer_logs`
 
-Log de execução, um registro por passo relevante do pipeline (auditoria de ponta a ponta).
+Na Fase 3A sem migration, `entity_writer_logs` registra **uma tentativa de
+geração/validação por job**, usando somente as colunas reais do schema atual. Não existe
+log por passo no schema atual.
 
-| Coluna           | Descrição                                                              |
-| ---------------- | ---------------------------------------------------------------------- |
-| `id`             | Identificador do log.                                                  |
-| `job_id`         | Job de `entity_writer_jobs` ao qual o passo pertence.                 |
-| `entity_type`    | Tipo da entidade processada.                                          |
-| `entity_id`      | Entidade processada.                                                   |
-| `block_type`     | Tipo de bloco sendo gerado (quando aplicável).                        |
-| `step`           | Etapa do pipeline (`payload`, `generate`, `validate`, `persist`, …).  |
-| `status`         | Resultado do passo (`ok`, `warning`, `error`, `blocked`).            |
-| `model_provider` | Provedor do modelo na chamada (quando aplicável).                     |
-| `model_name`     | Modelo na chamada (quando aplicável).                                 |
-| `prompt_version` | Versão do prompt usado.                                               |
-| `input_hash`     | Hash do payload (correlação com o bloco).                            |
-| `output_hash`    | Hash da saída (correlação com o bloco).                              |
-| `warnings_json`  | Avisos/divergências do passo.                                         |
-| `latency_ms`     | Duração do passo, para observabilidade.                              |
-| `created_at`     | Carimbo de tempo do registro.                                        |
+| Coluna | Descrição |
+| --- | --- |
+| `id` | Identificador do log. |
+| `job_id` | Job de `entity_writer_jobs` que originou a tentativa. |
+| `entity_type` | Tipo da entidade processada. |
+| `entity_id` | Entidade processada. |
+| `language_code` | Idioma da tentativa (`pt-BR` na Fase 3A). |
+| `model_provider` | Provedor do modelo, quando a tentativa chega à chamada de IA. |
+| `model_name` | Modelo usado, quando disponível. |
+| `prompt_version` | Versão do prompt resolvido. |
+| `input_hash` | Hash do payload controlado de entrada. |
+| `output_hash` | Hash da saída gerada, quando houve saída. |
+| `token_input` | Uso de tokens de entrada quando o provider informar. |
+| `token_output` | Uso de tokens de saída quando o provider informar. |
+| `validation_status` | Resultado da validação (`passed`, `warnings` ou `failed`). |
+| `warnings_json` | Warnings de forma + anti-alucinação serializados. |
+| `error_message` | Mensagem de erro técnico quando a tentativa falha. |
+| `created_at` | Carimbo de tempo da tentativa. |
+
+As colunas `step`, `status`, `latency_ms` e `block_type` **não existem** em
+`entity_writer_logs`. `block_type` pertence a `content_blocks`; métricas de latência por
+passo exigiriam migration futura e ficam fora da Fase 3A.
 
 ---
 
 ## 10. As 12 regras obrigatórias do Entity Writer
 
 Estas regras são **inegociáveis** e materializam as invariantes 4, 12 e 13.
+
+Na **Fase 3A**, as regras de ratings, streaming, indexação e publicação permanecem como
+governança geral, mas esses recursos não entram no payload, no prompt nem na saída. A 3A
+gera apenas `editorial_intro` e `cast_intro` em pt-BR, sem páginas públicas, slugs,
+indexação, overview/sinopse, en/es ou publicação automática.
 
 1. **Só payload.** Escreve **somente** com base no payload controlado vindo do PostgreSQL.
    Se um dado não está no payload, ele não existe.
@@ -445,8 +426,12 @@ Este documento existe para reforçar, sem reescrever o sentido:
 
 ## 13. Notas de fase
 
-- **Fase 0 (agora):** apenas esta especificação e os esqueletos em `services/entity-writer/`
-  e `prompts/`. Sem cliente Gemini funcional, sem worker rodando, sem schema real.
-- **Fase 1+:** worker Python 3.12 implementado, prompts versionados conectados, tabelas
-  reais (`content_blocks`, `entity_writer_jobs`, `entity_writer_logs`) e o pipeline completo
-  de geração → validação → gate anti-thin → revisão → publicação.
+- **Fase 3A / Etapa 0 (agora):** apenas reconciliação documental do contrato flat e do
+  prompt `entity_intro_pt.md`. Sem runtime, sem cliente Gemini, sem schema/migration, sem
+  `apps/web`, sem dependências novas e sem publicação.
+- **Fase 3A (implementação futura):** pipeline offline que gera somente `editorial_intro`
+  e `cast_intro` em pt-BR, persiste em `content_blocks`, registra uma tentativa em
+  `entity_writer_logs` e nunca nasce com `review_status = published`.
+- **Fases posteriores:** ratings, streaming/onde assistir, slugs, páginas públicas,
+  indexação, overview/sinopse, `en`/`es`, FAQ, similares, franquias, notícias, reviews e
+  qualquer publicação editorial.

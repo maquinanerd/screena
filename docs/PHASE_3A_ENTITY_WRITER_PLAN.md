@@ -64,18 +64,13 @@ em [`workers/README.md`](../workers/README.md)).
 ### D3.2 — Contrato canonico
 O **contrato canonico e o de
 [`packages/schemas/src/entity-writer-output.ts`](../packages/schemas/src/entity-writer-output.ts),
-em formato plano (flat)**. **Nao** usar o formato aninhado `blocks: {}`. Docs e
-prompts futuros devem ser alinhados a esse contrato.
+em formato plano (flat)**. **Nao** usar o formato aninhado `blocks: {}`.
 
-> **Pre-requisito de runtime:** antes de implementar o runtime, resolver a
-> divergencia de tres pontas (detalhada na secao 5):
+> **Etapa 0 concluida nesta branch:** antes de qualquer runtime, a divergencia de
+> contrato foi reconciliada para o formato flat:
 > - `packages/schemas/src/entity-writer-output.ts` — **flat** (alvo canonico);
-> - `docs/ENTITY_WRITER.md` §5 — **aninhado** (`blocks: {}` + envelope);
-> - `prompts/entity_intro_pt.md` — **bloco unico** (`{ block_type, content }`).
->
-> A resolucao (flat vence) e **documentada** aqui; a edicao de
-> `ENTITY_WRITER.md` e dos prompts e a **primeira etapa** do plano de
-> implementacao (secao 11, Etapa 0). Esta rodada nao edita docs/prompts/schema.
+> - `docs/ENTITY_WRITER.md` §5 — **flat**, sem `blocks: {}`;
+> - `prompts/entity_intro_pt.md` — **flat**, sem `{ block_type, content }` na saida.
 
 ### D3.3 — EntityPayload
 O `EntityPayload` pode ser **estendido com campos opcionais**, mantendo
@@ -149,6 +144,12 @@ A Fase 3A gera **apenas**:
 - `cast_intro`
 
 **Somente pt-BR.**
+
+**Prompt combinado (posse do `cast_intro`).** Na Fase 3A/Etapa 0,
+`prompts/entity_intro_pt.md` e o **unico** prompt e gera `editorial_intro` **e**
+`cast_intro` na **mesma chamada**. **`prompts/cast_intro_pt.md` nao sera criado na
+Fase 3A**, salvo decisao futura explicita. Se um dia houver um prompt proprio de
+`cast_intro`, isso e **refactor futuro** — fora do escopo da implementacao inicial.
 
 **Fora da Fase 3A** (gerados em fases posteriores): `ratings_explanation`,
 `where_to_watch_text`, `season_guide`, `episode_context`,
@@ -252,13 +253,13 @@ proibir esse import (extensao da regra ja aplicada a `services/ingestion`/`sync`
 
 ## 5. Contrato de entrada e saida
 
-### 5.1 Divergencia atual (a resolver na Etapa 0)
+### 5.1 Contrato reconciliado na Etapa 0
 
-| Fonte | Formato hoje | Observacao |
+| Fonte | Formato apos Etapa 0 | Observacao |
 | --- | --- | --- |
 | `packages/schemas/src/entity-writer-output.ts` | **Flat** — `EntityWriterOutput` com campos de bloco no topo + `warnings: string[]`; `EntityPayload = { director, cast }`. | **Alvo canonico (D3.2).** |
-| `docs/ENTITY_WRITER.md` §5 | **Aninhado** — `{ entity_type, entity_id, language_code, blocks: { editorial_intro, … }, faq, warnings }`. | Diverge: usar `blocks: {}` e proibido (D3.2). Ajustar doc na Etapa 0. |
-| `prompts/entity_intro_pt.md` | **Bloco unico** — saida `{ block_type, language_code, content, warnings }`; entrada com `facts: { genres, creators, cast_top, … }`. | Diverge na forma e nos nomes de campo. Alinhar prompt ao payload/saida flat na Etapa 0. |
+| `docs/ENTITY_WRITER.md` §5 | **Flat** — `editorial_intro`, `cast_intro` e `warnings` no topo do objeto; sem `blocks: {}`. | Alinhado ao contrato canonico. |
+| `prompts/entity_intro_pt.md` | **Flat** — saida `EntityWriterOutput` com `editorial_intro`, `cast_intro` e `warnings`; entrada sem `facts: {}`. | Alinhado ao recorte 3A; nao exige campos fora da fase. |
 
 ### 5.2 Entrada — `EntityPayload` (flat, estendido — D3.3)
 
@@ -301,6 +302,22 @@ interface EntityWriterOutput {
   readonly warnings: string[];          // sempre presente (pode ser [])
 }
 ```
+
+**Saida vazia (ambos os blocos omitidos) — invalida para persistencia.** Os campos
+`editorial_intro`/`cast_intro` sao opcionais, mas uma saida **sem nenhum bloco
+textual geravel** (ex.: `{"warnings": []}`, sem `editorial_intro` nem `cast_intro`)
+e tratada assim:
+
+- **Nao** e persistida: o pipeline **nao** insere linha em `content_blocks`.
+- O job de `entity_writer_jobs` termina conforme a causa:
+  - **`blocked`** — quando a saida e **formalmente valida** (passou em
+    `validateEntityWriterOutput`) mas **nao contem bloco util**;
+  - **`failed`** — quando houve **erro tecnico/parsing/modelo** (saida nao
+    parseavel, recusa do modelo, timeout etc.).
+- Registra **uma tentativa** em `entity_writer_logs` com `validation_status =
+  failed` (compativel com o enum real `passed|warnings|failed`) e o motivo em
+  `warnings_json` (caso `blocked`) ou `error_message` (caso `failed`).
+- Este comportamento **deve virar teste** na implementacao (ver secao 7).
 
 ### 5.4 Persistencia em `content_blocks` (colunas reais)
 
@@ -411,6 +428,17 @@ Notas (esclarecimentos da correcao):
 - **Decisao de `review_status`:** sem warnings → `ai_generated`; com warnings de
   anti-alucinacao → `needs_review`; violacao dura (ex.: forma invalida do modelo)
   → `blocked`. **Nunca `published`** (teste de governanca).
+- **Governanca de `review_status` (autopublish proibido):** teste explicito
+  (`tests/governance/entity-writer-no-publish.test.ts`, secao 8) garante que o
+  pipeline **nunca** persiste `content_blocks.review_status` como `published` nem
+  `human_reviewed` na Fase 3A. Valores permitidos: **`ai_generated`**,
+  **`needs_review`**, **`blocked`**. Qualquer tentativa de autopublish **falha** o
+  teste.
+- **Saida vazia (sem bloco geravel):** teste garante que `{"warnings": []}` — ou
+  qualquer saida sem `editorial_intro`/`cast_intro` — **nao** gera `content_blocks`,
+  leva o job a `blocked` (valida porem sem bloco util) ou `failed` (erro tecnico) e
+  registra log com `validation_status = failed` e motivo em
+  `warnings_json`/`error_message` (ver secao 5.3).
 - **`FakeGeminiPort`:** deterministico; pipeline completo com fake **nao** toca
   rede (teste prova ausencia de chamada real). **Aviso:** o fake **nao** valida o
   contrato real de resposta do Gemini (formato/campos do provider) — isso so e
@@ -442,17 +470,22 @@ Notas (esclarecimentos da correcao):
   `src/gemini/fake.ts` (FakeGeminiPort), adapters `src/persistence/*` e
   `src/gemini/adapter.ts` (excluidos do typecheck), `bin/run.ts` (excluido),
   `systemd/*.{service,timer}` (doc), testes `src/__tests__/*`.
-- `prompts/cast_intro_pt.md` — prompt versionado do `cast_intro` (pt-BR), alinhado
-  ao contrato flat.
 - `tests/governance/entity-writer-no-publish.test.ts` — garante que a 3A nunca
-  produz `published`/`human_reviewed`.
+  produz `published`/`human_reviewed` (ver secao 7).
 
-**A alterar**
+> **`prompts/cast_intro_pt.md` NAO esta em "A criar".** Na Fase 3A o `cast_intro`
+> e gerado pelo prompt combinado `entity_intro_pt.md` (ver D3.7). Um prompt proprio
+> de cast so por decisao futura explicita (refactor), fora do escopo inicial.
+
+**Alterados na Etapa 0**
+- `docs/ENTITY_WRITER.md` §5 — substitui o formato aninhado `blocks: {}` pelo
+  **flat canonico** (D3.2).
+- `prompts/entity_intro_pt.md` — alinha entrada/saida ao contrato flat e ao recorte
+  3A; **prompt combinado** que gera `editorial_intro` + `cast_intro` numa chamada.
+
+**A alterar em etapas futuras**
 - `packages/schemas/src/entity-writer-output.ts` — estender `EntityPayload`
   (D3.3) e `validateAgainstPayload` para considerar `castMembers`.
-- `docs/ENTITY_WRITER.md` §5 — substituir o formato aninhado `blocks: {}` pelo
-  **flat canonico** (Etapa 0 / D3.2).
-- `prompts/entity_intro_pt.md` — alinhar entrada/saida ao contrato flat (Etapa 0).
 - `pnpm-workspace.yaml` / `tsconfig.json` / `vitest.config.ts` — incluir
   `services/entity-writer/**` (e excluir adapters do typecheck).
 - `scripts/audit/check-render-purity.mjs` — proibir import de
@@ -461,7 +494,8 @@ Notas (esclarecimentos da correcao):
 - `.env.example` — `GEMINI_API_KEY`, `GEMINI_MODEL` (worker-only).
 - `services/entity-writer/README.md` — registrar runtime TS/Node + Prisma.
 
-> Nenhum desses arquivos e tocado nesta rodada (so o presente plano).
+> Esta Etapa 0 toca somente docs/prompt. Nenhum runtime, schema/migration,
+> `apps/web`, persistence, auditor ou dependencia e criado nesta rodada.
 
 ---
 
@@ -497,10 +531,10 @@ Notas (esclarecimentos da correcao):
 
 ## 10. Riscos
 
-- **R1 — Divergencia de contrato (tres pontas).** Schema flat vs doc aninhado vs
-  prompt bloco-unico. **Mitigacao:** Etapa 0 resolve antes de qualquer runtime;
-  flat e o canonico (D3.2). Risco de runtime nascer sobre contrato inconsistente
-  se a Etapa 0 for pulada.
+- **R1 — Regressao de contrato (tres pontas).** A divergencia original (schema flat
+  vs doc aninhado vs prompt bloco-unico) foi reconciliada na Etapa 0. **Mitigacao:**
+  manter `packages/schemas/src/entity-writer-output.ts`, `docs/ENTITY_WRITER.md` e
+  `prompts/entity_intro_pt.md` sincronizados; flat e o canonico (D3.2).
 - **R2 — Anti-alucinacao e heuristica.** `validateAgainstPayload` e um gate barato
   por nomes proprios; nao captura toda alucinacao (datas, numeros, afirmacoes).
   **Mitigacao:** review_status nunca chega a `published` na 3A; revisao humana
@@ -556,9 +590,9 @@ Cada etapa = uma branch curta / um PR revisavel a partir de
 `feat/fase-3a-entity-writer`, com `typecheck/lint/test/audit:invariants/
 audit:render` verdes.
 
-- **Etapa 0 — Resolver contrato (D3.2).** Editar `docs/ENTITY_WRITER.md` §5 para
-  o formato **flat** (remover `blocks: {}`) e alinhar `prompts/entity_intro_pt.md`
-  ao payload/saida flat. So docs/prompts; sem runtime.
+- **Etapa 0 — Resolver contrato (D3.2).** **Concluida nesta branch:** `docs/ENTITY_WRITER.md`
+  §5 usa o formato **flat** (sem `blocks: {}`) e `prompts/entity_intro_pt.md`
+  esta alinhado ao payload/saida flat. So docs/prompts; sem runtime.
 - **Etapa 1 — Estender `EntityPayload` (D3.3).** Em `@screena/schemas`: adicionar
   campos opcionais e fazer `validateAgainstPayload` reconhecer `castMembers`.
   Testes puros.
@@ -578,9 +612,10 @@ audit:render` verdes.
   (**uma linha por tentativa**, so colunas do schema atual — secao 5.5);
   regeneracao archive+insert (D3.6). Adapters excluidos do typecheck; teste de
   integracao opcional via embedded-postgres (fora do CI).
-- **Etapa 7 — `prompts/cast_intro_pt.md` + runner offline.** Prompt versionado do
-  `cast_intro`; `bin/run.ts` (excluido) + systemd doc. `GeminiAdapter` real
-  worker-only.
+- **Etapa 7 — Runner offline.** `bin/run.ts` (excluido) + systemd doc;
+  `GeminiAdapter` real worker-only. **Nao** cria `prompts/cast_intro_pt.md`: o
+  `cast_intro` permanece no prompt combinado `entity_intro_pt.md` (ver D3.7); um
+  prompt proprio so por decisao futura (refactor).
 - **Etapa 8 — Fechamento.** README do servico, `.env.example`
   (`GEMINI_API_KEY`/`GEMINI_MODEL`), checklist de aceite (secao 9) verde. PR final
   com revisao humana; sem merge automatico.
