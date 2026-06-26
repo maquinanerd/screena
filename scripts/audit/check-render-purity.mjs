@@ -18,6 +18,11 @@
  *      do contrato de DB ('@screena/db') dentro de arquivos de pagina/layout.
  *      (O DB e lido por camada de dados controlada, nunca importado direto no
  *      componente de pagina.)
+ *   3) imports worker-only proibidos em QUALQUER arquivo de apps/web: o Entity
+ *      Writer ('services/entity-writer' / '@screena/entity-writer') e qualquer
+ *      SDK/client Gemini (Google GenAI, 'api-clients/gemini',
+ *      '@screena/gemini-client'). Sao offline-only e nunca entram no bundle de
+ *      render (invariantes 3 e 4).
  *
  * Como apps/web ainda esta praticamente vazio nesta fase, o script DEVE passar
  * (exit 0) hoje — mas ja funciona e travara regressoes assim que houver codigo.
@@ -103,6 +108,25 @@ const IMPORT_PATTERNS = [
     name: "import do client TMDB ('@screena/tmdb-client' / 'api-clients/tmdb')",
     regex:
       /\b(?:import|require)\b[^\n;]*['"`](?:[./]*api-clients\/tmdb|@screena\/tmdb-client)[^'"`]*['"`]/,
+  },
+];
+
+/**
+ * Imports worker-only proibidos em QUALQUER arquivo de apps/web (nao apenas
+ * paginas/layout): o Entity Writer e qualquer SDK/client Gemini sao offline-only
+ * e nunca entram no caminho de render (invariantes 3 e 4).
+ * @type {{ name: string, regex: RegExp }[]}
+ */
+const GLOBAL_IMPORT_PATTERNS = [
+  {
+    name: "import do Entity Writer ('services/entity-writer' / '@screena/entity-writer')",
+    regex:
+      /\b(?:import|require)\b[^\n;]*['"`](?:[./]*services\/entity-writer|@screena\/entity-writer)[^'"`]*['"`]/,
+  },
+  {
+    name: "import de SDK/client Gemini (Google GenAI / 'api-clients/gemini' / '@screena/gemini-client')",
+    regex:
+      /\b(?:import|require)\b[^\n;]*['"`](?:@google\/(?:generative-ai|genai)|google-generativeai|[./]*api-clients\/gemini|@screena\/gemini-client)[^'"`]*['"`]/i,
   },
 ];
 
@@ -268,7 +292,15 @@ async function scanWeb() {
         }
       }
 
-      // (2) imports proibidos — restritos a arquivos de pagina/layout.
+      // (2) imports worker-only (Entity Writer / Gemini) — proibidos em
+      //     QUALQUER arquivo de apps/web, nao so em pagina/layout.
+      for (const { name, regex } of GLOBAL_IMPORT_PATTERNS) {
+        if (regex.test(line)) {
+          violations.push(`${name} em ${rel(absFile)}:${i + 1} -> ${raw.trim()}`);
+        }
+      }
+
+      // (3) imports proibidos — restritos a arquivos de pagina/layout.
       if (isPageFile) {
         for (const { name, regex } of IMPORT_PATTERNS) {
           if (regex.test(line)) {
