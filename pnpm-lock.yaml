@@ -120,6 +120,13 @@ importers:
       '@screena/schemas':
         specifier: workspace:*
         version: link:../../packages/schemas
+    devDependencies:
+      embedded-postgres:
+        specifier: 16.14.0-beta.17
+        version: 16.14.0-beta.17
+      tsx:
+        specifier: ^4.19.0
+        version: 4.22.4
 
   services/ingestion:
     dependencies:

@@ -41,3 +41,24 @@ produzir texto editorial assistido por IA (Gemini) na Screena, e o faz **sempre 
 - **pt-BR primeiro** — saidas en/es nascem em `draft`/`noindex` ate revisao humana.
 - Status de bloco: `draft`, `ai_generated`, `needs_review`, `human_reviewed`,
   `published`, `needs_update`, `blocked`, `archived` — publicacao exige revisao humana.
+
+## Validacao com PostgreSQL real (dev, descartavel)
+
+```
+pnpm --filter @screena/entity-writer validate:real
+```
+
+Ferramenta de desenvolvimento **descartavel** (`scripts/validate-real-postgres.ts`) —
+nunca roda no render/produto. Sobe um PostgreSQL 16 **efemero** via `embedded-postgres`
+(mesmo padrao de `@screena/db`), aplica a migration e o seed existentes (sem criar
+migration nem alterar schema) e exercita os **adapters Prisma reais** de
+`src/persistence/*` ponta a ponta:
+
+`enqueue -> job queued -> claim -> payload source -> runner com FakeGeminiPort ->
+content_block (ai/ai_generated) -> entity_writer_log -> job completed com result_block_id`.
+
+Tambem cobre **deduplicacao** (skip por job ativo e por up-to-date) e **arquivamento**
+(regeneracao com `--force` arquiva o bloco `ai` antigo, cria o novo e preserva blocos
+`human`/`hybrid`). **Zero rede e zero Gemini real**; o banco efemero e derrubado e o
+diretorio temporario removido ao final. `DATABASE_URL` so existe em memoria — nunca em
+disco/.env.

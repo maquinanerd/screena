@@ -13,8 +13,15 @@
   },
   "sideEffects": false,
   "license": "UNLICENSED",
+  "scripts": {
+    "validate:real": "tsx scripts/validate-real-postgres.ts"
+  },
   "dependencies": {
     "@screena/db": "workspace:*",
     "@screena/schemas": "workspace:*"
+  },
+  "devDependencies": {
+    "embedded-postgres": "16.14.0-beta.17",
+    "tsx": "^4.19.0"
   }
 }
