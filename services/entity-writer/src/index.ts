@@ -15,3 +15,5 @@ export * from "./gemini/fake.js";
 export * from "./pipeline/decide-status.js";
 export * from "./pipeline/run-generation.js";
 export * from "./pipeline/persistence-plan.js";
+export * from "./runner/enqueue-plan.js";
+export * from "./runner/enqueue-jobs.js";
