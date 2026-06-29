@@ -9,15 +9,16 @@
  */
 
 import type { PrismaClient } from "@screena/db/server";
-import type { ContentBlockRecord, ContentBlockStorePort } from "../ports.js";
+import type { ContentBlockRecord, ContentBlockSaveResult, ContentBlockStorePort } from "../ports.js";
 import { planBlockPersistence } from "../pipeline/persistence-plan.js";
 
 /** Cria um `ContentBlockStorePort` apoiado no Prisma (archive + insert). */
 export function createPrismaContentBlockStore(prisma: PrismaClient): ContentBlockStorePort {
   return {
-    async save(record: ContentBlockRecord): Promise<void> {
+    async save(record: ContentBlockRecord): Promise<ContentBlockSaveResult> {
       const entityId = BigInt(record.entityId);
-      await prisma.$transaction(async (tx) => {
+      // Retorna o id do bloco RECEM-CRIADO (nunca o de um arquivado/existente).
+      const blockId = await prisma.$transaction(async (tx) => {
         // Versoes nao-arquivadas do mesmo alvo (o planner decide quais arquivar).
         const existing = await tx.contentBlock.findMany({
           where: {
@@ -53,7 +54,7 @@ export function createPrismaContentBlockStore(prisma: PrismaClient): ContentBloc
           });
         }
 
-        await tx.contentBlock.create({
+        const created = await tx.contentBlock.create({
           data: {
             entityType: plan.create.entityType,
             entityId,
@@ -69,8 +70,11 @@ export function createPrismaContentBlockStore(prisma: PrismaClient): ContentBloc
             reviewStatus: plan.create.reviewStatus,
             warningsJson: [...plan.create.warnings],
           },
+          select: { id: true },
         });
+        return created.id;
       });
+      return { blockId: blockId.toString() };
     },
   };
 }

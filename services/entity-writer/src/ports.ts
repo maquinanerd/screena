@@ -73,9 +73,15 @@ export interface ContentBlockRecord {
   readonly warnings: readonly string[];
 }
 
-/** Porta de persistencia de `content_blocks` (adapter Prisma futuro). */
+/** Resultado de uma persistencia de bloco: o id REAL do bloco criado. */
+export interface ContentBlockSaveResult {
+  /** Id do `content_block` recem-criado (BigInt serializado como string). */
+  readonly blockId: string;
+}
+
+/** Porta de persistencia de `content_blocks` (adapter Prisma). */
 export interface ContentBlockStorePort {
-  save(record: ContentBlockRecord): Promise<void>;
+  save(record: ContentBlockRecord): Promise<ContentBlockSaveResult>;
 }
 
 /**
