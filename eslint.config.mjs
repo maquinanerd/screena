@@ -25,7 +25,19 @@ const runtimeGlobals = {
 
 export default tseslint.config(
   {
-    ignores: ['node_modules', '.next', 'dist', 'build', 'coverage', '.turbo', '.vitest'],
+    // Globs recursivos: ignorar build output em QUALQUER nivel (ex.: o
+    // `apps/web/.next` gerado por `next build`), nao so na raiz.
+    ignores: [
+      '**/node_modules/**',
+      '**/.next/**',
+      '**/dist/**',
+      '**/build/**',
+      '**/coverage/**',
+      '**/.turbo/**',
+      '**/.vitest/**',
+      // Arquivo gerado pelo Next (triple-slash refs; "should not be edited").
+      '**/next-env.d.ts',
+    ],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
