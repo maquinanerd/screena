@@ -1,0 +1,184 @@
+/*
+ * globals.css — Estilo global minimo do app publico Screena.
+ *
+ * Layout editorial limpo: fundo branco, tipografia legivel, acento vermelho para
+ * FILME (--screena-movie-red). Sem framework de CSS (Tailwind nao esta
+ * configurado), sem fontes externas (zero rede no render) e sem design system
+ * completo — apenas o necessario para a pagina de filme respirar.
+ *
+ * Os 6 tokens canonicos de cor espelham @screena/config (fonte de verdade). As
+ * variaveis semanticas abaixo derivam deles para o tema claro desta fase.
+ */
+
+:root {
+  /* Tokens canonicos (espelham @screena/config). */
+  --screena-black: #000000;
+  --screena-white: #f5f5f5;
+  --screena-movie-red: #ff3b30;
+  --screena-series-green: #7aa66d;
+  --screena-bg-dark: #050505;
+  --screena-bg-light: #f4f4f4;
+
+  /* Semanticos do tema claro (pagina editorial, fundo branco). */
+  --screena-bg-page: #ffffff;
+  --screena-text: #15171a;
+  --screena-text-muted: #5b6066;
+  --screena-border: #e7e8ea;
+
+  --screena-measure: 44rem; /* largura de leitura confortavel */
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--screena-bg-page);
+  color: var(--screena-text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: inherit;
+}
+
+/* ------------------------------------------------------------------ */
+/* Pagina de filme                                                    */
+/* ------------------------------------------------------------------ */
+
+.movie-page {
+  background: var(--screena-bg-page);
+}
+
+.container {
+  max-width: var(--screena-measure);
+  margin: 0 auto;
+  padding: 2.5rem 1.25rem 4rem;
+}
+
+/* Breadcrumb discreto */
+.breadcrumb {
+  margin: 0 0 2rem;
+  font-size: 0.8125rem;
+  color: var(--screena-text-muted);
+}
+
+.breadcrumb ol {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.breadcrumb li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.breadcrumb li + li::before {
+  content: "›";
+  color: var(--screena-border);
+}
+
+.breadcrumb a {
+  color: var(--screena-text-muted);
+  text-decoration: none;
+}
+
+.breadcrumb a:hover {
+  color: var(--screena-text);
+  text-decoration: underline;
+}
+
+.breadcrumb [aria-current="page"] {
+  color: var(--screena-text);
+}
+
+/* Cabecalho: badge + titulo + metadados */
+.movie__header {
+  margin: 0 0 2.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--screena-border);
+}
+
+.movie__kicker {
+  margin: 0 0 1rem;
+}
+
+/* Badge "Filme" — acento vermelho (um dos cinco sinais filme/serie) */
+.screena-badge {
+  display: inline-block;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.screena-badge--movie {
+  background: var(--screena-movie-red);
+  color: #ffffff;
+}
+
+.movie__title {
+  margin: 0 0 0.75rem;
+  font-size: clamp(2rem, 5vw, 3rem);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--screena-text);
+}
+
+.movie__meta {
+  margin: 0;
+  color: var(--screena-text-muted);
+  font-size: 0.95rem;
+}
+
+/* Blocos editoriais — boa leitura, conteudo nunca escondido */
+.movie__blocks {
+  display: flex;
+  flex-direction: column;
+  gap: 2.25rem;
+}
+
+.movie-block__body {
+  margin: 0;
+  font-size: 1.0625rem;
+  line-height: 1.75;
+  color: var(--screena-text);
+  white-space: pre-wrap;
+}
+
+/* Aviso de revisao editorial (paginas noindex) */
+.review-notice {
+  margin: 2.5rem 0 0;
+  padding: 0.875rem 1rem;
+  border-left: 3px solid var(--screena-movie-red);
+  border-radius: 0 6px 6px 0;
+  background: var(--screena-bg-light);
+  color: var(--screena-text-muted);
+  font-size: 0.9rem;
+}
+
+@media (max-width: 480px) {
+  .container {
+    padding: 1.75rem 1rem 3rem;
+  }
+}

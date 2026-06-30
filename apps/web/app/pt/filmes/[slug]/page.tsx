@@ -72,6 +72,11 @@ export default async function MoviePage({
   const { view, indexability, canonicalUrl } = data;
   const isUnderReview = indexability.decision !== "index";
 
+  // Metadados visiveis (ano · duracao): so o que existe no payload — nada inventado.
+  const metaParts: string[] = [];
+  if (view.year !== null) metaParts.push(String(view.year));
+  if (view.runtimeLabel !== null) metaParts.push(view.runtimeLabel);
+
   const breadcrumbJsonLd = {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
@@ -99,50 +104,51 @@ export default async function MoviePage({
   if (view.metaDescription !== null) movieJsonLd.description = view.metaDescription;
 
   return (
-    <main>
-      <nav aria-label="Trilha de navegacao">
-        <ol>
-          <li>
-            <a href="/pt/">Inicio</a>
-          </li>
-          <li>
-            <a href={MOVIES_INDEX_PATH}>Filmes</a>
-          </li>
-          <li aria-current="page">{view.title}</li>
-        </ol>
-      </nav>
+    <main className="movie-page">
+      <div className="container">
+        <nav className="breadcrumb" aria-label="Trilha de navegacao">
+          <ol>
+            <li>
+              <a href="/pt/">Inicio</a>
+            </li>
+            <li>
+              <a href={MOVIES_INDEX_PATH}>Filmes</a>
+            </li>
+            <li aria-current="page">{view.title}</li>
+          </ol>
+        </nav>
 
-      <article data-vertical="movie">
-        {/* Badge + label textual: dois dos cinco sinais da invariante 11. */}
-        <p>
-          <span
-            data-vertical="movie"
-            className="screena-badge screena-badge--movie"
-            style={{ color: "var(--screena-movie-red)" }}
-          >
-            Filme
-          </span>
-        </p>
+        <article className="movie" data-vertical="movie">
+          <header className="movie__header">
+            {/* Badge + label textual: dois dos cinco sinais da invariante 11. */}
+            <p className="movie__kicker">
+              <span data-vertical="movie" className="screena-badge screena-badge--movie">
+                Filme
+              </span>
+            </p>
 
-        <h1>
-          {view.title}
-          {view.year !== null ? ` (${view.year})` : ""}
-        </h1>
+            <h1 className="movie__title">{view.title}</h1>
 
-        {view.runtimeLabel !== null ? <p>Duracao: {view.runtimeLabel}</p> : null}
+            {metaParts.length > 0 ? (
+              <p className="movie__meta">{metaParts.join(" · ")}</p>
+            ) : null}
+          </header>
 
-        {view.blocks.map((block) => (
-          <section key={block.blockType} data-block-type={block.blockType}>
-            <div style={{ whiteSpace: "pre-wrap" }}>{block.content}</div>
-          </section>
-        ))}
+          <div className="movie__blocks">
+            {view.blocks.map((block) => (
+              <section key={block.blockType} className="movie-block" data-block-type={block.blockType}>
+                <p className="movie-block__body">{block.content}</p>
+              </section>
+            ))}
+          </div>
 
-        {isUnderReview ? (
-          <p data-editorial-state="in-review">
-            Esta pagina ainda esta em revisao editorial.
-          </p>
-        ) : null}
-      </article>
+          {isUnderReview ? (
+            <p className="review-notice" data-editorial-state="in-review">
+              Esta pagina ainda esta em revisao editorial.
+            </p>
+          ) : null}
+        </article>
+      </div>
 
       <script
         type="application/ld+json"
