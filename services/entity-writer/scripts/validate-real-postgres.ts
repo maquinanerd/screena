@@ -45,7 +45,12 @@ import EmbeddedPostgres from "embedded-postgres";
 import { disconnectPrisma, type PrismaClient } from "@screena/db/server";
 import { FakeGeminiPort } from "../src/gemini/fake.js";
 import { createEntityWriterPersistence, type EntityWriterPersistence } from "../src/persistence/index.js";
-import { enqueueOne, type EnqueueDeps } from "../src/runner/enqueue-jobs.js";
+import {
+  enqueueMissing,
+  enqueueOne,
+  type EnqueueDeps,
+  type EnqueueMissingDeps,
+} from "../src/runner/enqueue-jobs.js";
 import { processJobs, type RunnerDeps } from "../src/runner/run-jobs.js";
 
 // Resolve a CLI do Prisma e o schema a partir de @screena/db (dona do schema):
@@ -377,17 +382,83 @@ async function runChecks(persistence: EntityWriterPersistence): Promise<void> {
     c2.published === 0 && c2.humanReviewed === 0,
     `published=${c2.published}, human_reviewed=${c2.humanReviewed}`,
   );
+
+  // ----------------------------------------------------------------------
+  // Batch enqueue (--missing) controlado: cria so o que falta, respeita limit,
+  // e deduplica no rerun. movie id=1 ja esta up-to-date; criamos um 2o movie.
+  // ----------------------------------------------------------------------
+  const movie2 = await prisma.movie.create({
+    data: { tmdbId: 90010002, titleOriginal: "Segundo Filme de Teste Screena", releaseDate: new Date("2022-03-01") },
+    select: { id: true },
+  });
+  const entityId2 = movie2.id.toString();
+
+  const missingDeps: EnqueueMissingDeps = {
+    payloadSource: persistence.payloadSource,
+    read: persistence.enqueueRead,
+    enqueue: persistence.jobEnqueue,
+    candidates: persistence.candidateSource,
+    logger: noop,
+  };
+  const missingReq = { entityType: "movie" as const, languageCode: LANGUAGE };
+
+  // 24. Dry-run: avalia e "criaria" 1, mas NAO persiste nenhum job novo.
+  const jobsBeforeDry = await prisma.entityWriterJob.count();
+  const dryBatch = await enqueueMissing(missingDeps, { dryRun: true, limit: 1 }, missingReq);
+  const jobsAfterDry = await prisma.entityWriterJob.count();
+  record(
+    24,
+    "batch --missing --dry-run nao persiste job",
+    dryBatch.created === 1 && dryBatch.createdJobIds.length === 0 && jobsAfterDry === jobsBeforeDry,
+    `created(would)=${dryBatch.created}, delta_jobs=${jobsAfterDry - jobsBeforeDry}`,
+  );
+
+  // 25. Real: cria EXATAMENTE 1 job (movie 2 faltante; movie 1 ja up-to-date).
+  const realBatch = await enqueueMissing(missingDeps, { dryRun: false, limit: 1 }, missingReq);
+  const createdJob =
+    realBatch.createdJobIds[0] !== undefined
+      ? await prisma.entityWriterJob.findUnique({
+          where: { id: BigInt(realBatch.createdJobIds[0]) },
+          select: { status: true, jobType: true, entityId: true },
+        })
+      : null;
+  record(
+    25,
+    "batch --missing --limit 1 cria exatamente 1 job (faltante)",
+    realBatch.created === 1 &&
+      realBatch.createdJobIds.length === 1 &&
+      createdJob?.status === "queued" &&
+      createdJob?.jobType === "generate_block" &&
+      createdJob?.entityId.toString() === entityId2,
+    `created=${realBatch.created}, jobEntity=${createdJob?.entityId.toString()}, up_to_date=${realBatch.skippedUpToDate}`,
+  );
+
+  // 26. Rerun: nada novo — movie 1 up-to-date, movie 2 com job ativo => dedup.
+  const rerunBatch = await enqueueMissing(missingDeps, { dryRun: false, limit: 1 }, missingReq);
+  record(
+    26,
+    "batch --missing rerun nao cria (dedup: up-to-date + job ativo)",
+    rerunBatch.created === 0 &&
+      rerunBatch.exhausted === true &&
+      rerunBatch.skippedUpToDate >= 1 &&
+      rerunBatch.skippedExistingActiveJob >= 1,
+    `created=${rerunBatch.created}, up_to_date=${rerunBatch.skippedUpToDate}, active_job=${rerunBatch.skippedExistingActiveJob}`,
+  );
 }
 
 async function main(): Promise<void> {
   const port = await freePort();
   const dataDir = mkdtempSync(path.join(tmpdir(), "screena-ew-pg-"));
+  // persistent:true NAO significa "guardar dados": o data dir e um mkdtemp unico
+  // por execucao e e removido por NOS no finally. So evita o cleanup interno do
+  // embedded-postgres (um `fs.rm` SEM retry logo apos o taskkill), que no Windows
+  // corre com o handle do data dir e vira um EBUSY/unhandled rejection.
   const pg = new EmbeddedPostgres({
     databaseDir: dataDir,
     user: "postgres",
     password: "postgres",
     port,
-    persistent: false,
+    persistent: true,
   });
   const url = `postgresql://postgres:postgres@127.0.0.1:${port}/screena_ew_validation?schema=public`;
   const maskedUrl = `postgresql://postgres:****@127.0.0.1:${port}/screena_ew_validation?schema=public`;
@@ -425,9 +496,20 @@ async function main(): Promise<void> {
     if (started) {
       await pg.stop();
     }
-    rmSync(dataDir, { recursive: true, force: true });
     delete process.env.DATABASE_URL;
-    console.log("\n=== Postgres efemero derrubado e dir temporario removido ===");
+    // Windows pode segurar o handle do data dir por instantes apos pg.stop():
+    // rmSync com retries cobre o EBUSY/EPERM tipico. Se ainda assim falhar, e
+    // best-effort (o dir vive em os.tmpdir e o SO o limpa) — nunca derruba a
+    // validacao, cujo resultado depende dos checks, nao do cleanup.
+    try {
+      // No Windows, o taskkill do embedded-postgres e assincrono; o handle do
+      // data dir pode ficar preso por segundos. Janela de retry generosa (so e
+      // paga quando ha lock; sem lock, remove na 1a tentativa).
+      rmSync(dataDir, { recursive: true, force: true, maxRetries: 40, retryDelay: 250 });
+    } catch (e) {
+      console.warn(`Aviso: dir temporario nao removido agora (${(e as Error).message.split("\n")[0]}); sera limpo pelo SO.`);
+    }
+    console.log("\n=== Postgres efemero derrubado e dir temporario liberado ===");
   }
 
   const failed = results.filter((r) => !r.ok);

@@ -10,6 +10,7 @@
 import { getPrismaClient, type PrismaClient } from "@screena/db/server";
 import type {
   ContentBlockStorePort,
+  EnqueueCandidateSourcePort,
   EnqueueReadPort,
   EntityWriterJobStorePort,
   EntityWriterLogPort,
@@ -23,6 +24,7 @@ import { createPrismaJobStore } from "./job-store.js";
 import { createPrismaJobClaim } from "./job-claim.js";
 import { createPrismaPayloadSource } from "./payload-source.js";
 import { createPrismaEnqueueRead, createPrismaJobEnqueue } from "./job-enqueue.js";
+import { createPrismaEnqueueCandidateSource } from "./enqueue-candidates.js";
 
 /** Adapters Prisma do Entity Writer prontos para a orquestracao (worker-only). */
 export interface EntityWriterPersistence {
@@ -36,6 +38,8 @@ export interface EntityWriterPersistence {
   readonly enqueueRead: EnqueueReadPort;
   /** Criacao de jobs (race-safe). */
   readonly jobEnqueue: JobEnqueuePort;
+  /** Descoberta de candidatos para enqueue em lote (`--missing`). */
+  readonly candidateSource: EnqueueCandidateSourcePort;
 }
 
 /** Monta os adapters Prisma sobre o client singleton (server-only). */
@@ -50,6 +54,7 @@ export function createEntityWriterPersistence(): EntityWriterPersistence {
     payloadSource: createPrismaPayloadSource(prisma),
     enqueueRead: createPrismaEnqueueRead(prisma),
     jobEnqueue: createPrismaJobEnqueue(prisma),
+    candidateSource: createPrismaEnqueueCandidateSource(prisma),
   };
 }
 
@@ -59,3 +64,4 @@ export { createPrismaJobStore } from "./job-store.js";
 export { createPrismaJobClaim } from "./job-claim.js";
 export { createPrismaPayloadSource } from "./payload-source.js";
 export { createPrismaEnqueueRead, createPrismaJobEnqueue } from "./job-enqueue.js";
+export { createPrismaEnqueueCandidateSource } from "./enqueue-candidates.js";

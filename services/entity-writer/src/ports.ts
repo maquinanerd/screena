@@ -232,3 +232,27 @@ export interface JobInsertResult {
 export interface JobEnqueuePort {
   createJob(input: EnqueueJobInput): Promise<JobInsertResult>;
 }
+
+/**
+ * Consulta de DESCOBERTA de candidatos a enqueue em lote (Fase 3B.5). Pagina por
+ * cursor de id crescente (`afterId`), para varredura determinística e estavel.
+ */
+export interface EnqueueCandidateQuery {
+  /** Tipo da entidade-raiz a varrer. So `movie`/`tv` (outros sao recusados). */
+  readonly entityType: EntityType;
+  /** Tamanho maximo da pagina retornada. */
+  readonly limit: number;
+  /** Cursor: retorna apenas ids ESTRITAMENTE maiores que este (ordenacao id ASC). */
+  readonly afterId?: string;
+}
+
+/**
+ * Porta de DESCOBERTA de candidatos a enqueue. Lista ids basicos por tipo
+ * (ordenados por id ASC), SEM decidir nada: a decisao real (faltante / job ativo
+ * / up-to-date) fica no planner, via `enqueueOne`. Le SO do banco; nunca cria
+ * job, nunca chama Gemini. Tipos nao suportados (`person`/`season`/`episode`)
+ * fazem o adapter lancar erro controlado.
+ */
+export interface EnqueueCandidateSourcePort {
+  findCandidates(query: EnqueueCandidateQuery): Promise<readonly string[]>;
+}

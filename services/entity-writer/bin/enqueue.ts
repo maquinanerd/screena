@@ -2,100 +2,84 @@
 /**
  * bin/enqueue.ts — CLI manual de enqueue de jobs do Entity Writer. EXCLUIDO do typecheck.
  *
- * Worker-only/offline — NUNCA no render, NUNCA daemon/systemd/cron. Cria UM job
- * de geracao editorial em `entity_writer_jobs` para um alvo explicito (por id).
- * NAO chama Gemini, NAO roda o runner, NAO gera content_block e NAO publica:
- * apenas enfileira. O runner (`bin/run.ts`) consome o job depois, em separado.
+ * Worker-only/offline — NUNCA no render, NUNCA daemon/systemd/cron. Cria jobs de
+ * geracao editorial em `entity_writer_jobs`. NAO chama Gemini, NAO roda o runner,
+ * NAO gera content_block e NAO publica: apenas enfileira. O runner (`bin/run.ts`)
+ * consome o job depois, em separado.
  *
- * Uso:
- *   tsx services/entity-writer/bin/enqueue.ts --entity-type movie --entity-id 42
- *   tsx services/entity-writer/bin/enqueue.ts --entity-type tv --entity-id 7 --force
- *   tsx services/entity-writer/bin/enqueue.ts --entity-type movie --entity-id 42 --dry-run
+ * Modos:
+ *  - SINGLE (por id): enqueue de UM alvo explicito.
+ *      tsx services/entity-writer/bin/enqueue.ts --entity-type movie --entity-id 42
+ *      tsx services/entity-writer/bin/enqueue.ts --entity-type tv --entity-id 7 --force
+ *      tsx services/entity-writer/bin/enqueue.ts --entity-type movie --entity-id 42 --dry-run
+ *  - MISSING (lote controlado): enqueue dos faltantes de um tipo, limitado.
+ *      tsx services/entity-writer/bin/enqueue.ts --entity-type movie --missing --limit 50 --dry-run
+ *      tsx services/entity-writer/bin/enqueue.ts --entity-type movie --missing --limit 50
+ *      tsx services/entity-writer/bin/enqueue.ts --entity-type tv --missing --limit 25
  *
- * Flags: --entity-type movie|tv (person/season/episode sao recusados nesta fase),
- *        --entity-id ID, --language pt-BR (default), --force, --dry-run.
+ * Flags: --entity-type movie|tv (single tambem aceita season|episode|person, que
+ *        sao pulados pelo planner), --entity-id ID (single), --missing, --limit N
+ *        (obrigatorio com --missing), --language pt-BR (default), --force, --dry-run.
  *
- * Escopo: SEM busca em lote (`--missing`/`--limit`) — apenas enqueue explicito
- * por id, para nao depender de query de descoberta nesta fatia. Env: DATABASE_URL.
+ * A logica de parse/resolucao mora em src/runner/enqueue-cli.ts (testavel). Env:
+ * DATABASE_URL. NAO imprime payload, prompt nem segredo — so o resumo estruturado.
  */
 
 import { disconnectPrisma } from "@screena/db/server";
 import { createEntityWriterPersistence } from "../src/persistence/index.js";
-import { enqueueOne } from "../src/runner/enqueue-jobs.js";
-
-/** Tipos de entidade aceitos no flag (validacao de entrada; nem todos geram job). */
-const VALID_ENTITY_TYPES = new Set(["movie", "tv", "season", "episode", "person"]);
-
-interface CliArgs {
-  entityType?: string;
-  entityId?: string;
-  language: string;
-  force: boolean;
-  dryRun: boolean;
-}
-
-function parseArgs(argv: string[]): CliArgs {
-  const args: CliArgs = { language: "pt-BR", force: false, dryRun: false };
-  for (let i = 0; i < argv.length; i += 1) {
-    const flag = argv[i];
-    if (flag === "--force") {
-      args.force = true;
-    } else if (flag === "--dry-run") {
-      args.dryRun = true;
-    } else if (flag === "--entity-type") {
-      args.entityType = argv[i + 1];
-      i += 1;
-    } else if (flag === "--entity-id") {
-      args.entityId = argv[i + 1];
-      i += 1;
-    } else if (flag === "--language") {
-      const value = argv[i + 1];
-      if (value !== undefined) args.language = value;
-      i += 1;
-    }
-  }
-  return args;
-}
+import { enqueueMissing, enqueueOne } from "../src/runner/enqueue-jobs.js";
+import { parseEnqueueArgs, resolveEnqueueCommand } from "../src/runner/enqueue-cli.js";
 
 function usage(message: string): never {
   console.error(`Erro: ${message}`);
-  console.error(
-    "Uso: tsx services/entity-writer/bin/enqueue.ts --entity-type movie|tv --entity-id ID [--language pt-BR] [--force] [--dry-run]",
-  );
+  console.error("Uso (single): tsx services/entity-writer/bin/enqueue.ts --entity-type movie|tv --entity-id ID [--force] [--dry-run]");
+  console.error("Uso (lote):   tsx services/entity-writer/bin/enqueue.ts --entity-type movie|tv --missing --limit N [--dry-run]");
   process.exit(1);
 }
 
 async function main(): Promise<void> {
-  const args = parseArgs(process.argv.slice(2));
-
-  if (args.entityType === undefined || !VALID_ENTITY_TYPES.has(args.entityType)) {
-    usage("--entity-type obrigatorio (movie|tv|season|episode|person).");
-  }
-  if (args.entityId === undefined || args.entityId.trim() === "") {
-    usage("--entity-id obrigatorio.");
+  const args = parseEnqueueArgs(process.argv.slice(2));
+  const command = resolveEnqueueCommand(args);
+  if (command.kind === "error") {
+    usage(command.message);
   }
   if (args.language !== "pt-BR") {
-    console.warn(`Aviso: Fase 3B.4 enfileira apenas pt-BR; "${args.language}" sera recusado.`);
+    console.warn(`Aviso: Fase 3B enfileira apenas pt-BR; "${args.language}" sera recusado.`);
   }
 
   const persistence = createEntityWriterPersistence();
   try {
-    const result = await enqueueOne(
-      {
-        payloadSource: persistence.payloadSource,
-        read: persistence.enqueueRead,
-        enqueue: persistence.jobEnqueue,
-        logger: (message) => console.log(message),
-      },
-      { dryRun: args.dryRun },
-      {
-        entityType: args.entityType as "movie" | "tv",
-        entityId: args.entityId as string,
-        languageCode: args.language,
-        force: args.force,
-      },
-    );
-    console.log(JSON.stringify(result, null, 2));
+    if (command.kind === "missing") {
+      const summary = await enqueueMissing(
+        {
+          payloadSource: persistence.payloadSource,
+          read: persistence.enqueueRead,
+          enqueue: persistence.jobEnqueue,
+          candidates: persistence.candidateSource,
+          logger: (message) => console.log(message),
+        },
+        { dryRun: command.dryRun, limit: command.limit },
+        { entityType: command.entityType, languageCode: command.languageCode },
+      );
+      console.log(JSON.stringify(summary, null, 2));
+    } else {
+      const result = await enqueueOne(
+        {
+          payloadSource: persistence.payloadSource,
+          read: persistence.enqueueRead,
+          enqueue: persistence.jobEnqueue,
+          logger: (message) => console.log(message),
+        },
+        { dryRun: command.dryRun },
+        {
+          entityType: command.entityType,
+          entityId: command.entityId,
+          languageCode: command.languageCode,
+          force: command.force,
+        },
+      );
+      console.log(JSON.stringify(result, null, 2));
+    }
   } finally {
     await disconnectPrisma();
   }
