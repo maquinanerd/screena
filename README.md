@@ -79,6 +79,38 @@ Cada pacote expõe `src/index.ts` (`"main": "./src/index.ts"`, `"type": "module"
 - **Python 3.12** (para os workers; não necessário na Fase 0).
 - **PostgreSQL** (não necessário na Fase 0).
 
+## Banco Local De Desenvolvimento
+
+O jeito mais simples de subir um PostgreSQL local para desenvolvimento é usar o
+compose dedicado da raiz. Ele cria um banco `screena` com usuário `screena` e
+senha de desenvolvimento definida em `.env`.
+
+```bash
+cp .env.example .env
+docker compose -f docker-compose.dev.yml up -d postgres
+npx pnpm@9.15.4 --filter @screena/db db:generate
+npx pnpm@9.15.4 --filter @screena/db db:migrate:deploy
+npx pnpm@9.15.4 --filter @screena/db db:seed
+```
+
+Use esta `DATABASE_URL` no `.env` local:
+
+```env
+DATABASE_URL="postgresql://screena:screena_dev_password@localhost:5432/screena"
+```
+
+Para parar o banco:
+
+```bash
+docker compose -f docker-compose.dev.yml down
+```
+
+Para resetar tudo e apagar o volume local:
+
+```bash
+docker compose -f docker-compose.dev.yml down -v
+```
+
 ## Comandos
 
 > **Fase 0 — Fundação.** A estrutura, as regras e os pacotes existem; o app ainda **não** roda como produto. `pnpm dev` e a aplicação final serão implementados nas próximas fases.

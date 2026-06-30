@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: screena-postgres-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: screena
+      POSTGRES_USER: screena
+      # Fallback apenas para desenvolvimento local. Use .env para sobrescrever.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-screena_dev_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - screena-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U screena -d screena"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  screena-postgres-data:
