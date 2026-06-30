@@ -18,6 +18,7 @@ import type {
   JobEnqueuePort,
   PayloadSourcePort,
 } from "../ports.js";
+import type { InspectStorePort } from "../inspect/inspect-entity-writer.js";
 import { createPrismaContentBlockStore } from "./content-block-store.js";
 import { createPrismaEntityWriterLogStore } from "./entity-writer-log-store.js";
 import { createPrismaJobStore } from "./job-store.js";
@@ -25,6 +26,7 @@ import { createPrismaJobClaim } from "./job-claim.js";
 import { createPrismaPayloadSource } from "./payload-source.js";
 import { createPrismaEnqueueRead, createPrismaJobEnqueue } from "./job-enqueue.js";
 import { createPrismaEnqueueCandidateSource } from "./enqueue-candidates.js";
+import { createPrismaInspectStore } from "./inspect-store.js";
 
 /** Adapters Prisma do Entity Writer prontos para a orquestracao (worker-only). */
 export interface EntityWriterPersistence {
@@ -40,6 +42,8 @@ export interface EntityWriterPersistence {
   readonly jobEnqueue: JobEnqueuePort;
   /** Descoberta de candidatos para enqueue em lote (`--missing`). */
   readonly candidateSource: EnqueueCandidateSourcePort;
+  /** Inspecao READ-ONLY do estado operacional (nunca escreve). */
+  readonly inspect: InspectStorePort;
 }
 
 /** Monta os adapters Prisma sobre o client singleton (server-only). */
@@ -55,6 +59,7 @@ export function createEntityWriterPersistence(): EntityWriterPersistence {
     enqueueRead: createPrismaEnqueueRead(prisma),
     jobEnqueue: createPrismaJobEnqueue(prisma),
     candidateSource: createPrismaEnqueueCandidateSource(prisma),
+    inspect: createPrismaInspectStore(prisma),
   };
 }
 
@@ -65,3 +70,4 @@ export { createPrismaJobClaim } from "./job-claim.js";
 export { createPrismaPayloadSource } from "./payload-source.js";
 export { createPrismaEnqueueRead, createPrismaJobEnqueue } from "./job-enqueue.js";
 export { createPrismaEnqueueCandidateSource } from "./enqueue-candidates.js";
+export { createPrismaInspectStore } from "./inspect-store.js";

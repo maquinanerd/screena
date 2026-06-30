@@ -44,6 +44,7 @@ import EmbeddedPostgres from "embedded-postgres";
 
 import { disconnectPrisma, type PrismaClient } from "@screena/db/server";
 import { FakeGeminiPort } from "../src/gemini/fake.js";
+import { inspectEntityWriter } from "../src/inspect/inspect-entity-writer.js";
 import { createEntityWriterPersistence, type EntityWriterPersistence } from "../src/persistence/index.js";
 import {
   enqueueMissing,
@@ -443,6 +444,58 @@ async function runChecks(persistence: EntityWriterPersistence): Promise<void> {
       rerunBatch.skippedUpToDate >= 1 &&
       rerunBatch.skippedExistingActiveJob >= 1,
     `created=${rerunBatch.created}, up_to_date=${rerunBatch.skippedUpToDate}, active_job=${rerunBatch.skippedExistingActiveJob}`,
+  );
+
+  // ----------------------------------------------------------------------
+  // Inspecao READ-ONLY (Fase 3B): o adapter de inspecao le o estado real via
+  // groupBy/findMany e o relatorio bate com o banco. SO LEITURA — nao muta nada.
+  // ----------------------------------------------------------------------
+  const jobsBeforeInspect = await prisma.entityWriterJob.count();
+  const inspection = await inspectEntityWriter(persistence.inspect, { limit: 20, languageCode: LANGUAGE });
+  const jobsAfterInspect = await prisma.entityWriterJob.count();
+
+  // 27. Inspecao nao altera o banco (contagem de jobs intacta antes/depois).
+  record(
+    27,
+    "inspecao read-only nao muta o banco",
+    jobsAfterInspect === jobsBeforeInspect,
+    `jobs antes=${jobsBeforeInspect}, depois=${jobsAfterInspect}`,
+  );
+
+  // 28. Contagem de jobs da inspecao bate com o count real (pt-BR) e ha >= 3.
+  const realJobCount = await prisma.entityWriterJob.count({ where: { languageCode: LANGUAGE } });
+  record(
+    28,
+    "inspecao: jobs.total bate com o banco (>= 3)",
+    inspection.jobs.total === realJobCount && inspection.jobs.total >= 3,
+    `inspect=${inspection.jobs.total}, banco=${realJobCount}`,
+  );
+
+  // 29. Pelo menos 1 job 'completed' visto pela inspecao (count + lista recente).
+  record(
+    29,
+    "inspecao: pelo menos 1 job completed",
+    inspection.jobs.completed >= 1 && inspection.recentCompletedJobs.length >= 1,
+    `completed=${inspection.jobs.completed}, recentes=${inspection.recentCompletedJobs.length}`,
+  );
+
+  // 30. Pelo menos 1 content_block (e ai_generated) visto pela inspecao.
+  record(
+    30,
+    "inspecao: pelo menos 1 content_block (ai_generated)",
+    inspection.blocks.total >= 1 && inspection.blocks.aiGenerated >= 1,
+    `blocks.total=${inspection.blocks.total}, ai_generated=${inspection.blocks.aiGenerated}`,
+  );
+
+  // 31. A entidade-alvo aparece em entidades-com-blocos.
+  const targetInGroups = inspection.entitiesWithBlocks.some(
+    (g) => g.entityType === "movie" && g.entityId === entityId,
+  );
+  record(
+    31,
+    "inspecao: entidade-alvo listada em entidades-com-blocos",
+    targetInGroups,
+    `alvo movie#${entityId} presente=${targetInGroups}`,
   );
 }
 

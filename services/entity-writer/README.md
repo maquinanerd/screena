@@ -103,3 +103,27 @@ daemon/cron/systemd e NUNCA publica.
 - **`--missing` e `--limit N` obrigatorios**; `--entity-type movie|tv`; `--language pt-BR`.
 - **`--dry-run`** nao escreve nada: o enqueue conta o que criaria e o runner so faz "peek".
 - `DATABASE_URL` sempre necessario (o ciclo le/escreve o PostgreSQL).
+
+## Inspecao READ-ONLY do estado operacional
+
+```
+tsx services/entity-writer/bin/inspect.ts --limit 20
+tsx services/entity-writer/bin/inspect.ts --entity-type movie --json
+# ou: pnpm --filter @screena/entity-writer inspect -- --limit 20
+```
+
+Responde rapidamente ao estado operacional do Entity Writer: **jobs por status/tipo/entidade**,
+**content_blocks por review_status/tipo/origem**, **entidades com blocos**, **falhas e logs
+recentes** e se ha **fila acumulada** (jobs `queued`).
+
+- **SOMENTE LEITURA.** Usa apenas `groupBy`/`findMany`; nunca escreve, nunca cria job, nunca
+  roda o runner, nunca publica, **nao chama Gemini** e nao persiste nada (travado por teste
+  estrutural).
+- **Exige `DATABASE_URL`** — sem ela, aborta **antes** de qualquer query (nunca abre conexao).
+- **Flags:** `--limit N` (default `20`, teto `200`), `--entity-type movie|tv|season|episode|person`
+  (opcional), `--language pt-BR` (default; aceita qualquer idioma como filtro para inspecionar
+  rascunhos), `--json` (saida estruturada; sem ela, resumo legivel).
+- **Nunca imprime** API key, payload completo, resposta crua do Gemini, segredo nem stack trace
+  longo: mensagens de erro saem **resumidas** (1a linha, truncada).
+- Camada pura testavel em `src/inspect/*`; adapter Prisma read-only em
+  `src/persistence/inspect-store.ts`.
