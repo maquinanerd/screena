@@ -62,3 +62,25 @@ Tambem cobre **deduplicacao** (skip por job ativo e por up-to-date) e **arquivam
 `human`/`hybrid`). **Zero rede e zero Gemini real**; o banco efemero e derrubado e o
 diretorio temporario removido ao final. `DATABASE_URL` so existe em memoria — nunca em
 disco/.env.
+
+## Smoke manual do Gemini REAL (dev, nao persiste)
+
+```
+# AVISO: chama a API REAL do Gemini. Exige --confirm-live.
+tsx services/entity-writer/bin/smoke-gemini.ts --entity-type movie --entity-id 123 --language pt-BR --confirm-live
+tsx services/entity-writer/bin/smoke-gemini.ts --entity-type tv --entity-id 456 --language pt-BR --confirm-live
+# ou: pnpm --filter @screena/entity-writer smoke:gemini -- --entity-type movie --entity-id 123 --confirm-live
+```
+
+Responde, com uma entidade **real do banco**, a pergunta: *o Gemini real devolve JSON
+valido e passa pela validacao do Entity Writer?* Monta o `EntityPayload` via PayloadSource
+real, chama o **GeminiAdapter real** e roda `runGeneration`, imprimindo um resumo seguro
+(model, prompt_version, validation/review status, blockTypes, warnings, tokens, hashes).
+
+- **Chama API externa real** (Gemini) — por isso exige a flag **`--confirm-live`**; sem ela,
+  aborta **antes** de abrir o banco ou chamar a rede.
+- **NAO persiste por padrao**: nao salva `content_block`, nao grava log, nao cria/finaliza
+  job e nao publica — o smoke nem recebe portas de persistencia.
+- Variaveis necessarias (worker-only, so em env var): **`DATABASE_URL`**, **`GEMINI_API_KEY`**,
+  **`GEMINI_MODEL`**. So `movie`/`tv` e `pt-BR` nesta fase.
+- O resumo nunca imprime a chave, o payload completo nem a resposta crua do modelo.
