@@ -64,9 +64,15 @@ importers:
       '@types/react':
         specifier: ^19.0.0
         version: 19.2.17
+      embedded-postgres:
+        specifier: 16.14.0-beta.17
+        version: 16.14.0-beta.17
       tailwindcss:
         specifier: ^3.4.0
         version: 3.4.19(tsx@4.22.4)
+      tsx:
+        specifier: ^4.19.0
+        version: 4.22.4
       typescript:
         specifier: ^5.5.0
         version: 5.9.3

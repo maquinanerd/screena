@@ -209,11 +209,27 @@ describe("arvore real de apps/web", () => {
     expect(offenders, JSON.stringify(offenders, null, 2)).toEqual([]);
   });
 
-  it("todo import de @screena/db vive em modulo server-only (src/server)", () => {
+  it("todo import de @screena/db vive em modulo server-only (src/server) ou dev script", () => {
     const dbImporters = files.filter((file) =>
       file.content.split(/\r?\n/).some((line) => DB_IMPORT.test(stripLineComment(line))),
     );
     for (const file of dbImporters) {
+      // Dev scripts (apps/web/scripts/**) sao ferramentas DESCARTAVEIS de
+      // validacao — fora do render e fora do bundle do Next (nao sao rota nem
+      // sao importados por rota). Como os validate-real de packages/db e
+      // services/*, podem usar o acessor server-only @screena/db/server. O
+      // codigo de RENDER continua restrito a src/server (assertado abaixo). A
+      // varredura de pureza acima (gemini/entity-writer/fetch externo) ainda
+      // cobre os scripts.
+      if (file.relPath.includes("/scripts/")) {
+        expect(isPageFile(file.relPath), `script nao pode ser arquivo de pagina: ${file.relPath}`).toBe(
+          false,
+        );
+        expect(hasUseClient(file.content), `dev script nao pode ser client component: ${file.relPath}`).toBe(
+          false,
+        );
+        continue;
+      }
       expect(file.relPath.includes("/src/server/"), `@screena/db fora de server-only: ${file.relPath}`).toBe(
         true,
       );

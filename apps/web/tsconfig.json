@@ -14,5 +14,8 @@
     "plugins": [{ "name": "next" }]
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  // `scripts/` sao dev tools descartaveis (embedded-postgres, fora do render e
+  // do bundle) — excluidos do typecheck, como os validate-real-postgres de
+  // packages/db e services/entity-writer.
+  "exclude": ["node_modules", "scripts"]
 }
