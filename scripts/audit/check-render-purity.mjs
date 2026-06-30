@@ -23,6 +23,11 @@
  *      SDK/client Gemini (Google GenAI, 'api-clients/gemini',
  *      '@screena/gemini-client'). Sao offline-only e nunca entram no bundle de
  *      render (invariantes 3 e 4).
+ *   4) imports do contrato de DB ('@screena/db') ou de clients de API dentro de
+ *      CLIENT COMPONENTS (arquivos com a diretiva "use client"). O acesso ao
+ *      PostgreSQL e server-only: permitido em modulos sem "use client"
+ *      (ex.: apps/web/src/server/**), proibido em qualquer codigo que vai para o
+ *      bundle do cliente (invariantes 3 e 4).
  *
  * Como apps/web ainda esta praticamente vazio nesta fase, o script DEVE passar
  * (exit 0) hoje — mas ja funciona e travara regressoes assim que houver codigo.
@@ -127,6 +132,24 @@ const GLOBAL_IMPORT_PATTERNS = [
     name: "import de SDK/client Gemini (Google GenAI / 'api-clients/gemini' / '@screena/gemini-client')",
     regex:
       /\b(?:import|require)\b[^\n;]*['"`](?:@google\/(?:generative-ai|genai)|google-generativeai|[./]*api-clients\/gemini|@screena\/gemini-client)[^'"`]*['"`]/i,
+  },
+];
+
+/**
+ * Imports proibidos em CLIENT COMPONENTS (arquivos com a diretiva "use client"),
+ * em QUALQUER diretorio de apps/web. O acesso ao DB e a clients de API e
+ * server-only: nunca pode atravessar para o bundle do cliente (invariantes 3/4).
+ * @type {{ name: string, regex: RegExp }[]}
+ */
+const CLIENT_IMPORT_PATTERNS = [
+  {
+    name: "import do contrato de DB ('@screena/db') em client component (\"use client\")",
+    regex: /\b(?:import|require)\b[^\n;]*['"`]@screena\/db(?:\/server)?['"`]/,
+  },
+  {
+    name: "import de client de API ('api-clients' / '@screena/api-clients') em client component (\"use client\")",
+    regex:
+      /\b(?:import|require)\b[^\n;]*['"`](?:[./]*api-clients|@screena\/api-clients)[^'"`]*['"`]/,
   },
 ];
 
@@ -246,6 +269,24 @@ function stripLineComment(line) {
   return line;
 }
 
+/**
+ * Detecta a diretiva "use client" (client component). Para valer, ela precisa
+ * ser a PRIMEIRA instrucao do arquivo: a primeira linha nao vazia e nao
+ * comentada deve ser exatamente a string da diretiva.
+ * @param {string} content
+ * @returns {boolean}
+ */
+function hasUseClientDirective(content) {
+  const lines = content.split(/\r?\n/);
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (line === '') continue;
+    if (line.startsWith('//') || line.startsWith('/*') || line.startsWith('*')) continue;
+    return /^['"]use client['"];?$/.test(line);
+  }
+  return false;
+}
+
 /* ------------------------------------------------------------------ */
 /* Varredura                                                         */
 /* ------------------------------------------------------------------ */
@@ -278,6 +319,7 @@ async function scanWeb() {
 
     const baseName = path.basename(absFile).toLowerCase();
     const isPageFile = PAGE_FILE_NAMES.has(baseName);
+    const isClientComponent = hasUseClientDirective(content);
 
     const lines = content.split(/\r?\n/);
     for (let i = 0; i < lines.length; i += 1) {
@@ -303,6 +345,16 @@ async function scanWeb() {
       // (3) imports proibidos — restritos a arquivos de pagina/layout.
       if (isPageFile) {
         for (const { name, regex } of IMPORT_PATTERNS) {
+          if (regex.test(line)) {
+            violations.push(`${name} em ${rel(absFile)}:${i + 1} -> ${raw.trim()}`);
+          }
+        }
+      }
+
+      // (4) DB / api-clients em client component ("use client") — proibido em
+      //     qualquer diretorio: o acesso a dados e server-only.
+      if (isClientComponent) {
+        for (const { name, regex } of CLIENT_IMPORT_PATTERNS) {
           if (regex.test(line)) {
             violations.push(`${name} em ${rel(absFile)}:${i + 1} -> ${raw.trim()}`);
           }

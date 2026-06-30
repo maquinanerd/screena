@@ -22,6 +22,9 @@ import type { NextConfig } from "next";
  */
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // Rotas canonicas usam barra final (ex.: /pt/filmes/{slug}/). Alinhar o
+  // trailing slash evita divergencia entre a URL servida e o <link rel="canonical">.
+  trailingSlash: true,
   images: {
     remotePatterns: [
       {
