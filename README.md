@@ -99,6 +99,30 @@ Use esta `DATABASE_URL` no `.env` local:
 DATABASE_URL="postgresql://screena:screena_dev_password@localhost:5432/screena"
 ```
 
+### Testar a pagina de filme no navegador
+
+Depois de subir o banco local, semeie uma fixture dev de filme e rode o app:
+
+```bash
+cp .env.example .env
+docker compose -f docker-compose.dev.yml up -d postgres
+npx pnpm@9.15.4 --filter @screena/db db:migrate:deploy
+npx pnpm@9.15.4 --filter @screena/db db:seed
+npx pnpm@9.15.4 --filter @screena/web seed:dev-movie
+npx pnpm@9.15.4 --filter @screena/web dev
+```
+
+Abra:
+
+```txt
+/pt/filmes/interestelar/
+```
+
+`seed:dev-movie` e **dev-only** e **idempotente**: cria/atualiza um filme de
+exemplo (`Interstellar` / slug `interestelar`) com 2 blocos renderizaveis para a
+pagina ficar indexavel localmente. Nao chama Gemini, nao chama TMDB, nao usa API
+externa, nao cria ratings/streaming.
+
 Para parar o banco:
 
 ```bash
