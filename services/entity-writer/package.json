@@ -15,7 +15,8 @@
   "license": "UNLICENSED",
   "scripts": {
     "validate:real": "tsx scripts/validate-real-postgres.ts",
-    "smoke:gemini": "tsx bin/smoke-gemini.ts"
+    "smoke:gemini": "tsx bin/smoke-gemini.ts",
+    "run:offline": "tsx bin/run-offline.ts"
   },
   "dependencies": {
     "@screena/db": "workspace:*",

@@ -84,3 +84,22 @@ real, chama o **GeminiAdapter real** e roda `runGeneration`, imprimindo um resum
 - Variaveis necessarias (worker-only, so em env var): **`DATABASE_URL`**, **`GEMINI_API_KEY`**,
   **`GEMINI_MODEL`**. So `movie`/`tv` e `pt-BR` nesta fase.
 - O resumo nunca imprime a chave, o payload completo nem a resposta crua do modelo.
+
+## Ciclo offline encadeado (enqueue missing -> runner)
+
+```
+tsx services/entity-writer/bin/run-offline.ts --entity-type movie --missing --limit 10 --fake --dry-run
+tsx services/entity-writer/bin/run-offline.ts --entity-type movie --missing --limit 10 --fake
+tsx services/entity-writer/bin/run-offline.ts --entity-type tv --missing --limit 25 --confirm-live   # Gemini REAL
+# ou: pnpm --filter @screena/entity-writer run:offline -- --entity-type movie --missing --limit 10
+```
+
+Encadeia, numa unica passada controlada, **enqueue dos faltantes -> runner**. Serve para
+exercitar o ciclo offline completo **sem depender de chave Gemini real**. NUNCA cria
+daemon/cron/systemd e NUNCA publica.
+
+- **Gemini FAKE por padrao** (e sempre em `--dry-run`/`--fake`). O Gemini REAL so e usado com
+  `--confirm-live` explicito (que exige `GEMINI_API_KEY`/`GEMINI_MODEL`).
+- **`--missing` e `--limit N` obrigatorios**; `--entity-type movie|tv`; `--language pt-BR`.
+- **`--dry-run`** nao escreve nada: o enqueue conta o que criaria e o runner so faz "peek".
+- `DATABASE_URL` sempre necessario (o ciclo le/escreve o PostgreSQL).
