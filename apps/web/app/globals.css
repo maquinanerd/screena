@@ -1,17 +1,22 @@
 /*
- * globals.css — Estilo global minimo do app publico Screena.
+ * globals.css — Estilo global do app publico Screena (tema White Cinematic
+ * Editorial). Aplica a linguagem visual do handoff da pagina de filme:
+ * off-white quente, tipografia Montserrat (preferida; com fallback de sistema),
+ * cantos retos (radius 0) e acento vermelho de FILME.
  *
- * Layout editorial limpo: fundo branco, tipografia legivel, acento vermelho para
- * FILME (--screena-movie-red). Sem framework de CSS (Tailwind nao esta
- * configurado), sem fontes externas (zero rede no render) e sem design system
- * completo — apenas o necessario para a pagina de filme respirar.
+ * Pureza de render (invariantes 3/4): SEM fontes externas (nenhum <link>/@import
+ * a fonts.googleapis.com, nenhum next/font que baixe no build). Montserrat e
+ * apenas a familia PREFERIDA; se nao estiver instalada, cai para a stack do
+ * sistema — zero rede no build e no render.
  *
- * Os 6 tokens canonicos de cor espelham @screena/config (fonte de verdade). As
- * variaveis semanticas abaixo derivam deles para o tema claro desta fase.
+ * Tokens de cor (invariantes 9/10 e secao 8 do CLAUDE.md): o ACENTO de filme e
+ * sempre o token canonico `--screena-movie-red` (fonte de verdade @screena/config)
+ * — nunca um hex hardcoded em componente. As variaveis semanticas abaixo derivam
+ * dos 6 tokens canonicos para o tema editorial desta fase.
  */
 
 :root {
-  /* Tokens canonicos (espelham @screena/config). */
+  /* Tokens canonicos (espelham @screena/config — fonte de verdade). */
   --screena-black: #000000;
   --screena-white: #f5f5f5;
   --screena-movie-red: #ff3b30;
@@ -19,13 +24,32 @@
   --screena-bg-dark: #050505;
   --screena-bg-light: #f4f4f4;
 
-  /* Semanticos do tema claro (pagina editorial, fundo branco). */
-  --screena-bg-page: #ffffff;
-  --screena-text: #15171a;
-  --screena-text-muted: #5b6066;
-  --screena-border: #e7e8ea;
+  /* Semanticos do tema White Cinematic Editorial (pagina de filme). */
+  --bg-page: #f7f6f2; /* off-white quente da pagina */
+  --bg-surface: #ffffff; /* cards / superficies elevadas */
+  --bg-muted: #efede7; /* faixas neutras */
+  --bg-media: #0a0a0a; /* base da faixa de midia escura */
 
-  --screena-measure: 44rem; /* largura de leitura confortavel */
+  --text-strong: #101010; /* titulos, numeros fortes */
+  --text-body: #242424; /* corpo de texto */
+  --text-heading: #3a3a3a; /* titulos de secao (uppercase) */
+  --text-muted: #6e6e6e; /* metadados, ano, labels secundarios */
+
+  /* Acento de FILME = token canonico (nunca forka a cor de marca). */
+  --accent-movie: var(--screena-movie-red);
+  --link-movie: #8a1e1a; /* links/acoes em texto na pagina de filme */
+
+  --border: #e3ded6; /* bordas de cards, divisores */
+  --border-dashed: #c9c2b6; /* borda tracejada do card sem spoilers */
+
+  /* Layout */
+  --container-max: 1280px;
+  --container-pad: 80px;
+  --measure: 68ch; /* largura de leitura confortavel do corpo editorial */
+
+  /* Fonte: Montserrat PREFERIDA, sem carregamento externo (fallback sistema). */
+  --font-sans: "Montserrat", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto,
+    Helvetica, Arial, sans-serif;
 }
 
 *,
@@ -40,10 +64,9 @@ html {
 
 body {
   margin: 0;
-  background: var(--screena-bg-page);
-  color: var(--screena-text);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
-    sans-serif;
+  background: var(--bg-page);
+  color: var(--text-body);
+  font-family: var(--font-sans);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -53,25 +76,32 @@ a {
   color: inherit;
 }
 
+::selection {
+  background: var(--accent-movie);
+  color: #ffffff;
+}
+
 /* ------------------------------------------------------------------ */
-/* Pagina de filme                                                    */
+/* Pagina de filme — shell                                            */
 /* ------------------------------------------------------------------ */
 
 .movie-page {
-  background: var(--screena-bg-page);
+  background: var(--bg-page);
+  padding-bottom: 4rem;
 }
 
 .container {
-  max-width: var(--screena-measure);
+  max-width: var(--container-max);
   margin: 0 auto;
-  padding: 2.5rem 1.25rem 4rem;
+  padding: 0 var(--container-pad);
 }
 
 /* Breadcrumb discreto */
 .breadcrumb {
-  margin: 0 0 2rem;
+  margin: 0;
+  padding: 40px 0 0;
   font-size: 0.8125rem;
-  color: var(--screena-text-muted);
+  color: var(--text-muted);
 }
 
 .breadcrumb ol {
@@ -92,93 +122,213 @@ a {
 
 .breadcrumb li + li::before {
   content: "›";
-  color: var(--screena-border);
+  color: var(--border);
 }
 
 .breadcrumb a {
-  color: var(--screena-text-muted);
+  color: var(--text-muted);
   text-decoration: none;
 }
 
 .breadcrumb a:hover {
-  color: var(--screena-text);
+  color: var(--link-movie);
   text-decoration: underline;
 }
 
 .breadcrumb [aria-current="page"] {
-  color: var(--screena-text);
+  color: var(--text-strong);
 }
 
-/* Cabecalho: badge + titulo + metadados */
+/* ------------------------------------------------------------------ */
+/* Top info bar / header                                              */
+/* ------------------------------------------------------------------ */
+
 .movie__header {
-  margin: 0 0 2.5rem;
-  padding-bottom: 1.5rem;
-  border-bottom: 1px solid var(--screena-border);
+  margin: 0;
+  padding: 36px 0 28px;
 }
 
 .movie__kicker {
-  margin: 0 0 1rem;
+  margin: 0 0 16px;
 }
 
-/* Badge "Filme" — acento vermelho (um dos cinco sinais filme/serie) */
+/* Badge "Filme" — acento vermelho, cantos retos (um dos cinco sinais). */
 .screena-badge {
   display: inline-block;
-  padding: 0.25rem 0.6rem;
-  border-radius: 999px;
-  font-size: 0.72rem;
+  padding: 6px 11px;
+  border-radius: 0;
+  font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
+  line-height: 1;
 }
 
 .screena-badge--movie {
-  background: var(--screena-movie-red);
+  background: var(--accent-movie);
   color: #ffffff;
 }
 
 .movie__title {
-  margin: 0 0 0.75rem;
-  font-size: clamp(2rem, 5vw, 3rem);
+  margin: 0 0 10px;
+  font-size: clamp(1.75rem, 4vw, 34px);
   font-weight: 800;
   line-height: 1.1;
+  letter-spacing: -0.03em;
+  color: var(--text-strong);
+}
+
+/* Ano dentro do h1 — peso 600 em cinza (handoff §3.4). */
+.movie__year {
+  font-weight: 600;
+  color: var(--text-muted);
   letter-spacing: -0.02em;
-  color: var(--screena-text);
 }
 
 .movie__meta {
   margin: 0;
-  color: var(--screena-text-muted);
+  color: var(--text-muted);
   font-size: 0.95rem;
 }
 
-/* Blocos editoriais — boa leitura, conteudo nunca escondido */
-.movie__blocks {
+/* ------------------------------------------------------------------ */
+/* Faixa de midia — PLACEHOLDER visual decorativo (sem dados falsos)  */
+/* ------------------------------------------------------------------ */
+
+.movie-media {
+  margin: 8px 0 0;
+  width: 100%;
+  height: clamp(280px, 38vw, 460px);
+  background:
+    radial-gradient(120% 140% at 25% 0%, #1b1b1b 0%, transparent 55%),
+    linear-gradient(180deg, #141414 0%, var(--bg-media) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.movie-media__inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Botao de play decorativo (74x74, borda branca) — circular por excecao. */
+.movie-media__play {
+  position: relative;
+  width: 74px;
+  height: 74px;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  border-radius: 50%;
+}
+
+.movie-media__play::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 54%;
+  transform: translate(-50%, -50%);
+  border-style: solid;
+  border-width: 11px 0 11px 18px;
+  border-color: transparent transparent transparent rgba(255, 255, 255, 0.9);
+}
+
+/* ------------------------------------------------------------------ */
+/* Conteudo editorial — coluna principal + card lateral sem spoilers  */
+/* ------------------------------------------------------------------ */
+
+.movie-editorial {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 40px;
+  align-items: start;
+  padding: 56px 0 0;
+}
+
+.movie-editorial__main {
   display: flex;
   flex-direction: column;
-  gap: 2.25rem;
+  gap: 2rem;
+  max-width: var(--measure);
 }
 
 .movie-block__body {
   margin: 0;
-  font-size: 1.0625rem;
-  line-height: 1.75;
-  color: var(--screena-text);
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--text-body);
   white-space: pre-wrap;
 }
 
-/* Aviso de revisao editorial (paginas noindex) */
+/* Card lateral tracejado "Resumo sem spoilers" (handoff §3.9). */
+.movie-aside {
+  position: sticky;
+  top: 24px;
+}
+
+.spoiler-card {
+  padding: 24px 26px;
+  background: var(--bg-surface);
+  border: 1.5px dashed var(--border-dashed);
+}
+
+.spoiler-card__label {
+  margin: 0 0 12px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-heading);
+}
+
+.spoiler-card__body {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-body);
+  white-space: pre-wrap;
+}
+
+/* Aviso de revisao editorial (paginas noindex). */
 .review-notice {
-  margin: 2.5rem 0 0;
-  padding: 0.875rem 1rem;
-  border-left: 3px solid var(--screena-movie-red);
-  border-radius: 0 6px 6px 0;
-  background: var(--screena-bg-light);
-  color: var(--screena-text-muted);
+  margin: 40px 0 0;
+  padding: 14px 18px;
+  border-left: 3px solid var(--accent-movie);
+  background: var(--bg-muted);
+  color: var(--text-muted);
   font-size: 0.9rem;
 }
 
-@media (max-width: 480px) {
-  .container {
-    padding: 1.75rem 1rem 3rem;
+/* ------------------------------------------------------------------ */
+/* Responsividade basica (handoff §5): evitar overflow, sem redesenho */
+/* ------------------------------------------------------------------ */
+
+@media (max-width: 1024px) {
+  :root {
+    --container-pad: 20px;
+  }
+
+  .movie-editorial {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+
+  .movie-editorial__main {
+    max-width: none;
+  }
+
+  .movie-aside {
+    position: static;
+  }
+}
+
+@media (max-width: 560px) {
+  .movie-media {
+    height: clamp(200px, 56vw, 300px);
+  }
+
+  .movie__header {
+    padding: 24px 0 20px;
   }
 }

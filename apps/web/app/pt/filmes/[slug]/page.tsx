@@ -7,6 +7,13 @@ import { MOVIES_INDEX_PATH, SITE_URL } from "../../../../src/lib/site";
 /**
  * Pagina publica de filme — /pt/filmes/[slug]/ (schema Movie, acento vermelho).
  *
+ * Tela "Movie Detail" do handoff de design (White Cinematic Editorial): header
+ * editorial (badge "Filme" + titulo + ano + duracao), faixa de midia como
+ * PLACEHOLDER visual decorativo (sem dados falsos), blocos editoriais reais e
+ * card lateral "Resumo sem spoilers" quando o bloco existir. Ratings, onde
+ * assistir, elenco, bilheteria, premios e relacionados ficam FORA DE ESCOPO
+ * nesta fase — sao omitidos (nunca placeholders que finjam features).
+ *
  * INVARIANTES 3 e 4: server component puro. Le dados SO do PostgreSQL via a
  * camada server-only (`getMoviePageData`) — zero API externa e zero Gemini no
  * render. A revalidacao ISR re-le o snapshot do banco, nunca uma fonte externa.
@@ -20,6 +27,9 @@ import { MOVIES_INDEX_PATH, SITE_URL } from "../../../../src/lib/site";
 
 /** ISR: regenera o HTML a partir do PostgreSQL a cada hora (nunca da rede externa). */
 export const revalidate = 3600;
+
+/** content_block cujo texto, quando presente, vira o card lateral sem spoilers. */
+const SUMMARY_BLOCK_TYPE = "summary_without_spoilers";
 
 interface MoviePageParams {
   slug: string;
@@ -72,10 +82,18 @@ export default async function MoviePage({
   const { view, indexability, canonicalUrl } = data;
   const isUnderReview = indexability.decision !== "index";
 
-  // Metadados visiveis (ano · duracao): so o que existe no payload — nada inventado.
-  const metaParts: string[] = [];
-  if (view.year !== null) metaParts.push(String(view.year));
-  if (view.runtimeLabel !== null) metaParts.push(view.runtimeLabel);
+  // Duracao visivel (so o que existe no payload; ano vai no titulo, nao aqui).
+  const runtimeLabel = view.runtimeLabel;
+
+  // Particiona os blocos ja aprovados: o "resumo sem spoilers" (quando existir)
+  // vira card lateral; os demais formam a coluna editorial. Cada bloco aparece
+  // exatamente uma vez — nada e escondido, nada e inventado.
+  const summaryBlock =
+    view.blocks.find((block) => block.blockType === SUMMARY_BLOCK_TYPE) ?? null;
+  const mainBlocks = view.blocks.filter(
+    (block) => block.blockType !== SUMMARY_BLOCK_TYPE,
+  );
+  const hasEditorial = mainBlocks.length > 0 || summaryBlock !== null;
 
   const breadcrumbJsonLd = {
     "@context": "https://schema.org",
@@ -104,7 +122,7 @@ export default async function MoviePage({
   if (view.metaDescription !== null) movieJsonLd.description = view.metaDescription;
 
   return (
-    <main className="movie-page">
+    <main className="movie-page" data-vertical="movie">
       <div className="container">
         <nav className="breadcrumb" aria-label="Trilha de navegacao">
           <ol>
@@ -127,27 +145,60 @@ export default async function MoviePage({
               </span>
             </p>
 
-            <h1 className="movie__title">{view.title}</h1>
+            <h1 className="movie__title">
+              {view.title}
+              {view.year !== null ? (
+                <span className="movie__year"> ({view.year})</span>
+              ) : null}
+            </h1>
 
-            {metaParts.length > 0 ? (
-              <p className="movie__meta">{metaParts.join(" · ")}</p>
+            {runtimeLabel !== null ? (
+              <p className="movie__meta">{runtimeLabel}</p>
             ) : null}
           </header>
-
-          <div className="movie__blocks">
-            {view.blocks.map((block) => (
-              <section key={block.blockType} className="movie-block" data-block-type={block.blockType}>
-                <p className="movie-block__body">{block.content}</p>
-              </section>
-            ))}
-          </div>
-
-          {isUnderReview ? (
-            <p className="review-notice" data-editorial-state="in-review">
-              Esta pagina ainda esta em revisao editorial.
-            </p>
-          ) : null}
         </article>
+      </div>
+
+      {/* Faixa de midia: placeholder visual decorativo. Sem <img> inventado,
+          sem contagens falsas, sem dados de terceiros — apenas o skeleton
+          cinematografico. aria-hidden: nada de informativo para leitores de tela. */}
+      <div className="movie-media" aria-hidden="true">
+        <div className="movie-media__inner">
+          <span className="movie-media__play" />
+        </div>
+      </div>
+
+      <div className="container">
+        {hasEditorial ? (
+          <section className="movie-editorial">
+            <div className="movie-editorial__main">
+              {mainBlocks.map((block) => (
+                <div
+                  key={block.blockType}
+                  className="movie-block"
+                  data-block-type={block.blockType}
+                >
+                  <p className="movie-block__body">{block.content}</p>
+                </div>
+              ))}
+            </div>
+
+            {summaryBlock !== null ? (
+              <aside className="movie-aside">
+                <div className="spoiler-card" data-block-type={summaryBlock.blockType}>
+                  <p className="spoiler-card__label">Resumo sem spoilers</p>
+                  <p className="spoiler-card__body">{summaryBlock.content}</p>
+                </div>
+              </aside>
+            ) : null}
+          </section>
+        ) : null}
+
+        {isUnderReview ? (
+          <p className="review-notice" data-editorial-state="in-review">
+            Esta pagina ainda esta em revisao editorial.
+          </p>
+        ) : null}
       </div>
 
       <script
