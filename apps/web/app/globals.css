@@ -261,6 +261,15 @@ a {
   white-space: pre-wrap;
 }
 
+.movie-preview-label {
+  margin: 0 0 10px;
+  color: var(--accent-movie);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
 /* Card lateral tracejado "Resumo sem spoilers" (handoff §3.9). */
 .movie-aside {
   position: sticky;
