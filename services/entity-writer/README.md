@@ -41,3 +41,89 @@ produzir texto editorial assistido por IA (Gemini) na Screena, e o faz **sempre 
 - **pt-BR primeiro** — saidas en/es nascem em `draft`/`noindex` ate revisao humana.
 - Status de bloco: `draft`, `ai_generated`, `needs_review`, `human_reviewed`,
   `published`, `needs_update`, `blocked`, `archived` — publicacao exige revisao humana.
+
+## Validacao com PostgreSQL real (dev, descartavel)
+
+```
+pnpm --filter @screena/entity-writer validate:real
+```
+
+Ferramenta de desenvolvimento **descartavel** (`scripts/validate-real-postgres.ts`) —
+nunca roda no render/produto. Sobe um PostgreSQL 16 **efemero** via `embedded-postgres`
+(mesmo padrao de `@screena/db`), aplica a migration e o seed existentes (sem criar
+migration nem alterar schema) e exercita os **adapters Prisma reais** de
+`src/persistence/*` ponta a ponta:
+
+`enqueue -> job queued -> claim -> payload source -> runner com FakeGeminiPort ->
+content_block (ai/ai_generated) -> entity_writer_log -> job completed com result_block_id`.
+
+Tambem cobre **deduplicacao** (skip por job ativo e por up-to-date) e **arquivamento**
+(regeneracao com `--force` arquiva o bloco `ai` antigo, cria o novo e preserva blocos
+`human`/`hybrid`). **Zero rede e zero Gemini real**; o banco efemero e derrubado e o
+diretorio temporario removido ao final. `DATABASE_URL` so existe em memoria — nunca em
+disco/.env.
+
+## Smoke manual do Gemini REAL (dev, nao persiste)
+
+```
+# AVISO: chama a API REAL do Gemini. Exige --confirm-live.
+tsx services/entity-writer/bin/smoke-gemini.ts --entity-type movie --entity-id 123 --language pt-BR --confirm-live
+tsx services/entity-writer/bin/smoke-gemini.ts --entity-type tv --entity-id 456 --language pt-BR --confirm-live
+# ou: pnpm --filter @screena/entity-writer smoke:gemini -- --entity-type movie --entity-id 123 --confirm-live
+```
+
+Responde, com uma entidade **real do banco**, a pergunta: *o Gemini real devolve JSON
+valido e passa pela validacao do Entity Writer?* Monta o `EntityPayload` via PayloadSource
+real, chama o **GeminiAdapter real** e roda `runGeneration`, imprimindo um resumo seguro
+(model, prompt_version, validation/review status, blockTypes, warnings, tokens, hashes).
+
+- **Chama API externa real** (Gemini) — por isso exige a flag **`--confirm-live`**; sem ela,
+  aborta **antes** de abrir o banco ou chamar a rede.
+- **NAO persiste por padrao**: nao salva `content_block`, nao grava log, nao cria/finaliza
+  job e nao publica — o smoke nem recebe portas de persistencia.
+- Variaveis necessarias (worker-only, so em env var): **`DATABASE_URL`**, **`GEMINI_API_KEY`**,
+  **`GEMINI_MODEL`**. So `movie`/`tv` e `pt-BR` nesta fase.
+- O resumo nunca imprime a chave, o payload completo nem a resposta crua do modelo.
+
+## Ciclo offline encadeado (enqueue missing -> runner)
+
+```
+tsx services/entity-writer/bin/run-offline.ts --entity-type movie --missing --limit 10 --fake --dry-run
+tsx services/entity-writer/bin/run-offline.ts --entity-type movie --missing --limit 10 --fake
+tsx services/entity-writer/bin/run-offline.ts --entity-type tv --missing --limit 25 --confirm-live   # Gemini REAL
+# ou: pnpm --filter @screena/entity-writer run:offline -- --entity-type movie --missing --limit 10
+```
+
+Encadeia, numa unica passada controlada, **enqueue dos faltantes -> runner**. Serve para
+exercitar o ciclo offline completo **sem depender de chave Gemini real**. NUNCA cria
+daemon/cron/systemd e NUNCA publica.
+
+- **Gemini FAKE por padrao** (e sempre em `--dry-run`/`--fake`). O Gemini REAL so e usado com
+  `--confirm-live` explicito (que exige `GEMINI_API_KEY`/`GEMINI_MODEL`).
+- **`--missing` e `--limit N` obrigatorios**; `--entity-type movie|tv`; `--language pt-BR`.
+- **`--dry-run`** nao escreve nada: o enqueue conta o que criaria e o runner so faz "peek".
+- `DATABASE_URL` sempre necessario (o ciclo le/escreve o PostgreSQL).
+
+## Inspecao READ-ONLY do estado operacional
+
+```
+tsx services/entity-writer/bin/inspect.ts --limit 20
+tsx services/entity-writer/bin/inspect.ts --entity-type movie --json
+# ou: pnpm --filter @screena/entity-writer inspect -- --limit 20
+```
+
+Responde rapidamente ao estado operacional do Entity Writer: **jobs por status/tipo/entidade**,
+**content_blocks por review_status/tipo/origem**, **entidades com blocos**, **falhas e logs
+recentes** e se ha **fila acumulada** (jobs `queued`).
+
+- **SOMENTE LEITURA.** Usa apenas `groupBy`/`findMany`; nunca escreve, nunca cria job, nunca
+  roda o runner, nunca publica, **nao chama Gemini** e nao persiste nada (travado por teste
+  estrutural).
+- **Exige `DATABASE_URL`** — sem ela, aborta **antes** de qualquer query (nunca abre conexao).
+- **Flags:** `--limit N` (default `20`, teto `200`), `--entity-type movie|tv|season|episode|person`
+  (opcional), `--language pt-BR` (default; aceita qualquer idioma como filtro para inspecionar
+  rascunhos), `--json` (saida estruturada; sem ela, resumo legivel).
+- **Nunca imprime** API key, payload completo, resposta crua do Gemini, segredo nem stack trace
+  longo: mensagens de erro saem **resumidas** (1a linha, truncada).
+- Camada pura testavel em `src/inspect/*`; adapter Prisma read-only em
+  `src/persistence/inspect-store.ts`.

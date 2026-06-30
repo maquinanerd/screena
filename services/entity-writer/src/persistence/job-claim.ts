@@ -88,7 +88,7 @@ function selectQueued(
     return tx.$queryRaw<RawJobRow[]>`
       SELECT id, entity_type, entity_id, language_code
       FROM entity_writer_jobs
-      WHERE status::text = 'queued' AND id = ${BigInt(jobId)}
+      WHERE status::text = 'queued' AND id = ${BigInt(jobId)} AND language_code = ${language}
       ORDER BY priority DESC, created_at ASC
       FOR UPDATE SKIP LOCKED
       LIMIT 1`;

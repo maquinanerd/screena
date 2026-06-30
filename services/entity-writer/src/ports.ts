@@ -73,9 +73,15 @@ export interface ContentBlockRecord {
   readonly warnings: readonly string[];
 }
 
-/** Porta de persistencia de `content_blocks` (adapter Prisma futuro). */
+/** Resultado de uma persistencia de bloco: o id REAL do bloco criado. */
+export interface ContentBlockSaveResult {
+  /** Id do `content_block` recem-criado (BigInt serializado como string). */
+  readonly blockId: string;
+}
+
+/** Porta de persistencia de `content_blocks` (adapter Prisma). */
 export interface ContentBlockStorePort {
-  save(record: ContentBlockRecord): Promise<void>;
+  save(record: ContentBlockRecord): Promise<ContentBlockSaveResult>;
 }
 
 /**
@@ -156,4 +162,97 @@ export interface ClaimOptions {
  */
 export interface JobClaimPort {
   claimNext(options: ClaimOptions): Promise<ClaimedJob | null>;
+}
+
+// ============================================================
+// Enqueue (Fase 3B.4): criacao de jobs de geracao editorial
+// ============================================================
+
+/**
+ * Subconjunto de um `content_block` ja existente relevante para decidir enqueue.
+ * Strings cruas (sem BigInt/Date) para manter o planner puro e testavel; o
+ * adapter Prisma converte ao ler.
+ */
+export interface ExistingBlockRef {
+  /** Tipo do bloco (espelha ContentBlockType; comparado como string). */
+  readonly blockType: string;
+  /** Estado de revisao (espelha ReviewStatus; comparado como string). */
+  readonly reviewStatus: string;
+  /** `input_hash` do bloco (hash do payload que o gerou). */
+  readonly inputHash: string;
+  /** `prompt_version` do bloco. */
+  readonly promptVersion: string;
+}
+
+/**
+ * Porta de LEITURA do estado do alvo para o enqueue. Le SO do banco; nunca cria
+ * nada. `findActiveBlocks` retorna blocos nao-arquivados; `hasActiveJob` indica
+ * se ha job ativo (`queued`/`claimed`/`running`) para o alvo — em QUALQUER
+ * `job_type` (guarda mais estrita que a unique parcial, que e por job_type).
+ */
+export interface EnqueueReadPort {
+  findActiveBlocks(target: BuildPayloadRequest): Promise<readonly ExistingBlockRef[]>;
+  hasActiveJob(target: BuildPayloadRequest): Promise<boolean>;
+}
+
+/**
+ * Tipo de job que o enqueue pode criar. NUNCA `translate_block` nesta fase
+ * (en/es ficam de fora). Subconjunto do enum JobType do PostgreSQL.
+ */
+export type EnqueueJobType = "generate_block" | "regenerate_block";
+
+/**
+ * Entrada de criacao de UM job em `entity_writer_jobs` — SOMENTE colunas reais.
+ * O adapter grava `status='queued'`; nao existe review_status em jobs. O
+ * `payloadHash` vai para `payload_hash` e `promptVersion` para `prompt_version`.
+ */
+export interface EnqueueJobInput {
+  readonly entityType: EntityType;
+  readonly entityId: string;
+  readonly languageCode: string;
+  readonly jobType: EnqueueJobType;
+  readonly payloadHash: string;
+  readonly promptVersion: string;
+}
+
+/**
+ * Resultado cru de uma insercao de job. `created=false` sinaliza corrida: a
+ * unique parcial de job ativo barrou a insercao (outro worker enfileirou antes).
+ */
+export interface JobInsertResult {
+  readonly created: boolean;
+  readonly jobId: string | null;
+}
+
+/**
+ * Porta de criacao de jobs em `entity_writer_jobs` (adapter Prisma). Insere com
+ * `status='queued'` e trata a corrida pela unique parcial de job ativo
+ * (`entity_writer_jobs_active_unique`), devolvendo `created=false` em vez de lancar.
+ */
+export interface JobEnqueuePort {
+  createJob(input: EnqueueJobInput): Promise<JobInsertResult>;
+}
+
+/**
+ * Consulta de DESCOBERTA de candidatos a enqueue em lote (Fase 3B.5). Pagina por
+ * cursor de id crescente (`afterId`), para varredura determinística e estavel.
+ */
+export interface EnqueueCandidateQuery {
+  /** Tipo da entidade-raiz a varrer. So `movie`/`tv` (outros sao recusados). */
+  readonly entityType: EntityType;
+  /** Tamanho maximo da pagina retornada. */
+  readonly limit: number;
+  /** Cursor: retorna apenas ids ESTRITAMENTE maiores que este (ordenacao id ASC). */
+  readonly afterId?: string;
+}
+
+/**
+ * Porta de DESCOBERTA de candidatos a enqueue. Lista ids basicos por tipo
+ * (ordenados por id ASC), SEM decidir nada: a decisao real (faltante / job ativo
+ * / up-to-date) fica no planner, via `enqueueOne`. Le SO do banco; nunca cria
+ * job, nunca chama Gemini. Tipos nao suportados (`person`/`season`/`episode`)
+ * fazem o adapter lancar erro controlado.
+ */
+export interface EnqueueCandidateSourcePort {
+  findCandidates(query: EnqueueCandidateQuery): Promise<readonly string[]>;
 }

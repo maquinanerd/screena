@@ -59,6 +59,8 @@ export interface JobReport {
   readonly reviewStatus?: string;
   readonly blockCount: number;
   readonly warningCount: number;
+  /** Id do bloco apontado pelo job (quando houve bloco criado). */
+  readonly resultBlockId?: string;
   readonly error?: string;
 }
 
@@ -163,21 +165,24 @@ async function processOne(
     return { ...base, outcome: "dry-run", reviewStatus, blockCount, warningCount };
   }
 
-  // 5. Persiste blocos + log (fora de dry-run).
+  // 5. Persiste blocos + log (fora de dry-run). Coleta os ids reais criados.
+  const createdBlocks: { blockType: string; blockId: string }[] = [];
   try {
     for (const candidate of outcome.blockCandidates) {
-      await deps.contentBlocks.save(candidate);
+      const { blockId } = await deps.contentBlocks.save(candidate);
+      createdBlocks.push({ blockType: candidate.blockType, blockId });
     }
     await deps.logs.write(outcome.logCandidate);
   } catch (error) {
     return failJob(deps, options, base, "failed", `erro de persistencia: ${errMessage(error)}`, log);
   }
 
-  // 6. Finaliza o job conforme a decisao do core (nunca published/human_reviewed).
+  // 6. Finaliza o job apontando para o bloco criado (nunca published/human_reviewed).
   const isBlocked = reviewStatus === "blocked";
   const status = isBlocked ? "blocked" : "completed";
   const lastError = isBlocked ? (outcome.result.warnings[0] ?? "saida bloqueada") : null;
-  await deps.jobs.finishJob({ jobId: job.id, status, resultBlockId: null, lastError });
+  const resultBlockId = pickResultBlockId(createdBlocks);
+  await deps.jobs.finishJob({ jobId: job.id, status, resultBlockId, lastError });
 
   const outcomeLabel = isBlocked ? "blocked" : reviewStatus === "needs_review" ? "needs_review" : "succeeded";
   log(`job ${job.id}: ${outcomeLabel} (${blockCount} bloco(s), ${warningCount} warning(s)).`);
@@ -187,8 +192,21 @@ async function processOne(
     reviewStatus,
     blockCount,
     warningCount,
+    ...(resultBlockId !== null ? { resultBlockId } : {}),
     ...(isBlocked && lastError ? { error: lastError } : {}),
   };
+}
+
+/**
+ * Escolhe o `result_block_id` do job: prefere o bloco `editorial_intro`; senao o
+ * primeiro bloco criado; se nada foi criado (ex.: blocked), retorna `null`.
+ */
+function pickResultBlockId(
+  created: readonly { blockType: string; blockId: string }[],
+): string | null {
+  const editorial = created.find((block) => block.blockType === "editorial_intro");
+  if (editorial) return editorial.blockId;
+  return created[0]?.blockId ?? null;
 }
 
 /**
