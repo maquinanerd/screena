@@ -11,6 +11,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "validate:movie-page": "tsx scripts/validate-movie-page-real-postgres.ts",
+    "validate:series-page": "tsx scripts/validate-series-page-real-postgres.ts",
     "seed:dev-movie": "tsx scripts/seed-dev-movie.ts"
   },
   "dependencies": {
