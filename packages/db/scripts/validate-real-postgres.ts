@@ -83,6 +83,8 @@ const EXPECTED_TABLES = [
   "external_ratings", "source_licenses", "watch_availability", "page_indexability_decisions",
   "countries", "languages", "slugs", "redirects", "api_sync_logs", "api_cache",
   "rating_sources", "api_providers", "entity_external_ids",
+  // Fase 4F-A — ambiente editorial/blog.
+  "articles", "article_translations", "entity_news_links",
 ];
 const EXPECTED_ENUMS = [
   "EntityType", "ContentBlockType", "ContentSource", "ReviewStatus", "TranslationStatus",
@@ -114,7 +116,7 @@ async function runChecks(url: string): Promise<void> {
       "SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'",
     )).map((r) => r.table_name).filter((t) => t !== "_prisma_migrations");
     const missing = EXPECTED_TABLES.filter((t) => !tables.includes(t));
-    record(3, "24 tabelas esperadas", tables.length === 24 && missing.length === 0,
+    record(3, "27 tabelas esperadas", tables.length === 27 && missing.length === 0,
       `encontradas ${tables.length}${missing.length ? ", faltando " + missing.join(",") : ""}`);
 
     // 4. 13 enums esperados
