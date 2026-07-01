@@ -98,7 +98,7 @@ type PrismaLike = {
 /** Cria um Article publicavel|rascunho + traducao pt-BR + link para uma entidade. */
 async function seedRelatedArticle(
   prisma: PrismaLike,
-  opts: { slug: string; title: string; reviewStatus: string; entityType: string; entityId: bigint },
+  opts: { slug: string; title: string; reviewStatus: string; entityType: string; entityId: bigint; indexStatus?: string },
 ): Promise<void> {
   const article = await prisma.article.create({
     data: {
@@ -116,7 +116,7 @@ async function seedRelatedArticle(
       title: opts.title,
       body: "Corpo editorial proprio e substancial. ".repeat(8),
       reviewStatus: opts.reviewStatus,
-      indexStatus: "index",
+      indexStatus: opts.indexStatus ?? "index",
       publishedAt: new Date("2026-06-30T12:00:00.000Z"),
     },
   });
@@ -310,9 +310,10 @@ async function runChecks(prisma: PrismaLike, getMoviePageData: GetMoviePageData)
     ],
   });
   // 4G: noticias relacionadas reais via EntityNewsLink. A publicada aparece; o
-  // rascunho e descartado pelo mesmo gate das paginas de noticias.
+  // rascunho e noindex sao descartados pelo gate de related news.
   await seedRelatedArticle(prisma, { slug: "noticia-do-filme", title: "Noticia do Filme", reviewStatus: "published", entityType: "movie", entityId: BigInt(richId) });
   await seedRelatedArticle(prisma, { slug: "rascunho-do-filme", title: "Rascunho", reviewStatus: "draft", entityType: "movie", entityId: BigInt(richId) });
+  await seedRelatedArticle(prisma, { slug: "noindex-do-filme", title: "Noindex", reviewStatus: "published", indexStatus: "noindex", entityType: "movie", entityId: BigInt(richId) });
 
   // F: consulta pelo slug ALIAS (nao-canonico) para provar que o canonical
   // resolvido vem do slug canonico, nao do slug consultado.
@@ -322,7 +323,7 @@ async function runChecks(prisma: PrismaLike, getMoviePageData: GetMoviePageData)
   record(13, "D. indexability.decision === index", richByAlias?.indexability.decision === "index", `decision=${richByAlias?.indexability.decision}`);
   record(
     27,
-    "4G. noticia relacionada publicada aparece; rascunho fora; linka /pt/noticias/",
+    "4G. noticia relacionada publicada aparece; rascunho/noindex fora; linka /pt/noticias/",
     richByAlias?.relatedNews.length === 1 && richByAlias?.relatedNews[0]?.href === "/pt/noticias/noticia-do-filme/",
     `related=[${(richByAlias?.relatedNews ?? []).map((r) => r.href).join(", ")}]`,
   );

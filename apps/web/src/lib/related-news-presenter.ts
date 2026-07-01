@@ -16,15 +16,20 @@ import {
 /** Quantidade maxima de noticias relacionadas exibidas numa pagina de detalhe. */
 export const RELATED_NEWS_LIMIT = 4;
 
+export interface RelatedNewsItemInput extends NewsListItemInput {
+  indexStatus: string;
+}
+
 /**
  * Filtra publicaveis (via `buildNewsCard`), ordena por data desc (depois titulo)
  * e aplica o limite. Entrada vazia/sem publicaveis -> lista vazia (a secao some).
  */
 export function buildRelatedNewsCards(
-  items: NewsListItemInput[],
+  items: RelatedNewsItemInput[],
   limit: number = RELATED_NEWS_LIMIT,
 ): NewsCardView[] {
   const cards = items
+    .filter((item) => item.indexStatus === "index")
     .map(buildNewsCard)
     .filter((card): card is NewsCardView => card !== null);
   cards.sort((a, b) => {

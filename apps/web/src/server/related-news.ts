@@ -18,9 +18,11 @@ import { getPrismaClient } from "@screena/db/server";
 import {
   NEWS_RENDERABLE_REVIEW_STATUSES,
   type NewsCardView,
-  type NewsListItemInput,
 } from "../lib/news-presenter";
-import { buildRelatedNewsCards } from "../lib/related-news-presenter";
+import {
+  buildRelatedNewsCards,
+  type RelatedNewsItemInput,
+} from "../lib/related-news-presenter";
 
 const LANGUAGE_CODE = "pt-BR";
 
@@ -56,12 +58,14 @@ export async function getRelatedNewsForEntity(
     where: {
       articleId: { in: articleIds },
       languageCode: LANGUAGE_CODE,
+      indexStatus: "index",
       reviewStatus: { in: [...NEWS_RENDERABLE_REVIEW_STATUSES] },
     },
     select: {
       slug: true,
       title: true,
       deck: true,
+      indexStatus: true,
       reviewStatus: true,
       publishedAt: true,
       article: {
@@ -78,7 +82,7 @@ export async function getRelatedNewsForEntity(
     },
   });
 
-  const items: NewsListItemInput[] = rows.map((row) => ({
+  const items: RelatedNewsItemInput[] = rows.map((row) => ({
     authorName: row.article.authorName,
     category: row.article.category,
     heroImagePath: row.article.heroImagePath,
@@ -89,6 +93,7 @@ export async function getRelatedNewsForEntity(
     slug: row.slug,
     title: row.title,
     deck: row.deck,
+    indexStatus: String(row.indexStatus),
     reviewStatus: String(row.reviewStatus),
     translationPublishedAtIso: isoDate(row.publishedAt),
   }));

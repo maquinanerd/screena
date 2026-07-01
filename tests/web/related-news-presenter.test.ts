@@ -11,10 +11,10 @@ import { describe, expect, it } from "vitest";
 import {
   buildRelatedNewsCards,
   RELATED_NEWS_LIMIT,
+  type RelatedNewsItemInput,
 } from "../../apps/web/src/lib/related-news-presenter";
-import type { NewsListItemInput } from "../../apps/web/src/lib/news-presenter";
 
-function item(overrides: Partial<NewsListItemInput> = {}): NewsListItemInput {
+function item(overrides: Partial<RelatedNewsItemInput> = {}): RelatedNewsItemInput {
   return {
     authorName: null,
     category: null,
@@ -26,6 +26,7 @@ function item(overrides: Partial<NewsListItemInput> = {}): NewsListItemInput {
     slug: "artigo",
     title: "Artigo",
     deck: null,
+    indexStatus: "index",
     reviewStatus: "published",
     translationPublishedAtIso: "2026-06-30T12:00:00.000Z",
     ...overrides,
@@ -49,9 +50,13 @@ describe("buildRelatedNewsCards", () => {
     expect(buildRelatedNewsCards([item({ displayAllowed: false })])).toEqual([]);
     expect(buildRelatedNewsCards([item({ licenseStatus: "unknown" })])).toEqual([]);
     expect(buildRelatedNewsCards([item({ licenseStatus: "blocked" })])).toEqual([]);
+    expect(buildRelatedNewsCards([item({ indexStatus: "noindex" })])).toEqual([]);
   });
 
   it("imagem externa/tmdb/cru vira null; path local seguro e aceito", () => {
+    expect(
+      buildRelatedNewsCards([item({ heroImagePath: "http://example.com/x.jpg" })])[0]?.image,
+    ).toBeNull();
     expect(
       buildRelatedNewsCards([item({ heroImagePath: "https://image.tmdb.org/x.jpg" })])[0]?.image,
     ).toBeNull();
@@ -59,6 +64,12 @@ describe("buildRelatedNewsCards", () => {
     expect(
       buildRelatedNewsCards([item({ heroImagePath: "/media/news/a.webp" })])[0]?.image?.src,
     ).toBe("/media/news/a.webp");
+    expect(
+      buildRelatedNewsCards([item({ heroImagePath: "/uploads/news/a.jpg" })])[0]?.image?.src,
+    ).toBe("/uploads/news/a.jpg");
+    expect(
+      buildRelatedNewsCards([item({ heroImagePath: "/brand/news-a.png" })])[0]?.image?.src,
+    ).toBe("/brand/news-a.png");
   });
 
   it("ordena por publishedAt desc (depois titulo)", () => {
