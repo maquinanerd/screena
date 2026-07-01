@@ -682,3 +682,445 @@ a {
     padding: 20px 0 20px;
   }
 }
+
+/* Series page */
+
+.series-page {
+  --accent-series: var(--screena-series-green);
+  --link-series: #4f7445;
+  background: var(--bg-page);
+  padding-bottom: 4rem;
+}
+
+.series-page ::selection {
+  background: var(--accent-series);
+  color: #ffffff;
+}
+
+.series-page .breadcrumb a:hover {
+  color: var(--link-series);
+}
+
+.screena-badge--series {
+  background: var(--accent-series);
+  color: #ffffff;
+  letter-spacing: 0;
+}
+
+.series-topbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 32px;
+  align-items: start;
+  padding: 34px 0 28px;
+}
+
+.series-topbar__title {
+  margin: 0;
+  font-size: 34px;
+  font-weight: 800;
+  line-height: 1.12;
+  letter-spacing: 0;
+  color: var(--text-strong);
+}
+
+.series-topbar__year {
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0;
+}
+
+.series-topbar__badge {
+  margin: 12px 0 14px;
+}
+
+.series-topbar__meta {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.series-topbar__synopsis {
+  margin: 0;
+  max-width: 58ch;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--text-body);
+}
+
+.series-media {
+  width: 100%;
+  background: var(--bg-media);
+}
+
+.series-media__grid {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 3fr 2fr;
+  grid-template-areas: "poster stage tiles";
+  gap: 4px;
+  height: 520px;
+}
+
+.series-media__poster {
+  grid-area: poster;
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(150deg, #142016, #070b08);
+}
+
+.series-media__stage {
+  grid-area: stage;
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+  overflow: hidden;
+  padding: 28px;
+  background: linear-gradient(150deg, #22351f, #090d08);
+}
+
+.series-media__image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.series-media__stage .series-media__image {
+  position: absolute;
+  inset: 0;
+}
+
+.series-media__stage::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.08) 0%,
+    rgba(0, 0, 0, 0.1) 42%,
+    rgba(0, 0, 0, 0.62) 100%
+  );
+}
+
+.series-media__label {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.74);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.series-media__tiles {
+  grid-area: tiles;
+  display: grid;
+  grid-template-rows: 1fr 1fr 1fr;
+  gap: 4px;
+}
+
+.series-media__tile {
+  position: relative;
+  overflow: hidden;
+}
+
+.series-media__tile:nth-child(1) {
+  background: linear-gradient(150deg, #173323, #07110b);
+}
+
+.series-media__tile:nth-child(2) {
+  background: linear-gradient(150deg, #2c2b1f, #11100a);
+}
+
+.series-media__tile:nth-child(3) {
+  background: linear-gradient(150deg, #1d2930, #0a0f12);
+}
+
+.series-media__tile::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0) 40%,
+    rgba(0, 0, 0, 0.68) 100%
+  );
+}
+
+.series-synopsis,
+.series-seasons {
+  padding: 64px 0 0;
+  text-align: center;
+}
+
+.series-section-title {
+  margin: 0 0 32px;
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  color: var(--text-heading);
+}
+
+.series-section-title::after {
+  content: "";
+  display: block;
+  width: 44px;
+  height: 3px;
+  margin: 12px auto 0;
+  background: var(--accent-series);
+}
+
+.series-synopsis__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 40px;
+  align-items: start;
+  text-align: left;
+}
+
+.series-synopsis__main {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.series-block__body {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--text-body);
+  white-space: pre-wrap;
+}
+
+.series-aside {
+  position: sticky;
+  top: 24px;
+}
+
+.series-spoiler-card {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+  padding: 24px;
+  background: var(--bg-surface);
+  border: 1.5px dashed var(--accent-series);
+}
+
+.series-spoiler-card__mark {
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  border: 2px solid var(--accent-series);
+  background:
+    linear-gradient(90deg, transparent 48%, var(--accent-series) 48% 52%, transparent 52%),
+    linear-gradient(0deg, transparent 48%, var(--accent-series) 48% 52%, transparent 52%);
+}
+
+.series-spoiler-card__text {
+  min-width: 0;
+}
+
+.series-spoiler-card__label {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text-strong);
+}
+
+.series-spoiler-card__body {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-body);
+  white-space: pre-wrap;
+}
+
+.series-seasons__list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+  text-align: left;
+}
+
+.series-season {
+  padding: 24px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+}
+
+.series-season__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.series-season__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.25;
+  letter-spacing: 0;
+  color: var(--text-strong);
+}
+
+.series-season__meta {
+  margin: 0;
+  flex-shrink: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.series-season__overview {
+  margin: 14px 0 0;
+  max-width: var(--measure);
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--text-body);
+}
+
+.series-episode-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  margin: 20px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.series-episode-list__item {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.series-episode-list__number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  min-height: 28px;
+  border: 1px solid var(--accent-series);
+  color: var(--link-series);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.series-episode-list__content {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.series-episode-list__title {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text-strong);
+}
+
+.series-episode-list__meta {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.series-episode-list__overview {
+  max-width: var(--measure);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-body);
+}
+
+.series-review-notice {
+  margin: 40px 0 0;
+  padding: 14px 18px;
+  border-left: 3px solid var(--accent-series);
+  background: var(--bg-muted);
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+@media (max-width: 1024px) {
+  .series-synopsis__grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 32px;
+  }
+
+  .series-aside {
+    position: static;
+  }
+
+  .series-media__grid {
+    grid-template-columns: 1fr 1.7fr;
+    grid-template-areas:
+      "poster stage"
+      "tiles tiles";
+    height: auto;
+  }
+
+  .series-media__poster,
+  .series-media__stage {
+    min-height: 300px;
+  }
+
+  .series-media__tiles {
+    grid-template-rows: none;
+    grid-template-columns: repeat(3, 1fr);
+    height: 120px;
+  }
+}
+
+@media (max-width: 560px) {
+  .series-topbar {
+    padding: 20px 0;
+  }
+
+  .series-topbar__title {
+    font-size: 28px;
+  }
+
+  .series-media__grid {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "stage"
+      "tiles";
+  }
+
+  .series-media__poster {
+    display: none;
+  }
+
+  .series-media__stage {
+    min-height: 240px;
+    padding: 18px;
+  }
+
+  .series-media__tiles {
+    height: 88px;
+  }
+
+  .series-season__head {
+    display: grid;
+    gap: 6px;
+  }
+
+  .series-season__meta {
+    flex-shrink: 1;
+  }
+
+  .series-episode-list__item {
+    grid-template-columns: 46px minmax(0, 1fr);
+    gap: 12px;
+  }
+}
