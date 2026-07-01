@@ -28,6 +28,20 @@ const BLOCK_TYPE_ORDER = [
   "review_summary",
 ] as const;
 
+const LOCAL_IMAGE_PREFIXES = ["/media/", "/uploads/", "/brand/"] as const;
+const LOCAL_IMAGE_EXTENSION_PATTERN = /\.(?:avif|jpg|jpeg|png|webp)$/i;
+
+interface LocalImageSpec {
+  width: number;
+  height: number;
+}
+
+const POSTER_IMAGE_SPEC: LocalImageSpec = { width: 342, height: 513 };
+const BACKDROP_IMAGE_SPEC: LocalImageSpec = {
+  width: 1280,
+  height: 720,
+};
+
 /** Subconjunto do registro `movies` necessario para a pagina. */
 export interface MovieRecordInput {
   /** `movies.title_original` — fallback final do titulo exibido. */
@@ -36,6 +50,10 @@ export interface MovieRecordInput {
   year: number | null;
   /** `movies.runtime_minutes` ou null. */
   runtimeMinutes: number | null;
+  /** `movies.poster_path` salvo offline; nunca uma URL livre do banco. */
+  posterPath: string | null;
+  /** `movies.backdrop_path` salvo offline; nunca uma URL livre do banco. */
+  backdropPath: string | null;
 }
 
 /** Subconjunto de `entity_translations` (pt-BR) usado pela pagina. */
@@ -59,6 +77,20 @@ export interface RenderableMovieBlock {
   content: string;
 }
 
+/** Imagem ja normalizada para render publico. */
+export interface MovieImageAsset {
+  src: string;
+  width: number;
+  height: number;
+}
+
+/** Modelo de midia visual da pagina. */
+export interface MovieMediaView {
+  poster: MovieImageAsset | null;
+  backdrop: MovieImageAsset | null;
+  hasRealImage: boolean;
+}
+
 /** Modelo de exibicao final da pagina de filme. */
 export interface MoviePageView {
   title: string;
@@ -69,6 +101,7 @@ export interface MoviePageView {
   metaDescription: string | null;
   blocks: RenderableMovieBlock[];
   renderableBlockCount: number;
+  media: MovieMediaView;
 }
 
 /** Normaliza string opcional para `null` quando vazia/ausente (apos trim). */
@@ -76,6 +109,47 @@ function trimToNull(value: string | null | undefined): string | null {
   if (value == null) return null;
   const trimmed = value.trim();
   return trimmed === "" ? null : trimmed;
+}
+
+/**
+ * Normaliza caminhos de imagem locais ja servidos pelo proprio app.
+ *
+ * Politica desta fase: paths TMDB crus (`/abc.jpg`) continuam `null`, porque
+ * eles so fazem sentido combinados com CDN externa. URLs absolutas externas,
+ * protocolo-relativo, query/hash e traversal tambem sao recusados.
+ */
+export function normalizeLocalImagePath(
+  path: string | null | undefined,
+): string | null {
+  const value = trimToNull(path);
+  if (value === null) return null;
+  if (/^https?:\/\//i.test(value) || value.startsWith("//")) return null;
+  if (value.includes("\\") || value.includes("?") || value.includes("#")) {
+    return null;
+  }
+  if (value.split("/").includes("..")) return null;
+  if (!LOCAL_IMAGE_PREFIXES.some((prefix) => value.startsWith(prefix))) {
+    return null;
+  }
+  return LOCAL_IMAGE_EXTENSION_PATTERN.test(value) ? value : null;
+}
+
+function imageAsset(
+  path: string | null,
+  spec: LocalImageSpec,
+): MovieImageAsset | null {
+  const src = normalizeLocalImagePath(path);
+  if (src === null) return null;
+  return { src, width: spec.width, height: spec.height };
+}
+
+/** Seleciona poster/backdrop renderizaveis sem chamar rede nem inventar asset. */
+export function selectMovieMedia(
+  record: Pick<MovieRecordInput, "posterPath" | "backdropPath">,
+): MovieMediaView {
+  const poster = imageAsset(record.posterPath, POSTER_IMAGE_SPEC);
+  const backdrop = imageAsset(record.backdropPath, BACKDROP_IMAGE_SPEC);
+  return { poster, backdrop, hasRealImage: poster !== null || backdrop !== null };
 }
 
 /** Titulo exibido: traducao pt-BR, senao titulo original. Nunca inventado. */
@@ -153,5 +227,6 @@ export function presentMovie(input: PresentMovieInput): MoviePageView {
     metaDescription: selectMetaDescription(input.translation),
     blocks,
     renderableBlockCount: blocks.length,
+    media: selectMovieMedia(input.record),
   };
 }

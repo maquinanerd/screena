@@ -91,6 +91,19 @@ const FETCH_PATTERNS = EXTERNAL_HOSTS.map((host) => ({
 }));
 
 /**
+ * Literais proibidos em apps/web mesmo quando nao aparecem em fetch. Cobre CDNs
+ * remotos de imagem: nesta fase o render publico so pode apontar para paths
+ * locais seguros.
+ * @type {{ name: string, regex: RegExp }[]}
+ */
+const FORBIDDEN_LITERAL_PATTERNS = [
+  {
+    name: "referencia ao CDN remoto de imagens TMDB ('image.tmdb.org')",
+    regex: /image\.tmdb\.org/i,
+  },
+];
+
+/**
  * Imports proibidos em arquivos de pagina/layout.
  * @type {{ name: string, regex: RegExp }[]}
  */
@@ -326,6 +339,12 @@ async function scanWeb() {
       const raw = lines[i];
       const line = stripLineComment(raw);
       if (line.trim() === '') continue;
+
+      for (const { name, regex } of FORBIDDEN_LITERAL_PATTERNS) {
+        if (regex.test(raw)) {
+          violations.push(`${name} em ${rel(absFile)}:${i + 1} -> ${raw.trim()}`);
+        }
+      }
 
       // (1) fetch externo — proibido em qualquer arquivo de render.
       for (const { name, regex } of FETCH_PATTERNS) {

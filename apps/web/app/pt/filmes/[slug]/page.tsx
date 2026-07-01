@@ -8,9 +8,10 @@ import { MOVIES_INDEX_PATH, SITE_URL } from "../../../../src/lib/site";
  * Pagina publica de filme — /pt/filmes/[slug]/ (schema Movie, acento vermelho).
  *
  * Tela "Movie Detail" do handoff de design (White Cinematic Editorial): header
- * editorial (badge "Filme" + titulo + ano + duracao), faixa de midia como
- * PLACEHOLDER visual decorativo (sem dados falsos), blocos editoriais reais e
- * card lateral "Resumo sem spoilers" quando o bloco existir. Ratings, onde
+ * editorial (badge "Filme" + titulo + ano + duracao), faixa de midia preparada
+ * para poster/backdrop locais seguros (fallback visual quando ausentes),
+ * blocos editoriais reais e card lateral "Resumo sem spoilers" quando existir.
+ * Ratings, onde
  * assistir, elenco, bilheteria, premios e relacionados ficam FORA DE ESCOPO
  * nesta fase — sao omitidos (nunca placeholders que finjam features).
  *
@@ -166,15 +167,34 @@ export default async function MoviePage({
         </section>
       </div>
 
-      {/* Faixa de midia full-bleed do design (grid 1fr/3fr/2fr, 540px): poster,
-          palco de trailer/cena (com botao de play) e tres tiles. 100% decorativa
-          (aria-hidden): sem <img> inventado, sem legendas/contagens, sem rotulos
-          de feature — apenas a composicao cinematografica. */}
-      <div className="movie-media" aria-hidden="true">
+      {/* Faixa de midia full-bleed do design: poster/backdrop reais somente
+          quando forem paths locais seguros; caso contrario, placeholders visuais. O
+          play continua placeholder nao interativo ate existir trailer legal no banco.
+          Sem legendas ou contagens inventadas. */}
+      <div className={`movie-media${view.media.hasRealImage ? " movie-media--real" : ""}`}>
         <div className="movie-media__grid">
-          <div className="movie-media__poster" />
+          <div className="movie-media__poster">
+            {view.media.poster !== null ? (
+              <img
+                src={view.media.poster.src}
+                alt={`Poster de ${view.title}`}
+                width={view.media.poster.width}
+                height={view.media.poster.height}
+                className="movie-media__image"
+              />
+            ) : null}
+          </div>
           <div className="movie-media__stage">
-            <span className="movie-media__play">
+            {view.media.backdrop !== null ? (
+              <img
+                src={view.media.backdrop.src}
+                alt=""
+                width={view.media.backdrop.width}
+                height={view.media.backdrop.height}
+                className="movie-media__image"
+              />
+            ) : null}
+            <span className="movie-media__play" aria-hidden="true">
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path fill="currentColor" d="M7 4.6v14.8L19.5 12z" />
               </svg>
