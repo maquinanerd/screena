@@ -265,7 +265,7 @@ a {
   grid-template-columns: 1.45fr 1.25fr 1fr;
   gap: 40px;
   align-items: start;
-  padding: 34px 0 28px;
+  padding: 36px 0 28px;
 }
 
 /* Variacao "solo" — rota real sem ratings/streaming reais: apenas a coluna
@@ -284,11 +284,13 @@ a {
   color: var(--text-strong);
 }
 
-/* Ano dentro do h1 — peso 600 em cinza (design). */
+/* Ano dentro do h1 — peso 600 em cinza (design). O tracking acompanha o do
+   titulo (-0.03em): no design o <span> do ano nao define letter-spacing e
+   herda o do h1, entao a fidelidade pede o mesmo -0.03em, nao um valor solto. */
 .movie-topbar__year {
   font-weight: 600;
   color: var(--text-muted);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
 }
 
 .movie-topbar__badge {
