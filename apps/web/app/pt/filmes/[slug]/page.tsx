@@ -136,39 +136,84 @@ export default async function MoviePage({
           </ol>
         </nav>
 
-        <article className="movie" data-vertical="movie">
-          <header className="movie__header">
+        {/* Top info bar do design — grid 3 colunas (1.45fr 1.25fr 1fr).
+            Coluna 1: dados reais (titulo, ano, badge, sinopse curta). Colunas 2
+            e 3 (avaliacoes / onde assistir) sao PLACEHOLDERS decorativos porque
+            ratings e streaming estao fora de escopo: nenhuma nota, logo ou
+            plataforma inventada. aria-hidden para nao anunciar features. */}
+        <section className="movie-topbar" data-vertical="movie">
+          <div className="movie-topbar__lead">
+            <h1 className="movie-topbar__title">
+              {view.title}
+              {view.year !== null ? (
+                <span className="movie-topbar__year"> ({view.year})</span>
+              ) : null}
+            </h1>
             {/* Badge + label textual: dois dos cinco sinais da invariante 11. */}
-            <p className="movie__kicker">
+            <p className="movie-topbar__badge">
               <span data-vertical="movie" className="screena-badge screena-badge--movie">
                 Filme
               </span>
             </p>
-
-            <h1 className="movie__title">
-              {view.title}
-              {view.year !== null ? (
-                <span className="movie__year"> ({view.year})</span>
-              ) : null}
-            </h1>
-
             {runtimeLabel !== null ? (
-              <p className="movie__meta">{runtimeLabel}</p>
+              <p className="movie-topbar__meta">{runtimeLabel}</p>
             ) : null}
-          </header>
-        </article>
+            {view.metaDescription !== null ? (
+              <p className="movie-topbar__synopsis">{view.metaDescription}</p>
+            ) : null}
+          </div>
+
+          <div className="movie-ratings" aria-hidden="true">
+            <p className="movie-col-label">Avaliacoes</p>
+            <div className="movie-ratings__boxes">
+              <div className="movie-ratings__box">
+                <span className="movie-skel movie-skel--logo" />
+                <span className="movie-skel movie-skel--score" />
+              </div>
+              <div className="movie-ratings__box">
+                <span className="movie-skel movie-skel--logo" />
+                <span className="movie-skel movie-skel--score" />
+              </div>
+              <div className="movie-ratings__box">
+                <span className="movie-skel movie-skel--logo" />
+                <span className="movie-skel movie-skel--score" />
+              </div>
+            </div>
+          </div>
+
+          <div className="movie-watch" aria-hidden="true">
+            <p className="movie-col-label">Onde assistir</p>
+            <div className="movie-watch__chips">
+              <span className="movie-watch__chip">
+                <span className="movie-skel movie-skel--chip" />
+              </span>
+              <span className="movie-watch__chip">
+                <span className="movie-skel movie-skel--chip" />
+              </span>
+              <span className="movie-watch__chip">
+                <span className="movie-skel movie-skel--chip" />
+              </span>
+              <span className="movie-watch__chip">
+                <span className="movie-skel movie-skel--chip" />
+              </span>
+            </div>
+          </div>
+        </section>
       </div>
 
-      {/* Faixa de midia: placeholder visual decorativo (handoff §3.6) — poster
-          a esquerda, palco de trailer/cena ao centro (com botao de play) e tres
-          tiles a direita. Sem <img> inventado, sem contagens falsas, sem dados de
-          terceiros — apenas o skeleton cinematografico. aria-hidden: nada de
-          informativo para leitores de tela. */}
+      {/* Faixa de midia full-bleed do design (grid 1fr/3fr/2fr, 540px): poster,
+          palco de trailer/cena (com botao de play) e tres tiles. 100% decorativa
+          (aria-hidden): sem <img> inventado, sem legendas/contagens, sem rotulos
+          de feature — apenas a composicao cinematografica. */}
       <div className="movie-media" aria-hidden="true">
         <div className="movie-media__grid">
           <div className="movie-media__poster" />
           <div className="movie-media__stage">
-            <span className="movie-media__play" />
+            <span className="movie-media__play">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path fill="currentColor" d="M7 4.6v14.8L19.5 12z" />
+              </svg>
+            </span>
           </div>
           <div className="movie-media__tiles">
             <span className="movie-media__tile" />
@@ -178,38 +223,60 @@ export default async function MoviePage({
         </div>
       </div>
 
-      <div className="container">
-        {hasEditorial ? (
-          <section className="movie-editorial">
-            <div className="movie-editorial__main">
-              {mainBlocks.map((block) => (
-                <div
-                  key={block.blockType}
-                  className="movie-block"
-                  data-block-type={block.blockType}
-                >
-                  <p className="movie-block__body">{block.content}</p>
-                </div>
-              ))}
+      {hasEditorial ? (
+        <div className="container">
+          <section className="movie-synopsis">
+            <h2 className="movie-synopsis__title">Sinopse</h2>
+            <div className="movie-synopsis__grid">
+              <div className="movie-synopsis__main">
+                {mainBlocks.map((block) => (
+                  <div
+                    key={block.blockType}
+                    className="movie-block"
+                    data-block-type={block.blockType}
+                  >
+                    <p className="movie-block__body">{block.content}</p>
+                  </div>
+                ))}
+              </div>
+
+              {summaryBlock !== null ? (
+                <aside className="movie-aside">
+                  <div className="spoiler-card" data-block-type={summaryBlock.blockType}>
+                    <svg
+                      className="spoiler-card__icon"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.7"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <circle cx="9" cy="8" r="3.2" />
+                      <path d="M3.2 20a5.8 5.8 0 0 1 11.6 0" />
+                      <path d="M16.5 5.6a3 3 0 0 1 0 5.8" />
+                      <path d="M17 13.6a5.6 5.6 0 0 1 3.8 6.4" />
+                    </svg>
+                    <div className="spoiler-card__text">
+                      <p className="spoiler-card__label">Resumo sem spoilers</p>
+                      <p className="spoiler-card__body">{summaryBlock.content}</p>
+                    </div>
+                  </div>
+                </aside>
+              ) : null}
             </div>
-
-            {summaryBlock !== null ? (
-              <aside className="movie-aside">
-                <div className="spoiler-card" data-block-type={summaryBlock.blockType}>
-                  <p className="spoiler-card__label">Resumo sem spoilers</p>
-                  <p className="spoiler-card__body">{summaryBlock.content}</p>
-                </div>
-              </aside>
-            ) : null}
           </section>
-        ) : null}
+        </div>
+      ) : null}
 
-        {isUnderReview ? (
+      {isUnderReview ? (
+        <div className="container">
           <p className="review-notice" data-editorial-state="in-review">
             Esta pagina ainda esta em revisao editorial.
           </p>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
       <script
         type="application/ld+json"

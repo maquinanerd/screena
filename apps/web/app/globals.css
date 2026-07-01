@@ -140,16 +140,52 @@ a {
 }
 
 /* ------------------------------------------------------------------ */
-/* Top info bar / header                                              */
+/* Top info bar — grid 3 colunas (1.45fr 1.25fr 1fr) do design.        */
+/* Col 1: dados reais. Cols 2/3 (avaliacoes / onde assistir): ratings  */
+/* e streaming estao FORA DE ESCOPO -> placeholders decorativos, sem   */
+/* nota/logo/plataforma inventados (aria-hidden no markup).            */
 /* ------------------------------------------------------------------ */
 
-.movie__header {
-  margin: 0;
-  padding: 22px 0 20px;
+.movie-topbar {
+  display: grid;
+  grid-template-columns: 1.45fr 1.25fr 1fr;
+  gap: 40px;
+  align-items: start;
+  padding: 34px 0 28px;
 }
 
-.movie__kicker {
-  margin: 0 0 14px;
+.movie-topbar__title {
+  margin: 0;
+  font-size: clamp(1.9rem, 3.4vw, 34px);
+  font-weight: 800;
+  line-height: 1.12;
+  letter-spacing: -0.03em;
+  color: var(--text-strong);
+}
+
+/* Ano dentro do h1 — peso 600 em cinza (design). */
+.movie-topbar__year {
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: -0.02em;
+}
+
+.movie-topbar__badge {
+  margin: 12px 0 14px;
+}
+
+.movie-topbar__meta {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.movie-topbar__synopsis {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--text-body);
+  max-width: 58ch;
 }
 
 /* Badge "Filme" — acento vermelho, cantos retos (um dos cinco sinais). */
@@ -169,77 +205,101 @@ a {
   color: #ffffff;
 }
 
-.movie__title {
-  margin: 0 0 12px;
-  font-size: clamp(2rem, 4.4vw, 40px);
-  font-weight: 800;
-  line-height: 1.08;
-  letter-spacing: -0.03em;
+/* Label das colunas 2/3 (design: 13px/700). */
+.movie-col-label {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 700;
   color: var(--text-strong);
 }
 
-/* Acento cinematografico curto sob o titulo (um toque, nao um divisor). */
-.movie__title::after {
-  content: "";
+/* --- Coluna 2: avaliacoes (placeholder decorativo, sem numeros) --- */
+.movie-ratings__boxes {
+  display: flex;
+  gap: 10px;
+}
+
+.movie-ratings__box {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+  padding: 14px 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+}
+
+/* --- Coluna 3: onde assistir (chips placeholder, sem marcas) --- */
+.movie-watch__chips {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.movie-watch__chip {
+  display: inline-flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 18px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+}
+
+/* Barra de esqueleto — leitura claramente decorativa (nao e dado). */
+.movie-skel {
   display: block;
+  background: repeating-linear-gradient(
+    135deg,
+    #ece7de,
+    #ece7de 6px,
+    #f3efe8 6px,
+    #f3efe8 12px
+  );
+}
+
+.movie-skel--logo {
   width: 46px;
-  height: 3px;
-  margin-top: 14px;
-  background: var(--accent-movie);
+  height: 20px;
 }
 
-/* Ano dentro do h1 — peso 600 em cinza (handoff §3.4). */
-.movie__year {
-  font-weight: 600;
-  color: var(--text-muted);
-  letter-spacing: -0.02em;
+.movie-skel--score {
+  width: 34px;
+  height: 16px;
 }
 
-.movie__meta {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 0.95rem;
+.movie-skel--chip {
+  width: 58px;
+  height: 14px;
 }
 
 /* ------------------------------------------------------------------ */
-/* Faixa de midia — PLACEHOLDER visual decorativo (sem dados falsos)  */
-/* Composicao do handoff (§3.6): poster (1fr) · trailer/cena (3fr) ·  */
-/* tres tiles (2fr). Full-bleed escuro (letterbox), grid alinhado ao  */
-/* container. 100% decorativo: sem <img>, sem contagens, sem rotulos. */
+/* Faixa de midia — full-bleed, grid 1fr/3fr/2fr do design (540px).    */
+/* 100% decorativa (aria-hidden): sem <img>, sem legendas/contagens,   */
+/* sem rotulos de feature. Gradientes = os do proprio design.          */
 /* ------------------------------------------------------------------ */
 
 .movie-media {
-  margin: 16px 0 0;
   width: 100%;
   background: var(--bg-media);
 }
 
 .movie-media__grid {
-  max-width: var(--container-max);
-  margin: 0 auto;
-  padding: 0 var(--container-pad);
+  width: 100%;
   display: grid;
   grid-template-columns: 1fr 3fr 2fr;
   grid-template-areas: "poster stage tiles";
-  gap: 6px;
-  height: clamp(320px, 42vw, 520px);
+  gap: 4px;
+  height: clamp(360px, 40vw, 540px);
 }
 
-/* Poster (esquerda) — placeholder retrato escuro. */
+/* Poster (esquerda). */
 .movie-media__poster {
   grid-area: poster;
-  position: relative;
-  background: linear-gradient(158deg, #262626 0%, #0d0d0d 100%);
+  background: linear-gradient(150deg, #241410, #0a0605);
 }
 
-.movie-media__poster::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
-}
-
-/* Palco central (trailer/cena) — scrim inferior + botao de play. */
+/* Palco central (trailer/cena) — scrim + botao de play. */
 .movie-media__stage {
   grid-area: stage;
   position: relative;
@@ -247,22 +307,23 @@ a {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  background:
-    radial-gradient(120% 120% at 50% 32%, #2a2a2a 0%, transparent 60%),
-    linear-gradient(180deg, #171717 0%, #060606 100%);
+  background: linear-gradient(150deg, #2a1c14, #0c0806);
 }
 
 .movie-media__stage::after {
   content: "";
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 46%;
-  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.55));
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.15) 0%,
+    rgba(0, 0, 0, 0) 35%,
+    rgba(0, 0, 0, 0.5) 100%
+  );
 }
 
-/* Botao de play decorativo (74x74, borda branca) — circular por excecao. */
+/* Botao de play (74x74, borda branca) — circular por excecao. */
 .movie-media__play {
   position: relative;
   z-index: 1;
@@ -270,67 +331,86 @@ a {
   height: 74px;
   border: 2px solid rgba(255, 255, 255, 0.85);
   border-radius: 50%;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.movie-media__play::before {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 54%;
-  transform: translate(-50%, -50%);
-  border-style: solid;
-  border-width: 11px 0 11px 18px;
-  border-color: transparent transparent transparent rgba(255, 255, 255, 0.9);
+.movie-media__play svg {
+  width: 22px;
+  height: 22px;
+  margin-left: 3px;
 }
 
-/* Tres tiles (direita) — placeholders empilhados com scrim inferior. */
+/* Tres tiles (direita) — gradientes distintos do design + scrim. */
 .movie-media__tiles {
   grid-area: tiles;
   display: grid;
   grid-template-rows: 1fr 1fr 1fr;
-  gap: 6px;
+  gap: 4px;
 }
 
 .movie-media__tile {
   position: relative;
-  background: linear-gradient(150deg, #202020, #0c0c0c);
+  overflow: hidden;
+}
+
+.movie-media__tile:nth-child(1) {
+  background: linear-gradient(150deg, #1a2a22, #0c130f);
 }
 
 .movie-media__tile:nth-child(2) {
-  background: linear-gradient(150deg, #262626, #101010);
+  background: linear-gradient(150deg, #2c2618, #15110a);
 }
 
 .movie-media__tile:nth-child(3) {
-  background: linear-gradient(150deg, #1c1c1c, #0a0a0a);
+  background: linear-gradient(150deg, #262030, #100d15);
 }
 
 .movie-media__tile::after {
   content: "";
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 42%;
-  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.5));
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0) 40%,
+    rgba(0, 0, 0, 0.7) 100%
+  );
 }
 
 /* ------------------------------------------------------------------ */
-/* Conteudo editorial — coluna principal + card lateral sem spoilers  */
+/* Sinopse — secao centrada; grid 1fr/320px do design. Coluna esquerda */
+/* recebe os content_blocks editoriais reais; card lateral tracejado   */
+/* "Resumo sem spoilers" recebe o bloco summary_without_spoilers.      */
 /* ------------------------------------------------------------------ */
 
-.movie-editorial {
+.movie-synopsis {
+  padding: 64px 0 0;
+  text-align: center;
+}
+
+.movie-synopsis__title {
+  margin: 0 0 32px;
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-heading);
+}
+
+.movie-synopsis__grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  gap: 48px;
+  grid-template-columns: 1fr 320px;
+  gap: 40px;
   align-items: start;
-  padding: 60px 0 0;
+  text-align: left;
 }
 
-.movie-editorial__main {
+.movie-synopsis__main {
   display: flex;
   flex-direction: column;
-  gap: 1.75rem;
-  max-width: var(--measure);
+  gap: 1.5rem;
 }
 
 .movie-block__body {
@@ -339,13 +419,6 @@ a {
   line-height: 1.7;
   color: var(--text-body);
   white-space: pre-wrap;
-}
-
-/* Primeiro bloco editorial ganha peso de "lead" (entrada de leitura). */
-.movie-editorial__main > .movie-block:first-child .movie-block__body {
-  font-size: 18px;
-  line-height: 1.66;
-  color: var(--text-strong);
 }
 
 .movie-preview-label {
@@ -357,42 +430,42 @@ a {
   text-transform: uppercase;
 }
 
-/* Card lateral tracejado "Resumo sem spoilers" (handoff §3.9). */
+/* Card lateral tracejado "Resumo sem spoilers" (design: icone + texto). */
 .movie-aside {
   position: sticky;
   top: 24px;
 }
 
 .spoiler-card {
-  position: relative;
-  padding: 28px 28px 26px;
-  background: linear-gradient(180deg, #ffffff 0%, #fbfaf7 100%);
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+  padding: 24px;
+  background: var(--bg-surface);
   border: 1.5px dashed var(--border-dashed);
 }
 
-/* Tick de acento no topo do card (um dos poucos toques de cor de filme). */
-.spoiler-card::before {
-  content: "";
-  position: absolute;
-  top: -1px;
-  left: -1px;
-  width: 36px;
-  height: 3px;
-  background: var(--accent-movie);
+.spoiler-card__icon {
+  width: 42px;
+  height: 42px;
+  color: var(--link-movie);
+  flex-shrink: 0;
+}
+
+.spoiler-card__text {
+  min-width: 0;
 }
 
 .spoiler-card__label {
-  margin: 0 0 14px;
-  font-size: 12px;
+  margin: 0 0 6px;
+  font-size: 14px;
   font-weight: 800;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--text-heading);
+  color: var(--text-strong);
 }
 
 .spoiler-card__body {
   margin: 0;
-  font-size: 15px;
+  font-size: 14px;
   line-height: 1.6;
   color: var(--text-body);
   white-space: pre-wrap;
@@ -409,7 +482,7 @@ a {
 }
 
 /* ------------------------------------------------------------------ */
-/* Responsividade basica (handoff §5): evitar overflow, sem redesenho */
+/* Responsividade (design nao tem media queries): evitar overflow.     */
 /* ------------------------------------------------------------------ */
 
 @media (max-width: 1024px) {
@@ -417,13 +490,14 @@ a {
     --container-pad: 20px;
   }
 
-  .movie-editorial {
+  .movie-topbar {
     grid-template-columns: 1fr;
-    gap: 32px;
+    gap: 28px;
   }
 
-  .movie-editorial__main {
-    max-width: none;
+  .movie-synopsis__grid {
+    grid-template-columns: 1fr;
+    gap: 32px;
   }
 
   .movie-aside {
@@ -472,7 +546,7 @@ a {
     height: 88px;
   }
 
-  .movie__header {
-    padding: 18px 0 18px;
+  .movie-topbar {
+    padding: 20px 0 20px;
   }
 }
