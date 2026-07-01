@@ -1342,3 +1342,153 @@ a {
     text-align: left;
   }
 }
+
+/* ================================================================== */
+/* Entity indexes                                                     */
+/* ------------------------------------------------------------------ */
+/* Listagens publicas (portas de entrada): /pt/filmes/, /pt/series/,   */
+/* /pt/pessoas/. Grade de cards editoriais, muito respiro, estetica    */
+/* White Cinematic Editorial. A cor de vertical (vermelho=filme,       */
+/* verde=serie, neutro=pessoa) e APOIO no hover — nunca o unico sinal  */
+/* (o proprio segmento de URL, o titulo e o breadcrumb ja distinguem). */
+/* Bloco isolado: nao altera Movie/Series/Person Page acima.           */
+/* ------------------------------------------------------------------ */
+
+.entity-index {
+  background: var(--bg-page);
+  padding-bottom: 4rem;
+}
+
+.entity-index[data-vertical="movie"] {
+  --index-accent: var(--screena-movie-red);
+}
+
+.entity-index[data-vertical="series"] {
+  --index-accent: var(--screena-series-green);
+}
+
+.entity-index[data-vertical="person"] {
+  --index-accent: var(--text-strong);
+}
+
+.entity-index__header {
+  padding: 36px 0 8px;
+}
+
+.entity-index__title {
+  margin: 0;
+  font-size: clamp(1.9rem, 3.4vw, 34px);
+  font-weight: 800;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  color: var(--text-strong);
+}
+
+.entity-index__desc {
+  margin: 12px 0 0;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  max-width: 62ch;
+}
+
+/* Grade responsiva de cards (2:3), com muito respiro. */
+.entity-grid {
+  list-style: none;
+  margin: 32px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 28px 24px;
+}
+
+.entity-card-item {
+  min-width: 0;
+}
+
+.entity-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.entity-card__media {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  overflow: hidden;
+  background: var(--bg-muted);
+  border: 1px solid var(--border);
+  transition: border-color 0.2s ease;
+}
+
+.entity-card:hover .entity-card__media,
+.entity-card:focus-visible .entity-card__media {
+  border-color: var(--index-accent);
+}
+
+.entity-card__image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.entity-card__fallback {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(150deg, #ecebe4, #dedbd1);
+}
+
+.entity-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.entity-card__title {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--text-strong);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.entity-card:hover .entity-card__title,
+.entity-card:focus-visible .entity-card__title {
+  color: var(--index-accent);
+}
+
+.entity-card__meta {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Notas de estado (truncagem honesta / listagem vazia). */
+.entity-index__more {
+  margin: 28px 0 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.entity-index__empty {
+  margin: 32px 0 0;
+  padding: 18px 20px;
+  border-left: 3px solid var(--index-accent);
+  background: var(--bg-muted);
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+@media (max-width: 560px) {
+  .entity-grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 22px 16px;
+  }
+}
