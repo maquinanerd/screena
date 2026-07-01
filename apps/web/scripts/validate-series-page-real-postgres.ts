@@ -79,7 +79,7 @@ type PrismaLike = {
 /** Cria um Article publicavel|rascunho + traducao pt-BR + link para uma entidade. */
 async function seedRelatedArticle(
   prisma: PrismaLike,
-  opts: { slug: string; title: string; reviewStatus: string; entityType: string; entityId: bigint },
+  opts: { slug: string; title: string; reviewStatus: string; entityType: string; entityId: bigint; indexStatus?: string },
 ): Promise<void> {
   const article = await prisma.article.create({
     data: {
@@ -97,7 +97,7 @@ async function seedRelatedArticle(
       title: opts.title,
       body: "Corpo editorial proprio e substancial. ".repeat(8),
       reviewStatus: opts.reviewStatus,
-      indexStatus: "index",
+      indexStatus: opts.indexStatus ?? "index",
       publishedAt: new Date("2026-06-30T12:00:00.000Z"),
     },
   });
@@ -389,15 +389,16 @@ async function runChecks(
     ],
   });
   // 4G: noticias relacionadas reais via EntityNewsLink (tv). Publicada aparece;
-  // rascunho fora.
+  // rascunho e noindex fora.
   await seedRelatedArticle(prisma, { slug: "noticia-da-serie", title: "Noticia da Serie", reviewStatus: "published", entityType: "tv", entityId: BigInt(richId) });
   await seedRelatedArticle(prisma, { slug: "rascunho-da-serie", title: "Rascunho", reviewStatus: "draft", entityType: "tv", entityId: BigInt(richId) });
+  await seedRelatedArticle(prisma, { slug: "noindex-da-serie", title: "Noindex", reviewStatus: "published", indexStatus: "noindex", entityType: "tv", entityId: BigInt(richId) });
 
   const richByAlias = await getSeriesPageData("serie-rica-antiga");
   record(13, "D. serie com 2 blocos publicos retorna dados", richByAlias !== null, `retorno=${richByAlias ? "objeto" : "null"}`);
   record(
     26,
-    "4G. noticia relacionada publicada aparece; rascunho fora; linka /pt/noticias/",
+    "4G. noticia relacionada publicada aparece; rascunho/noindex fora; linka /pt/noticias/",
     richByAlias?.relatedNews.length === 1 && richByAlias?.relatedNews[0]?.href === "/pt/noticias/noticia-da-serie/",
     `related=[${(richByAlias?.relatedNews ?? []).map((r) => r.href).join(", ")}]`,
   );
