@@ -19,6 +19,8 @@ import {
   type SeriesPageView,
   type SeriesSeasonInput,
 } from "../lib/series-presenter";
+import { getRelatedNewsForEntity } from "./related-news";
+import type { NewsCardView } from "../lib/news-presenter";
 import type { IndexabilityResult } from "@screena/seo";
 
 const LANGUAGE_CODE = "pt-BR";
@@ -30,6 +32,8 @@ export interface SeriesPageData {
   indexability: IndexabilityResult;
   canonicalSlug: string;
   canonicalUrl: string;
+  /** Noticias relacionadas publicaveis (EntityNewsLink); [] quando nao houver. */
+  relatedNews: NewsCardView[];
 }
 
 function seriesCanonicalUrl(slug: string): string {
@@ -52,7 +56,7 @@ export const getSeriesPageData = cache(
 
     const entityId = slugRow.entityId;
 
-    const [series, canonicalSlugRow, translation, contentBlocks, seasons] =
+    const [series, canonicalSlugRow, translation, contentBlocks, seasons, relatedNews] =
       await Promise.all([
         prisma.tvShow.findUnique({
           where: { id: entityId },
@@ -120,6 +124,7 @@ export const getSeriesPageData = cache(
             },
           },
         }),
+        getRelatedNewsForEntity(prisma, ENTITY_TYPE, entityId),
       ]);
 
     if (series === null) return null;
@@ -172,6 +177,7 @@ export const getSeriesPageData = cache(
       indexability,
       canonicalSlug,
       canonicalUrl: seriesCanonicalUrl(canonicalSlug),
+      relatedNews,
     };
   },
 );

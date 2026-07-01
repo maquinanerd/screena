@@ -29,6 +29,8 @@ import {
   type IndexabilityResult,
 } from "../lib/movie-indexability";
 import { movieCanonicalUrl } from "../lib/site";
+import { getRelatedNewsForEntity } from "./related-news";
+import type { NewsCardView } from "../lib/news-presenter";
 
 /** Idioma de publicacao do MVP (invariante 7): pt-BR indexa primeiro. */
 const LANGUAGE_CODE = "pt-BR";
@@ -41,6 +43,8 @@ export interface MoviePageData {
   indexability: IndexabilityResult;
   canonicalSlug: string;
   canonicalUrl: string;
+  /** Noticias relacionadas publicaveis (EntityNewsLink); [] quando nao houver. */
+  relatedNews: NewsCardView[];
 }
 
 /**
@@ -62,7 +66,7 @@ export const getMoviePageData = cache(
 
     const entityId = slugRow.entityId;
 
-    const [movie, canonicalSlugRow, translation, contentBlocks] = await Promise.all([
+    const [movie, canonicalSlugRow, translation, contentBlocks, relatedNews] = await Promise.all([
       prisma.movie.findUnique({
         where: { id: entityId },
         select: {
@@ -102,6 +106,7 @@ export const getMoviePageData = cache(
         },
         select: { blockType: true, content: true, reviewStatus: true },
       }),
+      getRelatedNewsForEntity(prisma, ENTITY_TYPE, entityId),
     ]);
 
     if (movie === null) return null;
@@ -136,6 +141,7 @@ export const getMoviePageData = cache(
       indexability,
       canonicalSlug,
       canonicalUrl: movieCanonicalUrl(canonicalSlug),
+      relatedNews,
     };
   },
 );

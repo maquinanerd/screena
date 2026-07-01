@@ -24,6 +24,8 @@ import {
   type PersonCreditInput,
   type PersonPageView,
 } from "../lib/person-presenter";
+import { getRelatedNewsForEntity } from "./related-news";
+import type { NewsCardView } from "../lib/news-presenter";
 import type { IndexabilityResult } from "@screena/seo";
 
 const LANGUAGE_CODE = "pt-BR";
@@ -35,6 +37,8 @@ export interface PersonPageData {
   indexability: IndexabilityResult;
   canonicalSlug: string;
   canonicalUrl: string;
+  /** Noticias relacionadas publicaveis (EntityNewsLink); [] quando nao houver. */
+  relatedNews: NewsCardView[];
 }
 
 function personCanonicalUrl(slug: string): string {
@@ -72,7 +76,7 @@ export const getPersonPageData = cache(
 
     const entityId = slugRow.entityId;
 
-    const [person, canonicalSlugRow, translation, contentBlocks, castRows, crewRows] =
+    const [person, canonicalSlugRow, translation, contentBlocks, castRows, crewRows, relatedNews] =
       await Promise.all([
         prisma.person.findUnique({
           where: { id: entityId },
@@ -129,6 +133,7 @@ export const getPersonPageData = cache(
             job: true,
           },
         }),
+        getRelatedNewsForEntity(prisma, ENTITY_TYPE, entityId),
       ]);
 
     if (person === null) return null;
@@ -165,6 +170,7 @@ export const getPersonPageData = cache(
       indexability,
       canonicalSlug,
       canonicalUrl: personCanonicalUrl(canonicalSlug),
+      relatedNews,
     };
   },
 );

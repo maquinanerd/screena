@@ -1875,3 +1875,46 @@ a {
     padding: 96px var(--container-pad) 40px;
   }
 }
+
+/* ================================================================== */
+/* Related news                                                       */
+/* ------------------------------------------------------------------ */
+/* Secao "Noticias relacionadas" ao fim das paginas de detalhe         */
+/* (filme/serie/pessoa). So aparece quando ha >= 1 noticia real. Reusa */
+/* os cards `.news-card` do bloco News pages; aqui so o wrapper/grade.  */
+/* Bloco isolado: nao altera Movie/Series/Person Page, Entity indexes   */
+/* nem News pages.                                                     */
+/* ------------------------------------------------------------------ */
+
+.related-news {
+  padding: 56px 0 0;
+}
+
+.related-news__title {
+  margin: 0 0 24px;
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-heading);
+}
+
+.related-news__grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 32px 28px;
+}
+
+.related-news__item {
+  min-width: 0;
+}
+
+@media (max-width: 560px) {
+  .related-news__grid {
+    grid-template-columns: 1fr;
+    gap: 28px;
+  }
+}

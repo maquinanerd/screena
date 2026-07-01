@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { getSeriesPageData } from "../../../../src/server/series-page";
 import { SITE_URL } from "../../../../src/lib/site";
+import { RelatedNewsSection } from "../../../_components/related-news-section";
 
 /**
  * Pagina publica de serie - /pt/series/[slug]/ (schema TVSeries, acento verde).
@@ -65,7 +66,7 @@ export default async function SeriesPage({
   const data = await getSeriesPageData(slug);
   if (data === null) notFound();
 
-  const { view, indexability, canonicalUrl } = data;
+  const { view, indexability, canonicalUrl, relatedNews } = data;
   const isUnderReview = indexability.decision !== "index";
   const metaItems = [view.seasonsCountLabel, view.episodesCountLabel].filter(
     (item): item is string => item !== null,
@@ -281,6 +282,8 @@ export default async function SeriesPage({
           </section>
         </div>
       ) : null}
+
+      <RelatedNewsSection cards={relatedNews} />
 
       {isUnderReview ? (
         <div className="container">
