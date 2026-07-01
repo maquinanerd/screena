@@ -159,12 +159,22 @@ export default async function MoviePage({
         </article>
       </div>
 
-      {/* Faixa de midia: placeholder visual decorativo. Sem <img> inventado,
-          sem contagens falsas, sem dados de terceiros — apenas o skeleton
-          cinematografico. aria-hidden: nada de informativo para leitores de tela. */}
+      {/* Faixa de midia: placeholder visual decorativo (handoff §3.6) — poster
+          a esquerda, palco de trailer/cena ao centro (com botao de play) e tres
+          tiles a direita. Sem <img> inventado, sem contagens falsas, sem dados de
+          terceiros — apenas o skeleton cinematografico. aria-hidden: nada de
+          informativo para leitores de tela. */}
       <div className="movie-media" aria-hidden="true">
-        <div className="movie-media__inner">
-          <span className="movie-media__play" />
+        <div className="movie-media__grid">
+          <div className="movie-media__poster" />
+          <div className="movie-media__stage">
+            <span className="movie-media__play" />
+          </div>
+          <div className="movie-media__tiles">
+            <span className="movie-media__tile" />
+            <span className="movie-media__tile" />
+            <span className="movie-media__tile" />
+          </div>
         </div>
       </div>
 

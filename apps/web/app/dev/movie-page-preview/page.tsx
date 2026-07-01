@@ -87,8 +87,16 @@ export default function MoviePagePreview() {
       </div>
 
       <div className="movie-media" aria-hidden="true">
-        <div className="movie-media__inner">
-          <span className="movie-media__play" />
+        <div className="movie-media__grid">
+          <div className="movie-media__poster" />
+          <div className="movie-media__stage">
+            <span className="movie-media__play" />
+          </div>
+          <div className="movie-media__tiles">
+            <span className="movie-media__tile" />
+            <span className="movie-media__tile" />
+            <span className="movie-media__tile" />
+          </div>
         </div>
       </div>
 
