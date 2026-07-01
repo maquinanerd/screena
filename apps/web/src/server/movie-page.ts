@@ -65,7 +65,13 @@ export const getMoviePageData = cache(
     const [movie, canonicalSlugRow, translation, contentBlocks] = await Promise.all([
       prisma.movie.findUnique({
         where: { id: entityId },
-        select: { titleOriginal: true, releaseDate: true, runtimeMinutes: true },
+        select: {
+          titleOriginal: true,
+          releaseDate: true,
+          runtimeMinutes: true,
+          posterPath: true,
+          backdropPath: true,
+        },
       }),
       prisma.slug.findFirst({
         where: {
@@ -112,6 +118,8 @@ export const getMoviePageData = cache(
         year:
           movie.releaseDate === null ? null : movie.releaseDate.getUTCFullYear(),
         runtimeMinutes: movie.runtimeMinutes,
+        posterPath: movie.posterPath,
+        backdropPath: movie.backdropPath,
       },
       translation,
       blocks,

@@ -282,8 +282,8 @@ a {
 
 /* ------------------------------------------------------------------ */
 /* Faixa de midia — full-bleed, grid 1fr/3fr/2fr do design (540px).    */
-/* 100% decorativa (aria-hidden): sem <img>, sem legendas/contagens,   */
-/* sem rotulos de feature. Gradientes = os do proprio design.          */
+/* Renderiza poster/backdrop locais seguros; sem dado,                 */
+/* permanece nos gradientes seguros do proprio design.                 */
 /* ------------------------------------------------------------------ */
 
 .movie-media {
@@ -303,6 +303,8 @@ a {
 /* Poster (esquerda). */
 .movie-media__poster {
   grid-area: poster;
+  position: relative;
+  overflow: hidden;
   background: linear-gradient(150deg, #241410, #0a0605);
 }
 
@@ -315,6 +317,13 @@ a {
   justify-content: center;
   overflow: hidden;
   background: linear-gradient(150deg, #2a1c14, #0c0806);
+}
+
+.movie-media__image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .movie-media__stage::after {

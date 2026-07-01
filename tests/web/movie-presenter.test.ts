@@ -10,7 +10,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   formatRuntime,
+  normalizeLocalImagePath,
   presentMovie,
+  selectMovieMedia,
   selectMetaDescription,
   selectRenderableBlocks,
   selectTitle,
@@ -22,6 +24,8 @@ const baseRecord = {
   titleOriginal: "Original Title",
   year: 1999,
   runtimeMinutes: 121,
+  posterPath: null,
+  backdropPath: null,
 };
 
 function translation(
@@ -105,10 +109,60 @@ describe("selectRenderableBlocks", () => {
   });
 });
 
+describe("movie media presenter", () => {
+  it("normaliza somente paths locais seguros", () => {
+    expect(normalizeLocalImagePath(null)).toBeNull();
+    expect(normalizeLocalImagePath("")).toBeNull();
+    expect(normalizeLocalImagePath("   ")).toBeNull();
+    expect(normalizeLocalImagePath(" /media/movies/poster.jpg ")).toBe(
+      "/media/movies/poster.jpg",
+    );
+    expect(normalizeLocalImagePath("/uploads/movies/backdrop.webp")).toBe(
+      "/uploads/movies/backdrop.webp",
+    );
+    expect(normalizeLocalImagePath("/brand/logo.png")).toBe("/brand/logo.png");
+  });
+
+  it("recusa URLs externas e paths TMDB crus", () => {
+    expect(normalizeLocalImagePath("https://image.tmdb.org/t/p/w342/a.jpg")).toBeNull();
+    expect(normalizeLocalImagePath("https://example.com/poster.jpg")).toBeNull();
+    expect(normalizeLocalImagePath("http://example.com/poster.jpg")).toBeNull();
+    expect(normalizeLocalImagePath("//example.com/poster.jpg")).toBeNull();
+    expect(normalizeLocalImagePath("/abc.jpg")).toBeNull();
+    expect(normalizeLocalImagePath("/poster.jpg?size=w342")).toBeNull();
+    expect(normalizeLocalImagePath("/media/../secret.jpg")).toBeNull();
+  });
+
+  it("seleciona poster/backdrop locais seguros", () => {
+    const media = selectMovieMedia(
+      {
+        posterPath: "/media/movies/poster.webp",
+        backdropPath: "/uploads/movies/backdrop.jpg",
+      },
+    );
+    expect(media.hasRealImage).toBe(true);
+    expect(media.poster?.src).toBe("/media/movies/poster.webp");
+    expect(media.backdrop?.src).toBe("/uploads/movies/backdrop.jpg");
+  });
+
+  it("mantem placeholders quando nao ha path local permitido", () => {
+    const media = selectMovieMedia(
+      { posterPath: "/poster.jpg", backdropPath: "/backdrop.jpg" },
+    );
+    expect(media).toEqual({ poster: null, backdrop: null, hasRealImage: false });
+  });
+});
+
 describe("presentMovie", () => {
   it("fallback seguro quando ano/duracao ausentes; nao inventa descricao", () => {
     const view = presentMovie({
-      record: { titleOriginal: "Sem Dados", year: null, runtimeMinutes: null },
+      record: {
+        titleOriginal: "Sem Dados",
+        year: null,
+        runtimeMinutes: null,
+        posterPath: null,
+        backdropPath: null,
+      },
       translation: null,
       blocks: [],
     });
@@ -119,6 +173,7 @@ describe("presentMovie", () => {
     expect(view.metaDescription).toBeNull();
     expect(view.blocks).toEqual([]);
     expect(view.renderableBlockCount).toBe(0);
+    expect(view.media.hasRealImage).toBe(false);
   });
 
   it("conta blocos renderizaveis distintos e usa dados existentes", () => {

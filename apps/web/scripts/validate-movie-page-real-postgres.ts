@@ -100,6 +100,8 @@ async function seedMovie(
     titleOriginal: string;
     releaseDate: Date | null;
     runtimeMinutes: number | null;
+    posterPath?: string | null;
+    backdropPath?: string | null;
     canonicalSlug: string;
     aliasSlug?: string;
     translation?: { title?: string | null; metaTitle?: string | null; metaDescription?: string | null; summary?: string | null };
@@ -112,6 +114,8 @@ async function seedMovie(
       titleOriginal: opts.titleOriginal,
       releaseDate: opts.releaseDate,
       runtimeMinutes: opts.runtimeMinutes,
+      posterPath: opts.posterPath ?? null,
+      backdropPath: opts.backdropPath ?? null,
     },
     select: { id: true },
   });
@@ -173,6 +177,11 @@ type MoviePageData = {
     metaDescription: string | null;
     blocks: ReadonlyArray<{ blockType: string; content: string }>;
     renderableBlockCount: number;
+    media: {
+      poster: { src: string; width: number; height: number } | null;
+      backdrop: { src: string; width: number; height: number } | null;
+      hasRealImage: boolean;
+    };
   };
   indexability: { decision: string };
   canonicalSlug: string;
@@ -191,6 +200,8 @@ async function runChecks(prisma: PrismaLike, getMoviePageData: GetMoviePageData)
     titleOriginal: "Thin Movie Zero",
     releaseDate: new Date("2019-05-10"),
     runtimeMinutes: 95,
+    posterPath: "/thin-poster.jpg",
+    backdropPath: "/thin-backdrop.jpg",
     canonicalSlug: "filme-thin-zero",
     // Sem metaDescription nem summary -> metaDescription deve sair null (nao inventa).
     translation: { title: "Filme Fininho Zero" },
@@ -214,6 +225,12 @@ async function runChecks(prisma: PrismaLike, getMoviePageData: GetMoviePageData)
     "B/E. nenhum bloco ai_generated/needs_review em view.blocks",
     (thinZero?.view.blocks.length ?? -1) === 0,
     `blocos visiveis=${thinZero?.view.blocks.length}`,
+  );
+  record(
+    24,
+    "H. paths TMDB crus nao aparecem como imagem",
+    thinZero?.view.media.hasRealImage === false,
+    `hasRealImage=${thinZero?.view.media.hasRealImage}`,
   );
 
   // --- C. Filme com 1 bloco publico -> ainda noindex (gate anti-thin). -----
@@ -240,6 +257,8 @@ async function runChecks(prisma: PrismaLike, getMoviePageData: GetMoviePageData)
     titleOriginal: "Interstellar",
     releaseDate: new Date("2014-11-06"),
     runtimeMinutes: 169,
+    posterPath: "/media/movies/rich-poster.webp",
+    backdropPath: "/uploads/movies/rich-backdrop.jpg",
     canonicalSlug: "interestelar",
     aliasSlug: "interestelar-antigo",
     translation: {
@@ -291,6 +310,18 @@ async function runChecks(prisma: PrismaLike, getMoviePageData: GetMoviePageData)
     "G. metaDescription preservada quando existe (nao inventada)",
     richByAlias?.view.metaDescription === "Descricao editorial pt-BR ja existente no banco.",
     `metaDescription=${JSON.stringify(richByAlias?.view.metaDescription)}`,
+  );
+  record(
+    25,
+    "H. poster local seguro aparece na view",
+    richByAlias?.view.media.poster?.src === "/media/movies/rich-poster.webp",
+    `poster=${richByAlias?.view.media.poster?.src ?? "null"}`,
+  );
+  record(
+    26,
+    "H. backdrop local seguro aparece na view",
+    richByAlias?.view.media.backdrop?.src === "/uploads/movies/rich-backdrop.jpg",
+    `backdrop=${richByAlias?.view.media.backdrop?.src ?? "null"}`,
   );
 
   // --- G(extra). Sem traducao -> titulo cai para titleOriginal. ------------

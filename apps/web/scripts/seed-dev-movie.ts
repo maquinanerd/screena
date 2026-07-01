@@ -38,6 +38,11 @@ const TITLE_PT = "Interestelar";
 const DEV_FIXTURE_TMDB_ID = 99990001;
 const RELEASE_DATE = new Date("2014-11-06");
 const RUNTIME_MINUTES = 169;
+// Paths crus em formato parecido com poster/backdrop de provider. Nesta fase
+// eles NAO renderizam imagem: a pagina so aceita paths locais seguros
+// (/media/, /uploads/, /brand/), mantendo fallback visual.
+const POSTER_PATH = "/dev-fixture-poster.jpg";
+const BACKDROP_PATH = "/dev-fixture-backdrop.jpg";
 
 /** Blocos renderizaveis da fixture (2 = passa o gate anti-thin -> index). */
 const FIXTURE_BLOCKS = [
@@ -86,12 +91,20 @@ type GetMoviePageData = (
 async function seedDevMovie(prisma: PrismaLike): Promise<string> {
   const movie = await prisma.movie.upsert({
     where: { tmdbId: DEV_FIXTURE_TMDB_ID },
-    update: { titleOriginal: TITLE_ORIGINAL, releaseDate: RELEASE_DATE, runtimeMinutes: RUNTIME_MINUTES },
+    update: {
+      titleOriginal: TITLE_ORIGINAL,
+      releaseDate: RELEASE_DATE,
+      runtimeMinutes: RUNTIME_MINUTES,
+      posterPath: POSTER_PATH,
+      backdropPath: BACKDROP_PATH,
+    },
     create: {
       tmdbId: DEV_FIXTURE_TMDB_ID,
       titleOriginal: TITLE_ORIGINAL,
       releaseDate: RELEASE_DATE,
       runtimeMinutes: RUNTIME_MINUTES,
+      posterPath: POSTER_PATH,
+      backdropPath: BACKDROP_PATH,
     },
     select: { id: true },
   });
