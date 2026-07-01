@@ -14,6 +14,7 @@
     "validate:series-page": "tsx scripts/validate-series-page-real-postgres.ts",
     "validate:person-page": "tsx scripts/validate-person-page-real-postgres.ts",
     "validate:entity-indexes": "tsx scripts/validate-entity-indexes-real-postgres.ts",
+    "validate:news-pages": "tsx scripts/validate-news-pages-real-postgres.ts",
     "seed:dev-movie": "tsx scripts/seed-dev-movie.ts"
   },
   "dependencies": {

@@ -1492,3 +1492,386 @@ a {
     gap: 22px 16px;
   }
 }
+
+/* ================================================================== */
+/* News pages                                                         */
+/* ------------------------------------------------------------------ */
+/* Ambiente editorial/blog: listagem (/pt/noticias/) e artigo          */
+/* (/pt/noticias/[slug]/), a partir dos blocos NEWS/ARTICLE do Claude  */
+/* Design. Tom NEUTRO/institucional (invariante 11): sem cor de        */
+/* vertical filme/serie como identidade. Bloco isolado: nao altera     */
+/* Movie/Series/Person Page nem Entity indexes.                        */
+/* ------------------------------------------------------------------ */
+
+/* ---- Listagem ---- */
+.news-index {
+  background: var(--bg-page);
+  padding-bottom: 4rem;
+}
+
+.news-index__header {
+  padding: 36px 0 8px;
+}
+
+.news-index__title {
+  margin: 0;
+  font-size: clamp(1.9rem, 3.4vw, 34px);
+  font-weight: 800;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  color: var(--text-strong);
+}
+
+.news-index__desc {
+  margin: 12px 0 0;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  max-width: 62ch;
+}
+
+.news-index__featured {
+  margin: 32px 0 0;
+}
+
+.news-index__feed {
+  margin: 48px 0 0;
+}
+
+.news-index__feed-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 22px;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--text-strong);
+}
+
+.news-index__feed-title::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-strong);
+}
+
+.news-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 32px 28px;
+}
+
+.news-grid__item {
+  min-width: 0;
+}
+
+.news-index__more {
+  margin: 32px 0 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.news-index__empty {
+  margin: 32px 0 0;
+  padding: 18px 20px;
+  border-left: 3px solid var(--text-muted);
+  background: var(--bg-muted);
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+/* ---- Card de noticia ---- */
+.news-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.news-card__media {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  background: var(--bg-muted);
+  border: 1px solid var(--border);
+}
+
+.news-card[data-variant="featured"] .news-card__media {
+  aspect-ratio: 16 / 8;
+}
+
+.news-card__image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.news-card__fallback {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(150deg, #ecebe4, #dedbd1);
+}
+
+.news-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.news-card__category {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-heading);
+}
+
+.news-card__title {
+  font-size: 18px;
+  font-weight: 750;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  color: var(--text-strong);
+  transition: color 0.2s ease;
+}
+
+.news-card[data-variant="featured"] .news-card__title {
+  font-size: clamp(22px, 3vw, 27px);
+  font-weight: 800;
+  line-height: 1.18;
+}
+
+.news-card:hover .news-card__title,
+.news-card:focus-visible .news-card__title {
+  color: var(--link-movie);
+}
+
+.news-card__deck {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.news-card__meta {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* ---- Artigo ---- */
+.news-article {
+  background: var(--bg-page);
+  padding-bottom: 4rem;
+}
+
+/* Hero cinematografico NEUTRO (charcoal), sem tinta de vertical. */
+.news-article__hero {
+  position: relative;
+  width: 100%;
+  min-height: clamp(360px, 42vw, 520px);
+  overflow: hidden;
+  background: radial-gradient(120% 120% at 75% 18%, #2c2c30 0%, #161618 45%, #0a0a0b 100%);
+  display: flex;
+  align-items: flex-end;
+}
+
+.news-article__hero-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.5;
+}
+
+.news-article__hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(5, 5, 6, 0.35) 0%, rgba(5, 5, 6, 0) 35%, rgba(5, 5, 6, 0.9) 100%);
+}
+
+.news-article__hero-inner {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 120px var(--container-pad) 56px;
+}
+
+.breadcrumb--onhero {
+  padding: 0 0 22px;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.breadcrumb--onhero a,
+.breadcrumb--onhero [aria-current="page"] {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.breadcrumb--onhero li + li::before {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.news-article__badge {
+  margin: 0 0 18px;
+}
+
+.screena-badge--news {
+  background: var(--screena-white);
+  color: var(--text-strong);
+}
+
+.news-article__title {
+  margin: 0;
+  font-size: clamp(2rem, 5vw, 48px);
+  font-weight: 800;
+  line-height: 1.06;
+  letter-spacing: -0.03em;
+  color: #ffffff;
+  max-width: 20ch;
+}
+
+.news-article__deck {
+  margin: 20px 0 0;
+  font-size: clamp(15px, 2vw, 18px);
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.82);
+  max-width: 62ch;
+}
+
+.news-article__meta {
+  margin: 26px 0 0;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* Corpo com leitura confortavel (~720px), muito respiro. */
+.news-article__body {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 56px 0 0;
+}
+
+.news-article__paragraph {
+  margin: 0 0 24px;
+  font-size: 17px;
+  line-height: 1.8;
+  color: var(--text-body);
+  white-space: pre-wrap;
+}
+
+.news-article__source {
+  margin: 36px 0 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.news-article__source-name {
+  color: var(--text-strong);
+  font-weight: 600;
+}
+
+.news-article__ai {
+  margin: 28px 0 0;
+  display: flex;
+  gap: 14px;
+  padding: 18px 22px;
+  background: #f6f3ed;
+  border: 1px solid var(--border);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+/* Relacionado (links reais para filme/serie/pessoa). */
+.news-article__related {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 48px 0 0;
+}
+
+.news-article__related-title {
+  margin: 0 0 18px;
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-heading);
+}
+
+.news-related {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.news-related__item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.news-related__item:first-child {
+  border-top: 1px solid var(--border);
+}
+
+.news-related__link {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-strong);
+  text-decoration: none;
+}
+
+.news-related__link:hover,
+.news-related__link:focus-visible {
+  text-decoration: underline;
+}
+
+.news-related__type {
+  flex-shrink: 0;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.news-article__notice {
+  max-width: 720px;
+  margin: 40px auto 0;
+  padding: 14px 18px;
+  border-left: 3px solid var(--text-muted);
+  background: var(--bg-muted);
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+@media (max-width: 560px) {
+  .news-grid {
+    grid-template-columns: 1fr;
+    gap: 28px;
+  }
+
+  .news-article__hero-inner {
+    padding: 96px var(--container-pad) 40px;
+  }
+}
