@@ -219,7 +219,7 @@ async function runChecks(
   });
 
   const movie = await getters.getMovieIndexData();
-  record(3, "Filmes: canonicalUrl /pt/filmes/", movie.canonicalUrl === "https://screena.media/pt/filmes/", `canonicalUrl=${movie.canonicalUrl}`);
+  record(3, "Filmes: canonicalUrl /pt/filmes/", movie.canonicalUrl === "https://thescreen.media/pt/filmes/", `canonicalUrl=${movie.canonicalUrl}`);
   record(4, "Filmes: item sem slug canonico e excluido (totalCount=2)", movie.view.totalCount === 2, `totalCount=${movie.view.totalCount}`);
   record(5, "Filmes: 2 itens (fino) -> noindex", movie.indexability.decision === "noindex", `decision=${movie.indexability.decision}`);
   record(6, "Filmes: ordem por ano desc (B 2020 antes de A 2010)", movie.view.cards[0]?.title === "Movie B Original" && movie.view.cards[1]?.title === "Filme A PT", `ordem=[${movie.view.cards.map((c) => c.title).join(", ")}]`);
@@ -233,7 +233,7 @@ async function runChecks(
   await seedSeries(prisma, { tmdbId: 66100003, nameOriginal: "Bravo", firstAirDate: new Date("2015-01-01"), lastAirDate: new Date("2015-12-01"), canonicalSlug: "serie-bravo" });
 
   const series = await getters.getSeriesIndexData();
-  record(10, "Series: canonicalUrl /pt/series/", series.canonicalUrl === "https://screena.media/pt/series/", `canonicalUrl=${series.canonicalUrl}`);
+  record(10, "Series: canonicalUrl /pt/series/", series.canonicalUrl === "https://thescreen.media/pt/series/", `canonicalUrl=${series.canonicalUrl}`);
   record(11, "Series: totalCount=3", series.view.totalCount === 3, `totalCount=${series.view.totalCount}`);
   record(12, "Series: 3 itens (suficiente) -> index", series.indexability.decision === "index", `decision=${series.indexability.decision}`);
   record(13, "Series: ordem por firstAir desc + nome asc (Alfa, Charlie, Bravo)", JSON.stringify(series.view.cards.map((c) => c.title)) === JSON.stringify(["Alfa", "Charlie", "Bravo"]), `ordem=[${series.view.cards.map((c) => c.title).join(", ")}]`);
@@ -245,7 +245,7 @@ async function runChecks(
   await seedPerson(prisma, { tmdbId: 66200003, name: "Bruno", canonicalSlug: "pessoa-bruno" });
 
   const people = await getters.getPersonIndexData();
-  record(15, "Pessoas: canonicalUrl /pt/pessoas/", people.canonicalUrl === "https://screena.media/pt/pessoas/", `canonicalUrl=${people.canonicalUrl}`);
+  record(15, "Pessoas: canonicalUrl /pt/pessoas/", people.canonicalUrl === "https://thescreen.media/pt/pessoas/", `canonicalUrl=${people.canonicalUrl}`);
   record(16, "Pessoas: totalCount=3", people.view.totalCount === 3, `totalCount=${people.view.totalCount}`);
   record(17, "Pessoas: 3 itens (suficiente) -> index", people.indexability.decision === "index", `decision=${people.indexability.decision}`);
   record(18, "Pessoas: ordem por nome asc (Ana, Bruno, Zora)", JSON.stringify(people.view.cards.map((c) => c.title)) === JSON.stringify(["Ana", "Bruno", "Zora"]), `ordem=[${people.view.cards.map((c) => c.title).join(", ")}]`);

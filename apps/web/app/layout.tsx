@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
 import { SiteHeader } from "./_components/site-header";
+import { SITE_URL } from "../src/lib/site";
 import "./globals.css";
 
 /**
@@ -16,8 +17,12 @@ import "./globals.css";
  * de forma que ele aparece em todas as telas sem alterar as paginas em si.
  */
 export const metadata: Metadata = {
-  metadataBase: new URL("https://screena.media"),
-  title: { default: "Screena", template: "%s | Screena" },
+  metadataBase: new URL(SITE_URL),
+  title: { default: "Screen", template: "%s | Screen" },
+  // Marca publica em cartoes sociais. Sem og:image fabricada (nenhum asset
+  // raster proprio nesta fase) — nunca inventar dado.
+  openGraph: { siteName: "Screen", locale: "pt_BR", type: "website" },
+  twitter: { card: "summary" },
 };
 
 export default function RootLayout({

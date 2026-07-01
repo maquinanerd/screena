@@ -22,7 +22,7 @@ export const dynamic = "force-dynamic";
 
 const TITLE = "Series";
 const DESCRIPTION =
-  "Explore as series catalogadas na Screena - paginas editoriais em portugues, com guias de temporada quando disponiveis.";
+  "Explore as series catalogadas na Screen - paginas editoriais em portugues, com guias de temporada quando disponiveis.";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { indexability, canonicalUrl } = await getSeriesIndexData();

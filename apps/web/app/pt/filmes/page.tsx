@@ -22,7 +22,7 @@ export const dynamic = "force-dynamic";
 
 const TITLE = "Filmes";
 const DESCRIPTION =
-  "Explore os filmes catalogados na Screena - paginas editoriais em portugues, atualizadas conforme novas fichas sao publicadas.";
+  "Explore os filmes catalogados na Screen - paginas editoriais em portugues, atualizadas conforme novas fichas sao publicadas.";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { indexability, canonicalUrl } = await getMovieIndexData();

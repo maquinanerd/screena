@@ -247,7 +247,7 @@ async function runChecks(prisma: PrismaLike, g: Getters): Promise<void> {
   const rich = await g.getNewsArticleData("noticia-rica");
   record(9, "E. artigo publicado com corpo suficiente renderiza", rich !== null, `retorno=${rich ? "objeto" : "null"}`);
   record(10, "E. artigo suficiente + index_status index -> index", rich?.indexability.decision === "index", `decision=${rich?.indexability.decision}`);
-  record(11, "E. canonicalUrl /pt/noticias/", rich?.canonicalUrl === "https://screena.media/pt/noticias/noticia-rica/", `canonicalUrl=${rich?.canonicalUrl}`);
+  record(11, "E. canonicalUrl /pt/noticias/", rich?.canonicalUrl === "https://thescreen.media/pt/noticias/noticia-rica/", `canonicalUrl=${rich?.canonicalUrl}`);
   record(12, "E. imagem local segura aparece", rich?.view.heroImage?.src === "/media/news/rica.webp", `hero=${rich?.view.heroImage?.src ?? "null"}`);
   record(13, "E. autor/categoria/data reais", rich?.view.author === "Lucas Andrade" && rich?.view.category === "Marvel" && rich?.view.dateLabel === "30 de junho de 2026", `autor=${rich?.view.author} data=${rich?.view.dateLabel}`);
   record(14, "E. disclaimer de IA ativo e fonte em texto", rich?.view.aiAssisted === true && rich?.view.source?.name === "Collider", `ai=${rich?.view.aiAssisted} fonte=${rich?.view.source?.name ?? "null"}`);
@@ -258,7 +258,7 @@ async function runChecks(prisma: PrismaLike, g: Getters): Promise<void> {
   await seedArticle(prisma, { slug: "noticia-rica-3", title: "Rica 3", reviewStatus: "human_reviewed", indexStatus: "index", body: LONG_BODY, publishedAt: new Date("2026-06-10T00:00:00.000Z") });
 
   const list = await g.getNewsIndexData();
-  record(16, "F. listagem canonicalUrl /pt/noticias/", list.canonicalUrl === "https://screena.media/pt/noticias/", `canonicalUrl=${list.canonicalUrl}`);
+  record(16, "F. listagem canonicalUrl /pt/noticias/", list.canonicalUrl === "https://thescreen.media/pt/noticias/", `canonicalUrl=${list.canonicalUrl}`);
   record(17, "F. so publicaveis entram (rascunho/bloqueada fora) -> totalCount=4", list.view.totalCount === 4, `totalCount=${list.view.totalCount}`);
   record(18, "F. listagem com itens suficientes -> index", list.indexability.decision === "index", `decision=${list.indexability.decision}`);
   record(19, "F. featured e o mais recente (Noticia Rica, 30/06)", list.view.featured?.title === "Noticia Rica", `featured=${list.view.featured?.title ?? "null"}`);

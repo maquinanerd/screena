@@ -1,5 +1,5 @@
 /*
- * globals.css — Estilo global do app publico Screena (tema White Cinematic
+ * globals.css — Estilo global do app publico Screen (tema White Cinematic
  * Editorial). Aplica a linguagem visual do handoff da pagina de filme:
  * off-white quente, tipografia Montserrat (preferida; com fallback de sistema),
  * cantos retos (radius 0) e acento vermelho de FILME.
@@ -109,30 +109,20 @@ a {
   gap: 24px;
 }
 
-/* Wordmark "SCR[caixa]NA": letras 800 + caixa neutra formam a marca.
-   A caixa e neutra (var(--text-strong)) — nunca vermelha/verde — como o
-   boxColor institucional do handoff, fora das verticais. */
+/* Logo oficial Screen (SVG local em /brand/screen-logo-black.svg). O header
+   tem fundo claro -> logo preta; a caixa do wordmark e neutra, sem cor de
+   vertical (invariante 11: o texto do link e a URL ja diferenciam). */
 .site-header__brand {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
   text-decoration: none;
   line-height: 1;
 }
 
-.site-header__word {
-  font-size: 24px;
-  font-weight: 800;
-  letter-spacing: 0.03em;
-  color: var(--text-strong);
-}
-
-.site-header__box {
-  display: inline-block;
-  width: 30px;
-  height: 15px;
-  margin: 0 2px;
-  background: var(--text-strong);
+.site-header__logo {
+  display: block;
+  height: 26px;
+  width: auto;
 }
 
 .site-header__nav {

@@ -405,7 +405,7 @@ async function runChecks(
   record(14, "D. renderableBlockCount === 2", richByAlias?.view.renderableBlockCount === 2, `count=${richByAlias?.view.renderableBlockCount}`);
   record(15, "D. indexability.decision === index", richByAlias?.indexability.decision === "index", `decision=${richByAlias?.indexability.decision}`);
   record(16, "D. canonicalSlug vem do slug canonico", richByAlias?.canonicalSlug === "serie-rica", `canonicalSlug=${richByAlias?.canonicalSlug}`);
-  record(17, "D. canonicalUrl usa /pt/series/", richByAlias?.canonicalUrl === "https://screena.media/pt/series/serie-rica/", `canonicalUrl=${richByAlias?.canonicalUrl}`);
+  record(17, "D. canonicalUrl usa /pt/series/", richByAlias?.canonicalUrl === "https://thescreen.media/pt/series/serie-rica/", `canonicalUrl=${richByAlias?.canonicalUrl}`);
   record(18, "D. titulo vem da traducao pt-BR", richByAlias?.view.title === "Serie Rica", `title=${richByAlias?.view.title}`);
   record(19, "D. periodo vem de first/last_air_date", richByAlias?.view.periodLabel === "2011-2019", `period=${richByAlias?.view.periodLabel}`);
   record(20, "D. contagens reais aparecem", richByAlias?.view.seasonsCountLabel === "8 temporadas" && richByAlias?.view.episodesCountLabel === "73 episodios", `labels=${richByAlias?.view.seasonsCountLabel} / ${richByAlias?.view.episodesCountLabel}`);
