@@ -1,0 +1,29 @@
+import type { Metadata } from "next";
+import type { ReactNode } from "react";
+
+import "./globals.css";
+
+/**
+ * Layout raiz do app publico @screena/web.
+ *
+ * Define <html>/<body> e o idioma de publicacao do MVP (pt-BR; invariante 7).
+ * Importa o estilo global minimo (`globals.css`): tema claro com tokens de cor
+ * da Screena, sem framework de CSS nem fontes externas. Server component puro —
+ * nenhum acesso a banco ou rede aqui.
+ */
+export const metadata: Metadata = {
+  metadataBase: new URL("https://screena.media"),
+  title: { default: "Screena", template: "%s | Screena" },
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: ReactNode;
+}): ReactNode {
+  return (
+    <html lang="pt-BR">
+      <body>{children}</body>
+    </html>
+  );
+}

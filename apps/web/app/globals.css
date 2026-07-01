@@ -1,0 +1,559 @@
+/*
+ * globals.css — Estilo global do app publico Screena (tema White Cinematic
+ * Editorial). Aplica a linguagem visual do handoff da pagina de filme:
+ * off-white quente, tipografia Montserrat (preferida; com fallback de sistema),
+ * cantos retos (radius 0) e acento vermelho de FILME.
+ *
+ * Pureza de render (invariantes 3/4): SEM fontes externas (nenhum <link>/@import
+ * a fonts.googleapis.com, nenhum next/font que baixe no build). Montserrat e
+ * apenas a familia PREFERIDA; se nao estiver instalada, cai para a stack do
+ * sistema — zero rede no build e no render.
+ *
+ * Tokens de cor (invariantes 9/10 e secao 8 do CLAUDE.md): o ACENTO de filme e
+ * sempre o token canonico `--screena-movie-red` (fonte de verdade @screena/config)
+ * — nunca um hex hardcoded em componente. As variaveis semanticas abaixo derivam
+ * dos 6 tokens canonicos para o tema editorial desta fase.
+ */
+
+:root {
+  /* Tokens canonicos (espelham @screena/config — fonte de verdade). */
+  --screena-black: #000000;
+  --screena-white: #f5f5f5;
+  --screena-movie-red: #ff3b30;
+  --screena-series-green: #7aa66d;
+  --screena-bg-dark: #050505;
+  --screena-bg-light: #f4f4f4;
+
+  /* Semanticos do tema White Cinematic Editorial (pagina de filme). */
+  --bg-page: #f7f6f2; /* off-white quente da pagina */
+  --bg-surface: #ffffff; /* cards / superficies elevadas */
+  --bg-muted: #efede7; /* faixas neutras */
+  --bg-media: #0a0a0a; /* base da faixa de midia escura */
+
+  --text-strong: #101010; /* titulos, numeros fortes */
+  --text-body: #242424; /* corpo de texto */
+  --text-heading: #3a3a3a; /* titulos de secao (uppercase) */
+  --text-muted: #6e6e6e; /* metadados, ano, labels secundarios */
+
+  /* Acento de FILME = token canonico (nunca forka a cor de marca). */
+  --accent-movie: var(--screena-movie-red);
+  --link-movie: #8a1e1a; /* links/acoes em texto na pagina de filme */
+
+  --border: #e3ded6; /* bordas de cards, divisores */
+  --border-dashed: #c9c2b6; /* borda tracejada do card sem spoilers */
+
+  /* Layout */
+  --container-max: 1280px;
+  --container-pad: 80px;
+  --measure: 68ch; /* largura de leitura confortavel do corpo editorial */
+
+  /* Fonte: Montserrat PREFERIDA, sem carregamento externo (fallback sistema). */
+  --font-sans: "Montserrat", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto,
+    Helvetica, Arial, sans-serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-page);
+  color: var(--text-body);
+  font-family: var(--font-sans);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: inherit;
+}
+
+::selection {
+  background: var(--accent-movie);
+  color: #ffffff;
+}
+
+/* ------------------------------------------------------------------ */
+/* Pagina de filme — shell                                            */
+/* ------------------------------------------------------------------ */
+
+.movie-page {
+  background: var(--bg-page);
+  padding-bottom: 4rem;
+}
+
+.container {
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: 0 var(--container-pad);
+}
+
+/* Breadcrumb discreto */
+.breadcrumb {
+  margin: 0;
+  padding: 26px 0 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.breadcrumb ol {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.breadcrumb li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.breadcrumb li + li::before {
+  content: "›";
+  color: var(--border);
+}
+
+.breadcrumb a {
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.breadcrumb a:hover {
+  color: var(--link-movie);
+  text-decoration: underline;
+}
+
+.breadcrumb [aria-current="page"] {
+  color: var(--text-strong);
+}
+
+/* ------------------------------------------------------------------ */
+/* Top info bar — grid 3 colunas (1.45fr 1.25fr 1fr) do design.        */
+/* Col 1: dados reais. Cols 2/3 (avaliacoes / onde assistir): ratings  */
+/* e streaming estao FORA DE ESCOPO -> placeholders decorativos, sem   */
+/* nota/logo/plataforma inventados (aria-hidden no markup).            */
+/* ------------------------------------------------------------------ */
+
+.movie-topbar {
+  display: grid;
+  grid-template-columns: 1.45fr 1.25fr 1fr;
+  gap: 40px;
+  align-items: start;
+  padding: 34px 0 28px;
+}
+
+/* Variacao "solo" — rota real sem ratings/streaming reais: apenas a coluna
+   principal, ocupando a largura util (a sinopse ja e limitada a 58ch, entao o
+   bloco fica editorial e equilibrado, sem headings/placeholders de feature). */
+.movie-topbar--solo {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.movie-topbar__title {
+  margin: 0;
+  font-size: clamp(1.9rem, 3.4vw, 34px);
+  font-weight: 800;
+  line-height: 1.12;
+  letter-spacing: -0.03em;
+  color: var(--text-strong);
+}
+
+/* Ano dentro do h1 — peso 600 em cinza (design). */
+.movie-topbar__year {
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: -0.02em;
+}
+
+.movie-topbar__badge {
+  margin: 12px 0 14px;
+}
+
+.movie-topbar__meta {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.movie-topbar__synopsis {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--text-body);
+  max-width: 58ch;
+}
+
+/* Badge "Filme" — acento vermelho, cantos retos (um dos cinco sinais). */
+.screena-badge {
+  display: inline-block;
+  padding: 6px 11px;
+  border-radius: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+.screena-badge--movie {
+  background: var(--accent-movie);
+  color: #ffffff;
+}
+
+/* Label das colunas 2/3 (design: 13px/700). */
+.movie-col-label {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-strong);
+}
+
+/* --- Coluna 2: avaliacoes (placeholder decorativo, sem numeros) --- */
+.movie-ratings__boxes {
+  display: flex;
+  gap: 10px;
+}
+
+.movie-ratings__box {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+  padding: 14px 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+}
+
+/* --- Coluna 3: onde assistir (chips placeholder, sem marcas) --- */
+.movie-watch__chips {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.movie-watch__chip {
+  display: inline-flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 18px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+}
+
+/* Barra de esqueleto — leitura claramente decorativa (nao e dado). */
+.movie-skel {
+  display: block;
+  background: repeating-linear-gradient(
+    135deg,
+    #ece7de,
+    #ece7de 6px,
+    #f3efe8 6px,
+    #f3efe8 12px
+  );
+}
+
+.movie-skel--logo {
+  width: 46px;
+  height: 20px;
+}
+
+.movie-skel--score {
+  width: 34px;
+  height: 16px;
+}
+
+.movie-skel--chip {
+  width: 58px;
+  height: 14px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Faixa de midia — full-bleed, grid 1fr/3fr/2fr do design (540px).    */
+/* 100% decorativa (aria-hidden): sem <img>, sem legendas/contagens,   */
+/* sem rotulos de feature. Gradientes = os do proprio design.          */
+/* ------------------------------------------------------------------ */
+
+.movie-media {
+  width: 100%;
+  background: var(--bg-media);
+}
+
+.movie-media__grid {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 3fr 2fr;
+  grid-template-areas: "poster stage tiles";
+  gap: 4px;
+  height: clamp(360px, 40vw, 540px);
+}
+
+/* Poster (esquerda). */
+.movie-media__poster {
+  grid-area: poster;
+  background: linear-gradient(150deg, #241410, #0a0605);
+}
+
+/* Palco central (trailer/cena) — scrim + botao de play. */
+.movie-media__stage {
+  grid-area: stage;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: linear-gradient(150deg, #2a1c14, #0c0806);
+}
+
+.movie-media__stage::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.15) 0%,
+    rgba(0, 0, 0, 0) 35%,
+    rgba(0, 0, 0, 0.5) 100%
+  );
+}
+
+/* Botao de play (74x74, borda branca) — circular por excecao. */
+.movie-media__play {
+  position: relative;
+  z-index: 1;
+  width: 74px;
+  height: 74px;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  border-radius: 50%;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.movie-media__play svg {
+  width: 22px;
+  height: 22px;
+  margin-left: 3px;
+}
+
+/* Tres tiles (direita) — gradientes distintos do design + scrim. */
+.movie-media__tiles {
+  grid-area: tiles;
+  display: grid;
+  grid-template-rows: 1fr 1fr 1fr;
+  gap: 4px;
+}
+
+.movie-media__tile {
+  position: relative;
+  overflow: hidden;
+}
+
+.movie-media__tile:nth-child(1) {
+  background: linear-gradient(150deg, #1a2a22, #0c130f);
+}
+
+.movie-media__tile:nth-child(2) {
+  background: linear-gradient(150deg, #2c2618, #15110a);
+}
+
+.movie-media__tile:nth-child(3) {
+  background: linear-gradient(150deg, #262030, #100d15);
+}
+
+.movie-media__tile::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0) 40%,
+    rgba(0, 0, 0, 0.7) 100%
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Sinopse — secao centrada; grid 1fr/320px do design. Coluna esquerda */
+/* recebe os content_blocks editoriais reais; card lateral tracejado   */
+/* "Resumo sem spoilers" recebe o bloco summary_without_spoilers.      */
+/* ------------------------------------------------------------------ */
+
+.movie-synopsis {
+  padding: 64px 0 0;
+  text-align: center;
+}
+
+.movie-synopsis__title {
+  margin: 0 0 32px;
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-heading);
+}
+
+.movie-synopsis__grid {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 40px;
+  align-items: start;
+  text-align: left;
+}
+
+.movie-synopsis__main {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.movie-block__body {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--text-body);
+  white-space: pre-wrap;
+}
+
+.movie-preview-label {
+  margin: 0 0 10px;
+  color: var(--accent-movie);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+/* Card lateral tracejado "Resumo sem spoilers" (design: icone + texto). */
+.movie-aside {
+  position: sticky;
+  top: 24px;
+}
+
+.spoiler-card {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+  padding: 24px;
+  background: var(--bg-surface);
+  border: 1.5px dashed var(--border-dashed);
+}
+
+.spoiler-card__icon {
+  width: 42px;
+  height: 42px;
+  color: var(--link-movie);
+  flex-shrink: 0;
+}
+
+.spoiler-card__text {
+  min-width: 0;
+}
+
+.spoiler-card__label {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text-strong);
+}
+
+.spoiler-card__body {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-body);
+  white-space: pre-wrap;
+}
+
+/* Aviso de revisao editorial (paginas noindex). */
+.review-notice {
+  margin: 40px 0 0;
+  padding: 14px 18px;
+  border-left: 3px solid var(--accent-movie);
+  background: var(--bg-muted);
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+/* ------------------------------------------------------------------ */
+/* Responsividade (design nao tem media queries): evitar overflow.     */
+/* ------------------------------------------------------------------ */
+
+@media (max-width: 1024px) {
+  :root {
+    --container-pad: 20px;
+  }
+
+  .movie-topbar {
+    grid-template-columns: 1fr;
+    gap: 28px;
+  }
+
+  .movie-synopsis__grid {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+
+  .movie-aside {
+    position: static;
+  }
+
+  /* Midia: poster + palco lado a lado; tiles viram faixa horizontal. */
+  .movie-media__grid {
+    grid-template-columns: 1fr 1.7fr;
+    grid-template-areas:
+      "poster stage"
+      "tiles tiles";
+    height: auto;
+  }
+
+  .movie-media__poster,
+  .movie-media__stage {
+    min-height: 300px;
+  }
+
+  .movie-media__tiles {
+    grid-template-rows: none;
+    grid-template-columns: repeat(3, 1fr);
+    height: 120px;
+  }
+}
+
+@media (max-width: 560px) {
+  /* Midia: so o palco central (com play) + tiles; poster recolhido. */
+  .movie-media__grid {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "stage"
+      "tiles";
+  }
+
+  .movie-media__poster {
+    display: none;
+  }
+
+  .movie-media__stage {
+    min-height: 240px;
+  }
+
+  .movie-media__tiles {
+    height: 88px;
+  }
+
+  .movie-topbar {
+    padding: 20px 0 20px;
+  }
+}
