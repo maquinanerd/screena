@@ -1,12 +1,12 @@
 /**
- * site.ts — Constantes e helpers de URL do site publico Screena. PUROS.
+ * site.ts — Constantes e helpers de URL do site publico Screen. PUROS.
  *
  * Sem rede/DB/IO. Servem para montar canonical e breadcrumb das paginas de forma
- * deterministica. O dominio canonico e screena.media (ver CLAUDE.md / SPEC).
+ * deterministica. O dominio publico canonico e thescreen.media (marca Screen).
  */
 
 /** Origin canonico do site (sem barra final). */
-export const SITE_URL = "https://screena.media";
+export const SITE_URL = "https://thescreen.media";
 
 /** Segmento de idioma do MVP (pt-BR publica primeiro; invariante 7). */
 export const PT_LOCALE_SEGMENT = "pt";

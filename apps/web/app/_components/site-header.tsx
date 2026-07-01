@@ -48,17 +48,17 @@ export function SiteHeader(): ReactNode {
   return (
     <header className="site-header">
       <div className="site-header__inner">
-        {/* Wordmark textual "SCR[caixa]NA" (nao ha logo em public/brand). A
-            caixa e neutra: identidade da marca, sem cor de vertical. O texto
-            acessivel completo vai no aria-label. */}
-        <a className="site-header__brand" href={HOME_HREF} aria-label="Screena — página inicial">
-          <span className="site-header__word" aria-hidden="true">
-            SCR
-          </span>
-          <span className="site-header__box" aria-hidden="true" />
-          <span className="site-header__word" aria-hidden="true">
-            NA
-          </span>
+        {/* Logo oficial Screen (SVG local em /brand). O header tem fundo claro
+            -> logo preta (neutra, sem cor de vertical). O alt="Screen" fornece o
+            nome acessivel do link para a home. */}
+        <a className="site-header__brand" href={HOME_HREF}>
+          <img
+            className="site-header__logo"
+            src="/brand/screen-logo-black.svg"
+            alt="Screen"
+            width={135}
+            height={26}
+          />
         </a>
 
         <nav className="site-header__nav" aria-label="Navegação principal">

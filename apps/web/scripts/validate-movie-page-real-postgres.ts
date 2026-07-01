@@ -344,7 +344,7 @@ async function runChecks(prisma: PrismaLike, getMoviePageData: GetMoviePageData)
   record(
     17,
     "F. canonicalUrl usa o slug canonico pt-BR",
-    richByAlias?.canonicalUrl === "https://screena.media/pt/filmes/interestelar/",
+    richByAlias?.canonicalUrl === "https://thescreen.media/pt/filmes/interestelar/",
     `canonicalUrl=${richByAlias?.canonicalUrl}`,
   );
 

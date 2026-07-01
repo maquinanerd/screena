@@ -20,7 +20,7 @@ export const dynamic = "force-dynamic";
 
 const TITLE = "Noticias";
 const DESCRIPTION =
-  "Ultimas noticias e analises editoriais da Screena sobre cinema e series, em portugues.";
+  "Ultimas noticias e analises editoriais da Screen sobre cinema e series, em portugues.";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { indexability, canonicalUrl } = await getNewsIndexData();
