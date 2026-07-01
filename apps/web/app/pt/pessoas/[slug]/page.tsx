@@ -1,0 +1,232 @@
+import type { Metadata } from "next";
+import { notFound } from "next/navigation";
+
+import { getPersonPageData } from "../../../../src/server/person-page";
+import { SITE_URL } from "../../../../src/lib/site";
+
+/**
+ * Pagina publica de pessoa - /pt/pessoas/[slug]/ (schema Person, tom NEUTRO).
+ *
+ * Server component puro: le somente PostgreSQL via `getPersonPageData`. Zero API
+ * externa, zero Gemini e zero TMDB no render. Pessoa e superficie
+ * institucional/neutra (invariante 11): sem cor de vertical filme/serie; a
+ * diferenciacao vem de label ("Pessoa") + badge + breadcrumb + schema + URL.
+ *
+ * Nada e inventado: biografia, funcao, datas, local e filmografia so aparecem
+ * quando existem no payload; caso contrario a secao e omitida. O gate anti-thin
+ * (invariante 5) aplica `noindex` quando ha menos de 2 blocos editoriais
+ * publicaveis (a filmografia crua nao conta como bloco de valor proprio).
+ */
+
+export const revalidate = 3600;
+
+const PESSOAS_INDEX_PATH = "/pt/pessoas/";
+
+interface PersonPageParams {
+  slug: string;
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<PersonPageParams>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const data = await getPersonPageData(slug);
+
+  if (data === null) {
+    return {
+      title: "Pessoa nao encontrada",
+      robots: { index: false, follow: false },
+    };
+  }
+
+  const { view, indexability, canonicalUrl } = data;
+  const shouldIndex = indexability.decision === "index";
+  const title = view.metaTitle ?? `${view.name} - Pessoa`;
+
+  const metadata: Metadata = {
+    title,
+    robots: shouldIndex
+      ? { index: true, follow: true }
+      : { index: false, follow: false },
+    alternates: { canonical: canonicalUrl },
+  };
+  if (view.metaDescription !== null) {
+    metadata.description = view.metaDescription;
+  }
+  return metadata;
+}
+
+export default async function PersonPage({
+  params,
+}: {
+  params: Promise<PersonPageParams>;
+}) {
+  const { slug } = await params;
+  const data = await getPersonPageData(slug);
+  if (data === null) notFound();
+
+  const { view, indexability, canonicalUrl } = data;
+  const isUnderReview = indexability.decision !== "index";
+
+  const metaItems = [view.lifeLabel, view.placeOfBirth].filter(
+    (item): item is string => item !== null,
+  );
+  const hasEditorial = view.blocks.length > 0;
+  const hasCredits = view.credits.length > 0;
+
+  const breadcrumbJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Inicio", item: `${SITE_URL}/pt/` },
+      {
+        "@type": "ListItem",
+        position: 2,
+        name: "Pessoas",
+        item: `${SITE_URL}${PESSOAS_INDEX_PATH}`,
+      },
+      { "@type": "ListItem", position: 3, name: view.name, item: canonicalUrl },
+    ],
+  };
+
+  const personJsonLd: Record<string, unknown> = {
+    "@context": "https://schema.org",
+    "@type": "Person",
+    name: view.name,
+    url: canonicalUrl,
+  };
+  if (view.originalName !== null) personJsonLd.alternateName = view.originalName;
+  if (view.roleLabel !== null) personJsonLd.jobTitle = view.roleLabel;
+  if (view.birthDateIso !== null) personJsonLd.birthDate = view.birthDateIso;
+  if (view.deathDateIso !== null) personJsonLd.deathDate = view.deathDateIso;
+  if (view.placeOfBirth !== null) {
+    personJsonLd.birthPlace = { "@type": "Place", name: view.placeOfBirth };
+  }
+  if (view.metaDescription !== null) personJsonLd.description = view.metaDescription;
+
+  return (
+    <main className="person-page" data-vertical="person">
+      <div className="container">
+        <nav className="breadcrumb" aria-label="Trilha de navegacao">
+          <ol>
+            <li>
+              <a href="/pt/">Inicio</a>
+            </li>
+            <li>
+              <a href={PESSOAS_INDEX_PATH}>Pessoas</a>
+            </li>
+            <li aria-current="page">{view.name}</li>
+          </ol>
+        </nav>
+
+        <section className="person-hero">
+          <div
+            className={`person-hero__portrait${view.hasRealImage ? " person-hero__portrait--real" : ""}`}
+          >
+            {view.profile !== null ? (
+              <img
+                src={view.profile.src}
+                alt={`Foto de ${view.name}`}
+                width={view.profile.width}
+                height={view.profile.height}
+                className="person-hero__image"
+              />
+            ) : (
+              <span className="person-hero__portrait-fallback" aria-hidden="true" />
+            )}
+          </div>
+
+          <div className="person-hero__lead">
+            <p className="person-hero__badge">
+              <span className="screena-badge screena-badge--person">Pessoa</span>
+            </p>
+            <h1 className="person-hero__name">{view.name}</h1>
+            {view.originalName !== null ? (
+              <p className="person-hero__original">{view.originalName}</p>
+            ) : null}
+            {view.roleLabel !== null ? (
+              <p className="person-hero__role">{view.roleLabel}</p>
+            ) : null}
+            {metaItems.length > 0 ? (
+              <p className="person-hero__meta">{metaItems.join(" · ")}</p>
+            ) : null}
+            {view.metaDescription !== null ? (
+              <p className="person-hero__intro">{view.metaDescription}</p>
+            ) : null}
+          </div>
+        </section>
+      </div>
+
+      {hasEditorial ? (
+        <div className="container">
+          <section className="person-section" aria-labelledby="person-bio-title">
+            <h2 id="person-bio-title" className="person-section-title">
+              Biografia
+            </h2>
+            <div className="person-bio">
+              {view.blocks.map((block) => (
+                <div
+                  key={block.blockType}
+                  className="person-block"
+                  data-block-type={block.blockType}
+                >
+                  <p className="person-block__body">{block.content}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {hasCredits ? (
+        <div className="container">
+          <section className="person-section" aria-labelledby="person-filmography-title">
+            <h2 id="person-filmography-title" className="person-section-title">
+              Filmografia
+            </h2>
+            <ul className="person-credits">
+              {view.credits.map((credit, index) => (
+                <li
+                  key={`${credit.entityType}-${credit.href}-${index}`}
+                  className="person-credit"
+                  data-entity-type={credit.entityType}
+                >
+                  <a className="person-credit__link" href={credit.href}>
+                    {credit.title}
+                  </a>
+                  <span className="person-credit__detail">
+                    {credit.year !== null ? (
+                      <span className="person-credit__year">{credit.year}</span>
+                    ) : null}
+                    {credit.roleLabel !== null ? (
+                      <span className="person-credit__role">{credit.roleLabel}</span>
+                    ) : null}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        </div>
+      ) : null}
+
+      {isUnderReview ? (
+        <div className="container">
+          <p className="person-review-notice" data-editorial-state="in-review">
+            Esta pagina ainda esta em revisao editorial.
+          </p>
+        </div>
+      ) : null}
+
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(personJsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+      />
+    </main>
+  );
+}

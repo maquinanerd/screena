@@ -1124,3 +1124,221 @@ a {
     gap: 12px;
   }
 }
+
+/* ================================================================== */
+/* Person page                                                        */
+/* ------------------------------------------------------------------ */
+/* Pagina publica de pessoa (/pt/pessoas/[slug]/). Superficie NEUTRA/  */
+/* institucional (invariante 11): sem cor de vertical filme/serie. A   */
+/* diferenciacao vem de label ("Pessoa") + badge + breadcrumb + schema */
+/* + URL. Bloco isolado: nao altera os blocos Movie Page nem Series    */
+/* Page acima. Mantem a estetica White Cinematic Editorial (off-white  */
+/* quente, Montserrat, cantos retos), em tom neutro.                   */
+/* ------------------------------------------------------------------ */
+
+.person-page {
+  background: var(--bg-page);
+  padding-bottom: 4rem;
+}
+
+.person-page ::selection {
+  background: var(--text-strong);
+  color: #ffffff;
+}
+
+/* Badge "Pessoa" — neutro (nunca vermelho de filme nem verde de serie). */
+.screena-badge--person {
+  background: var(--text-strong);
+  color: #ffffff;
+}
+
+/* Hero: retrato 2:3 a esquerda + coluna editorial a direita. */
+.person-hero {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 40px;
+  align-items: start;
+  padding: 36px 0 28px;
+}
+
+.person-hero__portrait {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  overflow: hidden;
+  background: var(--bg-muted);
+  border: 1px solid var(--border);
+}
+
+.person-hero__image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.person-hero__portrait-fallback {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(150deg, #ecebe4, #dedbd1);
+}
+
+.person-hero__lead {
+  min-width: 0;
+}
+
+.person-hero__badge {
+  margin: 0 0 14px;
+}
+
+.person-hero__name {
+  margin: 0;
+  font-size: clamp(1.9rem, 3.4vw, 34px);
+  font-weight: 800;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  color: var(--text-strong);
+}
+
+.person-hero__original {
+  margin: 6px 0 0;
+  font-size: 15px;
+  color: var(--text-muted);
+}
+
+.person-hero__role {
+  margin: 14px 0 0;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-heading);
+}
+
+.person-hero__meta {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.person-hero__intro {
+  margin: 18px 0 0;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-body);
+  max-width: 62ch;
+}
+
+/* Secoes editoriais (Biografia, Filmografia). */
+.person-section {
+  padding: 48px 0 0;
+}
+
+.person-section-title {
+  margin: 0 0 24px;
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-heading);
+}
+
+.person-bio {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  max-width: 68ch;
+}
+
+.person-block__body {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--text-body);
+  white-space: pre-wrap;
+}
+
+/* Filmografia: lista de creditos (titulo + ano/papel), linkando filme/serie. */
+.person-credits {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.person-credit {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.person-credit:first-child {
+  border-top: 1px solid var(--border);
+}
+
+.person-credit__link {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-strong);
+  text-decoration: none;
+}
+
+.person-credit__link:hover,
+.person-credit__link:focus-visible {
+  text-decoration: underline;
+}
+
+.person-credit__detail {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: right;
+}
+
+.person-credit__role {
+  color: var(--text-heading);
+}
+
+/* Aviso de revisao editorial (paginas noindex). */
+.person-review-notice {
+  margin: 40px 0 0;
+  padding: 14px 18px;
+  border-left: 3px solid var(--text-muted);
+  background: var(--bg-muted);
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+@media (max-width: 1024px) {
+  .person-hero {
+    grid-template-columns: 160px minmax(0, 1fr);
+    gap: 28px;
+  }
+}
+
+@media (max-width: 560px) {
+  .person-hero {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+  }
+
+  .person-hero__portrait {
+    max-width: 200px;
+  }
+
+  .person-credit {
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .person-credit__detail {
+    text-align: left;
+  }
+}
