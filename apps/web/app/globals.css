@@ -154,6 +154,13 @@ a {
   padding: 34px 0 28px;
 }
 
+/* Variacao "solo" — rota real sem ratings/streaming reais: apenas a coluna
+   principal, ocupando a largura util (a sinopse ja e limitada a 58ch, entao o
+   bloco fica editorial e equilibrado, sem headings/placeholders de feature). */
+.movie-topbar--solo {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .movie-topbar__title {
   margin: 0;
   font-size: clamp(1.9rem, 3.4vw, 34px);

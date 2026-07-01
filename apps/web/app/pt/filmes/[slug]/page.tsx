@@ -136,12 +136,13 @@ export default async function MoviePage({
           </ol>
         </nav>
 
-        {/* Top info bar do design — grid 3 colunas (1.45fr 1.25fr 1fr).
-            Coluna 1: dados reais (titulo, ano, badge, sinopse curta). Colunas 2
-            e 3 (avaliacoes / onde assistir) sao PLACEHOLDERS decorativos porque
-            ratings e streaming estao fora de escopo: nenhuma nota, logo ou
-            plataforma inventada. aria-hidden para nao anunciar features. */}
-        <section className="movie-topbar" data-vertical="movie">
+        {/* Top info bar — variacao SEGURA da rota real: so a coluna principal
+            (titulo, ano, badge, sinopse curta). As colunas "Avaliacoes" e "Onde
+            assistir" do design NAO sao renderizadas aqui enquanto nao houver
+            ratings/streaming reais — exibir esses headings vazios pareceria
+            feature falsa. Os placeholders decorativos ficam SO na preview
+            (/dev/movie-page-preview). Nada de nota, logo ou plataforma inventada. */}
+        <section className="movie-topbar movie-topbar--solo" data-vertical="movie">
           <div className="movie-topbar__lead">
             <h1 className="movie-topbar__title">
               {view.title}
@@ -161,42 +162,6 @@ export default async function MoviePage({
             {view.metaDescription !== null ? (
               <p className="movie-topbar__synopsis">{view.metaDescription}</p>
             ) : null}
-          </div>
-
-          <div className="movie-ratings" aria-hidden="true">
-            <p className="movie-col-label">Avaliacoes</p>
-            <div className="movie-ratings__boxes">
-              <div className="movie-ratings__box">
-                <span className="movie-skel movie-skel--logo" />
-                <span className="movie-skel movie-skel--score" />
-              </div>
-              <div className="movie-ratings__box">
-                <span className="movie-skel movie-skel--logo" />
-                <span className="movie-skel movie-skel--score" />
-              </div>
-              <div className="movie-ratings__box">
-                <span className="movie-skel movie-skel--logo" />
-                <span className="movie-skel movie-skel--score" />
-              </div>
-            </div>
-          </div>
-
-          <div className="movie-watch" aria-hidden="true">
-            <p className="movie-col-label">Onde assistir</p>
-            <div className="movie-watch__chips">
-              <span className="movie-watch__chip">
-                <span className="movie-skel movie-skel--chip" />
-              </span>
-              <span className="movie-watch__chip">
-                <span className="movie-skel movie-skel--chip" />
-              </span>
-              <span className="movie-watch__chip">
-                <span className="movie-skel movie-skel--chip" />
-              </span>
-              <span className="movie-watch__chip">
-                <span className="movie-skel movie-skel--chip" />
-              </span>
-            </div>
           </div>
         </section>
       </div>
