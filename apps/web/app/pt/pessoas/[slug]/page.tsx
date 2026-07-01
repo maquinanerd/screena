@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { getPersonPageData } from "../../../../src/server/person-page";
 import { SITE_URL } from "../../../../src/lib/site";
+import { RelatedNewsSection } from "../../../_components/related-news-section";
 
 /**
  * Pagina publica de pessoa - /pt/pessoas/[slug]/ (schema Person, tom NEUTRO).
@@ -67,7 +68,7 @@ export default async function PersonPage({
   const data = await getPersonPageData(slug);
   if (data === null) notFound();
 
-  const { view, indexability, canonicalUrl } = data;
+  const { view, indexability, canonicalUrl, relatedNews } = data;
   const isUnderReview = indexability.decision !== "index";
 
   const metaItems = [view.lifeLabel, view.placeOfBirth].filter(
@@ -210,6 +211,8 @@ export default async function PersonPage({
           </section>
         </div>
       ) : null}
+
+      <RelatedNewsSection cards={relatedNews} />
 
       {isUnderReview ? (
         <div className="container">

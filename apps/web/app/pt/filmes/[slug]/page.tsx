@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { getMoviePageData } from "../../../../src/server/movie-page";
 import { MOVIES_INDEX_PATH, SITE_URL } from "../../../../src/lib/site";
+import { RelatedNewsSection } from "../../../_components/related-news-section";
 
 /**
  * Pagina publica de filme — /pt/filmes/[slug]/ (schema Movie, acento vermelho).
@@ -80,7 +81,7 @@ export default async function MoviePage({
   const data = await getMoviePageData(slug);
   if (data === null) notFound();
 
-  const { view, indexability, canonicalUrl } = data;
+  const { view, indexability, canonicalUrl, relatedNews } = data;
   const isUnderReview = indexability.decision !== "index";
 
   // Duracao visivel (so o que existe no payload; ano vai no titulo, nao aqui).
@@ -254,6 +255,8 @@ export default async function MoviePage({
           </section>
         </div>
       ) : null}
+
+      <RelatedNewsSection cards={relatedNews} />
 
       {isUnderReview ? (
         <div className="container">

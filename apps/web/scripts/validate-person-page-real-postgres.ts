@@ -74,7 +74,40 @@ type PrismaLike = {
   slug: { create: (args: unknown) => Promise<unknown> };
   entityTranslation: { create: (args: unknown) => Promise<unknown> };
   contentBlock: { create: (args: unknown) => Promise<unknown> };
+  article: { create: (args: unknown) => Promise<{ id: bigint }> };
+  articleTranslation: { create: (args: unknown) => Promise<unknown> };
+  entityNewsLink: { create: (args: unknown) => Promise<unknown> };
 };
+
+/** Cria um Article publicavel|rascunho + traducao pt-BR + link para uma entidade. */
+async function seedRelatedArticle(
+  prisma: PrismaLike,
+  opts: { slug: string; title: string; reviewStatus: string; entityType: string; entityId: bigint },
+): Promise<void> {
+  const article = await prisma.article.create({
+    data: {
+      licenseStatus: "official",
+      displayAllowed: true,
+      publishedAt: new Date("2026-06-30T12:00:00.000Z"),
+    },
+    select: { id: true },
+  });
+  await prisma.articleTranslation.create({
+    data: {
+      articleId: article.id,
+      languageCode: LANGUAGE,
+      slug: opts.slug,
+      title: opts.title,
+      body: "Corpo editorial proprio e substancial. ".repeat(8),
+      reviewStatus: opts.reviewStatus,
+      indexStatus: "index",
+      publishedAt: new Date("2026-06-30T12:00:00.000Z"),
+    },
+  });
+  await prisma.entityNewsLink.create({
+    data: { articleId: article.id, entityType: opts.entityType, entityId: opts.entityId },
+  });
+}
 
 async function createSlug(
   prisma: PrismaLike,
@@ -288,6 +321,7 @@ type PersonPageData = {
   indexability: { decision: string };
   canonicalSlug: string;
   canonicalUrl: string;
+  relatedNews: ReadonlyArray<{ title: string; href: string }>;
 };
 type GetPersonPageData = (slug: string) => Promise<PersonPageData | null>;
 
@@ -351,7 +385,7 @@ async function runChecks(
     releaseDate: new Date("2012-01-01"),
   });
 
-  await seedPerson(prisma, {
+  const richId = await seedPerson(prisma, {
     tmdbId: 77000003,
     name: "Original Person",
     knownForDepartment: "Acting",
@@ -378,8 +412,19 @@ async function runChecks(
       { targetType: "tv", targetId: tvId, department: "Directing", job: "Director", creditId: "credit-crew-tv" },
     ],
   });
+  // 4G: noticias relacionadas reais via EntityNewsLink (person). Publicada
+  // aparece; rascunho fora.
+  await seedRelatedArticle(prisma, { slug: "noticia-da-pessoa", title: "Noticia da Pessoa", reviewStatus: "published", entityType: "person", entityId: richId });
+  await seedRelatedArticle(prisma, { slug: "rascunho-da-pessoa", title: "Rascunho", reviewStatus: "draft", entityType: "person", entityId: richId });
+
   const richByAlias = await getPersonPageData("pessoa-rica-antiga");
   record(13, "D. pessoa com 2 blocos publicos retorna dados", richByAlias !== null, `retorno=${richByAlias ? "objeto" : "null"}`);
+  record(
+    26,
+    "4G. noticia relacionada publicada aparece; rascunho fora; linka /pt/noticias/",
+    richByAlias?.relatedNews.length === 1 && richByAlias?.relatedNews[0]?.href === "/pt/noticias/noticia-da-pessoa/",
+    `related=[${(richByAlias?.relatedNews ?? []).map((r) => r.href).join(", ")}]`,
+  );
   record(14, "D. renderableBlockCount === 2", richByAlias?.view.renderableBlockCount === 2, `count=${richByAlias?.view.renderableBlockCount}`);
   record(15, "D. indexability.decision === index", richByAlias?.indexability.decision === "index", `decision=${richByAlias?.indexability.decision}`);
   record(16, "D. canonicalSlug vem do slug canonico", richByAlias?.canonicalSlug === "pessoa-rica", `canonicalSlug=${richByAlias?.canonicalSlug}`);

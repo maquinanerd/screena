@@ -90,7 +90,40 @@ type PrismaLike = {
   slug: { create: (args: unknown) => Promise<unknown> };
   entityTranslation: { create: (args: unknown) => Promise<unknown> };
   contentBlock: { create: (args: unknown) => Promise<unknown> };
+  article: { create: (args: unknown) => Promise<{ id: bigint }> };
+  articleTranslation: { create: (args: unknown) => Promise<unknown> };
+  entityNewsLink: { create: (args: unknown) => Promise<unknown> };
 };
+
+/** Cria um Article publicavel|rascunho + traducao pt-BR + link para uma entidade. */
+async function seedRelatedArticle(
+  prisma: PrismaLike,
+  opts: { slug: string; title: string; reviewStatus: string; entityType: string; entityId: bigint },
+): Promise<void> {
+  const article = await prisma.article.create({
+    data: {
+      licenseStatus: "official",
+      displayAllowed: true,
+      publishedAt: new Date("2026-06-30T12:00:00.000Z"),
+    },
+    select: { id: true },
+  });
+  await prisma.articleTranslation.create({
+    data: {
+      articleId: article.id,
+      languageCode: LANGUAGE,
+      slug: opts.slug,
+      title: opts.title,
+      body: "Corpo editorial proprio e substancial. ".repeat(8),
+      reviewStatus: opts.reviewStatus,
+      indexStatus: "index",
+      publishedAt: new Date("2026-06-30T12:00:00.000Z"),
+    },
+  });
+  await prisma.entityNewsLink.create({
+    data: { articleId: article.id, entityType: opts.entityType, entityId: opts.entityId },
+  });
+}
 
 /** Cria um movie completo (movie + slugs + translation? + blocks) e retorna o id. */
 async function seedMovie(
@@ -186,6 +219,7 @@ type MoviePageData = {
   indexability: { decision: string };
   canonicalSlug: string;
   canonicalUrl: string;
+  relatedNews: ReadonlyArray<{ title: string; href: string }>;
 };
 type GetMoviePageData = (slug: string) => Promise<MoviePageData | null>;
 
@@ -252,7 +286,7 @@ async function runChecks(prisma: PrismaLike, getMoviePageData: GetMoviePageData)
 
   // --- D. Filme com 2 blocos publicos -> index. ----------------------------
   // Tambem cobre E (seguranca de blocos), F (canonical) e G (presenter).
-  await seedMovie(prisma, {
+  const richId = await seedMovie(prisma, {
     tmdbId: 94000003,
     titleOriginal: "Interstellar",
     releaseDate: new Date("2014-11-06"),
@@ -275,12 +309,23 @@ async function runChecks(prisma: PrismaLike, getMoviePageData: GetMoviePageData)
       { blockType: "news_context", content: "arquivado (nao deve aparecer)", reviewStatus: "archived", sourceType: "ai" },
     ],
   });
+  // 4G: noticias relacionadas reais via EntityNewsLink. A publicada aparece; o
+  // rascunho e descartado pelo mesmo gate das paginas de noticias.
+  await seedRelatedArticle(prisma, { slug: "noticia-do-filme", title: "Noticia do Filme", reviewStatus: "published", entityType: "movie", entityId: BigInt(richId) });
+  await seedRelatedArticle(prisma, { slug: "rascunho-do-filme", title: "Rascunho", reviewStatus: "draft", entityType: "movie", entityId: BigInt(richId) });
+
   // F: consulta pelo slug ALIAS (nao-canonico) para provar que o canonical
   // resolvido vem do slug canonico, nao do slug consultado.
   const richByAlias = await getMoviePageData("interestelar-antigo");
   record(11, "D. filme com 2 blocos publicos retorna dados", richByAlias !== null, `retorno=${richByAlias ? "objeto" : "null"}`);
   record(12, "D. renderableBlockCount === 2", richByAlias?.view.renderableBlockCount === 2, `count=${richByAlias?.view.renderableBlockCount}`);
   record(13, "D. indexability.decision === index", richByAlias?.indexability.decision === "index", `decision=${richByAlias?.indexability.decision}`);
+  record(
+    27,
+    "4G. noticia relacionada publicada aparece; rascunho fora; linka /pt/noticias/",
+    richByAlias?.relatedNews.length === 1 && richByAlias?.relatedNews[0]?.href === "/pt/noticias/noticia-do-filme/",
+    `related=[${(richByAlias?.relatedNews ?? []).map((r) => r.href).join(", ")}]`,
+  );
 
   const visibleTypes = (richByAlias?.view.blocks ?? []).map((b) => b.blockType).sort();
   record(
