@@ -81,6 +81,120 @@ a {
   color: #ffffff;
 }
 
+/* ================================================================== */
+/* Global header                                                      */
+/* ------------------------------------------------------------------ */
+/* Cabecalho/navegacao global do site (site-header.tsx). Server        */
+/* component puro: sem "use client", sem rede/JS. NEUTRO/institucional */
+/* — o proprio header nao carrega cor de vertical; o vermelho (Filmes) */
+/* e o verde (Series) aparecem apenas como reforco de hover/foco nos   */
+/* links, jamais como unico diferenciador (invariante 11: o texto do   */
+/* link e o segmento de URL /pt/filmes/ vs /pt/series/ ja distinguem). */
+/* Bloco isolado de proposito — nao mexe no CSS da Movie Page abaixo.  */
+/* ------------------------------------------------------------------ */
+
+.site-header {
+  background: var(--bg-page);
+  border-bottom: 1px solid var(--border);
+}
+
+.site-header__inner {
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: 0 var(--container-pad);
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+/* Wordmark "SCR[caixa]NA": letras 800 + caixa neutra formam a marca.
+   A caixa e neutra (var(--text-strong)) — nunca vermelha/verde — como o
+   boxColor institucional do handoff, fora das verticais. */
+.site-header__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  text-decoration: none;
+  line-height: 1;
+}
+
+.site-header__word {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  color: var(--text-strong);
+}
+
+.site-header__box {
+  display: inline-block;
+  width: 30px;
+  height: 15px;
+  margin: 0 2px;
+  background: var(--text-strong);
+}
+
+.site-header__nav {
+  display: flex;
+  align-items: center;
+  gap: 30px;
+}
+
+.site-header__link {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-decoration: none;
+  color: var(--text-muted);
+  transition: color 0.2s ease;
+}
+
+.site-header__link:hover,
+.site-header__link:focus-visible {
+  color: var(--text-strong);
+}
+
+/* Reforco de vertical (cor = apoio, nunca o unico sinal). */
+.site-header__link[data-vertical="movie"]:hover,
+.site-header__link[data-vertical="movie"]:focus-visible {
+  color: var(--screena-movie-red);
+}
+
+.site-header__link[data-vertical="series"]:hover,
+.site-header__link[data-vertical="series"]:focus-visible {
+  color: var(--screena-series-green);
+}
+
+/* Responsivo basico (sem menu mobile complexo nesta fatia). O respiro
+   lateral herda --container-pad, reduzido para 20px em <=1024px pela
+   media query de :root abaixo. */
+@media (max-width: 1024px) {
+  .site-header__nav {
+    gap: 18px;
+  }
+}
+
+@media (max-width: 560px) {
+  .site-header__inner {
+    height: auto;
+    flex-wrap: wrap;
+    gap: 10px 18px;
+    padding-top: 14px;
+    padding-bottom: 14px;
+  }
+
+  .site-header__nav {
+    gap: 14px;
+  }
+
+  .site-header__link {
+    font-size: 12px;
+    letter-spacing: 0.08em;
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* Pagina de filme — shell                                            */
 /* ------------------------------------------------------------------ */
