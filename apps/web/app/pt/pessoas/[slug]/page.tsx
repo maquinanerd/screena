@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { getPersonPageData } from "../../../../src/server/person-page";
 import { SITE_URL } from "../../../../src/lib/site";
+import type { PersonCreditEntityType } from "../../../../src/lib/person-presenter";
 import { RelatedNewsSection } from "../../../_components/related-news-section";
 
 /**
@@ -22,6 +23,15 @@ import { RelatedNewsSection } from "../../../_components/related-news-section";
 export const revalidate = 3600;
 
 const PESSOAS_INDEX_PATH = "/pt/pessoas/";
+
+/**
+ * Rotulo textual (visually-hidden) do tipo de credito. A cor do dot e apenas
+ * apoio — invariante 11: a diferenciacao filme/serie nunca depende so da cor.
+ */
+const CREDIT_TYPE_LABELS: Readonly<Record<PersonCreditEntityType, string>> = {
+  movie: "Filme",
+  tv: "Série",
+};
 
 interface PersonPageParams {
   slug: string;
@@ -187,6 +197,10 @@ export default async function PersonPage({
             <h2 id="person-filmography-title" className="person-section-title">
               Filmografia
             </h2>
+            {/* Linhas no layout da Filmografia do design "Screen Screens v2":
+                ano à esquerda, ponto de tipo (cor = apoio; o tipo real esta em
+                data-entity-type + URL do link), titulo e papel. Somente dados
+                reais do payload; campos ausentes sao omitidos. */}
             <ul className="person-credits">
               {view.credits.map((credit, index) => (
                 <li
@@ -194,17 +208,21 @@ export default async function PersonPage({
                   className="person-credit"
                   data-entity-type={credit.entityType}
                 >
+                  {/* Coluna de 44px sempre presente (vazia sem ano real) para
+                      manter a grade alinhada entre linhas — nada e inventado. */}
+                  <span className="person-credit__year">
+                    {credit.year !== null ? credit.year : null}
+                  </span>
+                  <span className="person-credit__dot" aria-hidden="true" />
+                  <span className="u-visually-hidden">
+                    {CREDIT_TYPE_LABELS[credit.entityType]}
+                  </span>
                   <a className="person-credit__link" href={credit.href}>
                     {credit.title}
                   </a>
-                  <span className="person-credit__detail">
-                    {credit.year !== null ? (
-                      <span className="person-credit__year">{credit.year}</span>
-                    ) : null}
-                    {credit.roleLabel !== null ? (
-                      <span className="person-credit__role">{credit.roleLabel}</span>
-                    ) : null}
-                  </span>
+                  {credit.roleLabel !== null ? (
+                    <span className="person-credit__role">{credit.roleLabel}</span>
+                  ) : null}
                 </li>
               ))}
             </ul>

@@ -31,12 +31,16 @@ interface NavItem {
 }
 
 /**
- * Itens de navegacao global (pt-BR; invariante 7). As rotas apontam para os
- * caminhos canonicos futuros — esta fatia nao cria as paginas de indice.
+ * Itens de navegacao global (pt-BR; invariante 7). Ordem e itens espelham a NAV
+ * do design "Screen Screens v2" (FILMES · SÉRIES · PESSOAS · NOTÍCIAS ·
+ * EXPLORAR); o icone de busca do design fica de fora (busca esta fora de
+ * escopo). Rotas apontam para os caminhos canonicos — esta fatia nao cria
+ * paginas novas.
  */
 const NAV_ITEMS: readonly NavItem[] = [
   { label: "Filmes", href: MOVIES_INDEX_PATH, vertical: "movie" },
   { label: "Séries", href: `/${PT_LOCALE_SEGMENT}/series/`, vertical: "series" },
+  { label: "Pessoas", href: `/${PT_LOCALE_SEGMENT}/pessoas/` },
   { label: "Notícias", href: `/${PT_LOCALE_SEGMENT}/noticias/` },
   { label: "Explorar", href: `/${PT_LOCALE_SEGMENT}/explorar/` },
 ];
