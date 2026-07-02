@@ -24,22 +24,24 @@
   --screena-bg-dark: #050505;
   --screena-bg-light: #f4f4f4;
 
-  /* Semanticos do tema White Cinematic Editorial (pagina de filme). */
-  --bg-page: #f7f6f2; /* off-white quente da pagina */
+  /* Semanticos do tema White Cinematic Editorial ("Screen Screens v2"). */
+  --bg-page: #fdfdfd; /* fundo quase branco do design v2 */
   --bg-surface: #ffffff; /* cards / superficies elevadas */
   --bg-muted: #efede7; /* faixas neutras */
   --bg-media: #0a0a0a; /* base da faixa de midia escura */
 
   --text-strong: #101010; /* titulos, numeros fortes */
   --text-body: #242424; /* corpo de texto */
-  --text-heading: #3a3a3a; /* titulos de secao (uppercase) */
+  --text-heading: #3a3a3a; /* titulos de secao (uppercase) e corpo de artigo */
   --text-muted: #6e6e6e; /* metadados, ano, labels secundarios */
+  --text-faint: #9a958c; /* metadados terciarios (bylines, fontes) do design v2 */
 
   /* Acento de FILME = token canonico (nunca forka a cor de marca). */
   --accent-movie: var(--screena-movie-red);
   --link-movie: #8a1e1a; /* links/acoes em texto na pagina de filme */
 
   --border: #e3ded6; /* bordas de cards, divisores */
+  --border-soft: #f1eee8; /* divisores internos de card (design v2) */
   --border-dashed: #c9c2b6; /* borda tracejada do card sem spoilers */
 
   /* Layout */
@@ -56,6 +58,19 @@
 *::before,
 *::after {
   box-sizing: border-box;
+}
+
+/* Texto so para tecnologia assistiva (rotulos que a cor apenas apoia). */
+.u-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 
 html {
@@ -79,6 +94,17 @@ a {
 ::selection {
   background: var(--accent-movie);
   color: #ffffff;
+}
+
+/* Scrollbar discreta do design v2 (cantos retos, tom da borda). */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 0;
 }
 
 /* ================================================================== */
@@ -115,8 +141,15 @@ a {
 .site-header__brand {
   display: inline-flex;
   align-items: center;
+  flex-shrink: 0;
   text-decoration: none;
   line-height: 1;
+}
+
+.site-header__brand:focus-visible,
+.site-header__link:focus-visible {
+  outline: 2px solid var(--text-strong);
+  outline-offset: 4px;
 }
 
 .site-header__logo {
@@ -677,7 +710,7 @@ a {
 
 .series-page {
   --accent-series: var(--screena-series-green);
-  --link-series: #4f7445;
+  --link-series: #395c42; /* verde-escuro de links do design v2 */
   background: var(--bg-page);
   padding-bottom: 4rem;
 }
@@ -691,10 +724,11 @@ a {
   color: var(--link-series);
 }
 
+/* Badge de serie com a mesma geometria/tracking do badge de filme (design v2:
+   ambos 10px / 0.14em / 6x11px — muda apenas a cor de vertical). */
 .screena-badge--series {
   background: var(--accent-series);
   color: #ffffff;
-  letter-spacing: 0;
 }
 
 .series-topbar {
@@ -702,22 +736,24 @@ a {
   grid-template-columns: minmax(0, 1fr);
   gap: 32px;
   align-items: start;
-  padding: 34px 0 28px;
+  padding: 36px 0 28px;
 }
 
+/* h1 identico ao da Movie Page (design v2: 34px/800/-0.03em nas duas
+   verticais — quem diferencia e label + badge + breadcrumb + schema + URL). */
 .series-topbar__title {
   margin: 0;
-  font-size: 34px;
+  font-size: clamp(1.9rem, 3.4vw, 34px);
   font-weight: 800;
   line-height: 1.12;
-  letter-spacing: 0;
+  letter-spacing: -0.03em;
   color: var(--text-strong);
 }
 
 .series-topbar__year {
   font-weight: 600;
   color: var(--text-muted);
-  letter-spacing: 0;
+  letter-spacing: -0.03em;
 }
 
 .series-topbar__badge {
@@ -851,22 +887,31 @@ a {
   text-align: center;
 }
 
+/* A secao de temporadas/episodios NAO segue o titulo uppercase centralizado:
+   no design v2 o heading "Episódios" e 28px/700/-0.02em sentence-case,
+   alinhado a esquerda (mesmo padrao dos headings da pagina de pessoa). */
+.series-seasons {
+  text-align: left;
+}
+
+.series-seasons .series-section-title {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  text-transform: none;
+  color: var(--text-strong);
+  margin: 0 0 24px;
+}
+
+/* Titulo de secao identico ao da Movie Page (design v2: 19px/800/0.18em
+   uppercase, sem barra de acento — o v2 nao usa a barra sob o titulo). */
 .series-section-title {
   margin: 0 0 32px;
   font-size: 19px;
   font-weight: 800;
-  letter-spacing: 0;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--text-heading);
-}
-
-.series-section-title::after {
-  content: "";
-  display: block;
-  width: 44px;
-  height: 3px;
-  margin: 12px auto 0;
-  background: var(--accent-series);
 }
 
 .series-synopsis__grid {
@@ -941,10 +986,10 @@ a {
   text-align: left;
 }
 
+/* Grupo de temporada sem chrome proprio (design v2 nao tem card de
+   temporada): os cards brancos sao os episodios, nao o grupo. */
 .series-season {
-  padding: 24px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
+  padding: 0;
 }
 
 .series-season__head {
@@ -987,25 +1032,22 @@ a {
   list-style: none;
 }
 
+/* Episodio como card branco com borda (design v2: linhas de "Episódios" em
+   superficie elevada; numero em texto verde, sem caixinha). */
 .series-episode-list__item {
   display: grid;
-  grid-template-columns: 58px minmax(0, 1fr);
+  grid-template-columns: 44px minmax(0, 1fr);
   gap: 16px;
   align-items: start;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
+  padding: 14px 16px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
 }
 
 .series-episode-list__number {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 42px;
-  min-height: 28px;
-  border: 1px solid var(--accent-series);
   color: var(--link-series);
-  font-size: 12px;
-  font-weight: 800;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .series-episode-list__content {
@@ -1015,8 +1057,8 @@ a {
 }
 
 .series-episode-list__title {
-  font-size: 14px;
-  font-weight: 800;
+  font-size: 16px;
+  font-weight: 700;
   color: var(--text-strong);
 }
 
@@ -1026,10 +1068,10 @@ a {
 }
 
 .series-episode-list__overview {
-  max-width: var(--measure);
-  font-size: 13px;
-  line-height: 1.55;
-  color: var(--text-body);
+  max-width: 72ch;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-muted);
 }
 
 .series-review-notice {
@@ -1076,10 +1118,6 @@ a {
     padding: 20px 0;
   }
 
-  .series-topbar__title {
-    font-size: 28px;
-  }
-
   .series-media__grid {
     grid-template-columns: 1fr;
     grid-template-areas:
@@ -1110,8 +1148,9 @@ a {
   }
 
   .series-episode-list__item {
-    grid-template-columns: 46px minmax(0, 1fr);
+    grid-template-columns: 40px minmax(0, 1fr);
     gap: 12px;
+    padding: 12px;
   }
 }
 
@@ -1142,19 +1181,21 @@ a {
   color: #ffffff;
 }
 
-/* Hero: retrato 2:3 a esquerda + coluna editorial a direita. */
+/* Hero do design v2: retrato CIRCULAR de 200px a esquerda + coluna editorial
+   a direita (grid 200px/1fr, gap 48). */
 .person-hero {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
-  gap: 40px;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: 48px;
   align-items: start;
-  padding: 36px 0 28px;
+  padding: 44px 0 28px;
 }
 
 .person-hero__portrait {
   position: relative;
   width: 100%;
-  aspect-ratio: 2 / 3;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
   overflow: hidden;
   background: var(--bg-muted);
   border: 1px solid var(--border);
@@ -1181,12 +1222,13 @@ a {
   margin: 0 0 14px;
 }
 
+/* Nome em display forte (design v2: 56px/800/-0.04em, line-height 1). */
 .person-hero__name {
   margin: 0;
-  font-size: clamp(1.9rem, 3.4vw, 34px);
+  font-size: clamp(2.2rem, 4.6vw, 56px);
   font-weight: 800;
-  line-height: 1.12;
-  letter-spacing: -0.02em;
+  line-height: 1;
+  letter-spacing: -0.04em;
   color: var(--text-strong);
 }
 
@@ -1212,11 +1254,11 @@ a {
 }
 
 .person-hero__intro {
-  margin: 18px 0 0;
-  font-size: 15px;
-  line-height: 1.6;
+  margin: 22px 0 0;
+  font-size: 16px;
+  line-height: 1.55;
   color: var(--text-body);
-  max-width: 62ch;
+  max-width: 68ch;
 }
 
 /* Secoes editoriais (Biografia, Filmografia). */
@@ -1224,13 +1266,14 @@ a {
   padding: 48px 0 0;
 }
 
+/* Titulos de secao da pessoa em sentence-case forte (design v2: 28px/700/
+   -0.02em — "Conhecido por", "Filmografia", "Detalhes pessoais"). */
 .person-section-title {
   margin: 0 0 24px;
-  font-size: 19px;
-  font-weight: 800;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--text-heading);
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-strong);
 }
 
 .person-bio {
@@ -1248,29 +1291,59 @@ a {
   white-space: pre-wrap;
 }
 
-/* Filmografia: lista de creditos (titulo + ano/papel), linkando filme/serie. */
+/* Filmografia em card branco (design v2): linhas com ano a esquerda, ponto de
+   tipo (cor = APOIO; o tipo real esta em data-entity-type + URL do link),
+   titulo e papel. Divisores internos suaves. */
 .person-credits {
   margin: 0;
   padding: 0;
   list-style: none;
   display: flex;
   flex-direction: column;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
 }
 
 .person-credit {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
   gap: 18px;
-  padding: 14px 0;
-  border-bottom: 1px solid var(--border);
+  padding: 16px 22px;
+  border-bottom: 1px solid var(--border-soft);
 }
 
-.person-credit:first-child {
-  border-top: 1px solid var(--border);
+.person-credit:last-child {
+  border-bottom: 0;
+}
+
+.person-credit__year {
+  width: 44px;
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.person-credit__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  align-self: center;
+  background: var(--text-muted);
+}
+
+.person-credit[data-entity-type="movie"] .person-credit__dot {
+  background: var(--screena-movie-red);
+}
+
+.person-credit[data-entity-type="tv"] .person-credit__dot {
+  background: var(--screena-series-green);
 }
 
 .person-credit__link {
+  flex: 1;
+  min-width: 0;
   font-size: 16px;
   font-weight: 700;
   color: var(--text-strong);
@@ -1282,18 +1355,10 @@ a {
   text-decoration: underline;
 }
 
-.person-credit__detail {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: baseline;
-  gap: 12px;
-  font-size: 13px;
-  color: var(--text-muted);
-  text-align: right;
-}
-
 .person-credit__role {
-  color: var(--text-heading);
+  flex: 1;
+  font-size: 14px;
+  color: var(--text-muted);
 }
 
 /* Aviso de revisao editorial (paginas noindex). */
@@ -1324,12 +1389,12 @@ a {
   }
 
   .person-credit {
-    flex-direction: column;
-    gap: 4px;
+    flex-wrap: wrap;
+    padding: 14px 16px;
   }
 
-  .person-credit__detail {
-    text-align: left;
+  .person-credit__role {
+    flex: 1 0 100%;
   }
 }
 
@@ -1382,14 +1447,15 @@ a {
   max-width: 62ch;
 }
 
-/* Grade responsiva de cards (2:3), com muito respiro. */
+/* Grade de resultados do design v2: cards em caixa branca com borda, poster
+   2:3 com badge de tipo e corpo compacto (gap 16px). */
 .entity-grid {
   list-style: none;
   margin: 32px 0 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 28px 24px;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 16px;
 }
 
 .entity-card-item {
@@ -1399,9 +1465,22 @@ a {
 .entity-card {
   display: flex;
   flex-direction: column;
-  gap: 12px;
   text-decoration: none;
   color: inherit;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  transition: border-color 0.2s ease;
+}
+
+.entity-card:hover,
+.entity-card:focus-visible {
+  border-color: var(--index-accent);
+}
+
+.entity-card:focus-visible {
+  outline: 2px solid var(--text-strong);
+  outline-offset: 3px;
 }
 
 .entity-card__media {
@@ -1410,13 +1489,30 @@ a {
   aspect-ratio: 2 / 3;
   overflow: hidden;
   background: var(--bg-muted);
-  border: 1px solid var(--border);
-  transition: border-color 0.2s ease;
 }
 
-.entity-card:hover .entity-card__media,
-.entity-card:focus-visible .entity-card__media {
-  border-color: var(--index-accent);
+/* Badge textual de tipo sobre o poster (design v2). A cor de vertical e apoio:
+   o texto do badge + data-entity-type + URL carregam o sinal (invariante 11). */
+.entity-card__badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  line-height: 1;
+  padding: 4px 7px;
+  color: #ffffff;
+  background: var(--text-strong);
+}
+
+.entity-card__badge[data-entity-type="movie"] {
+  background: var(--screena-movie-red);
+}
+
+.entity-card__badge[data-entity-type="series"] {
+  background: var(--screena-series-green);
 }
 
 .entity-card__image {
@@ -1435,19 +1531,21 @@ a {
 .entity-card__body {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
+  padding: 11px 12px 13px;
 }
 
 .entity-card__title {
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 700;
-  line-height: 1.3;
+  line-height: 1.25;
   color: var(--text-strong);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  transition: color 0.2s ease;
 }
 
 .entity-card:hover .entity-card__title,
@@ -1479,7 +1577,7 @@ a {
 @media (max-width: 560px) {
   .entity-grid {
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-    gap: 22px 16px;
+    gap: 14px;
   }
 }
 
@@ -1528,14 +1626,17 @@ a {
   margin: 48px 0 0;
 }
 
+/* Titulo do feed no padrao de secao do design v2 (dot 7px + 26px/700/-0.02em).
+   O dot fica NEUTRO: noticia e superficie institucional (sem tinta de
+   vertical), diferente das secoes de filme/serie do design. */
 .news-index__feed-title {
   display: flex;
   align-items: center;
   gap: 10px;
   margin: 0 0 22px;
-  font-size: 20px;
-  font-weight: 800;
-  letter-spacing: -0.01em;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
   color: var(--text-strong);
 }
 
@@ -1558,6 +1659,37 @@ a {
 
 .news-grid__item {
   min-width: 0;
+}
+
+/* "Últimas notícias" do design v2: linhas horizontais (imagem 240px + texto),
+   divisor superior por item, titulo 23px. So dentro do feed da listagem. */
+.news-index__feed .news-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+
+.news-index__feed .news-card {
+  flex-direction: row;
+  gap: 24px;
+  padding: 26px 0;
+  border-top: 1px solid var(--border);
+}
+
+.news-index__feed .news-card__media {
+  width: 240px;
+  flex-shrink: 0;
+  align-self: flex-start;
+}
+
+.news-index__feed .news-card__title {
+  font-size: 23px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.news-index__feed .news-card__deck {
+  max-width: 60ch;
 }
 
 .news-index__more {
@@ -1640,9 +1772,18 @@ a {
   line-height: 1.18;
 }
 
+/* Hover NEUTRO (sublinhado): noticia e superficie institucional — nao usa o
+   vermelho de filme (--link-movie) como cor de interacao. */
 .news-card:hover .news-card__title,
 .news-card:focus-visible .news-card__title {
-  color: var(--link-movie);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+}
+
+.news-card:focus-visible {
+  outline: 2px solid var(--text-strong);
+  outline-offset: 3px;
 }
 
 .news-card__deck {
@@ -1657,7 +1798,7 @@ a {
 
 .news-card__meta {
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--text-faint);
 }
 
 /* ---- Artigo ---- */
@@ -1670,7 +1811,7 @@ a {
 .news-article__hero {
   position: relative;
   width: 100%;
-  min-height: clamp(360px, 42vw, 520px);
+  min-height: clamp(420px, 46vw, 560px);
   overflow: hidden;
   background: radial-gradient(120% 120% at 75% 18%, #2c2c30 0%, #161618 45%, #0a0a0b 100%);
   display: flex;
@@ -1705,6 +1846,8 @@ a {
 
 .breadcrumb--onhero {
   padding: 0 0 22px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
   color: rgba(255, 255, 255, 0.65);
 }
 
@@ -1750,25 +1893,28 @@ a {
   color: rgba(255, 255, 255, 0.7);
 }
 
-/* Corpo com leitura confortavel (~720px), muito respiro. */
+/* Corpo com leitura confortavel (~720px), justificado com hifenizacao e tom
+   #3a3a3a — exatamente como o artigo do design v2. */
 .news-article__body {
   max-width: 720px;
   margin: 0 auto;
   padding: 56px 0 0;
+  text-align: justify;
+  hyphens: auto;
 }
 
 .news-article__paragraph {
   margin: 0 0 24px;
   font-size: 17px;
   line-height: 1.8;
-  color: var(--text-body);
+  color: var(--text-heading);
   white-space: pre-wrap;
 }
 
 .news-article__source {
   margin: 36px 0 0;
   font-size: 13px;
-  color: var(--text-muted);
+  color: var(--text-faint);
 }
 
 .news-article__source-name {
@@ -1786,6 +1932,8 @@ a {
   font-size: 12px;
   line-height: 1.6;
   color: var(--text-muted);
+  text-align: left;
+  hyphens: none;
 }
 
 /* Relacionado (links reais para filme/serie/pessoa). */
@@ -1861,6 +2009,19 @@ a {
     gap: 28px;
   }
 
+  .news-index__feed .news-card {
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .news-index__feed .news-card__media {
+    width: 100%;
+  }
+
+  .news-index__feed .news-card__title {
+    font-size: 19px;
+  }
+
   .news-article__hero-inner {
     padding: 96px var(--container-pad) 40px;
   }
@@ -1902,9 +2063,97 @@ a {
   min-width: 0;
 }
 
+/* Em filme/serie o design v2 centraliza o titulo e usa cards em caixa branca
+   com sombra ("Artigos relacionados"). */
+.movie-page .related-news__title,
+.series-page .related-news__title {
+  text-align: center;
+  margin-bottom: 28px;
+}
+
+.movie-page .related-news__grid,
+.series-page .related-news__grid {
+  gap: 20px;
+}
+
+.movie-page .related-news .news-card,
+.series-page .related-news .news-card {
+  gap: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.07);
+}
+
+.movie-page .related-news .news-card__media,
+.series-page .related-news .news-card__media {
+  border: none;
+}
+
+.movie-page .related-news .news-card__body,
+.series-page .related-news .news-card__body {
+  padding: 16px 20px 20px;
+}
+
+.movie-page .related-news .news-card__title,
+.series-page .related-news .news-card__title {
+  font-size: 15px;
+}
+
+/* Na pessoa o design v2 usa titulo 28px sentence-case e cards horizontais em
+   2 colunas (imagem a esquerda, texto a direita). */
+.person-page .related-news__title {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  text-transform: none;
+  color: var(--text-strong);
+}
+
+.person-page .related-news__grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.person-page .related-news .news-card {
+  flex-direction: row;
+  gap: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+}
+
+.person-page .related-news .news-card__media {
+  width: 42%;
+  flex-shrink: 0;
+  aspect-ratio: auto;
+  border: none;
+}
+
+.person-page .related-news .news-card__body {
+  padding: 20px;
+}
+
+.person-page .related-news .news-card__title {
+  font-size: 17px;
+}
+
+@media (max-width: 900px) {
+  .person-page .related-news__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @media (max-width: 560px) {
   .related-news__grid {
     grid-template-columns: 1fr;
     gap: 28px;
+  }
+
+  .person-page .related-news .news-card {
+    flex-direction: column;
+  }
+
+  .person-page .related-news .news-card__media {
+    width: 100%;
+    aspect-ratio: 16 / 10;
   }
 }
