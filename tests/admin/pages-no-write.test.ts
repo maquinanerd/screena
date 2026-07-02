@@ -135,3 +135,24 @@ describe("admin editorial nao expoe UI de escrita/publicacao", () => {
     expect(content).toContain("Modo somente leitura");
   });
 });
+
+/**
+ * Fase 6C: a nova pagina `/security` e diagnostico read-only — nao pode
+ * introduzir `<form>`/controle de entrada/`<button>` nem rotulo de escrita.
+ */
+describe("Fase 6C: a pagina /security nao introduz UI de escrita", () => {
+  const SECURITY_PAGE = resolve(APP_DIR, "security", "page.tsx");
+
+  it("existe e nao contem elemento de escrita nem rotulo perigoso", async () => {
+    expect(await pathExists(SECURITY_PAGE)).toBe(true);
+    const code = stripComments(await readFile(SECURITY_PAGE, "utf-8"));
+    for (const [pattern, rule] of [...FORBIDDEN_ELEMENTS, ...FORBIDDEN_LABELS]) {
+      expect(pattern.test(code), `pagina /security nao pode conter ${rule}`).toBe(false);
+    }
+  });
+
+  it('exibe o titulo "Segurança do Admin"', async () => {
+    const content = await readFile(SECURITY_PAGE, "utf-8");
+    expect(content).toContain("Segurança do Admin");
+  });
+});

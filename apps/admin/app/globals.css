@@ -204,3 +204,143 @@ table.admin-table {
   font-size: 13px;
   margin: 6px 0 16px;
 }
+
+/* ------------------------------------------------------------------ */
+/* Card-link (dashboard -> paginas internas, ex.: seguranca)           */
+/* ------------------------------------------------------------------ */
+
+.admin-card--link {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.admin-card--link:hover {
+  border-color: var(--admin-accent);
+  background: #fbfbfb;
+}
+
+.admin-card__title {
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Pagina de seguranca (status cards, checklist de env)                */
+/* Superficie institucional/neutra; a cor NUNCA e o unico sinal —      */
+/* cada status carrega texto/rotulo alem da cor.                       */
+/* ------------------------------------------------------------------ */
+
+.admin-security-heading {
+  font-size: 14px;
+  font-weight: 700;
+  margin: 24px 0 8px;
+}
+
+.admin-security-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--admin-border);
+  border-left-width: 5px;
+  border-radius: 8px;
+  background: var(--admin-surface);
+  padding: 14px 16px;
+  margin: 4px 0 8px;
+}
+
+.admin-security-status__caption {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--admin-muted);
+}
+
+.admin-security-status--protected {
+  border-left-color: var(--admin-ok-text);
+  background: var(--admin-ok-bg);
+}
+
+.admin-security-status--open {
+  border-left-color: var(--admin-info-text);
+  background: var(--admin-info-bg);
+}
+
+.admin-security-status--blocked-missing-credentials {
+  border-left-color: var(--admin-warn-text);
+  background: var(--admin-warn-bg);
+}
+
+.admin-security-list {
+  margin: 0 0 8px;
+  border: 1px solid var(--admin-border);
+  border-radius: 8px;
+  background: var(--admin-surface);
+  overflow: hidden;
+}
+
+.admin-security-list__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--admin-border);
+}
+
+.admin-security-list__row:last-child {
+  border-bottom: none;
+}
+
+.admin-security-list__term {
+  margin: 0;
+  min-width: 260px;
+  flex: 1 1 260px;
+  color: var(--admin-muted);
+  font-size: 13px;
+}
+
+.admin-security-list__desc {
+  margin: 0;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.admin-env-checklist {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  border: 1px solid var(--admin-border);
+  border-radius: 8px;
+  background: var(--admin-surface);
+  overflow: hidden;
+}
+
+.admin-env-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--admin-border);
+}
+
+.admin-env-item:last-child {
+  border-bottom: none;
+}
+
+.admin-env-item__key {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  background: #efefef;
+  border: 1px solid var(--admin-border);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+.admin-env-item__note {
+  font-size: 12px;
+  color: var(--admin-muted);
+}

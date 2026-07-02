@@ -245,3 +245,35 @@ describe("detectores de login/auth funcionam (nao sao vacuos)", () => {
     expect(findStatefulAuthTokens(sample)).toEqual([]);
   });
 });
+
+/**
+ * Fase 6C (production-readiness): a nova superficie de seguranca (pagina interna
+ * de diagnostico + helper server-only) NAO pode introduzir login/sessao/auth
+ * complexa. Reforca a guarda recursiva acima mirando explicitamente os arquivos
+ * novos.
+ */
+describe("Fase 6C: superficie de seguranca continua stateless (sem login/sessao)", () => {
+  const SECURITY_PAGE = resolve(process.cwd(), "apps", "admin", "app", "security", "page.tsx");
+  const SECURITY_SERVER = resolve(process.cwd(), "apps", "admin", "src", "server", "security.ts");
+  const SECURITY_DIR = resolve(process.cwd(), "apps", "admin", "app", "security");
+
+  it("pagina e helper de seguranca existem", async () => {
+    expect(await pathExists(SECURITY_PAGE)).toBe(true);
+    expect(await pathExists(SECURITY_SERVER)).toBe(true);
+  });
+
+  it("nao importam auth complexa nem mantem estado de sessao/cookie/JWT", async () => {
+    for (const file of [SECURITY_PAGE, SECURITY_SERVER]) {
+      const content = await readFile(file, "utf-8");
+      expect(importsForbiddenAuthModule(content)).toEqual([]);
+      expect(findStatefulAuthTokens(content)).toEqual([]);
+    }
+  });
+
+  it("nao ha rota de login nem route handler dentro de app/security", async () => {
+    expect(LOGIN_ROUTE_SEGMENT.test("apps/admin/app/security/page.tsx")).toBe(false);
+    for (const ext of [".ts", ".tsx", ".js", ".jsx"]) {
+      expect(await pathExists(join(SECURITY_DIR, `route${ext}`))).toBe(false);
+    }
+  });
+});

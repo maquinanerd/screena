@@ -47,6 +47,7 @@ export default function AdminLayout({ children }: { children: ReactNode }): Reac
             <a href="/articles">Artigos</a>
             <a href="/content-blocks">Content blocks</a>
             <a href="/health">Health</a>
+            <a href="/security">Seguranca</a>
           </nav>
         </header>
         <main className="admin-main">{children}</main>
