@@ -16,9 +16,12 @@ import "./globals.css";
  * crawler, nao haja cache, snapshot ou trecho exibido. Todos sao campos
  * suportados pelo tipo `Robots` do Next (Metadata API) — sem cast nem hack.
  *
- * NOTA DE ESCOPO: esta fase NAO adiciona autenticacao/login. `noindex` protege
- * contra indexacao, nao contra acesso. A protecao de ACESSO ao admin (auth,
- * sessao, autorizacao) e uma FASE SEPARADA e nao foi implementada aqui.
+ * PROTECAO DE ACESSO (Fase 6B): o acesso ao admin passa por um portao HTTP Basic
+ * Auth no middleware (`apps/admin/middleware.ts` + `src/lib/access-protection`),
+ * ligado por variavel de ambiente. E protecao operacional MINIMA e stateless:
+ * NAO ha usuario, sessao, cookie, login, JWT, OAuth nem permissoes — isso e fase
+ * futura. O `noindex` abaixo protege contra indexacao; o Basic Auth protege
+ * contra acesso. Nenhum dos dois substitui o outro.
  */
 export const metadata: Metadata = {
   title: "Admin Editorial | Screen (interno)",
@@ -38,6 +41,7 @@ export default function AdminLayout({ children }: { children: ReactNode }): Reac
         <header className="admin-header">
           <h1 className="admin-header__title">Admin Editorial</h1>
           <span className="admin-header__readonly">Modo somente leitura</span>
+          <p className="admin-header__access">Admin protegido por camada de acesso operacional.</p>
           <nav className="admin-nav">
             <a href="/">Dashboard</a>
             <a href="/articles">Artigos</a>
