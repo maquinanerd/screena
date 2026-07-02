@@ -29,7 +29,16 @@ const FORBIDDEN_WRITES: ReadonlyArray<[string, string]> = [
   [".createMany(", "prisma .createMany()"],
   [".updateMany(", "prisma .updateMany()"],
   [".deleteMany(", "prisma .deleteMany()"],
+  // Variantes *AndReturn (Prisma 5.14+): escrevem e retornam as linhas. O needle
+  // `.createMany(` NAO casa com `.createManyAndReturn(`, entao sao listadas a parte.
+  [".createManyAndReturn(", "prisma .createManyAndReturn()"],
+  [".updateManyAndReturn(", "prisma .updateManyAndReturn()"],
   ["$executeRaw", "prisma $executeRaw (SQL de escrita)"],
+  // SQL cru sem parametrizacao: escrita arbitraria e vetor de injecao. `$queryRaw`
+  // parametrizado (ex.: SELECT 1 do health) continua permitido; so a variante
+  // Unsafe e bloqueada.
+  [".$executeRawUnsafe(", "prisma $executeRawUnsafe (SQL cru de escrita)"],
+  [".$queryRawUnsafe(", "prisma $queryRawUnsafe (SQL cru arbitrario)"],
 ];
 
 interface Violation {
@@ -106,5 +115,50 @@ describe("admin editorial e SOMENTE LEITURA (sem escrita Prisma)", () => {
     expect(await pathExists(serverDir)).toBe(true);
     const files = await collectCodeFiles(serverDir);
     expect(files.length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * Auto-teste da propria lista de needles: garante que a guarda NAO e vacua por
+ * um erro de digitacao (um needle quebrado nunca casaria e passaria despercebido)
+ * e que leitura legitima nao e bloqueada por engano.
+ */
+describe("a lista FORBIDDEN_WRITES cobre variantes de escrita e poupa leitura", () => {
+  const matchesAnyForbidden = (snippet: string): boolean =>
+    FORBIDDEN_WRITES.some(([needle]) => snippet.includes(needle));
+
+  const DANGEROUS_SNIPPETS: ReadonlyArray<string> = [
+    "await prisma.article.create({ data })",
+    "await prisma.article.update({ where, data })",
+    "await prisma.article.delete({ where })",
+    "await prisma.article.upsert({ where, create, update })",
+    "await prisma.article.createMany({ data })",
+    "await prisma.article.updateMany({ where, data })",
+    "await prisma.article.deleteMany({ where })",
+    "await prisma.article.createManyAndReturn({ data })",
+    "await prisma.article.updateManyAndReturn({ where, data })",
+    "await prisma.$executeRaw`DELETE FROM articles`",
+    "await prisma.$executeRawUnsafe('DELETE FROM articles')",
+    "await prisma.$queryRawUnsafe('SELECT * FROM articles WHERE id = ' + id)",
+  ];
+
+  const SAFE_READS: ReadonlyArray<string> = [
+    "await prisma.article.findMany({ where })",
+    "await prisma.article.findUnique({ where })",
+    "await prisma.article.count()",
+    "await prisma.article.groupBy({ by })",
+    "await prisma.$queryRaw`SELECT 1`",
+  ];
+
+  it("detecta toda variante de escrita/SQL cru perigoso", () => {
+    for (const snippet of DANGEROUS_SNIPPETS) {
+      expect(matchesAnyForbidden(snippet), `nao coberto pela guarda: ${snippet}`).toBe(true);
+    }
+  });
+
+  it("nao bloqueia leitura legitima (findMany/count/groupBy/$queryRaw parametrizado)", () => {
+    for (const snippet of SAFE_READS) {
+      expect(matchesAnyForbidden(snippet), `leitura bloqueada por engano: ${snippet}`).toBe(false);
+    }
   });
 });
