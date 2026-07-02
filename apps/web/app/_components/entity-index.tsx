@@ -1,10 +1,8 @@
 import type { ReactNode } from "react";
 
 import { SITE_URL } from "../../src/lib/site";
-import type {
-  EntityCard,
-  EntityIndexView,
-} from "../../src/lib/entity-index-presenter";
+import type { EntityIndexView } from "../../src/lib/entity-index-presenter";
+import { EntityCardLink } from "./entity-card";
 
 /**
  * EntityIndex - Componente de apresentacao das listagens publicas (portas de
@@ -14,30 +12,10 @@ import type {
  * server via props e so produz JSX. Nao importa @screena/db nem faz IO (o acesso
  * ao PostgreSQL fica em `src/server/entity-indexes.ts`; invariantes 3/4). Renderiza
  * so dados reais dos cards; sem imagem local segura, mostra fallback visual.
+ * O card em si vive em `entity-card.tsx` (compartilhado com home/explorar).
  */
 
 export type EntityIndexVertical = "movie" | "series" | "person";
-
-/**
- * Rotulo textual do tipo, exibido como badge sobre o poster (cards do design
- * "Screen Screens v2"). Reforca a invariante 11: o tipo nunca depende so da
- * cor — o badge textual acompanha URL, breadcrumb e titulo da secao.
- */
-const CARD_KIND_LABELS: Readonly<Record<EntityIndexVertical, string>> = {
-  movie: "Filme",
-  series: "Série",
-  person: "Pessoa",
-};
-
-/**
- * Alt especifico por tipo de card: poster 2:3 para filme/serie, retrato para
- * pessoa. Usa apenas o titulo real do card — nunca descreve conteudo inventado.
- */
-function cardImageAlt(card: EntityCard): string {
-  return card.kind === "person"
-    ? `Retrato de ${card.title}`
-    : `Pôster de ${card.title}`;
-}
 
 interface EntityIndexProps {
   /** Titulo H1 e nome da colecao (ex.: "Filmes"). */
@@ -115,40 +93,7 @@ export function EntityIndex({
             <ul className="entity-grid">
               {view.cards.map((card) => (
                 <li key={card.href} className="entity-card-item">
-                  <a
-                    className="entity-card"
-                    href={card.href}
-                    data-entity-type={card.kind}
-                  >
-                    <span
-                      className={`entity-card__media${card.image ? " entity-card__media--real" : ""}`}
-                    >
-                      {card.image !== null ? (
-                        <img
-                          src={card.image.src}
-                          alt={cardImageAlt(card)}
-                          width={card.image.width}
-                          height={card.image.height}
-                          className="entity-card__image"
-                          loading="lazy"
-                        />
-                      ) : (
-                        <span className="entity-card__fallback" aria-hidden="true" />
-                      )}
-                      <span
-                        className="entity-card__badge"
-                        data-entity-type={card.kind}
-                      >
-                        {CARD_KIND_LABELS[card.kind]}
-                      </span>
-                    </span>
-                    <span className="entity-card__body">
-                      <span className="entity-card__title">{card.title}</span>
-                      {card.meta !== null ? (
-                        <span className="entity-card__meta">{card.meta}</span>
-                      ) : null}
-                    </span>
-                  </a>
+                  <EntityCardLink card={card} />
                 </li>
               ))}
             </ul>
