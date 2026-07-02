@@ -17,8 +17,30 @@ de indexabilidade etc.).
   nunca no frontend.
 - Todo sync externo gera log (`api_sync_logs`).
 
-> Estado atual: este pacote ainda e um **stub**. O admin editorial completo nao
-> esta funcional neste momento.
+> Estado atual (Fase 6A): existe um **admin editorial minimo em modo SOMENTE
+> LEITURA**. Ele apenas visualiza o estado de revisao; nao publica, nao edita,
+> nao escreve no banco. O admin editorial completo (escrita, revisao, decisoes)
+> ainda nao esta funcional.
+
+## Fase 6A — Admin editorial read-only
+
+App Next.js (App Router) que le o PostgreSQL local **server-side** via
+`@screena/db/server` e renderiza contagens/listagens do estado editorial. Nesta
+fase, tudo e **somente leitura**:
+
+- Sem escrita Prisma (`create`/`update`/`delete`/`upsert`/`*Many` sao proibidos
+  e travados por `tests/admin/readonly-guard.test.ts`).
+- Sem UI de escrita: nenhum `<form>`, botao de publicar/salvar/excluir ou editor
+  (travado por `tests/admin/pages-no-write.test.ts`).
+- Sem API externa/TMDB/Gemini: a unica fonte e o PostgreSQL local.
+- Contagens sao numeros reais (`count`/`groupBy`); banco vazio -> zeros, sem
+  dado ficticio.
+
+Telas: `/` (dashboard), `/articles`, `/content-blocks`, `/health`. A logica de
+classificacao/agregacao vive pura em `src/lib/editorial-status.ts` (testada) e
+espelha os helpers confiaveis do app publico (trava em
+`tests/admin/editorial-status-mirror.test.ts`). A camada de dados server-only
+vive em `src/server/*`.
 
 ## Rotas `/admin/*` planejadas
 
