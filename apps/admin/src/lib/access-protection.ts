@@ -160,20 +160,21 @@ function isConfigured(value: string | undefined): value is string {
 }
 
 /**
- * Classifica o runtime a partir das envs de ambiente. `VERCEL_ENV` (quando
- * presente) tem prioridade sobre `NODE_ENV`; a comparacao e case-insensitive e
- * tolerante a espacos para nao deixar `"Production"`/` production ` escaparem da
- * deteccao. `NODE_ENV=test` (Vitest) e tratado como `development` — nunca
- * production-like.
+ * Classifica o runtime a partir das envs de ambiente. Sinais production-like
+ * sempre dominam sinais de desenvolvimento: `NODE_ENV=production` exige
+ * protecao mesmo se uma env secundaria estiver mal configurada como
+ * `VERCEL_ENV=development`. A comparacao e case-insensitive e tolerante a
+ * espacos para nao deixar `"Production"`/` production ` escaparem da deteccao.
+ * `NODE_ENV=test` (Vitest) e tratado como `development` — nunca production-like.
  */
 export function getAdminRuntimeKind(env: AdminAccessEnv): AdminRuntimeKind {
   const vercel = readTrimmed(env.VERCEL_ENV).toLowerCase();
   if (vercel === "production") return "production";
   if (vercel === "preview") return "preview";
-  if (vercel === "development") return "development";
 
   const node = readTrimmed(env.NODE_ENV).toLowerCase();
   if (node === "production") return "production";
+  if (vercel === "development") return "development";
   if (node === "development" || node === "test") return "development";
 
   return "unknown";

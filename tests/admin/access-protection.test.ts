@@ -59,14 +59,14 @@ const ENABLED_ENV: AdminAccessEnv = { ADMIN_PROTECTION_ENABLED: "true", ...CREDS
 /* Deteccao de ambiente                                               */
 /* ------------------------------------------------------------------ */
 
-describe("getAdminRuntimeKind — classifica o runtime (VERCEL_ENV tem prioridade)", () => {
-  it("VERCEL_ENV vence NODE_ENV", () => {
+describe("getAdminRuntimeKind — classifica o runtime com fail-closed", () => {
+  it("sinais production-like dominam sinais de desenvolvimento", () => {
     expect(getAdminRuntimeKind({ VERCEL_ENV: "preview", NODE_ENV: "development" })).toBe("preview");
     expect(getAdminRuntimeKind({ VERCEL_ENV: "production", NODE_ENV: "development" })).toBe(
       "production",
     );
     expect(getAdminRuntimeKind({ VERCEL_ENV: "development", NODE_ENV: "production" })).toBe(
-      "development",
+      "production",
     );
   });
 
@@ -75,6 +75,13 @@ describe("getAdminRuntimeKind — classifica o runtime (VERCEL_ENV tem prioridad
     expect(getAdminRuntimeKind({ NODE_ENV: "development" })).toBe("development");
     expect(getAdminRuntimeKind({ NODE_ENV: "test" })).toBe("development");
     expect(getAdminRuntimeKind({})).toBe("unknown");
+  });
+
+  it("VERCEL_ENV=development so e development sem sinal de producao", () => {
+    expect(getAdminRuntimeKind({ VERCEL_ENV: "development" })).toBe("development");
+    expect(getAdminRuntimeKind({ VERCEL_ENV: "development", NODE_ENV: "test" })).toBe(
+      "development",
+    );
   });
 
   it("tolera espacos e caixa (fail toward producao)", () => {
@@ -95,6 +102,15 @@ describe("isProductionLikeAdminEnvironment — producao/preview sao production-l
     expect(isProductionLikeAdminEnvironment({ NODE_ENV: "test" })).toBe(false);
     expect(isProductionLikeAdminEnvironment({ VERCEL_ENV: "development" })).toBe(false);
     expect(isProductionLikeAdminEnvironment({})).toBe(false);
+  });
+
+  it("NODE_ENV=production continua production-like mesmo com VERCEL_ENV=development", () => {
+    expect(
+      isProductionLikeAdminEnvironment({
+        NODE_ENV: "production",
+        VERCEL_ENV: "development",
+      }),
+    ).toBe(true);
   });
 });
 
@@ -131,6 +147,13 @@ describe("isAdminProtectionRequired — production-like OU flag explicita", () =
   it("ADMIN_PROTECTION_ENABLED=false NAO desabilita em production-like", () => {
     expect(
       isAdminProtectionRequired({ NODE_ENV: "production", ADMIN_PROTECTION_ENABLED: "false" }),
+    ).toBe(true);
+    expect(
+      isAdminProtectionRequired({
+        NODE_ENV: "production",
+        VERCEL_ENV: "development",
+        ADMIN_PROTECTION_ENABLED: "false",
+      }),
     ).toBe(true);
     expect(
       isAdminProtectionRequired({ VERCEL_ENV: "preview", ADMIN_PROTECTION_ENABLED: "false" }),
@@ -268,6 +291,16 @@ describe("evaluateAdminAccess — production-like exige protecao mesmo sem flag"
       evaluateAdminAccess(undefined, {
         NODE_ENV: "production",
         ADMIN_PROTECTION_ENABLED: "false",
+        ...CREDS,
+      }),
+    ).toEqual({ outcome: "deny", reason: "missing_authorization" });
+  });
+
+  it("NODE_ENV=production com VERCEL_ENV=development -> ainda exige auth", () => {
+    expect(
+      evaluateAdminAccess(undefined, {
+        NODE_ENV: "production",
+        VERCEL_ENV: "development",
         ...CREDS,
       }),
     ).toEqual({ outcome: "deny", reason: "missing_authorization" });
