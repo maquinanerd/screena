@@ -32,7 +32,30 @@ importers:
 
   api-clients/tmdb: {}
 
-  apps/admin: {}
+  apps/admin:
+    dependencies:
+      '@screena/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      next:
+        specifier: ^15.0.0
+        version: 15.5.19(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      react:
+        specifier: ^19.0.0
+        version: 19.2.7
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.7(react@19.2.7)
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.0
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.17
+      typescript:
+        specifier: ^5.5.0
+        version: 5.9.3
 
   apps/web:
     dependencies:
