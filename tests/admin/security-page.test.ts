@@ -24,6 +24,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 const SECURITY_PAGE = resolve(process.cwd(), "apps", "admin", "app", "security", "page.tsx");
 const SECURITY_DIR = resolve(process.cwd(), "apps", "admin", "app", "security");
+const SECURITY_SERVER = resolve(process.cwd(), "apps", "admin", "src", "server", "security.ts");
 
 /** Neutraliza comentarios (bloco e linha), preservando o resto. */
 function stripComments(content: string): string {
@@ -127,5 +128,34 @@ describe("pagina de seguranca do admin (read-only, sem segredo)", () => {
     for (const ext of [".ts", ".tsx", ".js", ".jsx"]) {
       expect(await pathExists(resolve(SECURITY_DIR, `route${ext}`))).toBe(false);
     }
+  });
+
+  /**
+   * Fase 7A: a pagina passa a mostrar o STATUS da feature flag de acoes
+   * editoriais — o estado derivado (habilitadas/definida?), NUNCA o valor da env.
+   */
+  it("exibe o estado das acoes editoriais (Fase 7A) via diagnostico derivado", () => {
+    expect(raw).toContain("Acoes editoriais");
+    expect(code).toContain("editorialActions");
+  });
+
+  it("nao le a env da flag no JSX nem imprime o valor de ADMIN_EDITORIAL_ACTIONS_ENABLED", () => {
+    // A leitura fica no helper server-only; a pagina consome so booleans derivados.
+    expect(code).not.toContain("process.env.ADMIN_EDITORIAL_ACTIONS_ENABLED");
+    expect(code).not.toContain("process.env");
+    // O nome da env pode aparecer (via envKey), mas nunca uma comparacao de valor.
+    expect(code).not.toContain('=== "true"');
+  });
+});
+
+/**
+ * Fase 7A: o helper server-only de seguranca surfaca o STATUS da flag de acoes
+ * editoriais (so boolean/nome), sem devolver o valor da env.
+ */
+describe("helper de seguranca surfaca o status da flag de acoes editoriais", () => {
+  it("importa getEditorialActionsStatus e expoe editorialActions", async () => {
+    const server = await readFile(SECURITY_SERVER, "utf-8");
+    expect(server).toContain("getEditorialActionsStatus");
+    expect(server).toContain("editorialActions");
   });
 });

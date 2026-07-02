@@ -40,8 +40,11 @@ export default function AdminLayout({ children }: { children: ReactNode }): Reac
       <body>
         <header className="admin-header">
           <h1 className="admin-header__title">Admin Editorial</h1>
-          <span className="admin-header__readonly">Modo somente leitura</span>
-          <p className="admin-header__access">Admin protegido por camada de acesso operacional.</p>
+          <span className="admin-header__readonly">Acoes editoriais controladas por ambiente</span>
+          <p className="admin-header__access">
+            Admin protegido por camada de acesso operacional. Escrita editorial so com flag
+            habilitada.
+          </p>
           <nav className="admin-nav">
             <a href="/">Dashboard</a>
             <a href="/articles">Artigos</a>

@@ -344,3 +344,305 @@ table.admin-table {
   font-size: 12px;
   color: var(--admin-muted);
 }
+
+/* ------------------------------------------------------------------ */
+/* Fase 7A — Acoes editoriais: filtros, detalhe, forms, feedback       */
+/* Superficie institucional/neutra; a cor NUNCA e o unico sinal —      */
+/* cada status/acao carrega texto alem da cor.                         */
+/* ------------------------------------------------------------------ */
+
+/* Codigo inline (nomes de enum/campo). */
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.92em;
+  background: #efefef;
+  border: 1px solid var(--admin-border);
+  border-radius: 4px;
+  padding: 0 5px;
+}
+
+/* --- Flag de acoes editoriais (dashboard) --- */
+.admin-flag {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--admin-border);
+  border-left-width: 5px;
+  border-radius: 8px;
+  background: var(--admin-surface);
+  padding: 12px 16px;
+  margin: 4px 0 18px;
+}
+
+.admin-flag--on {
+  border-left-color: var(--admin-ok-text);
+  background: var(--admin-ok-bg);
+}
+
+.admin-flag--off {
+  border-left-color: var(--admin-hold-text);
+  background: var(--admin-hold-bg);
+}
+
+.admin-flag__caption {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--admin-muted);
+}
+
+.admin-flag__note {
+  font-size: 12px;
+  color: var(--admin-muted);
+}
+
+/* --- Filtros de listagem (chips como links) --- */
+.admin-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--admin-border);
+  border-radius: 8px;
+  background: var(--admin-surface);
+}
+
+.admin-filter-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 12px;
+}
+
+.admin-filter-group__title {
+  min-width: 96px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--admin-muted);
+}
+
+.admin-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.admin-chip {
+  display: inline-block;
+  padding: 2px 10px;
+  border: 1px solid var(--admin-border);
+  border-radius: 999px;
+  background: var(--admin-bg);
+  color: var(--admin-text);
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.admin-chip:hover {
+  border-color: var(--admin-accent);
+}
+
+.admin-chip--active {
+  background: var(--admin-accent);
+  border-color: var(--admin-accent);
+  color: #f5f5f5;
+  font-weight: 700;
+}
+
+/* --- Link "Revisar" na tabela --- */
+.admin-link-action {
+  display: inline-block;
+  padding: 1px 8px;
+  border: 1px solid var(--admin-info-text);
+  border-radius: 4px;
+  color: var(--admin-info-text);
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.admin-link-action:hover {
+  background: var(--admin-info-bg);
+}
+
+/* --- Pagina de detalhe (lista de dados) --- */
+.admin-detail-heading {
+  font-size: 14px;
+  font-weight: 700;
+  margin: 24px 0 8px;
+}
+
+.admin-detail-list {
+  margin: 0 0 8px;
+  border: 1px solid var(--admin-border);
+  border-radius: 8px;
+  background: var(--admin-surface);
+  overflow: hidden;
+}
+
+.admin-detail-list__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--admin-border);
+}
+
+.admin-detail-list__row:last-child {
+  border-bottom: none;
+}
+
+.admin-detail-list__term {
+  margin: 0;
+  min-width: 240px;
+  flex: 1 1 240px;
+  color: var(--admin-muted);
+  font-size: 13px;
+}
+
+.admin-detail-list__desc {
+  margin: 0;
+  font-weight: 700;
+  font-size: 13px;
+  word-break: break-word;
+}
+
+/* --- Preview de conteudo (somente leitura) --- */
+.admin-preview-box {
+  margin: 0 0 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--admin-border);
+  border-left-width: 4px;
+  border-left-color: var(--admin-muted);
+  border-radius: 6px;
+  background: #fafafa;
+  color: var(--admin-text);
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+/* --- Formularios de acao editorial --- */
+.admin-action-form {
+  margin: 0 0 14px;
+}
+
+.admin-action-fieldset {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--admin-border);
+  border-radius: 8px;
+  background: var(--admin-surface);
+}
+
+.admin-action-fieldset:disabled {
+  opacity: 0.6;
+}
+
+.admin-action-legend {
+  padding: 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.admin-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.admin-action-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--admin-muted);
+}
+
+.admin-select {
+  padding: 6px 8px;
+  border: 1px solid var(--admin-border);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--admin-text);
+  font-size: 13px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.admin-select:disabled {
+  background: #f0f0f0;
+  cursor: not-allowed;
+}
+
+.admin-action-help {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--admin-muted);
+}
+
+/* --- Botoes --- */
+.admin-btn {
+  padding: 6px 14px;
+  border: 1px solid var(--admin-border);
+  border-radius: 6px;
+  background: var(--admin-bg);
+  color: var(--admin-text);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.admin-btn:hover {
+  border-color: var(--admin-accent);
+}
+
+.admin-btn--primary {
+  background: var(--admin-accent);
+  border-color: var(--admin-accent);
+  color: #f5f5f5;
+}
+
+.admin-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* --- Banners de feedback e de acoes desativadas --- */
+.admin-feedback {
+  border: 1px solid;
+  border-left-width: 5px;
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  margin: 0 0 16px;
+}
+
+.admin-feedback--success {
+  border-color: var(--admin-ok-text);
+  background: var(--admin-ok-bg);
+  color: var(--admin-ok-text);
+}
+
+.admin-feedback--error {
+  border-color: var(--admin-warn-text);
+  background: var(--admin-warn-bg);
+  color: var(--admin-warn-text);
+}
+
+.admin-actions-disabled {
+  border: 1px solid var(--admin-hold-text);
+  border-left-width: 5px;
+  background: var(--admin-hold-bg);
+  color: var(--admin-hold-text);
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 13px;
+  margin: 0 0 16px;
+}
+
+.admin-actions-disabled code {
+  background: #fff;
+}

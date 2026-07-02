@@ -1,31 +1,24 @@
 /**
- * Guarda contra superficies de ESCRITA no servidor do admin editorial.
+ * Guarda das superficies de ESCRITA no servidor do admin editorial (Fase 7A).
  *
- * Complementa as guardas existentes:
- *  - readonly-guard.test.ts  -> metodos de escrita do Prisma;
- *  - pages-no-write.test.ts  -> <form>, controles de entrada e botoes
- *    Publicar/Salvar/Excluir na UI (apps/admin/app).
+ * A partir da Fase 7A o admin tem UMA superficie de escrita: Server Actions no
+ * arquivo allowlisted `apps/admin/src/server/editorial-actions.ts`. Esta guarda
+ * trava tudo o mais:
  *
- * Aqui travamos as duas superficies de escrita do App Router que um admin
- * SOMENTE LEITURA nunca deve expor:
+ *  1. Route handlers de escrita: nenhum `route.*` sob `apps/admin/app` pode
+ *     exportar POST/PUT/PATCH/DELETE (nao usamos route handlers — a decisao de
+ *     projeto foi Server Actions; handlers GET de leitura seriam ok, verbos de
+ *     mutacao nunca).
+ *  2. Server Actions (`"use server"`): permitido SOMENTE no arquivo allowlisted.
+ *     Qualquer outra `"use server"` em `apps/admin/app`/`apps/admin/src` e
+ *     violacao (paginas e componentes nao viram canal de mutacao).
  *
- *  1. Route handlers de escrita: nenhum arquivo `route.*` sob `apps/admin/app`
- *     pode exportar POST/PUT/PATCH/DELETE (handlers GET de leitura seriam
- *     aceitos, mas os verbos de mutacao nao).
- *  2. Server Actions: nenhuma diretiva "use server" em `apps/admin/app` nem em
- *     `apps/admin/src` — server actions sao um canal de mutacao que este admin
- *     nao possui.
- *
- * NOTA DE ESCOPO: esta fase NAO cria autenticacao/login. Estas guardas travam a
- * SUPERFICIE de escrita; a protecao de ACESSO ao admin (auth/sessao/autorizacao)
- * e uma FASE SEPARADA e nao foi implementada aqui.
- *
- * Se um dia esta guarda falhar, a correcao e remover a escrita — nunca relaxar a
- * regra.
+ * Complementa `readonly-guard` (metodos Prisma) e `pages-no-write` (UI). Se um dia
+ * falhar, remova a superficie indevida — nunca relaxe a regra.
  */
 
 import { readdir, readFile, stat } from "node:fs/promises";
-import { basename, join, relative, resolve } from "node:path";
+import { basename, join, relative, resolve, sep } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 
 const APP_DIR = resolve(process.cwd(), "apps", "admin", "app");
@@ -34,7 +27,10 @@ const CODE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"];
 const ROUTE_BASENAMES = new Set(CODE_EXTENSIONS.map((ext) => `route${ext}`));
 const IGNORED_DIRS = new Set(["node_modules", ".next", "dist", "build", "coverage"]);
 
-/** Verbos HTTP de mutacao proibidos em route handlers de um admin read-only. */
+/** Unico arquivo autorizado a ter `"use server"` (Server Actions). Posix. */
+const USE_SERVER_ALLOWLIST_FILE = "apps/admin/src/server/editorial-actions.ts";
+
+/** Verbos HTTP de mutacao proibidos em route handlers do admin. */
 const WRITE_METHODS = ["POST", "PUT", "PATCH", "DELETE"] as const;
 
 interface Violation {
@@ -67,11 +63,11 @@ async function collectCodeFiles(dir: string): Promise<string[]> {
   return out;
 }
 
-/**
- * Neutraliza comentarios de bloco e de linha preservando o texto restante, para
- * mirar apenas codigo real — a prosa de documentacao pode citar legitimamente
- * "use server" ou os verbos HTTP.
- */
+function relPosix(file: string): string {
+  return relative(process.cwd(), file).split(sep).join("/");
+}
+
+/** Neutraliza comentarios de bloco e de linha (a prosa pode citar os verbos). */
 export function stripComments(content: string): string {
   const noBlocks = content.replace(/\/\*[\s\S]*?\*\//g, (match) => match.replace(/[^\n]/g, " "));
   return noBlocks
@@ -88,11 +84,7 @@ export function stripComments(content: string): string {
     .join("\n");
 }
 
-/**
- * Detecta exports de verbos de mutacao em um route handler. Cobre as tres formas
- * de export do App Router: `export function POST`, `export const POST =` e
- * `export { ... POST ... }`. Puro: recebe conteudo, devolve os verbos achados.
- */
+/** Detecta exports de verbos de mutacao (as tres formas do App Router). Puro. */
 export function detectWriteMethodExports(content: string): string[] {
   const code = stripComments(content);
   const found: string[] = [];
@@ -120,28 +112,24 @@ async function findViolations(): Promise<Violation[]> {
     if (!ROUTE_BASENAMES.has(basename(file))) continue;
     const methods = detectWriteMethodExports(await readFile(file, "utf-8"));
     for (const method of methods) {
-      violations.push({
-        file: relative(process.cwd(), file),
-        rule: `route handler de escrita: export ${method}`,
-      });
+      violations.push({ file: relPosix(file), rule: `route handler de escrita: export ${method}` });
     }
   }
 
-  // 2. Diretiva "use server" (server actions) sob app + src.
-  const serverActionScan = [...(await collectCodeFiles(APP_DIR)), ...(await collectCodeFiles(SRC_DIR))];
-  for (const file of serverActionScan) {
+  // 2. Diretiva "use server" fora do arquivo allowlisted.
+  const scan = [...(await collectCodeFiles(APP_DIR)), ...(await collectCodeFiles(SRC_DIR))];
+  for (const file of scan) {
+    const rel = relPosix(file);
+    if (rel === USE_SERVER_ALLOWLIST_FILE) continue;
     if (hasUseServerDirective(await readFile(file, "utf-8"))) {
-      violations.push({
-        file: relative(process.cwd(), file),
-        rule: 'diretiva "use server" (server action)',
-      });
+      violations.push({ file: rel, rule: 'diretiva "use server" fora do allowlist' });
     }
   }
 
   return violations;
 }
 
-describe("admin editorial nao expoe superficie de escrita no servidor", () => {
+describe("admin editorial: superficie de escrita no servidor so no allowlist (Fase 7A)", () => {
   let violations: Violation[] = [];
 
   beforeAll(async () => {
@@ -150,31 +138,31 @@ describe("admin editorial nao expoe superficie de escrita no servidor", () => {
 
   it("nao tem route handler exportando POST/PUT/PATCH/DELETE", () => {
     const offenders = violations.filter((v) => v.rule.startsWith("route handler"));
-    expect(
-      offenders,
-      `Admin read-only nao pode expor endpoint de escrita. Ocorrencias: ${JSON.stringify(offenders, null, 2)}`,
-    ).toEqual([]);
+    expect(offenders, JSON.stringify(offenders, null, 2)).toEqual([]);
   });
 
-  it('nao tem diretiva "use server" (server actions) em app nem em src', () => {
+  it('so o arquivo allowlisted tem diretiva "use server"', () => {
     const offenders = violations.filter((v) => v.rule.startsWith("diretiva"));
     expect(
       offenders,
-      `Admin read-only nao pode ter server actions. Ocorrencias: ${JSON.stringify(offenders, null, 2)}`,
+      `"use server" so pode existir em ${USE_SERVER_ALLOWLIST_FILE}. Ocorrencias: ${JSON.stringify(offenders, null, 2)}`,
     ).toEqual([]);
   });
 
+  it("o arquivo allowlisted existe e realmente tem `use server` (guarda nao e vacua)", async () => {
+    const abs = resolve(process.cwd(), ...USE_SERVER_ALLOWLIST_FILE.split("/"));
+    expect(await pathExists(abs)).toBe(true);
+    expect(hasUseServerDirective(await readFile(abs, "utf-8"))).toBe(true);
+  });
+
   it("ha codigo real do admin para varrer (guarda nao e vacua)", async () => {
-    expect(await pathExists(APP_DIR)).toBe(true);
     const files = await collectCodeFiles(APP_DIR);
     expect(files.length).toBeGreaterThan(0);
   });
 });
 
 /**
- * Auto-teste dos detectores puros: garante que as regexes realmente pegam as
- * formas de export perigosas e a diretiva de server action, e que leitura
- * legitima (GET, funcao nao exportada) nao dispara falso positivo.
+ * Auto-teste dos detectores puros.
  */
 describe("detectores de escrita no servidor funcionam (nao sao vacuos)", () => {
   it("detecta as tres formas de export de verbo de mutacao", () => {
@@ -187,28 +175,26 @@ describe("detectores de escrita no servidor funcionam (nao sao vacuos)", () => {
   it("nao acusa handler de leitura (GET) nem funcao interna", () => {
     expect(detectWriteMethodExports("export async function GET(req) {}")).toEqual([]);
     expect(detectWriteMethodExports("function POST() {} // nao exportado")).toEqual([]);
-    // Comentario citando o verbo nao conta.
     expect(detectWriteMethodExports("// export async function POST removido")).toEqual([]);
   });
 
   it('detecta a diretiva "use server" em aspas simples e duplas', () => {
     expect(hasUseServerDirective('"use server";\nexport async function act() {}')).toBe(true);
     expect(hasUseServerDirective("'use server'")).toBe(true);
-    expect(hasUseServerDirective("async function act() {\n  'use server'\n}")).toBe(true);
   });
 
   it('nao acusa "use server" em comentario nem em texto solto', () => {
-    expect(hasUseServerDirective("// use server (proibido nesta fase)")).toBe(false);
+    expect(hasUseServerDirective("// use server (allowlist)")).toBe(false);
     expect(hasUseServerDirective("/* use server */")).toBe(false);
     expect(hasUseServerDirective("const label = 'use server side rendering'")).toBe(false);
   });
 });
 
 /**
- * Fase 6C: a nova rota `/security` e read-only — nao pode criar route handler de
- * escrita nem server action. Reforca explicitamente a guarda recursiva acima.
+ * A rota `/security` continua read-only — sem route handler de escrita nem
+ * server action (a escrita vive so no arquivo de acoes editoriais).
  */
-describe("Fase 6C: a rota /security nao introduz superficie de escrita", () => {
+describe("a rota /security nao introduz superficie de escrita", () => {
   const SECURITY_DIR = resolve(process.cwd(), "apps", "admin", "app", "security");
   const SECURITY_PAGE = resolve(SECURITY_DIR, "page.tsx");
   const SECURITY_SERVER = resolve(process.cwd(), "apps", "admin", "src", "server", "security.ts");
