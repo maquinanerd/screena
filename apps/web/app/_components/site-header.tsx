@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { MOVIES_INDEX_PATH, PT_LOCALE_SEGMENT } from "../../src/lib/site";
+import { HOME_HREF, NAV_ITEMS } from "../../src/lib/navigation";
 
 /**
  * SiteHeader — cabecalho/navegacao global do app publico @screena/web.
@@ -23,28 +23,12 @@ import { MOVIES_INDEX_PATH, PT_LOCALE_SEGMENT } from "../../src/lib/site";
  * mobile complexo — apenas responsividade basica (via globals.css).
  */
 
-/** Um item de navegacao. `vertical` mapeia o acento de reforco (cor de apoio). */
-interface NavItem {
-  readonly label: string;
-  readonly href: string;
-  readonly vertical?: "movie" | "series";
-}
-
-/**
- * Itens de navegacao global (pt-BR; invariante 7). Ordem espelha a NAV do
- * design "Screen Screens v2" (FILMES · SÉRIES · PESSOAS · NOTÍCIAS), limitada
- * as rotas que EXISTEM: "Explorar" (e o icone de busca) do design ficam de
- * fora ate a rota /pt/explorar/ nascer — o header nao carrega link morto.
+/*
+ * Itens de navegacao e destino do wordmark vivem no modulo puro
+ * `src/lib/navigation.ts` (fonte unica, testada em tests/web/public-navigation
+ * — todo item aponta para rota publicada real; "Explorar" voltou porque a rota
+ * /pt/explorar/ existe desde a Fase 5D).
  */
-const NAV_ITEMS: readonly NavItem[] = [
-  { label: "Filmes", href: MOVIES_INDEX_PATH, vertical: "movie" },
-  { label: "Séries", href: `/${PT_LOCALE_SEGMENT}/series/`, vertical: "series" },
-  { label: "Pessoas", href: `/${PT_LOCALE_SEGMENT}/pessoas/` },
-  { label: "Notícias", href: `/${PT_LOCALE_SEGMENT}/noticias/` },
-];
-
-/** Destino do wordmark: a pagina inicial pt-BR. */
-const HOME_HREF = `/${PT_LOCALE_SEGMENT}/`;
 
 export function SiteHeader(): ReactNode {
   return (

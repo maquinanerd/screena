@@ -2157,3 +2157,197 @@ a {
     aspect-ratio: 16 / 10;
   }
 }
+
+/* ================================================================== */
+/* Portal (home /pt/ + hub /pt/explorar/)                             */
+/* ------------------------------------------------------------------ */
+/* Superficies NEUTRAS/institucionais (invariante 11): sem cor de      */
+/* vertical como identidade — vermelho/verde aparecem apenas como      */
+/* apoio (dot dos titulos de secao, hover dos cards de navegacao),     */
+/* sempre acompanhados do label textual. Reusa a linguagem 5C:         */
+/* .entity-grid/.entity-card e .news-grid/.news-card. Bloco isolado:   */
+/* nao altera Movie/Series/Person/News nem Entity indexes acima.       */
+/* ------------------------------------------------------------------ */
+
+.portal-page {
+  background: var(--bg-page);
+  padding-bottom: 4rem;
+}
+
+.portal-hero {
+  padding: 56px 0 0;
+  max-width: 720px;
+}
+
+.portal-hero--hub {
+  padding-top: 20px;
+}
+
+.portal-hero__title {
+  margin: 0;
+  font-size: clamp(2rem, 4.2vw, 44px);
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  color: var(--text-strong);
+}
+
+.portal-hero__desc {
+  margin: 18px 0 0;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  max-width: 62ch;
+}
+
+/* Cards de navegacao institucional (rotas reais; sem link morto). */
+.portal-nav {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin: 40px 0 0;
+}
+
+.portal-nav__card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 24px 26px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.portal-nav__card:hover,
+.portal-nav__card:focus-visible {
+  border-color: var(--text-strong);
+  box-shadow: 0 10px 24px rgba(16, 16, 16, 0.08);
+}
+
+.portal-nav__card:focus-visible {
+  outline: 2px solid var(--text-strong);
+  outline-offset: 3px;
+}
+
+/* Cor de vertical como APOIO no hover (o label textual e o sinal). */
+.portal-nav__card[data-vertical="movie"]:hover,
+.portal-nav__card[data-vertical="movie"]:focus-visible {
+  border-color: var(--screena-movie-red);
+}
+
+.portal-nav__card[data-vertical="series"]:hover,
+.portal-nav__card[data-vertical="series"]:focus-visible {
+  border-color: var(--screena-series-green);
+}
+
+.portal-nav__label {
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--text-strong);
+}
+
+.portal-nav__desc {
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+/* Contagem REAL do banco (so aparece quando > 0). */
+.portal-nav__count {
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.portal-section {
+  padding: 56px 0 0;
+}
+
+.portal-section__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 0 0 22px;
+}
+
+/* Titulo de secao no padrao do design v2 (dot 7px + 26px/700/-0.02em).
+   Dot NEUTRO por padrao; vermelho/verde apenas como apoio de vertical. */
+.portal-section__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-strong);
+}
+
+.portal-section__title::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-strong);
+}
+
+.portal-section__title[data-vertical="movie"]::before {
+  background: var(--screena-movie-red);
+}
+
+.portal-section__title[data-vertical="series"]::before {
+  background: var(--screena-series-green);
+}
+
+.portal-section__more {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-strong);
+  text-decoration: none;
+  border-bottom: 2px solid var(--border);
+  padding-bottom: 2px;
+  transition: border-color 0.2s ease;
+}
+
+.portal-section__more:hover,
+.portal-section__more:focus-visible {
+  border-color: var(--text-strong);
+}
+
+.portal-explore-note {
+  margin: 56px 0 0;
+  font-size: 15px;
+  color: var(--text-muted);
+}
+
+.portal-explore-note a {
+  font-weight: 700;
+  color: var(--text-strong);
+  text-decoration: none;
+  border-bottom: 2px solid var(--border);
+  padding-bottom: 2px;
+}
+
+.portal-explore-note a:hover,
+.portal-explore-note a:focus-visible {
+  border-color: var(--text-strong);
+}
+
+@media (max-width: 560px) {
+  .portal-hero {
+    padding-top: 36px;
+  }
+
+  .portal-section__head {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+}
