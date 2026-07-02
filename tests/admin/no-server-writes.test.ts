@@ -203,3 +203,27 @@ describe("detectores de escrita no servidor funcionam (nao sao vacuos)", () => {
     expect(hasUseServerDirective("const label = 'use server side rendering'")).toBe(false);
   });
 });
+
+/**
+ * Fase 6C: a nova rota `/security` e read-only — nao pode criar route handler de
+ * escrita nem server action. Reforca explicitamente a guarda recursiva acima.
+ */
+describe("Fase 6C: a rota /security nao introduz superficie de escrita", () => {
+  const SECURITY_DIR = resolve(process.cwd(), "apps", "admin", "app", "security");
+  const SECURITY_PAGE = resolve(SECURITY_DIR, "page.tsx");
+  const SECURITY_SERVER = resolve(process.cwd(), "apps", "admin", "src", "server", "security.ts");
+
+  it("nao ha route.* dentro de app/security", async () => {
+    for (const ext of [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]) {
+      expect(await pathExists(resolve(SECURITY_DIR, `route${ext}`))).toBe(false);
+    }
+  });
+
+  it("pagina e helper de seguranca nao usam server action nem exportam verbo de escrita", async () => {
+    for (const file of [SECURITY_PAGE, SECURITY_SERVER]) {
+      const content = await readFile(file, "utf-8");
+      expect(hasUseServerDirective(content)).toBe(false);
+      expect(detectWriteMethodExports(content)).toEqual([]);
+    }
+  });
+});

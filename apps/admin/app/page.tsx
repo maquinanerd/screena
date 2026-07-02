@@ -66,6 +66,16 @@ export default async function AdminDashboardPage(): Promise<ReactNode> {
       <p className="admin-meta">
         Ver detalhes em <a href="/content-blocks">Content blocks</a>.
       </p>
+
+      <h2 className="admin-section-title">Operacao e seguranca</h2>
+      <div className="admin-cards">
+        <a className="admin-card admin-card--link" href="/security">
+          <div className="admin-card__title">Segurança do Admin</div>
+          <div className="admin-card__label">
+            Verifique proteção, ambiente e credenciais configuradas sem expor secrets.
+          </div>
+        </a>
+      </div>
     </>
   );
 }
