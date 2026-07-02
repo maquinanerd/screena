@@ -1,7 +1,7 @@
-# Regras de SEO — Screena
+# Regras de SEO — Screen
 
 Estas regras governam **indexabilidade, qualidade e estrutura tecnica de SEO**
-de todas as paginas publicas da Screena (`screena.media`). Sao de cumprimento
+de todas as paginas publicas do Screen (`https://thescreen.media`). Sao de cumprimento
 obrigatorio: nenhuma pagina entra no indice dos buscadores sem satisfazer o que
 esta aqui descrito.
 
@@ -195,10 +195,10 @@ Complementos:
 
 - `BreadcrumbList` em **todas** as paginas principais.
 - `FAQPage` **somente** se houver FAQ visivel na pagina.
-- `Review` apenas para **review propria** da Screena.
+- `Review` apenas para **review propria** do Screen.
 - `AggregateRating` **somente quando permitido e atribuido** a sua fonte
   (`license_status` `official`/`licensed`, `score_allowed=true`).
-  **Nunca** apresentar nota de terceiro como se fosse nota propria da Screena.
+  **Nunca** apresentar nota de terceiro como se fosse nota propria do Screen.
 
 Regra de fonte (**invariantes 1 e 2**): IMDb != Rotten Tomatoes (nunca misturar
 escalas, icones ou linguagem); o fornecedor tecnico (`provider_api`) **nunca** e

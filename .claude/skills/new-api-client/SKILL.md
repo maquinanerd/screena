@@ -5,7 +5,7 @@ description: Use quando for criar um novo conector de API externa (ex.: TMDB, fo
 
 # Skill: new-api-client
 
-Esta skill descreve como criar um **novo api-client** (conector de API externa) no Screena.
+Esta skill descreve como criar um **novo api-client** (conector de API externa) no Screen.
 Todo conector e **worker-only**: roda apenas em processos offline (workers Python / jobs Node de
 sync), **nunca** no render de paginas publicas.
 

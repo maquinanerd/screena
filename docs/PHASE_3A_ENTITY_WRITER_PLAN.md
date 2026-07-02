@@ -9,9 +9,11 @@
 > registra execucao em `entity_writer_logs`. **Somente** os blocos
 > `editorial_intro` e `cast_intro`, **somente pt-BR**.
 >
-> **Esta rodada e apenas o documento.** Nenhuma implementacao de runtime, nenhum
-> client Gemini, nenhuma alteracao de `schema.prisma`, nenhuma migration, nenhuma
-> mudanca em `apps/web`.
+> **Estado atual:** a Fase 3A esta parcialmente implementada em
+> `services/entity-writer` (TypeScript/Node + Prisma), com FakeGemini em testes,
+> adapter Gemini real worker-only e persistencia de `content_blocks`/logs. Este
+> plano permanece como registro de decisao/escopo, nao como prova de ausencia de
+> runtime.
 >
 > Em conflito com este documento, vence `CLAUDE.md` (as 13 invariantes) e as
 > regras em `.claude/rules/entity-writer.md`.
@@ -20,7 +22,7 @@
 
 ## 1. Contexto
 
-O **Screena Entity Writer** e o motor editorial offline que gera
+O **Entity Writer** e o motor editorial offline que gera
 `content_blocks` a partir de dados estruturados do PostgreSQL, usando IA
 (Gemini) **apenas fora do render** (invariantes 3, 4, 12, 13). A especificacao
 canonica vive em [`docs/ENTITY_WRITER.md`](ENTITY_WRITER.md) e as regras

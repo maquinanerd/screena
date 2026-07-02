@@ -1,6 +1,7 @@
 # @screena/seo
 
-Gate **anti-thin** e decisao de **indexabilidade** da Screena.
+Gate **anti-thin** e decisao de **indexabilidade** do Screen.
+`@screena/seo` e namespace tecnico legado.
 
 Este pacote concentra a logica que decide se uma pagina publica pode ser
 indexada pelos buscadores. E composto apenas por funcoes **puras e

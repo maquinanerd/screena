@@ -1,4 +1,4 @@
-# Regras de Ratings — Screena
+# Regras de Ratings — Screen
 
 > Regras de governanca para ratings externos (notas de fontes terceiras como
 > IMDb, Rotten Tomatoes, Metacritic, Letterboxd e FilmAffinity). Este documento
@@ -193,14 +193,14 @@ Regras:
 
 Proibido:
 
-- **Nada de `AggregateRating` fingindo nota propria.** A Screena nao publica nota
+- **Nada de `AggregateRating` fingindo nota propria.** Screen nao publica nota
   agregada propria como se fosse autoral.
 - Misturar notas de fontes diferentes em um unico `AggregateRating` (cada
   agregado pertence a uma fonte).
 - Emitir `AggregateRating` para nota com `score_allowed = false` ou licenca
   `unknown`/`blocked`.
 
-Nota propria da Screena, quando existir, usa `Review` proprio — nunca se disfarca
+Nota propria do Screen, quando existir, usa `Review` proprio — nunca se disfarca
 de `AggregateRating` de terceiro.
 
 ---

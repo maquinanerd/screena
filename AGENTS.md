@@ -7,14 +7,17 @@
 
 ## Contexto curto do projeto
 
-A **Screena** é uma **base global de entretenimento _entity-first_** (filmes, séries, temporadas, episódios, pessoas, ratings externos, onde assistir, reviews e notícias) com **camada editorial própria**. Domínio: **screena.media**.
+A marca pública principal é **Screen**, no domínio canônico **`https://thescreen.media`**. **The Screen** pode aparecer apenas como referência histórica, explicativa ou nome expandido não-principal. **Screena** permanece como namespace técnico/legado interno (`@screena/*`, tokens `--screena-*`, nomes antigos de scripts/services), não como marca pública. **screena.media** é legado histórico e não deve aparecer como domínio canônico público ativo. **The Nerd News** é legado antigo e não deve voltar como identidade do produto.
 
-- As **APIs fornecem os dados**; a **Screena escreve a camada editorial**. Fornecedores externos (TMDB, provedores de rating via RapidAPI) nunca são a voz editorial.
+**Screen** é uma **base global de entretenimento _entity-first_** (filmes, séries, temporadas, episódios, pessoas, ratings externos, onde assistir, reviews e notícias) com **camada editorial própria**.
+
+- As **APIs fornecem os dados**; **Screen escreve a camada editorial**. Fornecedores externos (TMDB, provedores de rating via RapidAPI) nunca são a voz editorial.
 - **Zero API externa no render. Zero Gemini no render.** Toda página pública indexável lê **apenas PostgreSQL/cache local**. A IA (Gemini) só gera `content_blocks` **offline**, salvos, validados e revisados.
 - O MVP publica em **pt-BR**; `en`/`es` nascem em **draft/`noindex`** até revisão humana.
-- **Fase atual: Fase 0 — Fundação.** A estrutura, as regras e os pacotes existem; o produto ainda **não** roda. Não há banco real, migrations completas, clientes TMDB/Gemini funcionais nem app publicável. Não implemente features de produto nesta fase.
+- **Estado atual: fundação avançada / vertical slice técnica.** O repositório não é mais Fase 0 pura: já existem Prisma/PostgreSQL, migrations/seeds, client TMDB real em TypeScript, ingestão TMDB, sync/stale policy, Entity Writer offline em TypeScript, adapter Gemini separado do render, rotas públicas para filmes/séries/pessoas/notícias, presenters puros, gates anti-thin, testes de governança e CI.
+- Ainda **não** estão funcionais como produto: ratings, streaming/onde assistir, RSSPRIME/MN26, admin editorial completo e usuários/community. Não implemente essas features neste commit de alinhamento.
 
-Monorepo **pnpm** com workspaces `apps/*` e `packages/*`. Stack: Next.js App Router, TypeScript **strict**, React Server Components, Tailwind, PostgreSQL (ORM recomendado: Prisma), workers Python **3.12**, Node **22 LTS**.
+Monorepo **pnpm** com workspaces `apps/*`, `packages/*`, `api-clients/*` e `services/*`. Stack: Next.js App Router, TypeScript **strict**, React Server Components, Tailwind, PostgreSQL + Prisma, workers Python **3.12** como roadmap/shim futuro, Node **22 LTS**. TMDB e Entity Writer rodam hoje em TypeScript/Node + Prisma; não reimplemente TMDB do zero em Python por causa de documentação antiga.
 
 ---
 
@@ -23,13 +26,14 @@ Monorepo **pnpm** com workspaces `apps/*` e `packages/*`. Stack: Next.js App Rou
 | Comando          | O que faz                                                                 |
 | ---------------- | ------------------------------------------------------------------------- |
 | `pnpm install`   | Instala as dependências do monorepo.                                      |
-| `pnpm dev`       | Servidor de desenvolvimento do app (_será implementado nas próximas fases_). |
+| `pnpm dev`       | Servidor de desenvolvimento do app público quando as dependências estiverem instaladas. |
 | `pnpm test`      | Roda os testes (Vitest): invariantes e utilitários puros.                 |
 | `pnpm lint`      | Roda o ESLint em todo o repositório.                                      |
 | `pnpm typecheck` | Checagem de tipos (`tsc --noEmit`).                                       |
 | `pnpm audit:invariants`     | Audita as invariantes do projeto (ex.: pureza de render, atribuição de ratings). |
+| `pnpm audit:render`         | Audita pureza de render do app público.                                  |
 
-**Antes de abrir qualquer PR, o agente deve rodar e deixar verdes:** `pnpm typecheck`, `pnpm lint`, `pnpm test` e `pnpm audit:invariants`. Mudança que quebra `pnpm audit:invariants` (uma invariante) **não** vira PR sem revisão humana explícita.
+**Antes de abrir qualquer PR, o agente deve rodar e deixar verdes:** `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm audit:invariants` e `pnpm audit:render`. Mudança que quebra uma invariante **não** vira PR sem revisão humana explícita.
 
 ---
 
@@ -38,7 +42,7 @@ Monorepo **pnpm** com workspaces `apps/*` e `packages/*`. Stack: Next.js App Rou
 - **Idioma:** docs, READMEs, regras e prompts em **pt-BR**; **código e identificadores em inglês** (comentários podem ser em pt-BR).
 - **TypeScript estrito e puro:** utilitários sem rede/DB/IO externo, funções puras e testáveis. Use sempre `export` **nomeado** (evite `export default` em utilitários).
 - **Pacotes (`packages/*`):** `@screena/config`, `@screena/schemas`, `@screena/seo`, `@screena/ui`, `@screena/types`, `@screena/db`. Cada pacote tem `package.json` (`"main": "./src/index.ts"`, `"type": "module"`), `tsconfig.json` (estende `../../tsconfig.base.json`), `README.md` e `src/index.ts`.
-- **Apps (`apps/*`):** `@screena/web` (site público) e `@screena/admin` (painel editorial).
+- **Apps (`apps/*`):** `@screena/web` (site público Screen) e `@screena/admin` (painel editorial planejado).
 - **Aliases** (devem bater entre `vitest.config.ts` e `tsconfig.base.json`):
 
   | Alias              | Caminho                          |

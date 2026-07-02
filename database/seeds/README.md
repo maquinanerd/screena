@@ -1,10 +1,10 @@
 # database/seeds
 
-Seeds de dados de referencia da Screena. **NESTA FASE 0 ainda nao ha seeds reais** — apenas
-o planejamento abaixo. Os seeds reais chegam na **Fase 1**, junto do schema Prisma e das
-migrations.
+Seeds de dados de referencia do Screen. Este diretorio e historico; os seeds
+reais atuais vivem em `packages/db/prisma/seed.ts` e `packages/db/src/seed-data.ts`
+junto do schema Prisma e das migrations.
 
-## Seeds planejados
+## Seeds atuais/planejados
 - **languages** — idiomas suportados (pt-BR primeiro; en/es nascem em `draft`/`noindex`).
 - **countries** — paises usados em disponibilidade (onde assistir) e i18n.
 - **rating_sources** — fontes editoriais com escala canonica:

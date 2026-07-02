@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Camada de apresentacao canonica da Screena: tokens de cor e resolucao de vertical (filme/serie/neutro) com label + badge + schema, garantindo que a diferenciacao nunca dependa so da cor (invariante 11).",
+  "description": "Camada de apresentacao canonica do Screen (namespace tecnico legado @screena/ui): tokens de cor e resolucao de vertical com label + badge + schema, garantindo que a diferenciacao nunca dependa so da cor (invariante 11).",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {

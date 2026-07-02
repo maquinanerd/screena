@@ -1,7 +1,7 @@
 ---
 name: generate-content-block
 description: >-
-  Roda o Screena Entity Writer para UMA entidade: monta payload controlado a
+  Roda o Entity Writer para UMA entidade: monta payload controlado a
   partir do PostgreSQL, chama o Gemini OFFLINE, recebe JSON, valida contra o
   payload (anti-alucinacao) e salva o resultado em content_blocks com status
   draft/ai_generated. NUNCA publica automaticamente. Use quando precisar gerar
@@ -11,7 +11,7 @@ description: >-
 
 # Skill: generate-content-block
 
-> Gerar um `content_block` com o Screena Entity Writer, de forma controlada,
+> Gerar um `content_block` com o Entity Writer, de forma controlada,
 > versionada e auditavel. Esta skill descreve o PROCESSO de governanca; a forma
 > da saida e a checagem anti-alucinacao vivem em `packages/schemas`
 > (`validateEntityWriterOutput`, `validateAgainstPayload`).

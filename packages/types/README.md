@@ -1,6 +1,7 @@
 # @screena/types
 
-Unioes de **string literais** compartilhadas por todo o monorepo Screena.
+Unioes de **string literais** compartilhadas por todo o monorepo Screen.
+`@screena/types` e namespace tecnico legado.
 
 Este e um pacote de fundacao puro: contem **apenas tipos** (`type`), sem nenhum
 codigo de runtime, sem side effects e sem dependencias de outros pacotes

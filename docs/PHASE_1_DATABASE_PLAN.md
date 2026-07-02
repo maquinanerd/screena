@@ -1,4 +1,8 @@
-# PHASE 1 — Database Plan (Screena)
+# PHASE 1 — Database Plan (Screen)
+
+> Nota de identidade: este plano nasceu quando o namespace publico ainda era
+> Screena. Screen e a marca publica atual; `@screena/*` permanece como
+> namespace tecnico legado.
 
 > Plano aprovado para a Fase 1 (Banco de dados). Branch: `feat/fase-1-banco`.
 > Escopo: schema PostgreSQL via Prisma + migration inicial + seeds + testes de

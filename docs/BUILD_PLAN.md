@@ -1,4 +1,4 @@
-# Plano de construção — Screena (BUILD_PLAN)
+# Plano de construção — Screen (BUILD_PLAN)
 
 > **Plano de construção por fases.** Da fundação do monorepo (Fase 0) até a monetização
 > (Fase 12). Cada fase tem **entregáveis** concretos e **critérios de aceite** verificáveis.
@@ -10,6 +10,14 @@ invariantes inegociáveis vivem em [`CLAUDE.md`](../CLAUDE.md) e em
 [`.claude/rules/`](../.claude/rules); a especificação de produto vive em
 [`docs/SPEC.md`](./SPEC.md). Em caso de conflito, as invariantes do `CLAUDE.md` prevalecem
 sobre qualquer atalho deste plano.
+
+> **Identidade e estado real.** A marca pública principal é **Screen** em
+> `https://thescreen.media`; **The Screen** pode aparecer apenas como referência
+> histórica, explicativa ou nome expandido não-principal.
+> **Screena** permanece como namespace técnico/legado interno (`@screena/*`,
+> tokens `--screena-*`). O repositório já passou da Fase 0 pura: Fase 1, Fase 2
+> e Fase 3A estão parcialmente implementadas. Ratings, streaming, RSSPRIME/MN26,
+> admin editorial completo e usuários/community ainda não estão funcionais.
 
 ## Princípios que valem para todas as fases
 
@@ -34,9 +42,9 @@ sobre qualquer atalho deste plano.
 | Fase | Tema                          | Foco                                                              | Status            |
 | ---- | ----------------------------- | ----------------------------------------------------------------- | ----------------- |
 | 0    | Fundação                      | Repo, docs, `CLAUDE.md`, `.claude/`, CI, branches                 | **Concluída** ✅  |
-| 1    | Banco                         | Schema PostgreSQL, migrations, `content_blocks`, jobs, admin min. | Planejada         |
-| 2    | TMDB                          | Client, cache, retry, rate limit, sync logs, import               | Planejada         |
-| 3    | Screena Entity Writer         | Worker, client Gemini, prompts versionados, validação, testes     | Planejada         |
+| 1    | Banco                         | Schema PostgreSQL, migrations, `content_blocks`, jobs, admin min. | **Parcial**       |
+| 2    | TMDB                          | Client, cache, retry, rate limit, sync logs, import               | **Parcial**       |
+| 3    | Entity Writer                 | Worker, client Gemini, prompts versionados, validação, testes     | **Parcial**       |
 | 4    | Páginas de filmes             | Template, schema `Movie`, gate anti-thin, visual vermelho         | Planejada         |
 | 5    | Séries                        | `TVSeries`/`TVSeason`/`TVEpisode`, visual verde                   | Planejada         |
 | 6    | Ratings                       | `external_ratings`, `source_licenses`, IMDb/Rotten sem mistura    | Planejada         |
@@ -51,8 +59,9 @@ sobre qualquer atalho deste plano.
 
 ## Fase 0 — Fundação **[STATUS: concluída nesta entrega]**
 
-Estabelece o esqueleto do monorepo, a governança e o tooling. **Sem produto funcional, sem
-banco real, sem clientes externos com rede.**
+Estabelece o esqueleto do monorepo, a governança e o tooling. Esta fase foi
+superada tecnicamente por implementações parciais posteriores; mantenha esta
+seção como histórico, não como descrição do estado atual.
 
 ### Entregáveis
 
@@ -144,7 +153,7 @@ Pipeline de importação a partir do TMDB, totalmente **offline em relação ao 
 
 ---
 
-## Fase 3 — Screena Entity Writer
+## Fase 3 — Entity Writer
 
 O agente editorial offline que gera `content_blocks` a partir de payload controlado.
 
@@ -242,7 +251,7 @@ Exibição de notas externas com fonte, escala e licença corretas, sem mistura.
   exibido em página indexável.
 - `provider_api` (fornecedor técnico) nunca é apresentado como `rating_source` (fonte
   editorial); atribuição e linkback respeitam `source_licenses`.
-- Nenhum `AggregateRating` finge nota própria da Screena.
+- Nenhum `AggregateRating` finge nota própria do Screen.
 
 ---
 
@@ -384,7 +393,7 @@ Decisões arquiteturais tomadas e seu racional. Mudanças aqui exigem atualizaç
 | Decisão                         | Escolha                                   | Racional / alternativa                                                                 |
 | ------------------------------- | ----------------------------------------- | -------------------------------------------------------------------------------------- |
 | ORM                             | **Prisma** (recomendado)                  | DX e migrations versionadas; **Drizzle** documentado como alternativa.                 |
-| Estilo                          | **Tailwind CSS** (recomendado)            | Tokens de cor da Screena; consistência entre filme/série sem depender só de cor.       |
+| Estilo                          | **Tailwind CSS** (recomendado)            | Tokens técnicos `--screena-*`; consistência entre filme/série sem depender só de cor.  |
 | Runtime Node                    | **Node 22 LTS**                           | LTS atual; fixado em `.nvmrc`.                                                          |
 | Monorepo                        | **pnpm** (workspaces `apps/*`, `packages/*`) | Instalação rápida e isolamento de dependências por pacote.                          |
 | Banco                           | **PostgreSQL**                            | Render lê apenas do PostgreSQL/cache local; zero API externa no render.                |

@@ -56,7 +56,7 @@ revisaveis** (invariante 13).
   `unknown`/`blocked`) **nao** pode ser citada (invariante 6); se exige
   atribuicao/linkback, o texto deve creditar a fonte adequadamente.
 - Nada de **`AggregateRating` fingindo nota propria**: o bloco nunca apresenta
-  nota de terceiro como se fosse nota autoral da Screena.
+  nota de terceiro como se fosse nota autoral do Screen.
 
 ## Eixo 3 — Versionamento e rastreabilidade (invariante 13)
 
