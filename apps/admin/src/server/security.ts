@@ -21,12 +21,22 @@ import {
   type AdminAccessEnvKey,
   type RedactedAdminAccessConfig,
 } from "../lib/access-protection";
+import {
+  getEditorialActionsStatus,
+  type EditorialActionsStatus,
+} from "./editorial-actions-status";
 
 export interface AdminSecurityDiagnostics {
   /** Status redigido (sem segredo) para a pagina interna. */
   readonly config: RedactedAdminAccessConfig;
   /** Nomes das env vars necessarias (so nomes — nunca valores). */
   readonly requiredEnvKeys: readonly AdminAccessEnvKey[];
+  /**
+   * Status da feature flag de ESCRITA editorial (Fase 7A). So boolean/nome — a
+   * flag `ADMIN_EDITORIAL_ACTIONS_ENABLED` nao e secreta, mas seu valor nunca e
+   * exibido; a pagina mostra apenas se as acoes estao habilitadas.
+   */
+  readonly editorialActions: EditorialActionsStatus;
 }
 
 /**
@@ -46,5 +56,6 @@ export function getAdminSecurityDiagnostics(): AdminSecurityDiagnostics {
   return {
     config: redactAdminAccessConfigForDisplay(config),
     requiredEnvKeys: [...ADMIN_ACCESS_ENV_KEYS],
+    editorialActions: getEditorialActionsStatus(),
   };
 }

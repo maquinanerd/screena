@@ -6,12 +6,16 @@
  *   - pagina ou rota de login/signin/logout/register;
  *   - import de biblioteca de auth/sessao/JWT/OAuth (next-auth, jsonwebtoken,
  *     jose, iron-session, passport, bcrypt, argon2, clerk, lucia, ...);
- *   - estado de sessao/cookie/JWT (Basic Auth e stateless);
- *   - `<form>` na UI (reforca a guarda read-only);
- *   - server action ("use server") em app/src (reforca a guarda read-only).
+ *   - estado de sessao/cookie/JWT (Basic Auth e stateless).
+ *
+ * NOTA (Fase 7A): esta guarda NAO trava mais `<form>` nem `"use server"` — a Fase
+ * 7A introduziu, de proposito, `<form>`/`<select>` no componente de acao editorial
+ * e UMA `"use server"` no arquivo allowlisted. Essas superficies sao travadas
+ * (com allowlist) por `pages-no-write`, `no-server-writes` e `readonly-guard`.
+ * Aqui o foco permanece: NENHUM login/sessao/JWT/OAuth (Fase 6B/6C = so Basic Auth).
  *
  * Complementa (nao substitui): `readonly-guard`, `pages-no-write`,
- * `no-server-writes` e `access-protection`.
+ * `no-server-writes`, `editorial-actions-guard` e `access-protection`.
  *
  * Se um dia esta guarda falhar, a correcao e remover a superficie de login/auth
  * complexa — nunca relaxar a regra. Protecao de acesso completa (usuarios,
@@ -163,22 +167,6 @@ async function findViolations(): Promise<Violation[]> {
     }
   }
 
-  // (4) <form> na UI (reforco da guarda read-only).
-  for (const file of appFiles) {
-    const code = stripComments(await readFile(file, "utf-8"));
-    if (/<form\b/i.test(code)) {
-      violations.push({ file: relative(process.cwd(), file), rule: "<form> na UI" });
-    }
-  }
-
-  // (5) server action ("use server") em app + src (reforco da guarda read-only).
-  for (const file of [...appFiles, ...srcFiles]) {
-    const code = stripComments(await readFile(file, "utf-8"));
-    if (/["']use server["']/.test(code)) {
-      violations.push({ file: relative(process.cwd(), file), rule: 'diretiva "use server"' });
-    }
-  }
-
   return violations;
 }
 
@@ -201,13 +189,6 @@ describe("admin nao introduz login/sessao/auth complexa (Fase 6B e so Basic Auth
 
   it("nao mantem estado de sessao/cookie/JWT (Basic Auth e stateless)", () => {
     const offenders = violations.filter((v) => v.rule.startsWith("estado de sessao"));
-    expect(offenders, JSON.stringify(offenders, null, 2)).toEqual([]);
-  });
-
-  it("nao tem <form> nem server action", () => {
-    const offenders = violations.filter(
-      (v) => v.rule === "<form> na UI" || v.rule.startsWith("diretiva"),
-    );
     expect(offenders, JSON.stringify(offenders, null, 2)).toEqual([]);
   });
 

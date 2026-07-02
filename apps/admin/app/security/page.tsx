@@ -69,7 +69,7 @@ function EnvChecklist({ items }: { items: readonly AdminEnvChecklistItem[] }): R
 }
 
 export default function AdminSecurityPage(): ReactNode {
-  const { config, requiredEnvKeys } = getAdminSecurityDiagnostics();
+  const { config, requiredEnvKeys, editorialActions } = getAdminSecurityDiagnostics();
 
   const rows: DiagnosticRow[] = [
     { label: "Ambiente detectado", value: config.environmentLabel },
@@ -77,6 +77,11 @@ export default function AdminSecurityPage(): ReactNode {
     { label: "Protecao exigida?", value: yesNo(config.protectionRequired) },
     { label: "Protecao explicitamente habilitada?", value: yesNo(config.protectionExplicitlyEnabled) },
     { label: "Credenciais configuradas?", value: yesNo(config.credentialsConfigured) },
+  ];
+
+  const editorialRows: DiagnosticRow[] = [
+    { label: "Acoes editoriais habilitadas?", value: yesNo(editorialActions.enabled) },
+    { label: `${editorialActions.envKey} definida?`, value: yesNo(editorialActions.present) },
   ];
 
   return (
@@ -105,10 +110,18 @@ export default function AdminSecurityPage(): ReactNode {
         responde 401 (nunca sobe aberto).
       </p>
 
+      <h3 className="admin-security-heading">Acoes editoriais (escrita controlada)</h3>
+      <p className="admin-meta">
+        A escrita editorial (alterar review_status / index_status) so funciona com a flag
+        habilitada, alem do Basic Auth em production-like. O valor da flag nunca e exibido — so o
+        estado derivado.
+      </p>
+      <DiagnosticList rows={editorialRows} />
+
       <h3 className="admin-security-heading">Variaveis de ambiente necessarias</h3>
       <p className="admin-meta">
-        Lista pelos NOMES ({requiredEnvKeys.length} variaveis). Valores nunca sao exibidos —
-        apenas se estao configuradas.
+        Lista pelos NOMES ({requiredEnvKeys.length} variaveis de acesso). Valores nunca sao
+        exibidos — apenas se estao configuradas.
       </p>
       <EnvChecklist items={config.envChecklist} />
     </>

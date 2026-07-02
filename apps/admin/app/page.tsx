@@ -3,68 +3,94 @@ import type { ReactNode } from "react";
 import { getDashboardData } from "../src/server/dashboard";
 
 /**
- * Dashboard do admin editorial (SOMENTE LEITURA).
+ * Dashboard do admin editorial.
  *
- * Mostra contagens REAIS lidas do PostgreSQL local (zero API externa, zero
- * publicacao). `force-dynamic`: renderiza sob demanda, nunca no build (nao toca
- * o banco durante `next build`).
+ * Este painel de visao geral e SOMENTE LEITURA: mostra contagens REAIS lidas do
+ * PostgreSQL local (zero API externa). As ACOES editoriais controladas (alterar
+ * review_status / index_status) ficam nas telas de detalhe, alcancadas pelo link
+ * "Revisar" nas listagens ou pelas filas abaixo, e so funcionam quando a flag
+ * `ADMIN_EDITORIAL_ACTIONS_ENABLED=true`.
+ *
+ * `force-dynamic`: renderiza sob demanda, nunca no build (nao toca o banco durante
+ * `next build`).
  */
 export const dynamic = "force-dynamic";
 
 interface CountCard {
   label: string;
   value: number;
+  href?: string;
 }
 
 function Cards({ cards }: { cards: CountCard[] }): ReactNode {
   return (
     <div className="admin-cards">
-      {cards.map((card) => (
-        <div className="admin-card" key={card.label}>
-          <div className="admin-card__value">{card.value}</div>
-          <div className="admin-card__label">{card.label}</div>
-        </div>
-      ))}
+      {cards.map((card) =>
+        card.href !== undefined ? (
+          <a className="admin-card admin-card--link" key={card.label} href={card.href}>
+            <div className="admin-card__value">{card.value}</div>
+            <div className="admin-card__label">{card.label} →</div>
+          </a>
+        ) : (
+          <div className="admin-card" key={card.label}>
+            <div className="admin-card__value">{card.value}</div>
+            <div className="admin-card__label">{card.label}</div>
+          </div>
+        ),
+      )}
     </div>
   );
 }
 
 export default async function AdminDashboardPage(): Promise<ReactNode> {
   const data = await getDashboardData();
+  const actions = data.editorialActions;
 
   const articleCards: CountCard[] = [
-    { label: "Registros de artigo", value: data.articleRecords },
+    { label: "Pendentes de revisao", value: data.articleReview.pending, href: "/articles?status=pending" },
+    { label: "Aprovados (review)", value: data.articleReview.approved, href: "/articles?status=approved" },
+    { label: "Bloqueados", value: data.articles.blocked, href: "/articles?status=blocked" },
     { label: "Versoes (traducoes) totais", value: data.articles.total },
-    { label: "Versoes publicaveis", value: data.articles.publishable },
-    { label: "Versoes noindex", value: data.articles.noindex },
-    { label: "Versoes bloqueadas (licenca/display/revisao)", value: data.articles.blocked },
   ];
 
   const blockCards: CountCard[] = [
+    { label: "Pendentes de revisao", value: data.contentBlocks.pending, href: "/content-blocks?status=pending" },
+    { label: "Aprovados (review)", value: data.contentBlocks.publishable, href: "/content-blocks?status=approved" },
+    { label: "Bloqueados/arquivados", value: data.contentBlocks.blocked, href: "/content-blocks?status=blocked" },
     { label: "Content blocks totais", value: data.contentBlocks.total },
-    { label: "Pendentes de revisao", value: data.contentBlocks.pending },
-    { label: "Publicaveis", value: data.contentBlocks.publishable },
-    { label: "Bloqueados/arquivados", value: data.contentBlocks.blocked },
   ];
 
   return (
     <>
       <p className="admin-notice">
-        <strong>Modo somente leitura.</strong> Este painel apenas visualiza o estado de revisao.
-        Nao ha publicacao, edicao ou escrita no banco. Contagens sao numeros reais do PostgreSQL
-        local; banco vazio aparece como zero.
+        <strong>Modo somente leitura</strong> neste painel de visao geral. Contagens reais do
+        PostgreSQL local (banco vazio aparece como zero). As acoes editoriais controladas ficam
+        nas telas de detalhe (link <strong>Revisar</strong>).
       </p>
 
-      <h2 className="admin-section-title">Artigos / noticias</h2>
+      <div
+        className={`admin-flag admin-flag--${actions.enabled ? "on" : "off"}`}
+        role="status"
+      >
+        <span className="admin-flag__caption">Acoes editoriais</span>
+        <span className={`admin-badge admin-badge--${actions.enabled ? "ok" : "hold"}`}>
+          {actions.enabled ? "Habilitadas" : "Desativadas por ambiente"}
+        </span>
+        <span className="admin-flag__note">
+          Controladas por <code>{actions.envKey}</code> (valor nunca exibido).
+        </span>
+      </div>
+
+      <h2 className="admin-section-title">Fila editorial — Artigos / noticias</h2>
       <Cards cards={articleCards} />
       <p className="admin-meta">
-        Ver detalhes em <a href="/articles">Artigos</a>.
+        Registros de artigo (fatos): {data.articleRecords}. Ver <a href="/articles">Artigos</a>.
       </p>
 
-      <h2 className="admin-section-title">Content blocks editoriais</h2>
+      <h2 className="admin-section-title">Fila editorial — Content blocks</h2>
       <Cards cards={blockCards} />
       <p className="admin-meta">
-        Ver detalhes em <a href="/content-blocks">Content blocks</a>.
+        Ver <a href="/content-blocks">Content blocks</a>.
       </p>
 
       <h2 className="admin-section-title">Operacao e seguranca</h2>
@@ -72,7 +98,8 @@ export default async function AdminDashboardPage(): Promise<ReactNode> {
         <a className="admin-card admin-card--link" href="/security">
           <div className="admin-card__title">Segurança do Admin</div>
           <div className="admin-card__label">
-            Verifique proteção, ambiente e credenciais configuradas sem expor secrets.
+            Verifique proteção, ambiente, credenciais e o estado das ações editoriais sem expor
+            secrets.
           </div>
         </a>
       </div>

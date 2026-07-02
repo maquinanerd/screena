@@ -17,53 +17,76 @@ import { getPrismaClient } from "@screena/db/server";
 import {
   BLOCKED_REVIEW_STATUSES,
   DISPLAYABLE_LICENSE_STATUSES,
+  PENDING_REVIEW_STATUSES,
   PUBLISHABLE_REVIEW_STATUSES,
   aggregateContentBlockGroups,
   type ArticleCounts,
   type ContentBlockCounts,
 } from "../lib/editorial-status";
+import {
+  getEditorialActionsStatus,
+  type EditorialActionsStatus,
+} from "./editorial-actions-status";
+
+/** Contagens de artigo por BALDE de review_status (fila editorial). */
+export interface ArticleReviewCounts {
+  /** reviewStatus pendente (draft/ai_generated/needs_review/needs_update). */
+  pending: number;
+  /** reviewStatus apto (human_reviewed/published). */
+  approved: number;
+}
 
 export interface DashboardData {
   /** Registros de artigo (fatos, independentes de idioma). */
   articleRecords: number;
   /** Versoes de artigo por idioma (article_translations), particionadas. */
   articles: ArticleCounts;
+  /** Versoes de artigo por balde de review_status (fila de revisao editorial). */
+  articleReview: ArticleReviewCounts;
   /** content_blocks particionados por review_status. */
   contentBlocks: ContentBlockCounts;
+  /** Status da feature flag de acoes editoriais (so boolean/nome, sem segredo). */
+  editorialActions: EditorialActionsStatus;
 }
 
 // Derivado das constantes puras (single source of truth com a classificacao).
 const displayableLicenses = [...DISPLAYABLE_LICENSE_STATUSES];
 const blockedReviews = [...BLOCKED_REVIEW_STATUSES];
 const publishableReviews = [...PUBLISHABLE_REVIEW_STATUSES];
+const pendingReviews = [...PENDING_REVIEW_STATUSES];
 
 export const getDashboardData = cache(async (): Promise<DashboardData> => {
   const prisma = getPrismaClient();
 
-  const [articleRecords, total, blocked, publishable, blockGroups] = await Promise.all([
-    prisma.article.count(),
-    prisma.articleTranslation.count(),
-    // BLOQUEADA: licenca nao exibivel, display negado, index=blocked ou review travada.
-    prisma.articleTranslation.count({
-      where: {
-        OR: [
-          { article: { licenseStatus: { notIn: displayableLicenses } } },
-          { article: { displayAllowed: false } },
-          { indexStatus: "blocked" },
-          { reviewStatus: { in: blockedReviews } },
-        ],
-      },
-    }),
-    // PUBLICAVEL: review apto + index=index + licenca exibivel + display permitido.
-    prisma.articleTranslation.count({
-      where: {
-        reviewStatus: { in: publishableReviews },
-        indexStatus: "index",
-        article: { licenseStatus: { in: displayableLicenses }, displayAllowed: true },
-      },
-    }),
-    prisma.contentBlock.groupBy({ by: ["reviewStatus"], _count: { _all: true } }),
-  ]);
+  const [articleRecords, total, blocked, publishable, pendingReview, approvedReview, blockGroups] =
+    await Promise.all([
+      prisma.article.count(),
+      prisma.articleTranslation.count(),
+      // BLOQUEADA: licenca nao exibivel, display negado, index=blocked ou review travada.
+      prisma.articleTranslation.count({
+        where: {
+          OR: [
+            { article: { licenseStatus: { notIn: displayableLicenses } } },
+            { article: { displayAllowed: false } },
+            { indexStatus: "blocked" },
+            { reviewStatus: { in: blockedReviews } },
+          ],
+        },
+      }),
+      // PUBLICAVEL: review apto + index=index + licenca exibivel + display permitido.
+      prisma.articleTranslation.count({
+        where: {
+          reviewStatus: { in: publishableReviews },
+          indexStatus: "index",
+          article: { licenseStatus: { in: displayableLicenses }, displayAllowed: true },
+        },
+      }),
+      // Fila de revisao: versoes com review pendente (independente de index/licenca).
+      prisma.articleTranslation.count({ where: { reviewStatus: { in: pendingReviews } } }),
+      // Aprovadas por revisao (independente de index/licenca).
+      prisma.articleTranslation.count({ where: { reviewStatus: { in: publishableReviews } } }),
+      prisma.contentBlock.groupBy({ by: ["reviewStatus"], _count: { _all: true } }),
+    ]);
 
   const noindex = Math.max(0, total - blocked - publishable);
 
@@ -77,6 +100,8 @@ export const getDashboardData = cache(async (): Promise<DashboardData> => {
   return {
     articleRecords,
     articles: { total, publishable, noindex, blocked },
+    articleReview: { pending: pendingReview, approved: approvedReview },
     contentBlocks,
+    editorialActions: getEditorialActionsStatus(),
   };
 });
