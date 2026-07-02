@@ -81,6 +81,28 @@ export default async function AdminDashboardPage(): Promise<ReactNode> {
         </span>
       </div>
 
+      <h2 className="admin-section-title">Fila de revisao</h2>
+      <div className="admin-cards">
+        <a className="admin-card admin-card--link" href="/review-queue">
+          <div className="admin-card__title">Abrir fila de revisao →</div>
+          <div className="admin-card__label">
+            Bloqueados, aguardando revisao e prontos para indexar, num so lugar.
+          </div>
+        </a>
+        <div className="admin-card">
+          <div className="admin-card__value">{data.articles.blocked}</div>
+          <div className="admin-card__label">Artigos bloqueados</div>
+        </div>
+        <div className="admin-card">
+          <div className="admin-card__value">{data.articles.publishable}</div>
+          <div className="admin-card__label">Artigos prontos p/ indexar (candidatos)</div>
+        </div>
+        <div className="admin-card">
+          <div className="admin-card__value">{data.contentBlocks.pending}</div>
+          <div className="admin-card__label">Content blocks pendentes</div>
+        </div>
+      </div>
+
       <h2 className="admin-section-title">Fila editorial — Artigos / noticias</h2>
       <Cards cards={articleCards} />
       <p className="admin-meta">

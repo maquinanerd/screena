@@ -207,3 +207,32 @@ describe("detectores de vazamento funcionam (nao sao vacuos)", () => {
     expect(libMatches("readonly passwordConfigured: boolean")).toBe(false);
   });
 });
+
+/**
+ * Fase 7B: as superficies novas (preview publico + fila de revisao) nao vazam
+ * segredo. O helper `review-queue.ts` vive em `src/server` (fora do scan padrao
+ * app+src/lib), por isso e checado explicitamente aqui: sem env sensivel, sem
+ * Authorization, sem DATABASE_URL, sem render de senha.
+ */
+describe("Fase 7B: preview e fila de revisao nao vazam segredo", () => {
+  const FILES = [
+    resolve(process.cwd(), "apps", "admin", "src", "server", "review-queue.ts"),
+    resolve(process.cwd(), "apps", "admin", "src", "lib", "public-readiness.ts"),
+    resolve(process.cwd(), "apps", "admin", "app", "review-queue", "page.tsx"),
+    resolve(process.cwd(), "apps", "admin", "app", "articles", "[id]", "page.tsx"),
+    resolve(process.cwd(), "apps", "admin", "app", "content-blocks", "[id]", "page.tsx"),
+  ];
+
+  it("nao contem env sensivel, Authorization, DATABASE_URL nem render de senha", async () => {
+    for (const file of FILES) {
+      const code = stripComments(await readFile(file, "utf-8"));
+      expect(code, `${file}: senha no codigo`).not.toContain(
+        "process.env.ADMIN_BASIC_AUTH_PASSWORD",
+      );
+      expect(code, `${file}: usuario no codigo`).not.toContain("process.env.ADMIN_BASIC_AUTH_USER");
+      expect(code, `${file}: DATABASE_URL`).not.toContain("process.env.DATABASE_URL");
+      expect(code.toLowerCase(), `${file}: Authorization`).not.toContain("authorization");
+      expect(/\.(?:password|pass|senha)\b/i.test(code), `${file}: render de senha`).toBe(false);
+    }
+  });
+});

@@ -12,6 +12,11 @@ import {
   contentBlockStatusLabel,
   formatIsoDate,
 } from "../../../src/lib/editorial-status";
+import {
+  contentBlockReadinessLabel,
+  evaluateContentBlockPublicReadiness,
+  readinessBadgeVariant,
+} from "../../../src/lib/public-readiness";
 import { getContentBlockDetail } from "../../../src/server/content-blocks";
 import { getEditorialActionsStatus } from "../../../src/server/editorial-actions-status";
 import { updateContentBlockReviewStatus } from "../../../src/server/editorial-actions";
@@ -76,6 +81,12 @@ export default async function AdminContentBlockDetailPage({
     );
   }
 
+  const readiness = evaluateContentBlockPublicReadiness({
+    reviewStatus: detail.reviewStatus,
+    contentChars: detail.contentChars,
+    languageCode: detail.languageCode,
+  });
+
   const rows: DetailRow[] = [
     { label: "Entidade", value: `${detail.entityType}:${detail.entityId}` },
     { label: "Idioma", value: detail.languageCode },
@@ -105,6 +116,31 @@ export default async function AdminContentBlockDetailPage({
 
       <h3 className="admin-detail-heading">Dados do bloco</h3>
       <DetailList rows={rows} />
+
+      <h3 className="admin-detail-heading">Preview do bloco</h3>
+      <div className={`admin-readiness admin-readiness--${readiness.level}`}>
+        <span className={`admin-badge admin-badge--${readinessBadgeVariant(readiness.level)}`}>
+          {contentBlockReadinessLabel(readiness.level)}
+        </span>
+        <span className="admin-readiness__flag">
+          Pode aparecer publicamente: <strong>{readiness.canDisplay ? "sim" : "nao"}</strong>
+        </span>
+      </div>
+      {!readiness.canDisplay ? (
+        <p className="admin-actions-disabled" role="note">
+          <strong>Este bloco ainda nao deve aparecer publicamente.</strong> Ele so conta como valor
+          proprio quando revisado (review_status publicavel), com conteudo e em pt-BR.
+        </p>
+      ) : null}
+      {readiness.issues.length > 0 ? (
+        <ul className="admin-issue-list">
+          {readiness.issues.map((issue) => (
+            <li className="admin-issue-list__item" key={issue}>
+              {issue}
+            </li>
+          ))}
+        </ul>
+      ) : null}
 
       <h3 className="admin-detail-heading">Preview do conteudo</h3>
       <p className="admin-preview-box">{detail.preview.length > 0 ? detail.preview : "(vazio)"}</p>

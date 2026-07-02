@@ -12,6 +12,11 @@ import {
 } from "../../../src/lib/editorial-action-policy";
 import { firstValue, type RawSearchParams } from "../../../src/lib/editorial-filters";
 import { articleBadgeVariant, articleStatusLabel, formatIsoDate } from "../../../src/lib/editorial-status";
+import {
+  articleReadinessLabel,
+  evaluateArticlePublicReadiness,
+  readinessBadgeVariant,
+} from "../../../src/lib/public-readiness";
 import { getArticleDetail } from "../../../src/server/articles";
 import { getEditorialActionsStatus } from "../../../src/server/editorial-actions-status";
 import {
@@ -82,6 +87,18 @@ export default async function AdminArticleDetailPage({
     );
   }
 
+  const readiness = evaluateArticlePublicReadiness({
+    reviewStatus: detail.reviewStatus,
+    licenseStatus: detail.licenseStatus,
+    displayAllowed: detail.displayAllowed,
+    slug: detail.slug,
+    title: detail.title,
+    publishedAtIso: detail.publishedAtIso,
+    bodyChars: detail.bodyChars,
+    indexStatus: detail.indexStatus,
+    languageCode: detail.languageCode,
+  });
+
   const rows: DetailRow[] = [
     { label: "Titulo", value: detail.title },
     { label: "Slug", value: detail.slug },
@@ -130,6 +147,62 @@ export default async function AdminArticleDetailPage({
 
       <h3 className="admin-detail-heading">Dados da versao</h3>
       <DetailList rows={rows} />
+
+      <h3 className="admin-detail-heading">Preview público</h3>
+      <div className={`admin-readiness admin-readiness--${readiness.level}`}>
+        <span className={`admin-badge admin-badge--${readinessBadgeVariant(readiness.level)}`}>
+          {articleReadinessLabel(readiness.level)}
+        </span>
+        <span className="admin-readiness__flag">
+          Exibicao publica: <strong>{readiness.canDisplay ? "sim" : "nao"}</strong>
+        </span>
+        <span className="admin-readiness__flag">
+          Indexacao: <strong>{readiness.canIndex ? "sim" : "nao"}</strong>
+        </span>
+      </div>
+
+      <p className="admin-readiness__url-label">URL publica calculada</p>
+      {readiness.publicUrl !== null ? (
+        <p className="admin-public-url">
+          <a href={readiness.publicUrl} target="_blank" rel="noreferrer">
+            {readiness.publicUrl}
+          </a>
+        </p>
+      ) : (
+        <p className="admin-meta">
+          Sem URL publica (idioma nao-pt-BR ou slug ausente/invalido). Nao ha rota publica.
+        </p>
+      )}
+
+      {readiness.issues.length > 0 ? (
+        <>
+          <p className="admin-readiness__url-label">Problemas ({readiness.issues.length})</p>
+          <ul className="admin-issue-list">
+            {readiness.issues.map((issue) => (
+              <li className="admin-issue-list__item" key={issue}>
+                {issue}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : (
+        <p className="admin-meta">Sem problemas — pronto para exibir e indexar.</p>
+      )}
+
+      <p className="admin-readiness__url-label">Campos usados na decisao</p>
+      <DetailList
+        rows={[
+          { label: "review_status", value: <code>{detail.reviewStatus}</code> },
+          { label: "license_status", value: <code>{detail.licenseStatus}</code> },
+          { label: "display_allowed", value: detail.displayAllowed ? "sim" : "nao" },
+          { label: "index_status", value: <code>{detail.indexStatus}</code> },
+          { label: "idioma", value: detail.languageCode },
+          { label: "slug", value: detail.slug.trim() !== "" ? "presente" : "ausente" },
+          { label: "titulo", value: detail.title.trim() !== "" ? "presente" : "ausente" },
+          { label: "publishedAt", value: detail.publishedAtIso !== null ? "presente" : "ausente" },
+          { label: "corpo (caracteres)", value: detail.bodyChars },
+        ]}
+      />
 
       <h3 className="admin-detail-heading">Acoes editoriais</h3>
       <p className="admin-meta">

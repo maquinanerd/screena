@@ -24,9 +24,7 @@ import {
   reviewStatusesForBucket,
   type ArticleFilters,
 } from "../lib/editorial-filters";
-
-/** Origem publica canonica (para montar o link publico pt-BR). */
-const PUBLIC_SITE_ORIGIN = "https://thescreen.media";
+import { buildPublicArticleUrl } from "../lib/public-readiness";
 
 export interface ArticleListRow {
   id: string;
@@ -92,13 +90,6 @@ function buildArticleWhere(filters: ArticleFilters): ArticleWhere {
   if (filters.language !== null) where.languageCode = filters.language;
   if (filters.indexStatus !== null) where.indexStatus = filters.indexStatus;
   return where;
-}
-
-/** Link publico pt-BR (`/pt/noticias/{slug}`); `null` para outros idiomas/sem slug. */
-function publicArticleUrl(languageCode: string, slug: string): string | null {
-  const isPt = languageCode === "pt-BR" || languageCode === "pt";
-  const trimmed = slug.trim();
-  return isPt && trimmed !== "" ? `${PUBLIC_SITE_ORIGIN}/pt/noticias/${trimmed}` : null;
 }
 
 export const getArticleListData = cache(
@@ -235,6 +226,6 @@ export const getArticleDetail = cache(async (id: string): Promise<ArticleDetail 
     status: classification.status,
     issues: classification.issues,
     bodyChars: body.trim().length,
-    publicUrl: publicArticleUrl(row.languageCode, row.slug),
+    publicUrl: buildPublicArticleUrl(row.slug, row.languageCode),
   };
 });
