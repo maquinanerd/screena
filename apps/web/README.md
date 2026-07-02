@@ -1,12 +1,15 @@
 # @screena/web
 
-App publico da Screena, construido com **Next.js App Router** (TypeScript
+App publico do **Screen**, construido com **Next.js App Router** (TypeScript
 strict, React Server Components, ISR/revalidate). Publica o MVP em **pt-BR**;
 `en`/`es` nascem em draft/noindex ate revisao humana.
 
+`@screena/web` e namespace tecnico legado. A marca publica e **Screen**; a
+forma curta **Screen** pode aparecer na UI/logo.
+
 ## Papel
 
-Servir as paginas publicas e indexaveis da Screena (filmes, series,
+Servir as paginas publicas e indexaveis do Screen (filmes, series,
 temporadas, pessoas, onde assistir, curadorias e noticias) descritas em
 [`app/README.md`](./app/README.md).
 
@@ -40,8 +43,10 @@ next.config.ts
 
 ## Como rodar (no futuro)
 
-> Fase 0: este pacote e um **stub**. As dependencias estao **declaradas**,
-> mas nao instaladas, e nao ha app final.
+> Estado atual: este pacote ja tem rotas publicas para filmes, series, pessoas e
+> noticias, presenters puros, validações com PostgreSQL efemero e render
+> server-side a partir de dados locais. Ainda nao e produto completo/publicavel
+> em escala.
 
 Quando implementado, a partir da raiz do monorepo:
 

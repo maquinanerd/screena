@@ -1,8 +1,8 @@
-# scripts/deploy — Deploy da Screena (VPS + CloudPanel)
+# scripts/deploy — Deploy do Screen (VPS + CloudPanel)
 
 > Esta pasta documenta os scripts de **deploy** que serao implementados em fases
-> posteriores. Na Fase 0 (Fundacao) existe **apenas** este README descrevendo o
-> contrato e o fluxo. Nenhum script real de deploy roda agora.
+> posteriores. Hoje ainda existe **apenas** este README descrevendo o contrato e
+> o fluxo; o guia operacional publico fica em `docs/CLOUDPANEL_DEPLOY.md`.
 
 ## Contexto
 
@@ -32,7 +32,7 @@
 ## Layout de releases (alvo)
 
 ```
-/home/screena/app/
+/home/screen/app/
   releases/
     2026-06-25T12-00-00Z-<git-sha>/   # build completo desta versao
     2026-06-24T18-30-00Z-<git-sha>/

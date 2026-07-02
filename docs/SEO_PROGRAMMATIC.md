@@ -1,9 +1,9 @@
-# SEO Programático — Screena
+# SEO Programático — Screen
 
-> APIs fornecem dados estruturados. **A Screena escreve a camada editorial.**
+> APIs fornecem dados estruturados. **Screen escreve a camada editorial.**
 > Nenhuma página pública indexável é apenas um espelho de TMDB/IMDb/Rotten Tomatoes.
 
-Este documento define como a Screena gera páginas em escala **com valor real**, sem cair em
+Este documento define como Screen gera páginas em escala **com valor real**, sem cair em
 _thin content_ nem em _index bloat_. Ele complementa:
 
 - [`.claude/rules/seo.md`](../.claude/rules/seo.md) — regras operacionais de SEO;
@@ -80,7 +80,7 @@ Regras de URL:
 ## 3. Gate anti-thin (o coração do programático)
 
 Uma página de entidade **só pode ser indexável** se tiver dados estruturados confiáveis **e pelo
-menos 2 blocos de valor próprios da Screena**. A decisão é calculada por
+menos 2 blocos de valor próprios do Screen**. A decisão é calculada por
 `evaluateIndexability()` em [`packages/seo/src/indexability.ts`](../packages/seo/src/indexability.ts).
 
 ### Blocos de valor aceitos
@@ -105,7 +105,7 @@ menos 2 blocos de valor próprios da Screena**. A decisão é calculada por
 
 ### Quando um bloco gerado por IA conta como valor
 
-Um `content_block` produzido pelo Screena Entity Writer **só conta** como bloco de valor se:
+Um `content_block` produzido pelo Entity Writer **só conta** como bloco de valor se:
 
 - foi gerado a partir de **payload controlado** do PostgreSQL;
 - passou pela **validação anti-alucinação**;
@@ -225,7 +225,7 @@ Regra: nunca prometer disponibilidade que a API não confirmou. Usar
 | Home/Org   | `WebSite` / `Organization`       |
 
 `AggregateRating`: **apenas quando permitido e corretamente atribuído**. Nunca usar para fingir
-que uma nota externa (IMDb, Rotten, Metacritic) é nota própria da Screena. Preservar sempre
+que uma nota externa (IMDb, Rotten, Metacritic) é nota própria do Screen. Preservar sempre
 fonte, escala, URL, atribuição e data de coleta (ver `RATING_ATTRIBUTION.md`).
 
 ---

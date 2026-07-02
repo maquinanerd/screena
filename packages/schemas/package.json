@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Validacao canonica da Screena: integridade de ratings (fonte != provider_api, escala por fonte, anti cross-label) e saida do Entity Writer (formas, tipos e checagem anti-alucinacao contra payload controlado).",
+  "description": "Validacao canonica do Screen (namespace tecnico legado @screena/schemas): ratings e saida do Entity Writer contra payload controlado.",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {

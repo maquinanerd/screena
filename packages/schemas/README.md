@@ -1,7 +1,7 @@
 # @screena/schemas
 
-Pacote de **validacao canonica** da Screena. Reune as regras que protegem
-duas fronteiras criticas do produto:
+Pacote de **validacao canonica** do Screen. `@screena/schemas` e namespace
+tecnico legado. Reune as regras que protegem duas fronteiras criticas do produto:
 
 1. **Integridade de ratings externos** (`src/ratings.ts`)
 2. **Saida do Entity Writer** (`src/entity-writer-output.ts`)

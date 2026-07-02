@@ -1,12 +1,14 @@
-# Governanca de Fontes Externas — Screena
+# Governanca de Fontes Externas — Screen
 
-Este documento define a **governanca de fontes externas** da Screena: para cada API/fonte,
+Este documento define a **governanca de fontes externas** do Screen: para cada API/fonte,
 descreve **uso**, **periodicidade de sincronizacao**, **atribuicao** e **tratamento de
 licenca**. E o contrato de referencia para os workers de ingestao, ratings, streaming e
 noticias.
 
 > Regra inegociavel que atravessa o documento inteiro: **toda fonte externa e consumida
-> apenas por worker offline (Python 3.12), agendado por systemd timers — NUNCA no render.**
+> apenas por pipeline offline — NUNCA no render. TMDB e Entity Writer rodam hoje em
+> TypeScript/Node + Prisma; workers Python permanecem como roadmap/shim futuro para
+> ratings, streaming, RSS/news e orquestracao.
 > Paginas publicas indexaveis leem exclusivamente PostgreSQL/cache local
 > (`api_cache`). Nenhuma rota publica abre conexao com API externa.
 
@@ -68,7 +70,10 @@ disponibilidade). E a espinha dorsal do grafo de entidades e do mapeamento
 `tmdb_id` <-> IDs canonicos (`entity_external_ids`), fornecendo `imdb_id` de referencia
 quando disponivel.
 
-**Consumo.** **Worker-only** (Python 3.12, systemd timers). **Nunca no render.**
+**Consumo.** **Pipeline offline em TypeScript/Node + Prisma** (`api-clients/tmdb`,
+`services/ingestion`, `services/sync`). **Nunca no render.** Os workers Python de
+TMDB que ainda aparecerem em `workers/` sao legado/scaffold e nao devem ser
+reimplementados do zero nesta fase.
 
 **Periodicidade de sincronizacao.**
 

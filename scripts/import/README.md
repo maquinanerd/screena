@@ -1,9 +1,10 @@
 # scripts/import — Import em massa de entidades (TMDB -> PostgreSQL, com revisao)
 
-> Esta pasta documenta os scripts de **import/ingestao em massa** que serao
-> implementados em fases posteriores. Na Fase 0 (Fundacao) existe **apenas** este
-> README descrevendo o contrato e o fluxo. Nenhum import real, client TMDB ou
-> chamada de API roda agora.
+> Esta pasta documenta o alvo historico de **import/ingestao em massa**. O estado
+> real atual ja tem client TMDB e ingestao por ID/lista curada em
+> `api-clients/tmdb`, `services/ingestion` e `services/sync` (TypeScript/Node +
+> Prisma). Popular/trending/changes e import em massa continuam para fases
+> futuras.
 
 ## Objetivo
 
@@ -13,9 +14,10 @@ episodios, pessoas — a partir do **TMDB** (e fontes correlatas), de forma
 
 ## Principios (invariantes que este import respeita)
 
-1. **Zero API externa no render**: o import roda **offline** (worker Python via
-   systemd timer). O TMDB e chamado **aqui**, jamais no caminho de render. O app
-   publico le **somente PostgreSQL/cache local**.
+1. **Zero API externa no render**: o import roda **offline** (hoje em
+   TypeScript/Node + Prisma para TMDB; workers Python podem virar shim futuro).
+   O TMDB e chamado **aqui**, jamais no caminho de render. O app publico le
+   **somente PostgreSQL/cache local**.
 2. **`provider_api` != `rating_source`**: o TMDB e um **fornecedor tecnico**
    (provider_api), nunca a fonte editorial de uma nota. Notas externas guardam
    sua propria `rating_source`, escala e atribuicao.
@@ -66,22 +68,26 @@ TMDB API  ->  worker de import (offline, com log)  ->  staging  ->  revisao huma
 
 | Script | Responsabilidade |
 | --- | --- |
-| `tmdb-import.py` | Worker de import: fetch TMDB -> cache/log -> staging. |
-| `normalize.py` | Mapeia payload TMDB para o schema canonico. |
+| `services/ingestion` | Implementacao atual: fetch TMDB -> cache/log -> upsert canonico por ID/lista curada. |
+| `api-clients/tmdb` | Client TMDB real em TypeScript, com auth v4/v3, retry, rate limit e circuit breaker. |
+| `tmdb-import.py` | Historico/roadmap: worker Python de import em massa, se um dia virar shim. |
+| `normalize.py` | Historico/roadmap: mapeia payload TMDB para o schema canonico. |
 | `stage-diff.py` | Gera diff legivel do lote (o que entra/muda). |
 | `commit-batch.py` | Aplica lote aprovado ao PostgreSQL (idempotente). |
 | `link-external-ids.py` | Mantem `entity_external_ids` (TMDB -> canonico). |
 
 ## Agendamento (systemd timer — alvo)
 
-O import roda como worker agendado (mesmo padrao dos demais workers Python),
-nunca dentro de um request HTTP. Frequencia e janela definidas por lote
-(ex.: descoberta diaria, refresh semanal de entidades populares).
+O import roda como pipeline offline, nunca dentro de um request HTTP. A
+implementacao atual e TS/Node; systemd timers podem acionar CLI/worker no futuro.
+Frequencia e janela sao definidas por lote (ex.: descoberta diaria, refresh
+semanal de entidades populares).
 
 ## Variaveis de ambiente esperadas (no servidor, fora do git)
 
-- `TMDB_API_KEY` / `TMDB_ACCESS_TOKEN` — **so em env var**, usado **apenas** pelo
-  worker offline, nunca pelo frontend nem em codigo versionado.
+- `TMDB_READ_ACCESS_TOKEN` (v4, preferido) ou `TMDB_API_KEY` (v3) — **so em env
+  var**, usado **apenas** pelo pipeline offline, nunca pelo frontend nem em
+  codigo versionado.
 - `DATABASE_URL` — destino canonico.
 - Parametros de rate limit / concorrencia do import.
 

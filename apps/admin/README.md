@@ -1,9 +1,11 @@
 # @screena/admin
 
-Painel interno da Screena (operacao editorial e de dados). Diferente do app
+Painel interno do Screen (operacao editorial e de dados). Diferente do app
 publico `@screena/web`, o **admin pode chamar endpoints internos** (sync,
 ratings, geracao offline de `content_blocks`, jobs do entity writer, decisoes
 de indexabilidade etc.).
+
+`@screena/admin` e namespace tecnico legado; a marca publica atual e **Screen**.
 
 ## Fronteira de seguranca (INEGOCIAVEL)
 
@@ -15,8 +17,8 @@ de indexabilidade etc.).
   nunca no frontend.
 - Todo sync externo gera log (`api_sync_logs`).
 
-> Fase 0: este pacote e um **stub**. Sem app final, sem dependencias
-> instaladas.
+> Estado atual: este pacote ainda e um **stub**. O admin editorial completo nao
+> esta funcional neste momento.
 
 ## Rotas `/admin/*` planejadas
 

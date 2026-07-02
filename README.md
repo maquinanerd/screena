@@ -1,16 +1,18 @@
-# Screena
+# Screen
 
 > **Movies, series, ratings and where to watch.**
 
-Screena é uma **base global de entretenimento _entity-first_**: filmes, séries, temporadas, episódios, pessoas, ratings externos, onde assistir, reviews e notícias — organizados em torno da **entidade** (a obra), e não de uma página solta. Sobre esses dados, a Screena escreve uma **camada editorial própria**, em português (pt-BR) primeiro, com `en`/`es` nascendo em rascunho.
+**Screen** é uma **base global de entretenimento _entity-first_**: filmes, séries, temporadas, episódios, pessoas, ratings externos, onde assistir, reviews e notícias — organizados em torno da **entidade** (a obra), e não de uma página solta. Sobre esses dados, Screen escreve uma **camada editorial própria**, em português (pt-BR) primeiro, com `en`/`es` nascendo em rascunho.
 
-Domínio: **screena.media**
+Domínio canônico público: **https://thescreen.media**
+
+**Screen** é a marca pública principal. **The Screen** pode aparecer apenas como referência histórica, explicativa ou nome expandido não-principal. **Screena** é namespace técnico/legado interno (`@screena/*`, tokens `--screena-*`, nomes antigos de scripts/services), não a marca pública. **screena.media** e **The Nerd News** são legados históricos e não devem voltar como identidade do produto.
 
 ---
 
 ## O que é
 
-A Screena trata cada obra como uma **entidade canônica** com identidade estável (slug, IDs externos, schema.org) e agrega ao seu redor tudo o que importa para quem decide o que assistir:
+Screen trata cada obra como uma **entidade canônica** com identidade estável (slug, IDs externos, schema.org) e agrega ao seu redor tudo o que importa para quem decide o que assistir:
 
 - ficha da obra (filme / série / temporada / episódio / pessoa);
 - **ratings externos atribuídos** (IMDb, Rotten Tomatoes, Metacritic, Letterboxd, FilmAffinity…), sempre com fonte, escala e atribuição corretas;
@@ -21,9 +23,9 @@ O resultado é um produto que **não é um agregador cru de API**: cada página 
 
 ## Posicionamento
 
-> **As APIs fornecem os dados. A Screena escreve a camada editorial.**
+> **As APIs fornecem os dados. Screen escreve a camada editorial.**
 
-Fornecedores externos (TMDB, provedores de rating via RapidAPI, etc.) são **fontes de dados técnicos**. Eles não são, e nunca aparecem como, a voz editorial da Screena. O valor do produto está na curadoria, na contextualização e na escrita própria — construída sobre dados licenciados e atribuídos corretamente.
+Fornecedores externos (TMDB, provedores de rating via RapidAPI, etc.) são **fontes de dados técnicos**. Eles não são, e nunca aparecem como, a voz editorial do Screen. O valor do produto está na curadoria, na contextualização e na escrita própria — construída sobre dados licenciados e atribuídos corretamente.
 
 ## Regra central
 
@@ -35,16 +37,16 @@ Toda página pública indexável lê **apenas PostgreSQL/cache local**. Nenhuma 
 
 ## Mapa do monorepo
 
-Monorepo **pnpm** com workspaces (`apps/*`, `packages/*`). Estrutura de alto nível:
+Monorepo **pnpm** com workspaces (`apps/*`, `packages/*`, `api-clients/*`, `services/*`). Estrutura de alto nível:
 
 | Diretório       | Conteúdo                                                                                  |
 | --------------- | ----------------------------------------------------------------------------------------- |
-| `apps/`         | Aplicações Next.js: `@screena/web` (site público) e `@screena/admin` (painel editorial).  |
-| `packages/`     | Pacotes compartilhados: `config`, `schemas`, `seo`, `ui`, `types` (e `db` futuramente).   |
-| `services/`     | Serviços de domínio (sincronização, indexação, orquestração) — esqueletos nesta fase.     |
-| `workers/`      | Workers Python 3.12 (Entity Writer, sync jobs) — apenas esqueletos nesta fase.            |
-| `api-clients/`  | Clientes de APIs externas (TMDB, provedores de rating) — contratos/esqueletos, sem rede.  |
-| `database/`     | Modelagem, referência de tabelas e (futuramente) migrations. Sem schema real na Fase 0.   |
+| `apps/`         | Aplicações Next.js: `@screena/web` (site público Screen) e `@screena/admin` (painel editorial planejado). |
+| `packages/`     | Pacotes compartilhados: `config`, `schemas`, `seo`, `ui`, `types`, `db`.                  |
+| `services/`     | Serviços de domínio; `ingestion`, `sync` e `entity-writer` já têm implementação TS/Node parcial. |
+| `workers/`      | Workers Python 3.12 como roadmap/shim futuro; TMDB Python é legado/scaffold.             |
+| `api-clients/`  | Clientes de APIs externas; `tmdb` é real em TS/Node, demais clients estão como contratos/roadmap. |
+| `database/`     | Documentação histórica de modelagem; fonte executável atual vive em `packages/db/prisma`. |
 | `seo/`          | Regras de SEO programático, indexabilidade e geração de sitemaps/metadados.               |
 | `prompts/`      | Prompts versionados do Entity Writer e demais agentes de IA (offline).                     |
 | `tests/`        | Testes de invariantes e utilitários puros (Vitest).                                       |
@@ -65,9 +67,9 @@ Cada pacote expõe `src/index.ts` (`"main": "./src/index.ts"`, `"type": "module"
 
 - **Monorepo:** pnpm (workspaces `apps/*`, `packages/*`).
 - **Frontend:** Next.js App Router, TypeScript **strict**, React Server Components, ISR/`revalidate`.
-- **Estilo:** Tailwind CSS com tokens de cor da Screena.
-- **Banco:** PostgreSQL. ORM recomendado: **Prisma** (alternativa documentada: Drizzle). _Sem schema/migrations reais na Fase 0._
-- **Workers:** Python **3.12** (apenas esqueletos nesta fase).
+- **Estilo:** Tailwind CSS com tokens técnicos/legados `--screena-*`.
+- **Banco:** PostgreSQL + Prisma em `packages/db`, com schema/migrations/seeds reais.
+- **Workers:** Python **3.12** como roadmap/shim futuro; TMDB e Entity Writer rodam hoje em TypeScript/Node + Prisma.
 - **IA:** Gemini — **somente offline**, nunca no render.
 - **Deploy:** VPS + CloudPanel; Next via Node/PM2/systemd; workers via systemd timers.
 - **Runtime:** Node **22 LTS**, pnpm, TypeScript strict.
@@ -77,7 +79,7 @@ Cada pacote expõe `src/index.ts` (`"main": "./src/index.ts"`, `"type": "module"
 - **Node 22 LTS** (ver `.nvmrc`).
 - **pnpm 9+**.
 - **Python 3.12** (para os workers; não necessário na Fase 0).
-- **PostgreSQL** (não necessário na Fase 0).
+- **PostgreSQL** para fluxos locais com banco real.
 
 ## Banco Local De Desenvolvimento
 
@@ -137,16 +139,17 @@ docker compose -f docker-compose.dev.yml down -v
 
 ## Comandos
 
-> **Fase 0 — Fundação.** A estrutura, as regras e os pacotes existem; o app ainda **não** roda como produto. `pnpm dev` e a aplicação final serão implementados nas próximas fases.
+> **Fundação avançada / vertical slice técnica.** O app público, banco, client TMDB, ingestão TMDB e Entity Writer já existem parcialmente. O produto ainda não está completo/publicável em escala.
 
 | Comando          | O que faz                                                                 |
 | ---------------- | ------------------------------------------------------------------------- |
 | `pnpm install`   | Instala as dependências do monorepo.                                      |
-| `pnpm dev`       | _Será implementado nas próximas fases_ (servidor de desenvolvimento do app). |
+| `pnpm dev`       | Servidor de desenvolvimento do app público quando as dependências estiverem instaladas. |
 | `pnpm test`      | Roda os testes (Vitest): invariantes e utilitários puros.                 |
 | `pnpm lint`      | Roda o ESLint em todo o repositório.                                      |
 | `pnpm typecheck` | Checagem de tipos (`tsc --noEmit`).                                       |
 | `pnpm audit:invariants`     | Audita as invariantes do projeto (ex.: pureza de render, atribuição).      |
+| `pnpm audit:render`         | Audita pureza de render do app público.                                    |
 
 ---
 
@@ -172,11 +175,11 @@ As 13 invariantes inegociáveis que governam todo o produto. A íntegra está em
 
 ## Governança
 
-A construção da Screena é guiada por regras explícitas e versionadas, que valem tanto para pessoas quanto para agentes de IA:
+A construção do Screen é guiada por regras explícitas e versionadas, que valem tanto para pessoas quanto para agentes de IA:
 
 - **`CLAUDE.md`** — contexto canônico do projeto e fonte da verdade das invariantes.
 - **`.claude/rules/`** — regras operacionais detalhadas (render, ratings, indexabilidade, i18n, legal).
-- **`.claude/skills/`** — habilidades reutilizáveis para tarefas recorrentes da Screena.
+- **`.claude/skills/`** — habilidades reutilizáveis para tarefas recorrentes do produto.
 - **`.claude/agents/`** — definições dos agentes (ex.: Entity Writer) e seus limites de atuação.
 
 Regra geral de escrita: **docs, regras e prompts em pt-BR**; **código e identificadores em inglês** (comentários podem ser em pt-BR). Utilitários TypeScript são puros, sem rede/DB/IO.
@@ -206,6 +209,8 @@ A documentação canônica vive em [`docs/`](./docs):
 
 ## Status do projeto
 
-**Fase 0 — Fundação: concluída.** ✅
+**Estado atual — fundação avançada / vertical slice técnica.** ✅
 
-A fundação do monorepo está em pé: estrutura de diretórios, pacotes compartilhados (`config`, `schemas`, `seo`, `ui`, `types`), apps (`web`, `admin`), governança (`CLAUDE.md`, `.claude/`), tooling (TypeScript strict, ESLint, Prettier, Vitest) e as 13 invariantes documentadas. **Ainda não há** banco real, migrations, clientes TMDB/Gemini funcionais ou app publicável — esses itens chegam nas próximas fases.
+A fundação do monorepo está em pé e já avançou além da Fase 0 pura: há Prisma/PostgreSQL em `packages/db`, migrations/seeds reais, client TMDB real em TypeScript, ingestão TMDB em `services/ingestion`, sync/stale policy, Entity Writer offline em TypeScript, adapter Gemini separado do render, rotas públicas para filmes/séries/pessoas/notícias, presenters puros, gates anti-thin, testes de governança e CI.
+
+Ainda **não** estão funcionais como produto completo: ratings externos, streaming/onde assistir, RSSPRIME/MN26, admin editorial completo, usuários/community, reviews/favoritos/listas/watchlist e publicação em escala.

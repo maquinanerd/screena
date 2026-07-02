@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "packageManager": "pnpm@9.15.4",
-  "description": "Screena — base global de entretenimento entity-first (filmes, series, pessoas, ratings, onde assistir, noticias) com camada editorial propria.",
+  "description": "Screen — base global de entretenimento entity-first (filmes, series, pessoas, ratings, onde assistir, noticias) com camada editorial propria. Namespace tecnico legado: @screena/*.",
   "engines": {
     "node": ">=22",
     "pnpm": ">=9"

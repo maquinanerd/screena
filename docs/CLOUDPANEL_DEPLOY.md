@@ -1,17 +1,17 @@
-# CLOUDPANEL_DEPLOY — Deploy da Screena em VPS com CloudPanel
+# CLOUDPANEL_DEPLOY — Deploy do Screen em VPS com CloudPanel
 
-> Documento operacional de deploy. Descreve como colocar a Screena no ar em
-> um VPS gerenciado pelo CloudPanel: site Node.js (`screena.media`),
+> Documento operacional de deploy. Descreve como colocar o Screen no ar em
+> um VPS gerenciado pelo CloudPanel: site Node.js (`thescreen.media`),
 > PostgreSQL, Redis opcional, workers Python via `systemd`, proxy reverso
 > Nginx e SSL do CloudPanel. Em caso de conflito entre este documento e a
 > realidade do servidor, atualize este documento ou corrija o servidor —
 > nunca deixe os dois divergentes em silencio.
 
-> **Fase 0 (fundacao):** este guia e o procedimento de referencia. Os
-> comandos sao ilustrativos e nao devem ser executados automaticamente por
-> nenhum agente. Builds reais, migrations reais e segredos reais entram nas
-> fases seguintes. Nada aqui instala dependencia, roda migration ou publica
-> sozinho.
+> **Estado atual:** este guia e procedimento de referencia para deploy publico
+> do Screen em `https://thescreen.media`. Os comandos continuam
+> ilustrativos e nao devem ser executados automaticamente por nenhum agente.
+> Nomes antigos `screena-*` podem aparecer como legado tecnico interno, mas nao
+> representam a marca publica nem o dominio canonico.
 
 Invariantes reforcados por este documento:
 
@@ -33,11 +33,11 @@ Invariantes reforcados por este documento:
                               |
                    +----------v-----------+
                    |   Nginx (CloudPanel) |  proxy reverso + SSL
-                   |   screena.media      |  (Let's Encrypt)
+                   |   thescreen.media    |  (Let's Encrypt)
                    +----------+-----------+
                               | http://127.0.0.1:3000
                    +----------v-----------+
-                   |  Next.js (Node 22)   |  screena-web.service
+                   |  Next.js (Node 22)   |  the-screen-web.service
                    |  @screena/web        |  ISR/revalidate, RSC
                    +----+------------+----+
                         |            |
@@ -76,14 +76,14 @@ Pontos inegociaveis desta topologia:
 
 | Componente | Papel | Como roda | Exposicao |
 | --- | --- | --- | --- |
-| **Site Node.js** | App Next.js (`@screena/web`), serve `screena.media` | Node 22, porta interna `3000`, via PM2 ou `systemd` | Interno (`127.0.0.1:3000`), so o Nginx alcanca |
+| **Site Node.js** | App Next.js (`@screena/web`), serve `thescreen.media` | Node 22, porta interna `3000`, via PM2 ou `systemd` | Interno (`127.0.0.1:3000`), so o Nginx alcanca |
 | **PostgreSQL** | Banco canonico (filmes, series, ratings, content_blocks...) | Local no VPS **ou** gerenciado (provedor externo) | Interno; nunca exposto a internet publica |
 | **Redis (opcional)** | Cache de leitura e fila leve de jobs dos workers | Local no VPS ou gerenciado | Interno; protegido por senha + bind local |
 | **Workers Python** | Sync TMDB, ratings, streaming, RSS e Entity Writer (Gemini offline) | Python 3.12 em virtualenv, via `systemd` services + timers | Sem porta publica; saida apenas para APIs externas e banco |
 | **Nginx (CloudPanel)** | Proxy reverso HTTPS -> `127.0.0.1:3000`, gzip/brotli, headers | Gerenciado pela UI/CLI do CloudPanel | Publico nas portas 80/443 |
-| **SSL (CloudPanel)** | Certificado Let's Encrypt para `screena.media` e `www` | Emitido/renovado pelo CloudPanel | Termina TLS no Nginx |
+| **SSL (CloudPanel)** | Certificado Let's Encrypt para `thescreen.media` e `www` | Emitido/renovado pelo CloudPanel | Termina TLS no Nginx |
 
-### 2.1 Site Node.js (`screena.media`, porta 3000)
+### 2.1 Site Node.js (`thescreen.media`, porta 3000)
 
 - App: `apps/web` (`@screena/web`), Next.js App Router em modo `standalone`.
 - Porta interna fixa: **3000** (`PORT=3000`), escutando apenas em
@@ -110,20 +110,20 @@ Pontos inegociaveis desta topologia:
 ### 2.4 Workers Python (via systemd)
 
 - Esqueletos Python 3.12 (Fase 0). Cada worker e um `*.service` do tipo
-  `oneshot`, disparado por um `*.timer` (ou pelo `screena-scheduler.timer`).
+  `oneshot`, disparado por um `*.timer` (ou pelo `the-screen-scheduler.timer`).
 - Responsaveis por **todo** contato com APIs externas. Sempre geram log de
   sync.
 
 ### 2.5 Nginx (proxy reverso do CloudPanel)
 
 - O CloudPanel gera o vhost Nginx do site Node.js automaticamente.
-- Faz proxy `https://screena.media` -> `http://127.0.0.1:3000`.
+- Faz proxy `https://thescreen.media` -> `http://127.0.0.1:3000`.
 - Trata compressao, headers de seguranca e cache de assets estaticos.
 
 ### 2.6 SSL do CloudPanel
 
 - Let's Encrypt emitido e renovado pela UI/CLI do CloudPanel.
-- Cobrir `screena.media` e `www.screena.media` (redirect `www` -> apex).
+- Cobrir `thescreen.media` e `www.thescreen.media` (redirect `www` -> apex).
 - Forcar HTTPS (redirect 80 -> 443).
 
 ---
@@ -161,7 +161,7 @@ sudo bash install.sh
 
 No CloudPanel: **Sites -> Add Site -> Create a Node.js Site**.
 
-- Domain: `screena.media`
+- Domain: `thescreen.media`
 - Node.js version: **22 LTS**
 - App Port: **3000**
 - Site user: `screena` (anote o usuario; o app rodara sob ele)
@@ -170,11 +170,11 @@ O CloudPanel cria o vhost Nginx com proxy reverso para `127.0.0.1:3000`.
 
 ### Passo 4 — Apontar o dominio (DNS)
 
-No provedor de DNS de `screena.media`, crie os registros:
+No provedor de DNS de `thescreen.media`, crie os registros:
 
 ```
-A      screena.media        -> <IP_DO_VPS>
-A      www.screena.media    -> <IP_DO_VPS>      (ou CNAME -> screena.media)
+A      thescreen.media        -> <IP_DO_VPS>
+A      www.thescreen.media    -> <IP_DO_VPS>      (ou CNAME -> thescreen.media)
 ```
 
 Aguarde a propagacao antes de emitir SSL (Passo 13).
@@ -184,20 +184,20 @@ Aguarde a propagacao antes de emitir SSL (Passo 13).
 No CloudPanel: **Databases -> Add Database** (ou crie direto via `psql` se
 usar instancia gerenciada).
 
-- Database name: `screena_prod`
+- Database name: `screen_prod`
 - Charset/encoding: `UTF8`
 
 ### Passo 6 — Criar o usuario do banco
 
-Crie um usuario dedicado com permissao apenas no `screena_prod`.
+Crie um usuario dedicado com permissao apenas no `screen_prod`.
 
 ```sql
 -- ilustrativo
-CREATE USER screena_app WITH PASSWORD '<SENHA_FORTE>';
-GRANT ALL PRIVILEGES ON DATABASE screena_prod TO screena_app;
+CREATE USER screen_app WITH PASSWORD '<SENHA_FORTE>';
+GRANT ALL PRIVILEGES ON DATABASE screen_prod TO screen_app;
 ```
 
-A senha entra **apenas** em `SCREENA_DATABASE_URL` (nunca commitada).
+A senha entra **apenas** em `DATABASE_URL` (nunca commitada).
 
 ### Passo 7 — Clonar o repositorio via SSH
 
@@ -206,7 +206,7 @@ deploy key de leitura.
 
 ```bash
 sudo su - screena
-cd ~/htdocs/screena.media
+cd ~/htdocs/thescreen.media
 git clone git@github.com:<org>/screena.git releases/$(date +%Y%m%d%H%M%S)
 ln -sfn releases/<timestamp> current   # symlink "current" aponta para o release ativo
 cd current
@@ -221,8 +221,8 @@ Crie `.env.production` **fora do controle de versao**, legivel apenas pelo
 usuario do site. Veja a secao [Variaveis de ambiente](#variaveis-de-ambiente).
 
 ```bash
-install -m 600 /dev/null ~/htdocs/screena.media/shared/.env.production
-nano ~/htdocs/screena.media/shared/.env.production
+install -m 600 /dev/null ~/htdocs/thescreen.media/shared/.env.production
+nano ~/htdocs/thescreen.media/shared/.env.production
 # o release "current" recebe um symlink para o .env compartilhado:
 ln -sfn ../shared/.env.production current/apps/web/.env.production
 ```
@@ -258,15 +258,15 @@ enxuto.
 **Opcao A — `systemd` (recomendado, ver unit na secao 5):**
 
 ```bash
-sudo systemctl enable --now screena-web.service
-sudo systemctl status screena-web.service
+sudo systemctl enable --now the-screen-web.service
+sudo systemctl status the-screen-web.service
 ```
 
 **Opcao B — PM2:**
 
 ```bash
-pm2 start "node apps/web/.next/standalone/server.js" --name screena-web \
-  --cwd ~/htdocs/screena.media/current
+pm2 start "node apps/web/.next/standalone/server.js" --name the-screen-web \
+  --cwd ~/htdocs/thescreen.media/current
 pm2 save
 pm2 startup     # gera o hook de boot
 ```
@@ -280,14 +280,14 @@ agendador.
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now screena-scheduler.timer
-sudo systemctl list-timers 'screena-*'
+sudo systemctl enable --now the-screen-scheduler.timer
+sudo systemctl list-timers 'the-screen-*'
 ```
 
 ### Passo 13 — Ativar o SSL (CloudPanel)
 
-No CloudPanel: **Sites -> screena.media -> SSL/TLS -> New Let's Encrypt
-Certificate**, incluindo `screena.media` e `www.screena.media`. Ative o
+No CloudPanel: **Sites -> thescreen.media -> SSL/TLS -> New Let's Encrypt
+Certificate**, incluindo `thescreen.media` e `www.thescreen.media`. Ative o
 redirect HTTP -> HTTPS.
 
 ### Passo 14 — Configurar backup
@@ -320,24 +320,24 @@ A porta **3000 nunca e exposta** — so o Nginx (local) a alcanca. PostgreSQL
 
 ### Passo 16 — Logs
 
-- **App:** `journalctl -u screena-web.service` (ou logs do PM2).
-- **Workers:** `journalctl -u screena-worker-*.service`.
+- **App:** `journalctl -u the-screen-web.service` (ou logs do PM2).
+- **Workers:** `journalctl -u the-screen-worker-*.service`.
 - **Nginx:** logs do site no CloudPanel.
 - **Sync externo:** alem do log do sistema, todo sync grava em
   `api_sync_logs` (regra de auditoria do projeto).
 
 ```bash
-journalctl -u screena-web.service -f
-journalctl -u 'screena-worker-*' --since "1 hour ago"
+journalctl -u the-screen-web.service -f
+journalctl -u 'the-screen-worker-*' --since "1 hour ago"
 ```
 
 ### Passo 17 — Criar staging em subdominio
 
-Replique o ambiente em `staging.screena.media` com **banco e segredos
+Replique o ambiente em `staging.thescreen.media` com **banco e segredos
 separados**.
 
 - Site Node.js separado no CloudPanel, porta interna distinta (ex.: `3001`).
-- `SCREENA_PUBLIC_SITE_URL=https://staging.screena.media`.
+- `THE_SCREEN_PUBLIC_SITE_URL=https://staging.thescreen.media`.
 - Banco `screena_staging` e `.env.production` proprios.
 - **noindex** no staging (coerente com a regra de paginas em draft).
 
@@ -348,9 +348,9 @@ o rollback e instantaneo: re-apontar `current` para o release anterior e
 reiniciar o servico.
 
 ```bash
-cd ~/htdocs/screena.media
+cd ~/htdocs/thescreen.media
 ln -sfn releases/<timestamp_anterior> current
-sudo systemctl restart screena-web.service
+sudo systemctl restart the-screen-web.service
 ```
 
 > Se o release com problema rodou migrations destrutivas, o rollback de
@@ -363,13 +363,13 @@ sudo systemctl restart screena-web.service
 
 | Unit | Tipo | Funcao | Disparo |
 | --- | --- | --- | --- |
-| `screena-web.service` | `simple` (long-running) | App Next.js (`@screena/web`) na porta 3000 | Boot / `systemctl` |
-| `screena-worker-tmdb.service` | `oneshot` | Sync de metadados TMDB (filmes, series, pessoas) | `screena-scheduler.timer` |
-| `screena-worker-ratings.service` | `oneshot` | Coleta de ratings externos (com atribuicao e licenca) | `screena-scheduler.timer` |
-| `screena-worker-streaming.service` | `oneshot` | Disponibilidade "onde assistir" por pais | `screena-scheduler.timer` |
-| `screena-worker-entity-writer.service` | `oneshot` | Entity Writer (Gemini offline) gerando `content_blocks` | `screena-scheduler.timer` |
-| `screena-worker-rssprime.service` | `oneshot` | Ingestao de RSS/noticias (RSS Prime) | `screena-scheduler.timer` |
-| `screena-scheduler.timer` | `timer` | Orquestra/encadeia os workers acima em janelas agendadas | Calendario do `systemd` |
+| `the-screen-web.service` | `simple` (long-running) | App Next.js (`@screena/web`) na porta 3000 | Boot / `systemctl` |
+| `the-screen-worker-tmdb.service` | `oneshot` | Sync de metadados TMDB (filmes, series, pessoas) | `the-screen-scheduler.timer` |
+| `the-screen-worker-ratings.service` | `oneshot` | Coleta de ratings externos (com atribuicao e licenca) | `the-screen-scheduler.timer` |
+| `the-screen-worker-streaming.service` | `oneshot` | Disponibilidade "onde assistir" por pais | `the-screen-scheduler.timer` |
+| `the-screen-worker-entity-writer.service` | `oneshot` | Entity Writer (Gemini offline) gerando `content_blocks` | `the-screen-scheduler.timer` |
+| `the-screen-worker-rssprime.service` | `oneshot` | Ingestao de RSS/noticias (RSS Prime) | `the-screen-scheduler.timer` |
+| `the-screen-scheduler.timer` | `timer` | Orquestra/encadeia os workers acima em janelas agendadas | Calendario do `systemd` |
 
 Notas:
 
@@ -389,20 +389,20 @@ Notas:
 > virtualenv e `OnCalendar`. Segredos vem do `EnvironmentFile`, nunca
 > inline no unit.
 
-### 5.1 `screena-web.service` (app Next.js)
+### 5.1 `the-screen-web.service` (app Next.js)
 
 ```ini
-# /etc/systemd/system/screena-web.service
+# /etc/systemd/system/the-screen-web.service
 [Unit]
-Description=Screena Web (Next.js) - screena.media
+Description=Screen Web (Next.js) - thescreen.media
 After=network-online.target postgresql.service
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=screena
-WorkingDirectory=/home/screena/htdocs/screena.media/current
-EnvironmentFile=/home/screena/htdocs/screena.media/shared/.env.production
+User=screen
+WorkingDirectory=/home/screen/htdocs/thescreen.media/current
+EnvironmentFile=/home/screen/htdocs/thescreen.media/shared/.env.production
 Environment=NODE_ENV=production
 Environment=PORT=3000
 Environment=HOSTNAME=127.0.0.1
@@ -418,51 +418,52 @@ PrivateTmp=true
 WantedBy=multi-user.target
 ```
 
-### 5.2 `screena-worker-tmdb.service` (worker oneshot)
+### 5.2 `the-screen-worker-tmdb.service` (worker oneshot)
 
 ```ini
-# /etc/systemd/system/screena-worker-tmdb.service
+# /etc/systemd/system/the-screen-worker-tmdb.service
 [Unit]
-Description=Screena Worker - TMDB sync (offline)
+Description=Screen Worker - TMDB sync (offline)
 After=network-online.target postgresql.service
 Wants=network-online.target
 
 [Service]
 Type=oneshot
-User=screena
-WorkingDirectory=/home/screena/htdocs/screena.media/current/workers
-EnvironmentFile=/home/screena/htdocs/screena.media/shared/.env.production
-ExecStart=/home/screena/htdocs/screena.media/shared/venv/bin/python -m screena_workers.tmdb
+User=screen
+WorkingDirectory=/home/screen/htdocs/thescreen.media/current/workers
+EnvironmentFile=/home/screen/htdocs/thescreen.media/shared/.env.production
+ExecStart=/home/screen/htdocs/thescreen.media/shared/venv/bin/python -m screena_workers.tmdb
 NoNewPrivileges=true
 PrivateTmp=true
 ```
 
 > Os demais workers (`ratings`, `streaming`, `entity-writer`, `rssprime`)
 > seguem o mesmo molde, mudando `Description` e o modulo Python em
-> `ExecStart` (ex.: `-m screena_workers.ratings`).
+> `ExecStart` (ex.: `-m screena_workers.ratings`). O nome do pacote Python
+> `screena_workers` e legado tecnico interno, nao marca publica.
 
-### 5.3 `screena-scheduler.timer` (+ service de orquestracao)
+### 5.3 `the-screen-scheduler.timer` (+ service de orquestracao)
 
 ```ini
-# /etc/systemd/system/screena-scheduler.service
+# /etc/systemd/system/the-screen-scheduler.service
 [Unit]
-Description=Screena Scheduler - encadeia os workers offline
+Description=Screen Scheduler - encadeia os workers offline
 
 [Service]
 Type=oneshot
-User=screena
+User=screen
 # dispara os workers na ordem correta (TMDB -> ratings -> streaming ...)
-ExecStart=/usr/bin/systemctl start --wait screena-worker-tmdb.service
-ExecStart=/usr/bin/systemctl start --wait screena-worker-ratings.service
-ExecStart=/usr/bin/systemctl start --wait screena-worker-streaming.service
-ExecStart=/usr/bin/systemctl start --wait screena-worker-rssprime.service
-ExecStart=/usr/bin/systemctl start --wait screena-worker-entity-writer.service
+ExecStart=/usr/bin/systemctl start --wait the-screen-worker-tmdb.service
+ExecStart=/usr/bin/systemctl start --wait the-screen-worker-ratings.service
+ExecStart=/usr/bin/systemctl start --wait the-screen-worker-streaming.service
+ExecStart=/usr/bin/systemctl start --wait the-screen-worker-rssprime.service
+ExecStart=/usr/bin/systemctl start --wait the-screen-worker-entity-writer.service
 ```
 
 ```ini
-# /etc/systemd/system/screena-scheduler.timer
+# /etc/systemd/system/the-screen-scheduler.timer
 [Unit]
-Description=Screena Scheduler timer (janelas de sync offline)
+Description=Screen Scheduler timer (janelas de sync offline)
 
 [Timer]
 # exemplo: a cada 6 horas, com jitter para evitar pico
@@ -483,18 +484,18 @@ WantedBy=timers.target
 > do CloudPanel a mao sem necessidade.
 
 ```nginx
-# vhost ilustrativo (gerado pelo CloudPanel) - screena.media
+# vhost ilustrativo (gerado pelo CloudPanel) - thescreen.media
 server {
     listen 443 ssl http2;
-    server_name screena.media www.screena.media;
+    server_name thescreen.media www.thescreen.media;
 
     # SSL gerenciado pelo CloudPanel (Let's Encrypt)
-    ssl_certificate     /etc/nginx/ssl-certificates/screena.media.crt;
-    ssl_certificate_key /etc/nginx/ssl-certificates/screena.media.key;
+    ssl_certificate     /etc/nginx/ssl-certificates/thescreen.media.crt;
+    ssl_certificate_key /etc/nginx/ssl-certificates/thescreen.media.key;
 
     # Redireciona www -> apex
-    if ($host = www.screena.media) {
-        return 301 https://screena.media$request_uri;
+    if ($host = www.thescreen.media) {
+        return 301 https://thescreen.media$request_uri;
     }
 
     # Headers de seguranca basicos
@@ -525,8 +526,8 @@ server {
 # Redireciona HTTP -> HTTPS
 server {
     listen 80;
-    server_name screena.media www.screena.media;
-    return 301 https://screena.media$request_uri;
+    server_name thescreen.media www.thescreen.media;
+    return 301 https://thescreen.media$request_uri;
 }
 ```
 
@@ -539,15 +540,17 @@ server {
 > `shared/`, `0600`, fora do controle de versao). **Nunca** sao expostas ao
 > frontend, **nunca** vao para o bundle do cliente, **nunca** sao commitadas
 > e **nunca** aparecem em paginas indexaveis. Apenas
-> `SCREENA_PUBLIC_SITE_URL` e publica (URL canonica do site); todas as demais
+> `THE_SCREEN_PUBLIC_SITE_URL` e publica (URL canonica do site); todas as demais
 > sao **segredos de servidor** lidos apenas pelo app server e pelos workers.
 
 | Variavel | Usada por | Publica? | Descricao |
 | --- | --- | --- | --- |
-| `SCREENA_DATABASE_URL` | web (leitura) + workers (escrita) | Nao | Connection string do PostgreSQL (`postgres://user:pass@host:5432/screena_prod`). Em banco gerenciado, inclua `?sslmode=require`. |
-| `SCREENA_PUBLIC_SITE_URL` | web | **Sim** | URL canonica publica (`https://screena.media`). Usada em canonicals, sitemap, OG. |
-| `SCREENA_TMDB_API_KEY` | worker `tmdb` | Nao | Chave do TMDB. So o worker offline a usa; nunca o render. |
-| `SCREENA_GEMINI_API_KEY` | worker `entity-writer` | Nao | Chave do Gemini. So o Entity Writer offline a usa (Invariante 4). |
+| `DATABASE_URL` | web (leitura) + workers (escrita) | Nao | Connection string do PostgreSQL (`postgres://user:pass@host:5432/screen_prod`). Em banco gerenciado, inclua `?sslmode=require`. |
+| `THE_SCREEN_PUBLIC_SITE_URL` | web | **Sim** | URL canonica publica (`https://thescreen.media`). Usada em canonicals, sitemap, OG. |
+| `TMDB_READ_ACCESS_TOKEN` | worker/service `tmdb` | Nao | Token Bearer v4 do TMDB (preferido). So o pipeline offline usa; nunca o render. |
+| `TMDB_API_KEY` | worker/service `tmdb` | Nao | Chave v3 do TMDB (fallback). So o pipeline offline usa; nunca o render. |
+| `GEMINI_API_KEY` | worker/service `entity-writer` | Nao | Chave do Gemini. So o Entity Writer offline a usa (Invariante 4). |
+| `GEMINI_MODEL` | worker/service `entity-writer` | Nao | Modelo Gemini usado pelo Entity Writer offline. |
 | `SCREENA_RATINGS_PROVIDER_KEY` | worker `ratings` | Nao | Chave do provedor tecnico de ratings (`provider_api`), distinto da fonte editorial (Invariante 2). |
 | `SCREENA_STREAMING_PROVIDER_KEY` | worker `streaming` | Nao | Chave do provedor de disponibilidade "onde assistir". |
 | `SCREENA_REDIS_URL` | web (cache) + workers (fila) | Nao | URL do Redis (`redis://:senha@127.0.0.1:6379/0`). Opcional; se ausente, cai para cache local. |
@@ -555,17 +558,19 @@ server {
 ### 7.1 Exemplo de `.env.production` (valores fictícios)
 
 ```dotenv
-# /home/screena/htdocs/screena.media/shared/.env.production  (chmod 600)
+# /home/screen/htdocs/thescreen.media/shared/.env.production  (chmod 600)
 
 # --- Banco ---
-SCREENA_DATABASE_URL=postgres://screena_app:TROQUE_ESTA_SENHA@127.0.0.1:5432/screena_prod
+DATABASE_URL=postgres://screen_app:TROQUE_ESTA_SENHA@127.0.0.1:5432/screen_prod
 
 # --- Publico (unica variavel exposta ao cliente) ---
-SCREENA_PUBLIC_SITE_URL=https://screena.media
+THE_SCREEN_PUBLIC_SITE_URL=https://thescreen.media
 
 # --- Segredos de servidor (NUNCA no frontend) ---
-SCREENA_TMDB_API_KEY=coloque_a_chave_aqui
-SCREENA_GEMINI_API_KEY=coloque_a_chave_aqui
+TMDB_READ_ACCESS_TOKEN=coloque_o_token_v4_aqui
+TMDB_API_KEY=coloque_a_chave_v3_aqui
+GEMINI_API_KEY=coloque_a_chave_aqui
+GEMINI_MODEL=gemini-3.1-flash-lite
 SCREENA_RATINGS_PROVIDER_KEY=coloque_a_chave_aqui
 SCREENA_STREAMING_PROVIDER_KEY=coloque_a_chave_aqui
 
@@ -573,7 +578,7 @@ SCREENA_STREAMING_PROVIDER_KEY=coloque_a_chave_aqui
 SCREENA_REDIS_URL=redis://:TROQUE_ESTA_SENHA@127.0.0.1:6379/0
 ```
 
-> Apenas variaveis explicitamente publicas (ex.: `SCREENA_PUBLIC_SITE_URL`)
+> Apenas variaveis explicitamente publicas (ex.: `THE_SCREEN_PUBLIC_SITE_URL`)
 > podem ser expostas ao cliente via prefixo de build do Next. Toda chave de
 > API (`*_API_KEY`, `*_PROVIDER_KEY`) e segredo de servidor e jamais recebe
 > esse prefixo.
@@ -584,19 +589,19 @@ SCREENA_REDIS_URL=redis://:TROQUE_ESTA_SENHA@127.0.0.1:6379/0
 
 - [ ] VPS provisionado, SSH por chave, usuario `sudo` dedicado.
 - [ ] CloudPanel instalado e admin criado.
-- [ ] Site Node.js criado (Node 22, porta 3000, usuario `screena`).
-- [ ] DNS de `screena.media` e `www` apontando para o VPS.
-- [ ] Banco `screena_prod` e usuario `screena_app` criados.
+- [ ] Site Node.js criado (Node 22, porta 3000, usuario `screen`).
+- [ ] DNS de `thescreen.media` e `www` apontando para o VPS.
+- [ ] Banco `screen_prod` e usuario `screen_app` criados.
 - [ ] Repo clonado em `releases/<timestamp>`, symlink `current` ativo.
 - [ ] `.env.production` em `shared/` (`0600`), fora do git.
 - [ ] Migrations aplicadas (fases seguintes).
 - [ ] Build do Next.js (`standalone`) concluido.
-- [ ] `screena-web.service` ativo, escutando em `127.0.0.1:3000`.
+- [ ] `the-screen-web.service` ativo, escutando em `127.0.0.1:3000`.
 - [ ] Timers dos workers habilitados; `entity-writer` so offline.
 - [ ] SSL Let's Encrypt emitido; redirect HTTP -> HTTPS e `www` -> apex.
 - [ ] Backups (banco + `shared/`) agendados e replicados para fora do VPS.
 - [ ] Firewall: so 22/80/443/8443; 3000/5432/6379 fechados na internet.
 - [ ] Logs verificados (`journalctl` + `api_sync_logs`).
-- [ ] Staging em `staging.screena.media` com banco/segredos proprios e
+- [ ] Staging em `staging.thescreen.media` com banco/segredos proprios e
       `noindex`.
 - [ ] Procedimento de rollback por release folder testado.

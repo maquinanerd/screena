@@ -1,12 +1,12 @@
 # scripts/backup — Backups automaticos do PostgreSQL
 
 > Esta pasta documenta os scripts de **backup** que serao implementados em fases
-> posteriores. Na Fase 0 (Fundacao) existe **apenas** este README descrevendo o
-> contrato e a politica. Nenhum backup real roda agora.
+> posteriores. Hoje ainda existe **apenas** este README descrevendo o contrato e
+> a politica. Nenhum backup real roda agora.
 
 ## Objetivo
 
-Garantir que a base canonica da Screena (PostgreSQL) — entidades, ratings com
+Garantir que a base canonica do Screen (PostgreSQL) — entidades, ratings com
 atribuicao, `content_blocks` versionados, decisoes de indexabilidade, logs de
 sync — seja **recuperavel** a qualquer momento, com perda minima de dados.
 

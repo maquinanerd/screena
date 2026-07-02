@@ -1,6 +1,6 @@
-# Regras de Ingestao — Screena
+# Regras de Ingestao — Screen
 
-Estas sao as regras operacionais da **ingestao de dados externos** da Screena. Valem para
+Estas sao as regras operacionais da **ingestao de dados externos** do Screen. Valem para
 **todos** os workers que consomem qualquer API externa: `services/ingestion`,
 `services/ratings`, `services/streaming`, `services/news-ingestion` e `services/sync`.
 

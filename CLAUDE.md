@@ -1,17 +1,24 @@
-# CLAUDE.md — Governanca canonica da Screena
+# CLAUDE.md — Governanca canonica do Screen
 
 > Este documento e autoritativo. Ele e carregado em toda sessao do Claude Code neste repositorio. Quando houver conflito entre uma instrucao pontual e este arquivo, **este arquivo vence** — exceto ordem humana explicita que o sobreponha conscientemente. Mantenha-o afiado: sem redundancia, sem prosa decorativa.
 
 ## 1. Resumo do projeto
 
-Screena e uma **base global de entretenimento entity-first**: filmes, series, temporadas, episodios, pessoas, ratings, onde assistir, reviews e noticias — com uma **camada editorial propria** por cima do dado bruto.
+**Screen** e uma **base global de entretenimento entity-first**: filmes, series, temporadas, episodios, pessoas, ratings, onde assistir, reviews e noticias — com uma **camada editorial propria** por cima do dado bruto.
 
-- Dominio: `screena.media`.
+- Marca publica principal: **Screen**.
+- **The Screen** pode aparecer apenas como referencia historica, explicativa ou nome expandido nao-principal.
+- Dominio canonico publico: `https://thescreen.media`.
+- `Screena` permanece como namespace tecnico/legado interno (`@screena/*`, tokens CSS `--screena-*`, nomes antigos de services/scripts). Nao e a marca publica atual.
+- `screena.media` e legado historico e nao deve ser usado como dominio publico/canonico ativo.
+- **The Nerd News** e legado mais antigo e nao deve voltar como identidade do produto.
 - MVP publica em **pt-BR**. As linguas `en` e `es` nascem em **draft/noindex** ate revisao humana.
 - Entity-first: cada pagina gira em torno de uma entidade canonica (um filme, uma serie, uma pessoa), nao em torno de uma fonte de API.
 - O diferencial competitivo e a **camada editorial verificavel** (content_blocks versionados, gerados offline e revisaveis), nunca a reexibicao crua de dados de terceiros.
 
-Estamos na **Fase 0 (Fundacao)**: construimos a estrutura do monorepo, contratos, schemas e tipos (TypeScript puro, sem dependencia de runtime), regras de governanca, prompts e esqueletos. **Nao** implementamos produto real nesta fase — sem banco real, sem migrations completas, sem clients TMDB/Gemini, sem ratings reais, sem app final.
+Estado real atual: **fundacao avancada / vertical slice tecnica**. O repositorio nao e mais uma Fase 0 pura. Ja existem partes reais de Fase 1, Fase 2 e Fase 3A: monorepo pnpm, `apps/web` em Next.js App Router, Prisma/PostgreSQL em `packages/db`, migrations/seeds reais, client TMDB em TypeScript, ingestao TMDB em `services/ingestion`, sync/stale policy, Entity Writer offline em TypeScript, adapter Gemini separado do render, rotas publicas para filmes/series/pessoas/noticias, presenters puros, gates anti-thin, testes de governanca e CI.
+
+Ainda **nao** estao funcionais como produto: ratings externos, streaming/onde assistir, RSSPRIME/MN26, admin editorial completo, usuarios/community, reviews/favoritos/listas/watchlist e app publicavel em escala. Nao implemente essas features por inferencia neste ciclo de alinhamento.
 
 ## 2. REGRAS DE OURO (invariantes inegociaveis)
 
@@ -25,8 +32,8 @@ Estas 13 invariantes sao a lei do projeto. Nao reescreva o sentido delas; cite-a
 6. **Dados sem licenca clara** (`license_status` unknown/blocked ou `display_allowed=false`) nao aparecem em pagina indexavel.
 7. **pt-BR publica primeiro** — en/es nascem em draft/noindex ate revisao humana.
 8. **Sem pirataria** — nada de torrent, IPTV, player ilegal, link de download ou embed pirata.
-9. **Screena Movies usa acento vermelho** (`--screena-movie-red`).
-10. **Screena Series usa acento verde** (`--screena-series-green`).
+9. **Screena Movies usa acento vermelho** (`--screena-movie-red`) — nome legado do token; a marca publica e Screen.
+10. **Screena Series usa acento verde** (`--screena-series-green`) — nome legado do token; a marca publica e Screen.
 11. **A diferenciacao filme/serie NUNCA depende so da cor** — sempre label + badge + breadcrumb + schema + URL.
 12. **Entity Writer so escreve com base em payload controlado do PostgreSQL** — nao inventa fatos, nao cria entidades, nao chama APIs externas, nao publica sozinho.
 13. **content_blocks sao versionados e revisaveis** — `prompt_version`, `input_hash`, `output_hash`, `model_provider`, `model_name` e `review_status` obrigatorios.
@@ -46,19 +53,20 @@ O render publico e **puro de IO externo**:
 
 - O Next (App Router, RSC, ISR/revalidate) le **somente PostgreSQL e cache local** (`api_cache`). Nunca chama TMDB, RapidAPI, Rotten Tomatoes, Gemini ou qualquer rede no caminho de render.
 - A IA (Gemini) roda **offline**: gera `content_blocks`, que sao validados (anti-alucinacao), versionados e salvos. O render apenas **le** blocos ja `published`.
-- Ingestao e ratings rodam em **workers Python** (systemd timers), fora do render, sempre gerando log.
+- TMDB e Entity Writer rodam hoje em **TypeScript/Node + Prisma**, fora do render, sempre com separacao de providers e logs quando ha sync/persistencia.
+- Workers Python permanecem como roadmap/shim futuro para ratings, streaming, RSS/news e orquestracao por systemd. Nao reimplemente TMDB do zero em Python por causa de documentacao antiga.
 - O **gate anti-thin** decide indexacao: uma pagina so e `index` se tiver `>= 2` blocos de valor proprios (ver secao 9). Caso contrario: `noindex`.
 
 Fluxo mental: **API externa -> worker (offline, com log) -> PostgreSQL -> [Entity Writer offline -> content_blocks] -> Next le PostgreSQL/cache -> render**.
 
 ## 4. Stack e versoes
 
-- **Monorepo pnpm** (`pnpm@9`). Workspaces: `apps/*`, `packages/*`.
+- **Monorepo pnpm** (`pnpm@9`). Workspaces: `apps/*`, `packages/*`, `api-clients/*`, `services/*`.
 - **Node 22 LTS**, **TypeScript strict**, ESM (`"type": "module"`).
 - **Frontend**: Next.js App Router, RSC, ISR/revalidate.
-- **Estilo**: Tailwind CSS com tokens de cor da Screena.
-- **Banco**: PostgreSQL. ORM recomendado: **Prisma** (alternativa documentada: Drizzle). **Na Fase 0 nao crie schema real nem migrations.**
-- **Workers**: Python 3.12 para os esqueletos legados (`workers/*.py`). **Excecao registrada (Fase 2):** a ingestao TMDB roda em **TypeScript/Node + Prisma** (`services/ingestion`, `api-clients/tmdb`, `services/sync`), por decisao aprovada em `docs/PHASE_2_TMDB_PLAN.md` (D2.1/D2.4) — persistencia via Prisma, no mesmo ecossistema de testes/lint/typecheck.
+- **Estilo**: Tailwind CSS com tokens `--screena-*` legados/tecnicos.
+- **Banco**: PostgreSQL + Prisma em `packages/db`, com schema/migrations/seeds reais ja existentes.
+- **Workers**: Python 3.12 para esqueletos legados/roadmap. TMDB e Entity Writer estao atualmente em TypeScript/Node + Prisma.
 - **IA**: Gemini — **apenas offline**, nunca no render.
 - **Deploy**: VPS + CloudPanel; Next via Node/PM2/systemd; workers via systemd timers.
 - Qualidade: ESLint + Prettier; testes com Vitest (`pnpm test`); `pnpm typecheck`, `pnpm lint`, `pnpm audit:invariants` / `pnpm audit:render`.
@@ -74,11 +82,11 @@ Fluxo mental: **API externa -> worker (offline, com log) -> PostgreSQL -> [Entit
 | `packages/seo` | `@screena/seo` — indexabilidade, schema.org, sitemap, robots. |
 | `packages/ui` | `@screena/ui` — componentes, tokens de cor, badges filme/serie. |
 | `packages/types` | `@screena/types` — tipos TS compartilhados. |
-| `packages/db` | `@screena/db` — contrato de acesso ao PostgreSQL (sem schema real na Fase 0). |
-| `workers/` | Workers Python (esqueletos): tmdb, ratings, streaming, news, entity_writer, scheduler. |
-| `services/` | Servicos de dominio (ingestion, ratings, streaming, sync, news-ingestion, entity-writer). |
-| `api-clients/` | Esqueletos de clients externos (tmdb, imdb, rotten_tomatoes, streaming_availability, etc.). |
-| `database/` | `schema.md`, `migrations/`, `seeds/` — referencia; sem schema real na Fase 0. |
+| `packages/db` | `@screena/db` — schema Prisma, migrations, seeds e acesso server-only ao PostgreSQL. |
+| `workers/` | Workers Python (esqueletos/roadmap): ratings, streaming, news, entity_writer, scheduler; TMDB legado/scaffold. |
+| `services/` | Servicos de dominio; `ingestion`, `sync` e `entity-writer` ja tem implementacao TS/Node parcial. |
+| `api-clients/` | Clients externos; `tmdb` e real em TS/Node, demais estao como contratos/roadmap. |
+| `database/` | Documentacao historica de modelagem; a fonte executavel atual e `packages/db/prisma`. |
 | `seo/` | Logica de SEO no nivel raiz: `indexability.ts`, `sitemap.ts`, `robots.ts`, `rules/`, `templates/`. |
 | `prompts/` | Prompts de IA (pt-BR) para os content_blocks. |
 | `docs/` | `SPEC.md`, `BUILD_PLAN.md`, `API_SOURCES.md`, `SEO_PROGRAMMATIC.md`, `RATING_ATTRIBUTION.md`, `ENTITY_WRITER.md`, `CLOUDPANEL_DEPLOY.md`. |
@@ -106,7 +114,7 @@ Cada pacote em `packages/*` tem: `package.json` (com `"main": "./src/index.ts"` 
 - **Testes**: cada utilitario puro chega com teste (Vitest). As invariantes tem testes em `tests/governance/`. Rode `pnpm typecheck` e `pnpm test` antes de abrir PR.
 - **Commits/PRs**: descreva o "porque". Aponte qual invariante o codigo respeita ou protege.
 - **Revisao HUMANA obrigatoria** para: decisoes de **licenca** (o que pode ou nao aparecer), **indexacao em massa** (mudar muitas paginas para index/noindex) e **publicacao** de conteudo (`published`). Agente nunca decide isso sozinho.
-- Na Fase 0: **nao** instale dependencias, **nao** rode build/test pesado, **nao** chame APIs, **nao** rode git por conta propria, **nao** crie schema/migrations reais.
+- Nao chame APIs externas, nao rode Gemini real e nao publique conteudo automaticamente. Builds/testes locais sao esperados quando a tarefa pedir validacao.
 
 ## 7. Ponteiros (regras, skills, agentes)
 
@@ -163,4 +171,4 @@ Um bloco gerado por IA so conta como valor se: veio de **payload controlado**; p
 - **NUNCA** colocar API key/secret no frontend ou no repositorio.
 - **NUNCA** fabricar `AggregateRating` ou transformar nota de uma fonte no rotulo de outra.
 - **NUNCA** publicar en/es sem revisao humana (nascem draft/noindex).
-- **NUNCA** criar schema/migrations reais na Fase 0.
+- **NUNCA** criar ou alterar schema/migrations fora de tarefa aprovada para banco.

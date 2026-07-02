@@ -1,4 +1,9 @@
-# PHASE 2 — TMDB Ingestion Plan (Screena)
+# PHASE 2 — TMDB Ingestion Plan (Screen)
+
+> Nota de identidade: este plano nasceu quando o namespace publico ainda era
+> Screena. Screen e a marca publica atual; `@screena/*` permanece como
+> namespace tecnico legado. A decisao tecnica importante deste plano continua:
+> TMDB roda em TypeScript/Node + Prisma, nao em um novo worker Python.
 
 > Plano aprovado para a Fase 2 (Ingestao TMDB). Branch: `feat/fase-2-tmdb`.
 > Escopo: client TMDB **worker-only** + normalizacao + persistencia idempotente

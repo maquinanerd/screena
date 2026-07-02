@@ -1,8 +1,12 @@
 # @screena/ui
 
-Camada de apresentacao canonica da Screena. Centraliza os **tokens de cor** e a
+Camada de apresentacao canonica do Screen. Centraliza os **tokens de cor** e a
 **resolucao de vertical** (filme / serie / neutro) para que toda a aplicacao
 diferencie conteudo de forma consistente — e nunca dependa apenas da cor.
+
+`@screena/ui` e namespace tecnico legado. Valores neutros que ainda aparecam como
+`Screena` no runtime sao legado interno e nao devem ser tratados como marca
+publica atual neste commit.
 
 > Fase 0 (fundacao): este pacote contem apenas utilitarios puros e tipados.
 > Sem componentes React de produto, sem rede, sem DB, sem IO.
@@ -51,8 +55,8 @@ Mapeamento:
 | `tv` / `series` / `serie`          | series   | green   | `--screena-series-green`  | Series | Serie   | `TVSeries` / `TVSeason` / `TVEpisode` |
 | `person` / `pessoa`                | neutral  | neutral | `--screena-white`         | Person | Pessoa  | `Person`                           |
 | `news` / `noticia`                 | neutral  | neutral | `--screena-white`         | News   | Noticia | `NewsArticle`                      |
-| `home`                             | neutral  | neutral | `--screena-white`         | Home   | Screena | `WebSite`                          |
-| `mixed` / outro / default          | neutral  | neutral | `--screena-white`         | Screena| Screena | `WebSite`                          |
+| `home`                             | neutral  | neutral | `--screena-white`         | Home   | Screena (legado) | `WebSite`                          |
+| `mixed` / outro / default          | neutral  | neutral | `--screena-white`         | Screena (legado) | Screena (legado) | `WebSite`                          |
 
 Para series, use `opts` para refinar o schema:
 

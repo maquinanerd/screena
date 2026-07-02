@@ -1,6 +1,6 @@
-# RATING_ATTRIBUTION — Governanca de Ratings da Screena
+# RATING_ATTRIBUTION — Governanca de Ratings do Screen
 
-> Documento canonico de governanca de ratings. Define como a Screena
+> Documento canonico de governanca de ratings. Define como Screen
 > armazena, atribui e exibe notas de fontes externas (IMDb, Rotten Tomatoes,
 > Metacritic, Letterboxd, FilmAffinity e outras). Em caso de conflito entre
 > codigo e este documento, **este documento prevalece** e o codigo deve ser
@@ -9,7 +9,7 @@
 Este e o documento mais critico de governanca de ratings do projeto. Ele
 existe para garantir uma coisa simples e inegociavel: **cada nota pertence a
 sua fonte original, com sua propria escala, seu proprio rotulo e sua propria
-atribuicao — e nunca, em hipotese alguma, e apresentada como nota da Screena
+atribuicao — e nunca, em hipotese alguma, e apresentada como nota do Screen
 nem misturada com a nota de outra fonte.**
 
 Reforca diretamente os invariantes:
@@ -45,7 +45,7 @@ E **proibido**:
 - somar, combinar ou tirar media entre fontes diferentes para gerar um numero;
 - reutilizar o icone/linguagem de uma fonte para outra (ex.: tomate para IMDb);
 - chamar o fornecedor tecnico (`provider_api`) de fonte da nota;
-- apresentar qualquer nota externa como se fosse nota propria da Screena.
+- apresentar qualquer nota externa como se fosse nota propria do Screen.
 
 O `provider_api` (ex.: `imdb236`, `rapidapi_xyz`) e apenas o **canal tecnico**
 por onde o dado chegou. Ele entra em logs, auditoria e cache — **nunca** vira
@@ -218,7 +218,7 @@ o gate anti-thin (Invariante 5).
 
 `AggregateRating` (Schema.org) so pode ser usado **quando permitido e
 corretamente atribuido**. Ele descreve a nota agregada de **uma** fonte
-especifica — nunca uma media inventada pela Screena.
+especifica — nunca uma media inventada pelo Screen.
 
 Permitido:
 
@@ -231,16 +231,17 @@ Permitido:
 
 Proibido:
 
-- usar `AggregateRating` para **fingir** que uma nota externa e nota propria da
-  Screena;
-- gerar um `AggregateRating` "Screena" combinando IMDb + Rotten + Metacritic;
+- usar `AggregateRating` para **fingir** que uma nota externa e nota propria do
+  Screen;
+- gerar um `AggregateRating` "Screen" combinando IMDb + Rotten + Metacritic;
 - omitir a fonte, a escala ou a atribuicao no markup;
 - exibir `AggregateRating` para nota com `display_allowed=false` ou
   `license_status` `unknown`/`blocked`.
 
-A Screena so emite `AggregateRating` proprio quando a nota for genuinamente
-da Screena (ex.: agregacao de avaliacoes da propria comunidade/editorial),
-claramente identificada como tal — nunca reembalando nota de terceiro.
+Screen so emite `AggregateRating` proprio quando a nota for genuinamente
+do Screen (ex.: agregacao de avaliacoes da propria comunidade/editorial),
+claramente identificada como tal — nunca reembalando nota de terceiro. Esse
+recurso ainda **nao** existe no produto atual.
 
 ---
 
@@ -282,6 +283,6 @@ Antes de exibir qualquer nota, confirme:
 - [ ] `attribution_text` e `attribution_url` presentes quando exigidos.
 - [ ] Nenhuma media/combinacao/reescala entre fontes.
 - [ ] `AggregateRating` (se houver) preserva fonte, escala, url, atribuicao e
-      `fetched_at`, e nao se passa por nota propria da Screena.
+      `fetched_at`, e nao se passa por nota propria do Screen.
 
 Se qualquer item falhar: **nao exibir** — armazenar apenas para auditoria.

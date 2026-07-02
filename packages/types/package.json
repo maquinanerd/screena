@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Unioes de string literais compartilhadas da Screena (EntityType, LanguageCode, ReviewStatus, IndexStatus, OfferType, LicenseStatus, JobStatus). Tipos puros, sem runtime, reutilizados por todos os pacotes.",
+  "description": "Unioes de string literais compartilhadas do Screen (namespace tecnico legado @screena/types). Tipos puros, sem runtime, reutilizados por todos os pacotes.",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {

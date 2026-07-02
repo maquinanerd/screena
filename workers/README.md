@@ -1,8 +1,11 @@
-# Workers Screena (Python 3.12)
+# Workers Screen (Python 3.12)
 
-Camada de **ingestao e processamento offline** da Screena. Os workers rodam fora
+Camada de **ingestao e processamento offline** do Screen. Os workers rodam fora
 do ciclo de request: eles populam o PostgreSQL, e o app Next apenas **le** desse
 banco. Nenhuma API externa e chamada no render.
+
+`workers/` contem scaffolds/roadmap Python e nomes legados. TMDB e Entity Writer
+estao atualmente implementados em TypeScript/Node + Prisma.
 
 > Fase 0 / Fundacao: todos os modulos abaixo sao **esqueletos**. Cada `main()`
 > apenas registra `"Fase 0: nao implementado"` via `logging` e nao faz nenhuma

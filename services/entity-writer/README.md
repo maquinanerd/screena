@@ -2,23 +2,27 @@
 
 **Entity Writer** — o motor editorial derivado do **MN26** que gera `content_blocks` a
 partir de um **payload controlado do PostgreSQL**. E o unico componente autorizado a
-produzir texto editorial assistido por IA (Gemini) na Screena, e o faz **sempre offline**.
+produzir texto editorial assistido por IA (Gemini) para o Screen, e o faz
+**sempre offline**. O pacote `@screena/entity-writer` usa namespace tecnico legado.
+
+> **Estado atual:** implementacao TypeScript/Node da Fase 3A. O runtime atual
+> gera somente `editorial_intro` e `cast_intro` em pt-BR, com FakeGemini em
+> testes e adapter Gemini real separado do render. Prompts para outros blocos
+> existem como roadmap/contrato, nao como funcionalidade publica pronta.
 
 ## O que faz
 - Consome jobs de `entity_writer_jobs` (status: `queued`, `claimed`, `running`,
   `completed`, `failed`, `blocked`, `cancelled`).
-- Monta um **payload controlado** a partir das tabelas canonicas (entidade, elenco,
-  ratings atribuidos, disponibilidade, noticias relacionadas) — **nunca** a partir de
-  chamadas externas.
-- Chama Gemini **offline** para gerar blocos dos tipos suportados: `editorial_intro`,
-  `summary_without_spoilers`, `ratings_explanation`, `where_to_watch_text`, `cast_intro`,
-  `similar_titles_intro`, `franchise_context`, `season_guide`, `episode_context`, `faq`,
-  `news_context`, `review_summary`.
+- Monta um **payload controlado** a partir das tabelas canonicas (recorte atual:
+  movie/tv + diretor/elenco) — **nunca** a partir de chamadas externas.
+- Chama Gemini **offline** para gerar os blocos da Fase 3A:
+  `editorial_intro` e `cast_intro`.
 - Persiste o resultado em `content_blocks` com versionamento e auditoria completos.
 - Registra cada passo em `entity_writer_logs`.
 
 ## Como roda
-- **Worker Python 3.12, sempre offline.** Agendado por **systemd timers**.
+- **TypeScript/Node, sempre offline.** Pode ser acionado por CLI/runner; systemd
+  timers e shims Python permanecem como possibilidade operacional futura.
 - **NUNCA e chamado no render publico.** A pagina le `content_blocks` ja salvos e
   validados; **zero Gemini no render**.
 

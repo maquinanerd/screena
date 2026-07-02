@@ -1,23 +1,26 @@
 # @screena/db
 
-Camada de **dados** da Screena.
+Camada de **dados** do Screen. O nome `@screena/db` e namespace tecnico
+legado interno; a marca publica atual e **Screen**.
 
-> **Fase 0 (agora):** este pacote e apenas um esqueleto. Ele exporta um
-> placeholder (`DB_PLACEHOLDER`) e reserva a pasta `prisma/`. **Nao** ha schema
-> real, migrations nem client nesta fase.
+> **Estado atual:** este pacote tem schema Prisma, migrations, seeds e acesso
+> server-only ao PostgreSQL. Ele nao e mais um placeholder de Fase 0.
 
-Na **Fase 1**, este pacote passara a guardar:
+Este pacote guarda:
 
 - o **schema Prisma** em `packages/db/prisma/schema.prisma`, modelando as tabelas
   canonicas (`movies`, `tv_shows`, `seasons`, `episodes`, `people`,
   `external_ratings`, `watch_availability`, `content_blocks`,
   `page_indexability_decisions`, `source_licenses`, `api_sync_logs`, etc.);
-- o **client de banco** (PrismaClient) e helpers de acesso tipados.
+- migrations reais em `packages/db/prisma/migrations`;
+- seeds em `packages/db/prisma/seed.ts` e dados tipados em `src/seed-data.ts`;
+- o **client de banco server-only** em `src/server.ts`.
 
 ## Contrato
 
-- **Workers escrevem, web le.** Os workers offline (Python) populam e atualizam
-  o PostgreSQL; o app `@screena/web` apenas **le** dados ja persistidos.
+- **Pipelines offline escrevem, web le.** TMDB e Entity Writer rodam hoje em
+  TypeScript/Node + Prisma; workers Python permanecem como roadmap/shim futuro.
+  O app `@screena/web` apenas **le** dados ja persistidos em contexto server-side.
 - **Zero API externa no render.** Paginas publicas indexaveis leem **somente**
   PostgreSQL/cache local — nunca TMDB, RapidAPI, Gemini ou qualquer rede externa
   durante o render.
@@ -32,25 +35,30 @@ Na **Fase 1**, este pacote passara a guardar:
 ## Fluxo de dados (resumo)
 
 ```
-workers (Python, offline)  ──escrevem──▶  PostgreSQL  ──leem (server-side/ISR)──▶  @screena/web
-        │                                     ▲
+pipelines offline (TS/Node ou workers) ─▶ PostgreSQL ─▶ @screena/web (server-side/ISR)
+        │                                      ▲
         └── Gemini (so offline) ──content_blocks validados──┘
 ```
 
-## Estrutura prevista (Fase 1)
+## Estrutura atual
 
 ```
 packages/db/
   prisma/
-    schema.prisma      # tabelas canonicas (a definir na Fase 1)
-    migrations/        # geradas pelo Prisma
+    schema.prisma      # tabelas canonicas reais
+    migrations/        # migrations Prisma
+    seed.ts            # seed de referencia
   src/
-    index.ts           # exporta o client e helpers de acesso
+    index.ts           # exports publicos seguros
+    server.ts          # PrismaClient server-only
+    seed-data.ts       # seeds tipados
 ```
 
-## Uso (Fase 0)
+## Uso
 
-```ts
-import { DB_PLACEHOLDER } from "@screena/db";
-// DB_PLACEHOLDER === true  // marcador de fundacao; sem client ainda.
+```bash
+pnpm --filter @screena/db db:validate
+pnpm --filter @screena/db db:generate
+pnpm --filter @screena/db db:migrate:deploy
+pnpm --filter @screena/db db:seed
 ```

@@ -1,27 +1,29 @@
-# Screena Entity Writer — Especificação
+# Entity Writer — Especificação do Screen
 
-> **As APIs fornecem os dados. A Screena escreve a camada editorial.**
+> **As APIs fornecem os dados. Screen escreve a camada editorial.**
 
-Este documento especifica o **Screena Entity Writer**: o motor editorial offline que gera
+Este documento especifica o **Entity Writer**: o motor editorial offline que gera
 **blocos editoriais evergreen** (`content_blocks`) a partir de **dados estruturados do
 PostgreSQL**, usando **Gemini** apenas fora do render. É o único componente autorizado a
-produzir texto editorial assistido por IA na Screena.
+produzir texto editorial assistido por IA para o Screen.
 
 Esta especificação reforça, de ponta a ponta, as invariantes **4** (_zero Gemini no
 render_), **12** (_só escreve com base em payload controlado do PostgreSQL; não inventa
 fatos, não cria entidades, não chama APIs externas, não publica sozinho_) e **13**
 (_`content_blocks` são versionados e revisáveis_).
 
-> **Fase 3A / Etapa 0.** Esta etapa reconcilia apenas contrato documental e prompt.
-> **Não** há implementação de runtime, cliente Gemini funcional, schema/migration, app
-> público ou publicação automática nesta rodada.
+> **Estado atual.** A Fase 3A esta parcialmente implementada em TypeScript/Node em
+> `services/entity-writer`: pipeline offline, FakeGemini para testes, adapter Gemini
+> real separado do render, validacao, hashes, jobs/logs e persistencia de
+> `content_blocks`. O escopo funcional atual gera apenas `editorial_intro` e
+> `cast_intro` em pt-BR. Nao ha publicacao automatica.
 
 ---
 
 ## 1. O que é
 
 O **Entity Writer** é o **motor editorial derivado do MN26**, adaptado para o mundo
-_entity-first_ da Screena. Em vez de partir de feeds de notícias, ele parte da **entidade
+_entity-first_ do Screen. Em vez de partir de feeds de notícias, ele parte da **entidade
 canônica** (filme, série, temporada, episódio, pessoa) já consolidada no PostgreSQL e
 produz blocos editoriais **evergreen** — textos que envelhecem bem porque descrevem a obra,
 seu contexto e seu valor, e não um acontecimento datado.
@@ -44,8 +46,7 @@ O Entity Writer **nunca** decide sozinho publicar, **nunca** chama APIs externas
 
 ### Onde vive no monorepo
 
-- **Serviço planejado:** `services/entity-writer/` (offline, fora do render; runtime da
-  Fase 3A definido no plano da fase).
+- **Serviço atual:** `services/entity-writer/` (TypeScript/Node, offline, fora do render).
 - **Prompts versionados:** `prompts/` (ex.: `entity_intro_pt.md`, `ratings_explanation_pt.md`,
   `where_to_watch_pt.md`, `faq_entity_pt.md`).
 - **Tabelas:** `content_blocks`, `entity_writer_jobs`, `entity_writer_logs`
@@ -59,7 +60,7 @@ O Entity Writer **herda do MN26** a disciplina de pipeline offline, versionament
 e geração assistida por IA — mas opera sobre um **insumo diferente** e produz um **artefato
 diferente**.
 
-| Aspecto         | **MN26 News**                              | **Screena Entity Writer**                          |
+| Aspecto         | **MN26 News**                              | **Entity Writer**                                  |
 | --------------- | ------------------------------------------ | -------------------------------------------------- |
 | Insumo          | RSS/feeds externos (`RSSPRIME`)            | **PostgreSQL** (tabelas canônicas da entidade)     |
 | Etapa central   | `RSSPRIME → clusters → articles`           | `PostgreSQL → payload → Gemini → content_blocks`   |
@@ -236,7 +237,7 @@ posteriores.
 | `episode_context`          | Contexto de episódio (séries).                                       |
 | `faq`                      | Perguntas e respostas úteis (vira `FAQPage` só se visível).         |
 | `news_context`             | Contexto de notícias relacionadas.                                   |
-| `review_summary`           | Resumo de review própria da Screena.                                |
+| `review_summary`           | Resumo de review própria do Screen.                             |
 
 > A diferenciação **filme vs. série** nunca depende só da cor: o bloco respeita o
 > `entity_type` do payload e a linguagem correta (label + badge + breadcrumb + schema + URL).
@@ -351,7 +352,7 @@ indexação, overview/sinopse, en/es ou publicação automática.
 7. **Não usa `provider_api` como fonte editorial.** O fornecedor técnico (ex.: RapidAPI)
    nunca é citado como fonte ou voz editorial (`provider_api != rating_source`, invariante 2).
 8. **Não cria `AggregateRating` próprio sem permissão.** Nenhuma nota agregada "própria"
-   fingindo avaliação da Screena; `AggregateRating` só quando permitido e corretamente
+   fingindo avaliação do Screen; `AggregateRating` só quando permitido e corretamente
    atribuído.
 9. **Não publica automaticamente.** O Entity Writer nunca publica sozinho — publicação é
    decisão de fluxo com revisão (invariante 12).

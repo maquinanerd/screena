@@ -1,6 +1,6 @@
-# Regras do Screena Entity Writer
+# Regras do Entity Writer
 
-> Documento canonico de regras para o **Screena Entity Writer** (o agente de
+> Documento canonico de regras para o **Entity Writer** (o agente de
 > redacao editorial assistida por IA). Em portugues (pt-BR). Codigo e
 > identificadores permanecem em ingles. Estas regras valem para qualquer
 > execucao do writer, em qualquer entidade (filme, serie, temporada,
@@ -67,7 +67,7 @@ em `warnings` — nunca preenche com suposicao.
 - O writer **nao copia literalmente** sinopses longas (de TMDB, IMDb,
   estudios, imprensa ou qualquer fonte). Conteudo proprio = redacao original.
 - Resumos sem spoiler (`summary_without_spoilers`) sao **reescritos** com voz
-  editorial Screena; nao sao paragrafos copiados de terceiros.
+  editorial do Screen; nao sao paragrafos copiados de terceiros.
 - Citacao curta atribuida (ex.: trecho de critica) so e permitida quando a
   licenca permite (`review_quote_allowed = true`) e com atribuicao
   (`requires_attribution`) e linkback (`requires_linkback`) respeitados.
@@ -92,11 +92,11 @@ em `warnings` — nunca preenche com suposicao.
 
 ## 6. AggregateRating proprio: proibido sem permissao (invariante)
 
-- O writer **nao cria `AggregateRating` proprio** fingindo nota da Screena.
+- O writer **nao cria `AggregateRating` proprio** fingindo nota do Screen.
 - `AggregateRating` so aparece quando a nota e **permitida e atribuida** a uma
   fonte (com `display_allowed`/`score_allowed`), nunca como media inventada
   pelo writer.
-- Nada de "nota Screena" agregada que nao tenha origem real e atribuivel.
+- Nada de "nota Screen" agregada que nao tenha origem real e atribuivel.
 
 ## 7. Licenca antes de exibir (invariante 6)
 
@@ -177,7 +177,7 @@ externa; e tem `review_status` permitido.
 
 ## 12. Diferenciacao filme/serie no texto (invariantes 9, 10, 11)
 
-- Screena Movies usa o acento vermelho (`--screena-movie-red`); Screena
+- Screena Movies usa o acento vermelho (`--screena-movie-red`, nome legado do token); Screena
   Series usa o acento verde (`--screena-series-green`).
 - A diferenciacao filme/serie **nunca** depende so da cor: o texto e os
   metadados sempre carregam **label + badge + breadcrumb + schema + URL**

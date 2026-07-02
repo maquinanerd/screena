@@ -1,7 +1,7 @@
 ---
 name: seo-audit
 description: >-
-  Audita uma rota/pagina publica da Screena (screena.media) quanto as
+  Audita uma rota/pagina publica do Screen (https://thescreen.media) quanto as
   invariantes de SEO e governanca: pureza de render (zero API externa, zero
   Gemini), gate anti-thin (>= 2 blocos de valor proprios), schema correto por
   tipo, canonical autorreferente, hreflang reciproco, decisao de indexabilidade
@@ -13,7 +13,7 @@ description: >-
 
 # Skill: seo-audit — Auditoria de SEO e indexabilidade de uma rota
 
-Esta skill conduz a **auditoria de uma rota/pagina publica** da Screena contra
+Esta skill conduz a **auditoria de uma rota/pagina publica** do Screen contra
 as invariantes do CANON. O objetivo unico e responder, com evidencia: **esta
 pagina pode ser `index`?** — e, se nao, **qual requisito faltou**.
 
@@ -81,10 +81,10 @@ bug e deve ser corrigida no codigo/regra, nunca contornada na pagina.
   (temporada), `TVEpisode` (episodio), `Person` (pessoa), `NewsArticle` (noticia).
 - Exija `BreadcrumbList` em todas as paginas principais.
 - `FAQPage` **somente** se houver FAQ visivel na pagina. `Review` apenas para
-  review propria da Screena.
+  review propria do Screen.
 - `AggregateRating` **somente quando permitido e atribuido** a sua fonte
   (`score_allowed=true`, `license_status` `official`/`licensed`). **Nunca**
-  apresentar nota de terceiro como nota propria da Screena, nem
+  apresentar nota de terceiro como nota propria do Screen, nem
   `AggregateRating` fingindo nota propria.
 - Fonte: IMDb != Rotten Tomatoes (escalas/icones/linguagem nunca se misturam);
   `provider_api` (fornecedor tecnico) **nunca** e `rating_source` (fonte

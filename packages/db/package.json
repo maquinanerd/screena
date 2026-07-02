@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Camada de dados da Screena (Fase 1): schema Prisma, migrations, seeds e dados de semente tipados. Workers escrevem, web le. NENHUM client de DB ou API no render publico: uso somente server-side/admin/ISR.",
+  "description": "Camada de dados do Screen (namespace tecnico legado @screena/db): schema Prisma, migrations, seeds e dados de semente tipados. Pipelines offline escrevem, web le server-side. NENHUM client de DB ou API no render publico.",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {

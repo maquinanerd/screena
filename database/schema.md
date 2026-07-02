@@ -1,10 +1,9 @@
-# Database — visao geral do schema (Fase 0)
+# Database — visao geral do schema
 
-Este documento e a **visao geral** das tabelas canonicas da Screena, agrupadas por
-dominio. **O ORM recomendado e o Prisma** (alternativa documentada: Drizzle). **NESTA
-FASE 0 nao existe schema real nem migrations** — o schema real (Prisma `schema.prisma` +
-migrations) chega na **Fase 1**. Aqui apenas documentamos as tabelas, seus papeis e a
-politica de indices.
+Este documento e uma **visao geral historica** das tabelas canonicas do Screen,
+agrupadas por dominio. A fonte executavel atual e o Prisma em
+`packages/db/prisma/schema.prisma`, com migrations reais em
+`packages/db/prisma/migrations`.
 
 > Banco: **PostgreSQL**. Todo dado publico indexavel e lido **apenas** do PostgreSQL/cache
 > local — **zero API externa no render**.
