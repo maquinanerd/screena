@@ -1475,7 +1475,7 @@ a {
 
 .entity-card:hover,
 .entity-card:focus-visible {
-  border-color: var(--index-accent);
+  border-color: var(--index-accent, var(--text-strong));
 }
 
 .entity-card:focus-visible {
@@ -1550,7 +1550,7 @@ a {
 
 .entity-card:hover .entity-card__title,
 .entity-card:focus-visible .entity-card__title {
-  color: var(--index-accent);
+  color: var(--index-accent, var(--text-strong));
 }
 
 .entity-card__meta {

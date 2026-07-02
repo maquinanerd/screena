@@ -13,8 +13,8 @@ import { SITE_URL } from "../src/lib/site";
  *    rastreadas: /api/, /dev/ (preview interno) e /admin/ (painel futuro).
  *  - `/_next/` NAO e bloqueado: os assets do Next (JS/CSS/imagens otimizadas)
  *    sao necessarios para o Google renderizar as paginas corretamente.
- *  - Dominio canonico unico: https://thescreen.media (o legado screena.media
- *    nao aparece aqui). Puro: sem DB, sem rede.
+ *  - Dominio canonico unico: https://thescreen.media. O dominio legado nao
+ *    aparece na saida. Puro: sem DB, sem rede.
  */
 export default function robots(): MetadataRoute.Robots {
   return {
