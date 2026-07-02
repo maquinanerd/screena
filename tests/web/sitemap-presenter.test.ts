@@ -2,8 +2,9 @@
  * Testes puros do presenter do sitemap publico.
  *
  * Garantem que o sitemap: usa somente o dominio canonico thescreen.media com
- * barra final; inclui as rotas estaticas apenas quando as paginas
- * correspondentes seriam `index` (sitemap e meta robots nunca discordam);
+ * barra final; no caminho com banco, inclui as rotas estaticas apenas quando
+ * as paginas correspondentes seriam `index` (sitemap e meta robots nao devem
+ * discordar);
  * inclui detalhes so quando o evaluator da propria pagina da `index`; exclui
  * item sem slug/titulo, noticia nao publicavel/noindex e URL duplicada; nunca
  * emite /en, /es, /admin, /dev ou /api; e tem fallback estatico seguro para
@@ -139,12 +140,38 @@ describe("buildSitemapEntries — gates de listagem e portal", () => {
     expect(withPortal).toContain(`${ORIGIN}/pt/explorar/`);
   });
 
+  it("home e explorar usam as secoes reais que cada portal renderiza", () => {
+    const moviesAndPeople: SitemapDataInput = {
+      movies: richInput().movies,
+      series: [],
+      people: [entity({ slug: "pessoa-a" })],
+      news: [],
+    };
+    const out = urls(moviesAndPeople);
+    expect(out).not.toContain(`${ORIGIN}/pt/`);
+    expect(out).toContain(`${ORIGIN}/pt/explorar/`);
+  });
+
   it(`listagem de noticias exige >= ${MIN_NEWS_INDEX_ITEMS} publicaveis`, () => {
     const input = richInput();
     input.news = [news({ slug: "not-a" }), news({ slug: "not-b" })];
     const out = urls(input);
     expect(out).not.toContain(`${ORIGIN}/pt/noticias/`);
     expect(out).toContain(`${ORIGIN}/pt/noticias/not-a/`);
+  });
+
+  it("listagem de noticias conta publicaveis, nao detalhes indexaveis", () => {
+    const input = richInput();
+    input.news = [
+      news({ slug: "not-a", indexStatus: "noindex", body: "curto" }),
+      news({ slug: "not-b", indexStatus: "noindex", body: "curto" }),
+      news({ slug: "not-c", indexStatus: "noindex", body: "curto" }),
+    ];
+    const out = urls(input);
+    expect(out).toContain(`${ORIGIN}/pt/noticias/`);
+    expect(out).not.toContain(`${ORIGIN}/pt/noticias/not-a/`);
+    expect(out).not.toContain(`${ORIGIN}/pt/noticias/not-b/`);
+    expect(out).not.toContain(`${ORIGIN}/pt/noticias/not-c/`);
   });
 });
 
@@ -243,7 +270,7 @@ describe("buildSitemapEntries — noticias nao publicaveis ficam fora", () => {
 });
 
 describe("buildStaticSitemapEntries — fallback seguro sem banco", () => {
-  it("devolve exatamente as rotas estaticas publicas, no dominio canonico", () => {
+  it("devolve exatamente as rotas estaticas publicas operacionais, no dominio canonico", () => {
     const out = buildStaticSitemapEntries().map((entry) => entry.url);
     expect(out).toEqual([
       `${ORIGIN}/pt/`,

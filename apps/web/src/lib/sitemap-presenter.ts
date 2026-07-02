@@ -7,11 +7,12 @@
  *  - So URLs do dominio canonico `https://thescreen.media`, sempre pt-BR
  *    (`/pt/...`) e com barra final (padrao `trailingSlash: true`). Nada de
  *    `/en`, `/es`, `/admin`, `/dev`, `/api` ou rota interna.
- *  - Sitemap e meta robots NUNCA discordam: cada entrada passa pelos MESMOS
- *    evaluators de indexabilidade usados pelas paginas (filme/serie/pessoa:
- *    >= 2 blocos publicaveis; noticia: publicavel + indexavel + corpo
- *    suficiente; listagens: >= MIN_INDEX_ITEMS; portais: >= 2 secoes reais).
- *    Pagina `noindex` fica FORA do sitemap.
+ *  - No caminho com banco, sitemap e meta robots nao devem discordar: cada
+ *    entrada passa pelos MESMOS evaluators de indexabilidade usados pelas
+ *    paginas (filme/serie/pessoa: >= 2 blocos publicaveis; noticia:
+ *    publicavel + indexavel + corpo suficiente; listagens:
+ *    >= MIN_INDEX_ITEMS; portais: >= 2 secoes reais). Pagina `noindex` fica
+ *    FORA do sitemap.
  *  - Item sem slug canonico ou sem titulo/nome valido nao entra.
  *  - `lastModified` so quando ha campo confiavel (updatedAt do banco);
  *    caso contrario e omitido — nunca inventar precisao.
@@ -19,8 +20,10 @@
  *
  * Fallback sem banco: `buildStaticSitemapEntries()` devolve apenas as rotas
  * estaticas publicas. E usado pela camada server quando o PostgreSQL esta
- * indisponivel (build local/outage), com log explicito do erro — as paginas
- * continuam decidindo seu proprio meta robots, que prevalece para o crawler.
+ * indisponivel (build local/outage), com log explicito do erro. Por ser
+ * fallback operacional, pode listar rotas cujo meta robots da pagina decida
+ * `noindex` por falta de dados; nesse caso o meta robots por pagina segue
+ * sendo a fonte de verdade para o crawler.
  */
 
 import {
@@ -174,26 +177,31 @@ function entityDetailEntry(
   };
 }
 
+/**
+ * Publicavel = mesmo criterio da listagem de noticias (isPublishableArticle);
+ * a listagem conta artigos PUBLICAVEIS (nao exige corpo/index_status), entao o
+ * gate da listagem e dos portais usa esta contagem — identica a dos cards das
+ * paginas de noticias.
+ */
+function isPublishableNewsCandidate(candidate: SitemapNewsCandidate): boolean {
+  return isPublishableArticle({
+    reviewStatus: candidate.reviewStatus,
+    licenseStatus: candidate.licenseStatus,
+    displayAllowed: candidate.displayAllowed,
+    slug: candidate.slug,
+    title: candidate.title,
+    publishedAtIso: resolvePublishedIso(
+      candidate.translationPublishedAtIso,
+      candidate.articlePublishedAtIso,
+    ),
+  });
+}
+
 /** Noticia entra so quando publicavel E indexavel (mesmo gate da pagina). */
 function newsDetailEntry(
   candidate: SitemapNewsCandidate,
 ): SitemapEntryView | null {
-  const publishedIso = resolvePublishedIso(
-    candidate.translationPublishedAtIso,
-    candidate.articlePublishedAtIso,
-  );
-  if (
-    !isPublishableArticle({
-      reviewStatus: candidate.reviewStatus,
-      licenseStatus: candidate.licenseStatus,
-      displayAllowed: candidate.displayAllowed,
-      slug: candidate.slug,
-      title: candidate.title,
-      publishedAtIso: publishedIso,
-    })
-  ) {
-    return null;
-  }
+  if (!isPublishableNewsCandidate(candidate)) return null;
   const indexability = evaluateArticleIndexability({
     indexStatus: candidate.indexStatus,
     bodySufficient: isSufficientBody(candidate.body),
@@ -219,13 +227,16 @@ function newsDetailEntry(
  *  - listagem entra so se `evaluateEntityIndexIndexability`/news equivalem a
  *    `index` (>= MIN itens validos);
  *  - home/explorar entram so se `evaluatePortalIndexability` der `index`
- *    (>= 2 secoes com dado real — filmes/series/pessoas/noticias);
+ *    (home: filmes/series/noticias; explorar: filmes/series/pessoas/noticias);
  *  - detalhe entra so se o evaluator da propria pagina der `index`.
  */
 export function buildSitemapEntries(input: SitemapDataInput): SitemapEntryView[] {
   const movieCount = input.movies.filter(isValidCatalogItem).length;
   const seriesCount = input.series.filter(isValidCatalogItem).length;
   const peopleCount = input.people.filter(isValidCatalogItem).length;
+  const publishableNewsCount = input.news.filter(
+    isPublishableNewsCandidate,
+  ).length;
   const newsEntries = input.news
     .map(newsDetailEntry)
     .filter((entry): entry is SitemapEntryView => entry !== null);
@@ -241,24 +252,38 @@ export function buildSitemapEntries(input: SitemapDataInput): SitemapEntryView[]
       evaluateEntityIndexIndexability({ itemCount: peopleCount }).decision ===
       "index",
     [NEWS_INDEX_PATH]:
-      evaluateNewsIndexIndexability({ itemCount: newsEntries.length })
+      evaluateNewsIndexIndexability({ itemCount: publishableNewsCount })
         .decision === "index",
   };
 
-  // Portais: cada vertical com >= 1 item real e uma secao populada.
-  const populatedSectionCount = countPopulatedSections([
+  // Home renderiza filmes, series e noticias; pessoas aparece so no explorar.
+  const homePopulatedSectionCount = countPopulatedSections([
+    movieCount,
+    seriesCount,
+    publishableNewsCount,
+  ]);
+  const homeIndexable =
+    evaluatePortalIndexability({
+      populatedSectionCount: homePopulatedSectionCount,
+    }).decision === "index";
+
+  const explorePopulatedSectionCount = countPopulatedSections([
     movieCount,
     seriesCount,
     peopleCount,
-    newsEntries.length,
+    publishableNewsCount,
   ]);
-  const portalIndexable =
-    evaluatePortalIndexability({ populatedSectionCount }).decision === "index";
+  const exploreIndexable =
+    evaluatePortalIndexability({
+      populatedSectionCount: explorePopulatedSectionCount,
+    }).decision === "index";
 
   const entries: SitemapEntryView[] = [];
   for (const spec of STATIC_ROUTES) {
-    if (spec.path === HOME_PATH || spec.path === EXPLORE_PATH) {
-      if (!portalIndexable) continue;
+    if (spec.path === HOME_PATH) {
+      if (!homeIndexable) continue;
+    } else if (spec.path === EXPLORE_PATH) {
+      if (!exploreIndexable) continue;
     } else if (listingIndexable[spec.path] !== true) {
       continue;
     }
