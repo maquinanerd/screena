@@ -1,18 +1,22 @@
 /*
- * globals.css — Estilo global do app publico Screen (tema White Cinematic
- * Editorial). Aplica a linguagem visual do handoff da pagina de filme:
- * off-white quente, tipografia Montserrat (preferida; com fallback de sistema),
- * cantos retos (radius 0) e acento vermelho de FILME.
+ * globals.css — Estilo global do app publico Screen.
+ *
+ * Tema "White Cinematic Editorial" portado com fidelidade do bundle do Claude
+ * Design `screena-white-cinematic-editorial-system` (tela canonica
+ * `Screen Screens v4.dc.html`): fundo quase branco quente, Montserrat,
+ * heros cinematograficos escuros, cards com cantos arredondados (12-14px),
+ * acento VERMELHO de filme e VERDE de serie, amarelo Screen de apoio e
+ * numeros-fantasma de ranking.
  *
  * Pureza de render (invariantes 3/4): SEM fontes externas (nenhum <link>/@import
  * a fonts.googleapis.com, nenhum next/font que baixe no build). Montserrat e
- * apenas a familia PREFERIDA; se nao estiver instalada, cai para a stack do
- * sistema — zero rede no build e no render.
+ * apenas a familia PREFERIDA; sem ela, cai para a stack do sistema — zero rede.
  *
- * Tokens de cor (invariantes 9/10 e secao 8 do CLAUDE.md): o ACENTO de filme e
- * sempre o token canonico `--screena-movie-red` (fonte de verdade @screena/config)
- * — nunca um hex hardcoded em componente. As variaveis semanticas abaixo derivam
- * dos 6 tokens canonicos para o tema editorial desta fase.
+ * Cor de marca (invariantes 9/10 e secao 8 do CLAUDE.md): o acento de filme deriva
+ * SEMPRE do token canonico `--screena-movie-red` e o de serie de
+ * `--screena-series-green` (fonte de verdade @screena/config) — nunca um hex
+ * hardcoded de marca em componente. Amarelo/estrela/ouro do design v4 sao tokens
+ * de apoio (nao sao cor de vertical).
  */
 
 :root {
@@ -24,32 +28,58 @@
   --screena-bg-dark: #050505;
   --screena-bg-light: #f4f4f4;
 
-  /* Semanticos do tema White Cinematic Editorial ("Screen Screens v2"). */
-  --bg-page: #fdfdfd; /* fundo quase branco do design v2 */
-  --bg-surface: #ffffff; /* cards / superficies elevadas */
-  --bg-muted: #efede7; /* faixas neutras */
-  --bg-media: #0a0a0a; /* base da faixa de midia escura */
+  /* Superficies (White Cinematic Editorial, v4). */
+  --bg-page: #fdfdfd;
+  --bg-surface: #ffffff;
+  --bg-warm: #f6f2ea; /* faixa quente "Filmes em alta" */
+  --bg-muted: #efede7; /* faixa Awards / neutra */
+  --bg-tint: #f1eee8; /* chips/tags claros */
+  --bg-dark: #101010; /* blocos escuros (para quem e, newsletter) */
+  --bg-media: #0a0a0a; /* base das faixas de midia / hero */
+  --bg-footer: #e2e2e2;
+  --border-footer: #d5d5d5;
 
-  --text-strong: #101010; /* titulos, numeros fortes */
-  --text-body: #242424; /* corpo de texto */
-  --text-heading: #3a3a3a; /* titulos de secao (uppercase) e corpo de artigo */
-  --text-muted: #6e6e6e; /* metadados, ano, labels secundarios */
-  --text-faint: #9a958c; /* metadados terciarios (bylines, fontes) do design v2 */
+  /* Texto. */
+  --text-strong: #101010;
+  --text-body: #242424;
+  --text-heading: #3a3a3a;
+  --text-muted: #6e6e6e;
+  --text-faint: #9a958c;
 
-  /* Acento de FILME = token canonico (nunca forka a cor de marca). */
+  /* Acentos de vertical = tokens canonicos (nunca forka a cor de marca). */
   --accent-movie: var(--screena-movie-red);
-  --link-movie: #8a1e1a; /* links/acoes em texto na pagina de filme */
+  --accent-series: var(--screena-series-green);
+  --link-movie: #8a1e1a; /* links em texto na pagina de filme */
+  --link-series: #395c42; /* links em texto na pagina de serie */
 
-  --border: #e3ded6; /* bordas de cards, divisores */
-  --border-soft: #f1eee8; /* divisores internos de card (design v2) */
-  --border-dashed: #c9c2b6; /* borda tracejada do card sem spoilers */
+  /* Apoio do design v4 (nao sao cor de vertical). */
+  --accent-yellow: #f5c518; /* amarelo Screen: botoes/ticker/rank */
+  --accent-star: #f5c84b; /* estrelas de avaliacao */
+  --accent-gold: #d2a12b; /* premios / awards */
 
-  /* Layout */
+  /* Bordas e fantasmas. */
+  --border: #e3ded6;
+  --border-soft: #f1ede6;
+  --border-dashed: #c9c2b6;
+  --ghost: #e7e2d9; /* numeros gigantes de ranking / "01 02 03" */
+
+  /* Forma. */
+  --radius: 12px; /* cards / posters / midia */
+  --radius-lg: 14px; /* cards grandes */
+  --radius-sm: 8px; /* badges / botoes / chips */
+  --radius-xs: 6px; /* micro badges */
+  --nav-h: 72px;
+
+  /* Sombras. */
+  --shadow-poster: 0 8px 20px rgba(0, 0, 0, 0.1);
+  --shadow-card: 0 10px 28px rgba(0, 0, 0, 0.07);
+  --shadow-raised: 0 12px 30px rgba(0, 0, 0, 0.12);
+
+  /* Layout. */
   --container-max: 1280px;
   --container-pad: 80px;
-  --measure: 68ch; /* largura de leitura confortavel do corpo editorial */
+  --measure: 68ch;
 
-  /* Fonte: Montserrat PREFERIDA, sem carregamento externo (fallback sistema). */
   --font-sans: "Montserrat", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto,
     Helvetica, Arial, sans-serif;
 }
@@ -60,25 +90,14 @@
   box-sizing: border-box;
 }
 
-/* Texto so para tecnologia assistiva (rotulos que a cor apenas apoia). */
-.u-visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-  border: 0;
-}
-
 html {
   -webkit-text-size-adjust: 100%;
 }
 
 body {
   margin: 0;
+  /* Espaco para o header fixo (72px). Heros full-bleed compensam com margin-top negativa. */
+  padding-top: var(--nav-h);
   background: var(--bg-page);
   color: var(--text-body);
   font-family: var(--font-sans);
@@ -96,7 +115,6 @@ a {
   color: #ffffff;
 }
 
-/* Scrollbar discreta do design v2 (cantos retos, tom da borda). */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
@@ -104,52 +122,127 @@ a {
 
 ::-webkit-scrollbar-thumb {
   background: var(--border);
-  border-radius: 0;
+  border-radius: 8px;
+}
+
+/* Texto so para tecnologia assistiva (rotulos que a cor apenas apoia). */
+.u-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.container {
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: 0 var(--container-pad);
 }
 
 /* ================================================================== */
-/* Global header                                                      */
+/* Cabecalho de secao (padrao recorrente: bolinha de acento + h2)      */
 /* ------------------------------------------------------------------ */
-/* Cabecalho/navegacao global do site (site-header.tsx). Server        */
-/* component puro: sem "use client", sem rede/JS. NEUTRO/institucional */
-/* — o proprio header nao carrega cor de vertical; o vermelho (Filmes) */
-/* e o verde (Series) aparecem apenas como reforco de hover/foco nos   */
-/* links, jamais como unico diferenciador (invariante 11: o texto do   */
-/* link e o segmento de URL /pt/filmes/ vs /pt/series/ ja distinguem). */
-/* Bloco isolado de proposito — nao mexe no CSS da Movie Page abaixo.  */
-/* ------------------------------------------------------------------ */
+.sc-sechead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 0 26px;
+}
 
+.sc-sechead__title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  color: var(--text-strong);
+  line-height: 1.1;
+}
+
+.sc-sechead__title::before {
+  content: "";
+  width: 4px;
+  height: 20px;
+  border-radius: 2px;
+  background: var(--accent-yellow);
+  flex-shrink: 0;
+}
+
+.sc-sechead__title[data-vertical="movie"]::before {
+  background: var(--accent-movie);
+}
+.sc-sechead__title[data-vertical="series"]::before {
+  background: var(--accent-series);
+}
+
+.sc-sechead__more {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-strong);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.sc-sechead__more:hover {
+  text-decoration: underline;
+}
+
+/* Titulo de secao centrado, uppercase (paginas de titulo: Sinopse, Elenco...). */
+.sc-sectitle {
+  margin: 0 0 32px;
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-heading);
+  text-align: center;
+}
+
+/* ================================================================== */
+/* Header global (fixo)                                               */
+/* ------------------------------------------------------------------ */
+/* Server component puro (site-header.tsx): sem "use client", sem JS.  */
+/* NEUTRO/institucional — o vermelho de filme e o verde de serie so    */
+/* aparecem como reforco de hover/foco; o texto do link e o segmento   */
+/* de URL ja distinguem a vertical (invariante 11). Barra solida       */
+/* translucida com blur (estado "scrolled" do design v4).              */
+/* ------------------------------------------------------------------ */
 .site-header {
-  background: var(--bg-page);
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 60;
+  height: var(--nav-h);
+  background: rgba(253, 253, 253, 0.86);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
 }
 
 .site-header__inner {
-  max-width: var(--container-max);
+  max-width: 1380px;
   margin: 0 auto;
+  height: 100%;
   padding: 0 var(--container-pad);
-  height: 72px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 24px;
+  gap: 28px;
 }
 
-/* Logo oficial Screen (SVG local em /brand/screen-logo-black.svg). O header
-   tem fundo claro -> logo preta; a caixa do wordmark e neutra, sem cor de
-   vertical (invariante 11: o texto do link e a URL ja diferenciam). */
 .site-header__brand {
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
   text-decoration: none;
-  line-height: 1;
-}
-
-.site-header__brand:focus-visible,
-.site-header__link:focus-visible {
-  outline: 2px solid var(--text-strong);
-  outline-offset: 4px;
 }
 
 .site-header__logo {
@@ -161,311 +254,1156 @@ a {
 .site-header__nav {
   display: flex;
   align-items: center;
-  gap: 30px;
+  gap: 32px;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
 .site-header__link {
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-heading);
   text-decoration: none;
-  color: var(--text-muted);
-  transition: color 0.2s ease;
+  padding-bottom: 4px;
+  border-bottom: 2px solid transparent;
+  transition: color 0.2s ease, border-color 0.2s ease;
 }
 
 .site-header__link:hover,
 .site-header__link:focus-visible {
   color: var(--text-strong);
+  border-bottom-color: var(--accent-yellow);
 }
-
-/* Reforco de vertical (cor = apoio, nunca o unico sinal). */
 .site-header__link[data-vertical="movie"]:hover,
 .site-header__link[data-vertical="movie"]:focus-visible {
-  color: var(--screena-movie-red);
+  border-bottom-color: var(--accent-movie);
 }
-
 .site-header__link[data-vertical="series"]:hover,
 .site-header__link[data-vertical="series"]:focus-visible {
-  color: var(--screena-series-green);
+  border-bottom-color: var(--accent-series);
 }
 
-/* Responsivo basico (sem menu mobile complexo nesta fatia). O respiro
-   lateral herda --container-pad, reduzido para 20px em <=1024px pela
-   media query de :root abaixo. */
-@media (max-width: 1024px) {
-  .site-header__nav {
-    gap: 18px;
-  }
+.site-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-shrink: 0;
 }
 
-@media (max-width: 560px) {
-  .site-header__inner {
-    height: auto;
-    flex-wrap: wrap;
-    gap: 10px 18px;
-    padding-top: 14px;
-    padding-bottom: 14px;
-  }
-
-  .site-header__nav {
-    gap: 14px;
-  }
-
-  .site-header__link {
-    font-size: 12px;
-    letter-spacing: 0.08em;
-  }
+.site-header__search {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+.site-header__search:hover {
+  background: var(--bg-surface);
+  color: var(--text-strong);
+}
+.site-header__search svg {
+  width: 19px;
+  height: 19px;
 }
 
+/* ================================================================== */
+/* Footer global (novo — espelha o footer do design v4)               */
 /* ------------------------------------------------------------------ */
-/* Pagina de filme — shell                                            */
-/* ------------------------------------------------------------------ */
-
-.movie-page {
-  background: var(--bg-page);
-  padding-bottom: 4rem;
+.site-footer {
+  background: var(--bg-footer);
+  border-top: 1px solid var(--border-footer);
+  margin-top: 80px;
 }
 
-.container {
+.site-footer__inner {
   max-width: var(--container-max);
   margin: 0 auto;
-  padding: 0 var(--container-pad);
+  padding: 64px var(--container-pad) 36px;
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 72px;
 }
 
-/* Breadcrumb discreto */
-.breadcrumb {
-  margin: 0;
-  padding: 26px 0 0;
-  font-size: 0.8125rem;
+.site-footer__wordmark {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.site-footer__wordmark span {
+  font-size: 34px;
+  font-weight: 800;
+  color: var(--text-strong);
+  letter-spacing: 0.02em;
+}
+.site-footer__wordmark .site-footer__box {
+  display: inline-block;
+  width: 42px;
+  height: 21px;
+  background: var(--accent-movie);
+  margin: 0 3px;
+}
+
+.site-footer__tagline {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-muted);
+  margin: 20px 0 26px;
+  max-width: 34ch;
+}
+
+.site-footer__social {
+  display: flex;
+  gap: 10px;
+}
+.site-footer__social span {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--bg-dark);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+.site-footer__social svg {
+  width: 17px;
+  height: 17px;
+}
+
+.site-footer__cols {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 32px;
+}
+.site-footer__col-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-strong);
+  margin: 0 0 16px;
+}
+.site-footer__links {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+.site-footer__link {
+  font-size: 13px;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+.site-footer__link:hover {
+  color: var(--text-strong);
+}
+.site-footer__muted {
+  font-size: 13px;
   color: var(--text-muted);
 }
 
+.site-footer__bottom {
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: 0 var(--container-pad) 40px;
+}
+.site-footer__bottom-row {
+  border-top: 1px solid var(--border);
+  padding-top: 22px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+.site-footer__copy {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.site-footer__legal {
+  display: flex;
+  gap: 22px;
+}
+.site-footer__legal span {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ================================================================== */
+/* Breadcrumb                                                         */
+/* ------------------------------------------------------------------ */
 .breadcrumb ol {
+  list-style: none;
   display: flex;
   flex-wrap: wrap;
+  gap: 8px;
   align-items: center;
-  gap: 0.4rem;
   margin: 0;
-  padding: 0;
-  list-style: none;
+  padding: 32px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
 }
-
 .breadcrumb li {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 8px;
 }
-
 .breadcrumb li + li::before {
-  content: "›";
-  color: var(--border);
+  content: "\203A";
+  color: var(--text-faint);
 }
-
 .breadcrumb a {
   color: var(--text-muted);
   text-decoration: none;
 }
-
 .breadcrumb a:hover {
-  color: var(--link-movie);
-  text-decoration: underline;
-}
-
-.breadcrumb [aria-current="page"] {
   color: var(--text-strong);
 }
-
-/* ------------------------------------------------------------------ */
-/* Top info bar — grid 3 colunas (1.45fr 1.25fr 1fr) do design.        */
-/* Col 1: dados reais. Cols 2/3 (avaliacoes / onde assistir): ratings  */
-/* e streaming estao FORA DE ESCOPO -> placeholders decorativos, sem   */
-/* nota/logo/plataforma inventados (aria-hidden no markup).            */
-/* ------------------------------------------------------------------ */
-
-.movie-topbar {
-  display: grid;
-  grid-template-columns: 1.45fr 1.25fr 1fr;
-  gap: 40px;
-  align-items: start;
-  padding: 36px 0 28px;
-}
-
-/* Variacao "solo" — rota real sem ratings/streaming reais: apenas a coluna
-   principal, ocupando a largura util (a sinopse ja e limitada a 58ch, entao o
-   bloco fica editorial e equilibrado, sem headings/placeholders de feature). */
-.movie-topbar--solo {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.movie-topbar__title {
-  margin: 0;
-  font-size: clamp(1.9rem, 3.4vw, 34px);
-  font-weight: 800;
-  line-height: 1.12;
-  letter-spacing: -0.03em;
+.breadcrumb li[aria-current="page"] {
   color: var(--text-strong);
-}
-
-/* Ano dentro do h1 — peso 600 em cinza (design). O tracking acompanha o do
-   titulo (-0.03em): no design o <span> do ano nao define letter-spacing e
-   herda o do h1, entao a fidelidade pede o mesmo -0.03em, nao um valor solto. */
-.movie-topbar__year {
   font-weight: 600;
-  color: var(--text-muted);
-  letter-spacing: -0.03em;
+}
+.breadcrumb--onhero ol {
+  padding-top: 0;
+  color: rgba(255, 255, 255, 0.6);
+}
+.breadcrumb--onhero a {
+  color: rgba(255, 255, 255, 0.6);
+}
+.breadcrumb--onhero a:hover {
+  color: #fff;
+}
+.breadcrumb--onhero li[aria-current="page"] {
+  color: rgba(255, 255, 255, 0.9);
+}
+.breadcrumb--onhero li + li::before {
+  color: rgba(255, 255, 255, 0.45);
 }
 
-.movie-topbar__badge {
-  margin: 12px 0 14px;
-}
-
-.movie-topbar__meta {
-  margin: 0 0 12px;
-  font-size: 13px;
-  color: var(--text-muted);
-}
-
-.movie-topbar__synopsis {
-  margin: 0;
-  font-size: 15px;
-  line-height: 1.55;
-  color: var(--text-body);
-  max-width: 58ch;
-}
-
-/* Badge "Filme" — acento vermelho, cantos retos (um dos cinco sinais). */
+/* ================================================================== */
+/* Badge de vertical (label textual + cor de apoio)                   */
+/* ------------------------------------------------------------------ */
 .screena-badge {
   display: inline-block;
-  padding: 6px 11px;
-  border-radius: 0;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  line-height: 1;
+  color: #fff;
+  padding: 6px 11px;
+  border-radius: var(--radius-sm);
+  background: var(--text-strong);
 }
-
 .screena-badge--movie {
   background: var(--accent-movie);
-  color: #ffffff;
+}
+.screena-badge--series {
+  background: var(--accent-series);
+}
+.screena-badge--person {
+  background: var(--text-strong);
+}
+.screena-badge--news {
+  background: var(--accent-movie);
 }
 
-/* Label das colunas 2/3 (design: 13px/700). */
-.movie-col-label {
-  margin: 0 0 10px;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--text-strong);
+/* ================================================================== */
+/* Card de entidade (compartilhado: index / home / explorar)          */
+/* ------------------------------------------------------------------ */
+.entity-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 18px;
+}
+.entity-card-item {
+  min-width: 0;
 }
 
-/* --- Coluna 2: avaliacoes (placeholder decorativo, sem numeros) --- */
-.movie-ratings__boxes {
-  display: flex;
-  gap: 10px;
-}
-
-.movie-ratings__box {
-  flex: 1;
+.entity-card {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 9px;
-  padding: 14px 8px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
+  text-decoration: none;
+  color: inherit;
 }
-
-/* --- Coluna 3: onde assistir (chips placeholder, sem marcas) --- */
-.movie-watch__chips {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.movie-watch__chip {
-  display: inline-flex;
-  align-items: center;
-  height: 44px;
-  padding: 0 18px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-}
-
-/* Barra de esqueleto — leitura claramente decorativa (nao e dado). */
-.movie-skel {
-  display: block;
-  background: repeating-linear-gradient(
-    135deg,
-    #ece7de,
-    #ece7de 6px,
-    #f3efe8 6px,
-    #f3efe8 12px
-  );
-}
-
-.movie-skel--logo {
-  width: 46px;
-  height: 20px;
-}
-
-.movie-skel--score {
-  width: 34px;
-  height: 16px;
-}
-
-.movie-skel--chip {
-  width: 58px;
-  height: 14px;
-}
-
-/* ------------------------------------------------------------------ */
-/* Faixa de midia — full-bleed, grid 1fr/3fr/2fr do design (540px).    */
-/* Renderiza poster/backdrop locais seguros; sem dado,                 */
-/* permanece nos gradientes seguros do proprio design.                 */
-/* ------------------------------------------------------------------ */
-
-.movie-media {
-  width: 100%;
-  background: var(--bg-media);
-}
-
-.movie-media__grid {
-  width: 100%;
-  display: grid;
-  grid-template-columns: 1fr 3fr 2fr;
-  grid-template-areas: "poster stage tiles";
-  gap: 4px;
-  height: clamp(360px, 40vw, 540px);
-}
-
-/* Poster (esquerda). */
-.movie-media__poster {
-  grid-area: poster;
+.entity-card__media {
   position: relative;
-  overflow: hidden;
-  background: linear-gradient(150deg, #241410, #0a0605);
-}
-
-/* Palco central (trailer/cena) — scrim + botao de play. */
-.movie-media__stage {
-  grid-area: stage;
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  background: linear-gradient(150deg, #2a1c14, #0c0806);
-}
-
-.movie-media__image {
   display: block;
+  aspect-ratio: 2 / 3;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: linear-gradient(150deg, #ecebe4, #dedbd1);
+  box-shadow: var(--shadow-poster);
+}
+.entity-card[data-entity-type="person"] .entity-card__media {
+  aspect-ratio: 3 / 4;
+}
+.entity-card__image {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: block;
+}
+.entity-card__fallback {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(150deg, #2a2622, #100d0b);
+}
+.entity-card[data-entity-type="series"] .entity-card__fallback {
+  background: linear-gradient(150deg, #1a2a22, #0c130f);
+}
+.entity-card[data-entity-type="person"] .entity-card__fallback {
+  background: linear-gradient(150deg, #26222c, #100d15);
+}
+.entity-card__badge {
+  position: absolute;
+  top: 9px;
+  left: 9px;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #fff;
+  padding: 3px 7px;
+  border-radius: var(--radius-sm);
+  background: var(--text-strong);
+}
+.entity-card__badge[data-entity-type="movie"] {
+  background: var(--accent-movie);
+}
+.entity-card__badge[data-entity-type="series"] {
+  background: var(--accent-series);
+}
+.entity-card__body {
+  display: block;
+  padding: 11px 2px 0;
+}
+.entity-card__title {
+  display: block;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-strong);
+  line-height: 1.25;
+}
+.entity-card__meta {
+  display: block;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+.entity-card:hover .entity-card__title {
+  color: var(--link-movie);
+}
+.entity-card[data-entity-type="series"]:hover .entity-card__title {
+  color: var(--link-series);
 }
 
-.movie-media__stage::after {
+/* ================================================================== */
+/* Card de noticia (compartilhado)                                    */
+/* ------------------------------------------------------------------ */
+.news-grid {
+  list-style: none;
+  margin: 24px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 30px;
+}
+.news-grid__item {
+  min-width: 0;
+}
+
+.news-card {
+  display: flex;
+  flex-direction: column;
+  text-decoration: none;
+  color: inherit;
+}
+.news-card__media {
+  position: relative;
+  display: block;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: linear-gradient(150deg, #2a2622, #100d0b);
+}
+.news-card__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.news-card__fallback {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(160deg, #2a1c18 0%, #120a0a 70%);
+}
+.news-card__media::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, 0.4) 100%);
+}
+.news-card__body {
+  display: block;
+  padding: 14px 2px 0;
+}
+.news-card__category {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent-movie);
+  margin-bottom: 8px;
+}
+.news-card__title {
+  display: block;
+  font-size: 17px;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+  color: var(--text-strong);
+  line-height: 1.3;
+}
+.news-card:hover .news-card__title {
+  color: var(--link-movie);
+}
+.news-card__deck {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  margin-top: 8px;
+}
+.news-card__meta {
+  display: block;
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-top: 12px;
+}
+
+/* Variacao "featured" (destaque grande da listagem de noticias). */
+.news-card[data-variant="featured"] {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 30px;
+  align-items: center;
+}
+.news-card[data-variant="featured"] .news-card__media {
+  aspect-ratio: 16 / 10;
+  min-height: 320px;
+  order: 2;
+}
+.news-card[data-variant="featured"] .news-card__body {
+  padding: 0;
+}
+.news-card[data-variant="featured"] .news-card__title {
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.12;
+}
+.news-card[data-variant="featured"] .news-card__deck {
+  font-size: 15px;
+  -webkit-line-clamp: 4;
+  margin-top: 14px;
+}
+
+/* ================================================================== */
+/* HERO cinematografico (home / topo de secoes)                       */
+/* ------------------------------------------------------------------ */
+.sc-hero {
+  position: relative;
+  margin-top: calc(var(--nav-h) * -1);
+  min-height: 620px;
+  height: 78vh;
+  max-height: 820px;
+  overflow: hidden;
+  background: var(--bg-media);
+  display: flex;
+  align-items: flex-end;
+}
+.sc-hero__bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.sc-hero__wash {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, #1b1b22 0%, #0e0e13 55%, #070708 100%);
+}
+.sc-hero__wash--movie {
+  background: linear-gradient(135deg, #2b1712 0%, #170b09 55%, #080605 100%);
+}
+.sc-hero__wash--series {
+  background: linear-gradient(135deg, #12211a 0%, #0a130e 55%, #060908 100%);
+}
+.sc-hero__scrim {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(5, 5, 5, 0.55) 0%,
+    rgba(5, 5, 5, 0.05) 22%,
+    rgba(5, 5, 5, 0) 44%,
+    rgba(5, 5, 5, 0.6) 78%,
+    rgba(5, 5, 5, 0.95) 100%
+  );
+}
+.sc-hero__inner {
+  position: relative;
+  width: 100%;
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: 0 var(--container-pad) 72px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 48px;
+}
+.sc-hero__lead {
+  max-width: 640px;
+}
+.sc-hero__eyebrow {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #fff;
+  padding: 6px 11px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-movie);
+  margin-bottom: 18px;
+}
+.sc-hero__eyebrow[data-vertical="series"] {
+  background: var(--accent-series);
+}
+.sc-hero__eyebrow[data-vertical="news"],
+.sc-hero__eyebrow[data-vertical="neutral"] {
+  background: rgba(255, 255, 255, 0.16);
+}
+.sc-hero__title {
+  font-size: 76px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  color: rgba(255, 255, 255, 0.96);
+  line-height: 0.94;
+  margin: 0;
+  text-shadow: 0 4px 40px rgba(0, 0, 0, 0.55);
+}
+.sc-hero__title--sm {
+  font-size: 56px;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+.sc-hero__meta {
+  margin-top: 18px;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 14px;
+}
+.sc-hero__desc {
+  font-size: 15px;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.74);
+  margin: 16px 0 0;
+  max-width: 54ch;
+}
+.sc-hero__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 26px;
+  background: var(--accent-movie);
+  color: #fff;
+  font-weight: 700;
+  font-size: 14px;
+  padding: 13px 26px;
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+}
+.sc-hero__cta[data-vertical="series"] {
+  background: var(--accent-series);
+}
+.sc-hero__cta svg {
+  width: 15px;
+  height: 15px;
+}
+.sc-hero__aside {
+  max-width: 158px;
+  flex-shrink: 0;
+  align-self: center;
+}
+.sc-hero__poster {
+  width: 158px;
+  aspect-ratio: 2 / 3;
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+  background: #14100e;
+}
+.sc-hero__poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* ================================================================== */
+/* Portal (home / explorar)                                          */
+/* ------------------------------------------------------------------ */
+.portal-page {
+  padding-bottom: 24px;
+}
+.portal-page .container > .breadcrumb ol {
+  padding-top: 32px;
+}
+
+.portal-hero {
+  padding: 56px 0 8px;
+}
+.portal-hero--hub {
+  padding: 8px 0 8px;
+}
+.portal-hero__title {
+  font-size: 44px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--text-strong);
+  line-height: 1.05;
+  margin: 0;
+}
+.portal-hero__desc {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  margin: 14px 0 0;
+  max-width: 66ch;
+}
+
+.portal-nav {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+  margin: 36px 0 12px;
+}
+.portal-nav__card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 24px 24px 26px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  text-decoration: none;
+  color: inherit;
+  position: relative;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+.portal-nav__card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: var(--text-strong);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  opacity: 0.85;
+}
+.portal-nav__card[data-vertical="movie"]::before {
+  background: var(--accent-movie);
+}
+.portal-nav__card[data-vertical="series"]::before {
+  background: var(--accent-series);
+}
+.portal-nav__card[data-vertical="news"]::before {
+  background: var(--accent-yellow);
+}
+.portal-nav__card:hover {
+  border-color: var(--text-strong);
+  box-shadow: var(--shadow-raised);
+  transform: translateY(-2px);
+}
+.portal-nav__label {
+  font-size: 19px;
+  font-weight: 750;
+  color: var(--text-strong);
+}
+.portal-nav__desc {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.portal-nav__count {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-top: 2px;
+}
+
+.portal-section {
+  padding: 56px 0 0;
+}
+.portal-section__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 0 26px;
+}
+.portal-section__title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  color: var(--text-strong);
+}
+.portal-section__title::before {
+  content: "";
+  width: 4px;
+  height: 20px;
+  border-radius: 2px;
+  background: var(--accent-yellow);
+  flex-shrink: 0;
+}
+.portal-section__title[data-vertical="movie"]::before {
+  background: var(--accent-movie);
+}
+.portal-section__title[data-vertical="series"]::before {
+  background: var(--accent-series);
+}
+.portal-section__more {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-strong);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.portal-section__more:hover {
+  text-decoration: underline;
+}
+.portal-section .news-grid {
+  margin-top: 0;
+}
+.portal-explore-note {
+  margin: 48px 0 0;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+.portal-explore-note a {
+  color: var(--link-movie);
+  font-weight: 600;
+}
+
+/* Faixa quente que envolve uma secao (Filmes em alta). */
+.portal-section--warm {
+  margin-top: 56px;
+  padding: 56px 0;
+  background: var(--bg-warm);
+}
+.portal-section--warm .portal-section {
+  padding-top: 0;
+}
+
+/* ================================================================== */
+/* Entity index (listagens)                                          */
+/* ------------------------------------------------------------------ */
+.entity-index {
+  padding-bottom: 24px;
+}
+.entity-index__header {
+  padding: 20px 0 12px;
+}
+.entity-index__title {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 0;
+  font-size: 46px;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  color: var(--text-strong);
+  line-height: 1;
+}
+.entity-index__title::before {
+  content: "";
+  width: 6px;
+  height: 40px;
+  border-radius: 3px;
+  background: var(--text-strong);
+  flex-shrink: 0;
+}
+.entity-index[data-vertical="movie"] .entity-index__title::before {
+  background: var(--accent-movie);
+}
+.entity-index[data-vertical="series"] .entity-index__title::before {
+  background: var(--accent-series);
+}
+.entity-index__desc {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  margin: 16px 0 36px;
+  max-width: 70ch;
+}
+.entity-index .entity-grid {
+  margin-top: 8px;
+}
+.entity-index__more {
+  margin: 34px 0 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.entity-index__empty {
+  margin: 40px 0;
+  padding: 40px;
+  border: 1px dashed var(--border-dashed);
+  border-radius: var(--radius);
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* ================================================================== */
+/* News index (magazine)                                             */
+/* ------------------------------------------------------------------ */
+.news-index {
+  padding-bottom: 24px;
+}
+.news-index__header {
+  padding: 20px 0 12px;
+}
+.news-index__title {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 0;
+  font-size: 46px;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  color: var(--text-strong);
+  line-height: 1;
+}
+.news-index__title::before {
+  content: "";
+  width: 6px;
+  height: 40px;
+  border-radius: 3px;
+  background: var(--accent-movie);
+  flex-shrink: 0;
+}
+.news-index__desc {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  margin: 16px 0 36px;
+  max-width: 70ch;
+}
+.news-index__featured {
+  padding-bottom: 40px;
+  border-bottom: 1px solid var(--border);
+}
+.news-index__feed {
+  padding-top: 40px;
+}
+.news-index__feed-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 26px;
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  color: var(--text-strong);
+}
+.news-index__feed-title::before {
+  content: "";
+  width: 4px;
+  height: 20px;
+  border-radius: 2px;
+  background: var(--accent-movie);
+  flex-shrink: 0;
+}
+.news-index__more {
+  margin: 34px 0 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.news-index__empty {
+  margin: 40px 0;
+  padding: 40px;
+  border: 1px dashed var(--border-dashed);
+  border-radius: var(--radius);
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* ================================================================== */
+/* News article                                                      */
+/* ------------------------------------------------------------------ */
+.news-article {
+  padding-bottom: 24px;
+}
+.news-article__hero {
+  position: relative;
+  margin-top: calc(var(--nav-h) * -1);
+  min-height: 540px;
+  overflow: hidden;
+  background: #0a0708;
+  display: flex;
+}
+.news-article__hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 120% at 75% 18%, #4a1216 0%, #24090c 45%, #0a0708 100%);
+}
+.news-article__hero--real::before {
+  opacity: 0.55;
+}
+.news-article__hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(5, 3, 3, 0.5) 0%,
+    rgba(5, 3, 3, 0) 32%,
+    rgba(5, 3, 3, 0.25) 62%,
+    rgba(5, 3, 3, 0.94) 100%
+  );
+}
+.news-article__hero-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.news-article__hero-inner {
+  position: relative;
+  z-index: 1;
+  max-width: 880px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 150px 40px 60px;
+  align-self: flex-end;
+}
+.news-article__badge {
+  margin: 28px 0 0;
+}
+.news-article__title {
+  font-size: 52px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #fff;
+  line-height: 1.05;
+  margin: 22px 0 0;
+  max-width: 20ch;
+  text-shadow: 0 4px 40px rgba(0, 0, 0, 0.5);
+}
+.news-article__deck {
+  font-size: 18px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.82);
+  margin: 22px 0 0;
+  max-width: 62ch;
+}
+.news-article__meta {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+  margin: 30px 0 0;
+}
+.news-article__body {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 56px 0 0;
+  text-align: justify;
+  hyphens: auto;
+}
+.news-article__paragraph {
+  font-size: 17px;
+  line-height: 1.8;
+  color: var(--text-heading);
+  margin: 0 0 26px;
+}
+.news-article__source {
+  font-size: 13px;
+  color: var(--text-faint);
+  margin: 36px 0 0;
+}
+.news-article__source-name {
+  color: var(--text-strong);
+  font-weight: 600;
+}
+/* Disclaimer de IA: LINHA discreta no fim do artigo — nunca box (regra do bundle). */
+.news-article__ai {
+  display: block;
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--text-faint);
+  margin: 24px 0 0;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+  background: none;
+}
+.news-article__related {
+  max-width: 720px;
+  margin: 40px auto 0;
+}
+.news-article__related-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-heading);
+  margin: 0 0 16px;
+}
+.news-related {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.news-related__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 0;
+  border-top: 1px solid var(--border-soft);
+}
+.news-related__link {
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--text-strong);
+  text-decoration: none;
+}
+.news-related__link:hover {
+  color: var(--link-movie);
+}
+.news-related__type {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  border: 1px solid var(--border);
+  padding: 3px 8px;
+  border-radius: var(--radius-xs);
+  white-space: nowrap;
+}
+.news-article__notice {
+  max-width: 720px;
+  margin: 32px auto 0;
+}
+
+/* ================================================================== */
+/* Movie / Series — top info bar                                      */
+/* ------------------------------------------------------------------ */
+.movie-topbar,
+.series-topbar {
+  padding: 36px 0 28px;
+}
+.movie-topbar__title,
+.series-topbar__title {
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--text-strong);
+  margin: 0;
+  line-height: 1.1;
+}
+.movie-topbar__year,
+.series-topbar__year {
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.movie-topbar__badge,
+.series-topbar__badge,
+.person-hero__badge {
+  margin: 12px 0 14px;
+}
+.movie-topbar__meta,
+.series-topbar__meta {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 0 0 12px;
+}
+.movie-topbar__synopsis,
+.series-topbar__synopsis {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-body);
+  margin: 0;
+  max-width: 58ch;
+}
+
+/* Faixa de midia (poster + palco + tiles) — placeholders quando sem imagem. */
+.movie-media,
+.series-media {
+  margin-top: 12px;
+}
+.movie-media__grid,
+.series-media__grid {
+  display: grid;
+  grid-template-columns: 1fr 3fr 2fr;
+  gap: 4px;
+  height: 540px;
+  background: var(--bg-media);
+}
+.movie-media__poster,
+.movie-media__stage,
+.series-media__poster,
+.series-media__stage {
+  position: relative;
+  overflow: hidden;
+}
+.movie-media__poster {
+  background: linear-gradient(150deg, #241410, #0a0605);
+}
+.series-media__poster {
+  background: linear-gradient(150deg, #10201a, #04080a);
+}
+.movie-media__stage {
+  background: linear-gradient(150deg, #2a1c14, #0c0806);
+}
+.series-media__stage {
+  background: linear-gradient(150deg, #152a20, #060c09);
+}
+.movie-media__image,
+.series-media__image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.movie-media__stage::after,
+.series-media__stage::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -477,434 +1415,70 @@ a {
     rgba(0, 0, 0, 0.5) 100%
   );
 }
-
-/* Botao de play (74x74, borda branca) — circular por excecao. */
 .movie-media__play {
-  position: relative;
-  z-index: 1;
+  position: absolute;
+  inset: 0;
+  margin: auto;
   width: 74px;
   height: 74px;
-  border: 2px solid rgba(255, 255, 255, 0.85);
   border-radius: 50%;
-  color: #ffffff;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
+  z-index: 1;
 }
-
 .movie-media__play svg {
-  width: 22px;
-  height: 22px;
-  margin-left: 3px;
+  width: 24px;
+  height: 24px;
 }
-
-/* Tres tiles (direita) — gradientes distintos do design + scrim. */
-.movie-media__tiles {
-  grid-area: tiles;
+.series-media__label {
+  position: absolute;
+  left: 22px;
+  bottom: 18px;
+  z-index: 1;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.92);
+}
+.movie-media__tiles,
+.series-media__tiles {
   display: grid;
   grid-template-rows: 1fr 1fr 1fr;
   gap: 4px;
 }
-
-.movie-media__tile {
-  position: relative;
-  overflow: hidden;
+.movie-media__tile,
+.series-media__tile {
+  display: block;
 }
-
 .movie-media__tile:nth-child(1) {
   background: linear-gradient(150deg, #1a2a22, #0c130f);
 }
-
 .movie-media__tile:nth-child(2) {
   background: linear-gradient(150deg, #2c2618, #15110a);
 }
-
 .movie-media__tile:nth-child(3) {
   background: linear-gradient(150deg, #262030, #100d15);
 }
-
-.movie-media__tile::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    180deg,
-    rgba(0, 0, 0, 0) 40%,
-    rgba(0, 0, 0, 0.7) 100%
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Sinopse — secao centrada; grid 1fr/320px do design. Coluna esquerda */
-/* recebe os content_blocks editoriais reais; card lateral tracejado   */
-/* "Resumo sem spoilers" recebe o bloco summary_without_spoilers.      */
-/* ------------------------------------------------------------------ */
-
-.movie-synopsis {
-  padding: 64px 0 0;
-  text-align: center;
-}
-
-.movie-synopsis__title {
-  margin: 0 0 32px;
-  font-size: 19px;
-  font-weight: 800;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--text-heading);
-}
-
-.movie-synopsis__grid {
-  display: grid;
-  grid-template-columns: 1fr 320px;
-  gap: 40px;
-  align-items: start;
-  text-align: left;
-}
-
-.movie-synopsis__main {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-}
-
-.movie-block__body {
-  margin: 0;
-  font-size: 16px;
-  line-height: 1.7;
-  color: var(--text-body);
-  white-space: pre-wrap;
-}
-
-.movie-preview-label {
-  margin: 0 0 10px;
-  color: var(--accent-movie);
-  font-size: 11px;
-  font-weight: 800;
-  line-height: 1;
-  text-transform: uppercase;
-}
-
-/* Card lateral tracejado "Resumo sem spoilers" (design: icone + texto). */
-.movie-aside {
-  position: sticky;
-  top: 24px;
-}
-
-.spoiler-card {
-  display: flex;
-  gap: 18px;
-  align-items: flex-start;
-  padding: 24px;
-  background: var(--bg-surface);
-  border: 1.5px dashed var(--border-dashed);
-}
-
-.spoiler-card__icon {
-  width: 42px;
-  height: 42px;
-  color: var(--link-movie);
-  flex-shrink: 0;
-}
-
-.spoiler-card__text {
-  min-width: 0;
-}
-
-.spoiler-card__label {
-  margin: 0 0 6px;
-  font-size: 14px;
-  font-weight: 800;
-  color: var(--text-strong);
-}
-
-.spoiler-card__body {
-  margin: 0;
-  font-size: 14px;
-  line-height: 1.6;
-  color: var(--text-body);
-  white-space: pre-wrap;
-}
-
-/* Aviso de revisao editorial (paginas noindex). */
-.review-notice {
-  margin: 40px 0 0;
-  padding: 14px 18px;
-  border-left: 3px solid var(--accent-movie);
-  background: var(--bg-muted);
-  color: var(--text-muted);
-  font-size: 0.9rem;
-}
-
-/* ------------------------------------------------------------------ */
-/* Responsividade (design nao tem media queries): evitar overflow.     */
-/* ------------------------------------------------------------------ */
-
-@media (max-width: 1024px) {
-  :root {
-    --container-pad: 20px;
-  }
-
-  .movie-topbar {
-    grid-template-columns: 1fr;
-    gap: 28px;
-  }
-
-  .movie-synopsis__grid {
-    grid-template-columns: 1fr;
-    gap: 32px;
-  }
-
-  .movie-aside {
-    position: static;
-  }
-
-  /* Midia: poster + palco lado a lado; tiles viram faixa horizontal. */
-  .movie-media__grid {
-    grid-template-columns: 1fr 1.7fr;
-    grid-template-areas:
-      "poster stage"
-      "tiles tiles";
-    height: auto;
-  }
-
-  .movie-media__poster,
-  .movie-media__stage {
-    min-height: 300px;
-  }
-
-  .movie-media__tiles {
-    grid-template-rows: none;
-    grid-template-columns: repeat(3, 1fr);
-    height: 120px;
-  }
-}
-
-@media (max-width: 560px) {
-  /* Midia: so o palco central (com play) + tiles; poster recolhido. */
-  .movie-media__grid {
-    grid-template-columns: 1fr;
-    grid-template-areas:
-      "stage"
-      "tiles";
-  }
-
-  .movie-media__poster {
-    display: none;
-  }
-
-  .movie-media__stage {
-    min-height: 240px;
-  }
-
-  .movie-media__tiles {
-    height: 88px;
-  }
-
-  .movie-topbar {
-    padding: 20px 0 20px;
-  }
-}
-
-/* Series page */
-
-.series-page {
-  --accent-series: var(--screena-series-green);
-  --link-series: #395c42; /* verde-escuro de links do design v2 */
-  background: var(--bg-page);
-  padding-bottom: 4rem;
-}
-
-.series-page ::selection {
-  background: var(--accent-series);
-  color: #ffffff;
-}
-
-.series-page .breadcrumb a:hover {
-  color: var(--link-series);
-}
-
-/* Badge de serie com a mesma geometria/tracking do badge de filme (design v2:
-   ambos 10px / 0.14em / 6x11px — muda apenas a cor de vertical). */
-.screena-badge--series {
-  background: var(--accent-series);
-  color: #ffffff;
-}
-
-.series-topbar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 32px;
-  align-items: start;
-  padding: 36px 0 28px;
-}
-
-/* h1 identico ao da Movie Page (design v2: 34px/800/-0.03em nas duas
-   verticais — quem diferencia e label + badge + breadcrumb + schema + URL). */
-.series-topbar__title {
-  margin: 0;
-  font-size: clamp(1.9rem, 3.4vw, 34px);
-  font-weight: 800;
-  line-height: 1.12;
-  letter-spacing: -0.03em;
-  color: var(--text-strong);
-}
-
-.series-topbar__year {
-  font-weight: 600;
-  color: var(--text-muted);
-  letter-spacing: -0.03em;
-}
-
-.series-topbar__badge {
-  margin: 12px 0 14px;
-}
-
-.series-topbar__meta {
-  margin: 0 0 12px;
-  font-size: 13px;
-  color: var(--text-muted);
-}
-
-.series-topbar__synopsis {
-  margin: 0;
-  max-width: 58ch;
-  font-size: 15px;
-  line-height: 1.55;
-  color: var(--text-body);
-}
-
-.series-media {
-  width: 100%;
-  background: var(--bg-media);
-}
-
-.series-media__grid {
-  width: 100%;
-  display: grid;
-  grid-template-columns: 1fr 3fr 2fr;
-  grid-template-areas: "poster stage tiles";
-  gap: 4px;
-  height: 520px;
-}
-
-.series-media__poster {
-  grid-area: poster;
-  position: relative;
-  overflow: hidden;
-  background: linear-gradient(150deg, #142016, #070b08);
-}
-
-.series-media__stage {
-  grid-area: stage;
-  position: relative;
-  display: flex;
-  align-items: flex-end;
-  justify-content: flex-start;
-  overflow: hidden;
-  padding: 28px;
-  background: linear-gradient(150deg, #22351f, #090d08);
-}
-
-.series-media__image {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.series-media__stage .series-media__image {
-  position: absolute;
-  inset: 0;
-}
-
-.series-media__stage::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(
-    180deg,
-    rgba(0, 0, 0, 0.08) 0%,
-    rgba(0, 0, 0, 0.1) 42%,
-    rgba(0, 0, 0, 0.62) 100%
-  );
-}
-
-.series-media__label {
-  position: relative;
-  z-index: 1;
-  display: inline-flex;
-  align-items: center;
-  min-height: 34px;
-  padding: 0 12px;
-  border: 1px solid rgba(255, 255, 255, 0.74);
-  color: #ffffff;
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
-
-.series-media__tiles {
-  grid-area: tiles;
-  display: grid;
-  grid-template-rows: 1fr 1fr 1fr;
-  gap: 4px;
-}
-
-.series-media__tile {
-  position: relative;
-  overflow: hidden;
-}
-
 .series-media__tile:nth-child(1) {
-  background: linear-gradient(150deg, #173323, #07110b);
+  background: linear-gradient(150deg, #1a2a22, #0c130f);
 }
-
 .series-media__tile:nth-child(2) {
-  background: linear-gradient(150deg, #2c2b1f, #11100a);
+  background: linear-gradient(150deg, #202a2e, #0c1012);
 }
-
 .series-media__tile:nth-child(3) {
-  background: linear-gradient(150deg, #1d2930, #0a0f12);
+  background: linear-gradient(150deg, #1d2535, #0c0f16);
 }
 
-.series-media__tile::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    180deg,
-    rgba(0, 0, 0, 0) 40%,
-    rgba(0, 0, 0, 0.68) 100%
-  );
-}
-
-.series-synopsis,
-.series-seasons {
+/* Sinopse + card sem spoilers. */
+.movie-synopsis,
+.series-synopsis {
   padding: 64px 0 0;
-  text-align: center;
 }
-
-/* A secao de temporadas/episodios NAO segue o titulo uppercase centralizado:
-   no design v2 o heading "Episódios" e 28px/700/-0.02em sentence-case,
-   alinhado a esquerda (mesmo padrao dos headings da pagina de pessoa). */
-.series-seasons {
-  text-align: left;
-}
-
-.series-seasons .series-section-title {
-  font-size: 28px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  text-transform: none;
-  color: var(--text-strong);
-  margin: 0 0 24px;
-}
-
-/* Titulo de secao identico ao da Movie Page (design v2: 19px/800/0.18em
-   uppercase, sem barra de acento — o v2 nao usa a barra sob o titulo). */
+.movie-synopsis__title,
 .series-section-title {
   margin: 0 0 32px;
   font-size: 19px;
@@ -912,362 +1486,218 @@ a {
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--text-heading);
+  text-align: center;
 }
-
+.movie-synopsis__grid,
 .series-synopsis__grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-columns: 1fr 320px;
   gap: 40px;
   align-items: start;
-  text-align: left;
 }
-
-.series-synopsis__main {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-}
-
+.movie-block__body,
 .series-block__body {
-  margin: 0;
   font-size: 16px;
   line-height: 1.7;
   color: var(--text-body);
-  white-space: pre-wrap;
+  margin: 0 0 20px;
 }
-
-.series-aside {
-  position: sticky;
-  top: 24px;
-}
-
+.spoiler-card,
 .series-spoiler-card {
+  border: 1.5px dashed var(--border-dashed);
+  border-radius: var(--radius);
+  padding: 24px;
   display: flex;
   gap: 18px;
   align-items: flex-start;
-  padding: 24px;
   background: var(--bg-surface);
-  border: 1.5px dashed var(--accent-series);
 }
-
+.spoiler-card__icon {
+  width: 42px;
+  height: 42px;
+  color: var(--link-movie);
+  flex-shrink: 0;
+}
 .series-spoiler-card__mark {
   width: 42px;
   height: 42px;
+  border-radius: 50%;
   flex-shrink: 0;
-  border: 2px solid var(--accent-series);
-  background:
-    linear-gradient(90deg, transparent 48%, var(--accent-series) 48% 52%, transparent 52%),
-    linear-gradient(0deg, transparent 48%, var(--accent-series) 48% 52%, transparent 52%);
+  background: var(--link-series);
 }
-
-.series-spoiler-card__text {
-  min-width: 0;
-}
-
+.spoiler-card__label,
 .series-spoiler-card__label {
   margin: 0 0 6px;
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 700;
   color: var(--text-strong);
 }
-
+.spoiler-card__body,
 .series-spoiler-card__body {
   margin: 0;
   font-size: 14px;
   line-height: 1.6;
   color: var(--text-body);
-  white-space: pre-wrap;
 }
 
-.series-seasons__list {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 18px;
+/* Temporadas / episodios. */
+.series-seasons {
+  padding: 64px 0 0;
+}
+.series-seasons .series-section-title {
   text-align: left;
 }
-
-/* Grupo de temporada sem chrome proprio (design v2 nao tem card de
-   temporada): os cards brancos sao os episodios, nao o grupo. */
-.series-season {
-  padding: 0;
+.series-seasons__list {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
 }
-
+.series-season {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px 24px;
+}
 .series-season__head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 20px;
+  gap: 14px;
+  flex-wrap: wrap;
 }
-
 .series-season__title {
   margin: 0;
-  font-size: 18px;
-  font-weight: 800;
-  line-height: 1.25;
-  letter-spacing: 0;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
   color: var(--text-strong);
 }
-
 .series-season__meta {
   margin: 0;
-  flex-shrink: 0;
   font-size: 13px;
   color: var(--text-muted);
 }
-
 .series-season__overview {
-  margin: 14px 0 0;
-  max-width: var(--measure);
-  font-size: 15px;
-  line-height: 1.65;
-  color: var(--text-body);
+  margin: 12px 0 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-muted);
 }
-
 .series-episode-list {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 12px;
-  margin: 20px 0 0;
-  padding: 0;
   list-style: none;
+  margin: 18px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
 }
-
-/* Episodio como card branco com borda (design v2: linhas de "Episódios" em
-   superficie elevada; numero em texto verde, sem caixinha). */
 .series-episode-list__item {
-  display: grid;
-  grid-template-columns: 44px minmax(0, 1fr);
-  gap: 16px;
-  align-items: start;
-  padding: 14px 16px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
+  display: flex;
+  gap: 14px;
+  padding: 14px 0;
+  border-top: 1px solid var(--border-soft);
 }
-
 .series-episode-list__number {
-  color: var(--link-series);
   font-size: 13px;
   font-weight: 700;
+  color: var(--link-series);
+  flex-shrink: 0;
+  width: 34px;
 }
-
 .series-episode-list__content {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
   min-width: 0;
-  display: grid;
-  gap: 4px;
 }
-
 .series-episode-list__title {
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 650;
   color: var(--text-strong);
 }
-
 .series-episode-list__meta {
   font-size: 12px;
   color: var(--text-muted);
 }
-
 .series-episode-list__overview {
-  max-width: 72ch;
   font-size: 14px;
   line-height: 1.5;
   color: var(--text-muted);
 }
 
-.series-review-notice {
-  margin: 40px 0 0;
-  padding: 14px 18px;
-  border-left: 3px solid var(--accent-series);
-  background: var(--bg-muted);
-  color: var(--text-muted);
-  font-size: 0.9rem;
-}
-
-@media (max-width: 1024px) {
-  .series-synopsis__grid {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 32px;
-  }
-
-  .series-aside {
-    position: static;
-  }
-
-  .series-media__grid {
-    grid-template-columns: 1fr 1.7fr;
-    grid-template-areas:
-      "poster stage"
-      "tiles tiles";
-    height: auto;
-  }
-
-  .series-media__poster,
-  .series-media__stage {
-    min-height: 300px;
-  }
-
-  .series-media__tiles {
-    grid-template-rows: none;
-    grid-template-columns: repeat(3, 1fr);
-    height: 120px;
-  }
-}
-
-@media (max-width: 560px) {
-  .series-topbar {
-    padding: 20px 0;
-  }
-
-  .series-media__grid {
-    grid-template-columns: 1fr;
-    grid-template-areas:
-      "stage"
-      "tiles";
-  }
-
-  .series-media__poster {
-    display: none;
-  }
-
-  .series-media__stage {
-    min-height: 240px;
-    padding: 18px;
-  }
-
-  .series-media__tiles {
-    height: 88px;
-  }
-
-  .series-season__head {
-    display: grid;
-    gap: 6px;
-  }
-
-  .series-season__meta {
-    flex-shrink: 1;
-  }
-
-  .series-episode-list__item {
-    grid-template-columns: 40px minmax(0, 1fr);
-    gap: 12px;
-    padding: 12px;
-  }
-}
-
 /* ================================================================== */
-/* Person page                                                        */
+/* Person                                                            */
 /* ------------------------------------------------------------------ */
-/* Pagina publica de pessoa (/pt/pessoas/[slug]/). Superficie NEUTRA/  */
-/* institucional (invariante 11): sem cor de vertical filme/serie. A   */
-/* diferenciacao vem de label ("Pessoa") + badge + breadcrumb + schema */
-/* + URL. Bloco isolado: nao altera os blocos Movie Page nem Series    */
-/* Page acima. Mantem a estetica White Cinematic Editorial (off-white  */
-/* quente, Montserrat, cantos retos), em tom neutro.                   */
-/* ------------------------------------------------------------------ */
-
 .person-page {
-  background: var(--bg-page);
-  padding-bottom: 4rem;
+  padding-bottom: 24px;
 }
-
-.person-page ::selection {
-  background: var(--text-strong);
-  color: #ffffff;
-}
-
-/* Badge "Pessoa" — neutro (nunca vermelho de filme nem verde de serie). */
-.screena-badge--person {
-  background: var(--text-strong);
-  color: #ffffff;
-}
-
-/* Hero do design v2: retrato CIRCULAR de 200px a esquerda + coluna editorial
-   a direita (grid 200px/1fr, gap 48). */
 .person-hero {
   display: grid;
-  grid-template-columns: 200px minmax(0, 1fr);
+  grid-template-columns: 200px 1fr;
   gap: 48px;
   align-items: start;
-  padding: 44px 0 28px;
+  padding: 20px 0 8px;
 }
-
 .person-hero__portrait {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 1 / 1;
-  border-radius: 50%;
+  aspect-ratio: 3 / 4;
+  border-radius: var(--radius);
   overflow: hidden;
-  background: var(--bg-muted);
   border: 1px solid var(--border);
+  background: var(--bg-surface);
 }
-
-.person-hero__image {
+.person-hero__portrait-fallback {
   display: block;
   width: 100%;
   height: 100%;
+  background: linear-gradient(150deg, #26222c, #100d15);
+}
+.person-hero__image {
+  width: 100%;
+  height: 100%;
   object-fit: cover;
+  display: block;
 }
-
-.person-hero__portrait-fallback {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(150deg, #ecebe4, #dedbd1);
-}
-
-.person-hero__lead {
-  min-width: 0;
-}
-
-.person-hero__badge {
-  margin: 0 0 14px;
-}
-
-/* Nome em display forte (design v2: 56px/800/-0.04em, line-height 1). */
 .person-hero__name {
-  margin: 0;
-  font-size: clamp(2.2rem, 4.6vw, 56px);
+  font-size: 56px;
   font-weight: 800;
-  line-height: 1;
   letter-spacing: -0.04em;
   color: var(--text-strong);
+  line-height: 1;
+  margin: 0;
 }
-
 .person-hero__original {
-  margin: 6px 0 0;
-  font-size: 15px;
+  font-size: 14px;
   color: var(--text-muted);
-}
-
-.person-hero__role {
-  margin: 14px 0 0;
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--text-heading);
-}
-
-.person-hero__meta {
   margin: 10px 0 0;
-  font-size: 13px;
+}
+.person-hero__role {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 12px 0 0;
+}
+.person-hero__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 16px 0 0;
+}
+.person-hero__meta {
+  font-size: 12px;
   color: var(--text-muted);
 }
-
 .person-hero__intro {
-  margin: 22px 0 0;
   font-size: 16px;
-  line-height: 1.55;
+  line-height: 1.6;
   color: var(--text-body);
+  margin: 20px 0 0;
   max-width: 68ch;
 }
-
-/* Secoes editoriais (Biografia, Filmografia). */
 .person-section {
   padding: 48px 0 0;
 }
-
-/* Titulos de secao da pessoa em sentence-case forte (design v2: 28px/700/
-   -0.02em — "Conhecido por", "Filmografia", "Detalhes pessoais"). */
 .person-section-title {
   margin: 0 0 24px;
   font-size: 28px;
@@ -1275,773 +1705,81 @@ a {
   letter-spacing: -0.02em;
   color: var(--text-strong);
 }
-
-.person-bio {
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-  max-width: 68ch;
-}
-
 .person-block__body {
-  margin: 0;
   font-size: 16px;
   line-height: 1.7;
   color: var(--text-body);
-  white-space: pre-wrap;
+  margin: 0 0 18px;
+  max-width: var(--measure);
 }
-
-/* Filmografia em card branco (design v2): linhas com ano a esquerda, ponto de
-   tipo (cor = APOIO; o tipo real esta em data-entity-type + URL do link),
-   titulo e papel. Divisores internos suaves. */
 .person-credits {
+  list-style: none;
   margin: 0;
   padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
   background: var(--bg-surface);
   border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
 }
-
 .person-credit {
   display: flex;
-  align-items: baseline;
-  gap: 18px;
+  align-items: center;
+  gap: 16px;
   padding: 16px 22px;
-  border-bottom: 1px solid var(--border-soft);
+  border-top: 1px solid var(--border-soft);
 }
-
-.person-credit:last-child {
-  border-bottom: 0;
+.person-credit:first-child {
+  border-top: none;
 }
-
 .person-credit__year {
-  width: 44px;
-  flex-shrink: 0;
   font-size: 13px;
   font-weight: 700;
   color: var(--text-muted);
+  width: 44px;
+  flex-shrink: 0;
 }
-
 .person-credit__dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
-  align-self: center;
   background: var(--text-muted);
 }
-
 .person-credit[data-entity-type="movie"] .person-credit__dot {
-  background: var(--screena-movie-red);
+  background: var(--accent-movie);
 }
-
 .person-credit[data-entity-type="tv"] .person-credit__dot {
-  background: var(--screena-series-green);
+  background: var(--accent-series);
 }
-
 .person-credit__link {
-  flex: 1;
-  min-width: 0;
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 650;
   color: var(--text-strong);
   text-decoration: none;
-}
-
-.person-credit__link:hover,
-.person-credit__link:focus-visible {
-  text-decoration: underline;
-}
-
-.person-credit__role {
   flex: 1;
+  min-width: 0;
+}
+.person-credit__link:hover {
+  color: var(--link-movie);
+}
+.person-credit[data-entity-type="tv"] .person-credit__link:hover {
+  color: var(--link-series);
+}
+.person-credit__role {
   font-size: 14px;
   color: var(--text-muted);
-}
-
-/* Aviso de revisao editorial (paginas noindex). */
-.person-review-notice {
-  margin: 40px 0 0;
-  padding: 14px 18px;
-  border-left: 3px solid var(--text-muted);
-  background: var(--bg-muted);
-  color: var(--text-muted);
-  font-size: 0.9rem;
-}
-
-@media (max-width: 1024px) {
-  .person-hero {
-    grid-template-columns: 160px minmax(0, 1fr);
-    gap: 28px;
-  }
-}
-
-@media (max-width: 560px) {
-  .person-hero {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 20px;
-  }
-
-  .person-hero__portrait {
-    max-width: 200px;
-  }
-
-  .person-credit {
-    flex-wrap: wrap;
-    padding: 14px 16px;
-  }
-
-  .person-credit__role {
-    flex: 1 0 100%;
-  }
+  flex: 1;
+  min-width: 0;
+  text-align: right;
 }
 
 /* ================================================================== */
-/* Entity indexes                                                     */
+/* Cast strip                                                        */
 /* ------------------------------------------------------------------ */
-/* Listagens publicas (portas de entrada): /pt/filmes/, /pt/series/,   */
-/* /pt/pessoas/. Grade de cards editoriais, muito respiro, estetica    */
-/* White Cinematic Editorial. A cor de vertical (vermelho=filme,       */
-/* verde=serie, neutro=pessoa) e APOIO no hover — nunca o unico sinal  */
-/* (o proprio segmento de URL, o titulo e o breadcrumb ja distinguem). */
-/* Bloco isolado: nao altera Movie/Series/Person Page acima.           */
-/* ------------------------------------------------------------------ */
-
-.entity-index {
-  background: var(--bg-page);
-  padding-bottom: 4rem;
-}
-
-.entity-index[data-vertical="movie"] {
-  --index-accent: var(--screena-movie-red);
-}
-
-.entity-index[data-vertical="series"] {
-  --index-accent: var(--screena-series-green);
-}
-
-.entity-index[data-vertical="person"] {
-  --index-accent: var(--text-strong);
-}
-
-.entity-index__header {
-  padding: 36px 0 8px;
-}
-
-.entity-index__title {
-  margin: 0;
-  font-size: clamp(1.9rem, 3.4vw, 34px);
-  font-weight: 800;
-  line-height: 1.12;
-  letter-spacing: -0.02em;
-  color: var(--text-strong);
-}
-
-.entity-index__desc {
-  margin: 12px 0 0;
-  font-size: 15px;
-  line-height: 1.6;
-  color: var(--text-muted);
-  max-width: 62ch;
-}
-
-/* Grade de resultados do design v2: cards em caixa branca com borda, poster
-   2:3 com badge de tipo e corpo compacto (gap 16px). */
-.entity-grid {
-  list-style: none;
-  margin: 32px 0 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-  gap: 16px;
-}
-
-.entity-card-item {
-  min-width: 0;
-}
-
-.entity-card {
-  display: flex;
-  flex-direction: column;
-  text-decoration: none;
-  color: inherit;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  overflow: hidden;
-  transition: border-color 0.2s ease;
-}
-
-.entity-card:hover,
-.entity-card:focus-visible {
-  border-color: var(--index-accent, var(--text-strong));
-}
-
-.entity-card:focus-visible {
-  outline: 2px solid var(--text-strong);
-  outline-offset: 3px;
-}
-
-.entity-card__media {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 2 / 3;
-  overflow: hidden;
-  background: var(--bg-muted);
-}
-
-/* Badge textual de tipo sobre o poster (design v2). A cor de vertical e apoio:
-   o texto do badge + data-entity-type + URL carregam o sinal (invariante 11). */
-.entity-card__badge {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  line-height: 1;
-  padding: 4px 7px;
-  color: #ffffff;
-  background: var(--text-strong);
-}
-
-.entity-card__badge[data-entity-type="movie"] {
-  background: var(--screena-movie-red);
-}
-
-.entity-card__badge[data-entity-type="series"] {
-  background: var(--screena-series-green);
-}
-
-.entity-card__image {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.entity-card__fallback {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(150deg, #ecebe4, #dedbd1);
-}
-
-.entity-card__body {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-  padding: 11px 12px 13px;
-}
-
-.entity-card__title {
-  font-size: 13.5px;
-  font-weight: 700;
-  line-height: 1.25;
-  color: var(--text-strong);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  transition: color 0.2s ease;
-}
-
-.entity-card:hover .entity-card__title,
-.entity-card:focus-visible .entity-card__title {
-  color: var(--index-accent, var(--text-strong));
-}
-
-.entity-card__meta {
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-/* Notas de estado (truncagem honesta / listagem vazia). */
-.entity-index__more {
-  margin: 28px 0 0;
-  font-size: 13px;
-  color: var(--text-muted);
-}
-
-.entity-index__empty {
-  margin: 32px 0 0;
-  padding: 18px 20px;
-  border-left: 3px solid var(--index-accent);
-  background: var(--bg-muted);
-  color: var(--text-muted);
-  font-size: 0.9rem;
-}
-
-@media (max-width: 560px) {
-  .entity-grid {
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-    gap: 14px;
-  }
-}
-
-/* ================================================================== */
-/* News pages                                                         */
-/* ------------------------------------------------------------------ */
-/* Ambiente editorial/blog: listagem (/pt/noticias/) e artigo          */
-/* (/pt/noticias/[slug]/), a partir dos blocos NEWS/ARTICLE do Claude  */
-/* Design. Tom NEUTRO/institucional (invariante 11): sem cor de        */
-/* vertical filme/serie como identidade. Bloco isolado: nao altera     */
-/* Movie/Series/Person Page nem Entity indexes.                        */
-/* ------------------------------------------------------------------ */
-
-/* ---- Listagem ---- */
-.news-index {
-  background: var(--bg-page);
-  padding-bottom: 4rem;
-}
-
-.news-index__header {
-  padding: 36px 0 8px;
-}
-
-.news-index__title {
-  margin: 0;
-  font-size: clamp(1.9rem, 3.4vw, 34px);
-  font-weight: 800;
-  line-height: 1.12;
-  letter-spacing: -0.02em;
-  color: var(--text-strong);
-}
-
-.news-index__desc {
-  margin: 12px 0 0;
-  font-size: 15px;
-  line-height: 1.6;
-  color: var(--text-muted);
-  max-width: 62ch;
-}
-
-.news-index__featured {
-  margin: 32px 0 0;
-}
-
-.news-index__feed {
-  margin: 48px 0 0;
-}
-
-/* Titulo do feed no padrao de secao do design v2 (dot 7px + 26px/700/-0.02em).
-   O dot fica NEUTRO: noticia e superficie institucional (sem tinta de
-   vertical), diferente das secoes de filme/serie do design. */
-.news-index__feed-title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0 0 22px;
-  font-size: 26px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  color: var(--text-strong);
-}
-
-.news-index__feed-title::before {
-  content: "";
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--text-strong);
-}
-
-.news-grid {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 32px 28px;
-}
-
-.news-grid__item {
-  min-width: 0;
-}
-
-/* "Últimas notícias" do design v2: linhas horizontais (imagem 240px + texto),
-   divisor superior por item, titulo 23px. So dentro do feed da listagem. */
-.news-index__feed .news-grid {
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0;
-}
-
-.news-index__feed .news-card {
-  flex-direction: row;
-  gap: 24px;
-  padding: 26px 0;
-  border-top: 1px solid var(--border);
-}
-
-.news-index__feed .news-card__media {
-  width: 240px;
-  flex-shrink: 0;
-  align-self: flex-start;
-}
-
-.news-index__feed .news-card__title {
-  font-size: 23px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  line-height: 1.2;
-}
-
-.news-index__feed .news-card__deck {
-  max-width: 60ch;
-}
-
-.news-index__more {
-  margin: 32px 0 0;
-  font-size: 13px;
-  color: var(--text-muted);
-}
-
-.news-index__empty {
-  margin: 32px 0 0;
-  padding: 18px 20px;
-  border-left: 3px solid var(--text-muted);
-  background: var(--bg-muted);
-  color: var(--text-muted);
-  font-size: 0.9rem;
-}
-
-/* ---- Card de noticia ---- */
-.news-card {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  text-decoration: none;
-  color: inherit;
-}
-
-.news-card__media {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 16 / 10;
-  overflow: hidden;
-  background: var(--bg-muted);
-  border: 1px solid var(--border);
-}
-
-.news-card[data-variant="featured"] .news-card__media {
-  aspect-ratio: 16 / 8;
-}
-
-.news-card__image {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.news-card__fallback {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(150deg, #ecebe4, #dedbd1);
-}
-
-.news-card__body {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 0;
-}
-
-.news-card__category {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--text-heading);
-}
-
-.news-card__title {
-  font-size: 18px;
-  font-weight: 750;
-  line-height: 1.3;
-  letter-spacing: -0.01em;
-  color: var(--text-strong);
-  transition: color 0.2s ease;
-}
-
-.news-card[data-variant="featured"] .news-card__title {
-  font-size: clamp(22px, 3vw, 27px);
-  font-weight: 800;
-  line-height: 1.18;
-}
-
-/* Hover NEUTRO (sublinhado): noticia e superficie institucional — nao usa o
-   vermelho de filme (--link-movie) como cor de interacao. */
-.news-card:hover .news-card__title,
-.news-card:focus-visible .news-card__title {
-  text-decoration: underline;
-  text-decoration-thickness: 2px;
-  text-underline-offset: 4px;
-}
-
-.news-card:focus-visible {
-  outline: 2px solid var(--text-strong);
-  outline-offset: 3px;
-}
-
-.news-card__deck {
-  font-size: 14px;
-  line-height: 1.6;
-  color: var(--text-muted);
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.news-card__meta {
-  font-size: 11px;
-  color: var(--text-faint);
-}
-
-/* ---- Artigo ---- */
-.news-article {
-  background: var(--bg-page);
-  padding-bottom: 4rem;
-}
-
-/* Hero cinematografico NEUTRO (charcoal), sem tinta de vertical. */
-.news-article__hero {
-  position: relative;
-  width: 100%;
-  min-height: clamp(420px, 46vw, 560px);
-  overflow: hidden;
-  background: radial-gradient(120% 120% at 75% 18%, #2c2c30 0%, #161618 45%, #0a0a0b 100%);
-  display: flex;
-  align-items: flex-end;
-}
-
-.news-article__hero-image {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  opacity: 0.5;
-}
-
-.news-article__hero::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(180deg, rgba(5, 5, 6, 0.35) 0%, rgba(5, 5, 6, 0) 35%, rgba(5, 5, 6, 0.9) 100%);
-}
-
-.news-article__hero-inner {
-  position: relative;
-  z-index: 1;
-  width: 100%;
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 120px var(--container-pad) 56px;
-}
-
-.breadcrumb--onhero {
-  padding: 0 0 22px;
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  color: rgba(255, 255, 255, 0.65);
-}
-
-.breadcrumb--onhero a,
-.breadcrumb--onhero [aria-current="page"] {
-  color: rgba(255, 255, 255, 0.85);
-}
-
-.breadcrumb--onhero li + li::before {
-  color: rgba(255, 255, 255, 0.4);
-}
-
-.news-article__badge {
-  margin: 0 0 18px;
-}
-
-.screena-badge--news {
-  background: var(--screena-white);
-  color: var(--text-strong);
-}
-
-.news-article__title {
-  margin: 0;
-  font-size: clamp(2rem, 5vw, 48px);
-  font-weight: 800;
-  line-height: 1.06;
-  letter-spacing: -0.03em;
-  color: #ffffff;
-  max-width: 20ch;
-}
-
-.news-article__deck {
-  margin: 20px 0 0;
-  font-size: clamp(15px, 2vw, 18px);
-  line-height: 1.55;
-  color: rgba(255, 255, 255, 0.82);
-  max-width: 62ch;
-}
-
-.news-article__meta {
-  margin: 26px 0 0;
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.7);
-}
-
-/* Corpo com leitura confortavel (~720px), justificado com hifenizacao e tom
-   #3a3a3a — exatamente como o artigo do design v2. */
-.news-article__body {
-  max-width: 720px;
-  margin: 0 auto;
-  padding: 56px 0 0;
-  text-align: justify;
-  hyphens: auto;
-}
-
-.news-article__paragraph {
-  margin: 0 0 24px;
-  font-size: 17px;
-  line-height: 1.8;
-  color: var(--text-heading);
-  white-space: pre-wrap;
-}
-
-.news-article__source {
-  margin: 36px 0 0;
-  font-size: 13px;
-  color: var(--text-faint);
-}
-
-.news-article__source-name {
-  color: var(--text-strong);
-  font-weight: 600;
-}
-
-.news-article__ai {
-  margin: 28px 0 0;
-  display: flex;
-  gap: 14px;
-  padding: 18px 22px;
-  background: #f6f3ed;
-  border: 1px solid var(--border);
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--text-muted);
-  text-align: left;
-  hyphens: none;
-}
-
-/* Relacionado (links reais para filme/serie/pessoa). */
-.news-article__related {
-  max-width: 720px;
-  margin: 0 auto;
+.cast-strip {
   padding: 48px 0 0;
 }
-
-.news-article__related-title {
-  margin: 0 0 18px;
-  font-size: 19px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--text-heading);
-}
-
-.news-related {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.news-related__item {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 18px;
-  padding: 13px 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.news-related__item:first-child {
-  border-top: 1px solid var(--border);
-}
-
-.news-related__link {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--text-strong);
-  text-decoration: none;
-}
-
-.news-related__link:hover,
-.news-related__link:focus-visible {
-  text-decoration: underline;
-}
-
-.news-related__type {
-  flex-shrink: 0;
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-
-.news-article__notice {
-  max-width: 720px;
-  margin: 40px auto 0;
-  padding: 14px 18px;
-  border-left: 3px solid var(--text-muted);
-  background: var(--bg-muted);
-  color: var(--text-muted);
-  font-size: 0.9rem;
-}
-
-@media (max-width: 560px) {
-  .news-grid {
-    grid-template-columns: 1fr;
-    gap: 28px;
-  }
-
-  .news-index__feed .news-card {
-    flex-direction: column;
-    gap: 14px;
-  }
-
-  .news-index__feed .news-card__media {
-    width: 100%;
-  }
-
-  .news-index__feed .news-card__title {
-    font-size: 19px;
-  }
-
-  .news-article__hero-inner {
-    padding: 96px var(--container-pad) 40px;
-  }
-}
-
-/* ================================================================== */
-/* Related news                                                       */
-/* ------------------------------------------------------------------ */
-/* Secao "Noticias relacionadas" ao fim das paginas de detalhe         */
-/* (filme/serie/pessoa). So aparece quando ha >= 1 noticia real. Reusa */
-/* os cards `.news-card` do bloco News pages; aqui so o wrapper/grade.  */
-/* Bloco isolado: nao altera Movie/Series/Person Page, Entity indexes   */
-/* nem News pages.                                                     */
-/* ------------------------------------------------------------------ */
-
-.related-news {
-  padding: 56px 0 0;
-}
-
-.related-news__title {
+.cast-strip__title {
   margin: 0 0 24px;
   font-size: 19px;
   font-weight: 800;
@@ -2049,496 +1787,315 @@ a {
   text-transform: uppercase;
   color: var(--text-heading);
 }
-
-.related-news__grid {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 32px 28px;
-}
-
-.related-news__item {
-  min-width: 0;
-}
-
-/* Em filme/serie o design v2 centraliza o titulo e usa cards em caixa branca
-   com sombra ("Artigos relacionados"). */
-.movie-page .related-news__title,
-.series-page .related-news__title {
-  text-align: center;
-  margin-bottom: 28px;
-}
-
-.movie-page .related-news__grid,
-.series-page .related-news__grid {
-  gap: 20px;
-}
-
-.movie-page .related-news .news-card,
-.series-page .related-news .news-card {
-  gap: 0;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.07);
-}
-
-.movie-page .related-news .news-card__media,
-.series-page .related-news .news-card__media {
-  border: none;
-}
-
-.movie-page .related-news .news-card__body,
-.series-page .related-news .news-card__body {
-  padding: 16px 20px 20px;
-}
-
-.movie-page .related-news .news-card__title,
-.series-page .related-news .news-card__title {
-  font-size: 15px;
-}
-
-/* Na pessoa o design v2 usa titulo 28px sentence-case e cards horizontais em
-   2 colunas (imagem a esquerda, texto a direita). */
-.person-page .related-news__title {
-  font-size: 28px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  text-transform: none;
-  color: var(--text-strong);
-}
-
-.person-page .related-news__grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
-}
-
-.person-page .related-news .news-card {
-  flex-direction: row;
-  gap: 0;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-}
-
-.person-page .related-news .news-card__media {
-  width: 42%;
-  flex-shrink: 0;
-  aspect-ratio: auto;
-  border: none;
-}
-
-.person-page .related-news .news-card__body {
-  padding: 20px;
-}
-
-.person-page .related-news .news-card__title {
-  font-size: 17px;
-}
-
-@media (max-width: 900px) {
-  .person-page .related-news__grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-@media (max-width: 560px) {
-  .related-news__grid {
-    grid-template-columns: 1fr;
-    gap: 28px;
-  }
-
-  .person-page .related-news .news-card {
-    flex-direction: column;
-  }
-
-  .person-page .related-news .news-card__media {
-    width: 100%;
-    aspect-ratio: 16 / 10;
-  }
-}
-
-/* ================================================================== */
-/* Portal (home /pt/ + hub /pt/explorar/)                             */
-/* ------------------------------------------------------------------ */
-/* Superficies NEUTRAS/institucionais (invariante 11): sem cor de      */
-/* vertical como identidade — vermelho/verde aparecem apenas como      */
-/* apoio (dot dos titulos de secao, hover dos cards de navegacao),     */
-/* sempre acompanhados do label textual. Reusa a linguagem 5C:         */
-/* .entity-grid/.entity-card e .news-grid/.news-card. Bloco isolado:   */
-/* nao altera Movie/Series/Person/News nem Entity indexes acima.       */
-/* ------------------------------------------------------------------ */
-
-.portal-page {
-  background: var(--bg-page);
-  padding-bottom: 4rem;
-}
-
-.portal-hero {
-  padding: 56px 0 0;
-  max-width: 720px;
-}
-
-.portal-hero--hub {
-  padding-top: 20px;
-}
-
-.portal-hero__title {
-  margin: 0;
-  font-size: clamp(2rem, 4.2vw, 44px);
-  font-weight: 800;
-  line-height: 1.05;
-  letter-spacing: -0.03em;
-  color: var(--text-strong);
-}
-
-.portal-hero__desc {
-  margin: 18px 0 0;
-  font-size: 16px;
-  line-height: 1.6;
-  color: var(--text-muted);
-  max-width: 62ch;
-}
-
-/* Cards de navegacao institucional (rotas reais; sem link morto). */
-.portal-nav {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
-  margin: 40px 0 0;
-}
-
-.portal-nav__card {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 24px 26px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  text-decoration: none;
-  color: inherit;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.portal-nav__card:hover,
-.portal-nav__card:focus-visible {
-  border-color: var(--text-strong);
-  box-shadow: 0 10px 24px rgba(16, 16, 16, 0.08);
-}
-
-.portal-nav__card:focus-visible {
-  outline: 2px solid var(--text-strong);
-  outline-offset: 3px;
-}
-
-/* Cor de vertical como APOIO no hover (o label textual e o sinal). */
-.portal-nav__card[data-vertical="movie"]:hover,
-.portal-nav__card[data-vertical="movie"]:focus-visible {
-  border-color: var(--screena-movie-red);
-}
-
-.portal-nav__card[data-vertical="series"]:hover,
-.portal-nav__card[data-vertical="series"]:focus-visible {
-  border-color: var(--screena-series-green);
-}
-
-.portal-nav__label {
-  font-size: 17px;
-  font-weight: 800;
-  letter-spacing: -0.01em;
-  color: var(--text-strong);
-}
-
-.portal-nav__desc {
-  font-size: 13.5px;
-  line-height: 1.55;
-  color: var(--text-muted);
-}
-
-/* Contagem REAL do banco (so aparece quando > 0). */
-.portal-nav__count {
-  margin-top: 4px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-faint);
-}
-
-.portal-section {
-  padding: 56px 0 0;
-}
-
-.portal-section__head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 18px;
-  margin: 0 0 22px;
-}
-
-/* Titulo de secao no padrao do design v2 (dot 7px + 26px/700/-0.02em).
-   Dot NEUTRO por padrao; vermelho/verde apenas como apoio de vertical. */
-.portal-section__title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0;
-  font-size: 26px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  color: var(--text-strong);
-}
-
-.portal-section__title::before {
-  content: "";
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--text-strong);
-}
-
-.portal-section__title[data-vertical="movie"]::before {
-  background: var(--screena-movie-red);
-}
-
-.portal-section__title[data-vertical="series"]::before {
-  background: var(--screena-series-green);
-}
-
-.portal-section__more {
-  flex-shrink: 0;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--text-strong);
-  text-decoration: none;
-  border-bottom: 2px solid var(--border);
-  padding-bottom: 2px;
-  transition: border-color 0.2s ease;
-}
-
-.portal-section__more:hover,
-.portal-section__more:focus-visible {
-  border-color: var(--text-strong);
-}
-
-.portal-explore-note {
-  margin: 56px 0 0;
-  font-size: 15px;
-  color: var(--text-muted);
-}
-
-.portal-explore-note a {
-  font-weight: 700;
-  color: var(--text-strong);
-  text-decoration: none;
-  border-bottom: 2px solid var(--border);
-  padding-bottom: 2px;
-}
-
-.portal-explore-note a:hover,
-.portal-explore-note a:focus-visible {
-  border-color: var(--text-strong);
-}
-
-@media (max-width: 560px) {
-  .portal-hero {
-    padding-top: 36px;
-  }
-
-  .portal-section__head {
-    flex-wrap: wrap;
-    gap: 10px;
-  }
-}
-
-/* ================================================================== */
-/* Cast strip (elenco principal) + Onde assistir                      */
-/* ------------------------------------------------------------------ */
-/* Secoes das paginas de detalhe (filme/serie). Elenco = dado factual  */
-/* de catalogo (retrato 2:3 + nome + personagem). Onde assistir = so   */
-/* ofertas legais/licenciadas (nome do provedor + modalidade + carimbo */
-/* "Atualizado em"). Estetica White Cinematic Editorial (off-white,    */
-/* cantos retos). A cor de vertical e APOIO no hover do nome com link  */
-/* (invariante 11: label + URL ja diferenciam). Bloco isolado.         */
-/* ------------------------------------------------------------------ */
-
-.cast-strip,
-.watch-providers {
-  padding: 56px 0 0;
-}
-
-/* Titulo de secao no padrao das demais secoes de detalhe (19px/800/0.18em
-   uppercase). Centralizado em filme/serie, como "Sinopse" e "Artigos
-   relacionados" do design v2. */
-.cast-strip__title,
-.watch-providers__title {
-  margin: 0 0 24px;
-  font-size: 19px;
-  font-weight: 800;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--text-heading);
-}
-
-.movie-page .cast-strip__title,
-.movie-page .watch-providers__title,
-.series-page .cast-strip__title,
-.series-page .watch-providers__title {
-  text-align: center;
-  margin-bottom: 28px;
-}
-
-/* --- Elenco --- */
 .cast-strip__list {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
-  gap: 20px 16px;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 24px 20px;
 }
-
 .cast-member {
-  display: flex;
-  flex-direction: column;
+  text-align: center;
   min-width: 0;
 }
-
 .cast-member__media {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 2 / 3;
-  overflow: hidden;
-  background: var(--bg-muted);
-  border: 1px solid var(--border);
-}
-
-.cast-member__image {
   display: block;
+  aspect-ratio: 1;
+  width: 100%;
+  border-radius: 50%;
+  overflow: hidden;
+  background: linear-gradient(150deg, #2e1a18, #130c0b);
+}
+.cast-member__image {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: block;
 }
-
 .cast-member__fallback {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(150deg, #ecebe4, #dedbd1);
+  display: block;
+  width: 100%;
+  height: 100%;
 }
-
 .cast-member__body {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-  padding: 10px 2px 0;
+  display: block;
+  margin-top: 12px;
 }
-
 .cast-member__name {
-  font-size: 13.5px;
-  font-weight: 700;
-  line-height: 1.25;
+  display: block;
+  font-size: 14px;
+  font-weight: 650;
   color: var(--text-strong);
-}
-
-.cast-member__name--link {
   text-decoration: none;
-  transition: color 0.2s ease;
 }
-
-.cast-member__name--link:hover,
-.cast-member__name--link:focus-visible {
-  text-decoration: underline;
-}
-
-.movie-page .cast-member__name--link:hover,
-.movie-page .cast-member__name--link:focus-visible {
+.cast-member__name--link:hover {
   color: var(--link-movie);
 }
-
-.series-page .cast-member__name--link:hover,
-.series-page .cast-member__name--link:focus-visible {
-  color: var(--link-series);
-}
-
 .cast-member__character {
+  display: block;
   font-size: 12px;
-  line-height: 1.4;
   color: var(--text-muted);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  margin-top: 3px;
 }
 
-/* --- Onde assistir --- */
+/* ================================================================== */
+/* Watch providers                                                   */
+/* ------------------------------------------------------------------ */
+.watch-providers {
+  padding: 48px 0 0;
+}
+.watch-providers__title {
+  margin: 0 0 16px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-strong);
+}
 .watch-providers__list {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 10px;
 }
-
-.movie-page .watch-providers__list,
-.series-page .watch-providers__list {
-  justify-content: center;
-}
-
 .watch-provider {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 160px;
-  padding: 16px 18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 18px;
   background: var(--bg-surface);
   border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
 }
-
 .watch-provider__name {
-  font-size: 15px;
-  font-weight: 800;
-  letter-spacing: -0.01em;
+  font-size: 14px;
+  font-weight: 700;
   color: var(--text-strong);
 }
-
 .watch-provider__offers {
-  display: flex;
-  flex-wrap: wrap;
+  display: inline-flex;
   gap: 6px;
 }
-
 .watch-provider__offer {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 11px;
   color: var(--text-muted);
-  border: 1px solid var(--border);
-  padding: 4px 8px;
+  background: var(--bg-tint);
+  border-radius: var(--radius-xs);
+  padding: 2px 7px;
 }
-
 .watch-providers__updated {
-  margin: 18px 0 0;
+  margin: 12px 0 0;
   font-size: 12px;
   color: var(--text-faint);
 }
 
-.movie-page .watch-providers__updated,
-.series-page .watch-providers__updated {
-  text-align: center;
+/* ================================================================== */
+/* Related news                                                      */
+/* ------------------------------------------------------------------ */
+.related-news {
+  padding: 64px 0 0;
+}
+.related-news__title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 26px;
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  color: var(--text-strong);
+}
+.related-news__title::before {
+  content: "";
+  width: 4px;
+  height: 20px;
+  border-radius: 2px;
+  background: var(--accent-movie);
+  flex-shrink: 0;
+}
+.related-news__grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 30px;
+}
+.related-news__item {
+  min-width: 0;
 }
 
-@media (max-width: 560px) {
-  .cast-strip__list {
-    grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
-    gap: 16px 12px;
-  }
+/* ================================================================== */
+/* Estado "em revisao editorial"                                     */
+/* ------------------------------------------------------------------ */
+.review-notice,
+.series-review-notice,
+.person-review-notice {
+  margin: 48px 0 0;
+  padding: 14px 18px;
+  border-left: 3px solid var(--accent-movie);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--bg-muted);
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+.series-review-notice {
+  border-left-color: var(--accent-series);
+}
+.person-review-notice {
+  border-left-color: var(--text-strong);
+}
 
-  .watch-provider {
-    min-width: 0;
-    flex: 1 1 100%;
+/* ================================================================== */
+/* Responsivo                                                        */
+/* ------------------------------------------------------------------ */
+@media (max-width: 1120px) {
+  :root {
+    --container-pad: 40px;
+  }
+  .entity-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+  .cast-strip__list {
+    grid-template-columns: repeat(4, 1fr);
+  }
+  .sc-hero__title {
+    font-size: 60px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .site-header__inner {
+    gap: 18px;
+  }
+  .site-header__nav {
+    gap: 20px;
+  }
+  .portal-nav {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .news-grid,
+  .related-news__grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .movie-media__grid,
+  .series-media__grid {
+    grid-template-columns: 1fr 2fr;
+    height: auto;
+  }
+  .movie-media__tiles,
+  .series-media__tiles {
+    display: none;
+  }
+  .movie-media__poster,
+  .series-media__poster,
+  .movie-media__stage,
+  .series-media__stage {
+    min-height: 260px;
+  }
+  .movie-synopsis__grid,
+  .series-synopsis__grid {
+    grid-template-columns: 1fr;
+  }
+  .person-hero {
+    grid-template-columns: 150px 1fr;
+    gap: 28px;
+  }
+  .news-card[data-variant="featured"] {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+  .news-card[data-variant="featured"] .news-card__media {
+    order: 0;
+    min-height: 240px;
+  }
+  .news-card[data-variant="featured"] .news-card__title {
+    font-size: 28px;
+  }
+}
+
+@media (max-width: 640px) {
+  :root {
+    --container-pad: 20px;
+  }
+  body {
+    line-height: 1.55;
+  }
+  .site-header__nav {
+    display: none;
+  }
+  .entity-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+  }
+  .cast-strip__list {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .news-grid,
+  .related-news__grid,
+  .portal-nav {
+    grid-template-columns: 1fr;
+  }
+  .sc-hero {
+    min-height: 520px;
+  }
+  .sc-hero__inner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 20px;
+    padding-bottom: 48px;
+  }
+  .sc-hero__aside {
+    display: none;
+  }
+  .sc-hero__title {
+    font-size: 44px;
+  }
+  .sc-hero__title--sm {
+    font-size: 40px;
+  }
+  .portal-hero__title,
+  .entity-index__title,
+  .news-index__title {
+    font-size: 34px;
+  }
+  .entity-index__title::before,
+  .news-index__title::before {
+    height: 30px;
+  }
+  .movie-topbar__title,
+  .series-topbar__title {
+    font-size: 28px;
+  }
+  .person-hero {
+    grid-template-columns: 1fr;
+  }
+  .person-hero__portrait {
+    max-width: 180px;
+  }
+  .person-hero__name {
+    font-size: 40px;
+  }
+  .movie-media__grid,
+  .series-media__grid {
+    grid-template-columns: 1fr;
+  }
+  .news-article__title {
+    font-size: 34px;
+  }
+  .news-article__hero-inner {
+    padding: 130px 20px 48px;
+  }
+  .news-article__body {
+    text-align: left;
+  }
+  .site-footer__inner {
+    grid-template-columns: 1fr;
+    gap: 40px;
+  }
+  .site-footer__cols {
+    grid-template-columns: repeat(2, 1fr);
   }
 }

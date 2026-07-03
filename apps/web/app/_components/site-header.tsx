@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { HOME_HREF, NAV_ITEMS } from "../../src/lib/navigation";
+import { EXPLORE_PATH } from "../../src/lib/site";
 
 /**
  * SiteHeader — cabecalho/navegacao global do app publico @screena/web.
@@ -59,6 +60,18 @@ export function SiteHeader(): ReactNode {
             </a>
           ))}
         </nav>
+
+        {/* Acao de busca: o icone leva ao hub /pt/explorar/ (rota real). Nao ha
+            campo de busca funcional (busca esta fora de escopo); apenas um link,
+            mantendo o header puro (invariantes 3/4). */}
+        <div className="site-header__actions">
+          <a className="site-header__search" href={EXPLORE_PATH} aria-label="Explorar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" />
+              <line x1="16.6" y1="16.6" x2="21" y2="21" />
+            </svg>
+          </a>
+        </div>
       </div>
     </header>
   );
