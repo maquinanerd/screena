@@ -30,7 +30,11 @@ import {
 } from "../lib/movie-indexability";
 import { movieCanonicalUrl } from "../lib/site";
 import { getRelatedNewsForEntity } from "./related-news";
+import { getCastForEntity } from "./entity-cast";
+import { getWatchForEntity } from "./entity-watch";
 import type { NewsCardView } from "../lib/news-presenter";
+import type { CastMemberView } from "../lib/cast-presenter";
+import type { WatchView } from "../lib/watch-presenter";
 
 /** Idioma de publicacao do MVP (invariante 7): pt-BR indexa primeiro. */
 const LANGUAGE_CODE = "pt-BR";
@@ -45,6 +49,10 @@ export interface MoviePageData {
   canonicalUrl: string;
   /** Noticias relacionadas publicaveis (EntityNewsLink); [] quando nao houver. */
   relatedNews: NewsCardView[];
+  /** Elenco principal (cast_members/people); [] quando nao houver. */
+  cast: CastMemberView[];
+  /** Onde assistir (watch_availability licenciado no BR); vazio omite a secao. */
+  watch: WatchView;
 }
 
 /**
@@ -66,7 +74,8 @@ export const getMoviePageData = cache(
 
     const entityId = slugRow.entityId;
 
-    const [movie, canonicalSlugRow, translation, contentBlocks, relatedNews] = await Promise.all([
+    const [movie, canonicalSlugRow, translation, contentBlocks, relatedNews, cast, watch] =
+      await Promise.all([
       prisma.movie.findUnique({
         where: { id: entityId },
         select: {
@@ -107,6 +116,8 @@ export const getMoviePageData = cache(
         select: { blockType: true, content: true, reviewStatus: true },
       }),
       getRelatedNewsForEntity(prisma, ENTITY_TYPE, entityId),
+      getCastForEntity(prisma, ENTITY_TYPE, entityId),
+      getWatchForEntity(prisma, ENTITY_TYPE, entityId),
     ]);
 
     if (movie === null) return null;
@@ -142,6 +153,8 @@ export const getMoviePageData = cache(
       canonicalSlug,
       canonicalUrl: movieCanonicalUrl(canonicalSlug),
       relatedNews,
+      cast,
+      watch,
     };
   },
 );

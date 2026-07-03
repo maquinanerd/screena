@@ -47,6 +47,7 @@ export default async function SeriesIndexPage() {
       canonicalUrl={canonicalUrl}
       vertical="series"
       view={view}
+      emptyMessage="Nenhuma série disponível ainda."
     />
   );
 }

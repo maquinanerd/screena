@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 import { getSeriesPageData } from "../../../../src/server/series-page";
 import { SITE_URL } from "../../../../src/lib/site";
 import { RelatedNewsSection } from "../../../_components/related-news-section";
+import { CastStrip } from "../../../_components/cast-strip";
+import { WatchProviders } from "../../../_components/watch-providers";
 
 /**
  * Pagina publica de serie - /pt/series/[slug]/ (schema TVSeries, acento verde).
@@ -66,7 +68,7 @@ export default async function SeriesPage({
   const data = await getSeriesPageData(slug);
   if (data === null) notFound();
 
-  const { view, indexability, canonicalUrl, relatedNews } = data;
+  const { view, indexability, canonicalUrl, relatedNews, cast, watch } = data;
   const isUnderReview = indexability.decision !== "index";
   const metaItems = [view.seasonsCountLabel, view.episodesCountLabel].filter(
     (item): item is string => item !== null,
@@ -280,6 +282,22 @@ export default async function SeriesPage({
               })}
             </div>
           </section>
+        </div>
+      ) : null}
+
+      {/* Elenco principal (cast_members/people) — dado factual de catalogo. So
+          aparece quando ha elenco real; nunca inventa nomes nem personagens. */}
+      {cast.length > 0 ? (
+        <div className="container">
+          <CastStrip heading="Elenco principal" members={cast} />
+        </div>
+      ) : null}
+
+      {/* Onde assistir (watch_availability licenciado no BR). So aparece com
+          oferta `display_allowed` legal; nunca exibe pirataria nem nota. */}
+      {watch.providers.length > 0 ? (
+        <div className="container">
+          <WatchProviders heading="Onde assistir" view={watch} />
         </div>
       ) : null}
 

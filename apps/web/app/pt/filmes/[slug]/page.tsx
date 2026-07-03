@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 import { getMoviePageData } from "../../../../src/server/movie-page";
 import { MOVIES_INDEX_PATH, SITE_URL } from "../../../../src/lib/site";
 import { RelatedNewsSection } from "../../../_components/related-news-section";
+import { CastStrip } from "../../../_components/cast-strip";
+import { WatchProviders } from "../../../_components/watch-providers";
 
 /**
  * Pagina publica de filme — /pt/filmes/[slug]/ (schema Movie, acento vermelho).
@@ -81,7 +83,7 @@ export default async function MoviePage({
   const data = await getMoviePageData(slug);
   if (data === null) notFound();
 
-  const { view, indexability, canonicalUrl, relatedNews } = data;
+  const { view, indexability, canonicalUrl, relatedNews, cast, watch } = data;
   const isUnderReview = indexability.decision !== "index";
 
   // Duracao visivel (so o que existe no payload; ano vai no titulo, nao aqui).
@@ -253,6 +255,22 @@ export default async function MoviePage({
               ) : null}
             </div>
           </section>
+        </div>
+      ) : null}
+
+      {/* Elenco principal (cast_members/people) — dado factual de catalogo. So
+          aparece quando ha elenco real; nunca inventa nomes nem personagens. */}
+      {cast.length > 0 ? (
+        <div className="container">
+          <CastStrip heading="Elenco principal" members={cast} />
+        </div>
+      ) : null}
+
+      {/* Onde assistir (watch_availability licenciado no BR). So aparece com
+          oferta `display_allowed` legal; nunca exibe pirataria nem nota. */}
+      {watch.providers.length > 0 ? (
+        <div className="container">
+          <WatchProviders heading="Onde assistir" view={watch} />
         </div>
       ) : null}
 
