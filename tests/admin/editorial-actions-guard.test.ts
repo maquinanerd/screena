@@ -53,8 +53,16 @@ const FORBIDDEN_METHODS = [
   ".$queryRaw",
 ];
 
-/** Campos NAO editoriais que nunca podem virar chave de `data:` nesta fase. */
-const FORBIDDEN_DATA_KEYS = ["title", "slug", "body", "content", "publishedAt"];
+/** Campos NAO editoriais que nunca podem virar chave de `data:` (7A + 7C). */
+const FORBIDDEN_DATA_KEYS = [
+  "title",
+  "slug",
+  "body",
+  "content",
+  "publishedAt",
+  "licenseStatus",
+  "displayAllowed",
+];
 
 function stripComments(content: string): string {
   const noBlocks = content.replace(/\/\*[\s\S]*?\*\//g, (match) => match.replace(/[^\n]/g, " "));
@@ -126,9 +134,15 @@ describe("arquivo de acoes editoriais: superficie de escrita minima (Fase 7A)", 
   it("escreve SO em articleTranslation e contentBlock", () => {
     expect(code).toContain("prisma.articleTranslation.update(");
     expect(code).toContain("prisma.contentBlock.update(");
-    // Exatamente 2 tipos de alvo de update (artigo x2 + block x1 = 3 chamadas).
+    // Fase 7C: 2 tipos de alvo. `.update(` = 3 unitarios (artigo x2 + block x1) +
+    // 2 em lote (artigo x1 + block x1) = 5 chamadas. Nunca updateMany.
     const updateCalls = code.split(".update(").length - 1;
-    expect(updateCalls).toBe(3);
+    expect(updateCalls).toBe(5);
+  });
+
+  it("expoe as Server Actions de lote (Fase 7C) no mesmo arquivo allowlisted", () => {
+    expect(code).toContain("export async function runBulkArticleEditorialAction");
+    expect(code).toContain("export async function runBulkContentBlockEditorialAction");
   });
 
   it("nao muta campo nao editorial (title/slug/body/content/publishedAt) como chave de data", () => {

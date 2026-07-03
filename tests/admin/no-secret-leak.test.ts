@@ -236,3 +236,29 @@ describe("Fase 7B: preview e fila de revisao nao vazam segredo", () => {
     }
   });
 });
+
+/**
+ * Fase 7C: workflow + acoes em lote nao vazam segredo. `editorial-workflow.ts` e
+ * os componentes de lote vivem fora do scan padrao (src/server, src/components);
+ * o resultado de lote so carrega contagens inteiras (sem payload).
+ */
+describe("Fase 7C: workflow e acoes em lote nao vazam segredo", () => {
+  const FILES_7C = [
+    resolve(process.cwd(), "apps", "admin", "src", "server", "editorial-workflow.ts"),
+    resolve(process.cwd(), "apps", "admin", "src", "lib", "editorial-bulk-policy.ts"),
+    resolve(process.cwd(), "apps", "admin", "src", "components", "bulk-action-panel.tsx"),
+    resolve(process.cwd(), "apps", "admin", "src", "components", "bulk-select-table.tsx"),
+    resolve(process.cwd(), "apps", "admin", "app", "workflow", "page.tsx"),
+  ];
+
+  it("nao contem env sensivel, Authorization, DATABASE_URL nem render de senha", async () => {
+    for (const file of FILES_7C) {
+      const code = stripComments(await readFile(file, "utf-8"));
+      expect(code, `${file}: senha`).not.toContain("process.env.ADMIN_BASIC_AUTH_PASSWORD");
+      expect(code, `${file}: usuario`).not.toContain("process.env.ADMIN_BASIC_AUTH_USER");
+      expect(code, `${file}: DATABASE_URL`).not.toContain("process.env.DATABASE_URL");
+      expect(code.toLowerCase(), `${file}: Authorization`).not.toContain("authorization");
+      expect(/\.(?:password|pass|senha)\b/i.test(code), `${file}: render de senha`).toBe(false);
+    }
+  });
+});

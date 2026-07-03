@@ -112,9 +112,9 @@ export default function AdminSecurityPage(): ReactNode {
 
       <h3 className="admin-security-heading">Acoes editoriais (escrita controlada)</h3>
       <p className="admin-meta">
-        A escrita editorial (alterar review_status / index_status) so funciona com a flag
-        habilitada, alem do Basic Auth em production-like. O valor da flag nunca e exibido — so o
-        estado derivado.
+        A escrita editorial (alterar review_status / index_status), INCLUSIVE as acoes em LOTE do
+        workflow, so funciona com a flag habilitada, alem do Basic Auth em production-like. O valor
+        da flag nunca e exibido — so o estado derivado.
       </p>
       <DiagnosticList rows={editorialRows} />
 

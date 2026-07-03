@@ -239,3 +239,34 @@ describe("Fase 7B: preview publico e fila de revisao nao escrevem", () => {
     }
   });
 });
+
+/**
+ * Fase 7C: o workflow (/workflow), o helper `editorial-workflow.ts`, o lib
+ * `editorial-bulk-policy.ts` e os componentes de lote NAO introduzem superficie
+ * de escrita — sem route handler, sem "use server", sem verbo de mutacao. As
+ * Server Actions de lote vivem SO no arquivo allowlisted `editorial-actions.ts`.
+ */
+describe("Fase 7C: workflow e componentes de lote nao escrevem", () => {
+  const WORKFLOW_DIR = resolve(process.cwd(), "apps", "admin", "app", "workflow");
+  const FILES = [
+    resolve(WORKFLOW_DIR, "page.tsx"),
+    resolve(process.cwd(), "apps", "admin", "src", "server", "editorial-workflow.ts"),
+    resolve(process.cwd(), "apps", "admin", "src", "lib", "editorial-bulk-policy.ts"),
+    resolve(process.cwd(), "apps", "admin", "src", "components", "bulk-action-panel.tsx"),
+    resolve(process.cwd(), "apps", "admin", "src", "components", "bulk-select-table.tsx"),
+  ];
+
+  it("nao ha route.* dentro de app/workflow", async () => {
+    for (const ext of [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]) {
+      expect(await pathExists(resolve(WORKFLOW_DIR, `route${ext}`))).toBe(false);
+    }
+  });
+
+  it("workflow/helper/lib/componentes de lote nao usam server action nem verbo de escrita", async () => {
+    for (const file of FILES) {
+      const content = await readFile(file, "utf-8");
+      expect(hasUseServerDirective(content)).toBe(false);
+      expect(detectWriteMethodExports(content)).toEqual([]);
+    }
+  });
+});
