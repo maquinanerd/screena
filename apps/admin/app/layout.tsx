@@ -47,6 +47,7 @@ export default function AdminLayout({ children }: { children: ReactNode }): Reac
           </p>
           <nav className="admin-nav">
             <a href="/">Dashboard</a>
+            <a href="/qa">QA</a>
             <a href="/workflow">Workflow</a>
             <a href="/review-queue">Fila de revisao</a>
             <a href="/articles">Artigos</a>

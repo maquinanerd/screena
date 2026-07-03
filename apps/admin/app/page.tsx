@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { getContentQaData } from "../src/server/content-qa";
 import { getDashboardData } from "../src/server/dashboard";
 
 /**
@@ -44,7 +45,9 @@ function Cards({ cards }: { cards: CountCard[] }): ReactNode {
 
 export default async function AdminDashboardPage(): Promise<ReactNode> {
   const data = await getDashboardData();
+  const qa = await getContentQaData();
   const actions = data.editorialActions;
+  const qaCritical = qa.articles.bySeverity.critical + qa.blocks.bySeverity.critical;
 
   const articleCards: CountCard[] = [
     { label: "Pendentes de revisao", value: data.articleReview.pending, href: "/articles?status=pending" },
@@ -79,6 +82,34 @@ export default async function AdminDashboardPage(): Promise<ReactNode> {
         <span className="admin-flag__note">
           Controladas por <code>{actions.envKey}</code> (valor nunca exibido).
         </span>
+      </div>
+
+      <h2 className="admin-section-title">QA editorial</h2>
+      <div className="admin-cards">
+        <a className="admin-card admin-card--link" href="/qa">
+          <div className="admin-card__title">Abrir QA →</div>
+          <div className="admin-card__label">Score, criticos, cobertura e slugs duplicados.</div>
+        </a>
+        <div className="admin-card">
+          <div className="admin-card__value">{qa.overallScore}</div>
+          <div className="admin-card__label">Score de QA / 100</div>
+        </div>
+        <div className="admin-card">
+          <div className="admin-card__value">{qaCritical}</div>
+          <div className="admin-card__label">Itens criticos (amostra)</div>
+        </div>
+        <div className="admin-card">
+          <div className="admin-card__value">{qa.visibleNoindexArticles.length}</div>
+          <div className="admin-card__label">Visiveis mas noindex (amostra)</div>
+        </div>
+        <div className="admin-card">
+          <div className="admin-card__value">{qa.indexReadyArticles.length}</div>
+          <div className="admin-card__label">Prontos para indexar (amostra)</div>
+        </div>
+        <div className="admin-card">
+          <div className="admin-card__value">{qa.problemBlocks.length}</div>
+          <div className="admin-card__label">Blocks com problema (amostra)</div>
+        </div>
       </div>
 
       <h2 className="admin-section-title">Workflow editorial</h2>
