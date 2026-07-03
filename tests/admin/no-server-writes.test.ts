@@ -213,3 +213,29 @@ describe("a rota /security nao introduz superficie de escrita", () => {
     }
   });
 });
+
+/**
+ * Fase 7B: a fila de revisao (/review-queue), o helper `review-queue.ts` e o lib
+ * `public-readiness.ts` NAO introduzem superficie de escrita — sem route handler,
+ * sem "use server", sem verbo de mutacao.
+ */
+describe("Fase 7B: preview publico e fila de revisao nao escrevem", () => {
+  const QUEUE_DIR = resolve(process.cwd(), "apps", "admin", "app", "review-queue");
+  const QUEUE_PAGE = resolve(QUEUE_DIR, "page.tsx");
+  const QUEUE_HELPER = resolve(process.cwd(), "apps", "admin", "src", "server", "review-queue.ts");
+  const READINESS_LIB = resolve(process.cwd(), "apps", "admin", "src", "lib", "public-readiness.ts");
+
+  it("nao ha route.* dentro de app/review-queue", async () => {
+    for (const ext of [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]) {
+      expect(await pathExists(resolve(QUEUE_DIR, `route${ext}`))).toBe(false);
+    }
+  });
+
+  it("page, helper e lib nao usam server action nem exportam verbo de escrita", async () => {
+    for (const file of [QUEUE_PAGE, QUEUE_HELPER, READINESS_LIB]) {
+      const content = await readFile(file, "utf-8");
+      expect(hasUseServerDirective(content)).toBe(false);
+      expect(detectWriteMethodExports(content)).toEqual([]);
+    }
+  });
+});
