@@ -32,7 +32,12 @@ export default function RootLayout({
   children: ReactNode;
 }): ReactNode {
   return (
-    <html lang="pt-BR">
+    // suppressHydrationWarning: extensoes de navegador (ex.: LanguageTool injeta
+    // `data-lt-installed`) alteram atributos do <html> ANTES do React hidratar,
+    // gerando um mismatch de hidratacao (o "1 Issue" do dev overlay). Suprimir o
+    // aviso SO neste elemento e o padrao recomendado — nao mascara mismatch do
+    // proprio app (o servidor continua limpo; o atributo vem do browser).
+    <html lang="pt-BR" suppressHydrationWarning>
       <body>
         <SiteHeader />
         {children}
