@@ -262,3 +262,26 @@ describe("Fase 7C: workflow e acoes em lote nao vazam segredo", () => {
     }
   });
 });
+
+/**
+ * Fase 7D: o QA editorial nao vaza segredo. `content-qa.ts` (server) vive fora do
+ * scan padrao; o QA so exibe categorias/severidades/score (sem corpo/segredo).
+ */
+describe("Fase 7D: QA editorial nao vaza segredo", () => {
+  const FILES_7D = [
+    resolve(process.cwd(), "apps", "admin", "src", "server", "content-qa.ts"),
+    resolve(process.cwd(), "apps", "admin", "src", "lib", "content-qa.ts"),
+    resolve(process.cwd(), "apps", "admin", "app", "qa", "page.tsx"),
+  ];
+
+  it("nao contem env sensivel, Authorization, DATABASE_URL nem render de senha", async () => {
+    for (const file of FILES_7D) {
+      const code = stripComments(await readFile(file, "utf-8"));
+      expect(code, `${file}: senha`).not.toContain("process.env.ADMIN_BASIC_AUTH_PASSWORD");
+      expect(code, `${file}: usuario`).not.toContain("process.env.ADMIN_BASIC_AUTH_USER");
+      expect(code, `${file}: DATABASE_URL`).not.toContain("process.env.DATABASE_URL");
+      expect(code.toLowerCase(), `${file}: Authorization`).not.toContain("authorization");
+      expect(/\.(?:password|pass|senha)\b/i.test(code), `${file}: render de senha`).toBe(false);
+    }
+  });
+});

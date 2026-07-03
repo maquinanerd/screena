@@ -123,7 +123,8 @@ export default async function AdminWorkflowPage({
         <strong>Workflow editorial.</strong> Visao operacional para decidir e agir em lote pequeno
         (ate {data.limit} por seccao, no maximo 20 por acao). As acoes exigem
         <code> ADMIN_EDITORIAL_ACTIONS_ENABLED=true</code> e passam pela mesma allowlist de escrita.
-        Veja tambem a <a href="/review-queue">fila de revisao</a>.
+        Veja tambem a <a href="/review-queue">fila de revisao</a> e o{" "}
+        <a href="/qa">QA editorial</a>.
       </p>
 
       <EditorialFeedbackBanner feedback={feedback} />

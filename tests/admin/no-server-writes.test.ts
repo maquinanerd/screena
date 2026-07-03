@@ -270,3 +270,31 @@ describe("Fase 7C: workflow e componentes de lote nao escrevem", () => {
     }
   });
 });
+
+/**
+ * Fase 7D: o QA (/qa), o helper `content-qa.ts` (server) e o lib `content-qa.ts`
+ * NAO introduzem superficie de escrita — sem route handler, sem "use server",
+ * sem verbo de mutacao.
+ */
+describe("Fase 7D: QA editorial nao escreve", () => {
+  const QA_DIR = resolve(process.cwd(), "apps", "admin", "app", "qa");
+  const QA_FILES = [
+    resolve(QA_DIR, "page.tsx"),
+    resolve(process.cwd(), "apps", "admin", "src", "server", "content-qa.ts"),
+    resolve(process.cwd(), "apps", "admin", "src", "lib", "content-qa.ts"),
+  ];
+
+  it("nao ha route.* dentro de app/qa", async () => {
+    for (const ext of [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]) {
+      expect(await pathExists(resolve(QA_DIR, `route${ext}`))).toBe(false);
+    }
+  });
+
+  it("qa page/helper/lib nao usam server action nem exportam verbo de escrita", async () => {
+    for (const file of QA_FILES) {
+      const content = await readFile(file, "utf-8");
+      expect(hasUseServerDirective(content)).toBe(false);
+      expect(detectWriteMethodExports(content)).toEqual([]);
+    }
+  });
+});

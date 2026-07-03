@@ -60,9 +60,10 @@ describe("pagina de workflow editorial (Fase 7C)", () => {
     expect(raw).toContain("Workflow editorial");
   });
 
-  it("linka para a fila de revisao e para o detalhe (Revisar)", async () => {
+  it("linka para a fila de revisao, o QA (Fase 7D) e o detalhe (Revisar)", async () => {
     const code = stripComments(await readFile(WORKFLOW_PAGE, "utf-8"));
     expect(code).toContain("/review-queue");
+    expect(code).toContain("/qa");
     expect(code).toContain("Revisar");
   });
 
