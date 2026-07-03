@@ -46,11 +46,18 @@
   --text-muted: #6e6e6e;
   --text-faint: #9a958c;
 
-  /* Acentos de vertical = tokens canonicos (nunca forka a cor de marca). */
-  --accent-movie: var(--screena-movie-red);
-  --accent-series: var(--screena-series-green);
-  --link-movie: #8a1e1a; /* links em texto na pagina de filme */
-  --link-series: #395c42; /* links em texto na pagina de serie */
+  /*
+   * Acentos de vertical do TEMA. Por ordem humana explicita (task Fase 9B: "design
+   * vem do bundle, nao aproxime"), usam o hex EXATO da tela canonica v4 do Claude
+   * Design (#F0443E filme / #7FA56F serie) para fidelidade maxima. Os tokens de marca
+   * canonicos (`--screena-movie-red`/`--screena-series-green`, espelho de
+   * @screena/config) permanecem definidos acima; a associacao invariante
+   * filme=vermelho / serie=verde e preservada.
+   */
+  --accent-movie: #f0443e;
+  --accent-series: #7fa56f;
+  --link-movie: #8a1e1a; /* links em texto na pagina de filme (v4) */
+  --link-series: #395c42; /* links em texto na pagina de serie (v4) */
 
   /* Apoio do design v4 (nao sao cor de vertical). */
   --accent-yellow: #f5c518; /* amarelo Screen: botoes/ticker/rank */
