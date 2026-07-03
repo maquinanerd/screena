@@ -1,19 +1,22 @@
 import type { Metadata } from "next";
 
-import { HomeV4Hero, HomeV4Ticker } from "../_components/home-v4-hero";
+import { HomeV4Header } from "../_components/home-v4-header";
+import { HomeV4Hero, HomeV4Ticker, type HeroDetail } from "../_components/home-v4-hero";
 import {
   HomeV4ComingRail,
   HomeV4PlatformTabs,
   HomeV4PosterRail,
   HomeV4RankRail,
+  HomeV4SeriesFeatureRail,
   type RankItem,
 } from "../_components/home-v4-rails";
-import { HomeV4NewsMagazine, HomeV4StatsBand, type HomeStat } from "../_components/home-v4-blocks";
+import { HomeV4NewsMagazine, HomeV4StatsBand } from "../_components/home-v4-blocks";
 import {
   getMovieIndexData,
-  getPersonIndexData,
   getSeriesIndexData,
 } from "../../src/server/entity-indexes";
+import { getMoviePageData } from "../../src/server/movie-page";
+import { getSeriesPageData } from "../../src/server/series-page";
 import { getNewsIndexData } from "../../src/server/news-pages";
 import type { EntityCard } from "../../src/lib/entity-index-presenter";
 import {
@@ -31,17 +34,17 @@ import {
 
 /**
  * Home publica pt-BR — /pt/. Estrutura visual portada com fidelidade da tela
- * canonica do Claude Design `Screen Screens v4.dc.html` (bloco HOME): hero
- * cinematografico escuro + faixa de destaque + Top 10 + Filmes em alta + faixa
- * de metricas + Series da semana + Em breve + Noticias (magazine) + footer.
+ * canonica do Claude Design `Screen Screens v4.dc.html` (bloco HOME).
  *
  * Server component puro (invariantes 3/4): le SO PostgreSQL pelos getters de
- * listagem ja existentes; zero API externa, zero Gemini, zero TMDB no render.
- * NADA e inventado: sem nota/estrela fake, sem disponibilidade fake, sem numero
- * alto fabricado. As secoes so aparecem quando ha dado real (com estado vazio
- * consistente na de noticias); os mesmos titulos reais podem aparecer em secoes
- * diferentes quando o catalogo e pequeno. Gate anti-thin (invariante 5): com
- * menos de 2 secoes com dado real, a home existe mas recebe `noindex`.
+ * listagem/detalhe ja existentes; zero API externa, zero Gemini, zero TMDB.
+ * NADA e inventado: sem nota/estrela, sem disponibilidade fake, sem numero de
+ * usuario fabricado; a faixa "Seu mes em numeros" fica em estado neutro (0).
+ *
+ * VITRINE VISUAL: como o catalogo demo e pequeno, os trilhos sao PREENCHIDOS
+ * reutilizando os MESMOS titulos reais (`fillTo`) para preservar o layout do
+ * design — isolado como fallback de demonstracao, nunca dado novo inventado.
+ * Gate anti-thin (invariante 5) usa as contagens REAIS (nao as preenchidas).
  */
 
 export const dynamic = "force-dynamic";
@@ -50,7 +53,7 @@ const HOME_TITLE = "Screen — filmes, séries, pessoas e notícias";
 const HOME_DESCRIPTION =
   "Base editorial de entretenimento em português: fichas de filmes e séries, perfis de pessoas e notícias com curadoria própria da redação do Screen.";
 
-/** Intercala dois conjuntos preservando a ordem de cada um (sem inventar). */
+/** Intercala dois conjuntos preservando a ordem de cada um. */
 function interleave(a: readonly EntityCard[], b: readonly EntityCard[]): EntityCard[] {
   const out: EntityCard[] = [];
   const max = Math.max(a.length, b.length);
@@ -61,11 +64,40 @@ function interleave(a: readonly EntityCard[], b: readonly EntityCard[]): EntityC
   return out;
 }
 
+/**
+ * Preenche uma grade ate `n` itens REUTILIZANDO os itens reais (demo). Cicla os
+ * mesmos titulos — nunca cria entidade nem dado novo. Vazio permanece vazio.
+ */
+function fillTo(items: readonly EntityCard[], n: number): EntityCard[] {
+  if (items.length === 0) return [];
+  const out: EntityCard[] = [];
+  for (let i = 0; i < n; i += 1) out.push(items[i % items.length]!);
+  return out;
+}
+
+/** Extrai o slug canonico do href da ficha (`/pt/filmes/{slug}/`). */
+function slugFromHref(href: string): string | null {
+  const parts = href.split("/").filter((p) => p !== "");
+  return parts.length > 0 ? parts[parts.length - 1]! : null;
+}
+
+/** Detalhe REAL do destaque (elenco + sinopse) para o painel lateral do hero. */
+async function getFeaturedDetail(featured: EntityCard | null): Promise<HeroDetail | null> {
+  if (featured === null || featured.kind === "person") return null;
+  const slug = slugFromHref(featured.href);
+  if (slug === null) return null;
+  const data =
+    featured.kind === "movie" ? await getMoviePageData(slug) : await getSeriesPageData(slug);
+  if (data === null) return null;
+  const castNames =
+    data.cast.length > 0 ? data.cast.slice(0, 3).map((member) => member.name).join(", ") : null;
+  return { castNames, synopsis: data.view.metaDescription };
+}
+
 async function getHomeData() {
-  const [movies, series, people, news] = await Promise.all([
+  const [movies, series, news] = await Promise.all([
     getMovieIndexData(),
     getSeriesIndexData(),
-    getPersonIndexData(),
     getNewsIndexData(),
   ]);
 
@@ -77,29 +109,23 @@ async function getHomeData() {
     movieCards[0] ??
     seriesCards[0] ??
     null;
+  const featuredDetail = await getFeaturedDetail(featured);
 
   const mixed = interleave(movieCards, seriesCards);
-  const topTen = mixed.slice(0, 10);
+  const topTen = fillTo(mixed, 10);
   const rankBig: RankItem[] = topTen.slice(0, 4).map((card, i) => ({ card, rank: i + 1 }));
   const rankSmall: RankItem[] = topTen.slice(4, 10).map((card, i) => ({ card, rank: i + 5 }));
 
-  const filmesAlta = movieCards.slice(0, 6);
-  const seriesWeek = seriesCards.slice(0, 6);
-  const coming = mixed.slice(0, 6);
+  const filmesAlta = fillTo(movieCards, 6);
+  const seriesFeature = fillTo(seriesCards, 6);
+  const seriesGrid = fillTo(seriesCards, 6);
+  const coming = fillTo(mixed, 5);
 
   const newsFeatured = news.view.featured;
   const newsCards = news.view.cards.slice(0, 4);
   const newsPopulated = (newsFeatured !== null ? 1 : 0) + newsCards.length;
 
-  // Faixa preta: metricas REAIS do catalogo (contagens do banco), nunca numeros
-  // fabricados nem estatistica pessoal de usuario inexistente.
-  const stats: HomeStat[] = [
-    { value: String(movies.view.totalCount), label: "filmes" },
-    { value: String(series.view.totalCount), label: "séries" },
-    { value: String(people.view.totalCount), label: "pessoas" },
-    { value: String(news.view.totalCount), label: "notícias" },
-  ];
-
+  // Gate anti-thin usa as contagens REAIS (nunca as preenchidas para vitrine).
   const indexability = evaluatePortalIndexability({
     populatedSectionCount: countPopulatedSections([
       movieCards.length,
@@ -110,14 +136,15 @@ async function getHomeData() {
 
   return {
     featured,
+    featuredDetail,
     rankBig,
     rankSmall,
     filmesAlta,
-    seriesWeek,
+    seriesFeature,
+    seriesGrid,
     coming,
     newsFeatured,
     newsCards,
-    stats,
     indexability,
   };
 }
@@ -135,27 +162,47 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
+/** Setas circulares decorativas do cabecalho de secao (sem carrossel JS). */
+function SectionArrows() {
+  return (
+    <span className="home-v4-arrows" aria-hidden="true">
+      <span className="home-v4-arrow">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="15 5 8 12 15 19" />
+        </svg>
+      </span>
+      <span className="home-v4-arrow">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="9 5 16 12 9 19" />
+        </svg>
+      </span>
+    </span>
+  );
+}
+
 export default async function HomePage() {
   const {
     featured,
+    featuredDetail,
     rankBig,
     rankSmall,
     filmesAlta,
-    seriesWeek,
+    seriesFeature,
+    seriesGrid,
     coming,
     newsFeatured,
     newsCards,
-    stats,
   } = await getHomeData();
 
   const hasTop = rankBig.length > 0;
   const hasFilmes = filmesAlta.length > 0;
-  const hasSeries = seriesWeek.length > 0;
+  const hasSeries = seriesFeature.length > 0;
   const hasComing = coming.length > 0;
 
   return (
     <main className="home-v4" data-vertical="home">
-      <HomeV4Hero featured={featured} />
+      <HomeV4Header />
+      <HomeV4Hero featured={featured} detail={featuredDetail} />
       <HomeV4Ticker featured={featured} />
 
       {hasTop ? (
@@ -190,7 +237,7 @@ export default async function HomePage() {
         </section>
       ) : null}
 
-      <HomeV4StatsBand stats={stats} />
+      <HomeV4StatsBand />
 
       {hasSeries ? (
         <section className="home-v4-section" aria-labelledby="home-series-title">
@@ -203,8 +250,9 @@ export default async function HomePage() {
                 Ver tudo&nbsp;›
               </a>
             </div>
+            <HomeV4SeriesFeatureRail items={seriesFeature} />
             <HomeV4PlatformTabs />
-            <HomeV4PosterRail items={seriesWeek} />
+            <HomeV4PosterRail items={seriesGrid} />
           </div>
         </section>
       ) : null}
@@ -212,13 +260,14 @@ export default async function HomePage() {
       {hasComing ? (
         <section className="home-v4-section" aria-labelledby="home-coming-title">
           <div className="container">
-            <div className="sc-sechead">
-              <h2 id="home-coming-title" className="sc-sechead__title" data-vertical="movie">
-                Em breve
-              </h2>
-              <a className="sc-sechead__more" href={EXPLORE_PATH}>
-                Ver tudo&nbsp;›
-              </a>
+            <div className="sc-sechead sc-sechead--split">
+              <div className="sc-sechead__group">
+                <h2 id="home-coming-title" className="sc-sechead__title" data-vertical="movie">
+                  Em breve
+                </h2>
+                <p className="sc-sechead__sub">Trailers de próximos lançamentos</p>
+              </div>
+              <SectionArrows />
             </div>
             <HomeV4ComingRail items={coming} />
           </div>

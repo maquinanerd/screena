@@ -161,12 +161,24 @@ a {
   gap: 16px;
   margin: 0 0 26px;
 }
+.sc-sechead--split {
+  align-items: flex-end;
+}
+.sc-sechead__group {
+  min-width: 0;
+}
+.sc-sechead__sub {
+  margin: 8px 0 0 16px;
+  font-size: 14px;
+  color: var(--text-muted);
+}
 
 .sc-sechead__title {
   display: flex;
   align-items: center;
   gap: 12px;
   margin: 0;
+  min-width: 0;
   font-size: 30px;
   font-weight: 800;
   letter-spacing: -0.025em;
@@ -196,6 +208,7 @@ a {
   color: var(--text-strong);
   text-decoration: none;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 .sc-sechead__more:hover {
   text-decoration: underline;
@@ -2111,36 +2124,119 @@ a {
 /* HOME v4 — estrutura da home portada de `Screen Screens v4.dc.html`  */
 /* ================================================================== */
 
-/* Header ESCURO/overlay sobre a home (o design integra o nav ao hero).
-   Ativado so quando a home v4 esta presente, via :has() — puro CSS, sem JS.
-   Paginas internas mantem o header claro padrao. */
+/* Na home, o header GLOBAL claro cede lugar ao HomeV4Header escuro (nav do
+   design integrada ao hero). Puro CSS, via :has() — sem JS. Paginas internas
+   seguem com o site-header global normal. */
 body:has(.home-v4) .site-header {
-  background: linear-gradient(180deg, rgba(8, 8, 8, 0.82) 0%, rgba(8, 8, 8, 0.5) 70%, rgba(8, 8, 8, 0) 100%);
-  border-bottom-color: transparent;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-body:has(.home-v4) .site-header__logo {
-  /* Logo monocromatica (#111) -> branca sobre o header escuro. */
-  filter: brightness(0) invert(1);
-}
-body:has(.home-v4) .site-header__link {
-  color: rgba(255, 255, 255, 0.82);
-}
-body:has(.home-v4) .site-header__link:hover,
-body:has(.home-v4) .site-header__link:focus-visible {
-  color: #ffffff;
-}
-body:has(.home-v4) .site-header__search {
-  color: rgba(255, 255, 255, 0.85);
-}
-body:has(.home-v4) .site-header__search:hover {
-  background: rgba(255, 255, 255, 0.14);
-  color: #ffffff;
+  display: none;
 }
 
 .home-v4 {
   padding-bottom: 0;
+  overflow-x: clip;
+}
+
+/* ---- Header da home (overlay escuro do design) ---- */
+.home-v4-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 60;
+  height: var(--nav-h);
+  background: linear-gradient(180deg, rgba(8, 8, 8, 0.78) 0%, rgba(8, 8, 8, 0.42) 66%, rgba(8, 8, 8, 0) 100%);
+}
+.home-v4-header__inner {
+  max-width: 1380px;
+  margin: 0 auto;
+  height: 100%;
+  padding: 0 var(--container-pad);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28px;
+}
+.home-v4-header__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  text-decoration: none;
+}
+.home-v4-header__brand span {
+  font-size: 22px;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: 0.03em;
+}
+.home-v4-header__brand .home-v4-header__box {
+  display: inline-block;
+  width: 34px;
+  height: 18px;
+  background: #ffffff;
+  margin: 0 2px;
+}
+.home-v4-header__nav {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.home-v4-header__link {
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.82);
+  text-decoration: none;
+  padding-bottom: 4px;
+  border-bottom: 2px solid transparent;
+  transition: color 0.2s ease;
+}
+.home-v4-header__link:hover {
+  color: #ffffff;
+}
+.home-v4-header__link--active {
+  color: #ffffff;
+  border-bottom-color: var(--accent-movie);
+}
+.home-v4-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-shrink: 0;
+}
+.home-v4-header__search {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.85);
+  text-decoration: none;
+}
+.home-v4-header__search svg {
+  width: 19px;
+  height: 19px;
+}
+.home-v4-header__enter {
+  background: var(--accent-yellow);
+  color: #101010;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 9px 22px;
+  border-radius: var(--radius-sm);
+}
+.home-v4-header__avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.home-v4-header__avatar svg {
+  width: 18px;
+  height: 18px;
 }
 
 /* ---- Hero cinematografico ---- */
@@ -2273,17 +2369,36 @@ body:has(.home-v4) .site-header__search:hover {
   border: 1px solid rgba(255, 255, 255, 0.55);
 }
 .home-v4-hero__aside {
-  max-width: 200px;
+  display: flex;
+  align-items: flex-end;
+  gap: 28px;
+  max-width: 560px;
   flex-shrink: 0;
-  align-self: center;
+  padding-bottom: 8px;
+}
+.home-v4-hero__detail {
+  max-width: 300px;
+  text-align: right;
+}
+.home-v4-hero__cast {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.9);
+  line-height: 1.5;
+}
+.home-v4-hero__synopsis {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.72);
+  margin: 14px 0 0;
 }
 .home-v4-hero__poster {
-  width: 200px;
+  width: 190px;
   aspect-ratio: 2 / 3;
   border-radius: var(--radius);
   overflow: hidden;
   box-shadow: 0 16px 44px rgba(0, 0, 0, 0.55);
   background: #14100e;
+  flex-shrink: 0;
 }
 .home-v4-hero__poster img {
   width: 100%;
@@ -2483,6 +2598,135 @@ body:has(.home-v4) .site-header__search:hover {
   font-size: 12px;
   color: var(--text-muted);
 }
+.home-v4-rank-card__rate {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 3px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.home-v4-rank-card__rate svg {
+  width: 14px;
+  height: 14px;
+  color: var(--accent-star);
+}
+.home-v4-rank-card__watched {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-soft);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.home-v4-rank-card__watched svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ---- Séries em destaque (cards grandes escuros, título central) ---- */
+.home-v4-series-feature {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 18px;
+  margin-bottom: 25px;
+}
+.home-v4-series-card {
+  position: relative;
+  display: block;
+  aspect-ratio: 2 / 3;
+  overflow: hidden;
+  border-radius: var(--radius);
+  text-decoration: none;
+  color: inherit;
+  background: linear-gradient(150deg, #152a20, #060c09);
+  box-shadow: var(--shadow-poster);
+}
+.home-v4-series-card__img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.home-v4-series-card__fallback {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(150deg, #152a20, #060c09);
+}
+.home-v4-series-card__scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(160deg, rgba(0, 0, 0, 0.18) 0%, rgba(0, 0, 0, 0) 42%, rgba(0, 0, 0, 0.5) 100%);
+}
+.home-v4-series-card__badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #fff;
+  background: var(--accent-series);
+  padding: 3px 7px;
+  border-radius: var(--radius-sm);
+}
+.home-v4-series-card__title {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1.2;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.5);
+}
+
+/* ---- Setas circulares decorativas de secao ---- */
+.home-v4-arrows {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.home-v4-arrow {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.home-v4-arrow svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* ---- Stats: link "Ver histórico" à direita ---- */
+.home-v4-stats__left {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.home-v4-stats__more {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.86);
+  flex-shrink: 0;
+}
 .home-v4-rank-small {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -2601,18 +2845,16 @@ body:has(.home-v4) .site-header__search:hover {
   border-color: var(--text-strong);
 }
 
-/* ---- Em breve (16:9 horizontal) ---- */
-.home-v4-coming-rail {
-  display: flex;
-  gap: 20px;
-  overflow-x: auto;
-  scrollbar-width: thin;
-  padding-bottom: 6px;
+/* ---- Em breve: grade CONTIDA (5 cols, sem overflow/scroll, sem card cortado) ---- */
+.home-v4-coming-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 18px;
 }
 .home-v4-coming-card {
-  flex: 0 0 232px;
   display: flex;
   flex-direction: column;
+  min-width: 0;
   text-decoration: none;
   color: inherit;
 }
@@ -2665,8 +2907,8 @@ body:has(.home-v4) .site-header__search:hover {
 .home-v4-stats__inner {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
-  gap: 28px;
+  justify-content: space-between;
+  gap: 24px;
   flex-wrap: wrap;
   padding-top: 20px;
   padding-bottom: 20px;
@@ -2795,11 +3037,21 @@ body:has(.home-v4) .site-header__search:hover {
   .home-v4-rank-small {
     grid-template-columns: repeat(3, 1fr);
   }
-  .home-v4-poster-rail {
+  .home-v4-poster-rail,
+  .home-v4-series-feature {
     grid-template-columns: repeat(4, 1fr);
+  }
+  .home-v4-coming-grid {
+    grid-template-columns: repeat(3, 1fr);
   }
   .home-v4-hero__title {
     font-size: 64px;
+  }
+  .home-v4-hero__aside {
+    max-width: 320px;
+  }
+  .home-v4-hero__detail {
+    display: none;
   }
 }
 
@@ -2809,6 +3061,9 @@ body:has(.home-v4) .site-header__search:hover {
   }
   .home-v4-news-tile--lead {
     min-height: 320px;
+  }
+  .home-v4-header__nav {
+    gap: 20px;
   }
 }
 
@@ -2836,7 +3091,9 @@ body:has(.home-v4) .site-header__search:hover {
   }
   .home-v4-rank-big,
   .home-v4-rank-small,
-  .home-v4-poster-rail {
+  .home-v4-poster-rail,
+  .home-v4-series-feature,
+  .home-v4-coming-grid {
     grid-template-columns: repeat(2, 1fr);
   }
   .home-v4-news__grid {
@@ -2848,7 +3105,8 @@ body:has(.home-v4) .site-header__search:hover {
   .home-v4-stats__list {
     gap: 16px;
   }
-  body:has(.home-v4) .site-header__nav {
+  .home-v4-header__nav,
+  .home-v4-header__enter {
     display: none;
   }
 }

@@ -3,13 +3,14 @@ import type { ReactNode } from "react";
 import type { NewsCardView } from "../../src/lib/news-presenter";
 
 /**
- * Blocos da home v4: faixa preta de métricas + módulo de notícias (magazine).
- * Portados da tela `Screen Screens v4.dc.html`.
+ * Blocos da home v4: faixa preta "Seu mês em números" + módulo de notícias
+ * (magazine). Portados de `Screen Screens v4.dc.html`.
  *
  * PRESENTACIONAIS e PUROS (invariantes 3/4). Governança:
- * - A faixa preta ("Seu mês em números" no protótipo, um recorte pessoal) é
- *   reaproveitada como métricas REAIS do CATÁLOGO (contagens do banco) — nunca
- *   números altos inventados nem estatística pessoal de um usuário que não existe.
+ * - "Seu mês em números" é dado de USUÁRIO (feature futura). Como não há login
+ *   nem tracking nesta fase, a faixa mostra um estado NEUTRO (0 listas, 0
+ *   avaliações, 0 em andamento, 0 na watchlist) — nunca números fabricados. O
+ *   componente aceita `stats` para quando o dado real do usuário existir.
  * - O módulo de notícias mantém o layout magazine mesmo vazio: sem notícia real,
  *   exibe um estado vazio visualmente consistente — nunca uma notícia falsa.
  */
@@ -19,25 +20,42 @@ export interface HomeStat {
   label: string;
 }
 
-export function HomeV4StatsBand({ stats }: { stats: HomeStat[] }): ReactNode {
-  if (stats.length === 0) return null;
+/** Estado neutro (sem usuário/tracking nesta fase). Nunca inventar números. */
+const NEUTRAL_STATS: HomeStat[] = [
+  { value: "0", label: "listas" },
+  { value: "0", label: "avaliações" },
+  { value: "0", label: "séries em andamento" },
+  { value: "0", label: "na watchlist" },
+];
+
+function TrendIcon(): ReactNode {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <polyline points="3 16 9 10 13 14 21 6" />
+      <polyline points="15 6 21 6 21 12" />
+    </svg>
+  );
+}
+
+export function HomeV4StatsBand({ stats = NEUTRAL_STATS }: { stats?: HomeStat[] }): ReactNode {
   return (
     <div className="home-v4-stats">
       <div className="container home-v4-stats__inner">
-        <span className="home-v4-stats__eyebrow">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <polyline points="3 16 9 10 13 14 21 6" />
-            <polyline points="15 6 21 6 21 12" />
-          </svg>
-          O Screen em números
-        </span>
-        <div className="home-v4-stats__list">
-          {stats.map((stat) => (
-            <span key={stat.label} className="home-v4-stats__item">
-              <span className="home-v4-stats__value">{stat.value}</span> {stat.label}
-            </span>
-          ))}
+        <div className="home-v4-stats__left">
+          <span className="home-v4-stats__eyebrow">
+            <TrendIcon />
+            Seu mês em números
+          </span>
+          <div className="home-v4-stats__list">
+            {stats.map((stat) => (
+              <span key={stat.label} className="home-v4-stats__item">
+                <span className="home-v4-stats__value">{stat.value}</span> {stat.label}
+              </span>
+            ))}
+          </div>
         </div>
+        {/* Afordancia visual (sem rota de historico nesta fase). */}
+        <span className="home-v4-stats__more" aria-hidden="true">Ver histórico →</span>
       </div>
     </div>
   );
