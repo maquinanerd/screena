@@ -30,6 +30,8 @@ interface EntityIndexProps {
   vertical: EntityIndexVertical;
   /** View ja montada (cards ordenados + cap + contagem). */
   view: EntityIndexView;
+  /** Mensagem de estado vazio (copy propria; fallback generico quando ausente). */
+  emptyMessage?: string;
 }
 
 export function EntityIndex({
@@ -39,6 +41,7 @@ export function EntityIndex({
   canonicalUrl,
   vertical,
   view,
+  emptyMessage,
 }: EntityIndexProps): ReactNode {
   const hasCards = view.cards.length > 0;
 
@@ -105,7 +108,8 @@ export function EntityIndex({
           </>
         ) : (
           <p className="entity-index__empty">
-            Ainda nao ha {breadcrumbLabel.toLowerCase()} publicados nesta secao.
+            {emptyMessage ??
+              `Ainda nao ha ${breadcrumbLabel.toLowerCase()} publicados nesta secao.`}
           </p>
         )}
       </div>

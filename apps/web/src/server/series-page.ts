@@ -20,7 +20,11 @@ import {
   type SeriesSeasonInput,
 } from "../lib/series-presenter";
 import { getRelatedNewsForEntity } from "./related-news";
+import { getCastForEntity } from "./entity-cast";
+import { getWatchForEntity } from "./entity-watch";
 import type { NewsCardView } from "../lib/news-presenter";
+import type { CastMemberView } from "../lib/cast-presenter";
+import type { WatchView } from "../lib/watch-presenter";
 import type { IndexabilityResult } from "@screena/seo";
 
 const LANGUAGE_CODE = "pt-BR";
@@ -34,6 +38,10 @@ export interface SeriesPageData {
   canonicalUrl: string;
   /** Noticias relacionadas publicaveis (EntityNewsLink); [] quando nao houver. */
   relatedNews: NewsCardView[];
+  /** Elenco principal (cast_members/people); [] quando nao houver. */
+  cast: CastMemberView[];
+  /** Onde assistir (watch_availability licenciado no BR); vazio omite a secao. */
+  watch: WatchView;
 }
 
 function seriesCanonicalUrl(slug: string): string {
@@ -56,7 +64,7 @@ export const getSeriesPageData = cache(
 
     const entityId = slugRow.entityId;
 
-    const [series, canonicalSlugRow, translation, contentBlocks, seasons, relatedNews] =
+    const [series, canonicalSlugRow, translation, contentBlocks, seasons, relatedNews, cast, watch] =
       await Promise.all([
         prisma.tvShow.findUnique({
           where: { id: entityId },
@@ -125,6 +133,8 @@ export const getSeriesPageData = cache(
           },
         }),
         getRelatedNewsForEntity(prisma, ENTITY_TYPE, entityId),
+        getCastForEntity(prisma, ENTITY_TYPE, entityId),
+        getWatchForEntity(prisma, ENTITY_TYPE, entityId),
       ]);
 
     if (series === null) return null;
@@ -178,6 +188,8 @@ export const getSeriesPageData = cache(
       canonicalSlug,
       canonicalUrl: seriesCanonicalUrl(canonicalSlug),
       relatedNews,
+      cast,
+      watch,
     };
   },
 );

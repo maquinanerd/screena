@@ -47,6 +47,7 @@ export default async function MovieIndexPage() {
       canonicalUrl={canonicalUrl}
       vertical="movie"
       view={view}
+      emptyMessage="Nenhum filme disponível ainda."
     />
   );
 }
