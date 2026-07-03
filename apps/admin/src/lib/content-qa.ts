@@ -217,11 +217,24 @@ const SCORE_WEIGHT: Record<QaSeverity, number> = {
   success: 0,
 };
 
-/** Calcula um score 0..100 a partir das issues (critico pesa mais). */
+/**
+ * Teto de score quando ha QUALQUER issue critical. Conteudo com um bloqueio real
+ * (sem slug/titulo, licenca bloqueada, display negado, etc.) nao pode aparecer
+ * publicamente — entao o score nunca fica na faixa "bom/regular", por mais que
+ * seja o unico problema. Evita superestimar conteudo bloqueado.
+ */
+export const CRITICAL_SCORE_CEILING = 40;
+
+/** Calcula um score 0..100 a partir das issues (critico pesa mais e limita o teto). */
 export function calculateQaScore(issues: readonly QaIssue[]): number {
   let penalty = 0;
-  for (const issue of issues) penalty += SCORE_WEIGHT[issue.severity];
-  const score = 100 - penalty;
+  let hasCritical = false;
+  for (const issue of issues) {
+    penalty += SCORE_WEIGHT[issue.severity];
+    if (issue.severity === "critical") hasCritical = true;
+  }
+  let score = 100 - penalty;
+  if (hasCritical && score > CRITICAL_SCORE_CEILING) score = CRITICAL_SCORE_CEILING;
   if (score < 0) return 0;
   if (score > 100) return 100;
   return Math.trunc(score);

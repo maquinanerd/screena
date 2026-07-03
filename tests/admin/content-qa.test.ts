@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildQaIssue,
   calculateQaScore,
+  CRITICAL_SCORE_CEILING,
   evaluateArticleQa,
   evaluateBodyQuality,
   evaluateContentBlockQa,
@@ -175,6 +176,15 @@ describe("sub-avaliadores e score", () => {
     expect(calculateQaScore(many)).toBe(0);
     expect(worstSeverity(many)).toBe("critical");
     expect(worstSeverity([buildQaIssue("index_ready")])).toBe("success");
+  });
+
+  it("um unico critical nao superestima (fica <= teto); avisos nao sofrem o teto", () => {
+    // blocked_license sozinho: 100-25=75, mas capado a CRITICAL_SCORE_CEILING.
+    expect(calculateQaScore([buildQaIssue("blocked_license")])).toBeLessThanOrEqual(
+      CRITICAL_SCORE_CEILING,
+    );
+    // Um aviso (thin_body) nao sofre o teto de critical.
+    expect(calculateQaScore([buildQaIssue("thin_body")])).toBeGreaterThan(CRITICAL_SCORE_CEILING);
   });
 
   it("summarizeQaIssues conta por severidade e categoria", () => {
