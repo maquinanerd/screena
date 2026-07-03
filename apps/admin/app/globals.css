@@ -787,3 +787,98 @@ code {
   font-size: 12px;
   color: var(--admin-muted);
 }
+
+/* ------------------------------------------------------------------ */
+/* Fase 7C — Workflow editorial e acoes em lote                        */
+/* Superficie institucional/neutra; a cor NUNCA e o unico sinal.       */
+/* ------------------------------------------------------------------ */
+
+.admin-workflow-section {
+  margin: 0 0 24px;
+}
+
+/* --- Painel de acao em lote --- */
+.admin-bulk-panel {
+  margin: 0 0 12px;
+}
+
+.admin-bulk-fieldset {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--admin-border);
+  border-radius: 8px;
+  background: var(--admin-surface);
+}
+
+.admin-bulk-fieldset:disabled {
+  opacity: 0.6;
+}
+
+.admin-bulk-legend {
+  padding: 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* --- Lista de itens selecionaveis --- */
+.admin-bulk-list {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  border: 1px solid var(--admin-border);
+  border-radius: 8px;
+  background: var(--admin-bg);
+  overflow: hidden;
+}
+
+.admin-bulk-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--admin-border);
+}
+
+.admin-bulk-row:last-child {
+  border-bottom: none;
+}
+
+.admin-bulk-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 240px;
+  min-width: 200px;
+  cursor: pointer;
+}
+
+.admin-checkbox {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  cursor: pointer;
+}
+
+.admin-bulk-row__label {
+  font-weight: 700;
+  font-size: 13px;
+  word-break: break-word;
+}
+
+.admin-bulk-row__reason {
+  flex: 1 1 200px;
+  font-size: 12px;
+  color: var(--admin-muted);
+}
+
+/* --- Barra de acao (campo + valor + botao) --- */
+.admin-bulk-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--admin-border);
+}

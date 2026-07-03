@@ -45,10 +45,22 @@ import {
   parseContentBlockActionInput,
   type EditorialActionResult,
 } from "../lib/editorial-action-policy";
+import {
+  buildBulkActionResult,
+  bulkResultToQuery,
+  bulkScopeFor,
+  parseBulkArticleActionInput,
+  parseBulkContentBlockActionInput,
+  type BulkActionResult,
+} from "../lib/editorial-bulk-policy";
 
 /** Base das rotas de detalhe (para o redirect de feedback). */
 const ARTICLE_BASE = "/articles";
 const CONTENT_BLOCK_BASE = "/content-blocks";
+
+/** Rotas de origem permitidas para o redirect de lote (evita open redirect). */
+const WORKFLOW_BASE = "/workflow";
+const ALLOWED_RETURN_PATHS: readonly string[] = [WORKFLOW_BASE, "/review-queue"];
 
 /** Env lida na fronteira (subconjunto tipado; so a flag de acoes). */
 function editorialEnv(): { ADMIN_EDITORIAL_ACTIONS_ENABLED?: string } {
@@ -148,4 +160,123 @@ export async function updateContentBlockReviewStatus(
 ): Promise<void> {
   const result = await applyContentBlockAction(id, formData.get("reviewStatus"));
   redirectWithFeedback(CONTENT_BLOCK_BASE, id, result);
+}
+
+/* ------------------------------------------------------------------ */
+/* Acoes em LOTE (Fase 7C) — mesmo gate, mesma allowlist, 1..20 ids    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Redireciona de volta a rota de origem (allowlist) com a query de feedback de
+ * lote. `returnTo` e allowlistado para evitar open redirect. `redirect()` lanca
+ * `NEXT_REDIRECT` — chamado FORA de qualquer try/catch de escrita.
+ */
+function redirectBulk(returnTo: string, result: BulkActionResult): never {
+  const target = ALLOWED_RETURN_PATHS.includes(returnTo) ? returnTo : WORKFLOW_BASE;
+  revalidatePath(target);
+  redirect(`${target}?${bulkResultToQuery(result)}`);
+}
+
+/**
+ * Aplica UMA acao editorial ao conjunto (1..20) de artigos: gate da flag ->
+ * validacao pura -> `update` por item (NUNCA updateMany). Erro por item e
+ * contado, nunca vaza (rotulo generico). O mesmo campo/valor vai para todos os
+ * ids validados; nenhum campo nao editorial e tocado.
+ */
+async function applyBulkArticleAction(
+  field: string,
+  formData: FormData,
+): Promise<BulkActionResult> {
+  if (!canRunEditorialAction(editorialEnv())) return buildBulkActionResult("bulk_actions_disabled");
+
+  const parsed = parseBulkArticleActionInput({
+    field,
+    value: formData.get("value"),
+    ids: formData.getAll("ids"),
+  });
+  if (!parsed.ok) return buildBulkActionResult("bulk_invalid_input");
+
+  const prisma = getPrismaClient();
+  // Um unico objeto `data` (mesmo valor para todos); so campo editorial.
+  const data =
+    parsed.field === "reviewStatus"
+      ? { reviewStatus: parsed.value }
+      : { indexStatus: parsed.value };
+
+  let updated = 0;
+  let failed = 0;
+  for (const id of parsed.ids) {
+    try {
+      await prisma.articleTranslation.update({ where: { id: BigInt(id) }, data });
+      updated += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+
+  if (updated === 0 && failed > 0) return buildBulkActionResult("bulk_update_failed");
+  return buildBulkActionResult("bulk_updated", bulkScopeFor("article", parsed.field), {
+    updated,
+    failed,
+    total: parsed.ids.length,
+  });
+}
+
+/**
+ * Aplica `reviewStatus` a um conjunto (1..20) de content_blocks: gate -> validacao
+ * -> `update` por item (NUNCA updateMany). O conteudo do bloco NUNCA e tocado.
+ */
+async function applyBulkContentBlockAction(formData: FormData): Promise<BulkActionResult> {
+  if (!canRunEditorialAction(editorialEnv())) return buildBulkActionResult("bulk_actions_disabled");
+
+  const parsed = parseBulkContentBlockActionInput({
+    field: "reviewStatus",
+    value: formData.get("value"),
+    ids: formData.getAll("ids"),
+  });
+  if (!parsed.ok) return buildBulkActionResult("bulk_invalid_input");
+
+  const prisma = getPrismaClient();
+  let updated = 0;
+  let failed = 0;
+  for (const id of parsed.ids) {
+    try {
+      await prisma.contentBlock.update({
+        where: { id: BigInt(id) },
+        data: { reviewStatus: parsed.value },
+      });
+      updated += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+
+  if (updated === 0 && failed > 0) return buildBulkActionResult("bulk_update_failed");
+  return buildBulkActionResult("bulk_updated", "contentBlock_reviewStatus", {
+    updated,
+    failed,
+    total: parsed.ids.length,
+  });
+}
+
+/**
+ * Server Action de lote para artigos. `field` e `returnTo` vem ligados por
+ * `.bind` (nao vem do cliente); `value` e `ids[]` vem do FormData.
+ */
+export async function runBulkArticleEditorialAction(
+  field: string,
+  returnTo: string,
+  formData: FormData,
+): Promise<void> {
+  const result = await applyBulkArticleAction(field, formData);
+  redirectBulk(returnTo, result);
+}
+
+/** Server Action de lote para content_blocks (sempre `reviewStatus`). */
+export async function runBulkContentBlockEditorialAction(
+  returnTo: string,
+  formData: FormData,
+): Promise<void> {
+  const result = await applyBulkContentBlockAction(formData);
+  redirectBulk(returnTo, result);
 }

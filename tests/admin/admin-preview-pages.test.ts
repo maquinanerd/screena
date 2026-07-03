@@ -114,4 +114,17 @@ describe("preview publico nas paginas de detalhe (Fase 7B)", () => {
       expect(/\.(?:password|pass|senha)\b/i.test(code), `${file} render de senha`).toBe(false);
     }
   });
+
+  /**
+   * Fase 7C: o preview e o workflow continuam SEM publicacao automatica — nenhuma
+   * pagina muta `publishedAt` como chave de dado nem oferece botao Publicar.
+   */
+  it("preview e workflow nao carimbam publishedAt nem publicam automaticamente", async () => {
+    const WORKFLOW_PAGE = resolve(process.cwd(), "apps", "admin", "app", "workflow", "page.tsx");
+    for (const file of [ARTICLE_DETAIL, BLOCK_DETAIL, WORKFLOW_PAGE]) {
+      const code = stripComments(await readFile(file, "utf-8"));
+      expect(/\bpublishedAt\s*:/.test(code), `${file} muta publishedAt`).toBe(false);
+      expect(/\bPublicar\b/.test(code), `${file} tem botao Publicar`).toBe(false);
+    }
+  });
 });

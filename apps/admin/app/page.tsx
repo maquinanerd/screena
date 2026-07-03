@@ -81,14 +81,36 @@ export default async function AdminDashboardPage(): Promise<ReactNode> {
         </span>
       </div>
 
-      <h2 className="admin-section-title">Fila de revisao</h2>
+      <h2 className="admin-section-title">Workflow editorial</h2>
       <div className="admin-cards">
-        <a className="admin-card admin-card--link" href="/review-queue">
-          <div className="admin-card__title">Abrir fila de revisao →</div>
+        <a className="admin-card admin-card--link" href="/workflow">
+          <div className="admin-card__title">Abrir workflow →</div>
           <div className="admin-card__label">
-            Bloqueados, aguardando revisao e prontos para indexar, num so lugar.
+            Revisar, indexar e aprovar em lote pequeno (ate 20 por acao).
           </div>
         </a>
+        <a className="admin-card admin-card--link" href="/review-queue">
+          <div className="admin-card__title">Fila de revisao →</div>
+          <div className="admin-card__label">
+            Bloqueados, aguardando revisao e prontos para indexar.
+          </div>
+        </a>
+        <div className="admin-card">
+          <div className="admin-card__value">
+            {data.articleReview.pending + data.contentBlocks.pending}
+          </div>
+          <div className="admin-card__label">Itens aguardando decisao</div>
+        </div>
+        <div className="admin-card">
+          <div className="admin-card__value">
+            {actions.enabled ? "Sim" : "Nao"}
+          </div>
+          <div className="admin-card__label">Acoes em lote habilitadas</div>
+        </div>
+      </div>
+
+      <h2 className="admin-section-title">Fila de revisao — contagens</h2>
+      <div className="admin-cards">
         <div className="admin-card">
           <div className="admin-card__value">{data.articles.blocked}</div>
           <div className="admin-card__label">Artigos bloqueados</div>
