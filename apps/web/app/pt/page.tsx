@@ -5,6 +5,7 @@ import { NewsCard } from "../_components/news-card";
 import { HeroCarousel } from "../_components/hero-carousel";
 import {
   getMovieIndexData,
+  getPersonIndexData,
   getSeriesIndexData,
 } from "../../src/server/entity-indexes";
 import { getHomeHeroSlides } from "../../src/server/home-hero";
@@ -22,21 +23,21 @@ import {
   HOME_PATH,
   MOVIES_INDEX_PATH,
   NEWS_INDEX_PATH,
-  PEOPLE_INDEX_PATH,
   SERIES_INDEX_PATH,
 } from "../../src/lib/site";
 
 /**
- * Home publica pt-BR — /pt/ (superficie NEUTRA/institucional; invariante 11:
- * sem cor de vertical como identidade — o vermelho/verde aparecem so como
- * apoio nas secoes de filmes/series, sempre com label textual).
+ * Home publica pt-BR — /pt/ = `Public Marketing Home v4` (ver docs/frontend/page-map.md):
+ * home editorial/cinematografica no ritmo do design v4 — NAO e catalogo generico.
  *
  * Server component puro: le somente PostgreSQL via os getters de listagem ja
  * existentes (invariantes 3/4 — zero API externa, zero Gemini, zero TMDB no
- * render). NADA e inventado: as secoes de conteudo so aparecem quando ha dado
- * real no banco; sem dados, a home degrada para o hero institucional + cards
- * de navegacao (fallback seguro). Sem ratings, sem streaming, sem "populares",
- * sem numeros fake, sem busca.
+ * render). NADA e inventado: cada secao so aparece quando ha dado real; sem
+ * dados, degrada para o hero institucional (fallback seguro, sem poster). Sem
+ * ranking/Top 10, sem nota nos cards, sem watchlist, sem botao de feature
+ * inativa, sem streaming, sem numeros fake. As estatisticas sao contagens REAIS
+ * do catalogo. As imagens vem de caminhos LOCAIS (dado do TMDB ingerido offline
+ * pela ingestao — nunca CDN externo no render).
  *
  * Gate anti-thin (invariante 5): com menos de 2 secoes com dado real, a home
  * existe mas recebe `noindex` (decisao de `evaluatePortalIndexability`).
@@ -48,38 +49,11 @@ const HOME_TITLE = "Screen — filmes, séries, pessoas e notícias";
 const HOME_DESCRIPTION =
   "Base editorial de entretenimento em português: fichas de filmes e séries, perfis de pessoas e notícias com curadoria própria da redação do Screen.";
 
-/** Cards de navegacao institucional (todas as rotas EXISTEM; sem link morto). */
-const NAV_CARDS = [
-  {
-    label: "Filmes",
-    href: MOVIES_INDEX_PATH,
-    vertical: "movie" as const,
-    description: "Fichas editoriais de filmes em português.",
-  },
-  {
-    label: "Séries",
-    href: SERIES_INDEX_PATH,
-    vertical: "series" as const,
-    description: "Séries com guia de temporadas e episódios.",
-  },
-  {
-    label: "Pessoas",
-    href: PEOPLE_INDEX_PATH,
-    vertical: "person" as const,
-    description: "Perfis de quem faz o cinema e a TV.",
-  },
-  {
-    label: "Notícias",
-    href: NEWS_INDEX_PATH,
-    vertical: "news" as const,
-    description: "Notícias de entretenimento revisadas pela redação.",
-  },
-];
-
 async function getHomeData() {
-  const [movies, series, news] = await Promise.all([
+  const [movies, series, people, news] = await Promise.all([
     getMovieIndexData(),
     getSeriesIndexData(),
+    getPersonIndexData(),
     getNewsIndexData(),
   ]);
   const movieCards = takeSectionCards(movies.view.cards, HOME_ENTITY_CARD_LIMIT);
@@ -93,6 +67,13 @@ async function getHomeData() {
     ],
     HOME_NEWS_CARD_LIMIT,
   );
+  // Contagens REAIS do catalogo publico (itens com slug canonico pt-BR), para a
+  // faixa de estatisticas honesta — nunca watchlist/assistidos/avaliacoes.
+  const counts = {
+    movies: movies.view.totalCount,
+    series: series.view.totalCount,
+    people: people.view.totalCount,
+  };
   const indexability = evaluatePortalIndexability({
     populatedSectionCount: countPopulatedSections([
       movieCards.length,
@@ -100,7 +81,7 @@ async function getHomeData() {
       newsCards.length,
     ]),
   });
-  return { movieCards, seriesCards, newsCards, indexability };
+  return { movieCards, seriesCards, newsCards, counts, indexability };
 }
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -117,19 +98,19 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function HomePage() {
-  const [{ movieCards, seriesCards, newsCards }, heroSlides] = await Promise.all([
-    getHomeData(),
-    getHomeHeroSlides(),
-  ]);
+  const [{ movieCards, seriesCards, newsCards, counts }, heroSlides] =
+    await Promise.all([getHomeData(), getHomeHeroSlides()]);
+
+  // Faixa amarela honesta: um título REAL em destaque (primeiro slide do hero).
+  // Sem claim de "novo episódio"/streaming fake — só um atalho para a ficha.
+  const spotlight = heroSlides[0] ?? null;
+  const hasCounts = counts.movies > 0 || counts.series > 0 || counts.people > 0;
 
   return (
     <main className="portal-page" data-vertical="home">
-      {/* Hero-carousel cinematografico (design v4): varios slides, cada um com
-          titulo, linha de metadados (info · nota editorial do Screen ·
-          classificacao), botoes e creditos textuais (diretor/elenco/sinopse).
-          SEM poster/card lateral. Client component puro de IO — recebe os slides
-          ja montados do PostgreSQL. Sem slides reais, cai para o hero
-          institucional (copy propria, tambem sem poster). */}
+      {/* Hero-carousel (design v4): slides reais, metadados completos, sem poster
+          lateral, botões só "Onde assistir" + "Ver ficha". Sem slides reais, cai
+          para o hero institucional (copy própria, também sem poster). */}
       {heroSlides.length > 0 ? (
         <HeroCarousel slides={heroSlides} />
       ) : (
@@ -150,46 +131,70 @@ export default async function HomePage() {
         </section>
       )}
 
-      <div className="container">
-        <nav className="portal-nav" aria-label="Seções do Screen">
-          {NAV_CARDS.map((card) => (
-            <a
-              key={card.href}
-              className="portal-nav__card"
-              href={card.href}
-              data-vertical={card.vertical}
-            >
-              <span className="portal-nav__label">{card.label}</span>
-              <span className="portal-nav__desc">{card.description}</span>
-            </a>
-          ))}
-        </nav>
-
-        {movieCards.length > 0 ? (
-          <section className="portal-section" aria-labelledby="home-movies-title">
-            <div className="portal-section__head">
-              <h2 id="home-movies-title" className="portal-section__title" data-vertical="movie">
-                Filmes no catálogo
-              </h2>
-              <a className="portal-section__more" href={MOVIES_INDEX_PATH}>
-                Ver todos os filmes
-              </a>
+      {/* Faixa amarela (ritmo v4) — destaque editorial honesto, sem feature fake. */}
+      {spotlight !== null ? (
+        <div className="home-ticker">
+          <div className="container home-ticker__inner">
+            <div className="home-ticker__lead">
+              <span className="home-ticker__badge">Destaque</span>
+              <span className="home-ticker__text">{spotlight.title}</span>
             </div>
-            <ul className="entity-grid">
-              {movieCards.map((card) => (
-                <li key={card.href} className="entity-card-item">
-                  <EntityCardLink card={card} />
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
+            <a className="home-ticker__cta" href={spotlight.href}>
+              Ver ficha
+            </a>
+          </div>
+        </div>
+      ) : null}
 
+      {/* Filmes em destaque — banda quente v4 (cards reais com pôster local). */}
+      {movieCards.length > 0 ? (
+        <section className="portal-section--warm">
+          <div className="container">
+            <section className="portal-section" aria-labelledby="home-movies-title">
+              <div className="portal-section__head">
+                <h2 id="home-movies-title" className="portal-section__title" data-vertical="movie">
+                  Filmes em destaque
+                </h2>
+                <a className="portal-section__more" href={MOVIES_INDEX_PATH}>
+                  Ver todos os filmes
+                </a>
+              </div>
+              <ul className="entity-grid">
+                {movieCards.map((card) => (
+                  <li key={card.href} className="entity-card-item">
+                    <EntityCardLink card={card} />
+                  </li>
+                ))}
+              </ul>
+            </section>
+          </div>
+        </section>
+      ) : null}
+
+      {/* Faixa preta de estatísticas — contagens REAIS do catálogo (sem watchlist). */}
+      {hasCounts ? (
+        <section className="home-stats" aria-label="Catálogo do Screen">
+          <div className="container home-stats__inner">
+            <span className="home-stats__label">No catálogo do Screen</span>
+            <span className="home-stats__item">
+              <b>{counts.movies}</b> filmes
+            </span>
+            <span className="home-stats__item">
+              <b>{counts.series}</b> séries
+            </span>
+            <span className="home-stats__item">
+              <b>{counts.people}</b> pessoas
+            </span>
+          </div>
+        </section>
+      ) : null}
+
+      <div className="container">
         {seriesCards.length > 0 ? (
           <section className="portal-section" aria-labelledby="home-series-title">
             <div className="portal-section__head">
               <h2 id="home-series-title" className="portal-section__title" data-vertical="series">
-                Séries no catálogo
+                Séries em destaque
               </h2>
               <a className="portal-section__more" href={SERIES_INDEX_PATH}>
                 Ver todas as séries
@@ -209,7 +214,7 @@ export default async function HomePage() {
           <section className="portal-section" aria-labelledby="home-news-title">
             <div className="portal-section__head">
               <h2 id="home-news-title" className="portal-section__title">
-                Últimas notícias
+                Notícias
               </h2>
               <a className="portal-section__more" href={NEWS_INDEX_PATH}>
                 Ver todas as notícias

@@ -144,6 +144,10 @@ export function SiteFooter(): ReactNode {
       </div>
 
       <div className="site-footer__bottom">
+        <p className="site-footer__attribution">
+          Este produto usa a API do TMDB, mas não é endossado ou certificado pelo TMDB.
+          Dados e imagens de filmes e séries fornecidos pelo TMDB.
+        </p>
         <div className="site-footer__bottom-row">
           <span className="site-footer__copy">© 2026 The Screen · thescreen.media</span>
           <div className="site-footer__legal">

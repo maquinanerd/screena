@@ -437,6 +437,14 @@ a {
   font-size: 12px;
   color: var(--text-muted);
 }
+/* Atribuicao obrigatoria ao TMDB (fonte de dados/imagens) — discreta. */
+.site-footer__attribution {
+  margin: 0 0 20px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-faint);
+  max-width: 70ch;
+}
 
 /* ================================================================== */
 /* Breadcrumb                                                         */
@@ -1114,7 +1122,7 @@ a {
   font-weight: 600;
 }
 
-/* Faixa quente que envolve uma secao (Filmes em alta). */
+/* Faixa quente que envolve uma secao (Filmes em destaque). */
 .portal-section--warm {
   margin-top: 56px;
   padding: 56px 0;
@@ -1122,6 +1130,86 @@ a {
 }
 .portal-section--warm .portal-section {
   padding-top: 0;
+}
+
+/* Faixa amarela (ritmo v4) — destaque editorial honesto abaixo do hero. */
+.home-ticker {
+  background: var(--accent-yellow);
+  color: #101010;
+}
+.home-ticker__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding-top: 14px;
+  padding-bottom: 14px;
+}
+.home-ticker__lead {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+.home-ticker__badge {
+  flex-shrink: 0;
+  background: #101010;
+  color: var(--accent-yellow);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 4px 9px;
+  border-radius: 6px;
+}
+.home-ticker__text {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.home-ticker__cta {
+  flex-shrink: 0;
+  background: #101010;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 9px 18px;
+  border-radius: 8px;
+  text-decoration: none;
+}
+
+/* Faixa preta de estatisticas REAIS do catalogo (sem watchlist/assistidos). */
+.home-stats {
+  margin-top: 56px;
+  background: var(--bg-dark);
+  color: #fff;
+}
+.home-stats__inner {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  flex-wrap: wrap;
+  padding-top: 20px;
+  padding-bottom: 20px;
+}
+.home-stats__label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent-yellow);
+}
+.home-stats__item {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.72);
+}
+.home-stats__item b {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--accent-yellow);
+  margin-right: 4px;
 }
 
 /* ================================================================== */

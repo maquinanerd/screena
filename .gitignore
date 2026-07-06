@@ -10,6 +10,10 @@ coverage
 .turbo
 .vitest
 
+# Imagens reais baixadas do TMDB pela ingestao (arte de estudio, regeravel).
+# NUNCA commitar: rode services/ingestion/bin/ingest-public-catalog.ts p/ gerar.
+apps/web/public/media/tmdb/
+
 # Artefatos gerados pelo Next (next build / next lint)
 next-env.d.ts
 *.tsbuildinfo
