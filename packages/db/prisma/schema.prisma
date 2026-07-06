@@ -239,6 +239,15 @@ model Movie {
   voteCountTmdb    Int?      @map("vote_count_tmdb")
   posterPath       String?   @map("poster_path")
   backdropPath     String?   @map("backdrop_path")
+  // Classificacao indicativa (advisory de conteudo: "14", "16", "L", "TV-MA").
+  // NAO e rating source; nao passa pelas regras de external_ratings (inv. 1/2).
+  certification    String?   @map("certification")
+  // Nota editorial PROPRIA do Screen (escala 5). Nunca e AggregateRating de
+  // terceiro nem se mistura com IMDb/RT. `screen_score_display` e o gate seguro
+  // (nasce false): so aparece em pagina publica quando explicitamente liberado.
+  screenScore        Decimal? @map("screen_score")
+  screenScoreScale   Int?     @map("screen_score_scale")
+  screenScoreDisplay Boolean  @default(false) @map("screen_score_display")
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
   lastSyncedAt     DateTime? @map("last_synced_at")
@@ -271,6 +280,12 @@ model TvShow {
   voteCountTmdb    Int?      @map("vote_count_tmdb")
   posterPath       String?   @map("poster_path")
   backdropPath     String?   @map("backdrop_path")
+  // Classificacao indicativa (advisory de conteudo). NAO e rating source (inv. 1/2).
+  certification    String?   @map("certification")
+  // Nota editorial PROPRIA do Screen (escala 5); gate seguro nasce false (inv. 6).
+  screenScore        Decimal? @map("screen_score")
+  screenScoreScale   Int?     @map("screen_score_scale")
+  screenScoreDisplay Boolean  @default(false) @map("screen_score_display")
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
   lastSyncedAt     DateTime? @map("last_synced_at")

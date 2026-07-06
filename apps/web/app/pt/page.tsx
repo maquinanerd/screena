@@ -2,10 +2,12 @@ import type { Metadata } from "next";
 
 import { EntityCardLink } from "../_components/entity-card";
 import { NewsCard } from "../_components/news-card";
+import { HeroCarousel } from "../_components/hero-carousel";
 import {
   getMovieIndexData,
   getSeriesIndexData,
 } from "../../src/server/entity-indexes";
+import { getHomeHeroSlides } from "../../src/server/home-hero";
 import { getNewsIndexData } from "../../src/server/news-pages";
 import {
   countPopulatedSections,
@@ -98,15 +100,7 @@ async function getHomeData() {
       newsCards.length,
     ]),
   });
-  // Destaque do hero: primeira entidade REAL com imagem local (poster) para o
-  // aside cinematografico; sem entidade, o hero cai para a copy institucional.
-  // Nada e inventado — so titulo/tipo/meta/link vindos do banco.
-  const featured =
-    [...movieCards, ...seriesCards].find((card) => card.image !== null) ??
-    movieCards[0] ??
-    seriesCards[0] ??
-    null;
-  return { movieCards, seriesCards, newsCards, featured, indexability };
+  return { movieCards, seriesCards, newsCards, indexability };
 }
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -123,71 +117,38 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function HomePage() {
-  const { movieCards, seriesCards, newsCards, featured } = await getHomeData();
-
-  // Vertical do destaque (so filme/serie na home). O tipo aparece SEMPRE como
-  // texto (eyebrow "Filme"/"Série") + cor de apoio — nunca so cor (invariante 11).
-  const featuredVertical = featured?.kind === "series" ? "series" : "movie";
-  const featuredLabel = featured?.kind === "series" ? "Série" : "Filme";
+  const [{ movieCards, seriesCards, newsCards }, heroSlides] = await Promise.all([
+    getHomeData(),
+    getHomeHeroSlides(),
+  ]);
 
   return (
     <main className="portal-page" data-vertical="home">
-      {/* Hero cinematografico full-bleed (linguagem do design v4): fundo em
-          gradiente escuro por vertical + poster real ao lado quando existir.
-          Sem estrelas/ratings/CTA de feature inexistente — apenas "Ver ficha".
-          Sem destaque real, cai para o hero institucional (copy propria). */}
-      <section className={`sc-hero${featured ? "" : " sc-hero--institutional"}`}>
-        <div
-          className={`sc-hero__wash sc-hero__wash--${featured ? featuredVertical : "neutral"}`}
-          aria-hidden="true"
-        />
-        <div className="sc-hero__scrim" aria-hidden="true" />
-        <div className="sc-hero__inner">
-          <div className="sc-hero__lead">
-            {featured ? (
-              <>
-                <span className="sc-hero__eyebrow" data-vertical={featuredVertical}>
-                  {featuredLabel} em destaque
-                </span>
-                <h1 className="sc-hero__title">{featured.title}</h1>
-                {featured.meta !== null ? (
-                  <div className="sc-hero__meta">{featured.meta}</div>
-                ) : null}
-                <a className="sc-hero__cta" data-vertical={featuredVertical} href={featured.href}>
-                  Ver ficha
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <line x1="4" y1="12" x2="18.5" y2="12" />
-                    <polyline points="12.5 6 19 12 12.5 18" />
-                  </svg>
-                </a>
-              </>
-            ) : (
-              <>
-                <span className="sc-hero__eyebrow" data-vertical="neutral">
-                  The Screen
-                </span>
-                <h1 className="sc-hero__title sc-hero__title--sm">
-                  Filmes, séries, pessoas e notícias — em um só lugar.
-                </h1>
-                <p className="sc-hero__desc">{HOME_DESCRIPTION}</p>
-              </>
-            )}
-          </div>
-          {featured && featured.image !== null ? (
-            <div className="sc-hero__aside">
-              <div className="sc-hero__poster">
-                <img
-                  src={featured.image.src}
-                  alt={`Pôster de ${featured.title}`}
-                  width={featured.image.width}
-                  height={featured.image.height}
-                  loading="eager"
-                />
-              </div>
+      {/* Hero-carousel cinematografico (design v4): varios slides, cada um com
+          titulo, linha de metadados (info · nota editorial do Screen ·
+          classificacao), botoes e creditos textuais (diretor/elenco/sinopse).
+          SEM poster/card lateral. Client component puro de IO — recebe os slides
+          ja montados do PostgreSQL. Sem slides reais, cai para o hero
+          institucional (copy propria, tambem sem poster). */}
+      {heroSlides.length > 0 ? (
+        <HeroCarousel slides={heroSlides} />
+      ) : (
+        <section className="sc-hero sc-hero--institutional">
+          <div className="sc-hero__wash sc-hero__wash--neutral" aria-hidden="true" />
+          <div className="sc-hero__scrim" aria-hidden="true" />
+          <div className="sc-hero__inner">
+            <div className="sc-hero__lead">
+              <span className="sc-hero__eyebrow" data-vertical="neutral">
+                The Screen
+              </span>
+              <h1 className="sc-hero__title sc-hero__title--sm">
+                Filmes, séries, pessoas e notícias — em um só lugar.
+              </h1>
+              <p className="sc-hero__desc">{HOME_DESCRIPTION}</p>
             </div>
-          ) : null}
-        </div>
-      </section>
+          </div>
+        </section>
+      )}
 
       <div className="container">
         <nav className="portal-nav" aria-label="Seções do Screen">

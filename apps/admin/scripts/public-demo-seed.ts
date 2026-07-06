@@ -44,6 +44,7 @@ import {
   PUBLIC_DEMO_CONFIRM_ENV,
   PUBLIC_DEMO_COUNTRY,
   PUBLIC_DEMO_CREDIT_PREFIX,
+  PUBLIC_DEMO_CREW_PREFIX,
   PUBLIC_DEMO_LANGUAGE,
   PUBLIC_DEMO_MARKER,
   PUBLIC_DEMO_SLUG_PREFIX,
@@ -83,6 +84,10 @@ interface PrismaLike {
     deleteMany: (args: unknown) => Promise<{ count: number }>;
   };
   castMember: {
+    upsert: (args: unknown) => Promise<unknown>;
+    deleteMany: (args: unknown) => Promise<{ count: number }>;
+  };
+  crewMember: {
     upsert: (args: unknown) => Promise<unknown>;
     deleteMany: (args: unknown) => Promise<{ count: number }>;
   };
@@ -252,6 +257,10 @@ async function applyPlan(prisma: PrismaLike, plan: PublicDemoSeedPlan): Promise<
         releaseDate: new Date(movie.releaseDateIso),
         runtimeMinutes: movie.runtimeMinutes,
         status: movie.status,
+        certification: movie.certification,
+        screenScore: movie.screenScore,
+        screenScoreScale: 5,
+        screenScoreDisplay: true,
         posterPath: movie.posterPath,
         backdropPath: movie.backdropPath,
       },
@@ -261,6 +270,10 @@ async function applyPlan(prisma: PrismaLike, plan: PublicDemoSeedPlan): Promise<
         releaseDate: new Date(movie.releaseDateIso),
         runtimeMinutes: movie.runtimeMinutes,
         status: movie.status,
+        certification: movie.certification,
+        screenScore: movie.screenScore,
+        screenScoreScale: 5,
+        screenScoreDisplay: true,
         posterPath: movie.posterPath,
         backdropPath: movie.backdropPath,
       },
@@ -289,6 +302,10 @@ async function applyPlan(prisma: PrismaLike, plan: PublicDemoSeedPlan): Promise<
         status: show.status,
         numberOfSeasons: show.numberOfSeasons,
         numberOfEpisodes: show.numberOfEpisodes,
+        certification: show.certification,
+        screenScore: show.screenScore,
+        screenScoreScale: 5,
+        screenScoreDisplay: true,
         posterPath: show.posterPath,
         backdropPath: show.backdropPath,
       },
@@ -300,6 +317,10 @@ async function applyPlan(prisma: PrismaLike, plan: PublicDemoSeedPlan): Promise<
         status: show.status,
         numberOfSeasons: show.numberOfSeasons,
         numberOfEpisodes: show.numberOfEpisodes,
+        certification: show.certification,
+        screenScore: show.screenScore,
+        screenScoreScale: 5,
+        screenScoreDisplay: true,
         posterPath: show.posterPath,
         backdropPath: show.backdropPath,
       },
@@ -367,6 +388,33 @@ async function applyPlan(prisma: PrismaLike, plan: PublicDemoSeedPlan): Promise<
     });
   }
 
+  for (const link of plan.crew) {
+    const personId = personIdByKey.get(link.personKey);
+    const targetId =
+      link.targetKind === "movie"
+        ? movieIdByKey.get(link.targetKey)
+        : seriesIdByKey.get(link.targetKey);
+    if (personId === undefined || targetId === undefined) continue;
+    await prisma.crewMember.upsert({
+      where: { creditId: link.creditId },
+      update: {
+        personId,
+        entityType: link.targetKind,
+        entityId: targetId,
+        department: link.department,
+        job: link.job,
+      },
+      create: {
+        creditId: link.creditId,
+        personId,
+        entityType: link.targetKind,
+        entityId: targetId,
+        department: link.department,
+        job: link.job,
+      },
+    });
+  }
+
   return plan.recordCount;
 }
 
@@ -382,6 +430,9 @@ async function cleanupPlan(prisma: PrismaLike, plan: PublicDemoSeedPlan): Promis
   // Vinculos polimorficos primeiro (marcados de forma inequivoca).
   await prisma.castMember.deleteMany({
     where: { creditId: { startsWith: PUBLIC_DEMO_CREDIT_PREFIX } },
+  });
+  await prisma.crewMember.deleteMany({
+    where: { creditId: { startsWith: PUBLIC_DEMO_CREW_PREFIX } },
   });
   await prisma.watchAvailability.deleteMany({
     where: { providerApi: PUBLIC_DEMO_WATCH_PROVIDER_API },
@@ -424,7 +475,7 @@ async function cleanupPlan(prisma: PrismaLike, plan: PublicDemoSeedPlan): Promis
 function printReversalNote(plan: PublicDemoSeedPlan): void {
   console.log("Reversao:");
   console.log(
-    `  --cleanup (mesma confirmacao dupla) remove SO registros marcados: slugs com prefixo ${plan.slugPrefix}, tmdb sentinela ${plan.tmdbIdBase}.., watch ${plan.watchProviderApi}, cast ${plan.creditPrefix}.`,
+    `  --cleanup (mesma confirmacao dupla) remove SO registros marcados: slugs com prefixo ${plan.slugPrefix}, tmdb sentinela ${plan.tmdbIdBase}.., watch ${plan.watchProviderApi}, cast ${plan.creditPrefix}, crew ${PUBLIC_DEMO_CREW_PREFIX}.`,
   );
 }
 

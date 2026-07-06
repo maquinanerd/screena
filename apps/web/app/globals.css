@@ -58,6 +58,7 @@
   --accent-series: #7fa56f;
   --link-movie: #8a1e1a; /* links em texto na pagina de filme (v4) */
   --link-series: #395c42; /* links em texto na pagina de serie (v4) */
+  --accent-star: #f5c84b; /* estrelas da nota editorial do Screen (design v4) */
 
   /* Apoio do design v4 (nao sao cor de vertical). */
   --accent-yellow: #f5c518; /* amarelo Screen: botoes/ticker/rank */
@@ -817,8 +818,18 @@ a {
 }
 .sc-hero__meta {
   margin-top: 18px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
   color: rgba(255, 255, 255, 0.82);
   font-size: 14px;
+}
+.sc-hero__meta-item {
+  white-space: nowrap;
+}
+.sc-hero__sep {
+  color: rgba(255, 255, 255, 0.4);
 }
 .sc-hero__desc {
   font-size: 15px;
@@ -827,44 +838,128 @@ a {
   margin: 16px 0 0;
   max-width: 54ch;
 }
-.sc-hero__cta {
+/* Nota editorial PROPRIA do Screen — estrelas douradas (token --accent-star).
+   Preenchimento parcial via overlay clipado por largura (%). */
+.sc-stars {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  margin-top: 26px;
-  background: var(--accent-movie);
+}
+.sc-stars__track {
+  position: relative;
+  display: inline-block;
+  font-size: 15px;
+  line-height: 1;
+  letter-spacing: 2px;
+}
+.sc-stars__base {
+  color: rgba(255, 255, 255, 0.26);
+}
+.sc-stars__fill {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  color: var(--accent-star);
+}
+
+/* Classificacao indicativa (advisory) — chip bordado compacto do design v4. */
+.sc-cert {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: var(--radius-sm);
+  padding: 3px 9px;
+}
+
+/* Botoes do hero: "Onde assistir" (acento por vertical) + "Ver ficha" (ghost). */
+.sc-hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 11px;
+  margin-top: 26px;
+}
+.sc-hero__btn {
+  display: inline-flex;
+  align-items: center;
   font-weight: 700;
   font-size: 14px;
-  padding: 13px 26px;
+  padding: 12px 24px;
   border-radius: var(--radius-sm);
   text-decoration: none;
+  border: 1px solid transparent;
 }
-.sc-hero__cta[data-vertical="series"] {
+.sc-hero__btn--primary {
+  background: var(--accent-movie);
+  color: #fff;
+}
+.sc-hero__btn--primary[data-vertical="series"] {
   background: var(--accent-series);
 }
-.sc-hero__cta svg {
-  width: 15px;
-  height: 15px;
+.sc-hero__btn--ghost {
+  background: transparent;
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.55);
 }
-.sc-hero__aside {
-  max-width: 158px;
-  flex-shrink: 0;
-  align-self: center;
+
+/* Coluna direita: creditos TEXTUAIS (diretor/elenco/sinopse). Sem poster/card. */
+.sc-hero__credits {
+  max-width: 340px;
+  text-align: right;
+  align-self: flex-end;
+  padding-bottom: 6px;
 }
-.sc-hero__poster {
-  width: 158px;
-  aspect-ratio: 2 / 3;
-  border-radius: var(--radius);
-  overflow: hidden;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
-  background: #14100e;
+.sc-hero__credit {
+  margin: 0;
 }
-.sc-hero__poster img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
+.sc-hero__credit--dir {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.92);
+}
+.sc-hero__credit--cast {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.82);
+  margin-top: 8px;
+}
+.sc-hero__credit--synopsis {
+  font-size: 13px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.7);
+  margin-top: 14px;
+}
+
+/* Dots/indicadores do carousel (ativo largo, cor do vertical). */
+.sc-hero__dots {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 26px;
+  z-index: 2;
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+.sc-hero__dot {
+  width: 8px;
+  height: 5px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.45);
+  cursor: pointer;
+  transition:
+    width 0.2s ease,
+    background 0.2s ease;
+}
+.sc-hero__dot.is-active {
+  width: 26px;
+  background: var(--accent-movie);
+}
+.sc-hero__dot.is-active[data-vertical="series"] {
+  background: var(--accent-series);
 }
 
 /* ================================================================== */
@@ -2054,8 +2149,10 @@ a {
     gap: 20px;
     padding-bottom: 48px;
   }
-  .sc-hero__aside {
-    display: none;
+  .sc-hero__credits {
+    max-width: 100%;
+    text-align: left;
+    align-self: flex-start;
   }
   .sc-hero__title {
     font-size: 44px;
