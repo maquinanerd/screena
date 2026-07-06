@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
-import { EntityCardLink } from "../_components/entity-card";
 import type { EntityCard } from "../../src/lib/entity-index-presenter";
 import { NewsCard } from "../_components/news-card";
 import { HeroCarousel } from "../_components/hero-carousel";
@@ -138,23 +137,29 @@ function homeVisualScore(rank: number): string | null {
 }
 
 /**
- * SectionHeader (v4 §SectionHeader): barra de acento amarela + titulo 30px/800
- * + link "Ver tudo ›". Nesta etapa so a variante amarela (Destaques / Top 10)
- * e usada; barras vermelha/verde ficam para as secoes de Filmes/Series.
+ * SectionHeader (v4 §SectionHeader): barra de acento (cor por contexto) + titulo
+ * 30px/800 + link "Ver tudo ›". Variantes: amarela (Destaques/Top 10), vermelha
+ * (Filmes), verde (Series).
  */
 function SectionHeader({
   title,
   titleId,
   href,
+  accent = "yellow",
 }: {
   title: string;
   titleId: string;
   href: string;
+  accent?: "yellow" | "red" | "green";
 }) {
+  const accentClass =
+    accent === "yellow"
+      ? "home-v4-section-accent"
+      : `home-v4-section-accent home-v4-section-accent--${accent}`;
   return (
     <div className="home-v4-section-head">
       <div className="home-v4-section-title-wrap">
-        <span className="home-v4-section-accent" aria-hidden="true" />
+        <span className={accentClass} aria-hidden="true" />
         <h2 id={titleId} className="home-v4-section-title">
           {title}
         </h2>
@@ -290,6 +295,36 @@ function HomeV4CompactCard({ card, rank }: { card: EntityCard; rank: number }) {
   );
 }
 
+/**
+ * HomeV4PosterCard — MediaCard do v4 (grids "Filmes/Séries em destaque"): pôster
+ * 2/3 (raio 12px + sombra) com badge de tipo sobre o pôster (sup-esq) + título
+ * 13px e meta real abaixo. SEM nota/estrela, SEM Avaliar, SEM chip de plataforma
+ * (streaming nao existe como produto). Imagem LOCAL real; sem imagem, gradiente
+ * por vertical.
+ */
+function HomeV4PosterCard({ card }: { card: EntityCard }) {
+  const isMovie = card.kind === "movie";
+  return (
+    <a
+      href={card.href}
+      className="home-v4-poster-card"
+      data-entity-type={card.kind}
+    >
+      <HighlightPoster card={card} className="home-v4-media-poster">
+        <span
+          className={`home-v4-media-badge home-v4-media-badge--${isMovie ? "movie" : "series"}`}
+        >
+          {isMovie ? "FILME" : "SÉRIE"}
+        </span>
+      </HighlightPoster>
+      <span className="home-v4-poster-title">{card.title}</span>
+      {card.meta !== null ? (
+        <span className="home-v4-poster-meta">{card.meta}</span>
+      ) : null}
+    </a>
+  );
+}
+
 export default async function HomePage() {
   const [{ movieCards, seriesCards, newsCards, counts }, heroSlides] =
     await Promise.all([getHomeData(), getHomeHeroSlides()]);
@@ -313,6 +348,11 @@ export default async function HomePage() {
   // mais catalogo). Garante 4+6 sempre cheios — nunca card orfao, nunca 4+2.
   // Lista real vazia -> `fillSlots` devolve [] e a secao inteira e omitida.
   const highlightSlots = fillSlots(featuredCards, 10);
+  // Filmes/Séries em destaque (grids de 6): mesma regra de slots — 6 sempre
+  // cheios com itens REAIS (repetidos em ciclo se houver poucos); sem itens, a
+  // seção correspondente é omitida. Nunca 3 cards perdidos, nunca trilho.
+  const movieSlots = fillSlots(movieCards, 6);
+  const seriesSlots = fillSlots(seriesCards, 6);
 
   return (
     <main className="portal-page" data-vertical="home">
@@ -384,70 +424,79 @@ export default async function HomePage() {
         </section>
       ) : null}
 
-      {/* Filmes em destaque — banda quente v4 (cards reais com pôster local). */}
-      {movieCards.length > 0 ? (
-        <section className="portal-section--warm">
-          <div className="container">
-            <section className="portal-section" aria-labelledby="home-movies-title">
-              <div className="portal-section__head">
-                <h2 id="home-movies-title" className="portal-section__title" data-vertical="movie">
-                  Filmes em destaque
-                </h2>
-                <a className="portal-section__more" href={MOVIES_INDEX_PATH}>
-                  Ver todos os filmes
-                </a>
-              </div>
-              <ul className="entity-grid">
-                {fillSlots(movieCards, 6).map((card, index) => (
-                  <li key={`${card.href}-${index}`} className="entity-card-item">
-                    <EntityCardLink card={card} />
-                  </li>
-                ))}
-              </ul>
-            </section>
+      {/* Filmes em destaque — banda creme v4 (04 §4 "Filmes em alta"): grid de 6
+          MediaCards reais com pôster local + badge FILME. Slots sempre cheios;
+          sem nota/Avaliar. */}
+      {movieSlots.length > 0 ? (
+        <section
+          className="home-v4-band home-v4-band--warm"
+          aria-labelledby="home-movies-title"
+        >
+          <div className="home-v4-section home-v4-section--band">
+            <SectionHeader
+              accent="red"
+              title="Filmes em destaque"
+              titleId="home-movies-title"
+              href={MOVIES_INDEX_PATH}
+            />
+            <div className="home-v4-media-grid">
+              {movieSlots.slice(0, 6).map((card, index) => (
+                <HomeV4PosterCard
+                  key={`movie-${card.href}-${index}`}
+                  card={card}
+                />
+              ))}
+            </div>
           </div>
         </section>
       ) : null}
 
-      {/* Faixa preta de estatísticas — contagens REAIS do catálogo (sem watchlist). */}
+      {/* Faixa preta v4 (04 §5 "Seu mês em números") — honesta: contagens REAIS
+          do catálogo (filmes/séries/pessoas), nunca watchlist/assistidos. */}
       {hasCounts ? (
-        <section className="home-stats" aria-label="Catálogo do Screen">
-          <div className="container home-stats__inner">
-            <span className="home-stats__label">No catálogo do Screen</span>
-            <span className="home-stats__item">
-              <b>{counts.movies}</b> filmes
+        <section className="home-v4-stats-band" aria-label="Catálogo do Screen">
+          <div className="home-v4-stats-inner">
+            <span className="home-v4-stats-label">NO CATÁLOGO DO SCREEN</span>
+            <span className="home-v4-stat">
+              <strong>{counts.movies}</strong> filmes
             </span>
-            <span className="home-stats__item">
-              <b>{counts.series}</b> séries
+            <span className="home-v4-stat">
+              <strong>{counts.series}</strong> séries
             </span>
-            <span className="home-stats__item">
-              <b>{counts.people}</b> pessoas
+            <span className="home-v4-stat">
+              <strong>{counts.people}</strong> pessoas
             </span>
+          </div>
+        </section>
+      ) : null}
+
+      {/* Séries em destaque — v4 (04 §6 "Séries da semana") reduzido com
+          honestidade: grid de 6 MediaCards reais com badge SÉRIE. SEM tiles com
+          título sobre pôster, SEM chip de plataforma, SEM tabs de streaming
+          (não há dado de plataforma como produto), SEM nota/Avaliar. */}
+      {seriesSlots.length > 0 ? (
+        <section
+          className="home-v4-section home-v4-section--series"
+          aria-labelledby="home-series-title"
+        >
+          <SectionHeader
+            accent="green"
+            title="Séries em destaque"
+            titleId="home-series-title"
+            href={SERIES_INDEX_PATH}
+          />
+          <div className="home-v4-media-grid">
+            {seriesSlots.slice(0, 6).map((card, index) => (
+              <HomeV4PosterCard
+                key={`series-${card.href}-${index}`}
+                card={card}
+              />
+            ))}
           </div>
         </section>
       ) : null}
 
       <div className="container">
-        {seriesCards.length > 0 ? (
-          <section className="portal-section" aria-labelledby="home-series-title">
-            <div className="portal-section__head">
-              <h2 id="home-series-title" className="portal-section__title" data-vertical="series">
-                Séries em destaque
-              </h2>
-              <a className="portal-section__more" href={SERIES_INDEX_PATH}>
-                Ver todas as séries
-              </a>
-            </div>
-            <ul className="entity-grid">
-              {fillSlots(seriesCards, 6).map((card, index) => (
-                <li key={`${card.href}-${index}`} className="entity-card-item">
-                  <EntityCardLink card={card} />
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
-
         {newsCards.length > 0 ? (
           <section className="portal-section" aria-labelledby="home-news-title">
             <div className="portal-section__head">

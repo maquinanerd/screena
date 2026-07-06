@@ -1164,16 +1164,6 @@ a {
   font-weight: 600;
 }
 
-/* Faixa quente que envolve uma secao (Filmes em destaque). */
-.portal-section--warm {
-  margin-top: 56px;
-  padding: 56px 0;
-  background: var(--bg-warm);
-}
-.portal-section--warm .portal-section {
-  padding-top: 0;
-}
-
 /* ================================================================== */
 /* Episodes Ticker — faixa amarela (carrossel) abaixo do hero (v4)     */
 /* ------------------------------------------------------------------ */
@@ -1281,40 +1271,40 @@ a {
   }
 }
 
-/* Faixa preta de estatisticas REAIS do catalogo (sem watchlist/assistidos). */
-.home-stats {
+/* Faixa preta v4 (04 §5) — estatísticas REAIS do catálogo (sem watchlist). */
+.home-v4-stats-band {
   margin-top: 56px;
   background: var(--bg-dark);
   color: #fff;
 }
-.home-stats__inner {
+.home-v4-stats-inner {
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: 20px var(--container-pad);
   display: flex;
   align-items: center;
   gap: 28px;
   flex-wrap: wrap;
-  padding-top: 20px;
-  padding-bottom: 20px;
 }
-.home-stats__label {
+.home-v4-stats-label {
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.14em;
-  text-transform: uppercase;
   color: var(--accent-yellow);
 }
-.home-stats__item {
+.home-v4-stat {
   font-size: 14px;
   color: rgba(255, 255, 255, 0.72);
 }
-.home-stats__item b {
+.home-v4-stat strong {
   font-size: 18px;
   font-weight: 800;
   color: var(--accent-yellow);
   margin-right: 4px;
 }
 
-/* Elevação no hover dos cards das seções Filmes/Séries da home (EntityCardLink;
-   a seção Destaques usa seus próprios cards v4 abaixo). */
+/* Elevação no hover dos EntityCardLink dentro de um portal — hoje o hub
+   /pt/explorar (a home usa cards v4 próprios em todas as seções). */
 .portal-page .entity-card {
   transition: transform 0.2s ease;
 }
@@ -1358,6 +1348,12 @@ a {
   border-radius: 2px;
   background: #f5c518;
   flex-shrink: 0;
+}
+.home-v4-section-accent--red {
+  background: #f0443e;
+}
+.home-v4-section-accent--green {
+  background: #7fa56f;
 }
 .home-v4-section-title {
   font-size: 30px;
@@ -1655,6 +1651,108 @@ a {
     grid-template-columns: 1fr;
   }
   .home-v4-compact-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* ================================================================== */
+/* Home · Filmes/Séries em destaque (MediaCards do v4, grid de 6)      */
+/* ------------------------------------------------------------------ */
+/* Banda creme (Filmes) + grid de 6 MediaCards (Filmes e Séries), pôster
+   2/3 + badge de tipo + título/meta. Sem nota/estrela, sem chip de
+   plataforma, sem tabs de streaming. As `--band`/`--series` vêm DEPOIS de
+   `.home-v4-section` base (acima) para vencer o padding no desktop. */
+.home-v4-band--warm {
+  background: var(--bg-warm);
+}
+.home-v4-section--band {
+  padding: 56px var(--container-pad);
+}
+.home-v4-section--series {
+  padding-bottom: 56px;
+}
+.home-v4-media-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 18px;
+}
+.home-v4-poster-card {
+  display: block;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+.home-v4-poster-card:hover .home-v4-media-poster {
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+/* Pôster do MediaCard: raio 12px + sombra; imagem local real quando existe,
+   senão gradiente por vertical. Badge de tipo sobre o pôster (sup-esq). */
+.home-v4-media-poster {
+  display: block;
+  position: relative;
+  aspect-ratio: 2 / 3;
+  overflow: hidden;
+  border-radius: 12px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.1), transparent 28%),
+    linear-gradient(135deg, #33291f, #0c0908);
+  transition:
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+}
+.home-v4-media-poster[data-vertical="series"] {
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.1), transparent 28%),
+    linear-gradient(135deg, #1e3128, #07100b);
+}
+.home-v4-media-badge {
+  position: absolute;
+  top: 9px;
+  left: 9px;
+  z-index: 2;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #fff;
+  padding: 3px 7px;
+  border-radius: 6px;
+}
+.home-v4-media-badge--movie {
+  background: #f0443e;
+}
+.home-v4-media-badge--series {
+  background: #7fa56f;
+}
+.home-v4-poster-title {
+  display: block;
+  margin-top: 11px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #101010;
+  line-height: 1.2;
+}
+.home-v4-poster-meta {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #6e6e6e;
+}
+@media (max-width: 980px) {
+  .home-v4-section--band {
+    padding-inline: 40px;
+  }
+  .home-v4-media-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 640px) {
+  .home-v4-section--band {
+    padding: 40px 20px;
+  }
+  .home-v4-media-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
