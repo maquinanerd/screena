@@ -5,6 +5,7 @@ import { EntityCardLink } from "../_components/entity-card";
 import type { EntityCard } from "../../src/lib/entity-index-presenter";
 import { NewsCard } from "../_components/news-card";
 import { HeroCarousel } from "../_components/hero-carousel";
+import { EpisodesTicker } from "../_components/episodes-ticker";
 import {
   getMovieIndexData,
   getPersonIndexData,
@@ -293,9 +294,6 @@ export default async function HomePage() {
   const [{ movieCards, seriesCards, newsCards, counts }, heroSlides] =
     await Promise.all([getHomeData(), getHomeHeroSlides()]);
 
-  // Faixa amarela honesta: um título REAL em destaque (primeiro slide do hero).
-  // Sem claim de "novo episódio"/streaming fake — só um atalho para a ficha.
-  const spotlight = heroSlides[0] ?? null;
   const hasCounts = counts.movies > 0 || counts.series > 0 || counts.people > 0;
 
   // Seção principal densa "Destaques no The Screen": mistura filmes+séries reais
@@ -341,20 +339,11 @@ export default async function HomePage() {
         </section>
       )}
 
-      {/* Faixa amarela (ritmo v4) — destaque editorial honesto, sem feature fake. */}
-      {spotlight !== null ? (
-        <div className="home-ticker">
-          <div className="container home-ticker__inner">
-            <div className="home-ticker__lead">
-              <span className="home-ticker__badge">Destaque</span>
-              <span className="home-ticker__text">{spotlight.title}</span>
-            </div>
-            <a className="home-ticker__cta" href={spotlight.href}>
-              Ver ficha
-            </a>
-          </div>
-        </div>
-      ) : null}
+      {/* Faixa amarela abaixo do hero — Episodes Ticker (carrossel de episódios
+          novos do dia, design v4). MOCK VISUAL: dados de episódio/streaming são
+          placeholder de fidelidade (sem watch_availability real); ver
+          episodes-ticker.tsx e a dívida técnica registrada. */}
+      <EpisodesTicker />
 
       {/* Seção principal: Destaques no The Screen — Top 10 do v4 portado com
           governança honesta: 4 HighlightCards grandes (card branco + pôster +
