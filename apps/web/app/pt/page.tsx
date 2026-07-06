@@ -49,6 +49,18 @@ const HOME_TITLE = "Screen — filmes, séries, pessoas e notícias";
 const HOME_DESCRIPTION =
   "Base editorial de entretenimento em português: fichas de filmes e séries, perfis de pessoas e notícias com curadoria própria da redação do Screen.";
 
+/**
+ * Preenche `count` slots visuais com itens REAIS existentes, repetindo em ciclo
+ * quando ha poucos itens (ate a ingestao TMDB popular mais catalogo). Nao
+ * inventa dado: cada slot e um item real (mesmo `EntityCard` reaparece). A `key`
+ * do React combina href + indice do slot (o mesmo href pode repetir). Lista
+ * vazia -> nenhum slot.
+ */
+function fillSlots<T>(items: readonly T[], count: number): T[] {
+  if (items.length === 0 || count <= 0) return [];
+  return Array.from({ length: count }, (_, index) => items[index % items.length] as T);
+}
+
 async function getHomeData() {
   const [movies, series, people, news] = await Promise.all([
     getMovieIndexData(),
@@ -172,24 +184,23 @@ export default async function HomePage() {
                 Ver tudo
               </a>
             </div>
-            {/* Ritmo do Top 10 v4: até 4 cartazes GRANDES ocupando a largura +
-                linha secundária compacta (trilho). Degrada sem card órfão. */}
+            {/* Estrutura v4: fileira de 4 cartazes GRANDES + fileira secundária
+                em GRID de 6 colunas. Slots preenchidos com itens reais (repetidos
+                em ciclo quando ha poucos) — nunca card órfão nem buraco. */}
             <ul className="home-feat__big">
-              {featuredCards.slice(0, 4).map((card) => (
-                <li key={card.href} className="entity-card-item">
+              {fillSlots(featuredCards, 4).map((card, index) => (
+                <li key={`${card.href}-${index}`} className="entity-card-item">
                   <EntityCardLink card={card} />
                 </li>
               ))}
             </ul>
-            {featuredCards.length > 4 ? (
-              <ul className="home-feat__rail">
-                {featuredCards.slice(4).map((card) => (
-                  <li key={card.href} className="entity-card-item">
-                    <EntityCardLink card={card} />
-                  </li>
-                ))}
-              </ul>
-            ) : null}
+            <ul className="entity-grid home-feat__small">
+              {fillSlots(featuredCards, 6).map((card, index) => (
+                <li key={`${card.href}-${index}`} className="entity-card-item">
+                  <EntityCardLink card={card} />
+                </li>
+              ))}
+            </ul>
           </section>
         </div>
       ) : null}
@@ -207,9 +218,9 @@ export default async function HomePage() {
                   Ver todos os filmes
                 </a>
               </div>
-              <ul className="home-rail-h">
-                {movieCards.map((card) => (
-                  <li key={card.href} className="entity-card-item">
+              <ul className="entity-grid">
+                {fillSlots(movieCards, 6).map((card, index) => (
+                  <li key={`${card.href}-${index}`} className="entity-card-item">
                     <EntityCardLink card={card} />
                   </li>
                 ))}
@@ -248,9 +259,9 @@ export default async function HomePage() {
                 Ver todas as séries
               </a>
             </div>
-            <ul className="home-rail-h">
-              {seriesCards.map((card) => (
-                <li key={card.href} className="entity-card-item">
+            <ul className="entity-grid">
+              {fillSlots(seriesCards, 6).map((card, index) => (
+                <li key={`${card.href}-${index}`} className="entity-card-item">
                   <EntityCardLink card={card} />
                 </li>
               ))}
