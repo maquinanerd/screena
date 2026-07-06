@@ -172,13 +172,24 @@ export default async function HomePage() {
                 Ver tudo
               </a>
             </div>
-            <ul className="home-rail">
-              {featuredCards.map((card) => (
+            {/* Ritmo do Top 10 v4: até 4 cartazes GRANDES ocupando a largura +
+                linha secundária compacta (trilho). Degrada sem card órfão. */}
+            <ul className="home-feat__big">
+              {featuredCards.slice(0, 4).map((card) => (
                 <li key={card.href} className="entity-card-item">
                   <EntityCardLink card={card} />
                 </li>
               ))}
             </ul>
+            {featuredCards.length > 4 ? (
+              <ul className="home-feat__rail">
+                {featuredCards.slice(4).map((card) => (
+                  <li key={card.href} className="entity-card-item">
+                    <EntityCardLink card={card} />
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </section>
         </div>
       ) : null}
@@ -196,7 +207,7 @@ export default async function HomePage() {
                   Ver todos os filmes
                 </a>
               </div>
-              <ul className="home-rail">
+              <ul className="home-rail-h">
                 {movieCards.map((card) => (
                   <li key={card.href} className="entity-card-item">
                     <EntityCardLink card={card} />
@@ -237,7 +248,7 @@ export default async function HomePage() {
                 Ver todas as séries
               </a>
             </div>
-            <ul className="home-rail">
+            <ul className="home-rail-h">
               {seriesCards.map((card) => (
                 <li key={card.href} className="entity-card-item">
                   <EntityCardLink card={card} />

@@ -1261,25 +1261,86 @@ a {
 /* Trilho denso da home (Destaques / Filmes / Séries): preenche a largura com
    cartazes reais; com poucos itens degrada bem (auto-fill). Cards com leve
    elevação no hover (presença v4, sem placeholder cru). */
-.home-rail {
+.home-feat__big,
+.home-feat__rail,
+.home-rail-h {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(184px, 1fr));
-  gap: 20px;
 }
-.home-rail .entity-card {
+
+/* Seção principal (Destaques) — ate 4 cartazes GRANDES ocupando a largura,
+   como a fileira de destaques do v4. Preenche o topo denso, sem card orfao. */
+.home-feat__big {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 22px;
+}
+.home-feat__big .entity-card__title {
+  font-size: 15px;
+}
+
+/* Linha secundaria compacta da seção principal (trilho horizontal). */
+.home-feat__rail {
+  display: flex;
+  gap: 16px;
+  margin-top: 22px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 4px;
+}
+.home-feat__rail > .entity-card-item {
+  flex: 0 0 150px;
+}
+
+/* Trilhos de midia (Filmes / Séries em destaque) — nunca 3 cards perdidos. */
+.home-rail-h {
+  display: flex;
+  gap: 20px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 4px;
+}
+.home-rail-h > .entity-card-item {
+  flex: 0 0 200px;
+}
+
+.home-feat__rail::-webkit-scrollbar,
+.home-rail-h::-webkit-scrollbar {
+  display: none;
+}
+
+/* Hover consistente (elevação) em todos os cards da home. */
+.home-feat__big .entity-card,
+.home-feat__rail .entity-card,
+.home-rail-h .entity-card {
   transition: transform 0.2s ease;
 }
-.home-rail .entity-card:hover {
+.home-feat__big .entity-card:hover,
+.home-feat__rail .entity-card:hover,
+.home-rail-h .entity-card:hover {
   transform: translateY(-3px);
 }
-.home-rail .entity-card__media {
+.home-feat__big .entity-card__media,
+.home-feat__rail .entity-card__media,
+.home-rail-h .entity-card__media {
   transition: box-shadow 0.2s ease;
 }
-.home-rail .entity-card:hover .entity-card__media {
+.home-feat__big .entity-card:hover .entity-card__media,
+.home-feat__rail .entity-card:hover .entity-card__media,
+.home-rail-h .entity-card:hover .entity-card__media {
   box-shadow: var(--shadow-raised);
+}
+
+@media (max-width: 980px) {
+  .home-feat__big {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+@media (max-width: 680px) {
+  .home-feat__big {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 /* Seção principal densa (Destaques) — respiro maior de topo. */
