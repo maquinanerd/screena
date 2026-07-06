@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 
 import { EntityCardLink } from "../_components/entity-card";
 import type { EntityCard } from "../../src/lib/entity-index-presenter";
@@ -111,6 +112,31 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 /**
+ * Notas VISUAIS dos Destaques (fidelidade v4). NAO sao ratings reais: nao vem
+ * de fonte externa (IMDb/RT/TMDB), nao sao atribuidas, nao viram AggregateRating
+ * nem ExternalRating, nao sao persistidas e nao afirmam nota de usuarios. Sao
+ * placeholder decorativo por POSICAO do slot (1..10), deterministico (SSR-safe),
+ * a ser substituido por dado governado quando ratings entrarem como feature real.
+ */
+const HOME_VISUAL_SCORES = [
+  "8.6",
+  "8.6",
+  "8.7",
+  "8.7",
+  "8.0",
+  "8.9",
+  "7.5",
+  "8.8",
+  "7.0",
+  "8.0",
+] as const;
+
+/** Nota visual (placeholder) para o rank 1..10; fora do intervalo -> null. */
+function homeVisualScore(rank: number): string | null {
+  return HOME_VISUAL_SCORES[rank - 1] ?? null;
+}
+
+/**
  * SectionHeader (v4 §SectionHeader): barra de acento amarela + titulo 30px/800
  * + link "Ver tudo ›". Nesta etapa so a variante amarela (Destaques / Top 10)
  * e usada; barras vermelha/verde ficam para as secoes de Filmes/Series.
@@ -164,9 +190,11 @@ function HighlightBadge({ kind }: { kind: EntityCard["kind"] }) {
 function HighlightPoster({
   card,
   className,
+  children,
 }: {
   card: EntityCard;
   className: string;
+  children?: ReactNode;
 }) {
   return (
     <span className={className} data-vertical={card.kind}>
@@ -180,46 +208,63 @@ function HighlightPoster({
           loading="lazy"
         />
       ) : null}
+      {children}
     </span>
   );
 }
 
 /**
- * HomeV4BigCard — HighlightCard do v4 (4 grandes): card branco completo (borda
- * #E3DED6, raio 14px), poster 2/3 em cima + corpo branco com densidade (badge
- * de tipo + titulo + meta real + rodape "Ver ficha"). SEM rank, SEM nota, SEM
- * Avaliar/Marcar — a acao "Ver ficha" ocupa honestamente o lugar das acoes
- * falsas do design (o card inteiro ja e o link para a ficha).
+ * HomeV4BigCard — HighlightCard do v4 (4 grandes) em FIDELIDADE VISUAL: poster
+ * 2/3 com rank amarelo (posição do slot) + corpo branco (badge + título + meta
+ * + linha de rating + "Marcar como assistido"). O rank e a nota sao VISUAIS
+ * (placeholder, ver `homeVisualScore`), nao metrica/rating real. "Avaliar" e
+ * "Marcar como assistido" sao affordances DESABILITADAS (aria-disabled), sem
+ * onClick, sem mutation, sem estado — puro visual do design v4.
  */
-function HomeV4BigCard({ card }: { card: EntityCard }) {
+function HomeV4BigCard({ card, rank }: { card: EntityCard; rank: number }) {
+  const displayScore = homeVisualScore(rank);
   return (
     <a
       href={card.href}
       className="home-v4-big-card"
       data-entity-type={card.kind}
     >
-      <HighlightPoster card={card} className="home-v4-poster" />
+      <HighlightPoster card={card} className="home-v4-poster">
+        <span className="home-v4-rank-badge">#{rank}</span>
+      </HighlightPoster>
       <span className="home-v4-big-card-body">
         <HighlightBadge kind={card.kind} />
         <span className="home-v4-big-card-title">{card.title}</span>
         {card.meta !== null ? (
           <span className="home-v4-big-card-meta">{card.meta}</span>
         ) : null}
-        <span className="home-v4-card-action">Ver ficha</span>
+        <span className="home-v4-rating-row">
+          {displayScore !== null ? (
+            <span className="home-v4-rating" aria-hidden="true">
+              <span className="home-v4-star">★</span>
+              {displayScore}
+            </span>
+          ) : null}
+          <span className="home-v4-muted-action" aria-disabled="true">
+            ☆ Avaliar
+          </span>
+        </span>
+        <span className="home-v4-watch-action" aria-disabled="true">
+          ✓ Marcar como assistido
+        </span>
       </span>
     </a>
   );
 }
 
 /**
- * HomeV4CompactCard — RankingItem do v4 (6 compactos): card branco horizontal
- * (borda #E3DED6, raio 10px, padding 10px), mini poster 34px a esquerda +
- * texto a direita. No lugar do "#N"/rank do v4, um kicker de TIPO (FILME/SÉRIE)
- * na cor muda do design — honesto, sem fingir ranking. SEM nota. Nunca poster
- * vertical grande.
+ * HomeV4CompactCard — RankingItem do v4 (6 compactos) em FIDELIDADE VISUAL:
+ * mini poster 42px a esquerda + copy (rank #N + título + meta + rating). O rank
+ * e a nota sao VISUAIS (placeholder, ver `homeVisualScore`), nao ranking/rating
+ * real. Nunca poster vertical grande.
  */
-function HomeV4CompactCard({ card }: { card: EntityCard }) {
-  const isMovie = card.kind === "movie";
+function HomeV4CompactCard({ card, rank }: { card: EntityCard; rank: number }) {
+  const displayScore = homeVisualScore(rank);
   return (
     <a
       href={card.href}
@@ -228,12 +273,16 @@ function HomeV4CompactCard({ card }: { card: EntityCard }) {
     >
       <HighlightPoster card={card} className="home-v4-compact-poster" />
       <span className="home-v4-compact-copy">
-        <span className="home-v4-compact-kicker">
-          {isMovie ? "FILME" : "SÉRIE"}
-        </span>
+        <span className="home-v4-compact-rank">#{rank}</span>
         <span className="home-v4-compact-title">{card.title}</span>
         {card.meta !== null ? (
           <span className="home-v4-compact-meta">{card.meta}</span>
+        ) : null}
+        {displayScore !== null ? (
+          <span className="home-v4-compact-rating" aria-hidden="true">
+            <span className="home-v4-star">★</span>
+            {displayScore}
+          </span>
         ) : null}
       </span>
     </a>
@@ -314,7 +363,10 @@ export default async function HomePage() {
           Slots sempre cheios (fillSlots) — nunca 4+2, nunca card órfão, nunca
           trilho horizontal. */}
       {highlightSlots.length > 0 ? (
-        <section className="home-v4-section" aria-labelledby="home-featured-title">
+        <section
+          className="home-v4-section home-v4-section--main"
+          aria-labelledby="home-featured-title"
+        >
           <SectionHeader
             title="Destaques no The Screen"
             titleId="home-featured-title"
@@ -326,7 +378,7 @@ export default async function HomePage() {
                 key={`highlight-big-${card.href}-${index}`}
                 className="home-v4-card-item"
               >
-                <HomeV4BigCard card={card} />
+                <HomeV4BigCard card={card} rank={index + 1} />
               </li>
             ))}
           </ul>
@@ -336,7 +388,7 @@ export default async function HomePage() {
                 key={`highlight-compact-${card.href}-${index}`}
                 className="home-v4-card-item"
               >
-                <HomeV4CompactCard card={card} />
+                <HomeV4CompactCard card={card} rank={index + 5} />
               </li>
             ))}
           </ul>
