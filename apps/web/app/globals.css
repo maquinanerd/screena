@@ -233,6 +233,33 @@ a {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
+  transition:
+    background 0.35s ease,
+    border-color 0.35s ease;
+}
+
+/* Variante adaptativa da home (design v4): transparente/branco SOBRE o hero.
+   So aplica quando data-over-hero="true" (home + topo); demais telas ficam
+   sempre no header solido/claro acima. */
+.site-header[data-over-hero="true"] {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-bottom-color: transparent;
+}
+.site-header[data-over-hero="true"] .site-header__link {
+  color: rgba(255, 255, 255, 0.88);
+}
+.site-header[data-over-hero="true"] .site-header__link:hover,
+.site-header[data-over-hero="true"] .site-header__link:focus-visible {
+  color: #fff;
+}
+.site-header[data-over-hero="true"] .site-header__search {
+  color: rgba(255, 255, 255, 0.82);
+}
+.site-header[data-over-hero="true"] .site-header__search:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
 }
 
 .site-header__inner {
@@ -563,16 +590,31 @@ a {
   object-fit: cover;
   display: block;
 }
+/* Fallback de pôster PREMIUM (cinematográfico, não placeholder cru): base
+   por vertical + brilho superior + vinheta inferior. O badge Filme/Série
+   continua por cima, dando leitura clara mesmo sem imagem. */
 .entity-card__fallback {
   position: absolute;
   inset: 0;
-  background: linear-gradient(150deg, #2a2622, #100d0b);
+  background:
+    radial-gradient(130% 80% at 50% -10%, rgba(255, 255, 255, 0.1), transparent 55%),
+    linear-gradient(150deg, #33291f 0%, #1c1610 55%, #0c0908 100%);
+}
+.entity-card__fallback::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(85% 60% at 50% 38%, transparent, rgba(0, 0, 0, 0.55));
 }
 .entity-card[data-entity-type="series"] .entity-card__fallback {
-  background: linear-gradient(150deg, #1a2a22, #0c130f);
+  background:
+    radial-gradient(130% 80% at 50% -10%, rgba(255, 255, 255, 0.1), transparent 55%),
+    linear-gradient(150deg, #1e3128 0%, #101c15 55%, #07100b 100%);
 }
 .entity-card[data-entity-type="person"] .entity-card__fallback {
-  background: linear-gradient(150deg, #26222c, #100d15);
+  background:
+    radial-gradient(130% 80% at 50% -10%, rgba(255, 255, 255, 0.1), transparent 55%),
+    linear-gradient(150deg, #2c2635 0%, #171320 55%, #0b0912 100%);
 }
 .entity-card__badge {
   position: absolute;
@@ -1151,20 +1193,24 @@ a {
   gap: 14px;
   min-width: 0;
 }
+.home-ticker__inner {
+  padding-top: 15px;
+  padding-bottom: 15px;
+}
 .home-ticker__badge {
   flex-shrink: 0;
   background: #101010;
   color: var(--accent-yellow);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  padding: 4px 9px;
+  padding: 5px 11px;
   border-radius: 6px;
 }
 .home-ticker__text {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1210,6 +1256,35 @@ a {
   font-weight: 800;
   color: var(--accent-yellow);
   margin-right: 4px;
+}
+
+/* Trilho denso da home (Destaques / Filmes / Séries): preenche a largura com
+   cartazes reais; com poucos itens degrada bem (auto-fill). Cards com leve
+   elevação no hover (presença v4, sem placeholder cru). */
+.home-rail {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(184px, 1fr));
+  gap: 20px;
+}
+.home-rail .entity-card {
+  transition: transform 0.2s ease;
+}
+.home-rail .entity-card:hover {
+  transform: translateY(-3px);
+}
+.home-rail .entity-card__media {
+  transition: box-shadow 0.2s ease;
+}
+.home-rail .entity-card:hover .entity-card__media {
+  box-shadow: var(--shadow-raised);
+}
+
+/* Seção principal densa (Destaques) — respiro maior de topo. */
+.portal-section--lead {
+  padding-top: 64px;
 }
 
 /* ================================================================== */

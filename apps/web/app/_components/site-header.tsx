@@ -1,47 +1,63 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { useEffect, useState, type ReactNode } from "react";
+import { usePathname } from "next/navigation";
 
 import { HOME_HREF, NAV_ITEMS } from "../../src/lib/navigation";
-import { EXPLORE_PATH } from "../../src/lib/site";
+import { EXPLORE_PATH, HOME_PATH } from "../../src/lib/site";
 
 /**
  * SiteHeader — cabecalho/navegacao global do app publico @screena/web.
  *
- * Server component PURO (sem "use client"): so JSX estatico + constantes de
- * rota puras (`site.ts`). Zero rede, zero DB, zero API externa, zero Gemini,
- * zero estado/JS de cliente — respeita as invariantes 3 e 4 (pureza de render)
- * e passa em `audit:render`. Renderizado uma unica vez no layout raiz, aparece
- * em todas as telas (pagina de filme e preview de desenvolvimento).
+ * Client component ENXUTO e PURO DE IO: a unica interatividade e o estado de
+ * scroll para o comportamento adaptativo da nav sobre o hero (design v4). NAO
+ * faz rede/DB/API/Gemini — respeita as invariantes 3/4 e passa em `audit:render`.
  *
- * Estetica: mesma linguagem White Cinematic Editorial da Movie Detail
- * (off-white quente, Montserrat, cantos retos), a partir do handoff do Claude
- * Design ("Screena Screens"). O header e NEUTRO/institucional: nao carrega cor
- * de vertical. O vermelho de FILME e o verde de SERIE aparecem apenas como
- * reforco de hover/foco nos respectivos links — nunca como unico sinal
- * (invariante 11: o proprio texto "Filmes"/"Series" e o segmento de URL
- * /pt/filmes/ vs /pt/series/ ja diferenciam a vertical).
+ * Comportamento adaptativo (SOMENTE na `Public Marketing Home v4`, `/pt`):
+ *  - sobre o hero (topo, sem scroll): header TRANSPARENTE com texto/logo brancos
+ *    (o hero escuro aparece atras — o hero ja sobe sob a nav via margin-top
+ *    negativa), dando a presenca cinematografica do v4;
+ *  - ao rolar: vira SOLIDO com blur (visual claro padrao).
+ * Em TODAS as demais telas (catalogo/ficha/etc.) o header e SEMPRE solido/claro
+ * — a variacao e limitada a home e nao altera as paginas internas.
  *
- * Escopo desta fatia: navegacao estrutural. Sem busca funcional e sem menu
- * mobile complexo — apenas responsividade basica (via globals.css).
+ * Honestidade de nav (invariante 11 + page-map): itens apontam so para rotas
+ * publicadas reais. `Entrar`/avatar/`Listas`/`Onde assistir` do v4 dependem de
+ * login/watchlist inativos e por isso NAO sao renderizados.
  */
 
-/*
- * Itens de navegacao e destino do wordmark vivem no modulo puro
- * `src/lib/navigation.ts` (fonte unica, testada em tests/web/public-navigation
- * — todo item aponta para rota publicada real; "Explorar" voltou porque a rota
- * /pt/explorar/ existe desde a Fase 5D).
- */
+function isHomePath(pathname: string | null): boolean {
+  if (pathname === null) return false;
+  return pathname === HOME_PATH || pathname === HOME_PATH.replace(/\/$/, "");
+}
 
 export function SiteHeader(): ReactNode {
+  const pathname = usePathname();
+  const home = isHomePath(pathname);
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    if (!home) {
+      setScrolled(false);
+      return;
+    }
+    const onScroll = () => setScrolled(window.scrollY > 48);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [home]);
+
+  // Transparente/branco apenas na home E no topo (sobre o hero).
+  const overHero = home && !scrolled;
+
   return (
-    <header className="site-header">
+    <header className="site-header" data-over-hero={overHero ? "true" : undefined}>
       <div className="site-header__inner">
-        {/* Logo oficial Screen (SVG local em /brand). O header tem fundo claro
-            -> logo preta (neutra, sem cor de vertical). O alt="Screen" fornece o
-            nome acessivel do link para a home. */}
+        {/* Logo branca sobre o hero; preta no header solido. */}
         <a className="site-header__brand" href={HOME_HREF}>
           <img
             className="site-header__logo"
-            src="/brand/screen-logo-black.svg"
+            src={overHero ? "/brand/screen-logo-white.svg" : "/brand/screen-logo-black.svg"}
             alt="Screen"
             width={135}
             height={26}
@@ -61,9 +77,7 @@ export function SiteHeader(): ReactNode {
           ))}
         </nav>
 
-        {/* Acao de busca: o icone leva ao hub /pt/explorar/ (rota real). Nao ha
-            campo de busca funcional (busca esta fora de escopo); apenas um link,
-            mantendo o header puro (invariantes 3/4). */}
+        {/* Busca leva ao hub /pt/explorar/ (rota real); sem campo funcional. */}
         <div className="site-header__actions">
           <a className="site-header__search" href={EXPLORE_PATH} aria-label="Explorar">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">

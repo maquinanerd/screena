@@ -106,6 +106,19 @@ export default async function HomePage() {
   const spotlight = heroSlides[0] ?? null;
   const hasCounts = counts.movies > 0 || counts.series > 0 || counts.people > 0;
 
+  // Seção principal densa "Destaques no The Screen": mistura filmes+séries reais
+  // (intercalados p/ variedade). No ritmo do Top 10 do v4, mas SEM ranking, SEM
+  // nota, SEM Avaliar/Marcar — só título/tipo/ano reais e link para a ficha.
+  const highlights: typeof movieCards = [];
+  const maxLen = Math.max(movieCards.length, seriesCards.length);
+  for (let i = 0; i < maxLen; i += 1) {
+    const movie = movieCards[i];
+    if (movie) highlights.push(movie);
+    const series = seriesCards[i];
+    if (series) highlights.push(series);
+  }
+  const featuredCards = highlights.slice(0, 10);
+
   return (
     <main className="portal-page" data-vertical="home">
       {/* Hero-carousel (design v4): slides reais, metadados completos, sem poster
@@ -146,6 +159,30 @@ export default async function HomePage() {
         </div>
       ) : null}
 
+      {/* Seção principal densa: Destaques no The Screen (filmes+séries reais,
+          intercalados). Ritmo do Top 10 do v4, sem ranking/nota/Avaliar. */}
+      {featuredCards.length > 0 ? (
+        <div className="container">
+          <section className="portal-section portal-section--lead" aria-labelledby="home-featured-title">
+            <div className="portal-section__head">
+              <h2 id="home-featured-title" className="portal-section__title">
+                Destaques no The Screen
+              </h2>
+              <a className="portal-section__more" href={EXPLORE_PATH}>
+                Ver tudo
+              </a>
+            </div>
+            <ul className="home-rail">
+              {featuredCards.map((card) => (
+                <li key={card.href} className="entity-card-item">
+                  <EntityCardLink card={card} />
+                </li>
+              ))}
+            </ul>
+          </section>
+        </div>
+      ) : null}
+
       {/* Filmes em destaque — banda quente v4 (cards reais com pôster local). */}
       {movieCards.length > 0 ? (
         <section className="portal-section--warm">
@@ -159,7 +196,7 @@ export default async function HomePage() {
                   Ver todos os filmes
                 </a>
               </div>
-              <ul className="entity-grid">
+              <ul className="home-rail">
                 {movieCards.map((card) => (
                   <li key={card.href} className="entity-card-item">
                     <EntityCardLink card={card} />
@@ -200,7 +237,7 @@ export default async function HomePage() {
                 Ver todas as séries
               </a>
             </div>
-            <ul className="entity-grid">
+            <ul className="home-rail">
               {seriesCards.map((card) => (
                 <li key={card.href} className="entity-card-item">
                   <EntityCardLink card={card} />
