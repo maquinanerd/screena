@@ -1271,7 +1271,9 @@ a {
   }
 }
 
-/* Faixa preta v4 (04 §5) — estatísticas REAIS do catálogo (sem watchlist). */
+/* Faixa preta v4 (04 §5) — statbar: kicker amarelo + estatísticas REAIS do
+   catálogo (sem watchlist). Grupo à esquerda + CTA à direita (space-between).
+   A barra mantém recuo lateral próprio (80px) — faixa full-bleed independente. */
 .home-v4-stats-band {
   margin-top: 56px;
   background: var(--bg-dark);
@@ -1283,10 +1285,20 @@ a {
   padding: 20px var(--container-pad);
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+.home-v4-stats-group {
+  display: flex;
+  align-items: center;
   gap: 28px;
   flex-wrap: wrap;
 }
 .home-v4-stats-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.14em;
@@ -1294,13 +1306,23 @@ a {
 }
 .home-v4-stat {
   font-size: 14px;
-  color: rgba(255, 255, 255, 0.72);
+  color: rgba(255, 255, 255, 0.7);
 }
 .home-v4-stat strong {
   font-size: 18px;
   font-weight: 800;
   color: var(--accent-yellow);
   margin-right: 4px;
+}
+.home-v4-stats-link {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.86);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.home-v4-stats-link:hover {
+  color: #fff;
 }
 
 /* Elevação no hover dos EntityCardLink dentro de um portal — hoje o hub
@@ -1734,11 +1756,103 @@ a {
   color: #101010;
   line-height: 1.2;
 }
-.home-v4-poster-meta {
-  display: block;
+.home-v4-poster-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   margin-top: 6px;
+}
+.home-v4-poster-meta {
   font-size: 12px;
   color: #6e6e6e;
+}
+/* Rating VISUAL do MediaCard de Filmes (placeholder — não é nota real/externa,
+   não atribuída, não persistida). Estrela dourada + nota. */
+.home-v4-media-rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #101010;
+  white-space: nowrap;
+}
+
+/* Séries em destaque — tile-poster (04 §6): título sobreposto + badge SÉRIE +
+   chip de plataforma. O chip é placeholder VISUAL (ver homeVisualPlatform) —
+   não é watch_availability real. Empilhamento: img(0) < scrim(1) <
+   badge/chip/título(2). */
+.home-v4-series-tile {
+  display: block;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+.home-v4-series-tile__poster {
+  position: relative;
+  display: block;
+  aspect-ratio: 2 / 3;
+  overflow: hidden;
+  border-radius: 12px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.1), transparent 28%),
+    linear-gradient(135deg, #16211c, #050805);
+  transition:
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+}
+.home-v4-series-tile:hover .home-v4-series-tile__poster {
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+.home-v4-series-tile__img {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.home-v4-series-tile__scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(
+    160deg,
+    rgba(0, 0, 0, 0.18) 0%,
+    rgba(0, 0, 0, 0) 42%,
+    rgba(0, 0, 0, 0.42) 100%
+  );
+}
+.home-v4-series-platform {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 2;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  background: rgba(0, 0, 0, 0.62);
+  color: #fff;
+  padding: 3px 6px;
+  border-radius: 6px;
+}
+.home-v4-series-title {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1.2;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.45);
 }
 @media (max-width: 980px) {
   .home-v4-section--band {

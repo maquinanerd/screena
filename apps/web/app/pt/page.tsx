@@ -137,6 +137,26 @@ function homeVisualScore(rank: number): string | null {
 }
 
 /**
+ * Plataforma VISUAL (placeholder de fidelidade v4) para o chip dos tiles de
+ * Séries. NAO e watch_availability real: nao afirma streaming, nao vem de fonte,
+ * nao e persistida, nao vira schema. Ciclo deterministico por posicao do slot.
+ * A trocar por `watch_availability` governada (display_allowed/licenca) ou
+ * remover — mesma divida do Episodes Ticker.
+ */
+const HOME_VISUAL_PLATFORMS = [
+  "Max",
+  "Netflix",
+  "Apple TV+",
+  "Star+",
+  "Prime Video",
+  "Disney+",
+] as const;
+
+function homeVisualPlatform(index: number): string {
+  return HOME_VISUAL_PLATFORMS[index % HOME_VISUAL_PLATFORMS.length] as string;
+}
+
+/**
  * SectionHeader (v4 §SectionHeader): barra de acento (cor por contexto) + titulo
  * 30px/800 + link "Ver tudo ›". Variantes: amarela (Destaques/Top 10), vermelha
  * (Filmes), verde (Series).
@@ -296,13 +316,20 @@ function HomeV4CompactCard({ card, rank }: { card: EntityCard; rank: number }) {
 }
 
 /**
- * HomeV4PosterCard — MediaCard do v4 (grids "Filmes/Séries em destaque"): pôster
- * 2/3 (raio 12px + sombra) com badge de tipo sobre o pôster (sup-esq) + título
- * 13px e meta real abaixo. SEM nota/estrela, SEM Avaliar, SEM chip de plataforma
- * (streaming nao existe como produto). Imagem LOCAL real; sem imagem, gradiente
- * por vertical.
+ * HomeV4PosterCard — MediaCard do v4 da grade de Filmes em destaque (04 §4):
+ * pôster 2/3 (raio 12px + sombra) com badge FILME (sup-esq) + título 13px +
+ * linha meta (ano) com rating VISUAL à direita (estrela dourada + nota). A nota
+ * é placeholder de fidelidade (ver `homeVisualScore`): NAO é rating real/externo,
+ * não é atribuída a fonte, não vira AggregateRating/ExternalRating, não é
+ * persistida (aria-hidden). Imagem LOCAL real; sem imagem, gradiente por vertical.
  */
-function HomeV4PosterCard({ card }: { card: EntityCard }) {
+function HomeV4PosterCard({
+  card,
+  score,
+}: {
+  card: EntityCard;
+  score: string | null;
+}) {
   const isMovie = card.kind === "movie";
   return (
     <a
@@ -318,9 +345,59 @@ function HomeV4PosterCard({ card }: { card: EntityCard }) {
         </span>
       </HighlightPoster>
       <span className="home-v4-poster-title">{card.title}</span>
-      {card.meta !== null ? (
-        <span className="home-v4-poster-meta">{card.meta}</span>
-      ) : null}
+      <span className="home-v4-poster-meta-row">
+        <span className="home-v4-poster-meta">{card.meta ?? ""}</span>
+        {score !== null ? (
+          <span className="home-v4-media-rating" aria-hidden="true">
+            <span className="home-v4-star">★</span>
+            {score}
+          </span>
+        ) : null}
+      </span>
+    </a>
+  );
+}
+
+/**
+ * HomeV4SeriesTile — tile-poster do v4 da grade de Séries em destaque (04 §6):
+ * pôster 2/3 com título SOBREPOSTO no centro + badge SÉRIE (sup-esq) + chip de
+ * plataforma (base-dir). O chip de plataforma é placeholder VISUAL (ver
+ * `homeVisualPlatform`): NAO é watch_availability real, não afirma streaming,
+ * não é persistido (aria-hidden). Imagem LOCAL real; sem imagem, gradiente verde.
+ */
+function HomeV4SeriesTile({
+  card,
+  platform,
+}: {
+  card: EntityCard;
+  platform: string;
+}) {
+  return (
+    <a
+      href={card.href}
+      className="home-v4-series-tile"
+      data-entity-type="series"
+    >
+      <span className="home-v4-series-tile__poster">
+        {card.image !== null ? (
+          <img
+            src={card.image.src}
+            alt={`Pôster de ${card.title}`}
+            width={card.image.width}
+            height={card.image.height}
+            className="home-v4-series-tile__img"
+            loading="lazy"
+          />
+        ) : null}
+        <span className="home-v4-series-tile__scrim" aria-hidden="true" />
+        <span className="home-v4-media-badge home-v4-media-badge--series">
+          SÉRIE
+        </span>
+        <span className="home-v4-series-platform" aria-hidden="true">
+          {platform}
+        </span>
+        <span className="home-v4-series-title">{card.title}</span>
+      </span>
     </a>
   );
 }
@@ -444,6 +521,7 @@ export default async function HomePage() {
                 <HomeV4PosterCard
                   key={`movie-${card.href}-${index}`}
                   card={card}
+                  score={homeVisualScore(index + 1)}
                 />
               ))}
             </div>
@@ -451,29 +529,35 @@ export default async function HomePage() {
         </section>
       ) : null}
 
-      {/* Faixa preta v4 (04 §5 "Seu mês em números") — honesta: contagens REAIS
-          do catálogo (filmes/séries/pessoas), nunca watchlist/assistidos. */}
+      {/* Faixa preta v4 (04 §5 "Seu mês em números") — statbar honesta: kicker
+          amarelo + contagens REAIS do catálogo (filmes/séries/pessoas), nunca
+          watchlist/assistidos. CTA à direita aponta para uma rota REAL (Explorar). */}
       {hasCounts ? (
         <section className="home-v4-stats-band" aria-label="Catálogo do Screen">
           <div className="home-v4-stats-inner">
-            <span className="home-v4-stats-label">NO CATÁLOGO DO SCREEN</span>
-            <span className="home-v4-stat">
-              <strong>{counts.movies}</strong> filmes
-            </span>
-            <span className="home-v4-stat">
-              <strong>{counts.series}</strong> séries
-            </span>
-            <span className="home-v4-stat">
-              <strong>{counts.people}</strong> pessoas
-            </span>
+            <div className="home-v4-stats-group">
+              <span className="home-v4-stats-label">NO CATÁLOGO DO SCREEN</span>
+              <span className="home-v4-stat">
+                <strong>{counts.movies}</strong> filmes
+              </span>
+              <span className="home-v4-stat">
+                <strong>{counts.series}</strong> séries
+              </span>
+              <span className="home-v4-stat">
+                <strong>{counts.people}</strong> pessoas
+              </span>
+            </div>
+            <a className="home-v4-stats-link" href={EXPLORE_PATH}>
+              Explorar o catálogo →
+            </a>
           </div>
         </section>
       ) : null}
 
-      {/* Séries em destaque — v4 (04 §6 "Séries da semana") reduzido com
-          honestidade: grid de 6 MediaCards reais com badge SÉRIE. SEM tiles com
-          título sobre pôster, SEM chip de plataforma, SEM tabs de streaming
-          (não há dado de plataforma como produto), SEM nota/Avaliar. */}
+      {/* Séries em destaque — v4 (04 §6 "Séries da semana"): grid de 6 tiles com
+          título SOBREPOSTO + badge SÉRIE + chip de plataforma VISUAL (placeholder,
+          não é watch_availability real). SEM tabs de plataforma e SEM segunda
+          grade de streaming (adiado). SEM nota/Avaliar. */}
       {seriesSlots.length > 0 ? (
         <section
           className="home-v4-section home-v4-section--series"
@@ -487,9 +571,10 @@ export default async function HomePage() {
           />
           <div className="home-v4-media-grid">
             {seriesSlots.slice(0, 6).map((card, index) => (
-              <HomeV4PosterCard
+              <HomeV4SeriesTile
                 key={`series-${card.href}-${index}`}
                 card={card}
+                platform={homeVisualPlatform(index)}
               />
             ))}
           </div>
