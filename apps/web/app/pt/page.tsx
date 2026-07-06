@@ -186,8 +186,10 @@ function HighlightPoster({
 
 /**
  * HomeV4BigCard — HighlightCard do v4 (4 grandes): card branco completo (borda
- * #E3DED6, raio 14px), poster 2/3 em cima + corpo branco (badge de tipo +
- * titulo + meta real). SEM rank, SEM nota, SEM Avaliar/Marcar.
+ * #E3DED6, raio 14px), poster 2/3 em cima + corpo branco com densidade (badge
+ * de tipo + titulo + meta real + rodape "Ver ficha"). SEM rank, SEM nota, SEM
+ * Avaliar/Marcar — a acao "Ver ficha" ocupa honestamente o lugar das acoes
+ * falsas do design (o card inteiro ja e o link para a ficha).
  */
 function HomeV4BigCard({ card }: { card: EntityCard }) {
   return (
@@ -203,6 +205,7 @@ function HomeV4BigCard({ card }: { card: EntityCard }) {
         {card.meta !== null ? (
           <span className="home-v4-big-card-meta">{card.meta}</span>
         ) : null}
+        <span className="home-v4-card-action">Ver ficha</span>
       </span>
     </a>
   );
@@ -211,23 +214,27 @@ function HomeV4BigCard({ card }: { card: EntityCard }) {
 /**
  * HomeV4CompactCard — RankingItem do v4 (6 compactos): card branco horizontal
  * (borda #E3DED6, raio 10px, padding 10px), mini poster 34px a esquerda +
- * texto a direita. SEM #N/rank, SEM nota. Nunca poster vertical grande.
+ * texto a direita. No lugar do "#N"/rank do v4, um kicker de TIPO (FILME/SÉRIE)
+ * na cor muda do design — honesto, sem fingir ranking. SEM nota. Nunca poster
+ * vertical grande.
  */
 function HomeV4CompactCard({ card }: { card: EntityCard }) {
+  const isMovie = card.kind === "movie";
   return (
     <a
       href={card.href}
       className="home-v4-compact-card"
       data-entity-type={card.kind}
     >
-      <span className="home-v4-compact-main">
-        <HighlightPoster card={card} className="home-v4-compact-poster" />
-        <span className="home-v4-compact-copy">
-          <span className="home-v4-compact-title">{card.title}</span>
-          {card.meta !== null ? (
-            <span className="home-v4-compact-meta">{card.meta}</span>
-          ) : null}
+      <HighlightPoster card={card} className="home-v4-compact-poster" />
+      <span className="home-v4-compact-copy">
+        <span className="home-v4-compact-kicker">
+          {isMovie ? "FILME" : "SÉRIE"}
         </span>
+        <span className="home-v4-compact-title">{card.title}</span>
+        {card.meta !== null ? (
+          <span className="home-v4-compact-meta">{card.meta}</span>
+        ) : null}
       </span>
     </a>
   );
