@@ -1258,28 +1258,8 @@ a {
   margin-right: 4px;
 }
 
-/* Trilho denso da home (Destaques / Filmes / Séries): preenche a largura com
-   cartazes reais; com poucos itens degrada bem (auto-fill). Cards com leve
-   elevação no hover (presença v4, sem placeholder cru). */
-/* Seção principal (Destaques) — fileira de 4 cartazes GRANDES ocupando a
-   largura (como a fileira de destaques do v4); a fileira secundária usa a
-   `.entity-grid` de 6 colunas. Slots preenchidos por `fillSlots` no page.tsx. */
-.home-feat__big {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 22px;
-}
-.home-feat__big .entity-card__title {
-  font-size: 15px;
-}
-.home-feat__small {
-  margin-top: 22px;
-}
-
-/* Elevação no hover dos cards das seções da home (Destaques/Filmes/Séries). */
+/* Elevação no hover dos cards das seções Filmes/Séries da home (EntityCardLink;
+   a seção Destaques usa seus próprios cards v4 abaixo). */
 .portal-page .entity-card {
   transition: transform 0.2s ease;
 }
@@ -1293,16 +1273,240 @@ a {
   box-shadow: var(--shadow-raised);
 }
 
-/* A fileira de 4 grandes acompanha os breakpoints da `.entity-grid`. */
-@media (max-width: 680px) {
-  .home-feat__big {
-    grid-template-columns: repeat(2, 1fr);
-  }
+/* ================================================================== */
+/* Home · Destaques no The Screen (Top 10 do v4, honesto: sem rank/nota) */
+/* ------------------------------------------------------------------ */
+/* Estrutura canônica do v4 (04-page-home §3): fileira de 4 HighlightCards
+   grandes (card branco + pôster 2/3 + corpo) + fileira de 6 RankingItems
+   compactos horizontais. Slots sempre preenchidos por `fillSlots` (10 no
+   total) — nunca card órfão, nunca 4+2, nunca trilho horizontal. Seção
+   auto-contida (largura do conteúdo), como as demais bandas da home. */
+.home-v4-section {
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: 56px var(--container-pad) 0;
+}
+.home-v4-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 26px;
+}
+.home-v4-section-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.home-v4-section-accent {
+  width: 4px;
+  height: 20px;
+  border-radius: 2px;
+  background: #f5c518;
+  flex-shrink: 0;
+}
+.home-v4-section-title {
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  color: #101010;
+  margin: 0;
+}
+.home-v4-section-more {
+  font-size: 14px;
+  font-weight: 600;
+  color: #101010;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.home-v4-section-more:hover {
+  color: #f0443e;
 }
 
-/* Seção principal densa (Destaques) — respiro maior de topo. */
-.portal-section--lead {
-  padding-top: 64px;
+/* Fileira 1 — 4 cards grandes (HighlightCard). */
+.home-v4-top-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 20px;
+}
+/* Fileira 2 — 6 cards compactos horizontais (RankingItem). */
+.home-v4-compact-grid {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+  margin: 14px 0 50px;
+}
+.home-v4-card-item {
+  min-width: 0;
+}
+
+/* Card grande completo: branco, borda, raio 14px, pôster 2/3 + corpo branco. */
+.home-v4-big-card {
+  display: block;
+  background: #ffffff;
+  border: 1px solid #e3ded6;
+  border-radius: 14px;
+  overflow: hidden;
+  color: inherit;
+  text-decoration: none;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+}
+.home-v4-big-card:hover {
+  border-color: #101010;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+.home-v4-big-card-body {
+  display: block;
+  padding: 14px 16px 16px;
+}
+.home-v4-big-card-title {
+  display: block;
+  font-size: 16px;
+  font-weight: 700;
+  color: #101010;
+  line-height: 1.2;
+}
+.home-v4-big-card-meta {
+  display: block;
+  font-size: 12px;
+  color: #6e6e6e;
+  margin-top: 7px;
+}
+
+/* Badge de tipo — no corpo, em bloco acima do título (v4 §3a). */
+.home-v4-badge {
+  display: inline-block;
+  margin-bottom: 9px;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #fff;
+  padding: 3px 7px;
+  border-radius: 6px;
+}
+.home-v4-badge--movie {
+  background: #f0443e;
+}
+.home-v4-badge--series {
+  background: #7fa56f;
+}
+
+/* Card compacto: branco, borda, raio 10px, padding 10px, horizontal
+   (mini pôster 34px à esquerda + texto à direita). Nunca pôster vertical. */
+.home-v4-compact-card {
+  display: block;
+  background: #ffffff;
+  border: 1px solid #e3ded6;
+  border-radius: 10px;
+  padding: 10px;
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 0.2s ease;
+}
+.home-v4-compact-card:hover {
+  border-color: #101010;
+}
+.home-v4-compact-main {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+}
+.home-v4-compact-poster {
+  display: block;
+  position: relative;
+  width: 34px;
+  aspect-ratio: 2 / 3;
+  border-radius: 4px;
+  flex-shrink: 0;
+  overflow: hidden;
+  background: linear-gradient(135deg, #33291f, #0c0908);
+}
+.home-v4-compact-poster[data-vertical="series"] {
+  background: linear-gradient(135deg, #1e3128, #07100b);
+}
+.home-v4-compact-copy {
+  min-width: 0;
+}
+.home-v4-compact-title {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: #101010;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.home-v4-compact-meta {
+  display: block;
+  font-size: 10px;
+  color: #6e6e6e;
+  margin-top: 6px;
+}
+
+/* Pôster grande: imagem local real quando existe; sem imagem, cai no gradiente
+   cinematográfico por vertical (fallback honesto). Sem badge de rank. */
+.home-v4-poster {
+  display: block;
+  position: relative;
+  aspect-ratio: 2 / 3;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.1), transparent 28%),
+    linear-gradient(135deg, #33291f, #0c0908);
+}
+.home-v4-poster[data-vertical="series"] {
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.1), transparent 28%),
+    linear-gradient(135deg, #1e3128, #07100b);
+}
+.home-v4-poster__img {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Responsivo — grids colapsam sem virar 4+2 nem trilho (v4 §Comportamento). */
+@media (max-width: 980px) {
+  .home-v4-section {
+    padding-inline: 40px;
+  }
+  .home-v4-top-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .home-v4-compact-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 640px) {
+  .home-v4-section {
+    padding: 40px 20px 0;
+  }
+  .home-v4-section-head {
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .home-v4-section-title {
+    font-size: 24px;
+  }
+  .home-v4-top-grid {
+    grid-template-columns: 1fr;
+  }
+  .home-v4-compact-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 /* ================================================================== */

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { EntityCardLink } from "../_components/entity-card";
+import type { EntityCard } from "../../src/lib/entity-index-presenter";
 import { NewsCard } from "../_components/news-card";
 import { HeroCarousel } from "../_components/hero-carousel";
 import {
@@ -109,6 +110,129 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
+/**
+ * SectionHeader (v4 §SectionHeader): barra de acento amarela + titulo 30px/800
+ * + link "Ver tudo ›". Nesta etapa so a variante amarela (Destaques / Top 10)
+ * e usada; barras vermelha/verde ficam para as secoes de Filmes/Series.
+ */
+function SectionHeader({
+  title,
+  titleId,
+  href,
+}: {
+  title: string;
+  titleId: string;
+  href: string;
+}) {
+  return (
+    <div className="home-v4-section-head">
+      <div className="home-v4-section-title-wrap">
+        <span className="home-v4-section-accent" aria-hidden="true" />
+        <h2 id={titleId} className="home-v4-section-title">
+          {title}
+        </h2>
+      </div>
+      <a className="home-v4-section-more" href={href}>
+        Ver tudo <span aria-hidden="true">›</span>
+      </a>
+    </div>
+  );
+}
+
+/**
+ * Badge de tipo (FILME/SERIE) do card de destaque — dentro do corpo, em bloco
+ * acima do titulo (v4 §3a). Reforca a invariante 11: o tipo nunca depende so
+ * da cor (badge textual acompanha URL/breadcrumb/schema/titulo).
+ */
+function HighlightBadge({ kind }: { kind: EntityCard["kind"] }) {
+  const isMovie = kind === "movie";
+  return (
+    <span
+      className={`home-v4-badge home-v4-badge--${isMovie ? "movie" : "series"}`}
+    >
+      {isMovie ? "FILME" : "SÉRIE"}
+    </span>
+  );
+}
+
+/**
+ * Poster 2/3 do card de destaque: imagem LOCAL real quando existe (dado do
+ * TMDB ingerido offline — nunca CDN externo no render); sem imagem, cai no
+ * gradiente por vertical (fallback honesto). Sem badge de rank — a home nao
+ * finge ranking.
+ */
+function HighlightPoster({
+  card,
+  className,
+}: {
+  card: EntityCard;
+  className: string;
+}) {
+  return (
+    <span className={className} data-vertical={card.kind}>
+      {card.image !== null ? (
+        <img
+          src={card.image.src}
+          alt={`Pôster de ${card.title}`}
+          width={card.image.width}
+          height={card.image.height}
+          className="home-v4-poster__img"
+          loading="lazy"
+        />
+      ) : null}
+    </span>
+  );
+}
+
+/**
+ * HomeV4BigCard — HighlightCard do v4 (4 grandes): card branco completo (borda
+ * #E3DED6, raio 14px), poster 2/3 em cima + corpo branco (badge de tipo +
+ * titulo + meta real). SEM rank, SEM nota, SEM Avaliar/Marcar.
+ */
+function HomeV4BigCard({ card }: { card: EntityCard }) {
+  return (
+    <a
+      href={card.href}
+      className="home-v4-big-card"
+      data-entity-type={card.kind}
+    >
+      <HighlightPoster card={card} className="home-v4-poster" />
+      <span className="home-v4-big-card-body">
+        <HighlightBadge kind={card.kind} />
+        <span className="home-v4-big-card-title">{card.title}</span>
+        {card.meta !== null ? (
+          <span className="home-v4-big-card-meta">{card.meta}</span>
+        ) : null}
+      </span>
+    </a>
+  );
+}
+
+/**
+ * HomeV4CompactCard — RankingItem do v4 (6 compactos): card branco horizontal
+ * (borda #E3DED6, raio 10px, padding 10px), mini poster 34px a esquerda +
+ * texto a direita. SEM #N/rank, SEM nota. Nunca poster vertical grande.
+ */
+function HomeV4CompactCard({ card }: { card: EntityCard }) {
+  return (
+    <a
+      href={card.href}
+      className="home-v4-compact-card"
+      data-entity-type={card.kind}
+    >
+      <span className="home-v4-compact-main">
+        <HighlightPoster card={card} className="home-v4-compact-poster" />
+        <span className="home-v4-compact-copy">
+          <span className="home-v4-compact-title">{card.title}</span>
+          {card.meta !== null ? (
+            <span className="home-v4-compact-meta">{card.meta}</span>
+          ) : null}
+        </span>
+      </span>
+    </a>
+  );
+}
+
 export default async function HomePage() {
   const [{ movieCards, seriesCards, newsCards, counts }, heroSlides] =
     await Promise.all([getHomeData(), getHomeHeroSlides()]);
@@ -130,6 +254,11 @@ export default async function HomePage() {
     if (series) highlights.push(series);
   }
   const featuredCards = highlights.slice(0, 10);
+  // Preenche exatamente 10 slots visuais (4 grandes + 6 compactos) com itens
+  // REAIS, repetindo em ciclo quando ha poucos (ate a ingestao TMDB popular
+  // mais catalogo). Garante 4+6 sempre cheios — nunca card orfao, nunca 4+2.
+  // Lista real vazia -> `fillSlots` devolve [] e a secao inteira e omitida.
+  const highlightSlots = fillSlots(featuredCards, 10);
 
   return (
     <main className="portal-page" data-vertical="home">
@@ -171,38 +300,40 @@ export default async function HomePage() {
         </div>
       ) : null}
 
-      {/* Seção principal densa: Destaques no The Screen (filmes+séries reais,
-          intercalados). Ritmo do Top 10 do v4, sem ranking/nota/Avaliar. */}
-      {featuredCards.length > 0 ? (
-        <div className="container">
-          <section className="portal-section portal-section--lead" aria-labelledby="home-featured-title">
-            <div className="portal-section__head">
-              <h2 id="home-featured-title" className="portal-section__title">
-                Destaques no The Screen
-              </h2>
-              <a className="portal-section__more" href={EXPLORE_PATH}>
-                Ver tudo
-              </a>
-            </div>
-            {/* Estrutura v4: fileira de 4 cartazes GRANDES + fileira secundária
-                em GRID de 6 colunas. Slots preenchidos com itens reais (repetidos
-                em ciclo quando ha poucos) — nunca card órfão nem buraco. */}
-            <ul className="home-feat__big">
-              {fillSlots(featuredCards, 4).map((card, index) => (
-                <li key={`${card.href}-${index}`} className="entity-card-item">
-                  <EntityCardLink card={card} />
-                </li>
-              ))}
-            </ul>
-            <ul className="entity-grid home-feat__small">
-              {fillSlots(featuredCards, 6).map((card, index) => (
-                <li key={`${card.href}-${index}`} className="entity-card-item">
-                  <EntityCardLink card={card} />
-                </li>
-              ))}
-            </ul>
-          </section>
-        </div>
+      {/* Seção principal: Destaques no The Screen — Top 10 do v4 portado com
+          governança honesta: 4 HighlightCards grandes (card branco + pôster +
+          corpo) + 6 RankingItems compactos horizontais. Filmes+séries reais
+          intercalados; SEM ranking/#N, SEM nota, SEM Avaliar/Marcar/watchlist.
+          Slots sempre cheios (fillSlots) — nunca 4+2, nunca card órfão, nunca
+          trilho horizontal. */}
+      {highlightSlots.length > 0 ? (
+        <section className="home-v4-section" aria-labelledby="home-featured-title">
+          <SectionHeader
+            title="Destaques no The Screen"
+            titleId="home-featured-title"
+            href={EXPLORE_PATH}
+          />
+          <ul className="home-v4-top-grid">
+            {highlightSlots.slice(0, 4).map((card, index) => (
+              <li
+                key={`highlight-big-${card.href}-${index}`}
+                className="home-v4-card-item"
+              >
+                <HomeV4BigCard card={card} />
+              </li>
+            ))}
+          </ul>
+          <ul className="home-v4-compact-grid">
+            {highlightSlots.slice(4, 10).map((card, index) => (
+              <li
+                key={`highlight-compact-${card.href}-${index}`}
+                className="home-v4-card-item"
+              >
+                <HomeV4CompactCard card={card} />
+              </li>
+            ))}
+          </ul>
+        </section>
       ) : null}
 
       {/* Filmes em destaque — banda quente v4 (cards reais com pôster local). */}
