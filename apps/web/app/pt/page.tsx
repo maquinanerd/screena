@@ -20,6 +20,7 @@ import {
   HOME_NEWS_CARD_LIMIT,
   takeSectionCards,
 } from "../../src/lib/portal-presenter";
+import { allowHomeVisualPlaceholders } from "../../src/lib/home-placeholder-governance";
 import {
   canonicalPublicUrl,
   EXPLORE_PATH,
@@ -35,15 +36,18 @@ import {
  *
  * Server component puro: le somente PostgreSQL via os getters de listagem ja
  * existentes (invariantes 3/4 — zero API externa, zero Gemini, zero TMDB no
- * render). NADA e inventado: cada secao so aparece quando ha dado real; sem
- * dados, degrada para o hero institucional (fallback seguro, sem poster). Sem
- * ranking/Top 10, sem watchlist, sem botao de feature inativa, sem streaming,
- * sem numeros fake. A nota exibida nos cards e a nota editorial PROPRIA governada
- * do Screen (`screen_score`), com o mesmo gate do hero — so aparece quando
- * liberada, nunca e rating externo (IMDb/RT/TMDB) nem AggregateRating. As
- * estatisticas sao contagens REAIS do catalogo. As imagens vem de caminhos
- * LOCAIS (dado do TMDB ingerido offline pela ingestao — nunca CDN externo no
- * render).
+ * render). NADA e inventado: as secoes de entidade (Destaques/Filmes/Series/
+ * Estatisticas) so aparecem quando ha dado real; sem dados, degradam para o hero
+ * institucional (fallback seguro, sem poster). Os blocos de FIDELIDADE VISUAL
+ * sem fonte real (Noticias mock, "Em breve" mock, Publicidade) sao gateados por
+ * `allowHomeVisualPlaceholders`: visiveis em dev/preview, OCULTOS em producao —
+ * nunca fingem manchete/estreia/anuncio reais. Sem ranking/Top 10, sem watchlist,
+ * sem botao de feature inativa, sem streaming, sem numeros fake. A nota exibida
+ * nos cards e a nota editorial PROPRIA governada do Screen (`screen_score`), com
+ * o mesmo gate do hero — so aparece quando liberada, nunca e rating externo
+ * (IMDb/RT/TMDB) nem AggregateRating. As estatisticas sao contagens REAIS do
+ * catalogo. As imagens vem de caminhos LOCAIS (dado do TMDB ingerido offline
+ * pela ingestao — nunca CDN externo no render).
  *
  * Gate anti-thin (invariante 5): com menos de 2 secoes com dado real, a home
  * existe mas recebe `noindex` (decisao de `evaluatePortalIndexability`).
@@ -516,6 +520,12 @@ export default async function HomePage() {
 
   const hasCounts = counts.movies > 0 || counts.series > 0 || counts.people > 0;
 
+  // Gate de placeholders visuais (Fase 1.1B): em producao sem dado real, os
+  // blocos de FIDELIDADE VISUAL (Noticias mock, "Em breve" mock, Publicidade
+  // estatica) NAO renderizam — nunca fingem manchete/estreia/anuncio reais. Em
+  // dev/preview (ou com SCREEN_HOME_VISUAL_PLACEHOLDERS=1) seguem visiveis.
+  const allowPlaceholders = allowHomeVisualPlaceholders();
+
   // Seção principal densa "Destaques no The Screen": mistura filmes+séries reais
   // (intercalados p/ variedade). No ritmo do Top 10 do v4, mas SEM ranking, SEM
   // nota, SEM Avaliar/Marcar — só título/tipo/ano reais e link para a ficha.
@@ -539,10 +549,12 @@ export default async function HomePage() {
   const movieSlots = fillSlots(movieCards, 6);
   const seriesSlots = fillSlots(seriesCards, 6);
   // Notícias (destaque + grade 2×2): usa artigos REAIS quando existem; sem reais
-  // (o seed demo não tem notícias), placeholders editoriais do MD. O gate anti-
-  // thin segue contando só `newsCards` reais (getHomeData) — placeholder NÃO
-  // infla indexabilidade.
+  // (o seed demo não tem notícias), placeholders editoriais do MD — mas SÓ em
+  // dev/preview (gate `allowPlaceholders`). Em produção sem artigo real a seção
+  // inteira é omitida (nunca manchete falsa). O gate anti-thin segue contando só
+  // `newsCards` reais (getHomeData) — placeholder NÃO infla indexabilidade.
   const firstNews = newsCards[0];
+  const hasRealNews = firstNews !== undefined;
   const featuredNews: HomeNewsFeature =
     firstNews !== undefined
       ? {
@@ -734,71 +746,82 @@ export default async function HomePage() {
 
       {/* Em breve (v4 §7) — trilho horizontal de trailers de próximos
           lançamentos. MOCK VISUAL: lançamentos/datas/durações placeholder (sem
-          player, sem trailer real), linkam ao índice REAL de filmes. Trilho +
-          setas FUNCIONAIS no client component `ComingSoonRail` (scrollBy +
-          scroll-snap); o header (título/subtítulo) é server-rendered e passado
-          via prop `heading`. */}
-      <section className="home-v4-soon" aria-labelledby="home-soon-title">
-        <ComingSoonRail
-          items={HOME_COMING_SOON_ITEMS}
-          heading={
-            <div>
-              <div className="home-v4-section-title-wrap">
-                <span
-                  className="home-v4-section-accent home-v4-section-accent--red"
-                  aria-hidden="true"
-                />
-                <h2 id="home-soon-title" className="home-v4-section-title">
-                  Em breve
-                </h2>
-                <span className="home-v4-title-chevron" aria-hidden="true">
-                  ›
-                </span>
+          player, sem trailer real), linkam ao índice REAL de filmes. Como ainda
+          NÃO há fonte real de estreias/trailers nesta rodada, a seção só aparece
+          em dev/preview (gate `allowPlaceholders`); em produção fica OCULTA —
+          nunca finge lançamento real. Trilho + setas FUNCIONAIS no client
+          component `ComingSoonRail`; header server-rendered via prop `heading`. */}
+      {allowPlaceholders ? (
+        <section className="home-v4-soon" aria-labelledby="home-soon-title">
+          <ComingSoonRail
+            items={HOME_COMING_SOON_ITEMS}
+            heading={
+              <div>
+                <div className="home-v4-section-title-wrap">
+                  <span
+                    className="home-v4-section-accent home-v4-section-accent--red"
+                    aria-hidden="true"
+                  />
+                  <h2 id="home-soon-title" className="home-v4-section-title">
+                    Em breve
+                  </h2>
+                  <span className="home-v4-title-chevron" aria-hidden="true">
+                    ›
+                  </span>
+                </div>
+                <p className="home-v4-soon-sub">
+                  Trailers de próximos lançamentos
+                </p>
               </div>
-              <p className="home-v4-soon-sub">
-                Trailers de próximos lançamentos
-              </p>
-            </div>
-          }
-        />
-      </section>
+            }
+          />
+        </section>
+      ) : null}
 
       {/* Publicidade — o v4 mostra um leaderboard entre "Em breve" e "Notícias".
           Placeholder ESTÁTICO (caixa listrada + rótulo), só para fidelidade
           visual: SEM AdSense/GPT, SEM script externo, SEM iframe, SEM integração.
-          Trocar pelo slot real de anúncio quando/se a monetização entrar. */}
-      <div className="home-v4-ad-placeholder" aria-label="Espaço publicitário">
-        <div className="home-v4-ad-label">PUBLICIDADE</div>
-        <div className="home-v4-ad-box" aria-hidden="true">
-          <strong>Google AdSense</strong>
-          <span>728 × 90 · Leaderboard</span>
-        </div>
-      </div>
-
-      {/* Notícias / Top News (v4 §8) — destaque grande (min-height 430) + grade
-          2×2 de menores (min-height 200). Usa artigos REAIS quando existem; sem
-          reais (seed demo sem notícias), placeholders editoriais do MD (badge
-          "Em alta esta semana", manchetes de exemplo) — MOCK visual, linkam ao
-          /pt/noticias real. Dívida: trocar por artigos reais antes de indexar. */}
-      <section className="home-v4-news" aria-labelledby="home-news-title">
-        <SectionHeader
-          accent="red"
-          title="Notícias"
-          titleId="home-news-title"
-          href={NEWS_INDEX_PATH}
-        />
-        <div className="home-v4-news-grid">
-          <HomeV4NewsFeature item={featuredNews} />
-          <div className="home-v4-news-mini-grid">
-            {gridNews.map((item, index) => (
-              <HomeV4NewsMiniCard
-                key={`home-news-mini-${item.href}-${index}`}
-                item={item}
-              />
-            ))}
+          Como não há anúncio real, só aparece em dev/preview (gate
+          `allowPlaceholders`); em produção fica OCULTO — nunca exibe "Google
+          AdSense" sem AdSense real. Trocar pelo slot real quando/se a monetização
+          entrar. */}
+      {allowPlaceholders ? (
+        <div className="home-v4-ad-placeholder" aria-label="Espaço publicitário">
+          <div className="home-v4-ad-label">PUBLICIDADE</div>
+          <div className="home-v4-ad-box" aria-hidden="true">
+            <strong>Google AdSense</strong>
+            <span>728 × 90 · Leaderboard</span>
           </div>
         </div>
-      </section>
+      ) : null}
+
+      {/* Notícias / Top News (v4 §8) — destaque grande (min-height 430) + grade
+          2×2 de menores (min-height 200). Com artigos REAIS, renderiza normal.
+          Sem reais, os placeholders editoriais do MD (badge "Em alta esta
+          semana", manchetes de exemplo) só aparecem em dev/preview (gate
+          `allowPlaceholders`); em produção sem artigo real a seção é OMITIDA —
+          nunca manchete falsa. Links reais para /pt/noticias. */}
+      {hasRealNews || allowPlaceholders ? (
+        <section className="home-v4-news" aria-labelledby="home-news-title">
+          <SectionHeader
+            accent="red"
+            title="Notícias"
+            titleId="home-news-title"
+            href={NEWS_INDEX_PATH}
+          />
+          <div className="home-v4-news-grid">
+            <HomeV4NewsFeature item={featuredNews} />
+            <div className="home-v4-news-mini-grid">
+              {gridNews.map((item, index) => (
+                <HomeV4NewsMiniCard
+                  key={`home-news-mini-${item.href}-${index}`}
+                  item={item}
+                />
+              ))}
+            </div>
+          </div>
+        </section>
+      ) : null}
     </main>
   );
 }

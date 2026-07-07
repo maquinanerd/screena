@@ -6,6 +6,7 @@ import {
   PEOPLE_INDEX_PATH,
   SERIES_INDEX_PATH,
 } from "../../src/lib/site";
+import { allowHomeVisualPlaceholders } from "../../src/lib/home-placeholder-governance";
 
 /**
  * SiteFooter — rodape global do app publico @screena/web (design v4).
@@ -21,9 +22,11 @@ import {
  * - A coluna "The Screen" (Sobre/Imprensa/Vagas/Contato) e institucional e ainda
  *   nao tem pagina propria: aparece como TEXTO, nunca link morto. Idem os links
  *   legais do rodape (Termos/Privacidade/Indice).
- * - A newsletter e VISUAL/placeholder: spans nao interativos, SEM
- *   form/input/button/API/server action/validacao/envio. O bloco do "formulario"
- *   e aria-hidden. Nenhuma feature de cadastro e construida aqui.
+ * - A newsletter e gateada por ambiente (Fase 1.1B, `allowHomeVisualPlaceholders`):
+ *   em dev/preview mantem a composicao VISUAL aprovada (spans nao interativos do
+ *   pseudo-"formulario", aria-hidden — SEM form/input/button/API/server action/
+ *   validacao/envio). Em PRODUCAO vira um bloco HONESTO ("Newsletter em breve"),
+ *   sem campo nem botao — nunca aparenta cadastro funcional que nao existe.
  * - Atribuicao obrigatoria ao TMDB (fonte de dados/imagens) mantida.
  */
 
@@ -69,6 +72,9 @@ function SocialIcon({ path }: { path: ReactNode }): ReactNode {
 }
 
 export function SiteFooter(): ReactNode {
+  // Gate por ambiente: pseudo-form visual só em dev/preview; em produção, bloco
+  // honesto sem aparência de formulário funcional.
+  const showNewsletterPlaceholder = allowHomeVisualPlaceholders();
   return (
     <footer className="site-footer">
       <div className="site-footer__inner">
@@ -157,19 +163,43 @@ export function SiteFooter(): ReactNode {
           </div>
         </div>
 
-        {/* Newsletter VISUAL/placeholder — faixa FULL-WIDTH abaixo do grid (copy
-            à esquerda alinhada ao logo + "formulário" à direita), preenchendo o
-            vão abaixo da marca. O input/botão são spans não interativos,
-            aria-hidden: sem form/input/button/API/server action/validação/envio. */}
-        <div className="site-footer__newsletter">
+        {/* Newsletter — gate por ambiente (Fase 1.1B).
+            Dev/preview (`showNewsletterPlaceholder`): faixa FULL-WIDTH com a
+            composição visual aprovada (copy à esquerda + pseudo-"formulário" à
+            direita). O input/botão são spans não interativos, aria-hidden: sem
+            form/input/button/API/server action/validação/envio.
+            Produção: bloco HONESTO ("Newsletter em breve"), sem campo/botão — o
+            modificador `--info` colapsa o grid p/ 1 coluna (não deixa vão). */}
+        <div
+          className={
+            showNewsletterPlaceholder
+              ? "site-footer__newsletter"
+              : "site-footer__newsletter site-footer__newsletter--info"
+          }
+        >
           <div className="site-footer__newsletter-copy">
-            <strong>Receba a newsletter do The Screen</strong>
-            <span>Sem spam. Só o que importa em cinema e séries.</span>
+            {showNewsletterPlaceholder ? (
+              <>
+                <strong>Receba a newsletter do The Screen</strong>
+                <span>Sem spam. Só o que importa em cinema e séries.</span>
+              </>
+            ) : (
+              <>
+                <strong>Newsletter em breve</strong>
+                <span>
+                  Estamos preparando uma curadoria semanal de cinema e séries.
+                </span>
+              </>
+            )}
           </div>
-          <div className="site-footer__newsletter-form" aria-hidden="true">
-            <span className="site-footer__newsletter-input">Seu melhor e-mail</span>
-            <span className="site-footer__newsletter-button">ASSINAR</span>
-          </div>
+          {showNewsletterPlaceholder ? (
+            <div className="site-footer__newsletter-form" aria-hidden="true">
+              <span className="site-footer__newsletter-input">
+                Seu melhor e-mail
+              </span>
+              <span className="site-footer__newsletter-button">ASSINAR</span>
+            </div>
+          ) : null}
         </div>
 
         <p className="site-footer__attribution">

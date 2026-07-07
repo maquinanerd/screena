@@ -456,6 +456,11 @@ a {
   padding: 22px 28px;
   background: #ffffff;
 }
+/* Variante honesta (produção, Fase 1.1B): sem pseudo-form, o grid vira 1 coluna
+   para a copy ocupar a faixa inteira (não deixa vão da coluna removida). */
+.site-footer__newsletter--info {
+  grid-template-columns: 1fr;
+}
 .site-footer__newsletter-copy strong {
   display: block;
   font-size: 20px;
