@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 
+import { SERIES_INDEX_PATH } from "../../src/lib/site";
+
 /**
  * EpisodesTicker — faixa amarela (carrossel) abaixo do hero da Public Marketing
  * Home v4, seguindo o componente "Barra de Episódios Novos" do design v4
@@ -14,11 +16,15 @@ import { useEffect, useState } from "react";
  * os dados de `episodesToday()` são placeholder de FIDELIDADE VISUAL apenas.
  * NÃO são reais: não há `watch_availability` confirmada, então "Onde assistir
  * <streaming>" e "novo episódio hoje" NÃO afirmam disponibilidade/estreia real
- * (tensiona a invariante 6 e as regras de streaming). Os `href` apontam para
- * séries que podem não existir no catálogo (404). Antes de produção/indexação,
- * trocar por dado real governado (ex.: `/api/episodes/today` a partir de
- * `watch_availability`) ou remover o componente. Nada aqui é persistido, nem
+ * (tensiona a invariante 6 e as regras de streaming). Antes de produção/
+ * indexação, trocar por dado real governado (ex.: `/api/episodes/today` a partir
+ * de `watch_availability`) ou remover o componente. Nada aqui é persistido, nem
  * vira schema.org.
+ *
+ * SAFE-LINK: todo `href` aponta para o índice REAL de séries (SERIES_INDEX_PATH),
+ * nunca para slugs de série específicos que podem não existir no catálogo (evita
+ * 404). Isso NÃO afirma disponibilidade real — só garante um destino existente
+ * até a feature de estreias/streaming existir.
  */
 
 const AUTO_MS = 4200;
@@ -32,7 +38,7 @@ export type EpisodeTickerItem = {
   logo: string;
   /** Cor da marca do streaming, legível sobre o amarelo da faixa. */
   logoColor: string;
-  /** Destino do CTA (mock — pode não existir no catálogo ainda). */
+  /** Destino do CTA — sempre o índice REAL de séries (safe-link, sem 404). */
   href: string;
 };
 
@@ -40,7 +46,9 @@ export type EpisodeTickerItem = {
  * Fonte ÚNICA de dados (mock local, só visual). Ponto único a trocar por
  * `fetch('/api/episodes/today')` quando a feature de estreias/streaming existir.
  * Cores: wordmark legível sobre o amarelo (#F5C518) — Apple TV+ usa a tinta
- * escura (o branco do guia de marca ficaria invisível na faixa).
+ * escura (o branco do guia de marca ficaria invisível na faixa). Todos os `href`
+ * apontam para o índice REAL de séries (safe-link) — nunca para slugs específicos
+ * que poderiam dar 404.
  */
 function episodesToday(): EpisodeTickerItem[] {
   return [
@@ -49,35 +57,35 @@ function episodesToday(): EpisodeTickerItem[] {
       seasonEp: "T2 · E6",
       logo: "NETFLIX",
       logoColor: "#E50914",
-      href: "/pt/series/wednesday",
+      href: SERIES_INDEX_PATH,
     },
     {
       series: "The Bear",
       seasonEp: "T3 · E4",
       logo: "Star+",
       logoColor: "#0A4DB3",
-      href: "/pt/series/the-bear",
+      href: SERIES_INDEX_PATH,
     },
     {
       series: "Severance",
       seasonEp: "T2 · E5",
       logo: "Apple TV+",
       logoColor: "#101010",
-      href: "/pt/series/severance",
+      href: SERIES_INDEX_PATH,
     },
     {
       series: "The Last of Us",
       seasonEp: "T2 · E3",
       logo: "Max",
       logoColor: "#6D5AE0",
-      href: "/pt/series/the-last-of-us",
+      href: SERIES_INDEX_PATH,
     },
     {
       series: "The Boys",
       seasonEp: "T4 · E7",
       logo: "prime video",
       logoColor: "#0A6C8E",
-      href: "/pt/series/the-boys",
+      href: SERIES_INDEX_PATH,
     },
   ];
 }

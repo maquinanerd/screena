@@ -37,10 +37,13 @@ import {
  * existentes (invariantes 3/4 — zero API externa, zero Gemini, zero TMDB no
  * render). NADA e inventado: cada secao so aparece quando ha dado real; sem
  * dados, degrada para o hero institucional (fallback seguro, sem poster). Sem
- * ranking/Top 10, sem nota nos cards, sem watchlist, sem botao de feature
- * inativa, sem streaming, sem numeros fake. As estatisticas sao contagens REAIS
- * do catalogo. As imagens vem de caminhos LOCAIS (dado do TMDB ingerido offline
- * pela ingestao — nunca CDN externo no render).
+ * ranking/Top 10, sem watchlist, sem botao de feature inativa, sem streaming,
+ * sem numeros fake. A nota exibida nos cards e a nota editorial PROPRIA governada
+ * do Screen (`screen_score`), com o mesmo gate do hero — so aparece quando
+ * liberada, nunca e rating externo (IMDb/RT/TMDB) nem AggregateRating. As
+ * estatisticas sao contagens REAIS do catalogo. As imagens vem de caminhos
+ * LOCAIS (dado do TMDB ingerido offline pela ingestao — nunca CDN externo no
+ * render).
  *
  * Gate anti-thin (invariante 5): com menos de 2 secoes com dado real, a home
  * existe mas recebe `noindex` (decisao de `evaluatePortalIndexability`).
@@ -110,31 +113,6 @@ export async function generateMetadata(): Promise<Metadata> {
       : { index: false, follow: false },
     alternates: { canonical: canonicalPublicUrl(HOME_PATH) },
   };
-}
-
-/**
- * Notas VISUAIS dos Destaques (fidelidade v4). NAO sao ratings reais: nao vem
- * de fonte externa (IMDb/RT/TMDB), nao sao atribuidas, nao viram AggregateRating
- * nem ExternalRating, nao sao persistidas e nao afirmam nota de usuarios. Sao
- * placeholder decorativo por POSICAO do slot (1..10), deterministico (SSR-safe),
- * a ser substituido por dado governado quando ratings entrarem como feature real.
- */
-const HOME_VISUAL_SCORES = [
-  "8.6",
-  "8.6",
-  "8.7",
-  "8.7",
-  "8.0",
-  "8.9",
-  "7.5",
-  "8.8",
-  "7.0",
-  "8.0",
-] as const;
-
-/** Nota visual (placeholder) para o rank 1..10; fora do intervalo -> null. */
-function homeVisualScore(rank: number): string | null {
-  return HOME_VISUAL_SCORES[rank - 1] ?? null;
 }
 
 /**
@@ -317,13 +295,14 @@ function HighlightPoster({
 /**
  * HomeV4BigCard — HighlightCard do v4 (4 grandes) em FIDELIDADE VISUAL: poster
  * 2/3 com rank amarelo (posição do slot) + corpo branco (badge + título + meta
- * + linha de rating + "Marcar como assistido"). O rank e a nota sao VISUAIS
- * (placeholder, ver `homeVisualScore`), nao metrica/rating real. "Avaliar" e
- * "Marcar como assistido" sao affordances DESABILITADAS (aria-disabled), sem
- * onClick, sem mutation, sem estado — puro visual do design v4.
+ * + linha de rating + "Marcar como assistido"). O rank e VISUAL (posição do
+ * slot, não ranking real). A nota (`card.screenScore`) é a nota editorial
+ * PRÓPRIA do Screen, governada — mesma fonte/gate do hero (`screen_score` +
+ * `screen_score_display`); só aparece quando liberada, nunca é rating externo
+ * (IMDb/RT/TMDB) nem AggregateRating. "Avaliar" e "Marcar como assistido" são
+ * affordances DESABILITADAS (aria-disabled), sem onClick/mutation/estado.
  */
 function HomeV4BigCard({ card, rank }: { card: EntityCard; rank: number }) {
-  const displayScore = homeVisualScore(rank);
   return (
     <a
       href={card.href}
@@ -340,10 +319,10 @@ function HomeV4BigCard({ card, rank }: { card: EntityCard; rank: number }) {
           <span className="home-v4-big-card-meta">{card.meta}</span>
         ) : null}
         <span className="home-v4-rating-row">
-          {displayScore !== null ? (
+          {card.screenScore !== null ? (
             <span className="home-v4-rating" aria-hidden="true">
               <span className="home-v4-star">★</span>
-              {displayScore}
+              {card.screenScore}
             </span>
           ) : null}
           <span className="home-v4-muted-action" aria-disabled="true">
@@ -361,11 +340,11 @@ function HomeV4BigCard({ card, rank }: { card: EntityCard; rank: number }) {
 /**
  * HomeV4CompactCard — RankingItem do v4 (6 compactos) em FIDELIDADE VISUAL:
  * mini poster 42px a esquerda + copy (rank #N + título + meta + rating). O rank
- * e a nota sao VISUAIS (placeholder, ver `homeVisualScore`), nao ranking/rating
- * real. Nunca poster vertical grande.
+ * é VISUAL (posição do slot, não ranking real); a nota (`card.screenScore`) é a
+ * nota editorial PRÓPRIA governada do Screen (mesmo gate do hero), nunca rating
+ * externo/AggregateRating. Nunca poster vertical grande.
  */
 function HomeV4CompactCard({ card, rank }: { card: EntityCard; rank: number }) {
-  const displayScore = homeVisualScore(rank);
   return (
     <a
       href={card.href}
@@ -379,10 +358,10 @@ function HomeV4CompactCard({ card, rank }: { card: EntityCard; rank: number }) {
         {card.meta !== null ? (
           <span className="home-v4-compact-meta">{card.meta}</span>
         ) : null}
-        {displayScore !== null ? (
+        {card.screenScore !== null ? (
           <span className="home-v4-compact-rating" aria-hidden="true">
             <span className="home-v4-star">★</span>
-            {displayScore}
+            {card.screenScore}
           </span>
         ) : null}
       </span>
@@ -393,18 +372,14 @@ function HomeV4CompactCard({ card, rank }: { card: EntityCard; rank: number }) {
 /**
  * HomeV4PosterCard — MediaCard do v4 da grade de Filmes em destaque (04 §4):
  * pôster 2/3 (raio 12px + sombra) com badge FILME (sup-esq) + título 13px +
- * linha meta (ano) com rating VISUAL à direita (estrela dourada + nota). A nota
- * é placeholder de fidelidade (ver `homeVisualScore`): NAO é rating real/externo,
- * não é atribuída a fonte, não vira AggregateRating/ExternalRating, não é
- * persistida (aria-hidden). Imagem LOCAL real; sem imagem, gradiente por vertical.
+ * linha meta (ano) com a nota à direita (estrela dourada + nota). A nota
+ * (`card.screenScore`) é a nota editorial PRÓPRIA governada do Screen (mesmo
+ * gate do hero, `screen_score` + `screen_score_display`): NÃO é rating externo
+ * (IMDb/RT/TMDB), não é atribuída a terceiro, não vira AggregateRating/
+ * ExternalRating. Sem nota liberada, o espaço some. Imagem LOCAL real; sem
+ * imagem, gradiente por vertical.
  */
-function HomeV4PosterCard({
-  card,
-  score,
-}: {
-  card: EntityCard;
-  score: string | null;
-}) {
+function HomeV4PosterCard({ card }: { card: EntityCard }) {
   const isMovie = card.kind === "movie";
   return (
     <a
@@ -422,10 +397,10 @@ function HomeV4PosterCard({
       <span className="home-v4-poster-title">{card.title}</span>
       <span className="home-v4-poster-meta-row">
         <span className="home-v4-poster-meta">{card.meta ?? ""}</span>
-        {score !== null ? (
+        {card.screenScore !== null ? (
           <span className="home-v4-media-rating" aria-hidden="true">
             <span className="home-v4-star">★</span>
-            {score}
+            {card.screenScore}
           </span>
         ) : null}
       </span>
@@ -639,9 +614,11 @@ export default async function HomePage() {
       {/* Seção principal: Destaques no The Screen — Top 10 do v4 portado com
           governança honesta: 4 HighlightCards grandes (card branco + pôster +
           corpo) + 6 RankingItems compactos horizontais. Filmes+séries reais
-          intercalados; SEM ranking/#N, SEM nota, SEM Avaliar/Marcar/watchlist.
-          Slots sempre cheios (fillSlots) — nunca 4+2, nunca card órfão, nunca
-          trilho horizontal. */}
+          intercalados. O #N é posição VISUAL do slot (não ranking real); a nota
+          é a nota editorial PRÓPRIA governada do Screen (só quando liberada),
+          nunca rating externo/AggregateRating. Avaliar/Marcar são affordances
+          DESABILITADAS (sem watchlist real). Slots sempre cheios (fillSlots) —
+          nunca 4+2, nunca card órfão, nunca trilho horizontal. */}
       {highlightSlots.length > 0 ? (
         <section
           className="home-v4-section home-v4-section--main"
@@ -676,8 +653,9 @@ export default async function HomePage() {
       ) : null}
 
       {/* Filmes em destaque — banda creme v4 (04 §4 "Filmes em alta"): grid de 6
-          MediaCards reais com pôster local + badge FILME. Slots sempre cheios;
-          sem nota/Avaliar. */}
+          MediaCards reais com pôster local + badge FILME. Slots sempre cheios; a
+          nota (quando exibida) é a nota editorial PRÓPRIA governada do Screen —
+          nunca rating externo/AggregateRating. Sem Avaliar. */}
       {movieSlots.length > 0 ? (
         <section
           className="home-v4-band home-v4-band--warm"
@@ -695,7 +673,6 @@ export default async function HomePage() {
                 <HomeV4PosterCard
                   key={`movie-${card.href}-${index}`}
                   card={card}
-                  score={homeVisualScore(index + 1)}
                 />
               ))}
             </div>
