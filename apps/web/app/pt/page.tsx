@@ -4,6 +4,8 @@ import type { ReactNode } from "react";
 import type { EntityCard } from "../../src/lib/entity-index-presenter";
 import { HeroCarousel } from "../_components/hero-carousel";
 import { EpisodesTicker } from "../_components/episodes-ticker";
+import { ComingSoonRail } from "../_components/coming-soon-rail";
+import type { ComingSoonItem } from "../_components/coming-soon-rail";
 import {
   getMovieIndexData,
   getPersonIndexData,
@@ -162,14 +164,7 @@ function homeVisualPlatform(index: number): string {
  * Dívida técnica: trocar por dado real (estreias governadas) ou remover antes de
  * indexar. NÃO afirma trailer/estreia real como produto.
  */
-type HomeComingSoonItem = {
-  title: string;
-  date: string;
-  duration: string;
-  href: string;
-};
-
-const HOME_COMING_SOON_ITEMS: readonly HomeComingSoonItem[] = [
+const HOME_COMING_SOON_ITEMS: readonly ComingSoonItem[] = [
   { title: "Ghostbusters: Frozen Empire", date: "22 de Março", duration: "2:05", href: MOVIES_INDEX_PATH },
   { title: "Godzilla x Kong: The New Empire", date: "25 de Março", duration: "1:48", href: MOVIES_INDEX_PATH },
   { title: "Demon Slayer: Infinity Castle", date: "29 de Março", duration: "2:30", href: MOVIES_INDEX_PATH },
@@ -483,30 +478,6 @@ function HomeV4SeriesTile({
 }
 
 /**
- * HomeV4TrailerCard — card do trilho "Em breve" (v4 §7): thumb landscape 16/9 com
- * pílula play+duração, data (ícone calendário) e título abaixo. MOCK VISUAL — sem
- * player, sem trailer real; linka ao índice REAL de filmes.
- */
-function HomeV4TrailerCard({ item }: { item: HomeComingSoonItem }) {
-  return (
-    <a href={item.href} className="home-v4-trailer-card">
-      <span className="home-v4-trailer-thumb">
-        <span className="home-v4-trailer-scrim" aria-hidden="true" />
-        <span className="home-v4-trailer-duration">
-          <span aria-hidden="true">▶</span>
-          {item.duration}
-        </span>
-      </span>
-      <span className="home-v4-trailer-date">
-        <span aria-hidden="true">▤</span>
-        {item.date}
-      </span>
-      <h3 className="home-v4-trailer-title">{item.title}</h3>
-    </a>
-  );
-}
-
-/**
  * HomeV4NewsFeature — card em destaque grande de Notícias (v4 §8): imagem/backdrop
  * (real quando existe) + scrim + badge vermelho + título 28px + subtítulo. Fundo
  * escuro permitido (card de mídia). Conteúdo pode ser placeholder VISUAL.
@@ -786,52 +757,33 @@ export default async function HomePage() {
 
       {/* Em breve (v4 §7) — trilho horizontal de trailers de próximos
           lançamentos. MOCK VISUAL: lançamentos/datas/durações placeholder (sem
-          player, sem trailer real), linkam ao índice REAL de filmes. As setas
-          são visuais/desabilitadas (o trilho já rola por overflow-x nativo). */}
+          player, sem trailer real), linkam ao índice REAL de filmes. Trilho +
+          setas FUNCIONAIS no client component `ComingSoonRail` (scrollBy +
+          scroll-snap); o header (título/subtítulo) é server-rendered e passado
+          via prop `heading`. */}
       <section className="home-v4-soon" aria-labelledby="home-soon-title">
-        <header className="home-v4-soon-head">
-          <div>
-            <div className="home-v4-section-title-wrap">
-              <span
-                className="home-v4-section-accent home-v4-section-accent--red"
-                aria-hidden="true"
-              />
-              <h2 id="home-soon-title" className="home-v4-section-title">
-                Em breve
-              </h2>
-              <span className="home-v4-title-chevron" aria-hidden="true">
-                ›
-              </span>
+        <ComingSoonRail
+          items={HOME_COMING_SOON_ITEMS}
+          heading={
+            <div>
+              <div className="home-v4-section-title-wrap">
+                <span
+                  className="home-v4-section-accent home-v4-section-accent--red"
+                  aria-hidden="true"
+                />
+                <h2 id="home-soon-title" className="home-v4-section-title">
+                  Em breve
+                </h2>
+                <span className="home-v4-title-chevron" aria-hidden="true">
+                  ›
+                </span>
+              </div>
+              <p className="home-v4-soon-sub">
+                Trailers de próximos lançamentos
+              </p>
             </div>
-            <p className="home-v4-soon-sub">Trailers de próximos lançamentos</p>
-          </div>
-          <div className="home-v4-soon-nav" aria-hidden="true">
-            <button
-              className="home-v4-rail-arrow"
-              type="button"
-              aria-label="Anterior"
-              disabled
-            >
-              ‹
-            </button>
-            <button
-              className="home-v4-rail-arrow"
-              type="button"
-              aria-label="Próximo"
-              disabled
-            >
-              ›
-            </button>
-          </div>
-        </header>
-        <div className="home-v4-soon-rail">
-          {HOME_COMING_SOON_ITEMS.map((item, index) => (
-            <HomeV4TrailerCard
-              key={`coming-soon-${item.title}-${index}`}
-              item={item}
-            />
-          ))}
-        </div>
+          }
+        />
       </section>
 
       {/* Publicidade — o v4 mostra um leaderboard entre "Em breve" e "Notícias".
