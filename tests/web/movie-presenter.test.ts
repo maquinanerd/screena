@@ -145,9 +145,18 @@ describe("movie media presenter", () => {
     expect(media.backdrop?.src).toBe("/uploads/movies/backdrop.jpg");
   });
 
-  it("mantem placeholders quando nao ha path local permitido", () => {
+  it("monta URL remota do TMDB para file_path cru (poster w500 / backdrop w1280)", () => {
     const media = selectMovieMedia(
       { posterPath: "/poster.jpg", backdropPath: "/backdrop.jpg" },
+    );
+    expect(media.hasRealImage).toBe(true);
+    expect(media.poster?.src).toBe("https://image.tmdb.org/t/p/w500/poster.jpg");
+    expect(media.backdrop?.src).toBe("https://image.tmdb.org/t/p/w1280/backdrop.jpg");
+  });
+
+  it("mantem placeholders quando o path e externo/invalido (nao local nem cru valido)", () => {
+    const media = selectMovieMedia(
+      { posterPath: "https://x.com/p.jpg", backdropPath: "/media/../secret.jpg" },
     );
     expect(media).toEqual({ poster: null, backdrop: null, hasRealImage: false });
   });

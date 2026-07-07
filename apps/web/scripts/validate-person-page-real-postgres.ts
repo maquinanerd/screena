@@ -7,7 +7,8 @@
  *   cast/crew -> alvos movie|tv (titulo + slug) -> presenter -> gate anti-thin.
  *
  * Nao sobe Next, nao chama rede, nao chama TMDB/Gemini e nao altera schema.
- * Nao usa CDN remoto: a rejeicao de imagem e testada com path cru ("/abc.jpg").
+ * Imagem: file_path cru do TMDB ("/abc.jpg") vira URL REMOTA do CDN do TMDB;
+ * path local (demo) permanece local; externo/invalido -> null.
  *
  * Uso: pnpm --filter @screena/web validate:person-page
  */
@@ -349,7 +350,7 @@ async function runChecks(
   record(6, "B. indexability.decision === noindex", thinZero?.indexability.decision === "noindex", `decision=${thinZero?.indexability.decision}`);
   record(7, "B. metaDescription nao inventada", thinZero?.view.metaDescription === null, `metaDescription=${thinZero?.view.metaDescription === null ? "null" : "presente"}`);
   record(8, "B. nenhum bloco nao-publico aparece", (thinZero?.view.blocks.length ?? -1) === 0, `blocos=${thinZero?.view.blocks.length}`);
-  record(9, "B. path cru de perfil nao vira imagem local", thinZero?.view.hasRealImage === false && thinZero?.view.profile === null, `hasRealImage=${thinZero?.view.hasRealImage}`);
+  record(9, "B. path cru de perfil vira imagem REMOTA (nunca local)", thinZero?.view.hasRealImage === true && (thinZero?.view.profile?.src?.startsWith("https://") ?? false), `profile=${thinZero?.view.profile?.src}`);
   record(10, "B. sem creditos, filmografia fica vazia", (thinZero?.view.credits.length ?? -1) === 0, `credits=${thinZero?.view.credits.length}`);
 
   await seedPerson(prisma, {

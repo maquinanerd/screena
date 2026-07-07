@@ -5,7 +5,8 @@
  * Regra dura: nao inventa fatos. Ausencia de dado vira `null` ou lista vazia, e
  * a pagina simplesmente omite a secao correspondente. Em especial:
  *  - nao fabrica biografia, funcao, idade, nacionalidade nem filmografia;
- *  - so aceita imagem de perfil LOCAL segura (paths TMDB crus/externos -> null);
+ *  - imagem de perfil: path LOCAL seguro (demo/committed) OU URL remota do TMDB
+ *    montada do `file_path` cru (helper governado); externo/invalido -> null;
  *  - bio exibida vem de conteudo PROPRIO (content_blocks revisados +
  *    metaDescription). O `summary` da traducao NAO e usado como bio: uma bio de
  *    terceiro e governada por `biography_source_status` (invariante 6) e fica
@@ -13,6 +14,8 @@
  */
 
 import { evaluateIndexability, type IndexabilityResult } from "@screena/seo";
+
+import { buildTmdbImageUrl, type TmdbImageSize } from "./tmdb-image-url";
 
 /**
  * Ordem canonica dos tipos de content_block (espelha o enum `ContentBlockType`).
@@ -37,7 +40,7 @@ const LOCAL_IMAGE_PREFIXES = ["/media/", "/uploads/", "/brand/"] as const;
 const LOCAL_IMAGE_EXTENSION_PATTERN = /\.(?:avif|jpg|jpeg|png|webp)$/i;
 
 /** Perfil e retrato 2:3 (mesma proporcao de poster). */
-const PROFILE_IMAGE_SPEC: LocalImageSpec = { width: 300, height: 450 };
+const PROFILE_IMAGE_SPEC: LocalImageSpec = { width: 300, height: 450, tmdbSize: "original" };
 
 /** Rotas canonicas dos alvos de credito (pt-BR; barra final como no esquema). */
 const MOVIE_PATH_PREFIX = "/pt/filmes/";
@@ -78,6 +81,8 @@ const KNOWN_FOR_DEPARTMENT_LABELS: Readonly<Record<string, string>> = {
 interface LocalImageSpec {
   width: number;
   height: number;
+  /** Tamanho TMDB (segmento da URL remota) quando a origem é `file_path` cru. */
+  tmdbSize: TmdbImageSize;
 }
 
 export type PersonCreditEntityType = "movie" | "tv";
@@ -189,9 +194,10 @@ function validYearOrNull(value: number | null | undefined): number | null {
 }
 
 /**
- * Normaliza caminhos de imagem locais ja servidos pelo proprio app. Paths TMDB
- * crus (`/abc.jpg`), URLs externas, protocolo-relativo, query/hash e traversal
- * sao recusados: nesta fase o render so aponta para paths locais seguros.
+ * Normaliza caminhos de imagem LOCAIS servidos pelo proprio app (demo/committed).
+ * URLs externas, protocolo-relativo, query/hash e traversal sao recusados. O
+ * `file_path` cru do TMDB (`/abc.jpg`) tambem retorna `null` AQUI — a URL remota
+ * e montada em `profileAsset` via `buildTmdbImageUrl` (helper governado).
  */
 export function normalizePersonLocalImagePath(
   path: string | null | undefined,
@@ -210,7 +216,9 @@ export function normalizePersonLocalImagePath(
 }
 
 function profileAsset(path: string | null): PersonImageAsset | null {
-  const src = normalizePersonLocalImagePath(path);
+  // Local (demo/committed) primeiro; senão a URL remota do TMDB do `file_path` cru.
+  const src =
+    normalizePersonLocalImagePath(path) ?? buildTmdbImageUrl(path, PROFILE_IMAGE_SPEC.tmdbSize);
   if (src === null) return null;
   return { src, width: PROFILE_IMAGE_SPEC.width, height: PROFILE_IMAGE_SPEC.height };
 }

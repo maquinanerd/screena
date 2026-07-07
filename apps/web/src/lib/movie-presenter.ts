@@ -8,6 +8,7 @@
  */
 
 import { isPubliclyRenderableBlock } from "./movie-indexability";
+import { buildTmdbImageUrl, type TmdbImageSize } from "./tmdb-image-url";
 
 /**
  * Ordem canonica dos tipos de content_block (espelha o enum `ContentBlockType`
@@ -34,12 +35,15 @@ const LOCAL_IMAGE_EXTENSION_PATTERN = /\.(?:avif|jpg|jpeg|png|webp)$/i;
 interface LocalImageSpec {
   width: number;
   height: number;
+  /** Tamanho TMDB (segmento da URL remota) quando a origem é `file_path` cru. */
+  tmdbSize: TmdbImageSize;
 }
 
-const POSTER_IMAGE_SPEC: LocalImageSpec = { width: 342, height: 513 };
+const POSTER_IMAGE_SPEC: LocalImageSpec = { width: 342, height: 513, tmdbSize: "w500" };
 const BACKDROP_IMAGE_SPEC: LocalImageSpec = {
   width: 1280,
   height: 720,
+  tmdbSize: "w1280",
 };
 
 /** Subconjunto do registro `movies` necessario para a pagina. */
@@ -112,11 +116,11 @@ function trimToNull(value: string | null | undefined): string | null {
 }
 
 /**
- * Normaliza caminhos de imagem locais ja servidos pelo proprio app.
- *
- * Politica desta fase: paths TMDB crus (`/abc.jpg`) continuam `null`, porque
- * eles so fazem sentido combinados com CDN externa. URLs absolutas externas,
- * protocolo-relativo, query/hash e traversal tambem sao recusados.
+ * Normaliza caminhos de imagem LOCAIS servidos pelo proprio app (demo/committed:
+ * `/media/`, `/uploads/`, `/brand/`). URLs externas, protocolo-relativo,
+ * query/hash e traversal sao recusados; `file_path` cru do TMDB (`/abc.jpg`)
+ * tambem retorna `null` AQUI — a URL remota e montada em `imageAsset` via
+ * `buildTmdbImageUrl` (helper governado), nao neste normalizador local.
  */
 export function normalizeLocalImagePath(
   path: string | null | undefined,
@@ -138,7 +142,8 @@ function imageAsset(
   path: string | null,
   spec: LocalImageSpec,
 ): MovieImageAsset | null {
-  const src = normalizeLocalImagePath(path);
+  // Local (demo/committed) primeiro; senão a URL remota do TMDB do `file_path` cru.
+  const src = normalizeLocalImagePath(path) ?? buildTmdbImageUrl(path, spec.tmdbSize);
   if (src === null) return null;
   return { src, width: spec.width, height: spec.height };
 }

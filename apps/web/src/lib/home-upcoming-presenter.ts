@@ -5,8 +5,10 @@
  *
  * Governança:
  *  - Não inventa dados: item sem título, sem slug canônico ou sem data de estreia
- *    futura NÃO entra. Só imagem LOCAL segura vira `imageUrl` (path cru/externo
- *    do TMDB -> null -> card cai no fallback visual do trilho).
+ *    futura NÃO entra. A imagem é a URL pública REMOTA do TMDB montada do
+ *    `file_path` cru (via helper governado `buildTmdbImageUrl`); sem `file_path`
+ *    válido -> null -> card cai no fallback visual do trilho. Servidor não salva
+ *    imagem (sem JPG/WebP local, sem `/media/tmdb`).
  *  - TMDB é fonte de CATÁLOGO (data/pôster/slug), nunca editorial: aqui não há
  *    nota, crítica, trailer nem streaming. Por isso o card NÃO tem `duration`
  *    (não fingimos trailer) — a pílula de duração é só do placeholder visual.
@@ -14,7 +16,7 @@
  */
 
 import { detailPath, MOVIES_INDEX_PATH } from "./site";
-import { normalizeEntityLocalImagePath } from "./entity-index-presenter";
+import { buildTmdbImageUrl } from "./tmdb-image-url";
 
 /** Quantos filmes "Em breve" a home exibe no máximo. */
 export const HOME_UPCOMING_LIMIT = 6;
@@ -43,11 +45,11 @@ export interface UpcomingMovieInput {
   /** Data de estreia (Movie.releaseDate, @db.Date -> Date em meia-noite UTC). */
   releaseDate: Date | null;
   /**
-   * Caminho do backdrop 16:9 (local após backfill; cru/externo é rejeitado).
-   * Preferido no trilho "Em breve" (thumb widescreen); ver `resolveUpcomingImage`.
+   * `file_path` CRU do TMDB do backdrop 16:9 (ex.: `/abc.jpg`). Preferido no
+   * trilho "Em breve" (thumb widescreen); vira URL remota via `resolveUpcomingImage`.
    */
   backdropPath: string | null;
-  /** Caminho de pôster (local após backfill; cru/externo é rejeitado). */
+  /** `file_path` CRU do TMDB do pôster (ex.: `/xyz.jpg`); fallback do backdrop. */
   posterPath: string | null;
 }
 
@@ -59,8 +61,9 @@ export interface HomeUpcomingMovie {
   /** `/pt/filmes/{slug}/`. */
   href: string;
   /**
-   * Imagem LOCAL segura (backdrop preferido, senão pôster) ou null. O trilho
-   * renderiza `<img>` quando presente; null -> thumb com gradiente de fallback.
+   * URL pública REMOTA do TMDB (backdrop `w780` preferido, senão pôster `w500`)
+   * ou null. O trilho renderiza `<img>` quando presente; null -> thumb com
+   * gradiente de fallback. Nunca é path local nem de filesystem.
    */
   imageUrl: string | null;
 }
@@ -87,20 +90,19 @@ export function formatUpcomingDate(date: Date): string {
 }
 
 /**
- * Resolve a imagem do card "Em breve": só imagem LOCAL segura, preferindo o
- * backdrop 16:9 (thumb widescreen do trilho) e caindo no pôster quando não há
- * backdrop; sem imagem local válida -> null (card cai no fallback do trilho).
- * Nunca devolve path de filesystem (`apps/web/public/...`) nem CDN externo:
- * `normalizeEntityLocalImagePath` só aceita prefixos locais (`/media/`,
- * `/uploads/`, `/brand/`) com extensão de imagem.
+ * Resolve a imagem REMOTA do card "Em breve" a partir do `file_path` CRU do TMDB
+ * (guardado no banco), preferindo o backdrop 16:9 em `w780` (thumb widescreen do
+ * trilho) e caindo no pôster em `w500` quando não há backdrop; sem `file_path`
+ * válido -> null (card cai no fallback do trilho). Nenhum arquivo local: a URL é
+ * a do CDN remoto de imagens do TMDB, construída pelo helper governado
+ * `buildTmdbImageUrl` (que rejeita path local antigo `/media/...` e de filesystem).
  */
 export function resolveUpcomingImage(
   backdropPath: string | null | undefined,
   posterPath: string | null | undefined,
 ): string | null {
   return (
-    normalizeEntityLocalImagePath(backdropPath) ??
-    normalizeEntityLocalImagePath(posterPath)
+    buildTmdbImageUrl(backdropPath, "w780") ?? buildTmdbImageUrl(posterPath, "w500")
   );
 }
 

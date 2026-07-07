@@ -8,12 +8,14 @@
  *    nome valido, a entrada e descartada; sem elenco, a secao e omitida.
  *  - Elenco = dado factual de catalogo (nome + personagem), nunca nota, licenca
  *    de rating ou disponibilidade — nada disso passa por aqui.
- *  - So aceita imagem de perfil LOCAL segura (paths TMDB crus/externos -> null ->
- *    fallback). O link para a pessoa so existe quando ha slug canonico pt-BR
- *    valido; caso contrario, o nome aparece como texto (nunca link quebrado).
+ *  - Imagem de perfil: path LOCAL seguro (demo/committed) OU URL remota do TMDB
+ *    montada do `file_path` cru (helper governado); externo/invalido -> fallback.
+ *    O link para a pessoa so existe quando ha slug canonico pt-BR valido; caso
+ *    contrario, o nome aparece como texto (nunca link quebrado).
  */
 
 import { detailPath, PEOPLE_INDEX_PATH } from "./site";
+import { buildTmdbImageUrl, type TmdbImageSize } from "./tmdb-image-url";
 
 const LOCAL_IMAGE_PREFIXES = ["/media/", "/uploads/", "/brand/"] as const;
 const LOCAL_IMAGE_EXTENSION_PATTERN = /\.(?:avif|jpg|jpeg|png|webp)$/i;
@@ -21,10 +23,12 @@ const LOCAL_IMAGE_EXTENSION_PATTERN = /\.(?:avif|jpg|jpeg|png|webp)$/i;
 interface LocalImageSpec {
   width: number;
   height: number;
+  /** Tamanho TMDB (segmento da URL remota) quando a origem é `file_path` cru. */
+  tmdbSize: TmdbImageSize;
 }
 
 /** Retrato 2:3 do elenco (mesma proporcao dos cards de pessoa). */
-const PROFILE_IMAGE_SPEC: LocalImageSpec = { width: 200, height: 300 };
+const PROFILE_IMAGE_SPEC: LocalImageSpec = { width: 200, height: 300, tmdbSize: "original" };
 
 /** Teto padrao de membros de elenco exibidos na faixa (elenco principal). */
 export const DEFAULT_CAST_LIMIT = 12;
@@ -66,9 +70,10 @@ function trimToNull(value: string | null | undefined): string | null {
 }
 
 /**
- * Normaliza caminhos de imagem locais ja servidos pelo proprio app. Paths TMDB
- * crus (`/abc.jpg`), URLs externas, protocolo-relativo, query/hash e traversal
- * sao recusados: o elenco so aponta para paths locais seguros.
+ * Normaliza caminhos de imagem LOCAIS servidos pelo proprio app (demo/committed).
+ * URLs externas, protocolo-relativo, query/hash e traversal sao recusados. O
+ * `file_path` cru do TMDB (`/abc.jpg`) tambem retorna `null` AQUI — a URL remota
+ * e montada em `profileAsset` via `buildTmdbImageUrl` (helper governado).
  */
 export function normalizeCastLocalImagePath(
   path: string | null | undefined,
@@ -87,7 +92,9 @@ export function normalizeCastLocalImagePath(
 }
 
 function profileAsset(path: string | null): CastImageAsset | null {
-  const src = normalizeCastLocalImagePath(path);
+  // Local (demo/committed) primeiro; senão a URL remota do TMDB do `file_path` cru.
+  const src =
+    normalizeCastLocalImagePath(path) ?? buildTmdbImageUrl(path, PROFILE_IMAGE_SPEC.tmdbSize);
   if (src === null) return null;
   return { src, width: PROFILE_IMAGE_SPEC.width, height: PROFILE_IMAGE_SPEC.height };
 }

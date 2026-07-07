@@ -4,7 +4,8 @@
  *
  * Regras duras (espelham os presenters de detalhe):
  *  - nao inventa dados: item sem titulo/nome ou sem slug canonico NAO entra;
- *  - so aceita imagem LOCAL segura (paths TMDB crus/externos -> null -> fallback);
+ *  - imagem: path LOCAL seguro (demo/committed) OU URL remota do TMDB montada do
+ *    `file_path` cru (via helper governado); path invalido/externo -> null -> fallback;
  *  - ordenacao deterministica e cap de itens; sem paginacao complexa;
  *  - gate anti-thin: listagem vazia/fina -> noindex; com itens suficientes -> index.
  */
@@ -12,6 +13,7 @@
 import { evaluateIndexability, type IndexabilityResult } from "@screena/seo";
 
 import { SCREEN_SCORE_SCALE } from "./home-hero-presenter";
+import { buildTmdbImageUrl, type TmdbImageSize } from "./tmdb-image-url";
 
 /** Quantos itens a listagem exibe por pagina (sem paginacao nesta fatia). */
 export const INDEX_ITEM_LIMIT = 24;
@@ -25,8 +27,8 @@ export const MIN_INDEX_ITEMS = 3;
 const LOCAL_IMAGE_PREFIXES = ["/media/", "/uploads/", "/brand/"] as const;
 const LOCAL_IMAGE_EXTENSION_PATTERN = /\.(?:avif|jpg|jpeg|png|webp)$/i;
 
-const POSTER_IMAGE_SPEC: LocalImageSpec = { width: 342, height: 513 };
-const PROFILE_IMAGE_SPEC: LocalImageSpec = { width: 300, height: 450 };
+const POSTER_IMAGE_SPEC: LocalImageSpec = { width: 342, height: 513, tmdbSize: "w500" };
+const PROFILE_IMAGE_SPEC: LocalImageSpec = { width: 300, height: 450, tmdbSize: "original" };
 
 const MOVIE_PATH_PREFIX = "/pt/filmes/";
 const SERIES_PATH_PREFIX = "/pt/series/";
@@ -55,6 +57,8 @@ const KNOWN_FOR_DEPARTMENT_LABELS: Readonly<Record<string, string>> = {
 interface LocalImageSpec {
   width: number;
   height: number;
+  /** Tamanho TMDB (segmento da URL remota) quando a origem é `file_path` cru. */
+  tmdbSize: TmdbImageSize;
 }
 
 export type EntityIndexKind = "movie" | "series" | "person";
@@ -170,7 +174,9 @@ function imageAsset(
   path: string | null,
   spec: LocalImageSpec,
 ): EntityImageAsset | null {
-  const src = normalizeEntityLocalImagePath(path);
+  // Local (demo/committed) primeiro; senão a URL remota do TMDB montada do
+  // `file_path` cru (helper governado). Path inválido -> null -> fallback visual.
+  const src = normalizeEntityLocalImagePath(path) ?? buildTmdbImageUrl(path, spec.tmdbSize);
   if (src === null) return null;
   return { src, width: spec.width, height: spec.height };
 }

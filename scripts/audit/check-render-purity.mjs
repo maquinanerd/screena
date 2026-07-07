@@ -9,6 +9,14 @@
  *    Gemini/Google APIs, IMDb ou qualquer host externo no caminho de render.
  *  - "Zero Gemini no render": a IA so roda offline.
  *
+ * Imagens do TMDB (decisao de arquitetura: nao salvar imagem no servidor): a URL
+ * publica de imagem (`image.tmdb.org`) e CONSTRUIDA (string) num unico helper
+ * governado (`IMAGE_URL_HELPER_REL`) e renderizada por `<img src>`. Isso NAO viola
+ * "zero API externa no render" (nao ha chamada de rede no render — so concatenacao
+ * de string a partir do PostgreSQL). O literal do host continua PROIBIDO em
+ * qualquer outro arquivo de apps/web, e `fetch(` a host TMDB segue barrado em
+ * TODOS os arquivos (inclusive o helper). Nenhum token TMDB pode ir ao cliente.
+ *
  * O que faz: varre apps/web (recursivo) procurando, em codigo de pagina
  * (server components / rotas), padroes proibidos:
  *   1) chamadas fetch( cujo alvo aponta para hosts externos conhecidos
@@ -91,9 +99,19 @@ const FETCH_PATTERNS = EXTERNAL_HOSTS.map((host) => ({
 }));
 
 /**
- * Literais proibidos em apps/web mesmo quando nao aparecem em fetch. Cobre CDNs
- * remotos de imagem: nesta fase o render publico so pode apontar para paths
- * locais seguros.
+ * Literais proibidos em apps/web mesmo quando nao aparecem em fetch. Cobre o CDN
+ * remoto de imagens do TMDB (host de `image.tmdb.org`).
+ *
+ * EXCECAO GOVERNADA (decisao de arquitetura: nao salvar imagem no servidor): a
+ * URL publica de imagem do TMDB pode ser CONSTRUIDA (concatenacao de string) em
+ * UM unico arquivo de producao — o helper `IMAGE_URL_HELPER_REL` abaixo. Essa
+ * excecao vale SO para o literal do host em codigo de construcao de URL de
+ * imagem (renderizada por `<img src>`), NUNCA para:
+ *   - `fetch(` a qualquer host TMDB no render (segue barrado por FETCH_PATTERNS,
+ *     que se aplica a TODOS os arquivos, inclusive o helper);
+ *   - token/segredo TMDB no cliente;
+ *   - uso espalhado do host fora do helper governado.
+ * Fora do helper, o literal continua sendo VIOLACAO.
  * @type {{ name: string, regex: RegExp }[]}
  */
 const FORBIDDEN_LITERAL_PATTERNS = [
@@ -102,6 +120,14 @@ const FORBIDDEN_LITERAL_PATTERNS = [
     regex: /image\.tmdb\.org/i,
   },
 ];
+
+/**
+ * Unico arquivo de producao de apps/web autorizado a conter o literal
+ * `image.tmdb.org` (construcao GOVERNADA da URL publica de imagem). Caminho
+ * relativo a raiz, com '/'. Ver a excecao documentada em FORBIDDEN_LITERAL_PATTERNS.
+ * @type {string}
+ */
+const IMAGE_URL_HELPER_REL = 'apps/web/src/lib/tmdb-image-url.ts';
 
 /**
  * Imports proibidos em arquivos de pagina/layout.
@@ -333,6 +359,9 @@ async function scanWeb() {
     const baseName = path.basename(absFile).toLowerCase();
     const isPageFile = PAGE_FILE_NAMES.has(baseName);
     const isClientComponent = hasUseClientDirective(content);
+    // Excecao governada: SO o helper de URL de imagem pode conter 'image.tmdb.org'
+    // (construcao de URL publica). `fetch(` a host TMDB segue barrado nele tambem.
+    const isGovernedImageUrlHelper = rel(absFile) === IMAGE_URL_HELPER_REL;
 
     const lines = content.split(/\r?\n/);
     for (let i = 0; i < lines.length; i += 1) {
@@ -340,9 +369,11 @@ async function scanWeb() {
       const line = stripLineComment(raw);
       if (line.trim() === '') continue;
 
-      for (const { name, regex } of FORBIDDEN_LITERAL_PATTERNS) {
-        if (regex.test(raw)) {
-          violations.push(`${name} em ${rel(absFile)}:${i + 1} -> ${raw.trim()}`);
+      if (!isGovernedImageUrlHelper) {
+        for (const { name, regex } of FORBIDDEN_LITERAL_PATTERNS) {
+          if (regex.test(raw)) {
+            violations.push(`${name} em ${rel(absFile)}:${i + 1} -> ${raw.trim()}`);
+          }
         }
       }
 

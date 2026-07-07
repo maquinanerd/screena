@@ -16,10 +16,11 @@ import { useRef } from "react";
  * então NÃO exibe pílula de duração — nunca fingimos duração de trailer. Cada
  * card linka ao índice/ficha REAL de filmes.
  *
- * `imageUrl` é OPCIONAL e sempre um path LOCAL seguro (`/media/...`, resolvido no
- * presenter): quando presente, o thumb 16:9 renderiza a imagem real (backdrop do
- * TMDB ingerido offline); ausente/null -> thumb com o gradiente de fallback (o
- * caso do placeholder visual). Nunca recebe URL externa nem path de filesystem.
+ * `imageUrl` é OPCIONAL e, quando presente, é a URL pública REMOTA do CDN de
+ * imagens do TMDB (montada no presenter pelo helper governado a partir do
+ * `file_path` cru): o thumb 16:9 renderiza `<img>` com `loading="lazy"` +
+ * `decoding="async"`; ausente/null -> thumb com o gradiente de fallback (o caso do
+ * placeholder visual). O servidor não salva imagem — sem `/media/tmdb`, sem disco.
  */
 
 export type ComingSoonItem = {
@@ -28,7 +29,7 @@ export type ComingSoonItem = {
   /** Duração do trailer (só placeholder visual); ausente = sem pílula. */
   duration?: string;
   href: string;
-  /** Imagem LOCAL segura (backdrop/pôster) ou null/ausente = sem imagem. */
+  /** URL pública remota do TMDB (backdrop/pôster) ou null/ausente = sem imagem. */
   imageUrl?: string | null;
 };
 
@@ -89,6 +90,7 @@ export function ComingSoonRail({
                   alt={`Imagem de ${item.title}`}
                   className="home-v4-trailer-img"
                   loading="lazy"
+                  decoding="async"
                 />
               ) : null}
               <span className="home-v4-trailer-scrim" aria-hidden="true" />

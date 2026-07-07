@@ -8,14 +8,21 @@
  * de ingestão (createIngestionContext + importMovie/importTvShow → persiste
  * movie/tv/season/episode/people/cast/crew/entity_external_ids + api_cache +
  * api_sync_logs, com retry/backoff/breaker) e ADICIONA o que a home precisa e o
- * importer não cria: slug canônico pt-BR, tradução pt-BR (title+summary) e
- * download LOCAL das imagens (poster/backdrop) para apps/web/public/media/tmdb/.
+ * importer não cria: slug canônico pt-BR, tradução pt-BR (title+summary) e o
+ * `file_path` de imagem (poster/backdrop).
+ *
+ * Imagens (decisão de arquitetura: NÃO salvar imagem no servidor):
+ *  - PADRÃO: grava posterPath/backdropPath com o `file_path` CRU do TMDB
+ *    (ex.: `/abc.jpg`). O frontend monta a URL pública remota (image.tmdb.org).
+ *    Nada é baixado; nenhum arquivo salvo; sem `/media/tmdb`; sem disco/volume.
+ *  - `--download-images` (LEGADO/opt-in): baixa poster/backdrop para
+ *    apps/web/public/media/tmdb/ e grava o path local `/media/tmdb/...`.
  *
  * Governança:
  *  - Zero API externa no render — este script roda offline; a home lê só Postgres.
  *  - Token TMDB só no .env da raiz; NUNCA logado; NUNCA em NEXT_PUBLIC_*.
- *  - Imagens locais (/media/tmdb/...); nada de image.tmdb.org no render.
- *  - Idempotente: upsert por tmdbId/slug/translation; imagem pula se já existe.
+ *  - O host image.tmdb.org só aparece aqui (worker offline), nunca no render.
+ *  - Idempotente: upsert por tmdbId/slug/translation.
  *  - Fail-closed: aborta em produção; exige token + DATABASE_URL; --apply p/ escrever.
  *
  * Uso (a partir da raiz, com TMDB_READ_ACCESS_TOKEN no .env). Resolva o cli do
@@ -24,9 +31,11 @@
  *   node "<caminho-do-tsx-cli>" services/ingestion/bin/ingest-public-catalog.ts --apply
  *   # flags:
  *   #   --apply             escreve (sem a flag = dry-run, nada gravado)
- *   #   --refresh-images    rebaixa imagens já existentes
  *   #   --include-upcoming  descobre filmes em estreia (TMDB /movie/upcoming) e os
  *   #                       ingere junto do catálogo curado, alimentando "Em breve"
+ *   #   --download-images   LEGADO/opt-in: baixa imagens p/ /media/tmdb (default = NÃO
+ *   #                       baixa; grava file_path cru p/ URL remota no frontend)
+ *   #   --refresh-images    só com --download-images: rebaixa imagens já existentes
  */
 
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
@@ -34,6 +43,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { createIngestionContext, importMovie, importTvShow } from '../src/composition.js'
+import { resolveCatalogImagePath } from '../src/public-catalog-image.js'
 import { getPrismaClient } from '@screena/db/server'
 
 const LANGUAGE = 'pt-BR'
@@ -130,14 +140,20 @@ async function downloadImage(
 
 /**
  * Finaliza UMA entidade já persistida pelo importer: cria slug pt-BR + tradução
- * pt-BR (title+summary) e baixa poster/backdrop para caminho local, reescrevendo
- * posterPath/backdropPath. Idempotente.
+ * pt-BR (title+summary) e resolve posterPath/backdropPath. Idempotente.
+ *
+ * PADRÃO (`downloadImages=false`): NÃO baixa imagem — grava o `file_path` CRU do
+ * TMDB (ex.: `/abc.jpg`); o frontend monta a URL remota. Servidor não salva imagem.
+ * `--download-images` (legado): baixa poster/backdrop para caminho local e grava
+ * `/media/tmdb/...`. A decisão de qual string persistir é do helper puro
+ * `resolveCatalogImagePath`.
  */
 async function finalize(
   prisma: ReturnType<typeof getPrismaClient>,
   entityType: 'movie' | 'tv',
   detail: TmdbDetailLite,
   refresh: boolean,
+  downloadImages: boolean,
 ): Promise<void> {
   const isMovie = entityType === 'movie'
   const title =
@@ -172,19 +188,25 @@ async function finalize(
     create: { entityType, entityId: entity.id, languageCode: LANGUAGE, title, summary: overview },
   })
 
-  const poster = await downloadImage(
-    detail.poster_path,
-    POSTER_SIZE,
-    `media/tmdb/${entityType}/${slug}-poster.jpg`,
-    refresh,
-  )
-  const backdrop = await downloadImage(
-    detail.backdrop_path,
-    BACKDROP_SIZE,
-    `media/tmdb/${entityType}/${slug}-backdrop.jpg`,
-    refresh,
-  )
-  await model.update({ where: { id: entity.id }, data: { posterPath: poster, backdropPath: backdrop } })
+  // Só baixa arquivo quando --download-images (legado). Default: nada de disco.
+  const posterLocal = downloadImages
+    ? await downloadImage(detail.poster_path, POSTER_SIZE, `media/tmdb/${entityType}/${slug}-poster.jpg`, refresh)
+    : null
+  const backdropLocal = downloadImages
+    ? await downloadImage(detail.backdrop_path, BACKDROP_SIZE, `media/tmdb/${entityType}/${slug}-backdrop.jpg`, refresh)
+    : null
+
+  const posterPath = resolveCatalogImagePath({
+    rawPath: detail.poster_path,
+    downloadedLocalPath: posterLocal,
+    downloadImages,
+  })
+  const backdropPath = resolveCatalogImagePath({
+    rawPath: detail.backdrop_path,
+    downloadedLocalPath: backdropLocal,
+    downloadImages,
+  })
+  await model.update({ where: { id: entity.id }, data: { posterPath, backdropPath } })
 }
 
 /** Dedup estavel de ids numericos preservando a ordem de primeira aparicao. */
@@ -264,6 +286,9 @@ async function main(): Promise<void> {
   const apply = argv.includes('--apply')
   const refresh = argv.includes('--refresh-images')
   const includeUpcoming = argv.includes('--include-upcoming')
+  // Default: NÃO baixa imagem (grava file_path cru; frontend usa URL remota).
+  // --download-images = comportamento legado (baixa + grava /media/tmdb/...).
+  const downloadImages = argv.includes('--download-images')
   loadRepoEnv()
 
   const hasToken = Boolean(
@@ -336,7 +361,7 @@ async function main(): Promise<void> {
         params: { append_to_response: APPEND },
         fetcher: () => ctx.tmdb.getMovie(id),
       })
-      await finalize(prisma, 'movie', cached.data as TmdbDetailLite, refresh)
+      await finalize(prisma, 'movie', cached.data as TmdbDetailLite, refresh, downloadImages)
       ok += 1
       console.log(`  filme ${id}: OK`)
     }
@@ -352,12 +377,16 @@ async function main(): Promise<void> {
         params: { append_to_response: APPEND },
         fetcher: () => ctx.tmdb.getTvShow(id),
       })
-      await finalize(prisma, 'tv', cached.data as TmdbDetailLite, refresh)
+      await finalize(prisma, 'tv', cached.data as TmdbDetailLite, refresh, downloadImages)
       ok += 1
       console.log(`  serie ${id}: OK`)
     }
     console.log(`Ingestão concluída (idempotente): ${ok} OK, ${failed} falha(s).`)
-    console.log('Imagens locais em apps/web/public/media/tmdb/ (gitignored — regeradas por este script).')
+    console.log(
+      downloadImages
+        ? 'Imagens LOCAIS em apps/web/public/media/tmdb/ (--download-images, legado; gitignored).'
+        : 'Sem imagem salva no servidor: posterPath/backdropPath = file_path CRU do TMDB (frontend usa URL remota image.tmdb.org).',
+    )
   } finally {
     await disconnect()
   }

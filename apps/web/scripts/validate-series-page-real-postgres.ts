@@ -319,7 +319,7 @@ async function runChecks(
   record(6, "B. indexability.decision === noindex", thinZero?.indexability.decision === "noindex", `decision=${thinZero?.indexability.decision}`);
   record(7, "B. metaDescription nao inventada", thinZero?.view.metaDescription === null, `metaDescription=${thinZero?.view.metaDescription === null ? "null" : JSON.stringify(thinZero?.view.metaDescription)}`);
   record(8, "B. nenhum bloco nao-publico aparece", (thinZero?.view.blocks.length ?? -1) === 0, `blocos=${thinZero?.view.blocks.length}`);
-  record(9, "B. path raiz cru nao vira imagem local segura", thinZero?.view.media.hasRealImage === false, `hasRealImage=${thinZero?.view.media.hasRealImage}`);
+  record(9, "B. path cru do TMDB vira imagem REMOTA (nunca local)", thinZero?.view.media.hasRealImage === true && (thinZero?.view.media.poster?.src?.startsWith("https://") ?? false), `poster=${thinZero?.view.media.poster?.src}`);
   record(10, "B. sem seasons reais, view.seasons fica vazia", (thinZero?.view.seasons.length ?? -1) === 0, `seasons=${thinZero?.view.seasons.length}`);
 
   await seedSeries(prisma, {
@@ -415,7 +415,7 @@ async function runChecks(
   record(22, "D. apenas blocos publicos aparecem", JSON.stringify(visibleTypes) === JSON.stringify(["editorial_intro", "season_guide"]), `visiveis=[${visibleTypes.join(", ")}]`);
   record(23, "D. temporada real aparece", richByAlias?.view.seasons[0]?.title === "Temporada 1", `season=${richByAlias?.view.seasons[0]?.title}`);
   record(24, "D. episodios reais aparecem ordenados", JSON.stringify(richByAlias?.view.seasons[0]?.episodes.map((episode) => episode.episodeNumber)) === JSON.stringify([1, 2]), `episodes=[${richByAlias?.view.seasons[0]?.episodes.map((episode) => episode.episodeNumber).join(", ")}]`);
-  record(25, "D. still local seguro aparece e path cru vira null", richByAlias?.view.seasons[0]?.episodes[0]?.still?.src === "/uploads/series/episode-1.webp" && richByAlias?.view.seasons[0]?.episodes[1]?.still === null, `still1=${richByAlias?.view.seasons[0]?.episodes[0]?.still?.src ?? "null"}`);
+  record(25, "D. still local seguro aparece; still de file_path cru vira URL REMOTA", richByAlias?.view.seasons[0]?.episodes[0]?.still?.src === "/uploads/series/episode-1.webp" && (richByAlias?.view.seasons[0]?.episodes[1]?.still?.src?.startsWith("https://") ?? false), `still1=${richByAlias?.view.seasons[0]?.episodes[0]?.still?.src ?? "null"}`);
 }
 
 async function main(): Promise<void> {

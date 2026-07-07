@@ -84,13 +84,19 @@ describe("buildUpcomingMovies", () => {
     expect(card?.title).toBe("PT");
   });
 
-  it("só aceita imagem LOCAL segura (path cru/externo do TMDB -> null)", () => {
-    const local = buildUpcomingMovies(
-      [movie({ slug: "a", posterPath: "/media/tmdb/movie/a-poster.jpg" })],
+  it("usa a URL REMOTA do TMDB a partir do file_path cru (local antigo/externo -> null)", () => {
+    const remote = buildUpcomingMovies(
+      [movie({ slug: "a", posterPath: "/abc.jpg" })],
       NOW,
     );
-    expect(local[0]?.imageUrl).toBe("/media/tmdb/movie/a-poster.jpg");
-    expect(buildUpcomingMovies([movie({ slug: "b", posterPath: "/abc.jpg" })], NOW)[0]?.imageUrl).toBeNull();
+    // Só pôster -> w500.
+    expect(remote[0]?.imageUrl).toBe("https://image.tmdb.org/t/p/w500/abc.jpg");
+    // Path local antigo -> null (nunca vira URL remota).
+    expect(
+      buildUpcomingMovies([movie({ slug: "b", posterPath: "/media/tmdb/movie/a-poster.jpg" })], NOW)[0]
+        ?.imageUrl,
+    ).toBeNull();
+    // Já-URL absoluta embutida -> null.
     expect(
       buildUpcomingMovies(
         [movie({ slug: "c", posterPath: "https://image.tmdb.org/t/p/w500/a.jpg" })],
@@ -99,45 +105,33 @@ describe("buildUpcomingMovies", () => {
     ).toBeNull();
   });
 
-  it("prefere backdrop local; sem backdrop cai no pôster local; sem nenhum -> null", () => {
-    // Backdrop + pôster: usa o backdrop (thumb 16:9 do trilho).
+  it("prefere backdrop (w780); sem backdrop cai no pôster (w500); sem nenhum -> null", () => {
+    // Backdrop + pôster: usa o backdrop em w780 (thumb 16:9 do trilho).
     const both = buildUpcomingMovies(
-      [
-        movie({
-          slug: "moana",
-          backdropPath: "/media/tmdb/movie/moana-2026-backdrop.jpg",
-          posterPath: "/media/tmdb/movie/moana-2026-poster.jpg",
-        }),
-      ],
+      [movie({ slug: "moana", backdropPath: "/bd.jpg", posterPath: "/ps.jpg" })],
       NOW,
     );
-    expect(both[0]?.imageUrl).toBe("/media/tmdb/movie/moana-2026-backdrop.jpg");
+    expect(both[0]?.imageUrl).toBe("https://image.tmdb.org/t/p/w780/bd.jpg");
 
-    // Só pôster: cai no pôster.
+    // Só pôster: w500.
     const posterOnly = buildUpcomingMovies(
-      [movie({ slug: "aranha", posterPath: "/media/tmdb/movie/aranha-2026-poster.jpg" })],
+      [movie({ slug: "aranha", posterPath: "/ps.jpg" })],
       NOW,
     );
-    expect(posterOnly[0]?.imageUrl).toBe("/media/tmdb/movie/aranha-2026-poster.jpg");
+    expect(posterOnly[0]?.imageUrl).toBe("https://image.tmdb.org/t/p/w500/ps.jpg");
 
     // Nenhum: null (card cai no fallback do trilho).
     expect(buildUpcomingMovies([movie({ slug: "sem-img" })], NOW)[0]?.imageUrl).toBeNull();
 
-    // Backdrop cru é rejeitado -> cai no pôster local válido.
-    const rawBackdrop = buildUpcomingMovies(
-      [
-        movie({
-          slug: "misto",
-          backdropPath: "/cru.jpg",
-          posterPath: "/media/tmdb/movie/misto-2026-poster.jpg",
-        }),
-      ],
+    // Backdrop inválido (local antigo) -> cai no pôster cru em w500.
+    const rejeitaBackdrop = buildUpcomingMovies(
+      [movie({ slug: "misto", backdropPath: "/media/tmdb/x.jpg", posterPath: "/ps.jpg" })],
       NOW,
     );
-    expect(rawBackdrop[0]?.imageUrl).toBe("/media/tmdb/movie/misto-2026-poster.jpg");
+    expect(rejeitaBackdrop[0]?.imageUrl).toBe("https://image.tmdb.org/t/p/w500/ps.jpg");
   });
 
-  it("imageUrl NUNCA é path de filesystem (`apps/web/public/...`)", () => {
+  it("imageUrl nunca começa com /media nem com apps/web/public (path local/fs -> null)", () => {
     const fs = buildUpcomingMovies(
       [
         movie({
@@ -148,8 +142,13 @@ describe("buildUpcomingMovies", () => {
       ],
       NOW,
     );
-    // Path relativo de filesystem não começa com prefixo local -> null.
     expect(fs[0]?.imageUrl).toBeNull();
+
+    const ok = buildUpcomingMovies([movie({ slug: "ok", backdropPath: "/bd.jpg" })], NOW);
+    const url = ok[0]?.imageUrl ?? "";
+    expect(url.startsWith("/media")).toBe(false);
+    expect(url.startsWith("apps/web/public")).toBe(false);
+    expect(url.startsWith("https://image.tmdb.org/")).toBe(true);
   });
 
   it("respeita o cap (default 6) e trata lista sem válidos como vazia", () => {
@@ -170,28 +169,26 @@ describe("buildUpcomingMovies", () => {
 });
 
 describe("resolveUpcomingImage", () => {
-  it("prefere backdrop local", () => {
-    expect(
-      resolveUpcomingImage(
-        "/media/tmdb/movie/x-backdrop.jpg",
-        "/media/tmdb/movie/x-poster.jpg",
-      ),
-    ).toBe("/media/tmdb/movie/x-backdrop.jpg");
-  });
-
-  it("cai no pôster local quando não há backdrop válido", () => {
-    expect(resolveUpcomingImage(null, "/media/tmdb/movie/x-poster.jpg")).toBe(
-      "/media/tmdb/movie/x-poster.jpg",
-    );
-    expect(resolveUpcomingImage("/cru.jpg", "/media/tmdb/movie/x-poster.jpg")).toBe(
-      "/media/tmdb/movie/x-poster.jpg",
+  it("prefere backdrop cru do TMDB em w780", () => {
+    expect(resolveUpcomingImage("/bd.jpg", "/ps.jpg")).toBe(
+      "https://image.tmdb.org/t/p/w780/bd.jpg",
     );
   });
 
-  it("retorna null sem imagem local válida (externo/fs/cru -> null)", () => {
+  it("cai no pôster cru em w500 quando não há backdrop válido", () => {
+    expect(resolveUpcomingImage(null, "/ps.jpg")).toBe(
+      "https://image.tmdb.org/t/p/w500/ps.jpg",
+    );
+    // Backdrop local antigo é rejeitado -> usa o pôster cru.
+    expect(resolveUpcomingImage("/media/tmdb/x.jpg", "/ps.jpg")).toBe(
+      "https://image.tmdb.org/t/p/w500/ps.jpg",
+    );
+  });
+
+  it("retorna null sem file_path cru válido (local/fs/ausente -> null)", () => {
     expect(resolveUpcomingImage(null, null)).toBeNull();
     expect(
-      resolveUpcomingImage("https://image.tmdb.org/t/p/w1280/x.jpg", "/x.jpg"),
+      resolveUpcomingImage("/media/tmdb/x.jpg", "/media/tmdb/y.jpg"),
     ).toBeNull();
     expect(
       resolveUpcomingImage(

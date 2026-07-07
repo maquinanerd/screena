@@ -262,9 +262,11 @@ async function runChecks(prisma: PrismaLike, getMoviePageData: GetMoviePageData)
   );
   record(
     24,
-    "H. paths TMDB crus nao aparecem como imagem",
-    thinZero?.view.media.hasRealImage === false,
-    `hasRealImage=${thinZero?.view.media.hasRealImage}`,
+    "H. path cru do TMDB vira imagem REMOTA (nunca local/filesystem)",
+    thinZero?.view.media.hasRealImage === true &&
+      (thinZero?.view.media.poster?.src?.startsWith("https://") ?? false) &&
+      (thinZero?.view.media.backdrop?.src?.startsWith("https://") ?? false),
+    `poster=${thinZero?.view.media.poster?.src}`,
   );
 
   // --- C. Filme com 1 bloco publico -> ainda noindex (gate anti-thin). -----
