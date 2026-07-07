@@ -418,12 +418,7 @@ a {
   height: 16px;
 }
 
-/* Coluna direita: 4 colunas de links + newsletter. */
-.site-footer__right {
-  display: flex;
-  flex-direction: column;
-  gap: 32px;
-}
+/* Colunas de links — 2º item do grid (ao lado da marca). */
 .site-footer__columns {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -456,12 +451,15 @@ a {
   color: var(--text-muted);
 }
 
-/* Newsletter VISUAL (placeholder — sem form/input/button/API). Fundo branco. */
+/* Newsletter VISUAL (placeholder — sem form/input/button/API). Faixa branca
+   FULL-WIDTH abaixo do grid: copy à esquerda (alinhada ao logo) + form à
+   direita, preenchendo o vão abaixo da marca. */
 .site-footer__newsletter {
   display: grid;
   grid-template-columns: 1fr minmax(320px, 420px);
   align-items: center;
   gap: 28px;
+  margin-top: 40px;
   padding: 22px 28px;
   background: #ffffff;
 }

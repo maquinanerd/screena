@@ -129,47 +129,44 @@ export function SiteFooter(): ReactNode {
             </div>
           </div>
 
-          <div className="site-footer__right">
-            <div className="site-footer__columns">
-              {CATALOG_COLUMNS.map((col) => (
-                <div className="site-footer__col" key={col.title}>
-                  <h3>{col.title}</h3>
-                  <ul>
-                    {col.items.map((label) => (
-                      <li key={label}>
-                        <a href={col.href}>{label}</a>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-              <div className="site-footer__col">
-                <h3>The Screen</h3>
+          <div className="site-footer__columns">
+            {CATALOG_COLUMNS.map((col) => (
+              <div className="site-footer__col" key={col.title}>
+                <h3>{col.title}</h3>
                 <ul>
-                  {INSTITUTIONAL_ITEMS.map((label) => (
+                  {col.items.map((label) => (
                     <li key={label}>
-                      <span className="site-footer__muted">{label}</span>
+                      <a href={col.href}>{label}</a>
                     </li>
                   ))}
                 </ul>
               </div>
+            ))}
+            <div className="site-footer__col">
+              <h3>The Screen</h3>
+              <ul>
+                {INSTITUTIONAL_ITEMS.map((label) => (
+                  <li key={label}>
+                    <span className="site-footer__muted">{label}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
+          </div>
+        </div>
 
-            {/* Newsletter VISUAL/placeholder — o "formulario" (input/botão) são
-                spans não interativos, aria-hidden: sem form/input/button/API/
-                server action/validação/envio. */}
-            <div className="site-footer__newsletter">
-              <div className="site-footer__newsletter-copy">
-                <strong>Receba a newsletter do The Screen</strong>
-                <span>Sem spam. Só o que importa em cinema e séries.</span>
-              </div>
-              <div className="site-footer__newsletter-form" aria-hidden="true">
-                <span className="site-footer__newsletter-input">
-                  Seu melhor e-mail
-                </span>
-                <span className="site-footer__newsletter-button">ASSINAR</span>
-              </div>
-            </div>
+        {/* Newsletter VISUAL/placeholder — faixa FULL-WIDTH abaixo do grid (copy
+            à esquerda alinhada ao logo + "formulário" à direita), preenchendo o
+            vão abaixo da marca. O input/botão são spans não interativos,
+            aria-hidden: sem form/input/button/API/server action/validação/envio. */}
+        <div className="site-footer__newsletter">
+          <div className="site-footer__newsletter-copy">
+            <strong>Receba a newsletter do The Screen</strong>
+            <span>Sem spam. Só o que importa em cinema e séries.</span>
+          </div>
+          <div className="site-footer__newsletter-form" aria-hidden="true">
+            <span className="site-footer__newsletter-input">Seu melhor e-mail</span>
+            <span className="site-footer__newsletter-button">ASSINAR</span>
           </div>
         </div>
 
