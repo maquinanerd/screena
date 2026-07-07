@@ -834,13 +834,23 @@ export default async function HomePage() {
         </div>
       </section>
 
+      {/* Publicidade — o v4 mostra um leaderboard entre "Em breve" e "Notícias".
+          Placeholder ESTÁTICO (caixa listrada + rótulo), só para fidelidade
+          visual: SEM AdSense/GPT, SEM script externo, SEM iframe, SEM integração.
+          Trocar pelo slot real de anúncio quando/se a monetização entrar. */}
+      <div className="home-v4-ad-placeholder" aria-label="Espaço publicitário">
+        <div className="home-v4-ad-label">PUBLICIDADE</div>
+        <div className="home-v4-ad-box" aria-hidden="true">
+          <strong>Google AdSense</strong>
+          <span>728 × 90 · Leaderboard</span>
+        </div>
+      </div>
+
       {/* Notícias / Top News (v4 §8) — destaque grande (min-height 430) + grade
           2×2 de menores (min-height 200). Usa artigos REAIS quando existem; sem
           reais (seed demo sem notícias), placeholders editoriais do MD (badge
           "Em alta esta semana", manchetes de exemplo) — MOCK visual, linkam ao
-          /pt/noticias real. Dívida: trocar por artigos reais antes de indexar.
-          AdSlot/leaderboard do MD OMITIDO (não há componente de anúncio seguro
-          no repo) — pendência visual registrada. */}
+          /pt/noticias real. Dívida: trocar por artigos reais antes de indexar. */}
       <section className="home-v4-news" aria-labelledby="home-news-title">
         <SectionHeader
           accent="red"
@@ -860,12 +870,6 @@ export default async function HomePage() {
           </div>
         </div>
       </section>
-
-      <div className="container">
-        <p className="portal-explore-note">
-          Quer navegar por tudo? <a href={EXPLORE_PATH}>Explore filmes, séries, pessoas e notícias</a>.
-        </p>
-      </div>
     </main>
   );
 }

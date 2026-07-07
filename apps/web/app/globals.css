@@ -1154,15 +1154,6 @@ a {
 .portal-section .news-grid {
   margin-top: 0;
 }
-.portal-explore-note {
-  margin: 48px 0 0;
-  font-size: 14px;
-  color: var(--text-muted);
-}
-.portal-explore-note a {
-  color: var(--link-movie);
-  font-weight: 600;
-}
 
 /* ================================================================== */
 /* Episodes Ticker — faixa amarela (carrossel) abaixo do hero (v4)     */
@@ -1964,6 +1955,50 @@ a {
 }
 
 /* ================================================================== */
+/* Home · Publicidade (placeholder estático entre Em breve e Notícias) */
+/* ------------------------------------------------------------------ */
+/* O v4 mostra um leaderboard 728×90 aqui. Placeholder ESTÁTICO (caixa
+   listrada + rótulo) — SEM AdSense/GPT/script/iframe/integração. */
+.home-v4-ad-placeholder {
+  max-width: var(--container-max);
+  margin: 42px auto 56px;
+  padding: 0 var(--container-pad);
+  text-align: center;
+}
+.home-v4-ad-label {
+  margin-bottom: 8px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  color: #c0b8a9;
+}
+.home-v4-ad-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  max-width: 728px;
+  height: 90px;
+  margin: 0 auto;
+  border-radius: 12px;
+  border: 1px solid #e3ded6;
+  background: repeating-linear-gradient(
+    -45deg,
+    #f6f2ea,
+    #f6f2ea 8px,
+    #f1ede6 8px,
+    #f1ede6 16px
+  );
+  color: #9a958c;
+  font-size: 12px;
+}
+.home-v4-ad-box strong {
+  color: #6e6e6e;
+  font-size: 13px;
+}
+
+/* ================================================================== */
 /* Home · Notícias / Top News (v4 §8) — destaque grande + grade 2×2    */
 /* ------------------------------------------------------------------ */
 /* Cards de mídia (fundo escuro permitido): imagem/backdrop real quando existe,
@@ -2089,7 +2124,8 @@ a {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
   .home-v4-soon,
-  .home-v4-news {
+  .home-v4-news,
+  .home-v4-ad-placeholder {
     padding-inline: 40px;
   }
   .home-v4-news-grid {
@@ -2111,7 +2147,8 @@ a {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .home-v4-soon,
-  .home-v4-news {
+  .home-v4-news,
+  .home-v4-ad-placeholder {
     padding-inline: 20px;
   }
   .home-v4-soon-nav {
