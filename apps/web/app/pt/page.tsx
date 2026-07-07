@@ -156,55 +156,82 @@ function homeVisualPlatform(index: number): string {
 }
 
 /**
- * Item da seção Notícias/Top News da home. Vem de artigos REAIS quando existem;
- * quando não há (o seed demo não tem notícias), cai em `HOME_NEWS_VISUAL_ITEMS`
- * — placeholders editoriais VISUAIS: teasers genéricos, SEM manchete falsa
- * específica, linkando ao índice REAL /pt/noticias. MOCK visual — dívida
- * técnica: trocar por artigos reais antes de indexar/produção.
+ * "Em breve" (v4 §7) — trilho horizontal de trailers de próximos lançamentos.
+ * MOCK VISUAL/draft: `HOME_COMING_SOON_ITEMS` são lançamentos/datas/durações de
+ * placeholder (SEM trailer real, SEM player), linkando ao índice REAL /pt/filmes.
+ * Dívida técnica: trocar por dado real (estreias governadas) ou remover antes de
+ * indexar. NÃO afirma trailer/estreia real como produto.
+ */
+type HomeComingSoonItem = {
+  title: string;
+  date: string;
+  duration: string;
+  href: string;
+};
+
+const HOME_COMING_SOON_ITEMS: readonly HomeComingSoonItem[] = [
+  { title: "Ghostbusters: Frozen Empire", date: "22 de Março", duration: "2:05", href: MOVIES_INDEX_PATH },
+  { title: "Godzilla x Kong: The New Empire", date: "25 de Março", duration: "1:48", href: MOVIES_INDEX_PATH },
+  { title: "Demon Slayer: Infinity Castle", date: "29 de Março", duration: "2:30", href: MOVIES_INDEX_PATH },
+  { title: "Challengers", date: "26 de Abril", duration: "2:10", href: MOVIES_INDEX_PATH },
+  { title: "Inside Out 2", date: "14 de Junho", duration: "1:40", href: MOVIES_INDEX_PATH },
+  { title: "Deadpool & Wolverine", date: "26 de Julho", duration: "2:15", href: MOVIES_INDEX_PATH },
+];
+
+/**
+ * Notícias / Top News (v4 §8) — 1 destaque grande + grade 2×2 de menores. Usa
+ * artigos REAIS quando existem; como o seed demo NÃO tem notícias, cai nos
+ * placeholders editoriais do MD (`HOME_FEATURED_NEWS` / `HOME_GRID_NEWS`). MOCK
+ * VISUAL/draft: manchetes de exemplo, linkam ao índice REAL /pt/noticias, nada
+ * persistido/schema. Dívida técnica: trocar por artigos reais ou ocultar antes
+ * de indexar. É a mais sensível das dívidas visuais (conteúdo editorial).
  */
 type HomeNewsImage = { src: string; width: number; height: number };
-type HomeNewsItem = {
-  href: string;
-  kicker: string;
+type HomeNewsFeature = {
+  badge: string;
   title: string;
-  meta: string | null;
+  sub: string | null;
+  href: string;
+  image: HomeNewsImage | null;
+};
+type HomeNewsMini = {
+  title: string;
+  sub: string | null;
+  href: string;
   image: HomeNewsImage | null;
 };
 
-const HOME_NEWS_VISUAL_ITEMS: readonly HomeNewsItem[] = [
+const HOME_FEATURED_NEWS: HomeNewsFeature = {
+  badge: "Em alta esta semana",
+  title: "Por que Oppenheimer dominou a temporada de prêmios",
+  sub: "A leitura de Nolan sobre ciência, culpa e poder rendeu o maior sucesso adulto do ano.",
+  href: NEWS_INDEX_PATH,
+  image: null,
+};
+
+const HOME_GRID_NEWS: readonly HomeNewsMini[] = [
   {
+    title: "Duna: onde Feyd-Rautha se encaixa, explicado",
+    sub: "Com Parte Dois nos cinemas, revisitamos o vilão.",
     href: NEWS_INDEX_PATH,
-    kicker: "Em destaque",
-    title: "O que assistir esta semana no Screen",
-    meta: "Prévia editorial — conteúdo real em breve.",
     image: null,
   },
   {
+    title: "Bilheteria: Arthur, o Rei faz US$ 825 mil em prévias",
+    sub: "Estreia modesta para o drama de Mark Wahlberg.",
     href: NEWS_INDEX_PATH,
-    kicker: "Guia",
-    title: "Estreias do mês em filmes e séries",
-    meta: null,
     image: null,
   },
   {
+    title: "Os personagens mais poderosos de Duna 2, ranqueados",
+    sub: "Do Imperador aos Fremen.",
     href: NEWS_INDEX_PATH,
-    kicker: "Séries",
-    title: "As séries em alta no catálogo",
-    meta: null,
     image: null,
   },
   {
+    title: "Stranger Things: o que esperar da temporada final",
+    sub: "Hawkins se despede em grande estilo.",
     href: NEWS_INDEX_PATH,
-    kicker: "Filmes",
-    title: "Filmes para maratonar agora",
-    meta: null,
-    image: null,
-  },
-  {
-    href: NEWS_INDEX_PATH,
-    kicker: "Bastidores",
-    title: "Histórias por trás das produções",
-    meta: null,
     image: null,
   },
 ];
@@ -456,41 +483,82 @@ function HomeV4SeriesTile({
 }
 
 /**
- * HomeV4NewsCard — card editorial do Top News do v4 (§8): imagem/backdrop 16/9
- * + overlay escuro + kicker + título branco + meta opcional. `variant="main"` é
- * o destaque grande à esquerda; `variant="small"` são os 4 menores (2×2). Imagem
- * LOCAL real quando existe; sem imagem, gradiente. O conteúdo pode ser
- * placeholder VISUAL (ver HomeNewsItem) — nunca afirma notícia real inexistente.
+ * HomeV4TrailerCard — card do trilho "Em breve" (v4 §7): thumb landscape 16/9 com
+ * pílula play+duração, data (ícone calendário) e título abaixo. MOCK VISUAL — sem
+ * player, sem trailer real; linka ao índice REAL de filmes.
  */
-function HomeV4NewsCard({
-  item,
-  variant,
-}: {
-  item: HomeNewsItem;
-  variant: "main" | "small";
-}) {
+function HomeV4TrailerCard({ item }: { item: HomeComingSoonItem }) {
   return (
-    <a
-      href={item.href}
-      className={`home-v4-news-card home-v4-news-card--${variant}`}
-    >
-      <div className="home-v4-news-media">
-        {item.image !== null ? (
-          <img
-            src={item.image.src}
-            alt={`Imagem de ${item.title}`}
-            width={item.image.width}
-            height={item.image.height}
-            className="home-v4-news-img"
-            loading="lazy"
-          />
+    <a href={item.href} className="home-v4-trailer-card">
+      <span className="home-v4-trailer-thumb">
+        <span className="home-v4-trailer-scrim" aria-hidden="true" />
+        <span className="home-v4-trailer-duration">
+          <span aria-hidden="true">▶</span>
+          {item.duration}
+        </span>
+      </span>
+      <span className="home-v4-trailer-date">
+        <span aria-hidden="true">▤</span>
+        {item.date}
+      </span>
+      <h3 className="home-v4-trailer-title">{item.title}</h3>
+    </a>
+  );
+}
+
+/**
+ * HomeV4NewsFeature — card em destaque grande de Notícias (v4 §8): imagem/backdrop
+ * (real quando existe) + scrim + badge vermelho + título 28px + subtítulo. Fundo
+ * escuro permitido (card de mídia). Conteúdo pode ser placeholder VISUAL.
+ */
+function HomeV4NewsFeature({ item }: { item: HomeNewsFeature }) {
+  return (
+    <a href={item.href} className="home-v4-news-feature">
+      {item.image !== null ? (
+        <img
+          src={item.image.src}
+          alt={`Imagem de ${item.title}`}
+          width={item.image.width}
+          height={item.image.height}
+          className="home-v4-news-img"
+          loading="lazy"
+        />
+      ) : null}
+      <div className="home-v4-news-scrim" aria-hidden="true" />
+      <div className="home-v4-news-body">
+        <span className="home-v4-news-badge">{item.badge}</span>
+        <h3 className="home-v4-news-feature-title">{item.title}</h3>
+        {item.sub !== null ? (
+          <p className="home-v4-news-feature-sub">{item.sub}</p>
         ) : null}
-        <div className="home-v4-news-overlay" aria-hidden="true" />
-        <div className="home-v4-news-copy">
-          <span className="home-v4-news-kicker">{item.kicker}</span>
-          <h3>{item.title}</h3>
-          {item.meta !== null ? <p>{item.meta}</p> : null}
-        </div>
+      </div>
+    </a>
+  );
+}
+
+/**
+ * HomeV4NewsMiniCard — card menor da grade 2×2 de Notícias (v4 §8): imagem/backdrop
+ * + scrim + título + subtítulo. Conteúdo pode ser placeholder VISUAL.
+ */
+function HomeV4NewsMiniCard({ item }: { item: HomeNewsMini }) {
+  return (
+    <a href={item.href} className="home-v4-news-mini">
+      {item.image !== null ? (
+        <img
+          src={item.image.src}
+          alt={`Imagem de ${item.title}`}
+          width={item.image.width}
+          height={item.image.height}
+          className="home-v4-news-img"
+          loading="lazy"
+        />
+      ) : null}
+      <div className="home-v4-news-scrim" aria-hidden="true" />
+      <div className="home-v4-news-body">
+        <h4 className="home-v4-news-mini-title">{item.title}</h4>
+        {item.sub !== null ? (
+          <p className="home-v4-news-mini-sub">{item.sub}</p>
+        ) : null}
       </div>
     </a>
   );
@@ -524,28 +592,47 @@ export default async function HomePage() {
   // seção correspondente é omitida. Nunca 3 cards perdidos, nunca trilho.
   const movieSlots = fillSlots(movieCards, 6);
   const seriesSlots = fillSlots(seriesCards, 6);
-  // Notícias/Top News (1 grande + 4 menores): artigos REAIS quando existem
-  // (padded a 5); sem reais (o seed demo não tem notícias), placeholders
-  // editoriais VISUAIS. O gate anti-thin segue contando só `newsCards` reais
-  // (getHomeData) — placeholder NÃO infla indexabilidade.
-  const realNewsItems: HomeNewsItem[] = newsCards.map((card) => ({
-    href: card.href,
-    kicker: card.category ?? "Notícia",
-    title: card.title,
-    meta: card.dateLabel ?? card.author ?? null,
-    image:
-      card.image !== null
-        ? {
-            src: card.image.src,
-            width: card.image.width,
-            height: card.image.height,
-          }
-        : null,
-  }));
-  const newsSlots =
-    realNewsItems.length > 0
-      ? fillSlots(realNewsItems, 5)
-      : [...HOME_NEWS_VISUAL_ITEMS];
+  // Notícias (destaque + grade 2×2): usa artigos REAIS quando existem; sem reais
+  // (o seed demo não tem notícias), placeholders editoriais do MD. O gate anti-
+  // thin segue contando só `newsCards` reais (getHomeData) — placeholder NÃO
+  // infla indexabilidade.
+  const firstNews = newsCards[0];
+  const featuredNews: HomeNewsFeature =
+    firstNews !== undefined
+      ? {
+          badge: firstNews.category ?? "Em destaque",
+          title: firstNews.title,
+          sub: firstNews.deck ?? null,
+          href: firstNews.href,
+          image:
+            firstNews.image !== null
+              ? {
+                  src: firstNews.image.src,
+                  width: firstNews.image.width,
+                  height: firstNews.image.height,
+                }
+              : null,
+        }
+      : HOME_FEATURED_NEWS;
+  const gridNews: HomeNewsMini[] =
+    firstNews !== undefined
+      ? fillSlots(
+          newsCards.map((card) => ({
+            title: card.title,
+            sub: card.deck ?? null,
+            href: card.href,
+            image:
+              card.image !== null
+                ? {
+                    src: card.image.src,
+                    width: card.image.width,
+                    height: card.image.height,
+                  }
+                : null,
+          })),
+          4,
+        )
+      : [...HOME_GRID_NEWS];
 
   return (
     <main className="portal-page" data-vertical="home">
@@ -697,36 +784,82 @@ export default async function HomePage() {
         </section>
       ) : null}
 
-      {/* Notícias / Top News (v4 §8) — 1 destaque grande à esquerda + 4 menores
-          (2×2) à direita. Usa artigos REAIS quando existem (padded a 5); sem
-          reais (o seed demo não tem notícias), placeholders editoriais VISUAIS
-          (linkam ao /pt/noticias real, sem manchete falsa). MOCK visual —
-          dívida: trocar por artigos reais antes de indexar. */}
-      {newsSlots[0] !== undefined ? (
-        <section
-          className="home-v4-section home-v4-news-section"
-          aria-labelledby="home-news-title"
-        >
-          <SectionHeader
-            accent="red"
-            title="Notícias"
-            titleId="home-news-title"
-            href={NEWS_INDEX_PATH}
-          />
-          <div className="home-v4-news-grid">
-            <HomeV4NewsCard item={newsSlots[0]} variant="main" />
-            <div className="home-v4-news-side">
-              {newsSlots.slice(1, 5).map((item, index) => (
-                <HomeV4NewsCard
-                  key={`news-${item.href}-${index}`}
-                  item={item}
-                  variant="small"
-                />
-              ))}
+      {/* Em breve (v4 §7) — trilho horizontal de trailers de próximos
+          lançamentos. MOCK VISUAL: lançamentos/datas/durações placeholder (sem
+          player, sem trailer real), linkam ao índice REAL de filmes. As setas
+          são visuais/desabilitadas (o trilho já rola por overflow-x nativo). */}
+      <section className="home-v4-soon" aria-labelledby="home-soon-title">
+        <header className="home-v4-soon-head">
+          <div>
+            <div className="home-v4-section-title-wrap">
+              <span
+                className="home-v4-section-accent home-v4-section-accent--red"
+                aria-hidden="true"
+              />
+              <h2 id="home-soon-title" className="home-v4-section-title">
+                Em breve
+              </h2>
+              <span className="home-v4-title-chevron" aria-hidden="true">
+                ›
+              </span>
             </div>
+            <p className="home-v4-soon-sub">Trailers de próximos lançamentos</p>
           </div>
-        </section>
-      ) : null}
+          <div className="home-v4-soon-nav" aria-hidden="true">
+            <button
+              className="home-v4-rail-arrow"
+              type="button"
+              aria-label="Anterior"
+              disabled
+            >
+              ‹
+            </button>
+            <button
+              className="home-v4-rail-arrow"
+              type="button"
+              aria-label="Próximo"
+              disabled
+            >
+              ›
+            </button>
+          </div>
+        </header>
+        <div className="home-v4-soon-rail">
+          {HOME_COMING_SOON_ITEMS.map((item, index) => (
+            <HomeV4TrailerCard
+              key={`coming-soon-${item.title}-${index}`}
+              item={item}
+            />
+          ))}
+        </div>
+      </section>
+
+      {/* Notícias / Top News (v4 §8) — destaque grande (min-height 430) + grade
+          2×2 de menores (min-height 200). Usa artigos REAIS quando existem; sem
+          reais (seed demo sem notícias), placeholders editoriais do MD (badge
+          "Em alta esta semana", manchetes de exemplo) — MOCK visual, linkam ao
+          /pt/noticias real. Dívida: trocar por artigos reais antes de indexar.
+          AdSlot/leaderboard do MD OMITIDO (não há componente de anúncio seguro
+          no repo) — pendência visual registrada. */}
+      <section className="home-v4-news" aria-labelledby="home-news-title">
+        <SectionHeader
+          accent="red"
+          title="Notícias"
+          titleId="home-news-title"
+          href={NEWS_INDEX_PATH}
+        />
+        <div className="home-v4-news-grid">
+          <HomeV4NewsFeature item={featuredNews} />
+          <div className="home-v4-news-mini-grid">
+            {gridNews.map((item, index) => (
+              <HomeV4NewsMiniCard
+                key={`home-news-mini-${item.href}-${index}`}
+                item={item}
+              />
+            ))}
+          </div>
+        </div>
+      </section>
 
       <div className="container">
         <p className="portal-explore-note">
