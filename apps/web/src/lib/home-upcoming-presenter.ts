@@ -42,6 +42,11 @@ export interface UpcomingMovieInput {
   slug: string | null;
   /** Data de estreia (Movie.releaseDate, @db.Date -> Date em meia-noite UTC). */
   releaseDate: Date | null;
+  /**
+   * Caminho do backdrop 16:9 (local após backfill; cru/externo é rejeitado).
+   * Preferido no trilho "Em breve" (thumb widescreen); ver `resolveUpcomingImage`.
+   */
+  backdropPath: string | null;
   /** Caminho de pôster (local após backfill; cru/externo é rejeitado). */
   posterPath: string | null;
 }
@@ -53,7 +58,10 @@ export interface HomeUpcomingMovie {
   date: string;
   /** `/pt/filmes/{slug}/`. */
   href: string;
-  /** Pôster LOCAL seguro ou null (o trilho não renderiza imagem hoje). */
+  /**
+   * Imagem LOCAL segura (backdrop preferido, senão pôster) ou null. O trilho
+   * renderiza `<img>` quando presente; null -> thumb com gradiente de fallback.
+   */
   imageUrl: string | null;
 }
 
@@ -76,6 +84,24 @@ export function formatUpcomingDate(date: Date): string {
   const day = date.getUTCDate();
   const month = MONTHS_PT[date.getUTCMonth()];
   return `${day} de ${month}`;
+}
+
+/**
+ * Resolve a imagem do card "Em breve": só imagem LOCAL segura, preferindo o
+ * backdrop 16:9 (thumb widescreen do trilho) e caindo no pôster quando não há
+ * backdrop; sem imagem local válida -> null (card cai no fallback do trilho).
+ * Nunca devolve path de filesystem (`apps/web/public/...`) nem CDN externo:
+ * `normalizeEntityLocalImagePath` só aceita prefixos locais (`/media/`,
+ * `/uploads/`, `/brand/`) com extensão de imagem.
+ */
+export function resolveUpcomingImage(
+  backdropPath: string | null | undefined,
+  posterPath: string | null | undefined,
+): string | null {
+  return (
+    normalizeEntityLocalImagePath(backdropPath) ??
+    normalizeEntityLocalImagePath(posterPath)
+  );
 }
 
 /** Entrada interna: card resolvido + chave de ordenação por estreia. */
@@ -116,7 +142,7 @@ export function buildUpcomingMovies(
         title,
         date: formatUpcomingDate(release),
         href,
-        imageUrl: normalizeEntityLocalImagePath(item.posterPath),
+        imageUrl: resolveUpcomingImage(item.backdropPath, item.posterPath),
       },
     });
   }

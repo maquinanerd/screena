@@ -15,6 +15,11 @@ import { useRef } from "react";
  * o placeholder tem (pílula "▶ 2:05" de fidelidade). Item real NÃO tem trailer,
  * então NÃO exibe pílula de duração — nunca fingimos duração de trailer. Cada
  * card linka ao índice/ficha REAL de filmes.
+ *
+ * `imageUrl` é OPCIONAL e sempre um path LOCAL seguro (`/media/...`, resolvido no
+ * presenter): quando presente, o thumb 16:9 renderiza a imagem real (backdrop do
+ * TMDB ingerido offline); ausente/null -> thumb com o gradiente de fallback (o
+ * caso do placeholder visual). Nunca recebe URL externa nem path de filesystem.
  */
 
 export type ComingSoonItem = {
@@ -23,6 +28,8 @@ export type ComingSoonItem = {
   /** Duração do trailer (só placeholder visual); ausente = sem pílula. */
   duration?: string;
   href: string;
+  /** Imagem LOCAL segura (backdrop/pôster) ou null/ausente = sem imagem. */
+  imageUrl?: string | null;
 };
 
 export function ComingSoonRail({
@@ -76,6 +83,14 @@ export function ComingSoonRail({
             className="home-v4-trailer-card"
           >
             <span className="home-v4-trailer-thumb">
+              {item.imageUrl ? (
+                <img
+                  src={item.imageUrl}
+                  alt={`Imagem de ${item.title}`}
+                  className="home-v4-trailer-img"
+                  loading="lazy"
+                />
+              ) : null}
               <span className="home-v4-trailer-scrim" aria-hidden="true" />
               {item.duration ? (
                 <span className="home-v4-trailer-duration">

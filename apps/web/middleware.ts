@@ -48,8 +48,14 @@ export function middleware(request: NextRequest): NextResponse {
 
 /**
  * matcher: aplica o middleware a todas as rotas exceto assets internos do
- * Next, arquivos estaticos e a API interna.
+ * Next, a API interna e os assets estaticos servidos de `public/`
+ * (`/media/`, `/brand/`, `/uploads/` — os LOCAL_IMAGE_PREFIXES do app).
+ *
+ * Assets estaticos NAO passam pela resolucao de locale: nao ha locale numa
+ * imagem, e injetar `x-screena-locale` num arquivo de `public/` so confunde o
+ * cache/roteamento. As imagens locais do catalogo (TMDB ingerido offline em
+ * `/media/tmdb/...`) precisam ser servidas cruas, sem o middleware no caminho.
  */
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|api).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api|media|brand|uploads).*)"],
 };

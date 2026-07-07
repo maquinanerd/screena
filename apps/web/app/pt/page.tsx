@@ -603,6 +603,7 @@ export default async function HomePage() {
     title: movie.title,
     date: movie.date,
     href: movie.href,
+    imageUrl: movie.imageUrl,
   }));
   const hasRealUpcoming = upcomingRailItems.length > 0;
   const comingSoonItems: ComingSoonItem[] | null = hasRealUpcoming

@@ -56,7 +56,13 @@ export const getHomeUpcomingMovies = cache(
     const [movies, translations] = await Promise.all([
       prisma.movie.findMany({
         where: { id: { in: ids }, releaseDate: { gt: cutoff } },
-        select: { id: true, titleOriginal: true, releaseDate: true, posterPath: true },
+        select: {
+          id: true,
+          titleOriginal: true,
+          releaseDate: true,
+          backdropPath: true,
+          posterPath: true,
+        },
         orderBy: { releaseDate: "asc" },
       }),
       prisma.entityTranslation.findMany({
@@ -77,6 +83,7 @@ export const getHomeUpcomingMovies = cache(
         translationTitle: titleByEntity.get(key) ?? null,
         slug: slugByEntity.get(key) ?? null,
         releaseDate: movie.releaseDate,
+        backdropPath: movie.backdropPath,
         posterPath: movie.posterPath,
       };
     });

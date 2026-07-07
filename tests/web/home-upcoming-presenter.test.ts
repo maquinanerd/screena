@@ -12,6 +12,7 @@ import {
   buildUpcomingMovies,
   formatUpcomingDate,
   HOME_UPCOMING_LIMIT,
+  resolveUpcomingImage,
   type UpcomingMovieInput,
 } from "../../apps/web/src/lib/home-upcoming-presenter";
 
@@ -24,6 +25,7 @@ function movie(overrides: Partial<UpcomingMovieInput> = {}): UpcomingMovieInput 
     translationTitle: null,
     slug: "original-upcoming",
     releaseDate: new Date(Date.UTC(2026, 7, 1)), // 2026-08-01 (futuro)
+    backdropPath: null,
     posterPath: null,
     ...overrides,
   };
@@ -97,6 +99,59 @@ describe("buildUpcomingMovies", () => {
     ).toBeNull();
   });
 
+  it("prefere backdrop local; sem backdrop cai no pôster local; sem nenhum -> null", () => {
+    // Backdrop + pôster: usa o backdrop (thumb 16:9 do trilho).
+    const both = buildUpcomingMovies(
+      [
+        movie({
+          slug: "moana",
+          backdropPath: "/media/tmdb/movie/moana-2026-backdrop.jpg",
+          posterPath: "/media/tmdb/movie/moana-2026-poster.jpg",
+        }),
+      ],
+      NOW,
+    );
+    expect(both[0]?.imageUrl).toBe("/media/tmdb/movie/moana-2026-backdrop.jpg");
+
+    // Só pôster: cai no pôster.
+    const posterOnly = buildUpcomingMovies(
+      [movie({ slug: "aranha", posterPath: "/media/tmdb/movie/aranha-2026-poster.jpg" })],
+      NOW,
+    );
+    expect(posterOnly[0]?.imageUrl).toBe("/media/tmdb/movie/aranha-2026-poster.jpg");
+
+    // Nenhum: null (card cai no fallback do trilho).
+    expect(buildUpcomingMovies([movie({ slug: "sem-img" })], NOW)[0]?.imageUrl).toBeNull();
+
+    // Backdrop cru é rejeitado -> cai no pôster local válido.
+    const rawBackdrop = buildUpcomingMovies(
+      [
+        movie({
+          slug: "misto",
+          backdropPath: "/cru.jpg",
+          posterPath: "/media/tmdb/movie/misto-2026-poster.jpg",
+        }),
+      ],
+      NOW,
+    );
+    expect(rawBackdrop[0]?.imageUrl).toBe("/media/tmdb/movie/misto-2026-poster.jpg");
+  });
+
+  it("imageUrl NUNCA é path de filesystem (`apps/web/public/...`)", () => {
+    const fs = buildUpcomingMovies(
+      [
+        movie({
+          slug: "fs",
+          backdropPath: "apps/web/public/media/tmdb/movie/fs-backdrop.jpg",
+          posterPath: "apps/web/public/media/tmdb/movie/fs-poster.jpg",
+        }),
+      ],
+      NOW,
+    );
+    // Path relativo de filesystem não começa com prefixo local -> null.
+    expect(fs[0]?.imageUrl).toBeNull();
+  });
+
   it("respeita o cap (default 6) e trata lista sem válidos como vazia", () => {
     const many = Array.from({ length: HOME_UPCOMING_LIMIT + 4 }, (_unused, i) =>
       movie({ slug: `m-${i}`, releaseDate: new Date(Date.UTC(2026, 7, i + 1)) }),
@@ -111,5 +166,38 @@ describe("buildUpcomingMovies", () => {
     const [card] = buildUpcomingMovies([movie({ slug: "x" })], NOW);
     expect(card).toBeDefined();
     expect(card && "duration" in card).toBe(false);
+  });
+});
+
+describe("resolveUpcomingImage", () => {
+  it("prefere backdrop local", () => {
+    expect(
+      resolveUpcomingImage(
+        "/media/tmdb/movie/x-backdrop.jpg",
+        "/media/tmdb/movie/x-poster.jpg",
+      ),
+    ).toBe("/media/tmdb/movie/x-backdrop.jpg");
+  });
+
+  it("cai no pôster local quando não há backdrop válido", () => {
+    expect(resolveUpcomingImage(null, "/media/tmdb/movie/x-poster.jpg")).toBe(
+      "/media/tmdb/movie/x-poster.jpg",
+    );
+    expect(resolveUpcomingImage("/cru.jpg", "/media/tmdb/movie/x-poster.jpg")).toBe(
+      "/media/tmdb/movie/x-poster.jpg",
+    );
+  });
+
+  it("retorna null sem imagem local válida (externo/fs/cru -> null)", () => {
+    expect(resolveUpcomingImage(null, null)).toBeNull();
+    expect(
+      resolveUpcomingImage("https://image.tmdb.org/t/p/w1280/x.jpg", "/x.jpg"),
+    ).toBeNull();
+    expect(
+      resolveUpcomingImage(
+        "apps/web/public/media/tmdb/movie/x-backdrop.jpg",
+        "apps/web/public/media/tmdb/movie/x-poster.jpg",
+      ),
+    ).toBeNull();
   });
 });
