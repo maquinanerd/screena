@@ -371,22 +371,15 @@ a {
   max-width: 260px;
 }
 .site-footer__wordmark {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 5px;
 }
-.site-footer__wordmark span {
-  font-size: 34px;
-  font-weight: 800;
-  color: var(--text-strong);
-  letter-spacing: 0.02em;
-}
-.site-footer__wordmark .site-footer__box {
-  display: inline-block;
-  width: 42px;
-  height: 21px;
-  background: var(--accent-movie);
-  margin: 0 3px;
+/* Logo institucional NEUTRO (SVG local /brand/screen-logo-black.svg) — mesmo
+   asset do header em superficie clara. Altura fixa, largura por proporcao. */
+.site-footer__logo {
+  display: block;
+  width: auto;
+  height: 31px;
 }
 .site-footer__tagline {
   margin: 22px 0 0;

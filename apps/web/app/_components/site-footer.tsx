@@ -79,11 +79,13 @@ export function SiteFooter(): ReactNode {
               href={HOME_PATH}
               aria-label="Screen — início"
             >
-              <span>S</span>
-              <span>C</span>
-              <span>R</span>
-              <span className="site-footer__box" aria-hidden="true" />
-              <span>N</span>
+              <img
+                className="site-footer__logo"
+                src="/brand/screen-logo-black.svg"
+                alt="Screen"
+                width={406}
+                height={78}
+              />
             </a>
             <p className="site-footer__tagline">
               Filmes, séries, pessoas, notícias e onde assistir — em um só lugar.
