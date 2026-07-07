@@ -22,7 +22,11 @@
  * tsx e rode com --apply (dry-run sem a flag). Ver o resumo do agente para o
  * comando exato de resolucao do caminho do tsx.
  *   node "<caminho-do-tsx-cli>" services/ingestion/bin/ingest-public-catalog.ts --apply
- *   # flags: --apply (escreve) · --refresh-images (rebaixa imagens já existentes)
+ *   # flags:
+ *   #   --apply             escreve (sem a flag = dry-run, nada gravado)
+ *   #   --refresh-images    rebaixa imagens já existentes
+ *   #   --include-upcoming  descobre filmes em estreia (TMDB /movie/upcoming) e os
+ *   #                       ingere junto do catálogo curado, alimentando "Em breve"
  */
 
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
@@ -44,6 +48,15 @@ const APPEND = 'external_ids,credits'
  */
 const MOVIE_IDS = [27205, 157336, 155, 872585, 693134, 346698, 496243, 634649, 414906, 335984]
 const TV_IDS = [1399, 1396, 66732, 100088, 119051, 94997, 60625, 1402, 82856, 71912]
+
+/**
+ * Descoberta de "Em breve": lê poucas páginas de /movie/upcoming (região BR) e
+ * limita o total ingerido — a home só mostra 6, então não precisa varrer tudo.
+ * Offline/read-only; os IDs entram no mesmo fluxo de importMovie + finalize.
+ */
+const UPCOMING_PAGES = 1
+const UPCOMING_IMPORT_CAP = 20
+const UPCOMING_REGION = 'BR'
 
 /** Subconjunto do detalhe TMDB que este backfill lê (bin não é typechecked). */
 interface TmdbDetailLite {
@@ -174,10 +187,83 @@ async function finalize(
   await model.update({ where: { id: entity.id }, data: { posterPath: poster, backdropPath: backdrop } })
 }
 
+/** Dedup estavel de ids numericos preservando a ordem de primeira aparicao. */
+function dedupeNumbers(nums: readonly number[]): number[] {
+  const seen = new Set<number>()
+  const out: number[] = []
+  for (const n of nums) {
+    if (!seen.has(n)) {
+      seen.add(n)
+      out.push(n)
+    }
+  }
+  return out
+}
+
+/**
+ * Descobre ids de filmes em estreia via TMDB /movie/upcoming, roteando pelo MESMO
+ * caminho de ingestao: resposta crua em `api_cache` (ctx.cache.getOrFetch) e 1 log
+ * em `api_sync_logs` (regra "todo sync externo gera log" — sem excecao). Nao
+ * escreve entidades (a enumeracao so coleta ids; os detalhes vem depois por
+ * importMovie). Degrada gracioso em falha de rede (loga `failed`, segue so com o
+ * catalogo curado). Cap por UPCOMING_IMPORT_CAP. Chamado SO no --apply (o dry-run
+ * nao dispara sync externo).
+ */
+async function discoverUpcomingMovieIds(
+  ctx: ReturnType<typeof createIngestionContext>['context'],
+): Promise<number[]> {
+  const ids: number[] = []
+  const seen = new Set<number>()
+  const startedAt = Date.now()
+  let quotaCost = 0
+  let payloadHash: string | null = null
+  let failure: string | null = null
+
+  try {
+    for (let page = 1; page <= UPCOMING_PAGES; page += 1) {
+      const cached = await ctx.cache.getOrFetch({
+        endpoint: '/movie/upcoming',
+        params: { region: UPCOMING_REGION, page },
+        fetcher: () => ctx.tmdb.getUpcomingMovies({ page }),
+      })
+      if (!cached.fromCache) quotaCost += 1
+      payloadHash = cached.payloadHash
+      const res = cached.data
+      for (const item of res.results ?? []) {
+        const id = item?.id
+        if (typeof id === 'number' && Number.isInteger(id) && !seen.has(id)) {
+          seen.add(id)
+          ids.push(id)
+        }
+      }
+      const totalPages = typeof res.total_pages === 'number' ? res.total_pages : 1
+      if (ids.length >= UPCOMING_IMPORT_CAP || page >= totalPages) break
+    }
+  } catch (error) {
+    failure = error instanceof Error ? error.message : String(error)
+  }
+
+  const capped = ids.slice(0, UPCOMING_IMPORT_CAP)
+  await ctx.syncLog.write({
+    endpoint: '/movie/upcoming',
+    status: failure !== null ? 'failed' : capped.length === 0 ? 'empty' : 'success',
+    errorCode: failure !== null ? 'upcoming_discovery_failed' : null,
+    itemsProcessed: capped.length,
+    durationMs: Date.now() - startedAt,
+    quotaCost,
+    payloadHash,
+  })
+  if (failure !== null) {
+    console.warn(`  upcoming: descoberta falhou — ${failure} (seguindo só com o catálogo curado).`)
+  }
+  return capped
+}
+
 async function main(): Promise<void> {
   const argv = process.argv.slice(2)
   const apply = argv.includes('--apply')
   const refresh = argv.includes('--refresh-images')
+  const includeUpcoming = argv.includes('--include-upcoming')
   loadRepoEnv()
 
   const hasToken = Boolean(
@@ -206,10 +292,16 @@ async function main(): Promise<void> {
     process.exitCode = 1
     return
   }
+
   if (!apply) {
     console.log('Dry-run: NADA foi escrito. Use --apply para ingerir (idempotente).')
     console.log(`  filmes: ${MOVIE_IDS.join(', ')}`)
     console.log(`  series: ${TV_IDS.join(', ')}`)
+    if (includeUpcoming) {
+      console.log(
+        '  upcoming: será descoberto do TMDB /movie/upcoming (com api_cache + api_sync_logs) e ingerido no --apply — sync externo só no apply.',
+      )
+    }
     return
   }
 
@@ -218,7 +310,21 @@ async function main(): Promise<void> {
   let ok = 0
   let failed = 0
   try {
-    for (const id of MOVIE_IDS) {
+    // Descoberta de "Em breve" (só no --apply): junta os ids upcoming ao catálogo
+    // curado (dedup preserva os curados primeiro). O sync da enumeração passa por
+    // api_cache + api_sync_logs (regra de ingestão); os detalhes por filme vêm
+    // depois via importMovie (também cacheado/logado).
+    let upcomingIds: number[] = []
+    if (includeUpcoming) {
+      console.log('Descobrindo filmes em estreia (TMDB /movie/upcoming, offline)...')
+      upcomingIds = await discoverUpcomingMovieIds(ctx)
+      console.log(
+        `  upcoming descobertos: ${upcomingIds.length}${upcomingIds.length > 0 ? ` (${upcomingIds.join(', ')})` : ''}`,
+      )
+    }
+    const movieIds = dedupeNumbers([...MOVIE_IDS, ...upcomingIds])
+
+    for (const id of movieIds) {
       const res = await importMovie(ctx, id)
       if (res.status !== 'success') {
         failed += 1

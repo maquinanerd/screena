@@ -127,3 +127,26 @@ export interface TmdbPersonDetail {
   profile_path?: string | null
   external_ids?: TmdbExternalIds
 }
+
+/**
+ * Item de filme em respostas de LISTA do TMDB (ex.: `GET /movie/upcoming`).
+ * Subset defensivo: so os campos de CATALOGO que a ingestao usa para descobrir
+ * ids e alimentar "Em breve" (release_date/poster/backdrop). NAO e fonte
+ * editorial — nenhum campo de nota/critica/streaming.
+ */
+export interface TmdbMovieListItem {
+  id: number
+  title?: string | null
+  original_title?: string | null
+  release_date?: string | null
+  poster_path?: string | null
+  backdrop_path?: string | null
+}
+
+/** Resposta paginada de lista de filmes (ex.: `GET /movie/upcoming`). */
+export interface TmdbMoviePage {
+  page?: number | null
+  results?: TmdbMovieListItem[]
+  total_pages?: number | null
+  total_results?: number | null
+}

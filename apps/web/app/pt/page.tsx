@@ -12,6 +12,7 @@ import {
   getSeriesIndexData,
 } from "../../src/server/entity-indexes";
 import { getHomeHeroSlides } from "../../src/server/home-hero";
+import { getHomeUpcomingMovies } from "../../src/server/home-upcoming";
 import { getNewsIndexData } from "../../src/server/news-pages";
 import {
   countPopulatedSections,
@@ -38,10 +39,13 @@ import {
  * existentes (invariantes 3/4 — zero API externa, zero Gemini, zero TMDB no
  * render). NADA e inventado: as secoes de entidade (Destaques/Filmes/Series/
  * Estatisticas) so aparecem quando ha dado real; sem dados, degradam para o hero
- * institucional (fallback seguro, sem poster). Os blocos de FIDELIDADE VISUAL
- * sem fonte real (Noticias mock, "Em breve" mock, Publicidade) sao gateados por
- * `allowHomeVisualPlaceholders`: visiveis em dev/preview, OCULTOS em producao —
- * nunca fingem manchete/estreia/anuncio reais. Sem ranking/Top 10, sem watchlist,
+ * institucional (fallback seguro, sem poster). "Em breve" usa DADO REAL: filmes
+ * com estreia futura ingeridos do TMDB (offline) e lidos do banco
+ * (`getHomeUpcomingMovies`), sem trailer/duracao fake; sem upcoming real, cai no
+ * placeholder so em dev/preview. Os demais blocos de FIDELIDADE VISUAL sem fonte
+ * real (Noticias mock, Publicidade) sao gateados por `allowHomeVisualPlaceholders`:
+ * visiveis em dev/preview, OCULTOS em producao — nunca fingem manchete/anuncio
+ * reais. Sem ranking/Top 10, sem watchlist,
  * sem botao de feature inativa, sem streaming, sem numeros fake. A nota exibida
  * nos cards e a nota editorial PROPRIA governada do Screen (`screen_score`), com
  * o mesmo gate do hero — so aparece quando liberada, nunca e rating externo
@@ -515,8 +519,8 @@ function HomeV4NewsMiniCard({ item }: { item: HomeNewsMini }) {
 }
 
 export default async function HomePage() {
-  const [{ movieCards, seriesCards, newsCards, counts }, heroSlides] =
-    await Promise.all([getHomeData(), getHomeHeroSlides()]);
+  const [{ movieCards, seriesCards, newsCards, counts }, heroSlides, upcomingMovies] =
+    await Promise.all([getHomeData(), getHomeHeroSlides(), getHomeUpcomingMovies()]);
 
   const hasCounts = counts.movies > 0 || counts.series > 0 || counts.people > 0;
 
@@ -591,6 +595,25 @@ export default async function HomePage() {
           4,
         )
       : [...HOME_GRID_NEWS];
+
+  // "Em breve": DADO REAL (filmes upcoming do TMDB, sem duração de trailer) tem
+  // prioridade. Sem upcoming real, cai no placeholder mock — mas SÓ em dev/
+  // preview (`allowPlaceholders`); em produção sem dado real a seção é omitida.
+  const upcomingRailItems: ComingSoonItem[] = upcomingMovies.map((movie) => ({
+    title: movie.title,
+    date: movie.date,
+    href: movie.href,
+  }));
+  const hasRealUpcoming = upcomingRailItems.length > 0;
+  const comingSoonItems: ComingSoonItem[] | null = hasRealUpcoming
+    ? upcomingRailItems
+    : allowPlaceholders
+      ? [...HOME_COMING_SOON_ITEMS]
+      : null;
+  // Copy honesta: com dado real não prometemos trailer.
+  const comingSoonSubtitle = hasRealUpcoming
+    ? "Próximos lançamentos no catálogo"
+    : "Trailers de próximos lançamentos";
 
   return (
     <main className="portal-page" data-vertical="home">
@@ -744,17 +767,17 @@ export default async function HomePage() {
         </section>
       ) : null}
 
-      {/* Em breve (v4 §7) — trilho horizontal de trailers de próximos
-          lançamentos. MOCK VISUAL: lançamentos/datas/durações placeholder (sem
-          player, sem trailer real), linkam ao índice REAL de filmes. Como ainda
-          NÃO há fonte real de estreias/trailers nesta rodada, a seção só aparece
-          em dev/preview (gate `allowPlaceholders`); em produção fica OCULTA —
-          nunca finge lançamento real. Trilho + setas FUNCIONAIS no client
-          component `ComingSoonRail`; header server-rendered via prop `heading`. */}
-      {allowPlaceholders ? (
+      {/* Em breve (v4 §7) — trilho de próximos lançamentos. Usa DADO REAL:
+          filmes com estreia futura ingeridos do TMDB (offline) e lidos do banco
+          (`getHomeUpcomingMovies`) — data/pôster/slug/link reais, SEM trailer,
+          SEM duração fake. Sem upcoming real, cai no placeholder mock, mas só em
+          dev/preview (`allowPlaceholders`); em produção sem dado real a seção é
+          OMITIDA. A copy do subtítulo é honesta conforme a origem (real vs mock).
+          Trilho + setas FUNCIONAIS no client `ComingSoonRail`; header server. */}
+      {comingSoonItems !== null ? (
         <section className="home-v4-soon" aria-labelledby="home-soon-title">
           <ComingSoonRail
-            items={HOME_COMING_SOON_ITEMS}
+            items={comingSoonItems}
             heading={
               <div>
                 <div className="home-v4-section-title-wrap">
@@ -769,9 +792,7 @@ export default async function HomePage() {
                     ›
                   </span>
                 </div>
-                <p className="home-v4-soon-sub">
-                  Trailers de próximos lançamentos
-                </p>
+                <p className="home-v4-soon-sub">{comingSoonSubtitle}</p>
               </div>
             }
           />
