@@ -10,7 +10,8 @@
  *  - NAO inventa fatos: sem titulo ou sem slug canonico, o slide e descartado.
  *  - A NOTA e a nota editorial PROPRIA do Screen (`screenScore`, escala 5), nunca
  *    AggregateRating de terceiro nem mistura com IMDb/RT (invariantes 1/2/6). So
- *    aparece quando `screenScoreDisplay` esta liberado e o valor e valido.
+ *    aparece quando ha origem editorial explicita, `screenScoreDisplay` esta
+ *    liberado e o valor e valido.
  *  - `certification` e classificacao indicativa (advisory), nao rating source.
  *  - A sinopse e o resumo editorial pt-BR (nunca copia sinopse externa), aparada.
  */
@@ -20,6 +21,11 @@ import { buildTmdbImageUrl } from "./tmdb-image-url";
 
 /** Escala canonica da nota editorial propria do Screen. */
 export const SCREEN_SCORE_SCALE = 5;
+
+/** Unica origem aceita para exibir nota propria do Screen. */
+export const SCREEN_SCORE_EDITORIAL_SOURCE = "editorial" as const;
+
+export type ScreenScoreSource = typeof SCREEN_SCORE_EDITORIAL_SOURCE;
 
 /** Tamanho do backdrop 16:9 usado como arte principal do slide (widescreen). */
 export const HERO_BACKDROP_SIZE = "w1280" as const;
@@ -60,6 +66,11 @@ export interface HeroSlideInput {
   screenScoreScale: number | null;
   /** Gate seguro: so exibe a nota quando true. */
   screenScoreDisplay: boolean;
+  /**
+   * Origem/proveniencia da nota propria. Ausente/null significa "sem pipeline
+   * editorial real confirmado" e oculta a estrela, mesmo com display=true.
+   */
+  screenScoreSource?: ScreenScoreSource | null;
   /** Nome do diretor (crew) ou null. */
   director: string | null;
   /** Nomes de elenco ja ordenados (top -> menos relevante). */
@@ -135,10 +146,13 @@ export function formatCountLabel(
 
 /**
  * Valida a nota editorial propria do Screen para exibicao. So retorna nota
- * quando: display liberado, valor finito > 0, escala == SCREEN_SCORE_SCALE e
- * valor <= escala. Qualquer desvio -> null (fallback seguro, sem estrela).
+ * quando: origem editorial explicita, display liberado, valor finito > 0,
+ * escala == SCREEN_SCORE_SCALE e valor <= escala. Qualquer desvio -> null
+ * (fallback seguro, sem estrela). O seed demo atual nao fornece origem editorial,
+ * entao nao passa por este gate.
  */
 export function resolveHeroRating(input: HeroSlideInput): HeroRating | null {
+  if (input.screenScoreSource !== SCREEN_SCORE_EDITORIAL_SOURCE) return null;
   if (!input.screenScoreDisplay) return null;
   const value = input.screenScore;
   const scale = input.screenScoreScale;

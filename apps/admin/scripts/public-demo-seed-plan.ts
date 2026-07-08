@@ -104,8 +104,6 @@ export interface PublicDemoMovie {
   readonly status: string;
   /** Classificacao indicativa (advisory de conteudo; NAO e rating source). */
   readonly certification: string;
-  /** Nota editorial PROPRIA do Screen (escala 5); demo exibe (display=true). */
-  readonly screenScore: number;
   readonly posterPath: string;
   readonly backdropPath: string;
   readonly watchFetchedAtIso: string;
@@ -130,8 +128,6 @@ export interface PublicDemoSeries {
   readonly numberOfEpisodes: number;
   /** Classificacao indicativa (advisory de conteudo; NAO e rating source). */
   readonly certification: string;
-  /** Nota editorial PROPRIA do Screen (escala 5); demo exibe (display=true). */
-  readonly screenScore: number;
   readonly posterPath: string;
   readonly backdropPath: string;
   readonly watchFetchedAtIso: string;
@@ -236,7 +232,6 @@ const DEMO_MOVIES: readonly Omit<PublicDemoMovie, "tmdbId">[] = [
     runtimeMinutes: 118,
     status: "Released",
     certification: "14",
-    screenScore: 4,
     posterPath: "/media/demo/movie-farol-poster.png",
     backdropPath: "/media/demo/movie-farol-backdrop.png",
     watchFetchedAtIso: WATCH_FETCHED_AT,
@@ -265,7 +260,6 @@ const DEMO_MOVIES: readonly Omit<PublicDemoMovie, "tmdbId">[] = [
     runtimeMinutes: 132,
     status: "Released",
     certification: "16",
-    screenScore: 3.5,
     posterPath: "/media/demo/movie-cidade-vidro-poster.png",
     backdropPath: "/media/demo/movie-cidade-vidro-backdrop.png",
     watchFetchedAtIso: WATCH_FETCHED_AT,
@@ -293,7 +287,6 @@ const DEMO_MOVIES: readonly Omit<PublicDemoMovie, "tmdbId">[] = [
     runtimeMinutes: 141,
     status: "Released",
     certification: "14",
-    screenScore: 4.5,
     posterPath: "/media/demo/movie-fronteira-poster.png",
     backdropPath: "/media/demo/movie-fronteira-backdrop.png",
     watchFetchedAtIso: WATCH_FETCHED_AT,
@@ -341,7 +334,6 @@ const DEMO_SERIES: readonly Omit<PublicDemoSeries, "tmdbId">[] = [
     numberOfSeasons: 3,
     numberOfEpisodes: 24,
     certification: "16",
-    screenScore: 4.5,
     posterPath: "/media/demo/tv-correntes-poster.png",
     backdropPath: "/media/demo/tv-correntes-backdrop.png",
     watchFetchedAtIso: WATCH_FETCHED_AT,
@@ -368,7 +360,6 @@ const DEMO_SERIES: readonly Omit<PublicDemoSeries, "tmdbId">[] = [
     numberOfSeasons: 2,
     numberOfEpisodes: 16,
     certification: "14",
-    screenScore: 4,
     posterPath: "/media/demo/tv-herdeiros-poster.png",
     backdropPath: "/media/demo/tv-herdeiros-backdrop.png",
     watchFetchedAtIso: WATCH_FETCHED_AT,
@@ -398,7 +389,6 @@ const DEMO_SERIES: readonly Omit<PublicDemoSeries, "tmdbId">[] = [
     numberOfSeasons: 1,
     numberOfEpisodes: 8,
     certification: "12",
-    screenScore: 3.5,
     posterPath: "/media/demo/tv-estacao-poster.png",
     backdropPath: "/media/demo/tv-estacao-backdrop.png",
     watchFetchedAtIso: WATCH_FETCHED_AT,

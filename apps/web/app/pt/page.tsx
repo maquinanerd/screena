@@ -124,26 +124,6 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 /**
- * Plataforma VISUAL (placeholder de fidelidade v4) para o chip dos tiles de
- * Séries. NAO e watch_availability real: nao afirma streaming, nao vem de fonte,
- * nao e persistida, nao vira schema. Ciclo deterministico por posicao do slot.
- * A trocar por `watch_availability` governada (display_allowed/licenca) ou
- * remover — mesma divida do Episodes Ticker.
- */
-const HOME_VISUAL_PLATFORMS = [
-  "Max",
-  "Netflix",
-  "Apple TV+",
-  "Star+",
-  "Prime Video",
-  "Disney+",
-] as const;
-
-function homeVisualPlatform(index: number): string {
-  return HOME_VISUAL_PLATFORMS[index % HOME_VISUAL_PLATFORMS.length] as string;
-}
-
-/**
  * "Em breve" (v4 §7) — trilho horizontal de trailers de próximos lançamentos.
  * MOCK VISUAL/draft: `HOME_COMING_SOON_ITEMS` são lançamentos/datas/durações de
  * placeholder (SEM trailer real, SEM player), linkando ao índice REAL /pt/filmes.
@@ -302,44 +282,35 @@ function HighlightPoster({
 
 /**
  * HomeV4BigCard — HighlightCard do v4 (4 grandes) em FIDELIDADE VISUAL: poster
- * 2/3 com rank amarelo (posição do slot) + corpo branco (badge + título + meta
- * + linha de rating + "Marcar como assistido"). O rank e VISUAL (posição do
- * slot, não ranking real). A nota (`card.screenScore`) é a nota editorial
+ * 2/3 + corpo branco (badge + título + meta + linha de nota). A nota
+ * (`card.screenScore`) é a nota editorial
  * PRÓPRIA do Screen, governada — mesma fonte/gate do hero (`screen_score` +
  * `screen_score_display`); só aparece quando liberada, nunca é rating externo
- * (IMDb/RT/TMDB) nem AggregateRating. "Avaliar" e "Marcar como assistido" são
- * affordances DESABILITADAS (aria-disabled), sem onClick/mutation/estado.
+ * (IMDb/RT/TMDB) nem AggregateRating. Sem ações de usuário até existir a área
+ * autenticada real.
  */
-function HomeV4BigCard({ card, rank }: { card: EntityCard; rank: number }) {
+function HomeV4BigCard({ card }: { card: EntityCard }) {
   return (
     <a
       href={card.href}
       className="home-v4-big-card"
       data-entity-type={card.kind}
     >
-      <HighlightPoster card={card} className="home-v4-poster">
-        <span className="home-v4-rank-badge">#{rank}</span>
-      </HighlightPoster>
+      <HighlightPoster card={card} className="home-v4-poster" />
       <span className="home-v4-big-card-body">
         <HighlightBadge kind={card.kind} />
         <span className="home-v4-big-card-title">{card.title}</span>
         {card.meta !== null ? (
           <span className="home-v4-big-card-meta">{card.meta}</span>
         ) : null}
-        <span className="home-v4-rating-row">
-          {card.screenScore !== null ? (
+        {card.screenScore !== null ? (
+          <span className="home-v4-rating-row">
             <span className="home-v4-rating" aria-hidden="true">
               <span className="home-v4-star">★</span>
               {card.screenScore}
             </span>
-          ) : null}
-          <span className="home-v4-muted-action" aria-disabled="true">
-            ☆ Avaliar
           </span>
-        </span>
-        <span className="home-v4-watch-action" aria-disabled="true">
-          ✓ Marcar como assistido
-        </span>
+        ) : null}
       </span>
     </a>
   );
@@ -347,12 +318,12 @@ function HomeV4BigCard({ card, rank }: { card: EntityCard; rank: number }) {
 
 /**
  * HomeV4CompactCard — RankingItem do v4 (6 compactos) em FIDELIDADE VISUAL:
- * mini poster 42px a esquerda + copy (rank #N + título + meta + rating). O rank
- * é VISUAL (posição do slot, não ranking real); a nota (`card.screenScore`) é a
- * nota editorial PRÓPRIA governada do Screen (mesmo gate do hero), nunca rating
+ * mini poster 42px a esquerda + copy (título + meta + nota). A nota
+ * (`card.screenScore`) é a nota editorial PRÓPRIA governada do Screen (mesmo gate
+ * do hero), nunca rating
  * externo/AggregateRating. Nunca poster vertical grande.
  */
-function HomeV4CompactCard({ card, rank }: { card: EntityCard; rank: number }) {
+function HomeV4CompactCard({ card }: { card: EntityCard }) {
   return (
     <a
       href={card.href}
@@ -361,7 +332,6 @@ function HomeV4CompactCard({ card, rank }: { card: EntityCard; rank: number }) {
     >
       <HighlightPoster card={card} className="home-v4-compact-poster" />
       <span className="home-v4-compact-copy">
-        <span className="home-v4-compact-rank">#{rank}</span>
         <span className="home-v4-compact-title">{card.title}</span>
         {card.meta !== null ? (
           <span className="home-v4-compact-meta">{card.meta}</span>
@@ -418,18 +388,10 @@ function HomeV4PosterCard({ card }: { card: EntityCard }) {
 
 /**
  * HomeV4SeriesTile — tile-poster do v4 da grade de Séries em destaque (04 §6):
- * pôster 2/3 com título SOBREPOSTO no centro + badge SÉRIE (sup-esq) + chip de
- * plataforma (base-dir). O chip de plataforma é placeholder VISUAL (ver
- * `homeVisualPlatform`): NAO é watch_availability real, não afirma streaming,
- * não é persistido (aria-hidden). Imagem LOCAL real; sem imagem, gradiente verde.
+ * pôster 2/3 com título SOBREPOSTO no centro + badge SÉRIE (sup-esq). Sem chip
+ * de plataforma enquanto não houver disponibilidade real governada.
  */
-function HomeV4SeriesTile({
-  card,
-  platform,
-}: {
-  card: EntityCard;
-  platform: string;
-}) {
+function HomeV4SeriesTile({ card }: { card: EntityCard }) {
   return (
     <a
       href={card.href}
@@ -450,9 +412,6 @@ function HomeV4SeriesTile({
         <span className="home-v4-series-tile__scrim" aria-hidden="true" />
         <span className="home-v4-media-badge home-v4-media-badge--series">
           SÉRIE
-        </span>
-        <span className="home-v4-series-platform" aria-hidden="true">
-          {platform}
         </span>
         <span className="home-v4-series-title">{card.title}</span>
       </span>
@@ -645,15 +604,14 @@ export default async function HomePage() {
           novos do dia, design v4). MOCK VISUAL: dados de episódio/streaming são
           placeholder de fidelidade (sem watch_availability real); ver
           episodes-ticker.tsx e a dívida técnica registrada. */}
-      <EpisodesTicker />
+      {allowPlaceholders ? <EpisodesTicker /> : null}
 
       {/* Seção principal: Destaques no The Screen — Top 10 do v4 portado com
           governança honesta: 4 HighlightCards grandes (card branco + pôster +
           corpo) + 6 RankingItems compactos horizontais. Filmes+séries reais
-          intercalados. O #N é posição VISUAL do slot (não ranking real); a nota
-          é a nota editorial PRÓPRIA governada do Screen (só quando liberada),
-          nunca rating externo/AggregateRating. Avaliar/Marcar são affordances
-          DESABILITADAS (sem watchlist real). Slots sempre cheios (fillSlots) —
+          intercalados. A nota é a nota editorial PRÓPRIA governada do Screen (só quando liberada),
+          nunca rating externo/AggregateRating. Sem ações de usuário até existir
+          watchlist real. Slots sempre cheios (fillSlots) —
           nunca 4+2, nunca card órfão, nunca trilho horizontal. */}
       {highlightSlots.length > 0 ? (
         <section
@@ -671,7 +629,7 @@ export default async function HomePage() {
                 key={`highlight-big-${card.href}-${index}`}
                 className="home-v4-card-item"
               >
-                <HomeV4BigCard card={card} rank={index + 1} />
+                <HomeV4BigCard card={card} />
               </li>
             ))}
           </ul>
@@ -681,7 +639,7 @@ export default async function HomePage() {
                 key={`highlight-compact-${card.href}-${index}`}
                 className="home-v4-card-item"
               >
-                <HomeV4CompactCard card={card} rank={index + 5} />
+                <HomeV4CompactCard card={card} />
               </li>
             ))}
           </ul>
@@ -691,7 +649,7 @@ export default async function HomePage() {
       {/* Filmes em destaque — banda creme v4 (04 §4 "Filmes em alta"): grid de 6
           MediaCards reais com pôster local + badge FILME. Slots sempre cheios; a
           nota (quando exibida) é a nota editorial PRÓPRIA governada do Screen —
-          nunca rating externo/AggregateRating. Sem Avaliar. */}
+          nunca rating externo/AggregateRating. Sem ações de usuário. */}
       {movieSlots.length > 0 ? (
         <section
           className="home-v4-band home-v4-band--warm"
@@ -761,7 +719,6 @@ export default async function HomePage() {
               <HomeV4SeriesTile
                 key={`series-${card.href}-${index}`}
                 card={card}
-                platform={homeVisualPlatform(index)}
               />
             ))}
           </div>

@@ -26,6 +26,7 @@ import {
   type PersonListItemInput,
   type SeriesListItemInput,
 } from "../../apps/web/src/lib/entity-index-presenter";
+import { SCREEN_SCORE_EDITORIAL_SOURCE } from "../../apps/web/src/lib/home-hero-presenter";
 
 function movie(overrides: Partial<MovieListItemInput> = {}): MovieListItemInput {
   return {
@@ -151,15 +152,22 @@ describe("cards individuais", () => {
 });
 
 describe("resolveCardScreenScore", () => {
-  const governed = { screenScore: 4.5, screenScoreScale: 5, screenScoreDisplay: true };
+  const governed = {
+    screenScore: 4.5,
+    screenScoreScale: 5,
+    screenScoreDisplay: true,
+    screenScoreSource: SCREEN_SCORE_EDITORIAL_SOURCE,
+  };
 
-  it("formata a nota governada (uma casa decimal) quando liberada e valida", () => {
+  it("formata a nota governada (uma casa decimal) quando tem origem editorial e e valida", () => {
     expect(resolveCardScreenScore(governed)).toBe("4.5");
     expect(resolveCardScreenScore({ ...governed, screenScore: 4 })).toBe("4.0");
     expect(resolveCardScreenScore({ ...governed, screenScore: 5 })).toBe("5.0");
   });
 
-  it("null quando o display nao esta liberado ou o gate esta ausente", () => {
+  it("null quando o display/origem nao estao liberados ou o gate esta ausente", () => {
+    expect(resolveCardScreenScore({ ...governed, screenScoreSource: null })).toBeNull();
+    expect(resolveCardScreenScore({ ...governed, screenScoreSource: undefined })).toBeNull();
     expect(resolveCardScreenScore({ ...governed, screenScoreDisplay: false })).toBeNull();
     expect(resolveCardScreenScore({})).toBeNull();
     expect(resolveCardScreenScore({ screenScore: 4.5, screenScoreScale: 5 })).toBeNull();
@@ -175,9 +183,10 @@ describe("resolveCardScreenScore", () => {
     expect(resolveCardScreenScore({ ...governed, screenScore: Number.NaN })).toBeNull();
   });
 
-  it("filme/serie expoem a nota governada; pessoa nunca tem nota", () => {
+  it("filme/serie expoem a nota governada apenas com origem editorial; pessoa nunca tem nota", () => {
     expect(buildMovieCard(movie(governed))?.screenScore).toBe("4.5");
     expect(buildSeriesCard(series(governed))?.screenScore).toBe("4.5");
+    expect(buildMovieCard(movie({ ...governed, screenScoreSource: null }))?.screenScore).toBeNull();
     expect(buildMovieCard(movie())?.screenScore).toBeNull();
     expect(buildPersonCard(person({ slug: "p" }))?.screenScore).toBeNull();
   });

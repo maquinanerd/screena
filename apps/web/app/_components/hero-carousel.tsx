@@ -34,7 +34,7 @@ import { CertificationBadge } from "./certification-badge";
  *
  * Estrutura de CADA slide (identica para todos): imagem de fundo (ou wash) + scrim
  * -> eyebrow -> titulo -> linha de metadados (info · estrelas · classificacao)
- * -> botoes (Onde assistir + Ver ficha) -> creditos (diretor/elenco/sinopse).
+ * -> botoes (Ver detalhes + Ver ficha) -> creditos (diretor/elenco/sinopse).
  */
 
 /** Intervalo do autoplay (ms) — janela confortavel de leitura por slide. */
@@ -221,7 +221,7 @@ export function HeroCarousel({ slides }: HeroCarouselProps): ReactNode {
                     href={slide.href}
                     tabIndex={isActive ? undefined : -1}
                   >
-                    Onde assistir
+                    Ver detalhes
                   </a>
                   <a
                     className="sc-hero__btn sc-hero__btn--ghost"

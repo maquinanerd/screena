@@ -18,6 +18,7 @@ import {
   resolveHeroImage,
   resolveHeroRating,
   trimSynopsis,
+  SCREEN_SCORE_EDITORIAL_SOURCE,
   SCREEN_SCORE_SCALE,
   type HeroSlideInput,
 } from "../../apps/web/src/lib/home-hero-presenter";
@@ -33,6 +34,7 @@ const movieInput: HeroSlideInput = {
   screenScore: 4.5,
   screenScoreScale: 5,
   screenScoreDisplay: true,
+  screenScoreSource: SCREEN_SCORE_EDITORIAL_SOURCE,
   director: "Rui Andrade",
   cast: ["Rui Andrade", "Helena Vasconcelos"],
   summary: "Aventura de sobrevivência sobre coragem e limites.",
@@ -51,6 +53,7 @@ const seriesInput: HeroSlideInput = {
   screenScore: 4.5,
   screenScoreScale: 5,
   screenScoreDisplay: true,
+  screenScoreSource: SCREEN_SCORE_EDITORIAL_SOURCE,
   director: null,
   cast: ["Helena Vasconcelos", "Marina Duarte"],
   summary: "Drama coral em três temporadas sobre comunidade, culpa e mares.",
@@ -107,9 +110,13 @@ describe("buildHeroSlide — descarte de invalidos", () => {
 });
 
 describe("resolveHeroRating — nota editorial propria (gate seguro)", () => {
-  it("exibe quando display=true, escala 5 e valor valido", () => {
+  it("exibe quando origem editorial, display=true, escala 5 e valor valido", () => {
     expect(resolveHeroRating(movieInput)).toEqual({ value: 4.5, scale: 5 });
     expect(SCREEN_SCORE_SCALE).toBe(5);
+  });
+  it("oculta quando falta origem editorial, mesmo com display=true (seed/demo)", () => {
+    expect(resolveHeroRating({ ...movieInput, screenScoreSource: null })).toBeNull();
+    expect(resolveHeroRating({ ...movieInput, screenScoreSource: undefined })).toBeNull();
   });
   it("oculta quando display=false", () => {
     expect(resolveHeroRating({ ...movieInput, screenScoreDisplay: false })).toBeNull();
