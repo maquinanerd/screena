@@ -13,7 +13,11 @@
 
 import { evaluateIndexability, type IndexabilityResult } from "@screena/seo";
 
-import { SCREEN_SCORE_SCALE } from "./home-hero-presenter";
+import {
+  SCREEN_SCORE_EDITORIAL_SOURCE,
+  SCREEN_SCORE_SCALE,
+  type ScreenScoreSource,
+} from "./home-hero-presenter";
 import { buildTmdbImageUrl, type TmdbImageSize } from "./tmdb-image-url";
 
 /** Quantos itens a listagem exibe por pagina (sem paginacao nesta fatia). */
@@ -81,8 +85,9 @@ export interface EntityCard {
   image: EntityImageAsset | null;
   /**
    * Nota editorial PROPRIA do Screen (escala SCREEN_SCORE_SCALE) ja validada e
-   * formatada para exibicao, ou `null` quando nao ha nota governada/liberada
-   * (pessoas: sempre `null`). Mesma governanca do hero (`resolveHeroRating`):
+   * formatada para exibicao, ou `null` quando nao ha nota governada/liberada com
+   * origem editorial explicita (pessoas: sempre `null`). Mesma governanca do hero
+   * (`resolveHeroRating`):
    * NUNCA e rating externo (IMDb/RT/TMDB) nem AggregateRating de terceiro.
    */
   screenScore: string | null;
@@ -109,6 +114,11 @@ export interface ScreenScoreInput {
   screenScoreScale?: number | null;
   /** Gate seguro: so exibe a nota quando `true` (ausente = nao exibir). */
   screenScoreDisplay?: boolean;
+  /**
+   * Origem/proveniencia da nota propria. Ausente/null significa "sem pipeline
+   * editorial real confirmado" e oculta a estrela, mesmo com display=true.
+   */
+  screenScoreSource?: ScreenScoreSource | null;
 }
 
 export interface MovieListItemInput extends ScreenScoreInput {
@@ -194,13 +204,14 @@ export function mapKnownForDepartment(
 /**
  * Resolve a nota editorial PROPRIA do Screen de um card para exibicao, seguindo
  * EXATAMENTE o mesmo gate do hero (`resolveHeroRating`): so devolve valor quando
- * o display esta liberado, o numero e finito > 0, a escala e SCREEN_SCORE_SCALE
- * e o valor <= escala. Qualquer desvio -> `null` (sem estrela, sem fallback fake,
- * nunca nota por posicao). NUNCA e rating externo (IMDb/RT/TMDB) nem
- * AggregateRating: e a mesma nota governada do hero, formatada como texto (uma
- * casa decimal) para o card.
+ * ha origem editorial explicita, o display esta liberado, o numero e finito > 0,
+ * a escala e SCREEN_SCORE_SCALE e o valor <= escala. Qualquer desvio -> `null`
+ * (sem estrela, sem fallback fake, nunca nota por posicao). NUNCA e rating
+ * externo (IMDb/RT/TMDB) nem AggregateRating: e a mesma nota governada do hero,
+ * formatada como texto (uma casa decimal) para o card.
  */
 export function resolveCardScreenScore(input: ScreenScoreInput): string | null {
+  if (input.screenScoreSource !== SCREEN_SCORE_EDITORIAL_SOURCE) return null;
   if (input.screenScoreDisplay !== true) return null;
   const value = input.screenScore;
   const scale = input.screenScoreScale;

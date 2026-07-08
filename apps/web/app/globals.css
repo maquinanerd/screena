@@ -1567,20 +1567,7 @@ a {
   border-radius: 0;
   box-shadow: none;
 }
-/* Rank VISUAL/editorial da seção (pela posição do slot) — não é métrica real. */
-.home-v4-rank-badge {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  z-index: 2;
-  background: #f5c518;
-  color: #101010;
-  font-size: 14px;
-  font-weight: 800;
-  padding: 6px 11px;
-  border-radius: 6px;
-}
-/* Corpo com presença editorial: badge + título + meta + rating + rodapé. */
+/* Corpo com presença editorial: badge + título + meta + nota quando existir. */
 .home-v4-big-card-body {
   display: flex;
   flex-direction: column;
@@ -1604,10 +1591,7 @@ a {
   margin-top: 7px;
   line-height: 1.35;
 }
-/* Linha de rating VISUAL (fidelidade v4). A estrela + número são placeholder
-   decorativo (ver `homeVisualScore`): NÃO é rating real/externo, não é
-   atribuído a fonte, não vira AggregateRating/ExternalRating, não é persistido.
-   "Avaliar" é affordance desabilitada — sem função. */
+/* Linha de nota própria: só aparece quando o presenter libera uma nota editorial real. */
 .home-v4-rating-row {
   display: flex;
   align-items: center;
@@ -1626,26 +1610,6 @@ a {
   color: #f5c84b;
   line-height: 1;
 }
-.home-v4-muted-action {
-  font-size: 13px;
-  color: #6e6e6e;
-  cursor: default;
-}
-/* "Marcar como assistido" — affordance VISUAL desabilitada (sem função). */
-.home-v4-watch-action {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  width: 100%;
-  margin-top: 13px;
-  padding-top: 13px;
-  border-top: 1px solid #f1ede6;
-  font-size: 12px;
-  font-weight: 600;
-  color: #6e6e6e;
-  cursor: default;
-}
-
 /* Badge de tipo — no corpo, em bloco acima do título (v4 §3a). */
 .home-v4-badge {
   display: inline-block;
@@ -1707,15 +1671,6 @@ a {
   min-width: 0;
   padding-top: 1px;
 }
-/* Rank VISUAL/editorial (posição do slot), na cor muda do design (#C0B8A9) —
-   no lugar do "#N" do v4. Não é ranking real nem métrica. */
-.home-v4-compact-rank {
-  font-size: 12px;
-  font-weight: 800;
-  color: #c0b8a9;
-  line-height: 1;
-  margin-bottom: 4px;
-}
 .home-v4-compact-title {
   display: block;
   font-size: 12px;
@@ -1733,7 +1688,7 @@ a {
   margin-top: 6px;
   line-height: 1.2;
 }
-/* Rating VISUAL (placeholder de fidelidade — não é nota real/externa). */
+/* Nota própria: renderizada apenas quando o presenter libera dado editorial real. */
 .home-v4-compact-rating {
   display: flex;
   align-items: center;
@@ -1902,10 +1857,8 @@ a {
   white-space: nowrap;
 }
 
-/* Séries em destaque — tile-poster (04 §6): título sobreposto + badge SÉRIE +
-   chip de plataforma. O chip é placeholder VISUAL (ver homeVisualPlatform) —
-   não é watch_availability real. Empilhamento: img(0) < scrim(1) <
-   badge/chip/título(2). */
+/* Séries em destaque — tile-poster (04 §6): título sobreposto + badge SÉRIE.
+   Empilhamento: img(0) < scrim(1) < badge/título(2). */
 .home-v4-series-tile {
   display: block;
   min-width: 0;
@@ -1948,19 +1901,6 @@ a {
     rgba(0, 0, 0, 0) 42%,
     rgba(0, 0, 0, 0.42) 100%
   );
-}
-.home-v4-series-platform {
-  position: absolute;
-  right: 10px;
-  bottom: 10px;
-  z-index: 2;
-  font-size: 8px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  background: rgba(0, 0, 0, 0.62);
-  color: #fff;
-  padding: 3px 6px;
-  border-radius: 6px;
 }
 .home-v4-series-title {
   position: absolute;

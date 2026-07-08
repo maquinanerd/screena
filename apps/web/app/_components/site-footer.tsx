@@ -94,7 +94,7 @@ export function SiteFooter(): ReactNode {
               />
             </a>
             <p className="site-footer__tagline">
-              Filmes, séries, pessoas, notícias e onde assistir — em um só lugar.
+              Filmes, séries, pessoas e notícias de entretenimento — em um só lugar.
             </p>
             <div className="site-footer__socials" aria-hidden="true">
               <SocialIcon path={<path d="M9 8.2l7 3.8-7 3.8z" fill="#fff" />} />

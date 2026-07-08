@@ -118,7 +118,14 @@ const IGNORED_DIRS = new Set([
  * Padroes proibidos: 'imdb' colado/adjacente a um rotulo do Rotten Tomatoes.
  * Cobrimos separadores comuns (nada, espaco, hifen, underscore, ponto, barra)
  * e a ordem inversa. Case-insensitive.
- * @type {{ name: string, regex: RegExp }[]}
+ * @type {{
+ *   name: string,
+ *   regex: RegExp,
+ *   include?: RegExp,
+ *   exclude?: RegExp,
+ *   codeOnly?: boolean,
+ *   stripAllowedHomePlaceholderGates?: boolean,
+ * }[]}
  */
 const FORBIDDEN_PATTERNS = [
   {
@@ -132,6 +139,49 @@ const FORBIDDEN_PATTERNS = [
   {
     name: "'imdb' adjacente a 'tomate'",
     regex: /imdb[\s._/-]{0,3}tomate|tomate[\s._/-]{0,3}imdb/i,
+  },
+  {
+    name: "home /pt com literal fake de streaming/plataforma fora do gate",
+    regex:
+      /\bHOME_VISUAL_PLATFORMS\b|\bhomeVisualPlatform\b|\bhome-v4-series-platform\b|\b(?:NETFLIX|Netflix|Prime Video|Disney\+|Star\+|Apple TV\+|Max)\b/,
+    include: /^apps\/web\/app\/pt\/page\.tsx$/,
+    codeOnly: true,
+    stripAllowedHomePlaceholderGates: true,
+  },
+  {
+    name: "home /pt promete 'Onde assistir' sem disponibilidade real",
+    regex: /Onde assistir/i,
+    include: /^apps\/web\/app\/pt\/page\.tsx$/,
+    codeOnly: true,
+    stripAllowedHomePlaceholderGates: true,
+  },
+  {
+    name: "component compartilhado com literal fake de streaming/plataforma",
+    regex:
+      /\bHOME_VISUAL_PLATFORMS\b|\bhomeVisualPlatform\b|\bhome-v4-series-platform\b|\b(?:NETFLIX|Netflix|Prime Video|Disney\+|Star\+|Apple TV\+|Max)\b/,
+    include: /^apps\/web\/app\/_components\/.*\.tsx$/,
+    exclude: /^apps\/web\/app\/_components\/(?:episodes-ticker|watch-providers)\.tsx$/,
+    codeOnly: true,
+  },
+  {
+    name: "component compartilhado promete 'Onde assistir' sem contrato de watch",
+    regex: /Onde assistir/i,
+    include: /^apps\/web\/app\/_components\/.*\.tsx$/,
+    exclude: /^apps\/web\/app\/_components\/(?:episodes-ticker|watch-providers)\.tsx$/,
+    codeOnly: true,
+  },
+  {
+    name: "UI publica com pseudo-ranking ou affordance morta",
+    regex:
+      /\bhome-v4-rank-badge\b|\bhome-v4-compact-rank\b|#\{rank\}|\bhome-v4-muted-action\b|\bhome-v4-watch-action\b|Avaliar|Marcar como assistido/i,
+    include: /^apps\/web\//,
+    codeOnly: true,
+  },
+  {
+    name: "seed demo marcando screen_score como exibivel",
+    regex: /screenScore:\s*\w+\.screenScore|screenScoreDisplay:\s*true/,
+    include: /^apps\/admin\/scripts\/public-demo-seed\.ts$/,
+    codeOnly: true,
   },
 ];
 
@@ -210,6 +260,67 @@ function rel(absPath) {
   return path.relative(ROOT, absPath).split(path.sep).join('/');
 }
 
+/**
+ * Remove comentarios de bloco/linha para varreduras que precisam olhar so
+ * codigo/markup vivo. Preserva URLs com "://".
+ * @param {string} source
+ * @returns {string}
+ */
+function stripComments(source) {
+  const noBlocks = source.replace(/\/\*[\s\S]*?\*\//g, '');
+  return noBlocks
+    .split(/\r?\n/)
+    .map((line) => {
+      for (let i = 0; i < line.length - 1; i += 1) {
+        if (line[i] === '/' && line[i + 1] === '/') {
+          if (i > 0 && line[i - 1] === ':') continue;
+          return line.slice(0, i);
+        }
+      }
+      return line;
+    })
+    .join('\n');
+}
+
+/**
+ * Remove usos permitidos pelo gate de placeholders visuais da home.
+ * @param {string} source
+ * @returns {string}
+ */
+function stripAllowedHomePlaceholderGates(source) {
+  return source.replace(
+    /\{\s*allowPlaceholders\s*\?\s*<EpisodesTicker\s*\/>\s*:\s*null\s*\}/g,
+    '',
+  );
+}
+
+/**
+ * @param {string} content
+ * @param {{
+ *   codeOnly?: boolean,
+ *   stripAllowedHomePlaceholderGates?: boolean,
+ * }} pattern
+ * @returns {string}
+ */
+function sourceForPattern(content, pattern) {
+  let source = pattern.codeOnly ? stripComments(content) : content;
+  if (pattern.stripAllowedHomePlaceholderGates) {
+    source = stripAllowedHomePlaceholderGates(source);
+  }
+  return source;
+}
+
+/**
+ * @param {string} relFile
+ * @param {{ include?: RegExp, exclude?: RegExp }} pattern
+ * @returns {boolean}
+ */
+function shouldScanPattern(relFile, pattern) {
+  if (pattern.include && !pattern.include.test(relFile)) return false;
+  if (pattern.exclude && pattern.exclude.test(relFile)) return false;
+  return true;
+}
+
 /* ------------------------------------------------------------------ */
 /* (a) Presenca de frases-chave nos documentos de governanca          */
 /* ------------------------------------------------------------------ */
@@ -282,13 +393,18 @@ async function scanForbiddenPatterns() {
       if (content === null) continue;
       scannedFiles += 1;
 
-      const lines = content.split(/\r?\n/);
-      for (let i = 0; i < lines.length; i += 1) {
-        const line = lines[i];
-        for (const { name, regex } of FORBIDDEN_PATTERNS) {
+      const relFile = rel(absFile);
+      for (const pattern of FORBIDDEN_PATTERNS) {
+        if (!shouldScanPattern(relFile, pattern)) continue;
+
+        const source = sourceForPattern(content, pattern);
+        const lines = source.split(/\r?\n/);
+        for (let i = 0; i < lines.length; i += 1) {
+          const line = lines[i];
+          const { name, regex } = pattern;
           if (regex.test(line)) {
             violations.push(
-              `Padrao proibido (${name}) em ${rel(absFile)}:${i + 1} -> ${line.trim()}`,
+              `Padrao proibido (${name}) em ${relFile}:${i + 1} -> ${line.trim()}`,
             );
           }
         }
