@@ -9,8 +9,10 @@
 - **Infra**: VPS gerenciada por **CloudPanel**.
 - **App publico** (`@screena/web`, Next.js App Router): servido via **Node** sob
   **PM2** (alternativa documentada: `systemd`).
-- **Workers Python** (ingestao, ratings, streaming, news, entity_writer): rodam
-  fora do request, via **systemd timers** (ver `scripts/import/` e os workers).
+- **Servicos offline**: TMDB/ingestao/sync e Entity Writer rodam hoje em
+  TypeScript/Node + Prisma; workers Python permanecem como roadmap/shim para
+  ratings, streaming e news. Todos rodam fora do request, via **systemd timers**
+  quando operacionalizados.
 - **Banco**: PostgreSQL no proprio VPS (ou instancia gerenciada), nunca acessado
   no caminho de render alem de leitura controlada.
 
@@ -26,8 +28,8 @@
    reapontar o symlink para a release anterior.
 4. **pt-BR publica primeiro**: o deploy nao promove `en`/`es` para `index`; elas
    permanecem `draft/noindex` ate revisao humana.
-5. **Zero git/instalacao automatica na Fase 0**: nada aqui executa por conta
-   propria nesta fase.
+5. **Zero deploy automatico por agente**: nada aqui executa por conta propria;
+   comandos de producao exigem revisao humana.
 
 ## Layout de releases (alvo)
 
@@ -52,9 +54,8 @@
    dentro de uma **nova pasta de release**.
 3. **Linkar shared**: apontar `.env`, `logs/`, `uploads/` da release para
    `shared/` (segredos nunca copiados para dentro do release versionado).
-4. **Migrations**: aplicar migrations de PostgreSQL de forma controlada (em fase
-   futura; na Fase 0 nao existem migrations reais). Migrations destrutivas
-   exigem revisao humana.
+4. **Migrations**: aplicar migrations Prisma de `packages/db/prisma` de forma
+   controlada. Migrations destrutivas exigem revisao humana.
 5. **Smoke test**: subir o processo na nova release em porta temporaria e validar
    health-check antes de promover.
 6. **Switch atomico**: trocar o symlink `current` -> nova release.

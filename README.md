@@ -72,14 +72,23 @@ Cada pacote expõe `src/index.ts` (`"main": "./src/index.ts"`, `"type": "module"
 - **Workers:** Python **3.12** como roadmap/shim futuro; TMDB e Entity Writer rodam hoje em TypeScript/Node + Prisma.
 - **IA:** Gemini — **somente offline**, nunca no render.
 - **Deploy:** VPS + CloudPanel; Next via Node/PM2/systemd; workers via systemd timers.
-- **Runtime:** Node **22 LTS**, pnpm, TypeScript strict.
+- **Runtime:** Node **22 LTS**, pnpm **9.15.4**, TypeScript strict.
 
 ## Pré-requisitos
 
 - **Node 22 LTS** (ver `.nvmrc`).
-- **pnpm 9+**.
-- **Python 3.12** (para os workers; não necessário na Fase 0).
+- **pnpm 9.15.4** (fixado em `packageManager`).
+- **Python 3.12** (para workers Python futuros/roadmap; TMDB e Entity Writer atuais rodam em TS/Node).
 - **PostgreSQL** para fluxos locais com banco real.
+
+Recomendado com Corepack:
+
+```bash
+corepack enable
+corepack prepare pnpm@9.15.4 --activate
+node -v   # deve ser v22.x
+pnpm -v   # deve ser 9.15.4
+```
 
 ## Banco Local De Desenvolvimento
 
@@ -150,6 +159,7 @@ docker compose -f docker-compose.dev.yml down -v
 | `pnpm typecheck` | Checagem de tipos (`tsc --noEmit`).                                       |
 | `pnpm audit:invariants`     | Audita as invariantes do projeto (ex.: pureza de render, atribuição).      |
 | `pnpm audit:render`         | Audita pureza de render do app público.                                    |
+| `pnpm build`     | Roda o build do app público Next.js (`@screena/web`).                     |
 
 ---
 

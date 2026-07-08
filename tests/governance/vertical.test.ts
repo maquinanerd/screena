@@ -46,4 +46,13 @@ describe('resolveVertical', () => {
       expect(assertNotColorOnly(v)).toBe(true)
     }
   })
+
+  it('(5) vertical neutra usa a marca publica Screen, nao Screena', () => {
+    const home = resolveVertical('home')
+    const mixed = resolveVertical('mixed')
+
+    expect(home.badge).toBe('Screen')
+    expect(mixed.label).toBe('Screen')
+    expect(mixed.badge).toBe('Screen')
+  })
 })

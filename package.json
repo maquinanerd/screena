@@ -6,10 +6,11 @@
   "packageManager": "pnpm@9.15.4",
   "description": "Screen — base global de entretenimento entity-first (filmes, series, pessoas, ratings, onde assistir, noticias) com camada editorial propria. Namespace tecnico legado: @screena/*.",
   "engines": {
-    "node": ">=22",
-    "pnpm": ">=9"
+    "node": ">=22 <23",
+    "pnpm": ">=9.15.4 <10"
   },
   "scripts": {
+    "build": "corepack pnpm --filter @screena/web build",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",

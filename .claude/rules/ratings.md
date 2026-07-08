@@ -10,6 +10,11 @@
 > Constantes canonicas (`RATING_SOURCES`, `RATING_SCALES`): `@screena/config`
 > (`packages/config/src/invariants.ts`).
 
+Estado atual: os contratos, validadores e schema de suporte a ratings ja existem,
+mas ratings externos ainda **nao** estao ativos como produto publico. Nao colete,
+exiba, licencie ou publique ratings por inferencia; qualquer ativacao exige
+escopo explicito, decisao humana de licenca e testes cobrindo a mudanca.
+
 ---
 
 ## 1. Principio inegociavel: IMDb != Rotten Tomatoes
@@ -99,7 +104,7 @@ Regras:
 ## 4. Colunas de `external_ratings`
 
 Toda nota externa persiste em `external_ratings` com estas colunas-chave
-(referencia de schema; nao criar schema real na Fase 0):
+(referencia do schema atual; produto de ratings ainda inativo publicamente):
 
 | Coluna                  | Significado                                                              |
 | ----------------------- | ----------------------------------------------------------------------- |

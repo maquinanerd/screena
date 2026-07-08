@@ -427,12 +427,15 @@ Este documento existe para reforçar, sem reescrever o sentido:
 
 ## 13. Notas de fase
 
-- **Fase 3A / Etapa 0 (agora):** apenas reconciliação documental do contrato flat e do
-  prompt `entity_intro_pt.md`. Sem runtime, sem cliente Gemini, sem schema/migration, sem
-  `apps/web`, sem dependências novas e sem publicação.
-- **Fase 3A (implementação futura):** pipeline offline que gera somente `editorial_intro`
-  e `cast_intro` em pt-BR, persiste em `content_blocks`, registra uma tentativa em
-  `entity_writer_logs` e nunca nasce com `review_status = published`.
-- **Fases posteriores:** ratings, streaming/onde assistir, slugs, páginas públicas,
-  indexação, overview/sinopse, `en`/`es`, FAQ, similares, franquias, notícias, reviews e
-  qualquer publicação editorial.
+- **Estado atual:** a Fase 3A ja tem runtime TypeScript/Node em
+  `services/entity-writer`, com pipeline offline, FakeGemini para testes,
+  adapter Gemini real separado do render, persistencia em `content_blocks` e logs
+  em `entity_writer_logs`. O recorte funcional atual gera somente
+  `editorial_intro` e `cast_intro` em pt-BR.
+- **Fora do estado atual:** nao ha publicacao automatica, nao ha transicao
+  automatica para `published`, nao ha indexacao decidida pelo writer e nao ha
+  geracao operacional de ratings, streaming/onde assistir, `en`/`es`, FAQ,
+  similares, franquias, noticias ou reviews.
+- **Fases posteriores:** qualquer ampliacao de payload/blocos, publicacao
+  editorial, indexacao, ratings, streaming/onde assistir, noticias e reviews
+  exige tarefa propria, testes e revisao humana quando tocar invariantes.

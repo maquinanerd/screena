@@ -1,7 +1,7 @@
 # Regras de Ingestao — Screen
 
 Estas sao as regras operacionais da **ingestao de dados externos** do Screen. Valem para
-**todos** os workers que consomem qualquer API externa: `services/ingestion`,
+**todos** os servicos/processos offline que consomem qualquer API externa: `services/ingestion`,
 `services/ratings`, `services/streaming`, `services/news-ingestion` e `services/sync`.
 
 > **Fonte da verdade.** Em caso de conflito, `CLAUDE.md` (as 13 invariantes) prevalece sobre
@@ -15,7 +15,10 @@ Estas sao as regras operacionais da **ingestao de dados externos** do Screen. Va
 
 **Toda API externa e consumida apenas por worker offline — NUNCA no render.**
 
-- Workers sao **Python 3.12**, agendados por **systemd timers** na VPS.
+- No estado atual, TMDB, sync/stale policy e Entity Writer rodam em **TypeScript/Node + Prisma**,
+  fora do render e com logs quando ha sincronizacao/persistencia.
+- Workers Python **3.12** permanecem como roadmap/shim futuro para ratings, streaming, RSS/news
+  e orquestracao por systemd. Nao reimplemente TMDB em Python por causa de documentacao antiga.
 - Nenhuma rota publica, RSC, handler de revalidacao ou edge function abre conexao com API
   externa. Paginas indexaveis leem **exclusivamente PostgreSQL/cache local** (`api_cache`).
 - Isto reforca a **Invariante 3 — Zero API externa no render** e a
@@ -40,6 +43,11 @@ Toda ingestao segue o mesmo pipeline em duas camadas, sempre nesta ordem:
    - Ratings: `external_ratings` (com `rating_source` editorial separado de `provider_api`).
    - Onde assistir: `watch_availability`, `platforms`, `providers`.
    - Noticias: `articles`, `article_translations`, `entity_news_links`, `news_clusters`.
+
+No estado atual, o slice ativo cobre principalmente TMDB/catalogo, sync/stale policy e
+Entity Writer offline em TypeScript/Node. Ratings externos, streaming/onde assistir e
+RSSPRIME/MN26 continuam como roadmap/produto inativo ate escopo e revisao humana explicitos;
+as tabelas/regras acima sao contrato de governanca, nao autorizacao para ativar feature.
 
 Regras do fluxo:
 
@@ -155,6 +163,9 @@ Notas:
 
 - **API keys e segredos so em variaveis de ambiente.** Nunca no frontend, nunca no bundle,
   nunca commitados, nunca em codigo cliente.
+- Para TMDB, use `TMDB_READ_ACCESS_TOKEN` (v4) como credencial preferencial e
+  `TMDB_API_KEY` (v3) apenas quando o cliente suportar fallback. `SCREENA_TMDB_API_KEY`
+  e nome legado e nao deve ser apresentado como variavel canonica nova.
 - Como toda chamada externa e **worker-only**, a chave nunca precisa atravessar para o
   ambiente de render. Se uma chave aparecer no caminho do frontend, e vazamento — bloquear.
 
@@ -179,7 +190,7 @@ Notas:
 
 Antes de promover qualquer dado externo a tabela final / pagina indexavel, o worker garante:
 
-1. Consumo **offline** por worker Python 3.12 — **nunca no render** (Invariantes 3 e 4).
+1. Consumo **offline** por servico/processo fora do render — hoje TS/Node + Prisma para TMDB/sync/Entity Writer; Python 3.12 apenas roadmap/shim (Invariantes 3 e 4).
 2. **API key so em env var**; nenhum segredo no frontend.
 3. Resposta crua em **`api_cache`**; dados normalizados nas **tabelas finais**.
 4. **Log** da chamada em **`api_sync_logs`** (status, contagem, duracao, cota, hash).

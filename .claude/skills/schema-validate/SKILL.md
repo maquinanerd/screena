@@ -29,6 +29,11 @@ A fonte executavel de ratings e
 > nao chama Gemini nem APIs externas e nao publica. Trabalha sobre um JSON-LD ja
 > montado a partir de payload do PostgreSQL.
 
+Estado atual: ratings externos e reviews proprias ainda nao estao ativos como
+produto publico. Esta skill valida `AggregateRating`/`Review` quando eles forem
+explicitamente emitidos por uma feature licenciada e revisada; nao exige nem
+cria esses blocos por inferencia.
+
 ---
 
 ## Quando usar
@@ -61,7 +66,8 @@ Complementos (condicionais):
 
 - `BreadcrumbList` — em **todas** as paginas principais.
 - `FAQPage` — **somente** se houver FAQ visivel na pagina.
-- `Review` — apenas para **review propria** do Screen.
+- `Review` — apenas para **review propria** do Screen; nao emitir enquanto
+  reviews proprias estiverem inativas como produto.
 - `AggregateRating` — **somente quando permitido e atribuido** a sua fonte.
 
 ---
