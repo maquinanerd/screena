@@ -44,6 +44,13 @@ import { fileURLToPath } from 'node:url'
 
 import { createIngestionContext, importMovie, importTvShow } from '../src/composition.js'
 import { resolveCatalogImagePath } from '../src/public-catalog-image.js'
+import { planCreditedPeople } from '../src/public-catalog-people.js'
+import {
+  entityRoutePath,
+  slugify,
+  withTmdbSuffix,
+  type CatalogEntityType,
+} from '../src/public-catalog-slug.js'
 import { getPrismaClient } from '@screena/db/server'
 
 const LANGUAGE = 'pt-BR'
@@ -69,6 +76,10 @@ const UPCOMING_IMPORT_CAP = 20
 const UPCOMING_REGION = 'BR'
 
 /** Subconjunto do detalhe TMDB que este backfill lê (bin não é typechecked). */
+interface TmdbCreditLite {
+  readonly id?: number
+  readonly name?: string | null
+}
 interface TmdbDetailLite {
   readonly id: number
   readonly title?: string
@@ -80,6 +91,8 @@ interface TmdbDetailLite {
   readonly backdrop_path?: string | null
   readonly release_date?: string | null
   readonly first_air_date?: string | null
+  /** Vem do append_to_response=credits; alimenta os slugs de pessoa. */
+  readonly credits?: { readonly cast?: TmdbCreditLite[]; readonly crew?: TmdbCreditLite[] }
 }
 
 function repoRoot(): string {
@@ -93,16 +106,6 @@ function loadRepoEnv(): void {
   if (typeof process.loadEnvFile === 'function' && existsSync(envPath)) {
     process.loadEnvFile(envPath)
   }
-}
-
-/** slug SEO-friendly a partir de um texto (sem acento, minúsculo, hifenizado). */
-function slugify(input: string): string {
-  return input
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '') // remove diacríticos combinantes
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
 }
 
 function yearOf(dateStr: string | null | undefined): number | null {
@@ -139,6 +142,78 @@ async function downloadImage(
 }
 
 /**
+ * Upsert IDEMPOTENTE do slug canônico pt-BR de UMA entidade + Redirect 301
+ * quando o canônico muda. Fecha o loop que faltava (P0-10): re-sync não
+ * duplica canônico nem quebra URL.
+ *
+ * Passos:
+ *  1. Colisão: se o slug desejado já pertence a OUTRA entidade, desambigua com
+ *     sufixo `-tmdb-{id}` (determinístico — estável entre re-syncs).
+ *  2. Se o canônico atual desta entidade já é esse slug → no-op (idempotente).
+ *  3. Senão, em transação: despromove o canônico antigo, promove o novo e grava
+ *     Redirect 301 do path antigo para o novo (colapsando cadeias e sem
+ *     transformar o novo canônico em origem de redirect — evita loop/self-redirect).
+ *
+ * Devolve o slug efetivamente persistido (com sufixo, se houve colisão).
+ */
+async function upsertCanonicalSlug(
+  prisma: ReturnType<typeof getPrismaClient>,
+  entityType: CatalogEntityType,
+  entityId: bigint,
+  desiredSlug: string,
+  tmdbId: number,
+): Promise<string> {
+  // (1) Colisão: o slug base já é de OUTRA entidade? Então sufixa por tmdbId.
+  const taken = await prisma.slug.findUnique({
+    where: {
+      entityType_languageCode_slug: { entityType, languageCode: LANGUAGE, slug: desiredSlug },
+    },
+    select: { entityId: true },
+  })
+  const slug =
+    taken !== null && taken.entityId !== entityId ? withTmdbSuffix(desiredSlug, tmdbId) : desiredSlug
+
+  // (2) Canônico atual desta entidade (pode divergir do slug alvo).
+  const current = await prisma.slug.findFirst({
+    where: { entityType, entityId, languageCode: LANGUAGE, isCanonical: true },
+    select: { slug: true },
+  })
+  if (current?.slug === slug) return slug // idempotente: nada muda
+
+  // (3) Troca de canônico em transação: despromove antigo, promove novo, grava 301.
+  await prisma.$transaction(async (tx) => {
+    if (current !== null) {
+      await tx.slug.updateMany({
+        where: { entityType, entityId, languageCode: LANGUAGE, isCanonical: true },
+        data: { isCanonical: false },
+      })
+    }
+    await tx.slug.upsert({
+      where: { entityType_languageCode_slug: { entityType, languageCode: LANGUAGE, slug } },
+      update: { entityId, isCanonical: true },
+      create: { entityType, entityId, languageCode: LANGUAGE, slug, isCanonical: true },
+    })
+
+    if (current !== null && current.slug !== slug) {
+      const fromPath = entityRoutePath(entityType, current.slug)
+      const toPath = entityRoutePath(entityType, slug)
+      if (fromPath !== toPath) {
+        // O novo canônico não pode continuar sendo origem de redirect (evita loop).
+        await tx.redirect.deleteMany({ where: { fromPath: toPath } })
+        // Colapsa cadeias: quem apontava para o path antigo passa a apontar ao novo.
+        await tx.redirect.updateMany({ where: { toPath: fromPath }, data: { toPath } })
+        await tx.redirect.upsert({
+          where: { fromPath },
+          update: { toPath, statusCode: 301, languageCode: LANGUAGE, reason: 'slug_change' },
+          create: { fromPath, toPath, statusCode: 301, languageCode: LANGUAGE, reason: 'slug_change' },
+        })
+      }
+    }
+  })
+  return slug
+}
+
+/**
  * Finaliza UMA entidade já persistida pelo importer: cria slug pt-BR + tradução
  * pt-BR (title+summary) e resolve posterPath/backdropPath. Idempotente.
  *
@@ -168,13 +243,8 @@ async function finalize(
   if (entity === null) return
 
   const slugBase = slugify(title) || `tmdb-${detail.id}`
-  const slug = year !== null ? `${slugBase}-${year}` : slugBase
-
-  await prisma.slug.upsert({
-    where: { entityType_languageCode_slug: { entityType, languageCode: LANGUAGE, slug } },
-    update: { entityId: entity.id, isCanonical: true },
-    create: { entityType, entityId: entity.id, languageCode: LANGUAGE, slug, isCanonical: true },
-  })
+  const desiredSlug = year !== null ? `${slugBase}-${year}` : slugBase
+  const slug = await upsertCanonicalSlug(prisma, entityType, entity.id, desiredSlug, detail.id)
 
   await prisma.entityTranslation.upsert({
     where: {
@@ -207,6 +277,54 @@ async function finalize(
     downloadImages,
   })
   await model.update({ where: { id: entity.id }, data: { posterPath, backdropPath } })
+
+  // Fecha o loop de pessoa: cada creditado ganha slug canônico + tradução pt-BR.
+  await finalizeCreditedPeople(prisma, detail.credits)
+}
+
+/**
+ * Cria slug canônico pt-BR + tradução (title) para CADA pessoa creditada do
+ * título, a partir de `detail.credits`. As pessoas já foram persistidas pelo
+ * importer (importMovie/importTvShow) via os créditos; aqui só garantimos que
+ * NENHUM `cast_member`/`crew_member` fique sem slug de pessoa — sem isso
+ * `/pt/pessoas/{slug}` e os links de elenco morrem (P0-10). Idempotente.
+ *
+ * O QUE existe (nome/id) vem do payload controlado do TMDB; nada é inventado.
+ * O plano puro (`planCreditedPeople`) decide os slugs base; o upsert compartilha
+ * a mesma lógica de idempotência + colisão + 301 dos títulos.
+ */
+async function finalizeCreditedPeople(
+  prisma: ReturnType<typeof getPrismaClient>,
+  credits: TmdbDetailLite['credits'],
+): Promise<void> {
+  const plans = planCreditedPeople(credits)
+  if (plans.length === 0) return
+
+  const planByTmdb = new Map(plans.map((plan) => [plan.tmdbId, plan]))
+  const people = await prisma.person.findMany({
+    where: { tmdbId: { in: [...planByTmdb.keys()] } },
+    select: { id: true, tmdbId: true, name: true },
+  })
+
+  for (const person of people) {
+    const plan = planByTmdb.get(person.tmdbId)
+    if (plan === undefined) continue
+
+    await upsertCanonicalSlug(prisma, 'person', person.id, plan.baseSlug, person.tmdbId)
+
+    const title = plan.name !== '' ? plan.name : person.name
+    await prisma.entityTranslation.upsert({
+      where: {
+        entityType_entityId_languageCode: {
+          entityType: 'person',
+          entityId: person.id,
+          languageCode: LANGUAGE,
+        },
+      },
+      update: { title },
+      create: { entityType: 'person', entityId: person.id, languageCode: LANGUAGE, title },
+    })
+  }
 }
 
 /** Dedup estavel de ids numericos preservando a ordem de primeira aparicao. */
