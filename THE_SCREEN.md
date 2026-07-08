@@ -2,6 +2,8 @@
 
 > **Screen** é uma plataforma global de entretenimento entity-first para filmes, séries, temporadas, episódios, pessoas, ratings externos, disponibilidade de streaming, reviews e notícias/editorial. O estado atual do repositório já tem uma fundação técnica avançada, mas ainda não é um produto completo de tracking, ratings e streaming.
 
+> **⚠️ Política atualizada (2026-07).** Trechos que citem o _gate anti-thin_ (≥ 2 blocos para indexar) ou "en/es nascem noindex" refletem a política antiga. Agora: indexação **total** (invariante 5 — `noindex` só em caso técnico; blocos = qualidade/ranqueamento) e en/es publicam via `PUBLISHED_LOCALES` (invariante 7). Fonte viva: [`CLAUDE.md`](./CLAUDE.md) + [`.claude/rules/`](./.claude/rules).
+
 ---
 
 ## Visão Geral do Produto

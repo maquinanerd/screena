@@ -2,6 +2,8 @@
 
 > **As APIs fornecem os dados. Screen escreve a camada editorial.**
 
+> **⚠️ Política atualizada (2026-07).** O antigo _gate anti-thin_ (≥ 2 blocos para indexar) foi **removido**: a indexação é **total** (invariante 5). Os blocos que o writer gera viraram **alavanca de qualidade/ranqueamento** (E-E-A-T, profundidade), não pré-requisito de `index`; a entidade indexa com a ficha crua mesmo sem bloco editorial. O writer segue **nunca** publicando/indexando sozinho, e en/es publicam via `PUBLISHED_LOCALES` (invariante 7). Trechos no corpo que citem "gate anti-thin / ≥ 2 blocos para indexar" refletem a política antiga. Fonte viva: [`CLAUDE.md`](../CLAUDE.md) + [`.claude/rules/entity-writer.md`](../.claude/rules/entity-writer.md).
+
 Este documento especifica o **Entity Writer**: o motor editorial offline que gera
 **blocos editoriais evergreen** (`content_blocks`) a partir de **dados estruturados do
 PostgreSQL**, usando **Gemini** apenas fora do render. É o único componente autorizado a

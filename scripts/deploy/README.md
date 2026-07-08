@@ -2,7 +2,9 @@
 
 > Esta pasta documenta os scripts de **deploy** que serao implementados em fases
 > posteriores. Hoje ainda existe **apenas** este README descrevendo o contrato e
-> o fluxo; o guia operacional publico fica em `docs/CLOUDPANEL_DEPLOY.md`.
+> o fluxo; o guia operacional publico **atual** fica em
+> `docs/EASYPANEL_DEPLOY.md` (EasyPanel + Nixpacks). `docs/CLOUDPANEL_DEPLOY.md`
+> e referencia historica.
 
 ## Contexto
 
@@ -26,8 +28,9 @@
 3. **Release folders + symlink atomico**: cada deploy cria uma pasta de release
    nova e troca o symlink `current` apenas quando o build esta pronto. Rollback =
    reapontar o symlink para a release anterior.
-4. **pt-BR publica primeiro**: o deploy nao promove `en`/`es` para `index`; elas
-   permanecem `draft/noindex` ate revisao humana.
+4. **pt-BR publica primeiro**: o deploy nao promove `en`/`es` para `index` — elas
+   so entram quando adicionadas a `PUBLISHED_LOCALES` (completas + revisadas);
+   ate la resolvem para `draft/noindex` (invariante 7, politica 2026-07).
 5. **Zero deploy automatico por agente**: nada aqui executa por conta propria;
    comandos de producao exigem revisao humana.
 

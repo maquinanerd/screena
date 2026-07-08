@@ -3,6 +3,8 @@
 > **Movies, series, ratings and where to watch.**
 > Base global de entretenimento _entity-first_, em **https://thescreen.media**, com camada editorial própria.
 
+> **⚠️ Política atualizada (2026-07).** Trechos no corpo deste SPEC podem citar o antigo _gate anti-thin_ (≥ 2 blocos para indexar) e "en/es nascem noindex". Ambos mudaram: a indexação é **total** (invariante 5 — `noindex` só em caso técnico; blocos de valor viraram alavanca de qualidade/ranqueamento, não pré-requisito) e en/es publicam quando completos, via `PUBLISHED_LOCALES` (invariante 7). A licença (invariante 6) e a pureza de render seguem valendo. Fonte viva: [`CLAUDE.md`](../CLAUDE.md) + [`.claude/rules/seo.md`](../.claude/rules/seo.md) + [`.claude/rules/i18n.md`](../.claude/rules/i18n.md).
+
 Este documento é a **especificação canônica do produto** Screen. Ele descreve a
 visão, as entidades centrais, o modelo de dados de alto nível, a arquitetura, as
 regras de pureza de render, a camada editorial, a identidade visual, a estratégia

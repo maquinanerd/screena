@@ -3,6 +3,8 @@
 > **Para agentes de codificação autônomos (Codex e similares).**
 > Este documento é o contrato operacional para automação. O contexto canônico e a fonte da verdade das invariantes continuam sendo o **`CLAUDE.md`** e as regras em **`.claude/rules/`**. Em caso de conflito, `CLAUDE.md` prevalece.
 
+> **⚠️ Política atualizada (2026-07).** Invariantes 5 e 7 mudaram: indexação **total** (o antigo _gate anti-thin_ de ≥ 2 blocos foi removido; `noindex` só em caso técnico; blocos = qualidade/ranqueamento) e en/es publicam via `PUBLISHED_LOCALES` (não nascem mais permanentemente noindex). Trechos abaixo que citem "≥ 2 blocos para indexar" ou "en/es em draft/noindex" refletem a política antiga — siga `CLAUDE.md`/`.claude/rules`.
+
 ---
 
 ## Contexto curto do projeto

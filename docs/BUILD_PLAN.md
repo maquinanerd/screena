@@ -5,6 +5,8 @@
 > Nada avança para a fase seguinte sem que os critérios de aceite da fase atual estejam
 > cumpridos.
 
+> **⚠️ Política atualizada (2026-07).** Critérios de aceite no corpo que exijam o antigo _gate anti-thin_ (≥ 2 blocos para indexar) ou "en/es em draft/noindex" refletem a política antiga. Agora: indexação **total** (invariante 5 — `noindex` só em caso técnico; blocos = qualidade/ranqueamento) e en/es via `PUBLISHED_LOCALES` (invariante 7). Fonte viva: [`CLAUDE.md`](../CLAUDE.md) + [`.claude/rules/seo.md`](../.claude/rules/seo.md).
+
 Este documento é a fonte da verdade do **roadmap de engenharia**. As regras de produto e as
 invariantes inegociáveis vivem em [`CLAUDE.md`](../CLAUDE.md) e em
 [`.claude/rules/`](../.claude/rules); a especificação de produto vive em
