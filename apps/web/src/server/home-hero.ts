@@ -123,6 +123,8 @@ async function movieCandidates(prisma: PrismaClient): Promise<HeroCandidate[]> {
         screenScore: true,
         screenScoreScale: true,
         screenScoreDisplay: true,
+        backdropPath: true,
+        posterPath: true,
       },
     }),
     translationsByEntity(prisma, "movie", ids),
@@ -148,6 +150,8 @@ async function movieCandidates(prisma: PrismaClient): Promise<HeroCandidate[]> {
         screenScoreScale: movie.screenScoreScale,
         screenScoreDisplay: movie.screenScoreDisplay,
         summary: translation.summary,
+        backdropPath: movie.backdropPath,
+        posterPath: movie.posterPath,
       },
     };
   });
@@ -170,6 +174,8 @@ async function seriesCandidates(prisma: PrismaClient): Promise<HeroCandidate[]> 
         screenScore: true,
         screenScoreScale: true,
         screenScoreDisplay: true,
+        backdropPath: true,
+        posterPath: true,
       },
     }),
     translationsByEntity(prisma, "tv", ids),
@@ -195,6 +201,8 @@ async function seriesCandidates(prisma: PrismaClient): Promise<HeroCandidate[]> 
         screenScoreScale: show.screenScoreScale,
         screenScoreDisplay: show.screenScoreDisplay,
         summary: translation.summary,
+        backdropPath: show.backdropPath,
+        posterPath: show.posterPath,
       },
     };
   });

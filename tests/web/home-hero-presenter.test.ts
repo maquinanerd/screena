@@ -15,6 +15,7 @@ import {
   buildHeroSlides,
   buildPrimaryMeta,
   formatCountLabel,
+  resolveHeroImage,
   resolveHeroRating,
   trimSynopsis,
   SCREEN_SCORE_SCALE,
@@ -35,6 +36,8 @@ const movieInput: HeroSlideInput = {
   director: "Rui Andrade",
   cast: ["Rui Andrade", "Helena Vasconcelos"],
   summary: "Aventura de sobrevivência sobre coragem e limites.",
+  backdropPath: "/backdrop-movie.jpg",
+  posterPath: "/poster-movie.jpg",
 };
 
 const seriesInput: HeroSlideInput = {
@@ -51,6 +54,8 @@ const seriesInput: HeroSlideInput = {
   director: null,
   cast: ["Helena Vasconcelos", "Marina Duarte"],
   summary: "Drama coral em três temporadas sobre comunidade, culpa e mares.",
+  backdropPath: "/backdrop-series.jpg",
+  posterPath: "/poster-series.jpg",
 };
 
 describe("buildHeroSlide — filme", () => {
@@ -64,6 +69,10 @@ describe("buildHeroSlide — filme", () => {
     expect(slide?.certification).toBe("14");
     expect(slide?.director).toBe("Rui Andrade");
     expect(slide?.rating).toEqual({ value: 4.5, scale: 5 });
+    // Arte principal = backdrop remoto w1280 (nunca path local/CDN embutido).
+    expect(slide?.imageUrl).toBe(
+      "https://image.tmdb.org/t/p/w1280/backdrop-movie.jpg",
+    );
   });
 
   it("produz objeto PLANO/serializavel (sem Decimal/BigInt)", () => {
@@ -117,6 +126,32 @@ describe("resolveHeroRating — nota editorial propria (gate seguro)", () => {
   it("oculta quando valor nulo/NaN", () => {
     expect(resolveHeroRating({ ...movieInput, screenScore: null })).toBeNull();
     expect(resolveHeroRating({ ...movieInput, screenScore: Number.NaN })).toBeNull();
+  });
+});
+
+describe("resolveHeroImage — arte remota do TMDB (backdrop > poster > null)", () => {
+  it("prefere o backdrop em w1280", () => {
+    expect(resolveHeroImage("/bd.jpg", "/ps.jpg")).toBe(
+      "https://image.tmdb.org/t/p/w1280/bd.jpg",
+    );
+  });
+  it("cai no poster em w780 quando nao ha backdrop", () => {
+    expect(resolveHeroImage(null, "/ps.jpg")).toBe(
+      "https://image.tmdb.org/t/p/w780/ps.jpg",
+    );
+  });
+  it("sem file_path valido -> null (slide cai no wash de fallback)", () => {
+    expect(resolveHeroImage(null, null)).toBeNull();
+    // path local antigo (/media/...) e rejeitado pelo helper governado.
+    expect(resolveHeroImage("/media/tmdb/x.jpg", null)).toBeNull();
+  });
+  it("build de slide sem imagem -> imageUrl null", () => {
+    const slide = buildHeroSlide({
+      ...movieInput,
+      backdropPath: null,
+      posterPath: null,
+    });
+    expect(slide?.imageUrl).toBeNull();
   });
 });
 

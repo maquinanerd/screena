@@ -16,9 +16,16 @@
  */
 
 import { MOVIES_INDEX_PATH, SERIES_INDEX_PATH, detailPath } from "./site";
+import { buildTmdbImageUrl } from "./tmdb-image-url";
 
 /** Escala canonica da nota editorial propria do Screen. */
 export const SCREEN_SCORE_SCALE = 5;
+
+/** Tamanho do backdrop 16:9 usado como arte principal do slide (widescreen). */
+export const HERO_BACKDROP_SIZE = "w1280" as const;
+
+/** Tamanho do pôster usado como fallback quando não há backdrop. */
+export const HERO_POSTER_SIZE = "w780" as const;
 
 /** Teto de nomes de elenco exibidos na coluna de creditos do slide. */
 export const HERO_CAST_LIMIT = 3;
@@ -59,6 +66,13 @@ export interface HeroSlideInput {
   cast: readonly string[];
   /** Resumo editorial pt-BR (nunca sinopse externa) ou null. */
   summary: string | null;
+  /**
+   * `file_path` CRU do TMDB do backdrop 16:9 (ex.: `/abc.jpg`) — arte principal
+   * (widescreen) do slide; vira URL remota `w1280` via `resolveHeroImage`.
+   */
+  backdropPath: string | null;
+  /** `file_path` CRU do TMDB do pôster (ex.: `/xyz.jpg`); fallback do backdrop. */
+  posterPath: string | null;
 }
 
 /** Nota editorial propria do Screen, ja validada, para render de estrelas. */
@@ -89,6 +103,12 @@ export interface HeroSlide {
   cast: string[];
   /** Sinopse curta aparada ou null. */
   synopsis: string | null;
+  /**
+   * URL pública REMOTA do TMDB (backdrop `w1280` preferido, senão pôster `w780`)
+   * ou null. O client renderiza `<img>` de fundo quando presente; null -> wash de
+   * fallback por vertical. Nunca é path local nem de filesystem.
+   */
+  imageUrl: string | null;
 }
 
 function trimToNull(value: string | null | undefined): string | null {
@@ -126,6 +146,24 @@ export function resolveHeroRating(input: HeroSlideInput): HeroRating | null {
   if (scale !== SCREEN_SCORE_SCALE) return null;
   if (value > scale) return null;
   return { value, scale };
+}
+
+/**
+ * Resolve a imagem REMOTA de fundo do slide a partir do `file_path` CRU do TMDB
+ * (guardado no banco), preferindo o backdrop 16:9 em `w1280` (arte widescreen do
+ * hero) e caindo no pôster em `w780` quando não há backdrop; sem `file_path`
+ * válido -> null (o slide cai no wash de fallback por vertical). Nenhum arquivo
+ * local: a URL é a do CDN remoto do TMDB, construída pelo helper governado
+ * `buildTmdbImageUrl` (que rejeita path local antigo `/media/...` e de filesystem).
+ */
+export function resolveHeroImage(
+  backdropPath: string | null | undefined,
+  posterPath: string | null | undefined,
+): string | null {
+  return (
+    buildTmdbImageUrl(backdropPath, HERO_BACKDROP_SIZE) ??
+    buildTmdbImageUrl(posterPath, HERO_POSTER_SIZE)
+  );
 }
 
 /**
@@ -210,6 +248,7 @@ export function buildHeroSlide(input: HeroSlideInput): HeroSlide | null {
     director: trimToNull(input.director),
     cast: buildHeroCast(input.cast),
     synopsis: trimSynopsis(input.summary),
+    imageUrl: resolveHeroImage(input.backdropPath, input.posterPath),
   };
 }
 
