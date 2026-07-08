@@ -2,7 +2,14 @@ name: CI
 
 on:
   push:
+    branches:
+      - main
   pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -25,6 +32,17 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Validate backup shell scripts
+        shell: bash
+        run: |
+          bash -n scripts/backup/backup.sh
+          bash -n scripts/backup/restore-test.sh
+
+      - name: Generate Prisma Client
+        env:
+          DATABASE_URL: postgresql://screen:screen@localhost:5432/screen
+        run: corepack pnpm --filter @screena/db db:generate
 
       - name: Typecheck
         run: pnpm typecheck

@@ -1,9 +1,10 @@
 /**
- * Guarda de endpoints/server actions do admin editorial read-only.
+ * Guarda de endpoints/server actions do admin editorial.
  *
- * A fatia atual do admin pode ler PostgreSQL server-side, mas nao pode expor
- * mutacoes por Server Actions nem route handlers de escrita. Se este teste
- * falhar, a correcao nesta fase e remover/bloquear a escrita.
+ * A fatia atual do admin tem uma unica superficie de escrita allowlisted:
+ * `apps/admin/src/server/editorial-actions.ts`, travada por feature flag e por
+ * testes especificos de allowlist. Todo o resto continua proibido: nenhuma
+ * outra Server Action e nenhum route handler de escrita.
  */
 
 import { readdir, readFile, stat } from "node:fs/promises";
@@ -22,6 +23,9 @@ const FORBIDDEN_PATTERNS: ReadonlyArray<[RegExp, string]> = [
   [/\bexport\s+(?:async\s+)?function\s+(?:POST|PUT|PATCH|DELETE)\b/, "route handler de escrita"],
   [/\bexport\s+const\s+(?:POST|PUT|PATCH|DELETE)\b/, "route handler de escrita"],
 ];
+const ALLOWED_SERVER_ACTION_FILES = new Set([
+  join("apps", "admin", "src", "server", "editorial-actions.ts"),
+]);
 
 interface Violation {
   file: string;
@@ -78,11 +82,15 @@ async function findViolations(): Promise<Violation[]> {
     for (const file of files) {
       const content = stripComments(await readFile(file, "utf-8"));
       const lines = content.split(/\r?\n/);
+      const relativeFile = relative(process.cwd(), file);
       lines.forEach((line, index) => {
         for (const [pattern, rule] of FORBIDDEN_PATTERNS) {
           if (pattern.test(line)) {
+            if (rule === '"use server" server action' && ALLOWED_SERVER_ACTION_FILES.has(relativeFile)) {
+              continue;
+            }
             violations.push({
-              file: relative(process.cwd(), file),
+              file: relativeFile,
               rule,
               line: index + 1,
               snippet: line.trim(),
@@ -102,7 +110,7 @@ describe("admin editorial nao expoe endpoints ou server actions de escrita", () 
     violations = await findViolations();
   });
 
-  it('nao contem "use server" nem handlers POST/PUT/PATCH/DELETE', () => {
+  it('nao contem "use server" fora do allowlist nem handlers POST/PUT/PATCH/DELETE', () => {
     expect(
       violations,
       `Admin read-only nao pode expor mutacoes. Ocorrencias: ${JSON.stringify(violations, null, 2)}`,

@@ -26,6 +26,14 @@ next-env.d.ts
 # Logs
 *.log
 
+# Artefatos de backup do PostgreSQL (dados sensiveis/licenciados)
+/backups/
+*.dump
+*.dump.sha256
+*.dump.gz
+*.sql.gz
+*.dump.gz.sha256
+
 # Python workers
 __pycache__/
 .venv/
