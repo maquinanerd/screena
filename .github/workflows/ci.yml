@@ -33,6 +33,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Validate backup shell scripts
+        shell: bash
+        run: |
+          bash -n scripts/backup/backup.sh
+          bash -n scripts/backup/restore-test.sh
+
       - name: Typecheck
         run: pnpm typecheck
 

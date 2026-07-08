@@ -7,6 +7,11 @@ set -euo pipefail
 BACKUP_DIR="${BACKUP_DIR:-./backups/postgres}"
 RESTORE_TEST_DB_NAME="${RESTORE_TEST_DB_NAME:-screen_restore_test_$(date -u +%Y%m%dT%H%M%SZ)}"
 
+if [[ "$RESTORE_TEST_DB_NAME" != screen_restore_test_* ]]; then
+  echo "restore-test: RESTORE_TEST_DB_NAME deve comecar com screen_restore_test_." >&2
+  exit 1
+fi
+
 if [[ -z "${RESTORE_TEST_ADMIN_URL:-}" ]]; then
   cat >&2 <<'MSG'
 restore-test: RESTORE_TEST_ADMIN_URL e obrigatorio.
@@ -43,6 +48,16 @@ else
 fi
 
 TARGET_URL="${RESTORE_TEST_DATABASE_URL:-${RESTORE_TEST_ADMIN_URL%/*}/${RESTORE_TEST_DB_NAME}}"
+
+if [[ -n "${RESTORE_TEST_DATABASE_URL:-}" ]]; then
+  case "$RESTORE_TEST_DATABASE_URL" in
+    */"$RESTORE_TEST_DB_NAME"|*/"$RESTORE_TEST_DB_NAME"?*) ;;
+    *)
+      echo "restore-test: RESTORE_TEST_DATABASE_URL deve apontar para RESTORE_TEST_DB_NAME." >&2
+      exit 1
+      ;;
+  esac
+fi
 
 drop_test_db() {
   psql "$RESTORE_TEST_ADMIN_URL" \
