@@ -22,7 +22,7 @@ datasource db {
 }
 
 // ============================================================
-// ENUMS (13)
+// ENUMS (14)
 // ============================================================
 
 enum EntityType {
@@ -135,6 +135,21 @@ enum ProviderKind {
   streaming
   ai
   news
+}
+
+// --- Raw sync TMDB (P0-00a): discriminador dedicado do payload bruto ---
+// Superset de EntityType + tipos de referencia TMDB que NAO sao entidades
+// renderizaveis do catalogo. NAO estende EntityType (contrato compartilhado).
+enum TmdbEntityKind {
+  movie
+  tv
+  season
+  episode
+  person
+  collection
+  network
+  company
+  keyword
 }
 
 // ============================================================
@@ -721,6 +736,50 @@ model ApiSyncLog {
   @@index([providerApi])
   @@index([createdAt])
   @@map("api_sync_logs")
+}
+
+// --- Raw sync TMDB (P0-00a): arquivo permanente de payload BRUTO ---
+// So JSON cru (base + append/translations); nenhum arquivo/imagem baixado.
+// Worker-only, como ApiCache; o render nao le esta tabela neste ciclo.
+model TmdbRaw {
+  id           BigInt         @id @default(autoincrement())
+  entityType   TmdbEntityKind @map("entity_type")
+  tmdbId       Int            @map("tmdb_id")
+  baseLanguage String         @map("base_language")
+  payload      Json
+  payloadHash  String         @map("payload_hash")
+  etag         String?
+  lastModified String?        @map("last_modified")
+  fetchedAt    DateTime       @default(now()) @map("fetched_at")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+  @@unique([entityType, tmdbId, baseLanguage])
+  @@index([payloadHash])
+  @@index([fetchedAt])
+  @@map("tmdb_raw")
+}
+
+// --- Raw sync TMDB (P0-00a): cache de UMA linha do /configuration (imagens) ---
+// Singleton por provider (PK natural provider_api = "tmdb"). Sem FK a
+// ApiProvider de proposito (evita alterar modelo existente).
+model TmdbImageConfig {
+  providerApi   String   @id @map("provider_api")
+  baseUrl       String   @map("base_url")
+  secureBaseUrl String   @map("secure_base_url")
+  posterSizes   Json     @map("poster_sizes")
+  backdropSizes Json     @map("backdrop_sizes")
+  stillSizes    Json     @map("still_sizes")
+  profileSizes  Json     @map("profile_sizes")
+  logoSizes     Json     @map("logo_sizes")
+  changeKeys    Json?    @map("change_keys")
+  etag          String?
+  lastModified  String?  @map("last_modified")
+  fetchedAt     DateTime @default(now()) @map("fetched_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("tmdb_image_config")
 }
 
 // ============================================================
