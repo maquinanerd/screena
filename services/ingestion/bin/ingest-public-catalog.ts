@@ -44,6 +44,7 @@ import { fileURLToPath } from 'node:url'
 
 import { createIngestionContext, importMovie, importTvShow } from '../src/composition.js'
 import { resolveCatalogImagePath } from '../src/public-catalog-image.js'
+import { planCreditedPeople } from '../src/public-catalog-people.js'
 import {
   entityRoutePath,
   slugify,
@@ -75,6 +76,10 @@ const UPCOMING_IMPORT_CAP = 20
 const UPCOMING_REGION = 'BR'
 
 /** Subconjunto do detalhe TMDB que este backfill lê (bin não é typechecked). */
+interface TmdbCreditLite {
+  readonly id?: number
+  readonly name?: string | null
+}
 interface TmdbDetailLite {
   readonly id: number
   readonly title?: string
@@ -86,6 +91,8 @@ interface TmdbDetailLite {
   readonly backdrop_path?: string | null
   readonly release_date?: string | null
   readonly first_air_date?: string | null
+  /** Vem do append_to_response=credits; alimenta os slugs de pessoa. */
+  readonly credits?: { readonly cast?: TmdbCreditLite[]; readonly crew?: TmdbCreditLite[] }
 }
 
 function repoRoot(): string {
@@ -270,6 +277,54 @@ async function finalize(
     downloadImages,
   })
   await model.update({ where: { id: entity.id }, data: { posterPath, backdropPath } })
+
+  // Fecha o loop de pessoa: cada creditado ganha slug canônico + tradução pt-BR.
+  await finalizeCreditedPeople(prisma, detail.credits)
+}
+
+/**
+ * Cria slug canônico pt-BR + tradução (title) para CADA pessoa creditada do
+ * título, a partir de `detail.credits`. As pessoas já foram persistidas pelo
+ * importer (importMovie/importTvShow) via os créditos; aqui só garantimos que
+ * NENHUM `cast_member`/`crew_member` fique sem slug de pessoa — sem isso
+ * `/pt/pessoas/{slug}` e os links de elenco morrem (P0-10). Idempotente.
+ *
+ * O QUE existe (nome/id) vem do payload controlado do TMDB; nada é inventado.
+ * O plano puro (`planCreditedPeople`) decide os slugs base; o upsert compartilha
+ * a mesma lógica de idempotência + colisão + 301 dos títulos.
+ */
+async function finalizeCreditedPeople(
+  prisma: ReturnType<typeof getPrismaClient>,
+  credits: TmdbDetailLite['credits'],
+): Promise<void> {
+  const plans = planCreditedPeople(credits)
+  if (plans.length === 0) return
+
+  const planByTmdb = new Map(plans.map((plan) => [plan.tmdbId, plan]))
+  const people = await prisma.person.findMany({
+    where: { tmdbId: { in: [...planByTmdb.keys()] } },
+    select: { id: true, tmdbId: true, name: true },
+  })
+
+  for (const person of people) {
+    const plan = planByTmdb.get(person.tmdbId)
+    if (plan === undefined) continue
+
+    await upsertCanonicalSlug(prisma, 'person', person.id, plan.baseSlug, person.tmdbId)
+
+    const title = plan.name !== '' ? plan.name : person.name
+    await prisma.entityTranslation.upsert({
+      where: {
+        entityType_entityId_languageCode: {
+          entityType: 'person',
+          entityId: person.id,
+          languageCode: LANGUAGE,
+        },
+      },
+      update: { title },
+      create: { entityType: 'person', entityId: person.id, languageCode: LANGUAGE, title },
+    })
+  }
 }
 
 /** Dedup estavel de ids numericos preservando a ordem de primeira aparicao. */
