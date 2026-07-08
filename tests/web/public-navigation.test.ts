@@ -29,12 +29,24 @@ function readSource(relative: string): string {
 }
 
 /**
- * Remove comentarios de bloco (docblocks e comentarios JSX) para as checagens
+ * Remove comentarios de bloco/linha (docblocks, comentarios JSX e notas inline) para as checagens
  * de conteudo: os comentarios de governanca CITAM os termos proibidos ("sem
  * busca", "sem ratings") de proposito — o que interessa e o codigo/markup.
  */
-function withoutBlockComments(source: string): string {
-  return source.replace(/\/\*[\s\S]*?\*\//g, "");
+function withoutComments(source: string): string {
+  const noBlocks = source.replace(/\/\*[\s\S]*?\*\//g, "");
+  return noBlocks
+    .split(/\r?\n/)
+    .map((line) => {
+      for (let i = 0; i < line.length - 1; i += 1) {
+        if (line[i] === "/" && line[i + 1] === "/") {
+          if (i > 0 && line[i - 1] === ":") continue;
+          return line.slice(0, i);
+        }
+      }
+      return line;
+    })
+    .join("\n");
 }
 
 describe("header — navegacao global", () => {
@@ -64,7 +76,8 @@ describe("header — navegacao global", () => {
   it("logo local com alt='Screen' e sem asset remoto", () => {
     const source = readSource("apps/web/app/_components/site-header.tsx");
     expect(source).toContain('alt="Screen"');
-    expect(source).toContain('src="/brand/screen-logo-black.svg"');
+    expect(source).toContain("/brand/screen-logo-black.svg");
+    expect(source).toContain("/brand/screen-logo-white.svg");
     expect(source).not.toMatch(/src="https?:\/\//);
   });
 });
@@ -82,7 +95,7 @@ describe("home /pt/ — pagina real e segura", () => {
   });
 
   it("nao tem busca fake nem features inexistentes", () => {
-    const code = withoutBlockComments(source);
+    const code = withoutComments(source);
     expect(code).not.toContain("<input");
     expect(code).not.toContain("<form");
     expect(code).not.toMatch(/onde assistir/i);
@@ -116,7 +129,7 @@ describe("explorar /pt/explorar/ — hub sem busca fake", () => {
   });
 
   it("nao ha busca fake, filtros fake, ranking ou populares", () => {
-    const code = withoutBlockComments(source);
+    const code = withoutComments(source);
     expect(code).not.toContain("<input");
     expect(code).not.toContain("<form");
     expect(code).not.toContain("autosuggest");

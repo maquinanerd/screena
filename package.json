@@ -11,6 +11,7 @@
   },
   "scripts": {
     "build": "corepack pnpm --filter @screena/web build",
+    "start": "corepack pnpm --filter @screena/web start",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
