@@ -1,14 +1,21 @@
 /**
- * movie-indexability.ts — Gate anti-thin da pagina de filme. PURO.
+ * movie-indexability.ts — Indexabilidade da pagina de filme. PURO.
  *
  * Reaproveita `evaluateIndexability` de @screena/seo (invariante 5) em vez de
- * reimplementar a regra. Aqui apenas fixamos o contexto da Fase 4A — idioma
- * pt-BR, sem ratings/streaming ainda — e delegamos a decisao.
+ * reimplementar a regra. Aqui fixamos o contexto — idioma pt-BR, sem
+ * ratings/streaming ainda — e delegamos a decisao.
+ *
+ * Politica 2026-07 (indexacao total): toda entidade sincronizada indexa. Um
+ * filme tem sempre sua ficha canonica (schema.org Movie) como dado estruturado
+ * confiavel, entao a pagina indexa independentemente da quantidade de blocos
+ * editoriais. A contagem de blocos vira sinal de qualidade/ranqueamento
+ * (`hasUniqueValue`), nao pre-requisito. O caso "sem dados/slug" (noindex
+ * tecnico) e tratado na propria rota, antes de chamar este avaliador.
  *
  * So content_blocks com `review_status` publicavel (human_reviewed/published)
- * sao renderizados publicamente e contam para o gate. Blocos `ai_generated`,
- * `needs_review`, `draft`, `needs_update`, `blocked` e `archived` NUNCA contam
- * nem aparecem como conteudo final.
+ * sao renderizados publicamente. Blocos `ai_generated`, `needs_review`,
+ * `draft`, `needs_update`, `blocked` e `archived` NUNCA aparecem como conteudo
+ * final.
  */
 
 import { evaluateIndexability, type IndexabilityResult } from "@screena/seo";
@@ -22,7 +29,11 @@ const RENDERABLE_REVIEW_STATUS_SET: ReadonlySet<string> = new Set(
   RENDERABLE_REVIEW_STATUSES,
 );
 
-/** Minimo de blocos renderizaveis distintos para a pagina poder indexar. */
+/**
+ * Numero de blocos renderizaveis distintos a partir do qual a pagina e
+ * considerada "rica" (sinal de qualidade `hasUniqueValue`). NAO e mais gate de
+ * indexacao (politica 2026-07 — indexacao total).
+ */
 export const MIN_RENDERABLE_BLOCKS = 2;
 
 /**
@@ -40,12 +51,11 @@ export interface MovieIndexabilityInput {
 }
 
 /**
- * Decide a indexabilidade da pagina de filme na Fase 4A.
- *
- * Regra: so indexa com `>= MIN_RENDERABLE_BLOCKS` blocos renderizaveis. Sem
- * camada editorial propria suficiente, retorna `noindex` — a pagina existe, mas
- * fica fora do indice. Ratings/streaming nao entram nesta fase, entao nao ha
- * rating exibido (nenhum bloqueio de licenca por aqui ainda).
+ * Decide a indexabilidade da pagina de filme (politica 2026-07 — indexacao
+ * total). Um filme sincronizado indexa sempre; a contagem de blocos apenas
+ * alimenta o sinal de qualidade `hasUniqueValue`, sem gatear a decisao.
+ * Ratings/streaming nao entram nesta fase, entao nao ha rating exibido (nenhum
+ * bloqueio de licenca por aqui ainda).
  */
 export function evaluateMovieIndexability(
   input: MovieIndexabilityInput,
@@ -56,7 +66,7 @@ export function evaluateMovieIndexability(
     hasReliableStructuredData: true,
     valueBlocksCount: count,
     displayedRatings: [],
-    thinContentScore: count >= MIN_RENDERABLE_BLOCKS ? 0 : 1,
+    thinContentScore: 0,
     reviewStatusOk: true,
   });
 }

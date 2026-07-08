@@ -3,7 +3,8 @@ name: seo-audit
 description: >-
   Audita uma rota/pagina publica do Screen (https://thescreen.media) quanto as
   invariantes de SEO e governanca: pureza de render (zero API externa, zero
-  Gemini), gate anti-thin (>= 2 blocos de valor proprios), schema correto por
+  Gemini), indexacao total (invariante 5 — noindex so em caso tecnico; blocos de
+  valor sao qualidade, nao gate), schema correto por
   tipo, canonical autorreferente, hreflang reciproco, decisao de indexabilidade
   (index/noindex/draft/stale/blocked) e diferenciacao filme/serie que nunca
   depende so de cor. Use ao revisar uma rota antes de marca-la como `index`,
@@ -18,9 +19,15 @@ as invariantes do CANON. O objetivo unico e responder, com evidencia: **esta
 pagina pode ser `index`?** — e, se nao, **qual requisito faltou**.
 
 A fonte editorial das regras e [`.claude/rules/seo.md`](../../rules/seo.md). A
-fonte executavel e [`packages/seo`](../../../packages/seo) (gate anti-thin +
-decisao de indexabilidade). Os dois **devem concordar**; qualquer divergencia e
-bug e deve ser corrigida no codigo/regra, nunca contornada na pagina.
+fonte executavel e [`packages/seo`](../../../packages/seo) (decisao de
+indexabilidade). Os dois **devem concordar**; qualquer divergencia e bug e deve
+ser corrigida no codigo/regra, nunca contornada na pagina.
+
+> **Politica atualizada (2026-07).** O gate anti-thin (`>= 2` blocos para
+> indexar) foi **removido** — indexacao **total**: a entidade indexa por padrao,
+> `noindex` so em caso tecnico (404/erro/sem slug-traducao); licenca (inv. 6) e
+> idioma (`PUBLISHED_LOCALES`, inv. 7) seguem valendo. Trechos "gate anti-thin /
+> >= 2 blocos" abaixo refletem a politica antiga; audite pela nova precedencia.
 
 > Esta skill **audita e relata**. Ela nao implementa features de produto, nao
 > chama APIs, nao acessa banco e nao publica nada. O veredito final de

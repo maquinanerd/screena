@@ -3,6 +3,15 @@
 > APIs fornecem dados estruturados. **Screen escreve a camada editorial.**
 > Nenhuma página pública indexável é apenas um espelho de TMDB/IMDb/Rotten Tomatoes.
 
+> **⚠️ Política atualizada (2026-07).** O antigo _gate anti-thin_ (≥ 2 blocos de valor para
+> indexar) foi **removido**: a indexação é **total** (invariante 5) — toda entidade
+> sincronizada indexa; `noindex` só em caso técnico (404, erro, sem slug/tradução), e a
+> licença (invariante 6) continua bloqueando dado sem permissão. Os blocos editoriais viraram
+> **alavanca de qualidade/ranqueamento**, não pré-requisito de `index`. en/es publicam quando
+> completos, via `PUBLISHED_LOCALES` (invariante 7). Trechos abaixo que ainda citam o gate
+> `≥ 2 blocos` ou "en/es nascem noindex" descrevem a política **antiga** — a fonte viva é
+> [`CLAUDE.md`](../CLAUDE.md) + [`.claude/rules/seo.md`](../.claude/rules/seo.md).
+
 Este documento define como Screen gera páginas em escala **com valor real**, sem cair em
 _thin content_ nem em _index bloat_. Ele complementa:
 

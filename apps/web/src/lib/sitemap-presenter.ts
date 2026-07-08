@@ -6,13 +6,14 @@
  * Regras duras (espelham as invariantes 5/6/7 e as regras de seo.md):
  *  - So URLs do dominio canonico `https://thescreen.media`, sempre pt-BR
  *    (`/pt/...`) e com barra final (padrao `trailingSlash: true`). Nada de
- *    `/en`, `/es`, `/admin`, `/dev`, `/api` ou rota interna.
+ *    `/en`, `/es`, `/admin`, `/dev`, `/api` ou rota interna. (en/es entram no
+ *    sitemap quando estiverem em PUBLISHED_LOCALES; hoje so pt-BR publica.)
  *  - No caminho com banco, sitemap e meta robots nao devem discordar: cada
  *    entrada passa pelos MESMOS evaluators de indexabilidade usados pelas
- *    paginas (filme/serie/pessoa: >= 2 blocos publicaveis; noticia:
- *    publicavel + indexavel + corpo suficiente; listagens:
- *    >= MIN_INDEX_ITEMS; portais: >= 2 secoes reais). Pagina `noindex` fica
- *    FORA do sitemap.
+ *    paginas. Politica 2026-07 (indexacao total): filme/serie/pessoa
+ *    sincronizados indexam sempre; noticia: publicavel + indexavel + corpo
+ *    suficiente; listagens/portais: >= 1 item/secao real (vazio = noindex
+ *    tecnico). Pagina `noindex` fica FORA do sitemap.
  *  - Item sem slug canonico ou sem titulo/nome valido nao entra.
  *  - `lastModified` so quando ha campo confiavel (updatedAt do banco);
  *    caso contrario e omitido — nunca inventar precisao.

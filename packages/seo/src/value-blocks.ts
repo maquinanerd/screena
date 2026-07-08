@@ -1,10 +1,14 @@
 /**
- * Blocos de valor proprios (gate anti-thin).
+ * Blocos de valor proprios (sinal de qualidade / ranqueamento).
  *
  * O CANON da Screena define 15 tipos de "bloco de valor" — conteudo proprio
- * que diferencia uma pagina de um simples espelho de dado cru de API. A
- * invariante 5 ("pagina fina recebe noindex") exige >= 2 blocos de valor
- * distintos, alem do dado cru, para que uma pagina possa ser indexada.
+ * que diferencia uma pagina de um simples espelho de dado cru de API.
+ *
+ * Desde a politica 2026-07 (invariante 5 — indexacao total), a contagem de
+ * blocos de valor NAO gate mais a indexacao: toda entidade sincronizada indexa.
+ * Blocos de valor viraram alavanca de qualidade/ranqueamento (E-E-A-T, citacao
+ * em AI Overview) e sinal de "riqueza" da pagina (hasUniqueValue) — nao pre-
+ * requisito de `index`.
  *
  * Este modulo e puro: nao acessa rede, banco, sistema de arquivos, Date ou
  * Math.random. Apenas declara a lista canonica e conta blocos validos.
@@ -60,8 +64,9 @@ export function isValueBlockType(value: string): value is ValueBlockType {
  * - Ignora qualquer string que nao seja um tipo de bloco de valor canonico.
  * - Conta cada tipo no maximo uma vez (duplicatas nao inflam a pontuacao).
  *
- * Funcao pura e determinista. O resultado alimenta o gate anti-thin
- * (>= 2 para permitir indexacao, conforme invariante 5).
+ * Funcao pura e determinista. O resultado e um sinal de qualidade/ranqueamento
+ * (hasUniqueValue) — NAO decide mais indexacao (invariante 5, politica 2026-07:
+ * indexacao total).
  */
 export function countValueBlocks(blocks: string[]): number {
   const seen = new Set<ValueBlockType>();

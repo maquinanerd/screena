@@ -62,8 +62,10 @@ export interface SourceLicenseSeed {
 }
 
 /**
- * Idiomas. Invariantes 7/9: SO pt-BR publica e indexa por padrao no MVP;
- * en e es nascem nao-publicados e nao-indexaveis ate revisao humana.
+ * Idiomas (espelho de PUBLISHED_LOCALES em @screena/config). Invariante 7
+ * (politica 2026-07): pt-BR publica/indexa por padrao; en/es entram como
+ * nao-publicados/nao-indexaveis e so ligam (isPublished/indexDefault = true)
+ * quando completos (dado + i18n de UI + hreflang) e revisados por humano.
  */
 export const LANGUAGE_SEED: readonly LanguageSeed[] = [
   { code: "pt-BR", namePt: "Portugues (Brasil)", nameEn: "Portuguese (Brazil)", isPublished: true, indexDefault: true },

@@ -56,7 +56,11 @@ const PERSON_RENDERABLE_REVIEW_STATUS_SET: ReadonlySet<string> = new Set(
   PERSON_RENDERABLE_REVIEW_STATUSES,
 );
 
-/** Minimo de blocos renderizaveis distintos para indexar a pagina. */
+/**
+ * Numero de blocos renderizaveis distintos a partir do qual a pagina e "rica"
+ * (sinal `hasUniqueValue`). NAO gate mais indexacao (politica 2026-07 —
+ * indexacao total).
+ */
 export const MIN_PERSON_RENDERABLE_BLOCKS = 2;
 
 /**
@@ -349,6 +353,12 @@ export function buildPersonCredits(
   return resolved;
 }
 
+/**
+ * Indexabilidade da pagina de pessoa (politica 2026-07 — indexacao total). Uma
+ * pessoa sincronizada tem sua ficha canonica (schema.org Person) e indexa
+ * sempre; a contagem de blocos so alimenta `hasUniqueValue`. O caso "sem
+ * dados/slug" (noindex tecnico) e tratado na rota, antes deste avaliador.
+ */
 export function evaluatePersonIndexability(
   input: PersonIndexabilityInput,
 ): IndexabilityResult {
@@ -358,7 +368,7 @@ export function evaluatePersonIndexability(
     hasReliableStructuredData: true,
     valueBlocksCount: count,
     displayedRatings: [],
-    thinContentScore: count >= MIN_PERSON_RENDERABLE_BLOCKS ? 0 : 1,
+    thinContentScore: 0,
     reviewStatusOk: true,
   });
 }

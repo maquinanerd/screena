@@ -20,8 +20,6 @@ import {
   type SitemapEntityCandidate,
   type SitemapNewsCandidate,
 } from "../../apps/web/src/lib/sitemap-presenter";
-import { MIN_INDEX_ITEMS } from "../../apps/web/src/lib/entity-index-presenter";
-import { MIN_NEWS_INDEX_ITEMS } from "../../apps/web/src/lib/news-presenter";
 
 const ORIGIN = "https://thescreen.media";
 
@@ -108,17 +106,31 @@ describe("buildSitemapEntries — rotas estaticas e dominio", () => {
   });
 });
 
-describe("buildSitemapEntries — gates de listagem e portal", () => {
-  it(`listagem so entra com >= ${MIN_INDEX_ITEMS} itens validos (noindex fora do sitemap)`, () => {
+describe("buildSitemapEntries — gates de listagem e portal (indexacao total)", () => {
+  it("listagem entra com >= 1 item valido; listagem vazia fica fora", () => {
     const input = richInput();
     input.series = [entity({ slug: "serie-a" }), entity({ slug: "serie-b" })];
     const out = urls(input);
-    expect(out).not.toContain(`${ORIGIN}/pt/series/`);
-    // Os detalhes de serie continuam validos individualmente.
+    // Indexacao total: 2 itens ja bastam para a listagem entrar.
+    expect(out).toContain(`${ORIGIN}/pt/series/`);
     expect(out).toContain(`${ORIGIN}/pt/series/serie-a/`);
+
+    const empty = richInput();
+    empty.series = [];
+    expect(urls(empty)).not.toContain(`${ORIGIN}/pt/series/`);
   });
 
-  it("home/explorar so entram com >= 2 secoes com dado real", () => {
+  it("home/explorar entram com >= 1 secao real; portal vazio fica fora", () => {
+    const empty: SitemapDataInput = {
+      movies: [],
+      series: [],
+      people: [],
+      news: [],
+    };
+    const emptyOut = urls(empty);
+    expect(emptyOut).not.toContain(`${ORIGIN}/pt/`);
+    expect(emptyOut).not.toContain(`${ORIGIN}/pt/explorar/`);
+
     const onlyMovies: SitemapDataInput = {
       movies: richInput().movies,
       series: [],
@@ -126,38 +138,33 @@ describe("buildSitemapEntries — gates de listagem e portal", () => {
       news: [],
     };
     const out = urls(onlyMovies);
-    expect(out).not.toContain(`${ORIGIN}/pt/`);
-    expect(out).not.toContain(`${ORIGIN}/pt/explorar/`);
-
-    const twoSections: SitemapDataInput = {
-      movies: richInput().movies,
-      series: [entity({ slug: "serie-a" })],
-      people: [],
-      news: [],
-    };
-    const withPortal = urls(twoSections);
-    expect(withPortal).toContain(`${ORIGIN}/pt/`);
-    expect(withPortal).toContain(`${ORIGIN}/pt/explorar/`);
+    expect(out).toContain(`${ORIGIN}/pt/`);
+    expect(out).toContain(`${ORIGIN}/pt/explorar/`);
   });
 
-  it("home e explorar usam as secoes reais que cada portal renderiza", () => {
-    const moviesAndPeople: SitemapDataInput = {
-      movies: richInput().movies,
+  it("home ignora pessoas; explorar conta pessoas (secoes reais de cada portal)", () => {
+    const onlyPeople: SitemapDataInput = {
+      movies: [],
       series: [],
       people: [entity({ slug: "pessoa-a" })],
       news: [],
     };
-    const out = urls(moviesAndPeople);
+    const out = urls(onlyPeople);
+    // Home nao renderiza pessoas: 0 secoes -> fora. Explore conta pessoas: entra.
     expect(out).not.toContain(`${ORIGIN}/pt/`);
     expect(out).toContain(`${ORIGIN}/pt/explorar/`);
   });
 
-  it(`listagem de noticias exige >= ${MIN_NEWS_INDEX_ITEMS} publicaveis`, () => {
+  it("listagem de noticias entra com >= 1 publicavel; vazia fica fora", () => {
     const input = richInput();
     input.news = [news({ slug: "not-a" }), news({ slug: "not-b" })];
     const out = urls(input);
-    expect(out).not.toContain(`${ORIGIN}/pt/noticias/`);
+    expect(out).toContain(`${ORIGIN}/pt/noticias/`);
     expect(out).toContain(`${ORIGIN}/pt/noticias/not-a/`);
+
+    const empty = richInput();
+    empty.news = [];
+    expect(urls(empty)).not.toContain(`${ORIGIN}/pt/noticias/`);
   });
 
   it("listagem de noticias conta publicaveis, nao detalhes indexaveis", () => {
@@ -176,12 +183,13 @@ describe("buildSitemapEntries — gates de listagem e portal", () => {
 });
 
 describe("buildSitemapEntries — detalhes de entidade", () => {
-  it("inclui detalhe valido e exclui pagina fina (< 2 blocos publicaveis)", () => {
+  it("inclui detalhe de entidade mesmo com poucos blocos (indexacao total)", () => {
     const input = richInput();
     input.movies.push(entity({ slug: "filme-fino", renderableBlockCount: 1 }));
     const out = urls(input);
     expect(out).toContain(`${ORIGIN}/pt/filmes/filme-a/`);
-    expect(out).not.toContain(`${ORIGIN}/pt/filmes/filme-fino/`);
+    // Antes excluido por anti-thin; agora entra (a ficha crua ja basta).
+    expect(out).toContain(`${ORIGIN}/pt/filmes/filme-fino/`);
   });
 
   it("exclui item sem slug ou sem titulo", () => {

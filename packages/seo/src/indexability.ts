@@ -1,22 +1,29 @@
 /**
- * Decisao de indexabilidade (gate anti-thin + governanca de licenca/idioma).
+ * Decisao de indexabilidade (governanca de licenca/idioma + indexacao total).
  *
  * Reune as invariantes que decidem se uma pagina publica pode ser indexada:
  *
- *  - Invariante 5: pagina fina recebe noindex. Sem >= 2 blocos de valor proprios
- *    (alem de dado cru de API), estrutura confiavel e baixo thin score, nao indexa.
- *  - Invariante 6: dados sem licenca clara (display_allowed=false) nao aparecem em
- *    pagina indexavel. Qualquer rating bloqueado torna a pagina 'blocked'.
- *  - Invariante 7: pt-BR publica primeiro; en/es nascem em draft/noindex ate
- *    revisao humana.
+ *  - Invariante 5 (politica 2026-07): INDEXACAO TOTAL. Toda entidade
+ *    sincronizada e indexada; `noindex` fica so para casos tecnicos (404, erro,
+ *    entidade sem slug/traducao/dados estruturados confiaveis). Conteudo
+ *    editorial proprio (blocos de valor) deixou de ser pre-requisito de
+ *    indexacao e passou a ser alavanca de qualidade/ranqueamento.
+ *  - Invariante 6: dados sem licenca clara (display_allowed=false) nao aparecem
+ *    em pagina indexavel. Qualquer rating bloqueado torna a pagina 'blocked'.
+ *  - Invariante 7 (politica 2026-07): pt-BR publica primeiro; en/es publicam e
+ *    indexam quando completos, controlados por PUBLISHED_LOCALES. Um locale fora
+ *    de PUBLISHED_LOCALES resolve para 'draft' (ainda nao completo), nunca por
+ *    ser "estrangeiro".
  *
  * Funcoes puras e deterministas: sem rede, banco, IO, Date ou Math.random.
  */
 
+import { PUBLISHED_LOCALES } from "@screena/config";
+
 /**
- * Limiar de "thin content". Paginas com thinContentScore acima deste valor sao
- * consideradas finas demais para indexar (mesmo cumprindo os demais requisitos).
- * Escala assumida: 0 (rico) a 1 (totalmente fino).
+ * Limiar historico de "thin content". NAO gate mais indexacao (invariante 5,
+ * politica 2026-07 — indexacao total). Mantido apenas como sinal informativo de
+ * qualidade/ranqueamento; a decisao de `index` nao depende dele.
  */
 export const THIN_THRESHOLD = 0.5;
 
@@ -38,15 +45,27 @@ export interface DisplayedRating {
 export interface IndexabilityInput {
   /** Codigo de idioma da pagina, ex.: 'pt-BR', 'pt', 'en', 'es'. */
   language: string;
-  /** Schema.org / dados estruturados confiaveis estao presentes e validos. */
+  /**
+   * Dados estruturados confiaveis (slug/traducao/schema.org validos) estao
+   * presentes. `false` = caso tecnico (entidade sem slug/traducao) -> noindex.
+   */
   hasReliableStructuredData: boolean;
-  /** Quantidade de blocos de valor proprios distintos (ver countValueBlocks). */
+  /**
+   * Quantidade de blocos de valor proprios distintos (ver countValueBlocks).
+   * Informativo (sinal de qualidade/ranqueamento) — NAO gate mais a indexacao.
+   */
   valueBlocksCount: number;
   /** Ratings exibidos na pagina, cada um com seu flag de licenca. */
   displayedRatings: DisplayedRating[];
-  /** Pontuacao de conteudo fino: 0 (rico) a 1 (fino). Comparada a THIN_THRESHOLD. */
+  /**
+   * Pontuacao de conteudo fino: 0 (rico) a 1 (fino). Informativo — NAO gate mais
+   * a indexacao (invariante 5, politica 2026-07).
+   */
   thinContentScore: number;
-  /** review_status dos content_blocks esta em estado permitido para publicar. */
+  /**
+   * review_status dos content_blocks esta em estado permitido para publicar.
+   * Informativo para exibicao de blocos — NAO gate mais a indexacao da pagina.
+   */
   reviewStatusOk: boolean;
 }
 
@@ -66,32 +85,39 @@ export interface IndexabilityResult {
   decision: IndexabilityDecision;
   /** Motivo legivel (pt-BR) explicando a decisao — util para logs/auditoria. */
   reason: string;
-  /** True se a pagina tem >= 2 blocos de valor proprios (gate anti-thin). */
+  /**
+   * True se a pagina tem >= 2 blocos de valor proprios. Sinal informativo de
+   * qualidade — NAO decide mais indexacao (invariante 5, politica 2026-07).
+   */
   hasUniqueValue: boolean;
   /** True se nenhum rating exibido tem licenca bloqueada (display_allowed=false). */
   allRatingsLicensed: boolean;
 }
 
 /**
- * Numero minimo de blocos de valor proprios para uma pagina nao ser considerada
- * fina (invariante 5).
+ * Numero de blocos de valor proprios a partir do qual a pagina e considerada
+ * "rica" (sinal informativo `hasUniqueValue`). Nao e mais gate de indexacao.
  */
 const MIN_VALUE_BLOCKS = 2;
 
 /**
- * Codigos de idioma que publicam primeiro no MVP (invariante 7).
+ * Locales publicados/indexaveis (invariante 7, politica 2026-07). Fonte de
+ * verdade: PUBLISHED_LOCALES em @screena/config. Um locale fora deste conjunto
+ * resolve para 'draft' (ainda nao completo).
  */
-const PUBLISH_FIRST_LANGUAGES: ReadonlySet<string> = new Set(["pt-BR", "pt"]);
+const PUBLISHED_LOCALE_SET: ReadonlySet<string> = new Set(PUBLISHED_LOCALES);
 
 /**
  * Avalia a indexabilidade de uma pagina aplicando as invariantes 5, 6 e 7.
  *
  * Ordem de precedencia (do mais restritivo ao menos):
- *  1. Algum rating com licenca bloqueada  -> 'blocked' (invariante 6).
- *  2. Idioma fora de pt-BR/pt             -> 'draft'   (invariante 7).
- *  3. Gate anti-thin satisfeito           -> 'index'   (invariante 5).
- *  4. Caso contrario                      -> 'noindex' (invariante 5), com
- *     motivo apontando o requisito que faltou.
+ *  1. Algum rating com licenca bloqueada     -> 'blocked' (invariante 6).
+ *  2. Idioma fora de PUBLISHED_LOCALES        -> 'draft'   (invariante 7).
+ *  3. Caso tecnico (sem dados estruturados
+ *     confiaveis / sem slug / sem traducao)   -> 'noindex' (invariante 5).
+ *  4. Caso contrario                          -> 'index'   (invariante 5:
+ *     indexacao total — entidade sincronizada, licenciada e em idioma
+ *     publicado indexa, independentemente da quantidade de blocos de valor).
  *
  * Pura e determinista: nao usa Date nem Math.random.
  */
@@ -112,54 +138,34 @@ export function evaluateIndexability(input: IndexabilityInput): IndexabilityResu
     };
   }
 
-  // 2. Invariante 7: en/es (qualquer idioma != pt-BR/pt) nascem em draft/noindex.
-  if (!PUBLISH_FIRST_LANGUAGES.has(input.language)) {
+  // 2. Invariante 7: locale ainda nao publicado (fora de PUBLISHED_LOCALES).
+  if (!PUBLISHED_LOCALE_SET.has(input.language)) {
     return {
       decision: "draft",
-      reason: `Idioma '${input.language}' nao publica primeiro no MVP; nasce em draft/noindex ate revisao humana (invariante 7).`,
+      reason: `Idioma '${input.language}' ainda nao esta em PUBLISHED_LOCALES; resolve em draft/noindex ate o idioma estar completo e revisado (invariante 7).`,
       hasUniqueValue,
       allRatingsLicensed,
     };
   }
 
-  // 3. Gate anti-thin (invariante 5): so indexa se todos os requisitos baterem.
-  const meetsStructuredData = input.hasReliableStructuredData;
-  const meetsValueBlocks = hasUniqueValue;
-  const meetsThin = input.thinContentScore <= THIN_THRESHOLD;
-  const meetsReview = input.reviewStatusOk;
-
-  if (meetsStructuredData && meetsValueBlocks && meetsThin && meetsReview) {
+  // 3. Caso tecnico: sem dados estruturados/slug/traducao confiaveis -> noindex.
+  if (!input.hasReliableStructuredData) {
     return {
-      decision: "index",
+      decision: "noindex",
       reason:
-        "Dados estruturados confiaveis, >= 2 blocos de valor proprios, conteudo nao fino e review_status permitido — pagina indexavel (invariante 5).",
+        "Caso tecnico: entidade sem dados estruturados/slug/traducao confiaveis — nao indexa (invariante 5).",
       hasUniqueValue,
       allRatingsLicensed,
     };
   }
 
-  // 4. Pagina fina/incompleta: noindex com motivo do primeiro requisito faltante.
-  const missing: string[] = [];
-  if (!meetsStructuredData) {
-    missing.push("dados estruturados confiaveis ausentes");
-  }
-  if (!meetsValueBlocks) {
-    missing.push(
-      `menos de ${MIN_VALUE_BLOCKS} blocos de valor proprios (atual: ${input.valueBlocksCount})`,
-    );
-  }
-  if (!meetsThin) {
-    missing.push(
-      `thinContentScore ${input.thinContentScore} acima do limiar ${THIN_THRESHOLD}`,
-    );
-  }
-  if (!meetsReview) {
-    missing.push("review_status nao permitido para publicar");
-  }
-
+  // 4. Indexacao total (invariante 5, politica 2026-07): entidade sincronizada,
+  //    licenciada e em idioma publicado indexa. Blocos de valor sao alavanca de
+  //    ranqueamento, nao pre-requisito.
   return {
-    decision: "noindex",
-    reason: `Pagina fina/incompleta — nao indexa (invariante 5). Faltou: ${missing.join("; ")}.`,
+    decision: "index",
+    reason:
+      "Entidade sincronizada, licenciada e em idioma publicado — indexacao total (invariante 5, politica 2026-07). Conteudo editorial e alavanca de ranqueamento, nao pre-requisito.",
     hasUniqueValue,
     allRatingsLicensed,
   };

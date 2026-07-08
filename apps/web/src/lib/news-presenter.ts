@@ -26,7 +26,11 @@ const DISPLAYABLE_LICENSES: ReadonlySet<string> = new Set(["official", "licensed
 /** Itens exibidos na listagem (featured + feed) por pagina; sem paginacao. */
 export const NEWS_INDEX_LIMIT = 24;
 
-/** Minimo de artigos publicaveis para a listagem indexar (anti-thin). */
+/**
+ * Numero de artigos publicaveis a partir do qual a listagem e "rica" (sinal de
+ * qualidade). NAO gate mais indexacao: basta >= 1 artigo publicavel para
+ * indexar (politica 2026-07 — indexacao total); listagem vazia = noindex tecnico.
+ */
 export const MIN_NEWS_INDEX_ITEMS = 3;
 
 /** Corpo minimo (chars, apos trim) para um artigo nao ser considerado fino. */
@@ -376,41 +380,50 @@ export function buildNewsArticleView(input: BuildNewsArticleViewInput): NewsArti
   };
 }
 
-/** Indexabilidade da listagem: >= MIN_NEWS_INDEX_ITEMS publicaveis -> index. */
+/**
+ * Indexabilidade da listagem de noticias (politica 2026-07 — indexacao total):
+ * listagem com >= 1 artigo publicavel indexa; listagem vazia -> `noindex`.
+ */
 export function evaluateNewsIndexIndexability(
   input: NewsIndexIndexabilityInput,
 ): IndexabilityResult {
   const count = input.itemCount < 0 ? 0 : input.itemCount;
   return evaluateIndexability({
     language: "pt-BR",
-    hasReliableStructuredData: true,
+    hasReliableStructuredData: count > 0,
     valueBlocksCount: count,
     displayedRatings: [],
-    thinContentScore: count >= MIN_NEWS_INDEX_ITEMS ? 0 : 1,
+    thinContentScore: 0,
     reviewStatusOk: true,
   });
 }
 
 /**
- * Indexabilidade do artigo: gate anti-thin (corpo suficiente) + review; e a
- * decisao editorial `index_status` tem a palavra final (so indexa se = 'index').
+ * Indexabilidade do artigo (noticia = conteudo editorial, nao entidade
+ * sincronizada). Politica 2026-07: corpo insuficiente e caso tecnico/vazio ->
+ * `noindex`. Alem disso, a decisao editorial `index_status` e o `review_status`
+ * publicavel tem a palavra final: so indexa com `index_status = 'index'` e
+ * revisao publicavel.
  */
 export function evaluateArticleIndexability(
   input: ArticleIndexabilityInput,
 ): IndexabilityResult {
   const base = evaluateIndexability({
     language: "pt-BR",
-    hasReliableStructuredData: true,
+    hasReliableStructuredData: input.bodySufficient,
     valueBlocksCount: input.bodySufficient ? 2 : 0,
     displayedRatings: [],
-    thinContentScore: input.bodySufficient ? 0 : 1,
+    thinContentScore: 0,
     reviewStatusOk: input.reviewStatusOk,
   });
-  if (base.decision === "index" && input.indexStatus !== "index") {
+  if (
+    base.decision === "index" &&
+    (input.indexStatus !== "index" || !input.reviewStatusOk)
+  ) {
     return {
       ...base,
       decision: "noindex",
-      reason: `Decisao editorial index_status='${input.indexStatus}' mantem noindex.`,
+      reason: `Decisao editorial mantem noindex (index_status='${input.indexStatus}', review publicavel=${input.reviewStatusOk}).`,
     };
   }
   return base;

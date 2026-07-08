@@ -1,6 +1,8 @@
 # @screena/seo
 
-Gate **anti-thin** e decisao de **indexabilidade** do Screen.
+Decisao de **indexabilidade** do Screen (politica 2026-07 — **indexacao total**:
+o antigo gate anti-thin foi removido; `noindex` so em caso tecnico, licenca
+(inv. 6) e idioma via `PUBLISHED_LOCALES` (inv. 7) seguem valendo).
 `@screena/seo` e namespace tecnico legado.
 
 Este pacote concentra a logica que decide se uma pagina publica pode ser

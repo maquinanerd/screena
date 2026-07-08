@@ -41,17 +41,17 @@ describe("countPopulatedSections", () => {
   });
 });
 
-describe("evaluatePortalIndexability (gate anti-thin)", () => {
-  it("com 0 ou 1 secao populada -> noindex (hub puro e conteudo fino)", () => {
+describe("evaluatePortalIndexability (indexacao total)", () => {
+  it("portal vazio (0 secoes) -> noindex; >= 1 secao real -> index", () => {
     expect(evaluatePortalIndexability({ populatedSectionCount: 0 }).decision).toBe(
       "noindex",
     );
     expect(evaluatePortalIndexability({ populatedSectionCount: 1 }).decision).toBe(
-      "noindex",
+      "index",
     );
   });
 
-  it(`com >= ${MIN_PORTAL_SECTIONS} secoes populadas -> index`, () => {
+  it(`com >= ${MIN_PORTAL_SECTIONS} secoes populadas -> index (pagina "rica")`, () => {
     expect(evaluatePortalIndexability({ populatedSectionCount: 2 }).decision).toBe(
       "index",
     );

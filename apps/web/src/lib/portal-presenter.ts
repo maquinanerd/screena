@@ -7,16 +7,21 @@
  * real e OMITIDA — nunca preenchida com placeholder, ranking, "populares",
  * nota ou streaming fabricados.
  *
- * Gate anti-thin (invariante 5): um portal so e `index` quando pelo menos
- * MIN_PORTAL_SECTIONS secoes tem dado real — cada secao populada e um bloco de
- * valor proprio; a copy institucional do hero nao conta. Na duvida, noindex.
+ * Indexacao (invariante 5, politica 2026-07 — indexacao total): um portal
+ * indexa quando tem pelo menos 1 secao com dado real. Portal completamente
+ * vazio (so hero institucional, nenhuma secao populada) e caso tecnico/vazio e
+ * recebe `noindex`. O numero de secoes populadas segue como sinal de qualidade.
  */
 
 import { evaluateIndexability, type IndexabilityResult } from "@screena/seo";
 
 export type { IndexabilityResult } from "@screena/seo";
 
-/** Minimo de secoes com dado real para o portal poder indexar (>= 2 blocos). */
+/**
+ * Numero de secoes populadas a partir do qual o portal e considerado "rico"
+ * (sinal de qualidade). NAO gate mais indexacao: basta >= 1 secao real para
+ * indexar (politica 2026-07 — indexacao total); vazio = noindex tecnico.
+ */
 export const MIN_PORTAL_SECTIONS = 2;
 
 /** Cap de cards por secao de entidade na home. */
@@ -54,10 +59,10 @@ export interface PortalIndexabilityInput {
 }
 
 /**
- * Decide a indexabilidade de um portal (home/explorar) reusando o gate
- * canonico de @screena/seo: cada secao populada com dado real conta como um
- * bloco de valor; com menos de MIN_PORTAL_SECTIONS a pagina existe mas recebe
- * `noindex` (hub de navegacao puro e conteudo fino).
+ * Decide a indexabilidade de um portal (home/explorar) reusando o avaliador
+ * canonico de @screena/seo. Politica 2026-07 (indexacao total): portal com
+ * pelo menos 1 secao de dado real indexa; portal vazio (nenhuma secao populada)
+ * e caso tecnico/vazio -> `noindex`.
  */
 export function evaluatePortalIndexability(
   input: PortalIndexabilityInput,
@@ -66,10 +71,10 @@ export function evaluatePortalIndexability(
     input.populatedSectionCount < 0 ? 0 : input.populatedSectionCount;
   return evaluateIndexability({
     language: "pt-BR",
-    hasReliableStructuredData: true,
+    hasReliableStructuredData: count > 0,
     valueBlocksCount: count,
     displayedRatings: [],
-    thinContentScore: count >= MIN_PORTAL_SECTIONS ? 0 : 1,
+    thinContentScore: 0,
     reviewStatusOk: true,
   });
 }

@@ -2,7 +2,8 @@
 name: seo-reviewer
 description: >-
   Use para revisar SEO de paginas e componentes do Screen antes de marcar como
-  index: gate anti-thin (>= 2 blocos de valor proprios), correcao de Schema.org
+  index: indexacao total (invariante 5 — noindex so em caso tecnico; blocos de
+  valor sao qualidade/ranqueamento, nao gate), correcao de Schema.org
   por tipo, decisao de indexabilidade (index/noindex/draft/stale/blocked),
   pureza de render (zero API externa e zero Gemini no render) e diferenciacao
   filme/serie por cinco sinais (label + badge + breadcrumb + schema + URL).
@@ -33,24 +34,31 @@ Identidade publica: a marca e **Screen** e o dominio canonico e
 
 Estado atual: ratings externos, streaming/onde assistir, RSSPRIME/MN26 e
 reviews proprias ainda nao estao ativos como produto publico. Nao aprove nem
-solicite esses blocos para forcar uma pagina a passar no gate anti-thin sem
-payload licenciado, revisado e escopo explicito.
+solicite esses blocos por inferencia sem payload licenciado, revisado e escopo
+explicito.
+
+> **Politica atualizada (2026-07).** O gate anti-thin (`>= 2` blocos para
+> indexar) foi **removido** — a indexacao e **total**. Blocos de valor sao
+> alavanca de qualidade/ranqueamento, nao gate. Revise pela nova precedencia
+> abaixo.
 
 ## Eixos de revisao
 
-### 1. Gate anti-thin (invariante 5)
+### 1. Indexacao total e qualidade (invariante 5)
 
-Uma pagina so indexa com **>= 2 blocos de valor proprios distintos**, alem do dado
-cru de API. Dado cru espelhado (ficha, sinopse importada, nota numerica solta)
-**nao conta**. Verifique:
+Uma entidade sincronizada **indexa por padrao**; `noindex` so em caso tecnico
+(404, erro, sem slug/traducao/dados estruturados confiaveis). Blocos de valor
+proprios NAO gateiam a indexacao — sao **alavanca de qualidade/ranqueamento**.
+Verifique:
 
 - Quantos blocos de valor reais existem (dos 15 aceitos) e se sao de **tipos
-  distintos** — duplicatas do mesmo tipo nao somam.
-- Se um bloco gerado por IA so e contado quando: veio de payload controlado do
-  PostgreSQL, passou validacao anti-alucinacao, esta salvo em `content_blocks`,
-  tem `prompt_version` e `input_hash`, nao copia sinopse externa e tem
-  `review_status` publicavel (`human_reviewed`/`published`).
-- Na duvida: pagina fina = `noindex`. Nunca relaxe o limiar para "fazer indexar".
+  distintos** — sinal de riqueza/`hasUniqueValue`, nao requisito de `index`.
+- Se um bloco gerado por IA so e **renderizado/contado como qualidade** quando:
+  veio de payload controlado do PostgreSQL, passou validacao anti-alucinacao,
+  esta salvo em `content_blocks`, tem `prompt_version` e `input_hash`, nao copia
+  sinopse externa e tem `review_status` publicavel (`human_reviewed`/`published`).
+- Nunca use "indexacao total" para justificar indexar mock/placeholder/dado sem
+  licenca — a invariante 6 continua bloqueando.
 
 ### 2. Indexabilidade (precedencia correta)
 
@@ -58,11 +66,9 @@ Confirme que a decisao segue a precedencia, do mais restritivo ao menos:
 
 1. Rating com licenca bloqueada (`display_allowed=false`,
    `license_status` `unknown`/`blocked`) → `blocked` (invariante 6).
-2. Idioma fora de pt-BR/pt → `draft` (invariante 7).
-3. Gate anti-thin satisfeito (dados confiaveis **e** >= 2 blocos **e**
-   `thinContentScore <= THIN_THRESHOLD` **e** `review_status` publicavel) →
-   `index`.
-4. Caso contrario → `noindex`, com motivo apontando o requisito faltante.
+2. Idioma fora de `PUBLISHED_LOCALES` → `draft` (invariante 7).
+3. Caso tecnico (sem dados estruturados/slug/traducao confiaveis) → `noindex`.
+4. Caso contrario → `index` (indexacao total; blocos de valor nao gateiam).
 
 `<meta robots>` e sitemap saem da **mesma** fonte (`page_indexability_decisions`)
 e nunca podem discordar. So paginas `index` entram no sitemap do idioma.

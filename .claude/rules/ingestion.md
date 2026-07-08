@@ -52,7 +52,8 @@ as tabelas/regras acima sao contrato de governanca, nao autorizacao para ativar 
 Regras do fluxo:
 
 - O bruto **nunca** vai direto para pagina indexavel; so o normalizado e elegivel (e ainda
-  assim sujeito a licenca e ao gate anti-thin).
+  assim sujeito a licenca, ao idioma publicado e a validade tecnica — ver invariante 5,
+  indexacao total, e invariante 6).
 - A normalizacao **nao inventa fatos**: persiste apenas o que o upstream retornou, com origem
   rastreavel (**Invariante 12** em espirito — a ingestao tambem nao cria entidades nem
   fabrica dados).

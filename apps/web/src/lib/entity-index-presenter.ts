@@ -7,7 +7,8 @@
  *  - imagem: path LOCAL seguro (demo/committed) OU URL remota do TMDB montada do
  *    `file_path` cru (via helper governado); path invalido/externo -> null -> fallback;
  *  - ordenacao deterministica e cap de itens; sem paginacao complexa;
- *  - gate anti-thin: listagem vazia/fina -> noindex; com itens suficientes -> index.
+ *  - indexacao (politica 2026-07 — indexacao total): listagem com >= 1 item
+ *    valido indexa; listagem vazia e caso tecnico/vazio -> noindex.
  */
 
 import { evaluateIndexability, type IndexabilityResult } from "@screena/seo";
@@ -19,8 +20,9 @@ import { buildTmdbImageUrl, type TmdbImageSize } from "./tmdb-image-url";
 export const INDEX_ITEM_LIMIT = 24;
 
 /**
- * Minimo de itens validos para a listagem ser indexavel (anti-thin de porta de
- * entrada). Abaixo disso a listagem e considerada fina e recebe `noindex`.
+ * Numero de itens validos a partir do qual a listagem e considerada "rica"
+ * (sinal de qualidade). NAO gate mais indexacao: basta >= 1 item valido para
+ * indexar (politica 2026-07 — indexacao total); listagem vazia = noindex tecnico.
  */
 export const MIN_INDEX_ITEMS = 3;
 
@@ -333,9 +335,9 @@ export function buildPersonIndexView(
 }
 
 /**
- * Decide index/noindex da listagem via o gate canonico. Reusa `evaluateIndexability`
- * (pt-BR, structured data), com `itemCount` alimentando o gate anti-thin: listagem
- * com >= MIN_INDEX_ITEMS itens validos indexa; vazia/fina recebe `noindex`.
+ * Decide index/noindex da listagem via o avaliador canonico. Politica 2026-07
+ * (indexacao total): listagem com >= 1 item valido indexa; listagem vazia e
+ * caso tecnico/vazio -> `noindex`.
  */
 export function evaluateEntityIndexIndexability(
   input: EntityIndexIndexabilityInput,
@@ -343,10 +345,10 @@ export function evaluateEntityIndexIndexability(
   const count = input.itemCount < 0 ? 0 : input.itemCount;
   return evaluateIndexability({
     language: "pt-BR",
-    hasReliableStructuredData: true,
+    hasReliableStructuredData: count > 0,
     valueBlocksCount: count,
     displayedRatings: [],
-    thinContentScore: count >= MIN_INDEX_ITEMS ? 0 : 1,
+    thinContentScore: 0,
     reviewStatusOk: true,
   });
 }

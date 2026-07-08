@@ -127,20 +127,20 @@ describe("selectRenderablePersonBlocks", () => {
   });
 });
 
-describe("evaluatePersonIndexability", () => {
-  it("mantem noindex com menos de dois blocos renderizaveis", () => {
+describe("evaluatePersonIndexability (indexacao total)", () => {
+  it("indexa mesmo com menos de dois blocos (a ficha da pessoa basta)", () => {
     expect(evaluatePersonIndexability({ renderableBlockCount: 0 }).decision).toBe(
-      "noindex",
+      "index",
     );
     expect(evaluatePersonIndexability({ renderableBlockCount: 1 }).decision).toBe(
-      "noindex",
+      "index",
     );
   });
 
-  it("indexa a partir de dois blocos renderizaveis", () => {
-    expect(evaluatePersonIndexability({ renderableBlockCount: 2 }).decision).toBe(
-      "index",
-    );
+  it("indexa com dois ou mais blocos (pagina rica)", () => {
+    const rich = evaluatePersonIndexability({ renderableBlockCount: 2 });
+    expect(rich.decision).toBe("index");
+    expect(rich.hasUniqueValue).toBe(true);
   });
 });
 

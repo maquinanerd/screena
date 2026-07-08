@@ -45,8 +45,8 @@ const INVARIANTS: ReadonlyArray<{ id: number; label: string; needles: readonly s
   },
   {
     id: 5,
-    label: 'Pagina fina recebe noindex (gate anti-thin)',
-    needles: ['Pagina fina recebe noindex', '2 blocos de valor'],
+    label: 'Indexacao total (noindex so em caso tecnico)',
+    needles: ['Indexacao total', 'noindex fica so para casos tecnicos'],
   },
   {
     id: 6,
@@ -55,8 +55,8 @@ const INVARIANTS: ReadonlyArray<{ id: number; label: string; needles: readonly s
   },
   {
     id: 7,
-    label: 'pt-BR publica primeiro; en/es em draft/noindex',
-    needles: ['pt-BR publica primeiro', 'en/es nascem em draft/noindex'],
+    label: 'pt-BR publica primeiro; en/es via PUBLISHED_LOCALES',
+    needles: ['pt-BR publica primeiro', 'PUBLISHED_LOCALES'],
   },
   {
     id: 8,

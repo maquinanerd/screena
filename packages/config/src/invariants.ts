@@ -40,7 +40,7 @@ export const INVARIANTS: readonly Invariant[] = [
   },
   {
     id: 5,
-    text: "Pagina fina recebe noindex — sem pelo menos 2 blocos de valor proprios alem de dado cru de API, nao indexa.",
+    text: "Indexacao total — toda entidade sincronizada e indexada em todos os idiomas publicados; noindex fica so para casos tecnicos (404, erro, entidade sem slug/traducao). Conteudo editorial e alavanca de ranqueamento, nao pre-requisito de indexacao.",
   },
   {
     id: 6,
@@ -48,7 +48,7 @@ export const INVARIANTS: readonly Invariant[] = [
   },
   {
     id: 7,
-    text: "pt-BR publica primeiro; en/es nascem em draft/noindex ate revisao humana.",
+    text: "pt-BR publica primeiro; en e es sao publicados e indexados quando completos (dado + i18n de UI + hreflang), controlados por PUBLISHED_LOCALES — nao nascem mais permanentemente noindex.",
   },
   {
     id: 8,
@@ -137,6 +137,36 @@ export const INDEX_STATUS = [
  * Tipo derivado de um status de indexacao valido.
  */
 export type IndexStatus = (typeof INDEX_STATUS)[number];
+
+/**
+ * Locales SUPORTADOS pelo produto (a rota existe estruturalmente), em ordem de
+ * prioridade. pt-BR e o locale-base; en/es existem por construcao (o sistema
+ * nasce multilingue) mas so publicam quando completos.
+ */
+export const SUPPORTED_LOCALES = ["pt-BR", "pt", "en", "es"] as const;
+
+/**
+ * Tipo derivado de um locale suportado valido.
+ */
+export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
+
+/**
+ * Locales efetivamente PUBLICADOS e indexaveis (invariante 7, politica 2026-07).
+ *
+ * Somente um locale listado aqui pode receber `decision = 'index'`. pt-BR/pt
+ * publicam primeiro; en e es entram nesta lista APENAS quando completos (dado
+ * traduzido + i18n de UI + hreflang reciproco) e apos revisao humana. Ate la,
+ * en/es resolvem para draft/noindex — nao por serem "estrangeiros", mas por
+ * ainda nao estarem completos. Alterar esta lista e decisao editorial humana
+ * registrada (liga a publicacao de um idioma inteiro), nunca inferida por um
+ * agente.
+ */
+export const PUBLISHED_LOCALES = ["pt-BR", "pt"] as const;
+
+/**
+ * Tipo derivado de um locale publicado valido.
+ */
+export type PublishedLocale = (typeof PUBLISHED_LOCALES)[number];
 
 /**
  * Estados do ciclo de vida de revisao de um content_block

@@ -232,15 +232,16 @@ describe("buildPersonIndexView", () => {
   });
 });
 
-describe("evaluateEntityIndexIndexability", () => {
-  it("noindex para listagem vazia ou fina", () => {
+describe("evaluateEntityIndexIndexability (indexacao total)", () => {
+  it("listagem vazia -> noindex; >= 1 item valido -> index", () => {
     expect(evaluateEntityIndexIndexability({ itemCount: 0 }).decision).toBe("noindex");
+    expect(evaluateEntityIndexIndexability({ itemCount: 1 }).decision).toBe("index");
     expect(evaluateEntityIndexIndexability({ itemCount: MIN_INDEX_ITEMS - 1 }).decision).toBe(
-      "noindex",
+      "index",
     );
   });
 
-  it("index a partir de itens suficientes", () => {
+  it("index com itens suficientes (pagina rica)", () => {
     expect(evaluateEntityIndexIndexability({ itemCount: MIN_INDEX_ITEMS }).decision).toBe(
       "index",
     );

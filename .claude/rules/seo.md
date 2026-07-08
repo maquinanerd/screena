@@ -26,22 +26,30 @@ nunca contornada na pagina.
 
 ---
 
-## 1. Gate anti-thin (>= 2 blocos de valor proprios)
+## 1. Indexacao total; blocos de valor = qualidade _(politica atualizada 2026-07)_
 
-Uma pagina **so pode ser indexada** se tiver **pelo menos 2 blocos de valor
-proprios distintos**, alem do dado cru vindo de API. Dado cru espelhado (ficha,
-sinopse importada, nota numerica solta) **nao conta** como valor proprio.
+**Mudanca de politica (2026-07):** o antigo **gate anti-thin** (que exigia
+`>= 2` blocos de valor proprios para uma pagina indexar) foi **removido**. A
+nova **invariante 5** e **indexacao total**: toda entidade sincronizada e
+indexada em todos os idiomas publicados; `noindex` fica **so para casos
+tecnicos** (404, erro, entidade sem slug/traducao/dados estruturados
+confiaveis). A licenca (invariante 6) continua bloqueando dado sem permissao, e
+o idioma segue o gate da secao 4 (PUBLISHED_LOCALES).
 
-Essa e a **invariante 5**: pagina fina recebe `noindex`.
+Os **blocos de valor proprios** deixaram de ser pre-requisito de `index` e
+passaram a ser **alavanca de qualidade e ranqueamento** (E-E-A-T, profundidade,
+citacao em AI Overview) e sinal de "riqueza" da pagina (`hasUniqueValue`). Dado
+cru espelhado (ficha, sinopse importada, nota solta) segue nao contando como
+valor **proprio**, mas sua ausencia nao impede mais a indexacao.
 
-A contagem e feita por `countValueBlocks()` em
-[`packages/seo/src/value-blocks.ts`](../../packages/seo/src/value-blocks.ts), e
-o limiar de 2 e aplicado por `evaluateIndexability()` em
-[`packages/seo/src/indexability.ts`](../../packages/seo/src/indexability.ts).
-Duplicatas do mesmo tipo **nao** inflam a contagem; entradas desconhecidas sao
-ignoradas.
+A contagem continua em `countValueBlocks()`
+([`packages/seo/src/value-blocks.ts`](../../packages/seo/src/value-blocks.ts));
+`evaluateIndexability()`
+([`packages/seo/src/indexability.ts`](../../packages/seo/src/indexability.ts))
+nao usa mais essa contagem como gate — so como sinal informativo. Duplicatas do
+mesmo tipo **nao** inflam a contagem; entradas desconhecidas sao ignoradas.
 
-### Os 15 blocos de valor aceitos
+### Os 15 blocos de valor (alavanca de qualidade)
 
 1. Introducao editorial propria
 2. Onde assistir por pais
@@ -104,43 +112,51 @@ A decisao de indexabilidade de cada pagina e registrada em
 
 | Decisao   | Significado |
 |-----------|-------------|
-| `index`   | Pagina rica, licenciada e revisada — entra no indice e no sitemap do idioma. |
-| `noindex` | Pagina fina/incompleta (gate anti-thin falhou) — emite `<meta name="robots" content="noindex">` e fica fora do sitemap. |
-| `draft`   | Conteudo ainda nao publicado para aquele idioma (en/es pre-revisao) — `noindex`, fora do sitemap. |
+| `index`   | Entidade sincronizada, licenciada e em idioma publicado — entra no indice e no sitemap do idioma. |
+| `noindex` | Caso tecnico (404, erro, entidade sem slug/traducao/dados estruturados confiaveis) — emite `<meta name="robots" content="noindex">` e fica fora do sitemap. |
+| `draft`   | Idioma ainda nao publicado (fora de `PUBLISHED_LOCALES`) — `noindex`, fora do sitemap. |
 | `stale`   | Conteudo desatualizado por invalidacao posterior — sai do indice ate ser revalidado. |
 | `blocked` | Ha dado sem licenca clara na pagina — nao indexa e nao exibe o dado bloqueado. |
 
-### Precedencia (do mais restritivo ao menos)
+### Precedencia (do mais restritivo ao menos) _(politica atualizada 2026-07)_
 
 1. **Algum rating exibido com licenca bloqueada** (`display_allowed=false`,
    `license_status` `unknown`/`blocked`) → `blocked` (**invariante 6**: dados
    sem licenca clara nao aparecem em pagina indexavel).
-2. **Idioma fora de pt-BR/pt** → `draft` (**invariante 7**).
-3. **Gate anti-thin satisfeito** (dados estruturados confiaveis **e** `>= 2`
-   blocos de valor proprios **e** `thinContentScore <= THIN_THRESHOLD` **e**
-   `review_status` permitido) → `index` (**invariante 5**).
-4. **Caso contrario** → `noindex`, com motivo apontando o requisito faltante.
+2. **Idioma fora de `PUBLISHED_LOCALES`** → `draft` (**invariante 7**).
+3. **Caso tecnico** (sem dados estruturados/slug/traducao confiaveis) →
+   `noindex`.
+4. **Caso contrario** → `index` (**invariante 5 — indexacao total**: entidade
+   sincronizada, licenciada e em idioma publicado indexa, independentemente da
+   quantidade de blocos de valor). Blocos de valor sao alavanca de ranqueamento,
+   nao pre-requisito.
 
-> Regra pratica: **pagina fina = `noindex`**. Na duvida, nao indexar. E sempre
-> melhor uma pagina fora do indice do que poluir o dominio com conteudo raso.
+> Regra pratica: **indexa por padrao**; `noindex` so em caso tecnico. A licenca
+> (invariante 6) continua bloqueando dado sem permissao — "indexacao total"
+> nunca significa indexar mock/placeholder/dado sem licenca.
 
-### `review_status` e indexabilidade de blocos de IA
+### `review_status` e exibicao de blocos de IA
 
 Apenas blocos com `review_status` em estado **publicavel** (`human_reviewed` ou
-`published`) contam para indexacao. Blocos em `draft`, `ai_generated`,
-`needs_review`, `needs_update`, `blocked` ou `archived` **nao** habilitam
-`index`.
+`published`) sao **renderizados** publicamente e contam como sinal de qualidade.
+Blocos em `draft`, `ai_generated`, `needs_review`, `needs_update`, `blocked` ou
+`archived` **nunca** aparecem como conteudo final. Sob indexacao total, isso
+governa **o que a pagina mostra** (nao mais se a pagina indexa): a entidade
+indexa com sua ficha crua mesmo sem nenhum bloco publicavel.
 
 ---
 
-## 4. Idioma: pt-BR primeiro; en/es em draft/noindex
+## 4. Idioma: pt-BR primeiro; en/es via `PUBLISHED_LOCALES` _(politica atualizada 2026-07)_
 
-- **Invariante 7 — pt-BR publica primeiro.** Paginas em `pt-BR`/`pt` sao as
-  unicas elegiveis a `index` no MVP.
-- `en` e `es` **nascem em `draft`/`noindex`** e so passam a `index` apos
-  **revisao humana** explicita (`entity_translations` revisada e
-  `review_status` permitido).
-- Nenhuma traducao automatica e indexada antes de revisao.
+- **Invariante 7 — pt-BR publica primeiro.** So idiomas listados em
+  `PUBLISHED_LOCALES` (`@screena/config`) sao elegiveis a `index`. Hoje:
+  `pt-BR`/`pt`. Idioma fora do conjunto → `draft`.
+- `en` e `es` **entram em `PUBLISHED_LOCALES`** (e passam a indexar) **apenas
+  quando completos**: dado traduzido + i18n de UI + `hreflang` reciproco, e apos
+  **revisao humana** explicita. Nao nascem mais permanentemente `noindex` — mas
+  tambem nao ligam sozinhos.
+- Nenhuma traducao automatica (cega) e indexada antes de revisao. Alterar
+  `PUBLISHED_LOCALES` e decisao editorial humana registrada.
 
 ---
 
@@ -269,18 +285,20 @@ oficial/licenciada (`watch_availability` com provider legitimo).
 
 ---
 
-## Checklist de publicacao (resumo operacional)
+## Checklist de indexacao (resumo operacional) _(politica atualizada 2026-07)_
 
-Antes de marcar uma pagina como `index`:
+Sob **indexacao total**, uma entidade sincronizada indexa por padrao. Antes de
+confirmar `index`, garanta que nenhum bloqueio se aplica:
 
-- [ ] `>= 2` blocos de valor proprios distintos (gate anti-thin / invariante 5).
-- [ ] `thinContentScore <= THIN_THRESHOLD`.
-- [ ] Dados estruturados confiaveis presentes e validos.
-- [ ] Nenhum rating com licenca bloqueada (invariante 6).
-- [ ] Idioma `pt-BR`/`pt` (en/es ficam em `draft`, invariante 7).
-- [ ] `review_status` dos blocos em estado publicavel.
+- [ ] Dados estruturados confiaveis presentes e validos (senao → `noindex`
+      tecnico; nao ha slug/traducao → nao indexa).
+- [ ] Nenhum rating/dado com licenca bloqueada (invariante 6) — senao `blocked`.
+- [ ] Idioma em `PUBLISHED_LOCALES` (`pt-BR`/`pt` hoje; en/es só quando
+      completos, invariante 7) — senao `draft`.
 - [ ] Render le apenas PostgreSQL/cache — zero API externa, zero Gemini.
 - [ ] Schema correto por tipo + `BreadcrumbList`.
 - [ ] Canonical autorreferente; `hreflang` so para variantes publicadas/revisadas.
 - [ ] Diferenciacao filme/serie por label + badge + breadcrumb + schema + URL.
 - [ ] Pagina presente no sitemap do idioma correspondente.
+- [ ] (Qualidade/ranqueamento, nao gate) blocos de valor proprios enriquecem a
+      pagina — `review_status` publicavel para renderizar.

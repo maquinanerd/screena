@@ -1,10 +1,12 @@
 /**
- * Testes puros do gate anti-thin da pagina de filme (Fase 4A).
+ * Testes puros da indexabilidade da pagina de filme.
  *
- * Cobrem a invariante 5 a partir da camada de @screena/web:
- *  - blocos so contam quando o `review_status` e publicavel (human_reviewed/
- *    published); ai_generated/needs_review/etc. nunca contam;
- *  - `< 2` blocos renderizaveis -> noindex; `>= 2` -> index.
+ * Cobrem a invariante 5 (politica 2026-07 — indexacao total) a partir da camada
+ * de @screena/web:
+ *  - blocos so contam para o sinal de qualidade quando o `review_status` e
+ *    publicavel (human_reviewed/published); ai_generated/needs_review/etc. nao;
+ *  - um filme sincronizado indexa SEMPRE (a ficha canonica basta); a contagem
+ *    de blocos so alimenta `hasUniqueValue`, nao gate mais a indexacao.
  */
 
 import { describe, expect, it } from "vitest";
@@ -36,20 +38,20 @@ describe("isPubliclyRenderableBlock", () => {
   });
 });
 
-describe("evaluateMovieIndexability (gate anti-thin)", () => {
-  it("0 blocos renderizaveis -> noindex", () => {
+describe("evaluateMovieIndexability (indexacao total)", () => {
+  it("0 blocos renderizaveis -> index (so a ficha crua ja basta)", () => {
     const result = evaluateMovieIndexability({ renderableBlockCount: 0 });
-    expect(result.decision).toBe("noindex");
+    expect(result.decision).toBe("index");
     expect(result.hasUniqueValue).toBe(false);
   });
 
-  it("1 bloco renderizavel -> noindex", () => {
+  it("1 bloco renderizavel -> index (blocos nao gateiam mais)", () => {
     const result = evaluateMovieIndexability({ renderableBlockCount: 1 });
-    expect(result.decision).toBe("noindex");
+    expect(result.decision).toBe("index");
     expect(result.hasUniqueValue).toBe(false);
   });
 
-  it(`${MIN_RENDERABLE_BLOCKS} blocos renderizaveis -> index`, () => {
+  it(`${MIN_RENDERABLE_BLOCKS} blocos renderizaveis -> index e pagina "rica"`, () => {
     const result = evaluateMovieIndexability({
       renderableBlockCount: MIN_RENDERABLE_BLOCKS,
     });
@@ -63,9 +65,9 @@ describe("evaluateMovieIndexability (gate anti-thin)", () => {
     );
   });
 
-  it("contagem negativa e tratada como zero -> noindex", () => {
+  it("contagem negativa e tratada como zero -> index", () => {
     expect(evaluateMovieIndexability({ renderableBlockCount: -3 }).decision).toBe(
-      "noindex",
+      "index",
     );
   });
 });

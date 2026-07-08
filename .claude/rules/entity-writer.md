@@ -4,8 +4,8 @@
 > redacao editorial assistida por IA). Em portugues (pt-BR). Codigo e
 > identificadores permanecem em ingles. Estas regras valem para qualquer
 > execucao do writer, em qualquer entidade (filme, serie, temporada,
-> episodio, pessoa) e em qualquer idioma (pt-BR primeiro; en/es nascem em
-> draft/noindex).
+> episodio, pessoa) e em qualquer idioma (pt-BR primeiro; en/es publicam quando
+> completos, via `PUBLISHED_LOCALES`).
 
 Estado atual: o Entity Writer roda **offline em TypeScript/Node + Prisma**,
 com adapter Gemini separado do render. O slice ativo de geracao editorial cobre
@@ -145,23 +145,25 @@ explicito para a feature correspondente.
 Status (`review_status`): `draft`, `ai_generated`, `needs_review`,
 `human_reviewed`, `published`, `needs_update`, `blocked`, `archived`.
 
-Um bloco **so conta como valor** (gate anti-thin) se: veio de payload
+Um bloco **so conta como valor** de qualidade/ranqueamento se: veio de payload
 controlado; passou na validacao anti-alucinacao; esta salvo em
 `content_blocks`; tem `prompt_version` e `input_hash`; nao copia sinopse
 externa; e tem `review_status` permitido.
 
-## 9. Gate anti-thin antes de indexar (invariante 5)
+## 9. Indexacao total; blocos = qualidade (invariante 5) _(politica atualizada 2026-07)_
 
-- Antes de qualquer decisao de indexacao, a pagina passa pelo **gate
-  anti-thin**: precisa de **>= 2 blocos de valor proprios** alem de dado cru
-  de API.
-- Sem isso, a decisao registrada em `page_indexability_decisions` e
-  `noindex` (ou `draft`). O writer **nunca** marca uma pagina como `index`
-  por conta propria.
-- Blocos de valor aceitos incluem (entre outros): introducao editorial
-  propria; onde assistir por pais; ratings externos atribuidos; comparacao
-  critica vs audiencia; review propria; FAQ util; elenco comentado; contexto
-  de franquia; guia de temporadas; ordem cronologica; obras parecidas.
+- O antigo **gate anti-thin** (`>= 2` blocos para indexar) foi **removido**. A
+  indexacao e **total**: a entidade indexa por padrao (`noindex` so em caso
+  tecnico; a licenca da invariante 6 continua bloqueando dado sem permissao; o
+  idioma segue `PUBLISHED_LOCALES`).
+- O writer continua **nunca** marcando uma pagina como `index`/publicando por
+  conta propria — a decisao de `index`/publicacao e registrada fora do writer.
+- Os blocos que o writer produz sao **alavanca de qualidade e ranqueamento**
+  (E-E-A-T, profundidade), nao pre-requisito de indexacao. Blocos de valor
+  incluem (entre outros): introducao editorial propria; onde assistir por pais;
+  ratings externos atribuidos; comparacao critica vs audiencia; review propria;
+  FAQ util; elenco comentado; contexto de franquia; guia de temporadas; ordem
+  cronologica; obras parecidas.
 
 ## 10. Publicacao: nunca automatica (invariante 12)
 
@@ -174,8 +176,9 @@ externa; e tem `review_status` permitido.
   - **franquia grande** ou universo com muitas ligacoes;
   - **entidade sensivel** (tema delicado, pessoa real exposta, conteudo que
     exige cuidado editorial/juridico).
-- pt-BR publica primeiro; **en/es nascem sempre em draft/noindex** ate
-  revisao humana (invariante 7).
+- pt-BR publica primeiro; **en/es so entram em `PUBLISHED_LOCALES`** (e so
+  entao indexam) quando completos e revisados por humano — nao nascem mais
+  permanentemente noindex, mas tambem nao ligam sozinhos (invariante 7).
 
 ## 11. Zero IA no render (invariantes 3, 4)
 
@@ -222,8 +225,10 @@ o prompt exige nova versao — nunca editar silenciosamente um prompt em uso.
 5. Salvar em `content_blocks` com `prompt_version`, `input_hash`,
    `output_hash`, `model_provider`, `model_name`, `review_status`,
    `warnings_json`.
-6. Aplicar gate anti-thin (>= 2 blocos de valor proprios).
+6. Indexacao total: a entidade indexa por padrao (blocos de valor sao
+   qualidade/ranqueamento, nao gate); `noindex` so em caso tecnico e licenca.
 7. Exigir revisao humana quando prioritario/lancamento/franquia
-   grande/sensivel; en/es sempre em draft/noindex.
+   grande/sensivel; en/es so indexam quando em `PUBLISHED_LOCALES` (completos
+   + revisados).
 8. Registrar decisao em `page_indexability_decisions`. O writer **nunca**
    publica nem indexa sozinho.

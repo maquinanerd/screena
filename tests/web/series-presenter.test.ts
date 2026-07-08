@@ -77,20 +77,20 @@ describe("selectRenderableSeriesBlocks", () => {
   });
 });
 
-describe("evaluateSeriesIndexability", () => {
-  it("mantem noindex com menos de dois blocos renderizaveis", () => {
+describe("evaluateSeriesIndexability (indexacao total)", () => {
+  it("indexa mesmo com menos de dois blocos (a ficha da serie basta)", () => {
     expect(evaluateSeriesIndexability({ renderableBlockCount: 0 }).decision).toBe(
-      "noindex",
+      "index",
     );
     expect(evaluateSeriesIndexability({ renderableBlockCount: 1 }).decision).toBe(
-      "noindex",
+      "index",
     );
   });
 
-  it("indexa a partir de dois blocos renderizaveis", () => {
-    expect(evaluateSeriesIndexability({ renderableBlockCount: 2 }).decision).toBe(
-      "index",
-    );
+  it("indexa com dois ou mais blocos (pagina rica)", () => {
+    const rich = evaluateSeriesIndexability({ renderableBlockCount: 2 });
+    expect(rich.decision).toBe("index");
+    expect(rich.hasUniqueValue).toBe(true);
   });
 });
 

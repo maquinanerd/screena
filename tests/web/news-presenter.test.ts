@@ -174,10 +174,11 @@ describe("buildNewsIndexView", () => {
   });
 });
 
-describe("evaluateNewsIndexIndexability", () => {
-  it("vazia/fina -> noindex; suficiente -> index", () => {
+describe("evaluateNewsIndexIndexability (indexacao total)", () => {
+  it("listagem vazia -> noindex; >= 1 publicavel -> index", () => {
     expect(evaluateNewsIndexIndexability({ itemCount: 0 }).decision).toBe("noindex");
-    expect(evaluateNewsIndexIndexability({ itemCount: MIN_NEWS_INDEX_ITEMS - 1 }).decision).toBe("noindex");
+    expect(evaluateNewsIndexIndexability({ itemCount: 1 }).decision).toBe("index");
+    expect(evaluateNewsIndexIndexability({ itemCount: MIN_NEWS_INDEX_ITEMS - 1 }).decision).toBe("index");
     expect(evaluateNewsIndexIndexability({ itemCount: MIN_NEWS_INDEX_ITEMS }).decision).toBe("index");
   });
 });
