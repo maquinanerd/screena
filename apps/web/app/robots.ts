@@ -1,22 +1,39 @@
 import type { MetadataRoute } from "next";
 
-import { SITE_URL } from "../src/lib/site";
+import {
+  OFFICIAL_SITE_URL,
+  isOfficialIndexableEnvironment,
+  type SiteUrlEnv,
+} from "../src/lib/site";
 
 /**
  * robots.txt do app publico Screen (https://thescreen.media/robots.txt).
  *
- * Principios (espelham .claude/rules/seo.md):
- *  - Crawl publico geral LIBERADO; o controle fino de indexacao (pagina fina,
- *    draft, en/es) e feito por `<meta name="robots">` por pagina — nunca por
- *    Disallow (Disallow esconde o conteudo mas pode manter a URL no indice).
- *  - Disallow apenas para areas tecnicas/administrativas que nem devem ser
- *    rastreadas: /api/, /dev/ (preview interno) e /admin/ (painel futuro).
- *  - `/_next/` NAO e bloqueado: os assets do Next (JS/CSS/imagens otimizadas)
- *    sao necessarios para o Google renderizar as paginas corretamente.
- *  - Dominio canonico unico: https://thescreen.media. O dominio legado nao
- *    aparece na saida. Puro: sem DB, sem rede.
+ * Principios:
+ *  - Producao oficial libera crawl publico geral somente quando
+ *    THE_SCREEN_PUBLIC_SITE_URL=https://thescreen.media e
+ *    THE_SCREEN_PUBLIC_INDEXING_ENABLED=1.
+ *  - Dev, preview, staging, localhost e dominio temporario bloqueiam tudo com
+ *    Disallow: / e nao anunciam sitemap.
+ *  - Em producao oficial, Disallow fica restrito a areas tecnicas:
+ *    /api/, /dev/ e /admin/.
+ *  - /_next/ nao e bloqueado, porque os assets do Next sao necessarios para
+ *    renderizacao por crawlers.
+ *  - O sitemap so aparece na saida oficial e sempre aponta para
+ *    https://thescreen.media/sitemap.xml. Puro: sem DB, sem rede.
  */
-export default function robots(): MetadataRoute.Robots {
+export function buildRobots(env: SiteUrlEnv = process.env): MetadataRoute.Robots {
+  if (!isOfficialIndexableEnvironment(env)) {
+    return {
+      rules: [
+        {
+          userAgent: "*",
+          disallow: "/",
+        },
+      ],
+    };
+  }
+
   return {
     rules: [
       {
@@ -25,6 +42,10 @@ export default function robots(): MetadataRoute.Robots {
         disallow: ["/api/", "/dev/", "/admin/"],
       },
     ],
-    sitemap: `${SITE_URL}/sitemap.xml`,
+    sitemap: `${OFFICIAL_SITE_URL}/sitemap.xml`,
   };
+}
+
+export default function robots(): MetadataRoute.Robots {
+  return buildRobots();
 }

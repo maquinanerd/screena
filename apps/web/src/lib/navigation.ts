@@ -15,7 +15,7 @@ import {
   NEWS_INDEX_PATH,
   PEOPLE_INDEX_PATH,
   SERIES_INDEX_PATH,
-} from "./site";
+} from "./routes";
 
 /** Um item de navegacao. `vertical` mapeia o acento de reforco (cor de apoio). */
 export interface NavItem {

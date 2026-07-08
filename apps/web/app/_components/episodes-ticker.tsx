@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { SERIES_INDEX_PATH } from "../../src/lib/site";
+import { SERIES_INDEX_PATH } from "../../src/lib/routes";
 
 /**
  * EpisodesTicker — faixa amarela (carrossel) abaixo do hero da Public Marketing

@@ -11,12 +11,20 @@ import { describe, expect, it } from "vitest";
 
 import {
   canonicalPublicUrl,
+  configuredSiteUrl,
   detailPath,
   EXPLORE_PATH,
   HOME_PATH,
+  isOfficialIndexableEnvironment,
+  LOCAL_SITE_URL,
   MOVIES_INDEX_PATH,
   NEWS_INDEX_PATH,
+  normalizeSiteOrigin,
+  OFFICIAL_SITE_URL,
   PEOPLE_INDEX_PATH,
+  PUBLIC_INDEXING_ENABLED_ENV,
+  PUBLIC_SITE_URL_ENV,
+  resolveSiteUrl,
   SERIES_INDEX_PATH,
   SITE_URL,
 } from "../../apps/web/src/lib/site";
@@ -36,27 +44,112 @@ describe("site.ts — constantes de rota publica", () => {
     }
   });
 
-  it("dominio canonico e thescreen.media, sem barra final", () => {
-    expect(SITE_URL).toBe("https://thescreen.media");
+  it("SITE_URL tem formato de origin publico absoluto, sem barra final", () => {
+    const url = new URL(SITE_URL);
+    expect(["https:", "http:"]).toContain(url.protocol);
+    expect(url.origin).toBe(SITE_URL);
+    expect(url.pathname).toBe("/");
+  });
+});
+
+describe("site origin por env", () => {
+  it("documenta as envs canonicas de origem publica e opt-in de indexacao", () => {
+    expect(PUBLIC_SITE_URL_ENV).toBe("THE_SCREEN_PUBLIC_SITE_URL");
+    expect(PUBLIC_INDEXING_ENABLED_ENV).toBe(
+      "THE_SCREEN_PUBLIC_INDEXING_ENABLED",
+    );
+  });
+
+  it("normaliza origin http/https sem barra final", () => {
+    expect(normalizeSiteOrigin("https://THESCREEN.MEDIA/")).toBe(
+      OFFICIAL_SITE_URL,
+    );
+    expect(normalizeSiteOrigin("http://localhost:3000/")).toBe(LOCAL_SITE_URL);
+  });
+
+  it("rejeita origin com path, query, hash, credencial ou protocolo invalido", () => {
+    expect(normalizeSiteOrigin("https://thescreen.media/pt/")).toBeNull();
+    expect(normalizeSiteOrigin("https://thescreen.media/?x=1")).toBeNull();
+    expect(normalizeSiteOrigin("https://thescreen.media/#x")).toBeNull();
+    expect(normalizeSiteOrigin("https://u:p@thescreen.media")).toBeNull();
+    expect(normalizeSiteOrigin("ftp://thescreen.media")).toBeNull();
+  });
+
+  it("resolve origem configurada por env e cai no dominio oficial como fallback", () => {
+    expect(
+      configuredSiteUrl({
+        THE_SCREEN_PUBLIC_SITE_URL: "https://screen-staging.example.com/",
+      }),
+    ).toBe("https://screen-staging.example.com");
+    expect(
+      resolveSiteUrl({
+        THE_SCREEN_PUBLIC_SITE_URL: "https://screen-staging.example.com/",
+      }),
+    ).toBe("https://screen-staging.example.com");
+    expect(resolveSiteUrl({})).toBe(OFFICIAL_SITE_URL);
+  });
+
+  it("so considera indexavel a producao oficial explicitamente configurada", () => {
+    expect(
+      isOfficialIndexableEnvironment({
+        THE_SCREEN_PUBLIC_SITE_URL: OFFICIAL_SITE_URL,
+        THE_SCREEN_PUBLIC_INDEXING_ENABLED: "1",
+        NODE_ENV: "production",
+      }),
+    ).toBe(true);
+    expect(
+      isOfficialIndexableEnvironment({
+        THE_SCREEN_PUBLIC_SITE_URL: LOCAL_SITE_URL,
+        THE_SCREEN_PUBLIC_INDEXING_ENABLED: "1",
+        NODE_ENV: "development",
+      }),
+    ).toBe(false);
+    expect(
+      isOfficialIndexableEnvironment({
+        THE_SCREEN_PUBLIC_SITE_URL: OFFICIAL_SITE_URL,
+        THE_SCREEN_PUBLIC_INDEXING_ENABLED: "1",
+        NODE_ENV: "production",
+        VERCEL_ENV: "preview",
+      }),
+    ).toBe(false);
+    expect(
+      isOfficialIndexableEnvironment({
+        THE_SCREEN_PUBLIC_SITE_URL: OFFICIAL_SITE_URL,
+        THE_SCREEN_PUBLIC_INDEXING_ENABLED: "0",
+        NODE_ENV: "production",
+      }),
+    ).toBe(false);
+    expect(isOfficialIndexableEnvironment({ NODE_ENV: "production" })).toBe(
+      false,
+    );
   });
 });
 
 describe("canonicalPublicUrl", () => {
   it("gera URL absoluta no dominio canonico com barra final", () => {
     expect(canonicalPublicUrl("/pt/filmes/")).toBe(
-      "https://thescreen.media/pt/filmes/",
+      `${OFFICIAL_SITE_URL}/pt/filmes/`,
     );
   });
 
   it("garante barra final quando ausente", () => {
     expect(canonicalPublicUrl("/pt/filmes")).toBe(
-      "https://thescreen.media/pt/filmes/",
+      `${OFFICIAL_SITE_URL}/pt/filmes/`,
     );
   });
 
   it("remove barras duplicadas internas", () => {
     expect(canonicalPublicUrl("/pt//filmes///slug/")).toBe(
-      "https://thescreen.media/pt/filmes/slug/",
+      `${OFFICIAL_SITE_URL}/pt/filmes/slug/`,
+    );
+  });
+
+  it("usa a origem publica configurada, sem forcar producao em staging/dev", () => {
+    expect(
+      canonicalPublicUrl("/pt/filmes/", "https://screen-staging.example.com/"),
+    ).toBe("https://screen-staging.example.com/pt/filmes/");
+    expect(canonicalPublicUrl("/pt/filmes/", LOCAL_SITE_URL)).toBe(
+      "http://localhost:3000/pt/filmes/",
     );
   });
 

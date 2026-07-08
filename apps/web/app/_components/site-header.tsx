@@ -4,7 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 
 import { HOME_HREF, NAV_ITEMS } from "../../src/lib/navigation";
-import { EXPLORE_PATH, HOME_PATH } from "../../src/lib/site";
+import { EXPLORE_PATH, HOME_PATH } from "../../src/lib/routes";
 
 /**
  * SiteHeader — cabecalho/navegacao global do app publico @screena/web.
