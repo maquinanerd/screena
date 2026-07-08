@@ -127,10 +127,6 @@ ambiente:
 corepack enable
 pnpm install --frozen-lockfile
 
-# Migrations ANTES de promover o release (schema em packages/db/prisma)
-pnpm --filter @screena/db db:generate
-pnpm --filter @screena/db db:migrate:deploy
-
 # Build do app publico
 pnpm --filter @screena/web build
 
@@ -145,6 +141,26 @@ node apps/web/.next/standalone/apps/web/server.js
 > (`.next/static`) e de `public/` copiados ao lado do server; confirme que o
 > runtime os encontra. (3) Segredos entram como **env de runtime**, nunca como
 > build-arg do Nixpacks.
+
+### Passo obrigatorio de release: migrations Prisma
+
+Estrategia escolhida: **passo de release separado e obrigatorio antes de trocar
+a imagem/startar o app novo**. Nao deixe a aplicacao nova receber trafego antes
+de `prisma migrate deploy` terminar com sucesso.
+
+No ambiente onde a migration roda, exporte explicitamente a `DATABASE_URL` de
+producao (o Prisma CLI do pacote `@screena/db` nao depende do `.env` da raiz):
+
+```bash
+export DATABASE_URL="postgresql://<user>:<password>@<host>:5432/<database>?sslmode=require"
+corepack enable
+pnpm install --frozen-lockfile
+pnpm --filter @screena/db db:generate
+pnpm --filter @screena/db db:migrate:deploy
+```
+
+Depois disso, e somente depois disso, promova/troque a imagem e execute o start
+do app publico. Migrations destrutivas exigem revisao humana antes do merge.
 
 ---
 
@@ -233,12 +249,12 @@ fica fechado na internet.
 
 ## 8. Pendencias de operacao production-grade
 
-Itens ainda **nao** implementados (rastreados no `README.md` e nos relatorios de
-status em `docs/`), a fechar antes de considerar o deploy maduro:
+Itens operacionais a configurar no servidor antes de considerar o deploy maduro:
 
-- [ ] **Migration no release**: aplicar `db:migrate:deploy` de forma controlada e
-      ordenada (antes de promover), idealmente como passo do pipeline.
-- [ ] **Backup do PostgreSQL**: dump periodico replicado para fora do VPS.
+- [ ] **Migration no release**: rodar `pnpm --filter @screena/db db:migrate:deploy`
+      com `DATABASE_URL` exportado antes do start/promote.
+- [ ] **Backup do PostgreSQL**: agendar `scripts/backup/backup.sh` e validar
+      restore com `scripts/backup/restore-test.sh` em base efemera.
 - [ ] **Healthcheck**: endpoint/HTTP check antes de promover o release.
 - [ ] **URL canonica por env** (ver secao 7) + `noindex` garantido em staging.
 - [ ] **Staging** em subdominio com banco/segredos proprios e `noindex`.
