@@ -1,45 +1,29 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
+import {
+  resolveLocale,
+  rootRedirectPath,
+} from "./src/lib/root-locale";
+
 /**
  * Middleware de locale do app publico @screena/web.
  *
- * Objetivo (FASE 0 - apenas placeholder, sem logica real):
- *   - Detectar o locale a partir do prefixo da URL: pt | en | es.
- *   - Default de publicacao: pt (pt-BR publica primeiro - invariante 7).
- *   - en/es nascem em draft/noindex ate revisao humana.
- *
- * REGRA CRITICA (invariante 7 + SEO):
- *   - NAO fazer redirect automatico de idioma em URL indexavel. Cada locale
- *     tem sua propria URL canonica (ex.: /pt/filmes/..., /en/movies/...).
- *     Redirecionar por Accept-Language quebraria a indexacao e o hreflang.
- *   - A deteccao aqui serve para resolver o locale do request e (no futuro)
- *     injetar headers internos, nunca para reescrever a URL publica.
- *
- * Fase 0: resolve o locale a partir do primeiro segmento da URL e injeta um
- * header interno (x-screena-locale). NAO redireciona nem reescreve a URL
- * publica — cada locale tem sua propria URL canonica (invariante 7 + hreflang).
+ * Regras:
+ *  - Detecta locale pelo primeiro segmento da URL em rotas ja prefixadas.
+ *  - Redireciona somente o path exato "/" com 307 temporario.
+ *  - Nunca redireciona /pt/*, aliases como /filmes, APIs ou assets estaticos.
+ *  - Enquanto en/es nao tiverem conteudo real publicado, o fallback da raiz e
+ *    /pt/. Atualize PUBLISHED_LOCALES quando esses idiomas ficarem prontos.
  */
-
-export const SUPPORTED_LOCALES = ["pt", "en", "es"] as const;
-export const DEFAULT_LOCALE = "pt" as const;
-
-export type Locale = (typeof SUPPORTED_LOCALES)[number];
-
-/**
- * Resolve o locale do request pelo primeiro segmento do pathname, caindo em
- * DEFAULT_LOCALE quando ausente/desconhecido. Pura, sem efeitos de rede.
- */
-export function resolveLocale(pathname: string): Locale {
-  const segment = pathname.split("/")[1] ?? "";
-  return (SUPPORTED_LOCALES as readonly string[]).includes(segment)
-    ? (segment as Locale)
-    : DEFAULT_LOCALE;
-}
 
 export function middleware(request: NextRequest): NextResponse {
-  // Apenas resolve o locale e o expoe como header interno; sem redirect de
-  // idioma em URL indexavel (invariante 7).
+  if (request.nextUrl.pathname === "/") {
+    const url = request.nextUrl.clone();
+    url.pathname = rootRedirectPath(request.headers.get("accept-language"));
+    return NextResponse.redirect(url, 307);
+  }
+
   const locale = resolveLocale(request.nextUrl.pathname);
   const response = NextResponse.next();
   response.headers.set("x-screena-locale", locale);
@@ -49,12 +33,7 @@ export function middleware(request: NextRequest): NextResponse {
 /**
  * matcher: aplica o middleware a todas as rotas exceto assets internos do
  * Next, a API interna e os assets estaticos servidos de `public/`
- * (`/media/`, `/brand/`, `/uploads/` — os LOCAL_IMAGE_PREFIXES do app).
- *
- * Assets estaticos NAO passam pela resolucao de locale: nao ha locale numa
- * imagem, e injetar `x-screena-locale` num arquivo de `public/` so confunde o
- * cache/roteamento. As imagens locais do catalogo (TMDB ingerido offline em
- * `/media/tmdb/...`) precisam ser servidas cruas, sem o middleware no caminho.
+ * (`/media/`, `/brand/`, `/uploads/`).
  */
 export const config = {
   matcher: ["/((?!_next/static|_next/image|favicon.ico|api|media|brand|uploads).*)"],

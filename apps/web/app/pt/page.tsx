@@ -113,13 +113,19 @@ async function getHomeData() {
 export async function generateMetadata(): Promise<Metadata> {
   const { indexability } = await getHomeData();
   const shouldIndex = indexability.decision === "index";
+  const homeCanonicalUrl = canonicalPublicUrl(HOME_PATH);
   return {
     title: { absolute: HOME_TITLE },
     description: HOME_DESCRIPTION,
     robots: shouldIndex
       ? { index: true, follow: true }
       : { index: false, follow: false },
-    alternates: { canonical: canonicalPublicUrl(HOME_PATH) },
+    alternates: { canonical: homeCanonicalUrl,
+      languages:
+        homeCanonicalUrl !== null
+          ? { "pt-BR": homeCanonicalUrl, "x-default": homeCanonicalUrl }
+          : undefined,
+    },
   };
 }
 
