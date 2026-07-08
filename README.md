@@ -140,6 +140,7 @@ Parar o banco: `docker compose -f docker-compose.dev.yml down` · Resetar e apag
 | --- | --- |
 | `pnpm install` | Instala as dependências do monorepo. |
 | `pnpm dev` | Servidor de desenvolvimento do app público. |
+| `pnpm start` | Inicia o app público buildado (`@screena/web`). |
 | `pnpm test` | Testes (Vitest): invariantes e utilitários puros. |
 | `pnpm lint` | ESLint em todo o repositório. |
 | `pnpm typecheck` | Checagem de tipos (`tsc --noEmit`). |
@@ -219,4 +220,7 @@ Documentação canônica em `docs/`:
 - **`screen_score`** (nota própria) — só existe no seed demo; por decisão, a **estrela fica escondida** até haver pipeline editorial real de nota.
 - **Trilíngue de fato** — `/es` e `/en` têm rota, mas dependem de promoção das traduções + i18n da UI antes de entrar em `PUBLISHED_LOCALES`.
 - **Notícias, admin editorial pleno, e toda a camada de usuário** (community, reviews, favoritos, listas, watchlist) — a camada de usuário é ausência **intencional** (Screen é entity-first, não rede social).
-- **Operação production-grade** — merge para `main`, backup do Postgres, healthcheck e migration no release ainda pendentes.
+- **Operação production-grade** — CI com gates, scripts de backup/restore e
+  documentação de migration obrigatória existem; ainda faltam configuração real
+  de branch protection no GitHub, agendamento no servidor, healthcheck e
+  validação de staging.

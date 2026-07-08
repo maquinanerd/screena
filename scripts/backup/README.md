@@ -1,98 +1,103 @@
 # scripts/backup — Backups automaticos do PostgreSQL
 
-> Esta pasta documenta os scripts de **backup** que serao implementados em fases
-> posteriores. Hoje ainda existe **apenas** este README descrevendo o contrato e
-> a politica. Nenhum backup real roda agora.
+Scripts operacionais para backup logico e teste de restore do PostgreSQL do
+Screen. Eles rodam fora do caminho de render, com credenciais vindas de env vars.
 
-## Objetivo
-
-Garantir que a base canonica do Screen (PostgreSQL) — entidades, ratings com
-atribuicao, `content_blocks` versionados, decisoes de indexabilidade, logs de
-sync — seja **recuperavel** a qualquer momento, com perda minima de dados.
-
-## Principios
-
-1. **Backups automaticos e agendados** via **systemd timers** (mesmo padrao dos
-   workers), nao por cron manual ad-hoc.
-2. **Segredos so em env vars**: a conexao (`DATABASE_URL` / variaveis `PG*`)
-   nunca aparece em codigo versionado nem em logs.
-3. **Backup nao toca o render**: roda fora do caminho de request; nunca degrada
-   paginas publicas.
-4. **Restore testavel**: um backup so vale se a restauracao foi verificada. O
-   procedimento de restore e parte do contrato, nao um pensamento posterior.
-5. **Retencao explicita**: politica de retencao definida e aplicada
-   automaticamente (limpeza de backups vencidos).
-
-## Estrategia (alvo)
-
-- **Dump logico** com `pg_dump` (formato custom/`-Fc`) para snapshots completos
-  e portateis, com `gzip`.
-- **Cadencia** sugerida:
-  - **Diario**: dump completo, retencao 7-14 dias.
-  - **Semanal**: dump completo, retencao 4-8 semanas.
-  - **Mensal**: dump completo, retencao 6-12 meses.
-- **Off-site**: copiar os artefatos para armazenamento externo (object storage)
-  alem do disco local do VPS — backup so no mesmo host nao protege contra perda
-  do host.
-- **Integridade**: gerar checksum (ex.: SHA-256) por artefato e registrar
-  tamanho/timestamp.
-- **WAL/PITR** (futuro, opcional): para recuperacao a um ponto no tempo, avaliar
-  archiving de WAL alem dos dumps logicos.
-
-## Layout de artefatos (alvo)
-
-```
-/home/screena/backups/
-  daily/    screena-YYYYMMDD-HHMMSSZ.dump.gz   (+ .sha256)
-  weekly/
-  monthly/
-  logs/     backup-YYYYMMDD.log
-```
-
-## Scripts previstos (a implementar)
+## Scripts
 
 | Script | Responsabilidade |
 | --- | --- |
-| `pg-backup.sh` | `pg_dump -Fc` + gzip + checksum; grava em `daily/weekly/monthly`. |
-| `pg-restore.sh` | Restaura um artefato escolhido em base alvo (com confirmacao). |
-| `prune.sh` | Remove backups vencidos conforme a politica de retencao. |
-| `upload-offsite.sh` | Replica artefatos para armazenamento externo. |
-| `verify.sh` | Valida checksum e (opcional) testa restore em base efemera. |
+| `backup.sh` | Roda `pg_dump -Fc`, grava dump com timestamp, gera checksum SHA-256 e opcionalmente copia off-site via `rclone`. |
+| `restore-test.sh` | Restaura o ultimo dump em base efemera, valida `SELECT count(*) FROM content_blocks`, e derruba a base. |
 
-## Agendamento (systemd timer — alvo)
+Ferramentas esperadas no servidor: `pg_dump`, `pg_restore`, `psql` e
+`sha256sum` ou `shasum`. Para copia off-site, instale/configure `rclone`.
 
+## Variaveis
+
+| Variavel | Obrigatoria? | Descricao |
+| --- | --- | --- |
+| `DATABASE_URL` | Sim, para backup | Connection string da base origem. Nunca versionar. |
+| `BACKUP_DIR` | Nao | Diretorio dos dumps (default: `./backups/postgres`). Em producao, use volume persistente fora do repo. |
+| `BACKUP_PREFIX` | Nao | Prefixo do arquivo (default: `screen-postgres`). |
+| `BACKUP_OFFSITE_RCLONE_REMOTE` | Nao | Destino `rclone` para copia off-site, ex.: `s3:screen-backups/postgres`. |
+| `RESTORE_TEST_ADMIN_URL` | Sim, para restore-test | Connection string administrativa para criar/dropar a base efemera. |
+| `RESTORE_TEST_DB_NAME` | Nao | Nome da base efemera. Default inclui timestamp. |
+| `RESTORE_TEST_DATABASE_URL` | Nao | URL alvo explicita; por default deriva de `RESTORE_TEST_ADMIN_URL` + `RESTORE_TEST_DB_NAME`. |
+
+## Backup diario
+
+```bash
+export DATABASE_URL="postgresql://..."
+export BACKUP_DIR="/home/screen/backups/postgres"
+export BACKUP_OFFSITE_RCLONE_REMOTE="s3:screen-backups/postgres" # opcional
+scripts/backup/backup.sh
 ```
-# /etc/systemd/system/screena-backup.timer  (exemplo conceitual)
-[Timer]
-OnCalendar=*-*-* 03:30:00
-Persistent=true
 
-[Install]
-WantedBy=timers.target
+O script gera:
+
+```text
+/home/screen/backups/postgres/
+  screen-postgres-YYYYMMDDTHHMMSSZ.dump
+  screen-postgres-YYYYMMDDTHHMMSSZ.dump.sha256
 ```
 
+## Cron diario
+
+Exemplo em `/etc/cron.d/screen-postgres-backup`:
+
+```cron
+SHELL=/bin/bash
+PATH=/usr/local/bin:/usr/bin:/bin
+DATABASE_URL=postgresql://user:password@localhost:5432/screen
+BACKUP_DIR=/home/screen/backups/postgres
+BACKUP_OFFSITE_RCLONE_REMOTE=s3:screen-backups/postgres
+
+30 3 * * * screen cd /home/screen/app/current && scripts/backup/backup.sh >> /home/screen/backups/postgres/backup.log 2>&1
 ```
-# /etc/systemd/system/screena-backup.service  (exemplo conceitual)
-[Service]
-Type=oneshot
-EnvironmentFile=/home/screena/app/shared/.env   # segredos fora do git
-ExecStart=/home/screena/app/current/scripts/backup/pg-backup.sh
+
+Em vez de colocar `DATABASE_URL` direto no cron, prefira carregar um env file com
+permissao `0600` quando o ambiente suportar.
+
+## Teste de restore
+
+```bash
+export BACKUP_DIR="/home/screen/backups/postgres"
+export RESTORE_TEST_ADMIN_URL="postgresql://user:password@localhost:5432/postgres"
+scripts/backup/restore-test.sh
 ```
 
-## Restore (procedimento minimo, alvo)
+O teste:
 
-1. Selecionar o artefato (`daily/weekly/monthly`) e validar checksum (`verify.sh`).
-2. Restaurar em uma base **alvo isolada** primeiro (nunca direto em producao sem
-   validacao).
-3. Conferir contagens-chave (entidades, `content_blocks` `published`, ratings com
-   licenca/atribuicao).
-4. So entao promover, com revisao humana.
+1. Localiza o ultimo `*.dump`.
+2. Valida o `.sha256`.
+3. Cria uma base efemera.
+4. Restaura com `pg_restore`.
+5. Roda `SELECT count(*) FROM content_blocks;`.
+6. Derruba a base efemera no `trap` de saida.
 
-## Variaveis de ambiente esperadas (no servidor, fora do git)
+## Restore real
 
-- `DATABASE_URL` ou `PGHOST` / `PGPORT` / `PGDATABASE` / `PGUSER` / `PGPASSWORD`.
-- `BACKUP_DIR` — diretorio base dos artefatos.
-- Credenciais de armazenamento off-site (se aplicavel) — **so em env vars**.
+1. Escolha o dump e valide o checksum:
 
-> Backups contem dados sensiveis e licenciados. Trate os artefatos com o mesmo
-> cuidado da base: acesso restrito, nunca no git, nunca expostos no frontend.
+   ```bash
+   cd /home/screen/backups/postgres
+   sha256sum -c screen-postgres-YYYYMMDDTHHMMSSZ.dump.sha256
+   ```
+
+2. Restaure primeiro em base isolada, nunca direto em producao:
+
+   ```bash
+   createdb screen_restore_check
+   pg_restore --no-owner --no-acl --exit-on-error \
+     --dbname="postgresql://user:password@localhost:5432/screen_restore_check" \
+     screen-postgres-YYYYMMDDTHHMMSSZ.dump
+   psql "postgresql://user:password@localhost:5432/screen_restore_check" \
+     --command='SELECT count(*) FROM content_blocks;'
+   ```
+
+3. Somente depois de validar contagens e integridade, planeje promocao/restore de
+   producao com revisao humana.
+
+Backups contem dados sensiveis/licenciados: nunca commitar, nunca expor em
+frontend e sempre replicar para armazenamento fora do VPS.
