@@ -85,11 +85,15 @@ const EXPECTED_TABLES = [
   "rating_sources", "api_providers", "entity_external_ids",
   // Fase 4F-A — ambiente editorial/blog.
   "articles", "article_translations", "entity_news_links",
+  // P0-00a — raw sync TMDB (schema-only; worker-only, nao lido no render).
+  "tmdb_raw", "tmdb_image_config",
 ];
 const EXPECTED_ENUMS = [
   "EntityType", "ContentBlockType", "ContentSource", "ReviewStatus", "TranslationStatus",
   "IndexDecision", "JobType", "JobStatus", "LicenseStatus", "OfferType", "SyncStatus",
   "ValidationStatus", "ProviderKind",
+  // P0-00a — discriminador dedicado do raw sync TMDB.
+  "TmdbEntityKind",
 ];
 const EXPECTED_SCALES: Record<string, number> = {
   imdb: 10, rotten_tomatoes: 100, metacritic: 100, letterboxd: 5, filmaffinity: 10,
@@ -111,20 +115,20 @@ async function runChecks(url: string): Promise<void> {
   }
 
   try {
-    // 3. 24 tabelas esperadas
+    // 3. 29 tabelas esperadas (27 Fase 1/4F-A + tmdb_raw + tmdb_image_config do P0-00a)
     const tables = (await q<{ table_name: string }>(
       "SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'",
     )).map((r) => r.table_name).filter((t) => t !== "_prisma_migrations");
     const missing = EXPECTED_TABLES.filter((t) => !tables.includes(t));
-    record(3, "27 tabelas esperadas", tables.length === 27 && missing.length === 0,
+    record(3, "29 tabelas esperadas", tables.length === 29 && missing.length === 0,
       `encontradas ${tables.length}${missing.length ? ", faltando " + missing.join(",") : ""}`);
 
-    // 4. 13 enums esperados
+    // 4. 14 enums esperados (13 + TmdbEntityKind do P0-00a)
     const enums = (await q<{ typname: string }>(
       "SELECT typname FROM pg_type WHERE typtype='e' AND typnamespace='public'::regnamespace",
     )).map((r) => r.typname);
     const missingEnums = EXPECTED_ENUMS.filter((e) => !enums.includes(e));
-    record(4, "13 enums esperados", enums.length === 13 && missingEnums.length === 0,
+    record(4, "14 enums esperados", enums.length === 14 && missingEnums.length === 0,
       `encontrados ${enums.length}${missingEnums.length ? ", faltando " + missingEnums.join(",") : ""}`);
 
     // 5/6/7. languages
