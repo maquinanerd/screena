@@ -61,29 +61,29 @@ Fluxo mental: **API externa -> worker (offline, com log) -> PostgreSQL -> [Entit
 
 ## 4. Stack e versoes
 
-- **Monorepo pnpm** (`pnpm@9`). Workspaces: `apps/*`, `packages/*`, `api-clients/*`, `services/*`.
+- **Monorepo pnpm** (`pnpm@9.15.4` via Corepack). Workspaces: `apps/*`, `packages/*`, `api-clients/*`, `services/*`.
 - **Node 22 LTS**, **TypeScript strict**, ESM (`"type": "module"`).
 - **Frontend**: Next.js App Router, RSC, ISR/revalidate.
 - **Estilo**: Tailwind CSS com tokens `--screena-*` legados/tecnicos.
 - **Banco**: PostgreSQL + Prisma em `packages/db`, com schema/migrations/seeds reais ja existentes.
-- **Workers**: Python 3.12 para esqueletos legados/roadmap. TMDB e Entity Writer estao atualmente em TypeScript/Node + Prisma.
+- **Workers**: Python 3.12 apenas para esqueletos legados/roadmap. TMDB, sync e Entity Writer estao atualmente em TypeScript/Node + Prisma.
 - **IA**: Gemini — **apenas offline**, nunca no render.
 - **Deploy**: VPS + CloudPanel; Next via Node/PM2/systemd; workers via systemd timers.
-- Qualidade: ESLint + Prettier; testes com Vitest (`pnpm test`); `pnpm typecheck`, `pnpm lint`, `pnpm audit:invariants` / `pnpm audit:render`.
+- Qualidade: ESLint + Prettier; testes com Vitest (`pnpm test`); `pnpm typecheck`, `pnpm lint`, `pnpm audit:invariants`, `pnpm audit:render` e `pnpm build`.
 
 ## 5. Mapa do monorepo
 
 | Caminho | Conteudo |
 | --- | --- |
 | `apps/web` | App publico `@screena/web` (Next App Router, render puro). |
-| `apps/admin` | Painel interno `@screena/admin` (revisao editorial, decisoes). |
+| `apps/admin` | Painel interno `@screena/admin` atualmente read-only; escrita/revisao editorial completa e planejada. |
 | `packages/config` | `@screena/config` — config compartilhada, constantes, env tipado. |
 | `packages/schemas` | `@screena/schemas` — validadores e contratos de dados (TS puro: ratings, saida do Entity Writer). |
 | `packages/seo` | `@screena/seo` — indexabilidade, schema.org, sitemap, robots. |
 | `packages/ui` | `@screena/ui` — componentes, tokens de cor, badges filme/serie. |
 | `packages/types` | `@screena/types` — tipos TS compartilhados. |
 | `packages/db` | `@screena/db` — schema Prisma, migrations, seeds e acesso server-only ao PostgreSQL. |
-| `workers/` | Workers Python (esqueletos/roadmap): ratings, streaming, news, entity_writer, scheduler; TMDB legado/scaffold. |
+| `workers/` | Workers Python (esqueletos/roadmap): ratings, streaming, news e scheduler; TMDB legado/scaffold nao substitui o client TS atual. |
 | `services/` | Servicos de dominio; `ingestion`, `sync` e `entity-writer` ja tem implementacao TS/Node parcial. |
 | `api-clients/` | Clients externos; `tmdb` e real em TS/Node, demais estao como contratos/roadmap. |
 | `database/` | Documentacao historica de modelagem; a fonte executavel atual e `packages/db/prisma`. |
@@ -111,7 +111,7 @@ Cada pacote em `packages/*` tem: `package.json` (com `"main": "./src/index.ts"` 
 
 - **Fases pequenas**: uma issue -> uma branch -> um PR pequeno e revisavel. Nada de PR gigante.
 - **Branches**: parta da branch base; nomeie por escopo (ex.: `feat/seo-indexability`, `chore/schemas-ratings`).
-- **Testes**: cada utilitario puro chega com teste (Vitest). As invariantes tem testes em `tests/governance/`. Rode `pnpm typecheck` e `pnpm test` antes de abrir PR.
+- **Testes**: cada utilitario puro chega com teste (Vitest). As invariantes tem testes em `tests/governance/`. Rode `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm audit:invariants`, `pnpm audit:render` e `pnpm build` antes de abrir PR.
 - **Commits/PRs**: descreva o "porque". Aponte qual invariante o codigo respeita ou protege.
 - **Revisao HUMANA obrigatoria** para: decisoes de **licenca** (o que pode ou nao aparecer), **indexacao em massa** (mudar muitas paginas para index/noindex) e **publicacao** de conteudo (`published`). Agente nunca decide isso sozinho.
 - Nao chame APIs externas, nao rode Gemini real e nao publique conteudo automaticamente. Builds/testes locais sao esperados quando a tarefa pedir validacao.
@@ -172,3 +172,4 @@ Um bloco gerado por IA so conta como valor se: veio de **payload controlado**; p
 - **NUNCA** fabricar `AggregateRating` ou transformar nota de uma fonte no rotulo de outra.
 - **NUNCA** publicar en/es sem revisao humana (nascem draft/noindex).
 - **NUNCA** criar ou alterar schema/migrations fora de tarefa aprovada para banco.
+- **NUNCA** tratar a `Public Marketing Home v4` (`/pt`) como `Public Catalog Index`, nem tratar um ajuste do `Home Hero Carousel` como autorizacao para reescrever a home inteira. Antes de qualquer alteracao visual, consultar [`docs/frontend/page-map.md`](docs/frontend/page-map.md) (mapa de telas e escopo).

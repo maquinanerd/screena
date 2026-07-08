@@ -5,6 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
+import type { TmdbEndpoints } from '@screena/tmdb-client'
 import { importMovie, importPerson, importTvShow } from '../import/index.js'
 import type { ImportContext } from '../import/types.js'
 import type {
@@ -126,6 +127,7 @@ function makeTmdb(overrides: Partial<TmdbReadPort> = {}): TmdbReadPort {
       episodes: [{ episode_number: 1 }, { episode_number: 2 }],
     }),
     getPerson: async (id) => ({ id, name: 'Pessoa', external_ids: { imdb_id: 'nm1' } }),
+    getUpcomingMovies: async () => ({ page: 1, results: [], total_pages: 1, total_results: 0 }),
   }
   return { ...base, ...overrides }
 }
@@ -220,5 +222,16 @@ describe('importPerson', () => {
     expect(result).toMatchObject({ status: 'success', created: true })
     expect(store.people.size).toBe(1)
     expect(syncLog.entries[0]?.status).toBe('success')
+  })
+})
+
+describe('contrato TmdbReadPort', () => {
+  it('o client TMDB real (TmdbEndpoints) satisfaz o TmdbReadPort da ingestao', () => {
+    // Asserção em tempo de COMPILAÇÃO: se o client deixar de cobrir um método do
+    // port (ex.: getUpcomingMovies), o typecheck falha AQUI. composition.ts faz
+    // esse assign (tmdb: client.endpoints) em runtime, mas é excluído do
+    // typecheck — este teste tranca o contrato tipo <-> runtime.
+    const asPort = (client: TmdbEndpoints): TmdbReadPort => client
+    expect(typeof asPort).toBe('function')
   })
 })

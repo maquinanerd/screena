@@ -7,6 +7,12 @@
 > episodio, pessoa) e em qualquer idioma (pt-BR primeiro; en/es nascem em
 > draft/noindex).
 
+Estado atual: o Entity Writer roda **offline em TypeScript/Node + Prisma**,
+com adapter Gemini separado do render. O slice ativo de geracao editorial cobre
+principalmente `editorial_intro` e `cast_intro` em pt-BR; demais `block_type`
+listados abaixo sao contratos/roadmap ate haver prompt, payload, validacao,
+licenca e revisao humana explicitos.
+
 ## 1. Proposito e limite do agente
 
 O Entity Writer **redige** blocos de conteudo editorial. Ele **nao decide a
@@ -22,8 +28,8 @@ entidades, nao chama APIs externas e nao publica sozinho.
 ## 2. Fonte unica de verdade: o payload controlado
 
 - Toda redacao parte de um **payload controlado** montado a partir do
-  PostgreSQL (entidade, relacoes, ratings atribuidos, disponibilidade,
-  licencas). O writer **nao** consulta o banco diretamente, nao acessa rede,
+  PostgreSQL (entidade, relacoes e, quando a feature estiver ativa e licenciada,
+  ratings atribuidos/disponibilidade/licencas). O writer **nao** consulta o banco diretamente, nao acessa rede,
   nao le APIs e nao usa "conhecimento de mundo" do modelo como fonte.
 - O contrato de saida e a validacao anti-alucinacao de primeira linha vivem
   em [`packages/schemas/src/entity-writer-output.ts`](../../packages/schemas/src/entity-writer-output.ts).
@@ -131,6 +137,11 @@ Tipos de bloco validos: `editorial_intro`, `summary_without_spoilers`,
 `similar_titles_intro`, `franchise_context`, `season_guide`,
 `episode_context`, `faq`, `news_context`, `review_summary`.
 
+Valido no schema nao significa ativo como produto. `ratings_explanation`,
+`where_to_watch_text`, `news_context` e `review_summary` so podem ser gerados
+quando houver payload controlado, licenca clara, prompt versionado e escopo
+explicito para a feature correspondente.
+
 Status (`review_status`): `draft`, `ai_generated`, `needs_review`,
 `human_reviewed`, `published`, `needs_update`, `blocked`, `archived`.
 
@@ -177,8 +188,9 @@ externa; e tem `review_status` permitido.
 
 ## 12. Diferenciacao filme/serie no texto (invariantes 9, 10, 11)
 
-- Screena Movies usa o acento vermelho (`--screena-movie-red`, nome legado do token); Screena
-  Series usa o acento verde (`--screena-series-green`).
+- Filmes usam o acento vermelho (`--screena-movie-red`, nome tecnico/legado do
+  token); series usam o acento verde (`--screena-series-green`). **Screen** e a
+  marca publica; **Screena** aparece aqui apenas como namespace tecnico legado.
 - A diferenciacao filme/serie **nunca** depende so da cor: o texto e os
   metadados sempre carregam **label + badge + breadcrumb + schema + URL**
   coerentes com o `entity_type`. O writer escreve respeitando esse tipo (ex.:

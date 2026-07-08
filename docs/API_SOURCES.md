@@ -262,16 +262,18 @@ avaliacao.
 
 ## Tabela de prioridade (1..7)
 
-Ordem de prioridade de integracao/consumo na Fase 0 / MVP:
+Ordem de prioridade de integracao/consumo do roadmap. **Status atual:** apenas
+TMDB esta implementado como client/ingestao real; ratings, streaming e KASO
+permanecem contratos/planejamento ate tarefa propria e revisao de licenca.
 
 | # | Fonte | Tipo | Servico consumidor | Status no MVP |
 | --- | --- | --- | --- | --- |
-| 1 | **TMDB** | provider_api (estrutural) | `services/ingestion` | Primaria — base de tudo. |
-| 2 | **Streaming Availability** | provider_api (disponibilidade) | `services/streaming` | Primaria de "onde assistir". |
-| 3 | **IMDb API** | rating_source (`imdb`, escala 10) | `services/ratings` | Ativa. |
-| 4 | **RottenTomato API** | rating_source (`rotten_tomatoes`, escala 100) | `services/ratings` | Ativa (so exibe se `score_allowed=true`). |
-| 5 | **Film & Show Ratings** | provider_api (agregador de notas) | `services/ratings` | Ativa — sempre reatribuindo a fonte real. |
-| 6 | **KASO** | provider_api (disponibilidade, fallback) | `services/streaming` | Standby — so se o item 2 falhar. |
+| 1 | **TMDB** | provider_api (estrutural) | `services/ingestion` | Implementada — base de tudo, offline. |
+| 2 | **Streaming Availability** | provider_api (disponibilidade) | `services/streaming` | Planejada — ainda sem implementacao funcional. |
+| 3 | **IMDb API** | rating_source (`imdb`, escala 10) | `services/ratings` | Planejada — ainda sem implementacao funcional/licenca decidida. |
+| 4 | **RottenTomato API** | rating_source (`rotten_tomatoes`, escala 100) | `services/ratings` | Planejada — ainda sem implementacao funcional/licenca decidida. |
+| 5 | **Film & Show Ratings** | provider_api (agregador de notas) | `services/ratings` | Planejada — sempre reatribuindo a fonte real quando existir. |
+| 6 | **KASO** | provider_api (disponibilidade, fallback) | `services/streaming` | Standby/planejada — so se o item 2 falhar em fase futura. |
 | 7 | **(Reservado) fontes em avaliacao** | a definir | — | Adiadas; ver "APIs a descartar/adiar". |
 
 ---

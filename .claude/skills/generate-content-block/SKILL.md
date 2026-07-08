@@ -19,6 +19,11 @@ description: >-
 Este documento e normativo. Qualquer execucao que contrarie estes passos esta
 errada e deve ser bloqueada antes de tocar o banco.
 
+Estado atual: o Entity Writer roda offline em **TypeScript/Node + Prisma**, com
+Gemini fora do render. O slice ativo cobre principalmente `editorial_intro` e
+`cast_intro` em pt-BR; demais tipos de bloco dependem de prompt versionado,
+payload controlado, licenca e escopo explicitos.
+
 ---
 
 ## 0. Invariantes que esta skill faz cumprir
@@ -81,15 +86,19 @@ Regra de ouro: **payload faltando fato = bloco sem aquele fato.** Nunca
    e ao `language_code`. Injete o payload controlado como unica fonte de fatos e
    instrua explicitamente: "use somente os fatos do payload; nao invente nomes,
    datas, notas ou disponibilidade de streaming".
-2. Chame o Gemini em ambiente OFFLINE (worker Python / job batch), NUNCA no
-   caminho de render de pagina. A chave de API vive apenas em env var, nunca no
-   frontend.
+2. Chame o Gemini em ambiente OFFLINE (servico TypeScript/Node atual ou job
+   batch fora do render; Python fica como roadmap/shim), NUNCA no caminho de
+   render de pagina. A chave de API vive apenas em env var, nunca no frontend.
 3. Registre `model_provider` (ex.: `google`/`gemini`), `model_name` (ex.:
    `gemini-2.x`) e o `prompt_version` usados.
 4. Exija saida em JSON estruturado compativel com `EntityWriterOutput`
    (`editorial_intro?`, `summary_without_spoilers?`, `ratings_explanation?`,
    `where_to_watch_text?`, `cast_intro?`, `similar_titles_intro?`, `faq?`,
    `warnings[]`).
+
+Nao gere `ratings_explanation`, `where_to_watch_text`, `news_context` ou
+`review_summary` por inferencia: ratings, streaming/onde assistir,
+RSSPRIME/MN26 e reviews proprias ainda nao estao ativos como produto publico.
 
 Nunca peca ao modelo que copie sinopse externa: bloco gerado so conta como valor
 se for proprio (gate anti-thin, invariante 5).
@@ -123,6 +132,10 @@ Calcule `output_hash` = hash do JSON final aceito.
 `summary_without_spoilers`, `ratings_explanation`, `where_to_watch_text`,
 `cast_intro`, `similar_titles_intro`, `franchise_context`, `season_guide`,
 `episode_context`, `faq`, `news_context`, `review_summary`.
+
+Valido no schema nao significa ativo automaticamente. Para qualquer bloco fora
+do slice atual, exija escopo explicito, payload controlado, licenca clara e
+validacao correspondente antes de salvar.
 
 ---
 

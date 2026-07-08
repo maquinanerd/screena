@@ -67,8 +67,8 @@ const NEUTRAL_DEFAULT: Vertical = {
   vertical: "neutral",
   accent: "neutral",
   accentToken: "--screena-white",
-  label: "Screena",
-  badge: "Screena",
+  label: "Screen",
+  badge: "Screen",
   schemaType: "WebSite",
 };
 
@@ -98,7 +98,7 @@ const NEUTRAL_VARIANTS: Record<string, Vertical> = {
     accent: "neutral",
     accentToken: "--screena-white",
     label: "Home",
-    badge: "Screena",
+    badge: "Screen",
     schemaType: "WebSite",
   },
   mixed: NEUTRAL_DEFAULT,

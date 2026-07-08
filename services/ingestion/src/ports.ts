@@ -8,9 +8,11 @@
 
 import type {
   TmdbMovieDetail,
+  TmdbMoviePage,
   TmdbPersonDetail,
   TmdbSeasonDetail,
   TmdbTvDetail,
+  UpcomingMoviesParams,
 } from '@screena/tmdb-client'
 import type {
   CastMemberInput,
@@ -51,6 +53,12 @@ export interface TmdbReadPort {
   getTvShow(tmdbId: number): Promise<TmdbTvDetail>
   getTvSeason(tvTmdbId: number, seasonNumber: number): Promise<TmdbSeasonDetail>
   getPerson(tmdbId: number): Promise<TmdbPersonDetail>
+  /**
+   * Lista de filmes com estreia futura (`/movie/upcoming`) — endpoint de
+   * CATALOGO (descoberta de ids para "Em breve"), consumido offline pelo backfill
+   * de ingestao. Faz parte do contrato de leitura desde a Fase 1.1D.
+   */
+  getUpcomingMovies(params?: UpcomingMoviesParams): Promise<TmdbMoviePage>
 }
 
 /** Entrada de uma busca cacheada. */

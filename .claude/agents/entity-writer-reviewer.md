@@ -26,6 +26,11 @@ payload controlado do PostgreSQL** — nao inventa fatos, nao cria entidades, na
 chama APIs externas e nao publica sozinho. Os blocos sao **versionados e
 revisaveis** (invariante 13).
 
+Estado atual: ratings externos e streaming/onde assistir ainda nao estao ativos
+como produto publico. Revise esses blocos somente quando houver payload
+controlado/licenciado e escopo explicito; caso contrario, trate a mencao como
+fato fora do payload/feature fora de escopo.
+
 ## Eixo 1 — Anti-alucinacao (todo fato vem do payload)
 
 - Compare cada afirmacao factual do bloco com o **payload controlado** que o
@@ -35,7 +40,7 @@ revisaveis** (invariante 13).
   externa** (proibida — bloco deve ser texto proprio, nao replica de fonte).
 - O bloco nao pode introduzir nota, fonte ou disponibilidade que nao esteja no
   payload. Se afirma "disponivel na X", a `watch_availability` correspondente tem
-  de existir e ser licenciada.
+  de existir, ser licenciada e estar dentro de uma feature explicitamente ativa.
 - Registre cada divergencia como **warning** (alimenta `warnings_json`) com a
   afirmacao suspeita e o motivo.
 

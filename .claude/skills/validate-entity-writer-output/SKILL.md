@@ -1,7 +1,7 @@
 ---
 name: validate-entity-writer-output
 description: >-
-  Valida a saida gerada pelo Screena Entity Writer antes de ela virar um
+  Valida a saida gerada pelo Screen Entity Writer antes de ela virar um
   content_block confiavel: confere forma/tipos via packages/schemas, detecta
   alucinacao com validateAgainstPayload, bloqueia blocos que afirmem fato fora
   do payload, garante IMDb != Rotten Tomatoes, impede afirmar streaming sem
@@ -20,6 +20,11 @@ description: >-
 Documento normativo. Fonte de verdade do codigo:
 `packages/schemas/src/entity-writer-output.ts` e
 `packages/schemas/src/ratings.ts` (ambos reexportados por `@screena/schemas`).
+`@screena/*` e namespace tecnico legado; a marca publica e **Screen**.
+
+Estado atual: ratings externos e streaming/onde assistir ainda nao estao ativos
+como produto publico. Esta skill valida esses campos apenas quando eles aparecem
+em payload controlado, licenciado e dentro de escopo explicito.
 
 ---
 

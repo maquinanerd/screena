@@ -4,12 +4,16 @@
  *
  * Regras duras (espelham os presenters de detalhe):
  *  - nao inventa dados: item sem titulo/nome ou sem slug canonico NAO entra;
- *  - so aceita imagem LOCAL segura (paths TMDB crus/externos -> null -> fallback);
+ *  - imagem: path LOCAL seguro (demo/committed) OU URL remota do TMDB montada do
+ *    `file_path` cru (via helper governado); path invalido/externo -> null -> fallback;
  *  - ordenacao deterministica e cap de itens; sem paginacao complexa;
  *  - gate anti-thin: listagem vazia/fina -> noindex; com itens suficientes -> index.
  */
 
 import { evaluateIndexability, type IndexabilityResult } from "@screena/seo";
+
+import { SCREEN_SCORE_SCALE } from "./home-hero-presenter";
+import { buildTmdbImageUrl, type TmdbImageSize } from "./tmdb-image-url";
 
 /** Quantos itens a listagem exibe por pagina (sem paginacao nesta fatia). */
 export const INDEX_ITEM_LIMIT = 24;
@@ -23,8 +27,8 @@ export const MIN_INDEX_ITEMS = 3;
 const LOCAL_IMAGE_PREFIXES = ["/media/", "/uploads/", "/brand/"] as const;
 const LOCAL_IMAGE_EXTENSION_PATTERN = /\.(?:avif|jpg|jpeg|png|webp)$/i;
 
-const POSTER_IMAGE_SPEC: LocalImageSpec = { width: 342, height: 513 };
-const PROFILE_IMAGE_SPEC: LocalImageSpec = { width: 300, height: 450 };
+const POSTER_IMAGE_SPEC: LocalImageSpec = { width: 342, height: 513, tmdbSize: "w500" };
+const PROFILE_IMAGE_SPEC: LocalImageSpec = { width: 300, height: 450, tmdbSize: "original" };
 
 const MOVIE_PATH_PREFIX = "/pt/filmes/";
 const SERIES_PATH_PREFIX = "/pt/series/";
@@ -53,6 +57,8 @@ const KNOWN_FOR_DEPARTMENT_LABELS: Readonly<Record<string, string>> = {
 interface LocalImageSpec {
   width: number;
   height: number;
+  /** Tamanho TMDB (segmento da URL remota) quando a origem é `file_path` cru. */
+  tmdbSize: TmdbImageSize;
 }
 
 export type EntityIndexKind = "movie" | "series" | "person";
@@ -71,6 +77,13 @@ export interface EntityCard {
   /** Metadado curto: ano (filme), periodo (serie) ou funcao (pessoa). */
   meta: string | null;
   image: EntityImageAsset | null;
+  /**
+   * Nota editorial PROPRIA do Screen (escala SCREEN_SCORE_SCALE) ja validada e
+   * formatada para exibicao, ou `null` quando nao ha nota governada/liberada
+   * (pessoas: sempre `null`). Mesma governanca do hero (`resolveHeroRating`):
+   * NUNCA e rating externo (IMDb/RT/TMDB) nem AggregateRating de terceiro.
+   */
+  screenScore: string | null;
 }
 
 export interface EntityIndexView {
@@ -82,7 +95,21 @@ export interface EntityIndexView {
   hasMore: boolean;
 }
 
-export interface MovieListItemInput {
+/**
+ * Subconjunto controlado da nota editorial propria do Screen (ja convertido de
+ * Prisma), compartilhado por filme e serie. Opcional: ausente == nao exibir a
+ * nota (gate seguro, igual ao default `screen_score_display = false`).
+ */
+export interface ScreenScoreInput {
+  /** Nota editorial propria do Screen (0..scale) ou null. */
+  screenScore?: number | null;
+  /** Escala da nota; so exibe quando == SCREEN_SCORE_SCALE. */
+  screenScoreScale?: number | null;
+  /** Gate seguro: so exibe a nota quando `true` (ausente = nao exibir). */
+  screenScoreDisplay?: boolean;
+}
+
+export interface MovieListItemInput extends ScreenScoreInput {
   titleOriginal: string;
   translationTitle: string | null;
   slug: string | null;
@@ -90,7 +117,7 @@ export interface MovieListItemInput {
   posterPath: string | null;
 }
 
-export interface SeriesListItemInput {
+export interface SeriesListItemInput extends ScreenScoreInput {
   nameOriginal: string;
   translationTitle: string | null;
   slug: string | null;
@@ -147,7 +174,9 @@ function imageAsset(
   path: string | null,
   spec: LocalImageSpec,
 ): EntityImageAsset | null {
-  const src = normalizeEntityLocalImagePath(path);
+  // Local (demo/committed) primeiro; senão a URL remota do TMDB montada do
+  // `file_path` cru (helper governado). Path inválido -> null -> fallback visual.
+  const src = normalizeEntityLocalImagePath(path) ?? buildTmdbImageUrl(path, spec.tmdbSize);
   if (src === null) return null;
   return { src, width: spec.width, height: spec.height };
 }
@@ -158,6 +187,25 @@ export function mapKnownForDepartment(
   const value = trimToNull(department);
   if (value === null) return null;
   return KNOWN_FOR_DEPARTMENT_LABELS[value] ?? null;
+}
+
+/**
+ * Resolve a nota editorial PROPRIA do Screen de um card para exibicao, seguindo
+ * EXATAMENTE o mesmo gate do hero (`resolveHeroRating`): so devolve valor quando
+ * o display esta liberado, o numero e finito > 0, a escala e SCREEN_SCORE_SCALE
+ * e o valor <= escala. Qualquer desvio -> `null` (sem estrela, sem fallback fake,
+ * nunca nota por posicao). NUNCA e rating externo (IMDb/RT/TMDB) nem
+ * AggregateRating: e a mesma nota governada do hero, formatada como texto (uma
+ * casa decimal) para o card.
+ */
+export function resolveCardScreenScore(input: ScreenScoreInput): string | null {
+  if (input.screenScoreDisplay !== true) return null;
+  const value = input.screenScore;
+  const scale = input.screenScoreScale;
+  if (value == null || !Number.isFinite(value) || value <= 0) return null;
+  if (scale !== SCREEN_SCORE_SCALE) return null;
+  if (value > scale) return null;
+  return value.toFixed(1);
 }
 
 /** Periodo curto de uma serie: "2011" (ano unico) ou "2011-2019". */
@@ -209,6 +257,7 @@ export function buildMovieCard(input: MovieListItemInput): EntityCard | null {
     href: `${MOVIE_PATH_PREFIX}${slug}/`,
     meta: year !== null ? String(year) : null,
     image: imageAsset(input.posterPath, POSTER_IMAGE_SPEC),
+    screenScore: resolveCardScreenScore(input),
   };
 }
 
@@ -222,6 +271,7 @@ export function buildSeriesCard(input: SeriesListItemInput): EntityCard | null {
     href: `${SERIES_PATH_PREFIX}${slug}/`,
     meta: formatSeriesIndexPeriod(input.firstAirYear, input.lastAirYear),
     image: imageAsset(input.posterPath, POSTER_IMAGE_SPEC),
+    screenScore: resolveCardScreenScore(input),
   };
 }
 
@@ -235,6 +285,8 @@ export function buildPersonCard(input: PersonListItemInput): EntityCard | null {
     href: `${PERSON_PATH_PREFIX}${slug}/`,
     meta: mapKnownForDepartment(input.knownForDepartment),
     image: imageAsset(input.profilePath, PROFILE_IMAGE_SPEC),
+    // Pessoas nao tem nota editorial (screen_score e so de filme/serie).
+    screenScore: null,
   };
 }
 

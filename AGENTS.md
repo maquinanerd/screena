@@ -17,7 +17,7 @@ A marca pública principal é **Screen**, no domínio canônico **`https://thesc
 - **Estado atual: fundação avançada / vertical slice técnica.** O repositório não é mais Fase 0 pura: já existem Prisma/PostgreSQL, migrations/seeds, client TMDB real em TypeScript, ingestão TMDB, sync/stale policy, Entity Writer offline em TypeScript, adapter Gemini separado do render, rotas públicas para filmes/séries/pessoas/notícias, presenters puros, gates anti-thin, testes de governança e CI.
 - Ainda **não** estão funcionais como produto: ratings, streaming/onde assistir, RSSPRIME/MN26, admin editorial completo e usuários/community. Não implemente essas features neste commit de alinhamento.
 
-Monorepo **pnpm** com workspaces `apps/*`, `packages/*`, `api-clients/*` e `services/*`. Stack: Next.js App Router, TypeScript **strict**, React Server Components, Tailwind, PostgreSQL + Prisma, workers Python **3.12** como roadmap/shim futuro, Node **22 LTS**. TMDB e Entity Writer rodam hoje em TypeScript/Node + Prisma; não reimplemente TMDB do zero em Python por causa de documentação antiga.
+Monorepo **pnpm** com workspaces `apps/*`, `packages/*`, `api-clients/*` e `services/*`. Stack: Next.js App Router, TypeScript **strict**, React Server Components, Tailwind, PostgreSQL + Prisma, Node **22 LTS** e **pnpm 9.15.4 via Corepack**. Workers Python **3.12** são roadmap/shim futuro. TMDB e Entity Writer rodam hoje em TypeScript/Node + Prisma; não reimplemente TMDB do zero em Python por causa de documentação antiga.
 
 ---
 
@@ -30,10 +30,13 @@ Monorepo **pnpm** com workspaces `apps/*`, `packages/*`, `api-clients/*` e `serv
 | `pnpm test`      | Roda os testes (Vitest): invariantes e utilitários puros.                 |
 | `pnpm lint`      | Roda o ESLint em todo o repositório.                                      |
 | `pnpm typecheck` | Checagem de tipos (`tsc --noEmit`).                                       |
+| `pnpm build`     | Build do app público Screen (`@screena/web`).                             |
 | `pnpm audit:invariants`     | Audita as invariantes do projeto (ex.: pureza de render, atribuição de ratings). |
 | `pnpm audit:render`         | Audita pureza de render do app público.                                  |
 
-**Antes de abrir qualquer PR, o agente deve rodar e deixar verdes:** `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm audit:invariants` e `pnpm audit:render`. Mudança que quebra uma invariante **não** vira PR sem revisão humana explícita.
+Use preferencialmente `corepack pnpm ...` para garantir a versão fixada de pnpm.
+
+**Antes de abrir qualquer PR, o agente deve rodar e deixar verdes:** `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm audit:invariants`, `pnpm audit:render` e `pnpm build`. Mudança que quebra uma invariante **não** vira PR sem revisão humana explícita.
 
 ---
 
@@ -42,7 +45,7 @@ Monorepo **pnpm** com workspaces `apps/*`, `packages/*`, `api-clients/*` e `serv
 - **Idioma:** docs, READMEs, regras e prompts em **pt-BR**; **código e identificadores em inglês** (comentários podem ser em pt-BR).
 - **TypeScript estrito e puro:** utilitários sem rede/DB/IO externo, funções puras e testáveis. Use sempre `export` **nomeado** (evite `export default` em utilitários).
 - **Pacotes (`packages/*`):** `@screena/config`, `@screena/schemas`, `@screena/seo`, `@screena/ui`, `@screena/types`, `@screena/db`. Cada pacote tem `package.json` (`"main": "./src/index.ts"`, `"type": "module"`), `tsconfig.json` (estende `../../tsconfig.base.json`), `README.md` e `src/index.ts`.
-- **Apps (`apps/*`):** `@screena/web` (site público Screen) e `@screena/admin` (painel editorial planejado).
+- **Apps (`apps/*`):** `@screena/web` (site público Screen) e `@screena/admin` (painel editorial atualmente read-only; escrita editorial planejada).
 - **Aliases** (devem bater entre `vitest.config.ts` e `tsconfig.base.json`):
 
   | Alias              | Caminho                          |
@@ -63,7 +66,7 @@ Monorepo **pnpm** com workspaces `apps/*`, `packages/*`, `api-clients/*` e `serv
 
 ## O que o Codex PODE fazer
 
-Tarefas de baixo risco e bem delimitadas, desde que cobertas por testes e passando em `pnpm typecheck`/`pnpm lint`/`pnpm test`/`pnpm audit:invariants`:
+Tarefas de baixo risco e bem delimitadas, desde que cobertas por testes e passando em `pnpm typecheck`/`pnpm lint`/`pnpm test`/`pnpm audit:invariants`/`pnpm audit:render`/`pnpm build`:
 
 - **Implementar issues pequenas e bem especificadas**, com escopo claro.
 - **Criar e atualizar testes** (Vitest) para utilitários puros e invariantes.
@@ -118,7 +121,7 @@ O ciclo padrão para qualquer contribuição autônoma:
 1. **Issue** — partir de uma issue pequena e bem especificada, com escopo e critério de aceite claros.
 2. **Branch** — criar branch dedicada a partir de `main` (ex.: `feat/...`, `fix/...`, `refactor/...`). Nunca commitar direto em `main`.
 3. **Implementa** — fazer a mudança mínima e isolada, respeitando convenções e invariantes; sem tocar arquivos fora do escopo.
-4. **Testes** — adicionar/atualizar testes e deixar verdes `pnpm typecheck`, `pnpm lint`, `pnpm test` e `pnpm audit:invariants`.
+4. **Testes** — adicionar/atualizar testes e deixar verdes `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm audit:invariants`, `pnpm audit:render` e `pnpm build`.
 5. **Revisão Claude Code** — submeter a mudança à revisão (incluindo o checklist de invariantes e dos itens que exigem aprovação humana).
 6. **PR** — abrir PR descritivo, vinculado à issue, com resumo do impacto e confirmação das invariantes.
 7. **Staging** — validar em staging antes de qualquer publicação.

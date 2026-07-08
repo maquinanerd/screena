@@ -54,6 +54,9 @@ export const PUBLIC_DEMO_WATCH_PROVIDER_API = "public-demo-seed";
 /** Prefixo do `credit_id` (unico) das linhas de `cast_members` do demo. */
 export const PUBLIC_DEMO_CREDIT_PREFIX = "demo-cast-";
 
+/** Prefixo do `credit_id` (unico) das linhas de `crew_members` (direcao) do demo. */
+export const PUBLIC_DEMO_CREW_PREFIX = "demo-crew-";
+
 /** Nome da env de confirmacao dupla e o valor exato exigido. */
 export const PUBLIC_DEMO_CONFIRM_ENV = "SCREEN_PUBLIC_DEMO_SEED_CONFIRM";
 export const PUBLIC_DEMO_CONFIRM_VALUE = "APPLY_PUBLIC_DEMO_SEED";
@@ -99,6 +102,10 @@ export interface PublicDemoMovie {
   readonly releaseDateIso: string;
   readonly runtimeMinutes: number;
   readonly status: string;
+  /** Classificacao indicativa (advisory de conteudo; NAO e rating source). */
+  readonly certification: string;
+  /** Nota editorial PROPRIA do Screen (escala 5); demo exibe (display=true). */
+  readonly screenScore: number;
   readonly posterPath: string;
   readonly backdropPath: string;
   readonly watchFetchedAtIso: string;
@@ -121,6 +128,10 @@ export interface PublicDemoSeries {
   readonly status: string;
   readonly numberOfSeasons: number;
   readonly numberOfEpisodes: number;
+  /** Classificacao indicativa (advisory de conteudo; NAO e rating source). */
+  readonly certification: string;
+  /** Nota editorial PROPRIA do Screen (escala 5); demo exibe (display=true). */
+  readonly screenScore: number;
   readonly posterPath: string;
   readonly backdropPath: string;
   readonly watchFetchedAtIso: string;
@@ -149,6 +160,16 @@ export interface PublicDemoCast {
   readonly billingOrder: number;
 }
 
+/** Vinculo de equipe/direcao (credit_id unico + prefixado; reversivel). */
+export interface PublicDemoCrew {
+  readonly creditId: string;
+  readonly personKey: string;
+  readonly targetKind: PublicDemoTargetKind;
+  readonly targetKey: string;
+  readonly department: string;
+  readonly job: string;
+}
+
 /** Contagem por tipo de registro que o apply tocaria. */
 export interface PublicDemoRecordCount {
   readonly movies: number;
@@ -158,6 +179,7 @@ export interface PublicDemoRecordCount {
   readonly translations: number;
   readonly contentBlocks: number;
   readonly castLinks: number;
+  readonly crewLinks: number;
   readonly watchOffers: number;
 }
 
@@ -174,6 +196,7 @@ export interface PublicDemoSeedPlan {
   readonly series: readonly PublicDemoSeries[];
   readonly people: readonly PublicDemoPerson[];
   readonly cast: readonly PublicDemoCast[];
+  readonly crew: readonly PublicDemoCrew[];
   readonly recordCount: PublicDemoRecordCount;
 }
 
@@ -212,6 +235,8 @@ const DEMO_MOVIES: readonly Omit<PublicDemoMovie, "tmdbId">[] = [
     releaseDateIso: "2019-09-12",
     runtimeMinutes: 118,
     status: "Released",
+    certification: "14",
+    screenScore: 4,
     posterPath: "/media/demo/movie-farol-poster.png",
     backdropPath: "/media/demo/movie-farol-backdrop.png",
     watchFetchedAtIso: WATCH_FETCHED_AT,
@@ -239,6 +264,8 @@ const DEMO_MOVIES: readonly Omit<PublicDemoMovie, "tmdbId">[] = [
     releaseDateIso: "2021-03-05",
     runtimeMinutes: 132,
     status: "Released",
+    certification: "16",
+    screenScore: 3.5,
     posterPath: "/media/demo/movie-cidade-vidro-poster.png",
     backdropPath: "/media/demo/movie-cidade-vidro-backdrop.png",
     watchFetchedAtIso: WATCH_FETCHED_AT,
@@ -265,6 +292,8 @@ const DEMO_MOVIES: readonly Omit<PublicDemoMovie, "tmdbId">[] = [
     releaseDateIso: "2023-11-24",
     runtimeMinutes: 141,
     status: "Released",
+    certification: "14",
+    screenScore: 4.5,
     posterPath: "/media/demo/movie-fronteira-poster.png",
     backdropPath: "/media/demo/movie-fronteira-backdrop.png",
     watchFetchedAtIso: WATCH_FETCHED_AT,
@@ -311,6 +340,8 @@ const DEMO_SERIES: readonly Omit<PublicDemoSeries, "tmdbId">[] = [
     status: "Ended",
     numberOfSeasons: 3,
     numberOfEpisodes: 24,
+    certification: "16",
+    screenScore: 4.5,
     posterPath: "/media/demo/tv-correntes-poster.png",
     backdropPath: "/media/demo/tv-correntes-backdrop.png",
     watchFetchedAtIso: WATCH_FETCHED_AT,
@@ -336,6 +367,8 @@ const DEMO_SERIES: readonly Omit<PublicDemoSeries, "tmdbId">[] = [
     status: "Returning Series",
     numberOfSeasons: 2,
     numberOfEpisodes: 16,
+    certification: "14",
+    screenScore: 4,
     posterPath: "/media/demo/tv-herdeiros-poster.png",
     backdropPath: "/media/demo/tv-herdeiros-backdrop.png",
     watchFetchedAtIso: WATCH_FETCHED_AT,
@@ -364,6 +397,8 @@ const DEMO_SERIES: readonly Omit<PublicDemoSeries, "tmdbId">[] = [
     status: "Returning Series",
     numberOfSeasons: 1,
     numberOfEpisodes: 8,
+    certification: "12",
+    screenScore: 3.5,
     posterPath: "/media/demo/tv-estacao-poster.png",
     backdropPath: "/media/demo/tv-estacao-backdrop.png",
     watchFetchedAtIso: WATCH_FETCHED_AT,
@@ -443,6 +478,18 @@ const DEMO_CAST_SOURCES: ReadonlyArray<{
   { personKey: "marina", targetKind: "tv", targetKey: "correntes", character: "Rita", billingOrder: 1 },
 ];
 
+/** Vinculos de DIRECAO entre pessoas e titulos do demo (department/job). */
+const DEMO_CREW_SOURCES: ReadonlyArray<{
+  readonly personKey: string;
+  readonly targetKind: PublicDemoTargetKind;
+  readonly targetKey: string;
+  readonly department: string;
+  readonly job: string;
+}> = [
+  { personKey: "rui", targetKind: "movie", targetKey: "fronteira", department: "Directing", job: "Director" },
+  { personKey: "rui", targetKind: "tv", targetKey: "herdeiros", department: "Directing", job: "Director" },
+];
+
 /* ------------------------------------------------------------------ */
 /* Construcao do plano                                                 */
 /* ------------------------------------------------------------------ */
@@ -474,6 +521,15 @@ export function buildPublicDemoSeedPlan(): PublicDemoSeedPlan {
     billingOrder: source.billingOrder,
   }));
 
+  const crew: PublicDemoCrew[] = DEMO_CREW_SOURCES.map((source) => ({
+    creditId: `${PUBLIC_DEMO_CREW_PREFIX}${source.personKey}-${source.targetKind}-${source.targetKey}`,
+    personKey: source.personKey,
+    targetKind: source.targetKind,
+    targetKey: source.targetKey,
+    department: source.department,
+    job: source.job,
+  }));
+
   const contentBlocks =
     movies.reduce((sum, movie) => sum + movie.blocks.length, 0) +
     series.reduce((sum, show) => sum + show.blocks.length, 0) +
@@ -494,6 +550,7 @@ export function buildPublicDemoSeedPlan(): PublicDemoSeedPlan {
     series,
     people,
     cast,
+    crew,
     recordCount: {
       movies: movies.length,
       series: series.length,
@@ -502,6 +559,7 @@ export function buildPublicDemoSeedPlan(): PublicDemoSeedPlan {
       translations: movies.length + series.length + people.length,
       contentBlocks,
       castLinks: cast.length,
+      crewLinks: crew.length,
       watchOffers,
     },
   };
@@ -636,7 +694,7 @@ export function formatPublicDemoPlan(plan: PublicDemoSeedPlan): string[] {
   lines.push(`  marcador:    ${plan.marker}`);
   lines.push(`  prefixo slug:${plan.slugPrefix}`);
   lines.push(
-    `  registros:   ${plan.recordCount.movies} filmes, ${plan.recordCount.series} series, ${plan.recordCount.people} pessoas, ${plan.recordCount.contentBlocks} blocos, ${plan.recordCount.castLinks} creditos, ${plan.recordCount.watchOffers} ofertas`,
+    `  registros:   ${plan.recordCount.movies} filmes, ${plan.recordCount.series} series, ${plan.recordCount.people} pessoas, ${plan.recordCount.contentBlocks} blocos, ${plan.recordCount.castLinks} creditos, ${plan.recordCount.crewLinks} direcoes, ${plan.recordCount.watchOffers} ofertas`,
   );
   for (const movie of plan.movies) {
     lines.push(`  - filme  ${movie.slug} (tmdb sentinela ${movie.tmdbId}) "${movie.titlePt}"`);

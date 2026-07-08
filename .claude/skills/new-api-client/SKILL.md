@@ -1,13 +1,13 @@
 ---
 name: new-api-client
-description: Use quando for criar um novo conector de API externa (ex.: TMDB, fornecedor de ratings) em api-clients/. Cobre padrao worker-only, cache, retry com backoff, rate limit, circuit breaker, logs em api_sync_logs, tratamento de licenca/atribuicao e chaves apenas em env vars. NAO use no codigo de render nem em paginas indexaveis.
+description: Use quando for criar ou alinhar um conector de API externa em api-clients/. O client TMDB real ja existe em TypeScript/Node; novos conectores exigem escopo/licenca claros. Cobre padrao offline-only, cache, retry com backoff, rate limit, circuit breaker, logs em api_sync_logs, tratamento de licenca/atribuicao e chaves apenas em env vars. NAO use no codigo de render nem em paginas indexaveis.
 ---
 
 # Skill: new-api-client
 
 Esta skill descreve como criar um **novo api-client** (conector de API externa) no Screen.
-Todo conector e **worker-only**: roda apenas em processos offline (workers Python / jobs Node de
-sync), **nunca** no render de paginas publicas.
+Todo conector e **offline-only**: roda apenas em processos fora do render (hoje TypeScript/Node
+para TMDB/sync; Python 3.12 apenas roadmap/shim), **nunca** no render de paginas publicas.
 
 > **Invariante central:** **Zero API externa no render.** Paginas publicas indexaveis leem apenas
 > PostgreSQL/cache local. Um api-client jamais e importado por componente de pagina, route handler
@@ -21,6 +21,7 @@ sync), **nunca** no render de paginas publicas.
 
 - Adicionar integracao com uma nova fonte externa (catalogo, ratings, imagens, where-to-watch).
 - Padronizar um conector existente que ainda nao siga cache/retry/rate-limit/circuit-breaker.
+- Manter o client TMDB existente sem reimplementa-lo em Python por causa de documentacao antiga.
 
 ## Quando NAO usar
 
@@ -33,8 +34,10 @@ sync), **nunca** no render de paginas publicas.
 - Novos conectores vivem em `api-clients/` (worker-only).
 - Codigo/identificadores em ingles; comentarios podem ser pt-BR.
 - TypeScript estrito quando aplicavel; funcoes utilitarias puras e testaveis.
-- Lembrete de fase: na **Fase 0** nao implemente client real (sem rede/DB/IO). Esta skill define o
-  contrato; o conector concreto chega na Fase 2+.
+- Use Node 22 LTS e `pnpm@9.15.4` via Corepack para desenvolvimento/validacao.
+- TMDB ja tem client real em TypeScript/Node. Novos clients para ratings, streaming/onde assistir
+  ou RSSPRIME/MN26 so entram com escopo explicito, licenca pesquisada e revisao humana quando
+  impactarem exibicao publica.
 
 ## Passos
 
@@ -46,6 +49,8 @@ sync), **nunca** no render de paginas publicas.
 2. **Carregar chaves SOMENTE de env vars.**
    - API keys **nunca** no frontend, nunca commitadas, nunca em pagina de render. Leia de
      `process.env` (ou config do worker). Falhe explicitamente se a chave faltar.
+   - Para TMDB, prefira `TMDB_READ_ACCESS_TOKEN` (v4); use `TMDB_API_KEY` (v3) apenas como
+     fallback quando suportado. `SCREENA_TMDB_API_KEY` e legado, nao variavel canonica nova.
 
 3. **Garantir worker-only.**
    - O modulo nao deve ser importavel pelo bundle de pagina. Trate qualquer import vindo do render
@@ -98,6 +103,8 @@ sync), **nunca** no render de paginas publicas.
 - [ ] Licenca/atribuicao mapeadas; dado sem licenca clara nao chega a pagina indexavel.
 - [ ] provider_api separado de rating_source; IMDb e Rotten Tomatoes nunca misturados.
 - [ ] Zero API externa no caminho de render.
+- [ ] Validacoes verdes: `corepack pnpm typecheck`, `corepack pnpm lint`, `corepack pnpm test`,
+      `corepack pnpm audit:invariants`, `corepack pnpm audit:render` e `corepack pnpm build`.
 
 ## Nota de governanca
 

@@ -8,6 +8,8 @@
 
 import { evaluateIndexability, type IndexabilityResult } from "@screena/seo";
 
+import { buildTmdbImageUrl, type TmdbImageSize } from "./tmdb-image-url";
+
 const BLOCK_TYPE_ORDER = [
   "editorial_intro",
   "summary_without_spoilers",
@@ -26,9 +28,9 @@ const BLOCK_TYPE_ORDER = [
 const LOCAL_IMAGE_PREFIXES = ["/media/", "/uploads/", "/brand/"] as const;
 const LOCAL_IMAGE_EXTENSION_PATTERN = /\.(?:avif|jpg|jpeg|png|webp)$/i;
 
-const POSTER_IMAGE_SPEC: LocalImageSpec = { width: 342, height: 513 };
-const BACKDROP_IMAGE_SPEC: LocalImageSpec = { width: 1280, height: 720 };
-const STILL_IMAGE_SPEC: LocalImageSpec = { width: 640, height: 360 };
+const POSTER_IMAGE_SPEC: LocalImageSpec = { width: 342, height: 513, tmdbSize: "w500" };
+const BACKDROP_IMAGE_SPEC: LocalImageSpec = { width: 1280, height: 720, tmdbSize: "w1280" };
+const STILL_IMAGE_SPEC: LocalImageSpec = { width: 640, height: 360, tmdbSize: "original" };
 
 /** Estados de `review_status` que podem aparecer no render publico. */
 export const SERIES_RENDERABLE_REVIEW_STATUSES = [
@@ -46,6 +48,8 @@ export const MIN_SERIES_RENDERABLE_BLOCKS = 2;
 interface LocalImageSpec {
   width: number;
   height: number;
+  /** Tamanho TMDB (segmento da URL remota) quando a origem é `file_path` cru. */
+  tmdbSize: TmdbImageSize;
 }
 
 export interface SeriesRecordInput {
@@ -191,7 +195,8 @@ function imageAsset(
   path: string | null,
   spec: LocalImageSpec,
 ): SeriesImageAsset | null {
-  const src = normalizeSeriesLocalImagePath(path);
+  // Local (demo/committed) primeiro; senão a URL remota do TMDB do `file_path` cru.
+  const src = normalizeSeriesLocalImagePath(path) ?? buildTmdbImageUrl(path, spec.tmdbSize);
   if (src === null) return null;
   return { src, width: spec.width, height: spec.height };
 }

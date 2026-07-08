@@ -1,15 +1,18 @@
 # @screena/admin
 
 Painel interno do Screen (operacao editorial e de dados). Diferente do app
-publico `@screena/web`, o **admin pode chamar endpoints internos** (sync,
-ratings, geracao offline de `content_blocks`, jobs do entity writer, decisoes
-de indexabilidade etc.).
+publico `@screena/web`, o admin e uma superficie privada; em fases futuras ele
+podera acionar endpoints internos (sync, ratings, geracao offline de
+`content_blocks`, jobs do entity writer, decisoes de indexabilidade etc.).
+**Na fatia atual, porem, ele e estritamente somente leitura.**
 
 `@screena/admin` e namespace tecnico legado; a marca publica atual e **Screen**.
 
 ## Fronteira de seguranca (INEGOCIAVEL)
 
-- O **admin** pode acionar endpoints internos e processos offline.
+- O **admin futuro** podera acionar endpoints internos e processos offline.
+  A fatia atual **nao** aciona endpoints internos, nao publica, nao edita e nao
+  escreve.
 - A **pagina publica indexavel** (`@screena/web`) **nunca** pode chamar API
   externa nem Gemini no render — essa regra vale so para o app publico e
   continua intocada.

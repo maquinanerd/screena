@@ -10,6 +10,7 @@ import type { TmdbConfig } from './config.js'
 import type { TmdbHttpClient } from './http.js'
 import type {
   TmdbMovieDetail,
+  TmdbMoviePage,
   TmdbPersonDetail,
   TmdbSeasonDetail,
   TmdbTvDetail,
@@ -18,12 +19,31 @@ import type {
 /** `append_to_response` para entidades-raiz: IDs externos + creditos. */
 const ENTITY_APPEND = 'external_ids,credits'
 
+/** Regiao default para listas de lancamento (datas de estreia locais). */
+const DEFAULT_LIST_REGION = 'BR'
+
+/** Parametros da lista de filmes upcoming (todos opcionais). */
+export interface UpcomingMoviesParams {
+  /** Idioma (default: `config.defaultLanguage`, tipicamente pt-BR). */
+  language?: string
+  /** Regiao das datas de estreia (default: BR). */
+  region?: string
+  /** Pagina (1-based; default: 1). */
+  page?: number
+}
+
 /** Conjunto de chamadas TMDB que a ingestao precisa. */
 export interface TmdbEndpoints {
   getMovie(tmdbId: number): Promise<TmdbMovieDetail>
   getTvShow(tmdbId: number): Promise<TmdbTvDetail>
   getTvSeason(tvTmdbId: number, seasonNumber: number): Promise<TmdbSeasonDetail>
   getPerson(tmdbId: number): Promise<TmdbPersonDetail>
+  /**
+   * Lista de filmes com estreia futura (`GET /movie/upcoming`). Endpoint de
+   * CATALOGO (descoberta de ids para "Em breve"), consumido apenas offline pela
+   * ingestao — nunca no render. Nao traz nota/critica; nada editorial.
+   */
+  getUpcomingMovies(params?: UpcomingMoviesParams): Promise<TmdbMoviePage>
 }
 
 /** Cria os endpoints tipados sobre um `TmdbHttpClient` ja configurado. */
@@ -54,6 +74,14 @@ export function createTmdbEndpoints(client: TmdbHttpClient, config: TmdbConfig):
         append_to_response: 'external_ids',
       })
       return data as TmdbPersonDetail
+    },
+    async getUpcomingMovies(params = {}) {
+      const data = await client.request('/movie/upcoming', {
+        language: params.language ?? language,
+        region: params.region ?? DEFAULT_LIST_REGION,
+        page: params.page ?? 1,
+      })
+      return data as TmdbMoviePage
     },
   }
 }

@@ -5,6 +5,17 @@ de todas as paginas publicas do Screen (`https://thescreen.media`). Sao de cumpr
 obrigatorio: nenhuma pagina entra no indice dos buscadores sem satisfazer o que
 esta aqui descrito.
 
+## 0. Identidade publica e dominio canonico
+
+- A marca publica principal e **Screen**.
+- O dominio canonico publico e **`https://thescreen.media`**.
+- **The Screen** pode aparecer apenas como referencia historica, explicativa ou
+  nome expandido nao-principal.
+- **Screena** permanece como namespace tecnico/legado interno (`@screena/*`,
+  tokens `--screena-*`, scripts/services antigos), nunca como marca publica.
+- `screena.media` e legado historico e nao deve ser usado como dominio publico
+  canonico ativo.
+
 A logica executavel correspondente vive em
 [`packages/seo/src/indexability.ts`](../../packages/seo/src/indexability.ts) e
 e validada por
@@ -48,6 +59,11 @@ ignoradas.
 14. Historico de atualizacao
 15. Analise sem/com spoiler separada
 
+Esta lista define o que pode contar como valor quando existir dado licenciado,
+revisado e persistido. No estado atual do produto, ratings externos,
+streaming/onde assistir, RSSPRIME/MN26 e reviews proprias ainda nao estao ativos
+como feature publica; nao gere nem force esses blocos para cumprir o gate.
+
 ### Bloco gerado por IA so conta como valor se
 
 - Veio de **payload controlado** do PostgreSQL (Entity Writer nunca inventa
@@ -66,8 +82,8 @@ Um bloco que falhe em qualquer um desses pontos **nao conta** para o gate.
 
 - **Invariante 3 — Zero API externa no render.** Paginas publicas indexaveis
   leem **apenas PostgreSQL e cache local** (`api_cache`). Nenhuma chamada a
-  RapidAPI, TMDB, IMDb, Rotten Tomatoes, Gemini ou qualquer fornecedor acontece
-  durante o render de uma pagina.
+  RapidAPI, TMDB, IMDb, Rotten Tomatoes, provedor de streaming, RSSPRIME/MN26,
+  Gemini ou qualquer fornecedor acontece durante o render de uma pagina.
 - **Invariante 4 — Zero Gemini no render.** A IA so gera `content_blocks`
   **offline**, salvos e validados antes de qualquer publicacao. O render apenas
   **le** blocos ja persistidos e aprovados.
@@ -138,6 +154,8 @@ Apenas blocos com `review_status` em estado **publicavel** (`human_reviewed` ou
   demais existem mas comecam vazios ate haver conteudo revisado.
 - O sitemap e gerado a partir de `page_indexability_decisions` — a mesma fonte
   que decide o `<meta robots>`. Sitemap e meta tag **nunca** podem discordar.
+- O sitemap **nao promove** pagina fina: se o gate anti-thin, licenca, idioma ou
+  revisao falhar, a pagina fica fora do sitemap mesmo que exista rota.
 
 ---
 
@@ -195,10 +213,13 @@ Complementos:
 
 - `BreadcrumbList` em **todas** as paginas principais.
 - `FAQPage` **somente** se houver FAQ visivel na pagina.
-- `Review` apenas para **review propria** do Screen.
+- `Review` apenas para **review propria** do Screen. Como reviews proprias ainda
+  nao estao ativas como produto, nao emita `Review` por inferencia.
 - `AggregateRating` **somente quando permitido e atribuido** a sua fonte
   (`license_status` `official`/`licensed`, `score_allowed=true`).
   **Nunca** apresentar nota de terceiro como se fosse nota propria do Screen.
+  Como ratings externos ainda nao estao ativos como produto, nao emita
+  `AggregateRating` sem escopo/licenca/revisao explicitos.
 
 Regra de fonte (**invariantes 1 e 2**): IMDb != Rotten Tomatoes (nunca misturar
 escalas, icones ou linguagem); o fornecedor tecnico (`provider_api`) **nunca** e

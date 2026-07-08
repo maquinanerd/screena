@@ -199,7 +199,7 @@ describe("buildPersonPageView", () => {
         name: "Original Person",
         knownForDepartment: "  ",
         placeOfBirth: "   ",
-        profilePath: "/abc.jpg",
+        profilePath: "https://ext.com/p.jpg",
         birthDateIso: "  ",
       }),
       translation: translation({ title: " ", metaTitle: "", metaDescription: " " }),
@@ -218,6 +218,17 @@ describe("buildPersonPageView", () => {
     expect(view.hasRealImage).toBe(false);
     expect(view.blocks).toEqual([]);
     expect(view.credits).toEqual([]);
+  });
+
+  it("monta perfil REMOTO do TMDB a partir do file_path cru (original)", () => {
+    const view = buildPersonPageView({
+      record: record({ name: "Pessoa TMDB", profilePath: "/abc.jpg" }),
+      translation: null,
+      blocks: [],
+      credits: [],
+    });
+    expect(view.profile?.src).toBe("https://image.tmdb.org/t/p/original/abc.jpg");
+    expect(view.hasRealImage).toBe(true);
   });
 
   it("monta view com campos reais, blocos publicos, imagem local e filmografia", () => {

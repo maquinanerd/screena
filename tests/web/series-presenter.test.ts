@@ -127,10 +127,20 @@ describe("series media presenter", () => {
     expect(media.backdrop?.src).toBe("/uploads/series/backdrop.jpg");
   });
 
-  it("mantem fallback visual quando nao ha path local permitido", () => {
+  it("monta URL remota do TMDB para file_path cru (poster w500 / backdrop w1280)", () => {
     const media = selectSeriesMedia({
       posterPath: "/poster.jpg",
       backdropPath: "/backdrop.jpg",
+    });
+    expect(media.hasRealImage).toBe(true);
+    expect(media.poster?.src).toBe("https://image.tmdb.org/t/p/w500/poster.jpg");
+    expect(media.backdrop?.src).toBe("https://image.tmdb.org/t/p/w1280/backdrop.jpg");
+  });
+
+  it("mantem fallback visual quando o path e externo/invalido", () => {
+    const media = selectSeriesMedia({
+      posterPath: "https://x.com/p.jpg",
+      backdropPath: "/media/../secret.jpg",
     });
     expect(media).toEqual({ poster: null, backdrop: null, hasRealImage: false });
   });
@@ -202,7 +212,8 @@ describe("buildSeriesPageView", () => {
     expect(view.seasons[0]?.title).toBe("Temporada 1");
     expect(view.seasons[0]?.overview).toBeNull();
     expect(view.seasons[0]?.episodeCountLabel).toBeNull();
-    expect(view.seasons[0]?.poster).toBeNull();
+    // Season poster com file_path cru do TMDB -> URL remota (w500).
+    expect(view.seasons[0]?.poster?.src).toBe("https://image.tmdb.org/t/p/w500/season.jpg");
   });
 
   it("monta view com campos reais, blocos publicos e episodios existentes", () => {
@@ -265,6 +276,9 @@ describe("buildSeriesPageView", () => {
       2,
     ]);
     expect(view.seasons[0]?.episodes[0]?.still?.src).toBe("/uploads/series/e1.webp");
-    expect(view.seasons[0]?.episodes[1]?.still).toBeNull();
+    // Episode still com file_path cru do TMDB -> URL remota (original).
+    expect(view.seasons[0]?.episodes[1]?.still?.src).toBe(
+      "https://image.tmdb.org/t/p/original/still.jpg",
+    );
   });
 });

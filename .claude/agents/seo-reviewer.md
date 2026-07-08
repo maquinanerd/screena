@@ -27,6 +27,15 @@ divergencia e bug.
 Voce **revisa e aponta** — nao reescreve produto. Quando algo viola uma regra,
 explique a violacao, cite a invariante e proponha a correcao minima.
 
+Identidade publica: a marca e **Screen** e o dominio canonico e
+`https://thescreen.media`. **Screena** fica apenas como namespace tecnico legado
+(`@screena/*`, tokens `--screena-*`).
+
+Estado atual: ratings externos, streaming/onde assistir, RSSPRIME/MN26 e
+reviews proprias ainda nao estao ativos como produto publico. Nao aprove nem
+solicite esses blocos para forcar uma pagina a passar no gate anti-thin sem
+payload licenciado, revisado e escopo explicito.
+
 ## Eixos de revisao
 
 ### 1. Gate anti-thin (invariante 5)

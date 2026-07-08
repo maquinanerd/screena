@@ -21,6 +21,7 @@ import {
   mapKnownForDepartment,
   MIN_INDEX_ITEMS,
   normalizeEntityLocalImagePath,
+  resolveCardScreenScore,
   type MovieListItemInput,
   type PersonListItemInput,
   type SeriesListItemInput,
@@ -122,6 +123,7 @@ describe("cards individuais", () => {
       href: "/pt/filmes/filme-pt/",
       meta: "2020",
       image: { src: "/media/movies/p.webp", width: 342, height: 513 },
+      screenScore: null,
     });
   });
 
@@ -145,6 +147,39 @@ describe("cards individuais", () => {
     );
     expect(buildPersonCard(person({ slug: "p", knownForDepartment: "Xyz" }))?.meta).toBeNull();
     expect(buildPersonCard(person({ slug: "p" }))?.href).toBe("/pt/pessoas/p/");
+  });
+});
+
+describe("resolveCardScreenScore", () => {
+  const governed = { screenScore: 4.5, screenScoreScale: 5, screenScoreDisplay: true };
+
+  it("formata a nota governada (uma casa decimal) quando liberada e valida", () => {
+    expect(resolveCardScreenScore(governed)).toBe("4.5");
+    expect(resolveCardScreenScore({ ...governed, screenScore: 4 })).toBe("4.0");
+    expect(resolveCardScreenScore({ ...governed, screenScore: 5 })).toBe("5.0");
+  });
+
+  it("null quando o display nao esta liberado ou o gate esta ausente", () => {
+    expect(resolveCardScreenScore({ ...governed, screenScoreDisplay: false })).toBeNull();
+    expect(resolveCardScreenScore({})).toBeNull();
+    expect(resolveCardScreenScore({ screenScore: 4.5, screenScoreScale: 5 })).toBeNull();
+  });
+
+  it("null para escala != 5, valor fora de faixa ou nao finito (mesmo gate do hero)", () => {
+    expect(resolveCardScreenScore({ ...governed, screenScoreScale: 10 })).toBeNull();
+    expect(resolveCardScreenScore({ ...governed, screenScoreScale: null })).toBeNull();
+    expect(resolveCardScreenScore({ ...governed, screenScore: 0 })).toBeNull();
+    expect(resolveCardScreenScore({ ...governed, screenScore: -1 })).toBeNull();
+    expect(resolveCardScreenScore({ ...governed, screenScore: 6 })).toBeNull();
+    expect(resolveCardScreenScore({ ...governed, screenScore: null })).toBeNull();
+    expect(resolveCardScreenScore({ ...governed, screenScore: Number.NaN })).toBeNull();
+  });
+
+  it("filme/serie expoem a nota governada; pessoa nunca tem nota", () => {
+    expect(buildMovieCard(movie(governed))?.screenScore).toBe("4.5");
+    expect(buildSeriesCard(series(governed))?.screenScore).toBe("4.5");
+    expect(buildMovieCard(movie())?.screenScore).toBeNull();
+    expect(buildPersonCard(person({ slug: "p" }))?.screenScore).toBeNull();
   });
 });
 

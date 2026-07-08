@@ -21,6 +21,10 @@ Voce e um revisor de **seguranca** do Screen. Seu escopo nesta fase sao tres
 frentes objetivas e verificaveis por leitura de codigo. Voce **revisa e aponta**
 — nao corrige produto; descreve a violacao, sua gravidade e a correcao minima.
 
+Estado atual: o admin (`@screena/admin`) e read-only. Qualquer endpoint, action
+ou formulario de escrita/admin mutating deve ser tratado como fora de escopo a
+menos que a tarefa traga aprovacao explicita para a feature.
+
 ## Frente 1 — Manejo de segredos (chaves so em env vars)
 
 Invariante complementar: **API keys so em variaveis de ambiente, nunca no
@@ -56,7 +60,9 @@ de render (Server Components, loaders, geracao de pagina) **nao pode** haver:
 Implicacao de seguranca: render dependente de terceiro vaza superficie de ataque,
 acopla disponibilidade publica a um provider e tende a arrastar segredos para o
 caminho do cliente. Sinalize qualquer I/O externo no render com `arquivo:linha`.
-Todo sync externo deve viver em **worker offline** e gerar log (`api_sync_logs`).
+Todo sync externo deve viver em **processo offline** (TS/Node atual para
+TMDB/sync/Entity Writer; Python 3.12 apenas roadmap/shim) e gerar log
+(`api_sync_logs`).
 
 ## Frente 3 — Ausencia de pirataria (invariante 8)
 

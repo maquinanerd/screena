@@ -2,7 +2,7 @@
 
 > Documento operacional de deploy. Descreve como colocar o Screen no ar em
 > um VPS gerenciado pelo CloudPanel: site Node.js (`thescreen.media`),
-> PostgreSQL, Redis opcional, workers Python via `systemd`, proxy reverso
+> PostgreSQL, Redis opcional, servicos offline via `systemd`, proxy reverso
 > Nginx e SSL do CloudPanel. Em caso de conflito entre este documento e a
 > realidade do servidor, atualize este documento ou corrija o servidor —
 > nunca deixe os dois divergentes em silencio.
@@ -52,9 +52,10 @@ Invariantes reforcados por este documento:
         escrita       |              | (offline, nunca no render)
         offline       |              |
             +---------+--------------+----------+
-            |        Workers Python (systemd)   |
-            |  tmdb · ratings · streaming ·     |
-            |  entity-writer · rssprime         |
+            |     Servicos offline (systemd)    |
+            |  TS/Node: tmdb · entity-writer    |
+            |  Python roadmap: ratings ·        |
+            |  streaming · rssprime             |
             |  orquestrados por scheduler.timer |
             +-----------------------------------+
 ```
@@ -64,9 +65,11 @@ Pontos inegociaveis desta topologia:
 - O **Next.js so le** PostgreSQL e o cache (Redis/local). Ele **nunca**
   chama TMDB, Gemini, provedor de ratings ou provedor de streaming durante o
   render.
-- Os **workers Python** sao os unicos que falam com APIs externas. Eles
-  rodam de forma agendada (timers do `systemd`), escrevem no banco/cache e
-  geram log de todo sync (`api_sync_logs`).
+- Os **servicos offline** sao os unicos que falam com APIs externas. Hoje,
+  TMDB/ingestao/sync e Entity Writer rodam em TypeScript/Node + Prisma; workers
+  Python permanecem como roadmap/shim para ratings, streaming, RSS/news e
+  orquestracao. Todos rodam fora do request, escrevem no banco/cache e geram log
+  de todo sync (`api_sync_logs`) quando ha contato externo.
 - O **CloudPanel** cuida do Nginx (proxy reverso) e do SSL. Nao expomos a
   porta 3000 diretamente na internet.
 
@@ -79,7 +82,7 @@ Pontos inegociaveis desta topologia:
 | **Site Node.js** | App Next.js (`@screena/web`), serve `thescreen.media` | Node 22, porta interna `3000`, via PM2 ou `systemd` | Interno (`127.0.0.1:3000`), so o Nginx alcanca |
 | **PostgreSQL** | Banco canonico (filmes, series, ratings, content_blocks...) | Local no VPS **ou** gerenciado (provedor externo) | Interno; nunca exposto a internet publica |
 | **Redis (opcional)** | Cache de leitura e fila leve de jobs dos workers | Local no VPS ou gerenciado | Interno; protegido por senha + bind local |
-| **Workers Python** | Sync TMDB, ratings, streaming, RSS e Entity Writer (Gemini offline) | Python 3.12 em virtualenv, via `systemd` services + timers | Sem porta publica; saida apenas para APIs externas e banco |
+| **Servicos offline** | Sync TMDB, ratings/streaming futuros, RSS futuro e Entity Writer (Gemini offline) | TS/Node atual para TMDB/Entity Writer; Python 3.12 como roadmap/shim; via `systemd` services + timers | Sem porta publica; saida apenas para APIs externas e banco |
 | **Nginx (CloudPanel)** | Proxy reverso HTTPS -> `127.0.0.1:3000`, gzip/brotli, headers | Gerenciado pela UI/CLI do CloudPanel | Publico nas portas 80/443 |
 | **SSL (CloudPanel)** | Certificado Let's Encrypt para `thescreen.media` e `www` | Emitido/renovado pelo CloudPanel | Termina TLS no Nginx |
 
@@ -94,7 +97,7 @@ Pontos inegociaveis desta topologia:
 ### 2.2 PostgreSQL (local ou gerenciado)
 
 - **Local:** instancia PostgreSQL no proprio VPS, escutando em
-  `127.0.0.1:5432`, acessada via `SCREENA_DATABASE_URL`.
+  `127.0.0.1:5432`, acessada via `DATABASE_URL`.
 - **Gerenciado:** instancia em provedor externo; nesse caso `sslmode=require`
   na connection string e o IP do VPS liberado no firewall do provedor.
 - Em ambos os casos, o banco **nunca** aceita conexao publica aberta.
@@ -107,12 +110,15 @@ Pontos inegociaveis desta topologia:
   funcionalidade.
 - Protegido por `requirepass` e `bind 127.0.0.1`.
 
-### 2.4 Workers Python (via systemd)
+### 2.4 Servicos offline (via systemd)
 
-- Esqueletos Python 3.12 (Fase 0). Cada worker e um `*.service` do tipo
-  `oneshot`, disparado por um `*.timer` (ou pelo `the-screen-scheduler.timer`).
-- Responsaveis por **todo** contato com APIs externas. Sempre geram log de
-  sync.
+- TMDB/ingestao/sync e Entity Writer rodam hoje em **TypeScript/Node + Prisma**.
+- Esqueletos Python 3.12 permanecem como roadmap/shim futuro para ratings,
+  streaming, RSS/news e orquestracao. Cada worker/servico offline pode ser um
+  `*.service` do tipo `oneshot`, disparado por um `*.timer` (ou pelo
+  `the-screen-scheduler.timer`).
+- Responsaveis por **todo** contato com APIs externas. Sempre geram log de sync
+  quando ha sincronizacao externa.
 
 ### 2.5 Nginx (proxy reverso do CloudPanel)
 
@@ -232,12 +238,15 @@ ln -sfn ../shared/.env.production current/apps/web/.env.production
 
 ### Passo 9 — Rodar as migrations
 
-> **Fase 0:** ainda nao ha schema real nem migrations. Este passo fica
-> documentado para as fases seguintes.
+O schema Prisma e as migrations reais vivem em `packages/db/prisma`. Rode as
+migrations antes de subir o app contra um release novo.
 
 ```bash
+corepack enable
+corepack prepare pnpm@9.15.4 --activate
 pnpm install --frozen-lockfile
-pnpm --filter @screena/db migrate:deploy   # ilustrativo (Prisma/Drizzle)
+pnpm --filter @screena/db db:generate
+pnpm --filter @screena/db db:migrate:deploy
 ```
 
 Migrations sempre rodam **antes** de apontar o symlink `current` para o novo
@@ -246,8 +255,10 @@ release, para evitar app novo contra schema velho.
 ### Passo 10 — Buildar o Next.js
 
 ```bash
+corepack enable
+corepack prepare pnpm@9.15.4 --activate
 pnpm install --frozen-lockfile
-pnpm --filter @screena/web build           # gera .next em modo standalone
+pnpm --filter @screena/web build           # build do app publico Next.js
 ```
 
 Garanta `output: 'standalone'` no `next.config` para um bundle de runtime
@@ -273,7 +284,7 @@ pm2 startup     # gera o hook de boot
 
 Escolha **uma** estrategia e padronize. Este guia prioriza `systemd`.
 
-### Passo 12 — Criar os systemd timers dos workers
+### Passo 12 — Criar os systemd timers dos servicos offline
 
 Instale os `*.service` e `*.timer` dos workers (secao 5) e habilite o
 agendador.
@@ -298,7 +309,7 @@ redirect HTTP -> HTTPS.
 
 ```bash
 # ilustrativo: dump diario via cron/systemd timer
-pg_dump "$SCREENA_DATABASE_URL" | gzip > /var/backups/screena/db-$(date +%F).sql.gz
+pg_dump "$DATABASE_URL" | gzip > /var/backups/screena/db-$(date +%F).sql.gz
 ```
 
 ### Passo 15 — Firewall
@@ -418,29 +429,29 @@ PrivateTmp=true
 WantedBy=multi-user.target
 ```
 
-### 5.2 `the-screen-worker-tmdb.service` (worker oneshot)
+### 5.2 `the-screen-worker-tmdb.service` (servico TS/Node oneshot)
 
 ```ini
 # /etc/systemd/system/the-screen-worker-tmdb.service
 [Unit]
-Description=Screen Worker - TMDB sync (offline)
+Description=Screen Service - TMDB sync (offline)
 After=network-online.target postgresql.service
 Wants=network-online.target
 
 [Service]
 Type=oneshot
 User=screen
-WorkingDirectory=/home/screen/htdocs/thescreen.media/current/workers
+WorkingDirectory=/home/screen/htdocs/thescreen.media/current
 EnvironmentFile=/home/screen/htdocs/thescreen.media/shared/.env.production
-ExecStart=/home/screen/htdocs/thescreen.media/shared/venv/bin/python -m screena_workers.tmdb
+ExecStart=/usr/bin/corepack pnpm --filter @screena/sync exec tsx bin/run.ts
 NoNewPrivileges=true
 PrivateTmp=true
 ```
 
-> Os demais workers (`ratings`, `streaming`, `entity-writer`, `rssprime`)
-> seguem o mesmo molde, mudando `Description` e o modulo Python em
-> `ExecStart` (ex.: `-m screena_workers.ratings`). O nome do pacote Python
-> `screena_workers` e legado tecnico interno, nao marca publica.
+> TMDB/ingestao/sync rodam hoje em TypeScript/Node. Workers futuros de
+> `ratings`, `streaming` e `rssprime` podem usar Python 3.12 como shim/roadmap
+> quando forem implementados; `entity-writer` tambem roda hoje em TS/Node e deve
+> continuar offline.
 
 ### 5.3 `the-screen-scheduler.timer` (+ service de orquestracao)
 
@@ -547,8 +558,8 @@ server {
 | --- | --- | --- | --- |
 | `DATABASE_URL` | web (leitura) + workers (escrita) | Nao | Connection string do PostgreSQL (`postgres://user:pass@host:5432/screen_prod`). Em banco gerenciado, inclua `?sslmode=require`. |
 | `THE_SCREEN_PUBLIC_SITE_URL` | web | **Sim** | URL canonica publica (`https://thescreen.media`). Usada em canonicals, sitemap, OG. |
-| `TMDB_READ_ACCESS_TOKEN` | worker/service `tmdb` | Nao | Token Bearer v4 do TMDB (preferido). So o pipeline offline usa; nunca o render. |
-| `TMDB_API_KEY` | worker/service `tmdb` | Nao | Chave v3 do TMDB (fallback). So o pipeline offline usa; nunca o render. |
+| `TMDB_READ_ACCESS_TOKEN` | worker/service `tmdb` | Nao | Token Bearer v4 do TMDB (preferido; tem precedencia quando preenchido). So o pipeline offline usa; nunca o render. |
+| `TMDB_API_KEY` | worker/service `tmdb` | Nao | Chave v3 do TMDB (fallback quando `TMDB_READ_ACCESS_TOKEN` estiver ausente). So o pipeline offline usa; nunca o render. |
 | `GEMINI_API_KEY` | worker/service `entity-writer` | Nao | Chave do Gemini. So o Entity Writer offline a usa (Invariante 4). |
 | `GEMINI_MODEL` | worker/service `entity-writer` | Nao | Modelo Gemini usado pelo Entity Writer offline. |
 | `SCREENA_RATINGS_PROVIDER_KEY` | worker `ratings` | Nao | Chave do provedor tecnico de ratings (`provider_api`), distinto da fonte editorial (Invariante 2). |
@@ -594,10 +605,10 @@ SCREENA_REDIS_URL=redis://:TROQUE_ESTA_SENHA@127.0.0.1:6379/0
 - [ ] Banco `screen_prod` e usuario `screen_app` criados.
 - [ ] Repo clonado em `releases/<timestamp>`, symlink `current` ativo.
 - [ ] `.env.production` em `shared/` (`0600`), fora do git.
-- [ ] Migrations aplicadas (fases seguintes).
+- [ ] Migrations Prisma aplicadas.
 - [ ] Build do Next.js (`standalone`) concluido.
 - [ ] `the-screen-web.service` ativo, escutando em `127.0.0.1:3000`.
-- [ ] Timers dos workers habilitados; `entity-writer` so offline.
+- [ ] Timers dos servicos offline habilitados; `entity-writer` so offline.
 - [ ] SSL Let's Encrypt emitido; redirect HTTP -> HTTPS e `www` -> apex.
 - [ ] Backups (banco + `shared/`) agendados e replicados para fora do VPS.
 - [ ] Firewall: so 22/80/443/8443; 3000/5432/6379 fechados na internet.

@@ -1,6 +1,6 @@
 ---
 name: add-entity
-description: Use quando precisar adicionar uma nova entidade (filme, serie, temporada, episodio, pessoa) ao Screen. Cobre ingestao via TMDB/admin, normalizacao no PostgreSQL, criacao de slug por idioma, gate anti-thin e exigencia de revisao humana. NAO use para gerar texto editorial (isso e o Entity Writer).
+description: Use quando precisar adicionar uma nova entidade (filme, serie, temporada, episodio, pessoa) ao Screen. Cobre ingestao offline via TMDB, normalizacao no PostgreSQL, criacao de slug por idioma, gate anti-thin e exigencia de revisao humana. O admin atual e read-only; cadastro manual via admin e fluxo futuro. NAO use para gerar texto editorial (isso e o Entity Writer).
 ---
 
 # Skill: add-entity
@@ -9,15 +9,17 @@ Esta skill descreve o procedimento canonico para **adicionar uma entidade** na b
 A entidade e o nucleo da arquitetura entity-first: ela nasce de dados normalizados, nunca de
 texto gerado por IA.
 
-> **Origem da entidade (inegociavel):** toda entidade nasce via **TMDB (Fase 2+) ou pelo admin
-> humano**. Uma entidade **NUNCA** e criada pelo Entity Writer e **NUNCA** pelo MN26. O Entity
+> **Origem da entidade (inegociavel):** toda entidade nasce via **TMDB offline em
+> TypeScript/Node + Prisma** ou, futuramente, por fluxo de escrita com admin
+> humano. O admin atual (`@screena/admin`) e **read-only**. Uma entidade
+> **NUNCA** e criada pelo Entity Writer e **NUNCA** pelo MN26. O Entity
 > Writer apenas escreve `content_blocks` a partir de payload controlado de uma entidade que ja
 > existe; ele nao cria entidades, nao inventa fatos e nao chama APIs externas.
 
 ## Quando usar
 
-- Importar um filme/serie/pessoa novo do TMDB (a partir da Fase 2).
-- Cadastrar manualmente uma entidade via admin (`@screena/admin`).
+- Importar um filme/serie/pessoa novo do TMDB por processo offline, quando o escopo da tarefa permitir.
+- Planejar/validar cadastro manual futuro via admin; nao executar escrita no `@screena/admin` atual, que e read-only.
 - Reprocessar/normalizar uma entidade ja existente apos atualizacao de fonte.
 
 ## Quando NAO usar
@@ -30,12 +32,13 @@ texto gerado por IA.
 
 ## Pre-requisitos
 
-- A entidade deve ter uma **fonte de origem identificada** (TMDB id em `entity_external_ids`,
-  ou cadastro manual via admin com autor humano).
+- A entidade deve ter uma **fonte de origem identificada** (TMDB id em `entity_external_ids`;
+  cadastro manual com autor humano depende de fluxo de escrita futuro).
 - Chaves de API (TMDB etc.) **somente em env vars** — nunca no frontend, nunca em paginas de
   render.
-- Lembrete de fase: na **Fase 0** nao ha schema real nem client TMDB. Esta skill descreve o
-  fluxo-alvo para Fase 2+; aqui ela vale como contrato/lembrete de governanca.
+- Ja existem schema Prisma e client TMDB real em TypeScript/Node. Reuse o fluxo existente; nao
+  reimplemente TMDB em Python nem leia API externa no render.
+- Para TMDB, prefira `TMDB_READ_ACCESS_TOKEN` (v4); `TMDB_API_KEY` (v3) e fallback quando suportado.
 
 ## Passos
 
@@ -44,7 +47,7 @@ texto gerado por IA.
    - Garanta o id externo (ex.: TMDB) registrado em `entity_external_ids`. Nunca duplique
      entidade que ja exista — verifique por id externo antes de criar.
 
-2. **Buscar no TMDB (Fase 2+).**
+2. **Buscar no TMDB offline (estado atual, quando o escopo permitir).**
    - A busca ocorre **somente em worker offline**, via api-client dedicado (ver skill
      new-api-client). Nunca no render, nunca em pagina indexavel.
    - Todo fetch externo gera log em `api_sync_logs`.
@@ -103,5 +106,5 @@ Skill sem teste vira lembrete; skill com hook/teste vira governanca. Enquanto es
 tiver validacao automatizada (hook que bloqueie publicacao sem revisao, teste do gate anti-thin,
 verificacao de licenca em CI), trate este documento como **lembrete obrigatorio** de processo —
 nao como garantia tecnica. O objetivo de longo prazo e transformar cada passo critico (origem
-TMDB/admin, separacao provider_api/rating_source, gate anti-thin, exigencia de revisao humana) em
-**governanca executavel**.
+TMDB/admin futuro, separacao provider_api/rating_source, gate anti-thin, exigencia de revisao
+humana) em **governanca executavel**.

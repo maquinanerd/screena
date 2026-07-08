@@ -82,6 +82,13 @@ describe("schema: defaults seguros (itens 3 e 7)", () => {
     expect(hasDefault(modelBlock("content_blocks"), "reviewStatus", "draft")).toBe(true);
   });
 
+  it("movies/tv_shows: screen_score_display nasce false (nota editorial oculta ate liberacao)", () => {
+    // A nota editorial PROPRIA do Screen so aparece quando explicitamente
+    // liberada; nasce oculta (default seguro), como os demais gates de exibicao.
+    expect(hasDefault(modelBlock("movies"), "screenScoreDisplay", "false")).toBe(true);
+    expect(hasDefault(modelBlock("tv_shows"), "screenScoreDisplay", "false")).toBe(true);
+  });
+
   it("languages: defaults de publicacao/indexacao sao false (seguro)", () => {
     const body = modelBlock("languages");
     expect(hasDefault(body, "isPublished", "false")).toBe(true);

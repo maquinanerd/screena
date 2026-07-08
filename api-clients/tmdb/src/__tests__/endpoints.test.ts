@@ -55,4 +55,23 @@ describe('createTmdbEndpoints', () => {
     expect(url).toContain('/person/287')
     expect(url).toContain('append_to_response=external_ids')
   })
+
+  it('getUpcomingMovies usa /movie/upcoming com defaults language=pt-BR, region=BR, page=1', async () => {
+    const { endpoints, urls } = setup()
+    await endpoints.getUpcomingMovies()
+    const url = urls[0] ?? ''
+    expect(url).toContain('/movie/upcoming')
+    expect(url).toContain('language=pt-BR')
+    expect(url).toContain('region=BR')
+    expect(url).toContain('page=1')
+  })
+
+  it('getUpcomingMovies respeita params (region/language/page) sobrescritos', async () => {
+    const { endpoints, urls } = setup()
+    await endpoints.getUpcomingMovies({ region: 'US', language: 'en-US', page: 3 })
+    const url = urls[0] ?? ''
+    expect(url).toContain('region=US')
+    expect(url).toContain('language=en-US')
+    expect(url).toContain('page=3')
+  })
 })

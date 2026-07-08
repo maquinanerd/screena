@@ -45,6 +45,19 @@ function yearFromDate(date: Date | null): number | null {
   return date === null ? null : date.getUTCFullYear();
 }
 
+/**
+ * Converte um `Decimal` do Prisma (ou number) em `number` seguro. Qualquer valor
+ * nao finito vira `null` (fallback seguro — nunca NaN cruza para o presenter).
+ * Mesma normalizacao usada no loader do hero (`home-hero.ts`).
+ */
+function decimalToNumber(
+  value: { toString(): string } | number | null,
+): number | null {
+  if (value == null) return null;
+  const num = typeof value === "number" ? value : Number(value.toString());
+  return Number.isFinite(num) ? num : null;
+}
+
 /** Slugs canonicos pt-BR de um tipo, indexados por entityId (string). */
 async function canonicalSlugsByEntity(
   prisma: ReturnType<typeof getPrismaClient>,
@@ -87,7 +100,15 @@ export const getMovieIndexData = cache(async (): Promise<EntityIndexData> => {
     const [movies, titleByEntity] = await Promise.all([
       prisma.movie.findMany({
         where: { id: { in: ids } },
-        select: { id: true, titleOriginal: true, releaseDate: true, posterPath: true },
+        select: {
+          id: true,
+          titleOriginal: true,
+          releaseDate: true,
+          posterPath: true,
+          screenScore: true,
+          screenScoreScale: true,
+          screenScoreDisplay: true,
+        },
       }),
       translationTitlesByEntity(prisma, "movie", ids),
     ]);
@@ -99,6 +120,9 @@ export const getMovieIndexData = cache(async (): Promise<EntityIndexData> => {
         slug: slugByEntity.get(key) ?? null,
         year: yearFromDate(movie.releaseDate),
         posterPath: movie.posterPath,
+        screenScore: decimalToNumber(movie.screenScore),
+        screenScoreScale: movie.screenScoreScale,
+        screenScoreDisplay: movie.screenScoreDisplay,
       };
     });
   }
@@ -126,6 +150,9 @@ export const getSeriesIndexData = cache(async (): Promise<EntityIndexData> => {
           firstAirDate: true,
           lastAirDate: true,
           posterPath: true,
+          screenScore: true,
+          screenScoreScale: true,
+          screenScoreDisplay: true,
         },
       }),
       translationTitlesByEntity(prisma, "tv", ids),
@@ -139,6 +166,9 @@ export const getSeriesIndexData = cache(async (): Promise<EntityIndexData> => {
         firstAirYear: yearFromDate(show.firstAirDate),
         lastAirYear: yearFromDate(show.lastAirDate),
         posterPath: show.posterPath,
+        screenScore: decimalToNumber(show.screenScore),
+        screenScoreScale: show.screenScoreScale,
+        screenScoreDisplay: show.screenScoreDisplay,
       };
     });
   }

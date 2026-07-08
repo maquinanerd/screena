@@ -28,6 +28,11 @@ bug e deve ser corrigida no codigo/regra, nunca contornada na pagina.
 > [`packages/seo/src/indexability.ts`](../../../packages/seo/src/indexability.ts),
 > alimentado por um payload ja resolvido a partir do PostgreSQL.
 
+Estado atual: ratings externos, streaming/onde assistir, RSSPRIME/MN26 e
+reviews proprias ainda nao estao ativos como produto publico. Audite esses
+blocos apenas quando existirem em payload licenciado, revisado e explicitamente
+escopado; nao os solicite para forcar `index`.
+
 ---
 
 ## Quando usar
@@ -126,6 +131,8 @@ sobre o payload e respeite a precedencia (do mais restritivo ao menos):
 
 - Confirme que a decisao bate com o `<meta robots>` e com a presenca/ausencia no
   **sitemap do idioma**. Sitemap e meta tag **nunca** podem discordar.
+- Sitemap nao promove pagina fina: apenas paginas `index` entram no arquivo do
+  idioma, e `noindex`/`draft`/`blocked` ficam fora mesmo que a rota exista.
 - Regra pratica: **na duvida, `noindex`**.
 
 ### 7. Diferenciacao filme/serie (invariante 11)
