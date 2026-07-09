@@ -44,3 +44,22 @@ export function withTmdbSuffix(baseSlug: string, tmdbId: number): string {
 export function entityRoutePath(entityType: CatalogEntityType, slug: string): string {
   return `/pt/${ROUTE_SEGMENT[entityType]}/${slug}/`
 }
+
+/**
+ * Slug canonico DESEJADO de um titulo de catalogo (antes da resolucao de
+ * colisao no banco): `slugify(title)` + ano quando houver; fallback `tmdb-{id}`
+ * para titulo vazio. Deterministico e estavel (o mesmo titulo/ano/id sempre
+ * gera o mesmo slug), entao re-sync/re-promocao nao cria variantes novas.
+ *
+ * PURO: nao decide colisao (isso exige o banco — ver `upsertCanonicalSlug` no
+ * adapter de persistencia). Reusado pelo backfill (ingest-public-catalog) e pela
+ * promocao de tmdb_raw, para nao duplicar a regra de slug.
+ */
+export function desiredCatalogSlug(
+  title: string,
+  year: number | null,
+  tmdbId: number,
+): string {
+  const base = slugify(title) || `tmdb-${tmdbId}`
+  return year !== null ? `${base}-${year}` : base
+}
