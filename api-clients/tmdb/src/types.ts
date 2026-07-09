@@ -114,6 +114,20 @@ export interface TmdbSeasonDetail {
   episodes?: TmdbEpisodeSummary[]
 }
 
+/** Detalhe de episodio (`GET /tv/{id}/season/{n}/episode/{e}`). */
+export interface TmdbEpisodeDetail {
+  id?: number | null
+  episode_number: number
+  season_number?: number | null
+  name?: string | null
+  overview?: string | null
+  air_date?: string | null
+  runtime?: number | null
+  still_path?: string | null
+  external_ids?: TmdbExternalIds
+  credits?: TmdbCredits
+}
+
 /** Detalhe de pessoa (`GET /person/{id}`). */
 export interface TmdbPersonDetail {
   id: number

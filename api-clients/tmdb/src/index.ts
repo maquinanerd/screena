@@ -13,6 +13,7 @@ export * from './provider.js'
 export * from './types.js'
 export * from './config.js'
 export * from './http.js'
+export * from './append-to-response.js'
 export * from './endpoints.js'
 
 import { loadTmdbConfig, type TmdbConfig, type TmdbEnv } from './config.js'
