@@ -24,9 +24,17 @@ describe('classifyAdult (fail-closed)', () => {
     expect(classifyAdult(true)).toBe('adult')
   })
 
-  it('false ou ausente -> safe', () => {
+  it('false -> safe; ausente -> safe quando o campo nao e exigido (default)', () => {
     expect(classifyAdult(false)).toBe('safe')
     expect(classifyAdult(undefined)).toBe('safe')
+    expect(classifyAdult(false, true)).toBe('safe')
+  })
+
+  it('ausente -> malformed quando o export DEVERIA trazer adult (movie/person)', () => {
+    // Fail-closed por tipo: ausencia num export que fornece o campo = anomalia.
+    expect(classifyAdult(undefined, true)).toBe('malformed')
+    // true continua adult mesmo com o campo exigido.
+    expect(classifyAdult(true, true)).toBe('adult')
   })
 
   it('qualquer valor presente e malformado -> malformed (nunca seguro)', () => {
@@ -121,6 +129,23 @@ describe('filterAdult (fail-closed)', () => {
       invalidDropped: 1,
       unsafeDropped: 0,
     })
+  })
+
+  it('adultFieldRequired=true: ausente vira unsafe (fail-closed p/ movie/person)', () => {
+    const records: IdExportRecord[] = [
+      rec(1, false), // seguro
+      rec(2), // adult AUSENTE -> unsafe quando exigido
+      rec(3, true), // adulto
+    ]
+    const required = filterAdult(records, { adultFieldRequired: true })
+    expect(required.kept.map((r) => r.id)).toEqual([1])
+    expect(required.unsafeDropped).toBe(1) // id 2
+    expect(required.adultDropped).toBe(1) // id 3
+
+    // Sem exigir (default, ex.: collection/keyword): ausente e mantido.
+    const optional = filterAdult(records)
+    expect(optional.kept.map((r) => r.id)).toEqual([1, 2])
+    expect(optional.unsafeDropped).toBe(0)
   })
 
   it('entrada vazia devolve tudo zerado', () => {

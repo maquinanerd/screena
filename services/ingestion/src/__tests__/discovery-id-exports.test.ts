@@ -30,6 +30,19 @@ describe('catalogo de exports', () => {
     ])
   })
 
+  it('hasAdultField: so movie e person trazem o campo adult (fail-closed por tipo)', () => {
+    const byKind = Object.fromEntries(DAILY_ID_EXPORTS.map((e) => [e.kind, e.hasAdultField]))
+    expect(byKind).toEqual({
+      movie: true,
+      tv: false,
+      person: true,
+      collection: false,
+      network: false,
+      company: false,
+      keyword: false,
+    })
+  })
+
   it('NENHUM export padrao e um arquivo adult_* (camada 1 do filtro adult)', () => {
     for (const entry of DAILY_ID_EXPORTS) {
       expect(entry.file.startsWith('adult_')).toBe(false)

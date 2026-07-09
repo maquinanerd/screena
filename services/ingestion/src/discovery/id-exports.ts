@@ -32,6 +32,14 @@ export interface IdExportFile {
   readonly file: string
   /** Tipo interno correspondente. */
   readonly kind: TmdbDiscoveryKind
+  /**
+   * Se o export desse tipo traz o campo `adult` por linha. Quando `true`, um
+   * registro SEM `adult` e tratado FAIL-CLOSED (ausencia = anomalia, nunca
+   * presumida segura — ver `adult-filter.ts`). `movie` e `person` sempre trazem
+   * `adult`; os demais exports nao tem o conceito, entao a ausencia e legitima e
+   * segura.
+   */
+  readonly hasAdultField: boolean
 }
 
 /**
@@ -40,13 +48,13 @@ export interface IdExportFile {
  * baixado (camada 1 do filtro adult).
  */
 export const DAILY_ID_EXPORTS: readonly IdExportFile[] = [
-  { file: 'movie_ids', kind: 'movie' },
-  { file: 'tv_series_ids', kind: 'tv' },
-  { file: 'person_ids', kind: 'person' },
-  { file: 'collection_ids', kind: 'collection' },
-  { file: 'tv_network_ids', kind: 'network' },
-  { file: 'keyword_ids', kind: 'keyword' },
-  { file: 'production_company_ids', kind: 'company' },
+  { file: 'movie_ids', kind: 'movie', hasAdultField: true },
+  { file: 'tv_series_ids', kind: 'tv', hasAdultField: false },
+  { file: 'person_ids', kind: 'person', hasAdultField: true },
+  { file: 'collection_ids', kind: 'collection', hasAdultField: false },
+  { file: 'tv_network_ids', kind: 'network', hasAdultField: false },
+  { file: 'keyword_ids', kind: 'keyword', hasAdultField: false },
+  { file: 'production_company_ids', kind: 'company', hasAdultField: false },
 ]
 
 /**

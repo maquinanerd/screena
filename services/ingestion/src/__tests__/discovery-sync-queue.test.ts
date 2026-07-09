@@ -66,6 +66,32 @@ describe('buildSyncQueue', () => {
     expect(queue.map((q) => q.tmdbId)).toEqual([3])
   })
 
+  it('dedup deterministico: id repetido com popularidade divergente mantem a MAIOR (independe da ordem)', () => {
+    const a = buildSyncQueue([
+      { kind: 'movie', records: [{ id: 1, popularity: 5 }, { id: 1, popularity: 8 }] },
+    ])
+    const b = buildSyncQueue([
+      { kind: 'movie', records: [{ id: 1, popularity: 8 }, { id: 1, popularity: 5 }] },
+    ])
+    expect(a).toEqual([{ kind: 'movie', tmdbId: 1, popularity: 8 }])
+    expect(a).toEqual(b) // idempotente sob reordenacao (antes: first-seen dependia da ordem)
+  })
+
+  it('defesa em profundidade: NUNCA enfileira adult===true nem valor malformado', () => {
+    const queue = buildSyncQueue([
+      {
+        kind: 'movie',
+        records: [
+          { id: 1, adult: true }, // adulto -> fora, mesmo sem filtro previo
+          { id: 2, adult: 'true' as unknown as boolean }, // malformado -> fora
+          { id: 3, adult: false }, // seguro
+          { id: 4 }, // ausente (value-based) -> seguro
+        ],
+      },
+    ])
+    expect(queue.map((q) => q.tmdbId)).toEqual([3, 4])
+  })
+
   it('popularidade nao-finita vira null', () => {
     const queue = buildSyncQueue([
       { kind: 'movie', records: [{ id: 1, popularity: Number.NaN }] },

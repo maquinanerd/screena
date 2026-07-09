@@ -7,6 +7,7 @@
  * nada de rede/DB nem `append_to_response`.
  */
 
+import { classifyAdult } from './adult-filter.js'
 import type { IdExportRecord, TmdbDiscoveryKind } from './id-exports.js'
 
 /** Item da fila de sync: tipo + id TMDB + popularidade (para priorizar). */
@@ -41,13 +42,20 @@ function popularityOf(record: IdExportRecord): number | null {
 
 /**
  * Monta a fila a partir das fontes:
- *  - dedup por `(kind, tmdbId)` (o mesmo id pode existir em tipos diferentes);
+ *  - dedup por `(kind, tmdbId)` (o mesmo id pode existir em tipos diferentes),
+ *    mantendo a MAIOR popularidade em caso de repeticao (determinismo — nao
+ *    depende da ordem de entrada);
  *  - ordenacao DETERMINISTICA: tipo (KIND_ORDER) -> popularidade desc (nulls por
  *    ultimo) -> tmdbId asc.
  *
- * Idempotente: a mesma entrada produz exatamente a mesma fila (rodar a
- * descoberta duas vezes gera o mesmo NDJSON). Ids invalidos sao ignorados
- * defensivamente (o filtro ja deveria te-los removido).
+ * Idempotente: a mesma entrada (em qualquer ordem) produz exatamente a mesma
+ * fila (rodar a descoberta duas vezes gera o mesmo NDJSON).
+ *
+ * Defesa em profundidade: alem de ignorar ids invalidos, re-aplica a
+ * classificacao value-based de adult (`classifyAdult`) e NUNCA enfileira
+ * `adult === true` nem valor malformado — mesmo que um chamador esqueca de
+ * passar registros ja filtrados. A regra por-tipo de "adult ausente" fica no
+ * `filterAdult` upstream; esta e a rede secundaria.
  */
 export function buildSyncQueue(sources: readonly DiscoverySource[]): QueueItem[] {
   const byKey = new Map<string, QueueItem>()
@@ -55,13 +63,21 @@ export function buildSyncQueue(sources: readonly DiscoverySource[]): QueueItem[]
   for (const source of sources) {
     for (const record of source.records) {
       if (!Number.isInteger(record.id) || record.id <= 0) continue
+      if (classifyAdult(record.adult) !== 'safe') continue
+
       const key = `${source.kind}:${record.id}`
-      if (byKey.has(key)) continue
-      byKey.set(key, {
-        kind: source.kind,
-        tmdbId: record.id,
-        popularity: popularityOf(record),
-      })
+      const popularity = popularityOf(record)
+      const existing = byKey.get(key)
+      if (existing === undefined) {
+        byKey.set(key, { kind: source.kind, tmdbId: record.id, popularity })
+        continue
+      }
+      // Dedup deterministico: mantem a maior popularidade (independe da ordem).
+      const existingPop = existing.popularity ?? Number.NEGATIVE_INFINITY
+      const nextPop = popularity ?? Number.NEGATIVE_INFINITY
+      if (nextPop > existingPop) {
+        byKey.set(key, { kind: source.kind, tmdbId: record.id, popularity })
+      }
     }
   }
 

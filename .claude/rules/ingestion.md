@@ -187,11 +187,14 @@ A descoberta **nunca** enfileira conteudo adulto:
 1. **Arquivos `adult_*` nunca sao baixados.** O TMDB publica `adult_movie_ids`,
    `adult_tv_series_ids` e `adult_person_ids` — a descoberta ignora esses arquivos por
    completo (so os 7 padrao entram).
-2. **Campo `adult` classificado FAIL-CLOSED por linha.** So `adult === false` ou o campo
-   AUSENTE (ex.: collection/network/company/keyword nao trazem `adult`) contam como seguro.
-   `adult === true` e descartado como adulto; qualquer valor presente porem **malformado**
-   (`"true"`, `1`, `null`, objeto...) e descartado como **unsafe** — nunca presumido seguro.
-   So confiamos num booleano de verdade.
+2. **Campo `adult` classificado FAIL-CLOSED por linha, por tipo.** `adult === false` e seguro.
+   `adult === true` e descartado como adulto. Qualquer valor presente porem **malformado**
+   (`"true"`, `1`, `null`, objeto...) e descartado como **unsafe** — nunca presumido seguro. A
+   **ausencia** do campo depende do tipo: em exports que NAO trazem `adult`
+   (collection/network/company/keyword) e segura; em exports que DEVERIAM traze-lo
+   (**movie/person**) a ausencia e tratada como **unsafe** (anomalia, ex.: linha truncada) —
+   `hasAdultField` no catalogo de exports controla isso. So confiamos num booleano de verdade
+   quando o export o fornece.
 
 Falhar em qualquer uma das camadas deixa conteudo adulto entrar no catalogo — e o ponto mais
 sensivel da descoberta e deve ser coberto por teste.

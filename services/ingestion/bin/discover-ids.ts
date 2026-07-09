@@ -12,8 +12,11 @@
  *  1. Baixa SO os 7 exports padrao (nunca os arquivos adult_*): movie_ids,
  *     tv_series_ids, person_ids, collection_ids, tv_network_ids, keyword_ids,
  *     production_company_ids.
- *  2. Faz gunzip + parse JSONL (1 objeto por linha), streaming (memoria O(1) por
- *     linha), e FILTRA conteudo adulto (`adult === true`) + ids invalidos.
+ *  2. Faz gunzip + parse JSONL (1 objeto por linha) em STREAMING: o download
+ *     comprimido e o texto descomprimido nunca sao carregados inteiros na
+ *     memoria (le-se linha a linha). Os registros MANTIDOS acumulam em memoria
+ *     (O(nº de registros) — ~1M por export cheio). FILTRA conteudo adulto
+ *     (fail-closed) + ids invalidos, e conta linhas JSONL puladas.
  *  3. Monta a fila de sync IDEMPOTENTE (dedup + ordenacao deterministica).
  *  4. --apply: escreve o artefato NDJSON gitignored e loga contagens em
  *     api_sync_logs (regra "todo sync externo gera log"). Dry-run (default) so
@@ -49,6 +52,7 @@ import {
   exportUrl,
   formatExportDate,
   parseIdExportLine,
+  type IdExportFile,
   type IdExportRecord,
 } from '../src/discovery/id-exports.js'
 import { buildSyncQueue, type DiscoverySource } from '../src/discovery/sync-queue.js'
@@ -84,19 +88,23 @@ function resolveDate(argv: string[]): Date {
 }
 
 /** Baixa + gunzip + parseia UM export, filtrando adult/ids invalidos (streaming). */
-async function downloadExport(file: string, date: Date, maxPerType: number | null) {
-  const res = await fetch(exportUrl(file, date))
+async function downloadExport(exp: IdExportFile, date: Date, maxPerType: number | null) {
+  const res = await fetch(exportUrl(exp.file, date))
   if (!res.ok || res.body === null) {
-    throw new Error(`HTTP ${res.status} em ${exportFileName(file, date)}`)
+    throw new Error(`HTTP ${res.status} em ${exportFileName(exp.file, date)}`)
   }
 
   const nodeStream = Readable.fromWeb(res.body)
   const rl = createInterface({ input: nodeStream.pipe(createGunzip()), crlfDelay: Infinity })
 
   const raw: IdExportRecord[] = []
+  let skippedLines = 0
   for await (const line of rl) {
     const record = parseIdExportLine(line)
-    if (record === null) continue
+    if (record === null) {
+      skippedLines += 1
+      continue
+    }
     raw.push(record)
     if (maxPerType !== null && raw.length >= maxPerType) {
       rl.close()
@@ -105,7 +113,8 @@ async function downloadExport(file: string, date: Date, maxPerType: number | nul
     }
   }
 
-  return filterAdult(raw)
+  // movie/person trazem `adult` por linha -> ausencia e fail-closed (unsafe).
+  return { ...filterAdult(raw, { adultFieldRequired: exp.hasAdultField }), skippedLines }
 }
 
 async function main() {
@@ -152,17 +161,14 @@ async function main() {
     const startedAt = Date.now()
     const endpoint = `/p/exports/${exportFileName(exp.file, date)}`
     try {
-      const { kept, adultDropped, unsafeDropped, invalidDropped } = await downloadExport(
-        exp.file,
-        date,
-        maxPerType,
-      )
+      const { kept, adultDropped, unsafeDropped, invalidDropped, skippedLines } =
+        await downloadExport(exp, date, maxPerType)
       sources.push({ kind: exp.kind, records: kept })
       totalKept += kept.length
       totalAdult += adultDropped
       totalUnsafe += unsafeDropped
       console.log(
-        `  ${exp.kind}: ${kept.length} mantidos, ${adultDropped} adultos, ${unsafeDropped} adult-malformado (fail-closed), ${invalidDropped} invalidos.`,
+        `  ${exp.kind}: ${kept.length} mantidos, ${adultDropped} adultos, ${unsafeDropped} adult-malformado/ausente (fail-closed), ${invalidDropped} id-invalido, ${skippedLines} linhas puladas.`,
       )
       if (syncLog !== null) {
         await syncLog.write({

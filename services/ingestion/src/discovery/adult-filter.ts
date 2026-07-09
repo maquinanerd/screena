@@ -7,10 +7,12 @@
  *      linha a linha, aqui.
  * Esta e a camada 2. E o ponto mais sensivel do P0-00c.
  *
- * FAIL-CLOSED: so `adult === false` ou o campo AUSENTE contam como seguro. Um
- * `adult` presente porem malformado (string `"true"`, numero `1`, `null`,
- * objeto, array, etc.) NUNCA e presumido seguro — vai para `unsafeDropped` e
- * fica de fora da fila. So confiamos num booleano de verdade.
+ * FAIL-CLOSED: so `adult === false` (ou o campo ausente EM EXPORT QUE NAO O
+ * FORNECE) conta como seguro. Um `adult` presente porem malformado (string
+ * `"true"`, numero `1`, `null`, objeto, array...) NUNCA e presumido seguro — vai
+ * para `unsafeDropped`. E, em exports que DEVERIAM trazer `adult` (movie/person),
+ * a AUSENCIA do campo tambem e tratada como unsafe (anomalia, ex.: linha
+ * truncada). So confiamos num booleano de verdade quando o export o fornece.
  */
 
 import type { IdExportRecord } from './id-exports.js'
@@ -20,16 +22,19 @@ export type AdultClassification = 'safe' | 'adult' | 'malformed'
 
 /**
  * Classifica o campo `adult` de forma FAIL-CLOSED:
- *  - `true`              -> `'adult'`     (conteudo adulto explicito);
- *  - `false` | ausente   -> `'safe'`      (permitido — `undefined` = campo nao
- *    fornecido pelo export, ex.: collection/network/company/keyword);
+ *  - `true`   -> `'adult'`     (conteudo adulto explicito);
+ *  - `false`  -> `'safe'`      (permitido);
+ *  - ausente (`undefined`) -> `'safe'` SE o export nao fornece o campo
+ *    (`adultFieldRequired = false`, ex.: collection/network/company/keyword);
+ *    `'malformed'` SE o export deveria fornecer (`adultFieldRequired = true`,
+ *    ex.: movie/person) — ausencia vira anomalia, nao "seguro";
  *  - qualquer OUTRO valor presente (`"true"`, `"false"`, `1`, `0`, `null`,
- *    objeto, array...) -> `'malformed'` (nao confiavel; nunca tratado como
- *    seguro).
+ *    objeto, array...) -> `'malformed'` (nunca tratado como seguro).
  */
-export function classifyAdult(adult: unknown): AdultClassification {
+export function classifyAdult(adult: unknown, adultFieldRequired = false): AdultClassification {
   if (adult === true) return 'adult'
-  if (adult === false || adult === undefined) return 'safe'
+  if (adult === false) return 'safe'
+  if (adult === undefined) return adultFieldRequired ? 'malformed' : 'safe'
   return 'malformed'
 }
 
@@ -52,21 +57,36 @@ export interface AdultFilterResult {
   readonly kept: IdExportRecord[]
   /** `adult === true` — conteudo adulto explicito. */
   readonly adultDropped: number
-  /** `adult` presente porem malformado (fail-closed: nunca presumido seguro). */
+  /** `adult` malformado, ou ausente num export que deveria traze-lo (fail-closed). */
   readonly unsafeDropped: number
   /** `id` ausente/invalido. */
   readonly invalidDropped: number
+}
+
+/** Opcoes do filtro de adult. */
+export interface FilterAdultOptions {
+  /**
+   * Se o export deste tipo traz `adult` por linha (movie/person). Quando `true`,
+   * um registro SEM `adult` vai para `unsafeDropped` (fail-closed: a ausencia e
+   * anomalia, nunca presumida segura). Default `false` (collection/network/
+   * company/keyword: ausencia e legitima e segura).
+   */
+  readonly adultFieldRequired?: boolean
 }
 
 /**
  * Filtra registros de export FAIL-CLOSED. Descarta, em ordem:
  *  1. `id` invalido (`invalidDropped`);
  *  2. `adult === true` (`adultDropped`);
- *  3. `adult` presente e malformado (`unsafeDropped`) — nunca mantido.
- * So sobra na fila quem tem id valido E `adult` seguro (`false`/ausente).
+ *  3. `adult` malformado — ou ausente quando `adultFieldRequired` — (`unsafeDropped`).
+ * So sobra na fila quem tem id valido E `adult` classificado `'safe'`.
  * Preserva a ordem de entrada dos mantidos.
  */
-export function filterAdult(records: readonly IdExportRecord[]): AdultFilterResult {
+export function filterAdult(
+  records: readonly IdExportRecord[],
+  options: FilterAdultOptions = {},
+): AdultFilterResult {
+  const adultFieldRequired = options.adultFieldRequired ?? false
   const kept: IdExportRecord[] = []
   let adultDropped = 0
   let unsafeDropped = 0
@@ -77,7 +97,7 @@ export function filterAdult(records: readonly IdExportRecord[]): AdultFilterResu
       invalidDropped += 1
       continue
     }
-    const classification = classifyAdult(record.adult)
+    const classification = classifyAdult(record.adult, adultFieldRequired)
     if (classification === 'adult') {
       adultDropped += 1
       continue
