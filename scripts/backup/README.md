@@ -7,11 +7,22 @@ Screen. Eles rodam fora do caminho de render, com credenciais vindas de env vars
 
 | Script | Responsabilidade |
 | --- | --- |
-| `backup.sh` | Roda `pg_dump -Fc`, grava dump com timestamp, gera checksum SHA-256 e opcionalmente copia off-site via `rclone`. |
-| `restore-test.sh` | Restaura o ultimo dump em base efemera, valida `SELECT count(*) FROM content_blocks`, e derruba a base. |
+| `backup.sh` | Roda `pg_dump -Fc`, grava dump com timestamp UTC, gera checksum SHA-256 e opcionalmente copia off-site via `rclone`. |
+| `restore-test.sh` | Restaura um dump (o ultimo, ou o caminho passado como argumento) em base efemera, valida contagens e derruba a base. |
+
+> **Aviso: sem backup validado, sem sync/promote em producao.** Nenhuma carga
+> TMDB (`sync`, `promote`, `seed`) roda em producao antes de um `backup.sh`
+> real seguido de um `restore-test.sh` verde. Perder o banco significa perder
+> catalogo promovido, `content_blocks`, `slugs`, `translations` e todo o dado
+> editorial — nada disso e recuperavel a partir do TMDB.
 
 Ferramentas esperadas no servidor: `pg_dump`, `pg_restore`, `psql` e
 `sha256sum` ou `shasum`. Para copia off-site, instale/configure `rclone`.
+
+O `restore-test.sh` exige **PostgreSQL 13+** no servidor administrativo: ele usa
+`DROP DATABASE ... WITH (FORCE)`, sintaxe que nao existe em versoes anteriores.
+Em PG 12 o script aborta antes de criar qualquer base — falha barulhenta, nunca
+verde-falso.
 
 ## Variaveis
 
@@ -64,17 +75,43 @@ permissao `0600` quando o ambiente suportar.
 ```bash
 export BACKUP_DIR="/home/screen/backups/postgres"
 export RESTORE_TEST_ADMIN_URL="postgresql://user:password@localhost:5432/postgres"
+
+# Usa o dump mais recente de BACKUP_DIR:
 scripts/backup/restore-test.sh
+
+# Ou valida um dump especifico:
+scripts/backup/restore-test.sh /home/screen/backups/postgres/screen-postgres-20260709T031500Z.dump
 ```
 
 O teste:
 
-1. Localiza o ultimo `*.dump`.
+1. Localiza o ultimo `*.dump` (ou usa o caminho passado como argumento).
 2. Valida o `.sha256`.
-3. Cria uma base efemera.
-4. Restaura com `pg_restore`.
-5. Roda `SELECT count(*) FROM content_blocks;`.
-6. Derruba a base efemera no `trap` de saida.
+3. Cria uma base efemera (nome sempre prefixado por `screen_restore_test_`).
+4. Restaura com `pg_restore --exit-on-error`.
+5. Roda as validacoes:
+   - `SELECT count(*) FROM information_schema.tables;` — sinal amplo de que o
+     catalogo respondeu. **Nao prova sozinho** que as tabelas do Screen voltaram:
+     essa contagem inclui as views de `information_schema`/`pg_catalog` e e quase
+     sempre `> 0`.
+   - `SELECT count(*) FROM "_prisma_migrations";` — este e o sinal que vale: se as
+     tabelas de usuario nao vieram, a query falha e o script aborta.
+   - `SELECT count(*) FROM content_blocks;` — **somente se a tabela existir**; um
+     dump anterior a essa migration continua sendo um restore valido.
+6. Derruba a base efemera no `trap` de saida, mesmo em caso de erro.
+
+**Pre-condicao do modo por argumento:** o dump informado precisa ter o `.sha256`
+irmao no mesmo diretorio. Sem ele o teste falha de proposito — um dump que nao da
+para verificar nao pode produzir um "verde". Ao baixar um dump do off-site, baixe
+os dois arquivos.
+
+**Leia os numeros, nao so o exit code.** O script imprime as tres contagens. Um
+restore estruturalmente valido com `content_blocks=0` sai com exit 0: prova que o
+schema voltou, nao que o dado editorial voltou.
+
+O script nunca escreve na base de origem: ele so toca `RESTORE_TEST_ADMIN_URL` e a
+base efemera, e recusa qualquer `RESTORE_TEST_DB_NAME` fora do prefixo
+`screen_restore_test_`.
 
 ## Restore real
 
@@ -98,6 +135,39 @@ O teste:
 
 3. Somente depois de validar contagens e integridade, planeje promocao/restore de
    producao com revisao humana.
+
+## Copia off-site
+
+Um dump que vive so no mesmo VPS do banco nao e backup: some junto com o
+servidor. Configure `rclone` uma vez e exporte o remote — o `backup.sh` replica
+dump e checksum automaticamente:
+
+```bash
+rclone config                       # cria o remote, ex.: "s3"
+export BACKUP_OFFSITE_RCLONE_REMOTE="s3:screen-backups/postgres"
+scripts/backup/backup.sh
+```
+
+Sem `BACKUP_OFFSITE_RCLONE_REMOTE`, o script avisa em `stderr` que a copia
+off-site foi pulada e segue gerando o dump local. Guarde o remote em env file
+`0600`, nunca no repositorio.
+
+## Checklist antes de carga TMDB
+
+Rode em ordem, no servidor, antes de qualquer `sync`, `promote` ou `seed` em
+producao. Se algum item falhar, **pare**: nao ha carga sem backup validado.
+
+- [ ] `pg_dump`, `pg_restore`, `psql` e `sha256sum` presentes no host.
+- [ ] `DATABASE_URL` aponta para a base de **producao** correta.
+- [ ] `BACKUP_DIR` e um volume **persistente fora do repositorio**.
+- [ ] `scripts/backup/backup.sh` rodou e terminou com exit 0.
+- [ ] O `.dump` e o `.sha256` existem e o dump tem tamanho plausivel (nao 0 byte).
+- [ ] `scripts/backup/restore-test.sh` rodou verde, com `_prisma_migrations > 0`
+      e `content_blocks` batendo com o esperado da base de origem (exit 0 sozinho
+      nao prova que o dado editorial voltou).
+- [ ] A base efemera do teste foi derrubada (nenhum `screen_restore_test_*` sobrou).
+- [ ] Copia off-site confirmada no destino remoto.
+- [ ] Cron diario ativo e com log endereçado a arquivo.
 
 Backups contem dados sensiveis/licenciados: nunca commitar, nunca expor em
 frontend e sempre replicar para armazenamento fora do VPS.
