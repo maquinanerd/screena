@@ -10,12 +10,13 @@ import {
   renderRawSyncReport,
   serializeRawSyncReportJson,
 } from '../raw-sync/report.js'
-import type { KindCounts, RawSyncReport } from '../raw-sync/types.js'
+import type { KindCounts, PayloadSizeStats, RawSyncReport } from '../raw-sync/types.js'
 
 const LIMITS = { movie: 100, tv: 100, person: 100 }
 
 function report(overrides: Partial<RawSyncReport> = {}): RawSyncReport {
   const zero: KindCounts = { created: 0, updated: 0, skipped: 0, failed: 0 }
+  const zeroSize: PayloadSizeStats = { count: 0, avgBytes: 0, maxBytes: 0, minBytes: 0 }
   return {
     mode: 'apply',
     baseLanguage: 'pt-BR',
@@ -23,6 +24,8 @@ function report(overrides: Partial<RawSyncReport> = {}): RawSyncReport {
     perKindSelected: { movie: 0, tv: 0, person: 0 },
     perKind: { movie: { ...zero }, tv: { ...zero }, person: { ...zero } },
     totals: { ...zero },
+    payloadSizes: { movie: { ...zeroSize }, tv: { ...zeroSize }, person: { ...zeroSize } },
+    payloadSizesTotal: { ...zeroSize },
     unsupportedSkipped: 0,
     unsupportedByKind: {},
     retries: 0,
@@ -94,15 +97,47 @@ describe('renderRawSyncReport', () => {
     )
     expect(md).toContain('Plano (dry-run')
     expect(md).not.toContain('Desfechos por tipo')
+    expect(md).not.toContain('Tamanho de payload por tipo')
   })
 
-  it('JSON serializado inclui status no apply', () => {
+  it('apply: mostra a tabela de tamanho de payload por tipo', () => {
+    const md = renderRawSyncReport(
+      report({
+        selected: 3,
+        payloadSizes: {
+          movie: { count: 2, avgBytes: 2048, maxBytes: 3072, minBytes: 1024 },
+          tv: { count: 1, avgBytes: 500000, maxBytes: 500000, minBytes: 500000 },
+          person: { count: 0, avgBytes: 0, maxBytes: 0, minBytes: 0 },
+        },
+        payloadSizesTotal: { count: 3, avgBytes: 168448, maxBytes: 500000, minBytes: 1024 },
+      }),
+    )
+    expect(md).toContain('Tamanho de payload por tipo')
+    expect(md).toContain('serializacao canonica')
+    // media do movie: 2048 bytes = 2.0 KB
+    expect(md).toContain('2.0 KB')
+    // total agrega as 3 amostras
+    expect(md).toMatch(/\*\*total\*\* \| 3 \|/)
+  })
+
+  it('JSON serializado inclui status, processed e payloadSizes no apply', () => {
     const json = JSON.parse(
       serializeRawSyncReportJson(
-        report({ selected: 1, totals: { created: 1, updated: 0, skipped: 0, failed: 0 } }),
+        report({
+          selected: 1,
+          totals: { created: 1, updated: 0, skipped: 0, failed: 0 },
+          payloadSizes: {
+            movie: { count: 1, avgBytes: 1000, maxBytes: 1000, minBytes: 1000 },
+            tv: { count: 0, avgBytes: 0, maxBytes: 0, minBytes: 0 },
+            person: { count: 0, avgBytes: 0, maxBytes: 0, minBytes: 0 },
+          },
+          payloadSizesTotal: { count: 1, avgBytes: 1000, maxBytes: 1000, minBytes: 1000 },
+        }),
       ),
     )
     expect(json.status).toBe('success')
     expect(json.processed).toBe(1)
+    expect(json.payloadSizes.movie).toEqual({ count: 1, avgBytes: 1000, maxBytes: 1000, minBytes: 1000 })
+    expect(json.payloadSizesTotal.count).toBe(1)
   })
 })

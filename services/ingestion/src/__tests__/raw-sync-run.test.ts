@@ -10,6 +10,7 @@ import { computeRawPayloadHash } from '../raw-sync/hash-decision.js'
 import { selectPilotItems } from '../raw-sync/queue.js'
 import { runRawSyncPilot } from '../raw-sync/run.js'
 import type { RawEntityKey, RawEntityRecord } from '../raw-sync/types.js'
+import { stableStringify } from '../utils/hash.js'
 
 const NOW = () => new Date('2026-07-09T00:00:00.000Z')
 const LIMITS = { movie: 100, tv: 100, person: 100 }
@@ -213,6 +214,72 @@ describe('runRawSyncPilot', () => {
       retry: RETRY,
     })
     expect(report.perKind.movie).toEqual({ created: 2, updated: 0, skipped: 0, failed: 1 })
+  })
+
+  it('agrega payload size por tipo — create E skip contam; failed nao', async () => {
+    const bytesOf = (p: unknown) => Buffer.byteLength(stableStringify(p), 'utf8')
+    const pMovie1 = { kind: 'movie', id: 1, blob: 'a'.repeat(10) }
+    const pMovie2 = { kind: 'movie', id: 2, blob: 'b'.repeat(500) }
+    const source = {
+      getMovie: (id: number) => Promise.resolve(id === 1 ? pMovie1 : pMovie2),
+      getTvShow: () => Promise.reject(new Error('n/a')),
+      getPerson: (id: number) =>
+        id === 9
+          ? Promise.reject({ permanent: true, status: 404 })
+          : Promise.resolve({ kind: 'person', id }),
+    }
+    // movie:2 pre-semeado com o MESMO hash do payload => skip (mas conta tamanho).
+    const store = makeFakeStore({ [keyStr(rawKey('movie', 2))]: computeRawPayloadHash(pMovie2) })
+    const selection = selectPilotItems(
+      [item('movie', 1), item('movie', 2), item('person', 9)],
+      LIMITS,
+    )
+    const report = await runRawSyncPilot({
+      selection,
+      source,
+      store,
+      baseLanguage: 'pt-BR',
+      limits: LIMITS,
+      now: NOW,
+      dryRun: false,
+      concurrency: 1,
+      retry: RETRY,
+    })
+
+    const m = report.payloadSizes.movie
+    expect(m.count).toBe(2) // create(movie1) + skip(movie2) — ambos com payload
+    expect(m.maxBytes).toBe(Math.max(bytesOf(pMovie1), bytesOf(pMovie2)))
+    expect(m.minBytes).toBe(Math.min(bytesOf(pMovie1), bytesOf(pMovie2)))
+    expect(m.avgBytes).toBe(Math.round((bytesOf(pMovie1) + bytesOf(pMovie2)) / 2))
+    // person 9 falhou (404) => sem amostra de tamanho.
+    expect(report.payloadSizes.person.count).toBe(0)
+    expect(report.perKind.person.failed).toBe(1)
+    // total agrega so os tipos com amostra.
+    expect(report.payloadSizesTotal.count).toBe(2)
+    expect(report.payloadSizesTotal.maxBytes).toBe(m.maxBytes)
+  })
+
+  it('dry-run nao mede payload (todas as amostras = 0)', async () => {
+    const throwing = {
+      getMovie: () => Promise.reject(new Error('x')),
+      getTvShow: () => Promise.reject(new Error('x')),
+      getPerson: () => Promise.reject(new Error('x')),
+    }
+    const store = makeFakeStore()
+    const selection = selectPilotItems([item('movie', 1), item('tv', 2)], LIMITS)
+    const report = await runRawSyncPilot({
+      selection,
+      source: throwing,
+      store,
+      baseLanguage: 'pt-BR',
+      limits: LIMITS,
+      now: NOW,
+      dryRun: true,
+      retry: RETRY,
+    })
+    expect(report.payloadSizes.movie.count).toBe(0)
+    expect(report.payloadSizes.tv.count).toBe(0)
+    expect(report.payloadSizesTotal).toEqual({ count: 0, avgBytes: 0, maxBytes: 0, minBytes: 0 })
   })
 
   it('a contagem independe da concorrencia (1 vs 3)', async () => {

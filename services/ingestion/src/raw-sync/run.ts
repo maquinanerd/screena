@@ -15,12 +15,13 @@
  */
 
 import type { QueueItem } from '../discovery/sync-queue.js'
-import { computeRawPayloadHash, decideRawOutcome } from './hash-decision.js'
+import { computeRawPayloadHashAndSize, decideRawOutcome } from './hash-decision.js'
 import { fetchWithRetry, type RetryCounters, type RetryOptions } from './retry.js'
 import { fetchByKind } from './supported-kinds.js'
 import type {
   ItemOutcome,
   KindCounts,
+  PayloadSizeStats,
   PilotLimits,
   PilotSelection,
   RawDetailSource,
@@ -65,6 +66,59 @@ function sumCounts(a: KindCounts, b: KindCounts): KindCounts {
   }
 }
 
+/** Acumulador mutavel de tamanho de payload (bytes UTF-8 da serializacao canonica). */
+interface SizeAccum {
+  count: number
+  sumBytes: number
+  maxBytes: number
+  minBytes: number
+}
+
+function emptySizeAccum(): SizeAccum {
+  return { count: 0, sumBytes: 0, maxBytes: 0, minBytes: 0 }
+}
+
+/** Registra UMA amostra de tamanho (comutativo — seguro sob concorrencia). */
+function recordSize(acc: SizeAccum, bytes: number): void {
+  if (acc.count === 0) {
+    acc.maxBytes = bytes
+    acc.minBytes = bytes
+  } else {
+    if (bytes > acc.maxBytes) acc.maxBytes = bytes
+    if (bytes < acc.minBytes) acc.minBytes = bytes
+  }
+  acc.count += 1
+  acc.sumBytes += bytes
+}
+
+/** Combina acumuladores (para o total entre tipos), preservando exatidao. */
+function mergeAccums(accs: readonly SizeAccum[]): SizeAccum {
+  const out = emptySizeAccum()
+  for (const a of accs) {
+    if (a.count === 0) continue
+    if (out.count === 0) {
+      out.maxBytes = a.maxBytes
+      out.minBytes = a.minBytes
+    } else {
+      if (a.maxBytes > out.maxBytes) out.maxBytes = a.maxBytes
+      if (a.minBytes < out.minBytes) out.minBytes = a.minBytes
+    }
+    out.count += a.count
+    out.sumBytes += a.sumBytes
+  }
+  return out
+}
+
+/** Finaliza um acumulador em estatistica publica (avg arredondado; zeros se vazio). */
+function finalizeSize(acc: SizeAccum): PayloadSizeStats {
+  return {
+    count: acc.count,
+    avgBytes: acc.count === 0 ? 0 : Math.round(acc.sumBytes / acc.count),
+    maxBytes: acc.count === 0 ? 0 : acc.maxBytes,
+    minBytes: acc.count === 0 ? 0 : acc.minBytes,
+  }
+}
+
 /**
  * Executa `worker` sobre `items` com no maximo `concurrency` em voo. Determinismo
  * de contagem: os desfechos so incrementam contadores (comutativo), entao o pool
@@ -96,6 +150,7 @@ async function processItem(
   kind: SupportedRawKind,
   options: RunRawSyncOptions,
   counts: KindCounts,
+  size: SizeAccum,
   retryCounters: RetryCounters,
 ): Promise<void> {
   const key: RawEntityKey = {
@@ -109,12 +164,16 @@ async function processItem(
       options.retry,
       retryCounters,
     )
-    const payloadHash = computeRawPayloadHash(payload)
+    // Hash + tamanho na MESMA serializacao canonica (uma passada so).
+    const { hash: payloadHash, bytes } = computeRawPayloadHashAndSize(payload)
     const existingHash = await options.store.readHash(key)
     const outcome = decideRawOutcome(existingHash, payloadHash)
 
+    // O worker JA buscou o payload para hashear; o tamanho vale em create/update
+    // E skip (todo desfecho que teve payload). `failed` (fetch/store) nao entra.
     if (outcome === 'skip') {
       counts.skipped += 1
+      recordSize(size, bytes)
       options.onItem?.(item, 'skip')
       return
     }
@@ -134,6 +193,7 @@ async function processItem(
       await options.store.update(key, record)
       counts.updated += 1
     }
+    recordSize(size, bytes)
     options.onItem?.(item, outcome)
   } catch {
     counts.failed += 1
@@ -153,6 +213,11 @@ export async function runRawSyncPilot(options: RunRawSyncOptions): Promise<RawSy
     tv: emptyCounts(),
     person: emptyCounts(),
   }
+  const perKindSize: Record<SupportedRawKind, SizeAccum> = {
+    movie: emptySizeAccum(),
+    tv: emptySizeAccum(),
+    person: emptySizeAccum(),
+  }
   const retryCounters: RetryCounters = { retries: 0, rate429: 0 }
 
   if (options.dryRun) {
@@ -165,11 +230,19 @@ export async function runRawSyncPilot(options: RunRawSyncOptions): Promise<RawSy
     await forEachConcurrent(options.selection.selected, concurrency, async (item) => {
       // `selected` so contem tipos suportados (garantido pelo seletor).
       const kind = item.kind as SupportedRawKind
-      await processItem(item, kind, options, perKind[kind], retryCounters)
+      await processItem(item, kind, options, perKind[kind], perKindSize[kind], retryCounters)
     })
   }
 
   const totals = sumCounts(sumCounts(perKind.movie, perKind.tv), perKind.person)
+  const payloadSizes: Record<SupportedRawKind, PayloadSizeStats> = {
+    movie: finalizeSize(perKindSize.movie),
+    tv: finalizeSize(perKindSize.tv),
+    person: finalizeSize(perKindSize.person),
+  }
+  const payloadSizesTotal = finalizeSize(
+    mergeAccums([perKindSize.movie, perKindSize.tv, perKindSize.person]),
+  )
   const durationMs = Math.max(0, options.now().getTime() - startedMs)
 
   return {
@@ -179,6 +252,8 @@ export async function runRawSyncPilot(options: RunRawSyncOptions): Promise<RawSy
     perKindSelected: { ...options.selection.perKindSelected },
     perKind,
     totals,
+    payloadSizes,
+    payloadSizesTotal,
     unsupportedSkipped: options.selection.unsupportedSkipped,
     unsupportedByKind: { ...options.selection.unsupportedByKind },
     retries: retryCounters.retries,

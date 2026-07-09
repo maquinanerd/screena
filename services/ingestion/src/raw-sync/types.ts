@@ -104,6 +104,20 @@ export interface KindCounts {
   failed: number
 }
 
+/**
+ * Estatistica de tamanho do payload por tipo. O tamanho e medido sobre a MESMA
+ * serializacao canonica usada no hash (`stableStringify`), em bytes UTF-8.
+ * Registrado em create/update E skip (o worker sempre busca o payload para
+ * hashear antes de decidir); `failed` nao entra (nao houve payload). `count` e o
+ * numero de amostras (payloads medidos) daquele tipo.
+ */
+export interface PayloadSizeStats {
+  count: number
+  avgBytes: number
+  maxBytes: number
+  minBytes: number
+}
+
 /** Relatorio completo de uma execucao (dry-run ou apply). */
 export interface RawSyncReport {
   readonly mode: 'dry-run' | 'apply'
@@ -115,6 +129,10 @@ export interface RawSyncReport {
   readonly perKind: Record<SupportedRawKind, KindCounts>
   /** Soma dos desfechos de todos os tipos. */
   readonly totals: KindCounts
+  /** Tamanho de payload por tipo (apply; count=0 em dry-run — nada buscado). */
+  readonly payloadSizes: Record<SupportedRawKind, PayloadSizeStats>
+  /** Tamanho de payload agregado (todos os tipos combinados). */
+  readonly payloadSizesTotal: PayloadSizeStats
   readonly unsupportedSkipped: number
   readonly unsupportedByKind: Record<string, number>
   /** Retries transitorios que passaram pela camada do core (observabilidade). */

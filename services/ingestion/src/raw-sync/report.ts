@@ -7,12 +7,18 @@
  * unsupported/failed/skipped/created/updated) vive neste relatorio, em `.data/`.
  */
 
-import type { KindCounts, RawSyncReport, SupportedRawKind } from './types.js'
+import type { KindCounts, PayloadSizeStats, RawSyncReport, SupportedRawKind } from './types.js'
 import type { SyncStatus } from '../ports.js'
 
 /** Total processado (desfechos que consumiram uma tentativa de fetch). */
 export function processedOf(counts: KindCounts): number {
   return counts.created + counts.updated + counts.skipped + counts.failed
+}
+
+/** Formata bytes como "12345 (12.1 KB)" para leitura humana no relatorio. */
+function formatBytes(bytes: number): string {
+  if (bytes <= 0) return '0'
+  return `${bytes} (${(bytes / 1024).toFixed(1)} KB)`
 }
 
 /**
@@ -76,6 +82,24 @@ export function renderRawSyncReport(report: RawSyncReport): string {
     )
     lines.push('')
     lines.push(`- retries transitorios (core): ${report.retries} (dos quais 429: ${report.rate429})`)
+
+    lines.push('')
+    lines.push('## Tamanho de payload por tipo')
+    lines.push('')
+    lines.push('_(bytes UTF-8 da serializacao canonica usada no hash; inclui skip)_')
+    lines.push('')
+    lines.push('| tipo | amostras | media | maximo | minimo |')
+    lines.push('| --- | ---: | ---: | ---: | ---: |')
+    for (const kind of ['movie', 'tv', 'person'] as const) {
+      const s: PayloadSizeStats = report.payloadSizes[kind]
+      lines.push(
+        `| ${KIND_LABEL[kind]} | ${s.count} | ${formatBytes(s.avgBytes)} | ${formatBytes(s.maxBytes)} | ${formatBytes(s.minBytes)} |`,
+      )
+    }
+    const pt = report.payloadSizesTotal
+    lines.push(
+      `| **total** | ${pt.count} | ${formatBytes(pt.avgBytes)} | ${formatBytes(pt.maxBytes)} | ${formatBytes(pt.minBytes)} |`,
+    )
   }
 
   lines.push('')
