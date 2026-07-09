@@ -8,6 +8,7 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { middleware } from "../../apps/web/middleware";
 import {
   PUBLISHED_LOCALES,
   rootRedirectPath,
@@ -15,6 +16,27 @@ import {
   resolvePreferredLocale,
   resolveRootRedirectLocale,
 } from "../../apps/web/src/lib/root-locale";
+
+const ORIGIN = "https://thescreen.media";
+
+/**
+ * Request minimo com a superficie que o middleware consome (`nextUrl.pathname`,
+ * `nextUrl.clone()` e `headers.get()`). Evita importar `next/server` aqui: o
+ * pacote `next` so resolve a partir de `apps/web/`, nunca da raiz do monorepo.
+ */
+function createRequest(
+  pathname: string,
+  acceptLanguage: string | null = null,
+): Parameters<typeof middleware>[0] {
+  const url = new URL(`${ORIGIN}${pathname}`);
+  const headers = new Headers();
+  if (acceptLanguage !== null) headers.set("accept-language", acceptLanguage);
+
+  return {
+    nextUrl: { pathname: url.pathname, clone: () => new URL(url.toString()) },
+    headers,
+  } as unknown as Parameters<typeof middleware>[0];
+}
 
 describe("root locale redirect", () => {
   it("nao cria page.tsx na raiz", () => {
@@ -91,5 +113,52 @@ describe("root locale redirect", () => {
     );
     expect(source).toContain('"pt-BR": homeCanonicalUrl');
     expect(source).toContain('"x-default": homeCanonicalUrl');
+  });
+});
+
+/**
+ * Comportamento HTTP real: executa `middleware()` em vez de inspecionar o
+ * fonte. Os testes de `toContain` acima continuam verdes se alguem trocar o
+ * destino do redirect por um literal (ex.: "/en/"); estes aqui falham.
+ */
+describe("middleware da raiz (comportamento)", () => {
+  it.each([
+    ["pt-BR,pt;q=0.9"],
+    ["es-ES,es;q=0.9"],
+    ["en-US,en;q=0.9"],
+    [null],
+  ])("GET / com Accept-Language %s responde 307 para /pt/", (acceptLanguage) => {
+    const response = middleware(createRequest("/", acceptLanguage));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(`${ORIGIN}/pt/`);
+  });
+
+  it("nunca emite redirect permanente na raiz", () => {
+    const response = middleware(createRequest("/", "pt-BR"));
+
+    expect(response.status).not.toBe(301);
+    expect(response.status).not.toBe(308);
+  });
+
+  it.each([
+    ["/pt/"],
+    ["/pt/filmes/"],
+    ["/filmes/"],
+    ["/pt/series/interstellar/"],
+  ])("nao redireciona a rota ja prefixada %s", (pathname) => {
+    const response = middleware(createRequest(pathname, "en-US,en;q=0.9"));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("location")).toBeNull();
+  });
+
+  it("anota o locale resolvido nas rotas nao-raiz", () => {
+    expect(
+      middleware(createRequest("/pt/filmes/")).headers.get("x-screena-locale"),
+    ).toBe("pt");
+    expect(
+      middleware(createRequest("/en/movies/")).headers.get("x-screena-locale"),
+    ).toBe("en");
   });
 });
