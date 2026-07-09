@@ -70,6 +70,14 @@ export type RawWriteOutcome = 'create' | 'update' | 'skip'
 /** Resultado por item (inclui estados que nao gravam). */
 export type ItemOutcome = RawWriteOutcome | 'failed' | 'planned'
 
+/**
+ * Motivo de interrupcao precoce do lote (degradacao graciosa, sempre retomavel
+ * no proximo ciclo pois nada foi gravado para os itens nao processados):
+ *  - `request-ceiling` — o teto efetivo de requisicoes do run foi atingido;
+ *  - `circuit-open`    — o circuit breaker da fonte (client) abriu.
+ */
+export type RawSyncAbortReason = 'request-ceiling' | 'circuit-open'
+
 /** Limites do piloto por tipo suportado (default 100/100/100). */
 export interface PilotLimits {
   readonly movie: number
@@ -139,6 +147,24 @@ export interface RawSyncReport {
   readonly retries: number
   /** Quantos desses retries foram por 429 (rate limit). */
   readonly rate429: number
+  /**
+   * Total de TENTATIVAS de fetch no run (cada `fn()` do retry conta 1). E a base
+   * do teto efetivo de requisicoes. Nao e quota exata de rede: inclui rejeicoes
+   * pre-flight de circuito aberto (nao tocam a rede) e uma tentativa de append
+   * pode gerar multiplas chamadas HTTP — logo serve de PROXY de esforco/quota,
+   * nao de contagem exata de requests HTTP.
+   */
+  readonly requests: number
+  /**
+   * Itens selecionados que NAO chegaram a ser processados (o lote parou antes —
+   * teto/breaker). Como nada foi gravado para eles, sao retomaveis no proximo
+   * ciclo. Sempre 0 quando `aborted === false` (e em dry-run).
+   */
+  readonly notProcessed: number
+  /** O lote foi interrompido antes de terminar (teto de requisicoes / breaker)? */
+  readonly aborted: boolean
+  /** Motivo da interrupcao (null quando terminou normalmente). */
+  readonly abortReason: RawSyncAbortReason | null
   readonly scanned: number
   readonly selected: number
   readonly durationMs: number

@@ -16,7 +16,7 @@
 
 import type { QueueItem } from '../discovery/sync-queue.js'
 import { computeRawPayloadHashAndSize, decideRawOutcome } from './hash-decision.js'
-import { fetchWithRetry, type RetryCounters, type RetryOptions } from './retry.js'
+import { fetchWithRetry, isCircuitOpenError, type RetryCounters, type RetryOptions } from './retry.js'
 import { fetchByKind } from './supported-kinds.js'
 import type {
   ItemOutcome,
@@ -27,6 +27,7 @@ import type {
   RawDetailSource,
   RawEntityKey,
   RawEntityStore,
+  RawSyncAbortReason,
   RawSyncReport,
   SupportedRawKind,
 } from './types.js'
@@ -49,8 +50,30 @@ export interface RunRawSyncOptions {
   readonly concurrency?: number
   /** Politica de retry (obrigatoria — injeta `sleep`). */
   readonly retry: RetryOptions
+  /**
+   * Teto EFETIVO de requisicoes de fetch do run (safety valve). Ao atingi-lo, o
+   * lote para de INICIAR novos itens (degradacao graciosa; itens em voo
+   * terminam) e o relatorio marca `aborted`/`request-ceiling`. `undefined` =
+   * sem teto extra alem do limite natural (selecionados x maxAttempts). A
+   * checagem e por item (nao por tentativa), entao ha overshoot BOUNDED de ate
+   * `concurrency * (maxAttempts - 1)` requisicoes: cada um dos ate `concurrency`
+   * itens ja em voo pode concluir seus retries apos o teto ser cruzado — finito,
+   * nunca ilimitado. E um teto suave (soft), nao um corte exato.
+   */
+  readonly maxRequests?: number
   /** Observabilidade por item. */
   readonly onItem?: (item: QueueItem, outcome: ItemOutcome) => void
+}
+
+/**
+ * Controle mutavel do lote (parada precoce + contagem de requisicoes). Comutativo
+ * com a concorrencia: os campos so acumulam/monotonizam, entao o pool nao altera
+ * o desfecho agregado.
+ */
+interface RunControl {
+  stopped: boolean
+  reason: RawSyncAbortReason | null
+  requests: number
 }
 
 function emptyCounts(): KindCounts {
@@ -128,12 +151,16 @@ async function forEachConcurrent<T>(
   items: readonly T[],
   concurrency: number,
   worker: (item: T, index: number) => Promise<void>,
+  shouldContinue?: () => boolean,
 ): Promise<void> {
   if (items.length === 0) return
   const limit = Math.max(1, Math.min(concurrency, items.length))
   let cursor = 0
   async function drain(): Promise<void> {
     while (cursor < items.length) {
+      // Parada precoce (teto de requisicoes / breaker): nao INICIA novos itens.
+      // Itens ja em voo terminam; os nao iniciados contam como `notProcessed`.
+      if (shouldContinue && !shouldContinue()) return
       const index = cursor
       cursor += 1
       const value = items[index]
@@ -152,6 +179,8 @@ async function processItem(
   counts: KindCounts,
   size: SizeAccum,
   retryCounters: RetryCounters,
+  retryOptions: RetryOptions,
+  control: RunControl,
 ): Promise<void> {
   const key: RawEntityKey = {
     entityType: kind,
@@ -161,7 +190,7 @@ async function processItem(
   try {
     const payload = await fetchWithRetry(
       () => fetchByKind(options.source, kind, item.tmdbId),
-      options.retry,
+      retryOptions,
       retryCounters,
     )
     // Hash + tamanho na MESMA serializacao canonica (uma passada so).
@@ -195,7 +224,13 @@ async function processItem(
     }
     recordSize(size, bytes)
     options.onItem?.(item, outcome)
-  } catch {
+  } catch (error) {
+    // Circuito aberto = fonte degradada: para o lote (graciosamente) para nao
+    // marretar 300 itens contra um breaker aberto. Retomavel — nada foi gravado.
+    if (isCircuitOpenError(error)) {
+      control.stopped = true
+      if (control.reason === null) control.reason = 'circuit-open'
+    }
     counts.failed += 1
     options.onItem?.(item, 'failed')
   }
@@ -219,6 +254,7 @@ export async function runRawSyncPilot(options: RunRawSyncOptions): Promise<RawSy
     person: emptySizeAccum(),
   }
   const retryCounters: RetryCounters = { retries: 0, rate429: 0 }
+  const control: RunControl = { stopped: false, reason: null, requests: 0 }
 
   if (options.dryRun) {
     // Plano: nao toca source/store. So sinaliza o que seria processado.
@@ -227,11 +263,46 @@ export async function runRawSyncPilot(options: RunRawSyncOptions): Promise<RawSy
     }
   } else {
     const concurrency = options.concurrency ?? DEFAULT_CONCURRENCY
-    await forEachConcurrent(options.selection.selected, concurrency, async (item) => {
-      // `selected` so contem tipos suportados (garantido pelo seletor).
-      const kind = item.kind as SupportedRawKind
-      await processItem(item, kind, options, perKind[kind], perKindSize[kind], retryCounters)
-    })
+    const maxRequests = options.maxRequests ?? null
+    // `onAttempt` conta cada tentativa de fetch (teto efetivo + quota honesta),
+    // preservando um `onAttempt` do chamador se houver.
+    const retryOptions: RetryOptions = {
+      ...options.retry,
+      onAttempt: () => {
+        control.requests += 1
+        options.retry.onAttempt?.()
+      },
+    }
+    // Para de iniciar itens quando o breaker abriu (via processItem) ou o teto de
+    // requisicoes foi atingido. Checagem por item (overshoot bounded — ver doc).
+    const shouldContinue = (): boolean => {
+      if (control.stopped) return false
+      if (maxRequests !== null && control.requests >= maxRequests) {
+        control.stopped = true
+        control.reason = 'request-ceiling'
+        return false
+      }
+      return true
+    }
+    await forEachConcurrent(
+      options.selection.selected,
+      concurrency,
+      async (item) => {
+        // `selected` so contem tipos suportados (garantido pelo seletor).
+        const kind = item.kind as SupportedRawKind
+        await processItem(
+          item,
+          kind,
+          options,
+          perKind[kind],
+          perKindSize[kind],
+          retryCounters,
+          retryOptions,
+          control,
+        )
+      },
+      shouldContinue,
+    )
   }
 
   const totals = sumCounts(sumCounts(perKind.movie, perKind.tv), perKind.person)
@@ -244,6 +315,13 @@ export async function runRawSyncPilot(options: RunRawSyncOptions): Promise<RawSy
     mergeAccums([perKindSize.movie, perKindSize.tv, perKindSize.person]),
   )
   const durationMs = Math.max(0, options.now().getTime() - startedMs)
+
+  // Itens que NAO foram processados (so acontece em apply abortado): selecionados
+  // menos os que consumiram um desfecho. Retomaveis (nada gravado para eles).
+  const processedCount = totals.created + totals.updated + totals.skipped + totals.failed
+  const notProcessed = options.dryRun
+    ? 0
+    : Math.max(0, options.selection.selected.length - processedCount)
 
   return {
     mode: options.dryRun ? 'dry-run' : 'apply',
@@ -258,6 +336,10 @@ export async function runRawSyncPilot(options: RunRawSyncOptions): Promise<RawSy
     unsupportedByKind: { ...options.selection.unsupportedByKind },
     retries: retryCounters.retries,
     rate429: retryCounters.rate429,
+    requests: control.requests,
+    notProcessed,
+    aborted: control.stopped,
+    abortReason: control.reason,
     scanned: options.selection.scanned,
     selected: options.selection.selected.length,
     durationMs,

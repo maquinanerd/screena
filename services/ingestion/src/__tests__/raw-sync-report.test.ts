@@ -30,6 +30,10 @@ function report(overrides: Partial<RawSyncReport> = {}): RawSyncReport {
     unsupportedByKind: {},
     retries: 0,
     rate429: 0,
+    requests: 0,
+    notProcessed: 0,
+    aborted: false,
+    abortReason: null,
     scanned: 0,
     selected: 0,
     durationMs: 0,
@@ -65,6 +69,34 @@ describe('deriveSyncStatus', () => {
       deriveSyncStatus(report({ selected: 2, totals: { created: 0, updated: 0, skipped: 0, failed: 2 } })),
     ).toBe('failed')
   })
+
+  it('lote interrompido (teto/breaker) => aborted, mesmo com sucessos parciais', () => {
+    expect(
+      deriveSyncStatus(
+        report({
+          selected: 10,
+          aborted: true,
+          abortReason: 'request-ceiling',
+          notProcessed: 7,
+          totals: { created: 3, updated: 0, skipped: 0, failed: 0 },
+        }),
+      ),
+    ).toBe('aborted')
+  })
+
+  it('aborted tem precedencia sobre failed/partial (run cortado)', () => {
+    expect(
+      deriveSyncStatus(
+        report({
+          selected: 5,
+          aborted: true,
+          abortReason: 'circuit-open',
+          notProcessed: 3,
+          totals: { created: 1, updated: 0, skipped: 0, failed: 1 },
+        }),
+      ),
+    ).toBe('aborted')
+  })
 })
 
 describe('renderRawSyncReport', () => {
@@ -98,6 +130,31 @@ describe('renderRawSyncReport', () => {
     expect(md).toContain('Plano (dry-run')
     expect(md).not.toContain('Desfechos por tipo')
     expect(md).not.toContain('Tamanho de payload por tipo')
+  })
+
+  it('apply: mostra requisicoes e nota de ABORTO quando o lote parou cedo', () => {
+    const md = renderRawSyncReport(
+      report({
+        selected: 10,
+        requests: 42,
+        aborted: true,
+        abortReason: 'circuit-open',
+        notProcessed: 7,
+        totals: { created: 3, updated: 0, skipped: 0, failed: 0 },
+      }),
+    )
+    expect(md).toContain('requisicoes (fetch): 42')
+    expect(md).toContain('ABORTADO')
+    expect(md).toContain('circuit-open')
+    expect(md).toContain('7 item(ns) NAO processado')
+  })
+
+  it('apply: sem aborto NAO imprime a nota de ABORTADO', () => {
+    const md = renderRawSyncReport(
+      report({ selected: 1, requests: 1, totals: { created: 1, updated: 0, skipped: 0, failed: 0 } }),
+    )
+    expect(md).toContain('requisicoes (fetch): 1')
+    expect(md).not.toContain('ABORTADO')
   })
 
   it('apply: mostra a tabela de tamanho de payload por tipo', () => {
