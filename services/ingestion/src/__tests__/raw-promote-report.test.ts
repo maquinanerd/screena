@@ -16,6 +16,7 @@ function report(over: Partial<PromoteReport> = {}): PromoteReport {
   const zero: PromoteCounts = { created: 0, updated: 0, failed: 0 }
   return {
     mode: 'apply',
+    entityType: 'movie',
     baseLanguage: 'pt-BR',
     limit: 100,
     available: 0,
@@ -66,8 +67,17 @@ describe('renderPromoteReport', () => {
       }),
     )
     expect(md).toContain('Desfechos (apply)')
-    expect(md).toContain('movie (P0-00f.1)')
+    expect(md).toContain('entidade: movie')
     expect(md).toContain('42')
+  })
+
+  it('rotula o relatorio pelo entityType (tv)', () => {
+    const md = renderPromoteReport(
+      report({ entityType: 'tv', mode: 'dry-run', available: 4, selected: 4 }),
+    )
+    expect(md).toContain('entidade: tv')
+    expect(md).toContain('tv disponiveis em tmdb_raw: 4')
+    expect(md).not.toContain('entidade: movie')
   })
 
   it('dry-run: mostra o plano, nao desfechos', () => {

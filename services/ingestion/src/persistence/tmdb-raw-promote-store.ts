@@ -9,7 +9,29 @@
  */
 
 import type { PrismaClient } from '@screena/db/server'
-import type { RawMovieRow, RawMovieSource } from '../raw-promote/types.js'
+import type { RawEntityRow, RawMovieRow, RawMovieSource, RawTvSource } from '../raw-promote/types.js'
+
+/** Le ate `limit` linhas de `tmdb_raw` de um tipo, na ordem estavel por tmdbId. */
+async function listRawRows(
+  prisma: PrismaClient,
+  entityType: 'movie' | 'tv',
+  limit: number,
+): Promise<readonly RawEntityRow[]> {
+  const take = Math.max(0, Math.floor(limit))
+  if (take === 0) return []
+  const rows = await prisma.tmdbRaw.findMany({
+    where: { entityType },
+    orderBy: { tmdbId: 'asc' },
+    take,
+    select: { tmdbId: true, baseLanguage: true, payload: true, fetchedAt: true },
+  })
+  return rows.map((row) => ({
+    tmdbId: row.tmdbId,
+    baseLanguage: row.baseLanguage,
+    payload: row.payload,
+    fetchedAt: row.fetchedAt,
+  }))
+}
 
 /** Cria um `RawMovieSource` apoiado em `tmdb_raw` (entityType=movie) via Prisma. */
 export function createPrismaRawMovieSource(prisma: PrismaClient): RawMovieSource {
@@ -17,22 +39,20 @@ export function createPrismaRawMovieSource(prisma: PrismaClient): RawMovieSource
     async countMovies(): Promise<number> {
       return prisma.tmdbRaw.count({ where: { entityType: 'movie' } })
     },
+    listMoviePayloads(limit: number): Promise<readonly RawMovieRow[]> {
+      return listRawRows(prisma, 'movie', limit)
+    },
+  }
+}
 
-    async listMoviePayloads(limit: number): Promise<readonly RawMovieRow[]> {
-      const take = Math.max(0, Math.floor(limit))
-      if (take === 0) return []
-      const rows = await prisma.tmdbRaw.findMany({
-        where: { entityType: 'movie' },
-        orderBy: { tmdbId: 'asc' },
-        take,
-        select: { tmdbId: true, baseLanguage: true, payload: true, fetchedAt: true },
-      })
-      return rows.map((row) => ({
-        tmdbId: row.tmdbId,
-        baseLanguage: row.baseLanguage,
-        payload: row.payload,
-        fetchedAt: row.fetchedAt,
-      }))
+/** Cria um `RawTvSource` apoiado em `tmdb_raw` (entityType=tv) via Prisma. */
+export function createPrismaRawTvSource(prisma: PrismaClient): RawTvSource {
+  return {
+    async countTvShows(): Promise<number> {
+      return prisma.tmdbRaw.count({ where: { entityType: 'tv' } })
+    },
+    listTvShowPayloads(limit: number): Promise<readonly RawEntityRow[]> {
+      return listRawRows(prisma, 'tv', limit)
     },
   }
 }

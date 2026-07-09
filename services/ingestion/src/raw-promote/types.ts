@@ -5,39 +5,59 @@
  * FORA do typecheck.
  *
  * O worker le o payload BRUTO ja gravado em `tmdb_raw` (sem TMDB, sem rede) e o
- * promove para as tabelas tipadas EXISTENTES via `normalizeMovie` + o
+ * promove para as tabelas tipadas EXISTENTES via o normalizer da entidade + o
  * `EntityStorePort` de sempre; o slug/traducao vem do `CatalogFinalizePort`
  * (mesma logica idempotente do backfill, extraida do bin — nunca duplicada).
  *
- * Escopo P0-00f.1: SOMENTE filme. tv/person/season/episode ficam para blocos
- * seguintes (nao estao no payload de filme, ou sao outra cadeia de normalizacao).
+ * Core GENERICO por `PromoteStrategy` (P0-00f.2): a orquestracao e uma so;
+ * `movie` (f.1) e `tv` (f.2) sao estrategias finas. person e blocos seguintes.
+ * season/episode NUNCA sao promovidos aqui (nao estao no payload de detalhe;
+ * exigem `/tv/{id}/season/{n}` — outro bloco).
  */
 
+import type { UpsertOutcome } from '../ports.js'
 import type { CatalogEntityType } from '../public-catalog-slug.js'
 
 /**
- * Uma linha de `tmdb_raw` (entityType=movie) pronta para promocao. `payload` e o
- * detalhe BRUTO do TMDB (base + append) — o mesmo shape que `normalizeMovie` ja
- * consome; `fetchedAt` carimba a frescor herdada (last_synced_at do tipado).
+ * Uma linha de `tmdb_raw` pronta para promocao (qualquer entityType suportado).
+ * `payload` e o detalhe BRUTO do TMDB (base + append) — o mesmo shape que o
+ * normalizer da entidade ja consome; `fetchedAt` carimba a frescor herdada
+ * (last_synced_at do tipado).
  */
-export interface RawMovieRow {
+export interface RawEntityRow {
   readonly tmdbId: number
   readonly baseLanguage: string
-  /** Payload bruto do TMDB (detalhe de filme + append). Nunca normalizado aqui. */
+  /** Payload bruto do TMDB (detalhe + append). Nunca normalizado aqui. */
   readonly payload: unknown
   /** Momento em que o raw foi coletado (vira `last_synced_at` do tipado). */
   readonly fetchedAt: Date
 }
 
+/** Alias historico (P0-00f.1): a linha e agnostica de entidade. */
+export type RawMovieRow = RawEntityRow
+
 /**
- * Porta de leitura de `tmdb_raw` para promocao (implementada pelo adapter Prisma,
- * fora do typecheck). So leitura — a promocao nunca escreve em `tmdb_raw`.
+ * Porta GENERICA de leitura de `tmdb_raw` para promocao (implementada pelo
+ * adapter Prisma, fora do typecheck). So leitura — a promocao nunca escreve em
+ * `tmdb_raw`. O core opera sobre esta porta; os wrappers por tipo adaptam a sua.
  */
+export interface RawEntitySource {
+  /** Quantas entidades ha em `tmdb_raw` (para o plano do dry-run). */
+  count(): Promise<number>
+  /** Ate `limit` linhas (com payload), na ordem estavel do adapter. */
+  list(limit: number): Promise<readonly RawEntityRow[]>
+}
+
+/** Porta de leitura de FILMES em `tmdb_raw` (wrapper de filme; P0-00f.1). */
 export interface RawMovieSource {
-  /** Quantos filmes existem em `tmdb_raw` (para o plano do dry-run). */
   countMovies(): Promise<number>
-  /** Ate `limit` linhas de filme (com payload), na ordem estavel do adapter. */
-  listMoviePayloads(limit: number): Promise<readonly RawMovieRow[]>
+  listMoviePayloads(limit: number): Promise<readonly RawEntityRow[]>
+}
+
+/** Porta de leitura de SERIES em `tmdb_raw` (wrapper de serie; P0-00f.2). */
+export interface RawTvSource {
+  countTvShows(): Promise<number>
+  listTvShowPayloads(limit: number): Promise<readonly RawEntityRow[]>
 }
 
 /**
@@ -64,6 +84,35 @@ export interface CatalogFinalizePort {
   ): Promise<void>
 }
 
+/**
+ * Campos de EXIBICAO (title/overview/year) derivados do payload bruto, ja com o
+ * fallback de titulo resolvido pela estrategia — sao a base do slug + traducao.
+ * A ficha factual (nota, datas, elenco) vem do normalizer, nunca daqui.
+ */
+export interface PromoteDisplayFields {
+  readonly title: string
+  readonly overview: string | null
+  readonly year: number | null
+}
+
+/** Resultado da promocao de UM registro: outcome do store + campos de exibicao. */
+export interface PromotedRecord {
+  readonly outcome: UpsertOutcome
+  readonly display: PromoteDisplayFields
+}
+
+/**
+ * Estrategia por tipo de entidade: encapsula o que muda entre movie/tv/person —
+ * o `entityType` (para slug/traducao) e o `promote` (normalizar + upsert tipado
+ * + campos de exibicao). O core generico cuida de fila, contagem, finalize
+ * (slug/traducao), relatorio e isolamento de falha por item.
+ */
+export interface PromoteStrategy {
+  readonly entityType: CatalogEntityType
+  /** Normaliza o payload e faz o upsert tipado; devolve outcome + exibicao. */
+  promote(row: RawEntityRow): Promise<PromotedRecord>
+}
+
 /** Desfecho por item promovido. */
 export type PromoteOutcome = 'created' | 'updated' | 'failed' | 'planned'
 
@@ -77,10 +126,12 @@ export interface PromoteCounts {
 /** Relatorio de uma execucao de promocao (dry-run ou apply). */
 export interface PromoteReport {
   readonly mode: 'dry-run' | 'apply'
+  /** Tipo de entidade promovido (movie/tv/...) — rotula o relatorio/log. */
+  readonly entityType: CatalogEntityType
   readonly baseLanguage: string
-  /** Teto de filmes desta execucao. */
+  /** Teto de entidades desta execucao. */
   readonly limit: number
-  /** Total de filmes disponiveis em `tmdb_raw`. */
+  /** Total de entidades disponiveis em `tmdb_raw` (do tipo). */
   readonly available: number
   /** Quantos foram efetivamente selecionados (min(available, limit)). */
   readonly selected: number
