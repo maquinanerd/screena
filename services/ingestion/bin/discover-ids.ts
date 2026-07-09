@@ -146,17 +146,23 @@ async function main() {
   const syncLog = apply ? createPrismaSyncLog(getPrismaClient()) : null
   let totalKept = 0
   let totalAdult = 0
+  let totalUnsafe = 0
 
   for (const exp of exports) {
     const startedAt = Date.now()
     const endpoint = `/p/exports/${exportFileName(exp.file, date)}`
     try {
-      const { kept, adultDropped, invalidDropped } = await downloadExport(exp.file, date, maxPerType)
+      const { kept, adultDropped, unsafeDropped, invalidDropped } = await downloadExport(
+        exp.file,
+        date,
+        maxPerType,
+      )
       sources.push({ kind: exp.kind, records: kept })
       totalKept += kept.length
       totalAdult += adultDropped
+      totalUnsafe += unsafeDropped
       console.log(
-        `  ${exp.kind}: ${kept.length} mantidos, ${adultDropped} adultos descartados, ${invalidDropped} invalidos.`,
+        `  ${exp.kind}: ${kept.length} mantidos, ${adultDropped} adultos, ${unsafeDropped} adult-malformado (fail-closed), ${invalidDropped} invalidos.`,
       )
       if (syncLog !== null) {
         await syncLog.write({
@@ -185,7 +191,7 @@ async function main() {
 
   const queue = buildSyncQueue(sources)
   console.log(
-    `Fila montada: ${queue.length} itens (${totalKept} mantidos, ${totalAdult} adultos descartados no total).`,
+    `Fila montada: ${queue.length} itens (${totalKept} mantidos, ${totalAdult} adultos + ${totalUnsafe} adult-malformado descartados no total).`,
   )
 
   if (!apply) {

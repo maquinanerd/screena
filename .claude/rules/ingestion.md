@@ -187,8 +187,11 @@ A descoberta **nunca** enfileira conteudo adulto:
 1. **Arquivos `adult_*` nunca sao baixados.** O TMDB publica `adult_movie_ids`,
    `adult_tv_series_ids` e `adult_person_ids` — a descoberta ignora esses arquivos por
    completo (so os 7 padrao entram).
-2. **Flag `adult === true` descartada por linha.** Mesmo nos arquivos padrao, todo registro
-   marcado como adulto e removido antes de virar item de fila.
+2. **Campo `adult` classificado FAIL-CLOSED por linha.** So `adult === false` ou o campo
+   AUSENTE (ex.: collection/network/company/keyword nao trazem `adult`) contam como seguro.
+   `adult === true` e descartado como adulto; qualquer valor presente porem **malformado**
+   (`"true"`, `1`, `null`, objeto...) e descartado como **unsafe** — nunca presumido seguro.
+   So confiamos num booleano de verdade.
 
 Falhar em qualquer uma das camadas deixa conteudo adulto entrar no catalogo — e o ponto mais
 sensivel da descoberta e deve ser coberto por teste.
