@@ -70,3 +70,34 @@ createTmdbClient({ env, deps: { transport: fakeTransport } })
 Resiliencia embutida: throttle por `maxRps`, retry com backoff + jitter (so
 429/5xx/rede; 4xx nunca), circuit breaker por fonte. O transporte, o relogio, o
 `sleep` e o `random` sao injetaveis para testes deterministas.
+
+## `append_to_response` por tipo (raw sync)
+
+Os metodos de detalhe buscam o `append_to_response` **maximo** por tipo, para
+trazer sub-recursos + **todas as traducoes** (`translations`) num unico request.
+As constantes vivem em [`src/append-to-response.ts`](./src/append-to-response.ts)
+e sao a unica fonte usada pelos endpoints.
+
+- **Fonte de verdade:** derivado da doc oficial do TMDB
+  (`developer.themoviedb.org`), verificando a existencia de cada endpoint de
+  sub-recurso em `/reference/*` — **nunca de memoria**.
+- **Somente 5 tipos suportam append.** O guia oficial declara textualmente que
+  apenas os metodos de detalhe de *movie, TV show, TV season, TV episode e
+  person* suportam `append_to_response`. Por isso **collection/network/company/
+  keyword nao tem constante de append** aqui.
+- **`translations` e obrigatorio** em todos os 5 tipos (captura pt/en/es/todos os
+  idiomas num request).
+- **Excluidos de proposito:** `account_states` (exige sessao de usuario) e
+  `lists` (curadoria de usuario, paginada) — nao sao metadado de entidade.
+- **Teto de sub-requests:** `TMDB_APPEND_LIMIT = 20`. `partitionAppend()`
+  particiona qualquer conjunto que exceda o teto em multiplos blocos; o endpoint
+  faz uma chamada por bloco e mescla os sub-recursos na resposta base. Hoje todos
+  os conjuntos cabem em 1 bloco (o maior, serie, tem 16 valores).
+
+| Tipo | Metodo | nº de sub-recursos |
+| --- | --- | --- |
+| movie | `getMovie` | 13 |
+| tv (serie) | `getTvShow` | 16 |
+| temporada | `getTvSeason` | 7 |
+| episodio | `getTvEpisode` | 5 |
+| pessoa | `getPerson` | 8 |
