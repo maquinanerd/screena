@@ -9,12 +9,18 @@
  */
 
 import type { PrismaClient } from '@screena/db/server'
-import type { RawEntityRow, RawMovieRow, RawMovieSource, RawTvSource } from '../raw-promote/types.js'
+import type {
+  RawEntityRow,
+  RawMovieRow,
+  RawMovieSource,
+  RawPersonSource,
+  RawTvSource,
+} from '../raw-promote/types.js'
 
 /** Le ate `limit` linhas de `tmdb_raw` de um tipo, na ordem estavel por tmdbId. */
 async function listRawRows(
   prisma: PrismaClient,
-  entityType: 'movie' | 'tv',
+  entityType: 'movie' | 'tv' | 'person',
   limit: number,
 ): Promise<readonly RawEntityRow[]> {
   const take = Math.max(0, Math.floor(limit))
@@ -53,6 +59,18 @@ export function createPrismaRawTvSource(prisma: PrismaClient): RawTvSource {
     },
     listTvShowPayloads(limit: number): Promise<readonly RawEntityRow[]> {
       return listRawRows(prisma, 'tv', limit)
+    },
+  }
+}
+
+/** Cria um `RawPersonSource` apoiado em `tmdb_raw` (entityType=person) via Prisma. */
+export function createPrismaRawPersonSource(prisma: PrismaClient): RawPersonSource {
+  return {
+    async countPeople(): Promise<number> {
+      return prisma.tmdbRaw.count({ where: { entityType: 'person' } })
+    },
+    listPersonPayloads(limit: number): Promise<readonly RawEntityRow[]> {
+      return listRawRows(prisma, 'person', limit)
     },
   }
 }

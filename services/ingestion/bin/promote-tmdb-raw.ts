@@ -1,23 +1,24 @@
 #!/usr/bin/env node
 /**
- * bin/promote-tmdb-raw.ts — Worker de PROMOCAO (P0-00f: movie f.1, tv f.2).
- * Worker-only/offline — NUNCA no render.
+ * bin/promote-tmdb-raw.ts — Worker de PROMOCAO (P0-00f: movie f.1, tv f.2,
+ * person f.3). Worker-only/offline — NUNCA no render.
  *
- * Le o payload BRUTO ja gravado em `tmdb_raw` (movie ou tv) e o promove para as
- * tabelas tipadas EXISTENTES (`movies`/`tv_shows` + imagens + `entity_external_ids`
- * + `cast_members`/`crew_members` + `people`, via o `EntityStorePort` de sempre) e
- * cria o slug canonico pt-BR (idempotente + 301) e a traducao pt-BR (via o
- * finalize compartilhado com o backfill). ZERO chamada TMDB — a fonte e o banco.
+ * Le o payload BRUTO ja gravado em `tmdb_raw` (movie/tv/person) e o promove para
+ * as tabelas tipadas EXISTENTES (`movies`/`tv_shows`/`people` + imagens +
+ * `entity_external_ids` + `cast_members`/`crew_members` de movie/tv, via o
+ * `EntityStorePort` de sempre) e cria o slug canonico pt-BR (idempotente + 301) e
+ * a traducao pt-BR (via o finalize do backfill). ZERO chamada TMDB — fonte e o banco.
  *
  * Fica em services/ingestion/bin: EXCLUIDO do typecheck e do bundle de render.
  * Usa o core PURO GENERICO em ../src/raw-promote/* (`promoteFromRaw` + strategy;
  * typechecked + testado) + os adapters de persistencia; adiciona so o IO: prisma,
  * log e relatorio.
  *
- * NAO FAZ (fora do escopo P0-00f): person; season/episode (nao estao no payload
- * de detalhe); galerias/videos/keywords/watch; tocar schema/migration; baixar
- * imagem; chamar TMDB. Se faltar coluna/tabela para algum campo, o item FALHA e e
- * reportado — nunca cria schema.
+ * NAO FAZ (fora do escopo P0-00f): season/episode (nao estao no payload de
+ * detalhe); filmografia/bio/combined_credits/images de pessoa;
+ * galerias/videos/keywords/watch; tocar schema/migration; baixar imagem; chamar
+ * TMDB. Se faltar coluna/tabela para algum campo, o item FALHA e e reportado —
+ * nunca cria schema.
  *
  * FAIL-CLOSED: aborta em producao; exige DATABASE_URL (le tmdb_raw do banco
  * dev/staging). NAO exige token TMDB (nao ha rede). --apply para escrever
@@ -28,7 +29,7 @@
  *   node "<caminho-do-tsx-cli>" services/ingestion/bin/promote-tmdb-raw.ts --apply --kind=tv
  *   # flags (aceitam --flag=valor E --flag valor):
  *   #   --apply                 promove de fato (sem a flag = dry-run, nada escrito)
- *   #   --kind=movie|tv         tipo a promover (default movie)
+ *   #   --kind=movie|tv|person  tipo a promover (default movie)
  *   #   --limit=N               teto de entidades (default 100; --limit-movies e alias)
  *   #   --report=<arquivo>      relatorio (.md ou .json; default em .data/, gitignored)
  */
@@ -43,10 +44,15 @@ import { createPrismaSyncLog } from '../src/persistence/sync-log.js'
 import { createPrismaCatalogFinalize } from '../src/persistence/catalog-finalize.js'
 import {
   createPrismaRawMovieSource,
+  createPrismaRawPersonSource,
   createPrismaRawTvSource,
 } from '../src/persistence/tmdb-raw-promote-store.js'
 import { describePromoteGateReason, evaluatePromoteGate } from '../src/raw-promote/gate.js'
-import { promoteMoviesFromRaw, promoteTvShowsFromRaw } from '../src/raw-promote/run.js'
+import {
+  promoteMoviesFromRaw,
+  promotePeopleFromRaw,
+  promoteTvShowsFromRaw,
+} from '../src/raw-promote/run.js'
 import {
   derivePromoteStatus,
   promoteProcessed,
@@ -60,8 +66,8 @@ const BASE_LANGUAGE = 'pt-BR'
 /** Teto default de entidades por execucao (piloto pequeno). */
 const DEFAULT_PROMOTE_LIMIT = 100
 
-/** Tipos de entidade promovíveis nesta fase (P0-00f.1 movie, f.2 tv). */
-type PromoteKind = 'movie' | 'tv'
+/** Tipos de entidade promovíveis (P0-00f.1 movie, f.2 tv, f.3 person). */
+type PromoteKind = 'movie' | 'tv' | 'person'
 
 /** Argumentos parseados do CLI. */
 interface PromoteArgs {
@@ -110,8 +116,8 @@ function parseArgs(argv: readonly string[]): PromoteArgs {
     if (name === 'report') {
       report = value
     } else if (name === 'kind') {
-      if (value !== 'movie' && value !== 'tv') {
-        throw new Error(`--kind deve ser "movie" ou "tv" (recebido "${value}").`)
+      if (value !== 'movie' && value !== 'tv' && value !== 'person') {
+        throw new Error(`--kind deve ser "movie", "tv" ou "person" (recebido "${value}").`)
       }
       kind = value
     } else {
@@ -205,7 +211,9 @@ async function main(): Promise<void> {
     const report =
       args.kind === 'tv'
         ? await promoteTvShowsFromRaw({ source: createPrismaRawTvSource(prisma), ...common })
-        : await promoteMoviesFromRaw({ source: createPrismaRawMovieSource(prisma), ...common })
+        : args.kind === 'person'
+          ? await promotePeopleFromRaw({ source: createPrismaRawPersonSource(prisma), ...common })
+          : await promoteMoviesFromRaw({ source: createPrismaRawMovieSource(prisma), ...common })
 
     if (!args.apply) {
       // Dry-run: so conta. Sem api_sync_logs (nenhum sync externo/escrita).
