@@ -29,17 +29,23 @@
  * token TMDB + fila existente + idioma base pt-BR. Faltando qualquer um, o piloto
  * real NAO roda — o worker reporta o bloqueio, nunca simula sucesso.
  *
- * Uso (a partir da raiz). Resolva o cli do tsx e rode (dry-run sem --apply):
+ * Uso (a partir da raiz). Resolva o cli do tsx e rode (dry-run sem --apply), como
+ * os demais bins do repo. Obs.: `corepack pnpm exec tsx` e `--filter ... exec tsx`
+ * podem falhar com "tsx not found" neste layout pnpm; use o cli RESOLVIDO do tsx:
  *   node "<caminho-do-tsx-cli>" services/ingestion/bin/sync-tmdb-raw.ts
- *   node "<caminho-do-tsx-cli>" services/ingestion/bin/sync-tmdb-raw.ts --apply
+ *   node "<caminho-do-tsx-cli>" services/ingestion/bin/sync-tmdb-raw.ts --apply --queue=<arquivo>
+ *
+ *   As flags de valor aceitam OS DOIS formatos: `--queue=<arquivo>` e
+ *   `--queue <arquivo>`. Valor ausente / flag desconhecida / valor invalido
+ *   FALHAM com erro claro — nunca caem em default silencioso (ver args.ts).
  *   # flags:
- *   #   --apply              busca + grava (sem a flag = dry-run, nada tocado)
- *   #   --queue=<arquivo>    fila NDJSON (default: mais recente em .data/)
- *   #   --limit-movies=N     teto de filmes no piloto (default 100)
- *   #   --limit-tv=N         teto de series (default 100)
- *   #   --limit-people=N     teto de pessoas (default 100)
- *   #   --concurrency=N      pool (default 4; baixo e explicito)
- *   #   --report=<arquivo>   relatorio (.md ou .json; default em .data/, gitignored)
+ *   #   --apply                       busca + grava (sem a flag = dry-run, nada tocado)
+ *   #   --queue=<arquivo> | --queue <arquivo>       fila NDJSON (default: mais recente em .data/)
+ *   #   --limit-movies=N  | --limit-movies N        teto de filmes no piloto (default 100)
+ *   #   --limit-tv=N      | --limit-tv N            teto de series (default 100)
+ *   #   --limit-people=N  | --limit-people N        teto de pessoas (default 100)
+ *   #   --concurrency=N   | --concurrency N         pool (default 4; baixo e explicito)
+ *   #   --report=<arquivo>| --report <arquivo>      relatorio (.md ou .json; default em .data/, gitignored)
  */
 
 import { createReadStream, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs'
@@ -49,6 +55,7 @@ import { fileURLToPath } from 'node:url'
 
 import { createTmdbClient } from '@screena/tmdb-client'
 import { disconnectPrisma, getPrismaClient } from '@screena/db/server'
+import { parseRawSyncArgs } from '../src/raw-sync/args.js'
 import { createPrismaSyncLog } from '../src/persistence/sync-log.js'
 import { createPrismaTmdbRawStore } from '../src/persistence/tmdb-raw-store.js'
 import { describeRawSyncGateReason, evaluateRawSyncGate } from '../src/raw-sync/gate.js'
@@ -81,20 +88,6 @@ function loadRepoEnv() {
   }
 }
 
-function flagValue(argv: string[], name: string): string | null {
-  const prefix = `--${name}=`
-  const hit = argv.find((a) => a.startsWith(prefix))
-  return hit ? hit.slice(prefix.length) : null
-}
-
-/** Le um inteiro positivo de flag; cai no default se ausente/invalido. */
-function intFlag(argv: string[], name: string, fallback: number): number {
-  const raw = flagValue(argv, name)
-  if (raw === null) return fallback
-  const value = Number.parseInt(raw, 10)
-  return Number.isFinite(value) && value > 0 ? value : fallback
-}
-
 const dataDir = () => path.join(repoRoot(), 'services', 'ingestion', '.data')
 
 /** Fila mais recente em .data/ (por mtime), ou null se nenhuma existir. */
@@ -115,8 +108,7 @@ function newestQueueFile(): string | null {
 }
 
 /** Resolve o arquivo de fila: --queue explicito ou o mais recente em .data/. */
-function resolveQueueFile(argv: string[]): string | null {
-  const explicit = flagValue(argv, 'queue')
+function resolveQueueFile(explicit: string | null): string | null {
   if (explicit !== null) {
     const abs = path.isAbsolute(explicit) ? explicit : path.resolve(process.cwd(), explicit)
     return existsSync(abs) ? abs : null
@@ -165,14 +157,21 @@ const dryRunStore = {
 }
 
 async function main(): Promise<void> {
-  const argv = process.argv.slice(2)
-  const apply = argv.includes('--apply')
-  const limits = {
-    movie: intFlag(argv, 'limit-movies', DEFAULT_PILOT_LIMITS.movie),
-    tv: intFlag(argv, 'limit-tv', DEFAULT_PILOT_LIMITS.tv),
-    person: intFlag(argv, 'limit-people', DEFAULT_PILOT_LIMITS.person),
+  // Parser FAIL-LOUD (aceita --flag=valor E --flag valor; nunca ignora em
+  // silencio valor faltante/flag desconhecida — ver args.ts + testes).
+  const parsed = parseRawSyncArgs(process.argv.slice(2))
+  if (!parsed.ok) {
+    console.error(`Argumento invalido: ${parsed.error}`)
+    process.exitCode = 1
+    return
   }
-  const concurrency = intFlag(argv, 'concurrency', DEFAULT_CONCURRENCY)
+  const { apply, queue, report } = parsed.args
+  const limits = {
+    movie: parsed.args.limitMovies ?? DEFAULT_PILOT_LIMITS.movie,
+    tv: parsed.args.limitTv ?? DEFAULT_PILOT_LIMITS.tv,
+    person: parsed.args.limitPeople ?? DEFAULT_PILOT_LIMITS.person,
+  }
+  const concurrency = parsed.args.concurrency ?? DEFAULT_CONCURRENCY
 
   loadRepoEnv()
   const hasDb = Boolean(process.env.DATABASE_URL?.trim())
@@ -185,7 +184,7 @@ async function main(): Promise<void> {
   console.log(`Modo: ${apply ? 'APPLY (grava tmdb_raw)' : 'dry-run (nada tocado)'}`)
   console.log(`Limites: movie=${limits.movie}, tv=${limits.tv}, person=${limits.person}`)
 
-  const queueFile = resolveQueueFile(argv)
+  const queueFile = resolveQueueFile(queue)
 
   // Gate de seguranca (fail-closed, testado em raw-sync-gate.test.ts): decide
   // permitir/bloquear a partir dos sinais do ambiente. O maior risco do P0-00d e
@@ -205,7 +204,7 @@ async function main(): Promise<void> {
   // Gate permitiu -> fila garantidamente existe (exigida nos dois modos).
   console.log(`Fila: ${queueFile}`)
 
-  const reportPath = flagValue(argv, 'report') ?? defaultReportPath(queueFile!)
+  const reportPath = report ?? defaultReportPath(queueFile!)
 
   // ---- Dry-run: so plano (sem rede, sem DB, sem log). ----
   if (!apply) {
