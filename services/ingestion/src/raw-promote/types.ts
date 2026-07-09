@@ -60,6 +60,12 @@ export interface RawTvSource {
   listTvShowPayloads(limit: number): Promise<readonly RawEntityRow[]>
 }
 
+/** Porta de leitura de PESSOAS em `tmdb_raw` (wrapper de pessoa; P0-00f.3). */
+export interface RawPersonSource {
+  countPeople(): Promise<number>
+  listPersonPayloads(limit: number): Promise<readonly RawEntityRow[]>
+}
+
 /**
  * Porta de finalizacao editorial de catalogo (slug canonico pt-BR idempotente +
  * traducao pt-BR). Implementada pelo adapter `persistence/catalog-finalize.ts`,

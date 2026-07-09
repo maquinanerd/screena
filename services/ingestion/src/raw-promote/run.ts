@@ -20,8 +20,9 @@
  * `seasonNumbers`, mas a promocao os IGNORA — sao outro bloco).
  */
 
-import type { TmdbMovieDetail, TmdbTvDetail } from '@screena/tmdb-client'
+import type { TmdbMovieDetail, TmdbPersonDetail, TmdbTvDetail } from '@screena/tmdb-client'
 import { normalizeMovie } from '../normalizers/movie.js'
+import { normalizePerson } from '../normalizers/person.js'
 import { normalizeTvShow } from '../normalizers/tv.js'
 import type { EntityStorePort } from '../ports.js'
 import { desiredCatalogSlug } from '../public-catalog-slug.js'
@@ -35,6 +36,7 @@ import type {
   RawEntityRow,
   RawEntitySource,
   RawMovieSource,
+  RawPersonSource,
   RawTvSource,
 } from './types.js'
 
@@ -107,6 +109,17 @@ export function readTvDisplayFields(payload: unknown): PromoteDisplayFields {
   return { title, overview, year }
 }
 
+/**
+ * Campos de EXIBICAO de PESSOA: so o `name` (title). `overview`/`year` sao null —
+ * a promocao de pessoa NAO tem summary (a person-page nao le `translation.summary`
+ * e o schema nao tem coluna de bio) nem ano no slug. PURO.
+ */
+export function readPersonDisplayFields(payload: unknown): PromoteDisplayFields {
+  const obj = payload !== null && typeof payload === 'object' ? (payload as { name?: unknown }) : {}
+  const title = typeof obj.name === 'string' && obj.name.trim() !== '' ? obj.name : ''
+  return { title, overview: null, year: null }
+}
+
 /** Estrategia de FILME: normalizeMovie -> upsertMovie -> exibicao (P0-00f.1). */
 export function createMovieStrategy(store: EntityStorePort): PromoteStrategy {
   return {
@@ -146,6 +159,29 @@ export function createTvStrategy(store: EntityStorePort): PromoteStrategy {
       })
       const d = readTvDisplayFields(row.payload)
       const title = d.title !== '' ? d.title : normalized.tvShow.nameOriginal
+      return { outcome, display: { title, overview: d.overview, year: d.year } }
+    },
+  }
+}
+
+/**
+ * Estrategia de PESSOA: normalizePerson -> upsertPerson -> exibicao (P0-00f.3).
+ * Sem cast/crew (normalizePerson nao tem), sem bio, sem filmografia: so a ficha
+ * da pessoa + external_ids + slug + traducao (title=name). A filmografia
+ * (cast_members/crew_members) ja vem da promocao de movie/tv, nao daqui.
+ */
+export function createPersonStrategy(store: EntityStorePort): PromoteStrategy {
+  return {
+    entityType: 'person',
+    async promote(row) {
+      const normalized = normalizePerson(row.payload as TmdbPersonDetail)
+      const outcome = await store.upsertPerson({
+        person: normalized.person,
+        externalIds: normalized.externalIds,
+        lastSyncedAt: row.fetchedAt,
+      })
+      const d = readPersonDisplayFields(row.payload)
+      const title = d.title !== '' ? d.title : normalized.person.name
       return { outcome, display: { title, overview: d.overview, year: d.year } }
     },
   }
@@ -239,8 +275,20 @@ export interface PromoteTvShowsOptions {
   readonly onItem?: (tmdbId: number, outcome: PromoteOutcome) => void
 }
 
+/** Opcoes de uma execucao de promocao de PESSOAS (wrapper fino; P0-00f.3). */
+export interface PromotePeopleOptions {
+  readonly source: RawPersonSource
+  readonly store: EntityStorePort
+  readonly finalize: CatalogFinalizePort
+  readonly baseLanguage: string
+  readonly limit: number
+  readonly now: () => Date
+  readonly dryRun: boolean
+  readonly onItem?: (tmdbId: number, outcome: PromoteOutcome) => void
+}
+
 function coreOptions(
-  options: PromoteMoviesOptions | PromoteTvShowsOptions,
+  options: PromoteMoviesOptions | PromoteTvShowsOptions | PromotePeopleOptions,
   source: RawEntitySource,
 ): PromoteFromRawOptions {
   return {
@@ -270,4 +318,13 @@ export function promoteTvShowsFromRaw(options: PromoteTvShowsOptions): Promise<P
     list: (limit) => options.source.listTvShowPayloads(limit),
   }
   return promoteFromRaw(coreOptions(options, source), createTvStrategy(options.store))
+}
+
+/** Promove pessoas do `tmdb_raw` (wrapper fino sobre `promoteFromRaw`). */
+export function promotePeopleFromRaw(options: PromotePeopleOptions): Promise<PromoteReport> {
+  const source: RawEntitySource = {
+    count: () => options.source.countPeople(),
+    list: (limit) => options.source.listPersonPayloads(limit),
+  }
+  return promoteFromRaw(coreOptions(options, source), createPersonStrategy(options.store))
 }
