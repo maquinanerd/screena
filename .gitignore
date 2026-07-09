@@ -14,6 +14,10 @@ coverage
 # NUNCA commitar: rode services/ingestion/bin/ingest-public-catalog.ts p/ gerar.
 apps/web/public/media/tmdb/
 
+# Artefatos de descoberta de IDs (fila de sync regeravel dos Daily ID Exports).
+# NUNCA commitar: rode services/ingestion/bin/discover-ids.ts --apply p/ gerar.
+services/ingestion/.data/
+
 # Artefatos gerados pelo Next (next build / next lint)
 next-env.d.ts
 *.tsbuildinfo

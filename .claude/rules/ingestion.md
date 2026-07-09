@@ -160,6 +160,47 @@ Notas:
 
 ---
 
+## Descoberta de IDs: Daily ID Exports + incremental via `/changes`
+
+A **descoberta** (saber o universo de entidades que existem, de forma barata, sem varrer a
+API) usa os **Daily ID Exports** do TMDB. Implementacao: core puro em
+`services/ingestion/src/discovery/*` + CLI offline `services/ingestion/bin/discover-ids.ts`.
+
+- **Fonte:** `https://files.tmdb.org/p/exports/` — arquivos `[type]_ids_MM_DD_YYYY.json.gz`,
+  1 objeto JSON por linha (JSONL gzip). Publicados **diariamente** (job comeca ~07:00 UTC,
+  disponiveis ~08:00 UTC) e **retidos ~3 meses**.
+- **Periodicidade-alvo da descoberta:** **diaria** (snapshot completo do universo de IDs);
+  serve de fila de entrada para o sync raw (P0-00d). Sao arquivos publicos — **sem token
+  TMDB e sem custo de cota** —, mas a execucao continua worker-only e **gera log** em
+  `api_sync_logs` (regra "todo sync externo gera log").
+- **7 exports padrao consumidos:** `movie_ids`, `tv_series_ids`, `person_ids`,
+  `collection_ids`, `tv_network_ids`, `keyword_ids`, `production_company_ids`.
+- **Incremental via `/changes`:** para manter a fila fresca sem rebaixar o export inteiro,
+  o TMDB expoe `/movie/changes`, `/tv/changes` e `/person/changes` (janela default ~24h,
+  **maximo 14 dias**). No P0-00c isso e apenas **contrato** (`planChangesRequests`), nao
+  executado; o sync raw incremental e P0-00d.
+
+### Exclusao de conteudo adulto (2 camadas, obrigatoria)
+
+A descoberta **nunca** enfileira conteudo adulto:
+
+1. **Arquivos `adult_*` nunca sao baixados.** O TMDB publica `adult_movie_ids`,
+   `adult_tv_series_ids` e `adult_person_ids` — a descoberta ignora esses arquivos por
+   completo (so os 7 padrao entram).
+2. **Campo `adult` classificado FAIL-CLOSED por linha, por tipo.** `adult === false` e seguro.
+   `adult === true` e descartado como adulto. Qualquer valor presente porem **malformado**
+   (`"true"`, `1`, `null`, objeto...) e descartado como **unsafe** — nunca presumido seguro. A
+   **ausencia** do campo depende do tipo: em exports que NAO trazem `adult`
+   (collection/network/company/keyword) e segura; em exports que DEVERIAM traze-lo
+   (**movie/person**) a ausencia e tratada como **unsafe** (anomalia, ex.: linha truncada) —
+   `hasAdultField` no catalogo de exports controla isso. So confiamos num booleano de verdade
+   quando o export o fornece.
+
+Falhar em qualquer uma das camadas deixa conteudo adulto entrar no catalogo — e o ponto mais
+sensivel da descoberta e deve ser coberto por teste.
+
+---
+
 ## Seguranca de chaves
 
 - **API keys e segredos so em variaveis de ambiente.** Nunca no frontend, nunca no bundle,
