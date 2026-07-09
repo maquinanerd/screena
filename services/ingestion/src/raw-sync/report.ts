@@ -24,6 +24,8 @@ function formatBytes(bytes: number): string {
 /**
  * Status do ciclo para `api_sync_logs` (apply):
  *  - nada selecionado            -> `empty`
+ *  - lote interrompido (teto/breaker) -> `aborted` (regra de ingestao: o abort
+ *    do circuit breaker tambem gera log; sempre retomavel)
  *  - tudo falhou                 -> `failed`
  *  - alguma falha (parcial)      -> `partial`
  *  - caso contrario              -> `success`
@@ -31,6 +33,7 @@ function formatBytes(bytes: number): string {
 export function deriveSyncStatus(report: RawSyncReport): SyncStatus {
   const processed = processedOf(report.totals)
   if (report.selected === 0) return 'empty'
+  if (report.aborted) return 'aborted'
   if (report.totals.failed > 0) {
     return report.totals.failed >= processed ? 'failed' : 'partial'
   }
@@ -81,7 +84,13 @@ export function renderRawSyncReport(report: RawSyncReport): string {
       `| **total** | ${report.selected} | ${t.created} | ${t.updated} | ${t.skipped} | ${t.failed} |`,
     )
     lines.push('')
+    lines.push(`- requisicoes (fetch): ${report.requests}`)
     lines.push(`- retries transitorios (core): ${report.retries} (dos quais 429: ${report.rate429})`)
+    if (report.aborted) {
+      lines.push(
+        `- **ABORTADO** (${report.abortReason ?? 'desconhecido'}): ${report.notProcessed} item(ns) NAO processado(s) — retomavel no proximo ciclo (nada gravado para eles).`,
+      )
+    }
 
     lines.push('')
     lines.push('## Tamanho de payload por tipo')

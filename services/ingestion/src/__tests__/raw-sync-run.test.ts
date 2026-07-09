@@ -307,4 +307,87 @@ describe('runRawSyncPilot', () => {
     expect(par.totals).toEqual(seq.totals)
     expect(par.totals).toEqual({ created: 5, updated: 0, skipped: 0, failed: 0 })
   })
+
+  it('sem teto/breaker: requests conta cada fetch, aborted=false, notProcessed=0', async () => {
+    const selection = selectPilotItems(
+      [item('movie', 1), item('movie', 2), item('person', 3)],
+      LIMITS,
+    )
+    const report = await runRawSyncPilot({
+      selection,
+      source: makeFakeSource(),
+      store: makeFakeStore(),
+      baseLanguage: 'pt-BR',
+      limits: LIMITS,
+      now: NOW,
+      dryRun: false,
+      concurrency: 1,
+      retry: RETRY, // maxAttempts: 1 => 1 request por item
+    })
+    expect(report.requests).toBe(3)
+    expect(report.aborted).toBe(false)
+    expect(report.abortReason).toBeNull()
+    expect(report.notProcessed).toBe(0)
+  })
+
+  it('teto efetivo de requisicoes: para de iniciar itens e marca aborted/request-ceiling', async () => {
+    const source = makeFakeSource()
+    const selection = selectPilotItems(
+      [item('movie', 1), item('movie', 2), item('movie', 3), item('movie', 4), item('movie', 5)],
+      LIMITS,
+    )
+    const report = await runRawSyncPilot({
+      selection,
+      source,
+      store: makeFakeStore(),
+      baseLanguage: 'pt-BR',
+      limits: LIMITS,
+      now: NOW,
+      dryRun: false,
+      concurrency: 1,
+      retry: RETRY, // 1 request por item => teto exato
+      maxRequests: 2,
+    })
+    expect(report.requests).toBe(2)
+    expect(report.totals).toEqual({ created: 2, updated: 0, skipped: 0, failed: 0 })
+    expect(report.aborted).toBe(true)
+    expect(report.abortReason).toBe('request-ceiling')
+    expect(report.notProcessed).toBe(3) // 5 selecionados - 2 processados
+    // Nao buscou os itens nao iniciados (retomavel no proximo ciclo).
+    expect(source.calls.map((c) => c.id)).toEqual([1, 2])
+  })
+
+  it('circuito aberto (client) aborta o lote graciosamente e nao toca o resto', async () => {
+    const calls: number[] = []
+    const source = {
+      getMovie: (id: number) => {
+        calls.push(id)
+        return id === 2
+          ? Promise.reject({ name: 'TmdbCircuitOpenError', openUntil: 1 })
+          : Promise.resolve(payloadFor('movie', id))
+      },
+      getTvShow: () => Promise.reject(new Error('n/a')),
+      getPerson: () => Promise.reject(new Error('n/a')),
+    }
+    const selection = selectPilotItems(
+      [item('movie', 1), item('movie', 2), item('movie', 3), item('movie', 4)],
+      LIMITS,
+    )
+    const report = await runRawSyncPilot({
+      selection,
+      source,
+      store: makeFakeStore(),
+      baseLanguage: 'pt-BR',
+      limits: LIMITS,
+      now: NOW,
+      dryRun: false,
+      concurrency: 1,
+      retry: RETRY,
+    })
+    expect(report.aborted).toBe(true)
+    expect(report.abortReason).toBe('circuit-open')
+    expect(report.totals).toEqual({ created: 1, updated: 0, skipped: 0, failed: 1 })
+    expect(report.notProcessed).toBe(2) // itens 3 e 4 nunca iniciados
+    expect(calls).toEqual([1, 2]) // nao marretou 3 e 4 contra o breaker aberto
+  })
 })

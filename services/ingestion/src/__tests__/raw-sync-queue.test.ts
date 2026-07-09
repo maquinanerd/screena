@@ -98,6 +98,35 @@ describe('selectPilotItems / createPilotSelector', () => {
     expect(selection.scanned).toBe(3)
   })
 
+  it('dedup: (kind,tmdbId) repetido na fila e selecionado UMA vez (sem payload duplicado)', () => {
+    // A mesma (movie,1) tres vezes + (tv,1) que NAO colide com (movie,1) por tipo.
+    const queue: QueueItem[] = [
+      item('movie', 1),
+      item('movie', 1),
+      item('movie', 1),
+      item('tv', 1),
+      item('person', 2),
+      item('person', 2),
+    ]
+    const selection = selectPilotItems(queue, { movie: 5, tv: 5, person: 5 })
+    expect(selection.selected.map((q) => `${q.kind}:${q.tmdbId}`)).toEqual([
+      'movie:1',
+      'tv:1',
+      'person:2',
+    ])
+    expect(selection.perKindSelected).toEqual({ movie: 1, tv: 1, person: 1 })
+    // scan honesto: TODAS as linhas contam, mesmo as repetidas.
+    expect(selection.scanned).toBe(6)
+    expect(selection.unsupportedSkipped).toBe(0)
+  })
+
+  it('dedup nao "gasta" a vaga do limite com repetidos: id distinto seguinte ainda entra', () => {
+    const queue: QueueItem[] = [item('movie', 1), item('movie', 1), item('movie', 2)]
+    const selection = selectPilotItems(queue, { movie: 2, tv: 1, person: 1 })
+    expect(selection.selected.map((q) => q.tmdbId)).toEqual([1, 2])
+    expect(selection.perKindSelected.movie).toBe(2)
+  })
+
   it('o seletor incremental equivale a selecao em array (memoria limitada)', () => {
     const queue: QueueItem[] = [item('movie', 1), item('collection', 9), item('person', 2)]
     const selector = createPilotSelector({ movie: 10, tv: 10, person: 10 })

@@ -63,7 +63,9 @@ import {
   createPilotSelector,
   DEFAULT_PILOT_LIMITS,
   parseRawQueueLine,
+  totalLimit,
 } from '../src/raw-sync/queue.js'
+import { createRawSyncBackoff } from '../src/raw-sync/retry.js'
 import { DEFAULT_CONCURRENCY, runRawSyncPilot } from '../src/raw-sync/run.js'
 import {
   deriveSyncStatus,
@@ -75,6 +77,19 @@ import type { RawSyncReport } from '../src/raw-sync/types.js'
 
 /** Idioma base exigido no piloto (invariante 7: pt-BR primeiro). */
 const BASE_LANGUAGE = 'pt-BR'
+
+/**
+ * Tentativas por item na 2a linha de retry do core (o client TMDB ja retenta na
+ * rede). Baixo de proposito: aqui e observabilidade + backoff 429 explicito.
+ */
+const RAW_SYNC_MAX_ATTEMPTS = 3
+
+/** Le um inteiro positivo de env (senao null — o CLI aplica o default derivado). */
+function readPositiveIntEnv(raw: string | undefined): number | null {
+  if (raw == null || raw.trim() === '') return null
+  const value = Number.parseInt(raw, 10)
+  return Number.isFinite(value) && value > 0 ? value : null
+}
 
 function repoRoot() {
   const dir = path.dirname(fileURLToPath(import.meta.url)) // services/ingestion/bin
@@ -246,11 +261,25 @@ async function main(): Promise<void> {
   const store = createPrismaTmdbRawStore(prisma)
   const syncLog = createPrismaSyncLog(prisma)
 
+  // Teto EFETIVO de requisicoes: por padrao o limite natural (selecionaveis x
+  // tentativas); override explicito via RAW_SYNC_MAX_REQUESTS. Safety valve — se
+  // batido, o lote para graciosamente e loga `aborted` (retomavel).
+  const maxRequests =
+    readPositiveIntEnv(process.env.RAW_SYNC_MAX_REQUESTS) ??
+    totalLimit(limits) * RAW_SYNC_MAX_ATTEMPTS
+
+  // Guarda a linha AUTORITATIVA de api_sync_logs: uma vez escrita, o catch de
+  // erro inesperado NAO pode gravar uma 2a linha 'aborted' contraditoria (o
+  // desfecho real do ciclo ja foi registrado). So logamos fallback se o log
+  // principal ainda nao saiu (ex.: falha antes/dentro do proprio write).
+  let mainLogWritten = false
+
   try {
     const selection = await selectFromQueue(queueFile, limits)
     console.log(
       `Selecionados: movie=${selection.perKindSelected.movie}, tv=${selection.perKindSelected.tv}, person=${selection.perKindSelected.person} · unsupportedSkipped=${selection.unsupportedSkipped}.`,
     )
+    console.log(`Teto de requisicoes: ${maxRequests} (maxAttempts=${RAW_SYNC_MAX_ATTEMPTS}/item).`)
 
     const report = await runRawSyncPilot({
       selection,
@@ -261,7 +290,10 @@ async function main(): Promise<void> {
       now: () => new Date(),
       dryRun: false,
       concurrency,
-      retry: { maxAttempts: 2, sleep, backoffMs: (attempt) => 500 * attempt },
+      // Politica CLARA de backoff (inclui 429 + Retry-After) na 2a linha do core;
+      // o client TMDB ja aplica throttle/breaker/backoff na camada de rede.
+      retry: { maxAttempts: RAW_SYNC_MAX_ATTEMPTS, sleep, backoffMs: createRawSyncBackoff() },
+      maxRequests,
       onItem: (item, outcome) => {
         if (outcome === 'failed') console.warn(`  ${item.kind} ${item.tmdbId}: FALHOU.`)
       },
@@ -269,24 +301,76 @@ async function main(): Promise<void> {
 
     const processed = processedOf(report.totals)
     const status = deriveSyncStatus(report)
+    const errorCode =
+      status === 'aborted'
+        ? `raw_sync_aborted_${report.abortReason ?? 'unknown'}`
+        : status === 'failed'
+          ? 'raw_sync_failed'
+          : null
     await syncLog.write({
       endpoint: 'raw-sync',
       status,
-      errorCode: status === 'failed' ? 'raw_sync_failed' : null,
+      errorCode,
       itemsProcessed: processed,
       itemsCreated: report.totals.created,
       itemsUpdated: report.totals.updated,
       durationMs: report.durationMs,
-      quotaCost: processed + report.retries,
+      // quotaCost aproximado = total de TENTATIVAS de fetch (nao quota exata da
+      // rede): inclui rejeicao pre-flight de circuito aberto e uma tentativa de
+      // append pode gerar multiplas chamadas HTTP. Serve de proxy de esforco.
+      quotaCost: report.requests,
       payloadHash: null,
     })
+    mainLogWritten = true
 
-    writeReport(report, reportPath)
+    // O relatorio em .data/ e AUXILIAR (gitignored). Falhar ao escreve-lo (disco
+    // cheio, permissao) NAO pode virar uma 2a linha 'aborted' em api_sync_logs —
+    // o log autoritativo acima ja reflete o desfecho real do ciclo.
+    try {
+      writeReport(report, reportPath)
+    } catch (reportError) {
+      console.warn(
+        'Aviso: falha ao escrever o relatorio auxiliar (gitignored):',
+        reportError instanceof Error ? reportError.message : reportError,
+      )
+    }
     const t = report.totals
     console.log(
-      `Raw sync (${status}): created=${t.created}, updated=${t.updated}, skipped=${t.skipped}, failed=${t.failed} · retries=${report.retries} (429=${report.rate429}).`,
+      `Raw sync (${status}): created=${t.created}, updated=${t.updated}, skipped=${t.skipped}, failed=${t.failed} · requests=${report.requests}, retries=${report.retries} (429=${report.rate429}).`,
     )
+    if (report.aborted) {
+      console.warn(
+        `ABORTADO (${report.abortReason ?? 'desconhecido'}): ${report.notProcessed} item(ns) NAO processado(s) — retomavel no proximo ciclo.`,
+      )
+    }
     console.log(`Log em api_sync_logs (1 linha-resumo) · relatorio completo: ${reportPath}`)
+  } catch (error) {
+    // Regra de ingestao: TODO sync externo gera log — sem excecao. Numa falha
+    // inesperada (fora do loop, que ja e resiliente por item) registramos 1 linha
+    // `aborted` — MAS so se o log autoritativo ainda nao saiu, para nao duplicar
+    // o ciclo com um status contraditorio (best-effort).
+    if (!mainLogWritten) {
+      try {
+        await syncLog.write({
+          endpoint: 'raw-sync',
+          status: 'aborted',
+          errorCode: 'raw_sync_unexpected_error',
+          durationMs: null,
+          quotaCost: null,
+          payloadHash: null,
+        })
+      } catch (logError) {
+        console.error(
+          'Falha ao registrar log de abort:',
+          logError instanceof Error ? logError.message : logError,
+        )
+      }
+    }
+    process.exitCode = 1
+    console.error(
+      'Raw sync abortado por erro inesperado:',
+      error instanceof Error ? error.message : error,
+    )
   } finally {
     await disconnectPrisma()
   }

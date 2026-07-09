@@ -72,6 +72,11 @@ export function createPilotSelector(limits: PilotLimits): PilotSelector {
   const selected: QueueItem[] = []
   const perKindSelected: Record<SupportedRawKind, number> = { movie: 0, tv: 0, person: 0 }
   const unsupportedByKind: Record<string, number> = {}
+  // Dedup dos SELECIONADOS por (kind,tmdbId): uma fila com id repetido nao pode
+  // gerar dois `create` do mesmo tmdb_raw (colisao do unique / update em falso)
+  // sob concorrencia. Memoria limitada: guarda so as chaves selecionadas (<= soma
+  // dos limites). Repetidos ainda contam em `scanned` (scan honesto).
+  const selectedKeys = new Set<string>()
   let unsupportedSkipped = 0
   let scanned = 0
 
@@ -79,9 +84,12 @@ export function createPilotSelector(limits: PilotLimits): PilotSelector {
     offer(item: QueueItem): void {
       scanned += 1
       if (isSupportedRawKind(item.kind)) {
+        const key = `${item.kind}:${item.tmdbId}`
+        if (selectedKeys.has(key)) return // ja selecionado: ignora a repeticao
         if (perKindSelected[item.kind] < limitFor(limits, item.kind)) {
           selected.push(item)
           perKindSelected[item.kind] += 1
+          selectedKeys.add(key)
         }
         return
       }
