@@ -45,3 +45,13 @@ __pycache__/
 # Sistema
 .DS_Store
 desktop.ini
+
+# Local agent/runtime artifacts
+# Residuo local do Ruflo/Claude Flow (daemon, memoria, banco vetorial, config
+# resolvida na maquina). Nunca commitar: pode conter trechos do codigo indexado.
+# O restante de .claude/ (rules, skills, agents) CONTINUA versionado.
+.claude-flow/
+.swarm/
+ruvector.db
+.claude/.proven-config-version
+.claude/proven-config.json
