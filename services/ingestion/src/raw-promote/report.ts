@@ -32,10 +32,10 @@ export function renderPromoteReport(report: PromoteReport): string {
   const lines: string[] = []
   lines.push(`# Screen · Promocao tmdb_raw -> tabelas tipadas — relatorio (${report.mode})`)
   lines.push('')
-  lines.push(`- entidade: movie (P0-00f.1)`)
+  lines.push(`- entidade: ${report.entityType}`)
   lines.push(`- baseLanguage: ${report.baseLanguage}`)
   lines.push(`- limite: ${report.limit}`)
-  lines.push(`- filmes disponiveis em tmdb_raw: ${report.available}`)
+  lines.push(`- ${report.entityType} disponiveis em tmdb_raw: ${report.available}`)
   lines.push(`- selecionados: ${report.selected}`)
   lines.push(`- duracao: ${report.durationMs} ms`)
   lines.push('')
@@ -43,7 +43,7 @@ export function renderPromoteReport(report: PromoteReport): string {
   if (report.mode === 'dry-run') {
     lines.push('## Plano (dry-run — nada promovido)')
     lines.push('')
-    lines.push(`Promoveria ${report.selected} filme(s) de tmdb_raw para as tabelas tipadas.`)
+    lines.push(`Promoveria ${report.selected} ${report.entityType}(s) de tmdb_raw para as tabelas tipadas.`)
   } else {
     const c = report.counts
     lines.push('## Desfechos (apply)')

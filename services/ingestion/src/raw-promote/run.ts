@@ -1,46 +1,52 @@
 /**
- * run.ts — Orquestracao PURA da promocao de filme `tmdb_raw` -> tabelas tipadas
- * (P0-00f.1). Sem rede, sem DB: opera sobre as portas `RawMovieSource`,
- * `EntityStorePort` e `CatalogFinalizePort`, testavel com fakes.
+ * run.ts — Orquestracao PURA e GENERICA da promocao `tmdb_raw` -> tabelas
+ * tipadas (P0-00f). Sem rede, sem DB: opera sobre as portas `RawEntitySource`,
+ * `CatalogFinalizePort` e uma `PromoteStrategy`, testavel com fakes.
  *
- * Por filme (apply): normaliza o payload bruto -> upsert idempotente (movies +
- * imagens + external_ids + cast/crew, via o store de sempre) -> slug canonico
- * pt-BR + traducao (via o finalize, mesma logica do backfill). Falha de um item
- * vira `failed` e NUNCA aborta o lote (retomavel — upsert idempotente).
- *
- * Dry-run: NAO le payloads nem escreve — so CONTA quantos filmes existem em
- * `tmdb_raw` e quantos caberiam no limite. Idempotencia de re-run: os upserts
- * (movie/slug/traducao) sao por chave natural, entao rodar de novo reconverge
- * (2a execucao vira `updated`, mesmo estado final).
+ * `promoteFromRaw(options, strategy)` e o core unico: por item (apply) chama
+ * `strategy.promote` (normaliza o payload bruto + upsert tipado idempotente via o
+ * store de sempre) e depois grava slug canonico pt-BR + traducao (via o finalize,
+ * mesma logica do backfill). Falha de um item vira `failed` e NUNCA aborta o lote
+ * (retomavel — upsert idempotente). Dry-run: NAO le payloads nem escreve — so
+ * CONTA. Idempotencia de re-run: os upserts sao por chave natural (2a execucao
+ * vira `updated`, mesmo estado final).
  *
  * SEQUENCIAL de proposito (sem pool): o slug faz resolucao de colisao lendo/
- * escrevendo `slugs`; serializar evita corrida entre dois filmes de slug-base
+ * escrevendo `slugs`; serializar evita corrida entre duas entidades de slug-base
  * igual. O piloto e pequeno; simplicidade > paralelismo aqui.
+ *
+ * `movie` (f.1) e `tv` (f.2) sao estrategias finas; a orquestracao e uma so.
+ * season/episode NUNCA sao criados aqui (o normalizer de serie devolve
+ * `seasonNumbers`, mas a promocao os IGNORA — sao outro bloco).
  */
 
-import type { TmdbMovieDetail } from '@screena/tmdb-client'
+import type { TmdbMovieDetail, TmdbTvDetail } from '@screena/tmdb-client'
 import { normalizeMovie } from '../normalizers/movie.js'
+import { normalizeTvShow } from '../normalizers/tv.js'
 import type { EntityStorePort } from '../ports.js'
 import { desiredCatalogSlug } from '../public-catalog-slug.js'
 import type {
   CatalogFinalizePort,
   PromoteCounts,
+  PromoteDisplayFields,
   PromoteOutcome,
   PromoteReport,
-  RawMovieRow,
+  PromoteStrategy,
+  RawEntityRow,
+  RawEntitySource,
   RawMovieSource,
+  RawTvSource,
 } from './types.js'
 
 /** Teto de ids gravados em `failedIds` (amostra p/ relatorio; total fica em counts). */
 const MAX_FAILED_SAMPLE = 50
 
-/** Opcoes de uma execucao de promocao de filmes. */
-export interface PromoteMoviesOptions {
-  readonly source: RawMovieSource
-  readonly store: EntityStorePort
+/** Opcoes do core generico de promocao. */
+export interface PromoteFromRawOptions {
+  readonly source: RawEntitySource
   readonly finalize: CatalogFinalizePort
   readonly baseLanguage: string
-  /** Teto de filmes desta execucao. */
+  /** Teto de entidades desta execucao. */
   readonly limit: number
   /** Relogio injetavel (determinista em teste; so p/ durationMs). */
   readonly now: () => Date
@@ -50,16 +56,18 @@ export interface PromoteMoviesOptions {
   readonly onItem?: (tmdbId: number, outcome: PromoteOutcome) => void
 }
 
+/** Ano (>0) a partir de uma data `YYYY-...`; senao null. PURO. */
+function yearFrom(dateStr: string | null): number | null {
+  if (dateStr === null) return null
+  const year = Number(dateStr.slice(0, 4))
+  return Number.isInteger(year) && year > 0 ? year : null
+}
+
 /**
- * Campos de EXIBICAO lidos do payload bruto (pt-BR), defensivamente: titulo
- * (localizado, com fallback ao original), sinopse e ano. PURO. Sao usados no
- * slug/traducao — a nota factual (ficha) vem de `normalizeMovie`, nunca daqui.
+ * Campos de EXIBICAO de FILME (pt-BR), defensivamente: titulo localizado (com
+ * fallback ao original), sinopse e ano. PURO.
  */
-export function readMovieDisplayFields(payload: unknown): {
-  title: string
-  overview: string | null
-  year: number | null
-} {
+export function readMovieDisplayFields(payload: unknown): PromoteDisplayFields {
   const obj =
     payload !== null && typeof payload === 'object'
       ? (payload as {
@@ -77,41 +85,89 @@ export function readMovieDisplayFields(payload: unknown): {
   return { title, overview, year }
 }
 
-/** Ano (>0) a partir de uma data `YYYY-...`; senao null. PURO. */
-function yearFrom(dateStr: string | null): number | null {
-  if (dateStr === null) return null
-  const year = Number(dateStr.slice(0, 4))
-  return Number.isInteger(year) && year > 0 ? year : null
+/**
+ * Campos de EXIBICAO de SERIE (pt-BR): nome localizado (com fallback ao
+ * original), sinopse e ano de estreia (`first_air_date`). PURO.
+ */
+export function readTvDisplayFields(payload: unknown): PromoteDisplayFields {
+  const obj =
+    payload !== null && typeof payload === 'object'
+      ? (payload as {
+          name?: unknown
+          original_name?: unknown
+          overview?: unknown
+          first_air_date?: unknown
+        })
+      : {}
+  const title =
+    (typeof obj.name === 'string' && obj.name.trim() !== '' ? obj.name : null) ??
+    (typeof obj.original_name === 'string' ? obj.original_name : '')
+  const overview = typeof obj.overview === 'string' && obj.overview !== '' ? obj.overview : null
+  const year = yearFrom(typeof obj.first_air_date === 'string' ? obj.first_air_date : null)
+  return { title, overview, year }
+}
+
+/** Estrategia de FILME: normalizeMovie -> upsertMovie -> exibicao (P0-00f.1). */
+export function createMovieStrategy(store: EntityStorePort): PromoteStrategy {
+  return {
+    entityType: 'movie',
+    async promote(row) {
+      const normalized = normalizeMovie(row.payload as TmdbMovieDetail)
+      const outcome = await store.upsertMovie({
+        movie: normalized.movie,
+        externalIds: normalized.externalIds,
+        cast: normalized.cast,
+        crew: normalized.crew,
+        // Frescor herdada do raw: o tipado e tao fresco quanto o payload coletado.
+        timestamps: { lastSyncedAt: row.fetchedAt, staleAfter: null },
+      })
+      const d = readMovieDisplayFields(row.payload)
+      const title = d.title !== '' ? d.title : normalized.movie.titleOriginal
+      return { outcome, display: { title, overview: d.overview, year: d.year } }
+    },
+  }
+}
+
+/**
+ * Estrategia de SERIE: normalizeTvShow -> upsertTvShow -> exibicao (P0-00f.2).
+ * `normalized.seasonNumbers` e IGNORADO — season/episode nao sao promovidos.
+ */
+export function createTvStrategy(store: EntityStorePort): PromoteStrategy {
+  return {
+    entityType: 'tv',
+    async promote(row) {
+      const normalized = normalizeTvShow(row.payload as TmdbTvDetail)
+      const outcome = await store.upsertTvShow({
+        tvShow: normalized.tvShow,
+        externalIds: normalized.externalIds,
+        cast: normalized.cast,
+        crew: normalized.crew,
+        timestamps: { lastSyncedAt: row.fetchedAt, staleAfter: null },
+      })
+      const d = readTvDisplayFields(row.payload)
+      const title = d.title !== '' ? d.title : normalized.tvShow.nameOriginal
+      return { outcome, display: { title, overview: d.overview, year: d.year } }
+    },
+  }
 }
 
 function emptyCounts(): PromoteCounts {
   return { created: 0, updated: 0, failed: 0 }
 }
 
-/** Promove UM filme (apply): normaliza -> upsert -> slug + traducao. */
+/** Promove UM registro (apply): strategy.promote -> slug + traducao. */
 async function promoteOne(
-  row: RawMovieRow,
-  options: PromoteMoviesOptions,
+  row: RawEntityRow,
+  options: PromoteFromRawOptions,
+  strategy: PromoteStrategy,
   counts: PromoteCounts,
   failedIds: number[],
 ): Promise<void> {
   try {
-    const normalized = normalizeMovie(row.payload as TmdbMovieDetail)
-    // Frescor herdada do raw: o tipado e tao fresco quanto o payload coletado.
-    const timestamps = { lastSyncedAt: row.fetchedAt, staleAfter: null }
-    const outcome = await options.store.upsertMovie({
-      movie: normalized.movie,
-      externalIds: normalized.externalIds,
-      cast: normalized.cast,
-      crew: normalized.crew,
-      timestamps,
-    })
-
-    const display = readMovieDisplayFields(row.payload)
-    const slugTitle = display.title !== '' ? display.title : normalized.movie.titleOriginal
-    const desiredSlug = desiredCatalogSlug(slugTitle, display.year, row.tmdbId)
-    await options.finalize.upsertCanonicalSlug('movie', outcome.id, desiredSlug, row.tmdbId)
-    await options.finalize.upsertTranslation('movie', outcome.id, slugTitle, display.overview)
+    const { outcome, display } = await strategy.promote(row)
+    const desiredSlug = desiredCatalogSlug(display.title, display.year, row.tmdbId)
+    await options.finalize.upsertCanonicalSlug(strategy.entityType, outcome.id, desiredSlug, row.tmdbId)
+    await options.finalize.upsertTranslation(strategy.entityType, outcome.id, display.title, display.overview)
 
     if (outcome.created) counts.created += 1
     else counts.updated += 1
@@ -123,30 +179,32 @@ async function promoteOne(
   }
 }
 
-/** Roda a promocao de filmes e devolve o `PromoteReport`. */
-export async function promoteMoviesFromRaw(
-  options: PromoteMoviesOptions,
+/** Core GENERICO: roda a promocao de uma entidade (via `strategy`) e reporta. */
+export async function promoteFromRaw(
+  options: PromoteFromRawOptions,
+  strategy: PromoteStrategy,
 ): Promise<PromoteReport> {
   const startedMs = options.now().getTime()
   const counts = emptyCounts()
   const failedIds: number[] = []
-  const available = await options.source.countMovies()
+  const available = await options.source.count()
 
   let selected: number
   if (options.dryRun) {
     selected = Math.min(available, Math.max(0, options.limit))
     for (let i = 0; i < selected; i += 1) options.onItem?.(0, 'planned')
   } else {
-    const rows = await options.source.listMoviePayloads(options.limit)
+    const rows = await options.source.list(options.limit)
     selected = rows.length
     for (const row of rows) {
-      await promoteOne(row, options, counts, failedIds)
+      await promoteOne(row, options, strategy, counts, failedIds)
     }
   }
 
   const durationMs = Math.max(0, options.now().getTime() - startedMs)
   return {
     mode: options.dryRun ? 'dry-run' : 'apply',
+    entityType: strategy.entityType,
     baseLanguage: options.baseLanguage,
     limit: options.limit,
     available,
@@ -155,4 +213,61 @@ export async function promoteMoviesFromRaw(
     failedIds,
     durationMs,
   }
+}
+
+/** Opcoes de uma execucao de promocao de FILMES (wrapper fino; P0-00f.1). */
+export interface PromoteMoviesOptions {
+  readonly source: RawMovieSource
+  readonly store: EntityStorePort
+  readonly finalize: CatalogFinalizePort
+  readonly baseLanguage: string
+  readonly limit: number
+  readonly now: () => Date
+  readonly dryRun: boolean
+  readonly onItem?: (tmdbId: number, outcome: PromoteOutcome) => void
+}
+
+/** Opcoes de uma execucao de promocao de SERIES (wrapper fino; P0-00f.2). */
+export interface PromoteTvShowsOptions {
+  readonly source: RawTvSource
+  readonly store: EntityStorePort
+  readonly finalize: CatalogFinalizePort
+  readonly baseLanguage: string
+  readonly limit: number
+  readonly now: () => Date
+  readonly dryRun: boolean
+  readonly onItem?: (tmdbId: number, outcome: PromoteOutcome) => void
+}
+
+function coreOptions(
+  options: PromoteMoviesOptions | PromoteTvShowsOptions,
+  source: RawEntitySource,
+): PromoteFromRawOptions {
+  return {
+    source,
+    finalize: options.finalize,
+    baseLanguage: options.baseLanguage,
+    limit: options.limit,
+    now: options.now,
+    dryRun: options.dryRun,
+    onItem: options.onItem,
+  }
+}
+
+/** Promove filmes do `tmdb_raw` (wrapper fino sobre `promoteFromRaw`). */
+export function promoteMoviesFromRaw(options: PromoteMoviesOptions): Promise<PromoteReport> {
+  const source: RawEntitySource = {
+    count: () => options.source.countMovies(),
+    list: (limit) => options.source.listMoviePayloads(limit),
+  }
+  return promoteFromRaw(coreOptions(options, source), createMovieStrategy(options.store))
+}
+
+/** Promove series do `tmdb_raw` (wrapper fino sobre `promoteFromRaw`). */
+export function promoteTvShowsFromRaw(options: PromoteTvShowsOptions): Promise<PromoteReport> {
+  const source: RawEntitySource = {
+    count: () => options.source.countTvShows(),
+    list: (limit) => options.source.listTvShowPayloads(limit),
+  }
+  return promoteFromRaw(coreOptions(options, source), createTvStrategy(options.store))
 }
