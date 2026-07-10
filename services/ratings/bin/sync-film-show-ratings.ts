@@ -8,31 +8,42 @@
  * client HTTP, Prisma (api_cache / api_sync_logs / external_ratings), sample e
  * relatorio em `.data/` (gitignored).
  *
+ * ENDPOINT: `GET /item/?id=<IMDb_ID>`. O plano Pro NAO libera `/popular/` (403),
+ * entao o worker enriquece entidades locais JA existentes, uma por vez, por
+ * identificador inequivoco (IMDb id). Nunca casa por titulo/ano.
+ *
  * O QUE FAZ:
- *  - Dry-run (default): reporta o PLANO (endpoint que SERIA chamado). ZERO rede,
- *    ZERO DB, ZERO quota.
- *  - `--sample`: busca o payload REAL, grava `api_cache` + `api_sync_logs` e
- *    escreve um sample SANITIZADO em `.data/`. NAO grava `external_ratings`.
+ *  - Dry-run (default): reporta o PLANO (endpoint + ids que SERIAM consultados).
+ *    ZERO rede, ZERO DB, ZERO quota.
+ *  - `--sample`: busca o(s) payload(s) REAL(is) de `/item/`, grava `api_cache` +
+ *    `api_sync_logs` e escreve um sample SANITIZADO por id em `.data/`. NAO grava
+ *    `external_ratings`.
  *  - `--apply`: idem, e grava `external_ratings` SO para o que tiver mapping
- *    inequivoco (fonte editorial + metrica + escala + entidade local resolvida
- *    por imdb_id/tmdb_id). Tudo o mais e recusado e contado no relatorio.
+ *    inequivoco (fonte editorial + metrica + escala) e entidade local resolvida
+ *    por IMDb id. Tudo o mais e recusado e contado no relatorio.
+ *
+ * SELECAO DE IDS:
+ *  - `--id=tt...`: enriquece exatamente esse id.
+ *  - sem `--id`: seleciona ate `--limit` (default 20) entidades locais do
+ *    `--type` (movie/tv) que tenham IMDb id.
  *
  * NAO FAZ: exibir nada publicamente; tocar `screen_score` (nota editorial
  * PROPRIA do Screen, que jamais recebe dado de terceiro); alterar slugs,
- * canonical, redirects ou UI; baixar imagem; criar migration.
+ * canonical, redirects ou UI; baixar imagem; criar migration; chamar `/popular/`.
  *
  * SEGREDO: `RAPIDAPI_FILM_SHOW_RATINGS_KEY` so em env var. Nunca e impressa,
  * nunca entra em URL, relatorio, sample ou log.
  *
  * FAIL-CLOSED: aborta em producao; `--sample`/`--apply` exigem a chave E
  * `DATABASE_URL` (toda chamada externa grava `api_cache` + `api_sync_logs`);
- * `--apply` exige tambem `--type`.
+ * `--apply` exige tambem `--type`; `--sample` sem `--id` exige `--type`.
  *
  * Uso (a partir da raiz). Resolva o cli do tsx e rode, como os demais bins:
  *   TSX="$(ls node_modules/.pnpm/tsx@*\/node_modules/tsx/dist/cli.mjs | head -1)"
  *   node "$TSX" services/ratings/bin/sync-film-show-ratings.ts --type=film --limit=20
- *   node "$TSX" services/ratings/bin/sync-film-show-ratings.ts --type=film --limit=20 --sample
- *   node "$TSX" services/ratings/bin/sync-film-show-ratings.ts --type=film --limit=20 --apply
+ *   node "$TSX" services/ratings/bin/sync-film-show-ratings.ts --type=film --id=tt9603208 --sample
+ *   node "$TSX" services/ratings/bin/sync-film-show-ratings.ts --type=film --limit=5 --sample
+ *   node "$TSX" services/ratings/bin/sync-film-show-ratings.ts --type=film --limit=5 --apply
  *
  *   Flags de valor aceitam `--flag=valor` e `--flag valor`. Valor ausente, flag
  *   desconhecida ou valor invalido FALHAM com erro claro (nunca default silencioso).
@@ -45,6 +56,7 @@ import { fileURLToPath } from 'node:url'
 import {
   createFilmShowRatingsClient,
   loadFilmShowRatingsConfig,
+  FILM_SHOW_RATINGS_ITEM_ENDPOINT,
   FILM_SHOW_RATINGS_KEY_ENV,
   FILM_SHOW_RATINGS_PROVIDER_API,
 } from '@screena/film-show-ratings-client'
@@ -54,13 +66,22 @@ import { disconnectPrisma, getPrismaClient } from '@screena/db/server'
 import { parseFilmShowRatingsArgs } from '../src/film-show-ratings/args.js'
 import { describeRatingsGateReason, evaluateRatingsGate } from '../src/film-show-ratings/gate.js'
 import {
-  buildRatingsReport,
+  buildItemRatingsReport,
   renderRatingsReport,
   runMode,
   serializeRatingsReportJson,
 } from '../src/film-show-ratings/report.js'
-import { runFilmShowRatingsSync } from '../src/film-show-ratings/run.js'
-import type { CachePort, EntityLookupPort, ExternalRatingsPort, SyncLogPort } from '../src/ports.js'
+import {
+  DEFAULT_ITEM_CANDIDATE_LIMIT,
+  runFilmShowRatingsItemSync,
+} from '../src/film-show-ratings/run.js'
+import type {
+  CachePort,
+  EntityCandidateSelectPort,
+  EntityLookupPort,
+  ExternalRatingsPort,
+  SyncLogPort,
+} from '../src/ports.js'
 
 function repoRoot(): string {
   const dir = path.dirname(fileURLToPath(import.meta.url)) // services/ratings/bin
@@ -85,6 +106,11 @@ const NOOP_ENTITIES: EntityLookupPort = {
   },
   async findByTmdbId() {
     return null
+  },
+}
+const NOOP_CANDIDATES: EntityCandidateSelectPort = {
+  async selectByType() {
+    return []
   },
 }
 const NOOP_RATINGS: ExternalRatingsPort = {
@@ -127,33 +153,42 @@ async function main(): Promise<void> {
 
   // Dry-run PURO: sem rede, sem DB, sem cliente HTTP, sem chave.
   if (!touchesNetwork) {
-    const result = await runFilmShowRatingsSync(
+    const result = await runFilmShowRatingsItemSync(
       {
         apply: false,
         sample: false,
         type: args.type,
+        id: args.id,
         limit: args.limit,
         providerApi: FILM_SHOW_RATINGS_PROVIDER_API,
         cacheTtlMs: 0,
       },
       {
-        fetchPopular: () => Promise.reject(new Error('dry-run nao busca payload')),
+        fetchItem: () => Promise.reject(new Error('dry-run nao busca payload')),
         cache: NOOP_CACHE,
         syncLog: NOOP_SYNC_LOG,
         entities: NOOP_ENTITIES,
+        candidates: NOOP_CANDIDATES,
         ratings: NOOP_RATINGS,
         now: () => new Date(),
         requestCount: () => 0,
       },
     )
-    const report = buildRatingsReport(result, {
+    const report = buildItemRatingsReport(result, {
       apply: false,
       sample: false,
       providerApi: FILM_SHOW_RATINGS_PROVIDER_API,
     })
     writeReport(report, args.report, mode, args.type)
+
+    const target =
+      args.id !== null
+        ? `id=${args.id}`
+        : args.type !== null
+          ? `ate ${args.limit ?? DEFAULT_ITEM_CANDIDATE_LIMIT} candidato(s) ${args.type} local(is)`
+          : '(informe --id=tt... ou --type=film|show)'
     console.log(
-      `[dry-run] plano: GET ${result.endpoint}${args.type === null ? '' : `?type=${args.type}`} · ` +
+      `[dry-run] plano: GET ${result.endpoint}?id=<IMDb> · alvo: ${target} · ` +
         'nada foi chamado, nada foi gravado.',
     )
     return
@@ -167,6 +202,7 @@ async function main(): Promise<void> {
   const { createPrismaCache } = await import('../src/persistence/cache.js')
   const { createPrismaSyncLog } = await import('../src/persistence/sync-log.js')
   const { createPrismaEntityLookup } = await import('../src/persistence/entity-lookup.js')
+  const { createPrismaEntityCandidates } = await import('../src/persistence/entity-candidates.js')
   const { createPrismaExternalRatings } = await import(
     '../src/persistence/external-ratings-store.js'
   )
@@ -179,21 +215,24 @@ async function main(): Promise<void> {
   let mainLogWritten = false
 
   try {
-    const result = await runFilmShowRatingsSync(
+    const result = await runFilmShowRatingsItemSync(
       {
         apply: args.apply,
         sample: args.sample,
         type: args.type,
+        id: args.id,
         limit: args.limit,
         providerApi: FILM_SHOW_RATINGS_PROVIDER_API,
         cacheTtlMs: config.cacheTtlMs,
       },
       {
-        fetchPopular: (type) => client.getPopular(type ?? undefined),
+        fetchItem: (id) => client.getItem(id),
         cache: createPrismaCache(prisma, FILM_SHOW_RATINGS_PROVIDER_API),
         syncLog,
-        // Em `--sample` (sem `--apply`) o core nunca chama estas portas.
+        // Em `--sample` (sem `--apply`) o core nunca resolve nem grava entidade.
         entities: args.apply ? createPrismaEntityLookup(prisma) : NOOP_ENTITIES,
+        // Candidatos locais so sao selecionados quando `--id` nao foi informado.
+        candidates: args.id === null ? createPrismaEntityCandidates(prisma) : NOOP_CANDIDATES,
         ratings: args.apply ? createPrismaExternalRatings(prisma) : NOOP_RATINGS,
         now: () => new Date(),
         requestCount: () => client.getRequestCount(),
@@ -204,46 +243,47 @@ async function main(): Promise<void> {
     // gravou). Falhas de disco abaixo sao best-effort e nunca viram `aborted`.
     mainLogWritten = result.touchedNetwork
 
-    if (args.sample && result.rawPayload !== null) {
-      try {
-        // Sanitizacao dupla: por nome de campo E por valor do segredo conhecido.
-        const sanitized = sanitizePayload(result.rawPayload, {
-          secrets: [config.apiKey],
-          maxArrayItems: 5,
-        })
-        const samplePath = path.join(
-          dataDir(),
-          `film-show-ratings-sample-${args.type ?? 'all'}.json`,
-        )
-        mkdirSync(path.dirname(samplePath), { recursive: true })
-        writeFileSync(samplePath, `${JSON.stringify(sanitized, null, 2)}\n`)
-        console.log(`Sample sanitizado: ${samplePath}`)
-      } catch (error) {
-        console.warn(
-          'Nao foi possivel escrever o sample:',
-          error instanceof Error ? error.message : error,
-        )
+    if (args.sample) {
+      // Um sample sanitizado por id consultado: `...-item-<id>.json`.
+      for (const item of result.items) {
+        if (item.rawPayload === null) continue
+        try {
+          // Sanitizacao dupla: por nome de campo E por valor do segredo conhecido.
+          const sanitized = sanitizePayload(item.rawPayload, {
+            secrets: [config.apiKey],
+            maxArrayItems: 5,
+          })
+          const samplePath = path.join(dataDir(), `film-show-ratings-sample-item-${item.id}.json`)
+          mkdirSync(path.dirname(samplePath), { recursive: true })
+          writeFileSync(samplePath, `${JSON.stringify(sanitized, null, 2)}\n`)
+          console.log(`Sample sanitizado: ${samplePath}`)
+        } catch (error) {
+          console.warn(
+            'Nao foi possivel escrever o sample:',
+            error instanceof Error ? error.message : error,
+          )
+        }
       }
     }
 
-    const report = buildRatingsReport(result, {
+    const report = buildItemRatingsReport(result, {
       apply: args.apply,
       sample: args.sample,
       providerApi: FILM_SHOW_RATINGS_PROVIDER_API,
     })
     writeReport(report, args.report, mode, args.type)
 
-    if (!result.recognized) {
+    if (result.idsQueried > 0 && result.counters.ratingsRecognized === 0) {
       console.log(
-        'Forma do payload NAO reconhecida: 0 ratings mapeados. ' +
-          'Isso e o comportamento correto — inspecione o sample e so entao ' +
-          'estenda o reconhecedor (services/ratings/src/film-show-ratings/mapping.ts).',
+        'Nenhum rating reconhecido nos ids consultados. Inspecione o sample e, se ' +
+          'necessario, estenda o reconhecedor (services/ratings/src/film-show-ratings/mapping.ts).',
       )
     }
     console.log(
-      `status=${result.status} · itens=${result.counters.itemsSeen} · ` +
+      `status=${result.status} · ids=${result.idsQueried} · falhas=${result.idsFailed} · ` +
         `ratings reconhecidos=${result.counters.ratingsRecognized} · ` +
-        `gravados=${result.counters.ratingsWritten} · quota=${result.quotaCost}`,
+        `gravados=${result.counters.ratingsWritten} · sem entidade=${result.idsWithoutEntity} · ` +
+        `quota=${result.quotaCost}`,
     )
     if (result.status === 'failed') process.exitCode = 1
   } catch (error) {
@@ -253,7 +293,7 @@ async function main(): Promise<void> {
     try {
       if (!mainLogWritten) {
         await syncLog.write({
-          endpoint: '/popular/',
+          endpoint: FILM_SHOW_RATINGS_ITEM_ENDPOINT,
           status: 'aborted',
           errorCode: 'film_show_ratings_unexpected_error',
         })
@@ -276,7 +316,7 @@ async function main(): Promise<void> {
 
 /** Escreve o relatorio (best-effort: uma falha de disco nunca invalida o sync). */
 function writeReport(
-  report: ReturnType<typeof buildRatingsReport>,
+  report: ReturnType<typeof buildItemRatingsReport>,
   explicitPath: string | null,
   mode: string,
   type: string | null,

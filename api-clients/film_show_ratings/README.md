@@ -18,11 +18,17 @@ em uma unica chamada. **NAO** e, ele proprio, uma fonte editorial.
 - Consumido por [`services/ratings`](../../services/ratings).
 
 ## Endpoints
-- `GET /popular/?type=film`
-- `GET /popular/?type=show`
-- `GET /popular/`
+- `GET /item/?id=<IMDb_ID>` — payload de UM titulo (ex.: `id=tt9603208`).
+  **Liberado no plano Pro**; e o endpoint usado pelo worker de enriquecimento
+  (`buildItemRequest`/`getItem`).
+- `GET /popular/?type=film` · `GET /popular/?type=show` · `GET /popular/` —
+  **NAO liberado no plano contratado** (403). Mantido no client apenas por
+  retrocompatibilidade (`buildPopularRequest`/`getPopular`); o fluxo novo nao o chama.
 
 Base URL: `https://film-show-ratings.p.rapidapi.com` · host: `film-show-ratings.p.rapidapi.com`.
+
+O id do `/item/` e validado como IMDb id (`tt<digitos>`) via `isImdbId`. TMDB id no request
+fica como TODO (nao chutamos um formato nao validado).
 
 O client devolve o payload **cru** (`unknown`): esta API **nao publica schema de
 resposta**, entao o client nao inventa tipos. Quem interpreta e `services/ratings`, com

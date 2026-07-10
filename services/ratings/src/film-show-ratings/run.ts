@@ -14,17 +14,23 @@
  *    adapter de escrita (invariante 6) — o core nunca os afrouxa.
  */
 
-import { buildPopularRequest, type FilmShowRatingsPopularType } from '@screena/film-show-ratings-client'
+import {
+  buildItemRequest,
+  buildPopularRequest,
+  FILM_SHOW_RATINGS_ITEM_ENDPOINT,
+  type FilmShowRatingsPopularType,
+} from '@screena/film-show-ratings-client'
 import { hashPayload } from '@screena/rapidapi-core'
 
 import type {
   CachePort,
+  EntityCandidateSelectPort,
   EntityLookupPort,
   ExternalRatingsPort,
   SyncLogPort,
   SyncStatus,
 } from '../ports.js'
-import { mapPopularPayload } from './mapping.js'
+import { mapItemPayload, mapPopularPayload } from './mapping.js'
 import type {
   ExternalRatingRow,
   RatingRejection,
@@ -281,6 +287,346 @@ export async function runFilmShowRatingsSync(
     rawPayload: payload,
     counters: {
       itemsSeen: limitedItems.length,
+      ratingsRecognized,
+      ratingsWritten,
+      ratingsCreated,
+      ratingsUpdated,
+      ratingsUnchanged,
+    },
+    rejections,
+    durationMs,
+    quotaCost,
+    errorCode: null,
+  }
+}
+
+// ===========================================================================
+// Item enrichment (`/item/?id=<IMDb>`) — fluxo ATUAL do worker.
+//
+// O plano Pro NAO libera `/popular/` (403). Em vez de listar populares, o worker
+// enriquece entidades locais JA existentes, uma por vez, via `/item/?id=<IMDb>`.
+// A entidade e resolvida por identificador inequivoco (IMDb id explicito, ou os
+// candidatos locais selecionados por tipo) — NUNCA por titulo/ano.
+// ===========================================================================
+
+/** Limite conservador de candidatos locais quando `--limit` nao e informado. */
+export const DEFAULT_ITEM_CANDIDATE_LIMIT = 20
+
+/** Dependencias injetadas do run de item enrichment. */
+export interface RatingsItemRunDeps {
+  /** Busca o payload cru de `/item/?id=<id>`. Lanca em falha de rede/HTTP. */
+  readonly fetchItem: (id: string) => Promise<unknown>
+  readonly cache: CachePort
+  readonly syncLog: SyncLogPort
+  readonly entities: EntityLookupPort
+  readonly candidates: EntityCandidateSelectPort
+  readonly ratings: ExternalRatingsPort
+  readonly now: () => Date
+  /** Requisicoes gastas (para `quota_cost`). */
+  readonly requestCount: () => number
+}
+
+/** Opcoes do run de item enrichment. */
+export interface RatingsItemRunOptions {
+  readonly apply: boolean
+  readonly sample: boolean
+  /** `film`/`show`; obrigatorio no modo candidatos e sob `--apply`. */
+  readonly type: FilmShowRatingsPopularType | null
+  /** IMDb id explicito; `null` = modo candidatos (seleciona locais por tipo). */
+  readonly id: string | null
+  readonly limit: number | null
+  readonly providerApi: string
+  readonly cacheTtlMs: number
+}
+
+/** Resultado de UM id consultado (alimenta sample e relatorio). */
+export interface RatingsItemResult {
+  readonly id: string
+  readonly entityType: RatingsEntityType | null
+  /** A busca de rede teve sucesso? */
+  readonly ok: boolean
+  /** A forma do payload de `/item/` foi reconhecida? */
+  readonly recognized: boolean
+  readonly payloadHash: string | null
+  /** Payload CRU (o bin sanitiza antes de escrever o sample). */
+  readonly rawPayload: unknown
+  readonly ratingsRecognized: number
+  readonly ratingsWritten: number
+  readonly ratingsCreated: number
+  readonly ratingsUpdated: number
+  readonly ratingsUnchanged: number
+  /** Sob `--apply`: a entidade local foi resolvida? */
+  readonly entityResolved: boolean
+  readonly rejections: readonly RatingRejection[]
+  readonly errorCode: string | null
+}
+
+/** Resultado do ciclo de item enrichment (alimenta o relatorio). */
+export interface RatingsItemRunResult {
+  readonly status: SyncStatus
+  readonly endpoint: string
+  readonly touchedNetwork: boolean
+  /** Quantos ids foram efetivamente consultados nesta execucao. */
+  readonly idsQueried: number
+  /** Ids cuja busca de rede falhou. */
+  readonly idsFailed: number
+  /** Ids (sob apply) com ratings reconhecidos porem SEM entidade local. */
+  readonly idsWithoutEntity: number
+  readonly items: readonly RatingsItemResult[]
+  readonly counters: RatingsRunCounters
+  readonly rejections: readonly RatingRejection[]
+  readonly durationMs: number
+  readonly quotaCost: number
+  readonly errorCode: string | null
+}
+
+/** Um id a consultar, ja com o tipo e (quando conhecido) a entidade local. */
+interface ItemIdEntry {
+  readonly id: string
+  readonly entityType: RatingsEntityType | null
+  /** Id local ja conhecido (modo candidatos); `null` = resolver por IMDb. */
+  readonly knownEntityId: string | null
+}
+
+/**
+ * Executa um ciclo de ENRIQUECIMENTO por item (`/item/?id=<IMDb>`).
+ *
+ * Dry-run PURO (sem `--sample`/`--apply`) nao toca rede nem DB: devolve o plano
+ * (endpoint que SERIA chamado) com `status: 'empty'` e zero quota.
+ *
+ * Sob rede: monta a lista de ids (o `--id` explicito, ou os candidatos locais
+ * por tipo/limite), e para cada id busca o payload, grava `api_cache`, reconhece
+ * via `mapItemPayload` e — sob `--apply` — grava `external_ratings` para a
+ * entidade local resolvida. A falha de UM id nao aborta o ciclo (registra e
+ * segue). Um unico `api_sync_logs` e escrito por ciclo.
+ */
+export async function runFilmShowRatingsItemSync(
+  options: RatingsItemRunOptions,
+  deps: RatingsItemRunDeps,
+): Promise<RatingsItemRunResult> {
+  const startedAt = deps.now().getTime()
+  const endpoint = FILM_SHOW_RATINGS_ITEM_ENDPOINT
+  const touchesNetwork = options.apply || options.sample
+
+  if (!touchesNetwork) {
+    return {
+      status: 'empty',
+      endpoint,
+      touchedNetwork: false,
+      idsQueried: 0,
+      idsFailed: 0,
+      idsWithoutEntity: 0,
+      items: [],
+      counters: EMPTY_COUNTERS,
+      rejections: [],
+      durationMs: deps.now().getTime() - startedAt,
+      quotaCost: 0,
+      errorCode: null,
+    }
+  }
+
+  // Sem `--type` nao ha como saber `movie` vs `tv`. O parser ja exige `--type`
+  // sob `--apply` e no modo candidatos; aqui a garantia e ESTRUTURAL (sem cast).
+  const applyEntityType: RatingsEntityType | null =
+    options.type === null ? null : entityTypeOf(options.type)
+
+  const rejections: RatingRejection[] = []
+  let entries: readonly ItemIdEntry[] = []
+
+  if (options.id !== null) {
+    entries = [{ id: options.id, entityType: applyEntityType, knownEntityId: null }]
+  } else if (applyEntityType !== null) {
+    const limit = options.limit ?? DEFAULT_ITEM_CANDIDATE_LIMIT
+    const selected = await deps.candidates.selectByType(applyEntityType, limit)
+    entries = selected.map((candidate) => ({
+      id: candidate.imdbId,
+      entityType: candidate.entityType,
+      knownEntityId: candidate.entityId,
+    }))
+  } else {
+    // Defensivo (o parser impede via CLI): modo candidatos exige tipo.
+    rejections.push({
+      reason: 'entity-not-found',
+      detail: 'modo candidatos exige --type=film|show; nada consultado.',
+    })
+  }
+
+  const itemResults: RatingsItemResult[] = []
+  let idsFailed = 0
+  let idsWithoutEntity = 0
+  let ratingsRecognized = 0
+  let ratingsWritten = 0
+  let ratingsCreated = 0
+  let ratingsUpdated = 0
+  let ratingsUnchanged = 0
+
+  for (const entry of entries) {
+    const request = buildItemRequest(entry.id)
+
+    let payload: unknown
+    try {
+      payload = await deps.fetchItem(entry.id)
+    } catch (error) {
+      const errorCode = error instanceof Error ? error.name : 'UnknownError'
+      // Falha de UM id NAO aborta o ciclo. A mensagem cita so o id e o NOME do
+      // erro — nunca a chave, nunca a URL, nunca headers.
+      const rejection: RatingRejection = {
+        reason: 'item-fetch-failed',
+        detail: `id ${entry.id}: falha de rede/HTTP (${errorCode}).`,
+      }
+      rejections.push(rejection)
+      idsFailed += 1
+      itemResults.push({
+        id: entry.id,
+        entityType: entry.entityType,
+        ok: false,
+        recognized: false,
+        payloadHash: null,
+        rawPayload: null,
+        ratingsRecognized: 0,
+        ratingsWritten: 0,
+        ratingsCreated: 0,
+        ratingsUpdated: 0,
+        ratingsUnchanged: 0,
+        entityResolved: false,
+        rejections: [rejection],
+        errorCode,
+      })
+      continue
+    }
+
+    const fetchedAt = deps.now()
+    const payloadHash = hashPayload(payload)
+
+    // O bruto vai para `api_cache` SEMPRE que houve rede (mesmo sem mapping).
+    await deps.cache.write({
+      endpoint: request.endpoint,
+      requestKey: request.cacheKey.requestKey,
+      paramsHash: request.cacheKey.paramsHash,
+      payload,
+      payloadHash,
+      fetchedAt,
+      expiresAt: new Date(fetchedAt.getTime() + options.cacheTtlMs),
+    })
+
+    const mapping = mapItemPayload(payload, options.providerApi)
+    const itemRejections: RatingRejection[] = [...mapping.rejections]
+    if (mapping.item !== null) itemRejections.push(...mapping.item.rejections)
+
+    const drafts = mapping.item?.ratings ?? []
+    ratingsRecognized += drafts.length
+
+    let itemWritten = 0
+    let itemCreated = 0
+    let itemUpdated = 0
+    let itemUnchanged = 0
+    let entityResolved = false
+
+    const canApply =
+      options.apply && entry.entityType !== null && mapping.item !== null && drafts.length > 0
+
+    if (canApply && entry.entityType !== null && mapping.item !== null) {
+      const entityType = entry.entityType
+      const entityId =
+        entry.knownEntityId !== null
+          ? // Modo candidatos: a entidade ja veio da selecao local.
+            entry.knownEntityId
+          : // Modo `--id`: resolve pelo IMDb id consultado (fallback TMDB do payload).
+            await resolveEntity(deps.entities, entityType, {
+              imdbId: entry.id,
+              tmdbId: mapping.item.ref?.tmdbId ?? null,
+            })
+
+      if (entityId === null) {
+        idsWithoutEntity += 1
+        itemRejections.push({
+          reason: 'entity-not-found',
+          detail: `id ${entry.id}: nenhuma entidade ${entityType} local.`,
+        })
+      } else {
+        entityResolved = true
+        for (const draft of drafts) {
+          const row: ExternalRatingRow = {
+            ...draft,
+            entityType,
+            entityId,
+            providerApi: options.providerApi,
+            providerPayloadHash: payloadHash,
+            fetchedAt,
+          }
+          const outcome = await deps.ratings.upsert(row)
+          if (outcome.created) {
+            itemCreated += 1
+            itemWritten += 1
+          } else if (outcome.changed) {
+            itemUpdated += 1
+            itemWritten += 1
+          } else {
+            itemUnchanged += 1
+          }
+        }
+      }
+    }
+
+    ratingsWritten += itemWritten
+    ratingsCreated += itemCreated
+    ratingsUpdated += itemUpdated
+    ratingsUnchanged += itemUnchanged
+    rejections.push(...itemRejections)
+
+    itemResults.push({
+      id: entry.id,
+      entityType: entry.entityType,
+      ok: true,
+      recognized: mapping.recognized,
+      payloadHash,
+      rawPayload: payload,
+      ratingsRecognized: drafts.length,
+      ratingsWritten: itemWritten,
+      ratingsCreated: itemCreated,
+      ratingsUpdated: itemUpdated,
+      ratingsUnchanged: itemUnchanged,
+      entityResolved,
+      rejections: itemRejections,
+      errorCode: null,
+    })
+  }
+
+  const idsQueried = entries.length
+  const durationMs = deps.now().getTime() - startedAt
+  const quotaCost = deps.requestCount()
+
+  // `empty` quando nada foi consultado; `failed` quando TODOS os ids falharam;
+  // `partial` quando houve alguma recusa/falha; `success` caso contrario.
+  let status: SyncStatus
+  if (idsQueried === 0) status = 'empty'
+  else if (idsFailed === idsQueried) status = 'failed'
+  else if (rejections.length > 0) status = 'partial'
+  else status = 'success'
+
+  // Um unico log por ciclo (nunca um por id). `payload_hash` so faz sentido
+  // quando exatamente um id foi consultado.
+  await deps.syncLog.write({
+    endpoint,
+    status,
+    itemsProcessed: idsQueried,
+    itemsCreated: ratingsCreated,
+    itemsUpdated: ratingsUpdated,
+    durationMs,
+    quotaCost,
+    payloadHash: itemResults.length === 1 ? (itemResults[0]?.payloadHash ?? null) : null,
+  })
+
+  return {
+    status,
+    endpoint,
+    touchedNetwork: true,
+    idsQueried,
+    idsFailed,
+    idsWithoutEntity,
+    items: itemResults,
+    counters: {
+      itemsSeen: idsQueried,
       ratingsRecognized,
       ratingsWritten,
       ratingsCreated,

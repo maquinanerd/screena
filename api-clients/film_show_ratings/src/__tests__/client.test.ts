@@ -5,7 +5,8 @@
 
 import { describe, expect, it } from 'vitest'
 import type { HttpResponse, HttpTransport, RapidApiClientConfig } from '@screena/rapidapi-core'
-import { FilmShowRatingsClient, buildPopularRequest } from '../client.js'
+import { FilmShowRatingsClient, buildItemRequest, buildPopularRequest } from '../client.js'
+import { FILM_SHOW_RATINGS_ITEM_ENDPOINT, isImdbId } from '../provider.js'
 import { FILM_SHOW_RATINGS_KEY_ENV, loadFilmShowRatingsConfig } from '../config.js'
 
 const FAKE_KEY = 'test-key-0000000000'
@@ -63,6 +64,50 @@ describe('buildPopularRequest', () => {
     expect(first.cacheKey.paramsHash).toBeTruthy()
     expect(typeof first.cacheKey.paramsHash).toBe('string')
     expect(second.cacheKey).toEqual(first.cacheKey)
+  })
+})
+
+describe('buildItemRequest (/item/?id=)', () => {
+  it("id 'tt9603208' -> endpoint /item/, params {id}, cacheKey estavel", () => {
+    const request = buildItemRequest('tt9603208')
+    expect(request.endpoint).toBe(FILM_SHOW_RATINGS_ITEM_ENDPOINT)
+    expect(request.endpoint).toBe('/item/')
+    expect(request.params).toEqual({ id: 'tt9603208' })
+    expect(request.cacheKey.requestKey).toBe('/item/?id=tt9603208')
+    expect(request.cacheKey.paramsHash).toBeTruthy()
+
+    // Deterministica: mesma entrada -> mesma chave.
+    expect(buildItemRequest('tt9603208').cacheKey).toEqual(request.cacheKey)
+    // Ids distintos -> requestKeys distintas.
+    expect(buildItemRequest('tt0111161').cacheKey.requestKey).toBe('/item/?id=tt0111161')
+  })
+})
+
+describe('isImdbId', () => {
+  it('aceita tt<digitos>, rejeita tmdb id/lixo', () => {
+    expect(isImdbId('tt9603208')).toBe(true)
+    expect(isImdbId('  tt0111161 ')).toBe(true)
+    expect(isImdbId('575265')).toBe(false)
+    expect(isImdbId('tt')).toBe(false)
+    expect(isImdbId('abc')).toBe(false)
+    expect(isImdbId('')).toBe(false)
+  })
+})
+
+describe('FilmShowRatingsClient.getItem — URL montada', () => {
+  it("id 'tt9603208' produz uma URL terminada em /item/?id=tt9603208 (segredo so em header)", async () => {
+    const { client, urls } = makeClient('{}')
+    await client.getItem('tt9603208')
+    const url = urlAt(urls, 0)
+    expect(url.endsWith('/item/?id=tt9603208')).toBe(true)
+    expect(url).not.toContain(FAKE_KEY)
+  })
+
+  it('devolve o payload cru sem normalizar', async () => {
+    const weird = { status: 'success', result: { ratings: { IMDb: { audience: { rating: 7.1 } } } } }
+    const { client } = makeClient(JSON.stringify(weird))
+    const result = await client.getItem('tt9603208')
+    expect(result).toEqual(weird)
   })
 })
 

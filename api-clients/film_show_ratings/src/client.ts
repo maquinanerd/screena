@@ -21,12 +21,20 @@ import {
 } from '@screena/rapidapi-core'
 
 import {
+  FILM_SHOW_RATINGS_ITEM_ENDPOINT,
   FILM_SHOW_RATINGS_POPULAR_ENDPOINT,
   type FilmShowRatingsPopularType,
 } from './provider.js'
 
 /** Uma requisicao de populares: endpoint + params (sem segredo). */
 export interface PopularRequest {
+  readonly endpoint: string
+  readonly params: QueryParams
+  readonly cacheKey: CacheKey
+}
+
+/** Uma requisicao de item unico: endpoint + params (`id`) + chave de cache. */
+export interface ItemRequest {
   readonly endpoint: string
   readonly params: QueryParams
   readonly cacheKey: CacheKey
@@ -47,6 +55,22 @@ export function buildPopularRequest(type?: FilmShowRatingsPopularType): PopularR
   }
 }
 
+/**
+ * Monta (sem executar) a requisicao de `/item/?id=<id>`.
+ *
+ * PURO — o `id` viaja SO como query param (`id`); o segredo continua em header.
+ * A validacao da FORMA do id (`tt<digitos>`) e responsabilidade do chamador
+ * (parser de args + worker via `isImdbId`); aqui so montamos o request.
+ */
+export function buildItemRequest(id: string): ItemRequest {
+  const params: QueryParams = { id }
+  return {
+    endpoint: FILM_SHOW_RATINGS_ITEM_ENDPOINT,
+    params,
+    cacheKey: buildCacheKey(FILM_SHOW_RATINGS_ITEM_ENDPOINT, params),
+  }
+}
+
 /** Client offline do Film/Show Ratings. */
 export class FilmShowRatingsClient {
   private readonly http: RapidApiHttpClient
@@ -62,6 +86,17 @@ export class FilmShowRatingsClient {
    */
   async getPopular(type?: FilmShowRatingsPopularType): Promise<unknown> {
     const request = buildPopularRequest(type)
+    return this.http.request(request.endpoint, request.params)
+  }
+
+  /**
+   * `GET /item/?id=<id>` — payload de UM titulo (liberado no plano Pro).
+   *
+   * Devolve o payload cru (`unknown`). Nenhuma normalizacao acontece aqui: a
+   * interpretacao (mapping para `external_ratings`) e do worker `services/ratings`.
+   */
+  async getItem(id: string): Promise<unknown> {
+    const request = buildItemRequest(id)
     return this.http.request(request.endpoint, request.params)
   }
 

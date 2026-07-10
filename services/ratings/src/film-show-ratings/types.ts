@@ -42,6 +42,8 @@ export type RatingRejectionReason =
   | 'missing-scale'
   | 'rating-validation-failed'
   | 'entity-not-found'
+  /** Falha de rede/HTTP ao buscar UM item de `/item/` (nunca vaza a chave). */
+  | 'item-fetch-failed'
 
 /** Uma recusa, com detalhe legivel para o relatorio (sem segredo, sem payload cru). */
 export interface RatingRejection {
@@ -63,6 +65,15 @@ export interface PopularMapping {
   /** `false` quando nem a forma do payload foi reconhecida (nada a mapear). */
   readonly recognized: boolean
   readonly items: readonly MappedPopularItem[]
+  readonly rejections: readonly RatingRejection[]
+}
+
+/** Resultado do reconhecimento de um payload de `/item/` (UM titulo). */
+export interface ItemMapping {
+  /** `false` quando a forma do payload nao foi reconhecida (nada a mapear). */
+  readonly recognized: boolean
+  /** O item reconhecido, ou `null` quando a forma nao foi reconhecida. */
+  readonly item: MappedPopularItem | null
   readonly rejections: readonly RatingRejection[]
 }
 

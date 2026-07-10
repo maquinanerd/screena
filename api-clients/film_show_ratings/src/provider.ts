@@ -24,8 +24,38 @@ export const FILM_SHOW_RATINGS_DEFAULT_BASE_URL = 'https://film-show-ratings.p.r
  */
 export const FILM_SHOW_RATINGS_DEFAULT_CACHE_TTL_MS = 86_400_000
 
-/** Endpoint de populares. Aceita `type=film` | `type=show` | sem `type`. */
+/**
+ * Endpoint de populares. Aceita `type=film` | `type=show` | sem `type`.
+ *
+ * NOTA (plano Pro): `/popular/` NAO e liberado no plano contratado — retorna 403.
+ * O worker de enriquecimento usa `/item/?id=<IMDb>` (liberado). Este endpoint e
+ * mantido apenas por retrocompatibilidade do client/testes; o fluxo novo nao o
+ * chama por padrao.
+ */
 export const FILM_SHOW_RATINGS_POPULAR_ENDPOINT = '/popular/'
+
+/**
+ * Endpoint de item unico: `GET /item/?id=<IMDb_ID>` (ex.: `id=tt9603208`).
+ *
+ * Liberado no plano Pro. Enriquece UMA entidade ja existente localmente,
+ * resolvida por identificador inequivoco (IMDb id). Nunca casa por titulo/ano.
+ */
+export const FILM_SHOW_RATINGS_ITEM_ENDPOINT = '/item/'
+
+/** Forma de um IMDb id aceito pelo `/item/`: `tt` + digitos. */
+export const IMDB_ID_PATTERN = /^tt\d+$/
+
+/**
+ * `value` e um IMDb id valido (`tt<digitos>`)?
+ *
+ * Por enquanto o `/item/` so e chamado com IMDb id — o exemplo validado no
+ * RapidAPI foi `id=tt9603208`. Suporte a TMDB id no request fica como TODO
+ * (nao chutamos um formato nao validado). Fonte unica da forma do id, reusada
+ * pelo parser de args e pelo worker.
+ */
+export function isImdbId(value: string): boolean {
+  return IMDB_ID_PATTERN.test(value.trim())
+}
 
 /** Tipos aceitos pelo parametro `type` de `/popular/`. */
 export const FILM_SHOW_RATINGS_POPULAR_TYPES = ['film', 'show'] as const
