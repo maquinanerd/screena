@@ -104,12 +104,6 @@ function loadRepoEnv(): void {
   }
 }
 
-function yearOf(dateStr: string | null | undefined): number | null {
-  if (!dateStr) return null
-  const y = Number(String(dateStr).slice(0, 4))
-  return Number.isInteger(y) && y > 0 ? y : null
-}
-
 /**
  * Baixa uma imagem do TMDB para apps/web/public/<publicRel> e devolve o caminho
  * público local (/media/tmdb/...) ou null em qualquer falha (→ card cai no
@@ -160,13 +154,13 @@ async function finalize(
     (isMovie ? detail.original_title : detail.original_name) ??
     ''
   const overview = detail.overview ?? null
-  const year = yearOf(isMovie ? detail.release_date : detail.first_air_date)
 
   const model = isMovie ? prisma.movie : prisma.tvShow
   const entity = await model.findUnique({ where: { tmdbId: detail.id }, select: { id: true } })
   if (entity === null) return
 
-  const desiredSlug = desiredCatalogSlug(title, year, detail.id)
+  // Slug canonico sem ano de lancamento (o ano vive na ficha, nunca na URL).
+  const desiredSlug = desiredCatalogSlug(title, detail.id)
   const slug = await upsertCanonicalSlug(prisma, entityType, entity.id, desiredSlug, detail.id, LANGUAGE)
 
   await prisma.entityTranslation.upsert({

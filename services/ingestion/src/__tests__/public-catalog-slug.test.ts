@@ -35,28 +35,44 @@ describe('withTmdbSuffix', () => {
 
 describe('entityRoutePath', () => {
   it('mapeia tipo -> segmento pt-BR com barra final', () => {
-    expect(entityRoutePath('movie', 'inception-2010')).toBe('/pt/filmes/inception-2010/')
-    expect(entityRoutePath('tv', 'lost-2004')).toBe('/pt/series/lost-2004/')
+    expect(entityRoutePath('movie', 'inception')).toBe('/pt/filmes/inception/')
+    expect(entityRoutePath('tv', 'lost')).toBe('/pt/series/lost/')
     expect(entityRoutePath('person', 'john-smith')).toBe('/pt/pessoas/john-smith/')
   })
 })
 
 describe('desiredCatalogSlug', () => {
-  it('slugify(title) + ano quando ha ano', () => {
-    expect(desiredCatalogSlug('A Origem', 2010, 27205)).toBe('a-origem-2010')
-    expect(desiredCatalogSlug('Amélie', 2001, 194)).toBe('amelie-2001')
+  it('e o titulo limpo, SEM ano de lancamento na URL', () => {
+    expect(desiredCatalogSlug('A Origem', 27205)).toBe('a-origem')
+    expect(desiredCatalogSlug('Game of Thrones', 1399)).toBe('game-of-thrones')
+    expect(desiredCatalogSlug('Amélie', 194)).toBe('amelie')
   })
 
-  it('sem ano => so o slug base', () => {
-    expect(desiredCatalogSlug('Sem Data', null, 99)).toBe('sem-data')
+  it('preserva numero que faz parte do TITULO (nao e data pendurada)', () => {
+    expect(desiredCatalogSlug('Blade Runner 2049', 335984)).toBe('blade-runner-2049')
+    expect(desiredCatalogSlug('Space: 1999', 134)).toBe('space-1999')
+    expect(desiredCatalogSlug('Espaço: 1999', 134)).toBe('espaco-1999')
   })
 
-  it('titulo vazio/nao-slugificavel => fallback tmdb-{id}', () => {
-    expect(desiredCatalogSlug('!!!', 2020, 500)).toBe('tmdb-500-2020')
-    expect(desiredCatalogSlug('', null, 7)).toBe('tmdb-7')
+  it('titulo vazio/nao-slugificavel => fallback tmdb-{id} (nunca o ano)', () => {
+    expect(desiredCatalogSlug('!!!', 500)).toBe('tmdb-500')
+    expect(desiredCatalogSlug('', 123)).toBe('tmdb-123')
   })
 
   it('deterministico: mesmas entradas => mesmo slug (re-sync nao cria variante)', () => {
-    expect(desiredCatalogSlug('Duna', 2021, 438631)).toBe(desiredCatalogSlug('Duna', 2021, 438631))
+    expect(desiredCatalogSlug('Duna', 438631)).toBe(desiredCatalogSlug('Duna', 438631))
+  })
+
+  /**
+   * Guarda de regressao do bug de origem: o ano nao pode voltar a desambiguar.
+   * Dois titulos iguais de anos diferentes produzem o MESMO slug desejado — a
+   * desambiguacao de colisao real e responsabilidade de `withTmdbSuffix` /
+   * `upsertCanonicalSlug` (banco), nunca do ano.
+   */
+  it('titulos iguais de anos diferentes colidem de proposito (ano nao desambigua)', () => {
+    const remake = desiredCatalogSlug('A Origem', 27205)
+    const original = desiredCatalogSlug('A Origem', 999999)
+    expect(remake).toBe(original)
+    expect(withTmdbSuffix(original, 999999)).toBe('a-origem-tmdb-999999')
   })
 })

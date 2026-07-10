@@ -58,16 +58,12 @@ export interface PromoteFromRawOptions {
   readonly onItem?: (tmdbId: number, outcome: PromoteOutcome) => void
 }
 
-/** Ano (>0) a partir de uma data `YYYY-...`; senao null. PURO. */
-function yearFrom(dateStr: string | null): number | null {
-  if (dateStr === null) return null
-  const year = Number(dateStr.slice(0, 4))
-  return Number.isInteger(year) && year > 0 ? year : null
-}
-
 /**
  * Campos de EXIBICAO de FILME (pt-BR), defensivamente: titulo localizado (com
- * fallback ao original), sinopse e ano. PURO.
+ * fallback ao original) e sinopse. PURO.
+ *
+ * O ano NAO e lido aqui: ele nao entra mais no slug canonico
+ * (`desiredCatalogSlug`) e a data factual (`release_date`) ja vem do normalizer.
  */
 export function readMovieDisplayFields(payload: unknown): PromoteDisplayFields {
   const obj =
@@ -76,20 +72,19 @@ export function readMovieDisplayFields(payload: unknown): PromoteDisplayFields {
           title?: unknown
           original_title?: unknown
           overview?: unknown
-          release_date?: unknown
         })
       : {}
   const title =
     (typeof obj.title === 'string' && obj.title.trim() !== '' ? obj.title : null) ??
     (typeof obj.original_title === 'string' ? obj.original_title : '')
   const overview = typeof obj.overview === 'string' && obj.overview !== '' ? obj.overview : null
-  const year = yearFrom(typeof obj.release_date === 'string' ? obj.release_date : null)
-  return { title, overview, year }
+  return { title, overview }
 }
 
 /**
  * Campos de EXIBICAO de SERIE (pt-BR): nome localizado (com fallback ao
- * original), sinopse e ano de estreia (`first_air_date`). PURO.
+ * original) e sinopse. PURO. `first_air_date` fica com o normalizer — o ano de
+ * estreia nao entra no slug.
  */
 export function readTvDisplayFields(payload: unknown): PromoteDisplayFields {
   const obj =
@@ -98,26 +93,24 @@ export function readTvDisplayFields(payload: unknown): PromoteDisplayFields {
           name?: unknown
           original_name?: unknown
           overview?: unknown
-          first_air_date?: unknown
         })
       : {}
   const title =
     (typeof obj.name === 'string' && obj.name.trim() !== '' ? obj.name : null) ??
     (typeof obj.original_name === 'string' ? obj.original_name : '')
   const overview = typeof obj.overview === 'string' && obj.overview !== '' ? obj.overview : null
-  const year = yearFrom(typeof obj.first_air_date === 'string' ? obj.first_air_date : null)
-  return { title, overview, year }
+  return { title, overview }
 }
 
 /**
- * Campos de EXIBICAO de PESSOA: so o `name` (title). `overview`/`year` sao null —
- * a promocao de pessoa NAO tem summary (a person-page nao le `translation.summary`
- * e o schema nao tem coluna de bio) nem ano no slug. PURO.
+ * Campos de EXIBICAO de PESSOA: so o `name` (title). `overview` e null — a
+ * promocao de pessoa NAO tem summary (a person-page nao le `translation.summary`
+ * e o schema nao tem coluna de bio). PURO.
  */
 export function readPersonDisplayFields(payload: unknown): PromoteDisplayFields {
   const obj = payload !== null && typeof payload === 'object' ? (payload as { name?: unknown }) : {}
   const title = typeof obj.name === 'string' && obj.name.trim() !== '' ? obj.name : ''
-  return { title, overview: null, year: null }
+  return { title, overview: null }
 }
 
 /** Estrategia de FILME: normalizeMovie -> upsertMovie -> exibicao (P0-00f.1). */
@@ -136,7 +129,7 @@ export function createMovieStrategy(store: EntityStorePort): PromoteStrategy {
       })
       const d = readMovieDisplayFields(row.payload)
       const title = d.title !== '' ? d.title : normalized.movie.titleOriginal
-      return { outcome, display: { title, overview: d.overview, year: d.year } }
+      return { outcome, display: { title, overview: d.overview } }
     },
   }
 }
@@ -159,7 +152,7 @@ export function createTvStrategy(store: EntityStorePort): PromoteStrategy {
       })
       const d = readTvDisplayFields(row.payload)
       const title = d.title !== '' ? d.title : normalized.tvShow.nameOriginal
-      return { outcome, display: { title, overview: d.overview, year: d.year } }
+      return { outcome, display: { title, overview: d.overview } }
     },
   }
 }
@@ -182,7 +175,7 @@ export function createPersonStrategy(store: EntityStorePort): PromoteStrategy {
       })
       const d = readPersonDisplayFields(row.payload)
       const title = d.title !== '' ? d.title : normalized.person.name
-      return { outcome, display: { title, overview: d.overview, year: d.year } }
+      return { outcome, display: { title, overview: d.overview } }
     },
   }
 }
@@ -201,7 +194,7 @@ async function promoteOne(
 ): Promise<void> {
   try {
     const { outcome, display } = await strategy.promote(row)
-    const desiredSlug = desiredCatalogSlug(display.title, display.year, row.tmdbId)
+    const desiredSlug = desiredCatalogSlug(display.title, row.tmdbId)
     await options.finalize.upsertCanonicalSlug(strategy.entityType, outcome.id, desiredSlug, row.tmdbId)
     await options.finalize.upsertTranslation(strategy.entityType, outcome.id, display.title, display.overview)
 

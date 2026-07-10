@@ -130,14 +130,13 @@ const tvOpts = (
 })
 
 describe('readTvDisplayFields', () => {
-  it('le name (fallback original_name), overview e ano de first_air_date', () => {
+  it('le name (fallback original_name) e overview; NAO le first_air_date', () => {
     expect(readTvDisplayFields({ name: 'Lost', overview: 'x', first_air_date: '2004-09-22' })).toEqual({
       title: 'Lost',
       overview: 'x',
-      year: 2004,
     })
     expect(readTvDisplayFields({ original_name: 'Only Original' }).title).toBe('Only Original')
-    expect(readTvDisplayFields(null)).toEqual({ title: '', overview: null, year: null })
+    expect(readTvDisplayFields(null)).toEqual({ title: '', overview: null })
   })
 })
 
@@ -173,7 +172,7 @@ describe('promoteTvShowsFromRaw', () => {
     const { finalize, slugCalls, translationCalls } = makeFinalize()
     await promoteTvShowsFromRaw(tvOpts(makeTvSource([tvRow(1)]), store, finalize))
 
-    expect(slugCalls[0]).toMatchObject({ entityType: 'tv', desiredSlug: 'serie-1-2019', tmdbId: 1 })
+    expect(slugCalls[0]).toMatchObject({ entityType: 'tv', desiredSlug: 'serie-1', tmdbId: 1 })
     expect(translationCalls[0]).toMatchObject({ entityType: 'tv', title: 'Serie 1', summary: 'Sinopse 1' })
   })
 

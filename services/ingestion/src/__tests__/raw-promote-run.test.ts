@@ -94,19 +94,17 @@ function opts(
 }
 
 describe('readMovieDisplayFields', () => {
-  it('le title (com fallback a original_title), overview e ano', () => {
+  it('le title (com fallback a original_title) e overview; NAO le release_date', () => {
     expect(readMovieDisplayFields({ title: 'Ola', overview: 'x', release_date: '2019-01-02' })).toEqual({
       title: 'Ola',
       overview: 'x',
-      year: 2019,
     })
     expect(readMovieDisplayFields({ original_title: 'Only Original' })).toEqual({
       title: 'Only Original',
       overview: null,
-      year: null,
     })
     expect(readMovieDisplayFields({ title: '   ', original_title: 'Fallback' }).title).toBe('Fallback')
-    expect(readMovieDisplayFields(null)).toEqual({ title: '', overview: null, year: null })
+    expect(readMovieDisplayFields(null)).toEqual({ title: '', overview: null })
   })
 })
 
@@ -122,8 +120,8 @@ describe('promoteMoviesFromRaw', () => {
     expect(report.available).toBe(2)
     expect(report.selected).toBe(2)
     expect(calls.map((c) => c.tmdbId)).toEqual([1, 2])
-    // slug deterministico: slugify(title)-ano.
-    expect(slugCalls.map((s) => s.desiredSlug)).toEqual(['filme-1-2020', 'filme-2-2020'])
+    // slug deterministico: slugify(title), SEM o ano de lancamento na URL.
+    expect(slugCalls.map((s) => s.desiredSlug)).toEqual(['filme-1', 'filme-2'])
     expect(slugCalls.every((s) => s.entityType === 'movie')).toBe(true)
     // traducao com title + summary do payload.
     expect(translationCalls[0]).toMatchObject({ entityType: 'movie', title: 'Filme 1', summary: 'Sinopse 1' })

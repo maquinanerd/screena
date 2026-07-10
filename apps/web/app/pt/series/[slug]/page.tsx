@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 
 import { getSeriesPageData } from "../../../../src/server/series-page";
+import { canonicalRedirectPath } from "../../../../src/lib/canonical-redirect";
 import { SITE_URL } from "../../../../src/lib/site";
 import { RelatedNewsSection } from "../../../_components/related-news-section";
 import { CastStrip } from "../../../_components/cast-strip";
@@ -14,6 +15,9 @@ import { WatchProviders } from "../../../_components/watch-providers";
  * externa, zero Gemini e zero TMDB no render. A pagina omite secoes sem dados
  * reais e aplica `noindex` quando o gate anti-thin nao tem >= 2 blocos
  * editoriais publicaveis.
+ *
+ * URL canonica unica: slug antigo (alias despromovido em `slugs`) nao renderiza
+ * 200 — redireciona permanentemente para o slug canonico.
  */
 
 export const revalidate = 3600;
@@ -67,6 +71,10 @@ export default async function SeriesPage({
   const { slug } = await params;
   const data = await getSeriesPageData(slug);
   if (data === null) notFound();
+
+  // Slug nao-canonico (alias antigo) nunca responde 200: 308 para o canonico.
+  const redirectPath = canonicalRedirectPath(SERIES_INDEX_PATH, slug, data.canonicalSlug);
+  if (redirectPath !== null) permanentRedirect(redirectPath);
 
   const { view, indexability, canonicalUrl, relatedNews, cast, watch } = data;
   const isUnderReview = indexability.decision !== "index";

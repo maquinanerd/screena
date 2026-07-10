@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 
 import { getMoviePageData } from "../../../../src/server/movie-page";
+import { canonicalRedirectPath } from "../../../../src/lib/canonical-redirect";
 import { MOVIES_INDEX_PATH, SITE_URL } from "../../../../src/lib/site";
 import { RelatedNewsSection } from "../../../_components/related-news-section";
 import { CastStrip } from "../../../_components/cast-strip";
@@ -24,6 +25,10 @@ import { WatchProviders } from "../../../_components/watch-providers";
  *
  * Gate anti-thin (invariante 5): sem `>= 2` blocos renderizaveis, a pagina
  * existe mas recebe `robots=noindex` (decisao de `evaluateMovieIndexability`).
+ *
+ * URL canonica unica: um slug antigo (alias despromovido em `slugs`) NAO
+ * renderiza 200 — redireciona permanentemente para o slug canonico. Duas URLs
+ * servindo a mesma ficha diluiriam sinal e contradiriam o `<link rel=canonical>`.
  *
  * Diferenciacao filme/serie (invariante 11) por CINCO sinais simultaneos:
  * label ("Filme") + badge + breadcrumb (/pt/filmes/) + schema (Movie) + URL.
@@ -82,6 +87,10 @@ export default async function MoviePage({
   const { slug } = await params;
   const data = await getMoviePageData(slug);
   if (data === null) notFound();
+
+  // Slug nao-canonico (alias antigo) nunca responde 200: 308 para o canonico.
+  const redirectPath = canonicalRedirectPath(MOVIES_INDEX_PATH, slug, data.canonicalSlug);
+  if (redirectPath !== null) permanentRedirect(redirectPath);
 
   const { view, indexability, canonicalUrl, relatedNews, cast, watch } = data;
   const isUnderReview = indexability.decision !== "index";
