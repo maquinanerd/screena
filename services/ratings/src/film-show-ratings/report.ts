@@ -61,6 +61,8 @@ export interface RatingsReportJson {
   readonly ids_queried?: number
   /** Item enrichment: ids cuja busca de rede falhou. */
   readonly ids_failed?: number
+  /** Item enrichment: ids nao consultados por interrupcao do lote (protecao de quota). */
+  readonly ids_skipped?: number
   /** Item enrichment: ids (sob apply) com ratings porem SEM entidade local. */
   readonly ids_without_entity?: number
 }
@@ -145,6 +147,7 @@ export function buildItemRatingsReport(
     })),
     ids_queried: result.idsQueried,
     ids_failed: result.idsFailed,
+    ids_skipped: result.idsSkipped,
     ids_without_entity: result.idsWithoutEntity,
   }
 }
@@ -173,7 +176,8 @@ export function renderRatingsReport(report: RatingsReportJson): string {
   lines.push('')
   if (report.ids_queried !== undefined) {
     lines.push(`- ids consultados (\`/item/\`): ${report.ids_queried}`)
-    lines.push(`- ids com falha de rede: ${report.ids_failed ?? 0}`)
+    lines.push(`- ids com falha de rede/HTTP: ${report.ids_failed ?? 0}`)
+    lines.push(`- ids pulados (lote interrompido, protecao de quota): ${report.ids_skipped ?? 0}`)
     lines.push(`- ids sem entidade local (apply): ${report.ids_without_entity ?? 0}`)
   }
   lines.push(`- itens vistos: ${report.counters.items_seen}`)

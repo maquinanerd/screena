@@ -20,7 +20,7 @@ import {
   FILM_SHOW_RATINGS_ITEM_ENDPOINT,
   type FilmShowRatingsPopularType,
 } from '@screena/film-show-ratings-client'
-import { hashPayload } from '@screena/rapidapi-core'
+import { hashPayload, isCircuitOpenError, statusOf } from '@screena/rapidapi-core'
 
 import type {
   CachePort,
@@ -312,6 +312,104 @@ export async function runFilmShowRatingsSync(
 /** Limite conservador de candidatos locais quando `--limit` nao e informado. */
 export const DEFAULT_ITEM_CANDIDATE_LIMIT = 20
 
+/**
+ * Falhas de rede/HTTP CONSECUTIVAS que interrompem o lote de candidatos.
+ *
+ * Sem isso, um upstream degradado (429 em rajada, 5xx sistemico) faz o worker
+ * varrer TODOS os candidatos, cada um com os retries do core — "queimar quota em
+ * loop". Ao 3o id seguido que falha, paramos e reportamos os ids nao consultados.
+ * Um unico sucesso zera o contador: uma falha isolada no meio do lote nao aborta.
+ */
+export const MAX_CONSECUTIVE_ITEM_FAILURES = 3
+
+/** Diagnostico SANITIZADO de uma falha de busca de item (nunca vaza a chave). */
+export interface ItemFetchErrorInfo {
+  /** Detalhe legivel para o relatorio: id + status/nome do erro, sem URL/chave. */
+  readonly detail: string
+  /** Status HTTP do provider quando disponivel (403/429/500...), senao `null`. */
+  readonly httpStatus: number | null
+  /** O erro sinaliza circuito aberto (fonte degradada pelo core)? */
+  readonly circuitOpen: boolean
+  /** Nome da classe do erro (`RapidApiHttpError`, `Error`...), nunca a mensagem crua. */
+  readonly errorCode: string
+}
+
+/**
+ * Trecho do corpo de um erro HTTP, seguro para o relatorio: sem URL, sem host,
+ * colapsado e limitado. O corpo do `RapidApiHttpError` ja vem truncado e NUNCA
+ * contem a chave (ela viaja so em header); mas o corpo e da RESPOSTA do upstream
+ * (controlado por terceiros) e pode citar o proprio host — por isso redigimos
+ * URLs completas, referencias protocol-relative (`//host`) e hostnames crus
+ * (`sub.dominio.tld`) antes de limitar o tamanho. Assim o relatorio nunca carrega
+ * URL/host, so a mensagem util.
+ */
+export function sanitizeErrorBody(error: unknown): string | null {
+  const raw = (error as { body?: unknown }).body
+  if (typeof raw !== 'string') return null
+  const cleaned = raw
+    // URL completa (http/https). Vem primeiro: consome o `//host` embutido.
+    .replace(/https?:\/\/\S+/gi, '[url]')
+    // Referencia protocol-relative: `//host/...` sem esquema.
+    .replace(/\/\/[^\s"'<>]+/g, '[url]')
+    // Hostname/dominio cru (`film-show-ratings.p.rapidapi.com[/path]`). O TLD
+    // exige letras, entao numeros de versao/nota (`9.5`, `1.2.3`) sobrevivem.
+    .replace(/\b(?:[a-z0-9-]+\.)+[a-z]{2,}\b(?:\/\S*)?/gi, '[host]')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (cleaned === '') return null
+  return cleaned.length > 140 ? `${cleaned.slice(0, 140)}…` : cleaned
+}
+
+/**
+ * Nome de classe do erro sem o prefixo tecnico do provider (`RapidApi`): o
+ * relatorio ganha um rotulo util (`HttpError`, `CircuitOpenError`) sem repetir o
+ * marcador do fornecedor no artefato. `Error` e demais nomes ficam intactos.
+ */
+export function normalizeErrorCode(name: string): string {
+  return name.startsWith('RapidApi') ? name.slice('RapidApi'.length) : name
+}
+
+/**
+ * Descreve uma falha de `fetchItem` para o relatorio, expondo o STATUS HTTP
+ * (403/429/500...) em vez de esconde-lo atras de um `RapidApiHttpError` opaco.
+ *
+ * PURO e sem segredo: usa so `error.name`, o status numerico, a flag `permanent`
+ * e um trecho do corpo ja sanitizado. Nunca cita a URL, o host ou a chave.
+ */
+export function describeItemFetchError(error: unknown, id: string): ItemFetchErrorInfo {
+  const errorCode = normalizeErrorCode(error instanceof Error ? error.name : 'UnknownError')
+
+  if (isCircuitOpenError(error)) {
+    return {
+      detail: `id ${id}: circuito do provider aberto (fonte degradada); consulta suspensa.`,
+      httpStatus: null,
+      circuitOpen: true,
+      errorCode,
+    }
+  }
+
+  const httpStatus = statusOf(error)
+  if (httpStatus !== null) {
+    const permanent = (error as { permanent?: unknown }).permanent === true
+    const kind = permanent ? 'permanente (nao retentavel)' : 'transitorio'
+    const body = sanitizeErrorBody(error)
+    return {
+      detail: `id ${id}: HTTP ${httpStatus} ${kind} (${errorCode})${body !== null ? ` — ${body}` : ''}.`,
+      httpStatus,
+      circuitOpen: false,
+      errorCode,
+    }
+  }
+
+  // Rede/timeout/abort: sem status. Mantem a mensagem historica (id + nome).
+  return {
+    detail: `id ${id}: falha de rede/HTTP (${errorCode}).`,
+    httpStatus: null,
+    circuitOpen: false,
+    errorCode,
+  }
+}
+
 /** Dependencias injetadas do run de item enrichment. */
 export interface RatingsItemRunDeps {
   /** Busca o payload cru de `/item/?id=<id>`. Lanca em falha de rede/HTTP. */
@@ -345,6 +443,12 @@ export interface RatingsItemResult {
   readonly entityType: RatingsEntityType | null
   /** A busca de rede teve sucesso? */
   readonly ok: boolean
+  /**
+   * Status HTTP quando a falha foi um erro HTTP do provider (ex.: 403/429/500);
+   * `null` quando a busca teve sucesso, foi erro de rede/timeout, ou circuito
+   * aberto. Nunca vaza a chave — e so o codigo numerico.
+   */
+  readonly httpStatus: number | null
   /** A forma do payload de `/item/` foi reconhecida? */
   readonly recognized: boolean
   readonly payloadHash: string | null
@@ -370,6 +474,11 @@ export interface RatingsItemRunResult {
   readonly idsQueried: number
   /** Ids cuja busca de rede falhou. */
   readonly idsFailed: number
+  /**
+   * Ids que ficaram SEM consulta por interrupcao antecipada do lote (falhas
+   * consecutivas ou circuito aberto) — protecao de quota, nao falha de rede.
+   */
+  readonly idsSkipped: number
   /** Ids (sob apply) com ratings reconhecidos porem SEM entidade local. */
   readonly idsWithoutEntity: number
   readonly items: readonly RatingsItemResult[]
@@ -415,6 +524,7 @@ export async function runFilmShowRatingsItemSync(
       touchedNetwork: false,
       idsQueried: 0,
       idsFailed: 0,
+      idsSkipped: 0,
       idsWithoutEntity: 0,
       items: [],
       counters: EMPTY_COUNTERS,
@@ -459,27 +569,30 @@ export async function runFilmShowRatingsItemSync(
   let ratingsCreated = 0
   let ratingsUpdated = 0
   let ratingsUnchanged = 0
+  // Falhas de rede/HTTP em sequencia (zeradas por qualquer sucesso). No teto,
+  // interrompem o lote para NAO queimar quota varrendo um upstream degradado.
+  let consecutiveFailures = 0
 
-  for (const entry of entries) {
+  for (const [index, entry] of entries.entries()) {
     const request = buildItemRequest(entry.id)
 
     let payload: unknown
     try {
       payload = await deps.fetchItem(entry.id)
     } catch (error) {
-      const errorCode = error instanceof Error ? error.name : 'UnknownError'
-      // Falha de UM id NAO aborta o ciclo. A mensagem cita so o id e o NOME do
-      // erro — nunca a chave, nunca a URL, nunca headers.
-      const rejection: RatingRejection = {
-        reason: 'item-fetch-failed',
-        detail: `id ${entry.id}: falha de rede/HTTP (${errorCode}).`,
-      }
+      // Uma falha isolada NAO aborta o lote. O detalhe expoe o STATUS HTTP
+      // (403/429/500...) em vez de esconde-lo atras de um erro opaco — sempre
+      // sem a chave, a URL ou o host. Ver `describeItemFetchError`.
+      const info = describeItemFetchError(error, entry.id)
+      const rejection: RatingRejection = { reason: 'item-fetch-failed', detail: info.detail }
       rejections.push(rejection)
       idsFailed += 1
+      consecutiveFailures += 1
       itemResults.push({
         id: entry.id,
         entityType: entry.entityType,
         ok: false,
+        httpStatus: info.httpStatus,
         recognized: false,
         payloadHash: null,
         rawPayload: null,
@@ -490,11 +603,29 @@ export async function runFilmShowRatingsItemSync(
         ratingsUnchanged: 0,
         entityResolved: false,
         rejections: [rejection],
-        errorCode,
+        errorCode: info.errorCode,
       })
+
+      // Protecao de quota: circuito aberto, ou falhas consecutivas no teto,
+      // interrompem o lote. Os ids restantes ficam sem consulta — nao ha nada a
+      // ganhar em varrer um upstream degradado com os retries do core em cima.
+      const remaining = entries.length - (index + 1)
+      const abort = info.circuitOpen || consecutiveFailures >= MAX_CONSECUTIVE_ITEM_FAILURES
+      if (abort && remaining > 0) {
+        rejections.push({
+          reason: 'batch-aborted',
+          detail: info.circuitOpen
+            ? `circuito do provider aberto apos ${idsFailed} falha(s); ${remaining} id(s) nao consultado(s) (protecao de quota).`
+            : `${consecutiveFailures} falhas consecutivas de rede/HTTP; ${remaining} id(s) nao consultado(s) (protecao de quota).`,
+        })
+        break
+      }
       continue
     }
 
+    // Sucesso de rede: zera a sequencia de falhas (uma falha isolada anterior
+    // nunca acumula para o teto de abort).
+    consecutiveFailures = 0
     const fetchedAt = deps.now()
     const payloadHash = hashPayload(payload)
 
@@ -578,6 +709,7 @@ export async function runFilmShowRatingsItemSync(
       id: entry.id,
       entityType: entry.entityType,
       ok: true,
+      httpStatus: null,
       recognized: mapping.recognized,
       payloadHash,
       rawPayload: payload,
@@ -592,12 +724,17 @@ export async function runFilmShowRatingsItemSync(
     })
   }
 
-  const idsQueried = entries.length
+  // `idsQueried` = ids EFETIVAMENTE consultados (um resultado por tentativa).
+  // Quando o lote e interrompido cedo, e menor que `entries.length` — a
+  // diferenca sao os ids pulados por protecao de quota.
+  const idsQueried = itemResults.length
+  const idsSkipped = entries.length - itemResults.length
   const durationMs = deps.now().getTime() - startedAt
   const quotaCost = deps.requestCount()
 
-  // `empty` quando nada foi consultado; `failed` quando TODOS os ids falharam;
-  // `partial` quando houve alguma recusa/falha; `success` caso contrario.
+  // `empty` quando nada foi consultado; `failed` quando TODOS os ids consultados
+  // falharam; `partial` quando houve alguma recusa/falha (inclui lote abortado);
+  // `success` caso contrario.
   let status: SyncStatus
   if (idsQueried === 0) status = 'empty'
   else if (idsFailed === idsQueried) status = 'failed'
@@ -623,6 +760,7 @@ export async function runFilmShowRatingsItemSync(
     touchedNetwork: true,
     idsQueried,
     idsFailed,
+    idsSkipped,
     idsWithoutEntity,
     items: itemResults,
     counters: {

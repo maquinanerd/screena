@@ -150,3 +150,56 @@ describe('FilmShowRatingsClient.getPopular — payload cru', () => {
     expect(result).toEqual(weird)
   })
 })
+
+/**
+ * Instancia o client com um transporte que sempre responde `status`, contando as
+ * requisicoes. `sleep`/`now`/`random` sao injetados no-op: o backoff nao gasta
+ * tempo real, mas as tentativas continuam contando (prova de quota).
+ */
+function makeStatusClient(
+  status: number,
+  body = '{}',
+): { client: FilmShowRatingsClient; count: () => number } {
+  let count = 0
+  const transport: HttpTransport = async () => {
+    count += 1
+    const response: HttpResponse = { status, headers: {}, body }
+    return response
+  }
+  const client = new FilmShowRatingsClient(makeConfig(), {
+    transport,
+    now: () => 0,
+    sleep: async () => {},
+    random: () => 0,
+  })
+  return { client, count: () => count }
+}
+
+describe('FilmShowRatingsClient.getItem — resiliencia e quota', () => {
+  it('4xx permanente (403) NAO retenta: uma unica requisicao (nao queima quota)', async () => {
+    const { client, count } = makeStatusClient(403, '{"message":"forbidden"}')
+    await expect(client.getItem('tt0944947')).rejects.toThrow()
+    // Erro permanente falha rapido: sem retries agressivos em 4xx.
+    expect(count()).toBe(1)
+    expect(client.getRequestCount()).toBe(1)
+  })
+
+  it('404 permanente tambem falha na primeira tentativa', async () => {
+    const { client, count } = makeStatusClient(404, '{"message":"not found"}')
+    await expect(client.getItem('tt0944947')).rejects.toThrow()
+    expect(count()).toBe(1)
+  })
+
+  it('5xx transitorio retenta ate o teto: 1 + maxRetries requisicoes', async () => {
+    const { client, count } = makeStatusClient(500, '{"message":"boom"}')
+    await expect(client.getItem('tt0944947')).rejects.toThrow()
+    // Config default deste provider: maxRetries=3 -> 4 tentativas totais.
+    expect(count()).toBe(makeConfig().maxRetries + 1)
+  })
+
+  it('429 sem Retry-After e transitorio (retenta), nao 4xx permanente', async () => {
+    const { client, count } = makeStatusClient(429, '{"message":"slow down"}')
+    await expect(client.getItem('tt0944947')).rejects.toThrow()
+    expect(count()).toBe(makeConfig().maxRetries + 1)
+  })
+})
