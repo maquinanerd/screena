@@ -375,3 +375,59 @@ describe('mapShowPayload — countryCode das linhas sempre MAIUSCULO', () => {
     expect(result.offers[0]?.countryCode).toBe('BR')
   })
 })
+
+/**
+ * A distincao que evita PERDA DE DADO:
+ *
+ *  - `streamingOptions` AUSENTE/invalido = corpo anomalo (200 truncado, contrato
+ *    mudado). Nao se aprende nada -> `recognized: false` -> o run nao chama
+ *    replaceSnapshot -> o snapshot bom sobrevive.
+ *  - `streamingOptions` PRESENTE sem a chave do pais = o titulo realmente nao
+ *    tem oferta ali -> `recognized: true` -> limpar o snapshot e correto.
+ */
+describe('mapShowPayload — streamingOptions ausente NAO e "sem ofertas"', () => {
+  const IDENTITY = { showType: 'movie', imdbId: 'tt0111161', tmdbId: 'movie/278' }
+
+  it('streamingOptions ausente -> recognized FALSE + missing-streaming-options', () => {
+    const result = mapShowPayload({ ...IDENTITY }, MOVIE, 'BR')
+
+    expect(result.recognized).toBe(false)
+    expect(result.offers).toHaveLength(0)
+    expect(result.rejections).toHaveLength(1)
+    expect(result.rejections[0]?.reason).toBe('missing-streaming-options')
+    // A recusa e legivel e nao vaza payload cru.
+    expect(result.rejections[0]?.detail).toContain('snapshot preservado')
+  })
+
+  it.each([
+    ['null', null],
+    ['array', []],
+    ['string', 'nao sou um mapa'],
+    ['numero', 42],
+  ])('streamingOptions %s (formato invalido) -> recognized FALSE', (_label, value) => {
+    const result = mapShowPayload({ ...IDENTITY, streamingOptions: value }, MOVIE, 'BR')
+
+    expect(result.recognized).toBe(false)
+    expect(result.offers).toHaveLength(0)
+    expect(result.rejections[0]?.reason).toBe('missing-streaming-options')
+  })
+
+  it('CONTRASTE: streamingOptions presente sem o pais -> recognized TRUE (pode limpar)', () => {
+    const result = mapShowPayload(
+      { ...IDENTITY, streamingOptions: { us: [validOffer()] } },
+      MOVIE,
+      'BR',
+    )
+
+    expect(result.recognized).toBe(true)
+    expect(result.offers).toHaveLength(0)
+    expect(result.rejections[0]?.reason).toBe('country-absent')
+  })
+
+  it('CONTRASTE: streamingOptions com o pais vazio -> recognized TRUE (pode limpar)', () => {
+    const result = mapShowPayload({ ...IDENTITY, streamingOptions: { br: [] } }, MOVIE, 'BR')
+
+    expect(result.recognized).toBe(true)
+    expect(result.offers).toHaveLength(0)
+  })
+})

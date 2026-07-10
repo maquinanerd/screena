@@ -252,6 +252,57 @@ describe('runStreamingAvailabilitySync — payload irreconhecivel NUNCA apaga o 
     expect(base.replaceSnapshot).not.toHaveBeenCalled()
   })
 
+  // Corpo 200 truncado / contrato do upstream alterado: chega um show valido,
+  // com identidade correta, mas SEM `streamingOptions`. Isso nao pode limpar as
+  // ofertas boas que ja estao no banco.
+  it('payload SEM streamingOptions em --apply: snapshot preservado, mas cache/log gravados', async () => {
+    const base = makeHarness()
+    const fetchShow = vi.fn(async (showId: string): Promise<unknown> => {
+      const match = /\/(\d+)$/.exec(showId)
+      return { showType: 'movie', tmdbId: `movie/${match?.[1] ?? '0'}` } // sem streamingOptions
+    })
+    const deps: StreamingRunDeps = { ...base.deps, fetchShow }
+
+    const result = await runStreamingAvailabilitySync(options({ apply: true }), deps)
+
+    // Nada e apagado nem reescrito.
+    expect(base.replaceSnapshot).not.toHaveBeenCalled()
+    expect(result.counters.offersDeleted).toBe(0)
+    expect(result.counters.offersWritten).toBe(0)
+
+    // Mas o bruto vai para api_cache e o ciclo gera log (todo sync externo loga).
+    expect(base.cacheWrite).toHaveBeenCalledTimes(2)
+    expect(base.syncLogWrite).toHaveBeenCalledTimes(1)
+
+    // O relatorio marca o motivo de forma clara.
+    expect(result.rejections.some((rej) => rej.reason === 'missing-streaming-options')).toBe(true)
+    expect(result.status).toBe('partial')
+  })
+
+  // O outro lado da moeda: `streamingOptions` existe e o pais nao tem oferta.
+  // Aqui limpar o snapshot E o comportamento correto (o titulo saiu do catalogo).
+  it('CONTRASTE: streamingOptions presente sem oferta BR AINDA faz o replace vazio', async () => {
+    const base = makeHarness()
+    const fetchShow = vi.fn(async (): Promise<unknown> => ({
+      showType: 'movie',
+      tmdbId: 'movie/278',
+      streamingOptions: { us: [] }, // objeto presente, sem chave 'br'
+    }))
+    const select = vi.fn(async (): Promise<readonly SelectedEntity[]> => [
+      { entityType: 'movie', entityId: '1', tmdbId: 278, imdbId: null },
+    ])
+    const deps: StreamingRunDeps = {
+      ...base.deps,
+      fetchShow,
+      entities: { ...base.deps.entities, select },
+    }
+
+    await runStreamingAvailabilitySync(options({ apply: true }), deps)
+
+    expect(base.replaceSnapshot).toHaveBeenCalledTimes(1)
+    expect(base.replaceCalls[0]?.offers).toEqual([])
+  })
+
   it('reconhecido com ZERO ofertas (saiu do catalogo BR) AINDA faz o replace vazio', async () => {
     // Distincao critica: "nao sei nada" (nao mexe) vs "sei que nao ha oferta"
     // (limpa as antigas). Este e o segundo caso.

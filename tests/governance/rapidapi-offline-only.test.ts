@@ -35,6 +35,35 @@ async function collectSource(dir: string, exts: readonly string[]): Promise<stri
   return files
 }
 
+/**
+ * Le varios arquivos em PARALELO (lotes limitados, para nao estourar file
+ * descriptors).
+ *
+ * Por que existe: a varredura de chave hardcoded le ~400 arquivos. Em serie,
+ * no Windows, o custo de syscall por arquivo consome quase todo o timeout
+ * padrao de 5s do Vitest, e o guard falha por TEMPO — nunca por violacao. Um
+ * guard que fica vermelho por acaso acaba sendo silenciado, entao ele precisa
+ * ser deterministico. A regra varrida NAO muda: so a forma de ler o disco.
+ */
+const READ_BATCH = 32
+
+async function readAll(files: readonly string[]): Promise<ReadonlyArray<[string, string]>> {
+  const out: Array<[string, string]> = []
+  for (let i = 0; i < files.length; i += READ_BATCH) {
+    const batch = files.slice(i, i + READ_BATCH)
+    const contents = await Promise.all(batch.map((file) => readFile(file, 'utf8')))
+    batch.forEach((file, index) => out.push([file, contents[index] as string]))
+  }
+  return out
+}
+
+/**
+ * Timeout explicito dos blocos que varrem varias arvores do repo. Generoso de
+ * proposito: o objetivo e que uma FALHA signifique "achei uma violacao", nunca
+ * "a maquina estava ocupada".
+ */
+const SCAN_TIMEOUT_MS = 20_000
+
 /** Remove comentarios de bloco e de linha (preservando `://` de URLs). */
 function stripComments(source: string): string {
   const noBlock = source.replace(/\/\*[\s\S]*?\*\//g, '')
@@ -113,26 +142,37 @@ describe('governanca: nenhuma chave RapidAPI hardcoded (invariante: chave so em 
   // Literais obviamente-fake usados em teste sao permitidos.
   const ALLOW = /test-key|redacted|xxxx|placeholder|example/i
 
-  it('nenhum literal parecido com chave e atribuido a algo /rapidapi.*key/i', async () => {
-    const offenders: string[] = []
-    for (const root of SCAN_ROOTS) {
-      for (const file of await collectSource(root, ['.ts', '.tsx'])) {
-        const content = stripComments(await readFile(file, 'utf8'))
-        content.split(/\r?\n/).forEach((line, index) => {
-          if (!/rapidapi.*key/i.test(line)) return
-          const literals = line.match(/['"`]([^'"`]+)['"`]/g) ?? []
-          for (const raw of literals) {
-            const value = raw.slice(1, -1)
-            // "Parece uma chave real": 20+ caracteres hex/base62 puros (sem `_`/`-`).
-            if (/^[A-Za-z0-9]{20,}$/.test(value) && !ALLOW.test(value)) {
-              offenders.push(`${rel(file)}:${index + 1} -> ${value.slice(0, 8)}...`)
+  it(
+    'nenhum literal parecido com chave e atribuido a algo /rapidapi.*key/i',
+    async () => {
+      const offenders: string[] = []
+      let scanned = 0
+
+      for (const root of SCAN_ROOTS) {
+        const files = await collectSource(root, ['.ts', '.tsx'])
+        for (const [file, raw] of await readAll(files)) {
+          scanned += 1
+          const content = stripComments(raw)
+          content.split(/\r?\n/).forEach((line, index) => {
+            if (!/rapidapi.*key/i.test(line)) return
+            const literals = line.match(/['"`]([^'"`]+)['"`]/g) ?? []
+            for (const literal of literals) {
+              const value = literal.slice(1, -1)
+              // "Parece uma chave real": 20+ caracteres hex/base62 puros (sem `_`/`-`).
+              if (/^[A-Za-z0-9]{20,}$/.test(value) && !ALLOW.test(value)) {
+                offenders.push(`${rel(file)}:${index + 1} -> ${value.slice(0, 8)}...`)
+              }
             }
-          }
-        })
+          })
+        }
       }
-    }
-    expect(offenders).toEqual([])
-  })
+
+      // Anti-vacuidade: se o scan nao leu nada, o guard nao provou nada.
+      expect(scanned).toBeGreaterThan(0)
+      expect(offenders).toEqual([])
+    },
+    SCAN_TIMEOUT_MS,
+  )
 })
 
 describe('governanca: stores nascem fail-closed', () => {

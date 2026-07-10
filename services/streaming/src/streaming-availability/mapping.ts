@@ -182,12 +182,24 @@ export function mapShowPayload(
     }
   }
 
+  // `streamingOptions` ausente/null/array/primitivo = corpo ANOMALO (truncado,
+  // contrato do upstream mudou). Nao aprendemos nada sobre a entidade, entao o
+  // payload NAO e reconhecido e o replace nunca roda — do contrario um 200
+  // incompleto apagaria ofertas boas ja gravadas.
+  //
+  // Isto e diferente de `streamingOptions` PRESENTE sem a chave do pais: ali
+  // sabemos que o titulo nao tem oferta naquele pais, e limpar e o correto.
   const streamingOptions = payload.streamingOptions
   if (!isRecord(streamingOptions)) {
     return {
-      recognized: true,
+      recognized: false,
       offers: [],
-      rejections: [reject('country-absent', 'payload sem streamingOptions')],
+      rejections: [
+        reject(
+          'missing-streaming-options',
+          'payload sem streamingOptions valido (corpo anomalo): snapshot preservado',
+        ),
+      ],
     }
   }
 

@@ -57,6 +57,14 @@ export type OfferRejectionReason =
   | 'payload-not-object'
   | 'show-type-mismatch'
   | 'identity-mismatch'
+  /**
+   * `streamingOptions` ausente/null/em formato invalido. NAO e o mesmo que
+   * "nao ha oferta neste pais": e um corpo anomalo (truncado, contrato mudado),
+   * do qual nao se aprende nada. Torna o payload NAO reconhecido, para que o
+   * replace nunca apague um snapshot bom.
+   */
+  | 'missing-streaming-options'
+  /** `streamingOptions` existe, mas nao ha chave para o pais pedido. */
   | 'country-absent'
   | 'offer-not-object'
   | 'unmapped-offer-type'

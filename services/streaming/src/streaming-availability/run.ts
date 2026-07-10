@@ -171,12 +171,14 @@ export async function runStreamingAvailabilitySync(
 
     if (!options.apply) continue
 
-    // NAO reescreve o snapshot quando o payload nao foi RECONHECIDO (resposta
-    // irreconhecivel, showType desconhecido, identidade trocada). Nesse caso nao
-    // aprendemos nada sobre a entidade, e um replace com lista vazia APAGARIA
-    // ofertas boas ja gravadas. Um `recognized: true` com zero ofertas e
-    // diferente: significa "saiu do catalogo daquele pais" — ai o replace vazio
-    // e a atualizacao correta.
+    // NAO reescreve o snapshot quando o payload nao foi RECONHECIDO (corpo nao
+    // e objeto, showType desconhecido, identidade trocada, ou `streamingOptions`
+    // ausente/invalido). Nesses casos nao aprendemos nada sobre a entidade, e um
+    // replace com lista vazia APAGARIA ofertas boas ja gravadas.
+    //
+    // Um `recognized: true` com zero ofertas e diferente: `streamingOptions`
+    // existe e o pais simplesmente nao tem oferta ("saiu do catalogo") — ai o
+    // replace vazio e a atualizacao correta.
     if (!mapping.recognized) continue
 
     // Replace transacional do snapshot deste provider/entidade/pais.
