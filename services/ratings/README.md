@@ -24,6 +24,14 @@ em `source_licenses`.
 - **NUNCA e chamado no render publico.** A pagina le notas ja persistidas e atribuidas
   no PostgreSQL.
 
+### Endpoint: `/item/?id=<IMDb>` (o plano Pro NAO libera `/popular/`)
+
+O plano contratado **nao libera** `/popular/` (retorna 403). Em vez de listar populares, o
+worker **enriquece entidades locais JA existentes**, uma por vez, via
+`GET /item/?id=<IMDb_ID>` (ex.: `id=tt9603208`), resolvendo a entidade por **identificador
+inequivoco** (IMDb id) — **nunca** por titulo/ano. `/popular/` segue no client apenas por
+retrocompatibilidade; o fluxo novo nao o chama.
+
 ### CLI
 
 ```bash
@@ -32,18 +40,25 @@ TSX="$(ls node_modules/.pnpm/tsx@*/node_modules/tsx/dist/cli.mjs | head -1)"
 # dry-run (default): so o plano. Zero rede, zero DB, zero quota.
 node "$TSX" services/ratings/bin/sync-film-show-ratings.ts --type=film --limit=20
 
-# sample: busca o payload real, grava api_cache + api_sync_logs e escreve um
-# sample SANITIZADO em services/ratings/.data/ (gitignored).
-node "$TSX" services/ratings/bin/sync-film-show-ratings.ts --type=film --limit=20 --sample
+# sample de UM item explicito (grava api_cache + api_sync_logs + sample; NAO grava ratings).
+node "$TSX" services/ratings/bin/sync-film-show-ratings.ts --type=film --id=tt9603208 --sample
 
-# apply: grava external_ratings SO para mapping inequivoco. Exige --type.
-node "$TSX" services/ratings/bin/sync-film-show-ratings.ts --type=film --limit=20 --apply
+# sample por entidades locais (seleciona ate --limit candidatos do tipo).
+node "$TSX" services/ratings/bin/sync-film-show-ratings.ts --type=film --limit=5 --sample
+
+# apply: grava external_ratings SO para mapping inequivoco + entidade local. Exige --type.
+node "$TSX" services/ratings/bin/sync-film-show-ratings.ts --type=film --limit=5 --apply
 ```
 
-Flags: `--type=film|show`, `--limit=N`, `--sample`, `--apply` (default = dry-run),
-`--report=<arquivo>` (`.md` ou `.json`). `--apply` **exige** `--type`: sem ele nao ha como
-saber se um item e `movie` ou `tv`, e atribuir a nota a entidade errada e pior do que nao
-gravar nada.
+Flags: `--type=film|show`, `--id=tt<digitos>`, `--limit=N`, `--sample`, `--apply`
+(default = dry-run), `--report=<arquivo>` (`.md` ou `.json`).
+
+- `--id` enriquece exatamente aquele IMDb id (`tt<digitos>`; TMDB id no request e TODO).
+- Sem `--id`, o worker seleciona ate `--limit` (default **20**) entidades locais do `--type`
+  que tenham IMDb id, em ordem estavel (`id asc`).
+- `--apply` **exige** `--type`: sem ele nao ha como saber se um item e `movie` ou `tv`, e
+  atribuir a nota a entidade errada e pior do que nao gravar nada.
+- `--sample` **sem `--id`** exige `--type` (a selecao de candidatos precisa da tabela).
 
 `--sample` e `--apply` exigem `RAPIDAPI_FILM_SHOW_RATINGS_KEY` **e** `DATABASE_URL`: toda
 chamada externa grava `api_cache` e `api_sync_logs` (nenhuma ingestao silenciosa). O
@@ -51,15 +66,15 @@ dry-run puro nao precisa de nenhum dos dois.
 
 ### Estado do mapping (importante)
 
-A API Film/Show Ratings **nao publica schema de resposta**. Por isso o reconhecedor em
-`src/film-show-ratings/mapping.ts` e **estrito e fail-closed**: so aceita um descritor com
-`source` (dentro de `RATING_SOURCES`), `metric`, `value` e `scale` explicitos, mais um id
-inequivoco (`imdbId`/`tmdbId`) no item. O `rating_label` **nunca** vem do payload — e
-derivado da fonte canonica, o que torna um cross-label impossivel por construcao.
-
-Enquanto o payload real nao for inspecionado por um humano via `--sample`, o resultado
-esperado e **"0 ratings mapeados, N recusados"** — e isso e **sucesso**, nao falha.
-Estender o reconhecedor exige ver o sample primeiro.
+O reconhecedor em `src/film-show-ratings/mapping.ts` e **estrito e fail-closed**. Para o
+`/item/`, `mapItemPayload` isola o `result` (objeto) do envelope `{ status, result: {...} }`
+e reconhece o formato REAL da RapidAPI (`ratings` como objeto POR FONTE, com
+`audience`/`critics`), reusando a mesma logica de `/popular/` (`mapSingleItem`): id via
+`ids.IMDb`/`ids.TMDB`, escala via `bestValue`, url via `links[<fonte>]`. Cada `(fonte,
+metrica)` passa por `validateRating`. **TMDB e recusado** como fonte tecnica nao governada;
+**Metacritic audience em base 10** e recusado por escala (o Metascore canonico e base 100) —
+**nunca** reescalado. O `rating_label` **nunca** vem do payload — e derivado da fonte
+canonica, o que torna um cross-label impossivel por construcao.
 
 ## Resiliencia obrigatoria
 - **Cache** (`api_cache`), **retry** com **backoff**, **rate-limit** por fornecedor,

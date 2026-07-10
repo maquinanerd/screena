@@ -50,6 +50,7 @@ import { RATING_SOURCE_SEED } from '@screena/db'
 import { validateRating } from '@screena/schemas'
 
 import type {
+  ItemMapping,
   MappedPopularItem,
   PopularEntityRef,
   PopularMapping,
@@ -315,6 +316,64 @@ export function extractPopularItems(payload: unknown): readonly unknown[] | null
 }
 
 /**
+ * Reconhece UM item ja isolado (objeto do array de `/popular/` OU o `result`
+ * objeto de `/item/`). Reusado por `mapPopularPayload` (por item do array) e por
+ * `mapItemPayload` (item unico). O `index` e so rastreabilidade no relatorio.
+ *
+ * Aceita as DUAS formas de `item.ratings` (array antigo e objeto por fonte) e o
+ * id top-level ou aninhado em `item.ids`. Nada aqui adivinha: fonte governada,
+ * escala da fonte e `validateRating` continuam por conta de `readRatingDraft`.
+ */
+export function mapSingleItem(
+  rawItem: unknown,
+  index: number,
+  providerApi: string,
+): MappedPopularItem {
+  if (!isRecord(rawItem)) {
+    return {
+      index,
+      ref: null,
+      ratings: [],
+      rejections: [reject('item-not-object', `item ${index} nao e objeto`)],
+    }
+  }
+
+  const rejections: RatingRejection[] = []
+  const ref = readEntityRef(rawItem)
+  if (ref === null) {
+    rejections.push(reject('no-entity-id', `item ${index} sem imdbId/tmdbId inequivoco`))
+  }
+
+  const rawRatings = pick(rawItem, ['ratings', 'externalRatings', 'external_ratings'])
+  let descriptors: readonly unknown[] | null = null
+  if (Array.isArray(rawRatings)) {
+    // Formato ANTIGO: array de descritores homogeneos.
+    descriptors = rawRatings
+  } else if (isRecord(rawRatings)) {
+    // Formato REAL da RapidAPI: objeto por fonte com audience/critics.
+    descriptors = flattenSourceKeyedRatings(rawRatings, readLinksMap(rawItem))
+  }
+
+  const drafts: RatingDraft[] = []
+  if (descriptors === null || descriptors.length === 0) {
+    rejections.push(
+      reject(
+        'no-rating-descriptors',
+        `item ${index} sem "ratings" reconhecivel (array de fontes ou objeto por fonte)`,
+      ),
+    )
+  } else {
+    for (const descriptor of descriptors) {
+      const result = readRatingDraft(descriptor, providerApi)
+      if (result.ok) drafts.push(result.draft)
+      else rejections.push(result.rejection)
+    }
+  }
+
+  return { index, ref, ratings: drafts, rejections }
+}
+
+/**
  * Reconhece o payload inteiro de `/popular/`.
  *
  * NUNCA lanca: um payload irreconhecivel devolve `recognized: false` com o
@@ -335,52 +394,54 @@ export function mapPopularPayload(payload: unknown, providerApi: string): Popula
     }
   }
 
-  const items: MappedPopularItem[] = []
-  for (const [index, rawItem] of rawItems.entries()) {
-    if (!isRecord(rawItem)) {
-      items.push({
-        index,
-        ref: null,
-        ratings: [],
-        rejections: [reject('item-not-object', `item ${index} nao e objeto`)],
-      })
-      continue
-    }
-
-    const rejections: RatingRejection[] = []
-    const ref = readEntityRef(rawItem)
-    if (ref === null) {
-      rejections.push(reject('no-entity-id', `item ${index} sem imdbId/tmdbId inequivoco`))
-    }
-
-    const rawRatings = pick(rawItem, ['ratings', 'externalRatings', 'external_ratings'])
-    let descriptors: readonly unknown[] | null = null
-    if (Array.isArray(rawRatings)) {
-      // Formato ANTIGO: array de descritores homogeneos.
-      descriptors = rawRatings
-    } else if (isRecord(rawRatings)) {
-      // Formato REAL da RapidAPI: objeto por fonte com audience/critics.
-      descriptors = flattenSourceKeyedRatings(rawRatings, readLinksMap(rawItem))
-    }
-
-    const drafts: RatingDraft[] = []
-    if (descriptors === null || descriptors.length === 0) {
-      rejections.push(
-        reject(
-          'no-rating-descriptors',
-          `item ${index} sem "ratings" reconhecivel (array de fontes ou objeto por fonte)`,
-        ),
-      )
-    } else {
-      for (const descriptor of descriptors) {
-        const result = readRatingDraft(descriptor, providerApi)
-        if (result.ok) drafts.push(result.draft)
-        else rejections.push(result.rejection)
-      }
-    }
-
-    items.push({ index, ref, ratings: drafts, rejections })
-  }
-
+  const items = rawItems.map((rawItem, index) => mapSingleItem(rawItem, index, providerApi))
   return { recognized: true, items, rejections: [] }
+}
+
+/**
+ * Isola o item unico do payload de `/item/`. Modulo PURO.
+ *
+ * Aceita:
+ *  - o envelope real `{ status, result: { ...item } }` — aqui `result` e um
+ *    OBJETO (um titulo), diferente de `/popular/` onde `result` e um ARRAY.
+ *    Por isso NAO reusamos `extractPopularItems` (que so aceita array): um
+ *    array em `result` (payload de populares) e recusado por esta funcao.
+ *  - o item cru `{ ratings, ids, links }` passado direto (facilita teste).
+ *
+ * Devolve `null` quando nada disso e reconhecido.
+ */
+export function extractItemObject(payload: unknown): Record<string, unknown> | null {
+  if (!isRecord(payload)) return null
+  const result = payload['result']
+  if (isRecord(result)) return result
+  // Item cru passado direto (sem envelope): reconhece pela presenca das chaves
+  // do contrato do item. Um envelope de `/popular/` (`result` array) nao tem
+  // `ratings`/`ids`/`links` no topo, entao cai fora — o fluxo de item nunca
+  // aceita, por engano, a lista de populares.
+  if ('ratings' in payload || 'ids' in payload || 'links' in payload) return payload
+  return null
+}
+
+/**
+ * Reconhece o payload de `/item/?id=<id>` (UM titulo).
+ *
+ * NUNCA lanca: um payload irreconhecivel devolve `recognized: false` com o
+ * motivo. Reusa integralmente `mapSingleItem` — ids/ratings/links/validateRating,
+ * TMDB recusado como fonte, Metacritic audience recusado por escala.
+ */
+export function mapItemPayload(payload: unknown, providerApi: string): ItemMapping {
+  const rawItem = extractItemObject(payload)
+  if (rawItem === null) {
+    return {
+      recognized: false,
+      item: null,
+      rejections: [
+        reject(
+          'payload-shape-unrecognized',
+          'payload de /item/ nao e { result: {...} } nem item cru { ratings/ids/links }',
+        ),
+      ],
+    }
+  }
+  return { recognized: true, item: mapSingleItem(rawItem, 0, providerApi), rejections: [] }
 }

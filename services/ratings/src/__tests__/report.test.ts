@@ -11,12 +11,13 @@ import { describe, it, expect } from 'vitest'
 import {
   groupRejections,
   buildRatingsReport,
+  buildItemRatingsReport,
   serializeRatingsReportJson,
   renderRatingsReport,
   runMode,
 } from '../film-show-ratings/report.js'
 import type { RatingRejection } from '../film-show-ratings/types.js'
-import type { RatingsRunResult } from '../film-show-ratings/run.js'
+import type { RatingsItemRunResult, RatingsRunResult } from '../film-show-ratings/run.js'
 
 /** Resultado de run com um BigInt embutido no rawPayload (que o DTO deve descartar). */
 function makeResult(): RatingsRunResult {
@@ -119,5 +120,126 @@ describe('runMode', () => {
     expect(runMode({ apply: true, sample: false })).toBe('apply')
     expect(runMode({ apply: false, sample: true })).toBe('sample')
     expect(runMode({ apply: false, sample: false })).toBe('dry-run')
+  })
+})
+
+/** Resultado de item enrichment com 1 id, 1 sem entidade, 1 falha. */
+function makeItemResult(): RatingsItemRunResult {
+  return {
+    status: 'partial',
+    endpoint: '/item/',
+    touchedNetwork: true,
+    idsQueried: 2,
+    idsFailed: 1,
+    idsWithoutEntity: 1,
+    items: [
+      {
+        id: 'tt9603208',
+        entityType: 'movie',
+        ok: true,
+        recognized: true,
+        payloadHash: 'abc123',
+        rawPayload: { big: BigInt(10) },
+        ratingsRecognized: 6,
+        ratingsWritten: 0,
+        ratingsCreated: 0,
+        ratingsUpdated: 0,
+        ratingsUnchanged: 0,
+        entityResolved: false,
+        rejections: [{ reason: 'entity-not-found', detail: 'id tt9603208: sem entidade' }],
+        errorCode: null,
+      },
+      {
+        id: 'tt1',
+        entityType: 'movie',
+        ok: false,
+        recognized: false,
+        payloadHash: null,
+        rawPayload: null,
+        ratingsRecognized: 0,
+        ratingsWritten: 0,
+        ratingsCreated: 0,
+        ratingsUpdated: 0,
+        ratingsUnchanged: 0,
+        entityResolved: false,
+        rejections: [{ reason: 'item-fetch-failed', detail: 'id tt1: falha' }],
+        errorCode: 'Error',
+      },
+    ],
+    counters: {
+      itemsSeen: 2,
+      ratingsRecognized: 6,
+      ratingsWritten: 0,
+      ratingsCreated: 0,
+      ratingsUpdated: 0,
+      ratingsUnchanged: 0,
+    },
+    rejections: [
+      { reason: 'entity-not-found', detail: 'id tt9603208: sem entidade' },
+      { reason: 'item-fetch-failed', detail: 'id tt1: falha' },
+    ],
+    durationMs: 12,
+    quotaCost: 2,
+    errorCode: null,
+  }
+}
+
+describe('buildItemRatingsReport', () => {
+  it('reporta endpoint /item/, ids consultados/falhos/sem-entidade e serializa sem BigInt', () => {
+    const report = buildItemRatingsReport(makeItemResult(), {
+      apply: true,
+      sample: false,
+      providerApi: 'rapidapi_film_show_ratings',
+    })
+    expect(report.endpoint).toBe('/item/')
+    expect(report.ids_queried).toBe(2)
+    expect(report.ids_failed).toBe(1)
+    expect(report.ids_without_entity).toBe(1)
+    // Nao serializa o rawPayload (que carrega BigInt): DTO puro.
+    expect(() => JSON.stringify(report)).not.toThrow()
+
+    // Multiplos ids -> payload_hash agregado e null; ha falha -> nao "reconhecido".
+    expect(report.payload_hash).toBeNull()
+    expect(report.payload_recognized).toBe(false)
+
+    const markdown = renderRatingsReport(report)
+    expect(markdown).toContain('ids consultados')
+    expect(markdown).toContain('ids sem entidade local')
+  })
+
+  it('um unico id reconhecido -> payload_hash agregado do id e payload_recognized=true', () => {
+    const single: RatingsItemRunResult = {
+      ...makeItemResult(),
+      idsQueried: 1,
+      idsFailed: 0,
+      idsWithoutEntity: 0,
+      items: [
+        {
+          id: 'tt9603208',
+          entityType: 'movie',
+          ok: true,
+          recognized: true,
+          payloadHash: 'deadbeef',
+          rawPayload: null,
+          ratingsRecognized: 6,
+          ratingsWritten: 6,
+          ratingsCreated: 6,
+          ratingsUpdated: 0,
+          ratingsUnchanged: 0,
+          entityResolved: true,
+          rejections: [],
+          errorCode: null,
+        },
+      ],
+      rejections: [],
+      status: 'success',
+    }
+    const report = buildItemRatingsReport(single, {
+      apply: true,
+      sample: false,
+      providerApi: 'rapidapi_film_show_ratings',
+    })
+    expect(report.payload_hash).toBe('deadbeef')
+    expect(report.payload_recognized).toBe(true)
   })
 })

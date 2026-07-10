@@ -9,7 +9,11 @@
  * Valor: `--type` (film|show), `--limit` (inteiro > 0), `--report` (string).
  */
 
-import { isPopularType, type FilmShowRatingsPopularType } from '@screena/film-show-ratings-client'
+import {
+  isImdbId,
+  isPopularType,
+  type FilmShowRatingsPopularType,
+} from '@screena/film-show-ratings-client'
 
 /** Argumentos parseados (null = nao informado -> o CLI aplica o default). */
 export interface FilmShowRatingsArgs {
@@ -18,6 +22,11 @@ export interface FilmShowRatingsArgs {
   /** `true` quando `--sample`: busca payload real e salva sample sanitizado. */
   readonly sample: boolean
   readonly type: FilmShowRatingsPopularType | null
+  /**
+   * IMDb id explicito (`tt<digitos>`) para enriquecer UM item via `/item/`.
+   * `null` = modo candidatos (seleciona entidades locais por `--type`/`--limit`).
+   */
+  readonly id: string | null
   readonly limit: number | null
   readonly report: string | null
 }
@@ -28,7 +37,7 @@ export type FilmShowRatingsArgsResult =
   | { readonly ok: false; readonly error: string }
 
 const BOOLEAN_FLAGS: ReadonlySet<string> = new Set(['sample', 'apply', 'dry-run'])
-const STRING_FLAGS: ReadonlySet<string> = new Set(['type', 'report'])
+const STRING_FLAGS: ReadonlySet<string> = new Set(['type', 'id', 'report'])
 const INT_FLAGS: ReadonlySet<string> = new Set(['limit'])
 
 function fail(error: string): FilmShowRatingsArgsResult {
@@ -40,6 +49,7 @@ export function parseFilmShowRatingsArgs(argv: readonly string[]): FilmShowRatin
   let apply = false
   let sample = false
   let type: FilmShowRatingsPopularType | null = null
+  let id: string | null = null
   let limit: number | null = null
   let report: string | null = null
 
@@ -91,6 +101,17 @@ export function parseFilmShowRatingsArgs(argv: readonly string[]): FilmShowRatin
       continue
     }
 
+    if (name === 'id') {
+      const candidate = value.trim()
+      // Por enquanto so IMDb id (`tt<digitos>`) — o `/item/` foi validado com
+      // `id=tt9603208`. TMDB id no request fica como TODO (nao chutamos formato).
+      if (!isImdbId(candidate)) {
+        return fail(`--id invalido: "${candidate}". Use um IMDb id no formato tt<digitos>.`)
+      }
+      id = candidate
+      continue
+    }
+
     if (name === 'report') {
       report = value
       continue
@@ -110,5 +131,13 @@ export function parseFilmShowRatingsArgs(argv: readonly string[]): FilmShowRatin
     return fail('--apply exige --type=film|show (o tipo define movie vs tv na atribuicao).')
   }
 
-  return { ok: true, args: { apply, sample, type, limit, report } }
+  if (sample && id === null && type === null) {
+    // Modo candidatos (sem `--id`): a selecao de entidades locais precisa saber
+    // a tabela (movies vs tv_shows). `--sample --id=tt...` dispensa `--type`.
+    return fail(
+      '--sample sem --id exige --type=film|show (a selecao de candidatos locais precisa do tipo).',
+    )
+  }
+
+  return { ok: true, args: { apply, sample, type, id, limit, report } }
 }

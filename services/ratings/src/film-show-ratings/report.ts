@@ -7,7 +7,7 @@
  */
 
 import type { RatingRejection, RatingRejectionReason } from './types.js'
-import type { RatingsRunResult } from './run.js'
+import type { RatingsItemRunResult, RatingsRunResult } from './run.js'
 
 /** Agrupa recusas por motivo, preservando ordem estavel de primeira aparicao. */
 export function groupRejections(
@@ -57,6 +57,12 @@ export interface RatingsReportJson {
     readonly count: number
     readonly sample: string
   }>
+  /** Item enrichment (`/item/`): quantos ids foram consultados. Ausente no popular. */
+  readonly ids_queried?: number
+  /** Item enrichment: ids cuja busca de rede falhou. */
+  readonly ids_failed?: number
+  /** Item enrichment: ids (sob apply) com ratings porem SEM entidade local. */
+  readonly ids_without_entity?: number
 }
 
 /** Modo de execucao, para o cabecalho do relatorio. */
@@ -98,6 +104,51 @@ export function buildRatingsReport(
   }
 }
 
+/**
+ * Monta o DTO do relatorio a partir de um ciclo de ITEM enrichment (`/item/`).
+ *
+ * Reusa `groupRejections`/`runMode` e adiciona a contabilidade por id (quantos
+ * consultados, quantos falharam, quantos sem entidade local). `payload_hash` so
+ * e preenchido quando exatamente um id foi consultado.
+ */
+export function buildItemRatingsReport(
+  result: RatingsItemRunResult,
+  options: { readonly apply: boolean; readonly sample: boolean; readonly providerApi: string },
+): RatingsReportJson {
+  const recognized =
+    result.idsQueried > 0 && result.idsFailed === 0 && result.items.every((item) => item.recognized)
+  const payloadHash = result.items.length === 1 ? (result.items[0]?.payloadHash ?? null) : null
+
+  return {
+    provider_api: options.providerApi,
+    endpoint: result.endpoint,
+    mode: runMode(options),
+    status: result.status,
+    touched_network: result.touchedNetwork,
+    payload_recognized: recognized,
+    payload_hash: payloadHash,
+    duration_ms: result.durationMs,
+    quota_cost: result.quotaCost,
+    error_code: result.errorCode,
+    counters: {
+      items_seen: result.counters.itemsSeen,
+      ratings_recognized: result.counters.ratingsRecognized,
+      ratings_written: result.counters.ratingsWritten,
+      ratings_created: result.counters.ratingsCreated,
+      ratings_updated: result.counters.ratingsUpdated,
+      ratings_unchanged: result.counters.ratingsUnchanged,
+    },
+    rejections: groupRejections(result.rejections).map((entry) => ({
+      reason: entry.reason,
+      count: entry.count,
+      sample: entry.sample,
+    })),
+    ids_queried: result.idsQueried,
+    ids_failed: result.idsFailed,
+    ids_without_entity: result.idsWithoutEntity,
+  }
+}
+
 /** Serializa o relatorio como JSON (sem replacer: o DTO nao tem BigInt). */
 export function serializeRatingsReportJson(report: RatingsReportJson): string {
   return JSON.stringify(report, null, 2)
@@ -120,6 +171,11 @@ export function renderRatingsReport(report: RatingsReportJson): string {
   lines.push('')
   lines.push('## Contagens')
   lines.push('')
+  if (report.ids_queried !== undefined) {
+    lines.push(`- ids consultados (\`/item/\`): ${report.ids_queried}`)
+    lines.push(`- ids com falha de rede: ${report.ids_failed ?? 0}`)
+    lines.push(`- ids sem entidade local (apply): ${report.ids_without_entity ?? 0}`)
+  }
   lines.push(`- itens vistos: ${report.counters.items_seen}`)
   lines.push(`- ratings reconhecidos: ${report.counters.ratings_recognized}`)
   lines.push(`- ratings gravados: ${report.counters.ratings_written}`)

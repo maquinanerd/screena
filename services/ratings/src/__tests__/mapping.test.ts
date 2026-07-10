@@ -15,6 +15,9 @@ import { FILM_SHOW_RATINGS_PROVIDER_API } from '@screena/film-show-ratings-clien
 
 import {
   mapPopularPayload,
+  mapItemPayload,
+  mapSingleItem,
+  extractItemObject,
   readRatingDraft,
   readImdbId,
   readTmdbId,
@@ -364,7 +367,12 @@ function realPayload(items: readonly unknown[] = [realPayloadItem()]): Record<st
 }
 
 /** `${fonte}:${metrica}` de cada draft, para comparacao por conjunto. */
-function draftKeys(item: { readonly ratings: readonly { ratingSource: string; metric: string }[] } | undefined): string[] {
+function draftKeys(
+  item:
+    | { readonly ratings: readonly { ratingSource: string; metric: string }[] }
+    | null
+    | undefined,
+): string[] {
   return (item?.ratings ?? []).map((d) => `${d.ratingSource}:${d.metric}`)
 }
 
@@ -466,5 +474,163 @@ describe('mapPopularPayload — FORMATO REAL da RapidAPI (objeto por fonte)', ()
     expect(item?.ratings).toHaveLength(1)
     expect(item?.ratings[0]?.ratingSource).toBe('imdb')
     expect(item?.rejections).toHaveLength(0)
+  })
+})
+
+/**
+ * Payload REAL do `GET /item/?id=tt9603208` (envelope `{ status, result: {...} }`,
+ * onde `result` e um OBJETO — um titulo). Espelha o exemplo validado no RapidAPI.
+ */
+function getItemEnvelope(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    status: 'success',
+    result: {
+      title: 'Mission: Impossible - The Final Reckoning',
+      type: 'film',
+      ratings: {
+        FilmAffinity: { audience: { rating: 6.8, count: 4902, bestValue: 10 } },
+        IMDb: { audience: { rating: 7.1, count: 234993, bestValue: 10 } },
+        Letterboxd: { audience: { rating: 3.45, count: 761921, bestValue: 5 } },
+        Metacritic: {
+          // user score base 10 (NAO e a escala canonica do Metacritic).
+          audience: { rating: 6.8, count: 475, bestValue: 10 },
+          // Metascore base 100 (escala canonica).
+          critics: { rating: 67, count: 57, bestValue: 100 },
+        },
+        'Rotten Tomatoes': {
+          audience: { rating: 88, count: 10000, bestValue: 100 },
+          critics: { rating: 80, count: 427, bestValue: 100 },
+        },
+        // Fornecedor tecnico nao governado por este worker.
+        TMDB: { audience: { rating: 7.2, count: 2790, bestValue: 10 } },
+      },
+      ids: { IMDb: 'tt9603208', TMDB: '575265' },
+      links: {
+        IMDb: 'https://www.imdb.com/title/tt9603208',
+        'Rotten Tomatoes':
+          'https://www.rottentomatoes.com/m/mission_impossible_the_final_reckoning',
+        Metacritic: 'https://www.metacritic.com/movie/mission-impossible-the-final-reckoning',
+        Letterboxd: 'https://letterboxd.com/film/mission-impossible-the-final-reckoning',
+        FilmAffinity: 'https://www.filmaffinity.com/us/film923082.html',
+      },
+      ...over,
+    },
+  }
+}
+
+describe('extractItemObject — isola o item unico', () => {
+  it('envelope { result: {...} } (objeto) -> devolve o result', () => {
+    const env = getItemEnvelope()
+    expect(extractItemObject(env)).toBe(env['result'])
+  })
+
+  it('item cru { ratings/ids/links } passado direto e reconhecido', () => {
+    const raw = { ids: { IMDb: 'tt1' }, ratings: { IMDb: { audience: { rating: 7, bestValue: 10 } } } }
+    expect(extractItemObject(raw)).toBe(raw)
+  })
+
+  it('envelope de /popular/ (result ARRAY) NAO e aceito como item -> null', () => {
+    // Protege a fronteira: o fluxo de item nunca aceita, por engano, a lista de
+    // populares (onde `result` e um array).
+    expect(extractItemObject({ status: 'success', date: '2025-05-27', result: [{ ids: { IMDb: 'tt1' } }] })).toBeNull()
+  })
+
+  it.each([{ foo: 1 }, 'x', null, 42, [1, 2]])('forma irreconhecivel (%s) -> null', (payload) => {
+    expect(extractItemObject(payload)).toBeNull()
+  })
+})
+
+describe('mapItemPayload — payload REAL do GET /item/', () => {
+  it('envelope { status, result:{...} } e reconhecido; 1 item', () => {
+    const mapping = mapItemPayload(getItemEnvelope(), PROVIDER)
+    expect(mapping.recognized).toBe(true)
+    expect(mapping.item).not.toBeNull()
+  })
+
+  it('forma irreconhecivel -> recognized=false, item=null, recusa payload-shape-unrecognized', () => {
+    const mapping = mapItemPayload({ foo: 1 }, PROVIDER)
+    expect(mapping.recognized).toBe(false)
+    expect(mapping.item).toBeNull()
+    expect(mapping.rejections.map((r) => r.reason)).toContain('payload-shape-unrecognized')
+  })
+
+  it('ids.IMDb/ids.TMDB aninhados resolvem o ref (sem no-entity-id)', () => {
+    const item = mapItemPayload(getItemEnvelope(), PROVIDER).item
+    expect(item?.ref).toEqual({ imdbId: 'tt9603208', tmdbId: 575265 })
+    expect(item?.rejections.map((r) => r.reason)).not.toContain('no-entity-id')
+  })
+
+  it('gera os drafts governados do payload real (sem reescalar)', () => {
+    const item = mapItemPayload(getItemEnvelope(), PROVIDER).item
+    expect(new Set(draftKeys(item))).toEqual(
+      new Set([
+        'imdb:audience',
+        'rotten_tomatoes:audience',
+        'rotten_tomatoes:critics',
+        'metacritic:critics',
+        'letterboxd:audience',
+        'filmaffinity:audience',
+      ]),
+    )
+    const imdb = item?.ratings.find((d) => d.ratingSource === 'imdb')
+    expect(imdb).toMatchObject({ ratingValue: 7.1, ratingScale: 10, ratingLabel: 'IMDb' })
+    const rtCritics = item?.ratings.find(
+      (d) => d.ratingSource === 'rotten_tomatoes' && d.metric === 'critics',
+    )
+    expect(rtCritics).toMatchObject({ ratingValue: 80, ratingScale: 100, ratingCount: 427 })
+  })
+
+  it('Metacritic AUDIENCE (base 10) e RECUSADO por escala — nunca reescalado (invariante 1)', () => {
+    const item = mapItemPayload(getItemEnvelope(), PROVIDER).item
+    expect(draftKeys(item)).not.toContain('metacritic:audience')
+    expect(draftKeys(item)).toContain('metacritic:critics')
+    expect(item?.rejections.map((r) => r.reason)).toContain('rating-validation-failed')
+  })
+
+  it('TMDB NUNCA vira external rating (fonte nao governada) -> unknown-rating-source', () => {
+    const item = mapItemPayload(getItemEnvelope(), PROVIDER).item
+    expect((item?.ratings ?? []).some((d) => (d.ratingSource as string) === 'tmdb')).toBe(false)
+    expect(item?.rejections.map((r) => r.reason)).toContain('unknown-rating-source')
+  })
+
+  it('links[<fonte>] vira ratingUrl do draft daquela fonte', () => {
+    const item = mapItemPayload(getItemEnvelope(), PROVIDER).item
+    const imdb = item?.ratings.find((d) => d.ratingSource === 'imdb')
+    expect(imdb?.ratingUrl).toBe('https://www.imdb.com/title/tt9603208')
+    const rtCritics = item?.ratings.find(
+      (d) => d.ratingSource === 'rotten_tomatoes' && d.metric === 'critics',
+    )
+    expect(rtCritics?.ratingUrl).toBe(
+      'https://www.rottentomatoes.com/m/mission_impossible_the_final_reckoning',
+    )
+  })
+
+  it('aceita o item cru { ratings/ids/links } passado direto (facilita teste)', () => {
+    const raw = {
+      ids: { IMDb: 'tt1' },
+      ratings: { FilmAffinity: { audience: { rating: 7.6, bestValue: 10 } } },
+      links: { FilmAffinity: 'https://www.filmaffinity.com/us/film1.html' },
+    }
+    const item = mapItemPayload(raw, PROVIDER).item
+    expect(item?.ref).toEqual({ imdbId: 'tt1', tmdbId: null })
+    const fa = item?.ratings.find((d) => d.ratingSource === 'filmaffinity')
+    expect(fa).toMatchObject({ ratingValue: 7.6, ratingScale: 10 })
+  })
+})
+
+describe('mapSingleItem — reusado por popular e por item', () => {
+  it('objeto nao-item -> item-not-object; item valido -> drafts reconhecidos', () => {
+    expect(mapSingleItem('x', 3, PROVIDER)).toMatchObject({
+      index: 3,
+      ref: null,
+      ratings: [],
+    })
+    expect(mapSingleItem('x', 3, PROVIDER).rejections.map((r) => r.reason)).toContain(
+      'item-not-object',
+    )
+
+    const ok = mapSingleItem(imdbDescriptorItem(), 0, PROVIDER)
+    expect(ok.ratings[0]?.ratingSource).toBe('imdb')
+    expect(ok.rejections).toHaveLength(0)
   })
 })

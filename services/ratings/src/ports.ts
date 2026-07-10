@@ -64,6 +64,34 @@ export interface EntityLookupPort {
   findByTmdbId(entityType: RatingsEntityType, tmdbId: number): Promise<ResolvedEntity | null>
 }
 
+/**
+ * Uma entidade local candidata a enriquecimento por `/item/`.
+ *
+ * So entidades com `imdbId` (o `/item/` foi validado com IMDb id) entram na
+ * lista — a selecao NUNCA casa por titulo/ano.
+ */
+export interface RatingsEntityCandidate {
+  readonly entityType: RatingsEntityType
+  /** Id local (BigInt serializado como string). */
+  readonly entityId: string
+  /** IMDb id (`tt<digitos>`), sempre presente para um candidato. */
+  readonly imdbId: string
+  readonly tmdbId: number | null
+}
+
+/**
+ * Porta de SELECAO de candidatos locais por tipo, para o modo sem `--id`.
+ *
+ * Complementa `EntityLookupPort` (que resolve UM id): aqui listamos ate `limit`
+ * entidades locais com IMDb id, em ordem estavel, para enriquecer via `/item/`.
+ */
+export interface EntityCandidateSelectPort {
+  selectByType(
+    entityType: RatingsEntityType,
+    limit: number,
+  ): Promise<readonly RatingsEntityCandidate[]>
+}
+
 /** Resultado de um upsert em `external_ratings`. */
 export interface ExternalRatingUpsertOutcome {
   /** A linha foi criada agora? */
