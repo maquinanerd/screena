@@ -12,13 +12,33 @@
  * sao da FONTE, nunca do fornecedor tecnico (`provider_api`); ambas passam por
  * `validateRating` (@screena/schemas) antes de virarem linha.
  *
- * CONTRATO ACEITO (tudo o mais e recusado):
- *   item.ratings: [
- *     { source: "imdb", metric: "user_rating", value: 8.4, scale: 10,
- *       count?: 123, url?: "https://..." }
- *   ]
- *   e, no item, ao menos um id inequivoco: `imdbId`/`imdb_id` (tt\d+) ou
- *   `tmdbId`/`tmdb_id` (inteiro > 0).
+ * CONTRATO ACEITO (tudo o mais e recusado). Duas FORMAS de `item.ratings`:
+ *
+ *   (a) formato ANTIGO — array de descritores homogeneos:
+ *       item.ratings: [
+ *         { source: "imdb", metric: "user_rating", value: 8.4, scale: 10,
+ *           count?: 123, url?: "https://..." }
+ *       ]
+ *
+ *   (b) formato REAL da RapidAPI — objeto POR FONTE, com `audience`/`critics`:
+ *       item.ratings: {
+ *         "IMDb": { "audience": { "rating": 7.6, "count": 33133, "bestValue": 10 } },
+ *         "Rotten Tomatoes": {
+ *           "audience": { "rating": 90, "bestValue": 100 },
+ *           "critics":  { "rating": 80, "bestValue": 100 }
+ *         }, ...
+ *       }
+ *       Cada `(fonte, metrica)` vira UM descritor: `metric` = "audience"/"critics",
+ *       `value` = `rating`, `scale` = `bestValue`, `count` = `count`, e a url vem
+ *       de `item.links[<nome-da-fonte>]`. Fontes nao governadas (ex.: "TMDB")
+ *       sao recusadas por `unknown-rating-source`. NUNCA reescalamos: uma nota
+ *       cuja `bestValue` diverge da escala canonica da fonte (ex.: user score do
+ *       Metacritic em base 10 vs. Metascore canonico em base 100) e barrada por
+ *       `validateRating` (rating-validation-failed), nao "convertida".
+ *
+ * Em ambas as formas, o item precisa de ao menos um id inequivoco, top-level
+ * (`imdbId`/`imdb_id`, tt\d+; `tmdbId`/`tmdb_id`, inteiro > 0) ou aninhado em
+ * `item.ids` (`ids.IMDb`/`ids.TMDB`).
  *
  * O `rating_label` NUNCA vem do payload: e derivado da fonte canonica
  * (RATING_SOURCE_SEED). Assim um "Tomatometer" atribuido ao IMDb e impossivel
@@ -38,8 +58,15 @@ import type {
   RatingRejectionReason,
 } from './types.js'
 
-/** Chaves sob as quais um array de itens pode aparecer no envelope da resposta. */
-export const POPULAR_ARRAY_KEYS = ['results', 'data', 'items', 'popular', 'list'] as const
+/**
+ * Chaves sob as quais um array de itens pode aparecer no envelope da resposta.
+ * `result` (singular) e a chave do payload real da RapidAPI (`{ status, date,
+ * result: [...] }`); as demais cobrem envelopes antigos/alternativos.
+ */
+export const POPULAR_ARRAY_KEYS = ['results', 'result', 'data', 'items', 'popular', 'list'] as const
+
+/** Metricas suportadas no formato POR FONTE (objeto): audience e/ou critics. */
+export const OBJECT_METRIC_KEYS = ['audience', 'critics'] as const
 
 /** Rotulo canonico por fonte editorial (nunca vem do payload). */
 const SOURCE_LABEL: Readonly<Record<string, string>> = Object.fromEntries(
@@ -89,10 +116,25 @@ export function readTmdbId(value: unknown): number | null {
   return null
 }
 
-/** Le os identificadores externos de um item; null quando nenhum e inequivoco. */
+/**
+ * Le os identificadores externos de um item; null quando nenhum e inequivoco.
+ *
+ * Aceita os ids top-level (formato antigo) e o mapa aninhado `item.ids`
+ * (`ids.IMDb`/`ids.TMDB`, formato real da RapidAPI). O top-level tem precedencia;
+ * o aninhado e fallback. O id continua passando por `readImdbId`/`readTmdbId`,
+ * entao um id malformado no `ids` nao "escapa" da validacao.
+ */
 export function readEntityRef(item: Record<string, unknown>): PopularEntityRef | null {
-  const imdbId = readImdbId(pick(item, ['imdbId', 'imdb_id', 'imdbID', 'imdb']))
-  const tmdbId = readTmdbId(pick(item, ['tmdbId', 'tmdb_id', 'tmdbID']))
+  const nested = pick(item, ['ids'])
+  const ids = isRecord(nested) ? nested : null
+
+  const imdbId =
+    readImdbId(pick(item, ['imdbId', 'imdb_id', 'imdbID', 'imdb'])) ??
+    (ids !== null ? readImdbId(pick(ids, ['IMDb', 'imdb', 'imdbId', 'imdb_id'])) : null)
+  const tmdbId =
+    readTmdbId(pick(item, ['tmdbId', 'tmdb_id', 'tmdbID'])) ??
+    (ids !== null ? readTmdbId(pick(ids, ['TMDB', 'tmdb', 'tmdbId', 'tmdb_id'])) : null)
+
   if (imdbId === null && tmdbId === null) return null
   return { imdbId, tmdbId }
 }
@@ -101,6 +143,22 @@ export function readEntityRef(item: Record<string, unknown>): PopularEntityRef |
 function readCount(value: unknown): number | null {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return null
   return Math.trunc(value)
+}
+
+/**
+ * Le um numero FINITO. Aceita numero finito e string numerica finita
+ * (ex.: `"7"`, `"7.6"`); qualquer outra coisa -> null. NUNCA reescala nem
+ * arredonda — apenas interpreta a forma do valor.
+ */
+export function readFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (trimmed === '') return null
+    const parsed = Number(trimmed)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  return null
 }
 
 /** Le uma URL http(s), ou null. Nunca aceita esquema arbitrario. */
@@ -144,9 +202,9 @@ export function readRatingDraft(
     }
   }
 
-  const rawValue = pick(descriptor, ['value', 'rating_value', 'ratingValue'])
-  const ratingValue = typeof rawValue === 'number' ? rawValue : Number.NaN
-  if (!Number.isFinite(ratingValue) || ratingValue < 0) {
+  // Aceita numero e string numerica finita (ex.: `"7"`); nao numerico -> recusa.
+  const ratingValue = readFiniteNumber(pick(descriptor, ['value', 'rating_value', 'ratingValue']))
+  if (ratingValue === null || ratingValue < 0) {
     return {
       ok: false,
       rejection: reject('invalid-value', `fonte "${ratingSource}" com "value" nao numerico/negativo`),
@@ -155,8 +213,8 @@ export function readRatingDraft(
 
   // A escala e propriedade da FONTE (regra de ratings, secao 3). Exigimos que o
   // payload a declare, e que ela case com a canonica — nunca reescalamos.
-  const rawScale = pick(descriptor, ['scale', 'rating_scale', 'ratingScale'])
-  if (typeof rawScale !== 'number' || !Number.isFinite(rawScale)) {
+  const ratingScale = readFiniteNumber(pick(descriptor, ['scale', 'rating_scale', 'ratingScale']))
+  if (ratingScale === null) {
     return {
       ok: false,
       rejection: reject('missing-scale', `fonte "${ratingSource}" sem "scale" explicito`),
@@ -181,7 +239,7 @@ export function readRatingDraft(
     ratingLabel,
     metric: rawMetric.trim(),
     ratingValue,
-    ratingScale: rawScale,
+    ratingScale,
     ratingCount: readCount(pick(descriptor, ['count', 'rating_count', 'ratingCount'])),
     ratingUrl: readUrl(pick(descriptor, ['url', 'rating_url', 'ratingUrl'])),
   }
@@ -203,6 +261,46 @@ export function readRatingDraft(
   }
 
   return { ok: true, draft }
+}
+
+/** Le o mapa `links` do item (`<nome-da-fonte>` -> url), ou null. */
+function readLinksMap(item: Record<string, unknown>): Record<string, unknown> | null {
+  const links = pick(item, ['links'])
+  return isRecord(links) ? links : null
+}
+
+/**
+ * Achata o formato POR FONTE (`ratings: { "IMDb": { audience, critics }, ... }`)
+ * numa lista de descritores homogeneos, um por `(fonte, metrica)`. A url de cada
+ * descritor vem de `links[<nome-da-fonte>]`.
+ *
+ * Este helper NAO decide nada: so reorganiza a forma. Fonte governada, escala da
+ * fonte e `validateRating` continuam por conta de `readRatingDraft`, para onde
+ * cada descritor gerado aqui e enviado (inclusive fontes nao governadas como
+ * "TMDB", recusadas la por `unknown-rating-source`).
+ */
+export function flattenSourceKeyedRatings(
+  ratings: Record<string, unknown>,
+  links: Record<string, unknown> | null,
+): unknown[] {
+  const descriptors: unknown[] = []
+  for (const [sourceName, sourceValue] of Object.entries(ratings)) {
+    if (!isRecord(sourceValue)) continue
+    const url = links !== null ? pick(links, [sourceName]) : undefined
+    for (const metric of OBJECT_METRIC_KEYS) {
+      const cell = sourceValue[metric]
+      if (!isRecord(cell)) continue
+      descriptors.push({
+        source: sourceName,
+        metric,
+        value: cell['rating'],
+        scale: cell['bestValue'],
+        count: cell['count'],
+        url,
+      })
+    }
+  }
+  return descriptors
 }
 
 /** Localiza o array de itens dentro do payload (array cru ou envelope conhecido). */
@@ -255,11 +353,23 @@ export function mapPopularPayload(payload: unknown, providerApi: string): Popula
       rejections.push(reject('no-entity-id', `item ${index} sem imdbId/tmdbId inequivoco`))
     }
 
-    const descriptors = pick(rawItem, ['ratings', 'externalRatings', 'external_ratings'])
+    const rawRatings = pick(rawItem, ['ratings', 'externalRatings', 'external_ratings'])
+    let descriptors: readonly unknown[] | null = null
+    if (Array.isArray(rawRatings)) {
+      // Formato ANTIGO: array de descritores homogeneos.
+      descriptors = rawRatings
+    } else if (isRecord(rawRatings)) {
+      // Formato REAL da RapidAPI: objeto por fonte com audience/critics.
+      descriptors = flattenSourceKeyedRatings(rawRatings, readLinksMap(rawItem))
+    }
+
     const drafts: RatingDraft[] = []
-    if (!Array.isArray(descriptors) || descriptors.length === 0) {
+    if (descriptors === null || descriptors.length === 0) {
       rejections.push(
-        reject('no-rating-descriptors', `item ${index} sem array "ratings" com fonte declarada`),
+        reject(
+          'no-rating-descriptors',
+          `item ${index} sem "ratings" reconhecivel (array de fontes ou objeto por fonte)`,
+        ),
       )
     } else {
       for (const descriptor of descriptors) {
