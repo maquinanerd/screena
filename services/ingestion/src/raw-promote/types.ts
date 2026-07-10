@@ -91,14 +91,17 @@ export interface CatalogFinalizePort {
 }
 
 /**
- * Campos de EXIBICAO (title/overview/year) derivados do payload bruto, ja com o
+ * Campos de EXIBICAO (title/overview) derivados do payload bruto, ja com o
  * fallback de titulo resolvido pela estrategia — sao a base do slug + traducao.
  * A ficha factual (nota, datas, elenco) vem do normalizer, nunca daqui.
+ *
+ * Sem `year` de proposito: o ano de lancamento nao entra no slug canonico
+ * (`desiredCatalogSlug`). Ele continua vivo na ficha (releaseDate/firstAirDate)
+ * e no render (titulo, metadata, schema, filtros) — so nao na URL.
  */
 export interface PromoteDisplayFields {
   readonly title: string
   readonly overview: string | null
-  readonly year: number | null
 }
 
 /** Resultado da promocao de UM registro: outcome do store + campos de exibicao. */

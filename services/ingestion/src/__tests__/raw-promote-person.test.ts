@@ -125,14 +125,13 @@ const personOpts = (
 })
 
 describe('readPersonDisplayFields', () => {
-  it('le so o name; overview e year sempre null (sem bio, sem ano no slug)', () => {
+  it('le so o name; overview sempre null (sem bio)', () => {
     expect(readPersonDisplayFields({ name: 'Fernanda Montenegro', biography: 'x' })).toEqual({
       title: 'Fernanda Montenegro',
       overview: null,
-      year: null,
     })
-    expect(readPersonDisplayFields({})).toEqual({ title: '', overview: null, year: null })
-    expect(readPersonDisplayFields(null)).toEqual({ title: '', overview: null, year: null })
+    expect(readPersonDisplayFields({})).toEqual({ title: '', overview: null })
+    expect(readPersonDisplayFields(null)).toEqual({ title: '', overview: null })
   })
 })
 

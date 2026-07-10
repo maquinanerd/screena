@@ -47,19 +47,23 @@ export function entityRoutePath(entityType: CatalogEntityType, slug: string): st
 
 /**
  * Slug canonico DESEJADO de um titulo de catalogo (antes da resolucao de
- * colisao no banco): `slugify(title)` + ano quando houver; fallback `tmdb-{id}`
- * para titulo vazio. Deterministico e estavel (o mesmo titulo/ano/id sempre
- * gera o mesmo slug), entao re-sync/re-promocao nao cria variantes novas.
+ * colisao no banco): `slugify(title)`; fallback `tmdb-{id}` quando o titulo nao
+ * produz slug. Deterministico e estavel (o mesmo titulo/id sempre gera o mesmo
+ * slug), entao re-sync/re-promocao nao cria variantes novas.
+ *
+ * O ANO DE LANCAMENTO NUNCA entra no slug: `/pt/filmes/a-origem/`, nunca
+ * `/pt/filmes/a-origem-2010/`. Numeros que sobrevivem (`blade-runner-2049`,
+ * `space-1999`) sao parte do TITULO, nao uma data pendurada na URL. O ano
+ * continua no titulo visual, metadata, schema, filtros e listagens.
+ *
+ * A funcao NAO recebe `year` de proposito: sem o parametro, nenhum caller
+ * consegue reintroduzir o sufixo de ano numa re-sync/re-promocao.
  *
  * PURO: nao decide colisao (isso exige o banco — ver `upsertCanonicalSlug` no
- * adapter de persistencia). Reusado pelo backfill (ingest-public-catalog) e pela
- * promocao de tmdb_raw, para nao duplicar a regra de slug.
+ * adapter de persistencia, que desambigua com `-tmdb-{id}` e grava o 301).
+ * Reusado pelo backfill (ingest-public-catalog) e pela promocao de tmdb_raw,
+ * para nao duplicar a regra de slug.
  */
-export function desiredCatalogSlug(
-  title: string,
-  year: number | null,
-  tmdbId: number,
-): string {
-  const base = slugify(title) || `tmdb-${tmdbId}`
-  return year !== null ? `${base}-${year}` : base
+export function desiredCatalogSlug(title: string, tmdbId: number): string {
+  return slugify(title) || `tmdb-${tmdbId}`
 }

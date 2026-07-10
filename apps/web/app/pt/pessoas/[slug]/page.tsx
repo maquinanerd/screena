@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 
 import { getPersonPageData } from "../../../../src/server/person-page";
+import { canonicalRedirectPath } from "../../../../src/lib/canonical-redirect";
 import { SITE_URL } from "../../../../src/lib/site";
 import type { PersonCreditEntityType } from "../../../../src/lib/person-presenter";
 import { RelatedNewsSection } from "../../../_components/related-news-section";
@@ -18,6 +19,10 @@ import { RelatedNewsSection } from "../../../_components/related-news-section";
  * quando existem no payload; caso contrario a secao e omitida. O gate anti-thin
  * (invariante 5) aplica `noindex` quando ha menos de 2 blocos editoriais
  * publicaveis (a filmografia crua nao conta como bloco de valor proprio).
+ *
+ * URL canonica unica: slug antigo (alias despromovido em `slugs`) nao renderiza
+ * 200 — redireciona permanentemente para o slug canonico. A cobertura de slug de
+ * pessoa esta completa hoje, mas a defesa evita o mesmo bug em trocas futuras.
  */
 
 export const revalidate = 3600;
@@ -77,6 +82,10 @@ export default async function PersonPage({
   const { slug } = await params;
   const data = await getPersonPageData(slug);
   if (data === null) notFound();
+
+  // Slug nao-canonico (alias antigo) nunca responde 200: 308 para o canonico.
+  const redirectPath = canonicalRedirectPath(PESSOAS_INDEX_PATH, slug, data.canonicalSlug);
+  if (redirectPath !== null) permanentRedirect(redirectPath);
 
   const { view, indexability, canonicalUrl, relatedNews } = data;
   const isUnderReview = indexability.decision !== "index";
