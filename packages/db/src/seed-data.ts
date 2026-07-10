@@ -114,11 +114,16 @@ export const RATING_SOURCE_SEED: readonly RatingSourceSeed[] = RATING_SOURCES.ma
  * Fornecedores tecnicos (provider_api). DISJUNTO de RATING_SOURCES (invariante
  * 2): 'imdb' nunca e provider; o fornecedor das notas IMDb e 'imdb236'.
  * Travado por tests/governance/seed-disjoint.test.ts.
+ *
+ * `rapidapi_film_show_ratings` e um AGREGADOR tecnico: transporta notas de
+ * varias fontes editoriais numa chamada so. Ele nunca e a fonte da nota — quem
+ * atribui a fonte real (e sua escala) e `services/ratings`.
  */
 export const API_PROVIDER_SEED: readonly ApiProviderSeed[] = [
   { key: "tmdb", name: "The Movie Database", kind: "data", homepageUrl: "https://www.themoviedb.org" },
   { key: "gemini", name: "Google Gemini", kind: "ai", homepageUrl: "https://ai.google.dev" },
   { key: "imdb236", name: "IMDb (RapidAPI imdb236)", kind: "ratings", homepageUrl: "https://rapidapi.com" },
+  { key: "rapidapi_film_show_ratings", name: "Film/Show Ratings (RapidAPI)", kind: "ratings", homepageUrl: "https://rapidapi.com" },
   { key: "streaming_availability", name: "Streaming Availability (RapidAPI)", kind: "streaming", homepageUrl: "https://rapidapi.com" },
 ];
 

@@ -1,0 +1,22 @@
+{
+  "name": "@screena/streaming",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Worker offline de disponibilidade de streaming: consome Streaming Availability (RapidAPI) e persiste ofertas LEGAIS em watch_availability. Worker-only; NUNCA no render. Nasce com display_allowed=false ate licenca/atribuicao.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "sideEffects": false,
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@screena/db": "workspace:*",
+    "@screena/rapidapi-core": "workspace:*",
+    "@screena/streaming-availability-client": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0"
+  }
+}

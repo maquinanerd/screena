@@ -24,6 +24,15 @@ export default defineConfig({
       '@screena/tmdb-client': fileURLToPath(
         new URL('./api-clients/tmdb/src/index.ts', import.meta.url),
       ),
+      '@screena/rapidapi-core': fileURLToPath(
+        new URL('./api-clients/rapidapi-core/src/index.ts', import.meta.url),
+      ),
+      '@screena/film-show-ratings-client': fileURLToPath(
+        new URL('./api-clients/film_show_ratings/src/index.ts', import.meta.url),
+      ),
+      '@screena/streaming-availability-client': fileURLToPath(
+        new URL('./api-clients/streaming_availability/src/index.ts', import.meta.url),
+      ),
     },
   },
 })

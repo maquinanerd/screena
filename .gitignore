@@ -18,6 +18,12 @@ apps/web/public/media/tmdb/
 # NUNCA commitar: rode services/ingestion/bin/discover-ids.ts --apply p/ gerar.
 services/ingestion/.data/
 
+# Samples e relatorios dos workers RapidAPI (payload de terceiro + diagnostico).
+# NUNCA commitar: sao regeraveis via --sample/--dry-run e podem conter dado de
+# provider externo. As chaves ja sao sanitizadas, mas o payload nao e nosso.
+services/ratings/.data/
+services/streaming/.data/
+
 # Artefatos gerados pelo Next (next build / next lint)
 next-env.d.ts
 *.tsbuildinfo
