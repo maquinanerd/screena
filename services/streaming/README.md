@@ -47,6 +47,49 @@ Flags: `--kind=movie|tv` (obrigatorio), `--country=BR` (default), `--limit=N`,
 `--report=<arquivo>`. Note que `--sample` tambem exige `DATABASE_URL`: as entidades a
 consultar vem do PostgreSQL.
 
+### Revisao e promocao governada (`display_allowed`)
+
+A ingestao grava **tudo** como `display_allowed=false` (invariante 6). Levar uma oferta ao
+ar e uma **decisao humana** separada, feita por dois CLIs **offline, so-banco** (zero rede,
+zero RapidAPI, zero schema novo). O nucleo puro vive em
+[`src/promotion/`](src/promotion) (guardrails, parsers, orquestracao, relatorio); o acesso
+Prisma em [`src/persistence/watch-review-store.ts`](src/persistence/watch-review-store.ts).
+
+**Revisao (read-only)** — lista as candidatas e mostra se cada uma passaria nos guardrails,
+sem alterar nada:
+
+```bash
+# listar candidatas
+node "$TSX" services/streaming/bin/review-watch-availability.ts --kind=movie --country=BR --limit=20
+# filtrar por entidade
+node "$TSX" services/streaming/bin/review-watch-availability.ts --kind=movie --entity-id=1 --country=BR
+# exportar relatorio markdown em .data/ (gitignored)
+node "$TSX" services/streaming/bin/review-watch-availability.ts --kind=movie --entity-id=1 --country=BR --report
+```
+
+**Promocao/reversao (por ids EXPLICITOS)** — sem `--confirm` e sempre **dry-run**; com
+`--confirm` so as linhas **elegiveis** viram `display_allowed=true`. `--revoke` volta para
+`false`:
+
+```bash
+# dry-run: mostra o que SERIA promovido, nada muda
+node "$TSX" services/streaming/bin/promote-watch-availability.ts --ids=1,2,3 --country=BR
+# promocao real (so as elegiveis)
+node "$TSX" services/streaming/bin/promote-watch-availability.ts --ids=1,2,3 --country=BR --confirm
+# reversao
+node "$TSX" services/streaming/bin/promote-watch-availability.ts --ids=1,2,3 --country=BR --revoke --confirm
+```
+
+Guardrails de promocao (a primeira violacao e reportada): `wrong-provider` (so
+`streaming_availability`), `wrong-country` (so BR), `already-display-allowed`,
+`invalid-offer-type` (so `subscription|free|rent|buy`; nunca `ads`/`cinema`/`addon`),
+`missing-provider` (exige `provider_key` **e** `provider_name`), `missing-link`,
+`unsafe-link` (so `http(s)`, sem marcador de pirataria) e `expired` (`available_until` no
+passado). O `updateMany` reafirma provider/pais/estado no `WHERE` (defesa em profundidade) e
+toca **apenas** a coluna `display_allowed` — nunca `screen_score`/`external_ratings`. Cada
+acao efetiva registra 1 linha tecnica em `api_sync_logs` (`promote:watch_availability` /
+`revoke:watch_availability`).
+
 ### Idempotencia sem unique
 
 `watch_availability` **nao tem chave natural unica**. Reexecutar `--apply` nao pode
