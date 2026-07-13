@@ -53,6 +53,8 @@ export interface MoviePageData {
   cast: CastMemberView[];
   /** Onde assistir (watch_availability licenciado no BR); vazio omite a secao. */
   watch: WatchView;
+  /** IDs externos reais (imdb/tmdb/...) para montar `sameAs` no JSON-LD. */
+  externalIds: { source: string; externalId: string }[];
 }
 
 /**
@@ -74,7 +76,7 @@ export const getMoviePageData = cache(
 
     const entityId = slugRow.entityId;
 
-    const [movie, canonicalSlugRow, translation, contentBlocks, relatedNews, cast, watch] =
+    const [movie, canonicalSlugRow, translation, contentBlocks, relatedNews, cast, watch, externalIds] =
       await Promise.all([
       prisma.movie.findUnique({
         where: { id: entityId },
@@ -118,6 +120,10 @@ export const getMoviePageData = cache(
       getRelatedNewsForEntity(prisma, ENTITY_TYPE, entityId),
       getCastForEntity(prisma, ENTITY_TYPE, entityId),
       getWatchForEntity(prisma, ENTITY_TYPE, entityId),
+      prisma.entityExternalId.findMany({
+        where: { entityType: ENTITY_TYPE, entityId },
+        select: { source: true, externalId: true },
+      }),
     ]);
 
     if (movie === null) return null;
@@ -155,6 +161,7 @@ export const getMoviePageData = cache(
       relatedNews,
       cast,
       watch,
+      externalIds,
     };
   },
 );

@@ -39,6 +39,8 @@ export interface PersonPageData {
   canonicalUrl: string;
   /** Noticias relacionadas publicaveis (EntityNewsLink); [] quando nao houver. */
   relatedNews: NewsCardView[];
+  /** IDs externos reais (imdb/tmdb/...) para montar `sameAs` no JSON-LD. */
+  externalIds: { source: string; externalId: string }[];
 }
 
 function personCanonicalUrl(slug: string): string {
@@ -76,7 +78,7 @@ export const getPersonPageData = cache(
 
     const entityId = slugRow.entityId;
 
-    const [person, canonicalSlugRow, translation, contentBlocks, castRows, crewRows, relatedNews] =
+    const [person, canonicalSlugRow, translation, contentBlocks, castRows, crewRows, relatedNews, externalIds] =
       await Promise.all([
         prisma.person.findUnique({
           where: { id: entityId },
@@ -134,6 +136,10 @@ export const getPersonPageData = cache(
           },
         }),
         getRelatedNewsForEntity(prisma, ENTITY_TYPE, entityId),
+        prisma.entityExternalId.findMany({
+          where: { entityType: ENTITY_TYPE, entityId },
+          select: { source: true, externalId: true },
+        }),
       ]);
 
     if (person === null) return null;
@@ -171,6 +177,7 @@ export const getPersonPageData = cache(
       canonicalSlug,
       canonicalUrl: personCanonicalUrl(canonicalSlug),
       relatedNews,
+      externalIds,
     };
   },
 );
