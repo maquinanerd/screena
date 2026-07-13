@@ -17,18 +17,28 @@ import {
   type RapidApiHttpDeps,
 } from '@screena/rapidapi-core'
 
-import { isImdbId } from './provider.js'
+import {
+  isImdbId,
+  STREAMING_AVAILABILITY_DEFAULT_OUTPUT_LANGUAGE,
+  STREAMING_AVAILABILITY_DEFAULT_SERIES_GRANULARITY,
+} from './provider.js'
 
 /** Endpoint base de lookup por titulo. */
 export const SHOWS_ENDPOINT_PREFIX = '/shows/'
 
-/** Parametros de uma consulta de disponibilidade. */
+/**
+ * Parametros de uma consulta de disponibilidade.
+ *
+ * O contrato real e `GET /shows/{imdbId}?series_granularity=episode&output_language=en`.
+ * NAO ha param `country`: o payload devolve `streamingOptions` por pais e o
+ * filtro (BR) e feito no worker. `showId` e o IMDb id real da entidade.
+ */
 export interface ShowLookupInput {
-  /** `tt0111161` (IMDb) ou `movie/278` | `tv/1396` (TMDB). */
+  /** IMDb id real da entidade (`tt<digitos>`) — a chave da chamada nesta fase. */
   readonly showId: string
-  /** ISO 3166-1 alpha-2 (ex.: `BR`). */
-  readonly country: string
-  /** ISO 639-1 do texto de saida (opcional). */
+  /** Granularidade de series (default `episode`, como no contrato real). */
+  readonly seriesGranularity?: string
+  /** ISO 639-1 do texto de saida (default `en`, como no contrato real). */
   readonly outputLanguage?: string
 }
 
@@ -51,11 +61,13 @@ export function isSafeShowId(showId: string): boolean {
 }
 
 /**
- * Monta (sem executar) a requisicao de `GET /shows/{id}`.
+ * Monta (sem executar) a requisicao de
+ * `GET /shows/{imdbId}?series_granularity=episode&output_language=en`.
  *
  * PURO — o dry-run usa isto para relatar o que SERIA chamado sem gastar cota.
- * A barra de `movie/278` e parte do path (nao e escapada): a doc define o id
- * TMDB exatamente nesse formato.
+ * Nao ha param `country`: o payload devolve todos os paises e o worker filtra BR.
+ * A barra de `movie/278` (aceita pelo guard) e parte do path e nao e escapada,
+ * mas a chamada canonica desta fase usa o IMDb id.
  *
  * @throws {RapidApiConfigError} Se `showId` nao for uma forma reconhecida.
  */
@@ -67,8 +79,9 @@ export function buildShowRequest(input: ShowLookupInput): ShowRequest {
   }
   const endpoint = `${SHOWS_ENDPOINT_PREFIX}${input.showId}`
   const params: QueryParams = {
-    country: input.country,
-    ...(input.outputLanguage === undefined ? {} : { output_language: input.outputLanguage }),
+    series_granularity:
+      input.seriesGranularity ?? STREAMING_AVAILABILITY_DEFAULT_SERIES_GRANULARITY,
+    output_language: input.outputLanguage ?? STREAMING_AVAILABILITY_DEFAULT_OUTPUT_LANGUAGE,
   }
   return { endpoint, params, cacheKey: buildCacheKey(endpoint, params) }
 }
@@ -81,7 +94,10 @@ export class StreamingAvailabilityClient {
     this.http = new RapidApiHttpClient(config, deps)
   }
 
-  /** `GET /shows/{id}?country=BR` — payload cru, sem normalizacao. */
+  /**
+   * `GET /shows/{imdbId}?series_granularity=episode&output_language=en` — payload
+   * cru, sem normalizacao. A `x-rapidapi-key` viaja so em header (nunca na URL).
+   */
   async getShow(input: ShowLookupInput): Promise<unknown> {
     const request = buildShowRequest(input)
     return this.http.request(request.endpoint, request.params)

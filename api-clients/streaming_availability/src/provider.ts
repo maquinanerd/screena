@@ -2,9 +2,12 @@
  * provider.ts — Identidade do fornecedor TECNICO Streaming Availability.
  *
  * Fonte: Streaming Availability API (Movie of the Night), consumida via RapidAPI.
- * Endpoint de lookup por titulo: `GET /shows/{id}` com `country` (ISO 3166-1
- * alpha-2). `id` aceita o id interno, o IMDb id (`tt<digitos>`) ou o TMDB id no
- * formato `movie/<id>` | `tv/<id>`.
+ * Contrato REAL de lookup por titulo (v4):
+ *   `GET /shows/{imdbId}?series_granularity=episode&output_language=en`.
+ * A chave da chamada nesta fase e o **IMDb id real** (`tt<digitos>`) da
+ * entidade local (vindo de `entity_external_ids`); NAO usamos titulo nem o TMDB
+ * id como chave da chamada. O payload devolve `streamingOptions` agrupado por
+ * pais — o filtro por pais (BR) acontece no worker, nao na querystring.
  *
  * Docs: https://docs.movieofthenight.com/guide/shows
  *
@@ -26,8 +29,17 @@ export const STREAMING_AVAILABILITY_DEFAULT_BASE_URL = 'https://streaming-availa
 /** TTL padrao do `api_cache`: 24h (a documentacao indica atualizacao diaria). */
 export const STREAMING_AVAILABILITY_DEFAULT_CACHE_TTL_MS = 86_400_000
 
-/** Pais padrao desta fase. */
+/** Pais padrao desta fase (filtro aplicado no worker, nunca na querystring). */
 export const STREAMING_AVAILABILITY_DEFAULT_COUNTRY = 'BR'
+
+/**
+ * Granularidade de series pedida ao upstream. O contrato real usa `episode`;
+ * para filme e inocuo, mas mantemos exatamente o que a doc/cURL especifica.
+ */
+export const STREAMING_AVAILABILITY_DEFAULT_SERIES_GRANULARITY = 'episode'
+
+/** Idioma do texto de saida do upstream (o contrato real usa `en`). */
+export const STREAMING_AVAILABILITY_DEFAULT_OUTPUT_LANGUAGE = 'en'
 
 /** Texto de atribuicao exigido pelos termos (usado so quando a licenca liberar). */
 export const STREAMING_AVAILABILITY_ATTRIBUTION_TEXT =

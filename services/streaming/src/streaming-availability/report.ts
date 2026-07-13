@@ -46,7 +46,9 @@ export interface StreamingReportJson {
   readonly error_code: string | null
   readonly counters: {
     readonly entities_selected: number
+    readonly entities_without_imdb: number
     readonly entities_fetched: number
+    readonly entities_not_found: number
     readonly entities_failed: number
     readonly offers_recognized: number
     readonly offers_written: number
@@ -94,7 +96,9 @@ export function buildStreamingReport(
     error_code: result.errorCode,
     counters: {
       entities_selected: result.counters.entitiesSelected,
+      entities_without_imdb: result.counters.entitiesWithoutImdb,
       entities_fetched: result.counters.entitiesFetched,
+      entities_not_found: result.counters.entitiesNotFound,
       entities_failed: result.counters.entitiesFailed,
       offers_recognized: result.counters.offersRecognized,
       offers_written: result.counters.offersWritten,
@@ -130,7 +134,9 @@ export function renderStreamingReport(report: StreamingReportJson): string {
   lines.push('## Contagens')
   lines.push('')
   lines.push(`- entidades selecionadas: ${report.counters.entities_selected}`)
+  lines.push(`- entidades sem IMDb id (nao consultadas): ${report.counters.entities_without_imdb}`)
   lines.push(`- entidades consultadas: ${report.counters.entities_fetched}`)
+  lines.push(`- entidades ausentes no upstream (404): ${report.counters.entities_not_found}`)
   lines.push(`- entidades com falha: ${report.counters.entities_failed}`)
   lines.push(`- ofertas reconhecidas: ${report.counters.offers_recognized}`)
   lines.push(`- ofertas gravadas: ${report.counters.offers_written}`)
@@ -140,7 +146,11 @@ export function renderStreamingReport(report: StreamingReportJson): string {
   if (report.planned.length > 0) {
     lines.push('## Plano (o que seria/foi chamado)')
     lines.push('')
-    for (const endpoint of report.planned) lines.push(`- \`GET ${endpoint}?country=${report.country}\``)
+    lines.push(`> pais filtrado: \`${report.country}\` (o filtro e no worker, nao na querystring).`)
+    lines.push('')
+    for (const endpoint of report.planned) {
+      lines.push(`- \`GET ${endpoint}?series_granularity=episode&output_language=en\``)
+    }
     lines.push('')
   }
 
