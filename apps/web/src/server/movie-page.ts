@@ -31,10 +31,10 @@ import {
 import { movieCanonicalUrl } from "../lib/site";
 import { getRelatedNewsForEntity } from "./related-news";
 import { getCastForEntity } from "./entity-cast";
-import { getWatchForEntity } from "./entity-watch";
+import { getWatchAvailabilityForEntity } from "./entity-watch";
 import type { NewsCardView } from "../lib/news-presenter";
 import type { CastMemberView } from "../lib/cast-presenter";
-import type { WatchView } from "../lib/watch-presenter";
+import type { WatchAvailabilityView } from "../lib/watch-availability-presenter";
 
 /** Idioma de publicacao do MVP (invariante 7): pt-BR indexa primeiro. */
 const LANGUAGE_CODE = "pt-BR";
@@ -51,8 +51,8 @@ export interface MoviePageData {
   relatedNews: NewsCardView[];
   /** Elenco principal (cast_members/people); [] quando nao houver. */
   cast: CastMemberView[];
-  /** Onde assistir (watch_availability licenciado no BR); vazio omite a secao. */
-  watch: WatchView;
+  /** Disponibilidade no Brasil (watch_availability licenciado); `null` omite o painel. */
+  watch: WatchAvailabilityView | null;
   /** IDs externos reais (imdb/tmdb/...) para montar `sameAs` no JSON-LD. */
   externalIds: { source: string; externalId: string }[];
 }
@@ -121,7 +121,7 @@ export const getMoviePageData = cache(
       }),
       getRelatedNewsForEntity(prisma, ENTITY_TYPE, entityId),
       getCastForEntity(prisma, ENTITY_TYPE, entityId),
-      getWatchForEntity(prisma, ENTITY_TYPE, entityId),
+      getWatchAvailabilityForEntity(prisma, ENTITY_TYPE, entityId),
       prisma.entityExternalId.findMany({
         where: { entityType: ENTITY_TYPE, entityId },
         select: { source: true, externalId: true },

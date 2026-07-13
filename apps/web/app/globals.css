@@ -3277,18 +3277,40 @@ a {
 }
 
 /* ================================================================== */
-/* Watch providers                                                   */
+/* Watch availability (Disponibilidade no Brasil)                    */
 /* ------------------------------------------------------------------ */
-.watch-providers {
+.watch-availability {
   padding: 48px 0 0;
 }
-.watch-providers__title {
-  margin: 0 0 16px;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--text-strong);
+.watch-availability__title {
+  margin: 0 0 4px;
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--text-heading);
 }
-.watch-providers__list {
+.watch-availability__note {
+  margin: 0 0 20px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.watch-availability__groups {
+  display: grid;
+  gap: 20px;
+}
+.watch-availability__group {
+  display: grid;
+  gap: 10px;
+}
+.watch-availability__group-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.watch-availability__list {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -3296,34 +3318,55 @@ a {
   flex-wrap: wrap;
   gap: 10px;
 }
-.watch-provider {
+.watch-offer {
+  min-width: 0;
+}
+.watch-offer__link {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  height: 44px;
-  padding: 0 18px;
+  gap: 12px;
+  min-height: 44px;
+  padding: 8px 16px;
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
+  text-decoration: none;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
 }
-.watch-provider__name {
+.watch-offer__link:hover {
+  border-color: var(--text-faint);
+  background: var(--bg-tint);
+}
+.watch-offer__provider {
   font-size: 14px;
   font-weight: 700;
   color: var(--text-strong);
 }
-.watch-provider__offers {
+.watch-offer__meta {
   display: inline-flex;
+  align-items: center;
   gap: 6px;
 }
-.watch-provider__offer {
+.watch-offer__quality,
+.watch-offer__price {
   font-size: 11px;
   color: var(--text-muted);
   background: var(--bg-tint);
   border-radius: var(--radius-xs);
   padding: 2px 7px;
 }
-.watch-providers__updated {
-  margin: 12px 0 0;
+.watch-offer__quality {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.watch-offer__price {
+  color: var(--text-strong);
+  font-weight: 650;
+}
+.watch-availability__updated {
+  margin: 16px 0 0;
   font-size: 12px;
   color: var(--text-faint);
 }

@@ -1,0 +1,200 @@
+/**
+ * Testes puros do presenter "Disponibilidade no Brasil" (invariantes 6 e 8).
+ *
+ * Garantem: LICENCA antes de exibir (so display_allowed=true entra); SEM
+ * pirataria e SEM addon (so as 4 modalidades legais; tipos desconhecidos
+ * descartados); deep link so http/https; descarte de linha incompleta
+ * (provider_name/provider_key/offer_type/deep_link); dedupe; agrupamento na
+ * ordem canonica (assinatura/gratis/aluguel/compra); preco so em aluguel/compra;
+ * ordenacao estavel (provedor asc, qualidade desc); carimbo de frescor; e
+ * `null` quando nao ha oferta valida.
+ */
+
+import { describe, expect, it } from "vitest";
+
+import {
+  buildWatchAvailabilityView,
+  formatWatchDate,
+  type WatchAvailabilityRow,
+} from "../../apps/web/src/lib/watch-availability-presenter";
+
+function row(overrides: Partial<WatchAvailabilityRow> = {}): WatchAvailabilityRow {
+  return {
+    providerName: "Netflix",
+    providerKey: "netflix",
+    offerType: "subscription",
+    deepLink: "https://www.netflix.com/title/1",
+    quality: null,
+    priceAmount: null,
+    currency: null,
+    displayAllowed: true,
+    fetchedAtIso: null,
+    ...overrides,
+  };
+}
+
+describe("formatWatchDate", () => {
+  it("formata ISO -> DD/MM/AAAA e recusa invalido", () => {
+    expect(formatWatchDate("2026-06-15T00:00:00.000Z")).toBe("15/06/2026");
+    expect(formatWatchDate("2026-06-15")).toBe("15/06/2026");
+    expect(formatWatchDate(null)).toBeNull();
+    expect(formatWatchDate("15/06/2026")).toBeNull();
+  });
+});
+
+describe("buildWatchAvailabilityView — licenca (invariante 6)", () => {
+  it("descarta oferta sem display_allowed e retorna null (gate absoluto)", () => {
+    expect(buildWatchAvailabilityView([row({ displayAllowed: false })])).toBeNull();
+  });
+
+  it("nunca inclui provider com display_allowed=false ao lado de um permitido", () => {
+    const view = buildWatchAvailabilityView([
+      row({ providerName: "Max", providerKey: "max", displayAllowed: false }),
+      row({ providerName: "Netflix", providerKey: "netflix", displayAllowed: true }),
+    ]);
+    expect(view).not.toBeNull();
+    const names = view!.groups.flatMap((g) => g.offers.map((o) => o.providerName));
+    expect(names).toContain("Netflix");
+    expect(names).not.toContain("Max");
+  });
+
+  it("com display_allowed=true, expoe o provider real que o painel renderiza", () => {
+    const view = buildWatchAvailabilityView([
+      row({ providerName: "Netflix", providerKey: "netflix" }),
+    ]);
+    expect(view).not.toBeNull();
+    const offer = view!.groups[0]?.offers[0];
+    expect(offer?.providerName).toBe("Netflix");
+    expect(offer?.deepLink).toBe("https://www.netflix.com/title/1");
+  });
+});
+
+describe("buildWatchAvailabilityView — deep link e pirataria", () => {
+  it("aceita apenas deep link http/https", () => {
+    expect(buildWatchAvailabilityView([row({ deepLink: null })])).toBeNull();
+    expect(buildWatchAvailabilityView([row({ deepLink: "netflix://title/1" })])).toBeNull();
+    expect(
+      buildWatchAvailabilityView([row({ deepLink: "javascript:alert(1)" })]),
+    ).toBeNull();
+    expect(
+      buildWatchAvailabilityView([row({ deepLink: "http://x.example/1" })]),
+    ).not.toBeNull();
+    expect(
+      buildWatchAvailabilityView([row({ deepLink: "https://x.example/1" })]),
+    ).not.toBeNull();
+  });
+
+  it("descarta addon e qualquer modalidade fora das 4 legais", () => {
+    expect(buildWatchAvailabilityView([row({ offerType: "addon" })])).toBeNull();
+    expect(buildWatchAvailabilityView([row({ offerType: "cinema" })])).toBeNull();
+    expect(buildWatchAvailabilityView([row({ offerType: "ads" })])).toBeNull();
+    expect(buildWatchAvailabilityView([row({ offerType: "torrent" })])).toBeNull();
+    expect(buildWatchAvailabilityView([row({ offerType: "unknown" })])).toBeNull();
+  });
+});
+
+describe("buildWatchAvailabilityView — linha incompleta", () => {
+  it("descarta linha sem provider_name ou provider_key", () => {
+    expect(buildWatchAvailabilityView([row({ providerName: "   " })])).toBeNull();
+    expect(buildWatchAvailabilityView([row({ providerKey: null })])).toBeNull();
+  });
+});
+
+describe("buildWatchAvailabilityView — agrupamento e ordem", () => {
+  it("agrupa nas 4 modalidades na ordem canonica assinatura/gratis/aluguel/compra", () => {
+    const view = buildWatchAvailabilityView([
+      row({ providerName: "Apple TV", providerKey: "apple", offerType: "buy", deepLink: "https://tv.apple.com/b" }),
+      row({ providerName: "Pluto", providerKey: "pluto", offerType: "free", deepLink: "https://pluto.tv/f" }),
+      row({ providerName: "Google", providerKey: "google", offerType: "rent", deepLink: "https://play.google.com/r", priceAmount: "12.90", currency: "BRL" }),
+      row({ providerName: "Netflix", providerKey: "netflix", offerType: "subscription", deepLink: "https://netflix.com/s" }),
+    ]);
+    expect(view).not.toBeNull();
+    expect(view!.groups.map((g) => g.offerType)).toEqual([
+      "subscription",
+      "free",
+      "rent",
+      "buy",
+    ]);
+    expect(view!.groups.map((g) => g.label)).toEqual([
+      "Assinatura",
+      "Grátis",
+      "Aluguel",
+      "Compra",
+    ]);
+  });
+
+  it("ordena dentro do grupo por provedor asc e depois qualidade desc", () => {
+    const view = buildWatchAvailabilityView([
+      row({ providerName: "Zeta", providerKey: "zeta", deepLink: "https://z.example/1" }),
+      row({ providerName: "Alfa", providerKey: "alfa-sd", deepLink: "https://a.example/sd", quality: "sd" }),
+      row({ providerName: "Alfa", providerKey: "alfa-uhd", deepLink: "https://a.example/uhd", quality: "uhd" }),
+    ]);
+    const offers = view!.groups[0]!.offers;
+    expect(offers.map((o) => o.providerName)).toEqual(["Alfa", "Alfa", "Zeta"]);
+    // Mesmo provedor: qualidade mais alta primeiro (uhd antes de sd).
+    expect(offers[0]!.quality).toBe("uhd");
+    expect(offers[1]!.quality).toBe("sd");
+  });
+});
+
+describe("buildWatchAvailabilityView — preco e dedupe", () => {
+  it("mostra preco (moeda+valor) em aluguel/compra quando existe", () => {
+    const view = buildWatchAvailabilityView([
+      row({ offerType: "rent", providerKey: "g", deepLink: "https://g.example/r", priceAmount: "12.90", currency: "BRL" }),
+      row({ offerType: "buy", providerKey: "g2", deepLink: "https://g.example/b", priceAmount: "39.90", currency: "USD" }),
+    ]);
+    const rent = view!.groups.find((g) => g.offerType === "rent")!.offers[0]!;
+    const buy = view!.groups.find((g) => g.offerType === "buy")!.offers[0]!;
+    expect(rent.priceLabel).toBe("R$ 12.90");
+    expect(buy.priceLabel).toBe("US$ 39.90");
+  });
+
+  it("nao mostra preco em assinatura mesmo com valor presente", () => {
+    const view = buildWatchAvailabilityView([
+      row({ offerType: "subscription", priceAmount: "55.90", currency: "BRL" }),
+    ]);
+    expect(view!.groups[0]!.offers[0]!.priceLabel).toBeNull();
+  });
+
+  it("usa o codigo da moeda quando nao ha simbolo mapeado", () => {
+    const view = buildWatchAvailabilityView([
+      row({ offerType: "rent", deepLink: "https://x.example/r", priceAmount: "10", currency: "gbp" }),
+    ]);
+    expect(view!.groups[0]!.offers[0]!.priceLabel).toBe("10 GBP");
+  });
+
+  it("deduplica ofertas identicas (provider/offerType/link/quality/price)", () => {
+    const view = buildWatchAvailabilityView([
+      row({ offerType: "rent", providerKey: "g", deepLink: "https://g.example/r", quality: "hd", priceAmount: "9.90", currency: "BRL" }),
+      row({ offerType: "rent", providerKey: "g", deepLink: "https://g.example/r", quality: "hd", priceAmount: "9.90", currency: "BRL" }),
+    ]);
+    expect(view!.groups[0]!.offers).toHaveLength(1);
+  });
+});
+
+describe("buildWatchAvailabilityView — vazio e frescor", () => {
+  it("retorna null quando nao ha nenhuma oferta valida", () => {
+    expect(buildWatchAvailabilityView([])).toBeNull();
+    expect(
+      buildWatchAvailabilityView([
+        row({ displayAllowed: false }),
+        row({ offerType: "addon" }),
+        row({ deepLink: null }),
+      ]),
+    ).toBeNull();
+  });
+
+  it("deriva o carimbo pelo fetched_at mais recente das ofertas incluidas", () => {
+    const view = buildWatchAvailabilityView([
+      row({ providerKey: "a", deepLink: "https://a/1", fetchedAtIso: "2026-05-01T00:00:00Z" }),
+      row({ providerKey: "b", deepLink: "https://b/1", fetchedAtIso: "2026-06-20T00:00:00Z" }),
+    ]);
+    expect(view!.updatedAtLabel).toBe("Atualizado em 20/06/2026");
+  });
+
+  it("sem fetched_at -> sem carimbo, mas com grupos", () => {
+    const view = buildWatchAvailabilityView([row()]);
+    expect(view!.groups).toHaveLength(1);
+    expect(view!.updatedAtLabel).toBeNull();
+  });
+});
