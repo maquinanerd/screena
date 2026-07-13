@@ -6,9 +6,12 @@ import { buildSameAs } from "@screena/seo";
 import { getSeriesPageData } from "../../../../src/server/series-page";
 import { canonicalRedirectPath } from "../../../../src/lib/canonical-redirect";
 import { SITE_URL } from "../../../../src/lib/site";
+import { buildExternalLinks } from "../../../../src/lib/external-links";
 import { RelatedNewsSection } from "../../../_components/related-news-section";
 import { CastStrip } from "../../../_components/cast-strip";
 import { WatchProviders } from "../../../_components/watch-providers";
+import { EntityExternalIds } from "../../../_components/entity-external-ids";
+import { EntityFacts } from "../../../_components/entity-facts";
 
 /**
  * Pagina publica de serie - /pt/series/[slug]/ (schema TVSeries, acento verde).
@@ -80,9 +83,25 @@ export default async function SeriesPage({
 
   const { view, indexability, canonicalUrl, relatedNews, cast, watch, externalIds } = data;
   const isUnderReview = indexability.decision !== "index";
-  const metaItems = [view.seasonsCountLabel, view.episodesCountLabel].filter(
-    (item): item is string => item !== null,
-  );
+
+  // Ficha tecnica factual: periodo fica no <h1>; a ficha complementa com
+  // situacao (tv_shows.status), contagem real de temporadas/episodios e idioma
+  // original — todos colunas reais, mapeadas em pt-BR. Ausente = omitido.
+  const facts = [
+    view.statusLabel !== null ? { label: "Situação", value: view.statusLabel } : null,
+    view.seasonsCount !== null
+      ? { label: "Temporadas", value: String(view.seasonsCount) }
+      : null,
+    view.episodesCount !== null
+      ? { label: "Episódios", value: String(view.episodesCount) }
+      : null,
+    view.originalLanguageLabel !== null
+      ? { label: "Idioma original", value: view.originalLanguageLabel }
+      : null,
+  ].filter((fact): fact is { label: string; value: string } => fact !== null);
+
+  // Links de identidade externa (mesmas fontes do `sameAs` do JSON-LD).
+  const externalLinks = buildExternalLinks(externalIds, "tv");
 
   const summaryBlock =
     view.blocks.find((block) => block.blockType === SUMMARY_BLOCK_TYPE) ?? null;
@@ -140,63 +159,54 @@ export default async function SeriesPage({
           </ol>
         </nav>
 
-        <section className="series-topbar" data-vertical="series">
-          <div className="series-topbar__lead">
-            <h1 className="series-topbar__title">
-              {view.title}
-              {view.periodLabel !== null ? (
-                <span className="series-topbar__year"> ({view.periodLabel})</span>
-              ) : null}
-            </h1>
-            <p className="series-topbar__badge">
+        <section
+          className={`entity-topbar${view.media.poster !== null ? "" : " entity-topbar--solo"}`}
+          data-vertical="series"
+        >
+          {view.media.poster !== null ? (
+            <figure className="entity-topbar__poster">
+              <img
+                src={view.media.poster.src}
+                alt={`Pôster de ${view.title}`}
+                width={view.media.poster.width}
+                height={view.media.poster.height}
+                className="entity-topbar__poster-img"
+              />
+            </figure>
+          ) : null}
+          <div className="entity-topbar__lead">
+            <p className="entity-topbar__badge">
               <span data-vertical="series" className="screena-badge screena-badge--series">
                 Serie
               </span>
             </p>
-            {metaItems.length > 0 ? (
-              <p className="series-topbar__meta">{metaItems.join(" / ")}</p>
-            ) : null}
+            <h1 className="entity-topbar__title">
+              {view.title}
+              {view.periodLabel !== null ? (
+                <span className="entity-topbar__year"> ({view.periodLabel})</span>
+              ) : null}
+            </h1>
+            <EntityFacts facts={facts} />
             {view.metaDescription !== null ? (
-              <p className="series-topbar__synopsis">{view.metaDescription}</p>
+              <p className="entity-topbar__synopsis">{view.metaDescription}</p>
             ) : null}
+            <EntityExternalIds links={externalLinks} />
           </div>
         </section>
       </div>
 
-      <div className={`series-media${view.media.hasRealImage ? " series-media--real" : ""}`}>
-        <div className="series-media__grid">
-          <div className="series-media__poster">
-            {view.media.poster !== null ? (
-              <img
-                src={view.media.poster.src}
-                alt={`Poster de ${view.title}`}
-                width={view.media.poster.width}
-                height={view.media.poster.height}
-                className="series-media__image"
-              />
-            ) : null}
-          </div>
-          <div className="series-media__stage">
-            {view.media.backdrop !== null ? (
-              <img
-                src={view.media.backdrop.src}
-                alt=""
-                width={view.media.backdrop.width}
-                height={view.media.backdrop.height}
-                className="series-media__image"
-              />
-            ) : null}
-            <span className="series-media__label" aria-hidden="true">
-              Serie
-            </span>
-          </div>
-          <div className="series-media__tiles">
-            <span className="series-media__tile" />
-            <span className="series-media__tile" />
-            <span className="series-media__tile" />
-          </div>
+      {/* Backdrop real (16:9) full-bleed — sem rotulo/tiles decorativos. */}
+      {view.media.backdrop !== null ? (
+        <div className="entity-backdrop" data-vertical="series">
+          <img
+            src={view.media.backdrop.src}
+            alt=""
+            width={view.media.backdrop.width}
+            height={view.media.backdrop.height}
+            className="entity-backdrop__img"
+          />
         </div>
-      </div>
+      ) : null}
 
       {hasEditorial ? (
         <div className="container">

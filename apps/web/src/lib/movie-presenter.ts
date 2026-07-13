@@ -9,6 +9,7 @@
 
 import { isPubliclyRenderableBlock } from "./movie-indexability";
 import { buildTmdbImageUrl, type TmdbImageSize } from "./tmdb-image-url";
+import { mapEntityStatus, mapOriginalLanguage } from "./entity-status";
 
 /**
  * Ordem canonica dos tipos de content_block (espelha o enum `ContentBlockType`
@@ -58,6 +59,10 @@ export interface MovieRecordInput {
   posterPath: string | null;
   /** `movies.backdrop_path` salvo offline; nunca uma URL livre do banco. */
   backdropPath: string | null;
+  /** `movies.status` (enum TMDB) — situacao de producao; omitida se ausente. */
+  status?: string | null;
+  /** `movies.original_language` (ISO 639-1) — idioma original; omitido se ausente. */
+  originalLanguage?: string | null;
 }
 
 /** Subconjunto de `entity_translations` (pt-BR) usado pela pagina. */
@@ -101,6 +106,10 @@ export interface MoviePageView {
   year: number | null;
   runtimeMinutes: number | null;
   runtimeLabel: string | null;
+  /** Situacao de producao ja em pt-BR (ex.: "Lançado"); `null` = omite a linha. */
+  statusLabel: string | null;
+  /** Idioma original ja em pt-BR (ex.: "Inglês"); `null` = omite a linha. */
+  originalLanguageLabel: string | null;
   metaTitle: string | null;
   metaDescription: string | null;
   blocks: RenderableMovieBlock[];
@@ -228,6 +237,8 @@ export function presentMovie(input: PresentMovieInput): MoviePageView {
     year: input.record.year,
     runtimeMinutes: input.record.runtimeMinutes,
     runtimeLabel: formatRuntime(input.record.runtimeMinutes),
+    statusLabel: mapEntityStatus(input.record.status, "movie"),
+    originalLanguageLabel: mapOriginalLanguage(input.record.originalLanguage),
     metaTitle: trimToNull(input.translation?.metaTitle),
     metaDescription: selectMetaDescription(input.translation),
     blocks,

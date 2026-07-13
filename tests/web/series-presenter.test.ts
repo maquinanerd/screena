@@ -281,4 +281,29 @@ describe("buildSeriesPageView", () => {
       "https://image.tmdb.org/t/p/original/still.jpg",
     );
   });
+
+  it("mapeia situacao/idioma reais para a ficha tecnica (pt-BR, feminino)", () => {
+    const view = buildSeriesPageView({
+      record: { ...baseRecord, status: "Returning Series", originalLanguage: "en" },
+      translation: null,
+      blocks: [],
+      seasons: [],
+    });
+    expect(view.statusLabel).toBe("Em exibição");
+    expect(view.originalLanguageLabel).toBe("Inglês");
+    // A contagem crua (numero) tambem vira ficha na rota; o label longo continua.
+    expect(view.seasonsCount).toBe(8);
+    expect(view.episodesCount).toBe(73);
+  });
+
+  it("omite situacao/idioma quando ausentes ou desconhecidos (nunca cru)", () => {
+    const view = buildSeriesPageView({
+      record: { ...baseRecord, status: "Whatever", originalLanguage: "zz" },
+      translation: null,
+      blocks: [],
+      seasons: [],
+    });
+    expect(view.statusLabel).toBeNull();
+    expect(view.originalLanguageLabel).toBeNull();
+  });
 });

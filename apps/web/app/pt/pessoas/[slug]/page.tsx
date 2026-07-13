@@ -6,8 +6,10 @@ import { buildSameAs } from "@screena/seo";
 import { getPersonPageData } from "../../../../src/server/person-page";
 import { canonicalRedirectPath } from "../../../../src/lib/canonical-redirect";
 import { SITE_URL } from "../../../../src/lib/site";
+import { buildExternalLinks } from "../../../../src/lib/external-links";
 import type { PersonCreditEntityType } from "../../../../src/lib/person-presenter";
 import { RelatedNewsSection } from "../../../_components/related-news-section";
+import { EntityExternalIds } from "../../../_components/entity-external-ids";
 
 /**
  * Pagina publica de pessoa - /pt/pessoas/[slug]/ (schema Person, tom NEUTRO).
@@ -95,6 +97,8 @@ export default async function PersonPage({
   const metaItems = [view.lifeLabel, view.placeOfBirth].filter(
     (item): item is string => item !== null,
   );
+  // Links de identidade externa (mesmas fontes do `sameAs` do JSON-LD).
+  const externalLinks = buildExternalLinks(externalIds, "person");
   const hasEditorial = view.blocks.length > 0;
   const hasCredits = view.credits.length > 0;
 
@@ -183,6 +187,7 @@ export default async function PersonPage({
             {view.metaDescription !== null ? (
               <p className="person-hero__intro">{view.metaDescription}</p>
             ) : null}
+            <EntityExternalIds links={externalLinks} />
           </div>
         </section>
       </div>
