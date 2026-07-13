@@ -44,6 +44,11 @@ export type RatingRejectionReason =
   | 'entity-not-found'
   /** Falha de rede/HTTP ao buscar UM item de `/item/` (nunca vaza a chave). */
   | 'item-fetch-failed'
+  /**
+   * Lote de candidatos interrompido cedo (falhas consecutivas ou circuito
+   * aberto) para NAO queimar quota em loop; os ids restantes ficam sem consulta.
+   */
+  | 'batch-aborted'
 
 /** Uma recusa, com detalhe legivel para o relatorio (sem segredo, sem payload cru). */
 export interface RatingRejection {
