@@ -2307,8 +2307,43 @@ a {
   margin: 16px 0 36px;
   max-width: 70ch;
 }
+/* Grade fluida das LISTAGENS (escopada a `.entity-index` para nao tocar os
+   cards da home/explorar): colunas se ajustam sozinhas por largura disponivel,
+   sem depender de breakpoints fixos, e nunca deixam celula orfa. */
 .entity-index .entity-grid {
   margin-top: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(158px, 1fr));
+  gap: 26px 18px;
+}
+.entity-index .entity-card {
+  transition: transform 180ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.entity-index .entity-card__media {
+  transition: box-shadow 180ms ease;
+}
+.entity-index .entity-card__image {
+  transition: transform 320ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+@media (hover: hover) and (pointer: fine) {
+  .entity-index .entity-card:hover {
+    transform: translateY(-4px);
+  }
+  .entity-index .entity-card:hover .entity-card__media {
+    box-shadow: var(--shadow-raised);
+  }
+  .entity-index .entity-card:hover .entity-card__image {
+    transform: scale(1.045);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .entity-index .entity-card,
+  .entity-index .entity-card__image {
+    transition: none;
+  }
+  .entity-index .entity-card:hover,
+  .entity-index .entity-card:hover .entity-card__image {
+    transform: none;
+  }
 }
 .entity-index__more {
   margin: 34px 0 0;
@@ -2565,7 +2600,164 @@ a {
 }
 
 /* ================================================================== */
-/* Movie / Series — top info bar                                      */
+/* Detalhe (filme / serie) — cabecalho editorial + ficha tecnica       */
+/* ------------------------------------------------------------------ */
+/* Cabecalho das rotas reais /pt/filmes/[slug] e /pt/series/[slug]:    */
+/* poster real (2:3) + coluna de identidade (badge, H1, ficha, links). */
+/* O bloco legado `.movie-topbar/.movie-media` abaixo agora serve so a  */
+/* preview de design (/dev/movie-page-preview), nao as rotas publicas.  */
+.entity-topbar {
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr);
+  gap: 44px;
+  align-items: start;
+  padding: 40px 0 32px;
+}
+.entity-topbar--solo {
+  grid-template-columns: minmax(0, 1fr);
+}
+.entity-topbar__poster {
+  margin: 0;
+  aspect-ratio: 2 / 3;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: linear-gradient(150deg, #2a2018, #100b08);
+  box-shadow: var(--shadow-card);
+}
+.entity-topbar[data-vertical="series"] .entity-topbar__poster {
+  background: linear-gradient(150deg, #1b2c22, #0a120d);
+}
+.entity-topbar__poster-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.entity-topbar__lead {
+  min-width: 0;
+  padding-top: 2px;
+}
+.entity-topbar__badge {
+  margin: 0 0 14px;
+}
+.entity-topbar__title {
+  margin: 0;
+  font-size: 40px;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 1.05;
+  color: var(--text-strong);
+}
+.entity-topbar__year {
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.entity-topbar__synopsis {
+  margin: 22px 0 0;
+  font-size: 16px;
+  line-height: 1.65;
+  color: var(--text-body);
+  max-width: 62ch;
+}
+
+/* Ficha tecnica: lista de definicao (rotulo/valor), sem regras em cada
+   linha (spec-sheet com filete por linha e um "AI tell" — usa espaco). */
+.entity-facts {
+  margin: 24px 0 0;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: 28px;
+  row-gap: 11px;
+  max-width: 480px;
+}
+.entity-facts__row {
+  display: contents;
+}
+.entity-facts__label {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  align-self: baseline;
+}
+.entity-facts__value {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+/* Identidade externa (mesmo grafo `sameAs` do JSON-LD), discreta. */
+.entity-links {
+  margin: 26px 0 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+}
+.entity-links__label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.entity-links__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.entity-links__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--text-body);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-decoration: none;
+  transition:
+    border-color 160ms ease,
+    color 160ms ease;
+}
+.entity-links__icon {
+  width: 12px;
+  height: 12px;
+  opacity: 0.5;
+}
+@media (hover: hover) and (pointer: fine) {
+  .entity-links__link:hover {
+    border-color: var(--text-muted);
+    color: var(--text-strong);
+  }
+}
+
+/* Backdrop real (16:9) como faixa full-bleed — altura reservada (sem CLS). */
+.entity-backdrop {
+  margin-top: 6px;
+  width: 100%;
+  overflow: hidden;
+  background: var(--bg-media);
+}
+.entity-backdrop__img {
+  display: block;
+  width: 100%;
+  height: clamp(220px, 32vw, 440px);
+  object-fit: cover;
+}
+
+/* ================================================================== */
+/* Movie / Series — top info bar (LEGADO: preview de design)           */
 /* ------------------------------------------------------------------ */
 .movie-topbar,
 .series-topbar {
@@ -2888,6 +3080,7 @@ a {
   overflow: hidden;
   border: 1px solid var(--border);
   background: var(--bg-surface);
+  box-shadow: var(--shadow-card);
 }
 .person-hero__portrait-fallback {
   display: block;
@@ -3240,6 +3433,10 @@ a {
   .series-synopsis__grid {
     grid-template-columns: 1fr;
   }
+  .entity-topbar {
+    grid-template-columns: 184px minmax(0, 1fr);
+    gap: 30px;
+  }
   .person-hero {
     grid-template-columns: 150px 1fr;
     gap: 28px;
@@ -3329,6 +3526,20 @@ a {
   .movie-topbar__title,
   .series-topbar__title {
     font-size: 28px;
+  }
+  .entity-topbar,
+  .entity-topbar--solo {
+    grid-template-columns: 1fr;
+    gap: 22px;
+  }
+  .entity-topbar__poster {
+    max-width: 172px;
+  }
+  .entity-topbar__title {
+    font-size: 30px;
+  }
+  .entity-facts {
+    column-gap: 20px;
   }
   .person-hero {
     grid-template-columns: 1fr;

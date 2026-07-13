@@ -6,9 +6,12 @@ import { buildSameAs } from "@screena/seo";
 import { getMoviePageData } from "../../../../src/server/movie-page";
 import { canonicalRedirectPath } from "../../../../src/lib/canonical-redirect";
 import { MOVIES_INDEX_PATH, SITE_URL } from "../../../../src/lib/site";
+import { buildExternalLinks } from "../../../../src/lib/external-links";
 import { RelatedNewsSection } from "../../../_components/related-news-section";
 import { CastStrip } from "../../../_components/cast-strip";
 import { WatchProviders } from "../../../_components/watch-providers";
+import { EntityExternalIds } from "../../../_components/entity-external-ids";
+import { EntityFacts } from "../../../_components/entity-facts";
 
 /**
  * Pagina publica de filme — /pt/filmes/[slug]/ (schema Movie, acento vermelho).
@@ -97,8 +100,20 @@ export default async function MoviePage({
   const { view, indexability, canonicalUrl, relatedNews, cast, watch, externalIds } = data;
   const isUnderReview = indexability.decision !== "index";
 
-  // Duracao visivel (so o que existe no payload; ano vai no titulo, nao aqui).
-  const runtimeLabel = view.runtimeLabel;
+  // Ficha tecnica: SO dados factuais que existem no payload; cada ausente e
+  // omitido (nunca placeholder). O ano fica no <h1>; a ficha complementa com
+  // duracao (movies.runtime_minutes) + situacao/idioma (colunas reais
+  // status/original_language mapeadas em pt-BR). Sem nota/streaming inventado.
+  const facts = [
+    view.runtimeLabel !== null ? { label: "Duração", value: view.runtimeLabel } : null,
+    view.statusLabel !== null ? { label: "Situação", value: view.statusLabel } : null,
+    view.originalLanguageLabel !== null
+      ? { label: "Idioma original", value: view.originalLanguageLabel }
+      : null,
+  ].filter((fact): fact is { label: string; value: string } => fact !== null);
+
+  // Links de identidade externa (mesmas fontes do `sameAs` do JSON-LD).
+  const externalLinks = buildExternalLinks(externalIds, "movie");
 
   // Particiona os blocos ja aprovados: o "resumo sem spoilers" (quando existir)
   // vira card lateral; os demais formam a coluna editorial. Cada bloco aparece
@@ -157,76 +172,60 @@ export default async function MoviePage({
           </ol>
         </nav>
 
-        {/* Top info bar — variacao SEGURA da rota real: so a coluna principal
-            (titulo, ano, badge, sinopse curta). As colunas "Avaliacoes" e "Onde
-            assistir" do design NAO sao renderizadas aqui enquanto nao houver
-            ratings/streaming reais — exibir esses headings vazios pareceria
-            feature falsa. Os placeholders decorativos ficam SO na preview
-            (/dev/movie-page-preview). Nada de nota, logo ou plataforma inventada. */}
-        <section className="movie-topbar movie-topbar--solo" data-vertical="movie">
-          <div className="movie-topbar__lead">
-            <h1 className="movie-topbar__title">
-              {view.title}
-              {view.year !== null ? (
-                <span className="movie-topbar__year"> ({view.year})</span>
-              ) : null}
-            </h1>
+        {/* Cabecalho editorial: poster real (2:3) + coluna de identidade (badge,
+            titulo, ficha tecnica factual e sinopse curta). As colunas "Avaliacoes"
+            e "Onde assistir" do design continuam FORA daqui ate haver dado real —
+            headings vazios pareceriam feature falsa. Sem nota/logo/plataforma. */}
+        <section
+          className={`entity-topbar${view.media.poster !== null ? "" : " entity-topbar--solo"}`}
+          data-vertical="movie"
+        >
+          {view.media.poster !== null ? (
+            <figure className="entity-topbar__poster">
+              <img
+                src={view.media.poster.src}
+                alt={`Pôster de ${view.title}`}
+                width={view.media.poster.width}
+                height={view.media.poster.height}
+                className="entity-topbar__poster-img"
+              />
+            </figure>
+          ) : null}
+          <div className="entity-topbar__lead">
             {/* Badge + label textual: dois dos cinco sinais da invariante 11. */}
-            <p className="movie-topbar__badge">
+            <p className="entity-topbar__badge">
               <span data-vertical="movie" className="screena-badge screena-badge--movie">
                 Filme
               </span>
             </p>
-            {runtimeLabel !== null ? (
-              <p className="movie-topbar__meta">{runtimeLabel}</p>
-            ) : null}
+            <h1 className="entity-topbar__title">
+              {view.title}
+              {view.year !== null ? (
+                <span className="entity-topbar__year"> ({view.year})</span>
+              ) : null}
+            </h1>
+            <EntityFacts facts={facts} />
             {view.metaDescription !== null ? (
-              <p className="movie-topbar__synopsis">{view.metaDescription}</p>
+              <p className="entity-topbar__synopsis">{view.metaDescription}</p>
             ) : null}
+            <EntityExternalIds links={externalLinks} />
           </div>
         </section>
       </div>
 
-      {/* Faixa de midia full-bleed do design: poster/backdrop reais somente
-          quando forem paths locais seguros; caso contrario, placeholders visuais. O
-          play continua placeholder nao interativo ate existir trailer legal no banco.
-          Sem legendas ou contagens inventadas. */}
-      <div className={`movie-media${view.media.hasRealImage ? " movie-media--real" : ""}`}>
-        <div className="movie-media__grid">
-          <div className="movie-media__poster">
-            {view.media.poster !== null ? (
-              <img
-                src={view.media.poster.src}
-                alt={`Poster de ${view.title}`}
-                width={view.media.poster.width}
-                height={view.media.poster.height}
-                className="movie-media__image"
-              />
-            ) : null}
-          </div>
-          <div className="movie-media__stage">
-            {view.media.backdrop !== null ? (
-              <img
-                src={view.media.backdrop.src}
-                alt=""
-                width={view.media.backdrop.width}
-                height={view.media.backdrop.height}
-                className="movie-media__image"
-              />
-            ) : null}
-            <span className="movie-media__play" aria-hidden="true">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path fill="currentColor" d="M7 4.6v14.8L19.5 12z" />
-              </svg>
-            </span>
-          </div>
-          <div className="movie-media__tiles">
-            <span className="movie-media__tile" />
-            <span className="movie-media__tile" />
-            <span className="movie-media__tile" />
-          </div>
+      {/* Backdrop real (16:9) como faixa editorial full-bleed — sem play falso,
+          sem tiles decorativos. So aparece quando ha backdrop real no banco. */}
+      {view.media.backdrop !== null ? (
+        <div className="entity-backdrop" data-vertical="movie">
+          <img
+            src={view.media.backdrop.src}
+            alt=""
+            width={view.media.backdrop.width}
+            height={view.media.backdrop.height}
+            className="entity-backdrop__img"
+          />
         </div>
-      </div>
+      ) : null}
 
       {hasEditorial ? (
         <div className="container">

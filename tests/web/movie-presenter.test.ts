@@ -200,4 +200,28 @@ describe("presentMovie", () => {
     expect(view.runtimeLabel).toBe("2 h 1 min");
     expect(view.year).toBe(1999);
   });
+
+  it("mapeia situacao/idioma reais para a ficha tecnica (pt-BR, masculino)", () => {
+    const view = presentMovie({
+      record: { ...baseRecord, status: "Released", originalLanguage: "en" },
+      translation: null,
+      blocks: [],
+    });
+    expect(view.statusLabel).toBe("Lançado");
+    expect(view.originalLanguageLabel).toBe("Inglês");
+  });
+
+  it("omite situacao/idioma quando ausentes ou desconhecidos (nunca cru)", () => {
+    const absent = presentMovie({ record: baseRecord, translation: null, blocks: [] });
+    expect(absent.statusLabel).toBeNull();
+    expect(absent.originalLanguageLabel).toBeNull();
+
+    const unknown = presentMovie({
+      record: { ...baseRecord, status: "Rumored", originalLanguage: "xx" },
+      translation: null,
+      blocks: [],
+    });
+    expect(unknown.statusLabel).toBeNull();
+    expect(unknown.originalLanguageLabel).toBeNull();
+  });
 });

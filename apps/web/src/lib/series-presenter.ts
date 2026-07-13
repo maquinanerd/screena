@@ -9,6 +9,7 @@
 import { evaluateIndexability, type IndexabilityResult } from "@screena/seo";
 
 import { buildTmdbImageUrl, type TmdbImageSize } from "./tmdb-image-url";
+import { mapEntityStatus, mapOriginalLanguage } from "./entity-status";
 
 const BLOCK_TYPE_ORDER = [
   "editorial_intro",
@@ -64,6 +65,10 @@ export interface SeriesRecordInput {
   numberOfEpisodes: number | null;
   posterPath: string | null;
   backdropPath: string | null;
+  /** `tv_shows.status` (enum TMDB) — situacao; omitida se ausente. */
+  status?: string | null;
+  /** `tv_shows.original_language` (ISO 639-1) — idioma; omitido se ausente. */
+  originalLanguage?: string | null;
 }
 
 export interface SeriesTranslationInput {
@@ -144,6 +149,10 @@ export interface SeriesPageView {
   episodesCount: number | null;
   seasonsCountLabel: string | null;
   episodesCountLabel: string | null;
+  /** Situacao de producao ja em pt-BR (ex.: "Em exibição"); `null` = omite. */
+  statusLabel: string | null;
+  /** Idioma original ja em pt-BR (ex.: "Inglês"); `null` = omite a linha. */
+  originalLanguageLabel: string | null;
   metaTitle: string | null;
   metaDescription: string | null;
   blocks: RenderableSeriesBlock[];
@@ -352,6 +361,8 @@ export function buildSeriesPageView(
     episodesCount,
     seasonsCountLabel: formatCountLabel(seasonsCount, "temporada", "temporadas"),
     episodesCountLabel: formatCountLabel(episodesCount, "episodio", "episodios"),
+    statusLabel: mapEntityStatus(input.record.status, "tv"),
+    originalLanguageLabel: mapOriginalLanguage(input.record.originalLanguage),
     metaTitle: trimToNull(input.translation?.metaTitle),
     metaDescription: selectSeriesMetaDescription(input.translation),
     blocks,

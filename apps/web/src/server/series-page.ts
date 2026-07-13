@@ -78,6 +78,8 @@ export const getSeriesPageData = cache(
             numberOfEpisodes: true,
             posterPath: true,
             backdropPath: true,
+            status: true,
+            originalLanguage: true,
           },
         }),
         prisma.slug.findFirst({
@@ -177,6 +179,8 @@ export const getSeriesPageData = cache(
         numberOfEpisodes: series.numberOfEpisodes,
         posterPath: series.posterPath,
         backdropPath: series.backdropPath,
+        status: series.status,
+        originalLanguage: series.originalLanguage,
       },
       translation,
       blocks,
