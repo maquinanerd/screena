@@ -9,7 +9,7 @@ import { SITE_URL } from "../../../../src/lib/site";
 import { buildExternalLinks } from "../../../../src/lib/external-links";
 import { RelatedNewsSection } from "../../../_components/related-news-section";
 import { CastStrip } from "../../../_components/cast-strip";
-import { WatchProviders } from "../../../_components/watch-providers";
+import { WatchAvailabilityPanel } from "../../../_components/watch-availability-panel";
 import { EntityExternalIds } from "../../../_components/entity-external-ids";
 import { EntityFacts } from "../../../_components/entity-facts";
 
@@ -319,11 +319,13 @@ export default async function SeriesPage({
         </div>
       ) : null}
 
-      {/* Onde assistir (watch_availability licenciado no BR). So aparece com
-          oferta `display_allowed` legal; nunca exibe pirataria nem nota. */}
-      {watch.providers.length > 0 ? (
+      {/* Disponibilidade no Brasil (watch_availability licenciado). So aparece
+          com oferta `display_allowed = true`; hoje a ingestao grava `false` por
+          padrao, entao o painel fica omitido ate promocao humana explicita.
+          Nunca exibe pirataria, nota nem plataforma inventada. */}
+      {watch !== null ? (
         <div className="container">
-          <WatchProviders heading="Onde assistir" view={watch} />
+          <WatchAvailabilityPanel view={watch} />
         </div>
       ) : null}
 

@@ -1,24 +1,30 @@
 /**
  * entity-watch.ts — Helper SERVER-ONLY: dado um titulo (filme|serie), traz a
- * disponibilidade legal de "Onde assistir" via `watch_availability`.
+ * disponibilidade legal de streaming no Brasil via `watch_availability`, para o
+ * painel "Disponibilidade no Brasil".
  *
  * Invariantes 3, 4 e 6:
- *  - Le somente PostgreSQL local via @screena/db (Prisma). Read-only.
+ *  - Le somente PostgreSQL local via @screena/db (Prisma). Read-only. NUNCA
+ *    consulta RapidAPI/streaming_availability ao vivo — este e o caminho de
+ *    LEITURA; a ingestao roda offline em worker (PR #57).
  *  - LICENCA antes de exibir: a query ja filtra `display_allowed = true` (gate
- *    de origem); o presenter reaplica o filtro (defesa em profundidade).
- *  - Pais do MVP = Brasil (pt-BR publica primeiro). Sem oferta permitida no
- *    pais -> WatchView vazia e a pagina omite a secao. Nunca exibe pirataria.
+ *    de origem, invariante 6); o presenter reaplica o filtro (defesa em
+ *    profundidade). Este PR NAO promove nenhuma linha para `display_allowed`.
+ *  - Pais do MVP = Brasil (pt-BR publica primeiro) e provider tecnico
+ *    `streaming_availability`. Sem oferta permitida -> `null` e a pagina omite o
+ *    painel. Ofertas vencidas (`available_until` no passado) sao excluidas.
+ *    Nunca exibe pirataria.
  */
 
 import { getPrismaClient } from "@screena/db/server";
 
 import {
-  buildWatchView,
-  type WatchOfferInput,
-  type WatchView,
-} from "../lib/watch-presenter";
+  buildWatchAvailabilityView,
+  type WatchAvailabilityRow,
+  type WatchAvailabilityView,
+} from "../lib/watch-availability-presenter";
 
-/** Titulos que tem "onde assistir" (subset de EntityType). */
+/** Titulos que tem disponibilidade de streaming (subset de EntityType). */
 export type WatchEntityType = "movie" | "tv";
 
 type PrismaClient = ReturnType<typeof getPrismaClient>;
@@ -26,40 +32,59 @@ type PrismaClient = ReturnType<typeof getPrismaClient>;
 /** Pais do MVP (pt-BR publica primeiro): disponibilidade legal no Brasil. */
 const WATCH_COUNTRY = "BR";
 
-/** Teto defensivo de linhas buscadas (o presenter agrupa por provedor). */
-const WATCH_FETCH_LIMIT = 40;
+/** Fornecedor tecnico do slice de streaming (nunca e a fonte editorial). */
+const WATCH_PROVIDER_API = "streaming_availability";
+
+/** Teto defensivo de linhas buscadas (o presenter agrupa/deduplica). */
+const WATCH_FETCH_LIMIT = 60;
 
 /**
- * Retorna a secao "Onde assistir" (ja licenciada e agrupada) de um titulo. Sem
- * oferta permitida -> `providers: []` e a pagina omite a secao.
+ * Retorna o painel "Disponibilidade no Brasil" (ja licenciado, agrupado e
+ * deduplicado) de um titulo. Sem oferta permitida -> `null` e a pagina omite o
+ * painel inteiro.
  */
-export async function getWatchForEntity(
+export async function getWatchAvailabilityForEntity(
   prisma: PrismaClient,
   entityType: WatchEntityType,
   entityId: bigint,
-): Promise<WatchView> {
+): Promise<WatchAvailabilityView | null> {
+  const now = new Date();
+
   const rows = await prisma.watchAvailability.findMany({
     where: {
       entityType,
       entityId,
       countryCode: WATCH_COUNTRY,
+      providerApi: WATCH_PROVIDER_API,
       displayAllowed: true,
+      // Ofertas vencidas nao entram: sem `available_until` (perene) ou ainda no futuro.
+      OR: [{ availableUntil: null }, { availableUntil: { gt: now } }],
     },
     take: WATCH_FETCH_LIMIT,
     select: {
       providerName: true,
+      providerKey: true,
       offerType: true,
+      deepLink: true,
+      quality: true,
+      price: true,
+      currency: true,
       displayAllowed: true,
       fetchedAt: true,
     },
   });
 
-  const inputs: WatchOfferInput[] = rows.map((row) => ({
+  const inputs: WatchAvailabilityRow[] = rows.map((row) => ({
     providerName: row.providerName,
-    offerType: String(row.offerType),
+    providerKey: row.providerKey,
+    offerType: row.offerType === null ? null : String(row.offerType),
+    deepLink: row.deepLink,
+    quality: row.quality,
+    priceAmount: row.price === null ? null : row.price.toString(),
+    currency: row.currency,
     displayAllowed: row.displayAllowed,
     fetchedAtIso: row.fetchedAt === null ? null : row.fetchedAt.toISOString(),
   }));
 
-  return buildWatchView(inputs);
+  return buildWatchAvailabilityView(inputs);
 }
