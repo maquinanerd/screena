@@ -190,11 +190,12 @@ export function HeroCarousel({ slides }: HeroCarouselProps): ReactNode {
                 <span className="sc-hero__eyebrow" data-vertical={slide.vertical}>
                   {slide.eyebrow}
                 </span>
-                {/* Apenas o slide ATIVO usa <h1> (um unico H1 por pagina — os
-                    demais slides ficam empilhados no DOM e usam <p> com a mesma
-                    classe, evitando multiplos H1 e preservando a governanca SEO). */}
+                {/* O H1 unico da home descreve o Screen (sr-only em pt/page.tsx),
+                    nao o filme rotativo. O titulo do slide e <h2> quando ativo e
+                    <p> nos demais (mesma classe) — SEO entity-first, um so H1
+                    institucional na pagina, nunca o titulo do slide como H1. */}
                 {isActive ? (
-                  <h1 className="sc-hero__title">{slide.title}</h1>
+                  <h2 className="sc-hero__title">{slide.title}</h2>
                 ) : (
                   <p className="sc-hero__title">{slide.title}</p>
                 )}

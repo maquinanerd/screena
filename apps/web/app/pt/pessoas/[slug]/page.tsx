@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { notFound, permanentRedirect } from "next/navigation";
 
+import { buildSameAs } from "@screena/seo";
+
 import { getPersonPageData } from "../../../../src/server/person-page";
 import { canonicalRedirectPath } from "../../../../src/lib/canonical-redirect";
 import { SITE_URL } from "../../../../src/lib/site";
@@ -87,7 +89,7 @@ export default async function PersonPage({
   const redirectPath = canonicalRedirectPath(PESSOAS_INDEX_PATH, slug, data.canonicalSlug);
   if (redirectPath !== null) permanentRedirect(redirectPath);
 
-  const { view, indexability, canonicalUrl, relatedNews } = data;
+  const { view, indexability, canonicalUrl, relatedNews, externalIds } = data;
   const isUnderReview = indexability.decision !== "index";
 
   const metaItems = [view.lifeLabel, view.placeOfBirth].filter(
@@ -111,11 +113,15 @@ export default async function PersonPage({
     ],
   };
 
+  // `@id`/`mainEntityOfPage` = URL canonica autorreferente e estavel da pessoa.
+  // `sameAs` so com IDs externos REAIS (nunca inventa). SEM AggregateRating.
   const personJsonLd: Record<string, unknown> = {
     "@context": "https://schema.org",
     "@type": "Person",
+    "@id": canonicalUrl,
     name: view.name,
     url: canonicalUrl,
+    mainEntityOfPage: canonicalUrl,
   };
   if (view.originalName !== null) personJsonLd.alternateName = view.originalName;
   if (view.roleLabel !== null) personJsonLd.jobTitle = view.roleLabel;
@@ -125,6 +131,8 @@ export default async function PersonPage({
     personJsonLd.birthPlace = { "@type": "Place", name: view.placeOfBirth };
   }
   if (view.metaDescription !== null) personJsonLd.description = view.metaDescription;
+  const sameAs = buildSameAs(externalIds, "person");
+  if (sameAs.length > 0) personJsonLd.sameAs = sameAs;
 
   return (
     <main className="person-page" data-vertical="person">

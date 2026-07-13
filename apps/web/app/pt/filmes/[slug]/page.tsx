@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { notFound, permanentRedirect } from "next/navigation";
 
+import { buildSameAs } from "@screena/seo";
+
 import { getMoviePageData } from "../../../../src/server/movie-page";
 import { canonicalRedirectPath } from "../../../../src/lib/canonical-redirect";
 import { MOVIES_INDEX_PATH, SITE_URL } from "../../../../src/lib/site";
@@ -92,7 +94,7 @@ export default async function MoviePage({
   const redirectPath = canonicalRedirectPath(MOVIES_INDEX_PATH, slug, data.canonicalSlug);
   if (redirectPath !== null) permanentRedirect(redirectPath);
 
-  const { view, indexability, canonicalUrl, relatedNews, cast, watch } = data;
+  const { view, indexability, canonicalUrl, relatedNews, cast, watch, externalIds } = data;
   const isUnderReview = indexability.decision !== "index";
 
   // Duracao visivel (so o que existe no payload; ano vai no titulo, nao aqui).
@@ -124,15 +126,21 @@ export default async function MoviePage({
   };
 
   // Schema `Movie`: SEM AggregateRating (nenhuma nota nesta fase; jamais fingir
-  // nota propria). So campos que existem no payload entram no JSON-LD.
+  // nota propria). `@id`/`mainEntityOfPage` = URL canonica (no autorreferente e
+  // estavel da entidade). `sameAs` so entra com IDs externos REAIS (invariante:
+  // nunca inventa perfil). So campos que existem no payload entram no JSON-LD.
   const movieJsonLd: Record<string, unknown> = {
     "@context": "https://schema.org",
     "@type": "Movie",
+    "@id": canonicalUrl,
     name: view.title,
     url: canonicalUrl,
+    mainEntityOfPage: canonicalUrl,
   };
   if (view.year !== null) movieJsonLd.datePublished = String(view.year);
   if (view.metaDescription !== null) movieJsonLd.description = view.metaDescription;
+  const sameAs = buildSameAs(externalIds, "movie");
+  if (sameAs.length > 0) movieJsonLd.sameAs = sameAs;
 
   return (
     <main className="movie-page" data-vertical="movie">

@@ -42,6 +42,8 @@ export interface SeriesPageData {
   cast: CastMemberView[];
   /** Onde assistir (watch_availability licenciado no BR); vazio omite a secao. */
   watch: WatchView;
+  /** IDs externos reais (imdb/tmdb/...) para montar `sameAs` no JSON-LD. */
+  externalIds: { source: string; externalId: string }[];
 }
 
 function seriesCanonicalUrl(slug: string): string {
@@ -64,7 +66,7 @@ export const getSeriesPageData = cache(
 
     const entityId = slugRow.entityId;
 
-    const [series, canonicalSlugRow, translation, contentBlocks, seasons, relatedNews, cast, watch] =
+    const [series, canonicalSlugRow, translation, contentBlocks, seasons, relatedNews, cast, watch, externalIds] =
       await Promise.all([
         prisma.tvShow.findUnique({
           where: { id: entityId },
@@ -135,6 +137,10 @@ export const getSeriesPageData = cache(
         getRelatedNewsForEntity(prisma, ENTITY_TYPE, entityId),
         getCastForEntity(prisma, ENTITY_TYPE, entityId),
         getWatchForEntity(prisma, ENTITY_TYPE, entityId),
+        prisma.entityExternalId.findMany({
+          where: { entityType: ENTITY_TYPE, entityId },
+          select: { source: true, externalId: true },
+        }),
       ]);
 
     if (series === null) return null;
@@ -190,6 +196,7 @@ export const getSeriesPageData = cache(
       relatedNews,
       cast,
       watch,
+      externalIds,
     };
   },
 );

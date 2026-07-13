@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { notFound, permanentRedirect } from "next/navigation";
 
+import { buildSameAs } from "@screena/seo";
+
 import { getSeriesPageData } from "../../../../src/server/series-page";
 import { canonicalRedirectPath } from "../../../../src/lib/canonical-redirect";
 import { SITE_URL } from "../../../../src/lib/site";
@@ -76,7 +78,7 @@ export default async function SeriesPage({
   const redirectPath = canonicalRedirectPath(SERIES_INDEX_PATH, slug, data.canonicalSlug);
   if (redirectPath !== null) permanentRedirect(redirectPath);
 
-  const { view, indexability, canonicalUrl, relatedNews, cast, watch } = data;
+  const { view, indexability, canonicalUrl, relatedNews, cast, watch, externalIds } = data;
   const isUnderReview = indexability.decision !== "index";
   const metaItems = [view.seasonsCountLabel, view.episodesCountLabel].filter(
     (item): item is string => item !== null,
@@ -105,17 +107,23 @@ export default async function SeriesPage({
     ],
   };
 
+  // `@id`/`mainEntityOfPage` = URL canonica autorreferente e estavel da serie.
+  // `sameAs` so com IDs externos REAIS (nunca inventa). SEM AggregateRating.
   const seriesJsonLd: Record<string, unknown> = {
     "@context": "https://schema.org",
     "@type": "TVSeries",
+    "@id": canonicalUrl,
     name: view.title,
     url: canonicalUrl,
+    mainEntityOfPage: canonicalUrl,
   };
   if (view.firstAirYear !== null) seriesJsonLd.startDate = String(view.firstAirYear);
   if (view.lastAirYear !== null) seriesJsonLd.endDate = String(view.lastAirYear);
   if (view.metaDescription !== null) {
     seriesJsonLd.description = view.metaDescription;
   }
+  const sameAs = buildSameAs(externalIds, "tv");
+  if (sameAs.length > 0) seriesJsonLd.sameAs = sameAs;
 
   return (
     <main className="series-page" data-vertical="series">

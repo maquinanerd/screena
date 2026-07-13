@@ -29,6 +29,7 @@ import {
   MOVIES_INDEX_PATH,
   NEWS_INDEX_PATH,
   SERIES_INDEX_PATH,
+  SITE_URL,
 } from "../../src/lib/site";
 
 /**
@@ -62,6 +63,32 @@ export const dynamic = "force-dynamic";
 const HOME_TITLE = "Screen — filmes, séries, pessoas e notícias";
 const HOME_DESCRIPTION =
   "Base editorial de entretenimento em português: fichas de filmes e séries, perfis de pessoas e notícias com curadoria própria da redação do Screen.";
+
+/** Texto do H1 unico da home — descreve o Screen (entity-first), nao um filme. */
+const HOME_H1 = "Screen — filmes, séries e pessoas";
+
+/**
+ * Identidade do site (Schema.org), emitida so na home: Organization + WebSite.
+ * Objetos estaticos derivados de `SITE_URL` (render puro, sem IO). `logo` usa o
+ * asset REAL do brand — nunca inventa. Deliberadamente SEM `SearchAction`: nao
+ * existe rota de busca por query (a lupa leva ao hub /pt/explorar, nao a um GET
+ * de busca), entao declara-la prometeria um endpoint inexistente. SEM
+ * `AggregateRating`: o Screen nao publica nota propria agregada.
+ */
+const HOME_ORGANIZATION_JSONLD = {
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  name: "Screen",
+  url: `${SITE_URL}/pt/`,
+  logo: `${SITE_URL}/brand/screen-logo-black.svg`,
+};
+
+const HOME_WEBSITE_JSONLD = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  name: "Screen",
+  url: `${SITE_URL}/`,
+};
 
 /**
  * Preenche `count` slots visuais com itens REAIS existentes, repetindo em ciclo
@@ -583,6 +610,10 @@ export default async function HomePage() {
 
   return (
     <main className="portal-page" data-vertical="home">
+      {/* H1 unico da home: descreve o Screen (entity-first), nao o filme rotativo
+          do hero. Visualmente oculto (u-visually-hidden) para nao alterar o
+          layout v4, mas semanticamente presente para crawlers/leitores de tela. */}
+      <h1 className="u-visually-hidden">{HOME_H1}</h1>
       {/* Hero-carousel (design v4): slides reais, metadados completos, sem poster
           lateral, botões só "Ver detalhes" + "Ver ficha" — a home nunca promete
           streaming sem watch_availability real (lock em no-fake-streaming-in-ui).
@@ -599,9 +630,9 @@ export default async function HomePage() {
               <span className="sc-hero__eyebrow" data-vertical="neutral">
                 The Screen
               </span>
-              <h1 className="sc-hero__title sc-hero__title--sm">
+              <h2 className="sc-hero__title sc-hero__title--sm">
                 Filmes, séries, pessoas e notícias — em um só lugar.
-              </h1>
+              </h2>
               <p className="sc-hero__desc">{HOME_DESCRIPTION}</p>
             </div>
           </div>
@@ -809,6 +840,18 @@ export default async function HomePage() {
           </div>
         </section>
       ) : null}
+
+      {/* Identidade do site (Organization + WebSite). Render puro: objetos
+          estaticos derivados de SITE_URL, sem IO. Sem SearchAction (nao ha busca
+          por query real) e sem AggregateRating (nota propria nao existe). */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(HOME_ORGANIZATION_JSONLD) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(HOME_WEBSITE_JSONLD) }}
+      />
     </main>
   );
 }
