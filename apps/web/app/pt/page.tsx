@@ -584,8 +584,10 @@ export default async function HomePage() {
   return (
     <main className="portal-page" data-vertical="home">
       {/* Hero-carousel (design v4): slides reais, metadados completos, sem poster
-          lateral, botões só "Onde assistir" + "Ver ficha". Sem slides reais, cai
-          para o hero institucional (copy própria, também sem poster). */}
+          lateral, botões só "Ver detalhes" + "Ver ficha" — a home nunca promete
+          streaming sem watch_availability real (lock em no-fake-streaming-in-ui).
+          Sem slides reais, cai para o hero institucional (copy própria, também
+          sem poster). */}
       {heroSlides.length > 0 ? (
         <HeroCarousel slides={heroSlides} />
       ) : (
