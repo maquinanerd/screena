@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 const ROOT = process.cwd();
 const HOME_PAGE_REL = "apps/web/app/pt/page.tsx";
 const COMPONENTS_REL = "apps/web/app/_components";
+const HERO_CAROUSEL_REL = "apps/web/app/_components/hero-carousel.tsx";
 const PUBLIC_DEMO_SEED_REL = "apps/admin/scripts/public-demo-seed.ts";
 
 function readSource(relativePath: string): string {
@@ -54,6 +55,10 @@ const FAKE_RANKING_OR_ACTION_PATTERNS: ReadonlyArray<[RegExp, string]> = [
   [/\bhome-v4-rank-badge\b/, "home-v4-rank-badge"],
   [/\bhome-v4-compact-rank\b/, "home-v4-compact-rank"],
   [/#\{rank\}/, "#{rank}"],
+  // Claim literal de posicao/ranking sobre um card ("#1", "#2", "#3"...). A home
+  // nao ranqueia; um "#N" visivel e afirmacao de ranking falso. Fica proibido no
+  // codigo vivo da home (comentarios sao removidos antes da checagem).
+  [/#[1-9]\b/, "literal de ranking (#1/#2/#3)"],
   [/Avaliar/i, "Avaliar"],
   [/Marcar como assistido/i, "Marcar como assistido"],
   [/\bhome-v4-muted-action\b/, "home-v4-muted-action"],
@@ -115,6 +120,22 @@ describe("governanca: UI publica nao finge streaming/ranking/nota", () => {
     }
 
     expect(violations).toEqual([]);
+  });
+
+  it("hero-carousel publico usa CTA honesta e nao promete 'Onde assistir' sem watch real", () => {
+    const code = withoutComments(readSource(HERO_CAROUSEL_REL));
+    const hasRealWatchContract = /\bWatchView\b|watch-presenter|watch_availability/.test(
+      code,
+    );
+    const promisesStreaming = /Onde assistir/i.test(code);
+
+    // Enquanto o hero nao ler um contrato real de watch, seu CTA nunca pode
+    // prometer streaming ("Onde assistir"). Regressao aqui = claim falso em prod.
+    expect(promisesStreaming && !hasRealWatchContract).toBe(false);
+
+    // Locka os rotulos honestos atuais: trocar por promessa de streaming falha.
+    expect(code).toContain("Ver detalhes");
+    expect(code).toContain("Ver ficha");
   });
 
   it("seed demo publico nao grava screen_score exibivel", () => {

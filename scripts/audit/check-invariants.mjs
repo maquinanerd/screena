@@ -178,6 +178,15 @@ const FORBIDDEN_PATTERNS = [
     codeOnly: true,
   },
   {
+    name: "UI publica com claim literal de ranking falso (#1/#2/#3)",
+    // "#N" visivel sobre um card e afirmacao de ranking. A home nao ranqueia;
+    // so o JSX vivo (comentarios removidos) das telas publicas e varrido.
+    // `\b` apos o digito ignora hex CSS (#1a2b3c) — so pega o rank literal solto.
+    regex: /#[1-9]\b/,
+    include: /^apps\/web\/app\/(?:pt\/page\.tsx|_components\/.*\.tsx)$/,
+    codeOnly: true,
+  },
+  {
     name: "seed demo marcando screen_score como exibivel",
     regex: /screenScore:\s*\w+\.screenScore|screenScoreDisplay:\s*true/,
     include: /^apps\/admin\/scripts\/public-demo-seed\.ts$/,
