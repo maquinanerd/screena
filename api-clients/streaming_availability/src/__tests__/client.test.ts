@@ -1,12 +1,17 @@
 /**
  * Testes do client Streaming Availability. 100% offline: o transporte HTTP e
- * injetado e captura a URL montada. Cobrem o guard anti path-injection do showId,
- * a barra NAO escapada de `movie/278`, o param opcional output_language, os
- * helpers (tmdbShowId/isImdbId) e a garantia de que a chave nunca entra na URL.
+ * injetado e captura a URL/headers montados.
+ *
+ * Foco desta fase: o contrato REAL v4 —
+ *   GET /shows/{imdbId}?series_granularity=episode&output_language=en
+ * — com a chave da chamada = IMDb id, host correto, SEM o param `country`
+ * (filtro por pais e no worker) e SEM o path antigo que dava 404. A
+ * `x-rapidapi-key` nunca entra na URL (viaja so em header).
  */
 
 import { describe, expect, it } from 'vitest'
 import {
+  RAPIDAPI_HOST_HEADER,
   RAPIDAPI_KEY_HEADER,
   RapidApiConfigError,
   type HttpResponse,
@@ -21,11 +26,16 @@ import {
 import { STREAMING_AVAILABILITY_KEY_ENV, loadStreamingAvailabilityConfig } from '../config.js'
 import {
   STREAMING_AVAILABILITY_DEFAULT_COUNTRY,
+  STREAMING_AVAILABILITY_DEFAULT_HOST,
+  STREAMING_AVAILABILITY_DEFAULT_OUTPUT_LANGUAGE,
+  STREAMING_AVAILABILITY_DEFAULT_SERIES_GRANULARITY,
   isImdbId,
   tmdbShowId,
 } from '../provider.js'
 
 const FAKE_KEY = 'test-key-0000000000'
+/** IMDb id do Titanic (o mesmo do cURL real de referencia). */
+const TITANIC_IMDB = 'tt0120338'
 
 function makeConfig(): RapidApiClientConfig {
   return loadStreamingAvailabilityConfig({ [STREAMING_AVAILABILITY_KEY_ENV]: FAKE_KEY })
@@ -57,31 +67,62 @@ function callAt(calls: Capture[], index: number): Capture {
   return call
 }
 
-describe('buildShowRequest — TMDB id (movie/tv)', () => {
-  it("showId 'movie/278' -> endpoint /shows/movie/278, params {country:'BR'}", () => {
-    const request = buildShowRequest({ showId: 'movie/278', country: 'BR' })
-    expect(request.endpoint).toBe('/shows/movie/278')
-    expect(request.params).toEqual({ country: 'BR' })
+describe('buildShowRequest — contrato real /shows/{imdbId}', () => {
+  it('endpoint /shows/{imdbId} + params series_granularity=episode & output_language=en', () => {
+    const request = buildShowRequest({ showId: TITANIC_IMDB })
+    expect(request.endpoint).toBe(`/shows/${TITANIC_IMDB}`)
+    expect(request.params).toEqual({ series_granularity: 'episode', output_language: 'en' })
   })
 
-  it("showId 'tt0111161' -> endpoint /shows/tt0111161", () => {
-    const request = buildShowRequest({ showId: 'tt0111161', country: 'BR' })
-    expect(request.endpoint).toBe('/shows/tt0111161')
+  it('NAO emite o param country (o filtro por pais e no worker)', () => {
+    const request = buildShowRequest({ showId: TITANIC_IMDB })
+    expect('country' in request.params).toBe(false)
+  })
+
+  it('os defaults do contrato batem com as constantes do provider', () => {
+    expect(STREAMING_AVAILABILITY_DEFAULT_SERIES_GRANULARITY).toBe('episode')
+    expect(STREAMING_AVAILABILITY_DEFAULT_OUTPUT_LANGUAGE).toBe('en')
+  })
+
+  it('aceita override de series_granularity/output_language', () => {
+    const request = buildShowRequest({
+      showId: TITANIC_IMDB,
+      seriesGranularity: 'show',
+      outputLanguage: 'pt',
+    })
+    expect(request.params).toEqual({ series_granularity: 'show', output_language: 'pt' })
   })
 })
 
-describe('StreamingAvailabilityClient.getShow — URL montada', () => {
-  it('a barra de movie/278 NAO e percent-encoded na URL final', async () => {
+describe('StreamingAvailabilityClient.getShow — URL e host montados', () => {
+  it('URL final e /shows/{imdbId}?series_granularity=episode&output_language=en', async () => {
     const { client, calls } = makeClient()
-    await client.getShow({ showId: 'movie/278', country: 'BR' })
+    await client.getShow({ showId: TITANIC_IMDB })
     const { url } = callAt(calls, 0)
-    expect(url).toContain('/shows/movie/278?country=BR')
-    expect(url).not.toContain('%2F')
+    expect(url).toContain(`/shows/${TITANIC_IMDB}?series_granularity=episode&output_language=en`)
+  })
+
+  it('usa o host streaming-availability.p.rapidapi.com', async () => {
+    const { client, calls } = makeClient()
+    await client.getShow({ showId: TITANIC_IMDB })
+    const { url, headers } = callAt(calls, 0)
+    expect(headers[RAPIDAPI_HOST_HEADER]).toBe(STREAMING_AVAILABILITY_DEFAULT_HOST)
+    expect(headers[RAPIDAPI_HOST_HEADER]).toBe('streaming-availability.p.rapidapi.com')
+    expect(url.startsWith('https://streaming-availability.p.rapidapi.com/shows/')).toBe(true)
+  })
+
+  it('NAO usa o param country nem o path antigo que dava 404', async () => {
+    const { client, calls } = makeClient()
+    await client.getShow({ showId: TITANIC_IMDB })
+    const { url } = callAt(calls, 0)
+    expect(url).not.toContain('country=')
+    // Path antigo (v2/basic/get) do endpoint que retornava 404 nunca aparece.
+    expect(url).not.toMatch(/\/(?:v2|get|basic)\b/)
   })
 
   it('a chave da API nunca aparece na URL (viaja so em header)', async () => {
     const { client, calls } = makeClient()
-    await client.getShow({ showId: 'movie/278', country: 'BR' })
+    await client.getShow({ showId: TITANIC_IMDB })
     const { url, headers } = callAt(calls, 0)
     expect(url).not.toContain(FAKE_KEY)
     // Prova positiva: a chave esta no header dedicado, nao na URL.
@@ -89,25 +130,9 @@ describe('StreamingAvailabilityClient.getShow — URL montada', () => {
   })
 })
 
-describe('buildShowRequest — output_language opcional', () => {
-  it('adiciona output_language quando informado', () => {
-    const request = buildShowRequest({
-      showId: 'movie/278',
-      country: 'BR',
-      outputLanguage: 'pt',
-    })
-    expect(request.params).toEqual({ country: 'BR', output_language: 'pt' })
-  })
-
-  it('omite output_language quando undefined', () => {
-    const request = buildShowRequest({ showId: 'movie/278', country: 'BR' })
-    expect(request.params).toEqual({ country: 'BR' })
-    expect('output_language' in request.params).toBe(false)
-  })
-})
-
 describe('isSafeShowId — guard anti path-injection', () => {
-  const accepted = ['tt123', 'movie/278', 'tv/1396']
+  // A chamada canonica usa IMDb id; movie/tv seguem aceitos como defesa/legado.
+  const accepted = ['tt123', TITANIC_IMDB, 'movie/278', 'tv/1396']
   const rejected = ['../etc', 'movie/abc', 'tt', 'movie/278?x=1', 'movie/278#f', '']
 
   for (const id of accepted) {
@@ -122,19 +147,20 @@ describe('isSafeShowId — guard anti path-injection', () => {
     })
 
     it(`buildShowRequest lanca RapidApiConfigError para ${JSON.stringify(id)}`, () => {
-      expect(() => buildShowRequest({ showId: id, country: 'BR' })).toThrow(RapidApiConfigError)
+      expect(() => buildShowRequest({ showId: id })).toThrow(RapidApiConfigError)
     })
   }
 })
 
 describe('provider helpers', () => {
-  it('tmdbShowId compoe kind/id', () => {
+  it('tmdbShowId compoe kind/id (helper legado, nao usado na chamada desta fase)', () => {
     expect(tmdbShowId('movie', 278)).toBe('movie/278')
     expect(tmdbShowId('tv', 1396)).toBe('tv/1396')
   })
 
   it('isImdbId aceita tt<digitos> e rejeita o resto', () => {
     expect(isImdbId('tt0111161')).toBe(true)
+    expect(isImdbId(TITANIC_IMDB)).toBe(true)
     expect(isImdbId('tt1')).toBe(true)
     expect(isImdbId('tt')).toBe(false)
     expect(isImdbId('movie/278')).toBe(false)

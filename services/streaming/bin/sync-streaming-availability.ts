@@ -179,11 +179,13 @@ async function main(): Promise<void> {
         cacheTtlMs,
       },
       {
-        fetchShow: (showId, country) => {
+        fetchShow: (imdbId) => {
           if (activeClient === null) {
             return Promise.reject(new Error('dry-run nao busca payload'))
           }
-          return activeClient.getShow({ showId, country })
+          // Chave da chamada = IMDb id real da entidade. O pais NAO entra na
+          // querystring: o payload traz todos os paises e o worker filtra BR.
+          return activeClient.getShow({ showId: imdbId })
         },
         cache,
         syncLog,

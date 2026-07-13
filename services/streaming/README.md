@@ -6,9 +6,14 @@ aluguel, compra, gratis com anuncios) cada entidade esta disponivel.
 
 ## O que faz
 - Consulta os **api-clients** de disponibilidade (`streaming_availability` como primario;
-  `kaso` apenas como fallback) para obter ofertas por pais.
-- Normaliza plataformas e fornecedores em `platforms`/`providers` e grava cada oferta em
-  `watch_availability` (entidade, plataforma, pais, modalidade, link oficial, atualizado em).
+  `kaso` apenas como fallback) para obter ofertas por pais. Contrato real (v4):
+  `GET /shows/{imdbId}?series_granularity=episode&output_language=en`.
+- **Matching por IMDb id real** (vindo de `entity_external_ids`): a chave da chamada e o
+  IMDb id da entidade local, nunca o titulo nem o TMDB id. O payload devolve
+  `streamingOptions` agrupado por pais; o worker filtra **apenas `br`** (sem fallback
+  internacional).
+- Grava cada oferta LEGAL em `watch_availability` com `display_allowed=false`. Nesta fase
+  nao mexe em `platforms`/`providers` (modelagem futura).
 - Mantem a oferta por **pais**, base do bloco de valor "onde assistir por pais".
 
 Nesta fase o worker grava **apenas** `watch_availability` (nao mexe em `platforms`/

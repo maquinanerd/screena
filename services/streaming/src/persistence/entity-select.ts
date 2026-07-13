@@ -2,9 +2,14 @@
  * entity-select.ts — Selecao das entidades a consultar (Prisma).
  * EXCLUIDO do typecheck.
  *
- * Seleciona SO `movies`/`tv_shows` com `tmdb_id` (sempre presente e unico).
+ * A varredura (`select`) so traz `movies`/`tv_shows` com **IMDb id real**
+ * (`imdb_id NOT NULL`): a chave da chamada `/shows/{imdbId}` e o IMDb id, entao
+ * entidades sem ele nunca viram consulta e `--limit` rende so alvos uteis.
  * Nunca seleciona pessoa, temporada ou episodio — fora do escopo desta fase.
  * Ordem determinista por `id` para tornar `--limit` reproduzivel.
+ *
+ * Nos lookups explicitos (`--tmdb-id`) a entidade encontrada pode nao ter IMDb
+ * id; o worker a conta em `entitiesWithoutImdb` e nao inventa a chave.
  */
 
 import type { PrismaClient } from '@screena/db/server'
@@ -32,10 +37,12 @@ export function createPrismaEntitySelect(prisma: PrismaClient): EntitySelectPort
 
   return {
     async select(entityType: StreamingEntityType, limit: number) {
+      // So alvos consultaveis: IMDb id real (a chave de `/shows/{imdbId}`).
+      const where = { imdbId: { not: null } }
       const rows =
         entityType === 'movie'
-          ? await prisma.movie.findMany({ select, orderBy: { id: 'asc' }, take: limit })
-          : await prisma.tvShow.findMany({ select, orderBy: { id: 'asc' }, take: limit })
+          ? await prisma.movie.findMany({ where, select, orderBy: { id: 'asc' }, take: limit })
+          : await prisma.tvShow.findMany({ where, select, orderBy: { id: 'asc' }, take: limit })
       return rows.map((row) => toSelected(entityType, row))
     },
 
