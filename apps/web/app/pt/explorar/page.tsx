@@ -1,19 +1,10 @@
 import type { Metadata } from "next";
 
-import { EntityCardLink } from "../../_components/entity-card";
-import { NewsCard } from "../../_components/news-card";
-import {
-  getMovieIndexData,
-  getPersonIndexData,
-  getSeriesIndexData,
-} from "../../../src/server/entity-indexes";
-import { getNewsIndexData } from "../../../src/server/news-pages";
+import { AdSlot } from "../../_components/ad-slot";
+import type { EntityCard } from "../../../src/lib/entity-index-presenter";
 import {
   countPopulatedSections,
   evaluatePortalIndexability,
-  EXPLORE_ENTITY_CARD_LIMIT,
-  EXPLORE_NEWS_CARD_LIMIT,
-  formatCollectionCount,
   takeSectionCards,
 } from "../../../src/lib/portal-presenter";
 import {
@@ -26,65 +17,69 @@ import {
   SERIES_INDEX_PATH,
   SITE_URL,
 } from "../../../src/lib/site";
+import { getMovieIndexData, getSeriesIndexData } from "../../../src/server/entity-indexes";
+import { getHomeUpcomingMovies } from "../../../src/server/home-upcoming";
+
+import styles from "./explore-canonical.module.css";
 
 /**
- * Hub exploratorio — /pt/explorar/ (superficie NEUTRA/institucional).
+ * Tela canônica 11 · Discover / Explorar.
  *
- * IMPORTANTE: esta pagina NAO e busca. Nao ha campo de busca, autosuggest,
- * filtro, ranking ou "populares" — nada e simulado. E um hub de navegacao
- * editorial: cards para as quatro secoes publicas + blocos de descoberta que
- * so aparecem quando ha dado REAL no banco (mesmos getters das listagens).
- *
- * Server component puro (invariantes 3/4): le somente PostgreSQL; zero API
- * externa, zero Gemini, zero TMDB. Sem ratings, sem streaming, sem numeros
- * inventados (as contagens exibidas sao `totalCount` real do banco, e so
- * quando > 0). Gate anti-thin (invariante 5): com menos de 2 secoes com dado
- * real, a pagina existe mas recebe `noindex`.
+ * A geometria vem de `paginas/11-discover.html`. Blocos cujo contrato ainda
+ * não existe no produto (busca, tendência de 24 h, continuar assistindo,
+ * watchlist, ranking social e filtros) não são simulados. O catálogo e a
+ * agenda usam somente entidades e datas persistidas no PostgreSQL.
  */
 
 export const dynamic = "force-dynamic";
 
 const TITLE = "Explorar";
 const DESCRIPTION =
-  "Navegue pelo catálogo editorial do Screen: filmes, séries, pessoas e notícias em português, com páginas de referência revisadas pela redação.";
+  "Navegue pelo catálogo de filmes e séries do Screen e consulte os próximos lançamentos já publicados.";
+const DISCOVER_CARD_LIMIT = 8;
+const UPCOMING_LIMIT = 5;
+
+const FILTER_LINKS = [
+  { label: "Tudo", href: EXPLORE_PATH, current: true },
+  { label: "Filmes", href: MOVIES_INDEX_PATH, current: false },
+  { label: "Séries", href: SERIES_INDEX_PATH, current: false },
+  { label: "Pessoas", href: PEOPLE_INDEX_PATH, current: false },
+  { label: "Notícias", href: NEWS_INDEX_PATH, current: false },
+] as const;
+
+function cardKindLabel(kind: EntityCard["kind"]): string {
+  if (kind === "movie") return "Filme";
+  if (kind === "series") return "Série";
+  return "Pessoa";
+}
+
+function splitUpcomingDate(date: string): { day: string; month: string } {
+  const [day = date, , month = ""] = date.split(" ");
+  return { day, month };
+}
 
 async function getExploreData() {
-  const [movies, series, people, news] = await Promise.all([
+  const [movies, series, upcomingMovies] = await Promise.all([
     getMovieIndexData(),
     getSeriesIndexData(),
-    getPersonIndexData(),
-    getNewsIndexData(),
+    getHomeUpcomingMovies({ limit: UPCOMING_LIMIT }),
   ]);
-  const movieCards = takeSectionCards(movies.view.cards, EXPLORE_ENTITY_CARD_LIMIT);
-  const seriesCards = takeSectionCards(series.view.cards, EXPLORE_ENTITY_CARD_LIMIT);
-  const personCards = takeSectionCards(people.view.cards, EXPLORE_ENTITY_CARD_LIMIT);
-  const newsCards = takeSectionCards(
-    [
-      ...(news.view.featured !== null ? [news.view.featured] : []),
-      ...news.view.cards,
-    ],
-    EXPLORE_NEWS_CARD_LIMIT,
+
+  const mixedCatalog = takeSectionCards(
+    [...movies.view.cards, ...series.view.cards],
+    DISCOVER_CARD_LIMIT,
   );
+  const featured = mixedCatalog[0] ?? null;
+  const catalogCards = featured === null ? [] : mixedCatalog.slice(1);
   const indexability = evaluatePortalIndexability({
     populatedSectionCount: countPopulatedSections([
-      movieCards.length,
-      seriesCards.length,
-      personCards.length,
-      newsCards.length,
+      featured === null ? 0 : 1,
+      catalogCards.length,
+      upcomingMovies.length,
     ]),
   });
-  return {
-    movieCards,
-    seriesCards,
-    personCards,
-    newsCards,
-    // Contagens REAIS do banco para os cards do hub (null quando 0).
-    movieCount: formatCollectionCount(movies.view.totalCount, "título", "títulos"),
-    seriesCount: formatCollectionCount(series.view.totalCount, "título", "títulos"),
-    personCount: formatCollectionCount(people.view.totalCount, "perfil", "perfis"),
-    newsCount: formatCollectionCount(news.view.totalCount, "notícia", "notícias"),
-    indexability,
-  };
+
+  return { featured, catalogCards, upcomingMovies, indexability };
 }
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -101,56 +96,25 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function ExplorePage() {
-  const {
-    movieCards,
-    seriesCards,
-    personCards,
-    newsCards,
-    movieCount,
-    seriesCount,
-    personCount,
-    newsCount,
-  } = await getExploreData();
-
+  const { featured, catalogCards, upcomingMovies } = await getExploreData();
   const canonicalUrl = canonicalPublicUrl(EXPLORE_PATH);
-
-  const hubCards = [
-    {
-      label: "Explorar filmes",
-      href: MOVIES_INDEX_PATH,
-      vertical: "movie" as const,
-      description: "Fichas editoriais de filmes em português.",
-      count: movieCount,
-    },
-    {
-      label: "Explorar séries",
-      href: SERIES_INDEX_PATH,
-      vertical: "series" as const,
-      description: "Séries com guia de temporadas e episódios.",
-      count: seriesCount,
-    },
-    {
-      label: "Explorar pessoas",
-      href: PEOPLE_INDEX_PATH,
-      vertical: "person" as const,
-      description: "Perfis de quem faz o cinema e a TV.",
-      count: personCount,
-    },
-    {
-      label: "Ler notícias",
-      href: NEWS_INDEX_PATH,
-      vertical: "news" as const,
-      description: "Notícias de entretenimento revisadas pela redação.",
-      count: newsCount,
-    },
-  ];
 
   const breadcrumbJsonLd = {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
     itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Inicio", item: `${SITE_URL}${HOME_PATH}` },
-      { "@type": "ListItem", position: 2, name: TITLE, item: canonicalUrl },
+      {
+        "@type": "ListItem",
+        position: 1,
+        name: "Início",
+        item: `${SITE_URL}${HOME_PATH}`,
+      },
+      {
+        "@type": "ListItem",
+        position: 2,
+        name: TITLE,
+        item: canonicalUrl,
+      },
     ],
   };
 
@@ -163,115 +127,159 @@ export default async function ExplorePage() {
   };
 
   return (
-    <main className="portal-page" data-vertical="explore">
-      <div className="container">
-        <nav className="breadcrumb" aria-label="Trilha de navegacao">
-          <ol>
-            <li>
-              <a href={HOME_PATH}>Inicio</a>
-            </li>
-            <li aria-current="page">{TITLE}</li>
-          </ol>
-        </nav>
+    <main className={styles.page} data-vertical="explore">
+      <div className={styles.shell}>
+        <AdSlot variant="leaderboard" margin="0 0 36px" />
 
-        <header className="portal-hero portal-hero--hub">
-          <h1 className="portal-hero__title">{TITLE}</h1>
-          <p className="portal-hero__desc">{DESCRIPTION}</p>
+        <header className={styles.pageHead}>
+          <div>
+            <h1 className={styles.pageTitle}>{TITLE}</h1>
+            <p className={styles.pageDescription}>{DESCRIPTION}</p>
+          </div>
+
+          <nav className={styles.filters} aria-label="Seções para explorar">
+            {FILTER_LINKS.map((link) => (
+              <a
+                key={link.href}
+                className={link.current ? styles.filterActive : styles.filter}
+                href={link.href}
+                aria-current={link.current ? "page" : undefined}
+              >
+                {link.label}
+              </a>
+            ))}
+          </nav>
         </header>
 
-        <nav className="portal-nav" aria-label="Seções do catálogo">
-          {hubCards.map((card) => (
-            <a
-              key={card.href}
-              className="portal-nav__card"
-              href={card.href}
-              data-vertical={card.vertical}
-            >
-              <span className="portal-nav__label">{card.label}</span>
-              <span className="portal-nav__desc">{card.description}</span>
-              {card.count !== null ? (
-                <span className="portal-nav__count">{card.count}</span>
-              ) : null}
-            </a>
-          ))}
-        </nav>
+        {featured !== null ? (
+          <section className={styles.feature} aria-labelledby="discover-feature-title">
+            <div className={styles.featureScrim} aria-hidden="true" />
+            <div className={styles.featureInner}>
+              <div className={styles.featureCopy}>
+                <span className={styles.typeBadge} data-kind={featured.kind}>
+                  {cardKindLabel(featured.kind)}
+                </span>
+                <h2 id="discover-feature-title" className={styles.featureTitle}>
+                  {featured.title}
+                </h2>
+                {featured.meta !== null ? (
+                  <p className={styles.featureMeta}>{featured.meta}</p>
+                ) : null}
+                <a className={styles.featureLink} href={featured.href}>
+                  Ver detalhes
+                </a>
+              </div>
 
-        {movieCards.length > 0 ? (
-          <section className="portal-section" aria-labelledby="explore-movies-title">
-            <div className="portal-section__head">
-              <h2 id="explore-movies-title" className="portal-section__title" data-vertical="movie">
-                Filmes
-              </h2>
-              <a className="portal-section__more" href={MOVIES_INDEX_PATH}>
-                Ver todos
+              <a
+                className={styles.featurePoster}
+                href={featured.href}
+                aria-label={`Ver detalhes de ${featured.title}`}
+              >
+                {featured.image === null ? (
+                  <span className={styles.posterFallback} aria-hidden="true" />
+                ) : (
+                  <img
+                    className={styles.posterImage}
+                    src={featured.image.src}
+                    alt={`Pôster de ${featured.title}`}
+                    width={featured.image.width}
+                    height={featured.image.height}
+                    fetchPriority="high"
+                  />
+                )}
               </a>
             </div>
-            <ul className="entity-grid">
-              {movieCards.map((card) => (
-                <li key={card.href} className="entity-card-item">
-                  <EntityCardLink card={card} />
+          </section>
+        ) : null}
+
+        {catalogCards.length > 0 ? (
+          <section className={styles.section} aria-labelledby="discover-catalog-title">
+            <div className={styles.sectionHead}>
+              <div className={styles.sectionHeading}>
+                <span className={styles.sectionAccent} data-kind="mixed" />
+                <h2 id="discover-catalog-title">Catálogo</h2>
+              </div>
+              <p>Filmes e séries publicados</p>
+            </div>
+
+            <ul className={styles.posterRail}>
+              {catalogCards.map((card) => (
+                <li key={card.href} className={styles.posterCard}>
+                  <a href={card.href}>
+                    <span className={styles.posterMedia}>
+                      {card.image === null ? (
+                        <span className={styles.posterFallback} aria-hidden="true" />
+                      ) : (
+                        <img
+                          className={styles.posterImage}
+                          src={card.image.src}
+                          alt={`Pôster de ${card.title}`}
+                          width={card.image.width}
+                          height={card.image.height}
+                          loading="lazy"
+                        />
+                      )}
+                      <span className={styles.posterType} data-kind={card.kind}>
+                        {cardKindLabel(card.kind)}
+                      </span>
+                    </span>
+                    <span className={styles.posterTitle}>{card.title}</span>
+                    {card.meta !== null || card.screenScore !== null ? (
+                      <span className={styles.posterMeta}>
+                        {[card.meta, card.screenScore === null ? null : `Screen ${card.screenScore}`]
+                          .filter((item): item is string => item !== null)
+                          .join(" · ")}
+                      </span>
+                    ) : null}
+                  </a>
                 </li>
               ))}
             </ul>
           </section>
         ) : null}
 
-        {seriesCards.length > 0 ? (
-          <section className="portal-section" aria-labelledby="explore-series-title">
-            <div className="portal-section__head">
-              <h2 id="explore-series-title" className="portal-section__title" data-vertical="series">
-                Séries
-              </h2>
-              <a className="portal-section__more" href={SERIES_INDEX_PATH}>
-                Ver todas
-              </a>
+        {upcomingMovies.length > 0 ? (
+          <section className={styles.section} aria-labelledby="discover-releases-title">
+            <div className={styles.sectionHead}>
+              <div className={styles.sectionHeading}>
+                <span className={styles.sectionAccent} data-kind="movie" />
+                <h2 id="discover-releases-title">Lançamentos</h2>
+              </div>
+              <p>Próximas estreias com data publicada</p>
             </div>
-            <ul className="entity-grid">
-              {seriesCards.map((card) => (
-                <li key={card.href} className="entity-card-item">
-                  <EntityCardLink card={card} />
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
 
-        {personCards.length > 0 ? (
-          <section className="portal-section" aria-labelledby="explore-people-title">
-            <div className="portal-section__head">
-              <h2 id="explore-people-title" className="portal-section__title">
-                Pessoas
-              </h2>
-              <a className="portal-section__more" href={PEOPLE_INDEX_PATH}>
-                Ver todas
-              </a>
-            </div>
-            <ul className="entity-grid">
-              {personCards.map((card) => (
-                <li key={card.href} className="entity-card-item">
-                  <EntityCardLink card={card} />
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
-
-        {newsCards.length > 0 ? (
-          <section className="portal-section" aria-labelledby="explore-news-title">
-            <div className="portal-section__head">
-              <h2 id="explore-news-title" className="portal-section__title">
-                Notícias
-              </h2>
-              <a className="portal-section__more" href={NEWS_INDEX_PATH}>
-                Ver todas
-              </a>
-            </div>
-            <ul className="news-grid">
-              {newsCards.map((card) => (
-                <li key={card.href} className="news-grid__item">
-                  <NewsCard card={card} variant="feed" />
-                </li>
-              ))}
+            <ul className={styles.releaseList}>
+              {upcomingMovies.map((movie) => {
+                const date = splitUpcomingDate(movie.date);
+                return (
+                  <li key={movie.href} className={styles.releaseItem}>
+                    <a href={movie.href}>
+                      <span className={styles.releaseDate}>
+                        <span>{date.month}</span>
+                        <strong>{date.day}</strong>
+                      </span>
+                      <span className={styles.releaseMedia}>
+                        {movie.imageUrl === null ? (
+                          <span className={styles.releaseFallback} aria-hidden="true" />
+                        ) : (
+                          <img
+                            src={movie.imageUrl}
+                            alt={`Imagem de ${movie.title}`}
+                            width={780}
+                            height={439}
+                            loading="lazy"
+                          />
+                        )}
+                      </span>
+                      <span className={styles.releaseCopy}>
+                        <span className={styles.releaseKind}>Filme</span>
+                        <strong>{movie.title}</strong>
+                        <span>Estreia em {movie.date}</span>
+                      </span>
+                    </a>
+                  </li>
+                );
+              })}
             </ul>
           </section>
         ) : null}

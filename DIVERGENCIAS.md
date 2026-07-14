@@ -189,3 +189,19 @@ Esses pontos não alteram a autoridade do HTML raiz validado por SHA-256.
 - **Impacto visual:** não aparecem numeração Top 10, estrelas, filtros de
   streaming, ranking nem CTA de trailer. Quando blocos intermediários estão
   ausentes, dois espaços publicitários podem ficar consecutivos.
+
+## D-018 — Explorar não finge busca, atividade pessoal ou sinais sociais
+
+- **Canônico:** Browse/Discover/Mais Aguardados combinam busca funcional,
+  filtros, plataformas, crescimento em 24 horas, progresso de reprodução,
+  watchlist, contagens da comunidade e rankings sociais.
+- **Produto:** não há endpoint de busca, sessão de usuário, histórico de
+  reprodução, watchlist/comunidade, agregação de streaming para o hub nem rota
+  dedicada de “Mais Aguardados”. Há catálogo real e filmes futuros com data
+  persistida.
+- **Produto portado:** instancia a tela Discover em `/pt/explorar/`, com o
+  leaderboard, cabeçalho, navegação real, destaque determinístico, rail misto e
+  agenda de lançamentos. Browse e a tela social de Mais Aguardados ficam
+  diferidos; nenhum contador, rank, progresso ou ação falsa é exibido.
+- **Impacto visual:** barra de busca, CTA de watchlist/trailer, Em Alta com
+  crescimento, Continuar assistindo, Mais Aguardados e Populares não aparecem.
