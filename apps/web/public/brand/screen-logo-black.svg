@@ -7,6 +7,6 @@
   <text class="sl" x="0"   y="62">S</text>
   <text class="sl" x="79"  y="62">C</text>
   <text class="sl" x="158" y="62">R</text>
-  <rect x="237" y="19" width="92" height="41" rx="4" fill="#111111"/>
+  <rect x="239" y="20" width="81" height="42" rx="4" fill="#111111"/>
   <text class="sl" x="363" y="62">N</text>
 </svg>
