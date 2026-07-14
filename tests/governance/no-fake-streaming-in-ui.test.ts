@@ -29,13 +29,6 @@ function withoutComments(source: string): string {
     .join("\n");
 }
 
-function stripAllowedHomePlaceholderGates(source: string): string {
-  return source.replace(
-    /\{\s*allowPlaceholders\s*\?\s*<EpisodesTicker\s*\/>\s*:\s*null\s*\}/g,
-    "",
-  );
-}
-
 function componentFiles(): string[] {
   const absDir = path.join(ROOT, COMPONENTS_REL);
   return readdirSync(absDir, { withFileTypes: true })
@@ -75,22 +68,14 @@ function findViolations(
 }
 
 describe("governanca: UI publica nao finge streaming/ranking/nota", () => {
-  it("EpisodesTicker so entra na home pelo gate allowHomeVisualPlaceholders", () => {
+  it("home não inclui ticker de episódio nem gate capaz de reativar conteúdo mock", () => {
     const code = withoutComments(readSource(HOME_PAGE_REL));
-
-    expect(code).toContain("allowHomeVisualPlaceholders()");
-    expect(code).toMatch(
-      /\{\s*allowPlaceholders\s*\?\s*<EpisodesTicker\s*\/>\s*:\s*null\s*\}/,
-    );
-
-    const withoutAllowedGate = stripAllowedHomePlaceholderGates(code);
-    expect(withoutAllowedGate).not.toMatch(/<EpisodesTicker\s*\/>/);
+    expect(code).not.toMatch(/EpisodesTicker/);
+    expect(code).not.toMatch(/allowHomeVisualPlaceholders/);
   });
 
   it("home /pt nao contem streaming/plataforma fake fora do gate", () => {
-    const code = stripAllowedHomePlaceholderGates(
-      withoutComments(readSource(HOME_PAGE_REL)),
-    );
+    const code = withoutComments(readSource(HOME_PAGE_REL));
     const violations = findViolations(code, FAKE_STREAMING_PATTERNS);
 
     expect(violations).toEqual([]);
@@ -106,8 +91,6 @@ describe("governanca: UI publica nao finge streaming/ranking/nota", () => {
   it("componentes compartilhados nao prometem streaming sem contrato real de watch", () => {
     const violations: string[] = [];
     for (const file of componentFiles()) {
-      if (file.endsWith("/episodes-ticker.tsx")) continue;
-
       const code = withoutComments(readSource(file));
       const hasRealWatchContract = /\bWatchView\b|watch-presenter|watch_availability/.test(
         code,
@@ -133,9 +116,9 @@ describe("governanca: UI publica nao finge streaming/ranking/nota", () => {
     // prometer streaming ("Onde assistir"). Regressao aqui = claim falso em prod.
     expect(promisesStreaming && !hasRealWatchContract).toBe(false);
 
-    // Locka os rotulos honestos atuais: trocar por promessa de streaming falha.
+    // Uma única ação real; não duplicamos dois botões apontando para a mesma ficha.
     expect(code).toContain("Ver detalhes");
-    expect(code).toContain("Ver ficha");
+    expect(code).not.toContain("Ver ficha");
   });
 
   it("seed demo publico nao grava screen_score exibivel", () => {

@@ -1,5 +1,5 @@
 /**
- * Testes do gate de placeholders visuais da Home v4 / newsletter do rodape.
+ * Testes do gate de diagnósticos visuais de anúncio/newsletter.
  *
  * A decisao e feita server-side por `allowHomeVisualPlaceholders`. Para nao
  * depender de mutar `process.env` (fragil e com efeito colateral entre testes),
@@ -12,13 +12,13 @@ import { describe, expect, it } from "vitest";
 import { allowHomeVisualPlaceholders } from "../../apps/web/src/lib/home-placeholder-governance";
 
 describe("allowHomeVisualPlaceholders", () => {
-  it("permite placeholders fora de producao (dev/preview/test)", () => {
+  it("permite diagnósticos fora de producao (dev/preview/test)", () => {
     expect(allowHomeVisualPlaceholders({ nodeEnv: "development" })).toBe(true);
     expect(allowHomeVisualPlaceholders({ nodeEnv: "test" })).toBe(true);
     expect(allowHomeVisualPlaceholders({ nodeEnv: undefined })).toBe(true);
   });
 
-  it("bloqueia placeholders em producao sem a flag", () => {
+  it("bloqueia diagnósticos em producao sem a flag", () => {
     expect(allowHomeVisualPlaceholders({ nodeEnv: "production" })).toBe(false);
     expect(
       allowHomeVisualPlaceholders({ nodeEnv: "production", flag: undefined }),
@@ -31,7 +31,7 @@ describe("allowHomeVisualPlaceholders", () => {
     ).toBe(false);
   });
 
-  it("libera placeholders em producao com SCREEN_HOME_VISUAL_PLACEHOLDERS=1", () => {
+  it("libera diagnósticos em producao com SCREEN_HOME_VISUAL_PLACEHOLDERS=1", () => {
     expect(
       allowHomeVisualPlaceholders({ nodeEnv: "production", flag: "1" }),
     ).toBe(true);

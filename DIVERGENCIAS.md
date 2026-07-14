@@ -125,3 +125,35 @@ Esses pontos não alteram a autoridade do HTML raiz validado por SHA-256.
   e séries permanecem sólidos somente até a fase que portar seus heros escuros.
 - **Impacto visual:** divergência temporária limitada ao topo dos dois índices;
   esta entrada deve ser removida junto com o port das categorias.
+
+## D-012 — Destaque da home ainda é seleção determinística
+
+- **Canônico:** `homePresenter.hero` representa um destaque curado.
+- **Produto:** o getter existente seleciona até cinco títulos reais por ano,
+  filmes antes de séries; não existe ainda uma tabela ou flag de curadoria da
+  home.
+- **Produto portado:** preserva o hero com dados reais e sem fallback visual,
+  mas registra que a seleção ainda não é uma decisão editorial explícita.
+- **Impacto visual:** nenhum na geometria; o título exibido pode diferir de uma
+  programação editorial futura.
+
+## D-013 — Faixas temporais dependem de sinais ainda incompletos
+
+- **Canônico:** Top 10 semanal, Filmes em alta e Séries da semana.
+- **Produto:** não possui ranking semanal nem histórico de sete dias. Filmes e
+  séries guardam apenas o snapshot de `popularity` já ingerido do TMDB.
+- **Produto portado:** usa esse snapshot somente em `Filmes em alta`, em ordem
+  decrescente e sem repetir cards. Top 10 e Séries da semana permanecem nas
+  posições condicionais do código, mas não geram DOM até existir dado temporal
+  adequado. A faixa de estatísticas pessoais também fica ausente para anônimo.
+- **Impacto visual:** ambientes atuais não exibem Top 10, estatísticas mensais
+  nem a faixa semanal de séries.
+
+## D-014 — “Em breve” possui lançamentos, não trailers
+
+- **Canônico:** subtítulo “Trailers de próximos lançamentos” e pílula de duração.
+- **Produto:** possui datas e imagens de filmes futuros persistidos, mas não
+  possui trailer ou duração governados.
+- **Produto portado:** mantém posição, rail, cards de 232 px e geometria 16:9;
+  usa “Próximos lançamentos” e remove play/duração e ARIA de trailer.
+- **Impacto visual:** a pílula sobre a thumbnail não aparece.

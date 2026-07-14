@@ -930,8 +930,8 @@ a {
   position: relative;
   margin-top: calc(var(--nav-h) * -1);
   min-height: 620px;
-  height: 78vh;
-  max-height: 820px;
+  height: 88vh;
+  max-height: 880px;
   overflow: hidden;
   background: var(--bg-media);
   display: flex;
@@ -951,7 +951,7 @@ a {
   background: linear-gradient(135deg, #1b1b22 0%, #0e0e13 55%, #070708 100%);
 }
 .sc-hero__wash--movie {
-  background: linear-gradient(135deg, #2b1712 0%, #170b09 55%, #080605 100%);
+  background: linear-gradient(135deg, #2b1c12 0%, #171009 55%, #080605 100%);
 }
 .sc-hero__wash--series {
   background: linear-gradient(135deg, #12211a 0%, #0a130e 55%, #060908 100%);
@@ -960,31 +960,35 @@ a {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  /* Camadas: horizontal (legibilidade do titulo a esquerda) + inferior (ancora
-     dots/creditos). Preserva a arte no centro/direita — nunca overlay preto chapado. */
   background:
     linear-gradient(
-      90deg,
-      rgba(4, 4, 6, 0.9) 0%,
-      rgba(4, 4, 6, 0.62) 28%,
-      rgba(4, 4, 6, 0.2) 55%,
-      rgba(4, 4, 6, 0) 78%
+      95deg,
+      rgba(24, 20, 16, 0.6) 0%,
+      rgba(24, 20, 16, 0.14) 42%,
+      rgba(5, 5, 5, 0) 74%
     ),
-    linear-gradient(0deg, rgba(4, 4, 6, 0.86) 0%, rgba(4, 4, 6, 0.34) 24%, rgba(4, 4, 6, 0) 52%);
+    linear-gradient(
+      180deg,
+      rgba(5, 5, 5, 0.55) 0%,
+      rgba(5, 5, 5, 0.05) 20%,
+      rgba(5, 5, 5, 0) 42%,
+      rgba(5, 5, 5, 0.6) 78%,
+      rgba(5, 5, 5, 0.95) 100%
+    );
 }
 .sc-hero__inner {
   position: relative;
   width: 100%;
   max-width: var(--container-max);
   margin: 0 auto;
-  padding: 0 var(--container-pad) 72px;
+  padding: 0 80px 78px;
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: 48px;
 }
 .sc-hero__lead {
-  max-width: 640px;
+  max-width: 620px;
 }
 .sc-hero__eyebrow {
   display: inline-block;
@@ -1006,13 +1010,14 @@ a {
   background: rgba(255, 255, 255, 0.16);
 }
 .sc-hero__title {
-  font-size: 46px;
+  font-size: 84px;
   font-weight: 800;
-  letter-spacing: -0.04em;
-  color: rgba(255, 255, 255, 0.96);
-  line-height: 0.94;
+  letter-spacing: -0.035em;
+  color: rgba(255, 255, 255, 0.95);
+  line-height: 0.9;
   margin: 0;
-  text-shadow: 0 4px 40px rgba(0, 0, 0, 0.55);
+  white-space: nowrap;
+  text-shadow: 0 2px 30px rgba(0, 0, 0, 0.5);
 }
 .sc-hero__title--sm {
   font-size: 40px;
@@ -1024,9 +1029,15 @@ a {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
-  color: rgba(255, 255, 255, 0.82);
+  gap: 6px;
+  color: rgba(255, 255, 255, 0.8);
   font-size: 14px;
+}
+.sc-hero__rating-meta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 14px;
 }
 .sc-hero__meta-item {
   white-space: nowrap;
@@ -1050,9 +1061,9 @@ a {
 .sc-stars__track {
   position: relative;
   display: inline-block;
-  font-size: 15px;
+  font-size: 18px;
   line-height: 1;
-  letter-spacing: 2px;
+  letter-spacing: 3px;
 }
 .sc-stars__base {
   color: rgba(255, 255, 255, 0.26);
@@ -1069,13 +1080,13 @@ a {
 .sc-cert {
   display: inline-block;
   font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  font-weight: 500;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: #fff;
   border: 1px solid rgba(255, 255, 255, 0.4);
-  border-radius: var(--radius-sm);
-  padding: 3px 9px;
+  border-radius: 0;
+  padding: 4px 9px;
 }
 
 /* Botoes do hero: "Onde assistir" (acento por vertical) + "Ver ficha" (ghost). */
@@ -1096,11 +1107,8 @@ a {
   border: 1px solid transparent;
 }
 .sc-hero__btn--primary {
-  background: var(--accent-movie);
+  background: #f0443e;
   color: #fff;
-}
-.sc-hero__btn--primary[data-vertical='series'] {
-  background: var(--accent-series);
 }
 .sc-hero__btn--ghost {
   background: transparent;
@@ -1110,25 +1118,25 @@ a {
 
 /* Coluna direita: creditos TEXTUAIS (diretor/elenco/sinopse). Sem poster/card. */
 .sc-hero__credits {
-  max-width: 340px;
+  max-width: 330px;
   text-align: right;
   align-self: flex-end;
-  padding-bottom: 6px;
+  padding-bottom: 8px;
 }
 .sc-hero__credit {
   margin: 0;
 }
 .sc-hero__credit--dir {
-  font-size: 14px;
+  font-size: 13px;
   color: rgba(255, 255, 255, 0.92);
 }
 .sc-hero__credit--cast {
-  font-size: 13px;
+  font-size: 12px;
   color: rgba(255, 255, 255, 0.82);
   margin-top: 8px;
 }
 .sc-hero__credit--synopsis {
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.55;
   color: rgba(255, 255, 255, 0.7);
   margin-top: 14px;
@@ -1150,7 +1158,7 @@ a {
   height: 5px;
   padding: 0;
   border: 0;
-  border-radius: 6px;
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.45);
   cursor: pointer;
   transition:
@@ -1160,9 +1168,6 @@ a {
 .sc-hero__dot.is-active {
   width: 26px;
   background: var(--accent-movie);
-}
-.sc-hero__dot.is-active[data-vertical='series'] {
-  background: var(--accent-series);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1237,6 +1242,9 @@ a {
 /* ------------------------------------------------------------------ */
 .portal-page {
   padding-bottom: 24px;
+}
+.portal-page[data-vertical='home'] {
+  padding-bottom: 0;
 }
 .portal-page .container > .breadcrumb ol {
   padding-top: 32px;
@@ -1376,113 +1384,6 @@ a {
 }
 .portal-section .news-grid {
   margin-top: 0;
-}
-
-/* ================================================================== */
-/* Episodes Ticker — faixa amarela (carrossel) abaixo do hero (v4)     */
-/* ------------------------------------------------------------------ */
-/* MOCK VISUAL (ver episodes-ticker.tsx + dívida técnica): "novo episódio
-   hoje" e "Onde assistir <streaming>" são placeholders de fidelidade — não
-   há watch_availability real. Trocar por dado governado ou remover antes de
-   indexar. Valores do design v4 (docs EpisodesTicker.md). */
-.ep-ticker {
-  background: var(--accent-yellow);
-  color: #101010;
-}
-.ep-ticker__inner {
-  max-width: var(--container-max);
-  margin: 0 auto;
-  padding: 14px var(--container-pad);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-}
-.ep-ticker__info {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  min-width: 0;
-}
-.ep-ticker__badge {
-  flex-shrink: 0;
-  background: #101010;
-  color: var(--accent-yellow);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  padding: 4px 9px;
-  border-radius: 6px;
-}
-.ep-ticker__text {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.ep-ticker__series {
-  font-weight: 800;
-}
-.ep-ticker__controls {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-shrink: 0;
-}
-.ep-ticker__dots {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.ep-ticker__dot {
-  width: 6px;
-  height: 6px;
-  padding: 0;
-  border: 0;
-  border-radius: 999px;
-  cursor: pointer;
-  background: rgba(16, 16, 16, 0.28);
-  transition:
-    width 0.3s ease,
-    background 0.3s ease;
-}
-.ep-ticker__dot.is-active {
-  width: 18px;
-  background: #101010;
-}
-.ep-ticker__cta {
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-  background: #101010;
-  color: #fff;
-  border-radius: 8px;
-  padding: 8px 16px;
-  font-size: 12px;
-  font-weight: 600;
-  text-decoration: none;
-}
-.ep-ticker__cta-label {
-  color: rgba(255, 255, 255, 0.55);
-  font-size: 11px;
-}
-.ep-ticker__logo {
-  font-weight: 800;
-  letter-spacing: 0.01em;
-}
-@media (max-width: 640px) {
-  .ep-ticker__inner {
-    padding: 12px 20px;
-    gap: 12px;
-  }
-  .ep-ticker__cta-label {
-    display: none;
-  }
-  .ep-ticker__dots {
-    display: none;
-  }
 }
 
 /* ================================================================== */
@@ -1793,7 +1694,9 @@ a {
 }
 
 .site-footer__newsletter-copy {
-  flex-shrink: 0;
+  min-width: 0;
+  max-width: 100%;
+  flex-shrink: 1;
 }
 
 .site-footer__newsletter-copy h2 {
@@ -2201,15 +2104,12 @@ a {
 /* ================================================================== */
 /* Home · Destaques no The Screen (Top 10 do v4, honesto: sem rank/nota) */
 /* ------------------------------------------------------------------ */
-/* Estrutura canônica do v4 (04-page-home §3): fileira de 4 HighlightCards
-   grandes (card branco + pôster 2/3 + corpo) + fileira de 6 RankingItems
-   compactos horizontais. Slots sempre preenchidos por `fillSlots` (10 no
-   total) — nunca card órfão, nunca 4+2, nunca trilho horizontal. Seção
-   auto-contida (largura do conteúdo), como as demais bandas da home. */
+/* Estrutura canônica do Top 10: 4 HighlightCards + 6 RankingItems. A home só
+   monta essa posição quando houver ranking semanal real com os dez itens. */
 .home-v4-section {
   max-width: var(--container-max);
   margin: 0 auto;
-  padding: 56px var(--container-pad) 0;
+  padding: 56px 0 0;
 }
 .home-v4-section-head {
   display: flex;
@@ -2459,10 +2359,17 @@ a {
   display: block;
 }
 
-/* Responsivo — grids colapsam sem virar 4+2 nem trilho (v4 §Comportamento). */
-@media (max-width: 980px) {
+/* Breakpoints do contrato canônico: desktop intacto, depois 48/32/20/16px. */
+@media (max-width: 1279px) {
   .home-v4-section {
-    padding-inline: 40px;
+    padding-right: 48px;
+    padding-left: 48px;
+  }
+}
+@media (max-width: 1023px) {
+  .home-v4-section {
+    padding-right: 32px;
+    padding-left: 32px;
   }
   .home-v4-top-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2471,7 +2378,7 @@ a {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
-@media (max-width: 640px) {
+@media (max-width: 767px) {
   .home-v4-section {
     padding: 40px 20px 0;
   }
@@ -2483,10 +2390,27 @@ a {
     font-size: 24px;
   }
   .home-v4-top-grid {
-    grid-template-columns: 1fr;
+    display: flex;
+    gap: 20px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    scroll-snap-type: x proximity;
+  }
+  .home-v4-top-grid::-webkit-scrollbar {
+    display: none;
+  }
+  .home-v4-top-grid > li {
+    flex: 0 0 265px;
+    scroll-snap-align: start;
   }
   .home-v4-compact-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 390px) {
+  .home-v4-section {
+    padding-right: 16px;
+    padding-left: 16px;
   }
 }
 
@@ -2501,10 +2425,10 @@ a {
   background: var(--bg-warm);
 }
 .home-v4-section--band {
-  padding: 56px var(--container-pad);
+  padding: 56px 0;
 }
 .home-v4-section--series {
-  padding-bottom: 56px;
+  padding: 56px 0 0;
 }
 .home-v4-media-grid {
   display: grid;
@@ -2517,10 +2441,6 @@ a {
   color: inherit;
   text-decoration: none;
 }
-.home-v4-poster-card:hover .home-v4-media-poster {
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.1);
-  transform: translateY(-2px);
-}
 /* Pôster do MediaCard: raio 12px + sombra; imagem local real quando existe,
    senão gradiente por vertical. Badge de tipo sobre o pôster (sup-esq). */
 .home-v4-media-poster {
@@ -2528,14 +2448,11 @@ a {
   position: relative;
   aspect-ratio: 2 / 3;
   overflow: hidden;
-  border-radius: 12px;
+  border-radius: 10px;
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
   background:
     radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.1), transparent 28%),
     linear-gradient(135deg, #33291f, #0c0908);
-  transition:
-    box-shadow 0.2s ease,
-    transform 0.2s ease;
 }
 .home-v4-media-poster[data-vertical='series'] {
   background:
@@ -2563,7 +2480,7 @@ a {
 }
 .home-v4-poster-title {
   display: block;
-  margin-top: 11px;
+  margin: 11px 0 0;
   font-size: 13px;
   font-weight: 700;
   color: #101010;
@@ -2580,8 +2497,7 @@ a {
   font-size: 12px;
   color: #6e6e6e;
 }
-/* Rating VISUAL do MediaCard de Filmes (placeholder — não é nota real/externa,
-   não atribuída, não persistida). Estrela dourada + nota. */
+/* Nota editorial própria, exibida apenas quando o presenter libera o gate. */
 .home-v4-media-rating {
   display: inline-flex;
   align-items: center;
@@ -2605,18 +2521,11 @@ a {
   display: block;
   aspect-ratio: 2 / 3;
   overflow: hidden;
-  border-radius: 12px;
+  border-radius: 10px;
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
   background:
     radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.1), transparent 28%),
     linear-gradient(135deg, #16211c, #050805);
-  transition:
-    box-shadow 0.2s ease,
-    transform 0.2s ease;
-}
-.home-v4-series-tile:hover .home-v4-series-tile__poster {
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.1);
-  transform: translateY(-2px);
 }
 .home-v4-series-tile__img {
   position: absolute;
@@ -2651,17 +2560,17 @@ a {
   color: #fff;
   line-height: 1.2;
   text-shadow: 0 1px 10px rgba(0, 0, 0, 0.45);
+  margin: 0;
 }
 
 /* ================================================================== */
-/* Home · Em breve (v4 §7) — trilho horizontal de trailers 16/9        */
+/* Home · Em breve (v4 §7) — trilho horizontal de lançamentos 16/9     */
 /* ------------------------------------------------------------------ */
-/* MOCK VISUAL: cards de próximos lançamentos (sem player/trailer real). O
-   trilho rola por overflow-x nativo; as setas são visuais/desabilitadas. */
+/* Cards de próximos lançamentos persistidos; sem player ou duração inventada. */
 .home-v4-soon {
   max-width: var(--container-max);
   margin: 50px auto 25px;
-  padding: 16px var(--container-pad) 0;
+  padding: 16px 0 0;
 }
 .home-v4-soon-head {
   display: flex;
@@ -2700,13 +2609,11 @@ a {
   cursor: pointer;
   transition:
     border-color 0.2s ease,
-    color 0.2s ease,
-    transform 0.2s ease;
+    color 0.2s ease;
 }
 .home-v4-rail-arrow:hover {
   border-color: #101010;
   color: #101010;
-  transform: translateY(-1px);
 }
 .home-v4-soon-rail {
   display: flex;
@@ -2732,7 +2639,7 @@ a {
   display: block;
   aspect-ratio: 16 / 9;
   overflow: hidden;
-  border-radius: 12px;
+  border-radius: 10px;
   background:
     radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.1), transparent 28%),
     linear-gradient(135deg, #151922, #080605);
@@ -2748,20 +2655,6 @@ a {
   position: absolute;
   inset: 0;
   background: linear-gradient(180deg, rgba(0, 0, 0, 0) 45%, rgba(0, 0, 0, 0.55) 100%);
-}
-.home-v4-trailer-duration {
-  position: absolute;
-  bottom: 12px;
-  left: 12px;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 5px 11px;
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.55);
-  color: #ffffff;
-  font-size: 11px;
-  font-weight: 600;
 }
 .home-v4-trailer-date {
   display: inline-flex;
@@ -2780,54 +2673,21 @@ a {
   line-height: 1.25;
 }
 
-/* ================================================================== */
-/* Home · Publicidade (placeholder estático entre Em breve e Notícias) */
-/* ------------------------------------------------------------------ */
-/* O v4 mostra um leaderboard 728×90 aqui. Placeholder ESTÁTICO (caixa
-   listrada + rótulo) — SEM AdSense/GPT/script/iframe/integração. */
-.home-v4-ad-placeholder {
-  max-width: var(--container-max);
-  margin: 36px auto 52px;
-  padding: 0 var(--container-pad);
-  text-align: center;
-}
-.home-v4-ad-label {
-  margin-bottom: 8px;
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 0.18em;
-  color: #c0b8a9;
-}
-.home-v4-ad-box {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  max-width: 728px;
-  height: 90px;
+.home-v4-ad-shell {
+  max-width: 1280px;
   margin: 0 auto;
-  border-radius: 8px;
-  border: 1px solid #e3ded6;
-  background: repeating-linear-gradient(-45deg, #f6f2ea, #f6f2ea 8px, #f1ede6 8px, #f1ede6 16px);
-  color: #9a958c;
-  font-size: 12px;
-}
-.home-v4-ad-box strong {
-  color: #6e6e6e;
-  font-size: 13px;
+  padding: 0 80px;
 }
 
 /* ================================================================== */
 /* Home · Notícias / Top News (v4 §8) — destaque grande + grade 2×2    */
 /* ------------------------------------------------------------------ */
-/* Cards de mídia (fundo escuro permitido): imagem/backdrop real quando existe,
-   senão gradiente; scrim + corpo (badge/título/subtítulo). Conteúdo pode ser
-   placeholder VISUAL. Empilhamento: img(0) < scrim(1) < corpo(2). */
+/* Cards de mídia: artigo real, imagem quando existe e gradiente quando falta.
+   Empilhamento: img(0) < scrim(1) < corpo(2). */
 .home-v4-news {
   max-width: var(--container-max);
   margin: 0 auto;
-  padding: 56px var(--container-pad) 64px;
+  padding: 56px 0 0;
 }
 .home-v4-news-grid {
   display: grid;
@@ -2844,20 +2704,12 @@ a {
   position: relative;
   display: block;
   overflow: hidden;
-  border-radius: 12px;
+  border-radius: 10px;
   color: #ffffff;
   text-decoration: none;
   background:
     radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.1), transparent 28%),
     linear-gradient(135deg, #241416, #080605);
-  transition:
-    box-shadow 0.2s ease,
-    transform 0.2s ease;
-}
-.home-v4-news-feature:hover,
-.home-v4-news-mini:hover {
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.16);
-  transform: translateY(-2px);
 }
 .home-v4-news-feature {
   min-height: 430px;
@@ -2936,17 +2788,40 @@ a {
   line-height: 1.45;
   color: rgba(255, 255, 255, 0.78);
 }
-@media (max-width: 980px) {
+@media (max-width: 1279px) {
   .home-v4-section--band {
-    padding-inline: 40px;
+    padding-right: 48px;
+    padding-left: 48px;
   }
   .home-v4-media-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
   .home-v4-soon,
-  .home-v4-news,
-  .home-v4-ad-placeholder {
-    padding-inline: 40px;
+  .home-v4-news {
+    padding-right: 48px;
+    padding-left: 48px;
+  }
+  .home-v4-ad-shell {
+    padding-right: 48px;
+    padding-left: 48px;
+  }
+}
+@media (max-width: 1023px) {
+  .home-v4-section--band {
+    padding-right: 32px;
+    padding-left: 32px;
+  }
+  .home-v4-media-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .home-v4-soon,
+  .home-v4-news {
+    padding-right: 32px;
+    padding-left: 32px;
+  }
+  .home-v4-ad-shell {
+    padding-right: 32px;
+    padding-left: 32px;
   }
   .home-v4-news-grid {
     grid-template-columns: 1fr;
@@ -2960,17 +2835,33 @@ a {
     gap: 42px;
   }
 }
-@media (max-width: 640px) {
+@media (max-width: 767px) {
   .home-v4-section--band {
     padding: 40px 20px;
   }
   .home-v4-media-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    display: flex;
+    grid-template-columns: none;
+    gap: 18px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    scroll-snap-type: x proximity;
+  }
+  .home-v4-media-grid::-webkit-scrollbar {
+    display: none;
+  }
+  .home-v4-media-grid > * {
+    flex: 0 0 148px;
+    scroll-snap-align: start;
   }
   .home-v4-soon,
-  .home-v4-news,
-  .home-v4-ad-placeholder {
-    padding-inline: 20px;
+  .home-v4-news {
+    padding-right: 20px;
+    padding-left: 20px;
+  }
+  .home-v4-ad-shell {
+    padding-right: 20px;
+    padding-left: 20px;
   }
   .home-v4-soon-nav {
     display: none;
@@ -2986,6 +2877,18 @@ a {
   }
   .home-v4-news-feature-title {
     font-size: 23px;
+  }
+  .home-v4-trailer-card {
+    flex-basis: 172px;
+  }
+}
+@media (max-width: 390px) {
+  .home-v4-section--band,
+  .home-v4-soon,
+  .home-v4-news,
+  .home-v4-ad-shell {
+    padding-right: 16px;
+    padding-left: 16px;
   }
 }
 
@@ -4154,9 +4057,13 @@ a {
 /* ================================================================== */
 /* Responsivo                                                        */
 /* ------------------------------------------------------------------ */
-@media (max-width: 1120px) {
+@media (max-width: 1279px) {
   :root {
-    --container-pad: 40px;
+    --container-pad: 48px;
+  }
+  .sc-hero__inner {
+    padding-right: 48px;
+    padding-left: 48px;
   }
   .entity-grid {
     grid-template-columns: repeat(4, 1fr);
@@ -4166,7 +4073,28 @@ a {
   }
 }
 
-@media (max-width: 1024px) {
+@media (max-width: 1023px) {
+  :root {
+    --container-pad: 32px;
+  }
+  .sc-hero {
+    min-height: 0;
+    height: 70vh;
+    max-height: none;
+  }
+  .sc-hero__inner {
+    padding-right: 32px;
+    padding-bottom: 56px;
+    padding-left: 32px;
+  }
+  .sc-hero__credits {
+    display: none;
+  }
+  .sc-hero__title {
+    max-width: 100%;
+    font-size: clamp(40px, 11vw, 64px);
+    white-space: normal;
+  }
   .portal-nav {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -4214,13 +4142,7 @@ a {
   }
 }
 
-@media (max-width: 900px) {
-  .sc-hero__title {
-    font-size: 38px;
-  }
-}
-
-@media (max-width: 640px) {
+@media (max-width: 767px) {
   :root {
     --container-pad: 20px;
   }
@@ -4240,36 +4162,38 @@ a {
     grid-template-columns: 1fr;
   }
   .sc-hero {
-    min-height: 520px;
+    min-height: 480px;
+    height: 60vh;
+    max-height: none;
   }
   .sc-hero__inner {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 20px;
+    display: block;
+    padding-right: 20px;
     padding-bottom: 48px;
+    padding-left: 20px;
   }
   .sc-hero__credits {
-    max-width: 100%;
-    text-align: left;
-    align-self: flex-start;
+    display: none;
   }
   .sc-hero__title {
-    font-size: 32px;
-    line-height: 1;
+    font-size: clamp(40px, 11vw, 64px);
+    line-height: 0.94;
   }
   .sc-hero__title--sm {
     font-size: 32px;
   }
-  .sc-hero__arrow {
-    width: 38px;
-    height: 38px;
-    font-size: 22px;
+  .sc-hero__lead {
+    width: 100%;
+    max-width: 620px;
   }
-  .sc-hero__arrow--prev {
-    left: 8px;
+  .sc-hero__actions {
+    flex-direction: column;
+    align-items: stretch;
   }
-  .sc-hero__arrow--next {
-    right: 8px;
+  .sc-hero__btn {
+    width: 100%;
+    min-height: 44px;
+    justify-content: center;
   }
   .portal-hero__title,
   .entity-index__title,
@@ -4319,5 +4243,15 @@ a {
   }
   .news-article__body {
     text-align: left;
+  }
+}
+
+@media (max-width: 390px) {
+  :root {
+    --container-pad: 16px;
+  }
+  .sc-hero__inner {
+    padding-right: 16px;
+    padding-left: 16px;
   }
 }

@@ -10,8 +10,8 @@
  *    válido -> null -> card cai no fallback visual do trilho. Servidor não salva
  *    imagem (sem JPG/WebP local, sem `/media/tmdb`).
  *  - TMDB é fonte de CATÁLOGO (data/pôster/slug), nunca editorial: aqui não há
- *    nota, crítica, trailer nem streaming. Por isso o card NÃO tem `duration`
- *    (não fingimos trailer) — a pílula de duração é só do placeholder visual.
+ *    nota, crítica, trailer nem streaming. Por isso o card não tem `duration`
+ *    e não mostra pílula de reprodução.
  *  - Ordenação determinística (estreia asc) e cap de itens.
  */
 

@@ -112,7 +112,8 @@ describe("home /pt/ — pagina real e segura", () => {
   });
 
   it("tem metadata com canonical e decisao de robots", () => {
-    expect(source).toContain("alternates: { canonical:");
+    expect(source).toContain("alternates: {");
+    expect(source).toContain("canonical: homeCanonicalUrl");
     expect(source).toContain('indexability.decision === "index"');
   });
 

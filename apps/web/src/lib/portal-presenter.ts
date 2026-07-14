@@ -27,8 +27,8 @@ export const MIN_PORTAL_SECTIONS = 2;
 /** Cap de cards por secao de entidade na home. */
 export const HOME_ENTITY_CARD_LIMIT = 6;
 
-/** Cap de cards de noticia na home. */
-export const HOME_NEWS_CARD_LIMIT = 4;
+/** Um destaque + quatro cards menores, como no grid 1 + 2×2 canônico. */
+export const HOME_NEWS_CARD_LIMIT = 5;
 
 /** Cap de cards por secao de entidade no hub explorar. */
 export const EXPLORE_ENTITY_CARD_LIMIT = 8;
