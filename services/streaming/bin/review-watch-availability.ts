@@ -26,7 +26,7 @@ import { disconnectPrisma, getPrismaClient } from '@screena/db/server'
 
 import { parseReviewArgs } from '../src/promotion/args.js'
 import { deepLinkHost } from '../src/promotion/guardrails.js'
-import { renderReviewReport, summaryLine } from '../src/promotion/report.js'
+import { buildReviewJson, renderReviewReport, summaryLine } from '../src/promotion/report.js'
 import { runReview } from '../src/promotion/run.js'
 
 function repoRoot(): string {
@@ -78,18 +78,23 @@ async function main(): Promise<void> {
       { store, now: () => new Date() },
     )
 
-    console.log(
-      `Revisao · provider=${STREAMING_AVAILABILITY_PROVIDER_API} · tipo=${args.kind ?? 'movie+tv'} · pais=${args.country}`,
-    )
-    for (const entry of result.evaluated) {
-      const c = entry.candidate
-      const decision = entry.eligible ? 'ELEGIVEL' : `rejeitada:${entry.reason}`
+    if (args.json) {
+      // JSON sanitizado (host do deep link, nunca a URL inteira): pipeavel.
+      console.log(JSON.stringify(buildReviewJson(result), null, 2))
+    } else {
       console.log(
-        `  #${c.id} ${c.entityType}#${c.entityId} "${c.title ?? '—'}" · ${c.offerType ?? '—'} · ` +
-          `${deepLinkHost(c.deepLink)} · display_allowed=${c.displayAllowed} · ${decision}`,
+        `Revisao · provider=${STREAMING_AVAILABILITY_PROVIDER_API} · tipo=${args.kind ?? 'movie+tv'} · pais=${args.country}`,
       )
+      for (const entry of result.evaluated) {
+        const c = entry.candidate
+        const decision = entry.eligible ? 'ELEGIVEL' : `rejeitada:${entry.reason}`
+        console.log(
+          `  #${c.id} ${c.entityType}#${c.entityId} "${c.title ?? '—'}" · ${c.offerType ?? '—'} · ` +
+            `${deepLinkHost(c.deepLink)} · display_allowed=${c.displayAllowed} · ${decision}`,
+        )
+      }
+      console.log(summaryLine(result.summary))
     }
-    console.log(summaryLine(result.summary))
 
     if (args.report) {
       writeReport(renderReviewReport(result), `watch-availability-review-${args.kind ?? 'all'}-${args.country}.md`)

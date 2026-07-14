@@ -32,13 +32,14 @@ function promoteErr(argv: readonly string[]): string {
 }
 
 describe('parseReviewArgs', () => {
-  it('sem flags: kind=null, country=BR, limit default, report=false', () => {
+  it('sem flags: kind=null, country=BR, limit default, report=false, json=false', () => {
     const args = reviewOk([])
     expect(args.kind).toBeNull()
     expect(args.country).toBe('BR')
     expect(args.limit).toBe(REVIEW_DEFAULT_LIMIT)
     expect(args.entityId).toBeNull()
     expect(args.report).toBe(false)
+    expect(args.json).toBe(false)
   })
 
   it('--kind so aceita movie|tv (nunca person/season)', () => {
@@ -63,6 +64,15 @@ describe('parseReviewArgs', () => {
   it('--report e booleana; valor explicito falha', () => {
     expect(reviewOk(['--report']).report).toBe(true)
     expect(reviewErr(['--report=1'])).toMatch(/booleana/)
+  })
+
+  it('--json e booleana e independente de --report', () => {
+    expect(reviewOk(['--json']).json).toBe(true)
+    expect(reviewOk(['--json']).report).toBe(false)
+    const both = reviewOk(['--json', '--report'])
+    expect(both.json).toBe(true)
+    expect(both.report).toBe(true)
+    expect(reviewErr(['--json=1'])).toMatch(/booleana/)
   })
 
   it('flag desconhecida e posicional solto falham', () => {

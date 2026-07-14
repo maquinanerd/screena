@@ -25,6 +25,8 @@ export interface ReviewArgs {
   readonly limit: number
   /** Escreve o relatorio markdown em disco (`.data/`). */
   readonly report: boolean
+  /** Imprime JSON sanitizado (host do deep link, nunca a URL inteira). */
+  readonly json: boolean
 }
 
 /** Argumentos do CLI de promocao/reversao. */
@@ -102,7 +104,7 @@ function normalizeCountry(raw: string): string | null {
 }
 
 const REVIEW_VALUE_FLAGS: ReadonlySet<string> = new Set(['kind', 'country', 'entity-id', 'limit'])
-const REVIEW_BOOLEAN_FLAGS: ReadonlySet<string> = new Set(['report'])
+const REVIEW_BOOLEAN_FLAGS: ReadonlySet<string> = new Set(['report', 'json'])
 
 /** Parser fail-loud do CLI de revisao. */
 export function parseReviewArgs(argv: readonly string[]): ReviewArgsResult {
@@ -114,13 +116,15 @@ export function parseReviewArgs(argv: readonly string[]): ReviewArgsResult {
   let entityId: number | null = null
   let limit = REVIEW_DEFAULT_LIMIT
   let report = false
+  let json = false
 
   for (const token of tokenized.tokens) {
     const { name, value } = token
 
     if (REVIEW_BOOLEAN_FLAGS.has(name)) {
       if (value !== undefined) return { ok: false, error: `a flag "--${name}" e booleana e nao aceita valor.` }
-      report = true
+      if (name === 'json') json = true
+      else report = true
       continue
     }
     if (!REVIEW_VALUE_FLAGS.has(name)) return { ok: false, error: `flag desconhecida: "--${name}".` }
@@ -160,7 +164,7 @@ export function parseReviewArgs(argv: readonly string[]): ReviewArgsResult {
     }
   }
 
-  return { ok: true, args: { kind, country, entityId, limit, report } }
+  return { ok: true, args: { kind, country, entityId, limit, report, json } }
 }
 
 const PROMOTE_VALUE_FLAGS: ReadonlySet<string> = new Set(['ids', 'country'])

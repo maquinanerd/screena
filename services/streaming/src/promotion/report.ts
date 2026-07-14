@@ -95,6 +95,85 @@ export function renderReviewReport(result: ReviewResult): string {
   return lines.join('\n')
 }
 
+/**
+ * Uma candidata em forma JSON SANITIZADA: expoe `deepLinkHost` (so o host),
+ * NUNCA a URL inteira. `id`/`entityId` sao preservados (string). Datas em ISO.
+ */
+export interface ReviewJsonCandidate {
+  readonly id: string
+  readonly entityType: string
+  readonly entityId: string
+  readonly title: string | null
+  readonly countryCode: string
+  readonly providerApi: string | null
+  readonly providerKey: string | null
+  readonly providerName: string | null
+  readonly offerType: string | null
+  readonly quality: string | null
+  readonly price: number | null
+  readonly currency: string | null
+  readonly availableUntil: string | null
+  readonly fetchedAt: string | null
+  readonly displayAllowed: boolean
+  /** Apenas o host do deep link — a URL completa nunca sai no JSON. */
+  readonly deepLinkHost: string
+  readonly eligible: boolean
+  readonly rejectionReason: string | null
+}
+
+/** Payload JSON da REVISAO (sanitizado, sem segredo, sem URL completa). */
+export interface ReviewJson {
+  readonly kind: string | null
+  readonly country: string
+  readonly entityId: string | null
+  readonly summary: PromotionSummary
+  readonly candidates: readonly ReviewJsonCandidate[]
+}
+
+/** ISO completo (`2024-01-01T00:00:00.000Z`) ou `null` quando ausente. */
+function isoOrNull(value: Date | null): string | null {
+  return value === null ? null : value.toISOString()
+}
+
+/**
+ * Monta o payload JSON SANITIZADO da revisao para `--json`.
+ *
+ * NUNCA emite o `deep_link` cru: so o host (via `deepLinkHost`). Preserva o
+ * `id` da linha para promocao/reversao posterior. Nao carrega env/segredo — a
+ * candidata so tem colunas de `watch_availability`.
+ */
+export function buildReviewJson(result: ReviewResult): ReviewJson {
+  return {
+    kind: result.kind,
+    country: result.country,
+    entityId: result.entityId,
+    summary: result.summary,
+    candidates: result.evaluated.map((entry) => {
+      const c = entry.candidate
+      return {
+        id: c.id,
+        entityType: c.entityType,
+        entityId: c.entityId,
+        title: c.title,
+        countryCode: c.countryCode,
+        providerApi: c.providerApi,
+        providerKey: c.providerKey,
+        providerName: c.providerName,
+        offerType: c.offerType,
+        quality: c.quality,
+        price: c.price,
+        currency: c.currency,
+        availableUntil: isoOrNull(c.availableUntil),
+        fetchedAt: isoOrNull(c.fetchedAt),
+        displayAllowed: c.displayAllowed,
+        deepLinkHost: deepLinkHost(c.deepLink),
+        eligible: entry.eligible,
+        rejectionReason: entry.reason,
+      }
+    }),
+  }
+}
+
 /** Renderiza o relatorio markdown da PROMOCAO/REVERSAO. */
 export function renderPromotionReport(result: PromotionResult): string {
   const lines: string[] = []

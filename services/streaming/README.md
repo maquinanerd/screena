@@ -65,6 +65,8 @@ node "$TSX" services/streaming/bin/review-watch-availability.ts --kind=movie --c
 node "$TSX" services/streaming/bin/review-watch-availability.ts --kind=movie --entity-id=1 --country=BR
 # exportar relatorio markdown em .data/ (gitignored)
 node "$TSX" services/streaming/bin/review-watch-availability.ts --kind=movie --entity-id=1 --country=BR --report
+# JSON sanitizado (host do deep link, nunca a URL crua): pipeavel
+node "$TSX" services/streaming/bin/review-watch-availability.ts --kind=movie --country=BR --json
 ```
 
 **Promocao/reversao (por ids EXPLICITOS)** — sem `--confirm` e sempre **dry-run**; com
@@ -89,6 +91,18 @@ passado). O `updateMany` reafirma provider/pais/estado no `WHERE` (defesa em pro
 toca **apenas** a coluna `display_allowed` — nunca `screen_score`/`external_ratings`. Cada
 acao efetiva registra 1 linha tecnica em `api_sync_logs` (`promote:watch_availability` /
 `revoke:watch_availability`).
+
+**Avisos de governanca:**
+
+- **Nao use SQL manual** para virar `display_allowed`. Estes dois CLIs sao o unico caminho
+  aprovado: eles aplicam os guardrails, exigem `--ids` explicitos + `--confirm` e deixam
+  rastro em `api_sync_logs`. Um `UPDATE ... SET display_allowed=true` solto ignora provider,
+  pais, validade e link — exatamente os erros que a ferramenta existe para impedir.
+- A ferramenta **nunca promove** provider diferente de `streaming_availability`, pais
+  diferente de `BR`, link inseguro (nao-`http(s)`/pirataria), modalidade invalida
+  (`ads`/`cinema`/`addon`/desconhecida) ou oferta vencida — mesmo que o id seja passado.
+- A **UI publica so exibe `display_allowed=true`** (ver `#58`). Promover e o unico gesto que
+  leva uma oferta ao ar; reverter (`--revoke`) tira do ar sem apagar a linha.
 
 ### Idempotencia sem unique
 
