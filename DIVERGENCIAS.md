@@ -115,17 +115,6 @@ Esses pontos não alteram a autoridade do HTML raiz validado por SHA-256.
 - **Impacto visual/comportamental:** o ícone não abre campo no header mobile;
   navegar por ele troca para a rota Explorar.
 
-## D-011 — Transparência das categorias aguarda o hero canônico
-
-- **Canônico:** home, categoria de filmes, categoria de séries e artigo usam o
-  header transparente sobre um hero escuro até 80 px de scroll.
-- **Estado intermediário:** os índices reais ainda usam o cabeçalho claro legado;
-  ligar a tinta branca por pathname tornou o logo ilegível sobre branco no smoke.
-- **Produto portado:** home e artigo já recebem o comportamento canônico; filmes
-  e séries permanecem sólidos somente até a fase que portar seus heros escuros.
-- **Impacto visual:** divergência temporária limitada ao topo dos dois índices;
-  esta entrada deve ser removida junto com o port das categorias.
-
 ## D-012 — Destaque da home ainda é seleção determinística
 
 - **Canônico:** `homePresenter.hero` representa um destaque curado.
@@ -157,3 +146,46 @@ Esses pontos não alteram a autoridade do HTML raiz validado por SHA-256.
 - **Produto portado:** mantém posição, rail, cards de 232 px e geometria 16:9;
   usa “Próximos lançamentos” e remove play/duração e ARIA de trailer.
 - **Impacto visual:** a pílula sobre a thumbnail não aparece.
+
+## D-015 — Notícias não possuem ranking, rail ou categorias navegáveis
+
+- **Canônico:** o modo “Todas” combina magazine, dois cards de rail, “Mais
+  lidas”, newsletter e três tabs; os modos Cinema/Séries têm layouts próprios.
+- **Produto:** o CMS fornece destaque e feed publicável, mas não fornece métricas
+  de leitura, rail editorial nem filtro/rota de categoria.
+- **Produto portado:** reproduz header, magazine, três cards secundários, feed e
+  os quatro AdSlots do modo “Todas”. Expõe apenas a tab `Todas`; rail, ranking,
+  newsletter e modos de categoria ficam ausentes em vez de usar mocks.
+- **Impacto visual:** a coluna de 290 px do magazine não aparece e o conteúdo
+  ocupa a largura editorial disponível; a sidebar inferior contém apenas o
+  skyscraper reservado.
+
+## D-016 — Corpo do artigo é textual, sem blocos ricos do protótipo
+
+- **Canônico:** artigo de demonstração contém headings internos, figura,
+  legenda, tags, compartilhamento, ficha rica de uma série e quatro artigos
+  relacionados.
+- **Produto:** o presenter atual entrega parágrafos, fonte, aviso de IA e links
+  simples para entidades relacionadas; não há AST de blocos, tags sociais nem
+  artigos relacionados.
+- **Produto portado:** mantém hero 560 px, coluna de leitura de 720 px, tipografia
+  17/1.8 e o leaderboard intermediário. Renderiza somente os campos persistidos
+  e apresenta entidades relacionadas como referências textuais honestas.
+- **Impacto visual:** figuras, ficha rica, tags/share e grid “Leia também” ficam
+  ausentes até seus contratos existirem.
+
+## D-017 — Categorias não simulam ranking, streaming ou trailer
+
+- **Canônico:** a tela 04 combina hero editorial completo, Top 10, filtros por
+  plataforma, ranking, próximos trailers e Top News.
+- **Produto:** os índices possuem cards reais, nota própria apenas quando
+  governada, notícias publicadas e datas futuras de filmes; não há ranking Top
+  10, agregação de plataforma por categoria, trailer, classificação, direção ou
+  elenco no contrato dos índices.
+- **Produto portado:** usa o primeiro card real no hero, os quatro seguintes na
+  grade canônica, próximos lançamentos somente em Filmes e Top News sem
+  repetição. Os três AdSlots permanecem na ordem original; os blocos sem fonte
+  real não geram DOM.
+- **Impacto visual:** não aparecem numeração Top 10, estrelas, filtros de
+  streaming, ranking nem CTA de trailer. Quando blocos intermediários estão
+  ausentes, dois espaços publicitários podem ficar consecutivos.

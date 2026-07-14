@@ -95,8 +95,8 @@ describe("header — navegacao global", () => {
   it("usa header transparente somente nas telas com hero escuro já portado", () => {
     expect(isCinematicHeroPath("/pt/")).toBe(true);
     expect(isCinematicHeroPath("/pt/noticias/materia/")).toBe(true);
-    expect(isCinematicHeroPath("/pt/filmes/")).toBe(false);
-    expect(isCinematicHeroPath("/pt/series/")).toBe(false);
+    expect(isCinematicHeroPath("/pt/filmes/")).toBe(true);
+    expect(isCinematicHeroPath("/pt/series/")).toBe(true);
     expect(isCinematicHeroPath("/pt/noticias/")).toBe(false);
     expect(isCinematicHeroPath("/pt/filmes/duna/")).toBe(false);
     expect(isCinematicHeroPath("/pt/series/the-bear/")).toBe(false);

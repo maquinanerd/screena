@@ -1,0 +1,411 @@
+.page {
+  min-width: 0;
+  padding-bottom: 64px;
+  background: #fdfdfd;
+  color: #101010;
+}
+
+.channelHeader {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 22px 64px 0;
+}
+
+.channelRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 40px;
+}
+
+.tabs {
+  display: flex;
+  flex-shrink: 0;
+  gap: 26px;
+}
+
+.tabs span {
+  padding: 0 2px 10px;
+  border-bottom: 2px solid #101010;
+  color: #101010;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.headerAd {
+  display: flex;
+  width: 74%;
+  justify-content: center;
+}
+
+.channelRule {
+  margin-top: 20px;
+  border-top: 1px solid #e3ded6;
+}
+
+.magazine {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 36px 64px 0;
+}
+
+.magazineLead {
+  display: grid;
+  grid-template-columns: minmax(0, 1.02fr) minmax(0, 1.18fr);
+  align-items: stretch;
+  gap: 30px;
+}
+
+.leadCopy,
+.leadImageLink,
+.magazineMini,
+.feedImageLink,
+.feedCopy h3 a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.leadCategory {
+  display: inline-block;
+  padding: 7px 13px;
+  background: #f0443e;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.leadCopy h2 {
+  margin: 16px 0 0;
+  color: #101010;
+  font-size: 27px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.18;
+  overflow-wrap: break-word;
+}
+
+.leadCopy > p {
+  margin: 18px 0 0;
+  color: #6e6e6e;
+  font-size: 14.5px;
+  line-height: 1.65;
+}
+
+.byline,
+.bylineLight {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-top: 16px;
+  color: #6e6e6e;
+  font-size: 12px;
+}
+
+.byline strong {
+  color: #101010;
+  font-weight: 600;
+}
+
+.bylineLight {
+  color: rgb(255 255 255 / 78%);
+}
+
+.bylineLight strong {
+  color: #fff;
+}
+
+.readMore {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 16px;
+  color: #101010;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.leadImage,
+.magazineMiniImage,
+.feedImage {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #3a1719, #100708);
+  box-shadow: 0 3px 14px rgb(20 18 14 / 5%);
+}
+
+.leadImage {
+  min-height: 340px;
+  height: 100%;
+}
+
+.leadImage img,
+.magazineMiniImage img,
+.feedImage img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.imageScrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 55%, rgb(0 0 0 / 40%));
+}
+
+.magazineCards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 30px;
+  margin-top: 40px;
+}
+
+.magazineMiniImage {
+  aspect-ratio: 16 / 10;
+}
+
+.magazineMini h3 {
+  margin: 14px 0 0;
+  color: #101010;
+  font-size: 17px;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+
+.magazineMini p {
+  display: -webkit-box;
+  min-height: 62px;
+  margin: 8px 0 0;
+  overflow: hidden;
+  color: #6e6e6e;
+  font-size: 13px;
+  line-height: 1.6;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.leaderboardShell {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 80px;
+}
+
+.feedLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  align-items: start;
+  gap: 56px;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 64px 80px 0;
+}
+
+.sectionTitle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.sectionTitle > span {
+  width: 4px;
+  height: 20px;
+  border-radius: 2px;
+  background: #f0443e;
+}
+
+.sectionTitle h2 {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+}
+
+.feedCard {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 24px;
+  padding: 26px 0;
+  border-top: 1px solid #e3ded6;
+}
+
+.feedImage {
+  aspect-ratio: 16 / 10;
+}
+
+.feedCategory {
+  color: #f0443e;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.feedCopy h3 {
+  margin: 9px 0 0;
+  font-size: 23px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.feedCopy > p {
+  max-width: 60ch;
+  margin: 10px 0 0;
+  color: #6e6e6e;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.feedMeta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+  color: #9a958c;
+  font-size: 11px;
+}
+
+.feedMeta strong {
+  color: #101010;
+  font-weight: 600;
+}
+
+.inlineAd {
+  padding-top: 26px;
+  border-top: 1px solid #e3ded6;
+}
+
+.feedRail {
+  position: sticky;
+  top: 92px;
+  display: flex;
+  justify-content: center;
+}
+
+.moreCount,
+.empty {
+  color: #6e6e6e;
+  font-size: 13px;
+}
+
+.moreCount {
+  margin: 34px 0 0;
+  text-align: center;
+}
+
+.empty {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 56px 64px;
+}
+
+@media (max-width: 1279px) {
+  .channelHeader,
+  .magazine {
+    padding-right: 48px;
+    padding-left: 48px;
+  }
+
+  .leaderboardShell,
+  .feedLayout {
+    padding-right: 48px;
+    padding-left: 48px;
+  }
+}
+
+@media (max-width: 1023px) {
+  .channelHeader,
+  .magazine,
+  .leaderboardShell,
+  .feedLayout {
+    padding-right: 32px;
+    padding-left: 32px;
+  }
+
+  .channelRow {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .headerAd {
+    width: 100%;
+  }
+
+  .feedLayout {
+    grid-template-columns: 1fr;
+  }
+
+  .feedRail {
+    position: static;
+  }
+}
+
+@media (max-width: 767px) {
+  .page {
+    padding-bottom: 48px;
+  }
+
+  .channelHeader {
+    padding: 18px 20px 0;
+  }
+
+  .magazine {
+    padding: 30px 20px 0;
+  }
+
+  .leaderboardShell,
+  .feedLayout {
+    padding-right: 20px;
+    padding-left: 20px;
+  }
+
+  .magazineLead,
+  .magazineCards {
+    grid-template-columns: 1fr;
+  }
+
+  .leadImageLink {
+    order: -1;
+  }
+
+  .leadImage {
+    min-height: 240px;
+  }
+
+  .magazineCards {
+    gap: 28px;
+  }
+
+  .feedLayout {
+    padding-top: 48px;
+  }
+
+  .feedCard {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+
+  .feedCopy h3 {
+    font-size: 20px;
+  }
+}
+
+@media (max-width: 390px) {
+  .channelHeader,
+  .magazine,
+  .leaderboardShell,
+  .feedLayout {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+}

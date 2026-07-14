@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 
-import { EntityIndex } from "../../_components/entity-index";
+import { CategoryHome } from "../../_components/category-home";
 import { getMovieIndexData } from "../../../src/server/entity-indexes";
+import { getHomeUpcomingMovies } from "../../../src/server/home-upcoming";
+import { getNewsIndexData } from "../../../src/server/news-pages";
 
 /**
  * Listagem publica de filmes - /pt/filmes/ (porta de entrada; acento vermelho).
@@ -22,7 +24,7 @@ export const dynamic = "force-dynamic";
 
 const TITLE = "Filmes";
 const DESCRIPTION =
-  "Explore os filmes catalogados na Screen - paginas editoriais em portugues, atualizadas conforme novas fichas sao publicadas.";
+  "Explore os filmes catalogados na Screen — páginas editoriais em português, atualizadas conforme novas fichas são publicadas.";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { indexability, canonicalUrl } = await getMovieIndexData();
@@ -38,16 +40,21 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function MovieIndexPage() {
-  const { view, canonicalUrl } = await getMovieIndexData();
+  const [{ view, canonicalUrl }, upcoming, news] = await Promise.all([
+    getMovieIndexData(),
+    getHomeUpcomingMovies({ limit: 4 }),
+    getNewsIndexData(),
+  ]);
+
   return (
-    <EntityIndex
-      title={TITLE}
-      description={DESCRIPTION}
-      breadcrumbLabel="Filmes"
+    <CategoryHome
       canonicalUrl={canonicalUrl}
+      description={DESCRIPTION}
+      newsView={news.view}
+      pageTitle={TITLE}
+      upcoming={upcoming}
       vertical="movie"
       view={view}
-      emptyMessage="Nenhum filme disponível ainda."
     />
   );
 }

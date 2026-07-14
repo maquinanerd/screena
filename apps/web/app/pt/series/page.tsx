@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 
-import { EntityIndex } from "../../_components/entity-index";
+import { CategoryHome } from "../../_components/category-home";
 import { getSeriesIndexData } from "../../../src/server/entity-indexes";
+import { getNewsIndexData } from "../../../src/server/news-pages";
 
 /**
  * Listagem publica de series - /pt/series/ (porta de entrada; acento verde).
@@ -20,9 +21,9 @@ import { getSeriesIndexData } from "../../../src/server/entity-indexes";
  */
 export const dynamic = "force-dynamic";
 
-const TITLE = "Series";
+const TITLE = "Séries";
 const DESCRIPTION =
-  "Explore as series catalogadas na Screen - paginas editoriais em portugues, com guias de temporada quando disponiveis.";
+  "Explore as séries catalogadas na Screen — páginas editoriais em português, com guias de temporada quando disponíveis.";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { indexability, canonicalUrl } = await getSeriesIndexData();
@@ -38,16 +39,19 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function SeriesIndexPage() {
-  const { view, canonicalUrl } = await getSeriesIndexData();
+  const [{ view, canonicalUrl }, news] = await Promise.all([
+    getSeriesIndexData(),
+    getNewsIndexData(),
+  ]);
+
   return (
-    <EntityIndex
-      title={TITLE}
-      description={DESCRIPTION}
-      breadcrumbLabel="Series"
+    <CategoryHome
       canonicalUrl={canonicalUrl}
+      description={DESCRIPTION}
+      newsView={news.view}
+      pageTitle={TITLE}
       vertical="series"
       view={view}
-      emptyMessage="Nenhuma série disponível ainda."
     />
   );
 }
