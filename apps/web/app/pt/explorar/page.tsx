@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { EntityCardLink } from "../../_components/entity-card";
 import { NewsCard } from "../../_components/news-card";
+import { Breadcrumbs, PageIntro, SectionHeader } from "../../_components/page-primitives";
 import {
   getMovieIndexData,
   getPersonIndexData,
@@ -38,8 +39,8 @@ import {
  * Server component puro (invariantes 3/4): le somente PostgreSQL; zero API
  * externa, zero Gemini, zero TMDB. Sem ratings, sem streaming, sem numeros
  * inventados (as contagens exibidas sao `totalCount` real do banco, e so
- * quando > 0). Gate anti-thin (invariante 5): com menos de 2 secoes com dado
- * real, a pagina existe mas recebe `noindex`.
+ * quando > 0). Pela politica de indexacao total, `noindex` fica restrito ao
+ * estado tecnico em que nenhuma secao possui dado real.
  */
 
 export const dynamic = "force-dynamic";
@@ -59,10 +60,7 @@ async function getExploreData() {
   const seriesCards = takeSectionCards(series.view.cards, EXPLORE_ENTITY_CARD_LIMIT);
   const personCards = takeSectionCards(people.view.cards, EXPLORE_ENTITY_CARD_LIMIT);
   const newsCards = takeSectionCards(
-    [
-      ...(news.view.featured !== null ? [news.view.featured] : []),
-      ...news.view.cards,
-    ],
+    [...(news.view.featured !== null ? [news.view.featured] : []), ...news.view.cards],
     EXPLORE_NEWS_CARD_LIMIT,
   );
   const indexability = evaluatePortalIndexability({
@@ -93,9 +91,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: TITLE,
     description: DESCRIPTION,
-    robots: shouldIndex
-      ? { index: true, follow: true }
-      : { index: false, follow: false },
+    robots: shouldIndex ? { index: true, follow: true } : { index: false, follow: false },
     alternates: { canonical: canonicalPublicUrl(EXPLORE_PATH) },
   };
 }
@@ -149,7 +145,7 @@ export default async function ExplorePage() {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
     itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Inicio", item: `${SITE_URL}${HOME_PATH}` },
+      { "@type": "ListItem", position: 1, name: "Início", item: `${SITE_URL}${HOME_PATH}` },
       { "@type": "ListItem", position: 2, name: TITLE, item: canonicalUrl },
     ],
   };
@@ -165,19 +161,9 @@ export default async function ExplorePage() {
   return (
     <main className="portal-page" data-vertical="explore">
       <div className="container">
-        <nav className="breadcrumb" aria-label="Trilha de navegacao">
-          <ol>
-            <li>
-              <a href={HOME_PATH}>Inicio</a>
-            </li>
-            <li aria-current="page">{TITLE}</li>
-          </ol>
-        </nav>
+        <Breadcrumbs items={[{ label: "Início", href: HOME_PATH }, { label: TITLE }]} />
 
-        <header className="portal-hero portal-hero--hub">
-          <h1 className="portal-hero__title">{TITLE}</h1>
-          <p className="portal-hero__desc">{DESCRIPTION}</p>
-        </header>
+        <PageIntro title={TITLE} description={DESCRIPTION} vertical="neutral" />
 
         <nav className="portal-nav" aria-label="Seções do catálogo">
           {hubCards.map((card) => (
@@ -189,23 +175,20 @@ export default async function ExplorePage() {
             >
               <span className="portal-nav__label">{card.label}</span>
               <span className="portal-nav__desc">{card.description}</span>
-              {card.count !== null ? (
-                <span className="portal-nav__count">{card.count}</span>
-              ) : null}
+              {card.count !== null ? <span className="portal-nav__count">{card.count}</span> : null}
             </a>
           ))}
         </nav>
 
         {movieCards.length > 0 ? (
           <section className="portal-section" aria-labelledby="explore-movies-title">
-            <div className="portal-section__head">
-              <h2 id="explore-movies-title" className="portal-section__title" data-vertical="movie">
-                Filmes
-              </h2>
-              <a className="portal-section__more" href={MOVIES_INDEX_PATH}>
-                Ver todos
-              </a>
-            </div>
+            <SectionHeader
+              id="explore-movies-title"
+              title="Filmes"
+              href={MOVIES_INDEX_PATH}
+              linkLabel="Ver todos"
+              vertical="movie"
+            />
             <ul className="entity-grid">
               {movieCards.map((card) => (
                 <li key={card.href} className="entity-card-item">
@@ -218,14 +201,13 @@ export default async function ExplorePage() {
 
         {seriesCards.length > 0 ? (
           <section className="portal-section" aria-labelledby="explore-series-title">
-            <div className="portal-section__head">
-              <h2 id="explore-series-title" className="portal-section__title" data-vertical="series">
-                Séries
-              </h2>
-              <a className="portal-section__more" href={SERIES_INDEX_PATH}>
-                Ver todas
-              </a>
-            </div>
+            <SectionHeader
+              id="explore-series-title"
+              title="Séries"
+              href={SERIES_INDEX_PATH}
+              linkLabel="Ver todas"
+              vertical="series"
+            />
             <ul className="entity-grid">
               {seriesCards.map((card) => (
                 <li key={card.href} className="entity-card-item">
@@ -238,14 +220,13 @@ export default async function ExplorePage() {
 
         {personCards.length > 0 ? (
           <section className="portal-section" aria-labelledby="explore-people-title">
-            <div className="portal-section__head">
-              <h2 id="explore-people-title" className="portal-section__title">
-                Pessoas
-              </h2>
-              <a className="portal-section__more" href={PEOPLE_INDEX_PATH}>
-                Ver todas
-              </a>
-            </div>
+            <SectionHeader
+              id="explore-people-title"
+              title="Pessoas"
+              href={PEOPLE_INDEX_PATH}
+              linkLabel="Ver todas"
+              vertical="person"
+            />
             <ul className="entity-grid">
               {personCards.map((card) => (
                 <li key={card.href} className="entity-card-item">
@@ -258,14 +239,13 @@ export default async function ExplorePage() {
 
         {newsCards.length > 0 ? (
           <section className="portal-section" aria-labelledby="explore-news-title">
-            <div className="portal-section__head">
-              <h2 id="explore-news-title" className="portal-section__title">
-                Notícias
-              </h2>
-              <a className="portal-section__more" href={NEWS_INDEX_PATH}>
-                Ver todas
-              </a>
-            </div>
+            <SectionHeader
+              id="explore-news-title"
+              title="Notícias"
+              href={NEWS_INDEX_PATH}
+              linkLabel="Ver todas"
+              vertical="news"
+            />
             <ul className="news-grid">
               {newsCards.map((card) => (
                 <li key={card.href} className="news-grid__item">

@@ -9,7 +9,8 @@ import { getSeriesIndexData } from "../../../src/server/entity-indexes";
  * Server component puro: le somente PostgreSQL via `getSeriesIndexData`. Zero API
  * externa, zero Gemini e zero TMDB no render. Lista so series com slug canonico
  * pt-BR; cada card linka para /pt/series/[slug]/. Sem nota/streaming/temporada
- * inventada. Listagem vazia/fina -> noindex.
+ * inventada. `noindex` fica restrito aos estados tecnicos definidos pelo
+ * avaliador canonico de indexabilidade.
  */
 
 /**
@@ -20,9 +21,9 @@ import { getSeriesIndexData } from "../../../src/server/entity-indexes";
  */
 export const dynamic = "force-dynamic";
 
-const TITLE = "Series";
+const TITLE = "Séries";
 const DESCRIPTION =
-  "Explore as series catalogadas na Screen - paginas editoriais em portugues, com guias de temporada quando disponiveis.";
+  "Explore as séries catalogadas no Screen — páginas editoriais em português, com guias de temporada quando disponíveis.";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { indexability, canonicalUrl } = await getSeriesIndexData();
@@ -43,7 +44,7 @@ export default async function SeriesIndexPage() {
     <EntityIndex
       title={TITLE}
       description={DESCRIPTION}
-      breadcrumbLabel="Series"
+      breadcrumbLabel="Séries"
       canonicalUrl={canonicalUrl}
       vertical="series"
       view={view}

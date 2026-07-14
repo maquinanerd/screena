@@ -9,7 +9,8 @@ import { getPersonIndexData } from "../../../src/server/entity-indexes";
  * Server component puro: le somente PostgreSQL via `getPersonIndexData`. Zero API
  * externa, zero Gemini e zero TMDB no render. Lista so pessoas com slug canonico
  * pt-BR; cada card linka para /pt/pessoas/[slug]/. Sem idade calculada, sem
- * profissao/bio inventada. Listagem vazia/fina -> noindex.
+ * profissao/bio inventada. `noindex` fica restrito aos estados tecnicos
+ * definidos pelo avaliador canonico de indexabilidade.
  */
 
 /**
@@ -22,7 +23,7 @@ export const dynamic = "force-dynamic";
 
 const TITLE = "Pessoas";
 const DESCRIPTION =
-  "Explore as pessoas catalogadas na Screen - atores, diretores e equipe, com paginas editoriais em portugues.";
+  "Explore as pessoas catalogadas no Screen — atores, diretores e equipes, com páginas editoriais em português.";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { indexability, canonicalUrl } = await getPersonIndexData();

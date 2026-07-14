@@ -14,7 +14,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { HOME_HREF, NAV_ITEMS } from "../../apps/web/src/lib/navigation";
+import { HOME_HREF, isActiveNavigationPath, NAV_ITEMS } from "../../apps/web/src/lib/navigation";
 
 const WEB_APP_DIR = path.join(process.cwd(), "apps", "web", "app");
 
@@ -50,6 +50,14 @@ function withoutComments(source: string): string {
 }
 
 describe("header — navegacao global", () => {
+  it("resolve estado ativo por segmento, com ou sem barra final", () => {
+    expect(isActiveNavigationPath("/pt/filmes/", "/pt/filmes/")).toBe(true);
+    expect(isActiveNavigationPath("/pt/filmes/a-origem/", "/pt/filmes/")).toBe(true);
+    expect(isActiveNavigationPath("/pt/series", "/pt/series/")).toBe(true);
+    expect(isActiveNavigationPath("/pt/filmes-antigos/", "/pt/filmes/")).toBe(false);
+    expect(isActiveNavigationPath(null, "/pt/filmes/")).toBe(false);
+  });
+
   it("contem links para home, filmes, series, pessoas, noticias e explorar", () => {
     const hrefs = NAV_ITEMS.map((item) => item.href);
     expect(HOME_HREF).toBe("/pt/");

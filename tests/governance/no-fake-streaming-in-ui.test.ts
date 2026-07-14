@@ -29,13 +29,6 @@ function withoutComments(source: string): string {
     .join("\n");
 }
 
-function stripAllowedHomePlaceholderGates(source: string): string {
-  return source.replace(
-    /\{\s*allowPlaceholders\s*\?\s*<EpisodesTicker\s*\/>\s*:\s*null\s*\}/g,
-    "",
-  );
-}
-
 function componentFiles(): string[] {
   const absDir = path.join(ROOT, COMPONENTS_REL);
   return readdirSync(absDir, { withFileTypes: true })
@@ -65,32 +58,21 @@ const FAKE_RANKING_OR_ACTION_PATTERNS: ReadonlyArray<[RegExp, string]> = [
   [/\bhome-v4-watch-action\b/, "home-v4-watch-action"],
 ];
 
-function findViolations(
-  source: string,
-  patterns: ReadonlyArray<[RegExp, string]>,
-): string[] {
-  return patterns
-    .filter(([pattern]) => pattern.test(source))
-    .map(([, label]) => label);
+function findViolations(source: string, patterns: ReadonlyArray<[RegExp, string]>): string[] {
+  return patterns.filter(([pattern]) => pattern.test(source)).map(([, label]) => label);
 }
 
 describe("governanca: UI publica nao finge streaming/ranking/nota", () => {
-  it("EpisodesTicker so entra na home pelo gate allowHomeVisualPlaceholders", () => {
+  it("home publica nao reativa placeholders visuais por ambiente", () => {
     const code = withoutComments(readSource(HOME_PAGE_REL));
 
-    expect(code).toContain("allowHomeVisualPlaceholders()");
-    expect(code).toMatch(
-      /\{\s*allowPlaceholders\s*\?\s*<EpisodesTicker\s*\/>\s*:\s*null\s*\}/,
-    );
-
-    const withoutAllowedGate = stripAllowedHomePlaceholderGates(code);
-    expect(withoutAllowedGate).not.toMatch(/<EpisodesTicker\s*\/>/);
+    expect(code).not.toContain("allowHomeVisualPlaceholders");
+    expect(code).not.toContain("EpisodesTicker");
+    expect(code).not.toMatch(/SCREEN_HOME_VISUAL_PLACEHOLDERS/);
   });
 
-  it("home /pt nao contem streaming/plataforma fake fora do gate", () => {
-    const code = stripAllowedHomePlaceholderGates(
-      withoutComments(readSource(HOME_PAGE_REL)),
-    );
+  it("home /pt nao contem streaming/plataforma fake", () => {
+    const code = withoutComments(readSource(HOME_PAGE_REL));
     const violations = findViolations(code, FAKE_STREAMING_PATTERNS);
 
     expect(violations).toEqual([]);
@@ -106,12 +88,8 @@ describe("governanca: UI publica nao finge streaming/ranking/nota", () => {
   it("componentes compartilhados nao prometem streaming sem contrato real de watch", () => {
     const violations: string[] = [];
     for (const file of componentFiles()) {
-      if (file.endsWith("/episodes-ticker.tsx")) continue;
-
       const code = withoutComments(readSource(file));
-      const hasRealWatchContract = /\bWatchView\b|watch-presenter|watch_availability/.test(
-        code,
-      );
+      const hasRealWatchContract = /\bWatchView\b|watch-presenter|watch_availability/.test(code);
       const matches = findViolations(code, FAKE_STREAMING_PATTERNS);
 
       if (matches.length > 0 && !hasRealWatchContract) {
@@ -124,18 +102,16 @@ describe("governanca: UI publica nao finge streaming/ranking/nota", () => {
 
   it("hero-carousel publico usa CTA honesta e nao promete 'Onde assistir' sem watch real", () => {
     const code = withoutComments(readSource(HERO_CAROUSEL_REL));
-    const hasRealWatchContract = /\bWatchView\b|watch-presenter|watch_availability/.test(
-      code,
-    );
+    const hasRealWatchContract = /\bWatchView\b|watch-presenter|watch_availability/.test(code);
     const promisesStreaming = /Onde assistir/i.test(code);
 
     // Enquanto o hero nao ler um contrato real de watch, seu CTA nunca pode
     // prometer streaming ("Onde assistir"). Regressao aqui = claim falso em prod.
     expect(promisesStreaming && !hasRealWatchContract).toBe(false);
 
-    // Locka os rotulos honestos atuais: trocar por promessa de streaming falha.
-    expect(code).toContain("Ver detalhes");
+    // Locka o unico rotulo honesto atual: trocar por promessa de streaming falha.
     expect(code).toContain("Ver ficha");
+    expect(code).not.toContain("Ver detalhes");
   });
 
   it("seed demo publico nao grava screen_score exibivel", () => {

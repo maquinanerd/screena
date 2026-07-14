@@ -9,7 +9,8 @@ import { getMovieIndexData } from "../../../src/server/entity-indexes";
  * Server component puro: le somente PostgreSQL via `getMovieIndexData`. Zero API
  * externa, zero Gemini e zero TMDB no render. Lista so filmes com slug canonico
  * pt-BR; cada card linka para /pt/filmes/[slug]/. Sem nota/streaming/ranking
- * inventado. Listagem vazia/fina -> noindex.
+ * inventado. `noindex` fica restrito aos estados tecnicos definidos pelo
+ * avaliador canonico de indexabilidade.
  */
 
 /**
@@ -22,7 +23,7 @@ export const dynamic = "force-dynamic";
 
 const TITLE = "Filmes";
 const DESCRIPTION =
-  "Explore os filmes catalogados na Screen - paginas editoriais em portugues, atualizadas conforme novas fichas sao publicadas.";
+  "Explore os filmes catalogados no Screen — páginas editoriais em português, atualizadas conforme novas fichas são publicadas.";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { indexability, canonicalUrl } = await getMovieIndexData();

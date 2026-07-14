@@ -46,6 +46,34 @@ export function takeSectionCards<T>(cards: readonly T[], limit: number): T[] {
 }
 
 /**
+ * Intercala duas colecoes preservando sua ordem, sem repetir o mesmo destino.
+ * A primeira colecao vence empates de `href` no mesmo indice.
+ */
+export function interleaveUniqueByHref<T extends { href: string }>(
+  first: readonly T[],
+  second: readonly T[],
+  limit: number,
+): T[] {
+  if (limit <= 0) return [];
+
+  const result: T[] = [];
+  const seen = new Set<string>();
+  const length = Math.max(first.length, second.length);
+
+  for (let index = 0; index < length && result.length < limit; index += 1) {
+    for (const item of [first[index], second[index]]) {
+      if (item !== undefined && !seen.has(item.href)) {
+        result.push(item);
+        seen.add(item.href);
+      }
+      if (result.length === limit) break;
+    }
+  }
+
+  return result;
+}
+
+/**
  * Conta quantas secoes do portal tem pelo menos 1 item real. Recebe as
  * contagens reais (length dos cards de cada secao renderizada).
  */
@@ -64,11 +92,8 @@ export interface PortalIndexabilityInput {
  * pelo menos 1 secao de dado real indexa; portal vazio (nenhuma secao populada)
  * e caso tecnico/vazio -> `noindex`.
  */
-export function evaluatePortalIndexability(
-  input: PortalIndexabilityInput,
-): IndexabilityResult {
-  const count =
-    input.populatedSectionCount < 0 ? 0 : input.populatedSectionCount;
+export function evaluatePortalIndexability(input: PortalIndexabilityInput): IndexabilityResult {
+  const count = input.populatedSectionCount < 0 ? 0 : input.populatedSectionCount;
   return evaluateIndexability({
     language: "pt-BR",
     hasReliableStructuredData: count > 0,

@@ -1,8 +1,14 @@
 import type { Metadata } from "next";
 
 import { NewsCard } from "../../_components/news-card";
+import {
+  Breadcrumbs,
+  EmptyState,
+  PageIntro,
+  SectionHeader,
+} from "../../_components/page-primitives";
 import { getNewsIndexData } from "../../../src/server/news-pages";
-import { SITE_URL } from "../../../src/lib/site";
+import { EXPLORE_PATH, SITE_URL } from "../../../src/lib/site";
 
 /**
  * Listagem publica de noticias - /pt/noticias/ (ambiente editorial/blog; NEUTRO).
@@ -10,7 +16,8 @@ import { SITE_URL } from "../../../src/lib/site";
  * Server component puro: le somente PostgreSQL via `getNewsIndexData`. Zero API
  * externa, zero Gemini e zero TMDB no render. Lista so artigos publicaveis
  * (traducao pt-BR + review + slug/titulo + publishedAt + licenca/display). Sem
- * dado inventado. Listagem vazia/fina -> noindex.
+ * dado inventado. `noindex` fica restrito aos estados tecnicos definidos pelo
+ * avaliador canonico de indexabilidade.
  *
  * Render dinamico (le PostgreSQL por request; nao pre-renderiza no build sem
  * DATABASE_URL) - mesma natureza das listagens de filme/serie/pessoa.
@@ -18,9 +25,9 @@ import { SITE_URL } from "../../../src/lib/site";
 
 export const dynamic = "force-dynamic";
 
-const TITLE = "Noticias";
+const TITLE = "Notícias";
 const DESCRIPTION =
-  "Ultimas noticias e analises editoriais da Screen sobre cinema e series, em portugues.";
+  "Últimas notícias e análises editoriais do Screen sobre cinema e séries, em português.";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { indexability, canonicalUrl } = await getNewsIndexData();
@@ -28,9 +35,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: TITLE,
     description: DESCRIPTION,
-    robots: shouldIndex
-      ? { index: true, follow: true }
-      : { index: false, follow: false },
+    robots: shouldIndex ? { index: true, follow: true } : { index: false, follow: false },
     alternates: { canonical: canonicalUrl },
   };
 }
@@ -46,8 +51,8 @@ export default async function NewsIndexPage() {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
     itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Inicio", item: `${SITE_URL}/pt/` },
-      { "@type": "ListItem", position: 2, name: "Noticias", item: canonicalUrl },
+      { "@type": "ListItem", position: 1, name: "Início", item: `${SITE_URL}/pt/` },
+      { "@type": "ListItem", position: 2, name: "Notícias", item: canonicalUrl },
     ],
   };
 
@@ -74,31 +79,25 @@ export default async function NewsIndexPage() {
   return (
     <main className="news-index" data-vertical="news">
       <div className="container">
-        <nav className="breadcrumb" aria-label="Trilha de navegacao">
-          <ol>
-            <li>
-              <a href="/pt/">Inicio</a>
-            </li>
-            <li aria-current="page">Noticias</li>
-          </ol>
-        </nav>
+        <Breadcrumbs items={[{ label: "Início", href: "/pt/" }, { label: TITLE }]} />
 
-        <header className="news-index__header">
-          <h1 className="news-index__title">{TITLE}</h1>
-          <p className="news-index__desc">{DESCRIPTION}</p>
-        </header>
+        <PageIntro title={TITLE} description={DESCRIPTION} vertical="news" />
 
         {hasItems ? (
           <>
             {view.featured !== null ? (
               <section className="news-index__featured" aria-label="Destaque">
-                <NewsCard card={view.featured} variant="featured" />
+                <NewsCard card={view.featured} variant="featured" headingLevel={2} eager />
               </section>
             ) : null}
 
             {view.cards.length > 0 ? (
-              <section className="news-index__feed" aria-label="Ultimas noticias">
-                <h2 className="news-index__feed-title">Ultimas noticias</h2>
+              <section className="news-index__feed" aria-labelledby="news-index-feed-title">
+                <SectionHeader
+                  id="news-index-feed-title"
+                  title="Últimas notícias"
+                  vertical="news"
+                />
                 <ul className="news-grid">
                   {view.cards.map((card) => (
                     <li key={card.href} className="news-grid__item">
@@ -116,9 +115,11 @@ export default async function NewsIndexPage() {
             ) : null}
           </>
         ) : (
-          <p className="news-index__empty">
-            Ainda nao ha noticias publicadas nesta secao.
-          </p>
+          <EmptyState
+            title="Ainda não há notícias publicadas."
+            description="A redação do Screen ainda não publicou notícias nesta seção."
+            action={{ label: "Explorar o catálogo", href: EXPLORE_PATH }}
+          />
         )}
       </div>
 

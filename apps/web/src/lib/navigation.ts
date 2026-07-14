@@ -35,3 +35,15 @@ export const NAV_ITEMS: readonly NavItem[] = [
 
 /** Destino do wordmark: a home publica pt-BR (rota real desde a Fase 5D). */
 export const HOME_HREF = HOME_PATH;
+
+/**
+ * Marca o item correspondente tanto no indice quanto em suas rotas filhas.
+ * A comparacao respeita limites de segmento para nao confundir prefixos.
+ */
+export function isActiveNavigationPath(pathname: string | null, href: string): boolean {
+  if (pathname === null) return false;
+
+  const currentPath = pathname === "/" ? pathname : pathname.replace(/\/+$/, "");
+  const navPath = href === "/" ? href : href.replace(/\/+$/, "");
+  return currentPath === navPath || currentPath.startsWith(`${navPath}/`);
+}

@@ -124,7 +124,6 @@ const IGNORED_DIRS = new Set([
  *   include?: RegExp,
  *   exclude?: RegExp,
  *   codeOnly?: boolean,
- *   stripAllowedHomePlaceholderGates?: boolean,
  * }[]}
  */
 const FORBIDDEN_PATTERNS = [
@@ -141,33 +140,31 @@ const FORBIDDEN_PATTERNS = [
     regex: /imdb[\s._/-]{0,3}tomate|tomate[\s._/-]{0,3}imdb/i,
   },
   {
-    name: "home /pt com literal fake de streaming/plataforma fora do gate",
+    name: "home /pt com literal fake de streaming/plataforma",
     regex:
       /\bHOME_VISUAL_PLATFORMS\b|\bhomeVisualPlatform\b|\bhome-v4-series-platform\b|\b(?:NETFLIX|Netflix|Prime Video|Disney\+|Star\+|Apple TV\+|Max)\b/,
     include: /^apps\/web\/app\/pt\/page\.tsx$/,
     codeOnly: true,
-    stripAllowedHomePlaceholderGates: true,
   },
   {
     name: "home /pt promete 'Onde assistir' sem disponibilidade real",
     regex: /Onde assistir/i,
     include: /^apps\/web\/app\/pt\/page\.tsx$/,
     codeOnly: true,
-    stripAllowedHomePlaceholderGates: true,
   },
   {
     name: "component compartilhado com literal fake de streaming/plataforma",
     regex:
       /\bHOME_VISUAL_PLATFORMS\b|\bhomeVisualPlatform\b|\bhome-v4-series-platform\b|\b(?:NETFLIX|Netflix|Prime Video|Disney\+|Star\+|Apple TV\+|Max)\b/,
     include: /^apps\/web\/app\/_components\/.*\.tsx$/,
-    exclude: /^apps\/web\/app\/_components\/(?:episodes-ticker|watch-providers)\.tsx$/,
+    exclude: /^apps\/web\/app\/_components\/watch-providers\.tsx$/,
     codeOnly: true,
   },
   {
     name: "component compartilhado promete 'Onde assistir' sem contrato de watch",
     regex: /Onde assistir/i,
     include: /^apps\/web\/app\/_components\/.*\.tsx$/,
-    exclude: /^apps\/web\/app\/_components\/(?:episodes-ticker|watch-providers)\.tsx$/,
+    exclude: /^apps\/web\/app\/_components\/watch-providers\.tsx$/,
     codeOnly: true,
   },
   {
@@ -292,31 +289,14 @@ function stripComments(source) {
 }
 
 /**
- * Remove usos permitidos pelo gate de placeholders visuais da home.
- * @param {string} source
- * @returns {string}
- */
-function stripAllowedHomePlaceholderGates(source) {
-  return source.replace(
-    /\{\s*allowPlaceholders\s*\?\s*<EpisodesTicker\s*\/>\s*:\s*null\s*\}/g,
-    '',
-  );
-}
-
-/**
  * @param {string} content
  * @param {{
  *   codeOnly?: boolean,
- *   stripAllowedHomePlaceholderGates?: boolean,
  * }} pattern
  * @returns {string}
  */
 function sourceForPattern(content, pattern) {
-  let source = pattern.codeOnly ? stripComments(content) : content;
-  if (pattern.stripAllowedHomePlaceholderGates) {
-    source = stripAllowedHomePlaceholderGates(source);
-  }
-  return source;
+  return pattern.codeOnly ? stripComments(content) : content;
 }
 
 /**

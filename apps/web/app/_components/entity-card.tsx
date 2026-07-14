@@ -29,21 +29,25 @@ const CARD_KIND_LABELS: Readonly<Record<EntityCard["kind"], string>> = {
  * pessoa. Usa apenas o titulo real do card — nunca descreve conteudo inventado.
  */
 function cardImageAlt(card: EntityCard): string {
-  return card.kind === "person"
-    ? `Retrato de ${card.title}`
-    : `Pôster de ${card.title}`;
+  return card.kind === "person" ? `Retrato de ${card.title}` : `Pôster de ${card.title}`;
 }
 
 interface EntityCardLinkProps {
   card: EntityCard;
+  /** Variante visual; o conteudo e o contrato de dados permanecem identicos. */
+  variant?: "poster" | "feature" | "compact";
+  /** Primeira dobra pode solicitar carregamento imediato da imagem real. */
+  eager?: boolean;
 }
 
-export function EntityCardLink({ card }: EntityCardLinkProps): ReactNode {
+export function EntityCardLink({
+  card,
+  variant = "poster",
+  eager = false,
+}: EntityCardLinkProps): ReactNode {
   return (
-    <a className="entity-card" href={card.href} data-entity-type={card.kind}>
-      <span
-        className={`entity-card__media${card.image ? " entity-card__media--real" : ""}`}
-      >
+    <a className="entity-card" href={card.href} data-entity-type={card.kind} data-variant={variant}>
+      <span className={`entity-card__media${card.image ? " entity-card__media--real" : ""}`}>
         {card.image !== null ? (
           <img
             src={card.image.src}
@@ -51,10 +55,14 @@ export function EntityCardLink({ card }: EntityCardLinkProps): ReactNode {
             width={card.image.width}
             height={card.image.height}
             className="entity-card__image"
-            loading="lazy"
+            loading={eager ? "eager" : "lazy"}
+            fetchPriority={eager ? "high" : "auto"}
+            decoding="async"
           />
         ) : (
-          <span className="entity-card__fallback" aria-hidden="true" />
+          <span className="entity-card__fallback" aria-hidden="true">
+            <span className="entity-card__monogram">{card.title.slice(0, 1)}</span>
+          </span>
         )}
         <span className="entity-card__badge" data-entity-type={card.kind}>
           {CARD_KIND_LABELS[card.kind]}
@@ -62,9 +70,7 @@ export function EntityCardLink({ card }: EntityCardLinkProps): ReactNode {
       </span>
       <span className="entity-card__body">
         <span className="entity-card__title">{card.title}</span>
-        {card.meta !== null ? (
-          <span className="entity-card__meta">{card.meta}</span>
-        ) : null}
+        {card.meta !== null ? <span className="entity-card__meta">{card.meta}</span> : null}
       </span>
     </a>
   );

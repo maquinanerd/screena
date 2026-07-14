@@ -10,8 +10,7 @@ import { buildExternalLinks } from "../../../../src/lib/external-links";
 import { RelatedNewsSection } from "../../../_components/related-news-section";
 import { CastStrip } from "../../../_components/cast-strip";
 import { WatchAvailabilityPanel } from "../../../_components/watch-availability-panel";
-import { EntityExternalIds } from "../../../_components/entity-external-ids";
-import { EntityFacts } from "../../../_components/entity-facts";
+import { EntityDetailHero } from "../../../_components/entity-detail-hero";
 
 /**
  * Pagina publica de filme — /pt/filmes/[slug]/ (schema Movie, acento vermelho).
@@ -28,8 +27,8 @@ import { EntityFacts } from "../../../_components/entity-facts";
  * camada server-only (`getMoviePageData`) — zero API externa e zero Gemini no
  * render. A revalidacao ISR re-le o snapshot do banco, nunca uma fonte externa.
  *
- * Gate anti-thin (invariante 5): sem `>= 2` blocos renderizaveis, a pagina
- * existe mas recebe `robots=noindex` (decisao de `evaluateMovieIndexability`).
+ * Indexacao total (invariante 5): blocos editoriais enriquecem a pagina, mas
+ * nao sao pre-requisito de indexacao; `noindex` fica restrito a casos tecnicos.
  *
  * URL canonica unica: um slug antigo (alias despromovido em `slugs`) NAO
  * renderiza 200 — redireciona permanentemente para o slug canonico. Duas URLs
@@ -59,7 +58,7 @@ export async function generateMetadata({
 
   if (data === null) {
     return {
-      title: "Filme nao encontrado",
+      title: "Filme não encontrado",
       robots: { index: false, follow: false },
     };
   }
@@ -67,14 +66,11 @@ export async function generateMetadata({
   const { view, indexability, canonicalUrl } = data;
   const shouldIndex = indexability.decision === "index";
   const title =
-    view.metaTitle ??
-    `${view.title}${view.year !== null ? ` (${view.year})` : ""} — Filme`;
+    view.metaTitle ?? `${view.title}${view.year !== null ? ` (${view.year})` : ""} — Filme`;
 
   const metadata: Metadata = {
     title,
-    robots: shouldIndex
-      ? { index: true, follow: true }
-      : { index: false, follow: false },
+    robots: shouldIndex ? { index: true, follow: true } : { index: false, follow: false },
     alternates: { canonical: canonicalUrl },
   };
   // Nunca inventar sinopse: so define description quando ela ja existe no banco.
@@ -84,11 +80,7 @@ export async function generateMetadata({
   return metadata;
 }
 
-export default async function MoviePage({
-  params,
-}: {
-  params: Promise<MoviePageParams>;
-}) {
+export default async function MoviePage({ params }: { params: Promise<MoviePageParams> }) {
   const { slug } = await params;
   const data = await getMoviePageData(slug);
   if (data === null) notFound();
@@ -97,8 +89,7 @@ export default async function MoviePage({
   const redirectPath = canonicalRedirectPath(MOVIES_INDEX_PATH, slug, data.canonicalSlug);
   if (redirectPath !== null) permanentRedirect(redirectPath);
 
-  const { view, indexability, canonicalUrl, relatedNews, cast, watch, externalIds } = data;
-  const isUnderReview = indexability.decision !== "index";
+  const { view, canonicalUrl, relatedNews, cast, watch, externalIds } = data;
 
   // Ficha tecnica: SO dados factuais que existem no payload; cada ausente e
   // omitido (nunca placeholder). O ano fica no <h1>; a ficha complementa com
@@ -118,18 +109,15 @@ export default async function MoviePage({
   // Particiona os blocos ja aprovados: o "resumo sem spoilers" (quando existir)
   // vira card lateral; os demais formam a coluna editorial. Cada bloco aparece
   // exatamente uma vez — nada e escondido, nada e inventado.
-  const summaryBlock =
-    view.blocks.find((block) => block.blockType === SUMMARY_BLOCK_TYPE) ?? null;
-  const mainBlocks = view.blocks.filter(
-    (block) => block.blockType !== SUMMARY_BLOCK_TYPE,
-  );
+  const summaryBlock = view.blocks.find((block) => block.blockType === SUMMARY_BLOCK_TYPE) ?? null;
+  const mainBlocks = view.blocks.filter((block) => block.blockType !== SUMMARY_BLOCK_TYPE);
   const hasEditorial = mainBlocks.length > 0 || summaryBlock !== null;
 
   const breadcrumbJsonLd = {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
     itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Inicio", item: `${SITE_URL}/pt/` },
+      { "@type": "ListItem", position: 1, name: "Início", item: `${SITE_URL}/pt/` },
       {
         "@type": "ListItem",
         position: 2,
@@ -159,73 +147,22 @@ export default async function MoviePage({
 
   return (
     <main className="movie-page" data-vertical="movie">
-      <div className="container">
-        <nav className="breadcrumb" aria-label="Trilha de navegacao">
-          <ol>
-            <li>
-              <a href="/pt/">Inicio</a>
-            </li>
-            <li>
-              <a href={MOVIES_INDEX_PATH}>Filmes</a>
-            </li>
-            <li aria-current="page">{view.title}</li>
-          </ol>
-        </nav>
-
-        {/* Cabecalho editorial: poster real (2:3) + coluna de identidade (badge,
-            titulo, ficha tecnica factual e sinopse curta). As colunas "Avaliacoes"
-            e "Onde assistir" do design continuam FORA daqui ate haver dado real —
-            headings vazios pareceriam feature falsa. Sem nota/logo/plataforma. */}
-        <section
-          className={`entity-topbar${view.media.poster !== null ? "" : " entity-topbar--solo"}`}
-          data-vertical="movie"
-        >
-          {view.media.poster !== null ? (
-            <figure className="entity-topbar__poster">
-              <img
-                src={view.media.poster.src}
-                alt={`Pôster de ${view.title}`}
-                width={view.media.poster.width}
-                height={view.media.poster.height}
-                className="entity-topbar__poster-img"
-              />
-            </figure>
-          ) : null}
-          <div className="entity-topbar__lead">
-            {/* Badge + label textual: dois dos cinco sinais da invariante 11. */}
-            <p className="entity-topbar__badge">
-              <span data-vertical="movie" className="screena-badge screena-badge--movie">
-                Filme
-              </span>
-            </p>
-            <h1 className="entity-topbar__title">
-              {view.title}
-              {view.year !== null ? (
-                <span className="entity-topbar__year"> ({view.year})</span>
-              ) : null}
-            </h1>
-            <EntityFacts facts={facts} />
-            {view.metaDescription !== null ? (
-              <p className="entity-topbar__synopsis">{view.metaDescription}</p>
-            ) : null}
-            <EntityExternalIds links={externalLinks} />
-          </div>
-        </section>
-      </div>
-
-      {/* Backdrop real (16:9) como faixa editorial full-bleed — sem play falso,
-          sem tiles decorativos. So aparece quando ha backdrop real no banco. */}
-      {view.media.backdrop !== null ? (
-        <div className="entity-backdrop" data-vertical="movie">
-          <img
-            src={view.media.backdrop.src}
-            alt=""
-            width={view.media.backdrop.width}
-            height={view.media.backdrop.height}
-            className="entity-backdrop__img"
-          />
-        </div>
-      ) : null}
+      <EntityDetailHero
+        vertical="movie"
+        label="Filme"
+        title={view.title}
+        periodLabel={view.year === null ? null : String(view.year)}
+        synopsis={view.metaDescription}
+        poster={view.media.poster}
+        backdrop={view.media.backdrop}
+        facts={facts}
+        externalLinks={externalLinks}
+        breadcrumbs={[
+          { label: "Início", href: "/pt/" },
+          { label: "Filmes", href: MOVIES_INDEX_PATH },
+          { label: view.title },
+        ]}
+      />
 
       {hasEditorial ? (
         <div className="container">
@@ -293,14 +230,6 @@ export default async function MoviePage({
       ) : null}
 
       <RelatedNewsSection cards={relatedNews} />
-
-      {isUnderReview ? (
-        <div className="container">
-          <p className="review-notice" data-editorial-state="in-review">
-            Esta pagina ainda esta em revisao editorial.
-          </p>
-        </div>
-      ) : null}
 
       <script
         type="application/ld+json"

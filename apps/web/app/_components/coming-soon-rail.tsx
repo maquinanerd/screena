@@ -10,24 +10,20 @@ import { useRef } from "react";
  * scroll-snap para parecer slide. O `heading` (barra + título + subtítulo) é
  * server-rendered e passado como prop — só o nav + o trilho são client.
  *
- * Alimentado por DADO REAL (filmes upcoming do TMDB, via getter server) quando
- * existe; senão, placeholder visual só em dev/preview. `duration` é OPCIONAL: só
- * o placeholder tem (pílula "▶ 2:05" de fidelidade). Item real NÃO tem trailer,
- * então NÃO exibe pílula de duração — nunca fingimos duração de trailer. Cada
- * card linka ao índice/ficha REAL de filmes.
+ * Alimentado exclusivamente por dado real já persistido (filmes com estreia
+ * futura). Não promete trailer, player ou plataforma: cada card mostra apenas
+ * imagem, data e título existentes e linka para a ficha real.
  *
  * `imageUrl` é OPCIONAL e, quando presente, é a URL pública REMOTA do CDN de
  * imagens do TMDB (montada no presenter pelo helper governado a partir do
  * `file_path` cru): o thumb 16:9 renderiza `<img>` com `loading="lazy"` +
- * `decoding="async"`; ausente/null -> thumb com o gradiente de fallback (o caso do
- * placeholder visual). O servidor não salva imagem — sem `/media/tmdb`, sem disco.
+ * `decoding="async"`; ausente/null -> thumb com gradiente neutro. O servidor não
+ * salva imagem — sem `/media/tmdb`, sem disco.
  */
 
 export type ComingSoonItem = {
   title: string;
   date: string;
-  /** Duração do trailer (só placeholder visual); ausente = sem pílula. */
-  duration?: string;
   href: string;
   /** URL pública remota do TMDB (backdrop/pôster) ou null/ausente = sem imagem. */
   imageUrl?: string | null;
@@ -46,35 +42,38 @@ export function ComingSoonRail({
     const rail = railRef.current;
     if (rail === null) return;
     const step = 252 * 2; // 232px do card + 20px de gap, ~2 cards por clique
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     rail.scrollBy({
       left: direction === "next" ? step : -step,
-      behavior: "smooth",
+      behavior: reduceMotion ? "auto" : "smooth",
     });
   }
 
   return (
     <>
-      <header className="home-v4-soon-head">
+      <div className="home-v4-soon-head">
         {heading}
-        <div className="home-v4-soon-nav">
-          <button
-            className="home-v4-rail-arrow"
-            type="button"
-            aria-label="Trailer anterior"
-            onClick={() => scrollRail("prev")}
-          >
-            ‹
-          </button>
-          <button
-            className="home-v4-rail-arrow"
-            type="button"
-            aria-label="Próximo trailer"
-            onClick={() => scrollRail("next")}
-          >
-            ›
-          </button>
-        </div>
-      </header>
+        {items.length > 3 ? (
+          <div className="home-v4-soon-nav">
+            <button
+              className="home-v4-rail-arrow"
+              type="button"
+              aria-label="Lançamento anterior"
+              onClick={() => scrollRail("prev")}
+            >
+              ‹
+            </button>
+            <button
+              className="home-v4-rail-arrow"
+              type="button"
+              aria-label="Próximo lançamento"
+              onClick={() => scrollRail("next")}
+            >
+              ›
+            </button>
+          </div>
+        ) : null}
+      </div>
 
       <div className="home-v4-soon-rail" ref={railRef}>
         {items.map((item, index) => (
@@ -94,12 +93,6 @@ export function ComingSoonRail({
                 />
               ) : null}
               <span className="home-v4-trailer-scrim" aria-hidden="true" />
-              {item.duration ? (
-                <span className="home-v4-trailer-duration">
-                  <span aria-hidden="true">▶</span>
-                  {item.duration}
-                </span>
-              ) : null}
             </span>
             <span className="home-v4-trailer-date">
               <span aria-hidden="true">▤</span>

@@ -26,16 +26,17 @@ export const metadata: Metadata = {
   twitter: { card: "summary" },
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: ReactNode;
-}): ReactNode {
+export default function RootLayout({ children }: { children: ReactNode }): ReactNode {
   return (
     <html lang="pt-BR">
       <body>
+        <a className="skip-link" href="#main-content">
+          Pular para o conteúdo
+        </a>
         <SiteHeader />
-        {children}
+        <div id="main-content" className="site-content" tabIndex={-1}>
+          {children}
+        </div>
         <SiteFooter />
       </body>
     </html>

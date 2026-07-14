@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
 
-import { SITE_URL } from "../../src/lib/site";
+import { EXPLORE_PATH, SITE_URL } from "../../src/lib/site";
 import type { EntityIndexView } from "../../src/lib/entity-index-presenter";
 import { EntityCardLink } from "./entity-card";
+import { Breadcrumbs, EmptyState, PageIntro } from "./page-primitives";
 
 /**
  * EntityIndex - Componente de apresentacao das listagens publicas (portas de
@@ -49,7 +50,7 @@ export function EntityIndex({
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
     itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Inicio", item: `${SITE_URL}/pt/` },
+      { "@type": "ListItem", position: 1, name: "Início", item: `${SITE_URL}/pt/` },
       { "@type": "ListItem", position: 2, name: breadcrumbLabel, item: canonicalUrl },
     ],
   };
@@ -77,19 +78,9 @@ export function EntityIndex({
   return (
     <main className="entity-index" data-vertical={vertical}>
       <div className="container">
-        <nav className="breadcrumb" aria-label="Trilha de navegacao">
-          <ol>
-            <li>
-              <a href="/pt/">Inicio</a>
-            </li>
-            <li aria-current="page">{breadcrumbLabel}</li>
-          </ol>
-        </nav>
+        <Breadcrumbs items={[{ label: "Início", href: "/pt/" }, { label: breadcrumbLabel }]} />
 
-        <header className="entity-index__header">
-          <h1 className="entity-index__title">{title}</h1>
-          <p className="entity-index__desc">{description}</p>
-        </header>
+        <PageIntro title={title} description={description} vertical={vertical} />
 
         {hasCards ? (
           <>
@@ -107,10 +98,18 @@ export function EntityIndex({
             ) : null}
           </>
         ) : (
-          <p className="entity-index__empty">
-            {emptyMessage ??
-              `Ainda nao ha ${breadcrumbLabel.toLowerCase()} publicados nesta secao.`}
-          </p>
+          <EmptyState
+            title={
+              emptyMessage ??
+              (vertical === "movie"
+                ? "Nenhum filme disponível ainda."
+                : vertical === "series"
+                  ? "Nenhuma série disponível ainda."
+                  : "Nenhuma pessoa disponível ainda.")
+            }
+            description="Explore outras áreas do catálogo enquanto esta coleção é atualizada."
+            action={{ label: "Explorar o catálogo", href: EXPLORE_PATH }}
+          />
         )}
       </div>
 

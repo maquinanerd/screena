@@ -3,8 +3,8 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 
-import { HOME_HREF, NAV_ITEMS } from "../../src/lib/navigation";
-import { EXPLORE_PATH, HOME_PATH } from "../../src/lib/routes";
+import { HOME_HREF, isActiveNavigationPath, NAV_ITEMS } from "../../src/lib/navigation";
+import { HOME_PATH } from "../../src/lib/routes";
 
 /**
  * SiteHeader — cabecalho/navegacao global do app publico @screena/web.
@@ -65,27 +65,23 @@ export function SiteHeader(): ReactNode {
         </a>
 
         <nav className="site-header__nav" aria-label="Navegação principal">
-          {NAV_ITEMS.map((item) => (
-            <a
-              key={item.href}
-              className="site-header__link"
-              href={item.href}
-              data-vertical={item.vertical}
-            >
-              {item.label}
-            </a>
-          ))}
-        </nav>
+          {NAV_ITEMS.map((item) => {
+            const active = isActiveNavigationPath(pathname, item.href);
 
-        {/* Busca leva ao hub /pt/explorar/ (rota real); sem campo funcional. */}
-        <div className="site-header__actions">
-          <a className="site-header__search" href={EXPLORE_PATH} aria-label="Explorar">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-              <circle cx="11" cy="11" r="7" />
-              <line x1="16.6" y1="16.6" x2="21" y2="21" />
-            </svg>
-          </a>
-        </div>
+            return (
+              <a
+                key={item.href}
+                className="site-header__link"
+                href={item.href}
+                data-vertical={item.vertical}
+                data-active={active ? "true" : undefined}
+                aria-current={active ? "page" : undefined}
+              >
+                {item.label}
+              </a>
+            );
+          })}
+        </nav>
       </div>
     </header>
   );

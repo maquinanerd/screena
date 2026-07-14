@@ -14,9 +14,22 @@ export type NewsCardVariant = "featured" | "feed" | "related";
 interface NewsCardProps {
   card: NewsCardView;
   variant: NewsCardVariant;
+  headingLevel?: 2 | 3 | 4;
+  eager?: boolean;
 }
 
-export function NewsCard({ card, variant }: NewsCardProps): ReactNode {
+function NewsCardTitle({ level, children }: { level: 2 | 3 | 4; children: string }): ReactNode {
+  if (level === 2) return <h2 className="news-card__title">{children}</h2>;
+  if (level === 4) return <h4 className="news-card__title">{children}</h4>;
+  return <h3 className="news-card__title">{children}</h3>;
+}
+
+export function NewsCard({
+  card,
+  variant,
+  headingLevel = 3,
+  eager = false,
+}: NewsCardProps): ReactNode {
   const meta = [card.author, card.dateLabel, card.readTimeLabel].filter(
     (item): item is string => item !== null,
   );
@@ -28,25 +41,27 @@ export function NewsCard({ card, variant }: NewsCardProps): ReactNode {
         {card.image !== null ? (
           <img
             src={card.image.src}
-            alt={`Imagem de ${card.title}`}
+            alt=""
             width={card.image.width}
             height={card.image.height}
             className="news-card__image"
-            loading="lazy"
+            loading={eager ? "eager" : "lazy"}
+            fetchPriority={eager ? "high" : "auto"}
+            decoding="async"
           />
         ) : (
-          <span className="news-card__fallback" aria-hidden="true" />
+          <span className="news-card__fallback" aria-hidden="true">
+            <span className="news-card__fallback-label">Screen editorial</span>
+          </span>
         )}
       </span>
       <span className="news-card__body">
         {card.category !== null ? (
           <span className="news-card__category">{card.category}</span>
         ) : null}
-        <span className="news-card__title">{card.title}</span>
+        <NewsCardTitle level={headingLevel}>{card.title}</NewsCardTitle>
         {showDeck ? <span className="news-card__deck">{card.deck}</span> : null}
-        {meta.length > 0 ? (
-          <span className="news-card__meta">{meta.join(" · ")}</span>
-        ) : null}
+        {meta.length > 0 ? <span className="news-card__meta">{meta.join(" · ")}</span> : null}
       </span>
     </a>
   );

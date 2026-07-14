@@ -9,7 +9,7 @@ import type { NewsCardView } from "../../src/lib/news-presenter";
  * props e so produz JSX; nao importa @screena/db nem faz IO.
  *
  * So aparece quando ha pelo menos 1 noticia relacionada real: com lista vazia,
- * retorna `null` (nenhuma secao vazia; nao induz thin content). Reusa `NewsCard`.
+ * retorna `null` para manter a ficha objetiva. Reusa `NewsCard`.
  */
 
 interface RelatedNewsSectionProps {
@@ -23,12 +23,12 @@ export function RelatedNewsSection({ cards }: RelatedNewsSectionProps): ReactNod
     <div className="container">
       <section className="related-news" aria-labelledby="related-news-title">
         <h2 id="related-news-title" className="related-news__title">
-          Noticias relacionadas
+          Notícias relacionadas
         </h2>
         <ul className="related-news__grid">
           {cards.map((card) => (
             <li key={card.href} className="related-news__item">
-              <NewsCard card={card} variant="feed" />
+              <NewsCard card={card} variant="related" headingLevel={3} />
             </li>
           ))}
         </ul>

@@ -10,16 +10,14 @@ import { buildExternalLinks } from "../../../../src/lib/external-links";
 import { RelatedNewsSection } from "../../../_components/related-news-section";
 import { CastStrip } from "../../../_components/cast-strip";
 import { WatchAvailabilityPanel } from "../../../_components/watch-availability-panel";
-import { EntityExternalIds } from "../../../_components/entity-external-ids";
-import { EntityFacts } from "../../../_components/entity-facts";
+import { EntityDetailHero } from "../../../_components/entity-detail-hero";
 
 /**
  * Pagina publica de serie - /pt/series/[slug]/ (schema TVSeries, acento verde).
  *
  * Server component puro: le somente PostgreSQL via `getSeriesPageData`. Zero API
- * externa, zero Gemini e zero TMDB no render. A pagina omite secoes sem dados
- * reais e aplica `noindex` quando o gate anti-thin nao tem >= 2 blocos
- * editoriais publicaveis.
+ * externa, zero Gemini e zero TMDB no render. Sob indexacao total (invariante
+ * 5), blocos editoriais enriquecem a pagina sem serem pre-requisito de index.
  *
  * URL canonica unica: slug antigo (alias despromovido em `slugs`) nao renderiza
  * 200 — redireciona permanentemente para o slug canonico.
@@ -44,7 +42,7 @@ export async function generateMetadata({
 
   if (data === null) {
     return {
-      title: "Serie nao encontrada",
+      title: "Série não encontrada",
       robots: { index: false, follow: false },
     };
   }
@@ -53,13 +51,11 @@ export async function generateMetadata({
   const shouldIndex = indexability.decision === "index";
   const title =
     view.metaTitle ??
-    `${view.title}${view.periodLabel !== null ? ` (${view.periodLabel})` : ""} - Serie`;
+    `${view.title}${view.periodLabel !== null ? ` (${view.periodLabel})` : ""} — Série`;
 
   const metadata: Metadata = {
     title,
-    robots: shouldIndex
-      ? { index: true, follow: true }
-      : { index: false, follow: false },
+    robots: shouldIndex ? { index: true, follow: true } : { index: false, follow: false },
     alternates: { canonical: canonicalUrl },
   };
   if (view.metaDescription !== null) {
@@ -68,11 +64,7 @@ export async function generateMetadata({
   return metadata;
 }
 
-export default async function SeriesPage({
-  params,
-}: {
-  params: Promise<SeriesPageParams>;
-}) {
+export default async function SeriesPage({ params }: { params: Promise<SeriesPageParams> }) {
   const { slug } = await params;
   const data = await getSeriesPageData(slug);
   if (data === null) notFound();
@@ -81,20 +73,15 @@ export default async function SeriesPage({
   const redirectPath = canonicalRedirectPath(SERIES_INDEX_PATH, slug, data.canonicalSlug);
   if (redirectPath !== null) permanentRedirect(redirectPath);
 
-  const { view, indexability, canonicalUrl, relatedNews, cast, watch, externalIds } = data;
-  const isUnderReview = indexability.decision !== "index";
+  const { view, canonicalUrl, relatedNews, cast, watch, externalIds } = data;
 
   // Ficha tecnica factual: periodo fica no <h1>; a ficha complementa com
   // situacao (tv_shows.status), contagem real de temporadas/episodios e idioma
   // original — todos colunas reais, mapeadas em pt-BR. Ausente = omitido.
   const facts = [
     view.statusLabel !== null ? { label: "Situação", value: view.statusLabel } : null,
-    view.seasonsCount !== null
-      ? { label: "Temporadas", value: String(view.seasonsCount) }
-      : null,
-    view.episodesCount !== null
-      ? { label: "Episódios", value: String(view.episodesCount) }
-      : null,
+    view.seasonsCount !== null ? { label: "Temporadas", value: String(view.seasonsCount) } : null,
+    view.episodesCount !== null ? { label: "Episódios", value: String(view.episodesCount) } : null,
     view.originalLanguageLabel !== null
       ? { label: "Idioma original", value: view.originalLanguageLabel }
       : null,
@@ -103,11 +90,8 @@ export default async function SeriesPage({
   // Links de identidade externa (mesmas fontes do `sameAs` do JSON-LD).
   const externalLinks = buildExternalLinks(externalIds, "tv");
 
-  const summaryBlock =
-    view.blocks.find((block) => block.blockType === SUMMARY_BLOCK_TYPE) ?? null;
-  const mainBlocks = view.blocks.filter(
-    (block) => block.blockType !== SUMMARY_BLOCK_TYPE,
-  );
+  const summaryBlock = view.blocks.find((block) => block.blockType === SUMMARY_BLOCK_TYPE) ?? null;
+  const mainBlocks = view.blocks.filter((block) => block.blockType !== SUMMARY_BLOCK_TYPE);
   const hasEditorial = mainBlocks.length > 0 || summaryBlock !== null;
   const hasSeasons = view.seasons.length > 0;
 
@@ -115,11 +99,11 @@ export default async function SeriesPage({
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
     itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Inicio", item: `${SITE_URL}/pt/` },
+      { "@type": "ListItem", position: 1, name: "Início", item: `${SITE_URL}/pt/` },
       {
         "@type": "ListItem",
         position: 2,
-        name: "Series",
+        name: "Séries",
         item: `${SITE_URL}${SERIES_INDEX_PATH}`,
       },
       { "@type": "ListItem", position: 3, name: view.title, item: canonicalUrl },
@@ -146,67 +130,22 @@ export default async function SeriesPage({
 
   return (
     <main className="series-page" data-vertical="series">
-      <div className="container">
-        <nav className="breadcrumb" aria-label="Trilha de navegacao">
-          <ol>
-            <li>
-              <a href="/pt/">Inicio</a>
-            </li>
-            <li>
-              <a href={SERIES_INDEX_PATH}>Series</a>
-            </li>
-            <li aria-current="page">{view.title}</li>
-          </ol>
-        </nav>
-
-        <section
-          className={`entity-topbar${view.media.poster !== null ? "" : " entity-topbar--solo"}`}
-          data-vertical="series"
-        >
-          {view.media.poster !== null ? (
-            <figure className="entity-topbar__poster">
-              <img
-                src={view.media.poster.src}
-                alt={`Pôster de ${view.title}`}
-                width={view.media.poster.width}
-                height={view.media.poster.height}
-                className="entity-topbar__poster-img"
-              />
-            </figure>
-          ) : null}
-          <div className="entity-topbar__lead">
-            <p className="entity-topbar__badge">
-              <span data-vertical="series" className="screena-badge screena-badge--series">
-                Serie
-              </span>
-            </p>
-            <h1 className="entity-topbar__title">
-              {view.title}
-              {view.periodLabel !== null ? (
-                <span className="entity-topbar__year"> ({view.periodLabel})</span>
-              ) : null}
-            </h1>
-            <EntityFacts facts={facts} />
-            {view.metaDescription !== null ? (
-              <p className="entity-topbar__synopsis">{view.metaDescription}</p>
-            ) : null}
-            <EntityExternalIds links={externalLinks} />
-          </div>
-        </section>
-      </div>
-
-      {/* Backdrop real (16:9) full-bleed — sem rotulo/tiles decorativos. */}
-      {view.media.backdrop !== null ? (
-        <div className="entity-backdrop" data-vertical="series">
-          <img
-            src={view.media.backdrop.src}
-            alt=""
-            width={view.media.backdrop.width}
-            height={view.media.backdrop.height}
-            className="entity-backdrop__img"
-          />
-        </div>
-      ) : null}
+      <EntityDetailHero
+        vertical="series"
+        label="Série"
+        title={view.title}
+        periodLabel={view.periodLabel}
+        synopsis={view.metaDescription}
+        poster={view.media.poster}
+        backdrop={view.media.backdrop}
+        facts={facts}
+        externalLinks={externalLinks}
+        breadcrumbs={[
+          { label: "Início", href: "/pt/" },
+          { label: "Séries", href: SERIES_INDEX_PATH },
+          { label: view.title },
+        ]}
+      />
 
       {hasEditorial ? (
         <div className="container">
@@ -276,16 +215,13 @@ export default async function SeriesPage({
                             episode.airYear !== null ? String(episode.airYear) : null,
                           ].filter((item): item is string => item !== null);
                           return (
-                            <li
-                              key={episode.episodeNumber}
-                              className="series-episode-list__item"
-                            >
+                            <li key={episode.episodeNumber} className="series-episode-list__item">
                               <span className="series-episode-list__number">
                                 E{episode.episodeNumber}
                               </span>
                               <span className="series-episode-list__content">
                                 <span className="series-episode-list__title">
-                                  {episode.title ?? `Episodio ${episode.episodeNumber}`}
+                                  {episode.title ?? `Episódio ${episode.episodeNumber}`}
                                 </span>
                                 {episodeMeta.length > 0 ? (
                                   <span className="series-episode-list__meta">
@@ -330,14 +266,6 @@ export default async function SeriesPage({
       ) : null}
 
       <RelatedNewsSection cards={relatedNews} />
-
-      {isUnderReview ? (
-        <div className="container">
-          <p className="series-review-notice" data-editorial-state="in-review">
-            Esta pagina ainda esta em revisao editorial.
-          </p>
-        </div>
-      ) : null}
 
       <script
         type="application/ld+json"

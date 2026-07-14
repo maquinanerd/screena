@@ -10,6 +10,7 @@ import { buildExternalLinks } from "../../../../src/lib/external-links";
 import type { PersonCreditEntityType } from "../../../../src/lib/person-presenter";
 import { RelatedNewsSection } from "../../../_components/related-news-section";
 import { EntityExternalIds } from "../../../_components/entity-external-ids";
+import { Breadcrumbs, EmptyState } from "../../../_components/page-primitives";
 
 /**
  * Pagina publica de pessoa - /pt/pessoas/[slug]/ (schema Person, tom NEUTRO).
@@ -20,9 +21,8 @@ import { EntityExternalIds } from "../../../_components/entity-external-ids";
  * diferenciacao vem de label ("Pessoa") + badge + breadcrumb + schema + URL.
  *
  * Nada e inventado: biografia, funcao, datas, local e filmografia so aparecem
- * quando existem no payload; caso contrario a secao e omitida. O gate anti-thin
- * (invariante 5) aplica `noindex` quando ha menos de 2 blocos editoriais
- * publicaveis (a filmografia crua nao conta como bloco de valor proprio).
+ * quando existem no payload; caso contrario a secao e omitida. A decisao de
+ * indexabilidade segue o avaliador canonico e a politica de indexacao total.
  *
  * URL canonica unica: slug antigo (alias despromovido em `slugs`) nao renderiza
  * 200 — redireciona permanentemente para o slug canonico. A cobertura de slug de
@@ -34,8 +34,8 @@ export const revalidate = 3600;
 const PESSOAS_INDEX_PATH = "/pt/pessoas/";
 
 /**
- * Rotulo textual (visually-hidden) do tipo de credito. A cor do dot e apenas
- * apoio — invariante 11: a diferenciacao filme/serie nunca depende so da cor.
+ * Rotulo textual visivel do tipo de credito. A cor e apenas apoio — invariante
+ * 11: a diferenciacao filme/serie nunca depende so da cor.
  */
 const CREDIT_TYPE_LABELS: Readonly<Record<PersonCreditEntityType, string>> = {
   movie: "Filme",
@@ -67,9 +67,7 @@ export async function generateMetadata({
 
   const metadata: Metadata = {
     title,
-    robots: shouldIndex
-      ? { index: true, follow: true }
-      : { index: false, follow: false },
+    robots: shouldIndex ? { index: true, follow: true } : { index: false, follow: false },
     alternates: { canonical: canonicalUrl },
   };
   if (view.metaDescription !== null) {
@@ -78,11 +76,7 @@ export async function generateMetadata({
   return metadata;
 }
 
-export default async function PersonPage({
-  params,
-}: {
-  params: Promise<PersonPageParams>;
-}) {
+export default async function PersonPage({ params }: { params: Promise<PersonPageParams> }) {
   const { slug } = await params;
   const data = await getPersonPageData(slug);
   if (data === null) notFound();
@@ -91,8 +85,7 @@ export default async function PersonPage({
   const redirectPath = canonicalRedirectPath(PESSOAS_INDEX_PATH, slug, data.canonicalSlug);
   if (redirectPath !== null) permanentRedirect(redirectPath);
 
-  const { view, indexability, canonicalUrl, relatedNews, externalIds } = data;
-  const isUnderReview = indexability.decision !== "index";
+  const { view, canonicalUrl, relatedNews, externalIds } = data;
 
   const metaItems = [view.lifeLabel, view.placeOfBirth].filter(
     (item): item is string => item !== null,
@@ -106,7 +99,7 @@ export default async function PersonPage({
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
     itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Inicio", item: `${SITE_URL}/pt/` },
+      { "@type": "ListItem", position: 1, name: "Início", item: `${SITE_URL}/pt/` },
       {
         "@type": "ListItem",
         position: 2,
@@ -141,17 +134,13 @@ export default async function PersonPage({
   return (
     <main className="person-page" data-vertical="person">
       <div className="container">
-        <nav className="breadcrumb" aria-label="Trilha de navegacao">
-          <ol>
-            <li>
-              <a href="/pt/">Inicio</a>
-            </li>
-            <li>
-              <a href={PESSOAS_INDEX_PATH}>Pessoas</a>
-            </li>
-            <li aria-current="page">{view.name}</li>
-          </ol>
-        </nav>
+        <Breadcrumbs
+          items={[
+            { label: "Início", href: "/pt/" },
+            { label: "Pessoas", href: PESSOAS_INDEX_PATH },
+            { label: view.name },
+          ]}
+        />
 
         <section className="person-hero">
           <div
@@ -178,9 +167,7 @@ export default async function PersonPage({
             {view.originalName !== null ? (
               <p className="person-hero__original">{view.originalName}</p>
             ) : null}
-            {view.roleLabel !== null ? (
-              <p className="person-hero__role">{view.roleLabel}</p>
-            ) : null}
+            {view.roleLabel !== null ? <p className="person-hero__role">{view.roleLabel}</p> : null}
             {metaItems.length > 0 ? (
               <p className="person-hero__meta">{metaItems.join(" · ")}</p>
             ) : null}
@@ -235,8 +222,7 @@ export default async function PersonPage({
                   <span className="person-credit__year">
                     {credit.year !== null ? credit.year : null}
                   </span>
-                  <span className="person-credit__dot" aria-hidden="true" />
-                  <span className="u-visually-hidden">
+                  <span className="person-credit__type">
                     {CREDIT_TYPE_LABELS[credit.entityType]}
                   </span>
                   <a className="person-credit__link" href={credit.href}>
@@ -252,15 +238,17 @@ export default async function PersonPage({
         </div>
       ) : null}
 
-      <RelatedNewsSection cards={relatedNews} />
-
-      {isUnderReview ? (
-        <div className="container">
-          <p className="person-review-notice" data-editorial-state="in-review">
-            Esta pagina ainda esta em revisao editorial.
-          </p>
+      {!hasEditorial && !hasCredits ? (
+        <div className="container person-empty-state">
+          <EmptyState
+            title="Biografia e filmografia ainda não disponíveis"
+            description="Este perfil reúne apenas os dados factuais já publicados no catálogo."
+            action={{ label: "Ver outras pessoas", href: PESSOAS_INDEX_PATH }}
+          />
         </div>
       ) : null}
+
+      <RelatedNewsSection cards={relatedNews} />
 
       <script
         type="application/ld+json"
