@@ -1,8 +1,9 @@
 import type { CSSProperties, ReactNode } from "react";
 
+import type { CanonicalAdVariant } from "../../src/lib/canonical-ad-inventory";
 import { allowHomeVisualPlaceholders } from "../../src/lib/home-placeholder-governance";
 
-export type AdSlotVariant = "leaderboard" | "billboard" | "skyscraper" | "rectangle";
+export type AdSlotVariant = CanonicalAdVariant;
 
 interface AdSlotProps {
   readonly label?: string;
