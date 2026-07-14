@@ -205,3 +205,15 @@ Esses pontos não alteram a autoridade do HTML raiz validado por SHA-256.
   diferidos; nenhum contador, rank, progresso ou ação falsa é exibido.
 - **Impacto visual:** barra de busca, CTA de watchlist/trailer, Em Alta com
   crescimento, Continuar assistindo, Mais Aguardados e Populares não aparecem.
+
+## D-019 — Superfícies autenticadas permanecem fora do app público
+
+- **Canônico:** as telas 13–16 apresentam Configurações, Dados/importação,
+  Listas e Entrar/cadastrar como produto funcional.
+- **Produto:** ainda não existe autenticação pública, conta de usuário,
+  preferências persistidas, importação de biblioteca ou CRUD de listas.
+- **Produto portado:** não cria rotas, formulários, botões ou navegação que
+  aparentem salvar dados sem backend. O inventário visual dessas telas continua
+  no ZIP canônico e poderá ser portado quando seus contratos forem reais.
+- **Impacto visual/comportamental:** essas quatro telas não estão acessíveis no
+  runtime atual; nenhum fluxo falso ou dead-end foi adicionado.
