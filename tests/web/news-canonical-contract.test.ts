@@ -30,6 +30,7 @@ describe("notícias canônicas", () => {
 
   it("preserva geometria editorial principal do HTML 03", () => {
     expect(indexCss).toContain("max-width: 1280px");
+    expect(indexCss).toContain("grid-template-columns: minmax(0, 1fr) 290px");
     expect(indexCss).toContain("grid-template-columns: minmax(0, 1.02fr) minmax(0, 1.18fr)");
     expect(indexCss).toContain("grid-template-columns: 240px minmax(0, 1fr)");
     expect(indexCss).toContain("grid-template-columns: minmax(0, 1fr) 340px");
@@ -39,6 +40,15 @@ describe("notícias canônicas", () => {
     expect(article.match(/<AdSlot/g)).toHaveLength(1);
     expect(article).not.toMatch(/Minha lista|Avaliar|Compartilhar|relatedArticles/);
     expect(article).not.toMatch(/Daredevil|Marvel|Collider/);
+    expect(article).not.toContain("className={styles.heroImage}");
+    expect(article).not.toContain("news-related-title");
+  });
+
+  it("não expõe links visuais duplicados sem nome acessível", () => {
+    expect(index).not.toContain("tabIndex={-1}");
+    expect(index).toContain('className={styles.feedCardLink} href={card.href}');
+    expect(index).toContain('className={styles.magazineLeadLink}');
+    expect(index).toContain("<article className={styles.magazineLead}");
   });
 
   it("preserva hero e coluna de leitura do HTML 05", () => {
@@ -46,6 +56,8 @@ describe("notícias canônicas", () => {
     expect(articleCss).toContain("max-width: 880px");
     expect(articleCss).toContain("font-size: 52px");
     expect(articleCss).toContain("max-width: 720px");
+    expect(articleCss).toContain("max-width: 680px");
+    expect(articleCss).toContain("min-height: max(480px, 60vh)");
     expect(articleCss).toContain("font-size: 17px");
     expect(articleCss).toContain("line-height: 1.8");
   });

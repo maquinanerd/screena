@@ -17,29 +17,31 @@ describe("contrato canônico da tela 11 · Explorar", () => {
   it("mantém a ordem dos blocos canônicos que possuem contrato real", () => {
     const ad = pageSource.indexOf("<AdSlot");
     const head = pageSource.indexOf("<header");
-    const feature = pageSource.indexOf("styles.feature");
-    const catalog = pageSource.indexOf("discover-catalog-title");
     const releases = pageSource.indexOf("discover-releases-title");
 
     expect(ad).toBeGreaterThan(0);
     expect(head).toBeGreaterThan(ad);
-    expect(feature).toBeGreaterThan(head);
-    expect(catalog).toBeGreaterThan(feature);
-    expect(releases).toBeGreaterThan(catalog);
+    expect(releases).toBeGreaterThan(head);
     expect(pageSource.match(/<AdSlot/g)).toHaveLength(1);
   });
 
-  it("usa apenas catálogo e datas persistidos, sem estados sociais simulados", () => {
-    expect(pageSource).toContain("getMovieIndexData()");
-    expect(pageSource).toContain("getSeriesIndexData()");
-    expect(pageSource).toContain("getHomeUpcomingMovies({ limit: UPCOMING_LIMIT })");
-    expect(pageSource).toContain('data-kind="mixed"');
-    expect(pageSource).toContain("{cardKindLabel(card.kind)}");
+  it("usa apenas datas persistidas, sem catálogo ou estados sociais simulados", () => {
+    expect(pageSource).toContain("getHomeUpcomingMovies({ limit: UPCOMING_SOURCE_LIMIT })");
+    expect(pageSource).toContain("takeUpcomingWeek(");
+    expect(pageSource).toContain("{movie.weekday}");
+    expect(pageSource).toContain("{movie.dateIso.slice(8, 10)}");
+    expect(pageSource).toContain("Agenda da semana");
+    expect(pageSource).not.toContain("getMovieIndexData()");
+    expect(pageSource).not.toContain("getSeriesIndexData()");
+    expect(pageSource).not.toContain("discover-catalog-title");
     expect(pageSource).not.toContain("Maior crescimento nas últimas 24h");
     expect(pageSource).not.toContain("De onde você parou");
     expect(pageSource).not.toContain("Títulos mais salvos pela comunidade");
     expect(pageSource).not.toContain("Adicionar à watchlist");
     expect(pageSource).not.toContain(">Trailer<");
+    expect(pageSource).not.toContain("styles.feature");
+    expect(pageSource).toContain("Nenhum lançamento publicado");
+    expect(pageSource).toContain("<h3>{movie.title}</h3>");
   });
 
   it("preserva metadata, indexabilidade e os dois schemas da rota", () => {
@@ -54,11 +56,7 @@ describe("contrato canônico da tela 11 · Explorar", () => {
     expect(cssSource).toContain("max-width: 1280px");
     expect(cssSource).toContain("padding: 36px 80px 0");
     expect(cssSource).toContain("font-size: 32px");
-    expect(cssSource).toContain("min-height: 308px");
-    expect(cssSource).toContain("gap: 34px");
-    expect(cssSource).toContain("padding: 32px 36px");
-    expect(cssSource).toContain("width: 158px");
-    expect(cssSource).toContain("gap: 14px");
+    expect(cssSource).toContain("margin: 10px 14px");
     expect(cssSource).toContain("width: 66px");
     expect(cssSource).toContain("width: 112px");
   });

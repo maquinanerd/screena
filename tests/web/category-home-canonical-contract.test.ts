@@ -15,11 +15,17 @@ describe("category homes cinematográficas canônicas", () => {
   const movies = read("apps/web/app/pt/filmes/page.tsx");
   const series = read("apps/web/app/pt/series/page.tsx");
 
-  it("usa o primeiro card exclusivamente no hero e os quatro seguintes no catálogo", () => {
-    expect(component).toContain("const hero = view.cards[0] ?? null");
-    expect(component).toContain("const catalogCards = view.cards.slice(1, 5)");
+  it("não promove o primeiro card a destaque nem substitui Top 10 por catálogo", () => {
+    expect(component).not.toContain("const hero = view.cards[0]");
+    expect(component).not.toContain("const catalogCards = view.cards.slice");
     expect(component.match(/<h1/g)).toHaveLength(1);
-    expect(component).toContain("Catálogo de ${pageTitle.toLowerCase()}");
+    expect(component).toContain("<h1 className={styles.categoryTitle}");
+    expect(component).toContain(
+      "<p className={styles.categoryDescription}>{description}</p>",
+    );
+    expect(component).not.toContain("<CategoryHero");
+    expect(component).not.toContain("<CatalogCard");
+    expect(component).not.toContain('"@type": "ItemList"');
   });
 
   it("preserva a ordem e os três anúncios da tela 04", () => {
@@ -28,7 +34,6 @@ describe("category homes cinematográficas canônicas", () => {
     expect(component.match(/variant="billboard"/g)).toHaveLength(1);
 
     const markers = [
-      "catalogCards.length",
       '<AdShell margin="56px 0 0" variant="leaderboard"',
       '<AdShell margin="72px 0 0" variant="billboard"',
       "comingCards.length",
@@ -41,7 +46,8 @@ describe("category homes cinematográficas canônicas", () => {
   });
 
   it("não cria ranking, streaming, nota, trailer, plataforma ou watchlist", () => {
-    expect(component).not.toMatch(/Top 10|mais assistid|box office|screenScore/);
+    const liveComponent = component.replace(/\{\/\*[\s\S]*?\*\/\}/g, "");
+    expect(liveComponent).not.toMatch(/Top 10|mais assistid|box office|screenScore/);
     expect(component).not.toMatch(/Assistir trailer|dura[cç][aã]o|watchlist/i);
     expect(component).not.toMatch(/Netflix|Prime Video|Apple TV|plataformas/i);
   });

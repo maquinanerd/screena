@@ -34,164 +34,6 @@
   line-height: 1.45;
 }
 
-.filters {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.filter,
-.filterActive {
-  display: inline-flex;
-  min-height: 38px;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid #e3ded6;
-  border-radius: 8px;
-  padding: 8px 15px;
-  color: #6e6e6e;
-  font-size: 12.5px;
-  font-weight: 600;
-  text-decoration: none;
-  white-space: nowrap;
-}
-
-.filterActive {
-  border-color: #101010;
-  background: #101010;
-  color: #ffffff;
-  font-weight: 700;
-}
-
-.filter:hover,
-.filter:focus-visible {
-  border-color: #101010;
-  color: #101010;
-}
-
-.filter:focus-visible,
-.filterActive:focus-visible,
-.featureLink:focus-visible,
-.featurePoster:focus-visible,
-.posterCard a:focus-visible,
-.releaseItem a:focus-visible {
-  outline: 2px solid #101010;
-  outline-offset: 3px;
-}
-
-.feature {
-  position: relative;
-  display: flex;
-  min-height: 308px;
-  overflow: hidden;
-  margin-bottom: 46px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #1b1b22 0%, #0e0e13 55%, #070708 100%);
-}
-
-.featureScrim {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    90deg,
-    rgba(8, 8, 10, 0.95) 0%,
-    rgba(8, 8, 10, 0.82) 40%,
-    rgba(8, 8, 10, 0.4) 100%
-  );
-  pointer-events: none;
-}
-
-.featureInner {
-  position: relative;
-  display: flex;
-  width: 100%;
-  align-items: center;
-  gap: 34px;
-  padding: 32px 36px;
-}
-
-.featureCopy {
-  min-width: 0;
-  max-width: 580px;
-  flex: 1;
-}
-
-.typeBadge {
-  display: inline-flex;
-  align-items: center;
-  border-radius: 6px;
-  background: #f0443e;
-  padding: 4px 8px;
-  color: #ffffff;
-  font-size: 9.5px;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.typeBadge[data-kind="series"] {
-  background: #7fa56f;
-}
-
-.featureTitle {
-  margin: 13px 0 0;
-  color: #ffffff;
-  font-size: 34px;
-  font-weight: 800;
-  letter-spacing: -0.03em;
-  line-height: 1.02;
-}
-
-.featureMeta {
-  margin: 8px 0 0;
-  color: rgba(255, 255, 255, 0.62);
-  font-size: 13px;
-}
-
-.featureLink {
-  display: inline-flex;
-  min-height: 44px;
-  align-items: center;
-  margin-top: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  border-radius: 8px;
-  padding: 11px 20px;
-  color: #ffffff;
-  font-size: 13px;
-  font-weight: 700;
-  text-decoration: none;
-}
-
-.featureLink:hover {
-  border-color: #ffffff;
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.featurePoster {
-  position: relative;
-  display: block;
-  width: 158px;
-  flex-shrink: 0;
-  align-self: center;
-  overflow: hidden;
-  border-radius: 10px;
-  aspect-ratio: 2 / 3;
-  background: linear-gradient(150deg, #2e1a18, #130c0b);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
-}
-
-.posterImage,
-.posterFallback {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.posterFallback {
-  background: linear-gradient(150deg, #262030, #100d15);
-}
-
 .section + .section {
   margin-top: 46px;
 }
@@ -230,94 +72,6 @@
   background: #f0443e;
 }
 
-.sectionAccent[data-kind="series"] {
-  background: #7fa56f;
-}
-
-.sectionAccent[data-kind="mixed"] {
-  background: #101010;
-}
-
-.posterRail {
-  display: flex;
-  gap: 14px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.posterCard {
-  min-width: 0;
-  flex: 1;
-}
-
-.posterCard a {
-  display: block;
-  color: inherit;
-  text-decoration: none;
-}
-
-.posterMedia {
-  position: relative;
-  display: block;
-  overflow: hidden;
-  border-radius: 10px;
-  aspect-ratio: 2 / 3;
-  background: linear-gradient(150deg, #262030, #100d15);
-}
-
-.posterMedia .posterImage {
-  transition: transform 0.25s ease;
-}
-
-.posterCard a:hover .posterImage {
-  transform: scale(1.025);
-}
-
-.posterType {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  display: inline-flex;
-  min-height: 22px;
-  align-items: center;
-  justify-content: center;
-  padding: 0 7px;
-  border-radius: 6px;
-  background: #f0443e;
-  color: #ffffff;
-  font-size: 8px;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.posterType[data-kind="series"] {
-  background: #7fa56f;
-}
-
-.posterTitle {
-  display: block;
-  overflow: hidden;
-  margin-top: 9px;
-  color: #101010;
-  font-size: 12.5px;
-  font-weight: 650;
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.posterMeta {
-  display: block;
-  overflow: hidden;
-  margin-top: 3px;
-  color: #6e6e6e;
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .releaseList {
   overflow: hidden;
   margin: 0;
@@ -347,6 +101,11 @@
 
 .releaseItem > a:hover {
   background: #fbfaf7;
+}
+
+.releaseItem > a:focus-visible {
+  outline: 2px solid #101010;
+  outline-offset: -4px;
 }
 
 .releaseDate {
@@ -419,7 +178,8 @@
   text-transform: uppercase;
 }
 
-.releaseCopy strong {
+.releaseCopy h3 {
+  margin: 0;
   overflow: hidden;
   color: #101010;
   font-size: 14.5px;
@@ -435,8 +195,17 @@
   font-size: 12px;
 }
 
+.emptyState {
+  margin: 32px 0 0;
+  padding: 24px;
+  border: 1px solid #e3ded6;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #6e6e6e;
+  font-size: 14px;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .posterMedia .posterImage,
   .releaseItem > a {
     transition: none;
   }
@@ -460,15 +229,9 @@
     flex-direction: column;
   }
 
-  .posterRail {
-    overflow-x: auto;
-    padding-bottom: 10px;
-    scroll-snap-type: x proximity;
-  }
-
-  .posterCard {
-    flex: 0 0 150px;
-    scroll-snap-align: start;
+  .releaseDate span,
+  .releaseKind {
+    font-size: 12px;
   }
 }
 
@@ -481,52 +244,14 @@
     padding: 28px 20px 0;
   }
 
-  .filters {
-    width: 100%;
-    overflow-x: auto;
-    padding: 3px 0 8px;
-  }
-
-  .filter,
-  .filterActive {
-    min-height: 44px;
-    font-size: 13px;
-  }
-
-  .featureInner {
-    gap: 24px;
-    padding: 28px;
-  }
-
-  .featureTitle {
-    font-size: 30px;
-  }
-
-  .featurePoster {
-    width: 132px;
-  }
-
   .sectionHead {
     align-items: flex-start;
     flex-direction: column;
     gap: 6px;
   }
-
-  .posterCard {
-    flex-basis: 142px;
-  }
 }
 
 @media (max-width: 480px) {
-  .featureInner {
-    align-items: flex-start;
-    flex-direction: column-reverse;
-  }
-
-  .featurePoster {
-    width: 112px;
-  }
-
   .releaseDate {
     width: 58px;
   }
@@ -551,13 +276,5 @@
 
   .pageTitle {
     font-size: 30px;
-  }
-
-  .featureInner {
-    padding: 24px;
-  }
-
-  .featureTitle {
-    font-size: 28px;
   }
 }

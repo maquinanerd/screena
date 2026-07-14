@@ -23,6 +23,9 @@ import styles from "./person-canonical.module.css";
 export const revalidate = 3600;
 
 const PESSOAS_INDEX_PATH = "/pt/pessoas/";
+const BIOGRAPHY_BLOCK_TYPES: ReadonlySet<string> = new Set([
+  "editorial_intro",
+]);
 
 const CREDIT_TYPE_LABELS: Readonly<Record<PersonCreditEntityType, string>> = {
   movie: "Filme",
@@ -133,8 +136,12 @@ export default async function PersonPage({
   const personalDetails = collectPersonalDetails(view);
   const biography = [
     view.metaDescription,
-    ...view.blocks.map((block) => block.content),
+    ...view.blocks
+      .filter((block) => BIOGRAPHY_BLOCK_TYPES.has(block.blockType))
+      .map((block) => block.content),
   ].filter((paragraph): paragraph is string => paragraph !== null);
+  const newsContext =
+    view.blocks.find((block) => block.blockType === "news_context") ?? null;
   const lifeAndPlace = [view.lifeLabel, view.placeOfBirth].filter(
     (item): item is string => item !== null,
   );
@@ -229,36 +236,43 @@ export default async function PersonPage({
         <AdSlot variant="leaderboard" margin="56px 0 0" />
       </div>
 
-      {hasCredits ? (
-        <section className={styles.section} aria-labelledby="person-filmography-title">
-          <h2 id="person-filmography-title" className={styles.sectionTitle}>
-            Filmografia
-          </h2>
+      <section className={styles.section} aria-labelledby="person-filmography-title">
+        <h2 id="person-filmography-title" className={styles.sectionTitle}>
+          Filmografia
+        </h2>
+        {hasCredits ? (
           <ul className={styles.filmography}>
             {view.credits.map((credit, index) => (
               <li
                 key={`${credit.entityType}-${credit.href}-${index}`}
-                className={styles.credit}
-                data-entity-type={credit.entityType}
+                className={styles.creditItem}
               >
-                <span className={styles.creditYear}>
-                  {credit.year === null ? null : credit.year}
-                </span>
-                <span className={styles.creditDot} aria-hidden="true" />
-                <span className={styles.visuallyHidden}>
-                  {CREDIT_TYPE_LABELS[credit.entityType]}
-                </span>
-                <a className={styles.creditTitle} href={credit.href}>
-                  {credit.title}
+                <a
+                  className={styles.credit}
+                  data-entity-type={credit.entityType}
+                  href={credit.href}
+                >
+                  <span className={styles.creditYear}>
+                    {credit.year ?? "—"}
+                  </span>
+                  <span className={styles.creditDot} aria-hidden="true" />
+                  <span className={styles.visuallyHidden}>
+                    {CREDIT_TYPE_LABELS[credit.entityType]}
+                  </span>
+                  <span className={styles.creditTitle}>{credit.title}</span>
+                  {credit.roleLabel === null ? null : (
+                    <span className={styles.creditRole}>{credit.roleLabel}</span>
+                  )}
                 </a>
-                {credit.roleLabel === null ? null : (
-                  <span className={styles.creditRole}>{credit.roleLabel}</span>
-                )}
               </li>
             ))}
           </ul>
-        </section>
-      ) : null}
+        ) : (
+          <p className={styles.filmographyEmpty}>
+            Filmografia ainda não disponível.
+          </p>
+        )}
+      </section>
 
       {personalDetails.length > 0 ? (
         <section className={styles.section} aria-labelledby="person-details-title">
@@ -281,6 +295,14 @@ export default async function PersonPage({
           <h2 id="person-related-news-title" className={styles.sectionTitle}>
             Notícias relacionadas
           </h2>
+          {newsContext !== null ? (
+            <p
+              className={styles.newsContext}
+              data-block-type={newsContext.blockType}
+            >
+              {newsContext.content}
+            </p>
+          ) : null}
           <ul className={styles.newsGrid}>
             {relatedNews.map((card) => {
               const meta = [card.author, card.dateLabel, card.readTimeLabel].filter(
@@ -289,31 +311,33 @@ export default async function PersonPage({
 
               return (
                 <li key={card.href} className={styles.newsItem}>
-                  <a className={styles.newsCard} href={card.href}>
-                    <span className={styles.newsMedia}>
-                      {card.image === null ? (
-                        <span className={styles.newsFallback} aria-hidden="true" />
-                      ) : (
-                        <img
-                          src={card.image.src}
-                          alt={`Imagem de ${card.title}`}
-                          width={card.image.width}
-                          height={card.image.height}
-                          className={styles.newsImage}
-                          loading="lazy"
-                        />
-                      )}
-                    </span>
-                    <span className={styles.newsBody}>
-                      {card.category === null ? null : (
-                        <span className={styles.newsCategory}>{card.category}</span>
-                      )}
-                      <span className={styles.newsTitle}>{card.title}</span>
-                      {meta.length > 0 ? (
-                        <span className={styles.newsMeta}>{meta.join(" · ")}</span>
-                      ) : null}
-                    </span>
-                  </a>
+                  <article className={styles.newsArticle}>
+                    <a className={styles.newsCard} href={card.href}>
+                      <span className={styles.newsMedia}>
+                        {card.image === null ? (
+                          <span className={styles.newsFallback} aria-hidden="true" />
+                        ) : (
+                          <img
+                            src={card.image.src}
+                            alt={`Imagem de ${card.title}`}
+                            width={card.image.width}
+                            height={card.image.height}
+                            className={styles.newsImage}
+                            loading="lazy"
+                          />
+                        )}
+                      </span>
+                      <span className={styles.newsBody}>
+                        {card.category === null ? null : (
+                          <span className={styles.newsCategory}>{card.category}</span>
+                        )}
+                        <h3 className={styles.newsTitle}>{card.title}</h3>
+                        {meta.length > 0 ? (
+                          <span className={styles.newsMeta}>{meta.join(" · ")}</span>
+                        ) : null}
+                      </span>
+                    </a>
+                  </article>
                 </li>
               );
             })}

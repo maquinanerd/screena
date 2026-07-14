@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 import { Fragment } from "react";
 
 import { AdSlot } from "../../../_components/ad-slot";
-import type { NewsRelatedEntityType } from "../../../../src/lib/news-presenter";
 import { SITE_URL } from "../../../../src/lib/site";
 import { getNewsArticleData } from "../../../../src/server/news-pages";
 import styles from "./article-canonical.module.css";
@@ -13,12 +12,6 @@ import styles from "./article-canonical.module.css";
 export const dynamic = "force-dynamic";
 
 const NEWS_INDEX_PATH = "/pt/noticias/";
-
-const ENTITY_LABELS: Readonly<Record<NewsRelatedEntityType, string>> = {
-  movie: "Filme",
-  tv: "Série",
-  person: "Pessoa",
-};
 
 interface NewsArticleParams {
   slug: string;
@@ -100,18 +93,7 @@ export default async function NewsArticlePage({
 
   return (
     <main className={styles.page} data-vertical="news">
-      <header
-        className={`${styles.hero}${view.heroImage !== null ? ` ${styles.heroWithImage}` : ""}`}
-      >
-        {view.heroImage !== null ? (
-          <img
-            src={view.heroImage.src}
-            alt=""
-            width={view.heroImage.width}
-            height={view.heroImage.height}
-            className={styles.heroImage}
-          />
-        ) : null}
+      <header className={styles.hero}>
         <span className={styles.heroScrim} aria-hidden="true" />
         <div className={styles.heroInner}>
           <nav className={styles.breadcrumb} aria-label="Trilha de navegação">
@@ -175,23 +157,6 @@ export default async function NewsArticlePage({
           </aside>
         ) : null}
       </article>
-
-      {view.related.length > 0 ? (
-        <section className={styles.related} aria-labelledby="news-related-title">
-          <div className={styles.relatedTitle}>
-            <span aria-hidden="true" />
-            <h2 id="news-related-title">Relacionado</h2>
-          </div>
-          <ul>
-            {view.related.map((entity) => (
-              <li key={entity.href}>
-                <a href={entity.href}>{entity.title}</a>
-                <span>{ENTITY_LABELS[entity.entityType]}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
 
       {isUnderReview ? (
         <p className={styles.reviewNotice} data-editorial-state="in-review">

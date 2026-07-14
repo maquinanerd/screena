@@ -49,14 +49,24 @@ describe("porte canônico 07/08 — detalhe de série", () => {
     const code = withoutComments(PAGE);
 
     expect(code).toContain('const REVIEW_BLOCK_TYPE = "review_summary"');
+    expect(code).toContain("WORK_BLOCK_TYPES.has(block.blockType)");
+    expect(code).toContain("EPISODE_BLOCK_TYPES.has(block.blockType)");
     expect(code).toContain("const hasEditorial = editorialBlocks.length > 0");
     expect(code).toContain("critiqueBlock !== null ?");
+    expect(code).toContain("watchContext !== null ?");
+    expect(code).toContain("castContext !== null ?");
     expect(code).toContain("const hasSeasons = view.seasons.length > 0");
+    expect(code).toContain("seasonNumberFromQuery(query.temporada)");
+    expect(code).toContain("const selectedSeason =");
+    expect(code).toContain("season={selectedSeason}");
+    expect(code).not.toContain("view.seasons.map((season) => (\n              <SeasonGroup");
     expect(code).toContain("const visibleCast = cast.slice(0, 6)");
     expect(code).toContain("visibleCast.length > 0 ?");
     expect(code).toContain("visibleNews.length > 0 ?");
     expect(code).toContain("watch !== null ?");
     expect(code).toContain("<WatchAvailabilityPanel view={watch} />");
+    expect(code).toContain('value: view.periodLabel ?? "—"');
+    expect(code).toContain('value: view.originalLanguageLabel ?? "—"');
   });
 
   it("não converte backdrop em trailer nem inventa rating, prêmio ou recomendação", () => {
@@ -75,17 +85,30 @@ describe("porte canônico 07/08 — detalhe de série", () => {
     expect(CSS).toMatch(/font-size:\s*38px/);
     expect(CSS).toMatch(/height:\s*472px/);
     expect(CSS).toMatch(/grid-template-columns:\s*1fr 3fr 2fr/);
-    expect(CSS).toMatch(/grid-column:\s*2 \/ 4/);
+    expect(CSS).toMatch(/grid-column:\s*2;/);
+    expect(PAGE).toContain("className={styles.mediaTiles}");
+    expect(PAGE).toContain("className={styles.mediaNewsLink}");
     expect(CSS).toMatch(/width:\s*288px/);
     expect(CSS).toMatch(/grid-template-columns:\s*repeat\(6, minmax\(0, 1fr\)\)/);
   });
 
-  it("aplica a linguagem mobile 08 sem overflow e mantém thumb 16:9 de 128px", () => {
+  it("aplica a linguagem mobile 08 com elenco antes da obra e episódios full-width", () => {
+    expect(CSS).toContain("@media (max-width: 1023px)");
+    expect(CSS).toMatch(/\.posterFrame,[\s\S]*?width:\s*200px;[\s\S]*?height:\s*300px;/);
+    expect(CSS).toContain("width: calc(100% + 64px)");
+    expect(CSS).toContain(".mediaTiles {");
+    expect(CSS).toContain("display: none;");
     expect(CSS).toContain("@media (max-width: 767px)");
     expect(CSS).toMatch(/\.media\s*\{\s*order:\s*1;/);
     expect(CSS).toMatch(/\.hero\s*\{\s*order:\s*2;/);
+    expect(CSS).toMatch(/\.cast\s*\{\s*order:\s*3;/);
+    expect(CSS).toMatch(/\.work\s*\{\s*order:\s*4;/);
+    expect(CSS).toMatch(/\.critique\s*\{\s*display:\s*none;/);
+    expect(CSS).toMatch(/\.news\s*\{\s*display:\s*none;/);
     expect(CSS).toMatch(/\.backdropFrame\s*\{[\s\S]*?aspect-ratio:\s*16 \/ 10;/);
-    expect(CSS).toMatch(/\.episodeMedia\s*\{[\s\S]*?width:\s*128px;[\s\S]*?flex-basis:\s*128px;/);
+    expect(CSS).toMatch(/\.episodeMedia\s*\{[\s\S]*?width:\s*100%;[\s\S]*?aspect-ratio:\s*16 \/ 9;/);
+    expect(PAGE).toContain("className={styles.episodeMobileNumber}");
+    expect(CSS).toMatch(/\.episodeNumber\s*\{\s*display:\s*none;/);
     expect(CSS).toContain("@media (max-width: 390px)");
     expect(CSS).toMatch(/padding-right:\s*16px/);
     expect(CSS).toMatch(/overflow-x:\s*auto/);
@@ -98,5 +121,9 @@ describe("porte canônico 07/08 — detalhe de série", () => {
     expect(code).toContain(">Série</span>");
     expect(code).toContain('"@type": "TVSeries"');
     expect(code).toContain('const SERIES_INDEX_PATH = "/pt/series/"');
+    expect(code).toContain("tabIndex={0}");
+    expect(code).toContain("use as setas para percorrer");
+    expect(CSS).toContain(".castGrid:focus-visible");
+    expect(CSS).toContain("outline: 2px solid #101010");
   });
 });

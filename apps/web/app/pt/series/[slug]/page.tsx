@@ -32,14 +32,34 @@ export const revalidate = 3600;
 
 const SERIES_INDEX_PATH = "/pt/series/";
 const REVIEW_BLOCK_TYPE = "review_summary";
+const WORK_BLOCK_TYPES: ReadonlySet<string> = new Set([
+  "editorial_intro",
+  "summary_without_spoilers",
+  "franchise_context",
+]);
+const EPISODE_BLOCK_TYPES: ReadonlySet<string> = new Set([
+  "season_guide",
+  "episode_context",
+]);
 
 interface SeriesPageParams {
   slug: string;
 }
 
+interface SeriesPageSearchParams {
+  temporada?: string | string[];
+}
+
 interface SeriesFact {
   label: string;
   value: string;
+}
+
+function seasonNumberFromQuery(value: string | string[] | undefined): number | null {
+  const candidate = Array.isArray(value) ? value[0] : value;
+  if (candidate === undefined || !/^\d+$/.test(candidate)) return null;
+  const seasonNumber = Number(candidate);
+  return Number.isSafeInteger(seasonNumber) ? seasonNumber : null;
 }
 
 function ArrowIcon(): ReactNode {
@@ -140,6 +160,9 @@ function EpisodeRow({
         </div>
         <div className={styles.episodeBody}>
           <h4 className={styles.episodeTitle}>
+            <span className={styles.episodeMobileNumber}>
+              T{seasonNumber} · E{episode.episodeNumber}
+            </span>
             {episode.title ?? `Episódio ${episode.episodeNumber}`}
           </h4>
           {episode.overview !== null ? (
@@ -253,8 +276,14 @@ export async function generateMetadata({
   return metadata;
 }
 
-export default async function SeriesPage({ params }: { params: Promise<SeriesPageParams> }) {
-  const { slug } = await params;
+export default async function SeriesPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<SeriesPageParams>;
+  searchParams: Promise<SeriesPageSearchParams>;
+}) {
+  const [{ slug }, query] = await Promise.all([params, searchParams]);
   const data = await getSeriesPageData(slug);
   if (data === null) notFound();
 
@@ -268,27 +297,39 @@ export default async function SeriesPage({ params }: { params: Promise<SeriesPag
     (item): item is string => item !== null,
   );
   const facts: SeriesFact[] = [
-    view.periodLabel !== null ? { label: "Período", value: view.periodLabel } : null,
-    view.statusLabel !== null ? { label: "Situação", value: view.statusLabel } : null,
-    view.seasonsCountLabel !== null ? { label: "Temporadas", value: view.seasonsCountLabel } : null,
-    view.episodesCountLabel !== null
-      ? { label: "Episódios", value: view.episodesCountLabel }
-      : null,
-    view.originalLanguageLabel !== null
-      ? { label: "Idioma original", value: view.originalLanguageLabel }
-      : null,
-  ].filter((fact): fact is SeriesFact => fact !== null);
+    { label: "Período", value: view.periodLabel ?? "—" },
+    { label: "Situação", value: view.statusLabel ?? "—" },
+    { label: "Temporadas", value: view.seasonsCountLabel ?? "—" },
+    { label: "Episódios", value: view.episodesCountLabel ?? "—" },
+    { label: "Idioma original", value: view.originalLanguageLabel ?? "—" },
+  ];
   const externalLinks = buildExternalLinks(externalIds, "tv");
   const critiqueBlock =
     view.blocks.find((block) => block.blockType === REVIEW_BLOCK_TYPE) ?? null;
-  const editorialBlocks = view.blocks.filter(
-    (block) => block.blockType !== REVIEW_BLOCK_TYPE,
+  const editorialBlocks = view.blocks.filter((block) =>
+    WORK_BLOCK_TYPES.has(block.blockType),
   );
+  const episodeContextBlocks = view.blocks.filter((block) =>
+    EPISODE_BLOCK_TYPES.has(block.blockType),
+  );
+  const watchContext =
+    view.blocks.find((block) => block.blockType === "where_to_watch_text") ?? null;
+  const castContext =
+    view.blocks.find((block) => block.blockType === "cast_intro") ?? null;
+  const newsContext =
+    view.blocks.find((block) => block.blockType === "news_context") ?? null;
   const hasEditorial = editorialBlocks.length > 0;
   const hasSeasons = view.seasons.length > 0;
-  const hasDetails = facts.length > 0 || externalLinks.length > 0;
+  const requestedSeasonNumber = seasonNumberFromQuery(query.temporada);
+  const selectedSeason =
+    view.seasons.find(
+      (season) => season.seasonNumber === requestedSeasonNumber,
+    ) ??
+    view.seasons[0] ??
+    null;
   const visibleCast = cast.slice(0, 6);
   const visibleNews = relatedNews.slice(0, 3);
+  const mediaNews = visibleNews[0] ?? null;
 
   const breadcrumbJsonLd = {
     "@context": "https://schema.org",
@@ -351,6 +392,14 @@ export default async function SeriesPage({ params }: { params: Promise<SeriesPag
           {watch !== null ? (
             <aside className={styles.watchPanel} aria-label="Disponibilidade legal">
               <WatchAvailabilityPanel view={watch} />
+              {watchContext !== null ? (
+                <p
+                  className={styles.watchContext}
+                  data-block-type={watchContext.blockType}
+                >
+                  {watchContext.content}
+                </p>
+              ) : null}
             </aside>
           ) : null}
         </div>
@@ -391,6 +440,35 @@ export default async function SeriesPage({ params }: { params: Promise<SeriesPag
                 className={styles.mediaImage}
               />
             </figure>
+          ) : null}
+          {view.media.backdrop !== null ? (
+            <div className={styles.mediaTiles}>
+              <span className={styles.mediaTile} aria-hidden="true" />
+              {mediaNews !== null ? (
+                <a
+                  className={styles.mediaNewsLink}
+                  href={mediaNews.href}
+                  aria-label={`Abrir notícia: ${mediaNews.title}`}
+                >
+                  {mediaNews.image !== null ? (
+                    <img
+                      src={mediaNews.image.src}
+                      alt=""
+                      width={mediaNews.image.width}
+                      height={mediaNews.image.height}
+                      className={styles.mediaImage}
+                      loading="lazy"
+                    />
+                  ) : null}
+                  <span className={styles.mediaTileLabel}>
+                    Notícias e eventos
+                  </span>
+                </a>
+              ) : (
+                <span className={styles.mediaTile} aria-hidden="true" />
+              )}
+              <span className={styles.mediaTile} aria-hidden="true" />
+            </div>
           ) : null}
         </div>
       </section>
@@ -446,7 +524,11 @@ export default async function SeriesPage({ params }: { params: Promise<SeriesPag
       ) : null}
 
       {hasSeasons ? (
-        <section className={styles.episodes} aria-labelledby="series-episodes-title">
+        <section
+          className={styles.episodes}
+          id="episodios"
+          aria-labelledby="series-episodes-title"
+        >
           <div className={styles.episodesHeading}>
             <div>
               <div className={styles.sectionKicker}>
@@ -458,21 +540,42 @@ export default async function SeriesPage({ params }: { params: Promise<SeriesPag
               </h2>
             </div>
             <nav className={styles.seasonNav} aria-label="Temporadas">
-              {view.seasons.map((season, index) => (
+              {view.seasons.map((season) => (
                 <a
                   key={season.seasonNumber}
-                  className={index === 0 ? styles.seasonNavActive : styles.seasonNavLink}
-                  href={`#temporada-${season.seasonNumber}`}
+                  className={
+                    season.seasonNumber === selectedSeason?.seasonNumber
+                      ? styles.seasonNavActive
+                      : styles.seasonNavLink
+                  }
+                  href={`?temporada=${season.seasonNumber}#episodios`}
+                  aria-current={
+                    season.seasonNumber === selectedSeason?.seasonNumber
+                      ? "page"
+                      : undefined
+                  }
                 >
                   T{season.seasonNumber}
                 </a>
               ))}
             </nav>
           </div>
+          {episodeContextBlocks.length > 0 ? (
+            <div className={styles.episodeContext}>
+              {episodeContextBlocks.map((block) => (
+                <p key={block.blockType} data-block-type={block.blockType}>
+                  {block.content}
+                </p>
+              ))}
+            </div>
+          ) : null}
           <div className={styles.seasonsList}>
-            {view.seasons.map((season) => (
-              <SeasonGroup key={season.seasonNumber} season={season} />
-            ))}
+            {selectedSeason !== null ? (
+              <SeasonGroup
+                key={selectedSeason.seasonNumber}
+                season={selectedSeason}
+              />
+            ) : null}
           </div>
         </section>
       ) : null}
@@ -490,7 +593,19 @@ export default async function SeriesPage({ params }: { params: Promise<SeriesPag
               </h2>
             </div>
           </div>
-          <ul className={styles.castGrid}>
+          {castContext !== null ? (
+            <p
+              className={styles.sectionContext}
+              data-block-type={castContext.blockType}
+            >
+              {castContext.content}
+            </p>
+          ) : null}
+          <ul
+            className={styles.castGrid}
+            aria-label="Elenco principal; use as setas para percorrer"
+            tabIndex={0}
+          >
             {visibleCast.map((member, index) => (
               <li key={`${member.name}-${index}`}>
                 <CastCard member={member} />
@@ -511,7 +626,10 @@ export default async function SeriesPage({ params }: { params: Promise<SeriesPag
               <h2 id="series-news-title" className={styles.sectionTitle}>
                 Notícias e bastidores
               </h2>
-              <p className={styles.newsDeck}>Contexto, entrevistas e cobertura da série.</p>
+              <p className={styles.newsDeck} data-block-type={newsContext?.blockType}>
+                {newsContext?.content ??
+                  "Contexto, entrevistas e cobertura da série."}
+              </p>
             </div>
             <a className={styles.allNewsLink} href="/pt/noticias/">
               Ver tudo <ArrowIcon />
@@ -525,31 +643,27 @@ export default async function SeriesPage({ params }: { params: Promise<SeriesPag
         </section>
       ) : null}
 
-      {hasDetails ? (
-        <section className={styles.details} aria-labelledby="series-details-title">
-          <div className={styles.detailsColumn}>
-            <div className={styles.sectionKicker}>
-              <span aria-hidden="true" />
-              <h2 id="series-details-title">Ficha técnica</h2>
-            </div>
-            {facts.length > 0 ? (
-              <dl className={styles.facts}>
-                {facts.map((fact) => (
-                  <div key={fact.label} className={styles.factRow}>
-                    <dt>{fact.label}</dt>
-                    <dd>{fact.value}</dd>
-                  </div>
-                ))}
-              </dl>
-            ) : null}
-            {externalLinks.length > 0 ? (
-              <div className={styles.externalLinks}>
-                <EntityExternalIds links={externalLinks} />
-              </div>
-            ) : null}
+      <section className={styles.details} aria-labelledby="series-details-title">
+        <div className={styles.detailsColumn}>
+          <div className={styles.sectionKicker}>
+            <span aria-hidden="true" />
+            <h2 id="series-details-title">Ficha técnica</h2>
           </div>
-        </section>
-      ) : null}
+          <dl className={styles.facts}>
+            {facts.map((fact) => (
+              <div key={fact.label} className={styles.factRow}>
+                <dt>{fact.label}</dt>
+                <dd>{fact.value}</dd>
+              </div>
+            ))}
+          </dl>
+          {externalLinks.length > 0 ? (
+            <div className={styles.externalLinks}>
+              <EntityExternalIds links={externalLinks} />
+            </div>
+          ) : null}
+        </div>
+      </section>
 
       {isUnderReview ? (
         <div className={styles.reviewWrap}>

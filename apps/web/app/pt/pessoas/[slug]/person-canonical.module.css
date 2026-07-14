@@ -135,6 +135,10 @@
   list-style: none;
 }
 
+.creditItem {
+  margin: 0;
+}
+
 .credit {
   display: flex;
   min-height: 56px;
@@ -142,9 +146,11 @@
   gap: 18px;
   padding: 16px 22px;
   border-bottom: 1px solid #f1eee8;
+  color: inherit;
+  text-decoration: none;
 }
 
-.credit:last-child {
+.creditItem:last-child .credit {
   border-bottom: 0;
 }
 
@@ -177,11 +183,10 @@
   color: #101010;
   font-size: 16px;
   font-weight: 650;
-  text-decoration: none;
 }
 
-.creditTitle:hover,
-.creditTitle:focus-visible {
+.credit:hover .creditTitle,
+.credit:focus-visible .creditTitle {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
@@ -189,6 +194,16 @@
 .creditRole {
   min-width: 0;
   flex: 1;
+  color: #6e6e6e;
+  font-size: 14px;
+}
+
+.filmographyEmpty {
+  margin: 0;
+  padding: 22px;
+  border: 1px solid #e3ded6;
+  border-radius: 10px;
+  background: #ffffff;
   color: #6e6e6e;
   font-size: 14px;
 }
@@ -222,6 +237,14 @@
   font-size: 15px;
 }
 
+.newsContext {
+  max-width: 66ch;
+  margin: -12px 0 24px;
+  color: #6e6e6e;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
 .newsGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -233,6 +256,10 @@
 
 .newsItem {
   min-width: 0;
+}
+
+.newsArticle {
+  height: 100%;
 }
 
 .newsCard {
@@ -281,7 +308,7 @@
 }
 
 .newsTitle {
-  margin-top: 8px;
+  margin: 8px 0 0;
   color: #101010;
   font-size: 17px;
   font-weight: 650;
@@ -360,6 +387,7 @@
   .kicker,
   .chip,
   .detail dt,
+  .newsCategory,
   .newsMeta {
     font-size: 12px;
   }

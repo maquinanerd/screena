@@ -37,6 +37,8 @@ const MONTHS_PT = [
   "Dezembro",
 ] as const;
 
+const WEEKDAYS_PT = ["DOM", "SEG", "TER", "QUA", "QUI", "SEX", "SÁB"] as const;
+
 /** Subconjunto controlado (já convertido de Prisma) de um filme candidato. */
 export interface UpcomingMovieInput {
   titleOriginal: string;
@@ -56,8 +58,12 @@ export interface UpcomingMovieInput {
 /** Card "Em breve" pronto para render — objeto PLANO e serializável. */
 export interface HomeUpcomingMovie {
   title: string;
+  /** Data ISO UTC usada por agendas e filtros de janela temporal. */
+  dateIso: string;
   /** Data de estreia formatada em pt-BR (ex.: "22 de Março"). */
   date: string;
+  /** Dia da semana abreviado, em pt-BR, para a agenda canônica. */
+  weekday: string;
   /** `/pt/filmes/{slug}/`. */
   href: string;
   /**
@@ -87,6 +93,32 @@ export function formatUpcomingDate(date: Date): string {
   const day = date.getUTCDate();
   const month = MONTHS_PT[date.getUTCMonth()];
   return `${day} de ${month}`;
+}
+
+/** Dia da semana canônico, calculado em UTC para evitar deslocamento de data. */
+export function formatUpcomingWeekday(date: Date): string {
+  return WEEKDAYS_PT[date.getUTCDay()] ?? "";
+}
+
+/**
+ * Recorta a agenda para os próximos sete dias, sem fabricar itens fora da
+ * janela. A entrada já chega ordenada por data do presenter principal.
+ */
+export function takeUpcomingWeek(
+  items: readonly HomeUpcomingMovie[],
+  now: Date,
+  limit: number,
+): HomeUpcomingMovie[] {
+  const cap = Number.isInteger(limit) && limit > 0 ? limit : HOME_UPCOMING_LIMIT;
+  const start = startOfUtcDayMs(now);
+  const end = start + 7 * 24 * 60 * 60 * 1000;
+
+  return items
+    .filter((item) => {
+      const release = Date.parse(`${item.dateIso}T00:00:00.000Z`);
+      return Number.isFinite(release) && release > start && release <= end;
+    })
+    .slice(0, cap);
 }
 
 /**
@@ -142,7 +174,9 @@ export function buildUpcomingMovies(
       releaseMs,
       entry: {
         title,
+        dateIso: release.toISOString().slice(0, 10),
         date: formatUpcomingDate(release),
+        weekday: formatUpcomingWeekday(release),
         href,
         imageUrl: resolveUpcomingImage(item.backdropPath, item.posterPath),
       },

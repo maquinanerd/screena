@@ -45,9 +45,7 @@ export function isActiveNavigationPath(pathname: string | null, href: string): b
 export function isCinematicHeroPath(pathname: string | null): boolean {
   if (pathname === null) return false;
   const current = normalizeNavigationPath(pathname);
-  const exactHeroPaths = [HOME_PATH, MOVIES_INDEX_PATH, SERIES_INDEX_PATH].map(
-    normalizeNavigationPath,
-  );
+  const exactHeroPaths = [HOME_PATH].map(normalizeNavigationPath);
   if (exactHeroPaths.includes(current)) return true;
   return current.startsWith(`${normalizeNavigationPath(NEWS_INDEX_PATH)}/`);
 }

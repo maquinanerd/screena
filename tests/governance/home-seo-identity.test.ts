@@ -5,8 +5,8 @@ import { describe, expect, it } from "vitest";
 
 /**
  * Governanca SEO entity-first (PROMPT 2): trava por varredura de fonte que
- *  - a home tem exatamente um H1 em runtime: o título visual do hero, ou o
- *    fallback institucional oculto quando não há slide;
+ *  - a home tem exatamente um H1 institucional estável; o título visual do
+ *    carousel não muda a entidade principal durante o autoplay;
  *  - a home emite Organization + WebSite, sem SearchAction (nao ha busca real)
  *    nem AggregateRating;
  *  - as fichas (filme/serie/pessoa) emitem @id + mainEntityOfPage + sameAs REAL
@@ -49,18 +49,18 @@ function countMatches(source: string, re: RegExp): number {
 }
 
 describe("governanca SEO: home entity-first + grafo de identidade", () => {
-  it("home mantém um H1 institucional apenas no ramo sem hero", () => {
+  it("home mantém um único H1 institucional estável com ou sem hero", () => {
     const code = withoutComments(read(HOME_REL));
     expect(countMatches(code, /<h1[\s>]/g)).toBe(1);
     expect(read(HOME_REL)).toContain("Screen — filmes, séries e pessoas");
-    expect(code).toMatch(/heroSlides\.length > 0[\s\S]*?<HeroCarousel[\s\S]*?:[\s\S]*?<h1/);
+    expect(code).toMatch(/<h1[\s\S]*?HOME_H1[\s\S]*?heroSlides\.length > 0/);
   });
 
-  it("hero canônico usa o título visual ativo como H1 e os inativos como parágrafo", () => {
+  it("hero usa H2 no título visual ativo e parágrafo nos inativos", () => {
     const code = withoutComments(read(HERO_REL));
-    expect(countMatches(code, /<h1[\s>]/g)).toBe(1);
-    expect(code).toMatch(/<h1 className="sc-hero__title">/);
-    expect(code).toMatch(/<p className="sc-hero__title">/);
+    expect(countMatches(code, /<h1[\s>]/g)).toBe(0);
+    expect(code).toMatch(/<h2 className=\{titleClassName\}>/);
+    expect(code).toMatch(/<p className=\{titleClassName\}>/);
   });
 
   it("home emite Organization + WebSite, sem SearchAction nem AggregateRating", () => {

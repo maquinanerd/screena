@@ -54,10 +54,15 @@ daqui depois de comparação visual ou de contrato.
 - **Canônico:** 23 posições descritas como Google AdSense.
 - **Produto:** não há unidade, client ID nem autorização para carregar script
   publicitário externo.
-- **Produto portado:** modela as quatro dimensões e reserva as posições; o
+- **Produto portado:** inventaria as 23 posições exatas — 15 leaderboards, 4
+  billboards, 3 skyscrapers e 1 rectangle — com margem e hint de cada tela.
+  Treze posições pertencem a superfícies reais ativas/condicionais; dez ficam
+  diferidas junto com Browse, categorias de notícia, Listas, Entrar e formatos
+  popup/interstitial. `AdSlot` modela as quatro dimensões sem carregar script; o
   placeholder tracejado aparece apenas em dev/preview.
-- **Impacto visual:** em produção o espaço existe, mas fica vazio até integração
-  aprovada.
+- **Impacto visual:** em produção os slots ativos reservam espaço vazio até
+  integração aprovada. Slots de telas sem produto real não aparecem no runtime,
+  mas permanecem verificáveis no inventário canônico.
 
 ## D-006 — Dados mock do protótipo não entram em páginas indexáveis
 
@@ -115,18 +120,20 @@ Esses pontos não alteram a autoridade do HTML raiz validado por SHA-256.
 - **Impacto visual/comportamental:** o ícone não abre campo no header mobile;
   navegar por ele troca para a rota Explorar.
 
-## D-012 — Destaque da home ainda é seleção determinística
+## D-011 — Destaque da home ainda é seleção determinística
 
 - **Canônico:** `homePresenter.hero` representa um destaque curado.
 - **Produto:** o getter existente seleciona até cinco títulos reais por ano,
   filmes antes de séries; não existe ainda uma tabela ou flag de curadoria da
   home.
 - **Produto portado:** preserva o hero com dados reais e sem fallback visual,
-  mas registra que a seleção ainda não é uma decisão editorial explícita.
+  mas registra que a seleção ainda não é uma decisão editorial explícita. O H1
+  institucional da home permanece estável e oculto; o título visual do slide
+  ativo usa H2 para não trocar a entidade principal durante o autoplay.
 - **Impacto visual:** nenhum na geometria; o título exibido pode diferir de uma
   programação editorial futura.
 
-## D-013 — Faixas temporais dependem de sinais ainda incompletos
+## D-012 — Faixas temporais dependem de sinais ainda incompletos
 
 - **Canônico:** Top 10 semanal, Filmes em alta e Séries da semana.
 - **Produto:** não possui ranking semanal nem histórico de sete dias. Filmes e
@@ -138,7 +145,7 @@ Esses pontos não alteram a autoridade do HTML raiz validado por SHA-256.
 - **Impacto visual:** ambientes atuais não exibem Top 10, estatísticas mensais
   nem a faixa semanal de séries.
 
-## D-014 — “Em breve” possui lançamentos, não trailers
+## D-013 — “Em breve” possui lançamentos, não trailers
 
 - **Canônico:** subtítulo “Trailers de próximos lançamentos” e pílula de duração.
 - **Produto:** possui datas e imagens de filmes futuros persistidos, mas não
@@ -147,7 +154,7 @@ Esses pontos não alteram a autoridade do HTML raiz validado por SHA-256.
   usa “Próximos lançamentos” e remove play/duração e ARIA de trailer.
 - **Impacto visual:** a pílula sobre a thumbnail não aparece.
 
-## D-015 — Notícias não possuem ranking, rail ou categorias navegáveis
+## D-014 — Notícias não possuem ranking, rail ou categorias navegáveis
 
 - **Canônico:** o modo “Todas” combina magazine, dois cards de rail, “Mais
   lidas”, newsletter e três tabs; os modos Cinema/Séries têm layouts próprios.
@@ -156,11 +163,11 @@ Esses pontos não alteram a autoridade do HTML raiz validado por SHA-256.
 - **Produto portado:** reproduz header, magazine, três cards secundários, feed e
   os quatro AdSlots do modo “Todas”. Expõe apenas a tab `Todas`; rail, ranking,
   newsletter e modos de categoria ficam ausentes em vez de usar mocks.
-- **Impacto visual:** a coluna de 290 px do magazine não aparece e o conteúdo
-  ocupa a largura editorial disponível; a sidebar inferior contém apenas o
-  skyscraper reservado.
+- **Impacto visual:** a coluna canônica de 290 px continua reservada no desktop,
+  mas vazia; a sidebar inferior contém apenas o skyscraper reservado. Em tablet,
+  a coluna opcional some conforme o contrato responsivo.
 
-## D-016 — Corpo do artigo é textual, sem blocos ricos do protótipo
+## D-015 — Corpo do artigo é textual, sem blocos ricos do protótipo
 
 - **Canônico:** artigo de demonstração contém headings internos, figura,
   legenda, tags, compartilhamento, ficha rica de uma série e quatro artigos
@@ -168,13 +175,14 @@ Esses pontos não alteram a autoridade do HTML raiz validado por SHA-256.
 - **Produto:** o presenter atual entrega parágrafos, fonte, aviso de IA e links
   simples para entidades relacionadas; não há AST de blocos, tags sociais nem
   artigos relacionados.
-- **Produto portado:** mantém hero 560 px, coluna de leitura de 720 px, tipografia
-  17/1.8 e o leaderboard intermediário. Renderiza somente os campos persistidos
-  e apresenta entidades relacionadas como referências textuais honestas.
+- **Produto portado:** mantém o hero radial de 560 px, sem criar o image-slot que
+  a tela 05 não possui, além da coluna de leitura de 720 px, tipografia 17/1.8 e
+  leaderboard intermediário. A imagem editorial continua apenas em metadata e
+  Schema.org; links de entidades não substituem artigos relacionados.
 - **Impacto visual:** figuras, ficha rica, tags/share e grid “Leia também” ficam
   ausentes até seus contratos existirem.
 
-## D-017 — Categorias não simulam ranking, streaming ou trailer
+## D-016 — Categorias não simulam ranking, streaming ou trailer
 
 - **Canônico:** a tela 04 combina hero editorial completo, Top 10, filtros por
   plataforma, ranking, próximos trailers e Top News.
@@ -182,15 +190,16 @@ Esses pontos não alteram a autoridade do HTML raiz validado por SHA-256.
   governada, notícias publicadas e datas futuras de filmes; não há ranking Top
   10, agregação de plataforma por categoria, trailer, classificação, direção ou
   elenco no contrato dos índices.
-- **Produto portado:** usa o primeiro card real no hero, os quatro seguintes na
-  grade canônica, próximos lançamentos somente em Filmes e Top News sem
-  repetição. Os três AdSlots permanecem na ordem original; os blocos sem fonte
-  real não geram DOM.
-- **Impacto visual:** não aparecem numeração Top 10, estrelas, filtros de
-  streaming, ranking nem CTA de trailer. Quando blocos intermediários estão
+- **Produto portado:** não promove arbitrariamente o primeiro card do índice a
+  hero ou ranking. Renderiza uma introdução pública honesta, próximos lançamentos
+  somente em Filmes e Top News sem repetição. Não publica ItemList para cards que
+  não aparecem na página. Os três AdSlots permanecem na ordem original e blocos
+  sem fonte real não geram DOM.
+- **Impacto visual:** hero, numeração Top 10, estrelas, filtros de streaming,
+  ranking e CTA de trailer não aparecem. Quando blocos intermediários estão
   ausentes, dois espaços publicitários podem ficar consecutivos.
 
-## D-018 — Explorar não finge busca, atividade pessoal ou sinais sociais
+## D-017 — Explorar não finge busca, atividade pessoal ou sinais sociais
 
 - **Canônico:** Browse/Discover/Mais Aguardados combinam busca funcional,
   filtros, plataformas, crescimento em 24 horas, progresso de reprodução,
@@ -199,14 +208,16 @@ Esses pontos não alteram a autoridade do HTML raiz validado por SHA-256.
   reprodução, watchlist/comunidade, agregação de streaming para o hub nem rota
   dedicada de “Mais Aguardados”. Há catálogo real e filmes futuros com data
   persistida.
-- **Produto portado:** instancia a tela Discover em `/pt/explorar/`, com o
-  leaderboard, cabeçalho, navegação real, destaque determinístico, rail misto e
-  agenda de lançamentos. Browse e a tela social de Mais Aguardados ficam
-  diferidos; nenhum contador, rank, progresso ou ação falsa é exibido.
+- **Produto portado:** instancia somente as partes sustentadas da tela Discover
+  em `/pt/explorar/`: leaderboard, cabeçalho e agenda de lançamentos. Destaque e
+  Em Alta ficam ocultos porque não existem curadoria nem sinal temporal; a rota
+  possui estado vazio explícito. Browse e Mais Aguardados ficam diferidos;
+  nenhum catálogo genérico, contador, rank, progresso, filtro ou ação falsa é
+  exibido.
 - **Impacto visual:** barra de busca, CTA de watchlist/trailer, Em Alta com
   crescimento, Continuar assistindo, Mais Aguardados e Populares não aparecem.
 
-## D-019 — Superfícies autenticadas permanecem fora do app público
+## D-018 — Superfícies autenticadas permanecem fora do app público
 
 - **Canônico:** as telas 13–16 apresentam Configurações, Dados/importação,
   Listas e Entrar/cadastrar como produto funcional.
@@ -217,3 +228,44 @@ Esses pontos não alteram a autoridade do HTML raiz validado por SHA-256.
   no ZIP canônico e poderá ser portado quando seus contratos forem reais.
 - **Impacto visual/comportamental:** essas quatro telas não estão acessíveis no
   runtime atual; nenhum fluxo falso ou dead-end foi adicionado.
+
+## D-019 — Mídia usa elementos nativos com dimensões governadas
+
+- **Canônico:** `<image-slot>` é um componente de protótipo; o inventário sugere
+  substituí-lo por `next/image`, enquanto o guia principal também admite
+  `<img>`.
+- **Produto:** presenters já entregam URL validada, largura e altura intrínsecas;
+  parte das imagens vem do CDN governado do TMDB e parte é local.
+- **Produto portado:** usa `<img>` com `width`, `height`, `loading`, alt e
+  `object-fit` explícitos, sem loader ou transformação adicional que altere o
+  crop aprovado. Fallbacks preservam apenas os gradientes canônicos.
+- **Impacto técnico:** a otimização automática do `next/image` não é aplicada;
+  proporção, crop e layout permanecem controlados pelo CSS do port.
+
+## D-020 — Content blocks só aparecem na seção semanticamente compatível
+
+- **Canônico:** detalhe de filme/série/pessoa possui regiões específicas para A
+  obra/biografia, crítica, disponibilidade, episódios, elenco e notícias.
+- **Produto:** o enum genérico de `content_blocks` também contém FAQ, explicação
+  de ratings e introdução de similares, mesmo quando a página não possui o
+  consumidor visual ou os dados correspondentes.
+- **Produto portado:** mapeia cada bloco revisado apenas para sua região
+  compatível; não despeja FAQ ou texto de ratings sob “A obra”. Blocos sem
+  consumidor real (`faq`, `ratings_explanation`, `similar_titles_intro` e tipos
+  incompatíveis com a entidade) permanecem fora do DOM.
+- **Impacto visual/editorial:** esses tipos aprovados só serão exibidos quando
+  houver componente canônico e dados associados, evitando classificação
+  editorial incorreta.
+
+## D-021 — Slots de imagem sem contrato real permanecem diferidos
+
+- **Canônico:** o HTML raiz declara 31 categorias de `<image-slot>` distribuídas
+  entre filme, série desktop/mobile, Discover, Mais aguardados e Configurações.
+- **Produto:** nem todas possuem mídia persistida ou uma superfície funcional;
+  galeria, prêmios, recomendações, progresso do usuário e avatar autenticado não
+  têm contrato suficiente nesta branch.
+- **Produto portado:** inventaria as 31 categorias exatas e renderiza somente as
+  16 ativas/condicionais alimentadas por presenters reais. As outras 15 ficam
+  explicitamente diferidas, sem copiar URLs ou imagens fictícias do protótipo.
+- **Impacto visual:** regiões sem mídia ou feature real são omitidas, preservando
+  a ordem dos blocos restantes e evitando placeholders que pareçam conteúdo.

@@ -205,6 +205,15 @@
   font-size: 13px;
 }
 
+.watchContext {
+  margin: 18px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--series-border);
+  color: var(--series-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
 .media {
   width: 100%;
   padding-top: 34px;
@@ -234,7 +243,60 @@
 }
 
 .mediaWithBackdrop .backdropFrame {
-  grid-column: 2 / 4;
+  grid-column: 2;
+}
+
+.mediaTiles {
+  display: grid;
+  min-width: 0;
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+}
+
+.mediaTile,
+.mediaNewsLink {
+  position: relative;
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--series-media);
+}
+
+.mediaTile:first-child {
+  background: linear-gradient(150deg, #1a2a22, #0c130f);
+}
+
+.mediaTile:last-child {
+  background: linear-gradient(150deg, #262030, #100d15);
+}
+
+.mediaNewsLink {
+  color: var(--series-ink);
+  text-decoration: none;
+}
+
+.mediaNewsLink::after {
+  position: absolute;
+  inset: 40% 0 0;
+  background: linear-gradient(0deg, rgba(0, 0, 0, 0.46), transparent);
+  content: '';
+  pointer-events: none;
+}
+
+.mediaNewsLink:focus-visible {
+  outline: 3px solid #ffffff;
+  outline-offset: -5px;
+}
+
+.mediaTileLabel {
+  position: absolute;
+  z-index: 1;
+  bottom: 14px;
+  left: 16px;
+  padding: 6px 12px;
+  background: var(--series-white);
+  color: var(--series-ink);
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .mediaImage {
@@ -446,6 +508,22 @@
   color: var(--series-ink);
 }
 
+.episodeContext {
+  max-width: 66ch;
+  margin-top: 18px;
+  color: var(--series-muted);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.episodeContext p {
+  margin: 0;
+}
+
+.episodeContext p + p {
+  margin-top: 10px;
+}
+
 .seasonsList {
   display: flex;
   flex-direction: column;
@@ -551,6 +629,10 @@
   line-height: 1.25;
 }
 
+.episodeMobileNumber {
+  display: none;
+}
+
 .episodeOverview {
   max-width: 66ch;
   margin: 8px 0 0;
@@ -570,6 +652,14 @@
   margin-bottom: 26px;
 }
 
+.sectionContext {
+  max-width: 66ch;
+  margin: -10px 0 26px;
+  color: var(--series-muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
 .castGrid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -577,6 +667,11 @@
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+.castGrid:focus-visible {
+  outline: 2px solid #101010;
+  outline-offset: 6px;
 }
 
 .castCard {
@@ -660,6 +755,7 @@
   margin: 4px 0 0;
   color: var(--series-muted);
   font-size: 13px;
+  line-height: 1.55;
 }
 
 .allNewsLink {
@@ -872,8 +968,46 @@
     max-width: 680px;
   }
 
-  .mediaGrid {
-    height: 400px;
+  .seriesBadge,
+  .sectionKicker h2,
+  .sectionKicker p,
+  .critiqueLabel,
+  .episodeNumber,
+  .newsCategory,
+  .externalLinks :global(.entity-links__label),
+  .watchPanel :global(.watch-availability__title),
+  .watchPanel :global(.watch-availability__note),
+  .watchPanel :global(.watch-availability__updated),
+  .watchPanel :global(.watch-availability__group-title) {
+    font-size: 12px;
+  }
+
+  .mediaGrid,
+  .mediaWithBackdrop .mediaGrid,
+  .mediaPosterOnly .mediaGrid {
+    display: flex;
+    height: auto;
+    flex-direction: column;
+    padding: 32px;
+    background: #101712;
+  }
+
+  .posterFrame,
+  .mediaPosterOnly .posterFrame {
+    width: 200px;
+    height: 300px;
+    margin: 0 auto;
+    flex: 0 0 300px;
+  }
+
+  .backdropFrame {
+    width: calc(100% + 64px);
+    aspect-ratio: 16 / 9;
+    margin: 32px -32px -32px;
+  }
+
+  .mediaTiles {
+    display: none;
   }
 
   .episodeMedia {
@@ -907,11 +1041,11 @@
   }
 
   .work {
-    order: 3;
+    order: 4;
   }
 
   .critique {
-    order: 4;
+    display: none;
   }
 
   .episodes {
@@ -919,11 +1053,11 @@
   }
 
   .cast {
-    order: 6;
+    order: 3;
   }
 
   .news {
-    order: 7;
+    display: none;
   }
 
   .details {
@@ -973,7 +1107,7 @@
     padding: 5px 8px;
     background: #eef3ea;
     color: var(--series-green-dark);
-    font-size: 9px;
+    font-size: 12px;
     letter-spacing: 0.1em;
   }
 
@@ -1043,6 +1177,8 @@
 
   .mediaGrid {
     height: auto;
+    padding: 0;
+    background: transparent;
   }
 
   .mediaWithBackdrop .mediaGrid,
@@ -1057,6 +1193,7 @@
   .backdropFrame {
     width: 100%;
     aspect-ratio: 16 / 10;
+    margin: 0;
   }
 
   .mediaPosterOnly .posterFrame {
@@ -1129,21 +1266,30 @@
   }
 
   .episode {
-    align-items: flex-start;
-    gap: 12px;
+    display: block;
     padding: 14px 0;
   }
 
   .episodeMedia {
-    width: 128px;
-    flex-basis: 128px;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    flex-basis: auto;
+  }
+
+  .episodeBody {
+    margin-top: 12px;
   }
 
   .episodeNumber {
-    top: 7px;
-    left: 7px;
-    padding: 3px 6px;
-    font-size: 10px;
+    display: none;
+  }
+
+  .episodeMobileNumber {
+    display: inline;
+    margin-right: 8px;
+    color: var(--series-green-dark);
+    font-size: 12px;
+    font-weight: 800;
   }
 
   .episodeTitle {

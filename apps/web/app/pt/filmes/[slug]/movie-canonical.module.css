@@ -225,6 +225,15 @@
   font-size: 13px;
 }
 
+.watchContext {
+  margin: 18px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid #e9e3d8;
+  color: #6e6a61;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
 .mediaStrip {
   width: 100%;
   padding-top: 34px;
@@ -476,9 +485,18 @@
 
 .sectionSubtitle {
   display: block;
-  margin-top: 4px;
+  margin: 4px 0 0;
   color: #6e6a61;
   font-size: 13px;
+  line-height: 1.55;
+}
+
+.sectionContext {
+  max-width: 66ch;
+  margin: -10px 0 26px;
+  color: #6e6a61;
+  font-size: 14px;
+  line-height: 1.6;
 }
 
 .sectionLink {
@@ -528,6 +546,28 @@
     #ece6dc;
   box-shadow: 0 3px 14px rgba(20, 18, 14, 0.05);
   transition: transform 0.2s ease;
+}
+
+.castInitials {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  color: #8a3a34;
+  font-size: 28px;
+  font-weight: 750;
+  letter-spacing: -0.03em;
+}
+
+.castGrid:focus-visible {
+  outline: 2px solid #101010;
+  outline-offset: 6px;
+}
+
+.mediaNewsLink:focus-visible {
+  outline: 3px solid #ffffff;
+  outline-offset: -5px;
 }
 
 .castCardLink:hover .castPortrait {
@@ -593,7 +633,7 @@
 
 .newsTitle {
   display: block;
-  margin-top: 9px;
+  margin: 9px 0 0;
   color: #12100e;
   font-size: 17px;
   font-weight: 750;
@@ -720,13 +760,27 @@
   }
 
   .mediaGrid {
-    grid-template-columns: 1fr 2fr;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
     height: auto;
+    padding: 32px;
+    background: #0c0806;
   }
 
-  .mediaPoster,
+  .mediaPoster {
+    width: 200px;
+    min-height: 300px;
+    max-height: 300px;
+    margin: 0 auto;
+    flex: 0 0 300px;
+  }
+
   .mediaBackdrop {
-    min-height: 360px;
+    width: calc(100% + 64px);
+    min-height: 0;
+    aspect-ratio: 16 / 9;
+    margin: 32px -32px -32px;
   }
 
   .mediaTiles {
@@ -784,19 +838,7 @@
   }
 
   .mediaGrid {
-    display: flex;
-    flex-direction: column;
-    gap: 0;
     padding: 20px;
-    background: #0c0806;
-  }
-
-  .mediaPoster {
-    width: 200px;
-    min-height: 300px;
-    max-height: 300px;
-    margin: 0 auto;
-    flex: 0 0 300px;
   }
 
   .mediaBackdrop {

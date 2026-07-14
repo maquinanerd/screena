@@ -136,6 +136,10 @@ export function HeroCarousel({ slides }: HeroCarouselProps): ReactNode {
     >
       {slides.map((slide, i) => {
         const isActive = i === activeIndex;
+        const titleClassName =
+          slide.title.length > 24
+            ? "sc-hero__title sc-hero__title--sm"
+            : "sc-hero__title";
         const hasCredits =
           slide.director !== null || slide.cast.length > 0 || slide.synopsis !== null;
         return (
@@ -168,12 +172,12 @@ export function HeroCarousel({ slides }: HeroCarouselProps): ReactNode {
 
             <div className="sc-hero__inner">
               <div className="sc-hero__lead">
-                {/* O HTML canônico usa o título visual como H1. Somente o slide
-                    ativo recebe esse nível; os demais permanecem parágrafos. */}
+                {/* O H1 institucional permanece estável na home. O título visual
+                    ativo usa H2; os demais não entram na hierarquia de títulos. */}
                 {isActive ? (
-                  <h1 className="sc-hero__title">{slide.title}</h1>
+                  <h2 className={titleClassName}>{slide.title}</h2>
                 ) : (
-                  <p className="sc-hero__title">{slide.title}</p>
+                  <p className={titleClassName}>{slide.title}</p>
                 )}
 
                 {slide.primaryMeta.length > 0 ? (

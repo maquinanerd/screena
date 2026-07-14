@@ -1,9 +1,5 @@
 import type { ReactNode } from "react";
 
-import type {
-  EntityCard,
-  EntityIndexView,
-} from "../../src/lib/entity-index-presenter";
 import type { HomeUpcomingMovie } from "../../src/lib/home-upcoming-presenter";
 import type {
   NewsCardView,
@@ -19,16 +15,10 @@ interface CategoryHomeProps {
   readonly canonicalUrl: string;
   readonly description: string;
   readonly pageTitle: string;
-  readonly view: EntityIndexView;
   readonly vertical: CategoryVertical;
   readonly newsView: NewsIndexView;
   readonly upcoming?: readonly HomeUpcomingMovie[];
 }
-
-const KIND_LABEL: Readonly<Record<CategoryVertical, string>> = {
-  movie: "Filme",
-  series: "Série",
-};
 
 function uniqueNewsCards(view: NewsIndexView): NewsCardView[] {
   const candidates = [
@@ -69,39 +59,6 @@ function SectionHeading({
         <p className={styles.sectionDescription}>{description}</p>
       ) : null}
     </header>
-  );
-}
-
-function CatalogCard({
-  card,
-  vertical,
-}: {
-  readonly card: EntityCard;
-  readonly vertical: CategoryVertical;
-}): ReactNode {
-  return (
-    <a className={styles.catalogCard} href={card.href}>
-      <div className={styles.catalogMedia}>
-        {card.image !== null ? (
-          <img
-            className={styles.catalogImage}
-            src={card.image.src}
-            alt={`Pôster de ${card.title}`}
-            width={card.image.width}
-            height={card.image.height}
-            loading="lazy"
-          />
-        ) : null}
-        <span className={styles.catalogScrim} aria-hidden="true" />
-        <span className={styles.catalogBadge}>{KIND_LABEL[vertical]}</span>
-        <div className={styles.catalogCopy}>
-          <h3 className={styles.catalogTitle}>{card.title}</h3>
-          {card.meta !== null ? (
-            <span className={styles.catalogMeta}>{card.meta}</span>
-          ) : null}
-        </div>
-      </div>
-    </a>
   );
 }
 
@@ -152,51 +109,6 @@ function NewsMini({ item }: { readonly item: NewsCardView }): ReactNode {
   );
 }
 
-function CategoryHero({
-  fallbackTitle,
-  hero,
-  vertical,
-}: {
-  readonly fallbackTitle: string;
-  readonly hero: EntityCard | null;
-  readonly vertical: CategoryVertical;
-}): ReactNode {
-  return (
-    <section className={styles.hero} aria-labelledby="category-page-title">
-      <span className={styles.heroBase} aria-hidden="true" />
-      <span className={styles.heroDepthScrim} aria-hidden="true" />
-      <span className={styles.heroVerticalScrim} aria-hidden="true" />
-      <div className={styles.heroInner}>
-        <div className={styles.heroLead}>
-          <h1 id="category-page-title" className={styles.heroTitle}>
-            {hero?.title ?? fallbackTitle}
-          </h1>
-          {hero !== null ? (
-            <>
-              <div className={styles.heroMeta} aria-label="Informações do título">
-                <span>{KIND_LABEL[vertical]}</span>
-                {hero.meta !== null ? (
-                  <>
-                    <span className={styles.heroSeparator} aria-hidden="true">
-                      ·
-                    </span>
-                    <span>{hero.meta}</span>
-                  </>
-                ) : null}
-              </div>
-              <div className={styles.heroActions}>
-                <a className={styles.heroDetails} href={hero.href}>
-                  Ver detalhes
-                </a>
-              </div>
-            </>
-          ) : null}
-        </div>
-      </div>
-    </section>
-  );
-}
-
 function AdShell({
   margin,
   variant,
@@ -218,11 +130,7 @@ export function CategoryHome({
   pageTitle,
   upcoming = [],
   vertical,
-  view,
 }: CategoryHomeProps): ReactNode {
-  const hero = view.cards[0] ?? null;
-  const catalogCards = view.cards.slice(1, 5);
-  const visibleEntityCards = hero === null ? [] : [hero, ...catalogCards];
   const comingCards = vertical === "movie" ? upcoming.slice(0, 4) : [];
   const newsCards = uniqueNewsCards(newsView);
   const featuredNews = newsCards[0] ?? null;
@@ -235,19 +143,6 @@ export function CategoryHome({
     url: canonicalUrl,
     description,
   };
-  if (visibleEntityCards.length > 0) {
-    collectionJsonLd.mainEntity = {
-      "@type": "ItemList",
-      numberOfItems: visibleEntityCards.length,
-      itemListElement: visibleEntityCards.map((card, index) => ({
-        "@type": "ListItem",
-        position: index + 1,
-        url: `${SITE_URL}${card.href}`,
-        name: card.title,
-      })),
-    };
-  }
-
   const breadcrumbJsonLd = {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
@@ -269,31 +164,12 @@ export function CategoryHome({
 
   return (
     <main className={styles.page} data-vertical={vertical}>
-      <CategoryHero
-        fallbackTitle={pageTitle}
-        hero={hero}
-        vertical={vertical}
-      />
+      <header className={styles.categoryIntro}>
+        <h1 className={styles.categoryTitle}>{pageTitle}</h1>
+        <p className={styles.categoryDescription}>{description}</p>
+      </header>
 
-      {catalogCards.length > 0 ? (
-        <section
-          className={styles.catalogSection}
-          aria-labelledby="category-catalog-title"
-        >
-          <SectionHeading
-            id="category-catalog-title"
-            title={`Catálogo de ${pageTitle.toLowerCase()}`}
-            description="Títulos publicados na Screen"
-          />
-          <div className={styles.catalogGrid}>
-            {catalogCards.map((card) => (
-              <CatalogCard key={card.href} card={card} vertical={vertical} />
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      {/* 1. Leaderboard: após a primeira grade, como em 04-cat-home. */}
+      {/* Hero e Top 10 exigem destaque curado/ranking real e ficam ocultos. */}
       <AdShell margin="56px 0 0" variant="leaderboard" />
 
       {/* Streaming e ranking dependem de contratos ausentes e ficam omitidos. */}

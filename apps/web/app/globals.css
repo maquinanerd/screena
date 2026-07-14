@@ -1919,6 +1919,12 @@ a {
   .cinematic-ad[data-ad-variant='skyscraper'] {
     display: none;
   }
+
+  .cinematic-ad__label,
+  .cinematic-ad__box strong,
+  .cinematic-ad__box span {
+    font-size: 12px;
+  }
 }
 
 @media (max-width: 767px) {

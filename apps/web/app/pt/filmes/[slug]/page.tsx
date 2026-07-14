@@ -30,9 +30,24 @@ export const revalidate = 3600;
 
 /** Bloco editorial que ocupa a faixa canônica de crítica quando aprovado. */
 const REVIEW_BLOCK_TYPE = "review_summary";
+const WORK_BLOCK_TYPES: ReadonlySet<string> = new Set([
+  "editorial_intro",
+  "summary_without_spoilers",
+  "franchise_context",
+]);
 
 interface MoviePageParams {
   slug: string;
+}
+
+function initialsFor(name: string): string {
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => Array.from(part)[0] ?? "")
+    .join("")
+    .toLocaleUpperCase("pt-BR");
 }
 
 export async function generateMetadata({
@@ -92,23 +107,23 @@ export default async function MoviePage({
   ].filter((item): item is string => item !== null);
 
   const facts = [
-    view.year !== null ? { label: "Ano", value: String(view.year) } : null,
-    view.runtimeLabel !== null
-      ? { label: "Duração", value: view.runtimeLabel }
-      : null,
-    view.statusLabel !== null
-      ? { label: "Situação", value: view.statusLabel }
-      : null,
-    view.originalLanguageLabel !== null
-      ? { label: "Idioma original", value: view.originalLanguageLabel }
-      : null,
-  ].filter((fact): fact is { label: string; value: string } => fact !== null);
+    { label: "Ano", value: view.year === null ? "—" : String(view.year) },
+    { label: "Duração", value: view.runtimeLabel ?? "—" },
+    { label: "Situação", value: view.statusLabel ?? "—" },
+    { label: "Idioma original", value: view.originalLanguageLabel ?? "—" },
+  ];
 
   const critiqueBlock =
     view.blocks.find((block) => block.blockType === REVIEW_BLOCK_TYPE) ?? null;
-  const workBlocks = view.blocks.filter(
-    (block) => block.blockType !== REVIEW_BLOCK_TYPE,
+  const workBlocks = view.blocks.filter((block) =>
+    WORK_BLOCK_TYPES.has(block.blockType),
   );
+  const watchContext =
+    view.blocks.find((block) => block.blockType === "where_to_watch_text") ?? null;
+  const castContext =
+    view.blocks.find((block) => block.blockType === "cast_intro") ?? null;
+  const newsContext =
+    view.blocks.find((block) => block.blockType === "news_context") ?? null;
   const workLead = workBlocks[0] ?? null;
   const workBody = workBlocks.slice(1);
   const primaryCast = cast.slice(0, 6);
@@ -196,6 +211,14 @@ export default async function MoviePage({
           {watch !== null ? (
             <div className={styles.watchColumn}>
               <WatchAvailabilityPanel view={watch} />
+              {watchContext !== null ? (
+                <p
+                  className={styles.watchContext}
+                  data-block-type={watchContext.blockType}
+                >
+                  {watchContext.content}
+                </p>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -333,7 +356,20 @@ export default async function MoviePage({
             </div>
           </div>
 
-          <ul className={styles.castGrid}>
+          {castContext !== null ? (
+            <p
+              className={styles.sectionContext}
+              data-block-type={castContext.blockType}
+            >
+              {castContext.content}
+            </p>
+          ) : null}
+
+          <ul
+            className={styles.castGrid}
+            aria-label="Elenco principal; use as setas para percorrer"
+            tabIndex={0}
+          >
             {primaryCast.map((member, index) => {
               const content = (
                 <>
@@ -347,7 +383,11 @@ export default async function MoviePage({
                         className={styles.mediaImage}
                         loading="lazy"
                       />
-                    ) : null}
+                    ) : (
+                      <span className={styles.castInitials} aria-hidden="true">
+                        {initialsFor(member.name)}
+                      </span>
+                    )}
                   </span>
                   <span className={styles.castName}>{member.name}</span>
                   {member.character !== null ? (
@@ -380,9 +420,13 @@ export default async function MoviePage({
               <h2 className={styles.sectionTitle} id="movie-news-title">
                 Notícias e bastidores
               </h2>
-              <span className={styles.sectionSubtitle}>
-                Contexto, entrevistas e cobertura do filme.
-              </span>
+              <p
+                className={styles.sectionSubtitle}
+                data-block-type={newsContext?.blockType}
+              >
+                {newsContext?.content ??
+                  "Contexto, entrevistas e cobertura do filme."}
+              </p>
             </div>
             <a className={styles.sectionLink} href={NEWS_INDEX_PATH}>
               Ver tudo →
@@ -413,7 +457,7 @@ export default async function MoviePage({
                       {article.category !== null ? (
                         <span className={styles.newsCategory}>{article.category}</span>
                       ) : null}
-                      <span className={styles.newsTitle}>{article.title}</span>
+                      <h3 className={styles.newsTitle}>{article.title}</h3>
                       {meta.length > 0 ? (
                         <span className={styles.newsMeta}>{meta.join(" · ")}</span>
                       ) : null}
@@ -426,23 +470,21 @@ export default async function MoviePage({
         </section>
       ) : null}
 
-      {facts.length > 0 ? (
-        <section className={styles.factsFrame} aria-labelledby="movie-facts-title">
-          <div className={styles.factsColumn}>
-            <h2 className={styles.eyebrow} id="movie-facts-title">
-              Ficha técnica
-            </h2>
-            <dl className={styles.factsList}>
-              {facts.map((fact) => (
-                <div className={styles.factRow} key={fact.label}>
-                  <dt className={styles.factLabel}>{fact.label}</dt>
-                  <dd className={styles.factValue}>{fact.value}</dd>
-                </div>
-              ))}
-            </dl>
-          </div>
-        </section>
-      ) : null}
+      <section className={styles.factsFrame} aria-labelledby="movie-facts-title">
+        <div className={styles.factsColumn}>
+          <h2 className={styles.eyebrow} id="movie-facts-title">
+            Ficha técnica
+          </h2>
+          <dl className={styles.factsList}>
+            {facts.map((fact) => (
+              <div className={styles.factRow} key={fact.label}>
+                <dt className={styles.factLabel}>{fact.label}</dt>
+                <dd className={styles.factValue}>{fact.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      </section>
 
       {isUnderReview ? (
         <div className={styles.noticeFrame}>

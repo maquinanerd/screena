@@ -49,18 +49,34 @@
   padding: 36px 64px 0;
 }
 
+.magazineGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 290px;
+  align-items: start;
+  gap: 30px;
+}
+
+.magazineMain,
+.magazineRail {
+  min-width: 0;
+}
+
 .magazineLead {
+  min-width: 0;
+}
+
+.magazineLeadLink {
   display: grid;
   grid-template-columns: minmax(0, 1.02fr) minmax(0, 1.18fr);
   align-items: stretch;
   gap: 30px;
+  color: inherit;
+  text-decoration: none;
 }
 
 .leadCopy,
-.leadImageLink,
 .magazineMini,
-.feedImageLink,
-.feedCopy h3 a {
+.feedCardLink {
   color: inherit;
   text-decoration: none;
 }
@@ -140,6 +156,12 @@
   box-shadow: 0 3px 14px rgb(20 18 14 / 5%);
 }
 
+.leadImageVisual,
+.feedImageVisual {
+  display: block;
+  min-width: 0;
+}
+
 .leadImage {
   min-height: 340px;
   height: 100%;
@@ -164,6 +186,10 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 30px;
   margin-top: 40px;
+}
+
+.magazineMiniArticle {
+  min-width: 0;
 }
 
 .magazineMiniImage {
@@ -229,11 +255,14 @@
 }
 
 .feedCard {
+  padding: 26px 0;
+  border-top: 1px solid #e3ded6;
+}
+
+.feedCardLink {
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr);
   gap: 24px;
-  padding: 26px 0;
-  border-top: 1px solid #e3ded6;
 }
 
 .feedImage {
@@ -250,6 +279,7 @@
 
 .feedCopy h3 {
   margin: 9px 0 0;
+  color: #101010;
   font-size: 23px;
   font-weight: 700;
   letter-spacing: -0.01em;
@@ -341,6 +371,24 @@
     width: 100%;
   }
 
+  .magazineGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .magazineRail {
+    display: none;
+  }
+
+  .leadCategory,
+  .feedCategory,
+  .feedMeta {
+    font-size: 12px;
+  }
+
+  .sectionTitle h2 {
+    font-size: 26px;
+  }
+
   .feedLayout {
     grid-template-columns: 1fr;
   }
@@ -359,6 +407,20 @@
     padding: 18px 20px 0;
   }
 
+  .channelRow {
+    gap: 18px;
+  }
+
+  .headerAd {
+    order: -1;
+  }
+
+  .tabs {
+    width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
   .magazine {
     padding: 30px 20px 0;
   }
@@ -369,12 +431,12 @@
     padding-left: 20px;
   }
 
-  .magazineLead,
+  .magazineLeadLink,
   .magazineCards {
     grid-template-columns: 1fr;
   }
 
-  .leadImageLink {
+  .leadImageVisual {
     order: -1;
   }
 
@@ -390,13 +452,17 @@
     padding-top: 48px;
   }
 
-  .feedCard {
+  .feedCardLink {
     grid-template-columns: 1fr;
     gap: 18px;
   }
 
   .feedCopy h3 {
     font-size: 20px;
+  }
+
+  .sectionTitle h2 {
+    font-size: 24px;
   }
 }
 

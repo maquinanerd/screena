@@ -70,12 +70,14 @@ function Byline({ card, light = false }: { card: NewsCardView; light?: boolean }
 
 function MagazineMiniCard({ card }: { card: NewsCardView }) {
   return (
-    <a href={card.href} className={styles.magazineMini}>
-      <CardImage card={card} className={styles.magazineMiniImage} />
-      <h3>{card.title}</h3>
-      {card.deck !== null ? <p>{card.deck}</p> : null}
-      <Byline card={card} />
-    </a>
+    <article className={styles.magazineMiniArticle}>
+      <a href={card.href} className={styles.magazineMini}>
+        <CardImage card={card} className={styles.magazineMiniImage} />
+        <h3>{card.title}</h3>
+        {card.deck !== null ? <p>{card.deck}</p> : null}
+        <Byline card={card} />
+      </a>
+    </article>
   );
 }
 
@@ -83,31 +85,29 @@ function FeedCard({ card }: { card: NewsCardView }) {
   const hasPrimaryMeta = card.author !== null || card.dateLabel !== null;
   return (
     <article className={styles.feedCard}>
-      <a href={card.href} className={styles.feedImageLink} tabIndex={-1}>
+      <a className={styles.feedCardLink} href={card.href}>
         <CardImage card={card} className={styles.feedImage} />
+        <div className={styles.feedCopy}>
+          {card.category !== null ? (
+            <span className={styles.feedCategory}>{card.category}</span>
+          ) : null}
+          <h3>{card.title}</h3>
+          {card.deck !== null ? <p>{card.deck}</p> : null}
+          <span className={styles.feedMeta}>
+            {card.author !== null ? <strong>{card.author}</strong> : null}
+            {card.author !== null && card.dateLabel !== null ? (
+              <span aria-hidden="true">·</span>
+            ) : null}
+            {card.dateLabel !== null ? <span>{card.dateLabel}</span> : null}
+            {card.readTimeLabel !== null ? (
+              <>
+                {hasPrimaryMeta ? <span aria-hidden="true">·</span> : null}
+                <span>{card.readTimeLabel}</span>
+              </>
+            ) : null}
+          </span>
+        </div>
       </a>
-      <div className={styles.feedCopy}>
-        {card.category !== null ? (
-          <span className={styles.feedCategory}>{card.category}</span>
-        ) : null}
-        <h3>
-          <a href={card.href}>{card.title}</a>
-        </h3>
-        {card.deck !== null ? <p>{card.deck}</p> : null}
-        <span className={styles.feedMeta}>
-          {card.author !== null ? <strong>{card.author}</strong> : null}
-          {card.author !== null && card.dateLabel !== null ? (
-            <span aria-hidden="true">·</span>
-          ) : null}
-          {card.dateLabel !== null ? <span>{card.dateLabel}</span> : null}
-          {card.readTimeLabel !== null ? (
-            <>
-              {hasPrimaryMeta ? <span aria-hidden="true">·</span> : null}
-              <span>{card.readTimeLabel}</span>
-            </>
-          ) : null}
-        </span>
-      </div>
     </article>
   );
 }
@@ -168,30 +168,37 @@ export default async function NewsIndexPage() {
 
       {lead !== null ? (
         <section className={styles.magazine} aria-labelledby="news-lead-title">
-          <div className={styles.magazineLead}>
-            <a href={lead.href} className={styles.leadCopy}>
-              {lead.category !== null ? (
-                <span className={styles.leadCategory}>{lead.category}</span>
-              ) : null}
-              <h2 id="news-lead-title">{lead.title}</h2>
-              <Byline card={lead} />
-              {lead.deck !== null ? <p>{lead.deck}</p> : null}
-              <span className={styles.readMore}>
-                Ler mais <span aria-hidden="true">→</span>
-              </span>
-            </a>
-            <a href={lead.href} className={styles.leadImageLink} tabIndex={-1}>
-              <CardImage card={lead} className={styles.leadImage} />
-            </a>
-          </div>
+          <div className={styles.magazineGrid}>
+            <div className={styles.magazineMain}>
+              <article className={styles.magazineLead}>
+                <a href={lead.href} className={styles.magazineLeadLink}>
+                  <div className={styles.leadCopy}>
+                    {lead.category !== null ? (
+                      <span className={styles.leadCategory}>{lead.category}</span>
+                    ) : null}
+                    <h2 id="news-lead-title">{lead.title}</h2>
+                    <Byline card={lead} />
+                    {lead.deck !== null ? <p>{lead.deck}</p> : null}
+                    <span className={styles.readMore}>
+                      Ler mais <span aria-hidden="true">→</span>
+                    </span>
+                  </div>
+                  <span className={styles.leadImageVisual} aria-hidden="true">
+                    <CardImage card={lead} className={styles.leadImage} />
+                  </span>
+                </a>
+              </article>
 
-          {magazineCards.length > 0 ? (
-            <div className={styles.magazineCards}>
-              {magazineCards.map((card) => (
-                <MagazineMiniCard key={card.href} card={card} />
-              ))}
+              {magazineCards.length > 0 ? (
+                <div className={styles.magazineCards}>
+                  {magazineCards.map((card) => (
+                    <MagazineMiniCard key={card.href} card={card} />
+                  ))}
+                </div>
+              ) : null}
             </div>
-          ) : null}
+            <div className={styles.magazineRail} aria-hidden="true" />
+          </div>
         </section>
       ) : (
         <p className={styles.empty}>Ainda não há notícias publicadas nesta seção.</p>

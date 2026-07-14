@@ -33,6 +33,19 @@ describe("contrato canônico da tela 09 · Pessoa", () => {
     expect(pageSource).not.toContain("Conhecido por");
     expect(pageSource).not.toContain("142 fotos");
     expect(pageSource).not.toContain("rating");
+    expect(pageSource).toContain("BIOGRAPHY_BLOCK_TYPES.has(block.blockType)");
+    expect(pageSource).toContain('new Set([\n  "editorial_intro",\n])');
+    expect(pageSource).not.toContain('"summary_without_spoilers"');
+    expect(pageSource).not.toContain('"franchise_context"');
+    expect(pageSource).toContain('block.blockType === "news_context"');
+  });
+
+  it("mantém filmografia obrigatória, linha inteira navegável e notícias semânticas", () => {
+    expect(pageSource).toContain("Filmografia ainda não disponível.");
+    expect(pageSource).toContain("className={styles.credit}");
+    expect(pageSource).toContain("href={credit.href}");
+    expect(pageSource).toContain("<article className={styles.newsArticle}>");
+    expect(pageSource).toContain("<h3 className={styles.newsTitle}");
   });
 
   it("preserva guards, canonical, metadata e os dois schemas JSON-LD", () => {

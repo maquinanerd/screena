@@ -11,6 +11,7 @@ function read(relativePath: string): string {
 
 describe("home cinematográfica canônica", () => {
   const home = read("apps/web/app/pt/page.tsx");
+  const hero = read("apps/web/app/_components/hero-carousel.tsx");
   const upcoming = read("apps/web/app/_components/coming-soon-rail.tsx");
 
   it("não contém conteúdo de protótipo, repetição artificial ou reativação por flag", () => {
@@ -48,5 +49,11 @@ describe("home cinematográfica canônica", () => {
     expect(upcoming).not.toMatch(/duration\??:/);
     expect(upcoming).not.toMatch(/Trailer anterior|Próximo trailer/);
     expect(home).not.toMatch(/Trailers de próximos lançamentos/);
+  });
+
+  it("usa a escala compacta canônica quando um título real é longo", () => {
+    expect(hero).toContain("slide.title.length > 24");
+    expect(hero).toContain('"sc-hero__title sc-hero__title--sm"');
+    expect(hero).toContain("className={titleClassName}");
   });
 });

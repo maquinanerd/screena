@@ -332,12 +332,12 @@ export default async function HomePage() {
 
   return (
     <main className="portal-page" data-vertical="home">
+      <h1 className="u-visually-hidden">{HOME_H1}</h1>
+
       {/* 1. Hero: nenhum fallback visual quando não há destaque real. */}
       {heroSlides.length > 0 ? (
         <HeroCarousel slides={heroSlides} />
-      ) : (
-        <h1 className="u-visually-hidden">{HOME_H1}</h1>
-      )}
+      ) : null}
 
       {/* 2. Ticker: sem schedulePresenter.today real, fica ausente. */}
       {/* 3. Top 10: sem ranking semanal completo de dez itens, fica ausente. */}
