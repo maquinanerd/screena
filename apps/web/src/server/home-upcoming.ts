@@ -31,8 +31,7 @@ function startOfUtcDay(now: Date): Date {
 
 /**
  * Filmes "Em breve" (estreia futura) para a home, em ordem de estreia asc, com
- * slug canônico pt-BR. Retorna `[]` quando não há nenhum — a home então oculta a
- * seção (ou cai no placeholder só em dev/preview, decidido no render).
+ * slug canônico pt-BR. Retorna `[]` quando não há nenhum e a home oculta a seção.
  */
 export const getHomeUpcomingMovies = cache(
   async (options?: { limit?: number }): Promise<HomeUpcomingMovie[]> => {

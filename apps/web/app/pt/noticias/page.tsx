@@ -1,26 +1,19 @@
 import type { Metadata } from "next";
+import { Fragment } from "react";
 
-import { NewsCard } from "../../_components/news-card";
-import { getNewsIndexData } from "../../../src/server/news-pages";
+import { AdSlot } from "../../_components/ad-slot";
+import type { NewsCardView } from "../../../src/lib/news-presenter";
 import { SITE_URL } from "../../../src/lib/site";
+import { getNewsIndexData } from "../../../src/server/news-pages";
+import styles from "./news-canonical.module.css";
 
-/**
- * Listagem publica de noticias - /pt/noticias/ (ambiente editorial/blog; NEUTRO).
- *
- * Server component puro: le somente PostgreSQL via `getNewsIndexData`. Zero API
- * externa, zero Gemini e zero TMDB no render. Lista so artigos publicaveis
- * (traducao pt-BR + review + slug/titulo + publishedAt + licenca/display). Sem
- * dado inventado. Listagem vazia/fina -> noindex.
- *
- * Render dinamico (le PostgreSQL por request; nao pre-renderiza no build sem
- * DATABASE_URL) - mesma natureza das listagens de filme/serie/pessoa.
- */
+/** Página editorial `03-news` do pacote canônico, ligada ao CMS real. */
 
 export const dynamic = "force-dynamic";
 
-const TITLE = "Noticias";
+const TITLE = "Notícias";
 const DESCRIPTION =
-  "Ultimas noticias e analises editoriais da Screen sobre cinema e series, em portugues.";
+  "Últimas notícias e análises editoriais da Screen sobre cinema e séries, em português.";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { indexability, canonicalUrl } = await getNewsIndexData();
@@ -35,19 +28,105 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
+function CardImage({
+  card,
+  className,
+}: {
+  card: NewsCardView;
+  className?: string;
+}) {
+  return (
+    <span className={className}>
+      {card.image !== null ? (
+        <img
+          src={card.image.src}
+          alt=""
+          width={card.image.width}
+          height={card.image.height}
+          loading="lazy"
+        />
+      ) : null}
+      <span className={styles.imageScrim} aria-hidden="true" />
+    </span>
+  );
+}
+
+function Byline({ card, light = false }: { card: NewsCardView; light?: boolean }) {
+  if (card.dateLabel === null && card.author === null) return null;
+  return (
+    <span className={light ? styles.bylineLight : styles.byline}>
+      {card.dateLabel !== null ? <span>{card.dateLabel}</span> : null}
+      {card.dateLabel !== null && card.author !== null ? (
+        <span aria-hidden="true">·</span>
+      ) : null}
+      {card.author !== null ? (
+        <span>
+          por <strong>{card.author}</strong>
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+function MagazineMiniCard({ card }: { card: NewsCardView }) {
+  return (
+    <article className={styles.magazineMiniArticle}>
+      <a href={card.href} className={styles.magazineMini}>
+        <CardImage card={card} className={styles.magazineMiniImage} />
+        <h3>{card.title}</h3>
+        {card.deck !== null ? <p>{card.deck}</p> : null}
+        <Byline card={card} />
+      </a>
+    </article>
+  );
+}
+
+function FeedCard({ card }: { card: NewsCardView }) {
+  const hasPrimaryMeta = card.author !== null || card.dateLabel !== null;
+  return (
+    <article className={styles.feedCard}>
+      <a className={styles.feedCardLink} href={card.href}>
+        <CardImage card={card} className={styles.feedImage} />
+        <div className={styles.feedCopy}>
+          {card.category !== null ? (
+            <span className={styles.feedCategory}>{card.category}</span>
+          ) : null}
+          <h3>{card.title}</h3>
+          {card.deck !== null ? <p>{card.deck}</p> : null}
+          <span className={styles.feedMeta}>
+            {card.author !== null ? <strong>{card.author}</strong> : null}
+            {card.author !== null && card.dateLabel !== null ? (
+              <span aria-hidden="true">·</span>
+            ) : null}
+            {card.dateLabel !== null ? <span>{card.dateLabel}</span> : null}
+            {card.readTimeLabel !== null ? (
+              <>
+                {hasPrimaryMeta ? <span aria-hidden="true">·</span> : null}
+                <span>{card.readTimeLabel}</span>
+              </>
+            ) : null}
+          </span>
+        </div>
+      </a>
+    </article>
+  );
+}
+
 export default async function NewsIndexPage() {
   const { view, canonicalUrl } = await getNewsIndexData();
   const orderedCards = [view.featured, ...view.cards].filter(
-    (card): card is NonNullable<typeof card> => card !== null,
+    (card): card is NewsCardView => card !== null,
   );
-  const hasItems = orderedCards.length > 0;
+  const lead = view.featured;
+  const magazineCards = view.cards.slice(0, 3);
+  const feedCards = view.cards.slice(3);
 
   const breadcrumbJsonLd = {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
     itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Inicio", item: `${SITE_URL}/pt/` },
-      { "@type": "ListItem", position: 2, name: "Noticias", item: canonicalUrl },
+      { "@type": "ListItem", position: 1, name: "Início", item: `${SITE_URL}/pt/` },
+      { "@type": "ListItem", position: 2, name: TITLE, item: canonicalUrl },
     ],
   };
 
@@ -58,7 +137,7 @@ export default async function NewsIndexPage() {
     url: canonicalUrl,
     description: DESCRIPTION,
   };
-  if (hasItems) {
+  if (orderedCards.length > 0) {
     collectionJsonLd.mainEntity = {
       "@type": "ItemList",
       numberOfItems: orderedCards.length,
@@ -72,55 +151,93 @@ export default async function NewsIndexPage() {
   }
 
   return (
-    <main className="news-index" data-vertical="news">
-      <div className="container">
-        <nav className="breadcrumb" aria-label="Trilha de navegacao">
-          <ol>
-            <li>
-              <a href="/pt/">Inicio</a>
-            </li>
-            <li aria-current="page">Noticias</li>
-          </ol>
-        </nav>
+    <main className={styles.page} data-vertical="news">
+      <h1 className="u-visually-hidden">{TITLE}</h1>
 
-        <header className="news-index__header">
-          <h1 className="news-index__title">{TITLE}</h1>
-          <p className="news-index__desc">{DESCRIPTION}</p>
-        </header>
+      <div className={styles.channelHeader}>
+        <div className={styles.channelRow}>
+          <nav className={styles.tabs} aria-label="Seções de notícias">
+            <span aria-current="page">Todas</span>
+          </nav>
+          <div className={styles.headerAd}>
+            <AdSlot variant="leaderboard" margin="0" />
+          </div>
+        </div>
+        <div className={styles.channelRule} />
+      </div>
 
-        {hasItems ? (
-          <>
-            {view.featured !== null ? (
-              <section className="news-index__featured" aria-label="Destaque">
-                <NewsCard card={view.featured} variant="featured" />
-              </section>
-            ) : null}
+      {lead !== null ? (
+        <section className={styles.magazine} aria-labelledby="news-lead-title">
+          <div className={styles.magazineGrid}>
+            <div className={styles.magazineMain}>
+              <article className={styles.magazineLead}>
+                <a href={lead.href} className={styles.magazineLeadLink}>
+                  <div className={styles.leadCopy}>
+                    {lead.category !== null ? (
+                      <span className={styles.leadCategory}>{lead.category}</span>
+                    ) : null}
+                    <h2 id="news-lead-title">{lead.title}</h2>
+                    <Byline card={lead} />
+                    {lead.deck !== null ? <p>{lead.deck}</p> : null}
+                    <span className={styles.readMore}>
+                      Ler mais <span aria-hidden="true">→</span>
+                    </span>
+                  </div>
+                  <span className={styles.leadImageVisual} aria-hidden="true">
+                    <CardImage card={lead} className={styles.leadImage} />
+                  </span>
+                </a>
+              </article>
 
-            {view.cards.length > 0 ? (
-              <section className="news-index__feed" aria-label="Ultimas noticias">
-                <h2 className="news-index__feed-title">Ultimas noticias</h2>
-                <ul className="news-grid">
-                  {view.cards.map((card) => (
-                    <li key={card.href} className="news-grid__item">
-                      <NewsCard card={card} variant="feed" />
-                    </li>
+              {magazineCards.length > 0 ? (
+                <div className={styles.magazineCards}>
+                  {magazineCards.map((card) => (
+                    <MagazineMiniCard key={card.href} card={card} />
                   ))}
-                </ul>
-              </section>
-            ) : null}
+                </div>
+              ) : null}
+            </div>
+            <div className={styles.magazineRail} aria-hidden="true" />
+          </div>
+        </section>
+      ) : (
+        <p className={styles.empty}>Ainda não há notícias publicadas nesta seção.</p>
+      )}
 
+      <div className={styles.leaderboardShell}>
+        <AdSlot variant="leaderboard" margin="56px 0 0" />
+      </div>
+
+      {feedCards.length > 0 ? (
+        <section className={styles.feedLayout} aria-labelledby="news-feed-title">
+          <div>
+            <div className={styles.sectionTitle}>
+              <span aria-hidden="true" />
+              <h2 id="news-feed-title">Últimas notícias</h2>
+            </div>
+            <div>
+              {feedCards.map((card, index) => (
+                <Fragment key={card.href}>
+                  <FeedCard card={card} />
+                  {index === 2 ? (
+                    <div className={styles.inlineAd}>
+                      <AdSlot variant="leaderboard" margin="0 0 4px" />
+                    </div>
+                  ) : null}
+                </Fragment>
+              ))}
+            </div>
             {view.hasMore ? (
-              <p className="news-index__more">
-                Mostrando as primeiras {orderedCards.length} de {view.totalCount}.
+              <p className={styles.moreCount}>
+                Mostrando {orderedCards.length} de {view.totalCount} notícias.
               </p>
             ) : null}
-          </>
-        ) : (
-          <p className="news-index__empty">
-            Ainda nao ha noticias publicadas nesta secao.
-          </p>
-        )}
-      </div>
+          </div>
+          <aside className={styles.feedRail} aria-label="Publicidade">
+            <AdSlot variant="skyscraper" margin="0" />
+          </aside>
+        </section>
+      ) : null}
 
       <script
         type="application/ld+json"

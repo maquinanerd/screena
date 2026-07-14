@@ -34,7 +34,7 @@ import { CertificationBadge } from "./certification-badge";
  *
  * Estrutura de CADA slide (identica para todos): imagem de fundo (ou wash) + scrim
  * -> eyebrow -> titulo -> linha de metadados (info · estrelas · classificacao)
- * -> botoes (Ver detalhes + Ver ficha) -> creditos (diretor/elenco/sinopse).
+ * -> CTA honesta para a ficha -> créditos (diretor/elenco/sinopse).
  */
 
 /** Intervalo do autoplay (ms) — janela confortavel de leitura por slide. */
@@ -45,24 +45,6 @@ const SWIPE_THRESHOLD = 40;
 
 interface HeroCarouselProps {
   slides: HeroSlide[];
-}
-
-/** Itens validos da linha de metadados (o separador "·" so entra entre eles). */
-function metaItems(slide: HeroSlide): { key: string; node: ReactNode }[] {
-  const items: { key: string; node: ReactNode }[] = [];
-  slide.primaryMeta.forEach((text, i) => {
-    items.push({ key: `p${i}`, node: <span className="sc-hero__meta-item">{text}</span> });
-  });
-  if (slide.rating !== null) {
-    items.push({
-      key: "rating",
-      node: <RatingStars value={slide.rating.value} scale={slide.rating.scale} />,
-    });
-  }
-  if (slide.certification !== null) {
-    items.push({ key: "cert", node: <CertificationBadge value={slide.certification} /> });
-  }
-  return items;
 }
 
 export function HeroCarousel({ slides }: HeroCarouselProps): ReactNode {
@@ -154,7 +136,10 @@ export function HeroCarousel({ slides }: HeroCarouselProps): ReactNode {
     >
       {slides.map((slide, i) => {
         const isActive = i === activeIndex;
-        const items = metaItems(slide);
+        const titleClassName =
+          slide.title.length > 24
+            ? "sc-hero__title sc-hero__title--sm"
+            : "sc-hero__title";
         const hasCredits =
           slide.director !== null || slide.cast.length > 0 || slide.synopsis !== null;
         return (
@@ -187,49 +172,50 @@ export function HeroCarousel({ slides }: HeroCarouselProps): ReactNode {
 
             <div className="sc-hero__inner">
               <div className="sc-hero__lead">
-                <span className="sc-hero__eyebrow" data-vertical={slide.vertical}>
-                  {slide.eyebrow}
-                </span>
-                {/* O H1 unico da home descreve o Screen (sr-only em pt/page.tsx),
-                    nao o filme rotativo. O titulo do slide e <h2> quando ativo e
-                    <p> nos demais (mesma classe) — SEO entity-first, um so H1
-                    institucional na pagina, nunca o titulo do slide como H1. */}
+                {/* O H1 institucional permanece estável na home. O título visual
+                    ativo usa H2; os demais não entram na hierarquia de títulos. */}
                 {isActive ? (
-                  <h2 className="sc-hero__title">{slide.title}</h2>
+                  <h2 className={titleClassName}>{slide.title}</h2>
                 ) : (
-                  <p className="sc-hero__title">{slide.title}</p>
+                  <p className={titleClassName}>{slide.title}</p>
                 )}
 
-                {items.length > 0 ? (
+                {slide.primaryMeta.length > 0 ? (
                   <div className="sc-hero__meta" aria-label="Informações do título">
-                    {items.map((item, k) => (
-                      <Fragment key={item.key}>
+                    {slide.primaryMeta.map((item, k) => (
+                      <Fragment key={`${item}-${k}`}>
                         {k > 0 ? (
                           <span className="sc-hero__sep" aria-hidden="true">
                             ·
                           </span>
                         ) : null}
-                        {item.node}
+                        <span className="sc-hero__meta-item">{item}</span>
                       </Fragment>
                     ))}
+                  </div>
+                ) : null}
+
+                {slide.rating !== null || slide.certification !== null ? (
+                  <div className="sc-hero__rating-meta">
+                    {slide.rating !== null ? (
+                      <RatingStars
+                        value={slide.rating.value}
+                        scale={slide.rating.scale}
+                      />
+                    ) : null}
+                    {slide.certification !== null ? (
+                      <CertificationBadge value={slide.certification} />
+                    ) : null}
                   </div>
                 ) : null}
 
                 <div className="sc-hero__actions">
                   <a
                     className="sc-hero__btn sc-hero__btn--primary"
-                    data-vertical={slide.vertical}
                     href={slide.href}
                     tabIndex={isActive ? undefined : -1}
                   >
                     Ver detalhes
-                  </a>
-                  <a
-                    className="sc-hero__btn sc-hero__btn--ghost"
-                    href={slide.href}
-                    tabIndex={isActive ? undefined : -1}
-                  >
-                    Ver ficha
                   </a>
                 </div>
               </div>
@@ -260,23 +246,6 @@ export function HeroCarousel({ slides }: HeroCarouselProps): ReactNode {
 
       {count > 1 ? (
         <>
-          <button
-            type="button"
-            className="sc-hero__arrow sc-hero__arrow--prev"
-            aria-label="Slide anterior"
-            onClick={() => go(index - 1)}
-          >
-            <span aria-hidden="true">‹</span>
-          </button>
-          <button
-            type="button"
-            className="sc-hero__arrow sc-hero__arrow--next"
-            aria-label="Próximo slide"
-            onClick={() => go(index + 1)}
-          >
-            <span aria-hidden="true">›</span>
-          </button>
-
           <div className="sc-hero__dots" role="tablist" aria-label="Selecionar destaque">
             {slides.map((item, i) => (
               <button

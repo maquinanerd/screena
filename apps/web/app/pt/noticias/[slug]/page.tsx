@@ -1,31 +1,17 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { Fragment } from "react";
 
-import { getNewsArticleData } from "../../../../src/server/news-pages";
+import { AdSlot } from "../../../_components/ad-slot";
 import { SITE_URL } from "../../../../src/lib/site";
-import type { NewsRelatedEntityType } from "../../../../src/lib/news-presenter";
+import { getNewsArticleData } from "../../../../src/server/news-pages";
+import styles from "./article-canonical.module.css";
 
-/**
- * Pagina publica de noticia - /pt/noticias/[slug]/ (schema NewsArticle; NEUTRO).
- *
- * Server component puro: le somente PostgreSQL via `getNewsArticleData`. Zero API
- * externa, zero Gemini, zero TMDB e zero WordPress/MN26 no render. So renderiza
- * artigo publicavel (traducao pt-BR + review + publishedAt + licenca/display);
- * caso contrario `notFound`. Nada e inventado: autor, categoria, data, fonte,
- * corpo e relacionados so aparecem quando existem. Corpo fino -> noindex.
- *
- * Render dinamico (le PostgreSQL por request; nao pre-renderiza no build).
- */
+/** Artigo `05-article` do pacote canônico, alimentado somente pelo CMS real. */
 
 export const dynamic = "force-dynamic";
 
 const NEWS_INDEX_PATH = "/pt/noticias/";
-
-const ENTITY_LABELS: Readonly<Record<NewsRelatedEntityType, string>> = {
-  movie: "Filme",
-  tv: "Serie",
-  person: "Pessoa",
-};
 
 interface NewsArticleParams {
   slug: string;
@@ -41,23 +27,21 @@ export async function generateMetadata({
 
   if (data === null) {
     return {
-      title: "Noticia nao encontrada",
+      title: "Notícia não encontrada",
       robots: { index: false, follow: false },
     };
   }
 
   const { view, indexability, canonicalUrl } = data;
   const shouldIndex = indexability.decision === "index";
-  const title = view.metaTitle ?? `${view.title} - Noticias`;
-  const description = view.metaDescription ?? view.deck;
-
   const metadata: Metadata = {
-    title,
+    title: view.metaTitle ?? `${view.title} — Notícias`,
     robots: shouldIndex
       ? { index: true, follow: true }
       : { index: false, follow: false },
     alternates: { canonical: canonicalUrl },
   };
+  const description = view.metaDescription ?? view.deck;
   if (description !== null) metadata.description = description;
   return metadata;
 }
@@ -73,16 +57,19 @@ export default async function NewsArticlePage({
 
   const { view, indexability, canonicalUrl } = data;
   const isUnderReview = indexability.decision !== "index";
-  const heroMeta = [view.author, view.dateLabel, view.readTimeLabel].filter(
-    (item): item is string => item !== null,
-  );
+  const adAfterIndex = Math.min(2, Math.max(0, view.bodyParagraphs.length - 1));
 
   const breadcrumbJsonLd = {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
     itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Inicio", item: `${SITE_URL}/pt/` },
-      { "@type": "ListItem", position: 2, name: "Noticias", item: `${SITE_URL}${NEWS_INDEX_PATH}` },
+      { "@type": "ListItem", position: 1, name: "Início", item: `${SITE_URL}/pt/` },
+      {
+        "@type": "ListItem",
+        position: 2,
+        name: "Notícias",
+        item: `${SITE_URL}${NEWS_INDEX_PATH}`,
+      },
       { "@type": "ListItem", position: 3, name: view.title, item: canonicalUrl },
     ],
   };
@@ -105,91 +92,77 @@ export default async function NewsArticlePage({
   }
 
   return (
-    <main className="news-article" data-vertical="news">
-      <header className={`news-article__hero${view.heroImage ? " news-article__hero--real" : ""}`}>
-        {view.heroImage !== null ? (
-          <img
-            src={view.heroImage.src}
-            alt=""
-            width={view.heroImage.width}
-            height={view.heroImage.height}
-            className="news-article__hero-image"
-          />
-        ) : null}
-        <div className="news-article__hero-inner">
-          <nav className="breadcrumb breadcrumb--onhero" aria-label="Trilha de navegacao">
-            <ol>
-              <li>
-                <a href="/pt/">Inicio</a>
-              </li>
-              <li>
-                <a href={NEWS_INDEX_PATH}>Noticias</a>
-              </li>
-              <li aria-current="page">{view.title}</li>
-            </ol>
+    <main className={styles.page} data-vertical="news">
+      <header className={styles.hero}>
+        <span className={styles.heroScrim} aria-hidden="true" />
+        <div className={styles.heroInner}>
+          <nav className={styles.breadcrumb} aria-label="Trilha de navegação">
+            <a href="/pt/">Início</a>
+            <span aria-hidden="true">›</span>
+            <a href={NEWS_INDEX_PATH}>Notícias</a>
+            {view.category !== null ? (
+              <>
+                <span aria-hidden="true">›</span>
+                <span aria-current="page">{view.category}</span>
+              </>
+            ) : null}
           </nav>
+
           {view.category !== null ? (
-            <p className="news-article__badge">
-              <span className="screena-badge screena-badge--news">{view.category}</span>
-            </p>
+            <span className={styles.category}>{view.category}</span>
           ) : null}
-          <h1 className="news-article__title">{view.title}</h1>
-          {view.deck !== null ? (
-            <p className="news-article__deck">{view.deck}</p>
-          ) : null}
-          {heroMeta.length > 0 ? (
-            <p className="news-article__meta">{heroMeta.join(" · ")}</p>
-          ) : null}
+          <h1>{view.title}</h1>
+          {view.deck !== null ? <p className={styles.deck}>{view.deck}</p> : null}
+          <div className={styles.heroMeta}>
+            {view.author !== null ? (
+              <span>
+                por <strong>{view.author}</strong>
+              </span>
+            ) : null}
+            {view.author !== null && view.dateLabel !== null ? (
+              <span aria-hidden="true">·</span>
+            ) : null}
+            {view.dateLabel !== null ? <span>{view.dateLabel}</span> : null}
+            {(view.author !== null || view.dateLabel !== null) &&
+            view.readTimeLabel !== null ? (
+              <span aria-hidden="true">·</span>
+            ) : null}
+            {view.readTimeLabel !== null ? <span>{view.readTimeLabel}</span> : null}
+          </div>
         </div>
       </header>
 
-      <div className="container">
-        <article className="news-article__body">
-          {view.bodyParagraphs.map((paragraph, index) => (
-            <p key={index} className="news-article__paragraph">
-              {paragraph}
-            </p>
-          ))}
+      <article className={styles.body}>
+        {view.bodyParagraphs.map((paragraph, index) => (
+          <Fragment key={`${index}-${paragraph.slice(0, 24)}`}>
+            <p>{paragraph}</p>
+            {index === adAfterIndex ? (
+              <div className={styles.midArticleAd}>
+                <AdSlot variant="leaderboard" margin="0" />
+              </div>
+            ) : null}
+          </Fragment>
+        ))}
 
-          {view.source !== null ? (
-            <p className="news-article__source">
-              Fonte: <span className="news-article__source-name">{view.source.name}</span>
-            </p>
-          ) : null}
-
-          {view.aiAssisted ? (
-            <aside className="news-article__ai" role="note">
-              Este conteudo pode ter sido produzido com auxilio de ferramentas de
-              inteligencia artificial e revisado pela equipe editorial da Screen.
-              Imagens sao meramente ilustrativas.
-            </aside>
-          ) : null}
-        </article>
-
-        {view.related.length > 0 ? (
-          <section className="news-article__related" aria-labelledby="news-related-title">
-            <h2 id="news-related-title" className="news-article__related-title">
-              Relacionado
-            </h2>
-            <ul className="news-related">
-              {view.related.map((entity) => (
-                <li key={entity.href} className="news-related__item">
-                  <a className="news-related__link" href={entity.href}>
-                    {entity.title}
-                  </a>
-                  <span className="news-related__type">{ENTITY_LABELS[entity.entityType]}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
-
-        {isUnderReview ? (
-          <p className="news-article__notice" data-editorial-state="in-review">
-            Esta noticia ainda esta em revisao editorial.
+        {view.source !== null ? (
+          <p className={styles.source}>
+            Fonte: <strong>{view.source.name}</strong>
           </p>
         ) : null}
-      </div>
+
+        {view.aiAssisted ? (
+          <aside className={styles.aiNotice} role="note">
+            Conteúdo produzido com apoio de ferramentas de inteligência artificial
+            e revisado pela equipe editorial da Screen.
+          </aside>
+        ) : null}
+      </article>
+
+      {isUnderReview ? (
+        <p className={styles.reviewNotice} data-editorial-state="in-review">
+          Esta notícia ainda está em revisão editorial.
+        </p>
+      ) : null}
 
       <script
         type="application/ld+json"

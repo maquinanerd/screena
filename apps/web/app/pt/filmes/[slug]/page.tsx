@@ -3,50 +3,51 @@ import { notFound, permanentRedirect } from "next/navigation";
 
 import { buildSameAs } from "@screena/seo";
 
-import { getMoviePageData } from "../../../../src/server/movie-page";
-import { canonicalRedirectPath } from "../../../../src/lib/canonical-redirect";
-import { MOVIES_INDEX_PATH, SITE_URL } from "../../../../src/lib/site";
-import { buildExternalLinks } from "../../../../src/lib/external-links";
-import { RelatedNewsSection } from "../../../_components/related-news-section";
-import { CastStrip } from "../../../_components/cast-strip";
 import { WatchAvailabilityPanel } from "../../../_components/watch-availability-panel";
 import { EntityExternalIds } from "../../../_components/entity-external-ids";
-import { EntityFacts } from "../../../_components/entity-facts";
+import { getMoviePageData } from "../../../../src/server/movie-page";
+import { canonicalRedirectPath } from "../../../../src/lib/canonical-redirect";
+import { MOVIES_INDEX_PATH, NEWS_INDEX_PATH, SITE_URL } from "../../../../src/lib/site";
+import { buildExternalLinks } from "../../../../src/lib/external-links";
+import styles from "./movie-canonical.module.css";
 
 /**
- * Pagina publica de filme — /pt/filmes/[slug]/ (schema Movie, acento vermelho).
+ * Página pública de filme — /pt/filmes/[slug]/.
  *
- * Tela "Movie Detail" do handoff de design (White Cinematic Editorial): header
- * editorial (badge "Filme" + titulo + ano + duracao), faixa de midia preparada
- * para poster/backdrop locais seguros (fallback visual quando ausentes),
- * blocos editoriais reais e card lateral "Resumo sem spoilers" quando existir.
- * Ratings, onde
- * assistir, elenco, bilheteria, premios e relacionados ficam FORA DE ESCOPO
- * nesta fase — sao omitidos (nunca placeholders que finjam features).
+ * O markup segue a tela `06` do pacote canônico Screen Screens v4. Os dados de
+ * demonstração do protótipo nunca entram nesta rota: cada bloco é alimentado
+ * exclusivamente por `getMoviePageData`, e áreas sem presenter real (score,
+ * ratings, trailer, prêmios, recomendações e ações de usuário) são omitidas.
+ * Pôster/backdrop ausentes recebem somente o fallback visual permitido pelo
+ * contrato de dados, sem alegar que existe mídia ou funcionalidade.
  *
- * INVARIANTES 3 e 4: server component puro. Le dados SO do PostgreSQL via a
- * camada server-only (`getMoviePageData`) — zero API externa e zero Gemini no
- * render. A revalidacao ISR re-le o snapshot do banco, nunca uma fonte externa.
- *
- * Gate anti-thin (invariante 5): sem `>= 2` blocos renderizaveis, a pagina
- * existe mas recebe `robots=noindex` (decisao de `evaluateMovieIndexability`).
- *
- * URL canonica unica: um slug antigo (alias despromovido em `slugs`) NAO
- * renderiza 200 — redireciona permanentemente para o slug canonico. Duas URLs
- * servindo a mesma ficha diluiriam sinal e contradiriam o `<link rel=canonical>`.
- *
- * Diferenciacao filme/serie (invariante 11) por CINCO sinais simultaneos:
- * label ("Filme") + badge + breadcrumb (/pt/filmes/) + schema (Movie) + URL.
+ * Invariantes 3/4: Server Component puro, PostgreSQL/cache local pela camada
+ * server-only, zero API externa e zero Gemini durante o render.
  */
 
-/** ISR: regenera o HTML a partir do PostgreSQL a cada hora (nunca da rede externa). */
+/** ISR relê apenas o snapshot local do PostgreSQL. */
 export const revalidate = 3600;
 
-/** content_block cujo texto, quando presente, vira o card lateral sem spoilers. */
-const SUMMARY_BLOCK_TYPE = "summary_without_spoilers";
+/** Bloco editorial que ocupa a faixa canônica de crítica quando aprovado. */
+const REVIEW_BLOCK_TYPE = "review_summary";
+const WORK_BLOCK_TYPES: ReadonlySet<string> = new Set([
+  "editorial_intro",
+  "summary_without_spoilers",
+  "franchise_context",
+]);
 
 interface MoviePageParams {
   slug: string;
+}
+
+function initialsFor(name: string): string {
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => Array.from(part)[0] ?? "")
+    .join("")
+    .toLocaleUpperCase("pt-BR");
 }
 
 export async function generateMetadata({
@@ -59,7 +60,7 @@ export async function generateMetadata({
 
   if (data === null) {
     return {
-      title: "Filme nao encontrado",
+      title: "Filme não encontrado",
       robots: { index: false, follow: false },
     };
   }
@@ -77,7 +78,6 @@ export async function generateMetadata({
       : { index: false, follow: false },
     alternates: { canonical: canonicalUrl },
   };
-  // Nunca inventar sinopse: so define description quando ela ja existe no banco.
   if (view.metaDescription !== null) {
     metadata.description = view.metaDescription;
   }
@@ -93,43 +93,48 @@ export default async function MoviePage({
   const data = await getMoviePageData(slug);
   if (data === null) notFound();
 
-  // Slug nao-canonico (alias antigo) nunca responde 200: 308 para o canonico.
   const redirectPath = canonicalRedirectPath(MOVIES_INDEX_PATH, slug, data.canonicalSlug);
   if (redirectPath !== null) permanentRedirect(redirectPath);
 
-  const { view, indexability, canonicalUrl, relatedNews, cast, watch, externalIds } = data;
+  const { view, indexability, canonicalUrl, relatedNews, cast, watch, externalIds } =
+    data;
   const isUnderReview = indexability.decision !== "index";
-
-  // Ficha tecnica: SO dados factuais que existem no payload; cada ausente e
-  // omitido (nunca placeholder). O ano fica no <h1>; a ficha complementa com
-  // duracao (movies.runtime_minutes) + situacao/idioma (colunas reais
-  // status/original_language mapeadas em pt-BR). Sem nota/streaming inventado.
-  const facts = [
-    view.runtimeLabel !== null ? { label: "Duração", value: view.runtimeLabel } : null,
-    view.statusLabel !== null ? { label: "Situação", value: view.statusLabel } : null,
-    view.originalLanguageLabel !== null
-      ? { label: "Idioma original", value: view.originalLanguageLabel }
-      : null,
-  ].filter((fact): fact is { label: string; value: string } => fact !== null);
-
-  // Links de identidade externa (mesmas fontes do `sameAs` do JSON-LD).
   const externalLinks = buildExternalLinks(externalIds, "movie");
 
-  // Particiona os blocos ja aprovados: o "resumo sem spoilers" (quando existir)
-  // vira card lateral; os demais formam a coluna editorial. Cada bloco aparece
-  // exatamente uma vez — nada e escondido, nada e inventado.
-  const summaryBlock =
-    view.blocks.find((block) => block.blockType === SUMMARY_BLOCK_TYPE) ?? null;
-  const mainBlocks = view.blocks.filter(
-    (block) => block.blockType !== SUMMARY_BLOCK_TYPE,
+  const heroMeta = [
+    view.year !== null ? String(view.year) : null,
+    view.runtimeLabel,
+  ].filter((item): item is string => item !== null);
+
+  const facts = [
+    { label: "Ano", value: view.year === null ? "—" : String(view.year) },
+    { label: "Duração", value: view.runtimeLabel ?? "—" },
+    { label: "Situação", value: view.statusLabel ?? "—" },
+    { label: "Idioma original", value: view.originalLanguageLabel ?? "—" },
+  ];
+
+  const critiqueBlock =
+    view.blocks.find((block) => block.blockType === REVIEW_BLOCK_TYPE) ?? null;
+  const workBlocks = view.blocks.filter((block) =>
+    WORK_BLOCK_TYPES.has(block.blockType),
   );
-  const hasEditorial = mainBlocks.length > 0 || summaryBlock !== null;
+  const watchContext =
+    view.blocks.find((block) => block.blockType === "where_to_watch_text") ?? null;
+  const castContext =
+    view.blocks.find((block) => block.blockType === "cast_intro") ?? null;
+  const newsContext =
+    view.blocks.find((block) => block.blockType === "news_context") ?? null;
+  const workLead = workBlocks[0] ?? null;
+  const workBody = workBlocks.slice(1);
+  const primaryCast = cast.slice(0, 6);
+  const editorialNews = relatedNews.slice(0, 3);
+  const mediaNews = editorialNews[0] ?? null;
 
   const breadcrumbJsonLd = {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
     itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Inicio", item: `${SITE_URL}/pt/` },
+      { "@type": "ListItem", position: 1, name: "Início", item: `${SITE_URL}/pt/` },
       {
         "@type": "ListItem",
         position: 2,
@@ -140,10 +145,6 @@ export default async function MoviePage({
     ],
   };
 
-  // Schema `Movie`: SEM AggregateRating (nenhuma nota nesta fase; jamais fingir
-  // nota propria). `@id`/`mainEntityOfPage` = URL canonica (no autorreferente e
-  // estavel da entidade). `sameAs` so entra com IDs externos REAIS (invariante:
-  // nunca inventa perfil). So campos que existem no payload entram no JSON-LD.
   const movieJsonLd: Record<string, unknown> = {
     "@context": "https://schema.org",
     "@type": "Movie",
@@ -153,151 +154,342 @@ export default async function MoviePage({
     mainEntityOfPage: canonicalUrl,
   };
   if (view.year !== null) movieJsonLd.datePublished = String(view.year);
-  if (view.metaDescription !== null) movieJsonLd.description = view.metaDescription;
+  if (view.metaDescription !== null) {
+    movieJsonLd.description = view.metaDescription;
+  }
   const sameAs = buildSameAs(externalIds, "movie");
   if (sameAs.length > 0) movieJsonLd.sameAs = sameAs;
 
   return (
-    <main className="movie-page" data-vertical="movie">
-      <div className="container">
-        <nav className="breadcrumb" aria-label="Trilha de navegacao">
-          <ol>
-            <li>
-              <a href="/pt/">Inicio</a>
-            </li>
-            <li>
-              <a href={MOVIES_INDEX_PATH}>Filmes</a>
-            </li>
-            <li aria-current="page">{view.title}</li>
-          </ol>
-        </nav>
+    <main
+      className={`${styles.page} movie-page`}
+      data-screen-label="Filme · Detalhe"
+      data-vertical="movie"
+    >
+      <section className={styles.hero} aria-labelledby="movie-title">
+        <div className={styles.breadcrumbFrame}>
+          <nav className={styles.breadcrumb} aria-label="Trilha de navegação">
+            <ol className={styles.breadcrumbList}>
+              <li className={styles.breadcrumbItem}>
+                <a className={styles.breadcrumbLink} href={MOVIES_INDEX_PATH}>
+                  Filmes
+                </a>
+              </li>
+              <li className={styles.breadcrumbItem}>
+                <span className={styles.breadcrumbCurrent} aria-current="page">
+                  {view.title}
+                </span>
+              </li>
+            </ol>
+          </nav>
+        </div>
 
-        {/* Cabecalho editorial: poster real (2:3) + coluna de identidade (badge,
-            titulo, ficha tecnica factual e sinopse curta). As colunas "Avaliacoes"
-            e "Onde assistir" do design continuam FORA daqui ate haver dado real —
-            headings vazios pareceriam feature falsa. Sem nota/logo/plataforma. */}
-        <section
-          className={`entity-topbar${view.media.poster !== null ? "" : " entity-topbar--solo"}`}
-          data-vertical="movie"
-        >
-          {view.media.poster !== null ? (
-            <figure className="entity-topbar__poster">
+        <div className={styles.heroFrame}>
+          <div className={styles.heroLead}>
+            <div className={styles.badgeRow}>
+              <span className={styles.movieBadge}>Filme</span>
+            </div>
+            <h1 className={styles.title} id="movie-title">
+              {view.title}
+            </h1>
+
+            {heroMeta.length > 0 ? (
+              <p className={styles.heroMeta}>{heroMeta.join(" · ")}</p>
+            ) : null}
+
+            {view.metaDescription !== null ? (
+              <p className={styles.heroSynopsis}>{view.metaDescription}</p>
+            ) : null}
+
+            {externalLinks.length > 0 ? (
+              <div className={styles.identityLinks}>
+                <EntityExternalIds links={externalLinks} />
+              </div>
+            ) : null}
+          </div>
+
+          {watch !== null ? (
+            <div className={styles.watchColumn}>
+              <WatchAvailabilityPanel view={watch} />
+              {watchContext !== null ? (
+                <p
+                  className={styles.watchContext}
+                  data-block-type={watchContext.blockType}
+                >
+                  {watchContext.content}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      </section>
+
+      <section className={styles.mediaStrip} aria-label={`Mídia de ${view.title}`}>
+        <div className={styles.mediaGrid}>
+          <div className={styles.mediaPoster}>
+            {view.media.poster !== null ? (
               <img
                 src={view.media.poster.src}
                 alt={`Pôster de ${view.title}`}
                 width={view.media.poster.width}
                 height={view.media.poster.height}
-                className="entity-topbar__poster-img"
+                className={styles.mediaImage}
               />
-            </figure>
-          ) : null}
-          <div className="entity-topbar__lead">
-            {/* Badge + label textual: dois dos cinco sinais da invariante 11. */}
-            <p className="entity-topbar__badge">
-              <span data-vertical="movie" className="screena-badge screena-badge--movie">
-                Filme
-              </span>
-            </p>
-            <h1 className="entity-topbar__title">
-              {view.title}
-              {view.year !== null ? (
-                <span className="entity-topbar__year"> ({view.year})</span>
-              ) : null}
-            </h1>
-            <EntityFacts facts={facts} />
-            {view.metaDescription !== null ? (
-              <p className="entity-topbar__synopsis">{view.metaDescription}</p>
-            ) : null}
-            <EntityExternalIds links={externalLinks} />
+            ) : (
+              <span
+                className={styles.mediaFallback}
+                role="img"
+                aria-label={`Pôster indisponível para ${view.title}`}
+              />
+            )}
+          </div>
+
+          <div className={styles.mediaBackdrop}>
+            {view.media.backdrop !== null ? (
+              <img
+                src={view.media.backdrop.src}
+                alt=""
+                width={view.media.backdrop.width}
+                height={view.media.backdrop.height}
+                className={styles.mediaImage}
+              />
+            ) : (
+              <span className={styles.mediaFallback} aria-hidden="true" />
+            )}
+          </div>
+
+          <div className={styles.mediaTiles}>
+            <span className={styles.mediaTile} aria-hidden="true" />
+            {mediaNews !== null ? (
+              <a
+                className={styles.mediaNewsLink}
+                href={mediaNews.href}
+                aria-label={`Abrir notícia: ${mediaNews.title}`}
+              >
+                {mediaNews.image !== null ? (
+                  <img
+                    src={mediaNews.image.src}
+                    alt=""
+                    width={mediaNews.image.width}
+                    height={mediaNews.image.height}
+                    className={styles.mediaImage}
+                    loading="lazy"
+                  />
+                ) : null}
+                <span className={styles.mediaTileLabel}>Notícias e eventos</span>
+              </a>
+            ) : (
+              <span className={styles.mediaTile} aria-hidden="true" />
+            )}
+            <span className={styles.mediaTile} aria-hidden="true" />
+          </div>
+        </div>
+      </section>
+
+      {workLead !== null ? (
+        <section className={styles.sectionFrame} aria-labelledby="movie-work-title">
+          <div className={styles.workGrid}>
+            <div>
+              <h2 className={styles.eyebrow} id="movie-work-title">
+                A obra
+              </h2>
+              <p
+                className={styles.workLead}
+                data-block-type={workLead.blockType}
+              >
+                {workLead.content}
+              </p>
+              {workBody.map((block) => (
+                <p
+                  className={styles.workBody}
+                  data-block-type={block.blockType}
+                  key={block.blockType}
+                >
+                  {block.content}
+                </p>
+              ))}
+            </div>
           </div>
         </section>
-      </div>
-
-      {/* Backdrop real (16:9) como faixa editorial full-bleed — sem play falso,
-          sem tiles decorativos. So aparece quando ha backdrop real no banco. */}
-      {view.media.backdrop !== null ? (
-        <div className="entity-backdrop" data-vertical="movie">
-          <img
-            src={view.media.backdrop.src}
-            alt=""
-            width={view.media.backdrop.width}
-            height={view.media.backdrop.height}
-            className="entity-backdrop__img"
-          />
-        </div>
       ) : null}
 
-      {hasEditorial ? (
-        <div className="container">
-          <section className="movie-synopsis">
-            <h2 className="movie-synopsis__title">Sinopse</h2>
-            <div className="movie-synopsis__grid">
-              <div className="movie-synopsis__main">
-                {mainBlocks.map((block) => (
-                  <div
-                    key={block.blockType}
-                    className="movie-block"
-                    data-block-type={block.blockType}
-                  >
-                    <p className="movie-block__body">{block.content}</p>
-                  </div>
-                ))}
-              </div>
-
-              {summaryBlock !== null ? (
-                <aside className="movie-aside">
-                  <div className="spoiler-card" data-block-type={summaryBlock.blockType}>
-                    <svg
-                      className="spoiler-card__icon"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.7"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden="true"
-                    >
-                      <circle cx="9" cy="8" r="3.2" />
-                      <path d="M3.2 20a5.8 5.8 0 0 1 11.6 0" />
-                      <path d="M16.5 5.6a3 3 0 0 1 0 5.8" />
-                      <path d="M17 13.6a5.6 5.6 0 0 1 3.8 6.4" />
-                    </svg>
-                    <div className="spoiler-card__text">
-                      <p className="spoiler-card__label">Resumo sem spoilers</p>
-                      <p className="spoiler-card__body">{summaryBlock.content}</p>
-                    </div>
-                  </div>
-                </aside>
-              ) : null}
+      {critiqueBlock !== null ? (
+        <section className={styles.critique} aria-labelledby="movie-review-title">
+          <div className={styles.critiqueMedia}>
+            {view.media.backdrop !== null ? (
+              <img
+                src={view.media.backdrop.src}
+                alt=""
+                width={view.media.backdrop.width}
+                height={view.media.backdrop.height}
+                className={styles.mediaImage}
+                loading="lazy"
+              />
+            ) : null}
+          </div>
+          <span className={styles.critiqueScrim} aria-hidden="true" />
+          <span className={styles.critiqueBottomScrim} aria-hidden="true" />
+          <div className={styles.critiqueFrame}>
+            <div className={styles.critiqueContent}>
+              <h2 className={styles.critiqueLabel} id="movie-review-title">
+                Guia Screen · Crítica da redação
+              </h2>
+              <p
+                className={styles.critiqueText}
+                data-block-type={critiqueBlock.blockType}
+              >
+                {critiqueBlock.content}
+              </p>
             </div>
-          </section>
-        </div>
+          </div>
+        </section>
       ) : null}
 
-      {/* Elenco principal (cast_members/people) — dado factual de catalogo. So
-          aparece quando ha elenco real; nunca inventa nomes nem personagens. */}
-      {cast.length > 0 ? (
-        <div className="container">
-          <CastStrip heading="Elenco principal" members={cast} />
-        </div>
+      {primaryCast.length > 0 ? (
+        <section className={styles.castSection} aria-labelledby="movie-cast-title">
+          <div className={styles.sectionHead}>
+            <div>
+              <p className={styles.eyebrow}>Elenco</p>
+              <h2 className={styles.sectionTitle} id="movie-cast-title">
+                Elenco principal
+              </h2>
+            </div>
+          </div>
+
+          {castContext !== null ? (
+            <p
+              className={styles.sectionContext}
+              data-block-type={castContext.blockType}
+            >
+              {castContext.content}
+            </p>
+          ) : null}
+
+          <ul
+            className={styles.castGrid}
+            aria-label="Elenco principal; use as setas para percorrer"
+            tabIndex={0}
+          >
+            {primaryCast.map((member, index) => {
+              const content = (
+                <>
+                  <span className={styles.castPortrait}>
+                    {member.profile !== null ? (
+                      <img
+                        src={member.profile.src}
+                        alt={`Retrato de ${member.name}`}
+                        width={member.profile.width}
+                        height={member.profile.height}
+                        className={styles.mediaImage}
+                        loading="lazy"
+                      />
+                    ) : (
+                      <span className={styles.castInitials} aria-hidden="true">
+                        {initialsFor(member.name)}
+                      </span>
+                    )}
+                  </span>
+                  <span className={styles.castName}>{member.name}</span>
+                  {member.character !== null ? (
+                    <span className={styles.castCharacter}>{member.character}</span>
+                  ) : null}
+                </>
+              );
+
+              return (
+                <li className={styles.castCard} key={`${member.name}-${index}`}>
+                  {member.href !== null ? (
+                    <a className={styles.castCardLink} href={member.href}>
+                      {content}
+                    </a>
+                  ) : (
+                    <div className={styles.castCardStatic}>{content}</div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
       ) : null}
 
-      {/* Disponibilidade no Brasil (watch_availability licenciado). So aparece
-          com oferta `display_allowed = true`; hoje a ingestao grava `false` por
-          padrao, entao o painel fica omitido ate promocao humana explicita.
-          Nunca exibe pirataria, nota nem plataforma inventada. */}
-      {watch !== null ? (
-        <div className="container">
-          <WatchAvailabilityPanel view={watch} />
-        </div>
+      {editorialNews.length > 0 ? (
+        <section className={styles.newsSection} aria-labelledby="movie-news-title">
+          <div className={styles.sectionHead}>
+            <div>
+              <p className={styles.eyebrow}>Editorial</p>
+              <h2 className={styles.sectionTitle} id="movie-news-title">
+                Notícias e bastidores
+              </h2>
+              <p
+                className={styles.sectionSubtitle}
+                data-block-type={newsContext?.blockType}
+              >
+                {newsContext?.content ??
+                  "Contexto, entrevistas e cobertura do filme."}
+              </p>
+            </div>
+            <a className={styles.sectionLink} href={NEWS_INDEX_PATH}>
+              Ver tudo →
+            </a>
+          </div>
+
+          <ul className={styles.newsGrid}>
+            {editorialNews.map((article) => {
+              const meta = [article.author, article.readTimeLabel].filter(
+                (item): item is string => item !== null,
+              );
+              return (
+                <li className={styles.newsCard} key={article.href}>
+                  <article>
+                    <a className={styles.newsCardLink} href={article.href}>
+                      <span className={styles.newsMedia}>
+                        {article.image !== null ? (
+                          <img
+                            src={article.image.src}
+                            alt={`Imagem de ${article.title}`}
+                            width={article.image.width}
+                            height={article.image.height}
+                            className={styles.mediaImage}
+                            loading="lazy"
+                          />
+                        ) : null}
+                      </span>
+                      {article.category !== null ? (
+                        <span className={styles.newsCategory}>{article.category}</span>
+                      ) : null}
+                      <h3 className={styles.newsTitle}>{article.title}</h3>
+                      {meta.length > 0 ? (
+                        <span className={styles.newsMeta}>{meta.join(" · ")}</span>
+                      ) : null}
+                    </a>
+                  </article>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
       ) : null}
 
-      <RelatedNewsSection cards={relatedNews} />
+      <section className={styles.factsFrame} aria-labelledby="movie-facts-title">
+        <div className={styles.factsColumn}>
+          <h2 className={styles.eyebrow} id="movie-facts-title">
+            Ficha técnica
+          </h2>
+          <dl className={styles.factsList}>
+            {facts.map((fact) => (
+              <div className={styles.factRow} key={fact.label}>
+                <dt className={styles.factLabel}>{fact.label}</dt>
+                <dd className={styles.factValue}>{fact.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      </section>
 
       {isUnderReview ? (
-        <div className="container">
-          <p className="review-notice" data-editorial-state="in-review">
-            Esta pagina ainda esta em revisao editorial.
+        <div className={styles.noticeFrame}>
+          <p className={styles.reviewNotice} data-editorial-state="in-review">
+            Esta página ainda está em revisão editorial.
           </p>
         </div>
       ) : null}

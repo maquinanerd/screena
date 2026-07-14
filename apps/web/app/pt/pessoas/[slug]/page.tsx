@@ -3,40 +3,30 @@ import { notFound, permanentRedirect } from "next/navigation";
 
 import { buildSameAs } from "@screena/seo";
 
-import { getPersonPageData } from "../../../../src/server/person-page";
+import { AdSlot } from "../../../_components/ad-slot";
 import { canonicalRedirectPath } from "../../../../src/lib/canonical-redirect";
-import { SITE_URL } from "../../../../src/lib/site";
-import { buildExternalLinks } from "../../../../src/lib/external-links";
 import type { PersonCreditEntityType } from "../../../../src/lib/person-presenter";
-import { RelatedNewsSection } from "../../../_components/related-news-section";
-import { EntityExternalIds } from "../../../_components/entity-external-ids";
+import { SITE_URL } from "../../../../src/lib/site";
+import { getPersonPageData } from "../../../../src/server/person-page";
+
+import styles from "./person-canonical.module.css";
 
 /**
- * Pagina publica de pessoa - /pt/pessoas/[slug]/ (schema Person, tom NEUTRO).
+ * Tela canônica 09 · Pessoa.
  *
- * Server component puro: le somente PostgreSQL via `getPersonPageData`. Zero API
- * externa, zero Gemini e zero TMDB no render. Pessoa e superficie
- * institucional/neutra (invariante 11): sem cor de vertical filme/serie; a
- * diferenciacao vem de label ("Pessoa") + badge + breadcrumb + schema + URL.
- *
- * Nada e inventado: biografia, funcao, datas, local e filmografia so aparecem
- * quando existem no payload; caso contrario a secao e omitida. O gate anti-thin
- * (invariante 5) aplica `noindex` quando ha menos de 2 blocos editoriais
- * publicaveis (a filmografia crua nao conta como bloco de valor proprio).
- *
- * URL canonica unica: slug antigo (alias despromovido em `slugs`) nao renderiza
- * 200 — redireciona permanentemente para o slug canonico. A cobertura de slug de
- * pessoa esta completa hoje, mas a defesa evita o mesmo bug em trocas futuras.
+ * O HTML do pacote `Screen Screens v4` determina ordem, grade, medidas e
+ * tipografia. Os holes do protótipo, porém, só aparecem quando o presenter
+ * atual possui dado real: não fabricamos mídia, prêmios, galeria, notas ou
+ * "conhecido por". O render continua server-only, lendo apenas PostgreSQL.
  */
 
 export const revalidate = 3600;
 
 const PESSOAS_INDEX_PATH = "/pt/pessoas/";
+const BIOGRAPHY_BLOCK_TYPES: ReadonlySet<string> = new Set([
+  "editorial_intro",
+]);
 
-/**
- * Rotulo textual (visually-hidden) do tipo de credito. A cor do dot e apenas
- * apoio — invariante 11: a diferenciacao filme/serie nunca depende so da cor.
- */
 const CREDIT_TYPE_LABELS: Readonly<Record<PersonCreditEntityType, string>> = {
   movie: "Filme",
   tv: "Série",
@@ -44,6 +34,59 @@ const CREDIT_TYPE_LABELS: Readonly<Record<PersonCreditEntityType, string>> = {
 
 interface PersonPageParams {
   slug: string;
+}
+
+interface PersonalDetail {
+  label: string;
+  value: string;
+}
+
+function formatPersonDate(isoDate: string | null): string | null {
+  if (isoDate === null || !/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return null;
+
+  const date = new Date(`${isoDate}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) return null;
+
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(date);
+}
+
+function personInitials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return "";
+  const first = words[0]?.[0] ?? "";
+  const last = words.length > 1 ? (words.at(-1)?.[0] ?? "") : "";
+  return `${first}${last}`.toLocaleUpperCase("pt-BR");
+}
+
+function collectPersonalDetails(view: {
+  originalName: string | null;
+  roleLabel: string | null;
+  birthDateIso: string | null;
+  deathDateIso: string | null;
+  placeOfBirth: string | null;
+}): PersonalDetail[] {
+  const birthDate = formatPersonDate(view.birthDateIso);
+  const deathDate = formatPersonDate(view.deathDateIso);
+  const details: Array<PersonalDetail | null> = [
+    view.originalName === null
+      ? null
+      : { label: "Nome original", value: view.originalName },
+    birthDate === null ? null : { label: "Nascimento", value: birthDate },
+    deathDate === null ? null : { label: "Falecimento", value: deathDate },
+    view.placeOfBirth === null
+      ? null
+      : { label: "Local", value: view.placeOfBirth },
+    view.roleLabel === null
+      ? null
+      : { label: "Atuação principal", value: view.roleLabel },
+  ];
+
+  return details.filter((detail): detail is PersonalDetail => detail !== null);
 }
 
 export async function generateMetadata({
@@ -56,25 +99,22 @@ export async function generateMetadata({
 
   if (data === null) {
     return {
-      title: "Pessoa nao encontrada",
+      title: "Pessoa não encontrada",
       robots: { index: false, follow: false },
     };
   }
 
   const { view, indexability, canonicalUrl } = data;
   const shouldIndex = indexability.decision === "index";
-  const title = view.metaTitle ?? `${view.name} - Pessoa`;
-
   const metadata: Metadata = {
-    title,
+    title: view.metaTitle ?? `${view.name} - Pessoa`,
     robots: shouldIndex
       ? { index: true, follow: true }
       : { index: false, follow: false },
     alternates: { canonical: canonicalUrl },
   };
-  if (view.metaDescription !== null) {
-    metadata.description = view.metaDescription;
-  }
+
+  if (view.metaDescription !== null) metadata.description = view.metaDescription;
   return metadata;
 }
 
@@ -87,26 +127,33 @@ export default async function PersonPage({
   const data = await getPersonPageData(slug);
   if (data === null) notFound();
 
-  // Slug nao-canonico (alias antigo) nunca responde 200: 308 para o canonico.
   const redirectPath = canonicalRedirectPath(PESSOAS_INDEX_PATH, slug, data.canonicalSlug);
   if (redirectPath !== null) permanentRedirect(redirectPath);
 
   const { view, indexability, canonicalUrl, relatedNews, externalIds } = data;
   const isUnderReview = indexability.decision !== "index";
-
-  const metaItems = [view.lifeLabel, view.placeOfBirth].filter(
+  const hasCredits = view.credits.length > 0;
+  const personalDetails = collectPersonalDetails(view);
+  const biography = [
+    view.metaDescription,
+    ...view.blocks
+      .filter((block) => BIOGRAPHY_BLOCK_TYPES.has(block.blockType))
+      .map((block) => block.content),
+  ].filter((paragraph): paragraph is string => paragraph !== null);
+  const newsContext =
+    view.blocks.find((block) => block.blockType === "news_context") ?? null;
+  const lifeAndPlace = [view.lifeLabel, view.placeOfBirth].filter(
     (item): item is string => item !== null,
   );
-  // Links de identidade externa (mesmas fontes do `sameAs` do JSON-LD).
-  const externalLinks = buildExternalLinks(externalIds, "person");
-  const hasEditorial = view.blocks.length > 0;
-  const hasCredits = view.credits.length > 0;
+  const creditCountLabel = hasCredits
+    ? `${view.credits.length} ${view.credits.length === 1 ? "título" : "títulos"} na filmografia`
+    : null;
 
   const breadcrumbJsonLd = {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
     itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Inicio", item: `${SITE_URL}/pt/` },
+      { "@type": "ListItem", position: 1, name: "Início", item: `${SITE_URL}/pt/` },
       {
         "@type": "ListItem",
         position: 2,
@@ -117,8 +164,6 @@ export default async function PersonPage({
     ],
   };
 
-  // `@id`/`mainEntityOfPage` = URL canonica autorreferente e estavel da pessoa.
-  // `sameAs` so com IDs externos REAIS (nunca inventa). SEM AggregateRating.
   const personJsonLd: Record<string, unknown> = {
     "@context": "https://schema.org",
     "@type": "Person",
@@ -139,127 +184,171 @@ export default async function PersonPage({
   if (sameAs.length > 0) personJsonLd.sameAs = sameAs;
 
   return (
-    <main className="person-page" data-vertical="person">
-      <div className="container">
-        <nav className="breadcrumb" aria-label="Trilha de navegacao">
-          <ol>
-            <li>
-              <a href="/pt/">Inicio</a>
-            </li>
-            <li>
-              <a href={PESSOAS_INDEX_PATH}>Pessoas</a>
-            </li>
-            <li aria-current="page">{view.name}</li>
-          </ol>
-        </nav>
-
-        <section className="person-hero">
-          <div
-            className={`person-hero__portrait${view.hasRealImage ? " person-hero__portrait--real" : ""}`}
-          >
+    <main className={styles.page} data-vertical="person">
+      <header className={styles.hero}>
+        <div className={styles.portraitFrame}>
+          <div className={styles.portrait}>
             {view.profile !== null ? (
               <img
                 src={view.profile.src}
                 alt={`Foto de ${view.name}`}
                 width={view.profile.width}
                 height={view.profile.height}
-                className="person-hero__image"
+                className={styles.portraitImage}
+                fetchPriority="high"
               />
             ) : (
-              <span className="person-hero__portrait-fallback" aria-hidden="true" />
+              <span className={styles.portraitFallback} aria-hidden="true">
+                {personInitials(view.name)}
+              </span>
             )}
           </div>
+        </div>
 
-          <div className="person-hero__lead">
-            <p className="person-hero__badge">
-              <span className="screena-badge screena-badge--person">Pessoa</span>
-            </p>
-            <h1 className="person-hero__name">{view.name}</h1>
-            {view.originalName !== null ? (
-              <p className="person-hero__original">{view.originalName}</p>
-            ) : null}
-            {view.roleLabel !== null ? (
-              <p className="person-hero__role">{view.roleLabel}</p>
-            ) : null}
-            {metaItems.length > 0 ? (
-              <p className="person-hero__meta">{metaItems.join(" · ")}</p>
-            ) : null}
-            {view.metaDescription !== null ? (
-              <p className="person-hero__intro">{view.metaDescription}</p>
-            ) : null}
-            <EntityExternalIds links={externalLinks} />
-          </div>
-        </section>
-      </div>
+        <div className={styles.heroLead}>
+          <p className={styles.kicker}>
+            Pessoa{view.roleLabel === null ? null : ` · ${view.roleLabel}`}
+          </p>
+          <h1 className={styles.name}>{view.name}</h1>
 
-      {hasEditorial ? (
-        <div className="container">
-          <section className="person-section" aria-labelledby="person-bio-title">
-            <h2 id="person-bio-title" className="person-section-title">
-              Biografia
-            </h2>
-            <div className="person-bio">
-              {view.blocks.map((block) => (
-                <div
-                  key={block.blockType}
-                  className="person-block"
-                  data-block-type={block.blockType}
-                >
-                  <p className="person-block__body">{block.content}</p>
-                </div>
+          {creditCountLabel !== null || lifeAndPlace.length > 0 ? (
+            <div className={styles.chips}>
+              {creditCountLabel !== null ? (
+                <span className={styles.chip}>{creditCountLabel}</span>
+              ) : null}
+              {lifeAndPlace.length > 0 ? (
+                <span className={styles.chip}>{lifeAndPlace.join(" · ")}</span>
+              ) : null}
+            </div>
+          ) : null}
+
+          {biography.length > 0 ? (
+            <div className={styles.biography}>
+              {biography.map((paragraph, index) => (
+                <p key={`${index}-${paragraph.slice(0, 24)}`}>{paragraph}</p>
               ))}
             </div>
-          </section>
+          ) : null}
         </div>
-      ) : null}
+      </header>
 
-      {hasCredits ? (
-        <div className="container">
-          <section className="person-section" aria-labelledby="person-filmography-title">
-            <h2 id="person-filmography-title" className="person-section-title">
-              Filmografia
-            </h2>
-            {/* Linhas no layout da Filmografia do design "Screen Screens v2":
-                ano à esquerda, ponto de tipo (cor = apoio; o tipo real esta em
-                data-entity-type + URL do link), titulo e papel. Somente dados
-                reais do payload; campos ausentes sao omitidos. */}
-            <ul className="person-credits">
-              {view.credits.map((credit, index) => (
-                <li
-                  key={`${credit.entityType}-${credit.href}-${index}`}
-                  className="person-credit"
+      <div className={styles.adShell}>
+        <AdSlot variant="leaderboard" margin="56px 0 0" />
+      </div>
+
+      <section className={styles.section} aria-labelledby="person-filmography-title">
+        <h2 id="person-filmography-title" className={styles.sectionTitle}>
+          Filmografia
+        </h2>
+        {hasCredits ? (
+          <ul className={styles.filmography}>
+            {view.credits.map((credit, index) => (
+              <li
+                key={`${credit.entityType}-${credit.href}-${index}`}
+                className={styles.creditItem}
+              >
+                <a
+                  className={styles.credit}
                   data-entity-type={credit.entityType}
+                  href={credit.href}
                 >
-                  {/* Coluna de 44px sempre presente (vazia sem ano real) para
-                      manter a grade alinhada entre linhas — nada e inventado. */}
-                  <span className="person-credit__year">
-                    {credit.year !== null ? credit.year : null}
+                  <span className={styles.creditYear}>
+                    {credit.year ?? "—"}
                   </span>
-                  <span className="person-credit__dot" aria-hidden="true" />
-                  <span className="u-visually-hidden">
+                  <span className={styles.creditDot} aria-hidden="true" />
+                  <span className={styles.visuallyHidden}>
                     {CREDIT_TYPE_LABELS[credit.entityType]}
                   </span>
-                  <a className="person-credit__link" href={credit.href}>
-                    {credit.title}
-                  </a>
-                  {credit.roleLabel !== null ? (
-                    <span className="person-credit__role">{credit.roleLabel}</span>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          </section>
-        </div>
+                  <span className={styles.creditTitle}>{credit.title}</span>
+                  {credit.roleLabel === null ? null : (
+                    <span className={styles.creditRole}>{credit.roleLabel}</span>
+                  )}
+                </a>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className={styles.filmographyEmpty}>
+            Filmografia ainda não disponível.
+          </p>
+        )}
+      </section>
+
+      {personalDetails.length > 0 ? (
+        <section className={styles.section} aria-labelledby="person-details-title">
+          <h2 id="person-details-title" className={styles.sectionTitle}>
+            Detalhes pessoais
+          </h2>
+          <dl className={styles.details}>
+            {personalDetails.map((detail) => (
+              <div key={detail.label} className={styles.detail}>
+                <dt>{detail.label}</dt>
+                <dd>{detail.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
       ) : null}
 
-      <RelatedNewsSection cards={relatedNews} />
+      {relatedNews.length > 0 ? (
+        <section className={styles.section} aria-labelledby="person-related-news-title">
+          <h2 id="person-related-news-title" className={styles.sectionTitle}>
+            Notícias relacionadas
+          </h2>
+          {newsContext !== null ? (
+            <p
+              className={styles.newsContext}
+              data-block-type={newsContext.blockType}
+            >
+              {newsContext.content}
+            </p>
+          ) : null}
+          <ul className={styles.newsGrid}>
+            {relatedNews.map((card) => {
+              const meta = [card.author, card.dateLabel, card.readTimeLabel].filter(
+                (item): item is string => item !== null,
+              );
+
+              return (
+                <li key={card.href} className={styles.newsItem}>
+                  <article className={styles.newsArticle}>
+                    <a className={styles.newsCard} href={card.href}>
+                      <span className={styles.newsMedia}>
+                        {card.image === null ? (
+                          <span className={styles.newsFallback} aria-hidden="true" />
+                        ) : (
+                          <img
+                            src={card.image.src}
+                            alt={`Imagem de ${card.title}`}
+                            width={card.image.width}
+                            height={card.image.height}
+                            className={styles.newsImage}
+                            loading="lazy"
+                          />
+                        )}
+                      </span>
+                      <span className={styles.newsBody}>
+                        {card.category === null ? null : (
+                          <span className={styles.newsCategory}>{card.category}</span>
+                        )}
+                        <h3 className={styles.newsTitle}>{card.title}</h3>
+                        {meta.length > 0 ? (
+                          <span className={styles.newsMeta}>{meta.join(" · ")}</span>
+                        ) : null}
+                      </span>
+                    </a>
+                  </article>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
 
       {isUnderReview ? (
-        <div className="container">
-          <p className="person-review-notice" data-editorial-state="in-review">
-            Esta pagina ainda esta em revisao editorial.
-          </p>
-        </div>
+        <p className={styles.reviewNotice} data-editorial-state="in-review">
+          Esta página ainda está em revisão editorial.
+        </p>
       ) : null}
 
       <script

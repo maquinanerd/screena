@@ -14,7 +14,12 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { HOME_HREF, NAV_ITEMS } from "../../apps/web/src/lib/navigation";
+import {
+  HOME_HREF,
+  isActiveNavigationPath,
+  isCinematicHeroPath,
+  NAV_ITEMS,
+} from "../../apps/web/src/lib/navigation";
 
 const WEB_APP_DIR = path.join(process.cwd(), "apps", "web", "app");
 
@@ -50,14 +55,12 @@ function withoutComments(source: string): string {
 }
 
 describe("header — navegacao global", () => {
-  it("contem links para home, filmes, series, pessoas, noticias e explorar", () => {
+  it("mantem apenas os itens canonicos que possuem produto real", () => {
     const hrefs = NAV_ITEMS.map((item) => item.href);
     expect(HOME_HREF).toBe("/pt/");
-    expect(hrefs).toContain("/pt/filmes/");
-    expect(hrefs).toContain("/pt/series/");
-    expect(hrefs).toContain("/pt/pessoas/");
-    expect(hrefs).toContain("/pt/noticias/");
-    expect(hrefs).toContain("/pt/explorar/");
+    expect(hrefs).toEqual(["/pt/filmes/", "/pt/series/", "/pt/noticias/"]);
+    expect(hrefs).not.toContain("/pt/listas/");
+    expect(hrefs).not.toContain("/pt/onde-assistir/");
   });
 
   it("nenhum link morto: toda rota do header tem page.tsx real", () => {
@@ -73,12 +76,31 @@ describe("header — navegacao global", () => {
     }
   });
 
-  it("logo local com alt='Screen' e sem asset remoto", () => {
+  it("logo canônico inline usa componente local e sem asset remoto", () => {
     const source = readSource("apps/web/app/_components/site-header.tsx");
-    expect(source).toContain('alt="Screen"');
-    expect(source).toContain("/brand/screen-logo-black.svg");
-    expect(source).toContain("/brand/screen-logo-white.svg");
+    expect(source).toContain("<ScreenLogo");
+    expect(source).toContain('aria-label="Screen — início"');
     expect(source).not.toMatch(/src="https?:\/\//);
+  });
+
+  it("marca índice e subrota como ativas sem confundir prefixos", () => {
+    expect(isActiveNavigationPath("/pt/", "/pt/")).toBe(true);
+    expect(isActiveNavigationPath("/pt/filmes/", "/pt/filmes/")).toBe(true);
+    expect(isActiveNavigationPath("/pt/filmes/duna/", "/pt/filmes/")).toBe(true);
+    expect(isActiveNavigationPath("/pt/filmess/", "/pt/filmes/")).toBe(false);
+    expect(isActiveNavigationPath("/pt/filmes/", "/pt/")).toBe(false);
+    expect(isActiveNavigationPath(null, "/pt/")).toBe(false);
+  });
+
+  it("usa header transparente somente nas telas com hero escuro já portado", () => {
+    expect(isCinematicHeroPath("/pt/")).toBe(true);
+    expect(isCinematicHeroPath("/pt/noticias/materia/")).toBe(true);
+    expect(isCinematicHeroPath("/pt/filmes/")).toBe(false);
+    expect(isCinematicHeroPath("/pt/series/")).toBe(false);
+    expect(isCinematicHeroPath("/pt/noticias/")).toBe(false);
+    expect(isCinematicHeroPath("/pt/filmes/duna/")).toBe(false);
+    expect(isCinematicHeroPath("/pt/series/the-bear/")).toBe(false);
+    expect(isCinematicHeroPath(null)).toBe(false);
   });
 });
 
@@ -90,7 +112,8 @@ describe("home /pt/ — pagina real e segura", () => {
   });
 
   it("tem metadata com canonical e decisao de robots", () => {
-    expect(source).toContain("alternates: { canonical:");
+    expect(source).toContain("alternates: {");
+    expect(source).toContain("canonical: homeCanonicalUrl");
     expect(source).toContain('indexability.decision === "index"');
   });
 

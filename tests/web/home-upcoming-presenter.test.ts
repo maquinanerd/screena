@@ -11,8 +11,10 @@ import { describe, expect, it } from "vitest";
 import {
   buildUpcomingMovies,
   formatUpcomingDate,
+  formatUpcomingWeekday,
   HOME_UPCOMING_LIMIT,
   resolveUpcomingImage,
+  takeUpcomingWeek,
   type UpcomingMovieInput,
 } from "../../apps/web/src/lib/home-upcoming-presenter";
 
@@ -36,6 +38,11 @@ describe("formatUpcomingDate", () => {
     expect(formatUpcomingDate(new Date(Date.UTC(2026, 2, 22)))).toBe("22 de Março");
     expect(formatUpcomingDate(new Date(Date.UTC(2026, 5, 5)))).toBe("5 de Junho");
     expect(formatUpcomingDate(new Date(Date.UTC(2026, 11, 31)))).toBe("31 de Dezembro");
+  });
+
+  it("formata o dia da semana canônico em UTC", () => {
+    expect(formatUpcomingWeekday(new Date(Date.UTC(2026, 6, 8)))).toBe("QUA");
+    expect(formatUpcomingWeekday(new Date(Date.UTC(2026, 6, 10)))).toBe("SEX");
   });
 });
 
@@ -66,8 +73,39 @@ describe("buildUpcomingMovies", () => {
       NOW,
     );
     expect(view).toEqual([
-      { title: "Antes", date: "20 de Julho", href: "/pt/filmes/antes/", imageUrl: null },
-      { title: "Depois", date: "15 de Setembro", href: "/pt/filmes/depois/", imageUrl: null },
+      {
+        title: "Antes",
+        dateIso: "2026-07-20",
+        date: "20 de Julho",
+        weekday: "SEG",
+        href: "/pt/filmes/antes/",
+        imageUrl: null,
+      },
+      {
+        title: "Depois",
+        dateIso: "2026-09-15",
+        date: "15 de Setembro",
+        weekday: "TER",
+        href: "/pt/filmes/depois/",
+        imageUrl: null,
+      },
+    ]);
+  });
+
+  it("recorta uma agenda real para os próximos sete dias", () => {
+    const items = buildUpcomingMovies(
+      [
+        movie({ slug: "amanha", releaseDate: new Date(Date.UTC(2026, 6, 8)) }),
+        movie({ slug: "em-sete", releaseDate: new Date(Date.UTC(2026, 6, 14)) }),
+        movie({ slug: "fora", releaseDate: new Date(Date.UTC(2026, 6, 15)) }),
+      ],
+      NOW,
+      10,
+    );
+
+    expect(takeUpcomingWeek(items, NOW, 5).map((item) => item.href)).toEqual([
+      "/pt/filmes/amanha/",
+      "/pt/filmes/em-sete/",
     ]);
   });
 

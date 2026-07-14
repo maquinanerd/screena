@@ -1,17 +1,13 @@
 /**
- * home-placeholder-governance.ts — Gate PURO de placeholders VISUAIS da Home v4
- * (e da newsletter do rodape). Sem rede/DB/IO.
+ * Gate PURO dos diagnósticos visuais de publicidade e newsletter. Sem rede/DB/IO.
  *
- * Problema: alguns blocos existem apenas como FIDELIDADE VISUAL ao design v4 —
- * noticias mock, "Em breve" mock, caixa de publicidade estatica, pseudo-form de
- * newsletter. Eles nao vem de dado real. Em desenvolvimento/preview isso e util
- * (ver o layout completo); em PRODUCAO um placeholder NUNCA pode fingir dado
- * real (manchete, estreia, anuncio ou cadastro que nao existem).
+ * Somente superfícies não editoriais usam esta decisão: a caixa diagnóstica de
+ * um AdSlot reservado e a composição não interativa da newsletter. Conteúdo de
+ * catálogo/editorial nunca é habilitado por ambiente ou flag.
  *
- * Regra: placeholders aparecem quando o ambiente NAO e producao (dev/preview/
+ * Regra: diagnósticos aparecem quando o ambiente NAO e producao (dev/preview/
  * test) OU quando explicitamente liberados por flag de preview controlado. Em
- * producao normal (sem flag) ficam ocultos, e cada bloco degrada para "nada" ou
- * para uma versao honesta.
+ * producao normal (sem flag) os diagnósticos ficam ocultos.
  *
  * Decisao SEMPRE server-side (server components / render server-only). A flag
  * NAO e `NEXT_PUBLIC_*`: nunca vaza para o bundle do cliente. Isto e apenas uma
@@ -31,12 +27,12 @@ export interface PlaceholderEnv {
 }
 
 /**
- * `true` quando placeholders visuais podem ser exibidos:
+ * `true` quando diagnósticos visuais podem ser exibidos:
  *  - qualquer ambiente que NAO seja `production` (dev/preview/test); OU
  *  - `production` com `SCREEN_HOME_VISUAL_PLACEHOLDERS === "1"` (preview visual
  *    controlado, ex.: para revisar o design em staging).
  *
- * Em `production` sem a flag -> `false`: placeholders ficam ocultos ou honestos.
+ * Em `production` sem a flag -> `false`: diagnósticos ficam ocultos.
  *
  * Sem argumento, le `process.env` no momento da chamada (server-side). Passar um
  * `env` usa exatamente aqueles campos — isolando o teste do ambiente real.
