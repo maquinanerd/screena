@@ -7,7 +7,7 @@ import {
 } from "../src/lib/site";
 
 /**
- * robots.txt do app publico Screen (https://thescreen.media/robots.txt).
+ * robots.txt do app publico cinerie (https://thescreen.media/robots.txt).
  *
  * Principios:
  *  - Producao oficial libera crawl publico geral somente quando

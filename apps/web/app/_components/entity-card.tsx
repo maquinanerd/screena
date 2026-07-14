@@ -15,7 +15,7 @@ import type { EntityCard } from "../../src/lib/entity-index-presenter";
 
 /**
  * Rotulo textual do tipo, exibido como badge sobre o poster (cards do design
- * "Screen Screens v2"). Reforca a invariante 11: o tipo nunca depende so da
+ * artefato visual legado v2). Reforca a invariante 11: o tipo nunca depende so da
  * cor — o badge textual acompanha URL, breadcrumb e titulo da secao.
  */
 const CARD_KIND_LABELS: Readonly<Record<EntityCard["kind"], string>> = {

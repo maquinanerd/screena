@@ -160,7 +160,7 @@ export default async function NewsArticlePage({
           {view.aiAssisted ? (
             <aside className="news-article__ai" role="note">
               Este conteudo pode ter sido produzido com auxilio de ferramentas de
-              inteligencia artificial e revisado pela equipe editorial da Screen.
+              inteligencia artificial e revisado pela equipe editorial da cinerie.
               Imagens sao meramente ilustrativas.
             </aside>
           ) : null}

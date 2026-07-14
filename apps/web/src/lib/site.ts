@@ -1,5 +1,5 @@
 /**
- * site.ts - Helpers de URL publica/canonica do Screen.
+ * site.ts - Helpers de URL publica/canonica da cinerie.
  *
  * Rotas puras vivem em `routes.ts` para poderem ser importadas no cliente.
  * Este modulo pode ler env porque monta metadata, canonical, sitemap e JSON-LD

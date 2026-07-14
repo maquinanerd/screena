@@ -1,28 +1,33 @@
-# Logos da marca Screen
+# Sistema de logo da cinerie
 
-Assets estáticos da marca pública **Screen** (`https://thescreen.media`), servidos
-diretamente de `/brand/` pelo Next.js. São SVGs locais e autocontidos — sem fontes
-nem qualquer recurso externo (o `@import` do Google Fonts foi removido das versões
-originais para respeitar a regra de "zero rede externa"; o wordmark cai no fallback
-`Arial Black`/`Helvetica`/`Montserrat` local).
+Assets oficiais da marca pública **cinerie**, sempre em minúsculas, recebidos no
+arquivo `Cinerie logo system SVG.zip`. O Next.js os serve localmente em
+`/brand/cinerie/`.
 
-O wordmark é `SCR` + caixa + `N` = **SCREEN** (a caixa substitui o "EE").
+Todos os arquivos são SVGs autocontidos em outline/path. Nenhum logo usa
+`<text>`, depende de fonte instalada, importa recurso externo ou contém
+`@font-face`. A fonte especial usada na criação do desenho tipográfico existe
+somente nas curvas vetoriais do logo.
 
 ## Arquivos
 
-| Arquivo | Texto | Caixa (acento) | Uso |
-| --- | --- | --- | --- |
-| `screen-logo-black.svg` | preto | preta (neutra) | **Header e superfícies claras** (padrão em uso) |
-| `screen-logo-white.svg` | branco | branca (neutra) | Superfícies escuras |
-| `screen-logo-cinema.svg` | preto | vermelha (`--screena-movie-red`) | Vertical Filme, fundo claro — *armazenado* |
-| `screen-logo-series.svg` | preto | verde (`--screena-series-green`) | Vertical Série, fundo claro — *armazenado* |
-| `screen-logo-cinema-white.svg` | branco | vermelha | Vertical Filme, fundo escuro — *armazenado* |
-| `screen-logo-series-white.svg` | branco | verde | Vertical Série, fundo escuro — *armazenado* |
+- `logo.svg`: wordmark neutro em `currentColor`, usado no JSON-LD da organização.
+- `logo-cinema.svg`, `logo-serie.svg`, `logo-pessoas.svg` e
+  `logo-noticias.svg`: wordmarks com acento por vertical.
+- `favicon-movie.svg` e `favicon-series.svg`: favicons das rotas de filmes e séries.
+- `variantes/5a-*.svg` a `variantes/5j-*.svg`: combinações prontas para
+  superfícies claras e escuras, usadas pelo componente `CinerieLogo`.
 
-## Regras
+## Tipografia
 
-- Fundo claro → logo preta; fundo escuro → logo branca.
-- As variações cinema (vermelha) e série (verde) estão **armazenadas** para uma fase
-  visual posterior. A diferenciação filme/série **nunca** depende só da cor
-  (invariante 11): sempre acompanha label + badge + breadcrumb + schema + URL.
-- Não converter para PNG nem hospedar externamente.
+O logo não define a fonte da interface. Body, navegação, cards e demais textos
+continuam usando Montserrat self-hosted por `@font-face`, com o WOFF2 e a OFL
+preservados em `public/fonts/`. Gilroy não foi baixada nem adicionada como webfont.
+
+## Regras de uso
+
+- Usar os arquivos oficiais; não recriar o wordmark com `<text>`.
+- Fundo claro usa variante preta; fundo escuro usa variante branca.
+- A diferenciação por vertical nunca depende apenas da cor: label, badge,
+  breadcrumb, schema e URL continuam obrigatórios.
+- Não converter para PNG, hospedar externamente ou adicionar dependência de fonte.

@@ -47,7 +47,7 @@ export const dynamic = "force-dynamic";
 
 const TITLE = "Explorar";
 const DESCRIPTION =
-  "Navegue pelo catálogo editorial do Screen: filmes, séries, pessoas e notícias em português, com páginas de referência revisadas pela redação.";
+  "Navegue pelo catálogo editorial da cinerie: filmes, séries, pessoas e notícias em português, com páginas de referência revisadas pela redação.";
 
 async function getExploreData() {
   const [movies, series, people, news] = await Promise.all([

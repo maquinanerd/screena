@@ -1,13 +1,13 @@
 import type { ReactNode } from "react";
 
 /**
- * RatingStars — estrelas douradas da NOTA EDITORIAL PROPRIA do Screen.
+ * RatingStars — estrelas douradas da NOTA EDITORIAL PROPRIA da cinerie.
  *
  * PRESENTACIONAL e PURO: recebe `value`/`scale` ja validados pelo presenter
  * (`home-hero-presenter`) e so produz JSX. Nao importa @screena/db nem faz IO.
  *
  * Governanca (invariantes 1/2/6): esta nota e a nota editorial do PROPRIO
- * Screen — nunca uma AggregateRating de terceiro, nunca IMDb/Rotten Tomatoes,
+ * cinerie — nunca uma AggregateRating de terceiro, nunca IMDb/Rotten Tomatoes,
  * nunca convertida entre escalas. O `aria-label` deixa a autoria explicita.
  *
  * A cor dourada vem do token `--accent-star` (design v4), nunca hex hardcoded.
@@ -35,7 +35,7 @@ export function RatingStars({ value, scale, className }: RatingStarsProps): Reac
     <span
       className={`sc-stars${className ? ` ${className}` : ""}`}
       role="img"
-      aria-label={`Nota editorial do Screen: ${formatScore(value)} de ${safeScale}`}
+      aria-label={`Nota editorial da cinerie: ${formatScore(value)} de ${safeScale}`}
     >
       <span className="sc-stars__track" aria-hidden="true">
         <span className="sc-stars__base">{stars}</span>

@@ -23,7 +23,7 @@ export const dynamic = "force-dynamic";
 
 const TITLE = "Pessoas";
 const DESCRIPTION =
-  "Explore as pessoas catalogadas no Screen — atores, diretores e equipes, com páginas editoriais em português.";
+  "Explore as pessoas catalogadas na cinerie — atores, diretores e equipes, com páginas editoriais em português.";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { indexability, canonicalUrl } = await getPersonIndexData();

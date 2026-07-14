@@ -1,12 +1,12 @@
 # Relatório completo — acabamento visual final do frontend público
 
-> Documento de rastreabilidade da task **“Front-end final do Screen — acabamento visual público de produto”**.
+> Documento de rastreabilidade da task **“Front-end final da cinerie — acabamento visual público de produto”**.
 
 ## 1. Identificação
 
 | Campo                                         | Valor                                                                                                      |
 | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Projeto                                       | Screen                                                                                                     |
+| Projeto                                       | cinerie                                                                                                    |
 | Repositório                                   | `maquinanerd/screena`                                                                                      |
 | Domínio público                               | `https://thescreen.media`                                                                                  |
 | Data da execução                              | 14 de julho de 2026                                                                                        |
@@ -26,9 +26,20 @@
 
 Este relatório descreve o commit de implementação `78ce02b` e as evidências reunidas durante sua execução. O próprio arquivo de relatório é uma atualização documental posterior na mesma branch e não altera o comportamento do frontend.
 
+### 1.1 Correção posterior de marca na PR #60
+
+A decisão de marca posterior e vigente corrige a identidade pública para
+**cinerie**, sempre em minúsculas. A interface continua usando Montserrat
+self-hosted; o desenho tipográfico próprio aparece somente nos SVGs oficiais em
+outline/path. Gilroy não foi baixada nem adicionada como webfont.
+
+A implementação, o inventário completo de assets, os greps de marca e fonte e as
+validações dessa correção estão registrados em
+[`PR60_CINERIE_BRAND_CORRECTION_REPORT.md`](./PR60_CINERIE_BRAND_CORRECTION_REPORT.md).
+
 ## 2. Resumo executivo
 
-A task transformou o frontend público do Screen de uma coleção visualmente desigual de páginas e componentes em um sistema editorial claro, consistente e reutilizável. A direção adotada usa papel/creme como superfície principal, Montserrat como tipografia da marca, hierarquia tipográfica forte, grids responsivos, mídia cinematográfica controlada e diferenciação textual entre filmes, séries, pessoas e notícias.
+A task transformou o frontend público da cinerie de uma coleção visualmente desigual de páginas e componentes em um sistema editorial claro, consistente e reutilizável. A direção adotada usa papel/creme como superfície principal, Montserrat como fonte da interface, hierarquia tipográfica forte, grids responsivos, mídia cinematográfica controlada e diferenciação textual entre filmes, séries, pessoas e notícias.
 
 O trabalho cobriu:
 
@@ -73,7 +84,7 @@ A intenção central era fazer o site parecer um produto público editorial, nã
 
 ### 4.1 Objetivo de produto
 
-Transformar o frontend público atual do Screen em uma experiência visual finalizada, consistente e publicável, preservando as rotas, a arquitetura entity-first e os contratos reais de dados.
+Transformar o frontend público atual da cinerie em uma experiência visual finalizada, consistente e publicável, preservando as rotas, a arquitetura entity-first e os contratos reais de dados.
 
 ### 4.2 Direção visual obrigatória
 
@@ -81,7 +92,7 @@ Transformar o frontend público atual do Screen em uma experiência visual final
 - fundo paper, cream ou off-white;
 - linguagem editorial premium;
 - maturidade percebida comparável a produtos consolidados de entretenimento, sem copiar interfaces;
-- marca pública Screen;
+- marca pública cinerie, sempre em minúsculas;
 - Montserrat como família principal;
 - títulos com pesos fortes;
 - grids sólidos;
@@ -377,7 +388,7 @@ Rotas presentes no header:
 
 O rodapé foi reduzido a conteúdo verdadeiro:
 
-- marca Screen;
+- marca cinerie por meio do SVG outline oficial;
 - tagline pública;
 - links para Início, Filmes, Séries, Pessoas, Notícias e Explorar;
 - atribuição obrigatória ao TMDB;
@@ -391,7 +402,7 @@ Foram removidos:
 - filtros “Top”, “Mais vistos”, “Em breve” e equivalentes sem rota própria;
 - itens institucionais sem página;
 - links legais ainda inexistentes;
-- uso público da marca histórica “The Screen” no copyright.
+- uso público das marcas anteriores “Screen” e “The Screen” no copyright.
 
 ### 9.4 Home `/pt/`
 
@@ -419,7 +430,7 @@ Foi criada a função pura `interleaveUniqueByHref` para:
 Em termos de limites:
 
 - a home pode formar um pool de até nove filmes e nove séries;
-- até seis entidades entram em “Descubra no Screen”;
+- até seis entidades entram em “Descubra na cinerie”;
 - os hrefs usados nos destaques são removidos das grades seguintes;
 - o presenter pode manter até seis itens restantes por vertical;
 - o JSX mostra até quatro filmes e quatro séries nas grades visuais.
@@ -429,7 +440,7 @@ Em termos de limites:
 1. H1 institucional único, visualmente oculto;
 2. hero carousel real ou hero institucional honesto;
 3. introdução editorial visível em H2;
-4. seção “Descubra no Screen” com cards `feature` e `compact`;
+4. seção “Descubra na cinerie” com cards `feature` e `compact`;
 5. faixa de filmes;
 6. strip com contagens reais do catálogo;
 7. seção de séries;
@@ -475,7 +486,7 @@ As três listagens passaram a usar `EntityIndex` com:
 Correções textuais incluem:
 
 - “Séries” com acento em título e breadcrumb;
-- “Screen” no lugar de construções públicas antigas;
+- “cinerie” no lugar das construções públicas anteriores;
 - descrições em pt-BR com acentuação correta;
 - mensagens de estado vazio específicas por vertical.
 
@@ -1229,7 +1240,7 @@ O slug citado no pedido não existe no snapshot local. A existência e a disponi
 
 ### 23.7 Catálogo pequeno na home
 
-Como os destaques são retirados das grades seguintes para impedir repetição, um catálogo pequeno pode exibir filmes ou séries em “Descubra no Screen” e, ao mesmo tempo, mostrar o estado vazio da grade específica daquela vertical. Não há dado falso ou quebra de SEO, mas a composição deve ser observada em staging para decidir se a mensagem é adequada ao produto.
+Como os destaques são retirados das grades seguintes para impedir repetição, um catálogo pequeno pode exibir filmes ou séries em “Descubra na cinerie” e, ao mesmo tempo, mostrar o estado vazio da grade específica daquela vertical. Não há dado falso ou quebra de SEO, mas a composição deve ser observada em staging para decidir se a mensagem é adequada ao produto.
 
 ### 23.8 Comentário técnico legado na página de filme
 

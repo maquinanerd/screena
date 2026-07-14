@@ -206,7 +206,7 @@ export default async function PersonPage({ params }: { params: Promise<PersonPag
             <h2 id="person-filmography-title" className="person-section-title">
               Filmografia
             </h2>
-            {/* Linhas no layout da Filmografia do design "Screen Screens v2":
+            {/* Linhas no layout da Filmografia do artefato visual legado v2:
                 ano à esquerda, ponto de tipo (cor = apoio; o tipo real esta em
                 data-entity-type + URL do link), titulo e papel. Somente dados
                 reais do payload; campos ausentes sao omitidos. */}

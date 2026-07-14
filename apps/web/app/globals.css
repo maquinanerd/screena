@@ -1,15 +1,15 @@
 /*
- * globals.css — Estilo global do app publico Screen.
+ * globals.css — Estilo global do app publico cinerie.
  *
  * Tema "White Cinematic Editorial" portado com fidelidade do bundle do Claude
  * Design `screena-white-cinematic-editorial-system` (tela canonica
- * `Screen Screens v4.dc.html`): fundo quase branco quente, Montserrat,
+ * artefato de design legado v4): fundo quase branco quente, Montserrat,
  * heros cinematograficos escuros, cards com cantos arredondados (12-14px),
- * acento VERMELHO de filme e VERDE de serie, amarelo Screen de apoio e
+ * acento VERMELHO de filme e VERDE de serie, amarelo editorial de apoio e
  * numeros-fantasma de ranking.
  *
- * Pureza de render (invariantes 3/4): SEM fontes externas (nenhum <link>/@import
- * a fonts.googleapis.com, nenhum next/font que baixe no build). Montserrat e
+ * Pureza de render (invariantes 3/4): SEM fontes externas (nenhum carregamento
+ * remoto e nenhum helper que baixe arquivos no build). Montserrat e
  * servida localmente em WOFF2; a stack do sistema segue como fallback — zero rede.
  *
  * Cor de marca (invariantes 9/10 e secao 8 do CLAUDE.md): o acento de filme deriva
@@ -67,7 +67,7 @@
   --link-movie: #8a1e1a; /* links em texto na pagina de filme (v4) */
   --link-series: #395c42; /* links em texto na pagina de serie (v4) */
   /* Apoio do design v4 (nao sao cor de vertical). */
-  --accent-yellow: #f5c518; /* amarelo Screen: botoes/ticker/rank */
+  --accent-yellow: #f5c518; /* amarelo editorial: botoes/ticker/rank */
   --accent-star: #f5c84b; /* estrelas de avaliacao */
   --accent-gold: #d2a12b; /* premios / awards */
 
@@ -289,7 +289,7 @@ a {
 
 .site-header__logo {
   display: block;
-  height: 26px;
+  height: 30px;
   width: auto;
 }
 
@@ -381,12 +381,11 @@ a {
   display: inline-flex;
   align-items: center;
 }
-/* Logo institucional NEUTRO (SVG local /brand/screen-logo-black.svg) — mesmo
-   asset do header em superficie clara. Altura fixa, largura por proporcao. */
+/* Logo institucional neutro da cinerie em SVG outline local. */
 .site-footer__logo {
   display: block;
   width: auto;
-  height: 31px;
+  height: 38px;
 }
 .site-footer__tagline {
   margin: 22px 0 0;
@@ -960,7 +959,7 @@ a {
   margin: 16px 0 0;
   max-width: 54ch;
 }
-/* Nota editorial PROPRIA do Screen — estrelas douradas (token --accent-star).
+/* Nota editorial PROPRIA da cinerie — estrelas douradas (token --accent-star).
    Preenchimento parcial via overlay clipado por largura (%). */
 .sc-stars {
   display: inline-flex;
@@ -1472,7 +1471,7 @@ a {
 }
 
 /* ================================================================== */
-/* Home · Destaques no The Screen (Top 10 do v4, honesto: sem rank/nota) */
+/* Home · Destaques da cinerie (composicao honesta: sem rank/nota) */
 /* ------------------------------------------------------------------ */
 /* Estrutura canônica do v4 (04-page-home §3): fileira de 4 HighlightCards
    grandes (card branco + pôster 2/3 + corpo) + fileira de 6 RankingItems
@@ -5193,7 +5192,7 @@ body {
   }
 
   .site-header__logo {
-    height: 23px;
+    height: 27px;
   }
 
   .site-header__nav {

@@ -11,7 +11,7 @@ import "./globals.css";
  *
  * Define <html>/<body> e o idioma de publicacao do MVP (pt-BR; invariante 7).
  * Importa o estilo global minimo (`globals.css`): tema claro com tokens de cor
- * da Screena, sem framework de CSS nem fontes externas. Server component puro —
+ * da cinerie, sem framework de CSS nem fontes externas. Server component puro —
  * nenhum acesso a banco ou rede aqui.
  *
  * Renderiza o `SiteHeader` (navegacao global) acima do conteudo de cada rota,
@@ -19,10 +19,10 @@ import "./globals.css";
  */
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: { default: "Screen", template: "%s | Screen" },
+  title: { default: "cinerie", template: "%s | cinerie" },
   // Marca publica em cartoes sociais. Sem og:image fabricada (nenhum asset
   // raster proprio nesta fase) — nunca inventar dado.
-  openGraph: { siteName: "Screen", locale: "pt_BR", type: "website" },
+  openGraph: { siteName: "cinerie", locale: "pt_BR", type: "website" },
   twitter: { card: "summary" },
 };
 

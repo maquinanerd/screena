@@ -2,7 +2,7 @@
  * Testes puros do presenter do hero-carousel da home.
  *
  * Garantem que os slides nao inventam dados, que a NOTA editorial propria do
- * Screen so aparece quando liberada e valida (nunca fake/AggregateRating), que a
+ * cinerie so aparece quando liberada e valida (nunca fake/AggregateRating), que a
  * info principal e montada por itens validos (filme=ano; serie=temporadas/
  * episodios) e que a fronteira de serializacao produz objeto plano.
  */

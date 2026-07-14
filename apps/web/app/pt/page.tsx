@@ -32,7 +32,7 @@ import {
 } from "../../src/lib/site";
 
 /**
- * Public Marketing Home v4 — superficie editorial/cinematografica do Screen.
+ * Public Marketing Home v4 — superficie editorial/cinematografica da cinerie.
  *
  * O render le apenas o snapshot local do PostgreSQL. A composicao usa entidades,
  * artigos e lancamentos reais; secoes sem dados recebem um estado vazio honesto.
@@ -40,25 +40,25 @@ import {
  */
 export const dynamic = "force-dynamic";
 
-const HOME_TITLE = "Screen — filmes, séries, pessoas e notícias";
+const HOME_TITLE = "cinerie — filmes, séries, pessoas e notícias";
 const HOME_DESCRIPTION =
-  "Base editorial de entretenimento em português: fichas de filmes e séries, perfis de pessoas e notícias com curadoria própria da redação do Screen.";
-const HOME_H1 = "Screen — filmes, séries e pessoas";
+  "Base editorial de entretenimento em português: fichas de filmes e séries, perfis de pessoas e notícias com curadoria própria da redação da cinerie.";
+const HOME_H1 = "cinerie — filmes, séries e pessoas";
 const HIGHLIGHT_LIMIT = 6;
 const HIGHLIGHTS_PER_VERTICAL = 3;
 
 const HOME_ORGANIZATION_JSONLD = {
   "@context": "https://schema.org",
   "@type": "Organization",
-  name: "Screen",
+  name: "cinerie",
   url: `${SITE_URL}/pt/`,
-  logo: `${SITE_URL}/brand/screen-logo-black.svg`,
+  logo: `${SITE_URL}/brand/cinerie/logo.svg`,
 };
 
 const HOME_WEBSITE_JSONLD = {
   "@context": "https://schema.org",
   "@type": "WebSite",
-  name: "Screen",
+  name: "cinerie",
   url: `${SITE_URL}/`,
 };
 
@@ -157,7 +157,7 @@ export default async function HomePage() {
           <div className="sc-hero__inner">
             <div className="sc-hero__lead">
               <span className="sc-hero__eyebrow" data-vertical="neutral">
-                Screen editorial
+                Editorial cinerie
               </span>
               <h2 className="sc-hero__title sc-hero__title--sm">
                 Filmes, séries, pessoas e notícias em um só lugar.
@@ -173,7 +173,7 @@ export default async function HomePage() {
         <h2 className="home-intro__title">{HOME_H1}</h2>
         <p className="home-intro__description">
           Descubra obras e pessoas por páginas de referência, com dados claros e conteúdo editorial
-          publicado pela Screen.
+          publicado pela cinerie.
         </p>
       </header>
 
@@ -183,7 +183,7 @@ export default async function HomePage() {
       >
         <SectionHeader
           id="home-discovery-title"
-          title="Descubra no Screen"
+          title="Descubra na cinerie"
           eyebrow="Filmes e séries"
           href={EXPLORE_PATH}
           linkLabel="Explorar catálogo"
@@ -221,7 +221,7 @@ export default async function HomePage() {
         <div className="home-section container">
           <SectionHeader
             id="home-movies-title"
-            title="Filmes no Screen"
+            title="Filmes na cinerie"
             eyebrow="Cinema"
             vertical="movie"
             href={MOVIES_INDEX_PATH}
@@ -247,7 +247,7 @@ export default async function HomePage() {
       </section>
 
       {hasCounts ? (
-        <section className="home-catalog-strip" aria-label="Catálogo do Screen">
+        <section className="home-catalog-strip" aria-label="Catálogo da cinerie">
           <div className="container home-catalog-strip__inner">
             <div className="home-catalog-strip__lead">
               <span>Catálogo público</span>
@@ -277,7 +277,7 @@ export default async function HomePage() {
       <section className="home-section container" aria-labelledby="home-series-title">
         <SectionHeader
           id="home-series-title"
-          title="Séries no Screen"
+          title="Séries na cinerie"
           eyebrow="Televisão"
           vertical="series"
           href={SERIES_INDEX_PATH}
@@ -341,7 +341,7 @@ export default async function HomePage() {
         <SectionHeader
           id="home-news-title"
           title="Notícias e contexto"
-          eyebrow="Redação Screen"
+          eyebrow="Redação cinerie"
           href={NEWS_INDEX_PATH}
           linkLabel="Abrir notícias"
         />

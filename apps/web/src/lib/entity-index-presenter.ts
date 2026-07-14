@@ -84,7 +84,7 @@ export interface EntityCard {
   meta: string | null;
   image: EntityImageAsset | null;
   /**
-   * Nota editorial PROPRIA do Screen (escala SCREEN_SCORE_SCALE) ja validada e
+   * Nota editorial PROPRIA da cinerie (escala SCREEN_SCORE_SCALE) ja validada e
    * formatada para exibicao, ou `null` quando nao ha nota governada/liberada com
    * origem editorial explicita (pessoas: sempre `null`). Mesma governanca do hero
    * (`resolveHeroRating`):
@@ -103,12 +103,12 @@ export interface EntityIndexView {
 }
 
 /**
- * Subconjunto controlado da nota editorial propria do Screen (ja convertido de
+ * Subconjunto controlado da nota editorial propria da cinerie (ja convertido de
  * Prisma), compartilhado por filme e serie. Opcional: ausente == nao exibir a
  * nota (gate seguro, igual ao default `screen_score_display = false`).
  */
 export interface ScreenScoreInput {
-  /** Nota editorial propria do Screen (0..scale) ou null. */
+  /** Nota editorial propria da cinerie (0..scale) ou null. */
   screenScore?: number | null;
   /** Escala da nota; so exibe quando == SCREEN_SCORE_SCALE. */
   screenScoreScale?: number | null;
@@ -202,7 +202,7 @@ export function mapKnownForDepartment(
 }
 
 /**
- * Resolve a nota editorial PROPRIA do Screen de um card para exibicao, seguindo
+ * Resolve a nota editorial PROPRIA da cinerie de um card para exibicao, seguindo
  * EXATAMENTE o mesmo gate do hero (`resolveHeroRating`): so devolve valor quando
  * ha origem editorial explicita, o display esta liberado, o numero e finito > 0,
  * a escala e SCREEN_SCORE_SCALE e o valor <= escala. Qualquer desvio -> `null`

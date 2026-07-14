@@ -51,7 +51,7 @@ export function NewsCard({
           />
         ) : (
           <span className="news-card__fallback" aria-hidden="true">
-            <span className="news-card__fallback-label">Screen editorial</span>
+            <span className="news-card__fallback-label">Editorial cinerie</span>
           </span>
         )}
       </span>

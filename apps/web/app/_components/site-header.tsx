@@ -3,8 +3,15 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 
+import { CinerieLogo, type CinerieLogoVariant } from "./cinerie-logo";
 import { HOME_HREF, isActiveNavigationPath, NAV_ITEMS } from "../../src/lib/navigation";
-import { HOME_PATH } from "../../src/lib/routes";
+import {
+  HOME_PATH,
+  MOVIES_INDEX_PATH,
+  NEWS_INDEX_PATH,
+  PEOPLE_INDEX_PATH,
+  SERIES_INDEX_PATH,
+} from "../../src/lib/routes";
 
 /**
  * SiteHeader — cabecalho/navegacao global do app publico @screena/web.
@@ -31,6 +38,14 @@ function isHomePath(pathname: string | null): boolean {
   return pathname === HOME_PATH || pathname === HOME_PATH.replace(/\/$/, "");
 }
 
+function resolveLogoVariant(pathname: string | null): CinerieLogoVariant {
+  if (isActiveNavigationPath(pathname, MOVIES_INDEX_PATH)) return "movie";
+  if (isActiveNavigationPath(pathname, SERIES_INDEX_PATH)) return "series";
+  if (isActiveNavigationPath(pathname, PEOPLE_INDEX_PATH)) return "people";
+  if (isActiveNavigationPath(pathname, NEWS_INDEX_PATH)) return "news";
+  return "neutral";
+}
+
 export function SiteHeader(): ReactNode {
   const pathname = usePathname();
   const home = isHomePath(pathname);
@@ -49,18 +64,17 @@ export function SiteHeader(): ReactNode {
 
   // Transparente/branco apenas na home E no topo (sobre o hero).
   const overHero = home && !scrolled;
+  const logoVariant = resolveLogoVariant(pathname);
 
   return (
     <header className="site-header" data-over-hero={overHero ? "true" : undefined}>
       <div className="site-header__inner">
-        {/* Logo branca sobre o hero; preta no header solido. */}
-        <a className="site-header__brand" href={HOME_HREF}>
-          <img
+        {/* Logo branca sobre o hero; variante contextual no header solido. */}
+        <a className="site-header__brand" href={HOME_HREF} aria-label="cinerie — início">
+          <CinerieLogo
             className="site-header__logo"
-            src={overHero ? "/brand/screen-logo-white.svg" : "/brand/screen-logo-black.svg"}
-            alt="Screen"
-            width={135}
-            height={26}
+            variant={logoVariant}
+            tone={overHero ? "light" : "dark"}
           />
         </a>
 

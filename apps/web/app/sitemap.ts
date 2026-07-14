@@ -3,7 +3,7 @@ import type { MetadataRoute } from "next";
 import { getSitemapEntries } from "../src/server/seo/sitemap-entries";
 
 /**
- * sitemap.xml do app publico Screen (https://thescreen.media/sitemap.xml).
+ * sitemap.xml do app publico cinerie (https://thescreen.media/sitemap.xml).
  *
  * Toda a decisao de inclusao vive no presenter puro `sitemap-presenter`
  * (com banco disponivel, usa os mesmos gates de indexabilidade das paginas)

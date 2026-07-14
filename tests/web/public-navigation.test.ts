@@ -1,6 +1,6 @@
 /**
  * Testes de navegacao publica (Fase 5D): header sem link morto, logo local
- * com alt="Screen", e home/explorar/sitemap/robots presentes e seguros.
+ * com alt="cinerie", e home/explorar/sitemap/robots presentes e seguros.
  *
  * Estilo hibrido (como tests/governance): importa os dados puros exportados
  * (NAV_ITEMS/HOME_HREF) e verifica no filesystem que cada rota do header tem
@@ -81,12 +81,15 @@ describe("header — navegacao global", () => {
     }
   });
 
-  it("logo local com alt='Screen' e sem asset remoto", () => {
-    const source = readSource("apps/web/app/_components/site-header.tsx");
-    expect(source).toContain('alt="Screen"');
-    expect(source).toContain("/brand/screen-logo-black.svg");
-    expect(source).toContain("/brand/screen-logo-white.svg");
-    expect(source).not.toMatch(/src="https?:\/\//);
+  it("usa o componente do logo oficial da cinerie sem asset remoto", () => {
+    const header = readSource("apps/web/app/_components/site-header.tsx");
+    const logo = readSource("apps/web/app/_components/cinerie-logo.tsx");
+    expect(header).toContain("<CinerieLogo");
+    expect(header).toContain('aria-label="cinerie — início"');
+    expect(logo).toContain('alt="cinerie"');
+    expect(logo).toContain("/brand/cinerie/variantes/");
+    expect(`${header}\n${logo}`).not.toMatch(/src="https?:\/\//);
+    expect(`${header}\n${logo}`).not.toContain("/brand/screen-logo");
   });
 });
 

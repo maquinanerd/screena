@@ -8,7 +8,7 @@
  *
  * Regras duras (espelham os demais presenters):
  *  - NAO inventa fatos: sem titulo ou sem slug canonico, o slide e descartado.
- *  - A NOTA e a nota editorial PROPRIA do Screen (`screenScore`, escala 5), nunca
+ *  - A NOTA e a nota editorial PROPRIA da cinerie (`screenScore`, escala 5), nunca
  *    AggregateRating de terceiro nem mistura com IMDb/RT (invariantes 1/2/6). So
  *    aparece quando ha origem editorial explicita, `screenScoreDisplay` esta
  *    liberado e o valor e valido.
@@ -19,10 +19,10 @@
 import { MOVIES_INDEX_PATH, SERIES_INDEX_PATH, detailPath } from "./site";
 import { buildTmdbImageUrl } from "./tmdb-image-url";
 
-/** Escala canonica da nota editorial propria do Screen. */
+/** Escala canonica da nota editorial propria da cinerie. */
 export const SCREEN_SCORE_SCALE = 5;
 
-/** Unica origem aceita para exibir nota propria do Screen. */
+/** Unica origem aceita para exibir nota propria da cinerie. */
 export const SCREEN_SCORE_EDITORIAL_SOURCE = "editorial" as const;
 
 export type ScreenScoreSource = typeof SCREEN_SCORE_EDITORIAL_SOURCE;
@@ -60,7 +60,7 @@ export interface HeroSlideInput {
   episodesCount: number | null;
   /** Classificacao indicativa (advisory) ou null. */
   certification: string | null;
-  /** Nota editorial propria do Screen (0..scale) ou null. */
+  /** Nota editorial propria da cinerie (0..scale) ou null. */
   screenScore: number | null;
   /** Escala da nota (deve ser SCREEN_SCORE_SCALE; senao a nota e ignorada). */
   screenScoreScale: number | null;
@@ -86,7 +86,7 @@ export interface HeroSlideInput {
   posterPath: string | null;
 }
 
-/** Nota editorial propria do Screen, ja validada, para render de estrelas. */
+/** Nota editorial propria da cinerie, ja validada, para render de estrelas. */
 export interface HeroRating {
   /** Valor na escala (0 < value <= scale). */
   value: number;
@@ -104,7 +104,7 @@ export interface HeroSlide {
   href: string;
   /** Itens da info principal (filme: ["2023"]; serie: ["3 temporadas", ...]). */
   primaryMeta: string[];
-  /** Nota editorial do Screen ou null (oculta quando invalida/nao liberada). */
+  /** Nota editorial da cinerie ou null (oculta quando invalida/nao liberada). */
   rating: HeroRating | null;
   /** Classificacao indicativa ou null. */
   certification: string | null;
@@ -145,7 +145,7 @@ export function formatCountLabel(
 }
 
 /**
- * Valida a nota editorial propria do Screen para exibicao. So retorna nota
+ * Valida a nota editorial propria da cinerie para exibicao. So retorna nota
  * quando: origem editorial explicita, display liberado, valor finito > 0,
  * escala == SCREEN_SCORE_SCALE e valor <= escala. Qualquer desvio -> null
  * (fallback seguro, sem estrela). O seed demo atual nao fornece origem editorial,

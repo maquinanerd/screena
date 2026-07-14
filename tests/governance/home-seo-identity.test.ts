@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 /**
  * Governanca SEO entity-first (PROMPT 2): trava por varredura de fonte que
- *  - a home tem UM unico <h1>, sobre o Screen (nao o filme rotativo do hero);
+ *  - a home tem UM unico <h1>, sobre a cinerie (nao o filme rotativo do hero);
  *  - o hero-carousel nunca usa <h1> para o titulo do slide;
  *  - a home emite Organization + WebSite, sem SearchAction (nao ha busca real)
  *    nem AggregateRating;
@@ -49,11 +49,11 @@ function countMatches(source: string, re: RegExp): number {
 }
 
 describe("governanca SEO: home entity-first + grafo de identidade", () => {
-  it("home tem EXATAMENTE um <h1>, descrevendo o Screen (nao o filme rotativo)", () => {
+  it("home tem EXATAMENTE um <h1>, descrevendo a cinerie (nao o filme rotativo)", () => {
     const code = withoutComments(read(HOME_REL));
     expect(countMatches(code, /<h1[\s>]/g)).toBe(1);
-    // O H1 fala do Screen, nunca de um titulo de filme especifico.
-    expect(read(HOME_REL)).toContain("Screen — filmes, séries e pessoas");
+    // O H1 fala da cinerie, nunca de um titulo de filme especifico.
+    expect(read(HOME_REL)).toContain("cinerie — filmes, séries e pessoas");
   });
 
   it("hero-carousel nao usa <h1> para o titulo do slide (slide != H1 da pagina)", () => {
@@ -71,7 +71,7 @@ describe("governanca SEO: home entity-first + grafo de identidade", () => {
     const code = withoutComments(raw);
     // Sem rota de busca por query real -> nunca prometer SearchAction.
     expect(code).not.toMatch(/SearchAction/);
-    // Screen nao publica nota propria agregada.
+    // A cinerie nao publica nota propria agregada.
     expect(code).not.toMatch(/AggregateRating/);
   });
 

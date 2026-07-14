@@ -143,7 +143,7 @@ export function HeroCarousel({ slides }: HeroCarouselProps): ReactNode {
       className="sc-hero sc-hero--carousel"
       data-vertical={activeSlide.vertical}
       aria-roledescription="carrossel"
-      aria-label="Destaques do Screen"
+      aria-label="Destaques da cinerie"
       onKeyDown={onKeyDown}
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
@@ -190,7 +190,7 @@ export function HeroCarousel({ slides }: HeroCarouselProps): ReactNode {
                 <span className="sc-hero__eyebrow" data-vertical={slide.vertical}>
                   {slide.eyebrow}
                 </span>
-                {/* O H1 unico da home descreve o Screen (sr-only em pt/page.tsx),
+                {/* O H1 unico da home descreve a cinerie (sr-only em pt/page.tsx),
                     nao o filme rotativo. O titulo do slide e <h2> quando ativo e
                     <p> nos demais (mesma classe) — SEO entity-first, um so H1
                     institucional na pagina, nunca o titulo do slide como H1. */}

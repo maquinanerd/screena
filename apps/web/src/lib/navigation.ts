@@ -4,7 +4,7 @@
  * Fonte unica dos links do header (site-header.tsx) e dos testes de navegacao
  * (tests/web/public-navigation): todo item aponta para rota publicada REAL —
  * o header nunca carrega link morto. Ordem e itens espelham a NAV do design
- * "Screen Screens v2" (FILMES · SÉRIES · PESSOAS · NOTÍCIAS · EXPLORAR); o
+ * artefato visual legado v2 (FILMES · SÉRIES · PESSOAS · NOTÍCIAS · EXPLORAR); o
  * icone de busca do design fica de fora (busca esta fora de escopo).
  */
 

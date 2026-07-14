@@ -1,15 +1,15 @@
 # @screena/web
 
-App publico do **Screen**, construido com **Next.js App Router** (TypeScript
+App publico da **cinerie**, construido com **Next.js App Router** (TypeScript
 strict, React Server Components, ISR/revalidate). Publica o MVP em **pt-BR**;
 `en`/`es` nascem em draft/noindex ate revisao humana.
 
-`@screena/web` e namespace tecnico legado. A marca publica e **Screen**; a
-forma curta **Screen** pode aparecer na UI/logo.
+`@screena/web` e namespace tecnico legado. A marca publica e **cinerie**,
+sempre em minusculas. O logo oficial e servido como SVG outline local.
 
 ## Papel
 
-Servir as paginas publicas e indexaveis do Screen (filmes, series,
+Servir as paginas publicas e indexaveis da cinerie (filmes, series,
 temporadas, pessoas, onde assistir, curadorias e noticias) descritas em
 [`app/README.md`](./app/README.md).
 

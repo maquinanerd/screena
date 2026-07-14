@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { CinerieLogo } from "./cinerie-logo";
 import {
   EXPLORE_PATH,
   HOME_PATH,
@@ -10,7 +11,7 @@ import {
 } from "../../src/lib/site";
 
 /**
- * Rodape global do app publico Screen.
+ * Rodape global do app publico cinerie.
  *
  * Server component puro: renderiza somente a marca, rotas publicas reais e a
  * atribuicao obrigatoria ao TMDB. Nao apresenta filtros, redes sociais,
@@ -56,14 +57,8 @@ export function SiteFooter(): ReactNode {
       <div className="site-footer__inner">
         <div className="site-footer__grid">
           <div className="site-footer__brand">
-            <a className="site-footer__wordmark" href={HOME_PATH} aria-label="Screen - início">
-              <img
-                className="site-footer__logo"
-                src="/brand/screen-logo-black.svg"
-                alt="Screen"
-                width={406}
-                height={78}
-              />
+            <a className="site-footer__wordmark" href={HOME_PATH} aria-label="cinerie — início">
+              <CinerieLogo className="site-footer__logo" />
             </a>
             <p className="site-footer__tagline">
               Filmes, séries, pessoas e notícias de entretenimento em um só lugar.
@@ -92,7 +87,7 @@ export function SiteFooter(): ReactNode {
         </p>
 
         <div className="site-footer__bottom">
-          <span className="site-footer__copy">© 2026 Screen · thescreen.media</span>
+          <span className="site-footer__copy">© 2026 cinerie · thescreen.media</span>
         </div>
       </div>
     </footer>

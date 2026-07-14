@@ -27,7 +27,7 @@ export const dynamic = "force-dynamic";
 
 const TITLE = "Notícias";
 const DESCRIPTION =
-  "Últimas notícias e análises editoriais do Screen sobre cinema e séries, em português.";
+  "Últimas notícias e análises editoriais da cinerie sobre cinema e séries, em português.";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { indexability, canonicalUrl } = await getNewsIndexData();
@@ -117,7 +117,7 @@ export default async function NewsIndexPage() {
         ) : (
           <EmptyState
             title="Ainda não há notícias publicadas."
-            description="A redação do Screen ainda não publicou notícias nesta seção."
+            description="A redação da cinerie ainda não publicou notícias nesta seção."
             action={{ label: "Explorar o catálogo", href: EXPLORE_PATH }}
           />
         )}
