@@ -1,37 +1,226 @@
 import type { Metadata } from "next";
 import { notFound, permanentRedirect } from "next/navigation";
+import type { ReactNode } from "react";
 
 import { buildSameAs } from "@screena/seo";
 
-import { getSeriesPageData } from "../../../../src/server/series-page";
-import { canonicalRedirectPath } from "../../../../src/lib/canonical-redirect";
-import { SITE_URL } from "../../../../src/lib/site";
-import { buildExternalLinks } from "../../../../src/lib/external-links";
-import { RelatedNewsSection } from "../../../_components/related-news-section";
-import { CastStrip } from "../../../_components/cast-strip";
 import { WatchAvailabilityPanel } from "../../../_components/watch-availability-panel";
 import { EntityExternalIds } from "../../../_components/entity-external-ids";
-import { EntityFacts } from "../../../_components/entity-facts";
+import { canonicalRedirectPath } from "../../../../src/lib/canonical-redirect";
+import type { CastMemberView } from "../../../../src/lib/cast-presenter";
+import { buildExternalLinks } from "../../../../src/lib/external-links";
+import type { NewsCardView } from "../../../../src/lib/news-presenter";
+import type { SeriesEpisodeView, SeriesSeasonView } from "../../../../src/lib/series-presenter";
+import { SITE_URL } from "../../../../src/lib/site";
+import { getSeriesPageData } from "../../../../src/server/series-page";
+import styles from "./series-canonical.module.css";
 
 /**
- * Pagina publica de serie - /pt/series/[slug]/ (schema TVSeries, acento verde).
+ * Detalhe público de série — porte da tela canônica 07, com a linguagem
+ * responsiva da tela 08. O componente continua server-only: o único dado
+ * exibido vem do snapshot PostgreSQL montado por `getSeriesPageData`.
  *
- * Server component puro: le somente PostgreSQL via `getSeriesPageData`. Zero API
- * externa, zero Gemini e zero TMDB no render. A pagina omite secoes sem dados
- * reais e aplica `noindex` quando o gate anti-thin nao tem >= 2 blocos
- * editoriais publicaveis.
- *
- * URL canonica unica: slug antigo (alias despromovido em `slugs`) nao renderiza
- * 200 — redireciona permanentemente para o slug canonico.
+ * Partes do protótipo sem presenter real (nota, trailer, prêmios, gênero,
+ * classificação e recomendações) não entram no DOM. Isso preserva o contrato
+ * anti-mock sem converter um backdrop em trailer ou uma identidade externa em
+ * rating. Temporadas, episódios, elenco, editorial, notícias e disponibilidade
+ * legal também somem integralmente quando seus respectivos arrays/views estão
+ * vazios.
  */
 
 export const revalidate = 3600;
 
 const SERIES_INDEX_PATH = "/pt/series/";
-const SUMMARY_BLOCK_TYPE = "summary_without_spoilers";
+const REVIEW_BLOCK_TYPE = "review_summary";
 
 interface SeriesPageParams {
   slug: string;
+}
+
+interface SeriesFact {
+  label: string;
+  value: string;
+}
+
+function ArrowIcon(): ReactNode {
+  const icon = (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m9 18 6-6-6-6" />
+    </svg>
+  );
+  return icon;
+}
+
+function initialsFor(name: string): string {
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => Array.from(part)[0] ?? "")
+    .join("")
+    .toLocaleUpperCase("pt-BR");
+}
+
+function CastCard({ member }: { member: CastMemberView }): ReactNode {
+  const content = (
+    <>
+      <span className={styles.castMedia}>
+        {member.profile !== null ? (
+          <img
+            src={member.profile.src}
+            alt={`Retrato de ${member.name}`}
+            width={member.profile.width}
+            height={member.profile.height}
+            className={styles.castImage}
+            loading="lazy"
+          />
+        ) : (
+          <span className={styles.castFallback} aria-hidden="true">
+            {initialsFor(member.name)}
+          </span>
+        )}
+      </span>
+      <span className={styles.castBody}>
+        <h3 className={styles.castName}>{member.name}</h3>
+        {member.character !== null ? (
+          <span className={styles.castRole}>{member.character}</span>
+        ) : null}
+      </span>
+    </>
+  );
+
+  return member.href !== null ? (
+    <a className={styles.castCard} href={member.href}>
+      {content}
+    </a>
+  ) : (
+    <div className={styles.castCard}>{content}</div>
+  );
+}
+
+function EpisodeRow({
+  episode,
+  seasonNumber,
+}: {
+  episode: SeriesEpisodeView;
+  seasonNumber: number;
+}): ReactNode {
+  const episodeMeta = [
+    episode.airYear !== null ? String(episode.airYear) : null,
+    episode.runtimeLabel,
+  ].filter((item): item is string => item !== null);
+
+  const row = (
+    <li className={styles.episodeItem}>
+      <article className={styles.episode}>
+        <div className={styles.episodeMedia}>
+          {episode.still !== null ? (
+            <img
+              src={episode.still.src}
+              alt={`Cena do episódio ${episode.episodeNumber}`}
+              width={episode.still.width}
+              height={episode.still.height}
+              className={styles.episodeImage}
+              loading="lazy"
+            />
+          ) : (
+            <span className={styles.episodeFallback} aria-hidden="true" />
+          )}
+          <span className={styles.episodeNumber}>
+            T{seasonNumber} · E{episode.episodeNumber}
+          </span>
+        </div>
+        <div className={styles.episodeBody}>
+          <h4 className={styles.episodeTitle}>
+            {episode.title ?? `Episódio ${episode.episodeNumber}`}
+          </h4>
+          {episode.overview !== null ? (
+            <p className={styles.episodeOverview}>{episode.overview}</p>
+          ) : null}
+          {episodeMeta.length > 0 ? (
+            <p className={styles.episodeMeta}>{episodeMeta.join(" · ")}</p>
+          ) : null}
+        </div>
+      </article>
+    </li>
+  );
+  return row;
+}
+
+function SeasonGroup({ season }: { season: SeriesSeasonView }): ReactNode {
+  const seasonMeta = [
+    season.episodeCountLabel,
+    season.airYear !== null ? String(season.airYear) : null,
+  ].filter((item): item is string => item !== null);
+
+  const group = (
+    <section
+      className={styles.seasonGroup}
+      id={`temporada-${season.seasonNumber}`}
+      aria-labelledby={`temporada-${season.seasonNumber}-titulo`}
+    >
+      <div className={styles.seasonSummary}>
+        <h3 id={`temporada-${season.seasonNumber}-titulo`} className={styles.seasonTitle}>
+          {season.title}
+        </h3>
+        {seasonMeta.length > 0 ? (
+          <p className={styles.seasonMeta}>{seasonMeta.join(" · ")}</p>
+        ) : null}
+      </div>
+      {season.overview !== null ? <p className={styles.seasonOverview}>{season.overview}</p> : null}
+      {season.episodes.length > 0 ? (
+        <ol className={styles.episodeList}>
+          {season.episodes.map((episode) => (
+            <EpisodeRow
+              key={episode.episodeNumber}
+              episode={episode}
+              seasonNumber={season.seasonNumber}
+            />
+          ))}
+        </ol>
+      ) : null}
+    </section>
+  );
+  return group;
+}
+
+function RelatedNewsCard({ card }: { card: NewsCardView }): ReactNode {
+  const meta = [card.author, card.readTimeLabel].filter((item): item is string => item !== null);
+
+  const article = (
+    <article className={styles.newsCard}>
+      <a className={styles.newsLink} href={card.href}>
+        <span className={styles.newsMedia}>
+          {card.image !== null ? (
+            <img
+              src={card.image.src}
+              alt=""
+              width={card.image.width}
+              height={card.image.height}
+              className={styles.newsImage}
+              loading="lazy"
+            />
+          ) : (
+            <span className={styles.newsFallback} aria-hidden="true" />
+          )}
+        </span>
+        {card.category !== null ? (
+          <span className={styles.newsCategory}>{card.category}</span>
+        ) : null}
+        <h3 className={styles.newsTitle}>{card.title}</h3>
+        {meta.length > 0 ? <span className={styles.newsMeta}>{meta.join(" · ")}</span> : null}
+      </a>
+    </article>
+  );
+  return article;
 }
 
 export async function generateMetadata({
@@ -44,7 +233,7 @@ export async function generateMetadata({
 
   if (data === null) {
     return {
-      title: "Serie nao encontrada",
+      title: "Série não encontrada",
       robots: { index: false, follow: false },
     };
   }
@@ -53,81 +242,69 @@ export async function generateMetadata({
   const shouldIndex = indexability.decision === "index";
   const title =
     view.metaTitle ??
-    `${view.title}${view.periodLabel !== null ? ` (${view.periodLabel})` : ""} - Serie`;
+    `${view.title}${view.periodLabel !== null ? ` (${view.periodLabel})` : ""} — Série`;
 
   const metadata: Metadata = {
     title,
-    robots: shouldIndex
-      ? { index: true, follow: true }
-      : { index: false, follow: false },
+    robots: shouldIndex ? { index: true, follow: true } : { index: false, follow: false },
     alternates: { canonical: canonicalUrl },
   };
-  if (view.metaDescription !== null) {
-    metadata.description = view.metaDescription;
-  }
+  if (view.metaDescription !== null) metadata.description = view.metaDescription;
   return metadata;
 }
 
-export default async function SeriesPage({
-  params,
-}: {
-  params: Promise<SeriesPageParams>;
-}) {
+export default async function SeriesPage({ params }: { params: Promise<SeriesPageParams> }) {
   const { slug } = await params;
   const data = await getSeriesPageData(slug);
   if (data === null) notFound();
 
-  // Slug nao-canonico (alias antigo) nunca responde 200: 308 para o canonico.
   const redirectPath = canonicalRedirectPath(SERIES_INDEX_PATH, slug, data.canonicalSlug);
   if (redirectPath !== null) permanentRedirect(redirectPath);
 
   const { view, indexability, canonicalUrl, relatedNews, cast, watch, externalIds } = data;
   const isUnderReview = indexability.decision !== "index";
 
-  // Ficha tecnica factual: periodo fica no <h1>; a ficha complementa com
-  // situacao (tv_shows.status), contagem real de temporadas/episodios e idioma
-  // original — todos colunas reais, mapeadas em pt-BR. Ausente = omitido.
-  const facts = [
+  const heroMeta = [view.periodLabel, view.seasonsCountLabel, view.episodesCountLabel].filter(
+    (item): item is string => item !== null,
+  );
+  const facts: SeriesFact[] = [
+    view.periodLabel !== null ? { label: "Período", value: view.periodLabel } : null,
     view.statusLabel !== null ? { label: "Situação", value: view.statusLabel } : null,
-    view.seasonsCount !== null
-      ? { label: "Temporadas", value: String(view.seasonsCount) }
-      : null,
-    view.episodesCount !== null
-      ? { label: "Episódios", value: String(view.episodesCount) }
+    view.seasonsCountLabel !== null ? { label: "Temporadas", value: view.seasonsCountLabel } : null,
+    view.episodesCountLabel !== null
+      ? { label: "Episódios", value: view.episodesCountLabel }
       : null,
     view.originalLanguageLabel !== null
       ? { label: "Idioma original", value: view.originalLanguageLabel }
       : null,
-  ].filter((fact): fact is { label: string; value: string } => fact !== null);
-
-  // Links de identidade externa (mesmas fontes do `sameAs` do JSON-LD).
+  ].filter((fact): fact is SeriesFact => fact !== null);
   const externalLinks = buildExternalLinks(externalIds, "tv");
-
-  const summaryBlock =
-    view.blocks.find((block) => block.blockType === SUMMARY_BLOCK_TYPE) ?? null;
-  const mainBlocks = view.blocks.filter(
-    (block) => block.blockType !== SUMMARY_BLOCK_TYPE,
+  const critiqueBlock =
+    view.blocks.find((block) => block.blockType === REVIEW_BLOCK_TYPE) ?? null;
+  const editorialBlocks = view.blocks.filter(
+    (block) => block.blockType !== REVIEW_BLOCK_TYPE,
   );
-  const hasEditorial = mainBlocks.length > 0 || summaryBlock !== null;
+  const hasEditorial = editorialBlocks.length > 0;
   const hasSeasons = view.seasons.length > 0;
+  const hasDetails = facts.length > 0 || externalLinks.length > 0;
+  const visibleCast = cast.slice(0, 6);
+  const visibleNews = relatedNews.slice(0, 3);
 
   const breadcrumbJsonLd = {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
     itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Inicio", item: `${SITE_URL}/pt/` },
+      { "@type": "ListItem", position: 1, name: "Início", item: `${SITE_URL}/pt/` },
       {
         "@type": "ListItem",
         position: 2,
-        name: "Series",
+        name: "Séries",
         item: `${SITE_URL}${SERIES_INDEX_PATH}`,
       },
       { "@type": "ListItem", position: 3, name: view.title, item: canonicalUrl },
     ],
   };
 
-  // `@id`/`mainEntityOfPage` = URL canonica autorreferente e estavel da serie.
-  // `sameAs` so com IDs externos REAIS (nunca inventa). SEM AggregateRating.
   const seriesJsonLd: Record<string, unknown> = {
     "@context": "https://schema.org",
     "@type": "TVSeries",
@@ -138,203 +315,246 @@ export default async function SeriesPage({
   };
   if (view.firstAirYear !== null) seriesJsonLd.startDate = String(view.firstAirYear);
   if (view.lastAirYear !== null) seriesJsonLd.endDate = String(view.lastAirYear);
-  if (view.metaDescription !== null) {
-    seriesJsonLd.description = view.metaDescription;
-  }
+  if (view.metaDescription !== null) seriesJsonLd.description = view.metaDescription;
   const sameAs = buildSameAs(externalIds, "tv");
   if (sameAs.length > 0) seriesJsonLd.sameAs = sameAs;
 
   return (
-    <main className="series-page" data-vertical="series">
-      <div className="container">
-        <nav className="breadcrumb" aria-label="Trilha de navegacao">
-          <ol>
-            <li>
-              <a href="/pt/">Inicio</a>
-            </li>
-            <li>
-              <a href={SERIES_INDEX_PATH}>Series</a>
-            </li>
-            <li aria-current="page">{view.title}</li>
-          </ol>
-        </nav>
+    <main className={styles.page} data-vertical="series" data-screen="series-detail">
+      <section className={styles.hero} aria-labelledby="series-title">
+        <div className={styles.breadcrumbRow}>
+          <nav className={styles.breadcrumb} aria-label="Trilha de navegação">
+            <ol>
+              <li>
+                <a href={SERIES_INDEX_PATH}>Séries</a>
+              </li>
+              <li aria-hidden="true">/</li>
+              <li aria-current="page">{view.title}</li>
+            </ol>
+          </nav>
+        </div>
 
-        <section
-          className={`entity-topbar${view.media.poster !== null ? "" : " entity-topbar--solo"}`}
-          data-vertical="series"
-        >
-          {view.media.poster !== null ? (
-            <figure className="entity-topbar__poster">
+        <div className={`${styles.heroInner}${watch === null ? ` ${styles.heroInnerSolo}` : ""}`}>
+          <div className={styles.heroLead}>
+            <div className={styles.identityRow}>
+              <span className={styles.seriesBadge}>Série</span>
+            </div>
+            <h1 id="series-title" className={styles.title}>
+              {view.title}
+            </h1>
+            {heroMeta.length > 0 ? <p className={styles.heroMeta}>{heroMeta.join(" · ")}</p> : null}
+            {view.metaDescription !== null ? (
+              <p className={styles.heroSynopsis}>{view.metaDescription}</p>
+            ) : null}
+          </div>
+
+          {watch !== null ? (
+            <aside className={styles.watchPanel} aria-label="Disponibilidade legal">
+              <WatchAvailabilityPanel view={watch} />
+            </aside>
+          ) : null}
+        </div>
+      </section>
+
+      <section
+        className={`${styles.media}${
+          view.media.backdrop !== null
+            ? ` ${styles.mediaWithBackdrop}`
+            : ` ${styles.mediaPosterOnly}`
+        }`}
+        aria-labelledby="series-media-title"
+      >
+        <h2 id="series-media-title" className={styles.visuallyHidden}>
+          Mídia de {view.title}
+        </h2>
+        <div className={styles.mediaGrid}>
+          <figure className={styles.posterFrame}>
+            {view.media.poster !== null ? (
               <img
                 src={view.media.poster.src}
                 alt={`Pôster de ${view.title}`}
                 width={view.media.poster.width}
                 height={view.media.poster.height}
-                className="entity-topbar__poster-img"
+                className={styles.mediaImage}
+              />
+            ) : (
+              <span className={styles.posterFallback} aria-hidden="true" />
+            )}
+          </figure>
+          {view.media.backdrop !== null ? (
+            <figure className={styles.backdropFrame}>
+              <img
+                src={view.media.backdrop.src}
+                alt=""
+                width={view.media.backdrop.width}
+                height={view.media.backdrop.height}
+                className={styles.mediaImage}
               />
             </figure>
           ) : null}
-          <div className="entity-topbar__lead">
-            <p className="entity-topbar__badge">
-              <span data-vertical="series" className="screena-badge screena-badge--series">
-                Serie
-              </span>
-            </p>
-            <h1 className="entity-topbar__title">
-              {view.title}
-              {view.periodLabel !== null ? (
-                <span className="entity-topbar__year"> ({view.periodLabel})</span>
-              ) : null}
-            </h1>
-            <EntityFacts facts={facts} />
-            {view.metaDescription !== null ? (
-              <p className="entity-topbar__synopsis">{view.metaDescription}</p>
-            ) : null}
-            <EntityExternalIds links={externalLinks} />
-          </div>
-        </section>
-      </div>
-
-      {/* Backdrop real (16:9) full-bleed — sem rotulo/tiles decorativos. */}
-      {view.media.backdrop !== null ? (
-        <div className="entity-backdrop" data-vertical="series">
-          <img
-            src={view.media.backdrop.src}
-            alt=""
-            width={view.media.backdrop.width}
-            height={view.media.backdrop.height}
-            className="entity-backdrop__img"
-          />
         </div>
-      ) : null}
+      </section>
 
       {hasEditorial ? (
-        <div className="container">
-          <section className="series-synopsis">
-            <h2 className="series-section-title">Sinopse</h2>
-            <div className="series-synopsis__grid">
-              <div className="series-synopsis__main">
-                {mainBlocks.map((block) => (
-                  <div
-                    key={block.blockType}
-                    className="series-block"
-                    data-block-type={block.blockType}
-                  >
-                    <p className="series-block__body">{block.content}</p>
-                  </div>
-                ))}
-              </div>
+        <section className={styles.work} aria-labelledby="series-work-title">
+          <div className={styles.sectionKicker}>
+            <span aria-hidden="true" />
+            <h2 id="series-work-title">A obra</h2>
+          </div>
+          <div className={styles.editorialBody}>
+            {editorialBlocks.map((block, index) => (
+              <p
+                key={block.blockType}
+                className={index === 0 ? styles.editorialLead : styles.editorialParagraph}
+                data-block-type={block.blockType}
+              >
+                {block.content}
+              </p>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
-              {summaryBlock !== null ? (
-                <aside className="series-aside">
-                  <div className="series-spoiler-card" data-block-type={summaryBlock.blockType}>
-                    <div className="series-spoiler-card__mark" aria-hidden="true" />
-                    <div className="series-spoiler-card__text">
-                      <p className="series-spoiler-card__label">Resumo sem spoilers</p>
-                      <p className="series-spoiler-card__body">{summaryBlock.content}</p>
-                    </div>
-                  </div>
-                </aside>
-              ) : null}
+      {critiqueBlock !== null ? (
+        <section className={styles.critique} aria-labelledby="series-review-title">
+          {view.media.backdrop !== null ? (
+            <img
+              src={view.media.backdrop.src}
+              alt=""
+              width={view.media.backdrop.width}
+              height={view.media.backdrop.height}
+              className={styles.critiqueImage}
+              loading="lazy"
+            />
+          ) : null}
+          <span className={styles.critiqueSideScrim} aria-hidden="true" />
+          <span className={styles.critiqueBottomScrim} aria-hidden="true" />
+          <div className={styles.critiqueFrame}>
+            <div className={styles.critiqueContent}>
+              <h2 id="series-review-title" className={styles.critiqueLabel}>
+                Guia Screen · Crítica da redação
+              </h2>
+              <p
+                className={styles.critiqueText}
+                data-block-type={critiqueBlock.blockType}
+              >
+                {critiqueBlock.content}
+              </p>
             </div>
-          </section>
-        </div>
+          </div>
+        </section>
       ) : null}
 
       {hasSeasons ? (
-        <div className="container">
-          <section className="series-seasons" aria-labelledby="series-seasons-title">
-            <h2 id="series-seasons-title" className="series-section-title">
-              Temporadas
-            </h2>
-            <div className="series-seasons__list">
-              {view.seasons.map((season) => {
-                const seasonMeta = [
-                  season.episodeCountLabel,
-                  season.airYear !== null ? String(season.airYear) : null,
-                ].filter((item): item is string => item !== null);
-                return (
-                  <article
-                    key={season.seasonNumber}
-                    className="series-season"
-                    data-season-number={season.seasonNumber}
-                  >
-                    <div className="series-season__head">
-                      <h3 className="series-season__title">{season.title}</h3>
-                      {seasonMeta.length > 0 ? (
-                        <p className="series-season__meta">{seasonMeta.join(" / ")}</p>
-                      ) : null}
-                    </div>
-                    {season.overview !== null ? (
-                      <p className="series-season__overview">{season.overview}</p>
-                    ) : null}
-                    {season.episodes.length > 0 ? (
-                      <ol className="series-episode-list">
-                        {season.episodes.map((episode) => {
-                          const episodeMeta = [
-                            episode.runtimeLabel,
-                            episode.airYear !== null ? String(episode.airYear) : null,
-                          ].filter((item): item is string => item !== null);
-                          return (
-                            <li
-                              key={episode.episodeNumber}
-                              className="series-episode-list__item"
-                            >
-                              <span className="series-episode-list__number">
-                                E{episode.episodeNumber}
-                              </span>
-                              <span className="series-episode-list__content">
-                                <span className="series-episode-list__title">
-                                  {episode.title ?? `Episodio ${episode.episodeNumber}`}
-                                </span>
-                                {episodeMeta.length > 0 ? (
-                                  <span className="series-episode-list__meta">
-                                    {episodeMeta.join(" / ")}
-                                  </span>
-                                ) : null}
-                                {episode.overview !== null ? (
-                                  <span className="series-episode-list__overview">
-                                    {episode.overview}
-                                  </span>
-                                ) : null}
-                              </span>
-                            </li>
-                          );
-                        })}
-                      </ol>
-                    ) : null}
-                  </article>
-                );
-              })}
+        <section className={styles.episodes} aria-labelledby="series-episodes-title">
+          <div className={styles.episodesHeading}>
+            <div>
+              <div className={styles.sectionKicker}>
+                <span aria-hidden="true" />
+                <p>Catálogo</p>
+              </div>
+              <h2 id="series-episodes-title" className={styles.sectionTitle}>
+                Episódios
+              </h2>
             </div>
-          </section>
-        </div>
+            <nav className={styles.seasonNav} aria-label="Temporadas">
+              {view.seasons.map((season, index) => (
+                <a
+                  key={season.seasonNumber}
+                  className={index === 0 ? styles.seasonNavActive : styles.seasonNavLink}
+                  href={`#temporada-${season.seasonNumber}`}
+                >
+                  T{season.seasonNumber}
+                </a>
+              ))}
+            </nav>
+          </div>
+          <div className={styles.seasonsList}>
+            {view.seasons.map((season) => (
+              <SeasonGroup key={season.seasonNumber} season={season} />
+            ))}
+          </div>
+        </section>
       ) : null}
 
-      {/* Elenco principal (cast_members/people) — dado factual de catalogo. So
-          aparece quando ha elenco real; nunca inventa nomes nem personagens. */}
-      {cast.length > 0 ? (
-        <div className="container">
-          <CastStrip heading="Elenco principal" members={cast} />
-        </div>
+      {visibleCast.length > 0 ? (
+        <section className={styles.cast} aria-labelledby="series-cast-title">
+          <div className={styles.castHeading}>
+            <div>
+              <div className={styles.sectionKicker}>
+                <span aria-hidden="true" />
+                <p>Elenco</p>
+              </div>
+              <h2 id="series-cast-title" className={styles.sectionTitle}>
+                Elenco principal
+              </h2>
+            </div>
+          </div>
+          <ul className={styles.castGrid}>
+            {visibleCast.map((member, index) => (
+              <li key={`${member.name}-${index}`}>
+                <CastCard member={member} />
+              </li>
+            ))}
+          </ul>
+        </section>
       ) : null}
 
-      {/* Disponibilidade no Brasil (watch_availability licenciado). So aparece
-          com oferta `display_allowed = true`; hoje a ingestao grava `false` por
-          padrao, entao o painel fica omitido ate promocao humana explicita.
-          Nunca exibe pirataria, nota nem plataforma inventada. */}
-      {watch !== null ? (
-        <div className="container">
-          <WatchAvailabilityPanel view={watch} />
-        </div>
+      {visibleNews.length > 0 ? (
+        <section className={styles.news} aria-labelledby="series-news-title">
+          <div className={styles.newsHeading}>
+            <div>
+              <div className={styles.sectionKicker}>
+                <span aria-hidden="true" />
+                <p>Editorial</p>
+              </div>
+              <h2 id="series-news-title" className={styles.sectionTitle}>
+                Notícias e bastidores
+              </h2>
+              <p className={styles.newsDeck}>Contexto, entrevistas e cobertura da série.</p>
+            </div>
+            <a className={styles.allNewsLink} href="/pt/noticias/">
+              Ver tudo <ArrowIcon />
+            </a>
+          </div>
+          <div className={styles.newsGrid}>
+            {visibleNews.map((card) => (
+              <RelatedNewsCard key={card.href} card={card} />
+            ))}
+          </div>
+        </section>
       ) : null}
 
-      <RelatedNewsSection cards={relatedNews} />
+      {hasDetails ? (
+        <section className={styles.details} aria-labelledby="series-details-title">
+          <div className={styles.detailsColumn}>
+            <div className={styles.sectionKicker}>
+              <span aria-hidden="true" />
+              <h2 id="series-details-title">Ficha técnica</h2>
+            </div>
+            {facts.length > 0 ? (
+              <dl className={styles.facts}>
+                {facts.map((fact) => (
+                  <div key={fact.label} className={styles.factRow}>
+                    <dt>{fact.label}</dt>
+                    <dd>{fact.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            ) : null}
+            {externalLinks.length > 0 ? (
+              <div className={styles.externalLinks}>
+                <EntityExternalIds links={externalLinks} />
+              </div>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
 
       {isUnderReview ? (
-        <div className="container">
-          <p className="series-review-notice" data-editorial-state="in-review">
-            Esta pagina ainda esta em revisao editorial.
+        <div className={styles.reviewWrap}>
+          <p className={styles.reviewNotice} data-editorial-state="in-review">
+            Esta página ainda está em revisão editorial.
           </p>
         </div>
       ) : null}
