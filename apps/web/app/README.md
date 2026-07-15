@@ -5,9 +5,13 @@ indexavel deve respeitar as invariantes do CANON, em especial:
 
 - **Zero API externa no render** e **zero Gemini no render**: paginas leem
   apenas PostgreSQL/cache local.
-- **Gate anti-thin**: uma pagina so e indexavel se tiver **>= 2 blocos de
-  valor proprios** alem do dado cru de API (ver lista no CANON). Sem isso,
-  recebe `noindex`.
+- **Indexacao total** (invariante 5, politica 2026-07): toda entidade
+  sincronizada, licenciada e em idioma publicado indexa por padrao;
+  `noindex` fica so para caso tecnico (entidade sem slug/traducao/dados
+  estruturados confiaveis). Os blocos de valor proprios (ver lista no CANON)
+  **nao gateiam mais** a indexacao — sao alavanca de qualidade/ranqueamento
+  (`hasUniqueValue`), nao pre-requisito. O antigo gate anti-thin (`>= 2`
+  blocos para indexar) foi removido; ver `.claude/rules/seo.md` §1.
 - **Diferenciacao filme/serie nunca depende so da cor**: sempre
   `label + badge + breadcrumb + schema + URL`.
 

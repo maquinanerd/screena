@@ -7,9 +7,11 @@
  * desenvolvimento (o do `docker-compose.dev.yml`) para abrir a rota
  * `/pt/filmes/interestelar/` no navegador.
  *
- * Cria o minimo para a pagina ficar INDEXAVEL no gate anti-thin: movie + slug
- * canonico pt-BR + entity_translation pt-BR + 2 content_blocks renderizaveis
- * (`editorial_intro` + `cast_intro`, `published`/`human_reviewed`, `human`).
+ * Cria o minimo para a pagina ficar INDEXAVEL (a entidade ja indexaria so com
+ * slug + traducao, sob a politica de indexacao total) e "rica" em qualidade
+ * editorial (`hasUniqueValue=true`): movie + slug canonico pt-BR +
+ * entity_translation pt-BR + 2 content_blocks renderizaveis (`editorial_intro`
+ * + `cast_intro`, `published`/`human_reviewed`, `human`).
  *
  * Regras (alinhadas as invariantes):
  *  - ZERO rede, ZERO Gemini, ZERO TMDB: so escreve no PostgreSQL local via o
