@@ -2,29 +2,32 @@
 
 Assets estáticos da marca pública **Screen** (`https://thescreen.media`), servidos
 diretamente de `/brand/` pelo Next.js. A geometria usa o `viewBox 0 0 406 78` e
-as coordenadas do HTML canônico 13v. A interface renderiza o wordmark por meio do
-componente inline `ScreenLogo`, para que os glifos `<text>` usem a Montserrat
-variável auto-hospedada sem qualquer import externo.
+as coordenadas do pacote canônico histórico.
 
-O wordmark é `SCR` + caixa + `N` = **SCREEN** (a caixa substitui o "EE").
+O wordmark é `SCR` + caixa + `N` = **SCREEN** (a caixa substitui o “EE”).
+
+## Estado após o reset visual
+
+O header e o footer públicos usam apenas a marca textual `Screen`. Nenhum desses
+SVGs é renderizado pelo chrome atual. `screen-logo-black.svg` continua referenciado
+pela URL de logo no JSON-LD `Organization` da home; os demais assets ficam
+armazenados para o futuro port canônico, sem definir por si só a interface final.
 
 ## Arquivos
 
-| Arquivo                        | Texto  | Caixa (acento)       | Uso                                             |
-| ------------------------------ | ------ | -------------------- | ----------------------------------------------- |
-| `screen-logo-black.svg`        | preto  | preta (neutra)       | **Header e superfícies claras** (padrão em uso) |
-| `screen-logo-white.svg`        | branco | branca (neutra)      | Superfícies escuras                             |
-| `screen-logo-cinema.svg`       | preto  | vermelha (`#F0443E`) | Vertical Filme, fundo claro — _armazenado_      |
-| `screen-logo-series.svg`       | preto  | verde (`#7FA56F`)    | Vertical Série, fundo claro — _armazenado_      |
-| `screen-logo-cinema-white.svg` | branco | vermelha             | Vertical Filme, fundo escuro — _armazenado_     |
-| `screen-logo-series-white.svg` | branco | verde                | Vertical Série, fundo escuro — _armazenado_     |
+| Arquivo                        | Texto  | Caixa                | Estado atual                       |
+| ------------------------------ | ------ | -------------------- | ---------------------------------- |
+| `screen-logo-black.svg`        | preto  | preta, neutra        | JSON-LD da home e asset disponível |
+| `screen-logo-white.svg`        | branco | branca, neutra       | armazenado                         |
+| `screen-logo-cinema.svg`       | preto  | vermelha (`#F0443E`) | armazenado                         |
+| `screen-logo-series.svg`       | preto  | verde (`#7FA56F`)    | armazenado                         |
+| `screen-logo-cinema-white.svg` | branco | vermelha             | armazenado                         |
+| `screen-logo-series-white.svg` | branco | verde                | armazenado                         |
 
 ## Regras
 
-- Fundo claro → logo preta; fundo escuro → logo branca.
-- Header/footer usam o componente inline; estes arquivos continuam disponíveis
-  para metadata e superfícies que exigem URL de imagem.
-- As variações cinema (vermelha) e série (verde) estão **armazenadas** para uma fase
-  visual posterior. A diferenciação filme/série **nunca** depende só da cor
-  (invariante 11): sempre acompanha label + badge + breadcrumb + schema + URL.
+- Não reintroduzir um logo complexo no shell neutro.
+- O próximo uso visual deve seguir a fonte canônica aprovada do Claude Design.
+- A diferenciação filme/série nunca depende só da cor: deve continuar com label,
+  badge, breadcrumb, schema e URL.
 - Não converter para PNG nem hospedar externamente.
