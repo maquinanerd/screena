@@ -4,15 +4,17 @@
  *
  * Prova o fluxo:
  *   slugs canonicos pt-BR -> movies/tv_shows/people -> translations ->
- *   presenter (ordenacao/cap/imagem local) -> gate anti-thin.
+ *   presenter (ordenacao/cap/imagem local) -> indexabilidade (index/noindex).
  *
  * Nao sobe Next, nao chama rede, nao chama TMDB/Gemini e nao altera schema. A
  * imagem de file_path cru ("/raw.jpg") vira URL REMOTA do TMDB; path local permanece local.
  *
  * Cada getter de indice nao recebe argumentos, entao e chamado UMA vez, no estado
- * final semeado (evita qualquer memoizacao de `cache`): filmes ficam finos
- * (noindex), series/pessoas ficam suficientes (index). O caso vazio (0 itens ->
- * noindex) e coberto pelo teste puro `entity-index-presenter.test.ts`.
+ * final semeado (evita qualquer memoizacao de `cache`): politica 2026-07
+ * (indexacao total, invariante 5) — qualquer listagem com >= 1 item valido
+ * indexa; a quantidade de itens/blocos vira sinal de qualidade
+ * (`hasUniqueValue`), nao gate. O caso vazio (0 itens -> noindex, caso tecnico)
+ * e coberto pelo teste puro `entity-index-presenter.test.ts`.
  *
  * Uso: pnpm --filter @screena/web validate:entity-indexes
  */
@@ -195,7 +197,7 @@ async function runChecks(
     getPersonIndexData: () => Promise<EntityIndexData>;
   },
 ): Promise<void> {
-  // --- Filmes: 2 validos (fino -> noindex) + 1 sem slug canonico (excluido) ---
+  // --- Filmes: 2 validos (indexacao total -> index) + 1 sem slug canonico (excluido) ---
   await seedMovie(prisma, {
     tmdbId: 66000001,
     titleOriginal: "Movie A Original",
@@ -221,7 +223,7 @@ async function runChecks(
   const movie = await getters.getMovieIndexData();
   record(3, "Filmes: canonicalUrl /pt/filmes/", movie.canonicalUrl === "https://thescreen.media/pt/filmes/", `canonicalUrl=${movie.canonicalUrl}`);
   record(4, "Filmes: item sem slug canonico e excluido (totalCount=2)", movie.view.totalCount === 2, `totalCount=${movie.view.totalCount}`);
-  record(5, "Filmes: 2 itens (fino) -> noindex", movie.indexability.decision === "noindex", `decision=${movie.indexability.decision}`);
+  record(5, "Filmes: 2 itens (indexacao total, invariante 5) -> index", movie.indexability.decision === "index", `decision=${movie.indexability.decision}`);
   record(6, "Filmes: ordem por ano desc (B 2020 antes de A 2010)", movie.view.cards[0]?.title === "Movie B Original" && movie.view.cards[1]?.title === "Filme A PT", `ordem=[${movie.view.cards.map((c) => c.title).join(", ")}]`);
   record(7, "Filmes: href aponta /pt/filmes/[slug]/", movie.view.cards[0]?.href === "/pt/filmes/filme-b/", `href0=${movie.view.cards[0]?.href}`);
   record(8, "Filmes: imagem local segura aparece", movie.view.cards[1]?.image?.src === "/media/movies/a.webp", `imgA=${movie.view.cards[1]?.image?.src ?? "null"}`);
