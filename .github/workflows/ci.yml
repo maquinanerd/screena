@@ -59,6 +59,9 @@ jobs:
       - name: Auditoria de render publico
         run: pnpm audit:render
 
+      - name: Cobertura de API — Fase 5 (drift do registry vs codigo)
+        run: pnpm api:coverage
+
       - name: Build do app publico
         run: pnpm build
 

@@ -1,0 +1,76 @@
+# providers.yaml — Catalogo dos PROVEDORES TECNICOS (provider_api) do Screen.
+#
+# Fase 5 — Registro de cobertura total das APIs. Este arquivo lista apenas
+# fornecedores TECNICOS (a camada que transporta o dado pela rede: chave em
+# `api_providers.key`). As FONTES EDITORIAIS de rating (imdb, rotten_tomatoes,
+# metacritic, letterboxd, filmaffinity) NUNCA aparecem aqui — sao `rating_source`
+# em `@screena/config`, jamais `provider_api` (invariante 2). Cada endpoint em
+# endpoints.json referencia um `provider.key` desta lista.
+#
+# Formato: YAML plano (uma lista `providers:` de mapas de escalares). Parseado por
+# scripts/audit/api-coverage-core.mjs:parseProvidersYaml — mantenha o subconjunto
+# plano (sem aninhamento). kind ∈ data|ratings|streaming|ai|news.
+
+providers:
+  - key: tmdb
+    provider_api: tmdb
+    kind: data
+    role: catalog
+    status: active
+    host: api.themoviedb.org
+    auth_env: TMDB_READ_ACCESS_TOKEN|TMDB_API_KEY
+    summary: "Fornecedor tecnico do catalogo (filmes/series/temporadas/episodios/pessoas). Client TS real @screena/tmdb-client, GET-only, worker-only. Descoberta de ids via Daily ID Exports (files.tmdb.org, sem token/cota)."
+
+  - key: gemini
+    provider_api: gemini
+    kind: ai
+    role: ai
+    status: active
+    host: generativelanguage.googleapis.com
+    auth_env: GEMINI_API_KEY
+    summary: "Gerador editorial OFFLINE (Entity Writer). Nao e fonte de fato nem de rating: reescreve payload controlado do PostgreSQL. Zero Gemini no render (invariantes 3, 4). Hoje so :generateContent single-shot."
+
+  - key: rapidapi_film_show_ratings
+    provider_api: rapidapi_film_show_ratings
+    kind: ratings
+    role: ratings
+    status: roadmap
+    host: film-show-ratings.p.rapidapi.com
+    auth_env: RAPIDAPI_FILM_SHOW_RATINGS_KEY
+    summary: "Agregador tecnico de notas via RapidAPI. NUNCA e rating_source: o worker services/ratings reatribui cada nota a fonte editorial real (imdb/rotten_tomatoes/...). Client real+wired, nunca executado ao vivo. Notas nascem display_allowed=false/unknown."
+
+  - key: imdb236
+    provider_api: imdb236
+    kind: ratings
+    role: ratings
+    status: seeded
+    host: rapidapi.com
+    auth_env: n/a
+    summary: "Provedor tecnico legado de notas IMDb (seed api_providers). Fornece transporte de notas cuja fonte editorial e imdb — provider_api != rating_source. Sem client dedicado em api-clients/ (fundacao anterior); nao executado."
+
+  - key: streaming_availability
+    provider_api: streaming_availability
+    kind: streaming
+    role: streaming
+    status: roadmap
+    host: streaming-availability.p.rapidapi.com
+    auth_env: RAPIDAPI_STREAMING_AVAILABILITY_KEY
+    summary: "Onde assistir (Movie of the Night, via RapidAPI). Client real+wired, nunca executado ao vivo. BR-only (filtro no worker). Ofertas nascem display_allowed=false: atribuicao+linkback obrigatorios (invariante 6)."
+
+  - key: kaso
+    provider_api: kaso
+    kind: streaming
+    role: streaming
+    status: inactive
+    host: n/a
+    auth_env: n/a
+    summary: "Fornecedor de disponibilidade FALLBACK. Stub README-only (sem src/). NAO usar no MVP enquanto streaming_availability resolver a entidade/pais. Apenas ofertas legais (invariante 8)."
+
+  - key: rssprime
+    provider_api: rssprime
+    kind: news
+    role: news
+    status: roadmap
+    host: n/a
+    auth_env: n/a
+    summary: "Upstream tecnico de feeds de noticias (RSSPRIME). Pipeline services/news-ingestion e roadmap (README + worker Python Fase 0 stub). Nunca cria entidades: so linka as existentes. en/es nascem draft/noindex."
