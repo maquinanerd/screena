@@ -1,154 +1,162 @@
 # ADR 0002 — Hardening do schema e da governança de dados (Fase 2)
 
 - **Status:** proposto (Fase 2 / `feat/data-governance-hardening-v2`) — **requer revisão humana de banco antes do merge**.
-- **Data:** 2026-07-15 (revisto após a 1ª revisão humana de banco).
+- **Data:** 2026-07-15 (revisto após a 1ª e a 2ª revisão humana de banco).
 - **Migration:** `packages/db/prisma/migrations/20260715120000_data_governance_hardening/migration.sql` (forward-only).
 - **Invariantes tocadas:** 2 (RatingSource ≠ ApiProvider), 5/6 (indexabilidade/licença), 9 (publicação editorial).
 
 ## Contexto
 
-A Auditoria 360 apontou 5 lacunas estruturais de banco. A 1ª revisão humana de
-banco encontrou 6 problemas estruturais nos quais **a migration poderia destruir
-justamente o dado histórico que a governança pretende proteger**. Este ADR
-reflete a versão **corrigida**: nenhuma linha some sem preservação, `provider_key`
-não é inventado, a identidade de oferta é extensível, e licença/indexabilidade
-têm histórico real. Validado em **PostgreSQL 16 efêmero**, dois cenários
-(Cenário A do zero: 43/43; Cenário B upgrade sobre estado anterior: 23/23).
+A Auditoria 360 apontou 5 lacunas de banco. Duas revisões humanas de banco
+endureceram o resultado: a **1ª** exigiu perda-zero, identidade extensível e
+histórico real; a **2ª** exigiu separar identidade de payload, tornar o
+fail-closed **permanente no banco** (não adiado), corrigir os **consumidores
+reais** (stores de streaming) e travar os testes de migration na **CI**. Este
+ADR reflete o estado final. Validado em PostgreSQL 16 efêmero: Cenário A
+(scratch) 45/45, Cenário B (upgrade) 23/23, integração dos stores 8/8.
 
 ## Princípio central
 
-**Perda-zero.** Nenhum `DELETE`/`NULL` destrutivo ocorre sem antes gravar um
-snapshot em quarentena auditável:
-- `entity_reference_orphans` — refs polimórficas órfãs removidas.
-- `data_migration_quarantine` (genérica, JSONB) — duplicatas de streaming
-  removidas (`watch_dedup_removed`) e `provider_key` inválido anulado
-  (`source_license_invalid_provider`), com snapshot completo + campos-chave.
+**Perda-zero + fail-closed estrutural.** Nenhum `DELETE`/`NULL` destrutivo sem
+snapshot em quarentena (`entity_reference_orphans`, `data_migration_quarantine`).
+E `display_allowed=true` é **impossível no banco** sem governança completa.
 
 ## Decisões por gap
 
 ### 1. Referências polimórficas — registro `entities` + FK composta (§13)
 
-Tabela fina `entities (entity_type, entity_id)` (PK composta) mantida por
-**triggers** das 5 raízes; toda tabela polimórfica ganha **FK composta**
-(`ON DELETE RESTRICT`). Órfãos → `entity_reference_orphans` **antes** de
-removidos; FK `NOT VALID → VALIDATE` (locks breves). Deletar entidade-raiz com
-dependente é RESTRINGIDO (integridade por design; testado — A21).
+`entities (entity_type, entity_id)` mantida por triggers das 5 raízes; FK
+composta (`ON DELETE RESTRICT`) em 12 tabelas; órfãos → quarentena antes de
+removidos; FK `NOT VALID → VALIDATE`. Deletar raiz com dependente é RESTRINGIDO
+(A21).
 
-### 2. `WatchAvailability` — identidade extensível, sem inventar provider (§10/§11/§2/§3 da revisão)
+### 2. `WatchAvailability` — IDENTIDADE ≠ PAYLOAD + fail-closed permanente
 
-- **`provider_key` NÃO é derivado de `provider_name`.** O nome de exibição é
-  instável (muda, é traduzido, tem acentos/caixa, varia comercialmente, colide
-  entre marcas). `provider_key` vem de identificador **técnico** da API / tabela
-  canônica / mapeamento governado; ausente ⇒ permanece **NULL** (sinal
-  `missing-provider`, nunca inventado). Testado: A36 (fica NULL), A37 (acentos
-  geram identidades distintas — "Max" ≠ "Máx").
-- **Identidade da oferta = fingerprint canônico versionado** `watch_offer_fingerprint(...)`
-  (função IMMUTABLE, versão `wa:v1`, delimitador `chr(31)`), usada num **índice
-  único funcional** e na deduplicação. **Prioriza `external_offer_id`** (ID
-  estável da API); na ausência dele, usa a **tupla completa** que diferencia
-  ofertas reais (provider técnico, +fallback só-de-comparação ao `provider_name`
-  normalizado; modalidade, **package, qualidade, preço+moeda, deep_link,
-  web_url, validade**). Ofertas legitimamente distintas por package/preço/
-  validade/URL **nunca colapsam** (A38 preço, A43 package, A39 external_offer_id
-  como identidade). Trocar o algoritmo = `wa:v2` em migration dedicada.
-- **Dedup preservando integralmente:** só colapsa fingerprints idênticos; a
-  linha sobrevivente é a aprovada mais recente; **todas as removidas vão para
-  `data_migration_quarantine`** com snapshot JSONB + `surviving_id` +
-  `dedupe_fingerprint` (statement único: arquiva-antes-de-apagar). Testado: B20,
-  B23 (removidas = arquivadas).
-- **Reconciliação aprovação × payload (fail-closed):** uma oferta só aparece
-  publicamente se `approved_payload_hash` = fingerprint atual. A migration
-  força `display_allowed=false` onde não corresponde (ou hash nulo). Aprovação
-  **não** sobrevive a payload diferente (B21). *Deferido à Fase 9:* CHECK
-  permanente + o CLI de promoção (mergeado, anterior a esta coluna) passando a
-  setar `approved_payload_hash = fingerprint`. Enquanto isso, o enforcement é no
-  upgrade; a Fase 9 o torna permanente.
+- **Duas funções SQL versionadas (SHA-256 via pgcrypto — não MD5):**
+  - `watch_offer_identity_key_v1(...)` = **identidade estável** (índice único
+    funcional). Só o que identifica o MESMO objeto: entidade, país, **modalidade**,
+    `provider_api`, e **`external_offer_id`** (prioritário, escopado por
+    `provider_api`) OU provider **técnico** (`provider_key`; fallback ao
+    `provider_name` normalizado **só quando null**, sem tocar a coluna) + package.
+    **Não** inclui preço/moeda/URLs/validade. ⇒ mesmo id em `provider_api`
+    diferentes não colide (A39); modalidades diferentes não colidem; rebranding
+    com `provider_key` estável não muda a identidade (A37); mudança de preço não
+    cria nova identidade (A38).
+  - `watch_offer_payload_fingerprint_v1(...)` = tudo que, ao mudar, exige nova
+    revisão (identidade + `provider_name` + package + quality + preço/moeda +
+    URLs + validade + licença/atribuição). `approved_payload_hash` guarda ESTE
+    fingerprint. Serialização documentada: campos por `chr(31)`, nulls via
+    `COALESCE(...,'')`, texto `lower(btrim)`, numeric/timestamp `::text`
+    determinístico, enums `::text`. **Computado sempre no banco** (nunca em TS) —
+    sem divergência de linguagem.
+- **`provider_key` NUNCA derivado de `provider_name`** (nome é instável); ausente
+  ⇒ NULL (`missing-provider`) (A36).
+- **Trigger PERMANENTE `watch_availability_display_guard`** (não adiado): toda
+  INSERT/UPDATE que ligue `display_allowed` exige `approved_payload_hash` =
+  fingerprint atual + `reviewed_at`/`reviewed_by` + licença permitida +
+  atribuição/linkback quando exigidos. **É impossível publicar oferta sem
+  governança** (A33; integração store 8).
+- **Dedup por identidade, com arquivamento:** duplicatas de identidade → survivor
+  aprovado/recente; removidas → `data_migration_quarantine` (snapshot + surviving_id).
+- **Reconciliação (backfill):** `display_allowed=false` onde o hash aprovado ≠
+  fingerprint do payload (B21).
 
-### 3. `SourceLicense` — histórico imutável + relações verificáveis (§4/§5 da revisão)
+### 3. `SourceLicense` — histórico imutável + relações verificáveis (§12)
 
-- **RatingSource ≠ ApiProvider (inv. 2):** `rating_source_key` (FK→rating_sources),
-  `provider_key` (FK→api_providers), `territory_code` (FK→countries). CHECKs:
-  rating exige fonte; `rating_source_key ≠ provider_key`.
-- **Histórico real** (mesmo padrão de PageIndexabilityDecision): `is_current`,
-  `supersedes_id` (auto-FK), `decision_origin`, `policy_version`, `valid_from/until`,
-  `decided_by/at`. **Índice único PARCIAL WHERE is_current** por
-  (source_key, content_type, provider, território) — múltiplas decisões
-  sucessivas coexistem; nenhuma é sobrescrita (A40, B19).
-- **`provider_key` inválido não some em silêncio:** snapshot + valor antigo →
-  `data_migration_quarantine`, **depois** anula a FK e força a linha
-  **fail-closed** (`display_allowed=false`, `license_status=unknown`). Testado:
-  B17 (quarentena), B18 (fail-closed).
+FKs distintas `rating_source_key`/`provider_key`/`territory_code` (inv. 2). CHECKs
+rating-exige-fonte e `rating_source_key ≠ provider_key`. **Histórico real:**
+`is_current` + `supersedes_id` + **cadeia construída por `LAG`** (cada licença
+liga à anterior por grupo) + **índice único PARCIAL WHERE is_current** + **guard
+trigger** (supersedes só do MESMO source_key/content_type/provider/território; sem
+autorreferência/ciclo direto). A40, A45, B19. `provider_key` inválido →
+quarentenado + fail-closed (B17/B18).
 
-### 4. `PageIndexabilityDecision` — decisão vigente + CADEIA histórica (§6 da revisão)
+### 4. `PageIndexabilityDecision` — vigente + cadeia real (§9)
 
-`is_current` + índice único parcial. **A cadeia `supersedes_id` é realmente
-construída** (backfill com `LAG`: cada decisão aponta para a imediatamente
-anterior por grupo; a mais antiga fica NULL). Troca atômica insere
-`supersedes_id = id da vigente anterior`. **Guarda estrutural** (trigger):
-`supersedes_id` só referencia decisão do MESMO (entity_type, entity_id,
-language_code). Testado: B22 (cadeia index→draft→noindex), A34 (troca atômica),
-A42 (guarda barra cross-group).
+`is_current` + partial-unique + **cadeia `supersedes_id` construída por `LAG`** +
+guard trigger cross-grupo. A34/A42/B22.
 
-### 5. Editorial (§14) — `articles`/`article_translations`
+### 5. Editorial (§14)
 
-`articles`: CHECK category/author não-vazios **com backfill `'' → NULL` antes**
-(B15). `article_translations`: decisão consciente de **não** acoplar
-review/index/published por CHECK (quebraria o fluxo editorial real; fail-closed
-vive no presenter `isPublishableArticle`).
+`articles`: CHECK category/author não-vazios com backfill `'' → NULL` antes
+(B15). `article_translations`: **não** acopla review/index/published por CHECK
+(decisão consciente; fail-closed vive no presenter).
 
-### 6. Contrato de licença cobre vídeo (§7 da revisão)
+### 6. Contrato de licença cobre vídeo (§7 rev.1)
 
-Enum `SourceLicenseContentType` ganhou `video` (Fase 7 — biblioteca de vídeo
-TMDB: trailers/teasers/clips/featurettes). Distingue rating/watch_availability/
-review/video/news/image/other. Testado: A41.
+Enum `SourceLicenseContentType` ganhou `video` (Fase 7). A41.
+
+## Consumidores reais (stores de streaming) — corrigidos
+
+O contrato novo só é seguro porque os stores existentes deixaram de violá-lo:
+
+- **`watch-store.ts`**: era `DELETE`+`INSERT` (apagava revisão/histórico). Agora
+  **reconciliação por identidade** (`INSERT ... ON CONFLICT (identidade) DO
+  UPDATE`): atualiza só payload do sync, **revoga `display_allowed` quando o
+  payload aprovado muda** (aprovação não sobrevive), e ofertas **sumidas** são
+  revogadas + marcadas stale, **nunca apagadas**. `display_allowed` nunca é ligado
+  aqui.
+- **`watch-review-store.ts`**: `promote(ids, reviewer)` exige **revisor humano** e
+  grava atomicamente `display_allowed` + `reviewed_at` + `reviewed_by` +
+  `approved_payload_hash` (= fingerprint). O trigger valida licença/atribuição;
+  oferta incompleta fica fail-closed (não promove). `--reviewer` obrigatório no
+  CLI para `--confirm`.
+- **Typecheck:** os adapters de `src/persistence/**` do streaming saíram da
+  exclusão do `tsconfig` raiz — agora são type-checados.
+- **Testes:** integração real contra PostgreSQL efêmero
+  (`services/streaming/scripts/validate-stores-real-postgres.ts`, 8/8): sync
+  preserva revisão, re-sync não duplica, promoção sem revisor falha, oferta
+  incompleta é fail-closed, promoção governada liga display+hash, mudança de
+  payload revoga, oferta sumida é revogada (não apagada), banco rejeita display
+  inválido.
 
 ## Migration: forward-only, locks, rollout
 
-- Forward-only, sem down migration (correção = migration corretiva).
-- Ordem segura: quarentena/backfill/dedup **antes** de cada constraint; FK
-  composta `NOT VALID → VALIDATE`; índices únicos após normalização.
-- Idempotente (`ON CONFLICT DO NOTHING`, `WHERE IS NULL`, `IS DISTINCT FROM`).
-- **Locks:** `CREATE UNIQUE INDEX` (não CONCURRENTLY) trava a tabela alvo —
-  aceitável agora (watch/licença/indexabilidade vazias/mínimas em produção);
-  escala futura → `CONCURRENTLY` em migration dedicada. Triggers e `NOT VALID`
-  tomam lock breve.
-- Rollout via `prisma migrate deploy` no job de release (Fase 14). Nunca contra
-  banco remoto nesta PR.
+Forward-only, sem down migration. Ordem: quarentena/backfill/dedup **antes** de
+constraint; FK `NOT VALID → VALIDATE`; índices únicos e triggers após
+normalização; `pgcrypto` criada de forma idempotente. `CREATE UNIQUE INDEX` não
+concorrente (aceitável no volume atual; escala → `CONCURRENTLY` dedicado). Rollout
+via `prisma migrate deploy` no release (Fase 14). Nunca contra banco remoto.
+
+## CI
+
+O workflow passa a rodar, em runner Linux, após o Prisma generate:
+`db:validate:real`, `db:validate:upgrade` e `validate:stores` (streaming). Os
+Cenários A/B e a integração dos stores deixam de ser só locais.
 
 ## Impacto nos consumidores
 
-Prisma Client ganha campos novos, todos **opcionais/`@default`** → código
-existente compila e roda sem mudança (build `@screena/web` verde; `validate:all`
-118/118). Novos: modelo `Entity`, tabelas raw `entity_reference_orphans` e
-`data_migration_quarantine`, valor de enum `video`.
+Prisma Client ganha campos novos, todos opcionais/`@default` (build `@screena/web`
+verde; `validate:all` 118/118). Novos: `Entity`, `entity_reference_orphans`,
+`data_migration_quarantine`, enum `video`, coluna `external_offer_id`.
 
 ## Contratos congelados para as próximas fases
 
-- **Fase 3:** ler a decisão **vigente** (`is_current`) de
-  `page_indexability_decisions` como fato persistido de indexabilidade.
-- **Fase 9:** popula `external_offer_id`/licença/atribuição/`reviewed_*`/
-  `approved_payload_hash`/`web_url`/`package`; decide se algum campo novo entra
-  no fingerprint (`wa:v2`); torna a reconciliação aprovação×payload um CHECK
-  permanente e atualiza o CLI de promoção.
+- **Fase 3:** ler a decisão vigente (`is_current`) de
+  `page_indexability_decisions`.
+- **Fase 9:** popula `external_offer_id`/licença/atribuição via os stores já
+  governança-compatíveis; pode evoluir o fingerprint (`wa:v2`) numa migration
+  dedicada.
 - **Fase 10:** usa `content_type` + `rating_source_key` (FK) e o histórico de
   licença.
 
 ## Riscos residuais
 
-1. `CREATE UNIQUE INDEX` não-concorrente (mitigado pelo baixo volume atual).
+1. `CREATE UNIQUE INDEX` não-concorrente (mitigado pelo volume atual).
 2. Deleção de entidade-raiz com dependentes é RESTRINGIDA (integridade por design).
-3. Reconciliação aprovação×payload é enforçada no **upgrade**; o **CHECK
-   permanente** + update do CLI de promoção é Fase 9 (o CLI mergeado antecede a
-   coluna `approved_payload_hash`). Documentado, não silencioso.
 
-## O que este ADR NÃO afirma (correções da revisão)
+## O que este ADR NÃO afirma (correções das revisões)
 
-- **NÃO** afirma que `provider_key` nulo é "preservado" enquanto a migration o
-  inventa — a migration **não** inventa (removido).
-- **NÃO** afirma cadeia histórica de `supersedes_id` enquanto os campos ficam
-  nulos — a cadeia é **construída** por backfill (B22).
-- **NÃO** afirma que a chave natural de streaming está "congelada" — é um
-  fingerprint **versionado e extensível** (`wa:v1`), com a Fase 9 podendo evoluir
-  para `wa:v2`.
-- **NÃO** afirma "nenhuma linha apagada sem preservação" sem cumprir — o dedup de
-  streaming **arquiva** cada linha removida em `data_migration_quarantine`.
+- **NÃO** afirma que `provider_key` nulo é "preservado" enquanto o inventa — a
+  migration/stores **não** inventam.
+- **NÃO** afirma cadeia histórica de `supersedes_id` sem construí-la — é
+  construída por `LAG` em `page_indexability_decisions` **e** `source_licenses`,
+  com guard triggers.
+- **NÃO** afirma identidade "congelada" — é fingerprint **versionado** (`wai:v1`),
+  separado do payload (`wap:v1`).
+- **NÃO** afirma "nada apagado sem preservação" sem cumprir — dedup arquiva em
+  quarentena; stores não fazem DELETE cego.
+- **NÃO** adia o fail-closed para a Fase 9 — o trigger permanente já o garante no
+  banco, e os stores reais foram corrigidos.
+- **NÃO** afirma que a CI comprova os cenários sem rodá-los — os três validadores
+  entraram no workflow.
