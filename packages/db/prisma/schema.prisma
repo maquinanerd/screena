@@ -715,17 +715,22 @@ model ExternalRating {
 // DISPONIBILIDADE / SEO (polimorfico)
 // ============================================================
 
-// Hardening (2026-07): `providerKey` PERMANECE opcional de proposito — o
-// worker de streaming (services/streaming) usa `providerKey = null` como sinal
-// legitimo de "provedor nao identificado pela API" (guardrail de promocao
-// rejeita essas linhas como `missing-provider`; ver
-// services/streaming/src/promotion/guardrails.ts). Forcar NOT NULL aqui
-// destruiria esse sinal. A chave natural de deduplicacao e
-// (entity_type, entity_id, country_code, offer_type, COALESCE(provider_key,
-// provider_name), quality) — quando provider_key falta, cai para
-// `providerName` (sempre preenchido) em vez de colapsar todas as ofertas
-// "sem provider_key" da mesma entidade/pais/modalidade numa so linha (duas
-// plataformas diferentes sem slug tecnico continuam distintas).
+// Hardening (2026-07): `providerKey` PERMANECE opcional de proposito — o worker
+// usa `providerKey = null` como sinal legitimo de "provedor nao identificado
+// pela API" (missing-provider); NUNCA e derivado do provider_name.
+//
+// IDENTIDADE vs PAYLOAD (duas funcoes SQL versionadas, SHA-256; ver ADR 0002):
+//  - `watch_offer_identity_key_v1(...)` = IDENTIDADE ESTAVEL da oferta (indice
+//    unico funcional). So o que identifica o MESMO objeto: entidade, pais,
+//    modalidade, provider_api, e external_offer_id (prioritario) OU provider
+//    tecnico (provider_key; fallback provider_name normalizado so quando null) +
+//    package. NAO inclui preco/URLs/validade.
+//  - `watch_offer_payload_fingerprint_v1(...)` = tudo que, ao mudar, exige nova
+//    revisao (identidade + provider_name + package + quality + preco/moeda +
+//    URLs + validade + licenca/atribuicao). `approved_payload_hash` guarda ESTE
+//    fingerprint. Trigger permanente `watch_availability_display_guard` torna
+//    IMPOSSIVEL `display_allowed=true` sem hash=fingerprint + reviewed_at/by +
+//    licenca permitida + atribuicao/linkback (fail-closed no banco).
 model WatchAvailability {
   id                  BigInt        @id @default(autoincrement())
   entityType          EntityType    @map("entity_type")

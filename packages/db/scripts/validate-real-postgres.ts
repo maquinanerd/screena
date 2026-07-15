@@ -365,17 +365,24 @@ async function runChecks(url: string): Promise<void> {
     ))[0].c);
     record(32, "CHECK source_licenses_rating_source_ne_provider existe", neCheck === 1, `constraints=${neCheck}`);
 
-    // 33. watch_availability: linha com forma de PROMOCAO (licenca + atribuicao +
-    //     linkback + revisor + fingerprint do payload aprovado) persiste e le de volta.
-    await exec(`INSERT INTO watch_availability (entity_type, entity_id, country_code, provider_name, provider_key, offer_type, license_status, display_allowed, requires_attribution, requires_linkback, attribution_text, attribution_url, reviewed_by, reviewed_at, approved_payload_hash, updated_at) VALUES ('movie', ${movieId}, 'BR', 'Apple TV', 'apple_tv', 'buy', 'official', true, true, true, 'Oferta via Apple TV', 'https://tv.apple.com/', 'revisor@screen', now(), 'sha256:deadbeef', now())`);
-    const promoted = (await q<{ approved_payload_hash: string | null; reviewed_by: string | null; attribution_url: string | null }>(
-      `SELECT approved_payload_hash, reviewed_by, attribution_url FROM watch_availability WHERE entity_id = ${movieId} AND provider_key = 'apple_tv'`,
+    // 33. PROMOCAO fail-closed pelo TRIGGER PERMANENTE: display_allowed=true so
+    //     com governanca completa. Insere oferta totalmente governada
+    //     (display=false), tenta ligar com hash ERRADO (barrado pelo trigger),
+    //     depois liga com o fingerprint correto do payload (aceito).
+    await exec(`INSERT INTO watch_availability (entity_type, entity_id, country_code, provider_name, provider_key, offer_type, provider_api, license_status, requires_attribution, requires_linkback, attribution_text, attribution_url, reviewed_by, reviewed_at, updated_at) VALUES ('movie', ${movieId}, 'BR', 'Apple TV', 'apple_tv', 'buy', 'streaming_availability', 'official', true, true, 'Oferta via Apple TV', 'https://tv.apple.com/', 'revisor@screen', now(), now())`);
+    let wrongHashRejected = false;
+    try {
+      await exec(`UPDATE watch_availability SET display_allowed=true, approved_payload_hash='HASH_ERRADO' WHERE entity_id=${movieId} AND provider_key='apple_tv'`);
+    } catch {
+      wrongHashRejected = true;
+    }
+    await exec(`UPDATE watch_availability SET display_allowed=true, approved_payload_hash = watch_offer_payload_fingerprint_v1(provider_api, external_offer_id, entity_type, entity_id, country_code, offer_type, provider_key, provider_name, package, quality, price, currency, deep_link, web_url, available_from, available_until, license_status, requires_attribution, requires_linkback, attribution_text, attribution_url) WHERE entity_id=${movieId} AND provider_key='apple_tv'`);
+    const promoted = (await q<{ display_allowed: boolean; reviewed_by: string | null }>(
+      `SELECT display_allowed, reviewed_by FROM watch_availability WHERE entity_id = ${movieId} AND provider_key = 'apple_tv'`,
     ))[0];
-    record(33, "watch_availability guarda fingerprint/atribuicao/revisor da promocao",
-      promoted?.approved_payload_hash === "sha256:deadbeef" &&
-        promoted?.reviewed_by === "revisor@screen" &&
-        promoted?.attribution_url === "https://tv.apple.com/",
-      `hash=${promoted?.approved_payload_hash}, revisor=${promoted?.reviewed_by}`);
+    record(33, "promocao fail-closed: hash errado barrado; hash correto + governanca aceito",
+      wrongHashRejected && promoted?.display_allowed === true && promoted?.reviewed_by === "revisor@screen",
+      `wrongRejected=${wrongHashRejected}, display=${promoted?.display_allowed}`);
 
     // 34. troca ATOMICA de decisao vigente: UPDATE atual->false + INSERT novo->true
     //     numa unica transacao (o indice unico parcial nunca ve duas vigentes).
@@ -417,17 +424,18 @@ async function runChecks(url: string): Promise<void> {
     }
     record(37, "acentos geram identidade distinta ('Max' != 'Max' acentuado)", accentDistinct, accentDistinct ? "ambas aceitas" : "colidiram (nao deveriam)");
 
-    // 38. Mesma plataforma/modalidade/qualidade, PRECOS diferentes = ofertas
-    //     DISTINTAS (nao colapsam).
-    await exec(`INSERT INTO watch_availability (entity_type, entity_id, country_code, provider_name, offer_type, price, currency, updated_at) VALUES ('movie', ${movieId}, 'BR', 'Prime Video', 'rent', 9.90, 'BRL', now())`);
-    let priceDistinct = false;
-    try {
-      await exec(`INSERT INTO watch_availability (entity_type, entity_id, country_code, provider_name, offer_type, price, currency, updated_at) VALUES ('movie', ${movieId}, 'BR', 'Prime Video', 'rent', 19.90, 'BRL', now())`);
-      priceDistinct = true;
-    } catch {
-      priceDistinct = false;
-    }
-    record(38, "precos diferentes = ofertas distintas (nao colapsam)", priceDistinct, priceDistinct ? "ambas aceitas" : "colidiram (nao deveriam)");
+    // 38. PRECO e PAYLOAD, nao identidade: a mesma oferta com outro preco tem a
+    //     MESMA identidade (a 2a e barrada pelo unique de identidade). Um preco
+    //     diferente muda o PAYLOAD (invalida a aprovacao), nao cria nova oferta.
+    await exec(`INSERT INTO watch_availability (entity_type, entity_id, country_code, provider_name, offer_type, price, currency, updated_at) VALUES ('movie', ${movieId}, 'BR', 'Globoplay', 'rent', 9.90, 'BRL', now())`);
+    await expectViolation(38, "preco e payload (nao identidade): mesma oferta com outro preco e barrada",
+      `INSERT INTO watch_availability (entity_type, entity_id, country_code, provider_name, offer_type, price, currency, updated_at) VALUES ('movie', ${movieId}, 'BR', 'Globoplay', 'rent', 19.90, 'BRL', now())`);
+    // e o fingerprint do PAYLOAD muda com o preco (aprovacao deixaria de valer).
+    const payloadDiff = (await q<{ diff: boolean }>(
+      `SELECT watch_offer_payload_fingerprint_v1('sa',NULL,'movie'::"EntityType",${movieId},'BR','rent'::"OfferType",NULL,'Globoplay',NULL,NULL,9.90,'BRL',NULL,NULL,NULL,NULL,'unknown'::"LicenseStatus",true,true,NULL,NULL)
+              <> watch_offer_payload_fingerprint_v1('sa',NULL,'movie'::"EntityType",${movieId},'BR','rent'::"OfferType",NULL,'Globoplay',NULL,NULL,19.90,'BRL',NULL,NULL,NULL,NULL,'unknown'::"LicenseStatus",true,true,NULL,NULL) AS diff`,
+    ))[0].diff;
+    record(44, "payload fingerprint muda com o preco (mesma identidade, payload diferente)", payloadDiff === true, `diff=${payloadDiff}`);
 
     // 39. external_offer_id e a IDENTIDADE quando presente: duas linhas com o
     //     MESMO id externo sao a MESMA oferta (mudanca de preco = update, nao nova
@@ -483,6 +491,15 @@ async function runChecks(url: string): Promise<void> {
       packageDistinct = false;
     }
     record(43, "packages diferentes = ofertas distintas (nao colapsam)", packageDistinct, packageDistinct ? "ambas aceitas" : "colidiram (nao deveriam)");
+
+    // 45. source_licenses: guard estrutural barra supersedes_id cross-group
+    //     (fonte/tipo/provider/territorio diferentes). Usa a licenca vigente de
+    //     rotten_tomatoes como alvo de um supersedes vindo de imdb.
+    const rtLic = (await q<{ id: bigint }>(
+      `SELECT id FROM source_licenses WHERE source_key='rotten_tomatoes' AND is_current=true LIMIT 1`,
+    ))[0];
+    await expectViolation(45, "source_licenses: supersedes_id cross-group barrado pelo guard",
+      `INSERT INTO source_licenses (source_key, content_type, rating_source_key, is_current, supersedes_id, updated_at) VALUES ('imdb', 'rating', 'imdb', false, ${Number(rtLic.id)}, now())`);
   } finally {
     await prisma.$disconnect();
   }

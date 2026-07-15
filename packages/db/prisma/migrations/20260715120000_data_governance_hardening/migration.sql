@@ -251,10 +251,25 @@ CREATE INDEX "source_licenses_territory_code_idx" ON "source_licenses"("territor
 CREATE INDEX "source_licenses_is_current_idx" ON "source_licenses"("is_current");
 CREATE INDEX "source_licenses_supersedes_id_idx" ON "source_licenses"("supersedes_id");
 
--- HISTORICO imutavel: por (source_key, content_type, provider, territorio),
--- so a linha mais recente fica is_current=true; duplicatas historicas viram
--- is_current=false (NENHUMA apagada). Idempotente. Depois: indice unico PARCIAL
--- garante 1 licenca VIGENTE por grupo (mesmo padrao de PageIndexabilityDecision).
+-- HISTORICO imutavel — CADEIA supersedes: por (source_key, content_type,
+-- provider, territorio) ordena cronologicamente e liga CADA licenca a
+-- IMEDIATAMENTE anterior (a mais antiga fica NULL). Constroi a cadeia de verdade
+-- (nao so escolhe a corrente). Idempotente. Nenhuma linha apagada.
+WITH ordered AS (
+  SELECT "id",
+         LAG("id") OVER (
+           PARTITION BY "source_key", "content_type",
+                        COALESCE("provider_key", ''), COALESCE("territory_code", '')
+           ORDER BY COALESCE("decided_at", "updated_at", "created_at") ASC, "id" ASC
+         ) AS prev_id
+  FROM "source_licenses"
+)
+UPDATE "source_licenses" sl
+SET "supersedes_id" = ordered.prev_id
+FROM ordered
+WHERE ordered."id" = sl."id" AND sl."supersedes_id" IS DISTINCT FROM ordered.prev_id;
+
+-- is_current: so a mais recente por grupo fica vigente; as demais historico.
 WITH ranked AS (
   SELECT "id",
          ROW_NUMBER() OVER (
@@ -273,6 +288,39 @@ DROP INDEX IF EXISTS "source_licenses_default_unique";
 CREATE UNIQUE INDEX "source_licenses_current_unique"
   ON "source_licenses" ("source_key", "content_type", COALESCE("provider_key", ''), COALESCE("territory_code", ''))
   WHERE "is_current" = true;
+
+-- Guarda ESTRUTURAL: supersedes_id so aponta para licenca do MESMO grupo
+-- (source_key, content_type, provider_key, territory_code); proibe
+-- autorreferencia e ciclo direto (A->B->A). Espelha o guard de
+-- PageIndexabilityDecision.
+CREATE OR REPLACE FUNCTION source_license_supersedes_same_group() RETURNS trigger AS $$
+DECLARE
+  parent "source_licenses"%ROWTYPE;
+BEGIN
+  IF NEW."supersedes_id" IS NOT NULL THEN
+    IF NEW."supersedes_id" = NEW."id" THEN
+      RAISE EXCEPTION 'source_licenses: supersedes_id nao pode ser autorreferencia';
+    END IF;
+    SELECT * INTO parent FROM "source_licenses" WHERE "id" = NEW."supersedes_id";
+    IF NOT FOUND
+       OR parent."source_key" <> NEW."source_key"
+       OR parent."content_type" <> NEW."content_type"
+       OR parent."provider_key" IS DISTINCT FROM NEW."provider_key"
+       OR parent."territory_code" IS DISTINCT FROM NEW."territory_code"
+    THEN
+      RAISE EXCEPTION 'source_licenses: supersedes_id % deve referenciar licenca do mesmo (source_key, content_type, provider_key, territory_code)', NEW."supersedes_id";
+    END IF;
+    IF parent."supersedes_id" = NEW."id" THEN
+      RAISE EXCEPTION 'source_licenses: ciclo direto de supersedes_id proibido';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER "source_licenses_supersedes_guard"
+  BEFORE INSERT OR UPDATE ON "source_licenses"
+  FOR EACH ROW EXECUTE FUNCTION source_license_supersedes_same_group();
 
 -- ============================================================
 -- 3) watch_availability — chave natural + licenca/atribuicao propria
@@ -303,16 +351,60 @@ ALTER TABLE "watch_availability"
 CREATE INDEX "watch_availability_provider_key_idx" ON "watch_availability"("provider_key");
 CREATE INDEX "watch_availability_external_offer_id_idx" ON "watch_availability"("external_offer_id");
 
--- Fingerprint canonico VERSIONADO ('wa:v1') da IDENTIDADE de uma oferta.
--- IMMUTABLE => usavel em indice unico funcional. Prioriza o ID externo da API;
--- na ausencia dele, usa a TUPLA COMPLETA que diferencia ofertas reais: provider
--- tecnico (+ fallback so-de-comparacao ao provider_name normalizado lower/btrim,
--- acentos preservados => "Max" != "Max" acentuado), modalidade, package,
--- qualidade, preco+moeda, deep_link, web_url e validade. Ofertas legitimamente
--- distintas por package/preco/validade/URL NUNCA colapsam. Delimitador chr(31)
--- (unit separator) evita colisao entre campos. Trocar o algoritmo = nova versao
--- ('wa:v2') em migration dedicada que reconstroi o indice. Ver ADR 0002.
-CREATE OR REPLACE FUNCTION watch_offer_fingerprint(
+-- SHA-256 (pgcrypto) e a base dos fingerprints — nao MD5 (perda-zero exige
+-- resistencia a colisao forte). Extensao criada de forma segura e idempotente.
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+-- IDENTIDADE ESTAVEL da oferta (`wai:v1`), IMMUTABLE, para o indice unico e a
+-- deduplicacao. Contem SO o que identifica a oferta como o MESMO objeto ao longo
+-- do tempo: entidade, pais, MODALIDADE, provider_api (escopa o external id),
+-- e — em ordem de prioridade — external_offer_id (autoritativo por provider_api)
+-- OU o provider TECNICO (provider_key; SO como fallback o provider_name
+-- normalizado quando provider_key e NULL) + package/plano. NAO inclui preco,
+-- moeda, URLs nem validade (esses sao payload MUTAVEL — ver payload fingerprint).
+-- Assim: mesmo external id em provider_api diferentes nao colide; modalidades
+-- diferentes nao colidem; rebranding com provider_key estavel nao muda a
+-- identidade; mudanca de preco NAO cria nova identidade (invalida a aprovacao do
+-- MESMO objeto). Serializacao: campos por chr(31); nulls via COALESCE(...,'');
+-- texto lower(btrim(...)); enums ::text; sem timezone (nao ha data na identidade).
+CREATE OR REPLACE FUNCTION watch_offer_identity_key_v1(
+  p_provider_api TEXT,
+  p_external_offer_id TEXT,
+  p_entity_type "EntityType",
+  p_entity_id BIGINT,
+  p_country_code TEXT,
+  p_offer_type "OfferType",
+  p_provider_key TEXT,
+  p_provider_name TEXT,
+  p_package TEXT
+) RETURNS TEXT AS $$
+  SELECT encode(digest(
+    'wai:v1' || chr(31) ||
+    p_entity_type::text || chr(31) || p_entity_id::text || chr(31) ||
+    lower(btrim(p_country_code)) || chr(31) ||
+    p_offer_type::text || chr(31) ||
+    COALESCE(lower(btrim(p_provider_api)), '') || chr(31) ||
+    CASE
+      WHEN p_external_offer_id IS NOT NULL AND btrim(p_external_offer_id) <> ''
+        THEN 'xid' || chr(31) || btrim(p_external_offer_id)
+      ELSE 'prv' || chr(31) ||
+        COALESCE(p_provider_key, 'nm:' || lower(btrim(p_provider_name)), '') || chr(31) ||
+        COALESCE(lower(btrim(p_package)), '')
+    END
+  , 'sha256'), 'hex');
+$$ LANGUAGE sql IMMUTABLE;
+
+-- FINGERPRINT DO PAYLOAD (`wap:v1`), IMMUTABLE. Cobre TUDO que, ao mudar, exige
+-- NOVA revisao humana: a identidade + provider_name exibido + package +
+-- qualidade + preco + moeda + deep_link + web_url + validade inicial/final +
+-- license_status + requires_attribution/linkback + attribution_text/url.
+-- `approved_payload_hash` guarda ESTE fingerprint (nao a chave de identidade):
+-- se o payload muda, o hash aprovado deixa de valer e a exibicao cai fail-closed.
+-- Casas decimais: preco pelo ::text do numeric armazenado; datas ::text de
+-- TIMESTAMP sem timezone (determinista). O fingerprint e computado SEMPRE no
+-- banco (funcao), nunca reimplementado em TypeScript — sem risco de divergencia.
+CREATE OR REPLACE FUNCTION watch_offer_payload_fingerprint_v1(
+  p_provider_api TEXT,
   p_external_offer_id TEXT,
   p_entity_type "EntityType",
   p_entity_id BIGINT,
@@ -327,89 +419,128 @@ CREATE OR REPLACE FUNCTION watch_offer_fingerprint(
   p_deep_link TEXT,
   p_web_url TEXT,
   p_available_from TIMESTAMP,
-  p_available_until TIMESTAMP
+  p_available_until TIMESTAMP,
+  p_license_status "LicenseStatus",
+  p_requires_attribution BOOLEAN,
+  p_requires_linkback BOOLEAN,
+  p_attribution_text TEXT,
+  p_attribution_url TEXT
 ) RETURNS TEXT AS $$
-  SELECT md5(
-    'wa:v1' || chr(31) ||
-    p_entity_type::text || chr(31) || p_entity_id::text || chr(31) ||
-    lower(btrim(p_country_code)) || chr(31) ||
-    CASE
-      WHEN p_external_offer_id IS NOT NULL AND btrim(p_external_offer_id) <> ''
-        THEN 'id' || chr(31) || btrim(p_external_offer_id)
-      ELSE 'fp' || chr(31) ||
-        p_offer_type::text || chr(31) ||
-        COALESCE(p_provider_key, '') || chr(31) ||
-        COALESCE(lower(btrim(p_provider_name)), '') || chr(31) ||
-        COALESCE(lower(btrim(p_package)), '') || chr(31) ||
-        COALESCE(lower(btrim(p_quality)), '') || chr(31) ||
-        COALESCE(p_price::text, '') || chr(31) ||
-        COALESCE(lower(btrim(p_currency)), '') || chr(31) ||
-        COALESCE(btrim(p_deep_link), '') || chr(31) ||
-        COALESCE(btrim(p_web_url), '') || chr(31) ||
-        COALESCE(p_available_from::text, '') || chr(31) ||
-        COALESCE(p_available_until::text, '')
-    END
-  );
+  SELECT encode(digest(
+    'wap:v1' || chr(31) ||
+    watch_offer_identity_key_v1(p_provider_api, p_external_offer_id, p_entity_type,
+      p_entity_id, p_country_code, p_offer_type, p_provider_key, p_provider_name, p_package) || chr(31) ||
+    COALESCE(lower(btrim(p_provider_name)), '') || chr(31) ||
+    COALESCE(lower(btrim(p_package)), '') || chr(31) ||
+    COALESCE(lower(btrim(p_quality)), '') || chr(31) ||
+    COALESCE(p_price::text, '') || chr(31) ||
+    COALESCE(lower(btrim(p_currency)), '') || chr(31) ||
+    COALESCE(btrim(p_deep_link), '') || chr(31) ||
+    COALESCE(btrim(p_web_url), '') || chr(31) ||
+    COALESCE(p_available_from::text, '') || chr(31) ||
+    COALESCE(p_available_until::text, '') || chr(31) ||
+    p_license_status::text || chr(31) ||
+    p_requires_attribution::text || chr(31) ||
+    p_requires_linkback::text || chr(31) ||
+    COALESCE(p_attribution_text, '') || chr(31) ||
+    COALESCE(p_attribution_url, '')
+  , 'sha256'), 'hex');
 $$ LANGUAGE sql IMMUTABLE;
 
--- Dedup ANTES do indice unico, com PRESERVACAO INTEGRAL. So colapsa linhas com
--- fingerprint IDENTICO (mesma identidade) — ofertas distintas por
--- package/preco/validade/URL tem fingerprints diferentes e NAO sao tocadas.
--- Survivor = aprovada + observacao mais recente. TODAS as removidas vao para
--- data_migration_quarantine com snapshot JSONB completo + surviving_id +
--- fingerprint (statement unico: arquiva-antes-de-apagar, atomico).
-WITH fp AS (
+-- Dedup ANTES do indice unico, por IDENTIDADE, com PRESERVACAO INTEGRAL. So
+-- colapsa linhas com a MESMA identidade (mesmo objeto de oferta); duas
+-- observacoes do mesmo objeto com preco/URL diferentes sao a MESMA identidade —
+-- fica a mais recente e as demais vao para data_migration_quarantine com
+-- snapshot JSONB completo + surviving_id + identity_key (statement unico:
+-- arquiva-antes-de-apagar, atomico).
+WITH idk AS (
   SELECT wa."id", wa."display_allowed", wa."reviewed_at", wa."updated_at", wa."created_at",
-         watch_offer_fingerprint(wa."external_offer_id", wa."entity_type", wa."entity_id",
-           wa."country_code", wa."offer_type", wa."provider_key", wa."provider_name",
-           wa."package", wa."quality", wa."price", wa."currency", wa."deep_link",
-           wa."web_url", wa."available_from", wa."available_until") AS fingerprint
+         watch_offer_identity_key_v1(wa."provider_api", wa."external_offer_id", wa."entity_type",
+           wa."entity_id", wa."country_code", wa."offer_type", wa."provider_key",
+           wa."provider_name", wa."package") AS identity_key
   FROM "watch_availability" wa
 ),
 ranked AS (
-  SELECT "id", fingerprint,
-         ROW_NUMBER() OVER (PARTITION BY fingerprint
+  SELECT "id", identity_key,
+         ROW_NUMBER() OVER (PARTITION BY identity_key
            ORDER BY "display_allowed" DESC, COALESCE("reviewed_at", "updated_at", "created_at") DESC, "id" DESC) AS rn,
-         first_value("id") OVER (PARTITION BY fingerprint
+         first_value("id") OVER (PARTITION BY identity_key
            ORDER BY "display_allowed" DESC, COALESCE("reviewed_at", "updated_at", "created_at") DESC, "id" DESC) AS survivor_id
-  FROM fp
+  FROM idk
 ),
-dupes AS (SELECT "id", fingerprint, survivor_id FROM ranked WHERE rn > 1),
+dupes AS (SELECT "id", identity_key, survivor_id FROM ranked WHERE rn > 1),
 archived AS (
   INSERT INTO "data_migration_quarantine" ("source_table", "source_row_id", "issue", "detail")
   SELECT 'watch_availability', wa."id", 'watch_dedup_removed',
          to_jsonb(wa) || jsonb_build_object(
            'surviving_id', d.survivor_id,
-           'dedupe_fingerprint', d.fingerprint,
-           'reason', 'oferta com fingerprint identico a survivor')
+           'dedupe_fingerprint', d.identity_key,
+           'reason', 'oferta com identidade identica a survivor')
   FROM "watch_availability" wa JOIN dupes d ON d."id" = wa."id"
   RETURNING 1
 )
 DELETE FROM "watch_availability" wa USING dupes d WHERE wa."id" = d."id";
 
--- FAIL-CLOSED: uma oferta so aparece publicamente se o payload aprovado
--- (approved_payload_hash) corresponder EXATAMENTE a identidade atual (fingerprint).
--- Aprovacao NAO sobrevive a um payload diferente. Legado: hash null +
--- display_allowed false => nada muda. (Enforcement PERMANENTE por CHECK, com o
--- CLI de promocao setando approved_payload_hash = fingerprint, fica para a
--- Fase 9 — o CLI mergeado antecede esta coluna. Ver ADR 0002.)
+-- FAIL-CLOSED (backfill): uma oferta so aparece publicamente se
+-- approved_payload_hash corresponder ao FINGERPRINT DO PAYLOAD atual. Legado:
+-- hash null + display false => nada muda. Enforcement PERMANENTE pelo trigger
+-- abaixo (nao adiado).
 UPDATE "watch_availability" wa
 SET "display_allowed" = false
 WHERE wa."display_allowed" = true
   AND (wa."approved_payload_hash" IS NULL
-       OR wa."approved_payload_hash" IS DISTINCT FROM watch_offer_fingerprint(
-         wa."external_offer_id", wa."entity_type", wa."entity_id", wa."country_code",
-         wa."offer_type", wa."provider_key", wa."provider_name", wa."package",
-         wa."quality", wa."price", wa."currency", wa."deep_link", wa."web_url",
-         wa."available_from", wa."available_until"));
+       OR wa."approved_payload_hash" IS DISTINCT FROM watch_offer_payload_fingerprint_v1(
+         wa."provider_api", wa."external_offer_id", wa."entity_type", wa."entity_id",
+         wa."country_code", wa."offer_type", wa."provider_key", wa."provider_name",
+         wa."package", wa."quality", wa."price", wa."currency", wa."deep_link",
+         wa."web_url", wa."available_from", wa."available_until", wa."license_status",
+         wa."requires_attribution", wa."requires_linkback", wa."attribution_text", wa."attribution_url"));
 
--- Indice unico sobre a IDENTIDADE (fingerprint funcional). Ofertas distintas
--- nao colidem; verdadeiras duplicatas (mesma identidade) sim.
+-- Indice unico sobre a IDENTIDADE. Ofertas distintas nao colidem; verdadeiras
+-- duplicatas (mesma identidade) sim.
 CREATE UNIQUE INDEX "watch_availability_offer_identity"
-  ON "watch_availability" (watch_offer_fingerprint(
-    "external_offer_id", "entity_type", "entity_id", "country_code", "offer_type",
-    "provider_key", "provider_name", "package", "quality", "price", "currency",
-    "deep_link", "web_url", "available_from", "available_until"));
+  ON "watch_availability" (watch_offer_identity_key_v1(
+    "provider_api", "external_offer_id", "entity_type", "entity_id", "country_code",
+    "offer_type", "provider_key", "provider_name", "package"));
+
+-- TRIGGER PERMANENTE (fail-closed no BANCO, nao so no runtime): apos o merge, e
+-- IMPOSSIVEL ter display_allowed=true sem governanca completa. Toda
+-- INSERT/UPDATE que ligue display_allowed exige: approved_payload_hash =
+-- fingerprint atual do payload; reviewed_at e reviewed_by presentes;
+-- license_status que permita exibicao; atribuicao/linkback presentes quando
+-- exigidos. Falha => a linha nao pode ficar publica.
+CREATE OR REPLACE FUNCTION watch_availability_display_guard() RETURNS trigger AS $$
+BEGIN
+  IF NEW."display_allowed" THEN
+    IF NEW."approved_payload_hash" IS NULL
+       OR NEW."approved_payload_hash" <> watch_offer_payload_fingerprint_v1(
+            NEW."provider_api", NEW."external_offer_id", NEW."entity_type", NEW."entity_id",
+            NEW."country_code", NEW."offer_type", NEW."provider_key", NEW."provider_name",
+            NEW."package", NEW."quality", NEW."price", NEW."currency", NEW."deep_link",
+            NEW."web_url", NEW."available_from", NEW."available_until", NEW."license_status",
+            NEW."requires_attribution", NEW."requires_linkback", NEW."attribution_text", NEW."attribution_url")
+    THEN RAISE EXCEPTION 'watch_availability fail-closed: approved_payload_hash ausente ou != fingerprint do payload atual';
+    END IF;
+    IF NEW."reviewed_at" IS NULL OR NEW."reviewed_by" IS NULL OR btrim(NEW."reviewed_by") = '' THEN
+      RAISE EXCEPTION 'watch_availability fail-closed: reviewed_at/reviewed_by obrigatorios para display_allowed';
+    END IF;
+    IF NEW."license_status" NOT IN ('official', 'licensed', 'third_party') THEN
+      RAISE EXCEPTION 'watch_availability fail-closed: license_status % nao permite exibicao', NEW."license_status";
+    END IF;
+    IF NEW."requires_attribution" AND (NEW."attribution_text" IS NULL OR btrim(NEW."attribution_text") = '') THEN
+      RAISE EXCEPTION 'watch_availability fail-closed: attribution_text exigido ausente';
+    END IF;
+    IF NEW."requires_linkback" AND (NEW."attribution_url" IS NULL OR btrim(NEW."attribution_url") = '') THEN
+      RAISE EXCEPTION 'watch_availability fail-closed: attribution_url (linkback) exigido ausente';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER "watch_availability_display_guard_trg"
+  BEFORE INSERT OR UPDATE ON "watch_availability"
+  FOR EACH ROW EXECUTE FUNCTION watch_availability_display_guard();
 
 -- ============================================================
 -- 4) page_indexability_decisions — decisao vigente inequivoca + historico
