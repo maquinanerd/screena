@@ -17,7 +17,13 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "audit:invariants": "node scripts/audit/check-invariants.mjs",
-    "audit:render": "node scripts/audit/check-render-purity.mjs"
+    "audit:render": "node scripts/audit/check-render-purity.mjs",
+    "validate:news-pages": "corepack pnpm --filter @screena/web validate:news-pages",
+    "validate:entity-indexes": "corepack pnpm --filter @screena/web validate:entity-indexes",
+    "validate:movie-page": "corepack pnpm --filter @screena/web validate:movie-page",
+    "validate:series-page": "corepack pnpm --filter @screena/web validate:series-page",
+    "validate:person-page": "corepack pnpm --filter @screena/web validate:person-page",
+    "validate:all": "corepack pnpm --filter @screena/web validate:all"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
