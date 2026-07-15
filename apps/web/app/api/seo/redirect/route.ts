@@ -1,5 +1,5 @@
 /**
- * /api/_seo/redirect — Resolucao Node-runtime de REDIRECT PERSISTIDO (Fase 3, §10).
+ * /api/seo/redirect — Resolucao Node-runtime de REDIRECT PERSISTIDO (Fase 3, §10).
  *
  * O middleware roda no Edge e nao acessa Postgres; este route handler (Node) le
  * a tabela `redirects` e devolve a resolucao da cadeia como JSON. Fica sob

@@ -13,7 +13,7 @@ import {
  *  - Redireciona somente o path exato "/" com 307 temporario para o fallback.
  *  - Aplica REDIRECTS PERSISTIDOS (tabela `redirects`, Fase 3, §10): resolve a
  *    cadeia (301/302/alias, com deteccao de loop e teto de saltos) por um route
- *    handler Node (`/api/_seo/redirect`) — o middleware roda no Edge e nao
+ *    handler Node (`/api/seo/redirect`) — o middleware roda no Edge e nao
  *    acessa Postgres. FAIL-CLOSED: qualquer falha => sem redirect (segue o fluxo).
  *  - Nunca redireciona /pt/*, aliases como /filmes, APIs ou assets estaticos.
  *  - Enquanto en/es nao tiverem conteudo real publicado, o fallback da raiz e
@@ -33,7 +33,7 @@ async function resolvePersistedRedirect(
   request: NextRequest,
 ): Promise<PersistedRedirect | null> {
   try {
-    const lookupUrl = new URL("/api/_seo/redirect", request.nextUrl.origin);
+    const lookupUrl = new URL("/api/seo/redirect", request.nextUrl.origin);
     lookupUrl.searchParams.set("path", request.nextUrl.pathname);
     const response = await fetch(lookupUrl, {
       headers: { "x-screena-internal": "redirect-lookup" },
