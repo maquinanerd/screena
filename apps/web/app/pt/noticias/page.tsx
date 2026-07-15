@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
 
+import { serializeJsonLd } from '@screena/seo'
+
 import type { NewsCardView } from '../../../src/lib/news-presenter'
 import { HOME_PATH, SITE_URL } from '../../../src/lib/site'
 import { getNewsIndexData } from '../../../src/server/news-pages'
@@ -116,11 +118,11 @@ export default async function NewsIndexPage() {
 
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(collectionJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(collectionJsonLd) }}
       />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }}
       />
     </main>
   )

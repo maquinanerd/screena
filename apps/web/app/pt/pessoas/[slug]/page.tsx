@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { notFound, permanentRedirect } from 'next/navigation'
 
-import { buildSameAs } from '@screena/seo'
+import { buildSameAs, serializeJsonLd } from '@screena/seo'
 
 import { EntityExternalIds } from '../../../_components/entity-external-ids'
 import { canonicalRedirectPath } from '../../../../src/lib/canonical-redirect'
@@ -83,11 +83,10 @@ export async function generateMetadata({
     }
   }
 
-  const { view, indexability, canonicalUrl } = data
-  const shouldIndex = indexability.decision === 'index'
+  const { view, seo, canonicalUrl } = data
   const metadata: Metadata = {
     title: view.metaTitle ?? `${view.name} - Pessoa`,
-    robots: shouldIndex ? { index: true, follow: true } : { index: false, follow: false },
+    robots: seo.robots,
     alternates: { canonical: canonicalUrl },
   }
 
@@ -103,8 +102,8 @@ export default async function PersonPage({ params }: { params: Promise<PersonPag
   const redirectPath = canonicalRedirectPath(PESSOAS_INDEX_PATH, slug, data.canonicalSlug)
   if (redirectPath !== null) permanentRedirect(redirectPath)
 
-  const { view, indexability, canonicalUrl, relatedNews, externalIds } = data
-  const isUnderReview = indexability.decision !== 'index'
+  const { view, seo, canonicalUrl, relatedNews, externalIds } = data
+  const isUnderReview = seo.decision !== 'index'
   const hasCredits = view.credits.length > 0
   const personalDetails = collectPersonalDetails(view)
   const biography = [
@@ -244,11 +243,11 @@ export default async function PersonPage({ params }: { params: Promise<PersonPag
 
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(personJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(personJsonLd) }}
       />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }}
       />
     </main>
   )

@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { notFound, permanentRedirect } from 'next/navigation'
 import type { ReactNode } from 'react'
 
-import { buildSameAs } from '@screena/seo'
+import { buildSameAs, serializeJsonLd } from '@screena/seo'
 
 import { EntityExternalIds } from '../../../_components/entity-external-ids'
 import { WatchAvailabilityPanel } from '../../../_components/watch-availability-panel'
@@ -120,15 +120,14 @@ export async function generateMetadata({
     }
   }
 
-  const { view, indexability, canonicalUrl } = data
-  const shouldIndex = indexability.decision === 'index'
+  const { view, seo, canonicalUrl } = data
   const title =
     view.metaTitle ??
     `${view.title}${view.periodLabel !== null ? ` (${view.periodLabel})` : ''} — Série`
 
   const metadata: Metadata = {
     title,
-    robots: shouldIndex ? { index: true, follow: true } : { index: false, follow: false },
+    robots: seo.robots,
     alternates: { canonical: canonicalUrl },
   }
   if (view.metaDescription !== null) metadata.description = view.metaDescription
@@ -149,8 +148,8 @@ export default async function SeriesPage({
   const redirectPath = canonicalRedirectPath(SERIES_INDEX_PATH, slug, data.canonicalSlug)
   if (redirectPath !== null) permanentRedirect(redirectPath)
 
-  const { view, indexability, canonicalUrl, relatedNews, cast, watch, externalIds } = data
-  const isUnderReview = indexability.decision !== 'index'
+  const { view, seo, canonicalUrl, relatedNews, cast, watch, externalIds } = data
+  const isUnderReview = seo.decision !== 'index'
   const summary = [view.periodLabel, view.seasonsCountLabel, view.episodesCountLabel].filter(
     (item): item is string => item !== null,
   )
@@ -364,11 +363,11 @@ export default async function SeriesPage({
 
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(seriesJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(seriesJsonLd) }}
       />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }}
       />
     </main>
   )

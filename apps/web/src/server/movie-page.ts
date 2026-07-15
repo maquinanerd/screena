@@ -29,12 +29,14 @@ import {
   type IndexabilityResult,
 } from "../lib/movie-indexability";
 import { movieCanonicalUrl } from "../lib/site";
+import { resolveEntityPageSeo } from "./seo/indexability-decision";
 import { getRelatedNewsForEntity } from "./related-news";
 import { getCastForEntity } from "./entity-cast";
 import { getWatchAvailabilityForEntity } from "./entity-watch";
 import type { NewsCardView } from "../lib/news-presenter";
 import type { CastMemberView } from "../lib/cast-presenter";
 import type { WatchAvailabilityView } from "../lib/watch-availability-presenter";
+import type { PageSeoResolution } from "@screena/seo";
 
 /** Idioma de publicacao do MVP (invariante 7): pt-BR indexa primeiro. */
 const LANGUAGE_CODE = "pt-BR";
@@ -45,6 +47,11 @@ const ENTITY_TYPE = "movie";
 export interface MoviePageData {
   view: MoviePageView;
   indexability: IndexabilityResult;
+  /**
+   * Resolucao FINAL de SEO (Fase 3): fatos vivos + decisao VIGENTE persistida em
+   * page_indexability_decisions. Fonte unica de robots/canonical/sitemap.
+   */
+  seo: PageSeoResolution;
   canonicalSlug: string;
   canonicalUrl: string;
   /** Noticias relacionadas publicaveis (EntityNewsLink); [] quando nao houver. */
@@ -156,12 +163,28 @@ export const getMoviePageData = cache(
     });
 
     const canonicalSlug = canonicalSlugRow?.slug ?? slug;
+    const canonicalUrl = movieCanonicalUrl(canonicalSlug);
+
+    // Fonte unica da Fase 3: funde os fatos vivos com a decisao VIGENTE
+    // persistida em page_indexability_decisions (fail-closed em falha de banco).
+    const seo = await resolveEntityPageSeo(
+      { entityType: ENTITY_TYPE, entityId, languageCode: LANGUAGE_CODE },
+      {
+        language: LANGUAGE_CODE,
+        hasReliableStructuredData: true,
+        displayedRatings: [],
+        canonicalUrl,
+        valueBlocksCount: view.renderableBlockCount,
+      },
+      prisma,
+    );
 
     return {
       view,
       indexability,
+      seo,
       canonicalSlug,
-      canonicalUrl: movieCanonicalUrl(canonicalSlug),
+      canonicalUrl,
       relatedNews,
       cast,
       watch,

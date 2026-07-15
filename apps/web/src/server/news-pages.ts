@@ -20,6 +20,7 @@ import {
   buildNewsIndexView,
   evaluateArticleIndexability,
   evaluateNewsIndexIndexability,
+  isNewsAttributionSatisfied,
   isPublishableArticle,
   isSufficientBody,
   NEWS_RENDERABLE_REVIEW_STATUSES,
@@ -79,6 +80,10 @@ export const getNewsIndexData = cache(async (): Promise<NewsIndexData> => {
           readTimeMinutes: true,
           licenseStatus: true,
           displayAllowed: true,
+          requiresAttribution: true,
+          requiresLinkback: true,
+          sourceName: true,
+          sourceUrl: true,
         },
       },
     },
@@ -92,6 +97,10 @@ export const getNewsIndexData = cache(async (): Promise<NewsIndexData> => {
     readTimeMinutes: row.article.readTimeMinutes,
     licenseStatus: String(row.article.licenseStatus),
     displayAllowed: row.article.displayAllowed,
+    requiresAttribution: row.article.requiresAttribution,
+    requiresLinkback: row.article.requiresLinkback,
+    sourceName: row.article.sourceName,
+    sourceUrl: row.article.sourceUrl,
     slug: row.slug,
     title: row.title,
     deck: row.deck,
@@ -157,9 +166,15 @@ export const getNewsArticleData = cache(
         slug: translation.slug,
         title: translation.title,
         publishedAtIso: publishedIso,
+      }) ||
+      !isNewsAttributionSatisfied({
+        requiresAttribution: translation.article.requiresAttribution,
+        requiresLinkback: translation.article.requiresLinkback,
+        sourceName: translation.article.sourceName,
+        sourceUrl: translation.article.sourceUrl,
       })
     ) {
-      // Nao publicavel (rascunho, licenca/display bloqueados, sem data) -> 404.
+      // Nao publicavel (rascunho, licenca/display/atribuicao bloqueados) -> 404.
       return null;
     }
 

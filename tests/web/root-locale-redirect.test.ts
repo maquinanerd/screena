@@ -112,18 +112,22 @@ describe('root locale redirect', () => {
  * destino do redirect por um literal (ex.: "/en/"); estes aqui falham.
  */
 describe('middleware da raiz (comportamento)', () => {
+  // O middleware agora e assincrono (Fase 3: resolve redirects persistidos via
+  // um route handler Node). O request mock nao expoe `nextUrl.origin`, entao a
+  // resolucao de redirect persistido falha-fecha (sem rede) e o fluxo segue
+  // normal — exatamente o comportamento esperado para /pt/*.
   it.each([['pt-BR,pt;q=0.9'], ['es-ES,es;q=0.9'], ['en-US,en;q=0.9'], [null]])(
     'GET / com Accept-Language %s responde 307 para /pt/',
-    (acceptLanguage) => {
-      const response = middleware(createRequest('/', acceptLanguage))
+    async (acceptLanguage) => {
+      const response = await middleware(createRequest('/', acceptLanguage))
 
       expect(response.status).toBe(307)
       expect(response.headers.get('location')).toBe(`${ORIGIN}/pt/`)
     },
   )
 
-  it('nunca emite redirect permanente na raiz', () => {
-    const response = middleware(createRequest('/', 'pt-BR'))
+  it('nunca emite redirect permanente na raiz', async () => {
+    const response = await middleware(createRequest('/', 'pt-BR'))
 
     expect(response.status).not.toBe(301)
     expect(response.status).not.toBe(308)
@@ -131,16 +135,20 @@ describe('middleware da raiz (comportamento)', () => {
 
   it.each([['/pt/'], ['/pt/filmes/'], ['/filmes/'], ['/pt/series/interstellar/']])(
     'nao redireciona a rota ja prefixada %s',
-    (pathname) => {
-      const response = middleware(createRequest(pathname, 'en-US,en;q=0.9'))
+    async (pathname) => {
+      const response = await middleware(createRequest(pathname, 'en-US,en;q=0.9'))
 
       expect(response.status).toBe(200)
       expect(response.headers.get('location')).toBeNull()
     },
   )
 
-  it('anota o locale resolvido nas rotas nao-raiz', () => {
-    expect(middleware(createRequest('/pt/filmes/')).headers.get('x-screena-locale')).toBe('pt')
-    expect(middleware(createRequest('/en/movies/')).headers.get('x-screena-locale')).toBe('en')
+  it('anota o locale resolvido nas rotas nao-raiz', async () => {
+    expect(
+      (await middleware(createRequest('/pt/filmes/'))).headers.get('x-screena-locale'),
+    ).toBe('pt')
+    expect(
+      (await middleware(createRequest('/en/movies/'))).headers.get('x-screena-locale'),
+    ).toBe('en')
   })
 })
