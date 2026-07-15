@@ -7,7 +7,7 @@
  * com banco real, o fluxo de leitura da rota /pt/filmes/[slug]:
  *
  *   slug pt-BR -> movie -> entity_translation -> content_blocks -> presenter ->
- *   gate anti-thin (indexability index/noindex).
+ *   indexabilidade (index/noindex, politica 2026-07 de indexacao total).
  *
  * Chama DIRETAMENTE `getMoviePageData(slug)` (a mesma camada server-only que a
  * pagina usa) — NAO sobe servidor Next, NAO renderiza React, NAO abre rede.
@@ -247,7 +247,7 @@ async function runChecks(prisma: PrismaLike, getMoviePageData: GetMoviePageData)
   const thinZero = await getMoviePageData("filme-thin-zero");
   record(4, "B. filme com 0 blocos publicos retorna dados (nao null)", thinZero !== null, `retorno=${thinZero ? "objeto" : "null"}`);
   record(5, "B. renderableBlockCount === 0", thinZero?.view.renderableBlockCount === 0, `count=${thinZero?.view.renderableBlockCount}`);
-  record(6, "B. indexability.decision === noindex", thinZero?.indexability.decision === "noindex", `decision=${thinZero?.indexability.decision}`);
+  record(6, "B. indexability.decision === index (indexacao total; 0 blocos e sinal de qualidade, nao gate)", thinZero?.indexability.decision === "index", `decision=${thinZero?.indexability.decision}`);
   record(
     7,
     "B/G. metaDescription NAO inventada (null sem dado)",
@@ -269,7 +269,8 @@ async function runChecks(prisma: PrismaLike, getMoviePageData: GetMoviePageData)
     `poster=${thinZero?.view.media.poster?.src}`,
   );
 
-  // --- C. Filme com 1 bloco publico -> ainda noindex (gate anti-thin). -----
+  // --- C. Filme com 1 bloco publico -> ainda index (indexacao total; o ------
+  // bloco vira sinal de qualidade/ranqueamento, nao pre-requisito). ---------
   await seedMovie(prisma, {
     tmdbId: 94000002,
     titleOriginal: "One Block Movie",
@@ -284,9 +285,9 @@ async function runChecks(prisma: PrismaLike, getMoviePageData: GetMoviePageData)
   });
   const oneBlock = await getMoviePageData("filme-um-bloco");
   record(9, "C. renderableBlockCount === 1", oneBlock?.view.renderableBlockCount === 1, `count=${oneBlock?.view.renderableBlockCount}`);
-  record(10, "C. indexability.decision === noindex (1 bloco < gate)", oneBlock?.indexability.decision === "noindex", `decision=${oneBlock?.indexability.decision}`);
+  record(10, "C. indexability.decision === index (indexacao total; 1 bloco nao gateia mais)", oneBlock?.indexability.decision === "index", `decision=${oneBlock?.indexability.decision}`);
 
-  // --- D. Filme com 2 blocos publicos -> index. ----------------------------
+  // --- D. Filme com 2 blocos publicos -> index (e hasUniqueValue=true). ----
   // Tambem cobre E (seguranca de blocos), F (canonical) e G (presenter).
   const richId = await seedMovie(prisma, {
     tmdbId: 94000003,
@@ -463,7 +464,7 @@ async function main(): Promise<void> {
     console.error("FALHAS:", failed.map((f) => `${f.n}.${f.name}`).join(" | "));
     process.exit(1);
   }
-  console.log("Resultado: PASSOU. Pagina de filme validada lendo PostgreSQL real (gate anti-thin incluso).");
+  console.log("Resultado: PASSOU. Pagina de filme validada lendo PostgreSQL real (indexacao total, invariante 5).");
 }
 
 main().catch((e) => {
