@@ -11,12 +11,18 @@
   },
   "sideEffects": false,
   "license": "UNLICENSED",
+  "scripts": {
+    "validate:stores": "tsx scripts/validate-stores-real-postgres.ts"
+  },
   "dependencies": {
     "@screena/db": "workspace:*",
     "@screena/rapidapi-core": "workspace:*",
     "@screena/streaming-availability-client": "workspace:*"
   },
   "devDependencies": {
+    "@prisma/client": "^6.1.0",
+    "embedded-postgres": "16.14.0-beta.17",
+    "prisma": "^6.1.0",
     "tsx": "^4.19.0"
   }
 }
