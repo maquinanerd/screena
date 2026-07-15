@@ -1,155 +1,143 @@
-import type { Metadata } from "next";
+import type { Metadata } from 'next'
 
-import { AdSlot } from "../../_components/ad-slot";
-import { takeUpcomingWeek } from "../../../src/lib/home-upcoming-presenter";
+import { takeUpcomingWeek } from '../../../src/lib/home-upcoming-presenter'
 import {
   countPopulatedSections,
   evaluatePortalIndexability,
-} from "../../../src/lib/portal-presenter";
+} from '../../../src/lib/portal-presenter'
 import {
   canonicalPublicUrl,
   EXPLORE_PATH,
   HOME_PATH,
+  MOVIES_INDEX_PATH,
+  NEWS_INDEX_PATH,
+  PEOPLE_INDEX_PATH,
+  SERIES_INDEX_PATH,
   SITE_URL,
-} from "../../../src/lib/site";
-import { getHomeUpcomingMovies } from "../../../src/server/home-upcoming";
-
-import styles from "./explore-canonical.module.css";
+} from '../../../src/lib/site'
+import { getHomeUpcomingMovies } from '../../../src/server/home-upcoming'
 
 /**
- * Tela canônica 11 · Discover / Explorar.
- *
- * A geometria vem de `paginas/11-discover.html`. Blocos cujo contrato ainda
- * não existe no produto (busca, tendência de 24 h, continuar assistindo,
- * watchlist, ranking social e filtros) não são simulados. A agenda usa somente
- * entidades e datas persistidas no PostgreSQL.
+ * Explorar reúne apenas destinos públicos reais e a agenda persistida da
+ * semana. Não oferece busca, filtros ou estados sociais ainda inexistentes.
  */
 
-export const dynamic = "force-dynamic";
+export const dynamic = 'force-dynamic'
 
-const TITLE = "Explorar";
+const TITLE = 'Explorar'
 const DESCRIPTION =
-  "Consulte a agenda semanal de próximos lançamentos já publicados na Screen.";
-const UPCOMING_LIMIT = 5;
-const UPCOMING_SOURCE_LIMIT = 30;
+  'Consulte as áreas públicas do Screen e a agenda semanal de próximos lançamentos já publicados.'
+const UPCOMING_LIMIT = 5
+const UPCOMING_SOURCE_LIMIT = 30
 
 async function getExploreData() {
   const upcomingMovies = takeUpcomingWeek(
     await getHomeUpcomingMovies({ limit: UPCOMING_SOURCE_LIMIT }),
     new Date(),
     UPCOMING_LIMIT,
-  );
+  )
   const indexability = evaluatePortalIndexability({
     populatedSectionCount: countPopulatedSections([upcomingMovies.length]),
-  });
+  })
 
-  return { upcomingMovies, indexability };
+  return { upcomingMovies, indexability }
 }
 
 export async function generateMetadata(): Promise<Metadata> {
-  const { indexability } = await getExploreData();
-  const shouldIndex = indexability.decision === "index";
+  const { indexability } = await getExploreData()
+  const shouldIndex = indexability.decision === 'index'
   return {
     title: TITLE,
     description: DESCRIPTION,
-    robots: shouldIndex
-      ? { index: true, follow: true }
-      : { index: false, follow: false },
+    robots: shouldIndex ? { index: true, follow: true } : { index: false, follow: false },
     alternates: { canonical: canonicalPublicUrl(EXPLORE_PATH) },
-  };
+  }
 }
 
 export default async function ExplorePage() {
-  const { upcomingMovies } = await getExploreData();
-  const canonicalUrl = canonicalPublicUrl(EXPLORE_PATH);
+  const { upcomingMovies } = await getExploreData()
+  const canonicalUrl = canonicalPublicUrl(EXPLORE_PATH)
 
   const breadcrumbJsonLd = {
-    "@context": "https://schema.org",
-    "@type": "BreadcrumbList",
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
     itemListElement: [
       {
-        "@type": "ListItem",
+        '@type': 'ListItem',
         position: 1,
-        name: "Início",
+        name: 'Início',
         item: `${SITE_URL}${HOME_PATH}`,
       },
       {
-        "@type": "ListItem",
+        '@type': 'ListItem',
         position: 2,
         name: TITLE,
         item: canonicalUrl,
       },
     ],
-  };
+  }
 
   const collectionJsonLd = {
-    "@context": "https://schema.org",
-    "@type": "CollectionPage",
+    '@context': 'https://schema.org',
+    '@type': 'CollectionPage',
     name: TITLE,
     url: canonicalUrl,
     description: DESCRIPTION,
-  };
+  }
 
   return (
-    <main className={styles.page} data-vertical="explore">
-      <div className={styles.shell}>
-        <AdSlot variant="leaderboard" margin="0 0 36px" />
+    <main data-vertical="explore">
+      <div className="container">
+        <nav aria-label="Trilha de navegação">
+          <ol>
+            <li>
+              <a href={HOME_PATH}>Início</a>
+            </li>
+            <li aria-current="page">{TITLE}</li>
+          </ol>
+        </nav>
 
-        <header className={styles.pageHead}>
-          <div>
-            <h1 className={styles.pageTitle}>{TITLE}</h1>
-            <p className={styles.pageDescription}>{DESCRIPTION}</p>
-          </div>
+        <header>
+          <h1>{TITLE}</h1>
+          <p>{DESCRIPTION}</p>
         </header>
 
-        {upcomingMovies.length > 0 ? (
-          <section className={styles.section} aria-labelledby="discover-releases-title">
-            <div className={styles.sectionHead}>
-              <div className={styles.sectionHeading}>
-                <span className={styles.sectionAccent} data-kind="movie" />
-                <h2 id="discover-releases-title">Lançamentos</h2>
-              </div>
-              <p>Agenda da semana</p>
-            </div>
+        <section aria-labelledby="explore-areas-title">
+          <h2 id="explore-areas-title">Áreas do Screen</h2>
+          <ul>
+            <li>
+              <a href={MOVIES_INDEX_PATH}>Filmes</a>
+            </li>
+            <li>
+              <a href={SERIES_INDEX_PATH}>Séries</a>
+            </li>
+            <li>
+              <a href={PEOPLE_INDEX_PATH}>Pessoas</a>
+            </li>
+            <li>
+              <a href={NEWS_INDEX_PATH}>Notícias</a>
+            </li>
+          </ul>
+        </section>
 
-            <ul className={styles.releaseList}>
-              {upcomingMovies.map((movie) => {
-                return (
-                  <li key={movie.href} className={styles.releaseItem}>
-                    <a href={movie.href}>
-                      <span className={styles.releaseDate}>
-                        <span>{movie.weekday}</span>
-                        <strong>{movie.dateIso.slice(8, 10)}</strong>
-                      </span>
-                      <span className={styles.releaseMedia}>
-                        {movie.imageUrl === null ? (
-                          <span className={styles.releaseFallback} aria-hidden="true" />
-                        ) : (
-                          <img
-                            src={movie.imageUrl}
-                            alt={`Imagem de ${movie.title}`}
-                            width={780}
-                            height={439}
-                            loading="lazy"
-                          />
-                        )}
-                      </span>
-                      <span className={styles.releaseCopy}>
-                        <span className={styles.releaseKind}>Filme</span>
-                        <h3>{movie.title}</h3>
-                        <span>Estreia em {movie.date}</span>
-                      </span>
-                    </a>
-                  </li>
-                );
-              })}
+        <section aria-labelledby="discover-releases-title">
+          <h2 id="discover-releases-title">Lançamentos da semana</h2>
+          {upcomingMovies.length > 0 ? (
+            <ul>
+              {upcomingMovies.map((movie) => (
+                <li key={movie.href}>
+                  <a href={movie.href}>{movie.title}</a>
+                  <span>
+                    {' '}
+                    — Filme · {movie.weekday}, {movie.date}
+                  </span>
+                </li>
+              ))}
             </ul>
-          </section>
-        ) : (
-          <p className={styles.emptyState}>
-            Nenhum lançamento publicado para explorar no momento.
-          </p>
-        )}
+          ) : (
+            <p>Nenhum lançamento publicado para explorar no momento.</p>
+          )}
+        </section>
       </div>
 
       <script
@@ -161,5 +149,5 @@ export default async function ExplorePage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
       />
     </main>
-  );
+  )
 }

@@ -1,129 +1,72 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
+import { existsSync, readFileSync } from 'node:fs'
+import path from 'node:path'
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from 'vitest'
 
-const ROOT = process.cwd();
-const PAGE = readFileSync(path.join(ROOT, "apps/web/app/pt/series/[slug]/page.tsx"), "utf8");
-const CSS = readFileSync(
-  path.join(ROOT, "apps/web/app/pt/series/[slug]/series-canonical.module.css"),
-  "utf8",
-);
+const ROOT = process.cwd()
+const PAGE_REL = 'apps/web/app/pt/series/[slug]/page.tsx'
+const CSS_REL = 'apps/web/app/pt/series/[slug]/series-canonical.module.css'
+const page = readFileSync(path.join(ROOT, PAGE_REL), 'utf8')
 
 function withoutComments(source: string): string {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .split(/\r?\n/)
-    .map((line) => {
-      const at = line.indexOf("//");
-      return at === -1 ? line : line.slice(0, at);
-    })
-    .join("\n");
+  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
 }
 
-describe("porte canônico 07/08 — detalhe de série", () => {
-  it("usa CSS escopado e preserva a ordem estrutural desktop da tela 07", () => {
-    expect(PAGE).toContain('import styles from "./series-canonical.module.css"');
-    expect(PAGE).toContain('data-screen="series-detail"');
+describe('shell público mínimo · detalhe de série', () => {
+  const code = withoutComments(page).replaceAll("'", '"')
 
-    const hero = PAGE.indexOf("className={styles.hero}");
-    const media = PAGE.indexOf("className={`${styles.media}");
-    const work = PAGE.indexOf("className={styles.work}");
-    const critique = PAGE.indexOf("className={styles.critique}");
-    const episodes = PAGE.indexOf("className={styles.episodes}");
-    const cast = PAGE.indexOf("className={styles.cast}");
-    const news = PAGE.indexOf("className={styles.news}");
-    const details = PAGE.indexOf("className={styles.details}");
+  it('preserva dados, metadata, canonical, robots e identidade JSON-LD', () => {
+    expect(code).toContain('getSeriesPageData(slug)')
+    expect(code).toContain('canonicalRedirectPath(')
+    expect(code).toContain('permanentRedirect(redirectPath)')
+    expect(code).toContain('indexability.decision === "index"')
+    expect(code).toContain('alternates: { canonical: canonicalUrl }')
+    expect(code).toContain('"@type": "TVSeries"')
+    expect(code).toContain('"@type": "BreadcrumbList"')
+    expect(code).toContain('buildSameAs(externalIds, "tv")')
+    expect(code.match(/application\/ld\+json/g)).toHaveLength(2)
+    expect(code).not.toContain('AggregateRating')
+  })
 
-    expect([hero, media, work, critique, episodes, cast, news, details].every((at) => at > -1)).toBe(true);
-    expect(hero).toBeLessThan(media);
-    expect(media).toBeLessThan(work);
-    expect(work).toBeLessThan(critique);
-    expect(critique).toBeLessThan(episodes);
-    expect(episodes).toBeLessThan(cast);
-    expect(cast).toBeLessThan(news);
-    expect(news).toBeLessThan(details);
-  });
+  it('mantém um H1, breadcrumb e badge textual de Série', () => {
+    expect(code.match(/<h1[\s>]/g)).toHaveLength(1)
+    expect(code).toContain('data-vertical="series"')
+    expect(code).toContain('data-entity-badge="series">Série</strong>')
+    expect(code).toContain('href={SERIES_INDEX_PATH}>Séries</a>')
+  })
 
-  it("omite cada bloco sem seu dado real e mantém o gate licenciado existente", () => {
-    const code = withoutComments(PAGE);
+  it('preserva seleção de temporada, query e âncoras', () => {
+    expect(code).toContain('seasonNumberFromQuery(query.temporada)')
+    expect(code).toContain('const selectedSeason =')
+    expect(code).toContain('id="episodios"')
+    expect(code).toContain('id={`temporada-${season.seasonNumber}`}')
+    expect(code).toContain('href={`?temporada=${season.seasonNumber}#episodios`}')
+    expect(code).toContain('season={selectedSeason}')
+    expect(code).toContain('Nenhum episódio publicado nesta temporada.')
+  })
 
-    expect(code).toContain('const REVIEW_BLOCK_TYPE = "review_summary"');
-    expect(code).toContain("WORK_BLOCK_TYPES.has(block.blockType)");
-    expect(code).toContain("EPISODE_BLOCK_TYPES.has(block.blockType)");
-    expect(code).toContain("const hasEditorial = editorialBlocks.length > 0");
-    expect(code).toContain("critiqueBlock !== null ?");
-    expect(code).toContain("watchContext !== null ?");
-    expect(code).toContain("castContext !== null ?");
-    expect(code).toContain("const hasSeasons = view.seasons.length > 0");
-    expect(code).toContain("seasonNumberFromQuery(query.temporada)");
-    expect(code).toContain("const selectedSeason =");
-    expect(code).toContain("season={selectedSeason}");
-    expect(code).not.toContain("view.seasons.map((season) => (\n              <SeasonGroup");
-    expect(code).toContain("const visibleCast = cast.slice(0, 6)");
-    expect(code).toContain("visibleCast.length > 0 ?");
-    expect(code).toContain("visibleNews.length > 0 ?");
-    expect(code).toContain("watch !== null ?");
-    expect(code).toContain("<WatchAvailabilityPanel view={watch} />");
-    expect(code).toContain('value: view.periodLabel ?? "—"');
-    expect(code).toContain('value: view.originalLanguageLabel ?? "—"');
-  });
+  it('mantém somente blocos revisados e dados reais da ficha', () => {
+    expect(code).toContain('WORK_BLOCK_TYPES.has(block.blockType)')
+    expect(code).toContain('EPISODE_BLOCK_TYPES.has(block.blockType)')
+    expect(code).toContain('block.blockType === "where_to_watch_text"')
+    expect(code).toContain('block.blockType === "cast_intro"')
+    expect(code).toContain('block.blockType === "news_context"')
+    expect(code).toContain('watch !== null ?')
+    expect(code).toContain('<WatchAvailabilityPanel view={watch} />')
+    expect(code).toContain('<EntityExternalIds links={externalLinks} />')
+    expect(code).toContain('visibleCast.map(')
+    expect(code).toContain('visibleNews.map(')
+    expect(code).toContain('data-editorial-state="in-review"')
+  })
 
-  it("não converte backdrop em trailer nem inventa rating, prêmio ou recomendação", () => {
-    const code = withoutComments(PAGE);
-
-    expect(code).not.toMatch(/Screen Score|IMDb|Rotten Tomatoes|TMDB/);
-    expect(code).not.toMatch(/Assistir trailer|vídeos|fotos|vitórias|indicações/);
-    expect(code).not.toMatch(/Mais como este/);
-    expect(code).not.toMatch(/ic-play|rating|seasonInfo|moreLikeThis/);
-  });
-
-  it("copia as medidas essenciais do desktop canônico 07", () => {
-    expect(CSS).toMatch(/max-width:\s*1360px/);
-    expect(CSS).toMatch(/padding-right:\s*64px/);
-    expect(CSS).toMatch(/padding-left:\s*64px/);
-    expect(CSS).toMatch(/font-size:\s*38px/);
-    expect(CSS).toMatch(/height:\s*472px/);
-    expect(CSS).toMatch(/grid-template-columns:\s*1fr 3fr 2fr/);
-    expect(CSS).toMatch(/grid-column:\s*2;/);
-    expect(PAGE).toContain("className={styles.mediaTiles}");
-    expect(PAGE).toContain("className={styles.mediaNewsLink}");
-    expect(CSS).toMatch(/width:\s*288px/);
-    expect(CSS).toMatch(/grid-template-columns:\s*repeat\(6, minmax\(0, 1fr\)\)/);
-  });
-
-  it("aplica a linguagem mobile 08 com elenco antes da obra e episódios full-width", () => {
-    expect(CSS).toContain("@media (max-width: 1023px)");
-    expect(CSS).toMatch(/\.posterFrame,[\s\S]*?width:\s*200px;[\s\S]*?height:\s*300px;/);
-    expect(CSS).toContain("width: calc(100% + 64px)");
-    expect(CSS).toContain(".mediaTiles {");
-    expect(CSS).toContain("display: none;");
-    expect(CSS).toContain("@media (max-width: 767px)");
-    expect(CSS).toMatch(/\.media\s*\{\s*order:\s*1;/);
-    expect(CSS).toMatch(/\.hero\s*\{\s*order:\s*2;/);
-    expect(CSS).toMatch(/\.cast\s*\{\s*order:\s*3;/);
-    expect(CSS).toMatch(/\.work\s*\{\s*order:\s*4;/);
-    expect(CSS).toMatch(/\.critique\s*\{\s*display:\s*none;/);
-    expect(CSS).toMatch(/\.news\s*\{\s*display:\s*none;/);
-    expect(CSS).toMatch(/\.backdropFrame\s*\{[\s\S]*?aspect-ratio:\s*16 \/ 10;/);
-    expect(CSS).toMatch(/\.episodeMedia\s*\{[\s\S]*?width:\s*100%;[\s\S]*?aspect-ratio:\s*16 \/ 9;/);
-    expect(PAGE).toContain("className={styles.episodeMobileNumber}");
-    expect(CSS).toMatch(/\.episodeNumber\s*\{\s*display:\s*none;/);
-    expect(CSS).toContain("@media (max-width: 390px)");
-    expect(CSS).toMatch(/padding-right:\s*16px/);
-    expect(CSS).toMatch(/overflow-x:\s*auto/);
-  });
-
-  it("mantém exatamente um h1 e os sinais textuais/semânticos da vertical", () => {
-    const code = withoutComments(PAGE);
-    expect(code.match(/<h1[\s>]/g)).toHaveLength(1);
-    expect(code).toContain('data-vertical="series"');
-    expect(code).toContain(">Série</span>");
-    expect(code).toContain('"@type": "TVSeries"');
-    expect(code).toContain('const SERIES_INDEX_PATH = "/pt/series/"');
-    expect(code).toContain("tabIndex={0}");
-    expect(code).toContain("use as setas para percorrer");
-    expect(CSS).toContain(".castGrid:focus-visible");
-    expect(CSS).toContain("outline: 2px solid #101010");
-  });
-});
+  it('remove a camada visual interpretativa e não inventa dado ausente', () => {
+    expect(existsSync(path.join(ROOT, CSS_REL))).toBe(false)
+    expect(code).not.toContain('.module.css')
+    expect(code).toContain('className="container"')
+    expect(code.match(/className=/g)).toHaveLength(1)
+    expect(code).not.toContain('<img')
+    expect(code).not.toContain('view.media')
+    expect(code).not.toMatch(/poster|backdrop|fallback|mediaTile/i)
+    expect(code).not.toMatch(/(?:\?\?|=== null \?)\s*["']—["']/)
+  })
+})

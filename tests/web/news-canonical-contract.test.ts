@@ -1,64 +1,70 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
+import { existsSync, readFileSync } from 'node:fs'
+import path from 'node:path'
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from 'vitest'
 
-const ROOT = process.cwd();
+const ROOT = process.cwd()
 
 function read(relativePath: string): string {
-  return readFileSync(path.join(ROOT, relativePath), "utf8");
+  return readFileSync(path.join(ROOT, relativePath), 'utf8')
 }
 
-describe("notícias canônicas", () => {
-  const index = read("apps/web/app/pt/noticias/page.tsx");
-  const indexCss = read("apps/web/app/pt/noticias/news-canonical.module.css");
-  const article = read("apps/web/app/pt/noticias/[slug]/page.tsx");
-  const articleCss = read(
-    "apps/web/app/pt/noticias/[slug]/article-canonical.module.css",
-  );
+describe('notícias após o reset visual', () => {
+  const index = read('apps/web/app/pt/noticias/page.tsx')
+  const article = read('apps/web/app/pt/noticias/[slug]/page.tsx')
 
-  it("modo Todas mantém os quatro slots reais da composição sem inventar rail", () => {
-    expect(index.match(/<AdSlot/g)).toHaveLength(4);
-    expect(index).not.toMatch(/Mais lidas|Screen Daily|Assinar grátis|trending/);
-    expect(index).not.toMatch(/railPosts|newsTabs|newsIsCat/);
-  });
+  it('lista todas as notícias reais uma única vez e mostra empty state', () => {
+    expect(index).toContain('getNewsIndexData()')
+    expect(index).toContain('[view.featured, ...view.cards]')
+    expect(index).toContain('orderedCards.map')
+    expect(index).toContain('Ainda não há notícias publicadas nesta seção.')
+    expect(index).toContain('view.hasMore')
+  })
 
-  it("divide o feed sem repetir os cards do magazine", () => {
-    expect(index).toContain("view.cards.slice(0, 3)");
-    expect(index).toContain("view.cards.slice(3)");
-  });
+  it('mantém metadata, canonical e CollectionPage/BreadcrumbList', () => {
+    expect(index).toMatch(/indexability\.decision === ['"]index['"]/)
+    expect(index).toContain('alternates: { canonical: canonicalUrl }')
+    expect(index).toMatch(/['"]@type['"]:\s*['"]CollectionPage['"]/)
+    expect(index).toMatch(/['"]@type['"]:\s*['"]BreadcrumbList['"]/)
+    expect(index.match(/application\/ld\+json/g)).toHaveLength(2)
+  })
 
-  it("preserva geometria editorial principal do HTML 03", () => {
-    expect(indexCss).toContain("max-width: 1280px");
-    expect(indexCss).toContain("grid-template-columns: minmax(0, 1fr) 290px");
-    expect(indexCss).toContain("grid-template-columns: minmax(0, 1.02fr) minmax(0, 1.18fr)");
-    expect(indexCss).toContain("grid-template-columns: 240px minmax(0, 1fr)");
-    expect(indexCss).toContain("grid-template-columns: minmax(0, 1fr) 340px");
-  });
+  it('renderiza o artigo real como texto e preserva seu estado editorial', () => {
+    expect(article).toContain('getNewsArticleData(slug)')
+    expect(article).toContain('notFound()')
+    expect(article).toContain('view.bodyParagraphs.map')
+    expect(article).toContain('view.source !== null')
+    expect(article).toContain('view.aiAssisted')
+    expect(article).toMatch(/indexability\.decision !== ['"]index['"]/)
+    expect(article).toContain('data-editorial-state="in-review"')
+  })
 
-  it("artigo tem um único anúncio no corpo e não fabrica figuras/tags/share", () => {
-    expect(article.match(/<AdSlot/g)).toHaveLength(1);
-    expect(article).not.toMatch(/Minha lista|Avaliar|Compartilhar|relatedArticles/);
-    expect(article).not.toMatch(/Daredevil|Marvel|Collider/);
-    expect(article).not.toContain("className={styles.heroImage}");
-    expect(article).not.toContain("news-related-title");
-  });
+  it('preserva NewsArticle e BreadcrumbList em JSON-LD', () => {
+    expect(article).toMatch(/['"]@type['"]:\s*['"]NewsArticle['"]/)
+    expect(article).toMatch(/['"]@type['"]:\s*['"]BreadcrumbList['"]/)
+    expect(article).toContain('articleJsonLd.datePublished')
+    expect(article).toContain('articleJsonLd.author')
+    expect(article).toContain('articleJsonLd.articleSection')
+    expect(article).toContain('articleJsonLd.image')
+    expect(article.match(/application\/ld\+json/g)).toHaveLength(2)
+  })
 
-  it("não expõe links visuais duplicados sem nome acessível", () => {
-    expect(index).not.toContain("tabIndex={-1}");
-    expect(index).toContain('className={styles.feedCardLink} href={card.href}');
-    expect(index).toContain('className={styles.magazineLeadLink}');
-    expect(index).toContain("<article className={styles.magazineLead}");
-  });
+  it('remove hero, imagens renderizadas, anúncios e CSS visual', () => {
+    for (const page of [index, article]) {
+      expect(page).not.toMatch(/AdSlot|<img|styles\./)
+      expect(page.match(/<h1[\s>]/g)).toHaveLength(1)
+    }
+    expect(existsSync(path.join(ROOT, 'apps/web/app/pt/noticias/news-canonical.module.css'))).toBe(
+      false,
+    )
+    expect(
+      existsSync(path.join(ROOT, 'apps/web/app/pt/noticias/[slug]/article-canonical.module.css')),
+    ).toBe(false)
+  })
 
-  it("preserva hero e coluna de leitura do HTML 05", () => {
-    expect(articleCss).toContain("min-height: 560px");
-    expect(articleCss).toContain("max-width: 880px");
-    expect(articleCss).toContain("font-size: 52px");
-    expect(articleCss).toContain("max-width: 720px");
-    expect(articleCss).toContain("max-width: 680px");
-    expect(articleCss).toContain("min-height: max(480px, 60vh)");
-    expect(articleCss).toContain("font-size: 17px");
-    expect(articleCss).toContain("line-height: 1.8");
-  });
-});
+  it('não introduz conteúdo, compartilhamento ou recursos sociais falsos', () => {
+    expect(index).not.toMatch(/Mais lidas|Screen Daily|Assinar grátis|trending/)
+    expect(article).not.toMatch(/Minha lista|Avaliar|Compartilhar|relatedArticles/)
+    expect(article).not.toMatch(/Daredevil|Marvel|Collider/)
+  })
+})

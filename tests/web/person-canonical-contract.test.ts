@@ -1,82 +1,61 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readFileSync } from 'node:fs'
+import path from 'node:path'
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from 'vitest'
 
-const ROOT = resolve(import.meta.dirname, "../..");
-const PAGE_PATH = resolve(ROOT, "apps/web/app/pt/pessoas/[slug]/page.tsx");
-const CSS_PATH = resolve(
-  ROOT,
-  "apps/web/app/pt/pessoas/[slug]/person-canonical.module.css",
-);
+const ROOT = process.cwd()
+const PAGE_REL = 'apps/web/app/pt/pessoas/[slug]/page.tsx'
+const CSS_REL = 'apps/web/app/pt/pessoas/[slug]/person-canonical.module.css'
+const page = readFileSync(path.join(ROOT, PAGE_REL), 'utf8')
 
-const pageSource = readFileSync(PAGE_PATH, "utf8");
-const cssSource = readFileSync(CSS_PATH, "utf8");
+function withoutComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+}
 
-describe("contrato canônico da tela 09 · Pessoa", () => {
-  it("mantém a ordem canônica dos blocos que possuem dados reais", () => {
-    const ad = pageSource.indexOf("<AdSlot");
-    const filmography = pageSource.indexOf("Filmografia");
-    const details = pageSource.indexOf("Detalhes pessoais");
-    const news = pageSource.indexOf("Notícias relacionadas");
+describe('shell público mínimo · detalhe de pessoa', () => {
+  const code = withoutComments(page).replaceAll("'", '"')
 
-    expect(ad).toBeGreaterThan(0);
-    expect(filmography).toBeGreaterThan(ad);
-    expect(details).toBeGreaterThan(filmography);
-    expect(news).toBeGreaterThan(details);
-  });
+  it('preserva dados, metadata, canonical, robots e identidade JSON-LD', () => {
+    expect(code).toContain('getPersonPageData(slug)')
+    expect(code).toContain('canonicalRedirectPath(')
+    expect(code).toContain('permanentRedirect(redirectPath)')
+    expect(code).toContain('indexability.decision === "index"')
+    expect(code).toContain('alternates: { canonical: canonicalUrl }')
+    expect(code).toContain('"@type": "Person"')
+    expect(code).toContain('"@type": "BreadcrumbList"')
+    expect(code).toContain('buildSameAs(externalIds, "person")')
+    expect(code.match(/application\/ld\+json/g)).toHaveLength(2)
+    expect(code).not.toContain('AggregateRating')
+  })
 
-  it("omite seções sem fonte real e não carrega mocks do protótipo", () => {
-    expect(pageSource).not.toContain("Cillian Murphy");
-    expect(pageSource).not.toContain("Screen Interviews");
-    expect(pageSource).not.toContain("AWARDS");
-    expect(pageSource).not.toContain("Conhecido por");
-    expect(pageSource).not.toContain("142 fotos");
-    expect(pageSource).not.toContain("rating");
-    expect(pageSource).toContain("BIOGRAPHY_BLOCK_TYPES.has(block.blockType)");
-    expect(pageSource).toContain('new Set([\n  "editorial_intro",\n])');
-    expect(pageSource).not.toContain('"summary_without_spoilers"');
-    expect(pageSource).not.toContain('"franchise_context"');
-    expect(pageSource).toContain('block.blockType === "news_context"');
-  });
+  it('mantém um H1, breadcrumb e identidade externa real', () => {
+    expect(code.match(/<h1[\s>]/g)).toHaveLength(1)
+    expect(code).toContain('data-vertical="person"')
+    expect(code).toContain('href={PESSOAS_INDEX_PATH}>Pessoas</a>')
+    expect(code).toContain('buildExternalLinks(externalIds, "person")')
+    expect(code).toContain('<EntityExternalIds links={externalLinks} />')
+  })
 
-  it("mantém filmografia obrigatória, linha inteira navegável e notícias semânticas", () => {
-    expect(pageSource).toContain("Filmografia ainda não disponível.");
-    expect(pageSource).toContain("className={styles.credit}");
-    expect(pageSource).toContain("href={credit.href}");
-    expect(pageSource).toContain("<article className={styles.newsArticle}>");
-    expect(pageSource).toContain("<h3 className={styles.newsTitle}");
-  });
+  it('preserva biografia revisada, créditos, notícias e revisão editorial', () => {
+    expect(code).toContain('BIOGRAPHY_BLOCK_TYPES.has(block.blockType)')
+    expect(code).toContain('block.blockType === "news_context"')
+    expect(code).toContain('view.credits.map(')
+    expect(code).toContain('href={credit.href}')
+    expect(code).toContain('Filmografia ainda não disponível.')
+    expect(code).toContain('personalDetails.map(')
+    expect(code).toContain('relatedNews.map(')
+    expect(code).toContain('data-editorial-state="in-review"')
+  })
 
-  it("preserva guards, canonical, metadata e os dois schemas JSON-LD", () => {
-    expect(pageSource).toContain("canonicalRedirectPath");
-    expect(pageSource).toContain("permanentRedirect");
-    expect(pageSource).toContain("indexability.decision");
-    expect(pageSource).toContain('"@type": "Person"');
-    expect(pageSource).toContain('"@type": "BreadcrumbList"');
-    expect(pageSource.match(/application\/ld\+json/g)).toHaveLength(2);
-  });
-
-  it("copia as medidas desktop centrais do HTML canônico", () => {
-    expect(cssSource).toContain("max-width: 1280px");
-    expect(cssSource).toContain("grid-template-columns: 200px minmax(0, 1fr)");
-    expect(cssSource).toContain("gap: 102px");
-    expect(cssSource).toContain("padding: 48px 80px 0");
-    expect(cssSource).toContain("width: 249px");
-    expect(cssSource).toContain("height: 228px");
-    expect(cssSource).toContain("font-size: 56px");
-    expect(cssSource).toContain("padding: 56px 80px 0");
-    expect(cssSource).toContain("grid-template-columns: repeat(2, minmax(0, 1fr))");
-  });
-
-  it("aplica apenas a adaptação responsiva conservadora do contrato", () => {
-    expect(cssSource).toContain("@media (max-width: 1279px)");
-    expect(cssSource).toContain("padding-right: 48px");
-    expect(cssSource).toContain("@media (max-width: 1023px)");
-    expect(cssSource).toContain("width: 200px");
-    expect(cssSource).toContain("@media (max-width: 767px)");
-    expect(cssSource).toContain("padding-right: 20px");
-    expect(cssSource).toContain("@media (max-width: 390px)");
-    expect(cssSource).toContain("padding-right: 16px");
-  });
-});
+  it('remove a camada visual interpretativa e não inventa dado ausente', () => {
+    expect(existsSync(path.join(ROOT, CSS_REL))).toBe(false)
+    expect(code).not.toContain('.module.css')
+    expect(code).toContain('className="container"')
+    expect(code.match(/className=/g)).toHaveLength(1)
+    expect(code).not.toContain('<img')
+    expect(code).not.toContain('view.profile')
+    expect(code).not.toContain('AdSlot')
+    expect(code).not.toMatch(/portrait|fallback|newsMedia/i)
+    expect(code).not.toMatch(/(?:\?\?|=== null \?)\s*["']—["']/)
+  })
+})

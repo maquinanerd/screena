@@ -1,185 +1,68 @@
-/**
- * Testes de navegacao publica (Fase 5D): header sem link morto, logo local
- * com alt="Screen", e home/explorar/sitemap/robots presentes e seguros.
- *
- * Estilo hibrido (como tests/governance): importa os dados puros exportados
- * (NAV_ITEMS/HOME_HREF) e verifica no filesystem que cada rota do header tem
- * page.tsx real — o header NUNCA aponta para rota inexistente. Checagens de
- * fonte garantem: paginas dinamicas (build sem banco), canonical presente e
- * ausencia de busca/ratings/streaming fake nos portais.
- */
+import { existsSync, readFileSync } from 'node:fs'
+import path from 'node:path'
 
-import { existsSync, readFileSync } from "node:fs";
-import path from "node:path";
+import { describe, expect, it } from 'vitest'
 
-import { describe, expect, it } from "vitest";
+import { HOME_HREF, isActiveNavigationPath, NAV_ITEMS } from '../../apps/web/src/lib/navigation'
 
-import {
-  HOME_HREF,
-  isActiveNavigationPath,
-  isCinematicHeroPath,
-  NAV_ITEMS,
-} from "../../apps/web/src/lib/navigation";
+const ROOT = process.cwd()
+const WEB_APP_DIR = path.join(ROOT, 'apps', 'web', 'app')
 
-const WEB_APP_DIR = path.join(process.cwd(), "apps", "web", "app");
-
-/** /pt/filmes/ -> apps/web/app/pt/filmes/page.tsx (todas as rotas publicas). */
 function pageFileForPublicPath(publicPath: string): string {
-  const segments = publicPath.split("/").filter((part) => part !== "");
-  return path.join(WEB_APP_DIR, ...segments, "page.tsx");
+  const segments = publicPath.split('/').filter((part) => part !== '')
+  return path.join(WEB_APP_DIR, ...segments, 'page.tsx')
 }
 
-function readSource(relative: string): string {
-  return readFileSync(path.join(process.cwd(), relative), "utf8");
+function read(relativePath: string): string {
+  return readFileSync(path.join(ROOT, relativePath), 'utf8')
 }
 
-/**
- * Remove comentarios de bloco/linha (docblocks, comentarios JSX e notas inline) para as checagens
- * de conteudo: os comentarios de governanca CITAM os termos proibidos ("sem
- * busca", "sem ratings") de proposito — o que interessa e o codigo/markup.
- */
-function withoutComments(source: string): string {
-  const noBlocks = source.replace(/\/\*[\s\S]*?\*\//g, "");
-  return noBlocks
-    .split(/\r?\n/)
-    .map((line) => {
-      for (let i = 0; i < line.length - 1; i += 1) {
-        if (line[i] === "/" && line[i + 1] === "/") {
-          if (i > 0 && line[i - 1] === ":") continue;
-          return line.slice(0, i);
-        }
-      }
-      return line;
-    })
-    .join("\n");
-}
+describe('navegação pública global', () => {
+  it('expõe somente as cinco áreas públicas reais', () => {
+    expect(HOME_HREF).toBe('/pt/')
+    expect(NAV_ITEMS).toEqual([
+      { label: 'Filmes', href: '/pt/filmes/' },
+      { label: 'Séries', href: '/pt/series/' },
+      { label: 'Pessoas', href: '/pt/pessoas/' },
+      { label: 'Notícias', href: '/pt/noticias/' },
+      { label: 'Explorar', href: '/pt/explorar/' },
+    ])
+  })
 
-describe("header — navegacao global", () => {
-  it("mantem apenas os itens canonicos que possuem produto real", () => {
-    const hrefs = NAV_ITEMS.map((item) => item.href);
-    expect(HOME_HREF).toBe("/pt/");
-    expect(hrefs).toEqual(["/pt/filmes/", "/pt/series/", "/pt/noticias/"]);
-    expect(hrefs).not.toContain("/pt/listas/");
-    expect(hrefs).not.toContain("/pt/onde-assistir/");
-  });
-
-  it("nenhum link morto: toda rota do header tem page.tsx real", () => {
+  it('não contém link morto e mantém caminhos internos pt-BR', () => {
     for (const href of [HOME_HREF, ...NAV_ITEMS.map((item) => item.href)]) {
-      const pageFile = pageFileForPublicPath(href);
-      expect(existsSync(pageFile), `rota ${href} sem ${pageFile}`).toBe(true);
+      expect(href).toMatch(/^\/pt\/(?:[a-z-]+\/)?$/)
+      expect(existsSync(pageFileForPublicPath(href)), `rota ausente: ${href}`).toBe(true)
     }
-  });
+  })
 
-  it("todo link e interno pt-BR com barra final", () => {
-    for (const href of [HOME_HREF, ...NAV_ITEMS.map((item) => item.href)]) {
-      expect(href).toMatch(/^\/pt\/(?:[a-z-]+\/)?$/);
-    }
-  });
+  it('marca índices e subrotas como ativos sem confundir prefixos', () => {
+    expect(isActiveNavigationPath('/pt/', '/pt/')).toBe(true)
+    expect(isActiveNavigationPath('/pt/filmes/', '/pt/filmes/')).toBe(true)
+    expect(isActiveNavigationPath('/pt/filmes/duna/', '/pt/filmes/')).toBe(true)
+    expect(isActiveNavigationPath('/pt/filmess/', '/pt/filmes/')).toBe(false)
+    expect(isActiveNavigationPath('/pt/filmes/', '/pt/')).toBe(false)
+    expect(isActiveNavigationPath(null, '/pt/')).toBe(false)
+  })
 
-  it("logo canônico inline usa componente local e sem asset remoto", () => {
-    const source = readSource("apps/web/app/_components/site-header.tsx");
-    expect(source).toContain("<ScreenLogo");
-    expect(source).toContain('aria-label="Screen — início"');
-    expect(source).not.toMatch(/src="https?:\/\//);
-  });
+  it('usa marca textual e não reintroduz chrome cinematográfico', () => {
+    const header = read('apps/web/app/_components/site-header.tsx')
+    expect(header).toContain('>\n          Screen\n        </a>')
+    expect(header).toContain('NAV_ITEMS.map')
+    expect(header).not.toMatch(/ScreenLogo|<svg|hero|drawer|useEffect/)
+  })
 
-  it("marca índice e subrota como ativas sem confundir prefixos", () => {
-    expect(isActiveNavigationPath("/pt/", "/pt/")).toBe(true);
-    expect(isActiveNavigationPath("/pt/filmes/", "/pt/filmes/")).toBe(true);
-    expect(isActiveNavigationPath("/pt/filmes/duna/", "/pt/filmes/")).toBe(true);
-    expect(isActiveNavigationPath("/pt/filmess/", "/pt/filmes/")).toBe(false);
-    expect(isActiveNavigationPath("/pt/filmes/", "/pt/")).toBe(false);
-    expect(isActiveNavigationPath(null, "/pt/")).toBe(false);
-  });
+  it('rodapé contém apenas rotas reais e a atribuição do TMDB', () => {
+    const footer = read('apps/web/app/_components/site-footer.tsx')
+    expect(footer).toContain('NAV_ITEMS.map')
+    expect(footer).toContain('usa a API do TMDB')
+    expect(footer).not.toMatch(/newsletter|social|Termos|Privacidade|Vagas/)
+  })
 
-  it("usa header transparente somente nas telas com hero escuro já portado", () => {
-    expect(isCinematicHeroPath("/pt/")).toBe(true);
-    expect(isCinematicHeroPath("/pt/noticias/materia/")).toBe(true);
-    expect(isCinematicHeroPath("/pt/filmes/")).toBe(false);
-    expect(isCinematicHeroPath("/pt/series/")).toBe(false);
-    expect(isCinematicHeroPath("/pt/noticias/")).toBe(false);
-    expect(isCinematicHeroPath("/pt/filmes/duna/")).toBe(false);
-    expect(isCinematicHeroPath("/pt/series/the-bear/")).toBe(false);
-    expect(isCinematicHeroPath(null)).toBe(false);
-  });
-});
-
-describe("home /pt/ — pagina real e segura", () => {
-  const source = readSource("apps/web/app/pt/page.tsx");
-
-  it("existe e e dinamica (build roda sem banco)", () => {
-    expect(source).toContain('dynamic = "force-dynamic"');
-  });
-
-  it("tem metadata com canonical e decisao de robots", () => {
-    expect(source).toContain("alternates: {");
-    expect(source).toContain("canonical: homeCanonicalUrl");
-    expect(source).toContain('indexability.decision === "index"');
-  });
-
-  it("nao tem busca fake nem features inexistentes", () => {
-    const code = withoutComments(source);
-    expect(code).not.toContain("<input");
-    expect(code).not.toContain("<form");
-    expect(code).not.toMatch(/onde assistir/i);
-    expect(code).not.toMatch(/tomatometer|imdb|popcorn/i);
-    expect(code).not.toMatch(/mais populares|top rated|ranking/i);
-  });
-
-  it("linka apenas rotas publicas existentes", () => {
-    const hrefMatches = source.match(/href=\{([A-Z_]+)\}/g) ?? [];
-    expect(hrefMatches.length).toBeGreaterThan(0);
-    // Todos os hrefs vem de constantes de rota do site.ts (nunca string solta
-    // para rota inexistente).
-    for (const match of hrefMatches) {
-      expect(match).toMatch(
-        /href=\{(MOVIES_INDEX_PATH|SERIES_INDEX_PATH|PEOPLE_INDEX_PATH|NEWS_INDEX_PATH|EXPLORE_PATH|HOME_PATH)\}/,
-      );
-    }
-  });
-});
-
-describe("explorar /pt/explorar/ — hub sem busca fake", () => {
-  const source = readSource("apps/web/app/pt/explorar/page.tsx");
-
-  it("existe e e dinamica (build roda sem banco)", () => {
-    expect(source).toContain('dynamic = "force-dynamic"');
-  });
-
-  it("tem metadata com canonical e decisao de robots", () => {
-    expect(source).toContain("alternates: { canonical:");
-    expect(source).toContain('indexability.decision === "index"');
-  });
-
-  it("nao ha busca fake, filtros fake, ranking ou populares", () => {
-    const code = withoutComments(source);
-    expect(code).not.toContain("<input");
-    expect(code).not.toContain("<form");
-    expect(code).not.toContain("autosuggest");
-    expect(code).not.toMatch(/mais populares|top rated|ranking|trending/i);
-    expect(code).not.toMatch(/tomatometer|imdb|popcorn/i);
-    expect(code).not.toMatch(/onde assistir/i);
-  });
-
-  it("schema seguro: CollectionPage + BreadcrumbList (padrao existente)", () => {
-    expect(source).toContain('"@type": "CollectionPage"');
-    expect(source).toContain('"@type": "BreadcrumbList"');
-    expect(source).not.toContain("AggregateRating");
-  });
-});
-
-describe("sitemap e robots — arquivos do app", () => {
-  it("app/sitemap.ts existe, e dinamico e usa a camada server-only", () => {
-    const source = readSource("apps/web/app/sitemap.ts");
-    expect(source).toContain('dynamic = "force-dynamic"');
-    expect(source).toContain("src/server/seo/sitemap-entries");
-    // O arquivo de rota NUNCA importa o banco diretamente.
-    expect(source).not.toContain("@screena/db");
-  });
-
-  it("app/robots.ts existe e e puro (sem banco, sem rede)", () => {
-    const source = readSource("apps/web/app/robots.ts");
-    expect(source).not.toContain("@screena/db");
-    expect(source).not.toContain("fetch(");
-  });
-});
+  it('preview técnica permanece noindex sem entidade ou JSON-LD fictícios', () => {
+    const preview = read('apps/web/app/dev/movie-page-preview/page.tsx')
+    expect(preview).toContain('index: false')
+    expect(preview).toContain('follow: false')
+    expect(preview).not.toMatch(/Interestelar|application\/ld\+json|"@type"/)
+  })
+})
