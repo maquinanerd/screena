@@ -18,6 +18,7 @@
     "test:watch": "vitest",
     "audit:invariants": "node scripts/audit/check-invariants.mjs",
     "audit:render": "node scripts/audit/check-render-purity.mjs",
+    "api:coverage": "node scripts/audit/check-api-coverage.mjs",
     "validate:news-pages": "corepack pnpm --filter @screena/web validate:news-pages",
     "validate:entity-indexes": "corepack pnpm --filter @screena/web validate:entity-indexes",
     "validate:movie-page": "corepack pnpm --filter @screena/web validate:movie-page",
