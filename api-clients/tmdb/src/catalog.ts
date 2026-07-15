@@ -22,12 +22,22 @@ import type {
   TmdbConfiguration,
   TmdbCountry,
   TmdbGenreList,
+  TmdbImagesResponse,
   TmdbJobDepartment,
   TmdbLanguage,
   TmdbMultiPage,
   TmdbPersonPage,
   TmdbTvPage,
+  TmdbVideosResponse,
 } from './catalog-types.js'
+
+/** Tipos de mídia agregada aceitos por `/trending/{media_type}/{time_window}`. */
+export type TrendingMediaType = 'movie' | 'tv' | 'person' | 'all'
+/** Janelas de tendência aceitas. */
+export type TrendingTimeWindow = 'day' | 'week'
+
+const TRENDING_MEDIA_TYPES: ReadonlySet<string> = new Set(['movie', 'tv', 'person', 'all'])
+const TRENDING_TIME_WINDOWS: ReadonlySet<string> = new Set(['day', 'week'])
 
 /** Erro de uso do client de catalogo (ex.: filtro discover desconhecido, query vazia). */
 export class TmdbCatalogError extends Error {
@@ -230,6 +240,20 @@ export interface TmdbCatalogEndpoints {
   searchTvShows(query: string, params?: SearchParams): Promise<TmdbTvPage>
   searchPeople(query: string, params?: SearchParams): Promise<TmdbPersonPage>
   searchMulti(query: string, params?: SearchParams): Promise<TmdbMultiPage>
+  getTrending(
+    mediaType: TrendingMediaType,
+    timeWindow: TrendingTimeWindow,
+    params?: { page?: number; language?: string },
+  ): Promise<TmdbMultiPage>
+  getMovieImages(tmdbId: number): Promise<TmdbImagesResponse>
+  getTvImages(tmdbId: number): Promise<TmdbImagesResponse>
+  getSeasonImages(tvTmdbId: number, seasonNumber: number): Promise<TmdbImagesResponse>
+  getEpisodeImages(tvTmdbId: number, seasonNumber: number, episodeNumber: number): Promise<TmdbImagesResponse>
+  getPersonImages(tmdbId: number): Promise<TmdbImagesResponse>
+  getMovieVideos(tmdbId: number): Promise<TmdbVideosResponse>
+  getTvVideos(tmdbId: number): Promise<TmdbVideosResponse>
+  getSeasonVideos(tvTmdbId: number, seasonNumber: number): Promise<TmdbVideosResponse>
+  getEpisodeVideos(tvTmdbId: number, seasonNumber: number, episodeNumber: number): Promise<TmdbVideosResponse>
 }
 
 /** Cria os endpoints de catalogo sobre um `TmdbHttpClient` ja configurado. */
@@ -316,6 +340,50 @@ export function createTmdbCatalogEndpoints(
     },
     async searchMulti(query, params = {}) {
       return (await client.request('/search/multi', searchParams(config, query, params))) as TmdbMultiPage
+    },
+    async getTrending(mediaType, timeWindow, params = {}) {
+      if (!TRENDING_MEDIA_TYPES.has(mediaType)) {
+        throw new TmdbCatalogError(`trending media_type invalido: ${mediaType}`)
+      }
+      if (!TRENDING_TIME_WINDOWS.has(timeWindow)) {
+        throw new TmdbCatalogError(`trending time_window invalido: ${timeWindow}`)
+      }
+      const data = await client.request(`/trending/${mediaType}/${timeWindow}`, {
+        language: params.language ?? language,
+        page: params.page ?? 1,
+      })
+      return data as TmdbMultiPage
+    },
+    async getMovieImages(tmdbId) {
+      return (await client.request(`/movie/${tmdbId}/images`)) as TmdbImagesResponse
+    },
+    async getTvImages(tmdbId) {
+      return (await client.request(`/tv/${tmdbId}/images`)) as TmdbImagesResponse
+    },
+    async getSeasonImages(tvTmdbId, seasonNumber) {
+      return (await client.request(`/tv/${tvTmdbId}/season/${seasonNumber}/images`)) as TmdbImagesResponse
+    },
+    async getEpisodeImages(tvTmdbId, seasonNumber, episodeNumber) {
+      return (await client.request(
+        `/tv/${tvTmdbId}/season/${seasonNumber}/episode/${episodeNumber}/images`,
+      )) as TmdbImagesResponse
+    },
+    async getPersonImages(tmdbId) {
+      return (await client.request(`/person/${tmdbId}/images`)) as TmdbImagesResponse
+    },
+    async getMovieVideos(tmdbId) {
+      return (await client.request(`/movie/${tmdbId}/videos`)) as TmdbVideosResponse
+    },
+    async getTvVideos(tmdbId) {
+      return (await client.request(`/tv/${tmdbId}/videos`)) as TmdbVideosResponse
+    },
+    async getSeasonVideos(tvTmdbId, seasonNumber) {
+      return (await client.request(`/tv/${tvTmdbId}/season/${seasonNumber}/videos`)) as TmdbVideosResponse
+    },
+    async getEpisodeVideos(tvTmdbId, seasonNumber, episodeNumber) {
+      return (await client.request(
+        `/tv/${tvTmdbId}/season/${seasonNumber}/episode/${episodeNumber}/videos`,
+      )) as TmdbVideosResponse
     },
   }
 }

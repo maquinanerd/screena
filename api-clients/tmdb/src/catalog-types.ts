@@ -143,3 +143,48 @@ export interface TmdbChangesPage {
   total_pages?: number | null
   total_results?: number | null
 }
+
+/* ------------------------------------------------------------------ */
+/* Mídia (imagens / vídeos) — Fase 7                                   */
+/* ------------------------------------------------------------------ */
+
+/** Um item de imagem (`backdrops`/`posters`/`logos`/`profiles`/`stills`). */
+export interface TmdbImageItem {
+  file_path?: string | null
+  iso_639_1?: string | null
+  width?: number | null
+  height?: number | null
+  aspect_ratio?: number | null
+  vote_average?: number | null
+  vote_count?: number | null
+}
+
+/** Resposta de `GET /{entity}/{id}/images` (buckets por tipo). */
+export interface TmdbImagesResponse {
+  id?: number | null
+  backdrops?: TmdbImageItem[]
+  posters?: TmdbImageItem[]
+  logos?: TmdbImageItem[]
+  profiles?: TmdbImageItem[]
+  stills?: TmdbImageItem[]
+}
+
+/** Um item de vídeo (`results[]`). */
+export interface TmdbVideoItem {
+  id?: string | null
+  iso_639_1?: string | null
+  iso_3166_1?: string | null
+  name?: string | null
+  key?: string | null
+  site?: string | null
+  size?: number | null
+  type?: string | null
+  official?: boolean | null
+  published_at?: string | null
+}
+
+/** Resposta de `GET /{entity}/{id}/videos`. */
+export interface TmdbVideosResponse {
+  id?: number | null
+  results?: TmdbVideoItem[]
+}

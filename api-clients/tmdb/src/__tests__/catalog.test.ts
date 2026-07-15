@@ -190,6 +190,45 @@ describe('auth v4 — token no header, nunca na URL', () => {
   })
 })
 
+describe('midia e trending', () => {
+  it('imagens usam /{entity}/{id}/images nos paths corretos', async () => {
+    const { endpoints, calls } = setup()
+    await endpoints.getMovieImages(1)
+    await endpoints.getTvImages(2)
+    await endpoints.getSeasonImages(2, 3)
+    await endpoints.getEpisodeImages(2, 3, 4)
+    await endpoints.getPersonImages(5)
+    expect(calls[0]?.url).toContain('/movie/1/images')
+    expect(calls[1]?.url).toContain('/tv/2/images')
+    expect(calls[2]?.url).toContain('/tv/2/season/3/images')
+    expect(calls[3]?.url).toContain('/tv/2/season/3/episode/4/images')
+    expect(calls[4]?.url).toContain('/person/5/images')
+  })
+
+  it('videos usam /{entity}/{id}/videos nos paths corretos', async () => {
+    const { endpoints, calls } = setup()
+    await endpoints.getMovieVideos(1)
+    await endpoints.getTvVideos(2)
+    await endpoints.getSeasonVideos(2, 3)
+    await endpoints.getEpisodeVideos(2, 3, 4)
+    expect(calls[0]?.url).toContain('/movie/1/videos')
+    expect(calls[1]?.url).toContain('/tv/2/videos')
+    expect(calls[2]?.url).toContain('/tv/2/season/3/videos')
+    expect(calls[3]?.url).toContain('/tv/2/season/3/episode/4/videos')
+  })
+
+  it('trending usa /trending/{media_type}/{time_window} e valida os segmentos', async () => {
+    const { endpoints, calls } = setup()
+    await endpoints.getTrending('movie', 'day')
+    await endpoints.getTrending('tv', 'week', { page: 2 })
+    expect(calls[0]?.url).toContain('/trending/movie/day')
+    expect(calls[1]?.url).toContain('/trending/tv/week')
+    expect(query(calls[1]?.url ?? '').get('page')).toBe('2')
+    await expect(endpoints.getTrending('hacker' as never, 'day')).rejects.toBeInstanceOf(TmdbCatalogError)
+    await expect(endpoints.getTrending('movie', 'ano' as never)).rejects.toBeInstanceOf(TmdbCatalogError)
+  })
+})
+
 describe('validadores de envelope', () => {
   it('validateTmdbPage aceita pagina valida e rejeita results nao-array / item sem id', () => {
     expect(validateTmdbPage({ page: 1, results: [{ id: 1 }], total_pages: 2, total_results: 3 }).ok).toBe(true)
