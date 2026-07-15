@@ -44,6 +44,7 @@ import { evaluateEntityIndexIndexability } from "./entity-index-presenter";
 import {
   evaluateArticleIndexability,
   evaluateNewsIndexIndexability,
+  isNewsAttributionSatisfied,
   isPublishableArticle,
   isSufficientBody,
   resolvePublishedIso,
@@ -86,6 +87,10 @@ export interface SitemapNewsCandidate {
   reviewStatus: string;
   licenseStatus: string;
   displayAllowed: boolean;
+  requiresAttribution?: boolean;
+  requiresLinkback?: boolean;
+  sourceName?: string | null;
+  sourceUrl?: string | null;
   indexStatus: string;
   body: string | null;
   translationPublishedAtIso: string | null;
@@ -185,17 +190,25 @@ function entityDetailEntry(
  * paginas de noticias.
  */
 function isPublishableNewsCandidate(candidate: SitemapNewsCandidate): boolean {
-  return isPublishableArticle({
-    reviewStatus: candidate.reviewStatus,
-    licenseStatus: candidate.licenseStatus,
-    displayAllowed: candidate.displayAllowed,
-    slug: candidate.slug,
-    title: candidate.title,
-    publishedAtIso: resolvePublishedIso(
-      candidate.translationPublishedAtIso,
-      candidate.articlePublishedAtIso,
-    ),
-  });
+  return (
+    isPublishableArticle({
+      reviewStatus: candidate.reviewStatus,
+      licenseStatus: candidate.licenseStatus,
+      displayAllowed: candidate.displayAllowed,
+      slug: candidate.slug,
+      title: candidate.title,
+      publishedAtIso: resolvePublishedIso(
+        candidate.translationPublishedAtIso,
+        candidate.articlePublishedAtIso,
+      ),
+    }) &&
+    isNewsAttributionSatisfied({
+      requiresAttribution: candidate.requiresAttribution ?? false,
+      requiresLinkback: candidate.requiresLinkback ?? false,
+      sourceName: candidate.sourceName ?? null,
+      sourceUrl: candidate.sourceUrl ?? null,
+    })
+  );
 }
 
 /** Noticia entra so quando publicavel E indexavel (mesmo gate da pagina). */

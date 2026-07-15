@@ -96,6 +96,11 @@ export interface NewsListItemInput {
   readTimeMinutes: number | null;
   licenseStatus: string;
   displayAllowed: boolean;
+  /** Atribuicao/linkback exigidos (invariante 6). Opcionais: default nao-exigido. */
+  requiresAttribution?: boolean;
+  requiresLinkback?: boolean;
+  sourceName?: string | null;
+  sourceUrl?: string | null;
   slug: string | null;
   title: string | null;
   deck: string | null;
@@ -268,6 +273,26 @@ export function isPublishableArticle(input: {
   );
 }
 
+/** Fatos de atribuicao/linkback do artigo (Article). */
+export interface ArticleAttributionInput {
+  requiresAttribution: boolean;
+  requiresLinkback: boolean;
+  sourceName: string | null;
+  sourceUrl: string | null;
+}
+
+/**
+ * Atribuicao/linkback satisfeitos (invariante 6): quando a licenca exige credito
+ * (`requiresAttribution`), a fonte precisa estar presente; quando exige linkback
+ * (`requiresLinkback`), a URL da fonte precisa estar presente. Sem isso, o artigo
+ * NAO pode aparecer em pagina indexavel nem como card — fail-closed.
+ */
+export function isNewsAttributionSatisfied(input: ArticleAttributionInput): boolean {
+  if (input.requiresAttribution && trimToNull(input.sourceName) === null) return false;
+  if (input.requiresLinkback && trimToNull(input.sourceUrl) === null) return false;
+  return true;
+}
+
 export function buildNewsCard(input: NewsListItemInput): NewsCardView | null {
   const slug = trimToNull(input.slug);
   const title = trimToNull(input.title);
@@ -283,6 +308,12 @@ export function buildNewsCard(input: NewsListItemInput): NewsCardView | null {
       slug,
       title,
       publishedAtIso: publishedIso,
+    }) ||
+    !isNewsAttributionSatisfied({
+      requiresAttribution: input.requiresAttribution ?? false,
+      requiresLinkback: input.requiresLinkback ?? false,
+      sourceName: input.sourceName ?? null,
+      sourceUrl: input.sourceUrl ?? null,
     })
   ) {
     return null;
