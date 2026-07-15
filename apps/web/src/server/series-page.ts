@@ -19,13 +19,14 @@ import {
   type SeriesPageView,
   type SeriesSeasonInput,
 } from "../lib/series-presenter";
+import { resolveEntityPageSeo } from "./seo/indexability-decision";
 import { getRelatedNewsForEntity } from "./related-news";
 import { getCastForEntity } from "./entity-cast";
 import { getWatchAvailabilityForEntity } from "./entity-watch";
 import type { NewsCardView } from "../lib/news-presenter";
 import type { CastMemberView } from "../lib/cast-presenter";
 import type { WatchAvailabilityView } from "../lib/watch-availability-presenter";
-import type { IndexabilityResult } from "@screena/seo";
+import type { IndexabilityResult, PageSeoResolution } from "@screena/seo";
 
 const LANGUAGE_CODE = "pt-BR";
 const ENTITY_TYPE = "tv";
@@ -34,6 +35,8 @@ const SERIES_INDEX_PATH = "/pt/series/";
 export interface SeriesPageData {
   view: SeriesPageView;
   indexability: IndexabilityResult;
+  /** Resolucao FINAL de SEO (Fase 3): fatos vivos + decisao vigente persistida. */
+  seo: PageSeoResolution;
   canonicalSlug: string;
   canonicalUrl: string;
   /** Noticias relacionadas publicaveis (EntityNewsLink); [] quando nao houver. */
@@ -191,12 +194,27 @@ export const getSeriesPageData = cache(
       renderableBlockCount: view.renderableBlockCount,
     });
     const canonicalSlug = canonicalSlugRow?.slug ?? slug;
+    const canonicalUrl = seriesCanonicalUrl(canonicalSlug);
+
+    // Fonte unica da Fase 3: fatos vivos + decisao vigente persistida (fail-closed).
+    const seo = await resolveEntityPageSeo(
+      { entityType: ENTITY_TYPE, entityId, languageCode: LANGUAGE_CODE },
+      {
+        language: LANGUAGE_CODE,
+        hasReliableStructuredData: true,
+        displayedRatings: [],
+        canonicalUrl,
+        valueBlocksCount: view.renderableBlockCount,
+      },
+      prisma,
+    );
 
     return {
       view,
       indexability,
+      seo,
       canonicalSlug,
-      canonicalUrl: seriesCanonicalUrl(canonicalSlug),
+      canonicalUrl,
       relatedNews,
       cast,
       watch,

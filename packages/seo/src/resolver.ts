@@ -69,7 +69,8 @@ export type DecisionSource =
   | "stale-invalidation"
   | "entity-not-published"
   | "technical-invalid"
-  | "total-indexing";
+  | "total-indexing"
+  | "persisted-decision";
 
 /**
  * Gate de atribuicao/linkback de noticia (invariante 6, regras de ratings/news).
@@ -306,5 +307,95 @@ export function resolvePageSeo(facts: PageSeoFacts): PageSeoResolution {
     decisionSource: "total-indexing",
     reason:
       "Entidade sincronizada, licenciada e em idioma publicado — indexacao total (invariante 5, politica 2026-07). Conteudo editorial e alavanca de ranqueamento, nao pre-requisito.",
+  };
+}
+
+/**
+ * Decisao VIGENTE persistida em `page_indexability_decisions` (is_current=true),
+ * ja lida do PostgreSQL pelo chamador. Espelha a coluna `decision` mais os
+ * metadados de auditoria (`decision_origin`, `policy_version`, `reason`).
+ */
+export interface PersistedDecisionFacts {
+  /** page_indexability_decisions.decision da linha vigente. */
+  decision: IndexDecision;
+  /** decision_origin (ex.: 'human_override', 'seo_policy_engine', 'sync_worker'). */
+  decisionOrigin: string | null;
+  /** policy_version registrada na decisao. */
+  policyVersion: string | null;
+  /** reason persistido, quando houver. */
+  reason?: string | null;
+}
+
+/**
+ * Severidade de restricao de cada decisao (maior = mais restritivo):
+ * index < stale < draft < noindex < blocked. Ordena a fusao entre a decisao
+ * viva (fatos do banco) e a decisao persistida.
+ */
+const DECISION_SEVERITY: Readonly<Record<IndexDecision, number>> = {
+  index: 0,
+  stale: 1,
+  draft: 2,
+  noindex: 3,
+  blocked: 4,
+};
+
+/** Diretivas robots para uma decisao persistida que governa a pagina. */
+function robotsForPersistedDecision(decision: IndexDecision): {
+  index: boolean;
+  follow: boolean;
+} {
+  switch (decision) {
+    case "index":
+      return { index: true, follow: true };
+    case "blocked":
+      return { index: false, follow: false };
+    case "noindex":
+      // Uma linha persistida de noindex e uma decisao REGISTRADA (override
+      // editorial/motor de politica) — trata-se como exclusao explicita: nofollow.
+      return { index: false, follow: false };
+    default:
+      // draft / stale: fora do indice, mas o crawler ainda segue os links.
+      return { index: false, follow: true };
+  }
+}
+
+/**
+ * Funde a resolucao viva (derivada dos fatos do banco por `resolvePageSeo`) com
+ * a decisao VIGENTE persistida em `page_indexability_decisions`.
+ *
+ * Regra unica e fail-closed: prevalece sempre a decisao MAIS RESTRITIVA. Uma
+ * decisao persistida pode RESTRINGIR (override humano/motor -> noindex, blocked,
+ * stale, draft), mas NUNCA relaxa um bloqueio vivo — um `index` persistido
+ * desatualizado jamais reabre uma pagina que a licenca (invariante 6), o idioma
+ * (invariante 7) ou o caso tecnico ja bloquearam ao vivo. Sem decisao persistida
+ * (`null`), devolve a resolucao viva inalterada (politica de indexacao total).
+ *
+ * `includeInSitemap === (decision === 'index')` continua valendo apos a fusao —
+ * metadata e sitemap nunca discordam.
+ */
+export function mergePersistedDecision(
+  live: PageSeoResolution,
+  persisted: PersistedDecisionFacts | null,
+): PageSeoResolution {
+  if (persisted === null) return live;
+
+  const liveSeverity = DECISION_SEVERITY[live.decision];
+  const persistedSeverity = DECISION_SEVERITY[persisted.decision];
+
+  // Persistida nao e mais restritiva que a viva: os fatos vivos governam.
+  if (persistedSeverity <= liveSeverity) return live;
+
+  const decision = persisted.decision;
+  const persistedReason = persisted.reason?.trim();
+  return {
+    ...live,
+    decision,
+    robots: robotsForPersistedDecision(decision),
+    includeInSitemap: decision === "index",
+    decisionSource: "persisted-decision",
+    reason:
+      persistedReason && persistedReason.length > 0
+        ? persistedReason
+        : `Decisao vigente persistida em page_indexability_decisions (decision='${decision}', origin='${persisted.decisionOrigin ?? "?"}') e mais restritiva que a resolucao viva; prevalece (fail-closed).`,
   };
 }

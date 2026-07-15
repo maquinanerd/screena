@@ -24,9 +24,10 @@ import {
   type PersonCreditInput,
   type PersonPageView,
 } from "../lib/person-presenter";
+import { resolveEntityPageSeo } from "./seo/indexability-decision";
 import { getRelatedNewsForEntity } from "./related-news";
 import type { NewsCardView } from "../lib/news-presenter";
-import type { IndexabilityResult } from "@screena/seo";
+import type { IndexabilityResult, PageSeoResolution } from "@screena/seo";
 
 const LANGUAGE_CODE = "pt-BR";
 const ENTITY_TYPE = "person";
@@ -35,6 +36,8 @@ const PERSON_INDEX_PATH = "/pt/pessoas/";
 export interface PersonPageData {
   view: PersonPageView;
   indexability: IndexabilityResult;
+  /** Resolucao FINAL de SEO (Fase 3): fatos vivos + decisao vigente persistida. */
+  seo: PageSeoResolution;
   canonicalSlug: string;
   canonicalUrl: string;
   /** Noticias relacionadas publicaveis (EntityNewsLink); [] quando nao houver. */
@@ -170,12 +173,27 @@ export const getPersonPageData = cache(
       renderableBlockCount: view.renderableBlockCount,
     });
     const canonicalSlug = canonicalSlugRow?.slug ?? slug;
+    const canonicalUrl = personCanonicalUrl(canonicalSlug);
+
+    // Fonte unica da Fase 3: fatos vivos + decisao vigente persistida (fail-closed).
+    const seo = await resolveEntityPageSeo(
+      { entityType: ENTITY_TYPE, entityId, languageCode: LANGUAGE_CODE },
+      {
+        language: LANGUAGE_CODE,
+        hasReliableStructuredData: true,
+        displayedRatings: [],
+        canonicalUrl,
+        valueBlocksCount: view.renderableBlockCount,
+      },
+      prisma,
+    );
 
     return {
       view,
       indexability,
+      seo,
       canonicalSlug,
-      canonicalUrl: personCanonicalUrl(canonicalSlug),
+      canonicalUrl,
       relatedNews,
       externalIds,
     };
