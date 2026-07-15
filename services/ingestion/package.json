@@ -12,11 +12,17 @@
   },
   "sideEffects": false,
   "license": "UNLICENSED",
+  "scripts": {
+    "validate:tmdb-catalog": "tsx scripts/validate-tmdb-catalog-real-postgres.ts"
+  },
   "dependencies": {
     "@screena/db": "workspace:*",
     "@screena/tmdb-client": "workspace:*"
   },
   "devDependencies": {
+    "@prisma/client": "^6.1.0",
+    "embedded-postgres": "16.14.0-beta.17",
+    "prisma": "^6.1.0",
     "tsx": "^4.19.0"
   }
 }
