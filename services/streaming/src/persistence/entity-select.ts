@@ -1,6 +1,6 @@
 /**
  * entity-select.ts — Selecao das entidades a consultar (Prisma).
- * EXCLUIDO do typecheck.
+ * incluido no typecheck (2026-07).
  *
  * A varredura (`select`) so traz `movies`/`tv_shows` com **IMDb id real**
  * (`imdb_id NOT NULL`): a chave da chamada `/shows/{imdbId}` e o IMDb id, entao

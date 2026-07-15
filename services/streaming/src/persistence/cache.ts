@@ -1,5 +1,5 @@
 /**
- * cache.ts — Adapter de `api_cache` (Prisma). EXCLUIDO do typecheck.
+ * cache.ts — Adapter de `api_cache` (Prisma). incluido no typecheck (2026-07).
  *
  * Grava o payload BRUTO por (provider_api, request_key, params_hash).
  * O render NUNCA le daqui.

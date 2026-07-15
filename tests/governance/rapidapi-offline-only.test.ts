@@ -203,20 +203,26 @@ describe('governanca: stores nascem fail-closed', () => {
     expect(content).not.toContain('displayAllowed: true')
   })
 
-  it('watch-store escopa TODO deleteMany por providerApi e nasce display_allowed=false', async () => {
+  it('watch-store: fail-closed, upsert por identidade, escopo provider_api e SEM DELETE cego', async () => {
     const raw = await readFile(watchStore, 'utf8')
-    expect(raw).toContain('displayAllowed: false')
-
-    // Comentarios podem MENCIONAR deleteMany; miramos so o codigo.
     const code = stripComments(raw)
-    const parts = code.split('deleteMany')
-    // Ha pelo menos um deleteMany real no codigo.
-    expect(parts.length).toBeGreaterThan(1)
-    // Cada deleteMany do codigo tem `providerApi` no seu bloco `where`.
-    for (let i = 1; i < parts.length; i += 1) {
-      const window = (parts[i] ?? '').slice(0, 300)
-      expect(window).toContain('providerApi')
-    }
+
+    // Fail-closed: o sync NUNCA liga display_allowed (nasce false).
+    expect(code).toMatch(/false,\s*now\(\)/i) // INSERT ... display_allowed=false
+    expect(code).not.toMatch(/display_allowed"?\s*=\s*true/i)
+    expect(code).not.toMatch(/displayAllowed:\s*true/i)
+
+    // NAO apaga snapshot as cegas: sem deleteMany, sem DELETE FROM watch_availability.
+    expect(code).not.toContain('deleteMany')
+    expect(code).not.toMatch(/DELETE\s+FROM\s+"?watch_availability/i)
+
+    // Reconciliacao por IDENTIDADE ESTAVEL + escopo por provider_api deste worker.
+    expect(code).toContain('watch_offer_identity_key_v1')
+    expect(code).toContain('ON CONFLICT')
+    expect(code).toContain('STREAMING_AVAILABILITY_PROVIDER_API')
+
+    // Ofertas sumidas do snapshot: revogadas (display false) + marcadas stale.
+    expect(code).toMatch(/stale_after"?\s*=\s*now\(\)/i)
   })
 })
 

@@ -19,7 +19,7 @@
     "packages/**/scripts/**",
     "packages/db/src/server.ts",
     "api-clients/**/bin/**",
-    "services/**/persistence/**",
+    "services/ingestion/**/persistence/**",
     "services/**/scripts/**",
     "services/**/bin/**",
     "services/ingestion/src/composition.ts"

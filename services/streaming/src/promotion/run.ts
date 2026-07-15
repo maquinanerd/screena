@@ -44,8 +44,13 @@ export interface StoreMutationOutcome {
 export interface ReviewStorePort {
   listCandidates(query: ReviewQuery): Promise<readonly PromotionCandidate[]>
   findByIds(ids: readonly string[]): Promise<readonly PromotionCandidate[]>
-  /** Vira `display_allowed=true` (WHERE provider=SA, country=BR, allowed=false). */
-  promote(ids: readonly string[]): Promise<StoreMutationOutcome>
+  /**
+   * Promove: grava, atomicamente, approved_payload_hash + reviewed_at +
+   * reviewed_by e liga display_allowed. O `reviewer` (identidade humana) e
+   * OBRIGATORIO; sem ele a promocao falha. O trigger permanente do banco valida
+   * hash/licenca/atribuicao — ofertas incompletas ficam fail-closed.
+   */
+  promote(ids: readonly string[], reviewer: string): Promise<StoreMutationOutcome>
   /** Vira `display_allowed=false` (WHERE provider=SA, allowed=true). */
   revoke(ids: readonly string[]): Promise<StoreMutationOutcome>
 }
@@ -180,6 +185,8 @@ export async function runPromotion(
     readonly country: string
     readonly confirm: boolean
     readonly revoke: boolean
+    /** Identidade humana do revisor (obrigatoria para promover; ignorada em revoke). */
+    readonly reviewer: string
   },
   deps: PromotionDeps,
 ): Promise<PromotionResult> {
@@ -202,7 +209,7 @@ export async function runPromotion(
   if (input.confirm && eligibleIds.length > 0) {
     const outcome = input.revoke
       ? await deps.store.revoke(eligibleIds)
-      : await deps.store.promote(eligibleIds)
+      : await deps.store.promote(eligibleIds, input.reviewer)
     updated = outcome.updated
 
     // Auditoria leve: 1 linha tecnica por acao efetiva (todo mutacao gera log).
