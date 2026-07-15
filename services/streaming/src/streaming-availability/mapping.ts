@@ -50,6 +50,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
+/** Le um id/texto opcional sem fabricar identidade a partir do nome exibido. */
+function readOptionalText(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() !== '' ? value.trim() : null
+}
+
 /** Converte um unix timestamp (s ou ms) em `Date`; null quando invalido. */
 export function readTimestamp(value: unknown): Date | null {
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return null
@@ -239,7 +244,9 @@ export function mapShowPayload(
       rejections.push(reject('missing-provider-name', `oferta ${index} sem service.name`))
       continue
     }
-    const providerKey = typeof service?.id === 'string' && service.id.trim() !== '' ? service.id.trim() : null
+    const providerKey = readOptionalText(service?.id)
+    const externalOfferId = readOptionalText(rawOffer.id) ?? readOptionalText(rawOffer.externalId)
+    const packageName = readOptionalText(rawOffer.package)
 
     let deepLink: string | null = null
     if (rawOffer.link !== undefined && rawOffer.link !== null) {
@@ -248,6 +255,18 @@ export function mapShowPayload(
       } else {
         rejections.push(
           reject('unsafe-deep-link', `oferta ${index} (${providerName}): link nao-http descartado`),
+        )
+      }
+    }
+
+    let webUrl: string | null = null
+    const rawWebUrl = rawOffer.webUrl ?? rawOffer.web_url
+    if (rawWebUrl !== undefined && rawWebUrl !== null) {
+      if (isSafeDeepLink(rawWebUrl)) {
+        webUrl = rawWebUrl.trim()
+      } else {
+        rejections.push(
+          reject('unsafe-deep-link', `oferta ${index} (${providerName}): web URL nao-http descartada`),
         )
       }
     }
@@ -262,10 +281,13 @@ export function mapShowPayload(
       entityType: entity.entityType,
       entityId: entity.entityId,
       countryCode: countryCode.toUpperCase(),
+      externalOfferId,
       providerKey,
       providerName,
+      package: packageName,
       offerType,
       deepLink,
+      webUrl,
       price: priceInfo?.price ?? null,
       currency: priceInfo?.currency ?? null,
       quality,

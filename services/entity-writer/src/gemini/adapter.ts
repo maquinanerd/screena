@@ -18,6 +18,7 @@
  * guarda `audit:render` impede import por apps/web.
  */
 
+import { ENTITY_WRITER_OUTPUT_JSON_SCHEMA } from "@screena/schemas";
 import type { GeminiGenerateInput, GeminiGenerateOutput, GeminiPort } from "../ports.js";
 import { GEMINI_PROVIDER, loadGeminiConfig, type GeminiConfig, type GeminiEnv } from "./config.js";
 
@@ -293,7 +294,26 @@ export class GeminiAdapter implements GeminiPort {
    */
   private buildBody(input: GeminiGenerateInput): string {
     const userText = `${input.prompt}\n\n## Payload controlado (JSON)\n${JSON.stringify(input.payload)}`;
-    return JSON.stringify({ contents: [{ role: "user", parts: [{ text: userText }] }] });
+    return JSON.stringify({
+      systemInstruction: {
+        parts: [
+          {
+            text: "Escreva somente com os fatos do payload controlado. Nao invente nomes, datas, numeros, ratings ou disponibilidade. Retorne apenas JSON conforme o schema.",
+          },
+        ],
+      },
+      contents: [{ role: "user", parts: [{ text: userText }] }],
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseJsonSchema: ENTITY_WRITER_OUTPUT_JSON_SCHEMA,
+      },
+      safetySettings: [
+        { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
+        { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
+        { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
+        { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
+      ],
+    });
   }
 
   /** Parseia o ENVELOPE do provedor e extrai `raw` + tokens. */

@@ -220,6 +220,9 @@ describe("GeminiAdapter", () => {
     expect(text).toBeDefined();
     expect(text).toContain("PROMPT-3A"); // inclui o prompt
     expect(text).toContain(JSON.stringify(payload)); // inclui o payload serializado
+    const generationConfig = (body as { generationConfig?: { responseMimeType?: string; responseJsonSchema?: unknown } }).generationConfig;
+    expect(generationConfig?.responseMimeType).toBe("application/json");
+    expect(generationConfig?.responseJsonSchema).toMatchObject({ type: "object", additionalProperties: false });
     // a chave NAO vai no body nem na URL; vai SO no header.
     expect(req?.body).not.toContain(API_KEY);
     expect(req?.url).not.toContain(API_KEY);

@@ -1094,6 +1094,45 @@
     "notes": "Onde assistir por IMDb id (BR-only, filtro no worker). Ofertas nascem display_allowed=false: atribuicao+linkback a Movie of the Night obrigatorios (invariante 6). Apenas ofertas legais (filtro anti-pirataria). Promocao para exibir e humana (invariante 6). Nunca executado ao vivo."
   },
   {
+    "id": "streaming_availability.changes",
+    "provider": "streaming_availability",
+    "provider_api": "streaming_availability",
+    "role": "streaming",
+    "http": "GET /shows/search/changes",
+    "worker_only": true,
+    "implemented": true,
+    "coverage_state": "raw_captured",
+    "anchor": { "file": "api-clients/streaming_availability/src/client.ts", "must_contain": ["getChanges", "SHOWS_CHANGES_ENDPOINT"] },
+    "plan_area": "Streaming Availability (Fase 9)",
+    "notes": "Cursor incremental e opaco; o client somente captura DTO bruto. Nenhum change promove oferta ou altera dados publicos."
+  },
+  {
+    "id": "streaming_availability.countries",
+    "provider": "streaming_availability",
+    "provider_api": "streaming_availability",
+    "role": "streaming",
+    "http": "GET /countries, GET /countries/{country}",
+    "worker_only": true,
+    "implemented": true,
+    "coverage_state": "raw_captured",
+    "anchor": { "file": "api-clients/streaming_availability/src/client.ts", "must_contain": ["getCountries", "getCountry"] },
+    "plan_area": "Streaming Availability (Fase 9)",
+    "notes": "Catalogo de paises/servicos capturado raw; nao substitui a tabela canonica countries e nao e publico sem licenca."
+  },
+  {
+    "id": "streaming_availability.genres",
+    "provider": "streaming_availability",
+    "provider_api": "streaming_availability",
+    "role": "streaming",
+    "http": "GET /genres",
+    "worker_only": true,
+    "implemented": true,
+    "coverage_state": "raw_captured",
+    "anchor": { "file": "api-clients/streaming_availability/src/client.ts", "must_contain": ["getGenres", "GENRES_ENDPOINT"] },
+    "plan_area": "Streaming Availability (Fase 9)",
+    "notes": "Taxonomia do provider preservada raw; nao se assume equivalencia com TMDB genres."
+  },
+  {
     "id": "streaming_availability.person_season_episode",
     "provider": "streaming_availability",
     "provider_api": "streaming_availability",
