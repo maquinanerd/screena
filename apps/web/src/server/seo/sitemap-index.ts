@@ -34,11 +34,13 @@ import {
 
 import {
   canonicalPublicUrl,
+  episodePath,
   EXPLORE_PATH,
   HOME_PATH,
   MOVIES_INDEX_PATH,
   NEWS_INDEX_PATH,
   PEOPLE_INDEX_PATH,
+  seasonPath,
   SERIES_INDEX_PATH,
   SITE_URL,
 } from "../../lib/site";
@@ -54,12 +56,21 @@ type PrismaClient = ReturnType<typeof getPrismaClient>;
 /** Unico idioma com dados publicados no sitemap hoje (dados sob language_code). */
 export const SITEMAP_LANGUAGE = "pt-BR";
 
+/** Tipos cuja URL e INDEX + slug canonico proprio. */
+export type SimpleSitemapType = "movies" | "series" | "people" | "news";
 /** Tipos de entidade paginados (com rota publica real). `static` e a parte fixa. */
-export type EntitySitemapType = "movies" | "series" | "people" | "news";
-const ENTITY_TYPES: readonly EntitySitemapType[] = ["movies", "series", "people", "news"];
+export type EntitySitemapType = SimpleSitemapType | "seasons" | "episodes";
+const ENTITY_TYPES: readonly EntitySitemapType[] = [
+  "movies",
+  "series",
+  "people",
+  "news",
+  "seasons",
+  "episodes",
+];
 const ALL_TYPES: readonly string[] = [...ENTITY_TYPES, "static"];
 
-const INDEX_PATH: Readonly<Record<EntitySitemapType, string>> = {
+const INDEX_PATH: Readonly<Record<SimpleSitemapType, string>> = {
   movies: MOVIES_INDEX_PATH,
   series: SERIES_INDEX_PATH,
   people: PEOPLE_INDEX_PATH,
@@ -71,12 +82,16 @@ const ENTITY_CHANGEFREQ: Readonly<Record<EntitySitemapType, string>> = {
   series: "monthly",
   people: "monthly",
   news: "weekly",
+  seasons: "monthly",
+  episodes: "monthly",
 };
 const ENTITY_PRIORITY: Readonly<Record<EntitySitemapType, number>> = {
   movies: 0.5,
   series: 0.5,
   people: 0.5,
   news: 0.6,
+  seasons: 0.4,
+  episodes: 0.3,
 };
 
 export interface SitemapXmlResponse {
@@ -151,7 +166,7 @@ async function aggregateEntity(
         AND NOT EXISTS (SELECT 1 FROM page_indexability_decisions d
           WHERE d.entity_type = 'person' AND d.entity_id = s.entity_id
             AND d.language_code = ${language} AND d.is_current = true AND d.decision <> 'index')`;
-  } else {
+  } else if (type === "news") {
     rows = await prisma.$queryRaw<{ n: number; maxmod: Date | null }[]>`
       SELECT COUNT(*)::int AS n, MAX(at.updated_at) AS maxmod
       FROM article_translations at JOIN articles a ON a.id = at.article_id
@@ -165,13 +180,36 @@ async function aggregateEntity(
         AND LENGTH(BTRIM(COALESCE(at.body, ''))) >= ${MIN_ARTICLE_BODY_CHARS}
         AND (a.requires_attribution = false OR BTRIM(COALESCE(a.source_name, '')) <> '')
         AND (a.requires_linkback = false OR BTRIM(COALESCE(a.source_url, '')) <> '')`;
+  } else if (type === "seasons") {
+    rows = await prisma.$queryRaw<{ n: number; maxmod: Date | null }[]>`
+      SELECT COUNT(*)::int AS n, MAX(se.updated_at) AS maxmod
+      FROM seasons se
+      JOIN tv_shows t ON t.id = se.tv_show_id
+      JOIN slugs s ON s.entity_type = 'tv' AND s.entity_id = t.id
+        AND s.language_code = ${language} AND s.is_canonical = true
+      WHERE BTRIM(t.name_original) <> ''
+        AND NOT EXISTS (SELECT 1 FROM page_indexability_decisions d
+          WHERE d.entity_type = 'season' AND d.entity_id = se.id
+            AND d.language_code = ${language} AND d.is_current = true AND d.decision <> 'index')`;
+  } else {
+    rows = await prisma.$queryRaw<{ n: number; maxmod: Date | null }[]>`
+      SELECT COUNT(*)::int AS n, MAX(e.updated_at) AS maxmod
+      FROM episodes e
+      JOIN seasons se ON se.id = e.season_id
+      JOIN tv_shows t ON t.id = e.tv_show_id
+      JOIN slugs s ON s.entity_type = 'tv' AND s.entity_id = t.id
+        AND s.language_code = ${language} AND s.is_canonical = true
+      WHERE BTRIM(t.name_original) <> ''
+        AND NOT EXISTS (SELECT 1 FROM page_indexability_decisions d
+          WHERE d.entity_type = 'episode' AND d.entity_id = e.id
+            AND d.language_code = ${language} AND d.is_current = true AND d.decision <> 'index')`;
   }
   return { count: rows[0]?.n ?? 0, maxLastmod: rows[0]?.maxmod ?? null };
 }
 
 async function pageEntity(
   prisma: PrismaClient,
-  type: EntitySitemapType,
+  type: SimpleSitemapType,
   language: string,
   limit: number,
   offset: number,
@@ -225,7 +263,7 @@ async function pageEntity(
     ORDER BY at.id ASC LIMIT ${limit} OFFSET ${offset}`;
 }
 
-function pageRowsToUrls(type: EntitySitemapType, rows: PageRow[]): SitemapXmlUrl[] {
+function pageRowsToUrls(type: SimpleSitemapType, rows: PageRow[]): SitemapXmlUrl[] {
   const urls: SitemapXmlUrl[] = [];
   for (const row of rows) {
     const slug = row.slug.trim();
@@ -240,6 +278,86 @@ function pageRowsToUrls(type: EntitySitemapType, rows: PageRow[]): SitemapXmlUrl
     });
   }
   return urls;
+}
+
+// ---------------------------------------------------------------------------
+// Temporadas/episodios: URL composta (slug canonico da SERIE + numeros reais). A
+// paginacao continua NO BANCO (LIMIT/OFFSET) e a exclusao no WHERE (idioma,
+// serie com slug canonico/nome, decisao vigente != index da temporada/episodio).
+// ---------------------------------------------------------------------------
+
+function seasonEpisodeUrl(
+  path: string | null,
+  lastmod: Date | null,
+  type: "seasons" | "episodes",
+): SitemapXmlUrl | null {
+  if (path === null) return null;
+  const loc = canonicalPublicUrl(path);
+  if (loc === null) return null;
+  return {
+    loc,
+    lastmod: isoOrNull(lastmod),
+    changefreq: ENTITY_CHANGEFREQ[type],
+    priority: ENTITY_PRIORITY[type],
+  };
+}
+
+async function pageSeasonEpisode(
+  prisma: PrismaClient,
+  type: "seasons" | "episodes",
+  language: string,
+  limit: number,
+  offset: number,
+): Promise<SitemapXmlUrl[]> {
+  if (type === "seasons") {
+    const rows = await prisma.$queryRaw<
+      { series_slug: string; season_number: number; lastmod: Date | null }[]
+    >`
+      SELECT s.slug AS series_slug, se.season_number AS season_number, se.updated_at AS lastmod
+      FROM seasons se
+      JOIN tv_shows t ON t.id = se.tv_show_id
+      JOIN slugs s ON s.entity_type = 'tv' AND s.entity_id = t.id
+        AND s.language_code = ${language} AND s.is_canonical = true
+      WHERE BTRIM(t.name_original) <> ''
+        AND NOT EXISTS (SELECT 1 FROM page_indexability_decisions d
+          WHERE d.entity_type = 'season' AND d.entity_id = se.id
+            AND d.language_code = ${language} AND d.is_current = true AND d.decision <> 'index')
+      ORDER BY se.id ASC LIMIT ${limit} OFFSET ${offset}`;
+    return rows
+      .map((row) =>
+        seasonEpisodeUrl(seasonPath(row.series_slug, row.season_number), row.lastmod, "seasons"),
+      )
+      .filter((url): url is SitemapXmlUrl => url !== null);
+  }
+  const rows = await prisma.$queryRaw<
+    {
+      series_slug: string;
+      season_number: number;
+      episode_number: number;
+      lastmod: Date | null;
+    }[]
+  >`
+    SELECT s.slug AS series_slug, se.season_number AS season_number,
+           e.episode_number AS episode_number, e.updated_at AS lastmod
+    FROM episodes e
+    JOIN seasons se ON se.id = e.season_id
+    JOIN tv_shows t ON t.id = e.tv_show_id
+    JOIN slugs s ON s.entity_type = 'tv' AND s.entity_id = t.id
+      AND s.language_code = ${language} AND s.is_canonical = true
+    WHERE BTRIM(t.name_original) <> ''
+      AND NOT EXISTS (SELECT 1 FROM page_indexability_decisions d
+        WHERE d.entity_type = 'episode' AND d.entity_id = e.id
+          AND d.language_code = ${language} AND d.is_current = true AND d.decision <> 'index')
+    ORDER BY e.id ASC LIMIT ${limit} OFFSET ${offset}`;
+  return rows
+    .map((row) =>
+      seasonEpisodeUrl(
+        episodePath(row.series_slug, row.season_number, row.episode_number),
+        row.lastmod,
+        "episodes",
+      ),
+    )
+    .filter((url): url is SitemapXmlUrl => url !== null);
 }
 
 // ---------------------------------------------------------------------------
@@ -361,7 +479,8 @@ export function parseShardId(
 ): { language: string; type: string; page: number } | null {
   if (!raw.endsWith(".xml")) return null;
   const id = raw.slice(0, -".xml".length);
-  const match = /^sitemap-(pt-BR)-(movies|series|people|news|static)-(\d+)$/.exec(id);
+  const match =
+    /^sitemap-(pt-BR)-(movies|series|people|news|seasons|episodes|static)-(\d+)$/.exec(id);
   if (match === null) return null;
   const language = match[1];
   const type = match[2];
@@ -405,8 +524,14 @@ export async function getSitemapShardXml(
 
     // SO a pagina pedida, deste tipo: LIMIT/OFFSET no banco.
     const offset = (page - 1) * limit;
-    const rows = await pageEntity(prisma, entityType, language, limit, offset);
-    return { xml: renderUrlset(pageRowsToUrls(entityType, rows)), contentType: SITEMAP_CONTENT_TYPE };
+    const urls =
+      entityType === "seasons" || entityType === "episodes"
+        ? await pageSeasonEpisode(prisma, entityType, language, limit, offset)
+        : pageRowsToUrls(
+            entityType,
+            await pageEntity(prisma, entityType, language, limit, offset),
+          );
+    return { xml: renderUrlset(urls), contentType: SITEMAP_CONTENT_TYPE };
   } catch (error) {
     // FAIL-CLOSED: erro de banco -> nao publica URLs incertas (404).
     console.error(`[sitemap] falha ao montar shard ${rawShardId}; fail-closed (404):`, error);

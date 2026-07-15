@@ -76,3 +76,6 @@ jobs:
 
       - name: SEO runtime — Fase 3, fonte unica (PostgreSQL 16 efemero)
         run: pnpm --filter @screena/web validate:seo-runtime
+
+      - name: Rotas temporada/episodio — Fase 4 (PostgreSQL 16 efemero)
+        run: pnpm --filter @screena/web validate:season-episode-routes

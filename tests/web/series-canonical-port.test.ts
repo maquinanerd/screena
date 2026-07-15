@@ -40,7 +40,10 @@ describe('shell público mínimo · detalhe de série', () => {
     expect(code).toContain('const selectedSeason =')
     expect(code).toContain('id="episodios"')
     expect(code).toContain('id={`temporada-${season.seasonNumber}`}')
-    expect(code).toContain('href={`?temporada=${season.seasonNumber}#episodios`}')
+    // Fase 4: as temporadas linkam para as rotas dedicadas (seasonPath),
+    // preservando a selecao inline por query (`?temporada=`) como fallback.
+    expect(code).toContain('seasonPath(data.canonicalSlug, season.seasonNumber)')
+    expect(code).toContain('`?temporada=${season.seasonNumber}#episodios`')
     expect(code).toContain('season={selectedSeason}')
     expect(code).toContain('Nenhum episódio publicado nesta temporada.')
   })

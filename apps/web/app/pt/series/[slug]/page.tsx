@@ -9,7 +9,7 @@ import { WatchAvailabilityPanel } from '../../../_components/watch-availability-
 import { canonicalRedirectPath } from '../../../../src/lib/canonical-redirect'
 import { buildExternalLinks } from '../../../../src/lib/external-links'
 import type { SeriesEpisodeView, SeriesSeasonView } from '../../../../src/lib/series-presenter'
-import { NEWS_INDEX_PATH, SITE_URL } from '../../../../src/lib/site'
+import { NEWS_INDEX_PATH, seasonPath, SITE_URL } from '../../../../src/lib/site'
 import { getSeriesPageData } from '../../../../src/server/series-page'
 
 /**
@@ -265,18 +265,16 @@ export default async function SeriesPage({
             <h2 id="series-episodes-title">Episódios</h2>
             <nav aria-label="Temporadas">
               <ul>
-                {view.seasons.map((season) => (
-                  <li key={season.seasonNumber}>
-                    <a
-                      href={`?temporada=${season.seasonNumber}#episodios`}
-                      aria-current={
-                        season.seasonNumber === selectedSeason?.seasonNumber ? 'page' : undefined
-                      }
-                    >
-                      Temporada {season.seasonNumber}
-                    </a>
-                  </li>
-                ))}
+                {view.seasons.map((season) => {
+                  const seasonHref =
+                    seasonPath(data.canonicalSlug, season.seasonNumber) ??
+                    `?temporada=${season.seasonNumber}#episodios`
+                  return (
+                    <li key={season.seasonNumber}>
+                      <a href={seasonHref}>Temporada {season.seasonNumber}</a>
+                    </li>
+                  )
+                })}
               </ul>
             </nav>
             {episodeContextBlocks.map((block) => (
