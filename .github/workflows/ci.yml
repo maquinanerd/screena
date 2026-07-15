@@ -73,3 +73,6 @@ jobs:
 
       - name: Stores de streaming — integracao (PostgreSQL 16 efemero)
         run: pnpm --filter @screena/streaming validate:stores
+
+      - name: SEO runtime — Fase 3, fonte unica (PostgreSQL 16 efemero)
+        run: pnpm --filter @screena/web validate:seo-runtime
