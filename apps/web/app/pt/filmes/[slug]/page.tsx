@@ -57,7 +57,7 @@ export async function generateMetadata({
   const metadata: Metadata = {
     title,
     robots: seo.robots,
-    alternates: { canonical: seo.canonical ?? canonicalUrl },
+    alternates: { canonical: canonicalUrl },
   }
   if (view.metaDescription !== null) {
     metadata.description = view.metaDescription

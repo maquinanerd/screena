@@ -19,7 +19,7 @@ describe('shell público mínimo · detalhe de pessoa', () => {
     expect(code).toContain('getPersonPageData(slug)')
     expect(code).toContain('canonicalRedirectPath(')
     expect(code).toContain('permanentRedirect(redirectPath)')
-    expect(code).toContain('indexability.decision === "index"')
+    expect(code).toContain('robots: seo.robots')
     expect(code).toContain('alternates: { canonical: canonicalUrl }')
     expect(code).toContain('"@type": "Person"')
     expect(code).toContain('"@type": "BreadcrumbList"')
