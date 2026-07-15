@@ -8,7 +8,13 @@
     "worker_only": true,
     "implemented": true,
     "coverage_state": "public_ready",
-    "anchor": { "file": "api-clients/tmdb/src/endpoints.ts", "must_contain": ["getMovie", "/movie/"] },
+    "anchor": {
+      "file": "api-clients/tmdb/src/endpoints.ts",
+      "must_contain": [
+        "getMovie",
+        "/movie/"
+      ]
+    },
     "plan_area": "TMDB catalogo/relacoes (Fase 6)",
     "notes": "Detalhe de filme com append_to_response maximo. Nucleo normalizado em movies e exibido em /pt/filmes/{slug}/. Sub-recursos do append ficam em tmdb_raw (ver fields.json)."
   },
@@ -21,7 +27,13 @@
     "worker_only": true,
     "implemented": true,
     "coverage_state": "public_ready",
-    "anchor": { "file": "api-clients/tmdb/src/endpoints.ts", "must_contain": ["getTvShow", "/tv/"] },
+    "anchor": {
+      "file": "api-clients/tmdb/src/endpoints.ts",
+      "must_contain": [
+        "getTvShow",
+        "/tv/"
+      ]
+    },
     "plan_area": "TMDB catalogo/relacoes (Fase 6)",
     "notes": "Detalhe de serie; nucleo normalizado em tv_shows, exibido em /pt/series/{slug}/."
   },
@@ -34,7 +46,13 @@
     "worker_only": true,
     "implemented": true,
     "coverage_state": "public_ready",
-    "anchor": { "file": "api-clients/tmdb/src/endpoints.ts", "must_contain": ["getTvSeason", "/season/"] },
+    "anchor": {
+      "file": "api-clients/tmdb/src/endpoints.ts",
+      "must_contain": [
+        "getTvSeason",
+        "/season/"
+      ]
+    },
     "plan_area": "TMDB catalogo/relacoes (Fase 6)",
     "notes": "Detalhe de temporada (episodios inline). Normalizado em seasons/episodes; exibido nas rotas de temporada (Fase 4)."
   },
@@ -47,7 +65,13 @@
     "worker_only": true,
     "implemented": true,
     "coverage_state": "not_applicable",
-    "anchor": { "file": "api-clients/tmdb/src/endpoints.ts", "must_contain": ["getTvEpisode", "/episode/"] },
+    "anchor": {
+      "file": "api-clients/tmdb/src/endpoints.ts",
+      "must_contain": [
+        "getTvEpisode",
+        "/episode/"
+      ]
+    },
     "justification": "Metodo definido (getTvEpisode) porem NAO chamado por nenhum worker: episodios sao ingeridos inline via getTvSeason. Sem dado proprio fluindo por este endpoint hoje.",
     "plan_area": "TMDB catalogo/relacoes (Fase 6)",
     "notes": "Se um worker passar a busca-lo diretamente, mudar coverage_state para normalized/public_ready."
@@ -61,9 +85,177 @@
     "worker_only": true,
     "implemented": true,
     "coverage_state": "public_ready",
-    "anchor": { "file": "api-clients/tmdb/src/endpoints.ts", "must_contain": ["getPerson", "/person/"] },
+    "anchor": {
+      "file": "api-clients/tmdb/src/endpoints.ts",
+      "must_contain": [
+        "getPerson",
+        "/person/"
+      ]
+    },
     "plan_area": "TMDB catalogo/relacoes (Fase 6)",
     "notes": "Detalhe de pessoa; nucleo normalizado em people, exibido em /pt/pessoas/{slug}/. Biografia gated por license (ver fields.json)."
+  },
+  {
+    "id": "tmdb.movie.images",
+    "provider": "tmdb",
+    "provider_api": "tmdb",
+    "role": "catalog",
+    "http": "GET /movie/{id}/images",
+    "worker_only": true,
+    "implemented": true,
+    "coverage_state": "normalized",
+    "anchor": {
+      "file": "api-clients/tmdb/src/catalog.ts",
+      "must_contain": [
+        "getMovieImages"
+      ]
+    },
+    "plan_area": "TMDB midia (Fase 7)",
+    "notes": "Normalizado em tmdb_images/tmdb_videos pelo worker de midia (catalog-sync/media-sync.ts): so metadados, idempotente. Nasce display_allowed=false + license_status=unknown (invariante 6) — NUNCA public_ready sem revisao humana de licenca. Validado em validate:tmdb-platform."
+  },
+  {
+    "id": "tmdb.tv.images",
+    "provider": "tmdb",
+    "provider_api": "tmdb",
+    "role": "catalog",
+    "http": "GET /tv/{id}/images",
+    "worker_only": true,
+    "implemented": true,
+    "coverage_state": "normalized",
+    "anchor": {
+      "file": "api-clients/tmdb/src/catalog.ts",
+      "must_contain": [
+        "getTvImages"
+      ]
+    },
+    "plan_area": "TMDB midia (Fase 7)",
+    "notes": "Normalizado em tmdb_images/tmdb_videos pelo worker de midia (catalog-sync/media-sync.ts): so metadados, idempotente. Nasce display_allowed=false + license_status=unknown (invariante 6) — NUNCA public_ready sem revisao humana de licenca. Validado em validate:tmdb-platform."
+  },
+  {
+    "id": "tmdb.season.images",
+    "provider": "tmdb",
+    "provider_api": "tmdb",
+    "role": "catalog",
+    "http": "GET /tv/{id}/season/{n}/images",
+    "worker_only": true,
+    "implemented": true,
+    "coverage_state": "normalized",
+    "anchor": {
+      "file": "api-clients/tmdb/src/catalog.ts",
+      "must_contain": [
+        "getSeasonImages"
+      ]
+    },
+    "plan_area": "TMDB midia (Fase 7)",
+    "notes": "Normalizado em tmdb_images/tmdb_videos pelo worker de midia (catalog-sync/media-sync.ts): so metadados, idempotente. Nasce display_allowed=false + license_status=unknown (invariante 6) — NUNCA public_ready sem revisao humana de licenca. Validado em validate:tmdb-platform."
+  },
+  {
+    "id": "tmdb.episode.images",
+    "provider": "tmdb",
+    "provider_api": "tmdb",
+    "role": "catalog",
+    "http": "GET /tv/{id}/season/{n}/episode/{e}/images",
+    "worker_only": true,
+    "implemented": true,
+    "coverage_state": "normalized",
+    "anchor": {
+      "file": "api-clients/tmdb/src/catalog.ts",
+      "must_contain": [
+        "getEpisodeImages"
+      ]
+    },
+    "plan_area": "TMDB midia (Fase 7)",
+    "notes": "Normalizado em tmdb_images/tmdb_videos pelo worker de midia (catalog-sync/media-sync.ts): so metadados, idempotente. Nasce display_allowed=false + license_status=unknown (invariante 6) — NUNCA public_ready sem revisao humana de licenca. Validado em validate:tmdb-platform."
+  },
+  {
+    "id": "tmdb.person.images",
+    "provider": "tmdb",
+    "provider_api": "tmdb",
+    "role": "catalog",
+    "http": "GET /person/{id}/images",
+    "worker_only": true,
+    "implemented": true,
+    "coverage_state": "normalized",
+    "anchor": {
+      "file": "api-clients/tmdb/src/catalog.ts",
+      "must_contain": [
+        "getPersonImages"
+      ]
+    },
+    "plan_area": "TMDB midia (Fase 7)",
+    "notes": "Normalizado em tmdb_images/tmdb_videos pelo worker de midia (catalog-sync/media-sync.ts): so metadados, idempotente. Nasce display_allowed=false + license_status=unknown (invariante 6) — NUNCA public_ready sem revisao humana de licenca. Validado em validate:tmdb-platform."
+  },
+  {
+    "id": "tmdb.movie.videos",
+    "provider": "tmdb",
+    "provider_api": "tmdb",
+    "role": "catalog",
+    "http": "GET /movie/{id}/videos",
+    "worker_only": true,
+    "implemented": true,
+    "coverage_state": "normalized",
+    "anchor": {
+      "file": "api-clients/tmdb/src/catalog.ts",
+      "must_contain": [
+        "getMovieVideos"
+      ]
+    },
+    "plan_area": "TMDB midia (Fase 7)",
+    "notes": "Normalizado em tmdb_images/tmdb_videos pelo worker de midia (catalog-sync/media-sync.ts): so metadados, idempotente. Nasce display_allowed=false + license_status=unknown (invariante 6) — NUNCA public_ready sem revisao humana de licenca. Validado em validate:tmdb-platform."
+  },
+  {
+    "id": "tmdb.tv.videos",
+    "provider": "tmdb",
+    "provider_api": "tmdb",
+    "role": "catalog",
+    "http": "GET /tv/{id}/videos",
+    "worker_only": true,
+    "implemented": true,
+    "coverage_state": "normalized",
+    "anchor": {
+      "file": "api-clients/tmdb/src/catalog.ts",
+      "must_contain": [
+        "getTvVideos"
+      ]
+    },
+    "plan_area": "TMDB midia (Fase 7)",
+    "notes": "Normalizado em tmdb_images/tmdb_videos pelo worker de midia (catalog-sync/media-sync.ts): so metadados, idempotente. Nasce display_allowed=false + license_status=unknown (invariante 6) — NUNCA public_ready sem revisao humana de licenca. Validado em validate:tmdb-platform."
+  },
+  {
+    "id": "tmdb.season.videos",
+    "provider": "tmdb",
+    "provider_api": "tmdb",
+    "role": "catalog",
+    "http": "GET /tv/{id}/season/{n}/videos",
+    "worker_only": true,
+    "implemented": true,
+    "coverage_state": "normalized",
+    "anchor": {
+      "file": "api-clients/tmdb/src/catalog.ts",
+      "must_contain": [
+        "getSeasonVideos"
+      ]
+    },
+    "plan_area": "TMDB midia (Fase 7)",
+    "notes": "Normalizado em tmdb_images/tmdb_videos pelo worker de midia (catalog-sync/media-sync.ts): so metadados, idempotente. Nasce display_allowed=false + license_status=unknown (invariante 6) — NUNCA public_ready sem revisao humana de licenca. Validado em validate:tmdb-platform."
+  },
+  {
+    "id": "tmdb.episode.videos",
+    "provider": "tmdb",
+    "provider_api": "tmdb",
+    "role": "catalog",
+    "http": "GET /tv/{id}/season/{n}/episode/{e}/videos",
+    "worker_only": true,
+    "implemented": true,
+    "coverage_state": "normalized",
+    "anchor": {
+      "file": "api-clients/tmdb/src/catalog.ts",
+      "must_contain": [
+        "getEpisodeVideos"
+      ]
+    },
+    "plan_area": "TMDB midia (Fase 7)",
+    "notes": "Normalizado em tmdb_images/tmdb_videos pelo worker de midia (catalog-sync/media-sync.ts): so metadados, idempotente. Nasce display_allowed=false + license_status=unknown (invariante 6) — NUNCA public_ready sem revisao humana de licenca. Validado em validate:tmdb-platform."
   },
   {
     "id": "tmdb.movie.upcoming",
@@ -74,7 +266,13 @@
     "worker_only": true,
     "implemented": true,
     "coverage_state": "public_ready",
-    "anchor": { "file": "api-clients/tmdb/src/endpoints.ts", "must_contain": ["getUpcomingMovies", "/movie/upcoming"] },
+    "anchor": {
+      "file": "api-clients/tmdb/src/endpoints.ts",
+      "must_contain": [
+        "getUpcomingMovies",
+        "/movie/upcoming"
+      ]
+    },
     "plan_area": "TMDB discovery/lists (Fase 8)",
     "notes": "Unico endpoint de lista sobre a API. Descobre ids de 'Em breve' (BR), importados como movies exibidos na home. Sem nota/critica."
   },
@@ -87,7 +285,12 @@
     "worker_only": true,
     "implemented": true,
     "coverage_state": "raw_captured",
-    "anchor": { "file": "services/ingestion/src/discovery/id-exports.ts", "must_contain": ["DAILY_ID_EXPORTS"] },
+    "anchor": {
+      "file": "services/ingestion/src/discovery/id-exports.ts",
+      "must_contain": [
+        "DAILY_ID_EXPORTS"
+      ]
+    },
     "plan_area": "TMDB discovery (Fase 8)",
     "notes": "7 exports padrao (movie/tv/person/collection/network/company/keyword). Arquivos publicos, sem token/cota. Gera fila NDJSON idempotente para o raw-sync. adult_* nunca baixado (fail-closed)."
   },
@@ -100,7 +303,12 @@
     "worker_only": true,
     "implemented": true,
     "coverage_state": "not_applicable",
-    "anchor": { "file": "services/ingestion/src/discovery/changes-plan.ts", "must_contain": ["planChangesRequests"] },
+    "anchor": {
+      "file": "services/ingestion/src/discovery/changes-plan.ts",
+      "must_contain": [
+        "planChangesRequests"
+      ]
+    },
     "justification": "Apenas CONTRATO: planChangesRequests monta o plano (janela 24h, max 14d) mas nenhum worker executa /changes. Descoberta usa o snapshot diario. Execucao incremental e roadmap Fase 8.",
     "plan_area": "TMDB changes incremental (Fase 8)",
     "notes": "Ao ligar a execucao, mudar para raw_captured e registrar o worker executor."
@@ -114,7 +322,13 @@
     "worker_only": true,
     "implemented": true,
     "coverage_state": "not_applicable",
-    "anchor": { "file": "api-clients/tmdb/src/catalog.ts", "must_contain": ["searchMovies", "/search/movie"] },
+    "anchor": {
+      "file": "api-clients/tmdb/src/catalog.ts",
+      "must_contain": [
+        "searchMovies",
+        "/search/movie"
+      ]
+    },
     "justification": "Client tipado + testado (Fase 6). Nenhum worker executa/persiste busca ainda — sem dado capturado. Execucao/normalizacao roadmap Fase 8.",
     "plan_area": "TMDB busca (Fase 8)"
   },
@@ -127,7 +341,13 @@
     "worker_only": true,
     "implemented": true,
     "coverage_state": "not_applicable",
-    "anchor": { "file": "api-clients/tmdb/src/catalog.ts", "must_contain": ["searchTvShows", "/search/tv"] },
+    "anchor": {
+      "file": "api-clients/tmdb/src/catalog.ts",
+      "must_contain": [
+        "searchTvShows",
+        "/search/tv"
+      ]
+    },
     "justification": "Client tipado + testado (Fase 6); worker de execucao roadmap Fase 8.",
     "plan_area": "TMDB busca (Fase 8)"
   },
@@ -140,7 +360,13 @@
     "worker_only": true,
     "implemented": true,
     "coverage_state": "not_applicable",
-    "anchor": { "file": "api-clients/tmdb/src/catalog.ts", "must_contain": ["searchPeople", "/search/person"] },
+    "anchor": {
+      "file": "api-clients/tmdb/src/catalog.ts",
+      "must_contain": [
+        "searchPeople",
+        "/search/person"
+      ]
+    },
     "justification": "Client tipado + testado (Fase 6); worker de execucao roadmap Fase 8.",
     "plan_area": "TMDB busca (Fase 8)"
   },
@@ -153,7 +379,13 @@
     "worker_only": true,
     "implemented": true,
     "coverage_state": "not_applicable",
-    "anchor": { "file": "api-clients/tmdb/src/catalog.ts", "must_contain": ["searchMulti", "/search/multi"] },
+    "anchor": {
+      "file": "api-clients/tmdb/src/catalog.ts",
+      "must_contain": [
+        "searchMulti",
+        "/search/multi"
+      ]
+    },
     "justification": "Client tipado + testado (Fase 6); worker de execucao roadmap Fase 8. media_type discrimina filme/serie/pessoa.",
     "plan_area": "TMDB busca (Fase 8)"
   },
@@ -165,10 +397,16 @@
     "http": "GET /discover/movie",
     "worker_only": true,
     "implemented": true,
-    "coverage_state": "not_applicable",
-    "anchor": { "file": "api-clients/tmdb/src/catalog.ts", "must_contain": ["discoverMovies", "/discover/movie"] },
-    "justification": "Client tipado + testado (Fase 6): filtros validados contra allowlist, serializacao determinista, filtro desconhecido rejeitado. Nenhum worker executa/persiste discover ainda. Roadmap Fase 8.",
-    "plan_area": "TMDB discovery (Fase 8)"
+    "coverage_state": "raw_captured",
+    "anchor": {
+      "file": "api-clients/tmdb/src/catalog.ts",
+      "must_contain": [
+        "discoverMovies",
+        "/discover/movie"
+      ]
+    },
+    "plan_area": "TMDB discovery (Fase 8)",
+    "notes": "Executado pelo worker de paginacao (services/ingestion/src/catalog-sync/list-sync.ts): captura raw por pagina em api_cache + log + checkpoint/resume + dedup. Mecanismo validado em validate:tmdb-platform (/movie/popular). Sem normalizacao de entidade (ingestao de entidade e job explicito)."
   },
   {
     "id": "tmdb.discover.tv",
@@ -178,22 +416,35 @@
     "http": "GET /discover/tv",
     "worker_only": true,
     "implemented": true,
-    "coverage_state": "not_applicable",
-    "anchor": { "file": "api-clients/tmdb/src/catalog.ts", "must_contain": ["discoverTvShows", "/discover/tv"] },
-    "justification": "Client tipado + testado (Fase 6); allowlist proprio de TV. Worker de execucao roadmap Fase 8.",
-    "plan_area": "TMDB discovery (Fase 8)"
+    "coverage_state": "raw_captured",
+    "anchor": {
+      "file": "api-clients/tmdb/src/catalog.ts",
+      "must_contain": [
+        "discoverTvShows",
+        "/discover/tv"
+      ]
+    },
+    "plan_area": "TMDB discovery (Fase 8)",
+    "notes": "Executado pelo worker de paginacao (services/ingestion/src/catalog-sync/list-sync.ts): captura raw por pagina em api_cache + log + checkpoint/resume + dedup. Mecanismo validado em validate:tmdb-platform (/movie/popular). Sem normalizacao de entidade (ingestao de entidade e job explicito)."
   },
   {
     "id": "tmdb.trending",
     "provider": "tmdb",
     "provider_api": "tmdb",
     "role": "discovery",
-    "http": "GET /trending/{media_type}/{time_window}",
+    "http": "GET /trending/{movie,tv,person,all}/{day,week}",
     "worker_only": true,
-    "implemented": false,
-    "coverage_state": "not_applicable",
-    "justification": "Nao implementado (roadmap Fase 8). Sinal 'trending' da home nao tem fonte TMDB ativa.",
-    "plan_area": "TMDB tendencias (Fase 8)"
+    "implemented": true,
+    "coverage_state": "raw_captured",
+    "plan_area": "TMDB tendencias (Fase 8)",
+    "anchor": {
+      "file": "api-clients/tmdb/src/catalog.ts",
+      "must_contain": [
+        "getTrending",
+        "/trending/"
+      ]
+    },
+    "notes": "Client valida media_type/time_window. Executavel via list-sync (mesmo mecanismo paginado das listas)."
   },
   {
     "id": "tmdb.lists",
@@ -252,7 +503,12 @@
     "worker_only": true,
     "implemented": true,
     "coverage_state": "normalized",
-    "anchor": { "file": "api-clients/tmdb/src/catalog.ts", "must_contain": ["getConfiguration"] },
+    "anchor": {
+      "file": "api-clients/tmdb/src/catalog.ts",
+      "must_contain": [
+        "getConfiguration"
+      ]
+    },
     "plan_area": "TMDB configuration (Fase 6)",
     "notes": "Normalizado em tmdb_image_config pelo worker de taxonomia (services/ingestion/src/config-sync). Base/secure URLs + buckets de tamanho de imagem. Idempotente: no-op quando inalterado (nao bumpa updated_at). Validado em validate:tmdb-catalog."
   },
@@ -301,7 +557,13 @@
     "worker_only": true,
     "implemented": true,
     "coverage_state": "raw_captured",
-    "anchor": { "file": "api-clients/tmdb/src/catalog.ts", "must_contain": ["getCountries", "/configuration/countries"] },
+    "anchor": {
+      "file": "api-clients/tmdb/src/catalog.ts",
+      "must_contain": [
+        "getCountries",
+        "/configuration/countries"
+      ]
+    },
     "plan_area": "TMDB configuration/taxonomia (Fase 6)",
     "notes": "Capturado raw em api_cache pelo worker de taxonomia (config-sync). Sem tabela normalizada dedicada nesta fase (countries de referencia ja vem do seed)."
   },
@@ -314,7 +576,13 @@
     "worker_only": true,
     "implemented": true,
     "coverage_state": "raw_captured",
-    "anchor": { "file": "api-clients/tmdb/src/catalog.ts", "must_contain": ["getLanguages", "/configuration/languages"] },
+    "anchor": {
+      "file": "api-clients/tmdb/src/catalog.ts",
+      "must_contain": [
+        "getLanguages",
+        "/configuration/languages"
+      ]
+    },
     "plan_area": "TMDB configuration/taxonomia (Fase 6)",
     "notes": "Capturado raw em api_cache pelo worker de taxonomia. Sem normalizacao dedicada (languages publicaveis vem do seed/PUBLISHED_LOCALES)."
   },
@@ -327,7 +595,13 @@
     "worker_only": true,
     "implemented": true,
     "coverage_state": "raw_captured",
-    "anchor": { "file": "api-clients/tmdb/src/catalog.ts", "must_contain": ["getJobs", "/configuration/jobs"] },
+    "anchor": {
+      "file": "api-clients/tmdb/src/catalog.ts",
+      "must_contain": [
+        "getJobs",
+        "/configuration/jobs"
+      ]
+    },
     "plan_area": "TMDB configuration/taxonomia (Fase 6)",
     "notes": "Capturado raw em api_cache pelo worker de taxonomia. Departamentos/jobs sao referencia para creditos; normalizacao propria roadmap."
   },
@@ -339,10 +613,16 @@
     "http": "GET /genre/movie/list",
     "worker_only": true,
     "implemented": true,
-    "coverage_state": "raw_captured",
-    "anchor": { "file": "api-clients/tmdb/src/catalog.ts", "must_contain": ["getMovieGenres", "/genre/movie/list"] },
+    "coverage_state": "normalized",
+    "anchor": {
+      "file": "api-clients/tmdb/src/catalog.ts",
+      "must_contain": [
+        "getMovieGenres",
+        "/genre/movie/list"
+      ]
+    },
     "plan_area": "TMDB taxonomia/generos (Fase 6)",
-    "notes": "Capturado raw em api_cache pelo worker de taxonomia. Sem tabela `genres` normalizada nesta fase (§11: sem destino normalizado -> raw_captured, documentado). Normalizacao com relacao movie-genre e roadmap."
+    "notes": "Normalizado em genres (media_type) pelo worker de taxonomia com genresStore. Validado em validate:tmdb-platform."
   },
   {
     "id": "tmdb.genres.tv",
@@ -352,10 +632,16 @@
     "http": "GET /genre/tv/list",
     "worker_only": true,
     "implemented": true,
-    "coverage_state": "raw_captured",
-    "anchor": { "file": "api-clients/tmdb/src/catalog.ts", "must_contain": ["getTvGenres", "/genre/tv/list"] },
+    "coverage_state": "normalized",
+    "anchor": {
+      "file": "api-clients/tmdb/src/catalog.ts",
+      "must_contain": [
+        "getTvGenres",
+        "/genre/tv/list"
+      ]
+    },
     "plan_area": "TMDB taxonomia/generos (Fase 6)",
-    "notes": "Capturado raw em api_cache. Sem tabela `genres` normalizada nesta fase (roadmap)."
+    "notes": "Normalizado em genres (media_type) pelo worker de taxonomia com genresStore. Validado em validate:tmdb-platform."
   },
   {
     "id": "tmdb.certifications.movie",
@@ -366,7 +652,13 @@
     "worker_only": true,
     "implemented": true,
     "coverage_state": "raw_captured",
-    "anchor": { "file": "api-clients/tmdb/src/catalog.ts", "must_contain": ["getMovieCertifications", "/certification/movie/list"] },
+    "anchor": {
+      "file": "api-clients/tmdb/src/catalog.ts",
+      "must_contain": [
+        "getMovieCertifications",
+        "/certification/movie/list"
+      ]
+    },
     "plan_area": "TMDB classificacao indicativa (Fase 6)",
     "notes": "Capturado raw em api_cache. Classificacao INDICATIVA por territorio (advisory) — NUNCA rating editorial de critica/audiencia (nao entra em external_ratings). Selecao BR + normalizacao roadmap."
   },
@@ -379,7 +671,13 @@
     "worker_only": true,
     "implemented": true,
     "coverage_state": "raw_captured",
-    "anchor": { "file": "api-clients/tmdb/src/catalog.ts", "must_contain": ["getTvCertifications", "/certification/tv/list"] },
+    "anchor": {
+      "file": "api-clients/tmdb/src/catalog.ts",
+      "must_contain": [
+        "getTvCertifications",
+        "/certification/tv/list"
+      ]
+    },
     "plan_area": "TMDB classificacao indicativa (Fase 6)",
     "notes": "Capturado raw em api_cache. Classificacao indicativa, nao rating editorial. Normalizacao roadmap."
   },
@@ -391,10 +689,16 @@
     "http": "GET /movie/popular",
     "worker_only": true,
     "implemented": true,
-    "coverage_state": "not_applicable",
-    "anchor": { "file": "api-clients/tmdb/src/catalog.ts", "must_contain": ["getPopularMovies", "/movie/popular"] },
-    "justification": "Client tipado + testado (Fase 6); worker de execucao/persistencia roadmap Fase 8. Sem dado capturado ainda.",
-    "plan_area": "TMDB listas (Fase 8)"
+    "coverage_state": "raw_captured",
+    "anchor": {
+      "file": "api-clients/tmdb/src/catalog.ts",
+      "must_contain": [
+        "getPopularMovies",
+        "/movie/popular"
+      ]
+    },
+    "plan_area": "TMDB listas (Fase 8)",
+    "notes": "Executado pelo worker de paginacao (services/ingestion/src/catalog-sync/list-sync.ts): captura raw por pagina em api_cache + log + checkpoint/resume + dedup. Mecanismo validado em validate:tmdb-platform (/movie/popular). Sem normalizacao de entidade (ingestao de entidade e job explicito)."
   },
   {
     "id": "tmdb.movie.top_rated",
@@ -404,10 +708,16 @@
     "http": "GET /movie/top_rated",
     "worker_only": true,
     "implemented": true,
-    "coverage_state": "not_applicable",
-    "anchor": { "file": "api-clients/tmdb/src/catalog.ts", "must_contain": ["getTopRatedMovies", "/movie/top_rated"] },
-    "justification": "Client tipado + testado (Fase 6); worker roadmap Fase 8.",
-    "plan_area": "TMDB listas (Fase 8)"
+    "coverage_state": "raw_captured",
+    "anchor": {
+      "file": "api-clients/tmdb/src/catalog.ts",
+      "must_contain": [
+        "getTopRatedMovies",
+        "/movie/top_rated"
+      ]
+    },
+    "plan_area": "TMDB listas (Fase 8)",
+    "notes": "Executado pelo worker de paginacao (services/ingestion/src/catalog-sync/list-sync.ts): captura raw por pagina em api_cache + log + checkpoint/resume + dedup. Mecanismo validado em validate:tmdb-platform (/movie/popular). Sem normalizacao de entidade (ingestao de entidade e job explicito)."
   },
   {
     "id": "tmdb.movie.now_playing",
@@ -417,10 +727,16 @@
     "http": "GET /movie/now_playing",
     "worker_only": true,
     "implemented": true,
-    "coverage_state": "not_applicable",
-    "anchor": { "file": "api-clients/tmdb/src/catalog.ts", "must_contain": ["getNowPlayingMovies", "/movie/now_playing"] },
-    "justification": "Client tipado + testado (Fase 6); worker roadmap Fase 8.",
-    "plan_area": "TMDB listas (Fase 8)"
+    "coverage_state": "raw_captured",
+    "anchor": {
+      "file": "api-clients/tmdb/src/catalog.ts",
+      "must_contain": [
+        "getNowPlayingMovies",
+        "/movie/now_playing"
+      ]
+    },
+    "plan_area": "TMDB listas (Fase 8)",
+    "notes": "Executado pelo worker de paginacao (services/ingestion/src/catalog-sync/list-sync.ts): captura raw por pagina em api_cache + log + checkpoint/resume + dedup. Mecanismo validado em validate:tmdb-platform (/movie/popular). Sem normalizacao de entidade (ingestao de entidade e job explicito)."
   },
   {
     "id": "tmdb.tv.popular",
@@ -430,10 +746,16 @@
     "http": "GET /tv/popular",
     "worker_only": true,
     "implemented": true,
-    "coverage_state": "not_applicable",
-    "anchor": { "file": "api-clients/tmdb/src/catalog.ts", "must_contain": ["getPopularTvShows", "/tv/popular"] },
-    "justification": "Client tipado + testado (Fase 6); worker roadmap Fase 8.",
-    "plan_area": "TMDB listas (Fase 8)"
+    "coverage_state": "raw_captured",
+    "anchor": {
+      "file": "api-clients/tmdb/src/catalog.ts",
+      "must_contain": [
+        "getPopularTvShows",
+        "/tv/popular"
+      ]
+    },
+    "plan_area": "TMDB listas (Fase 8)",
+    "notes": "Executado pelo worker de paginacao (services/ingestion/src/catalog-sync/list-sync.ts): captura raw por pagina em api_cache + log + checkpoint/resume + dedup. Mecanismo validado em validate:tmdb-platform (/movie/popular). Sem normalizacao de entidade (ingestao de entidade e job explicito)."
   },
   {
     "id": "tmdb.tv.top_rated",
@@ -443,10 +765,16 @@
     "http": "GET /tv/top_rated",
     "worker_only": true,
     "implemented": true,
-    "coverage_state": "not_applicable",
-    "anchor": { "file": "api-clients/tmdb/src/catalog.ts", "must_contain": ["getTopRatedTvShows", "/tv/top_rated"] },
-    "justification": "Client tipado + testado (Fase 6); worker roadmap Fase 8.",
-    "plan_area": "TMDB listas (Fase 8)"
+    "coverage_state": "raw_captured",
+    "anchor": {
+      "file": "api-clients/tmdb/src/catalog.ts",
+      "must_contain": [
+        "getTopRatedTvShows",
+        "/tv/top_rated"
+      ]
+    },
+    "plan_area": "TMDB listas (Fase 8)",
+    "notes": "Executado pelo worker de paginacao (services/ingestion/src/catalog-sync/list-sync.ts): captura raw por pagina em api_cache + log + checkpoint/resume + dedup. Mecanismo validado em validate:tmdb-platform (/movie/popular). Sem normalizacao de entidade (ingestao de entidade e job explicito)."
   },
   {
     "id": "tmdb.tv.airing_today",
@@ -456,10 +784,16 @@
     "http": "GET /tv/airing_today",
     "worker_only": true,
     "implemented": true,
-    "coverage_state": "not_applicable",
-    "anchor": { "file": "api-clients/tmdb/src/catalog.ts", "must_contain": ["getAiringTodayTvShows", "/tv/airing_today"] },
-    "justification": "Client tipado + testado (Fase 6); worker roadmap Fase 8.",
-    "plan_area": "TMDB listas (Fase 8)"
+    "coverage_state": "raw_captured",
+    "anchor": {
+      "file": "api-clients/tmdb/src/catalog.ts",
+      "must_contain": [
+        "getAiringTodayTvShows",
+        "/tv/airing_today"
+      ]
+    },
+    "plan_area": "TMDB listas (Fase 8)",
+    "notes": "Executado pelo worker de paginacao (services/ingestion/src/catalog-sync/list-sync.ts): captura raw por pagina em api_cache + log + checkpoint/resume + dedup. Mecanismo validado em validate:tmdb-platform (/movie/popular). Sem normalizacao de entidade (ingestao de entidade e job explicito)."
   },
   {
     "id": "tmdb.tv.on_the_air",
@@ -469,10 +803,16 @@
     "http": "GET /tv/on_the_air",
     "worker_only": true,
     "implemented": true,
-    "coverage_state": "not_applicable",
-    "anchor": { "file": "api-clients/tmdb/src/catalog.ts", "must_contain": ["getOnTheAirTvShows", "/tv/on_the_air"] },
-    "justification": "Client tipado + testado (Fase 6); worker roadmap Fase 8.",
-    "plan_area": "TMDB listas (Fase 8)"
+    "coverage_state": "raw_captured",
+    "anchor": {
+      "file": "api-clients/tmdb/src/catalog.ts",
+      "must_contain": [
+        "getOnTheAirTvShows",
+        "/tv/on_the_air"
+      ]
+    },
+    "plan_area": "TMDB listas (Fase 8)",
+    "notes": "Executado pelo worker de paginacao (services/ingestion/src/catalog-sync/list-sync.ts): captura raw por pagina em api_cache + log + checkpoint/resume + dedup. Mecanismo validado em validate:tmdb-platform (/movie/popular). Sem normalizacao de entidade (ingestao de entidade e job explicito)."
   },
   {
     "id": "tmdb.changes.movie",
@@ -483,7 +823,13 @@
     "worker_only": true,
     "implemented": true,
     "coverage_state": "not_applicable",
-    "anchor": { "file": "api-clients/tmdb/src/catalog.ts", "must_contain": ["getMovieChanges", "/movie/changes"] },
+    "anchor": {
+      "file": "api-clients/tmdb/src/catalog.ts",
+      "must_contain": [
+        "getMovieChanges",
+        "/movie/changes"
+      ]
+    },
     "justification": "Client tipado + testado (Fase 6): executa /changes com janela/pagina. Complementa o planner tmdb.discovery.changes. Worker incremental (checkpoint/dedup) roadmap Fase 8.",
     "plan_area": "TMDB changes incremental (Fase 8)"
   },
@@ -496,7 +842,13 @@
     "worker_only": true,
     "implemented": true,
     "coverage_state": "not_applicable",
-    "anchor": { "file": "api-clients/tmdb/src/catalog.ts", "must_contain": ["getTvChanges", "/tv/changes"] },
+    "anchor": {
+      "file": "api-clients/tmdb/src/catalog.ts",
+      "must_contain": [
+        "getTvChanges",
+        "/tv/changes"
+      ]
+    },
     "justification": "Client tipado + testado (Fase 6); worker incremental roadmap Fase 8.",
     "plan_area": "TMDB changes incremental (Fase 8)"
   },
@@ -509,7 +861,13 @@
     "worker_only": true,
     "implemented": true,
     "coverage_state": "not_applicable",
-    "anchor": { "file": "api-clients/tmdb/src/catalog.ts", "must_contain": ["getPersonChanges", "/person/changes"] },
+    "anchor": {
+      "file": "api-clients/tmdb/src/catalog.ts",
+      "must_contain": [
+        "getPersonChanges",
+        "/person/changes"
+      ]
+    },
     "justification": "Client tipado + testado (Fase 6); worker incremental roadmap Fase 8.",
     "plan_area": "TMDB changes incremental (Fase 8)"
   },
@@ -522,7 +880,13 @@
     "worker_only": true,
     "implemented": true,
     "coverage_state": "normalized",
-    "anchor": { "file": "services/entity-writer/src/gemini/adapter.ts", "must_contain": ["GeminiAdapter", "generateContent"] },
+    "anchor": {
+      "file": "services/entity-writer/src/gemini/adapter.ts",
+      "must_contain": [
+        "GeminiAdapter",
+        "generateContent"
+      ]
+    },
     "plan_area": "Entity Writer + Gemini (Fase 11)",
     "notes": "Unica capacidade Gemini real (single-shot). Saida validada (anti-alucinacao) e persistida em content_blocks com review_status; NUNCA auto-publicada. Exibicao gated por review_status (human_reviewed/published), nao por licenca. Zero Gemini no render."
   },
@@ -667,7 +1031,13 @@
     "worker_only": true,
     "implemented": true,
     "coverage_state": "blocked_license",
-    "anchor": { "file": "api-clients/film_show_ratings/src/client.ts", "must_contain": ["getItem", "buildItemRequest"] },
+    "anchor": {
+      "file": "api-clients/film_show_ratings/src/client.ts",
+      "must_contain": [
+        "getItem",
+        "buildItemRequest"
+      ]
+    },
     "plan_area": "Film & Show Ratings (Fase 10)",
     "notes": "Fluxo ATIVO de enriquecimento por IMDb id. Cada nota e reatribuida a fonte editorial real (imdb/rotten_tomatoes/... via RATING_SOURCES) e validada (validateRating); provider_api != rating_source. Linhas nascem display_allowed=false + license_status=unknown -> bloqueadas ate decisao humana de licenca (invariante 6). Nunca executado ao vivo (sem key)."
   },
@@ -680,7 +1050,13 @@
     "worker_only": true,
     "implemented": true,
     "coverage_state": "blocked_plan",
-    "anchor": { "file": "api-clients/film_show_ratings/src/client.ts", "must_contain": ["getPopular", "buildPopularRequest"] },
+    "anchor": {
+      "file": "api-clients/film_show_ratings/src/client.ts",
+      "must_contain": [
+        "getPopular",
+        "buildPopularRequest"
+      ]
+    },
     "superseded_by": "film_show_ratings.item",
     "plan_area": "Film & Show Ratings (Fase 10)",
     "notes": "BLOQUEADO POR PLANO: /popular/ retorna 403 no plano Pro contratado. Mantido so por retrocompat do client/testes; o fluxo ativo usa /item/. Tambem superseded por film_show_ratings.item."
@@ -707,7 +1083,13 @@
     "worker_only": true,
     "implemented": true,
     "coverage_state": "blocked_license",
-    "anchor": { "file": "api-clients/streaming_availability/src/client.ts", "must_contain": ["getShow", "buildShowRequest"] },
+    "anchor": {
+      "file": "api-clients/streaming_availability/src/client.ts",
+      "must_contain": [
+        "getShow",
+        "buildShowRequest"
+      ]
+    },
     "plan_area": "Streaming Availability (Fase 9)",
     "notes": "Onde assistir por IMDb id (BR-only, filtro no worker). Ofertas nascem display_allowed=false: atribuicao+linkback a Movie of the Night obrigatorios (invariante 6). Apenas ofertas legais (filtro anti-pirataria). Promocao para exibir e humana (invariante 6). Nunca executado ao vivo."
   },
