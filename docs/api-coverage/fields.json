@@ -310,5 +310,49 @@
     "coverage_state": "not_applicable",
     "justification": "Pipeline de noticias roadmap Fase 13 (README + worker Python Fase 0 stub, zero source). articles.display_allowed default false; en/es nascem draft/noindex.",
     "notes": "Noticias nunca criam entidades — so linkam existentes."
+  },
+  {
+    "id": "tmdb.config.image_sizes",
+    "provider": "tmdb",
+    "provider_api": "tmdb",
+    "role": "catalog",
+    "target": "tmdb_image_config (base_url, secure_base_url, poster_sizes, backdrop_sizes, still_sizes, profile_sizes, logo_sizes, change_keys)",
+    "worker_only": true,
+    "implemented": true,
+    "coverage_state": "normalized",
+    "notes": "Normalizado de /configuration pelo worker de taxonomia (Fase 6). Singleton por provider (PK tmdb). Idempotente: no-op quando inalterado. Base para o helper de URL de imagem substituir os tamanhos hardcoded (roadmap)."
+  },
+  {
+    "id": "tmdb.taxonomy.genres_raw",
+    "provider": "tmdb",
+    "provider_api": "tmdb",
+    "role": "catalog",
+    "target": "api_cache (/genre/movie/list, /genre/tv/list)",
+    "worker_only": true,
+    "implemented": true,
+    "coverage_state": "raw_captured",
+    "notes": "Listas de genero capturadas raw pelo worker de taxonomia. Sem tabela `genres` normalizada nesta fase (§11: sem destino normalizado -> raw_captured, documentado). Relacao movie/tv-genre e roadmap."
+  },
+  {
+    "id": "tmdb.taxonomy.certifications_raw",
+    "provider": "tmdb",
+    "provider_api": "tmdb",
+    "role": "catalog",
+    "target": "api_cache (/certification/movie/list, /certification/tv/list)",
+    "worker_only": true,
+    "implemented": true,
+    "coverage_state": "raw_captured",
+    "notes": "Classificacoes indicativas por territorio capturadas raw. Sao ADVISORY (ex.: 14, 16) — NUNCA rating editorial de critica/audiencia; nao entram em external_ratings nem se misturam com rating_source. Selecao BR + normalizacao roadmap."
+  },
+  {
+    "id": "tmdb.taxonomy.reference_raw",
+    "provider": "tmdb",
+    "provider_api": "tmdb",
+    "role": "catalog",
+    "target": "api_cache (/configuration/countries, /configuration/languages, /configuration/jobs)",
+    "worker_only": true,
+    "implemented": true,
+    "coverage_state": "raw_captured",
+    "notes": "Taxonomias de referencia (paises/idiomas/departamentos) capturadas raw pelo worker de taxonomia. countries/languages publicaveis ja vem do seed; normalizacao propria destes payloads e roadmap."
   }
 ]

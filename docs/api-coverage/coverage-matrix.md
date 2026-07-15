@@ -106,11 +106,27 @@ Exatamente **1 por endpoint e 1 por campo**:
 Nada é descartado silenciosamente. Áreas exigidas pela cobertura total, ainda não
 implementadas, ficam registradas com `not_applicable` + `justification` citando a fase:
 
-- **TMDB** (F6/F7/F8): busca, discovery, trending, listas, recomendações/similares standalone, watch providers standalone, configuration, colecões, taxonomia.
+- **TMDB** (F7/F8): trending, listas de usuário (v3 `/list`), recomendações/similares standalone, watch providers standalone, coleções, network/company/keyword detalhe. Busca/discover/listas curadas/changes têm **client tipado + testado** (F6) mas ainda sem worker de execução (F8).
 - **Gemini** (F11): streaming, structured output, generationConfig, batch, caching, Files, countTokens ativo, embeddings, safety, models list, deprecações.
 - **Streaming** (F9): disponibilidade de pessoa/temporada/episódio; modelagem platforms/providers; fallback KASO.
 - **Notícias** (F13): pipeline RSSPRIME/MN26 completo.
 - **Ratings** (F10): clients diretos IMDb/Rotten Tomatoes (hoje só o agregador).
+
+## Fase 6 (delta) — cobertura do catálogo TMDB
+
+Client de catálogo tipado (`api-clients/tmdb/src/catalog.ts`, drift-guardado) + worker de
+taxonomia (`services/ingestion/src/config-sync`) + validador `validate:tmdb-catalog`.
+Endpoints TMDB subiram de 8 → 29. Estados reais alcançados:
+
+| Endpoint(s) | Estado F6 | Como |
+| --- | --- | --- |
+| `tmdb.configuration` | `normalized` | Worker de taxonomia normaliza `/configuration` → `tmdb_image_config` (idempotente). |
+| `tmdb.configuration.{countries,languages,jobs}`, `tmdb.genres.{movie,tv}`, `tmdb.certifications.{movie,tv}` | `raw_captured` | Worker de taxonomia captura raw em `api_cache` + log em `api_sync_logs` (8 endpoints/ciclo). Sem tabela normalizada dedicada nesta fase (§11). |
+| `tmdb.movie.{popular,top_rated,now_playing}`, `tmdb.tv.{popular,top_rated,airing_today,on_the_air}` | `not_applicable` | Client tipado + testado; worker de execução roadmap F8. |
+| `tmdb.discover.{movie,tv}`, `tmdb.search.{movie,tv,person,multi}`, `tmdb.changes.{movie,tv,person}` | `not_applicable` | Client tipado + testado (discover valida filtros + serialização determinista); execução roadmap F8. |
+
+Campos novos: `tmdb.config.image_sizes` (`normalized`), `tmdb.taxonomy.{genres,certifications,reference}_raw`
+(`raw_captured`). Certificação = classificação **indicativa** (advisory), nunca rating editorial.
 
 ## Como manter
 

@@ -150,3 +150,32 @@ catálogo.
 3. Novo provider técnico → `providers.yaml` (nunca uma fonte editorial).
 4. Rode `pnpm api:coverage` até PASSAR. A auditoria final (Fase 17) roda este
    comando e não pode ter item sem classificação.
+
+## 11. Fase 6 — cobertura do catálogo TMDB
+
+- **Client tipado de catálogo** em `api-clients/tmdb/src/catalog.ts` (config,
+  taxonomias, listas, discover, busca, changes), adicionado a `ENUMERATION_SOURCES`:
+  todo `async get<X>(` ali TEM entrada no registro (drift reverso). Discover valida
+  filtros contra allowlist, serializa de forma determinista (chaves ordenadas) e
+  **rejeita filtro desconhecido**; busca exige query não-vazia.
+- **`normalized` só com evidência real**: apenas `tmdb.configuration` chega a
+  `normalized` — o worker de taxonomia (`services/ingestion/src/config-sync`)
+  normaliza `/configuration` em `tmdb_image_config`, idempotente (no-op quando
+  inalterado), provado por `validate:tmdb-catalog`.
+- **`raw_captured` só com persistência real**: os 7 demais endpoints de taxonomia
+  (countries/languages/jobs, genres movie/tv, certifications movie/tv) são
+  capturados raw em `api_cache` + log em `api_sync_logs` pelo mesmo worker. Sem
+  tabela normalizada dedicada nesta fase (§11 do prompt: sem destino → raw, documentado).
+- **`not_applicable` para client-only**: listas curadas, discover, busca e changes
+  têm client tipado + testado mas **nenhum worker os executa/persiste** → sem dado
+  capturado → `not_applicable` com justificativa citando o worker roadmap (F8). Não
+  se marca `raw_captured` sem persistência nem `normalized` com só DTO.
+- **Classificação indicativa ≠ rating** (invariante 1/2): certifications são
+  advisory por território; nunca viram `external_ratings` nem se misturam com
+  `rating_source`. Ficam `raw_captured`, documentadas.
+- **Sem migration nesta fase**: `tmdb_image_config` já existia; genres/videos/images
+  não têm tabela e ficam `raw_captured` (não se força coluna inadequada). Tabelas
+  normalizadas próprias (genres etc.) são roadmap, com migration própria quando
+  escopadas.
+- **Zero API externa/Gemini no render**: o client e o worker são worker-only
+  (`services/ingestion`, `api-clients/tmdb`); `audit:render` permanece verde.
