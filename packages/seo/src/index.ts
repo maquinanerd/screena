@@ -18,3 +18,4 @@ export * from "./entity-schema.js";
 export * from "./json-ld.js";
 export * from "./redirects.js";
 export * from "./sitemap-plan.js";
+export * from "./sitemap-xml.js";
