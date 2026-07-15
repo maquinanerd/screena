@@ -11,7 +11,8 @@ O wordmark é `SCR` + caixa + `N` = **SCREEN** (a caixa substitui o “EE”).
 O header e o footer públicos usam apenas a marca textual `Screen`. Nenhum desses
 SVGs é renderizado pelo chrome atual. `screen-logo-black.svg` continua referenciado
 pela URL de logo no JSON-LD `Organization` da home; os demais assets ficam
-armazenados para o futuro port canônico, sem definir por si só a interface final.
+armazenados enquanto o design final não for fornecido, sem definir por si só a
+interface futura.
 
 ## Arquivos
 
@@ -27,7 +28,8 @@ armazenados para o futuro port canônico, sem definir por si só a interface fin
 ## Regras
 
 - Não reintroduzir um logo complexo no shell neutro.
-- O próximo uso visual deve seguir a fonte canônica aprovada do Claude Design.
+- Qualquer próximo uso visual depende de um design final aprovado e de escopo
+  humano explícito; estes assets não autorizam reaproveitamento automático.
 - A diferenciação filme/série nunca depende só da cor: deve continuar com label,
   badge, breadcrumb, schema e URL.
 - Não converter para PNG nem hospedar externamente.

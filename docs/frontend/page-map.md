@@ -7,9 +7,9 @@
 
 - O frontend público está deliberadamente reduzido a fundo branco, texto preto,
   navegação real e conteúdo textual persistido.
-- A próxima direção visual deve vir dos arquivos canônicos aprovados do Claude
-  Design, em outra PR e com port fiel. Não reconstruir hero, cards, anúncios ou
-  chrome por interpretação.
+- A próxima direção visual depende de arquivos canônicos ainda não fornecidos e
+  de um novo escopo humano explícito. Até lá, não reconstruir hero, cards,
+  anúncios ou chrome por interpretação.
 - Uma alteração visual em uma rota não autoriza mudar contratos de dados, SEO,
   indexabilidade, licenças, schema, serviços ou outras rotas.
 - “Zerar design” não significa “zerar produto”: getters, presenters, rotas,
@@ -96,8 +96,10 @@ getters preservados como autorização para recriá-los.
 - **Render público:** apenas PostgreSQL/cache local; zero API externa e zero
   Gemini no render.
 
-## Próxima fase visual
+## Estado de espera visual
 
-O port do Claude Design deve ocorrer em uma PR própria. Antes de escrever CSS ou
-componentes, registrar a fonte canônica, mapear cada seção para os contratos acima
-e provar que a implementação não introduz dados, CTAs ou funcionalidades falsas.
+O design público final ainda não foi fornecido. Até existir uma fonte canônica
+aprovada e um novo escopo humano explícito, este shell deve permanecer neutro e
+nenhuma branch visual deve ser criada por antecipação. Quando esse material chegar,
+a implementação deverá ocorrer em uma PR própria, mapear cada seção para os
+contratos acima e provar que não introduz dados, CTAs ou funcionalidades falsas.

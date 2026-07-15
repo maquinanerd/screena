@@ -491,4 +491,5 @@ A próxima alteração desta branch deve:
 - A PR #60 permanece congelada e fora da base.
 - A PR #61 já está em `main`; esta branch remove apenas sua camada visual ativa, preservando getters/presenters e as capacidades do produto.
 - Gaps críticos de SEO, licença, streaming, admin e deploy são registrados aqui, mas não misturados ao reset visual.
-- O pacote Claude Design não será portado nesta PR.
+- Nenhum pacote visual será portado nesta PR; após o merge, o repositório aguardará
+  o design público final e um novo escopo humano explícito.

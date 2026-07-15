@@ -12,9 +12,9 @@ deliberadamente provisório. O produto continua vivo: rotas, dados, getters,
 presenters, canonical, robots, sitemap, redirects, JSON-LD, H1, gates de licença e
 estados editoriais foram preservados.
 
-Este trabalho não portou arquivos do Claude Design e não criou uma direção visual
-substituta. O estado resultante existe para que o próximo port comece de uma base
-limpa e verificável.
+Este trabalho não portou nenhum pacote visual existente e não criou uma direção
+visual substituta. O estado resultante deve permanecer como base limpa e
+verificável até que o design público final seja fornecido.
 
 O inventário completo anterior ao reset está em
 [`SITE_BACKEND_API_PRODUCT_AUDIT_BEFORE_DESIGN_RESET.md`](./SITE_BACKEND_API_PRODUCT_AUDIT_BEFORE_DESIGN_RESET.md).
@@ -169,10 +169,12 @@ os validadores com PostgreSQL efêmero. Nenhum status HTTP foi alegado sem teste
   corrigidos nesta PR visual.
 - Validadores descartáveis ainda contêm asserções da política anti-thin antiga.
 - A interface não busca acabamento estético; ela é propositalmente neutra.
-- O pacote/ZIP do Claude Design não foi copiado nem portado.
+- Nenhum pacote visual existente foi copiado nem portado para este reset.
 
-## Próxima fase
+## Estado de espera
 
-Abrir uma nova PR para o port fiel do Claude Design canônico. Ela deve partir deste
-shell, mapear cada seção aos contratos de dados existentes, manter render puro e
-não inventar notas, disponibilidade, ações de usuário, conteúdo ou links.
+O design público final ainda não foi fornecido. O repositório deve permanecer neste
+shell até existir material canônico aprovado e um novo escopo humano explícito. Só
+então uma PR visual própria poderá partir desta base, mapear cada seção aos contratos
+de dados existentes, manter render puro e não inventar notas, disponibilidade,
+ações de usuário, conteúdo ou links.
