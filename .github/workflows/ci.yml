@@ -82,3 +82,6 @@ jobs:
 
       - name: Rotas temporada/episodio — Fase 4 (PostgreSQL 16 efemero)
         run: pnpm --filter @screena/web validate:season-episode-routes
+
+      - name: Plataforma TMDB — Fases 6-8 (catalogo, midia, discovery; PostgreSQL 16 efemero)
+        run: pnpm --filter @screena/ingestion validate:tmdb-platform

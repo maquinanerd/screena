@@ -310,5 +310,84 @@
     "coverage_state": "not_applicable",
     "justification": "Pipeline de noticias roadmap Fase 13 (README + worker Python Fase 0 stub, zero source). articles.display_allowed default false; en/es nascem draft/noindex.",
     "notes": "Noticias nunca criam entidades — so linkam existentes."
+  },
+  {
+    "id": "tmdb.config.image_sizes",
+    "provider": "tmdb",
+    "provider_api": "tmdb",
+    "role": "catalog",
+    "target": "tmdb_image_config (base_url, secure_base_url, poster_sizes, backdrop_sizes, still_sizes, profile_sizes, logo_sizes, change_keys)",
+    "worker_only": true,
+    "implemented": true,
+    "coverage_state": "normalized",
+    "notes": "Normalizado de /configuration pelo worker de taxonomia (Fase 6). Singleton por provider (PK tmdb). Idempotente: no-op quando inalterado. Base para o helper de URL de imagem substituir os tamanhos hardcoded (roadmap)."
+  },
+  {
+    "id": "tmdb.genres.normalized",
+    "provider": "tmdb",
+    "provider_api": "tmdb",
+    "role": "catalog",
+    "target": "genres (media_type, tmdb_id, name)",
+    "worker_only": true,
+    "implemented": true,
+    "coverage_state": "normalized",
+    "notes": "Generos normalizados de /genre/{movie,tv}/list pelo worker de taxonomia. PK (media_type, tmdb_id). Validado em validate:tmdb-platform."
+  },
+  {
+    "id": "tmdb.taxonomy.certifications_raw",
+    "provider": "tmdb",
+    "provider_api": "tmdb",
+    "role": "catalog",
+    "target": "api_cache (/certification/movie/list, /certification/tv/list)",
+    "worker_only": true,
+    "implemented": true,
+    "coverage_state": "raw_captured",
+    "notes": "Classificacoes indicativas por territorio capturadas raw. Sao ADVISORY (ex.: 14, 16) — NUNCA rating editorial de critica/audiencia; nao entram em external_ratings nem se misturam com rating_source. Selecao BR + normalizacao roadmap."
+  },
+  {
+    "id": "tmdb.taxonomy.reference_raw",
+    "provider": "tmdb",
+    "provider_api": "tmdb",
+    "role": "catalog",
+    "target": "api_cache (/configuration/countries, /configuration/languages, /configuration/jobs)",
+    "worker_only": true,
+    "implemented": true,
+    "coverage_state": "raw_captured",
+    "notes": "Taxonomias de referencia (paises/idiomas/departamentos) capturadas raw pelo worker de taxonomia. countries/languages publicaveis ja vem do seed; normalizacao propria destes payloads e roadmap."
+  },
+  {
+    "id": "tmdb.media.images",
+    "provider": "tmdb",
+    "provider_api": "tmdb",
+    "role": "catalog",
+    "target": "tmdb_images (entity_type, tmdb_id, image_type, file_path, language, dims, vote, display_allowed=false)",
+    "worker_only": true,
+    "implemented": true,
+    "coverage_state": "blocked_license",
+    "justification": "Metadados normalizados porem exibicao gated: nasce display_allowed=false + license_status=unknown (invariante 6). Promocao e decisao humana. So metadados (nenhum binario).",
+    "notes": "Tipos: poster|backdrop|logo|profile|still. Idempotente por (entity,tmdb_id,image_type,file_path)."
+  },
+  {
+    "id": "tmdb.media.videos",
+    "provider": "tmdb",
+    "provider_api": "tmdb",
+    "role": "catalog",
+    "target": "tmdb_videos (entity_type, tmdb_id, tmdb_video_id, site, video_key, type, display_allowed=false)",
+    "worker_only": true,
+    "implemented": true,
+    "coverage_state": "blocked_license",
+    "justification": "Metadados normalizados; exibicao gated (display_allowed=false, invariante 6). So link/site/key legais do TMDB (nenhum embed pirata); publicacao e decisao humana.",
+    "notes": "Tipos: Trailer|Teaser|Clip|... Idempotente por (entity,tmdb_id,tmdb_video_id)."
+  },
+  {
+    "id": "tmdb.sync.checkpoint",
+    "provider": "tmdb",
+    "provider_api": "tmdb",
+    "role": "discovery",
+    "target": "tmdb_sync_checkpoint (job, params_hash, last_page, total_pages, done, cursor)",
+    "worker_only": true,
+    "implemented": true,
+    "coverage_state": "normalized",
+    "notes": "Estado de retomada da execucao paginada (list-sync). Permite resume/checkpoint de listas/discover/trending sem varrer tudo. Validado em validate:tmdb-platform."
   }
 ]

@@ -107,6 +107,8 @@ const EXPECTED_TABLES = [
   "tmdb_raw", "tmdb_image_config",
   // Data governance hardening (2026-07) — registro polimorfico + quarentenas auditaveis.
   "entities", "entity_reference_orphans", "data_migration_quarantine",
+  // Fases 6-8 — generos normalizados, biblioteca de midia e checkpoint de sync.
+  "genres", "tmdb_images", "tmdb_videos", "tmdb_sync_checkpoint",
 ];
 const EXPECTED_ENUMS = [
   "EntityType", "ContentBlockType", "ContentSource", "ReviewStatus", "TranslationStatus",
@@ -137,13 +139,13 @@ async function runChecks(url: string): Promise<void> {
   }
 
   try {
-    // 3. 32 tabelas esperadas (27 Fase 1/4F-A + tmdb_raw + tmdb_image_config do
-    // P0-00a + entities + entity_reference_orphans + data_migration_quarantine)
+    // 3. 36 tabelas esperadas (32 anteriores + genres + tmdb_images + tmdb_videos
+    // + tmdb_sync_checkpoint das Fases 6-8)
     const tables = (await q<{ table_name: string }>(
       "SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'",
     )).map((r) => r.table_name).filter((t) => t !== "_prisma_migrations");
     const missing = EXPECTED_TABLES.filter((t) => !tables.includes(t));
-    record(3, "32 tabelas esperadas", tables.length === 32 && missing.length === 0,
+    record(3, "36 tabelas esperadas", tables.length === 36 && missing.length === 0,
       `encontradas ${tables.length}${missing.length ? ", faltando " + missing.join(",") : ""}`);
 
     // 4. 15 enums esperados (13 + TmdbEntityKind do P0-00a + SourceLicenseContentType do hardening 2026-07)

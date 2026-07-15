@@ -908,6 +908,97 @@ model TmdbImageConfig {
   @@map("tmdb_image_config")
 }
 
+// --- Catalogo TMDB (Fase 6): generos normalizados ---
+// Lista canonica de generos por media_type (movie|tv), normalizada de
+// /genre/{movie,tv}/list pelo worker de taxonomia. Worker-only.
+model Genre {
+  tmdbId    Int      @map("tmdb_id")
+  mediaType String   @map("media_type") // 'movie' | 'tv'
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@id([mediaType, tmdbId])
+  @@map("genres")
+}
+
+// --- Mídia TMDB (Fase 7): metadados de imagens ---
+// So METADADOS (nenhum binario baixado). Nasce display_allowed=false +
+// license_status=unknown (invariante 6): exibicao exige decisao humana. Worker-only.
+model TmdbImage {
+  id             BigInt        @id @default(autoincrement())
+  providerApi    String        @default("tmdb") @map("provider_api")
+  entityType     TmdbEntityKind @map("entity_type")
+  tmdbId         Int           @map("tmdb_id")
+  imageType      String        @map("image_type") // poster|backdrop|logo|profile|still
+  filePath       String        @map("file_path")
+  languageCode   String?       @map("language_code") // iso_639_1 (pode ser null)
+  width          Int?
+  height         Int?
+  aspectRatio    Float?        @map("aspect_ratio")
+  voteAverage    Float?        @map("vote_average")
+  voteCount      Int?          @map("vote_count")
+  payloadHash    String        @map("payload_hash")
+  licenseStatus  LicenseStatus @default(unknown) @map("license_status")
+  displayAllowed Boolean       @default(false) @map("display_allowed")
+  fetchedAt      DateTime      @default(now()) @map("fetched_at")
+  staleAfter     DateTime?     @map("stale_after")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  @@unique([entityType, tmdbId, imageType, filePath])
+  @@index([entityType, tmdbId])
+  @@map("tmdb_images")
+}
+
+// --- Mídia TMDB (Fase 7): metadados de videos ---
+// So metadados (link/site/key, nunca embed pirata). Nasce display_allowed=false.
+model TmdbVideo {
+  id             BigInt        @id @default(autoincrement())
+  providerApi    String        @default("tmdb") @map("provider_api")
+  entityType     TmdbEntityKind @map("entity_type")
+  tmdbId         Int           @map("tmdb_id")
+  tmdbVideoId    String        @map("tmdb_video_id")
+  site           String
+  videoKey       String        @map("video_key")
+  name           String?
+  videoType      String?       @map("video_type") // Trailer|Teaser|Clip|...
+  official       Boolean?
+  languageCode   String?       @map("language_code")
+  countryCode    String?       @map("country_code")
+  size           Int?
+  publishedAt    DateTime?     @map("published_at")
+  payloadHash    String        @map("payload_hash")
+  licenseStatus  LicenseStatus @default(unknown) @map("license_status")
+  displayAllowed Boolean       @default(false) @map("display_allowed")
+  fetchedAt      DateTime      @default(now()) @map("fetched_at")
+  staleAfter     DateTime?     @map("stale_after")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  @@unique([entityType, tmdbId, tmdbVideoId])
+  @@index([entityType, tmdbId])
+  @@map("tmdb_videos")
+}
+
+// --- Sync incremental TMDB (Fase 8): checkpoint/resume de paginacao ---
+// Persiste a ultima pagina/cursor por job para retomada; worker-only.
+model TmdbSyncCheckpoint {
+  id          BigInt   @id @default(autoincrement())
+  providerApi String   @default("tmdb") @map("provider_api")
+  job         String // ex.: 'list:movie/popular', 'discover:movie', 'changes:movie'
+  paramsHash  String   @map("params_hash")
+  lastPage    Int      @default(0) @map("last_page")
+  totalPages  Int?     @map("total_pages")
+  done        Boolean  @default(false)
+  cursor      String? // janela/token de changes
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([job, paramsHash])
+  @@map("tmdb_sync_checkpoint")
+}
+
 // ============================================================
 // NOTICIAS / BLOG (editorial) — Fase 4F-A (schema base)
 // ============================================================
