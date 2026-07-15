@@ -1,17 +1,20 @@
 /**
- * watch-review-store.ts — Adapter Prisma da revisao/promocao. EXCLUIDO do typecheck.
+ * watch-review-store.ts — Adapter Prisma da revisao/promocao. incluido no typecheck (2026-07).
  *
  * So LE e ATUALIZA `watch_availability`. Nunca cria linha, nunca toca outra
  * tabela alem de resolver o TITULO da entidade (movies.title_original /
  * tv_shows.name_original) para o relatorio.
  *
  * DEFESA EM PROFUNDIDADE nos updates:
- *  - `promote`: WHERE reafirma `provider_api = streaming_availability`,
- *    `country_code = BR` e `display_allowed = false`. Um id de outro provider,
- *    outro pais ou ja exibivel NUNCA e virado, mesmo que chegue na lista.
+ *  - `promote`: exige `reviewer` humano; grava, atomicamente, display_allowed +
+ *    reviewed_at + reviewed_by + approved_payload_hash (= fingerprint atual do
+ *    payload). O trigger permanente do banco valida hash/licenca/atribuicao —
+ *    oferta incompleta fica fail-closed (nao promove). WHERE reafirma
+ *    `provider_api = streaming_availability`, `country_code = BR`,
+ *    `display_allowed = false`; um id por statement (falha isolada).
  *  - `revoke`: WHERE reafirma `provider_api = streaming_availability` e
  *    `display_allowed = true`.
- * `updateMany` toca SO a coluna `display_allowed` — jamais rating/screen_score.
+ * NUNCA toca rating/screen_score/external_ratings.
  */
 
 import type { PrismaClient } from '@screena/db/server'
@@ -174,18 +177,44 @@ export function createPrismaReviewStore(prisma: PrismaClient): ReviewStorePort {
       return hydrate(rows)
     },
 
-    async promote(ids: readonly string[]): Promise<StoreMutationOutcome> {
+    async promote(ids: readonly string[], reviewer: string): Promise<StoreMutationOutcome> {
       if (ids.length === 0) return { updated: 0 }
-      const result = await prisma.watchAvailability.updateMany({
-        where: {
-          id: { in: ids.map((id) => BigInt(id)) },
-          providerApi: STREAMING_AVAILABILITY_PROVIDER_API,
-          countryCode: 'BR',
-          displayAllowed: false,
-        },
-        data: { displayAllowed: true },
-      })
-      return { updated: result.count }
+      const who = reviewer.trim()
+      if (who === '') {
+        // Promocao SEM revisor humano identificado falha EXPLICITAMENTE.
+        throw new Error('promote: revisor humano obrigatorio (reviewed_by)')
+      }
+      let updated = 0
+      // Um id por statement: se o trigger permanente de governanca rejeitar uma
+      // oferta incompleta (sem licenca/atribuicao/hash valido), SO aquele id
+      // falha — fail-closed —, os demais seguem. A promocao grava, atomicamente,
+      // approved_payload_hash = fingerprint atual do payload + reviewed_at +
+      // reviewed_by; o trigger valida licenca/atribuicao/linkback.
+      for (const id of ids) {
+        try {
+          const affected = await prisma.$executeRaw`
+            UPDATE "watch_availability"
+            SET "display_allowed" = true,
+                "reviewed_at" = now(),
+                "reviewed_by" = ${who},
+                "approved_payload_hash" = watch_offer_payload_fingerprint_v1(
+                  "provider_api", "external_offer_id", "entity_type", "entity_id", "country_code",
+                  "offer_type", "provider_key", "provider_name", "package", "quality", "price",
+                  "currency", "deep_link", "web_url", "available_from", "available_until",
+                  "license_status", "requires_attribution", "requires_linkback",
+                  "attribution_text", "attribution_url"),
+                "updated_at" = now()
+            WHERE "id" = ${BigInt(id)}
+              AND "provider_api" = ${STREAMING_AVAILABILITY_PROVIDER_API}
+              AND "country_code" = 'BR'
+              AND "display_allowed" = false
+          `
+          updated += Number(affected)
+        } catch {
+          // Trigger rejeitou (governanca incompleta): fail-closed, nao promove.
+        }
+      }
+      return { updated }
     },
 
     async revoke(ids: readonly string[]): Promise<StoreMutationOutcome> {

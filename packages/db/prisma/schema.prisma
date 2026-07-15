@@ -4,7 +4,9 @@
 //  - Modelos PascalCase singular + @@map para tabela snake_case plural.
 //  - Campos camelCase + @map para coluna snake_case.
 //  - PK interna = BigInt autoincrement (D6); tabelas-semente usam chave natural.
-//  - Refs polimorficas = (entityType + entityId) SEM FK, com @@index composto (D1).
+//  - Refs polimorficas = (entityType + entityId), com @@index composto e FK
+//    composta real para `entities(entityType, entityId)` (D1 evoluido em
+//    2026-07 pelo hardening de governanca de dados; ver model `Entity`).
 //  - rating_source e provider_api sao FKs DISTINTAS para tabelas DISTINTAS (invariante 2).
 //  - Default seguro: tudo nasce noindex / display_allowed=false / unknown / draft.
 //
@@ -106,6 +108,20 @@ enum LicenseStatus {
   blocked
 }
 
+// Discriminador de dominio de uma linha de source_licenses. Uma mesma fonte
+// editorial (ex.: TMDB, RSSPRIME) pode ter politicas DIFERENTES por tipo de
+// conteudo (rating vs texto de noticia vs imagem) e por territorio; o par
+// (content_type, territory_code) faz parte da chave natural (ver hardening).
+enum SourceLicenseContentType {
+  rating
+  watch_availability
+  review
+  video // trailers/teasers/clips/featurettes/etc. (Fase 7 — biblioteca de video TMDB)
+  news
+  image
+  other
+}
+
 enum OfferType {
   subscription
   rent
@@ -184,6 +200,7 @@ model Country {
   createdAt DateTime @default(now()) @map("created_at")
 
   watchAvailability WatchAvailability[]
+  sourceLicenses    SourceLicense[]
 
   @@map("countries")
 }
@@ -195,7 +212,8 @@ model RatingSource {
   homepageUrl String?  @map("homepage_url")
   createdAt   DateTime @default(now()) @map("created_at")
 
-  ratings ExternalRating[]
+  ratings        ExternalRating[]
+  sourceLicenses SourceLicense[]
 
   @@map("rating_sources")
 }
@@ -207,32 +225,70 @@ model ApiProvider {
   homepageUrl String?      @map("homepage_url")
   createdAt   DateTime     @default(now()) @map("created_at")
 
-  ratings      ExternalRating[]
-  syncLogs     ApiSyncLog[]
-  cacheEntries ApiCache[]
+  ratings        ExternalRating[]
+  syncLogs       ApiSyncLog[]
+  cacheEntries   ApiCache[]
+  sourceLicenses SourceLicense[]
 
   @@map("api_providers")
 }
 
+// SourceLicense governa o que PODE ser exibido de uma fonte (invariante 6).
+// Hardening (2026-07): `sourceKey` continua sendo o rotulo/identificador
+// editorial em texto livre (cobre fontes sem tabela propria, como um outlet de
+// noticia ou uma plataforma de streaming), mas quando `contentType = rating`
+// a fonte DEVE ter uma linha verificavel em `rating_sources` via
+// `ratingSourceKey` (FK real). `providerKey` (fornecedor tecnico) agora e uma
+// FK real para `api_providers` — nunca o mesmo dominio de `ratingSourceKey`
+// (invariante 2: RatingSource != ApiProvider).
 model SourceLicense {
-  id                  BigInt        @id @default(autoincrement())
-  sourceKey           String        @map("source_key")
-  providerKey         String?       @map("provider_key")
-  licenseStatus       LicenseStatus @default(unknown) @map("license_status") // default seguro (inv. 6)
-  displayAllowed      Boolean       @default(false) @map("display_allowed")
-  logoAllowed         Boolean       @default(false) @map("logo_allowed")
-  scoreAllowed        Boolean       @default(false) @map("score_allowed")
-  reviewQuoteAllowed  Boolean       @default(false) @map("review_quote_allowed")
-  requiresAttribution Boolean       @default(true) @map("requires_attribution")
-  requiresLinkback    Boolean       @default(true) @map("requires_linkback")
-  attributionText     String?       @map("attribution_text")
-  termsUrl            String?       @map("terms_url")
+  id                  BigInt                   @id @default(autoincrement())
+  sourceKey           String                   @map("source_key")
+  contentType         SourceLicenseContentType @default(rating) @map("content_type")
+  ratingSourceKey     String?                  @map("rating_source_key") // FK -> rating_sources.key; obrigatorio quando content_type=rating (CHECK)
+  providerKey         String?                  @map("provider_key") // FK -> api_providers.key (fornecedor tecnico; NUNCA rating_source_key)
+  territoryCode       String?                  @map("territory_code") // FK -> countries.code; null = licenca global
+  licenseStatus       LicenseStatus            @default(unknown) @map("license_status") // default seguro (inv. 6)
+  displayAllowed      Boolean                  @default(false) @map("display_allowed")
+  logoAllowed         Boolean                  @default(false) @map("logo_allowed")
+  scoreAllowed        Boolean                  @default(false) @map("score_allowed")
+  reviewQuoteAllowed  Boolean                  @default(false) @map("review_quote_allowed")
+  requiresAttribution Boolean                  @default(true) @map("requires_attribution")
+  requiresLinkback    Boolean                  @default(true) @map("requires_linkback")
+  attributionText     String?                  @map("attribution_text")
+  termsUrl            String?                  @map("terms_url")
+  validFrom           DateTime?                @map("valid_from") // inicio de vigencia (null = sem inicio definido)
+  validUntil          DateTime?                @map("valid_until") // fim de vigencia (null = sem prazo definido)
+  decidedBy           String?                  @map("decided_by") // identidade humana que decidiu a licenca
+  decidedAt           DateTime?                @map("decided_at")
+  // Historico imutavel de licenca (mesmo padrao de PageIndexabilityDecision):
+  // cada reavaliacao INSERE nova linha; `is_current` marca a vigente por
+  // (source_key, content_type, provider, territorio) via indice unico PARCIAL
+  // (SQL bruto); `supersedes_id` liga a decisao anterior. Nenhuma linha antiga
+  // e sobrescrita/apagada.
+  isCurrent           Boolean                  @default(true) @map("is_current")
+  supersedesId        BigInt?                  @map("supersedes_id")
+  decisionOrigin      String?                  @map("decision_origin") // ex.: "seed", "human_override", "license_pipeline"
+  policyVersion       String?                  @map("policy_version")
   notes               String?
-  createdAt           DateTime      @default(now()) @map("created_at")
-  updatedAt           DateTime      @updatedAt @map("updated_at")
+  createdAt           DateTime                 @default(now()) @map("created_at")
+  updatedAt           DateTime                 @updatedAt @map("updated_at")
 
-  // Unique parcial (source_key WHERE provider_key IS NULL) aplicado via SQL bruto.
+  ratingSource RatingSource?   @relation(fields: [ratingSourceKey], references: [key])
+  provider     ApiProvider?    @relation(fields: [providerKey], references: [key])
+  territory    Country?        @relation(fields: [territoryCode], references: [code])
+  supersedes   SourceLicense?  @relation("SourceLicenseHistory", fields: [supersedesId], references: [id])
+  supersededBy SourceLicense[] @relation("SourceLicenseHistory")
+
+  // Licenca VIGENTE unica por (source_key, content_type, provider, territorio)
+  // via indice unico PARCIAL WHERE is_current (SQL bruto); historico livre.
   @@index([sourceKey])
+  @@index([contentType])
+  @@index([ratingSourceKey])
+  @@index([providerKey])
+  @@index([territoryCode])
+  @@index([isCurrent])
+  @@index([supersedesId])
   @@map("source_licenses")
 }
 
@@ -241,32 +297,32 @@ model SourceLicense {
 // ============================================================
 
 model Movie {
-  id               BigInt    @id @default(autoincrement())
-  tmdbId           Int       @unique @map("tmdb_id")
-  imdbId           String?   @unique @map("imdb_id") // 'tt#######'; identificador, NAO fonte de rating
-  titleOriginal    String    @map("title_original")
-  originalLanguage String?   @map("original_language")
-  releaseDate      DateTime? @map("release_date") @db.Date
-  runtimeMinutes   Int?      @map("runtime_minutes")
-  status           String?
-  popularity       Decimal?
-  voteAverageTmdb  Decimal?  @map("vote_average_tmdb") // dado tecnico TMDB; NUNCA nota editorial (inv. 1/2)
-  voteCountTmdb    Int?      @map("vote_count_tmdb")
-  posterPath       String?   @map("poster_path")
-  backdropPath     String?   @map("backdrop_path")
+  id                 BigInt    @id @default(autoincrement())
+  tmdbId             Int       @unique @map("tmdb_id")
+  imdbId             String?   @unique @map("imdb_id") // 'tt#######'; identificador, NAO fonte de rating
+  titleOriginal      String    @map("title_original")
+  originalLanguage   String?   @map("original_language")
+  releaseDate        DateTime? @map("release_date") @db.Date
+  runtimeMinutes     Int?      @map("runtime_minutes")
+  status             String?
+  popularity         Decimal?
+  voteAverageTmdb    Decimal?  @map("vote_average_tmdb") // dado tecnico TMDB; NUNCA nota editorial (inv. 1/2)
+  voteCountTmdb      Int?      @map("vote_count_tmdb")
+  posterPath         String?   @map("poster_path")
+  backdropPath       String?   @map("backdrop_path")
   // Classificacao indicativa (advisory de conteudo: "14", "16", "L", "TV-MA").
   // NAO e rating source; nao passa pelas regras de external_ratings (inv. 1/2).
-  certification    String?   @map("certification")
+  certification      String?   @map("certification")
   // Nota editorial PROPRIA do Screen (escala 5). Nunca e AggregateRating de
   // terceiro nem se mistura com IMDb/RT. `screen_score_display` e o gate seguro
   // (nasce false): so aparece em pagina publica quando explicitamente liberado.
-  screenScore        Decimal? @map("screen_score")
-  screenScoreScale   Int?     @map("screen_score_scale")
-  screenScoreDisplay Boolean  @default(false) @map("screen_score_display")
-  createdAt        DateTime  @default(now()) @map("created_at")
-  updatedAt        DateTime  @updatedAt @map("updated_at")
-  lastSyncedAt     DateTime? @map("last_synced_at")
-  staleAfter       DateTime? @map("stale_after")
+  screenScore        Decimal?  @map("screen_score")
+  screenScoreScale   Int?      @map("screen_score_scale")
+  screenScoreDisplay Boolean   @default(false) @map("screen_score_display")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  lastSyncedAt       DateTime? @map("last_synced_at")
+  staleAfter         DateTime? @map("stale_after")
 
   language Language? @relation(fields: [originalLanguage], references: [code])
 
@@ -280,31 +336,31 @@ model Movie {
 }
 
 model TvShow {
-  id               BigInt    @id @default(autoincrement())
-  tmdbId           Int       @unique @map("tmdb_id")
-  imdbId           String?   @unique @map("imdb_id")
-  nameOriginal     String    @map("name_original")
-  originalLanguage String?   @map("original_language")
-  firstAirDate     DateTime? @map("first_air_date") @db.Date
-  lastAirDate      DateTime? @map("last_air_date") @db.Date
-  status           String?
-  numberOfSeasons  Int?      @map("number_of_seasons")
-  numberOfEpisodes Int?      @map("number_of_episodes")
-  popularity       Decimal?
-  voteAverageTmdb  Decimal?  @map("vote_average_tmdb")
-  voteCountTmdb    Int?      @map("vote_count_tmdb")
-  posterPath       String?   @map("poster_path")
-  backdropPath     String?   @map("backdrop_path")
+  id                 BigInt    @id @default(autoincrement())
+  tmdbId             Int       @unique @map("tmdb_id")
+  imdbId             String?   @unique @map("imdb_id")
+  nameOriginal       String    @map("name_original")
+  originalLanguage   String?   @map("original_language")
+  firstAirDate       DateTime? @map("first_air_date") @db.Date
+  lastAirDate        DateTime? @map("last_air_date") @db.Date
+  status             String?
+  numberOfSeasons    Int?      @map("number_of_seasons")
+  numberOfEpisodes   Int?      @map("number_of_episodes")
+  popularity         Decimal?
+  voteAverageTmdb    Decimal?  @map("vote_average_tmdb")
+  voteCountTmdb      Int?      @map("vote_count_tmdb")
+  posterPath         String?   @map("poster_path")
+  backdropPath       String?   @map("backdrop_path")
   // Classificacao indicativa (advisory de conteudo). NAO e rating source (inv. 1/2).
-  certification    String?   @map("certification")
+  certification      String?   @map("certification")
   // Nota editorial PROPRIA do Screen (escala 5); gate seguro nasce false (inv. 6).
-  screenScore        Decimal? @map("screen_score")
-  screenScoreScale   Int?     @map("screen_score_scale")
-  screenScoreDisplay Boolean  @default(false) @map("screen_score_display")
-  createdAt        DateTime  @default(now()) @map("created_at")
-  updatedAt        DateTime  @updatedAt @map("updated_at")
-  lastSyncedAt     DateTime? @map("last_synced_at")
-  staleAfter       DateTime? @map("stale_after")
+  screenScore        Decimal?  @map("screen_score")
+  screenScoreScale   Int?      @map("screen_score_scale")
+  screenScoreDisplay Boolean   @default(false) @map("screen_score_display")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  lastSyncedAt       DateTime? @map("last_synced_at")
+  staleAfter         DateTime? @map("stale_after")
 
   language Language? @relation(fields: [originalLanguage], references: [code])
   seasons  Season[]
@@ -389,6 +445,27 @@ model Person {
 
   @@index([updatedAt])
   @@map("people")
+}
+
+// ============================================================
+// REGISTRO DE ENTIDADES (supertipo das refs polimorficas)
+// ============================================================
+// Evolucao de D1 (docs/PHASE_1_DATABASE_PLAN.md, secao 6.3.1): as refs
+// polimorficas (entity_type + entity_id) espalhadas pelo schema deixam de
+// depender so de "limpeza de orfaos no worker" e passam a ter integridade
+// real de banco. `entities` e uma tabela de REGISTRO fina — SEM colunas
+// proprias alem da chave composta — mantida por TRIGGERS a partir de
+// movies/tv_shows/seasons/episodes/people (ver migration
+// 20260715120000_data_governance_hardening). Toda tabela polimorfica ganha
+// FK composta (entity_type, entity_id) -> entities(entity_type, entity_id)
+// via SQL bruto (D5), impedindo IDs orfaos sem exigir mudanca no app.
+model Entity {
+  entityType EntityType @map("entity_type")
+  entityId   BigInt     @map("entity_id")
+  createdAt  DateTime   @default(now()) @map("created_at")
+
+  @@id([entityType, entityId])
+  @@map("entities")
 }
 
 // ============================================================
@@ -638,34 +715,75 @@ model ExternalRating {
 // DISPONIBILIDADE / SEO (polimorfico)
 // ============================================================
 
+// Hardening (2026-07): `providerKey` PERMANECE opcional de proposito — o worker
+// usa `providerKey = null` como sinal legitimo de "provedor nao identificado
+// pela API" (missing-provider); NUNCA e derivado do provider_name.
+//
+// IDENTIDADE vs PAYLOAD (duas funcoes SQL versionadas, SHA-256; ver ADR 0002):
+//  - `watch_offer_identity_key_v1(...)` = IDENTIDADE ESTAVEL da oferta (indice
+//    unico funcional). So o que identifica o MESMO objeto: entidade, pais,
+//    modalidade, provider_api, e external_offer_id (prioritario) OU provider
+//    tecnico (provider_key; fallback provider_name normalizado so quando null) +
+//    package. NAO inclui preco/URLs/validade.
+//  - `watch_offer_payload_fingerprint_v1(...)` = tudo que, ao mudar, exige nova
+//    revisao (identidade + provider_name + package + quality + preco/moeda +
+//    URLs + validade + licenca/atribuicao). `approved_payload_hash` guarda ESTE
+//    fingerprint. Trigger permanente `watch_availability_display_guard` torna
+//    IMPOSSIVEL `display_allowed=true` sem hash=fingerprint + reviewed_at/by +
+//    licenca permitida + atribuicao/linkback (fail-closed no banco).
 model WatchAvailability {
-  id             BigInt     @id @default(autoincrement())
-  entityType     EntityType @map("entity_type")
-  entityId       BigInt     @map("entity_id")
-  countryCode    String     @map("country_code")
-  providerKey    String?    @map("provider_key") // D2: provider como texto ate a fase de streaming
-  providerName   String     @map("provider_name")
-  offerType      OfferType  @map("offer_type") // so modalidades LEGAIS (inv. 10)
-  deepLink       String?    @map("deep_link") // destino legal; nunca torrent/IPTV/player pirata
-  price          Decimal?
-  currency       String?    @db.Char(3) // CHECK (price IS NULL OR currency IS NOT NULL) via SQL
-  quality        String?
-  availableFrom  DateTime?  @map("available_from")
-  availableUntil DateTime?  @map("available_until")
-  fetchedAt      DateTime?  @map("fetched_at")
-  staleAfter     DateTime?  @map("stale_after")
-  providerApi    String?    @map("provider_api")
-  displayAllowed Boolean    @default(false) @map("display_allowed") // default seguro (inv. 6)
-  createdAt      DateTime   @default(now()) @map("created_at")
-  updatedAt      DateTime   @updatedAt @map("updated_at")
+  id                  BigInt        @id @default(autoincrement())
+  entityType          EntityType    @map("entity_type")
+  entityId            BigInt        @map("entity_id")
+  countryCode         String        @map("country_code")
+  externalOfferId     String?       @map("external_offer_id") // ID ESTAVEL da oferta na API de origem (identidade prioritaria); null quando a API nao fornece
+  providerKey         String?       @map("provider_key") // identificador TECNICO da API/tabela canonica; null = provedor nao identificado (missing-provider). NUNCA derivado do provider_name
+  providerName        String        @map("provider_name") // nome de EXIBICAO (pode mudar/traduzir); nao e identidade tecnica
+  offerType           OfferType     @map("offer_type") // so modalidades LEGAIS (inv. 10)
+  deepLink            String?       @map("deep_link") // destino legal; nunca torrent/IPTV/player pirata
+  price               Decimal?
+  currency            String?       @db.Char(3) // CHECK (price IS NULL OR currency IS NOT NULL) via SQL
+  quality             String?
+  availableFrom       DateTime?     @map("available_from")
+  availableUntil      DateTime?     @map("available_until")
+  fetchedAt           DateTime?     @map("fetched_at")
+  staleAfter          DateTime?     @map("stale_after")
+  providerApi         String?       @map("provider_api")
+  licenseStatus       LicenseStatus @default(unknown) @map("license_status") // default seguro (inv. 6)
+  displayAllowed      Boolean       @default(false) @map("display_allowed") // default seguro (inv. 6)
+  requiresAttribution Boolean       @default(true) @map("requires_attribution")
+  requiresLinkback    Boolean       @default(true) @map("requires_linkback")
+  attributionText     String?       @map("attribution_text")
+  attributionUrl      String?       @map("attribution_url")
+  reviewedAt          DateTime?     @map("reviewed_at") // data da revisao humana
+  reviewedBy          String?       @map("reviewed_by") // identidade do revisor humano
+  approvedPayloadHash String?       @map("approved_payload_hash") // hash/fingerprint do payload aprovado na revisao
+  webUrl              String?       @map("web_url") // link web (navegador); distinto de deep_link (app)
+  package             String?       @map("package") // pacote/bundle da oferta (add-on/channel)
+  createdAt           DateTime      @default(now()) @map("created_at")
+  updatedAt           DateTime      @updatedAt @map("updated_at")
 
   country Country @relation(fields: [countryCode], references: [code])
 
+  // Identidade da oferta = fingerprint canonico versionado `watch_offer_fingerprint(...)`
+  // (external_offer_id quando presente; senao a tupla completa: provider tecnico,
+  // modalidade, package, qualidade, preco/moeda, URLs, validade). Indice unico
+  // sobre esse fingerprint (SQL bruto) — ofertas legitimamente distintas NUNCA
+  // colapsam. Ver ADR 0002.
   @@index([entityType, entityId, countryCode])
   @@index([countryCode])
+  @@index([providerKey])
+  @@index([externalOfferId])
   @@map("watch_availability")
 }
 
+// Hardening (2026-07): historico preservado (nunca UPDATE destrutivo em linha
+// antiga) — cada reavaliacao INSERE uma nova linha. `isCurrent` identifica de
+// forma inequivoca a decisao VIGENTE por (entity_type, entity_id,
+// language_code); um indice unico PARCIAL (WHERE is_current = true, SQL
+// bruto) impede duas decisoes concorrentes marcadas como atuais. `policyVersion`
+// e `decisionOrigin` registram QUAL versao de politica/motor gerou a decisao;
+// `decidedBy` registra revisao humana quando aplicavel.
 model PageIndexabilityDecision {
   id               BigInt        @id @default(autoincrement())
   entityType       EntityType    @map("entity_type")
@@ -674,6 +792,11 @@ model PageIndexabilityDecision {
   url              String
   decision         IndexDecision @default(noindex) // default seguro (inv. 5)
   reason           String?
+  isCurrent        Boolean       @default(true) @map("is_current") // decisao vigente (unique parcial via SQL bruto)
+  supersedesId     BigInt?       @map("supersedes_id") // aponta para a decisao anterior que esta substitui
+  policyVersion    String?       @map("policy_version") // versao da politica/motor de indexabilidade
+  decisionOrigin   String?       @map("decision_origin") // ex.: "sync_worker", "seo_policy_engine", "human_override"
+  decidedBy        String?       @map("decided_by") // identidade humana quando a decisao foi revisada/override
   valueBlocksCount Int           @default(0) @map("value_blocks_count")
   hasUniqueIntro   Boolean       @default(false) @map("has_unique_intro")
   hasWatchData     Boolean       @default(false) @map("has_watch_data")
@@ -686,11 +809,14 @@ model PageIndexabilityDecision {
   decidedAt        DateTime?     @map("decided_at")
   createdAt        DateTime      @default(now()) @map("created_at")
 
-  language Language @relation(fields: [languageCode], references: [code])
+  language     Language                   @relation(fields: [languageCode], references: [code])
+  supersedes   PageIndexabilityDecision?  @relation("PageIndexabilityDecisionHistory", fields: [supersedesId], references: [id])
+  supersededBy PageIndexabilityDecision[] @relation("PageIndexabilityDecisionHistory")
 
   @@index([entityType, entityId, languageCode])
   @@index([decision])
   @@index([languageCode])
+  @@index([isCurrent])
   @@map("page_indexability_decisions")
 }
 
@@ -795,7 +921,8 @@ model TmdbImageConfig {
 //  - pt-BR publica primeiro: `review_status`/`index_status` nascem draft/noindex
 //    (en/es idem) ate revisao humana (invariantes 7/9);
 //  - `entity_news_links` liga artigo a filme/serie/pessoa pela ref polimorfica
-//    (entity_type + entity_id) SEM FK, como cast_members/crew_members (D1).
+//    (entity_type + entity_id), com FK composta para `entities` (D1 evoluido),
+//    como cast_members/crew_members.
 
 model Article {
   id                  BigInt        @id @default(autoincrement())
@@ -817,8 +944,11 @@ model Article {
   translations ArticleTranslation[]
   entityLinks  EntityNewsLink[]
 
+  // CHECK (category IS NULL OR category <> '') e (author_name IS NULL OR
+  // author_name <> '') via SQL bruto (mesma convencao de imdb_id_not_empty).
   @@index([publishedAt])
   @@index([licenseStatus])
+  @@index([category])
   @@map("articles")
 }
 
@@ -841,6 +971,13 @@ model ArticleTranslation {
   article  Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
   language Language @relation(fields: [languageCode], references: [code])
 
+  // Hardening (2026-07): investigado se review_status/index_status/published_at
+  // deveriam ganhar CHECK de coerencia (gap #5 da auditoria). NAO adicionado:
+  // apps/admin/src/lib/editorial-action-policy.ts + editorial-actions.ts
+  // tratam esses 3 campos como decisoes editoriais INDEPENDENTES por design
+  // (indexStatus/reviewStatus podem ser setados para qualquer valor do enum
+  // isoladamente; publishedAt nunca e tocado pela acao e sobrevive a reversao
+  // para draft). Um CHECK acoplando os 3 quebraria esse fluxo real existente.
   @@unique([articleId, languageCode])
   @@unique([languageCode, slug])
   @@index([languageCode, indexStatus])
@@ -850,7 +987,7 @@ model ArticleTranslation {
 model EntityNewsLink {
   id         BigInt     @id @default(autoincrement())
   articleId  BigInt     @map("article_id")
-  entityType EntityType @map("entity_type") // movie | tv | person (ref polimorfica, SEM FK)
+  entityType EntityType @map("entity_type") // movie | tv | person (ref polimorfica -> entities, FK via SQL bruto)
   entityId   BigInt     @map("entity_id")
   createdAt  DateTime   @default(now()) @map("created_at")
 

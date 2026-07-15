@@ -40,6 +40,8 @@ export interface PromoteArgs {
   /** `--revoke` volta `display_allowed` para `false`. */
   readonly revoke: boolean
   readonly report: boolean
+  /** Identidade humana do revisor (obrigatoria para promover com --confirm). */
+  readonly reviewer: string | null
 }
 
 export type ReviewArgsResult =
@@ -167,7 +169,7 @@ export function parseReviewArgs(argv: readonly string[]): ReviewArgsResult {
   return { ok: true, args: { kind, country, entityId, limit, report, json } }
 }
 
-const PROMOTE_VALUE_FLAGS: ReadonlySet<string> = new Set(['ids', 'country'])
+const PROMOTE_VALUE_FLAGS: ReadonlySet<string> = new Set(['ids', 'country', 'reviewer'])
 const PROMOTE_BOOLEAN_FLAGS: ReadonlySet<string> = new Set(['confirm', 'revoke', 'report'])
 
 /** Faz o parse de `--ids=1,2,3`: inteiros > 0, deduplicados, ordem preservada. */
@@ -201,6 +203,7 @@ export function parsePromoteArgs(argv: readonly string[]): PromoteArgsResult {
   let confirm = false
   let revoke = false
   let report = false
+  let reviewer: string | null = null
 
   for (const token of tokenized.tokens) {
     const { name, value } = token
@@ -232,6 +235,10 @@ export function parsePromoteArgs(argv: readonly string[]): PromoteArgsResult {
         country = normalized
         break
       }
+      case 'reviewer': {
+        reviewer = value.trim()
+        break
+      }
     }
   }
 
@@ -239,5 +246,13 @@ export function parsePromoteArgs(argv: readonly string[]): PromoteArgsResult {
     return { ok: false, error: '--ids e obrigatorio (selecao explicita): use --ids=1,2,3.' }
   }
 
-  return { ok: true, args: { ids, country, confirm, revoke, report } }
+  // Promocao REAL exige revisor humano identificado (reviewed_by). Revoke nao.
+  if (confirm && !revoke && (reviewer === null || reviewer === '')) {
+    return {
+      ok: false,
+      error: '--reviewer e obrigatorio para promover com --confirm (identidade humana gravada em reviewed_by).',
+    }
+  }
+
+  return { ok: true, args: { ids, country, confirm, revoke, report, reviewer } }
 }

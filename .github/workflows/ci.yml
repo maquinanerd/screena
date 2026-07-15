@@ -64,3 +64,12 @@ jobs:
 
       - name: Validadores descartaveis (PostgreSQL efemero, sem banco remoto)
         run: pnpm --filter @screena/web validate:all
+
+      - name: Migration Fase 2 — Cenario A (do zero, PostgreSQL 16 efemero)
+        run: pnpm --filter @screena/db db:validate:real
+
+      - name: Migration Fase 2 — Cenario B (upgrade sobre estado anterior)
+        run: pnpm --filter @screena/db db:validate:upgrade
+
+      - name: Stores de streaming — integracao (PostgreSQL 16 efemero)
+        run: pnpm --filter @screena/streaming validate:stores

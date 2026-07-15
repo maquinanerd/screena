@@ -76,6 +76,7 @@ async function main(): Promise<void> {
         country: args.country,
         confirm: args.confirm,
         revoke: args.revoke,
+        reviewer: args.reviewer ?? '',
       },
       { store, syncLog, now: () => new Date() },
     )

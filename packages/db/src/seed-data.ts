@@ -50,6 +50,8 @@ export interface ApiProviderSeed {
 /** Linha de seed conservadora de `source_licenses` (default seguro). */
 export interface SourceLicenseSeed {
   readonly sourceKey: string;
+  readonly contentType: "rating";
+  readonly ratingSourceKey: string;
   readonly providerKey: string | null;
   readonly licenseStatus: "unknown";
   readonly displayAllowed: false;
@@ -134,6 +136,8 @@ export const API_PROVIDER_SEED: readonly ApiProviderSeed[] = [
 export const SOURCE_LICENSE_SEED: readonly SourceLicenseSeed[] = RATING_SOURCES.map(
   (key): SourceLicenseSeed => ({
     sourceKey: key,
+    contentType: "rating",
+    ratingSourceKey: key, // FK real para rating_sources.key (nunca api_providers.key — invariante 2)
     providerKey: null,
     licenseStatus: "unknown",
     displayAllowed: false,

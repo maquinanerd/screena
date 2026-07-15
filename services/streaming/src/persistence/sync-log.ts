@@ -1,5 +1,5 @@
 /**
- * sync-log.ts — Adapter de `api_sync_logs` (Prisma). EXCLUIDO do typecheck.
+ * sync-log.ts — Adapter de `api_sync_logs` (Prisma). incluido no typecheck (2026-07).
  *
  * Grava 1 linha por ciclo de sync. Todo sync externo gera log — sem excecao.
  */

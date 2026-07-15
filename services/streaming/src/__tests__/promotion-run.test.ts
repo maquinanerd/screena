@@ -57,7 +57,7 @@ interface Harness {
 function makeHarness(rows: readonly PromotionCandidate[]): Harness {
   const listCandidates = vi.fn(async () => rows)
   const findByIds = vi.fn(async () => rows)
-  const promote = vi.fn(async (ids: readonly string[]) => ({ updated: ids.length }))
+  const promote = vi.fn(async (ids: readonly string[], _reviewer: string) => ({ updated: ids.length }))
   const revoke = vi.fn(async (ids: readonly string[]) => ({ updated: ids.length }))
   const store: ReviewStorePort = { listCandidates, findByIds, promote, revoke }
 
@@ -104,7 +104,7 @@ describe('runPromotion — DRY-RUN (sem --confirm) NUNCA muta', () => {
   it('nao chama promote/revoke/syncLog e reporta updated=0', async () => {
     const h = makeHarness([candidate({ id: '1' }), candidate({ id: '4' })])
     const result = await runPromotion(
-      { ids: ['1', '4'], country: 'BR', confirm: false, revoke: false },
+      { ids: ['1', '4'], country: 'BR', confirm: false, revoke: false, reviewer: 'rev' },
       { store: h.store, syncLog: h.syncLog, now: () => NOW },
     )
 
@@ -127,12 +127,12 @@ describe('runPromotion — --confirm muta SO os elegiveis', () => {
     ]
     const h = makeHarness(rows)
     const result = await runPromotion(
-      { ids: ['1', '2', '3', '4'], country: 'BR', confirm: true, revoke: false },
+      { ids: ['1', '2', '3', '4'], country: 'BR', confirm: true, revoke: false, reviewer: 'rev' },
       { store: h.store, syncLog: h.syncLog, now: () => NOW },
     )
 
     expect(h.promote).toHaveBeenCalledTimes(1)
-    expect(h.promote).toHaveBeenCalledWith(['1', '4']) // nunca 2 (allowed) nem 3 (outro provider)
+    expect(h.promote).toHaveBeenCalledWith(['1', '4'], 'rev') // nunca 2 (allowed) nem 3 (outro provider)
     expect(h.revoke).not.toHaveBeenCalled()
     expect(result.updated).toBe(2)
     expect(result.eligibleIds).toEqual(['1', '4'])
@@ -147,7 +147,7 @@ describe('runPromotion — --confirm muta SO os elegiveis', () => {
   it('quando nada e elegivel, nao chama o store nem loga', async () => {
     const h = makeHarness([candidate({ id: '1', displayAllowed: true })])
     const result = await runPromotion(
-      { ids: ['1'], country: 'BR', confirm: true, revoke: false },
+      { ids: ['1'], country: 'BR', confirm: true, revoke: false, reviewer: 'rev' },
       { store: h.store, syncLog: h.syncLog, now: () => NOW },
     )
     expect(h.promote).not.toHaveBeenCalled()
@@ -165,7 +165,7 @@ describe('runPromotion — reversao', () => {
     ]
     const h = makeHarness(rows)
     const result = await runPromotion(
-      { ids: ['1', '2', '3'], country: 'BR', confirm: true, revoke: true },
+      { ids: ['1', '2', '3'], country: 'BR', confirm: true, revoke: true, reviewer: 'rev' },
       { store: h.store, syncLog: h.syncLog, now: () => NOW },
     )
 
@@ -184,7 +184,7 @@ describe('runPromotion — ids ausentes', () => {
   it('ids pedidos que nao existem entram em idsMissing', async () => {
     const h = makeHarness([candidate({ id: '1' }), candidate({ id: '2' })])
     const result = await runPromotion(
-      { ids: ['1', '2', '99'], country: 'BR', confirm: false, revoke: false },
+      { ids: ['1', '2', '99'], country: 'BR', confirm: false, revoke: false, reviewer: 'rev' },
       { store: h.store, syncLog: h.syncLog, now: () => NOW },
     )
     expect(result.idsFound).toEqual(['1', '2'])

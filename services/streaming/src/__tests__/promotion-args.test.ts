@@ -125,3 +125,24 @@ describe('parsePromoteArgs — flags de acao', () => {
     expect(promoteErr(['--ids=1', '--bogus'])).toMatch(/desconhecida/)
   })
 })
+
+describe('parsePromoteArgs — --reviewer obrigatorio para promover', () => {
+  it('promover com --confirm SEM --reviewer falha explicitamente', () => {
+    expect(promoteErr(['--ids=1', '--confirm'])).toMatch(/--reviewer/)
+  })
+
+  it('promover com --confirm e --reviewer captura a identidade humana', () => {
+    expect(promoteOk(['--ids=1', '--confirm', '--reviewer=ana@screen']).reviewer).toBe('ana@screen')
+  })
+
+  it('revoke com --confirm NAO exige --reviewer', () => {
+    const args = promoteOk(['--ids=1', '--confirm', '--revoke'])
+    expect(args.confirm).toBe(true)
+    expect(args.revoke).toBe(true)
+    expect(args.reviewer).toBeNull()
+  })
+
+  it('dry-run nao exige --reviewer', () => {
+    expect(promoteOk(['--ids=1']).reviewer).toBeNull()
+  })
+})
