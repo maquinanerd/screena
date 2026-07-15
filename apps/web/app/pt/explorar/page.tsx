@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
 
+import { serializeJsonLd } from '@screena/seo'
+
 import { takeUpcomingWeek } from '../../../src/lib/home-upcoming-presenter'
 import {
   countPopulatedSections,
@@ -142,11 +144,11 @@ export default async function ExplorePage() {
 
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(collectionJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(collectionJsonLd) }}
       />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }}
       />
     </main>
   )

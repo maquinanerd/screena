@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
 
+import { serializeJsonLd } from '@screena/seo'
+
 import type { EntityCard, EntityIndexView } from '../../src/lib/entity-index-presenter'
 import { SITE_URL } from '../../src/lib/site'
 
@@ -110,11 +112,11 @@ export function EntityIndex({
 
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(collectionJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(collectionJsonLd) }}
       />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }}
       />
     </main>
   )
