@@ -6,18 +6,24 @@
  * no lado servidor.
  */
 
-import { moviePath } from "./routes";
+import { episodePath, moviePath, seasonPath, seriesPath } from "./routes";
 
 export {
   detailPath,
+  episodePath,
+  EPISODES_SEGMENT,
   EXPLORE_PATH,
   HOME_PATH,
   MOVIES_INDEX_PATH,
   NEWS_INDEX_PATH,
+  parseRouteNumber,
   PEOPLE_INDEX_PATH,
   PT_LOCALE_SEGMENT,
+  SEASONS_SEGMENT,
   SERIES_INDEX_PATH,
   moviePath,
+  seasonPath,
+  seriesPath,
 } from "./routes";
 
 /** Variavel de origem publica desta instalacao. */
@@ -111,6 +117,31 @@ export function isOfficialIndexableEnvironment(
 /** URL canonica absoluta da pagina de um filme. */
 export function movieCanonicalUrl(slug: string): string {
   return `${SITE_URL}${moviePath(slug)}`;
+}
+
+/** URL canonica absoluta da pagina de uma serie, ou `null` para slug invalido. */
+export function seriesCanonicalUrl(slug: string): string | null {
+  const path = seriesPath(slug);
+  return path === null ? null : `${SITE_URL}${path}`;
+}
+
+/** URL canonica absoluta da pagina de uma temporada, ou `null` se invalida. */
+export function seasonCanonicalUrl(
+  seriesSlug: string,
+  seasonNumber: number,
+): string | null {
+  const path = seasonPath(seriesSlug, seasonNumber);
+  return path === null ? null : `${SITE_URL}${path}`;
+}
+
+/** URL canonica absoluta da pagina de um episodio, ou `null` se invalida. */
+export function episodeCanonicalUrl(
+  seriesSlug: string,
+  seasonNumber: number,
+  episodeNumber: number,
+): string | null {
+  const path = episodePath(seriesSlug, seasonNumber, episodeNumber);
+  return path === null ? null : `${SITE_URL}${path}`;
 }
 
 /**
