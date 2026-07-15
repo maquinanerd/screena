@@ -112,6 +112,37 @@ const OPTIONAL_STRING_FIELDS = [
 ] as const;
 
 /**
+ * JSON Schema enviado ao Gemini no modo structured output.
+ *
+ * E deliberadamente raso e usa somente o subconjunto documentado da API:
+ * object/array/string, required e additionalProperties=false. A API melhora a
+ * forma; a validacao local abaixo continua sendo a autoridade semantica.
+ */
+export const ENTITY_WRITER_OUTPUT_JSON_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    editorial_intro: { type: 'string' },
+    summary_without_spoilers: { type: 'string' },
+    ratings_explanation: { type: 'string' },
+    where_to_watch_text: { type: 'string' },
+    cast_intro: { type: 'string' },
+    similar_titles_intro: { type: 'string' },
+    faq: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { question: { type: 'string' }, answer: { type: 'string' } },
+        required: ['question', 'answer'],
+      },
+    },
+    warnings: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['warnings'],
+} as const;
+
+/**
  * Type guard frouxo para inspecionar um valor desconhecido como objeto.
  */
 function isRecord(value: unknown): value is Record<string, unknown> {

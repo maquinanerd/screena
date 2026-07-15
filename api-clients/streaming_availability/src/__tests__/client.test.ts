@@ -20,7 +20,10 @@ import {
 } from '@screena/rapidapi-core'
 import {
   StreamingAvailabilityClient,
+  buildChangesRequest,
+  buildFilterSearchRequest,
   buildShowRequest,
+  buildTitleSearchRequest,
   isSafeShowId,
 } from '../client.js'
 import { STREAMING_AVAILABILITY_KEY_ENV, loadStreamingAvailabilityConfig } from '../config.js'
@@ -171,5 +174,39 @@ describe('provider helpers', () => {
 
   it('pais padrao desta fase e BR', () => {
     expect(STREAMING_AVAILABILITY_DEFAULT_COUNTRY).toBe('BR')
+  })
+})
+
+describe('superficie documental v4 — buscas, taxonomias e changes', () => {
+  it('monta busca por titulo, filtros e changes sem segredo', () => {
+    expect(buildTitleSearchRequest({ title: ' Titanic ', country: 'br', showType: 'movie', page: 2 })).toMatchObject({
+      endpoint: '/shows/search/title',
+      params: { title: 'Titanic', country: 'BR', show_type: 'movie', page: 2 },
+    })
+    expect(buildFilterSearchRequest({ country: 'br', services: 'netflix', showType: 'series' })).toMatchObject({
+      endpoint: '/shows/search/filters',
+      params: { country: 'BR', services: 'netflix', show_type: 'series' },
+    })
+    expect(buildChangesRequest({ country: 'br', cursor: 'opaque-next' })).toMatchObject({
+      endpoint: '/shows/search/changes',
+      params: { country: 'BR', cursor: 'opaque-next' },
+    })
+  })
+
+  it('executa rotas auxiliares com a chave somente no header', async () => {
+    const { client, calls } = makeClient()
+    await client.searchByTitle({ title: 'Titanic', country: 'BR' })
+    await client.searchByFilters({ country: 'BR', services: 'netflix' })
+    await client.getChanges({ country: 'BR' })
+    await client.getCountries()
+    await client.getCountry('br')
+    await client.getGenres()
+    expect(calls).toHaveLength(6)
+    expect(calls.map((call) => call.url).join('\n')).toContain('/shows/search/title?')
+    expect(calls.map((call) => call.url).join('\n')).toContain('/shows/search/filters?')
+    expect(calls.map((call) => call.url).join('\n')).toContain('/shows/search/changes?')
+    expect(calls.map((call) => call.url).join('\n')).toContain('/countries/BR')
+    expect(calls.map((call) => call.url).join('\n')).toContain('/genres')
+    for (const call of calls) expect(call.headers[RAPIDAPI_KEY_HEADER]).toBe(FAKE_KEY)
   })
 })

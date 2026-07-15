@@ -41,13 +41,13 @@ export function createPrismaWatchStore(prisma: PrismaClient): WatchStorePort {
           const affected = await tx.$executeRaw`
             INSERT INTO "watch_availability" (
               "entity_type", "entity_id", "country_code", "provider_key", "provider_name",
-              "offer_type", "deep_link", "price", "currency", "quality",
+              "external_offer_id", "package", "offer_type", "deep_link", "web_url", "price", "currency", "quality",
               "available_from", "available_until", "fetched_at", "stale_after",
               "provider_api", "display_allowed", "updated_at"
             ) VALUES (
               ${offer.entityType}::"EntityType", ${entityId}, ${offer.countryCode},
-              ${offer.providerKey}, ${offer.providerName}, ${offer.offerType}::"OfferType",
-              ${offer.deepLink}, ${offer.price}, ${offer.currency}, ${offer.quality},
+              ${offer.providerKey}, ${offer.providerName}, ${offer.externalOfferId}, ${offer.package}, ${offer.offerType}::"OfferType",
+              ${offer.deepLink}, ${offer.webUrl}, ${offer.price}, ${offer.currency}, ${offer.quality},
               ${offer.availableFrom}, ${offer.availableUntil}, ${input.fetchedAt}, ${input.staleAfter},
               ${STREAMING_AVAILABILITY_PROVIDER_API}, false, now()
             )
@@ -56,7 +56,10 @@ export function createPrismaWatchStore(prisma: PrismaClient): WatchStorePort {
               "offer_type", "provider_key", "provider_name", "package"))
             DO UPDATE SET
               "provider_name" = EXCLUDED."provider_name",
+              "external_offer_id" = EXCLUDED."external_offer_id",
+              "package" = EXCLUDED."package",
               "deep_link" = EXCLUDED."deep_link",
+              "web_url" = EXCLUDED."web_url",
               "price" = EXCLUDED."price",
               "currency" = EXCLUDED."currency",
               "quality" = EXCLUDED."quality",

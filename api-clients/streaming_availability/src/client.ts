@@ -25,6 +25,12 @@ import {
 
 /** Endpoint base de lookup por titulo. */
 export const SHOWS_ENDPOINT_PREFIX = '/shows/'
+/** Superficie v4 documentada; cada chamada continua a devolver somente DTO bruto. */
+export const SHOWS_TITLE_SEARCH_ENDPOINT = '/shows/search/title'
+export const SHOWS_FILTER_SEARCH_ENDPOINT = '/shows/search/filters'
+export const SHOWS_CHANGES_ENDPOINT = '/shows/search/changes'
+export const COUNTRIES_ENDPOINT = '/countries'
+export const GENRES_ENDPOINT = '/genres'
 
 /**
  * Parametros de uma consulta de disponibilidade.
@@ -47,6 +53,80 @@ export interface ShowRequest {
   readonly endpoint: string
   readonly params: QueryParams
   readonly cacheKey: CacheKey
+}
+
+/** Parametros documentados de busca por titulo; o worker decide qualquer persistencia. */
+export interface TitleSearchInput {
+  readonly title: string
+  readonly country?: string
+  readonly showType?: 'movie' | 'series'
+  readonly outputLanguage?: string
+  readonly page?: number
+}
+
+/** Filtros de catalogo. Campos nao reconhecidos pelo upstream nunca sao enviados. */
+export interface FilterSearchInput {
+  readonly country: string
+  readonly showType?: 'movie' | 'series'
+  readonly genres?: string
+  readonly services?: string
+  readonly catalogs?: string
+  readonly outputLanguage?: string
+  readonly page?: number
+}
+
+/** Janela incremental do endpoint de changes; datas ISO sao validadas pelo worker chamador. */
+export interface ChangesInput {
+  readonly country?: string
+  readonly showType?: 'movie' | 'series'
+  readonly changeType?: 'new' | 'updated' | 'deleted'
+  readonly cursor?: string
+}
+
+function buildRequest(endpoint: string, params: QueryParams): ShowRequest {
+  return { endpoint, params, cacheKey: buildCacheKey(endpoint, params) }
+}
+
+function optionalPage(page: number | undefined): number | undefined {
+  return page !== undefined && Number.isInteger(page) && page > 0 ? page : undefined
+}
+
+/** Monta a busca oficial por titulo sem executar rede. */
+export function buildTitleSearchRequest(input: TitleSearchInput): ShowRequest {
+  const title = input.title.trim()
+  if (title === '') throw new RapidApiConfigError('title e obrigatorio para /shows/search/title.')
+  return buildRequest(SHOWS_TITLE_SEARCH_ENDPOINT, {
+    title,
+    country: input.country?.trim().toUpperCase(),
+    show_type: input.showType,
+    output_language: input.outputLanguage,
+    page: optionalPage(input.page),
+  })
+}
+
+/** Monta a busca oficial por filtros/catlogos sem executar rede. */
+export function buildFilterSearchRequest(input: FilterSearchInput): ShowRequest {
+  const country = input.country.trim().toUpperCase()
+  if (!/^[A-Z]{2}$/.test(country)) throw new RapidApiConfigError('country invalido para /shows/search/filters.')
+  return buildRequest(SHOWS_FILTER_SEARCH_ENDPOINT, {
+    country,
+    show_type: input.showType,
+    genres: input.genres,
+    services: input.services,
+    catalogs: input.catalogs,
+    output_language: input.outputLanguage,
+    page: optionalPage(input.page),
+  })
+}
+
+/** Monta a consulta incremental de changes. O cursor e opaco e nunca interpretado aqui. */
+export function buildChangesRequest(input: ChangesInput = {}): ShowRequest {
+  return buildRequest(SHOWS_CHANGES_ENDPOINT, {
+    country: input.country?.trim().toUpperCase(),
+    show_type: input.showType,
+    change_type: input.changeType,
+    cursor: input.cursor,
+  })
 }
 
 /**
@@ -101,6 +181,41 @@ export class StreamingAvailabilityClient {
   async getShow(input: ShowLookupInput): Promise<unknown> {
     const request = buildShowRequest(input)
     return this.http.request(request.endpoint, request.params)
+  }
+
+  /** Busca por titulo (raw capture; sem normalizacao neste client). */
+  async searchByTitle(input: TitleSearchInput): Promise<unknown> {
+    const request = buildTitleSearchRequest(input)
+    return this.http.request(request.endpoint, request.params)
+  }
+
+  /** Busca por pais/tipo/generos/servicos (raw capture; pagina no DTO). */
+  async searchByFilters(input: FilterSearchInput): Promise<unknown> {
+    const request = buildFilterSearchRequest(input)
+    return this.http.request(request.endpoint, request.params)
+  }
+
+  /** Catalogo de alteracoes incrementais quando o plano do provider o disponibiliza. */
+  async getChanges(input: ChangesInput = {}): Promise<unknown> {
+    const request = buildChangesRequest(input)
+    return this.http.request(request.endpoint, request.params)
+  }
+
+  /** Taxonomia de paises e servicos do provider, preservada como raw DTO. */
+  async getCountries(): Promise<unknown> {
+    return this.http.request(COUNTRIES_ENDPOINT, {})
+  }
+
+  /** Detalhe de um pais e seus servicos; country e ISO-3166 alpha-2. */
+  async getCountry(country: string): Promise<unknown> {
+    const normalized = country.trim().toUpperCase()
+    if (!/^[A-Z]{2}$/.test(normalized)) throw new RapidApiConfigError('country invalido para /countries/{country}.')
+    return this.http.request(`${COUNTRIES_ENDPOINT}/${normalized}`, {})
+  }
+
+  /** Taxonomia de generos do provider, sem assumir equivalencia com generos TMDB. */
+  async getGenres(): Promise<unknown> {
+    return this.http.request(GENRES_ENDPOINT, {})
   }
 
   /** Requisicoes HTTP efetivamente disparadas (inclui retries) — `quota_cost`. */

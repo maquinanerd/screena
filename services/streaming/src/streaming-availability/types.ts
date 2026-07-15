@@ -40,10 +40,16 @@ export interface WatchOfferRow {
   readonly entityId: string
   /** ISO 3166-1 alpha-2, MAIUSCULO (FK -> countries.code). */
   readonly countryCode: string
+  /** Identificador de oferta do upstream quando ele o fornece. Nunca e inventado. */
+  readonly externalOfferId: string | null
   readonly providerKey: string | null
   readonly providerName: string
+  /** Pacote/canal informado pelo upstream; null quando o contrato nao o declara. */
+  readonly package: string | null
   readonly offerType: OfferType
   readonly deepLink: string | null
+  /** URL web distinta do deep link de aplicativo, quando presente no payload. */
+  readonly webUrl: string | null
   /** `null` quando o preco nao e confiavel; `currency` acompanha (CHECK do schema). */
   readonly price: number | null
   readonly currency: string | null

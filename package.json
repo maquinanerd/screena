@@ -20,6 +20,7 @@
     "audit:render": "node scripts/audit/check-render-purity.mjs",
     "api:coverage": "node scripts/audit/check-api-coverage.mjs",
     "validate:tmdb-platform": "corepack pnpm --filter @screena/ingestion validate:tmdb-platform",
+    "validate:external-intelligence-platform": "corepack pnpm --filter @screena/entity-writer validate:external",
     "validate:news-pages": "corepack pnpm --filter @screena/web validate:news-pages",
     "validate:entity-indexes": "corepack pnpm --filter @screena/web validate:entity-indexes",
     "validate:movie-page": "corepack pnpm --filter @screena/web validate:movie-page",

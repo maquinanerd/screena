@@ -15,6 +15,7 @@
   "license": "UNLICENSED",
   "scripts": {
     "validate:real": "tsx scripts/validate-real-postgres.ts",
+    "validate:external": "tsx ../../scripts/validate-external-intelligence-platform.ts",
     "smoke:gemini": "tsx bin/smoke-gemini.ts",
     "run:offline": "tsx bin/run-offline.ts",
     "inspect": "tsx bin/inspect.ts"
