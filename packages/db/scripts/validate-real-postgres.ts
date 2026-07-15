@@ -105,8 +105,8 @@ const EXPECTED_TABLES = [
   "articles", "article_translations", "entity_news_links",
   // P0-00a — raw sync TMDB (schema-only; worker-only, nao lido no render).
   "tmdb_raw", "tmdb_image_config",
-  // Data governance hardening (2026-07) — registro polimorfico + quarentena de orfaos.
-  "entities", "entity_reference_orphans",
+  // Data governance hardening (2026-07) — registro polimorfico + quarentenas auditaveis.
+  "entities", "entity_reference_orphans", "data_migration_quarantine",
 ];
 const EXPECTED_ENUMS = [
   "EntityType", "ContentBlockType", "ContentSource", "ReviewStatus", "TranslationStatus",
@@ -137,13 +137,13 @@ async function runChecks(url: string): Promise<void> {
   }
 
   try {
-    // 3. 31 tabelas esperadas (27 Fase 1/4F-A + tmdb_raw + tmdb_image_config do
-    // P0-00a + entities + entity_reference_orphans do hardening 2026-07)
+    // 3. 32 tabelas esperadas (27 Fase 1/4F-A + tmdb_raw + tmdb_image_config do
+    // P0-00a + entities + entity_reference_orphans + data_migration_quarantine)
     const tables = (await q<{ table_name: string }>(
       "SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'",
     )).map((r) => r.table_name).filter((t) => t !== "_prisma_migrations");
     const missing = EXPECTED_TABLES.filter((t) => !tables.includes(t));
-    record(3, "31 tabelas esperadas", tables.length === 31 && missing.length === 0,
+    record(3, "32 tabelas esperadas", tables.length === 32 && missing.length === 0,
       `encontradas ${tables.length}${missing.length ? ", faltando " + missing.join(",") : ""}`);
 
     // 4. 15 enums esperados (13 + TmdbEntityKind do P0-00a + SourceLicenseContentType do hardening 2026-07)
@@ -395,6 +395,94 @@ async function runChecks(url: string): Promise<void> {
       "SELECT count(*) AS c FROM information_schema.columns WHERE (table_name='watch_availability' AND column_name IN ('web_url','package','approved_payload_hash','attribution_url')) OR (table_name='source_licenses' AND column_name IN ('territory_code','valid_from','valid_until','decided_by'))",
     ))[0].c);
     record(35, "colunas de governanca presentes (watch_availability + source_licenses)", govCols === 8, `colunas=${govCols}/8`);
+
+    // 36. provider_key NAO e derivado de provider_name: uma oferta sem provider
+    //     tecnico permanece com provider_key NULL (sinal missing-provider).
+    await exec(`INSERT INTO watch_availability (entity_type, entity_id, country_code, provider_name, offer_type, updated_at) VALUES ('movie', ${movieId}, 'BR', 'Netflix', 'rent', now())`);
+    const netflixKey = (await q<{ provider_key: string | null }>(
+      `SELECT provider_key FROM watch_availability WHERE entity_id=${movieId} AND provider_name='Netflix' AND offer_type='rent'`,
+    ))[0]?.provider_key ?? null;
+    record(36, "provider_key permanece NULL (nao inventado do provider_name)", netflixKey === null, `provider_key=${netflixKey}`);
+
+    // 37. Acentos/caixa produzem IDENTIDADES DISTINTAS: 'Max' e 'Max acentuado'
+    //     nao colapsam (fingerprint preserva acento; identidades diferentes ate a
+    //     API fornecer o ID tecnico).
+    await exec(`INSERT INTO watch_availability (entity_type, entity_id, country_code, provider_name, offer_type, updated_at) VALUES ('movie', ${movieId}, 'BR', 'Max', 'free', now())`);
+    let accentDistinct = false;
+    try {
+      await exec(`INSERT INTO watch_availability (entity_type, entity_id, country_code, provider_name, offer_type, updated_at) VALUES ('movie', ${movieId}, 'BR', 'M` + "á" + `x', 'free', now())`);
+      accentDistinct = true;
+    } catch {
+      accentDistinct = false;
+    }
+    record(37, "acentos geram identidade distinta ('Max' != 'Max' acentuado)", accentDistinct, accentDistinct ? "ambas aceitas" : "colidiram (nao deveriam)");
+
+    // 38. Mesma plataforma/modalidade/qualidade, PRECOS diferentes = ofertas
+    //     DISTINTAS (nao colapsam).
+    await exec(`INSERT INTO watch_availability (entity_type, entity_id, country_code, provider_name, offer_type, price, currency, updated_at) VALUES ('movie', ${movieId}, 'BR', 'Prime Video', 'rent', 9.90, 'BRL', now())`);
+    let priceDistinct = false;
+    try {
+      await exec(`INSERT INTO watch_availability (entity_type, entity_id, country_code, provider_name, offer_type, price, currency, updated_at) VALUES ('movie', ${movieId}, 'BR', 'Prime Video', 'rent', 19.90, 'BRL', now())`);
+      priceDistinct = true;
+    } catch {
+      priceDistinct = false;
+    }
+    record(38, "precos diferentes = ofertas distintas (nao colapsam)", priceDistinct, priceDistinct ? "ambas aceitas" : "colidiram (nao deveriam)");
+
+    // 39. external_offer_id e a IDENTIDADE quando presente: duas linhas com o
+    //     MESMO id externo sao a MESMA oferta (mudanca de preco = update, nao nova
+    //     oferta) -> a 2a e barrada.
+    await exec(`INSERT INTO watch_availability (entity_type, entity_id, country_code, external_offer_id, provider_name, offer_type, price, currency, updated_at) VALUES ('movie', ${movieId}, 'BR', 'EXT-OFFER-1', 'HBO', 'rent', 5.00, 'BRL', now())`);
+    await expectViolation(39, "external_offer_id define identidade (mesmo id + preco diferente = mesma oferta)",
+      `INSERT INTO watch_availability (entity_type, entity_id, country_code, external_offer_id, provider_name, offer_type, price, currency, updated_at) VALUES ('movie', ${movieId}, 'BR', 'EXT-OFFER-1', 'HBO', 'rent', 99.00, 'BRL', now())`);
+
+    // 40. source_licenses HISTORICO: supersede a licenca global de imdb (marca a
+    //     anterior is_current=false + insere nova vigente com supersedes_id).
+    const imdbGlobal = (await q<{ id: bigint }>(
+      `SELECT id FROM source_licenses WHERE source_key='imdb' AND territory_code IS NULL AND provider_key IS NULL AND is_current=true`,
+    ))[0];
+    const imdbGlobalId = Number(imdbGlobal.id);
+    await prisma.$transaction([
+      prisma.$executeRawUnsafe(`UPDATE source_licenses SET is_current=false WHERE id=${imdbGlobalId}`),
+      prisma.$executeRawUnsafe(`INSERT INTO source_licenses (source_key, content_type, rating_source_key, is_current, supersedes_id, decision_origin, updated_at) VALUES ('imdb', 'rating', 'imdb', true, ${imdbGlobalId}, 'test_history', now())`),
+    ]);
+    const imdbCurrent = Number((await q<{ c: bigint }>(
+      `SELECT count(*) AS c FROM source_licenses WHERE source_key='imdb' AND territory_code IS NULL AND provider_key IS NULL AND is_current=true`,
+    ))[0].c);
+    const imdbTotal = Number((await q<{ c: bigint }>(
+      `SELECT count(*) AS c FROM source_licenses WHERE source_key='imdb' AND territory_code IS NULL AND provider_key IS NULL`,
+    ))[0].c);
+    record(40, "source_licenses historico: 1 vigente + supersede preserva anterior", imdbCurrent === 1 && imdbTotal >= 2, `vigentes=${imdbCurrent}, total=${imdbTotal}`);
+
+    // 41. enum content_type='video' usavel (Fase 7 — biblioteca de video TMDB).
+    let videoOk = false;
+    try {
+      await exec(`INSERT INTO source_licenses (source_key, content_type, updated_at) VALUES ('tmdb_video_lib', 'video', now())`);
+      videoOk = true;
+    } catch (e) {
+      record(41, "content_type='video' aceito", false, `rejeitado: ${(e as Error).message.split("\n")[0]}`);
+    }
+    if (videoOk) record(41, "content_type='video' aceito (contrato de licenca cobre video)", true, "aceito");
+
+    // 42. page_indexability: guarda estrutural barra supersedes_id de OUTRO grupo
+    //     (entidade/idioma diferente). Usa uma decisao de movie/en (do check 28).
+    const enDecision = (await q<{ id: bigint }>(
+      `SELECT id FROM page_indexability_decisions WHERE entity_type='movie' AND entity_id=${movieId} AND language_code='en' LIMIT 1`,
+    ))[0];
+    await expectViolation(42, "supersedes_id de outro (entidade/idioma) e barrado pelo trigger",
+      `INSERT INTO page_indexability_decisions (entity_type, entity_id, language_code, url, decision, is_current, supersedes_id) VALUES ('movie', ${movieId}, 'pt-BR', '/pt/filmes/validation-movie/', 'noindex', false, ${Number(enDecision.id)})`);
+
+    // 43. PACKAGES diferentes = ofertas DISTINTAS (mesma plataforma/modalidade,
+    //     package na identidade). package so existe pos-Fase 2, entao e testado aqui.
+    await exec(`INSERT INTO watch_availability (entity_type, entity_id, country_code, provider_name, offer_type, package, updated_at) VALUES ('movie', ${movieId}, 'BR', 'Disney', 'subscription', 'Basico', now())`);
+    let packageDistinct = false;
+    try {
+      await exec(`INSERT INTO watch_availability (entity_type, entity_id, country_code, provider_name, offer_type, package, updated_at) VALUES ('movie', ${movieId}, 'BR', 'Disney', 'subscription', 'Premium', now())`);
+      packageDistinct = true;
+    } catch {
+      packageDistinct = false;
+    }
+    record(43, "packages diferentes = ofertas distintas (nao colapsam)", packageDistinct, packageDistinct ? "ambas aceitas" : "colidiram (nao deveriam)");
   } finally {
     await prisma.$disconnect();
   }
@@ -436,7 +524,12 @@ async function main(): Promise<void> {
     record(0, "execucao", false, (e as Error).message.split("\n")[0]);
   } finally {
     if (started) {
-      await pg.stop();
+      // pg.stop() pode lancar EBUSY no Windows ao limpar o dataDir; best-effort.
+      try {
+        await pg.stop();
+      } catch (e) {
+        console.warn(`[cleanup] pg.stop: ${(e as Error).message.split("\n")[0]}`);
+      }
     }
     await safeRm(dataDir);
     console.log("\n=== Postgres efemero derrubado e dir temporario removido ===");

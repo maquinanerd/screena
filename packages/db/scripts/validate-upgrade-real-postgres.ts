@@ -189,6 +189,35 @@ async function main(): Promise<void> {
         `INSERT INTO source_licenses (source_key, updated_at) VALUES ('imdb', now())`,
       );
 
+      // referencias extras para os cenarios de licenca
+      await seedPrisma.$executeRawUnsafe(
+        `INSERT INTO rating_sources (key, label, scale) VALUES ('metacritic','Metacritic',100)`,
+      );
+      await seedPrisma.$executeRawUnsafe(
+        `INSERT INTO api_providers (key, name, kind) VALUES ('tmdb','TMDB','data')`,
+      );
+
+      // licenca com provider_key INVALIDO (nao existe em api_providers) + aprovada:
+      // deve ser QUARENTENADA, provider_key anulado e forcada FAIL-CLOSED.
+      await seedPrisma.$executeRawUnsafe(
+        `INSERT INTO source_licenses (source_key, provider_key, display_allowed, updated_at) VALUES ('metacritic','ghost_provider', true, now())`,
+      );
+
+      // DUAS licencas que colidem na NOVA chave (mesma fonte/tipo/provider/territorio,
+      // provider valido 'tmdb'): uma vira vigente, a outra HISTORICO (nenhuma sobrescrita).
+      await seedPrisma.$executeRawUnsafe(
+        `INSERT INTO source_licenses (source_key, provider_key, updated_at) VALUES ('imdb','tmdb', now() - interval '2 days')`,
+      );
+      await seedPrisma.$executeRawUnsafe(
+        `INSERT INTO source_licenses (source_key, provider_key, updated_at) VALUES ('imdb','tmdb', now())`,
+      );
+
+      // oferta legada APROVADA (display_allowed=true) mas SEM approved_payload_hash
+      // (coluna so existe na Fase 2): a reconciliacao deve forca-la FAIL-CLOSED.
+      await seedPrisma.$executeRawUnsafe(
+        `INSERT INTO watch_availability (entity_type, entity_id, country_code, provider_name, offer_type, display_allowed, updated_at) VALUES ('movie',${movieId},'BR','Star','subscription', true, now())`,
+      );
+
       // artigo com category/author '' (string vazia) — violaria o CHECK sem backfill
       await seedPrisma.$executeRawUnsafe(
         `INSERT INTO articles (category, author_name, updated_at) VALUES ('', '', now())`,
@@ -238,12 +267,12 @@ async function main(): Promise<void> {
       const allOffers = (await q<{ c: number }>(
         `SELECT count(*)::int AS c FROM watch_availability WHERE entity_id=${movieId}`,
       ))[0]!.c;
-      record(9, "plataforma distinta preservada (Max + Prime = 2)", allOffers === 2, `linhas=${allOffers}`);
+      record(9, "plataformas distintas preservadas (Max + Prime + Star = 3)", allOffers === 3, `linhas=${allOffers}`);
 
-      const derivedKey = (await q<{ provider_key: string | null }>(
+      const maxKey = (await q<{ provider_key: string | null }>(
         `SELECT provider_key FROM watch_availability WHERE entity_id=${movieId} AND provider_name='Max'`,
       ))[0]!.provider_key;
-      record(10, "provider_key derivado de provider_name ('Max' -> 'max')", derivedKey === "max", `provider_key=${derivedKey}`);
+      record(10, "provider_key NAO derivado de provider_name (permanece NULL)", maxKey === null, `provider_key=${maxKey}`);
 
       const currentCount = (await q<{ c: number }>(
         `SELECT count(*)::int AS c FROM page_indexability_decisions WHERE entity_id=${movieId} AND language_code='pt-BR' AND is_current=true`,
@@ -261,7 +290,7 @@ async function main(): Promise<void> {
       record(13, "vigente = a mais recente (decision='index')", currentDecision === "index", `decision=${currentDecision}`);
 
       const lic = (await q<{ content_type: string; rating_source_key: string | null }>(
-        `SELECT content_type, rating_source_key FROM source_licenses WHERE source_key='imdb'`,
+        `SELECT content_type, rating_source_key FROM source_licenses WHERE source_key='imdb' AND provider_key IS NULL`,
       ))[0]!;
       record(14, "source_licenses: content_type='rating' + rating_source_key backfill",
         lic.content_type === "rating" && lic.rating_source_key === "imdb",
@@ -276,13 +305,76 @@ async function main(): Promise<void> {
         `SELECT count(*)::int AS c FROM articles`,
       ))[0]!.c;
       record(16, "artigo legado preservado (backfill nao apaga a linha)", articleKept === 1, `linhas=${articleKept}`);
+
+      // 17. provider_key INVALIDO: quarentenado ANTES de anular (perda-zero).
+      const invalidProviderQuar = (await q<{ c: number }>(
+        `SELECT count(*)::int AS c FROM data_migration_quarantine WHERE issue='source_license_invalid_provider' AND detail->>'old_provider_key'='ghost_provider'`,
+      ))[0]!.c;
+      record(17, "provider_key invalido quarentenado (snapshot + valor antigo)", invalidProviderQuar === 1, `linhas=${invalidProviderQuar}`);
+
+      // 18. e a linha fica FAIL-CLOSED (provider_key anulado + display_allowed=false).
+      const metaLic = (await q<{ provider_key: string | null; display_allowed: boolean }>(
+        `SELECT provider_key, display_allowed FROM source_licenses WHERE source_key='metacritic'`,
+      ))[0]!;
+      record(18, "licenca com provider invalido: anulada e fail-closed", metaLic.provider_key === null && metaLic.display_allowed === false,
+        `provider_key=${metaLic.provider_key}, display_allowed=${metaLic.display_allowed}`);
+
+      // 19. duas licencas colidindo na nova chave -> 1 vigente + historico (nao sobrescreve).
+      const imdbTmdbCurrent = (await q<{ c: number }>(
+        `SELECT count(*)::int AS c FROM source_licenses WHERE source_key='imdb' AND provider_key='tmdb' AND is_current=true`,
+      ))[0]!.c;
+      const imdbTmdbTotal = (await q<{ c: number }>(
+        `SELECT count(*)::int AS c FROM source_licenses WHERE source_key='imdb' AND provider_key='tmdb'`,
+      ))[0]!.c;
+      record(19, "licencas historicas: 1 vigente por grupo + nenhuma sobrescrita", imdbTmdbCurrent === 1 && imdbTmdbTotal === 2,
+        `vigentes=${imdbTmdbCurrent}, total=${imdbTmdbTotal}`);
+
+      // 20. dedup de streaming ARQUIVA a linha removida (nao apaga sem preservacao).
+      const dedupArchived = (await q<{ c: number }>(
+        `SELECT count(*)::int AS c FROM data_migration_quarantine WHERE issue='watch_dedup_removed' AND detail ? 'surviving_id' AND detail ? 'dedupe_fingerprint'`,
+      ))[0]!.c;
+      record(20, "dedup de streaming arquiva a removida (snapshot + surviving_id + fingerprint)", dedupArchived === 1, `arquivadas=${dedupArchived}`);
+
+      // 21. oferta legada APROVADA sem hash correspondente -> fail-closed apos migration.
+      const starDisplay = (await q<{ display_allowed: boolean }>(
+        `SELECT display_allowed FROM watch_availability WHERE entity_id=${movieId} AND provider_name='Star'`,
+      ))[0]!.display_allowed;
+      record(21, "aprovacao legada sem hash correspondente vira fail-closed", starDisplay === false, `display_allowed=${starDisplay}`);
+
+      // 22. CADEIA de supersedes construida (nao apenas is_current): a vigente
+      //     aponta para a anterior ('draft'); 2 das 3 decisoes tem supersedes_id.
+      const linked = (await q<{ c: number }>(
+        `SELECT count(*)::int AS c FROM page_indexability_decisions WHERE entity_id=${movieId} AND language_code='pt-BR' AND supersedes_id IS NOT NULL`,
+      ))[0]!.c;
+      const currentPrev = (await q<{ decision: string | null }>(
+        `SELECT s.decision FROM page_indexability_decisions c JOIN page_indexability_decisions s ON s.id = c.supersedes_id WHERE c.entity_id=${movieId} AND c.language_code='pt-BR' AND c.is_current=true`,
+      ))[0]?.decision ?? null;
+      record(22, "cadeia supersedes_id construida (vigente 'index' -> anterior 'draft')", linked === 2 && currentPrev === "draft",
+        `linkadas=${linked}, anterior_da_vigente=${currentPrev}`);
+
+      // 23. determinismo/perda-zero: toda linha de streaming removida foi arquivada.
+      const survivingMax = (await q<{ c: number }>(
+        `SELECT count(*)::int AS c FROM watch_availability WHERE entity_id=${movieId} AND provider_name='Max'`,
+      ))[0]!.c;
+      const archivedMax = (await q<{ c: number }>(
+        `SELECT count(*)::int AS c FROM data_migration_quarantine WHERE issue='watch_dedup_removed' AND source_row_id IS NOT NULL`,
+      ))[0]!.c;
+      record(23, "perda-zero: removidas de streaming = arquivadas (1 removida, 1 arquivada)", survivingMax === 1 && archivedMax === 1,
+        `sobrevivente_max=${survivingMax}, arquivadas=${archivedMax}`);
     } finally {
       await seedPrisma.$disconnect();
     }
   } catch (e) {
     record(0, "execucao", false, (e as Error).message.split("\n")[0]);
   } finally {
-    if (started) await pg.stop();
+    if (started) {
+      // pg.stop() pode lancar EBUSY no Windows ao limpar o dataDir; best-effort.
+      try {
+        await pg.stop();
+      } catch (e) {
+        console.warn(`[cleanup] pg.stop: ${(e as Error).message.split("\n")[0]}`);
+      }
+    }
     await safeRm(dataDir);
     await safeRm(tempPrisma);
     console.log("\n=== Cenario B: Postgres efemero derrubado e temporarios removidos ===");
