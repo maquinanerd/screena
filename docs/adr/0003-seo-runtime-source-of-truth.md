@@ -45,13 +45,25 @@ heuristica local.
 - O `middleware` (Edge) resolve via um route handler Node (`/api/_seo/redirect`),
   porque o Edge nao acessa Postgres. Status HTTP honra o persistido (301/302).
 
-### 4. Sitemap index + shards
+### 4. Sitemap index + shards (PAGINADO NO PostgreSQL)
 
-- `/sitemap.xml` serve o sitemap-index; `/sitemaps/{id}.xml` serve cada shard
-  (`renderSitemapIndex`/`renderUrlset`/`planSitemapShards` puros). A lista base
-  vem de `getSitemapEntries` (mesmos gates das paginas) e passa por uma EXCLUSAO
-  pela decisao vigente persistida — nunca ha "pagina no sitemap + HTML noindex".
-  Fail-closed: erro ao ler decisoes -> so rotas estaticas.
+- `/sitemap.xml` serve o sitemap-index consultando APENAS CONTAGENS (`COUNT(*)` +
+  `MAX(updated_at)`) por (idioma, tipo) e derivando o numero de shards por
+  `ceil(total / limit)`. NAO busca URLs.
+- `/sitemaps/{id}.xml` serve UMA pagina de UM tipo, com `ORDER BY` deterministico
+  (chave primaria) + `LIMIT/OFFSET` no banco. Nao mistura tipos, nao monta todos
+  os shards para devolver um, nao carrega o catalogo inteiro.
+- TODAS as exclusoes acontecem no WHERE (idioma nao publicado, sem slug
+  canonico/sem titulo, decisao vigente `!= index`, noticia sem
+  licenca/publicacao/atribuicao/linkback) — nunca "carregar tudo e filtrar com um
+  Set em memoria". Assim nunca ha "pagina no sitemap + HTML noindex".
+- SQL sempre PARAMETRIZADO (`$queryRaw` tagged template); o id do shard e validado
+  por regex estrita e NUNCA concatenado em SQL. Shard invalido/acima do total ->
+  404. Rotas estaticas (lista fixa pequena) formam um shard proprio.
+- Fail-closed: erro de banco -> index vazio / shard 404. Serializacao XML pura
+  (`renderUrlset`/`renderSitemapIndex`). `planSitemapShards` permanece no pacote
+  SEO apenas para colecoes pequenas/testes puros — NAO e o mecanismo de runtime.
+  O antigo carregador em memoria `getAllSitemapUrls`/`getSitemapEntries` foi removido.
 
 ### 5. Gate de noticias (invariante 6)
 
@@ -83,7 +95,9 @@ heuristica local.
 
 - `apps/web/scripts/validate-seo-runtime-real-postgres.ts` (script
   `validate:seo-runtime`) prova, em PostgreSQL 16 efemero, os 5 seams acima
-  (29 checks). Roda na CI oficial Linux, junto de `db:validate:real`,
+  (36 checks, incl. paginacao real: multiplos shards com LIMIT=2, exclusao antes
+  da paginacao, 404 estrito e prova instrumentada de `LIMIT` no banco). Roda na
+  CI oficial Linux, junto de `db:validate:real`,
   `db:validate:upgrade` e `validate:stores`.
 
 ## Consequencias e follow-ups (conscientes)
@@ -93,9 +107,10 @@ heuristica local.
 - **Perf redirect:** o middleware faz um subrequest ao route handler Node por
   request. Com Node middleware (Next 15.5) a leitura pode ocorrer direto no
   middleware, eliminando o subrequest — otimizacao futura.
-- **Escala sitemap:** o planejamento e em memoria (catalogo pequeno). Paginacao a
-  nivel de banco (LIMIT/OFFSET por shard) e otimizacao futura; a arquitetura de
-  shards/limite ja esta pronta.
+- **Escala sitemap:** a paginacao acontece NO PostgreSQL (contagem no index +
+  `LIMIT/OFFSET` por shard, exclusao no WHERE, `ORDER BY` deterministico). A unica
+  otimizacao futura possivel e trocar `OFFSET` por keyset pagination para
+  catalogos muito grandes — sem comprometer o requisito ja concluido.
 - **Rotas temporada/episodio:** nao existem como rotas dedicadas (sao inline na
   serie). Sao escopo da **Fase 4** — o sitemap so emite tipos com URL indexavel
   real; season/episode entram quando a Fase 4 criar as rotas.
