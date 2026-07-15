@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { notFound, permanentRedirect } from 'next/navigation'
 import type { ReactNode } from 'react'
 
-import { buildSameAs } from '@screena/seo'
+import { buildSameAs, serializeJsonLd } from '@screena/seo'
 
 import { EntityExternalIds } from '../../../_components/entity-external-ids'
 import { WatchAvailabilityPanel } from '../../../_components/watch-availability-panel'
@@ -364,11 +364,11 @@ export default async function SeriesPage({
 
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(seriesJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(seriesJsonLd) }}
       />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }}
       />
     </main>
   )

@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 
+import { serializeJsonLd } from '@screena/seo'
+
 import { HOME_PATH, SITE_URL } from '../../../../src/lib/site'
 import { getNewsArticleData } from '../../../../src/server/news-pages'
 
@@ -137,11 +139,11 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
 
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(articleJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(articleJsonLd) }}
       />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }}
       />
     </main>
   )

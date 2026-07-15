@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
 
+import { serializeJsonLd } from '@screena/seo'
+
 import type { EntityCard } from '../../src/lib/entity-index-presenter'
 import {
   countPopulatedSections,
@@ -239,12 +241,12 @@ export default async function HomePage() {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify(HOME_ORGANIZATION_JSONLD),
+          __html: serializeJsonLd(HOME_ORGANIZATION_JSONLD),
         }}
       />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(HOME_WEBSITE_JSONLD) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(HOME_WEBSITE_JSONLD) }}
       />
     </main>
   )

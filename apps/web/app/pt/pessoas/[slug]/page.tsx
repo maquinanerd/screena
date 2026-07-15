@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { notFound, permanentRedirect } from 'next/navigation'
 
-import { buildSameAs } from '@screena/seo'
+import { buildSameAs, serializeJsonLd } from '@screena/seo'
 
 import { EntityExternalIds } from '../../../_components/entity-external-ids'
 import { canonicalRedirectPath } from '../../../../src/lib/canonical-redirect'
@@ -244,11 +244,11 @@ export default async function PersonPage({ params }: { params: Promise<PersonPag
 
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(personJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(personJsonLd) }}
       />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }}
       />
     </main>
   )

@@ -20,11 +20,13 @@ import { getPrismaClient } from "@screena/db/server";
 import {
   buildSitemapEntries,
   buildStaticSitemapEntries,
+  countExploreSectionFacts,
   type SitemapDataInput,
   type SitemapEntityCandidate,
   type SitemapEntryView,
   type SitemapNewsCandidate,
 } from "../../lib/sitemap-presenter";
+import type { ExploreSectionFacts } from "../../lib/explore-presenter";
 import { RENDERABLE_REVIEW_STATUSES } from "../../lib/movie-indexability";
 import { NEWS_RENDERABLE_REVIEW_STATUSES } from "../../lib/news-presenter";
 
@@ -230,25 +232,67 @@ async function newsCandidates(
   }));
 }
 
+/** Snapshot completo do catalogo pt-BR lido do PostgreSQL (server-only). */
+async function getCatalogSnapshot(
+  prisma: PrismaClient,
+): Promise<SitemapDataInput> {
+  const [movies, series, people, news] = await Promise.all([
+    movieCandidates(prisma),
+    seriesCandidates(prisma),
+    personCandidates(prisma),
+    newsCandidates(prisma),
+  ]);
+  return { movies, series, people, news };
+}
+
 /**
  * Le o snapshot do banco e monta as entradas do sitemap pelos gates puros.
- * Com PostgreSQL indisponivel, loga o erro e devolve apenas rotas estaticas.
+ * Com PostgreSQL indisponivel, faz FAIL-CLOSED: loga um erro operacional
+ * estruturado e devolve apenas as rotas estaticas comprovadamente seguras
+ * (`buildStaticSitemapEntries`), sem inventar entidades — o meta robots por
+ * pagina segue sendo a fonte de verdade para o crawler (Prompt 3 §4).
  */
 export async function getSitemapEntries(): Promise<SitemapEntryView[]> {
   try {
     const prisma = getPrismaClient();
-    const [movies, series, people, news] = await Promise.all([
-      movieCandidates(prisma),
-      seriesCandidates(prisma),
-      personCandidates(prisma),
-      newsCandidates(prisma),
-    ]);
-    const input: SitemapDataInput = { movies, series, people, news };
-    return buildSitemapEntries(input);
+    return buildSitemapEntries(await getCatalogSnapshot(prisma));
   } catch (error) {
-    // Falha de banco nao pode derrubar o sitemap inteiro; o fallback estatico
-    // e explicito e logado (nunca mascarado como sucesso completo).
-    console.error("[sitemap] PostgreSQL indisponivel; usando fallback estatico:", error);
+    console.error(
+      JSON.stringify({
+        level: "error",
+        scope: "sitemap",
+        event: "db_unavailable_fail_closed",
+        message:
+          "PostgreSQL indisponivel; sitemap em fallback estatico (apenas rotas seguras).",
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
     return buildStaticSitemapEntries();
+  }
+}
+
+/**
+ * Contagens de catalogo do hub explorar, lidas do MESMO snapshot do sitemap.
+ * Consumida pela PAGINA `/pt/explorar/` para decidir o robots com a MESMA
+ * funcao/numeros do sitemap (Prompt 3 §3). Fail-closed: com o banco
+ * indisponivel, devolve contagens zeradas -> explorar resolve `noindex` (nunca
+ * indexa contra estado desconhecido).
+ */
+export async function getExploreSectionFacts(): Promise<ExploreSectionFacts> {
+  try {
+    const prisma = getPrismaClient();
+    return countExploreSectionFacts(await getCatalogSnapshot(prisma));
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        scope: "explore",
+        event: "db_unavailable_fail_closed",
+        message:
+          "PostgreSQL indisponivel; explorar tratado como vazio (noindex).",
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+    return { movieCount: 0, seriesCount: 0, peopleCount: 0, newsCount: 0 };
   }
 }

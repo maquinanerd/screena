@@ -1,10 +1,9 @@
 import type { Metadata } from 'next'
 
+import { serializeJsonLd } from '@screena/seo'
+
 import { takeUpcomingWeek } from '../../../src/lib/home-upcoming-presenter'
-import {
-  countPopulatedSections,
-  evaluatePortalIndexability,
-} from '../../../src/lib/portal-presenter'
+import { evaluateExploreIndexability } from '../../../src/lib/explore-presenter'
 import {
   canonicalPublicUrl,
   EXPLORE_PATH,
@@ -16,6 +15,7 @@ import {
   SITE_URL,
 } from '../../../src/lib/site'
 import { getHomeUpcomingMovies } from '../../../src/server/home-upcoming'
+import { getExploreSectionFacts } from '../../../src/server/seo/sitemap-entries'
 
 /**
  * Explorar reúne apenas destinos públicos reais e a agenda persistida da
@@ -31,14 +31,16 @@ const UPCOMING_LIMIT = 5
 const UPCOMING_SOURCE_LIMIT = 30
 
 async function getExploreData() {
-  const upcomingMovies = takeUpcomingWeek(
-    await getHomeUpcomingMovies({ limit: UPCOMING_SOURCE_LIMIT }),
-    new Date(),
-    UPCOMING_LIMIT,
-  )
-  const indexability = evaluatePortalIndexability({
-    populatedSectionCount: countPopulatedSections([upcomingMovies.length]),
-  })
+  // A decisao de indexabilidade do explorar vem do MESMO snapshot/funcao do
+  // sitemap (`getExploreSectionFacts` + `evaluateExploreIndexability`), nunca
+  // mais so dos lancamentos da semana (Prompt 3 §3). A agenda semanal segue
+  // sendo conteudo renderizado, mas nao governa mais o robots.
+  const [upcomingSource, exploreFacts] = await Promise.all([
+    getHomeUpcomingMovies({ limit: UPCOMING_SOURCE_LIMIT }),
+    getExploreSectionFacts(),
+  ])
+  const upcomingMovies = takeUpcomingWeek(upcomingSource, new Date(), UPCOMING_LIMIT)
+  const indexability = evaluateExploreIndexability(exploreFacts)
 
   return { upcomingMovies, indexability }
 }
@@ -49,7 +51,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: TITLE,
     description: DESCRIPTION,
-    robots: shouldIndex ? { index: true, follow: true } : { index: false, follow: false },
+    robots: shouldIndex ? { index: true, follow: true } : { index: false, follow: true },
     alternates: { canonical: canonicalPublicUrl(EXPLORE_PATH) },
   }
 }
@@ -142,11 +144,11 @@ export default async function ExplorePage() {
 
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(collectionJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(collectionJsonLd) }}
       />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }}
       />
     </main>
   )

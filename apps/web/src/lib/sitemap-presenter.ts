@@ -52,6 +52,10 @@ import {
   countPopulatedSections,
   evaluatePortalIndexability,
 } from "./portal-presenter";
+import {
+  evaluateExploreIndexability,
+  type ExploreSectionFacts,
+} from "./explore-presenter";
 
 /** Frequencias usadas (subconjunto conservador do protocolo de sitemap). */
 export type SitemapChangeFrequency = "daily" | "weekly" | "monthly";
@@ -222,6 +226,23 @@ function newsDetailEntry(
 }
 
 /**
+ * Contagens de catalogo que governam a indexabilidade do hub explorar. Usa os
+ * MESMOS filtros de item valido (slug + titulo) e noticia publicavel do
+ * sitemap, para que pagina e sitemap decidam o explorar identicamente
+ * (Prompt 3 §3 — mesma decisao governa os dois lados).
+ */
+export function countExploreSectionFacts(
+  input: SitemapDataInput,
+): ExploreSectionFacts {
+  return {
+    movieCount: input.movies.filter(isValidCatalogItem).length,
+    seriesCount: input.series.filter(isValidCatalogItem).length,
+    peopleCount: input.people.filter(isValidCatalogItem).length,
+    newsCount: input.news.filter(isPublishableNewsCandidate).length,
+  };
+}
+
+/**
  * Monta o sitemap completo a partir do snapshot do banco.
  *
  * Coerencia com o meta robots das paginas:
@@ -268,16 +289,13 @@ export function buildSitemapEntries(input: SitemapDataInput): SitemapEntryView[]
       populatedSectionCount: homePopulatedSectionCount,
     }).decision === "index";
 
-  const explorePopulatedSectionCount = countPopulatedSections([
-    movieCount,
-    seriesCount,
-    peopleCount,
-    publishableNewsCount,
-  ]);
+  // Explorar: MESMA decisao que a pagina (`evaluateExploreIndexability`),
+  // alimentada pelas MESMAS contagens de catalogo. Elimina a divergencia
+  // historica (pagina decidia so por lancamentos da semana; sitemap por
+  // catalogo amplo) — Prompt 3 §3.
   const exploreIndexable =
-    evaluatePortalIndexability({
-      populatedSectionCount: explorePopulatedSectionCount,
-    }).decision === "index";
+    evaluateExploreIndexability(countExploreSectionFacts(input)).decision ===
+    "index";
 
   const entries: SitemapEntryView[] = [];
   for (const spec of STATIC_ROUTES) {
