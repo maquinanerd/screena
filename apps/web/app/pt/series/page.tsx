@@ -1,15 +1,14 @@
-import type { Metadata } from "next";
+import type { Metadata } from 'next'
 
-import { CategoryHome } from "../../_components/category-home";
-import { getSeriesIndexData } from "../../../src/server/entity-indexes";
-import { getNewsIndexData } from "../../../src/server/news-pages";
+import { EntityIndex } from '../../_components/entity-index'
+import { getSeriesIndexData } from '../../../src/server/entity-indexes'
 
 /**
  * Listagem publica de series - /pt/series/ (porta de entrada; acento verde).
  *
  * Server component puro: le somente PostgreSQL via `getSeriesIndexData`. Zero
- * API externa, zero Gemini e zero TMDB no render. A rota mostra somente noticias
- * publicadas porque ranking, streaming e catalogo curado nao possuem contrato.
+ * API externa, zero Gemini e zero TMDB no render. A rota lista somente series
+ * com titulo e slug canonico reais, sem ranking ou streaming inventado.
  */
 
 /**
@@ -18,38 +17,33 @@ import { getNewsIndexData } from "../../../src/server/news-pages";
  * DATABASE_URL). Continua PURA - le so PostgreSQL, sem API externa (invariantes
  * 3/4). Mesma natureza dinamica das rotas [slug].
  */
-export const dynamic = "force-dynamic";
+export const dynamic = 'force-dynamic'
 
-const TITLE = "Séries";
-const DESCRIPTION =
-  "Acompanhe notícias de entretenimento já publicadas na Screen.";
+const TITLE = 'Séries'
+const DESCRIPTION = 'Explore as séries catalogadas na Screen, com páginas editoriais em português.'
 
 export async function generateMetadata(): Promise<Metadata> {
-  const { indexability, canonicalUrl } = await getSeriesIndexData();
-  const shouldIndex = indexability.decision === "index";
+  const { indexability, canonicalUrl } = await getSeriesIndexData()
+  const shouldIndex = indexability.decision === 'index'
   return {
     title: TITLE,
     description: DESCRIPTION,
-    robots: shouldIndex
-      ? { index: true, follow: true }
-      : { index: false, follow: false },
+    robots: shouldIndex ? { index: true, follow: true } : { index: false, follow: false },
     alternates: { canonical: canonicalUrl },
-  };
+  }
 }
 
 export default async function SeriesIndexPage() {
-  const [{ canonicalUrl }, news] = await Promise.all([
-    getSeriesIndexData(),
-    getNewsIndexData(),
-  ]);
+  const { view, canonicalUrl } = await getSeriesIndexData()
 
   return (
-    <CategoryHome
-      canonicalUrl={canonicalUrl}
+    <EntityIndex
+      title={TITLE}
       description={DESCRIPTION}
-      newsView={news.view}
-      pageTitle={TITLE}
+      breadcrumbLabel="Séries"
+      canonicalUrl={canonicalUrl}
       vertical="series"
+      view={view}
     />
-  );
+  )
 }

@@ -1,39 +1,33 @@
-import type { ReactNode } from "react";
+import type { ReactNode } from 'react'
 
-import { SITE_URL } from "../../src/lib/site";
-import type { EntityIndexView } from "../../src/lib/entity-index-presenter";
-import { EntityCardLink } from "./entity-card";
+import type { EntityCard, EntityIndexView } from '../../src/lib/entity-index-presenter'
+import { SITE_URL } from '../../src/lib/site'
 
-/**
- * EntityIndex - Componente de apresentacao das listagens publicas (portas de
- * entrada) de filmes/series/pessoas.
- *
- * PRESENTACIONAL e PURO: recebe a `EntityIndexView` ja montada pela camada
- * server via props e so produz JSX. Nao importa @screena/db nem faz IO (o acesso
- * ao PostgreSQL fica em `src/server/entity-indexes.ts`; invariantes 3/4). Renderiza
- * so dados reais dos cards; sem imagem local segura, mostra fallback visual.
- * O card em si vive em `entity-card.tsx` (compartilhado com home/explorar).
- */
-
-export type EntityIndexVertical = "movie" | "series" | "person";
+export type EntityIndexVertical = 'movie' | 'series' | 'person'
 
 interface EntityIndexProps {
-  /** Titulo H1 e nome da colecao (ex.: "Filmes"). */
-  title: string;
-  /** Descricao editorial curta da secao (copy propria, nao dado de entidade). */
-  description: string;
-  /** Rotulo do breadcrumb/segmento (ex.: "Filmes"). */
-  breadcrumbLabel: string;
-  /** URL canonica absoluta do indice (o canonical vai no <head> via metadata). */
-  canonicalUrl: string;
-  /** Acento de vertical (cor de apoio; nunca o unico sinal). */
-  vertical: EntityIndexVertical;
-  /** View ja montada (cards ordenados + cap + contagem). */
-  view: EntityIndexView;
-  /** Mensagem de estado vazio (copy propria; fallback generico quando ausente). */
-  emptyMessage?: string;
+  title: string
+  description: string
+  breadcrumbLabel: string
+  canonicalUrl: string
+  vertical: EntityIndexVertical
+  view: EntityIndexView
+  emptyMessage?: string
 }
 
+const ENTITY_KIND_LABELS: Readonly<Record<EntityCard['kind'], string>> = {
+  movie: 'Filme',
+  series: 'Série',
+  person: 'Pessoa',
+}
+
+const DEFAULT_EMPTY_MESSAGES: Readonly<Record<EntityIndexVertical, string>> = {
+  movie: 'Ainda não há filmes publicados nesta seção.',
+  series: 'Ainda não há séries publicadas nesta seção.',
+  person: 'Ainda não há pessoas publicadas nesta seção.',
+}
+
+/** Lista textual de entidades reais; sem pôster, card ou fallback decorativo. */
 export function EntityIndex({
   title,
   description,
@@ -43,74 +37,74 @@ export function EntityIndex({
   view,
   emptyMessage,
 }: EntityIndexProps): ReactNode {
-  const hasCards = view.cards.length > 0;
-
+  const hasItems = view.cards.length > 0
   const breadcrumbJsonLd = {
-    "@context": "https://schema.org",
-    "@type": "BreadcrumbList",
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
     itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Inicio", item: `${SITE_URL}/pt/` },
-      { "@type": "ListItem", position: 2, name: breadcrumbLabel, item: canonicalUrl },
+      { '@type': 'ListItem', position: 1, name: 'Início', item: `${SITE_URL}/pt/` },
+      { '@type': 'ListItem', position: 2, name: breadcrumbLabel, item: canonicalUrl },
     ],
-  };
-
+  }
   const collectionJsonLd: Record<string, unknown> = {
-    "@context": "https://schema.org",
-    "@type": "CollectionPage",
+    '@context': 'https://schema.org',
+    '@type': 'CollectionPage',
     name: title,
     url: canonicalUrl,
     description,
-  };
-  if (hasCards) {
+  }
+
+  if (hasItems) {
     collectionJsonLd.mainEntity = {
-      "@type": "ItemList",
+      '@type': 'ItemList',
       numberOfItems: view.cards.length,
       itemListElement: view.cards.map((card, index) => ({
-        "@type": "ListItem",
+        '@type': 'ListItem',
         position: index + 1,
         url: `${SITE_URL}${card.href}`,
         name: card.title,
       })),
-    };
+    }
   }
 
   return (
     <main className="entity-index" data-vertical={vertical}>
       <div className="container">
-        <nav className="breadcrumb" aria-label="Trilha de navegacao">
+        <nav className="breadcrumb" aria-label="Trilha de navegação">
           <ol>
             <li>
-              <a href="/pt/">Inicio</a>
+              <a href="/pt/">Início</a>
             </li>
             <li aria-current="page">{breadcrumbLabel}</li>
           </ol>
         </nav>
 
-        <header className="entity-index__header">
-          <h1 className="entity-index__title">{title}</h1>
-          <p className="entity-index__desc">{description}</p>
+        <header className="page-header">
+          <h1>{title}</h1>
+          <p>{description}</p>
         </header>
 
-        {hasCards ? (
+        {hasItems ? (
           <>
-            <ul className="entity-grid">
+            <ul className="entity-list">
               {view.cards.map((card) => (
-                <li key={card.href} className="entity-card-item">
-                  <EntityCardLink card={card} />
+                <li key={card.href}>
+                  <a href={card.href}>
+                    <span className="entity-list__kind">{ENTITY_KIND_LABELS[card.kind]}: </span>
+                    <span>{card.title}</span>
+                    {card.meta !== null ? <span> — {card.meta}</span> : null}
+                  </a>
                 </li>
               ))}
             </ul>
             {view.hasMore ? (
-              <p className="entity-index__more">
+              <p>
                 Mostrando os primeiros {view.cards.length} de {view.totalCount}.
               </p>
             ) : null}
           </>
         ) : (
-          <p className="entity-index__empty">
-            {emptyMessage ??
-              `Ainda nao ha ${breadcrumbLabel.toLowerCase()} publicados nesta secao.`}
-          </p>
+          <p>{emptyMessage ?? DEFAULT_EMPTY_MESSAGES[vertical]}</p>
         )}
       </div>
 
@@ -123,5 +117,5 @@ export function EntityIndex({
         dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
       />
     </main>
-  );
+  )
 }

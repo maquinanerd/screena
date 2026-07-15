@@ -1,59 +1,61 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from 'vitest'
 
-const ROOT = process.cwd();
+const ROOT = process.cwd()
+const HOME_PATH = 'apps/web/app/pt/page.tsx'
 
 function read(relativePath: string): string {
-  return readFileSync(path.join(ROOT, relativePath), "utf8");
+  return readFileSync(path.join(ROOT, relativePath), 'utf8')
 }
 
-describe("home cinematográfica canônica", () => {
-  const home = read("apps/web/app/pt/page.tsx");
-  const hero = read("apps/web/app/_components/hero-carousel.tsx");
-  const upcoming = read("apps/web/app/_components/coming-soon-rail.tsx");
+describe('home pública após o reset visual', () => {
+  const home = read(HOME_PATH)
 
-  it("não contém conteúdo de protótipo, repetição artificial ou reativação por flag", () => {
-    expect(home).not.toMatch(/fillSlots|HOME_COMING_SOON_ITEMS|HOME_FEATURED_NEWS/);
-    expect(home).not.toMatch(/HOME_GRID_NEWS|EpisodesTicker|allowHomeVisualPlaceholders/);
-    expect(home).not.toMatch(/HOME_VISUAL_PLATFORMS/);
-  });
+  it('mantém os getters locais e a decisão canônica de indexabilidade', () => {
+    for (const getter of [
+      'getHomeCatalogData()',
+      'getNewsIndexData()',
+      'getHomeHeroSlides()',
+      'getHomeUpcomingMovies()',
+    ]) {
+      expect(home).toContain(getter)
+    }
+    expect(home).toContain('evaluatePortalIndexability({')
+    expect(home).toMatch(/indexability\.decision === ['"]index['"]/)
+    expect(home).toContain('canonicalPublicUrl(HOME_PATH)')
+  })
 
-  it("instala exatamente os três leaderboards nas margens canônicas", () => {
-    expect(home.match(/<Leaderboard margin=/g)).toHaveLength(3);
-    expect(home.match(/margin="56px 0 56px"/g)).toHaveLength(1);
-    expect(home.match(/margin="56px 0 0"/g)).toHaveLength(2);
-  });
+  it('expõe um H1 visível, descrição e navegação para destinos reais', () => {
+    expect(home.match(/<h1[\s>]/g)).toHaveLength(1)
+    expect(home).toContain('<h1>{HOME_H1}</h1>')
+    expect(home).toContain('<p>{HOME_DESCRIPTION}</p>')
+    for (const destination of [
+      'MOVIES_INDEX_PATH',
+      'SERIES_INDEX_PATH',
+      'PEOPLE_INDEX_PATH',
+      'NEWS_INDEX_PATH',
+      'EXPLORE_PATH',
+    ]) {
+      expect(home).toContain(`href={${destination}}`)
+    }
+  })
 
-  it("preserva a ordem estrutural mesmo com seções condicionais", () => {
-    const markers = [
-      "<HeroCarousel",
-      '<Leaderboard margin="56px 0 56px"',
-      'title="Filmes em alta"',
-      'title="Séries da semana"',
-      "<ComingSoonRail",
-      'title="Notícias"',
-    ];
-    const positions = markers.map((marker) => home.indexOf(marker));
-    expect(positions.every((position) => position >= 0)).toBe(true);
-    expect(positions).toEqual([...positions].sort((a, b) => a - b));
-  });
+  it('renderiza apenas listas textuais dos dados persistidos', () => {
+    expect(home).toContain('heroSlides.map')
+    expect(home).toContain('movieCards.map')
+    expect(home).toContain('upcomingMovies.map')
+    expect(home).toContain('newsCards.map')
+    expect(home).toContain('Ainda não há conteúdo publicado')
+    expect(home).not.toMatch(/<img|<HeroCarousel|<ComingSoonRail|<AdSlot/)
+    expect(home).not.toMatch(/MovieCard|SeriesCard|NewsFeature|NewsMiniCard/)
+  })
 
-  it("separa notícias sem repetir o destaque na grade", () => {
-    expect(home).toContain("const firstNews = newsCards[0]");
-    expect(home).toContain("newsCards.slice(1, 5)");
-  });
-
-  it("Em breve não promete trailer nem aceita duração mock", () => {
-    expect(upcoming).not.toMatch(/duration\??:/);
-    expect(upcoming).not.toMatch(/Trailer anterior|Próximo trailer/);
-    expect(home).not.toMatch(/Trailers de próximos lançamentos/);
-  });
-
-  it("usa a escala compacta canônica quando um título real é longo", () => {
-    expect(hero).toContain("slide.title.length > 24");
-    expect(hero).toContain('"sc-hero__title sc-hero__title--sm"');
-    expect(hero).toContain("className={titleClassName}");
-  });
-});
+  it('preserva Organization e WebSite em JSON-LD', () => {
+    expect(home).toMatch(/['"]@type['"]:\s*['"]Organization['"]/)
+    expect(home).toMatch(/['"]@type['"]:\s*['"]WebSite['"]/)
+    expect(home.match(/application\/ld\+json/g)).toHaveLength(2)
+    expect(home).not.toMatch(/SearchAction|AggregateRating/)
+  })
+})

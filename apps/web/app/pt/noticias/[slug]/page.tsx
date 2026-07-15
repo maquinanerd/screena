@@ -1,168 +1,139 @@
-import type { Metadata } from "next";
-import { notFound } from "next/navigation";
-import { Fragment } from "react";
+import type { Metadata } from 'next'
+import { notFound } from 'next/navigation'
 
-import { AdSlot } from "../../../_components/ad-slot";
-import { SITE_URL } from "../../../../src/lib/site";
-import { getNewsArticleData } from "../../../../src/server/news-pages";
-import styles from "./article-canonical.module.css";
+import { HOME_PATH, SITE_URL } from '../../../../src/lib/site'
+import { getNewsArticleData } from '../../../../src/server/news-pages'
 
-/** Artigo `05-article` do pacote canônico, alimentado somente pelo CMS real. */
+/** Artigo textual alimentado somente pelo CMS real. */
 
-export const dynamic = "force-dynamic";
+export const dynamic = 'force-dynamic'
 
-const NEWS_INDEX_PATH = "/pt/noticias/";
+const NEWS_INDEX_PATH = '/pt/noticias/'
 
 interface NewsArticleParams {
-  slug: string;
+  slug: string
 }
 
 export async function generateMetadata({
   params,
 }: {
-  params: Promise<NewsArticleParams>;
+  params: Promise<NewsArticleParams>
 }): Promise<Metadata> {
-  const { slug } = await params;
-  const data = await getNewsArticleData(slug);
+  const { slug } = await params
+  const data = await getNewsArticleData(slug)
 
   if (data === null) {
     return {
-      title: "Notícia não encontrada",
+      title: 'Notícia não encontrada',
       robots: { index: false, follow: false },
-    };
+    }
   }
 
-  const { view, indexability, canonicalUrl } = data;
-  const shouldIndex = indexability.decision === "index";
+  const { view, indexability, canonicalUrl } = data
+  const shouldIndex = indexability.decision === 'index'
   const metadata: Metadata = {
     title: view.metaTitle ?? `${view.title} — Notícias`,
-    robots: shouldIndex
-      ? { index: true, follow: true }
-      : { index: false, follow: false },
+    robots: shouldIndex ? { index: true, follow: true } : { index: false, follow: false },
     alternates: { canonical: canonicalUrl },
-  };
-  const description = view.metaDescription ?? view.deck;
-  if (description !== null) metadata.description = description;
-  return metadata;
+  }
+  const description = view.metaDescription ?? view.deck
+  if (description !== null) metadata.description = description
+  return metadata
 }
 
-export default async function NewsArticlePage({
-  params,
-}: {
-  params: Promise<NewsArticleParams>;
-}) {
-  const { slug } = await params;
-  const data = await getNewsArticleData(slug);
-  if (data === null) notFound();
+export default async function NewsArticlePage({ params }: { params: Promise<NewsArticleParams> }) {
+  const { slug } = await params
+  const data = await getNewsArticleData(slug)
+  if (data === null) notFound()
 
-  const { view, indexability, canonicalUrl } = data;
-  const isUnderReview = indexability.decision !== "index";
-  const adAfterIndex = Math.min(2, Math.max(0, view.bodyParagraphs.length - 1));
+  const { view, indexability, canonicalUrl } = data
+  const isUnderReview = indexability.decision !== 'index'
+  const metaItems = [view.author, view.dateLabel, view.readTimeLabel].filter(
+    (item): item is string => item !== null,
+  )
 
   const breadcrumbJsonLd = {
-    "@context": "https://schema.org",
-    "@type": "BreadcrumbList",
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
     itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Início", item: `${SITE_URL}/pt/` },
       {
-        "@type": "ListItem",
+        '@type': 'ListItem',
+        position: 1,
+        name: 'Início',
+        item: `${SITE_URL}${HOME_PATH}`,
+      },
+      {
+        '@type': 'ListItem',
         position: 2,
-        name: "Notícias",
+        name: 'Notícias',
         item: `${SITE_URL}${NEWS_INDEX_PATH}`,
       },
-      { "@type": "ListItem", position: 3, name: view.title, item: canonicalUrl },
+      { '@type': 'ListItem', position: 3, name: view.title, item: canonicalUrl },
     ],
-  };
+  }
 
   const articleJsonLd: Record<string, unknown> = {
-    "@context": "https://schema.org",
-    "@type": "NewsArticle",
+    '@context': 'https://schema.org',
+    '@type': 'NewsArticle',
     headline: view.title,
     url: canonicalUrl,
-  };
-  if (view.dateIso !== null) articleJsonLd.datePublished = view.dateIso;
-  const jsonDescription = view.metaDescription ?? view.deck;
-  if (jsonDescription !== null) articleJsonLd.description = jsonDescription;
-  if (view.author !== null) {
-    articleJsonLd.author = { "@type": "Person", name: view.author };
   }
-  if (view.category !== null) articleJsonLd.articleSection = view.category;
+  if (view.dateIso !== null) articleJsonLd.datePublished = view.dateIso
+  const jsonDescription = view.metaDescription ?? view.deck
+  if (jsonDescription !== null) articleJsonLd.description = jsonDescription
+  if (view.author !== null) {
+    articleJsonLd.author = { '@type': 'Person', name: view.author }
+  }
+  if (view.category !== null) articleJsonLd.articleSection = view.category
   if (view.heroImage !== null) {
-    articleJsonLd.image = `${SITE_URL}${view.heroImage.src}`;
+    articleJsonLd.image = `${SITE_URL}${view.heroImage.src}`
   }
 
   return (
-    <main className={styles.page} data-vertical="news">
-      <header className={styles.hero}>
-        <span className={styles.heroScrim} aria-hidden="true" />
-        <div className={styles.heroInner}>
-          <nav className={styles.breadcrumb} aria-label="Trilha de navegação">
-            <a href="/pt/">Início</a>
-            <span aria-hidden="true">›</span>
-            <a href={NEWS_INDEX_PATH}>Notícias</a>
-            {view.category !== null ? (
-              <>
-                <span aria-hidden="true">›</span>
-                <span aria-current="page">{view.category}</span>
-              </>
-            ) : null}
-          </nav>
+    <main data-vertical="news">
+      <div className="container">
+        <nav aria-label="Trilha de navegação">
+          <ol>
+            <li>
+              <a href={HOME_PATH}>Início</a>
+            </li>
+            <li>
+              <a href={NEWS_INDEX_PATH}>Notícias</a>
+            </li>
+            <li aria-current="page">{view.title}</li>
+          </ol>
+        </nav>
 
-          {view.category !== null ? (
-            <span className={styles.category}>{view.category}</span>
+        <article>
+          <header>
+            {view.category !== null ? <p>{view.category}</p> : null}
+            <h1>{view.title}</h1>
+            {view.deck !== null ? <p>{view.deck}</p> : null}
+            {metaItems.length > 0 ? <p>{metaItems.join(' · ')}</p> : null}
+          </header>
+
+          {view.bodyParagraphs.map((paragraph, index) => (
+            <p key={`${index}-${paragraph.slice(0, 24)}`}>{paragraph}</p>
+          ))}
+
+          {view.source !== null ? (
+            <p>
+              Fonte: <strong>{view.source.name}</strong>
+            </p>
           ) : null}
-          <h1>{view.title}</h1>
-          {view.deck !== null ? <p className={styles.deck}>{view.deck}</p> : null}
-          <div className={styles.heroMeta}>
-            {view.author !== null ? (
-              <span>
-                por <strong>{view.author}</strong>
-              </span>
-            ) : null}
-            {view.author !== null && view.dateLabel !== null ? (
-              <span aria-hidden="true">·</span>
-            ) : null}
-            {view.dateLabel !== null ? <span>{view.dateLabel}</span> : null}
-            {(view.author !== null || view.dateLabel !== null) &&
-            view.readTimeLabel !== null ? (
-              <span aria-hidden="true">·</span>
-            ) : null}
-            {view.readTimeLabel !== null ? <span>{view.readTimeLabel}</span> : null}
-          </div>
-        </div>
-      </header>
 
-      <article className={styles.body}>
-        {view.bodyParagraphs.map((paragraph, index) => (
-          <Fragment key={`${index}-${paragraph.slice(0, 24)}`}>
-            <p>{paragraph}</p>
-            {index === adAfterIndex ? (
-              <div className={styles.midArticleAd}>
-                <AdSlot variant="leaderboard" margin="0" />
-              </div>
-            ) : null}
-          </Fragment>
-        ))}
+          {view.aiAssisted ? (
+            <aside role="note">
+              Conteúdo produzido com apoio de ferramentas de inteligência artificial e revisado pela
+              equipe editorial da Screen.
+            </aside>
+          ) : null}
+        </article>
 
-        {view.source !== null ? (
-          <p className={styles.source}>
-            Fonte: <strong>{view.source.name}</strong>
-          </p>
+        {isUnderReview ? (
+          <p data-editorial-state="in-review">Esta notícia ainda está em revisão editorial.</p>
         ) : null}
-
-        {view.aiAssisted ? (
-          <aside className={styles.aiNotice} role="note">
-            Conteúdo produzido com apoio de ferramentas de inteligência artificial
-            e revisado pela equipe editorial da Screen.
-          </aside>
-        ) : null}
-      </article>
-
-      {isUnderReview ? (
-        <p className={styles.reviewNotice} data-editorial-state="in-review">
-          Esta notícia ainda está em revisão editorial.
-        </p>
-      ) : null}
+      </div>
 
       <script
         type="application/ld+json"
@@ -173,5 +144,5 @@ export default async function NewsArticlePage({
         dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
       />
     </main>
-  );
+  )
 }
