@@ -61,3 +61,6 @@ jobs:
 
       - name: Build do app publico
         run: pnpm build
+
+      - name: Validadores descartaveis (PostgreSQL efemero, sem banco remoto)
+        run: pnpm --filter @screena/web validate:all

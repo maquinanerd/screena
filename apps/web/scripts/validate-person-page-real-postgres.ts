@@ -4,7 +4,7 @@
  *
  * Prova o fluxo:
  *   slug pt-BR -> person -> entity_translation -> content_blocks ->
- *   cast/crew -> alvos movie|tv (titulo + slug) -> presenter -> gate anti-thin.
+ *   cast/crew -> alvos movie|tv (titulo + slug) -> presenter -> indexabilidade.
  *
  * Nao sobe Next, nao chama rede, nao chama TMDB/Gemini e nao altera schema.
  * Imagem: file_path cru do TMDB ("/abc.jpg") vira URL REMOTA do CDN do TMDB;
@@ -347,7 +347,7 @@ async function runChecks(
   const thinZero = await getPersonPageData("pessoa-thin-zero");
   record(4, "B. pessoa com 0 blocos publicos retorna dados", thinZero !== null, `retorno=${thinZero ? "objeto" : "null"}`);
   record(5, "B. renderableBlockCount === 0", thinZero?.view.renderableBlockCount === 0, `count=${thinZero?.view.renderableBlockCount}`);
-  record(6, "B. indexability.decision === noindex", thinZero?.indexability.decision === "noindex", `decision=${thinZero?.indexability.decision}`);
+  record(6, "B. indexability.decision === index (indexacao total; 0 blocos e sinal de qualidade, nao gate)", thinZero?.indexability.decision === "index", `decision=${thinZero?.indexability.decision}`);
   record(7, "B. metaDescription nao inventada", thinZero?.view.metaDescription === null, `metaDescription=${thinZero?.view.metaDescription === null ? "null" : "presente"}`);
   record(8, "B. nenhum bloco nao-publico aparece", (thinZero?.view.blocks.length ?? -1) === 0, `blocos=${thinZero?.view.blocks.length}`);
   record(9, "B. path cru de perfil vira imagem REMOTA (nunca local)", thinZero?.view.hasRealImage === true && (thinZero?.view.profile?.src?.startsWith("https://") ?? false), `profile=${thinZero?.view.profile?.src}`);
@@ -364,7 +364,7 @@ async function runChecks(
   });
   const oneBlock = await getPersonPageData("pessoa-um-bloco");
   record(11, "C. renderableBlockCount === 1", oneBlock?.view.renderableBlockCount === 1, `count=${oneBlock?.view.renderableBlockCount}`);
-  record(12, "C. indexability.decision === noindex", oneBlock?.indexability.decision === "noindex", `decision=${oneBlock?.indexability.decision}`);
+  record(12, "C. indexability.decision === index (indexacao total; 1 bloco nao gateia mais)", oneBlock?.indexability.decision === "index", `decision=${oneBlock?.indexability.decision}`);
 
   // Alvos de credito: um filme com slug, uma serie com slug, um filme SEM slug.
   const movieId = await seedMovieTarget(prisma, {
