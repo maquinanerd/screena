@@ -23,7 +23,8 @@
     "db:migrate:dev": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
-    "db:validate:real": "tsx scripts/validate-real-postgres.ts"
+    "db:validate:real": "tsx scripts/validate-real-postgres.ts",
+    "db:validate:upgrade": "tsx scripts/validate-upgrade-real-postgres.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.1.0",
