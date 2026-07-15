@@ -4,7 +4,7 @@
  *
  * Prova o fluxo:
  *   slug pt-BR -> tv_show -> entity_translation -> content_blocks ->
- *   seasons/episodes -> presenter -> gate anti-thin.
+ *   seasons/episodes -> presenter -> indexabilidade (index/noindex).
  *
  * Nao sobe Next, nao chama rede, nao chama TMDB/Gemini e nao altera schema.
  *
@@ -316,7 +316,7 @@ async function runChecks(
   const thinZero = await getSeriesPageData("serie-thin-zero");
   record(4, "B. serie com 0 blocos publicos retorna dados", thinZero !== null, `retorno=${thinZero ? "objeto" : "null"}`);
   record(5, "B. renderableBlockCount === 0", thinZero?.view.renderableBlockCount === 0, `count=${thinZero?.view.renderableBlockCount}`);
-  record(6, "B. indexability.decision === noindex", thinZero?.indexability.decision === "noindex", `decision=${thinZero?.indexability.decision}`);
+  record(6, "B. indexability.decision === index (indexacao total; 0 blocos e sinal de qualidade, nao gate)", thinZero?.indexability.decision === "index", `decision=${thinZero?.indexability.decision}`);
   record(7, "B. metaDescription nao inventada", thinZero?.view.metaDescription === null, `metaDescription=${thinZero?.view.metaDescription === null ? "null" : JSON.stringify(thinZero?.view.metaDescription)}`);
   record(8, "B. nenhum bloco nao-publico aparece", (thinZero?.view.blocks.length ?? -1) === 0, `blocos=${thinZero?.view.blocks.length}`);
   record(9, "B. path cru do TMDB vira imagem REMOTA (nunca local)", thinZero?.view.media.hasRealImage === true && (thinZero?.view.media.poster?.src?.startsWith("https://") ?? false), `poster=${thinZero?.view.media.poster?.src}`);
@@ -337,7 +337,7 @@ async function runChecks(
   });
   const oneBlock = await getSeriesPageData("serie-um-bloco");
   record(11, "C. renderableBlockCount === 1", oneBlock?.view.renderableBlockCount === 1, `count=${oneBlock?.view.renderableBlockCount}`);
-  record(12, "C. indexability.decision === noindex", oneBlock?.indexability.decision === "noindex", `decision=${oneBlock?.indexability.decision}`);
+  record(12, "C. indexability.decision === index (indexacao total; 1 bloco nao gateia mais)", oneBlock?.indexability.decision === "index", `decision=${oneBlock?.indexability.decision}`);
 
   const richId = await seedSeries(prisma, {
     tmdbId: 95000003,
