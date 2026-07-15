@@ -116,6 +116,7 @@ enum SourceLicenseContentType {
   rating
   watch_availability
   review
+  video // trailers/teasers/clips/featurettes/etc. (Fase 7 — biblioteca de video TMDB)
   news
   image
   other
@@ -260,21 +261,34 @@ model SourceLicense {
   validUntil          DateTime?                @map("valid_until") // fim de vigencia (null = sem prazo definido)
   decidedBy           String?                  @map("decided_by") // identidade humana que decidiu a licenca
   decidedAt           DateTime?                @map("decided_at")
+  // Historico imutavel de licenca (mesmo padrao de PageIndexabilityDecision):
+  // cada reavaliacao INSERE nova linha; `is_current` marca a vigente por
+  // (source_key, content_type, provider, territorio) via indice unico PARCIAL
+  // (SQL bruto); `supersedes_id` liga a decisao anterior. Nenhuma linha antiga
+  // e sobrescrita/apagada.
+  isCurrent           Boolean                  @default(true) @map("is_current")
+  supersedesId        BigInt?                  @map("supersedes_id")
+  decisionOrigin      String?                  @map("decision_origin") // ex.: "seed", "human_override", "license_pipeline"
+  policyVersion       String?                  @map("policy_version")
   notes               String?
   createdAt           DateTime                 @default(now()) @map("created_at")
   updatedAt           DateTime                 @updatedAt @map("updated_at")
 
-  ratingSource RatingSource? @relation(fields: [ratingSourceKey], references: [key])
-  provider     ApiProvider?  @relation(fields: [providerKey], references: [key])
-  territory    Country?      @relation(fields: [territoryCode], references: [code])
+  ratingSource RatingSource?   @relation(fields: [ratingSourceKey], references: [key])
+  provider     ApiProvider?    @relation(fields: [providerKey], references: [key])
+  territory    Country?        @relation(fields: [territoryCode], references: [code])
+  supersedes   SourceLicense?  @relation("SourceLicenseHistory", fields: [supersedesId], references: [id])
+  supersededBy SourceLicense[] @relation("SourceLicenseHistory")
 
-  // Chave natural funcional (source_key, content_type, provider_key, territory_code
-  // com NULL tratado via COALESCE) aplicada via SQL bruto — ver hardening.
+  // Licenca VIGENTE unica por (source_key, content_type, provider, territorio)
+  // via indice unico PARCIAL WHERE is_current (SQL bruto); historico livre.
   @@index([sourceKey])
   @@index([contentType])
   @@index([ratingSourceKey])
   @@index([providerKey])
   @@index([territoryCode])
+  @@index([isCurrent])
+  @@index([supersedesId])
   @@map("source_licenses")
 }
 
@@ -717,8 +731,9 @@ model WatchAvailability {
   entityType          EntityType    @map("entity_type")
   entityId            BigInt        @map("entity_id")
   countryCode         String        @map("country_code")
-  providerKey         String?       @map("provider_key") // slug estavel da plataforma; null = provedor nao identificado (guardrail trata)
-  providerName        String        @map("provider_name")
+  externalOfferId     String?       @map("external_offer_id") // ID ESTAVEL da oferta na API de origem (identidade prioritaria); null quando a API nao fornece
+  providerKey         String?       @map("provider_key") // identificador TECNICO da API/tabela canonica; null = provedor nao identificado (missing-provider). NUNCA derivado do provider_name
+  providerName        String        @map("provider_name") // nome de EXIBICAO (pode mudar/traduzir); nao e identidade tecnica
   offerType           OfferType     @map("offer_type") // so modalidades LEGAIS (inv. 10)
   deepLink            String?       @map("deep_link") // destino legal; nunca torrent/IPTV/player pirata
   price               Decimal?
@@ -738,16 +753,22 @@ model WatchAvailability {
   reviewedAt          DateTime?     @map("reviewed_at") // data da revisao humana
   reviewedBy          String?       @map("reviewed_by") // identidade do revisor humano
   approvedPayloadHash String?       @map("approved_payload_hash") // hash/fingerprint do payload aprovado na revisao
-  webUrl              String?       @map("web_url") // link web (navegador); distinto de deep_link (app). Produtor: Fase 9
-  package             String?       @map("package") // pacote/bundle da oferta (add-on/channel). Produtor: Fase 9; fora da chave natural nesta fase
+  webUrl              String?       @map("web_url") // link web (navegador); distinto de deep_link (app)
+  package             String?       @map("package") // pacote/bundle da oferta (add-on/channel)
   createdAt           DateTime      @default(now()) @map("created_at")
   updatedAt           DateTime      @updatedAt @map("updated_at")
 
   country Country @relation(fields: [countryCode], references: [code])
 
+  // Identidade da oferta = fingerprint canonico versionado `watch_offer_fingerprint(...)`
+  // (external_offer_id quando presente; senao a tupla completa: provider tecnico,
+  // modalidade, package, qualidade, preco/moeda, URLs, validade). Indice unico
+  // sobre esse fingerprint (SQL bruto) — ofertas legitimamente distintas NUNCA
+  // colapsam. Ver ADR 0002.
   @@index([entityType, entityId, countryCode])
   @@index([countryCode])
   @@index([providerKey])
+  @@index([externalOfferId])
   @@map("watch_availability")
 }
 

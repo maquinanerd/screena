@@ -21,7 +21,7 @@
 -- ============================================================
 
 -- CreateEnum
-CREATE TYPE "SourceLicenseContentType" AS ENUM ('rating', 'watch_availability', 'review', 'news', 'image', 'other');
+CREATE TYPE "SourceLicenseContentType" AS ENUM ('rating', 'watch_availability', 'review', 'video', 'news', 'image', 'other');
 
 -- CreateTable
 CREATE TABLE "entities" (
@@ -158,10 +158,33 @@ BEGIN
 END $$;
 
 -- ============================================================
+-- 1b) Quarentena auditavel de migracao (perda-zero de dado histórico)
+-- ============================================================
+-- Tabela GENERICA para preservar QUALQUER linha/valor que a migration
+-- remova ou anule. Nenhum DELETE/NULL destrutivo acontece sem antes gravar aqui
+-- um snapshot JSONB completo. `issue` classifica o caso; `detail` guarda o
+-- snapshot + campos especificos (ex.: surviving_id, dedupe_fingerprint,
+-- old_provider_key, reason). Write-only (sem model Prisma, como
+-- entity_reference_orphans); consultada em auditoria/testes por SQL bruto.
+CREATE TABLE "data_migration_quarantine" (
+    "id" BIGSERIAL NOT NULL,
+    "source_table" TEXT NOT NULL,
+    "source_row_id" BIGINT,
+    "issue" TEXT NOT NULL,
+    "detail" JSONB NOT NULL,
+    "captured_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "data_migration_quarantine_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX "data_migration_quarantine_issue_idx" ON "data_migration_quarantine"("issue");
+CREATE INDEX "data_migration_quarantine_source_idx" ON "data_migration_quarantine"("source_table", "source_row_id");
+
+-- ============================================================
 -- 2) source_licenses — relacoes verificaveis (RatingSource != ApiProvider)
+--    + HISTORICO imutavel (is_current/supersedes_id) por (fonte, tipo, provider, territorio)
 -- ============================================================
 
--- AlterTable
+-- AlterTable (+ historico imutavel: is_current/supersedes_id/decision_origin/policy_version)
 ALTER TABLE "source_licenses"
   ADD COLUMN "content_type" "SourceLicenseContentType" NOT NULL DEFAULT 'rating',
   ADD COLUMN "rating_source_key" TEXT,
@@ -169,32 +192,48 @@ ALTER TABLE "source_licenses"
   ADD COLUMN "valid_from" TIMESTAMP(3),
   ADD COLUMN "valid_until" TIMESTAMP(3),
   ADD COLUMN "decided_by" TEXT,
-  ADD COLUMN "decided_at" TIMESTAMP(3);
+  ADD COLUMN "decided_at" TIMESTAMP(3),
+  ADD COLUMN "is_current" BOOLEAN NOT NULL DEFAULT true,
+  ADD COLUMN "supersedes_id" BIGINT,
+  ADD COLUMN "decision_origin" TEXT,
+  ADD COLUMN "policy_version" TEXT;
 
--- Backfill idempotente: toda linha existente na Fase 1 e uma licenca de
--- rating conservadora (content_type ja nasce 'rating' por default); liga
--- rating_source_key quando source_key bate com uma fonte editorial real.
+-- Backfill idempotente: liga rating_source_key quando source_key bate com uma
+-- fonte editorial real (content_type ja nasce 'rating' por default).
 UPDATE "source_licenses" sl
 SET "rating_source_key" = sl."source_key"
 WHERE sl."content_type" = 'rating'
   AND sl."rating_source_key" IS NULL
   AND EXISTS (SELECT 1 FROM "rating_sources" rs WHERE rs."key" = sl."source_key");
 
--- Nunca deixa provider_key apontar para um provider inexistente antes de
--- travar a FK (evita que ADD CONSTRAINT falhe a migration inteira).
+-- provider_key INVALIDO (aponta para api_provider inexistente) NAO some em
+-- silencio. (a) QUARENTENA o snapshot + valor antigo; (b) anula a FK; (c) forca
+-- a linha FAIL-CLOSED (display_allowed=false, license_status=unknown). Ordem:
+-- arquivar ANTES de anular.
+INSERT INTO "data_migration_quarantine" ("source_table", "source_row_id", "issue", "detail")
+SELECT 'source_licenses', sl."id", 'source_license_invalid_provider',
+       to_jsonb(sl) || jsonb_build_object(
+         'old_provider_key', sl."provider_key",
+         'reason', 'provider_key nao existe em api_providers; anulado e fail-closed')
+FROM "source_licenses" sl
+WHERE sl."provider_key" IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM "api_providers" ap WHERE ap."key" = sl."provider_key");
+
 UPDATE "source_licenses" sl
-SET "provider_key" = NULL
+SET "provider_key" = NULL, "display_allowed" = false, "license_status" = 'unknown'
 WHERE sl."provider_key" IS NOT NULL
   AND NOT EXISTS (SELECT 1 FROM "api_providers" ap WHERE ap."key" = sl."provider_key");
 
 -- AddForeignKey (RatingSource, ApiProvider e Country sao 3 tabelas DISTINTAS —
--- invariante 2 materializada tambem em source_licenses)
+-- invariante 2) + auto-relacao de historico (supersedes_id).
 ALTER TABLE "source_licenses" ADD CONSTRAINT "source_licenses_rating_source_key_fkey"
   FOREIGN KEY ("rating_source_key") REFERENCES "rating_sources"("key") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "source_licenses" ADD CONSTRAINT "source_licenses_provider_key_fkey"
   FOREIGN KEY ("provider_key") REFERENCES "api_providers"("key") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "source_licenses" ADD CONSTRAINT "source_licenses_territory_code_fkey"
   FOREIGN KEY ("territory_code") REFERENCES "countries"("code") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "source_licenses" ADD CONSTRAINT "source_licenses_supersedes_id_fkey"
+  FOREIGN KEY ("supersedes_id") REFERENCES "source_licenses"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- CHECKs: content_type=rating exige fonte editorial real; rating_source_key e
 -- provider_key nunca podem ser o mesmo literal (nao confunda RatingSource com
@@ -209,21 +248,40 @@ CREATE INDEX "source_licenses_content_type_idx" ON "source_licenses"("content_ty
 CREATE INDEX "source_licenses_rating_source_key_idx" ON "source_licenses"("rating_source_key");
 CREATE INDEX "source_licenses_provider_key_idx" ON "source_licenses"("provider_key");
 CREATE INDEX "source_licenses_territory_code_idx" ON "source_licenses"("territory_code");
+CREATE INDEX "source_licenses_is_current_idx" ON "source_licenses"("is_current");
+CREATE INDEX "source_licenses_supersedes_id_idx" ON "source_licenses"("supersedes_id");
 
--- Substitui o unique parcial antigo (so cobria "1 default por fonte") por uma
--- chave natural funcional que tambem cobre content_type/provider/territorio
--- (NULLs tratados via COALESCE, para provider/territorio "global" contarem
--- como um unico valor natural em vez de "distintos" como o Postgres trata NULL).
+-- HISTORICO imutavel: por (source_key, content_type, provider, territorio),
+-- so a linha mais recente fica is_current=true; duplicatas historicas viram
+-- is_current=false (NENHUMA apagada). Idempotente. Depois: indice unico PARCIAL
+-- garante 1 licenca VIGENTE por grupo (mesmo padrao de PageIndexabilityDecision).
+WITH ranked AS (
+  SELECT "id",
+         ROW_NUMBER() OVER (
+           PARTITION BY "source_key", "content_type",
+                        COALESCE("provider_key", ''), COALESCE("territory_code", '')
+           ORDER BY COALESCE("decided_at", "updated_at", "created_at") DESC, "id" DESC
+         ) AS rn
+  FROM "source_licenses"
+)
+UPDATE "source_licenses" sl
+SET "is_current" = (ranked.rn = 1)
+FROM ranked
+WHERE ranked."id" = sl."id" AND sl."is_current" IS DISTINCT FROM (ranked.rn = 1);
+
 DROP INDEX IF EXISTS "source_licenses_default_unique";
-CREATE UNIQUE INDEX "source_licenses_natural_key"
-  ON "source_licenses" ("source_key", "content_type", COALESCE("provider_key", ''), COALESCE("territory_code", ''));
+CREATE UNIQUE INDEX "source_licenses_current_unique"
+  ON "source_licenses" ("source_key", "content_type", COALESCE("provider_key", ''), COALESCE("territory_code", ''))
+  WHERE "is_current" = true;
 
 -- ============================================================
 -- 3) watch_availability — chave natural + licenca/atribuicao propria
 -- ============================================================
 
--- AlterTable
+-- AlterTable (+ external_offer_id: ID ESTAVEL da oferta na API = identidade
+-- prioritaria; web_url/package/licenca/atribuicao/revisao/fingerprint aprovado).
 ALTER TABLE "watch_availability"
+  ADD COLUMN "external_offer_id" TEXT,
   ADD COLUMN "license_status" "LicenseStatus" NOT NULL DEFAULT 'unknown',
   ADD COLUMN "requires_attribution" BOOLEAN NOT NULL DEFAULT true,
   ADD COLUMN "requires_linkback" BOOLEAN NOT NULL DEFAULT true,
@@ -232,61 +290,126 @@ ALTER TABLE "watch_availability"
   ADD COLUMN "reviewed_at" TIMESTAMP(3),
   ADD COLUMN "reviewed_by" TEXT,
   ADD COLUMN "approved_payload_hash" TEXT,
-  -- URL web (navegador) distinta de deep_link (app); pacote/bundle da oferta
-  -- (ex.: add-on/channel). Nullable e SEM produtor no MVP: preenchidos pela
-  -- ingestao de streaming (Fase 9). NAO entram na chave natural nesta fase
-  -- (todos null hoje); Fase 9 decide se `package` compoe a chave ao modelar
-  -- add-on/bundle com payload real. Ver ADR 0002.
   ADD COLUMN "web_url" TEXT,
   ADD COLUMN "package" TEXT;
 
--- Backfill idempotente de provider_key a partir de provider_name (slug
--- estavel). Reaplicar sobre linhas ja preenchidas nao muda nada (WHERE IS NULL).
--- NAO cobre TODAS as linhas: quando provider_key esta null porque o worker de
--- streaming (services/streaming) nunca recebeu um identificador de provedor da
--- API de origem, o null e um SINAL LEGITIMO ("missing-provider", tratado pelo
--- guardrail de promocao) e NAO deve ser inventado aqui. Por isso este backfill
--- so preenche quando ha um provider_name utilizavel; provider_key permanece
--- opcional na coluna (nunca vira NOT NULL).
-UPDATE "watch_availability"
-SET "provider_key" = NULLIF(regexp_replace(lower(trim("provider_name")), '[^a-z0-9]+', '_', 'g'), '')
-WHERE "provider_key" IS NULL
-  AND "provider_name" IS NOT NULL
-  AND btrim("provider_name") <> '';
+-- provider_key NAO e derivado de provider_name. O nome de exibicao e instavel
+-- (muda, e traduzido, tem acentos/caixa, varia comercialmente, colide entre
+-- marcas). provider_key vem de identificador TECNICO da API / tabela canonica /
+-- mapeamento governado; ausente => permanece NULL (sinal "missing-provider",
+-- nunca inventado). O fallback para provider_name existe SOMENTE na EXPRESSAO de
+-- deduplicacao (funcao abaixo), sem modificar a coluna tecnica.
 
 CREATE INDEX "watch_availability_provider_key_idx" ON "watch_availability"("provider_key");
+CREATE INDEX "watch_availability_external_offer_id_idx" ON "watch_availability"("external_offer_id");
 
--- Dedup ANTES do indice unico (regra: normalizar dados antes de travar a
--- constraint). O gap exato que esta migration corrige e "o sync gera duplicatas
--- indefinidamente": logo, dados legados PODEM ter varias linhas para a MESMA
--- oferta natural. Criar o unique index direto falharia sobre esses duplicados.
--- Mantem-se UMA linha por chave natural, preservando a aprovacao humana:
--- ordena por display_allowed (aprovada primeiro), depois pela observacao mais
--- recente (reviewed_at > updated_at > created_at) e id como desempate; remove as
--- demais. Nenhuma aprovacao humana e perdida se existir em alguma das duplicatas.
--- Idempotente: sem duplicatas, nao remove nada.
-WITH ranked AS (
-  SELECT "id",
-         ROW_NUMBER() OVER (
-           PARTITION BY "entity_type", "entity_id", "country_code", "offer_type",
-                        COALESCE("provider_key", "provider_name"), COALESCE("quality", '')
-           ORDER BY "display_allowed" DESC,
-                    COALESCE("reviewed_at", "updated_at", "created_at") DESC,
-                    "id" DESC
-         ) AS rn
-  FROM "watch_availability"
+-- Fingerprint canonico VERSIONADO ('wa:v1') da IDENTIDADE de uma oferta.
+-- IMMUTABLE => usavel em indice unico funcional. Prioriza o ID externo da API;
+-- na ausencia dele, usa a TUPLA COMPLETA que diferencia ofertas reais: provider
+-- tecnico (+ fallback so-de-comparacao ao provider_name normalizado lower/btrim,
+-- acentos preservados => "Max" != "Max" acentuado), modalidade, package,
+-- qualidade, preco+moeda, deep_link, web_url e validade. Ofertas legitimamente
+-- distintas por package/preco/validade/URL NUNCA colapsam. Delimitador chr(31)
+-- (unit separator) evita colisao entre campos. Trocar o algoritmo = nova versao
+-- ('wa:v2') em migration dedicada que reconstroi o indice. Ver ADR 0002.
+CREATE OR REPLACE FUNCTION watch_offer_fingerprint(
+  p_external_offer_id TEXT,
+  p_entity_type "EntityType",
+  p_entity_id BIGINT,
+  p_country_code TEXT,
+  p_offer_type "OfferType",
+  p_provider_key TEXT,
+  p_provider_name TEXT,
+  p_package TEXT,
+  p_quality TEXT,
+  p_price NUMERIC,
+  p_currency TEXT,
+  p_deep_link TEXT,
+  p_web_url TEXT,
+  p_available_from TIMESTAMP,
+  p_available_until TIMESTAMP
+) RETURNS TEXT AS $$
+  SELECT md5(
+    'wa:v1' || chr(31) ||
+    p_entity_type::text || chr(31) || p_entity_id::text || chr(31) ||
+    lower(btrim(p_country_code)) || chr(31) ||
+    CASE
+      WHEN p_external_offer_id IS NOT NULL AND btrim(p_external_offer_id) <> ''
+        THEN 'id' || chr(31) || btrim(p_external_offer_id)
+      ELSE 'fp' || chr(31) ||
+        p_offer_type::text || chr(31) ||
+        COALESCE(p_provider_key, '') || chr(31) ||
+        COALESCE(lower(btrim(p_provider_name)), '') || chr(31) ||
+        COALESCE(lower(btrim(p_package)), '') || chr(31) ||
+        COALESCE(lower(btrim(p_quality)), '') || chr(31) ||
+        COALESCE(p_price::text, '') || chr(31) ||
+        COALESCE(lower(btrim(p_currency)), '') || chr(31) ||
+        COALESCE(btrim(p_deep_link), '') || chr(31) ||
+        COALESCE(btrim(p_web_url), '') || chr(31) ||
+        COALESCE(p_available_from::text, '') || chr(31) ||
+        COALESCE(p_available_until::text, '')
+    END
+  );
+$$ LANGUAGE sql IMMUTABLE;
+
+-- Dedup ANTES do indice unico, com PRESERVACAO INTEGRAL. So colapsa linhas com
+-- fingerprint IDENTICO (mesma identidade) — ofertas distintas por
+-- package/preco/validade/URL tem fingerprints diferentes e NAO sao tocadas.
+-- Survivor = aprovada + observacao mais recente. TODAS as removidas vao para
+-- data_migration_quarantine com snapshot JSONB completo + surviving_id +
+-- fingerprint (statement unico: arquiva-antes-de-apagar, atomico).
+WITH fp AS (
+  SELECT wa."id", wa."display_allowed", wa."reviewed_at", wa."updated_at", wa."created_at",
+         watch_offer_fingerprint(wa."external_offer_id", wa."entity_type", wa."entity_id",
+           wa."country_code", wa."offer_type", wa."provider_key", wa."provider_name",
+           wa."package", wa."quality", wa."price", wa."currency", wa."deep_link",
+           wa."web_url", wa."available_from", wa."available_until") AS fingerprint
+  FROM "watch_availability" wa
+),
+ranked AS (
+  SELECT "id", fingerprint,
+         ROW_NUMBER() OVER (PARTITION BY fingerprint
+           ORDER BY "display_allowed" DESC, COALESCE("reviewed_at", "updated_at", "created_at") DESC, "id" DESC) AS rn,
+         first_value("id") OVER (PARTITION BY fingerprint
+           ORDER BY "display_allowed" DESC, COALESCE("reviewed_at", "updated_at", "created_at") DESC, "id" DESC) AS survivor_id
+  FROM fp
+),
+dupes AS (SELECT "id", fingerprint, survivor_id FROM ranked WHERE rn > 1),
+archived AS (
+  INSERT INTO "data_migration_quarantine" ("source_table", "source_row_id", "issue", "detail")
+  SELECT 'watch_availability', wa."id", 'watch_dedup_removed',
+         to_jsonb(wa) || jsonb_build_object(
+           'surviving_id', d.survivor_id,
+           'dedupe_fingerprint', d.fingerprint,
+           'reason', 'oferta com fingerprint identico a survivor')
+  FROM "watch_availability" wa JOIN dupes d ON d."id" = wa."id"
+  RETURNING 1
 )
-DELETE FROM "watch_availability" wa
-USING ranked
-WHERE ranked."id" = wa."id" AND ranked.rn > 1;
+DELETE FROM "watch_availability" wa USING dupes d WHERE wa."id" = d."id";
 
--- Chave natural de deduplicacao: o sync nunca gera duplicatas indefinidamente
--- para a mesma oferta. Quando provider_key falta, cai para provider_name
--- (sempre preenchido) em vez de colapsar ofertas de plataformas DIFERENTES
--- (ex.: "Max" e "Prime Video" ambos sem provider_key) na mesma linha; quality
--- ausente e tratado como um unico valor "sem qualidade informada".
-CREATE UNIQUE INDEX "watch_availability_natural_key"
-  ON "watch_availability" ("entity_type", "entity_id", "country_code", "offer_type", COALESCE("provider_key", "provider_name"), COALESCE("quality", ''));
+-- FAIL-CLOSED: uma oferta so aparece publicamente se o payload aprovado
+-- (approved_payload_hash) corresponder EXATAMENTE a identidade atual (fingerprint).
+-- Aprovacao NAO sobrevive a um payload diferente. Legado: hash null +
+-- display_allowed false => nada muda. (Enforcement PERMANENTE por CHECK, com o
+-- CLI de promocao setando approved_payload_hash = fingerprint, fica para a
+-- Fase 9 — o CLI mergeado antecede esta coluna. Ver ADR 0002.)
+UPDATE "watch_availability" wa
+SET "display_allowed" = false
+WHERE wa."display_allowed" = true
+  AND (wa."approved_payload_hash" IS NULL
+       OR wa."approved_payload_hash" IS DISTINCT FROM watch_offer_fingerprint(
+         wa."external_offer_id", wa."entity_type", wa."entity_id", wa."country_code",
+         wa."offer_type", wa."provider_key", wa."provider_name", wa."package",
+         wa."quality", wa."price", wa."currency", wa."deep_link", wa."web_url",
+         wa."available_from", wa."available_until"));
+
+-- Indice unico sobre a IDENTIDADE (fingerprint funcional). Ofertas distintas
+-- nao colidem; verdadeiras duplicatas (mesma identidade) sim.
+CREATE UNIQUE INDEX "watch_availability_offer_identity"
+  ON "watch_availability" (watch_offer_fingerprint(
+    "external_offer_id", "entity_type", "entity_id", "country_code", "offer_type",
+    "provider_key", "provider_name", "package", "quality", "price", "currency",
+    "deep_link", "web_url", "available_from", "available_until"));
 
 -- ============================================================
 -- 4) page_indexability_decisions — decisao vigente inequivoca + historico
@@ -304,10 +427,25 @@ ALTER TABLE "page_indexability_decisions"
 ALTER TABLE "page_indexability_decisions" ADD CONSTRAINT "page_indexability_decisions_supersedes_id_fkey"
   FOREIGN KEY ("supersedes_id") REFERENCES "page_indexability_decisions"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
--- Backfill idempotente: preserva HISTORICO (nenhuma linha e apagada). Para
--- cada (entity_type, entity_id, language_code), so a linha mais recente
--- (decided_at, com created_at/id como desempate) fica is_current=true; as
--- demais (se existirem duplicatas historicas) viram is_current=false.
+-- Backfill da CADEIA historica: para cada (entity_type, entity_id, language_code),
+-- ordena cronologicamente e liga CADA decisao a IMEDIATAMENTE ANTERIOR
+-- (supersedes_id = id da anterior; a mais antiga fica NULL). Constroi a cadeia
+-- de verdade, nao so marca a atual. Idempotente. Nenhuma linha apagada.
+WITH ordered AS (
+  SELECT "id",
+         LAG("id") OVER (
+           PARTITION BY "entity_type", "entity_id", "language_code"
+           ORDER BY COALESCE("decided_at", "created_at") ASC, "id" ASC
+         ) AS prev_id
+  FROM "page_indexability_decisions"
+)
+UPDATE "page_indexability_decisions" pid
+SET "supersedes_id" = ordered.prev_id
+FROM ordered
+WHERE ordered."id" = pid."id" AND pid."supersedes_id" IS DISTINCT FROM ordered.prev_id;
+
+-- Backfill de is_current: so a mais recente por grupo fica vigente; as demais
+-- viram is_current=false (historico preservado).
 WITH ranked AS (
   SELECT "id",
          ROW_NUMBER() OVER (
@@ -329,6 +467,28 @@ CREATE UNIQUE INDEX "page_indexability_decisions_current_unique"
 
 CREATE INDEX "page_indexability_decisions_is_current_idx" ON "page_indexability_decisions"("is_current");
 CREATE INDEX "page_indexability_decisions_supersedes_id_idx" ON "page_indexability_decisions"("supersedes_id");
+
+-- Guarda ESTRUTURAL: supersedes_id so pode apontar para uma decisao do MESMO
+-- (entity_type, entity_id, language_code). Impede encadear historico de outra
+-- entidade/idioma (uma FK simples nao expressa isso).
+CREATE OR REPLACE FUNCTION page_indexability_supersedes_same_group() RETURNS trigger AS $$
+BEGIN
+  IF NEW."supersedes_id" IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM "page_indexability_decisions" p
+    WHERE p."id" = NEW."supersedes_id"
+      AND p."entity_type" = NEW."entity_type"
+      AND p."entity_id" = NEW."entity_id"
+      AND p."language_code" = NEW."language_code"
+  ) THEN
+    RAISE EXCEPTION 'supersedes_id % deve referenciar decisao do mesmo (entity_type, entity_id, language_code)', NEW."supersedes_id";
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER "page_indexability_decisions_supersedes_guard"
+  BEFORE INSERT OR UPDATE ON "page_indexability_decisions"
+  FOR EACH ROW EXECUTE FUNCTION page_indexability_supersedes_same_group();
 
 -- ============================================================
 -- 5) articles / article_translations — coerencia editorial

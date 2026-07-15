@@ -40,13 +40,19 @@ async function main(): Promise<void> {
     await prisma.apiProvider.upsert({ where: { key: provider.key }, update: provider, create: provider });
   }
 
-  // source_licenses nao tem chave natural unica simples (unique funcional
-  // sourceKey+contentType+COALESCE(providerKey,'')+COALESCE(territoryCode,''));
-  // upsert manual por sourceKey + contentType + providerKey null (linhas de
-  // seed sao sempre licencas de rating globais, sem provider/territorio).
+  // source_licenses e HISTORICO: unico apenas para a licenca VIGENTE (indice
+  // parcial WHERE is_current). Upsert manual pela licenca VIGENTE de
+  // (sourceKey, contentType, providerKey null, territoryCode null) — linhas de
+  // seed sao licencas de rating globais. Nunca sobrescreve historico (is_current=false).
   for (const license of SOURCE_LICENSE_SEED) {
     const existing = await prisma.sourceLicense.findFirst({
-      where: { sourceKey: license.sourceKey, contentType: license.contentType, providerKey: null },
+      where: {
+        sourceKey: license.sourceKey,
+        contentType: license.contentType,
+        providerKey: null,
+        territoryCode: null,
+        isCurrent: true,
+      },
     });
     if (existing) {
       await prisma.sourceLicense.update({ where: { id: existing.id }, data: license });
