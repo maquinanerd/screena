@@ -13,7 +13,14 @@
  */
 
 import type { CachePort, SyncLogPort, SyncStatus } from '../ports.js'
+import { normalizeGenres, type GenresStorePort } from '../catalog-sync/genres-normalize.js'
 import { normalizeImageConfig, type ImageConfigRow } from './normalize.js'
+
+/** Endpoints de genero -> media_type normalizado. */
+const GENRE_MEDIA: Readonly<Record<string, 'movie' | 'tv'>> = {
+  '/genre/movie/list': 'movie',
+  '/genre/tv/list': 'tv',
+}
 
 /** Porta de leitura das taxonomias TMDB (client real ou fake de teste). */
 export interface TaxonomyReadPort {
@@ -62,6 +69,8 @@ export interface TaxonomySyncDeps {
   readonly cache: CachePort
   readonly log: SyncLogPort
   readonly imageConfigStore: ImageConfigStorePort
+  /** Opcional: quando presente, normaliza /genre/{movie,tv}/list em `genres`. */
+  readonly genresStore?: GenresStorePort
   readonly now: () => Date
 }
 
@@ -77,6 +86,7 @@ export interface TaxonomyEndpointResult {
 export interface TaxonomySyncSummary {
   readonly endpoints: TaxonomyEndpointResult[]
   readonly imageConfig: { readonly normalized: boolean; readonly created: boolean; readonly changed: boolean }
+  readonly genres: { readonly normalized: number; readonly created: number; readonly updated: number }
 }
 
 const CONFIG_ENDPOINT = '/configuration'
@@ -95,6 +105,7 @@ function errorCode(err: unknown): string {
 export async function runTaxonomySync(deps: TaxonomySyncDeps): Promise<TaxonomySyncSummary> {
   const endpoints: TaxonomyEndpointResult[] = []
   let imageConfig = { normalized: false, created: false, changed: false }
+  const genres = { normalized: 0, created: 0, updated: 0 }
 
   for (const spec of TAXONOMY_ENDPOINTS) {
     let status: SyncStatus = 'success'
@@ -119,7 +130,8 @@ export async function runTaxonomySync(deps: TaxonomySyncDeps): Promise<TaxonomyS
       continue
     }
 
-    // Normalizacao do /configuration (unico com destino normalizado nesta fase).
+    // Normalizacao: /configuration -> tmdb_image_config; /genre/* -> genres.
+    const genreMedia = GENRE_MEDIA[spec.endpoint]
     let itemsCreated = 0
     let itemsUpdated = 0
     if (spec.endpoint === CONFIG_ENDPOINT) {
@@ -132,6 +144,17 @@ export async function runTaxonomySync(deps: TaxonomySyncDeps): Promise<TaxonomyS
         itemsCreated = outcome.created ? 1 : 0
         itemsUpdated = !outcome.created && outcome.changed ? 1 : 0
         imageConfig = { normalized: true, created: outcome.created, changed: outcome.changed }
+      }
+    } else if (deps.genresStore && genreMedia) {
+      // Normalizacao de generos (Fase 6): /genre/{movie,tv}/list -> `genres`.
+      const rows = normalizeGenres(genreMedia, data)
+      if (rows.length > 0) {
+        const outcome = await deps.genresStore.upsert(rows)
+        itemsCreated = outcome.created
+        itemsUpdated = outcome.updated
+        genres.normalized += rows.length
+        genres.created += outcome.created
+        genres.updated += outcome.updated
       }
     }
 
@@ -146,5 +169,5 @@ export async function runTaxonomySync(deps: TaxonomySyncDeps): Promise<TaxonomyS
     endpoints.push({ endpoint: spec.endpoint, status, changed, fromCache })
   }
 
-  return { endpoints, imageConfig }
+  return { endpoints, imageConfig, genres }
 }
