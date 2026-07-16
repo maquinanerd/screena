@@ -27,7 +27,8 @@
     "validate:movie-page": "corepack pnpm --filter @screena/web validate:movie-page",
     "validate:series-page": "corepack pnpm --filter @screena/web validate:series-page",
     "validate:person-page": "corepack pnpm --filter @screena/web validate:person-page",
-    "validate:all": "corepack pnpm --filter @screena/web validate:all"
+    "validate:all": "corepack pnpm --filter @screena/web validate:all",
+    "catalog": "corepack pnpm --filter @screena/ingestion catalog"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
