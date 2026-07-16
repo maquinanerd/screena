@@ -40,13 +40,32 @@ describe('SyncDetailsHandler', () => {
     expect(fakes.calls.detail[0]?.tmdbId).toBe(603)
     expect(result.created).toBe(true)
 
-    // movie => credits + external_ids + media (sem seasons).
+    // movie => so sync_media. credits/external_ids JA vieram no append do
+    // detalhe: enfileira-los seria refetch da mesma cota pelo mesmo dado.
     const types = fakes.store.enqueued.map((j) => j.jobType).sort()
-    expect(types).toEqual(['sync_credits', 'sync_external_ids', 'sync_media'])
-    expect(result.enqueued).toBe(3)
+    expect(types).toEqual(['sync_media'])
+    expect(result.enqueued).toBe(1)
   })
 
-  it('para tv tambem enfileira sync_seasons', async () => {
+  it('nao enfileira credits/external_ids (o append do detalhe ja os trouxe)', async () => {
+    const fakes = createHandlerFakes()
+    const handler = new SyncDetailsHandler({
+      detailSync: fakes.deps.detailSync,
+      store: fakes.store,
+      search: fakes.deps.search,
+    })
+
+    await handler.execute(
+      createFakeContext().context,
+      handler.validateInput({ entityType: 'tv', tmdbId: 1399 }),
+    )
+
+    const types = fakes.store.enqueued.map((j) => j.jobType)
+    expect(types).not.toContain('sync_credits')
+    expect(types).not.toContain('sync_external_ids')
+  })
+
+  it('para tv tambem enfileira sync_seasons (nivel de episodio nao vem no append)', async () => {
     const fakes = createHandlerFakes()
     const handler = new SyncDetailsHandler({
       detailSync: fakes.deps.detailSync,
@@ -58,12 +77,7 @@ describe('SyncDetailsHandler', () => {
     const input = handler.validateInput({ entityType: 'tv', tmdbId: 1399, locale: 'pt-BR' })
     await handler.execute(context, input)
 
-    expect(fakes.store.enqueued.map((j) => j.jobType).sort()).toEqual([
-      'sync_credits',
-      'sync_external_ids',
-      'sync_media',
-      'sync_seasons',
-    ])
+    expect(fakes.store.enqueued.map((j) => j.jobType).sort()).toEqual(['sync_media', 'sync_seasons'])
   })
 
   it('detalhe pulado NAO enfileira dependencia (nao teriam dono)', async () => {
@@ -121,9 +135,9 @@ describe('SyncDetailsHandler', () => {
     const first = await handler.execute(createFakeContext().context, input)
     const second = await handler.execute(createFakeContext().context, input)
 
-    expect(first.enqueued).toBe(3)
+    expect(first.enqueued).toBe(1)
     expect(second.enqueued).toBe(0) // chaves ja existiam
-    expect(fakes.store.enqueued).toHaveLength(3)
+    expect(fakes.store.enqueued).toHaveLength(1)
   })
 
   it('propaga o erro do servico e conta a falha por classe', async () => {
@@ -532,6 +546,49 @@ describe('SyncChangesHandler', () => {
 
     expect(() => handler.validateInput({ from: '2026-02-31' })).toThrow(CatalogJobInputError)
     expect(() => handler.validateInput({ from: '16-07-2026' })).toThrow(CatalogJobInputError)
+  })
+
+  // REGRESSAO: o payload enfileirado por /changes vinha com apenas
+  // { reason, window } — entityType/tmdbId iam so como COLUNAS do job, e o
+  // handler valida o PAYLOAD. Resultado: todo sync_details vindo do incremental
+  // falhava validateInput e ia DIRETO para dead-letter; o /changes inteiro
+  // virava fila morta. So apareceu ao rodar a fila ponta a ponta.
+  it('o payload que /changes enfileira PASSA no validador de sync_details', async () => {
+    const fakes = createHandlerFakes()
+    fakes.setChangesPages({
+      movie: [{ results: [{ id: 603 }], page: 1, total_pages: 1 }],
+    })
+    const changes = new SyncChangesHandler({ changes: fakes.deps.changes })
+    await changes.execute(
+      createFakeContext().context,
+      changes.validateInput({ kinds: ['movie'], from: '2026-07-15', to: '2026-07-16' }),
+    )
+
+    const enqueued = fakes.store.enqueued.find((j) => j.jobType === 'sync_details')
+    expect(enqueued).toBeDefined()
+
+    const details = new SyncDetailsHandler({
+      detailSync: fakes.deps.detailSync,
+      store: fakes.store,
+      search: fakes.deps.search,
+    })
+    const parsed = details.validateInput(enqueued?.payload)
+    expect(parsed.entityType).toBe('movie')
+    expect(parsed.tmdbId).toBe(603)
+  })
+
+  it('propaga o locale para o payload dos jobs de re-sync', async () => {
+    const fakes = createHandlerFakes()
+    fakes.setChangesPages({ movie: [{ results: [{ id: 1 }], page: 1, total_pages: 1 }] })
+    const changes = new SyncChangesHandler({ changes: fakes.deps.changes })
+
+    await changes.execute(
+      createFakeContext().context,
+      changes.validateInput({ kinds: ['movie'], from: '2026-07-15', to: '2026-07-16' }),
+    )
+
+    const payload = fakes.store.enqueued[0]?.payload as { locale?: string }
+    expect(payload.locale).toBe('pt-BR')
   })
 })
 

@@ -75,14 +75,14 @@ export function createPrismaAuditReader(prisma) {
 
         // Cobertura e medida sobre as entidades DISTINTAS que tem midia, nao
         // sobre a contagem de linhas de midia: 40 posteres de 1 filme nao sao
-        // "40 filmes cobertos".
+        // "40 filmes cobertos". A chave da midia e `tmdbId` (nao um id interno).
         const withImagesRows = await prisma.tmdbImage.groupBy({
-          by: ['entityId'],
+          by: ['tmdbId'],
           where: { entityType: kind },
         })
         const withTrailerRows = await prisma.tmdbVideo.groupBy({
-          by: ['entityId'],
-          where: { entityType: kind, type: 'Trailer' },
+          by: ['tmdbId'],
+          where: { entityType: kind, videoType: 'Trailer' },
         })
 
         const withImages = withImagesRows.length

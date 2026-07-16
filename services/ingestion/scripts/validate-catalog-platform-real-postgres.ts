@@ -26,9 +26,18 @@ import EmbeddedPostgres from 'embedded-postgres'
 import { PrismaClient } from '@prisma/client'
 import { createPrismaCatalogJobStore } from '../src/persistence/catalog-job-store.js'
 import { createPrismaSearchStore } from '../src/persistence/search-store.js'
+import { createPrismaDiscoverySnapshotStore } from '../src/persistence/discovery-snapshot-store.js'
+import { createPrismaChangesCheckpoint } from '../src/persistence/changes-checkpoint-store.js'
+import { createPrismaAuditReader } from '../src/persistence/audit-reader.js'
 import { buildIdempotencyKey } from '../src/catalog-jobs/idempotency.js'
 import { planFailure } from '../src/catalog-jobs/transitions.js'
 import { buildSearchDocument } from '../src/search/projection.js'
+import { createCatalogHandlerRegistry } from '../src/catalog-jobs/handlers/registry.js'
+import { ALLOWED_METRIC_LABELS } from '../src/catalog-jobs/handlers/support.js'
+import { runCatalogWorker } from '../src/catalog-jobs/worker.js'
+import { CATALOG_JOB_TYPES } from '../src/catalog-jobs/types.js'
+import { CATALOG_METRIC_NAMES, createInMemoryMetricsSink } from '../src/metrics/index.js'
+import { evaluateAuditGate, formatAuditReport, runDatabaseAudit } from '../src/audit/index.js'
 
 const require = createRequire(import.meta.url)
 const scriptDir = path.dirname(fileURLToPath(import.meta.url))
@@ -478,9 +487,360 @@ async function runChecks(url: string): Promise<void> {
       blankTerm.length === 0,
       `results=${blankTerm.length}`,
     )
+
+    await runPipelineChecks(prisma, url)
   } finally {
     await prisma.$disconnect()
   }
+}
+
+/**
+ * Checks do PIPELINE OPERACIONAL: registry completo, worker executando handlers
+ * REAIS contra o banco real, bootstrap idempotente/resume, changes com commit e
+ * rollback transacional, snapshots com hash-noop e auditoria read-only.
+ *
+ * Nenhum destes toca TMDB/RapidAPI/Gemini: os servicos entram por fakes
+ * determinísticos. O que se prova aqui e a fronteira com o PostgreSQL — claim
+ * concorrente, transacao, unique, checkpoint — que so o banco real garante.
+ */
+async function runPipelineChecks(prisma: PrismaClient, url: string): Promise<void> {
+  const store = createPrismaCatalogJobStore(prisma)
+  const snapshots = createPrismaDiscoverySnapshotStore(prisma)
+  const checkpoint = createPrismaChangesCheckpoint(prisma)
+  const metrics = createInMemoryMetricsSink()
+
+  console.log('\n--- pipeline operacional (handlers reais) ---')
+
+  // Os checks da fila (1-15) deixam jobs de sonda em `pending`/`retry_wait` — e
+  // `retry_wait` E claimable. Sem limpar, o worker deste bloco reivindicaria
+  // aquelas sondas (payload de teste) em vez dos jobs do pipeline, e o resultado
+  // seria ruido, nao sinal. Banco efemero: truncar aqui e seguro e deixa os
+  // checks abaixo determinísticos.
+  await prisma.catalogJob.deleteMany({})
+  await prisma.discoverySnapshot.deleteMany({})
+  await prisma.tmdbSyncCheckpoint.deleteMany({})
+
+  // Servicos fake: determinísticos, sem rede. O alvo do teste e o caminho ate o
+  // banco, nao o provider.
+  const calls = { detail: 0, media: 0, lists: 0, changes: 0 }
+  const deps = {
+    store,
+    detailSync: {
+      async syncDetail({ tmdbId }: { tmdbId: number }) {
+        calls.detail += 1
+        return {
+          created: true,
+          updated: false,
+          unchanged: false,
+          entityId: String(tmdbId),
+          skipped: false,
+          skipReason: null,
+        }
+      },
+    },
+    creditsSync: {
+      async syncCredits() {
+        return { cast: 1, crew: 1, guestStars: 0, skipped: false, skipReason: null }
+      },
+    },
+    externalIdsSync: {
+      async syncExternalIds() {
+        return { upserted: 1, changed: 0, skipped: false, skipReason: null }
+      },
+    },
+    mediaSync: {
+      async syncMedia() {
+        calls.media += 1
+        return { images: 2, videos: 1, skipped: false, skipReason: null }
+      },
+    },
+    seasonsSync: {
+      async syncSeasons() {
+        return { seasons: 1, episodes: 0, seasonNumbers: [1], skipped: false, skipReason: null }
+      },
+    },
+    episodesSync: {
+      async syncEpisodes() {
+        return {
+          episodes: 1,
+          cast: 1,
+          guestStars: 1,
+          crew: 1,
+          externalIds: 1,
+          stills: 1,
+          skippedNoTmdbId: 0,
+          skipped: false,
+          skipReason: null,
+        }
+      },
+    },
+    discovery: {
+      async discover() {
+        return { discovered: 2, accepted: 2, rejectedAdult: 1, duplicate: 0, ids: [603, 604] }
+      },
+    },
+    reprocessRaw: {
+      async reprocess() {
+        return { scanned: 0, promoted: 0, unchanged: 0, skipped: 0, failed: 0, dryRun: true }
+      },
+    },
+    listFetch: {
+      async fetchPage({ page }: { page: number }) {
+        calls.lists += 1
+        return page === 1
+          ? { results: [{ id: 603, popularity: 9 }, { id: 604, popularity: 8 }], page: 1, total_pages: 1 }
+          : { results: [], page, total_pages: 1 }
+      },
+    },
+    snapshots,
+    changes: {
+      async fetchChanges(_kind: string, params: { page: number }) {
+        calls.changes += 1
+        return { results: [{ id: 603 }, { id: 604 }], page: params.page, total_pages: 1 }
+      },
+      checkpoint,
+      now: () => new Date('2026-07-16T00:00:00.000Z'),
+    },
+    search: {
+      async reindexEntity() {},
+    },
+    now: () => new Date('2026-07-16T12:00:00.000Z'),
+  }
+
+  const registry = createCatalogHandlerRegistry(deps as never)
+  record(
+    'registry de producao registra os 11 tipos do enum',
+    registry.types().length === 11 && CATALOG_JOB_TYPES.every((t) => registry.has(t)),
+    `types=${registry.types().length}`,
+  )
+
+  // --- bootstrap: enfileira e retoma sem duplicar -------------------------
+  const bootstrapJob = await store.enqueue({
+    jobType: 'bootstrap',
+    idempotencyKey: buildIdempotencyKey({ jobType: 'bootstrap', discriminator: 'validator' }),
+    payload: { strategy: 'daily-exports', entityTypes: ['movie'], locale: 'pt-BR' },
+    runId: 'validator-run',
+  })
+  record('bootstrap enfileirado', bootstrapJob.created, `id=${bootstrapJob.id}`)
+
+  const worker1 = await runCatalogWorker(
+    { store, registry, metrics },
+    { concurrency: 1, maxJobs: 1, drain: true, runId: 'validator' },
+  )
+  record(
+    'worker executa o bootstrap real (handler, nao no_handler)',
+    worker1.succeeded === 1 && worker1.deadLettered === 0,
+    `ok=${worker1.succeeded} dead=${worker1.deadLettered}`,
+  )
+
+  const afterBootstrap = await prisma.catalogJob.count({ where: { jobType: 'discover_ids' } })
+  record(
+    'bootstrap enfileirou discover_ids de verdade',
+    afterBootstrap === 1,
+    `discover_ids=${afterBootstrap}`,
+  )
+
+  const listJobs = await prisma.catalogJob.count({ where: { jobType: 'sync_lists' } })
+  record('bootstrap enfileirou snapshots de lista', listJobs > 0, `sync_lists=${listJobs}`)
+
+  // Resume: mesmo requestId => tudo vira noop idempotente (nenhuma duplicata).
+  const replayBootstrap = await store.enqueue({
+    jobType: 'bootstrap',
+    idempotencyKey: buildIdempotencyKey({ jobType: 'bootstrap', discriminator: 'validator' }),
+    payload: {},
+  })
+  record(
+    'bootstrap idempotente: mesma chave nao duplica',
+    !replayBootstrap.created,
+    `created=${replayBootstrap.created}`,
+  )
+
+  // --- cascata: discover_ids -> sync_details -> sync_media ----------------
+  const worker2 = await runCatalogWorker(
+    { store, registry, metrics },
+    { concurrency: 2, maxJobs: 40, drain: true, runId: 'validator' },
+  )
+  record(
+    'worker drena a cascata sem dead-letter',
+    worker2.deadLettered === 0,
+    `claimed=${worker2.claimed} ok=${worker2.succeeded} dead=${worker2.deadLettered}`,
+  )
+  record(
+    'discover_ids enfileirou sync_details reais',
+    (await prisma.catalogJob.count({ where: { jobType: 'sync_details' } })) === 2,
+    `sync_details=${await prisma.catalogJob.count({ where: { jobType: 'sync_details' } })}`,
+  )
+  record(
+    'sync_details chamou o servico e enfileirou sync_media',
+    calls.detail === 2 && (await prisma.catalogJob.count({ where: { jobType: 'sync_media' } })) === 2,
+    `detail=${calls.detail} media_jobs=${await prisma.catalogJob.count({ where: { jobType: 'sync_media' } })}`,
+  )
+  record('sync_media executou o servico real', calls.media === 2, `media=${calls.media}`)
+
+  // --- snapshot: criado, e hash-noop na repeticao -------------------------
+  const snapshotRows = await prisma.discoverySnapshot.count()
+  record('sync_lists persistiu snapshot no banco', snapshotRows > 0, `snapshots=${snapshotRows}`)
+
+  const listsHandler = registry.get('sync_lists')
+  const listCtx = {
+    jobId: 'inline', requestId: 'validator', attempt: 1,
+    signal: new AbortController().signal,
+    heartbeat: async () => {}, log: { log: () => {} }, metrics,
+  }
+  const firstSnap = await listsHandler!.execute(
+    listCtx as never,
+    listsHandler!.validateInput({ listType: 'popular', entityType: 'movie', locale: 'pt-BR' }) as never,
+  )
+  const secondSnap = await listsHandler!.execute(
+    listCtx as never,
+    listsHandler!.validateInput({ listType: 'popular', entityType: 'movie', locale: 'pt-BR' }) as never,
+  )
+  record(
+    'snapshot hash-noop: lista inalterada nao cria snapshot novo',
+    (secondSnap as { created: boolean }).created === false,
+    `first=${(firstSnap as { created: boolean }).created} second=${(secondSnap as { created: boolean }).created}`,
+  )
+
+  // --- changes: commit atomico, checkpoint e retomada ---------------------
+  const changesHandler = registry.get('sync_changes')
+  const changesCtx = { ...listCtx, jobId: 'inline-changes' }
+  const changesReport = (await changesHandler!.execute(
+    changesCtx as never,
+    changesHandler!.validateInput({ kinds: ['movie'], from: '2026-07-15', to: '2026-07-16' }) as never,
+  )) as { totalEnqueued: number }
+  record(
+    'changes executa e enfileira re-sync dos ids alterados',
+    changesReport.totalEnqueued > 0,
+    `enqueued=${changesReport.totalEnqueued}`,
+  )
+
+  const cp = await prisma.tmdbSyncCheckpoint.findFirst({ where: { job: 'changes:movie' } })
+  record(
+    'checkpoint de changes gravado apos o commit',
+    cp !== null && cp.done === true,
+    `job=${cp?.job} lastPage=${cp?.lastPage} done=${cp?.done}`,
+  )
+
+  const replayChanges = (await changesHandler!.execute(
+    changesCtx as never,
+    changesHandler!.validateInput({ kinds: ['movie'], from: '2026-07-15', to: '2026-07-16' }) as never,
+  )) as { kinds: readonly { skipped: boolean }[] }
+  record(
+    'changes: janela ja concluida e noop na reexecucao',
+    replayChanges.kinds[0]?.skipped === true,
+    `skipped=${replayChanges.kinds[0]?.skipped}`,
+  )
+
+  // ROLLBACK: o commit e uma transacao unica (jobs + checkpoint). Se ela falha,
+  // o checkpoint NAO pode avancar — senao a janela seria dada como processada
+  // sem os jobs existirem, e a retomada pularia dados de verdade.
+  const before = await prisma.tmdbSyncCheckpoint.findFirst({ where: { job: 'changes:tv' } })
+  let rolledBack = false
+  try {
+    await checkpoint.commit({
+      job: 'changes:tv',
+      paramsHash: '2026-07-15:2026-07-16',
+      lastPage: 1,
+      totalPages: 1,
+      done: true,
+      cursor: '2026-07-15:2026-07-16',
+      // idempotencyKey null viola NOT NULL => a transacao inteira aborta.
+      enqueue: [{ jobType: 'sync_details', idempotencyKey: null as never, entityType: 'tv', externalId: '1' }],
+    })
+  } catch {
+    rolledBack = true
+  }
+  const after = await prisma.tmdbSyncCheckpoint.findFirst({ where: { job: 'changes:tv' } })
+  record(
+    'changes rollback: falha no lote NAO avanca o checkpoint',
+    rolledBack && after?.lastPage === before?.lastPage,
+    `rolledBack=${rolledBack} before=${before?.lastPage ?? 'null'} after=${after?.lastPage ?? 'null'}`,
+  )
+
+  // --- metricas ----------------------------------------------------------
+  const jobsTotal = metrics
+    .samples()
+    .filter((s) => s.name === CATALOG_METRIC_NAMES.jobsTotal)
+    .reduce((sum, s) => sum + s.value, 0)
+  record('metricas emitidas no fluxo real', jobsTotal > 0, `catalog_jobs_total=${jobsTotal}`)
+
+  const labelKeys = new Set<string>()
+  for (const sample of metrics.samples()) for (const k of Object.keys(sample.labels)) labelKeys.add(k)
+  const forbidden = [...labelKeys].filter(
+    (k) => !(ALLOWED_METRIC_LABELS as readonly string[]).includes(k),
+  )
+  record(
+    'nenhuma label de metrica de alta cardinalidade',
+    forbidden.length === 0,
+    forbidden.length === 0 ? `labels=${[...labelKeys].join(',')}` : `proibidas=${forbidden.join(',')}`,
+  )
+
+  // --- dead-letter: payload invalido vira dead-letter, e replay volta -----
+  // Limpa a fila: os checks acima deixam jobs de /changes pendentes, e o teste
+  // abaixo conta dead-letters — precisa de estado conhecido.
+  await prisma.catalogJob.deleteMany({})
+  await store.enqueue({
+    jobType: 'reprocess_raw',
+    idempotencyKey: 'validator:dead-letter-probe',
+    payload: { entityType: 'nope' }, // input invalido => falha PERMANENTE
+    maxAttempts: 3,
+  })
+  const worker3 = await runCatalogWorker(
+    { store, registry, metrics },
+    { concurrency: 1, maxJobs: 5, drain: true, runId: 'validator' },
+  )
+  record(
+    'payload invalido vai DIRETO para dead-letter (sem gastar retry)',
+    worker3.deadLettered === 1 && worker3.failedPermanently === 1,
+    `dead=${worker3.deadLettered} permanent=${worker3.failedPermanently}`,
+  )
+
+  const dl = await store.listDeadLetter(10)
+  record('dead-letter listado', dl.length === 1, `entries=${dl.length}`)
+
+  const replayedNone = await store.replayDeadLetter([])
+  record(
+    'replayDeadLetter([]) e noop (nao reprocessa tudo por engano)',
+    replayedNone === 0,
+    `replayed=${replayedNone}`,
+  )
+
+  const replayed = await store.replayDeadLetter(dl.map((d) => d.id))
+  record('replay reenfileira o dead-letter', replayed === 1, `replayed=${replayed}`)
+
+  // --- auditoria: read-only ----------------------------------------------
+  const auditBefore = await prisma.catalogJob.count()
+  const report = await runDatabaseAudit(createPrismaAuditReader(prisma) as never, {
+    environment: 'test',
+    now: new Date('2026-07-16T12:00:00.000Z'),
+  })
+  const auditAfter = await prisma.catalogJob.count()
+  record(
+    'audit-database e read-only (nao muta nada)',
+    auditBefore === auditAfter,
+    `jobs before=${auditBefore} after=${auditAfter}`,
+  )
+  record(
+    'audit-database reporta contagens reais do banco',
+    report.entities.length > 0 && report.jobs.length > 0,
+    `entities=${report.entities.length} jobStatuses=${report.jobs.length} deadLetters=${report.deadLetters}`,
+  )
+  record(
+    'audit-database nunca expoe DATABASE_URL',
+    !formatAuditReport(report).includes(url) && !JSON.stringify(report).includes(url),
+    'relatorio sem credencial',
+  )
+
+  const gateProd = evaluateAuditGate({
+    environment: 'production',
+    confirmProductionRead: false,
+    hasDatabaseUrl: true,
+  })
+  record(
+    'audit-database em producao exige --confirm-production-read',
+    !gateProd.allowed,
+    `allowed=${gateProd.allowed}`,
+  )
 }
 
 async function main(): Promise<void> {

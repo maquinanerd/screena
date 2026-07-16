@@ -85,6 +85,8 @@ export interface ChangesRunOptions {
   /** Retoma do checkpoint (default true). false => recomeca a janela. */
   readonly resume?: boolean
   readonly runId?: string
+  /** Idioma propagado ao payload dos jobs de re-sync (default pt-BR). */
+  readonly locale?: string
 }
 
 /** Relatorio por kind. */
@@ -158,6 +160,7 @@ export async function runChangesSync(
   const kinds = options.kinds ?? DEFAULT_KINDS
   const resume = options.resume ?? true
   const runId = options.runId ?? 'catalog-changes'
+  const locale = options.locale ?? 'pt-BR'
   const { from, to } = resolveWindow(options, now())
   const startDate = formatChangesDate(from)
   const endDate = formatChangesDate(to)
@@ -221,7 +224,17 @@ export async function runChangesSync(
           externalId: String(id),
           discriminator: cursor,
         }),
-        payload: { reason: 'changes', window: cursor },
+        // `entityType`/`externalId` acima sao COLUNAS do job (indice/consulta);
+        // o handler valida o PAYLOAD. Sem repetir entityType/tmdbId aqui, todo
+        // sync_details vindo de /changes falhava a validacao e ia direto para
+        // dead-letter — o incremental inteiro virava fila morta.
+        payload: {
+          entityType: kind,
+          tmdbId: id,
+          locale,
+          reason: 'changes',
+          window: cursor,
+        },
         priority: 50, // mudanca upstream tem prioridade sobre backfill
         runId,
       }))
