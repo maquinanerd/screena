@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@screena/db": "workspace:*",
+    "@screena/public-contracts": "workspace:*",
     "@screena/tmdb-client": "workspace:*"
   },
   "devDependencies": {
