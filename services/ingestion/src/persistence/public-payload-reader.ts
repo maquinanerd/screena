@@ -129,6 +129,9 @@ export function createPublicPayloadReader(
     const row = await prisma.slug.findFirst({
       where: { entityType, slug, isCanonical: true, languageCode: { in: SLUG_LOCALES } },
       select: { entityId: true },
+      // 'pt-BR' antes de 'pt' (desc lexicografico): resultado deterministico
+      // quando as duas variantes existem.
+      orderBy: { languageCode: 'desc' },
     })
     return row?.entityId ?? null
   }
@@ -156,6 +159,7 @@ export function createPublicPayloadReader(
     const row = await prisma.entityTranslation.findFirst({
       where: { entityType, entityId, languageCode: { in: SLUG_LOCALES } },
       select: { title: true, summary: true, metaTitle: true, metaDescription: true },
+      orderBy: { languageCode: 'desc' },
     })
     return row ?? null
   }
