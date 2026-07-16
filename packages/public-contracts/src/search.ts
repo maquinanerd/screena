@@ -88,10 +88,11 @@ export function validateSearchPayload(input: unknown): ValidationResult<SearchPa
       searchResultErrors(item, `results[${i}]`),
     ),
   ]
+  const num = (v: unknown) => typeof v === 'number' && Number.isFinite(v)
   if (typeof input.query !== 'string') errors.push('query: esperado string')
-  if (typeof input.total !== 'number') errors.push('total: esperado number')
-  if (typeof input.limit !== 'number') errors.push('limit: esperado number')
-  if (typeof input.offset !== 'number') errors.push('offset: esperado number')
+  if (!num(input.total)) errors.push('total: esperado number finito')
+  if (!num(input.limit)) errors.push('limit: esperado number finito')
+  if (!num(input.offset)) errors.push('offset: esperado number finito')
   if (input.index !== false)
     errors.push('index: paginas de busca devem ser noindex (index === false)')
   return errors.length === 0 ? ok(input as unknown as SearchPayload) : fail(errors)

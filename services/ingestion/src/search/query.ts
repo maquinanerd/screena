@@ -61,12 +61,23 @@ const SEARCH_SQL = `
       WHEN normalized_aliases <> '' AND $1 = ANY(string_to_array(normalized_aliases, '|')) THEN 1
       WHEN immutable_unaccent(lower(primary_text)) LIKE $2 THEN 2
       WHEN normalized_text LIKE $2 THEN 3
+      WHEN normalized_aliases <> '' AND EXISTS (
+        SELECT 1 FROM unnest(string_to_array(normalized_aliases, '|')) AS a(alias) WHERE alias LIKE $2
+      ) THEN 3
       ELSE 4
     END AS match_tier,
     similarity(normalized_text, $1) AS sim
   FROM search_documents
   WHERE locale = $3
-    AND (normalized_text = $1 OR normalized_text LIKE $2 OR normalized_text % $1)
+    AND (
+      normalized_text = $1
+      OR normalized_text LIKE $2
+      OR normalized_text % $1
+      OR (normalized_aliases <> '' AND EXISTS (
+        SELECT 1 FROM unnest(string_to_array(normalized_aliases, '|')) AS a(alias)
+        WHERE alias = $1 OR alias LIKE $2
+      ))
+    )
   ORDER BY match_tier ASC, sim DESC, popularity DESC NULLS LAST, year DESC NULLS LAST, entity_id ASC
   LIMIT $4 OFFSET $5
 `

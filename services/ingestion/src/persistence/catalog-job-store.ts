@@ -172,15 +172,20 @@ export function createPrismaCatalogJobStore(
     },
 
     async complete(id: string): Promise<void> {
-      await prisma.catalogJob.update({
-        where: { id: BigInt(id) },
+      // Guard de estado: so completa um job AINDA em voo. updateMany (nao update)
+      // permite a precondicao de status — se um reaper ja tirou o job de 'running',
+      // este completa 0 linhas em vez de ressuscitar/clobrar um estado terminal.
+      await prisma.catalogJob.updateMany({
+        where: { id: BigInt(id), status: { in: ['claimed', 'running'] } },
         data: { status: 'succeeded', completedAt: now() },
       })
     },
 
     async applyFailure(id: string, failure: ResolvedFailure): Promise<void> {
-      await prisma.catalogJob.update({
-        where: { id: BigInt(id) },
+      // Guard de estado: so falha um job em voo (nao clobra succeeded/cancelled
+      // nem um retry_wait/dead_letter ja aplicado por outro caminho).
+      await prisma.catalogJob.updateMany({
+        where: { id: BigInt(id), status: { in: ['claimed', 'running'] } },
         data: {
           status: failure.status,
           availableAt: failure.availableAt ?? undefined,
@@ -216,8 +221,11 @@ export function createPrismaCatalogJobStore(
         )
         const availableAt =
           plan.availableInMs === null ? null : new Date(at.getTime() + plan.availableInMs)
-        await prisma.catalogJob.update({
-          where: { id: job.id },
+        // Guard de estado (updateMany): so recupera se o job AINDA esta em voo.
+        // Se o worker que parecia morto terminou entre o findMany e este update, o
+        // update casa 0 linhas e nao clobra o estado terminal (sem re-execucao).
+        const applied = await prisma.catalogJob.updateMany({
+          where: { id: job.id, status: { in: ['claimed', 'running'] } },
           data: {
             status: plan.status,
             availableAt: availableAt ?? undefined,
@@ -226,6 +234,7 @@ export function createPrismaCatalogJobStore(
             lastErrorSafe: plan.lastErrorSafe,
           },
         })
+        if (applied.count === 0) continue // job saiu de voo concorrentemente
         if (plan.status === 'dead_letter') deadLettered += 1
         else requeued += 1
       }
@@ -259,12 +268,15 @@ export function createPrismaCatalogJobStore(
     },
 
     async replayDeadLetter(ids?: readonly string[]): Promise<number> {
+      // Distingue "todos" (ids === undefined) de "estes zero" (ids === []): uma
+      // selecao vazia NUNCA deve reprocessar a fila inteira de poison.
+      if (ids !== undefined && ids.length === 0) return 0
       const replay = planReplay()
       const at = now()
       const result = await prisma.catalogJob.updateMany({
         where: {
           status: 'dead_letter',
-          ...(ids && ids.length > 0 ? { id: { in: ids.map((id) => BigInt(id)) } } : {}),
+          ...(ids !== undefined ? { id: { in: ids.map((id) => BigInt(id)) } } : {}),
         },
         data: {
           status: replay.status,

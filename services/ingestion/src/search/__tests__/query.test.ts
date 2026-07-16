@@ -37,6 +37,15 @@ describe('buildSearchQuery', () => {
     expect(q.sql).toContain('ORDER BY match_tier ASC, sim DESC')
   })
 
+  it('o WHERE recupera linhas por alias exato/prefixo (nao so por normalized_text)', () => {
+    const q = buildSearchQuery('x', { locale: 'pt-BR' })
+    // Recall de alias: um alias exato de um titulo LONGO nunca casaria via o
+    // normalized_text concatenado; o EXISTS sobre unnest garante que casa.
+    expect(q.sql).toMatch(/OR \(normalized_aliases <> '' AND EXISTS \(/)
+    expect(q.sql).toContain('unnest(string_to_array(normalized_aliases')
+    expect(q.sql).toMatch(/WHERE alias = \$1 OR alias LIKE \$2/)
+  })
+
   it('aplica limite e offset como parametros, com clamp de seguranca', () => {
     const q = buildSearchQuery('x', { locale: 'pt-BR', limit: 999, offset: -5 })
     expect(q.params[3]).toBe(SEARCH_MAX_LIMIT) // 999 -> 50

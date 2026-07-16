@@ -296,6 +296,36 @@ async function runChecks(url: string): Promise<void> {
       `replayed=${replayed}, status=${afterReplay.status}, attempts=${afterReplay.attempts}`,
     )
 
+    // replay com selecao VAZIA nao pode ressuscitar a fila inteira de poison.
+    await jobs.enqueue({
+      jobType: 'sync_media',
+      entityType: 'tv',
+      externalId: '951',
+      idempotencyKey: 'k-dead2',
+      maxAttempts: 1,
+    })
+    const claimedDead2 = await jobs.claimNext()
+    const deadPlan2 = planFailure(
+      { attempts: claimedDead2!.attempts, maxAttempts: claimedDead2!.maxAttempts },
+      { code: 'x', safe: 'x' },
+      0,
+    )
+    await jobs.applyFailure(claimedDead2!.id, {
+      status: deadPlan2.status,
+      availableAt: null,
+      lastErrorCode: deadPlan2.lastErrorCode,
+      lastErrorSafe: deadPlan2.lastErrorSafe,
+    })
+    const replayedEmpty = await jobs.replayDeadLetter([])
+    const stillDead = (
+      await q<{ status: string }>(`SELECT status FROM catalog_jobs WHERE id = ${claimedDead2!.id}`)
+    )[0]
+    record(
+      'replay([]) e noop: selecao vazia NAO reprocessa a fila inteira',
+      replayedEmpty === 0 && stillDead.status === 'dead_letter',
+      `replayed=${replayedEmpty}, status=${stillDead.status}`,
+    )
+
     // reclaim de orfao: job running com heartbeat expirado volta para a fila
     await jobs.enqueue({
       jobType: 'sync_lists',
@@ -359,6 +389,23 @@ async function runChecks(url: string): Promise<void> {
         year: 2001,
         popularity: 50,
       }),
+      // Titulo LONGO com alias CURTO: a similaridade trgm do alias vs o
+      // normalized_text concatenado (>130 chars) fica abaixo do limiar (0.3), entao
+      // o casamento exato de alias DEVE vir do recall por normalized_aliases (a
+      // regressao do bug: sem isso, buscar o alias exato dava zero resultados).
+      buildSearchDocument({
+        entityType: 'movie',
+        entityId: '120',
+        locale: 'pt-BR',
+        primaryText: 'The Lord of the Rings The Fellowship of the Ring',
+        alternativeTitles: [
+          'A Sociedade do Anel',
+          'El Senor de los Anillos La Comunidad del Anillo',
+          'Le Seigneur des anneaux La Communaute de l Anneau',
+        ],
+        year: 2001,
+        popularity: 70,
+      }),
     ]
     for (const doc of docs) await search.upsertDocument(doc)
     // upsert idempotente: reprocessar nao duplica
@@ -367,8 +414,8 @@ async function runChecks(url: string): Promise<void> {
       (await q<{ c: bigint }>('SELECT count(*)::int AS c FROM search_documents'))[0].c,
     )
     record(
-      'busca: upsert idempotente (4 documentos, sem duplicar)',
-      docCount === 4,
+      'busca: upsert idempotente (5 documentos, sem duplicar)',
+      docCount === 5,
       `docs=${docCount}`,
     )
 
@@ -386,6 +433,15 @@ async function runChecks(url: string): Promise<void> {
         (r) => r.entityId === '603' && (r.matchReason === 'alias' || r.matchReason === 'exact'),
       ),
       `results=${alias.map((r) => r.entityId + ':' + r.matchReason).join(',')}`,
+    )
+
+    // Regressao do bug de recall: alias exato de titulo LONGO tem de casar como
+    // 'alias' (nao pode ser filtrado pelo trgm do normalized_text concatenado).
+    const longAlias = await search.search('A Sociedade do Anel', { locale: 'pt-BR' })
+    record(
+      'busca alias (titulo longo): "A Sociedade do Anel" casa como alias exato',
+      longAlias.some((r) => r.entityId === '120' && r.matchReason === 'alias'),
+      `results=${longAlias.map((r) => r.entityId + ':' + r.matchReason).join(',')}`,
     )
 
     const accent = await search.search('amelie', { locale: 'pt-BR' })
