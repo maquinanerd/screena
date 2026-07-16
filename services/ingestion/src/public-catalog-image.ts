@@ -4,7 +4,7 @@
  *
  * Decisao de arquitetura (final): o servidor NAO salva imagem. Por PADRAO o
  * backfill grava o `file_path` CRU do TMDB (ex.: `/abc.jpg`); o frontend monta a
- * URL publica remota (`image.tmdb.org/...`). A flag `--download-images` (legado,
+ * URL publica remota do CDN de imagens do TMDB. A flag `--download-images` (legado,
  * opt-in) baixa o arquivo e grava o path LOCAL (`/media/tmdb/...`) — usada so quando
  * explicitamente pedida. Sem download por padrao => sem disco, sem volume.
  *

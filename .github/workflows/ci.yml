@@ -47,6 +47,13 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      # O tsconfig principal EXCLUI persistence/**, bin/** e composition.ts (eles
+      # dependem do Prisma Client gerado). Era exatamente essa regiao — o wiring
+      # real — onde erros de assinatura passavam ate o runtime. Este gate a
+      # compila; roda depois do db:generate, que e o motivo da exclusao original.
+      - name: Typecheck do wiring operacional (persistence/, bin/, composition)
+        run: pnpm typecheck:catalog-runtime
+
       - name: Lint
         run: pnpm lint
 
@@ -85,6 +92,9 @@ jobs:
 
       - name: Plataforma TMDB — Fases 6-8 (catalogo, midia, discovery; PostgreSQL 16 efemero)
         run: pnpm --filter @screena/ingestion validate:tmdb-platform
+
+      - name: Plataforma de catalogo Backend A — jobs + busca (PostgreSQL 16 efemero)
+        run: pnpm --filter @screena/ingestion validate:catalog-platform-complete
 
       - name: Plataforma externa e inteligencia (Fases 9-11; PostgreSQL 16 efemero)
         run: pnpm validate:external-intelligence-platform

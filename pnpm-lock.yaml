@@ -76,6 +76,9 @@ importers:
       '@screena/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@screena/public-contracts':
+        specifier: workspace:*
+        version: link:../../packages/public-contracts
       '@screena/seo':
         specifier: workspace:*
         version: link:../../packages/seo
@@ -135,6 +138,12 @@ importers:
         specifier: ^4.19.0
         version: 4.22.4
 
+  packages/public-contracts:
+    dependencies:
+      '@screena/config':
+        specifier: workspace:*
+        version: link:../config
+
   packages/schemas:
     dependencies:
       '@screena/config':
@@ -176,6 +185,12 @@ importers:
       '@screena/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@screena/public-contracts':
+        specifier: workspace:*
+        version: link:../../packages/public-contracts
+      '@screena/seo':
+        specifier: workspace:*
+        version: link:../../packages/seo
       '@screena/tmdb-client':
         specifier: workspace:*
         version: link:../../api-clients/tmdb

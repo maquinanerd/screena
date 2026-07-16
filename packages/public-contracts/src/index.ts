@@ -1,0 +1,22 @@
+/**
+ * @screena/public-contracts — Contratos publicos serializaveis do Screen.
+ *
+ * A fronteira tipada entre os getters server-only (que leem o PostgreSQL) e o
+ * render/consumidores. Tipos + validadores PUROS (sem zod, sem Prisma). Importe
+ * sempre a partir de "@screena/public-contracts", nunca dos modulos internos.
+ *
+ * Cobre (Backend A, §11/§12/§13):
+ *  - primitivos: EntityRef, PublicMediaAsset, PublicVideo, MediaPayload, Credit, SeoPayload;
+ *  - detalhe: Movie/Tv/Season/Episode/Person DetailPayload;
+ *  - home/descoberta: EntityCard, HomePayload, DiscoveryPayload;
+ *  - busca: SearchResult, SearchPayload (sempre noindex);
+ *  - fila: CatalogJobView, CatalogStatusPayload.
+ */
+
+export * from './validation.js'
+export * from './primitives.js'
+export * from './detail.js'
+export * from './home.js'
+export * from './search.js'
+export * from './catalog-job.js'
+export * from './media-url.js'

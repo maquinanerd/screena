@@ -399,3 +399,56 @@ export function mergePersistedDecision(
         : `Decisao vigente persistida em page_indexability_decisions (decision='${decision}', origin='${persisted.decisionOrigin ?? "?"}') e mais restritiva que a resolucao viva; prevalece (fail-closed).`,
   };
 }
+
+/**
+ * Decisao projetada para um CONTRATO PUBLICO (`SeoPayload`).
+ *
+ * `decision` carrega o estado autoritativo (`index`/`noindex`/`draft`/`stale`/
+ * `blocked`) ou `'absent'` quando nao ha decisao vigente registrada.
+ */
+export interface PublicIndexabilityProjection {
+  readonly index: boolean;
+  readonly robots: string;
+  readonly decision: IndexDecision | "absent";
+}
+
+/** Serializa as diretivas para o formato do `<meta name="robots">`. */
+export function formatRobots(robots: { index: boolean; follow: boolean }): string {
+  return `${robots.index ? "index" : "noindex"},${robots.follow ? "follow" : "nofollow"}`;
+}
+
+/**
+ * Projeta a decisao VIGENTE de `page_indexability_decisions` para um contrato
+ * publico — FAIL-CLOSED.
+ *
+ * Por que existe: um getter de contrato NAO pode deduzir indexabilidade de
+ * "tem slug". Slug e resolucao de rota; indexabilidade e decisao registrada.
+ * Sem esta projecao, uma entidade `noindex`/`blocked`/`stale`/`draft` — ou uma
+ * SEM decisao alguma — sairia no contrato como `index,follow`, e o consumidor
+ * publicaria o que a governanca excluiu.
+ *
+ * Ausencia de decisao (`null`) => `index: false`. Isto e DELIBERADAMENTE mais
+ * restritivo que `mergePersistedDecision`, que devolve a resolucao viva quando
+ * nao ha persistida: aquela fusao recebe os FATOS vivos (licenca, idioma,
+ * validade tecnica) e pode decidir com base neles; um contrato sem esses fatos
+ * nao pode — e o silencio nunca autoriza indexar. Quem tem os fatos vivos usa
+ * `resolvePageSeo` + `mergePersistedDecision`; quem so tem a entidade usa esta.
+ *
+ * O mapeamento de `robots` reusa `robotsForPersistedDecision` (fonte unica):
+ * `index` -> index,follow; `noindex`/`blocked` -> noindex,nofollow (exclusao
+ * registrada); `draft`/`stale` -> noindex,follow (fora do indice, links ainda
+ * seguidos).
+ */
+export function projectPublicIndexability(
+  persisted: PersistedDecisionFacts | null,
+): PublicIndexabilityProjection {
+  if (persisted === null) {
+    return { index: false, robots: "noindex,follow", decision: "absent" };
+  }
+  const robots = robotsForPersistedDecision(persisted.decision);
+  return {
+    index: robots.index,
+    robots: formatRobots(robots),
+    decision: persisted.decision,
+  };
+}
