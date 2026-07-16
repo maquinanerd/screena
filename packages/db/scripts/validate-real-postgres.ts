@@ -111,6 +111,13 @@ const EXPECTED_TABLES = [
   "genres", "tmdb_images", "tmdb_videos", "tmdb_sync_checkpoint",
   // Backend A — fila duravel de jobs do catalogo + projecao de busca PostgreSQL.
   "catalog_jobs", "search_documents",
+  // Backend A — entidades de referencia do catalogo + snapshots de descoberta.
+  "collections", "movie_collection_memberships",
+  "production_companies", "movie_production_companies", "tv_production_companies",
+  "networks", "tv_networks",
+  "keywords", "entity_keywords",
+  "entity_alternative_titles",
+  "discovery_snapshots", "discovery_snapshot_items",
 ];
 const EXPECTED_ENUMS = [
   "EntityType", "ContentBlockType", "ContentSource", "ReviewStatus", "TranslationStatus",
@@ -143,12 +150,13 @@ async function runChecks(url: string): Promise<void> {
   }
 
   try {
-    // 3. 38 tabelas esperadas (36 anteriores + catalog_jobs + search_documents do Backend A)
+    // 3. 50 tabelas esperadas (38 anteriores + 12 do Backend A: colecoes,
+    // produtoras, redes, keywords, titulos alternativos e snapshots de descoberta)
     const tables = (await q<{ table_name: string }>(
       "SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'",
     )).map((r) => r.table_name).filter((t) => t !== "_prisma_migrations");
     const missing = EXPECTED_TABLES.filter((t) => !tables.includes(t));
-    record(3, "38 tabelas esperadas", tables.length === 38 && missing.length === 0,
+    record(3, "50 tabelas esperadas", tables.length === 50 && missing.length === 0,
       `encontradas ${tables.length}${missing.length ? ", faltando " + missing.join(",") : ""}`);
 
     // 4. 17 enums esperados (15 anteriores + CatalogJobType + CatalogJobStatus do Backend A)

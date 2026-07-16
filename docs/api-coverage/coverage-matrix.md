@@ -55,7 +55,8 @@ Exatamente **1 por endpoint e 1 por campo**:
 | `tmdb.recommendations.standalone` / `tmdb.similar.standalone` | ❌ | `not_applicable` (roadmap F8) |
 | `tmdb.watch_providers.standalone` | ❌ | `not_applicable` (onde-assistir vem do streaming_availability) |
 | `tmdb.configuration` | ❌ | `not_applicable` (CDN hardcoded; roadmap F7) |
-| `tmdb.collection.details` / `tmdb.taxonomy.details` | ❌ | `not_applicable` (roadmap F6/F8) |
+| `tmdb.collection.details` — GET /collection/{id} | ✅ | `normalized` (collections + movie_collection_memberships) |
+| `tmdb.taxonomy.details` — GET /network,/company,/keyword {id} | ✅ | `normalized` (networks/production_companies/keywords + joins) |
 | `tmdb.auth_account` | ❌ | `not_applicable` (read-only por design) |
 
 ### Gemini (`gemini`)

@@ -29,6 +29,10 @@ import type {
   TmdbPersonPage,
   TmdbTvPage,
   TmdbVideosResponse,
+  TmdbCollectionDetail,
+  TmdbCompanyDetail,
+  TmdbNetworkDetail,
+  TmdbKeywordDetail,
 } from './catalog-types.js'
 
 /** Tipos de mídia agregada aceitos por `/trending/{media_type}/{time_window}`. */
@@ -254,6 +258,11 @@ export interface TmdbCatalogEndpoints {
   getTvVideos(tmdbId: number): Promise<TmdbVideosResponse>
   getSeasonVideos(tvTmdbId: number, seasonNumber: number): Promise<TmdbVideosResponse>
   getEpisodeVideos(tvTmdbId: number, seasonNumber: number, episodeNumber: number): Promise<TmdbVideosResponse>
+  // Entidades de referencia (Backend A). Estes 4 NAO suportam append_to_response.
+  getCollection(tmdbId: number, language?: string): Promise<TmdbCollectionDetail>
+  getCompany(tmdbId: number): Promise<TmdbCompanyDetail>
+  getNetwork(tmdbId: number): Promise<TmdbNetworkDetail>
+  getKeyword(tmdbId: number): Promise<TmdbKeywordDetail>
 }
 
 /** Cria os endpoints de catalogo sobre um `TmdbHttpClient` ja configurado. */
@@ -384,6 +393,20 @@ export function createTmdbCatalogEndpoints(
       return (await client.request(
         `/tv/${tvTmdbId}/season/${seasonNumber}/episode/${episodeNumber}/videos`,
       )) as TmdbVideosResponse
+    },
+    async getCollection(tmdbId, lang) {
+      return (await client.request(`/collection/${tmdbId}`, {
+        language: lang ?? language,
+      })) as TmdbCollectionDetail
+    },
+    async getCompany(tmdbId) {
+      return (await client.request(`/company/${tmdbId}`)) as TmdbCompanyDetail
+    },
+    async getNetwork(tmdbId) {
+      return (await client.request(`/network/${tmdbId}`)) as TmdbNetworkDetail
+    },
+    async getKeyword(tmdbId) {
+      return (await client.request(`/keyword/${tmdbId}`)) as TmdbKeywordDetail
     },
   }
 }

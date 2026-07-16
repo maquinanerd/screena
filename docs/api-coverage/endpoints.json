@@ -519,10 +519,16 @@
     "role": "catalog",
     "http": "GET /collection/{id}",
     "worker_only": true,
-    "implemented": false,
-    "coverage_state": "not_applicable",
-    "justification": "collection_ids sao descobertos mas /collection/{id} nao e buscado (sem append/detail). Contexto de franquia via colecoes TMDB e roadmap Fase 6.",
-    "plan_area": "TMDB colecoes/franquia (Fase 6)"
+    "implemented": true,
+    "coverage_state": "normalized",
+    "anchor": {
+      "file": "api-clients/tmdb/src/catalog.ts",
+      "must_contain": [
+        "getCollection"
+      ]
+    },
+    "plan_area": "TMDB colecoes/franquia (Backend A)",
+    "notes": "Normalizado em collections + movie_collection_memberships pelo handler sync_details/reprocess_raw (services/ingestion/src/catalog-entities). Endpoint NAO suporta append_to_response: GET simples. Relacao filme-colecao e TABELA (nunca JSON solto). Validado em validate:catalog-platform-complete."
   },
   {
     "id": "tmdb.taxonomy.details",
@@ -531,10 +537,18 @@
     "role": "catalog",
     "http": "GET /network/{id}, /company/{id}, /keyword/{id}",
     "worker_only": true,
-    "implemented": false,
-    "coverage_state": "not_applicable",
-    "justification": "network/company/keyword ids sao descobertos mas nenhum detalhe e buscado. As LISTAS de genero passaram a ser cobertas por tmdb.genres.{movie,tv} (Fase 6). Detalhe de network/company/keyword roadmap Fase 6/8.",
-    "plan_area": "TMDB taxonomia (Fase 6/8)"
+    "implemented": true,
+    "coverage_state": "normalized",
+    "anchor": {
+      "file": "api-clients/tmdb/src/catalog.ts",
+      "must_contain": [
+        "getNetwork",
+        "getCompany",
+        "getKeyword"
+      ]
+    },
+    "plan_area": "TMDB taxonomia (Backend A)",
+    "notes": "Normalizado em networks/tv_networks, production_companies/movie_production_companies/tv_production_companies e keywords/entity_keywords (services/ingestion/src/catalog-entities). Os 3 endpoints sao GET simples (sem append). Validado em validate:catalog-platform-complete."
   },
   {
     "id": "tmdb.auth_account",

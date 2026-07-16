@@ -356,7 +356,9 @@ model Movie {
   lastSyncedAt       DateTime? @map("last_synced_at")
   staleAfter         DateTime? @map("stale_after")
 
-  language Language? @relation(fields: [originalLanguage], references: [code])
+  language              Language?                   @relation(fields: [originalLanguage], references: [code])
+  collectionMemberships MovieCollectionMembership[]
+  productionCompanies   MovieProductionCompany[]
 
   @@index([status])
   @@index([updatedAt])
@@ -394,8 +396,10 @@ model TvShow {
   lastSyncedAt       DateTime? @map("last_synced_at")
   staleAfter         DateTime? @map("stale_after")
 
-  language Language? @relation(fields: [originalLanguage], references: [code])
-  seasons  Season[]
+  language            Language?             @relation(fields: [originalLanguage], references: [code])
+  seasons             Season[]
+  networks            TvNetwork[]
+  productionCompanies TvProductionCompany[]
 
   @@index([status])
   @@index([updatedAt])
@@ -512,6 +516,9 @@ model CastMember {
   character    String?
   billingOrder Int?       @map("billing_order")
   creditId     String?    @unique @map("credit_id")
+  // Guest star de episodio (TMDB separa `guest_stars` de `credits.cast`).
+  // So faz sentido com entityType='episode'; nasce false para o elenco regular.
+  isGuest      Boolean    @default(false) @map("is_guest")
   createdAt    DateTime   @default(now()) @map("created_at")
   updatedAt    DateTime   @updatedAt @map("updated_at")
 
@@ -1084,25 +1091,225 @@ model CatalogJob {
 // So entidades RENDERAVEIS entram (movie/tv/person) — resultados linkam paginas
 // publicas; nunca dado sem licenca/slug.
 model SearchDocument {
-  id              BigInt     @id @default(autoincrement())
-  entityType      EntityType @map("entity_type") // renderavel: movie | tv | person
-  entityId        BigInt     @map("entity_id")
-  locale          String // BCP-47 (pt-BR); segue PUBLISHED_LOCALES
-  primaryText     String     @map("primary_text") // titulo canonico/nome
-  alternativeText String     @default("") @map("alternative_text") // titulos alternativos/aliases (exibicao, ' | ')
-  normalizedText  String     @map("normalized_text") // fold(primaryText + aliases): sem acento + minusculo (casamento base)
-  normalizedAliases String   @default("") @map("normalized_aliases") // aliases dobrados, '|'-delimitados (casamento exato de alias)
-  subtitle        String? // linha de apoio (ano/tipo) para o resultado
-  year            Int?
-  popularity      Decimal? // desempate de ranking (sinal TMDB tecnico, nunca nota editorial)
-  imagePath       String?    @map("image_path") // file_path cru; URL montada no render por buildTmdbImageUrl
-  canonicalUrl    String?    @map("canonical_url")
-  createdAt       DateTime   @default(now()) @map("created_at")
-  updatedAt       DateTime   @updatedAt @map("updated_at")
+  id                BigInt     @id @default(autoincrement())
+  entityType        EntityType @map("entity_type") // renderavel: movie | tv | person
+  entityId          BigInt     @map("entity_id")
+  locale            String // BCP-47 (pt-BR); segue PUBLISHED_LOCALES
+  primaryText       String     @map("primary_text") // titulo canonico/nome
+  alternativeText   String     @default("") @map("alternative_text") // titulos alternativos/aliases (exibicao, ' | ')
+  normalizedText    String     @map("normalized_text") // fold(primaryText + aliases): sem acento + minusculo (casamento base)
+  normalizedAliases String     @default("") @map("normalized_aliases") // aliases dobrados, '|'-delimitados (casamento exato de alias)
+  subtitle          String? // linha de apoio (ano/tipo) para o resultado
+  year              Int?
+  popularity        Decimal? // desempate de ranking (sinal TMDB tecnico, nunca nota editorial)
+  imagePath         String?    @map("image_path") // file_path cru; URL montada no render por buildTmdbImageUrl
+  canonicalUrl      String?    @map("canonical_url")
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
 
   @@unique([entityType, entityId, locale])
   @@index([locale])
   @@map("search_documents")
+}
+
+// --- Descoberta persistida (Backend A): snapshots de listas ---
+// Uma captura imutavel de uma lista de descoberta (trending/popular/top_rated/
+// upcoming/now_playing/airing_today/on_the_air/discover). O render NUNCA chama o
+// TMDB: le o ultimo snapshot VALIDO (capturedAt/expiresAt). `payloadHash` permite
+// pular reescrita quando a lista nao mudou.
+model DiscoverySnapshot {
+  id          BigInt     @id @default(autoincrement())
+  listType    String     @map("list_type") // trending|popular|top_rated|upcoming|now_playing|airing_today|on_the_air|discover
+  entityType  EntityType @map("entity_type") // movie | tv
+  locale      String
+  country     String?
+  window      String? // janela do trending (day|week) ou rotulo do discover
+  capturedAt  DateTime   @default(now()) @map("captured_at")
+  expiresAt   DateTime   @map("expires_at")
+  provider    String     @default("tmdb")
+  payloadHash String     @map("payload_hash")
+  createdAt   DateTime   @default(now()) @map("created_at")
+
+  items DiscoverySnapshotItem[]
+
+  @@index([listType, entityType, locale, capturedAt])
+  @@index([expiresAt])
+  @@map("discovery_snapshots")
+}
+
+model DiscoverySnapshotItem {
+  id            BigInt   @id @default(autoincrement())
+  snapshotId    BigInt   @map("snapshot_id")
+  entityId      BigInt   @map("entity_id") // id interno da entidade promovida
+  position      Int
+  providerScore Decimal? @map("provider_score") // popularity/vote do provider (tecnico, nunca nota editorial)
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  snapshot DiscoverySnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  @@unique([snapshotId, entityId])
+  @@unique([snapshotId, position])
+  @@index([entityId])
+  @@map("discovery_snapshot_items")
+}
+
+// ============================================================
+// CATALOGO TMDB — ENTIDADES DE REFERENCIA (Backend A)
+// ============================================================
+// Colecoes, produtoras, redes, keywords e titulos alternativos. Relacoes centrais
+// como TABELAS (nunca JSON solto). Worker-only na escrita; o render le via stores.
+// Refs polimorficas (entity_keywords, entity_alternative_titles) ganham FK composta
+// para `entities` via DO-block CONDICIONAL na migration (ver ADR 0012).
+
+model Collection {
+  id           BigInt    @id @default(autoincrement())
+  tmdbId       Int       @unique @map("tmdb_id")
+  name         String
+  overview     String?
+  posterPath   String?   @map("poster_path")
+  backdropPath String?   @map("backdrop_path")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  lastSyncedAt DateTime? @map("last_synced_at")
+
+  movies MovieCollectionMembership[]
+
+  @@map("collections")
+}
+
+model MovieCollectionMembership {
+  id           BigInt   @id @default(autoincrement())
+  collectionId BigInt   @map("collection_id")
+  movieId      BigInt   @map("movie_id")
+  position     Int?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  movie      Movie      @relation(fields: [movieId], references: [id], onDelete: Cascade)
+
+  @@unique([collectionId, movieId])
+  @@index([movieId])
+  @@map("movie_collection_memberships")
+}
+
+model ProductionCompany {
+  id            BigInt    @id @default(autoincrement())
+  tmdbId        Int       @unique @map("tmdb_id")
+  name          String
+  logoPath      String?   @map("logo_path")
+  originCountry String?   @map("origin_country")
+  headquarters  String?
+  homepage      String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  lastSyncedAt  DateTime? @map("last_synced_at")
+
+  movies  MovieProductionCompany[]
+  tvShows TvProductionCompany[]
+
+  @@map("production_companies")
+}
+
+model MovieProductionCompany {
+  movieId   BigInt   @map("movie_id")
+  companyId BigInt   @map("company_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  movie   Movie             @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  company ProductionCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@id([movieId, companyId])
+  @@index([companyId])
+  @@map("movie_production_companies")
+}
+
+model TvProductionCompany {
+  tvShowId  BigInt   @map("tv_show_id")
+  companyId BigInt   @map("company_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tvShow  TvShow            @relation(fields: [tvShowId], references: [id], onDelete: Cascade)
+  company ProductionCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@id([tvShowId, companyId])
+  @@index([companyId])
+  @@map("tv_production_companies")
+}
+
+model Network {
+  id            BigInt    @id @default(autoincrement())
+  tmdbId        Int       @unique @map("tmdb_id")
+  name          String
+  logoPath      String?   @map("logo_path")
+  originCountry String?   @map("origin_country")
+  headquarters  String?
+  homepage      String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  lastSyncedAt  DateTime? @map("last_synced_at")
+
+  tvShows TvNetwork[]
+
+  @@map("networks")
+}
+
+model TvNetwork {
+  tvShowId  BigInt   @map("tv_show_id")
+  networkId BigInt   @map("network_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tvShow  TvShow  @relation(fields: [tvShowId], references: [id], onDelete: Cascade)
+  network Network @relation(fields: [networkId], references: [id], onDelete: Cascade)
+
+  @@id([tvShowId, networkId])
+  @@index([networkId])
+  @@map("tv_networks")
+}
+
+model Keyword {
+  id        BigInt   @id @default(autoincrement())
+  tmdbId    Int      @unique @map("tmdb_id")
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  entities EntityKeyword[]
+
+  @@map("keywords")
+}
+
+model EntityKeyword {
+  id         BigInt     @id @default(autoincrement())
+  keywordId  BigInt     @map("keyword_id")
+  entityType EntityType @map("entity_type") // movie | tv
+  entityId   BigInt     @map("entity_id")
+  createdAt  DateTime   @default(now()) @map("created_at")
+
+  keyword Keyword @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+
+  @@unique([keywordId, entityType, entityId])
+  @@index([entityType, entityId])
+  @@map("entity_keywords")
+}
+
+// Titulos alternativos por pais (TMDB alternative_titles). `normalized` guarda a
+// dobra (sem acento/minusculo) — alimenta o alias exato da busca.
+model EntityAlternativeTitle {
+  id          BigInt     @id @default(autoincrement())
+  entityType  EntityType @map("entity_type") // movie | tv
+  entityId    BigInt     @map("entity_id")
+  countryCode String?    @map("country_code")
+  title       String
+  normalized  String
+  type        String?
+  source      String     @default("tmdb")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  @@unique([entityType, entityId, title, countryCode])
+  @@index([entityType, entityId])
+  @@index([normalized])
+  @@map("entity_alternative_titles")
 }
 
 // ============================================================
