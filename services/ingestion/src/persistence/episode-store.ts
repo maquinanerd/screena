@@ -60,7 +60,9 @@ export function createPrismaEpisodeStore(prisma: PrismaClient): EpisodeStorePort
       if (episode === null) return ZERO_RESULT
 
       const entityId = episode.id
-      const entityType = 'episode'
+      // `as const`: sem isso o literal alarga para `string` e nao casa com o
+      // enum EntityType que o Prisma exige em createMany.
+      const entityType = 'episode' as const
 
       // 2. Stubs de pessoa: o credito so liga depois que a pessoa existe. `update: {}`
       // preserva o que o sync de pessoa ja enriqueceu (nao rebaixa para o stub).

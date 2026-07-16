@@ -12,12 +12,21 @@
 
 import type { PrismaClient } from '@screena/db/server'
 import type {
+  DiscoveryEntityType,
   DiscoverySnapshotPlan,
   DiscoverySnapshotQuery,
   DiscoverySnapshotStorePort,
   SaveSnapshotResult,
   StoredDiscoverySnapshot,
 } from '../discovery-snapshots/index.js'
+
+/** Client dentro de uma transacao (sem `$transaction`/`$connect`/`$disconnect`). */
+type Tx = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0]
+
+/** Estreita o `EntityType` do banco para o dominio de descoberta (movie|tv). */
+function narrowDiscoveryEntityType(value: string): DiscoveryEntityType | null {
+  return value === 'movie' || value === 'tv' ? value : null
+}
 
 /** Filtro Prisma da identidade de um snapshot. */
 function identityWhere(query: DiscoverySnapshotQuery) {
@@ -88,7 +97,7 @@ export function createPrismaDiscoverySnapshotStore(
           providerScore: i.providerScore,
         }))
 
-      const snapshot = await prisma.$transaction(async (tx: PrismaClient) => {
+      const snapshot = await prisma.$transaction(async (tx: Tx) => {
         const created = await tx.discoverySnapshot.create({
           data: {
             listType: plan.listType,
@@ -143,10 +152,15 @@ export function createPrismaDiscoverySnapshotStore(
         },
       })
       if (row === null) return null
+      // A COLUNA usa `EntityType` (5 valores), mas descoberta so tem movie|tv.
+      // Uma linha fora desse dominio e dado corrompido: devolver null e melhor
+      // que entregar ao render um snapshot de tipo que ele nao sabe montar.
+      const entityType = narrowDiscoveryEntityType(row.entityType)
+      if (entityType === null) return null
       return {
         id: row.id.toString(),
         listType: row.listType,
-        entityType: row.entityType,
+        entityType,
         locale: row.locale,
         country: row.country,
         window: row.window,

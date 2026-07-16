@@ -1,7 +1,12 @@
 #!/usr/bin/env node
 /**
  * bin/catalog.ts — CLI unificada do catalogo. Worker-only/offline — NUNCA no
- * render. EXCLUIDO do typecheck (toca Prisma + client TMDB).
+ * render.
+ *
+ * Fora do `tsconfig.json` principal (depende do Prisma Client gerado), mas
+ * COBERTO por `tsconfig.runtime.json` (`pnpm typecheck:catalog-runtime`, gate no
+ * CI apos o db:generate). Nao ha regiao sem tipo: era exatamente aqui que erros
+ * de assinatura chegavam ao runtime.
  *
  * Entrada UNICA para operar o catalogo: bootstrap, enqueue, worker, sync,
  * changes, discovery, media, episodes, search-reindex, search-status, status,
@@ -50,12 +55,45 @@ import { createPrismaCatalogJobStore } from '../src/persistence/catalog-job-stor
 import { createPrismaSearchStore } from '../src/persistence/search-store.js'
 import { createPrismaSearchProjectionSource } from '../src/persistence/search-projection-source.js'
 
+import type { CatalogFlags, CatalogCommand, DeadLetterSubcommand } from '../src/cli/index.js'
+import type { CatalogJobRegistry, StructuredLogger, LogLevel } from '../src/catalog-jobs/handler.js'
+import type { CatalogJobType } from '../src/catalog-jobs/types.js'
+import type { MetricsSink } from '../src/metrics/index.js'
+import type { CatalogServices } from '../src/persistence/catalog-services.js'
+import type {
+  CatalogBootstrapReport,
+  SyncChangesResult,
+  SyncDetailsResult,
+  SyncEpisodesResult,
+  SyncListsResult,
+  SyncMediaResult,
+  SyncSeasonsResult,
+} from '../src/catalog-jobs/handlers/index.js'
+import type { CatalogEntityKind } from '../src/catalog-jobs/types.js'
+import type { SearchEntityType } from '../src/search/projection.js'
+
+/** Runtime so-de-banco (comandos que nao precisam de TMDB). */
+interface DbOnlyRuntime {
+  readonly prisma: CatalogServices['prisma']
+  readonly store: CatalogServices['store']
+  readonly searchStore: CatalogServices['searchStore']
+  readonly searchSource: CatalogServices['searchSource']
+  readonly now: () => Date
+}
+
+/** Deps de uma execucao inline de handler. */
+interface InlineDeps {
+  readonly requestId: string
+  readonly log: StructuredLogger
+  readonly metrics: MetricsSink
+}
+
 const DEFAULT_LOCALE = 'pt-BR'
 
 /** Logger estruturado (uma linha JSON por evento; nunca imprime segredo). */
-function createCliLogger(verbose) {
+function createCliLogger(verbose: boolean): StructuredLogger {
   return {
-    log(level, event, fields) {
+    log(level: LogLevel, event: string, fields?: Readonly<Record<string, unknown>>) {
       if (!verbose && level === 'debug') return
       const line = JSON.stringify({ level, event, ...fields })
       process.stderr.write(`${redactSecrets(line)}\n`)
@@ -64,7 +102,7 @@ function createCliLogger(verbose) {
 }
 
 /** Escreve o resultado no formato pedido. */
-function emit(flags, payload, humanLines) {
+function emit(flags: CatalogFlags, payload: unknown, humanLines: readonly string[]): void {
   if (flags.json) {
     process.stdout.write(`${redactSecrets(JSON.stringify(payload, jsonSafe, 2))}\n`)
     return
@@ -73,12 +111,68 @@ function emit(flags, payload, humanLines) {
 }
 
 /** `JSON.stringify` lanca em BigInt: os PKs do schema sao BigInt. */
-function jsonSafe(_key, value) {
+function jsonSafe(_key: string, value: unknown): unknown {
   return typeof value === 'bigint' ? value.toString() : value
 }
 
+/** Predicado: o texto e um tipo de job valido. */
+function isCatalogJobType(value: string): value is CatalogJobType {
+  return (CATALOG_JOB_TYPES as readonly string[]).includes(value)
+}
+
+/** Kinds aceitos na coluna `entity_type` de catalog_jobs. */
+const CATALOG_ENTITY_KINDS: readonly CatalogEntityKind[] = [
+  'movie',
+  'tv',
+  'season',
+  'episode',
+  'person',
+  'collection',
+  'network',
+  'company',
+  'keyword',
+]
+
+/**
+ * Estreita `--entity` para o enum da coluna.
+ *
+ * `null` e legitimo (jobs sem alvo, ex.: bootstrap). Um valor fora do dominio
+ * seria erro de FK/enum no insert — falhar aqui e mais claro que no driver.
+ */
+function narrowCatalogEntityKind(value: string | null): CatalogEntityKind | null {
+  if (value === null) return null
+  if (!(CATALOG_ENTITY_KINDS as readonly string[]).includes(value)) {
+    throw new Error(`--entity invalido: "${value}". Use um de: ${CATALOG_ENTITY_KINDS.join(', ')}.`)
+  }
+  return value as CatalogEntityKind
+}
+
+/** Estreita `--entity` para os tipos indexaveis na busca (movie|tv|person). */
+function narrowSearchEntityTypes(values: string[] | null): SearchEntityType[] | undefined {
+  if (values === null) return undefined
+  const allowed: readonly SearchEntityType[] = ['movie', 'tv', 'person']
+  const out: SearchEntityType[] = []
+  for (const value of values) {
+    if (!(allowed as readonly string[]).includes(value)) {
+      throw new Error(`--entity invalido para busca: "${value}". Use: ${allowed.join(', ')}.`)
+    }
+    out.push(value as SearchEntityType)
+  }
+  return out
+}
+
+/**
+ * Mensagem segura de um erro desconhecido.
+ *
+ * `catch (error)` da `unknown`: ler `.message` direto nao compila, e
+ * `String(error)` num objeto vira "[object Object]".
+ */
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
 /** Lista separada por virgula -> array limpo. */
-function splitList(value) {
+function splitList(value: string | null): string[] | null {
   if (value === null) return null
   return value
     .split(',')
@@ -87,10 +181,10 @@ function splitList(value) {
 }
 
 /** Le ids de um arquivo (um por linha), ignorando vazios/comentarios. */
-async function readIdsFile(file) {
+async function readIdsFile(file: string): Promise<number[]> {
   const { readFile } = await import('node:fs/promises')
   const text = await readFile(file, 'utf8')
-  const ids = []
+  const ids: number[] = []
   for (const line of text.split('\n')) {
     const trimmed = line.trim()
     if (trimmed === '' || trimmed.startsWith('#')) continue
@@ -109,7 +203,12 @@ async function readIdsFile(file) {
  * operador quer o resultado AGORA, mas o codigo executado e exatamente o mesmo
  * handler que o worker roda — sem caminho paralelo que possa divergir.
  */
-async function runHandlerInline(registry, jobType, payload, deps) {
+async function runHandlerInline<TResult>(
+  registry: CatalogJobRegistry,
+  jobType: CatalogJobType,
+  payload: Record<string, unknown>,
+  deps: InlineDeps,
+): Promise<TResult> {
   const handler = registry.get(jobType)
   if (handler === undefined) throw new Error(`sem handler para ${jobType}`)
   const input = handler.validateInput(payload)
@@ -124,7 +223,10 @@ async function runHandlerInline(registry, jobType, payload, deps) {
     log: deps.log,
     metrics: deps.metrics,
   }
-  return handler.execute(context, input)
+  // O registry e heterogeneo (`CatalogJobHandler<never, unknown>`): o par I/O de
+  // cada handler nao e recuperavel pelo tipo. `TResult` e a forma que o chamador
+  // sabe que aquele jobType devolve.
+  return (await handler.execute(context, input as never)) as TResult
 }
 
 /**
@@ -157,7 +259,7 @@ function createRuntime() {
     tmdb: client.endpoints,
     catalogEndpoints,
     cacheTtlMs: client.config.cacheTtlMs,
-    fetchText: async (url) => {
+    fetchText: async (url: string) => {
       const response = await fetch(url)
       if (!response.ok) throw new Error(`export HTTP ${response.status}`)
       // Os Daily ID Exports sao arquivos .json.gz SERVIDOS COMO CORPO BINARIO —
@@ -272,7 +374,7 @@ async function main() {
       case 'episodes':
         return await cmdEpisodes(registry, flags, locale, inlineDeps)
       case 'search-reindex':
-        return await cmdSearchReindex(services, flags, locale, log)
+        return await cmdSearchReindex(services, flags, locale, log, metrics)
       default:
         process.stderr.write(`comando nao implementado: ${command}\n`)
         return EXIT_CODES.usage
@@ -283,7 +385,12 @@ async function main() {
 }
 
 /** Descreve o plano de um comando, sem tocar em nada (dry-run). */
-function describePlan(command, subcommand, flags, locale) {
+function describePlan(
+  command: CatalogCommand,
+  subcommand: string | null,
+  flags: CatalogFlags,
+  locale: string,
+): string[] {
   const entity = splitList(flags.entity)
   switch (command) {
     case 'bootstrap':
@@ -332,8 +439,8 @@ function describePlan(command, subcommand, flags, locale) {
 }
 
 /** bootstrap. */
-async function cmdBootstrap(registry, flags, locale, deps) {
-  const report = await runHandlerInline(
+async function cmdBootstrap(registry: CatalogJobRegistry, flags: CatalogFlags, locale: string, deps: InlineDeps): Promise<number> {
+  const report = await runHandlerInline<CatalogBootstrapReport>(
     registry,
     'bootstrap',
     {
@@ -357,12 +464,15 @@ async function cmdBootstrap(registry, flags, locale, deps) {
 }
 
 /** enqueue. */
-async function cmdEnqueue(services, flags, locale) {
-  const jobType = flags.positionals[0]
-  if (!CATALOG_JOB_TYPES.includes(jobType)) {
-    process.stderr.write(`erro: job desconhecido "${jobType}". Use um de: ${CATALOG_JOB_TYPES.join(', ')}.\n`)
+async function cmdEnqueue(services: DbOnlyRuntime, flags: CatalogFlags, locale: string): Promise<number> {
+  const requested = flags.positionals[0]
+  // `includes` num readonly array nao estreita o tipo: sem o predicado, `jobType`
+  // seguiria `string | undefined` ate o enqueue.
+  if (requested === undefined || !isCatalogJobType(requested)) {
+    process.stderr.write(`erro: job desconhecido "${requested ?? ''}". Use um de: ${CATALOG_JOB_TYPES.join(', ')}.\n`)
     return EXIT_CODES.usage
   }
+  const jobType: CatalogJobType = requested
 
   const payload = {
     entityType: flags.entity,
@@ -378,18 +488,21 @@ async function cmdEnqueue(services, flags, locale) {
   try {
     validateJobPayload(jobType, payload)
   } catch (error) {
-    process.stderr.write(`erro: payload invalido para "${jobType}": ${redactSecrets(String(error?.message ?? error))}\n`)
+    process.stderr.write(`erro: payload invalido para "${jobType}": ${redactSecrets(errorMessage(error))}\n`)
     return EXIT_CODES.usage
   }
 
   const externalId = flags.id === null ? null : String(flags.id)
+  // O payload ja passou pelo validador do job; a COLUNA entity_type usa o enum
+  // do banco, entao um --entity fora do dominio nao pode chegar ao insert.
+  const entityType = narrowCatalogEntityKind(flags.entity)
   const result = await services.store.enqueue({
     jobType,
-    entityType: flags.entity,
+    entityType,
     externalId,
     idempotencyKey: buildIdempotencyKey({
       jobType,
-      entityType: flags.entity,
+      entityType,
       externalId,
       discriminator: flags.season !== null ? `s${flags.season}:${locale}` : locale,
     }),
@@ -410,13 +523,20 @@ async function cmdEnqueue(services, flags, locale) {
 }
 
 /** worker. */
-async function cmdWorker(services, registry, flags, log, metrics, runId) {
+async function cmdWorker(
+  services: CatalogServices,
+  registry: CatalogJobRegistry,
+  flags: CatalogFlags,
+  log: StructuredLogger,
+  metrics: MetricsSink,
+  runId: string,
+): Promise<number> {
   const controller = new AbortController()
   let shuttingDown = false
 
   // Shutdown gracioso: para de reivindicar e drena o que esta em voo. Um
   // segundo sinal e do operador com pressa — ai sai na hora.
-  const onSignal = (signal) => {
+  const onSignal = (signal: NodeJS.Signals) => {
     if (shuttingDown) {
       process.stderr.write(`\n${signal} de novo: saindo imediatamente.\n`)
       process.exit(EXIT_CODES.error)
@@ -477,15 +597,21 @@ async function cmdWorker(services, registry, flags, log, metrics, runId) {
 }
 
 /** sync. */
-async function cmdSync(registry, flags, locale, deps) {
-  const ids = flags.id !== null ? [flags.id] : await readIdsFile(flags.idsFile)
-  const results = []
+async function cmdSync(registry: CatalogJobRegistry, flags: CatalogFlags, locale: string, deps: InlineDeps): Promise<number> {
+  // O parser ja exige --id OU --ids-file para ; a guarda torna isso prova.
+  const ids =
+    flags.id !== null
+      ? [flags.id]
+      : flags.idsFile !== null
+        ? await readIdsFile(flags.idsFile)
+        : []
+  const results: SyncDetailsResult[] = []
   let failed = 0
 
   for (const tmdbId of ids) {
     try {
       results.push(
-        await runHandlerInline(
+        await runHandlerInline<SyncDetailsResult>(
           registry,
           'sync_details',
           { entityType: flags.entity, tmdbId, locale, enqueueDependencies: true },
@@ -511,8 +637,8 @@ async function cmdSync(registry, flags, locale, deps) {
 }
 
 /** changes. */
-async function cmdChanges(registry, flags, deps) {
-  const report = await runHandlerInline(
+async function cmdChanges(registry: CatalogJobRegistry, flags: CatalogFlags, deps: InlineDeps): Promise<number> {
+  const report = await runHandlerInline<SyncChangesResult>(
     registry,
     'sync_changes',
     {
@@ -536,8 +662,8 @@ async function cmdChanges(registry, flags, deps) {
 }
 
 /** discovery. */
-async function cmdDiscovery(registry, flags, locale, deps) {
-  const report = await runHandlerInline(
+async function cmdDiscovery(registry: CatalogJobRegistry, flags: CatalogFlags, locale: string, deps: InlineDeps): Promise<number> {
+  const report = await runHandlerInline<SyncListsResult>(
     registry,
     'sync_lists',
     {
@@ -560,8 +686,8 @@ async function cmdDiscovery(registry, flags, locale, deps) {
 }
 
 /** media. */
-async function cmdMedia(registry, flags, locale, deps) {
-  const report = await runHandlerInline(
+async function cmdMedia(registry: CatalogJobRegistry, flags: CatalogFlags, locale: string, deps: InlineDeps): Promise<number> {
+  const report = await runHandlerInline<SyncMediaResult>(
     registry,
     'sync_media',
     { entityType: flags.entity, tmdbId: flags.id, seasonNumber: flags.season, locale },
@@ -575,12 +701,12 @@ async function cmdMedia(registry, flags, locale, deps) {
 }
 
 /** episodes. */
-async function cmdEpisodes(registry, flags, locale, deps) {
+async function cmdEpisodes(registry: CatalogJobRegistry, flags: CatalogFlags, locale: string, deps: InlineDeps): Promise<number> {
   const seasons =
     flags.season !== null
       ? [flags.season]
       : (
-          await runHandlerInline(
+          await runHandlerInline<SyncSeasonsResult>(
             registry,
             'sync_seasons',
             { tmdbId: flags.id, locale, enqueueEpisodes: false },
@@ -588,10 +714,10 @@ async function cmdEpisodes(registry, flags, locale, deps) {
           )
         ).seasonNumbers ?? []
 
-  const reports = []
+  const reports: SyncEpisodesResult[] = []
   for (const seasonNumber of seasons) {
     reports.push(
-      await runHandlerInline(registry, 'sync_episodes', { tmdbId: flags.id, seasonNumber, locale }, deps),
+      await runHandlerInline<SyncEpisodesResult>(registry, 'sync_episodes', { tmdbId: flags.id, seasonNumber, locale }, deps),
     )
   }
 
@@ -605,31 +731,38 @@ async function cmdEpisodes(registry, flags, locale, deps) {
 }
 
 /** search-reindex. */
-async function cmdSearchReindex(services, flags, locale, log) {
+async function cmdSearchReindex(
+  services: CatalogServices,
+  flags: CatalogFlags,
+  locale: string,
+  log: StructuredLogger,
+  metrics: MetricsSink,
+): Promise<number> {
   // `--id` reindexa UMA entidade (id INTERNO, nao tmdb id). Antes a flag era
   // aceita e ignorada: o comando varria o corpus inteiro enquanto o operador
   // achava que tinha reprojetado uma linha.
   if (flags.id !== null) {
-    const entity = splitList(flags.entity)
-    if (entity === null || entity.length !== 1) {
+    const entities = narrowSearchEntityTypes(splitList(flags.entity))
+    const entity = entities?.length === 1 ? entities[0] : undefined
+    if (entity === undefined) {
       process.stderr.write('erro: --id exige exatamente um --entity (movie|tv|person).\n')
       return EXIT_CODES.usage
     }
     const report = await reindexEntity(
-      { source: services.searchSource, store: services.searchStore, log },
-      entity[0],
+      { source: services.searchSource, store: services.searchStore, metrics, log },
+      entity,
       String(flags.id),
       locale,
     )
     emit(flags, report, [
-      `search-reindex ${entity[0]} ${flags.id}: ${report.upserted} gravado · ${report.deleted} removido · ${report.skipped} pulado`,
+      `search-reindex ${entity} ${flags.id}: ${report.upserted} gravado · ${report.deleted} removido · ${report.skipped} pulado`,
     ])
     return EXIT_CODES.ok
   }
 
   const report = await reindexAll(
-    { source: services.searchSource, store: services.searchStore, log },
-    { locale, entityTypes: splitList(flags.entity), limit: flags.limit ?? undefined },
+    { source: services.searchSource, store: services.searchStore, metrics, log },
+    { locale, entityTypes: narrowSearchEntityTypes(splitList(flags.entity)), limit: flags.limit ?? undefined },
   )
   emit(flags, report, [
     `search-reindex: ${report.scanned} varridos · ${report.upserted} gravados · ${report.deleted} removidos · ${report.skipped} pulados`,
@@ -638,7 +771,7 @@ async function cmdSearchReindex(services, flags, locale, log) {
 }
 
 /** search-status. */
-async function cmdSearchStatus(services, flags, locale) {
+async function cmdSearchStatus(services: DbOnlyRuntime, flags: CatalogFlags, locale: string): Promise<number> {
   const counts = await services.prisma.searchDocument.groupBy({
     by: ['entityType'],
     _count: { _all: true },
@@ -658,7 +791,7 @@ async function cmdSearchStatus(services, flags, locale) {
 }
 
 /** status. */
-async function cmdStatus(services, flags) {
+async function cmdStatus(services: DbOnlyRuntime, flags: CatalogFlags): Promise<number> {
   const prisma = services.prisma
   const [byStatus, byType, checkpoints, snapshots, documents, lastSyncs] = await Promise.all([
     prisma.catalogJob.groupBy({ by: ['status'], _count: { _all: true } }),
@@ -714,7 +847,7 @@ async function cmdStatus(services, flags) {
 }
 
 /** audit-database. */
-async function cmdAuditDatabase(services, flags) {
+async function cmdAuditDatabase(services: DbOnlyRuntime, flags: CatalogFlags): Promise<number> {
   // Gate proprio da auditoria (alem do gate geral da CLI): ler producao e ato
   // consciente mesmo sendo read-only.
   const gate = evaluateAuditGate({
@@ -736,7 +869,7 @@ async function cmdAuditDatabase(services, flags) {
 }
 
 /** dead-letter. */
-async function cmdDeadLetter(services, subcommand, flags) {
+async function cmdDeadLetter(services: DbOnlyRuntime, subcommand: DeadLetterSubcommand | null, flags: CatalogFlags): Promise<number> {
   if (subcommand === 'list') {
     const rows = await services.store.listDeadLetter(flags.limit ?? 50)
     emit(flags, rows, [
@@ -764,7 +897,7 @@ main()
     process.exitCode = code
   })
   .catch(async (error) => {
-    process.stderr.write(`erro: ${redactSecrets(String(error?.stack ?? error))}\n`)
+    process.stderr.write(`erro: ${redactSecrets(error instanceof Error ? (error.stack ?? error.message) : String(error))}\n`)
     process.exitCode = EXIT_CODES.error
     await disconnectPrisma().catch(() => {})
   })

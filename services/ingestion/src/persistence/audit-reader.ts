@@ -1,5 +1,5 @@
 /**
- * audit-reader.ts — Reader Prisma da auditoria. EXCLUIDO do typecheck.
+ * audit-reader.ts — Reader Prisma da auditoria. Coberto por `tsconfig.runtime.json`.
  *
  * SOMENTE LEITURA, por construcao: este modulo so chama `count`, `findMany`,
  * `groupBy` e `aggregate`. Nao ha `update`, `create`, `delete`, `$executeRaw`
@@ -10,8 +10,24 @@
  * nucleo puro.
  */
 
+import type { $Enums } from '@prisma/client'
+import type { PrismaClient } from '@screena/db/server'
+import type { AuditReaderPort, CoverageRow, EntityCountRow } from '../audit/index.js'
+
+/**
+ * Delegate minimo de um model Prisma.
+ *
+ * A auditoria varre models por NOME (tabela por tabela) — o client tipado nao
+ * expoe indexacao dinamica, entao a fronteira e explicitamente estrutural. Fora
+ * daqui tudo volta a ser tipado.
+ */
+interface CountableDelegate {
+  count(): Promise<number>
+  aggregate(args: unknown): Promise<{ _max?: { lastSyncedAt?: Date | null } }>
+}
+
 /** Tipos de entidade contados no relatorio. */
-const ENTITY_MODELS = [
+const ENTITY_MODELS: readonly { entity: string; model: string; hasLastSynced: boolean }[] = [
   { entity: 'movies', model: 'movie', hasLastSynced: true },
   { entity: 'tv_shows', model: 'tvShow', hasLastSynced: true },
   { entity: 'seasons', model: 'season', hasLastSynced: true },
@@ -33,30 +49,43 @@ const ENTITY_MODELS = [
   { entity: 'tmdb_raw', model: 'tmdbRaw', hasLastSynced: false },
 ]
 
-/** Tipos que tem cobertura de midia. */
-const COVERAGE_KINDS = [
+/**
+ * Tipos que tem cobertura de midia.
+ *
+ * `kind` e o enum `TmdbEntityKind` do banco (nao string solta): e o que filtra
+ * tmdb_images/tmdb_videos, e um valor fora do enum viraria erro de query.
+ */
+const COVERAGE_KINDS: readonly { kind: $Enums.TmdbEntityKind; model: string }[] = [
   { kind: 'movie', model: 'movie' },
   { kind: 'tv', model: 'tvShow' },
   { kind: 'person', model: 'person' },
 ]
 
 /** Divide protegendo contra total zero (0/0 seria NaN no relatorio). */
-function ratio(part, total) {
+function ratio(part: number, total: number): number {
   return total === 0 ? 0 : Math.round((part / total) * 10_000) / 10_000
 }
 
+/** Resolve um delegate pelo nome do model (fronteira estrutural; ver acima). */
+function delegateOf(prisma: PrismaClient, model: string): CountableDelegate | undefined {
+  const found = (prisma as unknown as Record<string, unknown>)[model]
+  if (found === undefined || found === null || typeof found !== 'object') return undefined
+  const candidate = found as Partial<CountableDelegate>
+  return typeof candidate.count === 'function' ? (found as CountableDelegate) : undefined
+}
+
 /** Cria o reader Prisma da auditoria (somente leitura). */
-export function createPrismaAuditReader(prisma) {
+export function createPrismaAuditReader(prisma: PrismaClient): AuditReaderPort {
   return {
-    async readEntityCounts() {
-      const rows = []
+    async readEntityCounts(): Promise<EntityCountRow[]> {
+      const rows: EntityCountRow[] = []
       for (const { entity, model, hasLastSynced } of ENTITY_MODELS) {
-        const delegate = prisma[model]
+        const delegate = delegateOf(prisma, model)
         // Modelo ausente no client (schema divergente) nao derruba a auditoria:
         // reportar 0 seria mentira, entao a linha simplesmente nao aparece.
-        if (delegate === undefined || typeof delegate.count !== 'function') continue
+        if (delegate === undefined) continue
         const total = await delegate.count()
-        let lastSyncedAt = null
+        let lastSyncedAt: Date | null = null
         if (hasLastSynced && total > 0) {
           const latest = await delegate.aggregate({ _max: { lastSyncedAt: true } })
           lastSyncedAt = latest?._max?.lastSyncedAt ?? null
@@ -66,11 +95,11 @@ export function createPrismaAuditReader(prisma) {
       return rows
     },
 
-    async readCoverage() {
-      const rows = []
+    async readCoverage(): Promise<CoverageRow[]> {
+      const rows: CoverageRow[] = []
       for (const { kind, model } of COVERAGE_KINDS) {
-        const delegate = prisma[model]
-        if (delegate === undefined || typeof delegate.count !== 'function') continue
+        const delegate = delegateOf(prisma, model)
+        if (delegate === undefined) continue
         const total = await delegate.count()
 
         // Cobertura e medida sobre as entidades DISTINTAS que tem midia, nao

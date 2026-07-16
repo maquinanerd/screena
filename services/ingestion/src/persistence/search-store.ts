@@ -9,12 +9,17 @@
 
 import type { PrismaClient } from '@screena/db/server'
 import { buildSearchQuery, matchReasonFromTier, scoreFromTier } from '../search/query.js'
-import type { SearchDocumentRow } from '../search/projection.js'
+import type { SearchDocumentRow, SearchEntityType } from '../search/projection.js'
 import type { SearchResultRow, SearchStorePort } from '../search/store-port.js'
 import type { SearchQueryOptions } from '../search/query.js'
 
 interface RawResultRow {
-  readonly entity_type: string
+  /**
+   * Vem do SELECT (coluna `entity_type`), que so guarda os tipos indexaveis —
+   * o CHECK do schema garante o dominio. Tipar como `SearchEntityType` (e nao
+   * `string`) mantem a fronteira honesta sem cast no mapeamento.
+   */
+  readonly entity_type: SearchEntityType
   readonly entity_id: bigint
   readonly primary_text: string
   readonly subtitle: string | null

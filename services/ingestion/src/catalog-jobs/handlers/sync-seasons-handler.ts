@@ -23,6 +23,15 @@ export interface SyncSeasonsResult {
   readonly seasons: number
   readonly episodes: number
   readonly enqueued: number
+  /**
+   * Numeros de temporada REPORTADOS pelo provider (inclui 0 = especiais).
+   *
+   * Faz parte do resultado porque um chamador que nao usa a fila (a CLI
+   * `catalog episodes` sem --season) precisa saber QUAIS temporadas existem para
+   * processa-las. Sem este campo o consumidor lia `undefined` e nao iterava
+   * nenhuma — falha silenciosa.
+   */
+  readonly seasonNumbers: readonly number[]
   readonly skipped: boolean
   readonly skipReason: string | null
 }
@@ -75,6 +84,7 @@ export class SyncSeasonsHandler implements CatalogJobHandler<SyncSeasonsInput, S
         seasons: 0,
         episodes: 0,
         enqueued: 0,
+        seasonNumbers: [],
         skipped: true,
         skipReason: outcome.skipReason,
       }
@@ -108,6 +118,7 @@ export class SyncSeasonsHandler implements CatalogJobHandler<SyncSeasonsInput, S
       seasons: outcome.seasons,
       episodes: outcome.episodes,
       enqueued,
+      seasonNumbers: outcome.seasonNumbers,
       skipped: false,
       skipReason: null,
     }

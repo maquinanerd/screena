@@ -16,12 +16,22 @@
  * ja reservada para a janela) — nenhuma tabela nova.
  */
 
+import type { Prisma } from '@prisma/client'
 import type { PrismaClient } from '@screena/db/server'
 import type {
   ChangesCheckpointPort,
   ChangesCheckpointState,
   ChangesCommitInput,
 } from '../changes/run.js'
+
+/**
+ * Client dentro de uma transacao.
+ *
+ * NAO e um `PrismaClient` completo: `$transaction`/`$connect`/`$disconnect` sao
+ * removidos pelo tipo. Anotar `tx` como PrismaClient compilava por acidente
+ * enquanto o arquivo estava fora do typecheck.
+ */
+type Tx = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0]
 
 /** Cria um `ChangesCheckpointPort` apoiado no Prisma. */
 export function createPrismaChangesCheckpoint(prisma: PrismaClient): ChangesCheckpointPort {
@@ -41,16 +51,16 @@ export function createPrismaChangesCheckpoint(prisma: PrismaClient): ChangesChec
     },
 
     async commit(input: ChangesCommitInput): Promise<{ enqueued: number }> {
-      return prisma.$transaction(async (tx: PrismaClient) => {
+      return prisma.$transaction(async (tx: Tx) => {
         let enqueued = 0
         if (input.enqueue.length > 0) {
           const created = await tx.catalogJob.createMany({
             data: input.enqueue.map((job) => ({
               jobType: job.jobType,
-              status: 'pending',
+              status: 'pending' as const,
               entityType: job.entityType ?? null,
               externalId: job.externalId ?? null,
-              payload: job.payload ?? {},
+              payload: (job.payload ?? {}) as Prisma.InputJsonValue,
               idempotencyKey: job.idempotencyKey,
               priority: job.priority ?? 100,
               maxAttempts: job.maxAttempts ?? 5,

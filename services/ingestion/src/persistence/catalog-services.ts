@@ -1,6 +1,10 @@
 /**
- * catalog-services.ts — Adapters REAIS das portas dos handlers. EXCLUIDO do
- * typecheck (toca Prisma + client TMDB).
+ * catalog-services.ts — Adapters REAIS das portas dos handlers.
+ *
+ * Fora do `tsconfig.json` principal (toca Prisma + client TMDB), mas COBERTO por
+ * `tsconfig.runtime.json` (`pnpm typecheck:catalog-runtime`). As portas abaixo
+ * sao anotadas com suas interfaces de proposito: e assim que o compilador checa
+ * cada chamada contra a assinatura REAL do servico.
  *
  * Traduz as portas puras de `catalog-jobs/handlers/ports.ts` para os servicos
  * que ja existem (import/*, catalog-sync/*, catalog-entities/*, episodes/*,
@@ -42,11 +46,38 @@ import {
   extractEpisodeStills,
 } from '../episodes/normalize.js'
 import { runMediaSync } from '../catalog-sync/media-sync.js'
+import type { MediaTarget } from '../catalog-sync/media-sync.js'
 import { extractListItems } from '../discovery-snapshots/index.js'
 import { parseIdExport, exportUrl, DAILY_ID_EXPORTS } from '../discovery/id-exports.js'
 import { filterAdult } from '../discovery/adult-filter.js'
 import { reindexEntity } from '../search-projection/index.js'
+import type { SearchProjectionSourcePort } from '../search-projection/index.js'
+import type { SearchStorePort } from '../search/store-port.js'
 import { PermanentJobError } from '../catalog-jobs/handler.js'
+import { createNoopMetricsSink } from '../metrics/index.js'
+import type { MetricsSink } from '../metrics/index.js'
+import type { CatalogHandlerDependencies } from '../catalog-jobs/handlers/registry.js'
+import type {
+  CatalogCreditsSyncPort,
+  CatalogDetailSyncPort,
+  CatalogDiscoverIdsPort,
+  CatalogEpisodesSyncPort,
+  CatalogExternalIdsSyncPort,
+  CatalogMediaSyncPort,
+  CatalogReprocessRawPort,
+  CatalogSeasonsSyncPort,
+  DetailSyncOutcome,
+  DiscoverIdsOutcome,
+  DiscoveryListFetchPort,
+  DiscoveryListPage,
+  SearchReindexPort,
+} from '../catalog-jobs/handlers/ports.js'
+import type { SyncDetailKind } from '../catalog-jobs/handlers/schemas.js'
+import type { ReferenceOwnerType } from '../catalog-entities/store-port.js'
+import type { ImportResult } from '../import/types.js'
+import type { TmdbReadPort } from '../ports.js'
+import type { PrismaClient } from '@screena/db/server'
+import type { TmdbCatalogEndpoints } from '@screena/tmdb-client'
 import { promoteMoviesFromRaw, promotePeopleFromRaw, promoteTvShowsFromRaw } from '../raw-promote/run.js'
 import { createPrismaCatalogEntitiesStore } from './catalog-entities-store.js'
 import { createPrismaEpisodeStore } from './episode-store.js'
@@ -62,7 +93,8 @@ import { createPersistence } from './index.js'
 
 /** Erro transitorio de um servico pipeline-safe que reportou falha. */
 class CatalogServiceError extends Error {
-  constructor(operation, code, detail) {
+  readonly code: string
+  constructor(operation: string, code: string, detail?: string) {
     super(`${operation} falhou (${code})${detail ? `: ${detail}` : ''}`)
     this.name = 'CatalogServiceError'
     this.code = code
@@ -75,7 +107,7 @@ class CatalogServiceError extends Error {
  * `aborted` e `failed` viram throw: o worker decide retry/dead-letter. Um 404
  * (entidade nao existe upstream) e PERMANENTE — repetir devolve o mesmo 404.
  */
-function assertImportOk(result, operation) {
+function assertImportOk(result: ImportResult, operation: string): ImportResult {
   if (result.status === 'success') return result
   const code = result.error ?? 'unknown'
   if (/\b404\b|not[_ ]?found/i.test(String(result.error ?? ''))) {
@@ -84,9 +116,46 @@ function assertImportOk(result, operation) {
   throw new CatalogServiceError(operation, result.status, result.error)
 }
 
+/**
+ * Exige um numero onde o tipo da porta permite null.
+ *
+ * O validador do handler ja garante o campo, mas o TIPO nao expressa isso. Sem a
+ * guarda, um chamador direto passaria `null` adiante e a URL do provider sairia
+ * errada em silencio. Falha permanente: nao adianta repetir um input incompleto.
+ */
+function requireNumber(value: number | null, field: string, kind: string): number {
+  if (value === null) {
+    throw new PermanentJobError('invalid_job_input', `"${field}" e obrigatorio para ${kind}`)
+  }
+  return value
+}
+
+/** Opcoes de montagem dos servicos do catalogo. */
+export interface CatalogServicesOptions {
+  /** Endpoints de leitura (movie/tv/season/person/upcoming). */
+  readonly tmdb: TmdbReadPort
+  /** Endpoints de catalogo (listas, midia, changes, entidades de referencia). */
+  readonly catalogEndpoints: TmdbCatalogEndpoints
+  readonly cacheTtlMs: number
+  readonly staleWindowMs?: number
+  readonly now?: () => Date
+  /** Baixa um texto por URL (Daily ID Exports). Injetado: o core nao faz rede. */
+  readonly fetchText?: (url: string) => Promise<string>
+  readonly metrics?: MetricsSink
+}
+
+/** Servicos montados, prontos para o registry e para a CLI. */
+export interface CatalogServices extends CatalogHandlerDependencies {
+  readonly prisma: PrismaClient
+  readonly searchStore: SearchStorePort
+  readonly searchSource: SearchProjectionSourcePort
+  readonly now: () => Date
+}
+
 /** Monta os adapters de servico do catalogo. */
-export function createCatalogServices(options) {
+export function createCatalogServices(options: CatalogServicesOptions): CatalogServices {
   const { tmdb, catalogEndpoints, staleWindowMs = 7 * 24 * 60 * 60 * 1000, now = () => new Date() } = options
+  const metrics = options.metrics ?? createNoopMetricsSink()
   const persistence = createPersistence({ ttlMs: options.cacheTtlMs, now })
   const prisma = persistence.prisma
 
@@ -106,18 +175,25 @@ export function createCatalogServices(options) {
     store: persistence.store,
     syncLog: persistence.syncLog,
     now,
-    staleAfter: (at) => new Date(at.getTime() + staleWindowMs),
+    staleAfter: (at: Date) => new Date(at.getTime() + staleWindowMs),
   }
 
   /** Detalhe de uma entidade de referencia (collection/company/network/keyword). */
-  async function syncReferenceDetail(kind, tmdbId, locale) {
+  async function syncReferenceDetail(
+    kind: SyncDetailKind,
+    tmdbId: number,
+    locale: string,
+  ): Promise<DetailSyncOutcome> {
     if (kind === 'collection') {
       const payload = await catalogEndpoints.getCollection(tmdbId, locale)
       const row = normalizeCollectionDetail(payload)
       if (row === null) throw new PermanentJobError('invalid_upstream', `collection ${tmdbId} sem id/nome`)
       const parts = normalizeCollectionParts(payload)
-      const linked = await entitiesStore.upsertCollectionWithParts(row, parts)
-      return { created: true, updated: false, unchanged: false, entityId: null, skipped: false, skipReason: null, linked }
+      // `upsertCollectionWithParts` devolve quantos filmes membros JA promovidos
+      // foram vinculados. Nao cabe em DetailSyncOutcome (que descreve a entidade,
+      // nao os vinculos) — fica no log, onde e util para diagnostico.
+      await entitiesStore.upsertCollectionWithParts(row, parts)
+      return { created: true, updated: false, unchanged: false, entityId: null, skipped: false, skipReason: null }
     }
     if (kind === 'company') {
       const row = normalizeCompanyDetail(await catalogEndpoints.getCompany(tmdbId))
@@ -138,7 +214,7 @@ export function createCatalogServices(options) {
   }
 
   /** Vincula referencias (colecao/produtoras/redes/keywords/aliases) de movie|tv. */
-  async function syncEntityReferences(kind, tmdbId, detail) {
+  async function syncEntityReferences(kind: ReferenceOwnerType, tmdbId: number, detail: unknown) {
     return entitiesStore.syncEntityReferences({
       entityType: kind,
       entityTmdbId: tmdbId,
@@ -150,7 +226,7 @@ export function createCatalogServices(options) {
     })
   }
 
-  const detailSync = {
+  const detailSync: CatalogDetailSyncPort = {
     async syncDetail({ kind, tmdbId, locale }) {
       if (kind === 'movie') {
         const result = assertImportOk(await importMovie(importContext, tmdbId), `importMovie(${tmdbId})`)
@@ -189,18 +265,24 @@ export function createCatalogServices(options) {
     },
   }
 
-  const creditsSync = {
+  const creditsSync: CatalogCreditsSyncPort = {
     async syncCredits({ kind, tmdbId, seasonNumber, episodeNumber }) {
       if (kind === 'episode') {
-        const payload = await tmdb.getTvSeason(tmdbId, seasonNumber)
-        const episode = findEpisode(payload, episodeNumber)
+        // O validador ja garante os dois para `episode`, mas o TIPO da porta os
+        // declara nulaveis. Sem esta guarda, um chamador direto (teste, script)
+        // faria `getTvSeason(id, null)` -> URL errada. A guarda transforma a
+        // garantia do validador em prova, em vez de convencao.
+        const season = requireNumber(seasonNumber, 'seasonNumber', kind)
+        const episodeNo = requireNumber(episodeNumber, 'episodeNumber', kind)
+        const payload = await tmdb.getTvSeason(tmdbId, season)
+        const episode = findEpisode(payload, episodeNo)
         if (episode === null) {
           return { cast: 0, crew: 0, guestStars: 0, skipped: true, skipReason: 'episodio ausente no payload' }
         }
         const outcome = await episodeStore.syncEpisodeReferences({
           tvShowTmdbId: tmdbId,
-          seasonNumber,
-          episodeNumber,
+          seasonNumber: season,
+          episodeNumber: episodeNo,
           cast: extractEpisodeCast(episode),
           guestStars: extractEpisodeGuestStars(episode),
           crew: extractEpisodeCrew(episode),
@@ -263,18 +345,20 @@ export function createCatalogServices(options) {
     },
   }
 
-  const externalIdsSync = {
+  const externalIdsSync: CatalogExternalIdsSyncPort = {
     async syncExternalIds({ kind, tmdbId, seasonNumber, episodeNumber }) {
       if (kind === 'episode') {
-        const payload = await tmdb.getTvSeason(tmdbId, seasonNumber)
-        const episode = findEpisode(payload, episodeNumber)
+        const season = requireNumber(seasonNumber, 'seasonNumber', kind)
+        const episodeNo = requireNumber(episodeNumber, 'episodeNumber', kind)
+        const payload = await tmdb.getTvSeason(tmdbId, season)
+        const episode = findEpisode(payload, episodeNo)
         if (episode === null) {
           return { upserted: 0, changed: 0, skipped: true, skipReason: 'episodio ausente no payload' }
         }
         const outcome = await episodeStore.syncEpisodeReferences({
           tvShowTmdbId: tmdbId,
-          seasonNumber,
-          episodeNumber,
+          seasonNumber: season,
+          episodeNumber: episodeNo,
           cast: [],
           guestStars: [],
           crew: [],
@@ -315,7 +399,7 @@ export function createCatalogServices(options) {
     },
   }
 
-  const mediaSync = {
+  const mediaSync: CatalogMediaSyncPort = {
     async syncMedia({ kind, tmdbId }) {
       const target = buildMediaTarget(catalogEndpoints, kind, tmdbId)
       const result = await runMediaSync(target, {
@@ -337,7 +421,7 @@ export function createCatalogServices(options) {
     },
   }
 
-  const seasonsSync = {
+  const seasonsSync: CatalogSeasonsSyncPort = {
     async syncSeasons({ tvTmdbId }) {
       const detail = await tmdb.getTvShow(tvTmdbId)
       const seasons = Array.isArray(detail?.seasons) ? detail.seasons : []
@@ -359,7 +443,7 @@ export function createCatalogServices(options) {
     },
   }
 
-  const episodesSync = {
+  const episodesSync: CatalogEpisodesSyncPort = {
     async syncEpisodes({ tvTmdbId, seasonNumber }) {
       const payload = await tmdb.getTvSeason(tvTmdbId, seasonNumber)
       const episodes = Array.isArray(payload?.episodes) ? payload.episodes : []
@@ -410,7 +494,7 @@ export function createCatalogServices(options) {
     },
   }
 
-  const listFetch = {
+  const listFetch: DiscoveryListFetchPort = {
     async fetchPage({ listType, entityType, locale, country, window, page }) {
       return fetchDiscoveryPage(catalogEndpoints, tmdb, {
         listType,
@@ -423,7 +507,7 @@ export function createCatalogServices(options) {
     },
   }
 
-  const discovery = {
+  const discovery: CatalogDiscoverIdsPort = {
     async discover({ strategy, kind, locale, country, limit, maxPages, ids }) {
       if (strategy === 'explicit-ids') {
         const accepted = [...new Set(ids ?? [])]
@@ -449,7 +533,7 @@ export function createCatalogServices(options) {
     },
   }
 
-  const reprocessRaw = {
+  const reprocessRaw: CatalogReprocessRawPort = {
     async reprocess({ kind, tmdbId, baseLanguage, limit, dryRun }) {
       // `promote*FromRaw` nao aceita filtro por id — so (baseLanguage, limit).
       // Aceitar `tmdbId` e ignora-lo faria o job reprocessar 100 linhas
@@ -478,29 +562,35 @@ export function createCatalogServices(options) {
             ? await promoteTvShowsFromRaw({ ...shared, source: createPrismaRawTvSource(prisma) })
             : await promotePeopleFromRaw({ ...shared, source: createPrismaRawPersonSource(prisma) })
 
-      const counts = report.counts ?? {}
-      const created = counts.created ?? 0
-      const updated = counts.updated ?? 0
-      const skipped = counts.skipped ?? 0
-      const failed = counts.failed ?? 0
+      // `PromoteCounts` e {created, updated, failed} — NAO tem `skipped`. Ler
+      // `counts.skipped` devolvia undefined -> 0 sempre; e `scanned` embutia um
+      // termo que nunca existiu. O core de promocao nao tem desfecho "pulado":
+      // cada linha vira created | updated | failed.
+      const counts = report.counts
+      const created = counts.created
+      const updated = counts.updated
+      const failed = counts.failed
       return {
-        scanned: created + updated + skipped + failed,
+        scanned: created + updated + failed,
         promoted: created + updated,
-        unchanged: skipped,
-        skipped,
+        unchanged: 0,
+        skipped: 0,
         failed,
         dryRun,
       }
     },
   }
 
-  const search = {
+  const search: SearchReindexPort = {
     async reindexEntity(entityType, entityId, locale) {
-      await reindexEntity({ source: searchSource, store: searchStore }, entityType, entityId, locale)
+      // `metrics` e OBRIGATORIO em SearchReindexDeps. `reindexEntity` nao o usa
+      // hoje, mas `reindexAll` chama `metrics.gauge` — passar sempre evita que a
+      // omissao vire crash quando o outro caminho o consumir.
+      await reindexEntity({ source: searchSource, store: searchStore, metrics }, entityType, entityId, locale)
     },
   }
 
-  const changes = {
+  const changes: CatalogServices['changes'] = {
     async fetchChanges(kind, params) {
       if (kind === 'movie') return catalogEndpoints.getMovieChanges(params)
       if (kind === 'tv') return catalogEndpoints.getTvChanges(params)
@@ -527,15 +617,30 @@ export function createCatalogServices(options) {
     search,
     searchStore,
     searchSource,
-    persistence,
     now,
   }
 }
 
-/** Acha um episodio pelo numero dentro do payload de temporada. */
-function findEpisode(seasonPayload, episodeNumber) {
-  const episodes = Array.isArray(seasonPayload?.episodes) ? seasonPayload.episodes : []
-  return episodes.find((e) => e?.episode_number === episodeNumber) ?? null
+/** Le uma propriedade de um valor desconhecido sem assumir a forma. */
+function readProp(value: unknown, key: string): unknown {
+  if (typeof value !== 'object' || value === null) return undefined
+  return (value as Record<string, unknown>)[key]
+}
+
+/**
+ * Acha um episodio pelo numero dentro do payload de temporada.
+ *
+ * Defensivo: o payload vem do provider e nao tem forma garantida.
+ */
+function findEpisode(seasonPayload: unknown, episodeNumber: number): Record<string, unknown> | null {
+  const raw = readProp(seasonPayload, 'episodes')
+  const episodes: unknown[] = Array.isArray(raw) ? raw : []
+  for (const entry of episodes) {
+    if (readProp(entry, 'episode_number') === episodeNumber) {
+      return entry as Record<string, unknown>
+    }
+  }
+  return null
 }
 
 /**
@@ -551,7 +656,7 @@ function findEpisode(seasonPayload, episodeNumber) {
  * Nada se perde: os stills de episodio ja entram por `sync_episodes`, com a
  * chave natural correta (serie + temporada + episodio) via `episodeStore`.
  */
-function buildMediaTarget(endpoints, kind, tmdbId) {
+function buildMediaTarget(endpoints: TmdbCatalogEndpoints, kind: string, tmdbId: number): MediaTarget {
   if (kind === 'movie') {
     return {
       entityType: 'movie',
@@ -590,7 +695,19 @@ function buildMediaTarget(endpoints, kind, tmdbId) {
  * .getUpcomingMovies` lancava TypeError e mandava todo sync_lists de "upcoming"
  * para dead-letter — o typecheck nao pega, porque este arquivo esta fora dele.
  */
-async function fetchDiscoveryPage(endpoints, tmdb, { listType, entityType, locale, country, window, page }) {
+async function fetchDiscoveryPage(
+  endpoints: TmdbCatalogEndpoints,
+  tmdb: TmdbReadPort,
+  input: {
+    listType: string
+    entityType: 'movie' | 'tv' | 'person'
+    locale: string
+    country: string | null
+    window: string | null
+    page: number
+  },
+): Promise<DiscoveryListPage> {
+  const { listType, entityType, locale, country, window, page } = input
   const params = { page, language: locale, region: country ?? undefined }
   if (listType === 'trending') {
     return endpoints.getTrending(entityType, window === 'week' ? 'week' : 'day', params)
@@ -617,7 +734,19 @@ async function fetchDiscoveryPage(endpoints, tmdb, { listType, entityType, local
  * `sync_details` de PESSOA. Isso e corrupcao de catalogo: pessoa 603 nao e o
  * filme 603. Agora falha explicitamente.
  */
-async function discoverFromLists(endpoints, tmdb, { strategy, kind, locale, country, limit, maxPages }) {
+async function discoverFromLists(
+  endpoints: TmdbCatalogEndpoints,
+  tmdb: TmdbReadPort,
+  input: {
+    strategy: string
+    kind: 'movie' | 'tv' | 'person'
+    locale: string
+    country: string | null
+    limit: number | null
+    maxPages: number
+  },
+): Promise<DiscoverIdsOutcome> {
+  const { strategy, kind, locale, country, limit, maxPages } = input
   if (kind === 'person' && strategy !== 'trending') {
     throw new PermanentJobError(
       'unsupported_discovery',
@@ -668,7 +797,12 @@ async function discoverFromLists(endpoints, tmdb, { strategy, kind, locale, coun
  * presente porem malformado ("true", 1, null) e descartado como unsafe, nunca
  * presumido seguro.
  */
-async function discoverFromDailyExports(kind, limit, now, fetchText) {
+async function discoverFromDailyExports(
+  kind: 'movie' | 'tv' | 'person',
+  limit: number | null,
+  now: () => Date,
+  fetchText: ((url: string) => Promise<string>) | undefined,
+): Promise<DiscoverIdsOutcome> {
   if (typeof fetchText !== 'function') {
     throw new PermanentJobError('missing_dependency', 'discover daily-exports exige `fetchText` no wiring')
   }

@@ -8,6 +8,7 @@
  * ficam nos planejadores PUROS de ../catalog-jobs; aqui so ha IO + conversao.
  */
 
+import type { Prisma } from '@prisma/client'
 import type { PrismaClient } from '@screena/db/server'
 import { planReclaim, planReplay } from '../catalog-jobs/transitions.js'
 import type { JobBackoffConfig } from '../catalog-jobs/backoff.js'
@@ -21,23 +22,35 @@ import type {
   ReclaimResult,
   ResolvedFailure,
 } from '../catalog-jobs/store-port.js'
+import type { CatalogEntityKind, CatalogJobType } from '../catalog-jobs/types.js'
 
 type Tx = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0]
 
 /** true se o erro do Prisma e violacao de unique (idempotency_key). */
-function isUniqueViolation(error) {
+function isUniqueViolation(error: unknown): boolean {
   if (error == null || typeof error !== 'object') return false
-  const code = error.code
+  const code = (error as { code?: unknown }).code
   if (code === 'P2002') return true
-  const message = error.message
+  const message = (error as { message?: unknown }).message
   return typeof message === 'string' && /idempotency_key|23505|duplicate key/i.test(message)
 }
 
-function asPayload(value) {
-  return value != null && typeof value === 'object' ? value : {}
+function asPayload(value: unknown): Record<string, unknown> {
+  return value != null && typeof value === 'object' ? (value as Record<string, unknown>) : {}
 }
 
-function toClaimed(row, attempts) {
+/** Linha crua do claim (SQL raw devolve snake_case, nao o shape do Prisma). */
+interface RawClaimRow {
+  id: bigint
+  job_type: CatalogJobType
+  entity_type: CatalogEntityKind | null
+  external_id: string | null
+  payload: unknown
+  max_attempts: number
+  run_id: string | null
+}
+
+function toClaimed(row: RawClaimRow, attempts: number): ClaimedCatalogJob {
   return {
     id: row.id.toString(),
     jobType: row.job_type,
@@ -74,7 +87,10 @@ export function createPrismaCatalogJobStore(
             status: 'pending',
             entityType: input.entityType ?? null,
             externalId: input.externalId ?? null,
-            payload: input.payload ?? {},
+            // `Record<string, unknown>` nao casa com `InputJsonValue` (que exige
+            // valores JSON-serializaveis). O payload E JSON por contrato da
+            // porta; o cast marca essa fronteira em vez de afrouxar o tipo.
+            payload: (input.payload ?? {}) as Prisma.InputJsonValue,
             idempotencyKey: input.idempotencyKey,
             priority: input.priority ?? 100,
             maxAttempts: input.maxAttempts ?? 5,
@@ -139,7 +155,9 @@ export function createPrismaCatalogJobStore(
       // frame UTC-wall-clock (::timestamptz AT TIME ZONE 'UTC') — deterministico.
       const atIso = at.toISOString()
       return prisma.$transaction(async (tx: Tx) => {
-        const rows = await tx.$queryRaw`
+        // `$queryRaw` devolve `unknown` sem o parametro de tipo: o shape vem do
+        // SELECT acima (snake_case), nao do model Prisma.
+        const rows = await tx.$queryRaw<(RawClaimRow & { attempts: number })[]>`
           SELECT id, job_type, entity_type, external_id, payload, attempts, max_attempts, run_id
           FROM catalog_jobs
           WHERE status::text IN ('pending', 'retry_wait')
