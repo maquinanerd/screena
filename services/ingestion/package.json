@@ -21,7 +21,8 @@
   "dependencies": {
     "@screena/db": "workspace:*",
     "@screena/public-contracts": "workspace:*",
-    "@screena/tmdb-client": "workspace:*"
+    "@screena/tmdb-client": "workspace:*",
+    "@screena/seo": "workspace:*"
   },
   "devDependencies": {
     "@prisma/client": "^6.1.0",

@@ -19,6 +19,8 @@
  */
 
 import type { PrismaClient } from '@screena/db/server'
+import { projectPublicIndexability } from '@screena/seo'
+import type { PublicIndexabilityProjection } from '@screena/seo'
 import type {
   CatalogStatusPayload,
   DiscoveryPayload,
@@ -31,6 +33,9 @@ import type {
   SeasonDetailPayload,
   TvDetailPayload,
 } from '@screena/public-contracts'
+import type { MapOptions } from '../public-payloads/map.js'
+// Prioridade de locale: regra PURA e testada (independente da ordem do banco).
+import { LOCALE_PRIORITY, pickByLocale, pickOneByLocale } from '../public-payloads/locale-priority.js'
 import {
   mapCatalogStatus,
   mapDiscovery,
@@ -102,8 +107,6 @@ export interface PublicPayloadReader {
   getCatalogStatusPayload(): Promise<CatalogStatusPayload>
 }
 
-const SLUG_LOCALES = ['pt-BR', 'pt']
-
 /** Cria o reader real. */
 export function createPublicPayloadReader(
   prisma: PrismaClient,
@@ -126,14 +129,12 @@ export function createPublicPayloadReader(
 
   /** Resolve o slug canonico pt de uma entidade -> entityId (bigint). */
   async function entityIdBySlug(entityType: 'movie' | 'tv' | 'person', slug: string) {
-    const row = await prisma.slug.findFirst({
-      where: { entityType, slug, isCanonical: true, languageCode: { in: SLUG_LOCALES } },
-      select: { entityId: true },
-      // 'pt-BR' antes de 'pt' (desc lexicografico): resultado deterministico
-      // quando as duas variantes existem.
-      orderBy: { languageCode: 'desc' },
+    const rows = await prisma.slug.findMany({
+      where: { entityType, slug, isCanonical: true, languageCode: { in: [...LOCALE_PRIORITY] } },
+      select: { entityId: true, languageCode: true },
     })
-    return row?.entityId ?? null
+    // Prioridade EXPLICITA (pt-BR > pt), nao a ordem do banco.
+    return pickOneByLocale(rows)?.entityId ?? null
   }
 
   /** Slugs canonicos pt de VARIAS pessoas (lote; evita N+1 nos creditos). */
@@ -144,24 +145,74 @@ export function createPublicPayloadReader(
         entityType: 'person',
         entityId: { in: [...personIds] },
         isCanonical: true,
-        languageCode: { in: SLUG_LOCALES },
+        languageCode: { in: [...LOCALE_PRIORITY] },
       },
-      select: { entityId: true, slug: true },
+      select: { entityId: true, languageCode: true, slug: true },
     })
-    return new Map(rows.map((r) => [r.entityId.toString(), r.slug]))
+    // `new Map(rows.map(...))` deixaria a ULTIMA linha vencer — a ordem do
+    // banco decidiria entre pt-BR e pt. `pickByLocale` decide por prioridade.
+    const best = pickByLocale(rows)
+    return new Map([...best].map(([id, row]) => [id, row.slug]))
   }
 
-  /** Traducao pt da entidade (title/summary/meta). */
+  /** Traducao pt da entidade (title/summary/meta), por prioridade de locale. */
   async function translationOf(
     entityType: 'movie' | 'tv' | 'person',
     entityId: bigint,
   ): Promise<TranslationRow | null> {
-    const row = await prisma.entityTranslation.findFirst({
-      where: { entityType, entityId, languageCode: { in: SLUG_LOCALES } },
-      select: { title: true, summary: true, metaTitle: true, metaDescription: true },
-      orderBy: { languageCode: 'desc' },
+    const rows = await prisma.entityTranslation.findMany({
+      where: { entityType, entityId, languageCode: { in: [...LOCALE_PRIORITY] } },
+      select: {
+        entityId: true,
+        languageCode: true,
+        title: true,
+        summary: true,
+        metaTitle: true,
+        metaDescription: true,
+      },
     })
-    return row ?? null
+    return pickByLocale(rows).get(entityId.toString()) ?? null
+  }
+
+  /**
+   * Indexabilidade VIGENTE da entidade+locale, projetada de
+   * `page_indexability_decisions` (`is_current=true`).
+   *
+   * FAIL-CLOSED: sem decisao vigente, `projectPublicIndexability(null)` devolve
+   * `index:false`. Ter slug NAO implica indexar — slug e rota, indexabilidade e
+   * decisao registrada. Empate por locale segue a mesma prioridade explicita.
+   */
+  async function indexabilityOf(
+    entityType: 'movie' | 'tv' | 'season' | 'episode' | 'person',
+    entityId: bigint,
+  ): Promise<PublicIndexabilityProjection> {
+    const rows = await prisma.pageIndexabilityDecision.findMany({
+      where: { entityType, entityId, isCurrent: true, languageCode: { in: [...LOCALE_PRIORITY] } },
+      select: {
+        entityId: true,
+        languageCode: true,
+        decision: true,
+        decisionOrigin: true,
+        policyVersion: true,
+        reason: true,
+      },
+    })
+    const current = pickByLocale(rows).get(entityId.toString())
+    if (current === undefined) return projectPublicIndexability(null)
+    return projectPublicIndexability({
+      decision: current.decision,
+      decisionOrigin: current.decisionOrigin,
+      policyVersion: current.policyVersion,
+      reason: current.reason,
+    })
+  }
+
+  /** MapOptions com a indexabilidade JA resolvida para a entidade+locale. */
+  async function mapOptionsFor(
+    entityType: 'movie' | 'tv' | 'season' | 'episode' | 'person',
+    entityId: bigint,
+  ): Promise<MapOptions> {
+    return { ...mapOptions, indexability: await indexabilityOf(entityType, entityId) }
   }
 
   /** Titulos alternativos (aliases) de movie|tv. */
@@ -285,18 +336,20 @@ export function createPublicPayloadReader(
           entityType,
           entityId: { in: ids },
           isCanonical: true,
-          languageCode: { in: SLUG_LOCALES },
+          languageCode: { in: [...LOCALE_PRIORITY] },
         },
-        select: { entityId: true, slug: true },
+        select: { entityId: true, languageCode: true, slug: true },
       }),
       prisma.entityTranslation.findMany({
-        where: { entityType, entityId: { in: ids }, languageCode: { in: SLUG_LOCALES } },
-        select: { entityId: true, title: true },
+        where: { entityType, entityId: { in: ids }, languageCode: { in: [...LOCALE_PRIORITY] } },
+        select: { entityId: true, languageCode: true, title: true },
       }),
     ])
 
-    const slugs = new Map(slugRows.map((r) => [r.entityId.toString(), r.slug]))
-    const titles = new Map(translations.map((r) => [r.entityId.toString(), r.title]))
+    // Prioridade EXPLICITA de locale nos dois lotes: `new Map(rows.map(...))`
+    // deixaria a ultima linha do banco vencer entre pt-BR e pt.
+    const slugs = pickByLocale(slugRows)
+    const titles = pickByLocale(translations)
     const byId = new Map(entities.map((e) => [e.id.toString(), e]))
 
     const cards: CardSourceRow[] = []
@@ -304,7 +357,7 @@ export function createPublicPayloadReader(
     for (const id of ids) {
       const key = id.toString()
       const entity = byId.get(key)
-      const slug = slugs.get(key)
+      const slug = slugs.get(key)?.slug
       // Sem entidade ou sem slug canonico nao ha card: link morto e pior que lacuna.
       if (entity === undefined || slug === undefined) continue
       const original =
@@ -313,7 +366,7 @@ export function createPublicPayloadReader(
       cards.push({
         kind: entityType,
         id: key,
-        title: titles.get(key) ?? original,
+        title: titles.get(key)?.title ?? original,
         slug,
         year: date === null ? null : date.getUTCFullYear(),
         posterPath: entity.posterPath,
@@ -385,7 +438,7 @@ export function createPublicPayloadReader(
           ratings: approvedRatings,
           streaming,
         },
-        mapOptions,
+        await mapOptionsFor('movie', entityId),
       )
     },
 
@@ -434,7 +487,7 @@ export function createPublicPayloadReader(
           ratings: approvedRatings,
           streaming,
         },
-        mapOptions,
+        await mapOptionsFor('tv', entityId),
       )
     },
 
@@ -479,7 +532,7 @@ export function createPublicPayloadReader(
           })),
           media: mediaRows,
         },
-        mapOptions,
+        await mapOptionsFor('season', season.id),
       )
     },
 
@@ -518,7 +571,7 @@ export function createPublicPayloadReader(
           },
           media: mediaRows,
         },
-        mapOptions,
+        await mapOptionsFor('episode', episode.id),
       )
     },
 
@@ -563,7 +616,7 @@ export function createPublicPayloadReader(
           })),
           media: mediaRows,
         },
-        mapOptions,
+        await mapOptionsFor('person', entityId),
       )
     },
 

@@ -10,5 +10,6 @@
  * payload ja serializado.
  */
 
+export * from './locale-priority.js'
 export * from './source-rows.js'
 export * from './map.js'

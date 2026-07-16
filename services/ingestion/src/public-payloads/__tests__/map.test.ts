@@ -12,6 +12,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
+import { projectPublicIndexability } from '@screena/seo'
 import {
   mapCatalogStatus,
   mapDiscovery,
@@ -80,7 +81,8 @@ describe('mapMovieDetail', () => {
     expect(payload.year).toBe(1999)
     expect(payload.collection?.kind).toBe('collection')
     expect(payload.collection?.canonicalUrl).toBeNull()
-    expect(payload.seo.index).toBe(true)
+    // Sem projecao de indexabilidade nas opcoes, o SEO e FAIL-CLOSED.
+    expect(payload.seo.index).toBe(false)
   })
 
   it('midia bloqueada NUNCA entra — nem como poster de maior voto', () => {
@@ -246,6 +248,92 @@ describe('mapCatalogStatus', () => {
     expect(payload.counts.succeeded).toBe(0)
     expect(payload.deadLetter[0]?.lastErrorCode).toBe('upstream_5xx')
     assertJsonSafe(payload)
+  })
+})
+
+describe('indexabilidade no contrato (fail-closed)', () => {
+  // REGRESSAO (achado da revisao humana): `buildSeo` cravava index:true /
+  // 'index,follow' para toda entidade resolvida, deduzindo indexabilidade de
+  // "tem slug". Slug e resolucao de ROTA; indexabilidade e decisao REGISTRADA
+  // em page_indexability_decisions. Ter slug NAO implica indexar.
+  it('sem projecao de decisao, NAO indexa (o silencio nao autoriza)', () => {
+    const payload = mapMovieDetail(MOVIE_FIXTURE, FIXTURE_OPTIONS)
+    expect(payload.seo.index).toBe(false)
+    expect(payload.seo.robots).toBe('noindex,follow')
+  })
+
+  it('slug presente + traducao presente NAO implicam index=true', () => {
+    // A fixture tem slug ('matrix') E traducao ('Matrix'): mesmo assim, sem
+    // decisao vigente projetada, o contrato sai fora do indice.
+    expect(MOVIE_FIXTURE.slug).toBe('matrix')
+    expect(MOVIE_FIXTURE.translation?.title).toBe('Matrix')
+    expect(mapMovieDetail(MOVIE_FIXTURE, FIXTURE_OPTIONS).seo.index).toBe(false)
+  })
+
+  it('decisao "index" projetada => index=true, index,follow', () => {
+    const payload = mapMovieDetail(MOVIE_FIXTURE, {
+      ...FIXTURE_OPTIONS,
+      indexability: projectPublicIndexability({
+        decision: 'index',
+        decisionOrigin: 'seo_policy_engine',
+        policyVersion: '2026-07',
+      }),
+    })
+    expect(payload.seo.index).toBe(true)
+    expect(payload.seo.robots).toBe('index,follow')
+  })
+
+  it.each([
+    ['noindex', false, 'noindex,nofollow'],
+    ['blocked', false, 'noindex,nofollow'],
+    ['draft', false, 'noindex,follow'],
+    ['stale', false, 'noindex,follow'],
+  ] as const)('decisao "%s" => index=%s, robots=%s', (decision, index, robots) => {
+    const payload = mapMovieDetail(MOVIE_FIXTURE, {
+      ...FIXTURE_OPTIONS,
+      indexability: projectPublicIndexability({
+        decision,
+        decisionOrigin: 'human_override',
+        policyVersion: '2026-07',
+      }),
+    })
+    expect(payload.seo.index).toBe(index)
+    expect(payload.seo.robots).toBe(robots)
+  })
+
+  it('index e robots NUNCA se contradizem, em todos os payloads de detalhe', () => {
+    const cases = [
+      null,
+      { decision: 'index' as const },
+      { decision: 'noindex' as const },
+      { decision: 'blocked' as const },
+      { decision: 'draft' as const },
+      { decision: 'stale' as const },
+    ]
+    for (const kase of cases) {
+      const indexability = projectPublicIndexability(
+        kase === null ? null : { ...kase, decisionOrigin: null, policyVersion: null },
+      )
+      const options = { ...FIXTURE_OPTIONS, indexability }
+      const payloads = [
+        mapMovieDetail(MOVIE_FIXTURE, options).seo,
+        mapTvDetail(TV_FIXTURE, options).seo,
+        mapSeasonDetail(SEASON_FIXTURE, options).seo,
+        mapEpisodeDetail(EPISODE_FIXTURE, options).seo,
+        mapPersonDetail(PERSON_FIXTURE, options).seo,
+      ]
+      for (const seo of payloads) {
+        // Consistencia dura: `index:true` <=> robots comeca com 'index'.
+        expect(seo.robots.startsWith('index,'), `${seo.robots} vs index=${seo.index}`).toBe(seo.index)
+        expect(seo.index).toBe(indexability.index)
+        expect(seo.robots).toBe(indexability.robots)
+      }
+    }
+  })
+
+  it('temporada e episodio seguem a MESMA politica (nao herdam index por rota)', () => {
+    expect(mapSeasonDetail(SEASON_FIXTURE, FIXTURE_OPTIONS).seo.index).toBe(false)
+    expect(mapEpisodeDetail(EPISODE_FIXTURE, FIXTURE_OPTIONS).seo.index).toBe(false)
   })
 })
 

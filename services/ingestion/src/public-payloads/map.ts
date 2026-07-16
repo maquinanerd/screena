@@ -15,6 +15,7 @@ import {
   buildMediaPayload,
 } from '../media/build.js'
 import { buildTmdbImageUrl } from '@screena/public-contracts'
+import type { PublicIndexabilityProjection } from '@screena/seo'
 import {
   validateCatalogStatusPayload,
   validateDiscoveryPayload,
@@ -63,6 +64,15 @@ export interface MapOptions {
   /** Origem absoluta do site (ex.: https://thescreen.media), sem barra final. */
   readonly siteOrigin: string
   readonly locale: string
+  /**
+   * Indexabilidade VIGENTE da entidade+locale, projetada de
+   * `page_indexability_decisions` por `projectPublicIndexability`.
+   *
+   * OBRIGATORIA nos payloads de detalhe. Nao ha default: um default
+   * "indexavel" foi exatamente o bug — o contrato cravava `index,follow` para
+   * toda entidade com slug, ignorando a decisao registrada.
+   */
+  readonly indexability?: PublicIndexabilityProjection
 }
 
 /** Data de obra -> 'YYYY-MM-DD' (sem hora; null atravessa). */
@@ -109,26 +119,37 @@ export function episodeCanonicalUrl(
 }
 
 /**
- * SeoPayload padrao sob INDEXACAO TOTAL (invariante 5): a entidade resolveu
- * (tem slug e traducao — senao o getter devolve null e a rota e 404 tecnico),
- * logo indexa. A fonte AUTORITATIVA de excecoes (stale/blocked/decisoes
- * registradas) continua sendo packages/seo + page_indexability_decisions — este
- * payload nao a substitui nem a contradiz: casos tecnicos nunca chegam aqui.
+ * SeoPayload a partir da decisao AUTORITATIVA de indexabilidade.
+ *
+ * A versao anterior cravava `index: true` / `robots: 'index,follow'` para toda
+ * entidade resolvida, deduzindo indexabilidade de "tem slug". Isso ignorava
+ * `page_indexability_decisions`: entidade `noindex`/`blocked`/`stale`/`draft`
+ * — ou sem decisao registrada — saia no contrato como indexavel. Slug e
+ * resolucao de ROTA; indexabilidade e decisao REGISTRADA. Sem projecao, o
+ * payload e fail-closed (`noindex,follow`), nunca indexado por omissao.
  */
 function buildSeo(
   canonicalUrl: string,
-  locale: string,
+  options: MapOptions,
   metaTitle: string | null,
   metaDescription: string | null,
 ): SeoPayload {
+  const projection = options.indexability ?? FAIL_CLOSED_INDEXABILITY
   return {
     canonicalUrl,
-    index: true,
-    robots: 'index,follow',
+    index: projection.index,
+    robots: projection.robots,
     metaTitle,
     metaDescription,
-    locale,
+    locale: options.locale,
   }
+}
+
+/** Sem decisao projetada, o contrato nao indexa. O silencio nunca autoriza. */
+const FAIL_CLOSED_INDEXABILITY: PublicIndexabilityProjection = {
+  index: false,
+  robots: 'noindex,follow',
+  decision: 'absent',
 }
 
 /** Lanca com o diagnostico do validador quando o payload nao cumpre o contrato. */
@@ -220,7 +241,7 @@ export function mapMovieDetail(row: MovieSourceRow, options: MapOptions): MovieD
     })),
     seo: buildSeo(
       canonicalUrl,
-      options.locale,
+      options,
       row.translation?.metaTitle ?? null,
       row.translation?.metaDescription ?? null,
     ),
@@ -264,7 +285,7 @@ export function mapTvDetail(row: TvSourceRow, options: MapOptions): TvDetailPayl
     streaming: row.streaming.map((s) => ({ ...s })),
     seo: buildSeo(
       canonicalUrl,
-      options.locale,
+      options,
       row.translation?.metaTitle ?? null,
       row.translation?.metaDescription ?? null,
     ),
@@ -307,7 +328,7 @@ export function mapSeasonDetail(row: SeasonSourceRow, options: MapOptions): Seas
         ),
       })),
     media: mapMedia(row.media, alt),
-    seo: buildSeo(canonicalUrl, options.locale, null, null),
+    seo: buildSeo(canonicalUrl, options, null, null),
   }
 
   return unwrap(validateSeasonDetail(payload), `SeasonDetailPayload(${row.id})`)
@@ -340,7 +361,7 @@ export function mapEpisodeDetail(row: EpisodeSourceRow, options: MapOptions): Ep
     airDate: toIsoDate(row.airDate),
     runtimeMinutes: row.runtimeMinutes,
     media: mapMedia(row.media, alt),
-    seo: buildSeo(canonicalUrl, options.locale, null, null),
+    seo: buildSeo(canonicalUrl, options, null, null),
   }
 
   return unwrap(validateEpisodeDetail(payload), `EpisodeDetailPayload(${row.id})`)
@@ -362,7 +383,7 @@ export function mapPersonDetail(row: PersonSourceRow, options: MapOptions): Pers
     biography: row.biography,
     credits: row.credits.map((c) => mapCredit(c, options.siteOrigin)),
     media: mapMedia(row.media, row.name),
-    seo: buildSeo(canonicalUrl, options.locale, null, null),
+    seo: buildSeo(canonicalUrl, options, null, null),
   }
 
   return unwrap(validatePersonDetail(payload), `PersonDetailPayload(${row.id})`)

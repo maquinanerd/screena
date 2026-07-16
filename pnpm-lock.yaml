@@ -188,6 +188,9 @@ importers:
       '@screena/public-contracts':
         specifier: workspace:*
         version: link:../../packages/public-contracts
+      '@screena/seo':
+        specifier: workspace:*
+        version: link:../../packages/seo
       '@screena/tmdb-client':
         specifier: workspace:*
         version: link:../../api-clients/tmdb

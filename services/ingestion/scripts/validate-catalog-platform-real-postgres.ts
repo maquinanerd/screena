@@ -512,6 +512,12 @@ async function runContractChecks(prisma: PrismaClient): Promise<void> {
     create: { code: 'pt-BR', namePt: 'Portugues (Brasil)', nameEn: 'Portuguese (Brazil)', isPublished: true, indexDefault: true },
     update: {},
   })
+  // 'pt' existe para o teste de prioridade de locale (pt-BR vence pt).
+  await prisma.language.upsert({
+    where: { code: 'pt' },
+    create: { code: 'pt', namePt: 'Portugues', nameEn: 'Portuguese', isPublished: true, indexDefault: false },
+    update: {},
+  })
   await prisma.country.upsert({
     where: { code: 'BR' },
     create: { code: 'BR', namePt: 'Brasil', nameEn: 'Brazil' },
@@ -698,6 +704,143 @@ async function runContractChecks(prisma: PrismaClient): Promise<void> {
 
   const missing = await reader.getMovieDetailPayload('slug-que-nao-existe')
   record('contract 404 tecnico: slug inexistente devolve null (nunca payload pela metade)', missing === null, `missing=${String(missing)}`)
+
+  // --- indexabilidade: decisao autoritativa, fail-closed --------------------
+  // O filme semeado NAO tem decisao registrada: o contrato NAO pode indexa-lo
+  // so porque ele tem slug e traducao.
+  record(
+    'indexabilidade: sem decisao vigente => index=false (fail-closed)',
+    movieDetail !== null && movieDetail.seo.index === false && movieDetail.seo.robots === 'noindex,follow',
+    `index=${movieDetail?.seo.index} robots=${movieDetail?.seo.robots}`,
+  )
+  record(
+    'indexabilidade: slug + traducao presentes NAO implicam index=true',
+    movieDetail !== null && movieDetail.canonicalUrl.includes('/contract-movie/') && movieDetail.title === 'O Filme do Contrato' && movieDetail.seo.index === false,
+    'slug e rota; indexabilidade e decisao',
+  )
+
+  /** Grava a decisao vigente do filme e devolve o SEO projetado pelo getter. */
+  async function seoWithDecision(decision: string, reason: string) {
+    await prisma.pageIndexabilityDecision.deleteMany({ where: { entityType: 'movie', entityId: movie.id } })
+    await prisma.pageIndexabilityDecision.create({
+      data: {
+        entityType: 'movie', entityId: movie.id, languageCode: 'pt-BR',
+        url: 'https://thescreen.media/pt/filmes/contract-movie/',
+        decision: decision as never, reason, isCurrent: true,
+        decisionOrigin: 'validator', policyVersion: '2026-07', decidedAt: new Date(),
+      },
+    })
+    const payload = await reader.getMovieDetailPayload('contract-movie')
+    return payload?.seo ?? null
+  }
+
+  const seoIndex = await seoWithDecision('index', 'entidade completa')
+  record(
+    'indexabilidade: decisao "index" => index=true, index,follow',
+    seoIndex?.index === true && seoIndex.robots === 'index,follow',
+    `index=${seoIndex?.index} robots=${seoIndex?.robots}`,
+  )
+
+  const seoThin = await seoWithDecision('noindex', 'conteudo fino (thin)')
+  record(
+    'indexabilidade: noindex (thin) => index=false, noindex,nofollow',
+    seoThin?.index === false && seoThin.robots === 'noindex,nofollow',
+    `index=${seoThin?.index} robots=${seoThin?.robots}`,
+  )
+
+  const seoBlocked = await seoWithDecision('blocked', 'licenca bloqueada')
+  record(
+    'indexabilidade: blocked (licenca) => index=false, noindex,nofollow',
+    seoBlocked?.index === false && seoBlocked.robots === 'noindex,nofollow',
+    `index=${seoBlocked?.index} robots=${seoBlocked?.robots}`,
+  )
+
+  const seoStale = await seoWithDecision('stale', 'retirado do indice ate revalidar')
+  record(
+    'indexabilidade: stale (retirado) => index=false, noindex,follow',
+    seoStale?.index === false && seoStale.robots === 'noindex,follow',
+    `index=${seoStale?.index} robots=${seoStale?.robots}`,
+  )
+
+  const seoDraft = await seoWithDecision('draft', 'idioma nao publicado')
+  record(
+    'indexabilidade: draft => index=false, noindex,follow',
+    seoDraft?.index === false && seoDraft.robots === 'noindex,follow',
+    `index=${seoDraft?.index} robots=${seoDraft?.robots}`,
+  )
+
+  // Decisao NAO vigente (is_current=false) nao governa: volta ao fail-closed.
+  await prisma.pageIndexabilityDecision.updateMany({
+    where: { entityType: 'movie', entityId: movie.id },
+    data: { decision: 'index', isCurrent: false },
+  })
+  const seoSuperseded = (await reader.getMovieDetailPayload('contract-movie'))?.seo
+  record(
+    'indexabilidade: decisao NAO vigente (is_current=false) nao indexa',
+    seoSuperseded?.index === false,
+    `index=${seoSuperseded?.index}`,
+  )
+
+  record(
+    'indexabilidade: index e robots nunca se contradizem',
+    [seoIndex, seoThin, seoBlocked, seoStale, seoDraft, seoSuperseded ?? null].every(
+      (seo) => seo === null || seo.robots.startsWith('index,') === seo.index,
+    ),
+    'consistencia verificada nas 6 projecoes',
+  )
+
+  // --- prioridade deterministica de locale (pt-BR > pt) ---------------------
+  // Ordem de insercao ADVERSARIAL: pt-BR PRIMEIRO, pt DEPOIS. O Postgres tende
+  // a devolver na ordem fisica, entao `new Map(rows.map(...))` — que deixa a
+  // ULTIMA linha vencer — daria 'pt'. So a prioridade EXPLICITA de
+  // `pickByLocale` faz pt-BR ganhar. (A ordem oposta tornaria o check vacuo:
+  // o codigo bugado passaria por acidente.)
+  const dual = await prisma.movie.create({
+    data: { tmdbId: 777006, titleOriginal: 'Dual Locale', releaseDate: new Date('2020-01-01'), posterPath: '/contract-ok.jpg' },
+  })
+  await prisma.slug.create({
+    data: { entityType: 'movie', entityId: dual.id, languageCode: 'pt-BR', slug: 'dual-locale-ptbr', isCanonical: true },
+  })
+  await prisma.slug.create({
+    data: { entityType: 'movie', entityId: dual.id, languageCode: 'pt', slug: 'dual-locale-pt', isCanonical: true },
+  })
+  await prisma.entityTranslation.create({
+    data: { entityType: 'movie', entityId: dual.id, languageCode: 'pt-BR', title: 'Titulo PT-BR' },
+  })
+  await prisma.entityTranslation.create({
+    data: { entityType: 'movie', entityId: dual.id, languageCode: 'pt', title: 'Titulo PT' },
+  })
+  await prisma.pageIndexabilityDecision.createMany({
+    data: [
+      { entityType: 'movie', entityId: dual.id, languageCode: 'pt-BR', url: 'x', decision: 'index', isCurrent: true },
+      { entityType: 'movie', entityId: dual.id, languageCode: 'pt', url: 'x', decision: 'blocked', isCurrent: true },
+    ],
+  })
+
+  const dualDetail = await reader.getMovieDetailPayload('dual-locale-ptbr')
+  record(
+    'locale: traducao pt-BR vence pt (linhas inseridas na ordem inversa)',
+    dualDetail?.title === 'Titulo PT-BR',
+    `title=${dualDetail?.title}`,
+  )
+  record(
+    'locale: decisao pt-BR vence pt (index, nao blocked)',
+    dualDetail?.seo.index === true && dualDetail.seo.robots === 'index,follow',
+    `index=${dualDetail?.seo.index} robots=${dualDetail?.seo.robots}`,
+  )
+
+  // Card (lote): o mesmo empate resolvido em cardsOf/personSlugs.
+  await snapshots.saveSnapshot({
+    listType: 'popular', entityType: 'movie', locale: 'pt-BR', country: null, window: null,
+    capturedAt: new Date(), expiresAt: new Date(Date.now() + 60 * 60 * 1000), provider: 'tmdb', payloadHash: 'dual-snap',
+    items: [{ entityTmdbId: 777006, position: 0, providerScore: 5 }],
+  })
+  const dualDiscovery = await reader.getDiscoveryPayload('popular', 'movie')
+  record(
+    'locale em LOTE: card usa titulo/slug pt-BR (cardsOf deterministico)',
+    dualDiscovery?.items[0]?.title === 'Titulo PT-BR' && dualDiscovery.items[0]?.href.includes('/dual-locale-ptbr/'),
+    `title=${dualDiscovery?.items[0]?.title} href=${dualDiscovery?.items[0]?.href}`,
+  )
 }
 
 /**
