@@ -1,0 +1,283 @@
+/**
+ * catalog-job-store.ts — Adapter Prisma da fila de jobs do catalogo (Backend A).
+ * EXCLUIDO do typecheck (adapters Prisma em persistence/), como job-claim.ts.
+ *
+ * Implementa `CatalogJobStorePort`. O claim e concorrente-seguro via
+ * `FOR UPDATE SKIP LOCKED` (dois workers nunca pegam o mesmo job) — mesmo padrao
+ * provado do EntityWriterJob. As DECISOES (retry vs dead-letter, reclaim, replay)
+ * ficam nos planejadores PUROS de ../catalog-jobs; aqui so ha IO + conversao.
+ */
+
+import type { PrismaClient } from '@screena/db/server'
+import { planReclaim, planReplay } from '../catalog-jobs/transitions.js'
+import type { JobBackoffConfig } from '../catalog-jobs/backoff.js'
+import type {
+  CatalogJobStorePort,
+  ClaimCatalogOptions,
+  ClaimedCatalogJob,
+  DeadLetterEntry,
+  EnqueueCatalogJobInput,
+  EnqueueResult,
+  ReclaimResult,
+  ResolvedFailure,
+} from '../catalog-jobs/store-port.js'
+
+type Tx = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0]
+
+/** true se o erro do Prisma e violacao de unique (idempotency_key). */
+function isUniqueViolation(error) {
+  if (error == null || typeof error !== 'object') return false
+  const code = error.code
+  if (code === 'P2002') return true
+  const message = error.message
+  return typeof message === 'string' && /idempotency_key|23505|duplicate key/i.test(message)
+}
+
+function asPayload(value) {
+  return value != null && typeof value === 'object' ? value : {}
+}
+
+function toClaimed(row, attempts) {
+  return {
+    id: row.id.toString(),
+    jobType: row.job_type,
+    entityType: row.entity_type,
+    externalId: row.external_id,
+    payload: asPayload(row.payload),
+    attempts,
+    maxAttempts: row.max_attempts,
+    runId: row.run_id,
+  }
+}
+
+/** Opcoes do adapter: relogio + config de backoff + fonte de jitter (injetaveis). */
+export interface PrismaCatalogJobStoreDeps {
+  readonly now?: () => Date
+  readonly backoff?: JobBackoffConfig
+  readonly random?: () => number
+}
+
+/** Cria um `CatalogJobStorePort` apoiado no Prisma. */
+export function createPrismaCatalogJobStore(
+  prisma: PrismaClient,
+  deps: PrismaCatalogJobStoreDeps = {},
+): CatalogJobStorePort {
+  const now = deps.now ?? (() => new Date())
+  const random = deps.random ?? Math.random
+
+  return {
+    async enqueue(input: EnqueueCatalogJobInput): Promise<EnqueueResult> {
+      try {
+        const job = await prisma.catalogJob.create({
+          data: {
+            jobType: input.jobType,
+            status: 'pending',
+            entityType: input.entityType ?? null,
+            externalId: input.externalId ?? null,
+            payload: input.payload ?? {},
+            idempotencyKey: input.idempotencyKey,
+            priority: input.priority ?? 100,
+            maxAttempts: input.maxAttempts ?? 5,
+            availableAt: input.availableAt ?? now(),
+            runId: input.runId ?? null,
+          },
+          select: { id: true },
+        })
+        return { id: job.id.toString(), created: true }
+      } catch (error) {
+        if (isUniqueViolation(error)) {
+          // Outro enfileiramento com a mesma chave ja existe: noop idempotente.
+          const existing = await prisma.catalogJob.findUnique({
+            where: { idempotencyKey: input.idempotencyKey },
+            select: { id: true },
+          })
+          return { id: existing ? existing.id.toString() : '0', created: false }
+        }
+        throw error
+      }
+    },
+
+    async claimNext(options: ClaimCatalogOptions = {}): Promise<ClaimedCatalogJob | null> {
+      const at = now()
+
+      // Dry-run: peek somente-leitura (nao muta).
+      if (options.dryRun) {
+        const row = await prisma.catalogJob.findFirst({
+          where: {
+            status: { in: ['pending', 'retry_wait'] },
+            availableAt: { lte: at },
+          },
+          orderBy: [{ priority: 'asc' }, { availableAt: 'asc' }],
+          select: {
+            id: true,
+            jobType: true,
+            entityType: true,
+            externalId: true,
+            payload: true,
+            attempts: true,
+            maxAttempts: true,
+            runId: true,
+          },
+        })
+        if (row === null) return null
+        return {
+          id: row.id.toString(),
+          jobType: row.jobType,
+          entityType: row.entityType,
+          externalId: row.externalId,
+          payload: asPayload(row.payload),
+          attempts: row.attempts,
+          maxAttempts: row.maxAttempts,
+          runId: row.runId,
+        }
+      }
+
+      // Claim concorrente-seguro: SELECT ... FOR UPDATE SKIP LOCKED + UPDATE.
+      // `available_at` e `timestamp` (sem tz), gravado pelo Prisma como wall-clock
+      // UTC. Comparar com um Date cru em raw SQL sofreria conversao pela timezone
+      // da sessao; por isso o horario entra como ISO string e e trazido ao mesmo
+      // frame UTC-wall-clock (::timestamptz AT TIME ZONE 'UTC') — deterministico.
+      const atIso = at.toISOString()
+      return prisma.$transaction(async (tx: Tx) => {
+        const rows = await tx.$queryRaw`
+          SELECT id, job_type, entity_type, external_id, payload, attempts, max_attempts, run_id
+          FROM catalog_jobs
+          WHERE status::text IN ('pending', 'retry_wait')
+            AND available_at <= ${atIso}::timestamptz AT TIME ZONE 'UTC'
+          ORDER BY priority ASC, available_at ASC
+          FOR UPDATE SKIP LOCKED
+          LIMIT 1`
+        const picked = rows[0]
+        if (picked === undefined) return null
+
+        await tx.catalogJob.update({
+          where: { id: picked.id },
+          data: {
+            status: 'running',
+            claimedAt: at,
+            heartbeatAt: at,
+            attempts: { increment: 1 },
+          },
+        })
+        // attempts retornado ja reflete a tentativa em curso (pos-incremento).
+        return toClaimed(picked, picked.attempts + 1)
+      })
+    },
+
+    async heartbeat(id: string): Promise<void> {
+      await prisma.catalogJob.updateMany({
+        where: { id: BigInt(id), status: 'running' },
+        data: { heartbeatAt: now() },
+      })
+    },
+
+    async complete(id: string): Promise<void> {
+      await prisma.catalogJob.update({
+        where: { id: BigInt(id) },
+        data: { status: 'succeeded', completedAt: now() },
+      })
+    },
+
+    async applyFailure(id: string, failure: ResolvedFailure): Promise<void> {
+      await prisma.catalogJob.update({
+        where: { id: BigInt(id) },
+        data: {
+          status: failure.status,
+          availableAt: failure.availableAt ?? undefined,
+          completedAt: failure.status === 'dead_letter' ? now() : null,
+          lastErrorCode: failure.lastErrorCode,
+          lastErrorSafe: failure.lastErrorSafe,
+        },
+      })
+    },
+
+    async reclaimOrphans(timeoutMs: number): Promise<ReclaimResult> {
+      const at = now()
+      const threshold = new Date(at.getTime() - timeoutMs)
+      // Orfaos: em voo (claimed/running) com heartbeat OU claimedAt (fallback) velhos.
+      const candidates = await prisma.catalogJob.findMany({
+        where: {
+          status: { in: ['claimed', 'running'] },
+          OR: [
+            { heartbeatAt: { lt: threshold } },
+            { heartbeatAt: null, claimedAt: { lt: threshold } },
+          ],
+        },
+        select: { id: true, attempts: true, maxAttempts: true },
+      })
+
+      let requeued = 0
+      let deadLettered = 0
+      for (const job of candidates) {
+        const plan = planReclaim(
+          { attempts: job.attempts, maxAttempts: job.maxAttempts },
+          random(),
+          deps.backoff,
+        )
+        const availableAt =
+          plan.availableInMs === null ? null : new Date(at.getTime() + plan.availableInMs)
+        await prisma.catalogJob.update({
+          where: { id: job.id },
+          data: {
+            status: plan.status,
+            availableAt: availableAt ?? undefined,
+            completedAt: plan.status === 'dead_letter' ? at : null,
+            lastErrorCode: plan.lastErrorCode,
+            lastErrorSafe: plan.lastErrorSafe,
+          },
+        })
+        if (plan.status === 'dead_letter') deadLettered += 1
+        else requeued += 1
+      }
+      return { requeued, deadLettered }
+    },
+
+    async listDeadLetter(limit: number): Promise<DeadLetterEntry[]> {
+      const rows = await prisma.catalogJob.findMany({
+        where: { status: 'dead_letter' },
+        orderBy: { id: 'asc' },
+        take: limit,
+        select: {
+          id: true,
+          jobType: true,
+          entityType: true,
+          externalId: true,
+          attempts: true,
+          lastErrorCode: true,
+          lastErrorSafe: true,
+        },
+      })
+      return rows.map((row) => ({
+        id: row.id.toString(),
+        jobType: row.jobType,
+        entityType: row.entityType,
+        externalId: row.externalId,
+        attempts: row.attempts,
+        lastErrorCode: row.lastErrorCode,
+        lastErrorSafe: row.lastErrorSafe,
+      }))
+    },
+
+    async replayDeadLetter(ids?: readonly string[]): Promise<number> {
+      const replay = planReplay()
+      const at = now()
+      const result = await prisma.catalogJob.updateMany({
+        where: {
+          status: 'dead_letter',
+          ...(ids && ids.length > 0 ? { id: { in: ids.map((id) => BigInt(id)) } } : {}),
+        },
+        data: {
+          status: replay.status,
+          attempts: replay.attempts,
+          availableAt: at,
+          claimedAt: null,
+          heartbeatAt: null,
+          completedAt: null,
+          lastErrorCode: null,
+          lastErrorSafe: null,
+        },
+      })
+      return result.count
+    },
+  }
+}

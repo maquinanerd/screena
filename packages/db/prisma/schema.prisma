@@ -168,6 +168,38 @@ enum TmdbEntityKind {
   keyword
 }
 
+// --- Catalogo em escala (Backend A): fila duravel de jobs ---
+// Tipo do trabalho de catalogo. DISTINTO de JobType (writer-scoped:
+// generate_block/regenerate_block/translate_block). Cobre o pipeline de
+// ingestao/normalizacao (nunca redacao editorial). Worker-only.
+enum CatalogJobType {
+  bootstrap
+  discover_ids
+  sync_details
+  sync_credits
+  sync_external_ids
+  sync_media
+  sync_seasons
+  sync_episodes
+  sync_lists
+  sync_changes
+  reprocess_raw
+}
+
+// Estado de um CatalogJob na fila duravel. DISTINTO de JobStatus (writer).
+// `retry_wait` = aguardando janela de backoff; `dead_letter` = esgotou
+// tentativas (poison), aguardando replay humano/operacional.
+enum CatalogJobStatus {
+  pending
+  claimed
+  running
+  retry_wait
+  succeeded
+  failed
+  dead_letter
+  cancelled
+}
+
 // ============================================================
 // SEMENTE / REFERENCIA (chave natural como PK)
 // ============================================================
@@ -926,25 +958,25 @@ model Genre {
 // So METADADOS (nenhum binario baixado). Nasce display_allowed=false +
 // license_status=unknown (invariante 6): exibicao exige decisao humana. Worker-only.
 model TmdbImage {
-  id             BigInt        @id @default(autoincrement())
-  providerApi    String        @default("tmdb") @map("provider_api")
+  id             BigInt         @id @default(autoincrement())
+  providerApi    String         @default("tmdb") @map("provider_api")
   entityType     TmdbEntityKind @map("entity_type")
-  tmdbId         Int           @map("tmdb_id")
-  imageType      String        @map("image_type") // poster|backdrop|logo|profile|still
-  filePath       String        @map("file_path")
-  languageCode   String?       @map("language_code") // iso_639_1 (pode ser null)
+  tmdbId         Int            @map("tmdb_id")
+  imageType      String         @map("image_type") // poster|backdrop|logo|profile|still
+  filePath       String         @map("file_path")
+  languageCode   String?        @map("language_code") // iso_639_1 (pode ser null)
   width          Int?
   height         Int?
-  aspectRatio    Float?        @map("aspect_ratio")
-  voteAverage    Float?        @map("vote_average")
-  voteCount      Int?          @map("vote_count")
-  payloadHash    String        @map("payload_hash")
-  licenseStatus  LicenseStatus @default(unknown) @map("license_status")
-  displayAllowed Boolean       @default(false) @map("display_allowed")
-  fetchedAt      DateTime      @default(now()) @map("fetched_at")
-  staleAfter     DateTime?     @map("stale_after")
-  createdAt      DateTime      @default(now()) @map("created_at")
-  updatedAt      DateTime      @updatedAt @map("updated_at")
+  aspectRatio    Float?         @map("aspect_ratio")
+  voteAverage    Float?         @map("vote_average")
+  voteCount      Int?           @map("vote_count")
+  payloadHash    String         @map("payload_hash")
+  licenseStatus  LicenseStatus  @default(unknown) @map("license_status")
+  displayAllowed Boolean        @default(false) @map("display_allowed")
+  fetchedAt      DateTime       @default(now()) @map("fetched_at")
+  staleAfter     DateTime?      @map("stale_after")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
 
   @@unique([entityType, tmdbId, imageType, filePath])
   @@index([entityType, tmdbId])
@@ -954,27 +986,27 @@ model TmdbImage {
 // --- Mídia TMDB (Fase 7): metadados de videos ---
 // So metadados (link/site/key, nunca embed pirata). Nasce display_allowed=false.
 model TmdbVideo {
-  id             BigInt        @id @default(autoincrement())
-  providerApi    String        @default("tmdb") @map("provider_api")
+  id             BigInt         @id @default(autoincrement())
+  providerApi    String         @default("tmdb") @map("provider_api")
   entityType     TmdbEntityKind @map("entity_type")
-  tmdbId         Int           @map("tmdb_id")
-  tmdbVideoId    String        @map("tmdb_video_id")
+  tmdbId         Int            @map("tmdb_id")
+  tmdbVideoId    String         @map("tmdb_video_id")
   site           String
-  videoKey       String        @map("video_key")
+  videoKey       String         @map("video_key")
   name           String?
-  videoType      String?       @map("video_type") // Trailer|Teaser|Clip|...
+  videoType      String?        @map("video_type") // Trailer|Teaser|Clip|...
   official       Boolean?
-  languageCode   String?       @map("language_code")
-  countryCode    String?       @map("country_code")
+  languageCode   String?        @map("language_code")
+  countryCode    String?        @map("country_code")
   size           Int?
-  publishedAt    DateTime?     @map("published_at")
-  payloadHash    String        @map("payload_hash")
-  licenseStatus  LicenseStatus @default(unknown) @map("license_status")
-  displayAllowed Boolean       @default(false) @map("display_allowed")
-  fetchedAt      DateTime      @default(now()) @map("fetched_at")
-  staleAfter     DateTime?     @map("stale_after")
-  createdAt      DateTime      @default(now()) @map("created_at")
-  updatedAt      DateTime      @updatedAt @map("updated_at")
+  publishedAt    DateTime?      @map("published_at")
+  payloadHash    String         @map("payload_hash")
+  licenseStatus  LicenseStatus  @default(unknown) @map("license_status")
+  displayAllowed Boolean        @default(false) @map("display_allowed")
+  fetchedAt      DateTime       @default(now()) @map("fetched_at")
+  staleAfter     DateTime?      @map("stale_after")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
 
   @@unique([entityType, tmdbId, tmdbVideoId])
   @@index([entityType, tmdbId])
@@ -997,6 +1029,80 @@ model TmdbSyncCheckpoint {
 
   @@unique([job, paramsHash])
   @@map("tmdb_sync_checkpoint")
+}
+
+// ============================================================
+// CATALOGO EM ESCALA (Backend A): fila duravel + busca PostgreSQL
+// ============================================================
+// Primitivos NOVOS do catalogo em escala. Ambos sao worker/infra e NAO sao
+// lidos no caminho de render de pagina indexavel (o render le somente as
+// tabelas normalizadas + cache). Tabelas AUTOCONTIDAS: nenhuma FK composta
+// para `entities` (mantem a migration aditiva e segura no cenario de upgrade,
+// como genres/tmdb_images).
+
+// Fila duravel de jobs do catalogo. Generaliza o padrao provado do
+// EntityWriterJob (claim com FOR UPDATE SKIP LOCKED, unique parcial de job
+// ativo) para a ingestao/normalizacao. `idempotencyKey` deduplica enfileiramento
+// (repetir a mesma chave e noop); `attempts`/`maxAttempts` + `retry_wait`/
+// `dead_letter` modelam retry com backoff e dead-letter; `heartbeatAt` habilita
+// reclaim de jobs orfaos (worker morto). `entityType` usa TmdbEntityKind
+// (superset: cobre collection/network/company/keyword, nao so o renderavel).
+model CatalogJob {
+  id             BigInt           @id @default(autoincrement())
+  jobType        CatalogJobType   @map("job_type")
+  status         CatalogJobStatus @default(pending)
+  entityType     TmdbEntityKind?  @map("entity_type") // alvo do job (opcional: bootstrap/discover nao tem alvo unico)
+  externalId     String?          @map("external_id") // id externo (ex.: tmdb_id como texto); a entidade pode ainda nao estar promovida
+  payload        Json             @default("{}") // parametros do job (janela de changes, pagina, etc.)
+  idempotencyKey String           @unique @map("idempotency_key") // dedupe de enfileiramento (repetir = noop)
+  attempts       Int              @default(0)
+  maxAttempts    Int              @default(5) @map("max_attempts")
+  priority       Int              @default(100) // MENOR = mais prioritario (ORDER BY priority ASC)
+  availableAt    DateTime         @default(now()) @map("available_at") // elegivel para claim quando now >= available_at (backoff adia)
+  claimedAt      DateTime?        @map("claimed_at")
+  heartbeatAt    DateTime?        @map("heartbeat_at") // ultimo sinal de vida do worker (reclaim de orfaos)
+  completedAt    DateTime?        @map("completed_at")
+  lastErrorCode  String?          @map("last_error_code") // codigo curto e seguro (sem PII/segredo)
+  lastErrorSafe  String?          @map("last_error_safe") // mensagem redigida/segura para log
+  runId          String?          @map("run_id") // correlacao request/run para logs estruturados
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  // Ordem de claim: WHERE status IN (pending, retry_wait) AND available_at <= now
+  // ORDER BY priority ASC, available_at ASC (indice composto abaixo).
+  @@index([status, priority, availableAt])
+  @@index([entityType, externalId])
+  @@index([heartbeatAt])
+  @@map("catalog_jobs")
+}
+
+// Projecao denormalizada para busca PostgreSQL (unaccent + pg_trgm). Uma linha
+// por (entity_type, entity_id, locale). `normalizedText` guarda o texto ja
+// dobrado (sem acento, minusculo) para casar com o termo de busca dobrado do
+// mesmo jeito — casamento acento-insensivel deterministico. Indices GIN trgm +
+// a funcao IMMUTABLE `immutable_unaccent` vivem na migration (SQL bruto).
+// So entidades RENDERAVEIS entram (movie/tv/person) — resultados linkam paginas
+// publicas; nunca dado sem licenca/slug.
+model SearchDocument {
+  id              BigInt     @id @default(autoincrement())
+  entityType      EntityType @map("entity_type") // renderavel: movie | tv | person
+  entityId        BigInt     @map("entity_id")
+  locale          String // BCP-47 (pt-BR); segue PUBLISHED_LOCALES
+  primaryText     String     @map("primary_text") // titulo canonico/nome
+  alternativeText String     @default("") @map("alternative_text") // titulos alternativos/aliases (exibicao, ' | ')
+  normalizedText  String     @map("normalized_text") // fold(primaryText + aliases): sem acento + minusculo (casamento base)
+  normalizedAliases String   @default("") @map("normalized_aliases") // aliases dobrados, '|'-delimitados (casamento exato de alias)
+  subtitle        String? // linha de apoio (ano/tipo) para o resultado
+  year            Int?
+  popularity      Decimal? // desempate de ranking (sinal TMDB tecnico, nunca nota editorial)
+  imagePath       String?    @map("image_path") // file_path cru; URL montada no render por buildTmdbImageUrl
+  canonicalUrl    String?    @map("canonical_url")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+
+  @@unique([entityType, entityId, locale])
+  @@index([locale])
+  @@map("search_documents")
 }
 
 // ============================================================

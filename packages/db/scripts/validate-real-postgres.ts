@@ -109,6 +109,8 @@ const EXPECTED_TABLES = [
   "entities", "entity_reference_orphans", "data_migration_quarantine",
   // Fases 6-8 — generos normalizados, biblioteca de midia e checkpoint de sync.
   "genres", "tmdb_images", "tmdb_videos", "tmdb_sync_checkpoint",
+  // Backend A — fila duravel de jobs do catalogo + projecao de busca PostgreSQL.
+  "catalog_jobs", "search_documents",
 ];
 const EXPECTED_ENUMS = [
   "EntityType", "ContentBlockType", "ContentSource", "ReviewStatus", "TranslationStatus",
@@ -118,6 +120,8 @@ const EXPECTED_ENUMS = [
   "TmdbEntityKind",
   // Data governance hardening (2026-07).
   "SourceLicenseContentType",
+  // Backend A — enums da fila duravel de jobs do catalogo.
+  "CatalogJobType", "CatalogJobStatus",
 ];
 const EXPECTED_SCALES: Record<string, number> = {
   imdb: 10, rotten_tomatoes: 100, metacritic: 100, letterboxd: 5, filmaffinity: 10,
@@ -139,21 +143,20 @@ async function runChecks(url: string): Promise<void> {
   }
 
   try {
-    // 3. 36 tabelas esperadas (32 anteriores + genres + tmdb_images + tmdb_videos
-    // + tmdb_sync_checkpoint das Fases 6-8)
+    // 3. 38 tabelas esperadas (36 anteriores + catalog_jobs + search_documents do Backend A)
     const tables = (await q<{ table_name: string }>(
       "SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'",
     )).map((r) => r.table_name).filter((t) => t !== "_prisma_migrations");
     const missing = EXPECTED_TABLES.filter((t) => !tables.includes(t));
-    record(3, "36 tabelas esperadas", tables.length === 36 && missing.length === 0,
+    record(3, "38 tabelas esperadas", tables.length === 38 && missing.length === 0,
       `encontradas ${tables.length}${missing.length ? ", faltando " + missing.join(",") : ""}`);
 
-    // 4. 15 enums esperados (13 + TmdbEntityKind do P0-00a + SourceLicenseContentType do hardening 2026-07)
+    // 4. 17 enums esperados (15 anteriores + CatalogJobType + CatalogJobStatus do Backend A)
     const enums = (await q<{ typname: string }>(
       "SELECT typname FROM pg_type WHERE typtype='e' AND typnamespace='public'::regnamespace",
     )).map((r) => r.typname);
     const missingEnums = EXPECTED_ENUMS.filter((e) => !enums.includes(e));
-    record(4, "15 enums esperados", enums.length === 15 && missingEnums.length === 0,
+    record(4, "17 enums esperados", enums.length === 17 && missingEnums.length === 0,
       `encontrados ${enums.length}${missingEnums.length ? ", faltando " + missingEnums.join(",") : ""}`);
 
     // 5/6/7. languages

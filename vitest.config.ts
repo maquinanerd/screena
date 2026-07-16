@@ -21,6 +21,9 @@ export default defineConfig({
       '@screena/ui': fileURLToPath(new URL('./packages/ui/src/index.ts', import.meta.url)),
       '@screena/types': fileURLToPath(new URL('./packages/types/src/index.ts', import.meta.url)),
       '@screena/db': fileURLToPath(new URL('./packages/db/src/index.ts', import.meta.url)),
+      '@screena/public-contracts': fileURLToPath(
+        new URL('./packages/public-contracts/src/index.ts', import.meta.url),
+      ),
       '@screena/tmdb-client': fileURLToPath(
         new URL('./api-clients/tmdb/src/index.ts', import.meta.url),
       ),

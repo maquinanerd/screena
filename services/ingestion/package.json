@@ -14,7 +14,8 @@
   "license": "UNLICENSED",
   "scripts": {
     "validate:tmdb-platform": "tsx scripts/validate-tmdb-platform-real-postgres.ts",
-    "validate:tmdb-catalog": "tsx scripts/validate-tmdb-platform-real-postgres.ts"
+    "validate:tmdb-catalog": "tsx scripts/validate-tmdb-platform-real-postgres.ts",
+    "validate:catalog-platform-complete": "tsx scripts/validate-catalog-platform-real-postgres.ts"
   },
   "dependencies": {
     "@screena/db": "workspace:*",
