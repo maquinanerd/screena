@@ -40,7 +40,17 @@ nunca e persistido no job.
 - Picos de `tmdb_5xx`/`rate_limit`: upstream degradado; espere o circuit breaker
   fechar antes do replay em massa.
 
-## Reprocessar (replay)
+## Inspecionar e reprocessar pela CLI (caminho principal)
+
+```
+pnpm catalog dead-letter list --limit 20 --json
+pnpm catalog dead-letter replay --limit 10 --apply
+```
+
+`replay` sem ids reprocessa a selecao listada; lista vazia e noop (nunca
+"replay de tudo por engano"). Em producao, escrita exige `--force`.
+
+## Reprocessar via adapter
 
 `replayDeadLetter(ids?)` traz de volta a `pending` (attempts=0, erro/claim
 limpos), imediatamente reivindicavel:
@@ -49,8 +59,10 @@ limpos), imediatamente reivindicavel:
 const jobs = createPrismaCatalogJobStore(prisma)
 // todos os dead-letters:
 const n = await jobs.replayDeadLetter()
-// ou um subconjunto especifico (recomendado apos diagnostico):
+// um subconjunto especifico (recomendado apos diagnostico):
 await jobs.replayDeadLetter(['42', '43'])
+// selecao vazia e NOOP por contrato (nao vira "todos"):
+await jobs.replayDeadLetter([]) // -> 0
 ```
 
 Regra: **replay em massa so apos entender a causa**. Reprocessar poison sem

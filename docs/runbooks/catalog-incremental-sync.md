@@ -47,16 +47,31 @@ noop indevido, mas mantem idempotencia dentro do ciclo.
 - Hash de payload: sem mudanca, nao reescreve nem bumpa `updated_at` — so
   atualiza o carimbo de verificacao.
 
-## `/changes` (estado)
+## `/changes` — incremental EXECUTANDO
 
-Hoje existe apenas o **plano** (`planChangesRequests`, janela ≤ 14 dias); a
-EXECUCAO + persistencia de cursor/checkpoint de changes e trabalho seguinte,
-agora com a fila `CatalogJob` (`sync_changes`) como base. Ver
-[ADR 0012](../adr/0012-complete-catalog-platform.md).
+A execucao e real (`runChangesSync` + handler `sync_changes`), com checkpoint
+transacional em `tmdb_sync_checkpoint` (job `changes:{kind}`):
+
+```
+# janela explicita, retomavel (maximo 14 dias — teto do provider)
+pnpm catalog changes --entity movie,tv,person --from 2026-07-15 --to 2026-07-16 --resume --apply
+```
+
+Garantias (ver [ADR 0012 §7](../adr/0012-complete-catalog-platform.md)):
+- **checkpoint so avanca no COMMIT** (jobs do lote + checkpoint na MESMA
+  transacao; falha = rollback sem avanco; a retomada reprocessa a pagina e o
+  enqueue idempotente nao duplica);
+- janela ja concluida e **noop**; pagina vazia sem `total_pages` encerra;
+- teto duro de 500 paginas/kind (provider sem `total_pages` nao vira loop);
+- item `adult: true` e descartado fail-closed;
+- cada id alterado enfileira `sync_details` com prioridade 50 (mudanca upstream
+  fura a fila do backfill, que usa 100).
 
 ## Verificacao
 
 - `SELECT count(*) FROM catalog_jobs WHERE status='retry_wait';` — deve drenar
   com o tempo (backoff), nao crescer sem limite.
-- Reclaim de orfaos: `reclaimOrphans(timeoutMs)` periodico recupera jobs de
-  workers mortos (heartbeat expirado).
+- Reclaim de orfaos: o `pnpm catalog worker` roda `reclaimOrphans` no start e
+  periodicamente — worker morto por SIGKILL/OOM nao deixa jobs presos em
+  `running`.
+- `SELECT job, last_page, total_pages, done FROM tmdb_sync_checkpoint WHERE job LIKE 'changes:%';`

@@ -78,17 +78,92 @@
   — quebraria `db:validate:upgrade` (a migration de hardening e removida no estado
   "anterior"); as tabelas sao derivadas/transientes e nao precisam da FK.
 
-## Consequencias e escopo NAO coberto (honesto)
-Esta PR entrega os primitivos ausentes e os prova em Postgres real, mas
-**deliberadamente NAO** faz (para manter escopo revisavel e gates verdes):
-- **Metodos novos de client TMDB** (`getCollection/getCompany/getNetwork/
-  getKeyword`): disparariam reverse-drift em `api:coverage` (exige registro em
-  `docs/api-coverage/`); ficam para uma PR focada.
-- **Execucao de `/changes`** (hoje so `planChangesRequests`), **CLI unificada
-  `catalog` bootstrap/status**, **modelos novos** (Collection/Company/Network/
-  Keyword/AlternativeTitle) e **persistencia de DiscoverySnapshot**: sao trabalho
-  seguinte, agora com a fila `CatalogJob` como fundacao.
-- **Rota publica de busca** e **sink de metricas**: a biblioteca de busca e os
-  nomes de metrica sao contrato; a superficie de rota/exportador fica adiante.
-- Nada aqui chama API externa, roda Gemini, decide licenca, indexa em massa ou
-  publica — a PR e draft e a revisao/merge sao humanos.
+## Decisoes adicionadas na continuacao (mesma PR)
+
+> A secao "escopo NAO coberto" original desta ADR listava `/changes`, CLI,
+> modelos de referencia, snapshots, rota de busca e metricas como deferidos.
+> A continuacao da PR os ENTREGOU — o texto abaixo substitui aquela lista.
+
+### 5. Handlers reais + registry de producao
+Os 11 tipos de `CatalogJobType` tem handler REAL em
+`services/ingestion/src/catalog-jobs/handlers/` (validacao de payload
+fail-loud, `AbortSignal`, heartbeat, metricas de baixa cardinalidade,
+classificacao transitorio/permanente) e a composicao central
+`createCatalogHandlerRegistry(deps)` + `assertCompleteRegistry` — tipo sem
+handler falha no BOOT, nao vira dead-letter na fila. Decisoes de fluxo:
+- `sync_details` NAO enfileira `sync_credits`/`sync_external_ids`: o detalhe ja
+  vem com `append_to_response=external_ids,credits` e os upserta na mesma
+  resposta — enfileirar seria refetch puro. Esses dois tipos existem como
+  caminho de REPARO explicito (via CLI). Sobram `sync_media` (+`sync_seasons`
+  para tv, que enfileira `sync_episodes`).
+- `sync_media` NAO aceita season/episode: a chave de midia e
+  `(entityType, tmdbId)` e o tmdbId de temporada e o da SERIE — o cache
+  `/season/{id}/images` colidiria entre temporadas. Stills de episodio entram
+  por `sync_episodes`, com a chave natural correta.
+- `reprocess_raw` NUNCA chama o TMDB (reprocessa `tmdb_raw` ja capturado) e
+  recusa filtro por tmdbId (a promocao opera por lote).
+
+### 6. CLI unificada `pnpm catalog`
+Nucleo PURO testavel em `services/ingestion/src/cli/` (parser fail-loud que
+rejeita flag desconhecida/valor faltante/data impossivel/combinacao invalida;
+ajuda com exemplo copiavel por comando; exit codes estaveis 0/1/2/3/4; gate de
+producao — escrita exige `--force`, leitura exige `--confirm-production-read`;
+`redactSecrets` em toda saida) + entrypoint `bin/catalog.ts`. Propriedades:
+- comandos diretos executam OS MESMOS handlers do worker (`runHandlerInline`) —
+  sem caminho paralelo que possa divergir de producao;
+- dry-run NAO monta o runtime (zero Prisma, zero TMDB, zero cota) por construcao;
+- comandos so-de-banco (status/search-status/audit-database/dead-letter/enqueue)
+  nao exigem token TMDB;
+- `enqueue` valida o payload com o MESMO validador do worker ANTES de gravar;
+- o worker faz reclaim periodico de orfaos (worker morto por SIGKILL/OOM nao
+  deixa jobs presos em `running`).
+
+### 7. `/changes` e discovery EXECUTANDO
+`runChangesSync` roda o incremental de verdade: COMMIT ATOMICO (jobs do lote +
+checkpoint na MESMA transacao; rollback nao avanca; janela concluida e noop);
+pagina vazia sem `total_pages` encerra; teto duro de 500 paginas/kind (provider
+que omite `total_pages` nao vira loop infinito); `AbortSignal` propagado (o
+timeout do job nao deixa um ciclo zumbi regredindo o checkpoint do run novo);
+o payload enfileirado carrega `entityType`/`tmdbId`/`locale` (o handler valida
+o PAYLOAD, nao as colunas). `sync_lists` captura as listas, persiste
+`DiscoverySnapshot` com hash-noop (lista inalterada nao duplica) e itens apenas
+de entidades promovidas.
+
+### 8. Typecheck do wiring operacional
+`persistence/**`, `bin/**` e `composition.ts` ficam fora do tsconfig principal
+(dependem do Prisma Client gerado) — exatamente onde a revisao adversarial
+achou erros de assinatura reais. Gate novo `pnpm typecheck:catalog-runtime`
+(`tsconfig.runtime.json`) + step no CI apos o `db:generate`. De 195 erros para
+0; o gate comprovadamente reprova os bugs que antes passavam.
+
+### 9. Fonte unica do host de imagem + contratos PRODUZIDOS
+`buildTmdbImageUrl` canonico em `@screena/public-contracts` (`media-url.ts`) —
+o UNICO arquivo de producao do repositorio autorizado a conter
+`image.tmdb.org`; o audit de render virou repo-wide e ha teste de governanca
+(`tests/governance/image-host-single-source.test.ts`). O helper de `apps/web` e
+so reexport. Os 10 getters (`createPublicPayloadReader`) produzem os payloads a
+partir do PostgreSQL: mappers PUROS em `src/public-payloads/` que terminam no
+validador do proprio contrato + reader Prisma coberto pelo typecheck do
+runtime. Fail-closed provado em banco real: midia/oferta `display_allowed=false`
+e rating de licenca bloqueada nunca chegam; ids/datas serializados; slug
+inexistente devolve `null` (404 tecnico). GOVERNANCA respeitada:
+`services/ingestion` nao referencia ratings (invariantes 1/2, travado por
+teste) — o reader recebe `ApprovedRatingsSource` INJETADA (default vazio); o
+adapter pertence ao dominio de ratings.
+
+## Consequencias e limitacoes REAIS (estado atual)
+- Validador `validate:catalog-platform-complete`: **66 checks** em PostgreSQL 16
+  efemero — fila, busca, pipeline dos 11 handlers, bootstrap idempotente/resume,
+  changes commit/rollback/noop, snapshots hash-noop, metricas sem alta
+  cardinalidade, audit read-only e os contratos fail-closed. Step proprio no CI.
+- `genres` nos payloads e `[]`: o schema nao vincula entidade<->genero (existe
+  so o dicionario `genres`); vinculo e trabalho futuro — nunca taxonomia
+  inventada.
+- Colecao nao tem pagina publica: `EntityRef` de colecao sai com
+  `canonicalUrl: null` ate existir rota.
+- Ratings/streaming atravessam o contrato APENAS pelos gates de licenca, e os
+  produtos seguem inativos (nenhuma chamada real a provider; ver ADR 0009-0011).
+- Midia de TEMPORADA nao e sincronizada por `sync_media` (ver §5); o poster da
+  temporada vem de `seasons.poster_path`.
+- Nada aqui chama API externa no render, roda Gemini, decide licenca, indexa em
+  massa ou publica — a PR e draft e a revisao/merge sao humanos.

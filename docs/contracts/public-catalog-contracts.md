@@ -71,6 +71,34 @@ busca (titulo exato > alias exato > prefixo > fuzzy trgm).
 | `CatalogJobView` | visao serializavel de um job (status/type/attempts/erro seguro) |
 | `CatalogStatusPayload` | `{ counts: Record<status, number>, deadLetter[] }` |
 
+### URL de imagem (`media-url`)
+
+`buildTmdbImageUrl(filePath, size)` — a implementacao CANONICA (unica no repo;
+audit repo-wide + `tests/governance/image-host-single-source.test.ts`). Devolve
+a URL final do CDN ou `null` para entrada invalida (sem `/`, protocolo-relativo,
+asset local legado, `..`, query/hash/backslash/espaco). O `file_path` cru nunca
+entra em contrato. O helper de `apps/web/src/lib/tmdb-image-url.ts` e reexport.
+
+## Producao dos payloads (getters reais)
+
+`createPublicPayloadReader(prisma, options)` em
+`services/ingestion/src/persistence/public-payload-reader.ts` implementa os 10
+getters: `getMovieDetailPayload`, `getTvDetailPayload`,
+`getSeasonDetailPayload`, `getEpisodeDetailPayload`, `getPersonDetailPayload`,
+`getHomePayload`, `getDiscoveryPayload`, `getSearchPayload`, `getMediaPayload`,
+`getCatalogStatusPayload`. Os mappers PUROS (`src/public-payloads/`) terminam
+no validador do proprio contrato — payload invalido lanca perto da origem.
+
+Garantias (provadas por 19 contract tests puros + 16 checks em PostgreSQL real):
+- midia/oferta `display_allowed=false` e rating de licenca bloqueada NUNCA
+  chegam (gates no WHERE + fail-closed do builder);
+- ids `string`, datas de obra `YYYY-MM-DD` (UTC), instantes ISO — JSON-safe;
+- entidade que nao resolve (sem linha/slug canonico pt) => getter devolve
+  `null` (404 tecnico), nunca payload pela metade;
+- GOVERNANCA: `services/ingestion` nao referencia ratings (inv. 1/2) — o reader
+  recebe `ApprovedRatingsSource` injetada (default vazio); o adapter pertence ao
+  dominio de ratings.
+
 ## Uso
 
 ```ts

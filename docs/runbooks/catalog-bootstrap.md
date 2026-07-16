@@ -10,14 +10,33 @@ Popular o catalogo do zero: taxonomias/config, descoberta de IDs e enfileirament
 dos jobs de detalhe. A ordem de enriquecimento e orquestrada pela fila duravel
 `CatalogJob` (ver [catalog-platform](../backend/catalog-platform.md)).
 
-## Estado atual (honesto)
+## Caminho principal: CLI unificada
 
-O Backend A entrega a **fila `CatalogJob`** (fundacao) e a **busca**. Os passos de
-descoberta/sync ja existiam antes (Fases 6–8) como CLIs separadas; a CLI unificada
-`catalog bootstrap` e a execucao de `/changes` sao trabalho seguinte. Use hoje as
-CLIs existentes e enfileire jobs na `CatalogJob` para orquestrar.
+O bootstrap orquestrado roda pela CLI `pnpm catalog` (ver
+[catalog-cli](../backend/catalog-cli.md)). Ele NAO baixa tudo de forma sincrona:
+ENFILEIRA as etapas e a fila cascateia (`discover_ids` -> `sync_details` ->
+`sync_media`/`sync_seasons` -> `sync_episodes`, + snapshots de lista):
 
-## Passos
+```
+# planejar (nao toca nada — sem Prisma, sem TMDB, sem cota)
+pnpm catalog bootstrap --strategy daily-exports --entity movie,tv,person --limit 1000 --dry-run
+
+# enfileirar de verdade
+pnpm catalog bootstrap --strategy daily-exports --entity movie,tv,person --limit 1000 --apply
+
+# processar a fila (shutdown gracioso: SIGINT/SIGTERM drenam o que esta em voo)
+pnpm catalog worker --concurrency 4 --max-jobs 0
+
+# acompanhar
+pnpm catalog status --json
+```
+
+Retomada: reusar o MESMO `--request-id` retoma a execucao sem duplicar (as
+chaves de idempotencia carregam o id); omitido, cada run ganha um id novo.
+**Jobs enfileirados != catalogo preenchido** — o relatorio do bootstrap conta
+enqueues; quem preenche e o worker.
+
+## Passos legados (CLIs separadas, continuam validos)
 
 1. **Config + taxonomias** (imagens, generos, certificacoes):
    ```

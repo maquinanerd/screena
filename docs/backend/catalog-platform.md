@@ -77,24 +77,47 @@ entidades **renderaveis** (movie/tv/person).
 
 ## 3. Contratos publicos (`@screena/public-contracts`)
 
-Tipos + validadores PUROS (sem zod, sem Prisma) da fronteira getters↔render:
-detalhe (Movie/Tv/Season/Episode/Person), home/descoberta, busca e fila. Ver
+Tipos + validadores PUROS (sem zod, sem Prisma) da fronteira getters↔render —
+e agora tambem a PRODUCAO deles: os 10 getters (`createPublicPayloadReader`)
+leem o PostgreSQL e devolvem payloads validados pelo proprio contrato. Ver
 [docs/contracts/public-catalog-contracts.md](../contracts/public-catalog-contracts.md).
+O helper canonico `buildTmdbImageUrl` vive neste pacote (`media-url.ts`) — o
+UNICO arquivo de producao do repo com o host do CDN (audit repo-wide + teste).
 
-## 4. Validacao
+## 4. Handlers, CLI e execucao
+
+- Handlers reais dos 11 job types + registry:
+  [catalog-job-handlers](catalog-job-handlers.md).
+- CLI unificada `pnpm catalog` (14 comandos; dry-run estrutural; gate de
+  producao; exit codes): [catalog-cli](catalog-cli.md).
+- Projecao de busca (backfill/incremental/status):
+  [search-projection](search-projection.md).
+- Snapshots de descoberta (hash-noop, TTL, identidade):
+  [discovery-snapshots](discovery-snapshots.md).
+
+## 5. Validacao
 
 `pnpm validate:catalog-platform-complete` sobe um PostgreSQL 16 efemero
-(`embedded-postgres`) e prova, no banco real: migration do zero, extensoes/funcao,
-enqueue idempotente, claim SKIP LOCKED + prioridade, heartbeat, retry→retry_wait,
-dead-letter, reclaim, replay e busca exact/alias/acento/prefixo/fuzzy. E um step
-proprio no CI.
+(`embedded-postgres`) e prova, no banco real, **66 checks**: migration do zero,
+extensoes/funcao, fila completa (enqueue idempotente, claim SKIP LOCKED +
+prioridade, heartbeat, retry→retry_wait, dead-letter, reclaim, replay), busca
+exact/alias/acento/prefixo/fuzzy, o PIPELINE dos 11 handlers (bootstrap
+idempotente/resume, cascata drenando sem dead-letter, changes com
+commit/rollback/noop, snapshot hash-noop, metricas sem alta cardinalidade,
+audit read-only) e os CONTRATOS fail-closed (midia/rating/oferta bloqueados
+nunca chegam; JSON-safe; 404 tecnico = null). Step proprio no CI, mais o gate
+`pnpm typecheck:catalog-runtime` (o wiring operacional compila).
 
-## Metricas (nomes de contrato)
+## Metricas
 
-A instrumentacao completa fica para trabalho seguinte; os nomes canonicos de
-metrica sao: `catalog_jobs_total`, `catalog_jobs_failed_total`,
-`catalog_dead_letter_total`, `catalog_checkpoint_lag_seconds`,
+Emitidas nos fluxos reais (worker + handlers), com labels restritas a
+`ALLOWED_METRIC_LABELS` (nunca entity_id/tmdb_id/query/request_id):
+`catalog_jobs_total`, `catalog_jobs_failed_total`,
+`catalog_jobs_dead_letter_total`, `catalog_entities_synced_total`,
+`catalog_sync_duration_seconds`, `catalog_checkpoint_lag_seconds`,
+`tmdb_requests_total`, `tmdb_rate_limit_total`,
 `search_query_duration_seconds`, `search_zero_results_total`,
+`search_documents_total`, `discovery_snapshot_age_seconds`,
 `media_coverage_ratio`, `trailer_coverage_ratio`.
 
 ## Runbooks
@@ -102,3 +125,4 @@ metrica sao: `catalog_jobs_total`, `catalog_jobs_failed_total`,
 - [Bootstrap](../runbooks/catalog-bootstrap.md)
 - [Sync incremental](../runbooks/catalog-incremental-sync.md)
 - [Dead-letter](../runbooks/catalog-dead-letter.md)
+- [Auditoria em producao](../runbooks/catalog-production-audit.md)
