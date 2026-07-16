@@ -21,15 +21,23 @@ import {
 } from './validation.js'
 
 /** Tipo de entidade renderavel (espelha EntityType do banco). */
-export type PublicEntityKind = 'movie' | 'tv' | 'season' | 'episode' | 'person'
+export type PublicEntityKind = 'movie' | 'tv' | 'season' | 'episode' | 'person' | 'collection'
 
-/** Conjunto canonico dos tipos renderaveis. */
+/**
+ * Conjunto canonico dos tipos REFERENCIAVEIS.
+ *
+ * `collection` entra porque um `EntityRef` de colecao aparece no contrato
+ * (`MovieDetailPayload.collection`) e a busca ja lista `collection` como tipo de
+ * resultado. Colecao ainda nao tem PAGINA propria — o `canonicalUrl` de um ref
+ * de colecao e `null` ate existir rota.
+ */
 export const PUBLIC_ENTITY_KINDS: readonly PublicEntityKind[] = [
   'movie',
   'tv',
   'season',
   'episode',
   'person',
+  'collection',
 ] as const
 
 /** Locales suportados (reexportado da fonte unica @screena/config). */

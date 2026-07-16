@@ -489,9 +489,215 @@ async function runChecks(url: string): Promise<void> {
     )
 
     await runPipelineChecks(prisma, url)
+    await runContractChecks(prisma)
   } finally {
     await prisma.$disconnect()
   }
+}
+
+/**
+ * Checks dos CONTRATOS PUBLICOS: semeia um catalogo minimo REAL (movie, tv,
+ * season, episode, person, slugs, traducoes, midia com displayAllowed misto,
+ * rating liberado + rating BLOQUEADO, oferta de streaming, snapshot, search
+ * docs) e exercita os 10 getters de createPublicPayloadReader contra o
+ * PostgreSQL de verdade. Prova o que os contract tests puros nao conseguem:
+ * o WHERE dos gates de licenca roda no banco, nao num fake.
+ */
+async function runContractChecks(prisma: PrismaClient): Promise<void> {
+  console.log('\n--- contratos publicos (getters reais) ---')
+
+  // Dicionarios FK minimos (idempotentes).
+  await prisma.language.upsert({
+    where: { code: 'pt-BR' },
+    create: { code: 'pt-BR', namePt: 'Portugues (Brasil)', nameEn: 'Portuguese (Brazil)', isPublished: true, indexDefault: true },
+    update: {},
+  })
+  await prisma.country.upsert({
+    where: { code: 'BR' },
+    create: { code: 'BR', namePt: 'Brasil', nameEn: 'Brazil' },
+    update: {},
+  })
+  await prisma.ratingSource.upsert({
+    where: { key: 'imdb' },
+    create: { key: 'imdb', label: 'IMDb', scale: 10 },
+    update: {},
+  })
+  await prisma.ratingSource.upsert({
+    where: { key: 'rotten_tomatoes' },
+    create: { key: 'rotten_tomatoes', label: 'Rotten Tomatoes', scale: 100 },
+    update: {},
+  })
+  await prisma.apiProvider.upsert({
+    where: { key: 'imdb236' },
+    create: { key: 'imdb236', name: 'imdb236 (RapidAPI)', kind: 'ratings' },
+    update: {},
+  })
+
+  // --- catalogo minimo ------------------------------------------------------
+  const movie = await prisma.movie.create({
+    data: { tmdbId: 777001, titleOriginal: 'The Contract Movie', releaseDate: new Date('1999-03-31'), runtimeMinutes: 120, certification: '14', posterPath: '/contract-ok.jpg' },
+  })
+  const person = await prisma.person.create({
+    data: { tmdbId: 777002, name: 'Contract Person' },
+  })
+  const show = await prisma.tvShow.create({
+    data: { tmdbId: 777003, nameOriginal: 'The Contract Show', firstAirDate: new Date('2011-04-17'), numberOfSeasons: 1, numberOfEpisodes: 1 },
+  })
+  const season = await prisma.season.create({
+    data: { tvShowId: show.id, seasonNumber: 1, name: 'Temporada 1', episodeCount: 1 },
+  })
+  const seededEpisode = await prisma.episode.create({
+    data: { seasonId: season.id, tvShowId: show.id, tmdbId: 777004, episodeNumber: 1, name: 'Piloto', airDate: new Date('2011-04-17'), runtimeMinutes: 60 },
+  })
+
+  const slugRows = [
+    { entityType: 'movie', entityId: movie.id, slug: 'contract-movie' },
+    { entityType: 'tv', entityId: show.id, slug: 'contract-show' },
+    { entityType: 'person', entityId: person.id, slug: 'contract-person' },
+  ] as const
+  for (const row of slugRows) {
+    await prisma.slug.create({
+      data: { entityType: row.entityType, entityId: row.entityId, languageCode: 'pt-BR', slug: row.slug, isCanonical: true },
+    })
+  }
+  await prisma.entityTranslation.create({
+    data: { entityType: 'movie', entityId: movie.id, languageCode: 'pt-BR', title: 'O Filme do Contrato', summary: 'Sinopse propria de teste.', metaTitle: 'Filme do Contrato', metaDescription: 'Ficha do filme.' },
+  })
+  await prisma.castMember.create({
+    data: { personId: person.id, entityType: 'movie', entityId: movie.id, character: 'Protagonista', billingOrder: 1, creditId: 'contract-credit-1' },
+  })
+  const collection = await prisma.collection.create({ data: { tmdbId: 777005, name: 'Colecao do Contrato' } })
+  await prisma.movieCollectionMembership.create({ data: { collectionId: collection.id, movieId: movie.id } })
+  await prisma.entityAlternativeTitle.create({
+    data: { entityType: 'movie', entityId: movie.id, title: 'Contract Movie Alias', normalized: 'contract movie alias' },
+  })
+
+  // Midia: liberada + BLOQUEADA com voto maior (o caso que viraria poster).
+  await prisma.tmdbImage.createMany({
+    data: [
+      { entityType: 'movie', tmdbId: 777001, imageType: 'poster', filePath: '/contract-ok.jpg', voteAverage: 7, payloadHash: 'h1', displayAllowed: true },
+      { entityType: 'movie', tmdbId: 777001, imageType: 'poster', filePath: '/contract-blocked.jpg', voteAverage: 9.9, payloadHash: 'h2', displayAllowed: false },
+    ],
+  })
+  await prisma.tmdbVideo.createMany({
+    data: [
+      { entityType: 'movie', tmdbId: 777001, tmdbVideoId: 'ct1', site: 'YouTube', videoKey: 'okvideo', videoType: 'Trailer', official: true, payloadHash: 'h3', displayAllowed: true },
+      { entityType: 'movie', tmdbId: 777001, tmdbVideoId: 'ct2', site: 'YouTube', videoKey: 'blockedvid', videoType: 'Clip', payloadHash: 'h4', displayAllowed: false },
+    ],
+  })
+
+  // Ratings: liberado + BLOQUEADO por licenca (o segundo NAO pode aparecer).
+  await prisma.externalRating.createMany({
+    data: [
+      { entityType: 'movie', entityId: movie.id, ratingSource: 'imdb', ratingLabel: 'IMDb Rating', metric: 'user_rating', ratingValue: 8.4, ratingScale: 10, providerApi: 'imdb236', licenseStatus: 'licensed', displayAllowed: true, attributionText: 'Nota fornecida por IMDb', attributionUrl: 'https://www.imdb.com/title/tt777001/' },
+      { entityType: 'movie', entityId: movie.id, ratingSource: 'rotten_tomatoes', ratingLabel: 'Tomatometer', metric: 'tomatometer', ratingValue: 95, ratingScale: 100, providerApi: 'imdb236', licenseStatus: 'unknown', displayAllowed: false },
+    ],
+  })
+  // Ofertas nascem display_allowed=false (default seguro). A promocao passa
+  // pelo MESMO caminho do CLI humano: UPDATE com o fingerprint computado NO
+  // BANCO (watch_offer_payload_fingerprint_v1) + reviewed_at/reviewed_by —
+  // o trigger fail-closed da Fase 2 rejeita qualquer atalho (ele bloqueou a
+  // primeira versao deste seed, que tentava inserir display_allowed=true
+  // direto: governanca funcionando).
+  await prisma.watchAvailability.createMany({
+    data: [
+      { entityType: 'movie', entityId: movie.id, countryCode: 'BR', providerName: 'ExemploFlix', offerType: 'subscription', deepLink: 'https://exemplo.test/contract', licenseStatus: 'licensed', attributionText: 'Oferta via ExemploFlix', attributionUrl: 'https://exemplo.test/contract' },
+      { entityType: 'movie', entityId: movie.id, countryCode: 'BR', providerName: 'PirataFlix', offerType: 'subscription', deepLink: 'https://pirata.test/contract' },
+    ],
+  })
+  await prisma.$executeRawUnsafe(
+    `UPDATE watch_availability w
+        SET display_allowed = true,
+            reviewed_at = now(),
+            reviewed_by = 'validator-contract-check',
+            approved_payload_hash = watch_offer_payload_fingerprint_v1(
+              w.provider_api, w.external_offer_id, w.entity_type, w.entity_id,
+              w.country_code, w.offer_type, w.provider_key, w.provider_name,
+              w.package, w.quality, w.price, w.currency, w.deep_link, w.web_url,
+              w.available_from, w.available_until, w.license_status,
+              w.requires_attribution, w.requires_linkback, w.attribution_text,
+              w.attribution_url)
+      WHERE w.provider_name = 'ExemploFlix' AND w.entity_id = $1`,
+    movie.id,
+  )
+
+  // Snapshot de descoberta + search docs.
+  const snapshots = createPrismaDiscoverySnapshotStore(prisma)
+  await snapshots.saveSnapshot({
+    // Identidade SEM country/window: e a identidade canonica que os getters de
+    // home/descoberta consultam (readLatestValid com country=null/window=null).
+    listType: 'trending', entityType: 'movie', locale: 'pt-BR', country: null, window: null,
+    capturedAt: new Date(), expiresAt: new Date(Date.now() + 60 * 60 * 1000), provider: 'tmdb', payloadHash: 'contract-snap',
+    items: [{ entityTmdbId: 777001, position: 0, providerScore: 9 }],
+  })
+  const search = createPrismaSearchStore(prisma)
+  await search.upsertDocument(
+    buildSearchDocument({
+      entityType: 'movie', entityId: movie.id.toString(), locale: 'pt-BR',
+      primaryText: 'O Filme do Contrato', alternativeTitles: ['Contract Movie Alias'],
+      year: 1999, popularity: 9, imagePath: '/contract-ok.jpg',
+      canonicalUrl: '/pt/filmes/contract-movie/', subtitle: 'Filme · 1999',
+    }),
+  )
+
+  // --- getters --------------------------------------------------------------
+  const { createPublicPayloadReader } = await import('../src/persistence/public-payload-reader.js')
+  const reader = createPublicPayloadReader(prisma, {
+    siteOrigin: 'https://thescreen.media',
+    locale: 'pt-BR',
+    // Adapter de ratings injetado (a porta existe porque services/ingestion NAO
+    // pode referenciar ratings — inv. 1/2; o dominio de ratings fornece isto).
+    ratings: {
+      async readApproved(entityType, entityId) {
+        const rows = await prisma.externalRating.findMany({
+          where: { entityType, entityId, displayAllowed: true, licenseStatus: { notIn: ['unknown', 'blocked'] } },
+          orderBy: { id: 'asc' },
+        })
+        return rows.map((r) => ({
+          source: r.ratingSource, label: r.ratingLabel, value: Number(r.ratingValue), scale: r.ratingScale,
+          url: r.ratingUrl, attributionText: r.attributionText, attributionUrl: r.attributionUrl,
+        }))
+      },
+    },
+  })
+
+  const movieDetail = await reader.getMovieDetailPayload('contract-movie')
+  record('contract movie: getter produz payload validado', movieDetail !== null && movieDetail.title === 'O Filme do Contrato' && movieDetail.canonicalUrl === 'https://thescreen.media/pt/filmes/contract-movie/', `title=${movieDetail?.title}`)
+  record('contract movie: midia bloqueada NAO chega (nem como poster de maior voto)', movieDetail !== null && movieDetail.media.poster?.url === 'https://image.tmdb.org/t/p/w500/contract-ok.jpg' && !JSON.stringify(movieDetail.media).includes('blocked'), `poster=${movieDetail?.media.poster?.url}`)
+  record('contract movie: rating com licenca bloqueada NAO chega (inv. 6)', movieDetail !== null && movieDetail.ratings.length === 1 && movieDetail.ratings[0]?.source === 'imdb' && !JSON.stringify(movieDetail.ratings).includes('tomatometer'.toUpperCase()) && !JSON.stringify(movieDetail.ratings).toLowerCase().includes('rotten'), `ratings=${movieDetail?.ratings.map((r) => r.source).join(',')}`)
+  record('contract movie: oferta nao liberada NAO chega (inv. 6/8)', movieDetail !== null && movieDetail.streaming.length === 1 && movieDetail.streaming[0]?.provider === 'ExemploFlix', `streaming=${movieDetail?.streaming.map((s) => s.provider).join(',')}`)
+  record('contract movie: sem raw TMDB nem file_path cru no payload', movieDetail !== null && !JSON.stringify(movieDetail).includes('file_path') && !JSON.stringify(movieDetail).includes('"/contract-ok.jpg"'), 'payload limpo')
+  record('contract movie: JSON-safe (BigInt/Date nao vazam)', movieDetail !== null && typeof JSON.stringify(movieDetail) === 'string' && typeof movieDetail.id === 'string' && movieDetail.releaseDate === '1999-03-31', `id=${typeof movieDetail?.id} date=${movieDetail?.releaseDate}`)
+
+  const tvDetail = await reader.getTvDetailPayload('contract-show')
+  record('contract tv: payload com temporadas e rota composta', tvDetail !== null && tvDetail.seasons.length === 1 && tvDetail.seasons[0]?.canonicalUrl === 'https://thescreen.media/pt/series/contract-show/temporadas/1/', `seasons=${tvDetail?.seasons.length}`)
+
+  const seasonDetail = await reader.getSeasonDetailPayload('contract-show', 1)
+  record('contract season: payload com episodios ordenados', seasonDetail !== null && seasonDetail.episodes[0]?.episodeNumber === 1 && seasonDetail.series.kind === 'tv', `episodes=${seasonDetail?.episodes.length}`)
+
+  const episodeDetail = await reader.getEpisodeDetailPayload('contract-show', 1, 1)
+  record('contract episode: payload validado com URL composta e id do banco', episodeDetail !== null && episodeDetail.canonicalUrl.endsWith('/temporadas/1/episodios/1/') && episodeDetail.id === seededEpisode.id.toString(), `url=${episodeDetail?.canonicalUrl}`)
+
+  const personDetail = await reader.getPersonDetailPayload('contract-person')
+  record('contract person: payload validado (bio bloqueada = null)', personDetail !== null && personDetail.name === 'Contract Person' && personDetail.biography === null, `name=${personDetail?.name}`)
+
+  const home = await reader.getHomePayload()
+  record('contract home: trending vem do snapshot governado', home.trending.length === 1 && home.trending[0]?.title === 'O Filme do Contrato' && home.trending[0]?.image?.url.startsWith('https://image.tmdb.org/'), `trending=${home.trending.length}`)
+
+  const discovery = await reader.getDiscoveryPayload('trending', 'movie')
+  record('contract discovery: snapshot -> payload com capturedAt ISO', discovery !== null && discovery.items.length === 1 && typeof discovery.capturedAt === 'string', `items=${discovery?.items.length}`)
+
+  const searchPayload = await reader.getSearchPayload('o filme do contrato')
+  record('contract search: resultado real + superficie noindex', searchPayload.results.length >= 1 && searchPayload.index === false && searchPayload.results[0]?.canonicalUrl.startsWith('https://thescreen.media/'), `results=${searchPayload.results.length}`)
+
+  const mediaPayload = await reader.getMediaPayload('movie', 777001, 'O Filme do Contrato')
+  record('contract media: fail-closed no getter dedicado', mediaPayload.images.every((i) => i.displayAllowed) && !JSON.stringify(mediaPayload).includes('blocked'), `images=${mediaPayload.images.length}`)
+
+  const status = await reader.getCatalogStatusPayload()
+  record('contract status: contagens da fila real', typeof status.counts.pending === 'number' && Array.isArray(status.deadLetter), `pending=${status.counts.pending}`)
+
+  const missing = await reader.getMovieDetailPayload('slug-que-nao-existe')
+  record('contract 404 tecnico: slug inexistente devolve null (nunca payload pela metade)', missing === null, `missing=${String(missing)}`)
 }
 
 /**
@@ -877,7 +1083,10 @@ async function main(): Promise<void> {
     console.log('\n--- checks no banco real ---')
     await runChecks(url)
   } catch (e) {
-    record('execucao', false, (e as Error).message.split('\n')[0])
+    // Erros do Prisma comecam com '\n': a primeira linha e vazia e some do
+    // relatorio. Compacta para uma linha util e loga o stack completo.
+    console.error('[execucao] erro completo:', e)
+    record('execucao', false, (e as Error).message.replace(/\s+/g, ' ').trim().slice(0, 300))
   } finally {
     if (started) {
       try {
