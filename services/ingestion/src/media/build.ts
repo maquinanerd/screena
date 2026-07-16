@@ -13,12 +13,14 @@
  *    URL de player.
  */
 
+import { buildTmdbImageUrl } from '@screena/public-contracts'
 import type {
   MediaAssetKind,
   MediaPayload,
   PublicMediaAsset,
   PublicVideo,
   PublicVideoType,
+  TmdbImageSize,
 } from '@screena/public-contracts'
 
 /** Linha crua de tmdb_images ja lida do banco (id como string). */
@@ -60,11 +62,19 @@ export interface BuildMediaPayloadInput {
   readonly backdropSize?: string
 }
 
-const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/'
+const DEFAULT_POSTER_SIZE: TmdbImageSize = 'w500'
+const DEFAULT_BACKDROP_SIZE: TmdbImageSize = 'w1280'
+const DEFAULT_IMAGE_SIZE: TmdbImageSize = 'w500'
 
-const DEFAULT_POSTER_SIZE = 'w500'
-const DEFAULT_BACKDROP_SIZE = 'w1280'
-const DEFAULT_IMAGE_SIZE = 'w500'
+/** Tamanhos aceitos (validacao do input livre de BuildMediaPayloadInput). */
+const VALID_SIZES: readonly TmdbImageSize[] = ['w300', 'w500', 'w780', 'w1280', 'original']
+
+/** Estreita um tamanho vindo de input livre para o enum canonico. */
+function narrowSize(raw: string | undefined, fallback: TmdbImageSize): TmdbImageSize {
+  return raw !== undefined && (VALID_SIZES as readonly string[]).includes(raw)
+    ? (raw as TmdbImageSize)
+    : fallback
+}
 
 /** Tipos de imagem aceitos (espelham tmdb_images.image_type). */
 const IMAGE_KINDS: Readonly<Record<string, MediaAssetKind>> = {
@@ -85,11 +95,16 @@ const VIDEO_TYPE_ORDER: Readonly<Record<PublicVideoType, number>> = {
 }
 
 /**
- * Monta a URL publica de uma imagem TMDB. Concatenacao pura: o `filePath` cru
- * (ex.: '/abc.jpg') nunca e exposto sozinho no contrato.
+ * Monta a URL publica de uma imagem TMDB via o helper CANONICO de
+ * @screena/public-contracts — a unica implementacao do repositorio (o audit de
+ * render verifica isso repo-wide). A versao local anterior concatenava sem as
+ * validacoes do canonico (nao rejeitava `..`, `//`, query): era drift real.
+ *
+ * Devolve `null` para `filePath` invalido — o chamador DESCARTA a linha
+ * (fail-closed): um asset sem URL valida nao vira imagem quebrada no contrato.
  */
-export function buildImageUrl(filePath: string, size?: string): string {
-  return TMDB_IMAGE_BASE + (size ?? DEFAULT_IMAGE_SIZE) + filePath
+export function buildImageUrl(filePath: string, size?: string): string | null {
+  return buildTmdbImageUrl(filePath, narrowSize(size, DEFAULT_IMAGE_SIZE))
 }
 
 /**
@@ -177,6 +192,10 @@ export function buildMediaPayload(input: BuildMediaPayloadInput): MediaPayload {
     // Tipo desconhecido nao vira asset: o contrato so aceita o enum canonico.
     if (kind === undefined) continue
     const size = sizeForKind(kind, input.posterSize, input.backdropSize)
+    const url = buildImageUrl(row.filePath, size)
+    // file_path invalido (nao comeca com '/', tem '..', query...) nao vira
+    // imagem quebrada: a linha e descartada — fail-closed, como displayAllowed.
+    if (url === null) continue
     entries.push({
       row,
       asset: {
@@ -188,7 +207,7 @@ export function buildMediaPayload(input: BuildMediaPayloadInput): MediaPayload {
         aspectRatio: row.aspectRatio,
         source: 'tmdb',
         displayAllowed: true,
-        url: buildImageUrl(row.filePath, size),
+        url,
         alt: input.alt,
       },
     })

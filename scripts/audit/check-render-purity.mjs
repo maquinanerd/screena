@@ -122,12 +122,40 @@ const FORBIDDEN_LITERAL_PATTERNS = [
 ];
 
 /**
- * Unico arquivo de producao de apps/web autorizado a conter o literal
- * `image.tmdb.org` (construcao GOVERNADA da URL publica de imagem). Caminho
- * relativo a raiz, com '/'. Ver a excecao documentada em FORBIDDEN_LITERAL_PATTERNS.
+ * Unico arquivo de producao DO REPOSITORIO INTEIRO autorizado a conter o
+ * literal `image.tmdb.org` (construcao GOVERNADA da URL publica de imagem).
+ * Caminho relativo a raiz, com '/'. Ver a excecao documentada em
+ * FORBIDDEN_LITERAL_PATTERNS. O antigo helper de apps/web e apenas reexport e
+ * NAO tem excecao — se o literal voltar la, e violacao.
  * @type {string}
  */
-const IMAGE_URL_HELPER_REL = 'apps/web/src/lib/tmdb-image-url.ts';
+const IMAGE_URL_HELPER_REL = 'packages/public-contracts/src/media-url.ts';
+
+/**
+ * Diretorios de PRODUCAO varridos pela checagem repo-wide do host de imagem.
+ * `tests/` e `scripts/` ficam de fora: testes citam o host em expects, e este
+ * proprio script contem o padrao. Dentro dos diretorios varridos, arquivos de
+ * teste (`__tests__/`, `*.test.*`) tambem sao ignorados pelo mesmo motivo.
+ * @type {string[]}
+ */
+const PRODUCTION_DIRS = ['apps', 'packages', 'services', 'api-clients', 'seo', 'workers'];
+
+/**
+ * True quando o arquivo NAO e de producao: testes (`__tests__/`, `*.test.*`) e
+ * validadores descartaveis (`<pacote>/scripts/`, ex.:
+ * services/ingestion/scripts/validate-*.ts). Ambos citam o host em
+ * asserts/fixtures (ex.: a configuration mockada do TMDB) e nunca rodam no
+ * render — ficam fora da checagem de literal.
+ * @param {string} relPath
+ * @returns {boolean}
+ */
+function isTestFile(relPath) {
+  return (
+    /(^|\/)__tests__\//.test(relPath) ||
+    /\.test\.[cm]?[jt]sx?$/.test(relPath) ||
+    /(^|\/)scripts\//.test(relPath)
+  );
+}
 
 /**
  * Imports proibidos em arquivos de pagina/layout.
@@ -359,9 +387,6 @@ async function scanWeb() {
     const baseName = path.basename(absFile).toLowerCase();
     const isPageFile = PAGE_FILE_NAMES.has(baseName);
     const isClientComponent = hasUseClientDirective(content);
-    // Excecao governada: SO o helper de URL de imagem pode conter 'image.tmdb.org'
-    // (construcao de URL publica). `fetch(` a host TMDB segue barrado nele tambem.
-    const isGovernedImageUrlHelper = rel(absFile) === IMAGE_URL_HELPER_REL;
 
     const lines = content.split(/\r?\n/);
     for (let i = 0; i < lines.length; i += 1) {
@@ -369,13 +394,8 @@ async function scanWeb() {
       const line = stripLineComment(raw);
       if (line.trim() === '') continue;
 
-      if (!isGovernedImageUrlHelper) {
-        for (const { name, regex } of FORBIDDEN_LITERAL_PATTERNS) {
-          if (regex.test(raw)) {
-            violations.push(`${name} em ${rel(absFile)}:${i + 1} -> ${raw.trim()}`);
-          }
-        }
-      }
+      // O literal do host de imagem e checado REPO-WIDE em scanRepoForImageHost
+      // (unica fonte da regra) — nao repetimos aqui para nao reportar em dobro.
 
       // (1) fetch externo — proibido em qualquer arquivo de render.
       for (const { name, regex } of FETCH_PATTERNS) {
@@ -414,6 +434,68 @@ async function scanWeb() {
   }
 
   passes.push(`apps/web varrido: ${scannedFiles} arquivo(s) de codigo analisado(s).`);
+}
+
+/**
+ * Varredura REPO-WIDE do host do CDN de imagens.
+ *
+ * O literal `image.tmdb.org` so pode existir em UM arquivo de producao
+ * (IMAGE_URL_HELPER_REL). A varredura anterior cobria apenas apps/web — o que
+ * deixaria packages/services livres para espalhar a construcao de URL e minar a
+ * fonte unica. Agora todos os diretorios de producao sao varridos; testes ficam
+ * de fora (citam o host em expects).
+ * @returns {Promise<void>}
+ */
+async function scanRepoForImageHost() {
+  let scannedFiles = 0;
+  let helperSeen = false;
+
+  for (const dirName of PRODUCTION_DIRS) {
+    const absDir = path.join(ROOT, dirName);
+    let exists = true;
+    try {
+      const st = await stat(absDir);
+      if (!st.isDirectory()) exists = false;
+    } catch {
+      exists = false;
+    }
+    if (!exists) continue;
+
+    const files = await collectFiles(absDir);
+    for (const absFile of files) {
+      const relPath = rel(absFile);
+      if (isTestFile(relPath)) continue;
+
+      const content = await readTextSafe(absFile);
+      if (content === null) continue;
+      scannedFiles += 1;
+
+      const isCanonicalHelper = relPath === IMAGE_URL_HELPER_REL;
+      if (isCanonicalHelper) helperSeen = true;
+
+      const lines = content.split(/\r?\n/);
+      for (let i = 0; i < lines.length; i += 1) {
+        const raw = lines[i];
+        for (const { name, regex } of FORBIDDEN_LITERAL_PATTERNS) {
+          if (regex.test(raw) && !isCanonicalHelper) {
+            violations.push(`${name} em ${relPath}:${i + 1} -> ${raw.trim()}`);
+          }
+        }
+      }
+    }
+  }
+
+  // O helper canonico SUMIR tambem e falha: significaria que a excecao aponta
+  // para um caminho morto e a regra deixou de ter fonte unica verificavel.
+  if (!helperSeen) {
+    violations.push(
+      `helper canonico de URL de imagem ausente: esperado em ${IMAGE_URL_HELPER_REL}`,
+    );
+  }
+
+  passes.push(
+    `host de imagem TMDB verificado repo-wide: ${scannedFiles} arquivo(s) de producao; literal permitido so em ${IMAGE_URL_HELPER_REL}.`,
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -465,6 +547,7 @@ function report() {
 
 async function main() {
   await scanWeb();
+  await scanRepoForImageHost();
   report();
 }
 

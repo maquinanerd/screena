@@ -13,7 +13,7 @@
  *
  * Imagens (decisão de arquitetura: NÃO salvar imagem no servidor):
  *  - PADRÃO: grava posterPath/backdropPath com o `file_path` CRU do TMDB
- *    (ex.: `/abc.jpg`). O frontend monta a URL pública remota (image.tmdb.org).
+ *    (ex.: `/abc.jpg`). O frontend monta a URL pública remota do CDN de imagens.
  *    Nada é baixado; nenhum arquivo salvo; sem `/media/tmdb`; sem disco/volume.
  *  - `--download-images` (LEGADO/opt-in): baixa poster/backdrop para
  *    apps/web/public/media/tmdb/ e grava o path local `/media/tmdb/...`.
@@ -21,7 +21,7 @@
  * Governança:
  *  - Zero API externa no render — este script roda offline; a home lê só Postgres.
  *  - Token TMDB só no .env da raiz; NUNCA logado; NUNCA em NEXT_PUBLIC_*.
- *  - O host image.tmdb.org só aparece aqui (worker offline), nunca no render.
+ *  - O host do CDN vem SÓ do helper canônico de @screena/public-contracts.
  *  - Idempotente: upsert por tmdbId/slug/translation.
  *  - Fail-closed: aborta em produção; exige token + DATABASE_URL; --apply p/ escrever.
  *
@@ -48,11 +48,11 @@ import { planCreditedPeople } from '../src/public-catalog-people.js'
 import { desiredCatalogSlug } from '../src/public-catalog-slug.js'
 import { upsertCanonicalSlug } from '../src/persistence/catalog-finalize.js'
 import { getPrismaClient } from '@screena/db/server'
+import { buildTmdbImageUrl, type TmdbImageSize } from '@screena/public-contracts'
 
 const LANGUAGE = 'pt-BR'
-const IMAGE_CDN = 'https://image.tmdb.org/t/p'
-const POSTER_SIZE = 'w500'
-const BACKDROP_SIZE = 'w1280'
+const POSTER_SIZE: TmdbImageSize = 'w500'
+const BACKDROP_SIZE: TmdbImageSize = 'w1280'
 const APPEND = 'external_ids,credits'
 
 /**
@@ -111,7 +111,7 @@ function loadRepoEnv(): void {
  */
 async function downloadImage(
   remotePath: string | null | undefined,
-  size: string,
+  size: TmdbImageSize,
   publicRel: string,
   refresh: boolean,
 ): Promise<string | null> {
@@ -120,7 +120,11 @@ async function downloadImage(
   const localUrlPath = `/${publicRel.replace(/\\/g, '/')}`
   try {
     if (existsSync(absFile) && !refresh) return localUrlPath
-    const res = await fetch(`${IMAGE_CDN}/${size}${remotePath}`)
+    // URL montada pelo helper CANONICO (fonte unica do host do CDN). Este fetch
+    // e o modo LEGADO --download-images de um worker offline — nunca render.
+    const remoteUrl = buildTmdbImageUrl(remotePath, size)
+    if (remoteUrl === null) return null
+    const res = await fetch(remoteUrl)
     if (!res.ok) return null
     const buf = Buffer.from(await res.arrayBuffer())
     mkdirSync(path.dirname(absFile), { recursive: true })
@@ -420,7 +424,7 @@ async function main(): Promise<void> {
     console.log(
       downloadImages
         ? 'Imagens LOCAIS em apps/web/public/media/tmdb/ (--download-images, legado; gitignored).'
-        : 'Sem imagem salva no servidor: posterPath/backdropPath = file_path CRU do TMDB (frontend usa URL remota image.tmdb.org).',
+        : 'Sem imagem salva no servidor: posterPath/backdropPath = file_path CRU do TMDB (frontend monta a URL remota do CDN).',
     )
   } finally {
     await disconnect()
