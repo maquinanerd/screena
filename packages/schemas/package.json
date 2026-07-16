@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Validacao canonica do Screen (namespace tecnico legado @screena/schemas): ratings e saida do Entity Writer contra payload controlado.",
+  "description": "Validacao canonica da Cinerie (namespace tecnico legado @screena/schemas): ratings e saida do Entity Writer contra payload controlado.",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {

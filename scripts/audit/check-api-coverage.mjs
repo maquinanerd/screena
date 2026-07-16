@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // @ts-check
 /**
- * check-api-coverage.mjs — Auditoria de COBERTURA DE API do Screen (Fase 5).
+ * check-api-coverage.mjs — Auditoria de COBERTURA DE API da Cinerie (Fase 5).
  *
  * Le o registro em `docs/api-coverage/` (providers.yaml + endpoints.json +
  * fields.json) e o cruza com o codigo real (ancoras + drift reverso), travando
@@ -81,7 +81,7 @@ function report(result) {
   const { violations, warnings, passes } = result;
 
   console.log('============================================================');
-  console.log(' Screen — Auditoria de cobertura de API (check-api-coverage)');
+  console.log(' Cinerie — Auditoria de cobertura de API (check-api-coverage)');
   console.log('============================================================');
 
   if (passes.length > 0) {

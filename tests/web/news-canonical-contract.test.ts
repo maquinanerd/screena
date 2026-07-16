@@ -63,7 +63,7 @@ describe('notícias após o reset visual', () => {
   })
 
   it('não introduz conteúdo, compartilhamento ou recursos sociais falsos', () => {
-    expect(index).not.toMatch(/Mais lidas|Screen Daily|Assinar grátis|trending/)
+    expect(index).not.toMatch(/Mais lidas|Cinerie Daily|Screen Daily|Assinar grátis|trending/)
     expect(article).not.toMatch(/Minha lista|Avaliar|Compartilhar|relatedArticles/)
     expect(article).not.toMatch(/Daredevil|Marvel|Collider/)
   })

@@ -19,10 +19,10 @@ import "./globals.css";
  */
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: { default: "Screen", template: "%s | Screen" },
+  title: { default: "Cinerie", template: "%s | Cinerie" },
   // Marca publica em cartoes sociais. Sem og:image fabricada (nenhum asset
   // raster proprio nesta fase) — nunca inventar dado.
-  openGraph: { siteName: "Screen", locale: "pt_BR", type: "website" },
+  openGraph: { siteName: "Cinerie", locale: "pt_BR", type: "website" },
   twitter: { card: "summary" },
 };
 

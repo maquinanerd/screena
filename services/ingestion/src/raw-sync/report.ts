@@ -49,7 +49,7 @@ const KIND_LABEL: Record<SupportedRawKind, string> = {
 /** Renderiza o relatorio como markdown legivel (para arquivo gitignored). */
 export function renderRawSyncReport(report: RawSyncReport): string {
   const lines: string[] = []
-  lines.push(`# Screen · TMDB raw sync — relatorio (${report.mode})`)
+  lines.push(`# Cinerie · TMDB raw sync — relatorio (${report.mode})`)
   lines.push('')
   lines.push(`- baseLanguage: ${report.baseLanguage}`)
   lines.push(

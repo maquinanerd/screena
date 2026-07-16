@@ -16,7 +16,7 @@ import { getSearchPageData } from '../../../src/server/search-page'
 export const dynamic = 'force-dynamic'
 
 const TITLE = 'Busca'
-const DESCRIPTION = 'Busque filmes, series e pessoas ja publicados no Screen.'
+const DESCRIPTION = 'Busque filmes, series e pessoas ja publicados na Cinerie.'
 const SEARCH_PATH = '/pt/busca/'
 
 export const metadata: Metadata = {

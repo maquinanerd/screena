@@ -20,7 +20,7 @@ import { getSeriesIndexData } from '../../../src/server/entity-indexes'
 export const dynamic = 'force-dynamic'
 
 const TITLE = 'Séries'
-const DESCRIPTION = 'Explore as séries catalogadas na Screen, com páginas editoriais em português.'
+const DESCRIPTION = 'Explore as séries catalogadas na Cinerie, com páginas editoriais em português.'
 
 export async function generateMetadata(): Promise<Metadata> {
   const { indexability, canonicalUrl } = await getSeriesIndexData()

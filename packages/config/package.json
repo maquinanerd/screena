@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Constantes canonicas do Screen (namespace tecnico legado @screena/config): invariantes, fontes/escalas de rating, verticais, status de indexacao/revisao, tokens de cor e leitura segura de env.",
+  "description": "Constantes canonicas da Cinerie (namespace tecnico legado @screena/config): invariantes, fontes/escalas de rating, verticais, status de indexacao/revisao, tokens de cor e leitura segura de env.",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {

@@ -336,7 +336,7 @@ async function main(): Promise<void> {
   const hasDb = Boolean(process.env.DATABASE_URL?.trim())
   const isProd = process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production'
 
-  console.log('== Screen · Ingestão de catálogo público (TMDB — Camada 1) ==')
+  console.log('== Cinerie · Ingestão de catálogo público (TMDB — Camada 1) ==')
   console.log(`Alvo: ${MOVIE_IDS.length} filmes + ${TV_IDS.length} séries (curados, editáveis).`)
 
   if (isProd) {

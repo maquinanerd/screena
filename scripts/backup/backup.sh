@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Backup logico do PostgreSQL para o Screen.
+# Backup logico do PostgreSQL para o Cinerie.
 # Requer DATABASE_URL em env. Nunca escreva credenciais neste arquivo.
 
 require_cmd() {

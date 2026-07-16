@@ -2,7 +2,7 @@
  * home.ts — Contratos de home e descoberta (Backend A, §13/§8).
  *
  * EntityCard e o cartao reutilizavel das listagens/home. `screenScore` e a nota
- * editorial PROPRIA do Screen (escala 5), NUNCA um AggregateRating de terceiro
+ * editorial PROPRIA da Cinerie (escala 5), NUNCA um AggregateRating de terceiro
  * (invariantes 1/2). DiscoveryPayload projeta um snapshot de descoberta
  * (trending/popular/etc) para exibicao — nunca chama API externa no render.
  */
@@ -34,7 +34,7 @@ export interface EntityCard {
   readonly subtitle: string | null
   readonly year: number | null
   readonly image: PublicMediaAsset | null
-  /** Nota editorial PROPRIA do Screen (escala 5) ou null. Nunca de terceiro. */
+  /** Nota editorial PROPRIA da Cinerie (escala 5) ou null. Nunca de terceiro. */
   readonly screenScore: number | null
 }
 

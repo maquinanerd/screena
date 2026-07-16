@@ -30,7 +30,7 @@ export function derivePromoteStatus(report: PromoteReport): SyncStatus {
 /** Renderiza o relatorio como markdown legivel (para arquivo gitignored). */
 export function renderPromoteReport(report: PromoteReport): string {
   const lines: string[] = []
-  lines.push(`# Screen · Promocao tmdb_raw -> tabelas tipadas — relatorio (${report.mode})`)
+  lines.push(`# Cinerie · Promocao tmdb_raw -> tabelas tipadas — relatorio (${report.mode})`)
   lines.push('')
   lines.push(`- entidade: ${report.entityType}`)
   lines.push(`- baseLanguage: ${report.baseLanguage}`)

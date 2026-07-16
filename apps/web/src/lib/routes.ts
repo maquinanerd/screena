@@ -1,5 +1,5 @@
 /**
- * Constantes de rotas publicas do Screen. PURO: sem env, DB, rede ou IO.
+ * Constantes de rotas publicas da Cinerie. PURO: sem env, DB, rede ou IO.
  *
  * Este modulo pode ser importado por client components, por isso nao deve ler
  * `process.env` nem carregar helpers server-only.

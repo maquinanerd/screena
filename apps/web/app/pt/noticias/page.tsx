@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic'
 
 const TITLE = 'Notícias'
 const DESCRIPTION =
-  'Últimas notícias e análises editoriais da Screen sobre cinema e séries, em português.'
+  'Últimas notícias e análises editoriais da Cinerie sobre cinema e séries, em português.'
 
 export async function generateMetadata(): Promise<Metadata> {
   const { indexability, canonicalUrl } = await getNewsIndexData()

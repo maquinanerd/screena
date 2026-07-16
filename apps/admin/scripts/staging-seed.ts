@@ -250,7 +250,7 @@ async function main(): Promise<void> {
   const decision = resolveSeedMode(flags, env);
   const plan = buildStagingSeedPlan();
 
-  console.log("== Screen · Staging Seed Harness ==");
+  console.log("== Cinerie · Staging Seed Harness ==");
   console.log(`Modo: ${decision.mode}`);
   console.log(`Motivo: ${decision.reason}`);
   for (const line of formatSeedPlan(plan)) console.log(line);

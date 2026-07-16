@@ -9,7 +9,7 @@
 import type { CatalogCommand } from './args.js'
 
 /** Cabecalho comum. */
-const HEADER = `catalog — CLI offline do catalogo Screen (worker-only; NUNCA no render).
+const HEADER = `catalog — CLI offline do catalogo Cinerie (worker-only; NUNCA no render).
 
 Uso: pnpm catalog <comando> [flags]
 

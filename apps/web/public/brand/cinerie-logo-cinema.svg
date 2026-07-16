@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 78" width="520" height="78" role="img" aria-label="Cinerie">
+  <defs>
+    <style>
+      .cl { font-family: 'Montserrat','Arial Black','Helvetica Neue',Arial,sans-serif; font-weight:900; font-size:60px; fill:#F0443E; }
+    </style>
+  </defs>
+  <!-- textLength+lengthAdjust travam a largura: o wordmark ocupa o viewBox
+       exato mesmo quando a Montserrat nao carrega (fallback de fonte). -->
+  <text class="cl" x="0" y="62" textLength="520" lengthAdjust="spacing">CINERIE</text>
+</svg>

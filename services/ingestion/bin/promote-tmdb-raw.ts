@@ -173,7 +173,7 @@ async function main(): Promise<void> {
   const limit = args.limit ?? DEFAULT_PROMOTE_LIMIT
   const reportPath = args.report ?? defaultReportPath(args.kind)
 
-  console.log(`== Screen · Promocao tmdb_raw -> tabelas tipadas (P0-00f, ${args.kind}) ==`)
+  console.log(`== Cinerie · Promocao tmdb_raw -> tabelas tipadas (P0-00f, ${args.kind}) ==`)
   console.log(`Modo: ${args.apply ? 'APPLY (grava tabelas tipadas)' : 'dry-run (nada tocado)'}`)
   console.log(`Limite: ${limit} ${args.kind}(s).`)
 

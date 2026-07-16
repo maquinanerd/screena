@@ -3,7 +3,7 @@
  * Fase 7D.
  *
  * Diagnostica o que IMPEDE conteudo de aparecer/indexar/ter qualidade minima no
- * Screen. NAO escreve, NAO decide indexacao — so descreve problemas com severidade.
+ * Cinerie. NAO escreve, NAO decide indexacao — so descreve problemas com severidade.
  * Reusa as regras ja espelhadas do app publico: `public-readiness` (exibicao/
  * indexacao, ja travado por public-readiness-mirror) e `editorial-status` (review/
  * licenca/corpo, travado por editorial-status-mirror). Nao duplica regra critica.

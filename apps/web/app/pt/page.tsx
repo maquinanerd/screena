@@ -34,23 +34,23 @@ import { getNewsIndexData } from '../../src/server/news-pages'
 
 export const dynamic = 'force-dynamic'
 
-const HOME_TITLE = 'Screen — filmes, séries, pessoas e notícias'
+const HOME_TITLE = 'Cinerie — filmes, séries, pessoas e notícias'
 const HOME_DESCRIPTION =
-  'Base editorial de entretenimento em português: fichas de filmes e séries, perfis de pessoas e notícias com curadoria própria da redação do Screen.'
-const HOME_H1 = 'Screen — filmes, séries e pessoas'
+  'Base editorial de entretenimento em português: fichas de filmes e séries, perfis de pessoas e notícias com curadoria própria da redação da Cinerie.'
+const HOME_H1 = 'Cinerie — filmes, séries e pessoas'
 
 const HOME_ORGANIZATION_JSONLD = {
   '@context': 'https://schema.org',
   '@type': 'Organization',
-  name: 'Screen',
+  name: 'Cinerie',
   url: `${SITE_URL}/pt/`,
-  logo: `${SITE_URL}/brand/screen-logo-black.svg`,
+  logo: `${SITE_URL}/brand/cinerie-logo-black.svg`,
 }
 
 const HOME_WEBSITE_JSONLD = {
   '@context': 'https://schema.org',
   '@type': 'WebSite',
-  name: 'Screen',
+  name: 'Cinerie',
   url: `${SITE_URL}/`,
 }
 
@@ -134,7 +134,7 @@ export default async function HomePage() {
           <p>{HOME_DESCRIPTION}</p>
         </header>
 
-        <nav aria-label="Áreas do Screen">
+        <nav aria-label="Áreas da Cinerie">
           <ul>
             <li>
               <a href={MOVIES_INDEX_PATH}>Filmes</a>

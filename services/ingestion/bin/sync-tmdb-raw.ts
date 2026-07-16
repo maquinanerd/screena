@@ -195,7 +195,7 @@ async function main(): Promise<void> {
   )
   const isProd = process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production'
 
-  console.log('== Screen · TMDB raw sync (P0-00d) ==')
+  console.log('== Cinerie · TMDB raw sync (P0-00d) ==')
   console.log(`Modo: ${apply ? 'APPLY (grava tmdb_raw)' : 'dry-run (nada tocado)'}`)
   console.log(`Limites: movie=${limits.movie}, tv=${limits.tv}, person=${limits.person}`)
 
