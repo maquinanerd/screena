@@ -151,8 +151,46 @@ inexistente devolve `null` (404 tecnico). GOVERNANCA respeitada:
 teste) — o reader recebe `ApprovedRatingsSource` INJETADA (default vazio); o
 adapter pertence ao dominio de ratings.
 
+### 10. Indexabilidade no contrato: decisao registrada, FAIL-CLOSED
+Correcao de revisao humana. A primeira versao de `buildSeo` cravava
+`index: true` / `robots: 'index,follow'` para toda entidade resolvida —
+deduzindo indexabilidade de "tem slug" e ignorando
+`page_indexability_decisions`. Entidade `noindex`/`blocked`/`stale`/`draft`, ou
+sem decisao alguma, saia indexavel no contrato.
+
+Decisao: slug e resolucao de ROTA; indexabilidade e decisao REGISTRADA. O reader
+le a decisao VIGENTE (`is_current=true`) por entidade+locale e a projeta com
+`projectPublicIndexability` (`@screena/seo`), que reusa o
+`robotsForPersistedDecision` ja usado por `mergePersistedDecision` — fonte unica
+do mapeamento. **Ausencia de decisao => `index:false`**: deliberadamente mais
+restritivo que `mergePersistedDecision` (que devolve a resolucao viva quando nao
+ha persistida), porque aquela fusao recebe os FATOS vivos (licenca/idioma/
+validade tecnica) e pode decidir com eles; um contrato sem esses fatos nao pode.
+Temporada e episodio seguem a MESMA politica (nao herdam index por rota). O
+getter nao decide indexabilidade, nao cria decisao e nao inclui nada em sitemap
+— apenas PROJETA a decisao ja registrada.
+
+Nota de escopo: o enum real e `IndexDecision {index,noindex,draft,stale,blocked}`.
+Os estados citados em roadmap (`noindex_thin`, `noindex_duplicate`, `retired`,
+...) NAO existem no schema; o detalhe semantico vive na coluna `reason`. A
+projecao mapeia o enum real, fail-closed.
+
+### 11. Prioridade de locale deterministica
+`pt-BR` vence `pt` por prioridade EXPLICITA em codigo
+(`public-payloads/locale-priority.ts`), nunca pela ordem do banco: `findMany`
+sem `orderBy` nao tem ordem garantida (depende do plano) e
+`new Map(rows.map(...))` deixaria a ultima linha vencer. Vale para os caminhos
+individuais E em LOTE (`personSlugs`, cards de home/discovery). A garantia e
+travada por teste PURO que alimenta as duas ordens de entrada — um check em
+PostgreSQL nao serviria: hoje o index scan devolve `'pt'` antes de `'pt-BR'`
+(prefixo ordena primeiro) e o codigo bugado acertaria por acidente do plano.
+
 ## Consequencias e limitacoes REAIS (estado atual)
-- Validador `validate:catalog-platform-complete`: **66 checks** em PostgreSQL 16
+- **Indexabilidade e fail-closed**: entidade sem decisao vigente em
+  `page_indexability_decisions` sai do contrato com `index:false`. Popular essa
+  tabela (motor de politica/decisao humana) e pre-requisito para qualquer
+  superficie publica indexar — nao ha indexacao por omissao.
+- Validador `validate:catalog-platform-complete`: **78 checks** em PostgreSQL 16
   efemero — fila, busca, pipeline dos 11 handlers, bootstrap idempotente/resume,
   changes commit/rollback/noop, snapshots hash-noop, metricas sem alta
   cardinalidade, audit read-only e os contratos fail-closed. Step proprio no CI.

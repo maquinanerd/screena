@@ -89,7 +89,7 @@ getters: `getMovieDetailPayload`, `getTvDetailPayload`,
 `getCatalogStatusPayload`. Os mappers PUROS (`src/public-payloads/`) terminam
 no validador do proprio contrato — payload invalido lanca perto da origem.
 
-Garantias (provadas por 19 contract tests puros + 16 checks em PostgreSQL real):
+Garantias (provadas por contract tests puros + checks em PostgreSQL real):
 - midia/oferta `display_allowed=false` e rating de licenca bloqueada NUNCA
   chegam (gates no WHERE + fail-closed do builder);
 - ids `string`, datas de obra `YYYY-MM-DD` (UTC), instantes ISO — JSON-safe;
@@ -98,6 +98,41 @@ Garantias (provadas por 19 contract tests puros + 16 checks em PostgreSQL real):
 - GOVERNANCA: `services/ingestion` nao referencia ratings (inv. 1/2) — o reader
   recebe `ApprovedRatingsSource` injetada (default vazio); o adapter pertence ao
   dominio de ratings.
+
+### Indexabilidade no contrato (FAIL-CLOSED)
+
+`SeoPayload.index`/`robots` NAO sao derivados de "a entidade tem slug". Slug e
+resolucao de ROTA; indexabilidade e decisao REGISTRADA em
+`page_indexability_decisions`. O reader le a decisao VIGENTE
+(`is_current = true`) da entidade+locale e a projeta com
+`projectPublicIndexability` (`@screena/seo`):
+
+| decisao vigente | `index` | `robots` |
+| --- | --- | --- |
+| `index` | `true` | `index,follow` |
+| `noindex` | `false` | `noindex,nofollow` (exclusao registrada) |
+| `blocked` | `false` | `noindex,nofollow` |
+| `draft` | `false` | `noindex,follow` |
+| `stale` | `false` | `noindex,follow` |
+| **ausente** | `false` | `noindex,follow` |
+
+Ausencia de decisao e **fail-closed**: o silencio nunca autoriza indexar. Isso e
+mais restritivo que `mergePersistedDecision` (que devolve a resolucao viva
+quando nao ha persistida) de proposito — aquela fusao recebe os FATOS vivos
+(licenca, idioma, validade tecnica) e pode decidir com eles; um contrato sem
+esses fatos, nao. Quem tem os fatos vivos usa `resolvePageSeo` +
+`mergePersistedDecision`; quem so tem a entidade usa a projecao.
+
+Este getter **nao** decide indexabilidade, nao cria decisao e nao inclui nada em
+sitemap — apenas PROJETA a decisao ja registrada.
+
+### Prioridade de locale
+
+`pt-BR` vence `pt`, resolvido em codigo por `pickByLocale`
+(`src/public-payloads/locale-priority.ts`), nunca pela ordem que o banco
+devolver — `findMany` sem `orderBy` nao tem ordem garantida (depende do plano),
+e reduzir com `new Map(rows.map(...))` deixaria a ultima linha vencer. Vale para
+os caminhos individuais E em lote (`personSlugs`, cards de home/discovery).
 
 ## Uso
 

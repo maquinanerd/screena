@@ -98,7 +98,7 @@ UNICO arquivo de producao do repo com o host do CDN (audit repo-wide + teste).
 ## 5. Validacao
 
 `pnpm validate:catalog-platform-complete` sobe um PostgreSQL 16 efemero
-(`embedded-postgres`) e prova, no banco real, **66 checks**: migration do zero,
+(`embedded-postgres`) e prova, no banco real, **78 checks**: migration do zero,
 extensoes/funcao, fila completa (enqueue idempotente, claim SKIP LOCKED +
 prioridade, heartbeat, retry→retry_wait, dead-letter, reclaim, replay), busca
 exact/alias/acento/prefixo/fuzzy, o PIPELINE dos 11 handlers (bootstrap
