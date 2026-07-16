@@ -71,6 +71,17 @@ export interface ChangesRunDeps {
   readonly metrics: MetricsSink
   readonly log?: StructuredLogger
   readonly now?: () => Date
+  /**
+   * Aborta o ciclo (timeout do job ou shutdown).
+   *
+   * Sem isto, o worker vencia a corrida do timeout e marcava o job para retry,
+   * mas ESTE loop continuava rodando: o job era reivindicado de novo (~1s de
+   * backoff) e os dois passavam a paginar em paralelo, ambos gravando
+   * checkpoint. Como `commit` sobrescreve `lastPage` sem guarda de
+   * monotonicidade, o zumbi regredia o checkpoint (e reabria uma janela ja
+   * `done`), multiplicando cota do provider a cada timeout.
+   */
+  readonly signal?: AbortSignal
 }
 
 /** Opcoes de um ciclo de changes. */
@@ -108,6 +119,24 @@ export interface ChangesRunReport {
 
 const DEFAULT_KINDS: readonly ChangesKind[] = ['movie', 'tv', 'person']
 const DAY_MS = 24 * 60 * 60 * 1000
+
+/**
+ * Teto duro de paginas por kind num ciclo (safety valve).
+ *
+ * Existe para o caso do provider omitir/zerar `total_pages`: sem ele o laco nao
+ * teria saida alcancavel. 500 paginas x 100 itens = 50k mudancas por kind numa
+ * janela — folgado para 24h, e finito.
+ */
+const HARD_PAGE_CEILING = 500
+
+/** Lanca `AbortError` quando o ciclo foi abortado (timeout do job/shutdown). */
+function throwIfChangesAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted === true) {
+    const error = new Error('ciclo de changes abortado')
+    error.name = 'AbortError'
+    throw error
+  }
+}
 
 /** Nome canonico do job de checkpoint (espelha `job='changes:movie'` do schema). */
 export function changesJobName(kind: ChangesKind): string {
@@ -189,9 +218,18 @@ export async function runChangesSync(
     let done = false
 
     for (;;) {
+      throwIfChangesAborted(deps.signal)
       if (options.maxPages !== undefined && pages >= options.maxPages) break
       if (totalPages !== null && page > totalPages) {
         done = true
+        break
+      }
+      // Teto duro: sem `maxPages` e sem `total_pages` confiavel do provider, as
+      // unicas saidas do laco eram `page > totalPages` e `isLastPage` — ambas
+      // inalcancaveis quando `total_pages` vem ausente/0. Um unico ciclo
+      // paginaria para sempre, gastando cota ate o timeout do job.
+      if (pages >= HARD_PAGE_CEILING) {
+        deps.log?.log('warn', 'catalog_changes_page_ceiling', { runId, kind, pages })
         break
       }
 
@@ -211,6 +249,14 @@ export async function runChangesSync(
 
       const ids = extractChangedIds(response)
       changedIds += ids.length
+
+      // Pagina vazia sem `total_pages` confiavel = fim da lista. Sem esta saida,
+      // o laco continuaria pedindo paginas vazias ate o teto.
+      if (ids.length === 0 && totalPages === null) {
+        done = true
+        pages += 1
+        break
+      }
 
       const enqueueInputs: EnqueueCatalogJobInput[] = ids.map((id) => ({
         jobType: 'sync_details',

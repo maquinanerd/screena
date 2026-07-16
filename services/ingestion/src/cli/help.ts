@@ -68,16 +68,16 @@ Flags:
   --locale <l>         default pt-BR
   --country <c>        ex.: BR
   --limit <n>          teto de ids por tipo
-  --mode <m>           enqueue-only (default) | wait | resume | status
-  --request-id <id>    reusar o MESMO id retoma a execucao (resume) sem duplicar;
-                       um id NOVO e uma execucao nova
-  --timeout-ms <n>     teto do modo wait
+  --mode <m>           enqueue-only (default) | resume | status
+                       (o bootstrap so ENFILEIRA; quem processa e "catalog worker")
+  --request-id <id>    reusar o MESMO id RETOMA a execucao sem duplicar. Omitido,
+                       cada run ganha um id novo (= execucao nova e deliberada)
   --dry-run | --apply
 
 Exemplos:
   pnpm catalog bootstrap --strategy daily-exports --entity movie,tv,person --limit 1000 --apply
-  pnpm catalog bootstrap --request-id run-2026-07-16 --mode resume --apply
-  pnpm catalog bootstrap --mode status --request-id run-2026-07-16 --dry-run`,
+  pnpm catalog worker --concurrency 4 --max-jobs 0     # processa o que foi enfileirado
+  pnpm catalog bootstrap --request-id run-2026-07-16 --mode resume --apply`,
 
   enqueue: `catalog enqueue — enfileira UM job avulso.
 
@@ -202,7 +202,7 @@ resultado nunca aponta para 404. Entidade que sumiu tem o documento REMOVIDO.
 
 Flags:
   --entity <e>         movie | tv | person (omitido = todos)
-  --id <n>             reindexa UMA entidade (id interno via --checkpoint nao se aplica)
+  --id <n>             reindexa UMA entidade (id INTERNO, nao tmdb id; exige um unico --entity)
   --locale <l>         default pt-BR
   --limit <n>          teto de linhas
   --dry-run | --apply

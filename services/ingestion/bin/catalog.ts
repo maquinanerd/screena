@@ -23,6 +23,8 @@
  *   node "<caminho-do-tsx-cli>" services/ingestion/bin/catalog.ts --help
  */
 
+import { gunzipSync } from 'node:zlib'
+import { randomUUID } from 'node:crypto'
 import { createTmdbClient } from '@screena/tmdb-client'
 import { createTmdbCatalogEndpoints } from '@screena/tmdb-client'
 import { disconnectPrisma } from '@screena/db/server'
@@ -34,15 +36,19 @@ import {
   renderHelp,
   isReadOnlyCommand,
 } from '../src/cli/index.js'
-import { createCatalogHandlerRegistry } from '../src/catalog-jobs/handlers/index.js'
+import { createCatalogHandlerRegistry, validateJobPayload } from '../src/catalog-jobs/handlers/index.js'
 import { buildIdempotencyKey } from '../src/catalog-jobs/idempotency.js'
 import { runCatalogWorker } from '../src/catalog-jobs/worker.js'
 import { CATALOG_JOB_TYPES } from '../src/catalog-jobs/types.js'
 import { createStructuredLogMetricsSink, createInMemoryMetricsSink } from '../src/metrics/index.js'
-import { reindexAll } from '../src/search-projection/index.js'
+import { reindexAll, reindexEntity } from '../src/search-projection/index.js'
 import { evaluateAuditGate, formatAuditReport, runDatabaseAudit } from '../src/audit/index.js'
 import { createCatalogServices } from '../src/persistence/catalog-services.js'
 import { createPrismaAuditReader } from '../src/persistence/audit-reader.js'
+import { createPersistence } from '../src/persistence/index.js'
+import { createPrismaCatalogJobStore } from '../src/persistence/catalog-job-store.js'
+import { createPrismaSearchStore } from '../src/persistence/search-store.js'
+import { createPrismaSearchProjectionSource } from '../src/persistence/search-projection-source.js'
 
 const DEFAULT_LOCALE = 'pt-BR'
 
@@ -121,6 +127,28 @@ async function runHandlerInline(registry, jobType, payload, deps) {
   return handler.execute(context, input)
 }
 
+/**
+ * Comandos que NAO precisam de credencial TMDB.
+ *
+ * `createTmdbClient()` lanca `TmdbConfigError` quando falta o token. Montar o
+ * runtime completo para um `status`/`audit-database` fazia um comando puramente
+ * de banco morrer por falta de uma credencial que ele nunca usaria — e num host
+ * de operacao (onde se audita) o token TMDB muitas vezes nem existe.
+ */
+const DB_ONLY_COMMANDS = new Set(['status', 'search-status', 'audit-database', 'dead-letter', 'enqueue'])
+
+/** Monta so a camada de banco (sem TMDB). */
+function createDbOnlyRuntime() {
+  const persistence = createPersistence({ ttlMs: 0 })
+  return {
+    prisma: persistence.prisma,
+    store: createPrismaCatalogJobStore(persistence.prisma),
+    searchStore: createPrismaSearchStore(persistence.prisma),
+    searchSource: createPrismaSearchProjectionSource(persistence.prisma),
+    now: () => new Date(),
+  }
+}
+
 /** Monta runtime (TMDB + Prisma + servicos + registry). */
 function createRuntime() {
   const client = createTmdbClient()
@@ -132,8 +160,14 @@ function createRuntime() {
     fetchText: async (url) => {
       const response = await fetch(url)
       if (!response.ok) throw new Error(`export HTTP ${response.status}`)
-      // Os exports sao .json.gz; `fetch` descompacta via content-encoding.
-      return response.text()
+      // Os Daily ID Exports sao arquivos .json.gz SERVIDOS COMO CORPO BINARIO —
+      // nao ha `content-encoding: gzip`, entao `fetch` NAO descompacta e
+      // `response.text()` devolveria bytes gzip interpretados como UTF-8. O
+      // parser entao descartaria toda linha como JSON invalido e a descoberta
+      // reportaria "0 ids" com sucesso — silenciosamente, na estrategia DEFAULT.
+      const buffer = Buffer.from(await response.arrayBuffer())
+      const isGzip = buffer.length > 2 && buffer[0] === 0x1f && buffer[1] === 0x8b
+      return isGzip ? gunzipSync(buffer).toString('utf8') : buffer.toString('utf8')
     },
   })
   const registry = createCatalogHandlerRegistry(services)
@@ -171,7 +205,13 @@ async function main() {
   const metrics = flags.json ? createInMemoryMetricsSink() : createStructuredLogMetricsSink((line) => {
     process.stderr.write(`${JSON.stringify({ metric: line.metric, value: line.value, labels: line.labels })}\n`)
   })
-  const requestId = flags.requestId ?? `cli-${command}`
+  // O bootstrap poe o requestId na chave de idempotencia dos filhos. Um default
+  // CONSTANTE (`cli-bootstrap`) faria o 1o run enfileirar e TODOS os seguintes
+  // colidirem na mesma chave => noop silencioso, para sempre. Por isso o
+  // bootstrap ganha um id unico por execucao quando o operador nao passa um; e
+  // `--request-id` continua sendo o jeito de RETOMAR uma execucao especifica.
+  const requestId =
+    flags.requestId ?? (command === 'bootstrap' ? `bootstrap-${randomUUID()}` : `cli-${command}`)
   const locale = flags.locale ?? DEFAULT_LOCALE
 
   // Dry-run NAO monta o runtime: nao abre Prisma, nao cria client TMDB, nao
@@ -188,6 +228,30 @@ async function main() {
     return EXIT_CODES.ok
   }
 
+  // Comandos so-de-banco nao montam o client TMDB (nao precisam do token).
+  if (DB_ONLY_COMMANDS.has(command)) {
+    const db = createDbOnlyRuntime()
+    try {
+      switch (command) {
+        case 'enqueue':
+          return await cmdEnqueue(db, flags, locale)
+        case 'search-status':
+          return await cmdSearchStatus(db, flags, locale)
+        case 'status':
+          return await cmdStatus(db, flags)
+        case 'audit-database':
+          return await cmdAuditDatabase(db, flags)
+        case 'dead-letter':
+          return await cmdDeadLetter(db, subcommand, flags)
+        default:
+          process.stderr.write(`comando nao implementado: ${command}\n`)
+          return EXIT_CODES.usage
+      }
+    } finally {
+      await disconnectPrisma()
+    }
+  }
+
   const { services, registry } = createRuntime()
   const inlineDeps = { requestId, log, metrics }
 
@@ -195,8 +259,6 @@ async function main() {
     switch (command) {
       case 'bootstrap':
         return await cmdBootstrap(registry, flags, locale, inlineDeps)
-      case 'enqueue':
-        return await cmdEnqueue(services, flags, locale)
       case 'worker':
         return await cmdWorker(services, registry, flags, log, metrics, requestId)
       case 'sync':
@@ -211,14 +273,6 @@ async function main() {
         return await cmdEpisodes(registry, flags, locale, inlineDeps)
       case 'search-reindex':
         return await cmdSearchReindex(services, flags, locale, log)
-      case 'search-status':
-        return await cmdSearchStatus(services, flags, locale)
-      case 'status':
-        return await cmdStatus(services, flags)
-      case 'audit-database':
-        return await cmdAuditDatabase(services, flags)
-      case 'dead-letter':
-        return await cmdDeadLetter(services, subcommand, flags)
       default:
         process.stderr.write(`comando nao implementado: ${command}\n`)
         return EXIT_CODES.usage
@@ -309,6 +363,25 @@ async function cmdEnqueue(services, flags, locale) {
     process.stderr.write(`erro: job desconhecido "${jobType}". Use um de: ${CATALOG_JOB_TYPES.join(', ')}.\n`)
     return EXIT_CODES.usage
   }
+
+  const payload = {
+    entityType: flags.entity,
+    tmdbId: flags.id,
+    seasonNumber: flags.season,
+    locale,
+  }
+
+  // Valida ANTES de gravar, com o MESMO validador que o worker usara. Sem isto,
+  // `enqueue sync_details` sem --entity/--id era aceito, reportava "enfileirado"
+  // e criava um dead-letter garantido: o erro so apareceria minutos depois, na
+  // fila, longe de quem digitou o comando.
+  try {
+    validateJobPayload(jobType, payload)
+  } catch (error) {
+    process.stderr.write(`erro: payload invalido para "${jobType}": ${redactSecrets(String(error?.message ?? error))}\n`)
+    return EXIT_CODES.usage
+  }
+
   const externalId = flags.id === null ? null : String(flags.id)
   const result = await services.store.enqueue({
     jobType,
@@ -356,6 +429,33 @@ async function cmdWorker(services, registry, flags, log, metrics, runId) {
   process.on('SIGTERM', () => onSignal('SIGTERM'))
 
   const maxJobs = flags.maxJobs ?? 0
+
+  // Reclaim de orfaos: `reclaimOrphans` existia, era testado e NAO tinha
+  // chamador em producao. Um worker morto por SIGKILL/OOM deixa suas linhas em
+  // `running`; `claimNext` so seleciona pending|retry_wait, entao ninguem mais
+  // as pegava — perdidas ate um UPDATE manual. Um tick periodico fecha o buraco.
+  // Roda ANTES de comecar (recupera o que o processo anterior deixou) e depois
+  // a cada `reclaimIntervalMs` enquanto o worker vive.
+  const orphanTimeoutMs = Math.max((flags.timeoutMs ?? 120_000) * 2, 60_000)
+  const reclaimIntervalMs = Math.max(orphanTimeoutMs / 2, 30_000)
+  const reclaimOnce = async () => {
+    try {
+      const result = await services.store.reclaimOrphans(orphanTimeoutMs)
+      if (result.requeued > 0 || result.deadLettered > 0) {
+        log.log('warn', 'catalog_worker_reclaimed_orphans', {
+          requeued: result.requeued,
+          deadLettered: result.deadLettered,
+        })
+      }
+    } catch (error) {
+      // Reclaim e best-effort: uma falha aqui nao pode derrubar o worker.
+      log.log('warn', 'catalog_worker_reclaim_failed', { error: String(error) })
+    }
+  }
+  await reclaimOnce()
+  const reclaimTimer = setInterval(() => void reclaimOnce(), reclaimIntervalMs)
+  reclaimTimer.unref()
+
   const report = await runCatalogWorker(
     { store: services.store, registry, metrics, log, shutdownSignal: controller.signal },
     {
@@ -368,6 +468,7 @@ async function cmdWorker(services, registry, flags, log, metrics, runId) {
       runId,
     },
   )
+  clearInterval(reclaimTimer)
 
   emit(flags, report, [
     `worker finalizado: ${report.claimed} reivindicados · ${report.succeeded} ok · ${report.retried} retry · ${report.deadLettered} dead-letter`,
@@ -505,6 +606,27 @@ async function cmdEpisodes(registry, flags, locale, deps) {
 
 /** search-reindex. */
 async function cmdSearchReindex(services, flags, locale, log) {
+  // `--id` reindexa UMA entidade (id INTERNO, nao tmdb id). Antes a flag era
+  // aceita e ignorada: o comando varria o corpus inteiro enquanto o operador
+  // achava que tinha reprojetado uma linha.
+  if (flags.id !== null) {
+    const entity = splitList(flags.entity)
+    if (entity === null || entity.length !== 1) {
+      process.stderr.write('erro: --id exige exatamente um --entity (movie|tv|person).\n')
+      return EXIT_CODES.usage
+    }
+    const report = await reindexEntity(
+      { source: services.searchSource, store: services.searchStore, log },
+      entity[0],
+      String(flags.id),
+      locale,
+    )
+    emit(flags, report, [
+      `search-reindex ${entity[0]} ${flags.id}: ${report.upserted} gravado · ${report.deleted} removido · ${report.skipped} pulado`,
+    ])
+    return EXIT_CODES.ok
+  }
+
   const report = await reindexAll(
     { source: services.searchSource, store: services.searchStore, log },
     { locale, entityTypes: splitList(flags.entity), limit: flags.limit ?? undefined },

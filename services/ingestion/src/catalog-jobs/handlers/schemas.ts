@@ -11,7 +11,7 @@
  */
 
 import { CatalogJobInputError } from '../handler.js'
-import type { CatalogEntityKind } from '../types.js'
+import type { CatalogEntityKind, CatalogJobType } from '../types.js'
 import {
   DISCOVERY_LIST_TYPES,
   type DiscoveryEntityType,
@@ -45,8 +45,17 @@ export const EXTERNAL_ID_KINDS = ['movie', 'tv', 'person', 'episode'] as const
 /** Um kind valido de `sync_external_ids`. */
 export type ExternalIdKind = (typeof EXTERNAL_ID_KINDS)[number]
 
-/** Kinds que possuem midia (imagens/videos). */
-export const MEDIA_KINDS = ['movie', 'tv', 'season', 'episode', 'person'] as const
+/**
+ * Kinds que possuem midia sincronizavel por `sync_media`.
+ *
+ * `season`/`episode` ficam DE FORA de proposito: a chave de midia e
+ * (entityType, tmdbId) e, para temporada, o tmdbId e o da SERIE — todas as
+ * temporadas colidiriam na mesma chave de cache (`/season/1399/images`) e as
+ * linhas ficariam indistinguiveis. Stills de episodio entram por
+ * `sync_episodes`, que usa a chave natural correta (serie + temporada +
+ * episodio).
+ */
+export const MEDIA_KINDS = ['movie', 'tv', 'person'] as const
 
 /** Um kind valido de `sync_media`. */
 export type MediaKind = (typeof MEDIA_KINDS)[number]
@@ -68,8 +77,16 @@ export const DISCOVER_STRATEGIES = [
 /** Uma estrategia valida de `discover_ids`. */
 export type DiscoverStrategy = (typeof DISCOVER_STRATEGIES)[number]
 
-/** Modos do bootstrap. */
-export const BOOTSTRAP_MODES = ['enqueue-only', 'wait', 'resume', 'status'] as const
+/**
+ * Modos do bootstrap.
+ *
+ * `wait` NAO existe: o bootstrap so enfileira, e quem processa e o
+ * `catalog worker`. Declarar um modo que nao faz nada seria pior que nao ter o
+ * modo — o operador acharia que o comando esperou o catalogo encher.
+ * `resume` e `enqueue-only` sao equivalentes na pratica (a idempotencia por
+ * requestId E a retomada); `resume` existe como intencao explicita.
+ */
+export const BOOTSTRAP_MODES = ['enqueue-only', 'resume', 'status'] as const
 
 /** Um modo valido de bootstrap. */
 export type BootstrapMode = (typeof BOOTSTRAP_MODES)[number]
@@ -427,23 +444,22 @@ export function validateSyncExternalIdsInput(value: unknown): SyncExternalIdsInp
   return { entityType, tmdbId: readPositiveInt(raw, 'tmdbId'), seasonNumber, episodeNumber }
 }
 
-/** Valida o payload de `sync_media`. */
+/**
+ * Valida o payload de `sync_media`.
+ *
+ * `season`/`episode` sao rejeitados por `MEDIA_KINDS` (ver a nota la): a chave
+ * de midia e (entityType, tmdbId) e colidiria entre temporadas. `seasonNumber`/
+ * `episodeNumber` seguem no tipo por compatibilidade do payload, mas nao tem uso
+ * aqui — nenhum kind aceito os consome.
+ */
 export function validateSyncMediaInput(value: unknown): SyncMediaInput {
   const raw = asRecord(value)
   const entityType = readEnum(raw, 'entityType', MEDIA_KINDS)
-  const seasonNumber = readOptionalNonNegativeInt(raw, 'seasonNumber')
-  const episodeNumber = readOptionalNonNegativeInt(raw, 'episodeNumber')
-  if ((entityType === 'season' || entityType === 'episode') && seasonNumber === null) {
-    throw new CatalogJobInputError(`entityType "${entityType}" exige "seasonNumber"`)
-  }
-  if (entityType === 'episode' && episodeNumber === null) {
-    throw new CatalogJobInputError('entityType "episode" exige "episodeNumber"')
-  }
   return {
     entityType,
     tmdbId: readPositiveInt(raw, 'tmdbId'),
-    seasonNumber,
-    episodeNumber,
+    seasonNumber: readOptionalNonNegativeInt(raw, 'seasonNumber'),
+    episodeNumber: readOptionalNonNegativeInt(raw, 'episodeNumber'),
     locale: readOptionalString(raw, 'locale', 'pt-BR') as string,
   }
 }
@@ -539,4 +555,37 @@ export function validateReprocessRawInput(value: unknown): ReprocessRawInput {
 /** Mapeia o kind do job para o `CatalogEntityKind` do banco. */
 export function toCatalogEntityKind(kind: string): CatalogEntityKind {
   return kind as CatalogEntityKind
+}
+
+/**
+ * Validadores por tipo de job, sem precisar do registry.
+ *
+ * O registry exige as dependencias de producao (Prisma + TMDB); quem so quer
+ * saber "este payload e valido?" — o `catalog enqueue`, um teste — nao deveria
+ * ter de montar um client so para isso.
+ */
+export const JOB_PAYLOAD_VALIDATORS: Readonly<Record<CatalogJobType, (value: unknown) => unknown>> = {
+  bootstrap: validateBootstrapInput,
+  discover_ids: validateDiscoverIdsInput,
+  sync_details: validateSyncDetailsInput,
+  sync_credits: validateSyncCreditsInput,
+  sync_external_ids: validateSyncExternalIdsInput,
+  sync_media: validateSyncMediaInput,
+  sync_seasons: validateSyncSeasonsInput,
+  sync_episodes: validateSyncEpisodesInput,
+  sync_lists: validateSyncListsInput,
+  sync_changes: validateSyncChangesInput,
+  reprocess_raw: validateReprocessRawInput,
+}
+
+/**
+ * Valida o payload de um job pelo tipo. Lanca `CatalogJobInputError` quando
+ * invalido — o MESMO erro que o worker veria, so que antes de gravar.
+ */
+export function validateJobPayload(jobType: CatalogJobType, payload: unknown): unknown {
+  const validator = JOB_PAYLOAD_VALIDATORS[jobType]
+  if (validator === undefined) {
+    throw new CatalogJobInputError(`tipo de job desconhecido: ${jobType}`)
+  }
+  return validator(payload)
 }

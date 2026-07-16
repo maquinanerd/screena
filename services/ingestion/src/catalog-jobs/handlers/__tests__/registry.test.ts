@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest'
 import { CATALOG_JOB_TYPES } from '../../types.js'
 import { CatalogJobInputError } from '../../handler.js'
 import { assertCompleteRegistry, createCatalogHandlerRegistry, missingHandlerTypes } from '../registry.js'
+import { JOB_PAYLOAD_VALIDATORS, validateJobPayload } from '../schemas.js'
 import { createHandlerFakes } from './fakes.js'
 
 describe('createCatalogHandlerRegistry', () => {
@@ -81,3 +82,46 @@ describe('createCatalogHandlerRegistry', () => {
     expect(() => registry.register(duplicate as never)).toThrow(/handler duplicado/)
   })
 })
+
+describe('validateJobPayload', () => {
+  it('cobre os 11 tipos sem precisar do registry (nem de Prisma/TMDB)', () => {
+    for (const type of CATALOG_JOB_TYPES) {
+      expect(typeof JOB_PAYLOAD_VALIDATORS[type], `sem validador para ${type}`).toBe('function')
+    }
+  })
+
+  it('usa o MESMO validador do handler (o erro aparece antes de gravar)', () => {
+    const { deps } = createHandlerFakes()
+    const registry = createCatalogHandlerRegistry(deps)
+
+    for (const type of CATALOG_JOB_TYPES) {
+      // Payload vazio: uns tipos aceitam (tudo opcional), outros recusam. O que
+      // importa e que o veredito seja IDENTICO ao do handler — se divergisse, o
+      // `catalog enqueue` aceitaria um payload que o worker rejeita depois.
+      const viaHandler = safeVerdict(() => registry.get(type)?.validateInput({}))
+      const viaMap = safeVerdict(() => validateJobPayload(type, {}))
+      expect(viaMap, `divergencia em ${type}`).toBe(viaHandler)
+    }
+  })
+
+  it('recusa payload invalido com CatalogJobInputError', () => {
+    // Este e o caso que criava dead-letter garantido no `catalog enqueue`.
+    expect(() => validateJobPayload('sync_details', {})).toThrow(CatalogJobInputError)
+    expect(() => validateJobPayload('sync_details', { entityType: 'movie' })).toThrow(
+      CatalogJobInputError,
+    )
+    expect(() => validateJobPayload('sync_media', { entityType: 'season', tmdbId: 1 })).toThrow(
+      CatalogJobInputError,
+    )
+  })
+})
+
+/** 'ok' quando validou; a mensagem do erro caso contrario. */
+function safeVerdict(run: () => unknown): string {
+  try {
+    run()
+    return 'ok'
+  } catch (error) {
+    return (error as Error).message
+  }
+}

@@ -50,6 +50,11 @@ export class SyncChangesHandler implements CatalogJobHandler<SyncChangesInput, S
           ...this.deps.changes,
           metrics: context.metrics,
           log: context.log,
+          // Sem repassar o signal, o timeout do job marcava retry mas ESTE ciclo
+          // seguia rodando: o job era reivindicado de novo e os dois paginavam
+          // em paralelo, ambos gravando checkpoint — o zumbi regredindo o
+          // `lastPage` do run novo (o commit nao tem guarda de monotonicidade).
+          signal: context.signal,
         },
         {
           kinds: input.kinds,

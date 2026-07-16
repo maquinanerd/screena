@@ -316,8 +316,8 @@ export function createCatalogServices(options) {
   }
 
   const mediaSync = {
-    async syncMedia({ kind, tmdbId, seasonNumber, episodeNumber }) {
-      const target = buildMediaTarget(catalogEndpoints, kind, tmdbId, seasonNumber, episodeNumber)
+    async syncMedia({ kind, tmdbId }) {
+      const target = buildMediaTarget(catalogEndpoints, kind, tmdbId)
       const result = await runMediaSync(target, {
         cache: persistence.cache,
         log: persistence.syncLog,
@@ -412,7 +412,14 @@ export function createCatalogServices(options) {
 
   const listFetch = {
     async fetchPage({ listType, entityType, locale, country, window, page }) {
-      return fetchDiscoveryPage(catalogEndpoints, { listType, entityType, locale, country, window, page })
+      return fetchDiscoveryPage(catalogEndpoints, tmdb, {
+        listType,
+        entityType,
+        locale,
+        country,
+        window,
+        page,
+      })
     },
   }
 
@@ -431,7 +438,7 @@ export function createCatalogServices(options) {
       if (strategy === 'daily-exports') {
         return discoverFromDailyExports(kind, limit, now, options.fetchText)
       }
-      return discoverFromLists(catalogEndpoints, {
+      return discoverFromLists(catalogEndpoints, tmdb, {
         strategy,
         kind,
         locale,
@@ -443,7 +450,16 @@ export function createCatalogServices(options) {
   }
 
   const reprocessRaw = {
-    async reprocess({ kind, baseLanguage, limit, dryRun }) {
+    async reprocess({ kind, tmdbId, baseLanguage, limit, dryRun }) {
+      // `promote*FromRaw` nao aceita filtro por id — so (baseLanguage, limit).
+      // Aceitar `tmdbId` e ignora-lo faria o job reprocessar 100 linhas
+      // arbitrarias enquanto reporta sucesso para o id pedido. Recusar e honesto.
+      if (tmdbId !== null) {
+        throw new PermanentJobError(
+          'unsupported_filter',
+          'reprocess_raw ainda nao filtra por tmdbId: a promocao opera por lote (baseLanguage + limit). Omita "tmdbId".',
+        )
+      }
       // `finalize` e OBRIGATORIO: e ele que grava slug canonico (+301 na troca) e
       // a traducao. Promover sem ele deixaria a entidade sem slug — e entidade
       // sem slug nao indexa nem entra na busca (o backfill pagina por slug).
@@ -522,8 +538,20 @@ function findEpisode(seasonPayload, episodeNumber) {
   return episodes.find((e) => e?.episode_number === episodeNumber) ?? null
 }
 
-/** Monta o alvo de midia com os fetchers certos por tipo. */
-function buildMediaTarget(endpoints, kind, tmdbId, seasonNumber, episodeNumber) {
+/**
+ * Monta o alvo de midia com os fetchers certos por tipo.
+ *
+ * SO movie|tv|person. `season`/`episode` NAO sao suportados aqui, e isso e
+ * deliberado: `MediaTarget` so carrega (entityType, tmdbId), e para temporada o
+ * tmdbId e o da SERIE. Logo a chave de cache viraria `/season/1399/images` para
+ * TODAS as temporadas — a temporada 2 receberia as imagens da 1 — e as linhas
+ * gravadas ficariam todas rotuladas com o id da serie, indistinguiveis entre si.
+ * Escrever dado corrompido e pior que recusar.
+ *
+ * Nada se perde: os stills de episodio ja entram por `sync_episodes`, com a
+ * chave natural correta (serie + temporada + episodio) via `episodeStore`.
+ */
+function buildMediaTarget(endpoints, kind, tmdbId) {
   if (kind === 'movie') {
     return {
       entityType: 'movie',
@@ -540,32 +568,29 @@ function buildMediaTarget(endpoints, kind, tmdbId, seasonNumber, episodeNumber) 
       fetchVideos: () => endpoints.getTvVideos(tmdbId),
     }
   }
-  if (kind === 'season') {
+  if (kind === 'person') {
+    // Pessoa nao tem endpoint de videos: `fetchVideos` ausente por contrato.
     return {
-      entityType: 'season',
+      entityType: 'person',
       tmdbId,
-      fetchImages: () => endpoints.getSeasonImages(tmdbId, seasonNumber),
-      fetchVideos: () => endpoints.getSeasonVideos(tmdbId, seasonNumber),
+      fetchImages: () => endpoints.getPersonImages(tmdbId),
     }
   }
-  if (kind === 'episode') {
-    return {
-      entityType: 'episode',
-      tmdbId,
-      fetchImages: () => endpoints.getEpisodeImages(tmdbId, seasonNumber, episodeNumber),
-      fetchVideos: () => endpoints.getEpisodeVideos(tmdbId, seasonNumber, episodeNumber),
-    }
-  }
-  // Pessoa nao tem endpoint de videos: `fetchVideos` ausente por contrato.
-  return {
-    entityType: 'person',
-    tmdbId,
-    fetchImages: () => endpoints.getPersonImages(tmdbId),
-  }
+  throw new PermanentJobError(
+    'unsupported_media_kind',
+    `sync_media nao suporta "${kind}": a chave de midia e (entityType, tmdbId) e para temporada/episodio o tmdbId e o da serie — colidiria entre temporadas. Stills de episodio vem por sync_episodes.`,
+  )
 }
 
-/** Busca uma pagina da lista de descoberta pedida. */
-async function fetchDiscoveryPage(endpoints, { listType, entityType, locale, country, window, page }) {
+/**
+ * Busca uma pagina da lista de descoberta pedida.
+ *
+ * `upcoming` sai do `TmdbReadPort` (`tmdb`), NAO do `TmdbCatalogEndpoints`:
+ * `getUpcomingMovies` so existe em endpoints.ts. Chamar `catalogEndpoints
+ * .getUpcomingMovies` lancava TypeError e mandava todo sync_lists de "upcoming"
+ * para dead-letter — o typecheck nao pega, porque este arquivo esta fora dele.
+ */
+async function fetchDiscoveryPage(endpoints, tmdb, { listType, entityType, locale, country, window, page }) {
   const params = { page, language: locale, region: country ?? undefined }
   if (listType === 'trending') {
     return endpoints.getTrending(entityType, window === 'week' ? 'week' : 'day', params)
@@ -576,23 +601,37 @@ async function fetchDiscoveryPage(endpoints, { listType, entityType, locale, cou
   if (listType === 'top_rated') {
     return entityType === 'movie' ? endpoints.getTopRatedMovies(params) : endpoints.getTopRatedTvShows(params)
   }
-  if (listType === 'upcoming') return endpoints.getUpcomingMovies(params)
+  if (listType === 'upcoming') return tmdb.getUpcomingMovies({ page, language: locale })
   if (listType === 'now_playing') return endpoints.getNowPlayingMovies(params)
   if (listType === 'airing_today') return endpoints.getAiringTodayTvShows(params)
   if (listType === 'on_the_air') return endpoints.getOnTheAirTvShows(params)
   return entityType === 'movie' ? endpoints.discoverMovies(params) : endpoints.discoverTvShows(params)
 }
 
-/** Descobre ids a partir das listas do provider. */
-async function discoverFromLists(endpoints, { strategy, kind, locale, country, limit, maxPages }) {
-  const entityType = kind === 'person' ? 'movie' : kind
+/**
+ * Descobre ids a partir das listas do provider.
+ *
+ * `person` so tem lista em `trending` (o TMDB nao expoe popular/top_rated de
+ * pessoa neste client). A versao anterior fazia `kind === 'person' ? 'movie' :
+ * kind` — ou seja, devolvia ids de FILME e o handler os enfileirava como
+ * `sync_details` de PESSOA. Isso e corrupcao de catalogo: pessoa 603 nao e o
+ * filme 603. Agora falha explicitamente.
+ */
+async function discoverFromLists(endpoints, tmdb, { strategy, kind, locale, country, limit, maxPages }) {
+  if (kind === 'person' && strategy !== 'trending') {
+    throw new PermanentJobError(
+      'unsupported_discovery',
+      `descoberta de pessoa por "${strategy}" nao existe no provider; use strategy=trending ou daily-exports`,
+    )
+  }
+  const entityType = kind
   const ids = []
   let discovered = 0
   let duplicate = 0
   const seen = new Set()
 
   for (let page = 1; page <= maxPages; page += 1) {
-    const response = await fetchDiscoveryPage(endpoints, {
+    const response = await fetchDiscoveryPage(endpoints, tmdb, {
       listType: strategy,
       entityType,
       locale,

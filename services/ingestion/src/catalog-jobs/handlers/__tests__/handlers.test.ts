@@ -315,6 +315,25 @@ describe('SyncExternalIdsHandler', () => {
 })
 
 describe('SyncMediaHandler', () => {
+  // REGRESSAO: season/episode eram aceitos, mas MediaTarget so carrega
+  // (entityType, tmdbId) e para temporada o tmdbId e o da SERIE. A chave de
+  // cache virava `/season/1399/images` para TODAS as temporadas — a 2 recebia as
+  // imagens da 1 — e as linhas ficavam todas rotuladas com o id da serie.
+  // Stills de episodio vem por sync_episodes, com a chave natural correta.
+  it('recusa season/episode (a chave de midia colidiria entre temporadas)', () => {
+    const fakes = createHandlerFakes()
+    const handler = new SyncMediaHandler({ mediaSync: fakes.deps.mediaSync })
+
+    expect(() => handler.validateInput({ entityType: 'season', tmdbId: 1399, seasonNumber: 1 })).toThrow(
+      CatalogJobInputError,
+    )
+    expect(() =>
+      handler.validateInput({ entityType: 'episode', tmdbId: 1399, seasonNumber: 1, episodeNumber: 2 }),
+    ).toThrow(CatalogJobInputError)
+    expect(handler.validateInput({ entityType: 'movie', tmdbId: 603 }).entityType).toBe('movie')
+    expect(handler.validateInput({ entityType: 'person', tmdbId: 1 }).entityType).toBe('person')
+  })
+
   it('delega ao mediaSync e observa duracao', async () => {
     const fakes = createHandlerFakes()
     const handler = new SyncMediaHandler({ mediaSync: fakes.deps.mediaSync })
@@ -575,6 +594,70 @@ describe('SyncChangesHandler', () => {
     const parsed = details.validateInput(enqueued?.payload)
     expect(parsed.entityType).toBe('movie')
     expect(parsed.tmdbId).toBe(603)
+  })
+
+  // REGRESSAO: o laco de paginas so saia por `page > totalPages` ou `isLastPage`
+  // — ambos inalcancaveis quando o provider omite/zera `total_pages`. Sem
+  // `maxPages`, um unico ciclo paginaria para sempre, gastando cota.
+  it('nao lacra infinito quando o provider omite total_pages', async () => {
+    const fakes = createHandlerFakes()
+    // Sempre devolve itens e NUNCA total_pages: o cenario patologico.
+    fakes.setChangesPages({
+      movie: Array.from({ length: 600 }, (_, i) => ({
+        results: [{ id: 1000 + i }],
+        page: i + 1,
+        total_pages: null,
+      })),
+    })
+    const handler = new SyncChangesHandler({ changes: fakes.deps.changes })
+
+    const result = await handler.execute(
+      createFakeContext().context,
+      handler.validateInput({ kinds: ['movie'], from: '2026-07-15', to: '2026-07-16' }),
+    )
+
+    // Para no teto duro (500), em vez de girar sem fim.
+    expect(result.kinds[0]?.pages).toBeLessThanOrEqual(500)
+    expect(fakes.calls.changesFetch.length).toBeLessThanOrEqual(500)
+  })
+
+  it('para no fim da lista quando a pagina vem vazia sem total_pages', async () => {
+    const fakes = createHandlerFakes()
+    fakes.setChangesPages({ movie: [{ results: [], page: 1, total_pages: null }] })
+    const handler = new SyncChangesHandler({ changes: fakes.deps.changes })
+
+    const result = await handler.execute(
+      createFakeContext().context,
+      handler.validateInput({ kinds: ['movie'], from: '2026-07-15', to: '2026-07-16' }),
+    )
+
+    expect(result.kinds[0]?.done).toBe(true)
+    expect(fakes.calls.changesFetch).toHaveLength(1)
+  })
+
+  // REGRESSAO: sem repassar o signal, o timeout do job marcava retry mas o ciclo
+  // seguia rodando; o job era reivindicado de novo e os dois paginavam em
+  // paralelo, ambos gravando checkpoint — o zumbi regredia o lastPage do run novo.
+  it('aborta o ciclo quando o sinal do job dispara', async () => {
+    const fakes = createHandlerFakes()
+    fakes.setChangesPages({
+      movie: Array.from({ length: 10 }, (_, i) => ({
+        results: [{ id: 1000 + i }],
+        page: i + 1,
+        total_pages: 10,
+      })),
+    })
+    const handler = new SyncChangesHandler({ changes: fakes.deps.changes })
+    const fake = createFakeContext()
+    fake.abort()
+
+    await expect(
+      handler.execute(
+        fake.context,
+        handler.validateInput({ kinds: ['movie'], from: '2026-07-15', to: '2026-07-16' }),
+      ),
+    ).rejects.toThrow(/abortad/)
+    expect(fakes.calls.changesFetch).toHaveLength(0)
   })
 
   it('propaga o locale para o payload dos jobs de re-sync', async () => {
