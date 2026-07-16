@@ -145,7 +145,22 @@ export class SyncDetailsHandler implements CatalogJobHandler<SyncDetailsInput, S
     }
   }
 
-  /** Enfileira creditos/ids externos/midia (+ temporadas para tv). */
+  /**
+   * Enfileira SO o que a busca do detalhe nao cobriu.
+   *
+   * O detalhe vem com `append_to_response=external_ids,credits` e ja faz upsert
+   * de ids externos e elenco/equipe na MESMA resposta (e, para tv, tambem das
+   * temporadas/episodios base). Enfileirar `sync_credits`/`sync_external_ids`
+   * aqui seria refetch puro: mesma cota, mesmo dado, zero ganho. Esses dois
+   * tipos existem como caminho de REPARO/refresh explicito (via CLI), nao como
+   * dependencia automatica.
+   *
+   * Sobra de verdade:
+   *  - `sync_media` — imagens/videos NAO vem no append de detalhe;
+   *  - `sync_seasons` (tv) — enumera as temporadas e enfileira `sync_episodes`,
+   *    que traz o nivel de episodio que o import base nao traz (guest stars,
+   *    creditos, ids externos e stills do episodio).
+   */
   private async enqueueDependencies(
     context: CatalogJobContext,
     input: SyncDetailsInput,
@@ -175,8 +190,6 @@ export class SyncDetailsHandler implements CatalogJobHandler<SyncDetailsInput, S
       })
     }
 
-    push('sync_credits', { ...base, entityType: input.entityType }, 60)
-    push('sync_external_ids', { entityType: input.entityType, tmdbId: input.tmdbId }, 60)
     push('sync_media', { ...base, entityType: input.entityType }, 70)
     if (input.entityType === 'tv') {
       push('sync_seasons', { ...base, enqueueEpisodes: true }, 65)
