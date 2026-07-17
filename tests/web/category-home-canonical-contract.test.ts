@@ -34,7 +34,7 @@ describe('índices de entidades após o reset visual', () => {
   it('mantém metadata, robots e canonical governados', () => {
     for (const page of [movies, series, people]) {
       expect(page).toMatch(/indexability\.decision === ['"]index['"]/)
-      expect(page).toContain('robots: shouldIndex')
+      expect(page).toContain('robots: publicRobots(shouldIndex)')
       expect(page).toContain('alternates: { canonical: canonicalUrl }')
     }
   })

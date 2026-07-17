@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 
 import { EntityIndex } from '../../_components/entity-index'
 import { getSeriesIndexData } from '../../../src/server/entity-indexes'
+import { publicRobots } from '../../../src/lib/site'
 
 /**
  * Listagem publica de series - /pt/series/ (porta de entrada; acento verde).
@@ -28,7 +29,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: TITLE,
     description: DESCRIPTION,
-    robots: shouldIndex ? { index: true, follow: true } : { index: false, follow: false },
+    robots: publicRobots(shouldIndex),
     alternates: { canonical: canonicalUrl },
   }
 }

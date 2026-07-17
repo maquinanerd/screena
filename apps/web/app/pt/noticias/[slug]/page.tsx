@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation'
 
 import { serializeJsonLd } from '@screena/seo'
 
-import { HOME_PATH, SITE_URL } from '../../../../src/lib/site'
+import { HOME_PATH, SITE_URL, publicRobots } from '../../../../src/lib/site'
 import { getNewsArticleData } from '../../../../src/server/news-pages'
 
 /** Artigo textual alimentado somente pelo CMS real. */
@@ -35,7 +35,7 @@ export async function generateMetadata({
   const shouldIndex = indexability.decision === 'index'
   const metadata: Metadata = {
     title: view.metaTitle ?? `${view.title} — Notícias`,
-    robots: shouldIndex ? { index: true, follow: true } : { index: false, follow: false },
+    robots: publicRobots(shouldIndex),
     alternates: { canonical: canonicalUrl },
   }
   const description = view.metaDescription ?? view.deck

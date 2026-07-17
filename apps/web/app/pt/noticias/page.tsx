@@ -3,7 +3,7 @@ import type { Metadata } from 'next'
 import { serializeJsonLd } from '@screena/seo'
 
 import type { NewsCardView } from '../../../src/lib/news-presenter'
-import { HOME_PATH, SITE_URL } from '../../../src/lib/site'
+import { HOME_PATH, SITE_URL, publicRobots } from '../../../src/lib/site'
 import { getNewsIndexData } from '../../../src/server/news-pages'
 
 /** Lista textual de notícias publicadas pelo CMS real. */
@@ -20,7 +20,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: TITLE,
     description: DESCRIPTION,
-    robots: shouldIndex ? { index: true, follow: true } : { index: false, follow: false },
+    robots: publicRobots(shouldIndex),
     alternates: { canonical: canonicalUrl },
   }
 }
