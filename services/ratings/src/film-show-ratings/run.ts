@@ -21,6 +21,7 @@ import {
   type FilmShowRatingsPopularType,
 } from '@screena/film-show-ratings-client'
 import { hashPayload, isCircuitOpenError, statusOf } from '@screena/rapidapi-core'
+import { computeRatingStaleAfter } from '@screena/schemas'
 
 import type {
   CachePort,
@@ -243,6 +244,9 @@ export async function runFilmShowRatingsSync(
         providerApi: options.providerApi,
         providerPayloadHash: payloadHash,
         fetchedAt,
+        // Janela de re-sync da politica versionada da FONTE (nunca do provider
+        // tecnico). `null` quando a fonte nao tem politica declarada.
+        staleAfter: computeRatingStaleAfter(draft.ratingSource, fetchedAt),
       }
       const outcome = await deps.ratings.upsert(row)
       if (outcome.created) {
@@ -684,6 +688,7 @@ export async function runFilmShowRatingsItemSync(
             providerApi: options.providerApi,
             providerPayloadHash: payloadHash,
             fetchedAt,
+            staleAfter: computeRatingStaleAfter(draft.ratingSource, fetchedAt),
           }
           const outcome = await deps.ratings.upsert(row)
           if (outcome.created) {

@@ -11,6 +11,9 @@
   },
   "sideEffects": false,
   "license": "UNLICENSED",
+  "scripts": {
+    "ratings": "tsx bin/ratings.ts"
+  },
   "dependencies": {
     "@screena/config": "workspace:*",
     "@screena/db": "workspace:*",

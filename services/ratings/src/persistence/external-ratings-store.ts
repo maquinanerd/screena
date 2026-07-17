@@ -57,7 +57,8 @@ export function createPrismaExternalRatings(prisma: PrismaClient): ExternalRatin
           existing.ratingLabel === row.ratingLabel &&
           existing.ratingCount === row.ratingCount &&
           existing.ratingUrl === row.ratingUrl &&
-          existing.providerApi === row.providerApi
+          existing.providerApi === row.providerApi &&
+          existing.scoreType === row.scoreType
 
         if (unchanged) {
           // Sem mudanca: nao reescreve, nao bumpa `updated_at`. O
@@ -74,12 +75,25 @@ export function createPrismaExternalRatings(prisma: PrismaClient): ExternalRatin
             ratingScale: row.ratingScale,
             ratingCount: row.ratingCount,
             ratingUrl: row.ratingUrl,
+            scoreType: row.scoreType,
             providerApi: row.providerApi,
             providerPayloadHash: row.providerPayloadHash,
             fetchedAt: row.fetchedAt,
+            staleAfter: row.staleAfter,
             // Fail-closed: uma atualizacao NUNCA promove exibicao.
+            //
+            // "Mudanca revoga" (Backend B): chegamos aqui porque a nota mudou.
+            // Alem de nao promover, DERRUBAMOS a exibicao e limpamos a
+            // aprovacao — a nota nova nunca herda a revisao da nota velha. Sem
+            // limpar `approvedPayloadHash`, o trigger recusaria este proprio
+            // UPDATE (hash != fingerprint novo) e o sync quebraria; com o
+            // display ja em false, o trigger nem checa, e a revogacao e limpa.
             displayAllowed: false,
             licenseStatus: 'unknown',
+            approvedPayloadHash: null,
+            reviewedAt: null,
+            reviewedBy: null,
+            dataUsageDecisionId: null,
           },
         })
         return { created: false, changed: true }
@@ -96,14 +110,22 @@ export function createPrismaExternalRatings(prisma: PrismaClient): ExternalRatin
           ratingScale: row.ratingScale,
           ratingCount: row.ratingCount,
           ratingUrl: row.ratingUrl,
+          scoreType: row.scoreType,
           providerApi: row.providerApi,
           providerPayloadHash: row.providerPayloadHash,
           fetchedAt: row.fetchedAt,
+          staleAfter: row.staleAfter,
           // Sem atribuicao confirmada, nao inventamos texto/link de credito.
           attributionText: null,
           attributionUrl: null,
           licenseStatus: 'unknown',
           displayAllowed: false,
+          // A cadeia de exibicao comeca vazia. Preenche-la e ato humano
+          // registrado (`pnpm ratings promote`), nunca efeito colateral de sync.
+          approvedPayloadHash: null,
+          reviewedAt: null,
+          reviewedBy: null,
+          dataUsageDecisionId: null,
         },
       })
       return { created: true, changed: true }

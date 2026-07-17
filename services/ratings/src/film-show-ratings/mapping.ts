@@ -49,6 +49,8 @@ import { RATING_SCALES, RATING_SOURCES, type RatingSource } from '@screena/confi
 import { RATING_SOURCE_SEED } from '@screena/db'
 import { validateRating } from '@screena/schemas'
 
+import { classifyRatingScoreType } from '../score-type.js'
+
 import type {
   ItemMapping,
   MappedPopularItem,
@@ -234,15 +236,20 @@ export function readRatingDraft(
   }
 
   const ratingLabel = SOURCE_LABEL[ratingSource] ?? ratingSource
+  const metric = rawMetric.trim()
 
   const draft: RatingDraft = {
     ratingSource,
     ratingLabel,
-    metric: rawMetric.trim(),
+    metric,
     ratingValue,
     ratingScale,
     ratingCount: readCount(pick(descriptor, ['count', 'rating_count', 'ratingCount'])),
     ratingUrl: readUrl(pick(descriptor, ['url', 'rating_url', 'ratingUrl'])),
+    // `null` aqui NAO recusa a nota: ela e persistida e auditavel. Ela so nao
+    // pode ser exibida (trigger). Recusar seria perder o dado; adivinhar seria
+    // trocar critica por publico.
+    scoreType: classifyRatingScoreType({ ratingSource, metric, ratingLabel }),
   }
 
   // Gate governado: escala por fonte, provider != source, anti cross-label.
