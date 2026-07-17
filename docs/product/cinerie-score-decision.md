@@ -71,8 +71,12 @@ Quando (e só quando) a tabela acima estiver preenchida e aprovada por uma pesso
    ([`packages/cinerie-score/src/engine.ts`](../../packages/cinerie-score/src/engine.ts)).
    Até aqui esse registro está **vazio de propósito**.
 3. Registrar uma `DataUsageDecision` com `use_case = 'cinerie_score_display'`,
-   `stage = 'approved_for_display'`, `display_allowed = true`,
-   `derivative_allowed = true` e `policy_version = <versao da fórmula>`.
+   `stage = 'approved_for_display'`, `display_allowed = true` e
+   `derivative_allowed = true`. **Atenção:** `policy_version` é o id do
+   documento/decisão jurídica; a **versão da fórmula** é um eixo separado
+   (`approvedFormulaVersion` no engine — ver revisão adversarial, achado A7).
+   A projeção que alimentar o engine deve fornecer os dois campos; um id
+   jurídico nunca seleciona algoritmo.
 4. Rodar o job de cálculo (offline). Cada resultado grava uma linha em
    `cinerie_score_calculations` com `version`, `inputs_hash` e `explanation`.
 5. A promoção de `screen_score_display = true` continua sendo **decisão humana**

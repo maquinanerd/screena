@@ -39,9 +39,12 @@ atribuição e hashes. Use para conferir que o fornecedor devolve o que se esper
 `sample --apply` é **recusado** — quem digita isso quer gravar; a mensagem
 aponta para `sync --apply`.
 
-> `sample`/`sync` fazem chamada real e têm entrypoint dedicado (cache, backoff,
-> circuit breaker, log em `api_sync_logs`). A CLI `pnpm ratings` reencaminha para:
-> `node --import tsx services/ratings/bin/sync-film-show-ratings.ts --type=film --limit=20 --sample`
+> `sample`/`sync` **delegam automaticamente** ao entrypoint dedicado
+> (`bin/sync-film-show-ratings.ts` — cache, backoff, circuit breaker, log em
+> `api_sync_logs`), num caminho de rede ÚNICO; a CLI mapeia as flags
+> (`--entity movie|tv` → `--type film|show`) e repassa o exit code. `--source`
+> não filtra a chamada (o fornecedor devolve todas as fontes num payload só) —
+> a CLI avisa e o relatório cobre todas as fontes.
 
 ## 2. Sync (persistência)
 

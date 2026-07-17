@@ -111,3 +111,43 @@ sentidos.
   vez de revogar. Provado nos dois sentidos (check 11 do `validate:stores`).
 - `validate-real-postgres`: contagem de tabelas/enums era literal duplicando a
   lista; agora deriva de `EXPECTED_TABLES.length`, com check bilateral.
+
+## Adendo — revisão adversarial (2026-07-17, pré-merge)
+
+Uma revisão adversarial independente da PR #74 encontrou e corrigiu, ainda em
+draft (checks 46-51 do `validate:external-intelligence-product` + testes puros
+cobrem cada item nos dois sentidos):
+
+- **A1 (P1)** — a supersessão/revogação da licença não derrubava exibições: os
+  display guards checavam a decisão mas não `is_current`/`license_status`/
+  `display_allowed` (e `score_allowed`, ratings) da **licença-mãe**, e os read
+  paths não a consultavam. Agora os guards exigem a licença vigente e exibível,
+  `entity-ratings` revalida a cadeia inteira em memória e `entity-watch` filtra
+  decisão vigente/válida + licença vigente no `where`.
+- **A2 (P1)** — decisão de `rating_display` com território ≠ BR era selecionada
+  e autorizava exibição no site BR (licença territorial extrapolada). Store e
+  read path agora só aceitam `territory ∈ {NULL, 'BR'}`.
+- **A3 (P2)** — sync sem mudança congelava `fetched_at` ⇒ a nota expirava da
+  vitrine mesmo re-confirmada. O branch unchanged renova
+  `fetched_at`/`stale_after` sem bumpar `updated_at` (SQL bruto com ISO +
+  `AT TIME ZONE 'UTC'` — bindar `Date` em raw desloca o valor fora de UTC).
+- **A4 (P2)** — `expectViolation` aceitava qualquer erro como "barrado" (erros
+  Prisma começam com `\n` ⇒ detail vazio). Agora exige padrão esperado;
+  "barrado pelo motivo errado" é FALHA.
+- **A5 (P2)** — `pnpm ratings sample/sync` não executava (redirecionava com
+  exit=usage). Agora delega por subprocesso ao entrypoint dedicado (caminho de
+  rede único), repassando o exit code.
+- **A6 (P2 / questão 6.2)** — `raw/recognized/normalized` descrevem o dado, não
+  uma decisão; CHECK restringe `data_usage_decisions.stage` aos 4 estados
+  decisórios (o enum permanece como vocabulário do workflow).
+- **A7 (P2 / questão 6.1)** — `policyVersion` (jurídico) selecionava a fórmula;
+  id legal renovado bloquearia o score, e um id coincidente trocaria o
+  algoritmo em silêncio. O engine passa a usar `approvedFormulaVersion`,
+  campo separado.
+- **A8 (P2)** — `cinerie_score_calculations` ganhou a FK composta para
+  `entities` (mesma disciplina das demais tabelas polimórficas).
+- **A10 (P2)** — o Cenário B aplicava as migrations posteriores à Fase 2 FORA
+  DE ORDEM (antes dela); a FK do A8 expôs. O cenário agora remove Fase 2 +
+  posteriores do primeiro deploy e as aplica em ordem no segundo — o upgrade
+  genuíno de produção, com a migration do Backend B rodando sobre dados
+  populados.

@@ -87,6 +87,13 @@ sempre, porque o tempo passar não é um UPDATE. O trigger é a trava de escrita
 [`apps/web/src/server/entity-ratings.ts`](../../apps/web/src/server/entity-ratings.ts)
 é o relógio da leitura. Nenhum substitui o outro.
 
+Pelo mesmo motivo, a leitura revalida a **cadeia inteira de autoridade** (revisão
+adversarial, achado A1): decisão vigente/dentro da validade/no território de
+exibição, e **licença-mãe** vigente (`is_current`), com status exibível,
+`display_allowed` e `score_allowed`. Uma licença supersedida ou uma decisão que
+expira pelo tempo não geram nenhum write na nota — só a leitura as enxerga, e os
+guards do banco recusam qualquer **nova** escrita sob a cadeia podre.
+
 ## CLI `pnpm ratings`
 
 Ver [runbook de ratings-sync](../runbooks/ratings-sync.md). Comandos: `sample`
