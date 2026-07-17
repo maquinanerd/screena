@@ -1,8 +1,8 @@
 # @screena/public-contracts
 
-Contratos publicos **serializaveis** do Screen: a fronteira tipada entre os
+Contratos publicos **serializaveis** da Cinerie: a fronteira tipada entre os
 getters server-only (que leem o PostgreSQL) e o render/consumidores. Namespace
-tecnico legado `@screena/public-contracts`; a marca publica e **Screen**.
+tecnico legado `@screena/public-contracts`; a marca publica e **Cinerie**.
 
 ## Principios
 

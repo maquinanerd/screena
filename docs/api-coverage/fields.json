@@ -141,7 +141,7 @@
     "worker_only": true,
     "implemented": true,
     "coverage_state": "raw_captured",
-    "notes": "Reviews de terceiros no raw; NAO exibidos (licenca/atribuicao nao decididas). Review propria do Screen e outra coisa (nao ativa)."
+    "notes": "Reviews de terceiros no raw; NAO exibidos (licenca/atribuicao nao decididas). Review propria da Cinerie e outra coisa (nao ativa)."
   },
   {
     "id": "tmdb.append.translations",

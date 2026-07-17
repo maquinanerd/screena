@@ -1,4 +1,4 @@
-# Plano de construção — Screen (BUILD_PLAN)
+# Plano de construção — Cinerie (BUILD_PLAN)
 
 > **Plano de construção por fases.** Da fundação do monorepo (Fase 0) até a monetização
 > (Fase 12). Cada fase tem **entregáveis** concretos e **critérios de aceite** verificáveis.
@@ -13,8 +13,8 @@ invariantes inegociáveis vivem em [`CLAUDE.md`](../CLAUDE.md) e em
 [`docs/SPEC.md`](./SPEC.md). Em caso de conflito, as invariantes do `CLAUDE.md` prevalecem
 sobre qualquer atalho deste plano.
 
-> **Identidade e estado real.** A marca pública principal é **Screen** em
-> `https://thescreen.media`; **The Screen** pode aparecer apenas como referência
+> **Identidade e estado real.** A marca pública principal é **Cinerie** em
+> `https://cinerie.com`; **Cinerie** pode aparecer apenas como referência
 > histórica, explicativa ou nome expandido não-principal.
 > **Screena** permanece como namespace técnico/legado interno (`@screena/*`,
 > tokens `--screena-*`). O repositório já passou da Fase 0 pura: Fase 1, Fase 2
@@ -253,7 +253,7 @@ Exibição de notas externas com fonte, escala e licença corretas, sem mistura.
   exibido em página indexável.
 - `provider_api` (fornecedor técnico) nunca é apresentado como `rating_source` (fonte
   editorial); atribuição e linkback respeitam `source_licenses`.
-- Nenhum `AggregateRating` finge nota própria do Screen.
+- Nenhum `AggregateRating` finge nota própria da Cinerie.
 
 ---
 

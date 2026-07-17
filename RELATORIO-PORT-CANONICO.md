@@ -1,4 +1,4 @@
-# Relatório final — port canônico do frontend cinematográfico Screen
+# Relatório final — port canônico do frontend cinematográfico Cinerie
 
 Data da consolidação: **14 de julho de 2026**
 

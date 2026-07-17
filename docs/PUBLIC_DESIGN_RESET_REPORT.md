@@ -1,5 +1,15 @@
 # Relatório do reset da camada visual pública
 
+> **⚠️ Documento HISTÓRICO — marca anterior (Gate 1.5, 2026-07).**
+> Este relatório é um SNAPSHOT de um estado passado do projeto e usa a marca
+> e o domínio anteriores (**Screen** / **The Screen**, `thescreen.media`).
+> O texto **não** foi reescrito para Cinerie de propósito: ele registra
+> achados *sobre* a marca antiga e traz datas, branches e commits de então —
+> trocar a marca no corpo falsificaria o registro e tornaria os achados
+> incoerentes. A marca pública atual é **Cinerie** (`https://cinerie.com`);
+> a fonte viva é [`CLAUDE.md`](../CLAUDE.md) e
+> [`REBRANDING-CINERIE.md`](../REBRANDING-CINERIE.md).
+
 - Data: 14 de julho de 2026
 - Branch: `chore/audit-and-reset-public-design`
 - Base: `origin/main` (`df0a89c`)

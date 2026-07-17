@@ -1,6 +1,6 @@
-# Workers Screen (Python 3.12)
+# Workers Cinerie (Python 3.12)
 
-Camada de **ingestao e processamento offline** do Screen. Os workers rodam fora
+Camada de **ingestao e processamento offline** da Cinerie. Os workers rodam fora
 do ciclo de request: eles populam o PostgreSQL, e o app Next apenas **le** desse
 banco. Nenhuma API externa e chamada no render.
 

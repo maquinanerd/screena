@@ -1,6 +1,6 @@
 # Database — visao geral do schema
 
-Este documento e uma **visao geral historica** das tabelas canonicas do Screen,
+Este documento e uma **visao geral historica** das tabelas canonicas da Cinerie,
 agrupadas por dominio. A fonte executavel atual e o Prisma em
 `packages/db/prisma/schema.prisma`, com migrations reais em
 `packages/db/prisma/migrations`.
@@ -68,7 +68,7 @@ nao existem no Prisma atual; elas estao marcadas abaixo para evitar confusao.
   `output_hash`, `review_status`, `warnings_json`, `published_at`, `created_at`,
   `updated_at`.
 - `reviews` — planejada para fases futuras; ainda nao existe como tabela no
-  Prisma atual. Reviews proprias do Screen nao estao funcionais como produto.
+  Prisma atual. Reviews proprias da Cinerie nao estao funcionais como produto.
 - `entity_translations` — traducoes de campos de entidade.
 
 ### Entity Writer

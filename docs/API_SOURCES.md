@@ -1,6 +1,6 @@
-# Governanca de Fontes Externas — Screen
+# Governanca de Fontes Externas — Cinerie
 
-Este documento define a **governanca de fontes externas** do Screen: para cada API/fonte,
+Este documento define a **governanca de fontes externas** da Cinerie: para cada API/fonte,
 descreve **uso**, **periodicidade de sincronizacao**, **atribuicao** e **tratamento de
 licenca**. E o contrato de referencia para os workers de ingestao, ratings, streaming e
 noticias.

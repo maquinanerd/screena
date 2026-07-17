@@ -73,7 +73,7 @@ em `warnings` — nunca preenche com suposicao.
 - O writer **nao copia literalmente** sinopses longas (de TMDB, IMDb,
   estudios, imprensa ou qualquer fonte). Conteudo proprio = redacao original.
 - Resumos sem spoiler (`summary_without_spoilers`) sao **reescritos** com voz
-  editorial do Screen; nao sao paragrafos copiados de terceiros.
+  editorial da Cinerie; nao sao paragrafos copiados de terceiros.
 - Citacao curta atribuida (ex.: trecho de critica) so e permitida quando a
   licenca permite (`review_quote_allowed = true`) e com atribuicao
   (`requires_attribution`) e linkback (`requires_linkback`) respeitados.
@@ -98,11 +98,11 @@ em `warnings` — nunca preenche com suposicao.
 
 ## 6. AggregateRating proprio: proibido sem permissao (invariante)
 
-- O writer **nao cria `AggregateRating` proprio** fingindo nota do Screen.
+- O writer **nao cria `AggregateRating` proprio** fingindo nota da Cinerie.
 - `AggregateRating` so aparece quando a nota e **permitida e atribuida** a uma
   fonte (com `display_allowed`/`score_allowed`), nunca como media inventada
   pelo writer.
-- Nada de "nota Screen" agregada que nao tenha origem real e atribuivel.
+- Nada de "nota Cinerie" agregada que nao tenha origem real e atribuivel.
 
 ## 7. Licenca antes de exibir (invariante 6)
 
@@ -192,7 +192,7 @@ externa; e tem `review_status` permitido.
 ## 12. Diferenciacao filme/serie no texto (invariantes 9, 10, 11)
 
 - Filmes usam o acento vermelho (`--screena-movie-red`, nome tecnico/legado do
-  token); series usam o acento verde (`--screena-series-green`). **Screen** e a
+  token); series usam o acento verde (`--screena-series-green`). **Cinerie** e a
   marca publica; **Screena** aparece aqui apenas como namespace tecnico legado.
 - A diferenciacao filme/serie **nunca** depende so da cor: o texto e os
   metadados sempre carregam **label + badge + breadcrumb + schema + URL**

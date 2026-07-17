@@ -1,16 +1,17 @@
-# Regras de SEO — Screen
+# Regras de SEO — Cinerie
 
 Estas regras governam **indexabilidade, qualidade e estrutura tecnica de SEO**
-de todas as paginas publicas do Screen (`https://thescreen.media`). Sao de cumprimento
+de todas as paginas publicas da Cinerie (`https://cinerie.com`). Sao de cumprimento
 obrigatorio: nenhuma pagina entra no indice dos buscadores sem satisfazer o que
 esta aqui descrito.
 
 ## 0. Identidade publica e dominio canonico
 
-- A marca publica principal e **Screen**.
-- O dominio canonico publico e **`https://thescreen.media`**.
-- **The Screen** pode aparecer apenas como referencia historica, explicativa ou
-  nome expandido nao-principal.
+- A marca publica principal e **Cinerie**.
+- O dominio canonico publico e **`https://cinerie.com`**.
+- **Screen** / **The Screen** e `thescreen.media` sao a marca e o dominio
+  ANTERIORES (Gate 1.5, 2026-07): so aparecem como referencia historica em
+  snapshots datados, nunca como identidade ativa.
 - **Screena** permanece como namespace tecnico/legado interno (`@screena/*`,
   tokens `--screena-*`, scripts/services antigos), nunca como marca publica.
 - `screena.media` e legado historico e nao deve ser usado como dominio publico
@@ -229,11 +230,11 @@ Complementos:
 
 - `BreadcrumbList` em **todas** as paginas principais.
 - `FAQPage` **somente** se houver FAQ visivel na pagina.
-- `Review` apenas para **review propria** do Screen. Como reviews proprias ainda
+- `Review` apenas para **review propria** da Cinerie. Como reviews proprias ainda
   nao estao ativas como produto, nao emita `Review` por inferencia.
 - `AggregateRating` **somente quando permitido e atribuido** a sua fonte
   (`license_status` `official`/`licensed`, `score_allowed=true`).
-  **Nunca** apresentar nota de terceiro como se fosse nota propria do Screen.
+  **Nunca** apresentar nota de terceiro como se fosse nota propria da Cinerie.
   Como ratings externos ainda nao estao ativos como produto, nao emita
   `AggregateRating` sem escopo/licenca/revisao explicitos.
 

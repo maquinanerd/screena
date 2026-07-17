@@ -1,5 +1,15 @@
 # Screen — Relatório Técnico Pós-EasyPanel e Home v4.1
 
+> **⚠️ Documento HISTÓRICO — marca anterior (Gate 1.5, 2026-07).**
+> Este relatório é um SNAPSHOT de um estado passado do projeto e usa a marca
+> e o domínio anteriores (**Screen** / **The Screen**, `thescreen.media`).
+> O texto **não** foi reescrito para Cinerie de propósito: ele registra
+> achados *sobre* a marca antiga e traz datas, branches e commits de então —
+> trocar a marca no corpo falsificaria o registro e tornaria os achados
+> incoerentes. A marca pública atual é **Cinerie** (`https://cinerie.com`);
+> a fonte viva é [`CLAUDE.md`](../CLAUDE.md) e
+> [`REBRANDING-CINERIE.md`](../REBRANDING-CINERIE.md).
+
 > Documento de auditoria **read-only**. Estado do repositório na branch
 > `feat/home-hero-carousel`, HEAD `e46cabb`. Nenhum código foi alterado para
 > produzir este relatório. As afirmações são fundamentadas no código real, com

@@ -1,6 +1,6 @@
 # Templates SEO por tipo de entidade
 
-Este diretorio descreve os **templates de SEO on-page** do Screen para cada
+Este diretorio descreve os **templates de SEO on-page** da Cinerie para cada
 tipo de pagina indexavel. Sao a referencia canonica que orienta as rotas
 Next (`generateMetadata`, H1, breadcrumbs, JSON-LD) e o gate anti-thin.
 
@@ -27,7 +27,7 @@ Cor e apenas reforco: filme usa `--screena-movie-red` (#FF3B30); serie usa
 ## Filme
 
 - **Rota**: `/pt/filmes/{slug}/`
-- **Title**: `{titulo} ({ano}) — Onde assistir, elenco e avaliacoes | Screen`
+- **Title**: `{titulo} ({ano}) — Onde assistir, elenco e avaliacoes | Cinerie`
 - **Meta description**: resumo editorial proprio (sem copiar sinopse externa),
   com idioma, ano e proposta de valor.
 - **H1**: `{titulo} ({ano})`
@@ -42,7 +42,7 @@ Cor e apenas reforco: filme usa `--screena-movie-red` (#FF3B30); serie usa
 ## Serie
 
 - **Rota**: `/pt/series/{slug}/`
-- **Title**: `{titulo} ({ano}) — Temporadas, onde assistir e avaliacoes | Screen`
+- **Title**: `{titulo} ({ano}) — Temporadas, onde assistir e avaliacoes | Cinerie`
 - **Meta description**: resumo editorial proprio com numero de temporadas e
   status (em exibicao / encerrada).
 - **H1**: `{titulo}`
@@ -56,7 +56,7 @@ Cor e apenas reforco: filme usa `--screena-movie-red` (#FF3B30); serie usa
 ## Temporada
 
 - **Rota**: `/pt/series/{slug}/temporada-{number}/`
-- **Title**: `{serie} — Temporada {number} | Screen`
+- **Title**: `{serie} — Temporada {number} | Cinerie`
 - **Meta description**: contexto da temporada (ano, n.o de episodios, arco).
 - **H1**: `{serie} — Temporada {number}`
 - **Blocos de valor sugeridos**: contexto da temporada; guia/lista de
@@ -68,7 +68,7 @@ Cor e apenas reforco: filme usa `--screena-movie-red` (#FF3B30); serie usa
 ## Episodio
 
 - **Rota**: `/pt/series/{slug}/temporada-{number}/episodio-{number}/` (futura)
-- **Title**: `{serie} S{temporada}E{episodio} — {titulo do episodio} | Screen`
+- **Title**: `{serie} S{temporada}E{episodio} — {titulo do episodio} | Cinerie`
 - **Meta description**: contexto do episodio sem spoiler por padrao.
 - **H1**: `{titulo do episodio}`
 - **Blocos de valor sugeridos**: contexto do episodio; analise sem/com spoiler
@@ -79,7 +79,7 @@ Cor e apenas reforco: filme usa `--screena-movie-red` (#FF3B30); serie usa
 ## Pessoa
 
 - **Rota**: `/pt/pessoas/{slug}/`
-- **Title**: `{nome} — Filmografia e biografia | Screen`
+- **Title**: `{nome} — Filmografia e biografia | Cinerie`
 - **Meta description**: resumo editorial proprio da carreira.
 - **H1**: `{nome}`
 - **Blocos de valor sugeridos**: introducao editorial propria; filmografia
@@ -91,7 +91,7 @@ Cor e apenas reforco: filme usa `--screena-movie-red` (#FF3B30); serie usa
 
 - **Rota**: `/pt/filmes/{slug}/onde-assistir/`, `/pt/series/{slug}/onde-assistir/`
   e `/pt/onde-assistir/{slug}/`.
-- **Title**: `Onde assistir {titulo} no Brasil — Streaming e aluguel | Screen`
+- **Title**: `Onde assistir {titulo} no Brasil — Streaming e aluguel | Cinerie`
 - **Meta description**: onde assistir por pais, com **data de atualizacao**.
 - **H1**: `Onde assistir {titulo}`
 - **Blocos de valor sugeridos**: onde assistir por pais (texto + tabela);

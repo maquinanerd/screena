@@ -24,7 +24,7 @@ de feeds, agrupa itens em **clusters** (`news_clusters`) e mantem `articles`,
 - **Nao cria entidades** — apenas vincula noticias a entidades que ja existem; a criacao
   de entidades e responsabilidade exclusiva de `services/ingestion`.
 - **RSSPRIME e upstream externo** — tratado como fornecedor tecnico, nunca como fonte
-  editorial propria do Screen.
+  editorial propria da Cinerie.
 - **Dados sem licenca clara nao aparecem** em pagina indexavel; respeitar atribuicao e
   linkback quando exigido.
 - **Zero API externa no render** — consumo de feeds acontece aqui, offline.

@@ -1,18 +1,18 @@
-# Screen
+# Cinerie
 
 > **Movies, series, ratings and where to watch.**
 
-Screen é uma **base global de entretenimento _entity-first_**: filmes, séries, temporadas, episódios, pessoas, ratings externos, onde assistir, reviews e notícias — organizados em torno da **entidade** (a obra), e não de uma página solta. Sobre esses dados, Screen escreve uma **camada editorial própria**, em três idiomas (**pt-BR, en, es**).
+Cinerie é uma **base global de entretenimento _entity-first_**: filmes, séries, temporadas, episódios, pessoas, ratings externos, onde assistir, reviews e notícias — organizados em torno da **entidade** (a obra), e não de uma página solta. Sobre esses dados, Cinerie escreve uma **camada editorial própria**, em três idiomas (**pt-BR, en, es**).
 
-**Domínio canônico público:** https://thescreen.media
+**Domínio canônico público:** https://cinerie.com
 
-**Marca.** _Screen_ é a marca pública principal. _The Screen_ aparece apenas como referência histórica/explicativa ou nome expandido não-principal. _Screena_ é namespace técnico/legado interno (`@screena/*`, tokens `--screena-*`, nomes antigos de scripts/services), **não** a marca pública. `screena.media` e _The Nerd News_ são legados históricos e não voltam como identidade do produto.
+**Marca.** _Cinerie_ é a marca pública principal, no domínio canônico `https://cinerie.com`. _Screen_ / _The Screen_ e `thescreen.media` são a marca e o domínio **anteriores** (renomeados no Gate 1.5, 2026-07) — aparecem apenas como referência histórica em snapshots datados, nunca como identidade ativa; ver [`REBRANDING-CINERIE.md`](./REBRANDING-CINERIE.md). _Screena_ segue sendo namespace técnico/legado interno (`@screena/*`, tokens `--screena-*`, nomes antigos de scripts/services), **não** a marca pública. `screena.media` e _The Nerd News_ são legados históricos e não voltam como identidade do produto.
 
 ---
 
 ## Visão
 
-Screen trata cada obra como uma **entidade canônica** com identidade estável (slug, IDs externos, schema.org) e agrega ao seu redor tudo o que importa para quem decide o que assistir:
+Cinerie trata cada obra como uma **entidade canônica** com identidade estável (slug, IDs externos, schema.org) e agrega ao seu redor tudo o que importa para quem decide o que assistir:
 
 - **ficha da obra** — filme / série / temporada / episódio / pessoa;
 - **ratings externos atribuídos** — IMDb, Rotten Tomatoes, Metacritic, Letterboxd, FilmAffinity… — sempre com fonte, escala e atribuição corretas;
@@ -24,9 +24,9 @@ O diferencial não é reexibir dado de terceiro: é a **voz editorial própria**
 
 ### Posicionamento
 
-> **As APIs fornecem os dados. Screen escreve a camada editorial.**
+> **As APIs fornecem os dados. Cinerie escreve a camada editorial.**
 
-Fornecedores externos (TMDB, TVMaze, provedores de rating e de streaming via RapidAPI, etc.) são **fontes de dados técnicos**. Eles não são, e nunca aparecem como, a voz editorial do Screen. O valor do produto está na curadoria, na contextualização e na escrita própria — construída sobre dados atribuídos corretamente.
+Fornecedores externos (TMDB, TVMaze, provedores de rating e de streaming via RapidAPI, etc.) são **fontes de dados técnicos**. Eles não são, e nunca aparecem como, a voz editorial da Cinerie. O valor do produto está na curadoria, na contextualização e na escrita própria — construída sobre dados atribuídos corretamente.
 
 ### Regra central
 
@@ -38,7 +38,7 @@ Toda página pública lê apenas **PostgreSQL/cache local**. Nenhuma chamada a T
 
 ## Fontes de dados
 
-Screen ingere de várias fontes e guarda o **payload bruto (raw)** antes de promover para tabelas tipadas — paga cada API uma vez e nada se perde.
+Cinerie ingere de várias fontes e guarda o **payload bruto (raw)** antes de promover para tabelas tipadas — paga cada API uma vez e nada se perde.
 
 | Fonte | Papel | Licença / observação |
 | --- | --- | --- |
@@ -55,7 +55,7 @@ Screen ingere de várias fontes e guarda o **payload bruto (raw)** antes de prom
 
 ## Idiomas
 
-Screen é **trilíngue**: `/pt`, `/es`, `/en`. As traduções de título/sinopse vêm do TMDB (`append_to_response=translations`, todos os idiomas em um request) e são promovidas por locale. Um idioma só entra no ar (`PUBLISHED_LOCALES`) quando está **completo**: dado traduzido + interface (i18n) traduzida + hreflang recíproco. A raiz (`/`) redireciona por idioma do navegador, com **fallback para `/pt`** enquanto es/en não estiverem completos.
+Cinerie é **trilíngue**: `/pt`, `/es`, `/en`. As traduções de título/sinopse vêm do TMDB (`append_to_response=translations`, todos os idiomas em um request) e são promovidas por locale. Um idioma só entra no ar (`PUBLISHED_LOCALES`) quando está **completo**: dado traduzido + interface (i18n) traduzida + hreflang recíproco. A raiz (`/`) redireciona por idioma do navegador, com **fallback para `/pt`** enquanto es/en não estiverem completos.
 
 ---
 
@@ -171,7 +171,7 @@ As invariantes inegociáveis que governam o produto. A íntegra vive em `CLAUDE.
 
 ## Governança
 
-A construção do Screen é guiada por regras explícitas e versionadas, para pessoas e agentes de IA:
+A construção da Cinerie é guiada por regras explícitas e versionadas, para pessoas e agentes de IA:
 
 - `CLAUDE.md` — contexto canônico e fonte da verdade das invariantes.
 - `.claude/rules/` — regras operacionais (render, ratings, indexabilidade, i18n, legal).
@@ -219,7 +219,7 @@ Documentação canônica em `docs/`:
 - **Ratings externos e onde-assistir** — schema pronto e testado, mas ainda sem writer/reader ligado em produção.
 - **`screen_score`** (nota própria) — só existe no seed demo; por decisão, a **estrela fica escondida** até haver pipeline editorial real de nota.
 - **Trilíngue de fato** — `/es` e `/en` têm rota, mas dependem de promoção das traduções + i18n da UI antes de entrar em `PUBLISHED_LOCALES`.
-- **Notícias, admin editorial pleno, e toda a camada de usuário** (community, reviews, favoritos, listas, watchlist) — a camada de usuário é ausência **intencional** (Screen é entity-first, não rede social).
+- **Notícias, admin editorial pleno, e toda a camada de usuário** (community, reviews, favoritos, listas, watchlist) — a camada de usuário é ausência **intencional** (Cinerie é entity-first, não rede social).
 - **Operação production-grade** — CI com gates, scripts de backup/restore e
   documentação de migration obrigatória existem; ainda faltam configuração real
   de branch protection no GitHub, agendamento no servidor, healthcheck e

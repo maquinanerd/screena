@@ -1,11 +1,11 @@
 ---
 name: add-entity
-description: Use quando precisar adicionar uma nova entidade (filme, serie, temporada, episodio, pessoa) ao Screen. Cobre ingestao offline via TMDB, normalizacao no PostgreSQL, criacao de slug por idioma, gate anti-thin e exigencia de revisao humana. O admin atual e read-only; cadastro manual via admin e fluxo futuro. NAO use para gerar texto editorial (isso e o Entity Writer).
+description: Use quando precisar adicionar uma nova entidade (filme, serie, temporada, episodio, pessoa) à Cinerie. Cobre ingestao offline via TMDB, normalizacao no PostgreSQL, criacao de slug por idioma, gate anti-thin e exigencia de revisao humana. O admin atual e read-only; cadastro manual via admin e fluxo futuro. NAO use para gerar texto editorial (isso e o Entity Writer).
 ---
 
 # Skill: add-entity
 
-Esta skill descreve o procedimento canonico para **adicionar uma entidade** na base do Screen.
+Esta skill descreve o procedimento canonico para **adicionar uma entidade** na base da Cinerie.
 A entidade e o nucleo da arquitetura entity-first: ela nasce de dados normalizados, nunca de
 texto gerado por IA.
 

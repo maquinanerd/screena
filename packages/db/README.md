@@ -1,7 +1,7 @@
 # @screena/db
 
-Camada de **dados** do Screen. O nome `@screena/db` e namespace tecnico
-legado interno; a marca publica atual e **Screen**.
+Camada de **dados** da Cinerie. O nome `@screena/db` e namespace tecnico
+legado interno; a marca publica atual e **Cinerie**.
 
 > **Estado atual:** este pacote tem schema Prisma, migrations, seeds e acesso
 > server-only ao PostgreSQL. Ele nao e mais um placeholder de Fase 0.

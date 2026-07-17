@@ -1,4 +1,4 @@
-# Mapa de páginas do Screen (contrato de nomenclatura e escopo)
+# Mapa de páginas da Cinerie (contrato de nomenclatura e escopo)
 
 > Documento operacional. **Antes de qualquer alteração visual, consulte este mapa.**
 > O estado descrito aqui é o shell público neutro criado pelo reset de julho de 2026. Ele não é o design final e não autoriza inventar uma nova direção visual.

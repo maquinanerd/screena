@@ -1,4 +1,4 @@
-# Decisões de cobertura de API — Screen (Fase 5)
+# Decisões de cobertura de API — Cinerie (Fase 5)
 
 > Log de decisões (o "porquê") por trás do registro de cobertura. Idioma: pt-BR.
 > Autoritativo para a **semântica**; a fonte executável é `endpoints.json` +

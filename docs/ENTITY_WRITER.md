@@ -1,13 +1,13 @@
-# Entity Writer — Especificação do Screen
+# Entity Writer — Especificação da Cinerie
 
-> **As APIs fornecem os dados. Screen escreve a camada editorial.**
+> **As APIs fornecem os dados. Cinerie escreve a camada editorial.**
 
 > **⚠️ Política atualizada (2026-07).** O antigo _gate anti-thin_ (≥ 2 blocos para indexar) foi **removido**: a indexação é **total** (invariante 5). Os blocos que o writer gera viraram **alavanca de qualidade/ranqueamento** (E-E-A-T, profundidade), não pré-requisito de `index`; a entidade indexa com a ficha crua mesmo sem bloco editorial. O writer segue **nunca** publicando/indexando sozinho, e en/es publicam via `PUBLISHED_LOCALES` (invariante 7). Trechos no corpo que citem "gate anti-thin / ≥ 2 blocos para indexar" refletem a política antiga. Fonte viva: [`CLAUDE.md`](../CLAUDE.md) + [`.claude/rules/entity-writer.md`](../.claude/rules/entity-writer.md).
 
 Este documento especifica o **Entity Writer**: o motor editorial offline que gera
 **blocos editoriais evergreen** (`content_blocks`) a partir de **dados estruturados do
 PostgreSQL**, usando **Gemini** apenas fora do render. É o único componente autorizado a
-produzir texto editorial assistido por IA para o Screen.
+produzir texto editorial assistido por IA para o Cinerie.
 
 Esta especificação reforça, de ponta a ponta, as invariantes **4** (_zero Gemini no
 render_), **12** (_só escreve com base em payload controlado do PostgreSQL; não inventa
@@ -25,7 +25,7 @@ fatos, não cria entidades, não chama APIs externas, não publica sozinho_) e *
 ## 1. O que é
 
 O **Entity Writer** é o **motor editorial derivado do MN26**, adaptado para o mundo
-_entity-first_ do Screen. Em vez de partir de feeds de notícias, ele parte da **entidade
+_entity-first_ da Cinerie. Em vez de partir de feeds de notícias, ele parte da **entidade
 canônica** (filme, série, temporada, episódio, pessoa) já consolidada no PostgreSQL e
 produz blocos editoriais **evergreen** — textos que envelhecem bem porque descrevem a obra,
 seu contexto e seu valor, e não um acontecimento datado.
@@ -239,7 +239,7 @@ posteriores.
 | `episode_context`          | Contexto de episódio (séries).                                       |
 | `faq`                      | Perguntas e respostas úteis (vira `FAQPage` só se visível).         |
 | `news_context`             | Contexto de notícias relacionadas.                                   |
-| `review_summary`           | Resumo de review própria do Screen.                             |
+| `review_summary`           | Resumo de review própria da Cinerie.                             |
 
 > A diferenciação **filme vs. série** nunca depende só da cor: o bloco respeita o
 > `entity_type` do payload e a linguagem correta (label + badge + breadcrumb + schema + URL).
@@ -354,7 +354,7 @@ indexação, overview/sinopse, en/es ou publicação automática.
 7. **Não usa `provider_api` como fonte editorial.** O fornecedor técnico (ex.: RapidAPI)
    nunca é citado como fonte ou voz editorial (`provider_api != rating_source`, invariante 2).
 8. **Não cria `AggregateRating` próprio sem permissão.** Nenhuma nota agregada "própria"
-   fingindo avaliação do Screen; `AggregateRating` só quando permitido e corretamente
+   fingindo avaliação da Cinerie; `AggregateRating` só quando permitido e corretamente
    atribuído.
 9. **Não publica automaticamente.** O Entity Writer nunca publica sozinho — publicação é
    decisão de fluxo com revisão (invariante 12).

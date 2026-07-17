@@ -99,5 +99,5 @@ canonica, o que torna um cross-label impossivel por construcao.
   `display_allowed = false` e `license_status = unknown`, **estruturalmente** (nao sao
   parametros do adapter). Liberar exibicao e decisao humana de licenca, registrada fora
   daqui.
-- **`screen_score` nao e tocado.** A nota editorial propria do Screen jamais recebe dado
+- **`screen_score` nao e tocado.** A nota editorial propria da Cinerie jamais recebe dado
   de terceiro.
