@@ -31,7 +31,9 @@
     "validate:person-page": "corepack pnpm --filter @screena/web validate:person-page",
     "validate:all": "corepack pnpm --filter @screena/web validate:all",
     "catalog": "corepack pnpm --filter @screena/ingestion catalog",
-    "ratings": "corepack pnpm --filter @screena/ratings ratings"
+    "ratings": "corepack pnpm --filter @screena/ratings ratings",
+    "legal": "corepack pnpm --filter @screena/legal legal",
+    "validate:source-authorization-and-attribution": "corepack pnpm --filter @screena/legal validate:source-authorization"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

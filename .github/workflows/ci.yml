@@ -101,3 +101,6 @@ jobs:
 
       - name: Backend B — ratings, streaming, licencas e Cinerie Score (PostgreSQL 16 efemero)
         run: pnpm validate:external-intelligence-product
+
+      - name: Autorizacao de fontes e atribuicao (registro governado; PostgreSQL 16 efemero)
+        run: pnpm validate:source-authorization-and-attribution

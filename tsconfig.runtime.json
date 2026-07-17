@@ -10,7 +10,8 @@
     "services/ingestion/bin/catalog.ts",
     "services/ratings/src/persistence/**/*.ts",
     "services/ratings/bin/ratings.ts",
-    "services/streaming/src/persistence/**/*.ts"
+    "services/streaming/src/persistence/**/*.ts",
+    "services/legal/bin/legal.ts"
   ],
   "exclude": ["node_modules", "dist", "build", ".next", "coverage"]
 }

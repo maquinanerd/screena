@@ -1,0 +1,341 @@
+/**
+ * authorization-spec.ts — Declaração PURA da autorização de fontes da Cinerie.
+ *
+ * Este módulo é a tradução, em dados versionados, da decisão formal do
+ * proprietário (docs/legal/source-replication-authorization.md). Ele NÃO decide
+ * nada: só descreve o que o proprietário autorizou, para que o registry
+ * (`plan.ts`) prepare `source_licenses` + `data_usage_decisions` de forma
+ * idempotente e auditável.
+ *
+ * Regras que atravessam o arquivo inteiro (nenhuma é negociável aqui):
+ *  - `logoAllowed` e `reviewQuoteAllowed` são SEMPRE false. Liberar logo ou
+ *    citação integral de crítica exige autorização específica que não existe.
+ *  - `derivativeAllowed` das decisões é SEMPRE false. O Cinerie Score é obra
+ *    derivada e permanece BLOCKED_BY_DECISION — este spec NUNCA emite uma
+ *    decisão `cinerie_score_display`.
+ *  - Nada aqui promove dado: o registry mexe só em licenças e decisões, nunca
+ *    liga `display_allowed` de um rating ou de uma oferta.
+ *  - `license_status` reflete a origem REAL: `official` só para a API/fonte
+ *    oficial; `third_party` quando o dado chega por fornecedor intermediário
+ *    (RapidAPI / Film&Show Ratings / Streaming Availability). Não é tudo
+ *    `official`.
+ */
+
+import type { DataUsageCase } from "@screena/config";
+
+/** Território de publicação do produto (pt-BR/Brasil). */
+export const CINERIE_TERRITORY = "BR";
+
+/** Identidade humana que decidiu. Nunca "agent"/"system". */
+export const DECIDED_BY = "Pablo Eduardo — proprietário da Cinerie";
+
+/** Motivo canônico registrado em toda decisão/licença desta autorização. */
+export const AUTHORIZATION_REASON =
+  "Autorizacao de reproducao, armazenamento e exibicao para finalidade informativa, editorial e jornalistica, condicionada a creditos, linkback e disclaimers publicos.";
+
+/** Rótulo da leva de autorização (o `--policy-version` do apply). */
+export const AUTHORIZATION_BATCH = "cinerie-source-auth/2026-07-v1";
+
+/** Papéis possíveis de uma fonte (nunca colapsam — invariante 2). */
+export type SourceRole =
+  /** Fonte editorial da nota (imdb, rotten_tomatoes, ...). */
+  | "editorial-rating-source"
+  /** Fornecedor de catálogo/metadados (TMDB). */
+  | "catalog-provider"
+  /** Agregador de disponibilidade de streaming (Movie of the Night). */
+  | "streaming-aggregator";
+
+/** `content_type` reconhecidos de `source_licenses` usados por este spec. */
+export type LicenseContentType = "rating" | "watch_availability" | "image" | "other";
+
+/** Estado de licença permitido (`official` só p/ API/fonte oficial). */
+export type LicenseStatus = "official" | "licensed" | "third_party";
+
+/** Alvo de uma licença (`source_licenses`). */
+export interface LicenseTarget {
+  readonly sourceKey: string;
+  readonly contentType: LicenseContentType;
+  /** FK -> rating_sources.key; obrigatório quando contentType='rating'. */
+  readonly ratingSourceKey: string | null;
+  /** FK -> api_providers.key (fornecedor TÉCNICO; nunca a fonte editorial). */
+  readonly providerKey: string | null;
+  /** territory_code; null = licença global. */
+  readonly territory: string | null;
+  readonly licenseStatus: LicenseStatus;
+  readonly displayAllowed: boolean;
+  /** SEMPRE false neste spec (logos bloqueados). */
+  readonly logoAllowed: false;
+  readonly scoreAllowed: boolean;
+  /** SEMPRE false neste spec (citações integrais bloqueadas). */
+  readonly reviewQuoteAllowed: false;
+  readonly requiresAttribution: true;
+  readonly requiresLinkback: true;
+  readonly attributionText: string;
+  readonly policyVersion: string;
+  readonly notes: string;
+}
+
+/** Alvo de uma decisão de uso (`data_usage_decisions`). */
+export interface DecisionTarget {
+  /** NUNCA 'cinerie_score_display' (o score é obra derivada bloqueada). */
+  readonly useCase: Exclude<DataUsageCase, "cinerie_score_display">;
+  readonly territory: string | null;
+  readonly stage: "approved_for_display" | "approved_for_internal_use";
+  readonly displayAllowed: boolean;
+  readonly storageAllowed: boolean;
+  /** SEMPRE false (obra derivada não autorizada). */
+  readonly derivativeAllowed: false;
+  readonly attributionRequired: true;
+  readonly linkbackRequired: true;
+  readonly policyVersion: string;
+}
+
+/** Uma entrada de autorização: uma licença + suas decisões. */
+export interface AuthorizationEntry {
+  readonly label: string;
+  readonly role: SourceRole;
+  readonly license: LicenseTarget;
+  readonly decisions: readonly DecisionTarget[];
+}
+
+const RATING_ATTRIBUTION: Record<string, string> = {
+  imdb: "Nota fornecida por IMDb",
+  rotten_tomatoes: "Nota fornecida por Rotten Tomatoes",
+  metacritic: "Nota fornecida por Metacritic",
+  letterboxd: "Nota fornecida por Letterboxd",
+  filmaffinity: "Nota fornecida por FilmAffinity",
+};
+
+const RATING_POLICY: Record<string, string> = {
+  imdb: "cinerie-source-auth/imdb/2026-07-v1",
+  rotten_tomatoes: "cinerie-source-auth/rotten-tomatoes/2026-07-v1",
+  metacritic: "cinerie-source-auth/metacritic/2026-07-v1",
+  letterboxd: "cinerie-source-auth/letterboxd/2026-07-v1",
+  filmaffinity: "cinerie-source-auth/filmaffinity/2026-07-v1",
+};
+
+/**
+ * Fontes editoriais de rating. Chegam pela Film & Show Ratings API (RapidAPI),
+ * um agregador técnico — por isso `third_party`, nunca `official` (elas não são
+ * a API da própria fonte). Licença GLOBAL (a autorização não é limitada por
+ * território); o DISPLAY é gated à BR pela decisão `rating_display`.
+ */
+function ratingEntry(source: string): AuthorizationEntry {
+  const policy = RATING_POLICY[source]!;
+  return {
+    label: source,
+    role: "editorial-rating-source",
+    license: {
+      sourceKey: source,
+      contentType: "rating",
+      ratingSourceKey: source,
+      // null mantém o MESMO grupo da licença-semente (Fase 1), que esta
+      // autorização supersede em vez de deixar uma linha `unknown` órfã. O
+      // fornecedor técnico (rapidapi_film_show_ratings) fica em `notes` e na
+      // matriz — provider_key na licença é informativo e não muda o gating.
+      providerKey: null,
+      territory: null,
+      licenseStatus: "third_party",
+      displayAllowed: true,
+      logoAllowed: false,
+      scoreAllowed: true,
+      reviewQuoteAllowed: false,
+      requiresAttribution: true,
+      requiresLinkback: true,
+      attributionText: RATING_ATTRIBUTION[source]!,
+      policyVersion: policy,
+      notes:
+        "Fonte editorial via Film & Show Ratings API (RapidAPI), fornecedor tecnico intermediario. Logo e citacao integral de critica NAO autorizados.",
+    },
+    decisions: [
+      {
+        useCase: "rating_display",
+        territory: CINERIE_TERRITORY,
+        stage: "approved_for_display",
+        displayAllowed: true,
+        storageAllowed: true,
+        derivativeAllowed: false,
+        attributionRequired: true,
+        linkbackRequired: true,
+        policyVersion: policy,
+      },
+      {
+        useCase: "internal_analytics",
+        territory: null,
+        stage: "approved_for_internal_use",
+        displayAllowed: false,
+        storageAllowed: true,
+        derivativeAllowed: false,
+        attributionRequired: true,
+        linkbackRequired: true,
+        policyVersion: policy,
+      },
+    ],
+  };
+}
+
+/** Autorização estática (independe do estado do banco). */
+export const STATIC_AUTHORIZATION: readonly AuthorizationEntry[] = [
+  // TMDB — catálogo/metadados via a PRÓPRIA API oficial do TMDB (official).
+  {
+    label: "TMDB (metadados)",
+    role: "catalog-provider",
+    license: {
+      sourceKey: "tmdb",
+      contentType: "other",
+      ratingSourceKey: null,
+      providerKey: "tmdb",
+      territory: null,
+      licenseStatus: "official",
+      displayAllowed: true,
+      logoAllowed: false,
+      scoreAllowed: false,
+      reviewQuoteAllowed: false,
+      requiresAttribution: true,
+      requiresLinkback: true,
+      attributionText:
+        "Este produto usa a API do TMDB, mas nao e endossado ou certificado pelo TMDB.",
+      policyVersion: "cinerie-source-auth/tmdb/2026-07-v1",
+      notes:
+        "Metadados de catalogo via API oficial do TMDB. Exibicao de catalogo antecede o eixo use_case; a decisao registrada e internal_analytics (armazenamento). Disclaimer do TMDB obrigatorio no footer.",
+    },
+    decisions: [
+      {
+        useCase: "internal_analytics",
+        territory: null,
+        stage: "approved_for_internal_use",
+        displayAllowed: false,
+        storageAllowed: true,
+        derivativeAllowed: false,
+        attributionRequired: true,
+        linkbackRequired: true,
+        policyVersion: "cinerie-source-auth/tmdb/2026-07-v1",
+      },
+    ],
+  },
+  // TMDB — imagens: registradas como BLOQUEADAS (display=false, logo=false).
+  {
+    label: "TMDB (imagens)",
+    role: "catalog-provider",
+    license: {
+      sourceKey: "tmdb",
+      contentType: "image",
+      ratingSourceKey: null,
+      providerKey: "tmdb",
+      territory: null,
+      licenseStatus: "official",
+      displayAllowed: false,
+      logoAllowed: false,
+      scoreAllowed: false,
+      reviewQuoteAllowed: false,
+      requiresAttribution: true,
+      requiresLinkback: true,
+      attributionText:
+        "Este produto usa a API do TMDB, mas nao e endossado ou certificado pelo TMDB.",
+      policyVersion: "cinerie-source-auth/tmdb/2026-07-v1",
+      notes: "Imagens do TMDB permanecem NAO exibiveis (display_allowed=false) ate decisao especifica.",
+    },
+    decisions: [
+      {
+        useCase: "internal_analytics",
+        territory: null,
+        stage: "approved_for_internal_use",
+        displayAllowed: false,
+        storageAllowed: true,
+        derivativeAllowed: false,
+        attributionRequired: true,
+        linkbackRequired: true,
+        policyVersion: "cinerie-source-auth/tmdb/2026-07-v1",
+      },
+    ],
+  },
+  ...["imdb", "rotten_tomatoes", "metacritic", "letterboxd", "filmaffinity"].map(ratingEntry),
+  // Movie of the Night — AGREGADOR de streaming (via Streaming Availability API,
+  // RapidAPI). É a fonte cuja atribuição vai perto do painel de streaming. NÃO é
+  // um provedor de streaming (Netflix, etc.) — por isso content_type='other',
+  // não 'watch_availability'. A exibição de cada OFERTA é gated por decisão
+  // watch_offer_display POR PROVEDOR CANÔNICO (gerada dinamicamente; ver plan.ts).
+  {
+    label: "Movie of the Night (agregador de streaming)",
+    role: "streaming-aggregator",
+    license: {
+      sourceKey: "movie-of-the-night",
+      contentType: "other",
+      ratingSourceKey: null,
+      providerKey: "streaming_availability",
+      territory: CINERIE_TERRITORY,
+      licenseStatus: "third_party",
+      displayAllowed: false,
+      logoAllowed: false,
+      scoreAllowed: false,
+      reviewQuoteAllowed: false,
+      requiresAttribution: true,
+      requiresLinkback: true,
+      attributionText: "Disponibilidade fornecida por Movie of the Night",
+      policyVersion: "cinerie-source-auth/movie-of-the-night/2026-07-v1",
+      notes:
+        "Agregador de disponibilidade via Streaming Availability API (RapidAPI). Atribuicao obrigatoria perto do painel de streaming. A exibicao de ofertas depende de provedores canonicos registrados e suas decisoes watch_offer_display (por provedor).",
+    },
+    decisions: [
+      {
+        useCase: "internal_analytics",
+        territory: CINERIE_TERRITORY,
+        stage: "approved_for_internal_use",
+        displayAllowed: false,
+        storageAllowed: true,
+        derivativeAllowed: false,
+        attributionRequired: true,
+        linkbackRequired: true,
+        policyVersion: "cinerie-source-auth/movie-of-the-night/2026-07-v1",
+      },
+    ],
+  },
+];
+
+/**
+ * Autorização de EXIBIÇÃO por provedor canônico de streaming.
+ *
+ * Gerada a partir dos provedores REALMENTE registrados em `watch_providers`
+ * (nunca inventada). Em produção, com zero provedores registrados, retorna
+ * lista vazia — e não há decisão `watch_offer_display` nenhuma, o que está
+ * correto: a exibição de ofertas espera o onboarding real dos provedores.
+ * Convenção do banco: `source_licenses.source_key` = `watch_providers.slug`.
+ */
+export function streamingProviderEntries(
+  providers: readonly { readonly slug: string; readonly canonicalName: string }[],
+): readonly AuthorizationEntry[] {
+  return providers.map((provider) => ({
+    label: `Streaming: ${provider.canonicalName}`,
+    role: "streaming-aggregator",
+    license: {
+      sourceKey: provider.slug,
+      contentType: "watch_availability",
+      ratingSourceKey: null,
+      providerKey: "streaming_availability",
+      territory: CINERIE_TERRITORY,
+      licenseStatus: "third_party",
+      displayAllowed: true,
+      logoAllowed: false,
+      scoreAllowed: false,
+      reviewQuoteAllowed: false,
+      requiresAttribution: true,
+      requiresLinkback: true,
+      attributionText: "Disponibilidade fornecida por Movie of the Night",
+      policyVersion: AUTHORIZATION_BATCH,
+      notes: `Provedor canonico ${provider.canonicalName} (slug ${provider.slug}) via Streaming Availability API. Ofertas exibidas apenas apos promocao humana (pnpm streaming), nunca por este registro.`,
+    },
+    decisions: [
+      {
+        useCase: "watch_offer_display",
+        territory: CINERIE_TERRITORY,
+        stage: "approved_for_display",
+        displayAllowed: true,
+        storageAllowed: true,
+        derivativeAllowed: false,
+        attributionRequired: true,
+        linkbackRequired: true,
+        policyVersion: AUTHORIZATION_BATCH,
+      },
+    ],
+  }));
+}
