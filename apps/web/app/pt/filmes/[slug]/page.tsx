@@ -7,7 +7,7 @@ import { EntityExternalIds } from '../../../_components/entity-external-ids'
 import { WatchAvailabilityPanel } from '../../../_components/watch-availability-panel'
 import { canonicalRedirectPath } from '../../../../src/lib/canonical-redirect'
 import { buildExternalLinks } from '../../../../src/lib/external-links'
-import { MOVIES_INDEX_PATH, NEWS_INDEX_PATH, SITE_URL } from '../../../../src/lib/site'
+import { MOVIES_INDEX_PATH, NEWS_INDEX_PATH, SITE_URL, gatePublicRobots } from '../../../../src/lib/site'
 import { getMoviePageData } from '../../../../src/server/movie-page'
 
 /**
@@ -56,7 +56,7 @@ export async function generateMetadata({
 
   const metadata: Metadata = {
     title,
-    robots: seo.robots,
+    robots: gatePublicRobots(seo.robots),
     alternates: { canonical: canonicalUrl },
   }
   if (view.metaDescription !== null) {

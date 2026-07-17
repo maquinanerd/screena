@@ -378,7 +378,7 @@ CREATE OR REPLACE FUNCTION watch_offer_identity_key_v1(
   p_provider_name TEXT,
   p_package TEXT
 ) RETURNS TEXT AS $$
-  SELECT encode(digest(
+  SELECT encode(public.digest(
     'wai:v1' || chr(31) ||
     p_entity_type::text || chr(31) || p_entity_id::text || chr(31) ||
     lower(btrim(p_country_code)) || chr(31) ||
@@ -391,7 +391,7 @@ CREATE OR REPLACE FUNCTION watch_offer_identity_key_v1(
         COALESCE(p_provider_key, 'nm:' || lower(btrim(p_provider_name)), '') || chr(31) ||
         COALESCE(lower(btrim(p_package)), '')
     END
-  , 'sha256'), 'hex');
+  , 'sha256'::text), 'hex');
 $$ LANGUAGE sql IMMUTABLE;
 
 -- FINGERPRINT DO PAYLOAD (`wap:v1`), IMMUTABLE. Cobre TUDO que, ao mudar, exige
@@ -426,7 +426,7 @@ CREATE OR REPLACE FUNCTION watch_offer_payload_fingerprint_v1(
   p_attribution_text TEXT,
   p_attribution_url TEXT
 ) RETURNS TEXT AS $$
-  SELECT encode(digest(
+  SELECT encode(public.digest(
     'wap:v1' || chr(31) ||
     watch_offer_identity_key_v1(p_provider_api, p_external_offer_id, p_entity_type,
       p_entity_id, p_country_code, p_offer_type, p_provider_key, p_provider_name, p_package) || chr(31) ||
@@ -444,7 +444,7 @@ CREATE OR REPLACE FUNCTION watch_offer_payload_fingerprint_v1(
     p_requires_linkback::text || chr(31) ||
     COALESCE(p_attribution_text, '') || chr(31) ||
     COALESCE(p_attribution_url, '')
-  , 'sha256'), 'hex');
+  , 'sha256'::text), 'hex');
 $$ LANGUAGE sql IMMUTABLE;
 
 -- Dedup ANTES do indice unico, por IDENTIDADE, com PRESERVACAO INTEGRAL. So

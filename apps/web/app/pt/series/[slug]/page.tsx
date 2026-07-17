@@ -9,7 +9,7 @@ import { WatchAvailabilityPanel } from '../../../_components/watch-availability-
 import { canonicalRedirectPath } from '../../../../src/lib/canonical-redirect'
 import { buildExternalLinks } from '../../../../src/lib/external-links'
 import type { SeriesEpisodeView, SeriesSeasonView } from '../../../../src/lib/series-presenter'
-import { NEWS_INDEX_PATH, seasonPath, SITE_URL } from '../../../../src/lib/site'
+import { NEWS_INDEX_PATH, SITE_URL, gatePublicRobots, seasonPath } from '../../../../src/lib/site'
 import { getSeriesPageData } from '../../../../src/server/series-page'
 
 /**
@@ -127,7 +127,7 @@ export async function generateMetadata({
 
   const metadata: Metadata = {
     title,
-    robots: seo.robots,
+    robots: gatePublicRobots(seo.robots),
     alternates: { canonical: canonicalUrl },
   }
   if (view.metaDescription !== null) metadata.description = view.metaDescription

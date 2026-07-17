@@ -7,7 +7,7 @@ import { EntityExternalIds } from '../../../_components/entity-external-ids'
 import { canonicalRedirectPath } from '../../../../src/lib/canonical-redirect'
 import { buildExternalLinks } from '../../../../src/lib/external-links'
 import type { PersonCreditEntityType } from '../../../../src/lib/person-presenter'
-import { SITE_URL } from '../../../../src/lib/site'
+import { SITE_URL, gatePublicRobots } from '../../../../src/lib/site'
 import { getPersonPageData } from '../../../../src/server/person-page'
 
 /**
@@ -86,7 +86,7 @@ export async function generateMetadata({
   const { view, seo, canonicalUrl } = data
   const metadata: Metadata = {
     title: view.metaTitle ?? `${view.name} - Pessoa`,
-    robots: seo.robots,
+    robots: gatePublicRobots(seo.robots),
     alternates: { canonical: canonicalUrl },
   }
 

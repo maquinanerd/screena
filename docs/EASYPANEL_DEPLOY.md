@@ -237,13 +237,25 @@ fica fechado na internet.
 | `GEMINI_MODEL` | worker `entity-writer` | Nao | Modelo Gemini do Entity Writer. |
 | Chaves de ratings/streaming (RapidAPI) | workers futuros | Nao | `provider_api`, distinto da `rating_source` (Invariante 2). So offline, quando as features forem ativadas. |
 
-> **Limitacao conhecida — URL canonica hardcoded.** Hoje o dominio publico e
-> **hardcoded** em [`apps/web/src/lib/site.ts`](../apps/web/src/lib/site.ts)
-> (`SITE_URL = "https://cinerie.com"`), **nao** lido de env. Consequencia:
-> qualquer dominio temporario/staging serve canonicals/sitemap apontando para
-> `cinerie.com`. Antes de expor um dominio temporario indexavel, tornar a
-> URL canonica configuravel por env (ex.: `THE_SCREEN_PUBLIC_SITE_URL`) e
-> garantir `noindex` no staging.
+> **CORRIGIDO (2026-07-16).** Este bloco afirmava que a URL canonica era
+> "hardcoded, **nao** lida de env". Era **falso**:
+> [`apps/web/src/lib/site.ts`](../apps/web/src/lib/site.ts) le
+> `CINERIE_PUBLIC_SITE_URL` (com fallback legado `THE_SCREEN_PUBLIC_SITE_URL`) via
+> `configuredSiteUrl`/`resolveSiteUrl`; `OFFICIAL_SITE_URL` e apenas o **default**
+> quando nada e configurado. A nota empurrava o operador a nao configurar a env —
+> exatamente a mitigacao que existe.
+>
+> **Como e hoje.** Toda env publica e de **runtime**; a imagem nao assa nenhuma:
+>
+> | Env | Producao | Staging/preview |
+> | --- | --- | --- |
+> | `CINERIE_PUBLIC_SITE_URL` | `https://cinerie.com` | a origem REAL daquele ambiente |
+> | `CINERIE_PUBLIC_INDEXING_ENABLED` | `true`/`false` | `false` |
+>
+> Um staging que setar a propria origem serve canonical proprio e, como a origem
+> nao e a oficial, **nao indexa** (`isOfficialIndexableEnvironment`) — mesmo que
+> alguem ligue a flag por engano. Detalhes e verificacao:
+> [`docs/runbooks/PRODUCTION_DEPLOY.md`](runbooks/PRODUCTION_DEPLOY.md).
 
 ---
 

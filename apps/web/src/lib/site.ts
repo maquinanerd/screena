@@ -67,6 +67,45 @@ function readTrimmed(value: string | undefined): string | null {
 }
 
 /**
+ * Parser booleano EXPLICITO e FAIL-CLOSED para flags de env.
+ *
+ * So `"true"` e `"1"` ligam (sem diferenciar maiuscula/minuscula, com trim).
+ * `"false"`, `"0"`, vazio, ausente ou QUALQUER valor invalido desligam. Nao ha
+ * "verdadeiro por presenca": `FLAG=false` desliga, como qualquer operador espera.
+ *
+ * Existe porque a leitura anterior era `flag !== "1"`, que rejeitava silenciosa-
+ * mente `"true"` — um operador que escrevesse `=true` DESLIGARIA a indexacao sem
+ * perceber (e vice-versa nao havia: nada ligava por engano). Fail-closed e
+ * intencional: na duvida, nao indexa.
+ */
+export function parseBooleanEnvFlag(raw: string | undefined): boolean {
+  const value = readTrimmed(raw);
+  if (value === null) return false;
+  const normalized = value.toLowerCase();
+  return normalized === "true" || normalized === "1";
+}
+
+/**
+ * Flag GLOBAL de indexacao desta instalacao (o kill switch).
+ *
+ * Precedencia (a decisao do operador vence o legado assado na imagem):
+ *   1. CINERIE_PUBLIC_INDEXING_ENABLED — se DEFINIDA, decide sozinha (mesmo
+ *      vazia: vazio e invalido e resolve para `false`, nunca cai no legado);
+ *   2. THE_SCREEN_PUBLIC_INDEXING_ENABLED (legado, ver LEGACY_*);
+ *   3. `false` (default obrigatorio).
+ *
+ * A precedencia por DEFINICAO (nao por "valor nao-vazio") e deliberada: o
+ * Dockerfile assa `THE_SCREEN_PUBLIC_INDEXING_ENABLED=1` na imagem, entao cair
+ * no legado quando o nome novo esta definido-porem-vazio LIGARIA a indexacao
+ * contra a vontade explicita de quem setou o nome novo.
+ */
+export function isPublicIndexingEnabled(env: SiteUrlEnv = process.env): boolean {
+  const raw =
+    env.CINERIE_PUBLIC_INDEXING_ENABLED ?? env.THE_SCREEN_PUBLIC_INDEXING_ENABLED;
+  return parseBooleanEnvFlag(raw);
+}
+
+/**
  * Normaliza um origin publico seguro. Aceita apenas http/https e origin puro
  * (sem path, query, hash, usuario ou senha). Remove barra final via URL.origin.
  */
@@ -118,11 +157,7 @@ export function isOfficialSiteUrl(siteUrl: string): boolean {
 export function isOfficialIndexableEnvironment(
   env: SiteUrlEnv = process.env,
 ): boolean {
-  // Nome novo vence; legado como fallback (ver LEGACY_PUBLIC_INDEXING_ENABLED_ENV).
-  const indexingFlag = readTrimmed(
-    env.CINERIE_PUBLIC_INDEXING_ENABLED ?? env.THE_SCREEN_PUBLIC_INDEXING_ENABLED,
-  );
-  if (indexingFlag !== "1") return false;
+  if (!isPublicIndexingEnabled(env)) return false;
   if (configuredSiteUrl(env) !== OFFICIAL_SITE_URL) return false;
 
   const nodeEnv = readTrimmed(env.NODE_ENV)?.toLowerCase() ?? null;
@@ -132,6 +167,62 @@ export function isOfficialIndexableEnvironment(
   if (vercelEnv !== null && vercelEnv !== "production") return false;
 
   return true;
+}
+
+/** Forma de `robots` do Next para metadata de pagina. */
+export interface PageRobots {
+  readonly index: boolean;
+  readonly follow: boolean;
+}
+
+const NOINDEX: PageRobots = { index: false, follow: false };
+
+/**
+ * PONTO UNICO de decisao do `<meta robots>` de QUALQUER pagina publica.
+ *
+ * Incidente de producao (2026-07-16): `CINERIE_PUBLIC_INDEXING_ENABLED=false` e o
+ * HTML seguia emitindo `index, follow`. Causa: a flag global so era consultada
+ * por `app/robots.ts`; nenhuma pagina a lia. Todo `<meta robots>` saia direto de
+ * `page_indexability_decisions`, que nao conhece env — logo o kill switch nao
+ * tinha efeito nenhum sobre as paginas.
+ *
+ * Contrato (AND de dois gates, nesta ordem):
+ *  1. o AMBIENTE pode indexar? (`isOfficialIndexableEnvironment`: flag ligada +
+ *     origem oficial + NODE_ENV/VERCEL_ENV de producao). Se nao, `noindex,nofollow`
+ *     — sem excecao, sem fallback;
+ *  2. so entao a decisao da ENTIDADE decide (`page_indexability_decisions` via
+ *     `shouldIndex`). A flag global NUNCA torna uma entidade indexavel: ela so
+ *     pode derrubar.
+ *
+ * Usar o MESMO gate de `app/robots.ts` mantem `<meta robots>`, `robots.txt` e
+ * sitemap coerentes por construcao — eles nunca podem discordar.
+ *
+ * Travado por `tests/governance/no-raw-robots-metadata.test.ts`: nenhuma pagina
+ * pode montar `robots:` na mao.
+ */
+export function publicRobots(
+  shouldIndex: boolean,
+  env: SiteUrlEnv = process.env,
+): PageRobots {
+  if (!isOfficialIndexableEnvironment(env)) return NOINDEX;
+  return shouldIndex ? { index: true, follow: true } : NOINDEX;
+}
+
+/**
+ * Mesmo gate de `publicRobots`, para paginas que JA resolveram um `robots`
+ * completo a partir da decisao persistida (`seo.robots`).
+ *
+ * Preserva a nuance da decisao quando o ambiente pode indexar — inclusive
+ * `noindex,follow`, que `resolvePageSeo` emite para entidade sem decisao vigente
+ * (fail-closed, mas ainda seguindo links). Quando o ambiente NAO pode indexar,
+ * colapsa tudo para `noindex,nofollow`.
+ */
+export function gatePublicRobots(
+  robots: PageRobots,
+  env: SiteUrlEnv = process.env,
+): PageRobots {
+  if (!isOfficialIndexableEnvironment(env)) return NOINDEX;
+  return robots;
 }
 
 /** URL canonica absoluta da pagina de um filme. */

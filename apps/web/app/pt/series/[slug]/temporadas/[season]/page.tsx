@@ -5,7 +5,7 @@ import { serializeJsonLd } from '@screena/seo'
 
 import { PrevNextNav } from '../../../../../_components/prev-next-nav'
 import { parseRouteNumber, seasonPath } from '../../../../../../src/lib/routes'
-import { SERIES_INDEX_PATH, SITE_URL } from '../../../../../../src/lib/site'
+import { SERIES_INDEX_PATH, SITE_URL, gatePublicRobots } from '../../../../../../src/lib/site'
 import { getSeasonPageData } from '../../../../../../src/server/season-page'
 
 /**
@@ -41,7 +41,7 @@ export async function generateMetadata({
   const title = `${view.seriesTitle} — ${view.seasonTitle}`
   const metadata: Metadata = {
     title,
-    robots: seo.robots,
+    robots: gatePublicRobots(seo.robots),
     alternates: { canonical: canonicalUrl },
     openGraph: { title, url: canonicalUrl, type: 'website' },
   }

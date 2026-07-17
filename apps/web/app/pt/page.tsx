@@ -9,16 +9,7 @@ import {
   HOME_NEWS_CARD_LIMIT,
   takeSectionCards,
 } from '../../src/lib/portal-presenter'
-import {
-  canonicalPublicUrl,
-  EXPLORE_PATH,
-  HOME_PATH,
-  MOVIES_INDEX_PATH,
-  NEWS_INDEX_PATH,
-  PEOPLE_INDEX_PATH,
-  SERIES_INDEX_PATH,
-  SITE_URL,
-} from '../../src/lib/site'
+import { EXPLORE_PATH, HOME_PATH, MOVIES_INDEX_PATH, NEWS_INDEX_PATH, PEOPLE_INDEX_PATH, SERIES_INDEX_PATH, SITE_URL, canonicalPublicUrl, publicRobots } from '../../src/lib/site'
 import { getHomeCatalogData } from '../../src/server/home-catalog'
 import { getHomeHeroSlides } from '../../src/server/home-hero'
 import { getHomeUpcomingMovies } from '../../src/server/home-upcoming'
@@ -105,7 +96,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: { absolute: HOME_TITLE },
     description: HOME_DESCRIPTION,
-    robots: shouldIndex ? { index: true, follow: true } : { index: false, follow: false },
+    robots: publicRobots(shouldIndex),
     alternates: {
       canonical: homeCanonicalUrl,
       languages:
