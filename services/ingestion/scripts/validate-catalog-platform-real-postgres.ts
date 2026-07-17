@@ -538,6 +538,12 @@ async function runContractChecks(prisma: PrismaClient): Promise<void> {
     create: { key: 'imdb236', name: 'imdb236 (RapidAPI)', kind: 'ratings' },
     update: {},
   })
+  // Backend B: watch_availability.provider_api virou FK real -> api_providers.
+  await prisma.apiProvider.upsert({
+    where: { key: 'streaming_availability' },
+    create: { key: 'streaming_availability', name: 'Streaming Availability (RapidAPI)', kind: 'streaming' },
+    update: {},
+  })
 
   // --- catalogo minimo ------------------------------------------------------
   const movie = await prisma.movie.create({
@@ -593,29 +599,88 @@ async function runContractChecks(prisma: PrismaClient): Promise<void> {
   })
 
   // Ratings: liberado + BLOQUEADO por licenca (o segundo NAO pode aparecer).
+  // Nascem display_allowed=false (default seguro). O trigger fail-closed do
+  // Backend B (external_ratings_display_guard) rejeita insercao direta de
+  // display_allowed=true — ele bloqueou a primeira versao deste seed, exatamente
+  // como o guard da Fase 2 bloqueou o seed de watch_availability logo abaixo:
+  // governanca funcionando. A promocao do IMDb passa pela cadeia governada:
+  // licenca de rating + DataUsageDecision vigente + fingerprint (no banco) +
+  // revisor humano.
   await prisma.externalRating.createMany({
     data: [
-      { entityType: 'movie', entityId: movie.id, ratingSource: 'imdb', ratingLabel: 'IMDb Rating', metric: 'user_rating', ratingValue: 8.4, ratingScale: 10, providerApi: 'imdb236', licenseStatus: 'licensed', displayAllowed: true, attributionText: 'Nota fornecida por IMDb', attributionUrl: 'https://www.imdb.com/title/tt777001/' },
-      { entityType: 'movie', entityId: movie.id, ratingSource: 'rotten_tomatoes', ratingLabel: 'Tomatometer', metric: 'tomatometer', ratingValue: 95, ratingScale: 100, providerApi: 'imdb236', licenseStatus: 'unknown', displayAllowed: false },
+      { entityType: 'movie', entityId: movie.id, ratingSource: 'imdb', ratingLabel: 'IMDb Rating', metric: 'user_rating', scoreType: 'audience', ratingValue: 8.4, ratingScale: 10, providerApi: 'imdb236', licenseStatus: 'licensed', requiresAttribution: true, requiresLinkback: true, attributionText: 'Nota fornecida por IMDb', attributionUrl: 'https://www.imdb.com/title/tt777001/' },
+      { entityType: 'movie', entityId: movie.id, ratingSource: 'rotten_tomatoes', ratingLabel: 'Tomatometer', metric: 'tomatometer', scoreType: 'critics', ratingValue: 95, ratingScale: 100, providerApi: 'imdb236', licenseStatus: 'unknown' },
     ],
   })
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO source_licenses (source_key, content_type, rating_source_key, provider_key, license_status, display_allowed, score_allowed, requires_attribution, requires_linkback, attribution_text, is_current, decided_by, decided_at, policy_version, updated_at)
+     VALUES ('imdb','rating','imdb','imdb236','licensed',true,true,true,true,'Nota fornecida por IMDb',true,'validator-contract-check',now(),'contract/v1',now())`,
+  )
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO data_usage_decisions (source_license_id, use_case, stage, display_allowed, storage_allowed, attribution_required, linkback_required, policy_version, decided_by, reason, updated_at)
+     SELECT id, 'rating_display', 'approved_for_display', true, true, true, true, 'contract/v1', 'validator-contract-check', 'contrato de validacao', now()
+       FROM source_licenses WHERE source_key='imdb' AND content_type='rating' AND provider_key='imdb236' AND is_current`,
+  )
+  await prisma.$executeRawUnsafe(
+    `UPDATE external_ratings r
+        SET display_allowed = true,
+            reviewed_at = now(),
+            reviewed_by = 'validator-contract-check',
+            data_usage_decision_id = (
+              SELECT d.id FROM data_usage_decisions d
+                JOIN source_licenses l ON l.id = d.source_license_id
+               WHERE d.use_case = 'rating_display' AND d.is_current AND d.stage = 'approved_for_display'
+                 AND l.content_type = 'rating' AND l.rating_source_key = 'imdb' LIMIT 1),
+            approved_payload_hash = external_rating_payload_fingerprint_v1(
+              r.entity_type, r.entity_id, r.rating_source, r.metric, r.score_type, r.rating_label,
+              r.rating_value, r.rating_scale, r.rating_count, r.rating_url, r.provider_api,
+              r.license_status, r.requires_attribution, r.requires_linkback, r.attribution_text, r.attribution_url)
+      WHERE r.entity_id = $1 AND r.rating_source = 'imdb'`,
+    movie.id,
+  )
   // Ofertas nascem display_allowed=false (default seguro). A promocao passa
   // pelo MESMO caminho do CLI humano: UPDATE com o fingerprint computado NO
   // BANCO (watch_offer_payload_fingerprint_v1) + reviewed_at/reviewed_by —
   // o trigger fail-closed da Fase 2 rejeita qualquer atalho (ele bloqueou a
   // primeira versao deste seed, que tentava inserir display_allowed=true
   // direto: governanca funcionando).
+  //
+  // Backend B endureceu esse guard: exibir passou a exigir tambem provedor
+  // CANONICO (resolvido por alias, nunca pelo nome) + DataUsageDecision vigente
+  // de watch_offer_display cuja licenca seja a daquele provedor (source_key =
+  // slug). ExemploFlix ganha essa cadeia; PirataFlix fica sem alias/licenca e
+  // por isso permanece bloqueado (o resultado que este check ja provava).
   await prisma.watchAvailability.createMany({
     data: [
-      { entityType: 'movie', entityId: movie.id, countryCode: 'BR', providerName: 'ExemploFlix', offerType: 'subscription', deepLink: 'https://exemplo.test/contract', licenseStatus: 'licensed', attributionText: 'Oferta via ExemploFlix', attributionUrl: 'https://exemplo.test/contract' },
+      { entityType: 'movie', entityId: movie.id, countryCode: 'BR', providerKey: 'exemploflix', providerName: 'ExemploFlix', offerType: 'subscription', deepLink: 'https://exemplo.test/contract', providerApi: 'streaming_availability', licenseStatus: 'licensed', attributionText: 'Oferta via ExemploFlix', attributionUrl: 'https://exemplo.test/contract' },
       { entityType: 'movie', entityId: movie.id, countryCode: 'BR', providerName: 'PirataFlix', offerType: 'subscription', deepLink: 'https://pirata.test/contract' },
     ],
   })
+  await prisma.$executeRawUnsafe(`INSERT INTO watch_providers (slug, canonical_name, homepage_url, updated_at) VALUES ('exemploflix','ExemploFlix','https://exemplo.test/', now())`)
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO watch_provider_aliases (provider_id, provider_api, external_key, display_name, updated_at)
+     SELECT id, 'streaming_availability', 'exemploflix', 'ExemploFlix', now() FROM watch_providers WHERE slug='exemploflix'`,
+  )
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO source_licenses (source_key, content_type, provider_key, territory_code, license_status, display_allowed, requires_attribution, requires_linkback, attribution_text, is_current, decided_by, decided_at, policy_version, updated_at)
+     VALUES ('exemploflix','watch_availability','streaming_availability','BR','official',true,true,true,'Oferta via ExemploFlix',true,'validator-contract-check',now(),'contract/v1',now())`,
+  )
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO data_usage_decisions (source_license_id, use_case, territory, stage, display_allowed, storage_allowed, attribution_required, linkback_required, policy_version, decided_by, reason, updated_at)
+     SELECT id, 'watch_offer_display', 'BR', 'approved_for_display', true, true, true, true, 'contract/v1', 'validator-contract-check', 'contrato de validacao', now()
+       FROM source_licenses WHERE source_key='exemploflix' AND content_type='watch_availability' AND is_current`,
+  )
   await prisma.$executeRawUnsafe(
     `UPDATE watch_availability w
         SET display_allowed = true,
             reviewed_at = now(),
             reviewed_by = 'validator-contract-check',
+            watch_provider_id = (SELECT id FROM watch_providers WHERE slug = 'exemploflix'),
+            data_usage_decision_id = (
+              SELECT d.id FROM data_usage_decisions d
+                JOIN source_licenses l ON l.id = d.source_license_id
+               WHERE d.use_case = 'watch_offer_display' AND d.is_current AND d.stage = 'approved_for_display'
+                 AND l.content_type = 'watch_availability' AND l.source_key = 'exemploflix' LIMIT 1),
             approved_payload_hash = watch_offer_payload_fingerprint_v1(
               w.provider_api, w.external_offer_id, w.entity_type, w.entity_id,
               w.country_code, w.offer_type, w.provider_key, w.provider_name,
