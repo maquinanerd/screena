@@ -118,6 +118,10 @@ const EXPECTED_TABLES = [
   "keywords", "entity_keywords",
   "entity_alternative_titles",
   "discovery_snapshots", "discovery_snapshot_items",
+  // Backend B — eixo use_case da governanca, provedores canonicos de streaming
+  // e historico do Cinerie Score.
+  "data_usage_decisions", "watch_providers", "watch_provider_aliases",
+  "cinerie_score_calculations",
 ];
 const EXPECTED_ENUMS = [
   "EntityType", "ContentBlockType", "ContentSource", "ReviewStatus", "TranslationStatus",
@@ -129,6 +133,9 @@ const EXPECTED_ENUMS = [
   "SourceLicenseContentType",
   // Backend A — enums da fila duravel de jobs do catalogo.
   "CatalogJobType", "CatalogJobStatus",
+  // Backend B — ciclo de vida do dado externo, natureza da nota e estado do
+  // calculo do Cinerie Score.
+  "DataUsageStage", "RatingScoreType", "CinerieScoreStatus",
 ];
 const EXPECTED_SCALES: Record<string, number> = {
   imdb: 10, rotten_tomatoes: 100, metacritic: 100, letterboxd: 5, filmaffinity: 10,
@@ -150,22 +157,31 @@ async function runChecks(url: string): Promise<void> {
   }
 
   try {
-    // 3. 50 tabelas esperadas (38 anteriores + 12 do Backend A: colecoes,
-    // produtoras, redes, keywords, titulos alternativos e snapshots de descoberta)
+    // 3. Tabelas esperadas. A contagem sai de EXPECTED_TABLES.length — antes era
+    //    um literal (`=== 50`) duplicando a lista logo acima, e as duas metades
+    //    saiam de sincronia a cada migration: atualizar a lista e esquecer o
+    //    numero fazia o check falhar mesmo com o banco correto (e, pior, o
+    //    inverso passaria despercebido). Agora ha uma fonte so.
+    //    O check continua bilateral: `missing` pega tabela esperada que sumiu,
+    //    a contagem pega tabela criada sem passar por esta lista.
     const tables = (await q<{ table_name: string }>(
       "SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'",
     )).map((r) => r.table_name).filter((t) => t !== "_prisma_migrations");
     const missing = EXPECTED_TABLES.filter((t) => !tables.includes(t));
-    record(3, "50 tabelas esperadas", tables.length === 50 && missing.length === 0,
-      `encontradas ${tables.length}${missing.length ? ", faltando " + missing.join(",") : ""}`);
+    const unexpected = tables.filter((t) => !EXPECTED_TABLES.includes(t));
+    record(3, `${EXPECTED_TABLES.length} tabelas esperadas`,
+      tables.length === EXPECTED_TABLES.length && missing.length === 0 && unexpected.length === 0,
+      `encontradas ${tables.length}${missing.length ? ", faltando " + missing.join(",") : ""}${unexpected.length ? ", inesperadas " + unexpected.join(",") : ""}`);
 
-    // 4. 17 enums esperados (15 anteriores + CatalogJobType + CatalogJobStatus do Backend A)
+    // 4. Enums esperados (mesma disciplina de fonte unica do check 3).
     const enums = (await q<{ typname: string }>(
       "SELECT typname FROM pg_type WHERE typtype='e' AND typnamespace='public'::regnamespace",
     )).map((r) => r.typname);
     const missingEnums = EXPECTED_ENUMS.filter((e) => !enums.includes(e));
-    record(4, "17 enums esperados", enums.length === 17 && missingEnums.length === 0,
-      `encontrados ${enums.length}${missingEnums.length ? ", faltando " + missingEnums.join(",") : ""}`);
+    const unexpectedEnums = enums.filter((e) => !EXPECTED_ENUMS.includes(e));
+    record(4, `${EXPECTED_ENUMS.length} enums esperados`,
+      enums.length === EXPECTED_ENUMS.length && missingEnums.length === 0 && unexpectedEnums.length === 0,
+      `encontrados ${enums.length}${missingEnums.length ? ", faltando " + missingEnums.join(",") : ""}${unexpectedEnums.length ? ", inesperados " + unexpectedEnums.join(",") : ""}`);
 
     // 5/6/7. languages
     const langs = await q<{ code: string; is_published: boolean; index_default: boolean }>(
@@ -382,7 +398,18 @@ async function runChecks(url: string): Promise<void> {
     //     com governanca completa. Insere oferta totalmente governada
     //     (display=false), tenta ligar com hash ERRADO (barrado pelo trigger),
     //     depois liga com o fingerprint correto do payload (aceito).
-    await exec(`INSERT INTO watch_availability (entity_type, entity_id, country_code, provider_name, provider_key, offer_type, provider_api, license_status, requires_attribution, requires_linkback, attribution_text, attribution_url, reviewed_by, reviewed_at, updated_at) VALUES ('movie', ${movieId}, 'BR', 'Apple TV', 'apple_tv', 'buy', 'streaming_availability', 'official', true, true, 'Oferta via Apple TV', 'https://tv.apple.com/', 'revisor@screen', now(), now())`);
+    //
+    //     Backend B endureceu este caminho: alem do hash + revisor + licenca +
+    //     atribuicao, exibir passou a exigir (a) provedor CANONICO resolvido por
+    //     alias e (b) DataUsageDecision vigente para o uso. O setup abaixo monta
+    //     essa cadeia — ela e o caminho unico, nao um atalho de teste.
+    await exec(`INSERT INTO watch_providers (slug, canonical_name, homepage_url, updated_at) VALUES ('apple-tv', 'Apple TV', 'https://tv.apple.com/', now())`);
+    await exec(`INSERT INTO watch_provider_aliases (provider_id, provider_api, external_key, display_name, updated_at) SELECT id, 'streaming_availability', 'apple_tv', 'Apple TV', now() FROM watch_providers WHERE slug='apple-tv'`);
+    // Convencao: para content_type='watch_availability', source_licenses.source_key
+    // E o slug do watch_providers (o guard reconfere esse elo).
+    await exec(`INSERT INTO source_licenses (source_key, content_type, provider_key, territory_code, license_status, display_allowed, requires_attribution, requires_linkback, attribution_text, is_current, decided_by, decided_at, policy_version, updated_at) VALUES ('apple-tv', 'watch_availability', 'streaming_availability', 'BR', 'official', true, true, true, 'Oferta via Apple TV', true, 'revisor@screen', now(), 'validation/v1', now())`);
+    await exec(`INSERT INTO data_usage_decisions (source_license_id, use_case, territory, stage, display_allowed, storage_allowed, attribution_required, linkback_required, policy_version, decided_by, reason, updated_at) SELECT id, 'watch_offer_display', 'BR', 'approved_for_display', true, true, true, true, 'validation/v1', 'revisor@screen', 'cenario de validacao do trigger', now() FROM source_licenses WHERE source_key='apple-tv' AND content_type='watch_availability'`);
+    await exec(`INSERT INTO watch_availability (entity_type, entity_id, country_code, provider_name, provider_key, offer_type, provider_api, license_status, requires_attribution, requires_linkback, attribution_text, attribution_url, reviewed_by, reviewed_at, watch_provider_id, data_usage_decision_id, updated_at) VALUES ('movie', ${movieId}, 'BR', 'Apple TV', 'apple_tv', 'buy', 'streaming_availability', 'official', true, true, 'Oferta via Apple TV', 'https://tv.apple.com/', 'revisor@screen', now(), (SELECT id FROM watch_providers WHERE slug='apple-tv'), (SELECT id FROM data_usage_decisions WHERE use_case='watch_offer_display'), now())`);
     let wrongHashRejected = false;
     try {
       await exec(`UPDATE watch_availability SET display_allowed=true, approved_payload_hash='HASH_ERRADO' WHERE entity_id=${movieId} AND provider_key='apple_tv'`);

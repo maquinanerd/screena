@@ -111,8 +111,21 @@ async function main(): Promise<void> {
     // Referencia minima + um filme real (a FK de entities exige entidade real).
     await prisma.$executeRawUnsafe(`INSERT INTO languages (code, name_pt, name_en, is_published, index_default) VALUES ('pt-BR','Portugues','Portuguese',true,true)`)
     await prisma.$executeRawUnsafe(`INSERT INTO countries (code, name_pt, name_en) VALUES ('BR','Brasil','Brazil')`)
+    // provider_api virou FK real para api_providers (Backend B): fornecedor
+    // fantasma nao entra mais. O sync grava 'streaming_availability'.
+    await prisma.$executeRawUnsafe(`INSERT INTO api_providers (key, name, kind) VALUES ('streaming_availability','Streaming Availability (RapidAPI)','streaming')`)
     const movie = await prisma.$queryRawUnsafe<Array<{ id: bigint }>>(`INSERT INTO movies (tmdb_id, title_original, updated_at) VALUES (800001,'Store Movie',now()) RETURNING id`)
     const movieId = movie[0]!.id.toString()
+
+    // Cadeia de governanca do Backend B para a Netflix (o unico provedor com
+    // alias mapeado neste cenario). A oferta 'max' fica DELIBERADAMENTE sem
+    // alias, para provar que oferta de provedor nao-canonico nao promove.
+    // Convencao: source_licenses.source_key = watch_providers.slug quando
+    // content_type='watch_availability'.
+    await prisma.$executeRawUnsafe(`INSERT INTO watch_providers (slug, canonical_name, homepage_url, updated_at) VALUES ('netflix','Netflix','https://www.netflix.com/', now())`)
+    await prisma.$executeRawUnsafe(`INSERT INTO watch_provider_aliases (provider_id, provider_api, external_key, display_name, updated_at) SELECT id,'streaming_availability','netflix','Netflix', now() FROM watch_providers WHERE slug='netflix'`)
+    await prisma.$executeRawUnsafe(`INSERT INTO source_licenses (source_key, content_type, provider_key, territory_code, license_status, display_allowed, requires_attribution, requires_linkback, attribution_text, is_current, decided_by, decided_at, policy_version, updated_at) VALUES ('netflix','watch_availability','streaming_availability','BR','official',true,true,true,'Movie of the Night',true,'ana@screen',now(),'validation/v1',now())`)
+    await prisma.$executeRawUnsafe(`INSERT INTO data_usage_decisions (source_license_id, use_case, territory, stage, display_allowed, storage_allowed, attribution_required, linkback_required, policy_version, decided_by, reason, updated_at) SELECT id,'watch_offer_display','BR','approved_for_display',true,true,true,true,'validation/v1','ana@screen','cenario de validacao dos stores', now() FROM source_licenses WHERE source_key='netflix' AND content_type='watch_availability'`)
 
     const watchStore = createPrismaWatchStore(prisma as never)
     const reviewStore = createPrismaReviewStore(prisma as never)
@@ -185,6 +198,49 @@ async function main(): Promise<void> {
     let dbRejected = false
     try { await prisma.$executeRawUnsafe(`UPDATE watch_availability SET display_allowed=true, approved_payload_hash='HASH_FALSO', reviewed_at=now(), reviewed_by='x' WHERE id=${netflixId}`) } catch { dbRejected = true }
     record(8, 'banco rejeita display_allowed=true com hash invalido (trigger permanente)', dbRejected, `rejected=${dbRejected}`)
+
+    // --- Backend B ---
+
+    // 9. a promocao resolve o provedor CANONICO pelo alias e anexa a decisao de
+    //    uso vigente. Repromove a Netflix (foi revogada no check 6 pela mudanca
+    //    de payload) e confere os dois elos novos.
+    const repromoted = await reviewStore.promote([netflixId], 'ana@screen')
+    const netflixGov = (await q<{ display_allowed: boolean; watch_provider_id: bigint | null; data_usage_decision_id: bigint | null }>(
+      `SELECT display_allowed, watch_provider_id, data_usage_decision_id FROM watch_availability WHERE id=${netflixId}`,
+    ))[0]!
+    record(9, 'promocao resolve provedor canonico (alias) e anexa DataUsageDecision vigente',
+      repromoted.updated === 1 && netflixGov.display_allowed === true
+        && netflixGov.watch_provider_id !== null && netflixGov.data_usage_decision_id !== null,
+      `updated=${repromoted.updated}, display=${netflixGov.display_allowed}, provider=${netflixGov.watch_provider_id !== null}, decisao=${netflixGov.data_usage_decision_id !== null}`)
+
+    // 10. oferta de provedor SEM alias mapeado nao promove (fail-closed). A 'max'
+    //     nunca recebeu alias: mesmo com licenca/atribuicao completas ela nao pode
+    //     virar publica, porque a vitrine so nomeia provedor canonico conhecido.
+    const maxId = (await q<{ id: bigint }>(`SELECT id FROM watch_availability WHERE entity_id=${movieId} AND provider_key='max'`))[0]!.id.toString()
+    await prisma.$executeRawUnsafe(`UPDATE watch_availability SET license_status='official', attribution_text='Movie of the Night', attribution_url='https://motn/x' WHERE id=${maxId}`)
+    const maxPromotion = await reviewStore.promote([maxId], 'ana@screen')
+    const maxDisplay = (await q<{ display_allowed: boolean }>(`SELECT display_allowed FROM watch_availability WHERE id=${maxId}`))[0]!.display_allowed
+    record(10, 'oferta de provedor sem alias canonico nao promove (fail-closed)',
+      maxPromotion.updated === 0 && maxDisplay === false,
+      `updated=${maxPromotion.updated}, display=${maxDisplay}`)
+
+    // 11. REGRESSAO: mudanca de web_url revoga graciosamente, sem derrubar o sync.
+    //     O calculo de revogacao usava o web_url ANTIGO enquanto o SET gravava o
+    //     NOVO: o fingerprint batia com o hash aprovado, display ficava true, e o
+    //     TRIGGER — que recomputa com os valores novos — abortava o sync inteiro
+    //     com excecao. Este check falha (throw) se a regressao voltar.
+    let webUrlSyncThrew = false
+    try {
+      await watchStore.replaceSnapshot({
+        entityType: 'movie', entityId: movieId, countryCode: 'BR',
+        offers: [offer({ entityId: movieId, quality: '4k', webUrl: 'https://netflix/watch/novo' })],
+        fetchedAt: new Date('2026-07-15T14:00:00.000Z'), staleAfter: stale1,
+      } as never)
+    } catch { webUrlSyncThrew = true }
+    const afterWebUrl = (await q<{ display_allowed: boolean; web_url: string | null }>(`SELECT display_allowed, web_url FROM watch_availability WHERE id=${netflixId}`))[0]!
+    record(11, 'mudanca de web_url revoga a aprovacao no sync (sem derrubar o run)',
+      !webUrlSyncThrew && afterWebUrl.display_allowed === false && afterWebUrl.web_url === 'https://netflix/watch/novo',
+      `threw=${webUrlSyncThrew}, display=${afterWebUrl.display_allowed}, web_url=${afterWebUrl.web_url}`)
   } catch (e) {
     record(0, 'execucao', false, (e as Error).message.split('\n')[0])
   } finally {

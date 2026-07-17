@@ -1,0 +1,17 @@
+{
+  "name": "@screena/cinerie-score",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Engine PURO do Cinerie Score (namespace tecnico legado @screena/*): contratos, registro versionado de formulas e estado BLOCKED_BY_DECISION. NAO contem formula — a decisao de produto e humana e esta pendente.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "sideEffects": false,
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@screena/config": "workspace:*"
+  }
+}

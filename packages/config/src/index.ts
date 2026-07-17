@@ -8,3 +8,4 @@
 
 export * from "./invariants.js";
 export * from "./env.js";
+export * from "./external-intelligence.js";

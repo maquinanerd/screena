@@ -23,13 +23,17 @@
     "validate:tmdb-platform": "corepack pnpm --filter @screena/ingestion validate:tmdb-platform",
     "validate:catalog-platform-complete": "corepack pnpm --filter @screena/ingestion validate:catalog-platform-complete",
     "validate:external-intelligence-platform": "corepack pnpm --filter @screena/entity-writer validate:external",
+    "validate:external-intelligence-product": "corepack pnpm --filter @screena/ratings validate:product",
     "validate:news-pages": "corepack pnpm --filter @screena/web validate:news-pages",
     "validate:entity-indexes": "corepack pnpm --filter @screena/web validate:entity-indexes",
     "validate:movie-page": "corepack pnpm --filter @screena/web validate:movie-page",
     "validate:series-page": "corepack pnpm --filter @screena/web validate:series-page",
     "validate:person-page": "corepack pnpm --filter @screena/web validate:person-page",
     "validate:all": "corepack pnpm --filter @screena/web validate:all",
-    "catalog": "corepack pnpm --filter @screena/ingestion catalog"
+    "catalog": "corepack pnpm --filter @screena/ingestion catalog",
+    "ratings": "corepack pnpm --filter @screena/ratings ratings",
+    "legal": "corepack pnpm --filter @screena/legal legal",
+    "validate:source-authorization-and-attribution": "corepack pnpm --filter @screena/legal validate:source-authorization"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

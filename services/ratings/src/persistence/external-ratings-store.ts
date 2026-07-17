@@ -57,12 +57,30 @@ export function createPrismaExternalRatings(prisma: PrismaClient): ExternalRatin
           existing.ratingLabel === row.ratingLabel &&
           existing.ratingCount === row.ratingCount &&
           existing.ratingUrl === row.ratingUrl &&
-          existing.providerApi === row.providerApi
+          existing.providerApi === row.providerApi &&
+          existing.scoreType === row.scoreType
 
         if (unchanged) {
-          // Sem mudanca: nao reescreve, nao bumpa `updated_at`. O
-          // `providerPayloadHash` preservado aponta para o payload que de fato
-          // produziu o valor atual.
+          // Sem mudanca de CONTEUDO: nao reescreve a nota, nao bumpa
+          // `updated_at`. Mas o relogio de frescor PRECISA andar: `fetchedAt` e
+          // o "ultimo sync confiavel" que RATING_STALE_POLICY le — congela-lo
+          // faria a nota expirar da vitrine (expireAfterHours) mesmo
+          // re-confirmada toda semana (achado A3 da revisao adversarial).
+          // SQL bruto de proposito: prisma.update bumparia `updated_at`
+          // (@updatedAt e client-side). `fetched_at`/`stale_after` nao entram no
+          // fingerprint, entao o display guard nao e afetado numa linha exibida.
+          //
+          // Datas como ISO + `::timestamptz AT TIME ZONE 'UTC'`: as colunas sao
+          // timestamp SEM tz que armazenam UTC (convencao Prisma). Bindar Date
+          // direto num raw grava o horario LOCAL da sessao — em servidor fora de
+          // UTC o carimbo deslocaria pelo offset (o check 51 do validator pegou
+          // exatamente isso rodando em -03; o CI em UTC nunca veria).
+          await prisma.$executeRaw`
+            UPDATE "external_ratings"
+               SET "fetched_at" = ${row.fetchedAt.toISOString()}::timestamptz AT TIME ZONE 'UTC',
+                   "stale_after" = ${row.staleAfter === null ? null : row.staleAfter.toISOString()}::timestamptz AT TIME ZONE 'UTC'
+             WHERE "id" = ${existing.id}
+          `
           return { created: false, changed: false }
         }
 
@@ -74,12 +92,25 @@ export function createPrismaExternalRatings(prisma: PrismaClient): ExternalRatin
             ratingScale: row.ratingScale,
             ratingCount: row.ratingCount,
             ratingUrl: row.ratingUrl,
+            scoreType: row.scoreType,
             providerApi: row.providerApi,
             providerPayloadHash: row.providerPayloadHash,
             fetchedAt: row.fetchedAt,
+            staleAfter: row.staleAfter,
             // Fail-closed: uma atualizacao NUNCA promove exibicao.
+            //
+            // "Mudanca revoga" (Backend B): chegamos aqui porque a nota mudou.
+            // Alem de nao promover, DERRUBAMOS a exibicao e limpamos a
+            // aprovacao — a nota nova nunca herda a revisao da nota velha. Sem
+            // limpar `approvedPayloadHash`, o trigger recusaria este proprio
+            // UPDATE (hash != fingerprint novo) e o sync quebraria; com o
+            // display ja em false, o trigger nem checa, e a revogacao e limpa.
             displayAllowed: false,
             licenseStatus: 'unknown',
+            approvedPayloadHash: null,
+            reviewedAt: null,
+            reviewedBy: null,
+            dataUsageDecisionId: null,
           },
         })
         return { created: false, changed: true }
@@ -96,14 +127,22 @@ export function createPrismaExternalRatings(prisma: PrismaClient): ExternalRatin
           ratingScale: row.ratingScale,
           ratingCount: row.ratingCount,
           ratingUrl: row.ratingUrl,
+          scoreType: row.scoreType,
           providerApi: row.providerApi,
           providerPayloadHash: row.providerPayloadHash,
           fetchedAt: row.fetchedAt,
+          staleAfter: row.staleAfter,
           // Sem atribuicao confirmada, nao inventamos texto/link de credito.
           attributionText: null,
           attributionUrl: null,
           licenseStatus: 'unknown',
           displayAllowed: false,
+          // A cadeia de exibicao comeca vazia. Preenche-la e ato humano
+          // registrado (`pnpm ratings promote`), nunca efeito colateral de sync.
+          approvedPayloadHash: null,
+          reviewedAt: null,
+          reviewedBy: null,
+          dataUsageDecisionId: null,
         },
       })
       return { created: true, changed: true }

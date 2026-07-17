@@ -2,7 +2,7 @@
  * types.ts — Tipos do worker de ratings (Film/Show Ratings). Modulo PURO.
  */
 
-import type { RatingSource } from '@screena/config'
+import type { RatingScoreType, RatingSource } from '@screena/config'
 
 /** Entidades suportadas nesta fase (nunca pessoa/temporada/episodio). */
 export type RatingsEntityType = 'movie' | 'tv'
@@ -24,6 +24,12 @@ export interface RatingDraft {
   readonly ratingScale: number
   readonly ratingCount: number | null
   readonly ratingUrl: string | null
+  /**
+   * Natureza da nota (critics/audience/editorial). `null` quando a metrica nao
+   * permite afirmar — a linha entra no banco assim mesmo (auditavel), mas o
+   * trigger de exibicao a mantem fora da vitrine. Ver score-type.ts.
+   */
+  readonly scoreType: RatingScoreType | null
 }
 
 /**
@@ -90,4 +96,10 @@ export interface ExternalRatingRow extends RatingDraft {
   readonly providerApi: string
   readonly providerPayloadHash: string
   readonly fetchedAt: Date
+  /**
+   * Janela de re-sync derivada de RATING_STALE_POLICY (coleta +
+   * refreshAfterHours). `null` quando a fonte nao tem politica declarada — e
+   * nesse caso nao inventamos carimbo.
+   */
+  readonly staleAfter: Date | null
 }

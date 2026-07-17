@@ -153,6 +153,38 @@ enum ProviderKind {
   news
 }
 
+// Ciclo de vida de um dado externo, do byte cru ate a exibicao (Backend B).
+// Os quatro primeiros estagios descrevem o DADO (ainda nao ha decisao humana);
+// os tres ultimos SAO decisoes registradas. `revoked` e terminal para aquela
+// linha: reavaliar INSERE nova decisao (historico imutavel), nunca reabre a
+// antiga.
+enum DataUsageStage {
+  raw
+  recognized
+  normalized
+  license_pending
+  approved_for_internal_use
+  approved_for_display
+  revoked
+}
+
+// Natureza editorial da nota. Separar critics de audience e a invariante 1 em
+// outra roupa: Tomatometer (critica) e Popcornmeter (publico) sao metricas
+// OPOSTAS da MESMA fonte — nunca se fundem nem trocam de rotulo.
+enum RatingScoreType {
+  critics
+  audience
+  editorial
+}
+
+// Resultado de um calculo de Cinerie Score. `blocked_by_decision` e resultado
+// de PRIMEIRA CLASSE, nao erro: e o estado esperado enquanto a decisao de
+// produto (docs/product/cinerie-score-decision.md) nao existir.
+enum CinerieScoreStatus {
+  calculated
+  blocked_by_decision
+}
+
 // --- Raw sync TMDB (P0-00a): discriminador dedicado do payload bruto ---
 // Superset de EntityType + tipos de referencia TMDB que NAO sao entidades
 // renderizaveis do catalogo. NAO estende EntityType (contrato compartilhado).
@@ -231,8 +263,9 @@ model Country {
   nameEn    String   @map("name_en")
   createdAt DateTime @default(now()) @map("created_at")
 
-  watchAvailability WatchAvailability[]
-  sourceLicenses    SourceLicense[]
+  watchAvailability  WatchAvailability[]
+  sourceLicenses     SourceLicense[]
+  dataUsageDecisions DataUsageDecision[]
 
   @@map("countries")
 }
@@ -257,10 +290,12 @@ model ApiProvider {
   homepageUrl String?      @map("homepage_url")
   createdAt   DateTime     @default(now()) @map("created_at")
 
-  ratings        ExternalRating[]
-  syncLogs       ApiSyncLog[]
-  cacheEntries   ApiCache[]
-  sourceLicenses SourceLicense[]
+  ratings              ExternalRating[]
+  syncLogs             ApiSyncLog[]
+  cacheEntries         ApiCache[]
+  sourceLicenses       SourceLicense[]
+  watchProviderAliases WatchProviderAlias[]
+  watchOffers          WatchAvailability[]
 
   @@map("api_providers")
 }
@@ -311,6 +346,9 @@ model SourceLicense {
   territory    Country?        @relation(fields: [territoryCode], references: [code])
   supersedes   SourceLicense?  @relation("SourceLicenseHistory", fields: [supersedesId], references: [id])
   supersededBy SourceLicense[] @relation("SourceLicenseHistory")
+  // Decisoes de USO derivadas desta licenca. A licenca diz o que a fonte
+  // permite; a decisao diz para QUE USO isso vale (ver DataUsageDecision).
+  usageDecisions DataUsageDecision[]
 
   // Licenca VIGENTE unica por (source_key, content_type, provider, territorio)
   // via indice unico PARCIAL WHERE is_current (SQL bruto); historico livre.
@@ -322,6 +360,138 @@ model SourceLicense {
   @@index([isCurrent])
   @@index([supersedesId])
   @@map("source_licenses")
+}
+
+// DataUsageDecision — o eixo USE CASE da governanca de dados (Backend B).
+//
+// Por que existe, sendo que ja ha SourceLicense: `source_licenses` responde "o
+// que esta fonte permite para este content_type neste territorio". NAO responde
+// "para QUE USO", "pode ARMAZENAR?" nem "pode DERIVAR obra nova?". Esses tres
+// eixos sao exatamente o que separa guardar-para-auditoria de exibir-em-pagina
+// de derivar-um-Cinerie-Score. Por isso esta tabela e FILHA da licenca (FK
+// real), nao uma copia dela.
+//
+// Teto inviolavel (trigger `data_usage_decisions_guard`): uma decisao NUNCA
+// concede mais do que a licenca-mae vigente permite. Sem esse teto, o eixo
+// use_case seria uma porta dos fundos para lavar dado sem licenca — bastaria
+// criar uma decisao "approved_for_display" sobre uma licenca `unknown`.
+//
+// Escada de permissao (CHECKs no banco): display => storage; derivative =>
+// storage; display => stage=approved_for_display; revoked => nada permitido.
+model DataUsageDecision {
+  id              BigInt         @id @default(autoincrement())
+  sourceLicenseId BigInt         @map("source_license_id")
+  useCase         String         @map("use_case") // ver DATA_USAGE_CASES em @screena/config
+  territory       String? // FK -> countries.code; null = decisao global
+  stage           DataUsageStage @default(license_pending)
+  // Flags de uso. Todas fail-closed por default: nada nasce permitido.
+  displayAllowed      Boolean   @default(false) @map("display_allowed")
+  storageAllowed      Boolean   @default(false) @map("storage_allowed")
+  derivativeAllowed   Boolean   @default(false) @map("derivative_allowed")
+  attributionRequired Boolean   @default(true) @map("attribution_required")
+  linkbackRequired    Boolean   @default(true) @map("linkback_required")
+  validFrom           DateTime  @default(now()) @map("valid_from")
+  validUntil          DateTime? @map("valid_until")
+  policyVersion       String    @map("policy_version")
+  decidedBy           String    @map("decided_by") // identidade humana; nunca "agent"/"system"
+  reason              String // por que esta decisao existe (auditoria)
+  // Historico imutavel, mesmo padrao de SourceLicense/PageIndexabilityDecision.
+  supersedesId BigInt?  @map("supersedes_id")
+  isCurrent    Boolean  @default(true) @map("is_current")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  sourceLicense SourceLicense       @relation(fields: [sourceLicenseId], references: [id])
+  territoryRef  Country?            @relation(fields: [territory], references: [code])
+  supersedes    DataUsageDecision?  @relation("DataUsageDecisionHistory", fields: [supersedesId], references: [id])
+  supersededBy  DataUsageDecision[] @relation("DataUsageDecisionHistory")
+  ratings       ExternalRating[]
+  watchOffers   WatchAvailability[]
+
+  // Decisao VIGENTE unica por (licenca, uso, territorio) via indice unico
+  // PARCIAL WHERE is_current (SQL bruto na migration); historico livre.
+  @@index([sourceLicenseId])
+  @@index([useCase])
+  @@index([territory])
+  @@index([stage])
+  @@index([isCurrent])
+  @@index([supersedesId])
+  @@map("data_usage_decisions")
+}
+
+// WatchProvider — identidade CANONICA de uma plataforma de streaming.
+//
+// Nao confundir com ApiProvider (invariante 2): `api_providers` e o fornecedor
+// TECNICO que transportou o byte (ex.: streaming_availability/RapidAPI);
+// `watch_providers` e a plataforma que o usuario reconhece (ex.: Netflix). Antes
+// disto, `watch_availability.provider_name` era string crua do upstream —
+// "Netflix", "netflix" e "Netflix Brasil" viravam tres plataformas na vitrine.
+model WatchProvider {
+  id            BigInt   @id @default(autoincrement())
+  canonicalName String   @map("canonical_name")
+  slug          String   @unique // ^[a-z0-9]+(-[a-z0-9]+)*$ (CHECK no banco)
+  logoAssetId   String?  @map("logo_asset_id") // referencia opaca de asset; exibir logo exige logo_allowed na licenca
+  homepageUrl   String?  @map("homepage_url") // HTTPS obrigatorio (CHECK)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  aliases WatchProviderAlias[]
+  offers  WatchAvailability[]
+
+  @@map("watch_providers")
+}
+
+// WatchProviderAlias — como CADA fornecedor tecnico chama esse provedor.
+// O unique (providerApi, externalKey) e o que impede dois provedores canonicos
+// reivindicarem a mesma chave upstream.
+model WatchProviderAlias {
+  id          BigInt   @id @default(autoincrement())
+  providerId  BigInt   @map("provider_id")
+  providerApi String   @map("provider_api") // FK -> api_providers.key (fornecedor TECNICO)
+  externalKey String   @map("external_key") // chave crua do upstream (ex.: service.id)
+  displayName String   @map("display_name") // como o upstream exibe (auditoria/diagnostico)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  provider WatchProvider @relation(fields: [providerId], references: [id])
+  api      ApiProvider   @relation(fields: [providerApi], references: [key])
+
+  @@unique([providerApi, externalKey])
+  @@index([providerId])
+  @@map("watch_provider_aliases")
+}
+
+// CinerieScoreCalculation — historico versionado do Cinerie Score.
+//
+// ATENCAO: NAO ha formula decidida. Escala, fontes, pesos, votos minimos e
+// arredondamento sao decisao HUMANA pendente em
+// docs/product/cinerie-score-decision.md. Este model entrega o esqueleto
+// auditavel (historico + versao + hash das entradas + explicacao) e registra o
+// estado `blocked_by_decision` enquanto a decisao nao existir. O trigger
+// `cinerie_score_display_guard` impede preencher producao antes disso.
+//
+// "Screen Score" e o nome TECNICO legado das colunas em movies/tv_shows; o nome
+// PUBLICO e Cinerie Score e nunca aparece como "Screen Score" ao usuario.
+model CinerieScoreCalculation {
+  id            BigInt             @id @default(autoincrement())
+  entityType    EntityType         @map("entity_type")
+  entityId      BigInt             @map("entity_id")
+  status        CinerieScoreStatus
+  value         Decimal?           @db.Decimal(6, 3)
+  scale         Int?
+  version       String // versao da formula (ex.: "cinerie-score/v0-blocked")
+  inputsHash    String             @map("inputs_hash") // hash das notas de entrada; recalculo identico nao polui historico
+  explanation   Json? // por fonte: normalizado + peso (obrigatorio quando calculated)
+  blockedReason String?            @map("blocked_reason") // obrigatorio quando blocked_by_decision
+  calculatedAt  DateTime           @map("calculated_at")
+  createdAt     DateTime           @default(now()) @map("created_at")
+
+  @@unique([entityType, entityId, version, inputsHash])
+  @@index([entityType, entityId])
+  @@index([version])
+  @@index([status])
+  @@index([calculatedAt])
+  @@map("cinerie_score_calculations")
 }
 
 // ============================================================
@@ -739,14 +909,36 @@ model ExternalRating {
   createdAt           DateTime      @default(now()) @map("created_at")
   updatedAt           DateTime      @updatedAt @map("updated_at")
 
+  // --- Governanca de exibicao (Backend B) ---
+  // Ate aqui o fail-closed de ratings era SO aplicacao: o banco aceitava
+  // display_allowed=true sem revisor, sem hash e sem licenca. O default
+  // protegia o caminho feliz, nao o caminho errado. Os campos abaixo + os
+  // triggers `external_ratings_integrity_guard_trg` e
+  // `external_ratings_display_guard_trg` fecham isso.
+  scoreType           RatingScoreType? @map("score_type") // null = nao classificado => nunca exibivel
+  requiresAttribution Boolean          @default(true) @map("requires_attribution")
+  requiresLinkback    Boolean          @default(true) @map("requires_linkback")
+  reviewedAt          DateTime?        @map("reviewed_at")
+  reviewedBy          String?          @map("reviewed_by") // identidade humana; exigido para exibir
+  // Fingerprint APROVADO do payload (external_rating_payload_fingerprint_v1,
+  // computado no banco). Se a nota muda (valor, votos, atribuicao...), o hash
+  // deixa de bater e o trigger derruba a exibicao: "mudanca revoga".
+  approvedPayloadHash String?   @map("approved_payload_hash")
+  staleAfter          DateTime? @map("stale_after") // derivado de RATING_STALE_POLICY
+  dataUsageDecisionId BigInt?   @map("data_usage_decision_id")
+
   // Invariante 2 materializada: rating_source e provider_api -> tabelas DISTINTAS.
-  source   RatingSource @relation(fields: [ratingSource], references: [key])
-  provider ApiProvider  @relation(fields: [providerApi], references: [key])
+  source            RatingSource       @relation(fields: [ratingSource], references: [key])
+  provider          ApiProvider        @relation(fields: [providerApi], references: [key])
+  dataUsageDecision DataUsageDecision? @relation(fields: [dataUsageDecisionId], references: [id])
 
   @@unique([entityType, entityId, ratingSource, metric])
   @@index([entityType, entityId])
   @@index([ratingSource])
   @@index([providerApi])
+  @@index([scoreType])
+  @@index([staleAfter])
+  @@index([dataUsageDecisionId])
   @@map("external_ratings")
 }
 
@@ -802,7 +994,21 @@ model WatchAvailability {
   createdAt           DateTime      @default(now()) @map("created_at")
   updatedAt           DateTime      @updatedAt @map("updated_at")
 
-  country Country @relation(fields: [countryCode], references: [code])
+  // --- Backend B ---
+  // Provedor CANONICO resolvido via WatchProviderAlias(providerApi, providerKey).
+  // Nullable de proposito: uma oferta sem alias mapeado continua sendo ingerida
+  // e auditada — so nao pode ser exibida (o display guard exige este campo E
+  // reconfere o alias a cada escrita). NAO entra no fingerprint de payload v1:
+  // e campo DERIVADO da nossa tabela de aliases, nao do payload do upstream.
+  watchProviderId     BigInt? @map("watch_provider_id")
+  dataUsageDecisionId BigInt? @map("data_usage_decision_id")
+
+  country           Country            @relation(fields: [countryCode], references: [code])
+  watchProvider     WatchProvider?     @relation(fields: [watchProviderId], references: [id])
+  dataUsageDecision DataUsageDecision? @relation(fields: [dataUsageDecisionId], references: [id])
+  // provider_api passa a ser FK real: uma oferta de fornecedor fantasma nunca
+  // poderia ser auditada.
+  api ApiProvider? @relation(fields: [providerApi], references: [key])
 
   // Identidade da oferta = fingerprint canonico versionado `watch_offer_fingerprint(...)`
   // (external_offer_id quando presente; senao a tupla completa: provider tecnico,
@@ -813,6 +1019,8 @@ model WatchAvailability {
   @@index([countryCode])
   @@index([providerKey])
   @@index([externalOfferId])
+  @@index([watchProviderId])
+  @@index([dataUsageDecisionId])
   @@map("watch_availability")
 }
 

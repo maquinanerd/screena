@@ -24,6 +24,10 @@ export default defineConfig({
       '@screena/public-contracts': fileURLToPath(
         new URL('./packages/public-contracts/src/index.ts', import.meta.url),
       ),
+      '@screena/cinerie-score': fileURLToPath(
+        new URL('./packages/cinerie-score/src/index.ts', import.meta.url),
+      ),
+      '@screena/legal': fileURLToPath(new URL('./services/legal/src/index.ts', import.meta.url)),
       '@screena/tmdb-client': fileURLToPath(
         new URL('./api-clients/tmdb/src/index.ts', import.meta.url),
       ),

@@ -14,6 +14,11 @@
  */
 
 export * from './ports.js'
+export * from './score-type.js'
+export * from './metrics.js'
+export * from './cli/index.js'
+export * from './promotion/types.js'
+export * from './promotion/guardrails.js'
 export * from './film-show-ratings/types.js'
 export * from './film-show-ratings/args.js'
 export * from './film-show-ratings/gate.js'
