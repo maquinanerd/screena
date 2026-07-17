@@ -190,24 +190,61 @@ export function createPrismaReviewStore(prisma: PrismaClient): ReviewStorePort {
       // falha — fail-closed —, os demais seguem. A promocao grava, atomicamente,
       // approved_payload_hash = fingerprint atual do payload + reviewed_at +
       // reviewed_by; o trigger valida licenca/atribuicao/linkback.
+      //
+      // Backend B: o mesmo UPDATE resolve os dois elos novos, em SQL, para que
+      // nao exista janela entre "resolver" e "promover":
+      //  - `watch_provider_id` sai do ALIAS (provider_api, provider_key). Nao ha
+      //    fallback por nome: se o alias nao existe, o campo fica NULL e o
+      //    trigger recusa a promocao. Adivinhar o provedor pelo nome exibido e
+      //    exatamente o erro que a tabela de aliases existe para impedir.
+      //  - `data_usage_decision_id` sai da decisao VIGENTE para o uso, e so
+      //    aceita decisao cuja licenca seja a DAQUELE provedor canonico
+      //    (source_key = slug) e cujo territorio cubra o pais da oferta.
+      //    Decisao territorial vence a global (ORDER BY territory NOT NULL DESC).
       for (const id of ids) {
         try {
           const affected = await prisma.$executeRaw`
-            UPDATE "watch_availability"
+            UPDATE "watch_availability" w
             SET "display_allowed" = true,
                 "reviewed_at" = now(),
                 "reviewed_by" = ${who},
+                "watch_provider_id" = (
+                  SELECT a."provider_id"
+                    FROM "watch_provider_aliases" a
+                   WHERE a."provider_api" = w."provider_api"
+                     AND a."external_key" = w."provider_key"
+                ),
+                "data_usage_decision_id" = (
+                  SELECT d."id"
+                    FROM "data_usage_decisions" d
+                    JOIN "source_licenses" l ON l."id" = d."source_license_id"
+                    JOIN "watch_provider_aliases" a
+                      ON a."provider_api" = w."provider_api" AND a."external_key" = w."provider_key"
+                    JOIN "watch_providers" p ON p."id" = a."provider_id"
+                   WHERE d."use_case" = 'watch_offer_display'
+                     AND d."is_current"
+                     AND d."stage" = 'approved_for_display'
+                     AND d."display_allowed"
+                     AND d."valid_from" <= now()
+                     AND (d."valid_until" IS NULL OR d."valid_until" > now())
+                     AND (d."territory" IS NULL OR d."territory" = w."country_code")
+                     AND l."is_current"
+                     AND l."content_type" = 'watch_availability'
+                     AND l."source_key" = p."slug"
+                   ORDER BY (d."territory" IS NOT NULL) DESC, d."id" DESC
+                   LIMIT 1
+                ),
                 "approved_payload_hash" = watch_offer_payload_fingerprint_v1(
-                  "provider_api", "external_offer_id", "entity_type", "entity_id", "country_code",
-                  "offer_type", "provider_key", "provider_name", "package", "quality", "price",
-                  "currency", "deep_link", "web_url", "available_from", "available_until",
-                  "license_status", "requires_attribution", "requires_linkback",
-                  "attribution_text", "attribution_url"),
+                  w."provider_api", w."external_offer_id", w."entity_type", w."entity_id", w."country_code",
+                  w."offer_type", w."provider_key", w."provider_name", w."package", w."quality", w."price",
+                  w."currency", w."deep_link", w."web_url", w."available_from", w."available_until",
+                  w."license_status", w."requires_attribution", w."requires_linkback",
+                  w."attribution_text", w."attribution_url"),
                 "updated_at" = now()
-            WHERE "id" = ${BigInt(id)}
-              AND "provider_api" = ${STREAMING_AVAILABILITY_PROVIDER_API}
-              AND "country_code" = 'BR'
-              AND "display_allowed" = false
+            WHERE w."id" = ${BigInt(id)}
+              AND w."provider_api" = ${STREAMING_AVAILABILITY_PROVIDER_API}
+              AND w."country_code" = 'BR'
+              AND w."display_allowed" = false
           `
           updated += Number(affected)
         } catch {

@@ -44,12 +44,19 @@ export function createPrismaWatchStore(prisma: PrismaClient): WatchStorePort {
               "external_offer_id", "package", "offer_type", "deep_link", "web_url", "price", "currency", "quality",
               "available_from", "available_until", "fetched_at", "stale_after",
               "provider_api", "display_allowed", "updated_at"
+              , "watch_provider_id"
             ) VALUES (
               ${offer.entityType}::"EntityType", ${entityId}, ${offer.countryCode},
               ${offer.providerKey}, ${offer.providerName}, ${offer.externalOfferId}, ${offer.package}, ${offer.offerType}::"OfferType",
               ${offer.deepLink}, ${offer.webUrl}, ${offer.price}, ${offer.currency}, ${offer.quality},
               ${offer.availableFrom}, ${offer.availableUntil}, ${input.fetchedAt}, ${input.staleAfter},
               ${STREAMING_AVAILABILITY_PROVIDER_API}, false, now()
+              -- Provedor canonico resolvido pelo ALIAS, nunca adivinhado pelo
+              -- nome exibido. Sem alias mapeado fica NULL: a oferta e ingerida e
+              -- auditavel, mas o trigger nao deixa exibir.
+              , (SELECT a."provider_id" FROM "watch_provider_aliases" a
+                  WHERE a."provider_api" = ${STREAMING_AVAILABILITY_PROVIDER_API}
+                    AND a."external_key" = ${offer.providerKey})
             )
             ON CONFLICT (watch_offer_identity_key_v1(
               "provider_api", "external_offer_id", "entity_type", "entity_id", "country_code",
@@ -67,15 +74,26 @@ export function createPrismaWatchStore(prisma: PrismaClient): WatchStorePort {
               "available_until" = EXCLUDED."available_until",
               "fetched_at" = EXCLUDED."fetched_at",
               "stale_after" = EXCLUDED."stale_after",
+              "watch_provider_id" = EXCLUDED."watch_provider_id",
               "updated_at" = now(),
               "display_allowed" = (
                 "watch_availability"."display_allowed"
+                -- Alias sumiu/remapeado => nao ha provedor canonico => revoga.
+                -- Sem esta clausula o UPDATE manteria display=true com
+                -- watch_provider_id NULL e o TRIGGER derrubaria o sync inteiro
+                -- com excecao, em vez de revogar so esta oferta.
+                AND EXCLUDED."watch_provider_id" IS NOT NULL
                 AND "watch_availability"."approved_payload_hash" IS NOT DISTINCT FROM watch_offer_payload_fingerprint_v1(
                   EXCLUDED."provider_api", EXCLUDED."external_offer_id", EXCLUDED."entity_type",
                   EXCLUDED."entity_id", EXCLUDED."country_code", EXCLUDED."offer_type",
                   EXCLUDED."provider_key", EXCLUDED."provider_name", EXCLUDED."package",
                   EXCLUDED."quality", EXCLUDED."price", EXCLUDED."currency", EXCLUDED."deep_link",
-                  "watch_availability"."web_url", EXCLUDED."available_from", EXCLUDED."available_until",
+                  -- web_url usa EXCLUDED (valor NOVO), como todo campo de payload
+                  -- que o sync atualiza. Usava o valor ANTIGO: como o SET grava o
+                  -- novo, o fingerprint batia com o hash aprovado, display ficava
+                  -- true e o trigger — que recomputa com os valores NOVOS — abortava
+                  -- o sync com excecao em vez de revogar. Coberto por teste.
+                  EXCLUDED."web_url", EXCLUDED."available_from", EXCLUDED."available_until",
                   "watch_availability"."license_status", "watch_availability"."requires_attribution",
                   "watch_availability"."requires_linkback", "watch_availability"."attribution_text",
                   "watch_availability"."attribution_url"))
