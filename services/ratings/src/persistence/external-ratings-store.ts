@@ -61,9 +61,26 @@ export function createPrismaExternalRatings(prisma: PrismaClient): ExternalRatin
           existing.scoreType === row.scoreType
 
         if (unchanged) {
-          // Sem mudanca: nao reescreve, nao bumpa `updated_at`. O
-          // `providerPayloadHash` preservado aponta para o payload que de fato
-          // produziu o valor atual.
+          // Sem mudanca de CONTEUDO: nao reescreve a nota, nao bumpa
+          // `updated_at`. Mas o relogio de frescor PRECISA andar: `fetchedAt` e
+          // o "ultimo sync confiavel" que RATING_STALE_POLICY le — congela-lo
+          // faria a nota expirar da vitrine (expireAfterHours) mesmo
+          // re-confirmada toda semana (achado A3 da revisao adversarial).
+          // SQL bruto de proposito: prisma.update bumparia `updated_at`
+          // (@updatedAt e client-side). `fetched_at`/`stale_after` nao entram no
+          // fingerprint, entao o display guard nao e afetado numa linha exibida.
+          //
+          // Datas como ISO + `::timestamptz AT TIME ZONE 'UTC'`: as colunas sao
+          // timestamp SEM tz que armazenam UTC (convencao Prisma). Bindar Date
+          // direto num raw grava o horario LOCAL da sessao — em servidor fora de
+          // UTC o carimbo deslocaria pelo offset (o check 51 do validator pegou
+          // exatamente isso rodando em -03; o CI em UTC nunca veria).
+          await prisma.$executeRaw`
+            UPDATE "external_ratings"
+               SET "fetched_at" = ${row.fetchedAt.toISOString()}::timestamptz AT TIME ZONE 'UTC',
+                   "stale_after" = ${row.staleAfter === null ? null : row.staleAfter.toISOString()}::timestamptz AT TIME ZONE 'UTC'
+             WHERE "id" = ${existing.id}
+          `
           return { created: false, changed: false }
         }
 

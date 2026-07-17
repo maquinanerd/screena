@@ -231,6 +231,8 @@ export function createPrismaReviewStore(prisma: PrismaClient): ReviewStorePort {
                      AND l."is_current"
                      AND l."content_type" = 'watch_availability'
                      AND l."source_key" = p."slug"
+                     AND l."display_allowed"
+                     AND l."license_status" IN ('official', 'licensed', 'third_party')
                    ORDER BY (d."territory" IS NOT NULL) DESC, d."id" DESC
                    LIMIT 1
                 ),

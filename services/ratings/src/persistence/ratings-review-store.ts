@@ -96,12 +96,25 @@ function toCandidate(row: RawRow): RatingPromotionCandidate {
 }
 
 /**
+ * Territorio de exibicao do produto. O site publica pt-BR/Brasil (mesmo padrao
+ * do WATCH_COUNTRY do read path de streaming). Uma decisao de rating_display
+ * escopada a OUTRO territorio (ex.: US-only) nao autoriza exibicao aqui —
+ * sem este filtro, a subquery PREFERIA a decisao territorial de qualquer
+ * territorio e uma licenca US-only vazaria para o site BR (revisao adversarial
+ * da PR #74, achado A2).
+ */
+export const RATING_DISPLAY_TERRITORY = 'BR'
+
+/**
  * Subquery da decisao VIGENTE de `rating_display` para a fonte da nota.
  *
  * A decisao tem de pertencer a licenca DAQUELA fonte editorial: sem o
  * `l.rating_source_key = r.rating_source`, uma decisao aprovada para o
- * Metacritic autorizaria exibir IMDb. Decisao territorial vence a global
- * (ORDER BY territory NOT NULL DESC) — a mais especifica manda.
+ * Metacritic autorizaria exibir IMDb. So valem decisoes globais (territory
+ * NULL) ou do territorio de exibicao; entre as duas, a territorial (mais
+ * especifica) vence. A licenca-mae precisa estar vigente E permitir
+ * display+score — o guard do banco reconfere, mas filtrar aqui evita anexar
+ * uma decisao que o guard rejeitaria (diagnostico correto no dry-run).
  */
 const CURRENT_DECISION_SQL = `(
   SELECT d."id"
@@ -113,9 +126,13 @@ const CURRENT_DECISION_SQL = `(
      AND d."display_allowed"
      AND d."valid_from" <= now()
      AND (d."valid_until" IS NULL OR d."valid_until" > now())
+     AND (d."territory" IS NULL OR d."territory" = '${RATING_DISPLAY_TERRITORY}')
      AND l."is_current"
      AND l."content_type" = 'rating'
      AND l."rating_source_key" = r."rating_source"
+     AND l."display_allowed"
+     AND l."score_allowed"
+     AND l."license_status" IN ('official', 'licensed', 'third_party')
    ORDER BY (d."territory" IS NOT NULL) DESC, d."id" DESC
    LIMIT 1
 )`

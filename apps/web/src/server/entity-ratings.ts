@@ -22,7 +22,7 @@
  * decisao de exibir a nota na tela e uma mudanca visual separada.
  */
 
-import type { RatingSource } from "@screena/config";
+import { RATING_SOURCES, type RatingSource } from "@screena/config";
 import { getPrismaClient } from "@screena/db/server";
 import type {
   EntityRef,
@@ -43,8 +43,15 @@ const RATINGS_FETCH_LIMIT = 20;
 /** Caso de uso que autoriza exibir nota de terceiro. */
 const RATING_DISPLAY_USE_CASE = "rating_display";
 
-/** Linha crua projetada pela query. */
-interface RatingRow {
+/**
+ * Territorio de exibicao (pt-BR/Brasil, mesmo padrao do WATCH_COUNTRY do
+ * painel de streaming). Decisao escopada a outro territorio nao autoriza
+ * exibir aqui.
+ */
+const RATING_DISPLAY_TERRITORY = "BR";
+
+/** Linha crua projetada pela query (exportado para o teste puro do projetor). */
+export interface RatingRow {
   readonly ratingSource: string;
   readonly ratingLabel: string;
   readonly scoreType: string | null;
@@ -61,10 +68,26 @@ interface RatingRow {
     readonly isCurrent: boolean;
     readonly stage: string;
     readonly displayAllowed: boolean;
+    readonly territory: string | null;
     readonly validFrom: Date;
     readonly validUntil: Date | null;
+    // A LICENCA-MAE, via decisao. A decisao foi validada contra a licenca na
+    // ESCRITA; a licenca pode ter sido supersedida/bloqueada depois, e isso nao
+    // gera nenhum write na nota — so a leitura enxerga (achado A1 da revisao
+    // adversarial). rating_source_key confere que a licenca e DESTA fonte.
+    readonly sourceLicense: {
+      readonly isCurrent: boolean;
+      readonly licenseStatus: string;
+      readonly displayAllowed: boolean;
+      readonly scoreAllowed: boolean;
+      readonly contentType: string;
+      readonly ratingSourceKey: string | null;
+    };
   } | null;
 }
+
+/** `license_status` que permitem exibicao (espelha o trigger). */
+const DISPLAYABLE_LICENSE_STATUS: readonly string[] = ["official", "licensed", "third_party"];
 
 function toNumber(value: unknown): number | null {
   if (value === null || value === undefined) return null;
@@ -83,11 +106,26 @@ function decisionAuthorizesNow(row: RatingRow, now: Date): boolean {
   // Este e o caso que SO a leitura pega: a decisao venceu sozinha, sem ninguem
   // escrever nada na nota.
   if (decision.validUntil !== null && decision.validUntil.getTime() <= now.getTime()) return false;
+  // Decisao territorial so vale no territorio de exibicao deste site.
+  if (decision.territory !== null && decision.territory !== RATING_DISPLAY_TERRITORY) return false;
+
+  // A LICENCA-MAE continua sendo a autoridade: supersedida/bloqueada/sem
+  // permissao de score => a nota sai do ar AGORA, mesmo sem nenhum write na
+  // linha (o trigger e trava de escrita; isto e o relogio da leitura).
+  const license = decision.sourceLicense;
+  if (!license.isCurrent) return false;
+  if (!DISPLAYABLE_LICENSE_STATUS.includes(license.licenseStatus)) return false;
+  if (!license.displayAllowed || !license.scoreAllowed) return false;
+  if (license.contentType !== "rating" || license.ratingSourceKey !== row.ratingSource) return false;
   return true;
 }
 
 /** Projeta uma linha exibivel para o contrato publico, ou `null` se nao passa. */
-function toPublicRating(row: RatingRow, now: Date): PublicExternalRating | null {
+export function toPublicRating(row: RatingRow, now: Date): PublicExternalRating | null {
+  // O contrato publico promete `sourceKey: RatingSource` (uniao fechada). Uma
+  // 6a fonte adicionada a tabela rating_sources satisfaria FK e triggers, mas o
+  // cast viraria mentira de tipo — checar o pertencimento aqui em vez de `as`.
+  if (!(RATING_SOURCES as readonly string[]).includes(row.ratingSource)) return null;
   if (!decisionAuthorizesNow(row, now)) return null;
 
   const freshness = evaluateRatingFreshness({
@@ -154,7 +192,9 @@ export async function getRatingsForEntity(
       displayAllowed: true,
     },
     take: RATINGS_FETCH_LIMIT,
-    orderBy: { ratingSource: "asc" },
+    // Ordem TOTAL e estavel: duas metricas da mesma fonte (Tomatometer +
+    // Popcornmeter) nao podem flutuar entre renders/replicas.
+    orderBy: [{ ratingSource: "asc" }, { metric: "asc" }],
     select: {
       ratingSource: true,
       ratingLabel: true,
@@ -173,8 +213,19 @@ export async function getRatingsForEntity(
           isCurrent: true,
           stage: true,
           displayAllowed: true,
+          territory: true,
           validFrom: true,
           validUntil: true,
+          sourceLicense: {
+            select: {
+              isCurrent: true,
+              licenseStatus: true,
+              displayAllowed: true,
+              scoreAllowed: true,
+              contentType: true,
+              ratingSourceKey: true,
+            },
+          },
         },
       },
     },
