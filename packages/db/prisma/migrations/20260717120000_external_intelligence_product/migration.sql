@@ -140,7 +140,15 @@ ALTER TABLE "data_usage_decisions"
     CHECK ("derivative_allowed" = false OR "storage_allowed" = true),
   ADD CONSTRAINT "data_usage_decisions_revoked_allows_nothing"
     CHECK ("stage" <> 'revoked'
-           OR ("display_allowed" = false AND "storage_allowed" = false AND "derivative_allowed" = false));
+           OR ("display_allowed" = false AND "storage_allowed" = false AND "derivative_allowed" = false)),
+  -- raw/recognized/normalized descrevem o DADO CANDIDATO, nao uma decisao —
+  -- "uma decisao de que o dado e cru" e um estado impossivel. O enum
+  -- DataUsageStage permanece como vocabulario compartilhado do workflow; esta
+  -- TABELA so registra os quatro estados decisorios. Sem este CHECK, queries
+  -- operacionais por stage='license_pending' perderiam linhas estacionadas em
+  -- estados impossiveis. (Revisao adversarial da PR #74, achado A6/questao 6.2.)
+  ADD CONSTRAINT "data_usage_decisions_stage_is_decision"
+    CHECK ("stage" IN ('license_pending', 'approved_for_internal_use', 'approved_for_display', 'revoked'));
 
 CREATE INDEX "data_usage_decisions_source_license_id_idx" ON "data_usage_decisions"("source_license_id");
 CREATE INDEX "data_usage_decisions_use_case_idx" ON "data_usage_decisions"("use_case");
@@ -573,6 +581,30 @@ BEGIN
        OR license."rating_source_key" IS DISTINCT FROM NEW."rating_source" THEN
       RAISE EXCEPTION 'external_ratings fail-closed: decisao % nao pertence a licenca de rating da fonte %', decision."id", NEW."rating_source";
     END IF;
+
+    -- A LICENCA-MAE tem de continuar sendo a autoridade (revisao adversarial da
+    -- PR #74, achado A1): a decisao foi validada contra a licenca NO MOMENTO em
+    -- que foi escrita, mas a licenca pode ser SUPERSEDIDA depois — e o guard de
+    -- decisoes so dispara em escrita na decisao. Sem estes checks, uma licenca
+    -- revogada (v2 blocked, v1 is_current=false) deixaria a decisao antiga
+    -- "vigente" autorizando exibicao para sempre. license_status aqui e o da
+    -- LINHA DA LICENCA — nao o campo denormalizado da nota, que ja foi checado
+    -- acima e pode divergir da autoridade real.
+    IF NOT license."is_current" THEN
+      RAISE EXCEPTION 'external_ratings fail-closed: licenca % da decisao foi supersedida (is_current=false)', license."id";
+    END IF;
+    IF license."license_status" NOT IN ('official', 'licensed', 'third_party') THEN
+      RAISE EXCEPTION 'external_ratings fail-closed: licenca % com license_status % nao permite exibicao', license."id", license."license_status";
+    END IF;
+    IF NOT license."display_allowed" THEN
+      RAISE EXCEPTION 'external_ratings fail-closed: licenca % nao permite exibicao (display_allowed=false)', license."id";
+    END IF;
+    -- Exibir uma nota E exibir o NUMERO (regra de ratings §5: score_allowed=false
+    -- => nao exibir o numero). Ate aqui score_allowed nao era lido em lugar
+    -- nenhum do codigo de producao.
+    IF NOT license."score_allowed" THEN
+      RAISE EXCEPTION 'external_ratings fail-closed: licenca % nao permite exibir o numero da nota (score_allowed=false)', license."id";
+    END IF;
   END IF;
 
   RETURN NEW;
@@ -677,6 +709,19 @@ BEGIN
     IF license."source_key" IS DISTINCT FROM provider_slug THEN
       RAISE EXCEPTION 'watch_availability fail-closed: decisao % pertence a licenca de "%" mas a oferta e do provedor "%"', decision."id", license."source_key", COALESCE(provider_slug, '<desconhecido>');
     END IF;
+
+    -- A LICENCA-MAE tem de continuar sendo a autoridade (revisao adversarial da
+    -- PR #74, achado A1) — mesma razao do guard de ratings: licenca supersedida
+    -- ou bloqueada depois da decisao nao pode continuar validando exibicao.
+    IF NOT license."is_current" THEN
+      RAISE EXCEPTION 'watch_availability fail-closed: licenca % da decisao foi supersedida (is_current=false)', license."id";
+    END IF;
+    IF license."license_status" NOT IN ('official', 'licensed', 'third_party') THEN
+      RAISE EXCEPTION 'watch_availability fail-closed: licenca % com license_status % nao permite exibicao', license."id", license."license_status";
+    END IF;
+    IF NOT license."display_allowed" THEN
+      RAISE EXCEPTION 'watch_availability fail-closed: licenca % nao permite exibicao (display_allowed=false)', license."id";
+    END IF;
   END IF;
   RETURN NEW;
 END;
@@ -755,6 +800,16 @@ ALTER TABLE "cinerie_score_calculations"
     ),
   ADD CONSTRAINT "cinerie_score_calculations_value_in_scale"
     CHECK ("value" IS NULL OR ("scale" IS NOT NULL AND "value" >= 0 AND "value" <= "scale"));
+
+-- FK polimorfica composta para o registro `entities` (Fase 2): mesma disciplina
+-- de external_ratings/watch_availability — historico de score de entidade
+-- inexistente nao entra. A tabela nasce vazia e os triggers de sincronia de
+-- `entities` ja existem, entao o ADD CONSTRAINT simples e seguro (sem
+-- quarentena). (Revisao adversarial da PR #74, achado A8.)
+ALTER TABLE "cinerie_score_calculations"
+  ADD CONSTRAINT "cinerie_score_calculations_entity_fkey"
+    FOREIGN KEY ("entity_type", "entity_id") REFERENCES "entities"("entity_type", "entity_id")
+    ON DELETE RESTRICT ON UPDATE CASCADE;
 
 CREATE INDEX "cinerie_score_calculations_entity_idx"
   ON "cinerie_score_calculations"("entity_type", "entity_id");

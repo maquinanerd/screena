@@ -26,7 +26,7 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { cpSync, copyFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, copyFileSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import net from "node:net";
 import { tmpdir } from "node:os";
@@ -118,12 +118,27 @@ async function main(): Promise<void> {
     await pg.createDatabase("screena_upgrade");
     const env = { ...process.env, DATABASE_URL: url };
 
-    // --- diretorio prisma temporario SEM a Fase 2 (estado anterior) ---
+    // --- diretorio prisma temporario com SO as migrations ANTERIORES a Fase 2 ---
+    //
+    // Remover apenas a pasta da Fase 2 (comportamento antigo) deixava as
+    // migrations POSTERIORES (catalogo 20260716*, Backend B 20260717*) no
+    // PRIMEIRO deploy — aplicadas FORA DE ORDEM, antes da Fase 2 de que
+    // dependem. Nenhum banco real teria a 20260717 sem a 20260715; o cenario
+    // so passava porque, por acaso, nada posterior referenciava objetos da
+    // Fase 2 em DDL imediato. A FK de `cinerie_score_calculations` ->
+    // `entities` (revisao adversarial da PR #74, achado A8) expos o furo:
+    // `entities` nasce na Fase 2. Estado anterior = TUDO antes da Fase 2;
+    // upgrade = Fase 2 + posteriores, EM ORDEM (achado A10).
     const tempSchema = path.join(tempPrisma, "schema.prisma");
     const tempMig = path.join(tempPrisma, "migrations");
     copyFileSync(schemaPath, tempSchema);
     cpSync(migrationsDir, tempMig, { recursive: true });
-    rmSync(path.join(tempMig, PHASE2_DIR), { recursive: true, force: true });
+    const phase2AndLater = readdirSync(migrationsDir)
+      .filter((dir) => /^\d{14}_/.test(dir) && dir >= PHASE2_DIR)
+      .sort();
+    for (const dir of phase2AndLater) {
+      rmSync(path.join(tempMig, dir), { recursive: true, force: true });
+    }
 
     console.log("--- migrate deploy (estado ANTERIOR a Fase 2) ---");
     execFileSync(
@@ -224,11 +239,11 @@ async function main(): Promise<void> {
       );
       record(2, "dados legados sinteticos inseridos (estado anterior)", true, `movieId=${movieId}`);
 
-      // --- aplica a Fase 2 SOBRE o estado anterior + dados sinteticos ---
-      cpSync(path.join(migrationsDir, PHASE2_DIR), path.join(tempMig, PHASE2_DIR), {
-        recursive: true,
-      });
-      console.log("\n--- migrate deploy (Fase 2 SOBRE estado anterior) ---");
+      // --- aplica Fase 2 + POSTERIORES, em ordem, SOBRE o estado anterior ---
+      for (const dir of phase2AndLater) {
+        cpSync(path.join(migrationsDir, dir), path.join(tempMig, dir), { recursive: true });
+      }
+      console.log("\n--- migrate deploy (Fase 2 + posteriores SOBRE estado anterior) ---");
       execFileSync(
         "node",
         [prismaBin(), "migrate", "deploy", "--schema", tempSchema],
