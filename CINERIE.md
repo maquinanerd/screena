@@ -1,6 +1,6 @@
-# The Screen — Documentação do Projeto
+# Cinerie — Documentação do Projeto
 
-> **Screen** é uma plataforma global de entretenimento entity-first para filmes, séries, temporadas, episódios, pessoas, ratings externos, disponibilidade de streaming, reviews e notícias/editorial. O estado atual do repositório já tem uma fundação técnica avançada, mas ainda não é um produto completo de tracking, ratings e streaming.
+> **Cinerie** é uma plataforma global de entretenimento entity-first para filmes, séries, temporadas, episódios, pessoas, ratings externos, disponibilidade de streaming, reviews e notícias/editorial. O estado atual do repositório já tem uma fundação técnica avançada, mas ainda não é um produto completo de tracking, ratings e streaming.
 
 > **⚠️ Política atualizada (2026-07).** Trechos que citem o _gate anti-thin_ (≥ 2 blocos para indexar) ou "en/es nascem noindex" refletem a política antiga. Agora: indexação **total** (invariante 5 — `noindex` só em caso técnico; blocos = qualidade/ranqueamento) e en/es publicam via `PUBLISHED_LOCALES` (invariante 7). Fonte viva: [`CLAUDE.md`](./CLAUDE.md) + [`.claude/rules/`](./.claude/rules).
 
@@ -8,9 +8,9 @@
 
 ## Visão Geral do Produto
 
-O nome público principal do produto é **Screen**, no domínio canônico **https://thescreen.media**. O nome **The Screen** aparece neste documento como referência expandida/histórica ao projeto; a marca pública preferencial continua sendo **Screen**. `Screena` permanece como namespace técnico/legado interno em pacotes, variáveis e scripts.
+O nome público principal do produto é **Cinerie**, no domínio canônico **https://cinerie.com**. O nome **Cinerie** aparece neste documento como referência expandida/histórica ao projeto; a marca pública preferencial continua sendo **Cinerie**. `Screena` permanece como namespace técnico/legado interno em pacotes, variáveis e scripts.
 
-O projeto é uma base global de entretenimento **entity-first**. A entidade é o centro da arquitetura: filmes, séries, temporadas, episódios e pessoas são páginas evergreen; notícias e editoriais funcionam como camada de frescor e contexto. A camada editorial é própria da Screen: APIs externas fornecem dados estruturados, mas não viram voz editorial.
+O projeto é uma base global de entretenimento **entity-first**. A entidade é o centro da arquitetura: filmes, séries, temporadas, episódios e pessoas são páginas evergreen; notícias e editoriais funcionam como camada de frescor e contexto. A camada editorial é própria da Cinerie: APIs externas fornecem dados estruturados, mas não viram voz editorial.
 
 A inspiração de produto combina padrões de bases como IMDb, Letterboxd, TV Time, Rotten Tomatoes e Banco de Séries, mas o repositório atual não implementa todos esses módulos. O que existe hoje é a vertical slice técnica: ingestão TMDB, banco PostgreSQL via Prisma, páginas públicas entity-first em pt-BR, admin editorial controlado, Entity Writer offline e testes de invariantes.
 
@@ -40,7 +40,7 @@ Não há evidência de um template único como Replit, artifacts-monorepo ou boi
 
 ## Base Principal Escolhida
 
-A base principal do The Screen é o repositório atual em **Next.js App Router + Prisma + PostgreSQL + serviços offline em TypeScript**.
+A base principal do Cinerie é o repositório atual em **Next.js App Router + Prisma + PostgreSQL + serviços offline em TypeScript**.
 
 O projeto Replit/artifacts-monorepo deve ser usado apenas como referência de funcionalidades de produto, não como base arquitetural principal. Ele é útil para observar fluxos app-like como busca, watchlist, perfil, tracking por sessão e ratings de usuário, mas não é o destino técnico do produto.
 
@@ -115,7 +115,7 @@ Diretórios principais:
 - `.claude/`: regras, agentes e skills locais que reforçam invariantes do projeto.
 - `.github/`: workflow de CI para typecheck, lint, testes, auditorias e build.
 - `api-clients/`: clientes e contratos de integrações externas. O cliente TMDB está implementado; outros diretórios são documentação/planejamento.
-- `apps/web/`: site público Screen, com rotas públicas em pt-BR.
+- `apps/web/`: site público Cinerie, com rotas públicas em pt-BR.
 - `apps/admin/`: painel editorial interno com leitura, diagnóstico e ações editoriais limitadas por flag.
 - `database/`: documentação histórica/explicativa de schema; a fonte executável é o Prisma em `packages/db`.
 - `docs/`: documentação técnica de fontes, deploy, Entity Writer, SEO programático e planos de fases.
@@ -370,7 +370,7 @@ Todas as páginas do admin são marcadas como `noindex` no layout e protegidas p
 
 | Componente | Função |
 |---|---|
-| `SiteHeader` | Cabeçalho público com logo local Screen e navegação para Filmes, Séries, Pessoas, Notícias e Explorar. |
+| `SiteHeader` | Cabeçalho público com logo local Cinerie e navegação para Filmes, Séries, Pessoas, Notícias e Explorar. |
 | `EntityCardLink` | Card de entidade com imagem segura/local, badge textual de tipo e link canônico. |
 | `EntityIndex` | Componente de listagem para índices de filmes, séries e pessoas. |
 | `NewsCard` | Card de notícia/editorial. |
@@ -405,9 +405,9 @@ Não há componentes de tracking, botões de watchlist, rating display público,
 
 ### Identidade Visual
 
-- **Nome público principal**: Screen.
-- **Referência expandida/histórica**: The Screen.
-- **Domínio canônico**: https://thescreen.media.
+- **Nome público principal**: Cinerie.
+- **Referência expandida/histórica**: Cinerie.
+- **Domínio canônico**: https://cinerie.com.
 - **Namespace técnico/legado**: `Screena`, `@screena/*`, `--screena-*`.
 - **Tom visual atual**: editorial, limpo, cinematográfico e predominantemente claro no app público atual.
 - **Assets de marca**: SVGs locais em `apps/web/public/brand/`.
@@ -466,7 +466,7 @@ O layout público usa containers centralizados, superfícies claras, cards com b
 
 Regras sustentadas por `AGENTS.md`, `CLAUDE.md`, `.claude/rules/` e implementação atual:
 
-- A marca pública deve ser Screen.
+- A marca pública deve ser Cinerie.
 - `screena.media` é legado histórico e não deve aparecer como domínio canônico público ativo.
 - The Nerd News é legado antigo e não deve voltar como identidade do produto.
 - Filmes usam acento vermelho `--screena-movie-red`.
@@ -522,13 +522,13 @@ Não há integração implementada identificada com YouTube trailers, WordPress,
 
 O SEO atual é parte central da arquitetura e aparece em código, pacotes e testes.
 
-- **Domínio canônico**: `https://thescreen.media`, definido em helpers do app web e `.env.example`.
+- **Domínio canônico**: `https://cinerie.com`, definido em helpers do app web e `.env.example`.
 - **Idioma MVP**: `pt-BR`; `en`/`es` não devem indexar sem revisão humana.
 - **Slugs**: model `Slug`, helpers de rota em `apps/web/src/lib/site.ts`, slugs canônicos por idioma.
 - **Schema.org**: páginas de filme, série, pessoa e notícia geram dados estruturados adequados (`Movie`, `TVSeries`, `Person`, `NewsArticle`) com breadcrumbs.
 - **Sitemap**: `apps/web/app/sitemap.ts` usa dados locais e fallback estático.
 - **Robots**: `apps/web/app/robots.ts` permite público e bloqueia `/api/`, `/dev/` e `/admin/`.
-- **Canonical**: helpers de canonical URL usam o domínio `thescreen.media`.
+- **Canonical**: helpers de canonical URL usam o domínio `cinerie.com`.
 - **Anti-thin**: `packages/seo` e presenters aplicam gates para `noindex` quando a página não tem valor próprio suficiente.
 - **Render puro**: páginas públicas indexáveis não chamam TMDB, ratings provider ou Gemini no caminho de render.
 - **Notícias vs evergreen**: notícias entram como camada editorial/frescor; entidades permanecem como páginas centrais.
@@ -572,7 +572,7 @@ Regras críticas:
 
 - Sitemap em `apps/web/app/sitemap.ts`.
 - Robots em `apps/web/app/robots.ts`.
-- Canonical baseado em `https://thescreen.media`.
+- Canonical baseado em `https://cinerie.com`.
 - Breadcrumbs nas páginas de entidade/notícia.
 - Schema.org nas páginas principais.
 - Anti-thin gates em pacote/presenters.
@@ -658,7 +658,7 @@ O projeto já tem fundação técnica forte, mas ainda faltam features visíveis
 
 ## O Que Aproveitar do Projeto Replit
 
-O projeto Replit não é a base principal, mas contém boas referências de funcionalidades que devem inspirar o roadmap do The Screen.
+O projeto Replit não é a base principal, mas contém boas referências de funcionalidades que devem inspirar o roadmap do Cinerie.
 
 Aproveitar como referência:
 
@@ -699,7 +699,7 @@ As funcionalidades boas do Replit devem ser reimplementadas no repositório prin
 9. **Admin com escrita estreita**: ações editoriais existem, mas são limitadas por flag e só alteram status permitidos.
 10. **Monorepo com pacotes puros**: regras de SEO, schemas, tokens e tipos são extraídos para pacotes testáveis.
 11. **pt-BR primeiro**: outros idiomas existem como preparação, não como publicação automática.
-12. **Screena como legado técnico**: pacotes ainda usam `@screena/*`, mas a marca pública deve ser Screen.
+12. **Screena como legado técnico**: pacotes ainda usam `@screena/*`, mas a marca pública deve ser Cinerie.
 
 ---
 
@@ -780,7 +780,7 @@ Variáveis documentadas em `.env.example`:
 |---|---|---|
 | `POSTGRES_PASSWORD` | Senha do Postgres local/docker | Sim para Postgres local |
 | `DATABASE_URL` | URL de conexão Prisma/PostgreSQL | Sim para banco real |
-| `THE_SCREEN_PUBLIC_SITE_URL` | URL pública canônica da Screen | Sim para produção |
+| `THE_SCREEN_PUBLIC_SITE_URL` | URL pública canônica da Cinerie | Sim para produção |
 | `SCREENA_PUBLIC_SITE_URL` | Legado comentado para migração | Não usar como canônico |
 | `TMDB_READ_ACCESS_TOKEN` | Token TMDB v4 | Sim para ingestão TMDB real |
 | `TMDB_API_KEY` | Chave TMDB v3 alternativa | Alternativa ao token v4 |
@@ -956,13 +956,13 @@ Não migrar para o projeto Replit.
 
 O projeto Replit deve ser usado como referência de produto e UX para funcionalidades interativas, principalmente busca, watchlist, perfil, tracking e ratings de usuário.
 
-A base Next.js + Prisma + PostgreSQL deve continuar sendo a fundação do The Screen, porque ela favorece SEO, páginas evergreen, render indexável, ingestão offline, admin editorial e crescimento programático.
+A base Next.js + Prisma + PostgreSQL deve continuar sendo a fundação do Cinerie, porque ela favorece SEO, páginas evergreen, render indexável, ingestão offline, admin editorial e crescimento programático.
 
 ---
 
 ## Resumo Executivo Final
 
-O The Screen está no caminho técnico correto.
+O Cinerie está no caminho técnico correto.
 
 A arquitetura atual é mais forte que a versão Replit para o objetivo principal do produto: construir uma plataforma entity-first, indexável, editorial e escalável para entretenimento.
 

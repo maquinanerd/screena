@@ -20,7 +20,7 @@ import { getMovieIndexData } from '../../../src/server/entity-indexes'
 export const dynamic = 'force-dynamic'
 
 const TITLE = 'Filmes'
-const DESCRIPTION = 'Explore os filmes catalogados na Screen, com páginas editoriais em português.'
+const DESCRIPTION = 'Explore os filmes catalogados na Cinerie, com páginas editoriais em português.'
 
 export async function generateMetadata(): Promise<Metadata> {
   const { indexability, canonicalUrl } = await getMovieIndexData()

@@ -50,7 +50,7 @@ renderiza (ratings/streaming ainda nao sao feature publica).
 
 | Tipo | Papel |
 | --- | --- |
-| `EntityCard` | cartao reutilizavel; `screenScore` e a nota PROPRIA do Screen (escala 5), nunca de terceiro |
+| `EntityCard` | cartao reutilizavel; `screenScore` e a nota PROPRIA da Cinerie (escala 5), nunca de terceiro |
 | `HomePayload` | `{ locale, hero[], trending[], upcoming[] }` |
 | `DiscoveryPayload` | projecao de um snapshot de descoberta (trending/popular/...) |
 

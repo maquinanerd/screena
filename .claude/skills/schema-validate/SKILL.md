@@ -1,7 +1,7 @@
 ---
 name: schema-validate
 description: >-
-  Valida o JSON-LD (Schema.org) de uma pagina do Screen por tipo de entidade:
+  Valida o JSON-LD (Schema.org) de uma pagina da Cinerie por tipo de entidade:
   Movie, TVSeries, TVSeason, TVEpisode, Person, NewsArticle, BreadcrumbList,
   FAQPage, Review e AggregateRating. Garante que o tipo corresponde a rota, que
   `AggregateRating` nunca finge nota propria (sempre atribuido a uma fonte real
@@ -13,7 +13,7 @@ description: >-
 
 # Skill: schema-validate — Validacao de JSON-LD por tipo de entidade
 
-Esta skill valida o **structured data (JSON-LD)** de uma pagina do Screen
+Esta skill valida o **structured data (JSON-LD)** de uma pagina da Cinerie
 contra o tipo de entidade correto e contra as regras de atribuicao de ratings.
 O objetivo e impedir dois erros graves: **tipo de schema errado** e
 **`AggregateRating` fingindo nota propria** / atribuicao perdida.
@@ -66,7 +66,7 @@ Complementos (condicionais):
 
 - `BreadcrumbList` — em **todas** as paginas principais.
 - `FAQPage` — **somente** se houver FAQ visivel na pagina.
-- `Review` — apenas para **review propria** do Screen; nao emitir enquanto
+- `Review` — apenas para **review propria** da Cinerie; nao emitir enquanto
   reviews proprias estiverem inativas como produto.
 - `AggregateRating` — **somente quando permitido e atribuido** a sua fonte.
 
@@ -101,8 +101,8 @@ Complementos (condicionais):
 
 ### 4. Review (so review propria)
 
-- `Review` apenas quando o Screen tem **review propria** sobre a entidade.
-- `author` e o Screen (ou o autor editorial real), nunca uma fonte de terceiro.
+- `Review` apenas quando o Cinerie tem **review propria** sobre a entidade.
+- `author` e o Cinerie (ou o autor editorial real), nunca uma fonte de terceiro.
 - Review propria usa `Review` — **nunca** se disfarca de `AggregateRating` de
   terceiro.
 
@@ -118,7 +118,7 @@ Complementos (condicionais):
 
 Proibido (cada um e falha):
 
-- **`AggregateRating` fingindo nota propria.** Screen nao publica nota
+- **`AggregateRating` fingindo nota propria.** Cinerie nao publica nota
   agregada propria como se fosse autoral.
 - Misturar notas de **fontes diferentes** em um unico `AggregateRating` (cada
   agregado pertence a uma fonte; IMDb != Rotten Tomatoes).
@@ -172,7 +172,7 @@ Checklist resumido:
 - [ ] `@type` principal correto para a rota.
 - [ ] `BreadcrumbList` presente e coerente.
 - [ ] `FAQPage` apenas com FAQ visivel.
-- [ ] `Review` apenas para review propria do Screen.
+- [ ] `Review` apenas para review propria da Cinerie.
 - [ ] `AggregateRating` so permitido e atribuido; nunca nota propria fingida.
 - [ ] Atribuicao preservada: fonte, escala, url e data.
 - [ ] IMDb e Rotten Tomatoes nunca misturados; `provider_api` != `rating_source`.

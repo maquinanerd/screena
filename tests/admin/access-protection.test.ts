@@ -480,14 +480,14 @@ describe("redactAdminAccessConfigForDisplay — rotulos para a pagina", () => {
 /* ------------------------------------------------------------------ */
 
 describe("desafio 401: WWW-Authenticate + no-store", () => {
-  it('WWW_AUTHENTICATE_VALUE e Basic realm="Screen Admin"', () => {
-    expect(ADMIN_BASIC_AUTH_REALM).toBe("Screen Admin");
-    expect(WWW_AUTHENTICATE_VALUE).toBe('Basic realm="Screen Admin"');
+  it('WWW_AUTHENTICATE_VALUE e Basic realm="Cinerie Admin"', () => {
+    expect(ADMIN_BASIC_AUTH_REALM).toBe("Cinerie Admin");
+    expect(WWW_AUTHENTICATE_VALUE).toBe('Basic realm="Cinerie Admin"');
   });
 
   it("buildUnauthorizedHeaders emite o desafio Basic e no-store, sem credencial", () => {
     const headers = buildUnauthorizedHeaders();
-    expect(headers["WWW-Authenticate"]).toBe('Basic realm="Screen Admin"');
+    expect(headers["WWW-Authenticate"]).toBe('Basic realm="Cinerie Admin"');
     expect(headers["Cache-Control"]).toBe("no-store");
     const json = JSON.stringify(headers);
     expect(json).not.toContain(PASS);

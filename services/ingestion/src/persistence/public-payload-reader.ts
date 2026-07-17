@@ -115,7 +115,7 @@ export function createPublicPayloadReader(
   const siteOrigin = (
     options.siteOrigin ??
     process.env.THE_SCREEN_PUBLIC_SITE_URL ??
-    'https://thescreen.media'
+    'https://cinerie.com'
   ).replace(/\/$/, '')
   const locale = options.locale ?? 'pt-BR'
   const now = options.now ?? (() => new Date())

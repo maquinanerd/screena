@@ -1,5 +1,5 @@
 /**
- * @screena/public-contracts — Contratos publicos serializaveis do Screen.
+ * @screena/public-contracts — Contratos publicos serializaveis da Cinerie.
  *
  * A fronteira tipada entre os getters server-only (que leem o PostgreSQL) e o
  * render/consumidores. Tipos + validadores PUROS (sem zod, sem Prisma). Importe

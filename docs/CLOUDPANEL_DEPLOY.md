@@ -1,14 +1,14 @@
-# CLOUDPANEL_DEPLOY — Deploy do Screen em VPS com CloudPanel
+# CLOUDPANEL_DEPLOY — Deploy da Cinerie em VPS com CloudPanel
 
-> Documento operacional de deploy. Descreve como colocar o Screen no ar em
-> um VPS gerenciado pelo CloudPanel: site Node.js (`thescreen.media`),
+> Documento operacional de deploy. Descreve como colocar o Cinerie no ar em
+> um VPS gerenciado pelo CloudPanel: site Node.js (`cinerie.com`),
 > PostgreSQL, Redis opcional, servicos offline via `systemd`, proxy reverso
 > Nginx e SSL do CloudPanel. Em caso de conflito entre este documento e a
 > realidade do servidor, atualize este documento ou corrija o servidor —
 > nunca deixe os dois divergentes em silencio.
 
 > **Estado atual:** este guia e procedimento de referencia para deploy publico
-> do Screen em `https://thescreen.media`. Os comandos continuam
+> da Cinerie em `https://cinerie.com`. Os comandos continuam
 > ilustrativos e nao devem ser executados automaticamente por nenhum agente.
 > Nomes antigos `screena-*` podem aparecer como legado tecnico interno, mas nao
 > representam a marca publica nem o dominio canonico.
@@ -33,7 +33,7 @@ Invariantes reforcados por este documento:
                               |
                    +----------v-----------+
                    |   Nginx (CloudPanel) |  proxy reverso + SSL
-                   |   thescreen.media    |  (Let's Encrypt)
+                   |   cinerie.com    |  (Let's Encrypt)
                    +----------+-----------+
                               | http://127.0.0.1:3000
                    +----------v-----------+
@@ -79,14 +79,14 @@ Pontos inegociaveis desta topologia:
 
 | Componente | Papel | Como roda | Exposicao |
 | --- | --- | --- | --- |
-| **Site Node.js** | App Next.js (`@screena/web`), serve `thescreen.media` | Node 22, porta interna `3000`, via PM2 ou `systemd` | Interno (`127.0.0.1:3000`), so o Nginx alcanca |
+| **Site Node.js** | App Next.js (`@screena/web`), serve `cinerie.com` | Node 22, porta interna `3000`, via PM2 ou `systemd` | Interno (`127.0.0.1:3000`), so o Nginx alcanca |
 | **PostgreSQL** | Banco canonico (filmes, series, ratings, content_blocks...) | Local no VPS **ou** gerenciado (provedor externo) | Interno; nunca exposto a internet publica |
 | **Redis (opcional)** | Cache de leitura e fila leve de jobs dos workers | Local no VPS ou gerenciado | Interno; protegido por senha + bind local |
 | **Servicos offline** | Sync TMDB, ratings/streaming futuros, RSS futuro e Entity Writer (Gemini offline) | TS/Node atual para TMDB/Entity Writer; Python 3.12 como roadmap/shim; via `systemd` services + timers | Sem porta publica; saida apenas para APIs externas e banco |
 | **Nginx (CloudPanel)** | Proxy reverso HTTPS -> `127.0.0.1:3000`, gzip/brotli, headers | Gerenciado pela UI/CLI do CloudPanel | Publico nas portas 80/443 |
-| **SSL (CloudPanel)** | Certificado Let's Encrypt para `thescreen.media` e `www` | Emitido/renovado pelo CloudPanel | Termina TLS no Nginx |
+| **SSL (CloudPanel)** | Certificado Let's Encrypt para `cinerie.com` e `www` | Emitido/renovado pelo CloudPanel | Termina TLS no Nginx |
 
-### 2.1 Site Node.js (`thescreen.media`, porta 3000)
+### 2.1 Site Node.js (`cinerie.com`, porta 3000)
 
 - App: `apps/web` (`@screena/web`), Next.js App Router em modo `standalone`.
 - Porta interna fixa: **3000** (`PORT=3000`), escutando apenas em
@@ -123,13 +123,13 @@ Pontos inegociaveis desta topologia:
 ### 2.5 Nginx (proxy reverso do CloudPanel)
 
 - O CloudPanel gera o vhost Nginx do site Node.js automaticamente.
-- Faz proxy `https://thescreen.media` -> `http://127.0.0.1:3000`.
+- Faz proxy `https://cinerie.com` -> `http://127.0.0.1:3000`.
 - Trata compressao, headers de seguranca e cache de assets estaticos.
 
 ### 2.6 SSL do CloudPanel
 
 - Let's Encrypt emitido e renovado pela UI/CLI do CloudPanel.
-- Cobrir `thescreen.media` e `www.thescreen.media` (redirect `www` -> apex).
+- Cobrir `cinerie.com` e `www.cinerie.com` (redirect `www` -> apex).
 - Forcar HTTPS (redirect 80 -> 443).
 
 ---
@@ -167,7 +167,7 @@ sudo bash install.sh
 
 No CloudPanel: **Sites -> Add Site -> Create a Node.js Site**.
 
-- Domain: `thescreen.media`
+- Domain: `cinerie.com`
 - Node.js version: **22 LTS**
 - App Port: **3000**
 - Site user: `screena` (anote o usuario; o app rodara sob ele)
@@ -176,11 +176,11 @@ O CloudPanel cria o vhost Nginx com proxy reverso para `127.0.0.1:3000`.
 
 ### Passo 4 — Apontar o dominio (DNS)
 
-No provedor de DNS de `thescreen.media`, crie os registros:
+No provedor de DNS de `cinerie.com`, crie os registros:
 
 ```
-A      thescreen.media        -> <IP_DO_VPS>
-A      www.thescreen.media    -> <IP_DO_VPS>      (ou CNAME -> thescreen.media)
+A      cinerie.com        -> <IP_DO_VPS>
+A      www.cinerie.com    -> <IP_DO_VPS>      (ou CNAME -> cinerie.com)
 ```
 
 Aguarde a propagacao antes de emitir SSL (Passo 13).
@@ -212,7 +212,7 @@ deploy key de leitura.
 
 ```bash
 sudo su - screena
-cd ~/htdocs/thescreen.media
+cd ~/htdocs/cinerie.com
 git clone git@github.com:<org>/screena.git releases/$(date +%Y%m%d%H%M%S)
 ln -sfn releases/<timestamp> current   # symlink "current" aponta para o release ativo
 cd current
@@ -227,8 +227,8 @@ Crie `.env.production` **fora do controle de versao**, legivel apenas pelo
 usuario do site. Veja a secao [Variaveis de ambiente](#variaveis-de-ambiente).
 
 ```bash
-install -m 600 /dev/null ~/htdocs/thescreen.media/shared/.env.production
-nano ~/htdocs/thescreen.media/shared/.env.production
+install -m 600 /dev/null ~/htdocs/cinerie.com/shared/.env.production
+nano ~/htdocs/cinerie.com/shared/.env.production
 # o release "current" recebe um symlink para o .env compartilhado:
 ln -sfn ../shared/.env.production current/apps/web/.env.production
 ```
@@ -277,7 +277,7 @@ sudo systemctl status the-screen-web.service
 
 ```bash
 pm2 start "node apps/web/.next/standalone/server.js" --name the-screen-web \
-  --cwd ~/htdocs/thescreen.media/current
+  --cwd ~/htdocs/cinerie.com/current
 pm2 save
 pm2 startup     # gera o hook de boot
 ```
@@ -297,8 +297,8 @@ sudo systemctl list-timers 'the-screen-*'
 
 ### Passo 13 — Ativar o SSL (CloudPanel)
 
-No CloudPanel: **Sites -> thescreen.media -> SSL/TLS -> New Let's Encrypt
-Certificate**, incluindo `thescreen.media` e `www.thescreen.media`. Ative o
+No CloudPanel: **Sites -> cinerie.com -> SSL/TLS -> New Let's Encrypt
+Certificate**, incluindo `cinerie.com` e `www.cinerie.com`. Ative o
 redirect HTTP -> HTTPS.
 
 ### Passo 14 — Configurar backup
@@ -344,11 +344,11 @@ journalctl -u 'the-screen-worker-*' --since "1 hour ago"
 
 ### Passo 17 — Criar staging em subdominio
 
-Replique o ambiente em `staging.thescreen.media` com **banco e segredos
+Replique o ambiente em `staging.cinerie.com` com **banco e segredos
 separados**.
 
 - Site Node.js separado no CloudPanel, porta interna distinta (ex.: `3001`).
-- `THE_SCREEN_PUBLIC_SITE_URL=https://staging.thescreen.media`.
+- `THE_SCREEN_PUBLIC_SITE_URL=https://staging.cinerie.com`.
 - Banco `screena_staging` e `.env.production` proprios.
 - **noindex** no staging (coerente com a regra de paginas em draft).
 
@@ -359,7 +359,7 @@ o rollback e instantaneo: re-apontar `current` para o release anterior e
 reiniciar o servico.
 
 ```bash
-cd ~/htdocs/thescreen.media
+cd ~/htdocs/cinerie.com
 ln -sfn releases/<timestamp_anterior> current
 sudo systemctl restart the-screen-web.service
 ```
@@ -405,15 +405,15 @@ Notas:
 ```ini
 # /etc/systemd/system/the-screen-web.service
 [Unit]
-Description=Screen Web (Next.js) - thescreen.media
+Description=Cinerie Web (Next.js) - cinerie.com
 After=network-online.target postgresql.service
 Wants=network-online.target
 
 [Service]
 Type=simple
 User=screen
-WorkingDirectory=/home/screen/htdocs/thescreen.media/current
-EnvironmentFile=/home/screen/htdocs/thescreen.media/shared/.env.production
+WorkingDirectory=/home/screen/htdocs/cinerie.com/current
+EnvironmentFile=/home/screen/htdocs/cinerie.com/shared/.env.production
 Environment=NODE_ENV=production
 Environment=PORT=3000
 Environment=HOSTNAME=127.0.0.1
@@ -434,15 +434,15 @@ WantedBy=multi-user.target
 ```ini
 # /etc/systemd/system/the-screen-worker-tmdb.service
 [Unit]
-Description=Screen Service - TMDB sync (offline)
+Description=Cinerie Service - TMDB sync (offline)
 After=network-online.target postgresql.service
 Wants=network-online.target
 
 [Service]
 Type=oneshot
 User=screen
-WorkingDirectory=/home/screen/htdocs/thescreen.media/current
-EnvironmentFile=/home/screen/htdocs/thescreen.media/shared/.env.production
+WorkingDirectory=/home/screen/htdocs/cinerie.com/current
+EnvironmentFile=/home/screen/htdocs/cinerie.com/shared/.env.production
 ExecStart=/usr/bin/corepack pnpm --filter @screena/sync exec tsx bin/run.ts
 NoNewPrivileges=true
 PrivateTmp=true
@@ -458,7 +458,7 @@ PrivateTmp=true
 ```ini
 # /etc/systemd/system/the-screen-scheduler.service
 [Unit]
-Description=Screen Scheduler - encadeia os workers offline
+Description=Cinerie Scheduler - encadeia os workers offline
 
 [Service]
 Type=oneshot
@@ -474,7 +474,7 @@ ExecStart=/usr/bin/systemctl start --wait the-screen-worker-entity-writer.servic
 ```ini
 # /etc/systemd/system/the-screen-scheduler.timer
 [Unit]
-Description=Screen Scheduler timer (janelas de sync offline)
+Description=Cinerie Scheduler timer (janelas de sync offline)
 
 [Timer]
 # exemplo: a cada 6 horas, com jitter para evitar pico
@@ -495,18 +495,18 @@ WantedBy=timers.target
 > do CloudPanel a mao sem necessidade.
 
 ```nginx
-# vhost ilustrativo (gerado pelo CloudPanel) - thescreen.media
+# vhost ilustrativo (gerado pelo CloudPanel) - cinerie.com
 server {
     listen 443 ssl http2;
-    server_name thescreen.media www.thescreen.media;
+    server_name cinerie.com www.cinerie.com;
 
     # SSL gerenciado pelo CloudPanel (Let's Encrypt)
-    ssl_certificate     /etc/nginx/ssl-certificates/thescreen.media.crt;
-    ssl_certificate_key /etc/nginx/ssl-certificates/thescreen.media.key;
+    ssl_certificate     /etc/nginx/ssl-certificates/cinerie.com.crt;
+    ssl_certificate_key /etc/nginx/ssl-certificates/cinerie.com.key;
 
     # Redireciona www -> apex
-    if ($host = www.thescreen.media) {
-        return 301 https://thescreen.media$request_uri;
+    if ($host = www.cinerie.com) {
+        return 301 https://cinerie.com$request_uri;
     }
 
     # Headers de seguranca basicos
@@ -537,8 +537,8 @@ server {
 # Redireciona HTTP -> HTTPS
 server {
     listen 80;
-    server_name thescreen.media www.thescreen.media;
-    return 301 https://thescreen.media$request_uri;
+    server_name cinerie.com www.cinerie.com;
+    return 301 https://cinerie.com$request_uri;
 }
 ```
 
@@ -557,7 +557,7 @@ server {
 | Variavel | Usada por | Publica? | Descricao |
 | --- | --- | --- | --- |
 | `DATABASE_URL` | web (leitura) + workers (escrita) | Nao | Connection string do PostgreSQL (`postgres://user:pass@host:5432/screen_prod`). Em banco gerenciado, inclua `?sslmode=require`. |
-| `THE_SCREEN_PUBLIC_SITE_URL` | web | **Sim** | URL canonica publica (`https://thescreen.media`). Usada em canonicals, sitemap, OG. |
+| `THE_SCREEN_PUBLIC_SITE_URL` | web | **Sim** | URL canonica publica (`https://cinerie.com`). Usada em canonicals, sitemap, OG. |
 | `TMDB_READ_ACCESS_TOKEN` | worker/service `tmdb` | Nao | Token Bearer v4 do TMDB (preferido; tem precedencia quando preenchido). So o pipeline offline usa; nunca o render. |
 | `TMDB_API_KEY` | worker/service `tmdb` | Nao | Chave v3 do TMDB (fallback quando `TMDB_READ_ACCESS_TOKEN` estiver ausente). So o pipeline offline usa; nunca o render. |
 | `GEMINI_API_KEY` | worker/service `entity-writer` | Nao | Chave do Gemini. So o Entity Writer offline a usa (Invariante 4). |
@@ -569,13 +569,13 @@ server {
 ### 7.1 Exemplo de `.env.production` (valores fictícios)
 
 ```dotenv
-# /home/screen/htdocs/thescreen.media/shared/.env.production  (chmod 600)
+# /home/screen/htdocs/cinerie.com/shared/.env.production  (chmod 600)
 
 # --- Banco ---
 DATABASE_URL=postgres://screen_app:TROQUE_ESTA_SENHA@127.0.0.1:5432/screen_prod
 
 # --- Publico (unica variavel exposta ao cliente) ---
-THE_SCREEN_PUBLIC_SITE_URL=https://thescreen.media
+THE_SCREEN_PUBLIC_SITE_URL=https://cinerie.com
 
 # --- Segredos de servidor (NUNCA no frontend) ---
 TMDB_READ_ACCESS_TOKEN=coloque_o_token_v4_aqui
@@ -601,7 +601,7 @@ SCREENA_REDIS_URL=redis://:TROQUE_ESTA_SENHA@127.0.0.1:6379/0
 - [ ] VPS provisionado, SSH por chave, usuario `sudo` dedicado.
 - [ ] CloudPanel instalado e admin criado.
 - [ ] Site Node.js criado (Node 22, porta 3000, usuario `screen`).
-- [ ] DNS de `thescreen.media` e `www` apontando para o VPS.
+- [ ] DNS de `cinerie.com` e `www` apontando para o VPS.
 - [ ] Banco `screen_prod` e usuario `screen_app` criados.
 - [ ] Repo clonado em `releases/<timestamp>`, symlink `current` ativo.
 - [ ] `.env.production` em `shared/` (`0600`), fora do git.
@@ -613,6 +613,6 @@ SCREENA_REDIS_URL=redis://:TROQUE_ESTA_SENHA@127.0.0.1:6379/0
 - [ ] Backups (banco + `shared/`) agendados e replicados para fora do VPS.
 - [ ] Firewall: so 22/80/443/8443; 3000/5432/6379 fechados na internet.
 - [ ] Logs verificados (`journalctl` + `api_sync_logs`).
-- [ ] Staging em `staging.thescreen.media` com banco/segredos proprios e
+- [ ] Staging em `staging.cinerie.com` com banco/segredos proprios e
       `noindex`.
 - [ ] Procedimento de rollback por release folder testado.

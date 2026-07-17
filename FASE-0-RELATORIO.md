@@ -3,7 +3,7 @@
 ## 1. Objetivo e regra de autoridade
 
 Esta branch existe para portar, com máxima fidelidade, o pacote **Screena White
-Cinematic Editorial System 13v** para o app público real do Screen. O trabalho
+Cinematic Editorial System 13v** para o app público real da Cinerie. O trabalho
 não reaproveita a interpretação visual da PR #60 e não parte de nenhum commit
 daquela branch.
 

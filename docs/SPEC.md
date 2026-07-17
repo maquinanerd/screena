@@ -1,11 +1,11 @@
-# Screen — Especificação do produto (SPEC)
+# Cinerie — Especificação do produto (SPEC)
 
 > **Movies, series, ratings and where to watch.**
-> Base global de entretenimento _entity-first_, em **https://thescreen.media**, com camada editorial própria.
+> Base global de entretenimento _entity-first_, em **https://cinerie.com**, com camada editorial própria.
 
 > **⚠️ Política atualizada (2026-07).** Trechos no corpo deste SPEC podem citar o antigo _gate anti-thin_ (≥ 2 blocos para indexar) e "en/es nascem noindex". Ambos mudaram: a indexação é **total** (invariante 5 — `noindex` só em caso técnico; blocos de valor viraram alavanca de qualidade/ranqueamento, não pré-requisito) e en/es publicam quando completos, via `PUBLISHED_LOCALES` (invariante 7). A licença (invariante 6) e a pureza de render seguem valendo. Fonte viva: [`CLAUDE.md`](../CLAUDE.md) + [`.claude/rules/seo.md`](../.claude/rules/seo.md) + [`.claude/rules/i18n.md`](../.claude/rules/i18n.md).
 
-Este documento é a **especificação canônica do produto** Screen. Ele descreve a
+Este documento é a **especificação canônica do produto** Cinerie. Ele descreve a
 visão, as entidades centrais, o modelo de dados de alto nível, a arquitetura, as
 regras de pureza de render, a camada editorial, a identidade visual, a estratégia
 de i18n e SEO, as metas de performance, o admin, as fronteiras do MVP e as 13
@@ -18,7 +18,7 @@ invariantes inegociáveis.
 > governança. Ratings, streaming, RSSPRIME/MN26, admin editorial completo e
 > usuários/community ainda não estão funcionais.
 
-> **Identidade.** Screen é a marca pública principal. **The Screen** pode aparecer
+> **Identidade.** Cinerie é a marca pública principal. **Cinerie** pode aparecer
 > apenas como referência histórica, explicativa ou nome expandido não-principal.
 > **Screena** permanece como namespace técnico/legado interno
 > (`@screena/*`, tokens `--screena-*`); **screena.media** e **The Nerd News** são
@@ -28,7 +28,7 @@ invariantes inegociáveis.
 
 ## 1. Visão e posicionamento
 
-Screen é uma **base global de entretenimento _entity-first_**: filmes, séries,
+Cinerie é uma **base global de entretenimento _entity-first_**: filmes, séries,
 temporadas, episódios, pessoas, franquias, ratings externos, onde assistir,
 reviews, trailers e notícias — tudo organizado em torno da **entidade** (a obra),
 e não de uma página solta.
@@ -42,16 +42,16 @@ agregado **ao redor dessa entidade**.
 
 **Posicionamento:**
 
-> **As APIs fornecem os dados. Screen escreve a camada editorial.**
+> **As APIs fornecem os dados. Cinerie escreve a camada editorial.**
 
 Fornecedores externos (TMDB, provedores de rating via RapidAPI, fontes de
 disponibilidade de streaming) são **fontes de dados técnicos**. Eles **não são, e
-nunca aparecem como**, a voz editorial do Screen. O valor do produto está na
+nunca aparecem como**, a voz editorial da Cinerie. O valor do produto está na
 curadoria, na contextualização e na escrita própria — construída sobre dados
 licenciados e atribuídos corretamente. O resultado **não é um agregador cru de
 API**: cada página indexável precisa carregar valor editorial próprio.
 
-- **Domínio canônico público:** `https://thescreen.media`.
+- **Domínio canônico público:** `https://cinerie.com`.
 - **MVP publica em pt-BR.** `en`/`es` nascem em rascunho (`draft`/`noindex`) até
   revisão humana.
 
@@ -59,7 +59,7 @@ API**: cada página indexável precisa carregar valor editorial próprio.
 
 ## 2. Entidades centrais
 
-Screen trata cada obra como uma entidade canônica. As entidades e objetos
+Cinerie trata cada obra como uma entidade canônica. As entidades e objetos
 centrais do produto são:
 
 | Entidade          | Papel                                                                                         |
@@ -71,7 +71,7 @@ centrais do produto são:
 | **Pessoas**       | Atores, diretores, equipe técnica. Schema `Person`.                                           |
 | **Franquias**     | Coleções que agrupam obras relacionadas (universo, saga, ordem cronológica).                  |
 | **Ratings**       | Notas externas **atribuídas** (IMDb, Rotten Tomatoes, Metacritic, Letterboxd, FilmAffinity…). |
-| **Reviews**       | Reviews **próprias** do Screen (schema `Review`).                                          |
+| **Reviews**       | Reviews **próprias** da Cinerie (schema `Review`).                                          |
 | **Trailers**      | Trailers e vídeos (apenas links/embeds **legais**).                                            |
 | **Onde assistir** | Disponibilidade por país e modalidade, com licença e oferta reais.                            |
 | **Notícias**      | Artigos editoriais (schema `NewsArticle`), vinculados a entidades quando aplicável.           |
@@ -157,7 +157,7 @@ stale | blocked`).
 
 ## 4. Arquitetura
 
-Screen separa **três pipelines distintos**: (a) ingestão/sincronização de
+Cinerie separa **três pipelines distintos**: (a) ingestão/sincronização de
 dados externos, (b) geração editorial offline e (c) render público. O render
 **nunca** chama APIs externas nem o Gemini.
 
@@ -252,7 +252,7 @@ Consequências práticas:
 
 ## 6. Camada editorial
 
-A diferença entre Screen e um agregador cru está na **camada editorial
+A diferença entre Cinerie e um agregador cru está na **camada editorial
 própria**, escrita sobre dados licenciados e atribuídos.
 
 ### Entity Writer
@@ -307,7 +307,7 @@ Páginas que não atingem o gate recebem **`noindex`** (registrado em
 
 ## 7. Identidade visual e sistema de cores
 
-Screen usa cor como **acento**, nunca como única forma de diferenciação.
+Cinerie usa cor como **acento**, nunca como única forma de diferenciação.
 
 | Token                    | Valor     | Uso                                          |
 | ------------------------ | --------- | -------------------------------------------- |

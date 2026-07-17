@@ -24,7 +24,7 @@ import type { MapOptions } from '../map.js'
 
 /** Opcoes fixas dos testes. */
 export const FIXTURE_OPTIONS: MapOptions = {
-  siteOrigin: 'https://thescreen.media',
+  siteOrigin: 'https://cinerie.com',
   locale: 'pt-BR',
 }
 

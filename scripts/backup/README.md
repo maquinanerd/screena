@@ -1,7 +1,7 @@
 # scripts/backup — Backups automaticos do PostgreSQL
 
 Scripts operacionais para backup logico e teste de restore do PostgreSQL do
-Screen. Eles rodam fora do caminho de render, com credenciais vindas de env vars.
+Cinerie. Eles rodam fora do caminho de render, com credenciais vindas de env vars.
 
 ## Scripts
 
@@ -91,7 +91,7 @@ O teste:
 4. Restaura com `pg_restore --exit-on-error`.
 5. Roda as validacoes:
    - `SELECT count(*) FROM information_schema.tables;` — sinal amplo de que o
-     catalogo respondeu. **Nao prova sozinho** que as tabelas do Screen voltaram:
+     catalogo respondeu. **Nao prova sozinho** que as tabelas da Cinerie voltaram:
      essa contagem inclui as views de `information_schema`/`pg_catalog` e e quase
      sempre `> 0`.
    - `SELECT count(*) FROM "_prisma_migrations";` — este e o sinal que vale: se as

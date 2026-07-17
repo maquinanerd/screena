@@ -7,8 +7,8 @@ export function SiteFooter(): ReactNode {
   return (
     <footer className="site-footer">
       <div className="site-footer__inner">
-        <a className="site-footer__brand" href={HOME_HREF} aria-label="Screen — início">
-          Screen
+        <a className="site-footer__brand" href={HOME_HREF} aria-label="Cinerie — início">
+          Cinerie
         </a>
         <nav aria-label="Rodapé">
           <ul className="site-footer__links">

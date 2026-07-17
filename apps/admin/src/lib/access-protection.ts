@@ -35,7 +35,7 @@
  */
 
 /** Realm anunciado no desafio HTTP Basic Auth. */
-export const ADMIN_BASIC_AUTH_REALM = "Screen Admin";
+export const ADMIN_BASIC_AUTH_REALM = "Cinerie Admin";
 
 /** Valor do header `WWW-Authenticate` emitido junto de uma resposta 401. */
 export const WWW_AUTHENTICATE_VALUE = `Basic realm="${ADMIN_BASIC_AUTH_REALM}"`;
@@ -185,7 +185,7 @@ export function getAdminRuntimeKind(env: AdminAccessEnv): AdminRuntimeKind {
  * `VERCEL_ENV=production`) ou preview/staging do Vercel (`VERCEL_ENV=preview`).
  * Nestes ambientes a protecao e SEMPRE exigida, mesmo sem `ADMIN_PROTECTION_ENABLED`.
  *
- * Nota de projeto: o deploy canonico do Screen e VPS + CloudPanel, onde o sinal
+ * Nota de projeto: o deploy canonico da Cinerie e VPS + CloudPanel, onde o sinal
  * real e `NODE_ENV=production` (ver `docs/CLOUDPANEL_DEPLOY.md`). `VERCEL_ENV` e
  * incluido para compatibilidade com deploy Vercel; nao ha outra env de staging
  * no projeto hoje, entao nenhuma outra e considerada production-like.

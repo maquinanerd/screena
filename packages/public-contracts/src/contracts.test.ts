@@ -33,7 +33,7 @@ const poster: PublicMediaAsset = {
 const media: MediaPayload = { poster, backdrop: null, images: [poster], videos: [] }
 
 const seo: SeoPayload = {
-  canonicalUrl: 'https://thescreen.media/pt/filmes/matrix/',
+  canonicalUrl: 'https://cinerie.com/pt/filmes/matrix/',
   index: true,
   robots: 'index,follow',
   metaTitle: 'Matrix',
@@ -72,7 +72,7 @@ describe('detail payloads', () => {
     const r = validateMovieDetail({
       kind: 'movie',
       id: '603',
-      canonicalUrl: 'https://thescreen.media/pt/filmes/matrix/',
+      canonicalUrl: 'https://cinerie.com/pt/filmes/matrix/',
       title: 'Matrix',
       originalTitle: 'The Matrix',
       aliases: ['The Matrix'],
@@ -123,7 +123,7 @@ describe('detail payloads', () => {
     const r = validateTvDetail({
       kind: 'tv',
       id: '1',
-      canonicalUrl: 'https://thescreen.media/pt/series/round-6/',
+      canonicalUrl: 'https://cinerie.com/pt/series/round-6/',
       title: 'Round 6',
       originalTitle: null,
       aliases: [],
@@ -151,7 +151,7 @@ describe('detail payloads', () => {
     const r = validatePersonDetail({
       kind: 'person',
       id: '6384',
-      canonicalUrl: 'https://thescreen.media/pt/pessoas/keanu-reeves/',
+      canonicalUrl: 'https://cinerie.com/pt/pessoas/keanu-reeves/',
       name: 'Keanu Reeves',
       roleLabel: 'Ator',
       birthday: '1964-09-02',
@@ -191,7 +191,7 @@ describe('search payload', () => {
     subtitle: 'Filme · 1999',
     year: 1999,
     image: null,
-    canonicalUrl: 'https://thescreen.media/pt/filmes/matrix/',
+    canonicalUrl: 'https://cinerie.com/pt/filmes/matrix/',
     matchReason: 'exact',
     score: 1,
   }

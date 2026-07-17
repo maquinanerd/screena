@@ -1,4 +1,4 @@
-# Matriz de cobertura de API — Screen (Fase 5)
+# Matriz de cobertura de API — Cinerie (Fase 5)
 
 > Visão humana do registro. A **fonte de verdade** é o par
 > [`endpoints.json`](./endpoints.json) + [`fields.json`](./fields.json), validado

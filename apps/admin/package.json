@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Painel interno do Screen (Next.js App Router). Namespace tecnico legado: @screena/admin. Le o PostgreSQL local server-side em modo SOMENTE LEITURA (visualizar estado editorial); nao publica, nao edita, nao escreve. Nunca exposto como pagina publica indexavel.",
+  "description": "Painel interno da Cinerie (Next.js App Router). Namespace tecnico legado: @screena/admin. Le o PostgreSQL local server-side em modo SOMENTE LEITURA (visualizar estado editorial); nao publica, nao edita, nao escreve. Nunca exposto como pagina publica indexavel.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

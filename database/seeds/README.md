@@ -1,6 +1,6 @@
 # database/seeds
 
-Seeds de dados de referencia do Screen. Este diretorio e historico; os seeds
+Seeds de dados de referencia da Cinerie. Este diretorio e historico; os seeds
 reais atuais vivem em `packages/db/prisma/seed.ts` e `packages/db/src/seed-data.ts`
 junto do schema Prisma e das migrations.
 

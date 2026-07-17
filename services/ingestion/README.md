@@ -1,12 +1,12 @@
 # services/ingestion
 
-Servico de **ingestao de entidades** do Screen. Responsavel por trazer dados brutos de
+Servico de **ingestao de entidades** da Cinerie. Responsavel por trazer dados brutos de
 catalogos externos (filmes, series, temporadas, episodios, pessoas) para dentro do
 PostgreSQL canonico, normalizando-os para as tabelas `movies`, `tv_shows`, `seasons`,
 `episodes`, `people`, `cast_members`, `crew_members` e a tabela de mapeamento
 `entity_external_ids`.
 
-`@screena/ingestion` e namespace tecnico legado; a marca publica atual e Screen.
+`@screena/ingestion` e namespace tecnico legado; a marca publica atual e Cinerie.
 
 > Escopo da Fase 2 (`docs/PHASE_2_TMDB_PLAN.md`): NAO grava `slugs`/`redirects`,
 > `entity_translations` nem `images`/`trailers`/`franchises`/`genres` (sem tabela alvo no

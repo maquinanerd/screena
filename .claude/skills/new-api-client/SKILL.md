@@ -5,7 +5,7 @@ description: Use quando for criar ou alinhar um conector de API externa em api-c
 
 # Skill: new-api-client
 
-Esta skill descreve como criar um **novo api-client** (conector de API externa) no Screen.
+Esta skill descreve como criar um **novo api-client** (conector de API externa) na Cinerie.
 Todo conector e **offline-only**: roda apenas em processos fora do render (hoje TypeScript/Node
 para TMDB/sync; Python 3.12 apenas roadmap/shim), **nunca** no render de paginas publicas.
 

@@ -28,7 +28,7 @@ export const dynamic = 'force-dynamic'
 
 const TITLE = 'Explorar'
 const DESCRIPTION =
-  'Consulte as áreas públicas do Screen e a agenda semanal de próximos lançamentos já publicados.'
+  'Consulte as áreas públicas da Cinerie e a agenda semanal de próximos lançamentos já publicados.'
 const UPCOMING_LIMIT = 5
 const UPCOMING_SOURCE_LIMIT = 30
 
@@ -105,7 +105,7 @@ export default async function ExplorePage() {
         </header>
 
         <section aria-labelledby="explore-areas-title">
-          <h2 id="explore-areas-title">Áreas do Screen</h2>
+          <h2 id="explore-areas-title">Áreas da Cinerie</h2>
           <ul>
             <li>
               <a href={MOVIES_INDEX_PATH}>Filmes</a>

@@ -101,6 +101,7 @@ describe("preview publico nas paginas de detalhe (Fase 7B)", () => {
     const code = stripComments(await readFile(ARTICLE_DETAIL, "utf-8"));
     // A pagina consome readiness.publicUrl; o origin/URL vive so no helper puro.
     expect(code).toContain("readiness.publicUrl");
+    expect(code).not.toContain("cinerie.com");
     expect(code).not.toContain("thescreen.media");
   });
 

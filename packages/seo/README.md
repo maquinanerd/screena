@@ -1,6 +1,6 @@
 # @screena/seo
 
-Decisao de **indexabilidade** do Screen (politica 2026-07 — **indexacao total**:
+Decisao de **indexabilidade** da Cinerie (politica 2026-07 — **indexacao total**:
 o antigo gate anti-thin foi removido; `noindex` so em caso tecnico, licenca
 (inv. 6) e idioma via `PUBLISHED_LOCALES` (inv. 7) seguem valendo).
 `@screena/seo` e namespace tecnico legado.

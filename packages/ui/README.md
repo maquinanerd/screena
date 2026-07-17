@@ -1,11 +1,11 @@
 # @screena/ui
 
-Camada de apresentacao canonica do Screen. Centraliza os **tokens de cor** e a
+Camada de apresentacao canonica da Cinerie. Centraliza os **tokens de cor** e a
 **resolucao de vertical** (filme / serie / neutro) para que toda a aplicacao
 diferencie conteudo de forma consistente — e nunca dependa apenas da cor.
 
 `@screena/ui` e namespace tecnico legado. Labels neutros de runtime usam a marca
-publica **Screen**; o prefixo `screena` permanece apenas em tokens/classes
+publica **Cinerie**; o prefixo `screena` permanece apenas em tokens/classes
 tecnicas legadas.
 
 > Fase 0 (fundacao): este pacote contem apenas utilitarios puros e tipados.
@@ -55,8 +55,8 @@ Mapeamento:
 | `tv` / `series` / `serie`          | series   | green   | `--screena-series-green`  | Series | Serie   | `TVSeries` / `TVSeason` / `TVEpisode` |
 | `person` / `pessoa`                | neutral  | neutral | `--screena-white`         | Person | Pessoa  | `Person`                           |
 | `news` / `noticia`                 | neutral  | neutral | `--screena-white`         | News   | Noticia | `NewsArticle`                      |
-| `home`                             | neutral  | neutral | `--screena-white`         | Home   | Screen  | `WebSite`                          |
-| `mixed` / outro / default          | neutral  | neutral | `--screena-white`         | Screen | Screen  | `WebSite`                          |
+| `home`                             | neutral  | neutral | `--screena-white`         | Home   | Cinerie  | `WebSite`                          |
+| `mixed` / outro / default          | neutral  | neutral | `--screena-white`         | Cinerie | Cinerie  | `WebSite`                          |
 
 Para series, use `opts` para refinar o schema:
 

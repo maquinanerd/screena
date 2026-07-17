@@ -649,7 +649,7 @@ async function runContractChecks(prisma: PrismaClient): Promise<void> {
   // --- getters --------------------------------------------------------------
   const { createPublicPayloadReader } = await import('../src/persistence/public-payload-reader.js')
   const reader = createPublicPayloadReader(prisma, {
-    siteOrigin: 'https://thescreen.media',
+    siteOrigin: 'https://cinerie.com',
     locale: 'pt-BR',
     // Adapter de ratings injetado (a porta existe porque services/ingestion NAO
     // pode referenciar ratings — inv. 1/2; o dominio de ratings fornece isto).
@@ -668,7 +668,7 @@ async function runContractChecks(prisma: PrismaClient): Promise<void> {
   })
 
   const movieDetail = await reader.getMovieDetailPayload('contract-movie')
-  record('contract movie: getter produz payload validado', movieDetail !== null && movieDetail.title === 'O Filme do Contrato' && movieDetail.canonicalUrl === 'https://thescreen.media/pt/filmes/contract-movie/', `title=${movieDetail?.title}`)
+  record('contract movie: getter produz payload validado', movieDetail !== null && movieDetail.title === 'O Filme do Contrato' && movieDetail.canonicalUrl === 'https://cinerie.com/pt/filmes/contract-movie/', `title=${movieDetail?.title}`)
   record('contract movie: midia bloqueada NAO chega (nem como poster de maior voto)', movieDetail !== null && movieDetail.media.poster?.url === 'https://image.tmdb.org/t/p/w500/contract-ok.jpg' && !JSON.stringify(movieDetail.media).includes('blocked'), `poster=${movieDetail?.media.poster?.url}`)
   record('contract movie: rating com licenca bloqueada NAO chega (inv. 6)', movieDetail !== null && movieDetail.ratings.length === 1 && movieDetail.ratings[0]?.source === 'imdb' && !JSON.stringify(movieDetail.ratings).includes('tomatometer'.toUpperCase()) && !JSON.stringify(movieDetail.ratings).toLowerCase().includes('rotten'), `ratings=${movieDetail?.ratings.map((r) => r.source).join(',')}`)
   record('contract movie: oferta nao liberada NAO chega (inv. 6/8)', movieDetail !== null && movieDetail.streaming.length === 1 && movieDetail.streaming[0]?.provider === 'ExemploFlix', `streaming=${movieDetail?.streaming.map((s) => s.provider).join(',')}`)
@@ -676,7 +676,7 @@ async function runContractChecks(prisma: PrismaClient): Promise<void> {
   record('contract movie: JSON-safe (BigInt/Date nao vazam)', movieDetail !== null && typeof JSON.stringify(movieDetail) === 'string' && typeof movieDetail.id === 'string' && movieDetail.releaseDate === '1999-03-31', `id=${typeof movieDetail?.id} date=${movieDetail?.releaseDate}`)
 
   const tvDetail = await reader.getTvDetailPayload('contract-show')
-  record('contract tv: payload com temporadas e rota composta', tvDetail !== null && tvDetail.seasons.length === 1 && tvDetail.seasons[0]?.canonicalUrl === 'https://thescreen.media/pt/series/contract-show/temporadas/1/', `seasons=${tvDetail?.seasons.length}`)
+  record('contract tv: payload com temporadas e rota composta', tvDetail !== null && tvDetail.seasons.length === 1 && tvDetail.seasons[0]?.canonicalUrl === 'https://cinerie.com/pt/series/contract-show/temporadas/1/', `seasons=${tvDetail?.seasons.length}`)
 
   const seasonDetail = await reader.getSeasonDetailPayload('contract-show', 1)
   record('contract season: payload com episodios ordenados', seasonDetail !== null && seasonDetail.episodes[0]?.episodeNumber === 1 && seasonDetail.series.kind === 'tv', `episodes=${seasonDetail?.episodes.length}`)
@@ -694,7 +694,7 @@ async function runContractChecks(prisma: PrismaClient): Promise<void> {
   record('contract discovery: snapshot -> payload com capturedAt ISO', discovery !== null && discovery.items.length === 1 && typeof discovery.capturedAt === 'string', `items=${discovery?.items.length}`)
 
   const searchPayload = await reader.getSearchPayload('o filme do contrato')
-  record('contract search: resultado real + superficie noindex', searchPayload.results.length >= 1 && searchPayload.index === false && searchPayload.results[0]?.canonicalUrl.startsWith('https://thescreen.media/'), `results=${searchPayload.results.length}`)
+  record('contract search: resultado real + superficie noindex', searchPayload.results.length >= 1 && searchPayload.index === false && searchPayload.results[0]?.canonicalUrl.startsWith('https://cinerie.com/'), `results=${searchPayload.results.length}`)
 
   const mediaPayload = await reader.getMediaPayload('movie', 777001, 'O Filme do Contrato')
   record('contract media: fail-closed no getter dedicado', mediaPayload.images.every((i) => i.displayAllowed) && !JSON.stringify(mediaPayload).includes('blocked'), `images=${mediaPayload.images.length}`)
@@ -725,7 +725,7 @@ async function runContractChecks(prisma: PrismaClient): Promise<void> {
     await prisma.pageIndexabilityDecision.create({
       data: {
         entityType: 'movie', entityId: movie.id, languageCode: 'pt-BR',
-        url: 'https://thescreen.media/pt/filmes/contract-movie/',
+        url: 'https://cinerie.com/pt/filmes/contract-movie/',
         decision: decision as never, reason, isCurrent: true,
         decisionOrigin: 'validator', policyVersion: '2026-07', decidedAt: new Date(),
       },

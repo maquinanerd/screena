@@ -132,7 +132,7 @@ async function main() {
   const hasDb = Boolean(process.env.DATABASE_URL?.trim())
   const isProd = process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production'
 
-  console.log('== Screen · Descoberta de IDs (TMDB Daily ID Exports — P0-00c) ==')
+  console.log('== Cinerie · Descoberta de IDs (TMDB Daily ID Exports — P0-00c) ==')
   console.log(
     `Data alvo (UTC): ${formatExportDate(date)} · exports: ${exports.map((e) => e.kind).join(', ')}`,
   )

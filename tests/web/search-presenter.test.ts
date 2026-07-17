@@ -146,7 +146,7 @@ describe('toInternalHref', () => {
   })
 
   it('reduz URL absoluta ao pathname (link sempre same-origin)', () => {
-    expect(toInternalHref('https://thescreen.media/pt/filmes/matrix/')).toBe('/pt/filmes/matrix/')
+    expect(toInternalHref('https://cinerie.com/pt/filmes/matrix/')).toBe('/pt/filmes/matrix/')
   })
 
   it('recusa destino invalido ou perigoso', () => {

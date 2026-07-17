@@ -1,6 +1,6 @@
 # @screena/schemas
 
-Pacote de **validacao canonica** do Screen. `@screena/schemas` e namespace
+Pacote de **validacao canonica** da Cinerie. `@screena/schemas` e namespace
 tecnico legado. Reune as regras que protegem duas fronteiras criticas do produto:
 
 1. **Integridade de ratings externos** (`src/ratings.ts`)

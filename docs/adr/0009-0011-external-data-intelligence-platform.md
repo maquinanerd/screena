@@ -54,7 +54,7 @@ Metacritic, Letterboxd e FilmAffinity são `rating_source`. O mapeador exige
 fonte, métrica, valor e escala declarados e valida a escala canônica antes de
 persistir. Não há conversão implícita nem troca de linguagem/ícone entre fontes.
 Cada ciclo registra `api_cache` e `api_sync_logs`; payload sem mudança produz
-noop e dados novos nascem bloqueados por licença. O Screen Score não é
+noop e dados novos nascem bloqueados por licença. O Cinerie Score não é
 publicado ou recalculado por esta ADR: não havia contrato canônico elegível e
 uma fórmula nova seria uma decisão editorial fora de escopo.
 

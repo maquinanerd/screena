@@ -2,7 +2,7 @@
 
 **Entity Writer** — o motor editorial derivado do **MN26** que gera `content_blocks` a
 partir de um **payload controlado do PostgreSQL**. E o unico componente autorizado a
-produzir texto editorial assistido por IA (Gemini) para o Screen, e o faz
+produzir texto editorial assistido por IA (Gemini) para o Cinerie, e o faz
 **sempre offline**. O pacote `@screena/entity-writer` usa namespace tecnico legado.
 
 > **Estado atual:** implementacao TypeScript/Node da Fase 3A. O runtime atual

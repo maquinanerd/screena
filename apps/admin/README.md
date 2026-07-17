@@ -1,12 +1,12 @@
 # @screena/admin
 
-Painel interno do Screen (operacao editorial e de dados). Diferente do app
+Painel interno da Cinerie (operacao editorial e de dados). Diferente do app
 publico `@screena/web`, o admin e uma superficie privada; em fases futuras ele
 podera acionar endpoints internos (sync, ratings, geracao offline de
 `content_blocks`, jobs do entity writer, decisoes de indexabilidade etc.).
 **Na fatia atual, porem, ele e estritamente somente leitura.**
 
-`@screena/admin` e namespace tecnico legado; a marca publica atual e **Screen**.
+`@screena/admin` e namespace tecnico legado; a marca publica atual e **Cinerie**.
 
 ## Fronteira de seguranca (INEGOCIAVEL)
 

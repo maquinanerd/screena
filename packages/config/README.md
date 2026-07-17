@@ -1,6 +1,6 @@
 # @screena/config
 
-Constantes **canonicas** do Screen e leitura segura de variaveis de ambiente.
+Constantes **canonicas** da Cinerie e leitura segura de variaveis de ambiente.
 `@screena/config` e namespace tecnico legado.
 
 Este e o pacote de fundacao mais baixo do monorepo: ele nao depende de nenhum

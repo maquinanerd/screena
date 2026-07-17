@@ -28,7 +28,7 @@
  *    `--type` (movie/tv) que tenham IMDb id.
  *
  * NAO FAZ: exibir nada publicamente; tocar `screen_score` (nota editorial
- * PROPRIA do Screen, que jamais recebe dado de terceiro); alterar slugs,
+ * PROPRIA da Cinerie, que jamais recebe dado de terceiro); alterar slugs,
  * canonical, redirects ou UI; baixar imagem; criar migration; chamar `/popular/`.
  *
  * SEGREDO: `RAPIDAPI_FILM_SHOW_RATINGS_KEY` so em env var. Nunca e impressa,

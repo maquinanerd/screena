@@ -1,8 +1,8 @@
-# EASYPANEL_DEPLOY — Deploy do Screen em VPS com EasyPanel + Nixpacks
+# EASYPANEL_DEPLOY — Deploy da Cinerie em VPS com EasyPanel + Nixpacks
 
 > Documento operacional de deploy **atual/canonico**. Descreve como colocar o
-> Screen no ar em um VPS (Contabo) gerenciado pelo **EasyPanel**, com build via
-> **Nixpacks**: app Next.js (`thescreen.media`), PostgreSQL, servicos offline e
+> Cinerie no ar em um VPS (Contabo) gerenciado pelo **EasyPanel**, com build via
+> **Nixpacks**: app Next.js (`cinerie.com`), PostgreSQL, servicos offline e
 > proxy reverso + SSL geridos pelo EasyPanel. Em caso de conflito entre este
 > documento e a realidade do servidor, atualize este documento ou corrija o
 > servidor — nunca deixe os dois divergentes em silencio.
@@ -35,7 +35,7 @@ Invariantes reforcadas por este documento:
                               |
                    +----------v-----------+
                    |  EasyPanel (Traefik) |  proxy reverso + SSL
-                   |   thescreen.media    |  (Let's Encrypt automatico)
+                   |   cinerie.com    |  (Let's Encrypt automatico)
                    +----------+-----------+
                               | http://<app>:3000
                    +----------v-----------+
@@ -79,13 +79,13 @@ Pontos inegociaveis desta topologia:
 
 | Componente | Papel | Como roda | Exposicao |
 | --- | --- | --- | --- |
-| **App web** | Next.js (`@screena/web`), serve `thescreen.media` | Nixpacks (Node 22, pnpm), porta interna `3000`, Next `standalone` | Interno; so o Traefik do EasyPanel alcanca |
+| **App web** | Next.js (`@screena/web`), serve `cinerie.com` | Nixpacks (Node 22, pnpm), porta interna `3000`, Next `standalone` | Interno; so o Traefik do EasyPanel alcanca |
 | **PostgreSQL** | Banco canonico (filmes, series, ratings, content_blocks...) | Servico Postgres do EasyPanel **ou** instancia gerenciada externa | Interno; nunca exposto a internet publica |
 | **Servicos offline** | Sync TMDB, ratings/streaming futuros, RSS futuro e Entity Writer (Gemini offline) | TS/Node hoje; Python 3.12 como roadmap; agendados (cron/scheduled task) | Sem porta publica; saida so para APIs externas e banco |
 | **Traefik (EasyPanel)** | Proxy reverso HTTPS -> `app:3000`, compressao, headers | Gerenciado pela UI do EasyPanel | Publico nas portas 80/443 |
-| **SSL (EasyPanel)** | Certificado Let's Encrypt para `thescreen.media` (+ `www`) | Emitido/renovado automaticamente pelo EasyPanel | Termina TLS no Traefik |
+| **SSL (EasyPanel)** | Certificado Let's Encrypt para `cinerie.com` (+ `www`) | Emitido/renovado automaticamente pelo EasyPanel | Termina TLS no Traefik |
 
-### 2.1 App web (`thescreen.media`, porta 3000)
+### 2.1 App web (`cinerie.com`, porta 3000)
 
 - App: `apps/web` (`@screena/web`), Next.js App Router.
 - Build via **Nixpacks**, que detecta `package.json` + `packageManager`
@@ -179,13 +179,13 @@ do app publico. Migrations destrutivas exigem revisao humana antes do merge.
 5. **Configurar Build/Start** conforme a secao 3 (build filtrado + start
    standalone).
 6. **Configurar as variaveis de ambiente** (secao 7) como env de **runtime**.
-7. **Apontar o dominio**: no EasyPanel, adicione `thescreen.media` (e `www`) ao
-   app; no DNS, aponte `A thescreen.media -> <IP_DO_VPS>` (e `www`). O EasyPanel
+7. **Apontar o dominio**: no EasyPanel, adicione `cinerie.com` (e `www`) ao
+   app; no DNS, aponte `A cinerie.com -> <IP_DO_VPS>` (e `www`). O EasyPanel
    emite o SSL Let's Encrypt automaticamente.
 8. **Rodar as migrations** contra o banco de producao **antes** do primeiro
    release servir trafego (`db:migrate:deploy`).
 9. **Deploy** (build + start). Confirme o app escutando em `:3000` internamente
-   e respondendo via `https://thescreen.media`.
+   e respondendo via `https://cinerie.com`.
 10. **Agendar os servicos offline** (TMDB/entity-writer) como tarefas
     `oneshot`; garantir que `entity-writer` roda **so offline**.
 11. **Backups, firewall e logs** (secoes 5, 6 e pendencias).
@@ -239,9 +239,9 @@ fica fechado na internet.
 
 > **Limitacao conhecida — URL canonica hardcoded.** Hoje o dominio publico e
 > **hardcoded** em [`apps/web/src/lib/site.ts`](../apps/web/src/lib/site.ts)
-> (`SITE_URL = "https://thescreen.media"`), **nao** lido de env. Consequencia:
+> (`SITE_URL = "https://cinerie.com"`), **nao** lido de env. Consequencia:
 > qualquer dominio temporario/staging serve canonicals/sitemap apontando para
-> `thescreen.media`. Antes de expor um dominio temporario indexavel, tornar a
+> `cinerie.com`. Antes de expor um dominio temporario indexavel, tornar a
 > URL canonica configuravel por env (ex.: `THE_SCREEN_PUBLIC_SITE_URL`) e
 > garantir `noindex` no staging.
 
@@ -269,9 +269,9 @@ Itens operacionais a configurar no servidor antes de considerar o deploy maduro:
 - [ ] App `screen-web` criado (Nixpacks, Git `main`, porta 3000).
 - [ ] Build/Start configurados para o monorepo (build filtrado + start standalone).
 - [ ] Variaveis de ambiente definidas como **runtime** (nenhum segredo em build-arg).
-- [ ] DNS de `thescreen.media` (+ `www`) apontando; SSL Let's Encrypt emitido.
+- [ ] DNS de `cinerie.com` (+ `www`) apontando; SSL Let's Encrypt emitido.
 - [ ] Migrations Prisma aplicadas **antes** do release servir trafego.
-- [ ] App respondendo em `https://thescreen.media`; porta 3000 nao exposta.
+- [ ] App respondendo em `https://cinerie.com`; porta 3000 nao exposta.
 - [ ] Servicos offline agendados; `entity-writer` so offline; sync grava `api_sync_logs`.
 - [ ] Firewall: so 22/80/443 (+ painel restrito); Postgres fechado na internet.
 - [ ] Pendencias da secao 8 acompanhadas ate fechar.

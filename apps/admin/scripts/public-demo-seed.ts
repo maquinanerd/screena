@@ -493,7 +493,7 @@ async function main(): Promise<void> {
   const decision = resolvePublicDemoMode(flags, env);
   const plan = buildPublicDemoSeedPlan();
 
-  console.log("== Screen · Public Demo Seed Harness ==");
+  console.log("== Cinerie · Public Demo Seed Harness ==");
   console.log(`Modo: ${decision.mode}`);
   console.log(`Motivo: ${decision.reason}`);
   for (const line of formatPublicDemoPlan(plan)) console.log(line);

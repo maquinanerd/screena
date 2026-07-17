@@ -1,15 +1,15 @@
-# CLAUDE.md — Governanca canonica do Screen
+# CLAUDE.md — Governanca canonica da Cinerie
 
 > Este documento e autoritativo. Ele e carregado em toda sessao do Claude Code neste repositorio. Quando houver conflito entre uma instrucao pontual e este arquivo, **este arquivo vence** — exceto ordem humana explicita que o sobreponha conscientemente. Mantenha-o afiado: sem redundancia, sem prosa decorativa.
 
 ## 1. Resumo do projeto
 
-**Screen** e uma **base global de entretenimento entity-first**: filmes, series, temporadas, episodios, pessoas, ratings, onde assistir, reviews e noticias — com uma **camada editorial propria** por cima do dado bruto.
+**Cinerie** e uma **base global de entretenimento entity-first**: filmes, series, temporadas, episodios, pessoas, ratings, onde assistir, reviews e noticias — com uma **camada editorial propria** por cima do dado bruto.
 
-- Marca publica principal: **Screen**.
-- **The Screen** pode aparecer apenas como referencia historica, explicativa ou nome expandido nao-principal.
-- Dominio canonico publico: `https://thescreen.media`.
-- `Screena` permanece como namespace tecnico/legado interno (`@screena/*`, tokens CSS `--screena-*`, nomes antigos de services/scripts). Nao e a marca publica atual.
+- Marca publica principal: **Cinerie**.
+- Dominio canonico publico: `https://cinerie.com`.
+- **Screen** / **The Screen** e `thescreen.media` sao a marca e o dominio ANTERIORES (renomeados no Gate 1.5, 2026-07). Podem aparecer apenas como referencia historica em snapshots datados; nunca como identidade ativa. Ver [`REBRANDING-CINERIE.md`](./REBRANDING-CINERIE.md).
+- `Screena` permanece como namespace tecnico/legado interno (`@screena/*`, tokens CSS `--screena-*`, nomes antigos de services/scripts). Nao e a marca publica atual e nao muda no Gate 1.5.
 - `screena.media` e legado historico e nao deve ser usado como dominio publico/canonico ativo.
 - **The Nerd News** e legado mais antigo e nao deve voltar como identidade do produto.
 - MVP publica em **pt-BR**; `en` e `es` publicam e indexam quando completos (dado + i18n de UI + hreflang), controlados por **PUBLISHED_LOCALES** — nao nascem mais permanentemente noindex. _(politica atualizada 2026-07)_
@@ -32,8 +32,8 @@ Estas 13 invariantes sao a lei do projeto. Nao reescreva o sentido delas; cite-a
 6. **Dados sem licenca clara** (`license_status` unknown/blocked ou `display_allowed=false`) nao aparecem em pagina indexavel.
 7. **pt-BR publica primeiro** — `en` e `es` sao publicados e indexados quando completos (dado + i18n de UI + hreflang), controlados por **PUBLISHED_LOCALES**; nao nascem mais permanentemente noindex. _(politica atualizada 2026-07)_
 8. **Sem pirataria** — nada de torrent, IPTV, player ilegal, link de download ou embed pirata.
-9. **Screena Movies usa acento vermelho** (`--screena-movie-red`) — nome legado do token; a marca publica e Screen.
-10. **Screena Series usa acento verde** (`--screena-series-green`) — nome legado do token; a marca publica e Screen.
+9. **Screena Movies usa acento vermelho** (`--screena-movie-red`) — nome legado do token; a marca publica e Cinerie.
+10. **Screena Series usa acento verde** (`--screena-series-green`) — nome legado do token; a marca publica e Cinerie.
 11. **A diferenciacao filme/serie NUNCA depende so da cor** — sempre label + badge + breadcrumb + schema + URL.
 12. **Entity Writer so escreve com base em payload controlado do PostgreSQL** — nao inventa fatos, nao cria entidades, nao chama APIs externas, nao publica sozinho.
 13. **content_blocks sao versionados e revisaveis** — `prompt_version`, `input_hash`, `output_hash`, `model_provider`, `model_name` e `review_status` obrigatorios.

@@ -1,4 +1,4 @@
-# scripts/deploy — Deploy do Screen
+# scripts/deploy — Deploy da Cinerie
 
 Esta pasta documenta automacoes de deploy futuras. O procedimento operacional
 atual fica em `docs/EASYPANEL_DEPLOY.md`.

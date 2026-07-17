@@ -47,9 +47,14 @@ describe('navegação pública global', () => {
 
   it('usa marca textual e não reintroduz chrome cinematográfico', () => {
     const header = read('apps/web/app/_components/site-header.tsx')
-    expect(header).toContain('>\n          Screen\n        </a>')
+    // Regex tolerante a espaco/quebra de linha em vez de casar o trecho literal
+    // com '\n': o arquivo lido do disco tem CRLF no checkout Windows
+    // (core.autocrlf=true, repo sem .gitattributes), entao a versao literal
+    // falhava so no Windows e passava no CI Linux. A intencao do teste e "a
+    // marca e TEXTO, nao um logo" — nao a indentacao exata.
+    expect(header).toMatch(/>\s*Cinerie\s*<\/a>/)
     expect(header).toContain('NAV_ITEMS.map')
-    expect(header).not.toMatch(/ScreenLogo|<svg|hero|drawer|useEffect/)
+    expect(header).not.toMatch(/CinerieLogo|ScreenLogo|<svg|hero|drawer|useEffect/)
   })
 
   it('rodapé contém apenas rotas reais e a atribuição do TMDB', () => {

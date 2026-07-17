@@ -1,5 +1,5 @@
 /**
- * /sitemap.xml — Sitemap INDEX publico do Screen (Fase 3, §11).
+ * /sitemap.xml — Sitemap INDEX publico da Cinerie (Fase 3, §11).
  *
  * Route handler (Node runtime) que serve o sitemap-index apontando para os
  * shards por (idioma, tipo, pagina). Substitui o sitemap unico anterior. A

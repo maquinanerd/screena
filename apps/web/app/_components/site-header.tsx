@@ -12,8 +12,8 @@ export function SiteHeader(): ReactNode {
   return (
     <header className="site-header">
       <div className="site-header__inner">
-        <a className="site-header__brand" href={HOME_HREF} aria-label="Screen — início">
-          Screen
+        <a className="site-header__brand" href={HOME_HREF} aria-label="Cinerie — início">
+          Cinerie
         </a>
         <nav aria-label="Principal" className="site-header__nav">
           <ul className="site-header__links">

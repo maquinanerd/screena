@@ -1,6 +1,6 @@
-# SEO Programático — Screen
+# SEO Programático — Cinerie
 
-> APIs fornecem dados estruturados. **Screen escreve a camada editorial.**
+> APIs fornecem dados estruturados. **Cinerie escreve a camada editorial.**
 > Nenhuma página pública indexável é apenas um espelho de TMDB/IMDb/Rotten Tomatoes.
 
 > **⚠️ Política atualizada (2026-07).** O antigo _gate anti-thin_ (≥ 2 blocos de valor para
@@ -12,7 +12,7 @@
 > `≥ 2 blocos` ou "en/es nascem noindex" descrevem a política **antiga** — a fonte viva é
 > [`CLAUDE.md`](../CLAUDE.md) + [`.claude/rules/seo.md`](../.claude/rules/seo.md).
 
-Este documento define como Screen gera páginas em escala **com valor real**, sem cair em
+Este documento define como Cinerie gera páginas em escala **com valor real**, sem cair em
 _thin content_ nem em _index bloat_. Ele complementa:
 
 - [`.claude/rules/seo.md`](../.claude/rules/seo.md) — regras operacionais de SEO;
@@ -89,7 +89,7 @@ Regras de URL:
 ## 3. Gate anti-thin (o coração do programático)
 
 Uma página de entidade **só pode ser indexável** se tiver dados estruturados confiáveis **e pelo
-menos 2 blocos de valor próprios do Screen**. A decisão é calculada por
+menos 2 blocos de valor próprios da Cinerie**. A decisão é calculada por
 `evaluateIndexability()` em [`packages/seo/src/indexability.ts`](../packages/seo/src/indexability.ts).
 
 ### Blocos de valor aceitos
@@ -234,7 +234,7 @@ Regra: nunca prometer disponibilidade que a API não confirmou. Usar
 | Home/Org   | `WebSite` / `Organization`       |
 
 `AggregateRating`: **apenas quando permitido e corretamente atribuído**. Nunca usar para fingir
-que uma nota externa (IMDb, Rotten, Metacritic) é nota própria do Screen. Preservar sempre
+que uma nota externa (IMDb, Rotten, Metacritic) é nota própria da Cinerie. Preservar sempre
 fonte, escala, URL, atribuição e data de coleta (ver `RATING_ATTRIBUTION.md`).
 
 ---

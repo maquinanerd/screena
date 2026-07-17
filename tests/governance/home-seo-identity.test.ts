@@ -41,7 +41,7 @@ describe('governança SEO: home entity-first e grafo de identidade', () => {
     const raw = read(HOME_REL)
     const code = withoutComments(raw)
     expect(countMatches(code, /<h1[\s>]/g)).toBe(1)
-    expect(raw).toContain('Screen — filmes, séries e pessoas')
+    expect(raw).toContain('Cinerie — filmes, séries e pessoas')
     expect(code).toContain('<h1>{HOME_H1}</h1>')
   })
 

@@ -9,11 +9,11 @@
 
 ## Contexto curto do projeto
 
-A marca pública principal é **Screen**, no domínio canônico **`https://thescreen.media`**. **The Screen** pode aparecer apenas como referência histórica, explicativa ou nome expandido não-principal. **Screena** permanece como namespace técnico/legado interno (`@screena/*`, tokens `--screena-*`, nomes antigos de scripts/services), não como marca pública. **screena.media** é legado histórico e não deve aparecer como domínio canônico público ativo. **The Nerd News** é legado antigo e não deve voltar como identidade do produto.
+A marca pública principal é **Cinerie**, no domínio canônico **`https://cinerie.com`**. **Screen** / **The Screen** e **thescreen.media** são a marca e o domínio anteriores (renomeados no Gate 1.5, 2026-07): aparecem apenas como referência histórica em snapshots datados, nunca como identidade ativa — ver `REBRANDING-CINERIE.md`. **Screena** permanece como namespace técnico/legado interno (`@screena/*`, tokens `--screena-*`, nomes antigos de scripts/services), não como marca pública. **screena.media** é legado histórico e não deve aparecer como domínio canônico público ativo. **The Nerd News** é legado antigo e não deve voltar como identidade do produto.
 
-**Screen** é uma **base global de entretenimento _entity-first_** (filmes, séries, temporadas, episódios, pessoas, ratings externos, onde assistir, reviews e notícias) com **camada editorial própria**.
+**Cinerie** é uma **base global de entretenimento _entity-first_** (filmes, séries, temporadas, episódios, pessoas, ratings externos, onde assistir, reviews e notícias) com **camada editorial própria**.
 
-- As **APIs fornecem os dados**; **Screen escreve a camada editorial**. Fornecedores externos (TMDB, provedores de rating via RapidAPI) nunca são a voz editorial.
+- As **APIs fornecem os dados**; **Cinerie escreve a camada editorial**. Fornecedores externos (TMDB, provedores de rating via RapidAPI) nunca são a voz editorial.
 - **Zero API externa no render. Zero Gemini no render.** Toda página pública indexável lê **apenas PostgreSQL/cache local**. A IA (Gemini) só gera `content_blocks` **offline**, salvos, validados e revisados.
 - O MVP publica em **pt-BR**; `en`/`es` nascem em **draft/`noindex`** até revisão humana.
 - **Estado atual: fundação avançada / vertical slice técnica.** O repositório não é mais Fase 0 pura: já existem Prisma/PostgreSQL, migrations/seeds, client TMDB real em TypeScript, ingestão TMDB, sync/stale policy, Entity Writer offline em TypeScript, adapter Gemini separado do render, rotas públicas para filmes/séries/pessoas/notícias, presenters puros, gates anti-thin, testes de governança e CI.
@@ -32,7 +32,7 @@ Monorepo **pnpm** com workspaces `apps/*`, `packages/*`, `api-clients/*` e `serv
 | `pnpm test`      | Roda os testes (Vitest): invariantes e utilitários puros.                 |
 | `pnpm lint`      | Roda o ESLint em todo o repositório.                                      |
 | `pnpm typecheck` | Checagem de tipos (`tsc --noEmit`).                                       |
-| `pnpm build`     | Build do app público Screen (`@screena/web`).                             |
+| `pnpm build`     | Build do app público Cinerie (`@screena/web`).                             |
 | `pnpm audit:invariants`     | Audita as invariantes do projeto (ex.: pureza de render, atribuição de ratings). |
 | `pnpm audit:render`         | Audita pureza de render do app público.                                  |
 
@@ -47,7 +47,7 @@ Use preferencialmente `corepack pnpm ...` para garantir a versão fixada de pnpm
 - **Idioma:** docs, READMEs, regras e prompts em **pt-BR**; **código e identificadores em inglês** (comentários podem ser em pt-BR).
 - **TypeScript estrito e puro:** utilitários sem rede/DB/IO externo, funções puras e testáveis. Use sempre `export` **nomeado** (evite `export default` em utilitários).
 - **Pacotes (`packages/*`):** `@screena/config`, `@screena/schemas`, `@screena/seo`, `@screena/ui`, `@screena/types`, `@screena/db`. Cada pacote tem `package.json` (`"main": "./src/index.ts"`, `"type": "module"`), `tsconfig.json` (estende `../../tsconfig.base.json`), `README.md` e `src/index.ts`.
-- **Apps (`apps/*`):** `@screena/web` (site público Screen) e `@screena/admin` (painel editorial atualmente read-only; escrita editorial planejada).
+- **Apps (`apps/*`):** `@screena/web` (site público Cinerie) e `@screena/admin` (painel editorial atualmente read-only; escrita editorial planejada).
 - **Aliases** (devem bater entre `vitest.config.ts` e `tsconfig.base.json`):
 
   | Alias              | Caminho                          |

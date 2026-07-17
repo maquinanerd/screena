@@ -24,7 +24,7 @@ import "./globals.css";
  * contra acesso. Nenhum dos dois substitui o outro.
  */
 export const metadata: Metadata = {
-  title: "Admin Editorial | Screen (interno)",
+  title: "Admin Editorial | Cinerie (interno)",
   robots: {
     index: false,
     follow: false,

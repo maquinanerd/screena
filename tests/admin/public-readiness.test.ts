@@ -52,7 +52,7 @@ describe("evaluateArticlePublicReadiness — artigo pronto", () => {
     expect(r.canIndex).toBe(true);
     expect(r.issues).toEqual([]);
     expect(r.primaryIssue).toBeNull();
-    expect(r.publicUrl).toBe("https://thescreen.media/pt/noticias/meu-artigo/");
+    expect(r.publicUrl).toBe("https://cinerie.com/pt/noticias/meu-artigo/");
     expect(articleReadinessLabel(r.level)).toBe("Pronto para indexar");
     expect(readinessBadgeVariant(r.level)).toBe("ok");
   });
@@ -147,9 +147,9 @@ describe("evaluateArticlePublicReadiness — gates de INDEXACAO (exibivel, mas n
 describe("buildPublicArticleUrl", () => {
   it("pt-BR/pt com slug seguro -> URL canonica com barra final", () => {
     expect(buildPublicArticleUrl("meu-artigo", "pt-BR")).toBe(
-      "https://thescreen.media/pt/noticias/meu-artigo/",
+      "https://cinerie.com/pt/noticias/meu-artigo/",
     );
-    expect(buildPublicArticleUrl("x", "pt")).toBe("https://thescreen.media/pt/noticias/x/");
+    expect(buildPublicArticleUrl("x", "pt")).toBe("https://cinerie.com/pt/noticias/x/");
   });
 
   it("null para idioma nao-pt-BR, slug ausente/vazio ou slug perigoso", () => {

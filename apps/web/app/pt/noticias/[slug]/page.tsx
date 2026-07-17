@@ -127,7 +127,7 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
           {view.aiAssisted ? (
             <aside role="note">
               Conteúdo produzido com apoio de ferramentas de inteligência artificial e revisado pela
-              equipe editorial da Screen.
+              equipe editorial da Cinerie.
             </aside>
           ) : null}
         </article>

@@ -74,11 +74,11 @@ describe("buildSitemapIndex", () => {
     );
     const index = buildSitemapIndex(
       shards,
-      (shard) => `https://thescreen.media/sitemaps/${shard.id}.xml`,
+      (shard) => `https://cinerie.com/sitemaps/${shard.id}.xml`,
     );
     expect(index).toEqual([
       {
-        loc: "https://thescreen.media/sitemaps/sitemap-pt-BR-movies-0.xml",
+        loc: "https://cinerie.com/sitemaps/sitemap-pt-BR-movies-0.xml",
         lastmod: "2026-07-10T00:00:00.000Z",
       },
     ]);
