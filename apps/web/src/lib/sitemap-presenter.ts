@@ -4,7 +4,7 @@
  * server-only (`src/server/seo/sitemap-entries.ts`) e decide o que entra.
  *
  * Regras duras (espelham as invariantes 5/6/7 e as regras de seo.md):
- *  - So URLs do dominio canonico `https://thescreen.media`, sempre pt-BR
+ *  - So URLs do dominio canonico `https://cinerie.com`, sempre pt-BR
  *    (`/pt/...`) e com barra final (padrao `trailingSlash: true`). Nada de
  *    `/en`, `/es`, `/admin`, `/dev`, `/api` ou rota interna. (en/es entram no
  *    sitemap quando estiverem em PUBLISHED_LOCALES; hoje so pt-BR publica.)

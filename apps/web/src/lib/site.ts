@@ -1,5 +1,5 @@
 /**
- * site.ts - Helpers de URL publica/canonica do Screen.
+ * site.ts - Helpers de URL publica/canonica do Cinerie.
  *
  * Rotas puras vivem em `routes.ts` para poderem ser importadas no cliente.
  * Este modulo pode ler env porque monta metadata, canonical, sitemap e JSON-LD
@@ -27,18 +27,33 @@ export {
 } from "./routes";
 
 /** Variavel de origem publica desta instalacao. */
-export const PUBLIC_SITE_URL_ENV = "THE_SCREEN_PUBLIC_SITE_URL";
+export const PUBLIC_SITE_URL_ENV = "CINERIE_PUBLIC_SITE_URL";
 
 /** Flag explicita que permite indexacao somente na origem oficial. */
-export const PUBLIC_INDEXING_ENABLED_ENV = "THE_SCREEN_PUBLIC_INDEXING_ENABLED";
+export const PUBLIC_INDEXING_ENABLED_ENV = "CINERIE_PUBLIC_INDEXING_ENABLED";
+
+/**
+ * Nomes LEGADOS das mesmas variaveis (marca anterior).
+ *
+ * Continuam sendo lidos como FALLBACK: renomear a env quebraria todo deploy ja
+ * configurado (EasyPanel/Dockerfile) no instante do merge — e o gate de
+ * rebranding nao pode alterar comportamento. Precedencia: o nome novo vence; o
+ * antigo so vale enquanto o nome novo nao estiver definido. Remover apos migrar
+ * a configuracao dos ambientes (gate de infraestrutura).
+ */
+export const LEGACY_PUBLIC_SITE_URL_ENV = "THE_SCREEN_PUBLIC_SITE_URL";
+export const LEGACY_PUBLIC_INDEXING_ENABLED_ENV = "THE_SCREEN_PUBLIC_INDEXING_ENABLED";
 
 /** Origin publico canonico oficial (sem barra final). */
-export const OFFICIAL_SITE_URL = "https://thescreen.media";
+export const OFFICIAL_SITE_URL = "https://cinerie.com";
 
 /** Origin local usado em exemplos/dev quando configurado por env. */
 export const LOCAL_SITE_URL = "http://localhost:3000";
 
 export interface SiteUrlEnv {
+  readonly CINERIE_PUBLIC_SITE_URL?: string;
+  readonly CINERIE_PUBLIC_INDEXING_ENABLED?: string;
+  /** Legado (marca anterior) — lido so como fallback. */
   readonly THE_SCREEN_PUBLIC_SITE_URL?: string;
   readonly THE_SCREEN_PUBLIC_INDEXING_ENABLED?: string;
   readonly NODE_ENV?: string;
@@ -75,12 +90,13 @@ export function normalizeSiteOrigin(value: string | null | undefined): string | 
 }
 
 export function configuredSiteUrl(env: SiteUrlEnv = process.env): string | null {
-  return normalizeSiteOrigin(env.THE_SCREEN_PUBLIC_SITE_URL);
+  // Nome novo vence; o legado so vale enquanto o novo nao estiver definido.
+  return normalizeSiteOrigin(env.CINERIE_PUBLIC_SITE_URL ?? env.THE_SCREEN_PUBLIC_SITE_URL);
 }
 
 /**
  * Resolve a origem usada por canonical/metadata. Producao oficial deve definir
- * THE_SCREEN_PUBLIC_SITE_URL=https://thescreen.media; dev/staging/preview devem
+ * CINERIE_PUBLIC_SITE_URL=https://cinerie.com; dev/staging/preview devem
  * definir sua propria origem para nao emitirem canonical falso de producao.
  */
 export function resolveSiteUrl(env: SiteUrlEnv = process.env): string {
@@ -102,7 +118,11 @@ export function isOfficialSiteUrl(siteUrl: string): boolean {
 export function isOfficialIndexableEnvironment(
   env: SiteUrlEnv = process.env,
 ): boolean {
-  if (readTrimmed(env.THE_SCREEN_PUBLIC_INDEXING_ENABLED) !== "1") return false;
+  // Nome novo vence; legado como fallback (ver LEGACY_PUBLIC_INDEXING_ENABLED_ENV).
+  const indexingFlag = readTrimmed(
+    env.CINERIE_PUBLIC_INDEXING_ENABLED ?? env.THE_SCREEN_PUBLIC_INDEXING_ENABLED,
+  );
+  if (indexingFlag !== "1") return false;
   if (configuredSiteUrl(env) !== OFFICIAL_SITE_URL) return false;
 
   const nodeEnv = readTrimmed(env.NODE_ENV)?.toLowerCase() ?? null;

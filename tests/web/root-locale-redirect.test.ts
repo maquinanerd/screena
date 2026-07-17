@@ -17,7 +17,7 @@ import {
   resolveRootRedirectLocale,
 } from '../../apps/web/src/lib/root-locale'
 
-const ORIGIN = 'https://thescreen.media'
+const ORIGIN = 'https://cinerie.com'
 
 /**
  * Request minimo com a superficie que o middleware consome (`nextUrl.pathname`,

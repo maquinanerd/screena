@@ -2,7 +2,7 @@
  * Testes puros dos helpers de URL canonica do site publico (site.ts).
  *
  * Garantem que toda URL publica nasce no dominio canonico
- * https://thescreen.media, com barra final (trailingSlash do app), sem barra
+ * https://cinerie.com, com barra final (trailingSlash do app), sem barra
  * duplicada, e que slug/path invalidos sao REJEITADOS (null) em vez de gerar
  * URL quebrada ou externa.
  */
@@ -16,6 +16,8 @@ import {
   EXPLORE_PATH,
   HOME_PATH,
   isOfficialIndexableEnvironment,
+  LEGACY_PUBLIC_INDEXING_ENABLED_ENV,
+  LEGACY_PUBLIC_SITE_URL_ENV,
   LOCAL_SITE_URL,
   MOVIES_INDEX_PATH,
   NEWS_INDEX_PATH,
@@ -54,25 +56,41 @@ describe("site.ts — constantes de rota publica", () => {
 
 describe("site origin por env", () => {
   it("documenta as envs canonicas de origem publica e opt-in de indexacao", () => {
-    expect(PUBLIC_SITE_URL_ENV).toBe("THE_SCREEN_PUBLIC_SITE_URL");
-    expect(PUBLIC_INDEXING_ENABLED_ENV).toBe(
+    expect(PUBLIC_SITE_URL_ENV).toBe("CINERIE_PUBLIC_SITE_URL");
+    expect(PUBLIC_INDEXING_ENABLED_ENV).toBe("CINERIE_PUBLIC_INDEXING_ENABLED");
+  });
+
+  it("mantem os nomes LEGADOS de env como fallback (deploy nao quebra no merge)", () => {
+    expect(LEGACY_PUBLIC_SITE_URL_ENV).toBe("THE_SCREEN_PUBLIC_SITE_URL");
+    expect(LEGACY_PUBLIC_INDEXING_ENABLED_ENV).toBe(
       "THE_SCREEN_PUBLIC_INDEXING_ENABLED",
     );
+
+    // Só o legado definido: continua valendo.
+    expect(
+      configuredSiteUrl({ THE_SCREEN_PUBLIC_SITE_URL: "https://cinerie.com" }),
+    ).toBe(OFFICIAL_SITE_URL);
+
+    // Os dois definidos: o nome NOVO vence.
+    expect(
+      configuredSiteUrl({
+        CINERIE_PUBLIC_SITE_URL: "https://cinerie.com",
+        THE_SCREEN_PUBLIC_SITE_URL: "https://staging.example",
+      }),
+    ).toBe(OFFICIAL_SITE_URL);
   });
 
   it("normaliza origin http/https sem barra final", () => {
-    expect(normalizeSiteOrigin("https://THESCREEN.MEDIA/")).toBe(
-      OFFICIAL_SITE_URL,
-    );
+    expect(normalizeSiteOrigin("https://CINERIE.COM/")).toBe(OFFICIAL_SITE_URL);
     expect(normalizeSiteOrigin("http://localhost:3000/")).toBe(LOCAL_SITE_URL);
   });
 
   it("rejeita origin com path, query, hash, credencial ou protocolo invalido", () => {
-    expect(normalizeSiteOrigin("https://thescreen.media/pt/")).toBeNull();
-    expect(normalizeSiteOrigin("https://thescreen.media/?x=1")).toBeNull();
-    expect(normalizeSiteOrigin("https://thescreen.media/#x")).toBeNull();
-    expect(normalizeSiteOrigin("https://u:p@thescreen.media")).toBeNull();
-    expect(normalizeSiteOrigin("ftp://thescreen.media")).toBeNull();
+    expect(normalizeSiteOrigin("https://cinerie.com/pt/")).toBeNull();
+    expect(normalizeSiteOrigin("https://cinerie.com/?x=1")).toBeNull();
+    expect(normalizeSiteOrigin("https://cinerie.com/#x")).toBeNull();
+    expect(normalizeSiteOrigin("https://u:p@cinerie.com")).toBeNull();
+    expect(normalizeSiteOrigin("ftp://cinerie.com")).toBeNull();
   });
 
   it("resolve origem configurada por env e cai no dominio oficial como fallback", () => {

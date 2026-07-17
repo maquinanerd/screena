@@ -23,7 +23,7 @@ function live(overrides: Partial<PageSeoFacts> = {}): PageSeoResolution {
     language: "pt-BR",
     hasReliableStructuredData: true,
     displayedRatings: [{ licenseDisplayAllowed: true }],
-    canonicalUrl: "https://thescreen.media/pt/filmes/x/",
+    canonicalUrl: "https://cinerie.com/pt/filmes/x/",
     ...overrides,
   });
 }

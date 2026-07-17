@@ -1,9 +1,9 @@
 /**
- * seo/sitemap.ts — Builder do sitemap segmentado por idioma do Screen.
+ * seo/sitemap.ts — Builder do sitemap segmentado por idioma da Cinerie.
  *
  * INVARIANTE (regra 3 — Zero API externa no render):
  *   O sitemap e gerado EXCLUSIVAMENTE a partir do PostgreSQL/cache local da
- *   Screen. NUNCA consultamos TMDB, RapidAPI, Rotten Tomatoes ou qualquer
+ *   Cinerie. NUNCA consultamos TMDB, RapidAPI, Rotten Tomatoes ou qualquer
  *   fornecedor externo para montar o sitemap. As rotas publicaveis ja foram
  *   materializadas no banco (tabelas `slugs`, `redirects`,
  *   `page_indexability_decisions`) por workers offline.
@@ -21,7 +21,7 @@
  */
 
 /**
- * Locales suportados pelo Screen. No MVP somente `pt-BR` e publicavel; os
+ * Locales suportados pela Cinerie. No MVP somente `pt-BR` e publicavel; os
  * demais existem para preparar a expansao multilingue.
  */
 export type SitemapLocale = 'pt-BR' | 'en' | 'es';
@@ -43,7 +43,7 @@ export type SitemapChangeFreq =
  * Uma entrada (URL) do sitemap, ja resolvida a partir do banco local.
  */
 export interface SitemapEntry {
-  /** URL absoluta canonica (ex.: https://thescreen.media/pt/filmes/{slug}/). */
+  /** URL absoluta canonica (ex.: https://cinerie.com/pt/filmes/{slug}/). */
   readonly loc: string;
   /** Locale ao qual a URL pertence (define o segmento do sitemap). */
   readonly locale: SitemapLocale;

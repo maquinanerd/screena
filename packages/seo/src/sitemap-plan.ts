@@ -123,7 +123,7 @@ export interface SitemapIndexEntry {
 /**
  * Monta as entradas do sitemap-index a partir dos shards. `resolveLoc` recebe o
  * id do shard e devolve a URL absoluta do arquivo de sitemap correspondente
- * (ex.: `https://thescreen.media/sitemaps/sitemap-pt-BR-movies-0.xml`).
+ * (ex.: `https://cinerie.com/sitemaps/sitemap-pt-BR-movies-0.xml`).
  */
 export function buildSitemapIndex(
   shards: readonly SitemapShard[],

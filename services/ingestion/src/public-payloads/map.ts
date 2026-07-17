@@ -61,7 +61,7 @@ import type {
 
 /** Opcoes comuns de mapeamento. */
 export interface MapOptions {
-  /** Origem absoluta do site (ex.: https://thescreen.media), sem barra final. */
+  /** Origem absoluta do site (ex.: https://cinerie.com), sem barra final. */
   readonly siteOrigin: string
   readonly locale: string
   /**

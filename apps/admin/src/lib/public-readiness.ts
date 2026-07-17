@@ -2,7 +2,7 @@
  * public-readiness.ts — Validacao de PRONTIDAO PUBLICA de artigos/content_blocks
  * para o admin editorial. PURO (sem rede/DB/IO/import de runtime).
  *
- * Responde a pergunta do editor: "isso ja pode aparecer no site publico do Screen,
+ * Responde a pergunta do editor: "isso ja pode aparecer no site publico da Cinerie,
  * e ja pode indexar?". NAO decide nada no banco, NAO publica, NAO chama API — so
  * descreve o estado atual espelhando as regras REAIS do app publico.
  *
@@ -32,7 +32,7 @@ import {
 /* ------------------------------------------------------------------ */
 
 /** Origin publico canonico (sem barra final). Espelha SITE_URL do apps/web. */
-export const PUBLIC_SITE_ORIGIN = "https://thescreen.media";
+export const PUBLIC_SITE_ORIGIN = "https://cinerie.com";
 
 /** Caminho da listagem de noticias pt-BR (com barra final). Espelha NEWS_INDEX_PATH. */
 export const NEWS_INDEX_PATH = "/pt/noticias/";

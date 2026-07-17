@@ -26,7 +26,7 @@ RUN pnpm --filter @screena/db db:generate
 # /robots.txt e gerado como rota Static no `next build`: buildRobots() le
 # THE_SCREEN_PUBLIC_* no momento do build, nao no runtime. Sem estas envs aqui o
 # artefato nasce com `Disallow: /` e nenhuma env de runtime o corrige.
-ARG THE_SCREEN_PUBLIC_SITE_URL=https://thescreen.media
+ARG THE_SCREEN_PUBLIC_SITE_URL=https://cinerie.com
 ARG THE_SCREEN_PUBLIC_INDEXING_ENABLED=1
 
 ENV THE_SCREEN_PUBLIC_SITE_URL=${THE_SCREEN_PUBLIC_SITE_URL}

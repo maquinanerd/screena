@@ -430,7 +430,7 @@ async function runChecks(
   record(14, "D. renderableBlockCount === 2", richByAlias?.view.renderableBlockCount === 2, `count=${richByAlias?.view.renderableBlockCount}`);
   record(15, "D. indexability.decision === index", richByAlias?.indexability.decision === "index", `decision=${richByAlias?.indexability.decision}`);
   record(16, "D. canonicalSlug vem do slug canonico", richByAlias?.canonicalSlug === "pessoa-rica", `canonicalSlug=${richByAlias?.canonicalSlug}`);
-  record(17, "D. canonicalUrl usa /pt/pessoas/", richByAlias?.canonicalUrl === "https://thescreen.media/pt/pessoas/pessoa-rica/", `canonicalUrl=${richByAlias?.canonicalUrl}`);
+  record(17, "D. canonicalUrl usa /pt/pessoas/", richByAlias?.canonicalUrl === "https://cinerie.com/pt/pessoas/pessoa-rica/", `canonicalUrl=${richByAlias?.canonicalUrl}`);
   record(18, "D. nome vem da traducao pt-BR (original preservado)", richByAlias?.view.name === "Pessoa Rica" && richByAlias?.view.originalName === "Original Person", `name=${richByAlias?.view.name} / original=${richByAlias?.view.originalName}`);
   record(19, "D. funcao traduzida e vida/local reais", richByAlias?.view.roleLabel === "Atuacao" && richByAlias?.view.lifeLabel === "Nascimento: 1970" && richByAlias?.view.placeOfBirth === "Sao Paulo, Brasil", `role=${richByAlias?.view.roleLabel} / vida=${richByAlias?.view.lifeLabel}`);
   record(20, "D. imagem local segura aparece", richByAlias?.view.profile?.src === "/media/people/rich-person.webp" && richByAlias?.view.hasRealImage === true, `profile=${richByAlias?.view.profile?.src ?? "null"}`);

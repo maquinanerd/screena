@@ -34,9 +34,10 @@ describe("robots.ts - producao oficial", () => {
     expect(sitemap.pathname).toBe("/sitemap.xml");
   });
 
-  it("nao usa o dominio legado screena.media nem a marca 'The Screen'", () => {
+  it("nao usa dominio nem marca legados (screena.media, thescreen.media, 'The Screen')", () => {
     const serialized = JSON.stringify(result);
     expect(serialized).not.toMatch(/screena\.media/i);
+    expect(serialized).not.toMatch(/thescreen\.media/i);
     expect(serialized).not.toContain("The Screen");
   });
 

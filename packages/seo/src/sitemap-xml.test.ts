@@ -23,7 +23,7 @@ describe("renderUrlset", () => {
   it("gera urlset valido com loc/lastmod/changefreq/priority", () => {
     const xml = renderUrlset([
       {
-        loc: "https://thescreen.media/pt/filmes/x/",
+        loc: "https://cinerie.com/pt/filmes/x/",
         lastmod: "2026-07-10T00:00:00.000Z",
         changefreq: "monthly",
         priority: 0.5,
@@ -33,7 +33,7 @@ describe("renderUrlset", () => {
     expect(xml).toContain(
       '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
     );
-    expect(xml).toContain("<loc>https://thescreen.media/pt/filmes/x/</loc>");
+    expect(xml).toContain("<loc>https://cinerie.com/pt/filmes/x/</loc>");
     expect(xml).toContain("<lastmod>2026-07-10T00:00:00.000Z</lastmod>");
     expect(xml).toContain("<changefreq>monthly</changefreq>");
     expect(xml).toContain("<priority>0.5</priority>");
@@ -42,16 +42,16 @@ describe("renderUrlset", () => {
 
   it("escapa & na loc (nunca XML cru quebrado)", () => {
     const xml = renderUrlset([
-      { loc: "https://thescreen.media/pt/filmes/a&b/" },
+      { loc: "https://cinerie.com/pt/filmes/a&b/" },
     ]);
     expect(xml).toContain(
-      "<loc>https://thescreen.media/pt/filmes/a&amp;b/</loc>",
+      "<loc>https://cinerie.com/pt/filmes/a&amp;b/</loc>",
     );
     expect(xml).not.toContain("a&b<");
   });
 
   it("omite lastmod/changefreq/priority quando ausentes", () => {
-    const xml = renderUrlset([{ loc: "https://thescreen.media/pt/" }]);
+    const xml = renderUrlset([{ loc: "https://cinerie.com/pt/" }]);
     expect(xml).not.toContain("<lastmod>");
     expect(xml).not.toContain("<changefreq>");
     expect(xml).not.toContain("<priority>");
@@ -68,7 +68,7 @@ describe("renderSitemapIndex", () => {
   it("gera sitemapindex apontando para shards", () => {
     const xml = renderSitemapIndex([
       {
-        loc: "https://thescreen.media/sitemaps/sitemap-pt-BR-movies-0.xml",
+        loc: "https://cinerie.com/sitemaps/sitemap-pt-BR-movies-0.xml",
         lastmod: "2026-07-10T00:00:00.000Z",
       },
     ]);
@@ -76,7 +76,7 @@ describe("renderSitemapIndex", () => {
       '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
     );
     expect(xml).toContain(
-      "<loc>https://thescreen.media/sitemaps/sitemap-pt-BR-movies-0.xml</loc>",
+      "<loc>https://cinerie.com/sitemaps/sitemap-pt-BR-movies-0.xml</loc>",
     );
     expect(xml).toContain("<lastmod>2026-07-10T00:00:00.000Z</lastmod>");
     expect(xml.trimEnd().endsWith("</sitemapindex>")).toBe(true);

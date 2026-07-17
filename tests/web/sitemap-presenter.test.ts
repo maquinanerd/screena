@@ -1,7 +1,7 @@
 /**
  * Testes puros do presenter do sitemap publico.
  *
- * Garantem que o sitemap: usa somente o dominio canonico thescreen.media com
+ * Garantem que o sitemap: usa somente o dominio canonico cinerie.com com
  * barra final; no caminho com banco, inclui as rotas estaticas apenas quando
  * as paginas correspondentes seriam `index` (sitemap e meta robots nao devem
  * discordar);
@@ -21,7 +21,7 @@ import {
   type SitemapNewsCandidate,
 } from "../../apps/web/src/lib/sitemap-presenter";
 
-const ORIGIN = "https://thescreen.media";
+const ORIGIN = "https://cinerie.com";
 
 function entity(
   overrides: Partial<SitemapEntityCandidate> = {},

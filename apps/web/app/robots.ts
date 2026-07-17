@@ -7,12 +7,13 @@ import {
 } from "../src/lib/site";
 
 /**
- * robots.txt do app publico Screen (https://thescreen.media/robots.txt).
+ * robots.txt do app publico Cinerie (https://cinerie.com/robots.txt).
  *
  * Principios:
  *  - Producao oficial libera crawl publico geral somente quando
- *    THE_SCREEN_PUBLIC_SITE_URL=https://thescreen.media e
- *    THE_SCREEN_PUBLIC_INDEXING_ENABLED=1.
+ *    CINERIE_PUBLIC_SITE_URL=https://cinerie.com e
+ *    CINERIE_PUBLIC_INDEXING_ENABLED=1 (os nomes legados
+ *    THE_SCREEN_PUBLIC_* seguem aceitos como fallback).
  *  - Dev, preview, staging, localhost e dominio temporario bloqueiam tudo com
  *    Disallow: / e nao anunciam sitemap.
  *  - Em producao oficial, Disallow fica restrito a areas tecnicas:
@@ -20,7 +21,7 @@ import {
  *  - /_next/ nao e bloqueado, porque os assets do Next sao necessarios para
  *    renderizacao por crawlers.
  *  - O sitemap so aparece na saida oficial e sempre aponta para
- *    https://thescreen.media/sitemap.xml. Puro: sem DB, sem rede.
+ *    https://cinerie.com/sitemap.xml. Puro: sem DB, sem rede.
  */
 export function buildRobots(env: SiteUrlEnv = process.env): MetadataRoute.Robots {
   if (!isOfficialIndexableEnvironment(env)) {

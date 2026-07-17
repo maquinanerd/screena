@@ -34,7 +34,7 @@ const dbSchema = path.join(dbDir, "prisma", "schema.prisma");
 const dbRequire = createRequire(path.join(dbDir, "package.json"));
 
 const LANGUAGE = "pt-BR";
-const SITE = "https://thescreen.media";
+const SITE = "https://cinerie.com";
 const LIMIT = 2;
 
 interface CheckResult {

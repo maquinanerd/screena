@@ -76,7 +76,7 @@ describe('mapMovieDetail', () => {
     expect(payload.kind).toBe('movie')
     expect(payload.title).toBe('Matrix')
     expect(payload.originalTitle).toBe('The Matrix')
-    expect(payload.canonicalUrl).toBe('https://thescreen.media/pt/filmes/matrix/')
+    expect(payload.canonicalUrl).toBe('https://cinerie.com/pt/filmes/matrix/')
     expect(payload.releaseDate).toBe('1999-03-31')
     expect(payload.year).toBe(1999)
     expect(payload.collection?.kind).toBe('collection')
@@ -135,7 +135,7 @@ describe('mapTvDetail', () => {
   it('temporadas ordenadas (0=especiais primeiro) com rota composta', () => {
     expect(payload.seasons.map((s) => s.seasonNumber)).toEqual([0, 1, 2])
     expect(payload.seasons[1]?.canonicalUrl).toBe(
-      'https://thescreen.media/pt/series/game-of-thrones/temporadas/1/',
+      'https://cinerie.com/pt/series/game-of-thrones/temporadas/1/',
     )
   })
 
@@ -153,7 +153,7 @@ describe('mapSeasonDetail', () => {
   it('episodios ordenados com URL composta serie+temporada+numero', () => {
     expect(payload.episodes.map((e) => e.episodeNumber)).toEqual([1, 2])
     expect(payload.episodes[0]?.canonicalUrl).toBe(
-      'https://thescreen.media/pt/series/game-of-thrones/temporadas/1/episodios/1/',
+      'https://cinerie.com/pt/series/game-of-thrones/temporadas/1/episodios/1/',
     )
     expect(payload.series.kind).toBe('tv')
     assertJsonSafe(payload)
@@ -165,7 +165,7 @@ describe('mapEpisodeDetail', () => {
 
   it('produz contrato completo com midia fail-closed', () => {
     expect(payload.canonicalUrl).toBe(
-      'https://thescreen.media/pt/series/game-of-thrones/temporadas/1/episodios/1/',
+      'https://cinerie.com/pt/series/game-of-thrones/temporadas/1/episodios/1/',
     )
     expect(payload.media.videos.some((v) => v.key === 'blocked1')).toBe(false)
     assertJsonSafe(payload)
@@ -224,7 +224,7 @@ describe('mapSearch', () => {
 
   it('descarta resultado sem canonicalUrl (nunca link 404)', () => {
     expect(payload.results).toHaveLength(1)
-    expect(payload.results[0]?.canonicalUrl).toBe('https://thescreen.media/pt/filmes/matrix/')
+    expect(payload.results[0]?.canonicalUrl).toBe('https://cinerie.com/pt/filmes/matrix/')
   })
 
   it('a superficie de busca NUNCA indexa', () => {

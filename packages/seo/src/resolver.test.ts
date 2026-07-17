@@ -160,9 +160,9 @@ describe("resolvePageSeo — matriz de decisao", () => {
 
   it("canonical e repassado; blocos so alimentam hasUniqueValue", () => {
     const r = resolvePageSeo(
-      facts({ canonicalUrl: "https://thescreen.media/pt/filmes/x/", valueBlocksCount: 1 }),
+      facts({ canonicalUrl: "https://cinerie.com/pt/filmes/x/", valueBlocksCount: 1 }),
     );
-    expect(r.canonical).toBe("https://thescreen.media/pt/filmes/x/");
+    expect(r.canonical).toBe("https://cinerie.com/pt/filmes/x/");
     expect(r.hasUniqueValue).toBe(false);
     expect(r.decision).toBe("index");
   });

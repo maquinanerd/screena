@@ -208,10 +208,10 @@ async function main(): Promise<void> {
 
     // ===== DETERMINISMO DE MUDANCA (config) + LOGS =====
     await prisma.$executeRawUnsafe(`UPDATE api_cache SET expires_at = now() - interval '1 day' WHERE endpoint='/configuration'`)
-    configSecureBaseUrl = 'https://cdn.thescreen.media/t/p/'
+    configSecureBaseUrl = 'https://cdn.cinerie.com/t/p/'
     const tax2 = await runTaxonomySync({ read, cache, log, imageConfigStore, genresStore, now: () => new Date() })
     const cfg2 = (await q<{ secure_base_url: string }>(`SELECT secure_base_url FROM tmdb_image_config WHERE provider_api='tmdb'`))[0]!
-    record(13, 'config: payload mudou -> atualizado deterministicamente', tax2.imageConfig.changed === true && cfg2.secure_base_url === 'https://cdn.thescreen.media/t/p/', `changed=${tax2.imageConfig.changed}`)
+    record(13, 'config: payload mudou -> atualizado deterministicamente', tax2.imageConfig.changed === true && cfg2.secure_base_url === 'https://cdn.cinerie.com/t/p/', `changed=${tax2.imageConfig.changed}`)
     const totalLogs = (await q<{ c: number }>(`SELECT count(*)::int AS c FROM api_sync_logs WHERE provider_api='tmdb'`))[0]!.c
     record(14, 'todo sync gera log (nenhuma ingestao silenciosa)', totalLogs > 0, `logs=${totalLogs}`)
 
