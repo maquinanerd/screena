@@ -21,12 +21,17 @@
  * `api_sync_logs` (regra: todo sync externo gera log).
  */
 
+import { spawnSync } from 'node:child_process'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
 import { disconnectPrisma, getPrismaClient, type PrismaClient } from '@screena/db/server'
 
 import {
   EXIT_CODES,
   buildReportJson,
   parseRatingsArgs,
+  planDelegation,
   renderRatingsHelp,
   renderReport,
   type RatingsArgs,
@@ -183,17 +188,24 @@ async function main(): Promise<void> {
   }
 
   if (args.command === 'sample' || args.command === 'sync') {
-    // `sample`/`sync` chamam o fornecedor e ja tem entrypoint dedicado, com
-    // cache, backoff, circuit breaker e log em api_sync_logs. Duplicar essa
-    // orquestracao aqui criaria dois caminhos de rede divergentes — o pior
-    // resultado possivel para uma regra que exige "todo sync gera log".
-    console.error(
-      `o comando "${args.command}" faz chamada real ao fornecedor e roda pelo entrypoint dedicado:\n` +
-        `  node --import tsx services/ratings/bin/sync-film-show-ratings.ts --type=film --limit=${args.limit}` +
-        `${args.id === null ? '' : ` --id=${args.id}`}${args.command === 'sync' ? ' --apply' : ' --sample'}\n\n` +
-        `Ele exige RAPIDAPI_FILM_SHOW_RATINGS_KEY e grava api_cache + api_sync_logs.`,
-    )
-    process.exit(EXIT_CODES.usage)
+    // DELEGACAO por subprocesso ao entrypoint dedicado (achado A5 da revisao
+    // adversarial: o comando canonico da missao tem de EXECUTAR, e a versao
+    // anterior — que imprimia instrucao e saia com exit 2/usage — classificava
+    // um comando VALIDO como erro de uso). A orquestracao de rede (cache,
+    // backoff, circuit breaker, log em api_sync_logs) continua vivendo num
+    // caminho UNICO, o bin dedicado; aqui so mapeamos flags e repassamos o
+    // exit code do filho.
+    const plan = planDelegation(args)
+    for (const warning of plan.warnings) console.error(`aviso: ${warning}`)
+    const binPath = path.join(path.dirname(fileURLToPath(import.meta.url)), 'sync-film-show-ratings.ts')
+    // `--import tsx` resolve pelo cwd do pacote (tsx e devDep daqui; e o mesmo
+    // runtime sob o qual ESTE bin ja esta rodando via `pnpm ratings`).
+    const child = spawnSync(process.execPath, ['--import', 'tsx', binPath, ...plan.argv], {
+      stdio: 'inherit',
+      cwd: path.join(path.dirname(fileURLToPath(import.meta.url)), '..'),
+      env: process.env,
+    })
+    process.exit(child.status ?? EXIT_CODES.unexpected)
   }
 
   const prisma = openPrisma()

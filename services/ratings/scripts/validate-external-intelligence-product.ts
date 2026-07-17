@@ -94,13 +94,26 @@ async function runChecks(url: string): Promise<void> {
   const q = <T>(sql: string): Promise<T[]> => prisma.$queryRawUnsafe<T[]>(sql)
   const exec = (sql: string): Promise<number> => prisma.$executeRawUnsafe(sql)
 
-  /** O INSERT/UPDATE proibido passou? Entao a trava NAO existe. */
-  async function expectViolation(n: number, name: string, sql: string): Promise<void> {
+  /**
+   * O INSERT/UPDATE proibido passou? Entao a trava NAO existe.
+   *
+   * `expected` e OBRIGATORIO (achado A4 da revisao adversarial): erros do
+   * Prisma comecam com "\n", entao `split('\n')[0]` produzia detail VAZIO e o
+   * check passava com QUALQUER erro — inclusive um typo de coluna ou uma FK
+   * nao relacionada. "Barrado pelo motivo errado" agora e FALHA, nao PASS.
+   */
+  async function expectViolation(n: number, name: string, sql: string, expected: string): Promise<void> {
     try {
       await exec(sql)
       record(n, name, false, 'STATEMENT PROIBIDO FOI ACEITO (a trava nao barrou)')
     } catch (e) {
-      record(n, name, true, `barrado: ${(e as Error).message.split('\n')[0].slice(0, 100)}`)
+      const msg = (e as Error).message.replace(/\s+/g, ' ').trim()
+      const hit = msg.toLowerCase().includes(expected.toLowerCase())
+      const at = hit ? Math.max(0, msg.toLowerCase().indexOf(expected.toLowerCase()) - 20) : 0
+      record(n, name, hit,
+        hit
+          ? `barrado: ...${msg.slice(at, at + 120)}`
+          : `BARRADO PELO MOTIVO ERRADO (esperado "${expected}"): ${msg.slice(0, 160)}`)
     }
   }
 
@@ -134,12 +147,14 @@ async function runChecks(url: string): Promise<void> {
       'invariante 2: provider_api = rating_source e barrado no BANCO',
       `INSERT INTO external_ratings (entity_type, entity_id, rating_source, rating_label, metric, rating_value, rating_scale, provider_api, updated_at)
        VALUES ('movie', ${movieId}, 'imdb', 'IMDb Rating', 'user_rating', 8.4, 10, 'imdb', now())`,
+      'provider_api nao pode ser igual a rating_source',
     )
     await expectViolation(
       2,
       'invariante 2: provider_api que E o id de outra fonte editorial e barrado',
       `INSERT INTO external_ratings (entity_type, entity_id, rating_source, rating_label, metric, rating_value, rating_scale, provider_api, updated_at)
        VALUES ('movie', ${movieId}, 'imdb', 'IMDb Rating', 'user_rating', 8.4, 10, 'metacritic', now())`,
+      'fornecedor tecnico nao usa identificador de rating_source',
     )
 
     // ---------- 2. escalas ----------
@@ -148,12 +163,14 @@ async function runChecks(url: string): Promise<void> {
       'invariante 1: imdb com escala 100 e barrado (a escala pertence a fonte)',
       `INSERT INTO external_ratings (entity_type, entity_id, rating_source, rating_label, metric, rating_value, rating_scale, provider_api, updated_at)
        VALUES ('movie', ${movieId}, 'imdb', 'IMDb Rating', 'user_rating', 84, 100, 'imdb236', now())`,
+      'nao corresponde a escala',
     )
     await expectViolation(
       4,
       'valor fora da escala e barrado',
       `INSERT INTO external_ratings (entity_type, entity_id, rating_source, rating_label, metric, rating_value, rating_scale, provider_api, updated_at)
        VALUES ('movie', ${movieId}, 'imdb', 'IMDb Rating', 'user_rating', 11, 10, 'imdb236', now())`,
+      'fora da escala',
     )
 
     // ---------- 3. cross-label ----------
@@ -162,6 +179,7 @@ async function runChecks(url: string): Promise<void> {
       'invariante 1: Tomatometer atribuido ao IMDb e barrado',
       `INSERT INTO external_ratings (entity_type, entity_id, rating_source, rating_label, metric, rating_value, rating_scale, provider_api, updated_at)
        VALUES ('movie', ${movieId}, 'imdb', 'Tomatometer', 'user_rating', 8.4, 10, 'imdb236', now())`,
+      'pertence ao Rotten Tomatoes',
     )
 
     // ---------- 4. critics/audience ----------
@@ -170,6 +188,7 @@ async function runChecks(url: string): Promise<void> {
       'critics/audience: Tomatometer com score_type=audience e barrado',
       `INSERT INTO external_ratings (entity_type, entity_id, rating_source, rating_label, metric, score_type, rating_value, rating_scale, provider_api, updated_at)
        VALUES ('movie', ${movieId}, 'rotten_tomatoes', 'Tomatometer', 'tomatometer', 'audience', 92, 100, 'imdb236', now())`,
+      'nota de CRITICA',
     )
 
     // ---------- 5. votos ----------
@@ -178,6 +197,7 @@ async function runChecks(url: string): Promise<void> {
       'votos negativos sao barrados (null = desconhecido e legitimo; -1 nao)',
       `INSERT INTO external_ratings (entity_type, entity_id, rating_source, rating_label, metric, rating_value, rating_scale, rating_count, provider_api, updated_at)
        VALUES ('movie', ${movieId}, 'imdb', 'IMDb Rating', 'user_rating', 8.4, 10, -1, 'imdb236', now())`,
+      'nao pode ser negativo',
     )
 
     // A nota valida de referencia. Nasce display_allowed=false.
@@ -197,24 +217,28 @@ async function runChecks(url: string): Promise<void> {
       'decisao nao pode conceder display sobre licenca unknown (sem porta dos fundos)',
       `INSERT INTO data_usage_decisions (source_license_id, use_case, stage, display_allowed, storage_allowed, policy_version, decided_by, reason, updated_at)
        VALUES (${mcLicenseId}, 'rating_display', 'approved_for_display', true, true, 'v1', 'ana@cinerie', 'tentativa de lavar licenca', now())`,
+      'nao permite uso concedido',
     )
     await expectViolation(
       10,
       'escada de permissao: display sem storage e barrado por CHECK',
       `INSERT INTO data_usage_decisions (source_license_id, use_case, stage, display_allowed, storage_allowed, policy_version, decided_by, reason, updated_at)
        VALUES (${imdbLicenseId}, 'x', 'approved_for_display', true, false, 'v1', 'ana@cinerie', 'motivo', now())`,
+      'data_usage_decisions_display_requires_storage',
     )
     await expectViolation(
       11,
       'estagio: display_allowed sem approved_for_display e barrado por CHECK',
       `INSERT INTO data_usage_decisions (source_license_id, use_case, stage, display_allowed, storage_allowed, policy_version, decided_by, reason, updated_at)
        VALUES (${imdbLicenseId}, 'y', 'license_pending', true, true, 'v1', 'ana@cinerie', 'motivo', now())`,
+      'data_usage_decisions_display_requires_stage',
     )
     await expectViolation(
       12,
       'revogada nao permite nada (CHECK)',
       `INSERT INTO data_usage_decisions (source_license_id, use_case, stage, display_allowed, storage_allowed, policy_version, decided_by, reason, updated_at)
        VALUES (${imdbLicenseId}, 'z', 'revoked', false, true, 'v1', 'ana@cinerie', 'motivo', now())`,
+      'data_usage_decisions_revoked_allows_nothing',
     )
 
     // A decisao VALIDA de rating_display do IMDb.
@@ -261,11 +285,13 @@ async function runChecks(url: string): Promise<void> {
       18,
       'attribution exigida: apagar attribution_text derruba a exibicao',
       `UPDATE external_ratings SET attribution_text=NULL WHERE id=${ratingId}`,
+      'approved_payload_hash ausente ou != fingerprint',
     )
     await expectViolation(
       19,
       'linkback exigido: apagar attribution_url derruba a exibicao',
       `UPDATE external_ratings SET attribution_url=NULL WHERE id=${ratingId}`,
+      'approved_payload_hash ausente ou != fingerprint',
     )
 
     // ---------- 9. MUDANCA REVOGA ----------
@@ -273,6 +299,7 @@ async function runChecks(url: string): Promise<void> {
       20,
       'mudanca revoga: alterar a nota sem novo hash e barrado pelo trigger',
       `UPDATE external_ratings SET rating_value=8.5 WHERE id=${ratingId}`,
+      'approved_payload_hash ausente ou != fingerprint',
     )
     const hashBefore = row.approved_payload_hash
     const fp = await q<{ fp: string }>(
@@ -290,6 +317,7 @@ async function runChecks(url: string): Promise<void> {
       22,
       'hash aprovado forjado e barrado',
       `UPDATE external_ratings SET approved_payload_hash='HASH_FALSO' WHERE id=${ratingId}`,
+      'approved_payload_hash ausente ou != fingerprint',
     )
 
     // ---------- 11. revocation ----------
@@ -312,6 +340,7 @@ async function runChecks(url: string): Promise<void> {
       24,
       'decisao nao-vigente: qualquer reescrita da nota exibida e barrada',
       `UPDATE external_ratings SET rating_count=13000, approved_payload_hash = external_rating_payload_fingerprint_v1(entity_type, entity_id, rating_source, metric, score_type, rating_label, rating_value, rating_scale, 13000, rating_url, provider_api, license_status, requires_attribution, requires_linkback, attribution_text, attribution_url) WHERE id=${ratingId}`,
+      'nao e a vigente',
     )
     await exec(`UPDATE data_usage_decisions SET is_current=true WHERE id=${decisionId}`)
 
@@ -321,6 +350,7 @@ async function runChecks(url: string): Promise<void> {
       'supersedes cross-group e barrado pelo guard',
       `INSERT INTO data_usage_decisions (source_license_id, use_case, stage, storage_allowed, policy_version, decided_by, reason, supersedes_id, is_current, updated_at)
        VALUES (${mcLicenseId}, 'rating_display', 'approved_for_internal_use', true, 'v1', 'ana@cinerie', 'motivo', ${decisionId}, false, now())`,
+      'mesmo (source_license_id, use_case, territory)',
     )
     await exec(`UPDATE data_usage_decisions SET is_current=false WHERE id=${decisionId}`)
     const successor = await q<{ id: bigint }>(
@@ -341,6 +371,9 @@ async function runChecks(url: string): Promise<void> {
       'duas decisoes vigentes para (licenca, uso, territorio) sao barradas',
       `INSERT INTO data_usage_decisions (source_license_id, use_case, territory, stage, storage_allowed, policy_version, decided_by, reason, updated_at)
        VALUES (${imdbLicenseId}, 'rating_display', 'BR', 'approved_for_internal_use', true, 'v3', 'ana@cinerie', 'concorrente', now())`,
+      // Prisma raw omite o nome da constraint (so code 23505 + colunas); as
+      // colunas da chave identificam o indice unico parcial inequivocamente.
+      '(source_license_id, use_case, COALESCE(territory',
     )
 
     // ---------- 14. streaming BR + provedor canonico ----------
@@ -350,23 +383,27 @@ async function runChecks(url: string): Promise<void> {
       28,
       'watch_providers: slug com maiuscula/espaco e barrado (CHECK de formato)',
       `INSERT INTO watch_providers (slug, canonical_name, updated_at) VALUES ('Prime Video','Prime Video', now())`,
+      'watch_providers_slug_format',
     )
     await expectViolation(
       29,
       'watch_providers: homepage nao-HTTPS e barrada',
       `INSERT INTO watch_providers (slug, canonical_name, homepage_url, updated_at) VALUES ('max','Max','http://max.com/', now())`,
+      'watch_providers_homepage_https',
     )
     await expectViolation(
       30,
       'alias: mesma (provider_api, external_key) para dois provedores e barrado',
       `INSERT INTO watch_provider_aliases (provider_id, provider_api, external_key, display_name, updated_at)
        SELECT id,'streaming_availability','netflix','Outro', now() FROM watch_providers WHERE slug='netflix'`,
+      '(provider_api, external_key)',
     )
     await expectViolation(
       31,
       'provider_api fantasma e barrado pela FK nova',
       `INSERT INTO watch_availability (entity_type, entity_id, country_code, provider_name, offer_type, provider_api, updated_at)
        VALUES ('movie', ${movieId}, 'BR', 'X', 'subscription', 'nao_existe', now())`,
+      'watch_availability_provider_api_fkey',
     )
 
     const watchLicense = await q<{ id: bigint }>(
@@ -394,6 +431,7 @@ async function runChecks(url: string): Promise<void> {
       33,
       'oferta sem provedor canonico nao exibe (mesmo com licenca completa)',
       `UPDATE watch_availability SET watch_provider_id=NULL WHERE id=${offerId}`,
+      'watch_provider_id obrigatorio',
     )
 
     // ---------- 15. links / preco / moeda ----------
@@ -402,12 +440,14 @@ async function runChecks(url: string): Promise<void> {
       'preco sem moeda e barrado (CHECK)',
       `INSERT INTO watch_availability (entity_type, entity_id, country_code, provider_name, offer_type, price, provider_api, updated_at)
        VALUES ('movie', ${movieId}, 'BR', 'Netflix', 'rent', 14.90, 'streaming_availability', now())`,
+      'watch_availability_price_requires_currency',
     )
     await expectViolation(
       35,
       'preco em modalidade nao-transacional e barrado (CHECK)',
       `INSERT INTO watch_availability (entity_type, entity_id, country_code, provider_name, offer_type, price, currency, provider_api, updated_at)
        VALUES ('movie', ${movieId}, 'BR', 'Netflix', 'subscription', 39.90, 'BRL', 'streaming_availability', now())`,
+      'watch_availability_price_only_transactional',
     )
 
     // ---------- 16. cinerie score: BLOQUEADO sem decisao ----------
@@ -431,6 +471,7 @@ async function runChecks(url: string): Promise<void> {
       38,
       'cinerie score: screen_score_display=true sem decisao vigente e barrado',
       `UPDATE movies SET screen_score=4.2, screen_score_scale=5, screen_score_display=true WHERE id=${movieId}`,
+      'BLOCKED_BY_DECISION',
     )
     if (blocked.status !== 'blocked_by_decision') throw new Error('esperado bloqueio')
     await exec(
@@ -444,12 +485,14 @@ async function runChecks(url: string): Promise<void> {
       'cinerie score: linha "bloqueada" carregando valor e barrada (CHECK)',
       `INSERT INTO cinerie_score_calculations (entity_type, entity_id, status, value, scale, version, inputs_hash, blocked_reason, calculated_at)
        VALUES ('movie', ${movieId}, 'blocked_by_decision', 4.2, 5, 'x', 'y', 'motivo', now())`,
+      'cinerie_score_calculations_status_shape',
     )
     await expectViolation(
       41,
       'cinerie score: linha "calculada" sem valor e barrada (CHECK)',
       `INSERT INTO cinerie_score_calculations (entity_type, entity_id, status, version, inputs_hash, calculated_at)
        VALUES ('movie', ${movieId}, 'calculated', 'x', 'y', now())`,
+      'cinerie_score_calculations_status_shape',
     )
 
     // Com decisao de derivacao vigente, o banco LIBERA (prova do outro sentido:
@@ -498,6 +541,120 @@ async function runChecks(url: string): Promise<void> {
       'render: so a nota governada e exibivel; as demais ficam no banco (auditaveis) e fora da vitrine',
       Number(displayable[0]!.c) === 1 && Number(total[0]!.c) > 1,
       `exibiveis=${displayable[0]!.c}/${total[0]!.c}`,
+    )
+
+    // ================= Revisao adversarial da PR #74 (achados A1/A2/A3/A6/A8) =================
+
+    // ---------- A6: estados de DADO nao entram na tabela de DECISOES ----------
+    await expectViolation(
+      46,
+      'A6: decisao com stage=raw e barrada (raw/recognized/normalized sao do dado, nao da decisao)',
+      `INSERT INTO data_usage_decisions (source_license_id, use_case, stage, policy_version, decided_by, reason, is_current, updated_at)
+       VALUES (${imdbLicenseId}, 'estado_impossivel', 'raw', 'v1', 'ana@cinerie', 'motivo', false, now())`,
+      'data_usage_decisions_stage_is_decision',
+    )
+
+    // ---------- A8: historico de score de entidade inexistente nao entra ----------
+    await expectViolation(
+      47,
+      'A8: cinerie_score_calculations exige entidade real (FK composta para entities)',
+      `INSERT INTO cinerie_score_calculations (entity_type, entity_id, status, version, inputs_hash, blocked_reason, calculated_at)
+       VALUES ('movie', 999999999, 'blocked_by_decision', 'x', 'orfao', 'motivo', now())`,
+      'cinerie_score_calculations_entity_fkey',
+    )
+
+    // ---------- A2: decisao territorial de OUTRO territorio nao autoriza aqui ----------
+    // Licenca filmaffinity valida mas US-only + decisao US-only (o guard de
+    // decisoes ACEITA: casa com a licenca). O site exibe BR: o store nao pode
+    // selecionar essa decisao, e sem decisao o trigger recusa a promocao.
+    const faLicense = await q<{ id: bigint }>(
+      `INSERT INTO source_licenses (source_key, content_type, rating_source_key, provider_key, territory_code, license_status, display_allowed, score_allowed, requires_attribution, requires_linkback, attribution_text, is_current, decided_by, decided_at, policy_version, updated_at)
+       VALUES ('filmaffinity','rating','filmaffinity','imdb236','US','licensed',true,true,true,true,'FilmAffinity',true,'ana@cinerie',now(),'validation/v1',now()) RETURNING id`,
+    )
+    await exec(
+      `INSERT INTO data_usage_decisions (source_license_id, use_case, territory, stage, display_allowed, storage_allowed, attribution_required, linkback_required, policy_version, decided_by, reason, updated_at)
+       VALUES (${Number(faLicense[0]!.id)}, 'rating_display', 'US', 'approved_for_display', true, true, true, true, 'validation/v1', 'ana@cinerie', 'decisao US-only (cenario A2)', now())`,
+    )
+    const faRating = await q<{ id: bigint }>(
+      `INSERT INTO external_ratings (entity_type, entity_id, rating_source, rating_label, metric, score_type, rating_value, rating_scale, provider_api, license_status, requires_attribution, requires_linkback, attribution_text, attribution_url, fetched_at, updated_at)
+       VALUES ('movie', ${movieId}, 'filmaffinity', 'FilmAffinity', 'rating', 'audience', 7.6, 10, 'imdb236', 'licensed', true, true, 'FilmAffinity', 'https://www.filmaffinity.com/x', now(), now()) RETURNING id`,
+    )
+    const faId = String(Number(faRating[0]!.id))
+    const faPromotion = await store.promote([faId], 'ana@cinerie')
+    const faRow = (await q<{ display_allowed: boolean; data_usage_decision_id: bigint | null }>(
+      `SELECT display_allowed, data_usage_decision_id FROM external_ratings WHERE id=${faId}`,
+    ))[0]!
+    record(
+      48,
+      'A2: decisao rating_display de territorio US nao promove exibicao no site BR',
+      faPromotion.updated === 0 && faRow.display_allowed === false && faRow.data_usage_decision_id === null,
+      `updated=${faPromotion.updated}, display=${faRow.display_allowed}`,
+    )
+
+    // ---------- A1: licenca supersedida derruba a autoridade da decisao ----------
+    // Re-promove a nota imdb com a decisao vigente (successor), entao supersede a
+    // LICENCA (v2 blocked). A decisao continua is_current=true — e ainda assim
+    // nenhuma reescrita da nota exibida pode passar: a licenca-mae e a autoridade.
+    await store.revoke([String(ratingId)])
+    const repromoted = await store.promote([String(ratingId)], 'ana@cinerie')
+    await exec(`UPDATE source_licenses SET is_current=false WHERE id=${imdbLicenseId}`)
+    await exec(
+      `INSERT INTO source_licenses (source_key, content_type, rating_source_key, provider_key, license_status, display_allowed, is_current, decided_by, decided_at, policy_version, supersedes_id, updated_at)
+       VALUES ('imdb','rating','imdb','imdb236','blocked',false,true,'juridico@cinerie',now(),'validation/v2',${imdbLicenseId},now())`,
+    )
+    await expectViolation(
+      49,
+      'A1: com a licenca supersedida, reescrever a nota exibida e barrado (decisao ainda vigente nao basta)',
+      `UPDATE external_ratings SET rating_count=14000, approved_payload_hash = external_rating_payload_fingerprint_v1(entity_type, entity_id, rating_source, metric, score_type, rating_label, rating_value, rating_scale, 14000, rating_url, provider_api, license_status, requires_attribution, requires_linkback, attribution_text, attribution_url) WHERE id=${ratingId}`,
+      'da decisao foi supersedida',
+    )
+    record(
+      50,
+      'A1: a re-promocao governada (licenca vigente) tinha funcionado antes do supersede — a trava e a licenca, nao um "sempre nao"',
+      repromoted.updated === 1,
+      `updated=${repromoted.updated}`,
+    )
+    // Restaura a licenca imdb para nao poluir estado (historico preservado).
+    await exec(`UPDATE source_licenses SET is_current=false WHERE source_key='imdb' AND policy_version='validation/v2'`)
+    await exec(`UPDATE source_licenses SET is_current=true WHERE id=${imdbLicenseId}`)
+
+    // ---------- A3: sync sem mudanca renova o carimbo de verificacao ----------
+    const { createPrismaExternalRatings } = await import('../src/persistence/external-ratings-store.js')
+    const syncStore = createPrismaExternalRatings(prisma as never)
+    const t1 = new Date('2026-07-01T00:00:00.000Z')
+    const t2 = new Date('2026-07-10T00:00:00.000Z')
+    const baseRow = {
+      entityType: 'movie' as const,
+      entityId: String(movieId),
+      ratingSource: 'metacritic' as const,
+      ratingLabel: 'Metascore',
+      metric: 'metascore',
+      scoreType: 'critics' as const,
+      ratingValue: 81,
+      ratingScale: 100,
+      ratingCount: 44,
+      ratingUrl: 'https://www.metacritic.com/y',
+      providerApi: 'imdb236',
+      providerPayloadHash: 'hash-a3',
+    }
+    await syncStore.upsert({ ...baseRow, fetchedAt: t1, staleAfter: new Date(t1.getTime() + 336 * 3600_000) })
+    const afterFirst = (await q<{ updated_at: Date }>(
+      `SELECT updated_at FROM external_ratings WHERE entity_id=${movieId} AND rating_source='metacritic' AND metric='metascore'`,
+    ))[0]!
+    const second = await syncStore.upsert({ ...baseRow, fetchedAt: t2, staleAfter: new Date(t2.getTime() + 336 * 3600_000) })
+    // Comparacao NO BANCO (nao por round-trip de Date): as colunas sao
+    // timestamp sem tz armazenando UTC; um Date lido via raw chega deslocado
+    // pelo timezone da sessao e a comparacao local mentiria fora de UTC.
+    const freshCheck = (await q<{ fetched_ok: boolean; updated_same: boolean }>(
+      `SELECT fetched_at = '${t2.toISOString()}'::timestamptz AT TIME ZONE 'UTC' AS fetched_ok,
+              updated_at = '${afterFirst.updated_at.toISOString()}'::timestamptz AT TIME ZONE 'UTC' AS updated_same
+         FROM external_ratings WHERE entity_id=${movieId} AND rating_source='metacritic' AND metric='metascore'`,
+    ))[0]!
+    record(
+      51,
+      'A3: sync identico renova fetched_at (relogio de frescor anda) SEM bumpar updated_at',
+      second.changed === false && freshCheck.fetched_ok === true && freshCheck.updated_same === true,
+      `changed=${second.changed}, fetchedRenovado=${freshCheck.fetched_ok}, updatedAtIgual=${freshCheck.updated_same}`,
     )
   } catch (e) {
     record(0, 'execucao', false, (e as Error).message.split('\n')[0])

@@ -110,11 +110,26 @@ export interface CinerieScoreDecisionInput {
   readonly validFrom: Date;
   readonly validUntil: Date | null;
   /**
-   * Versao da formula que ESTA decisao aprovou (`data_usage_decisions.policy_version`).
-   * E o elo de versionamento: nao se calcula com uma formula que a decisao nao
-   * aprovou. Trocar a formula exige nova decisao — nunca um deploy silencioso.
+   * Versao do DOCUMENTO/politica juridica que registrou a decisao
+   * (`data_usage_decisions.policy_version`). Metadado de escrituracao — NAO
+   * seleciona algoritmo.
    */
   readonly policyVersion: string;
+  /**
+   * Versao da FORMULA que esta decisao aprovou. E o elo de versionamento: nao
+   * se calcula com formula que a decisao nao aprovou; trocar a formula exige
+   * nova decisao — nunca deploy silencioso.
+   *
+   * Campo SEPARADO de `policyVersion` por decisao da revisao adversarial da
+   * PR #74 (achado A7): os dois eixos evoluem em cadencias diferentes. Se o
+   * id juridico selecionasse a formula, uma renovacao legal com novo id de
+   * policy bloquearia o score sem mudanca algoritmica — e, pior, um id
+   * juridico que COINCIDISSE com outra versao registrada trocaria o algoritmo
+   * em silencio por um campo de escrituracao. O formulario de
+   * docs/product/cinerie-score-decision.md ja trata "Versao da formula" e
+   * "Licenca" como campos distintos; o engine reflete isso.
+   */
+  readonly approvedFormulaVersion: string;
 }
 
 /** Uma formula versionada. O registro de producao esta VAZIO de proposito. */

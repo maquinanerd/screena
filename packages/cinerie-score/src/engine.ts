@@ -169,9 +169,11 @@ export function computeCinerieScore(
   }
 
   // O elo de versionamento: so calcula com a formula que ESTA decisao aprovou.
-  const formula = deps.registry.get(decision.policyVersion);
+  // `approvedFormulaVersion`, nunca `policyVersion` (metadado juridico) — ver o
+  // comentario do campo em types.ts (achado A7 da revisao adversarial).
+  const formula = deps.registry.get(decision.approvedFormulaVersion);
   if (formula === null) {
-    return blocked("formula-not-registered", inputsHash, deps.now, decision.policyVersion);
+    return blocked("formula-not-registered", inputsHash, deps.now, decision.approvedFormulaVersion);
   }
 
   return { status: "calculated", result: formula.compute(input, { inputsHash, now: deps.now }) };

@@ -58,7 +58,9 @@ function approvedDecision(overrides: Partial<CinerieScoreDecisionInput> = {}): C
     isCurrent: true,
     validFrom: new Date('2026-01-01T00:00:00.000Z'),
     validUntil: null,
-    policyVersion: FAKE_VERSION,
+    // Eixos SEPARADOS (achado A7): o id juridico nunca seleciona algoritmo.
+    policyVersion: 'legal/2026-07',
+    approvedFormulaVersion: FAKE_VERSION,
     ...overrides,
   }
 }
@@ -84,7 +86,7 @@ describe('cinerie score — o estado de producao e BLOQUEADO', () => {
   it('mesmo com decisao aprovada, o registro de PRODUCAO nao tem a formula', () => {
     const outcome = computeCinerieScore(input, {
       registry: PRODUCTION_FORMULA_REGISTRY,
-      decision: approvedDecision({ policyVersion: 'qualquer/v1' }),
+      decision: approvedDecision({ approvedFormulaVersion: 'qualquer/v1' }),
       now: NOW,
     })
     expect(outcome.status).toBe('blocked_by_decision')
@@ -157,7 +159,7 @@ describe('cinerie score — caminho feliz so com decisao E formula (fake, so em 
   it('a decisao PRENDE a versao: outra versao aprovada nao usa a formula registrada', () => {
     const outcome = computeCinerieScore(input, {
       registry,
-      decision: approvedDecision({ policyVersion: 'cinerie-score/outra-v2' }),
+      decision: approvedDecision({ approvedFormulaVersion: 'cinerie-score/outra-v2' }),
       now: NOW,
     })
     expect(outcome.status).toBe('blocked_by_decision')
@@ -166,6 +168,23 @@ describe('cinerie score — caminho feliz so com decisao E formula (fake, so em 
     // A versao reportada e a que a decisao pediu — nao a bloqueada generica:
     // o operador precisa saber QUAL formula falta.
     expect(outcome.version).toBe('cinerie-score/outra-v2')
+  })
+
+  it('policyVersion (id JURIDICO) nao seleciona formula (achado A7 da revisao adversarial)', () => {
+    // Cenario que motivou a separacao: renovacao legal registra um id de policy
+    // que por azar COINCIDE com uma formula registrada. Se o campo juridico
+    // selecionasse o algoritmo, isto calcularia em silencio. Com os eixos
+    // separados, o que manda e approvedFormulaVersion — e um id juridico nunca
+    // troca o algoritmo.
+    const outcome = computeCinerieScore(input, {
+      registry,
+      decision: approvedDecision({ policyVersion: FAKE_VERSION, approvedFormulaVersion: 'nao-registrada/v9' }),
+      now: NOW,
+    })
+    expect(outcome.status).toBe('blocked_by_decision')
+    if (outcome.status !== 'blocked_by_decision') throw new Error('esperado bloqueio')
+    expect(outcome.reason).toBe('formula-not-registered')
+    expect(outcome.version).toBe('nao-registrada/v9')
   })
 })
 
