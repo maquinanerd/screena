@@ -12,7 +12,8 @@
   "sideEffects": false,
   "license": "UNLICENSED",
   "scripts": {
-    "ratings": "tsx bin/ratings.ts"
+    "ratings": "tsx bin/ratings.ts",
+    "validate:product": "tsx scripts/validate-external-intelligence-product.ts"
   },
   "dependencies": {
     "@screena/config": "workspace:*",
@@ -22,6 +23,10 @@
     "@screena/schemas": "workspace:*"
   },
   "devDependencies": {
+    "@prisma/client": "^6.1.0",
+    "@screena/cinerie-score": "workspace:*",
+    "embedded-postgres": "16.14.0-beta.17",
+    "prisma": "^6.1.0",
     "tsx": "^4.19.0"
   }
 }
