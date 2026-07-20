@@ -11,7 +11,12 @@
  * de produto — nao sao a calibracao final. Trocar pesos exige nova versao.
  */
 
-import type { HistorySummary, RecommendationPolicy } from "./types.js";
+import type {
+  DiversityPolicy,
+  HistorySummary,
+  RecommendationPolicy,
+  SnapshotPolicy,
+} from "./types.js";
 
 export const RECOMMENDATION_POLICY_VERSION = "reco-v1" as const;
 
@@ -49,3 +54,42 @@ export function isColdStart(history: HistorySummary, policy: RecommendationPolic
   }
   return watched < policy.minWatchedForPersonalization;
 }
+
+// ---------------------------------------------------------------------------
+// C6B — Politicas de diversidade e snapshot (PROVISORIAS, versionadas)
+// ---------------------------------------------------------------------------
+
+export const DIVERSITY_POLICY_VERSION = "reco-div-v1" as const;
+
+/**
+ * Diversidade provisoria v1. Decisoes de produto (secao 9) fixam as DIMENSOES
+ * (cap por franquia/genero no snapshot) mas NAO os numeros — POLICY_GAP. Caps
+ * "no maximo N por balde". `maxPerEntityType` e provisorio e generoso (a
+ * diferenciacao movie/tv ja e forte no ranking); flagado para decisao humana.
+ */
+export const DEFAULT_DIVERSITY_POLICY: DiversityPolicy = {
+  version: DIVERSITY_POLICY_VERSION,
+  maxPerPrimaryGenre: 3, // POLICY_GAP
+  maxPerFranchise: 2, // POLICY_GAP
+  maxPerEntityType: 20, // POLICY_GAP (generoso; ranking ja separa movie/tv)
+  outputLimit: 20, // POLICY_GAP
+};
+
+export const SNAPSHOT_POLICY_VERSION = "reco-snap-v1" as const;
+
+const HOUR_MS = 3_600_000;
+
+/**
+ * Snapshot provisorio v1. TTL/janela de renovacao NAO estao nas decisoes de
+ * produto — POLICY_GAP (valores provisorios, versionados, concentrados aqui).
+ * `allowEmptySnapshot=false`: melhor NAO ter snapshot atual do que persistir um
+ * vazio (fail-closed anti-vazio). `renewOnExpiring=false`: so renova quando
+ * efetivamente expirado (o pipeline reexecuta periodicamente).
+ */
+export const DEFAULT_SNAPSHOT_POLICY: SnapshotPolicy = {
+  version: SNAPSHOT_POLICY_VERSION,
+  ttlMs: 24 * HOUR_MS, // POLICY_GAP
+  renewWindowMs: 6 * HOUR_MS, // POLICY_GAP
+  renewOnExpiring: false, // POLICY_GAP
+  allowEmptySnapshot: false, // POLICY_GAP
+};

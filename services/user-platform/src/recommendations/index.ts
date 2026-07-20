@@ -15,3 +15,8 @@ export * from "./signals.js";
 export * from "./scoring.js";
 export * from "./reasons.js";
 export * from "./ranking.js";
+// C6B — diversidade, snapshot, canonicalizacao/fingerprint e tempo puro.
+export * from "./time.js";
+export * from "./canonical.js";
+export * from "./diversity.js";
+export * from "./snapshot.js";

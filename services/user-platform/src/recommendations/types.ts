@@ -194,3 +194,44 @@ export interface RecommendationResult {
   readonly policyVersion: string;
   readonly items: readonly RankedRecommendation[];
 }
+
+// ---------------------------------------------------------------------------
+// C6B — Politicas de diversidade e snapshot (tipos aqui para evitar ciclo de
+// import entre policy.ts e diversity.ts/snapshot.ts; os VALORES provisorios
+// vivem centralizados em policy.ts).
+// ---------------------------------------------------------------------------
+
+/**
+ * Politica de DIVERSIDADE (caps + limite) — versionada. Caps sao "no maximo N
+ * por balde" (>= 1). Aplicada DEPOIS do ranking e ANTES do limite persistido.
+ * Dimensoes decididas em produto (secao 9): genero e franquia. `maxPerEntityType`
+ * e provisorio (POLICY_GAP) — ver policy.ts.
+ */
+export interface DiversityPolicy {
+  readonly version: string;
+  /** Maximo de itens com o MESMO genero primario (genero[0] canonico). */
+  readonly maxPerPrimaryGenre: number;
+  /** Maximo por franquia/colecao — so aplica quando ha `franchiseKey` confiavel. */
+  readonly maxPerFranchise: number;
+  /** Maximo por tipo de entidade (movie/tv/...). POLICY_GAP: valor provisorio. */
+  readonly maxPerEntityType: number;
+  /** Teto de itens no snapshot final (piso de seguranca do output). */
+  readonly outputLimit: number;
+}
+
+/**
+ * Politica de SNAPSHOT (TTL/renovacao/vazio) — versionada. Todo tempo em
+ * MILISSEGUNDOS; o instante corrente entra por `now`. POLICY_GAP: TTL/janela nao
+ * estao nas decisoes de produto — valores provisorios em policy.ts.
+ */
+export interface SnapshotPolicy {
+  readonly version: string;
+  /** Validade do snapshot em ms; `null` = sem expiracao (sempre valido). */
+  readonly ttlMs: number | null;
+  /** Janela (ms) antes de `expiresAt` em que o snapshot e "expiring". */
+  readonly renewWindowMs: number;
+  /** Se true, "expiring" (mesmo fingerprint) ja pede renovacao; senao so quando expirado. */
+  readonly renewOnExpiring: boolean;
+  /** Se false, snapshot com zero itens NAO e persistido (fail-closed anti-vazio). */
+  readonly allowEmptySnapshot: boolean;
+}
