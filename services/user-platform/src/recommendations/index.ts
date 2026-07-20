@@ -20,3 +20,7 @@ export * from "./time.js";
 export * from "./canonical.js";
 export * from "./diversity.js";
 export * from "./snapshot.js";
+// C6B — renovacao/expiracao, plano transaction-ready e feedback.
+export * from "./renewal.js";
+export * from "./transaction-plan.js";
+export * from "./feedback.js";

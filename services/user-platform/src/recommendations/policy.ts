@@ -13,6 +13,7 @@
 
 import type {
   DiversityPolicy,
+  FeedbackPolicy,
   HistorySummary,
   RecommendationPolicy,
   SnapshotPolicy,
@@ -92,4 +93,20 @@ export const DEFAULT_SNAPSHOT_POLICY: SnapshotPolicy = {
   renewWindowMs: 6 * HOUR_MS, // POLICY_GAP
   renewOnExpiring: false, // POLICY_GAP
   allowEmptySnapshot: false, // POLICY_GAP
+};
+
+export const FEEDBACK_POLICY_VERSION = "reco-feedback-v1" as const;
+
+const DAY_MS = 86_400_000;
+
+/**
+ * Feedback provisorio v1. Decisoes de produto (secao 9) so ancoram
+ * `not_interested` (WatchState) como exclusao DURA de recomendacoes. As duracoes
+ * das exclusoes TEMPORARIAS (dismiss/not_relevant) sao POLICY_GAP — provisorias,
+ * versionadas, concentradas aqui.
+ */
+export const DEFAULT_FEEDBACK_POLICY: FeedbackPolicy = {
+  version: FEEDBACK_POLICY_VERSION,
+  dismissTtlMs: 30 * DAY_MS, // POLICY_GAP
+  notRelevantTtlMs: 30 * DAY_MS, // POLICY_GAP
 };

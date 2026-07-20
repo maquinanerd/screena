@@ -123,3 +123,60 @@ describe("recommendations/: barrel nao vaza segredo", () => {
     expect(suspicious).toEqual([]);
   });
 });
+
+describe("recommendations/ C6B: plano/feedback sem persistencia, SQL ou transporte", () => {
+  const files = sourceFiles(false);
+
+  it("(1) nenhum arquivo contem SQL cru nem API de transacao Prisma", () => {
+    // Palavras-chave SQL em maiuscula (o dominio usa ops NEUTRAS, nunca SQL) +
+    // $transaction/prisma. Ancorado para nao colidir com identificadores locais
+    // como `insert_snapshot`/`demote_current` (minusculos).
+    const forbidden =
+      /\bSELECT\b|\bINSERT\s+INTO\b|\bDELETE\s+FROM\b|\bUPDATE\s+\w+\s+SET\b|\$transaction|@prisma|PrismaClient|prisma\./;
+    const offenders = files.filter((f) => forbidden.test(stripComments(f.content)));
+    expect(offenders.map((f) => f.file)).toEqual([]);
+  });
+
+  it("(2) o dominio nao decide licenca/display (recebe flags ja resolvidas de C6A)", () => {
+    const forbidden = /displayAllowed|scoreAllowed|licenseStatus|display_allowed|score_allowed/;
+    const offenders = files.filter((f) => forbidden.test(stripComments(f.content)));
+    expect(offenders.map((f) => f.file)).toEqual([]);
+  });
+
+  it("(3) nenhum byte de controle (NUL) nos arquivos de C6B", () => {
+    // Deteccao por charCode (sem regex de byte cru): rejeita controles < 32
+    // exceto TAB(9)/LF(10)/CR(13), e DEL(127). Guarda contra o artefato de NUL.
+    const hasControlByte = (s: string): boolean => {
+      for (let i = 0; i < s.length; i += 1) {
+        const code = s.charCodeAt(i);
+        if ((code < 32 && code !== 9 && code !== 10 && code !== 13) || code === 127) return true;
+      }
+      return false;
+    };
+    const c6bFiles = new Set([
+      "time.ts",
+      "canonical.ts",
+      "diversity.ts",
+      "snapshot.ts",
+      "renewal.ts",
+      "transaction-plan.ts",
+      "feedback.ts",
+    ]);
+    const offenders = files.filter((f) => c6bFiles.has(f.file) && hasControlByte(f.content));
+    expect(offenders.map((f) => f.file)).toEqual([]);
+  });
+});
+
+describe("recommendations/ C6B: barrel exporta o novo dominio", () => {
+  it("(1) exporta diversidade/snapshot/renovacao/plano/feedback", () => {
+    expect(typeof recBarrel.applyDiversity).toBe("function");
+    expect(typeof recBarrel.buildRecommendationSnapshot).toBe("function");
+    expect(typeof recBarrel.evaluateSnapshotState).toBe("function");
+    expect(typeof recBarrel.planSnapshotPublication).toBe("function");
+    expect(typeof recBarrel.planSnapshotInvalidation).toBe("function");
+    expect(typeof recBarrel.planRecommendationFeedback).toBe("function");
+    expect(typeof recBarrel.deriveFeedbackExclusions).toBe("function");
+    expect(typeof recBarrel.epochMillisToIsoUtc).toBe("function");
+    expect(typeof recBarrel.canonicalizeSnapshot).toBe("function");
+  });
+});

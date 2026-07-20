@@ -235,3 +235,17 @@ export interface SnapshotPolicy {
   /** Se false, snapshot com zero itens NAO e persistido (fail-closed anti-vazio). */
   readonly allowEmptySnapshot: boolean;
 }
+
+/**
+ * Politica de FEEDBACK explicito de recomendacao — versionada. Durata das
+ * exclusoes TEMPORARIAS (dismiss/not_relevant) em MILISSEGUNDOS. POLICY_GAP: as
+ * decisoes de produto so gravam `not_interested` (WatchState) como exclusao dura;
+ * os demais tipos e suas duracoes sao provisorios (ver policy.ts / feedback.ts).
+ */
+export interface FeedbackPolicy {
+  readonly version: string;
+  /** Duracao da exclusao temporaria de `dismiss` (ms). POLICY_GAP. */
+  readonly dismissTtlMs: number;
+  /** Duracao da exclusao temporaria de `not_relevant` (ms). POLICY_GAP. */
+  readonly notRelevantTtlMs: number;
+}
