@@ -222,7 +222,7 @@ aqui, com o DDL recomendado, como pauta de C7B.
 
 | # | Gap | Severidade | Evidência | Correção recomendada (NÃO aplicada) |
 | --- | --- | --- | --- | --- |
-| **T1** | Um comando de tracking emite 2–4 eventos com a **mesma** `idempotencyKey`, mas `user_viewing_events` tem `UNIQUE(user_id, idempotency_key)` — o 2º evento **não pode ser gravado** | 🔴 **bloqueia C7B** | `tracking/watch-state.ts:190-199`; `episode-progress.ts:217-227`; `migration.sql:498` | ampliar para `UNIQUE(user_id, idempotency_key, event_type)` (substituição *mais permissiva*, preserva a idempotência por tipo de evento) |
+| ~~**T1**~~ | ~~Um comando de tracking emite múltiplos eventos com a **mesma** `idempotencyKey`, mas `user_viewing_events` tem `UNIQUE(user_id, idempotency_key)`~~ | ✅ **FECHADO em C7A.1** | `tracking/watch-state.ts:190-199`; `episode-progress.ts:217-226`; `migration.sql:498` | **aplicado**: `UNIQUE(user_id, idempotency_key, event_type)` — ver §5.1 |
 | T3/R3 | `rating_set`/`rating_removed` não carregam `idempotencyKey`, mas `user_viewing_events.idempotency_key` é `NOT NULL` | 🔴 bloqueia | `ratings/types.ts:63-74`; `migration.sql:270` | decidir se eventos de rating vão para `user_viewing_events` e, se sim, o domínio precisa fornecer a chave |
 | Rv3 | `reasonCode`/`moderationNote`/`decidedBy` da moderação **não têm coluna** — a justificativa de um takedown não tem onde ser gravada | 🔴 bloqueia | `reviews/types.ts:111-124` | audit sink de moderação (tabela própria) |
 | Rv2 | `user_reviews` sem `version` **e** sem unique: um edit do autor pode **reverter um takedown** de moderação | 🟠 perda silenciosa | `reviews/mutation.ts:146-148` | `version` + CAS, ou CHECK/trigger de transição de status |
@@ -280,6 +280,126 @@ DROP TYPE IF EXISTS "RecommendationContext";
 ⚠ O rollback do índice único **volta a ser mais restritivo**: se já existirem
 dois vigentes em contextos diferentes para o mesmo usuário, ele falha — é preciso
 rebaixar um antes. Documentado como risco operacional.
+
+---
+
+## 5.1 TRACKING EVENT IDEMPOTENCY SCOPE (unidade C7A.1)
+
+> Fecha o **T1**, o gap 🔴 registrado em §4.1 — o único que bloqueava C7B.
+
+### Constraint anterior e incompatibilidade
+
+`user_viewing_events` nasceu com
+`UNIQUE(user_id, idempotency_key)` (migration `20260717150000`, l. 498).
+
+O domínio de tracking, porém, emite **vários eventos por operação**, todos
+carregando a **mesma** `idempotencyKey` (é a chave *da operação*, não *do
+evento*). Com a constraint antiga, o primeiro evento entrava e o **segundo
+falhava**: um plano válido do domínio não era persistível atomicamente.
+
+### Prova do contrato do domínio (pré-requisito da correção)
+
+Os **8** pontos de emissão do domínio (`grep makeEvent(`):
+
+| Comando | eventTypes possíveis | Máx. por operação |
+| --- | --- | --- |
+| `applyWatchStateChange` | `state_changed` (sempre) + **um** de `watch_started` / `watch_completed` / `rewatch_started` | 2 |
+| `applyEpisodeProgress` | **um** de `episode_watched` / `episode_unwatched` + `progress_updated` | 2 |
+| `buildUndo` | `undo` | 1 |
+
+**Nenhuma operação emite duas ocorrências do mesmo `eventType`**, e isso é
+estrutural, não acidental:
+
+- em `watch-state.ts:190-199` cada `push` usa um **literal distinto**, e as três
+  condicionais são **mutuamente exclusivas** — `firstWatching` exige
+  `target === "watching"`, `firstWatched` exige `"watched"` e `isRewatch` exige
+  `"rewatching"`; uma chamada tem **um** `target`;
+- em `episode-progress.ts:217-226`, `markingWatched = nextWatched && !base.watched`
+  e `unmarkingWatched = !nextWatched && base.watched` são mutuamente exclusivas, e
+  `progress_updated` é um terceiro tipo distinto.
+
+Travado por varredura exaustiva em
+`services/user-platform/src/tracking/__tests__/event-identity-contract.test.ts`
+(existe operação multi-evento; nenhum plano repete `eventType` nem identidade; a
+ordem não altera o conjunto; replay reproduz as mesmas identidades).
+
+### Nova constraint
+
+```
+UNIQUE(user_id, idempotency_key, event_type)
+```
+
+- **`event_type` entra na identidade** porque é exatamente o que distingue os
+  eventos irmãos de uma mesma operação — e o domínio garante que ele é único
+  dentro do plano.
+- **`occurred_at` NÃO entra na identidade.** Todos os eventos de uma operação
+  compartilham o mesmo `now`; incluí-lo não separaria nada e ainda faria um
+  replay legítimo virar linha nova. Ele é, porém, **semântico para
+  EQUIVALÊNCIA**: `sameContent` (`viewing-events.ts:53-63`) o compara, então um
+  replay com `occurredAt` diferente é **conflict**, não `noop`.
+- **`entity_type`/`entity_id` NÃO entram na identidade.** Uma operação atua sobre
+  **uma** entidade; incluí-los permitiria reusar a mesma chave em entidades
+  diferentes sem detecção — enfraqueceria a idempotência. Reuso indevido deve
+  aparecer como conflito, e aparece: a unique casa e `sameContent` acusa a
+  divergência de entidade.
+- **O payload completo NÃO entra na unique**: identidade ≠ equivalência. A unique
+  decide *qual linha é*; a comparação de pré-imagem decide *se o conteúdo bate*.
+
+### Semântica obrigatória do adapter (C7B)
+
+Por evento planejado, buscar/inserir por `(userId, idempotencyKey, eventType)`:
+
+1. **não existe** → `create`;
+2. **existe e `sameContent` é verdadeiro** → `noop` (replay idêntico);
+3. **existe e diverge** → `conflict` — nunca sobrescrever, nunca silenciar.
+
+Campos comparados = os de `sameContent`: `userId`, `entityType`, `entityId`,
+`eventType`, `occurredAt`, `source`, `metadata`. **Nunca** `created_at`/`id`.
+Uma `unique_violation` do banco deve ser traduzida para o envelope
+`PersistenceConflict` (`unique_violation`), jamais para erro genérico.
+
+### Impacto sobre dados existentes, rollback e riscos
+
+- **Mais permissiva**: todo estado válido sob a constraint antiga continua válido
+  sob a nova (a antiga é um caso particular da nova). Logo a substituição **não
+  pode falhar** e **não exige backfill**. Nenhuma linha é lida, alterada ou
+  apagada.
+- **Rollback** (só seguro enquanto não houver operação multi-evento gravada):
+  ```sql
+  DROP INDEX "user_viewing_events_user_id_idempotency_key_event_type_key";
+  CREATE UNIQUE INDEX "user_viewing_events_user_id_idempotency_key_key"
+    ON "user_viewing_events"("user_id", "idempotency_key");
+  ```
+  ⚠ Volta a ser **mais restritivo**: falha se já existirem dois eventos da mesma
+  operação (exatamente o caso que esta unidade destrava).
+- **Risco restante**: a unique não impede que um chamador reutilize a mesma chave
+  para uma operação semanticamente diferente com o mesmo `eventType` — isso vira
+  `conflict` na comparação de pré-imagem, que é o comportamento desejado, mas
+  depende de C7B implementar o passo 3 acima.
+- **Nota de deploy**: `DROP INDEX` (sem `CONCURRENTLY`) toma lock exclusivo na
+  tabela. Irrelevante hoje (a tabela não recebe escrita em produção: não há
+  adapter), mas deve ser considerado se algum dia rodar com tráfego.
+
+### INVARIANTE para mudanças futuras no domínio de tracking
+
+> A constraint depende de uma propriedade do **código do domínio**, não do banco.
+> Ela é, por isso, **frágil a código futuro** — registrar como regra:
+
+1. Um comando de tracking pode emitir **N eventos**, mas **no máximo um por
+   `eventType`**.
+2. Portanto: **nunca** emitir eventos dentro de laço com `eventType` repetido, e
+   nunca reutilizar o mesmo literal em dois `push` do mesmo plano. Hoje os 5
+   sítios de emissão são código reto, sem iteração — é isso que sustenta a
+   premissa.
+3. Se algum dia um comando precisar emitir **dois eventos do mesmo tipo** (ex.:
+   um `progress_updated` por episódio de um lote), a identidade idempotente
+   precisa ganhar mais uma dimensão (ex.: `entity_id` ou um `sequence`) — a
+   `UNIQUE(user_id, idempotency_key, event_type)` **passaria a rejeitar um plano
+   válido**, que é exatamente o bug que C7A.1 corrigiu.
+4. `event-identity-contract.test.ts` falha se a regra 1 for violada: varredura
+   **combinatória** (produto cartesiano) tanto em watch state (`current` ×
+   `target`) quanto em episode progress (`current` × `watched` ×
+   `progressSeconds` × `durationSeconds`).
 
 ---
 
