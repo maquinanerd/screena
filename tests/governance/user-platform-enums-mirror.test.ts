@@ -32,6 +32,14 @@ import {
   VISIBILITIES,
   WATCH_STATES,
 } from "../../services/user-platform/src/core/types";
+// C7A — enums de recomendacao. As unions vivem no DOMINIO de recomendacoes
+// (nao em core/types), entao o espelho importa de la; o schema Postgres tem de
+// bater valor a valor, na mesma ordem.
+import { RECOMMENDATION_CONTEXTS } from "../../services/user-platform/src/recommendations/types";
+import {
+  FEEDBACK_SOURCES,
+  RECOMMENDATION_FEEDBACK_TYPES,
+} from "../../services/user-platform/src/recommendations/feedback";
 
 const schema = readFileSync(
   path.join(process.cwd(), "packages", "db", "prisma", "schema.prisma"),
@@ -74,10 +82,14 @@ const MIRRORS: ReadonlyArray<[string, ReadonlyArray<string>]> = [
   ["ImportJobStatus", IMPORT_JOB_STATUSES],
   ["ReportReason", REPORT_REASONS],
   ["ReportStatus", REPORT_STATUSES],
+  // C7A — recomendacoes.
+  ["RecommendationContext", RECOMMENDATION_CONTEXTS],
+  ["RecommendationFeedbackType", RECOMMENDATION_FEEDBACK_TYPES],
+  ["RecommendationFeedbackSource", FEEDBACK_SOURCES],
 ];
 
 describe("user platform: enums TS espelham o schema Postgres (valor a valor)", () => {
-  it("(1) todos os 19 enums da user platform existem no schema", () => {
+  it("(1) todos os enums da user platform existem no schema", () => {
     for (const [name] of MIRRORS) {
       expect(schemaEnumValues(name), `enum ${name} ausente do schema`).not.toEqual([]);
     }
