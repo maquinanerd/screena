@@ -341,11 +341,11 @@ model SourceLicense {
   createdAt           DateTime                 @default(now()) @map("created_at")
   updatedAt           DateTime                 @updatedAt @map("updated_at")
 
-  ratingSource RatingSource?   @relation(fields: [ratingSourceKey], references: [key])
-  provider     ApiProvider?    @relation(fields: [providerKey], references: [key])
-  territory    Country?        @relation(fields: [territoryCode], references: [code])
-  supersedes   SourceLicense?  @relation("SourceLicenseHistory", fields: [supersedesId], references: [id])
-  supersededBy SourceLicense[] @relation("SourceLicenseHistory")
+  ratingSource   RatingSource?       @relation(fields: [ratingSourceKey], references: [key])
+  provider       ApiProvider?        @relation(fields: [providerKey], references: [key])
+  territory      Country?            @relation(fields: [territoryCode], references: [code])
+  supersedes     SourceLicense?      @relation("SourceLicenseHistory", fields: [supersedesId], references: [id])
+  supersededBy   SourceLicense[]     @relation("SourceLicenseHistory")
   // Decisoes de USO derivadas desta licenca. A licenca diz o que a fonte
   // permite; a decisao diz para QUE USO isso vale (ver DataUsageDecision).
   usageDecisions DataUsageDecision[]
@@ -379,27 +379,27 @@ model SourceLicense {
 // Escada de permissao (CHECKs no banco): display => storage; derivative =>
 // storage; display => stage=approved_for_display; revoked => nada permitido.
 model DataUsageDecision {
-  id              BigInt         @id @default(autoincrement())
-  sourceLicenseId BigInt         @map("source_license_id")
-  useCase         String         @map("use_case") // ver DATA_USAGE_CASES em @screena/config
-  territory       String? // FK -> countries.code; null = decisao global
-  stage           DataUsageStage @default(license_pending)
+  id                  BigInt         @id @default(autoincrement())
+  sourceLicenseId     BigInt         @map("source_license_id")
+  useCase             String         @map("use_case") // ver DATA_USAGE_CASES em @screena/config
+  territory           String? // FK -> countries.code; null = decisao global
+  stage               DataUsageStage @default(license_pending)
   // Flags de uso. Todas fail-closed por default: nada nasce permitido.
-  displayAllowed      Boolean   @default(false) @map("display_allowed")
-  storageAllowed      Boolean   @default(false) @map("storage_allowed")
-  derivativeAllowed   Boolean   @default(false) @map("derivative_allowed")
-  attributionRequired Boolean   @default(true) @map("attribution_required")
-  linkbackRequired    Boolean   @default(true) @map("linkback_required")
-  validFrom           DateTime  @default(now()) @map("valid_from")
-  validUntil          DateTime? @map("valid_until")
-  policyVersion       String    @map("policy_version")
-  decidedBy           String    @map("decided_by") // identidade humana; nunca "agent"/"system"
+  displayAllowed      Boolean        @default(false) @map("display_allowed")
+  storageAllowed      Boolean        @default(false) @map("storage_allowed")
+  derivativeAllowed   Boolean        @default(false) @map("derivative_allowed")
+  attributionRequired Boolean        @default(true) @map("attribution_required")
+  linkbackRequired    Boolean        @default(true) @map("linkback_required")
+  validFrom           DateTime       @default(now()) @map("valid_from")
+  validUntil          DateTime?      @map("valid_until")
+  policyVersion       String         @map("policy_version")
+  decidedBy           String         @map("decided_by") // identidade humana; nunca "agent"/"system"
   reason              String // por que esta decisao existe (auditoria)
   // Historico imutavel, mesmo padrao de SourceLicense/PageIndexabilityDecision.
-  supersedesId BigInt?  @map("supersedes_id")
-  isCurrent    Boolean  @default(true) @map("is_current")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  supersedesId        BigInt?        @map("supersedes_id")
+  isCurrent           Boolean        @default(true) @map("is_current")
+  createdAt           DateTime       @default(now()) @map("created_at")
+  updatedAt           DateTime       @updatedAt @map("updated_at")
 
   sourceLicense SourceLicense       @relation(fields: [sourceLicenseId], references: [id])
   territoryRef  Country?            @relation(fields: [territory], references: [code])
@@ -923,9 +923,9 @@ model ExternalRating {
   // Fingerprint APROVADO do payload (external_rating_payload_fingerprint_v1,
   // computado no banco). Se a nota muda (valor, votos, atribuicao...), o hash
   // deixa de bater e o trigger derruba a exibicao: "mudanca revoga".
-  approvedPayloadHash String?   @map("approved_payload_hash")
-  staleAfter          DateTime? @map("stale_after") // derivado de RATING_STALE_POLICY
-  dataUsageDecisionId BigInt?   @map("data_usage_decision_id")
+  approvedPayloadHash String?          @map("approved_payload_hash")
+  staleAfter          DateTime?        @map("stale_after") // derivado de RATING_STALE_POLICY
+  dataUsageDecisionId BigInt?          @map("data_usage_decision_id")
 
   // Invariante 2 materializada: rating_source e provider_api -> tabelas DISTINTAS.
   source            RatingSource       @relation(fields: [ratingSource], references: [key])
@@ -1008,7 +1008,7 @@ model WatchAvailability {
   dataUsageDecision DataUsageDecision? @relation(fields: [dataUsageDecisionId], references: [id])
   // provider_api passa a ser FK real: uma oferta de fornecedor fantasma nunca
   // poderia ser auditada.
-  api ApiProvider? @relation(fields: [providerApi], references: [key])
+  api               ApiProvider?       @relation(fields: [providerApi], references: [key])
 
   // Identidade da oferta = fingerprint canonico versionado `watch_offer_fingerprint(...)`
   // (external_offer_id quando presente; senao a tupla completa: provider tecnico,
@@ -1800,6 +1800,36 @@ enum ReportStatus {
   actioned
 }
 
+// C7A — enums de RECOMENDACAO. Espelham VALOR A VALOR (e na mesma ordem) as
+// unions fechadas ja existentes no dominio puro:
+//  - RECOMMENDATION_CONTEXTS      (recommendations/types.ts)
+//  - RECOMMENDATION_FEEDBACK_TYPES (recommendations/feedback.ts)
+//  - FEEDBACK_SOURCES              (recommendations/feedback.ts)
+// Divergencia e bug — travado por tests/governance/user-platform-enums-mirror.
+enum RecommendationContext {
+  discovery
+  continue_watching
+  rewatch
+  similar
+}
+
+// `not_interested` e a UNICA ancorada nas decisoes de produto (secao 9, exclusao
+// dura); as demais sao provisorias/versionadas no dominio (POLICY_GAP).
+enum RecommendationFeedbackType {
+  not_interested
+  hide
+  already_seen
+  dismiss
+  not_relevant
+  like
+  save
+}
+
+enum RecommendationFeedbackSource {
+  app
+  system
+}
+
 model User {
   id              BigInt     @id @default(autoincrement())
   email           String     @unique
@@ -1830,6 +1860,7 @@ model User {
   blocksReceived          UserBlock[]              @relation("user_block_blocked")
   statsSnapshot           UserStatsSnapshot?
   recommendationSnapshots RecommendationSnapshot[]
+  recommendationFeedback  RecommendationFeedback[]
   consentRecords          ConsentRecord[]
   dataRequests            DataRequest[]
   importJobs              ImportJob[]
@@ -2169,20 +2200,61 @@ model UserStatsSnapshot {
 // Snapshot PERSISTIDO de recomendacoes com explicacao (RecommendationReason
 // por item) e versao de algoritmo. Historico imutavel; apenas is_current
 // flipa (default seguro: false — o servico promove transacionalmente).
-// Indice unico PARCIAL via SQL bruto: (user_id) WHERE is_current = true.
+// C7A: `context`, `policy_version`, `fingerprint` e `expires_at` viraram COLUNAS
+// (antes so existiam dentro do JSON `items`) porque o dominio C6B os usa como
+// PRE-CONDICAO operacional: equivalencia (noop vs replace), renovacao,
+// invalidacao e concorrencia.
+// Indice unico PARCIAL via SQL bruto: (user_id, context) WHERE is_current = true
+// — NAO representavel no Prisma; ver migration. O escopo do vigente passou a
+// incluir o CONTEXTO (o dominio mantem 4 contextos independentes por usuario).
 model RecommendationSnapshot {
-  id               BigInt   @id @default(autoincrement())
-  userId           BigInt   @map("user_id")
-  algorithmVersion String   @map("algorithm_version")
-  generatedAt      DateTime @map("generated_at")
+  id               BigInt                @id @default(autoincrement())
+  userId           BigInt                @map("user_id")
+  context          RecommendationContext
+  algorithmVersion String                @map("algorithm_version")
+  policyVersion    String                @map("policy_version") // CHECK via SQL bruto: btrim <> ''
+  // `null` = snapshot legado sem fingerprint. O adapter DEVE trata-lo como
+  // NAO-equivalente (forca replace) — nunca como igual.
+  fingerprint      String?
+  generatedAt      DateTime              @map("generated_at")
+  // `null` = sem TTL. CHECK via SQL bruto: expires_at >= generated_at.
+  expiresAt        DateTime?             @map("expires_at")
   items            Json // [{entityType, entityId, score, reasons: RecommendationReason[]}]
-  isCurrent        Boolean  @default(false) @map("is_current")
-  createdAt        DateTime @default(now()) @map("created_at")
+  isCurrent        Boolean               @default(false) @map("is_current")
+  createdAt        DateTime              @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, isCurrent])
+  // Historico/observabilidade: NAO unico (snapshots equivalentes sao legitimos).
+  @@index([userId, context, fingerprint])
   @@map("user_recommendation_snapshots")
+}
+
+// Feedback EXPLICITO do usuario sobre uma recomendacao (C7A fecha o SCHEMA_GAP
+// de C6B). Alimenta as exclusoes derivadas do dominio puro; NUNCA guarda texto
+// livre, PII, nota, review nem estado de moderacao. Idempotencia por
+// (user_id, idempotency_key), mesmo padrao de user_viewing_events.
+model RecommendationFeedback {
+  id             BigInt                       @id @default(autoincrement())
+  userId         BigInt                       @map("user_id")
+  entityType     EntityType                   @map("entity_type") // CHECK via SQL bruto: <> 'person'
+  entityId       BigInt                       @map("entity_id")
+  // `null` = feedback vale para TODOS os contextos.
+  context        RecommendationContext?
+  feedbackType   RecommendationFeedbackType   @map("feedback_type")
+  source         RecommendationFeedbackSource
+  occurredAt     DateTime                     @map("occurred_at")
+  // `null` = permanente. CHECK via SQL bruto: expires_at > occurred_at.
+  expiresAt      DateTime?                    @map("expires_at")
+  idempotencyKey String                       @map("idempotency_key") // CHECK: btrim <> ''
+  createdAt      DateTime                     @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, idempotencyKey])
+  @@index([userId, entityType, entityId])
+  @@map("user_recommendation_feedback")
 }
 
 // Consentimento LGPD append-only (trigger via SQL bruto proibe UPDATE):

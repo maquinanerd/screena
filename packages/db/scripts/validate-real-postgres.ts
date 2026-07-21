@@ -131,6 +131,8 @@ const EXPECTED_TABLES = [
   "user_reviews", "user_review_reports", "user_blocks", "user_stats_snapshots",
   "user_recommendation_snapshots", "user_consent_records", "user_data_requests",
   "user_import_jobs",
+  // C7A — fundacao de persistencia: feedback explicito de recomendacao.
+  "user_recommendation_feedback",
 ];
 const EXPECTED_ENUMS = [
   "EntityType", "ContentBlockType", "ContentSource", "ReviewStatus", "TranslationStatus",
@@ -151,6 +153,8 @@ const EXPECTED_ENUMS = [
   "ThrottleScope", "AuthAuditAction", "UserListKind", "SystemListKey",
   "ConsentKind", "DataRequestKind", "DataRequestStatus", "ImportSource",
   "ImportJobStatus", "ReportReason", "ReportStatus",
+  // C7A — enums de recomendacao (espelham as unions fechadas do dominio puro).
+  "RecommendationContext", "RecommendationFeedbackType", "RecommendationFeedbackSource",
 ];
 const EXPECTED_SCALES: Record<string, number> = {
   imdb: 10, rotten_tomatoes: 100, metacritic: 100, letterboxd: 5, filmaffinity: 10,
