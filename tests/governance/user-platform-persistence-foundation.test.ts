@@ -142,6 +142,61 @@ describe("C7A: feedback nao guarda texto livre, PII, nota nem moderacao", () => 
   });
 });
 
+describe("C7A.1: identidade idempotente dos eventos de tracking", () => {
+  const C7A1_MIGRATION = "20260721140000_tracking_event_idempotency_scope";
+  const trackingSql = readFileSync(
+    path.join(MIGRATION_DIR, C7A1_MIGRATION, "migration.sql"),
+    "utf8",
+  );
+
+  /** Bloco do model ViewingEvent no schema.prisma. */
+  const viewingEventModel = (() => {
+    const start = schema.indexOf("model ViewingEvent {");
+    const end = schema.indexOf("\n}", start);
+    return schema.slice(start, end);
+  })();
+
+  it("(1) o model ViewingEvent foi localizado (guarda nao vacua)", () => {
+    expect(viewingEventModel).toContain('@@map("user_viewing_events")');
+  });
+
+  it("(2) a unique do Prisma INCLUI eventType (nao pode voltar ao par antigo)", () => {
+    // Falha se alguem reverter para @@unique([userId, idempotencyKey]).
+    expect(viewingEventModel).toContain("@@unique([userId, idempotencyKey, eventType])");
+    expect(viewingEventModel).not.toMatch(/@@unique\(\[userId,\s*idempotencyKey\]\)/);
+  });
+
+  it("(3) a migration troca a UNIQUE antiga pela nova, com as 3 colunas na ordem", () => {
+    expect(trackingSql).toContain('DROP INDEX "user_viewing_events_user_id_idempotency_key_key"');
+    expect(trackingSql).toMatch(
+      /CREATE UNIQUE INDEX "user_viewing_events_user_id_idempotency_key_event_type_key"[\s\S]*?"user_id",\s*"idempotency_key",\s*"event_type"/,
+    );
+  });
+
+  it("(4) a migration NAO toca dados, colunas, tabelas nem enums", () => {
+    for (const banned of [
+      "DROP TABLE",
+      "DROP COLUMN",
+      "DROP TYPE",
+      "TRUNCATE",
+      "DELETE FROM",
+      "UPDATE ",
+      "INSERT INTO",
+      "ALTER TYPE",
+      "ALTER COLUMN",
+      "RENAME",
+    ]) {
+      expect(trackingSql.toUpperCase(), `${banned} nao pode aparecer`).not.toContain(banned);
+    }
+  });
+
+  it("(5) a migration e 100% ASCII (cliente pode rodar em WIN1252)", () => {
+    // Um emoji no SQL fez o `migrate deploy` FALHAR de verdade nesta unidade.
+    const offenders = [...trackingSql].filter((ch) => ch.charCodeAt(0) > 127);
+    expect(offenders).toEqual([]);
+  });
+});
+
 describe("C7A: Cinerie Score nao acoplado a recomendacao pessoal", () => {
   it("(1) nenhuma tabela/coluna de recomendacao referencia Cinerie Score", () => {
     const recoDdl = migrationSql.toLowerCase();

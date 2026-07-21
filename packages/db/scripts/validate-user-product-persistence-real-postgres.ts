@@ -8,13 +8,18 @@
  * `embedded-postgres@16.14.0-beta.17` (PostgreSQL 16 real, portatil, EFEMERO),
  * derrubado e apagado no `finally`. Nenhum DATABASE_URL e persistido em disco.
  *
- * Dois cenarios:
+ * Tres cenarios:
  *  A) FRESH  — aplica TODAS as migrations num banco vazio e prova constraints,
  *              indices, idempotencia, concorrencia e cascata de
- *              user_recommendation_snapshots + user_recommendation_feedback.
+ *              user_recommendation_snapshots + user_recommendation_feedback
+ *              e, desde C7A.1, a identidade dos eventos de tracking.
  *  B) UPGRADE— aplica as migrations ANTERIORES a C7A, insere uma linha legada de
  *              snapshot, aplica C7A por cima e prova preservacao do dado, o
  *              backfill correto e que os DEFAULTs temporarios foram REMOVIDOS.
+ *  C) UPGRADE C7A.1 — aplica tudo menos C7A.1, REPRODUZ o bloqueador (evento
+ *              irmao barrado pela UNIQUE antiga), aplica C7A.1 e prova que o
+ *              irmao passa a ser aceito enquanto o replay do MESMO tipo
+ *              continua barrado.
  *
  * Uso: pnpm --filter @screena/db db:validate:user-persistence
  */
@@ -35,8 +40,13 @@ const dbDir = path.resolve(scriptDir, "..");
 const schemaPath = path.join(dbDir, "prisma", "schema.prisma");
 const migrationsDir = path.join(dbDir, "prisma", "migrations");
 
-/** Migration desta unidade: fronteira entre "estado anterior" e "upgrade". */
+/** Migration de C7A: fronteira entre "estado anterior" e "upgrade". */
 const C7A_DIR = "20260721120000_user_product_persistence_foundation";
+/** Migration de C7A.1: amplia a identidade idempotente dos eventos de tracking. */
+const C7A1_DIR = "20260721140000_tracking_event_idempotency_scope";
+
+const OLD_TRACKING_UNIQUE = "user_viewing_events_user_id_idempotency_key_key";
+const NEW_TRACKING_UNIQUE = "user_viewing_events_user_id_idempotency_key_event_type_key";
 
 interface CheckResult {
   readonly n: number;
@@ -83,12 +93,15 @@ async function safeRm(dir: string): Promise<void> {
 }
 
 /**
- * Fixtures minimas: 2 usuarios + 3 entidades no registry. Uma instrucao POR
+ * Fixtures minimas: 3 usuarios + 3 entidades no registry. Uma instrucao POR
  * item — `$executeRawUnsafe` usa prepared statement e recusa multiplos comandos.
  */
 const FIXTURES: readonly string[] = [
   `INSERT INTO "users" ("email","email_normalized","status","updated_at") VALUES ('c7a@example.test','c7a@example.test','active', now())`,
   `INSERT INTO "users" ("email","email_normalized","status","updated_at") VALUES ('c7b@example.test','c7b@example.test','active', now())`,
+  // Terceiro usuario DEDICADO aos checks de tracking: o check 28 (cascata LGPD)
+  // APAGA o usuario 2, entao reutiliza-lo depois falharia por FK.
+  `INSERT INTO "users" ("email","email_normalized","status","updated_at") VALUES ('c7c@example.test','c7c@example.test','active', now())`,
   `INSERT INTO "entities" ("entity_type","entity_id") VALUES ('movie', 9001)`,
   `INSERT INTO "entities" ("entity_type","entity_id") VALUES ('tv', 9002)`,
   `INSERT INTO "entities" ("entity_type","entity_id") VALUES ('person', 9003)`,
@@ -135,7 +148,7 @@ async function runFreshChecks(url: string): Promise<void> {
     );
     const U1 = Number(u1!.id);
     const U2 = Number(u2!.id);
-    record(1, "fixtures (2 usuarios + 3 entidades) criadas", true, `u1=${U1} u2=${U2}`);
+    record(1, "fixtures (3 usuarios + 3 entidades) criadas", true, `u1=${U1} u2=${U2}`);
 
     const snapCols = `("user_id","context","algorithm_version","policy_version","fingerprint","generated_at","expires_at","items","is_current")`;
 
@@ -349,6 +362,86 @@ async function runFreshChecks(url: string): Promise<void> {
       ),
     );
     record(29, "feedback nao tem coluna sensivel/texto livre", banned.length === 0, `colunas=${names.length}, proibidas=[${banned.join(",")}]`);
+
+    // ---------------- C7A.1: IDENTIDADE DOS EVENTOS DE TRACKING ----------------
+    const EV = "user_viewing_events";
+    // U2 foi APAGADO no check 28 (cascata LGPD); os checks de tracking usam U3.
+    const [u3] = await q<{ id: bigint }>(
+      `SELECT id FROM users WHERE email_normalized='c7c@example.test'`,
+    );
+    const U3 = Number(u3!.id);
+    const evCols = `("user_id","entity_type","entity_id","event_type","occurred_at","source","idempotency_key")`;
+    const ev = (u: number, key: string, type: string) =>
+      `INSERT INTO "${EV}" ${evCols} VALUES (${u},'movie',9001,'${type}', now(), 'app', '${key}')`;
+
+    // Uma UNICA operacao (mesma chave) emite eventos IRMAOS de tipos distintos.
+    await expectOk(40, "evento 1 da operacao (state_changed) e inserido", ev(U1, "op-1", "state_changed"));
+    await expectOk(41, "evento 2 da MESMA operacao (watch_started) e inserido", ev(U1, "op-1", "watch_started"));
+    await expectOk(42, "evento 3 da MESMA operacao (watch_completed) e inserido", ev(U1, "op-1", "watch_completed"));
+    await expectOk(43, "evento 4 da MESMA operacao (rewatch_started) e inserido", ev(U1, "op-1", "rewatch_started"));
+
+    await expectViolation(
+      44,
+      "REPLAY do mesmo (user, chave, tipo) e barrado (UNIQUE)",
+      ev(U1, "op-1", "state_changed"),
+    );
+
+    await expectOk(45, "OUTRO usuario pode reutilizar a mesma chave e tipo", ev(U3, "op-1", "state_changed"));
+    await expectOk(46, "MESMO usuario, chave diferente, mesmo tipo e aceito", ev(U1, "op-2", "state_changed"));
+
+    await expectViolation(
+      47,
+      "event_type invalido e barrado (enum)",
+      ev(U1, "op-3", "tipo_inexistente"),
+    );
+    await expectViolation(
+      48,
+      "evento de usuario inexistente e barrado (FK)",
+      ev(999999, "op-4", "state_changed"),
+    );
+
+    // Introspeccao: a identidade ANTIGA sumiu e a NOVA existe, com as 3 colunas
+    // na ordem correta.
+    const [oldIdx] = await q<{ c: bigint }>(
+      `SELECT count(*) AS c FROM pg_indexes WHERE tablename='${EV}' AND indexname='${OLD_TRACKING_UNIQUE}'`,
+    );
+    record(49, "a UNIQUE antiga (user_id, idempotency_key) NAO existe mais", Number(oldIdx!.c) === 0, `encontradas=${Number(oldIdx!.c)}`);
+
+    const [newIdx] = await q<{ indexdef: string }>(
+      `SELECT indexdef FROM pg_indexes WHERE tablename='${EV}' AND indexname='${NEW_TRACKING_UNIQUE}'`,
+    );
+    const newDef = newIdx?.indexdef ?? "";
+    record(
+      50,
+      "a UNIQUE nova existe com (user_id, idempotency_key, event_type) NESSA ordem",
+      /UNIQUE INDEX/i.test(newDef) &&
+        /\(\s*user_id\s*,\s*idempotency_key\s*,\s*event_type\s*\)/i.test(newDef),
+      newDef.slice(0, 130) || "indice AUSENTE",
+    );
+
+    // Concorrencia A: identidades IGUAIS -> exatamente uma vence.
+    const sameRace = await Promise.allSettled([
+      exec(ev(U1, "op-race", "state_changed")),
+      exec(ev(U1, "op-race", "state_changed")),
+    ]);
+    const sameWon = sameRace.filter((r) => r.status === "fulfilled").length;
+    record(51, "concorrencia: identidades IGUAIS => so 1 linha vence", sameWon === 1, `aceitos=${sameWon}`);
+
+    // Concorrencia B: mesma operacao, tipos DIFERENTES -> ambas vencem.
+    const diffRace = await Promise.allSettled([
+      exec(ev(U1, "op-race2", "watch_started")),
+      exec(ev(U1, "op-race2", "watch_completed")),
+    ]);
+    const diffWon = diffRace.filter((r) => r.status === "fulfilled").length;
+    const [rows2] = await q<{ c: bigint }>(
+      `SELECT count(*) AS c FROM "${EV}" WHERE user_id=${U1} AND idempotency_key='op-race2'`,
+    );
+    record(
+      52,
+      "concorrencia: mesma operacao com tipos DIFERENTES => ambas persistem",
+      diffWon === 2 && Number(rows2!.c) === 2,
+      `aceitos=${diffWon}, linhas=${Number(rows2!.c)}`,
+    );
   } finally {
     await prisma.$disconnect();
   }
@@ -363,8 +456,10 @@ async function runUpgradeScenario(url: string, env: NodeJS.ProcessEnv): Promise<
     copyFileSync(schemaPath, tempSchema);
     cpSync(migrationsDir, tempMig, { recursive: true });
 
-    // Estado ANTERIOR = tudo, EM ORDEM, exceto a migration de C7A.
+    // Estado ANTERIOR = tudo, EM ORDEM, exceto C7A e o que veio DEPOIS dela
+    // (C7A.1) — senao o "estado anterior" conteria uma migration posterior.
     rmSync(path.join(tempMig, C7A_DIR), { recursive: true, force: true });
+    rmSync(path.join(tempMig, C7A1_DIR), { recursive: true, force: true });
     execFileSync("node", [prismaBin(), "migrate", "deploy", "--schema", tempSchema], {
       env,
       stdio: "pipe",
@@ -445,6 +540,115 @@ async function runUpgradeScenario(url: string, env: NodeJS.ProcessEnv): Promise<
     } catch (e) {
       record(30, "cenario de upgrade", false, (e as Error).message.split("\n")[0].slice(0, 120));
       await prisma.$disconnect().catch(() => undefined);
+    }
+  } finally {
+    await safeRm(tempPrisma);
+  }
+}
+
+/**
+ * Cenario C (C7A.1): estado ANTERIOR = tudo menos C7A.1 (a UNIQUE antiga ainda
+ * vale) -> insere evento valido sob ela -> aplica C7A.1 -> prova preservacao, a
+ * liberacao dos eventos irmaos e a manutencao do bloqueio de replay.
+ */
+async function runTrackingUpgradeScenario(url: string, env: NodeJS.ProcessEnv): Promise<void> {
+  const tempPrisma = mkdtempSync(path.join(tmpdir(), "screena-c7a1-prisma-"));
+  try {
+    const tempSchema = path.join(tempPrisma, "schema.prisma");
+    const tempMig = path.join(tempPrisma, "migrations");
+    copyFileSync(schemaPath, tempSchema);
+    cpSync(migrationsDir, tempMig, { recursive: true });
+    rmSync(path.join(tempMig, C7A1_DIR), { recursive: true, force: true });
+    execFileSync("node", [prismaBin(), "migrate", "deploy", "--schema", tempSchema], {
+      env,
+      stdio: "pipe",
+      cwd: dbDir,
+    });
+
+    const before = new PrismaClient({ datasourceUrl: url });
+    let U = 0;
+    try {
+      await seedFixtures((sql) => before.$executeRawUnsafe(sql));
+      const [u] = await before.$queryRawUnsafe<{ id: bigint }[]>(
+        `SELECT id FROM users WHERE email_normalized='c7a@example.test'`,
+      );
+      U = Number(u!.id);
+      const cols = `("user_id","entity_type","entity_id","event_type","occurred_at","source","idempotency_key")`;
+      await before.$executeRawUnsafe(
+        `INSERT INTO "user_viewing_events" ${cols} VALUES (${U},'movie',9001,'state_changed', now(), 'app', 'legacy-op')`,
+      );
+      // Sob a UNIQUE ANTIGA o evento irmao ja falharia — este e o bloqueador.
+      let blockedBefore = false;
+      try {
+        await before.$executeRawUnsafe(
+          `INSERT INTO "user_viewing_events" ${cols} VALUES (${U},'movie',9001,'watch_started', now(), 'app', 'legacy-op')`,
+        );
+      } catch {
+        blockedBefore = true;
+      }
+      record(
+        60,
+        "ANTES de C7A.1 o evento irmao da mesma operacao era BARRADO (bloqueador reproduzido)",
+        blockedBefore,
+        blockedBefore ? "watch_started rejeitado pela UNIQUE antiga" : "nao foi barrado (premissa falhou)",
+      );
+    } finally {
+      await before.$disconnect();
+    }
+
+    // Aplica C7A.1 por cima.
+    cpSync(path.join(migrationsDir, C7A1_DIR), path.join(tempMig, C7A1_DIR), { recursive: true });
+    execFileSync("node", [prismaBin(), "migrate", "deploy", "--schema", tempSchema], {
+      env,
+      stdio: "pipe",
+      cwd: dbDir,
+    });
+    record(61, "migration C7A.1 aplica SOBRE o estado anterior", true, "migrate deploy ok");
+
+    const after = new PrismaClient({ datasourceUrl: url });
+    try {
+      const cols = `("user_id","entity_type","entity_id","event_type","occurred_at","source","idempotency_key")`;
+      const [kept] = await after.$queryRawUnsafe<{ c: bigint }[]>(
+        `SELECT count(*) AS c FROM "user_viewing_events" WHERE user_id=${U} AND idempotency_key='legacy-op'`,
+      );
+      record(62, "evento legado PRESERVADO (nenhuma perda)", Number(kept!.c) === 1, `linhas=${Number(kept!.c)}`);
+
+      let siblingOk = false;
+      try {
+        await after.$executeRawUnsafe(
+          `INSERT INTO "user_viewing_events" ${cols} VALUES (${U},'movie',9001,'watch_started', now(), 'app', 'legacy-op')`,
+        );
+        siblingOk = true;
+      } catch {
+        siblingOk = false;
+      }
+      record(63, "DEPOIS de C7A.1 o evento irmao e ACEITO (bloqueador resolvido)", siblingOk, siblingOk ? "watch_started aceito" : "ainda barrado");
+
+      let replayBlocked = false;
+      try {
+        await after.$executeRawUnsafe(
+          `INSERT INTO "user_viewing_events" ${cols} VALUES (${U},'movie',9001,'state_changed', now(), 'app', 'legacy-op')`,
+        );
+      } catch {
+        replayBlocked = true;
+      }
+      record(64, "replay do MESMO tipo continua BARRADO apos o upgrade", replayBlocked, replayBlocked ? "state_changed rejeitado" : "replay passou (regressao!)");
+
+      const [oldGone] = await after.$queryRawUnsafe<{ c: bigint }[]>(
+        `SELECT count(*) AS c FROM pg_indexes WHERE indexname='${OLD_TRACKING_UNIQUE}'`,
+      );
+      const [newDefRow] = await after.$queryRawUnsafe<{ indexdef: string }[]>(
+        `SELECT indexdef FROM pg_indexes WHERE indexname='${NEW_TRACKING_UNIQUE}'`,
+      );
+      record(
+        65,
+        "apos upgrade: UNIQUE antiga ausente e nova presente com as 3 colunas",
+        Number(oldGone!.c) === 0 &&
+          /\(\s*user_id\s*,\s*idempotency_key\s*,\s*event_type\s*\)/i.test(newDefRow?.indexdef ?? ""),
+        `antiga=${Number(oldGone!.c)} nova=${(newDefRow?.indexdef ?? "ausente").slice(0, 90)}`,
+      );
+    } finally {
+      await after.$disconnect();
     }
   } finally {
     await safeRm(tempPrisma);
@@ -543,6 +747,12 @@ async function main(): Promise<void> {
     await pg.createDatabase("c7a_upgrade");
     const upgradeUrl = `postgresql://postgres:postgres@127.0.0.1:${port}/c7a_upgrade?schema=public`;
     await runUpgradeScenario(upgradeUrl, { ...process.env, DATABASE_URL: upgradeUrl });
+
+    // --- Cenario C: UPGRADE de C7A.1 (idempotencia dos eventos de tracking) ---
+    console.log("\n--- cenario C (upgrade C7A.1: tracking) ---");
+    await pg.createDatabase("c7a1_upgrade");
+    const trackUrl = `postgresql://postgres:postgres@127.0.0.1:${port}/c7a1_upgrade?schema=public`;
+    await runTrackingUpgradeScenario(trackUrl, { ...process.env, DATABASE_URL: trackUrl });
   } catch (e) {
     record(99, "execucao", false, (e as Error).message.split("\n")[0]);
   } finally {

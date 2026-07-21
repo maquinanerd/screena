@@ -2054,7 +2054,15 @@ model ViewingEvent {
 
   user User @relation(fields: [userId], references: [id])
 
-  @@unique([userId, idempotencyKey])
+  // C7A.1 — a identidade idempotente inclui o TIPO do evento: uma operacao
+  // (uma idempotencyKey) emite varios eventos IRMAOS, e o dominio garante que
+  // nunca ha dois do mesmo eventType no mesmo plano (provado por varredura
+  // exaustiva em tracking/__tests__/event-identity-contract.test.ts).
+  // Ordem (user_id, idempotency_key, event_type) preserva o prefixo
+  // (user_id, idempotency_key) — util para ler todos os eventos de UMA operacao.
+  // `occurred_at` NAO entra na identidade (todos os irmaos compartilham o mesmo
+  // instante), mas ENTRA na equivalencia de replay (viewing-events.sameContent).
+  @@unique([userId, idempotencyKey, eventType])
   @@index([userId, occurredAt])
   @@index([entityType, entityId])
   @@map("user_viewing_events")
