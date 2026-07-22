@@ -25,6 +25,8 @@ import type {
   AuthTokenInvalidatePendingResult,
   AuthTokenIssueResult,
   CredentialCreateInput,
+  EmailVerificationInput,
+  EmailVerificationResult,
   CredentialCreateResult,
   CredentialReplaceInput,
   CredentialReplaceResult,
@@ -61,21 +63,17 @@ export interface TransactionRunner {
  * handle nem `transitionStatus`. Sem CRUD generico e sem operacao
  * administrativa.
  *
- * PORT_GAP REGISTRADO EM C7B2 (nao resolvido aqui, de proposito):
+ * C7B2.1 fechou o PORT_GAP que o C7B2 registrou: `findById` (status da conta,
+ * para `evaluateSessionAccess`) e `markEmailVerified` (carimbo, depois do
+ * consumo atomico do token). Os dois `userId` que o C7B2 devolve passam a ter
+ * destino real.
  *
- *  - falta `findById(userId) -> status`. `evaluateSessionAccess` exige
- *    `userStatus`, e `SessionAccessRecord` devolve `userId` justamente para
- *    busca-lo — mas nenhum metodo publicado o obtem a partir de um id. Sem isso,
- *    VALIDAR SESSAO (o caminho de toda requisicao autenticada) nao e componivel.
- *  - falta `markEmailVerified` e um `emailVerifiedAt` legivel.
- *    `AuthTokenStore.consume` devolve o `userId` do token para
- *    `applyEmailVerification`, mas nada persiste o carimbo nem alimenta o
- *    `alreadyVerified` de `evaluateVerificationResend`.
- *
- * Contraste que delimita o gap: recuperacao de senha FECHA de ponta a ponta
- * (provado em PostgreSQL real); verificacao de e-mail e validacao de sessao NAO.
- * Ampliar este port pertence a unidade que trouxer esses fluxos — corrigi-lo
- * dentro do C7B2 seria mexer no contrato de outra unidade sem escopo.
+ * PORT_GAP REMANESCENTE (fora do escopo do C7B2.1): `evaluateVerificationResend`
+ * consome `alreadyVerified`, e `canPublishList`/`validateProfileVisibility...`
+ * consomem o carimbo `emailVerifiedAt: Date | null`. Nenhum metodo o LE hoje —
+ * `IdentityRecord` nao o carrega, de proposito, porque nenhum consumidor DESTA
+ * unidade o exige. Nasce com a unidade que trouxer listas/privacidade (C7B3/C7B4)
+ * ou o reenvio de verificacao.
  *
  * Nenhum retorno carrega `passwordHash`: credencial e outro port.
  */
@@ -99,6 +97,36 @@ export interface IdentityStore {
     scope: TransactionScope,
     emailNormalized: string,
   ): Promise<IdentityLookupResult>;
+
+  /**
+   * Busca pela PK. Consumidor: `evaluateSessionAccess` exige
+   * `userStatus: UserStatus | null`, e `SessionAccessRecord.userId` existe
+   * exatamente para chegar ate aqui — sem este metodo, autenticar por sessao nao
+   * fecha.
+   *
+   * Devolve o MESMO `IdentityLookupResult` da busca por e-mail: os dois
+   * consumidores precisam de `{ id, status }` e nada mais, entao um segundo tipo
+   * identico so criaria divergencia futura.
+   *
+   * NAO filtra conta desativada nem nao-verificada: quem decide elegibilidade e
+   * `accountCanHoldSession`, no dominio. Filtrar aqui devolveria `not_found`
+   * para uma conta que existe e apagaria a distincao que alimenta o motivo
+   * interno de auditoria.
+   */
+  findById(scope: TransactionScope, userId: bigint): Promise<IdentityLookupResult>;
+
+  /**
+   * Marca o PRIMEIRO instante de verificacao do e-mail. Consumidor:
+   * `applyEmailVerification`, chamado depois do consumo atomico de um token de
+   * `email_verification`.
+   *
+   * Idempotente por construcao do dominio: ja verificada PRESERVA o carimbo
+   * original (`changed=false`), nunca o sobrescreve.
+   */
+  markEmailVerified(
+    scope: TransactionScope,
+    input: EmailVerificationInput,
+  ): Promise<EmailVerificationResult>;
 }
 
 /**

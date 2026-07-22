@@ -15,9 +15,12 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { authenticatePassword } from "../../auth/credentials.js";
 import { decideLogin, decideSignup } from "../../auth/flows.js";
+import { evaluateSessionAccess } from "../../auth/sessions.js";
+import { applyEmailVerification } from "../../auth/verification.js";
 import type { IdentityStore, PasswordCredentialStore } from "../ports.js";
 import type {
   CredentialCreateInput,
+  EmailVerificationInput,
   CredentialReplaceInput,
   CredentialVerificationMaterial,
   IdentityRecord,
@@ -39,7 +42,13 @@ const OK_PASSWORD = { ok: true, errors: [] as string[] };
 
 /** Fake em memoria do IdentityStore. Classifica conflito por alvo semantico. */
 function fakeIdentityStore(): IdentityStore {
-  const rows: { id: bigint; email: string; emailNormalized: string; status: "active" }[] = [];
+  const rows: {
+    id: bigint;
+    email: string;
+    emailNormalized: string;
+    status: "active";
+    emailVerifiedAt: Date | null;
+  }[] = [];
   let nextId = 1n;
   return {
     async create(_scope, input) {
@@ -57,7 +66,13 @@ function fakeIdentityStore(): IdentityStore {
       }
       const id = nextId;
       nextId += 1n;
-      rows.push({ id, email: input.email, emailNormalized: input.emailNormalized, status: "active" });
+      rows.push({
+        id,
+        email: input.email,
+        emailNormalized: input.emailNormalized,
+        status: "active",
+        emailVerifiedAt: null,
+      });
       return {
         kind: "created",
         identity: { id, status: "active" },
@@ -70,6 +85,23 @@ function fakeIdentityStore(): IdentityStore {
         kind: "found",
         identity: { id: row.id, status: row.status },
       };
+    },
+    async findById(_scope, userId) {
+      // Mesmo shape da busca por e-mail: os dois consumidores precisam de
+      // `{ id, status }`. Sem filtro de status — quem decide e o dominio.
+      const row = rows.find((r) => r.id === userId);
+      if (row === undefined) return { kind: "not_found" };
+      return {
+        kind: "found",
+        identity: { id: row.id, status: row.status },
+      };
+    },
+    async markEmailVerified(_scope, input) {
+      const row = rows.find((r) => r.id === input.userId);
+      if (row === undefined) return { kind: "not_found" };
+      if (row.emailVerifiedAt !== null) return { kind: "already_verified" };
+      row.emailVerifiedAt = input.now;
+      return { kind: "verified" };
     },
   };
 }
@@ -391,5 +423,115 @@ describe("C7B0 — port de credencial: hash opaco, 1:1 e compare-and-swap", () =
     for (const key of [...Object.keys(createInput), ...Object.keys(replaceInput)]) {
       expect(key, `campo suspeito: ${key}`).not.toMatch(/password$/i);
     }
+  });
+});
+
+describe("C7B2.1 — identidade fecha autenticacao por sessao e verificacao", () => {
+  const SCOPE: TransactionScope = { transactional: true };
+  const AGORA = new Date("2026-07-22T12:00:00.000Z");
+
+  async function comUsuario(): Promise<{ store: IdentityStore; userId: bigint }> {
+    const store = fakeIdentityStore();
+    const criado = await store.create(SCOPE, {
+      email: "c7b21@example.test",
+      emailNormalized: "c7b21@example.test",
+      displayName: null,
+    });
+    if (criado.kind !== "created") throw new Error("setup falhou");
+    return { store, userId: criado.identity.id };
+  }
+
+  it("(1) findById alimenta evaluateSessionAccess — a composicao FECHA", async () => {
+    // Este e o gap que o C7B2 registrou: `SessionAccessRecord.userId` existia
+    // para chegar ao status, e nenhum metodo o obtinha por id.
+    const { store, userId } = await comUsuario();
+    const lookup = await store.findById(SCOPE, userId);
+    const status = lookup.kind === "found" ? lookup.identity.status : null;
+
+    const acesso = evaluateSessionAccess({
+      now: AGORA,
+      session: { expiresAt: new Date(AGORA.getTime() + 60_000), revokedAt: null },
+      userStatus: status,
+    });
+    expect(acesso.publicResult.ok).toBe(true);
+  });
+
+  it("(2) usuario ausente => status null => fail-closed", async () => {
+    const { store } = await comUsuario();
+    const lookup = await store.findById(SCOPE, 999n);
+    expect(lookup.kind).toBe("not_found");
+    const status = lookup.kind === "found" ? lookup.identity.status : null;
+    const acesso = evaluateSessionAccess({
+      now: AGORA,
+      session: { expiresAt: new Date(AGORA.getTime() + 60_000), revokedAt: null },
+      userStatus: status,
+    });
+    expect(acesso.publicResult.ok).toBe(false);
+    expect(acesso.internalReason).toBe("account_ineligible");
+  });
+
+  it("(3) o registro de findById nao carrega segredo nem PII", async () => {
+    const { store, userId } = await comUsuario();
+    const lookup = await store.findById(SCOPE, userId);
+    expect(lookup.kind).toBe("found");
+    if (lookup.kind !== "found") return;
+    expect(Object.keys(lookup.identity).sort()).toEqual(["id", "status"]);
+    const serializado = JSON.stringify(lookup.identity, (_k, v) =>
+      typeof v === "bigint" ? "0" : v,
+    );
+    expect(serializado).not.toMatch(/hash|token|@|verified/i);
+  });
+
+  it("(4) markEmailVerified concorda com applyEmailVerification", async () => {
+    // A taxonomia do port nao foi inventada: `verified`/`already_verified` sao
+    // exatamente o `changed` do dominio, com o carimbo original preservado.
+    const { store, userId } = await comUsuario();
+
+    const primeira = await store.markEmailVerified(SCOPE, { userId, now: AGORA });
+    expect(primeira.kind).toBe("verified");
+    expect(applyEmailVerification({ now: AGORA, currentEmailVerifiedAt: null }).changed).toBe(true);
+
+    const depois = new Date(AGORA.getTime() + 60_000);
+    const segunda = await store.markEmailVerified(SCOPE, { userId, now: depois });
+    expect(segunda.kind).toBe("already_verified");
+    const aplicado = applyEmailVerification({ now: depois, currentEmailVerifiedAt: AGORA });
+    expect(aplicado.changed).toBe(false);
+    // O carimbo preservado e o PRIMEIRO, nunca o novo.
+    expect(aplicado.emailVerifiedAt).toEqual(AGORA);
+  });
+
+  it("(5) marcar conta inexistente e not_found", async () => {
+    const { store } = await comUsuario();
+    const r = await store.markEmailVerified(SCOPE, { userId: 999n, now: AGORA });
+    expect(r.kind).toBe("not_found");
+  });
+
+  it("(6) e-mail verificado NAO e entrada de decideLogin (login nao exige)", async () => {
+    // Controle negativo de politica: se alguem acrescentar verificacao ao login,
+    // este teste continua verde mas o de baixo (chave declarada) reprova.
+    const decisao = decideLogin({
+      throttleLocked: false,
+      userExists: true,
+      userStatus: "active",
+      passwordMatches: true,
+    });
+    expect(decisao.publicResult.ok).toBe(true);
+
+    const fonte = readFileSync(
+      path.join(process.cwd(), "services", "user-platform", "src", "auth", "flows.ts"),
+      "utf8",
+    );
+    const bloco = fonte.slice(
+      fonte.indexOf("export function decideLogin"),
+      fonte.indexOf("}", fonte.indexOf("export function decideLogin")),
+    );
+    expect(bloco).not.toMatch(/emailVerified|verificad/i);
+  });
+
+  it("(7) `now` e OBRIGATORIO na marcacao (tempo nunca vem do adapter)", () => {
+    // Literal TIPADO: remover `now` do comando para de compilar. E a unica forma
+    // de travar isso — em runtime, um `undefined` viraria uma data invalida.
+    const comando: EmailVerificationInput = { userId: 1n, now: AGORA };
+    expect(Object.keys(comando).sort()).toEqual(["now", "userId"]);
   });
 });

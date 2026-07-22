@@ -1,14 +1,19 @@
 /**
  * identity-store.ts — adapter Prisma de `IdentityStore` (Backend C, C7B1).
  *
- * Implementa EXATAMENTE os dois metodos do port: criar a identidade do cadastro
- * e busca-la pela chave natural anti-enumeracao. Nenhum `update`, nenhum
- * `delete`, nenhuma listagem, nenhuma busca por handle, nenhum
- * `markEmailVerified` — nada que os fluxos desta unidade nao consumam.
+ * Implementa EXATAMENTE os metodos do port: criar a identidade do cadastro,
+ * busca-la pela chave natural anti-enumeracao, busca-la pela PK (status da
+ * conta, para autenticar por sessao) e marcar o primeiro instante de verificacao
+ * do e-mail. Nenhum `update` generico, nenhum `delete`, nenhuma listagem,
+ * nenhuma busca por handle — nada sem consumidor real.
+ *
+ * Os dois ultimos entraram em C7B2.1, fechando o PORT_GAP que o C7B2 registrou.
  */
 
 import type { IdentityStore } from "../ports.js";
 import type {
+  EmailVerificationInput,
+  EmailVerificationResult,
   IdentityCreateInput,
   IdentityCreateResult,
   IdentityLookupResult,
@@ -110,6 +115,62 @@ export function createPrismaIdentityStore(executor: PrismaExecutor): IdentitySto
         return { kind: "not_found" };
       }
       return { kind: "found", identity: toIdentityRecord(row) };
+    },
+
+    async findById(_scope: TransactionScope, userId: bigint): Promise<IdentityLookupResult> {
+      // Mesmo SELECT da busca por e-mail: `evaluateSessionAccess` consome
+      // `status` e nada mais, e reusar a constante impede que as duas leituras
+      // divirjam com o tempo.
+      //
+      // SEM filtro de status: quem decide elegibilidade e `accountCanHoldSession`.
+      // Devolver `not_found` para uma conta desativada mentiria sobre a
+      // existencia dela e apagaria a distincao que o motivo interno de auditoria
+      // usa (`account_ineligible` != `not_found`).
+      const row = await executor.user.findUnique({
+        where: { id: userId },
+        select: IDENTITY_SELECT,
+      });
+      if (row === null) {
+        return { kind: "not_found" };
+      }
+      return { kind: "found", identity: toIdentityRecord(row) };
+    },
+
+    async markEmailVerified(
+      _scope: TransactionScope,
+      input: EmailVerificationInput,
+    ): Promise<EmailVerificationResult> {
+      // `emailVerifiedAt: null` na PRE-CONDICAO faz duas coisas de uma vez:
+      // torna a operacao atomica (duas marcacoes concorrentes -> uma so grava) e
+      // PRESERVA o primeiro carimbo, que e exatamente o que
+      // `applyEmailVerification` define como idempotencia (`changed=false`
+      // mantem o instante original).
+      //
+      // Nao ha leitura previa: ler para depois decidir e gravar abriria a janela
+      // em que duas requisicoes leem "nao verificada" e ambas escrevem, e a
+      // segunda sobrescreveria o carimbo da primeira.
+      const aplicado = await executor.user.updateMany({
+        where: { id: input.userId, emailVerifiedAt: null },
+        data: { emailVerifiedAt: input.now },
+      });
+
+      if (aplicado.count > 1) {
+        // `id` e a chave primaria: impossivel. Falha fechado.
+        throw new Error("invariante violada: mais de uma identidade para a mesma chave primaria");
+      }
+
+      if (aplicado.count === 1) {
+        return { kind: "verified" };
+      }
+
+      // Zero linhas tem DUAS causas — conta inexistente ou ja verificada — e o
+      // contrato as separa. A sonda le apenas existencia; qualquer resultado
+      // dela e uma recusa, entao ela nao pode transformar corrida em sucesso.
+      const existe = await executor.user.findUnique({
+        where: { id: input.userId },
+        select: { id: true },
+      });
+      return existe === null ? { kind: "not_found" } : { kind: "already_verified" };
     },
   };
 }

@@ -81,6 +81,10 @@ const HASH_ROT_BASE = "6".repeat(64);
 const HASH_ROT_1 = "7".repeat(64);
 const HASH_ROT_2 = "8".repeat(64);
 const HASH_IP_CRU = "9".repeat(64);
+const HASH_SESSAO_ALVO = "ab".repeat(32);
+const HASH_VERIF_TX = "cd".repeat(32);
+const HASH_RESET_VERIF = "ef".repeat(32);
+const HASH_VERIF_EXPIRADO = "ba".repeat(32);
 
 interface CheckResult {
   readonly n: number;
@@ -1631,6 +1635,363 @@ async function runChecks(url: string): Promise<void> {
       "IP em texto claro e barrado ANTES do disco (fail-closed no adapter)",
       ipCruBarrado && Number(linhasIpCru!.c) === 0,
       `barrado=${ipCruBarrado} linhas=${Number(linhasIpCru!.c)}`,
+    );
+
+    // =======================================================================
+    // C7B2.1 — IDENTIDADE FECHADA PARA AUTENTICACAO
+    // =======================================================================
+    const naoVerificado = await identities.create(SCOPE, {
+      email: "c7b21@example.test",
+      emailNormalized: "c7b21@example.test",
+      displayName: null,
+    });
+    if (naoVerificado.kind !== "created") throw new Error("setup do C7B2.1 falhou");
+    const alvoId = naoVerificado.identity.id;
+
+    const porId = await identities.findById(SCOPE, alvoId);
+    record(
+      91,
+      "findById devolve a identidade com o status",
+      porId.kind === "found" && porId.identity.id === alvoId && porId.identity.status === "active",
+      `kind=${porId.kind}`,
+    );
+    record(
+      92,
+      "findById devolve EXATAMENTE id e status (sem PII, sem segredo)",
+      porId.kind === "found" &&
+        JSON.stringify(Object.keys(porId.identity).sort()) === JSON.stringify(["id", "status"]),
+      porId.kind === "found" ? Object.keys(porId.identity).sort().join(",") : "-",
+    );
+
+    const idAusente = await identities.findById(SCOPE, 999999n);
+    record(93, "findById ausente e not_found", idAusente.kind === "not_found", `kind=${idAusente.kind}`);
+
+    // Conta desativada continua sendo ENCONTRADA: quem decide e o dominio.
+    await exec(`UPDATE "users" SET status = 'disabled' WHERE id = ${alvoId}`);
+    const desativado = await identities.findById(SCOPE, alvoId);
+    record(
+      94,
+      "findById NAO filtra conta desativada (elegibilidade e do dominio)",
+      desativado.kind === "found" && desativado.identity.status === "disabled",
+      `status=${desativado.kind === "found" ? desativado.identity.status : "-"}`,
+    );
+    await exec(`UPDATE "users" SET status = 'active' WHERE id = ${alvoId}`);
+
+    // --------------------- SESSAO + IDENTIDADE -----------------------------
+    const sessaoAlvo = await sessions.create(SCOPE, {
+      userId: alvoId,
+      tokenHash: HASH_SESSAO_ALVO,
+      csrfTokenHash: HASH_CSRF_1,
+      expiresAt: daquiA(HORA),
+      rotatedFromSessionId: null,
+      ipHash: null,
+      userAgent: null,
+    });
+    if (sessaoAlvo.kind !== "created") throw new Error("setup de sessao do C7B2.1 falhou");
+
+    /** Composicao real: lookup de sessao + lookup de identidade + decisao pura. */
+    async function autentica(now: Date): Promise<boolean> {
+      const s = await sessions.findByTokenHash(SCOPE, HASH_SESSAO_ALVO);
+      if (s.kind !== "found") return false;
+      const u = await identities.findById(SCOPE, s.session.userId);
+      const status = u.kind === "found" ? u.identity.status : null;
+      return evaluateSessionAccess({ now, session: s.session, userStatus: status }).publicResult.ok;
+    }
+
+    record(
+      95,
+      "sessao ativa + usuario ativo AUTENTICA (composicao fecha)",
+      await autentica(daquiA(60_000)),
+      "acesso concedido",
+    );
+
+    // E-mail NAO verificado nao pode bloquear login.
+    const [aindaNaoVerificado] = await q<{ email_verified_at: Date | null }>(
+      `SELECT email_verified_at FROM "users" WHERE id = ${alvoId}`,
+    );
+    record(
+      96,
+      "e-mail NAO verificado nao bloqueia autenticacao por sessao",
+      aindaNaoVerificado!.email_verified_at === null && (await autentica(daquiA(60_000))),
+      "login permitido sem verificacao",
+    );
+
+    await exec(`UPDATE "users" SET status = 'disabled' WHERE id = ${alvoId}`);
+    record(
+      97,
+      "sessao ativa + usuario DESATIVADO nao autentica (fail-closed)",
+      !(await autentica(daquiA(60_000))),
+      "acesso negado por status",
+    );
+    await exec(`UPDATE "users" SET status = 'active' WHERE id = ${alvoId}`);
+
+    record(
+      98,
+      "sessao VENCIDA nao autentica mesmo com usuario ativo",
+      !(await autentica(daquiA(2 * HORA))),
+      "acesso negado por expiracao",
+    );
+
+    // ------------------- VERIFICACAO DE E-MAIL -----------------------------
+    const marcou = await identities.markEmailVerified(SCOPE, {
+      userId: alvoId,
+      now: daquiA(60_000),
+    });
+    record(99, "marca e-mail como verificado", marcou.kind === "verified", `kind=${marcou.kind}`);
+
+    const [carimbo1] = await q<{ email_verified_at: Date | null }>(
+      `SELECT email_verified_at FROM "users" WHERE id = ${alvoId}`,
+    );
+    record(
+      100,
+      "carimbo persistido exatamente como recebido",
+      carimbo1!.email_verified_at?.getTime() === daquiA(60_000).getTime(),
+      `carimbo=${String(carimbo1!.email_verified_at?.toISOString())}`,
+    );
+
+    const remarcou = await identities.markEmailVerified(SCOPE, {
+      userId: alvoId,
+      now: daquiA(120_000),
+    });
+    const [carimbo2] = await q<{ email_verified_at: Date | null }>(
+      `SELECT email_verified_at FROM "users" WHERE id = ${alvoId}`,
+    );
+    record(
+      101,
+      "remarcar e IDEMPOTENTE e PRESERVA o primeiro carimbo",
+      remarcou.kind === "already_verified" &&
+        carimbo2!.email_verified_at?.getTime() === carimbo1!.email_verified_at?.getTime(),
+      `kind=${remarcou.kind} carimbo intacto=${carimbo2!.email_verified_at?.getTime() === carimbo1!.email_verified_at?.getTime()}`,
+    );
+
+    const marcaAusente = await identities.markEmailVerified(SCOPE, {
+      userId: 999999n,
+      now: daquiA(60_000),
+    });
+    record(
+      102,
+      "marcar conta inexistente e not_found (distinto de already_verified)",
+      marcaAusente.kind === "not_found",
+      `kind=${marcaAusente.kind}`,
+    );
+
+    // Disputa: duas marcacoes simultaneas do MESMO usuario nao verificado.
+    const disputaAlvo = await identities.create(SCOPE, {
+      email: "disputa-verif@example.test",
+      emailNormalized: "disputa-verif@example.test",
+      displayName: null,
+    });
+    if (disputaAlvo.kind !== "created") throw new Error("setup da disputa falhou");
+    const disputaMarcacao = await Promise.all([
+      identities.markEmailVerified(SCOPE, { userId: disputaAlvo.identity.id, now: daquiA(60_000) }),
+      identities.markEmailVerified(SCOPE, { userId: disputaAlvo.identity.id, now: daquiA(90_000) }),
+    ]);
+    const [carimboDisputa] = await q<{ email_verified_at: Date | null }>(
+      `SELECT email_verified_at FROM "users" WHERE id = ${disputaAlvo.identity.id}`,
+    );
+    record(
+      103,
+      "disputa de marcacao: exatamente 1 grava, e o carimbo e o da vencedora",
+      disputaMarcacao.filter((r) => r.kind === "verified").length === 1 &&
+        disputaMarcacao.filter((r) => r.kind === "already_verified").length === 1 &&
+        carimboDisputa!.email_verified_at !== null,
+      disputaMarcacao.map((r) => r.kind).join(","),
+    );
+
+    // ---------- CONSUMO DO TOKEN + MARCACAO NA MESMA TRANSACAO -------------
+    const verifAlvo = await identities.create(SCOPE, {
+      email: "verif-tx@example.test",
+      emailNormalized: "verif-tx@example.test",
+      displayName: null,
+    });
+    if (verifAlvo.kind !== "created") throw new Error("setup de verif-tx falhou");
+    const verifId = verifAlvo.identity.id;
+
+    await authTokens.issue(SCOPE, {
+      userId: verifId,
+      purpose: "email_verification",
+      tokenHash: HASH_VERIF_TX,
+      expiresAt: daquiA(24 * HORA),
+    });
+
+    // ROLLBACK: falha depois do consumo desfaz consumo E marcacao.
+    let verifRollback = false;
+    try {
+      await prisma.$transaction(async (tx) => {
+        const txTokens = createPrismaAuthTokenStore(tx);
+        const txIdentities = createPrismaIdentityStore(tx);
+        const c = await txTokens.consume(SCOPE, {
+          tokenHash: HASH_VERIF_TX,
+          purpose: "email_verification",
+          now: daquiA(60_000),
+        });
+        if (c.kind !== "consumed") throw new Error("setup do rollback de verificacao falhou");
+        const m = await txIdentities.markEmailVerified(SCOPE, {
+          userId: c.userId,
+          now: daquiA(60_000),
+        });
+        if (m.kind !== "verified") throw new Error("marcacao inesperada");
+        throw new Error("falha proposital apos consumir e marcar");
+      });
+    } catch {
+      verifRollback = true;
+    }
+    const [tokenAposRollback] = await q<{ consumed_at: Date | null }>(
+      `SELECT consumed_at FROM "user_verification_tokens" WHERE token_hash = '${HASH_VERIF_TX}'`,
+    );
+    const [userAposRollback] = await q<{ email_verified_at: Date | null }>(
+      `SELECT email_verified_at FROM "users" WHERE id = ${verifId}`,
+    );
+    record(
+      104,
+      "falha apos consumir+marcar desfaz OS DOIS efeitos",
+      verifRollback &&
+        tokenAposRollback!.consumed_at === null &&
+        userAposRollback!.email_verified_at === null,
+      `token pendente=${tokenAposRollback!.consumed_at === null} usuario nao verificado=${userAposRollback!.email_verified_at === null}`,
+    );
+
+    // SUCESSO: os dois efeitos comitam juntos.
+    const verifOk = await prisma.$transaction(async (tx) => {
+      const txTokens = createPrismaAuthTokenStore(tx);
+      const txIdentities = createPrismaIdentityStore(tx);
+      const c = await txTokens.consume(SCOPE, {
+        tokenHash: HASH_VERIF_TX,
+        purpose: "email_verification",
+        now: daquiA(60_000),
+      });
+      if (c.kind !== "consumed") return { ok: false as const };
+      const m = await txIdentities.markEmailVerified(SCOPE, {
+        userId: c.userId,
+        now: daquiA(60_000),
+      });
+      return { ok: m.kind === "verified" };
+    });
+    const [tokenFinal] = await q<{ consumed_at: Date | null }>(
+      `SELECT consumed_at FROM "user_verification_tokens" WHERE token_hash = '${HASH_VERIF_TX}'`,
+    );
+    const [userFinal] = await q<{ email_verified_at: Date | null }>(
+      `SELECT email_verified_at FROM "users" WHERE id = ${verifId}`,
+    );
+    record(
+      105,
+      "consumo do token + marcacao comitam JUNTOS",
+      verifOk.ok &&
+        tokenFinal!.consumed_at !== null &&
+        userFinal!.email_verified_at !== null,
+      `ok=${verifOk.ok}`,
+    );
+
+    const verifReplay = await authTokens.consume(SCOPE, {
+      tokenHash: HASH_VERIF_TX,
+      purpose: "email_verification",
+      now: daquiA(120_000),
+    });
+    record(
+      106,
+      "token de verificacao e uso unico apos o commit",
+      verifReplay.kind === "already_consumed",
+      `kind=${verifReplay.kind}`,
+    );
+
+    // Token de RESET nao verifica e-mail; e a transacao segue utilizavel.
+    const naoVerif = await identities.create(SCOPE, {
+      email: "nao-verif@example.test",
+      emailNormalized: "nao-verif@example.test",
+      displayName: null,
+    });
+    if (naoVerif.kind !== "created") throw new Error("setup de nao-verif falhou");
+    await authTokens.issue(SCOPE, {
+      userId: naoVerif.identity.id,
+      purpose: "password_reset",
+      tokenHash: HASH_RESET_VERIF,
+      expiresAt: daquiA(2 * HORA),
+    });
+    let purposeErradoNaoVerificou = false;
+    let erroPurposeTx: string | null = null;
+    try {
+      purposeErradoNaoVerificou = await prisma.$transaction(async (tx) => {
+        const txTokens = createPrismaAuthTokenStore(tx);
+        const txIdentities = createPrismaIdentityStore(tx);
+        const c = await txTokens.consume(SCOPE, {
+          tokenHash: HASH_RESET_VERIF,
+          purpose: "email_verification",
+          now: daquiA(60_000),
+        });
+        if (c.kind === "consumed") return false;
+        // A transacao continua utilizavel depois do outcome esperado.
+        const u = await txIdentities.findById(SCOPE, naoVerif.identity.id);
+        return c.kind === "wrong_purpose" && u.kind === "found";
+      });
+    } catch (e) {
+      const code = (e as { code?: unknown }).code;
+      erroPurposeTx = typeof code === "string" ? code : (e as Error).message.slice(0, 60);
+    }
+    const [naoVerifRow] = await q<{ email_verified_at: Date | null }>(
+      `SELECT email_verified_at FROM "users" WHERE id = ${naoVerif.identity.id}`,
+    );
+    record(
+      107,
+      "token de password_reset NAO verifica e-mail, e a transacao segue usavel",
+      erroPurposeTx === null &&
+        purposeErradoNaoVerificou &&
+        naoVerifRow!.email_verified_at === null,
+      `erro=${erroPurposeTx ?? "nenhum"} usuario nao verificado=${naoVerifRow!.email_verified_at === null}`,
+    );
+
+    // Token inexistente e token expirado tambem nao verificam.
+    const tokenInexistente = await authTokens.consume(SCOPE, {
+      tokenHash: HASH_INEXISTENTE,
+      purpose: "email_verification",
+      now: daquiA(60_000),
+    });
+    await authTokens.issue(SCOPE, {
+      userId: naoVerif.identity.id,
+      purpose: "email_verification",
+      tokenHash: HASH_VERIF_EXPIRADO,
+      expiresAt: daquiA(HORA),
+    });
+    const tokenVencido = await authTokens.consume(SCOPE, {
+      tokenHash: HASH_VERIF_EXPIRADO,
+      purpose: "email_verification",
+      now: daquiA(2 * HORA),
+    });
+    const [aindaNaoVerif] = await q<{ email_verified_at: Date | null }>(
+      `SELECT email_verified_at FROM "users" WHERE id = ${naoVerif.identity.id}`,
+    );
+    record(
+      108,
+      "token inexistente e token vencido nao verificam ninguem",
+      tokenInexistente.kind === "not_found" &&
+        tokenVencido.kind === "expired" &&
+        aindaNaoVerif!.email_verified_at === null,
+      `inexistente=${tokenInexistente.kind} vencido=${tokenVencido.kind}`,
+    );
+
+    // `already_verified` e outcome ESPERADO: nao envenena a transacao.
+    let jaVerificadoTx: { kind: string; leuDepois: boolean } | null = null;
+    let erroJaVerificado: string | null = null;
+    try {
+      jaVerificadoTx = await prisma.$transaction(async (tx) => {
+        const txIdentities = createPrismaIdentityStore(tx);
+        const m = await txIdentities.markEmailVerified(SCOPE, {
+          userId: verifId,
+          now: daquiA(180_000),
+        });
+        const u = await txIdentities.findById(SCOPE, verifId);
+        return { kind: m.kind, leuDepois: u.kind === "found" };
+      });
+    } catch (e) {
+      const code = (e as { code?: unknown }).code;
+      erroJaVerificado = typeof code === "string" ? code : (e as Error).message.slice(0, 60);
+    }
+    record(
+      109,
+      "already_verified nao envenena a transacao (query posterior funciona)",
+      erroJaVerificado === null &&
+        jaVerificadoTx?.kind === "already_verified" &&
+        jaVerificadoTx?.leuDepois === true,
+      `erro=${erroJaVerificado ?? "nenhum"} kind=${jaVerificadoTx?.kind ?? "-"}`,
     );
   } finally {
     await prisma.$disconnect();

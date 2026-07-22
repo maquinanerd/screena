@@ -355,3 +355,39 @@ export interface AuthTokenInvalidatePendingInput {
 export interface AuthTokenInvalidatePendingResult {
   readonly invalidatedCount: number;
 }
+
+// ---------------------------------------------------------------------------
+// C7B2.1 — FECHAMENTO DA IDENTIDADE PARA AUTENTICACAO
+//
+// O C7B2 registrou um PORT_GAP: `SessionAccessRecord` devolve `userId` para que
+// alguem busque o status da conta, e `AuthTokenStore.consume` devolve `userId`
+// para que alguem marque o e-mail — mas nenhum metodo publicado fazia nem uma
+// coisa nem outra. Sem isso, validar sessao e verificar e-mail nao fechavam.
+// ---------------------------------------------------------------------------
+
+/**
+ * Resultado da marcacao de e-mail verificado.
+ *
+ * A taxonomia NAO foi inventada aqui: espelha `EmailVerificationApplication`
+ * (auth/verification.ts), onde `changed=true` e a primeira verificacao e
+ * `changed=false` significa "ja estava verificada, carimbo PRESERVADO".
+ * `verified`/`already_verified` sao esses dois casos; `not_found` existe porque
+ * o `userId` vem de um token consumido e a conta pode ter sido removida.
+ *
+ * Nao devolve o carimbo: quem chamou forneceu o `now` e, no caso idempotente, o
+ * valor preservado e o que ja estava la — nenhum consumidor atual o le.
+ */
+export type EmailVerificationResult =
+  | { readonly kind: "verified" }
+  /** Ja estava verificada; o carimbo ORIGINAL permanece intacto. */
+  | { readonly kind: "already_verified" }
+  | { readonly kind: "not_found" };
+
+/**
+ * Entrada da marcacao. `now` e explicito porque toda a camada trata tempo como
+ * parametro — o adapter nunca le o relogio.
+ */
+export interface EmailVerificationInput {
+  readonly userId: bigint;
+  readonly now: Date;
+}

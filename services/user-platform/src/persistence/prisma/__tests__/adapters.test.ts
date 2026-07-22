@@ -263,6 +263,126 @@ describe("IdentityStore.findByNormalizedEmail", () => {
   });
 });
 
+describe("IdentityStore.findById (C7B2.1)", () => {
+  it("(1) busca pela PK com o MESMO select minimo da busca por e-mail", async () => {
+    const { executor, calls } = fakeExecutor({
+      user: { findUnique: () => ({ id: 9n, status: "active" }) },
+    });
+    const r = await createPrismaIdentityStore(executor).findById(SCOPE, 9n);
+    expect(r).toEqual({ kind: "found", identity: { id: 9n, status: "active" } });
+    expect(calls[0]!.args["where"]).toEqual({ id: 9n });
+    expect(calls[0]!.args["select"]).toEqual({ id: true, status: true });
+  });
+
+  it("(2) NAO filtra conta desativada — quem decide elegibilidade e o dominio", async () => {
+    // Devolver `not_found` aqui mentiria sobre a existencia da conta e apagaria a
+    // distincao `account_ineligible` != `not_found` do motivo interno.
+    for (const status of ["disabled", "pending_deletion", "deleted"] as const) {
+      const { executor, calls } = fakeExecutor({
+        user: { findUnique: () => ({ id: 9n, status }) },
+      });
+      const r = await createPrismaIdentityStore(executor).findById(SCOPE, 9n);
+      expect(r.kind, status).toBe("found");
+      // Nenhum filtro de status no WHERE.
+      expect(Object.keys(calls[0]!.args["where"] as object)).toEqual(["id"]);
+    }
+  });
+
+  it("(3) ausencia e resultado tipado", async () => {
+    const { executor } = fakeExecutor({ user: { findUnique: () => null } });
+    const r = await createPrismaIdentityStore(executor).findById(SCOPE, 404n);
+    expect(r).toEqual({ kind: "not_found" });
+  });
+
+  it("(4) nao devolve segredo nem PII", async () => {
+    const { executor } = fakeExecutor({
+      user: {
+        findUnique: () => ({
+          id: 9n,
+          status: "active",
+          email: "vazamento@example.test",
+          passwordHash: "scrypt$N=1,r=1,p=1$0000$ficticio",
+        }),
+      },
+    });
+    const r = await createPrismaIdentityStore(executor).findById(SCOPE, 9n);
+    const serializado = JSON.stringify(r, (_k, v) => (typeof v === "bigint" ? "0" : v));
+    expect(serializado).not.toMatch(/hash|scrypt|@/i);
+  });
+});
+
+describe("IdentityStore.markEmailVerified (C7B2.1)", () => {
+  const AGORA_V = new Date("2026-07-22T12:00:00.000Z");
+
+  it("(1) a pre-condicao `emailVerifiedAt: null` esta no WHERE (atomico)", async () => {
+    const { executor, calls } = fakeExecutor({
+      user: { updateMany: () => ({ count: 1 }) },
+    });
+    const r = await createPrismaIdentityStore(executor).markEmailVerified(SCOPE, {
+      userId: 5n,
+      now: AGORA_V,
+    });
+    expect(r).toEqual({ kind: "verified" });
+    // Esta pre-condicao E a prova de que o primeiro carimbo nunca e sobrescrito.
+    expect(calls[0]!.args["where"]).toEqual({ id: 5n, emailVerifiedAt: null });
+    expect(calls[0]!.args["data"]).toEqual({ emailVerifiedAt: AGORA_V });
+  });
+
+  it("(2) sucesso NAO dispara leitura extra", async () => {
+    const { executor, calls } = fakeExecutor({
+      user: { updateMany: () => ({ count: 1 }) },
+    });
+    await createPrismaIdentityStore(executor).markEmailVerified(SCOPE, {
+      userId: 5n,
+      now: AGORA_V,
+    });
+    expect(calls.map((c) => c.method)).toEqual(["user.updateMany"]);
+  });
+
+  it("(3) ja verificada e idempotente (carimbo original preservado)", async () => {
+    const { executor, calls } = fakeExecutor({
+      user: { updateMany: () => ({ count: 0 }), findUnique: () => ({ id: 5n }) },
+    });
+    const r = await createPrismaIdentityStore(executor).markEmailVerified(SCOPE, {
+      userId: 5n,
+      now: AGORA_V,
+    });
+    expect(r).toEqual({ kind: "already_verified" });
+    // A sonda le APENAS existencia — nenhum carimbo, nenhuma PII.
+    expect(calls[1]!.args["select"]).toEqual({ id: true });
+  });
+
+  it("(4) conta inexistente e distinta de ja verificada", async () => {
+    const { executor } = fakeExecutor({
+      user: { updateMany: () => ({ count: 0 }), findUnique: () => null },
+    });
+    const r = await createPrismaIdentityStore(executor).markEmailVerified(SCOPE, {
+      userId: 404n,
+      now: AGORA_V,
+    });
+    expect(r).toEqual({ kind: "not_found" });
+  });
+
+  it("(5) o `now` vem do chamador — o adapter nao le relogio", async () => {
+    const outro = new Date("2030-01-01T00:00:00.000Z");
+    const { executor, calls } = fakeExecutor({
+      user: { updateMany: () => ({ count: 1 }) },
+    });
+    await createPrismaIdentityStore(executor).markEmailVerified(SCOPE, {
+      userId: 5n,
+      now: outro,
+    });
+    expect(calls[0]!.args["data"]).toEqual({ emailVerifiedAt: outro });
+  });
+
+  it("(6) mais de uma linha e defeito IMPOSSIVEL (id e PK): falha fechado", async () => {
+    const { executor } = fakeExecutor({ user: { updateMany: () => ({ count: 2 }) } });
+    await expect(
+      createPrismaIdentityStore(executor).markEmailVerified(SCOPE, { userId: 5n, now: AGORA_V }),
+    ).rejects.toThrow(/invariante/i);
+  });
+});
+
 describe("PasswordCredentialStore.createInitial", () => {
   /** Dono existe: a sonda de FK encontra a linha. */
   const donoExiste = () => ({ id: 5n });
