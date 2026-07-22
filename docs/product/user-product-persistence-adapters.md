@@ -13,8 +13,8 @@
 
 | Domínio | Port | Contrato | Adapter Prisma | PostgreSQL real | Unidade |
 | --- | --- | --- | --- | --- | --- |
-| identity | `IdentityStore` | IMPLEMENTED (C7B0) | **IMPLEMENTED (C7B1)** | **VERIFIED (43/43)** | C7B1 |
-| credential | `PasswordCredentialStore` | IMPLEMENTED (C7B0) | **IMPLEMENTED (C7B1)** | **VERIFIED (43/43)** | C7B1 |
+| identity | `IdentityStore` | IMPLEMENTED (C7B0) | **IMPLEMENTED (C7B1)** | **VERIFIED (53/53)** | C7B1 |
+| credential | `PasswordCredentialStore` | IMPLEMENTED (C7B0) | **IMPLEMENTED (C7B1)** | **VERIFIED (53/53)** | C7B1 |
 | recommendation snapshot | `RecommendationSnapshotStore` | IMPLEMENTED (C7A) | PENDING_C7B6 | PENDING_C7B6 | C7B6 |
 | recommendation feedback | `RecommendationFeedbackStore` | IMPLEMENTED (C7A) | PENDING_C7B6 | PENDING_C7B6 | C7B6 |
 | transação (genérico) | `TransactionRunner` | IMPLEMENTED (C7A) | PENDING_C7C | PENDING_C7C | C7C |
@@ -54,7 +54,7 @@ Arquivos em `services/user-platform/src/persistence/prisma/`:
 | --- | --- |
 | `executor.ts` | Tipo do executor injetado. |
 | `mappers.ts` | Linha do banco → DTO, campo a campo. |
-| `error-mapping.ts` | Erro do driver → conflito tipado. |
+| `identity-conflict.ts` | Qual unique barrou, por leitura (não por erro). |
 | `identity-store.ts` | `IdentityStore` concreto. |
 | `password-credential-store.ts` | `PasswordCredentialStore` concreto. |
 
@@ -90,30 +90,68 @@ intenção de estar numa transação, mas não carrega o client e portanto não 
 *provar* a transacionalidade em runtime. Quem compõe é responsável por passar o
 executor certo. Limitação conhecida, registrada aqui em vez de disfarçada.
 
-#### Dentro de transação, conflito é TERMINAL
+#### Conflito esperado não envenena a transação
 
-Achado desta unidade, reproduzido em PostgreSQL real (checks 42 e 43): quando
-estes adapters **capturam** um P2002/P2003 e o convertem em valor de contrato
-(`conflict` / `already_exists` / `user_not_found`), a transação do Postgres já
-ficou **abortada**. O Prisma não emite `SAVEPOINT` por statement, então o erro do
-banco não é desfeito só porque o adapter parou de propagá-lo. A partir dali:
+Regra da camada, obrigatória para C7B2–C7B6:
 
-- a próxima chamada no mesmo escopo lança `25P02` **cru**, em vez de devolver um
-  resultado de contrato — o tipo de retorno passa a mentir;
-- pior: se o callback apenas **retornar** depois de engolir o conflito, o
-  `COMMIT` vira `ROLLBACK` e as escritas anteriores bem-sucedidas somem **sem
-  nenhum erro**.
+> **EXPECTED CONFLICTS MUST NOT POISON AN INTERACTIVE TRANSACTION.**
 
-Isto **não é defeito dos adapters** — isolados, eles honram o contrato, e é
-exatamente por isso que o problema é fácil de não ver. É uma propriedade do
-Postgres que a composição precisa conhecer **antes** de ser escrita. Quem compuser
-(C7C) deve encerrar o escopo ao receber conflito, propagando-o para fora da
-transação, ou isolar a tentativa num savepoint próprio; o adapter não pode fazer
-isso porque o executor deliberadamente não expõe `$executeRaw`.
+O C7B1 descobriu — e o C7B1.1 corrigiu — que converter uma exceção do driver em
+resultado tipado **não** desfaz o estrago no banco. Uma violação de constraint
+deixa a transação do Postgres em estado `aborted`, e o Prisma **não** emite
+`SAVEPOINT` por statement. Capturar o P2002 apenas escondia o problema: a
+chamada seguinte no mesmo escopo morria com `25P02`, e um callback que
+simplesmente retornasse transformava o `COMMIT` em `ROLLBACK` **silencioso** —
+escritas válidas anteriores sumiam sem erro algum.
 
-Os dois checks são de **caracterização**: se um dia o driver passar a isolar cada
-statement, eles falham de propósito — é o gatilho para reler esta seção antes de
-alguém confiar no comportamento antigo.
+A correção não é capturar melhor: é **não gerar a violação**.
+
+| Operação | Estratégia | Aborta? |
+| --- | --- | --- |
+| `IdentityStore.create` | `createManyAndReturn` + `skipDuplicates` (`INSERT ... ON CONFLICT DO NOTHING RETURNING`) | Não |
+| `PasswordCredentialStore.createInitial` — 1:1 | idem | Não |
+| `PasswordCredentialStore.createInitial` — usuário ausente | sonda de existência **antes** do insert | Não |
+| `replaceByPreimage` | `updateMany` com pré-imagem no `WHERE` | Não (já era) |
+| Erro não previsto pelo contrato | propaga intacto | Sim — e **deve** |
+
+**Duas ressalvas que a tabela acima não cobre, ambas medidas em banco real.**
+
+*Não-abortivo não é não-bloqueante.* `ON CONFLICT DO NOTHING` **espera** o
+inseridor concorrente terminar antes de decidir (medido: ~2,4 s com a outra
+transação segurando). Sob contenção isso pode estourar o timeout de transação do
+Prisma (`P2028`) ou entrar em **deadlock** (`40P01`) quando duas transações
+inserem os mesmos e-mails em ordem oposta. Os dois abortam. Não é regressão — o
+`create` cru bloqueava e deadlockava igual —, mas quem compuser precisa saber que
+"não aborta por conflito" não significa "nunca aborta".
+
+*A garantia é de `READ COMMITTED`.* Sob `REPEATABLE READ`/`SERIALIZABLE` o
+próprio `INSERT` levanta `40001` (Prisma `P2034`) quando a linha conflitante foi
+comitada depois do snapshot — o conflito volta a ser abortivo e nem chega às
+sondas de rótulo (check 53). Endurecer o isolamento do cadastro invalida a regra
+desta seção; a decisão exige reler isto antes.
+
+Zero linhas devolvidas = conflito. Quem decide criado-ou-conflito continua sendo
+o **banco**, atomicamente, no mesmo comando que grava — não há leitura prévia,
+logo não há corrida introduzida. Nenhum adapter desta camada tem mais um `catch`
+que retorna: **exceção deixou de ser fluxo de controle**, e o módulo
+`error-mapping.ts` foi removido por ter ficado sem uso.
+
+A única exceção deliberada é a **chave estrangeira**: `ON CONFLICT DO NOTHING`
+neutraliza unicidade, não FK. Como `user_not_found` é um resultado previsto pelo
+contrato, ele passou a vir de uma sonda de existência pela PK — a leitura mais
+barata possível, sem PII. Isso **não** é um precheck de unicidade disfarçado: a
+unicidade continua decidida pelo banco. Se o usuário sumisse entre a sonda e o
+insert, o P2003 voltaria e **deve mesmo** falhar fechado, por ser violação de
+invariante; na prática não ocorre, porque a exclusão LGPD anonimiza e mantém a
+linha (`deleted_at`), nunca a apaga.
+
+Provado em PostgreSQL real pelos checks 42–53: resultado tipado dentro da
+transação, alvo semântico preservado, transação **usável** depois do conflito
+(lê e escreve), `COMMIT` real com as escritas de antes **e** de depois, FK sem
+abortar, erro inesperado ainda escapando com `ROLLBACK` — e uma **fixture
+negativa** (check 50) que executa o padrão antigo de propósito e confirma que ele
+*continua* envenenando. Sem ela, os outros oito poderiam estar verdes por
+qualquer motivo.
 
 ### Mappers e selects
 
@@ -131,35 +169,48 @@ produto talvez tenha desativado.
 
 ### Conflitos sem vazamento
 
-`meta.target` não tem forma estável entre versões do driver: pode ser campo do
-modelo, coluna do banco ou nome da constraint. O classificador normaliza as três
-e casa por substring, **do mais específico para o menos**. Isso não é estilo:
-`email_normalized` **contém** `email`, e testar `email` primeiro reportaria toda
-colisão de e-mail normalizado como colisão de e-mail bruto — dois uniques
-distintos colapsados num alvo só, com a guarda verde porque "algum alvo" foi
-devolvido. Nesta versão do driver a forma observada é a lista de colunas
-(`["email"]`), mas o adapter não depende disso.
+`ON CONFLICT DO NOTHING` não diz **qual** unique barrou. O rótulo semântico passa
+a vir de leitura, em `identity-conflict.ts`, e a troca é favorável: o
+**resultado** (criou / não criou) continua decidido atomicamente pelo banco; as
+leituras apenas rotulam um conflito que já aconteceu, e por isso não introduzem
+corrida no controle de fluxo. Antes, o rótulo saía de `meta.target` — o que
+exigia deixar a violação acontecer, e era exatamente o que abortava a transação.
 
-Alvo irreconhecível vira `unique_violation` **sem** `target` (o campo é
-opcional), nunca um chute. Nome de constraint, índice, tabela, SQL e código do
-driver não saem do módulo. Erro que não seja P2002/P2003 **sobe intacto**:
-traduzi-lo seria transformar falha de infraestrutura em resultado de negócio.
+A ordem das sondas é semântica, não estilo. Quando as **duas** colunas colidem —
+o caso comum, porque o mesmo endereço costuma repetir bruto e normalizado — o
+rótulo é `identity.emailNormalized`: é a chave de identidade da conta, a que
+fecha o canal de enumeração e a que `decideSignup` consulta. Dizer
+`identity.email` ali descreveria o acidente (a grafia) em vez do fato (a conta já
+existe).
 
-Os dois adapters tratam o alvo irreconhecível de forma **diferente**, e a
-assimetria é do contrato, não descuido. Em identidade, `conflict` +
-`unique_violation` continua verdadeiro seja qual for a coluna que barrou. Em
-credencial, o kind é `already_exists`, que afirma algo específico — "já existe
-credencial para este usuário (1:1)". Uma unique *diferente* (a PK, depois de um
-restore que deixou a sequência dessincronizada) também chega como P2002, e
-respondê-la com `already_exists` afirmaria um fato **falso**: o cadastro seria
-abortado por causa errada e nenhuma retentativa corrigiria. Sem representação no
-contrato, esse erro sobe intacto.
+Nenhuma sonda encontrar **não** é "a vencedora ainda não está visível": sob
+`READ COMMITTED` o `INSERT` só retorna depois que o inseridor concorrente termina,
+e o statement seguinte enxerga o que ele comitou. Significa que a colisão veio de
+uma unique que não é de e-mail. Como isso não tem resultado tipado possível, o
+adapter falha fechado em vez de inventar um rótulo — ou, pior, de afirmar um
+conflito de e-mail que não existe.
 
-Só dois dos três alvos de identidade são exercitáveis contra o banco: o adapter
-nunca escreve `handle`, então `users_handle_key` não tem como ser violado por
-ele. A classificação de `identity.handle` existe (o alvo é reservado em C7B0) e
-é coberta por teste com erro sintético — não por PostgreSQL real. Dizer o
-contrário seria vender como verificado algo que não é.
+Nome de constraint, índice, tabela, SQL e código do driver não saem da camada —
+agora trivialmente, porque a camada não olha mais para o erro do driver.
+
+Na credencial o rótulo **também** é confirmado por leitura, e a primeira versão
+desta unidade errava aqui: `ON CONFLICT DO NOTHING` sem alvo absorve **toda**
+unique da tabela, **inclusive a PK**. Com a sequence dessincronizada (restore mal
+feito), uma colisão de chave primária devolve zero linhas — e responder
+`already_exists` afirmaria que o usuário já tem credencial quando ele **não**
+tem: ele ficaria com identidade e sem senha, sem conseguir entrar, e toda
+retentativa repetiria o mesmo diagnóstico errado.
+
+Por isso, zero linhas sem credencial existente **falha fechado** (checks 51 e 52).
+Vale a mesma regra do `count > 1` no CAS: estado sem resultado tipado possível
+não vira valor de contrato. O mesmo se aplica à identidade — nenhuma sonda
+encontrar significa "a colisão não foi de e-mail", e devolver `unique_violation`
+ali diria ao usuário que o e-mail dele está tomado quando está livre.
+
+`identity.handle` permanece na união para os adapters futuros, mas é
+estruturalmente inalcançável aqui: este adapter nunca escreve `handle`, a coluna
+nasce `NULL` e o índice único trata `NULL`s como distintos. Não é investigado
+pelas sondas, e o documento não o vende como verificado.
 
 ### Compare-and-swap da senha
 
@@ -192,7 +243,7 @@ C7B0; se o C7C precisar distinguir, a chave terá de vir do comando.
 pnpm --filter @screena/user-platform validate:user-product
 ```
 
-43/43 em PostgreSQL 16 efêmero. Cobre: e-mail bruto e normalizado persistidos
+53/53 em PostgreSQL 16 efêmero. Cobre: e-mail bruto e normalizado persistidos
 separadamente, defaults do banco, busca que **não** aceita o e-mail bruto como
 fallback, FK, relação 1:1,
 `algorithm` gravado a partir do port, CAS bem-sucedido e divergente,
@@ -238,11 +289,17 @@ Não há PORT_GAP: o adapter grava o valor recebido e **não** o infere do PHC.
 4. Ratings e reviews não têm coluna `version`: conflito por compare-and-swap
    sobre a pré-imagem.
 5. `IdentityRecord` nunca carrega hash; só `findForVerification` o devolve.
-6. **Dentro de transação, conflito é terminal**: um P2002/P2003 capturado por um
-   adapter deixa a transação abortada (o Prisma não usa savepoint por statement).
-   Ao receber conflito, encerre o escopo propagando-o — continuar a usar o mesmo
-   `tx` produz `25P02` cru ou, pior, `COMMIT` que vira `ROLLBACK` silencioso.
-   Provado pelos checks 42 e 43.
+6. **Conflito esperado não pode envenenar uma transação interativa.**
+   Resultado previsto pelo contrato nunca nasce de `catch`: use operação
+   não-abortiva (`ON CONFLICT DO NOTHING`, `updateMany` com pré-imagem,
+   sonda de existência). Violação de constraint deixa a transação `aborted`
+   e o Prisma não usa savepoint por statement — capturar não conserta.
+   Vale sob `READ COMMITTED`; isolamento mais forte devolve o aborto (`P2034`).
+   Travado por guarda de fronteira e pelos checks 42–53.
+7. **Estado sem resultado tipado possível falha fechado.** Zero linhas de um
+   `ON CONFLICT DO NOTHING` não identifica qual unique barrou: confirme o alvo
+   por leitura antes de afirmá-lo. Sem confirmação, `throw` — nunca devolva um
+   conflito que o chamador vai reportar como fato ao usuário.
 
 ## Próximos adapters
 
