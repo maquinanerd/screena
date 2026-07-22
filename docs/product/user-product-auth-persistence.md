@@ -169,22 +169,54 @@ pertence à borda, não a esta camada.
   `>= created_at`: um `now` atrasado em relação à criação da linha viola o CHECK
   e envenena o escopo. Quem compõe deve garantir `now` monotônico.
 
-## PORT_GAP registrado: dois fluxos ainda não fecham
+## Identidade fechada em C7B2.1
 
-Esta unidade entrega a persistência de sessão e token, mas **dois caminhos não
-são componíveis** com os ports publicados — e isso é gap de contrato, não
-descuido de implementação:
+O C7B2 entregou sessão e token mas registrou um PORT_GAP: os dois `userId` que
+esta camada devolve não tinham destino. **C7B2.1 fechou os dois**, ampliando o
+`IdentityStore` existente em vez de criar um store novo — as duas operações são
+persistência de identidade.
 
-| Fluxo | Falta | Consequência |
+| Método | Consumidor que o exige | Forma |
 | --- | --- | --- |
-| Validar sessão | `IdentityStore.findById(userId) → status` | `evaluateSessionAccess` exige `userStatus`; `SessionAccessRecord` devolve `userId` **para buscá-lo**, e nenhum método publicado o obtém por id |
-| Verificar e-mail | `markEmailVerified` + leitura de `emailVerifiedAt` | `consume` devolve o `userId` para `applyEmailVerification`, mas nada persiste o carimbo nem alimenta `alreadyVerified` |
+| `IdentityStore.findById` | `evaluateSessionAccess` exige `userStatus`; `SessionAccessRecord.userId` existe para chegar até aqui | devolve o **mesmo** `IdentityLookupResult` da busca por e-mail — `{ id, status }` e nada mais |
+| `IdentityStore.markEmailVerified` | `applyEmailVerification`, após o consumo atômico do token | `verified` / `already_verified` / `not_found` |
 
-O contraste delimita o gap: **recuperação de senha fecha de ponta a ponta**
-(check 80 prova consumo + troca comitando juntos); **validação de sessão e
-verificação de e-mail não**. Ampliar `IdentityStore` pertence à unidade que
-trouxer esses fluxos — fazê-lo aqui seria mexer no contrato de outra unidade sem
-escopo. Registrado também em `persistence/ports.ts`.
+`findById` **não filtra** conta desativada: quem decide elegibilidade é
+`accountCanHoldSession`. Devolver `not_found` para uma conta que existe mentiria
+sobre a existência dela e apagaria a distinção `account_ineligible ≠ not_found`
+que alimenta o motivo interno de auditoria (checks 94 e 97).
+
+`markEmailVerified` põe `emailVerifiedAt: null` na **pré-condição** do `UPDATE`.
+Isso faz duas coisas de uma vez: torna a operação atômica (duas marcações
+concorrentes → uma só grava, check 103) e **preserva o primeiro carimbo**, que é
+exatamente a idempotência que `applyEmailVerification` define (`changed=false`
+mantém o instante original, check 101). Não há leitura prévia — ler para depois
+gravar abriria a janela em que a segunda requisição sobrescreve o carimbo da
+primeira.
+
+A taxonomia não foi inventada: `verified`/`already_verified` são o `changed` do
+domínio, e o teste contratual (4) prova que as duas camadas concordam.
+
+**Composições provadas em PostgreSQL real:**
+
+- sessão + identidade: sessão ativa e usuário ativo autenticam (95); usuário
+  desativado não (97); sessão vencida não (98); e **e-mail não verificado não
+  bloqueia** (96);
+- token + marcação: os dois efeitos comitam juntos (105); uma falha depois do
+  consumo desfaz **os dois** — o token volta a valer e o usuário continua não
+  verificado (104); o token é uso único após o commit (106); token de
+  `password_reset`, inexistente ou vencido não verificam ninguém (107, 108);
+- `already_verified` é outcome esperado e **não envenena** a transação: a query
+  seguinte no mesmo escopo funciona (109).
+
+### PORT_GAP remanescente
+
+`evaluateVerificationResend` consome `alreadyVerified`, e `canPublishList` /
+`validateProfileVisibilityTransition` / `validateContentVisibilityTransition`
+consomem o carimbo `emailVerifiedAt: Date | null`. **Nenhum método o lê hoje** —
+`IdentityRecord` não o carrega, de propósito, porque nenhum consumidor *desta*
+unidade o exige. Nasce com a unidade que trouxer listas/privacidade (C7B3/C7B4)
+ou o reenvio de verificação.
 
 ## Próximos adapters
 

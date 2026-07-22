@@ -255,6 +255,45 @@ modo de colisão (1:1 por usuário) enquanto a identidade tem três.
 
 **SCHEMA_GAP**: nenhum novo nesta unidade.
 
+## 15. C7B2.1 — fechamento para autenticação
+
+O C7B2 (sessões e tokens) revelou que dois `userId` devolvidos por aquela camada
+não tinham destino: `SessionAccessRecord.userId` existia para buscar o status da
+conta, e `AuthTokenStore.consume` devolvia o dono do token para marcar o e-mail —
+mas nenhum método publicado fazia nem uma coisa nem outra. Validar sessão e
+verificar e-mail simplesmente **não fechavam**.
+
+O C7B2.1 ampliou **este** port, em vez de criar outro: as duas operações são
+persistência de identidade, e um store separado só para evitar tocar aqui seria
+divisão por conveniência, não por semântica.
+
+- **`findById(userId)`** — devolve o **mesmo** `IdentityLookupResult` da busca
+  por e-mail (`{ id, status }`), porque os dois consumidores precisam exatamente
+  disso; um segundo tipo idêntico só criaria divergência futura. **Não filtra**
+  conta desativada: elegibilidade é de `accountCanHoldSession`, e devolver
+  `not_found` para uma conta que existe apagaria a distinção
+  `account_ineligible ≠ not_found` do motivo interno de auditoria.
+- **`markEmailVerified({ userId, now })`** — `verified` / `already_verified` /
+  `not_found`. A pré-condição `emailVerifiedAt IS NULL` no `UPDATE` torna a
+  operação atômica **e** preserva o primeiro carimbo — que é exatamente a
+  idempotência que `applyEmailVerification` já definia (`changed=false` mantém o
+  instante original). A taxonomia não foi inventada: espelha o domínio.
+
+`now` entra por parâmetro nos dois, como em toda a camada.
+
+Provado em PostgreSQL real (checks 91–109): a composição sessão + identidade
+autentica, recusa conta desativada e **não** bloqueia por e-mail não verificado;
+a composição token + marcação comita os dois efeitos juntos e, numa falha
+posterior, desfaz **os dois** — o token volta a valer e o usuário continua não
+verificado.
+
+**PORT_GAP remanescente:** ninguém **lê** `emailVerifiedAt`.
+`evaluateVerificationResend` precisa de `alreadyVerified`, e `canPublishList` /
+`validateProfileVisibilityTransition` / `validateContentVisibilityTransition`
+precisam do carimbo `Date | null`. `IdentityRecord` não o carrega de propósito —
+nenhum consumidor desta unidade o exige. Nasce com listas/privacidade
+(C7B3/C7B4) ou com o reenvio de verificação.
+
 ## 14. Plano do C7B1
 
 1. `persistence/prisma/` com executor injetado (aceitando client e

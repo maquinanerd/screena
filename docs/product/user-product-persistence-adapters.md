@@ -1,7 +1,7 @@
 # Adapters de persistência da user platform (Backend C)
 
 > Índice de estado da camada de persistência: qual domínio tem **contrato**
-> (port) e qual já tem **adapter** concreto. Criado no C7B0, atualizado até o C7B2.
+> (port) e qual já tem **adapter** concreto. Criado no C7B0, atualizado até o C7B2.1.
 >
 > Regra de leitura: `IMPLEMENTED` em *Contrato* significa que o port existe e é
 > testado; `PENDING_*` em *Adapter* significa que **não há** implementação
@@ -13,13 +13,13 @@
 
 | Domínio | Port | Contrato | Adapter Prisma | PostgreSQL real | Unidade |
 | --- | --- | --- | --- | --- | --- |
-| identity | `IdentityStore` | IMPLEMENTED (C7B0) | **IMPLEMENTED (C7B1)** | **VERIFIED (90/90)** | C7B1 |
-| credential | `PasswordCredentialStore` | IMPLEMENTED (C7B0) | **IMPLEMENTED (C7B1)** | **VERIFIED (90/90)** | C7B1 |
+| identity | `IdentityStore` | IMPLEMENTED (C7B0+C7B2.1) | **IMPLEMENTED (C7B1+C7B2.1)** | **VERIFIED (109/109)** | C7B1/C7B2.1 |
+| credential | `PasswordCredentialStore` | IMPLEMENTED (C7B0) | **IMPLEMENTED (C7B1)** | **VERIFIED (109/109)** | C7B1 |
 | recommendation snapshot | `RecommendationSnapshotStore` | IMPLEMENTED (C7A) | PENDING_C7B6 | PENDING_C7B6 | C7B6 |
 | recommendation feedback | `RecommendationFeedbackStore` | IMPLEMENTED (C7A) | PENDING_C7B6 | PENDING_C7B6 | C7B6 |
 | transação (genérico) | `TransactionRunner` | IMPLEMENTED (C7A) | PENDING_C7C | PENDING_C7C | C7C |
-| sessões | `SessionStore` | IMPLEMENTED (C7B2) | **IMPLEMENTED (C7B2)** | **VERIFIED (90/90)** | C7B2 |
-| verificação / recuperação | `AuthTokenStore` | IMPLEMENTED (C7B2) | **IMPLEMENTED (C7B2)** | **VERIFIED (90/90)** | C7B2 |
+| sessões | `SessionStore` | IMPLEMENTED (C7B2) | **IMPLEMENTED (C7B2)** | **VERIFIED (109/109)** | C7B2 |
+| verificação / recuperação | `AuthTokenStore` | IMPLEMENTED (C7B2) | **IMPLEMENTED (C7B2)** | **VERIFIED (109/109)** | C7B2 |
 | privacidade / LGPD | — | PENDING_C7B3 | PENDING_C7B3 | PENDING_C7B3 | C7B3 |
 | listas | — | PENDING_C7B4 | PENDING_C7B4 | PENDING_C7B4 | C7B4 |
 | tracking | — | PENDING_C7B4 | PENDING_C7B4 | PENDING_C7B4 | C7B4 |
@@ -58,7 +58,7 @@ Arquivos em `services/user-platform/src/persistence/prisma/`:
 | `executor.ts` | Tipo do executor injetado. |
 | `mappers.ts` | Linha do banco → DTO, campo a campo. |
 | `identity-conflict.ts` | Qual unique barrou, por leitura (não por erro). |
-| `identity-store.ts` | `IdentityStore` concreto. |
+| `identity-store.ts` | `IdentityStore` concreto (+ `findById`/`markEmailVerified` em C7B2.1). |
 | `password-credential-store.ts` | `PasswordCredentialStore` concreto. |
 | `session-store.ts` | `SessionStore` concreto (C7B2). |
 | `auth-token-store.ts` | `AuthTokenStore` concreto (C7B2). |
@@ -249,7 +249,7 @@ C7B0; se o C7C precisar distinguir, a chave terá de vir do comando.
 pnpm --filter @screena/user-platform validate:user-product
 ```
 
-90/90 em PostgreSQL 16 efêmero. Cobre: e-mail bruto e normalizado persistidos
+109/109 em PostgreSQL 16 efêmero. Cobre: e-mail bruto e normalizado persistidos
 separadamente, defaults do banco, busca que **não** aceita o e-mail bruto como
 fallback, FK, relação 1:1,
 `algorithm` gravado a partir do port, CAS bem-sucedido e divergente,
