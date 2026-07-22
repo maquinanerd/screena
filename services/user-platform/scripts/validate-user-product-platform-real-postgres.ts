@@ -33,7 +33,10 @@ import { createPrismaPasswordCredentialStore } from "../src/persistence/prisma/p
 import { createPrismaSessionStore } from "../src/persistence/prisma/session-store.js";
 import { createPrismaAuthTokenStore } from "../src/persistence/prisma/auth-token-store.js";
 import { evaluateSessionAccess } from "../src/auth/sessions.js";
-import { evaluateVerificationResend } from "../src/auth/verification.js";
+import {
+  applyEmailVerification,
+  evaluateVerificationResend,
+} from "../src/auth/verification.js";
 import type { TransactionScope } from "../src/persistence/types.js";
 
 const require = createRequire(import.meta.url);
@@ -86,6 +89,9 @@ const HASH_SESSAO_ALVO = "ab".repeat(32);
 const HASH_VERIF_TX = "cd".repeat(32);
 const HASH_RESET_VERIF = "ef".repeat(32);
 const HASH_VERIF_EXPIRADO = "ba".repeat(32);
+const HASH_CONF_OK = "1a".repeat(32);
+const HASH_CONF_DISABLED = "2b".repeat(32);
+const HASH_CONF_DELETED = "3c".repeat(32);
 
 interface CheckResult {
   readonly n: number;
@@ -2020,16 +2026,17 @@ async function runChecks(url: string): Promise<void> {
     );
     record(
       111,
-      "o estado devolve EXATAMENTE userId e emailVerifiedAt",
+      "o estado devolve EXATAMENTE userId, emailVerifiedAt e status",
       estadoPendente.kind === "found" &&
         JSON.stringify(Object.keys(estadoPendente.state).sort()) ===
-          JSON.stringify(["emailVerifiedAt", "userId"]),
+          JSON.stringify(["emailVerifiedAt", "status", "userId"]),
       estadoPendente.kind === "found" ? Object.keys(estadoPendente.state).sort().join(",") : "-",
     );
 
     // A politica e derivada pelo DOMINIO, nunca pelo adapter.
     const decisaoPendente = evaluateVerificationResend({
       userExists: estadoPendente.kind === "found",
+      userStatus: estadoPendente.kind === "found" ? estadoPendente.state.status : null,
       alreadyVerified:
         estadoPendente.kind === "found" && estadoPendente.state.emailVerifiedAt !== null,
     });
@@ -2058,6 +2065,7 @@ async function runChecks(url: string): Promise<void> {
 
     const decisaoVerificada = evaluateVerificationResend({
       userExists: estadoVerificado.kind === "found",
+      userStatus: estadoVerificado.kind === "found" ? estadoVerificado.state.status : null,
       alreadyVerified:
         estadoVerificado.kind === "found" && estadoVerificado.state.emailVerifiedAt !== null,
     });
@@ -2074,6 +2082,7 @@ async function runChecks(url: string): Promise<void> {
     );
     const decisaoAusente = evaluateVerificationResend({
       userExists: estadoAusente.kind === "found",
+      userStatus: null,
       alreadyVerified: false,
     });
     record(
@@ -2204,6 +2213,252 @@ async function runChecks(url: string): Promise<void> {
       "erro inesperado escapa e faz ROLLBACK",
       erroInesperadoResend && Number(rollbackRow!.c) === 0,
       `escapou=${erroInesperadoResend} linhas=${Number(rollbackRow!.c)}`,
+    );
+
+    // =======================================================================
+    // FECHAMENTO DO C7B2 — ELEGIBILIDADE POR STATUS
+    //
+    // Decisao de produto: so conta elegivel (`accountCanHoldSession`) recebe
+    // token e conclui verificacao. `disabled` e `deleted` produzem
+    // `account_ineligible` INTERNO, com a MESMA resposta publica.
+    // =======================================================================
+
+    /** Composicao real do reenvio: leitura + politica. */
+    async function decidirReenvio(email: string) {
+      const estado = await identities.findEmailVerificationStateByNormalizedEmail(SCOPE, email);
+      return evaluateVerificationResend({
+        userExists: estado.kind === "found",
+        userStatus: estado.kind === "found" ? estado.state.status : null,
+        alreadyVerified: estado.kind === "found" && estado.state.emailVerifiedAt !== null,
+      });
+    }
+
+    const elegivel = await identities.create(SCOPE, {
+      email: "elegivel@example.test",
+      emailNormalized: "elegivel@example.test",
+      displayName: null,
+    });
+    const desativada = await identities.create(SCOPE, {
+      email: "desativada@example.test",
+      emailNormalized: "desativada@example.test",
+      displayName: null,
+    });
+    const anonimizada = await identities.create(SCOPE, {
+      email: "anonimizada@example.test",
+      emailNormalized: "anonimizada@example.test",
+      displayName: null,
+    });
+    if (
+      elegivel.kind !== "created" ||
+      desativada.kind !== "created" ||
+      anonimizada.kind !== "created"
+    ) {
+      throw new Error("setup do fechamento do C7B2 falhou");
+    }
+    await exec(`UPDATE "users" SET status = 'disabled' WHERE id = ${desativada.identity.id}`);
+    await exec(
+      `UPDATE "users" SET status = 'deleted', deleted_at = now() WHERE id = ${anonimizada.identity.id}`,
+    );
+
+    const jaVerificada = await identities.create(SCOPE, {
+      email: "ja-verificada@example.test",
+      emailNormalized: "ja-verificada@example.test",
+      displayName: null,
+    });
+    if (jaVerificada.kind !== "created") throw new Error("setup de ja-verificada falhou");
+    await identities.markEmailVerified(SCOPE, {
+      userId: jaVerificada.identity.id,
+      now: daquiA(60_000),
+    });
+
+    const rAtiva = await decidirReenvio("elegivel@example.test");
+    const rVerificada = await decidirReenvio("ja-verificada@example.test");
+    const rInexistente = await decidirReenvio("nao-existe-mesmo@example.test");
+    const rDesativada = await decidirReenvio("desativada@example.test");
+    const rAnonimizada = await decidirReenvio("anonimizada@example.test");
+
+    record(
+      122,
+      "REENVIO: conta ativa nao verificada recebe issue_token",
+      rAtiva.internalReason === "issue_token",
+      `motivo=${rAtiva.internalReason}`,
+    );
+    record(
+      123,
+      "REENVIO: conta ja verificada nao recebe token",
+      rVerificada.internalReason === "already_verified",
+      `motivo=${rVerificada.internalReason}`,
+    );
+    record(
+      124,
+      "REENVIO: conta inexistente nao recebe token",
+      rInexistente.internalReason === "user_not_found",
+      `motivo=${rInexistente.internalReason}`,
+    );
+    record(
+      125,
+      "REENVIO: conta DISABLED nao recebe token (account_ineligible)",
+      rDesativada.internalReason === "account_ineligible",
+      `motivo=${rDesativada.internalReason}`,
+    );
+    record(
+      126,
+      "REENVIO: conta DELETED/anonimizada nao recebe token (account_ineligible)",
+      rAnonimizada.internalReason === "account_ineligible",
+      `motivo=${rAnonimizada.internalReason}`,
+    );
+
+    const publicosCinco = [rAtiva, rVerificada, rInexistente, rDesativada, rAnonimizada].map((d) =>
+      JSON.stringify(d.publicResult),
+    );
+    record(
+      127,
+      "ANTI-ENUMERACAO: os CINCO casos dao resposta publica identica",
+      new Set(publicosCinco).size === 1 &&
+        new Set(
+          [rAtiva, rVerificada, rInexistente, rDesativada, rAnonimizada].map(
+            (d) => d.internalReason,
+          ),
+        ).size === 4,
+      `publicas distintas=${new Set(publicosCinco).size}`,
+    );
+
+    /**
+     * Composicao da CONFIRMACAO, na ordem correta: consome o token, carrega a
+     * identidade pelo `userId`, aplica a politica com status e so entao marca.
+     *
+     * Se a politica recusar DEPOIS do consumo, a transacao e abortada de
+     * proposito — retornar normalmente comitaria o consumo e queimaria o token de
+     * uma conta que nem foi verificada.
+     */
+    async function confirmar(tokenHash: string, now: Date): Promise<string> {
+      try {
+        return await prisma.$transaction(async (tx) => {
+          const txTokens = createPrismaAuthTokenStore(tx);
+          const txIdentities = createPrismaIdentityStore(tx);
+          const consumido = await txTokens.consume(SCOPE, {
+            tokenHash,
+            purpose: "email_verification",
+            now,
+          });
+          if (consumido.kind !== "consumed") return consumido.kind;
+          const dono = await txIdentities.findById(SCOPE, consumido.userId);
+          const status = dono.kind === "found" ? dono.identity.status : null;
+          const decisao = applyEmailVerification({
+            now,
+            userStatus: status,
+            currentEmailVerifiedAt: null,
+          });
+          if (!decisao.publicResult.ok) {
+            // ABORTA DE PROPOSITO: sem isto o consumo comitaria e o token de uma
+            // conta inelegivel ficaria queimado sem nada ter sido verificado.
+            throw new Error(`INELEGIVEL:${decisao.internalReason}`);
+          }
+          await txIdentities.markEmailVerified(SCOPE, { userId: consumido.userId, now });
+          return "verified";
+        });
+      } catch (e) {
+        const msg = (e as Error).message;
+        return msg.startsWith("INELEGIVEL:") ? msg.slice("INELEGIVEL:".length) : `erro:${msg}`;
+      }
+    }
+
+    // Conta ATIVA conclui.
+    await authTokens.issue(SCOPE, {
+      userId: elegivel.identity.id,
+      purpose: "email_verification",
+      tokenHash: HASH_CONF_OK,
+      expiresAt: daquiA(24 * HORA),
+    });
+    const confOk = await confirmar(HASH_CONF_OK, daquiA(60_000));
+    const [carimboOk] = await q<{ email_verified_at: Date | null }>(
+      `SELECT email_verified_at FROM "users" WHERE id = ${elegivel.identity.id}`,
+    );
+    record(
+      128,
+      "CONFIRMACAO: conta ativa conclui a verificacao",
+      confOk === "verified" && carimboOk!.email_verified_at !== null,
+      `resultado=${confOk}`,
+    );
+
+    // Conta que foi DESATIVADA depois de o token ser emitido.
+    const tardia = await identities.create(SCOPE, {
+      email: "tardia@example.test",
+      emailNormalized: "tardia@example.test",
+      displayName: null,
+    });
+    if (tardia.kind !== "created") throw new Error("setup de tardia falhou");
+    await authTokens.issue(SCOPE, {
+      userId: tardia.identity.id,
+      purpose: "email_verification",
+      tokenHash: HASH_CONF_DISABLED,
+      expiresAt: daquiA(24 * HORA),
+    });
+    await exec(`UPDATE "users" SET status = 'disabled' WHERE id = ${tardia.identity.id}`);
+    const confDisabled = await confirmar(HASH_CONF_DISABLED, daquiA(60_000));
+    const [tokenDisabled] = await q<{ consumed_at: Date | null }>(
+      `SELECT consumed_at FROM "user_verification_tokens" WHERE token_hash = '${HASH_CONF_DISABLED}'`,
+    );
+    const [carimboDisabled] = await q<{ email_verified_at: Date | null }>(
+      `SELECT email_verified_at FROM "users" WHERE id = ${tardia.identity.id}`,
+    );
+    record(
+      129,
+      "CONFIRMACAO: token ANTIGO de conta depois DESATIVADA nao verifica",
+      confDisabled === "account_ineligible" && carimboDisabled!.email_verified_at === null,
+      `resultado=${confDisabled}`,
+    );
+    record(
+      130,
+      "ROLLBACK: o token NAO fica consumido e o carimbo continua null",
+      tokenDisabled!.consumed_at === null && carimboDisabled!.email_verified_at === null,
+      `token pendente=${tokenDisabled!.consumed_at === null}`,
+    );
+
+    // Conta ANONIMIZADA depois da emissao.
+    const tumulo = await identities.create(SCOPE, {
+      email: "tumulo@example.test",
+      emailNormalized: "tumulo@example.test",
+      displayName: null,
+    });
+    if (tumulo.kind !== "created") throw new Error("setup de tumulo falhou");
+    await authTokens.issue(SCOPE, {
+      userId: tumulo.identity.id,
+      purpose: "email_verification",
+      tokenHash: HASH_CONF_DELETED,
+      expiresAt: daquiA(24 * HORA),
+    });
+    await exec(
+      `UPDATE "users" SET status = 'deleted', deleted_at = now() WHERE id = ${tumulo.identity.id}`,
+    );
+    const confDeleted = await confirmar(HASH_CONF_DELETED, daquiA(60_000));
+    const [tokenDeleted] = await q<{ consumed_at: Date | null }>(
+      `SELECT consumed_at FROM "user_verification_tokens" WHERE token_hash = '${HASH_CONF_DELETED}'`,
+    );
+    const [carimboDeleted] = await q<{ email_verified_at: Date | null }>(
+      `SELECT email_verified_at FROM "users" WHERE id = ${tumulo.identity.id}`,
+    );
+    record(
+      131,
+      "CONFIRMACAO: tumulo LGPD nao e verificado nem com token valido",
+      confDeleted === "account_ineligible" &&
+        tokenDeleted!.consumed_at === null &&
+        carimboDeleted!.email_verified_at === null,
+      `resultado=${confDeleted}`,
+    );
+
+    // Reabilitar a conta faz o MESMO token voltar a funcionar — prova de que o
+    // rollback preservou o token de verdade.
+    await exec(`UPDATE "users" SET status = 'active' WHERE id = ${tardia.identity.id}`);
+    const confReabilitada = await confirmar(HASH_CONF_DISABLED, daquiA(120_000));
+    const [carimboReabilitado] = await q<{ email_verified_at: Date | null }>(
+      `SELECT email_verified_at FROM "users" WHERE id = ${tardia.identity.id}`,
+    );
+    record(
+      132,
+      "sucesso POSTERIOR: reabilitada a conta, o token preservado conclui",
+      confReabilitada === "verified" && carimboReabilitado!.email_verified_at !== null,
+      `resultado=${confReabilitada}`,
     );
   } finally {
     await prisma.$disconnect();

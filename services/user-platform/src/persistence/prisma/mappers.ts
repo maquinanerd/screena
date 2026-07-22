@@ -164,6 +164,7 @@ export function toSessionAccessRecord(row: SessionAccessRow): SessionAccessRecor
 export interface EmailVerificationStateRow {
   readonly id: bigint;
   readonly emailVerifiedAt: Date | null;
+  readonly status: $Enums.UserStatus;
 }
 
 /**
@@ -176,5 +177,8 @@ export function toEmailVerificationState(row: EmailVerificationStateRow): EmailV
   return {
     userId: row.id,
     emailVerifiedAt: row.emailVerifiedAt,
+    // Fail-closed no mapa explicito: status desconhecido LANCA em vez de
+    // atravessar como se fosse elegivel.
+    status: toUserStatus(row.status),
   };
 }

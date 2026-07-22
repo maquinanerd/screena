@@ -193,15 +193,18 @@ export function createPrismaIdentityStore(executor: PrismaExecutor): IdentitySto
       // chamou `normalizeEmail`. Normalizar aqui criaria uma segunda definicao de
       // "normalizado", divergente da coluna e do cadastro.
       //
-      // SELECT minimo: o carimbo e o id. Sem `email`, sem `status` (o decisor de
-      // reenvio nao o consome), sem `displayName`, sem `handle`.
+      // SELECT minimo: id, carimbo e status. O `status` entrou quando
+      // `evaluateVerificationResend` passou a aplicar `accountCanHoldSession` —
+      // antes disso seria campo sem leitor. Sem `email`, sem `displayName`, sem
+      // `handle`.
       //
-      // SEM filtro de status: a persistencia entrega o fato; quem decide e o
-      // dominio. E o `not_found` daqui NAO vaza para a borda — a resposta publica
-      // do reenvio e sempre a mesma (anti-enumeracao).
+      // SEM filtro de status: a persistencia entrega o FATO e o dominio decide.
+      // Filtrar aqui poria politica no adapter e devolveria `not_found` para uma
+      // conta que existe. E o `not_found` daqui NAO vaza para a borda — a
+      // resposta publica do reenvio e sempre a mesma (anti-enumeracao).
       const row = await executor.user.findUnique({
         where: { emailNormalized },
-        select: { id: true, emailVerifiedAt: true },
+        select: { id: true, emailVerifiedAt: true, status: true },
       });
       if (row === null) {
         return { kind: "not_found" };

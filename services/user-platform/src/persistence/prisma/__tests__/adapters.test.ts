@@ -387,15 +387,18 @@ describe("IdentityStore.findEmailVerificationStateByNormalizedEmail (C7B2.2)", (
   it("(1) busca por email_normalized com select minimo", async () => {
     const carimbo = new Date("2026-07-01T10:00:00.000Z");
     const { executor, calls } = fakeExecutor({
-      user: { findUnique: () => ({ id: 9n, emailVerifiedAt: carimbo }) },
+      user: { findUnique: () => ({ id: 9n, emailVerifiedAt: carimbo, status: "active" }) },
     });
     const r = await createPrismaIdentityStore(executor).findEmailVerificationStateByNormalizedEmail(
       SCOPE,
       "alice@example.test",
     );
-    expect(r).toEqual({ kind: "found", state: { userId: 9n, emailVerifiedAt: carimbo } });
+    expect(r).toEqual({
+      kind: "found",
+      state: { userId: 9n, emailVerifiedAt: carimbo, status: "active" },
+    });
     expect(calls[0]!.args["where"]).toEqual({ emailNormalized: "alice@example.test" });
-    expect(calls[0]!.args["select"]).toEqual({ id: true, emailVerifiedAt: true });
+    expect(calls[0]!.args["select"]).toEqual({ id: true, emailVerifiedAt: true, status: true });
   });
 
   it("(2) devolve o FATO, nao a politica: carimbo, nunca booleano", async () => {
@@ -403,7 +406,7 @@ describe("IdentityStore.findEmailVerificationStateByNormalizedEmail (C7B2.2)", (
     // dominio e jogaria fora o QUANDO, que `markEmailVerified` preserva.
     const carimbo = new Date("2026-07-01T10:00:00.000Z");
     const { executor } = fakeExecutor({
-      user: { findUnique: () => ({ id: 9n, emailVerifiedAt: carimbo }) },
+      user: { findUnique: () => ({ id: 9n, emailVerifiedAt: carimbo, status: "active" }) },
     });
     const r = await createPrismaIdentityStore(executor).findEmailVerificationStateByNormalizedEmail(
       SCOPE,
@@ -413,18 +416,21 @@ describe("IdentityStore.findEmailVerificationStateByNormalizedEmail (C7B2.2)", (
     if (r.kind !== "found") return;
     expect(r.state.emailVerifiedAt).toBeInstanceOf(Date);
     expect(r.state.emailVerifiedAt).toEqual(carimbo);
-    expect(Object.keys(r.state).sort()).toEqual(["emailVerifiedAt", "userId"]);
+    expect(Object.keys(r.state).sort()).toEqual(["emailVerifiedAt", "status", "userId"]);
   });
 
   it("(3) nao verificada devolve null — e null NAO vira false nem string vazia", async () => {
     const { executor } = fakeExecutor({
-      user: { findUnique: () => ({ id: 9n, emailVerifiedAt: null }) },
+      user: { findUnique: () => ({ id: 9n, emailVerifiedAt: null, status: "active" }) },
     });
     const r = await createPrismaIdentityStore(executor).findEmailVerificationStateByNormalizedEmail(
       SCOPE,
       "a@example.test",
     );
-    expect(r).toEqual({ kind: "found", state: { userId: 9n, emailVerifiedAt: null } });
+    expect(r).toEqual({
+      kind: "found",
+      state: { userId: 9n, emailVerifiedAt: null, status: "active" },
+    });
   });
 
   it("(4) ausencia e resultado tipado", async () => {
@@ -449,7 +455,7 @@ describe("IdentityStore.findEmailVerificationStateByNormalizedEmail (C7B2.2)", (
     });
   });
 
-  it("(6) NAO filtra por status nem devolve PII", async () => {
+  it("(6) NAO filtra por status: devolve o FATO e o dominio decide", async () => {
     const { executor, calls } = fakeExecutor({
       user: {
         findUnique: () => ({
@@ -464,11 +470,17 @@ describe("IdentityStore.findEmailVerificationStateByNormalizedEmail (C7B2.2)", (
       SCOPE,
       "a@example.test",
     );
-    // Nenhum filtro de status no WHERE.
+    // Nenhum filtro de status no WHERE — filtrar aqui poria politica no adapter
+    // e devolveria `not_found` para uma conta que existe.
     expect(Object.keys(calls[0]!.args["where"] as object)).toEqual(["emailNormalized"]);
-    // E nada alem do fato atravessa a fronteira.
+    // A conta INELEGIVEL e devolvida com seu status; quem recusa e
+    // `evaluateVerificationResend`.
+    expect(r.kind).toBe("found");
+    if (r.kind !== "found") return;
+    expect(r.state.status).toBe("disabled");
+    // Mas PII nenhuma atravessa.
     const serializado = JSON.stringify(r, (_k, v) => (typeof v === "bigint" ? "0" : v));
-    expect(serializado).not.toMatch(/@|disabled|status/i);
+    expect(serializado).not.toMatch(/@|vazamento/i);
   });
 });
 

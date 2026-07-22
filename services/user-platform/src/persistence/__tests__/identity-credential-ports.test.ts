@@ -113,7 +113,7 @@ function fakeIdentityStore(): IdentityStore {
       if (row === undefined) return { kind: "not_found" };
       return {
         kind: "found",
-        state: { userId: row.id, emailVerifiedAt: row.emailVerifiedAt },
+        state: { userId: row.id, emailVerifiedAt: row.emailVerifiedAt, status: row.status },
       };
     },
   };
@@ -502,15 +502,27 @@ describe("C7B2.1 — identidade fecha autenticacao por sessao e verificacao", ()
 
     const primeira = await store.markEmailVerified(SCOPE, { userId, now: AGORA });
     expect(primeira.kind).toBe("verified");
-    expect(applyEmailVerification({ now: AGORA, currentEmailVerifiedAt: null }).changed).toBe(true);
+    const aplicadoPrimeiro = applyEmailVerification({
+      now: AGORA,
+      userStatus: "active",
+      currentEmailVerifiedAt: null,
+    });
+    expect(aplicadoPrimeiro.internalReason).toBe("verified");
 
     const depois = new Date(AGORA.getTime() + 60_000);
     const segunda = await store.markEmailVerified(SCOPE, { userId, now: depois });
     expect(segunda.kind).toBe("already_verified");
-    const aplicado = applyEmailVerification({ now: depois, currentEmailVerifiedAt: AGORA });
-    expect(aplicado.changed).toBe(false);
+    const aplicado = applyEmailVerification({
+      now: depois,
+      userStatus: "active",
+      currentEmailVerifiedAt: AGORA,
+    });
+    expect(aplicado.internalReason).toBe("already_verified");
+    expect(aplicado.publicResult.ok).toBe(true);
+    if (!aplicado.publicResult.ok) return;
+    expect(aplicado.publicResult.value.changed).toBe(false);
     // O carimbo preservado e o PRIMEIRO, nunca o novo.
-    expect(aplicado.emailVerifiedAt).toEqual(AGORA);
+    expect(aplicado.publicResult.value.emailVerifiedAt).toEqual(AGORA);
   });
 
   it("(5) marcar conta inexistente e not_found", async () => {
@@ -559,6 +571,7 @@ describe("C7B2.2 — leitura do estado de verificacao alimenta o reenvio", () =>
   ) {
     return evaluateVerificationResend({
       userExists: lookup.kind === "found",
+      userStatus: lookup.kind === "found" ? lookup.state.status : null,
       alreadyVerified: lookup.kind === "found" && lookup.state.emailVerifiedAt !== null,
     });
   }
@@ -649,12 +662,13 @@ describe("C7B2.2 — leitura do estado de verificacao alimenta o reenvio", () =>
     );
     expect(lookup.kind).toBe("found");
     if (lookup.kind !== "found") return;
-    // Exatamente dois campos: sem `alreadyVerified`, sem `email`, sem `status`.
-    expect(Object.keys(lookup.state).sort()).toEqual(["emailVerifiedAt", "userId"]);
+    // Exatamente tres campos: sem `alreadyVerified` (politica), sem `email`.
+    // `status` entrou quando ganhou consumidor real (`accountCanHoldSession`).
+    expect(Object.keys(lookup.state).sort()).toEqual(["emailVerifiedAt", "status", "userId"]);
     const serializado = JSON.stringify(lookup.state, (_k, v) =>
       typeof v === "bigint" ? "0" : v,
     );
-    expect(serializado).not.toMatch(/@|hash|token|alreadyVerified|status/i);
+    expect(serializado).not.toMatch(/@|hash|token|alreadyVerified/i);
   });
 
   it("(6) o carimbo e um Date, nao um booleano (fato != decisao)", async () => {

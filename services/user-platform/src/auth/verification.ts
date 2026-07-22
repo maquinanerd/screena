@@ -15,15 +15,18 @@
  * inexistente, ja verificada ou elegivel; o motivo real fica so no interno.
  */
 
-import { ok } from "../core/result.js";
+import { err, ok, type DomainResult } from "../core/result.js";
 import { EMAIL_VERIFICATION_TTL_HOURS } from "./policy.js";
 import {
+  accountCanHoldSession,
   type AuthDecision,
   authDecision,
+  GENERIC_TOKEN_FAILURE_MESSAGE,
   type SecretGeneratorPort,
   type SecretHasherPort,
   type VerificationTokenRecord,
 } from "./types.js";
+import type { UserStatus } from "../core/types.js";
 
 const HOUR_MS = 3_600_000;
 
@@ -63,6 +66,7 @@ export function buildEmailVerificationIssue(input: {
 export type VerificationResendReason =
   | "issue_token"
   | "already_verified"
+  | "account_ineligible"
   | "user_not_found";
 
 /**
@@ -76,11 +80,16 @@ export type VerificationResendReason =
  */
 export function evaluateVerificationResend(input: {
   readonly userExists: boolean;
+  readonly userStatus: UserStatus | null;
   readonly alreadyVerified: boolean;
 }): AuthDecision<{ notice: "sent_if_applicable" }> {
   let reason: VerificationResendReason;
   if (!input.userExists) {
     reason = "user_not_found";
+  } else if (!accountCanHoldSession(input.userStatus)) {
+    // ANTES de `already_verified`: uma conta anonimizada pode ter carimbo antigo,
+    // e o motivo que importa registrar e a inelegibilidade, nao o carimbo.
+    reason = "account_ineligible";
   } else if (input.alreadyVerified) {
     reason = "already_verified";
   } else {
@@ -95,18 +104,46 @@ export interface EmailVerificationApplication {
   readonly changed: boolean;
 }
 
+/** Motivo interno da confirmacao (audit); nunca vira texto publico. */
+export type EmailVerificationApplicationReason =
+  | "verified"
+  | "already_verified"
+  | "account_ineligible";
+
 /**
  * Aplica a verificacao ao estado da identidade apos consumo do token
  * (tokens.evaluateTokenConsumption com expectedPurpose = "email_verification").
- * Idempotente: se ja estava verificada, PRESERVA o carimbo original e sinaliza
- * `changed=false`; senao marca `emailVerifiedAt = now`.
+ *
+ * GATE DE STATUS (decisao de produto): so conta ELEGIVEL conclui verificacao.
+ * `disabled` e `deleted`/anonimizada sao recusadas mesmo com token valido em
+ * maos — marcar o e-mail delas recriaria atividade numa identidade que ja nao
+ * pode autenticar. O predicado e o MESMO do reset (`accountCanHoldSession`),
+ * para nao existir uma segunda matriz de status divergente.
+ *
+ * A recusa usa `GENERIC_TOKEN_FAILURE_MESSAGE` — a MESMA mensagem de
+ * `evaluateTokenConsumption`. Uma mensagem propria para "conta inelegivel"
+ * transformaria a confirmacao num oraculo: quem tivesse um token qualquer
+ * saberia distinguir "token ruim" de "conta existe mas esta desativada".
+ *
+ * Idempotente para conta elegivel: ja verificada PRESERVA o carimbo original e
+ * sinaliza `changed=false`; senao marca `emailVerifiedAt = now`.
  */
 export function applyEmailVerification(input: {
   readonly now: Date;
+  readonly userStatus: UserStatus | null;
   readonly currentEmailVerifiedAt: Date | null;
-}): EmailVerificationApplication {
-  if (input.currentEmailVerifiedAt !== null) {
-    return { emailVerifiedAt: input.currentEmailVerifiedAt, changed: false };
+}): AuthDecision<EmailVerificationApplication> {
+  if (!accountCanHoldSession(input.userStatus)) {
+    return authDecision(
+      err("unauthorized", GENERIC_TOKEN_FAILURE_MESSAGE) as DomainResult<EmailVerificationApplication>,
+      "account_ineligible",
+    );
   }
-  return { emailVerifiedAt: input.now, changed: true };
+  if (input.currentEmailVerifiedAt !== null) {
+    return authDecision(
+      ok({ emailVerifiedAt: input.currentEmailVerifiedAt, changed: false }),
+      "already_verified",
+    );
+  }
+  return authDecision(ok({ emailVerifiedAt: input.now, changed: true }), "verified");
 }

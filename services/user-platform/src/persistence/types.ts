@@ -408,12 +408,16 @@ export interface EmailVerificationInput {
  * `userId` acompanha porque o passo seguinte do fluxo
  * (`buildEmailVerificationIssue`) precisa dele para emitir o token.
  *
- * NAO carrega `status`: `evaluateVerificationResend` recebe apenas
- * `{ userExists, alreadyVerified }` — devolver status seria campo sem leitor.
+ * Carrega `status` desde a decisao de elegibilidade: `evaluateVerificationResend`
+ * passou a aplicar `accountCanHoldSession(status)` — o MESMO predicado do reset,
+ * para nao existir uma segunda matriz de status divergente. O campo tem
+ * consumidor real, entao entra; ate essa decisao ele nao existia, e nao existir
+ * era o correto.
  */
 export interface EmailVerificationState {
   readonly userId: bigint;
   readonly emailVerifiedAt: Date | null;
+  readonly status: UserStatus;
 }
 
 export type EmailVerificationStateLookupResult =
