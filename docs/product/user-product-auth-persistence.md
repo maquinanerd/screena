@@ -209,16 +209,115 @@ domínio, e o teste contratual (4) prova que as duas camadas concordam.
 - `already_verified` é outcome esperado e **não envenena** a transação: a query
   seguinte no mesmo escopo funciona (109).
 
-### PORT_GAP remanescente
+## Leitura do estado de verificação (C7B2.2)
 
-`evaluateVerificationResend` consome `alreadyVerified`, e `canPublishList` /
-`validateProfileVisibilityTransition` / `validateContentVisibilityTransition`
-consomem o carimbo `emailVerifiedAt: Date | null`. **Nenhum método o lê hoje** —
-`IdentityRecord` não o carrega, de propósito, porque nenhum consumidor *desta*
-unidade o exige. Nasce com a unidade que trouxer listas/privacidade (C7B3/C7B4)
-ou o reenvio de verificação.
+`evaluateVerificationResend` é decisor do **domínio de autenticação** e já era
+consumidor publicado — pelo mesmo critério que criou todos os ports anteriores, a
+leitura que o alimenta pertence a este bloco, não a listas ou privacidade.
+
+**Identificador: `email_normalized`, não `userId`.** O comando público do reenvio
+(`RequestEmailVerificationCommand`) chega **sem sessão**, só com o e-mail — o
+`userId` é o que esta leitura *descobre*, não o que ela recebe. Escolher a chave
+pela conveniência do adapter teria produzido um método que o fluxo real não
+consegue chamar.
+
+A normalização acontece em `parseRequestEmailVerificationCommand`, que chama
+`normalizeEmail`. O adapter **não normaliza** — fazê-lo criaria uma segunda
+definição de "normalizado", divergente da coluna e do cadastro (check 118 prova
+que o e-mail bruto não encontra a conta).
+
+### Método próprio, não ampliação do lookup existente
+
+`findEmailVerificationStateByNormalizedEmail` devolve
+`{ userId, emailVerifiedAt }` — um tipo **separado** de `IdentityLookupResult`.
+Ampliar aquele resultado faria o caminho de **sessão** e o de **cadastro**
+carregarem um carimbo que não consomem; o custo de um tipo a mais é menor que o
+de PII trafegando sem leitor.
+
+`userId` está lá porque o passo seguinte (`buildEmailVerificationIssue`) precisa
+dele para emitir o token. `status` **não** está: `evaluateVerificationResend`
+recebe apenas `{ userExists, alreadyVerified }`, e devolver status seria campo
+sem leitor.
+
+### Fato, não política
+
+O adapter devolve o **carimbo** (`Date | null`), nunca `alreadyVerified: boolean`.
+A derivação `alreadyVerified = emailVerifiedAt !== null` é do consumidor. Três
+razões:
+
+- o carimbo é o dado persistido real, e o booleano é uma leitura dele;
+- converter no adapter faria a persistência decidir política no lugar do domínio;
+- o booleano **descarta o quando** — exatamente a informação que
+  `markEmailVerified` preserva de propósito ao nunca sobrescrever o primeiro
+  instante.
+
+Um teste contratual usa `toBeInstanceOf(Date)` como controle negativo desse
+desenho: se alguém trocar o carimbo por booleano, ele reprova.
+
+### Anti-enumeração
+
+A persistência distingue três estados (não verificada / já verificada /
+inexistente); a borda **não**. `evaluateVerificationResend` tem um `return`
+único e devolve sempre `{ notice: "sent_if_applicable" }`. O check 116 e o teste
+contratual (4) provam isso serializando as três respostas públicas e exigindo que
+o conjunto tenha **um** elemento, enquanto os motivos internos têm três.
+
+`emailVerifiedAt` não atravessa DTO público — `CurrentUserDto` deriva
+`emailVerified: boolean` e descarta o timestamp.
+
+
+### PORT_GAP remanescente (outro domínio)
+
+`canPublishList`, `validateProfileVisibilityTransition` e
+`validateContentVisibilityTransition` consomem o mesmo carimbo, mas por
+`userId` e fora de autenticação. Nasce com listas/privacidade (C7B3/C7B4), que
+podem reusar o fato já persistido — a escrita e a leitura por e-mail já existem.
 
 ## Próximos adapters
 
 Privacidade/LGPD (C7B3), listas e tracking (C7B4), ratings e reviews (C7B5),
 recomendações (C7B6). A composição transacional de cadastro, login e reset é C7C.
+
+## Gaps abertos pela revisão do C7B2.1 (não corrigidos aqui)
+
+### POLICY_GAP — `markEmailVerified` não tem gate de status
+
+Provado em banco real: uma conta `deleted` (túmulo LGPD, com `deleted_at`
+preenchido) **aceita** a marcação e recebe carimbo novo.
+
+O argumento "quem decide elegibilidade é o domínio" — que sustenta `findById` —
+**não tem contraparte aqui**: `accountCanHoldSession` existe para sessão e para
+reset, mas `applyEmailVerification` recebe apenas `{ now, currentEmailVerifiedAt }`
+e **nenhum decisor consome status para verificação**. Agravam o quadro dois fatos
+já no repositório: `buildDeletionPlan` não zera `emailVerifiedAt` na anonimização,
+e a revogação de tokens ainda não tem adapter.
+
+Não foi corrigido aqui de propósito. A correção pertence ao **domínio**
+(`applyEmailVerification` ganhar `userStatus` e recusar quando
+`!accountCanHoldSession`), e esta unidade não altera política de autenticação.
+Pôr o gate no adapter seria exatamente o erro que esta camada evita: política na
+persistência.
+
+**Decisão humana necessária** antes de considerar o bloco de autenticação
+fechado: verificar e-mail de conta desativada/anonimizada é aceitável, ou o
+decisor deve passar a consultar status?
+
+### SCHEMA_GAP — `users.email_verified_at` sem CHECK de coerência temporal
+
+Assimetria visível com o resto do schema, que tem
+`user_sessions_expiry_after_creation`, `user_sessions_revocation_after_creation`
+e `user_verification_tokens_consumed_after_creation`. O carimbo de verificação
+não tem nenhum: um valor anterior ao `created_at` é aceito sem erro (provado).
+
+Correção seria `CHECK ("email_verified_at" IS NULL OR "email_verified_at" >= "created_at")`
+numa migration aditiva — fora do escopo destas unidades, que não alteram schema.
+Registrado como dívida.
+
+### Assimetria de política entre reenvio e reset
+
+`evaluatePasswordResetRequest` consulta `accountCanHoldSession`;
+`evaluateVerificationResend` **não consulta status algum**. Uma conta `disabled`
+e não verificada recebe `issue_token` no reenvio e `account_ineligible` no reset.
+A política está *definida* (o decisor enumera três casos, nenhum dependente de
+status), então não bloqueia — mas o contraste merece decisão humana. Se o status
+passar a importar, incluí-lo no resultado é aditivo.

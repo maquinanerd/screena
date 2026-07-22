@@ -287,12 +287,34 @@ a composição token + marcação comita os dois efeitos juntos e, numa falha
 posterior, desfaz **os dois** — o token volta a valer e o usuário continua não
 verificado.
 
-**PORT_GAP remanescente:** ninguém **lê** `emailVerifiedAt`.
-`evaluateVerificationResend` precisa de `alreadyVerified`, e `canPublishList` /
-`validateProfileVisibilityTransition` / `validateContentVisibilityTransition`
-precisam do carimbo `Date | null`. `IdentityRecord` não o carrega de propósito —
-nenhum consumidor desta unidade o exige. Nasce com listas/privacidade
-(C7B3/C7B4) ou com o reenvio de verificação.
+## 16. C7B2.2 — leitura do estado de verificação
+
+`evaluateVerificationResend` é decisor do **domínio de autenticação** e já era
+consumidor publicado, então a leitura que o alimenta pertence a este bloco.
+
+**`findEmailVerificationStateByNormalizedEmail`** devolve
+`{ userId, emailVerifiedAt }`. A chave é `email_normalized` porque o comando
+público do reenvio chega **sem sessão**, só com o e-mail — o `userId` é o que a
+leitura descobre, e ele existe no resultado porque
+`buildEmailVerificationIssue` precisa dele para emitir o token.
+
+Método **próprio**, não ampliação de `IdentityLookupResult`: incluir o carimbo
+naquele resultado faria os caminhos de sessão e de cadastro carregarem um dado
+que não consomem.
+
+Devolve o **fato** (`Date | null`), nunca `alreadyVerified: boolean` — a
+derivação é do domínio. O booleano descartaria o *quando*, que
+`markEmailVerified` preserva de propósito.
+
+`status` não entra: `evaluateVerificationResend` recebe apenas
+`{ userExists, alreadyVerified }`. Fica registrada uma assimetria para decisão
+humana: o **reset** consulta `accountCanHoldSession`, o **reenvio** não — logo
+uma conta desativada e não verificada recebe `issue_token` no reenvio e
+`account_ineligible` no reset.
+
+**PORT_GAP remanescente (outro domínio):** `canPublishList` e
+`validate*VisibilityTransition` consomem o mesmo carimbo, mas por `userId` e fora
+de autenticação. Nasce com listas/privacidade (C7B3/C7B4).
 
 ## 14. Plano do C7B1
 
