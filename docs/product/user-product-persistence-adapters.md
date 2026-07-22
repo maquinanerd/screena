@@ -1,7 +1,7 @@
 # Adapters de persistência da user platform (Backend C)
 
 > Índice de estado da camada de persistência: qual domínio tem **contrato**
-> (port) e qual já tem **adapter** concreto. Criado no C7B0, atualizado no C7B1.
+> (port) e qual já tem **adapter** concreto. Criado no C7B0, atualizado até o C7B2.
 >
 > Regra de leitura: `IMPLEMENTED` em *Contrato* significa que o port existe e é
 > testado; `PENDING_*` em *Adapter* significa que **não há** implementação
@@ -13,23 +13,26 @@
 
 | Domínio | Port | Contrato | Adapter Prisma | PostgreSQL real | Unidade |
 | --- | --- | --- | --- | --- | --- |
-| identity | `IdentityStore` | IMPLEMENTED (C7B0) | **IMPLEMENTED (C7B1)** | **VERIFIED (53/53)** | C7B1 |
-| credential | `PasswordCredentialStore` | IMPLEMENTED (C7B0) | **IMPLEMENTED (C7B1)** | **VERIFIED (53/53)** | C7B1 |
+| identity | `IdentityStore` | IMPLEMENTED (C7B0) | **IMPLEMENTED (C7B1)** | **VERIFIED (90/90)** | C7B1 |
+| credential | `PasswordCredentialStore` | IMPLEMENTED (C7B0) | **IMPLEMENTED (C7B1)** | **VERIFIED (90/90)** | C7B1 |
 | recommendation snapshot | `RecommendationSnapshotStore` | IMPLEMENTED (C7A) | PENDING_C7B6 | PENDING_C7B6 | C7B6 |
 | recommendation feedback | `RecommendationFeedbackStore` | IMPLEMENTED (C7A) | PENDING_C7B6 | PENDING_C7B6 | C7B6 |
 | transação (genérico) | `TransactionRunner` | IMPLEMENTED (C7A) | PENDING_C7C | PENDING_C7C | C7C |
-| sessões / tokens | — | **PENDING_C7B2** | PENDING_C7B2 | PENDING_C7B2 | C7B2 |
-| verificação / recuperação | — | PENDING_C7B2 | PENDING_C7B2 | PENDING_C7B2 | C7B2 |
+| sessões | `SessionStore` | IMPLEMENTED (C7B2) | **IMPLEMENTED (C7B2)** | **VERIFIED (90/90)** | C7B2 |
+| verificação / recuperação | `AuthTokenStore` | IMPLEMENTED (C7B2) | **IMPLEMENTED (C7B2)** | **VERIFIED (90/90)** | C7B2 |
 | privacidade / LGPD | — | PENDING_C7B3 | PENDING_C7B3 | PENDING_C7B3 | C7B3 |
 | listas | — | PENDING_C7B4 | PENDING_C7B4 | PENDING_C7B4 | C7B4 |
 | tracking | — | PENDING_C7B4 | PENDING_C7B4 | PENDING_C7B4 | C7B4 |
 | ratings | — | PENDING_C7B5 | PENDING_C7B5 | PENDING_C7B5 | C7B5 |
 | reviews | — | PENDING_C7B5 | PENDING_C7B5 | PENDING_C7B5 | C7B5 |
 
-**Os dois primeiros adapters existem; não há composição de runtime.** Nenhum
+**Quatro adapters existem; não há composição de runtime.** Nenhum
 `PrismaClient` é criado dentro da user platform, nenhuma conexão é aberta e
-nenhuma transação é iniciada pelos adapters — montar cadastro e troca de senha
-como operações atômicas é C7C.
+nenhuma transação é iniciada pelos adapters — montar cadastro, login e reset como
+operações atômicas é C7C.
+
+Sessões e tokens (C7B2) têm documento próprio:
+[`user-product-auth-persistence.md`](./user-product-auth-persistence.md).
 
 ## Fronteira arquitetural
 
@@ -57,11 +60,14 @@ Arquivos em `services/user-platform/src/persistence/prisma/`:
 | `identity-conflict.ts` | Qual unique barrou, por leitura (não por erro). |
 | `identity-store.ts` | `IdentityStore` concreto. |
 | `password-credential-store.ts` | `PasswordCredentialStore` concreto. |
+| `session-store.ts` | `SessionStore` concreto (C7B2). |
+| `auth-token-store.ts` | `AuthTokenStore` concreto (C7B2). |
 
 ### Executor injetado
 
-`PrismaExecutor` é `Pick<PrismaClient, "user" | "passwordCredential">` — as duas
-únicas delegações que esta unidade usa. A consequência importante é que
+`PrismaExecutor` é um `Pick<PrismaClient, ...>` das únicas delegações usadas
+(`user`, `passwordCredential` e, desde o C7B2, `userSession` e
+`verificationToken`). A consequência importante é que
 "o adapter não conecta, não desconecta e não abre transação" deixa de ser uma
 promessa em comentário e passa a ser **impossibilidade estrutural**: esses
 membros não existem no tipo, então chamá-los não compila. Uma varredura de regex
@@ -243,7 +249,7 @@ C7B0; se o C7C precisar distinguir, a chave terá de vir do comando.
 pnpm --filter @screena/user-platform validate:user-product
 ```
 
-53/53 em PostgreSQL 16 efêmero. Cobre: e-mail bruto e normalizado persistidos
+90/90 em PostgreSQL 16 efêmero. Cobre: e-mail bruto e normalizado persistidos
 separadamente, defaults do banco, busca que **não** aceita o e-mail bruto como
 fallback, FK, relação 1:1,
 `algorithm` gravado a partir do port, CAS bem-sucedido e divergente,
@@ -274,6 +280,10 @@ Não há PORT_GAP: o adapter grava o valor recebido e **não** o infere do PHC.
   [`user-product-identity-credential-ports.md`](./user-product-identity-credential-ports.md)
   (DTOs, conflitos com alvo semântico, compare-and-swap da senha, método único
   autorizado a devolver o hash).
+- **Sessões, verificação de e-mail e recuperação de senha**: ver
+  [`user-product-auth-persistence.md`](./user-product-auth-persistence.md)
+  (models reais, por que um único store de token, uso único atômico, quem decide
+  expiração, composição do reset e limitações).
 - **Recomendações**: ver
   [`user-product-persistence-decisions.md`](./user-product-persistence-decisions.md)
   §3 (snapshot vigente por `(user_id, context)`, `fingerprint` nullable) e §5.1
