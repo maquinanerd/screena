@@ -85,18 +85,30 @@ export interface AuthorizationPlan {
   };
 }
 
-/** Chave natural de agrupamento (espelha os índices únicos parciais do banco). */
+/**
+ * Chave natural de agrupamento (espelha os índices únicos parciais do banco).
+ *
+ * Codificação por `JSON.stringify` de tupla, e não por separador: os campos são
+ * strings LIVRES vindas do banco, então nenhum delimitador — imprimível ou não —
+ * pode ser provado ausente delas. O escape do JSON é inequívoco, logo a chave é
+ * injetiva sem depender do domínio dos valores. A versão anterior usava um byte
+ * de controle CRU (0x1F) como separador: invisível no editor e no diff, e ainda
+ * assim sujeito a colisão se um campo o contivesse.
+ *
+ * O `?? ""` é PRESERVADO de propósito: ele colapsa `null` e string vazia na mesma
+ * chave, e mudá-lo alteraria agrupamentos reais — fora do escopo desta unidade.
+ */
 function licenseGroupKey(l: {
   sourceKey: string;
   contentType: string;
   providerKey: string | null;
   territory: string | null;
 }): string {
-  return [l.sourceKey, l.contentType, l.providerKey ?? "", l.territory ?? ""].join("");
+  return JSON.stringify([l.sourceKey, l.contentType, l.providerKey ?? "", l.territory ?? ""]);
 }
 
 function decisionGroupKey(sourceLicenseId: string, useCase: string, territory: string | null): string {
-  return [sourceLicenseId, useCase, territory ?? ""].join("");
+  return JSON.stringify([sourceLicenseId, useCase, territory ?? ""]);
 }
 
 function licenseMatches(current: CurrentLicense, target: LicenseTarget): boolean {
