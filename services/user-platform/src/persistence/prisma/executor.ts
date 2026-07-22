@@ -17,25 +17,28 @@
  * guarda de regex pode ser contornada por indirecao; um tipo que nao tem o
  * membro, nao.
  *
- * PRE-CONDICAO CRITICA PARA QUEM COMPUSER (C7C) — nao e teoria, esta provada em
- * PostgreSQL real pelos checks 39 e 40 do validador desta unidade:
+ * O QUE QUEM COMPUSER (C7C) PRECISA SABER — provado em PostgreSQL real pelos
+ * checks 42-53 do validador desta unidade:
  *
- *   Um CONFLITO capturado por estes adapters (P2002/P2003 virando
- *   `conflict`/`already_exists`/`user_not_found`) deixa a transacao do Postgres
- *   ABORTADA. O Prisma nao emite SAVEPOINT por statement, entao o erro do banco
- *   nao e "desfeito" so porque o adapter o converteu em valor. A partir dali:
- *     - a proxima chamada no MESMO escopo lanca `25P02` cru, em vez de devolver
- *       resultado de contrato;
- *     - se o callback simplesmente retornar, o COMMIT vira ROLLBACK e as
- *       escritas anteriores bem-sucedidas somem SEM erro.
+ *   1. Conflito esperado NAO envenena a transacao. Os adapters nunca deixam uma
+ *      violacao de unicidade acontecer (usam `ON CONFLICT DO NOTHING`), entao
+ *      apos um `conflict`/`already_exists` a transacao segue utilizavel: le,
+ *      escreve e comita de verdade. Nao ha `catch` em nenhum deles.
  *
- *   Consequencia pratica: dentro de transacao, um conflito e TERMINAL. Quem
- *   compoe deve encerrar o escopo ao receber conflito (propagando-o para fora),
- *   ou isolar a tentativa num savepoint proprio — o adapter nao pode faze-lo,
- *   porque o executor deliberadamente nao expoe `$executeRaw`.
+ *   2. A garantia acima e de READ COMMITTED — o isolamento default. Sob
+ *      REPEATABLE READ ou SERIALIZABLE o proprio `INSERT` levanta `40001`
+ *      (Prisma `P2034`) quando a linha conflitante foi comitada depois do
+ *      snapshot, e o conflito volta a ser abortivo (check 53). Endurecer o
+ *      isolamento do cadastro exige reler esta secao.
  *
- *   Isso NAO e defeito destes adapters (isolados, eles honram o contrato); e uma
- *   propriedade do Postgres que a composicao precisa conhecer antes de existir.
+ *   3. Nao-abortivo nao e o mesmo que nao-bloqueante. `ON CONFLICT DO NOTHING`
+ *      ESPERA o inseridor concorrente terminar; sob contencao isso pode estourar
+ *      o timeout de transacao do Prisma (`P2028`) ou entrar em deadlock
+ *      (`40P01`). Ambos abortam — e nenhum e evitavel neste nivel.
+ *
+ *   4. Erro que chega ao chamador e falha de verdade: os adapters falham fechado
+ *      quando o estado nao tem resultado tipado possivel (unique fora do
+ *      contrato, `count > 1` no CAS). Trate-os como fatais, nunca como ramo.
  */
 
 import type { PrismaClient } from "@screena/db/server";

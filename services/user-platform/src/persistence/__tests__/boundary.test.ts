@@ -377,18 +377,89 @@ function callsWithoutSelect(files: readonly SourceFile[]): string[] {
   return offenders;
 }
 
+/**
+ * Blocos `catch` que NAO relancam — isto e, que engolem a excecao (convertendo-a
+ * em resultado ou simplesmente seguindo em frente).
+ *
+ * A regra e a CONJUNCAO de duas condicoes, e nenhuma das duas basta sozinha:
+ * o bloco precisa conter `throw` E nao pode conter `return`.
+ *
+ *   catch (e) { return X }              // tem return  -> acusado
+ *   catch (e) { resultado = X }         // sem throw    -> acusado
+ *   catch (e) { }                       // sem throw    -> acusado
+ *   catch (e) { if (p(e)) return X; throw e }  // AMBOS  -> acusado
+ *   catch (e) { limpa(); throw e }      // ok
+ *
+ * O quarto caso e exatamente o padrao que existia antes do C7B1.1: ele relanca
+ * o erro inesperado, entao "precisa conter throw" o aprovaria; e converte o
+ * esperado em valor, entao "nao pode conter return" e o que o pega. Exigir so
+ * uma das condicoes deixa passar metade dos casos reais.
+ *
+ * O corpo do `catch` e delimitado por CONTAGEM DE CHAVES, nao por regex: um
+ * `catch` real contem `if` e objetos aninhados, e um extrator ingenuo pararia na
+ * primeira `}` — ficando verde justamente no caso que precisa acusar.
+ */
+function catchBlocksThatSwallow(files: readonly SourceFile[]): string[] {
+  const offenders: string[] = [];
+  for (const f of files) {
+    const code = stripComments(f.content);
+    const re = /\bcatch\s*(?:\([^)]*\))?\s*\{/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(code)) !== null) {
+      let depth = 0;
+      let i = m.index + m[0].length - 1;
+      for (; i < code.length; i += 1) {
+        const ch = code[i];
+        if (ch === "{") depth += 1;
+        else if (ch === "}") {
+          depth -= 1;
+          if (depth === 0) break;
+        }
+      }
+      const bloco = code.slice(m.index, i + 1);
+      if (!/\bthrow\b/.test(bloco) || /\breturn\b/.test(bloco)) {
+        offenders.push(f.file);
+      }
+    }
+  }
+  return offenders;
+}
+
+/**
+ * `.catch(...)` na forma de PROMISE escapa inteiramente do extrator acima — a
+ * regex de bloco nunca casa, porque nao ha `{` logo apos o `catch`. E a forma
+ * mais comodo de engolir um erro em codigo assincrono, entao e proibida por si.
+ */
+const NO_PROMISE_CATCH = /\.catch\s*\(/;
+
 describe("persistence/prisma/: adapters concretos (C7B1)", () => {
   const files = ADAPTER_FILES;
 
   it("(1) ha adapters para varrer (guarda nao vacua)", () => {
     expect(files.map((f) => f.file).sort()).toEqual([
-      "persistence/prisma/error-mapping.ts",
       "persistence/prisma/executor.ts",
+      "persistence/prisma/identity-conflict.ts",
       "persistence/prisma/identity-store.ts",
       "persistence/prisma/index.ts",
       "persistence/prisma/mappers.ts",
       "persistence/prisma/password-credential-store.ts",
     ]);
+  });
+
+  it("(1b) NENHUM catch engole excecao (C7B1.1)", () => {
+    // A regra central desta unidade. Uma violacao de constraint deixa a
+    // transacao do Postgres ABORTADA, e capturar a excecao nao a ressuscita: a
+    // proxima query morre com 25P02 e um `COMMIT` vira `ROLLBACK` silencioso.
+    // Logo, resultado PREVISTO pelo contrato nunca pode nascer de um `catch`.
+    //
+    // A guarda nao proibe `catch` — exige que ele RELANCE. Limpar recurso ou
+    // enriquecer o erro continua permitido; o que nao pode e a excecao morrer
+    // ali dentro.
+    expect(catchBlocksThatSwallow(files)).toEqual([]);
+  });
+
+  it("(1c) nenhum `.catch(...)` de promise (a forma que escapa do extrator)", () => {
+    expect(matching(files, NO_PROMISE_CATCH)).toEqual([]);
   });
 
   it("(2) nenhum adapter cria client nem gerencia conexao/transacao", () => {
@@ -519,6 +590,54 @@ describe("controles negativos: as guardas realmente reprovam", () => {
       "fake.ts",
     ]);
     expect(matching(fake("await x.$queryRaw`SELECT 1`;"), NO_RAW_SQL)).toEqual(["fake.ts"]);
+  });
+
+  it("(4b) detecta o padrao ABORTIVO que o C7B1.1 eliminou", () => {
+    // Exatamente o codigo que existia antes desta unidade. Se a guarda nao o
+    // acusar aqui, ela nao esta protegendo nada la em cima.
+    const padraoAntigo = [
+      "try {",
+      "  await executor.user.create({ data, select: { id: true } });",
+      '  return { kind: "created" };',
+      "} catch (error) {",
+      "  if (isUniqueViolation(error)) {",
+      '    return { kind: "conflict", conflict: { reason: "unique_violation" } };',
+      "  }",
+      "  throw error;",
+      "}",
+    ].join("\n");
+    expect(catchBlocksThatSwallow(fake(padraoAntigo))).toEqual(["fake.ts"]);
+
+    // As tres FUGAS que a versao anterior desta guarda (proibir `return` no
+    // catch) deixava passar. A do meio e a mais provavel numa proxima unidade.
+    const atribuiERetornaDepois = [
+      "let resultado;",
+      "try {",
+      "  await x();",
+      "} catch (error) {",
+      "  resultado = { kind: 'conflict' };",
+      "}",
+      "return resultado;",
+    ].join("\n");
+    expect(catchBlocksThatSwallow(fake(atribuiERetornaDepois))).toEqual(["fake.ts"]);
+
+    const engoleEmSilencio = "try {\n  await x();\n} catch (error) {\n}";
+    expect(catchBlocksThatSwallow(fake(engoleEmSilencio))).toEqual(["fake.ts"]);
+
+    const promiseCatch = "const r = await x().catch(() => ({ kind: 'conflict' }));";
+    expect(matching(fake(promiseCatch), NO_PROMISE_CATCH)).toEqual(["fake.ts"]);
+
+    // Controle POSITIVO: `catch` que relanca continua permitido — a regra exige
+    // que a excecao sobreviva, nao proibe tratar erro.
+    const relancaEnriquecendo = [
+      "try {",
+      "  await x();",
+      "} catch (error) {",
+      "  liberaRecurso();",
+      "  throw error;",
+      "}",
+    ].join("\n");
+    expect(catchBlocksThatSwallow(fake(relancaEnriquecendo))).toEqual([]);
   });
 
   it("(5) detecta leitura SEM select — inclusive com objeto aninhado", () => {

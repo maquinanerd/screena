@@ -14,7 +14,7 @@ import type {
   IdentityLookupResult,
   TransactionScope,
 } from "../types.js";
-import { classifyIdentityUniqueTarget, isUniqueViolation } from "./error-mapping.js";
+import { classifyIdentityConflict } from "./identity-conflict.js";
 import type { PrismaExecutor } from "./executor.js";
 import { toIdentityRecord } from "./mappers.js";
 
@@ -36,38 +36,57 @@ export function createPrismaIdentityStore(executor: PrismaExecutor): IdentitySto
       _scope: TransactionScope,
       input: IdentityCreateInput,
     ): Promise<IdentityCreateResult> {
-      try {
-        const row = await executor.user.create({
-          // `email` e `emailNormalized` sao colunas DISTINTAS com uniques
-          // DISTINTOS: o adapter grava os dois valores que recebeu e NAO
-          // reconstroi um a partir do outro. A normalizacao pertence ao dominio
-          // (`auth/identity.normalizeEmail`) — normalizar aqui criaria uma
-          // segunda definicao de "normalizado", divergente da coluna.
-          data: {
+      // INSERCAO NAO-ABORTIVA (C7B1.1).
+      //
+      // `createManyAndReturn` + `skipDuplicates` emite
+      // `INSERT ... ON CONFLICT DO NOTHING RETURNING ...`: em colisao o banco
+      // devolve ZERO linhas em vez de levantar P2002. Isso importa porque uma
+      // violacao de constraint deixa a transacao do Postgres ABORTADA, e capturar
+      // a excecao nao a ressuscita — a chamada seguinte no mesmo escopo morreria
+      // com 25P02 e um `COMMIT` viraria `ROLLBACK` silencioso. Aqui nao ha
+      // excecao para capturar, entao a transacao segue utilizavel.
+      //
+      // Quem decide criado-ou-conflito continua sendo o BANCO, atomicamente, no
+      // mesmo comando que grava. Nao ha leitura previa, logo nao ha corrida.
+      //
+      // `email` e `emailNormalized` sao colunas DISTINTAS com uniques DISTINTOS:
+      // o adapter grava os dois valores que recebeu e NAO reconstroi um a partir
+      // do outro. A normalizacao pertence ao dominio
+      // (`auth/identity.normalizeEmail`) — normalizar aqui criaria uma segunda
+      // definicao de "normalizado", divergente da coluna.
+      const criadas = await executor.user.createManyAndReturn({
+        data: [
+          {
             email: input.email,
             emailNormalized: input.emailNormalized,
             displayName: input.displayName,
           },
-          select: IDENTITY_SELECT,
-        });
+        ],
+        select: IDENTITY_SELECT,
+        skipDuplicates: true,
+      });
+
+      const row = criadas[0];
+      if (row !== undefined) {
         return { kind: "created", identity: toIdentityRecord(row) };
-      } catch (error) {
-        if (isUniqueViolation(error)) {
-          // Sem chave de idempotencia no cadastro, um replay e INDISTINGUIVEL de
-          // uma colisao real — e ambos sao conflito. Converter unique violation
-          // em "ja existe, tudo certo" seria inventar idempotencia que o
-          // contrato nao tem (registrado em C7B0 como PORT_GAP deliberado).
-          const target = classifyIdentityUniqueTarget(error);
-          return {
-            kind: "conflict",
-            conflict: target === undefined ? { reason: "unique_violation" } : {
-              reason: "unique_violation",
-              target,
-            },
-          };
-        }
-        throw error;
       }
+
+      // Zero linhas = alguma unique barrou. Sem chave de idempotencia no
+      // cadastro, um replay e INDISTINGUIVEL de uma colisao real — e ambos sao
+      // conflito. Converter isso em "ja existe, tudo certo" inventaria uma
+      // idempotencia que o contrato nao tem (PORT_GAP deliberado de C7B0).
+      const target = await classifyIdentityConflict(executor, input);
+      if (target === undefined) {
+        // Nenhuma das duas colunas de e-mail esta ocupada, mas o INSERT foi
+        // barrado: a colisao veio de uma unique que o contrato nao representa —
+        // na pratica a chave primaria, com a sequence dessincronizada apos um
+        // restore. Devolver `unique_violation` aqui faria `decideSignup` dizer
+        // ao usuario que o e-mail dele ja esta registrado quando esta LIVRE, e
+        // nenhuma retentativa corrigiria. Falha fechado, como o `count > 1` do
+        // CAS: sem resultado tipado possivel, o silencio seria a mentira.
+        throw new Error("insercao de identidade barrada por unique nao prevista pelo contrato");
+      }
+      return { kind: "conflict", conflict: { reason: "unique_violation", target } };
     },
 
     async findByNormalizedEmail(

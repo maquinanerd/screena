@@ -20,11 +20,6 @@ import type {
   CredentialVerificationLookupResult,
   TransactionScope,
 } from "../types.js";
-import {
-  classifyCredentialUniqueTarget,
-  isForeignKeyViolation,
-  isUniqueViolation,
-} from "./error-mapping.js";
 import type { PrismaExecutor } from "./executor.js";
 import { toCredentialVerificationMaterial } from "./mappers.js";
 
@@ -36,9 +31,35 @@ export function createPrismaPasswordCredentialStore(
       _scope: TransactionScope,
       input: CredentialCreateInput,
     ): Promise<CredentialCreateResult> {
-      try {
-        await executor.passwordCredential.create({
-          data: {
+      // O usuario e conferido ANTES da insercao — e esta e a unica ordem
+      // possivel. `ON CONFLICT DO NOTHING` neutraliza a violacao de UNICIDADE,
+      // mas NAO a de chave estrangeira: uma FK invalida ainda levanta P2003 e
+      // aborta a transacao. Como `user_not_found` e um resultado previsto pelo
+      // contrato, ele precisa ser produzido SEM excecao — logo, por leitura.
+      //
+      // Isto NAO e um precheck de unicidade disfarcado (esse continua sendo
+      // decidido atomicamente pelo banco, abaixo). E a leitura mais barata
+      // possivel: uma sonda de existencia pela PK, sem PII.
+      //
+      // Corrida residual: se o usuario sumisse entre a sonda e a insercao, o
+      // P2003 voltaria a aparecer — e ai deve MESMO falhar fechado, porque seria
+      // violacao de invariante. Na pratica ela nao ocorre neste dominio: a
+      // exclusao LGPD anonimiza e mantem a linha (`deleted_at`), nunca a apaga.
+      const dono = await executor.user.findUnique({
+        where: { id: input.userId },
+        select: { id: true },
+      });
+      if (dono === null) {
+        return { kind: "user_not_found" };
+      }
+
+      // INSERCAO NAO-ABORTIVA: zero linhas = ja existe credencial (unique em
+      // `user_id`, a relacao 1:1). Nunca sobrescrever — um `upsert` aqui trocaria
+      // a senha de alguem sem pre-imagem, exatamente o que `replaceByPreimage`
+      // existe para impedir.
+      const criadas = await executor.passwordCredential.createManyAndReturn({
+        data: [
+          {
             userId: input.userId,
             passwordHash: input.passwordHash,
             // `algorithm` vem do PORT (o dominio o derivou do prefixo do PHC).
@@ -47,37 +68,45 @@ export function createPrismaPasswordCredentialStore(
             // silenciosamente descartaria o valor que o chamador enviou.
             algorithm: input.algorithm,
           },
-          // `create` devolve a linha inteira por padrao — inclusive o hash. O
-          // select minimo impede que o segredo volte pela rede para um chamador
-          // que nao pediu por ele.
-          select: { id: true },
-        });
+        ],
+        // A insercao devolveria a linha inteira — inclusive o hash. O select
+        // minimo impede que o segredo volte pela rede para quem nao pediu.
+        select: { id: true },
+        skipDuplicates: true,
+      });
+
+      if (criadas.length === 1) {
         return { kind: "created" };
-      } catch (error) {
-        // `already_exists` NAO e um sinonimo de "unique violation": o contrato o
-        // define como "ja existe credencial para o usuario (1:1)". Por isso ele
-        // so pode ser afirmado quando o alvo classifica como `credential.user`.
-        //
-        // Uma unique DIFERENTE (por exemplo a PK, apos um restore que deixou a
-        // sequencia dessincronizada) tambem chega como P2002 — e responde-la com
-        // `already_exists` afirmaria ao chamador um fato FALSO: que aquele
-        // usuario ja tem credencial. O cadastro seria abortado por causa errada,
-        // e nenhuma retentativa corrigiria. Sem representacao no contrato, o erro
-        // sobe intacto, como qualquer outra falha de infraestrutura.
-        //
-        // Nunca sobrescrever: um `upsert` aqui trocaria a senha de alguem sem
-        // pre-imagem, que e exatamente o que `replaceByPreimage` existe para
-        // impedir.
-        if (isUniqueViolation(error)) {
-          const target = classifyCredentialUniqueTarget(error);
-          if (target !== undefined) {
-            return { kind: "already_exists", conflict: { reason: "unique_violation", target } };
-          }
-        } else if (isForeignKeyViolation(error)) {
-          return { kind: "user_not_found" };
-        }
-        throw error;
       }
+
+      // ZERO LINHAS NAO E SINONIMO DE "ja existe credencial deste usuario".
+      //
+      // `ON CONFLICT DO NOTHING` sem alvo absorve TODA unique da tabela — a de
+      // `user_id` E a chave primaria. Uma colisao de PK (sequence dessincronizada
+      // depois de um restore) tambem devolve zero linhas, e responde-la com
+      // `already_exists` afirmaria ao chamador um fato FALSO: o usuario ficaria
+      // com identidade e SEM credencial, sem conseguir logar, e toda retentativa
+      // repetiria o mesmo diagnostico errado.
+      //
+      // Por isso o alvo e CONFIRMADO por leitura antes de ser afirmado. Nao
+      // havendo credencial, o conflito veio de uma unique que o contrato nao
+      // representa — e ai vale a mesma regra do `count > 1` no CAS: falha
+      // fechado. Abortar a transacao aqui e CORRETO; o estado nao tem resultado
+      // tipado possivel, e seguir em frente propagaria a mentira.
+      const ocupada = await executor.passwordCredential.findUnique({
+        where: { userId: input.userId },
+        select: { id: true },
+      });
+      if (ocupada === null) {
+        throw new Error(
+          "insercao de credencial barrada por unique nao prevista pelo contrato",
+        );
+      }
+
+      return {
+        kind: "already_exists",
+        conflict: { reason: "unique_violation", target: "credential.user" },
+      };
     },
 
     async findForVerification(

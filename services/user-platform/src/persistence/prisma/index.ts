@@ -9,6 +9,12 @@
  * Nao ha composicao de runtime aqui: nenhum `PrismaClient` e criado, nenhuma
  * conexao e aberta e nenhuma transacao e iniciada. Montar identidade +
  * credencial na mesma transacao de cadastro e C7C.
+ *
+ * REGRA DA CAMADA (C7B1.1): CONFLITO ESPERADO NAO PODE ENVENENAR UMA TRANSACAO
+ * INTERATIVA. Nenhum adapter daqui usa excecao como fluxo normal — resultados
+ * previstos pelo contrato saem de operacoes nao-abortivas
+ * (`ON CONFLICT DO NOTHING`, `updateMany` com pre-imagem, sondas de existencia).
+ * Excecao que chega aqui e falha de verdade e sobe intacta.
  */
 
 export { createPrismaIdentityStore } from "./identity-store.js";

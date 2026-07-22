@@ -61,42 +61,61 @@ function fakeExecutor(handlers: {
   return { executor: fake as unknown as PrismaExecutor, calls };
 }
 
-/** Erro do driver na forma minima que o adapter observa. */
-function driverError(code: string, target?: unknown): unknown {
-  return target === undefined ? { code } : { code, meta: { target } };
-}
-
-const asRecord = (value: unknown): Record<string, unknown> => value as Record<string, unknown>;
+/**
+ * Nao ha mais `driverError` nesta suite, e a ausencia e o ponto: depois do
+ * C7B1.1 nenhum adapter inspeciona codigo de erro do Prisma para produzir
+ * resultado previsto pelo contrato. Todo outcome esperado vem de operacao
+ * nao-abortiva; excecao que aparece aqui e falha de verdade e sobe intacta.
+ */
 
 describe("IdentityStore.create", () => {
-  it("(1) grava e-mail BRUTO, NORMALIZADO e displayName — e nada alem disso", () => {
+  /** Insercao que SUCEDE devolve exatamente uma linha. */
+  const insercaoOk = () => [{ id: 1n, status: "active" }];
+  /** Insercao barrada por `ON CONFLICT DO NOTHING` devolve ZERO linhas. */
+  const insercaoBarrada = () => [];
+
+  it("(1) grava e-mail BRUTO, NORMALIZADO e displayName — e nada alem disso", async () => {
     const { executor, calls } = fakeExecutor({
-      user: { create: () => ({ id: 1n, status: "active" }) },
+      user: { createManyAndReturn: insercaoOk },
     });
-    const store = createPrismaIdentityStore(executor);
-    return store
-      .create(SCOPE, {
-        email: "Alice@Example.Test",
-        emailNormalized: "alice@example.test",
-        displayName: "Alice",
-      })
-      .then((result) => {
-        expect(result.kind).toBe("created");
-        const data = asRecord(calls[0]!.args["data"]);
-        // As duas colunas tem uniques DISTINTOS: o adapter grava os dois valores
-        // que recebeu e nao reconstroi um do outro.
-        expect(data["email"]).toBe("Alice@Example.Test");
-        expect(data["emailNormalized"]).toBe("alice@example.test");
-        expect(data["displayName"]).toBe("Alice");
-        // Sem `status`, sem `role`, sem `handle`: os defaults sao do banco e
-        // defini-los aqui criaria operacao administrativa que nenhum fluxo pede.
-        expect(Object.keys(data).sort()).toEqual(["displayName", "email", "emailNormalized"]);
-      });
+    const result = await createPrismaIdentityStore(executor).create(SCOPE, {
+      email: "Alice@Example.Test",
+      emailNormalized: "alice@example.test",
+      displayName: "Alice",
+    });
+    expect(result.kind).toBe("created");
+    const linhas = calls[0]!.args["data"] as Record<string, unknown>[];
+    const data = linhas[0]!;
+    // As duas colunas tem uniques DISTINTOS: o adapter grava os dois valores
+    // que recebeu e nao reconstroi um do outro.
+    expect(data["email"]).toBe("Alice@Example.Test");
+    expect(data["emailNormalized"]).toBe("alice@example.test");
+    expect(data["displayName"]).toBe("Alice");
+    // Sem `status`, sem `role`, sem `handle`: os defaults sao do banco e
+    // defini-los aqui criaria operacao administrativa que nenhum fluxo pede.
+    expect(Object.keys(data).sort()).toEqual(["displayName", "email", "emailNormalized"]);
   });
 
-  it("(2) NAO normaliza o e-mail (a normalizacao e do dominio)", async () => {
+  it("(2) a insercao e NAO-ABORTIVA (skipDuplicates), nunca um create que lanca", async () => {
+    // Esta e a assercao central do C7B1.1. `create` levanta P2002 em colisao, e
+    // uma violacao de constraint aborta a transacao do Postgres mesmo quando a
+    // excecao e capturada. `skipDuplicates` emite ON CONFLICT DO NOTHING: nao ha
+    // erro para capturar, entao a transacao sobrevive.
     const { executor, calls } = fakeExecutor({
-      user: { create: () => ({ id: 1n, status: "active" }) },
+      user: { createManyAndReturn: insercaoOk },
+    });
+    await createPrismaIdentityStore(executor).create(SCOPE, {
+      email: "a@example.test",
+      emailNormalized: "a@example.test",
+      displayName: null,
+    });
+    expect(calls[0]!.method).toBe("user.createManyAndReturn");
+    expect(calls[0]!.args["skipDuplicates"]).toBe(true);
+  });
+
+  it("(3) NAO normaliza o e-mail (a normalizacao e do dominio)", async () => {
+    const { executor, calls } = fakeExecutor({
+      user: { createManyAndReturn: insercaoOk },
     });
     // Entrada deliberadamente incoerente: se o adapter normalizasse, o valor
     // gravado em `email` mudaria.
@@ -105,14 +124,14 @@ describe("IdentityStore.create", () => {
       emailNormalized: "ja-normalizado@example.test",
       displayName: null,
     });
-    const data = asRecord(calls[0]!.args["data"]);
-    expect(data["email"]).toBe("  MAIUSCULA@Example.Test  ");
-    expect(data["emailNormalized"]).toBe("ja-normalizado@example.test");
+    const linhas = calls[0]!.args["data"] as Record<string, unknown>[];
+    expect(linhas[0]!["email"]).toBe("  MAIUSCULA@Example.Test  ");
+    expect(linhas[0]!["emailNormalized"]).toBe("ja-normalizado@example.test");
   });
 
-  it("(3) le SO id e status de volta", async () => {
+  it("(4) le SO id e status de volta", async () => {
     const { executor, calls } = fakeExecutor({
-      user: { create: () => ({ id: 1n, status: "active" }) },
+      user: { createManyAndReturn: insercaoOk },
     });
     await createPrismaIdentityStore(executor).create(SCOPE, {
       email: "a@example.test",
@@ -122,54 +141,75 @@ describe("IdentityStore.create", () => {
     expect(calls[0]!.args["select"]).toEqual({ id: true, status: true });
   });
 
-  it("(4) classifica os tres uniques de identidade", async () => {
-    const casos = [
-      { target: "users_email_key", esperado: "identity.email" },
-      { target: "users_email_normalized_key", esperado: "identity.emailNormalized" },
-      { target: "users_handle_key", esperado: "identity.handle" },
-    ];
-    for (const caso of casos) {
-      const { executor } = fakeExecutor({
-        user: {
-          create: () => {
-            throw driverError("P2002", caso.target);
-          },
-        },
-      });
-      const result = await createPrismaIdentityStore(executor).create(SCOPE, {
-        email: "a@example.test",
-        emailNormalized: "a@example.test",
-        displayName: null,
-      });
-      expect(result).toEqual({
-        kind: "conflict",
-        conflict: { reason: "unique_violation", target: caso.esperado },
-      });
-    }
+  it("(5) conflito de e-mail NORMALIZADO e classificado por leitura", async () => {
+    const { executor, calls } = fakeExecutor({
+      user: {
+        createManyAndReturn: insercaoBarrada,
+        // A primeira sonda (normalizado) encontra.
+        findUnique: () => ({ id: 7n }),
+      },
+    });
+    const result = await createPrismaIdentityStore(executor).create(SCOPE, {
+      email: "Alice@Example.Test",
+      emailNormalized: "alice@example.test",
+      displayName: null,
+    });
+    expect(result).toEqual({
+      kind: "conflict",
+      conflict: { reason: "unique_violation", target: "identity.emailNormalized" },
+    });
+    // A sonda le APENAS existencia — nenhuma PII volta.
+    expect(calls[1]!.args["where"]).toEqual({ emailNormalized: "alice@example.test" });
+    expect(calls[1]!.args["select"]).toEqual({ id: true });
   });
 
-  it("(5) unique desconhecida vira conflito SEM alvo (nunca chute, nunca nome de constraint)", async () => {
-    const { executor } = fakeExecutor({
+  it("(6) conflito SO de e-mail bruto cai na segunda sonda", async () => {
+    let chamada = 0;
+    const { executor, calls } = fakeExecutor({
       user: {
-        create: () => {
-          throw driverError("P2002", "users_alguma_coisa_nova_key");
+        createManyAndReturn: insercaoBarrada,
+        findUnique: () => {
+          chamada += 1;
+          // 1a sonda (normalizado) nao acha; 2a (bruto) acha.
+          return chamada === 1 ? null : { id: 7n };
         },
       },
     });
     const result = await createPrismaIdentityStore(executor).create(SCOPE, {
-      email: "a@example.test",
-      emailNormalized: "a@example.test",
+      email: "Dup@Example.Test",
+      emailNormalized: "outro@example.test",
       displayName: null,
     });
-    expect(result).toEqual({ kind: "conflict", conflict: { reason: "unique_violation" } });
-    expect(JSON.stringify(result)).not.toMatch(/users_|_key|constraint/i);
+    expect(result).toEqual({
+      kind: "conflict",
+      conflict: { reason: "unique_violation", target: "identity.email" },
+    });
+    expect(calls[2]!.args["where"]).toEqual({ email: "Dup@Example.Test" });
   });
 
-  it("(6) erro que NAO e unique sobe intacto (nao vira resultado de negocio)", async () => {
-    const falha = driverError("P1001");
+  it("(7) nenhuma sonda encontra => FALHA FECHADO (nunca 'e-mail ja registrado')", async () => {
+    // Os dois e-mails estao LIVRES e mesmo assim o INSERT foi barrado: a colisao
+    // veio de outra unique (na pratica a PK, com a sequence dessincronizada).
+    // Devolver `unique_violation` faria `decideSignup` dizer ao usuario que o
+    // e-mail dele ja esta registrado quando esta livre — e nenhuma retentativa
+    // corrigiria. Sem resultado tipado possivel, o silencio seria a mentira.
+    const { executor } = fakeExecutor({
+      user: { createManyAndReturn: insercaoBarrada, findUnique: () => null },
+    });
+    await expect(
+      createPrismaIdentityStore(executor).create(SCOPE, {
+        email: "livre@example.test",
+        emailNormalized: "livre@example.test",
+        displayName: null,
+      }),
+    ).rejects.toThrow(/unique nao prevista pelo contrato/i);
+  });
+
+  it("(8) erro do banco sobe INTACTO (nunca vira resultado de negocio)", async () => {
+    const falha = new Error("falha de infraestrutura");
     const { executor } = fakeExecutor({
       user: {
-        create: () => {
+        createManyAndReturn: () => {
           throw falha;
         },
       },
@@ -224,9 +264,15 @@ describe("IdentityStore.findByNormalizedEmail", () => {
 });
 
 describe("PasswordCredentialStore.createInitial", () => {
+  /** Dono existe: a sonda de FK encontra a linha. */
+  const donoExiste = () => ({ id: 5n });
+  const insercaoOk = () => [{ id: 1n }];
+  const insercaoBarrada = () => [];
+
   it("(1) grava userId, hash e algoritmo VINDO DO PORT — e nao devolve o hash", async () => {
     const { executor, calls } = fakeExecutor({
-      passwordCredential: { create: () => ({ id: 1n }) },
+      user: { findUnique: donoExiste },
+      passwordCredential: { createManyAndReturn: insercaoOk },
     });
     const result = await createPrismaPasswordCredentialStore(executor).createInitial(SCOPE, {
       userId: 5n,
@@ -234,15 +280,30 @@ describe("PasswordCredentialStore.createInitial", () => {
       algorithm: "scrypt",
     });
     expect(result).toEqual({ kind: "created" });
-    const data = asRecord(calls[0]!.args["data"]);
-    expect(data).toEqual({ userId: 5n, passwordHash: HASH_ATUAL, algorithm: "scrypt" });
-    // `create` devolveria a linha inteira (com o hash) sem este select.
-    expect(calls[0]!.args["select"]).toEqual({ id: true });
+    const linhas = calls[1]!.args["data"] as Record<string, unknown>[];
+    expect(linhas[0]).toEqual({ userId: 5n, passwordHash: HASH_ATUAL, algorithm: "scrypt" });
+    // A insercao devolveria a linha inteira (com o hash) sem este select.
+    expect(calls[1]!.args["select"]).toEqual({ id: true });
   });
 
-  it("(2) NAO infere o algoritmo a partir do hash", async () => {
+  it("(2) a insercao e NAO-ABORTIVA (skipDuplicates)", async () => {
     const { executor, calls } = fakeExecutor({
-      passwordCredential: { create: () => ({ id: 1n }) },
+      user: { findUnique: donoExiste },
+      passwordCredential: { createManyAndReturn: insercaoOk },
+    });
+    await createPrismaPasswordCredentialStore(executor).createInitial(SCOPE, {
+      userId: 5n,
+      passwordHash: HASH_ATUAL,
+      algorithm: "scrypt",
+    });
+    expect(calls[1]!.method).toBe("passwordCredential.createManyAndReturn");
+    expect(calls[1]!.args["skipDuplicates"]).toBe(true);
+  });
+
+  it("(3) NAO infere o algoritmo a partir do hash", async () => {
+    const { executor, calls } = fakeExecutor({
+      user: { findUnique: donoExiste },
+      passwordCredential: { createManyAndReturn: insercaoOk },
     });
     // Hash cujo prefixo (`scrypt`) diverge do rotulo enviado: se o adapter
     // interpretasse o PHC, gravaria "scrypt" em vez do valor recebido.
@@ -251,15 +312,17 @@ describe("PasswordCredentialStore.createInitial", () => {
       passwordHash: HASH_ATUAL,
       algorithm: "rotulo-vindo-do-dominio",
     });
-    expect(asRecord(calls[0]!.args["data"])["algorithm"]).toBe("rotulo-vindo-do-dominio");
+    const linhas = calls[1]!.args["data"] as Record<string, unknown>[];
+    expect(linhas[0]!["algorithm"]).toBe("rotulo-vindo-do-dominio");
   });
 
-  it("(3) segunda credencial do mesmo usuario e already_exists (1:1), nunca sobrescreve", async () => {
+  it("(4) segunda credencial do mesmo usuario e already_exists (1:1), nunca sobrescreve", async () => {
     const { executor, calls } = fakeExecutor({
+      user: { findUnique: donoExiste },
       passwordCredential: {
-        create: () => {
-          throw driverError("P2002", "user_password_credentials_user_id_key");
-        },
+        createManyAndReturn: insercaoBarrada,
+        // A credencial REALMENTE existe — o alvo e confirmado, nao presumido.
+        findUnique: () => ({ id: 1n }),
       },
     });
     const result = await createPrismaPasswordCredentialStore(executor).createInitial(SCOPE, {
@@ -271,19 +334,60 @@ describe("PasswordCredentialStore.createInitial", () => {
       kind: "already_exists",
       conflict: { reason: "unique_violation", target: "credential.user" },
     });
-    // Nenhum update/upsert de recuperacao: uma unica chamada foi feita.
-    expect(calls.map((c) => c.method)).toEqual(["passwordCredential.create"]);
+    // Sonda de dono + insercao + confirmacao do alvo. Nenhum update/upsert.
+    expect(calls.map((c) => c.method)).toEqual([
+      "user.findUnique",
+      "passwordCredential.createManyAndReturn",
+      "passwordCredential.findUnique",
+    ]);
   });
 
-  it("(3b) unique que NAO e a de user_id sobe intacta (nao vira already_exists)", async () => {
-    // `already_exists` afirma "ja existe credencial para este usuario". Uma
-    // colisao de PK (ex.: sequencia dessincronizada apos restore) tambem e
-    // P2002, mas afirmar already_exists ali seria mentir para o chamador: o
-    // usuario NAO tem credencial, e nenhuma retentativa resolveria.
-    const falha = driverError("P2002", "user_password_credentials_pkey");
+  it("(4b) zero linhas SEM credencial existente FALHA FECHADO (unique nao prevista)", async () => {
+    // `ON CONFLICT DO NOTHING` sem alvo absorve TODA unique — inclusive a PK.
+    // Afirmar `already_exists` aqui diria "este usuario ja tem credencial"
+    // quando ele NAO tem: ele ficaria com identidade e sem credencial, sem
+    // conseguir logar, e toda retentativa repetiria o diagnostico errado.
     const { executor } = fakeExecutor({
+      user: { findUnique: donoExiste },
       passwordCredential: {
-        create: () => {
+        createManyAndReturn: insercaoBarrada,
+        findUnique: () => null,
+      },
+    });
+    await expect(
+      createPrismaPasswordCredentialStore(executor).createInitial(SCOPE, {
+        userId: 5n,
+        passwordHash: HASH_ATUAL,
+        algorithm: "scrypt",
+      }),
+    ).rejects.toThrow(/unique nao prevista pelo contrato/i);
+  });
+
+  it("(5) usuario inexistente vira user_not_found SEM tocar na tabela de credencial", async () => {
+    // O ponto do C7B1.1: `ON CONFLICT DO NOTHING` neutraliza a unicidade, mas
+    // NAO a chave estrangeira. Deixar o INSERT acontecer produziria P2003 e
+    // abortaria a transacao. A sonda de existencia produz o resultado tipado
+    // sem que nenhuma violacao chegue ao banco.
+    const { executor, calls } = fakeExecutor({
+      user: { findUnique: () => null },
+      passwordCredential: { createManyAndReturn: insercaoOk },
+    });
+    const result = await createPrismaPasswordCredentialStore(executor).createInitial(SCOPE, {
+      userId: 404n,
+      passwordHash: HASH_ATUAL,
+      algorithm: "scrypt",
+    });
+    expect(result).toEqual({ kind: "user_not_found" });
+    expect(calls.map((c) => c.method)).toEqual(["user.findUnique"]);
+    expect(calls[0]!.args["select"]).toEqual({ id: true });
+  });
+
+  it("(6) erro do banco sobe INTACTO (nunca vira resultado de negocio)", async () => {
+    const falha = new Error("falha de infraestrutura");
+    const { executor } = fakeExecutor({
+      user: { findUnique: donoExiste },
+      passwordCredential: {
+        createManyAndReturn: () => {
           throw falha;
         },
       },
@@ -295,22 +399,6 @@ describe("PasswordCredentialStore.createInitial", () => {
         algorithm: "scrypt",
       }),
     ).rejects.toBe(falha);
-  });
-
-  it("(4) usuario inexistente vira user_not_found (FK), distinto de conflito", async () => {
-    const { executor } = fakeExecutor({
-      passwordCredential: {
-        create: () => {
-          throw driverError("P2003", "user_password_credentials_user_id_fkey");
-        },
-      },
-    });
-    const result = await createPrismaPasswordCredentialStore(executor).createInitial(SCOPE, {
-      userId: 404n,
-      passwordHash: HASH_ATUAL,
-      algorithm: "scrypt",
-    });
-    expect(result).toEqual({ kind: "user_not_found" });
   });
 });
 

@@ -666,78 +666,331 @@ async function runChecks(url: string): Promise<void> {
     );
 
     // -----------------------------------------------------------------------
-    // PRE-CONDICAO PARA A COMPOSICAO (C7C): conflito engolido ENVENENA a
-    // transacao.
+    // CONFLITO ESPERADO NAO ENVENENA A TRANSACAO (C7B1.1)
     //
-    // Estes dois checks nao validam uma decisao desta unidade — CARACTERIZAM um
-    // comportamento do Postgres que a composicao futura precisa conhecer. Um
-    // conflito convertido em valor pelo adapter nao "desfaz" o erro no banco: o
-    // Prisma nao emite SAVEPOINT por statement, entao a transacao fica abortada.
-    //
-    // Se um dia o driver passar a isolar cada statement, ESTES CHECKS FALHAM —
-    // de proposito. E o gatilho para reler a pre-condicao registrada em
-    // `executor.ts` antes que alguem escreva a composicao confiando nela.
+    // Ate C7B1 estes checks CARACTERIZAVAM o defeito: um conflito capturado
+    // deixava a transacao abortada. Agora eles verificam o oposto — que a
+    // transacao continua utilizavel e comita de verdade. A fixture negativa no
+    // fim prova que o padrao antigo AINDA seria punido pelo banco, para que
+    // estes checks nao possam ficar verdes por acidente.
     // -----------------------------------------------------------------------
-    let erroAposConflito: string | null = null;
+    let identidadeTx: {
+      conflito: string;
+      alvo: string | undefined;
+      leuDepois: boolean;
+      criouDepois: string;
+    } | null = null;
+    let erroIdentidadeTx: string | null = null;
     try {
-      await prisma.$transaction(async (tx) => {
-        const txCredentials = createPrismaPasswordCredentialStore(tx);
-        // Alice ja tem credencial: P2002 e capturado e vira valor de contrato.
-        const conflito = await txCredentials.createInitial(SCOPE, {
-          userId: aliceId,
-          passwordHash: HASH_1,
-          algorithm: ALG_PORT,
-        });
-        if (conflito.kind !== "already_exists") {
-          throw new Error("setup: esperava already_exists");
-        }
-        // Chamada SEGUINTE no mesmo escopo — e aqui que a transacao ja morreu.
-        await txCredentials.findForVerification(SCOPE, aliceId);
-      });
-    } catch (e) {
-      const code = (e as { code?: unknown }).code;
-      const primeiraLinha =
-        String((e as Error).message ?? "")
-          .split("\n")
-          .map((l) => l.trim())
-          .find((l) => l.length > 0) ?? (e as object).constructor.name;
-      erroAposConflito = typeof code === "string" ? code : primeiraLinha.slice(0, 60);
-    }
-    record(
-      42,
-      "conflito engolido ABORTA a transacao: a chamada seguinte nao devolve contrato",
-      erroAposConflito !== null,
-      `erro observado=${erroAposConflito ?? "NENHUM (driver mudou; reler executor.ts)"}`,
-    );
-
-    // Variante mais perigosa: ninguem lanca, e o COMMIT vira ROLLBACK silencioso.
-    let conflitoEngolido = false;
-    try {
-      await prisma.$transaction(async (tx) => {
+      identidadeTx = await prisma.$transaction(async (tx) => {
         const txIdentities = createPrismaIdentityStore(tx);
-        const ok = await txIdentities.create(SCOPE, {
-          email: "tx-veneno@example.test",
-          emailNormalized: "tx-veneno@example.test",
+        // 1. escrita valida ANTES do conflito
+        const antes = await txIdentities.create(SCOPE, {
+          email: "tx-antes@example.test",
+          emailNormalized: "tx-antes@example.test",
           displayName: null,
         });
+        if (antes.kind !== "created") throw new Error("setup: escrita anterior falhou");
+        // 2. conflito esperado
         const colide = await txIdentities.create(SCOPE, {
           email: "Alice@Example.Test",
           emailNormalized: "alice@example.test",
           displayName: null,
         });
-        conflitoEngolido = ok.kind === "created" && colide.kind === "conflict";
+        // 3. query valida DEPOIS do conflito — aqui morria com 25P02
+        const leitura = await txIdentities.findByNormalizedEmail(SCOPE, "tx-antes@example.test");
+        // 4. outra escrita valida depois do conflito
+        const depois = await txIdentities.create(SCOPE, {
+          email: "tx-depois@example.test",
+          emailNormalized: "tx-depois@example.test",
+          displayName: null,
+        });
+        return {
+          conflito: colide.kind,
+          alvo: colide.kind === "conflict" ? colide.conflict.target : undefined,
+          leuDepois: leitura.kind === "found",
+          criouDepois: depois.kind,
+        };
       });
-    } catch {
-      // Se o driver passar a rejeitar aqui, o check abaixo acusa a mudanca.
+    } catch (e) {
+      const code = (e as { code?: unknown }).code;
+      erroIdentidadeTx = typeof code === "string" ? code : (e as Error).message.slice(0, 60);
     }
-    const [venenoRow] = await q<{ c: bigint }>(
-      `SELECT count(*) AS c FROM "users" WHERE email_normalized = 'tx-veneno@example.test'`,
+
+    record(
+      42,
+      "identidade: conflito dentro de transacao devolve resultado tipado (sem 25P02)",
+      erroIdentidadeTx === null && identidadeTx?.conflito === "conflict",
+      `erro=${erroIdentidadeTx ?? "nenhum"} kind=${identidadeTx?.conflito ?? "-"}`,
     );
     record(
       43,
-      "apos conflito engolido, a escrita anterior NAO persiste (rollback silencioso)",
-      conflitoEngolido && Number(venenoRow!.c) === 0,
-      `conflito=${conflitoEngolido} linhas=${Number(venenoRow!.c)}`,
+      "identidade: alvo semantico continua correto apos a mudanca de estrategia",
+      identidadeTx?.alvo === "identity.emailNormalized",
+      `alvo=${String(identidadeTx?.alvo)}`,
+    );
+    record(
+      44,
+      "identidade: a transacao segue USAVEL depois do conflito (leitura e escrita)",
+      identidadeTx?.leuDepois === true && identidadeTx?.criouDepois === "created",
+      `leu=${identidadeTx?.leuDepois} criou=${identidadeTx?.criouDepois}`,
+    );
+
+    const [antesRow] = await q<{ c: bigint }>(
+      `SELECT count(*) AS c FROM "users" WHERE email_normalized = 'tx-antes@example.test'`,
+    );
+    const [depoisRow] = await q<{ c: bigint }>(
+      `SELECT count(*) AS c FROM "users" WHERE email_normalized = 'tx-depois@example.test'`,
+    );
+    record(
+      45,
+      "identidade: COMMIT REAL — escritas ANTES e DEPOIS do conflito persistem",
+      Number(antesRow!.c) === 1 && Number(depoisRow!.c) === 1,
+      `antes=${Number(antesRow!.c)} depois=${Number(depoisRow!.c)}`,
+    );
+
+    // Credencial: mesmo roteiro.
+    let credencialTx: { conflito: string; alvo: string | undefined; leuDepois: boolean } | null =
+      null;
+    let erroCredencialTx: string | null = null;
+    const donoCred = await identities.create(SCOPE, {
+      email: "tx-cred@example.test",
+      emailNormalized: "tx-cred@example.test",
+      displayName: null,
+    });
+    if (donoCred.kind !== "created") throw new Error("setup de tx-cred falhou");
+    await credentials.createInitial(SCOPE, {
+      userId: donoCred.identity.id,
+      passwordHash: HASH_1,
+      algorithm: ALG_PORT,
+    });
+    try {
+      credencialTx = await prisma.$transaction(async (tx) => {
+        const txCredentials = createPrismaPasswordCredentialStore(tx);
+        const colide = await txCredentials.createInitial(SCOPE, {
+          userId: donoCred.identity.id,
+          passwordHash: HASH_2,
+          algorithm: ALG_PORT,
+        });
+        // Query valida DEPOIS do conflito.
+        const leitura = await txCredentials.findForVerification(SCOPE, donoCred.identity.id);
+        return {
+          conflito: colide.kind,
+          alvo: colide.kind === "already_exists" ? colide.conflict.target : undefined,
+          leuDepois: leitura.kind === "found" && leitura.material.passwordHash === HASH_1,
+        };
+      });
+    } catch (e) {
+      const code = (e as { code?: unknown }).code;
+      erroCredencialTx = typeof code === "string" ? code : (e as Error).message.slice(0, 60);
+    }
+    record(
+      46,
+      "credencial: conflito 1:1 dentro de transacao nao aborta e mantem o alvo",
+      erroCredencialTx === null &&
+        credencialTx?.conflito === "already_exists" &&
+        credencialTx?.alvo === "credential.user",
+      `erro=${erroCredencialTx ?? "nenhum"} alvo=${String(credencialTx?.alvo)}`,
+    );
+    record(
+      47,
+      "credencial: leitura posterior ao conflito funciona e o hash NAO foi trocado",
+      credencialTx?.leuDepois === true,
+      `leu hash original=${credencialTx?.leuDepois}`,
+    );
+
+    // Usuario inexistente dentro de transacao: `user_not_found` sem violar FK.
+    let fkTx: { kind: string; leuDepois: boolean } | null = null;
+    let erroFkTx: string | null = null;
+    try {
+      fkTx = await prisma.$transaction(async (tx) => {
+        const txCredentials = createPrismaPasswordCredentialStore(tx);
+        const txIdentities = createPrismaIdentityStore(tx);
+        const semDono = await txCredentials.createInitial(SCOPE, {
+          userId: 999999n,
+          passwordHash: HASH_1,
+          algorithm: ALG_PORT,
+        });
+        const leitura = await txIdentities.findByNormalizedEmail(SCOPE, "alice@example.test");
+        return { kind: semDono.kind, leuDepois: leitura.kind === "found" };
+      });
+    } catch (e) {
+      const code = (e as { code?: unknown }).code;
+      erroFkTx = typeof code === "string" ? code : (e as Error).message.slice(0, 60);
+    }
+    record(
+      48,
+      "credencial: user_not_found dentro de transacao nao dispara FK nem aborta",
+      erroFkTx === null && fkTx?.kind === "user_not_found" && fkTx?.leuDepois === true,
+      `erro=${erroFkTx ?? "nenhum"} kind=${fkTx?.kind ?? "-"}`,
+    );
+
+    // Erro INESPERADO continua escapando e desfazendo tudo.
+    let erroInesperadoEscapou = false;
+    try {
+      await prisma.$transaction(async (tx) => {
+        const txIdentities = createPrismaIdentityStore(tx);
+        const ok = await txIdentities.create(SCOPE, {
+          email: "tx-inesperado@example.test",
+          emailNormalized: "tx-inesperado@example.test",
+          displayName: null,
+        });
+        if (ok.kind !== "created") throw new Error("setup falhou");
+        throw new Error("falha inesperada de dominio");
+      });
+    } catch {
+      erroInesperadoEscapou = true;
+    }
+    const [inesperadoRow] = await q<{ c: bigint }>(
+      `SELECT count(*) AS c FROM "users" WHERE email_normalized = 'tx-inesperado@example.test'`,
+    );
+    record(
+      49,
+      "erro inesperado continua escapando e faz ROLLBACK (nada de continuacao enganosa)",
+      erroInesperadoEscapou && Number(inesperadoRow!.c) === 0,
+      `escapou=${erroInesperadoEscapou} linhas=${Number(inesperadoRow!.c)}`,
+    );
+
+    // FIXTURE NEGATIVA: o padrao ABORTIVO antigo, executado de proposito.
+    // Sem isto, os checks 42-48 poderiam estar verdes por qualquer motivo — este
+    // prova que o banco AINDA pune create/catch dentro de transacao, e que a
+    // diferenca observada vem da ESTRATEGIA, nao de o Postgres ter mudado.
+    let padraoAntigoEnvenenou = false;
+    try {
+      await prisma.$transaction(async (tx) => {
+        try {
+          // `create` cru (nao `createManyAndReturn` + skipDuplicates): levanta
+          // P2002 e aborta a transacao.
+          await tx.user.create({
+            data: { email: "Alice@Example.Test", emailNormalized: "alice@example.test" },
+            select: { id: true },
+          });
+        } catch {
+          // Exatamente o que o C7B1.1 proibiu: engolir e seguir.
+        }
+        await tx.user.findUnique({
+          where: { emailNormalized: "alice@example.test" },
+          select: { id: true },
+        });
+      });
+    } catch {
+      padraoAntigoEnvenenou = true;
+    }
+    record(
+      50,
+      "fixture negativa: o padrao create/catch AINDA envenena (a prova nao e vacua)",
+      padraoAntigoEnvenenou,
+      `envenenou=${padraoAntigoEnvenenou}`,
+    );
+
+    // -----------------------------------------------------------------------
+    // UNIQUE NAO PREVISTA PELO CONTRATO => FALHA FECHADO
+    //
+    // `ON CONFLICT DO NOTHING` sem alvo absorve TODA unique da tabela, nao so a
+    // que o contrato representa. Uma sequence dessincronizada (restore mal
+    // feito) faz a PK colidir e devolver zero linhas — e "zero linhas" NAO pode
+    // ser lido como "o e-mail ja existe" nem "o usuario ja tem credencial".
+    //
+    // Estes dois checks ficam por ULTIMO porque mexem nas sequences.
+    // -----------------------------------------------------------------------
+    // Criado ANTES de mexer em qualquer sequence: o check 52 precisa de um
+    // usuario sem credencial, e monta-lo depois o tornaria refem da restauracao
+    // da sequence de `users`.
+    const semCred = await identities.create(SCOPE, {
+      email: "pk-colisao-credencial@example.test",
+      emailNormalized: "pk-colisao-credencial@example.test",
+      displayName: null,
+    });
+    if (semCred.kind !== "created") {
+      throw new Error(`setup de sem-credencial falhou: ${JSON.stringify(semCred)}`);
+    }
+
+    await exec(`SELECT setval('users_id_seq', 1, false)`);
+    let identidadeFechou: string | null = null;
+    try {
+      const r = await identities.create(SCOPE, {
+        email: "e-mail-totalmente-livre@example.test",
+        emailNormalized: "e-mail-totalmente-livre@example.test",
+        displayName: null,
+      });
+      identidadeFechou = `NAO LANCOU: ${JSON.stringify(r)}`;
+    } catch (e) {
+      identidadeFechou = null;
+      console.log(`      [esperado] ${(e as Error).message.split("\n")[0]}`);
+    }
+    const [livreRow] = await q<{ c: bigint }>(
+      `SELECT count(*) AS c FROM "users" WHERE email_normalized = 'e-mail-totalmente-livre@example.test'`,
+    );
+    record(
+      51,
+      "identidade: unique nao-e-mail falha fechado (nunca 'e-mail ja registrado' falso)",
+      identidadeFechou === null && Number(livreRow!.c) === 0,
+      identidadeFechou ?? "lancou como esperado",
+    );
+    await exec(`SELECT setval('users_id_seq', (SELECT max(id) FROM "users"))`);
+
+    // Credencial: usuario SEM credencial + PK colidindo.
+    await exec(`SELECT setval('user_password_credentials_id_seq', 1, false)`);
+    let credencialFechou: string | null = null;
+    try {
+      const r = await credentials.createInitial(SCOPE, {
+        userId: semCred.identity.id,
+        passwordHash: HASH_1,
+        algorithm: ALG_PORT,
+      });
+      credencialFechou = `NAO LANCOU: ${JSON.stringify(r)}`;
+    } catch (e) {
+      credencialFechou = null;
+      console.log(`      [esperado] ${(e as Error).message.split("\n")[0]}`);
+    }
+    record(
+      52,
+      "credencial: unique nao-user_id falha fechado (nunca 'ja tem credencial' falso)",
+      credencialFechou === null,
+      credencialFechou ?? "lancou como esperado",
+    );
+    await exec(
+      `SELECT setval('user_password_credentials_id_seq', (SELECT max(id) FROM "user_password_credentials"))`,
+    );
+
+    // -----------------------------------------------------------------------
+    // LIMITE DE ISOLAMENTO: a garantia desta camada vale sob READ COMMITTED.
+    //
+    // Sob REPEATABLE READ o proprio `INSERT ... ON CONFLICT DO NOTHING` levanta
+    // 40001 (Prisma P2034) quando a linha conflitante foi comitada depois do
+    // snapshot — ou seja, o conflito volta a ser abortivo. Nao e defeito destes
+    // adapters: e uma propriedade do isolamento. Fica CARACTERIZADO aqui para
+    // que ninguem endureca o isolamento do cadastro sem reler a documentacao.
+    // -----------------------------------------------------------------------
+    let isolamentoCodigo: string | null = null;
+    try {
+      await prisma.$transaction(
+        async (tx) => {
+          const txIdentities = createPrismaIdentityStore(tx);
+          // Fixa o snapshot da transacao.
+          await txIdentities.findByNormalizedEmail(SCOPE, "alice@example.test");
+          // Outro escopo comita a linha conflitante DEPOIS do snapshot.
+          await prisma.user.create({
+            data: { email: "RR@example.test", emailNormalized: "rr@example.test" },
+            select: { id: true },
+          });
+          await txIdentities.create(SCOPE, {
+            email: "RR@example.test",
+            emailNormalized: "rr@example.test",
+            displayName: null,
+          });
+        },
+        { isolationLevel: "RepeatableRead" },
+      );
+    } catch (e) {
+      const code = (e as { code?: unknown }).code;
+      isolamentoCodigo = typeof code === "string" ? code : "erro sem codigo";
+    }
+    record(
+      53,
+      "REPEATABLE READ: conflito volta a ser abortivo (garantia e de READ COMMITTED)",
+      isolamentoCodigo !== null,
+      `codigo=${isolamentoCodigo ?? "NENHUM (isolamento mudou; reler a doc)"}`,
     );
   } finally {
     await prisma.$disconnect();
