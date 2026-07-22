@@ -235,8 +235,10 @@ múltiplas credenciais ativas, provedores externos, troca de e-mail, definição
 `handle`, hard delete de identidade, reativação administrativa, MFA, passkeys,
 rotação automática de senha.
 
-**PORT_GAP remanescente (esperado)**: sessões, tokens, verificação, recuperação,
-privacidade, listas, tracking, ratings e reviews continuam sem port — são as
+**PORT_GAP remanescente (atualizado após C7B2.x)**: sessões, tokens, verificação
+e recuperação **já têm port** (`SessionStore`, `AuthTokenStore` e os três métodos
+que fecharam a identidade). Continuam sem port: privacidade, listas, tracking,
+ratings e reviews — são as
 unidades C7B2..C7B6.
 
 **PORT_GAP registrado (não resolvido aqui, de propósito)**: identidade e
@@ -306,11 +308,12 @@ Devolve o **fato** (`Date | null`), nunca `alreadyVerified: boolean` — a
 derivação é do domínio. O booleano descartaria o *quando*, que
 `markEmailVerified` preserva de propósito.
 
-`status` não entra: `evaluateVerificationResend` recebe apenas
-`{ userExists, alreadyVerified }`. Fica registrada uma assimetria para decisão
-humana: o **reset** consulta `accountCanHoldSession`, o **reenvio** não — logo
-uma conta desativada e não verificada recebe `issue_token` no reenvio e
-`account_ineligible` no reset.
+`status` **entra**, porque a decisão de produto tornou o reenvio e a confirmação
+dependentes de `accountCanHoldSession(status)` — o mesmo predicado do reset, para
+não existir uma segunda matriz de status. Conta `disabled` ou `deleted` não
+recebe token nem conclui verificação; internamente vira `account_ineligible`,
+externamente a resposta é a mesma de sempre. A política fica no domínio: o
+adapter não filtra status.
 
 **PORT_GAP remanescente (outro domínio):** `canPublishList` e
 `validate*VisibilityTransition` consomem o mesmo carimbo, mas por `userId` e fora

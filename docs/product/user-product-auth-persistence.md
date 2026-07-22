@@ -235,9 +235,9 @@ carregarem um carimbo que não consomem; o custo de um tipo a mais é menor que 
 de PII trafegando sem leitor.
 
 `userId` está lá porque o passo seguinte (`buildEmailVerificationIssue`) precisa
-dele para emitir o token. `status` **não** está: `evaluateVerificationResend`
-recebe apenas `{ userExists, alreadyVerified }`, e devolver status seria campo
-sem leitor.
+dele para emitir o token. `status` **entrou** quando `evaluateVerificationResend` passou a aplicar
+`accountCanHoldSession` — antes dessa decisão seria campo sem leitor, e não
+existir era o correto.
 
 ### Fato, não política
 
@@ -278,46 +278,65 @@ podem reusar o fato já persistido — a escrita e a leitura por e-mail já exis
 Privacidade/LGPD (C7B3), listas e tracking (C7B4), ratings e reviews (C7B5),
 recomendações (C7B6). A composição transacional de cadastro, login e reset é C7C.
 
-## Gaps abertos pela revisão do C7B2.1 (não corrigidos aqui)
+## Elegibilidade por status — decisão aprovada e fechada
 
-### POLICY_GAP — `markEmailVerified` não tem gate de status
+**Só conta elegível por `accountCanHoldSession(status)` recebe token de
+verificação ou conclui a verificação.**
 
-Provado em banco real: uma conta `deleted` (túmulo LGPD, com `deleted_at`
-preenchido) **aceita** a marcação e recebe carimbo novo.
+| Status | Reenviar | Confirmar |
+| --- | ---: | ---: |
+| `active` | Sim | Sim |
+| `disabled` | Não | Não |
+| `deleted` / anonimizada | Não | Não |
+| `pending_deletion` | Não | Não |
+| Inexistente | Não | Não |
 
-O argumento "quem decide elegibilidade é o domínio" — que sustenta `findById` —
-**não tem contraparte aqui**: `accountCanHoldSession` existe para sessão e para
-reset, mas `applyEmailVerification` recebe apenas `{ now, currentEmailVerifiedAt }`
-e **nenhum decisor consome status para verificação**. Agravam o quadro dois fatos
-já no repositório: `buildDeletionPlan` não zera `emailVerifiedAt` na anonimização,
-e a revogação de tokens ainda não tem adapter.
+O predicado é o **mesmo** já usado pelo reset de senha — de propósito. Uma
+segunda matriz de status para verificação divergiria da de sessão e de reset com
+o tempo, e ninguém perceberia até virar bug.
 
-Não foi corrigido aqui de propósito. A correção pertence ao **domínio**
-(`applyEmailVerification` ganhar `userStatus` e recusar quando
-`!accountCanHoldSession`), e esta unidade não altera política de autenticação.
-Pôr o gate no adapter seria exatamente o erro que esta camada evita: política na
-persistência.
+Motivo da regra: marcar o e-mail de uma identidade que já não pode autenticar
+recriaria atividade num registro inelegível — no caso de `deleted`, num túmulo
+LGPD que existe apenas para auditoria.
 
-**Decisão humana necessária** antes de considerar o bloco de autenticação
-fechado: verificar e-mail de conta desativada/anonimizada é aceitável, ou o
-decisor deve passar a consultar status?
+Internamente, `disabled` e `deleted` produzem `account_ineligible`; externamente,
+**todos** os casos continuam devolvendo a mesma resposta genérica. A recusa da
+confirmação usa `GENERIC_TOKEN_FAILURE_MESSAGE`, a **mesma** de
+`evaluateTokenConsumption`: uma mensagem própria para "conta inelegível"
+transformaria a confirmação num oráculo — quem tivesse um token qualquer
+distinguiria "token ruim" de "a conta existe mas está desativada".
 
-### SCHEMA_GAP — `users.email_verified_at` sem CHECK de coerência temporal
+Na ordem de avaliação do reenvio, `account_ineligible` vem **antes** de
+`already_verified`: uma conta anonimizada pode ter carimbo antigo, e o motivo que
+importa registrar é a inelegibilidade.
 
-Assimetria visível com o resto do schema, que tem
-`user_sessions_expiry_after_creation`, `user_sessions_revocation_after_creation`
-e `user_verification_tokens_consumed_after_creation`. O carimbo de verificação
-não tem nenhum: um valor anterior ao `created_at` é aceito sem erro (provado).
+### A política ficou no domínio
 
-Correção seria `CHECK ("email_verified_at" IS NULL OR "email_verified_at" >= "created_at")`
-numa migration aditiva — fora do escopo destas unidades, que não alteram schema.
-Registrado como dívida.
+`markEmailVerified` **não filtra status** e continua uma operação atômica e
+idempotente de persistência. `accountCanHoldSession` não entra em
+`persistence/prisma/`. O adapter entrega o fato (`status` no resultado da
+leitura); quem recusa é `evaluateVerificationResend` e `applyEmailVerification`.
 
-### Assimetria de política entre reenvio e reset
+`status` passou a existir em `EmailVerificationState` **porque ganhou consumidor
+real**. Até esta decisão ele não existia — e não existir era o correto.
 
-`evaluatePasswordResetRequest` consulta `accountCanHoldSession`;
-`evaluateVerificationResend` **não consulta status algum**. Uma conta `disabled`
-e não verificada recebe `issue_token` no reenvio e `account_ineligible` no reset.
-A política está *definida* (o decisor enumera três casos, nenhum dependente de
-status), então não bloqueia — mas o contraste merece decisão humana. Se o status
-passar a importar, incluí-lo no resultado é aditivo.
+### Composição da confirmação: abortar é obrigatório
+
+A ordem é: consumir o token → carregar a identidade pelo `userId` → aplicar a
+política com status → marcar **só se elegível**.
+
+Se a política recusar **depois** do consumo, a transação tem de ser **abortada
+deliberadamente**. Retornar normalmente comitaria o consumo e queimaria o token
+de uma conta que não foi verificada — o usuário perderia o link sem ganhar nada.
+
+Provado em PostgreSQL real: um token emitido antes de a conta ser desativada não
+verifica, **e o token continua pendente** com `emailVerifiedAt` ainda `null`
+(checks 129–131). Reabilitada a conta, o **mesmo** token conclui a verificação
+(check 132) — que é a prova de que o rollback preservou o token de verdade, e não
+apenas de que nada aconteceu.
+
+### Dívida registrada, não bloqueante
+
+`users.email_verified_at` não tem CHECK de coerência temporal, embora
+`user_sessions` e `user_verification_tokens` tenham os equivalentes. Entra numa
+migration de **hardening** futura, não nesta correção.

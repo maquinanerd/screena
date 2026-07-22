@@ -13,13 +13,13 @@
 
 | Domínio | Port | Contrato | Adapter Prisma | PostgreSQL real | Unidade |
 | --- | --- | --- | --- | --- | --- |
-| identity | `IdentityStore` | IMPLEMENTED (C7B0+C7B2.x) | **IMPLEMENTED (C7B1+C7B2.x)** | **VERIFIED (121/121)** | C7B1/C7B2.x |
-| credential | `PasswordCredentialStore` | IMPLEMENTED (C7B0) | **IMPLEMENTED (C7B1)** | **VERIFIED (121/121)** | C7B1 |
+| identity | `IdentityStore` | IMPLEMENTED (C7B0+C7B2.x) | **IMPLEMENTED (C7B1+C7B2.x)** | **VERIFIED (132/132)** | C7B1/C7B2.x |
+| credential | `PasswordCredentialStore` | IMPLEMENTED (C7B0) | **IMPLEMENTED (C7B1)** | **VERIFIED (132/132)** | C7B1 |
 | recommendation snapshot | `RecommendationSnapshotStore` | IMPLEMENTED (C7A) | PENDING_C7B6 | PENDING_C7B6 | C7B6 |
 | recommendation feedback | `RecommendationFeedbackStore` | IMPLEMENTED (C7A) | PENDING_C7B6 | PENDING_C7B6 | C7B6 |
 | transação (genérico) | `TransactionRunner` | IMPLEMENTED (C7A) | PENDING_C7C | PENDING_C7C | C7C |
-| sessões | `SessionStore` | IMPLEMENTED (C7B2) | **IMPLEMENTED (C7B2)** | **VERIFIED (121/121)** | C7B2 |
-| verificação / recuperação | `AuthTokenStore` | IMPLEMENTED (C7B2) | **IMPLEMENTED (C7B2)** | **VERIFIED (121/121)** | C7B2 |
+| sessões | `SessionStore` | IMPLEMENTED (C7B2) | **IMPLEMENTED (C7B2)** | **VERIFIED (132/132)** | C7B2 |
+| verificação / recuperação | `AuthTokenStore` | IMPLEMENTED (C7B2) | **IMPLEMENTED (C7B2)** | **VERIFIED (132/132)** | C7B2 |
 | privacidade / LGPD | — | PENDING_C7B3 | PENDING_C7B3 | PENDING_C7B3 | C7B3 |
 | listas | — | PENDING_C7B4 | PENDING_C7B4 | PENDING_C7B4 | C7B4 |
 | tracking | — | PENDING_C7B4 | PENDING_C7B4 | PENDING_C7B4 | C7B4 |
@@ -249,7 +249,7 @@ C7B0; se o C7C precisar distinguir, a chave terá de vir do comando.
 pnpm --filter @screena/user-platform validate:user-product
 ```
 
-121/121 em PostgreSQL 16 efêmero. Cobre: e-mail bruto e normalizado persistidos
+132/132 em PostgreSQL 16 efêmero. Cobre: e-mail bruto e normalizado persistidos
 separadamente, defaults do banco, busca que **não** aceita o e-mail bruto como
 fallback, FK, relação 1:1,
 `algorithm` gravado a partir do port, CAS bem-sucedido e divergente,
