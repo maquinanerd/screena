@@ -125,8 +125,37 @@ const NO_IO =
 const NO_GENERIC_CRUD =
   /BaseRepository|interface\s+Repository\s*<|class\s+\w*Repository\b|GenericRepository/;
 const NO_IMPLEMENTATION = /\bclass\s+\w+|=>\s*\{|\bfunction\s+\w+\s*\(/;
-const NO_SESSION_SECRET =
-  /\btokenHash\b|\btoken_hash\b|\brawToken\b|\bsecret\b|\bcsrf\b|sessionToken|resetToken|verificationToken|ipHash|ipAddress|reviewBody|moderationNote/i;
+/**
+ * TOKEN EM CLARO — proibido em qualquer lugar, sempre.
+ *
+ * Ate C7B1 a guarda proibia `tokenHash` em bloco, porque a camada nao tinha
+ * contrato de sessao. C7B2 trouxe sessoes e tokens de uso unico, e ai o hash e
+ * exatamente o que DEVE trafegar. Manter a regra-cobertor barraria o desenho
+ * correto; afrouxa-la para "qualquer coisa com token" perderia a invariante.
+ *
+ * A regra foi entao PARTIDA: nomes de token CRU continuam proibidos em qualquer
+ * arquivo (abaixo), e o campo `tokenHash` passa a ser permitido apenas nos tipos
+ * que tem papel de carrega-lo (teste 8b, por allowlist).
+ */
+const NO_PLAINTEXT_TOKEN =
+  /\brawToken\b|\bplainToken\b|\bsessionToken\b|\bresetToken\b|\bverificationToken\b|\brawCsrfToken\b/i;
+
+/**
+ * Imports autorizados nos adapters. Constante UNICA de proposito: o controle
+ * negativo (5e) usava uma COPIA desta regex e, quando `auth` entrou aqui em
+ * C7B2, a copia ficou para tras — o controle negativo passou a validar uma regra
+ * que nao roda em lugar nenhum. Guarda e controle negativo tem de olhar o MESMO
+ * objeto.
+ *
+ * Ancorada no INICIO e no FIM: `^\.\/` sozinho autorizaria
+ * `./../../auth/flows.js`, que sai do diretorio e alcanca o dominio.
+ */
+const ADAPTER_IMPORT_ALLOWLIST =
+  /^(\.\/[\w.-]+\.js|\.\.\/(types|ports)\.js|\.\.\/\.\.\/(core|auth)\/types\.js|@prisma\/client|@screena\/db(\/server)?)$/;
+
+/** PII e segredo que a camada de persistencia nunca deve redeclarar. */
+const NO_PII_OR_FOREIGN_SECRET =
+  /\bipAddress\b|\bremoteAddress\b|\bclientIp\b|\brawIp\b|\bsecret\b|reviewBody|moderationNote/i;
 
 describe("cobertura da fronteira: nenhum arquivo sem regime", () => {
   it("(1) todo arquivo sob persistence/ cai em contrato OU adapter", () => {
@@ -195,8 +224,32 @@ describe("persistence/ (raiz): somente contratos (C7A)", () => {
     expect(plainPasswordFields(files)).toEqual([]);
   });
 
-  it("(8) nenhum token/segredo de sessao, recuperacao ou verificacao nos contratos", () => {
-    expect(matching(files, NO_SESSION_SECRET)).toEqual([]);
+  it("(8) nenhum token em CLARO, nenhum IP bruto, nenhum segredo alheio", () => {
+    expect(matching(files, NO_PLAINTEXT_TOKEN)).toEqual([]);
+    expect(matching(files, NO_PII_OR_FOREIGN_SECRET)).toEqual([]);
+  });
+
+  it("(8b) SO os contratos com papel de token declaram `tokenHash`", () => {
+    // O hash e o que a persistencia DEVE trafegar (o token cru nunca chega);
+    // mas so onde ha papel para ele. Autorizacao por PAPEL, nao por prefixo de
+    // nome — do mesmo jeito que `passwordHash` e tratado no teste (10).
+    const source = stripComments(contractTypesSource());
+    const blocks = exportedTypeBlocks(source);
+    const carregaTokenHash = (body: string): boolean =>
+      /readonly\s+\w*tokenHash\s*\??\s*:/i.test(body);
+
+    const permitidos = new Set(["AuthTokenConsumeInput"]);
+    const vazando = blocks
+      .filter((b) => carregaTokenHash(b.body))
+      .map((b) => b.name)
+      .filter((name) => !permitidos.has(name));
+    expect(vazando).toEqual([]);
+
+    // O registro de sessao devolvido NAO carrega hash: quem consultou ja o tem,
+    // e devolve-lo ampliaria a superficie do segredo sem leitor.
+    const sessao = blocks.find((b) => b.name === "SessionAccessRecord");
+    expect(sessao, "SessionAccessRecord nao encontrado (guarda nao vacua)").toBeDefined();
+    expect(sessao!.body).not.toMatch(/tokenHash|csrfTokenHash/i);
   });
 
   it("(9) o hash NUNCA aparece no registro de identidade", () => {
@@ -266,11 +319,14 @@ function contractTypesSource(): string {
  */
 function exportedTypeBlocks(source: string): { name: string; body: string }[] {
   const out: { name: string; body: string }[] = [];
-  for (const m of source.matchAll(/export interface (\w+)\s*\{([\s\S]*?)\n\}/g)) {
+  // `export` OPCIONAL: `interface Interna { readonly tokenHash: string }`
+  // reexportada por `export type Saida = Interna;` carregaria o segredo sem
+  // nunca aparecer para uma varredura que so olha declaracoes exportadas.
+  for (const m of source.matchAll(/(?:export\s+)?interface (\w+)\s*\{([\s\S]*?)\n\}/g)) {
     out.push({ name: m[1] ?? "", body: m[2] ?? "" });
   }
   // `export type X = ...;` ate o `;` que fecha a declaracao.
-  for (const m of source.matchAll(/export type (\w+)\s*=([\s\S]*?);\s*(?:\n|$)/g)) {
+  for (const m of source.matchAll(/(?:export\s+)?type (\w+)\s*=([\s\S]*?);\s*(?:\n|$)/g)) {
     out.push({ name: m[1] ?? "", body: m[2] ?? "" });
   }
   return out;
@@ -309,13 +365,35 @@ const NO_CLIENT_LIFECYCLE = /new\s+PrismaClient|\$connect\b|\$disconnect\b|\$tra
 const NO_LOGGING = /console\.\w+\s*\(|\blogger\b|process\.stdout|process\.stderr/;
 const NO_UNSAFE_TS = /\bany\b|as\s+unknown\s+as|@ts-ignore|@ts-expect-error/;
 const NO_EAGER_LOAD = /include\s*:/;
-const NO_HTTP = /node:http|next[/"']|react["']|\bfetch\s*\(|express|cookies|csrf/i;
+// `csrfTokenHash` e coluna real de `user_sessions` e o dominio a produz
+// (`buildSessionRecord`); proibir "csrf" em bloco barraria o desenho correto.
+// O que nao pode e o token CRU e qualquer concern de transporte HTTP.
+const NO_HTTP =
+  /node:http|next[/"']|react["']|\bfetch\s*\(|express|cookies|\bcsrfToken\b|\brawCsrfToken\b/i;
 
 /**
  * Extrai cada chamada a uma delegacao do executor, com parentese balanceado.
  * Regex sozinha nao consegue delimitar o argumento (objetos aninhados), e e
  * exatamente dentro dele que `select` precisa estar.
  */
+/**
+ * Delegacoes que os adapters podem usar, LIDAS DO EXECUTOR REAL em vez de
+ * repetidas a mao.
+ *
+ * O C7B2 provou por que isso importa: ampliar `PrismaExecutor` sem atualizar a
+ * lista da guarda nao quebra nada — apenas faz a varredura deixar de enxergar as
+ * delegacoes novas, em silencio. Derivando do `Pick`, acrescentar uma delegacao
+ * ao executor passa a estender a guarda automaticamente.
+ */
+function executorDelegates(): string[] {
+  const source = readFileSync(path.join(PERSISTENCE, "prisma", "executor.ts"), "utf8");
+  const pick = /Pick<\s*PrismaClient\s*,([\s\S]*?)>\s*;/.exec(source);
+  if (pick === null) return [];
+  return [...(pick[1] ?? "").matchAll(/"(\w+)"/g)].map((m) => m[1] ?? "");
+}
+
+const PRISMA_DELEGATES = executorDelegates();
+
 function delegateCalls(rawSource: string): { method: string; call: string }[] {
   // Literais de string viram vazio ANTES da contagem: um parentese solto dentro
   // de uma string desbalancearia a varredura e a chamada "vazaria" ate o fim do
@@ -323,11 +401,17 @@ function delegateCalls(rawSource: string): { method: string; call: string }[] {
   // falso NEGATIVO silencioso e o pior modo de falha de uma guarda.
   const source = rawSource.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, '""');
   const out: { method: string; call: string }[] = [];
-  // Ancorado no NOME DA DELEGACAO (`.user.` / `.passwordCredential.`), nunca no
-  // nome do receptor: prender a guarda ao identificador `executor` faria um
-  // simples rename para `db` — ou uma desestruturacao — zerar a varredura, e a
-  // guarda passaria a reportar "nenhum infrator" porque nao viu NADA.
-  const re = /\.(?:user|passwordCredential)\.(\w+)\(/g;
+  // Ancorado no NOME DA DELEGACAO, nunca no nome do receptor: prender a guarda
+  // ao identificador `executor` faria um simples rename para `db` — ou uma
+  // desestruturacao — zerar a varredura, e a guarda passaria a reportar "nenhum
+  // infrator" porque nao viu NADA.
+  //
+  // A lista vem de `PRISMA_DELEGATES` para nao repetir o furo do C7B2: as duas
+  // delegacoes novas (`userSession`, `verificationToken`) foram acrescentadas ao
+  // executor e ESQUECIDAS aqui, entao 11 das 21 chamadas dos adapters ficaram
+  // invisiveis — os stores passaram no teste de `select` por VACUIDADE, nao por
+  // conformidade. O teste (0) abaixo trava a lista contra o executor real.
+  const re = new RegExp(`\\.(?:${PRISMA_DELEGATES.join("|")})\\.(\\w+)\\(`, "g");
   let m: RegExpExecArray | null;
   while ((m = re.exec(source)) !== null) {
     let depth = 0;
@@ -437,13 +521,30 @@ describe("persistence/prisma/: adapters concretos (C7B1)", () => {
 
   it("(1) ha adapters para varrer (guarda nao vacua)", () => {
     expect(files.map((f) => f.file).sort()).toEqual([
+      "persistence/prisma/auth-token-store.ts",
       "persistence/prisma/executor.ts",
       "persistence/prisma/identity-conflict.ts",
       "persistence/prisma/identity-store.ts",
       "persistence/prisma/index.ts",
       "persistence/prisma/mappers.ts",
       "persistence/prisma/password-credential-store.ts",
+      "persistence/prisma/session-store.ts",
     ]);
+  });
+
+  it("(0) a guarda enxerga TODAS as delegacoes do executor (anti-vacuidade)", () => {
+    // Sem isto, ampliar `PrismaExecutor` e esquecer a guarda deixa a varredura
+    // cega para o codigo novo — foi exatamente o que aconteceu no C7B2, e os
+    // stores passaram no teste de `select` sem serem olhados.
+    expect(PRISMA_DELEGATES.sort()).toEqual([
+      "passwordCredential",
+      "user",
+      "userSession",
+      "verificationToken",
+    ]);
+    // E a lista tem de casar com o que os adapters realmente chamam.
+    const chamadas = files.flatMap((f) => delegateCalls(stripComments(f.content)));
+    expect(chamadas.length).toBeGreaterThan(15);
   });
 
   it("(1b) NENHUM catch engole excecao (C7B1.1)", () => {
@@ -535,14 +636,37 @@ describe("persistence/prisma/: adapters concretos (C7B1)", () => {
     expect(offenders).toEqual([]);
   });
 
+  it("(13) adapters nao declaram token CRU nem PII", () => {
+    // Ate C7B2 estas duas regras existiam mas so eram aplicadas aos CONTRATOS —
+    // o describe de adapters nunca as usava. Um adapter com
+    // `function f(rawToken: string)` ou `{ ipHash: req.ipAddress }` passava por
+    // TODAS as guardas. Regra escrita e regra aplicada nao sao a mesma coisa.
+    //
+    // `verificationToken` sai da variante de adapter porque e o nome da propria
+    // delegacao do Prisma (`executor.verificationToken.`) — mante-lo acusaria o
+    // codigo correto, e foi provavelmente por isso que a regra nao foi estendida
+    // antes. O custo de nao estender foi perder as outras cinco.
+    const NO_PLAINTEXT_TOKEN_ADAPTER =
+      /\brawToken\b|\bplainToken\b|\bsessionToken\b|\bresetToken\b|\brawCsrfToken\b/i;
+    expect(matching(files, NO_PLAINTEXT_TOKEN_ADAPTER)).toEqual([]);
+    expect(matching(files, NO_PII_OR_FOREIGN_SECRET)).toEqual([]);
+  });
+
   it("(12) adapters nao importam outro dominio da user platform", () => {
-    // Permitido: contratos (`../types.js`, `../ports.js`), o enum compartilhado
-    // (`../../core/types.js`), vizinhos locais (`./`) e tipos do driver.
+    // Permitido: contratos (`../types.js`, `../ports.js`), os enums e as structs
+    // PERSISTIVEIS que o dominio publica (`../../core/types.js`,
+    // `../../auth/types.js`), vizinhos locais (`./`) e tipos do driver.
+    //
+    // `auth/types.js` entrou em C7B2 e e a direcao PERMITIDA (persistence ->
+    // dominio): `SessionRecord` e `VerificationTokenRecord` sao produzidas pelo
+    // dominio como "pronto para persistir", e redefini-las aqui criaria uma
+    // segunda verdade. Continua barrado importar DECISORES (`auth/flows.js`,
+    // `auth/sessions.ts`): o adapter aplica, nao decide.
+    //
     // Ancorado no INICIO e no FIM: `^\.\/` sozinho autorizaria
     // `./../../auth/flows.js`, que sai do diretorio e alcanca o dominio — o
     // exato import que esta guarda existe para impedir.
-    const allowed =
-      /^(\.\/[\w.-]+\.js|\.\.\/(types|ports)\.js|\.\.\/\.\.\/core\/types\.js|@prisma\/client|@screena\/db(\/server)?)$/;
+    const allowed = ADAPTER_IMPORT_ALLOWLIST;
     const offenders: string[] = [];
     for (const f of files) {
       for (const m of stripComments(f.content).matchAll(/from\s+["']([^"']+)["']/g)) {
@@ -689,7 +813,10 @@ describe("controles negativos: as guardas realmente reprovam", () => {
   });
 
   it("(5e) a allowlist de imports barra fuga por caminho relativo", () => {
-    const fuga = /^(\.\/[\w.-]+\.js|\.\.\/(types|ports)\.js|\.\.\/\.\.\/core\/types\.js|@prisma\/client|@screena\/db(\/server)?)$/;
+    // A MESMA constante que roda em producao — nunca uma copia. A versao
+    // anterior duplicava a regex e ficou defasada quando `auth` entrou nela:
+    // o controle negativo passou a validar uma regra inexistente.
+    const fuga = ADAPTER_IMPORT_ALLOWLIST;
     // `./../../auth/flows.js` comeca com "./" e escaparia de uma allowlist
     // ancorada so no inicio.
     expect(fuga.test("./../../auth/flows.js")).toBe(false);
@@ -698,6 +825,29 @@ describe("controles negativos: as guardas realmente reprovam", () => {
     expect(fuga.test("./mappers.js")).toBe(true);
     expect(fuga.test("../types.js")).toBe(true);
     expect(fuga.test("@screena/db/server")).toBe(true);
+  });
+
+  it("(5b) detecta token em CLARO, mas nao o hash legitimo", () => {
+    for (const cru of [
+      "readonly rawToken: string;",
+      "readonly sessionToken: string;",
+      "readonly resetToken: string;",
+      "readonly verificationToken: string;",
+    ]) {
+      expect(matching(fake(cru), NO_PLAINTEXT_TOKEN), cru).toEqual(["fake.ts"]);
+    }
+    // Controle POSITIVO: o hash e exatamente o que deve trafegar.
+    expect(matching(fake("readonly tokenHash: string;"), NO_PLAINTEXT_TOKEN)).toEqual([]);
+  });
+
+  it("(5c) detecta IP bruto, mas nao o hash de IP", () => {
+    expect(matching(fake("readonly ipAddress: string;"), NO_PII_OR_FOREIGN_SECRET)).toEqual([
+      "fake.ts",
+    ]);
+    expect(matching(fake("readonly clientIp: string;"), NO_PII_OR_FOREIGN_SECRET)).toEqual([
+      "fake.ts",
+    ]);
+    expect(matching(fake("readonly ipHash: string | null;"), NO_PII_OR_FOREIGN_SECRET)).toEqual([]);
   });
 
   it("(6) detecta senha em claro como campo declarado", () => {

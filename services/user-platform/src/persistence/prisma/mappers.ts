@@ -13,8 +13,17 @@
  */
 
 import type { $Enums } from "@prisma/client";
-import { USER_STATUSES, type UserStatus } from "../../core/types.js";
-import type { CredentialVerificationMaterial, IdentityRecord } from "../types.js";
+import {
+  AUTH_TOKEN_PURPOSES,
+  USER_STATUSES,
+  type AuthTokenPurpose,
+  type UserStatus,
+} from "../../core/types.js";
+import type {
+  CredentialVerificationMaterial,
+  IdentityRecord,
+  SessionAccessRecord,
+} from "../types.js";
 
 /**
  * Traducao EXPLICITA do enum do banco para o enum do dominio.
@@ -106,4 +115,46 @@ export function toCredentialVerificationMaterial(
   row: CredentialRow,
 ): CredentialVerificationMaterial {
   return { passwordHash: row.passwordHash };
+}
+
+/**
+ * Traducao EXPLICITA do enum de proposito. Mesmo motivo do mapa de status: um
+ * valor novo no enum do Prisma passa a quebrar o typecheck aqui, em vez de
+ * atravessar como se fosse conhecido. Um proposito mal traduzido deixaria um
+ * token de verificacao redefinir senha.
+ */
+const AUTH_TOKEN_PURPOSE_BY_DB: Record<$Enums.AuthTokenPurpose, AuthTokenPurpose> = {
+  email_verification: "email_verification",
+  password_reset: "password_reset",
+};
+
+/** Fail-closed: proposito fora do dominio LANCA, nunca assume um valor plausivel. */
+export function toAuthTokenPurpose(dbPurpose: $Enums.AuthTokenPurpose): AuthTokenPurpose {
+  const mapped = AUTH_TOKEN_PURPOSE_BY_DB[dbPurpose] as AuthTokenPurpose | undefined;
+  if (mapped === undefined || !AUTH_TOKEN_PURPOSES.includes(mapped)) {
+    throw new UnmappableRowError("purpose");
+  }
+  return mapped;
+}
+
+/** Linha MINIMA de sessao que o adapter le. */
+export interface SessionAccessRow {
+  readonly id: bigint;
+  readonly userId: bigint;
+  readonly expiresAt: Date;
+  readonly revokedAt: Date | null;
+}
+
+/**
+ * `SessionAccessRecord` = `{ id, userId, expiresAt, revokedAt }` e MAIS NADA.
+ * Sem `tokenHash`, sem `csrfTokenHash`, sem `ipHash`, sem `userAgent`: campo a
+ * campo, para que ampliar o select nunca vaze sozinho para o dominio.
+ */
+export function toSessionAccessRecord(row: SessionAccessRow): SessionAccessRecord {
+  return {
+    id: row.id,
+    userId: row.userId,
+    expiresAt: row.expiresAt,
+    revokedAt: row.revokedAt,
+  };
 }

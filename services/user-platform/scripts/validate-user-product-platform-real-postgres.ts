@@ -30,6 +30,9 @@ import EmbeddedPostgres from "embedded-postgres";
 import { PrismaClient } from "@prisma/client";
 import { createPrismaIdentityStore } from "../src/persistence/prisma/identity-store.js";
 import { createPrismaPasswordCredentialStore } from "../src/persistence/prisma/password-credential-store.js";
+import { createPrismaSessionStore } from "../src/persistence/prisma/session-store.js";
+import { createPrismaAuthTokenStore } from "../src/persistence/prisma/auth-token-store.js";
+import { evaluateSessionAccess } from "../src/auth/sessions.js";
 import type { TransactionScope } from "../src/persistence/types.js";
 
 const require = createRequire(import.meta.url);
@@ -56,6 +59,28 @@ const HASH_3 = "scrypt$N=32768,r=8,p=1$8899aabb$hash-ficticio-tres";
  */
 const ALG_PORT = "rotulo-do-port-c7b1";
 const ALG_PORT_NOVO = "rotulo-do-port-c7b1-trocado";
+
+/**
+ * Hashes FICTICIOS de sessao/CSRF/token. Precisam ter a forma sha256 hex
+ * (`^[0-9a-f]{64}$`) porque o schema a exige por CHECK — usar um valor
+ * arbitrario reprovaria no banco antes de chegar ao comportamento sob teste.
+ */
+const HASH_SESSAO_1 = "a".repeat(64);
+const HASH_SESSAO_2 = "b".repeat(64);
+const HASH_CSRF_1 = "c".repeat(64);
+const HASH_CSRF_2 = "d".repeat(64);
+const HASH_TOKEN_1 = "1".repeat(64);
+const HASH_TOKEN_2 = "2".repeat(64);
+const HASH_TOKEN_3 = "3".repeat(64);
+const HASH_TOKEN_4 = "4".repeat(64);
+const HASH_TOKEN_5 = "5".repeat(64);
+const HASH_RESET_1 = "e".repeat(64);
+const HASH_RESET_2 = "f".repeat(64);
+const HASH_INEXISTENTE = "0".repeat(64);
+const HASH_ROT_BASE = "6".repeat(64);
+const HASH_ROT_1 = "7".repeat(64);
+const HASH_ROT_2 = "8".repeat(64);
+const HASH_IP_CRU = "9".repeat(64);
 
 interface CheckResult {
   readonly n: number;
@@ -992,6 +1017,621 @@ async function runChecks(url: string): Promise<void> {
       isolamentoCodigo !== null,
       `codigo=${isolamentoCodigo ?? "NENHUM (isolamento mudou; reler a doc)"}`,
     );
+
+    // =======================================================================
+    // C7B2 — SESSOES, VERIFICACAO DE E-MAIL E RECUPERACAO DE SENHA
+    //
+    // Nota sobre TEMPO: o schema exige `expires_at > created_at`, entao nao ha
+    // como inserir algo ja expirado. A expiracao e provada avancando o `now`
+    // INJETADO — que e exatamente como o dominio a avalia. Nenhum teste depende
+    // do relogio real.
+    // =======================================================================
+    const sessions = createPrismaSessionStore(prisma);
+    const authTokens = createPrismaAuthTokenStore(prisma);
+
+    const T0 = new Date();
+    const daquiA = (ms: number): Date => new Date(T0.getTime() + ms);
+    const HORA = 3_600_000;
+
+    const dono = await identities.create(SCOPE, {
+      email: "c7b2@example.test",
+      emailNormalized: "c7b2@example.test",
+      displayName: null,
+    });
+    if (dono.kind !== "created") throw new Error("setup de dono do C7B2 falhou");
+    const donoId = dono.identity.id;
+
+    // ----------------------------- SESSOES ---------------------------------
+    const s1 = await sessions.create(SCOPE, {
+      userId: donoId,
+      tokenHash: HASH_SESSAO_1,
+      csrfTokenHash: HASH_CSRF_1,
+      expiresAt: daquiA(HORA),
+      rotatedFromSessionId: null,
+      ipHash: null,
+      userAgent: "agente-de-teste",
+    });
+    record(54, "cria sessao", s1.kind === "created", `kind=${s1.kind}`);
+    if (s1.kind !== "created") throw new Error("sessao base falhou");
+
+    const [linhaSessao] = await q<{
+      token_hash: string;
+      csrf_token_hash: string;
+      ip_hash: string | null;
+      revoked_at: Date | null;
+    }>(`SELECT * FROM "user_sessions" WHERE id = ${s1.sessionId}`);
+    record(
+      55,
+      "hashes de sessao e CSRF persistidos exatamente como recebidos",
+      linhaSessao!.token_hash === HASH_SESSAO_1 && linhaSessao!.csrf_token_hash === HASH_CSRF_1,
+      "hash-only",
+    );
+    record(
+      56,
+      "nenhum IP em texto claro (coluna nula quando o dominio nao envia hash)",
+      linhaSessao!.ip_hash === null,
+      `ip_hash=${String(linhaSessao!.ip_hash)}`,
+    );
+
+    const achadaSessao = await sessions.findByTokenHash(SCOPE, HASH_SESSAO_1);
+    record(
+      57,
+      "lookup por hash devolve o material de decisao",
+      achadaSessao.kind === "found" && achadaSessao.session.userId === donoId,
+      `kind=${achadaSessao.kind}`,
+    );
+    record(
+      58,
+      "o registro de sessao NAO carrega hash algum",
+      !JSON.stringify(achadaSessao, (_k, v) => (typeof v === "bigint" ? "0" : v)).includes(
+        HASH_SESSAO_1,
+      ),
+      "sem segredo no retorno",
+    );
+
+    const sessaoAusente = await sessions.findByTokenHash(SCOPE, HASH_INEXISTENTE);
+    record(
+      59,
+      "sessao inexistente e not_found",
+      sessaoAusente.kind === "not_found",
+      `kind=${sessaoAusente.kind}`,
+    );
+
+    // Expirada: o adapter NAO filtra; o dominio decide com `now`.
+    const expirouPeloDominio =
+      achadaSessao.kind === "found" &&
+      evaluateSessionAccess({
+        now: daquiA(2 * HORA),
+        session: achadaSessao.session,
+        userStatus: "active",
+      }).publicResult.ok === false;
+    record(
+      60,
+      "sessao vencida nao autentica (decidido pelo DOMINIO, com now avancado)",
+      expirouPeloDominio,
+      "evaluateSessionAccess recusou",
+    );
+
+    const ativaAgora =
+      achadaSessao.kind === "found" &&
+      evaluateSessionAccess({
+        now: daquiA(60_000),
+        session: achadaSessao.session,
+        userStatus: "active",
+      }).publicResult.ok === true;
+    record(61, "sessao vigente autentica (controle positivo)", ativaAgora, "acesso concedido");
+
+    const naoElegivel =
+      achadaSessao.kind === "found" &&
+      evaluateSessionAccess({
+        now: daquiA(60_000),
+        session: achadaSessao.session,
+        userStatus: "disabled",
+      }).publicResult.ok === false;
+    record(
+      62,
+      "conta desativada nao autentica mesmo com sessao vigente",
+      naoElegivel,
+      "fail-closed por status",
+    );
+
+    const ativas1 = await sessions.listActiveIds(SCOPE, { userId: donoId, now: daquiA(60_000) });
+    record(
+      63,
+      "listActiveIds devolve a sessao vigente",
+      ativas1.length === 1 && ativas1[0] === s1.sessionId,
+      `ids=${ativas1.length}`,
+    );
+    const ativasDepois = await sessions.listActiveIds(SCOPE, {
+      userId: donoId,
+      now: daquiA(2 * HORA),
+    });
+    record(
+      64,
+      "listActiveIds respeita `now`: apos o vencimento, nenhuma ativa",
+      ativasDepois.length === 0,
+      `ids=${ativasDepois.length}`,
+    );
+
+    const revoga1 = await sessions.revoke(SCOPE, {
+      sessionIds: [s1.sessionId],
+      now: daquiA(60_000),
+    });
+    record(65, "revoga sessao ativa", revoga1.revokedCount === 1, `count=${revoga1.revokedCount}`);
+
+    const revoga2 = await sessions.revoke(SCOPE, {
+      sessionIds: [s1.sessionId],
+      now: daquiA(120_000),
+    });
+    record(
+      66,
+      "revogar de novo e idempotente (nao conta, nao reescreve carimbo)",
+      revoga2.revokedCount === 0,
+      `count=${revoga2.revokedCount}`,
+    );
+
+    const revogadaLida = await sessions.findByTokenHash(SCOPE, HASH_SESSAO_1);
+    const revogadaRecusa =
+      revogadaLida.kind === "found" &&
+      revogadaLida.session.revokedAt !== null &&
+      evaluateSessionAccess({
+        now: daquiA(180_000),
+        session: revogadaLida.session,
+        userStatus: "active",
+      }).publicResult.ok === false;
+    record(67, "sessao revogada nao autentica", revogadaRecusa, "recusada com carimbo");
+
+    // Colisao de tokenHash.
+    const colisao = await sessions.create(SCOPE, {
+      userId: donoId,
+      tokenHash: HASH_SESSAO_1,
+      csrfTokenHash: HASH_CSRF_2,
+      expiresAt: daquiA(HORA),
+      rotatedFromSessionId: null,
+      ipHash: null,
+      userAgent: null,
+    });
+    record(
+      68,
+      "colisao de tokenHash e conflito tipado (alvo confirmado por leitura)",
+      colisao.kind === "conflict" && colisao.conflict.target === "session.tokenHash",
+      `kind=${colisao.kind}`,
+    );
+
+    // Disputa: duas criacoes com o MESMO hash.
+    const disputaSessao = await Promise.all([
+      sessions.create(SCOPE, {
+        userId: donoId,
+        tokenHash: HASH_SESSAO_2,
+        csrfTokenHash: HASH_CSRF_1,
+        expiresAt: daquiA(HORA),
+        rotatedFromSessionId: null,
+        ipHash: null,
+        userAgent: null,
+      }),
+      sessions.create(SCOPE, {
+        userId: donoId,
+        tokenHash: HASH_SESSAO_2,
+        csrfTokenHash: HASH_CSRF_2,
+        expiresAt: daquiA(HORA),
+        rotatedFromSessionId: null,
+        ipHash: null,
+        userAgent: null,
+      }),
+    ]);
+    const [linhasSessao2] = await q<{ c: bigint }>(
+      `SELECT count(*) AS c FROM "user_sessions" WHERE token_hash = '${HASH_SESSAO_2}'`,
+    );
+    record(
+      69,
+      "disputa de sessao: 1 vence, 1 conflita, 1 linha no banco",
+      disputaSessao.filter((r) => r.kind === "created").length === 1 &&
+        disputaSessao.filter((r) => r.kind === "conflict").length === 1 &&
+        Number(linhasSessao2!.c) === 1,
+      `linhas=${Number(linhasSessao2!.c)}`,
+    );
+
+    // --------------------- VERIFICACAO DE E-MAIL ---------------------------
+    const emitido = await authTokens.issue(SCOPE, {
+      userId: donoId,
+      purpose: "email_verification",
+      tokenHash: HASH_TOKEN_1,
+      expiresAt: daquiA(24 * HORA),
+    });
+    record(70, "emite token de verificacao", emitido.kind === "issued", `kind=${emitido.kind}`);
+
+    const [linhaToken] = await q<{ token_hash: string; consumed_at: Date | null }>(
+      `SELECT token_hash, consumed_at FROM "user_verification_tokens" WHERE token_hash = '${HASH_TOKEN_1}'`,
+    );
+    record(
+      71,
+      "hash do token persistido; nada em texto claro",
+      linhaToken!.token_hash === HASH_TOKEN_1 && linhaToken!.consumed_at === null,
+      "hash-only, pendente",
+    );
+
+    const consumoErrado = await authTokens.consume(SCOPE, {
+      tokenHash: HASH_TOKEN_1,
+      purpose: "password_reset",
+      now: daquiA(60_000),
+    });
+    record(
+      72,
+      "PROPOSITO ERRADO nao consome (token de verificacao nao reseta senha)",
+      consumoErrado.kind === "wrong_purpose",
+      `kind=${consumoErrado.kind}`,
+    );
+
+    const consumoOk = await authTokens.consume(SCOPE, {
+      tokenHash: HASH_TOKEN_1,
+      purpose: "email_verification",
+      now: daquiA(60_000),
+    });
+    record(
+      73,
+      "consome token valido e devolve o dono",
+      consumoOk.kind === "consumed" && consumoOk.userId === donoId,
+      `kind=${consumoOk.kind}`,
+    );
+
+    const [aposConsumo] = await q<{ consumed_at: Date | null }>(
+      `SELECT consumed_at FROM "user_verification_tokens" WHERE token_hash = '${HASH_TOKEN_1}'`,
+    );
+    record(
+      74,
+      "consumedAt gravado",
+      aposConsumo!.consumed_at !== null,
+      `consumed_at=${String(aposConsumo!.consumed_at)}`,
+    );
+
+    const replay = await authTokens.consume(SCOPE, {
+      tokenHash: HASH_TOKEN_1,
+      purpose: "email_verification",
+      now: daquiA(120_000),
+    });
+    record(
+      75,
+      "USO UNICO: segunda tentativa e already_consumed",
+      replay.kind === "already_consumed",
+      `kind=${replay.kind}`,
+    );
+
+    const inexistente = await authTokens.consume(SCOPE, {
+      tokenHash: HASH_INEXISTENTE,
+      purpose: "email_verification",
+      now: daquiA(60_000),
+    });
+    record(76, "token inexistente e not_found", inexistente.kind === "not_found", `kind=${inexistente.kind}`);
+
+    // Expirado: `now` avancado alem do TTL.
+    await authTokens.issue(SCOPE, {
+      userId: donoId,
+      purpose: "email_verification",
+      tokenHash: HASH_TOKEN_2,
+      expiresAt: daquiA(HORA),
+    });
+    const expirado = await authTokens.consume(SCOPE, {
+      tokenHash: HASH_TOKEN_2,
+      purpose: "email_verification",
+      now: daquiA(2 * HORA),
+    });
+    record(77, "token vencido nao consome", expirado.kind === "expired", `kind=${expirado.kind}`);
+
+    // Disputa: duas consumptions do MESMO token.
+    await authTokens.issue(SCOPE, {
+      userId: donoId,
+      purpose: "email_verification",
+      tokenHash: HASH_TOKEN_3,
+      expiresAt: daquiA(24 * HORA),
+    });
+    const disputaToken = await Promise.all([
+      authTokens.consume(SCOPE, {
+        tokenHash: HASH_TOKEN_3,
+        purpose: "email_verification",
+        now: daquiA(60_000),
+      }),
+      authTokens.consume(SCOPE, {
+        tokenHash: HASH_TOKEN_3,
+        purpose: "email_verification",
+        now: daquiA(60_000),
+      }),
+    ]);
+    record(
+      78,
+      "disputa de consumo: exatamente 1 vence (uso unico sob concorrencia)",
+      disputaToken.filter((r) => r.kind === "consumed").length === 1 &&
+        disputaToken.filter((r) => r.kind === "already_consumed").length === 1,
+      disputaToken.map((r) => r.kind).join(","),
+    );
+
+    // --------------------- RECUPERACAO DE SENHA ----------------------------
+    await credentials.createInitial(SCOPE, {
+      userId: donoId,
+      passwordHash: HASH_1,
+      algorithm: ALG_PORT,
+    });
+    await authTokens.issue(SCOPE, {
+      userId: donoId,
+      purpose: "password_reset",
+      tokenHash: HASH_RESET_1,
+      expiresAt: daquiA(2 * HORA),
+    });
+
+    // ROLLBACK: consumo + troca falham juntos.
+    let resetRollbackDisparou = false;
+    try {
+      await prisma.$transaction(async (tx) => {
+        const txTokens = createPrismaAuthTokenStore(tx);
+        const txCred = createPrismaPasswordCredentialStore(tx);
+        const c = await txTokens.consume(SCOPE, {
+          tokenHash: HASH_RESET_1,
+          purpose: "password_reset",
+          now: daquiA(60_000),
+        });
+        if (c.kind !== "consumed") throw new Error("setup do rollback falhou");
+        // A pre-imagem vem de `findForVerification` NO MESMO escopo — e assim
+        // que o reset alimenta o CAS sem receber a senha atual do usuario.
+        const atual = await txCred.findForVerification(SCOPE, c.userId);
+        if (atual.kind !== "found") throw new Error("credencial ausente");
+        throw new Error("falha proposital apos consumir o token");
+      });
+    } catch {
+      resetRollbackDisparou = true;
+    }
+    const [aposRollback] = await q<{ consumed_at: Date | null }>(
+      `SELECT consumed_at FROM "user_verification_tokens" WHERE token_hash = '${HASH_RESET_1}'`,
+    );
+    record(
+      79,
+      "falha apos o consumo desfaz o consumo (token volta a valer)",
+      resetRollbackDisparou && aposRollback!.consumed_at === null,
+      `consumed_at=${String(aposRollback!.consumed_at)}`,
+    );
+
+    // SUCESSO: consumo + troca comitam juntos.
+    const reset = await prisma.$transaction(async (tx) => {
+      const txTokens = createPrismaAuthTokenStore(tx);
+      const txCred = createPrismaPasswordCredentialStore(tx);
+      const txSessions = createPrismaSessionStore(tx);
+      const c = await txTokens.consume(SCOPE, {
+        tokenHash: HASH_RESET_1,
+        purpose: "password_reset",
+        now: daquiA(60_000),
+      });
+      if (c.kind !== "consumed") return { ok: false as const };
+      const atual = await txCred.findForVerification(SCOPE, c.userId);
+      if (atual.kind !== "found") return { ok: false as const };
+      const trocou = await txCred.replaceByPreimage(SCOPE, {
+        userId: c.userId,
+        expectedPasswordHash: atual.material.passwordHash,
+        nextPasswordHash: HASH_2,
+        nextAlgorithm: ALG_PORT_NOVO,
+      });
+      // Reset SEMPRE derruba as sessoes e queima os demais links pendentes.
+      const ativas = await txSessions.listActiveIds(SCOPE, {
+        userId: c.userId,
+        now: daquiA(60_000),
+      });
+      await txSessions.revoke(SCOPE, { sessionIds: ativas, now: daquiA(60_000) });
+      const queimados = await txTokens.invalidatePending(SCOPE, {
+        userId: c.userId,
+        purpose: "password_reset",
+        now: daquiA(60_000),
+      });
+      return { ok: trocou.kind === "updated", queimados: queimados.invalidatedCount };
+    });
+    record(
+      80,
+      "consumo + troca de senha comitam JUNTOS na mesma transacao",
+      reset.ok === true,
+      `ok=${reset.ok}`,
+    );
+
+    const [senhaFinal] = await q<{ password_hash: string }>(
+      `SELECT password_hash FROM "user_password_credentials" WHERE user_id = ${donoId}`,
+    );
+    record(
+      81,
+      "hash antigo deixa de ser o atual; o novo esta persistido",
+      senhaFinal!.password_hash === HASH_2,
+      "credencial trocada",
+    );
+
+    const resetReplay = await authTokens.consume(SCOPE, {
+      tokenHash: HASH_RESET_1,
+      purpose: "password_reset",
+      now: daquiA(120_000),
+    });
+    record(
+      82,
+      "token de reset e uso unico apos o commit",
+      resetReplay.kind === "already_consumed",
+      `kind=${resetReplay.kind}`,
+    );
+
+    const ativasPosReset = await sessions.listActiveIds(SCOPE, {
+      userId: donoId,
+      now: daquiA(60_000),
+    });
+    record(
+      83,
+      "reset derruba todas as sessoes vigentes",
+      ativasPosReset.length === 0,
+      `ativas=${ativasPosReset.length}`,
+    );
+
+    // Queima de pendentes: emite dois e invalida.
+    await authTokens.issue(SCOPE, {
+      userId: donoId,
+      purpose: "password_reset",
+      tokenHash: HASH_RESET_2,
+      expiresAt: daquiA(2 * HORA),
+    });
+    const queima = await authTokens.invalidatePending(SCOPE, {
+      userId: donoId,
+      purpose: "password_reset",
+      now: daquiA(60_000),
+    });
+    const aindaVale = await authTokens.consume(SCOPE, {
+      tokenHash: HASH_RESET_2,
+      purpose: "password_reset",
+      now: daquiA(90_000),
+    });
+    record(
+      84,
+      "invalidatePending queima os pendentes (link antigo nao vale mais)",
+      queima.invalidatedCount === 1 && aindaVale.kind === "already_consumed",
+      `queimados=${queima.invalidatedCount}`,
+    );
+
+    // Verificacao de e-mail NAO e queimada pela invalidacao de reset.
+    await authTokens.issue(SCOPE, {
+      userId: donoId,
+      purpose: "email_verification",
+      tokenHash: HASH_TOKEN_4,
+      expiresAt: daquiA(24 * HORA),
+    });
+    await authTokens.invalidatePending(SCOPE, {
+      userId: donoId,
+      purpose: "password_reset",
+      now: daquiA(60_000),
+    });
+    const verificacaoIntacta = await authTokens.consume(SCOPE, {
+      tokenHash: HASH_TOKEN_4,
+      purpose: "email_verification",
+      now: daquiA(90_000),
+    });
+    record(
+      85,
+      "queimar reset NAO afeta tokens de verificacao (purpose isola)",
+      verificacaoIntacta.kind === "consumed",
+      `kind=${verificacaoIntacta.kind}`,
+    );
+
+    // --------------------- TRANSACAO NAO ENVENENADA ------------------------
+    let tokenTx: { conflito: string; leuDepois: boolean; criouDepois: string } | null = null;
+    let erroTokenTx: string | null = null;
+    try {
+      tokenTx = await prisma.$transaction(async (tx) => {
+        const txTokens = createPrismaAuthTokenStore(tx);
+        const txSessions = createPrismaSessionStore(tx);
+        // Conflito ESPERADO: hash ja emitido.
+        const conflito = await txTokens.issue(SCOPE, {
+          userId: donoId,
+          purpose: "email_verification",
+          tokenHash: HASH_TOKEN_1,
+          expiresAt: daquiA(24 * HORA),
+        });
+        // Query valida DEPOIS do conflito — aqui morreria com 25P02.
+        const leitura = await txSessions.listActiveIds(SCOPE, {
+          userId: donoId,
+          now: daquiA(60_000),
+        });
+        const depois = await txTokens.issue(SCOPE, {
+          userId: donoId,
+          purpose: "email_verification",
+          tokenHash: HASH_TOKEN_5,
+          expiresAt: daquiA(24 * HORA),
+        });
+        return {
+          conflito: conflito.kind,
+          leuDepois: Array.isArray(leitura),
+          criouDepois: depois.kind,
+        };
+      });
+    } catch (e) {
+      const code = (e as { code?: unknown }).code;
+      erroTokenTx = typeof code === "string" ? code : (e as Error).message.slice(0, 60);
+    }
+    record(
+      86,
+      "conflito esperado de token nao envenena a transacao",
+      erroTokenTx === null && tokenTx?.conflito === "conflict" && tokenTx?.leuDepois === true,
+      `erro=${erroTokenTx ?? "nenhum"} kind=${tokenTx?.conflito ?? "-"}`,
+    );
+    const [tokenDepoisRow] = await q<{ c: bigint }>(
+      `SELECT count(*) AS c FROM "user_verification_tokens" WHERE token_hash = '${HASH_TOKEN_5}'`,
+    );
+    record(
+      87,
+      "COMMIT REAL apos conflito esperado (escrita posterior persiste)",
+      tokenTx?.criouDepois === "issued" && Number(tokenDepoisRow!.c) === 1,
+      `linhas=${Number(tokenDepoisRow!.c)}`,
+    );
+
+    const [semPlaintext] = await q<{ c: bigint }>(
+      `SELECT count(*) AS c FROM "user_verification_tokens" WHERE token_hash !~ '^[0-9a-f]{64}$'`,
+    );
+    record(
+      88,
+      "nenhum token fora da forma sha256 hex (nada em claro no banco)",
+      Number(semPlaintext!.c) === 0,
+      `fora de forma=${Number(semPlaintext!.c)}`,
+    );
+
+    // Achados da revisao adversarial do C7B2, agora travados em banco real.
+    const rotBase = await sessions.create(SCOPE, {
+      userId: donoId,
+      tokenHash: HASH_ROT_BASE,
+      csrfTokenHash: HASH_CSRF_1,
+      expiresAt: daquiA(HORA),
+      rotatedFromSessionId: null,
+      ipHash: null,
+      userAgent: null,
+    });
+    if (rotBase.kind !== "created") throw new Error("setup de rotacao falhou");
+    const rot1 = await sessions.create(SCOPE, {
+      userId: donoId,
+      tokenHash: HASH_ROT_1,
+      csrfTokenHash: HASH_CSRF_1,
+      expiresAt: daquiA(HORA),
+      rotatedFromSessionId: rotBase.sessionId,
+      ipHash: null,
+      userAgent: null,
+    });
+    // Segunda rotacao da MESMA origem: duplo clique, aba paralela, retry.
+    const rot2 = await sessions.create(SCOPE, {
+      userId: donoId,
+      tokenHash: HASH_ROT_2,
+      csrfTokenHash: HASH_CSRF_1,
+      expiresAt: daquiA(HORA),
+      rotatedFromSessionId: rotBase.sessionId,
+      ipHash: null,
+      userAgent: null,
+    });
+    record(
+      89,
+      "rotacao concorrente da mesma origem e CONFLITO tipado, nao excecao",
+      rot1.kind === "created" &&
+        rot2.kind === "conflict" &&
+        rot2.conflict.target === "session.rotatedFrom",
+      `1a=${rot1.kind} 2a=${rot2.kind}`,
+    );
+
+    // IP CRU: o banco nao tem CHECK em `ip_hash`; o adapter e a ultima linha.
+    let ipCruBarrado = false;
+    try {
+      await sessions.create(SCOPE, {
+        userId: donoId,
+        tokenHash: HASH_IP_CRU,
+        csrfTokenHash: HASH_CSRF_1,
+        expiresAt: daquiA(HORA),
+        rotatedFromSessionId: null,
+        ipHash: "192.168.0.1",
+        userAgent: null,
+      });
+    } catch {
+      ipCruBarrado = true;
+    }
+    const [linhasIpCru] = await q<{ c: bigint }>(
+      `SELECT count(*) AS c FROM "user_sessions" WHERE ip_hash = '192.168.0.1'`,
+    );
+    record(
+      90,
+      "IP em texto claro e barrado ANTES do disco (fail-closed no adapter)",
+      ipCruBarrado && Number(linhasIpCru!.c) === 0,
+      `barrado=${ipCruBarrado} linhas=${Number(linhasIpCru!.c)}`,
+    );
   } finally {
     await prisma.$disconnect();
   }
@@ -1008,7 +1648,7 @@ async function main(): Promise<void> {
     persistent: false,
   });
   console.log(
-    `\n=== C7B1 — adapters Prisma de identidade e credencial | Postgres 16 efemero :${port} (postgres:****) ===\n`,
+    `\n=== C7B1+C7B2 — adapters Prisma de identidade, credencial, sessao e tokens | Postgres 16 efemero :${port} (postgres:****) ===\n`,
   );
 
   let started = false;
@@ -1047,7 +1687,7 @@ async function main(): Promise<void> {
     console.error("FALHAS:", failed.map((f) => `${f.n}.${f.name}`).join(" | "));
     process.exit(1);
   }
-  console.log("Resultado: PASSOU. Adapters de identidade e credencial validados em PostgreSQL 16 real.");
+  console.log("Resultado: PASSOU. Adapters de identidade, credencial, sessao e tokens validados em PostgreSQL 16 real.");
 }
 
 main().catch((e) => {

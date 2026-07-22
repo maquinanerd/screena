@@ -17,7 +17,13 @@ import type {
   SnapshotPublicationPlan,
   StoredFeedback,
 } from "../recommendations/index.js";
+import type { SessionRecord, VerificationTokenRecord } from "../auth/types.js";
 import type {
+  AuthTokenConsumeInput,
+  AuthTokenConsumeResult,
+  AuthTokenInvalidatePendingInput,
+  AuthTokenInvalidatePendingResult,
+  AuthTokenIssueResult,
   CredentialCreateInput,
   CredentialCreateResult,
   CredentialReplaceInput,
@@ -27,6 +33,11 @@ import type {
   IdentityCreateResult,
   IdentityLookupResult,
   PersistenceOutcome,
+  SessionCreateResult,
+  SessionListActiveInput,
+  SessionLookupResult,
+  SessionRevokeInput,
+  SessionRevokeResult,
   TransactionScope,
   WrittenRowRef,
 } from "./types.js";
@@ -47,9 +58,24 @@ export interface TransactionRunner {
  *  - `decideLogin` (auth/flows.ts:95) precisa de existencia + status.
  *
  * Deliberadamente NAO ha: `update` generico, `delete`, listagem, busca por
- * handle, `markEmailVerified` nem `transitionStatus` — nenhum fluxo desta
- * unidade os consome (verificacao e C7B2; LGPD e C7B3). Sem CRUD generico e sem
- * operacao administrativa.
+ * handle nem `transitionStatus`. Sem CRUD generico e sem operacao
+ * administrativa.
+ *
+ * PORT_GAP REGISTRADO EM C7B2 (nao resolvido aqui, de proposito):
+ *
+ *  - falta `findById(userId) -> status`. `evaluateSessionAccess` exige
+ *    `userStatus`, e `SessionAccessRecord` devolve `userId` justamente para
+ *    busca-lo — mas nenhum metodo publicado o obtem a partir de um id. Sem isso,
+ *    VALIDAR SESSAO (o caminho de toda requisicao autenticada) nao e componivel.
+ *  - falta `markEmailVerified` e um `emailVerifiedAt` legivel.
+ *    `AuthTokenStore.consume` devolve o `userId` do token para
+ *    `applyEmailVerification`, mas nada persiste o carimbo nem alimenta o
+ *    `alreadyVerified` de `evaluateVerificationResend`.
+ *
+ * Contraste que delimita o gap: recuperacao de senha FECHA de ponta a ponta
+ * (provado em PostgreSQL real); verificacao de e-mail e validacao de sessao NAO.
+ * Ampliar este port pertence a unidade que trouxer esses fluxos — corrigi-lo
+ * dentro do C7B2 seria mexer no contrato de outra unidade sem escopo.
  *
  * Nenhum retorno carrega `passwordHash`: credencial e outro port.
  */
@@ -163,4 +189,87 @@ export interface RecommendationFeedbackStore {
     scope: TransactionScope,
     input: { readonly ownerUserId: bigint },
   ): Promise<readonly StoredFeedback[]>;
+}
+
+/**
+ * SESSOES (C7B2). Os metodos sao DERIVADOS das structs que o dominio ja publica:
+ *  - `buildSessionCreation`/`buildSessionRotation` produzem `SessionRecord` -> `create`;
+ *  - `evaluateSessionAccess` consome `{ expiresAt, revokedAt }` + status -> `findByTokenHash`;
+ *  - `planLogout`/`planRevokeAll`/`planRevokeAllAfterSensitiveEvent` produzem
+ *    `revokeSessionIds: readonly bigint[]` -> `revoke` (um metodo, tres planos);
+ *  - `planRevokeAll` e `buildPasswordChange` CONSOMEM `activeSessionIds` -> `listActiveIds`.
+ *
+ * Deliberadamente NAO ha: `touch`/`lastUsedAt` (nenhuma funcao pura o produz),
+ * `deleteExpired`/`purge` (sem consumidor), `rotate` (e composicao de `create` +
+ * `revoke` na mesma transacao, decidida por `buildSessionRotation`).
+ *
+ * O adapter NAO decide vigencia no lookup: `evaluateSessionAccess` compara
+ * `now >= expiresAt` e olha `revokedAt` para separar expirada de revogada. Se o
+ * adapter filtrasse, a politica existiria em dois lugares e o motivo interno de
+ * auditoria se perderia.
+ */
+export interface SessionStore {
+  /** Persiste a sessao ja montada pelo dominio (so hashes). */
+  create(scope: TransactionScope, record: SessionRecord): Promise<SessionCreateResult>;
+
+  /**
+   * Busca pelo hash do token — nunca pelo token cru, que jamais chega aqui.
+   * Devolve o material de decisao SEM filtrar: expirada e revogada tambem sao
+   * `found`, porque quem decide e o dominio.
+   */
+  findByTokenHash(scope: TransactionScope, tokenHash: string): Promise<SessionLookupResult>;
+
+  /** Revoga em lote, com `now` explicito. Idempotente: ja revogada nao conta. */
+  revoke(scope: TransactionScope, input: SessionRevokeInput): Promise<SessionRevokeResult>;
+
+  /** Ids das sessoes VIGENTES em `now` — insumo de `activeSessionIds`. */
+  listActiveIds(
+    scope: TransactionScope,
+    input: SessionListActiveInput,
+  ): Promise<readonly bigint[]>;
+}
+
+/**
+ * TOKENS DE USO UNICO (C7B2) — verificacao de e-mail e recuperacao de senha.
+ *
+ * UM port para os DOIS fluxos porque o schema tem UMA tabela
+ * (`user_verification_tokens`) discriminada por um enum FECHADO
+ * (`AuthTokenPurpose`), e o dominio produz a MESMA struct
+ * (`VerificationTokenRecord`) nos dois casos — mudando so o `purpose`. Dois
+ * ports sobre a mesma tabela seriam duplicacao; um port "de token generico"
+ * seria abstracao sem dono.
+ *
+ * O `purpose` e pre-condicao de consumo, nao rotulo: token de verificacao nunca
+ * troca senha, token de reset nunca verifica e-mail.
+ *
+ * Deliberadamente NAO ha `findByTokenHash`: ler para depois decidir e escrever
+ * abriria a janela de replay que `consume` fecha atomicamente. O unico dado que
+ * a leitura traria a mais — o `userId` — sai do proprio consumo.
+ */
+export interface AuthTokenStore {
+  /** Persiste o token ja montado pelo dominio (so o hash). */
+  issue(
+    scope: TransactionScope,
+    record: VerificationTokenRecord,
+  ): Promise<AuthTokenIssueResult>;
+
+  /**
+   * Consumo ATOMICO de uso unico: hash + proposito + nao-consumido + nao-expirado
+   * sao PRE-CONDICOES da escrita, avaliadas pelo banco no mesmo comando que
+   * marca `consumedAt`. Duas tentativas concorrentes -> exatamente uma vence.
+   */
+  consume(
+    scope: TransactionScope,
+    input: AuthTokenConsumeInput,
+  ): Promise<AuthTokenConsumeResult>;
+
+  /**
+   * Queima todos os tokens pendentes de um proposito. Consumidor:
+   * `applyPasswordReset` (`invalidateAllPendingResetTokens: true`) — trocada a
+   * senha, nenhum outro link de reset pode continuar valendo.
+   */
+  invalidatePending(
+    scope: TransactionScope,
+    input: AuthTokenInvalidatePendingInput,
+  ): Promise<AuthTokenInvalidatePendingResult>;
 }

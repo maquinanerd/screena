@@ -58,4 +58,7 @@ import type { PrismaClient } from "@screena/db/server";
  * a mao) faz de uma mudanca de versao do driver um erro de typecheck, nao uma
  * divergencia silenciosa.
  */
-export type PrismaExecutor = Pick<PrismaClient, "user" | "passwordCredential">;
+export type PrismaExecutor = Pick<
+  PrismaClient,
+  "user" | "passwordCredential" | "userSession" | "verificationToken"
+>;

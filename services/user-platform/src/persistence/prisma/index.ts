@@ -21,3 +21,5 @@ export { createPrismaIdentityStore } from "./identity-store.js";
 export { createPrismaPasswordCredentialStore } from "./password-credential-store.js";
 export type { PrismaExecutor } from "./executor.js";
 export { UnmappableRowError } from "./mappers.js";
+export { createPrismaSessionStore } from "./session-store.js";
+export { createPrismaAuthTokenStore } from "./auth-token-store.js";

@@ -9,7 +9,7 @@
  * dominios puros continuam sem saber que persistencia existe.
  */
 
-import type { UserStatus } from "../core/types.js";
+import type { AuthTokenPurpose, UserStatus } from "../core/types.js";
 
 /**
  * Escopo transacional OPACO. O adapter (C7B) o liga ao client concreto; este
@@ -53,7 +53,18 @@ export type UniqueConflictTarget =
   | "identity.emailNormalized"
   | "identity.handle"
   /** Ja existe credencial para o usuario (relacao 1:1 do schema). */
-  | "credential.user";
+  | "credential.user"
+  /** Colisao do hash do token de sessao (unique em `user_sessions`). */
+  | "session.tokenHash"
+  /**
+   * A sessao de origem da rotacao ja foi rotacionada (`rotated_from_id` e unique).
+   * Nao e estado impossivel: duplo clique, aba paralela ou retry rotacionam a
+   * MESMA sessao duas vezes. Sem este alvo, o caminho mais provavel de contencao
+   * real viraria excecao em vez de conflito tipado.
+   */
+  | "session.rotatedFrom"
+  /** Colisao do hash do token de uso unico (unique em `user_verification_tokens`). */
+  | "authToken.tokenHash";
 
 /**
  * Alvos de divergencia de PRE-IMAGEM (compare-and-swap). NAO indica unicidade:
@@ -211,3 +222,136 @@ export type CredentialReplaceResult =
   | { readonly kind: "not_found" }
   /** A pre-imagem nao corresponde mais (`stale_preimage`) — nunca sobrescrever. */
   | { readonly kind: "conflict"; readonly conflict: PersistenceConflict };
+
+// ---------------------------------------------------------------------------
+// C7B2 — SESSOES
+//
+// A struct persistivel ja existe no dominio: `SessionRecord` (auth/types.ts),
+// produzida por `buildSessionCreation`/`buildSessionRotation` com SO hashes. A
+// persistencia nao a redefine — recebe-a como esta.
+// ---------------------------------------------------------------------------
+
+/**
+ * Sessao como a PERSISTENCIA devolve. Minimo ESTRITO, cada campo com consumidor:
+ *  - `id`         -> `planLogout`/`planRevokeAll` revogam POR ID;
+ *  - `userId`     -> buscar o status da conta (`accountCanHoldSession`);
+ *  - `expiresAt`  -> `evaluateSessionAccess` compara com `now`;
+ *  - `revokedAt`  -> `evaluateSessionAccess` distingue revogada de expirada.
+ *
+ * NAO carrega `tokenHash` nem `csrfTokenHash`: quem consultou ja tem o hash, e
+ * devolve-lo ampliaria a superficie do segredo sem leitor. Tambem nao carrega
+ * `ipHash`, `userAgent`, `lastUsedAt`, `revokedReason` nem `rotatedFromId` —
+ * nenhuma funcao pura os consome.
+ */
+export interface SessionAccessRecord {
+  readonly id: bigint;
+  readonly userId: bigint;
+  readonly expiresAt: Date;
+  readonly revokedAt: Date | null;
+}
+
+export type SessionCreateResult =
+  | { readonly kind: "created"; readonly sessionId: bigint }
+  /** `token_hash` ja existe (colisao de token, praticamente impossivel). */
+  | { readonly kind: "conflict"; readonly conflict: PersistenceConflict };
+
+export type SessionLookupResult =
+  | { readonly kind: "found"; readonly session: SessionAccessRecord }
+  | { readonly kind: "not_found" };
+
+/**
+ * Revogacao em LOTE porque os tres planos do dominio (`planLogout`,
+ * `planRevokeAll`, `planRevokeAllAfterSensitiveEvent`) produzem exatamente a
+ * mesma forma: `revokeSessionIds: readonly bigint[]`. Um metodo por plano seria
+ * tres nomes para uma operacao so.
+ *
+ * `now` entra por PARAMETRO — o adapter nunca le o relogio. Idempotente: ja
+ * revogada nao e erro (o dominio declara isso em `planLogout`), entao o
+ * resultado conta quantas mudaram, sem distinguir "nao existia" de "ja estava".
+ */
+export interface SessionRevokeInput {
+  readonly sessionIds: readonly bigint[];
+  readonly now: Date;
+}
+
+export interface SessionRevokeResult {
+  /** Quantas sessoes SAIRAM de ativa nesta chamada. */
+  readonly revokedCount: number;
+}
+
+/**
+ * Entrada da listagem de sessoes ativas. `now` e explicito de proposito: o
+ * criterio de vigencia (`expiresAt > now`) e temporal, e a regra do dominio e
+ * que tempo entra por parametro. Deixar o adapter chamar o relogio quebraria a
+ * determinismo dos testes e criaria uma segunda fonte de "agora".
+ */
+export interface SessionListActiveInput {
+  readonly userId: bigint;
+  readonly now: Date;
+}
+
+// ---------------------------------------------------------------------------
+// C7B2 — TOKENS DE USO UNICO (verificacao de e-mail e recuperacao de senha)
+//
+// UMA tabela, UM contrato, discriminados por `purpose`: e o que o schema define
+// (`user_verification_tokens` com o enum fechado `AuthTokenPurpose`) e o que o
+// dominio produz (`VerificationTokenRecord`, identica para os dois fluxos, so
+// mudando `purpose`). Dois stores sobre a mesma tabela seriam duplicacao
+// artificial; um store generico "de qualquer coisa" seria abstracao vazia.
+// ---------------------------------------------------------------------------
+
+export type AuthTokenIssueResult =
+  | { readonly kind: "issued"; readonly tokenId: bigint }
+  /** `token_hash` ja existe. */
+  | { readonly kind: "conflict"; readonly conflict: PersistenceConflict };
+
+/**
+ * Consumo de uso unico. Recebe o HASH (o token cru nunca chega aqui), o
+ * proposito esperado e o `now` da decisao.
+ *
+ * O `purpose` e parte da PRE-CONDICAO, nao um filtro posterior: um token de
+ * verificacao nunca pode redefinir senha, e vice-versa.
+ */
+export interface AuthTokenConsumeInput {
+  readonly tokenHash: string;
+  readonly purpose: AuthTokenPurpose;
+  readonly now: Date;
+}
+
+/**
+ * Resultado do consumo. Os motivos espelham `TokenConsumptionReason`
+ * (auth/tokens.ts) porque sao os mesmos estados que o dominio ja sabe nomear —
+ * nao ha taxonomia nova.
+ *
+ * `userId` sai junto do consumo porque `applyEmailVerification` e
+ * `applyPasswordReset` precisam saber DE QUEM era o token, e essa e a unica
+ * leitura que amarra o token ao usuario dentro do mesmo passo atomico. Buscar o
+ * usuario depois, por fora, abriria janela entre consumir e aplicar.
+ *
+ * A borda publica NUNCA diferencia estes motivos (anti-enumeracao): o dominio ja
+ * colapsa todos em `GENERIC_TOKEN_FAILURE_MESSAGE`.
+ */
+export type AuthTokenConsumeResult =
+  | { readonly kind: "consumed"; readonly userId: bigint }
+  | { readonly kind: "not_found" }
+  | { readonly kind: "wrong_purpose" }
+  | { readonly kind: "expired" }
+  | { readonly kind: "already_consumed" };
+
+/**
+ * Invalidacao em lote dos tokens PENDENTES de um proposito.
+ *
+ * Consumidor real: `applyPasswordReset` devolve
+ * `invalidateAllPendingResetTokens: true` — depois de trocar a senha, nenhum
+ * outro link de reset pode continuar valendo. Marcar `consumedAt` e a forma de
+ * "queimar" sem apagar historico.
+ */
+export interface AuthTokenInvalidatePendingInput {
+  readonly userId: bigint;
+  readonly purpose: AuthTokenPurpose;
+  readonly now: Date;
+}
+
+export interface AuthTokenInvalidatePendingResult {
+  readonly invalidatedCount: number;
+}
