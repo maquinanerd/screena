@@ -20,6 +20,7 @@ import {
   type UserStatus,
 } from "../../core/types.js";
 import type {
+  AuthThrottleState,
   CredentialVerificationMaterial,
   EmailVerificationState,
   IdentityRecord,
@@ -180,5 +181,28 @@ export function toEmailVerificationState(row: EmailVerificationStateRow): EmailV
     // Fail-closed no mapa explicito: status desconhecido LANCA em vez de
     // atravessar como se fosse elegivel.
     status: toUserStatus(row.status),
+  };
+}
+
+/** Linha MINIMA de contagem de throttle (C7C). */
+export interface AuthThrottleRow {
+  readonly failureCount: number;
+  readonly windowStartedAt: Date;
+  readonly lockedUntil: Date | null;
+}
+
+/**
+ * `AuthThrottleState` = as tres colunas de estado, campo a campo.
+ *
+ * NAO carrega `scope`/`key` (quem consultou ja os tem, e `key` pode ser o
+ * e-mail normalizado — PII sem leitor do outro lado) nem `id`/timestamps.
+ * `lockedUntil` permanece `null` quando e null: converte-lo para uma data no
+ * passado faria o adapter decidir vigencia, que e trabalho de `evaluateThrottle`.
+ */
+export function toAuthThrottleState(row: AuthThrottleRow): AuthThrottleState {
+  return {
+    failureCount: row.failureCount,
+    windowStartedAt: row.windowStartedAt,
+    lockedUntil: row.lockedUntil,
   };
 }

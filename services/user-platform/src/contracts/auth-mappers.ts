@@ -20,6 +20,7 @@ import type {
   CurrentUserDto,
   GenericAcceptedDto,
   PublicAuthFailureDto,
+  PublicConfirmationDto,
   PublicFailureCode,
   PublicLoginSuccessDto,
   PublicLogoutDto,
@@ -123,4 +124,13 @@ export function toGenericAcceptedDto(): GenericAcceptedDto {
 /** Confirmacao generica de logout. */
 export function toPublicLogoutDto(): PublicLogoutDto {
   return { ok: true, status: "signed_out" };
+}
+
+/**
+ * Confirmacao de token consumido — sempre o mesmo objeto, sem detalhe. Vale
+ * igualmente para verificacao de e-mail e recuperacao de senha: um corpo
+ * diferente por fluxo nao acrescentaria nada ao cliente e so criaria superficie.
+ */
+export function toPublicConfirmationDto(): PublicConfirmationDto {
+  return { ok: true, status: "confirmed" };
 }

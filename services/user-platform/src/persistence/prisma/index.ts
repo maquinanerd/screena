@@ -23,3 +23,4 @@ export type { PrismaExecutor } from "./executor.js";
 export { UnmappableRowError } from "./mappers.js";
 export { createPrismaSessionStore } from "./session-store.js";
 export { createPrismaAuthTokenStore } from "./auth-token-store.js";
+export { createPrismaAuthThrottleStore } from "./auth-throttle-store.js";

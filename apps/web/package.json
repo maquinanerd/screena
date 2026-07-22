@@ -29,7 +29,8 @@
     "@screena/ui": "workspace:*",
     "@screena/types": "workspace:*",
     "@screena/db": "workspace:*",
-    "@screena/public-contracts": "workspace:*"
+    "@screena/public-contracts": "workspace:*",
+    "@screena/user-platform": "workspace:*"
   },
   "devDependencies": {
     "tailwindcss": "^3.4.0",

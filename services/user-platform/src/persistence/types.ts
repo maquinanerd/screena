@@ -9,7 +9,7 @@
  * dominios puros continuam sem saber que persistencia existe.
  */
 
-import type { AuthTokenPurpose, UserStatus } from "../core/types.js";
+import type { AuthTokenPurpose, ThrottleScope, UserStatus } from "../core/types.js";
 
 /**
  * Escopo transacional OPACO. O adapter (C7B) o liga ao client concreto; este
@@ -68,9 +68,14 @@ export type UniqueConflictTarget =
 
 /**
  * Alvos de divergencia de PRE-IMAGEM (compare-and-swap). NAO indica unicidade:
- * o hash NAO tem unique — e apenas o valor comparado no swap.
+ * o valor comparado no swap nao tem unique — e apenas a pre-imagem lida.
+ *
+ * `authThrottle.window` entrou em C7C: a contagem de tentativas tambem e trocada
+ * por CAS (ler estado -> dominio decide -> gravar SE a linha nao mudou). Sem um
+ * alvo proprio, um conflito de throttle seria reportado como conflito de
+ * credencial — dois fatos diferentes com o mesmo rotulo.
  */
-export type PreimageConflictTarget = "credential.passwordHash";
+export type PreimageConflictTarget = "credential.passwordHash" | "authThrottle.window";
 
 /** Uniao fechada de todos os alvos (util para documentacao e testes). */
 export type PersistenceConflictTarget = UniqueConflictTarget | PreimageConflictTarget;
@@ -423,3 +428,64 @@ export interface EmailVerificationState {
 export type EmailVerificationStateLookupResult =
   | { readonly kind: "found"; readonly state: EmailVerificationState }
   | { readonly kind: "not_found" };
+
+// ---------------------------------------------------------------------------
+// C7C — THROTTLE DURAVEL DE AUTENTICACAO
+//
+// O model `AuthThrottle` (`user_auth_throttles`) ja existia no schema desde
+// 20260717150000, com `@@unique([scope, key])`, e a POLITICA pura ja existia em
+// `auth/policy.ts` (`evaluateThrottle`, `registerFailure`). Faltava so o
+// contrato entre as duas — e sem ele os endpoints publicos de C7C ficariam sem
+// limite duravel, ou dependeriam de um `Map` em memoria que nao sobrevive a um
+// restart nem vale entre replicas.
+//
+// NAO ha migration nesta unidade: nenhuma coluna foi criada, renomeada ou
+// removida.
+// ---------------------------------------------------------------------------
+
+/**
+ * Estado de contagem de UMA chave de throttle, exatamente como as colunas o
+ * guardam. Espelha `ThrottleState` (auth/policy.ts) MENOS `previousLockouts`,
+ * que nao tem coluna: o lockout progressivo entre janelas nao e persistivel
+ * hoje, e inventar uma coluna aqui exigiria migration fora de escopo. O efeito
+ * pratico esta documentado em docs/product/user-product-auth-runtime.md.
+ */
+export interface AuthThrottleState {
+  readonly failureCount: number;
+  readonly windowStartedAt: Date;
+  readonly lockedUntil: Date | null;
+}
+
+/**
+ * Chave natural da contagem. `key` NUNCA carrega IP em texto claro: para o
+ * escopo `ip` o valor e um hash, como a propria coluna documenta no schema.
+ */
+export interface AuthThrottleKey {
+  readonly scope: ThrottleScope;
+  readonly key: string;
+}
+
+/**
+ * Escrita por COMPARE-AND-SWAP.
+ *
+ * `expected = null` significa "a leitura nao encontrou linha" e vira insercao
+ * nao-abortiva; `expected != null` vira update com a pre-imagem no WHERE. Sem a
+ * pre-imagem, dois pedidos concorrentes leriam a mesma contagem e o segundo
+ * sobrescreveria o primeiro — o limite seria silenciosamente maior do que a
+ * politica declara.
+ */
+export interface AuthThrottleSaveInput {
+  readonly scope: ThrottleScope;
+  readonly key: string;
+  readonly expected: AuthThrottleState | null;
+  readonly next: AuthThrottleState;
+}
+
+export type AuthThrottleReadResult =
+  | { readonly kind: "found"; readonly state: AuthThrottleState }
+  | { readonly kind: "not_found" };
+
+export type AuthThrottleSaveResult =
+  | { readonly kind: "saved" }
+  /** A linha mudou entre a leitura e a escrita: outro pedido ja contou. */
+  | { readonly kind: "conflict"; readonly conflict: PersistenceConflict };

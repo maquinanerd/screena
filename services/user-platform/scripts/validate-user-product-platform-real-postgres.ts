@@ -32,6 +32,7 @@ import { createPrismaIdentityStore } from "../src/persistence/prisma/identity-st
 import { createPrismaPasswordCredentialStore } from "../src/persistence/prisma/password-credential-store.js";
 import { createPrismaSessionStore } from "../src/persistence/prisma/session-store.js";
 import { createPrismaAuthTokenStore } from "../src/persistence/prisma/auth-token-store.js";
+import { createPrismaAuthThrottleStore } from "../src/persistence/prisma/auth-throttle-store.js";
 import { evaluateSessionAccess } from "../src/auth/sessions.js";
 import {
   applyEmailVerification,
@@ -2459,6 +2460,210 @@ async function runChecks(url: string): Promise<void> {
       "sucesso POSTERIOR: reabilitada a conta, o token preservado conclui",
       confReabilitada === "verified" && carimboReabilitado!.email_verified_at !== null,
       `resultado=${confReabilitada}`,
+    );
+
+    // =======================================================================
+    // C7C - THROTTLE DURAVEL (user_auth_throttles)
+    //
+    // A politica (janela deslizante, lockout) e pura e ja testada em
+    // `auth/policy.ts`. O que SO o banco responde e o que se prova aqui: se o
+    // compare-and-swap elege UM vencedor sob concorrencia real, se o unique
+    // (scope, key) separa os escopos, se `updated_at` (NOT NULL, sem default) e
+    // honrado pelo `updateMany`, e - a regra da camada - se um thrConflito
+    // ESPERADO deixa a transacao interativa utilizavel.
+    // =======================================================================
+    const throttles = createPrismaAuthThrottleStore(prisma);
+    const CHAVE = "password_reset:c7c@example.test";
+    const JANELA = daquiA(0);
+
+    const leituraVazia = await throttles.read(SCOPE, { scope: "email", key: CHAVE });
+    record(
+      133,
+      "throttle: chave inexistente e not_found (nao e erro)",
+      leituraVazia.kind === "not_found",
+      "kind=" + leituraVazia.kind,
+    );
+
+    const thrPrimeira = await throttles.save(SCOPE, {
+      scope: "email",
+      key: CHAVE,
+      expected: null,
+      next: { failureCount: 1, windowStartedAt: JANELA, lockedUntil: null },
+    });
+    const [linhaThrottle] = await q<{
+      failure_count: number;
+      locked_until: Date | null;
+      updated_at: Date;
+    }>(
+      "SELECT failure_count, locked_until, updated_at FROM \"user_auth_throttles\" WHERE scope = 'email' AND key = '" +
+        CHAVE +
+        "'",
+    );
+    record(
+      134,
+      "throttle: primeira contagem insere a linha com os valores do dominio",
+      thrPrimeira.kind === "saved" &&
+        linhaThrottle !== undefined &&
+        Number(linhaThrottle.failure_count) === 1 &&
+        linhaThrottle.locked_until === null,
+      "kind=" + thrPrimeira.kind + " count=" + String(linhaThrottle?.failure_count),
+    );
+
+    // Pre-imagem "nao existe" quando a linha JA existe: thrConflito tipado, sem
+    // excecao e sem sobrescrever.
+    const insercaoTardia = await throttles.save(SCOPE, {
+      scope: "email",
+      key: CHAVE,
+      expected: null,
+      next: { failureCount: 99, windowStartedAt: JANELA, lockedUntil: null },
+    });
+    const [aposTardia] = await q<{ failure_count: number }>(
+      "SELECT failure_count FROM \"user_auth_throttles\" WHERE scope = 'email' AND key = '" +
+        CHAVE +
+        "'",
+    );
+    record(
+      135,
+      "throttle: insercao concorrente vira conflito e NAO sobrescreve",
+      insercaoTardia.kind === "conflict" && Number(aposTardia!.failure_count) === 1,
+      "kind=" + insercaoTardia.kind + " count=" + String(aposTardia?.failure_count),
+    );
+
+    const thrTrava = daquiA(15 * 60_000);
+    const thrSegunda = await throttles.save(SCOPE, {
+      scope: "email",
+      key: CHAVE,
+      expected: { failureCount: 1, windowStartedAt: JANELA, lockedUntil: null },
+      next: { failureCount: 5, windowStartedAt: JANELA, lockedUntil: thrTrava },
+    });
+    const thrReleitura = await throttles.read(SCOPE, { scope: "email", key: CHAVE });
+    record(
+      136,
+      "throttle: CAS com pre-imagem correta aplica e o lockout volta EXATO",
+      thrSegunda.kind === "saved" &&
+        thrReleitura.kind === "found" &&
+        thrReleitura.state.failureCount === 5 &&
+        thrReleitura.state.lockedUntil?.getTime() === thrTrava.getTime(),
+      "kind=" + thrSegunda.kind,
+    );
+
+    // `updated_at` e NOT NULL e nao tem default no banco: so o `@updatedAt` do
+    // modelo o mantem. SQL cru aqui passaria despercebido ate producao.
+    const [aposUpdate] = await q<{ updated_at: Date }>(
+      "SELECT updated_at FROM \"user_auth_throttles\" WHERE scope = 'email' AND key = '" +
+        CHAVE +
+        "'",
+    );
+    record(
+      137,
+      "throttle: updateMany honra @updatedAt (coluna NOT NULL sem default)",
+      aposUpdate !== undefined &&
+        aposUpdate.updated_at.getTime() >= linhaThrottle!.updated_at.getTime(),
+      "updated_at nao regrediu",
+    );
+
+    const preImagemVelha = await throttles.save(SCOPE, {
+      scope: "email",
+      key: CHAVE,
+      expected: { failureCount: 1, windowStartedAt: JANELA, lockedUntil: null },
+      next: { failureCount: 42, windowStartedAt: JANELA, lockedUntil: null },
+    });
+    const [aposVelha] = await q<{ failure_count: number }>(
+      "SELECT failure_count FROM \"user_auth_throttles\" WHERE scope = 'email' AND key = '" +
+        CHAVE +
+        "'",
+    );
+    record(
+      138,
+      "throttle: pre-imagem defasada vira conflito e NAO sobrescreve",
+      preImagemVelha.kind === "conflict" && Number(aposVelha!.failure_count) === 5,
+      "kind=" + preImagemVelha.kind + " count=" + String(aposVelha?.failure_count),
+    );
+
+    // O unique e (scope, key): a MESMA chave em escopos diferentes sao linhas
+    // distintas. Sem isso, o orcamento por e-mail e o por origem se misturariam.
+    const mesmaChaveOutroEscopo = await throttles.save(SCOPE, {
+      scope: "ip",
+      key: CHAVE,
+      expected: null,
+      next: { failureCount: 1, windowStartedAt: JANELA, lockedUntil: null },
+    });
+    const [contagemLinhas] = await q<{ total: string }>(
+      "SELECT count(*)::text AS total FROM \"user_auth_throttles\" WHERE key = '" + CHAVE + "'",
+    );
+    record(
+      139,
+      "throttle: (scope, key) separa os escopos email e ip",
+      mesmaChaveOutroEscopo.kind === "saved" && contagemLinhas!.total === "2",
+      "linhas=" + String(contagemLinhas?.total),
+    );
+
+    // REGRA DA CAMADA (C7B1.1): conflito esperado NAO envenena a transacao.
+    const CHAVE_TX = "password_reset:c7c-tx@example.test";
+    let throttleTx: string;
+    try {
+      throttleTx = await prisma.$transaction(async (tx) => {
+        const thrStore = createPrismaAuthThrottleStore(tx);
+        const thrConflito = await thrStore.save(SCOPE, {
+          scope: "email",
+          key: CHAVE_TX,
+          expected: { failureCount: 7, windowStartedAt: JANELA, lockedUntil: null },
+          next: { failureCount: 8, windowStartedAt: JANELA, lockedUntil: null },
+        });
+        if (thrConflito.kind !== "conflict") return "esperava thrConflito, veio " + thrConflito.kind;
+        // A transacao continua utilizavel DEPOIS do thrConflito: le e escreve.
+        const thrLido = await thrStore.read(SCOPE, { scope: "email", key: CHAVE_TX });
+        const thrGravado = await thrStore.save(SCOPE, {
+          scope: "email",
+          key: CHAVE_TX,
+          expected: thrLido.kind === "found" ? thrLido.state : null,
+          next: { failureCount: 3, windowStartedAt: JANELA, lockedUntil: null },
+        });
+        return thrGravado.kind === "saved" ? "ok" : "escrita pos-thrConflito: " + thrGravado.kind;
+      });
+    } catch (e) {
+      throttleTx = "excecao: " + ((e as Error).message.split("\n")[0] ?? "");
+    }
+    const [linhaTx] = await q<{ failure_count: number }>(
+      "SELECT failure_count FROM \"user_auth_throttles\" WHERE scope = 'email' AND key = '" +
+        CHAVE_TX +
+        "'",
+    );
+    record(
+      140,
+      "throttle: conflito esperado NAO envenena a transacao (escrita seguinte COMITA)",
+      throttleTx === "ok" && linhaTx !== undefined && Number(linhaTx.failure_count) === 3,
+      "resultado=" + throttleTx + " count=" + String(linhaTx?.failure_count),
+    );
+
+    // Duas transacoes leem a MESMA pre-imagem e tentam gravar: exatamente uma
+    // consegue. E o que impede o limite efetivo de ser maior do que a politica.
+    const CHAVE_CORRIDA = "password_reset:c7c-corrida@example.test";
+    await throttles.save(SCOPE, {
+      scope: "email",
+      key: CHAVE_CORRIDA,
+      expected: null,
+      next: { failureCount: 1, windowStartedAt: JANELA, lockedUntil: null },
+    });
+    const thrPreImagem = { failureCount: 1, windowStartedAt: JANELA, lockedUntil: null };
+    const thrDisputa = await Promise.all(
+      [2, 3].map(async (thrValor) =>
+        prisma.$transaction(async (tx) =>
+          createPrismaAuthThrottleStore(tx).save(SCOPE, {
+            scope: "email",
+            key: CHAVE_CORRIDA,
+            expected: thrPreImagem,
+            next: { failureCount: thrValor, windowStartedAt: JANELA, lockedUntil: null },
+          }),
+        ),
+      ),
+    );
+    const thrVencedores = thrDisputa.filter((r) => r.kind === "saved").length;
+    record(
+      141,
+      "throttle: sob concorrencia real o CAS elege EXATAMENTE um vencedor",
+      thrVencedores === 1,
+      "vencedores=" + String(thrVencedores) + " kinds=" + thrDisputa.map((r) => r.kind).join(","),
     );
   } finally {
     await prisma.$disconnect();

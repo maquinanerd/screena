@@ -8,12 +8,14 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./runtime": "./src/persistence/index.ts"
+    "./runtime": "./src/persistence/index.ts",
+    "./auth-runtime": "./src/auth-runtime/index.ts"
   },
   "sideEffects": false,
   "license": "UNLICENSED",
   "scripts": {
-    "validate:user-product": "tsx scripts/validate-user-product-platform-real-postgres.ts"
+    "validate:user-product": "tsx scripts/validate-user-product-platform-real-postgres.ts",
+    "smoke:brevo": "tsx scripts/smoke-brevo-transactional-email.ts"
   },
   "dependencies": {
     "@screena/config": "workspace:*",

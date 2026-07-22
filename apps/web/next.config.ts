@@ -27,7 +27,16 @@ const nextConfig: NextConfig = {
   // O Next precisa transpila-los; isto NAO muda arquitetura nem invariante — so
   // diz ao bundler para compilar o TS dessas libs. `@screena/db` continua
   // server-only (so alcancado por server components; travado por audit:render).
-  transpilePackages: ["@screena/seo", "@screena/ui", "@screena/types", "@screena/db"],
+  transpilePackages: [
+    "@screena/seo",
+    "@screena/ui",
+    "@screena/types",
+    "@screena/db",
+    // Runtime de autenticacao (C7C). SERVER-ONLY: so as rotas /api/auth/** o
+    // alcancam, e a guarda de fronteira prova que nenhum client component o
+    // importa. A chave da Brevo nunca entra no bundle do cliente.
+    "@screena/user-platform",
+  ],
   // Esses pacotes usam imports ESM com extensao `.js` (convencao NodeNext) que
   // apontam para arquivos `.ts` (ex.: `export * from "./value-blocks.js"`). O
   // webpack do Next nao resolve `.js` -> `.ts` por padrao; o extensionAlias

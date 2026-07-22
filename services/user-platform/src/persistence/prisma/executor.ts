@@ -66,5 +66,5 @@ import type { PrismaClient } from "@screena/db/server";
  */
 export type PrismaExecutor = Pick<
   PrismaClient,
-  "user" | "passwordCredential" | "userSession" | "verificationToken"
+  "user" | "passwordCredential" | "userSession" | "verificationToken" | "authThrottle"
 >;

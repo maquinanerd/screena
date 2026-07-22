@@ -27,8 +27,9 @@ import {
   type VerificationTokenRecord,
 } from "./types.js";
 import type { UserStatus } from "../core/types.js";
+import { resolveTtlMinutes } from "./ttl.js";
 
-const HOUR_MS = 3_600_000;
+const MINUTE_MS = 60_000;
 
 export interface VerificationTokenIssue {
   /** Registro persistivel (SO o hash). */
@@ -42,21 +43,30 @@ export interface VerificationTokenIssue {
 
 /**
  * Emite um token de verificacao de email: gera segredo opaco (porta), persiste
- * so o hash, expira em EMAIL_VERIFICATION_TTL_HOURS a partir de `now`.
+ * so o hash, expira em `ttlMinutes` a partir de `now`.
+ *
+ * `ttlMinutes` e OPCIONAL e o default e EMAIL_VERIFICATION_TTL_HOURS. Ele existe
+ * porque o runtime (C7C) recebe o prazo por configuracao de ambiente
+ * (`EMAIL_VERIFICATION_EXPIRATION_MINUTES`) e a alternativa seria o runtime
+ * calcular `expiresAt` por conta propria — uma SEGUNDA definicao de validade,
+ * livre para divergir desta. Valor invalido cai no default (fail-safe, nunca
+ * lanca): quem valida a configuracao e `auth-runtime/config.ts`.
  */
 export function buildEmailVerificationIssue(input: {
   readonly userId: bigint;
   readonly now: Date;
   readonly generateSecret: SecretGeneratorPort;
   readonly hashSecret: SecretHasherPort;
+  readonly ttlMinutes?: number;
 }): VerificationTokenIssue {
   const rawToken = input.generateSecret();
+  const ttlMinutes = resolveTtlMinutes(input.ttlMinutes, EMAIL_VERIFICATION_TTL_HOURS);
   return {
     record: {
       userId: input.userId,
       purpose: "email_verification",
       tokenHash: input.hashSecret(rawToken),
-      expiresAt: new Date(input.now.getTime() + EMAIL_VERIFICATION_TTL_HOURS * HOUR_MS),
+      expiresAt: new Date(input.now.getTime() + ttlMinutes * MINUTE_MS),
     },
     rawToken,
   };

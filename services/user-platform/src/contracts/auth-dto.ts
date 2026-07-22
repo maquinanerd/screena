@@ -77,6 +77,19 @@ export interface GenericAcceptedDto {
   readonly message: string;
 }
 
+/**
+ * Confirmacao de um token de uso unico consumido com sucesso (verificacao de
+ * e-mail ou recuperacao de senha).
+ *
+ * Deliberadamente SEM detalhe: nao diz qual conta, nao diz se o e-mail ja estava
+ * verificado, nao devolve `userId`, sessao nem token. Quem chegou ate aqui tinha
+ * um link valido — o corpo nao precisa (nem pode) confirmar mais nada.
+ */
+export interface PublicConfirmationDto {
+  readonly ok: true;
+  readonly status: "confirmed";
+}
+
 /** Confirmacao generica de logout (uma sessao ou todas). */
 export interface PublicLogoutDto {
   readonly ok: true;

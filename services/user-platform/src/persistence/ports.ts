@@ -19,6 +19,10 @@ import type {
 } from "../recommendations/index.js";
 import type { SessionRecord, VerificationTokenRecord } from "../auth/types.js";
 import type {
+  AuthThrottleKey,
+  AuthThrottleReadResult,
+  AuthThrottleSaveInput,
+  AuthThrottleSaveResult,
   AuthTokenConsumeInput,
   AuthTokenConsumeResult,
   AuthTokenInvalidatePendingInput,
@@ -322,4 +326,34 @@ export interface AuthTokenStore {
     scope: TransactionScope,
     input: AuthTokenInvalidatePendingInput,
   ): Promise<AuthTokenInvalidatePendingResult>;
+}
+
+/**
+ * THROTTLE DURAVEL (C7C) — janela deslizante + lockout por chave apresentada.
+ *
+ * DOIS metodos, e so dois, porque a politica ja existe pura em `auth/policy.ts`:
+ * `evaluateThrottle` decide se esta travado e `registerFailure` produz o proximo
+ * estado. O port faz o que so o banco pode fazer — LER o estado atual e GRAVAR o
+ * proximo — e nada mais.
+ *
+ * Deliberadamente NAO ha: `increment` (poria a politica de janela/lockout dentro
+ * do adapter, duplicando `registerFailure`), `reset`/`clear` (nenhum fluxo desta
+ * unidade limpa contagem — `registerSuccess` pertence ao login, que e outra
+ * unidade), `listLocked` e qualquer varredura administrativa.
+ *
+ * O adapter NAO le o relogio e NAO decide vigencia: devolve as colunas como
+ * estao. Uma janela ja vencida chega intacta aqui e e `evaluateThrottle`, com o
+ * `now` injetado, que a considera limpa — se o adapter filtrasse, existiriam
+ * duas definicoes de "janela aberta".
+ */
+export interface AuthThrottleStore {
+  /** Estado atual da chave. `not_found` e resultado normal, nao erro. */
+  read(scope: TransactionScope, input: AuthThrottleKey): Promise<AuthThrottleReadResult>;
+
+  /**
+   * Grava o proximo estado por COMPARE-AND-SWAP sobre a pre-imagem lida. Se a
+   * linha mudou nesse meio-tempo, devolve `conflict` — nunca last-write-wins,
+   * que faria duas tentativas concorrentes contarem como uma so.
+   */
+  save(scope: TransactionScope, input: AuthThrottleSaveInput): Promise<AuthThrottleSaveResult>;
 }

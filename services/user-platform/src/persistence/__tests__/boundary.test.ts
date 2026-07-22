@@ -531,6 +531,7 @@ describe("persistence/prisma/: adapters concretos (C7B1)", () => {
 
   it("(1) ha adapters para varrer (guarda nao vacua)", () => {
     expect(files.map((f) => f.file).sort()).toEqual([
+      "persistence/prisma/auth-throttle-store.ts",
       "persistence/prisma/auth-token-store.ts",
       "persistence/prisma/executor.ts",
       "persistence/prisma/identity-conflict.ts",
@@ -547,6 +548,7 @@ describe("persistence/prisma/: adapters concretos (C7B1)", () => {
     // cega para o codigo novo — foi exatamente o que aconteceu no C7B2, e os
     // stores passaram no teste de `select` sem serem olhados.
     expect(PRISMA_DELEGATES.sort()).toEqual([
+      "authThrottle",
       "passwordCredential",
       "user",
       "userSession",

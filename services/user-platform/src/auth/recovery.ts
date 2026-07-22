@@ -28,8 +28,9 @@ import {
   type VerificationTokenRecord,
 } from "./types.js";
 import type { UserStatus } from "../core/types.js";
+import { resolveTtlMinutes } from "./ttl.js";
 
-const HOUR_MS = 3_600_000;
+const MINUTE_MS = 60_000;
 
 /** Motivo interno do pedido de recuperacao (audit); nunca vira texto publico. */
 export type RecoveryRequestReason = "issue_token" | "user_not_found" | "account_ineligible";
@@ -63,22 +64,30 @@ export interface PasswordResetTokenIssue {
 
 /**
  * Emite um token de reset: gera segredo (porta), persiste so o hash, expira em
- * PASSWORD_RESET_TTL_HOURS a partir de `now`. Chamar apenas quando o pedido foi
- * avaliado como `issue_token`.
+ * `ttlMinutes` a partir de `now`. Chamar apenas quando o pedido foi avaliado
+ * como `issue_token`.
+ *
+ * `ttlMinutes` e OPCIONAL e o default e PASSWORD_RESET_TTL_HOURS. Ele existe
+ * porque o runtime (C7C) recebe o prazo por configuracao de ambiente
+ * (`PASSWORD_RESET_EXPIRATION_MINUTES`); a alternativa seria o runtime calcular
+ * `expiresAt` por conta propria, criando uma SEGUNDA formula de validade livre
+ * para divergir desta. Valor invalido cai no default (ver `./ttl.js`).
  */
 export function buildPasswordResetIssue(input: {
   readonly userId: bigint;
   readonly now: Date;
   readonly generateSecret: SecretGeneratorPort;
   readonly hashSecret: SecretHasherPort;
+  readonly ttlMinutes?: number;
 }): PasswordResetTokenIssue {
   const rawToken = input.generateSecret();
+  const ttlMinutes = resolveTtlMinutes(input.ttlMinutes, PASSWORD_RESET_TTL_HOURS);
   return {
     record: {
       userId: input.userId,
       purpose: "password_reset",
       tokenHash: input.hashSecret(rawToken),
-      expiresAt: new Date(input.now.getTime() + PASSWORD_RESET_TTL_HOURS * HOUR_MS),
+      expiresAt: new Date(input.now.getTime() + ttlMinutes * MINUTE_MS),
     },
     rawToken,
   };

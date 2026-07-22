@@ -9,6 +9,7 @@
 
 export * from "./identity.js";
 export * from "./policy.js";
+export * from "./ttl.js";
 export * from "./types.js";
 export * from "./tokens.js";
 export * from "./credentials.js";

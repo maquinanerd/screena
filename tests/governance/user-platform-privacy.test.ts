@@ -108,19 +108,150 @@ describe("user platform: defaults seguros no schema (tudo nasce privado)", () =>
 });
 
 describe("user platform: fora do caminho de render publico (invariante 5, caso tecnico)", () => {
-  it("(8) nenhum arquivo de apps/web ou apps/admin importa @screena/user-platform", () => {
-    const files = [
-      ...collectCodeFiles(path.join(ROOT, "apps", "web")),
-      ...collectCodeFiles(path.join(ROOT, "apps", "admin")),
-    ];
-    expect(files.length).toBeGreaterThan(0);
-    const offenders = files.filter((file) => {
+  /**
+   * A regra original proibia QUALQUER arquivo de apps/* de tocar a user platform.
+   * Isso estava certo enquanto a plataforma nao tinha borda: sem endpoint, todo
+   * import cairia necessariamente no caminho de render.
+   *
+   * C7C criou a primeira superficie legitima e NAO-render: quatro mutacoes `POST`
+   * sob `/api/auth/**` (bloqueadas no robots por `Disallow: /api/`), mais a ponte
+   * server-only que as compoe. A regra nao foi afrouxada — foi PARTIDA EM DUAS,
+   * e cada metade ficou mais estrita do que a original:
+   *
+   *  - no caminho de RENDER (pagina, layout, client component) a proibicao passa
+   *    a ser verificada explicitamente por natureza do arquivo, e nao por
+   *    ausencia acidental de import;
+   *  - fora dele, so uma ALLOWLIST fechada pode importar, e o teste trava
+   *    exatamente quais caminhos sao — se um quinto arquivo aparecer, isto falha.
+   */
+  const AUTH_RUNTIME_ALLOWLIST: readonly string[] = [
+    "apps/web/next.config.ts",
+    "apps/web/src/server/auth/runtime.ts",
+    "apps/web/app/api/auth/email-verification/confirm/route.ts",
+    "apps/web/app/api/auth/email-verification/request/route.ts",
+    "apps/web/app/api/auth/password-reset/confirm/route.ts",
+    "apps/web/app/api/auth/password-reset/request/route.ts",
+  ];
+
+  const PAGE_FILE_NAMES = new Set([
+    "page.tsx",
+    "page.ts",
+    "layout.tsx",
+    "layout.ts",
+    "template.tsx",
+    "template.ts",
+    "default.tsx",
+    "default.ts",
+  ]);
+
+  /** "use client" precisa ser a primeira instrucao nao vazia/nao comentada. */
+  function hasUseClient(content: string): boolean {
+    for (const raw of content.split(/\r?\n/)) {
+      const line = raw.trim();
+      if (line === "") continue;
+      if (line.startsWith("//") || line.startsWith("/*") || line.startsWith("*")) continue;
+      return /^['"]use client['"];?$/.test(line);
+    }
+    return false;
+  }
+
+  /**
+   * Detecta alcance a user platform — inclusive INDIRETO.
+   *
+   * A ponte `apps/web/src/server/auth/**` importa `@screena/user-platform` e,
+   * por tabela, o composition root (chave da Brevo + Prisma Client). Um client
+   * component que escrevesse `import { runAuthEndpoint } from
+   * '../../src/server/auth/runtime'` NAO citaria nenhum dos dois primeiros
+   * padroes e escaparia inteiro da guarda — arrastando segredo de servidor para
+   * o bundle do navegador. O caminho da ponte entra na deteccao por isso.
+   */
+  function touchesUserPlatform(content: string): boolean {
+    return (
+      content.includes("@screena/user-platform") ||
+      content.includes("services/user-platform") ||
+      /["'][^"']*src\/server\/auth\//.test(content)
+    );
+  }
+
+  function relative(file: string): string {
+    return path.relative(ROOT, file).split(path.sep).join("/");
+  }
+
+  it("(8) a user platform NUNCA entra no caminho de render nem no admin", () => {
+    const web = collectCodeFiles(path.join(ROOT, "apps", "web"));
+    const admin = collectCodeFiles(path.join(ROOT, "apps", "admin"));
+    expect(web.length).toBeGreaterThan(0);
+
+    const offenders: string[] = [];
+
+    // apps/admin continua com a proibicao TOTAL: nao ha borda de autenticacao la.
+    for (const file of admin) {
+      if (touchesUserPlatform(readFileSync(file, "utf8"))) {
+        offenders.push(`${relative(file)} (admin)`);
+      }
+    }
+
+    for (const file of web) {
       const content = readFileSync(file, "utf8");
-      return (
-        content.includes("@screena/user-platform") || content.includes("services/user-platform")
-      );
-    });
-    expect(offenders.map((f) => path.relative(ROOT, f))).toEqual([]);
+      if (!touchesUserPlatform(content)) continue;
+      const rel = relative(file);
+      const base = rel.split("/").pop() ?? rel;
+      // Pagina/layout e client component: proibicao ABSOLUTA, mesmo que alguem
+      // acrescente o caminho a allowlist por engano.
+      if (PAGE_FILE_NAMES.has(base)) offenders.push(`${rel} (arquivo de pagina)`);
+      if (hasUseClient(content)) offenders.push(`${rel} (client component)`);
+      if (!AUTH_RUNTIME_ALLOWLIST.includes(rel)) offenders.push(`${rel} (fora da allowlist)`);
+    }
+
+    expect(offenders).toEqual([]);
+  });
+
+  it("(8b) a allowlist e exatamente a borda /api/auth + a ponte server-only", () => {
+    // Anti-vacuidade nos DOIS sentidos: os arquivos autorizados existem de fato,
+    // e nenhum outro passou a importar. Sem isto, a allowlist poderia crescer em
+    // silencio ou apontar para arquivos que nem existem mais.
+    const web = collectCodeFiles(path.join(ROOT, "apps", "web"));
+    const importadores = web
+      .filter((file) => touchesUserPlatform(readFileSync(file, "utf8")))
+      .map(relative)
+      .sort();
+    expect(importadores).toEqual([...AUTH_RUNTIME_ALLOWLIST].sort());
+  });
+
+  it("(8d) a deteccao pega tambem o alcance INDIRETO pela ponte (controle negativo)", () => {
+    // Sem isto, a guarda seria falsificavel por um import relativo: o caminho
+    // mais provavel de um client component alcancar Prisma e a chave da Brevo.
+    expect(touchesUserPlatform(`import x from "@screena/user-platform/auth-runtime"`)).toBe(true);
+    expect(touchesUserPlatform(`import x from "../../services/user-platform/src/http"`)).toBe(true);
+    expect(touchesUserPlatform(`import { runAuthEndpoint } from "../../src/server/auth/runtime"`)).toBe(
+      true,
+    );
+    expect(touchesUserPlatform(`import x from './src/server/auth/runtime'`)).toBe(true);
+    // Controles POSITIVOS: server-only vizinhos que nao alcancam a plataforma.
+    expect(touchesUserPlatform(`import x from "../../src/server/seo/redirect-lookup"`)).toBe(false);
+    expect(touchesUserPlatform(`import x from "../../src/lib/site"`)).toBe(false);
+  });
+
+  it("(8c) as rotas /api/auth so DELEGAM: nenhuma regra de dominio nelas", () => {
+    const rotas = AUTH_RUNTIME_ALLOWLIST.filter((f) => f.endsWith("route.ts"));
+    expect(rotas.length).toBe(4);
+    for (const rota of rotas) {
+      const content = readFileSync(path.join(ROOT, rota), "utf8");
+      // Sem politica, sem banco, sem fornecedor, sem segredo.
+      for (const proibido of [
+        /prisma/i,
+        /@screena\/db/,
+        /brevo/i,
+        /BREVO_/,
+        /process\s*\.\s*env/,
+        /accountCanHoldSession|evaluateThrottle|applyPasswordReset|applyEmailVerification/,
+      ]) {
+        expect(proibido.test(content), `${rota}: ${proibido}`).toBe(false);
+      }
+      // E aceitam SOMENTE POST.
+      expect(/export\s+async\s+function\s+POST/.test(content), rota).toBe(true);
+      expect(/export\s+async\s+function\s+(GET|PUT|DELETE|PATCH)/.test(content), rota).toBe(false);
+    }
   });
 
   it("(9) codigo de sitemap nao referencia tabela user_* (privado nunca entra em sitemap)", () => {
