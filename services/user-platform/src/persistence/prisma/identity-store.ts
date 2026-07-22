@@ -14,6 +14,7 @@ import type { IdentityStore } from "../ports.js";
 import type {
   EmailVerificationInput,
   EmailVerificationResult,
+  EmailVerificationStateLookupResult,
   IdentityCreateInput,
   IdentityCreateResult,
   IdentityLookupResult,
@@ -21,7 +22,7 @@ import type {
 } from "../types.js";
 import { classifyIdentityConflict } from "./identity-conflict.js";
 import type { PrismaExecutor } from "./executor.js";
-import { toIdentityRecord } from "./mappers.js";
+import { toEmailVerificationState, toIdentityRecord } from "./mappers.js";
 
 /**
  * SELECT MINIMO — as duas unicas colunas com consumidor real (`id` para ser dono
@@ -166,11 +167,46 @@ export function createPrismaIdentityStore(executor: PrismaExecutor): IdentitySto
       // Zero linhas tem DUAS causas — conta inexistente ou ja verificada — e o
       // contrato as separa. A sonda le apenas existencia; qualquer resultado
       // dela e uma recusa, entao ela nao pode transformar corrida em sucesso.
+      //
+      // A CLASSIFICACAO, porem, NAO e atomica com o UPDATE: entre os dois
+      // comandos a linha pode nascer ou sumir, e os dois `kind` podem trocar
+      // (provado nas duas direcoes com interleaving em banco real). Nenhuma troca
+      // vira sucesso — o que fica impreciso e o MOTIVO de auditoria, nao a
+      // decisao. Torna-la atomica exigiria um segundo lock so para rotular uma
+      // recusa, o que custaria mais do que a imprecisao.
       const existe = await executor.user.findUnique({
         where: { id: input.userId },
         select: { id: true },
       });
       return existe === null ? { kind: "not_found" } : { kind: "already_verified" };
+    },
+
+    async findEmailVerificationStateByNormalizedEmail(
+      _scope: TransactionScope,
+      emailNormalized: string,
+    ): Promise<EmailVerificationStateLookupResult> {
+      // Chave: `email_normalized`. O comando publico do reenvio chega SEM
+      // sessao, so com o e-mail — o `userId` e o que esta leitura DESCOBRE, para
+      // que `buildEmailVerificationIssue` possa emitir o token depois.
+      //
+      // O adapter NAO normaliza: `parseRequestEmailVerificationCommand` ja
+      // chamou `normalizeEmail`. Normalizar aqui criaria uma segunda definicao de
+      // "normalizado", divergente da coluna e do cadastro.
+      //
+      // SELECT minimo: o carimbo e o id. Sem `email`, sem `status` (o decisor de
+      // reenvio nao o consome), sem `displayName`, sem `handle`.
+      //
+      // SEM filtro de status: a persistencia entrega o fato; quem decide e o
+      // dominio. E o `not_found` daqui NAO vaza para a borda — a resposta publica
+      // do reenvio e sempre a mesma (anti-enumeracao).
+      const row = await executor.user.findUnique({
+        where: { emailNormalized },
+        select: { id: true, emailVerifiedAt: true },
+      });
+      if (row === null) {
+        return { kind: "not_found" };
+      }
+      return { kind: "found", state: toEmailVerificationState(row) };
     },
   };
 }

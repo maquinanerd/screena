@@ -235,12 +235,10 @@ describe("persistence/ (raiz): somente contratos (C7A)", () => {
     // nome — do mesmo jeito que `passwordHash` e tratado no teste (10).
     const source = stripComments(contractTypesSource());
     const blocks = exportedTypeBlocks(source);
-    const carregaTokenHash = (body: string): boolean =>
-      /readonly\s+\w*tokenHash\s*\??\s*:/i.test(body);
 
     const permitidos = new Set(["AuthTokenConsumeInput"]);
     const vazando = blocks
-      .filter((b) => carregaTokenHash(b.body))
+      .filter((b) => carriesTokenHashField(b.body))
       .map((b) => b.name)
       .filter((name) => !permitidos.has(name));
     expect(vazando).toEqual([]);
@@ -339,6 +337,18 @@ function exportedTypeBlocks(source: string): { name: string; body: string }[] {
  */
 function carriesHashField(body: string): boolean {
   return /readonly\s+\w*passwordHash\s*\??\s*:/i.test(body);
+}
+
+/**
+ * Detecta o hash de TOKEN como campo declarado.
+ *
+ * Declarado no MODULO, nao dentro do `it`: a versao anterior vivia inline e por
+ * isso nao podia ser exercitada pelo bloco de controles negativos — contrariando
+ * o principio que este arquivo enuncia no topo. Guarda que so roda sobre a fonte
+ * real e nao sobre fonte sintetica nao e falsificavel.
+ */
+function carriesTokenHashField(body: string): boolean {
+  return /readonly\s+\w*tokenHash\s*\??\s*:/i.test(body);
 }
 
 /** Campos declarados cujo nome termina em "password" (= senha em claro). */
@@ -857,6 +867,16 @@ describe("controles negativos: as guardas realmente reprovam", () => {
     ]);
     // Controle positivo: hash opaco continua permitido.
     expect(plainPasswordFields(fake("readonly passwordHash: string;"))).toEqual([]);
+  });
+
+  it("(6b) detecta `tokenHash` como campo, e nao confunde com mencao textual", () => {
+    // O helper da guarda (8b) so passou a ser falsificavel aqui: antes vivia
+    // inline dentro do `it` e nenhuma fonte sintetica o alcancava.
+    expect(carriesTokenHashField("readonly tokenHash: string;")).toBe(true);
+    expect(carriesTokenHashField("readonly expectedTokenHash?: string;")).toBe(true);
+    // Controle POSITIVO: o rotulo de alvo cita o nome sem declarar campo.
+    expect(carriesTokenHashField('| "authToken.tokenHash"')).toBe(false);
+    expect(carriesTokenHashField("readonly userId: bigint;")).toBe(false);
   });
 
   it("(7) detecta hash carregado por type alias, nao so por interface", () => {

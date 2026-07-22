@@ -383,6 +383,95 @@ describe("IdentityStore.markEmailVerified (C7B2.1)", () => {
   });
 });
 
+describe("IdentityStore.findEmailVerificationStateByNormalizedEmail (C7B2.2)", () => {
+  it("(1) busca por email_normalized com select minimo", async () => {
+    const carimbo = new Date("2026-07-01T10:00:00.000Z");
+    const { executor, calls } = fakeExecutor({
+      user: { findUnique: () => ({ id: 9n, emailVerifiedAt: carimbo }) },
+    });
+    const r = await createPrismaIdentityStore(executor).findEmailVerificationStateByNormalizedEmail(
+      SCOPE,
+      "alice@example.test",
+    );
+    expect(r).toEqual({ kind: "found", state: { userId: 9n, emailVerifiedAt: carimbo } });
+    expect(calls[0]!.args["where"]).toEqual({ emailNormalized: "alice@example.test" });
+    expect(calls[0]!.args["select"]).toEqual({ id: true, emailVerifiedAt: true });
+  });
+
+  it("(2) devolve o FATO, nao a politica: carimbo, nunca booleano", async () => {
+    // Converter para `alreadyVerified` aqui faria o adapter decidir no lugar do
+    // dominio e jogaria fora o QUANDO, que `markEmailVerified` preserva.
+    const carimbo = new Date("2026-07-01T10:00:00.000Z");
+    const { executor } = fakeExecutor({
+      user: { findUnique: () => ({ id: 9n, emailVerifiedAt: carimbo }) },
+    });
+    const r = await createPrismaIdentityStore(executor).findEmailVerificationStateByNormalizedEmail(
+      SCOPE,
+      "a@example.test",
+    );
+    expect(r.kind).toBe("found");
+    if (r.kind !== "found") return;
+    expect(r.state.emailVerifiedAt).toBeInstanceOf(Date);
+    expect(r.state.emailVerifiedAt).toEqual(carimbo);
+    expect(Object.keys(r.state).sort()).toEqual(["emailVerifiedAt", "userId"]);
+  });
+
+  it("(3) nao verificada devolve null — e null NAO vira false nem string vazia", async () => {
+    const { executor } = fakeExecutor({
+      user: { findUnique: () => ({ id: 9n, emailVerifiedAt: null }) },
+    });
+    const r = await createPrismaIdentityStore(executor).findEmailVerificationStateByNormalizedEmail(
+      SCOPE,
+      "a@example.test",
+    );
+    expect(r).toEqual({ kind: "found", state: { userId: 9n, emailVerifiedAt: null } });
+  });
+
+  it("(4) ausencia e resultado tipado", async () => {
+    const { executor } = fakeExecutor({ user: { findUnique: () => null } });
+    const r = await createPrismaIdentityStore(executor).findEmailVerificationStateByNormalizedEmail(
+      SCOPE,
+      "ninguem@example.test",
+    );
+    expect(r).toEqual({ kind: "not_found" });
+  });
+
+  it("(5) NAO normaliza — recebe o valor pronto do contrato", async () => {
+    // `parseRequestEmailVerificationCommand` ja chamou `normalizeEmail`.
+    // Normalizar aqui criaria uma segunda definicao de "normalizado".
+    const { executor, calls } = fakeExecutor({ user: { findUnique: () => null } });
+    await createPrismaIdentityStore(executor).findEmailVerificationStateByNormalizedEmail(
+      SCOPE,
+      "  NAO-NORMALIZADO@Example.Test  ",
+    );
+    expect(calls[0]!.args["where"]).toEqual({
+      emailNormalized: "  NAO-NORMALIZADO@Example.Test  ",
+    });
+  });
+
+  it("(6) NAO filtra por status nem devolve PII", async () => {
+    const { executor, calls } = fakeExecutor({
+      user: {
+        findUnique: () => ({
+          id: 9n,
+          emailVerifiedAt: null,
+          email: "vazamento@example.test",
+          status: "disabled",
+        }),
+      },
+    });
+    const r = await createPrismaIdentityStore(executor).findEmailVerificationStateByNormalizedEmail(
+      SCOPE,
+      "a@example.test",
+    );
+    // Nenhum filtro de status no WHERE.
+    expect(Object.keys(calls[0]!.args["where"] as object)).toEqual(["emailNormalized"]);
+    // E nada alem do fato atravessa a fronteira.
+    const serializado = JSON.stringify(r, (_k, v) => (typeof v === "bigint" ? "0" : v));
+    expect(serializado).not.toMatch(/@|disabled|status/i);
+  });
+});
+
 describe("PasswordCredentialStore.createInitial", () => {
   /** Dono existe: a sonda de FK encontra a linha. */
   const donoExiste = () => ({ id: 5n });

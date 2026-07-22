@@ -21,6 +21,7 @@ import {
 } from "../../core/types.js";
 import type {
   CredentialVerificationMaterial,
+  EmailVerificationState,
   IdentityRecord,
   SessionAccessRecord,
 } from "../types.js";
@@ -156,5 +157,24 @@ export function toSessionAccessRecord(row: SessionAccessRow): SessionAccessRecor
     userId: row.userId,
     expiresAt: row.expiresAt,
     revokedAt: row.revokedAt,
+  };
+}
+
+/** Linha MINIMA do estado de verificacao (C7B2.2). */
+export interface EmailVerificationStateRow {
+  readonly id: bigint;
+  readonly emailVerifiedAt: Date | null;
+}
+
+/**
+ * Devolve o FATO (`emailVerifiedAt`), nunca a decisao. Converter para
+ * `alreadyVerified: boolean` aqui faria o mapper decidir politica no lugar do
+ * dominio e descartaria o QUANDO — que `markEmailVerified` preserva de
+ * proposito. `null` permanece `null`, nunca vira string vazia nem `false`.
+ */
+export function toEmailVerificationState(row: EmailVerificationStateRow): EmailVerificationState {
+  return {
+    userId: row.id,
+    emailVerifiedAt: row.emailVerifiedAt,
   };
 }

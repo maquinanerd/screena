@@ -391,3 +391,31 @@ export interface EmailVerificationInput {
   readonly userId: bigint;
   readonly now: Date;
 }
+
+// ---------------------------------------------------------------------------
+// C7B2.2 — ESTADO DE VERIFICACAO DE E-MAIL (leitura para o reenvio)
+// ---------------------------------------------------------------------------
+
+/**
+ * Estado MINIMO que o reenvio de verificacao precisa ler.
+ *
+ * Devolve o FATO persistido (`emailVerifiedAt: Date | null`), nao a decisao:
+ * `alreadyVerified` e politica, derivada pelo consumidor
+ * (`emailVerifiedAt !== null`). Trocar o carimbo por um booleano aqui faria o
+ * adapter decidir no lugar do dominio e jogaria fora a informacao de QUANDO —
+ * que `markEmailVerified` preserva justamente para nao ser perdida.
+ *
+ * `userId` acompanha porque o passo seguinte do fluxo
+ * (`buildEmailVerificationIssue`) precisa dele para emitir o token.
+ *
+ * NAO carrega `status`: `evaluateVerificationResend` recebe apenas
+ * `{ userExists, alreadyVerified }` — devolver status seria campo sem leitor.
+ */
+export interface EmailVerificationState {
+  readonly userId: bigint;
+  readonly emailVerifiedAt: Date | null;
+}
+
+export type EmailVerificationStateLookupResult =
+  | { readonly kind: "found"; readonly state: EmailVerificationState }
+  | { readonly kind: "not_found" };

@@ -33,6 +33,7 @@ import { createPrismaPasswordCredentialStore } from "../src/persistence/prisma/p
 import { createPrismaSessionStore } from "../src/persistence/prisma/session-store.js";
 import { createPrismaAuthTokenStore } from "../src/persistence/prisma/auth-token-store.js";
 import { evaluateSessionAccess } from "../src/auth/sessions.js";
+import { evaluateVerificationResend } from "../src/auth/verification.js";
 import type { TransactionScope } from "../src/persistence/types.js";
 
 const require = createRequire(import.meta.url);
@@ -1992,6 +1993,217 @@ async function runChecks(url: string): Promise<void> {
         jaVerificadoTx?.kind === "already_verified" &&
         jaVerificadoTx?.leuDepois === true,
       `erro=${erroJaVerificado ?? "nenhum"} kind=${jaVerificadoTx?.kind ?? "-"}`,
+    );
+
+    // =======================================================================
+    // C7B2.2 — LEITURA DO ESTADO DE VERIFICACAO (reenvio)
+    // =======================================================================
+    const resendAlvo = await identities.create(SCOPE, {
+      email: "Resend@Example.Test",
+      emailNormalized: "resend@example.test",
+      displayName: null,
+    });
+    if (resendAlvo.kind !== "created") throw new Error("setup do C7B2.2 falhou");
+    const resendId = resendAlvo.identity.id;
+
+    const estadoPendente = await identities.findEmailVerificationStateByNormalizedEmail(
+      SCOPE,
+      "resend@example.test",
+    );
+    record(
+      110,
+      "conta NAO verificada: carimbo null e userId disponivel para emitir",
+      estadoPendente.kind === "found" &&
+        estadoPendente.state.userId === resendId &&
+        estadoPendente.state.emailVerifiedAt === null,
+      `kind=${estadoPendente.kind}`,
+    );
+    record(
+      111,
+      "o estado devolve EXATAMENTE userId e emailVerifiedAt",
+      estadoPendente.kind === "found" &&
+        JSON.stringify(Object.keys(estadoPendente.state).sort()) ===
+          JSON.stringify(["emailVerifiedAt", "userId"]),
+      estadoPendente.kind === "found" ? Object.keys(estadoPendente.state).sort().join(",") : "-",
+    );
+
+    // A politica e derivada pelo DOMINIO, nunca pelo adapter.
+    const decisaoPendente = evaluateVerificationResend({
+      userExists: estadoPendente.kind === "found",
+      alreadyVerified:
+        estadoPendente.kind === "found" && estadoPendente.state.emailVerifiedAt !== null,
+    });
+    record(
+      112,
+      "conta nao verificada => issue_token (politica derivada do fato)",
+      decisaoPendente.internalReason === "issue_token",
+      `motivo=${decisaoPendente.internalReason}`,
+    );
+
+    // Marca e le de novo: o carimbo tem de voltar EXATO.
+    const instanteVerificacao = daquiA(60_000);
+    await identities.markEmailVerified(SCOPE, { userId: resendId, now: instanteVerificacao });
+    const estadoVerificado = await identities.findEmailVerificationStateByNormalizedEmail(
+      SCOPE,
+      "resend@example.test",
+    );
+    record(
+      113,
+      "apos marcar, a leitura devolve o carimbo EXATO (fato, nao booleano)",
+      estadoVerificado.kind === "found" &&
+        estadoVerificado.state.emailVerifiedAt instanceof Date &&
+        estadoVerificado.state.emailVerifiedAt.getTime() === instanteVerificacao.getTime(),
+      `carimbo=${estadoVerificado.kind === "found" ? String(estadoVerificado.state.emailVerifiedAt?.toISOString()) : "-"}`,
+    );
+
+    const decisaoVerificada = evaluateVerificationResend({
+      userExists: estadoVerificado.kind === "found",
+      alreadyVerified:
+        estadoVerificado.kind === "found" && estadoVerificado.state.emailVerifiedAt !== null,
+    });
+    record(
+      114,
+      "conta ja verificada => already_verified (nao reemite)",
+      decisaoVerificada.internalReason === "already_verified",
+      `motivo=${decisaoVerificada.internalReason}`,
+    );
+
+    const estadoAusente = await identities.findEmailVerificationStateByNormalizedEmail(
+      SCOPE,
+      "ninguem-mesmo@example.test",
+    );
+    const decisaoAusente = evaluateVerificationResend({
+      userExists: estadoAusente.kind === "found",
+      alreadyVerified: false,
+    });
+    record(
+      115,
+      "e-mail inexistente => not_found interno, user_not_found no motivo",
+      estadoAusente.kind === "not_found" && decisaoAusente.internalReason === "user_not_found",
+      `kind=${estadoAusente.kind} motivo=${decisaoAusente.internalReason}`,
+    );
+
+    // ANTI-ENUMERACAO: os tres casos dao a MESMA resposta publica.
+    const publicos = [decisaoPendente, decisaoVerificada, decisaoAusente].map((d) =>
+      JSON.stringify(d.publicResult),
+    );
+    record(
+      116,
+      "ANTI-ENUMERACAO: nao verificada, ja verificada e inexistente sao indistinguiveis",
+      new Set(publicos).size === 1 &&
+        new Set(
+          [decisaoPendente, decisaoVerificada, decisaoAusente].map((d) => d.internalReason),
+        ).size === 3,
+      `respostas publicas distintas=${new Set(publicos).size}`,
+    );
+
+    // Conta DESATIVADA continua legivel: a persistencia entrega o fato.
+    await exec(`UPDATE "users" SET status = 'disabled' WHERE id = ${resendId}`);
+    const estadoDesativado = await identities.findEmailVerificationStateByNormalizedEmail(
+      SCOPE,
+      "resend@example.test",
+    );
+    record(
+      117,
+      "conta desativada continua LEGIVEL (adapter nao filtra status)",
+      estadoDesativado.kind === "found",
+      `kind=${estadoDesativado.kind}`,
+    );
+    await exec(`UPDATE "users" SET status = 'active' WHERE id = ${resendId}`);
+
+    // O adapter NAO normaliza: o e-mail bruto nao encontra a conta.
+    const semNormalizar = await identities.findEmailVerificationStateByNormalizedEmail(
+      SCOPE,
+      "Resend@Example.Test",
+    );
+    record(
+      118,
+      "adapter NAO normaliza: o valor chega pronto do contrato",
+      semNormalizar.kind === "not_found",
+      `kind=${semNormalizar.kind}`,
+    );
+
+    // TransactionClient + outcome esperado nao envenena.
+    let resendTx: { kind: string; leuDepois: boolean } | null = null;
+    let erroResendTx: string | null = null;
+    try {
+      resendTx = await prisma.$transaction(async (tx) => {
+        const txIdentities = createPrismaIdentityStore(tx);
+        const ausente = await txIdentities.findEmailVerificationStateByNormalizedEmail(
+          SCOPE,
+          "ninguem-mesmo@example.test",
+        );
+        // Query valida DEPOIS do not_found esperado.
+        const presente = await txIdentities.findEmailVerificationStateByNormalizedEmail(
+          SCOPE,
+          "resend@example.test",
+        );
+        return { kind: ausente.kind, leuDepois: presente.kind === "found" };
+      });
+    } catch (e) {
+      const code = (e as { code?: unknown }).code;
+      erroResendTx = typeof code === "string" ? code : (e as Error).message.slice(0, 60);
+    }
+    record(
+      119,
+      "TransactionClient funciona e `not_found` esperado nao envenena a transacao",
+      erroResendTx === null &&
+        resendTx?.kind === "not_found" &&
+        resendTx?.leuDepois === true,
+      `erro=${erroResendTx ?? "nenhum"} kind=${resendTx?.kind ?? "-"}`,
+    );
+
+    // Escrita posterior a um outcome esperado COMITA de verdade.
+    const escritaPos = await prisma.$transaction(async (tx) => {
+      const txIdentities = createPrismaIdentityStore(tx);
+      await txIdentities.findEmailVerificationStateByNormalizedEmail(
+        SCOPE,
+        "ninguem-mesmo@example.test",
+      );
+      const criada = await txIdentities.create(SCOPE, {
+        email: "pos-resend@example.test",
+        emailNormalized: "pos-resend@example.test",
+        displayName: null,
+      });
+      return criada.kind;
+    });
+    const [posRow] = await q<{ c: bigint }>(
+      `SELECT count(*) AS c FROM "users" WHERE email_normalized = 'pos-resend@example.test'`,
+    );
+    record(
+      120,
+      "escrita posterior ao outcome esperado COMITA",
+      escritaPos === "created" && Number(posRow!.c) === 1,
+      `linhas=${Number(posRow!.c)}`,
+    );
+
+    // Erro inesperado continua escapando e desfazendo tudo.
+    let erroInesperadoResend = false;
+    try {
+      await prisma.$transaction(async (tx) => {
+        const txIdentities = createPrismaIdentityStore(tx);
+        await txIdentities.create(SCOPE, {
+          email: "resend-rollback@example.test",
+          emailNormalized: "resend-rollback@example.test",
+          displayName: null,
+        });
+        await txIdentities.findEmailVerificationStateByNormalizedEmail(
+          SCOPE,
+          "resend@example.test",
+        );
+        throw new Error("falha inesperada apos a leitura");
+      });
+    } catch {
+      erroInesperadoResend = true;
+    }
+    const [rollbackRow] = await q<{ c: bigint }>(
+      `SELECT count(*) AS c FROM "users" WHERE email_normalized = 'resend-rollback@example.test'`,
+    );
+    record(
+      121,
+      "erro inesperado escapa e faz ROLLBACK",
+      erroInesperadoResend && Number(rollbackRow!.c) === 0,
+      `escapou=${erroInesperadoResend} linhas=${Number(rollbackRow!.c)}`,
     );
   } finally {
     await prisma.$disconnect();

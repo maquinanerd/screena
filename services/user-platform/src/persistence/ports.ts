@@ -27,6 +27,7 @@ import type {
   CredentialCreateInput,
   EmailVerificationInput,
   EmailVerificationResult,
+  EmailVerificationStateLookupResult,
   CredentialCreateResult,
   CredentialReplaceInput,
   CredentialReplaceResult,
@@ -68,12 +69,15 @@ export interface TransactionRunner {
  * consumo atomico do token). Os dois `userId` que o C7B2 devolve passam a ter
  * destino real.
  *
- * PORT_GAP REMANESCENTE (fora do escopo do C7B2.1): `evaluateVerificationResend`
- * consome `alreadyVerified`, e `canPublishList`/`validateProfileVisibility...`
- * consomem o carimbo `emailVerifiedAt: Date | null`. Nenhum metodo o LE hoje —
- * `IdentityRecord` nao o carrega, de proposito, porque nenhum consumidor DESTA
- * unidade o exige. Nasce com a unidade que trouxer listas/privacidade (C7B3/C7B4)
- * ou o reenvio de verificacao.
+ * C7B2.2 fechou a leitura do carimbo para o dominio de AUTENTICACAO:
+ * `findEmailVerificationStateByNormalizedEmail` alimenta
+ * `evaluateVerificationResend`. A leitura ficou em metodo PROPRIO, com shape
+ * proprio — ampliar `IdentityLookupResult` faria o caminho de sessao e de
+ * cadastro carregarem um carimbo que nao consomem.
+ *
+ * Segue PENDENTE (outro dominio, nao autenticacao): `canPublishList` e
+ * `validate*VisibilityTransition` consomem o mesmo carimbo por `userId`. Nasce
+ * com listas/privacidade (C7B3/C7B4), que podem reusar o fato ja persistido.
  *
  * Nenhum retorno carrega `passwordHash`: credencial e outro port.
  */
@@ -127,6 +131,24 @@ export interface IdentityStore {
     scope: TransactionScope,
     input: EmailVerificationInput,
   ): Promise<EmailVerificationResult>;
+
+  /**
+   * Estado de verificacao para o REENVIO. Consumidor:
+   * `evaluateVerificationResend` precisa de `userExists` e `alreadyVerified`, e
+   * `buildEmailVerificationIssue` precisa do `userId` para emitir o token.
+   *
+   * A chave e `email_normalized` porque o comando publico do reenvio
+   * (`RequestEmailVerificationCommand`) chega SEM sessao, so com o e-mail — o
+   * `userId` e o que este metodo descobre, nao o que ele recebe.
+   *
+   * Devolve o CARIMBO, nao um booleano: `alreadyVerified` e politica do dominio.
+   * O adapter NAO normaliza (a normalizacao e de
+   * `parseRequestEmailVerificationCommand`) e NAO filtra por status.
+   */
+  findEmailVerificationStateByNormalizedEmail(
+    scope: TransactionScope,
+    emailNormalized: string,
+  ): Promise<EmailVerificationStateLookupResult>;
 }
 
 /**

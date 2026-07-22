@@ -31,6 +31,12 @@
  *      snapshot, e o conflito volta a ser abortivo (check 53). Endurecer o
  *      isolamento do cadastro exige reler esta secao.
  *
+ *      Isso NAO vale so para o INSERT: todo `updateMany` com PRE-CONDICAO
+ *      (o CAS da senha, a revogacao de sessao, o consumo de token, a marcacao de
+ *      e-mail) depende do mesmo reavaliar-na-versao-nova do READ COMMITTED. Sob
+ *      REPEATABLE READ o perdedor da corrida recebe `P2034` em vez do resultado
+ *      tipado — comprovado em banco real para a marcacao de e-mail.
+ *
  *   3. Nao-abortivo nao e o mesmo que nao-bloqueante. `ON CONFLICT DO NOTHING`
  *      ESPERA o inseridor concorrente terminar; sob contencao isso pode estourar
  *      o timeout de transacao do Prisma (`P2028`) ou entrar em deadlock

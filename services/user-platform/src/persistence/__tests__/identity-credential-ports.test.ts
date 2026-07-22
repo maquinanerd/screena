@@ -16,7 +16,10 @@ import { describe, expect, it } from "vitest";
 import { authenticatePassword } from "../../auth/credentials.js";
 import { decideLogin, decideSignup } from "../../auth/flows.js";
 import { evaluateSessionAccess } from "../../auth/sessions.js";
-import { applyEmailVerification } from "../../auth/verification.js";
+import {
+  applyEmailVerification,
+  evaluateVerificationResend,
+} from "../../auth/verification.js";
 import type { IdentityStore, PasswordCredentialStore } from "../ports.js";
 import type {
   CredentialCreateInput,
@@ -102,6 +105,16 @@ function fakeIdentityStore(): IdentityStore {
       if (row.emailVerifiedAt !== null) return { kind: "already_verified" };
       row.emailVerifiedAt = input.now;
       return { kind: "verified" };
+    },
+    async findEmailVerificationStateByNormalizedEmail(_scope, emailNormalized) {
+      // Devolve o FATO (carimbo), nunca `alreadyVerified` — a derivacao e do
+      // dominio. Sem filtro de status: a persistencia entrega o estado.
+      const row = rows.find((r) => r.emailNormalized === emailNormalized);
+      if (row === undefined) return { kind: "not_found" };
+      return {
+        kind: "found",
+        state: { userId: row.id, emailVerifiedAt: row.emailVerifiedAt },
+      };
     },
   };
 }
@@ -533,5 +546,129 @@ describe("C7B2.1 — identidade fecha autenticacao por sessao e verificacao", ()
     // de travar isso — em runtime, um `undefined` viraria uma data invalida.
     const comando: EmailVerificationInput = { userId: 1n, now: AGORA };
     expect(Object.keys(comando).sort()).toEqual(["now", "userId"]);
+  });
+});
+
+describe("C7B2.2 — leitura do estado de verificacao alimenta o reenvio", () => {
+  const SCOPE: TransactionScope = { transactional: true };
+  const AGORA = new Date("2026-07-22T12:00:00.000Z");
+
+  /** A derivacao que o CONSUMIDOR faz — nunca o adapter. */
+  function decidirReenvio(
+    lookup: Awaited<ReturnType<IdentityStore["findEmailVerificationStateByNormalizedEmail"]>>,
+  ) {
+    return evaluateVerificationResend({
+      userExists: lookup.kind === "found",
+      alreadyVerified: lookup.kind === "found" && lookup.state.emailVerifiedAt !== null,
+    });
+  }
+
+  async function comConta(): Promise<{ store: IdentityStore; userId: bigint }> {
+    const store = fakeIdentityStore();
+    const criado = await store.create(SCOPE, {
+      email: "resend@example.test",
+      emailNormalized: "resend@example.test",
+      displayName: null,
+    });
+    if (criado.kind !== "created") throw new Error("setup falhou");
+    return { store, userId: criado.identity.id };
+  }
+
+  it("(1) conta NAO verificada => issue_token, e o userId permite emitir", async () => {
+    const { store, userId } = await comConta();
+    const lookup = await store.findEmailVerificationStateByNormalizedEmail(
+      SCOPE,
+      "resend@example.test",
+    );
+    expect(lookup.kind).toBe("found");
+    if (lookup.kind !== "found") return;
+    // O `userId` existe porque `buildEmailVerificationIssue` precisa dele.
+    expect(lookup.state.userId).toBe(userId);
+    expect(decidirReenvio(lookup).internalReason).toBe("issue_token");
+  });
+
+  it("(2) conta JA verificada => already_verified (idempotente, nao reemite)", async () => {
+    const { store, userId } = await comConta();
+    await store.markEmailVerified(SCOPE, { userId, now: AGORA });
+    const lookup = await store.findEmailVerificationStateByNormalizedEmail(
+      SCOPE,
+      "resend@example.test",
+    );
+    expect(lookup.kind === "found" && lookup.state.emailVerifiedAt).toEqual(AGORA);
+    expect(decidirReenvio(lookup).internalReason).toBe("already_verified");
+  });
+
+  it("(3) e-mail inexistente => user_not_found INTERNO", async () => {
+    const { store } = await comConta();
+    const lookup = await store.findEmailVerificationStateByNormalizedEmail(
+      SCOPE,
+      "ninguem@example.test",
+    );
+    expect(lookup.kind).toBe("not_found");
+    expect(decidirReenvio(lookup).internalReason).toBe("user_not_found");
+  });
+
+  it("(4) ANTI-ENUMERACAO: os tres casos dao a MESMA resposta publica", async () => {
+    // Este e o ponto que a leitura nao pode quebrar. A persistencia distingue os
+    // tres estados; a borda nao.
+    const { store, userId } = await comConta();
+    const naoVerificada = await store.findEmailVerificationStateByNormalizedEmail(
+      SCOPE,
+      "resend@example.test",
+    );
+    const inexistente = await store.findEmailVerificationStateByNormalizedEmail(
+      SCOPE,
+      "ninguem@example.test",
+    );
+    await store.markEmailVerified(SCOPE, { userId, now: AGORA });
+    const jaVerificada = await store.findEmailVerificationStateByNormalizedEmail(
+      SCOPE,
+      "resend@example.test",
+    );
+
+    const publicos = [naoVerificada, inexistente, jaVerificada].map(
+      (l) => decidirReenvio(l).publicResult,
+    );
+    expect(publicos.every((p) => p.ok)).toBe(true);
+    // Serializados IDENTICOS: nada distingue os casos para quem esta fora.
+    const serializados = publicos.map((p) => JSON.stringify(p));
+    expect(new Set(serializados).size).toBe(1);
+
+    // E os motivos INTERNOS sao, esses sim, distintos.
+    const internos = [naoVerificada, inexistente, jaVerificada].map(
+      (l) => decidirReenvio(l).internalReason,
+    );
+    expect(new Set(internos).size).toBe(3);
+  });
+
+  it("(5) o resultado carrega o FATO, nunca a politica nem PII", async () => {
+    const { store } = await comConta();
+    const lookup = await store.findEmailVerificationStateByNormalizedEmail(
+      SCOPE,
+      "resend@example.test",
+    );
+    expect(lookup.kind).toBe("found");
+    if (lookup.kind !== "found") return;
+    // Exatamente dois campos: sem `alreadyVerified`, sem `email`, sem `status`.
+    expect(Object.keys(lookup.state).sort()).toEqual(["emailVerifiedAt", "userId"]);
+    const serializado = JSON.stringify(lookup.state, (_k, v) =>
+      typeof v === "bigint" ? "0" : v,
+    );
+    expect(serializado).not.toMatch(/@|hash|token|alreadyVerified|status/i);
+  });
+
+  it("(6) o carimbo e um Date, nao um booleano (fato != decisao)", async () => {
+    const { store, userId } = await comConta();
+    await store.markEmailVerified(SCOPE, { userId, now: AGORA });
+    const lookup = await store.findEmailVerificationStateByNormalizedEmail(
+      SCOPE,
+      "resend@example.test",
+    );
+    if (lookup.kind !== "found") throw new Error("esperava found");
+    // Controle negativo do desenho: se o adapter tivesse devolvido
+    // `alreadyVerified: boolean`, o QUANDO teria sido descartado e este
+    // `toBeInstanceOf` reprovaria.
+    expect(lookup.state.emailVerifiedAt).toBeInstanceOf(Date);
+    expect(typeof lookup.state.emailVerifiedAt).not.toBe("boolean");
   });
 });
