@@ -40,8 +40,14 @@ export interface RankRequest {
   readonly contextEntityRef?: RecommendationEntityRef;
 }
 
+/**
+ * Chave de identidade de uma entidade (uso interno, nunca persistida).
+ * Separador "|" imprimivel (nunca byte de controle cru — ver
+ * tests/governance/user-platform-no-control-bytes.test.ts). A chave e injetiva
+ * porque `entityId` e decimal: o ultimo "|" sempre separa tipo de id.
+ */
 function refKey(ref: RecommendationEntityRef): string {
-  return `${ref.entityType}${ref.entityId.toString()}`;
+  return `${ref.entityType}|${ref.entityId.toString()}`;
 }
 
 /** Tupla de sinais para desempate determinista (null vira -1). */
