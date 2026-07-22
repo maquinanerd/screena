@@ -340,3 +340,30 @@ apenas de que nada aconteceu.
 `users.email_verified_at` não tem CHECK de coerência temporal, embora
 `user_sessions` e `user_verification_tokens` tenham os equivalentes. Entra numa
 migration de **hardening** futura, não nesta correção.
+
+---
+
+## Atualização C7C — o consumidor de runtime existe
+
+Quando este documento foi escrito, nenhuma função pura de `auth/` tinha chamador
+em runtime: a camada de orquestração era "C7C". **C7C existe agora** — ver
+[`user-product-auth-runtime.md`](./user-product-auth-runtime.md).
+
+O que mudou aqui:
+
+- **`AuthTokenStore.issue`/`consume`/`invalidatePending`** e
+  **`SessionStore.listActiveIds`/`revoke`** deixaram de ser contrato sem leitor:
+  são chamados pelos quatro endpoints `/api/auth/**`.
+- **A composição da confirmação descrita acima ("abortar é obrigatório") foi
+  implementada como descrita**, com o sinal `AuthTransactionAbort`. Os checks
+  129–132 continuam sendo a prova em banco real.
+- **`AuthThrottleStore` entrou como port novo** (contrato + adapter Prisma sobre
+  `user_auth_throttles`, que já existia no schema). Nenhuma migration foi criada.
+  Checks 133–141 cobrem o compare-and-swap, o unique `(scope, key)`, o
+  `@updatedAt` e a regra de conflito não-abortivo.
+- **`buildEmailVerificationIssue`/`buildPasswordResetIssue`** ganharam
+  `ttlMinutes` **opcional** (default = as constantes de `policy.ts`), para que o
+  prazo venha da configuração de ambiente sem criar uma segunda fórmula de
+  validade.
+
+Segue **fora** desta camada, como antes: cookie, sessão HTTP, CSRF e login.

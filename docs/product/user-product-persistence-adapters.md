@@ -330,3 +330,35 @@ Pendências conhecidas, **fora** do escopo desta unidade:
   existe como script de raiz;
 - `services/**/scripts/**` é excluído do `tsconfig.json`, então o validador não
   é typechecked — daí as provas de tipo viverem no teste.
+
+---
+
+## Atualização C7C — quinto adapter: `AuthThrottleStore`
+
+`persistence/prisma/auth-throttle-store.ts` entrou seguindo as mesmas regras dos
+quatro anteriores, e por isso não abre exceção nenhuma:
+
+- **inserção não-abortiva** (`createManyAndReturn` + `skipDuplicates`): a colisão
+  do unique `(scope, key)` devolve zero linhas em vez de levantar `P2002` e
+  envenenar a transação interativa;
+- **compare-and-swap** por `updateMany` com as três colunas de estado no `WHERE`
+  — sem pré-imagem, dois pedidos concorrentes leriam a mesma contagem e o limite
+  efetivo seria maior do que a política declara;
+- **nenhum `catch`**, nenhum `console`, nenhum `any`, `select` explícito em toda
+  leitura, e `now` sempre por parâmetro;
+- **`count > 1` falha fechado**: `(scope, key)` é unique, então mais de uma linha
+  significa que o banco perdeu a constraint.
+
+O executor (`PrismaExecutor`) passou de quatro para **cinco** delegações
+(`authThrottle`). A guarda de fronteira lê essa lista do próprio `Pick`, então
+ampliar o executor estende a varredura automaticamente — foi exatamente o furo
+que o C7B2 registrou.
+
+O mapper `toAuthThrottleState` devolve **só** as três colunas de estado: nem
+`scope`/`key` (quem consultou já os tem, e `key` pode ser o e-mail normalizado —
+PII sem leitor do outro lado), nem `id`, nem timestamps.
+
+**Limitação registrada:** `ThrottleState.previousLockouts`, que a política pura
+usa para o lockout progressivo, **não tem coluna** e por isso não é persistido.
+Todo bloqueio dura a base de 15 minutos. Ligar o progressivo exige migration —
+fora do escopo desta unidade.
