@@ -29,6 +29,7 @@ export const CATALOG_COMMANDS = [
   'search-status',
   'status',
   'audit-database',
+  'index-decisions',
   'dead-letter',
 ] as const
 
@@ -173,6 +174,9 @@ const MUTATING_COMMANDS: ReadonlySet<CatalogCommand> = new Set([
   'media',
   'episodes',
   'search-reindex',
+  // Escreve numa tabela que o SITEMAP le. Exigir --dry-run/--apply explicito e
+  // o minimo: o operador precisa ver quantas paginas mudam de estado antes.
+  'index-decisions',
 ])
 
 /** Comandos somente-leitura. */

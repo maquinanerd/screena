@@ -71,6 +71,11 @@ interface StepLog {
   readonly stderrTail: string
 }
 
+/** `JSON.stringify` LANCA em BigInt, e COUNT(*) do PostgreSQL volta BigInt. */
+function bigIntSafe(_key: string, value: unknown): unknown {
+  return typeof value === 'bigint' ? value.toString() : value
+}
+
 const steps: StepLog[] = []
 
 /**
@@ -424,7 +429,10 @@ async function main(): Promise<void> {
 
       report.steps = steps
       report.finishedAt = new Date().toISOString()
-      writeFileSync(OUT, JSON.stringify(report, null, 2), 'utf8')
+      // `COUNT(*)` do PostgreSQL volta como BigInt e `JSON.stringify` LANCA
+      // nele. Sem o replacer, todo o relatorio se perdia no fim de uma execucao
+      // que ja tinha custado minutos.
+      writeFileSync(OUT, JSON.stringify(report, bigIntSafe, 2), 'utf8')
       console.log(`\n>>> relatorio salvo em ${OUT}`)
     } finally {
       await prisma.$disconnect()
@@ -433,7 +441,7 @@ async function main(): Promise<void> {
     console.error('FALHA:', e instanceof Error ? e.stack : String(e))
     report.error = e instanceof Error ? e.message : String(e)
     report.steps = steps
-    writeFileSync(OUT, JSON.stringify(report, null, 2), 'utf8')
+    writeFileSync(OUT, JSON.stringify(report, bigIntSafe, 2), 'utf8')
     process.exitCode = 1
   } finally {
     if (started) {

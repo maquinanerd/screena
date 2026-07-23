@@ -92,6 +92,34 @@ Exemplos:
   pnpm catalog plan-bootstrap --strategy popular --entity movie,tv --limit 20 --json
   pnpm catalog plan-bootstrap --limit 100 --max-episodes 20000 --max-duration-minutes 45`,
 
+  'index-decisions': `catalog index-decisions — PRODUZ page_indexability_decisions.
+
+Essa tabela e LIDA pelo sitemap, pelos loaders publicos e pelo resolver de SEO —
+e nunca foi ESCRITA por processo nenhum. Tabela lida e nao escrita nao e gate: e
+decoracao. Este comando e o produtor.
+
+A politica nao e reimplementada aqui: licenca -> idioma -> caso tecnico -> index
+continua vindo de \`resolvePageSeo\` (fonte unica). O que se acrescenta sao os
+gates por TIPO: filme/serie exigem slug + titulo; pessoa exige credito em obra
+publicavel; temporada/episodio herdam a serie.
+
+SEM CHURN: decisao igual a persistida (mesmo veredito, razao e versao de
+politica) NAO grava. Uma execucao sobre catalogo estavel deve gravar zero.
+
+NAO LIGA INDEXACAO: gravar \`index\` registra o que a politica diz. A chave
+global \`CINERIE_PUBLIC_INDEXING_ENABLED\` continua desligada.
+
+Flags:
+  --entity <lista>   movie,tv,person (default: todos)
+  --locale <l>       default pt-BR
+  --limit <n>        teto de entidades por tipo
+  --dry-run          calcula e mostra o diff, sem gravar
+  --apply            grava
+
+Exemplos:
+  pnpm catalog index-decisions --dry-run --json
+  pnpm catalog index-decisions --entity person --apply`,
+
   bootstrap: `catalog bootstrap — orquestra o catalogo do zero.
 
 Nao baixa tudo de forma sincrona: ENFILEIRA as etapas e deixa a fila cascatear

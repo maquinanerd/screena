@@ -32,7 +32,7 @@ describe("decideCatalogIndexability — precedencia", () => {
     const d = decideCatalogIndexability({
       ...publishableMovie,
       displayedRatings: [
-        { source: "imdb", licenseStatus: "blocked", displayAllowed: false, scoreAllowed: false },
+        { licenseDisplayAllowed: false },
       ],
     });
     expect(d.decision).toBe("blocked");
@@ -50,7 +50,7 @@ describe("decideCatalogIndexability — precedencia", () => {
       ...publishableMovie,
       language: "en",
       displayedRatings: [
-        { source: "imdb", licenseStatus: "blocked", displayAllowed: false, scoreAllowed: false },
+        { licenseDisplayAllowed: false },
       ],
     });
     expect(d.decision).toBe("blocked");

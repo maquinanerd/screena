@@ -59,6 +59,10 @@ import {
 } from '../src/planning/index.js'
 import { createCatalogServices } from '../src/persistence/catalog-services.js'
 import { createPrismaAuditReader } from '../src/persistence/audit-reader.js'
+import {
+  DECIDABLE_ENTITY_TYPES,
+  produceIndexabilityDecisions,
+} from '../src/persistence/indexability-writer.js'
 import { createPersistence } from '../src/persistence/index.js'
 import { createPrismaCatalogJobStore } from '../src/persistence/catalog-job-store.js'
 import { createPrismaSearchStore } from '../src/persistence/search-store.js'
@@ -248,7 +252,7 @@ async function runHandlerInline<TResult>(
  * de banco morrer por falta de uma credencial que ele nunca usaria — e num host
  * de operacao (onde se audita) o token TMDB muitas vezes nem existe.
  */
-const DB_ONLY_COMMANDS = new Set(['status', 'search-status', 'audit-database', 'dead-letter', 'enqueue'])
+const DB_ONLY_COMMANDS = new Set(['status', 'search-status', 'audit-database', 'dead-letter', 'enqueue', 'index-decisions'])
 
 /** Monta so a camada de banco (sem TMDB). */
 function createDbOnlyRuntime() {
@@ -354,6 +358,8 @@ async function main() {
           return await cmdStatus(db, flags)
         case 'audit-database':
           return await cmdAuditDatabase(db, flags)
+        case 'index-decisions':
+          return await cmdIndexDecisions(db, flags, locale)
         case 'dead-letter':
           return await cmdDeadLetter(db, subcommand, flags)
         default:
@@ -677,6 +683,61 @@ async function cmdPlanBootstrap(
   ])
 
   return decision.withinBudget ? EXIT_CODES.ok : EXIT_CODES.failed
+}
+
+/**
+ * index-decisions — produz `page_indexability_decisions`.
+ *
+ * A tabela e lida pelo sitemap e pelos loaders publicos, e nunca teve produtor.
+ * `--dry-run` mostra o diff antes de mexer nela; `--apply` grava.
+ */
+async function cmdIndexDecisions(
+  services: DbOnlyRuntime,
+  flags: CatalogFlags,
+  locale: string,
+): Promise<number> {
+  const requested = splitList(flags.entity)
+  const types =
+    requested === null
+      ? DECIDABLE_ENTITY_TYPES
+      : requested.filter((t): t is 'movie' | 'tv' | 'person' =>
+          (DECIDABLE_ENTITY_TYPES as readonly string[]).includes(t),
+        )
+  if (types.length === 0) {
+    process.stderr.write(
+      `erro: --entity precisa conter um de: ${DECIDABLE_ENTITY_TYPES.join(', ')}\n`,
+    )
+    return EXIT_CODES.usage
+  }
+
+  const summary = await produceIndexabilityDecisions(services.prisma, {
+    language: locale,
+    entityTypes: types,
+    ...(flags.limit !== null ? { limit: flags.limit } : {}),
+    dryRun: !flags.apply,
+    now: services.now,
+  })
+
+  emit(flags, summary, [
+    `decisoes de indexabilidade · ${summary.language} · ${summary.dryRun ? 'DRY-RUN' : 'APLICADO'}`,
+    `  avaliadas: ${summary.evaluated} · gravadas: ${summary.written} · inalteradas: ${summary.unchanged}`,
+    '',
+    '  por decisao:',
+    ...Object.entries(summary.byDecision).map(([k, v]) => `    ${k.padEnd(10)} ${v}`),
+    '',
+    '  por razao:',
+    ...Object.entries(summary.byReason).map(([k, v]) => `    ${k.padEnd(24)} ${v}`),
+    '',
+    summary.changes.length > 0 ? '  mudancas (amostra):' : '  nenhuma mudanca.',
+    ...summary.changes
+      .slice(0, 15)
+      .map((c) => `    ${c.entityType}#${c.entityId}: ${c.from ?? '(nova)'} -> ${c.to} (${c.reason})`),
+    '',
+    summary.dryRun
+      ? 'Nada foi gravado. Use --apply para persistir.'
+      : 'Decisoes persistidas. A indexacao publica CONTINUA desligada.',
+  ])
+  return EXIT_CODES.ok
 }
 
 /** enqueue. */
