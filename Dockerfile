@@ -1,4 +1,10 @@
-FROM node:22-bookworm-slim
+# Imagem base PINADA por DIGEST (imutavel), nao por tag flutuante (baseline:
+# auditoria apontou `latest`/tag movel). O digest abaixo e do `node:22-bookworm-slim`
+# resolvido no Docker Hub. Sobrescrevivel no deploy sem editar o Dockerfile:
+#   docker build --build-arg NODE_IMAGE=node:22-bookworm-slim@sha256:<novo> ...
+# Para atualizar o default, resolva o digest atual (ver docs/runbooks/PRODUCTION_DEPLOY.md).
+ARG NODE_IMAGE=node:22-bookworm-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3
+FROM ${NODE_IMAGE}
 
 WORKDIR /app
 
@@ -48,7 +54,37 @@ RUN pnpm --filter @screena/web build
 
 ENV NODE_ENV=production
 
+# Versao RASTREAVEL da imagem (baseline R-27/observabilidade). Injetada no build
+# e lida em runtime por GET /api/health. Sem args, resolve "unknown" (nunca
+# inventa um SHA). Nao sao envs publicas de site/indexacao — sao metadados seguros.
+#   docker build --build-arg CINERIE_BUILD_SHA=$(git rev-parse HEAD) \
+#                --build-arg CINERIE_BUILD_VERSION=v1.2.3 \
+#                --build-arg CINERIE_BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ) ...
+ARG CINERIE_BUILD_SHA=unknown
+ARG CINERIE_BUILD_VERSION=unknown
+ARG CINERIE_BUILD_TIME=unknown
+ENV CINERIE_BUILD_SHA=${CINERIE_BUILD_SHA} \
+    CINERIE_BUILD_VERSION=${CINERIE_BUILD_VERSION} \
+    CINERIE_BUILD_TIME=${CINERIE_BUILD_TIME}
+
+# Container NAO-root: a imagem base ja traz o usuario `node` (uid 1000). O app
+# so precisa LER node_modules/build e ESCREVER o cache de revalidacao do Next
+# (.next/cache); dar a posse de /app ao `node` cobre ambos. `migrate deploy` so
+# faz rede. Reversivel: remover o chown + USER volta a rodar como root.
+RUN chown -R node:node /app
+USER node
+
 EXPOSE 3000
+
+# HEALTHCHECK (baseline R-27): o orquestrador passa a distinguir container no ar
+# de container degradado. Usa `node` (a imagem slim nao tem curl/wget) e o fetch
+# global do Node 22 contra GET /api/health, que so responde 200 quando o
+# PostgreSQL responde. start-period cobre o `migrate deploy` do boot.
+# URL CANONICA com barra final: `trailingSlash: true` faz /api/health responder
+# 308 -> /api/health/. O fetch seguiria o redirect, mas usar a canonica evita um
+# salto extra a cada 30s.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:3000/api/health/').then(r=>process.exit(r.status===200?0:1)).catch(()=>process.exit(1))"
 
 # Release: `prisma migrate deploy` roda ANTES do Next e, se falhar, o app NAO
 # sobe (exit != 0 => o orquestrador nao promove o container). Nunca `migrate dev`,
