@@ -36,6 +36,38 @@ chaves de idempotencia carregam o id); omitido, cada run ganha um id novo.
 **Jobs enfileirados != catalogo preenchido** — o relatorio do bootstrap conta
 enqueues; quem preenche e o worker.
 
+O ESCOPO editorial (quais titulos, com que frequencia, e a regra de pessoa) e
+normativo e vive em [catalog-editorial-scope](../backend/catalog-editorial-scope.md).
+Nao amplie o escopo sem atualizar aquele documento na mesma PR.
+
+### Slug e traducao saem do proprio `sync_details`
+
+Desde a entrega do Prompt 03, o job `sync_details` FINALIZA a entidade: alem do
+upsert tipado, grava o **slug canonico pt-BR** (com 301 quando o canonico muda) e
+a **traducao**. Antes disso so a promocao de `tmdb_raw` finalizava, e um
+bootstrap pela fila enchia `movies`/`tv_shows`/`people` sem gerar **nenhuma URL
+publica** — sem slug nao ha rota, nao ha entrada de busca (o backfill pagina por
+slug) e nao ha linha de sitemap.
+
+Limite conhecido: a finalizacao acontece quando houve upsert. No short-circuit de
+cache (payload sem mudanca) nao ha id para finalizar. Uma entidade importada
+ANTES desta mudanca, cujo payload nao mudou desde entao, continua sem slug — para
+essas, use `catalog enqueue reprocess_raw` ou force um re-sync.
+
+### Evidencia reproduzivel do bootstrap
+
+```
+corepack pnpm --filter @screena/ingestion exec tsx \
+  scripts/bootstrap-evidence-real-postgres.ts --env-file=<path/.env> --out=<path/report.json>
+```
+
+Sobe um PostgreSQL 16 EFEMERO (embedded-postgres), migra do zero, roda
+dry-run -> bootstrap -> worker, e emite censo ANTES/DEPOIS + amostras reais +
+uma segunda passada para provar IDEMPOTENCIA. Nunca toca producao: forca
+`DATABASE_URL` e `NODE_ENV=development` no ambiente dos filhos, que TEM
+precedencia sobre `--env-file` no Node. O `--env-file` serve so para o processo
+filho ler a credencial TMDB — a chave nunca e impressa nem persistida.
+
 ## Passos legados (CLIs separadas, continuam validos)
 
 1. **Config + taxonomias** (imagens, generos, certificacoes):
