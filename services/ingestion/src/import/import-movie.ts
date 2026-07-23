@@ -5,6 +5,7 @@
  * Sempre grava em api_sync_logs; nunca relanca (pipeline-safe).
  */
 
+import { readMovieDisplayFields } from '../display-fields.js'
 import { normalizeMovie } from '../normalizers/movie.js'
 import { describeError } from './errors.js'
 import type { ImportContext, ImportResult } from './types.js'
@@ -73,6 +74,7 @@ export async function importMovie(ctx: ImportContext, tmdbId: number): Promise<I
       created: outcome.created,
       id: outcome.id,
       quotaCost,
+      display: readMovieDisplayFields(result.data),
     }
   } catch (error) {
     const info = describeError(error)

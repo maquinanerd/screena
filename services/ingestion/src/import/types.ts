@@ -5,6 +5,7 @@
  * pura e testavel com fakes em memoria.
  */
 
+import type { CatalogDisplayFields } from '../display-fields.js'
 import type { CachePort, EntityStorePort, SyncLogPort, SyncStatus, TmdbReadPort } from '../ports.js'
 import type { EntityType } from '../types.js'
 
@@ -31,6 +32,19 @@ export interface ImportResult {
   readonly created: boolean
   /** Id interno da entidade (quando houve upsert). */
   readonly id: string | null
+  /**
+   * Titulo/sinopse de exibicao lidos do payload, quando houve upsert.
+   *
+   * Existe para a FINALIZACAO editorial (slug canonico + traducao pt-BR) poder
+   * acontecer no caminho da fila duravel (`sync_details`), do mesmo jeito que
+   * ja acontece na promocao de `tmdb_raw`. Sem isto, o import direto gravava a
+   * ficha tipada e parava ali — sem slug a entidade nao tem rota publica, nao
+   * entra na busca e nao entra no sitemap.
+   *
+   * `undefined` no caminho `changed === false` (short-circuit/touch): ali nao
+   * houve upsert, entao nao ha id para finalizar.
+   */
+  readonly display?: CatalogDisplayFields
   /** Numero de chamadas de rede TMDB consumidas (cache hit = 0). */
   readonly quotaCost: number
   /** Temporadas upsertadas (apenas series). */
