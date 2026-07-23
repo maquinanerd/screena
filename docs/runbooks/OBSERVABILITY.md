@@ -106,11 +106,29 @@ Description=Cinerie — alerta de falha de restore-test
 [Service]
 Type=oneshot
 Environment=BACKUP_ALERT_WEBHOOK_URL=https://hooks.slack.com/services/XXX
-ExecStart=/usr/bin/node --input-type=module -e "const m=await import('file:///home/screen/app/current/scripts/backup/lib/alert.mjs'); const a=m.buildAlert({source:'restore-test',status:'failure',timestamp:new Date().toISOString()}); console.error(m.formatAlertText(a)); await m.dispatchAlert(a, process.env.BACKUP_ALERT_WEBHOOK_URL);"
+Environment=BACKUP_ALERT_PROVIDER=slack
+ExecStart=/usr/bin/node --input-type=module -e "const m=await import('file:///home/screen/app/current/scripts/backup/lib/alert.mjs'); const a=m.buildAlert({source:'restore-test',status:'failure',timestamp:new Date().toISOString()}); console.error(m.formatAlertText(a)); await m.dispatchAlert(a,{webhookUrl:process.env.BACKUP_ALERT_WEBHOOK_URL,provider:process.env.BACKUP_ALERT_PROVIDER});"
 ```
 
+### 4.2 Contrato de webhook (provider EXPLÍCITO)
+
+`dispatchAlert(alert, { webhookUrl, provider, timeoutMs })` (`scripts/backup/lib/alert.mjs`)
+escolhe o formato pelo **provider explícito** — nunca por inferência frágil:
+
+| `BACKUP_ALERT_PROVIDER` | Corpo enviado |
+| --- | --- |
+| `generic` (ou ausente com webhook) | payload estruturado completo (`{ source, status, severity, exitCode, message, timestamp, host }`) |
+| `slack` | `{ "text": "[ALERTA][critical] backup exit=1 … " }` (Slack Incoming Webhook) |
+| *(sem `BACKUP_ALERT_WEBHOOK_URL`)* | apenas log local; retorna `false` com segurança |
+
+`dispatchAlert` **nunca lança e sempre resolve boolean**: resposta não-2xx,
+timeout (`DEFAULT_ALERT_TIMEOUT_MS`) e falha de rede retornam `false` sem
+propagar — o exit code do backup permanece a fonte de verdade. A mensagem é
+**redigida** antes de sair (connection string / `*_KEY` / `password=`).
+Todos esses casos são travados em `tests/operations/backup-alert.test.ts`.
+
 > Os alertas `http-5xx`, `sync`, `queue` e `disk` têm o **mecanismo** (a fonte no
-> catálogo + o construtor de payload redigido); o **fio** até o monitor
+> catálogo + os adapters de payload redigidos); o **fio** até o monitor
 > (Prometheus/Alertmanager, systemd timers, proxy) é configuração de
 > infraestrutura do host, fora do código do repositório. Este runbook define o
 > contrato; ligar cada fonte é passo de provisionamento.
