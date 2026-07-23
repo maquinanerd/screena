@@ -80,8 +80,11 @@ EXPOSE 3000
 # de container degradado. Usa `node` (a imagem slim nao tem curl/wget) e o fetch
 # global do Node 22 contra GET /api/health, que so responde 200 quando o
 # PostgreSQL responde. start-period cobre o `migrate deploy` do boot.
+# URL CANONICA com barra final: `trailingSlash: true` faz /api/health responder
+# 308 -> /api/health/. O fetch seguiria o redirect, mas usar a canonica evita um
+# salto extra a cada 30s.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.status===200?0:1)).catch(()=>process.exit(1))"
+  CMD node -e "fetch('http://127.0.0.1:3000/api/health/').then(r=>process.exit(r.status===200?0:1)).catch(()=>process.exit(1))"
 
 # Release: `prisma migrate deploy` roda ANTES do Next e, se falhar, o app NAO
 # sobe (exit != 0 => o orquestrador nao promove o container). Nunca `migrate dev`,
