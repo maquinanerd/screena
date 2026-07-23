@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - main
+  # Roda em TODA pull request, inclusive PRs EMPILHADAS (base != main). Antes o
+  # filtro `branches: [main]` fazia uma PR cuja base era outra branch (ex.: a #79
+  # empilhada sobre a #78) NAO disparar o workflow — nenhuma execucao ficava
+  # associada ao commit. Sem filtro de base, toda PR do repo executa a CI.
   pull_request:
-    branches:
-      - main
 
 permissions:
   contents: read
@@ -205,3 +207,86 @@ jobs:
 
       - name: Verificar backup + restore com fidelidade de dados
         run: bash scripts/backup/verify-backup-restore.sh
+
+  # Prova REAL da imagem Docker (Prompt 02): constroi pelo digest declarado,
+  # injeta SHA/versao/horario, sobe PostgreSQL 16, roda o container como NAO-root,
+  # aguarda o HEALTHCHECK e valida HTTP + versao + migrations + gravabilidade.
+  # Falha se o digest nao existir, o container nao iniciar, o healthcheck falhar
+  # ou houver erro de permissao.
+  docker-image:
+    name: Imagem Docker real (digest, nao-root, healthcheck)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Rede Docker + PostgreSQL 16
+        run: |
+          set -euo pipefail
+          docker network create cinerie-ci
+          docker run -d --name pg --network cinerie-ci \
+            -e POSTGRES_USER=screen -e POSTGRES_PASSWORD=screen -e POSTGRES_DB=screen \
+            postgres:16-alpine
+          for i in $(seq 1 30); do
+            if docker exec pg pg_isready -U screen -d screen >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          docker exec pg psql -U screen -d screen -c "CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;"
+
+      - name: Build da imagem (digest declarado + build args)
+        run: |
+          set -euo pipefail
+          BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "CINERIE_BUILD_TIME=${BUILD_TIME}" >> "$GITHUB_ENV"
+          # Sem --build-arg NODE_IMAGE: usa o DIGEST default do Dockerfile. Se o
+          # digest nao existir mais, o build falha aqui (desejado).
+          docker build \
+            --build-arg CINERIE_BUILD_SHA="${GITHUB_SHA}" \
+            --build-arg CINERIE_BUILD_VERSION="ci-${GITHUB_RUN_NUMBER}" \
+            --build-arg CINERIE_BUILD_TIME="${BUILD_TIME}" \
+            -t cinerie-web:ci .
+
+      - name: Subir container (nao-root) e aguardar HEALTHCHECK
+        run: |
+          set -euo pipefail
+          docker run -d --name web --network cinerie-ci \
+            -e DATABASE_URL=postgresql://screen:screen@pg:5432/screen \
+            -e CINERIE_PUBLIC_SITE_URL=http://localhost:3000 \
+            -e CINERIE_PUBLIC_INDEXING_ENABLED=0 \
+            -p 3000:3000 cinerie-web:ci
+          status=starting
+          for i in $(seq 1 80); do
+            status="$(docker inspect --format '{{.State.Health.Status}}' web 2>/dev/null || echo starting)"
+            echo "healthcheck: ${status}"
+            if [ "${status}" = "healthy" ]; then break; fi
+            if [ "${status}" = "unhealthy" ]; then echo '== container unhealthy =='; docker logs web; exit 1; fi
+            sleep 3
+          done
+          if [ "${status}" != "healthy" ]; then echo '== healthcheck nao ficou healthy =='; docker logs web; exit 1; fi
+
+      - name: Assertivas — HTTP, versao, nao-root, migrations, gravabilidade
+        run: |
+          set -euo pipefail
+          # 1) /api/health 200 + versao casa com os build args
+          H="$(curl -fsS http://localhost:3000/api/health)"; echo "health=${H}"
+          echo "${H}" | grep -q '"status":"ok"'
+          echo "${H}" | grep -q '"database":"ok"'
+          echo "${H}" | grep -q "\"commit\":\"${GITHUB_SHA}\""
+          echo "${H}" | grep -q "\"version\":\"ci-${GITHUB_RUN_NUMBER}\""
+          # 2) /pt/ 200
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/pt/)" = "200"
+          # 3) /dev/movie-page-preview/ 404
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/dev/movie-page-preview/)" = "404"
+          # 4) container NAO-root
+          uid="$(docker exec web id -u)"; echo "container uid=${uid}"
+          test "${uid}" != "0"
+          # 5) migrations aplicadas
+          n="$(docker exec pg psql -U screen -d screen -tAc 'SELECT count(*) FROM "_prisma_migrations"')"
+          echo "migrations=${n}"; test "${n}" -ge 1
+          # 6) diretorios do Next gravaveis pelo usuario do container
+          docker exec web sh -c 'mkdir -p /app/apps/web/.next/cache && touch /app/apps/web/.next/cache/__probe && rm /app/apps/web/.next/cache/__probe'
+          echo "OK: imagem real validada (nao-root, healthcheck, HTTP, migrations, gravabilidade)."
+
+      - name: Logs do container (sempre)
+        if: always()
+        run: docker logs web 2>&1 || true

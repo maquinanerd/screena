@@ -1,19 +1,24 @@
 /**
- * alert.mjs — construção PURA de alertas operacionais (backup, migration, sync,
- * fila, 5xx, disco, indisponibilidade). Sem rede/IO nas funções `build*`/`format*`
- * (a única função com IO é `dispatchAlert`, isolada no fim).
+ * alert.mjs — construção e ENVIO de alertas operacionais (backup, migration,
+ * sync, fila, 5xx, disco, indisponibilidade).
  *
- * REGRA DE SEGURANÇA (não registrar segredos): `redactSecrets` remove
- * connection strings e chaves antes de qualquer alerta sair do processo. Um
- * alerta de backup jamais pode vazar `DATABASE_URL`/senha para um webhook ou log.
+ * As funções `build*`/`format*`/`redact*` são PURAS (sem rede/IO). A única
+ * função com IO é `dispatchAlert`, e ela NUNCA lança — uma falha de alerta jamais
+ * pode mascarar/propagar sobre o resultado do job que a chamou (o backup já
+ * falhou por conta própria; o exit code dele é a fonte de verdade).
+ *
+ * PROVIDER EXPLÍCITO (nunca inferido): `BACKUP_ALERT_PROVIDER=slack|generic`.
+ *   - generic  -> POST do payload estruturado completo;
+ *   - slack    -> POST de `{ text: "..." }` (Slack Incoming Webhook);
+ *   - ausente / sem webhook -> apenas log local e retorno seguro (false).
+ *
+ * REGRA DE SEGURANÇA (não registrar segredos): `redactSecrets` remove connection
+ * strings e chaves antes de qualquer alerta sair do processo.
  */
 
 /** @typedef {"critical"|"warning"|"info"} AlertSeverity */
 
-/**
- * Fontes de alerta reconhecidas (catálogo). Ver docs/runbooks/OBSERVABILITY.md.
- * @type {readonly string[]}
- */
+/** Fontes de alerta reconhecidas (catálogo). Ver docs/runbooks/OBSERVABILITY.md. */
 export const ALERT_SOURCES = Object.freeze([
   "backup",
   "restore-test",
@@ -25,35 +30,29 @@ export const ALERT_SOURCES = Object.freeze([
   "availability",
 ]);
 
+/** Providers de webhook suportados (explícitos). */
+export const ALERT_PROVIDERS = Object.freeze(["generic", "slack"]);
+
+/** Timeout default de envio do alerta (ms). */
+export const DEFAULT_ALERT_TIMEOUT_MS = 5000;
+
 /**
  * Remove segredos de um texto livre antes de ele entrar num alerta/log.
- * Cobre: connection strings postgres(ql):// com credencial, e pares
- * `password=...` / `*_KEY=...` / `TOKEN=...`.
  * @param {string} input
  * @returns {string}
  */
 export function redactSecrets(input) {
   if (typeof input !== "string" || input.length === 0) return "";
   return input
-    // postgres://user:pass@host -> postgres://***:***@host
     .replace(/(postgres(?:ql)?:\/\/)[^:/@\s]+:[^@\s]+@/gi, "$1***:***@")
-    // password=... / pwd=...
     .replace(/\b(password|pwd)=([^\s&;"']+)/gi, "$1=***")
-    // FOO_KEY=... / FOO_TOKEN=... / FOO_SECRET=...
     .replace(/\b([A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD))=([^\s&;"']+)/g, "$1=***");
 }
 
 /**
  * Constrói o payload canônico de um alerta a partir do resultado de um job.
  * PURO e determinístico: o timestamp é injetado (nunca lê o relógio aqui).
- *
  * @param {object} outcome
- * @param {string} outcome.source            uma das ALERT_SOURCES
- * @param {"success"|"failure"} outcome.status
- * @param {number} [outcome.exitCode]        código de saída do job
- * @param {string} [outcome.message]         detalhe livre (será redigido)
- * @param {string} outcome.timestamp         ISO string injetada
- * @param {string} [outcome.host]            host de origem (opcional)
  * @returns {{source:string,status:string,severity:AlertSeverity,exitCode:number,message:string,timestamp:string,host:string}}
  */
 export function buildAlert(outcome) {
@@ -66,7 +65,12 @@ export function buildAlert(outcome) {
   }
   const status = outcome.status === "success" ? "success" : "failure";
   /** @type {AlertSeverity} */
-  const severity = status === "success" ? "info" : source === "backup" || source === "migration" || source === "availability" ? "critical" : "warning";
+  const severity =
+    status === "success"
+      ? "info"
+      : source === "backup" || source === "migration" || source === "availability"
+        ? "critical"
+        : "warning";
   return {
     source,
     status,
@@ -79,8 +83,7 @@ export function buildAlert(outcome) {
 }
 
 /**
- * Texto humano de uma linha para log/Slack/e-mail. Já parte de um alerta
- * construído (portanto já redigido).
+ * Texto humano de uma linha (já redigido, pois parte de um alerta construído).
  * @param {ReturnType<typeof buildAlert>} alert
  * @returns {string}
  */
@@ -90,25 +93,78 @@ export function formatAlertText(alert) {
 }
 
 /**
- * Envia o alerta a um webhook (IO — não usar em teste puro). Só dispara quando
- * `webhookUrl` está definido; caso contrário retorna `false` sem lançar, para o
- * job não quebrar por falta de configuração de alerta.
+ * Payload genérico: o alerta estruturado inteiro.
  * @param {ReturnType<typeof buildAlert>} alert
- * @param {string|undefined} webhookUrl
- * @param {typeof fetch} [fetchImpl]
- * @returns {Promise<boolean>}
  */
-export async function dispatchAlert(alert, webhookUrl, fetchImpl = fetch) {
-  if (!webhookUrl || typeof webhookUrl !== "string") return false;
+export function formatGenericPayload(alert) {
+  return { ...alert };
+}
+
+/**
+ * Payload Slack Incoming Webhook: `{ text }` (compatível com o formato mais
+ * simples e universal do Slack). O texto já vem redigido.
+ * @param {ReturnType<typeof buildAlert>} alert
+ */
+export function formatSlackPayload(alert) {
+  return { text: formatAlertText(alert) };
+}
+
+/** Seleciona o payload conforme o provider explícito. */
+function payloadFor(provider, alert) {
+  return provider === "slack" ? formatSlackPayload(alert) : formatGenericPayload(alert);
+}
+
+/**
+ * Envia o alerta a um webhook. NUNCA lança e SEMPRE resolve boolean.
+ *
+ * @param {ReturnType<typeof buildAlert>} alert
+ * @param {object} [options]
+ * @param {string} [options.webhookUrl]   destino (env BACKUP_ALERT_WEBHOOK_URL)
+ * @param {string} [options.provider]     "generic" | "slack" (env BACKUP_ALERT_PROVIDER)
+ * @param {number} [options.timeoutMs]
+ * @param {typeof fetch} [options.fetchImpl]
+ * @param {(msg:string)=>void} [options.log]
+ * @returns {Promise<boolean>} true só quando o webhook respondeu 2xx.
+ */
+export async function dispatchAlert(alert, options = {}) {
+  const {
+    webhookUrl,
+    provider,
+    timeoutMs = DEFAULT_ALERT_TIMEOUT_MS,
+    fetchImpl = fetch,
+    log = (msg) => console.error(msg),
+  } = options;
+
+  // Sem webhook configurado: log local e retorno seguro (nunca lança).
+  if (!webhookUrl || typeof webhookUrl !== "string") {
+    log(formatAlertText(alert));
+    return false;
+  }
+
+  const chosen = provider === "slack" ? "slack" : "generic";
+  const body = JSON.stringify(payloadFor(chosen, alert));
+
+  let timer;
   try {
-    const res = await fetchImpl(webhookUrl, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(alert),
-    });
+    // Promise.race garante resolucao mesmo se o webhook pendurar: no timeout a
+    // funcao resolve `false` (o fetch pode continuar em background num processo
+    // efemero de alerta — aceitavel). Sem AbortController para nao depender de
+    // global fora do ambiente do lint deste .mjs.
+    const res = await Promise.race([
+      fetchImpl(webhookUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body,
+      }),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error("alert-timeout")), timeoutMs);
+      }),
+    ]);
     return Boolean(res && res.ok);
   } catch {
-    // Falha ao alertar nunca deve mascarar o resultado do job (que já é != 0).
+    // Timeout, rede caída ou resposta inválida: alerta falhou, mas o job não.
     return false;
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }

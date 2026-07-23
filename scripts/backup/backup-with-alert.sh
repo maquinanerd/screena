@@ -35,7 +35,11 @@ emit_alert() {
         host: process.env.HOSTNAME || "",
       });
       console.error(m.formatAlertText(alert));
-      await m.dispatchAlert(alert, process.env.BACKUP_ALERT_WEBHOOK_URL);
+      await m.dispatchAlert(alert, {
+        webhookUrl: process.env.BACKUP_ALERT_WEBHOOK_URL,
+        provider: process.env.BACKUP_ALERT_PROVIDER,
+        log: () => {},
+      });
     ' 2>&1 || echo "backup-with-alert: falha ao emitir alerta (ignorada)." >&2
 }
 
