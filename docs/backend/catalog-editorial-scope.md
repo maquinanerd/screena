@@ -53,6 +53,27 @@ O bootstrap **so enfileira**; quem preenche e o worker:
 pnpm catalog worker --concurrency 4 --max-jobs 0
 ```
 
+### O custo real de uma serie NAO e "1 titulo"
+
+Medido em execucao real contra TMDB (ver
+[bootstrap runbook](../runbooks/catalog-bootstrap.md)): **3 series** da lista
+`popular` produziram **639 temporadas e 33.178 episodios**. A lista de populares
+inclui novelas e series diarias de decadas — uma unica delas pode trazer dezenas
+de milhares de episodios.
+
+Consequencias praticas, que o `--limit` sozinho nao expressa:
+
+- o driver de custo e **episodio**, nao titulo. Dimensione a janela de ingestao
+  por episodios esperados, nao por `--limit`;
+- `sync_seasons`/`sync_episodes` dominam a fila. Num bootstrap de 3+3 titulos,
+  666 jobs foram criados e a quase totalidade era episodio;
+- ampliar `--limit` de 10 para 100 nao multiplica o trabalho por 10 — pode
+  multiplicar por muito mais, dependendo de quais series cairem na lista.
+
+Antes de ampliar o escopo, rode com `--dry-run`, olhe quais series entraram e
+estime episodios. Um `--limit` alto sem essa checagem transforma um bootstrap de
+minutos em um de horas.
+
 ### Por que `--entity movie,tv` e nunca `person`
 
 `person` esta deliberadamente fora da descoberta. Pessoa **nao e ponto de

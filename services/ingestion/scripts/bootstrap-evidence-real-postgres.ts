@@ -36,6 +36,10 @@ const OUT =
   process.argv.find((a) => a.startsWith('--out='))?.slice('--out='.length) ??
   path.join(tmpdir(), 'bootstrap-evidence.json')
 
+/** Titulos por tipo. --limit=<n>; default 100 (escopo editorial inicial). */
+const LIMIT =
+  process.argv.find((a) => a.startsWith('--limit='))?.slice('--limit='.length) ?? '100'
+
 const require = createRequire(import.meta.url)
 
 function prismaBin(): string {
@@ -76,10 +80,21 @@ const steps: StepLog[] = []
  * no Postgres efemero e nunca no banco de producao do .env.
  */
 function runCatalog(step: string, args: string[], databaseUrl: string, timeoutMs = 900_000): StepLog {
+  return runBin(step, 'bin/catalog.ts', args, databaseUrl, timeoutMs)
+}
+
+/** Roda um bin qualquer de `services/ingestion` com o mesmo isolamento de env. */
+function runBin(
+  step: string,
+  bin: string,
+  args: string[],
+  databaseUrl: string,
+  timeoutMs = 900_000,
+): StepLog {
   const started = Date.now()
   const res = spawnSync(
     'node',
-    ['--env-file', ENV_FILE, '--import', 'tsx', 'bin/catalog.ts', ...args],
+    ['--env-file', ENV_FILE, '--import', 'tsx', bin, ...args],
     {
       // `tsx` so resolve a partir do pacote que o declara.
       cwd: path.join(REPO, 'services', 'ingestion'),
@@ -96,14 +111,14 @@ function runCatalog(step: string, args: string[], databaseUrl: string, timeoutMs
   )
   const log: StepLog = {
     step,
-    command: `catalog ${args.join(' ')}`,
+    command: `${bin} ${args.join(' ')}`,
     exitCode: res.status ?? -1,
     durationMs: Date.now() - started,
     stdoutTail: (res.stdout ?? '').split('\n').slice(-40).join('\n'),
     stderrTail: (res.stderr ?? '').split('\n').slice(-20).join('\n'),
   }
   steps.push(log)
-  console.log(`\n=== [${step}] catalog ${args.join(' ')} -> exit ${log.exitCode} (${log.durationMs}ms) ===`)
+  console.log(`\n=== [${step}] ${bin} ${args.join(' ')} -> exit ${log.exitCode} (${log.durationMs}ms) ===`)
   console.log(log.stdoutTail)
   if (log.stderrTail.trim()) console.log('--- stderr ---\n' + log.stderrTail)
   return log
@@ -232,8 +247,9 @@ async function samples(prisma: PrismaClient) {
        JOIN tv_shows t ON t.id=se.tv_show_id ORDER BY t.tmdb_id, se.season_number LIMIT 8`,
     ),
     episodes: await q(
-      `SELECT e.season_number, e.episode_number, e.name, t.name_original AS show FROM episodes e
-       JOIN tv_shows t ON t.id=e.tv_show_id ORDER BY t.tmdb_id, e.season_number, e.episode_number LIMIT 8`,
+      `SELECT se.season_number, e.episode_number, e.name, t.name_original AS show FROM episodes e
+       JOIN seasons se ON se.id=e.season_id
+       JOIN tv_shows t ON t.id=e.tv_show_id ORDER BY t.tmdb_id, se.season_number, e.episode_number LIMIT 8`,
     ),
     peopleEligible: await q(
       `SELECT p.tmdb_id, p.name, s.slug,
@@ -258,6 +274,13 @@ async function main(): Promise<void> {
     password: 'postgres',
     port,
     persistent: false,
+    // ENCODING E OBRIGATORIO AQUI. No Windows, `initdb` herda o locale do SO e
+    // cria o cluster em WIN1252. Payload real do TMDB tem turco (İ), tailandes,
+    // cirilico e grego — e a gravacao em `api_cache` morre com
+    // "character with byte sequence 0x.. has no equivalent in encoding WIN1252",
+    // derrubando TODO `sync_details`. Os validadores PG16 existentes nao pegam
+    // isso porque usam dados sinteticos ASCII; so dado real expoe o problema.
+    initdbFlags: ['--encoding=UTF8', '--locale=C'],
   })
   const url = `postgresql://postgres:postgres@127.0.0.1:${port}/cinerie_bootstrap`
   let started = false
@@ -277,6 +300,27 @@ async function main(): Promise<void> {
       cwd: DB_DIR,
     })
 
+    // -------------------------------------------------------------------
+    // SEED de referencia — PRE-REQUISITO REAL, nao conveniencia.
+    //
+    // `migrate deploy` cria as tabelas vazias. Varias FKs apontam para tabelas
+    // de referencia que SO o seed preenche:
+    //   api_sync_logs.provider_api  -> api_providers
+    //   movies.original_language    -> languages
+    //   tv_shows.original_language  -> languages
+    //   slugs.language_code         -> languages
+    //   entity_translations.language_code -> languages
+    //
+    // Sem o seed, a PRIMEIRA escrita de qualquer worker morre com FK violation
+    // (`api_sync_logs_provider_api_fkey`) — antes mesmo de tocar o catalogo.
+    // -------------------------------------------------------------------
+    console.log('--- prisma db seed (tabelas de referencia) ---')
+    execFileSync('node', ['--import', 'tsx', path.join(DB_DIR, 'prisma', 'seed.ts')], {
+      env: { ...process.env, DATABASE_URL: url, NODE_ENV: 'development' },
+      stdio: 'inherit',
+      cwd: DB_DIR,
+    })
+
     const prisma = new PrismaClient({ datasourceUrl: url })
     try {
       report.censusBefore = await census(prisma, 'ANTES (banco migrado, vazio)')
@@ -286,20 +330,64 @@ async function main(): Promise<void> {
       // Pessoas NAO sao descobertas por lista: entram apenas como elenco/equipe
       // dos titulos escolhidos.
       // -------------------------------------------------------------------
+      // -------------------------------------------------------------------
+      // PRE-REQUISITO: taxonomias + configuracao de imagens.
+      //
+      // `catalog bootstrap` NAO enfileira esta etapa — ela e um passo separado
+      // no runbook. Contra um banco recem-migrado (languages/countries/genres
+      // vazios) o bootstrap falha inteiro com P2003: `movies.original_language`
+      // e `tv_shows.original_language` tem FK para `languages`, e `slugs`/
+      // `entity_translations` tambem. Sem este passo, nenhuma entidade persiste.
+      // -------------------------------------------------------------------
+      runBin('taxonomies', 'bin/sync-tmdb.ts', ['taxonomies', '--apply'], url)
+      runBin('tmdb-config', 'bin/sync-tmdb-config.ts', ['--apply'], url)
+
       const requestId = 'prompt03-bootstrap-1'
       runCatalog('dry-run', [
         'bootstrap', '--strategy', 'popular', '--entity', 'movie,tv',
-        '--limit', '100', '--locale', 'pt-BR', '--request-id', requestId, '--dry-run', '--json',
+        '--limit', LIMIT, '--locale', 'pt-BR', '--request-id', requestId, '--dry-run', '--json',
       ], url)
 
       runCatalog('bootstrap-apply', [
         'bootstrap', '--strategy', 'popular', '--entity', 'movie,tv',
-        '--limit', '100', '--locale', 'pt-BR', '--request-id', requestId, '--apply', '--json',
+        '--limit', LIMIT, '--locale', 'pt-BR', '--request-id', requestId, '--apply', '--json',
       ], url)
 
-      runCatalog('worker-1', ['worker', '--concurrency', '4', '--max-jobs', '4000'], url, 1_800_000)
+      runCatalog('worker-1', ['worker', '--concurrency', '4', '--max-jobs', '4000', '--timeout-ms', '300000'], url, 1_800_000)
 
       report.censusAfter = await census(prisma, 'DEPOIS (1a execucao)')
+
+      // -------------------------------------------------------------------
+      // DEMONSTRACAO DO GATE DE PESSOA.
+      //
+      // No caminho da fila, pessoa chega como linha de credito e NAO ganha slug
+      // (so movie/tv sao alvos de `sync_details`), entao o gate nem chega a ser
+      // exercitado. O catalogo de producao com ~22.400 pessoas foi construido
+      // com pessoa NA DESCOBERTA — e ai cada pessoa ganha slug.
+      //
+      // Para provar o gate, reproduzimos esse cenario: sincronizamos pessoas COM
+      // credito nos titulos ingeridos e pessoas SEM credito nenhum. As duas
+      // ganham slug; so as primeiras passam no gate.
+      // -------------------------------------------------------------------
+      const withCredits = await prisma.$queryRawUnsafe<{ tmdb_id: number }[]>(
+        `SELECT DISTINCT p.tmdb_id FROM people p
+         JOIN cast_members cm ON cm.person_id = p.id AND cm.entity_type IN ('movie','tv')
+         ORDER BY p.tmdb_id LIMIT 5`,
+      )
+      // Ids de pessoa que NAO participam de nenhum titulo ingerido.
+      const orphanIds = [1, 2, 3, 4, 5].map((n) => 500_000 + n)
+      for (const row of withCredits) {
+        runCatalog(`person-credited-${row.tmdb_id}`, [
+          'sync', '--entity', 'person', '--id', String(row.tmdb_id), '--locale', 'pt-BR', '--apply',
+        ], url)
+      }
+      for (const id of orphanIds) {
+        runCatalog(`person-orphan-${id}`, [
+          'sync', '--entity', 'person', '--id', String(id), '--locale', 'pt-BR', '--apply',
+        ], url)
+      }
+      report.censusPersonGate = await census(prisma, 'GATE DE PESSOA (com e sem credito)')
+
       report.samples = await samples(prisma)
 
       // -------------------------------------------------------------------
@@ -307,9 +395,9 @@ async function main(): Promise<void> {
       // -------------------------------------------------------------------
       runCatalog('bootstrap-apply-2', [
         'bootstrap', '--strategy', 'popular', '--entity', 'movie,tv',
-        '--limit', '100', '--locale', 'pt-BR', '--request-id', requestId, '--apply', '--json',
+        '--limit', LIMIT, '--locale', 'pt-BR', '--request-id', requestId, '--apply', '--json',
       ], url)
-      runCatalog('worker-2', ['worker', '--concurrency', '4', '--max-jobs', '4000'], url, 1_800_000)
+      runCatalog('worker-2', ['worker', '--concurrency', '4', '--max-jobs', '4000', '--timeout-ms', '300000'], url, 1_800_000)
 
       report.censusIdempotency = await census(prisma, 'DEPOIS (2a execucao — idempotencia)')
 

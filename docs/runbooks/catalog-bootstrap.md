@@ -68,6 +68,44 @@ uma segunda passada para provar IDEMPOTENCIA. Nunca toca producao: forca
 precedencia sobre `--env-file` no Node. O `--env-file` serve so para o processo
 filho ler a credencial TMDB — a chave nunca e impressa nem persistida.
 
+### PRE-REQUISITOS obrigatorios (falham feio se pulados)
+
+Contra um banco recem-migrado, `catalog bootstrap` **nao funciona sozinho**. Ele
+nao enfileira nem o seed de referencia nem as taxonomias, e varias FKs dependem
+deles. A ordem correta e:
+
+```
+# 1. tabelas de referencia (api_providers, languages, countries, rating sources)
+corepack pnpm --filter @screena/db db:seed
+
+# 2. taxonomias + configuracao de imagens do TMDB
+corepack pnpm --filter @screena/ingestion exec tsx bin/sync-tmdb.ts taxonomies --apply
+corepack pnpm --filter @screena/ingestion exec tsx bin/sync-tmdb-config.ts --apply
+
+# 3. so entao o bootstrap
+pnpm catalog bootstrap ... --apply && pnpm catalog worker ...
+```
+
+Sintomas de ter pulado cada passo:
+
+| Pulou | Erro |
+| --- | --- |
+| `db:seed` | `api_sync_logs_provider_api_fkey` — morre na PRIMEIRA escrita de log, antes de tocar catalogo |
+| taxonomias | `P2003` em `movies.original_language` / `tv_shows.original_language` -> `languages` |
+
+Nos dois casos o worker reporta `retry_wait` e **nenhuma entidade persiste**,
+com a fila parecendo saudavel. Se o censo mostrar jobs rodando e entidades em
+zero, suspeite daqui primeiro.
+
+### Encoding do banco: UTF8, nao o default do SO
+
+Payload real do TMDB tem turco (`İ`), tailandes, cirilico e grego. Um cluster
+criado com o locale do Windows nasce **WIN1252** e a gravacao em `api_cache`
+morre com `character with byte sequence 0x.. has no equivalent in encoding
+WIN1252`, derrubando todo `sync_details`. Crie o cluster com
+`--encoding=UTF8 --locale=C`. Os validadores PG16 do repo nao pegam isso porque
+usam dados sinteticos ASCII — so dado real expoe.
+
 ## Passos legados (CLIs separadas, continuam validos)
 
 1. **Config + taxonomias** (imagens, generos, certificacoes):
