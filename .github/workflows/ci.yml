@@ -267,8 +267,11 @@ jobs:
       - name: Assertivas — HTTP, versao, nao-root, migrations, gravabilidade
         run: |
           set -euo pipefail
-          # 1) /api/health 200 + versao casa com os build args
-          H="$(curl -fsS http://localhost:3000/api/health)"; echo "health=${H}"
+          # 1) /api/health 200 + versao casa com os build args.
+          #    URL CANONICA com barra final: `trailingSlash: true` faz
+          #    /api/health responder 308 -> /api/health/. Sem -L (ou sem a barra)
+          #    o curl imprimiria o corpo do redirect, nao o JSON.
+          H="$(curl -fsSL http://localhost:3000/api/health/)"; echo "health=${H}"
           echo "${H}" | grep -q '"status":"ok"'
           echo "${H}" | grep -q '"database":"ok"'
           echo "${H}" | grep -q "\"commit\":\"${GITHUB_SHA}\""
