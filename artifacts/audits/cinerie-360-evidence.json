@@ -1,0 +1,380 @@
+{
+  "$schema": "https://cinerie.com/schemas/audit-evidence-v1.json",
+  "audit": {
+    "name": "CINERIE_360_DIAGNOSTIC",
+    "date": "2026-07-23",
+    "executor": "Claude Opus 4.8 (Claude Code)",
+    "report": "docs/audits/CINERIE_360_DIAGNOSTIC_2026-07-23.md",
+    "commit_audited": "73c58e908986e77e49d02226c5bb1b9b4a5fca53",
+    "origin_main_at_audit": "73c58e908986e77e49d02226c5bb1b9b4a5fca53",
+    "commit_matches_expected_production": true,
+    "branch": "audit/cinerie-full-diagnostic-2026-07-23",
+    "worktree": "E:/screena-wt/cinerie-full-audit",
+    "worktree_clean_at_start": true,
+    "production_mutated": false,
+    "secrets_exposed": false,
+    "merge_performed": false,
+    "fixes_applied": false
+  },
+
+  "environment_audited": {
+    "local": {
+      "node": "v24.14.0",
+      "node_required_by_engines": ">=22 <23",
+      "engine_mismatch": true,
+      "pnpm": "9.15.4",
+      "prisma": "6.19.3",
+      "docker_daemon": "unavailable",
+      "local_postgres": "unavailable"
+    },
+    "production": {
+      "domain": "https://cinerie.com",
+      "reachable": true,
+      "edge": "cloudflare",
+      "cf_ray_region": "GRU",
+      "platform_reported_by_operator": "EasyPanel",
+      "web_service_reported": "screen-app",
+      "db_service_reported": "rss_prime_screen-db:5432/screena",
+      "image_tag_reported": "easypanel/rss_prime/screen-app:latest",
+      "direct_access_available": false
+    }
+  },
+
+  "repository_metrics": {
+    "workspaces_total": 25,
+    "apps": 2,
+    "packages": 8,
+    "services": 8,
+    "api_clients": 7,
+    "test_files": 282,
+    "tests_passing": 3375,
+    "tests_failing": 0,
+    "migrations": 12,
+    "migration_sql_lines_total": 3660,
+    "prisma_models": 75,
+    "prisma_enums": 42,
+    "schema_lines": 2328,
+    "next_routes_built": 27,
+    "use_client_components": 4,
+    "files_scanned_invariants": 798,
+    "web_files_scanned_render_purity": 91,
+    "open_pull_requests": 0,
+    "unmerged_remote_branches": 13
+  },
+
+  "commands_executed": [
+    { "cmd": "git fetch origin --prune", "exit": 0, "result": "cb7ecde..73c58e9 main" },
+    { "cmd": "git rev-parse origin/main", "exit": 0, "result": "73c58e908986e77e49d02226c5bb1b9b4a5fca53" },
+    { "cmd": "git worktree add -b audit/cinerie-full-diagnostic-2026-07-23 E:/screena-wt/cinerie-full-audit 73c58e9", "exit": 0, "result": "worktree created clean" },
+    { "cmd": "git status --short (audit worktree)", "exit": 0, "result": "empty" },
+    { "cmd": "gh pr view 75", "exit": 0, "result": "MERGED 2026-07-23T01:18:39Z, mergeCommit=73c58e9, 211 files, +37751/-33" },
+    { "cmd": "gh run list --commit 73c58e9", "exit": 0, "result": "run 29971468863 success 4m45s" },
+    { "cmd": "gh run view 29971468863 --json jobs", "exit": 0, "result": "28/28 steps success" },
+    { "cmd": "pnpm install --frozen-lockfile", "exit": 0, "result": "done in 1m39.6s" },
+    { "cmd": "pnpm --filter @screena/db db:generate", "exit": 0, "result": "Prisma Client 6.19.3 generated" },
+    { "cmd": "pnpm typecheck", "exit": 0, "result": "clean" },
+    { "cmd": "pnpm typecheck:catalog-runtime", "exit": 0, "result": "clean" },
+    { "cmd": "pnpm lint", "exit": 0, "result": "clean" },
+    { "cmd": "pnpm test", "exit": 0, "result": "282 files / 3375 tests passed, 51.86s" },
+    { "cmd": "pnpm audit:invariants", "exit": 0, "result": "7 ok, 0 warnings, 0 violations, 798 files" },
+    { "cmd": "pnpm audit:render", "exit": 0, "result": "2 ok, 0 violations, 91 web files" },
+    { "cmd": "pnpm api:coverage", "exit": 0, "result": "7 providers, 71 endpoints, 34 field groups, 0 violations" },
+    { "cmd": "pnpm build", "exit": 0, "result": "27 routes, 102 kB shared JS" }
+  ],
+
+  "ci_evidence": {
+    "run_id": "29971468863",
+    "commit": "73c58e908986e77e49d02226c5bb1b9b4a5fca53",
+    "branch": "main",
+    "trigger": "push",
+    "conclusion": "success",
+    "duration": "4m45s",
+    "node_version": "22",
+    "steps_total": 28,
+    "steps_passed": 28,
+    "ephemeral_postgres_validators": 14,
+    "validator_steps": [
+      "Validadores descartaveis (PostgreSQL efemero)",
+      "Migration Fase 2 - Cenario A (do zero)",
+      "Migration Fase 2 - Cenario B (upgrade)",
+      "Stores de streaming - integracao",
+      "SEO runtime - Fase 3",
+      "Rotas temporada/episodio - Fase 4",
+      "Plataforma TMDB - Fases 6-8",
+      "Plataforma de catalogo Backend A - jobs + busca",
+      "Plataforma externa e inteligencia (Fases 9-11)",
+      "Backend B - ratings, streaming, licencas e Cinerie Score",
+      "Autorizacao de fontes e atribuicao",
+      "Backend C - migration C7A/C7A.1",
+      "Backend C - adapters C7B1",
+      "Validate backup shell scripts (bash -n)"
+    ]
+  },
+
+  "production_probes": [
+    { "id": "P01", "method": "GET", "path": "/robots.txt", "status": 200, "finding": "app emits 'User-Agent: * / Disallow: /' after Cloudflare content-signal block; no Sitemap line", "verdict": "FAIL", "priority": "P0" },
+    { "id": "P02", "method": "GET", "path": "/", "status": 307, "location": "/pt/", "verdict": "PASS" },
+    { "id": "P03", "method": "GET", "path": "/pt", "status": 308, "location": "/pt/", "verdict": "PASS" },
+    { "id": "P04", "method": "GET", "path": "/pt/", "status": 200, "html_bytes": 18493, "visible_text_chars": 960, "img_tags": 0, "h1_count": 1, "canonical": "https://cinerie.com/pt/", "robots_meta": "noindex, nofollow", "json_ld": true, "verdict": "PARTIAL", "priority": "P1" },
+    { "id": "P05", "method": "GET", "path": "/sitemap.xml", "status": 200, "shards": 6, "lastmod": "2026-07-10T01:29:25.052Z", "verdict": "PARTIAL", "note": "13 days stale" },
+    { "id": "P06", "method": "GET", "path": "/dev/movie-page-preview/", "status": 200, "cache_control": "s-maxage=31536000", "verdict": "FAIL", "priority": "P2", "note": "dev route publicly reachable, 1-year cache" },
+    { "id": "P07", "method": "GET", "path": "/filmes", "status": 308, "verdict": "PASS" },
+    { "id": "P08", "method": "GET", "path": "/pt/rota-que-nao-existe-audit/", "status": 404, "verdict": "PASS", "note": "real 404, not soft-404" },
+    { "id": "P09", "method": "GET", "path": "/api/seo/redirect/?path=...", "status": 200, "verdict": "PARTIAL", "priority": "P2", "note": "unauthenticated, queries database" },
+    { "id": "P10", "method": "GET", "path": "/api/auth/password-reset/request/", "status": 405, "expected": 405, "verdict": "PASS", "note": "no security headers on 405 (Next-level rejection)" },
+    { "id": "P11", "method": "POST", "path": "/api/auth/password-reset/request/", "variant": "content-type text/plain", "status": 400, "verdict": "PASS" },
+    { "id": "P12", "method": "POST", "path": "/api/auth/password-reset/request/", "variant": "malformed JSON", "status": 400, "verdict": "PASS" },
+    { "id": "P13", "method": "POST", "path": "/api/auth/password-reset/request/", "variant": "unknown extra key", "status": 400, "body_code": "invalid_request", "verdict": "PASS", "note": "strict schema rejects unknown fields" },
+    { "id": "P14", "method": "POST", "path": "/api/auth/password-reset/request/", "variant": "nonexistent email", "status": 202, "ms": 287, "verdict": "PASS", "note": "anti-enumeration" },
+    { "id": "P15", "method": "POST", "path": "/api/auth/password-reset/request/", "variant": "malformed email", "status": 202, "ms": 262, "verdict": "PASS", "note": "identical body/timing to P14" },
+    { "id": "P16", "method": "POST", "path": "/api/auth/password-reset/confirm/", "variant": "short token", "status": 400, "verdict": "PASS" },
+    { "id": "P17", "method": "POST", "path": "/api/auth/password-reset/confirm/", "variant": "invalid 64-hex token", "status": 401, "ms": 496, "verdict": "PASS" },
+    { "id": "P18", "method": "POST", "path": "/api/auth/password-reset/confirm/", "variant": "weak password", "status": 400, "verdict": "PASS" },
+    { "id": "P19", "method": "POST", "path": "/api/auth/email-verification/confirm/", "variant": "invalid token", "status": 401, "verdict": "PASS" },
+    { "id": "P20", "method": "POST", "path": "/api/auth/password-reset/request", "variant": "no trailing slash", "status": 308, "verdict": "PARTIAL", "priority": "P2", "note": "trailingSlash:true forces 308 on all API POSTs" }
+  ],
+
+  "public_route_measurements": {
+    "note": "all measured live over HTTP; zero images on 100% of public routes",
+    "routes": [
+      { "path": "/pt/", "status": 200, "visible_text_chars": 960, "img": 0, "form": 0 },
+      { "path": "/pt/filmes/", "status": 200, "visible_text_chars": 1164, "img": 0, "form": 0 },
+      { "path": "/pt/series/", "status": 200, "visible_text_chars": 1173, "img": 0, "form": 0 },
+      { "path": "/pt/pessoas/", "status": 200, "visible_text_chars": 1204, "img": 0, "form": 0 },
+      { "path": "/pt/noticias/", "status": 200, "visible_text_chars": 372, "img": 0, "form": 0, "note": "header only - no published news" },
+      { "path": "/pt/explorar/", "status": 200, "visible_text_chars": 510, "img": 0, "form": 0 },
+      { "path": "/pt/busca/", "status": 200, "visible_text_chars": 284, "img": 0, "form": 1, "note": "functional search form" },
+      { "path": "/pt/redefinir-senha/", "status": 200, "visible_text_chars": 308, "img": 0, "form": 1, "note": "functional password form" }
+    ]
+  },
+
+  "end_to_end_caveat": {
+    "password_recovery_flow_proven_end_to_end": false,
+    "reason": "the 202 probes used a NONEXISTENT email, so no email is sent on that path. The real cycle (account exists -> email arrives -> link clicked -> token consumed -> password changed -> user logs in) is impossible today because signup and login do not exist.",
+    "confirm_success_branch_exercised_in_production": false,
+    "endpoint_edge_behaviour": "PASS (verified)",
+    "product_functionality": "UNKNOWN"
+  },
+
+  "adversarial_review": {
+    "performed": true,
+    "corrections_applied": [
+      "202 != email delivered - added explicit end-to-end caveat; probes used a nonexistent email",
+      "route present != UI ready - added HTTP measurement of all 8 public routes (0 images everywhere)",
+      "unmerged branch != stranded work - recomputed with git cherry; feat/api-coverage-registry has 0 commits outside main (squash artifact), false alarm avoided",
+      "non-ASCII migration != WIN1252 risk - verified all 12 migrations are valid UTF-8; false positive explicitly discarded",
+      "inference presented as fact - '22432 person pages are thin' downgraded to HYPOTHESIS (page content never inspected); only the imbalance is measured fact"
+    ],
+    "claims_downgraded_to_hypothesis": ["R05 thin-content quality", "R10 X-Forwarded-For throttle bypass", "R03 that noindex is unintended"]
+  },
+
+  "auth_response_headers_verified": {
+    "cache-control": "no-store",
+    "referrer-policy": "no-referrer",
+    "x-content-type-options": "nosniff",
+    "content-type": "application/json; charset=utf-8",
+    "present_on_405": false
+  },
+
+  "catalog_scale_from_sitemap": {
+    "source": "https://cinerie.com/sitemaps/sitemap-pt-BR-*-1.xml",
+    "movies": 129,
+    "series": 110,
+    "people": 22432,
+    "seasons": 53,
+    "episodes": 559,
+    "static": 5,
+    "total_urls": 23288,
+    "people_share_pct": 96.3,
+    "finding": "severe imbalance: 22432 person pages vs 129 movies - index bloat risk"
+  },
+
+  "database": {
+    "models": 75,
+    "enums": 42,
+    "migrations": 12,
+    "timestamp_ordering_monotonic": true,
+    "duplicate_timestamps": false,
+    "all_utf8_valid": true,
+    "win1252_risk": false,
+    "non_ascii_is_portuguese_comments_only": true,
+    "destructive_statements": {
+      "drop_table": 0,
+      "drop_column": 0,
+      "truncate": 0,
+      "drop_index": 3,
+      "drop_index_note": "all 3 are deliberate documented index replacements"
+    },
+    "extensions": ["pgcrypto", "unaccent", "pg_trgm"],
+    "production_contents_verified": false,
+    "retention_mechanism": "NOT_IMPLEMENTED"
+  },
+
+  "backend_c_structure": {
+    "http_handlers_total": 4,
+    "http_handlers": ["requestPasswordReset", "confirmPasswordReset", "requestEmailVerification", "confirmEmailVerification"],
+    "prisma_adapters_total": 5,
+    "prisma_adapters": ["IdentityStore", "PasswordCredentialStore", "SessionStore", "AuthTokenStore", "AuthThrottleStore"],
+    "ports_without_prisma_adapter": ["RecommendationSnapshotStore", "RecommendationFeedbackStore"],
+    "signup_http_endpoint": false,
+    "login_http_endpoint": false,
+    "session_http_endpoint": false,
+    "logout_http_endpoint": false,
+    "user_can_create_account": false,
+    "phases": {
+      "C5A_user_ratings": "domain-only",
+      "C5B_reviews_moderation": "domain-only",
+      "C6A_recommendations": "domain-only",
+      "C6B_snapshots_feedback": "domain + ports, no prisma adapter",
+      "C7A_persistence_foundation": "complete",
+      "C7B0_ports": "complete",
+      "C7B1_prisma_adapters": "complete (auth only)",
+      "C7B1_1_nonaborting_conflicts": "complete",
+      "C7C_auth_email_runtime": "complete and VERIFIED WORKING IN PRODUCTION",
+      "C7B3_lgpd_export_deletion": "NOT_IMPLEMENTED - pure domain only, no persistence, no endpoint, no runner"
+    }
+  },
+
+  "security_scan": {
+    "tracked_env_files": [".env.example"],
+    "secrets_committed": false,
+    "next_public_with_secret": false,
+    "next_public_guarded_by_tests": true,
+    "sql_injection": { "found": false, "note": "$queryRawUnsafe uses static SQL constant + bind params at apps/web/src/server/search-page.ts:171" },
+    "xss_dangerouslySetInnerHTML": { "occurrences": 15, "all_json_ld": true, "escaped_via": "serializeJsonLd = escapeJsonForHtml(JSON.stringify(v))", "verdict": "PASS" },
+    "eval_or_new_function": false,
+    "error_message_leak_to_client": false,
+    "security_headers_present": { "csp": false, "hsts": false, "x_frame_options": false, "permissions_policy": false, "referrer_policy_on_html": false },
+    "container_runs_as_root": true,
+    "dockerfile_multistage": false,
+    "devdependencies_in_runtime_image": true,
+    "git_in_runtime_image": true,
+    "healthcheck": false,
+    "commit_sha_in_image": false,
+    "pnpm_audit_network": "NOT_RUN"
+  },
+
+  "backup_dr": {
+    "backup_script": "scripts/backup/backup.sh",
+    "restore_test_script": "scripts/backup/restore-test.sh",
+    "sha256_checksum": true,
+    "offsite_support": "optional via BACKUP_OFFSITE_RCLONE_REMOTE",
+    "syntax_validated_in_ci": true,
+    "grades": {
+      "script_implemented": "PASS",
+      "routine_scheduled": "FAIL",
+      "backup_produced": "UNKNOWN",
+      "checksum_validated_in_practice": "UNKNOWN",
+      "offsite_copy_exists": "UNKNOWN",
+      "restore_test_green": "UNKNOWN"
+    },
+    "scheduler_found_anywhere_in_repo": false,
+    "rpo_defined": false,
+    "rto_defined": false
+  },
+
+  "ci_gaps": {
+    "root_typecheck_covers_apps": false,
+    "tsconfig_include": ["packages/**/*.ts", "api-clients/**/*.ts", "services/**/*.ts", "tests/**/*.ts"],
+    "vitest_covers_apps_web": false,
+    "apps_admin_built_anywhere": false,
+    "e2e_tests_exist": false,
+    "deploy_automation_in_ci": false,
+    "branch_protection": "UNKNOWN"
+  },
+
+  "unmerged_branches": [
+    { "branch": "origin/feat/api-coverage-registry", "commits_not_in_main": 0, "note": "content already in main (squash) - safe to prune" },
+    { "branch": "origin/feat/user-product-platform", "commits_not_in_main": 45, "note": "PR #75 pre-squash history" },
+    { "branch": "origin/feat/external-intelligence-product", "commits_not_in_main": 13 },
+    { "branch": "origin/feat/seo-runtime-source-of-truth-v2", "commits_not_in_main": 12 },
+    { "branch": "origin/feat/tmdb-complete-catalog-coverage", "commits_not_in_main": 12 },
+    { "branch": "origin/feat/web-canonical-cinematic-port", "commits_not_in_main": 11, "note": "CONTAINS THE REVERTED CINEMATIC FRONTEND" },
+    { "branch": "origin/feat/data-governance-hardening-v2", "commits_not_in_main": 10 },
+    { "branch": "origin/chore/align-post-reset-validation-contracts", "commits_not_in_main": 7 },
+    { "branch": "origin/feat/public-season-episode-routes", "commits_not_in_main": 7 },
+    { "branch": "origin/fix/claude-design-home-pixel-parity", "commits_not_in_main": 3 },
+    { "branch": "origin/feat/external-data-intelligence-platform", "commits_not_in_main": 2 },
+    { "branch": "origin/feat/seo-runtime-source-of-truth", "commits_not_in_main": 1 },
+    { "branch": "origin/fix/claude-design-home-fidelity", "commits_not_in_main": 1 }
+  ],
+
+  "scoring": {
+    "method": "overall = sum(score * weight) / 100; weights sum to 100; scores derived from verified findings penalized by open-defect priority",
+    "categories": [
+      { "name": "repository_integrity", "score": 95, "weight": 3, "confidence": "HIGH" },
+      { "name": "ci_and_tests", "score": 88, "weight": 7, "confidence": "HIGH" },
+      { "name": "database_and_migrations", "score": 90, "weight": 7, "confidence": "HIGH" },
+      { "name": "catalog_backend_a", "score": 70, "weight": 7, "confidence": "MEDIUM" },
+      { "name": "external_data_backend_b", "score": 45, "weight": 5, "confidence": "LOW" },
+      { "name": "authentication", "score": 72, "weight": 8, "confidence": "HIGH" },
+      { "name": "user_product_backend_c", "score": 25, "weight": 9, "confidence": "HIGH" },
+      { "name": "public_frontend", "score": 45, "weight": 8, "confidence": "HIGH" },
+      { "name": "authenticated_ux", "score": 3, "weight": 7, "confidence": "HIGH" },
+      { "name": "seo", "score": 60, "weight": 7, "confidence": "HIGH" },
+      { "name": "security", "score": 68, "weight": 8, "confidence": "MEDIUM" },
+      { "name": "lgpd", "score": 20, "weight": 5, "confidence": "HIGH" },
+      { "name": "operations_deploy", "score": 55, "weight": 6, "confidence": "MEDIUM" },
+      { "name": "backups_dr", "score": 30, "weight": 5, "confidence": "HIGH" },
+      { "name": "observability", "score": 25, "weight": 3, "confidence": "HIGH" },
+      { "name": "performance", "score": 55, "weight": 3, "confidence": "MEDIUM" },
+      { "name": "documentation", "score": 70, "weight": 2, "confidence": "LOW" }
+    ],
+    "weighted_sum": 5352,
+    "overall": 54,
+    "mvp_readiness": 28,
+    "mvp_breakdown": { "as_public_readonly_portal": 45, "as_account_product": 10 },
+    "confidence": "MEDIUM"
+  },
+
+  "risk_counts": { "P0": 3, "P1": 8, "P2": 12, "blocked_by_decision": 1 },
+
+  "top_blockers": [
+    "R01 no proven backup, nothing scheduled",
+    "R02 signup/login do not exist as HTTP or UI - user cannot create an account",
+    "R03 entire production site is noindex (robots Disallow:/ + meta noindex,nofollow)",
+    "R04 public visual layer absent (960 visible chars, 0 images)",
+    "R05 22432 person pages vs 129 movies - index bloat risk",
+    "R06 LGPD export/deletion inoperable (pure domain only)",
+    "R07 zero security headers (no CSP/HSTS/X-Frame-Options)",
+    "R08 zero alerting",
+    "R09 nothing is scheduled - sitemap 13 days stale",
+    "R10 X-Forwarded-For trust unconfirmed (throttle bypass hypothesis)"
+  ],
+
+  "capabilities_summary": {
+    "total_evaluated": 48,
+    "actually_working_in_production": 9,
+    "working_list": ["movie catalog", "series catalog", "people", "seasons", "episodes", "search", "news route", "password recovery endpoints", "email verification endpoints"],
+    "domain_only_no_product": 30,
+    "not_exposed_or_not_deployed": 6,
+    "nonexistent": 1,
+    "blocked_by_decision": 1
+  },
+
+  "product_diagnosis_20_questions": { "yes": 0, "partial": 3, "no": 17 },
+
+  "limitations": [
+    "L1 CRITICAL: the 20-agent audit workflow aborted entirely with 'session limit' - 0/20 agents returned. Backend A, Backend B, UX/accessibility and exhaustive documentation drift received only sampled coverage and must NOT be read as approved.",
+    "L2 No production database access - zero SELECT executed. All production table counts, constraints, orphans and referential integrity are UNKNOWN. Entity counts come from the public sitemap.",
+    "L3 No EasyPanel/container access - no env values, container logs, docker inspect, resource usage or restart policy read.",
+    "L4 The 14 ephemeral-PostgreSQL validators did not run locally (Docker daemon down, no psql/initdb). CI ran them green on the exact commit - that is CI evidence, not local evidence.",
+    "L5 Local gates ran on Node v24.14.0 while engines require >=22 <23 and production runs Node 22.",
+    "L6 No Lighthouse, no automated browser, no load test - accessibility, CLS, LCP and capacity are UNKNOWN.",
+    "L7 Network pnpm audit not executed - dependency vulnerabilities UNKNOWN.",
+    "L8 No E2E tests exist in the repository. No end-to-end claim in this audit derives from an automated test."
+  ],
+
+  "operator_provided_evidence_not_reverified": [
+    "PR #75 deploy completed on EasyPanel",
+    "prisma migrate status = Database schema is up to date, 12 migrations",
+    "DATABASE_URL points to rss_prime_screen-db:5432/screena",
+    "Brevo env vars present; CINERIE_IP_HASH_SALT corrected to 64 chars; runtime returned CONFIG_OK",
+    "Brevo transactional smoke accepted; email received; Message-ID <202607230247.29640774806@smtp-relay.mailin.fr>"
+  ],
+
+  "artifacts_created": [
+    "docs/audits/CINERIE_360_DIAGNOSTIC_2026-07-23.md",
+    "artifacts/audits/cinerie-360-evidence.json"
+  ]
+}
