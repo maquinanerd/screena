@@ -158,11 +158,16 @@ release unico (ou initContainer) e deixar o `CMD` do app so com `next start`.
 ## 7. Ordem de um release
 
 1. `CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;` (uma vez por banco).
-2. Backup (`scripts/backup/`) — ver `docs/` de backup; nunca migre sem backup.
-3. Build da imagem (nao precisa de env publica).
-4. Subir o container: o `CMD` roda `migrate deploy` e so entao `next start`.
+2. Backup verificado — `scripts/backup/backup.sh` + `restore-test.sh`; nunca
+   migre sem backup. Runbook: [`BACKUP_RESTORE.md`](./BACKUP_RESTORE.md).
+3. Build da imagem com versao rastreavel e base pinada por digest — ver
+   [`OBSERVABILITY.md`](./OBSERVABILITY.md) (`--build-arg CINERIE_BUILD_SHA/…`).
+4. Subir o container: o `CMD` roda `migrate deploy` e so entao `next start`;
+   o `HEALTHCHECK` (`/api/health`) so fica green quando o banco responde.
 5. `prisma migrate status` → "up to date".
 6. Conferir `/robots.txt` e o `<meta robots>` (secao 4).
+7. Rollback (imagem + restore de dump, pois nao ha down-migration):
+   [`BACKUP_RESTORE.md` §6](./BACKUP_RESTORE.md).
 
 ## 8. Validar antes de chegar em producao
 
