@@ -171,8 +171,10 @@ indexa com sua ficha crua mesmo sem nenhum bloco publicavel.
   demais existem mas comecam vazios ate haver conteudo revisado.
 - O sitemap e gerado a partir de `page_indexability_decisions` — a mesma fonte
   que decide o `<meta robots>`. Sitemap e meta tag **nunca** podem discordar.
-- O sitemap **nao promove** pagina fina: se o gate anti-thin, licenca, idioma ou
-  revisao falhar, a pagina fica fora do sitemap mesmo que exista rota.
+- O sitemap **nao promove** pagina invalida: se licenca, idioma, revisao ou a
+  validade tecnica (caso `noindex`) falhar, a pagina fica fora do sitemap mesmo
+  que exista rota. _(O antigo gate anti-thin de `>= 2` blocos NAO e mais um
+  criterio — ver secao 1: indexacao total, invariante 5.)_
 
 ---
 

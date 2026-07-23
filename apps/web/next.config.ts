@@ -28,6 +28,7 @@ const nextConfig: NextConfig = {
   // diz ao bundler para compilar o TS dessas libs. `@screena/db` continua
   // server-only (so alcancado por server components; travado por audit:render).
   transpilePackages: [
+    "@screena/config",
     "@screena/seo",
     "@screena/ui",
     "@screena/types",

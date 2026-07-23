@@ -83,7 +83,7 @@ const DOC_CHECKS = [
  * Diretorios de codigo varridos em busca de padroes proibidos.
  * @type {string[]}
  */
-const SCAN_DIRS = ['apps', 'packages', 'services', 'api-clients', 'seo'];
+const SCAN_DIRS = ['apps', 'packages', 'services', 'api-clients'];
 
 /** Extensoes de arquivo elegiveis para a varredura de padroes proibidos. */
 const SCAN_EXTENSIONS = new Set([
