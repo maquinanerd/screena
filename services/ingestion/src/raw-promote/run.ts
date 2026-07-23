@@ -29,7 +29,6 @@ import { desiredCatalogSlug } from '../public-catalog-slug.js'
 import type {
   CatalogFinalizePort,
   PromoteCounts,
-  PromoteDisplayFields,
   PromoteOutcome,
   PromoteReport,
   PromoteStrategy,
@@ -59,59 +58,23 @@ export interface PromoteFromRawOptions {
 }
 
 /**
- * Campos de EXIBICAO de FILME (pt-BR), defensivamente: titulo localizado (com
- * fallback ao original) e sinopse. PURO.
+ * Leitores de campos de EXIBICAO: REEXPORTADOS do modulo puro compartilhado
+ * `../display-fields.js`.
  *
- * O ano NAO e lido aqui: ele nao entra mais no slug canonico
- * (`desiredCatalogSlug`) e a data factual (`release_date`) ja vem do normalizer.
+ * Eles moravam AQUI — e por isso so a promocao de `tmdb_raw` criava slug e
+ * traducao. O import direto de detalhe (job `sync_details` da fila duravel)
+ * nao alcancava esta regra sem arrastar junto toda a orquestracao de promocao,
+ * e entidade sem slug nao tem rota publica, nao entra na busca e nao entra no
+ * sitemap. A regra virou modulo comum; a reexportacao preserva o contrato
+ * publico deste arquivo e os testes que ja importavam daqui.
  */
-export function readMovieDisplayFields(payload: unknown): PromoteDisplayFields {
-  const obj =
-    payload !== null && typeof payload === 'object'
-      ? (payload as {
-          title?: unknown
-          original_title?: unknown
-          overview?: unknown
-        })
-      : {}
-  const title =
-    (typeof obj.title === 'string' && obj.title.trim() !== '' ? obj.title : null) ??
-    (typeof obj.original_title === 'string' ? obj.original_title : '')
-  const overview = typeof obj.overview === 'string' && obj.overview !== '' ? obj.overview : null
-  return { title, overview }
-}
+import {
+  readMovieDisplayFields,
+  readTvDisplayFields,
+  readPersonDisplayFields,
+} from '../display-fields.js'
 
-/**
- * Campos de EXIBICAO de SERIE (pt-BR): nome localizado (com fallback ao
- * original) e sinopse. PURO. `first_air_date` fica com o normalizer — o ano de
- * estreia nao entra no slug.
- */
-export function readTvDisplayFields(payload: unknown): PromoteDisplayFields {
-  const obj =
-    payload !== null && typeof payload === 'object'
-      ? (payload as {
-          name?: unknown
-          original_name?: unknown
-          overview?: unknown
-        })
-      : {}
-  const title =
-    (typeof obj.name === 'string' && obj.name.trim() !== '' ? obj.name : null) ??
-    (typeof obj.original_name === 'string' ? obj.original_name : '')
-  const overview = typeof obj.overview === 'string' && obj.overview !== '' ? obj.overview : null
-  return { title, overview }
-}
-
-/**
- * Campos de EXIBICAO de PESSOA: so o `name` (title). `overview` e null — a
- * promocao de pessoa NAO tem summary (a person-page nao le `translation.summary`
- * e o schema nao tem coluna de bio). PURO.
- */
-export function readPersonDisplayFields(payload: unknown): PromoteDisplayFields {
-  const obj = payload !== null && typeof payload === 'object' ? (payload as { name?: unknown }) : {}
-  const title = typeof obj.name === 'string' && obj.name.trim() !== '' ? obj.name : ''
-  return { title, overview: null }
-}
+export { readMovieDisplayFields, readTvDisplayFields, readPersonDisplayFields }
 
 /** Estrategia de FILME: normalizeMovie -> upsertMovie -> exibicao (P0-00f.1). */
 export function createMovieStrategy(store: EntityStorePort): PromoteStrategy {

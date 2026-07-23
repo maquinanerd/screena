@@ -75,6 +75,8 @@ import type {
 import type { SyncDetailKind } from '../catalog-jobs/handlers/schemas.js'
 import type { ReferenceOwnerType } from '../catalog-entities/store-port.js'
 import type { ImportResult } from '../import/types.js'
+import type { CatalogDisplayFields } from '../display-fields.js'
+import { desiredCatalogSlug } from '../public-catalog-slug.js'
 import type { TmdbReadPort } from '../ports.js'
 import type { PrismaClient } from '@screena/db/server'
 import type { TmdbCatalogEndpoints } from '@screena/tmdb-client'
@@ -226,10 +228,74 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
     })
   }
 
+  /**
+   * FINALIZACAO editorial do detalhe: slug canonico pt-BR (+301 na troca) e
+   * traducao. E o passo que transforma uma ficha tipada em ENTIDADE PUBLICAVEL.
+   *
+   * Por que aqui: a promocao de `tmdb_raw` ja finalizava (via
+   * `createPrismaCatalogFinalize`), mas o import DIRETO de detalhe — o caminho
+   * que a fila duravel usa no job `sync_details` — parava no upsert tipado. O
+   * resultado era um bootstrap que enchia `movies`/`tv_shows`/`people` e nao
+   * gerava nenhuma URL publica: sem slug nao ha rota, nao ha entrada de busca
+   * (o backfill pagina por slug) e nao ha linha de sitemap.
+   *
+   * Idempotente: `upsertCanonicalSlug` faz no-op quando o canonico ja e o
+   * desejado, e `upsertTranslation` e upsert por (entidade, idioma). Reexecutar
+   * o mesmo `sync_details` nao duplica slug nem gera 301 espurio.
+   *
+   * So finaliza quando houve upsert (`entityId !== null`): no short-circuit de
+   * cache (`changed === false`) nao ha id, e o slug daquela entidade ja existe
+   * da execucao que a criou.
+   */
+  /**
+   * Cache de idiomas REGISTRADOS em `languages`.
+   *
+   * `slugs.language_code` e `entity_translations.language_code` tem FK para
+   * `languages`, e a tabela so tem os idiomas do seed (hoje pt-BR, en, es). O
+   * `--locale` do TMDB, porem, e um BCP-47 completo: `en-US`, `es-ES`, `fr-FR`.
+   *
+   * Sem esta checagem, `catalog sync --locale en-US` passaria a estourar FK
+   * violation e derrubar o job inteiro — um comando que ANTES desta mudanca
+   * funcionava (so nao criava slug). Manter o comportamento antigo para idioma
+   * desconhecido (nao finaliza) e o unico caminho que nao regride.
+   */
+  const knownLanguages = new Map<string, boolean>()
+
+  async function isRegisteredLanguage(code: string): Promise<boolean> {
+    const cached = knownLanguages.get(code)
+    if (cached !== undefined) return cached
+    const row = await prisma.language.findUnique({ where: { code }, select: { code: true } })
+    const exists = row !== null
+    knownLanguages.set(code, exists)
+    return exists
+  }
+
+  async function finalizeDetail(
+    entityType: 'movie' | 'tv' | 'person',
+    entityId: string | null,
+    display: CatalogDisplayFields | undefined,
+    tmdbId: number,
+    locale: string,
+  ): Promise<void> {
+    if (entityId === null || display === undefined) return
+    // Titulo vazio => slug vazio => URL invalida. Melhor NAO criar slug do que
+    // criar um quebrado: a entidade fica sem rota publica ate ter titulo, em vez
+    // de virar uma URL que o sitemap publica e o render nao resolve.
+    if (display.title.trim() === '') return
+    // Idioma nao registrado: nao finaliza (ver `isRegisteredLanguage`). O
+    // detalhe continua sincronizado; so nao ganha slug/traducao naquele idioma.
+    if (!(await isRegisteredLanguage(locale))) return
+    const finalize = createPrismaCatalogFinalize(prisma, locale)
+    const desiredSlug = desiredCatalogSlug(display.title, tmdbId)
+    await finalize.upsertCanonicalSlug(entityType, entityId, desiredSlug, tmdbId)
+    await finalize.upsertTranslation(entityType, entityId, display.title, display.overview)
+  }
+
   const detailSync: CatalogDetailSyncPort = {
     async syncDetail({ kind, tmdbId, locale }) {
       if (kind === 'movie') {
         const result = assertImportOk(await importMovie(importContext, tmdbId), `importMovie(${tmdbId})`)
+        await finalizeDetail('movie', result.id, result.display, tmdbId, locale)
         return {
           created: result.created,
           updated: result.changed && !result.created,
@@ -241,6 +307,7 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
       }
       if (kind === 'tv') {
         const result = assertImportOk(await importTvShow(importContext, tmdbId), `importTvShow(${tmdbId})`)
+        await finalizeDetail('tv', result.id, result.display, tmdbId, locale)
         return {
           created: result.created,
           updated: result.changed && !result.created,
@@ -252,6 +319,7 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
       }
       if (kind === 'person') {
         const result = assertImportOk(await importPerson(importContext, tmdbId), `importPerson(${tmdbId})`)
+        await finalizeDetail('person', result.id, result.display, tmdbId, locale)
         return {
           created: result.created,
           updated: result.changed && !result.created,

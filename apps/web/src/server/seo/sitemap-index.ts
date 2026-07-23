@@ -16,6 +16,17 @@
  * linkback ausentes. SQL sempre PARAMETRIZADO (`$queryRaw` tagged template) — a
  * entrada do shard NUNCA e concatenada em SQL.
  *
+ * PESSOA tem um gate EXTRA: alem de slug canonico e nome, precisa ter ao menos
+ * um credito (elenco ou equipe) em um FILME ou SERIE que ela propria seja
+ * publicavel (slug canonico no idioma + sem decisao vigente `!= index`). Sem
+ * isso, cada titulo ingerido despejava o elenco inteiro no sitemap — o catalogo
+ * observado tinha ~22.400 URLs de pessoa contra ~129 filmes e ~110 series. A
+ * regra canonica (e o porque) vive em `@screena/seo` -> `person-eligibility.ts`;
+ * aqui esta a sua traducao para SQL. O gate aparece DUAS vezes (contagem e
+ * pagina) porque cada tipo repete seu WHERE nos dois lugares; `sitemap-person-
+ * eligibility.test.ts` trava que as duas copias continuam identicas — se elas
+ * divergirem, o index anuncia N shards que a pagina nao consegue preencher.
+ *
  * Invariantes 3/4: zero API externa, zero Gemini; so PostgreSQL local. FAIL-CLOSED
  * em falha de banco. Serializacao XML pura via `@screena/seo`
  * (`renderUrlset`/`renderSitemapIndex`). `planSitemapShards` NAO e o mecanismo de
@@ -163,6 +174,23 @@ async function aggregateEntity(
       FROM slugs s JOIN people p ON p.id = s.entity_id
       WHERE s.entity_type = 'person' AND s.language_code = ${language} AND s.is_canonical = true
         AND BTRIM(p.name) <> ''
+        AND EXISTS (
+          SELECT 1 FROM cast_members cm
+          JOIN slugs ws ON ws.entity_type = cm.entity_type AND ws.entity_id = cm.entity_id
+            AND ws.language_code = ${language} AND ws.is_canonical = true
+          WHERE cm.person_id = p.id AND cm.entity_type IN ('movie','tv')
+            AND NOT EXISTS (SELECT 1 FROM page_indexability_decisions wd
+              WHERE wd.entity_type = cm.entity_type AND wd.entity_id = cm.entity_id
+                AND wd.language_code = ${language} AND wd.is_current = true AND wd.decision <> 'index')
+          UNION ALL
+          SELECT 1 FROM crew_members rm
+          JOIN slugs ws ON ws.entity_type = rm.entity_type AND ws.entity_id = rm.entity_id
+            AND ws.language_code = ${language} AND ws.is_canonical = true
+          WHERE rm.person_id = p.id AND rm.entity_type IN ('movie','tv')
+            AND NOT EXISTS (SELECT 1 FROM page_indexability_decisions wd
+              WHERE wd.entity_type = rm.entity_type AND wd.entity_id = rm.entity_id
+                AND wd.language_code = ${language} AND wd.is_current = true AND wd.decision <> 'index')
+        )
         AND NOT EXISTS (SELECT 1 FROM page_indexability_decisions d
           WHERE d.entity_type = 'person' AND d.entity_id = s.entity_id
             AND d.language_code = ${language} AND d.is_current = true AND d.decision <> 'index')`;
@@ -242,6 +270,23 @@ async function pageEntity(
       FROM slugs s JOIN people p ON p.id = s.entity_id
       WHERE s.entity_type = 'person' AND s.language_code = ${language} AND s.is_canonical = true
         AND BTRIM(p.name) <> ''
+        AND EXISTS (
+          SELECT 1 FROM cast_members cm
+          JOIN slugs ws ON ws.entity_type = cm.entity_type AND ws.entity_id = cm.entity_id
+            AND ws.language_code = ${language} AND ws.is_canonical = true
+          WHERE cm.person_id = p.id AND cm.entity_type IN ('movie','tv')
+            AND NOT EXISTS (SELECT 1 FROM page_indexability_decisions wd
+              WHERE wd.entity_type = cm.entity_type AND wd.entity_id = cm.entity_id
+                AND wd.language_code = ${language} AND wd.is_current = true AND wd.decision <> 'index')
+          UNION ALL
+          SELECT 1 FROM crew_members rm
+          JOIN slugs ws ON ws.entity_type = rm.entity_type AND ws.entity_id = rm.entity_id
+            AND ws.language_code = ${language} AND ws.is_canonical = true
+          WHERE rm.person_id = p.id AND rm.entity_type IN ('movie','tv')
+            AND NOT EXISTS (SELECT 1 FROM page_indexability_decisions wd
+              WHERE wd.entity_type = rm.entity_type AND wd.entity_id = rm.entity_id
+                AND wd.language_code = ${language} AND wd.is_current = true AND wd.decision <> 'index')
+        )
         AND NOT EXISTS (SELECT 1 FROM page_indexability_decisions d
           WHERE d.entity_type = 'person' AND d.entity_id = s.entity_id
             AND d.language_code = ${language} AND d.is_current = true AND d.decision <> 'index')

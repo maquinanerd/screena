@@ -2,6 +2,7 @@
  * import-person.ts — Orquestra o import de uma pessoa por TMDB id.
  */
 
+import { readPersonDisplayFields } from '../display-fields.js'
 import { normalizePerson } from '../normalizers/person.js'
 import { describeError } from './errors.js'
 import type { ImportContext, ImportResult } from './types.js'
@@ -65,6 +66,7 @@ export async function importPerson(ctx: ImportContext, tmdbId: number): Promise<
       created: outcome.created,
       id: outcome.id,
       quotaCost,
+      display: readPersonDisplayFields(result.data),
     }
   } catch (error) {
     const info = describeError(error)

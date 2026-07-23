@@ -10,6 +10,7 @@
  *   3. validate:movie-page
  *   4. validate:series-page
  *   5. validate:person-page
+ *   6. validate:person-eligibility
  *
  * Cada validador sobe/derruba o seu PROPRIO PostgreSQL efemero
  * (`embedded-postgres`), em porta livre e diretorio temporario dedicado, e
@@ -61,6 +62,11 @@ const VALIDATORS: readonly ValidatorSpec[] = [
   { key: "validate:movie-page", label: "Pagina de filme", script: "validate-movie-page-real-postgres.ts" },
   { key: "validate:series-page", label: "Pagina de serie", script: "validate-series-page-real-postgres.ts" },
   { key: "validate:person-page", label: "Pagina de pessoa", script: "validate-person-page-real-postgres.ts" },
+  {
+    key: "validate:person-eligibility",
+    label: "Gate de elegibilidade de pessoa (sitemap)",
+    script: "validate-person-eligibility-real-postgres.ts",
+  },
 ];
 
 interface ValidatorOutcome {

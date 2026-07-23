@@ -6,6 +6,7 @@
  * proprio short-circuit de cache. Um unico log por ciclo (endpoint raiz).
  */
 
+import { readTvDisplayFields } from '../display-fields.js'
 import { normalizeSeason } from '../normalizers/season.js'
 import { normalizeTvShow } from '../normalizers/tv.js'
 import { describeError } from './errors.js'
@@ -93,6 +94,7 @@ export async function importTvShow(ctx: ImportContext, tmdbId: number): Promise<
       quotaCost,
       seasons: seasonsUpserted,
       episodes: episodesUpserted,
+      display: readTvDisplayFields(result.data),
     }
   } catch (error) {
     const info = describeError(error)
