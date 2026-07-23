@@ -38,6 +38,8 @@ jobs:
         run: |
           bash -n scripts/backup/backup.sh
           bash -n scripts/backup/restore-test.sh
+          bash -n scripts/backup/backup-with-alert.sh
+          bash -n scripts/backup/verify-backup-restore.sh
 
       - name: Generate Prisma Client
         env:
@@ -138,3 +140,68 @@ jobs:
       # como "user platform persistence" generico esconderia essa fronteira.
       - name: Backend C — adapters C7B1 (identidade, credencial, sessao, token e throttle; PostgreSQL 16 efemero)
         run: pnpm --filter @screena/user-platform validate:user-product
+
+  # Prova REAL de backup + restore (Prompt 02). Roda os scripts ENVIADOS
+  # (backup.sh/restore-test.sh) contra um PostgreSQL 16 de verdade, com
+  # pg_dump/pg_restore/psql 16, e compara contagens de dados origem == restaurado.
+  # NAO e checagem de sintaxe (essa fica no job acima). Job separado por precisar
+  # de um servico Postgres e do cliente 16.
+  backup-restore:
+    name: Backup + restore real (fidelidade de dados, PostgreSQL 16)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: screen
+          POSTGRES_PASSWORD: screen
+          POSTGRES_DB: screen
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U screen -d screen"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://screen:screen@localhost:5432/screen
+      # Base administrativa isolada (o proprio 'postgres' db) para criar/dropar
+      # as bases efemeras de restore. Nunca aponta para a origem.
+      RESTORE_TEST_ADMIN_URL: postgresql://screen:screen@localhost:5432/postgres
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # pg_dump/pg_restore/psql versao 16 (casa com o servico). O runner ja traz
+      # o repo PGDG; garantimos o cliente 16 explicitamente.
+      - name: Instalar postgresql-client 16
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-16 || sudo apt-get install -y postgresql-client
+          pg_dump --version
+          psql --version
+
+      - name: Generate Prisma Client
+        run: pnpm --filter @screena/db db:generate
+
+      - name: Aplicar migrations + seed na origem
+        run: |
+          pnpm --filter @screena/db db:migrate:deploy
+          pnpm --filter @screena/db db:seed
+
+      - name: Verificar backup + restore com fidelidade de dados
+        run: bash scripts/backup/verify-backup-restore.sh
