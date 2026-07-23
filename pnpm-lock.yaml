@@ -73,6 +73,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@screena/config':
+        specifier: workspace:*
+        version: link:../../packages/config
       '@screena/db':
         specifier: workspace:*
         version: link:../../packages/db

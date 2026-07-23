@@ -169,6 +169,67 @@ export const PUBLISHED_LOCALES = ["pt-BR", "pt"] as const;
 export type PublishedLocale = (typeof PUBLISHED_LOCALES)[number];
 
 /**
+ * Segmento de URL (primeiro segmento da rota publica) de cada `language_code`
+ * suportado.
+ *
+ * FONTE UNICA da relacao `language_code` <-> rota. O `language_code` de dado é
+ * BCP-47 (`pt-BR`, `pt`, `en`, `es`); a ROTA publica usa apenas o segmento base
+ * (`/pt/`, `/en/`, `/es/`) — `pt-BR` e `pt` compartilham o segmento `pt` e a
+ * rota nunca expõe `pt-BR`. Toda decisao de "quais rotas de locale
+ * existem/publicam" DERIVA deste mapa + `SUPPORTED_LOCALES`/`PUBLISHED_LOCALES`;
+ * uma lista paralela de locales de rota em outro workspace é duplicacao de fonte
+ * de verdade e bug (era o caso de `apps/web` antes da centralizacao — ver o
+ * baseline R-07).
+ */
+export const LOCALE_URL_SEGMENT = {
+  "pt-BR": "pt",
+  pt: "pt",
+  en: "en",
+  es: "es",
+} as const satisfies Record<SupportedLocale, string>;
+
+/**
+ * Segmento de URL de um locale suportado (`"pt" | "en" | "es"`).
+ */
+export type UrlLocale = (typeof LOCALE_URL_SEGMENT)[SupportedLocale];
+
+/**
+ * Dedup preservando a primeira ocorrencia (mantem a ordem de prioridade dos
+ * `SUPPORTED_LOCALES`, evitando reordenacao silenciosa de rotas).
+ */
+function uniqueUrlSegments(locales: readonly SupportedLocale[]): UrlLocale[] {
+  const seen = new Set<UrlLocale>();
+  const out: UrlLocale[] = [];
+  for (const locale of locales) {
+    const segment = LOCALE_URL_SEGMENT[locale];
+    if (!seen.has(segment)) {
+      seen.add(segment);
+      out.push(segment);
+    }
+  }
+  return out;
+}
+
+/**
+ * Segmentos de URL SUPORTADOS (a rota existe estruturalmente), derivados de
+ * `SUPPORTED_LOCALES`. Hoje: `["pt", "en", "es"]`.
+ */
+export const SUPPORTED_URL_LOCALES: readonly UrlLocale[] = uniqueUrlSegments(SUPPORTED_LOCALES);
+
+/**
+ * Segmentos de URL PUBLICADOS e elegiveis a `index`, derivados de
+ * `PUBLISHED_LOCALES`. Hoje: `["pt"]`. Ligar um idioma em `PUBLISHED_LOCALES`
+ * passa a habilitar sua rota automaticamente — sem editar nenhuma segunda lista.
+ */
+export const PUBLISHED_URL_LOCALES: readonly UrlLocale[] = uniqueUrlSegments(PUBLISHED_LOCALES);
+
+/**
+ * Segmento de URL default (locale-base do produto): o segmento do primeiro
+ * `SUPPORTED_LOCALES`. Hoje: `"pt"`.
+ */
+export const DEFAULT_URL_LOCALE: UrlLocale = LOCALE_URL_SEGMENT[SUPPORTED_LOCALES[0]];
+
+/**
  * Estados do ciclo de vida de revisao de um content_block
  * (coluna review_status).
  */

@@ -1,13 +1,33 @@
 /**
- * Locale da raiz publica. PURO: sem Next runtime, rede, DB ou IO.
+ * Locale da rota raiz publica. PURO: sem Next runtime, rede, DB ou IO.
+ *
+ * FONTE UNICA: os locales de rota vêm de `@screena/config` (`*_URL_LOCALES`),
+ * derivados de `SUPPORTED_LOCALES`/`PUBLISHED_LOCALES` via `LOCALE_URL_SEGMENT`.
+ * Este módulo NÃO redeclara a lista de locales — antes redeclarava
+ * (`["pt"]` vs `["pt-BR","pt"]` no config), o que fazia ligar um idioma no
+ * config não habilitar sua rota (baseline R-07). Aqui ficam apenas os helpers
+ * de PARSING de request (segmento do pathname, Accept-Language), que são
+ * responsabilidade da rota.
  */
 
-export const SUPPORTED_LOCALES = ["pt", "en", "es"] as const;
-export const DEFAULT_LOCALE = "pt" as const;
-export const PUBLISHED_LOCALES = ["pt"] as const;
+import {
+  DEFAULT_URL_LOCALE,
+  PUBLISHED_URL_LOCALES,
+  SUPPORTED_URL_LOCALES,
+  type UrlLocale,
+} from "@screena/config";
 
-export type Locale = (typeof SUPPORTED_LOCALES)[number];
-export type PublishedLocale = (typeof PUBLISHED_LOCALES)[number];
+/** Locale de rota (segmento de URL). Alias de `UrlLocale` do config. */
+export type Locale = UrlLocale;
+/** Locale de rota publicado. Alias de `UrlLocale` do config. */
+export type PublishedLocale = UrlLocale;
+
+/** Segmentos de rota suportados, na ordem de prioridade do config. */
+export const SUPPORTED_LOCALES: readonly Locale[] = SUPPORTED_URL_LOCALES;
+/** Segmento de rota default (locale-base). */
+export const DEFAULT_LOCALE: Locale = DEFAULT_URL_LOCALE;
+/** Segmentos de rota publicados e elegiveis a `index`. */
+export const PUBLISHED_LOCALES: readonly PublishedLocale[] = PUBLISHED_URL_LOCALES;
 
 /**
  * Resolve o locale do request pelo primeiro segmento do pathname, caindo em

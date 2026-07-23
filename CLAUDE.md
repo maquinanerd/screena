@@ -76,18 +76,26 @@ Fluxo mental: **API externa -> worker (offline, com log) -> PostgreSQL -> [Entit
 | Caminho | Conteudo |
 | --- | --- |
 | `apps/web` | App publico `@screena/web` (Next App Router, render puro). |
-| `apps/admin` | Painel interno `@screena/admin` atualmente read-only; escrita/revisao editorial completa e planejada. |
-| `packages/config` | `@screena/config` — config compartilhada, constantes, env tipado. |
+| `apps/admin` | Painel interno `@screena/admin`. Leitura editorial sempre; ESCRITA (revisao/publicacao de `content_blocks`/`article_translations`) existe e e real, gateada pela flag `ADMIN_EDITORIAL_ACTIONS_ENABLED` (default desligada) — nao e "read-only puro". |
+| `packages/config` | `@screena/config` — config compartilhada, constantes, env tipado, locales (fonte unica). |
 | `packages/schemas` | `@screena/schemas` — validadores e contratos de dados (TS puro: ratings, saida do Entity Writer). |
-| `packages/seo` | `@screena/seo` — indexabilidade, schema.org, sitemap, robots. |
+| `packages/seo` | `@screena/seo` — indexabilidade, schema.org, sitemap, robots, canonical, redirects. UNICA logica de SEO (o antigo `seo/` na raiz era codigo morto e foi removido no Prompt 01). |
 | `packages/ui` | `@screena/ui` — componentes, tokens de cor, badges filme/serie. |
 | `packages/types` | `@screena/types` — tipos TS compartilhados. |
 | `packages/db` | `@screena/db` — schema Prisma, migrations, seeds e acesso server-only ao PostgreSQL. |
+| `packages/public-contracts` | `@screena/public-contracts` — contratos de apresentacao do render publico (unico lugar autorizado ao host de imagem TMDB). |
+| `packages/cinerie-score` | `@screena/cinerie-score` — calculo do Cinerie Score (bloqueado por licenca; nao publico). |
+| `services/ingestion` | `@screena/ingestion` — plataforma TMDB: discovery, catalogo, midia, fila de jobs, busca. |
+| `services/sync` | `@screena/sync` — politica de frescor/stale sobre `ingestion`. |
+| `services/entity-writer` | `@screena/entity-writer` — Entity Writer offline (adapter Gemini separado do render). |
+| `services/ratings` | `@screena/ratings` — ratings externos via RapidAPI (governado; nao publico ativo). |
+| `services/streaming` | `@screena/streaming` — disponibilidade de streaming via RapidAPI (gateado por licenca). |
+| `services/legal` | `@screena/legal` — registro de autorizacao de fontes e atribuicao. |
+| `services/user-platform` | `@screena/user-platform` — identidade, credencial, sessao, tokens, e-mail transacional (runtime de auth WIRED nas rotas `/api/auth/**`). |
+| `services/news-ingestion`, `api-clients/imdb`, `api-clients/kaso` | Placeholders de roadmap (apenas `README.md`, sem `package.json` nem codigo). Nao sao workspaces ativos. |
 | `workers/` | Workers Python (esqueletos/roadmap): ratings, streaming, news e scheduler; TMDB legado/scaffold nao substitui o client TS atual. |
-| `services/` | Servicos de dominio; `ingestion`, `sync` e `entity-writer` ja tem implementacao TS/Node parcial. |
-| `api-clients/` | Clients externos; `tmdb` e real em TS/Node, demais estao como contratos/roadmap. |
-| `database/` | Documentacao historica de modelagem; a fonte executavel atual e `packages/db/prisma`. |
-| `seo/` | Logica de SEO no nivel raiz: `indexability.ts`, `sitemap.ts`, `robots.ts`, `rules/`, `templates/`. |
+| `api-clients/` | Clients externos; `tmdb`, `rapidapi-core`, `film_show_ratings` e `streaming_availability` sao reais em TS/Node. `imdb`/`kaso` sao placeholders. |
+| `database/` | Legado: `migrations/` vazio e `seeds/` so com README. A fonte executavel atual e `packages/db/prisma`. |
 | `prompts/` | Prompts de IA (pt-BR) para os content_blocks. |
 | `docs/` | `SPEC.md`, `BUILD_PLAN.md`, `API_SOURCES.md`, `SEO_PROGRAMMATIC.md`, `RATING_ATTRIBUTION.md`, `ENTITY_WRITER.md`, `CLOUDPANEL_DEPLOY.md`. |
 | `tests/governance/` | Testes que travam as invariantes de governanca. |
@@ -99,12 +107,19 @@ Cada pacote em `packages/*` tem: `package.json` (com `"main": "./src/index.ts"` 
 ### Aliases (devem bater entre `vitest.config.ts` e `tsconfig.base.json`)
 
 ```
-@screena/config  -> packages/config/src/index.ts
-@screena/schemas -> packages/schemas/src/index.ts
-@screena/seo     -> packages/seo/src/index.ts
-@screena/ui      -> packages/ui/src/index.ts
-@screena/types   -> packages/types/src/index.ts
-@screena/db      -> packages/db/src/index.ts
+@screena/config                     -> packages/config/src/index.ts
+@screena/schemas                    -> packages/schemas/src/index.ts
+@screena/seo                        -> packages/seo/src/index.ts
+@screena/ui                         -> packages/ui/src/index.ts
+@screena/types                      -> packages/types/src/index.ts
+@screena/db                         -> packages/db/src/index.ts
+@screena/public-contracts           -> packages/public-contracts/src/index.ts
+@screena/cinerie-score              -> packages/cinerie-score/src/index.ts
+@screena/legal                      -> services/legal/src/index.ts
+@screena/tmdb-client                -> api-clients/tmdb/src/index.ts
+@screena/rapidapi-core              -> api-clients/rapidapi-core/src/index.ts
+@screena/film-show-ratings-client   -> api-clients/film_show_ratings/src/index.ts
+@screena/streaming-availability-client -> api-clients/streaming_availability/src/index.ts
 ```
 
 ## 6. Como trabalhar
@@ -121,7 +136,7 @@ Cada pacote em `packages/*` tem: `package.json` (com `"main": "./src/index.ts"` 
 As regras detalhadas vivem (ou viverao) em `.claude/`. Consulte-as antes de mexer no dominio correspondente:
 
 - `.claude/rules/ratings.md` — fontes, escalas, atribuicao, licenca (invariantes 1, 2 e complementares de rating).
-- `.claude/rules/seo.md` — indexabilidade, gate anti-thin, schema.org, sitemap/robots (invariantes 3, 5).
+- `.claude/rules/seo.md` — indexabilidade (total; gate anti-thin removido em 2026-07), schema.org, sitemap/robots (invariantes 3, 5).
 - `.claude/rules/ingestion.md` — workers, sync com log, cache, `api_cache`/`api_sync_logs`.
 - `.claude/rules/i18n.md` — pt-BR primeiro; en/es em draft/noindex (invariante 7).
 - `.claude/rules/entity-writer.md` — payload controlado, anti-alucinacao, versionamento (invariantes 12, 13).

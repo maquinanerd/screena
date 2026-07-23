@@ -54,6 +54,17 @@ jobs:
       - name: Typecheck do wiring operacional (persistence/, bin/, composition)
         run: pnpm typecheck:catalog-runtime
 
+      # Gate de tipo das APLICACOES (baseline R-05). O `pnpm typecheck` acima
+      # cobre packages/api-clients/services/tests, mas NAO apps/**: web so era
+      # verificado indiretamente por `next build` e admin nao tinha gate algum.
+      # Roda depois do db:generate porque ambos os apps consomem @screena/db
+      # (que reexporta o Prisma Client gerado).
+      - name: Typecheck do app publico (web)
+        run: pnpm typecheck:web
+
+      - name: Typecheck do admin
+        run: pnpm typecheck:admin
+
       - name: Lint
         run: pnpm lint
 
@@ -80,6 +91,13 @@ jobs:
 
       - name: Migration Fase 2 — Cenario B (upgrade sobre estado anterior)
         run: pnpm --filter @screena/db db:validate:upgrade
+
+      # pgcrypto sob search_path hostil (baseline R-03). Este validador foi
+      # escrito para o incidente de producao do PR #73 (digest() fora do schema
+      # public) e existia sem nunca rodar em lugar nenhum — a regressao podia
+      # voltar sem sinal. Agora e gate de CO.
+      - name: Migration — pgcrypto sob search_path hostil (PostgreSQL 16 efemero)
+        run: pnpm --filter @screena/db db:validate:pgcrypto
 
       - name: Stores de streaming — integracao (PostgreSQL 16 efemero)
         run: pnpm --filter @screena/streaming validate:stores

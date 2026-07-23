@@ -8,7 +8,16 @@ export default defineConfig({
       'packages/**/*.test.ts',
       'api-clients/**/*.test.ts',
       'services/**/*.test.ts',
+      // apps/** ENTRA na coleta (baseline R-06): antes um teste dentro de
+      // apps/web ou apps/admin nunca rodava (falha silenciosa). Cobre .ts e
+      // .tsx para nao repetir o mesmo buraco quando surgir teste de componente.
+      'apps/**/*.test.ts',
+      'apps/**/*.test.tsx',
     ],
+    // Exclui saida de build/deps: o glob apps/** nao pode arrastar .next/ nem
+    // node_modules (o default do vitest ja ignora node_modules; .next e dist
+    // sao explicitados para o caso de artefatos de build presentes).
+    exclude: ['**/node_modules/**', '**/.next/**', '**/dist/**'],
     environment: 'node',
   },
   resolve: {
