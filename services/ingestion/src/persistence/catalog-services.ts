@@ -247,6 +247,29 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
    * cache (`changed === false`) nao ha id, e o slug daquela entidade ja existe
    * da execucao que a criou.
    */
+  /**
+   * Cache de idiomas REGISTRADOS em `languages`.
+   *
+   * `slugs.language_code` e `entity_translations.language_code` tem FK para
+   * `languages`, e a tabela so tem os idiomas do seed (hoje pt-BR, en, es). O
+   * `--locale` do TMDB, porem, e um BCP-47 completo: `en-US`, `es-ES`, `fr-FR`.
+   *
+   * Sem esta checagem, `catalog sync --locale en-US` passaria a estourar FK
+   * violation e derrubar o job inteiro — um comando que ANTES desta mudanca
+   * funcionava (so nao criava slug). Manter o comportamento antigo para idioma
+   * desconhecido (nao finaliza) e o unico caminho que nao regride.
+   */
+  const knownLanguages = new Map<string, boolean>()
+
+  async function isRegisteredLanguage(code: string): Promise<boolean> {
+    const cached = knownLanguages.get(code)
+    if (cached !== undefined) return cached
+    const row = await prisma.language.findUnique({ where: { code }, select: { code: true } })
+    const exists = row !== null
+    knownLanguages.set(code, exists)
+    return exists
+  }
+
   async function finalizeDetail(
     entityType: 'movie' | 'tv' | 'person',
     entityId: string | null,
@@ -259,6 +282,9 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
     // criar um quebrado: a entidade fica sem rota publica ate ter titulo, em vez
     // de virar uma URL que o sitemap publica e o render nao resolve.
     if (display.title.trim() === '') return
+    // Idioma nao registrado: nao finaliza (ver `isRegisteredLanguage`). O
+    // detalhe continua sincronizado; so nao ganha slug/traducao naquele idioma.
+    if (!(await isRegisteredLanguage(locale))) return
     const finalize = createPrismaCatalogFinalize(prisma, locale)
     const desiredSlug = desiredCatalogSlug(display.title, tmdbId)
     await finalize.upsertCanonicalSlug(entityType, entityId, desiredSlug, tmdbId)

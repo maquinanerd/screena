@@ -353,9 +353,30 @@ async function main(): Promise<void> {
         '--limit', LIMIT, '--locale', 'pt-BR', '--request-id', requestId, '--apply', '--json',
       ], url)
 
-      runCatalog('worker-1', ['worker', '--concurrency', '4', '--max-jobs', '4000', '--timeout-ms', '300000'], url, 1_800_000)
+      // -------------------------------------------------------------------
+      // RETOMADA APOS INTERRUPCAO.
+      //
+      // O primeiro worker drena so uma FATIA (`--max-jobs`) e sai — e o mesmo
+      // estado que um SIGTERM/crash deixa: parte da fila processada, parte
+      // pendente, nada perdido. O segundo worker RETOMA do ponto em que o
+      // primeiro parou, sem reprocessar o que ja terminou.
+      // -------------------------------------------------------------------
+      runCatalog(
+        'worker-parcial',
+        ['worker', '--concurrency', '2', '--max-jobs', '15', '--timeout-ms', '300000'],
+        url,
+        1_800_000,
+      )
+      report.censusInterrupted = await census(prisma, 'INTERROMPIDO (fatia parcial da fila)')
 
-      report.censusAfter = await census(prisma, 'DEPOIS (1a execucao)')
+      runCatalog(
+        'worker-retomada',
+        ['worker', '--concurrency', '4', '--max-jobs', '20000', '--timeout-ms', '300000'],
+        url,
+        3_000_000,
+      )
+
+      report.censusAfter = await census(prisma, 'DEPOIS (retomada concluida)')
 
       // -------------------------------------------------------------------
       // DEMONSTRACAO DO GATE DE PESSOA.
