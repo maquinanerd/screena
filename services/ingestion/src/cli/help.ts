@@ -21,6 +21,7 @@ export function renderGeneralHelp(): string {
   return `${HEADER}
 
 Comandos:
+  plan-bootstrap    Estima o CUSTO de um bootstrap antes de persistir (nao usa banco)
   bootstrap         Orquestra o catalogo do zero (descoberta -> detalhes -> midia -> busca)
   enqueue           Enfileira UM job avulso
   worker            Processa a fila (shutdown gracioso via SIGINT/SIGTERM)
@@ -53,6 +54,44 @@ Ajuda por comando: pnpm catalog <comando> --help`
 
 /** Ajuda por comando. */
 const COMMAND_HELP: Readonly<Record<CatalogCommand, string>> = {
+  'plan-bootstrap': `catalog plan-bootstrap — estima o CUSTO de um bootstrap ANTES de persistir.
+
+Existe porque \`--limit\` mede TITULO, e titulo nao e a unidade de custo. Medido
+em execucao real: 3 series da lista \`popular\` produziram 639 temporadas e
+33.178 episodios. Subir \`--limit\` de 10 para 100 pode multiplicar o trabalho por
+muito mais que 10 — depende de QUAIS series cairem na lista.
+
+Le as listas de descoberta e, para cada SERIE candidata, busca \`/tv/{id}\` (e
+dali saem \`number_of_seasons\` e \`number_of_episodes\`, que sao o custo real).
+Filme tem custo fixo e nao gasta cota de detalhe.
+
+NAO usa banco: planejar tem que ser possivel de um host sem PostgreSQL.
+NAO persiste nada: nem entidade, nem cache, nem job.
+
+Flags:
+  --strategy <s>              popular (default) | top_rated | now_playing | on_the_air
+  --entity <lista>            movie,tv (default: ambos)
+  --limit <n>                 candidatos por tipo (default 20)
+  --max-pages <n>             paginas de lista lidas por tipo (default 5)
+  --locale <l>                default pt-BR
+
+Orcamento (dimensao sem teto declarado nunca viola):
+  --max-titles <n>            teto de titulos
+  --max-series <n>            teto de series
+  --max-seasons <n>           teto de temporadas
+  --max-episodes <n>          teto de episodios   <- o que --limit esconde
+  --max-jobs <n>              teto de jobs enfileirados
+  --max-api-calls <n>         teto de chamadas TMDB
+  --max-media-items <n>       teto de itens de midia
+  --max-duration-minutes <n>  teto de duracao estimada
+
+Exit code 4 quando o orcamento estoura — o comando RECUSA, nao apenas informa.
+A saida diz quantos titulos cabem, para nao ser tentativa e erro.
+
+Exemplos:
+  pnpm catalog plan-bootstrap --strategy popular --entity movie,tv --limit 20 --json
+  pnpm catalog plan-bootstrap --limit 100 --max-episodes 20000 --max-duration-minutes 45`,
+
   bootstrap: `catalog bootstrap — orquestra o catalogo do zero.
 
 Nao baixa tudo de forma sincrona: ENFILEIRA as etapas e deixa a fila cascatear

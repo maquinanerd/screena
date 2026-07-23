@@ -17,6 +17,7 @@
 /** Comandos da CLI. */
 export const CATALOG_COMMANDS = [
   'bootstrap',
+  'plan-bootstrap',
   'enqueue',
   'worker',
   'sync',
@@ -66,6 +67,16 @@ const INT_FLAGS: ReadonlySet<string> = new Set([
   'max-pages',
   'season',
   'timeout-ms',
+  // Orcamento operacional do `plan-bootstrap`. Existem porque `--limit` mede
+  // TITULO, e titulo nao e a unidade de custo: 3 series populares ja
+  // produziram 639 temporadas e 33.178 episodios.
+  'max-titles',
+  'max-series',
+  'max-seasons',
+  'max-episodes',
+  'max-api-calls',
+  'max-duration-minutes',
+  'max-media-items',
 ])
 
 /** Flags de valor data (YYYY-MM-DD). */
@@ -105,6 +116,14 @@ export interface CatalogFlags {
   readonly maxPages: number | null
   readonly season: number | null
   readonly timeoutMs: number | null
+  /** Tetos do orcamento (`plan-bootstrap`). null = sem teto naquela dimensao. */
+  readonly maxTitles: number | null
+  readonly maxSeries: number | null
+  readonly maxSeasons: number | null
+  readonly maxEpisodes: number | null
+  readonly maxApiCalls: number | null
+  readonly maxDurationMinutes: number | null
+  readonly maxMediaItems: number | null
   readonly from: string | null
   readonly to: string | null
   readonly resume: boolean
@@ -161,6 +180,10 @@ const READ_ONLY_COMMANDS: ReadonlySet<CatalogCommand> = new Set([
   'status',
   'search-status',
   'audit-database',
+  // `plan-bootstrap` le listas e detalhes do TMDB para estimar custo, e NAO
+  // persiste nada — nem entidade, nem cache, nem job. Por isso `--apply` nao
+  // faz sentido nele: nao ha o que aplicar.
+  'plan-bootstrap',
 ])
 
 /** True quando o comando exige `--dry-run` ou `--apply` explicito. */
@@ -302,6 +325,13 @@ export function parseCatalogArgs(argv: readonly string[]): CatalogArgsResult {
     maxPages: ints['max-pages'] ?? null,
     season: ints.season ?? null,
     timeoutMs: ints['timeout-ms'] ?? null,
+    maxTitles: ints['max-titles'] ?? null,
+    maxSeries: ints['max-series'] ?? null,
+    maxSeasons: ints['max-seasons'] ?? null,
+    maxEpisodes: ints['max-episodes'] ?? null,
+    maxApiCalls: ints['max-api-calls'] ?? null,
+    maxDurationMinutes: ints['max-duration-minutes'] ?? null,
+    maxMediaItems: ints['max-media-items'] ?? null,
     from: dates.from ?? null,
     to: dates.to ?? null,
     resume: booleans.has('resume'),
