@@ -1,0 +1,96 @@
+/**
+ * diary.ts — Diario/historico como PROJECAO determinista dos eventos (C4).
+ *
+ * PURO: sem rede, sem DB, sem relogio. O diario NAO e mutavel — e derivado dos
+ * eventos append-only. Determinismo total: mesma entrada (em qualquer ordem)
+ * produz a MESMA saida. Privado por padrao; DTO publico minimo (sem PK interna,
+ * sem userId, sem chave de idempotencia). Remocao de watchlist NAO afeta o
+ * diario (sao dominios distintos; aqui so projetamos os eventos recebidos).
+ */
+
+import type { StoredViewingEvent, TrackableEntityType, ViewingEventType } from "./types.js";
+
+export type DiaryOrder = "desc" | "asc";
+
+/** Entrada publica do diario (minima; entityId como string, occurredAt ISO UTC). */
+export interface DiaryEntry {
+  readonly entityType: TrackableEntityType;
+  readonly entityId: string;
+  readonly eventType: ViewingEventType;
+  readonly occurredAt: string;
+}
+
+export interface DiaryProjection {
+  readonly entries: readonly DiaryEntry[];
+  readonly totalEvents: number;
+}
+
+/**
+ * Compara dois eventos de forma DETERMINISTICA: por occurredAt (asc/desc) e,
+ * no empate, por eventId crescente (sempre asc, para estabilidade total),
+ * desempatando ainda por idempotencyKey.
+ */
+function compareEvents(a: StoredViewingEvent, b: StoredViewingEvent, order: DiaryOrder): number {
+  const ta = a.occurredAt.getTime();
+  const tb = b.occurredAt.getTime();
+  if (ta !== tb) {
+    return order === "asc" ? ta - tb : tb - ta;
+  }
+  if (a.eventId !== b.eventId) {
+    return a.eventId < b.eventId ? -1 : 1;
+  }
+  if (a.idempotencyKey !== b.idempotencyKey) {
+    return a.idempotencyKey < b.idempotencyKey ? -1 : 1;
+  }
+  return 0;
+}
+
+/**
+ * Projeta o diario de UM usuario a partir de eventos armazenados.
+ *
+ * - filtra estritamente pelo `userId` (eventos de outro usuario sao excluidos);
+ * - deduplica por `idempotencyKey` (um evento idempotente aparece uma vez);
+ * - ordena por occurredAt (padrao desc = mais recente primeiro), desempate
+ *   determinista por eventId e idempotencyKey;
+ * - rewatches legitimos tem chaves distintas -> aparecem como ocorrencias
+ *   separadas;
+ * - historico vazio produz projecao valida (entries: []).
+ */
+export function buildDiary(input: {
+  readonly events: readonly StoredViewingEvent[];
+  readonly userId: bigint;
+  readonly order?: DiaryOrder;
+}): DiaryProjection {
+  const order: DiaryOrder = input.order ?? "desc";
+
+  // Filtra pelo dono e deduplica por (idempotencyKey, eventType) — NAO apenas
+  // por idempotencyKey. Uma unica operacao de watch-state (ver watch-state.ts)
+  // reusa a MESMA chave para eventos de TIPOS distintos (ex.: state_changed +
+  // watch_completed); deduplicar so por chave ocultaria um deles. Com a chave
+  // composta, um replay idempotente (mesma chave + mesmo tipo) colapsa, mas
+  // eventos distintos da mesma operacao sobrevivem. Mantem o de menor eventId
+  // para determinismo, independente da ordem de entrada.
+  const byKey = new Map<string, StoredViewingEvent>();
+  for (const event of input.events) {
+    if (event.userId !== input.userId) continue;
+    // Separador "|" imprimivel (nunca byte de controle cru — ver
+    // tests/governance/user-platform-no-control-bytes.test.ts). A chave e
+    // injetiva porque nenhum ViewingEventType contem "|": o ultimo "|" da
+    // string sempre separa idempotencyKey de eventType.
+    const dedupKey = `${event.idempotencyKey}|${event.eventType}`;
+    const existing = byKey.get(dedupKey);
+    if (existing === undefined || event.eventId < existing.eventId) {
+      byKey.set(dedupKey, event);
+    }
+  }
+
+  const sorted = [...byKey.values()].sort((a, b) => compareEvents(a, b, order));
+  const entries: DiaryEntry[] = sorted.map((event) => ({
+    entityType: event.entityType,
+    entityId: event.entityId.toString(10),
+    eventType: event.eventType,
+    occurredAt: event.occurredAt.toISOString(),
+  }));
+
+  return { entries, totalEvents: entries.length };
+}

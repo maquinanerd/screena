@@ -227,7 +227,7 @@ fica fechado na internet.
 > o frontend, para o bundle do cliente, para **build-args** do Nixpacks nem sao
 > commitadas. So a URL canonica publica pode ser exposta ao cliente.
 
-| Variavel | Usada por | Publica? | Descricao |
+| Variavel | Usada por | Publica? | Descricao (a obrigatoriedade vem no texto) |
 | --- | --- | --- | --- |
 | `DATABASE_URL` | web (leitura) + workers (escrita) | Nao | Connection string do PostgreSQL. Em banco gerenciado, inclua `?sslmode=require`. |
 | `NODE_ENV` | web + workers | Nao | `production`. |
@@ -236,6 +236,27 @@ fica fechado na internet.
 | `GEMINI_API_KEY` | worker `entity-writer` | Nao | Chave do Gemini. So o Entity Writer offline a usa (Invariante 4). |
 | `GEMINI_MODEL` | worker `entity-writer` | Nao | Modelo Gemini do Entity Writer. |
 | Chaves de ratings/streaming (RapidAPI) | workers futuros | Nao | `provider_api`, distinto da `rating_source` (Invariante 2). So offline, quando as features forem ativadas. |
+| `BREVO_API_KEY` | `screen-app` | Nao | **Obrigatoria.** Chave da API transacional da Brevo. Server-only; nunca no bundle do cliente. |
+| `BREVO_SENDER_NAME` | `screen-app` | Nao | **Obrigatoria.** Nome do remetente (`Cinerie`). |
+| `BREVO_SENDER_EMAIL` | `screen-app` | Nao | **Obrigatoria.** Remetente VALIDADO no painel da Brevo (`conta@cinerie.com`). |
+| `BREVO_REPLY_TO_EMAIL` | `screen-app` | Nao | **Opcional.** Opcional. So e enviado quando configurado. |
+| `PUBLIC_APP_URL` | `screen-app` | Nao | **Obrigatoria.** Origem publica usada para montar os links de e-mail (`https://cinerie.com`). HTTPS obrigatorio em producao; sem prefixo de caminho. |
+| `PASSWORD_RESET_EXPIRATION_MINUTES` | `screen-app` | Nao | **Obrigatoria.** Validade do link de recuperacao, em minutos (`30`). |
+| `EMAIL_VERIFICATION_EXPIRATION_MINUTES` | `screen-app` | Nao | **Obrigatoria.** Validade do link de verificacao, em minutos (`1440`). |
+| `CINERIE_IP_HASH_SALT` | `screen-app` | Nao | **Recomendada.** Recomendada. Sal (>= 16 chars) do hash de IP do throttle. Sem ela, um sal efemero por processo e usado e o limite por origem deixa de valer entre reinicios/replicas. |
+
+> **E-mail transacional (C7C).** As sete variaveis `BREVO_*`/`PUBLIC_APP_URL`/
+> `*_EXPIRATION_MINUTES` alimentam os endpoints `/api/auth/**` (verificacao de
+> e-mail e recuperacao de senha). Regras inegociaveis: **nenhuma** delas usa
+> prefixo `NEXT_PUBLIC_`; nenhuma vai para build-arg, para o PostgreSQL ou para o
+> GitHub; e **nao existe default** para `BREVO_API_KEY` — configuracao incompleta
+> derruba o runtime de autenticacao com uma mensagem que lista **nomes** de
+> variavel, nunca valores. Passo a passo, tabela de erros e smoke test manual em
+> [`docs/operations/brevo-transactional-email.md`](operations/brevo-transactional-email.md).
+>
+> A integracao usa **somente** `POST /v3/smtp/email` (transacional). Endpoints de
+> **campanha** (`/v3/emailCampaigns`), listas e SDK da Brevo sao proibidos e
+> travados por teste de fronteira.
 
 > **CORRIGIDO (2026-07-16).** Este bloco afirmava que a URL canonica era
 > "hardcoded, **nao** lida de env". Era **falso**:

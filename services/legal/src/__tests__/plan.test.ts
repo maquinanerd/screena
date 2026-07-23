@@ -8,6 +8,7 @@ import {
   STATIC_AUTHORIZATION,
   streamingProviderEntries,
   type AuthorizationEntry,
+  type LicenseTarget,
 } from "../authorization-spec.js";
 import {
   assertNoBlockedGrants,
@@ -191,5 +192,125 @@ describe("fontes cobertas — papéis distintos (invariante 2)", () => {
     expect(tmdb.license.attributionText).toBe(
       "Este produto usa a API do TMDB, mas nao e endossado ou certificado pelo TMDB.",
     );
+  });
+});
+
+describe("chave de agrupamento — codificacao injetiva (nao por separador)", () => {
+  /**
+   * `sourceKey`, `providerKey` e `territory` sao strings LIVRES vindas do banco.
+   * Os testes abaixo exercitam o agrupamento SO pela API publica
+   * (`planAuthorization`): se duas licencas distintas colidissem na chave, a
+   * segunda seria vista como "ja existe" e viraria `keep`/`supersede` em vez de
+   * `create`.
+   */
+  function licenca(over: {
+    sourceKey: string;
+    providerKey: string | null;
+    territory: string | null;
+  }): LicenseTarget {
+    return {
+      sourceKey: over.sourceKey,
+      contentType: "other",
+      ratingSourceKey: null,
+      providerKey: over.providerKey,
+      territory: over.territory,
+      licenseStatus: "third_party",
+      displayAllowed: false,
+      logoAllowed: false,
+      scoreAllowed: false,
+      reviewQuoteAllowed: false,
+      requiresAttribution: true,
+      requiresLinkback: true,
+      attributionText: "atribuicao de teste",
+      policyVersion: "teste-v1",
+      notes: "fixture",
+    };
+  }
+
+  function entrada(license: LicenseTarget): AuthorizationEntry {
+    return {
+      label: `fixture ${license.sourceKey}`,
+      role: "streaming-aggregator",
+      license,
+      decisions: [],
+    };
+  }
+
+  function vigente(id: string, license: LicenseTarget): CurrentLicense {
+    return {
+      id,
+      sourceKey: license.sourceKey,
+      contentType: license.contentType,
+      ratingSourceKey: license.ratingSourceKey,
+      providerKey: license.providerKey,
+      territory: license.territory,
+      licenseStatus: license.licenseStatus,
+      displayAllowed: license.displayAllowed,
+      logoAllowed: license.logoAllowed,
+      scoreAllowed: license.scoreAllowed,
+      reviewQuoteAllowed: license.reviewQuoteAllowed,
+      requiresAttribution: license.requiresAttribution,
+      requiresLinkback: license.requiresLinkback,
+      attributionText: license.attributionText,
+      policyVersion: license.policyVersion,
+    };
+  }
+
+  it("campos contendo o delimitador obvio NAO colidem", () => {
+    // Com um separador "|", as duas chaves seriam a MESMA string
+    // ("fonte|other|a|b|c") e a segunda licenca seria confundida com a primeira.
+    // E por isso que a codificacao e `JSON.stringify` de tupla, e nao um
+    // separador: os campos sao livres, entao nenhum delimitador pode ser provado
+    // ausente deles.
+    const a = licenca({ sourceKey: "fonte", providerKey: "a|b", territory: "c" });
+    const b = licenca({ sourceKey: "fonte", providerKey: "a", territory: "b|c" });
+
+    const plan = planAuthorization([entrada(a), entrada(b)], [vigente("1", a)], []);
+
+    expect(plan.entries[0]!.license.action).toBe("keep");
+    expect(plan.entries[0]!.license.currentId).toBe("1");
+    // A segunda e OUTRA licenca: nunca pode casar com a vigente da primeira.
+    expect(plan.entries[1]!.license.action).toBe("create");
+    expect(plan.entries[1]!.license.currentId).toBeNull();
+  });
+
+  it("campos contendo byte de controle tambem NAO colidem", () => {
+    // O separador ANTIGO era 0x1F. Montado com `String.fromCharCode` para que
+    // este arquivo jamais carregue o byte cru que a governanca proibe.
+    const US = String.fromCharCode(0x1f);
+    const a = licenca({ sourceKey: "fonte", providerKey: `a${US}b`, territory: "c" });
+    const b = licenca({ sourceKey: "fonte", providerKey: "a", territory: `b${US}c` });
+
+    const plan = planAuthorization([entrada(a), entrada(b)], [vigente("1", a)], []);
+
+    expect(plan.entries[0]!.license.action).toBe("keep");
+    expect(plan.entries[1]!.license.action).toBe("create");
+  });
+
+  it("licencas iguais continuam agrupando (a guarda nao virou paranoia)", () => {
+    // Controle POSITIVO: sem ele, um encoder que devolvesse valor unico por
+    // chamada passaria nos dois testes acima e quebraria a idempotencia.
+    const a = licenca({ sourceKey: "fonte", providerKey: "p", territory: "BR" });
+    const plan = planAuthorization([entrada(a)], [vigente("1", a)], []);
+    expect(plan.entries[0]!.license.action).toBe("keep");
+    expect(plan.entries[0]!.license.currentId).toBe("1");
+  });
+
+  it("null e string vazia continuam sendo o MESMO grupo (comportamento preservado)", () => {
+    // Caracterizacao do `?? ""` que ja existia: a correcao de encoding nao podia
+    // mudar agrupamento nenhum, e este teste trava isso.
+    const comNull = licenca({ sourceKey: "fonte", providerKey: null, territory: null });
+    const comVazio = licenca({ sourceKey: "fonte", providerKey: "", territory: "" });
+
+    const plan = planAuthorization([entrada(comVazio)], [vigente("1", comNull)], []);
+    expect(plan.entries[0]!.license.currentId).toBe("1");
+  });
+
+  it("a chave de agrupamento nunca aparece no plano (so existe em memoria)", () => {
+    const a = licenca({ sourceKey: "fonte", providerKey: "p", territory: "BR" });
+    const plan = planAuthorization([entrada(a)], [], []);
+    const serializado = JSON.stringify(plan);
+    // Se a chave vazasse para o plano, o valor concatenado apareceria no JSON.
+    expect(serializado).not.toContain('["fonte","other"');
   });
 });

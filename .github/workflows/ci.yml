@@ -104,3 +104,19 @@ jobs:
 
       - name: Autorizacao de fontes e atribuicao (registro governado; PostgreSQL 16 efemero)
         run: pnpm validate:source-authorization-and-attribution
+
+      # Backend C tem DOIS validadores de PostgreSQL real, com coberturas
+      # DISJUNTAS — por isso sao dois passos, e nao um. O de @screena/db prova a
+      # MIGRATION (constraints, indices parciais, backfill, upgrade); o de
+      # @screena/user-platform prova os ADAPTERS (o que o driver reporta, o
+      # compare-and-swap sob concorrencia, o rollback do cadastro). Rodar so um
+      # deixaria metade do Backend C verde sem ter sido executada.
+      - name: Backend C — migration C7A/C7A.1 (recomendacoes e identidade de tracking; PostgreSQL 16 efemero)
+        run: pnpm --filter @screena/db db:validate:user-persistence
+
+      # Este e o passo que cobre AUTENTICACAO (identidade, credencial, sessao,
+      # token e throttle). O passo acima NAO cobre auth, apesar do nome do
+      # pacote: ele valida recomendacoes e tracking. Nomear qualquer um dos dois
+      # como "user platform persistence" generico esconderia essa fronteira.
+      - name: Backend C — adapters C7B1 (identidade, credencial, sessao, token e throttle; PostgreSQL 16 efemero)
+        run: pnpm --filter @screena/user-platform validate:user-product

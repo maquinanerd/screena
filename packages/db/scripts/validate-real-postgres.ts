@@ -122,6 +122,17 @@ const EXPECTED_TABLES = [
   // e historico do Cinerie Score.
   "data_usage_decisions", "watch_providers", "watch_provider_aliases",
   "cinerie_score_calculations",
+  // Backend C — user product platform (usuarios, auth, tracking, listas,
+  // ratings, reviews, historico, recomendacoes, LGPD, importacao).
+  "users", "user_profiles", "user_password_credentials", "user_accounts",
+  "user_sessions", "user_verification_tokens", "user_auth_throttles",
+  "user_auth_audit_logs", "user_watch_states", "user_episode_progress",
+  "user_viewing_events", "user_lists", "user_list_items", "user_ratings",
+  "user_reviews", "user_review_reports", "user_blocks", "user_stats_snapshots",
+  "user_recommendation_snapshots", "user_consent_records", "user_data_requests",
+  "user_import_jobs",
+  // C7A — fundacao de persistencia: feedback explicito de recomendacao.
+  "user_recommendation_feedback",
 ];
 const EXPECTED_ENUMS = [
   "EntityType", "ContentBlockType", "ContentSource", "ReviewStatus", "TranslationStatus",
@@ -136,6 +147,14 @@ const EXPECTED_ENUMS = [
   // Backend B — ciclo de vida do dado externo, natureza da nota e estado do
   // calculo do Cinerie Score.
   "DataUsageStage", "RatingScoreType", "CinerieScoreStatus",
+  // Backend C — user product platform.
+  "UserStatus", "UserRole", "ProfileVisibility", "Visibility", "WatchState",
+  "ViewingEventType", "ReviewModerationStatus", "AuthTokenPurpose",
+  "ThrottleScope", "AuthAuditAction", "UserListKind", "SystemListKey",
+  "ConsentKind", "DataRequestKind", "DataRequestStatus", "ImportSource",
+  "ImportJobStatus", "ReportReason", "ReportStatus",
+  // C7A — enums de recomendacao (espelham as unions fechadas do dominio puro).
+  "RecommendationContext", "RecommendationFeedbackType", "RecommendationFeedbackSource",
 ];
 const EXPECTED_SCALES: Record<string, number> = {
   imdb: 10, rotten_tomatoes: 100, metacritic: 100, letterboxd: 5, filmaffinity: 10,

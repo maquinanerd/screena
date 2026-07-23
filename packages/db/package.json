@@ -25,6 +25,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:validate:real": "tsx scripts/validate-real-postgres.ts",
     "db:validate:upgrade": "tsx scripts/validate-upgrade-real-postgres.ts",
+    "db:validate:user-persistence": "tsx scripts/validate-user-product-persistence-real-postgres.ts",
     "db:validate:pgcrypto": "tsx scripts/validate-pgcrypto-migration-real-postgres.ts"
   },
   "dependencies": {

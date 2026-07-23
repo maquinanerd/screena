@@ -341,11 +341,11 @@ model SourceLicense {
   createdAt           DateTime                 @default(now()) @map("created_at")
   updatedAt           DateTime                 @updatedAt @map("updated_at")
 
-  ratingSource RatingSource?   @relation(fields: [ratingSourceKey], references: [key])
-  provider     ApiProvider?    @relation(fields: [providerKey], references: [key])
-  territory    Country?        @relation(fields: [territoryCode], references: [code])
-  supersedes   SourceLicense?  @relation("SourceLicenseHistory", fields: [supersedesId], references: [id])
-  supersededBy SourceLicense[] @relation("SourceLicenseHistory")
+  ratingSource   RatingSource?       @relation(fields: [ratingSourceKey], references: [key])
+  provider       ApiProvider?        @relation(fields: [providerKey], references: [key])
+  territory      Country?            @relation(fields: [territoryCode], references: [code])
+  supersedes     SourceLicense?      @relation("SourceLicenseHistory", fields: [supersedesId], references: [id])
+  supersededBy   SourceLicense[]     @relation("SourceLicenseHistory")
   // Decisoes de USO derivadas desta licenca. A licenca diz o que a fonte
   // permite; a decisao diz para QUE USO isso vale (ver DataUsageDecision).
   usageDecisions DataUsageDecision[]
@@ -379,27 +379,27 @@ model SourceLicense {
 // Escada de permissao (CHECKs no banco): display => storage; derivative =>
 // storage; display => stage=approved_for_display; revoked => nada permitido.
 model DataUsageDecision {
-  id              BigInt         @id @default(autoincrement())
-  sourceLicenseId BigInt         @map("source_license_id")
-  useCase         String         @map("use_case") // ver DATA_USAGE_CASES em @screena/config
-  territory       String? // FK -> countries.code; null = decisao global
-  stage           DataUsageStage @default(license_pending)
+  id                  BigInt         @id @default(autoincrement())
+  sourceLicenseId     BigInt         @map("source_license_id")
+  useCase             String         @map("use_case") // ver DATA_USAGE_CASES em @screena/config
+  territory           String? // FK -> countries.code; null = decisao global
+  stage               DataUsageStage @default(license_pending)
   // Flags de uso. Todas fail-closed por default: nada nasce permitido.
-  displayAllowed      Boolean   @default(false) @map("display_allowed")
-  storageAllowed      Boolean   @default(false) @map("storage_allowed")
-  derivativeAllowed   Boolean   @default(false) @map("derivative_allowed")
-  attributionRequired Boolean   @default(true) @map("attribution_required")
-  linkbackRequired    Boolean   @default(true) @map("linkback_required")
-  validFrom           DateTime  @default(now()) @map("valid_from")
-  validUntil          DateTime? @map("valid_until")
-  policyVersion       String    @map("policy_version")
-  decidedBy           String    @map("decided_by") // identidade humana; nunca "agent"/"system"
+  displayAllowed      Boolean        @default(false) @map("display_allowed")
+  storageAllowed      Boolean        @default(false) @map("storage_allowed")
+  derivativeAllowed   Boolean        @default(false) @map("derivative_allowed")
+  attributionRequired Boolean        @default(true) @map("attribution_required")
+  linkbackRequired    Boolean        @default(true) @map("linkback_required")
+  validFrom           DateTime       @default(now()) @map("valid_from")
+  validUntil          DateTime?      @map("valid_until")
+  policyVersion       String         @map("policy_version")
+  decidedBy           String         @map("decided_by") // identidade humana; nunca "agent"/"system"
   reason              String // por que esta decisao existe (auditoria)
   // Historico imutavel, mesmo padrao de SourceLicense/PageIndexabilityDecision.
-  supersedesId BigInt?  @map("supersedes_id")
-  isCurrent    Boolean  @default(true) @map("is_current")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  supersedesId        BigInt?        @map("supersedes_id")
+  isCurrent           Boolean        @default(true) @map("is_current")
+  createdAt           DateTime       @default(now()) @map("created_at")
+  updatedAt           DateTime       @updatedAt @map("updated_at")
 
   sourceLicense SourceLicense       @relation(fields: [sourceLicenseId], references: [id])
   territoryRef  Country?            @relation(fields: [territory], references: [code])
@@ -923,9 +923,9 @@ model ExternalRating {
   // Fingerprint APROVADO do payload (external_rating_payload_fingerprint_v1,
   // computado no banco). Se a nota muda (valor, votos, atribuicao...), o hash
   // deixa de bater e o trigger derruba a exibicao: "mudanca revoga".
-  approvedPayloadHash String?   @map("approved_payload_hash")
-  staleAfter          DateTime? @map("stale_after") // derivado de RATING_STALE_POLICY
-  dataUsageDecisionId BigInt?   @map("data_usage_decision_id")
+  approvedPayloadHash String?          @map("approved_payload_hash")
+  staleAfter          DateTime?        @map("stale_after") // derivado de RATING_STALE_POLICY
+  dataUsageDecisionId BigInt?          @map("data_usage_decision_id")
 
   // Invariante 2 materializada: rating_source e provider_api -> tabelas DISTINTAS.
   source            RatingSource       @relation(fields: [ratingSource], references: [key])
@@ -1008,7 +1008,7 @@ model WatchAvailability {
   dataUsageDecision DataUsageDecision? @relation(fields: [dataUsageDecisionId], references: [id])
   // provider_api passa a ser FK real: uma oferta de fornecedor fantasma nunca
   // poderia ser auditada.
-  api ApiProvider? @relation(fields: [providerApi], references: [key])
+  api               ApiProvider?       @relation(fields: [providerApi], references: [key])
 
   // Identidade da oferta = fingerprint canonico versionado `watch_offer_fingerprint(...)`
   // (external_offer_id quando presente; senao a tupla completa: provider tecnico,
@@ -1609,4 +1609,720 @@ model EntityNewsLink {
   @@index([entityType, entityId])
   @@index([articleId])
   @@map("entity_news_links")
+}
+
+// ============================================================
+// USER PRODUCT PLATFORM (Backend C) — usuarios, auth, tracking,
+// listas, ratings, reviews, historico, recomendacoes, LGPD.
+//
+// Decisoes de produto registradas ANTES desta secao em
+// docs/product/user-product-decisions.md (pre-requisito da migration).
+// ADR: docs/adr/0014-user-product-platform.md.
+//
+// Convencoes desta secao:
+//  - PK interna = BigInt autoincrement (D6), como o resto do schema.
+//  - Todas as tabelas usam o prefixo `user_` (exceto `users`) para nao
+//    colidir com o dominio editorial/catalogo.
+//  - Refs polimorficas (entityType + entityId) ganham FK composta real
+//    para `entities` via SQL bruto, como cast_members/entity_news_links.
+//  - Default seguro: tudo nasce PRIVADO (visibility=private), review de
+//    usuario nasce `pending`, snapshot de recomendacao nasce
+//    is_current=false. Nada aqui e superficie publica indexavel:
+//    paginas de usuario sao noindex por construcao e ficam fora de
+//    sitemap (invariante 5, caso tecnico) — travado por governanca.
+//  - `user_ratings` NAO tem relacao alguma com `external_ratings`:
+//    nota de usuario nunca vira nota de fonte externa, nunca e
+//    reescalada e nunca alimenta AggregateRating (invariantes 1/2 +
+//    "sem AggregateRating falsa").
+//  - Segredos NUNCA persistem em claro: sessoes e tokens de
+//    verificacao guardam apenas hash; IP bruto nunca e gravado (apenas
+//    hash com sal de servidor).
+//  - CHECKs condicionais, indices unicos parciais e triggers de
+//    append-only sao aplicados via SQL bruto na migration (D5).
+// ============================================================
+
+enum UserStatus {
+  active
+  disabled
+  pending_deletion // exclusao LGPD solicitada; janela de arrependimento
+  deleted // anonimizado; linha retida como tumba (sem dado pessoal)
+}
+
+enum UserRole {
+  user
+  moderator
+  admin
+}
+
+enum ProfileVisibility {
+  private
+  public
+}
+
+// Visibilidade de conteudo gerado por usuario (listas, reviews, diario).
+enum Visibility {
+  private
+  unlisted
+  public
+}
+
+enum WatchState {
+  planned
+  watching
+  watched
+  paused
+  dropped
+  rewatching
+  not_interested // alimenta exclusao em recomendacoes; nao e atividade
+}
+
+enum ViewingEventType {
+  watch_started
+  watch_completed
+  episode_watched
+  episode_unwatched
+  progress_updated
+  state_changed
+  rewatch_started
+  rating_set
+  rating_removed
+  review_created
+  undo // desfazer preserva o evento original (diario append-only)
+  import_applied
+}
+
+// Moderacao de review de USUARIO — enum proprio, sem relacao com o
+// ReviewStatus editorial de content_blocks.
+enum ReviewModerationStatus {
+  pending
+  approved
+  rejected
+  removed // removido por moderacao/soft delete; audit preservado
+}
+
+enum AuthTokenPurpose {
+  email_verification
+  password_reset
+}
+
+enum ThrottleScope {
+  email
+  ip
+}
+
+enum AuthAuditAction {
+  signup
+  login_succeeded
+  login_failed
+  logout
+  session_rotated
+  session_revoked
+  all_sessions_revoked
+  email_verification_sent
+  email_verified
+  password_reset_requested
+  password_reset_completed
+  password_changed
+  lockout_triggered
+  account_disabled
+  account_reactivated
+  deletion_requested
+  deletion_cancelled
+  account_anonymized
+  data_export_requested
+  data_export_completed
+  import_applied
+}
+
+enum UserListKind {
+  system // criada pelo produto (watchlist, favoritos, ...); nao deletavel
+  custom
+}
+
+enum SystemListKey {
+  watchlist // "quero assistir"
+  favorites
+  watching
+  watched
+}
+
+enum ConsentKind {
+  terms_of_service
+  privacy_policy
+  marketing_email
+  analytics
+}
+
+enum DataRequestKind {
+  export
+  deletion
+}
+
+enum DataRequestStatus {
+  pending
+  processing
+  completed
+  rejected
+  cancelled
+}
+
+enum ImportSource {
+  letterboxd_csv
+  trakt_export
+  cinerie_json
+  cinerie_csv
+}
+
+enum ImportJobStatus {
+  uploaded
+  parsed
+  preview_ready
+  resolving
+  conflicts_pending
+  applying
+  applied
+  failed
+  cancelled
+}
+
+enum ReportReason {
+  spam
+  spoiler_unflagged
+  harassment
+  illegal_content
+  other
+}
+
+enum ReportStatus {
+  open
+  reviewed
+  dismissed
+  actioned
+}
+
+// C7A — enums de RECOMENDACAO. Espelham VALOR A VALOR (e na mesma ordem) as
+// unions fechadas ja existentes no dominio puro:
+//  - RECOMMENDATION_CONTEXTS      (recommendations/types.ts)
+//  - RECOMMENDATION_FEEDBACK_TYPES (recommendations/feedback.ts)
+//  - FEEDBACK_SOURCES              (recommendations/feedback.ts)
+// Divergencia e bug — travado por tests/governance/user-platform-enums-mirror.
+enum RecommendationContext {
+  discovery
+  continue_watching
+  rewatch
+  similar
+}
+
+// `not_interested` e a UNICA ancorada nas decisoes de produto (secao 9, exclusao
+// dura); as demais sao provisorias/versionadas no dominio (POLICY_GAP).
+enum RecommendationFeedbackType {
+  not_interested
+  hide
+  already_seen
+  dismiss
+  not_relevant
+  like
+  save
+}
+
+enum RecommendationFeedbackSource {
+  app
+  system
+}
+
+model User {
+  id              BigInt     @id @default(autoincrement())
+  email           String     @unique
+  emailNormalized String     @unique @map("email_normalized") // lower(btrim(email)); anti-enumeracao usa sempre esta
+  handle          String?    @unique // formato via CHECK (SQL bruto); minusculo
+  displayName     String?    @map("display_name")
+  role            UserRole   @default(user)
+  status          UserStatus @default(active)
+  emailVerifiedAt DateTime?  @map("email_verified_at")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+  deletedAt       DateTime?  @map("deleted_at") // anonimizacao LGPD; linha nunca some (audit)
+
+  profile                 UserProfile?
+  passwordCredential      PasswordCredential?
+  accounts                Account[]
+  sessions                UserSession[]
+  verificationTokens      VerificationToken[]
+  authAuditLogs           AuthAuditLog[]
+  watchStates             UserWatchState[]
+  episodeProgress         EpisodeProgress[]
+  viewingEvents           ViewingEvent[]
+  lists                   UserList[]
+  ratings                 UserRating[]
+  reviews                 UserReview[]
+  reviewReports           ReviewReport[]
+  blocksInitiated         UserBlock[]              @relation("user_block_blocker")
+  blocksReceived          UserBlock[]              @relation("user_block_blocked")
+  statsSnapshot           UserStatsSnapshot?
+  recommendationSnapshots RecommendationSnapshot[]
+  recommendationFeedback  RecommendationFeedback[]
+  consentRecords          ConsentRecord[]
+  dataRequests            DataRequest[]
+  importJobs              ImportJob[]
+
+  // CHECKs via SQL bruto: email com '@'; email_normalized = lower(btrim());
+  // handle ~ '^[a-z0-9](?:[a-z0-9_]{1,28}[a-z0-9])?$'; display_name nao-vazio
+  // quando presente; status deleted/pending_deletion coerente com deleted_at.
+  @@index([status])
+  @@map("users")
+}
+
+model UserProfile {
+  id          BigInt            @id @default(autoincrement())
+  userId      BigInt            @unique @map("user_id")
+  bio         String?
+  avatarPath  String?           @map("avatar_path") // asset local; nunca URL externa no render
+  locale      String            @default("pt-BR") // BCP-47 (CHECK de formato via SQL bruto)
+  countryCode String?           @map("country_code") // ISO-3166-1 alpha-2 (CHECK via SQL bruto)
+  timezone    String?
+  visibility  ProfileVisibility @default(private) // default seguro: perfil privado
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
+}
+
+model PasswordCredential {
+  id           BigInt   @id @default(autoincrement())
+  userId       BigInt   @unique @map("user_id")
+  passwordHash String   @map("password_hash") // formato PHC-like versionado (ex.: scrypt$N=...,r=...,p=...$salt$hash); NUNCA em log
+  algorithm    String   @default("scrypt")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_password_credentials")
+}
+
+// Preparo para OAuth (adapter): NENHUM provedor ativo sem decisao humana
+// registrada. De proposito NAO guarda access/refresh tokens de provedor.
+model Account {
+  id                BigInt   @id @default(autoincrement())
+  userId            BigInt   @map("user_id")
+  provider          String
+  providerAccountId String   @map("provider_account_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("user_accounts")
+}
+
+model UserSession {
+  id            BigInt    @id @default(autoincrement())
+  userId        BigInt    @map("user_id")
+  tokenHash     String    @unique @map("token_hash") // sha256 hex do token opaco de 256 bits; token cru NUNCA persiste
+  csrfTokenHash String    @map("csrf_token_hash") // double-submit vinculado a sessao; hash, nunca o token cru
+  expiresAt     DateTime  @map("expires_at")
+  lastUsedAt    DateTime? @map("last_used_at")
+  revokedAt     DateTime? @map("revoked_at")
+  revokedReason String?   @map("revoked_reason")
+  rotatedFromId BigInt?   @unique @map("rotated_from_id") // rotacao: sessao anterior da cadeia (1-1)
+  ipHash        String?   @map("ip_hash") // hash com sal de servidor; IP bruto nunca persiste
+  userAgent     String?   @map("user_agent")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rotatedFrom UserSession? @relation("user_session_rotation", fields: [rotatedFromId], references: [id])
+  rotatedTo   UserSession? @relation("user_session_rotation")
+
+  @@index([userId, expiresAt])
+  @@map("user_sessions")
+}
+
+model VerificationToken {
+  id         BigInt           @id @default(autoincrement())
+  userId     BigInt           @map("user_id")
+  purpose    AuthTokenPurpose
+  tokenHash  String           @unique @map("token_hash") // sha256 hex; token cru so trafega uma vez, nunca persiste
+  expiresAt  DateTime         @map("expires_at")
+  consumedAt DateTime?        @map("consumed_at") // consumo atomico (replay-safe) no adapter
+  createdAt  DateTime         @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose])
+  @@map("user_verification_tokens")
+}
+
+// Brute force: janela deslizante por chave (email normalizado OU hash de IP),
+// sem FK para users de proposito — cobre e-mail inexistente sem enumeracao.
+model AuthThrottle {
+  id              BigInt        @id @default(autoincrement())
+  scope           ThrottleScope
+  key             String // email normalizado ou ip_hash; NUNCA IP bruto
+  failureCount    Int           @default(0) @map("failure_count")
+  windowStartedAt DateTime      @default(now()) @map("window_started_at")
+  lockedUntil     DateTime?     @map("locked_until")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  @@unique([scope, key])
+  @@map("user_auth_throttles")
+}
+
+// Append-only (trigger via SQL bruto proibe UPDATE): senha/token NUNCA
+// aparecem aqui. user_id e Restrict (nao SetNull): exclusao LGPD anonimiza a
+// linha de users (tumba), nunca hard-delete — e SetNull seria um UPDATE
+// bloqueado pelo proprio trigger append-only.
+model AuthAuditLog {
+  id        BigInt          @id @default(autoincrement())
+  userId    BigInt?         @map("user_id")
+  sessionId BigInt?         @map("session_id") // referencia informativa; sem FK (sessao pode ser removida)
+  action    AuthAuditAction
+  ipHash    String?         @map("ip_hash")
+  userAgent String?         @map("user_agent")
+  detail    Json?
+  createdAt DateTime        @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
+  @@map("user_auth_audit_logs")
+}
+
+// Estado ATUAL de acompanhamento (projecao mutavel); o historico vive em
+// user_viewing_events (append-only). CHECK via SQL bruto: entity_type IN
+// ('movie','tv') — temporada/episodio usam user_episode_progress.
+model UserWatchState {
+  id             BigInt     @id @default(autoincrement())
+  userId         BigInt     @map("user_id")
+  entityType     EntityType @map("entity_type") // ref polimorfica -> entities, FK via SQL bruto
+  entityId       BigInt     @map("entity_id")
+  status         WatchState
+  startedAt      DateTime?  @map("started_at")
+  completedAt    DateTime?  @map("completed_at")
+  lastActivityAt DateTime   @default(now()) @map("last_activity_at")
+  rewatchCount   Int        @default(0) @map("rewatch_count")
+  visibility     Visibility @default(private) // default seguro
+  version        Int        @default(1) // optimistic locking (Expected-Version)
+  createdAt      DateTime   @default(now()) @map("created_at")
+  updatedAt      DateTime   @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, entityType, entityId])
+  @@index([entityType, entityId])
+  @@index([userId, status])
+  @@map("user_watch_states")
+}
+
+model EpisodeProgress {
+  id              BigInt    @id @default(autoincrement())
+  userId          BigInt    @map("user_id")
+  episodeId       BigInt    @map("episode_id") // FK real para episodes(id) via SQL bruto
+  watched         Boolean   @default(false)
+  watchedAt       DateTime? @map("watched_at")
+  progressSeconds Int?      @map("progress_seconds") // CHECK >= 0 e <= duration quando ambos presentes
+  durationSeconds Int?      @map("duration_seconds")
+  version         Int       @default(1) // optimistic locking
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, episodeId])
+  @@index([episodeId])
+  @@map("user_episode_progress")
+}
+
+// Diario/historico append-only (trigger via SQL bruto proibe UPDATE).
+// Idempotencia por (user_id, idempotency_key): reprocessar nao duplica.
+model ViewingEvent {
+  id             BigInt           @id @default(autoincrement())
+  userId         BigInt           @map("user_id")
+  entityType     EntityType       @map("entity_type") // ref polimorfica -> entities, FK via SQL bruto
+  entityId       BigInt           @map("entity_id")
+  eventType      ViewingEventType @map("event_type")
+  occurredAt     DateTime         @map("occurred_at")
+  source         String           @default("app") // app | import:letterboxd_csv | import:trakt_export | ...
+  idempotencyKey String           @map("idempotency_key")
+  metadata       Json?
+  createdAt      DateTime         @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  // C7A.1 — a identidade idempotente inclui o TIPO do evento: uma operacao
+  // (uma idempotencyKey) emite varios eventos IRMAOS, e o dominio garante que
+  // nunca ha dois do mesmo eventType no mesmo plano (provado por varredura
+  // exaustiva em tracking/__tests__/event-identity-contract.test.ts).
+  // Ordem (user_id, idempotency_key, event_type) preserva o prefixo
+  // (user_id, idempotency_key) — util para ler todos os eventos de UMA operacao.
+  // `occurred_at` NAO entra na identidade (todos os irmaos compartilham o mesmo
+  // instante), mas ENTRA na equivalencia de replay (viewing-events.sameContent).
+  @@unique([userId, idempotencyKey, eventType])
+  @@index([userId, occurredAt])
+  @@index([entityType, entityId])
+  @@map("user_viewing_events")
+}
+
+model UserList {
+  id          BigInt         @id @default(autoincrement())
+  ownerId     BigInt         @map("owner_id")
+  kind        UserListKind   @default(custom)
+  systemKey   SystemListKey? @map("system_key") // CHECK via SQL bruto: kind='system' <=> system_key NOT NULL
+  title       String // CHECK nao-vazio via SQL bruto
+  slug        String // CHECK formato kebab-case via SQL bruto
+  description String?
+  visibility  Visibility     @default(private) // default seguro; publica exige usuario verificado (servico)
+  ordered     Boolean        @default(false)
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+  deletedAt   DateTime?      @map("deleted_at") // soft delete; audit preservado
+
+  owner User           @relation(fields: [ownerId], references: [id])
+  items UserListItem[]
+
+  // Indice unico PARCIAL via SQL bruto: (owner_id, system_key) WHERE
+  // system_key IS NOT NULL — uma lista de sistema de cada tipo por usuario.
+  @@unique([ownerId, slug])
+  @@index([ownerId, kind])
+  @@map("user_lists")
+}
+
+model UserListItem {
+  id         BigInt     @id @default(autoincrement())
+  listId     BigInt     @map("list_id")
+  entityType EntityType @map("entity_type") // ref polimorfica -> entities, FK via SQL bruto
+  entityId   BigInt     @map("entity_id")
+  position   Int? // CHECK >= 0 via SQL bruto; reorder e transacional no servico
+  note       String?
+  addedAt    DateTime   @default(now()) @map("added_at")
+  updatedAt  DateTime   @updatedAt @map("updated_at")
+
+  list UserList @relation(fields: [listId], references: [id], onDelete: Cascade)
+
+  @@unique([listId, entityType, entityId])
+  @@index([entityType, entityId])
+  @@map("user_list_items")
+}
+
+// Nota PESSOAL do usuario (0.5..5.0, passo 0.5 — CHECK via SQL bruto).
+// Sem qualquer relacao com external_ratings/rating_sources: nunca vira nota
+// de fonte externa nem AggregateRating (invariantes 1/2).
+model UserRating {
+  id              BigInt     @id @default(autoincrement())
+  userId          BigInt     @map("user_id")
+  entityType      EntityType @map("entity_type") // CHECK via SQL bruto: <> 'person'
+  entityId        BigInt     @map("entity_id")
+  value           Decimal    @db.Decimal(2, 1) // CHECK: >= 0.5, <= 5.0, value*2 = floor(value*2)
+  scale           Int        @default(5) // CHECK: = 5 (coluna existe para migracao futura registrada)
+  containsSpoiler Boolean    @default(false) @map("contains_spoiler")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, entityType, entityId])
+  @@index([entityType, entityId])
+  @@map("user_ratings")
+}
+
+// Review de USUARIO: nasce pending + private (fail-closed); soft delete;
+// nunca vira Review editorial nem schema.org sem decisao futura propria.
+model UserReview {
+  id              BigInt                 @id @default(autoincrement())
+  userId          BigInt                 @map("user_id")
+  entityType      EntityType             @map("entity_type") // CHECK via SQL bruto: <> 'person'
+  entityId        BigInt                 @map("entity_id")
+  title           String? // CHECK <= 200 chars via SQL bruto
+  body            String // CHECK nao-vazio e <= 20000 chars via SQL bruto
+  containsSpoiler Boolean                @default(false) @map("contains_spoiler")
+  status          ReviewModerationStatus @default(pending)
+  visibility      Visibility             @default(private)
+  publishedAt     DateTime?              @map("published_at")
+  createdAt       DateTime               @default(now()) @map("created_at")
+  updatedAt       DateTime               @updatedAt @map("updated_at")
+  deletedAt       DateTime?              @map("deleted_at") // soft delete; audit preservado
+
+  user    User           @relation(fields: [userId], references: [id])
+  reports ReviewReport[]
+
+  @@index([userId])
+  @@index([entityType, entityId, status])
+  @@map("user_reviews")
+}
+
+model ReviewReport {
+  id         BigInt       @id @default(autoincrement())
+  reviewId   BigInt       @map("review_id")
+  reporterId BigInt       @map("reporter_id")
+  reason     ReportReason
+  detail     String?
+  status     ReportStatus @default(open)
+  resolvedAt DateTime?    @map("resolved_at")
+  resolvedBy String?      @map("resolved_by") // identidade humana; nunca "agent"/"system"
+  createdAt  DateTime     @default(now()) @map("created_at")
+  updatedAt  DateTime     @updatedAt @map("updated_at")
+
+  review   UserReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  reporter User       @relation(fields: [reporterId], references: [id])
+
+  @@unique([reviewId, reporterId])
+  @@index([status])
+  @@map("user_review_reports")
+}
+
+model UserBlock {
+  id        BigInt   @id @default(autoincrement())
+  blockerId BigInt   @map("blocker_id")
+  blockedId BigInt   @map("blocked_id") // CHECK via SQL bruto: blocker_id <> blocked_id
+  createdAt DateTime @default(now()) @map("created_at")
+
+  blocker User @relation("user_block_blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked User @relation("user_block_blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+  @@map("user_blocks")
+}
+
+// Projecao ASSINCRONA de estatisticas (minutos, filmes, episodios, generos,
+// decadas, streak, avaliacoes, listas) — cache reconstruivel, nunca calculada
+// no request (zero trabalho pesado no render).
+model UserStatsSnapshot {
+  id               BigInt   @id @default(autoincrement())
+  userId           BigInt   @unique @map("user_id")
+  algorithmVersion String   @map("algorithm_version")
+  computedAt       DateTime @map("computed_at")
+  stats            Json
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_stats_snapshots")
+}
+
+// Snapshot PERSISTIDO de recomendacoes com explicacao (RecommendationReason
+// por item) e versao de algoritmo. Historico imutavel; apenas is_current
+// flipa (default seguro: false — o servico promove transacionalmente).
+// C7A: `context`, `policy_version`, `fingerprint` e `expires_at` viraram COLUNAS
+// (antes so existiam dentro do JSON `items`) porque o dominio C6B os usa como
+// PRE-CONDICAO operacional: equivalencia (noop vs replace), renovacao,
+// invalidacao e concorrencia.
+// Indice unico PARCIAL via SQL bruto: (user_id, context) WHERE is_current = true
+// — NAO representavel no Prisma; ver migration. O escopo do vigente passou a
+// incluir o CONTEXTO (o dominio mantem 4 contextos independentes por usuario).
+model RecommendationSnapshot {
+  id               BigInt                @id @default(autoincrement())
+  userId           BigInt                @map("user_id")
+  context          RecommendationContext
+  algorithmVersion String                @map("algorithm_version")
+  policyVersion    String                @map("policy_version") // CHECK via SQL bruto: btrim <> ''
+  // `null` = snapshot legado sem fingerprint. O adapter DEVE trata-lo como
+  // NAO-equivalente (forca replace) — nunca como igual.
+  fingerprint      String?
+  generatedAt      DateTime              @map("generated_at")
+  // `null` = sem TTL. CHECK via SQL bruto: expires_at >= generated_at.
+  expiresAt        DateTime?             @map("expires_at")
+  items            Json // [{entityType, entityId, score, reasons: RecommendationReason[]}]
+  isCurrent        Boolean               @default(false) @map("is_current")
+  createdAt        DateTime              @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isCurrent])
+  // Historico/observabilidade: NAO unico (snapshots equivalentes sao legitimos).
+  @@index([userId, context, fingerprint])
+  @@map("user_recommendation_snapshots")
+}
+
+// Feedback EXPLICITO do usuario sobre uma recomendacao (C7A fecha o SCHEMA_GAP
+// de C6B). Alimenta as exclusoes derivadas do dominio puro; NUNCA guarda texto
+// livre, PII, nota, review nem estado de moderacao. Idempotencia por
+// (user_id, idempotency_key), mesmo padrao de user_viewing_events.
+model RecommendationFeedback {
+  id             BigInt                       @id @default(autoincrement())
+  userId         BigInt                       @map("user_id")
+  entityType     EntityType                   @map("entity_type") // CHECK via SQL bruto: <> 'person'
+  entityId       BigInt                       @map("entity_id")
+  // `null` = feedback vale para TODOS os contextos.
+  context        RecommendationContext?
+  feedbackType   RecommendationFeedbackType   @map("feedback_type")
+  source         RecommendationFeedbackSource
+  occurredAt     DateTime                     @map("occurred_at")
+  // `null` = permanente. CHECK via SQL bruto: expires_at > occurred_at.
+  expiresAt      DateTime?                    @map("expires_at")
+  idempotencyKey String                       @map("idempotency_key") // CHECK: btrim <> ''
+  createdAt      DateTime                     @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, idempotencyKey])
+  @@index([userId, entityType, entityId])
+  @@map("user_recommendation_feedback")
+}
+
+// Consentimento LGPD append-only (trigger via SQL bruto proibe UPDATE):
+// cada mudanca e uma NOVA linha com versao de politica.
+model ConsentRecord {
+  id            BigInt      @id @default(autoincrement())
+  userId        BigInt      @map("user_id")
+  kind          ConsentKind
+  granted       Boolean
+  policyVersion String      @map("policy_version")
+  occurredAt    DateTime    @default(now()) @map("occurred_at")
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, kind, occurredAt])
+  @@map("user_consent_records")
+}
+
+// Solicitacoes LGPD (export/exclusao). processed_by e identidade humana.
+model DataRequest {
+  id          BigInt            @id @default(autoincrement())
+  userId      BigInt            @map("user_id")
+  kind        DataRequestKind
+  status      DataRequestStatus @default(pending)
+  requestedAt DateTime          @default(now()) @map("requested_at")
+  processedAt DateTime?         @map("processed_at")
+  processedBy String?           @map("processed_by") // identidade humana; nunca "agent"/"system"
+  detail      Json?
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, kind])
+  @@index([status])
+  @@map("user_data_requests")
+}
+
+// Importacao (Letterboxd CSV, Trakt export, Cinerie JSON/CSV).
+// Fluxo: uploaded -> parsed -> preview_ready -> resolving ->
+// conflicts_pending -> applying -> applied. NUNCA aplica sem preview.
+model ImportJob {
+  id            BigInt          @id @default(autoincrement())
+  userId        BigInt          @map("user_id")
+  source        ImportSource
+  status        ImportJobStatus @default(uploaded)
+  fileName      String?         @map("file_name")
+  itemCount     Int             @default(0) @map("item_count") // CHECK >= 0 via SQL bruto
+  conflictCount Int             @default(0) @map("conflict_count")
+  appliedCount  Int             @default(0) @map("applied_count")
+  preview       Json? // itens parseados + resolucao proposta; aplicacao exige aprovacao
+  conflicts     Json?
+  error         String?
+  appliedAt     DateTime?       @map("applied_at")
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, status])
+  @@map("user_import_jobs")
 }
