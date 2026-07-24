@@ -15,6 +15,7 @@
   "license": "UNLICENSED",
   "scripts": {
     "validate:user-product": "tsx scripts/validate-user-product-platform-real-postgres.ts",
+    "validate:identity-privacy": "tsx scripts/validate-identity-privacy-real-postgres.ts",
     "smoke:brevo": "tsx scripts/smoke-brevo-transactional-email.ts"
   },
   "dependencies": {

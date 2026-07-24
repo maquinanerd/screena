@@ -149,6 +149,17 @@ jobs:
       - name: Backend C — adapters C7B1 (identidade, credencial, sessao, token e throttle; PostgreSQL 16 efemero)
         run: pnpm --filter @screena/user-platform validate:user-product
 
+      # C7D cobre o que os dois passos acima NAO cobrem: os adapters de PERFIL,
+      # CONSENTIMENTO, PEDIDOS LGPD, AUDITORIA e CICLO DE VIDA da conta, mais o
+      # RUNTIME completo ponta a ponta (cadastro -> login -> perfil ->
+      # consentimento -> exportacao -> troca de senha -> encerramento ->
+      # anonimizacao). Prova em Postgres real o CHECK status/deleted_at, o
+      # TRIGGER append-only de auditoria, o CAS de status sob concorrencia e que
+      # a exportacao NUNCA carrega segredo. Passo separado por cobrir uma
+      # fronteira disjunta das outras duas.
+      - name: Backend C — identidade e privacidade C7D (perfil, consentimento, LGPD, sessao; PostgreSQL 16 efemero)
+        run: pnpm --filter @screena/user-platform validate:identity-privacy
+
   # Prova REAL de backup + restore (Prompt 02). Roda os scripts ENVIADOS
   # (backup.sh/restore-test.sh) contra um PostgreSQL 16 de verdade, com
   # pg_dump/pg_restore/psql 16, e compara contagens de dados origem == restaurado.
