@@ -98,10 +98,23 @@ Agendado por [`cinerie-catalog-cycle.timer`](../../services/ingestion/systemd/ci
 
 ### Concorrencia
 
-`flock -n` no wrapper. Dois ciclos simultaneos duplicariam cota TMDB e poderiam
-criar duas decisoes de indexabilidade vigentes — **nao existe unique parcial**
-em `(entity_type, entity_id, language_code) WHERE is_current`, apesar do
-comentario do schema afirmar que existe.
+`flock -n` no wrapper: dois ciclos simultaneos duplicariam cota TMDB à toa.
+
+**CORRECAO (Prompt 03.2):** a versao anterior deste documento afirmava que **nao
+existia** unique parcial em `(entity_type, entity_id, language_code) WHERE
+is_current`. **Estava errado.** A migration
+`20260715120000_data_governance_hardening` cria
+`page_indexability_decisions_current_unique` exatamente com essa definicao, mais
+um trigger que exige que `supersedes_id` aponte para o MESMO grupo.
+
+A busca que gerou o erro procurou `UNIQUE` e `is_current` na MESMA linha do SQL —
+e o `WHERE is_current = true` esta na linha seguinte. A verificacao correta e
+consultar `pg_indexes` num banco migrado, que e o que
+`validate-catalog-integrity-real-postgres.ts` faz agora, junto de um teste que
+tenta inserir uma segunda decisao vigente e confirma que o **banco recusa**.
+
+Ou seja: a integridade nao depende do `flock`. O lock evita desperdicio de cota;
+quem garante uma unica decisao vigente e o PostgreSQL.
 
 ### Runner legado
 
@@ -189,3 +202,46 @@ ela via `supersedes_id`, na mesma transacao.
 | bootstrap "pequeno" leva horas | serie longa na lista; rode `plan-bootstrap` antes |
 | entidades sem rota publica | slug ausente; ver limite do short-circuit de cache no runbook |
 | sitemap nao exclui nada | `page_indexability_decisions` vazia; rode `index-decisions --apply` |
+
+---
+
+## 7. Backfill de finalizacao
+
+```bash
+pnpm catalog backfill-finalization --dry-run --json
+pnpm catalog backfill-finalization --apply
+```
+
+`sync_details` so finaliza quando ha upsert. No short-circuit de cache o
+importador faz `touch` e devolve `id: null` — nao ha o que finalizar. Entidade
+importada ANTES do wiring de finalizacao, cujo payload nao mudou desde entao,
+fica presa sem slug: sem rota publica, sem busca, sem sitemap.
+
+Forcar chamada externa em todo sync consertaria — e seria pior: gastaria cota em
+todas as entidades por causa de poucas. O backfill ataca so as presas.
+
+| Garantia | Como |
+| --- | --- |
+| slug valido nunca alterado | candidatos sao apenas entidades SEM slug canonico |
+| traducao existente preservada | so cria a AUSENTE |
+| pessoa inelegivel continua sem slug | reusa a regra de elegibilidade |
+| nenhuma chamada TMDB | traducao existente -> linha canonica -> dado local |
+| sem churn na reexecucao | entidade finalizada sai do conjunto de candidatos |
+| retomavel | `checkpoint` devolve o ultimo id por tipo |
+
+Sem dado local suficiente, reporta `missing_title` em vez de gastar cota em
+silencio.
+
+---
+
+## 8. Censo de publicabilidade
+
+`catalog audit-database` separa seis estados que **nao sao a mesma coisa**:
+
+existir no banco · ter rota · renderizar · poder publicar · entrar no sitemap ·
+ter decisao registrada
+
+Por tipo: com/sem slug, com/sem traducao, com/sem midia, renderizavel,
+publicavel, elegivel a sitemap, com decisao, **decisao ausente** e **decisao
+divergente** da policy atual — esta ultima e a que revela policy desatualizada
+no banco. Mais as razoes das decisoes vigentes, agrupadas.

@@ -181,12 +181,22 @@ apos rodar `catalog plan-bootstrap`, que mostrou que `--limit 20` custaria
 | catalog_jobs | 666 | 34 | **833** | 838 ² |
 | fila | 666 ok | 15 ok / 19 pend | **833 ok** | 838 ok |
 
-¹ **Imperfeicao conhecida, reportada e nao mascarada:** a reexecucao acrescentou
-48 linhas em `tmdb_images` (4.944 -> 4.992). O `sync_media` nao e perfeitamente
-idempotente — reinsere variantes de imagem. Todas as demais contagens de
-entidade sao identicas. O mesmo efeito aparecia no run 3+3 (1.249 -> 1.377).
-Nao foi corrigido nesta entrega: exigiria mexer no upsert de midia, fora do
-escopo do Prompt 03.1.
+¹ **CORRECAO (Prompt 03.2): este numero foi mal interpretado.** A leitura
+original dizia que `sync_media` nao era idempotente porque a reexecucao
+acrescentou 48 linhas em `tmdb_images` (4.944 -> 4.992). **Estava errado.**
+
+`tmdb_images` tem `@@unique(entityType, tmdbId, imageType, filePath)` e o upsert
+so reescreve quando o `payload_hash` muda. As 48 linhas vieram de **5 jobs
+`sync_media` de PESSOA que ficaram PENDENTES** na fase que demonstra o gate
+(`catalog sync --entity person` roda `sync_details` inline, e ele enfileira
+`sync_media`); o worker da "2a execucao" simplesmente os drenou. Os proprios
+numeros da tabela mostram: na fase do gate havia **838 jobs com 5 pending**, e na
+2a execucao **838 jobs com 838 succeeded e ZERO jobs novos**.
+
+A causa raiz era do HARNESS, nao do pipeline: ele tirava o censo "antes" da
+comparacao de idempotencia com a fila suja. A idempotencia de midia agora esta
+travada por teste em `validate-catalog-integrity-real-postgres.ts` (2a execucao
+adiciona zero linhas; metadado mutavel atualiza a linha em vez de criar outra).
 
 ² +5 jobs sao os `sync_details` de pessoa da fase que demonstra o gate.
 
