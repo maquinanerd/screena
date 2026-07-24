@@ -319,11 +319,18 @@ export async function login(
     const storedHash =
       material !== null && material.kind === "found" ? material.material.passwordHash : null;
 
-    const passwordMatches = authenticatePassword({
+    // TIMING: verifica SEMPRE contra um hash com custo real de scrypt. Quando
+    // nao ha credencial, a verificacao roda contra a ISCA (`decoyPasswordHash`)
+    // e o resultado e descartado — `passwordMatches` so pode ser true se havia
+    // um hash real. Sem isto, `authenticatePassword` retornaria `false` sem
+    // rodar o KDF para conta inexistente, e a diferenca de tempo (~100 ms)
+    // enumeraria contas apesar do corpo de resposta identico.
+    const rawMatch = authenticatePassword({
       password: command.password,
-      storedHash,
+      storedHash: storedHash ?? deps.decoyPasswordHash,
       verify: deps.verifyPassword,
     });
+    const passwordMatches = storedHash !== null && rawMatch;
 
     const decision = decideLogin({
       throttleLocked: budget.locked,

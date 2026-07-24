@@ -94,6 +94,7 @@ function buildRealRuntimeDeps(prisma: PrismaClient): {
     hashPassword,
     logger: () => undefined,
     verifyPassword,
+    decoyPasswordHash: hashPassword(`cinerie-login-decoy-${generateOpaqueToken()}`),
     sessionTtlHours: 720,
     production: false,
     policyVersions: { terms_of_service: "2026-07", privacy_policy: "2026-07" },

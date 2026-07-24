@@ -227,6 +227,10 @@ export function createFullAuthRuntime(options: AuthRuntimeOptions = {}): AuthRun
 
     // C7D — sessao e privacidade.
     verifyPassword,
+    // Isca computada UMA vez, com os mesmos parametros scrypt do hash real. O
+    // valor de entrada e opaco e nunca corresponde a senha de ninguem; so
+    // importa que verificar contra ele custe o mesmo que verificar um hash real.
+    decoyPasswordHash: hashPassword(`cinerie-login-decoy-${generateOpaqueToken()}`),
     sessionTtlHours: config.sessionTtlHours,
     production,
     policyVersions: {

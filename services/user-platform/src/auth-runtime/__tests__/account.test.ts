@@ -140,6 +140,27 @@ describe("login", () => {
     expect(runtime.db.sessions.size).toBe(2);
   });
 
+  it("(5) TIMING: login de conta inexistente ainda verifica a senha (isca)", async () => {
+    // Fecha o oraculo de enumeracao por tempo: sem a isca, conta inexistente
+    // pularia o scrypt. Instrumentamos `verifyPassword` para contar as chamadas
+    // e provamos que a verificacao roda MESMO sem conta — contra a isca.
+    const runtime = createTestRuntime()
+    let chamadas = 0
+    const base = runtime.deps.verifyPassword
+    ;(runtime.deps as { verifyPassword: typeof base }).verifyPassword = (p, h) => {
+      chamadas += 1
+      return base(p, h)
+    }
+    const r = await login(
+      runtime.deps,
+      { emailNormalized: "naoexiste@example.test", password: "qualquer-coisa-1" },
+      CTX,
+    )
+    expect(r.sessionDelivery).toBeNull()
+    // A verificacao (scrypt real em producao) rodou apesar de nao haver conta.
+    expect(chamadas).toBeGreaterThan(0)
+  })
+
   it("(4) conta nao-active nunca autentica (fail-closed)", async () => {
     const runtime = createTestRuntime();
     seedUser(runtime.db, {

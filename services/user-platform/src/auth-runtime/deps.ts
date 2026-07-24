@@ -163,6 +163,19 @@ export interface AuthRuntimeDeps extends AuthEmailRuntimeDeps {
   /** Verificacao de senha em tempo constante (core/crypto.verifyPassword). */
   readonly verifyPassword: PasswordVerifierPort;
 
+  /**
+   * Hash-ISCA para o login de conta inexistente.
+   *
+   * PHC valido, computado UMA vez na composicao com os MESMOS parametros scrypt
+   * do hash real. Existe para fechar um oraculo de enumeracao por TEMPO:
+   * `authenticatePassword` retorna `false` de imediato quando nao ha credencial,
+   * sem rodar o KDF — entao um e-mail inexistente responderia em microssegundos
+   * e um existente pagaria ~100 ms de scrypt. O login verifica a senha contra
+   * este hash quando a conta nao existe, igualando o custo. O resultado da
+   * verificacao contra a isca e SEMPRE descartado (a conta nao existe).
+   */
+  readonly decoyPasswordHash: string;
+
   /** TTL da sessao emitida no login. Politica: `SESSION_TTL_HOURS`. */
   readonly sessionTtlHours: number;
 

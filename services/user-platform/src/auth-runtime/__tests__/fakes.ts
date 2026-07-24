@@ -968,6 +968,7 @@ export function createTestRuntime(options: {
 
     // C7D
     verifyPassword: fakeVerifyPassword,
+    decoyPasswordHash: fakeHashPassword("cinerie-login-decoy-fixo"),
     sessionTtlHours: options.sessionTtlHours ?? 720,
     production: options.production ?? false,
     policyVersions: {
