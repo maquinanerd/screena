@@ -33,6 +33,8 @@ import { resolveEntityPageSeo } from "./seo/indexability-decision";
 import { getRelatedNewsForEntity } from "./related-news";
 import { getCastForEntity } from "./entity-cast";
 import { getWatchAvailabilityForEntity } from "./entity-watch";
+import { getRatingsForEntity } from "./entity-ratings";
+import { buildRatingsView, type RatingsPanelView } from "../lib/ratings-presenter";
 import type { NewsCardView } from "../lib/news-presenter";
 import type { CastMemberView } from "../lib/cast-presenter";
 import type { WatchAvailabilityView } from "../lib/watch-availability-presenter";
@@ -60,6 +62,8 @@ export interface MoviePageData {
   cast: CastMemberView[];
   /** Disponibilidade no Brasil (watch_availability licenciado); `null` omite o painel. */
   watch: WatchAvailabilityView | null;
+  /** Notas externas licenciadas e creditadas; `null` omite o painel. */
+  ratings: RatingsPanelView | null;
   /** IDs externos reais (imdb/tmdb/...) para montar `sameAs` no JSON-LD. */
   externalIds: { source: string; externalId: string }[];
 }
@@ -165,6 +169,18 @@ export const getMoviePageData = cache(
     const canonicalSlug = canonicalSlugRow?.slug ?? slug;
     const canonicalUrl = movieCanonicalUrl(canonicalSlug);
 
+    // Ratings vem DEPOIS da Promise.all porque o `EntityRef` do payload precisa
+    // do titulo e da URL canonica, que so existem aqui. Este e tambem o caminho
+    // que alimenta o gate de licenca do SEO logo abaixo — antes, `displayedRatings`
+    // era `[]` fixo e o gate da invariante 6 nunca podia disparar (gate cego).
+    const ratingsPayload = await getRatingsForEntity(prisma, ENTITY_TYPE, entityId, {
+      kind: "movie",
+      id: String(entityId),
+      title: view.title,
+      canonicalUrl,
+    });
+    const ratings = buildRatingsView(ratingsPayload);
+
     // Fonte unica da Fase 3: funde os fatos vivos com a decisao VIGENTE
     // persistida em page_indexability_decisions (fail-closed em falha de banco).
     const seo = await resolveEntityPageSeo(
@@ -172,7 +188,15 @@ export const getMoviePageData = cache(
       {
         language: LANGUAGE_CODE,
         hasReliableStructuredData: true,
-        displayedRatings: [],
+        // Exatamente as notas RENDERIZADAS. Todas passaram pelo gate de licenca
+        // de `entity-ratings` + atribuicao do presenter, entao chegam aqui com
+        // `licenseDisplayAllowed: true`. Uma fonte desligada/expirada nao
+        // aparece nesta lista (e some da tela) sem derrubar a pagina — que e o
+        // comportamento correto: dado sem licenca fica INVISIVEL, e a pagina
+        // segue indexavel pelo resto do conteudo.
+        displayedRatings: (ratings?.items ?? []).map(() => ({
+          licenseDisplayAllowed: true,
+        })),
         canonicalUrl,
         valueBlocksCount: view.renderableBlockCount,
       },
@@ -188,6 +212,7 @@ export const getMoviePageData = cache(
       relatedNews,
       cast,
       watch,
+      ratings,
       externalIds,
     };
   },

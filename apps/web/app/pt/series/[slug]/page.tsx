@@ -6,6 +6,7 @@ import { buildSameAs, serializeJsonLd } from '@screena/seo'
 
 import { EntityExternalIds } from '../../../_components/entity-external-ids'
 import { WatchAvailabilityPanel } from '../../../_components/watch-availability-panel'
+import { RatingsPanel } from '../../../_components/ratings-panel'
 import { canonicalRedirectPath } from '../../../../src/lib/canonical-redirect'
 import { buildExternalLinks } from '../../../../src/lib/external-links'
 import type { SeriesEpisodeView, SeriesSeasonView } from '../../../../src/lib/series-presenter'
@@ -148,7 +149,7 @@ export default async function SeriesPage({
   const redirectPath = canonicalRedirectPath(SERIES_INDEX_PATH, slug, data.canonicalSlug)
   if (redirectPath !== null) permanentRedirect(redirectPath)
 
-  const { view, seo, canonicalUrl, relatedNews, cast, watch, externalIds } = data
+  const { view, seo, canonicalUrl, relatedNews, cast, watch, ratings, externalIds } = data
   const isUnderReview = seo.decision !== 'index'
   const summary = [view.periodLabel, view.seasonsCountLabel, view.episodesCountLabel].filter(
     (item): item is string => item !== null,
@@ -241,6 +242,11 @@ export default async function SeriesPage({
             ) : null}
           </section>
         ) : null}
+
+        {/* Notas de terceiros, cada uma na escala da propria fonte e creditada.
+            O painel se auto-omite quando nao ha nota licenciada: fonte desligada
+            some da pagina sem deixar buraco nem quebrar o layout. */}
+        <RatingsPanel view={ratings} />
 
         {editorialBlocks.length > 0 ? (
           <section aria-labelledby="series-work-title">

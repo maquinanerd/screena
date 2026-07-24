@@ -97,6 +97,14 @@ export async function getWatchAvailabilityForEntity(
       currency: true,
       displayAllowed: true,
       fetchedAt: true,
+      // Credito da fonte agregadora: a licenca que autoriza exibir a oferta e a
+      // mesma que exige creditar (docs/legal/source-authorization-matrix.md).
+      // Sem estes campos o painel exibia oferta licenciada SEM o credito
+      // obrigatorio; o presenter agora descarta a oferta que nao os tenha.
+      requiresAttribution: true,
+      requiresLinkback: true,
+      attributionText: true,
+      attributionUrl: true,
     },
   });
 
@@ -110,6 +118,10 @@ export async function getWatchAvailabilityForEntity(
     currency: row.currency,
     displayAllowed: row.displayAllowed,
     fetchedAtIso: row.fetchedAt === null ? null : row.fetchedAt.toISOString(),
+    requiresAttribution: row.requiresAttribution,
+    requiresLinkback: row.requiresLinkback,
+    attributionText: row.attributionText,
+    attributionUrl: row.attributionUrl,
   }));
 
   return buildWatchAvailabilityView(inputs);
