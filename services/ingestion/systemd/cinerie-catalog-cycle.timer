@@ -1,0 +1,31 @@
+# cinerie-catalog-cycle.timer — agenda o ciclo de catalogo pela fila duravel.
+#
+# FREQUENCIA: de hora em hora.
+#
+# Justificativa (nao e numero arbitrario): o ciclo NAO descobre catalogo novo —
+# ele DRENA o que ja esta enfileirado e reprojeta busca/indexabilidade. Quem
+# enfileira e o bootstrap (manual, deliberado) e o incremental `/changes`
+# (diario). Uma fila que recebe trabalho ao longo do dia precisa de um dreno
+# frequente o bastante para nao acumular backlog, e raro o bastante para nao
+# competir com o proprio worker anterior — o `flock` do script protege a
+# sobreposicao, mas um intervalo curto so produziria saidas imediatas por lock.
+#
+# Uma hora tambem casa com as janelas de frescor do catalogo: detalhe estavel
+# reprocessa a cada 7-14 dias, episodio de serie no ar a cada dia. Nada nesse
+# conjunto exige granularidade menor que hora.
+#
+# Persistent=true recupera execucoes perdidas apos downtime do host.
+
+[Unit]
+Description=Agenda o ciclo de catalogo da Cinerie (fila duravel)
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+# Dilui o inicio para nao bater junto com backup/restore-test no minuto cheio.
+RandomizedDelaySec=300
+# Se o ciclo anterior ainda roda, o systemd nao empilha uma segunda instancia.
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

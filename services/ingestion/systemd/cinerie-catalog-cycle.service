@@ -1,0 +1,56 @@
+# cinerie-catalog-cycle.service — ciclo de catalogo pela FILA DURAVEL.
+#
+# Substitui operacionalmente o par legado
+# `services/sync/systemd/screena-tmdb-catalog.{service,timer}`, que executa
+# `@screena/sync bin/run.ts` — o runner ANTIGO de stale-refresh, anterior a fila.
+# O legado NAO foi removido: continua valido para refresh por frescor e nao tem
+# consumidor identificado alem da documentacao. Rollback = desabilitar este
+# timer e reabilitar o legado; nenhum estado e compartilhado entre os dois.
+#
+# INVARIANTES: roda fora do render; chaves so via EnvironmentFile (nunca no
+# front); todo sync gera log em `api_sync_logs`.
+#
+# Instalar em /etc/systemd/system/ no host de operacao. Ajuste WorkingDirectory,
+# usuario e EnvironmentFile conforme o deploy.
+
+[Unit]
+Description=Cinerie — ciclo de catalogo (fila duravel: worker + busca + indexabilidade)
+Documentation=file:///srv/cinerie/docs/runbooks/catalog-incremental-sync.md
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=cinerie
+Group=cinerie
+WorkingDirectory=/srv/cinerie
+EnvironmentFile=/srv/cinerie/.env
+
+# O script ja faz `flock` proprio: dois ciclos concorrentes duplicariam cota
+# TMDB e poderiam criar duas decisoes de indexabilidade vigentes (nao ha unique
+# parcial no banco).
+ExecStart=/usr/bin/env bash scripts/catalog/catalog-cycle-with-alert.sh
+
+# Um ciclo pode drenar milhares de jobs; o teto evita que uma fila patologica
+# segure a unit para sempre.
+TimeoutStartSec=7200
+Nice=10
+
+# Endurecimento: o ciclo so precisa ler o repo e escrever no lock/logs.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/cinerie/var
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cinerie-catalog-cycle
+
+# Falhou? O alerta ja saiu de dentro do script (fonte de verdade e o exit code
+# do trabalho, nao o do alerta). Nao reiniciar automaticamente: um ciclo que
+# falha por FK/credencial falharia de novo, e o timer reexecuta no proximo slot.
+Restart=no

@@ -15,6 +15,7 @@ export * from "./value-blocks.js";
 export * from "./indexability.js";
 export * from "./language-index-guard.js";
 export * from "./person-eligibility.js";
+export * from "./catalog-indexability.js";
 export * from "./entity-schema.js";
 export * from "./json-ld.js";
 export * from "./redirects.js";

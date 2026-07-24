@@ -48,8 +48,21 @@ import { CATALOG_JOB_TYPES } from '../src/catalog-jobs/types.js'
 import { createStructuredLogMetricsSink, createInMemoryMetricsSink } from '../src/metrics/index.js'
 import { reindexAll, reindexEntity } from '../src/search-projection/index.js'
 import { evaluateAuditGate, formatAuditReport, runDatabaseAudit } from '../src/audit/index.js'
+import {
+  DEFAULT_ASSUMPTIONS,
+  estimateScenarios,
+  evaluateBudget,
+  largestAffordablePrefix,
+  type BootstrapBudget,
+  type DiscoveryCost,
+  type PlannedTitle,
+} from '../src/planning/index.js'
 import { createCatalogServices } from '../src/persistence/catalog-services.js'
 import { createPrismaAuditReader } from '../src/persistence/audit-reader.js'
+import {
+  DECIDABLE_ENTITY_TYPES,
+  produceIndexabilityDecisions,
+} from '../src/persistence/indexability-writer.js'
 import { createPersistence } from '../src/persistence/index.js'
 import { createPrismaCatalogJobStore } from '../src/persistence/catalog-job-store.js'
 import { createPrismaSearchStore } from '../src/persistence/search-store.js'
@@ -71,6 +84,8 @@ import type {
 } from '../src/catalog-jobs/handlers/index.js'
 import type { CatalogEntityKind } from '../src/catalog-jobs/types.js'
 import type { SearchEntityType } from '../src/search/projection.js'
+import type { TmdbCatalogEndpoints } from '@screena/tmdb-client'
+import type { TmdbReadPort } from '../src/ports.js'
 
 /** Runtime so-de-banco (comandos que nao precisam de TMDB). */
 interface DbOnlyRuntime {
@@ -237,7 +252,7 @@ async function runHandlerInline<TResult>(
  * de banco morrer por falta de uma credencial que ele nunca usaria — e num host
  * de operacao (onde se audita) o token TMDB muitas vezes nem existe.
  */
-const DB_ONLY_COMMANDS = new Set(['status', 'search-status', 'audit-database', 'dead-letter', 'enqueue'])
+const DB_ONLY_COMMANDS = new Set(['status', 'search-status', 'audit-database', 'dead-letter', 'enqueue', 'index-decisions'])
 
 /** Monta so a camada de banco (sem TMDB). */
 function createDbOnlyRuntime() {
@@ -343,6 +358,8 @@ async function main() {
           return await cmdStatus(db, flags)
         case 'audit-database':
           return await cmdAuditDatabase(db, flags)
+        case 'index-decisions':
+          return await cmdIndexDecisions(db, flags, locale)
         case 'dead-letter':
           return await cmdDeadLetter(db, subcommand, flags)
         default:
@@ -352,6 +369,15 @@ async function main() {
     } finally {
       await disconnectPrisma()
     }
+  }
+
+  // `plan-bootstrap` precisa do TMDB mas NAO do banco: planejar tem que ser
+  // possivel de um host de operacao sem PostgreSQL. Montar o runtime completo
+  // exigiria DATABASE_URL para um comando que nao escreve nada.
+  if (command === 'plan-bootstrap') {
+    const client = createTmdbClient()
+    const endpoints = createTmdbCatalogEndpoints(client.http, client.config)
+    return await cmdPlanBootstrap(endpoints, client.endpoints, flags, locale)
   }
 
   const { services, registry } = createRuntime()
@@ -459,6 +485,257 @@ async function cmdBootstrap(registry: CatalogJobRegistry, flags: CatalogFlags, l
     ...report.stages.map((s) => `  etapa ${s.stage}: +${s.enqueued} (${s.alreadyQueued} ja existiam)`),
     '',
     'Jobs enfileirados != catalogo preenchido. Rode "pnpm catalog worker" para processar.',
+  ])
+  return EXIT_CODES.ok
+}
+
+/**
+ * plan-bootstrap — estima o custo REAL antes de persistir.
+ *
+ * Nao toca banco (nem PrismaClient): planejar deve ser possivel de um host de
+ * operacao sem acesso ao PostgreSQL. Le a lista de descoberta e, para cada
+ * SERIE candidata, busca `/tv/{id}` — e dali sai `number_of_seasons` e
+ * `number_of_episodes`, que sao o custo real. Filme nao precisa de detalhe: seu
+ * custo e fixo.
+ *
+ * Exit code 4 (`failed`) quando o orcamento estoura: um planejador que so
+ * informa e um relatorio; um que RECUSA e um gate.
+ */
+async function cmdPlanBootstrap(
+  catalogEndpoints: TmdbCatalogEndpoints,
+  tmdb: TmdbReadPort,
+  flags: CatalogFlags,
+  locale: string,
+): Promise<number> {
+  const kinds = (splitList(flags.entity) ?? ['movie', 'tv']).filter(
+    (k): k is 'movie' | 'tv' => k === 'movie' || k === 'tv',
+  )
+  if (kinds.length === 0) {
+    process.stderr.write('erro: --entity precisa conter movie e/ou tv\n')
+    return EXIT_CODES.usage
+  }
+  const limit = flags.limit ?? 20
+  const maxPages = flags.maxPages ?? 5
+  const strategy = flags.strategy ?? 'popular'
+
+  const budget: BootstrapBudget = {
+    ...(flags.maxTitles !== null ? { maxTitles: flags.maxTitles } : {}),
+    ...(flags.maxSeries !== null ? { maxSeries: flags.maxSeries } : {}),
+    ...(flags.maxSeasons !== null ? { maxSeasons: flags.maxSeasons } : {}),
+    ...(flags.maxEpisodes !== null ? { maxEpisodes: flags.maxEpisodes } : {}),
+    ...(flags.maxJobs !== null ? { maxJobs: flags.maxJobs } : {}),
+    ...(flags.maxApiCalls !== null ? { maxApiCalls: flags.maxApiCalls } : {}),
+    ...(flags.maxDurationMinutes !== null
+      ? { maxDurationMinutes: flags.maxDurationMinutes }
+      : {}),
+    ...(flags.maxMediaItems !== null ? { maxMediaItems: flags.maxMediaItems } : {}),
+  }
+
+  // ---- coleta dos candidatos --------------------------------------------
+  let listPagesFetched = 0
+  const candidates: { kind: 'movie' | 'tv'; tmdbId: number; title: string }[] = []
+
+  for (const kind of kinds) {
+    for (let page = 1; page <= maxPages; page += 1) {
+      if (candidates.filter((c) => c.kind === kind).length >= limit) break
+      const params = { page, language: locale }
+      const resp =
+        kind === 'movie'
+          ? strategy === 'now_playing'
+            ? await catalogEndpoints.getNowPlayingMovies(params)
+            : strategy === 'top_rated'
+              ? await catalogEndpoints.getTopRatedMovies(params)
+              : await catalogEndpoints.getPopularMovies(params)
+          : strategy === 'on_the_air'
+            ? await catalogEndpoints.getOnTheAirTvShows(params)
+            : strategy === 'top_rated'
+              ? await catalogEndpoints.getTopRatedTvShows(params)
+              : await catalogEndpoints.getPopularTvShows(params)
+      listPagesFetched += 1
+      const results = (resp as { results?: unknown[] }).results ?? []
+      for (const raw of results) {
+        const item = raw as { id?: number; title?: string; name?: string }
+        if (typeof item.id !== 'number') continue
+        if (candidates.filter((c) => c.kind === kind).length >= limit) break
+        candidates.push({
+          kind,
+          tmdbId: item.id,
+          title: String(item.title ?? item.name ?? `#${item.id}`),
+        })
+      }
+      if (results.length === 0) break
+    }
+  }
+
+  // ---- fatos de custo por titulo ----------------------------------------
+  // Serie precisa do detalhe: e ali que vivem os contadores que `--limit` nao
+  // expressa. Filme tem custo fixo — nao gastamos cota com ele.
+  const titles: PlannedTitle[] = []
+  let detailCalls = 0
+  for (const c of candidates) {
+    if (c.kind === 'movie') {
+      titles.push({ kind: 'movie', tmdbId: c.tmdbId, title: c.title, seasons: 0, episodes: 0 })
+      continue
+    }
+    try {
+      const detail = await tmdb.getTvShow(c.tmdbId)
+      detailCalls += 1
+      const seasons = detail.number_of_seasons ?? 0
+      const episodes = detail.number_of_episodes ?? 0
+      titles.push({
+        kind: 'tv',
+        tmdbId: c.tmdbId,
+        title: c.title,
+        seasons,
+        episodes,
+        ...(seasons > 0 && episodes > 0 ? {} : { factsMissing: true }),
+      })
+    } catch {
+      // Provider falhou para este titulo: nao inventamos numero — marcamos a
+      // incerteza e o fallback conservador entra no lugar.
+      detailCalls += 1
+      titles.push({
+        kind: 'tv',
+        tmdbId: c.tmdbId,
+        title: c.title,
+        seasons: 0,
+        episodes: 0,
+        factsMissing: true,
+      })
+    }
+  }
+
+  const discovery: DiscoveryCost = {
+    // O bootstrap captura 5 listas por tipo de entidade.
+    listCount: kinds.length * 5,
+    listPagesFetched,
+    entityKinds: kinds.length,
+  }
+
+  const scenarios = estimateScenarios(titles, discovery)
+  const decision = evaluateBudget(scenarios.expected, budget)
+  const affordable = largestAffordablePrefix(titles, discovery, budget)
+
+  const heaviest = [...titles]
+    .filter((t) => t.kind === 'tv')
+    .sort((a, b) => b.episodes - a.episodes)
+    .slice(0, 5)
+
+  const report = {
+    formatVersion: 1,
+    generatedAt: new Date().toISOString(),
+    environment: process.env.NODE_ENV ?? 'development',
+    strategy,
+    locale,
+    entityKinds: kinds,
+    requestedLimit: limit,
+    endpointsUsed: {
+      lists: kinds.map((k) => `${k}:${strategy}`),
+      detailCalls,
+      listPagesFetched,
+    },
+    assumptions: DEFAULT_ASSUMPTIONS,
+    budget,
+    scenarios,
+    decision,
+    affordable: {
+      titles: affordable.titles.length,
+      movies: affordable.estimate.movies,
+      series: affordable.estimate.series,
+      seasons: affordable.estimate.seasons,
+      episodes: affordable.estimate.episodes,
+      jobs: affordable.estimate.jobsTotal,
+    },
+    heaviestSeries: heaviest.map((t) => ({
+      tmdbId: t.tmdbId,
+      title: t.title,
+      seasons: t.seasons,
+      episodes: t.episodes,
+    })),
+  }
+
+  const e = scenarios.expected
+  emit(flags, report, [
+    `plano de bootstrap · estrategia ${strategy} · locale ${locale}`,
+    `  candidatos: ${e.titles} titulos (${e.movies} filmes, ${e.series} series)`,
+    `  temporadas: ${e.seasons} · episodios: ${e.episodes}`,
+    `  jobs: ${e.jobsTotal} (${Object.entries(e.jobsByType)
+      .map(([k, v]) => `${k}=${v}`)
+      .join(' ')})`,
+    `  chamadas TMDB: ${e.apiCalls} · midia: ${e.mediaItems} itens (~${Math.round(e.mediaBytes / 1024)} KiB de metadado)`,
+    `  duracao estimada: ${e.durationMinutes} min (otimista ${scenarios.optimistic.durationMinutes} · conservador ${scenarios.conservative.durationMinutes})`,
+    e.titlesWithMissingFacts > 0
+      ? `  ATENCAO: ${e.titlesWithMissingFacts} titulo(s) sem contadores do provider — estimativa menos confiavel`
+      : '  todos os contadores vieram do provider (estimativa exata, nao presumida)',
+    '',
+    '  series mais caras:',
+    ...heaviest.map((t) => `    ${t.title} — ${t.seasons} temporadas, ${t.episodes} episodios`),
+    '',
+    `  orcamento: ${decision.summary}`,
+    ...decision.violations.map(
+      (v) => `    ESTOUROU ${v.dimension}: ${v.estimated} > ${v.limit} (+${v.overBy})`,
+    ),
+    `  cabe no orcamento: ${affordable.titles.length} de ${titles.length} titulo(s)`,
+    '',
+    decision.withinBudget
+      ? 'Dentro do orcamento. Rode o bootstrap com --apply.'
+      : `RECUSADO: reduza --limit para ~${affordable.titles.length} ou aumente os tetos.`,
+  ])
+
+  return decision.withinBudget ? EXIT_CODES.ok : EXIT_CODES.failed
+}
+
+/**
+ * index-decisions — produz `page_indexability_decisions`.
+ *
+ * A tabela e lida pelo sitemap e pelos loaders publicos, e nunca teve produtor.
+ * `--dry-run` mostra o diff antes de mexer nela; `--apply` grava.
+ */
+async function cmdIndexDecisions(
+  services: DbOnlyRuntime,
+  flags: CatalogFlags,
+  locale: string,
+): Promise<number> {
+  const requested = splitList(flags.entity)
+  const types =
+    requested === null
+      ? DECIDABLE_ENTITY_TYPES
+      : requested.filter((t): t is 'movie' | 'tv' | 'person' =>
+          (DECIDABLE_ENTITY_TYPES as readonly string[]).includes(t),
+        )
+  if (types.length === 0) {
+    process.stderr.write(
+      `erro: --entity precisa conter um de: ${DECIDABLE_ENTITY_TYPES.join(', ')}\n`,
+    )
+    return EXIT_CODES.usage
+  }
+
+  const summary = await produceIndexabilityDecisions(services.prisma, {
+    language: locale,
+    entityTypes: types,
+    ...(flags.limit !== null ? { limit: flags.limit } : {}),
+    dryRun: !flags.apply,
+    now: services.now,
+  })
+
+  emit(flags, summary, [
+    `decisoes de indexabilidade · ${summary.language} · ${summary.dryRun ? 'DRY-RUN' : 'APLICADO'}`,
+    `  avaliadas: ${summary.evaluated} · gravadas: ${summary.written} · inalteradas: ${summary.unchanged}`,
+    '',
+    '  por decisao:',
+    ...Object.entries(summary.byDecision).map(([k, v]) => `    ${k.padEnd(10)} ${v}`),
+    '',
+    '  por razao:',
+    ...Object.entries(summary.byReason).map(([k, v]) => `    ${k.padEnd(24)} ${v}`),
+    '',
+    summary.changes.length > 0 ? '  mudancas (amostra):' : '  nenhuma mudanca.',
+    ...summary.changes
+      .slice(0, 15)
+      .map((c) => `    ${c.entityType}#${c.entityId}: ${c.from ?? '(nova)'} -> ${c.to} (${c.reason})`),
+    '',
+    summary.dryRun
+      ? 'Nada foi gravado. Use --apply para persistir.'
+      : 'Decisoes persistidas. A indexacao publica CONTINUA desligada.',
   ])
   return EXIT_CODES.ok
 }
