@@ -149,3 +149,69 @@ Os tres estao documentados em
 - **Scheduler e alertas** do caminho da fila continuam pendentes (a unidade
   systemd existente aponta para o runner antigo de stale-refresh).
 - **Producao.** Nenhum dado foi escrito em producao.
+
+---
+
+# Complemento — Prompt 03.1 (2026-07-24)
+
+Execucao maior, sob o mesmo harness e as mesmas garantias (PostgreSQL 16
+efemero UTF8, TMDB real, producao intocada).
+
+## Escopo executado
+
+`--strategy popular --entity movie,tv --limit 10 --locale pt-BR` — escolhido
+apos rodar `catalog plan-bootstrap`, que mostrou que `--limit 20` custaria
+85.878 episodios.
+
+## Censo
+
+| Metrica | 3+3 (PR #81) | INTERROMPIDO | **10+10 (03.1)** | 2a execucao |
+| --- | ---: | ---: | ---: | ---: |
+| movies / tv_shows | 3 / 3 | 2 / 0 | **10 / 10** | 10 / 10 |
+| seasons | 639 | 0 | **771** | 771 |
+| episodes | 33.178 | 0 | **60.436** | 60.436 |
+| people | 683 | 353 | **5.901** | 5.901 |
+| cast + crew | 717 | 367 | **6.898** | 6.898 |
+| slugs | 6 | 2 | **20** | 20 |
+| entity_translations | 6 | 2 | **20** | 20 |
+| search_documents | 6 | 2 | **20** | 20 |
+| tmdb_images | 1.249 | 587 | **4.944** | 4.992 ¹ |
+| tmdb_videos | 160 | 50 | **673** | 673 |
+| redirects | 0 | 0 | **0** | **0** |
+| catalog_jobs | 666 | 34 | **833** | 838 ² |
+| fila | 666 ok | 15 ok / 19 pend | **833 ok** | 838 ok |
+
+¹ **Imperfeicao conhecida, reportada e nao mascarada:** a reexecucao acrescentou
+48 linhas em `tmdb_images` (4.944 -> 4.992). O `sync_media` nao e perfeitamente
+idempotente — reinsere variantes de imagem. Todas as demais contagens de
+entidade sao identicas. O mesmo efeito aparecia no run 3+3 (1.249 -> 1.377).
+Nao foi corrigido nesta entrega: exigiria mexer no upsert de midia, fora do
+escopo do Prompt 03.1.
+
+² +5 jobs sao os `sync_details` de pessoa da fase que demonstra o gate.
+
+## Qualidade final
+
+Zero filmes/series sem slug, sem traducao, sem poster, sem backdrop; zero series
+sem temporada; zero temporadas sem episodio; zero slugs canonicos duplicados.
+
+5.896 das 5.901 pessoas seguem sem slug — **correto**: no caminho da fila,
+pessoa chega como linha de credito e nao vira rota publica.
+
+## Retomada
+
+Interrompido em **15 jobs concluidos / 19 pendentes**, com 2 filmes ja
+finalizados e 0 series. A retomada fechou a fila em 833 sem reprocessar o que ja
+tinha terminado e sem duplicar entidade.
+
+## Estimativa vs. realidade
+
+O planejador estimou **3,5 min** para 40 titulos (1.054 chamadas). A execucao de
+20 titulos levou consideravelmente mais, porque o modelo dimensiona por
+**chamadas de API** e o custo real e dominado pela **escrita de episodios** no
+banco (60.436 linhas). O `overheadFactor` default (1,6) subestima esse regime.
+
+Isso esta registrado aqui de proposito: o modelo e util para ordem de grandeza e
+para o gate de orcamento (episodios, jobs, chamadas — todos exatos), mas a
+dimensao `durationMinutes` e a menos confiavel das oito. Calibrar exigiria medir
+varios regimes de catalogo; nao foi feito.
