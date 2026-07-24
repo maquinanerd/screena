@@ -17,7 +17,16 @@ import type {
   SnapshotPublicationPlan,
   StoredFeedback,
 } from "../recommendations/index.js";
-import type { ConsentKind, DataRequestKind } from "../core/types.js";
+import type {
+  ConsentKind,
+  DataRequestKind,
+  ImportJobStatus,
+  RatableEntityType,
+  SystemListKey,
+  ViewingEventType,
+  WatchableEntityType,
+  WatchState,
+} from "../core/types.js";
 import type { SessionRecord, VerificationTokenRecord } from "../auth/types.js";
 import type {
   AccountAnonymizeInput,
@@ -27,6 +36,41 @@ import type {
   AuthAuditAppendInput,
   AuthenticatedUserLookupResult,
   AuthThrottleKey,
+  // C8 — biblioteca pessoal
+  CatalogEpisodeRecord,
+  CatalogMatchCandidate,
+  EntityRefRecord,
+  EpisodeBulkMarkInput,
+  EpisodeBulkMarkResult,
+  EpisodeProgressLookupResult,
+  EpisodeProgressUpsertInput,
+  EpisodeProgressUpsertResult,
+  ImportJobCreateInput,
+  ImportJobLookupResult,
+  ImportJobRecord,
+  ImportJobTransitionInput,
+  ImportJobTransitionResult,
+  ItemPositionInput,
+  SeriesEpisodeQuery,
+  UserListCreateInput,
+  UserListCreateResult,
+  UserListItemAddInput,
+  UserListItemAddResult,
+  UserListItemPage,
+  UserListLookupResult,
+  UserListRecord,
+  UserListUpdateInput,
+  UserRatingRecord,
+  UserRatingUpsertInput,
+  UserRatingUpsertResult,
+  ViewingEventAppendInput,
+  ViewingEventAppendResult,
+  ViewingEventPage,
+  WatchedEpisodeCount,
+  WatchStateLookupResult,
+  WatchStatePage,
+  WatchStateUpsertInput,
+  WatchStateUpsertResult,
   AuthThrottleReadResult,
   AuthThrottleSaveInput,
   AuthThrottleSaveResult,
@@ -527,4 +571,332 @@ export interface AccountLifecycleStore {
  */
 export interface ExportReadStore {
   project(scope: TransactionScope, userId: bigint): Promise<ExportProjectionResult>;
+}
+
+// ---------------------------------------------------------------------------
+// C8 — BIBLIOTECA PESSOAL
+//
+// Estes ports servem AO DOMINIO QUE JA EXISTE: `tracking/watch-state.ts`,
+// `tracking/episode-progress.ts`, `lists/custom-lists.ts`, `lists/reorder.ts`,
+// `ratings/mutation.ts` e `stats/projection.ts` produzem planos ha varias
+// unidades e nunca tiveram como ser aplicados. Cada metodo abaixo existe porque
+// um desses planos precisa dele — nao ha CRUD generico.
+// ---------------------------------------------------------------------------
+
+/**
+ * WATCH STATE (C8) — estado explicito do usuario sobre um filme ou uma serie.
+ *
+ * E a FONTE CANONICA de "quero assistir" (`planned`), "assistindo"
+ * (`watching`) e "assistido" (`watched`). As listas de sistema de mesmo nome
+ * NAO duplicam esse estado: ver a decisao registrada em
+ * docs/product/user-product-library.md.
+ *
+ * O CHECK do banco limita `entity_type` a ('movie','tv') — temporada e episodio
+ * tem progresso proprio, nao watch state.
+ */
+export interface UserWatchStateStore {
+  find(
+    scope: TransactionScope,
+    input: { readonly userId: bigint; readonly entityType: WatchableEntityType; readonly entityId: bigint },
+  ): Promise<WatchStateLookupResult>;
+
+  /**
+   * Aplica o snapshot ja decidido por `applyWatchStateChange`. CAS sobre
+   * `version`; `expectedVersion = null` insere.
+   *
+   * Devolve `entity_not_found` quando o par nao existe em `entities`: a FK
+   * recusaria a escrita, e deixar a violacao acontecer ABORTARIA a transacao
+   * interativa (regra C7B1.1). O adapter sonda antes.
+   */
+  upsert(scope: TransactionScope, input: WatchStateUpsertInput): Promise<WatchStateUpsertResult>;
+
+  /** Remove o estado (ex.: tirar da watchlist). Idempotente. */
+  remove(
+    scope: TransactionScope,
+    input: { readonly userId: bigint; readonly entityType: WatchableEntityType; readonly entityId: bigint },
+  ): Promise<{ readonly removed: boolean }>;
+
+  /** Pagina por status — insumo da watchlist, do tracker e da biblioteca. */
+  listByStatus(
+    scope: TransactionScope,
+    input: {
+      readonly userId: bigint;
+      readonly statuses: readonly WatchState[];
+      readonly entityTypes: readonly WatchableEntityType[];
+      readonly limit: number;
+      readonly offset: number;
+    },
+  ): Promise<WatchStatePage>;
+
+  /** Contagens por status, para as estatisticas pessoais (sem trazer linhas). */
+  countByStatus(
+    scope: TransactionScope,
+    userId: bigint,
+  ): Promise<ReadonlyArray<{ readonly status: WatchState; readonly entityType: WatchableEntityType; readonly count: number }>>;
+}
+
+/**
+ * PROGRESSO DE EPISODIO (C8).
+ *
+ * `markBulk` existe por uma razao de escala medida no catalogo real: marcar
+ * "toda a serie" em `Tagesschau` toca ~21 mil episodios. Um metodo por episodio
+ * transformaria isso em 21 mil idas ao banco.
+ */
+export interface EpisodeProgressStore {
+  find(
+    scope: TransactionScope,
+    input: { readonly userId: bigint; readonly episodeId: bigint },
+  ): Promise<EpisodeProgressLookupResult>;
+
+  upsert(
+    scope: TransactionScope,
+    input: EpisodeProgressUpsertInput,
+  ): Promise<EpisodeProgressUpsertResult>;
+
+  /** Marca/desmarca um LOTE de episodios. Idempotente e retentavel. */
+  markBulk(scope: TransactionScope, input: EpisodeBulkMarkInput): Promise<EpisodeBulkMarkResult>;
+
+  /** Quantos episodios da serie o usuario ja assistiu (COUNT, sem linhas). */
+  countWatchedForSeries(
+    scope: TransactionScope,
+    input: { readonly userId: bigint; readonly episodeIds: readonly bigint[] },
+  ): Promise<WatchedEpisodeCount>;
+
+  /** Ids ja assistidos dentro de um conjunto — insumo do "proximo episodio". */
+  listWatchedIds(
+    scope: TransactionScope,
+    input: { readonly userId: bigint; readonly episodeIds: readonly bigint[] },
+  ): Promise<readonly bigint[]>;
+
+  /** Total de episodios assistidos pelo usuario (estatisticas). */
+  countWatchedTotal(scope: TransactionScope, userId: bigint): Promise<number>;
+}
+
+/**
+ * DIARIO (C8) — append-only por construcao: nao ha `update` nem `delete`.
+ *
+ * Desfazer uma acao gera um evento NOVO (`undo`), nunca apaga o anterior; e o
+ * que torna o historico auditavel pelo proprio titular.
+ */
+export interface ViewingEventStore {
+  append(
+    scope: TransactionScope,
+    input: ViewingEventAppendInput,
+  ): Promise<ViewingEventAppendResult>;
+
+  /** Historico paginado, mais recente primeiro. */
+  list(
+    scope: TransactionScope,
+    input: {
+      readonly userId: bigint;
+      readonly eventTypes: readonly ViewingEventType[] | null;
+      readonly limit: number;
+      readonly offset: number;
+    },
+  ): Promise<ViewingEventPage>;
+}
+
+/**
+ * LISTAS (C8). Soft delete: `deleted_at` marca a remocao e o unique
+ * `(owner_id, slug)` NAO e parcial — por isso `create` pode colidir com o slug
+ * de uma lista ja removida, e quem chama desambigua.
+ */
+export interface UserListStore {
+  create(scope: TransactionScope, input: UserListCreateInput): Promise<UserListCreateResult>;
+
+  /** Busca por id SEM filtrar dono: a autorizacao e do servico, com o dono na mao. */
+  findById(scope: TransactionScope, listId: bigint): Promise<UserListLookupResult>;
+
+  listByOwner(
+    scope: TransactionScope,
+    input: { readonly ownerId: bigint; readonly limit: number; readonly offset: number },
+  ): Promise<{ readonly items: readonly UserListRecord[]; readonly total: number }>;
+
+  update(scope: TransactionScope, input: UserListUpdateInput): Promise<UserListLookupResult>;
+
+  /** Soft delete. Listas de sistema nao sao removiveis (o servico barra). */
+  softDelete(
+    scope: TransactionScope,
+    input: { readonly listId: bigint; readonly now: Date },
+  ): Promise<{ readonly removed: boolean }>;
+
+  /** Quantas listas CUSTOM vivas o usuario tem (limite antiabuso). */
+  countCustomByOwner(scope: TransactionScope, ownerId: bigint): Promise<number>;
+
+  /** Cria as listas de sistema faltantes, idempotentemente. */
+  ensureSystemLists(
+    scope: TransactionScope,
+    input: {
+      readonly ownerId: bigint;
+      readonly definitions: ReadonlyArray<{
+        readonly systemKey: SystemListKey;
+        readonly title: string;
+        readonly slug: string;
+      }>;
+    },
+  ): Promise<{ readonly created: number }>;
+
+  findSystemList(
+    scope: TransactionScope,
+    input: { readonly ownerId: bigint; readonly systemKey: SystemListKey },
+  ): Promise<UserListLookupResult>;
+}
+
+/** ITENS DE LISTA (C8). */
+export interface UserListItemStore {
+  add(scope: TransactionScope, input: UserListItemAddInput): Promise<UserListItemAddResult>;
+
+  remove(
+    scope: TransactionScope,
+    input: { readonly listId: bigint; readonly itemId: bigint },
+  ): Promise<{ readonly removed: boolean }>;
+
+  list(
+    scope: TransactionScope,
+    input: { readonly listId: bigint; readonly limit: number; readonly offset: number },
+  ): Promise<UserListItemPage>;
+
+  /** Todos os ids na ordem atual — insumo de `planReorder`/`validateFullReorder`. */
+  listOrderedIds(scope: TransactionScope, listId: bigint): Promise<readonly bigint[]>;
+
+  count(scope: TransactionScope, listId: bigint): Promise<number>;
+
+  /**
+   * Aplica as posicoes planejadas. Transacional: a lista fica contigua 0..n-1
+   * ou nao muda. O teto de 1000 itens por lista (LIST_LIMITS) e o que torna a
+   * reescrita completa aceitavel — sem ele isto exigiria ordenacao fracionaria.
+   */
+  applyPositions(
+    scope: TransactionScope,
+    input: { readonly listId: bigint; readonly positions: readonly ItemPositionInput[]; readonly now: Date },
+  ): Promise<{ readonly updated: number }>;
+}
+
+/** NOTA PESSOAL (C8). Escala fixa 5; nunca se mistura com nota externa. */
+export interface UserRatingStore {
+  upsert(scope: TransactionScope, input: UserRatingUpsertInput): Promise<UserRatingUpsertResult>;
+
+  remove(
+    scope: TransactionScope,
+    input: { readonly userId: bigint; readonly entityType: RatableEntityType; readonly entityId: bigint },
+  ): Promise<{ readonly removed: boolean }>;
+
+  find(
+    scope: TransactionScope,
+    input: { readonly userId: bigint; readonly entityType: RatableEntityType; readonly entityId: bigint },
+  ): Promise<{ readonly kind: "found"; readonly rating: UserRatingRecord } | { readonly kind: "not_found" }>;
+
+  listByUser(
+    scope: TransactionScope,
+    input: { readonly userId: bigint; readonly limit: number; readonly offset: number },
+  ): Promise<{ readonly items: readonly UserRatingRecord[]; readonly total: number }>;
+}
+
+/** JOB DE IMPORTACAO (C8). */
+export interface ImportJobStore {
+  create(
+    scope: TransactionScope,
+    input: ImportJobCreateInput,
+  ): Promise<{ readonly kind: "created"; readonly job: ImportJobRecord }>;
+
+  findById(scope: TransactionScope, jobId: bigint): Promise<ImportJobLookupResult>;
+
+  listByUser(
+    scope: TransactionScope,
+    input: { readonly userId: bigint; readonly limit: number; readonly offset: number },
+  ): Promise<{ readonly items: readonly ImportJobRecord[]; readonly total: number }>;
+
+  transition(
+    scope: TransactionScope,
+    input: ImportJobTransitionInput,
+  ): Promise<ImportJobTransitionResult>;
+}
+
+/**
+ * LEITURA DE CATALOGO (C8) — somente leitura, e so o que a biblioteca consome.
+ *
+ * Port separado porque o catalogo NAO e dado do usuario: mantê-lo fora dos
+ * stores pessoais deixa explicito que nada aqui escreve, e o executor
+ * correspondente contem apenas delegacoes de catalogo.
+ */
+export interface CatalogReadStore {
+  /** Existencia na tabela `entities` (alvo das FKs polimorficas). */
+  entityExists(scope: TransactionScope, input: EntityRefRecord): Promise<boolean>;
+
+  /** Episodios de uma serie, ORDENADOS por (temporada, episodio). */
+  listSeriesEpisodes(
+    scope: TransactionScope,
+    query: SeriesEpisodeQuery,
+  ): Promise<readonly CatalogEpisodeRecord[]>;
+
+  /** Quantos episodios a serie tem sob a mesma politica de especiais. */
+  countSeriesEpisodes(
+    scope: TransactionScope,
+    input: { readonly tvShowId: bigint; readonly includeSpecials: boolean; readonly seasonNumber: number | null },
+  ): Promise<number>;
+
+  /** Match por id externo — o unico caminho que produz confianca `exact`. */
+  findByExternalId(
+    scope: TransactionScope,
+    input: {
+      readonly entityType: WatchableEntityType;
+      readonly tmdbId: number | null;
+      readonly imdbId: string | null;
+    },
+  ): Promise<readonly CatalogMatchCandidate[]>;
+
+  /**
+   * Match por titulo normalizado (+ ano opcional). Devolve TODOS os candidatos
+   * — quem decide ambiguidade e o dominio, nunca o adapter escolhendo o
+   * primeiro.
+   */
+  findByTitle(
+    scope: TransactionScope,
+    input: {
+      readonly entityType: WatchableEntityType;
+      readonly title: string;
+      readonly year: number | null;
+      readonly limit: number;
+    },
+  ): Promise<readonly CatalogMatchCandidate[]>;
+
+  /** Minutos de runtime dos filmes indicados (estatisticas de tempo). */
+  sumMovieRuntime(
+    scope: TransactionScope,
+    movieIds: readonly bigint[],
+  ): Promise<{ readonly totalMinutes: number; readonly withRuntime: number; readonly withoutRuntime: number }>;
+
+  /** Minutos de runtime dos episodios indicados (estatisticas de tempo). */
+  sumEpisodeRuntime(
+    scope: TransactionScope,
+    episodeIds: readonly bigint[],
+  ): Promise<{ readonly totalMinutes: number; readonly withRuntime: number; readonly withoutRuntime: number }>;
+}
+
+/**
+ * PURGA DE CONTEUDO DE PRODUTO (C8) — encerramento/anonimizacao de conta.
+ *
+ * `DATA_CLASSIFICATION.product_content` (privacy/policy.ts) prescreve
+ * `retentionAction: "delete"`. Ate esta unidade nao existia store algum de
+ * conteudo de produto, entao a anonimizacao do C7D tombava a linha de `users` e
+ * deixava listas, tracking e notas intactas — a politica existia e nunca era
+ * executada. Este port fecha isso.
+ *
+ * NAO apaga o que a politica manda RETER: consentimento e pedidos LGPD
+ * (`retain_indefinitely`, prova legal), auditoria (`retain_until`) e o snapshot
+ * agregado de estatisticas (`aggregate_anonymous`).
+ */
+export interface ProductContentPurgeStore {
+  purgeForUser(
+    scope: TransactionScope,
+    userId: bigint,
+  ): Promise<{
+    readonly watchStates: number;
+    readonly episodeProgress: number;
+    readonly viewingEvents: number;
+    readonly listItems: number;
+    readonly lists: number;
+    readonly ratings: number;
+    readonly importJobs: number;
+  }>;
 }

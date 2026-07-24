@@ -75,6 +75,7 @@ export function createPrismaExportReadStore(executor: PrismaExportExecutor): Exp
         stats,
         consents,
         requests,
+        imports,
       ] = await Promise.all([
         executor.userWatchState.findMany({
           where: { userId },
@@ -187,6 +188,25 @@ export function createPrismaExportReadStore(executor: PrismaExportExecutor): Exp
             processedAt: true,
           },
         }),
+        // C8 — METADADO da importacao. `preview`/`conflicts` NAO entram: sao
+        // Json de trabalho com as linhas normalizadas do arquivo enviado, e o
+        // que o titular ja possui (o proprio arquivo) nao precisa voltar pela
+        // exportacao inflando-a. O que importa para transparencia e o registro
+        // do pedido: quando, de onde, quantos itens, qual desfecho.
+        executor.importJob.findMany({
+          where: { userId },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+          select: {
+            source: true,
+            status: true,
+            fileName: true,
+            itemCount: true,
+            conflictCount: true,
+            appliedCount: true,
+            appliedAt: true,
+            createdAt: true,
+          },
+        }),
       ]);
 
       return {
@@ -210,6 +230,7 @@ export function createPrismaExportReadStore(executor: PrismaExportExecutor): Exp
           productStats: stats,
           governanceConsents: consents.map(toConsentRecordRow),
           governanceRequests: requests.map(toDataRequestRecord),
+          governanceImports: imports,
         },
       };
     },

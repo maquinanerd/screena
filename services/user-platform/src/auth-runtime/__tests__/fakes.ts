@@ -761,6 +761,8 @@ export function createFakeStores(db: FakeDb): AuthStores {
               requestedAt: r.requestedAt,
               processedAt: r.processedAt,
             })),
+          // C8: este duble nao modela importacao (o fluxo tem dubles proprios).
+          governanceImports: [],
         },
       };
     },
