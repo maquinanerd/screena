@@ -218,6 +218,51 @@ describe("encerramento", () => {
     expect(runtime.db.users.get(EMAIL)!.status).toBe("active");
   });
 
+  it("(5) C8: anonimizacao EXECUTA a retencao de product_content", async () => {
+    // `DATA_CLASSIFICATION.product_content` prescreve delete. Antes do C8 nao
+    // havia store de conteudo de produto e a politica nunca era executada — a
+    // conta virava tumba com a biblioteca intacta. Este teste trava a correcao.
+    const runtime = createTestRuntime({ deletionGraceDays: 0 });
+    const { ctx } = await authenticated(runtime);
+
+    // Semeia biblioteca do titular.
+    runtime.db.entities.push({ entityType: "movie", entityId: 77n });
+    runtime.db.watchStates.push({
+      userId: ctx.userId,
+      entityType: "movie",
+      entityId: 77n,
+      status: "watched",
+      startedAt: null,
+      completedAt: null,
+      lastActivityAt: runtime.clock.now,
+      rewatchCount: 0,
+      version: 1,
+      updatedAt: runtime.clock.now,
+    });
+    runtime.db.userRatings.push({
+      userId: ctx.userId,
+      entityType: "movie",
+      entityId: 77n,
+      value: 4,
+      createdAt: runtime.clock.now,
+      updatedAt: runtime.clock.now,
+    });
+    // Prova de consentimento (retain_indefinitely) que NAO pode ser apagada.
+    await setConsent(runtime.deps, ctx, { kind: "analytics", granted: true }, CTX);
+    const consentimentosAntes = runtime.db.consents.length;
+    expect(consentimentosAntes).toBeGreaterThan(0);
+
+    await requestAccountClosure(runtime.deps, ctx, { password: SENHA }, CTX);
+    const r = await anonymizeAccount(runtime.deps, ctx.userId, "operador@cinerie");
+    expect(r.ok).toBe(true);
+
+    // Conteudo de produto APAGADO...
+    expect(runtime.db.watchStates.filter((w) => w.userId === ctx.userId)).toHaveLength(0);
+    expect(runtime.db.userRatings.filter((x) => x.userId === ctx.userId)).toHaveLength(0);
+    // ...e a prova legal PRESERVADA (retain_indefinitely).
+    expect(runtime.db.consents.length).toBe(consentimentosAntes);
+  });
+
   it("(4) anonimizacao vira tumba: linha permanece, PII some", async () => {
     const runtime = createTestRuntime({ deletionGraceDays: 0 });
     const { ctx } = await authenticated(runtime);

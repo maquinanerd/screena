@@ -723,6 +723,22 @@ export async function anonymizeAccount(
       return err<{ readonly anonymized: true }>("conflict", "anonimizacao nao aplicada.");
     }
 
+    // C8 — EXECUCAO DA RETENCAO, no MESMO commit da anonimizacao.
+    //
+    // `DATA_CLASSIFICATION.product_content` prescreve `retentionAction:"delete"`
+    // desde o C3, e `buildDeletionPlan` devolve esse plano — mas ate o C8 nao
+    // existia store algum de conteudo de produto, entao a politica era decidida
+    // e nunca executada: a conta virava tumba e listas, tracking, diario, notas
+    // e importacoes continuavam intactos.
+    //
+    // Fazer isso aqui dentro (e nao numa segunda transacao) fecha a janela em
+    // que a conta ja esta anonimizada e a biblioteca ainda existe.
+    //
+    // O que NAO e apagado, pela MESMA politica: consentimento e pedidos LGPD
+    // (`retain_indefinitely`, prova legal), auditoria (`retain_until`) e o
+    // snapshot agregado de estatisticas (`aggregate_anonymous`).
+    const purgado = await stores.productContentPurge.purgeForUser(scope, userId);
+
     const pedido = await stores.dataRequests.findLatestByKind(scope, {
       userId,
       kind: "deletion",
@@ -744,7 +760,19 @@ export async function anonymizeAccount(
       action: "account_anonymized",
       ipHash: null,
       userAgent: null,
-      detail: { operator },
+      // Contagens do que a retencao apagou — prova operacional de que a
+      // politica foi EXECUTADA, e nao apenas decidida. Sao numeros, nunca
+      // conteudo: o detalhe da auditoria continua sem PII.
+      detail: {
+        operator,
+        purgedWatchStates: purgado.watchStates,
+        purgedEpisodeProgress: purgado.episodeProgress,
+        purgedViewingEvents: purgado.viewingEvents,
+        purgedListItems: purgado.listItems,
+        purgedLists: purgado.lists,
+        purgedRatings: purgado.ratings,
+        purgedImportJobs: purgado.importJobs,
+      },
       occurredAt: now,
     });
 
