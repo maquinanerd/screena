@@ -34,6 +34,7 @@ Comandos:
   search-status     Cobertura da projecao de busca (somente leitura)
   status            Estado da fila, checkpoints e snapshots (somente leitura)
   audit-database    Relatorio somente-leitura do banco
+  index-decisions   Produz page_indexability_decisions (nao liga indexacao)
   dead-letter       list | replay dos jobs esgotados
 
 Flags globais:
