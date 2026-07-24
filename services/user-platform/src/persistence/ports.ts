@@ -20,7 +20,6 @@ import type {
 import type {
   ConsentKind,
   DataRequestKind,
-  ImportJobStatus,
   RatableEntityType,
   SystemListKey,
   ViewingEventType,

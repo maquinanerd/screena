@@ -22,7 +22,6 @@ import {
 } from "../tracking/watch-state.js";
 import { assertTrackingMutationAllowed } from "../tracking/policy.js";
 import {
-  LIST_LIMITS,
   canPublishList,
   slugifyListTitle,
   validateListCreate,

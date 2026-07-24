@@ -55,6 +55,10 @@ import {
   createAuthenticatedHttpHandlers,
   type AuthenticatedHttpHandlers,
 } from "../http/authenticated-handlers.js";
+import {
+  createLibraryHttpHandlers,
+  type LibraryHttpHandlers,
+} from "../http/library-handlers.js";
 import { loadAuthEmailConfig, type AuthEmailConfig, type EnvSource } from "./config.js";
 import type { AuthRuntimeDeps, AuthStores, LibraryStores } from "./deps.js";
 import { noopAuthEmailLogger, type AuthEmailLogger } from "./observability.js";
@@ -138,6 +142,8 @@ export interface AuthRuntimeHandlers {
   readonly email: AuthHttpHandlers;
   /** C7D — cadastro, login, sessao, perfil, privacidade (cookie + CSRF). */
   readonly authenticated: AuthenticatedHttpHandlers;
+  /** C8 — biblioteca pessoal: watchlist, tracker, listas, notas e importacao. */
+  readonly library: LibraryHttpHandlers;
 }
 
 /**
@@ -292,6 +298,7 @@ export function createFullAuthRuntime(options: AuthRuntimeOptions = {}): AuthRun
   return {
     email: createAuthHttpHandlers({ runtime, ...edgeDeps }),
     authenticated: createAuthenticatedHttpHandlers({ runtime, ...edgeDeps }),
+    library: createLibraryHttpHandlers({ runtime, ...edgeDeps }),
   };
 }
 

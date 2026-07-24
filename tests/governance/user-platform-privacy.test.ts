@@ -152,6 +152,31 @@ describe("user platform: fora do caminho de render publico (invariante 5, caso t
     "apps/web/app/api/account/consent/route.ts",
     "apps/web/app/api/account/export/route.ts",
     "apps/web/app/api/account/close/route.ts",
+    // C8 — biblioteca pessoal: watchlist, tracker, listas, notas e importacao.
+    // Todas sob `/api/` (bloqueadas no robots), todas delegando a mesma ponte
+    // server-only, todas com ownership pelo contexto autenticado.
+    "apps/web/app/api/me/library/route.ts",
+    "apps/web/app/api/me/watch-state/route.ts",
+    "apps/web/app/api/me/history/route.ts",
+    "apps/web/app/api/me/episodes/route.ts",
+    "apps/web/app/api/me/episodes/bulk/route.ts",
+    "apps/web/app/api/me/series-progress/[id]/route.ts",
+    "apps/web/app/api/me/lists/route.ts",
+    "apps/web/app/api/me/lists/[id]/route.ts",
+    "apps/web/app/api/me/lists/[id]/items/route.ts",
+    "apps/web/app/api/me/lists/[id]/reorder/route.ts",
+    "apps/web/app/api/me/ratings/route.ts",
+    "apps/web/app/api/me/imports/route.ts",
+    "apps/web/app/api/me/imports/[id]/route.ts",
+    "apps/web/app/api/me/imports/[id]/apply/route.ts",
+    "apps/web/app/api/me/imports/[id]/cancel/route.ts",
+    // Remocoes por POST (nao DELETE): `readJsonBody` aceita SOMENTE POST, entao
+    // um handler DELETE responderia 405 em toda chamada. A guarda (8c) abaixo
+    // e quem obrigou a descobrir isso antes de a rota ir para producao.
+    "apps/web/app/api/me/watch-state/remove/route.ts",
+    "apps/web/app/api/me/ratings/remove/route.ts",
+    "apps/web/app/api/me/lists/[id]/delete/route.ts",
+    "apps/web/app/api/me/lists/[id]/items/[itemId]/remove/route.ts",
   ];
 
   const PAGE_FILE_NAMES = new Set([
@@ -255,9 +280,10 @@ describe("user platform: fora do caminho de render publico (invariante 5, caso t
 
   it("(8c) as rotas /api so DELEGAM: nenhuma regra de dominio nelas", () => {
     const rotas = AUTH_RUNTIME_ALLOWLIST.filter((f) => f.endsWith("route.ts"));
-    // C7C tinha 4; C7D somou 11 (6 auth + 5 account). Piso ANTI-VACUO por >=,
-    // e o total exato e travado por (8b) contra a allowlist inteira.
-    expect(rotas.length).toBe(15);
+    // C7C tinha 4; C7D somou 11 (6 auth + 5 account); C8 somou 16 (biblioteca,
+    // tracker, listas, notas e importacao). O total exato tambem e travado por
+    // (8b) contra a allowlist inteira.
+    expect(rotas.length).toBe(34);
     for (const rota of rotas) {
       const content = readFileSync(path.join(ROOT, rota), "utf8");
       // Sem politica, sem banco, sem fornecedor, sem segredo — a regra vive na
@@ -269,6 +295,8 @@ describe("user platform: fora do caminho de render publico (invariante 5, caso t
         /BREVO_/,
         /process\s*\.\s*env/,
         /accountCanHoldSession|evaluateThrottle|applyPasswordReset|applyEmailVerification|decideLogin|decideSignup|buildSessionCreation/,
+        // C8: o dominio da biblioteca tambem nao pode vazar para a rota.
+        /applyWatchStateChange|applyEpisodeProgress|planReorder|validateListCreate|classifyMatch|buildImportPlan|parseCsv/,
       ]) {
         expect(proibido.test(content), `${rota}: ${proibido}`).toBe(false);
       }
@@ -284,8 +312,11 @@ describe("user platform: fora do caminho de render publico (invariante 5, caso t
         `${rota}: nao pode exportar PUT/DELETE/PATCH`,
       ).toBe(false);
       // Corpo do handler e uma unica delegacao ao runtime da ponte.
+      // As TRES portas da ponte server-only: e-mail (C7C), autenticada (C7D) e
+      // biblioteca (C8). Uma rota que nao chame nenhuma delas nao esta
+      // delegando — esta implementando.
       expect(
-        /runAuth(enticated)?Endpoint/.test(content),
+        /run(AuthEndpoint|AuthenticatedEndpoint|LibraryEndpoint)/.test(content),
         `${rota}: deve apenas delegar a ponte`,
       ).toBe(true);
     }

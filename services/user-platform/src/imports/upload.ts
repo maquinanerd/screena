@@ -40,6 +40,16 @@ const BINARY_SIGNATURES: readonly { readonly bytes: readonly number[]; readonly 
   { bytes: [0x25, 0x50, 0x44, 0x46], label: "PDF" },
 ];
 
+/** Aspas e metacaracteres que nao devem sobreviver no nome exibido/serializado. */
+const UNSAFE_FILENAME_CHARS: ReadonlySet<string> = new Set([
+  '"',
+  "'",
+  "`",
+  "<",
+  ">",
+  "|",
+]);
+
 function matchesSignature(bytes: Uint8Array, signature: readonly number[]): boolean {
   if (bytes.length < signature.length) {
     return false;
@@ -63,8 +73,13 @@ export function sanitizeFileName(raw: string | null): string | null {
   const base = raw.split(/[/\\]/).pop() ?? "";
   const limpo = base
     .replace(/\.{2,}/g, ".")
-    // Caracteres de controle e aspas fora: o nome vai para JSON e para a tela.
-    .replace(/[\u0000-\u001f"\'`<>|]/g, "")
+    // Filtro por CODE POINT, nao por classe de regex: uma classe com
+    // caracteres de controle dispara no-control-regex e — pior — costuma
+    // sobreviver no arquivo como byte invisivel (a mesma armadilha ja
+    // registrada em tests/governance). Aqui o criterio e explicito.
+    .split("")
+    .filter((ch) => (ch.codePointAt(0) ?? 0) > 0x1f && !UNSAFE_FILENAME_CHARS.has(ch))
+    .join("")
     .trim()
     .slice(0, IMPORT_FILENAME_MAX_LENGTH);
   return limpo.length === 0 ? null : limpo;
