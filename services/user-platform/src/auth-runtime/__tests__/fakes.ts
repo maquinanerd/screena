@@ -90,7 +90,12 @@ import type {
 } from "../../email/types.js";
 import { TransactionalEmailError } from "../../email/types.js";
 import { generateOpaqueToken, sha256Hex } from "../../core/crypto.js";
-import type { AuthEmailRuntimeDeps, AuthStores, AuthTransactionRunner } from "../deps.js";
+import type {
+  AuthEmailRuntimeDeps,
+  AuthRuntimeDeps,
+  AuthStores,
+  AuthTransactionRunner,
+} from "../deps.js";
 import type { AuthEmailLogEvent } from "../observability.js";
 
 const SCOPE: TransactionScope = { transactional: true };
@@ -234,7 +239,11 @@ export function createFakeStores(db: FakeDb): AuthStores {
           conflict: { reason: "unique_violation", target: "identity.emailNormalized" },
         };
       }
-      const id = seedUser(db, { emailNormalized: input.emailNormalized });
+      // `passwordHash: null` de proposito: criar a IDENTIDADE nao cria
+      // credencial. O `seedUser` default criaria uma (o cadastro real usa
+      // `createInitial` como passo SEPARADO na mesma transacao), e essa
+      // credencial fantasma faria o `createInitial` do signup colidir.
+      const id = seedUser(db, { emailNormalized: input.emailNormalized, passwordHash: null });
       return { kind: "created", identity: { id, status: "active" } };
     },
     async findByNormalizedEmail(
@@ -892,8 +901,18 @@ export function fakeHashPassword(password: string): string {
   return `scrypt$N=2,r=1,p=1$0011$${Buffer.from(password, "utf8").toString("hex")}`;
 }
 
+/**
+ * Verificacao PAR do `fakeHashPassword`: re-hasheia e compara. Determinista e
+ * sem custo, mas com a MESMA semantica de producao (senha errada -> false, hash
+ * malformado -> false), para que os testes de login/troca/encerramento provem o
+ * caminho real de credencial em vez de um booleano plantado.
+ */
+export function fakeVerifyPassword(password: string, storedHash: string): boolean {
+  return fakeHashPassword(password) === storedHash;
+}
+
 export interface TestRuntime {
-  readonly deps: AuthEmailRuntimeDeps;
+  readonly deps: AuthRuntimeDeps;
   readonly db: FakeDb;
   readonly clock: TestClock;
   readonly emails: FakeEmailProvider;
@@ -925,6 +944,11 @@ export function createTestRuntime(options: {
   readonly db?: FakeDb;
   readonly passwordResetExpirationMinutes?: number;
   readonly emailVerificationExpirationMinutes?: number;
+  readonly sessionTtlHours?: number;
+  readonly production?: boolean;
+  readonly termsPolicyVersion?: string;
+  readonly privacyPolicyVersion?: string;
+  readonly deletionGraceDays?: number;
 } = {}): TestRuntime {
   const db = options.db ?? createFakeDb();
   const clock = options.clock ?? createTestClock();
@@ -932,7 +956,7 @@ export function createTestRuntime(options: {
   const logs: AuthEmailLogEvent[] = [];
   const agendadas: Promise<void>[] = [];
 
-  const deps: AuthEmailRuntimeDeps = {
+  const deps: AuthRuntimeDeps = {
     runInTransaction: createFakeRunner(db),
     emailProvider: emails,
     scheduleDelivery: (task) => {
@@ -946,6 +970,16 @@ export function createTestRuntime(options: {
     hashSecret: sha256Hex,
     hashPassword: fakeHashPassword,
     logger: (event) => logs.push(event),
+
+    // C7D
+    verifyPassword: fakeVerifyPassword,
+    sessionTtlHours: options.sessionTtlHours ?? 720,
+    production: options.production ?? false,
+    policyVersions: {
+      terms_of_service: options.termsPolicyVersion ?? "2026-07",
+      privacy_policy: options.privacyPolicyVersion ?? "2026-07",
+    },
+    deletionGraceDays: options.deletionGraceDays ?? 30,
   };
 
   return {

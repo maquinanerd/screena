@@ -22,6 +22,7 @@ import {
   hashIpAddress,
   hashPassword,
   sha256Hex,
+  verifyPassword,
 } from "../core/crypto.js";
 import {
   createPrismaAccountLifecycleStore,
@@ -39,8 +40,12 @@ import {
 import type { TransactionScope } from "../persistence/types.js";
 import { createBrevoTransactionalEmailProvider } from "../providers/brevo/index.js";
 import { createAuthHttpHandlers, type AuthHttpHandlers } from "../http/handlers.js";
+import {
+  createAuthenticatedHttpHandlers,
+  type AuthenticatedHttpHandlers,
+} from "../http/authenticated-handlers.js";
 import { loadAuthEmailConfig, type AuthEmailConfig, type EnvSource } from "./config.js";
-import type { AuthEmailRuntimeDeps, AuthStores } from "./deps.js";
+import type { AuthRuntimeDeps, AuthStores } from "./deps.js";
 import { noopAuthEmailLogger, type AuthEmailLogger } from "./observability.js";
 
 /**
@@ -116,7 +121,23 @@ export interface AuthRuntimeOptions {
  * runtime que subisse com `BREVO_API_KEY` vazia transformaria erro de deploy em
  * e-mail que nunca chega, e ninguem perceberia ate um usuario reclamar.
  */
-export function createAuthRuntime(options: AuthRuntimeOptions = {}): AuthHttpHandlers {
+/** Os dois conjuntos de handlers que a composicao monta. */
+export interface AuthRuntimeHandlers {
+  /** C7C — verificacao de e-mail e recuperacao de senha (publicos, sem sessao). */
+  readonly email: AuthHttpHandlers;
+  /** C7D — cadastro, login, sessao, perfil, privacidade (cookie + CSRF). */
+  readonly authenticated: AuthenticatedHttpHandlers;
+}
+
+/**
+ * Monta AMBOS os conjuntos de handlers sobre um unico `AuthRuntimeDeps`.
+ *
+ * Um runtime so, uma configuracao so, uma transacao so: os handlers de e-mail e
+ * os autenticados compartilham stores, relogio, hasher e observabilidade, e o
+ * cadastro precisa dos dois mundos ao mesmo tempo (cria a conta e dispara o
+ * e-mail de verificacao).
+ */
+export function createFullAuthRuntime(options: AuthRuntimeOptions = {}): AuthRuntimeHandlers {
   const env = options.env ?? process.env;
   const production = env["NODE_ENV"] === "production";
 
@@ -142,7 +163,7 @@ export function createAuthRuntime(options: AuthRuntimeOptions = {}): AuthHttpHan
 
   const prisma = getPrismaClient();
 
-  const runtime: AuthEmailRuntimeDeps = {
+  const runtime: AuthRuntimeDeps = {
     /**
      * Transacao INTERATIVA de escopo curto.
      *
@@ -203,12 +224,31 @@ export function createAuthRuntime(options: AuthRuntimeOptions = {}): AuthHttpHan
     hashSecret: sha256Hex,
     hashPassword,
     logger: options.logger ?? noopAuthEmailLogger,
+
+    // C7D — sessao e privacidade.
+    verifyPassword,
+    sessionTtlHours: config.sessionTtlHours,
+    production,
+    policyVersions: {
+      terms_of_service: config.termsPolicyVersion,
+      privacy_policy: config.privacyPolicyVersion,
+    },
+    deletionGraceDays: config.deletionGraceDays,
   };
 
-  return createAuthHttpHandlers({
-    runtime,
+  const edgeDeps = {
     hashClientIp: (ip: string) => hashIpAddress(ip, ipHashSalt),
     newCorrelationId: () => generateOpaqueToken().slice(0, 32),
     onUnexpectedError: options.onUnexpectedError,
-  });
+  };
+
+  return {
+    email: createAuthHttpHandlers({ runtime, ...edgeDeps }),
+    authenticated: createAuthenticatedHttpHandlers({ runtime, ...edgeDeps }),
+  };
+}
+
+/** So os handlers de e-mail (C7C), para quem nao precisa da camada de sessao. */
+export function createAuthRuntime(options: AuthRuntimeOptions = {}): AuthHttpHandlers {
+  return createFullAuthRuntime(options).email;
 }

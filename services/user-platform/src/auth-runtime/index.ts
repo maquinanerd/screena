@@ -12,7 +12,9 @@
 export {
   AuthRuntimeConfigurationError,
   createAuthRuntime,
+  createFullAuthRuntime,
   isAuthRuntimeConfigurationError,
+  type AuthRuntimeHandlers,
   type AuthRuntimeOptions,
 } from "./composition.js";
 export {
@@ -25,7 +27,9 @@ export {
 } from "./config.js";
 export type {
   AuthEmailRuntimeDeps,
+  AuthenticatedContext,
   AuthRequestContext,
+  AuthRuntimeDeps,
   AuthStores,
   AuthTransactionRunner,
 } from "./deps.js";
@@ -53,4 +57,29 @@ export {
 export { AuthTransactionAbort, isAuthTransactionAbort } from "./transaction.js";
 export { AUTH_SECURITY_HEADERS } from "../http/responses.js";
 export type { AuthHttpHandlers } from "../http/handlers.js";
+export {
+  createAuthenticatedHttpHandlers,
+  type AuthenticatedHttpDeps,
+  type AuthenticatedHttpHandlers,
+} from "../http/authenticated-handlers.js";
+export {
+  changePassword,
+  login,
+  logout,
+  logoutAll,
+  readCurrentSession,
+  resolveAuthenticatedContext,
+  signup,
+} from "./account.js";
+export {
+  anonymizeAccount,
+  cancelAccountClosure,
+  hasActiveConsent,
+  readPrivacyState,
+  readProfile,
+  requestAccountClosure,
+  requestDataExport,
+  setConsent,
+  updateProfile,
+} from "./privacy-services.js";
 export { dispatchAuthEmail, logAuthEmailEvent, type AuthEmailDelivery } from "./dispatch.js";
