@@ -177,5 +177,114 @@ export function createPrismaAuditReader(prisma: PrismaClient): AuditReaderPort {
         byLocale: grouped.map((row) => ({ locale: row.locale, count: row._count._all })),
       }
     },
+
+    /**
+     * Dimensoes de PUBLICABILIDADE por tipo.
+     *
+     * Uma consulta agregada por tipo (nao N+1). Cada coluna responde uma
+     * pergunta DIFERENTE — existir, ter rota, renderizar, poder publicar, entrar
+     * no sitemap e ter decisao registrada nao sao a mesma coisa, e um censo que
+     * so conta linhas nao distingue nenhuma delas.
+     *
+     * `staleDecision` compara a decisao PERSISTIDA com o que os gates diriam
+     * agora: e o numero que revela policy desatualizada no banco.
+     *
+     * SOMENTE LEITURA: apenas SELECT.
+     */
+    async readPublishability(language: string) {
+      const specs = [
+        { entity: 'movie', table: 'movies', title: 'title_original' },
+        { entity: 'tv', table: 'tv_shows', title: 'name_original' },
+        { entity: 'person', table: 'people', title: 'name' },
+      ] as const
+
+      const out = []
+      for (const spec of specs) {
+        // Pessoa tem gate extra: credito em obra publicavel.
+        const publishableExpr =
+          spec.entity === 'person'
+            ? `EXISTS (
+                 SELECT 1 FROM cast_members cm
+                  JOIN slugs ws ON ws.entity_type = cm.entity_type AND ws.entity_id = cm.entity_id
+                   AND ws.language_code = $1 AND ws.is_canonical
+                  WHERE cm.person_id = e.id AND cm.entity_type IN ('movie','tv')
+                 UNION ALL
+                 SELECT 1 FROM crew_members rm
+                  JOIN slugs ws ON ws.entity_type = rm.entity_type AND ws.entity_id = rm.entity_id
+                   AND ws.language_code = $1 AND ws.is_canonical
+                  WHERE rm.person_id = e.id AND rm.entity_type IN ('movie','tv'))`
+            : 'true'
+
+        const rows = await prisma.$queryRawUnsafe<Record<string, bigint | number>[]>(
+          `WITH base AS (
+             SELECT e.id,
+                    (s.slug IS NOT NULL) AS has_slug,
+                    (BTRIM(COALESCE(e.${spec.title}, '')) <> '') AS has_title,
+                    (t.entity_id IS NOT NULL) AS has_translation,
+                    EXISTS (SELECT 1 FROM tmdb_images i
+                             WHERE i.entity_type::text = '${spec.entity}' AND i.tmdb_id = e.tmdb_id) AS has_media,
+                    ${publishableExpr} AS gate_ok,
+                    d.decision::text AS cur_decision
+               FROM ${spec.table} e
+               LEFT JOIN slugs s ON s.entity_type = '${spec.entity}' AND s.entity_id = e.id
+                     AND s.language_code = $1 AND s.is_canonical
+               LEFT JOIN entity_translations t ON t.entity_type = '${spec.entity}'
+                     AND t.entity_id = e.id AND t.language_code = $1
+               LEFT JOIN page_indexability_decisions d ON d.entity_type = '${spec.entity}'
+                     AND d.entity_id = e.id AND d.language_code = $1 AND d.is_current
+           )
+           SELECT COUNT(*)::int AS total,
+                  COUNT(*) FILTER (WHERE has_slug)::int AS with_slug,
+                  COUNT(*) FILTER (WHERE NOT has_slug)::int AS without_slug,
+                  COUNT(*) FILTER (WHERE has_translation)::int AS with_translation,
+                  COUNT(*) FILTER (WHERE NOT has_translation)::int AS without_translation,
+                  COUNT(*) FILTER (WHERE has_media)::int AS with_media,
+                  COUNT(*) FILTER (WHERE NOT has_media)::int AS without_media,
+                  COUNT(*) FILTER (WHERE has_slug AND has_title)::int AS renderable,
+                  COUNT(*) FILTER (WHERE has_slug AND has_title AND has_translation AND gate_ok)::int AS publishable,
+                  COUNT(*) FILTER (WHERE has_slug AND has_title AND has_translation AND gate_ok)::int AS sitemap_eligible,
+                  COUNT(*) FILTER (WHERE cur_decision IS NOT NULL)::int AS with_decision,
+                  COUNT(*) FILTER (WHERE cur_decision IS NULL)::int AS missing_decision,
+                  COUNT(*) FILTER (
+                    WHERE cur_decision IS NOT NULL
+                      AND cur_decision <> (CASE WHEN has_slug AND has_title AND has_translation AND gate_ok
+                                                THEN 'index' ELSE 'noindex' END)
+                  )::int AS stale_decision
+             FROM base`,
+          language,
+        )
+        const r = rows[0] ?? {}
+        const n = (k: string): number => Number(r[k] ?? 0)
+        out.push({
+          entity: spec.entity,
+          total: n('total'),
+          withSlug: n('with_slug'),
+          withoutSlug: n('without_slug'),
+          withTranslation: n('with_translation'),
+          withoutTranslation: n('without_translation'),
+          withMedia: n('with_media'),
+          withoutMedia: n('without_media'),
+          renderable: n('renderable'),
+          publishable: n('publishable'),
+          sitemapEligible: n('sitemap_eligible'),
+          withDecision: n('with_decision'),
+          missingDecision: n('missing_decision'),
+          staleDecision: n('stale_decision'),
+        })
+      }
+      return out
+    },
+
+    /** Razoes das decisoes VIGENTES, agrupadas. SOMENTE LEITURA. */
+    async readDecisionReasons(language: string) {
+      const rows = await prisma.$queryRawUnsafe<{ reason: string | null; n: number }[]>(
+        `SELECT COALESCE(reason, '(sem razao)') AS reason, COUNT(*)::int AS n
+           FROM page_indexability_decisions
+          WHERE is_current AND language_code = $1
+          GROUP BY 1 ORDER BY n DESC`,
+        language,
+      )
+      return rows.map((r) => ({ reason: String(r.reason), count: Number(r.n) }))
+    },
   }
 }

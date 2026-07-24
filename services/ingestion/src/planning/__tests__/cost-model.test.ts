@@ -129,6 +129,79 @@ describe('evaluateBudget', () => {
   })
 })
 
+describe('duracao calibrada pela ESCRITA, nao so pela rede', () => {
+  it('(15) episodios DOMINAM a duracao num catalogo de novela', () => {
+    // 60.436 episodios foi o volume real do bootstrap 10+10.
+    const e = estimateBootstrapCost([series(1, 771, 60_436)], discovery)
+    expect(e.duration.dominantFactor).toBe('episodes')
+    expect(e.duration.episodeWriteMinutes).toBeGreaterThan(e.duration.networkMinutes)
+  })
+
+  it('(16) sem episodios, a rede volta a dominar', () => {
+    const e = estimateBootstrapCost([movie(1), movie(2), movie(3)], {
+      ...discovery,
+      listPagesFetched: 200,
+    })
+    expect(e.duration.dominantFactor).toBe('network')
+  })
+
+  it('(17) mais episodios => mais duracao (monotonico)', () => {
+    const few = estimateBootstrapCost([series(1, 2, 20)], discovery)
+    const many = estimateBootstrapCost([series(1, 2, 20_000)], discovery)
+    expect(many.durationMinutes).toBeGreaterThan(few.durationMinutes)
+  })
+
+  it('(18) mais midia => mais duracao', () => {
+    const base = estimateBootstrapCost([movie(1)], discovery)
+    const heavy = estimateBootstrapCost([movie(1)], discovery, {
+      ...DEFAULT_ASSUMPTIONS,
+      mediaItemsPerTitle: DEFAULT_ASSUMPTIONS.mediaItemsPerTitle * 50,
+    })
+    expect(heavy.durationMinutes).toBeGreaterThan(base.durationMinutes)
+  })
+
+  it('(19) o total e a SOMA dos termos — nada escondido', () => {
+    const e = estimateBootstrapCost([series(1, 10, 500), movie(2)], discovery)
+    const soma =
+      e.duration.networkMinutes + e.duration.episodeWriteMinutes + e.duration.mediaWriteMinutes
+    // Tolerancia de arredondamento (cada termo e arredondado a 1 decimal).
+    expect(Math.abs(soma - e.duration.totalMinutes)).toBeLessThanOrEqual(0.3)
+  })
+
+  it('(20) confianca NUNCA e alta — sao 2 amostras, um so tipo de banco', () => {
+    const e = estimateBootstrapCost([series(1, 5, 50)], discovery)
+    expect(['low', 'medium']).toContain(e.duration.confidence)
+    expect(e.duration.confidence).not.toBe('high')
+  })
+
+  it('(21) contadores ausentes REBAIXAM a confianca para low', () => {
+    const unknown: PlannedTitle = {
+      kind: 'tv',
+      tmdbId: 9,
+      title: 'sem contadores',
+      seasons: 0,
+      episodes: 0,
+      factsMissing: true,
+    }
+    expect(estimateBootstrapCost([unknown], discovery).duration.confidence).toBe('low')
+    expect(estimateBootstrapCost([series(1, 5, 50)], discovery).duration.confidence).toBe('medium')
+  })
+
+  it('(22) os caveats declaram a origem dos coeficientes (nao sao numeros magicos)', () => {
+    const e = estimateBootstrapCost([series(1, 5, 50)], discovery)
+    expect(e.duration.caveats.join(' ')).toMatch(/efemero LOCAL|banco remoto/)
+  })
+
+  it('(23) o teto de duracao usa o cenario CONSERVADOR', () => {
+    const titles = [series(1, 100, 10_000)]
+    const s = estimateScenarios(titles, discovery)
+    expect(s.conservative.durationMinutes).toBeGreaterThan(s.expected.durationMinutes)
+    // E o orcamento avalia o esperado, nunca o otimista.
+    const budget = { maxDurationMinutes: s.optimistic.durationMinutes }
+    expect(evaluateBudget(s.expected, budget).withinBudget).toBe(false)
+  })
+})
+
 describe('largestAffordablePrefix', () => {
   it('(11) responde QUANTOS titulos cabem, em vez de exigir tentativa e erro', () => {
     const titles = [movie(1), movie(2), series(3, 2, 20), series(4, 200, 10_000)]

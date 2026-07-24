@@ -79,13 +79,36 @@ export interface CostAssumptions {
   /** Loops paralelos do worker. */
   readonly concurrency: number
   /**
-   * Fator de overhead de banco/normalizacao sobre o tempo de rede puro.
-   * 1.0 = so rede. Medido ~1.6 no bootstrap 3+3 em PostgreSQL efemero.
+   * Fator de overhead sobre o tempo de rede. Cobre normalizacao e o que nao e
+   * escrita de episodio (a escrita tem termo proprio — ver `episodesPerSecond`).
    */
   readonly overheadFactor: number
+  /**
+   * Episodios PERSISTIDOS por segundo.
+   *
+   * CALIBRADO com as duas execucoes reais (ver
+   * `docs/backend/catalog-bootstrap-evidence-2026-07.md`):
+   *
+   *   3+3  -> 33.178 episodios, worker 253 s  => ~131 ep/s
+   *   10+10 -> 60.436 episodios, worker ~430 s => ~140 ep/s
+   *
+   * Adotamos **120 ep/s**, abaixo das duas medicoes, porque as duas rodaram em
+   * PostgreSQL efemero local (disco rapido, zero latencia de rede ate o banco).
+   * Um Postgres remoto e mais lento; o modelo nao deve ser otimista sobre um
+   * regime que nunca mediu.
+   *
+   * ORIGEM DO NUMERO: duas amostras, mesmo hardware, mesmo tipo de banco. E
+   * pouco. Por isso a estimativa reporta `confidence` — ver `CostEstimate`.
+   */
+  readonly episodesPerSecond: number
+  /** Linhas de midia persistidas por segundo (mesma origem, mesma ressalva). */
+  readonly mediaRowsPerSecond: number
 }
 
-/** Defaults ancorados na execucao real de 2026-07 (3 filmes + 3 series). */
+/**
+ * Defaults ancorados nas DUAS execucoes reais de 2026-07 (3+3 e 10+10).
+ * Cada coeficiente com origem declarada — nenhum inventado.
+ */
 export const DEFAULT_ASSUMPTIONS: CostAssumptions = Object.freeze({
   fallbackSeasons: 3,
   fallbackEpisodesPerSeason: 10,
@@ -95,7 +118,28 @@ export const DEFAULT_ASSUMPTIONS: CostAssumptions = Object.freeze({
   requestsPerSecond: 20,
   concurrency: 4,
   overheadFactor: 1.6,
+  episodesPerSecond: 120,
+  mediaRowsPerSecond: 400,
 })
+
+/** Quao confiavel e a estimativa de duracao. */
+export type DurationConfidence = 'low' | 'medium'
+
+/**
+ * Detalhe da duracao: os fatores que a compoem, para o operador saber ONDE o
+ * tempo vai — e nao receber um numero unico sem explicacao.
+ */
+export interface DurationBreakdown {
+  readonly networkMinutes: number
+  readonly episodeWriteMinutes: number
+  readonly mediaWriteMinutes: number
+  readonly totalMinutes: number
+  /** Qual termo domina: 'network' | 'episodes' | 'media'. */
+  readonly dominantFactor: string
+  readonly confidence: DurationConfidence
+  /** O que NAO foi medido o bastante para confiar. */
+  readonly caveats: readonly string[]
+}
 
 /** Contexto da descoberta (o que foi consultado para achar os candidatos). */
 export interface DiscoveryCost {
@@ -120,6 +164,8 @@ export interface CostEstimate {
   readonly mediaItems: number
   readonly mediaBytes: number
   readonly durationMinutes: number
+  /** Decomposicao da duracao + confianca. */
+  readonly duration: DurationBreakdown
   /** Titulos cujos contadores vieram do fallback (estimativa menos confiavel). */
   readonly titlesWithMissingFacts: number
 }
@@ -195,14 +241,37 @@ export function estimateBootstrapCost(
     seasons * assumptions.mediaItemsPerSeason
   const mediaBytes = mediaItems * assumptions.bytesPerMediaRow
 
-  // Tempo: as chamadas sao limitadas pelo MENOR entre o teto de RPS do provider
-  // e o paralelismo do worker. Somamos o overhead de banco/normalizacao.
+  // ---- Duracao: rede + ESCRITA -----------------------------------------
+  // O modelo anterior so contava chamadas de API e subestimou por 3x na
+  // execucao de 60.436 episodios: o custo real e dominado pela PERSISTENCIA,
+  // nao pela rede. Cada termo agora e explicito.
   const effectiveRps = Math.max(
     1,
     Math.min(assumptions.requestsPerSecond, assumptions.concurrency * 2),
   )
-  const networkSeconds = apiCalls / effectiveRps
-  const durationMinutes = (networkSeconds * assumptions.overheadFactor) / 60
+  const networkSeconds = (apiCalls / effectiveRps) * assumptions.overheadFactor
+  const episodeWriteSeconds = episodes / Math.max(1, assumptions.episodesPerSecond)
+  const mediaWriteSeconds = mediaItems / Math.max(1, assumptions.mediaRowsPerSecond)
+  const totalSeconds = networkSeconds + episodeWriteSeconds + mediaWriteSeconds
+  const durationMinutes = totalSeconds / 60
+
+  const parts: readonly [string, number][] = [
+    ['network', networkSeconds],
+    ['episodes', episodeWriteSeconds],
+    ['media', mediaWriteSeconds],
+  ]
+  const dominantFactor = parts.reduce((a, b) => (b[1] > a[1] ? b : a))[0]
+
+  const caveats: string[] = []
+  if (titles.some((t) => t.factsMissing === true)) {
+    caveats.push('ha titulos sem contadores do provider: o volume usa fallback')
+  }
+  caveats.push(
+    'coeficientes de escrita vem de 2 execucoes em PostgreSQL efemero LOCAL; ' +
+      'banco remoto e mais lento',
+  )
+
+  const round1 = (n: number): number => Math.round((n / 60) * 10) / 10
 
   return {
     movies,
@@ -216,6 +285,16 @@ export function estimateBootstrapCost(
     mediaItems,
     mediaBytes,
     durationMinutes: Math.round(durationMinutes * 10) / 10,
+    duration: {
+      networkMinutes: round1(networkSeconds),
+      episodeWriteMinutes: round1(episodeWriteSeconds),
+      mediaWriteMinutes: round1(mediaWriteSeconds),
+      totalMinutes: Math.round(durationMinutes * 10) / 10,
+      dominantFactor,
+      // Duas amostras, um so tipo de banco: nunca "high".
+      confidence: titles.some((t) => t.factsMissing === true) ? 'low' : 'medium',
+      caveats,
+    },
     titlesWithMissingFacts: titles.filter((t) => t.factsMissing === true).length,
   }
 }

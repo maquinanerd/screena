@@ -670,6 +670,9 @@ async function cmdPlanBootstrap(
       .join(' ')})`,
     `  chamadas TMDB: ${e.apiCalls} · midia: ${e.mediaItems} itens (~${Math.round(e.mediaBytes / 1024)} KiB de metadado)`,
     `  duracao estimada: ${e.durationMinutes} min (otimista ${scenarios.optimistic.durationMinutes} · conservador ${scenarios.conservative.durationMinutes})`,
+    `    rede ${e.duration.networkMinutes} min · escrita de episodios ${e.duration.episodeWriteMinutes} min · midia ${e.duration.mediaWriteMinutes} min`,
+    `    fator dominante: ${e.duration.dominantFactor} · confianca: ${e.duration.confidence}`,
+    ...e.duration.caveats.map((c) => `    ressalva: ${c}`),
     e.titlesWithMissingFacts > 0
       ? `  ATENCAO: ${e.titlesWithMissingFacts} titulo(s) sem contadores do provider — estimativa menos confiavel`
       : '  todos os contadores vieram do provider (estimativa exata, nao presumida)',

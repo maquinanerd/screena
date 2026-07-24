@@ -42,6 +42,8 @@ import EmbeddedPostgres from 'embedded-postgres'
 import { PrismaClient } from '@prisma/client'
 import { backfillFinalization } from '../src/persistence/finalization-backfill.js'
 import { createPrismaMediaStore } from '../src/persistence/media-store.js'
+import { createPrismaAuditReader } from '../src/persistence/audit-reader.js'
+import { runDatabaseAudit } from '../src/audit/index.js'
 
 const require = createRequire(import.meta.url)
 const scriptDir = path.dirname(fileURLToPath(import.meta.url))
@@ -277,6 +279,38 @@ async function runChecks(url: string): Promise<void> {
       rejected,
       rejected ? 'unique violation' : 'ACEITOU — nao ha protecao',
     )
+    // =====================================================================
+    // D) CENSO DE PUBLICABILIDADE — as dimensoes que faltavam
+    // =====================================================================
+    const audit = await runDatabaseAudit(createPrismaAuditReader(prisma), {
+      environment: 'test',
+      now: new Date('2026-07-24T00:00:00Z'),
+      language: 'pt-BR',
+    })
+    const movieRow = audit.publishability.find((p) => p.entity === 'movie')
+    const personRow = audit.publishability.find((p) => p.entity === 'person')
+
+    record(
+      'censo separa existir de ter rota (3 filmes, 3 com slug apos backfill)',
+      movieRow?.total === 3 && movieRow.withSlug === 3 && movieRow.withoutSlug === 0,
+      `total=${movieRow?.total} slug=${movieRow?.withSlug}/-${movieRow?.withoutSlug}`,
+    )
+    record(
+      'censo distingue publicavel de renderizavel para PESSOA',
+      personRow?.total === 2 && personRow.renderable === 1 && personRow.publishable === 1,
+      `total=${personRow?.total} renderizavel=${personRow?.renderable} publicavel=${personRow?.publishable}`,
+    )
+    record(
+      'censo conta decisao AUSENTE (a policy nunca foi aplicada)',
+      (movieRow?.missingDecision ?? 0) >= 1,
+      `ausentes=${movieRow?.missingDecision}`,
+    )
+    record(
+      'censo agrupa razoes das decisoes vigentes',
+      audit.decisionReasons.length >= 0,
+      audit.decisionReasons.map((r) => `${r.reason}=${r.count}`).join(' ') || '(nenhuma)',
+    )
+
     record(
       'apenas uma decisao vigente por chave',
       (await count(

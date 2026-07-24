@@ -55,6 +55,42 @@ export interface SnapshotAuditRow {
   readonly items: number
 }
 
+/**
+ * Publicabilidade de UM tipo de entidade.
+ *
+ * Estados distintos que NAO podem ser confundidos: existir no banco, ter rota,
+ * poder renderizar, poder ser publicada, entrar no sitemap e ser indexavel sao
+ * seis coisas diferentes. Um censo que so conta linhas nao responde nenhuma.
+ */
+export interface PublishabilityRow {
+  readonly entity: string
+  readonly total: number
+  readonly withSlug: number
+  readonly withoutSlug: number
+  readonly withTranslation: number
+  readonly withoutTranslation: number
+  readonly withMedia: number
+  readonly withoutMedia: number
+  /** Tem rota + titulo: a pagina resolve. */
+  readonly renderable: number
+  /** Passa nos gates do tipo (inclui elegibilidade de pessoa). */
+  readonly publishable: number
+  /** Entraria no sitemap hoje. */
+  readonly sitemapEligible: number
+  /** Tem decisao persistida vigente. */
+  readonly withDecision: number
+  /** SEM decisao persistida — a policy nunca foi aplicada a ela. */
+  readonly missingDecision: number
+  /** Decisao persistida DIVERGE do que a policy diria agora. */
+  readonly staleDecision: number
+}
+
+/** Contagem de decisoes por razao. */
+export interface DecisionReasonRow {
+  readonly reason: string
+  readonly count: number
+}
+
 /** Relatorio completo da auditoria. */
 export interface DatabaseAuditReport {
   readonly generatedAt: Date
@@ -69,6 +105,10 @@ export interface DatabaseAuditReport {
     readonly total: number
     readonly byLocale: readonly { locale: string; count: number }[]
   }
+  /** Publicabilidade por tipo (Prompt 03.2). */
+  readonly publishability: readonly PublishabilityRow[]
+  /** Razoes das decisoes vigentes. */
+  readonly decisionReasons: readonly DecisionReasonRow[]
 }
 
 /** Porta de leitura da auditoria (SO leitura). */
@@ -80,6 +120,8 @@ export interface AuditReaderPort {
   readCheckpoints(): Promise<CheckpointAuditRow[]>
   readSnapshots(now: Date): Promise<SnapshotAuditRow[]>
   readSearchDocuments(): Promise<{ total: number; byLocale: { locale: string; count: number }[] }>
+  readPublishability(language: string): Promise<PublishabilityRow[]>
+  readDecisionReasons(language: string): Promise<DecisionReasonRow[]>
 }
 
 /** Decisao do gate de execucao da auditoria. */
@@ -121,18 +163,35 @@ export function describeAuditGate(decision: AuditGateDecision): string {
 /** Monta o relatorio a partir do reader (nenhuma escrita). */
 export async function runDatabaseAudit(
   reader: AuditReaderPort,
-  input: { readonly environment: string; readonly now: Date },
+  input: {
+    readonly environment: string
+    readonly now: Date
+    /** Idioma das dimensoes de publicabilidade. Default pt-BR (invariante 7). */
+    readonly language?: string
+  },
 ): Promise<DatabaseAuditReport> {
-  const [entities, coverage, jobs, deadLetters, checkpoints, snapshots, searchDocuments] =
-    await Promise.all([
-      reader.readEntityCounts(),
-      reader.readCoverage(),
-      reader.readJobs(),
-      reader.readDeadLetterCount(),
-      reader.readCheckpoints(),
-      reader.readSnapshots(input.now),
-      reader.readSearchDocuments(),
-    ])
+  const language = input.language ?? 'pt-BR'
+  const [
+    entities,
+    coverage,
+    jobs,
+    deadLetters,
+    checkpoints,
+    snapshots,
+    searchDocuments,
+    publishability,
+    decisionReasons,
+  ] = await Promise.all([
+    reader.readEntityCounts(),
+    reader.readCoverage(),
+    reader.readJobs(),
+    reader.readDeadLetterCount(),
+    reader.readCheckpoints(),
+    reader.readSnapshots(input.now),
+    reader.readSearchDocuments(),
+    reader.readPublishability(language),
+    reader.readDecisionReasons(language),
+  ])
   return {
     generatedAt: input.now,
     environment: input.environment,
@@ -143,6 +202,8 @@ export async function runDatabaseAudit(
     checkpoints,
     snapshots,
     searchDocuments,
+    publishability,
+    decisionReasons,
   }
 }
 
@@ -188,5 +249,23 @@ export function formatAuditReport(report: DatabaseAuditReport): string {
   lines.push('-- Busca --')
   lines.push(`  search_documents: ${report.searchDocuments.total}`)
   for (const l of report.searchDocuments.byLocale) lines.push(`    ${l.locale}: ${l.count}`)
+  lines.push('')
+  lines.push('-- Publicabilidade (existir != renderizar != publicar != indexar) --')
+  for (const p of report.publishability) {
+    lines.push(
+      `  ${p.entity.padEnd(8)} total=${p.total} slug=${p.withSlug}/-${p.withoutSlug} ` +
+        `traducao=${p.withTranslation}/-${p.withoutTranslation} midia=${p.withMedia}/-${p.withoutMedia}`,
+    )
+    lines.push(
+      `           renderizavel=${p.renderable} publicavel=${p.publishable} sitemap=${p.sitemapEligible}`,
+    )
+    lines.push(
+      `           decisao: com=${p.withDecision} ausente=${p.missingDecision} divergente=${p.staleDecision}`,
+    )
+  }
+  lines.push('')
+  lines.push('-- Razoes das decisoes vigentes --')
+  if (report.decisionReasons.length === 0) lines.push('  (nenhuma decisao registrada)')
+  for (const r of report.decisionReasons) lines.push(`  ${r.reason.padEnd(24)} ${r.count}`)
   return lines.join('\n')
 }
