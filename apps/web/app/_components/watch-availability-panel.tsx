@@ -87,6 +87,35 @@ export function WatchAvailabilityPanel({
       {view.updatedAtLabel !== null ? (
         <p className="watch-availability__updated">{view.updatedAtLabel}</p>
       ) : null}
+
+      {/*
+        Credito da fonte agregadora, exigido pela licenca que autoriza exibir as
+        ofertas (requires_attribution/requires_linkback). O presenter ja
+        descartou qualquer oferta sem o credito devido, entao esta lista nunca
+        fica vazia quando ha grupo — e o credito sempre pertence a uma oferta
+        realmente exibida acima.
+      */}
+      {view.attributions.length > 0 ? (
+        <p className="watch-availability__attribution">
+          {view.attributions.map((attribution, index) => (
+            <span key={`${attribution.text}|${attribution.url ?? ""}`}>
+              {index > 0 ? " · " : null}
+              {attribution.url !== null ? (
+                <a
+                  className="watch-availability__attribution-link"
+                  href={attribution.url}
+                  rel="nofollow noopener"
+                  target="_blank"
+                >
+                  {attribution.text}
+                </a>
+              ) : (
+                attribution.text
+              )}
+            </span>
+          ))}
+        </p>
+      ) : null}
     </section>
   );
 }

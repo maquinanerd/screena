@@ -10,6 +10,16 @@
 > **Motivo (reason):** Autorização de reprodução, armazenamento e exibição para
 > finalidade informativa, editorial e jornalística, condicionada a créditos,
 > linkback e disclaimers públicos.
+>
+> Operação (frescor, cache, retenção, território, por onde o dado entra):
+> [`source-operations-inventory.md`](./source-operations-inventory.md).
+> Desligar uma fonte: [`source-shutdown-runbook.md`](./source-shutdown-runbook.md).
+
+> **Autorizado ≠ visível.** Uma licença permissiva não coloca dado na tela. A
+> exibição ainda depende de decisão de uso vigente, território, frescor, crédito
+> presente e promoção humana da linha. Hoje **Letterboxd e FilmAffinity estão
+> autorizadas mas permanecem invisíveis** por não terem janela de frescor
+> declarada em `RATING_STALE_POLICY` — ver o inventário operacional.
 
 ## Licenças
 

@@ -61,6 +61,12 @@ function row(overrides: Partial<WatchAvailabilityRow> = {}): WatchAvailabilityRo
     currency: null,
     displayAllowed: true,
     fetchedAtIso: null,
+    // Ver watch-availability-presenter.test.ts: oferta licenciada carrega o
+    // credito exigido pela licenca que a autoriza.
+    requiresAttribution: true,
+    requiresLinkback: true,
+    attributionText: "Disponibilidade fornecida por Movie of the Night",
+    attributionUrl: "https://www.movieofthenight.com/",
     ...overrides,
   };
 }
@@ -101,6 +107,18 @@ describe("watch-availability-panel — componente publico", () => {
     expect(code).not.toMatch(/api-clients/);
     expect(code).not.toContain("fetch(");
   });
+
+  it("renderiza o credito da fonte exigido pela licenca", () => {
+    // A licenca que autoriza exibir a oferta exige creditar a fonte
+    // (docs/legal/source-authorization-matrix.md: "atribuicao junto ao painel").
+    expect(code).toContain("view.attributions");
+    expect(code).toContain("attribution.text");
+    expect(code).toContain("attribution.url");
+  });
+
+  it("o linkback de credito nao vaza PageRank nem abre sem noopener", () => {
+    expect(code).toMatch(/rel="nofollow noopener"/);
+  });
 });
 
 describe("watch-availability — camada server-only", () => {
@@ -117,6 +135,16 @@ describe("watch-availability — camada server-only", () => {
 
   it("omite ofertas vencidas por available_until", () => {
     expect(code).toContain("availableUntil");
+  });
+
+  it("seleciona os campos de atribuicao que a licenca exige", () => {
+    // Sem estes no `select`, o presenter recebe undefined e (com o gate
+    // fail-closed) toda oferta cai — o painel some por completo. Este teste
+    // trava a causa-raiz, nao so o sintoma.
+    expect(code).toContain("requiresAttribution: true");
+    expect(code).toContain("requiresLinkback: true");
+    expect(code).toContain("attributionText: true");
+    expect(code).toContain("attributionUrl: true");
   });
 
   it("nao chama API externa no render (worker/host proibido)", () => {

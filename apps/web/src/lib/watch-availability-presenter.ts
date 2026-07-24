@@ -81,6 +81,29 @@ export interface WatchAvailabilityRow {
   displayAllowed: boolean;
   /** `watch_availability.fetched_at` em ISO (carimbo de frescor) ou null. */
   fetchedAtIso: string | null;
+  /** `watch_availability.requires_attribution` — licenca exige credito. */
+  requiresAttribution: boolean;
+  /** `watch_availability.requires_linkback` — licenca exige link para a fonte. */
+  requiresLinkback: boolean;
+  /** `watch_availability.attribution_text` (ex.: "Disponibilidade fornecida por ..."). */
+  attributionText: string | null;
+  /** `watch_availability.attribution_url` — destino do linkback. */
+  attributionUrl: string | null;
+}
+
+/**
+ * Credito da fonte agregadora exibido junto ao painel.
+ *
+ * A licenca do agregador (ex.: Movie of the Night) exige `requires_attribution`
+ * e `requires_linkback`; a matriz em docs/legal/source-authorization-matrix.md
+ * registra "atribuicao junto ao painel". Exibir a oferta sem o credito viola a
+ * propria licenca que autoriza exibi-la.
+ */
+export interface WatchAvailabilityAttribution {
+  /** Texto do credito, exatamente como licenciado. */
+  text: string;
+  /** Linkback quando exigido/registrado; null quando a licenca nao exige. */
+  url: string | null;
 }
 
 /** Uma oferta legal ja validada e pronta para render. */
@@ -108,6 +131,12 @@ export interface WatchAvailabilityView {
   groups: WatchAvailabilityGroup[];
   /** "Atualizado em DD/MM/AAAA" quando houver `fetched_at`; senao null. */
   updatedAtLabel: string | null;
+  /**
+   * Creditos das fontes das ofertas EXIBIDAS (dedupe por texto+url, ordem
+   * estavel). Nunca vazio quando ha grupo: uma oferta que exige credito e nao o
+   * tem foi descartada antes de chegar aqui.
+   */
+  attributions: WatchAvailabilityAttribution[];
 }
 
 function trimToNull(value: string | null | undefined): string | null {
@@ -191,6 +220,8 @@ export function buildWatchAvailabilityView(
   const seen = new Set<string>();
   const byType = new Map<WatchAvailabilityOfferType, WatchAvailabilityOffer[]>();
   const fetchedAts: Array<string | null> = [];
+  const attributions: WatchAvailabilityAttribution[] = [];
+  const seenAttributions = new Set<string>();
 
   for (const row of rows) {
     // Gate de licenca (invariante 6): sem display_allowed, a oferta nao existe.
@@ -204,6 +235,20 @@ export function buildWatchAvailabilityView(
     const providerKey = trimToNull(row.providerKey);
     const deepLink = safeDeepLink(row.deepLink);
     if (providerName === null || providerKey === null || deepLink === null) continue;
+
+    // ATRIBUICAO EXIGIDA E AUSENTE = NAO EXIBE (invariante 6). Mesma regra que
+    // `toPublicRating` ja aplica as notas: a licenca que autoriza exibir e a
+    // mesma que obriga a creditar; exibir sem credito nao e "quase certo", e
+    // uso nao licenciado. Fail-closed por OFERTA, nao pelo painel inteiro.
+    // `!== false` (nao `=== true`) e deliberado: a coluna nasce `default(true)`,
+    // entao QUALQUER coisa que nao seja um "false" explicito conta como
+    // exigencia. Com `&&` simples, um campo ausente seria falsy e desligaria o
+    // gate em silencio — exatamente o modo de falha que este gate existe para
+    // impedir. Mesmo espirito do `displayAllowed !== true` acima.
+    const attributionText = trimToNull(row.attributionText);
+    const attributionUrl = trimToNull(row.attributionUrl);
+    if (row.requiresAttribution !== false && attributionText === null) continue;
+    if (row.requiresLinkback !== false && attributionUrl === null) continue;
 
     const quality = trimToNull(row.quality);
     const priceLabel = buildPriceLabel(offerType, row.priceAmount, row.currency);
@@ -232,6 +277,16 @@ export function buildWatchAvailabilityView(
     else bucket.push(offer);
 
     fetchedAts.push(row.fetchedAtIso);
+
+    // Credito so da oferta que REALMENTE entrou. Uma oferta descartada acima
+    // nao arrasta seu credito para a tela (credito orfao = credito mentiroso).
+    if (attributionText !== null) {
+      const key = `${attributionText}|${attributionUrl ?? ""}`;
+      if (!seenAttributions.has(key)) {
+        seenAttributions.add(key);
+        attributions.push({ text: attributionText, url: attributionUrl });
+      }
+    }
   }
 
   const groups: WatchAvailabilityGroup[] = [];
@@ -254,5 +309,6 @@ export function buildWatchAvailabilityView(
   return {
     groups,
     updatedAtLabel: updatedDate === null ? null : `Atualizado em ${updatedDate}`,
+    attributions,
   };
 }

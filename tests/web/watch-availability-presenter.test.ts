@@ -29,6 +29,13 @@ function row(overrides: Partial<WatchAvailabilityRow> = {}): WatchAvailabilityRo
     currency: null,
     displayAllowed: true,
     fetchedAtIso: null,
+    // Oferta licenciada REAL carrega o credito da fonte: a mesma licenca que
+    // permite exibir obriga a creditar. Um fixture sem isto descreveria um
+    // estado que a licenca nao autoriza.
+    requiresAttribution: true,
+    requiresLinkback: true,
+    attributionText: "Disponibilidade fornecida por Movie of the Night",
+    attributionUrl: "https://www.movieofthenight.com/",
     ...overrides,
   };
 }
@@ -196,5 +203,94 @@ describe("buildWatchAvailabilityView — vazio e frescor", () => {
     const view = buildWatchAvailabilityView([row()]);
     expect(view!.groups).toHaveLength(1);
     expect(view!.updatedAtLabel).toBeNull();
+  });
+});
+
+/**
+ * Atribuicao obrigatoria (invariante 6). A licenca do agregador exige
+ * `requires_attribution` + `requires_linkback` e a matriz legal registra
+ * "atribuicao junto ao painel": exibir a oferta sem o credito e uso NAO
+ * licenciado, nao um detalhe cosmetico.
+ */
+describe("buildWatchAvailabilityView — atribuicao obrigatoria", () => {
+  it("expoe o credito das ofertas exibidas", () => {
+    const view = buildWatchAvailabilityView([row()]);
+    expect(view!.attributions).toEqual([
+      {
+        text: "Disponibilidade fornecida por Movie of the Night",
+        url: "https://www.movieofthenight.com/",
+      },
+    ]);
+  });
+
+  it("descarta oferta que exige atribuicao e nao tem texto", () => {
+    expect(
+      buildWatchAvailabilityView([row({ attributionText: null })]),
+    ).toBeNull();
+    expect(
+      buildWatchAvailabilityView([row({ attributionText: "   " })]),
+    ).toBeNull();
+  });
+
+  it("descarta oferta que exige linkback e nao tem url", () => {
+    expect(buildWatchAvailabilityView([row({ attributionUrl: null })])).toBeNull();
+  });
+
+  it("exibe sem credito apenas quando a licenca dispensa explicitamente", () => {
+    const view = buildWatchAvailabilityView([
+      row({
+        requiresAttribution: false,
+        requiresLinkback: false,
+        attributionText: null,
+        attributionUrl: null,
+      }),
+    ]);
+    expect(view!.groups).toHaveLength(1);
+    expect(view!.attributions).toEqual([]);
+  });
+
+  it("aceita credito sem link quando so o linkback e dispensado", () => {
+    const view = buildWatchAvailabilityView([
+      row({ requiresLinkback: false, attributionUrl: null }),
+    ]);
+    expect(view!.attributions).toEqual([
+      { text: "Disponibilidade fornecida por Movie of the Night", url: null },
+    ]);
+  });
+
+  it("FAIL-CLOSED: exigencia ausente conta como exigida, nao como dispensada", () => {
+    // Um campo que nao chegou (undefined) nunca pode virar "nao precisa
+    // creditar" — seria um gate desligado em silencio.
+    const incomplete = {
+      ...row(),
+      requiresAttribution: undefined,
+      attributionText: null,
+    } as unknown as WatchAvailabilityRow;
+    expect(buildWatchAvailabilityView([incomplete])).toBeNull();
+  });
+
+  it("deduplica creditos iguais entre varias ofertas", () => {
+    const view = buildWatchAvailabilityView([
+      row({ providerKey: "a", providerName: "A", deepLink: "https://a/1" }),
+      row({ providerKey: "b", providerName: "B", deepLink: "https://b/1" }),
+    ]);
+    expect(view!.attributions).toHaveLength(1);
+  });
+
+  it("nao arrasta credito de oferta descartada (credito orfao)", () => {
+    const view = buildWatchAvailabilityView([
+      // Descartada pelo gate de licenca — seu credito nao pode aparecer.
+      row({
+        providerKey: "bloqueado",
+        providerName: "Bloqueado",
+        deepLink: "https://bloqueado/1",
+        displayAllowed: false,
+        attributionText: "Credito que nao deve aparecer",
+      }),
+      row(),
+    ]);
+    const texts = view!.attributions.map((a) => a.text);
+    expect(texts).not.toContain("Credito que nao deve aparecer");
+    expect(texts).toEqual(["Disponibilidade fornecida por Movie of the Night"]);
   });
 });

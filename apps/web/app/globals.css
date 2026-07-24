@@ -302,6 +302,37 @@ section + section {
   content: ', ';
 }
 
+/* Credito da fonte agregadora, exigido pela licenca das ofertas. Discreto, mas
+   nunca escondido: atribuicao invisivel equivale a atribuicao ausente. */
+.watch-availability__attribution,
+.ratings__attribution,
+.ratings__updated,
+.watch-availability__updated {
+  font-size: 0.875rem;
+}
+
+.ratings__list {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+/* Cada nota e uma linha legivel: fonte · natureza · metrica · valor/escala.
+   Os separadores sao gerados aqui para o markup ficar puramente semantico. */
+.ratings__score-type::before,
+.ratings__metric::before,
+.ratings__score::before,
+.ratings__count::before {
+  content: ' · ';
+}
+
+.ratings__score {
+  font-weight: 700;
+}
+
+.ratings__attribution {
+  display: block;
+}
+
 @media (max-width: 44rem) {
   main {
     padding-block: 2rem 4rem;

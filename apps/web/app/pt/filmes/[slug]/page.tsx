@@ -5,6 +5,7 @@ import { buildSameAs, serializeJsonLd } from '@screena/seo'
 
 import { EntityExternalIds } from '../../../_components/entity-external-ids'
 import { WatchAvailabilityPanel } from '../../../_components/watch-availability-panel'
+import { RatingsPanel } from '../../../_components/ratings-panel'
 import { canonicalRedirectPath } from '../../../../src/lib/canonical-redirect'
 import { buildExternalLinks } from '../../../../src/lib/external-links'
 import { MOVIES_INDEX_PATH, NEWS_INDEX_PATH, SITE_URL, gatePublicRobots } from '../../../../src/lib/site'
@@ -73,7 +74,7 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
   const redirectPath = canonicalRedirectPath(MOVIES_INDEX_PATH, slug, data.canonicalSlug)
   if (redirectPath !== null) permanentRedirect(redirectPath)
 
-  const { view, seo, canonicalUrl, relatedNews, cast, watch, externalIds } = data
+  const { view, seo, canonicalUrl, relatedNews, cast, watch, ratings, externalIds } = data
   const isUnderReview = seo.decision !== 'index'
   const externalLinks = buildExternalLinks(externalIds, 'movie')
   const summary = [view.year !== null ? String(view.year) : null, view.runtimeLabel].filter(
@@ -157,6 +158,11 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
             ) : null}
           </section>
         ) : null}
+
+        {/* Notas de terceiros, cada uma na escala da propria fonte e creditada.
+            O painel se auto-omite quando nao ha nota licenciada: fonte desligada
+            some da pagina sem deixar buraco nem quebrar o layout. */}
+        <RatingsPanel view={ratings} />
 
         {workBlocks.length > 0 ? (
           <section aria-labelledby="movie-work-title">

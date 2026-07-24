@@ -3,7 +3,9 @@
  *
  * Invariantes 3 e 4:
  *  - Le somente PostgreSQL local via @screena/db (Prisma).
- *  - Nao chama TMDB, Gemini, ratings, streaming ou qualquer API externa.
+ *  - Nao chama TMDB, Gemini nem qualquer API externa. Ratings e disponibilidade
+ *    de streaming sao LIDOS do PostgreSQL (ja ingeridos offline por worker e
+ *    filtrados por licenca), nunca buscados ao vivo em RapidAPI/IMDb/RT.
  *  - Nao escreve no banco; apenas monta snapshot para render.
  */
 
@@ -23,6 +25,8 @@ import { resolveEntityPageSeo } from "./seo/indexability-decision";
 import { getRelatedNewsForEntity } from "./related-news";
 import { getCastForEntity } from "./entity-cast";
 import { getWatchAvailabilityForEntity } from "./entity-watch";
+import { getRatingsForEntity } from "./entity-ratings";
+import { buildRatingsView, type RatingsPanelView } from "../lib/ratings-presenter";
 import type { NewsCardView } from "../lib/news-presenter";
 import type { CastMemberView } from "../lib/cast-presenter";
 import type { WatchAvailabilityView } from "../lib/watch-availability-presenter";
@@ -45,6 +49,8 @@ export interface SeriesPageData {
   cast: CastMemberView[];
   /** Disponibilidade no Brasil (watch_availability licenciado); `null` omite o painel. */
   watch: WatchAvailabilityView | null;
+  /** Notas externas licenciadas e creditadas; `null` omite o painel. */
+  ratings: RatingsPanelView | null;
   /** IDs externos reais (imdb/tmdb/...) para montar `sameAs` no JSON-LD. */
   externalIds: { source: string; externalId: string }[];
 }
@@ -196,13 +202,27 @@ export const getSeriesPageData = cache(
     const canonicalSlug = canonicalSlugRow?.slug ?? slug;
     const canonicalUrl = seriesCanonicalUrl(canonicalSlug);
 
+    // Ver movie-page.ts: ratings vem depois da Promise.all (o `EntityRef` precisa
+    // de titulo + URL canonica) e alimentam o gate de licenca do SEO abaixo, que
+    // antes recebia `[]` fixo — gate cego da invariante 6.
+    const ratingsPayload = await getRatingsForEntity(prisma, ENTITY_TYPE, entityId, {
+      kind: "tv",
+      id: String(entityId),
+      title: view.title,
+      canonicalUrl,
+    });
+    const ratings = buildRatingsView(ratingsPayload);
+
     // Fonte unica da Fase 3: fatos vivos + decisao vigente persistida (fail-closed).
     const seo = await resolveEntityPageSeo(
       { entityType: ENTITY_TYPE, entityId, languageCode: LANGUAGE_CODE },
       {
         language: LANGUAGE_CODE,
         hasReliableStructuredData: true,
-        displayedRatings: [],
+        // Exatamente as notas RENDERIZADAS (ver movie-page.ts).
+        displayedRatings: (ratings?.items ?? []).map(() => ({
+          licenseDisplayAllowed: true,
+        })),
         canonicalUrl,
         valueBlocksCount: view.renderableBlockCount,
       },
@@ -218,6 +238,7 @@ export const getSeriesPageData = cache(
       relatedNews,
       cast,
       watch,
+      ratings,
       externalIds,
     };
   },
