@@ -24,6 +24,7 @@ import type {
   ExportReadStore,
   IdentityStore,
   PasswordCredentialStore,
+  ProductContentPurgeStore,
   SessionStore,
   UserProfileStore,
 } from "../../persistence/ports.js";
@@ -32,7 +33,14 @@ import type {
   ConsentKind,
   DataRequestKind,
   DataRequestStatus,
+  ImportJobStatus,
+  ImportSource,
   ProfileVisibility,
+  RatableEntityType,
+  SystemListKey,
+  ViewingEventType,
+  Visibility,
+  WatchState,
 } from "../../core/types.js";
 import type {
   AuthThrottleReadResult,
@@ -91,6 +99,7 @@ import type {
 import { TransactionalEmailError } from "../../email/types.js";
 import { generateOpaqueToken, sha256Hex } from "../../core/crypto.js";
 import type { AuthRuntimeDeps, AuthStores, AuthTransactionRunner } from "../deps.js";
+import { createFakeLibraryRunner } from "./library-fakes.js";
 import type { AuthEmailLogEvent } from "../observability.js";
 
 const SCOPE: TransactionScope = { transactional: true };
@@ -157,7 +166,115 @@ export interface FakeDb {
   dataRequests: FakeDataRequestRow[];
   audit: FakeAuditRow[];
   profiles: Map<string, FakeProfileRow>;
+  /** C8 — biblioteca pessoal. Arrays simples; o duble reproduz os uniques. */
+  watchStates: FakeWatchStateRow[];
+  episodeProgress: FakeEpisodeProgressRow[];
+  viewingEvents: FakeViewingEventRow[];
+  userLists: FakeUserListRow[];
+  userListItems: FakeUserListItemRow[];
+  userRatings: FakeUserRatingRow[];
+  importJobs: FakeImportJobRow[];
+  /** Catalogo minimo para as sondas de existencia e o tracker. */
+  entities: { entityType: string; entityId: bigint }[];
+  episodes: FakeCatalogEpisodeRow[];
   nextId: bigint;
+}
+
+/** C8 — linhas da biblioteca (espelham as colunas que os adapters leem). */
+export interface FakeWatchStateRow {
+  readonly userId: bigint;
+  readonly entityType: "movie" | "tv";
+  readonly entityId: bigint;
+  status: WatchState;
+  startedAt: Date | null;
+  completedAt: Date | null;
+  lastActivityAt: Date;
+  rewatchCount: number;
+  version: number;
+  updatedAt: Date;
+}
+
+export interface FakeEpisodeProgressRow {
+  readonly userId: bigint;
+  readonly episodeId: bigint;
+  watched: boolean;
+  watchedAt: Date | null;
+  progressSeconds: number | null;
+  durationSeconds: number | null;
+  version: number;
+  updatedAt: Date;
+}
+
+export interface FakeViewingEventRow {
+  readonly id: bigint;
+  readonly userId: bigint;
+  readonly entityType: RatableEntityType;
+  readonly entityId: bigint;
+  readonly eventType: ViewingEventType;
+  readonly occurredAt: Date;
+  readonly source: string;
+  readonly idempotencyKey: string;
+}
+
+export interface FakeUserListRow {
+  readonly id: bigint;
+  readonly ownerId: bigint;
+  readonly kind: "system" | "custom";
+  readonly systemKey: SystemListKey | null;
+  title: string;
+  slug: string;
+  description: string | null;
+  visibility: Visibility;
+  ordered: boolean;
+  deletedAt: Date | null;
+  readonly createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface FakeUserListItemRow {
+  readonly id: bigint;
+  readonly listId: bigint;
+  readonly entityType: RatableEntityType;
+  readonly entityId: bigint;
+  position: number | null;
+  note: string | null;
+  readonly addedAt: Date;
+}
+
+export interface FakeUserRatingRow {
+  readonly userId: bigint;
+  readonly entityType: RatableEntityType;
+  readonly entityId: bigint;
+  value: number;
+  readonly createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface FakeImportJobRow {
+  readonly id: bigint;
+  readonly userId: bigint;
+  readonly source: ImportSource;
+  status: ImportJobStatus;
+  readonly fileName: string | null;
+  itemCount: number;
+  conflictCount: number;
+  appliedCount: number;
+  error: string | null;
+  appliedAt: Date | null;
+  preview: unknown;
+  conflicts: unknown;
+  readonly createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface FakeCatalogEpisodeRow {
+  readonly episodeId: bigint;
+  readonly tvShowId: bigint;
+  readonly seasonId: bigint;
+  readonly seasonNumber: number;
+  readonly episodeNumber: number;
+  readonly airDate: Date | null;
+  readonly runtimeMinutes: number | null;
 }
 
 /** C7D: perfil publico (users.display_name/handle + user_profiles). */
@@ -183,6 +300,15 @@ export function createFakeDb(): FakeDb {
     dataRequests: [],
     audit: [],
     profiles: new Map(),
+    watchStates: [],
+    episodeProgress: [],
+    viewingEvents: [],
+    userLists: [],
+    userListItems: [],
+    userRatings: [],
+    importJobs: [],
+    entities: [],
+    episodes: [],
     nextId: 1n,
   };
 }
@@ -768,6 +894,43 @@ export function createFakeStores(db: FakeDb): AuthStores {
     },
   };
 
+  /**
+   * C8 — purga de conteudo de produto no encerramento.
+   *
+   * Este duble opera sobre as colecoes de biblioteca do `FakeDb` (ver
+   * `library-fakes.ts`), que sao criadas vazias quando o teste nao as usa. Zerar
+   * colecao vazia devolve zero, que e o resultado correto.
+   */
+  const productContentPurge: ProductContentPurgeStore = {
+    async purgeForUser(_s: TransactionScope, userId: bigint) {
+      const contar = <T extends { userId?: bigint; ownerId?: bigint }>(
+        arr: T[],
+        chave: "userId" | "ownerId",
+      ): number => {
+        const antes = arr.length;
+        const restantes = arr.filter((x) => x[chave] !== userId);
+        arr.length = 0;
+        arr.push(...restantes);
+        return antes - arr.length;
+      };
+      const listasDoUsuario = db.userLists.filter((l) => l.ownerId === userId).map((l) => l.id);
+      const itensAntes = db.userListItems.length;
+      const itensRestantes = db.userListItems.filter((i) => !listasDoUsuario.includes(i.listId));
+      db.userListItems.length = 0;
+      db.userListItems.push(...itensRestantes);
+
+      return {
+        watchStates: contar(db.watchStates, "userId"),
+        episodeProgress: contar(db.episodeProgress, "userId"),
+        viewingEvents: contar(db.viewingEvents, "userId"),
+        listItems: itensAntes - db.userListItems.length,
+        lists: contar(db.userLists, "ownerId"),
+        ratings: contar(db.userRatings, "userId"),
+        importJobs: contar(db.importJobs, "userId"),
+      };
+    },
+  };
+
   return {
     identities,
     credentials,
@@ -780,6 +943,7 @@ export function createFakeStores(db: FakeDb): AuthStores {
     audit,
     accountLifecycle,
     exportReader,
+    productContentPurge,
   };
 }
 
@@ -967,6 +1131,9 @@ export function createTestRuntime(options: {
     hashSecret: sha256Hex,
     hashPassword: fakeHashPassword,
     logger: (event) => logs.push(event),
+
+    // C8 — transacao da biblioteca, separada da de autenticacao.
+    runInLibraryTransaction: createFakeLibraryRunner(db),
 
     // C7D
     verifyPassword: fakeVerifyPassword,

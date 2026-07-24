@@ -29,13 +29,22 @@ import type {
   AuthAuditStore,
   AuthThrottleStore,
   AuthTokenStore,
+  CatalogReadStore,
   ConsentStore,
   DataRequestStore,
+  EpisodeProgressStore,
   ExportReadStore,
   IdentityStore,
+  ImportJobStore,
   PasswordCredentialStore,
+  ProductContentPurgeStore,
   SessionStore,
+  UserListItemStore,
+  UserListStore,
   UserProfileStore,
+  UserRatingStore,
+  UserWatchStateStore,
+  ViewingEventStore,
 } from "../persistence/ports.js";
 import type { TransactionScope } from "../persistence/types.js";
 import type { UserStatus } from "../core/types.js";
@@ -87,7 +96,39 @@ export interface AuthStores {
   readonly audit: AuthAuditStore;
   readonly accountLifecycle: AccountLifecycleStore;
   readonly exportReader: ExportReadStore;
+  /**
+   * C8. Entra em `AuthStores` — e nao so em `LibraryStores` — porque o
+   * ENCERRAMENTO da conta precisa apagar conteudo de produto no MESMO commit em
+   * que muda o status e audita. Separar as duas transacoes deixaria uma janela
+   * em que a conta ja esta anonimizada e a biblioteca ainda existe.
+   */
+  readonly productContentPurge: ProductContentPurgeStore;
 }
+
+/**
+ * Stores da BIBLIOTECA PESSOAL (C8), ligados a UMA transacao.
+ *
+ * Conjunto SEPARADO de `AuthStores` de proposito: os fluxos de biblioteca nao
+ * tocam credencial, sessao, token nem auditoria de autenticacao, e os de
+ * autenticacao nao tocam listas nem tracking. A separacao e reforcada pelo tipo
+ * do executor (`PrismaLibraryExecutor`/`PrismaCatalogExecutor`), nao apenas por
+ * convencao.
+ */
+export interface LibraryStores {
+  readonly watchStates: UserWatchStateStore;
+  readonly episodeProgress: EpisodeProgressStore;
+  readonly viewingEvents: ViewingEventStore;
+  readonly lists: UserListStore;
+  readonly listItems: UserListItemStore;
+  readonly ratings: UserRatingStore;
+  readonly imports: ImportJobStore;
+  readonly catalog: CatalogReadStore;
+}
+
+/** Executa um trabalho de biblioteca dentro de UMA transacao. */
+export type LibraryTransactionRunner = <T>(
+  work: (scope: TransactionScope, stores: LibraryStores) => Promise<T>,
+) => Promise<T>;
 
 /**
  * Identidade do usuario autenticado, resolvida a partir do cookie de sessao.
@@ -103,6 +144,15 @@ export interface AuthenticatedContext {
   readonly sessionId: bigint;
   readonly userStatus: UserStatus;
   readonly csrfTokenHash: string;
+  /**
+   * C8. Carimbo de verificacao do e-mail, resolvido junto da sessao.
+   *
+   * Entra no contexto porque `canPublishList` (lists/custom-lists.ts) exige
+   * e-mail verificado para tornar uma lista publica/nao-listada — um gate
+   * antiabuso. Resolve-lo aqui evita uma segunda leitura de identidade em cada
+   * criacao/edicao de lista, e mantem UM caminho de autenticacao.
+   */
+  readonly emailVerifiedAt: Date | null;
 }
 
 /**
@@ -199,4 +249,14 @@ export interface AuthRuntimeDeps extends AuthEmailRuntimeDeps {
    * anonimizacao definitiva.
    */
   readonly deletionGraceDays: number;
+
+  /**
+   * Transacao da BIBLIOTECA PESSOAL (C8), separada da de autenticacao.
+   *
+   * Duas superficies transacionais em vez de uma porque os conjuntos de tabelas
+   * sao disjuntos e o privilegio deve acompanhar isso: um fluxo de watchlist
+   * nao tem por que enxergar credencial, e um fluxo de login nao tem por que
+   * enxergar listas.
+   */
+  readonly runInLibraryTransaction: LibraryTransactionRunner;
 }

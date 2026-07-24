@@ -62,7 +62,13 @@ describe("perfil", () => {
     });
     const rOutro = await updateProfile(
       runtime.deps,
-      { userId: outro, sessionId: 999n, userStatus: "active", csrfTokenHash: "x" },
+      {
+        userId: outro,
+        sessionId: 999n,
+        userStatus: "active",
+        csrfTokenHash: "x",
+        emailVerifiedAt: null,
+      },
       {
         displayName: null,
         handle: "titular",

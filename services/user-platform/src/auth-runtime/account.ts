@@ -484,11 +484,17 @@ export async function resolveAuthenticatedContext(
       return null;
     }
 
+    // C8: o carimbo de verificacao alimenta o gate antiabuso de publicacao de
+    // lista (`canPublishList`). Uma leitura a mais AQUI, no unico caminho de
+    // autenticacao, evita uma leitura de identidade em cada operacao de lista.
+    const perfil = await stores.profiles.findAuthenticatedUser(scope, session.userId);
+
     return {
       userId: session.userId,
       sessionId: session.id,
       userStatus: status,
       csrfTokenHash: session.csrfTokenHash,
+      emailVerifiedAt: perfil.kind === "found" ? perfil.user.emailVerifiedAt : null,
     };
   });
 }
