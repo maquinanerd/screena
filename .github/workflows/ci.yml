@@ -160,6 +160,15 @@ jobs:
       - name: Backend C — identidade e privacidade C7D (perfil, consentimento, LGPD, sessao; PostgreSQL 16 efemero)
         run: pnpm --filter @screena/user-platform validate:identity-privacy
 
+      # C8 cobre a BIBLIOTECA PESSOAL — watchlist, tracker de series, listas,
+      # notas e importacao —, que os tres passos acima nao tocam. Prova em
+      # Postgres real: os CHECKs e as FKs polimorficas para entities, o unique
+      # parcial das listas de sistema, o CAS sob concorrencia, uma serie com
+      # milhares de episodios em UMA operacao, a exportacao LGPD com os dados
+      # novos e o encerramento EXECUTANDO a retencao de product_content.
+      - name: Backend C — biblioteca, tracker e importacao C8 (PostgreSQL 16 efemero)
+        run: pnpm --filter @screena/user-platform validate:library
+
   # Prova REAL de backup + restore (Prompt 02). Roda os scripts ENVIADOS
   # (backup.sh/restore-test.sh) contra um PostgreSQL 16 de verdade, com
   # pg_dump/pg_restore/psql 16, e compara contagens de dados origem == restaurado.

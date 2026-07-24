@@ -16,7 +16,8 @@
   "scripts": {
     "validate:user-product": "tsx scripts/validate-user-product-platform-real-postgres.ts",
     "validate:identity-privacy": "tsx scripts/validate-identity-privacy-real-postgres.ts",
-    "smoke:brevo": "tsx scripts/smoke-brevo-transactional-email.ts"
+    "smoke:brevo": "tsx scripts/smoke-brevo-transactional-email.ts",
+    "validate:library": "tsx scripts/validate-library-tracker-import-real-postgres.ts"
   },
   "dependencies": {
     "@screena/config": "workspace:*",
