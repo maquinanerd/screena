@@ -9,7 +9,17 @@
  * dominios puros continuam sem saber que persistencia existe.
  */
 
-import type { AuthTokenPurpose, ThrottleScope, UserStatus } from "../core/types.js";
+import type {
+  AuthAuditAction,
+  AuthTokenPurpose,
+  ConsentKind,
+  DataRequestKind,
+  DataRequestStatus,
+  ProfileVisibility,
+  ThrottleScope,
+  UserRole,
+  UserStatus,
+} from "../core/types.js";
 
 /**
  * Escopo transacional OPACO. O adapter (C7B) o liga ao client concreto; este
@@ -75,7 +85,21 @@ export type UniqueConflictTarget =
  * alvo proprio, um conflito de throttle seria reportado como conflito de
  * credencial — dois fatos diferentes com o mesmo rotulo.
  */
-export type PreimageConflictTarget = "credential.passwordHash" | "authThrottle.window";
+export type PreimageConflictTarget =
+  | "credential.passwordHash"
+  | "authThrottle.window"
+  /**
+   * C7D: o status do pedido LGPD tambem e trocado por CAS (ler status ->
+   * dominio decide -> gravar SE nao mudou). Sem alvo proprio, um pedido que
+   * outro processador ja concluiu seria reportado com o mesmo rotulo de um
+   * conflito de senha.
+   */
+  | "dataRequest.status"
+  /**
+   * C7D: o status da CONTA (`users.status`) idem — encerrar e arrepender-se sao
+   * transicoes concorrentes reais (duas abas), nao estado impossivel.
+   */
+  | "identity.status";
 
 /** Uniao fechada de todos os alvos (util para documentacao e testes). */
 export type PersistenceConflictTarget = UniqueConflictTarget | PreimageConflictTarget;
@@ -243,16 +267,29 @@ export type CredentialReplaceResult =
  *  - `expiresAt`  -> `evaluateSessionAccess` compara com `now`;
  *  - `revokedAt`  -> `evaluateSessionAccess` distingue revogada de expirada.
  *
- * NAO carrega `tokenHash` nem `csrfTokenHash`: quem consultou ja tem o hash, e
+ * NAO carrega `tokenHash`: quem consultou ja o tem (a busca e POR ele), e
  * devolve-lo ampliaria a superficie do segredo sem leitor. Tambem nao carrega
  * `ipHash`, `userAgent`, `lastUsedAt`, `revokedReason` nem `rotatedFromId` —
  * nenhuma funcao pura os consome.
+ *
+ * `csrfTokenHash` ENTROU EM C7D, e a razao e que o argumento acima nao vale
+ * para ele. Quem busca a sessao apresenta o token de SESSAO (cookie
+ * `HttpOnly`); o token CSRF e outro segredo, apresentado em outro canal
+ * (cabecalho `X-CSRF-Token`), e o chamador NAO tem como derivar um do outro.
+ * Sem este campo, `requireCsrf` (core/request-guards.ts) — que existe desde a
+ * missao §13 e nunca teve consumidor — permaneceria impossivel de chamar, e
+ * toda mutacao autenticada ficaria sem double submit.
+ *
+ * Devolver o HASH (nunca o token cru) mantem a propriedade que importa: o valor
+ * cru continua existindo so no cookie do cliente, e a comparacao e
+ * `sha256(apresentado) == hash`, em tempo constante.
  */
 export interface SessionAccessRecord {
   readonly id: bigint;
   readonly userId: bigint;
   readonly expiresAt: Date;
   readonly revokedAt: Date | null;
+  readonly csrfTokenHash: string;
 }
 
 export type SessionCreateResult =
@@ -489,3 +526,275 @@ export type AuthThrottleSaveResult =
   | { readonly kind: "saved" }
   /** A linha mudou entre a leitura e a escrita: outro pedido ja contou. */
   | { readonly kind: "conflict"; readonly conflict: PersistenceConflict };
+
+// ---------------------------------------------------------------------------
+// C7D — PERFIL, CONSENTIMENTO, PEDIDOS LGPD E AUDITORIA
+//
+// Os quatro models (`user_profiles`, `user_consent_records`,
+// `user_data_requests`, `user_auth_audit_logs`) existem no schema desde
+// 20260717150000 e NENHUM tinha contrato de persistencia: uma busca por
+// `ConsentStore|DataRequestStore|ProfileStore|AuthAuditLog` no repositorio
+// inteiro nao retornava uma linha. O dominio puro correspondente
+// (`privacy/consent.ts`, `privacy/export.ts`, `privacy/deletion.ts`,
+// `privacy/preferences.ts`) tambem ja existia e tambem nao tinha consumidor.
+// Esta unidade liga as duas pontas.
+//
+// NAO ha migration: nenhuma coluna e criada, renomeada ou removida.
+// ---------------------------------------------------------------------------
+
+/**
+ * Perfil como a persistencia o devolve. Espelha `user_profiles` MAIS os dois
+ * campos de nome publico que moram em `users` (`display_name`, `handle`).
+ *
+ * Os dois vem juntos DE PROPOSITO: a tela de perfil edita "quem eu sou
+ * publicamente" como uma coisa so, e o schema por acaso a espalhou em duas
+ * tabelas. Um port por tabela obrigaria a borda a orquestrar duas escritas e a
+ * decidir sozinha o que fazer quando a segunda falhasse — decisao que nao
+ * pertence a borda. O adapter faz as duas dentro da MESMA transacao.
+ *
+ * NUNCA carrega `email`: e-mail e identidade (IdentityStore), nao perfil, e
+ * devolve-lo aqui espalharia PII por um caminho que nao a consome.
+ */
+export interface ProfileRecord {
+  readonly displayName: string | null;
+  readonly handle: string | null;
+  readonly bio: string | null;
+  readonly avatarPath: string | null;
+  readonly locale: string;
+  readonly countryCode: string | null;
+  readonly timezone: string | null;
+  readonly visibility: ProfileVisibility;
+}
+
+/**
+ * Escrita do perfil. TODOS os campos sao obrigatorios na entrada (nenhum
+ * `?`): um `undefined` que significasse "nao mexe" tornaria impossivel, no
+ * proprio tipo, distinguir "limpar a bio" de "nao tocar na bio". Quem chama ja
+ * leu o registro atual e envia o estado COMPLETO desejado.
+ */
+export interface ProfileUpsertInput {
+  readonly userId: bigint;
+  readonly displayName: string | null;
+  readonly handle: string | null;
+  readonly bio: string | null;
+  readonly avatarPath: string | null;
+  readonly locale: string;
+  readonly countryCode: string | null;
+  readonly timezone: string | null;
+  readonly visibility: ProfileVisibility;
+}
+
+export type ProfileLookupResult =
+  | { readonly kind: "found"; readonly profile: ProfileRecord }
+  /** Conta existe mas ainda nao tem linha em `user_profiles`. */
+  | { readonly kind: "not_found" };
+
+export type ProfileUpsertResult =
+  | { readonly kind: "saved"; readonly profile: ProfileRecord }
+  /** `handle` ja pertence a outra conta (unique em `users.handle`). */
+  | { readonly kind: "conflict"; readonly conflict: PersistenceConflict };
+
+/**
+ * Registro de consentimento ja gravado. Espelha EXATAMENTE
+ * `StoredConsentRecord` (privacy/consent.ts) — o dominio e quem decide qual e o
+ * vigente (`currentConsent`), entao o adapter nao ordena, nao filtra e nao
+ * deduplica: devolve as linhas como estao.
+ *
+ * Deliberadamente NAO ha `update` nem `delete`: consentimento e APPEND-ONLY
+ * (invariante LGPD de prova). Revogar e inserir `granted=false`.
+ */
+export interface ConsentRecordRow {
+  readonly kind: ConsentKind;
+  readonly granted: boolean;
+  readonly policyVersion: string;
+  readonly occurredAt: Date;
+}
+
+/** Entrada de gravacao; espelha `ConsentRecordPlan` (privacy/consent.ts). */
+export interface ConsentAppendInput {
+  readonly userId: bigint;
+  readonly kind: ConsentKind;
+  readonly granted: boolean;
+  readonly policyVersion: string;
+  readonly occurredAt: Date;
+}
+
+/** Pedido LGPD como a persistencia o devolve. */
+export interface DataRequestRecord {
+  readonly id: bigint;
+  readonly kind: DataRequestKind;
+  readonly status: DataRequestStatus;
+  readonly requestedAt: Date;
+  readonly processedAt: Date | null;
+}
+
+export interface DataRequestCreateInput {
+  readonly userId: bigint;
+  readonly kind: DataRequestKind;
+  readonly status: DataRequestStatus;
+  readonly requestedAt: Date;
+}
+
+export type DataRequestCreateResult =
+  | { readonly kind: "created"; readonly request: DataRequestRecord }
+  | { readonly kind: "conflict"; readonly conflict: PersistenceConflict };
+
+export type DataRequestLookupResult =
+  | { readonly kind: "found"; readonly request: DataRequestRecord }
+  | { readonly kind: "not_found" };
+
+/**
+ * Transicao de estado de um pedido, por COMPARE-AND-SWAP sobre o status
+ * esperado. Sem a pre-imagem, dois processadores concorrentes marcariam o mesmo
+ * pedido como concluido duas vezes — e o segundo sobrescreveria o carimbo do
+ * primeiro.
+ *
+ * `processedBy` e identidade HUMANA (o schema o documenta): nunca "agent",
+ * nunca "system". Quando a conclusao e automatica o campo fica `null`.
+ */
+export interface DataRequestTransitionInput {
+  readonly id: bigint;
+  readonly expectedStatus: DataRequestStatus;
+  readonly nextStatus: DataRequestStatus;
+  readonly processedAt: Date | null;
+  readonly processedBy: string | null;
+}
+
+export type DataRequestTransitionResult =
+  | { readonly kind: "updated" }
+  | { readonly kind: "not_found" }
+  /** O status mudou entre a leitura e a escrita. */
+  | { readonly kind: "conflict"; readonly conflict: PersistenceConflict };
+
+/**
+ * Entrada de auditoria de autenticacao (`user_auth_audit_logs`).
+ *
+ * A tabela e APPEND-ONLY por trigger no banco (UPDATE e proibido), entao o port
+ * tem UM metodo e so: `append`. Nao ha `update`, `delete` nem varredura
+ * administrativa.
+ *
+ * `ipHash` ja chega HASHEADO — o mesmo contrato do resto da autenticacao: IP
+ * cru nunca atravessa esta camada. `detail` e um objeto de chaves controladas
+ * pelo chamador; senha, token e hash de token NUNCA entram (a guarda de fonte
+ * em `__tests__/boundary.test.ts` e o revisor humano cobrem isso).
+ */
+export interface AuthAuditAppendInput {
+  readonly userId: bigint | null;
+  readonly sessionId: bigint | null;
+  readonly action: AuthAuditAction;
+  readonly ipHash: string | null;
+  readonly userAgent: string | null;
+  readonly detail: Readonly<Record<string, string | number | boolean | null>> | null;
+  readonly occurredAt: Date;
+}
+
+/**
+ * Transicao de status da conta (`users.status`), por COMPARE-AND-SWAP.
+ *
+ * `deletedAt` acompanha a transicao porque o schema tem um CHECK que amarra os
+ * dois: `deleted`/`pending_deletion` sao coerentes com `deleted_at`. Deixar o
+ * carimbo para uma segunda escrita deixaria a linha temporariamente violando o
+ * proprio CHECK — o banco recusaria.
+ */
+export interface AccountStatusTransitionInput {
+  readonly userId: bigint;
+  readonly expectedStatus: UserStatus;
+  readonly nextStatus: UserStatus;
+  readonly deletedAt: Date | null;
+}
+
+export type AccountStatusTransitionResult =
+  | { readonly kind: "updated" }
+  | { readonly kind: "not_found" }
+  /** O status mudou entre a leitura e a escrita (ex.: duas abas pedindo). */
+  | { readonly kind: "conflict"; readonly conflict: PersistenceConflict };
+
+/**
+ * Anonimizacao definitiva (LGPD art. 18, VI). A linha de `users` NUNCA some —
+ * vira TUMBA: perde e-mail, handle e nome, mantem `id` para integridade
+ * referencial do que a lei/contrato exige reter.
+ *
+ * Os valores anonimos chegam PRONTOS do dominio (`buildDeletionPlan`), nao sao
+ * inventados pelo adapter: o dominio e quem sabe qual placeholder preserva a
+ * unicidade das colunas `email`/`email_normalized`/`handle`.
+ */
+export interface AccountAnonymizeInput {
+  readonly userId: bigint;
+  readonly anonymizedEmail: string;
+  readonly anonymizedEmailNormalized: string;
+  readonly anonymizedAt: Date;
+}
+
+export type AccountAnonymizeResult =
+  | { readonly kind: "anonymized" }
+  | { readonly kind: "not_found" }
+  | { readonly kind: "conflict"; readonly conflict: PersistenceConflict };
+
+/**
+ * Projecao de EXPORTACAO de UM titular.
+ *
+ * As chaves espelham as categorias EXPORTAVEIS de `DATA_CLASSIFICATION`
+ * (privacy/policy.ts) e nada alem: `account_core`, `profile`,
+ * `product_content`, `product_stats`, `governance_consents`,
+ * `governance_requests`. Credencial, sessao, token, hash de IP e auditoria NAO
+ * tem campo aqui — a ausencia e estrutural, nao uma checagem que alguem possa
+ * esquecer de rodar.
+ *
+ * Os tipos sao deliberadamente frouxos (`unknown[]`) para o conteudo de
+ * produto: esta unidade nao modela listas, tracking, ratings nem reviews (sao
+ * dos Prompts 08+); ela apenas os transporta como linhas ja serializadas pelo
+ * adapter, para que o export nao mude quando aquelas features chegarem.
+ */
+export interface ExportProjection {
+  readonly accountCore: {
+    readonly email: string;
+    readonly status: UserStatus;
+    readonly emailVerifiedAt: Date | null;
+    readonly createdAt: Date;
+  };
+  readonly profile: ProfileRecord | null;
+  readonly productContent: Readonly<Record<string, readonly unknown[]>>;
+  readonly productStats: unknown | null;
+  readonly governanceConsents: readonly ConsentRecordRow[];
+  readonly governanceRequests: readonly DataRequestRecord[];
+}
+
+export type ExportProjectionResult =
+  | { readonly kind: "found"; readonly projection: ExportProjection }
+  | { readonly kind: "not_found" };
+
+/**
+ * Usuario autenticado como a PERSISTENCIA o devolve (C7D).
+ *
+ * Mais largo que `IdentityRecord` de proposito: aquele existe para DECIDIR
+ * (`decideLogin` so consulta `status`) e por isso e minimo; este existe para
+ * MONTAR a resposta do proprio dono, e por isso carrega o que
+ * `toCurrentUserDto` seleciona.
+ *
+ * A forma coincide com `AuthenticatedUserInternal` (contracts/auth-internal.ts)
+ * e a duplicacao e deliberada: a persistencia nao importa `contracts/`. O
+ * mapeamento campo a campo acontece em `auth-runtime/identity-read.ts`, onde
+ * acrescentar uma coluna aqui NAO a publica sozinha do outro lado.
+ *
+ * Carrega PII (`email`, `emailNormalized`) porque a tela de conta a exibe ao
+ * proprio titular. `toCurrentUserDto` e quem faz o whitelist para o DTO publico
+ * — e ele NAO inclui e-mail.
+ */
+export interface AuthenticatedUserRecord {
+  readonly id: bigint;
+  readonly handle: string | null;
+  readonly displayName: string | null;
+  readonly email: string;
+  readonly emailNormalized: string;
+  readonly emailVerifiedAt: Date | null;
+  readonly role: UserRole;
+  readonly status: UserStatus;
+  readonly locale: string;
+  readonly profileVisibility: ProfileVisibility;
+  readonly createdAt: Date;
+  readonly deletedAt: Date | null;
+}
+
+export type AuthenticatedUserLookupResult =
+  | { readonly kind: "found"; readonly user: AuthenticatedUserRecord }
+  | { readonly kind: "not_found" };

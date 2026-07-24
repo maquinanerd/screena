@@ -20,10 +20,15 @@
 
 import {
   AUTH_SECURITY_HEADERS,
-  createAuthRuntime,
+  createFullAuthRuntime,
   isAuthRuntimeConfigurationError,
 } from "@screena/user-platform/auth-runtime";
-import type { AuthEmailLogEvent, AuthHttpHandlers } from "@screena/user-platform/auth-runtime";
+import type {
+  AuthEmailLogEvent,
+  AuthenticatedHttpHandlers,
+  AuthHttpHandlers,
+  AuthRuntimeHandlers,
+} from "@screena/user-platform/auth-runtime";
 
 /**
  * Coletor de observabilidade. O evento ja e um tipo FECHADO — nao ha campo por
@@ -43,26 +48,35 @@ function logUnexpected(correlationId: string): void {
   console.error(JSON.stringify({ scope: "auth-email", outcome: "unexpected_error", correlationId }));
 }
 
-let cached: AuthHttpHandlers | null = null;
+let cached: AuthRuntimeHandlers | null = null;
 
 /**
- * Constroi os handlers na PRIMEIRA requisicao, nao no carregamento do modulo.
+ * Constroi AMBOS os conjuntos de handlers na PRIMEIRA requisicao, nao no
+ * carregamento do modulo.
  *
- * `createAuthRuntime` lanca quando a configuracao esta incompleta. Se isso
+ * `createFullAuthRuntime` lanca quando a configuracao esta incompleta. Se isso
  * acontecesse no import, `next build` quebraria — e o build roda de proposito
  * SEM nenhuma env (ver o Dockerfile), porque as variaveis publicas passaram a
  * ser 100% de runtime. A falha continua sendo cedo o suficiente: acontece antes
  * de qualquer e-mail ser enviado, na primeira chamada ao endpoint, e vira 500
  * generico com o motivo (nomes de variavel, nunca valores) no log do servidor.
  */
-function authHandlers(): AuthHttpHandlers {
+function fullRuntime(): AuthRuntimeHandlers {
   if (cached === null) {
-    cached = createAuthRuntime({
+    cached = createFullAuthRuntime({
       logger: logAuthEvent,
       onUnexpectedError: logUnexpected,
     });
   }
   return cached;
+}
+
+function authHandlers(): AuthHttpHandlers {
+  return fullRuntime().email;
+}
+
+function authenticatedHandlers(): AuthenticatedHttpHandlers {
+  return fullRuntime().authenticated;
 }
 
 /**
@@ -74,6 +88,34 @@ function authHandlers(): AuthHttpHandlers {
  * generico, com a lista de nomes de variavel apenas no log do servidor. Deixar a
  * excecao subir entregaria uma pagina de erro do Next com stack.
  */
+/**
+ * Executa um endpoint AUTENTICADO (cadastro, login, sessao, perfil,
+ * privacidade). Mesma casca de protecao do `runAuthEndpoint`: so a construcao
+ * do runtime pode lancar aqui — os handlers ja contem as proprias excecoes.
+ */
+export async function runAuthenticatedEndpoint(
+  pick: (handlers: AuthenticatedHttpHandlers) => (request: Request) => Promise<Response>,
+  request: Request,
+): Promise<Response> {
+  try {
+    return await pick(authenticatedHandlers())(request);
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        scope: "auth-session",
+        outcome: "runtime_unavailable",
+        detail: isAuthRuntimeConfigurationError(error)
+          ? error.details
+          : "falha de construcao do runtime (detalhe omitido de proposito)",
+      }),
+    );
+    return new Response(
+      JSON.stringify({ ok: false, code: "error", message: "nao foi possivel completar a operacao." }),
+      { status: 500, headers: { ...AUTH_SECURITY_HEADERS } },
+    );
+  }
+}
+
 export async function runAuthEndpoint(
   pick: (handlers: AuthHttpHandlers) => (request: Request) => Promise<Response>,
   request: Request,

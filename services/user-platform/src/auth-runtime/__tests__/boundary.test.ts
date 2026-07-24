@@ -111,7 +111,10 @@ describe("(0) a varredura enxerga codigo de verdade (anti-vacuidade)", () => {
     expect(DOMAIN_FILES.length).toBeGreaterThan(20);
     expect(PERSISTENCE_FILES.length).toBeGreaterThan(5);
     expect(PROVIDER_FILES.length).toBe(2);
-    expect(HTTP_FILES.length).toBe(4);
+    // C7D acrescentou cookies.ts e authenticated-handlers.ts a http/, e
+    // account.ts, privacy-services.ts e identity-read.ts a auth-runtime/. A
+    // guarda continua sendo anti-vacua (piso >), nao um contador fragil.
+    expect(HTTP_FILES.length).toBeGreaterThan(4);
     expect(RUNTIME_FILES.length).toBeGreaterThan(7);
   });
 

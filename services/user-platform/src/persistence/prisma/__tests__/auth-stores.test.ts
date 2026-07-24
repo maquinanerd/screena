@@ -159,10 +159,16 @@ describe("SessionStore.findByTokenHash", () => {
     expect(JSON.stringify(calls[0]!.args["where"])).not.toContain("expiresAt");
   });
 
-  it("(2) o registro devolvido NAO carrega hash algum", async () => {
+  it("(2) o registro devolvido NAO carrega o hash do TOKEN DE SESSAO", async () => {
     const { executor, calls } = fakeExecutor({
       userSession: {
-        findUnique: () => ({ id: 9n, userId: 5n, expiresAt: AGORA, revokedAt: null }),
+        findUnique: () => ({
+          id: 9n,
+          userId: 5n,
+          expiresAt: AGORA,
+          revokedAt: null,
+          csrfTokenHash: HASH_CSRF,
+        }),
       },
     });
     const r = await createPrismaSessionStore(executor).findByTokenHash(SCOPE, HASH_SESSAO);
@@ -171,10 +177,17 @@ describe("SessionStore.findByTokenHash", () => {
       userId: true,
       expiresAt: true,
       revokedAt: true,
+      // C7D: insumo do double submit. E um segredo DIFERENTE do token de
+      // sessao, apresentado em outro canal (cabecalho `X-CSRF-Token`), que o
+      // chamador nao tem como derivar — sem ele `requireCsrf` e inchamavel.
+      csrfTokenHash: true,
     });
     const serializado = JSON.stringify(r, (_k, v) => (typeof v === "bigint" ? "0" : v));
+    // O hash do token de SESSAO continua proibido: a busca e por ele, entao
+    // quem consultou ja o tem e devolve-lo so ampliaria a superficie.
     expect(serializado).not.toContain(HASH_SESSAO);
-    expect(serializado).not.toContain(HASH_CSRF);
+    // O CSRF sai — e a excecao provada, para a guarda nao virar vacua.
+    expect(serializado).toContain(HASH_CSRF);
   });
 
   it("(3) ausencia e resultado normal", async () => {

@@ -66,5 +66,48 @@ import type { PrismaClient } from "@screena/db/server";
  */
 export type PrismaExecutor = Pick<
   PrismaClient,
-  "user" | "passwordCredential" | "userSession" | "verificationToken" | "authThrottle"
+  | "user"
+  | "passwordCredential"
+  | "userSession"
+  | "verificationToken"
+  | "authThrottle"
+  // C7D: perfil, consentimento, pedidos LGPD e auditoria. Continuam sendo
+  // DELEGACOES DE MODEL — nenhum membro de ciclo de vida entrou, entao a
+  // garantia estrutural do topo deste arquivo (nao conecta, nao desconecta,
+  // nao abre transacao) segue valendo sem depender de varredura.
+  | "userProfile"
+  | "consentRecord"
+  | "dataRequest"
+  | "authAuditLog"
+>;
+
+/**
+ * Superficie da LEITURA DE EXPORTACAO (C7D), separada de proposito.
+ *
+ * A exportacao e o unico caminho desta unidade que precisa ler o conteudo de
+ * produto do titular (listas, tracking, notas, reviews, estatisticas). Somar
+ * essas delegacoes ao `PrismaExecutor` daria a TODO adapter de autenticacao
+ * acesso de leitura a elas — e a menor superficie possivel e justamente o que
+ * torna a garantia estrutural, e nao uma regra que alguem precisa lembrar.
+ *
+ * Note o que NAO esta aqui: `passwordCredential`, `userSession`,
+ * `verificationToken` e `authAuditLog`. O leitor de exportacao NAO CONSEGUE, por
+ * tipo, alcancar credencial, sessao, token ou auditoria — as quatro categorias
+ * que `DATA_CLASSIFICATION` marca como nunca exportaveis. A exclusao deixa de
+ * depender de disciplina do autor do adapter.
+ */
+export type PrismaExportExecutor = Pick<
+  PrismaClient,
+  | "user"
+  | "userProfile"
+  | "consentRecord"
+  | "dataRequest"
+  | "userList"
+  | "userListItem"
+  | "userWatchState"
+  | "episodeProgress"
+  | "viewingEvent"
+  | "userRating"
+  | "userReview"
+  | "userStatsSnapshot"
 >;

@@ -15,12 +15,25 @@
  */
 
 import type {
+  AccountLifecycleStore,
+  AuthAuditStore,
   AuthThrottleStore,
   AuthTokenStore,
+  ConsentStore,
+  DataRequestStore,
+  ExportReadStore,
   IdentityStore,
   PasswordCredentialStore,
   SessionStore,
+  UserProfileStore,
 } from "../../persistence/ports.js";
+import type {
+  AuthAuditAction,
+  ConsentKind,
+  DataRequestKind,
+  DataRequestStatus,
+  ProfileVisibility,
+} from "../../core/types.js";
 import type {
   AuthThrottleReadResult,
   AuthThrottleSaveInput,
@@ -32,6 +45,24 @@ import type {
   AuthTokenIssueResult,
   AuthThrottleKey,
   AuthThrottleState,
+  AccountAnonymizeInput,
+  AccountAnonymizeResult,
+  AccountStatusTransitionInput,
+  AccountStatusTransitionResult,
+  AuthAuditAppendInput,
+  AuthenticatedUserLookupResult,
+  ConsentAppendInput,
+  ConsentRecordRow,
+  DataRequestCreateInput,
+  DataRequestCreateResult,
+  DataRequestLookupResult,
+  DataRequestRecord,
+  DataRequestTransitionInput,
+  DataRequestTransitionResult,
+  ExportProjectionResult,
+  ProfileLookupResult,
+  ProfileUpsertInput,
+  ProfileUpsertResult,
   CredentialCreateInput,
   CredentialCreateResult,
   CredentialReplaceInput,
@@ -59,7 +90,7 @@ import type {
 } from "../../email/types.js";
 import { TransactionalEmailError } from "../../email/types.js";
 import { generateOpaqueToken, sha256Hex } from "../../core/crypto.js";
-import type { AuthEmailRuntimeDeps, AuthStores, AuthTransactionRunner } from "../deps.js";
+import type { AuthRuntimeDeps, AuthStores, AuthTransactionRunner } from "../deps.js";
 import type { AuthEmailLogEvent } from "../observability.js";
 
 const SCOPE: TransactionScope = { transactional: true };
@@ -84,6 +115,35 @@ export interface FakeSessionRow {
   readonly userId: bigint;
   readonly expiresAt: Date;
   revokedAt: Date | null;
+  /** C7D: insumo do double submit; guardado como o banco guarda (hash). */
+  readonly csrfTokenHash: string;
+}
+
+/** C7D: linha de consentimento (append-only, como a tabela). */
+export interface FakeConsentRow {
+  readonly userId: bigint;
+  readonly kind: ConsentKind;
+  readonly granted: boolean;
+  readonly policyVersion: string;
+  readonly occurredAt: Date;
+}
+
+/** C7D: pedido LGPD. */
+export interface FakeDataRequestRow {
+  readonly id: bigint;
+  readonly userId: bigint;
+  readonly kind: DataRequestKind;
+  status: DataRequestStatus;
+  readonly requestedAt: Date;
+  processedAt: Date | null;
+}
+
+/** C7D: entrada de auditoria (append-only). */
+export interface FakeAuditRow {
+  readonly userId: bigint | null;
+  readonly sessionId: bigint | null;
+  readonly action: AuthAuditAction;
+  readonly occurredAt: Date;
 }
 
 export interface FakeDb {
@@ -92,7 +152,24 @@ export interface FakeDb {
   sessions: Map<string, FakeSessionRow>;
   tokens: Map<string, FakeTokenRow>;
   throttles: Map<string, AuthThrottleState>;
+  /** C7D. Arrays, nao Maps: consentimento e auditoria sao APPEND-ONLY. */
+  consents: FakeConsentRow[];
+  dataRequests: FakeDataRequestRow[];
+  audit: FakeAuditRow[];
+  profiles: Map<string, FakeProfileRow>;
   nextId: bigint;
+}
+
+/** C7D: perfil publico (users.display_name/handle + user_profiles). */
+export interface FakeProfileRow {
+  displayName: string | null;
+  handle: string | null;
+  bio: string | null;
+  avatarPath: string | null;
+  locale: string;
+  countryCode: string | null;
+  timezone: string | null;
+  visibility: ProfileVisibility;
 }
 
 export function createFakeDb(): FakeDb {
@@ -102,6 +179,10 @@ export function createFakeDb(): FakeDb {
     sessions: new Map(),
     tokens: new Map(),
     throttles: new Map(),
+    consents: [],
+    dataRequests: [],
+    audit: [],
+    profiles: new Map(),
     nextId: 1n,
   };
 }
@@ -153,7 +234,11 @@ export function createFakeStores(db: FakeDb): AuthStores {
           conflict: { reason: "unique_violation", target: "identity.emailNormalized" },
         };
       }
-      const id = seedUser(db, { emailNormalized: input.emailNormalized });
+      // `passwordHash: null` de proposito: criar a IDENTIDADE nao cria
+      // credencial. O `seedUser` default criaria uma (o cadastro real usa
+      // `createInitial` como passo SEPARADO na mesma transacao), e essa
+      // credencial fantasma faria o `createInitial` do signup colidir.
+      const id = seedUser(db, { emailNormalized: input.emailNormalized, passwordHash: null });
       return { kind: "created", identity: { id, status: "active" } };
     },
     async findByNormalizedEmail(
@@ -259,6 +344,7 @@ export function createFakeStores(db: FakeDb): AuthStores {
         userId: record.userId,
         expiresAt: record.expiresAt,
         revokedAt: null,
+        csrfTokenHash: record.csrfTokenHash,
       });
       return { kind: "created", sessionId: id };
     },
@@ -276,6 +362,7 @@ export function createFakeStores(db: FakeDb): AuthStores {
               userId: row.userId,
               expiresAt: row.expiresAt,
               revokedAt: row.revokedAt,
+              csrfTokenHash: row.csrfTokenHash,
             },
           };
     },
@@ -392,7 +479,306 @@ export function createFakeStores(db: FakeDb): AuthStores {
     },
   };
 
-  return { identities, credentials, sessions, authTokens, throttles };
+  // -------------------------------------------------------------------------
+  // C7D — perfil, consentimento, pedidos LGPD, auditoria e ciclo de vida
+  // -------------------------------------------------------------------------
+
+  const profiles: UserProfileStore = {
+    async findByUserId(_s: TransactionScope, userId: bigint): Promise<ProfileLookupResult> {
+      const existeConta = [...db.users.values()].some((u) => u.id === userId);
+      if (!existeConta) return { kind: "not_found" };
+      const row = db.profiles.get(String(userId));
+      // Conta sem perfil devolve os DEFAULTS de coluna, como o adapter real.
+      return {
+        kind: "found",
+        profile: row ?? {
+          displayName: null,
+          handle: null,
+          bio: null,
+          avatarPath: null,
+          locale: "pt-BR",
+          countryCode: null,
+          timezone: null,
+          visibility: "private",
+        },
+      };
+    },
+
+    async findAuthenticatedUser(
+      _s: TransactionScope,
+      userId: bigint,
+    ): Promise<AuthenticatedUserLookupResult> {
+      const user = [...db.users.values()].find((u) => u.id === userId);
+      if (user === undefined) return { kind: "not_found" };
+      const perfil = db.profiles.get(String(userId));
+      return {
+        kind: "found",
+        user: {
+          id: user.id,
+          handle: perfil?.handle ?? null,
+          displayName: perfil?.displayName ?? null,
+          email: user.emailNormalized,
+          emailNormalized: user.emailNormalized,
+          emailVerifiedAt: user.emailVerifiedAt,
+          role: "user",
+          status: user.status,
+          locale: perfil?.locale ?? "pt-BR",
+          profileVisibility: perfil?.visibility ?? "private",
+          createdAt: new Date(0),
+          deletedAt: null,
+        },
+      };
+    },
+
+    async upsert(_s: TransactionScope, input: ProfileUpsertInput): Promise<ProfileUpsertResult> {
+      // Mesma PRE-CONDICAO do adapter real: handle de outra conta e conflito.
+      if (input.handle !== null) {
+        for (const [key, row] of db.profiles) {
+          if (row.handle === input.handle && key !== String(input.userId)) {
+            return {
+              kind: "conflict",
+              conflict: { reason: "unique_violation", target: "identity.handle" },
+            };
+          }
+        }
+      }
+      const next: FakeProfileRow = {
+        displayName: input.displayName,
+        handle: input.handle,
+        bio: input.bio,
+        avatarPath: input.avatarPath,
+        locale: input.locale,
+        countryCode: input.countryCode,
+        timezone: input.timezone,
+        visibility: input.visibility,
+      };
+      db.profiles.set(String(input.userId), next);
+      return { kind: "saved", profile: next };
+    },
+  };
+
+  const consents: ConsentStore = {
+    async append(_s: TransactionScope, input: ConsentAppendInput): Promise<void> {
+      db.consents.push({ ...input });
+    },
+    async listByUser(_s: TransactionScope, userId: bigint): Promise<readonly ConsentRecordRow[]> {
+      // SEM ordenar: o adapter real tambem nao ordena — `currentConsent` decide.
+      return db.consents
+        .filter((c) => c.userId === userId)
+        .map(({ kind, granted, policyVersion, occurredAt }) => ({
+          kind,
+          granted,
+          policyVersion,
+          occurredAt,
+        }));
+    },
+    async listByUserAndKind(
+      _s: TransactionScope,
+      input: { readonly userId: bigint; readonly kind: ConsentKind },
+    ): Promise<readonly ConsentRecordRow[]> {
+      return db.consents
+        .filter((c) => c.userId === input.userId && c.kind === input.kind)
+        .map(({ kind, granted, policyVersion, occurredAt }) => ({
+          kind,
+          granted,
+          policyVersion,
+          occurredAt,
+        }));
+    },
+  };
+
+  const dataRequests: DataRequestStore = {
+    async create(
+      _s: TransactionScope,
+      input: DataRequestCreateInput,
+    ): Promise<DataRequestCreateResult> {
+      const id = db.nextId;
+      db.nextId += 1n;
+      const row: FakeDataRequestRow = {
+        id,
+        userId: input.userId,
+        kind: input.kind,
+        status: input.status,
+        requestedAt: input.requestedAt,
+        processedAt: null,
+      };
+      db.dataRequests.push(row);
+      return {
+        kind: "created",
+        request: {
+          id,
+          kind: row.kind,
+          status: row.status,
+          requestedAt: row.requestedAt,
+          processedAt: null,
+        },
+      };
+    },
+    async findLatestByKind(
+      _s: TransactionScope,
+      input: { readonly userId: bigint; readonly kind: DataRequestKind },
+    ): Promise<DataRequestLookupResult> {
+      const candidatos = db.dataRequests.filter(
+        (r) => r.userId === input.userId && r.kind === input.kind,
+      );
+      if (candidatos.length === 0) return { kind: "not_found" };
+      // Mesmo criterio do adapter: requestedAt DESC, id DESC (determinismo).
+      const row = candidatos.reduce((a, b) =>
+        b.requestedAt.getTime() > a.requestedAt.getTime() ||
+        (b.requestedAt.getTime() === a.requestedAt.getTime() && b.id > a.id)
+          ? b
+          : a,
+      );
+      return {
+        kind: "found",
+        request: {
+          id: row.id,
+          kind: row.kind,
+          status: row.status,
+          requestedAt: row.requestedAt,
+          processedAt: row.processedAt,
+        },
+      };
+    },
+    async listByUser(
+      _s: TransactionScope,
+      userId: bigint,
+    ): Promise<readonly DataRequestRecord[]> {
+      return db.dataRequests
+        .filter((r) => r.userId === userId)
+        .map((r) => ({
+          id: r.id,
+          kind: r.kind,
+          status: r.status,
+          requestedAt: r.requestedAt,
+          processedAt: r.processedAt,
+        }));
+    },
+    async transition(
+      _s: TransactionScope,
+      input: DataRequestTransitionInput,
+    ): Promise<DataRequestTransitionResult> {
+      const row = db.dataRequests.find((r) => r.id === input.id);
+      if (row === undefined) return { kind: "not_found" };
+      // COMPARE-AND-SWAP sobre o status esperado, como o adapter real.
+      if (row.status !== input.expectedStatus) {
+        return {
+          kind: "conflict",
+          conflict: { reason: "stale_preimage", target: "dataRequest.status" },
+        };
+      }
+      row.status = input.nextStatus;
+      row.processedAt = input.processedAt;
+      return { kind: "updated" };
+    },
+  };
+
+  const audit: AuthAuditStore = {
+    async append(_s: TransactionScope, input: AuthAuditAppendInput): Promise<void> {
+      db.audit.push({
+        userId: input.userId,
+        sessionId: input.sessionId,
+        action: input.action,
+        occurredAt: input.occurredAt,
+      });
+    },
+  };
+
+  const accountLifecycle: AccountLifecycleStore = {
+    async transitionStatus(
+      _s: TransactionScope,
+      input: AccountStatusTransitionInput,
+    ): Promise<AccountStatusTransitionResult> {
+      const user = [...db.users.values()].find((u) => u.id === input.userId);
+      if (user === undefined) return { kind: "not_found" };
+      if (user.status !== input.expectedStatus) {
+        return {
+          kind: "conflict",
+          conflict: { reason: "stale_preimage", target: "identity.status" },
+        };
+      }
+      user.status = input.nextStatus;
+      return { kind: "updated" };
+    },
+    async anonymize(
+      _s: TransactionScope,
+      input: AccountAnonymizeInput,
+    ): Promise<AccountAnonymizeResult> {
+      const entry = [...db.users.entries()].find(([, u]) => u.id === input.userId);
+      if (entry === undefined) return { kind: "not_found" };
+      const [key, user] = entry;
+      // PRE-CONDICAO do adapter real: so anonimiza quem ja pediu encerramento.
+      if (user.status !== "pending_deletion") {
+        return {
+          kind: "conflict",
+          conflict: { reason: "stale_preimage", target: "identity.status" },
+        };
+      }
+      db.users.delete(key);
+      db.users.set(input.anonymizedEmailNormalized, {
+        id: user.id,
+        emailNormalized: input.anonymizedEmailNormalized,
+        status: "deleted",
+        emailVerifiedAt: null,
+      });
+      db.profiles.delete(String(input.userId));
+      return { kind: "anonymized" };
+    },
+  };
+
+  const exportReader: ExportReadStore = {
+    async project(_s: TransactionScope, userId: bigint): Promise<ExportProjectionResult> {
+      const user = [...db.users.values()].find((u) => u.id === userId);
+      if (user === undefined) return { kind: "not_found" };
+      const perfil = db.profiles.get(String(userId));
+      return {
+        kind: "found",
+        projection: {
+          accountCore: {
+            email: user.emailNormalized,
+            status: user.status,
+            emailVerifiedAt: user.emailVerifiedAt,
+            createdAt: new Date(0),
+          },
+          profile: perfil ?? null,
+          // Vazio: este duble nao modela conteudo de produto (Prompts 08+).
+          productContent: {},
+          productStats: null,
+          governanceConsents: db.consents
+            .filter((c) => c.userId === userId)
+            .map(({ kind, granted, policyVersion, occurredAt }) => ({
+              kind,
+              granted,
+              policyVersion,
+              occurredAt,
+            })),
+          governanceRequests: db.dataRequests
+            .filter((r) => r.userId === userId)
+            .map((r) => ({
+              id: r.id,
+              kind: r.kind,
+              status: r.status,
+              requestedAt: r.requestedAt,
+              processedAt: r.processedAt,
+            })),
+        },
+      };
+    },
+  };
+
+  return {
+    identities,
+    credentials,
+    sessions,
+    authTokens,
+    throttles,
+    profiles,
+    consents,
+    dataRequests,
+    audit,
+    accountLifecycle,
+    exportReader,
+  };
 }
 
 /**
@@ -412,6 +798,13 @@ export function createFakeRunner(db: FakeDb): AuthTransactionRunner {
       sessions: structuredClone(db.sessions),
       tokens: structuredClone(db.tokens),
       throttles: structuredClone(db.throttles),
+      // C7D. Sem estas cinco, um cadastro ABORTADO deixaria consentimento e
+      // auditoria para tras, e o teste que prova "aborto nao grava nada"
+      // passaria por engano — a prova estaria olhando so metade das tabelas.
+      consents: structuredClone(db.consents),
+      dataRequests: structuredClone(db.dataRequests),
+      audit: structuredClone(db.audit),
+      profiles: structuredClone(db.profiles),
       nextId: db.nextId,
     };
     try {
@@ -422,6 +815,10 @@ export function createFakeRunner(db: FakeDb): AuthTransactionRunner {
       db.sessions = snapshot.sessions;
       db.tokens = snapshot.tokens;
       db.throttles = snapshot.throttles;
+      db.consents = snapshot.consents;
+      db.dataRequests = snapshot.dataRequests;
+      db.audit = snapshot.audit;
+      db.profiles = snapshot.profiles;
       db.nextId = snapshot.nextId;
       throw error;
     }
@@ -499,8 +896,18 @@ export function fakeHashPassword(password: string): string {
   return `scrypt$N=2,r=1,p=1$0011$${Buffer.from(password, "utf8").toString("hex")}`;
 }
 
+/**
+ * Verificacao PAR do `fakeHashPassword`: re-hasheia e compara. Determinista e
+ * sem custo, mas com a MESMA semantica de producao (senha errada -> false, hash
+ * malformado -> false), para que os testes de login/troca/encerramento provem o
+ * caminho real de credencial em vez de um booleano plantado.
+ */
+export function fakeVerifyPassword(password: string, storedHash: string): boolean {
+  return fakeHashPassword(password) === storedHash;
+}
+
 export interface TestRuntime {
-  readonly deps: AuthEmailRuntimeDeps;
+  readonly deps: AuthRuntimeDeps;
   readonly db: FakeDb;
   readonly clock: TestClock;
   readonly emails: FakeEmailProvider;
@@ -532,6 +939,11 @@ export function createTestRuntime(options: {
   readonly db?: FakeDb;
   readonly passwordResetExpirationMinutes?: number;
   readonly emailVerificationExpirationMinutes?: number;
+  readonly sessionTtlHours?: number;
+  readonly production?: boolean;
+  readonly termsPolicyVersion?: string;
+  readonly privacyPolicyVersion?: string;
+  readonly deletionGraceDays?: number;
 } = {}): TestRuntime {
   const db = options.db ?? createFakeDb();
   const clock = options.clock ?? createTestClock();
@@ -539,7 +951,7 @@ export function createTestRuntime(options: {
   const logs: AuthEmailLogEvent[] = [];
   const agendadas: Promise<void>[] = [];
 
-  const deps: AuthEmailRuntimeDeps = {
+  const deps: AuthRuntimeDeps = {
     runInTransaction: createFakeRunner(db),
     emailProvider: emails,
     scheduleDelivery: (task) => {
@@ -553,6 +965,17 @@ export function createTestRuntime(options: {
     hashSecret: sha256Hex,
     hashPassword: fakeHashPassword,
     logger: (event) => logs.push(event),
+
+    // C7D
+    verifyPassword: fakeVerifyPassword,
+    decoyPasswordHash: fakeHashPassword("cinerie-login-decoy-fixo"),
+    sessionTtlHours: options.sessionTtlHours ?? 720,
+    production: options.production ?? false,
+    policyVersions: {
+      terms_of_service: options.termsPolicyVersion ?? "2026-07",
+      privacy_policy: options.privacyPolicyVersion ?? "2026-07",
+    },
+    deletionGraceDays: options.deletionGraceDays ?? 30,
   };
 
   return {

@@ -17,13 +17,22 @@ import {
   AUTH_TOKEN_PURPOSES,
   USER_STATUSES,
   type AuthTokenPurpose,
+  type ConsentKind,
+  type DataRequestKind,
+  type DataRequestStatus,
+  type ProfileVisibility,
+  type UserRole,
   type UserStatus,
 } from "../../core/types.js";
 import type {
+  AuthenticatedUserRecord,
   AuthThrottleState,
+  ConsentRecordRow,
   CredentialVerificationMaterial,
+  DataRequestRecord,
   EmailVerificationState,
   IdentityRecord,
+  ProfileRecord,
   SessionAccessRecord,
 } from "../types.js";
 
@@ -145,12 +154,17 @@ export interface SessionAccessRow {
   readonly userId: bigint;
   readonly expiresAt: Date;
   readonly revokedAt: Date | null;
+  readonly csrfTokenHash: string;
 }
 
 /**
- * `SessionAccessRecord` = `{ id, userId, expiresAt, revokedAt }` e MAIS NADA.
- * Sem `tokenHash`, sem `csrfTokenHash`, sem `ipHash`, sem `userAgent`: campo a
- * campo, para que ampliar o select nunca vaze sozinho para o dominio.
+ * `SessionAccessRecord` = `{ id, userId, expiresAt, revokedAt, csrfTokenHash }`
+ * e MAIS NADA. Sem `tokenHash`, sem `ipHash`, sem `userAgent`: campo a campo,
+ * para que ampliar o select nunca vaze sozinho para o dominio.
+ *
+ * `csrfTokenHash` entrou em C7D com consumidor real (`requireCsrf` na borda de
+ * mutacao autenticada) — e o HASH, nunca o token cru, que so existe no cookie
+ * do cliente.
  */
 export function toSessionAccessRecord(row: SessionAccessRow): SessionAccessRecord {
   return {
@@ -158,6 +172,7 @@ export function toSessionAccessRecord(row: SessionAccessRow): SessionAccessRecor
     userId: row.userId,
     expiresAt: row.expiresAt,
     revokedAt: row.revokedAt,
+    csrfTokenHash: row.csrfTokenHash,
   };
 }
 
@@ -204,5 +219,202 @@ export function toAuthThrottleState(row: AuthThrottleRow): AuthThrottleState {
     failureCount: row.failureCount,
     windowStartedAt: row.windowStartedAt,
     lockedUntil: row.lockedUntil,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// C7D — PERFIL, CONSENTIMENTO E PEDIDOS LGPD
+// ---------------------------------------------------------------------------
+
+/** Mesma trava do `USER_STATUS_BY_DB`: novo valor no enum do Prisma quebra o build. */
+const PROFILE_VISIBILITY_BY_DB: Record<$Enums.ProfileVisibility, ProfileVisibility> = {
+  private: "private",
+  public: "public",
+};
+
+const CONSENT_KIND_BY_DB: Record<$Enums.ConsentKind, ConsentKind> = {
+  terms_of_service: "terms_of_service",
+  privacy_policy: "privacy_policy",
+  marketing_email: "marketing_email",
+  analytics: "analytics",
+};
+
+const DATA_REQUEST_KIND_BY_DB: Record<$Enums.DataRequestKind, DataRequestKind> = {
+  export: "export",
+  deletion: "deletion",
+};
+
+const DATA_REQUEST_STATUS_BY_DB: Record<$Enums.DataRequestStatus, DataRequestStatus> = {
+  pending: "pending",
+  processing: "processing",
+  completed: "completed",
+  rejected: "rejected",
+  cancelled: "cancelled",
+};
+
+/**
+ * DEFAULT SEGURO da visibilidade quando a conta ainda nao tem linha de perfil.
+ *
+ * Espelha o default da COLUNA (`@default(private)`). Fail-closed em dobro: se
+ * um dia a coluna mudar de default, a divergencia aparece aqui como um perfil
+ * privado demais — nunca publico demais.
+ */
+const VISIBILITY_FALLBACK: ProfileVisibility = "private";
+
+/** Espelha o default da coluna `user_profiles.locale`. */
+const LOCALE_FALLBACK = "pt-BR";
+
+function toProfileVisibility(dbVisibility: $Enums.ProfileVisibility): ProfileVisibility {
+  const mapped = PROFILE_VISIBILITY_BY_DB[dbVisibility] as ProfileVisibility | undefined;
+  if (mapped === undefined) {
+    throw new UnmappableRowError("visibility");
+  }
+  return mapped;
+}
+
+/**
+ * Linha MINIMA do perfil publico: os dois nomes que moram em `users` mais a
+ * linha 1-1 de `user_profiles`, que pode NAO EXISTIR para conta recem-criada.
+ */
+export interface ProfileRow {
+  readonly displayName: string | null;
+  readonly handle: string | null;
+  readonly profile: {
+    readonly bio: string | null;
+    readonly avatarPath: string | null;
+    readonly locale: string;
+    readonly countryCode: string | null;
+    readonly timezone: string | null;
+    readonly visibility: $Enums.ProfileVisibility;
+  } | null;
+}
+
+/**
+ * `ProfileRecord` campo a campo. Perfil AUSENTE nao e erro: vira o estado
+ * default da coluna (privado, pt-BR, sem bio/avatar/pais/fuso) — que e
+ * exatamente o que o banco gravaria no primeiro `upsert`.
+ */
+export function toProfileRecord(row: ProfileRow): ProfileRecord {
+  return {
+    displayName: row.displayName,
+    handle: row.handle,
+    bio: row.profile?.bio ?? null,
+    avatarPath: row.profile?.avatarPath ?? null,
+    locale: row.profile?.locale ?? LOCALE_FALLBACK,
+    countryCode: row.profile?.countryCode ?? null,
+    timezone: row.profile?.timezone ?? null,
+    visibility:
+      row.profile === null ? VISIBILITY_FALLBACK : toProfileVisibility(row.profile.visibility),
+  };
+}
+
+/** Mesma trava dos demais enums do banco. */
+const USER_ROLE_BY_DB: Record<$Enums.UserRole, UserRole> = {
+  user: "user",
+  moderator: "moderator",
+  admin: "admin",
+};
+
+/** Linha do usuario autenticado: `users` + a parte de `user_profiles` que o DTO le. */
+export interface AuthenticatedUserRow {
+  readonly id: bigint;
+  readonly handle: string | null;
+  readonly displayName: string | null;
+  readonly email: string;
+  readonly emailNormalized: string;
+  readonly emailVerifiedAt: Date | null;
+  readonly role: $Enums.UserRole;
+  readonly status: $Enums.UserStatus;
+  readonly createdAt: Date;
+  readonly deletedAt: Date | null;
+  readonly profile: {
+    readonly locale: string;
+    readonly visibility: $Enums.ProfileVisibility;
+  } | null;
+}
+
+/**
+ * `AuthenticatedUserRecord` campo a campo. Perfil ausente (conta recem-criada)
+ * cai nos MESMOS defaults de coluna que `toProfileRecord` usa — inclusive a
+ * visibilidade PRIVADA, que e o default seguro.
+ */
+export function toAuthenticatedUserRecord(row: AuthenticatedUserRow): AuthenticatedUserRecord {
+  const role = USER_ROLE_BY_DB[row.role] as UserRole | undefined;
+  if (role === undefined) {
+    throw new UnmappableRowError("role");
+  }
+  return {
+    id: row.id,
+    handle: row.handle,
+    displayName: row.displayName,
+    email: row.email,
+    emailNormalized: row.emailNormalized,
+    emailVerifiedAt: row.emailVerifiedAt,
+    role,
+    status: toUserStatus(row.status),
+    locale: row.profile?.locale ?? LOCALE_FALLBACK,
+    profileVisibility:
+      row.profile === null ? VISIBILITY_FALLBACK : toProfileVisibility(row.profile.visibility),
+    createdAt: row.createdAt,
+    deletedAt: row.deletedAt,
+  };
+}
+
+/** Linha MINIMA de consentimento — exatamente `StoredConsentRecord`. */
+export interface ConsentRow {
+  readonly kind: $Enums.ConsentKind;
+  readonly granted: boolean;
+  readonly policyVersion: string;
+  readonly occurredAt: Date;
+}
+
+/**
+ * `ConsentRecordRow` campo a campo. NAO carrega `userId` (quem consultou ja o
+ * tem) nem `id`/`createdAt` — `occurredAt` e o unico instante que
+ * `currentConsent` consulta.
+ */
+export function toConsentRecordRow(row: ConsentRow): ConsentRecordRow {
+  const kind = CONSENT_KIND_BY_DB[row.kind] as ConsentKind | undefined;
+  if (kind === undefined) {
+    throw new UnmappableRowError("kind");
+  }
+  return {
+    kind,
+    granted: row.granted,
+    policyVersion: row.policyVersion,
+    occurredAt: row.occurredAt,
+  };
+}
+
+/** Linha MINIMA de pedido LGPD. */
+export interface DataRequestRow {
+  readonly id: bigint;
+  readonly kind: $Enums.DataRequestKind;
+  readonly status: $Enums.DataRequestStatus;
+  readonly requestedAt: Date;
+  readonly processedAt: Date | null;
+}
+
+/**
+ * `DataRequestRecord` campo a campo. NAO carrega `detail` nem `processedBy`:
+ * `detail` e caixa livre (Json) e `processedBy` e identidade de um OPERADOR —
+ * nenhum dos dois tem leitor no caminho do titular, e ambos sairiam direto para
+ * a exportacao se entrassem aqui.
+ */
+export function toDataRequestRecord(row: DataRequestRow): DataRequestRecord {
+  const kind = DATA_REQUEST_KIND_BY_DB[row.kind] as DataRequestKind | undefined;
+  const status = DATA_REQUEST_STATUS_BY_DB[row.status] as DataRequestStatus | undefined;
+  if (kind === undefined) {
+    throw new UnmappableRowError("kind");
+  }
+  if (status === undefined) {
+    throw new UnmappableRowError("status");
+  }
+  return {
+    id: row.id,
+    kind,
+    status,
+    requestedAt: row.requestedAt,
+    processedAt: row.processedAt,
   };
 }

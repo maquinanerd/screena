@@ -166,7 +166,7 @@ export function buildSessionCookieSpec(input: {
   readonly maxAgeSeconds: number;
   readonly production: boolean;
 }): SessionCookieSpec {
-  const name = input.production ? "__Host-cinerie_session" : "cinerie_session";
+  const name = sessionCookieName(input.production);
   return {
     name,
     value: input.token,
@@ -177,5 +177,73 @@ export function buildSessionCookieSpec(input: {
       "Path=/",
       `Max-Age=${Math.max(0, Math.floor(input.maxAgeSeconds))}`,
     ],
+  };
+}
+
+/**
+ * NOMES dos dois cookies, em UM lugar so.
+ *
+ * A borda que ESCREVE e a borda que LE precisam concordar; duas literais em
+ * arquivos diferentes divergem no dia em que alguem renomear uma. O prefixo
+ * `__Host-` so entra em producao porque exige `Secure`, e `Secure` sobre
+ * `http://localhost` faz o navegador descartar o cookie — em desenvolvimento o
+ * login simplesmente nao funcionaria.
+ */
+export function sessionCookieName(production: boolean): string {
+  return production ? "__Host-cinerie_session" : "cinerie_session";
+}
+
+export function csrfCookieName(production: boolean): string {
+  return production ? "__Host-cinerie_csrf" : "cinerie_csrf";
+}
+
+/**
+ * Cookie do token CSRF — o lado "legivel" do double submit.
+ *
+ * DELIBERADAMENTE SEM `HttpOnly`, e essa e a unica diferenca em relacao ao
+ * cookie de sessao. O cliente precisa LER este valor para reapresenta-lo no
+ * cabecalho `X-CSRF-Token`; um cookie que o script nao le nao pode ser
+ * reapresentado, e o double submit deixaria de existir.
+ *
+ * Isso NAO enfraquece a sessao: o token de sessao continua `HttpOnly` e um XSS
+ * que conseguisse ler este valor ja teria a origem para fazer o pedido de
+ * qualquer forma. O que o double submit fecha e o pedido CROSS-SITE, onde a
+ * politica de mesma origem impede o atacante de ler o cookie — e onde definir um
+ * cabecalho custom exige preflight que o nosso endpoint nunca aprova.
+ */
+export function buildCsrfCookieSpec(input: {
+  readonly token: string;
+  readonly maxAgeSeconds: number;
+  readonly production: boolean;
+}): SessionCookieSpec {
+  return {
+    name: csrfCookieName(input.production),
+    value: input.token,
+    attributes: [
+      "Secure",
+      "SameSite=Lax",
+      "Path=/",
+      `Max-Age=${Math.max(0, Math.floor(input.maxAgeSeconds))}`,
+    ],
+  };
+}
+
+/**
+ * Cookie de EXPURGO: mesmo nome, valor vazio, `Max-Age=0`.
+ *
+ * O navegador so remove um cookie quando o `Set-Cookie` de remocao repete
+ * `Path` (e `Domain`, quando houver) do original. Reusar os mesmos atributos
+ * daqui e o que garante que o logout realmente apaga — em vez de criar um
+ * segundo cookie de mesmo nome em outro path, que continuaria sendo enviado.
+ */
+export function buildClearedCookieSpec(input: {
+  readonly name: string;
+  readonly httpOnly: boolean;
+}): SessionCookieSpec {
+  const attributes = ["Secure", "SameSite=Lax", "Path=/", "Max-Age=0"];
+  return {
+    name: input.name,
+    value: "",
+    attributes: input.httpOnly ? ["HttpOnly", ...attributes] : attributes,
   };
 }

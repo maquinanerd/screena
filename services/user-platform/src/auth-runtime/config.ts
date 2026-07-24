@@ -29,6 +29,27 @@ export const AUTH_EMAIL_ENV_KEYS = {
   passwordResetExpirationMinutes: "PASSWORD_RESET_EXPIRATION_MINUTES",
   emailVerificationExpirationMinutes: "EMAIL_VERIFICATION_EXPIRATION_MINUTES",
   ipHashSalt: "CINERIE_IP_HASH_SALT",
+  // C7D. Todas OPCIONAIS, com default seguro: adicionar a camada de sessao nao
+  // pode passar a exigir novas variaveis num deploy que ja funcionava.
+  termsPolicyVersion: "CINERIE_TERMS_POLICY_VERSION",
+  privacyPolicyVersion: "CINERIE_PRIVACY_POLICY_VERSION",
+  sessionTtlHours: "SESSION_TTL_HOURS",
+  deletionGraceDays: "ACCOUNT_DELETION_GRACE_DAYS",
+} as const;
+
+/**
+ * Defaults dos parametros C7D. Sao SEGUROS, nao arbitrarios:
+ *  - versoes `2026-07`: a versao inicial dos documentos; o deploy sobrescreve
+ *    quando os textos mudarem, e trocar a versao forca novo aceite (a tela
+ *    marca `needsRenewal`);
+ *  - TTL de 720 h (30 dias): espelha `SESSION_TTL_HOURS` do dominio (policy.ts);
+ *  - carencia de 30 dias: janela de arrependimento antes da anonimizacao.
+ */
+export const C7D_DEFAULTS = {
+  termsPolicyVersion: "2026-07",
+  privacyPolicyVersion: "2026-07",
+  sessionTtlHours: 720,
+  deletionGraceDays: 30,
 } as const;
 
 /**
@@ -61,6 +82,12 @@ export interface AuthEmailConfig {
    * entre replicas. Consequencias em docs/product/user-product-auth-runtime.md.
    */
   readonly ipHashSalt: string | null;
+
+  // C7D — sempre presentes (default aplicado quando a env falta).
+  readonly termsPolicyVersion: string;
+  readonly privacyPolicyVersion: string;
+  readonly sessionTtlHours: number;
+  readonly deletionGraceDays: number;
 }
 
 /** Mapa de ambiente. `Readonly` de proposito: a config nunca escreve no ambiente. */
@@ -233,6 +260,25 @@ export function loadAuthEmailConfig(input: {
     );
   }
 
+  // C7D — todos com DEFAULT. Ausente nao e erro; presente porem invalido e.
+  const termsPolicyVersion =
+    readTrimmed(env, AUTH_EMAIL_ENV_KEYS.termsPolicyVersion) ?? C7D_DEFAULTS.termsPolicyVersion;
+  const privacyPolicyVersion =
+    readTrimmed(env, AUTH_EMAIL_ENV_KEYS.privacyPolicyVersion) ??
+    C7D_DEFAULTS.privacyPolicyVersion;
+  const sessionTtlHours = readOptionalPositiveInteger(
+    env,
+    AUTH_EMAIL_ENV_KEYS.sessionTtlHours,
+    C7D_DEFAULTS.sessionTtlHours,
+    errors,
+  );
+  const deletionGraceDays = readOptionalPositiveInteger(
+    env,
+    AUTH_EMAIL_ENV_KEYS.deletionGraceDays,
+    C7D_DEFAULTS.deletionGraceDays,
+    errors,
+  );
+
   if (
     errors.length > 0 ||
     brevoApiKey === null ||
@@ -254,5 +300,37 @@ export function loadAuthEmailConfig(input: {
     passwordResetExpirationMinutes,
     emailVerificationExpirationMinutes,
     ipHashSalt,
+    termsPolicyVersion,
+    privacyPolicyVersion,
+    sessionTtlHours,
+    deletionGraceDays,
   });
+}
+
+/**
+ * Inteiro positivo OPCIONAL com default (C7D). Ausente devolve o default;
+ * presente segue as MESMAS regras de `readPositiveInteger` (sem teto de 30
+ * dias, que e especifico de prazos de e-mail). Presente-porem-invalido acumula
+ * erro, para nao virar um valor absurdo silencioso.
+ */
+function readOptionalPositiveInteger(
+  env: EnvSource,
+  key: string,
+  fallback: number,
+  errors: string[],
+): number {
+  const raw = readTrimmed(env, key);
+  if (raw === null) {
+    return fallback;
+  }
+  if (!/^[0-9]+$/.test(raw)) {
+    errors.push(`${key} deve ser um inteiro positivo`);
+    return fallback;
+  }
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    errors.push(`${key} deve ser um inteiro positivo`);
+    return fallback;
+  }
+  return value;
 }

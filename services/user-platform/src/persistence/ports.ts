@@ -17,12 +17,31 @@ import type {
   SnapshotPublicationPlan,
   StoredFeedback,
 } from "../recommendations/index.js";
+import type { ConsentKind, DataRequestKind } from "../core/types.js";
 import type { SessionRecord, VerificationTokenRecord } from "../auth/types.js";
 import type {
+  AccountAnonymizeInput,
+  AccountAnonymizeResult,
+  AccountStatusTransitionInput,
+  AccountStatusTransitionResult,
+  AuthAuditAppendInput,
+  AuthenticatedUserLookupResult,
   AuthThrottleKey,
   AuthThrottleReadResult,
   AuthThrottleSaveInput,
   AuthThrottleSaveResult,
+  ConsentAppendInput,
+  ConsentRecordRow,
+  DataRequestCreateInput,
+  DataRequestCreateResult,
+  DataRequestLookupResult,
+  DataRequestRecord,
+  DataRequestTransitionInput,
+  DataRequestTransitionResult,
+  ExportProjectionResult,
+  ProfileLookupResult,
+  ProfileUpsertInput,
+  ProfileUpsertResult,
   AuthTokenConsumeInput,
   AuthTokenConsumeResult,
   AuthTokenInvalidatePendingInput,
@@ -356,4 +375,156 @@ export interface AuthThrottleStore {
    * que faria duas tentativas concorrentes contarem como uma so.
    */
   save(scope: TransactionScope, input: AuthThrottleSaveInput): Promise<AuthThrottleSaveResult>;
+}
+
+/**
+ * PERFIL PUBLICO (C7D). Duas operacoes, derivadas das duas telas reais: ler o
+ * perfil para exibir/preencher o formulario e gravar o estado completo.
+ *
+ * Deliberadamente NAO ha: `delete` (perfil morre com a conta, por cascade),
+ * listagem, busca por handle (nenhuma tela desta unidade a consome — a busca de
+ * pessoas e catalogo, nao usuario) e update parcial (ver `ProfileUpsertInput`).
+ */
+export interface UserProfileStore {
+  findByUserId(scope: TransactionScope, userId: bigint): Promise<ProfileLookupResult>;
+
+  /**
+   * Visao COMPLETA do proprio dono, para montar a resposta autenticada.
+   *
+   * Separada de `IdentityStore.findById` porque as duas respondem perguntas
+   * diferentes: aquela responde "esta conta pode ter sessao?" (e por isso
+   * devolve so `{id, status}`); esta responde "o que mostro para o dono?".
+   * Fundi-las faria todo login e toda validacao de sessao carregarem e-mail e
+   * carimbos que nao consomem.
+   */
+  findAuthenticatedUser(
+    scope: TransactionScope,
+    userId: bigint,
+  ): Promise<AuthenticatedUserLookupResult>;
+
+  /**
+   * Grava nome publico (`users`) + perfil (`user_profiles`) na MESMA transacao.
+   * Cria a linha de perfil quando ela ainda nao existe — uma conta recem-criada
+   * nao tem perfil, e obrigar a borda a distinguir "criar" de "atualizar"
+   * exporia uma diferenca que nenhuma tela tem.
+   *
+   * Conflito de `handle` e CLASSIFICADO por alvo semantico (`identity.handle`),
+   * nunca por nome de constraint.
+   */
+  upsert(scope: TransactionScope, input: ProfileUpsertInput): Promise<ProfileUpsertResult>;
+}
+
+/**
+ * CONSENTIMENTO (C7D). APPEND-ONLY por invariante LGPD: o port nao expoe
+ * `update` nem `delete`, entao nao existe caminho de codigo que apague prova de
+ * consentimento — nem por engano, nem por pedido do titular (a propria LGPD
+ * exige reter a prova).
+ *
+ * A LEITURA nao filtra e nao ordena: `currentConsent`/`isConsentActive`
+ * (privacy/consent.ts) sao quem decidem o vigente. Filtrar aqui poria a mesma
+ * politica em dois lugares.
+ */
+export interface ConsentStore {
+  append(scope: TransactionScope, input: ConsentAppendInput): Promise<void>;
+
+  /** Todos os registros do titular. Insumo de `currentConsent`. */
+  listByUser(scope: TransactionScope, userId: bigint): Promise<readonly ConsentRecordRow[]>;
+
+  /**
+   * Registros de UMA finalidade. Existe para o caminho quente do gate de
+   * tracking, que consulta uma finalidade so e nao deve pagar a leitura do
+   * historico inteiro.
+   */
+  listByUserAndKind(
+    scope: TransactionScope,
+    input: { readonly userId: bigint; readonly kind: ConsentKind },
+  ): Promise<readonly ConsentRecordRow[]>;
+}
+
+/**
+ * PEDIDOS LGPD (C7D) — exportacao e exclusao.
+ *
+ * `findLatestByKind` alimenta a decisao de idempotencia que o dominio ja
+ * declara (`decideExportRequest` rejeita quando ha pedido ATIVO). O adapter
+ * devolve o mais recente SEM avaliar se esta ativo: `isRequestActive`
+ * (privacy/export.ts) e quem sabe quais status contam.
+ */
+export interface DataRequestStore {
+  create(
+    scope: TransactionScope,
+    input: DataRequestCreateInput,
+  ): Promise<DataRequestCreateResult>;
+
+  findLatestByKind(
+    scope: TransactionScope,
+    input: { readonly userId: bigint; readonly kind: DataRequestKind },
+  ): Promise<DataRequestLookupResult>;
+
+  /** Historico do titular. Entra na EXPORTACAO (`governance_requests`). */
+  listByUser(
+    scope: TransactionScope,
+    userId: bigint,
+  ): Promise<readonly DataRequestRecord[]>;
+
+  /** Transicao por COMPARE-AND-SWAP sobre o status esperado. */
+  transition(
+    scope: TransactionScope,
+    input: DataRequestTransitionInput,
+  ): Promise<DataRequestTransitionResult>;
+}
+
+/**
+ * AUDITORIA DE AUTENTICACAO (C7D). UM metodo, porque a tabela e append-only por
+ * TRIGGER no banco: um `update` neste port seria uma promessa que o proprio
+ * PostgreSQL recusa.
+ *
+ * Nao devolve nada. Auditoria e efeito colateral obrigatorio, nao insumo de
+ * decisao — se um chamador precisasse do id da linha para decidir algo, a
+ * decisao estaria no lugar errado.
+ */
+export interface AuthAuditStore {
+  append(scope: TransactionScope, input: AuthAuditAppendInput): Promise<void>;
+}
+
+/**
+ * CICLO DE VIDA DA CONTA (C7D) — encerramento e anonimizacao.
+ *
+ * Port SEPARADO de `IdentityStore` de proposito. O comentario do `IdentityStore`
+ * declara, desde C7B0, que ele NAO tem `transitionStatus` — "sem CRUD generico e
+ * sem operacao administrativa". Enfiar transicao de status la dentro
+ * contradiria esse contrato e abriria a porta que ele fechou. Aqui as duas
+ * unicas transicoes que existem sao NOMEADAS, cada uma com a sua pre-condicao.
+ */
+export interface AccountLifecycleStore {
+  /**
+   * `active -> pending_deletion` (pedido) e `pending_deletion -> active`
+   * (arrependimento dentro da janela). O CAS sobre `expectedStatus` impede que
+   * duas abas cancelem/pecam ao mesmo tempo e o segundo sobrescreva o primeiro.
+   */
+  transitionStatus(
+    scope: TransactionScope,
+    input: AccountStatusTransitionInput,
+  ): Promise<AccountStatusTransitionResult>;
+
+  /**
+   * `pending_deletion -> deleted`: apaga e-mail, handle e nome da linha de
+   * `users` e carimba `deleted_at`. A LINHA NUNCA E REMOVIDA — vira tumba, para
+   * que o que a lei manda reter continue referenciavel.
+   */
+  anonymize(
+    scope: TransactionScope,
+    input: AccountAnonymizeInput,
+  ): Promise<AccountAnonymizeResult>;
+}
+
+/**
+ * LEITURA DE EXPORTACAO (C7D). Um metodo, so leitura, escopo de UM titular.
+ *
+ * A projecao (`ExportProjection`) nao TEM campo para credencial, sessao, token,
+ * hash de IP ou auditoria — a exclusao e estrutural. `assertExportContainsNoSecrets`
+ * (privacy/export.ts) continua rodando por cima como rede de seguranca, mas nao
+ * e a unica linha de defesa.
+ */
+export interface ExportReadStore {
+  project(scope: TransactionScope, userId: bigint): Promise<ExportProjectionResult>;
 }

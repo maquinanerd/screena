@@ -26,7 +26,11 @@ import {
 const SCOPE: TransactionScope = { transactional: true };
 const EMAIL = "pessoa@example.test";
 const IP_HASH = "f".repeat(64);
-const CONTEXTO = { correlationId: "corr-throttle-01", clientIpHash: IP_HASH } as const;
+const CONTEXTO = {
+  correlationId: "corr-throttle-01",
+  clientIpHash: IP_HASH,
+  userAgent: null,
+} as const;
 
 describe("chave de orcamento", () => {
   it("(1) e namespaced por FINALIDADE, com separador ASCII visivel", () => {

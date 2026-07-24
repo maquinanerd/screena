@@ -24,8 +24,16 @@ import {
   type TestRuntime,
 } from "./fakes.js";
 
-const CONTEXTO = { correlationId: "corr-0000-1111", clientIpHash: "f".repeat(64) } as const;
-const SEM_ORIGEM = { correlationId: "corr-2222-3333", clientIpHash: null } as const;
+const CONTEXTO = {
+  correlationId: "corr-0000-1111",
+  clientIpHash: "f".repeat(64),
+  userAgent: null,
+} as const;
+const SEM_ORIGEM = {
+  correlationId: "corr-2222-3333",
+  clientIpHash: null,
+  userAgent: null,
+} as const;
 
 const EMAIL = "pessoa@example.test";
 
@@ -344,12 +352,14 @@ describe("confirmacao de recuperacao de senha", () => {
       userId,
       expiresAt: new Date(runtime.clock.now.getTime() + 3_600_000),
       revokedAt: null,
+      csrfTokenHash: "c".repeat(64),
     });
     runtime.db.sessions.set("s2", {
       id: 901n,
       userId,
       expiresAt: new Date(runtime.clock.now.getTime() + 3_600_000),
       revokedAt: null,
+      csrfTokenHash: "c".repeat(64),
     });
     const token = await emitirReset(runtime);
     await requestPasswordRecovery(runtime.deps, { emailNormalized: EMAIL }, CONTEXTO);

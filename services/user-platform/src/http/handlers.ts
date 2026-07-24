@@ -33,7 +33,7 @@ import {
   requestPasswordRecovery,
 } from "../auth-runtime/password-recovery.js";
 import type { AuthEmailRuntimeDeps, AuthRequestContext } from "../auth-runtime/deps.js";
-import { readClientIp, readJsonBody, resolveCorrelationId } from "./request.js";
+import { readClientIp, readJsonBody, readUserAgent, resolveCorrelationId } from "./request.js";
 import {
   acceptedResponse,
   confirmedResponse,
@@ -75,6 +75,7 @@ function buildContext(deps: AuthHttpDeps, request: Request): AuthRequestContext 
     // O endereco cru vira hash AQUI e nao atravessa. `clientIpHash` e o unico
     // formato que as camadas seguintes conhecem.
     clientIpHash: clientIp === null ? null : deps.hashClientIp(clientIp),
+    userAgent: readUserAgent(request),
   };
 }
 
