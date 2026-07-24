@@ -24,11 +24,17 @@ import {
   sha256Hex,
 } from "../core/crypto.js";
 import {
+  createPrismaAccountLifecycleStore,
+  createPrismaAuthAuditStore,
   createPrismaAuthThrottleStore,
   createPrismaAuthTokenStore,
+  createPrismaConsentStore,
+  createPrismaDataRequestStore,
+  createPrismaExportReadStore,
   createPrismaIdentityStore,
   createPrismaPasswordCredentialStore,
   createPrismaSessionStore,
+  createPrismaUserProfileStore,
 } from "../persistence/prisma/index.js";
 import type { TransactionScope } from "../persistence/types.js";
 import { createBrevoTransactionalEmailProvider } from "../providers/brevo/index.js";
@@ -158,6 +164,15 @@ export function createAuthRuntime(options: AuthRuntimeOptions = {}): AuthHttpHan
           sessions: createPrismaSessionStore(tx),
           authTokens: createPrismaAuthTokenStore(tx),
           throttles: createPrismaAuthThrottleStore(tx),
+          // C7D. Todos ligados ao MESMO `tx`: e o que torna cadastro
+          // (identidade + credencial + consentimento + auditoria) e
+          // encerramento (revogacao + status + auditoria) atomicos.
+          profiles: createPrismaUserProfileStore(tx),
+          consents: createPrismaConsentStore(tx),
+          dataRequests: createPrismaDataRequestStore(tx),
+          audit: createPrismaAuthAuditStore(tx),
+          accountLifecycle: createPrismaAccountLifecycleStore(tx),
+          exportReader: createPrismaExportReadStore(tx),
         }),
       ),
 

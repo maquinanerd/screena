@@ -19,8 +19,17 @@
 
 export { createPrismaIdentityStore } from "./identity-store.js";
 export { createPrismaPasswordCredentialStore } from "./password-credential-store.js";
-export type { PrismaExecutor } from "./executor.js";
+export type { PrismaExecutor, PrismaExportExecutor } from "./executor.js";
 export { UnmappableRowError } from "./mappers.js";
 export { createPrismaSessionStore } from "./session-store.js";
 export { createPrismaAuthTokenStore } from "./auth-token-store.js";
 export { createPrismaAuthThrottleStore } from "./auth-throttle-store.js";
+
+// C7D — perfil, consentimento, pedidos LGPD, auditoria, ciclo de vida da conta
+// e leitura de exportacao.
+export { createPrismaUserProfileStore } from "./profile-store.js";
+export { createPrismaConsentStore } from "./consent-store.js";
+export { createPrismaDataRequestStore } from "./data-request-store.js";
+export { createPrismaAuthAuditStore } from "./auth-audit-store.js";
+export { createPrismaAccountLifecycleStore } from "./account-lifecycle-store.js";
+export { createPrismaExportReadStore } from "./export-read-store.js";

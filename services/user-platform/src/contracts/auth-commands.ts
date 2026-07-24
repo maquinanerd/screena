@@ -43,6 +43,20 @@ export interface SignupCommand {
   readonly emailNormalized: string;
   readonly password: string;
   readonly displayName: string | null;
+  /**
+   * Aceite EXPLICITO dos termos e da politica de privacidade. Booleano, nao
+   * versao: a VERSAO vigente e do servidor (`auth-runtime/config.ts`) — aceitar
+   * uma versao informada pelo cliente deixaria qualquer pessoa registrar prova
+   * de aceite de um texto que nunca leu.
+   *
+   * Sem default: o parser exige a chave presente e `true`. Um default `false`
+   * viraria "nao aceitou" silencioso, e um default `true` seria exatamente o
+   * checkbox pre-marcado que a LGPD proibe.
+   */
+  readonly acceptedTerms: true;
+  /** Finalidades OPCIONAIS. Ausentes => `false` (nunca pre-marcadas). */
+  readonly acceptedMarketingEmail: boolean;
+  readonly acceptedAnalytics: boolean;
 }
 
 export interface LoginCommand {
@@ -90,7 +104,14 @@ function requireToken(obj: Record<string, unknown>, key: string): DomainResult<s
 export function parseSignupCommand(input: unknown): DomainResult<SignupCommand> {
   const record = asRecord(input);
   if (!record.ok) return record;
-  const strict = rejectUnknownKeys(record.value, ["email", "password", "displayName"]);
+  const strict = rejectUnknownKeys(record.value, [
+    "email",
+    "password",
+    "displayName",
+    "acceptedTerms",
+    "acceptedMarketingEmail",
+    "acceptedAnalytics",
+  ]);
   if (!strict.ok) return strict;
 
   const emailRaw = requireString(record.value, "email", { trim: true, max: EMAIL_MAX_LENGTH });
@@ -114,12 +135,52 @@ export function parseSignupCommand(input: unknown): DomainResult<SignupCommand> 
   });
   if (!displayName.ok) return displayName;
 
+  // ACEITE OBRIGATORIO. Exige o literal `true`: chave ausente, `false`,
+  // `"true"`, `1` ou qualquer outro valor "verdadeiro-ish" e recusa. Aceitar
+  // um truthy frouxo transformaria um campo esquecido pelo cliente em prova
+  // de consentimento — exatamente o que a prova precisa nao ser.
+  if (record.value["acceptedTerms"] !== true) {
+    return err("validation_failed", "dados invalidos.", [
+      "e obrigatorio aceitar os termos de uso e a politica de privacidade.",
+    ]);
+  }
+
+  // Finalidades OPCIONAIS: so o literal `true` concede. Ausente => false.
+  // Nao ha checkbox pre-marcado, e nenhum valor ambiguo vira "sim".
+  const marketing = optionalStrictBoolean(record.value, "acceptedMarketingEmail");
+  if (!marketing.ok) return marketing;
+  const analytics = optionalStrictBoolean(record.value, "acceptedAnalytics");
+  if (!analytics.ok) return analytics;
+
   return ok({
     email: emailRaw.value,
     emailNormalized,
     password: password.value,
     displayName: displayName.value ?? null,
+    acceptedTerms: true as const,
+    acceptedMarketingEmail: marketing.value,
+    acceptedAnalytics: analytics.value,
   });
+}
+
+/**
+ * Booleano OPCIONAL estrito: ausente/`undefined`/`null` => `false`; `true` =>
+ * `true`; QUALQUER outra coisa recusa. Deliberadamente sem coercao — `"false"`
+ * e uma string verdadeira em JavaScript, e um consentimento que virasse `true`
+ * por coercao seria indistinguivel de um aceite real na tabela de prova.
+ */
+function optionalStrictBoolean(
+  obj: Record<string, unknown>,
+  key: string,
+): DomainResult<boolean> {
+  const value = obj[key];
+  if (value === undefined || value === null || value === false) {
+    return ok(false);
+  }
+  if (value === true) {
+    return ok(true);
+  }
+  return err("validation_failed", "dados invalidos.", [`${key} deve ser booleano.`]);
 }
 
 export function parseLoginCommand(input: unknown): DomainResult<LoginCommand> {

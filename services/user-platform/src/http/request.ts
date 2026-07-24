@@ -125,3 +125,28 @@ export function readClientIp(request: Request): string | null {
 export function resolveCorrelationId(request: Request, fallback: string): string {
   return normalizeRequestId(request.headers.get("x-request-id") ?? undefined, fallback);
 }
+
+/**
+ * Comprimento maximo de user-agent aceito na BORDA.
+ *
+ * `minimizeUserAgent` (auth/sessions.ts) ja corta em 256 antes de persistir; o
+ * corte aqui e anterior e existe para que uma string de megabytes nunca chegue a
+ * atravessar as camadas — o mesmo motivo do teto de corpo.
+ */
+const MAX_USER_AGENT_LENGTH = 256;
+
+/**
+ * User-agent, truncado e sem espacos nas pontas. Ausente ou vazio => `null`.
+ *
+ * Nunca recusa a requisicao: um cliente sem user-agent e normal (curl, health
+ * check, leitor de tela em modo estrito), e barrar por causa disso quebraria
+ * acesso legitimo sem ganho de seguranca nenhum.
+ */
+export function readUserAgent(request: Request): string | null {
+  const raw = request.headers.get("user-agent");
+  if (raw === null) {
+    return null;
+  }
+  const trimmed = raw.trim();
+  return trimmed.length === 0 ? null : trimmed.slice(0, MAX_USER_AGENT_LENGTH);
+}

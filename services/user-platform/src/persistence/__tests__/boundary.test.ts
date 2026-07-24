@@ -236,18 +236,30 @@ describe("persistence/ (raiz): somente contratos (C7A)", () => {
     const source = stripComments(contractTypesSource());
     const blocks = exportedTypeBlocks(source);
 
-    const permitidos = new Set(["AuthTokenConsumeInput"]);
+    // `SessionAccessRecord` entrou em C7D: passou a ter PAPEL para um hash de
+    // token — `csrfTokenHash`, insumo obrigatorio do double submit
+    // (`requireCsrf`). O criterio da guarda continua sendo papel, nao nome.
+    const permitidos = new Set(["AuthTokenConsumeInput", "SessionAccessRecord"]);
     const vazando = blocks
       .filter((b) => carriesTokenHashField(b.body))
       .map((b) => b.name)
       .filter((name) => !permitidos.has(name));
     expect(vazando).toEqual([]);
 
-    // O registro de sessao devolvido NAO carrega hash: quem consultou ja o tem,
-    // e devolve-lo ampliaria a superficie do segredo sem leitor.
+    // O registro de sessao NAO devolve o hash do TOKEN DE SESSAO: a busca e por
+    // ele, entao quem consultou ja o tem, e devolve-lo ampliaria a superficie
+    // do segredo sem leitor.
+    //
+    // `csrfTokenHash` e o caso oposto e por isso e a UNICA excecao: e um
+    // segredo DIFERENTE, apresentado em outro canal (cabecalho), que o chamador
+    // nao tem como derivar do token de sessao. Sem ele, `requireCsrf` seria
+    // impossivel de chamar e toda mutacao autenticada ficaria sem double submit.
     const sessao = blocks.find((b) => b.name === "SessionAccessRecord");
     expect(sessao, "SessionAccessRecord nao encontrado (guarda nao vacua)").toBeDefined();
-    expect(sessao!.body).not.toMatch(/tokenHash|csrfTokenHash/i);
+    expect(sessao!.body).not.toMatch(/(?<!csrf)(?<!Csrf)\btokenHash/);
+    // ...e a excecao e PROVADA presente, para que a guarda nao vire vacua se
+    // alguem remover o campo achando que ele nao tem consumidor.
+    expect(sessao!.body).toMatch(/csrfTokenHash/);
   });
 
   it("(9) o hash NUNCA aparece no registro de identidade", () => {
@@ -397,9 +409,21 @@ const NO_HTTP =
  */
 function executorDelegates(): string[] {
   const source = readFileSync(path.join(PERSISTENCE, "prisma", "executor.ts"), "utf8");
-  const pick = /Pick<\s*PrismaClient\s*,([\s\S]*?)>\s*;/.exec(source);
-  if (pick === null) return [];
-  return [...(pick[1] ?? "").matchAll(/"(\w+)"/g)].map((m) => m[1] ?? "");
+  // TODOS os `Pick<PrismaClient, ...>`, nao o primeiro.
+  //
+  // C7D acrescentou um SEGUNDO executor (`PrismaExportExecutor`, so leitura).
+  // Com `exec` a varredura enxergava apenas o primeiro `Pick` e as delegacoes do
+  // segundo ficariam invisiveis — reproduzindo exatamente o modo de falha que o
+  // comentario acima descreve, so que uma camada mais fundo: a guarda derivada
+  // do executor deixaria de ser derivada de TODO o executor.
+  const picks = [...source.matchAll(/Pick<\s*PrismaClient\s*,([\s\S]*?)>\s*;/g)];
+  const todas = picks.flatMap((pick) =>
+    [...(pick[1] ?? "").matchAll(/"(\w+)"/g)].map((m) => m[1] ?? ""),
+  );
+  // DEDUPLICA: os dois executores compartilham `user`, `userProfile`,
+  // `consentRecord` e `dataRequest`. A guarda pergunta "quais delegacoes os
+  // adapters podem tocar", nao "por quantos Picks cada uma aparece".
+  return [...new Set(todas)];
 }
 
 const PRISMA_DELEGATES = executorDelegates();
@@ -531,14 +555,20 @@ describe("persistence/prisma/: adapters concretos (C7B1)", () => {
 
   it("(1) ha adapters para varrer (guarda nao vacua)", () => {
     expect(files.map((f) => f.file).sort()).toEqual([
+      "persistence/prisma/account-lifecycle-store.ts",
+      "persistence/prisma/auth-audit-store.ts",
       "persistence/prisma/auth-throttle-store.ts",
       "persistence/prisma/auth-token-store.ts",
+      "persistence/prisma/consent-store.ts",
+      "persistence/prisma/data-request-store.ts",
       "persistence/prisma/executor.ts",
+      "persistence/prisma/export-read-store.ts",
       "persistence/prisma/identity-conflict.ts",
       "persistence/prisma/identity-store.ts",
       "persistence/prisma/index.ts",
       "persistence/prisma/mappers.ts",
       "persistence/prisma/password-credential-store.ts",
+      "persistence/prisma/profile-store.ts",
       "persistence/prisma/session-store.ts",
     ]);
   });
@@ -548,12 +578,29 @@ describe("persistence/prisma/: adapters concretos (C7B1)", () => {
     // cega para o codigo novo — foi exatamente o que aconteceu no C7B2, e os
     // stores passaram no teste de `select` sem serem olhados.
     expect(PRISMA_DELEGATES.sort()).toEqual([
+      // C7A/C7B1
       "authThrottle",
       "passwordCredential",
       "user",
       "userSession",
       "verificationToken",
-    ]);
+      // C7D — perfil, consentimento, pedidos LGPD e auditoria.
+      "authAuditLog",
+      "consentRecord",
+      "dataRequest",
+      "userProfile",
+      // C7D — leitura de exportacao (`PrismaExportExecutor`). Sao SO de
+      // leitura e vivem num Pick separado, que deliberadamente NAO inclui
+      // credencial, sessao, token nem auditoria.
+      "episodeProgress",
+      "userList",
+      "userListItem",
+      "userRating",
+      "userReview",
+      "userStatsSnapshot",
+      "userWatchState",
+      "viewingEvent",
+    ].sort());
     // E a lista tem de casar com o que os adapters realmente chamam.
     const chamadas = files.flatMap((f) => delegateCalls(stripComments(f.content)));
     expect(chamadas.length).toBeGreaterThan(15);

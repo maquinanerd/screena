@@ -33,8 +33,28 @@ import type { AuthEmailPurpose } from "./observability.js";
  */
 export const AUTH_THROTTLE_KEY_SEPARATOR = ":";
 
+/**
+ * Finalidades que possuem ORCAMENTO PROPRIO.
+ *
+ * Mais largo que `AuthEmailPurpose` porque nem todo fluxo limitado dispara
+ * e-mail: cadastro, login, exportacao e encerramento tambem consomem orcamento.
+ * Sao tipos SEPARADOS de proposito — `AuthEmailLogEvent.purpose` continua
+ * aceitando so os dois que realmente falam com o fornecedor, entao um evento de
+ * login nao tem como se disfarcar de envio de e-mail no log.
+ *
+ * Cada valor novo aqui cria um NAMESPACE novo em `user_auth_throttles`. Reusar
+ * um valor existente faria dois fluxos disputarem a mesma linha, e um bloqueio
+ * num derrubaria o outro.
+ */
+export type AuthThrottlePurpose =
+  | AuthEmailPurpose
+  | "signup"
+  | "login"
+  | "data_export"
+  | "account_closure";
+
 /** Chave de orcamento por FINALIDADE + identificador. */
-export function buildAuthThrottleKey(purpose: AuthEmailPurpose, identifier: string): string {
+export function buildAuthThrottleKey(purpose: AuthThrottlePurpose, identifier: string): string {
   return `${purpose}${AUTH_THROTTLE_KEY_SEPARATOR}${identifier}`;
 }
 
@@ -130,7 +150,14 @@ export async function consumeAuthThrottleBudget(input: {
 export async function consumeAuthRequestBudget(input: {
   readonly throttles: AuthThrottleStore;
   readonly scope: TransactionScope;
-  readonly purpose: AuthEmailPurpose;
+  readonly purpose: AuthThrottlePurpose;
+  /**
+   * Chave apresentada. Para os fluxos autenticados (exportacao, encerramento)
+   * NAO e o e-mail: e o `userId` em texto, porque a sessao ja identifica o
+   * titular e reintroduzir o e-mail aqui o gravaria numa coluna
+   * (`user_auth_throttles.key`) que nenhum desses fluxos precisa que carregue
+   * PII.
+   */
   readonly emailNormalized: string;
   readonly clientIpHash: string | null;
   readonly now: Date;

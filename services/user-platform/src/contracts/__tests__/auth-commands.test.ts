@@ -21,11 +21,54 @@ const GOOD_TOKEN = "0123456789abcdef0123456789abcdef"; // 32 chars
 
 describe("parseSignupCommand", () => {
   it("(1) signup valido e aceito e normaliza o email", () => {
-    const r = parseSignupCommand({ email: " Pablo@Example.COM ", password: GOOD_PW });
+    const r = parseSignupCommand({
+      email: " Pablo@Example.COM ",
+      password: GOOD_PW,
+      acceptedTerms: true,
+    });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.value.emailNormalized).toBe("pablo@example.com");
     expect(r.value.displayName).toBeNull();
+    // Finalidades OPCIONAIS ausentes => `false`. Nunca pre-marcadas.
+    expect(r.value.acceptedMarketingEmail).toBe(false);
+    expect(r.value.acceptedAnalytics).toBe(false);
+  });
+
+  it("(1b) sem aceite explicito dos documentos, o cadastro e recusado", () => {
+    // Ausente, `false` e qualquer truthy frouxo recusam: a prova de aceite nao
+    // pode nascer de um campo esquecido nem de coercao.
+    for (const acceptedTerms of [undefined, false, "true", 1, {}]) {
+      const r = parseSignupCommand({
+        email: "a@b.co",
+        password: GOOD_PW,
+        ...(acceptedTerms === undefined ? {} : { acceptedTerms }),
+      });
+      expect(r.ok, `acceptedTerms=${JSON.stringify(acceptedTerms)}`).toBe(false);
+    }
+  });
+
+  it("(1c) finalidades opcionais so concedem com o literal `true`", () => {
+    const r = parseSignupCommand({
+      email: "a@b.co",
+      password: GOOD_PW,
+      acceptedTerms: true,
+      acceptedMarketingEmail: true,
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.acceptedMarketingEmail).toBe(true);
+    expect(r.value.acceptedAnalytics).toBe(false);
+
+    // `"true"` (string) NAO concede — recusa em vez de coagir.
+    expect(
+      parseSignupCommand({
+        email: "a@b.co",
+        password: GOOD_PW,
+        acceptedTerms: true,
+        acceptedAnalytics: "true",
+      }).ok,
+    ).toBe(false);
   });
 
   it("(2) signup vazio e rejeitado", () => {
@@ -43,7 +86,11 @@ describe("parseSignupCommand", () => {
   });
 
   it("(5) normalizacao NAO remove pontos do Gmail (sem regra de provedor)", () => {
-    const r = parseSignupCommand({ email: "pa.blo.eduardo@gmail.com", password: GOOD_PW });
+    const r = parseSignupCommand({
+      email: "pa.blo.eduardo@gmail.com",
+      password: GOOD_PW,
+      acceptedTerms: true,
+    });
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.value.emailNormalized).toBe("pa.blo.eduardo@gmail.com");
   });

@@ -28,15 +28,20 @@ const SHA256_HEX = /^[0-9a-f]{64}$/;
 
 /**
  * SELECT MINIMO do lookup: exatamente o que `evaluateSessionAccess` consome
- * (`expiresAt`, `revokedAt`), mais `id` (revogacao por id) e `userId` (buscar o
- * status da conta). `tokenHash`/`csrfTokenHash` ficam de fora — quem consultou
- * ja tem o hash, e devolve-lo so ampliaria a superficie do segredo.
+ * (`expiresAt`, `revokedAt`), mais `id` (revogacao por id), `userId` (buscar o
+ * status da conta) e `csrfTokenHash` (double submit da borda de mutacao).
+ *
+ * `tokenHash` continua de fora: a busca e POR ele, entao quem consultou ja o
+ * tem e devolve-lo so ampliaria a superficie do segredo. `csrfTokenHash` e
+ * outro caso — e um segredo DIFERENTE, apresentado em outro canal, que o
+ * chamador nao tem como derivar do token de sessao (ver `SessionAccessRecord`).
  */
 const SESSION_ACCESS_SELECT = {
   id: true,
   userId: true,
   expiresAt: true,
   revokedAt: true,
+  csrfTokenHash: true,
 } as const;
 
 export function createPrismaSessionStore(executor: PrismaExecutor): SessionStore {
