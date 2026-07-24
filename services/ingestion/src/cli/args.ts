@@ -30,6 +30,7 @@ export const CATALOG_COMMANDS = [
   'status',
   'audit-database',
   'index-decisions',
+  'backfill-finalization',
   'dead-letter',
 ] as const
 
@@ -177,6 +178,8 @@ const MUTATING_COMMANDS: ReadonlySet<CatalogCommand> = new Set([
   // Escreve numa tabela que o SITEMAP le. Exigir --dry-run/--apply explicito e
   // o minimo: o operador precisa ver quantas paginas mudam de estado antes.
   'index-decisions',
+  // Cria slug e traducao de entidades presas pelo short-circuit de cache.
+  'backfill-finalization',
 ])
 
 /** Comandos somente-leitura. */

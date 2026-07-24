@@ -63,6 +63,10 @@ import {
   DECIDABLE_ENTITY_TYPES,
   produceIndexabilityDecisions,
 } from '../src/persistence/indexability-writer.js'
+import {
+  BACKFILLABLE_TYPES,
+  backfillFinalization,
+} from '../src/persistence/finalization-backfill.js'
 import { createPersistence } from '../src/persistence/index.js'
 import { createPrismaCatalogJobStore } from '../src/persistence/catalog-job-store.js'
 import { createPrismaSearchStore } from '../src/persistence/search-store.js'
@@ -252,7 +256,7 @@ async function runHandlerInline<TResult>(
  * de banco morrer por falta de uma credencial que ele nunca usaria — e num host
  * de operacao (onde se audita) o token TMDB muitas vezes nem existe.
  */
-const DB_ONLY_COMMANDS = new Set(['status', 'search-status', 'audit-database', 'dead-letter', 'enqueue', 'index-decisions'])
+const DB_ONLY_COMMANDS = new Set(['status', 'search-status', 'audit-database', 'dead-letter', 'enqueue', 'index-decisions', 'backfill-finalization'])
 
 /** Monta so a camada de banco (sem TMDB). */
 function createDbOnlyRuntime() {
@@ -360,6 +364,8 @@ async function main() {
           return await cmdAuditDatabase(db, flags)
         case 'index-decisions':
           return await cmdIndexDecisions(db, flags, locale)
+        case 'backfill-finalization':
+          return await cmdBackfillFinalization(db, flags, locale)
         case 'dead-letter':
           return await cmdDeadLetter(db, subcommand, flags)
         default:
@@ -664,6 +670,9 @@ async function cmdPlanBootstrap(
       .join(' ')})`,
     `  chamadas TMDB: ${e.apiCalls} · midia: ${e.mediaItems} itens (~${Math.round(e.mediaBytes / 1024)} KiB de metadado)`,
     `  duracao estimada: ${e.durationMinutes} min (otimista ${scenarios.optimistic.durationMinutes} · conservador ${scenarios.conservative.durationMinutes})`,
+    `    rede ${e.duration.networkMinutes} min · escrita de episodios ${e.duration.episodeWriteMinutes} min · midia ${e.duration.mediaWriteMinutes} min`,
+    `    fator dominante: ${e.duration.dominantFactor} · confianca: ${e.duration.confidence}`,
+    ...e.duration.caveats.map((c) => `    ressalva: ${c}`),
     e.titlesWithMissingFacts > 0
       ? `  ATENCAO: ${e.titlesWithMissingFacts} titulo(s) sem contadores do provider — estimativa menos confiavel`
       : '  todos os contadores vieram do provider (estimativa exata, nao presumida)',
@@ -683,6 +692,57 @@ async function cmdPlanBootstrap(
   ])
 
   return decision.withinBudget ? EXIT_CODES.ok : EXIT_CODES.failed
+}
+
+/**
+ * backfill-finalization — cria slug/traducao de entidades presas pelo cache.
+ *
+ * So-de-banco: nao monta client TMDB porque nao chama o provider.
+ */
+async function cmdBackfillFinalization(
+  services: DbOnlyRuntime,
+  flags: CatalogFlags,
+  locale: string,
+): Promise<number> {
+  const requested = splitList(flags.entity)
+  const types =
+    requested === null
+      ? BACKFILLABLE_TYPES
+      : requested.filter((t): t is 'movie' | 'tv' | 'person' =>
+          (BACKFILLABLE_TYPES as readonly string[]).includes(t),
+        )
+  if (types.length === 0) {
+    process.stderr.write(`erro: --entity precisa conter um de: ${BACKFILLABLE_TYPES.join(', ')}\n`)
+    return EXIT_CODES.usage
+  }
+
+  const report = await backfillFinalization(services.prisma, {
+    language: locale,
+    entityTypes: types,
+    ...(flags.limit !== null ? { limit: flags.limit } : {}),
+    dryRun: !flags.apply,
+  })
+
+  emit(flags, report, [
+    `backfill de finalizacao · ${report.language} · ${report.dryRun ? 'DRY-RUN' : 'APLICADO'}`,
+    `  candidatos: ${report.candidates} · elegiveis: ${report.eligible} · finalizados: ${report.finalized} · falhas: ${report.failed}`,
+    `  slugs criados: ${report.slugsCreated} · traducoes criadas: ${report.translationsCreated}`,
+    `  chamadas TMDB evitadas: ${report.externalCallsAvoided} · executadas: ${report.externalCallsMade}`,
+    '',
+    Object.keys(report.skipped).length > 0 ? '  ignorados:' : '  nenhum ignorado.',
+    ...Object.entries(report.skipped).map(([k, v]) => `    ${k.padEnd(24)} ${v}`),
+    '',
+    Object.keys(report.byType).length > 0 ? '  finalizados por tipo:' : '',
+    ...Object.entries(report.byType).map(([k, v]) => `    ${k.padEnd(10)} ${v}`),
+    '',
+    report.samples.length > 0 ? '  amostra:' : '',
+    ...report.samples.slice(0, 10).map((s) => `    ${s.entityType}#${s.entityId} -> ${s.slug}`),
+    '',
+    report.dryRun
+      ? 'Nada foi gravado. Use --apply para finalizar.'
+      : 'Finalizacao aplicada. A indexacao publica CONTINUA desligada.',
+  ])
+  return EXIT_CODES.ok
 }
 
 /**

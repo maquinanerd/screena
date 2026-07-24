@@ -89,6 +89,28 @@ const reader: AuditReaderPort = {
     },
   ],
   readSearchDocuments: async () => ({ total: 42, byLocale: [{ locale: 'pt-BR', count: 42 }] }),
+  readPublishability: async () => [
+    {
+      entity: 'movie',
+      total: 10,
+      withSlug: 8,
+      withoutSlug: 2,
+      withTranslation: 7,
+      withoutTranslation: 3,
+      withMedia: 6,
+      withoutMedia: 4,
+      renderable: 8,
+      publishable: 7,
+      sitemapEligible: 7,
+      withDecision: 5,
+      missingDecision: 5,
+      staleDecision: 1,
+    },
+  ],
+  readDecisionReasons: async () => [
+    { reason: 'eligible', count: 4 },
+    { reason: 'missing_slug', count: 1 },
+  ],
 }
 
 describe('runDatabaseAudit', () => {
