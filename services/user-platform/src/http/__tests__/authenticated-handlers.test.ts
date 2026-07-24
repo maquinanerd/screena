@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 import { createAuthenticatedHttpHandlers } from "../authenticated-handlers.js";
-import { CSRF_HEADER, readCookie } from "../cookies.js";
+import { CSRF_HEADER } from "../cookies.js";
 import { createTestRuntime, fakeHashPassword, seedUser } from "../../auth-runtime/__tests__/fakes.js";
 
 const EMAIL = "titular@example.test";

@@ -13,7 +13,7 @@
  *     + rotas de sitemap do web) nao referencia tabelas user_*.
  */
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -113,24 +113,45 @@ describe("user platform: fora do caminho de render publico (invariante 5, caso t
    * Isso estava certo enquanto a plataforma nao tinha borda: sem endpoint, todo
    * import cairia necessariamente no caminho de render.
    *
-   * C7C criou a primeira superficie legitima e NAO-render: quatro mutacoes `POST`
-   * sob `/api/auth/**` (bloqueadas no robots por `Disallow: /api/`), mais a ponte
-   * server-only que as compoe. A regra nao foi afrouxada — foi PARTIDA EM DUAS,
-   * e cada metade ficou mais estrita do que a original:
+   * C7C criou a primeira superficie legitima e NAO-render sob `/api/auth/**`; o
+   * C7D a estendeu com a camada de SESSAO e PRIVACIDADE — cadastro, login,
+   * logout, troca de senha e as rotas `/api/account/**`. Todas sao handlers
+   * `POST`/`GET` sob `/api/` (bloqueadas no robots por `Disallow: /api/`), fora
+   * do caminho de render indexavel, e todas delegam para a ponte server-only.
+   *
+   * A regra nao foi afrouxada — foi PARTIDA EM DUAS, e cada metade ficou mais
+   * estrita do que a original:
    *
    *  - no caminho de RENDER (pagina, layout, client component) a proibicao passa
    *    a ser verificada explicitamente por natureza do arquivo, e nao por
-   *    ausencia acidental de import;
+   *    ausencia acidental de import. Nenhuma pagina/client component desta
+   *    unidade importa a plataforma: as telas de conta falam com a borda por
+   *    `fetch`, e o cookie de CSRF e lido por um helper que NAO toca a
+   *    plataforma (`src/lib/csrf-client.ts`);
    *  - fora dele, so uma ALLOWLIST fechada pode importar, e o teste trava
-   *    exatamente quais caminhos sao — se um quinto arquivo aparecer, isto falha.
+   *    exatamente quais caminhos sao — se um arquivo novo aparecer, isto falha.
    */
   const AUTH_RUNTIME_ALLOWLIST: readonly string[] = [
     "apps/web/next.config.ts",
     "apps/web/src/server/auth/runtime.ts",
+    // C7C — verificacao de e-mail e recuperacao de senha (publicos).
     "apps/web/app/api/auth/email-verification/confirm/route.ts",
     "apps/web/app/api/auth/email-verification/request/route.ts",
     "apps/web/app/api/auth/password-reset/confirm/route.ts",
     "apps/web/app/api/auth/password-reset/request/route.ts",
+    // C7D — cadastro, login e ciclo de vida da sessao.
+    "apps/web/app/api/auth/signup/route.ts",
+    "apps/web/app/api/auth/login/route.ts",
+    "apps/web/app/api/auth/logout/route.ts",
+    "apps/web/app/api/auth/logout-all/route.ts",
+    "apps/web/app/api/auth/session/route.ts",
+    "apps/web/app/api/auth/password-change/route.ts",
+    // C7D — conta e privacidade (autenticadas).
+    "apps/web/app/api/account/profile/route.ts",
+    "apps/web/app/api/account/privacy/route.ts",
+    "apps/web/app/api/account/consent/route.ts",
+    "apps/web/app/api/account/export/route.ts",
+    "apps/web/app/api/account/close/route.ts",
   ];
 
   const PAGE_FILE_NAMES = new Set([
@@ -232,25 +253,61 @@ describe("user platform: fora do caminho de render publico (invariante 5, caso t
     expect(touchesUserPlatform(`import x from "../../src/lib/site"`)).toBe(false);
   });
 
-  it("(8c) as rotas /api/auth so DELEGAM: nenhuma regra de dominio nelas", () => {
+  it("(8c) as rotas /api so DELEGAM: nenhuma regra de dominio nelas", () => {
     const rotas = AUTH_RUNTIME_ALLOWLIST.filter((f) => f.endsWith("route.ts"));
-    expect(rotas.length).toBe(4);
+    // C7C tinha 4; C7D somou 11 (6 auth + 5 account). Piso ANTI-VACUO por >=,
+    // e o total exato e travado por (8b) contra a allowlist inteira.
+    expect(rotas.length).toBe(15);
     for (const rota of rotas) {
       const content = readFileSync(path.join(ROOT, rota), "utf8");
-      // Sem politica, sem banco, sem fornecedor, sem segredo.
+      // Sem politica, sem banco, sem fornecedor, sem segredo — a regra vive na
+      // plataforma testada, nunca no delegador.
       for (const proibido of [
         /prisma/i,
         /@screena\/db/,
         /brevo/i,
         /BREVO_/,
         /process\s*\.\s*env/,
-        /accountCanHoldSession|evaluateThrottle|applyPasswordReset|applyEmailVerification/,
+        /accountCanHoldSession|evaluateThrottle|applyPasswordReset|applyEmailVerification|decideLogin|decideSignup|buildSessionCreation/,
       ]) {
         expect(proibido.test(content), `${rota}: ${proibido}`).toBe(false);
       }
-      // E aceitam SOMENTE POST.
-      expect(/export\s+async\s+function\s+POST/.test(content), rota).toBe(true);
-      expect(/export\s+async\s+function\s+(GET|PUT|DELETE|PATCH)/.test(content), rota).toBe(false);
+      // Cada rota exporta SO metodos HTTP que delegam, e SO GET/POST: nenhuma
+      // mutacao aceita PUT/DELETE/PATCH (o handler recusa qualquer outro metodo
+      // com 405, mas o proprio modulo nao os declara).
+      expect(
+        /export\s+async\s+function\s+(GET|POST)/.test(content),
+        `${rota}: precisa exportar GET ou POST`,
+      ).toBe(true);
+      expect(
+        /export\s+async\s+function\s+(PUT|DELETE|PATCH)/.test(content),
+        `${rota}: nao pode exportar PUT/DELETE/PATCH`,
+      ).toBe(false);
+      // Corpo do handler e uma unica delegacao ao runtime da ponte.
+      expect(
+        /runAuth(enticated)?Endpoint/.test(content),
+        `${rota}: deve apenas delegar a ponte`,
+      ).toBe(true);
+    }
+  });
+
+  it("(8e) NENHUMA pagina/client component de conta importa a plataforma (render puro)", () => {
+    // Controle POSITIVO explicito das telas de C7D: elas existem e NAO tocam a
+    // plataforma — falam com a borda por fetch, e o CSRF vem de um helper que
+    // le so o cookie. Sem isto, uma regressao que importasse o runtime numa
+    // pagina passaria despercebida ate (8) — este teste a localiza pelo nome.
+    const telas = [
+      "apps/web/app/pt/entrar/page.tsx",
+      "apps/web/app/pt/entrar/login-form.tsx",
+      "apps/web/app/pt/criar-conta/signup-form.tsx",
+      "apps/web/app/pt/conta/account-panel.tsx",
+      "apps/web/app/pt/conta/privacidade/privacy-panel.tsx",
+      "apps/web/src/lib/csrf-client.ts",
+    ];
+    for (const tela of telas) {
+      const abs = path.join(ROOT, tela);
+      expect(existsSync(abs), `${tela} deveria existir (guarda nao vacua)`).toBe(true);
+      expect(touchesUserPlatform(readFileSync(abs, "utf8")), tela).toBe(false);
     }
   });
 

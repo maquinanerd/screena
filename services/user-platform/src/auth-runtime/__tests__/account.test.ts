@@ -16,12 +16,7 @@ import {
   resolveAuthenticatedContext,
   signup,
 } from "../account.js";
-import {
-  createTestRuntime,
-  fakeHashPassword,
-  seedUser,
-  tokenFromSentEmail,
-} from "./fakes.js";
+import { createTestRuntime, fakeHashPassword, seedUser } from "./fakes.js";
 
 const CTX = { correlationId: "c-1", clientIpHash: "a".repeat(64), userAgent: "test-agent" } as const;
 const EMAIL = "pessoa@example.test";

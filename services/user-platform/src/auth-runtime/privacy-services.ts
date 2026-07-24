@@ -95,10 +95,11 @@ export async function updateProfile(
   deps: AuthRuntimeDeps,
   authenticated: AuthenticatedContext,
   command: UpdateProfileCommand,
-  context: AuthRequestContext,
+  // `_context` mantido na assinatura por simetria com os outros servicos e
+  // porque a auditoria de perfil entra aqui quando o enum ganhar o evento (ver
+  // nota abaixo). Nao consumido hoje.
+  _context: AuthRequestContext,
 ): Promise<DomainResult<ProfileDto>> {
-  const now = deps.now();
-
   return deps.runInTransaction(async (scope, stores) => {
     const atual = await stores.profiles.findByUserId(scope, authenticated.userId);
     if (atual.kind !== "found") {
@@ -203,7 +204,9 @@ export async function setConsent(
   deps: AuthRuntimeDeps,
   authenticated: AuthenticatedContext,
   command: SetConsentCommand,
-  context: AuthRequestContext,
+  // `_context` nao e consumido: a prova de consentimento e a propria linha
+  // append-only, nao um log de autenticacao (ver comentario na transacao).
+  _context: AuthRequestContext,
 ): Promise<DomainResult<{ readonly recorded: true }>> {
   const now = deps.now();
   const policyVersion = currentPolicyVersion(deps, command.kind);

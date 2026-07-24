@@ -90,12 +90,7 @@ import type {
 } from "../../email/types.js";
 import { TransactionalEmailError } from "../../email/types.js";
 import { generateOpaqueToken, sha256Hex } from "../../core/crypto.js";
-import type {
-  AuthEmailRuntimeDeps,
-  AuthRuntimeDeps,
-  AuthStores,
-  AuthTransactionRunner,
-} from "../deps.js";
+import type { AuthRuntimeDeps, AuthStores, AuthTransactionRunner } from "../deps.js";
 import type { AuthEmailLogEvent } from "../observability.js";
 
 const SCOPE: TransactionScope = { transactional: true };
