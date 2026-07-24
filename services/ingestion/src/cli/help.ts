@@ -35,6 +35,7 @@ Comandos:
   status            Estado da fila, checkpoints e snapshots (somente leitura)
   audit-database    Relatorio somente-leitura do banco
   index-decisions   Produz page_indexability_decisions (nao liga indexacao)
+  backfill-finalization  Cria slug/traducao de entidades presas pelo cache
   dead-letter       list | replay dos jobs esgotados
 
 Flags globais:
@@ -92,6 +93,38 @@ A saida diz quantos titulos cabem, para nao ser tentativa e erro.
 Exemplos:
   pnpm catalog plan-bootstrap --strategy popular --entity movie,tv --limit 20 --json
   pnpm catalog plan-bootstrap --limit 100 --max-episodes 20000 --max-duration-minutes 45`,
+
+  'backfill-finalization': `catalog backfill-finalization — cria slug/traducao de entidades presas.
+
+\`sync_details\` so finaliza quando houve upsert. No short-circuit de cache
+(payload identico ao da ultima vez) o importador faz \`touch\` e nao devolve id —
+entao nao ha o que finalizar. Uma entidade importada ANTES do wiring de
+finalizacao existir, cujo payload nao mudou desde entao, fica presa: nunca ganha
+slug, e sem slug nao ha rota publica, nem busca, nem sitemap.
+
+Forcar chamada externa em todo sync consertaria — e seria pior: gastaria cota em
+todas as entidades por causa de poucas. Este comando ataca so as presas.
+
+NENHUMA chamada TMDB. Usa, nesta ordem: traducao existente -> linha canonica ->
+dado local. Se o dado local nao basta, reporta \`missing_title\` em vez de gastar
+cota em silencio.
+
+GARANTIAS:
+  - so toca entidade SEM slug canonico — slug valido nunca e alterado;
+  - so cria traducao AUSENTE — nunca sobrescreve uma existente;
+  - pessoa so e finalizada se passar na regra de elegibilidade;
+  - reexecutar nao gera churn nem redirect.
+
+Flags:
+  --entity <lista>   movie,tv,person (default: todos)
+  --locale <l>       default pt-BR
+  --limit <n>        candidatos por tipo (default 1000)
+  --dry-run          conta e classifica, sem gravar
+  --apply            grava
+
+Exemplos:
+  pnpm catalog backfill-finalization --dry-run --json
+  pnpm catalog backfill-finalization --entity movie,tv --limit 500 --apply`,
 
   'index-decisions': `catalog index-decisions — PRODUZ page_indexability_decisions.
 
