@@ -15,10 +15,19 @@ import type {
   ConsentKind,
   DataRequestKind,
   DataRequestStatus,
+  ImportJobStatus,
+  ImportSource,
   ProfileVisibility,
+  RatableEntityType,
+  SystemListKey,
   ThrottleScope,
+  UserListKind,
   UserRole,
   UserStatus,
+  ViewingEventType,
+  Visibility,
+  WatchableEntityType,
+  WatchState,
 } from "../core/types.js";
 
 /**
@@ -74,7 +83,13 @@ export type UniqueConflictTarget =
    */
   | "session.rotatedFrom"
   /** Colisao do hash do token de uso unico (unique em `user_verification_tokens`). */
-  | "authToken.tokenHash";
+  | "authToken.tokenHash"
+  /** C8: (user_id, entity_type, entity_id) ja tem watch state (corrida entre abas). */
+  | "watchState.entity"
+  /** C8: (user_id, episode_id) ja tem progresso (corrida entre abas). */
+  | "episodeProgress.episode"
+  /** C8: (owner_id, slug) de lista ja ocupado — inclusive por lista removida. */
+  | "userList.slug";
 
 /**
  * Alvos de divergencia de PRE-IMAGEM (compare-and-swap). NAO indica unicidade:
@@ -99,7 +114,13 @@ export type PreimageConflictTarget =
    * C7D: o status da CONTA (`users.status`) idem — encerrar e arrepender-se sao
    * transicoes concorrentes reais (duas abas), nao estado impossivel.
    */
-  | "identity.status";
+  | "identity.status"
+  /** C8: `version` do watch state (optimistic locking do tracker). */
+  | "watchState.version"
+  /** C8: `version` do progresso de episodio. */
+  | "episodeProgress.version"
+  /** C8: status do job de importacao — trava dois `apply` concorrentes. */
+  | "importJob.status";
 
 /** Uniao fechada de todos os alvos (util para documentacao e testes). */
 export type PersistenceConflictTarget = UniqueConflictTarget | PreimageConflictTarget;
@@ -757,6 +778,11 @@ export interface ExportProjection {
   readonly productStats: unknown | null;
   readonly governanceConsents: readonly ConsentRecordRow[];
   readonly governanceRequests: readonly DataRequestRecord[];
+  /**
+   * C8 — METADADO dos pedidos de importacao (nunca o arquivo enviado nem o
+   * preview: sao Json de trabalho, e o titular ja tem o arquivo original).
+   */
+  readonly governanceImports: readonly unknown[];
 }
 
 export type ExportProjectionResult =
@@ -798,3 +824,385 @@ export interface AuthenticatedUserRecord {
 export type AuthenticatedUserLookupResult =
   | { readonly kind: "found"; readonly user: AuthenticatedUserRecord }
   | { readonly kind: "not_found" };
+
+// ---------------------------------------------------------------------------
+// C8 — BIBLIOTECA PESSOAL: watch state, progresso, diario, listas, notas,
+// importacao e leitura de catalogo.
+//
+// Todos os models (`user_watch_states`, `user_episode_progress`,
+// `user_viewing_events`, `user_lists`, `user_list_items`, `user_ratings`,
+// `user_import_jobs`) existem desde 20260717150000 e NENHUM tinha contrato de
+// persistencia: o dominio puro (lists/*, tracking/*, ratings/*, stats/*) estava
+// completo e sem um unico consumidor de producao. Esta unidade liga as pontas.
+//
+// NAO ha migration: nenhuma coluna e criada, renomeada ou removida.
+// ---------------------------------------------------------------------------
+
+/**
+ * Referencia canonica a uma entidade do catalogo.
+ *
+ * O par `(entityType, entityId)` e a chave composta da tabela `entities`, alvo
+ * das FKs de `user_watch_states` e `user_list_items`. NUNCA se usa slug: slug
+ * muda (traducao, recanonizacao) e a biblioteca do usuario precisa sobreviver a
+ * isso — a FK e por id.
+ */
+export interface EntityRefRecord {
+  readonly entityType: RatableEntityType;
+  readonly entityId: bigint;
+}
+
+/** Estado de acompanhamento como a persistencia o devolve. */
+export interface WatchStateRecord {
+  readonly entityType: WatchableEntityType;
+  readonly entityId: bigint;
+  readonly status: WatchState;
+  readonly startedAt: Date | null;
+  readonly completedAt: Date | null;
+  readonly lastActivityAt: Date;
+  readonly rewatchCount: number;
+  readonly visibility: Visibility;
+  readonly version: number;
+  readonly updatedAt: Date;
+}
+
+/**
+ * Escrita do watch state por COMPARE-AND-SWAP sobre a versao.
+ *
+ * `expectedVersion = null` significa "linha ainda nao existe" e vira insercao
+ * nao-abortiva. Nao-null vira update com `version` no WHERE: duas abas mudando
+ * o mesmo titulo nao se sobrescrevem em silencio — a perdedora recebe
+ * `conflict` e o cliente relê.
+ */
+export interface WatchStateUpsertInput {
+  readonly userId: bigint;
+  readonly entityType: WatchableEntityType;
+  readonly entityId: bigint;
+  readonly expectedVersion: number | null;
+  readonly status: WatchState;
+  readonly startedAt: Date | null;
+  readonly completedAt: Date | null;
+  readonly rewatchCount: number;
+  readonly nextVersion: number;
+  readonly now: Date;
+}
+
+export type WatchStateLookupResult =
+  | { readonly kind: "found"; readonly state: WatchStateRecord }
+  | { readonly kind: "not_found" };
+
+export type WatchStateUpsertResult =
+  | { readonly kind: "saved"; readonly state: WatchStateRecord }
+  /** A entidade nao existe em `entities` — a FK recusaria a escrita. */
+  | { readonly kind: "entity_not_found" }
+  | { readonly kind: "conflict"; readonly conflict: PersistenceConflict };
+
+/** Pagina de watch states, para a biblioteca e o tracker. */
+export interface WatchStatePage {
+  readonly items: readonly WatchStateRecord[];
+  readonly total: number;
+}
+
+/** Progresso de UM episodio como a persistencia o devolve. */
+export interface EpisodeProgressRecord {
+  readonly episodeId: bigint;
+  readonly watched: boolean;
+  readonly watchedAt: Date | null;
+  readonly progressSeconds: number | null;
+  readonly durationSeconds: number | null;
+  readonly version: number;
+  readonly updatedAt: Date;
+}
+
+export interface EpisodeProgressUpsertInput {
+  readonly userId: bigint;
+  readonly episodeId: bigint;
+  readonly expectedVersion: number | null;
+  readonly watched: boolean;
+  readonly watchedAt: Date | null;
+  readonly progressSeconds: number | null;
+  readonly durationSeconds: number | null;
+  readonly nextVersion: number;
+  readonly now: Date;
+}
+
+export type EpisodeProgressLookupResult =
+  | { readonly kind: "found"; readonly progress: EpisodeProgressRecord }
+  | { readonly kind: "not_found" };
+
+export type EpisodeProgressUpsertResult =
+  | { readonly kind: "saved"; readonly progress: EpisodeProgressRecord }
+  /** O episodio nao existe no catalogo — a FK real recusaria a escrita. */
+  | { readonly kind: "episode_not_found" }
+  | { readonly kind: "conflict"; readonly conflict: PersistenceConflict };
+
+/**
+ * Marcacao EM LOTE de episodios (temporada inteira, serie inteira).
+ *
+ * Existe porque a alternativa — uma escrita por episodio — e inviavel no
+ * catalogo real: `Tagesschau` tem ~21 mil episodios, e 21 mil round-trips
+ * (ou 21 mil requisicoes do navegador) nao e uma implementacao, e um incidente.
+ * O adapter processa em CHUNKS e cada chunk e idempotente, entao uma falha no
+ * meio pode ser retentada sem duplicar nada.
+ */
+export interface EpisodeBulkMarkInput {
+  readonly userId: bigint;
+  readonly episodeIds: readonly bigint[];
+  readonly watched: boolean;
+  readonly watchedAt: Date | null;
+  readonly now: Date;
+}
+
+export interface EpisodeBulkMarkResult {
+  /** Linhas que passaram a existir (nao havia progresso antes). */
+  readonly created: number;
+  /** Linhas que mudaram de estado (idempotente: ja no alvo nao conta). */
+  readonly updated: number;
+}
+
+/** Contagem de assistidos de uma serie, sem trazer as linhas. */
+export interface WatchedEpisodeCount {
+  readonly watched: number;
+}
+
+/** Evento de diario ja pronto para persistir (append-only). */
+export interface ViewingEventAppendInput {
+  readonly userId: bigint;
+  readonly entityType: RatableEntityType;
+  readonly entityId: bigint;
+  readonly eventType: ViewingEventType;
+  readonly occurredAt: Date;
+  /** `app` ou `import:<source>`; a coluna exige texto nao vazio. */
+  readonly source: string;
+  readonly idempotencyKey: string;
+}
+
+/**
+ * Resultado do append. `duplicate` NAO e erro: o unique
+ * `(user_id, idempotency_key, event_type)` e o que torna o replay seguro — a
+ * mesma operacao reenviada nao cria um segundo evento.
+ */
+export type ViewingEventAppendResult =
+  | { readonly kind: "appended"; readonly eventId: bigint }
+  | { readonly kind: "duplicate" };
+
+/** Linha de diario devolvida ao usuario. */
+export interface ViewingEventRecord {
+  readonly id: bigint;
+  readonly entityType: RatableEntityType;
+  readonly entityId: bigint;
+  readonly eventType: ViewingEventType;
+  readonly occurredAt: Date;
+  readonly source: string;
+}
+
+export interface ViewingEventPage {
+  readonly items: readonly ViewingEventRecord[];
+  readonly total: number;
+}
+
+/** Lista (system ou custom) como a persistencia a devolve. */
+export interface UserListRecord {
+  readonly id: bigint;
+  readonly ownerId: bigint;
+  readonly kind: UserListKind;
+  readonly systemKey: SystemListKey | null;
+  readonly title: string;
+  readonly slug: string;
+  readonly description: string | null;
+  readonly visibility: Visibility;
+  readonly ordered: boolean;
+  readonly itemCount: number;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+}
+
+export interface UserListCreateInput {
+  readonly ownerId: bigint;
+  readonly title: string;
+  readonly slug: string;
+  readonly description: string | null;
+  readonly visibility: Visibility;
+  readonly ordered: boolean;
+}
+
+export interface UserListUpdateInput {
+  readonly listId: bigint;
+  readonly title: string;
+  readonly slug: string;
+  readonly description: string | null;
+  readonly visibility: Visibility;
+  readonly ordered: boolean;
+  readonly now: Date;
+}
+
+export type UserListLookupResult =
+  | { readonly kind: "found"; readonly list: UserListRecord }
+  | { readonly kind: "not_found" };
+
+export type UserListCreateResult =
+  | { readonly kind: "created"; readonly list: UserListRecord }
+  /**
+   * `(owner_id, slug)` ja ocupado. O unique NAO e parcial em `deleted_at`, entao
+   * uma lista removida continua ocupando o slug — quem chama precisa desambiguar
+   * (sufixo), nao reciclar cegamente.
+   */
+  | { readonly kind: "conflict"; readonly conflict: PersistenceConflict };
+
+/** Item de lista como a persistencia o devolve. */
+export interface UserListItemRecord {
+  readonly id: bigint;
+  readonly entityType: RatableEntityType;
+  readonly entityId: bigint;
+  readonly position: number | null;
+  readonly note: string | null;
+  readonly addedAt: Date;
+}
+
+export interface UserListItemAddInput {
+  readonly listId: bigint;
+  readonly entityType: RatableEntityType;
+  readonly entityId: bigint;
+  readonly position: number | null;
+  readonly note: string | null;
+  readonly now: Date;
+}
+
+export type UserListItemAddResult =
+  | { readonly kind: "added"; readonly item: UserListItemRecord }
+  /** Ja existe (unique `list_id, entity_type, entity_id`) — idempotente. */
+  | { readonly kind: "already_present" }
+  | { readonly kind: "entity_not_found" };
+
+export interface UserListItemPage {
+  readonly items: readonly UserListItemRecord[];
+  readonly total: number;
+}
+
+/** Nova posicao de UM item; o plano vem de `lists/reorder.ts`. */
+export interface ItemPositionInput {
+  readonly itemId: bigint;
+  readonly position: number;
+}
+
+/** Nota pessoal como a persistencia a devolve. Escala FIXA 5 (CHECK do banco). */
+export interface UserRatingRecord {
+  readonly entityType: RatableEntityType;
+  readonly entityId: bigint;
+  /** Decimal(2,1) do banco convertido para number — 0.5..5.0 em passo 0.5. */
+  readonly value: number;
+  readonly scale: number;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+}
+
+export interface UserRatingUpsertInput {
+  readonly userId: bigint;
+  readonly entityType: RatableEntityType;
+  readonly entityId: bigint;
+  readonly value: number;
+  readonly now: Date;
+}
+
+export type UserRatingUpsertResult =
+  | { readonly kind: "saved"; readonly rating: UserRatingRecord }
+  | { readonly kind: "entity_not_found" };
+
+/** Pedido de importacao como a persistencia o devolve. */
+export interface ImportJobRecord {
+  readonly id: bigint;
+  readonly userId: bigint;
+  readonly source: ImportSource;
+  readonly status: ImportJobStatus;
+  readonly fileName: string | null;
+  readonly itemCount: number;
+  readonly conflictCount: number;
+  readonly appliedCount: number;
+  readonly error: string | null;
+  readonly appliedAt: Date | null;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+}
+
+export interface ImportJobCreateInput {
+  readonly userId: bigint;
+  readonly source: ImportSource;
+  readonly status: ImportJobStatus;
+  readonly fileName: string | null;
+}
+
+/**
+ * Transicao de estado do job por COMPARE-AND-SWAP sobre o status esperado.
+ *
+ * E o que impede dois `apply` concorrentes do MESMO job: o segundo encontra o
+ * status ja mudado e recebe `conflict`. Sem isso a idempotencia dependeria so
+ * dos uniques das tabelas de destino — que protegem o dado, mas nao evitariam o
+ * trabalho duplicado nem a contagem inflada.
+ */
+export interface ImportJobTransitionInput {
+  readonly id: bigint;
+  readonly expectedStatus: ImportJobStatus;
+  readonly nextStatus: ImportJobStatus;
+  readonly itemCount?: number;
+  readonly conflictCount?: number;
+  readonly appliedCount?: number;
+  readonly error?: string | null;
+  readonly appliedAt?: Date | null;
+  /** Preview/conflitos serializados; `undefined` preserva o valor atual. */
+  readonly preview?: unknown;
+  readonly conflicts?: unknown;
+  readonly now: Date;
+}
+
+export type ImportJobTransitionResult =
+  | { readonly kind: "updated" }
+  | { readonly kind: "not_found" }
+  | { readonly kind: "conflict"; readonly conflict: PersistenceConflict };
+
+export type ImportJobLookupResult =
+  | {
+      readonly kind: "found";
+      readonly job: ImportJobRecord;
+      /** Json bruto do preview; o dominio o valida antes de usar. */
+      readonly preview: unknown;
+      readonly conflicts: unknown;
+    }
+  | { readonly kind: "not_found" };
+
+// ---------------------------------------------------------------------------
+// Leitura de CATALOGO para a biblioteca (somente leitura)
+// ---------------------------------------------------------------------------
+
+/** Episodio como o tracker o enxerga: identidade + ordenacao + duracao. */
+export interface CatalogEpisodeRecord {
+  readonly episodeId: bigint;
+  readonly seasonId: bigint;
+  readonly seasonNumber: number;
+  readonly episodeNumber: number;
+  readonly airDate: Date | null;
+  readonly runtimeMinutes: number | null;
+}
+
+/** Filtro de episodios de uma serie. */
+export interface SeriesEpisodeQuery {
+  readonly tvShowId: bigint;
+  /**
+   * `false` exclui `season_number = 0` (especiais). A politica e EXPLICITA e
+   * testada — nao ha default implicito espalhado pelo codigo.
+   */
+  readonly includeSpecials: boolean;
+  /** `null` = todas as temporadas; numero = uma temporada especifica. */
+  readonly seasonNumber: number | null;
+  /** Teto de linhas devolvidas; o tracker pagina series gigantes. */
+  readonly limit: number;
+  readonly offset: number;
+}
+
+/** Candidato de catalogo para o matching de importacao. */
+export interface CatalogMatchCandidate {
+  readonly entityType: WatchableEntityType;
+  readonly entityId: bigint;
+  readonly title: string;
+  readonly year: number | null;
+  readonly tmdbId: number | null;
+  readonly imdbId: string | null;
+}

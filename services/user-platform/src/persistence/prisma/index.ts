@@ -19,7 +19,12 @@
 
 export { createPrismaIdentityStore } from "./identity-store.js";
 export { createPrismaPasswordCredentialStore } from "./password-credential-store.js";
-export type { PrismaExecutor, PrismaExportExecutor } from "./executor.js";
+export type {
+  PrismaCatalogExecutor,
+  PrismaExecutor,
+  PrismaExportExecutor,
+  PrismaLibraryExecutor,
+} from "./executor.js";
 export { UnmappableRowError } from "./mappers.js";
 export { createPrismaSessionStore } from "./session-store.js";
 export { createPrismaAuthTokenStore } from "./auth-token-store.js";
@@ -33,3 +38,19 @@ export { createPrismaDataRequestStore } from "./data-request-store.js";
 export { createPrismaAuthAuditStore } from "./auth-audit-store.js";
 export { createPrismaAccountLifecycleStore } from "./account-lifecycle-store.js";
 export { createPrismaExportReadStore } from "./export-read-store.js";
+
+// C8 — biblioteca pessoal: watch state, progresso, diario, listas, itens,
+// notas, importacao, leitura de catalogo e purga de encerramento.
+export { createPrismaUserWatchStateStore } from "./watch-state-store.js";
+export {
+  createPrismaEpisodeProgressStore,
+  EPISODE_BULK_CHUNK_SIZE,
+} from "./episode-progress-store.js";
+export { createPrismaViewingEventStore } from "./viewing-event-store.js";
+export { createPrismaUserListStore } from "./user-list-store.js";
+export { createPrismaUserListItemStore } from "./user-list-item-store.js";
+export { createPrismaUserRatingStore } from "./user-rating-store.js";
+export { createPrismaImportJobStore } from "./import-job-store.js";
+export { createPrismaCatalogReadStore } from "./catalog-read-store.js";
+export { createPrismaProductContentPurgeStore } from "./product-content-purge-store.js";
+export { createEntityProbe, createEpisodeProbe } from "./catalog-probes.js";

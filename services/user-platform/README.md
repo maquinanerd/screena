@@ -21,11 +21,14 @@ export, exclusão/anonimização) e importação (Letterboxd/Trakt/Cinerie).
   IP bruto nunca é gravado; senha nunca aparece em log.
 
 Decisões de produto: [`docs/product/user-product-decisions.md`](../../docs/product/user-product-decisions.md).
+Biblioteca pessoal (C8 — watchlist, tracker, listas, notas, importação) e runbook:
+[`docs/product/user-product-library.md`](../../docs/product/user-product-library.md).
 ADR: [`docs/adr/0014-user-product-platform.md`](../../docs/adr/0014-user-product-platform.md).
 
 ## Validação
 
 ```bash
 pnpm validate:user-product-platform   # PostgreSQL 16 efêmero (embedded), descartável
+pnpm --filter @screena/user-platform validate:library  # biblioteca/tracker/importação em PG16 real
 pnpm test                             # testes puros (vitest, a partir da raiz)
 ```

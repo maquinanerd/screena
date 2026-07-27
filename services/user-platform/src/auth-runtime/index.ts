@@ -83,3 +83,50 @@ export {
   updateProfile,
 } from "./privacy-services.js";
 export { dispatchAuthEmail, logAuthEmailEvent, type AuthEmailDelivery } from "./dispatch.js";
+
+// C8 — biblioteca pessoal: borda HTTP, servicos e dominio de importacao.
+export {
+  createLibraryHttpHandlers,
+  type LibraryHttpDeps,
+  type LibraryHttpHandlers,
+} from "../http/library-handlers.js";
+export {
+  addListItem,
+  clearRating,
+  clearWatchState,
+  createList,
+  deleteList,
+  ensureSystemLists,
+  listUserLists,
+  listWatchStates,
+  readHistory,
+  readList,
+  readWatchState,
+  removeListItem,
+  reorderList,
+  setRating,
+  setWatchState,
+  undoWatchState,
+  LIBRARY_PAGE_MAX,
+} from "./library-services.js";
+export {
+  markSeriesEpisodes,
+  readSeriesProgress,
+  setEpisodeWatched,
+  DEFAULT_INCLUDE_SPECIALS,
+  SERIES_BULK_MAX_EPISODES,
+  SERIES_PAGE_SIZE,
+  type BulkMarkResult,
+  type SeriesProgress,
+} from "./tracker-services.js";
+export {
+  applyImport,
+  cancelImport,
+  createImportPreview,
+  listImports,
+  readImport,
+  IMPORT_APPLY_BATCH,
+  type ApplyImportResult,
+  type ImportPreviewResult,
+} from "./import-services.js";
+export type { LibraryStores, LibraryTransactionRunner } from "./deps.js";

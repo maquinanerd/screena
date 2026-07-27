@@ -27,6 +27,7 @@ import {
   createPrismaExportReadStore,
   createPrismaIdentityStore,
   createPrismaPasswordCredentialStore,
+  createPrismaProductContentPurgeStore,
   createPrismaSessionStore,
   createPrismaUserProfileStore,
 } from "../src/persistence/prisma/index.js";
@@ -79,6 +80,9 @@ function buildRealRuntimeDeps(prisma: PrismaClient): {
           audit: createPrismaAuthAuditStore(tx),
           accountLifecycle: createPrismaAccountLifecycleStore(tx),
           exportReader: createPrismaExportReadStore(tx),
+          // C8: a anonimizacao passou a EXECUTAR a retencao de product_content
+          // no mesmo commit — o harness precisa do store para reproduzir isso.
+          productContentPurge: createPrismaProductContentPurgeStore(tx),
         }),
       ),
     emailProvider: noopEmailProvider,

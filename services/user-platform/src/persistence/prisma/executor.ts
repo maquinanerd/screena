@@ -110,4 +110,49 @@ export type PrismaExportExecutor = Pick<
   | "userRating"
   | "userReview"
   | "userStatsSnapshot"
+  // C8: metadados de importacao entram na exportacao LGPD (o ARQUIVO enviado
+  // nunca entra — so o registro do pedido).
+  | "importJob"
+>;
+
+/**
+ * Superficie da BIBLIOTECA PESSOAL (C8) — conteudo de produto do titular.
+ *
+ * Terceiro executor, separado dos dois anteriores pela MESMA razao que os
+ * separou entre si: menor superficie possivel. Note o que NAO esta aqui —
+ * `passwordCredential`, `userSession`, `verificationToken`, `authThrottle` e
+ * `authAuditLog`. Um adapter de biblioteca nao CONSEGUE, por tipo, alcancar
+ * credencial, sessao, token ou auditoria; a separacao deixa de depender de
+ * disciplina do autor.
+ *
+ * `user` entra somente porque o purge de encerramento precisa confirmar o
+ * titular antes de apagar conteudo — nao para ler PII.
+ */
+export type PrismaLibraryExecutor = Pick<
+  PrismaClient,
+  | "user"
+  | "userWatchState"
+  | "episodeProgress"
+  | "viewingEvent"
+  | "userList"
+  | "userListItem"
+  | "userRating"
+  | "userStatsSnapshot"
+  | "importJob"
+>;
+
+/**
+ * Superficie de LEITURA DE CATALOGO (C8).
+ *
+ * Executor PROPRIO porque catalogo NAO e dado do usuario: mantê-lo fora do
+ * executor de biblioteca torna estrutural o fato de que nenhum adapter pessoal
+ * escreve no catalogo, e de que o leitor de catalogo nao alcanca nenhuma tabela
+ * `user_*`.
+ *
+ * `entity` e o registro `(entity_type, entity_id)` alvo das FKs polimorficas —
+ * a sonda de existencia que evita deixar a FK abortar a transacao interativa.
+ */
+export type PrismaCatalogExecutor = Pick<
+  PrismaClient,
+  "entity" | "episode" | "season" | "movie" | "tvShow"
 >;

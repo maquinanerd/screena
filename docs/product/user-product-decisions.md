@@ -181,3 +181,82 @@ modelos de usuário seguem o repo. Demais adaptações conscientes:
 - Payload CMS, notícias, social avançado, `AggregateRating` de usuários,
   OAuth ativo, notificações.
 - Merge: a PR é **draft** e só avança com revisão humana.
+
+---
+
+## Registro 2026-07-27 (C8 — listas, watchlist, tracker, importação)
+
+> Prompt 08 tornou a camada pessoal **funcional** (runtime + borda HTTP + UI
+> mínima). Estas decisões refinam/corrigem os registros v1 acima; arquitetura
+> executável detalhada em [`user-product-library.md`](user-product-library.md).
+
+### 13.1 Watchlist × favorites × `UserWatchState` (canônico)
+
+- **`UserWatchState` é a fonte canônica** de "quero assistir / assistindo /
+  assistido". A **watchlist do produto é `status = planned`** — não existe tabela
+  de watchlist separada. O botão de entidade (filme/série) e "Minha lista" leem e
+  escrevem `user_watch_states`.
+- **`SystemListKey` (`watchlist`, `favorites`, `watching`, `watched`) são listas
+  de sistema** — coleções nomeadas, um eixo **separado** do watch state, para
+  curadoria e futura superfície social. **`favorites` existe só como lista de
+  sistema**; não há estado "favorito" no enum `WatchState`. Marcar favorito é
+  adicionar à lista `favorites`, nunca mudar o watch state.
+- Os dois eixos **não se sincronizam automaticamente**: mudar o watch state para
+  `watched` não move nada para a lista de sistema `watched`, e vice-versa. Fato de
+  progresso ≠ curadoria.
+
+### 13.2 Formatos de importação REALMENTE suportados
+
+- C8 implementa **`cinerie_csv`** (match exato por `tmdb_id`/`imdb_id`) e
+  **`letterboxd_csv`** (título+ano, nunca auto-aplicado). **Corrige** o registro
+  v1 §11: **Trakt export (JSON)** e IMDb **não** estão implementados e **não** são
+  oferecidos na UI — não prometemos formato que o código não parseia. Ficam como
+  trabalho futuro separado.
+- **Arquivos comprimidos/binários são recusados por assinatura** (ZIP, GZIP, RAR,
+  7Z, PDF): não abrimos ZIP (elimina zip-bomb/path-traversal de uma vez). O export
+  do Letterboxd vem em ZIP → o usuário extrai o CSV antes de enviar.
+
+### 13.3 Matching fail-closed; zero entidade inventada
+
+- Só `exact` (id externo único) é auto-aplicado. `high_confidence` (título+ano
+  único) exige confirmação; `ambiguous`/`not_found` **não** são aplicados.
+- A importação **nunca cria entidade de catálogo** para uma linha sem
+  correspondência. Não há filme/série fantasma: linha sem match fica registrada
+  como não-aplicável no preview.
+
+### 13.4 Aplicação idempotente, retomável e isolada
+
+- Fluxo `upload → parse → normalize → match → conflicts → preview (zero escrita) →
+  apply`. Nunca aplica sem preview.
+- Idempotente (uniques de destino), **nunca rebaixa** estado/nota local — a
+  política anti-rebaixamento é **re-derivada atomicamente no apply** (não só no
+  preview): `planned` importado é insert-only (`ON CONFLICT DO NOTHING`, nunca
+  rebaixa `watched`); `watched` só promove; nota do arquivo é insert-only
+  (`insertIfAbsent`, nunca sobrescreve a nota do dono). Fecha o TOCTOU entre
+  preview e apply e o arquivo com a mesma entidade em dois estados.
+- Retomável por cursor (`applied_count`), com **CAS de status** (`preview_ready →
+  applying`) elegendo um vencedor entre dois `apply` concorrentes.
+- `apply`/`cancel`/`read` são **por titular** (ownership do servidor, nunca do
+  corpo).
+
+### 13.5 Exportação LGPD serializável (correção)
+
+- O export inclui as superfícies novas (watch states, progresso, listas+itens,
+  notas, histórico, metadados de jobs) e passa por **`toJsonSafe`** (`BigInt →
+  string`, `Decimal → string`, `Date → ISO`). Sem isso, qualquer usuário com
+  biblioteca quebrava o export — bug real capturado no PostgreSQL 16 e hoje
+  travado por teste. Segredos (hash de senha/CSRF/token/IP, sessões) **nunca**
+  entram no payload.
+
+### 13.6 Encerramento executa a retenção
+
+- `product_content = delete` em `DATA_CLASSIFICATION` é **executado**:
+  `purgeForUser` apaga a biblioteca do titular no encerramento; consentimento e
+  pedidos LGPD (`retain_indefinitely`) permanecem. Purga é **por titular** e não
+  toca outro usuário.
+
+### 13.7 Ação explícita ≠ tracking opcional
+
+- Os serviços de biblioteca **nunca** chamam `hasActiveConsent`: watchlist,
+  assistido, tracker, listas e importação são ações explícitas do usuário e não
+  podem ser bloqueadas por recusa de telemetria opcional.

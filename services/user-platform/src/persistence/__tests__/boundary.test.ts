@@ -559,17 +559,28 @@ describe("persistence/prisma/: adapters concretos (C7B1)", () => {
       "persistence/prisma/auth-audit-store.ts",
       "persistence/prisma/auth-throttle-store.ts",
       "persistence/prisma/auth-token-store.ts",
+      // C8 — biblioteca pessoal
+      "persistence/prisma/catalog-probes.ts",
+      "persistence/prisma/catalog-read-store.ts",
       "persistence/prisma/consent-store.ts",
       "persistence/prisma/data-request-store.ts",
+      "persistence/prisma/episode-progress-store.ts",
       "persistence/prisma/executor.ts",
       "persistence/prisma/export-read-store.ts",
       "persistence/prisma/identity-conflict.ts",
       "persistence/prisma/identity-store.ts",
+      "persistence/prisma/import-job-store.ts",
       "persistence/prisma/index.ts",
       "persistence/prisma/mappers.ts",
       "persistence/prisma/password-credential-store.ts",
+      "persistence/prisma/product-content-purge-store.ts",
       "persistence/prisma/profile-store.ts",
       "persistence/prisma/session-store.ts",
+      "persistence/prisma/user-list-item-store.ts",
+      "persistence/prisma/user-list-store.ts",
+      "persistence/prisma/user-rating-store.ts",
+      "persistence/prisma/viewing-event-store.ts",
+      "persistence/prisma/watch-state-store.ts",
     ]);
   });
 
@@ -600,6 +611,16 @@ describe("persistence/prisma/: adapters concretos (C7B1)", () => {
       "userStatsSnapshot",
       "userWatchState",
       "viewingEvent",
+      // C8 — biblioteca pessoal (`PrismaLibraryExecutor`) e leitura de
+      // catalogo (`PrismaCatalogExecutor`). Os dois Picks novos continuam sem
+      // credencial, sessao, token e auditoria: um adapter de biblioteca nao
+      // alcanca autenticacao, e o leitor de catalogo nao alcanca tabela `user_*`.
+      "importJob",
+      "entity",
+      "episode",
+      "season",
+      "movie",
+      "tvShow",
     ].sort());
     // E a lista tem de casar com o que os adapters realmente chamam.
     const chamadas = files.flatMap((f) => delegateCalls(stripComments(f.content)));

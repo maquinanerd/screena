@@ -262,6 +262,35 @@ export async function hasActiveConsent(
 // Exportacao
 // ---------------------------------------------------------------------------
 
+/**
+ * Converte o que o driver devolve para algo que `JSON.stringify` aceita.
+ *
+ * `bigint` vira string decimal (a mesma convencao de `serializeEntityId`);
+ * `Date` vira ISO; objetos com `toString` proprio (o `Decimal` do driver) viram
+ * texto. Recursivo, com teto de profundidade — uma estrutura ciclica pararia
+ * aqui em vez de estourar a pilha.
+ */
+function toJsonSafe(value: unknown, depth = 0): unknown {
+  if (depth > 20) return null;
+  if (value === null || value === undefined) return null;
+  if (typeof value === "bigint") return value.toString(10);
+  if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value)) return value.map((v) => toJsonSafe(v, depth + 1));
+  if (typeof value === "object") {
+    // `Decimal` do driver: nao e Date nem array, mas tem `toString` util.
+    const proto = Object.getPrototypeOf(value) as object | null;
+    if (proto !== null && proto !== Object.prototype && typeof (value as { toString?: unknown }).toString === "function") {
+      return String(value);
+    }
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = toJsonSafe(v, depth + 1);
+    }
+    return out;
+  }
+  return value;
+}
+
 function toDataRequestDto(row: {
   readonly kind: "export" | "deletion";
   readonly status: "pending" | "processing" | "completed" | "rejected" | "cancelled";
@@ -382,8 +411,15 @@ export async function requestDataExport(
             occurredAt: c.occurredAt.toISOString(),
           })),
           requests: p.governanceRequests.map(toDataRequestDto),
-          content: p.productContent,
-          stats: p.productStats,
+          // JSON-SAFE por construcao. As linhas de conteudo de produto vem do
+          // driver com `bigint` (ids) e `Decimal` (notas), e `JSON.stringify`
+          // NAO sabe serializar nenhum dos dois — o endpoint de exportacao
+          // quebraria com "Do not know how to serialize a BigInt" para
+          // qualquer usuario que tivesse biblioteca. O defeito existia desde o
+          // C7D e so nao aparecia porque nao havia como popular essas tabelas;
+          // o validador do C8 o expos na primeira exportacao com dados.
+          content: toJsonSafe(p.productContent) as Readonly<Record<string, readonly unknown[]>>,
+          stats: toJsonSafe(p.productStats),
         };
 
         // REDE DE SEGURANCA, nao a unica defesa. A exclusao estrutural ja
@@ -723,6 +759,22 @@ export async function anonymizeAccount(
       return err<{ readonly anonymized: true }>("conflict", "anonimizacao nao aplicada.");
     }
 
+    // C8 — EXECUCAO DA RETENCAO, no MESMO commit da anonimizacao.
+    //
+    // `DATA_CLASSIFICATION.product_content` prescreve `retentionAction:"delete"`
+    // desde o C3, e `buildDeletionPlan` devolve esse plano — mas ate o C8 nao
+    // existia store algum de conteudo de produto, entao a politica era decidida
+    // e nunca executada: a conta virava tumba e listas, tracking, diario, notas
+    // e importacoes continuavam intactos.
+    //
+    // Fazer isso aqui dentro (e nao numa segunda transacao) fecha a janela em
+    // que a conta ja esta anonimizada e a biblioteca ainda existe.
+    //
+    // O que NAO e apagado, pela MESMA politica: consentimento e pedidos LGPD
+    // (`retain_indefinitely`, prova legal), auditoria (`retain_until`) e o
+    // snapshot agregado de estatisticas (`aggregate_anonymous`).
+    const purgado = await stores.productContentPurge.purgeForUser(scope, userId);
+
     const pedido = await stores.dataRequests.findLatestByKind(scope, {
       userId,
       kind: "deletion",
@@ -744,7 +796,19 @@ export async function anonymizeAccount(
       action: "account_anonymized",
       ipHash: null,
       userAgent: null,
-      detail: { operator },
+      // Contagens do que a retencao apagou — prova operacional de que a
+      // politica foi EXECUTADA, e nao apenas decidida. Sao numeros, nunca
+      // conteudo: o detalhe da auditoria continua sem PII.
+      detail: {
+        operator,
+        purgedWatchStates: purgado.watchStates,
+        purgedEpisodeProgress: purgado.episodeProgress,
+        purgedViewingEvents: purgado.viewingEvents,
+        purgedListItems: purgado.listItems,
+        purgedLists: purgado.lists,
+        purgedRatings: purgado.ratings,
+        purgedImportJobs: purgado.importJobs,
+      },
       occurredAt: now,
     });
 

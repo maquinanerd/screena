@@ -25,17 +25,28 @@ import {
   verifyPassword,
 } from "../core/crypto.js";
 import {
+  createEntityProbe,
+  createEpisodeProbe,
   createPrismaAccountLifecycleStore,
   createPrismaAuthAuditStore,
   createPrismaAuthThrottleStore,
   createPrismaAuthTokenStore,
+  createPrismaCatalogReadStore,
   createPrismaConsentStore,
   createPrismaDataRequestStore,
+  createPrismaEpisodeProgressStore,
   createPrismaExportReadStore,
   createPrismaIdentityStore,
+  createPrismaImportJobStore,
   createPrismaPasswordCredentialStore,
+  createPrismaProductContentPurgeStore,
   createPrismaSessionStore,
+  createPrismaUserListItemStore,
+  createPrismaUserListStore,
   createPrismaUserProfileStore,
+  createPrismaUserRatingStore,
+  createPrismaUserWatchStateStore,
+  createPrismaViewingEventStore,
 } from "../persistence/prisma/index.js";
 import type { TransactionScope } from "../persistence/types.js";
 import { createBrevoTransactionalEmailProvider } from "../providers/brevo/index.js";
@@ -44,8 +55,12 @@ import {
   createAuthenticatedHttpHandlers,
   type AuthenticatedHttpHandlers,
 } from "../http/authenticated-handlers.js";
+import {
+  createLibraryHttpHandlers,
+  type LibraryHttpHandlers,
+} from "../http/library-handlers.js";
 import { loadAuthEmailConfig, type AuthEmailConfig, type EnvSource } from "./config.js";
-import type { AuthRuntimeDeps, AuthStores } from "./deps.js";
+import type { AuthRuntimeDeps, AuthStores, LibraryStores } from "./deps.js";
 import { noopAuthEmailLogger, type AuthEmailLogger } from "./observability.js";
 
 /**
@@ -127,6 +142,8 @@ export interface AuthRuntimeHandlers {
   readonly email: AuthHttpHandlers;
   /** C7D — cadastro, login, sessao, perfil, privacidade (cookie + CSRF). */
   readonly authenticated: AuthenticatedHttpHandlers;
+  /** C8 — biblioteca pessoal: watchlist, tracker, listas, notas e importacao. */
+  readonly library: LibraryHttpHandlers;
 }
 
 /**
@@ -194,8 +211,40 @@ export function createFullAuthRuntime(options: AuthRuntimeOptions = {}): AuthRun
           audit: createPrismaAuthAuditStore(tx),
           accountLifecycle: createPrismaAccountLifecycleStore(tx),
           exportReader: createPrismaExportReadStore(tx),
+          // C8: no MESMO commit do encerramento — anonimizar a conta e deixar a
+          // biblioteca viva seria uma janela em que o dado pessoal sobrevive ao
+          // titular.
+          productContentPurge: createPrismaProductContentPurgeStore(tx),
         }),
       ),
+
+    /**
+     * Transacao da BIBLIOTECA (C8), separada da de autenticacao.
+     *
+     * Os stores nascem DENTRO dela, ligados ao client daquela transacao —
+     * mesma razao da de autenticacao: guarda-los num objeto de longa vida faria
+     * duas requisicoes concorrentes escreverem na transacao uma da outra.
+     *
+     * As sondas de catalogo recebem o MESMO `tx`: a checagem de existencia e a
+     * escrita que depende dela precisam enxergar o mesmo instante do banco.
+     */
+    runInLibraryTransaction: <T>(
+      work: (scope: TransactionScope, stores: LibraryStores) => Promise<T>,
+    ): Promise<T> =>
+      prisma.$transaction((tx) => {
+        const entityProbe = createEntityProbe(tx);
+        const episodeProbe = createEpisodeProbe(tx);
+        return work(SCOPE, {
+          watchStates: createPrismaUserWatchStateStore(tx, entityProbe),
+          episodeProgress: createPrismaEpisodeProgressStore(tx, episodeProbe),
+          viewingEvents: createPrismaViewingEventStore(tx),
+          lists: createPrismaUserListStore(tx),
+          listItems: createPrismaUserListItemStore(tx, entityProbe),
+          ratings: createPrismaUserRatingStore(tx, entityProbe),
+          imports: createPrismaImportJobStore(tx),
+          catalog: createPrismaCatalogReadStore(tx),
+        });
+      }),
 
     emailProvider,
 
@@ -249,6 +298,7 @@ export function createFullAuthRuntime(options: AuthRuntimeOptions = {}): AuthRun
   return {
     email: createAuthHttpHandlers({ runtime, ...edgeDeps }),
     authenticated: createAuthenticatedHttpHandlers({ runtime, ...edgeDeps }),
+    library: createLibraryHttpHandlers({ runtime, ...edgeDeps }),
   };
 }
 

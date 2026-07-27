@@ -20,9 +20,18 @@ import {
   type ConsentKind,
   type DataRequestKind,
   type DataRequestStatus,
+  type ImportJobStatus,
+  type ImportSource,
   type ProfileVisibility,
+  type RatableEntityType,
+  type SystemListKey,
+  type UserListKind,
   type UserRole,
   type UserStatus,
+  type ViewingEventType,
+  type Visibility,
+  type WatchableEntityType,
+  type WatchState,
 } from "../../core/types.js";
 import type {
   AuthenticatedUserRecord,
@@ -31,9 +40,16 @@ import type {
   CredentialVerificationMaterial,
   DataRequestRecord,
   EmailVerificationState,
+  EpisodeProgressRecord,
   IdentityRecord,
+  ImportJobRecord,
   ProfileRecord,
   SessionAccessRecord,
+  UserListItemRecord,
+  UserListRecord,
+  UserRatingRecord,
+  ViewingEventRecord,
+  WatchStateRecord,
 } from "../types.js";
 
 /**
@@ -416,5 +432,306 @@ export function toDataRequestRecord(row: DataRequestRow): DataRequestRecord {
     status,
     requestedAt: row.requestedAt,
     processedAt: row.processedAt,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// C8 — BIBLIOTECA PESSOAL
+//
+// Mesma trava dos demais enums: um `Record<$Enums.X, X>` faz de um valor novo
+// no enum do Prisma um erro de TYPECHECK aqui, em vez de um `default`
+// silencioso mapeando estado desconhecido para algo plausivel.
+// ---------------------------------------------------------------------------
+
+const WATCH_STATE_BY_DB: Record<$Enums.WatchState, WatchState> = {
+  planned: "planned",
+  watching: "watching",
+  watched: "watched",
+  paused: "paused",
+  dropped: "dropped",
+  rewatching: "rewatching",
+  not_interested: "not_interested",
+};
+
+const VISIBILITY_BY_DB: Record<$Enums.Visibility, Visibility> = {
+  private: "private",
+  unlisted: "unlisted",
+  public: "public",
+};
+
+const USER_LIST_KIND_BY_DB: Record<$Enums.UserListKind, UserListKind> = {
+  system: "system",
+  custom: "custom",
+};
+
+const SYSTEM_LIST_KEY_BY_DB: Record<$Enums.SystemListKey, SystemListKey> = {
+  watchlist: "watchlist",
+  favorites: "favorites",
+  watching: "watching",
+  watched: "watched",
+};
+
+const VIEWING_EVENT_TYPE_BY_DB: Record<$Enums.ViewingEventType, ViewingEventType> = {
+  watch_started: "watch_started",
+  watch_completed: "watch_completed",
+  episode_watched: "episode_watched",
+  episode_unwatched: "episode_unwatched",
+  progress_updated: "progress_updated",
+  state_changed: "state_changed",
+  rewatch_started: "rewatch_started",
+  rating_set: "rating_set",
+  rating_removed: "rating_removed",
+  review_created: "review_created",
+  undo: "undo",
+  import_applied: "import_applied",
+};
+
+const IMPORT_SOURCE_BY_DB: Record<$Enums.ImportSource, ImportSource> = {
+  letterboxd_csv: "letterboxd_csv",
+  trakt_export: "trakt_export",
+  cinerie_json: "cinerie_json",
+  cinerie_csv: "cinerie_csv",
+};
+
+const IMPORT_JOB_STATUS_BY_DB: Record<$Enums.ImportJobStatus, ImportJobStatus> = {
+  uploaded: "uploaded",
+  parsed: "parsed",
+  preview_ready: "preview_ready",
+  resolving: "resolving",
+  conflicts_pending: "conflicts_pending",
+  applying: "applying",
+  applied: "applied",
+  failed: "failed",
+  cancelled: "cancelled",
+};
+
+/**
+ * Estreita `EntityType` (5 valores) para `WatchableEntityType` (movie|tv).
+ *
+ * Fail-closed: o CHECK do banco ja garante que `user_watch_states` so guarda
+ * movie/tv, mas se o banco estiver a frente do client gerado o valor inesperado
+ * LANCA em vez de virar "movie" por conveniencia — um estado desconhecido
+ * tratado como filme apareceria na biblioteca do usuario como outra coisa.
+ */
+function toWatchableEntityType(dbType: $Enums.EntityType): WatchableEntityType {
+  if (dbType === "movie" || dbType === "tv") {
+    return dbType;
+  }
+  throw new UnmappableRowError("entity_type");
+}
+
+/** Estreita `EntityType` para os tipos avaliaveis (movie|tv|season|episode). */
+function toRatableEntityType(dbType: $Enums.EntityType): RatableEntityType {
+  if (dbType === "movie" || dbType === "tv" || dbType === "season" || dbType === "episode") {
+    return dbType;
+  }
+  throw new UnmappableRowError("entity_type");
+}
+
+export interface WatchStateRow {
+  readonly entityType: $Enums.EntityType;
+  readonly entityId: bigint;
+  readonly status: $Enums.WatchState;
+  readonly startedAt: Date | null;
+  readonly completedAt: Date | null;
+  readonly lastActivityAt: Date;
+  readonly rewatchCount: number;
+  readonly visibility: $Enums.Visibility;
+  readonly version: number;
+  readonly updatedAt: Date;
+}
+
+/** `WatchStateRecord` campo a campo. Sem `user_id` (quem consultou ja o tem). */
+export function toWatchStateRecord(row: WatchStateRow): WatchStateRecord {
+  const status = WATCH_STATE_BY_DB[row.status] as WatchState | undefined;
+  const visibility = VISIBILITY_BY_DB[row.visibility] as Visibility | undefined;
+  if (status === undefined) throw new UnmappableRowError("status");
+  if (visibility === undefined) throw new UnmappableRowError("visibility");
+  return {
+    entityType: toWatchableEntityType(row.entityType),
+    entityId: row.entityId,
+    status,
+    startedAt: row.startedAt,
+    completedAt: row.completedAt,
+    lastActivityAt: row.lastActivityAt,
+    rewatchCount: row.rewatchCount,
+    visibility,
+    version: row.version,
+    updatedAt: row.updatedAt,
+  };
+}
+
+export interface EpisodeProgressRow {
+  readonly episodeId: bigint;
+  readonly watched: boolean;
+  readonly watchedAt: Date | null;
+  readonly progressSeconds: number | null;
+  readonly durationSeconds: number | null;
+  readonly version: number;
+  readonly updatedAt: Date;
+}
+
+export function toEpisodeProgressRecord(row: EpisodeProgressRow): EpisodeProgressRecord {
+  return {
+    episodeId: row.episodeId,
+    watched: row.watched,
+    watchedAt: row.watchedAt,
+    progressSeconds: row.progressSeconds,
+    durationSeconds: row.durationSeconds,
+    version: row.version,
+    updatedAt: row.updatedAt,
+  };
+}
+
+export interface ViewingEventRow {
+  readonly id: bigint;
+  readonly entityType: $Enums.EntityType;
+  readonly entityId: bigint;
+  readonly eventType: $Enums.ViewingEventType;
+  readonly occurredAt: Date;
+  readonly source: string;
+}
+
+export function toViewingEventRecord(row: ViewingEventRow): ViewingEventRecord {
+  const eventType = VIEWING_EVENT_TYPE_BY_DB[row.eventType] as ViewingEventType | undefined;
+  if (eventType === undefined) throw new UnmappableRowError("event_type");
+  return {
+    id: row.id,
+    entityType: toRatableEntityType(row.entityType),
+    entityId: row.entityId,
+    eventType,
+    occurredAt: row.occurredAt,
+    source: row.source,
+  };
+}
+
+export interface UserListRow {
+  readonly id: bigint;
+  readonly ownerId: bigint;
+  readonly kind: $Enums.UserListKind;
+  readonly systemKey: $Enums.SystemListKey | null;
+  readonly title: string;
+  readonly slug: string;
+  readonly description: string | null;
+  readonly visibility: $Enums.Visibility;
+  readonly ordered: boolean;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+  readonly _count?: { readonly items: number };
+}
+
+export function toUserListRecord(row: UserListRow): UserListRecord {
+  const kind = USER_LIST_KIND_BY_DB[row.kind] as UserListKind | undefined;
+  const visibility = VISIBILITY_BY_DB[row.visibility] as Visibility | undefined;
+  if (kind === undefined) throw new UnmappableRowError("kind");
+  if (visibility === undefined) throw new UnmappableRowError("visibility");
+  const systemKey =
+    row.systemKey === null
+      ? null
+      : ((SYSTEM_LIST_KEY_BY_DB[row.systemKey] ?? null) as SystemListKey | null);
+  if (row.systemKey !== null && systemKey === null) {
+    throw new UnmappableRowError("system_key");
+  }
+  return {
+    id: row.id,
+    ownerId: row.ownerId,
+    kind,
+    systemKey,
+    title: row.title,
+    slug: row.slug,
+    description: row.description,
+    visibility,
+    ordered: row.ordered,
+    itemCount: row._count?.items ?? 0,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+export interface UserListItemRow {
+  readonly id: bigint;
+  readonly entityType: $Enums.EntityType;
+  readonly entityId: bigint;
+  readonly position: number | null;
+  readonly note: string | null;
+  readonly addedAt: Date;
+}
+
+export function toUserListItemRecord(row: UserListItemRow): UserListItemRecord {
+  return {
+    id: row.id,
+    entityType: toRatableEntityType(row.entityType),
+    entityId: row.entityId,
+    position: row.position,
+    note: row.note,
+    addedAt: row.addedAt,
+  };
+}
+
+export interface UserRatingRow {
+  readonly entityType: $Enums.EntityType;
+  readonly entityId: bigint;
+  readonly value: { toString(): string };
+  readonly scale: number;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+}
+
+/**
+ * `UserRatingRecord` campo a campo.
+ *
+ * `value` e `Decimal(2,1)` no banco e chega como Decimal do driver. A conversao
+ * passa por `toString()` (texto exato para uma casa decimal) em vez de um
+ * metodo especifico do runtime do Decimal — assim o mapeador nao depende de
+ * qual implementacao o driver escolheu.
+ */
+export function toUserRatingRecord(row: UserRatingRow): UserRatingRecord {
+  const value = Number(row.value.toString());
+  if (!Number.isFinite(value)) {
+    throw new UnmappableRowError("value");
+  }
+  return {
+    entityType: toRatableEntityType(row.entityType),
+    entityId: row.entityId,
+    value,
+    scale: row.scale,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+export interface ImportJobRow {
+  readonly id: bigint;
+  readonly userId: bigint;
+  readonly source: $Enums.ImportSource;
+  readonly status: $Enums.ImportJobStatus;
+  readonly fileName: string | null;
+  readonly itemCount: number;
+  readonly conflictCount: number;
+  readonly appliedCount: number;
+  readonly error: string | null;
+  readonly appliedAt: Date | null;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+}
+
+export function toImportJobRecord(row: ImportJobRow): ImportJobRecord {
+  const source = IMPORT_SOURCE_BY_DB[row.source] as ImportSource | undefined;
+  const status = IMPORT_JOB_STATUS_BY_DB[row.status] as ImportJobStatus | undefined;
+  if (source === undefined) throw new UnmappableRowError("source");
+  if (status === undefined) throw new UnmappableRowError("status");
+  return {
+    id: row.id,
+    userId: row.userId,
+    source,
+    status,
+    fileName: row.fileName,
+    itemCount: row.itemCount,
+    conflictCount: row.conflictCount,
+    appliedCount: row.appliedCount,
+    error: row.error,
+    appliedAt: row.appliedAt,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
   };
 }

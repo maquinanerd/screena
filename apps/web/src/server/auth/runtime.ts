@@ -28,6 +28,7 @@ import type {
   AuthenticatedHttpHandlers,
   AuthHttpHandlers,
   AuthRuntimeHandlers,
+  LibraryHttpHandlers,
 } from "@screena/user-platform/auth-runtime";
 
 /**
@@ -77,6 +78,38 @@ function authHandlers(): AuthHttpHandlers {
 
 function authenticatedHandlers(): AuthenticatedHttpHandlers {
   return fullRuntime().authenticated;
+}
+
+function libraryHandlers(): LibraryHttpHandlers {
+  return fullRuntime().library;
+}
+
+/**
+ * Executa um endpoint da BIBLIOTECA PESSOAL (C8): watchlist, tracker, listas,
+ * notas e importacao. Mesma casca de protecao dos anteriores — so a construcao
+ * do runtime pode lancar aqui; os handlers ja contem as proprias excecoes.
+ */
+export async function runLibraryEndpoint(
+  pick: (handlers: LibraryHttpHandlers) => (request: Request) => Promise<Response>,
+  request: Request,
+): Promise<Response> {
+  try {
+    return await pick(libraryHandlers())(request);
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        scope: "library",
+        outcome: "runtime_unavailable",
+        detail: isAuthRuntimeConfigurationError(error)
+          ? error.details
+          : "falha de construcao do runtime (detalhe omitido de proposito)",
+      }),
+    );
+    return new Response(
+      JSON.stringify({ ok: false, code: "error", message: "nao foi possivel completar a operacao." }),
+      { status: 500, headers: { ...AUTH_SECURITY_HEADERS } },
+    );
+  }
 }
 
 /**
