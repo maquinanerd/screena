@@ -1,23 +1,25 @@
 import type { Metadata } from 'next'
 
-import { EntityIndex } from '../../_components/entity-index'
+import { serializeJsonLd } from '@screena/seo'
+
+import { HomeLike } from '../../_components/home-like'
+import {
+  HOME_NEWS_CARD_LIMIT,
+  takeSectionCards,
+} from '../../../src/lib/portal-presenter'
+import { SITE_URL, publicRobots } from '../../../src/lib/site'
+import { getHomeHeroSlides } from '../../../src/server/home-hero'
+import { getHomeTickerEpisodes } from '../../../src/server/home-ticker'
+import { getNewsIndexData } from '../../../src/server/news-pages'
 import { getSeriesIndexData } from '../../../src/server/entity-indexes'
-import { publicRobots } from '../../../src/lib/site'
 
 /**
- * Listagem publica de series - /pt/series/ (porta de entrada; acento verde).
- *
- * Server component puro: le somente PostgreSQL via `getSeriesIndexData`. Zero
- * API externa, zero Gemini e zero TMDB no render. A rota lista somente series
- * com titulo e slug canonico reais, sem ranking ou streaming inventado.
+ * Categoria Séries — tela 04 do canônico (EX-04-dual): home-like com a banda
+ * de SÉRIES ligada (showSeriesBand), acento/logo verdes por contexto e o
+ * ticker de episódios novos (dataset de séries). Contratos de SEO do índice
+ * real preservados (canonical, robots, CollectionPage, BreadcrumbList).
  */
 
-/**
- * Render dinamico (server-rendered on demand): a rota reflete o estado atual do
- * PostgreSQL a cada request e NAO e pre-renderizada no build (que roda sem
- * DATABASE_URL). Continua PURA - le so PostgreSQL, sem API externa (invariantes
- * 3/4). Mesma natureza dinamica das rotas [slug].
- */
 export const dynamic = 'force-dynamic'
 
 const TITLE = 'Séries'
@@ -34,17 +36,73 @@ export async function generateMetadata(): Promise<Metadata> {
   }
 }
 
-export default async function SeriesIndexPage() {
-  const { view, canonicalUrl } = await getSeriesIndexData()
+export default async function SeriesCategoryPage() {
+  const [index, news, heroSlides, ticker] = await Promise.all([
+    getSeriesIndexData(),
+    getNewsIndexData(),
+    getHomeHeroSlides(),
+    getHomeTickerEpisodes(),
+  ])
+
+  const seriesHero = heroSlides.filter((slide) => slide.vertical === 'series')
+  const newsCards = takeSectionCards(
+    [...(news.view.featured !== null ? [news.view.featured] : []), ...news.view.cards],
+    HOME_NEWS_CARD_LIMIT,
+  )
+
+  const breadcrumbJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Início', item: `${SITE_URL}/pt/` },
+      { '@type': 'ListItem', position: 2, name: TITLE, item: index.canonicalUrl },
+    ],
+  }
+  const collectionJsonLd: Record<string, unknown> = {
+    '@context': 'https://schema.org',
+    '@type': 'CollectionPage',
+    name: TITLE,
+    url: index.canonicalUrl,
+    description: DESCRIPTION,
+  }
+  if (index.view.cards.length > 0) {
+    collectionJsonLd.mainEntity = {
+      '@type': 'ItemList',
+      numberOfItems: index.view.cards.length,
+      itemListElement: index.view.cards.map((card, position) => ({
+        '@type': 'ListItem',
+        position: position + 1,
+        url: `${SITE_URL}${card.href}`,
+        name: card.title,
+      })),
+    }
+  }
 
   return (
-    <EntityIndex
-      title={TITLE}
-      description={DESCRIPTION}
-      breadcrumbLabel="Séries"
-      canonicalUrl={canonicalUrl}
-      vertical="series"
-      view={view}
-    />
+    <main data-vertical="series">
+      <h1 className="visually-hidden">{TITLE}</h1>
+
+      <HomeLike
+        adPrefix="series"
+        emptyMessage="Ainda não há séries publicadas nesta seção."
+        heroSlides={seriesHero}
+        movieCards={[]}
+        newsCards={newsCards}
+        seriesCards={index.view.cards}
+        showMoviesBand={false}
+        showSeriesBand
+        tickerEpisodes={ticker}
+        upcomingMovies={[]}
+      />
+
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(collectionJsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }}
+      />
+    </main>
   )
 }
