@@ -4190,6 +4190,395 @@ a.tabs__tab[aria-current='page'] {
 }
 
 /* ------------------------------------------------------------------ */
+/* Pessoa (tela 09) — header circular + known-for + filmografia        */
+/* ------------------------------------------------------------------ */
+
+.person-head {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 48px 80px 0;
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 102px;
+  align-items: start;
+}
+
+.person-head__avatar {
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--c-bg-skeleton);
+  border: 1px solid var(--c-border);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40px;
+  font-weight: 800;
+  color: var(--c-text-muted);
+}
+
+.person-head__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.person-head__kicker {
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--c-text-secondary);
+  margin-bottom: 10px;
+}
+
+.person-head__name {
+  font-size: clamp(34px, 5vw, 56px);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  color: var(--c-text-primary);
+  line-height: 1;
+  margin: 0;
+}
+
+.person-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.person-chips span {
+  font-size: 11px;
+  color: var(--c-text-secondary);
+  background: var(--c-bg-muted);
+  padding: 7px 13px;
+  border-radius: var(--r-md);
+}
+
+.person-bio {
+  font-size: 16px;
+  line-height: 1.55;
+  color: #242424;
+  margin: 22px 0 0;
+  max-width: 68ch;
+}
+
+/* Fotos (galeria licenciada) */
+.person-photos {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.person-photos > div {
+  position: relative;
+  aspect-ratio: 3 / 4;
+  background: var(--c-bg-skeleton);
+  overflow: hidden;
+}
+
+.person-photos img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.person-photos__more {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+/* Conhecido por — 5 cards com poster 2/3 */
+.known-for {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 18px;
+}
+
+.known-for__card {
+  display: block;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-card);
+  overflow: hidden;
+  color: inherit;
+  text-decoration: none;
+}
+
+.known-for__poster {
+  position: relative;
+  aspect-ratio: 2 / 3;
+  background: var(--c-bg-skeleton);
+}
+
+.known-for__poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.known-for__type {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #fff;
+  padding: 3px 7px;
+  border-radius: var(--r-md);
+  background: var(--c-movie);
+}
+
+.known-for__type--series {
+  background: var(--c-series-dark);
+}
+
+.known-for__body {
+  padding: 11px 12px;
+}
+
+.known-for__title {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--c-text-primary);
+}
+
+.known-for__role {
+  font-size: 12px;
+  color: var(--c-text-secondary);
+  margin-top: 4px;
+}
+
+/* Filmografia — tabela em card + tabs */
+.filmo-tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.filmo-tab {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 9px 16px;
+  min-height: 44px;
+  border-radius: var(--r-md);
+  color: var(--c-text-secondary);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  cursor: pointer;
+}
+
+.filmo-tab[aria-selected='true'] {
+  color: var(--c-text-primary);
+  border-color: var(--c-text-primary);
+}
+
+.filmo {
+  list-style: none;
+  margin: 24px 0 0;
+  padding: 0;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-card);
+  overflow: hidden;
+}
+
+.filmo__row {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 16px 22px;
+  border-bottom: 1px solid var(--c-bg-muted);
+  color: inherit;
+  text-decoration: none;
+}
+
+.filmo li:last-child .filmo__row {
+  border-bottom: none;
+}
+
+.filmo__year {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--c-text-secondary);
+  width: 44px;
+  flex-shrink: 0;
+}
+
+.filmo__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.filmo__dot--movie {
+  background: var(--c-movie);
+}
+
+.filmo__dot--series {
+  background: var(--c-series);
+}
+
+.filmo__title {
+  font-size: 16px;
+  font-weight: 650;
+  color: var(--c-text-primary);
+  flex: 1;
+  min-width: 0;
+}
+
+.filmo__role {
+  font-size: 14px;
+  color: var(--c-text-secondary);
+  flex: 1;
+  min-width: 0;
+}
+
+/* Detalhes pessoais — 2 colunas */
+.person-details {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0 48px;
+}
+
+.person-details > div {
+  display: flex;
+  gap: 18px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--c-bg-muted);
+}
+
+.person-details dt {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--c-text-secondary);
+  width: 150px;
+  flex-shrink: 0;
+}
+
+.person-details dd {
+  font-size: 15px;
+  color: #242424;
+  margin: 0;
+}
+
+/* Notícias relacionadas — 2 cards horizontais */
+.person-news {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 18px;
+}
+
+.person-news__card {
+  display: flex;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  overflow: hidden;
+  color: inherit;
+  text-decoration: none;
+}
+
+.person-news__img {
+  width: 42%;
+  flex-shrink: 0;
+  background: var(--c-bg-skeleton);
+}
+
+.person-news__img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.person-news__body {
+  padding: 20px;
+  flex: 1;
+}
+
+.person-news__cat {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--c-text-secondary);
+}
+
+.person-news__title {
+  font-size: 17px;
+  font-weight: 650;
+  color: var(--c-text-primary);
+  line-height: 1.25;
+  margin-top: 8px;
+}
+
+.person-news__meta {
+  font-size: 11px;
+  color: var(--c-text-secondary);
+  margin-top: 12px;
+}
+
+@media (max-width: 1023px) {
+  .person-head {
+    padding: 40px 24px 0;
+    grid-template-columns: 160px 1fr;
+    gap: 32px;
+  }
+
+  .known-for {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .person-details {
+    grid-template-columns: 1fr;
+  }
+
+  .person-news {
+    grid-template-columns: 1fr;
+  }
+
+  .person-photos {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 599px) {
+  .person-head {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+
+  .person-head__avatar {
+    width: 160px;
+  }
+
+  .known-for {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .filmo__row {
+    flex-wrap: wrap;
+    gap: 8px 12px;
+  }
+
+  .filmo__role {
+    flex-basis: 100%;
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* AdSlot — espaco reservado + rotulo obrigatorio, sem CLS             */
 /* ------------------------------------------------------------------ */
 

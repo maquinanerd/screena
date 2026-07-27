@@ -160,6 +160,7 @@ describe("buildPersonCredits", () => {
       href: "/pt/series/serie-b/",
       year: 2022,
       roleLabel: "Direcao",
+      posterUrl: null,
     });
     expect(credits[1]?.href).toBe("/pt/filmes/filme-a/");
   });

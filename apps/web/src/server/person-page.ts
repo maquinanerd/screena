@@ -12,9 +12,10 @@
  */
 
 import { cache } from "react";
-import { getPrismaClient } from "@screena/db/server";
+import { getPrismaClient, type Prisma } from "@screena/db/server";
 
 import { SITE_URL } from "../lib/site";
+import { buildTmdbImageUrl } from "../lib/tmdb-image-url";
 import {
   buildPersonPageView,
   evaluatePersonIndexability,
@@ -44,6 +45,12 @@ export interface PersonPageData {
   relatedNews: NewsCardView[];
   /** IDs externos reais (imdb/tmdb/...) para montar `sameAs` no JSON-LD. */
   externalIds: { source: string; externalId: string }[];
+  /**
+   * Galeria de fotos LICENCIADA (tela 09): so tmdb_images de pessoa com
+   * display_allowed=true e licenca clara (invariante 6). [] enquanto nenhuma
+   * imagem for promovida por decisao humana.
+   */
+  gallery: { urls: string[]; total: number };
 }
 
 function personCanonicalUrl(slug: string): string {
@@ -63,6 +70,7 @@ interface ResolvedTarget {
   title: string;
   slug: string | null;
   year: number | null;
+  posterPath: string | null;
 }
 
 function targetKey(entityType: string, entityId: bigint): string {
@@ -92,6 +100,7 @@ export const getPersonPageData = cache(
             deathday: true,
             placeOfBirth: true,
             profilePath: true,
+            tmdbId: true,
           },
         }),
         prisma.slug.findFirst({
@@ -154,6 +163,7 @@ export const getPersonPageData = cache(
     }));
 
     const credits = await resolveCredits(prisma, castRows, crewRows);
+    const gallery = await resolveLicensedGallery(prisma, person.tmdbId);
 
     const view = buildPersonPageView({
       record: {
@@ -196,6 +206,7 @@ export const getPersonPageData = cache(
       canonicalUrl,
       relatedNews,
       externalIds,
+      gallery,
     };
   },
 );
@@ -266,6 +277,7 @@ function toCredit(
     slug: target.slug,
     year: target.year,
     roleLabel,
+    posterPath: target.posterPath,
   };
 }
 
@@ -311,7 +323,7 @@ async function resolveTargets(
   if (entityType === "movie") {
     const movies = await prisma.movie.findMany({
       where: { id: { in: ids } },
-      select: { id: true, titleOriginal: true, releaseDate: true },
+      select: { id: true, titleOriginal: true, releaseDate: true, posterPath: true },
     });
     for (const movie of movies) {
       const key = movie.id.toString();
@@ -319,12 +331,13 @@ async function resolveTargets(
         title: translatedTitle.get(key) ?? movie.titleOriginal,
         slug: canonicalSlug.get(key) ?? null,
         year: yearFromDate(movie.releaseDate),
+        posterPath: movie.posterPath,
       });
     }
   } else {
     const shows = await prisma.tvShow.findMany({
       where: { id: { in: ids } },
-      select: { id: true, nameOriginal: true, firstAirDate: true },
+      select: { id: true, nameOriginal: true, firstAirDate: true, posterPath: true },
     });
     for (const show of shows) {
       const key = show.id.toString();
@@ -332,7 +345,39 @@ async function resolveTargets(
         title: translatedTitle.get(key) ?? show.nameOriginal,
         slug: canonicalSlug.get(key) ?? null,
         year: yearFromDate(show.firstAirDate),
+        posterPath: show.posterPath,
       });
     }
   }
+}
+
+/**
+ * Fotos licenciadas da pessoa (invariante 6: display_allowed + licenca clara;
+ * tudo nasce bloqueado ate decisao humana — sem promocao, a galeria fica vazia
+ * e a secao e omitida no render).
+ */
+async function resolveLicensedGallery(
+  prisma: PrismaClient,
+  tmdbId: number,
+): Promise<{ urls: string[]; total: number }> {
+  const where = {
+    entityType: "person",
+    tmdbId,
+    imageType: "profile",
+    displayAllowed: true,
+    licenseStatus: { in: ["official", "licensed"] },
+  } satisfies Prisma.TmdbImageWhereInput;
+  const [rows, total] = await Promise.all([
+    prisma.tmdbImage.findMany({
+      where,
+      orderBy: { voteAverage: "desc" },
+      take: 4,
+      select: { filePath: true },
+    }),
+    prisma.tmdbImage.count({ where }),
+  ]);
+  const urls = rows
+    .map((row) => buildTmdbImageUrl(row.filePath, "w500"))
+    .filter((url): url is string => url !== null);
+  return { urls, total };
 }

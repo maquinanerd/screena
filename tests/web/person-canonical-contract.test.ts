@@ -28,10 +28,12 @@ describe('shell público mínimo · detalhe de pessoa', () => {
     expect(code).not.toContain('AggregateRating')
   })
 
-  it('mantém um H1, breadcrumb e identidade externa real', () => {
+  it('mantém um H1, breadcrumb JSON-LD e identidade externa real', () => {
     expect(code.match(/<h1[\s>]/g)).toHaveLength(1)
     expect(code).toContain('data-vertical="person"')
-    expect(code).toContain('href={PESSOAS_INDEX_PATH}>Pessoas</a>')
+    // Tela 09 canônica não tem breadcrumb visível; o BreadcrumbList JSON-LD
+    // permanece obrigatório (governança de SEO).
+    expect(code).toMatch(/['"]@type['"]:\s*['"]BreadcrumbList['"]/)
     expect(code).toContain('buildExternalLinks(externalIds, "person")')
     expect(code).toContain('<EntityExternalIds links={externalLinks} />')
   })
@@ -43,7 +45,7 @@ describe('shell público mínimo · detalhe de pessoa', () => {
     expect(code).toContain('href={credit.href}')
     expect(code).toContain('Filmografia ainda não disponível.')
     expect(code).toContain('personalDetails.map(')
-    expect(code).toContain('relatedNews.map(')
+    expect(code).toContain('relatedNews.slice(0, 2).map(')
     expect(code).toContain('data-editorial-state="in-review"')
   })
 
@@ -55,7 +57,8 @@ describe('shell público mínimo · detalhe de pessoa', () => {
     expect(code).not.toContain('.module.css')
     expect(code).toContain('className="container"')
     expect(code).toContain('view.profile !== null ?')
-    expect(code).toContain('topinfo__poster--empty')
+    // Retrato canônico circular; fallback de iniciais (nunca imagem inventada)
+    expect(code).toContain('person-head__avatar')
     expect(code).toContain('{initials}')
     expect(code).toContain('<AdSlot format="leaderboard" slotId="person-credits" />')
     expect(code).not.toMatch(/(?:\?\?|=== null \?)\s*["']—["']/)

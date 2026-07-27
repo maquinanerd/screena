@@ -4,30 +4,30 @@ import { notFound, permanentRedirect } from 'next/navigation'
 import { buildSameAs, serializeJsonLd } from '@screena/seo'
 
 import { AdSlot } from '../../../_components/ad-slot'
-import { EmptyState, NewsListCard, SectionHead } from '../../../_components/ds'
+import { SectionTitle } from '../../../_components/ds'
 import { EntityExternalIds } from '../../../_components/entity-external-ids'
+import { Filmography } from '../../../_components/filmography'
 import { canonicalRedirectPath } from '../../../../src/lib/canonical-redirect'
 import { buildExternalLinks } from '../../../../src/lib/external-links'
-import type { PersonCreditEntityType } from '../../../../src/lib/person-presenter'
 import { SITE_URL, gatePublicRobots } from '../../../../src/lib/site'
 import { getPersonPageData } from '../../../../src/server/person-page'
 
 /**
- * Pessoa — tela 09 do handoff (PersonDetailTemplate, contexto neutro):
- * person-hero com portrait 3/4 (sem portrait -> avatar de iniciais, nunca
- * imagem inventada), biografia em largura de leitura, filmografia com badge
- * textual Filme/Série (invariante 11) e notícias relacionadas.
+ * Pessoa — tela 09 do canônico, estrutura EXATA: header 200px/1fr (retrato
+ * CIRCULAR + kicker + nome 56 + chips + bio 68ch) → [banda de mídia: omitida —
+ * sem vídeo/entrevista licenciados; delta registrado] → [barra de prêmios:
+ * omitida — sem dado de awards no banco; delta] → CONHECIDO POR (5 cards com
+ * poster real) → FOTOS (só galeria LICENCIADA; invariante 6) → Ad → FILMOGRAFIA
+ * (tabela com filtro real Tudo/Filmes/Séries; sem célula de rating — ratings
+ * externos inativos) → DETALHES PESSOAIS (2 colunas) → NOTÍCIAS RELACIONADAS
+ * (2 cards horizontais). Dados 100% do PostgreSQL.
  */
 
 export const revalidate = 3600
 
 const PESSOAS_INDEX_PATH = '/pt/pessoas/'
 const BIOGRAPHY_BLOCK_TYPES: ReadonlySet<string> = new Set(['editorial_intro'])
-
-const CREDIT_TYPE_LABELS: Readonly<Record<PersonCreditEntityType, string>> = {
-  movie: 'Filme',
-  tv: 'Série',
-}
+const KNOWN_FOR_LIMIT = 5
 
 interface PersonPageParams {
   slug: string
@@ -106,9 +106,8 @@ export default async function PersonPage({ params }: { params: Promise<PersonPag
   const redirectPath = canonicalRedirectPath(PESSOAS_INDEX_PATH, slug, data.canonicalSlug)
   if (redirectPath !== null) permanentRedirect(redirectPath)
 
-  const { view, seo, canonicalUrl, relatedNews, externalIds } = data
+  const { view, seo, canonicalUrl, relatedNews, externalIds, gallery } = data
   const isUnderReview = seo.decision !== 'index'
-  const hasCredits = view.credits.length > 0
   const personalDetails = collectPersonalDetails(view)
   const biography = [
     view.metaDescription,
@@ -117,15 +116,32 @@ export default async function PersonPage({ params }: { params: Promise<PersonPag
       .map((block) => block.content),
   ].filter((paragraph): paragraph is string => paragraph !== null)
   const newsContext = view.blocks.find((block) => block.blockType === 'news_context') ?? null
-  const summary = [view.roleLabel, view.lifeLabel, view.placeOfBirth].filter(
-    (item): item is string => item !== null,
-  )
   const externalLinks = buildExternalLinks(externalIds, 'person')
   const initials = view.name
     .split(' ')
     .slice(0, 2)
     .map((part) => part.slice(0, 1))
     .join('')
+
+  // Chips do header: só fatos reais (créditos, nascimento/local)
+  const birthYear =
+    view.birthDateIso !== null && /^\d{4}/.test(view.birthDateIso)
+      ? view.birthDateIso.slice(0, 4)
+      : null
+  const birthChip = [
+    birthYear !== null ? `Nascido em ${birthYear}` : null,
+    view.placeOfBirth,
+  ].filter((item): item is string => item !== null)
+  const chips = [
+    view.credits.length > 0
+      ? `${view.credits.length} ${view.credits.length === 1 ? 'crédito' : 'créditos'}`
+      : null,
+    birthChip.length > 0 ? birthChip.join(' · ') : null,
+  ].filter((item): item is string => item !== null)
+
+  const knownFor = view.credits.filter((credit) => credit.posterUrl !== null).slice(0, KNOWN_FOR_LIMIT)
+  const galleryPhotos = gallery.urls
+  const galleryRest = gallery.total - galleryPhotos.length
 
   const breadcrumbJsonLd = {
     '@context': 'https://schema.org',
@@ -163,125 +179,145 @@ export default async function PersonPage({ params }: { params: Promise<PersonPag
 
   return (
     <main data-vertical="person">
-      {/* Person hero: portrait 3/4 + nome (topinfo claro, contexto neutro) */}
-      <div className="topinfo">
-        <div className="container">
-          <nav aria-label="Trilha de navegação" className="breadcrumb">
-            <ol>
-              <li>
-                <a href="/pt/">Início</a>
-              </li>
-              <li>
-                <a href={PESSOAS_INDEX_PATH}>Pessoas</a>
-              </li>
-              <li aria-current="page">{view.name}</li>
-            </ol>
-          </nav>
-
-          <div className="topinfo__grid">
-            <div
-              className={
-                view.profile === null
-                  ? 'topinfo__poster topinfo__poster--empty'
-                  : 'topinfo__poster'
-              }
-              style={{ aspectRatio: '3 / 4' }}
-            >
-              {view.profile !== null ? (
-                <img
-                  alt={`Retrato de ${view.name}`}
-                  fetchPriority="high"
-                  height={view.profile.height}
-                  src={view.profile.src}
-                  width={view.profile.width}
-                />
-              ) : (
-                <span aria-hidden="true">{initials}</span>
-              )}
-            </div>
-
-            <header>
-              <span className="badge">Pessoa</span>
-              <h1 className="topinfo__title">{view.name}</h1>
-              {summary.length > 0 ? (
-                <ul className="topinfo__meta">
-                  {summary.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
-              ) : null}
-              {externalLinks.length > 0 ? (
-                <div className="entity-links" style={{ marginTop: 18 }}>
-                  <EntityExternalIds links={externalLinks} />
-                </div>
-              ) : null}
-            </header>
-          </div>
+      {/* Header canônico: retrato circular 200px + kicker/nome/chips/bio */}
+      <div className="person-head">
+        <div
+          className="person-head__avatar"
+          style={view.profile === null ? undefined : { borderRadius: '50%' }}
+        >
+          {view.profile !== null ? (
+            <img
+              alt={`Retrato de ${view.name}`}
+              fetchPriority="high"
+              height={view.profile.height}
+              src={view.profile.src}
+              width={view.profile.width}
+            />
+          ) : (
+            <span aria-hidden="true">{initials}</span>
+          )}
         </div>
+
+        <header>
+          <div className="person-head__kicker">
+            Pessoa{view.roleLabel !== null ? ` · ${view.roleLabel}` : ''}
+          </div>
+          <h1 className="person-head__name">{view.name}</h1>
+          {chips.length > 0 ? (
+            <div className="person-chips">
+              {chips.map((chip) => (
+                <span key={chip}>{chip}</span>
+              ))}
+            </div>
+          ) : null}
+          {biography.length > 0 ? <p className="person-bio">{biography[0]}</p> : null}
+          {externalLinks.length > 0 ? (
+            <div className="entity-links" style={{ marginTop: 18 }}>
+              <EntityExternalIds links={externalLinks} />
+            </div>
+          ) : null}
+        </header>
       </div>
 
+      {/* Banda de mídia (vídeos/entrevistas) e barra de prêmios do canônico:
+          omitidas — sem vídeo licenciado nem dado de premiação no banco
+          (DESIGN-DELTA; nada de conteúdo inventado). */}
+
       <div className="container">
-        {biography.length > 0 ? (
+        {biography.length > 1 ? (
           <section aria-labelledby="person-bio-title" className="section">
-            <SectionHead id="person-bio-title" title="Biografia" />
-            <div className="article-body" style={{ maxWidth: 720, marginTop: 0 }}>
-              {biography.map((paragraph, index) => (
+            <SectionTitle id="person-bio-title" title="Biografia" />
+            <div className="art-body" style={{ margin: 0, padding: 0, textAlign: 'left' }}>
+              {biography.slice(1).map((paragraph, index) => (
                 <p key={`${index}-${paragraph.slice(0, 24)}`}>{paragraph}</p>
               ))}
             </div>
           </section>
         ) : null}
 
-        <section aria-labelledby="person-filmography-title" className="section">
-          <SectionHead id="person-filmography-title" title="Filmografia" />
-          {hasCredits ? (
-            <ul className="news-grid">
-              {view.credits.map((credit, index) => (
-                <li key={`${credit.entityType}-${credit.href}-${index}`}>
-                  <article className="news-list-card" style={{ gridTemplateColumns: '1fr' }}>
-                    <div>
-                      <span
-                        className={
-                          credit.entityType === 'movie'
-                            ? 'badge badge--movie'
-                            : 'badge badge--series'
-                        }
-                      >
-                        {CREDIT_TYPE_LABELS[credit.entityType]}
-                      </span>
-                      <h3 className="news-list-card__title">
-                        <a data-entity-type={credit.entityType} href={credit.href}>
-                          {credit.title}
-                        </a>
-                      </h3>
-                      <p className="news-list-card__meta">
-                        {[
-                          credit.year !== null ? String(credit.year) : null,
-                          credit.roleLabel,
-                        ]
-                          .filter((item): item is string => item !== null)
-                          .join(' · ')}
-                      </p>
-                    </div>
-                  </article>
-                </li>
+        {knownFor.length > 0 ? (
+          <section aria-labelledby="person-known-for-title" className="section">
+            <SectionTitle id="person-known-for-title" title="Conhecido por" />
+            <div className="known-for">
+              {knownFor.map((credit) => (
+                <a
+                  className="known-for__card"
+                  data-entity-type={credit.entityType}
+                  href={credit.href}
+                  key={credit.href}
+                >
+                  <span className="known-for__poster">
+                    {credit.posterUrl !== null ? (
+                      <img alt="" loading="lazy" src={credit.posterUrl} />
+                    ) : null}
+                    <span
+                      className={
+                        credit.entityType === 'movie'
+                          ? 'known-for__type'
+                          : 'known-for__type known-for__type--series'
+                      }
+                    >
+                      {credit.entityType === 'movie' ? 'Filme' : 'Série'}
+                    </span>
+                  </span>
+                  <span className="known-for__body">
+                    <span className="known-for__title">{credit.title}</span>
+                    {credit.roleLabel !== null ? (
+                      <span className="known-for__role">{credit.roleLabel}</span>
+                    ) : null}
+                  </span>
+                </a>
               ))}
-            </ul>
-          ) : (
-            <EmptyState title="Filmografia ainda não disponível." />
-          )}
-        </section>
+            </div>
+          </section>
+        ) : null}
+
+        {/* Fotos: SÓ galeria licenciada (invariante 6) — vazia até decisão humana */}
+        {galleryPhotos.length > 0 ? (
+          <section aria-labelledby="person-photos-title" className="section">
+            <SectionTitle id="person-photos-title" title="Fotos" />
+            <div className="person-photos">
+              {galleryPhotos.map((url, index) => (
+                <div key={url}>
+                  <img alt={`Foto de ${view.name}`} loading="lazy" src={url} />
+                  {index === galleryPhotos.length - 1 && galleryRest > 0 ? (
+                    <span className="person-photos__more">+{galleryRest}</span>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         <AdSlot format="leaderboard" slotId="person-credits" />
 
+        <section aria-labelledby="person-filmography-title" className="section">
+          <div className="section-head">
+            <SectionTitle id="person-filmography-title" title="Filmografia" />
+          </div>
+          {view.credits.length > 0 ? (
+            <Filmography
+              items={view.credits.map((credit) => ({
+                entityType: credit.entityType,
+                title: credit.title,
+                href: credit.href,
+                year: credit.year,
+                roleLabel: credit.roleLabel,
+              }))}
+            />
+          ) : (
+            <p className="muted">Filmografia ainda não disponível.</p>
+          )}
+        </section>
+
         {personalDetails.length > 0 ? (
           <section aria-labelledby="person-details-title" className="section">
-            <SectionHead id="person-details-title" title="Detalhes pessoais" />
-            <dl className="facts">
+            <SectionTitle id="person-details-title" title="Detalhes pessoais" />
+            <dl className="person-details">
               {personalDetails.map((detail) => (
-                <div className="facts__row" key={detail.label}>
-                  <dt className="facts__label">{detail.label}</dt>
-                  <dd className="facts__value">{detail.value}</dd>
+                <div key={detail.label}>
+                  <dt>{detail.label}</dt>
+                  <dd>{detail.value}</dd>
                 </div>
               ))}
             </dl>
@@ -290,17 +326,28 @@ export default async function PersonPage({ params }: { params: Promise<PersonPag
 
         {relatedNews.length > 0 ? (
           <section aria-labelledby="person-related-news-title" className="section">
-            <SectionHead id="person-related-news-title" title="Notícias relacionadas" />
+            <SectionTitle id="person-related-news-title" title="Notícias relacionadas" />
             {newsContext !== null ? (
               <p data-block-type={newsContext.blockType}>{newsContext.content}</p>
             ) : null}
-            <ul className="news-grid">
-              {relatedNews.map((card) => (
-                <li key={card.href}>
-                  <NewsListCard card={card} />
-                </li>
+            <div className="person-news">
+              {relatedNews.slice(0, 2).map((card) => (
+                <a className="person-news__card" href={card.href} key={card.href}>
+                  <span className="person-news__img">
+                    {card.image !== null ? <img alt="" loading="lazy" src={card.image.src} /> : null}
+                  </span>
+                  <span className="person-news__body">
+                    {card.category !== null ? (
+                      <span className="person-news__cat">{card.category}</span>
+                    ) : null}
+                    <span className="person-news__title">{card.title}</span>
+                    {card.dateLabel !== null ? (
+                      <span className="person-news__meta">{card.dateLabel}</span>
+                    ) : null}
+                  </span>
+                </a>
               ))}
-            </ul>
+            </div>
           </section>
         ) : null}
 
