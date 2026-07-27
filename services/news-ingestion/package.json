@@ -1,0 +1,29 @@
+{
+  "name": "@screena/news-ingestion",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Plataforma editorial da Cinerie (namespace tecnico legado @screena/news-ingestion): contrato de entrada de fontes/itens, proveniencia, deduplicacao deterministica, ciclo de vida de artigo, projecao de busca e decisao de indexabilidade. Worker-only; nunca roda no render, nunca publica sozinho, nunca reconstroi RSSPRIME/MN26.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "sideEffects": false,
+  "license": "UNLICENSED",
+  "scripts": {
+    "editorial": "tsx bin/editorial.ts",
+    "validate:editorial-platform": "tsx scripts/validate-editorial-platform-real-postgres.ts"
+  },
+  "dependencies": {
+    "@screena/config": "workspace:*",
+    "@screena/db": "workspace:*",
+    "@screena/seo": "workspace:*"
+  },
+  "devDependencies": {
+    "@prisma/client": "^6.1.0",
+    "embedded-postgres": "16.14.0-beta.17",
+    "prisma": "^6.1.0",
+    "tsx": "^4.19.0"
+  }
+}

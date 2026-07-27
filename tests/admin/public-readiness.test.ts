@@ -221,7 +221,7 @@ describe("evaluateContentBlockPublicReadiness", () => {
 describe("determinismo e ausencia de segredo", () => {
   it("issues sao deterministas (mesma entrada -> mesma ordem)", () => {
     const input = readyArticle({ slug: null, title: null, displayAllowed: false, bodyChars: 5 });
-    expect(buildReadinessIssues(input)).toEqual(buildReadinessIssues(input));
+    expect(buildReadinessIssues(input, NOW)).toEqual(buildReadinessIssues(input, NOW));
   });
 
   it("nenhuma saida contem termo de segredo", () => {

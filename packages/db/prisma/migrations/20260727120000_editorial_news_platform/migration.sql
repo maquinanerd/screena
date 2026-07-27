@@ -260,11 +260,9 @@ ALTER TABLE "article_translations"
 -- `article` (artigos nao vivem em `entities`/`slugs`), o discriminador
 -- `doc_kind` + `article_id` convive com (entity_type, entity_id).
 --
--- O unique antigo (entity_type, entity_id, locale) e SUBSTITUIDO por dois
--- uniques PARCIAIS. Isso e obrigatorio, nao cosmetico: com entity_type agora
--- anulavel, colunas NULL nunca colidem em unique do PostgreSQL, e manter o
--- unique antigo permitiria N documentos de busca para o MESMO artigo no mesmo
--- locale - duplicata silenciosa de resultado.
+-- Relaxar entity_type/entity_id para anulavel e SEGURO para o unique que ja
+-- existe: NULL nunca colide em unique no PostgreSQL, entao ele segue travando
+-- entidades e ignora artigos. O que falta e um unique so para artigos.
 -- ============================================================
 
 ALTER TABLE "search_documents"
@@ -273,12 +271,12 @@ ALTER TABLE "search_documents"
   ALTER COLUMN "entity_type" DROP NOT NULL,
   ALTER COLUMN "entity_id" DROP NOT NULL;
 
-DROP INDEX "search_documents_entity_type_entity_id_locale_key";
-
-CREATE UNIQUE INDEX "search_documents_entity_unique"
-  ON "search_documents"("entity_type", "entity_id", "locale")
-  WHERE "doc_kind" = 'entity';
-
+-- O unique de ENTIDADE (`search_documents_entity_type_entity_id_locale_key`) e
+-- MANTIDO como esta. Com as colunas agora anulaveis ele continua travando
+-- entidades e simplesmente ignora as linhas de artigo, que tem
+-- (NULL, NULL, locale) - e NULL nunca colide em unique no PostgreSQL.
+-- Justamente por ignora-las, ele nao serve para travar artigo: dai o unique
+-- PARCIAL abaixo. Sem ele o mesmo artigo ganharia N documentos por locale.
 CREATE UNIQUE INDEX "search_documents_article_unique"
   ON "search_documents"("article_id", "locale")
   WHERE "doc_kind" = 'article';
@@ -302,10 +300,8 @@ ALTER TABLE "search_documents"
 -- ============================================================
 -- 7) page_indexability_decisions - artigo na MESMA tabela de decisao
 --
--- Mesmo padrao do bloco 6. O unique parcial de decisao VIGENTE
--- (`page_indexability_decisions_current_unique`, criado em
--- 20260715120000_data_governance_hardening) e recriado POR KIND pelo mesmo
--- motivo: com entity_type anulavel ele deixaria de travar artigo nenhum.
+-- Mesmo padrao do bloco 6: o unique de entidade permanece, e o artigo ganha
+-- o seu proprio unique parcial de decisao vigente.
 -- ============================================================
 
 ALTER TABLE "page_indexability_decisions"
@@ -314,12 +310,10 @@ ALTER TABLE "page_indexability_decisions"
   ALTER COLUMN "entity_type" DROP NOT NULL,
   ALTER COLUMN "entity_id" DROP NOT NULL;
 
-DROP INDEX "page_indexability_decisions_current_unique";
-
-CREATE UNIQUE INDEX "page_indexability_decisions_entity_current_unique"
-  ON "page_indexability_decisions" ("entity_type", "entity_id", "language_code")
-  WHERE "is_current" AND "doc_kind" = 'entity';
-
+-- Mesma logica do bloco 6: o unique parcial de decisao VIGENTE de entidade
+-- (`page_indexability_decisions_current_unique`, de
+-- 20260715120000_data_governance_hardening) e MANTIDO - ele ignora as linhas
+-- de artigo (entity_type NULL) e por isso precisa do par abaixo para elas.
 CREATE UNIQUE INDEX "page_indexability_decisions_article_current_unique"
   ON "page_indexability_decisions" ("article_id", "language_code")
   WHERE "is_current" AND "doc_kind" = 'article';

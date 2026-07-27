@@ -68,7 +68,12 @@ const SEARCH_SQL = `
     END AS match_tier,
     similarity(normalized_text, $1) AS sim
   FROM search_documents
-  WHERE locale = $3
+  -- doc_kind = 'entity' e obrigatorio desde que a tabela passou a abrigar
+  -- tambem documentos de ARTIGO. Sem este filtro as linhas de artigo entram no
+  -- resultado com entity_type NULL: o presenter as descarta, mas elas ja
+  -- consumiram slots do LIMIT, e a pagina perderia entidades silenciosamente.
+  WHERE doc_kind = 'entity'
+    AND locale = $3
     AND (
       normalized_text = $1
       OR normalized_text LIKE $2

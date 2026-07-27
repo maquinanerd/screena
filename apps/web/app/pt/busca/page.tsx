@@ -48,26 +48,49 @@ export default async function SearchPage({
         </form>
 
         {view.isEmptyQuery ? (
-          <p>Digite um termo para buscar filmes, series e pessoas.</p>
-        ) : view.results.length === 0 ? (
+          <p>Digite um termo para buscar filmes, series, pessoas e noticias.</p>
+        ) : view.results.length === 0 && view.news.length === 0 ? (
           <p>Nenhum resultado para &ldquo;{view.query}&rdquo;.</p>
         ) : (
-          <section aria-labelledby="search-results-title">
-            <h2 id="search-results-title">Resultados</h2>
-            <p>
-              {view.total} resultado{view.total === 1 ? '' : 's'}
-              {view.hasMore ? ' (ha mais)' : ''}
-            </p>
-            <ul>
-              {view.results.map((result) => (
-                <li key={`${result.kind}:${result.entityId}`}>
-                  <a href={result.href}>{result.title}</a>
-                  {result.subtitle !== null ? <span> — {result.subtitle}</span> : null}
-                  {result.year !== null ? <span> ({result.year})</span> : null}
-                </li>
-              ))}
-            </ul>
-          </section>
+          <>
+            {view.results.length > 0 ? (
+              <section aria-labelledby="search-results-title">
+                <h2 id="search-results-title">Resultados</h2>
+                <p>
+                  {view.total} resultado{view.total === 1 ? '' : 's'}
+                  {view.hasMore ? ' (ha mais)' : ''}
+                </p>
+                <ul>
+                  {view.results.map((result) => (
+                    <li key={`${result.kind}:${result.entityId}`}>
+                      <a href={result.href}>{result.title}</a>
+                      {result.subtitle !== null ? <span> — {result.subtitle}</span> : null}
+                      {result.year !== null ? <span> ({result.year})</span> : null}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+
+            {/*
+              Noticias em SECAO PROPRIA, com titulo explicito. Misturar artigo na
+              lista de entidades apagaria a distincao de tipo — que nunca pode
+              depender so de formatacao (invariante 11).
+            */}
+            {view.news.length > 0 ? (
+              <section aria-labelledby="search-news-title">
+                <h2 id="search-news-title">Noticias</h2>
+                <ul>
+                  {view.news.map((item) => (
+                    <li key={`article:${item.articleId}`}>
+                      <a href={item.href}>{item.title}</a>
+                      {item.subtitle !== null ? <span> — {item.subtitle}</span> : null}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+          </>
         )}
       </div>
     </main>

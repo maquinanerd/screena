@@ -187,7 +187,17 @@ export function createPublicPayloadReader(
     entityId: bigint,
   ): Promise<PublicIndexabilityProjection> {
     const rows = await prisma.pageIndexabilityDecision.findMany({
-      where: { entityType, entityId, isCurrent: true, languageCode: { in: [...LOCALE_PRIORITY] } },
+      // `docKind: 'entity'` e explicito desde que a tabela passou a abrigar
+      // tambem decisoes de ARTIGO. Linhas de artigo tem entityType/entityId
+      // nulos e nunca casariam com o filtro abaixo, mas declarar o kind deixa
+      // a intencao no codigo em vez de depender desse detalhe.
+      where: {
+        docKind: 'entity',
+        entityType,
+        entityId,
+        isCurrent: true,
+        languageCode: { in: [...LOCALE_PRIORITY] },
+      },
       select: {
         entityId: true,
         languageCode: true,
@@ -197,7 +207,12 @@ export function createPublicPayloadReader(
         reason: true,
       },
     })
-    const current = pickByLocale(rows).get(entityId.toString())
+    // `entityId` e anulavel no schema (artigos), mas o filtro acima o fixa num
+    // bigint concreto: as linhas retornadas sempre o tem.
+    const entityRows = rows.flatMap((row) =>
+      row.entityId === null ? [] : [{ ...row, entityId: row.entityId }],
+    )
+    const current = pickByLocale(entityRows).get(entityId.toString())
     if (current === undefined) return projectPublicIndexability(null)
     return projectPublicIndexability({
       decision: current.decision,

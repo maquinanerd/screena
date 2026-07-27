@@ -1333,11 +1333,16 @@ model SearchDocument {
 
   article Article? @relation(fields: [articleId], references: [id], onDelete: Cascade)
 
-  // Uniques PARCIAIS por kind (SQL bruto): (entity_type, entity_id, locale)
-  // WHERE doc_kind='entity' e (article_id, locale) WHERE doc_kind='article'.
-  // O unique composto do Prisma foi removido porque colunas NULL nunca colidem
-  // em unique do PostgreSQL — deixa-lo permitiria N documentos de artigo por
-  // locale (duplicata de busca silenciosa).
+  // O unique de ENTIDADE continua sendo este (nao mudou de nome nem de forma).
+  // Ele segue travando entidades mesmo com as colunas agora anulaveis: linhas
+  // de artigo tem (NULL, NULL, locale) e NULL nunca colide em unique no
+  // PostgreSQL — ou seja, este indice simplesmente as ignora.
+  //
+  // Por isso mesmo ele NAO trava artigo: o unique PARCIAL
+  // `search_documents_article_unique` (article_id, locale) WHERE
+  // doc_kind='article' existe na migration para esse papel. Sem ele, o mesmo
+  // artigo poderia ganhar N documentos no mesmo locale (duplicata de busca).
+  @@unique([entityType, entityId, locale])
   @@index([locale])
   @@index([articleId])
   @@map("search_documents")

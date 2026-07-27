@@ -242,6 +242,31 @@ importers:
         specifier: ^4.19.0
         version: 4.22.4
 
+  services/news-ingestion:
+    dependencies:
+      '@screena/config':
+        specifier: workspace:*
+        version: link:../../packages/config
+      '@screena/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@screena/seo':
+        specifier: workspace:*
+        version: link:../../packages/seo
+    devDependencies:
+      '@prisma/client':
+        specifier: ^6.1.0
+        version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
+      embedded-postgres:
+        specifier: 16.14.0-beta.17
+        version: 16.14.0-beta.17
+      prisma:
+        specifier: ^6.1.0
+        version: 6.19.3(typescript@5.9.3)
+      tsx:
+        specifier: ^4.19.0
+        version: 4.22.4
+
   services/ratings:
     dependencies:
       '@screena/config':

@@ -41,9 +41,26 @@ export interface SearchResultView {
   score: number
 }
 
+/**
+ * Resultado editorial (noticia). Deliberadamente um TIPO SEPARADO de
+ * `SearchResultView`: artigo nao tem `entityId`, `kind` de catalogo nem ano de
+ * obra, e a UI precisa rotula-lo como "Noticia" em vez de fingir que e uma
+ * entidade. Espremer o artigo no molde da entidade produziria exatamente a
+ * confusao que a invariante 11 proibe (tipo nunca depende so de cor/formato).
+ */
+export interface SearchNewsResultView {
+  articleId: string
+  title: string
+  subtitle: string | null
+  href: string
+  matchReason: string
+  score: number
+}
+
 export interface SearchPageView {
   query: string
   results: SearchResultView[]
+  news: SearchNewsResultView[]
   total: number
   limit: number
   offset: number
@@ -64,9 +81,21 @@ export interface SearchRowInput {
   score: number
 }
 
+/** Linha crua de resultado editorial (doc_kind='article'). */
+export interface SearchNewsRowInput {
+  articleId: string
+  title: string
+  subtitle: string | null
+  canonicalUrl: string | null
+  matchReason: string
+  score: number
+}
+
 export interface SearchPageViewInput {
   query: string
   rows: readonly SearchRowInput[]
+  /** Linhas editoriais; ausente = nenhuma noticia casou o termo. */
+  newsRows?: readonly SearchNewsRowInput[]
   limit: number
   offset: number
 }
@@ -136,6 +165,22 @@ export function buildSearchResult(row: SearchRowInput): SearchResultView | null 
   }
 }
 
+/** Constroi um resultado editorial, ou `null` quando a linha nao e utilizavel. */
+export function buildSearchNewsResult(row: SearchNewsRowInput): SearchNewsResultView | null {
+  const title = trimToNull(row.title)
+  const href = toInternalHref(row.canonicalUrl)
+  // Mesmo criterio das entidades: sem destino interno confiavel nao ha link.
+  if (title === null || href === null) return null
+  return {
+    articleId: row.articleId,
+    title,
+    subtitle: trimToNull(row.subtitle),
+    href,
+    matchReason: row.matchReason,
+    score: finiteScore(row.score),
+  }
+}
+
 /**
  * Monta a view da pagina de busca.
  *
@@ -154,9 +199,16 @@ export function buildSearchPageView(input: SearchPageViewInput): SearchPageView 
     if (result !== null) results.push(result)
   }
 
+  const news: SearchNewsResultView[] = []
+  for (const row of input.newsRows ?? []) {
+    const result = buildSearchNewsResult(row)
+    if (result !== null) news.push(result)
+  }
+
   return {
     query,
     results,
+    news,
     total: results.length,
     limit: input.limit,
     offset: input.offset,
