@@ -48,6 +48,8 @@ const ENTITY_TYPE = "movie";
 /** Tudo que a pagina e o `generateMetadata` precisam, ja resolvido do banco. */
 export interface MoviePageData {
   view: MoviePageView;
+  /** C8: id INTERNO do catalogo, serializado, para o botao de biblioteca. */
+  entityId: string;
   indexability: IndexabilityResult;
   /**
    * Resolucao FINAL de SEO (Fase 3): fatos vivos + decisao VIGENTE persistida em
@@ -205,6 +207,10 @@ export const getMoviePageData = cache(
 
     return {
       view,
+      // C8: id INTERNO do catalogo, serializado. A pagina o repassa ao botao de
+      // biblioteca (client component); a biblioteca referencia a entidade
+      // canonica, nunca o slug (que muda com traducao/recanonizacao).
+      entityId: String(entityId),
       indexability,
       seo,
       canonicalSlug,

@@ -38,6 +38,8 @@ const SERIES_INDEX_PATH = "/pt/series/";
 
 export interface SeriesPageData {
   view: SeriesPageView;
+  /** C8: id INTERNO do catalogo, serializado, para o botao de biblioteca. */
+  entityId: string;
   indexability: IndexabilityResult;
   /** Resolucao FINAL de SEO (Fase 3): fatos vivos + decisao vigente persistida. */
   seo: PageSeoResolution;
@@ -231,6 +233,9 @@ export const getSeriesPageData = cache(
 
     return {
       view,
+      // C8: id INTERNO do catalogo, serializado — o botao de biblioteca o usa
+      // para referenciar a entidade canonica (nunca o slug).
+      entityId: String(entityId),
       indexability,
       seo,
       canonicalSlug,

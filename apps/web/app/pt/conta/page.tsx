@@ -26,6 +26,26 @@ export default function ContaPage() {
           <h1>Minha conta</h1>
         </header>
         <AccountPanel />
+        {/* C8 — atalhos para a biblioteca pessoal. */}
+        <nav aria-label="Minha biblioteca">
+          <ul>
+            <li>
+              <a href="/pt/minha-lista">Minha biblioteca</a>
+            </li>
+            <li>
+              <a href="/pt/listas">Minhas listas</a>
+            </li>
+            <li>
+              <a href="/pt/tracker">Tracker de series</a>
+            </li>
+            <li>
+              <a href="/pt/historico">Meu historico</a>
+            </li>
+            <li>
+              <a href="/pt/importar">Importar dados</a>
+            </li>
+          </ul>
+        </nav>
         <p>
           <a href="/pt/conta/privacidade">Privacidade e meus dados</a>
         </p>

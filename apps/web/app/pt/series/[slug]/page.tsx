@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 
 import { buildSameAs, serializeJsonLd } from '@screena/seo'
 
+import { EntityActions } from '../../../_components/entity-actions'
 import { EntityExternalIds } from '../../../_components/entity-external-ids'
 import { WatchAvailabilityPanel } from '../../../_components/watch-availability-panel'
 import { RatingsPanel } from '../../../_components/ratings-panel'
@@ -149,7 +150,7 @@ export default async function SeriesPage({
   const redirectPath = canonicalRedirectPath(SERIES_INDEX_PATH, slug, data.canonicalSlug)
   if (redirectPath !== null) permanentRedirect(redirectPath)
 
-  const { view, seo, canonicalUrl, relatedNews, cast, watch, ratings, externalIds } = data
+  const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, ratings, externalIds } = data
   const isUnderReview = seo.decision !== 'index'
   const summary = [view.periodLabel, view.seasonsCountLabel, view.episodesCountLabel].filter(
     (item): item is string => item !== null,
@@ -233,6 +234,13 @@ export default async function SeriesPage({
           {view.metaDescription !== null ? <p>{view.metaDescription}</p> : null}
           {externalLinks.length > 0 ? <EntityExternalIds links={externalLinks} /> : null}
         </header>
+
+        {/* Acoes de biblioteca e tracker (C8). Client component, sem chamada
+            externa no render. */}
+        <EntityActions entityType="tv" entityId={entityId} />
+        <p>
+          <a href="/pt/tracker">Acompanhar o progresso desta serie no tracker</a>
+        </p>
 
         {watch !== null ? (
           <section aria-label="Disponibilidade legal">
