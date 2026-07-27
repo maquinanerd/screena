@@ -41,6 +41,8 @@ const WEEKDAYS_PT = ["DOM", "SEG", "TER", "QUA", "QUI", "SEX", "SÁB"] as const;
 
 /** Subconjunto controlado (já convertido de Prisma) de um filme candidato. */
 export interface UpcomingMovieInput {
+  /** Id interno (bigint serializado), para acoes de biblioteca (bookmark). */
+  id?: string | null;
   titleOriginal: string;
   translationTitle: string | null;
   slug: string | null;
@@ -57,6 +59,8 @@ export interface UpcomingMovieInput {
 
 /** Card "Em breve" pronto para render — objeto PLANO e serializável. */
 export interface HomeUpcomingMovie {
+  /** Id interno do filme (para o bookmark real), ou null. */
+  entityId: string | null;
   title: string;
   /** Data ISO UTC usada por agendas e filtros de janela temporal. */
   dateIso: string;
@@ -173,6 +177,7 @@ export function buildUpcomingMovies(
     valid.push({
       releaseMs,
       entry: {
+        entityId: trimToNull(item.id ?? null),
         title,
         dateIso: release.toISOString().slice(0, 10),
         date: formatUpcomingDate(release),

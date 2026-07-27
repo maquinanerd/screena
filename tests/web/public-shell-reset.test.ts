@@ -58,7 +58,9 @@ describe('shell público — design canônico', () => {
       css.match(/\.[a-z-]+(?:__[a-z-]+)?[^{]*\{[^}]*linear-gradient[^}]*\}/g) ?? []
     expect(gradientBlocks.length).toBeGreaterThan(0)
     for (const block of gradientBlocks) {
-      expect(block).toMatch(/hero__scrim|news-overlay-card__scrim/)
+      // toda classe com gradiente é um SCRIM de mídia (hero, cards de
+      // overlay, critic-band) — nunca decoração solta em superfície clara
+      expect(block).toMatch(/scrim/)
     }
   })
 

@@ -115,7 +115,8 @@ export const getMovieIndexData = cache(async (): Promise<EntityIndexData> => {
     items = movies.map((movie) => {
       const key = movie.id.toString();
       return {
-        titleOriginal: movie.titleOriginal,
+        id: movie.id.toString(),
+      titleOriginal: movie.titleOriginal,
         translationTitle: titleByEntity.get(key) ?? null,
         slug: slugByEntity.get(key) ?? null,
         year: yearFromDate(movie.releaseDate),
@@ -160,7 +161,8 @@ export const getSeriesIndexData = cache(async (): Promise<EntityIndexData> => {
     items = shows.map((show) => {
       const key = show.id.toString();
       return {
-        nameOriginal: show.nameOriginal,
+        id: show.id.toString(),
+      nameOriginal: show.nameOriginal,
         translationTitle: titleByEntity.get(key) ?? null,
         slug: slugByEntity.get(key) ?? null,
         firstAirYear: yearFromDate(show.firstAirDate),
@@ -197,7 +199,8 @@ export const getPersonIndexData = cache(async (): Promise<EntityIndexData> => {
     items = people.map((person) => {
       const key = person.id.toString();
       return {
-        name: person.name,
+        id: person.id.toString(),
+      name: person.name,
         translationTitle: titleByEntity.get(key) ?? null,
         slug: slugByEntity.get(key) ?? null,
         knownForDepartment: person.knownForDepartment,

@@ -63,6 +63,8 @@ export interface MovieRecordInput {
   status?: string | null;
   /** `movies.original_language` (ISO 639-1) — idioma original; omitido se ausente. */
   originalLanguage?: string | null;
+  /** Classificacao indicativa (advisory) — NAO e rating source; omitida se ausente. */
+  certification?: string | null;
 }
 
 /** Subconjunto de `entity_translations` (pt-BR) usado pela pagina. */
@@ -112,6 +114,8 @@ export interface MoviePageView {
   originalLanguageLabel: string | null;
   metaTitle: string | null;
   metaDescription: string | null;
+  /** Classificacao indicativa ("16", "L"...), ou null (chip omitido). */
+  certification: string | null;
   blocks: RenderableMovieBlock[];
   renderableBlockCount: number;
   media: MovieMediaView;
@@ -237,6 +241,7 @@ export function presentMovie(input: PresentMovieInput): MoviePageView {
     year: input.record.year,
     runtimeMinutes: input.record.runtimeMinutes,
     runtimeLabel: formatRuntime(input.record.runtimeMinutes),
+    certification: trimToNull(input.record.certification ?? null),
     statusLabel: mapEntityStatus(input.record.status, "movie"),
     originalLanguageLabel: mapOriginalLanguage(input.record.originalLanguage),
     metaTitle: trimToNull(input.translation?.metaTitle),

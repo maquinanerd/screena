@@ -5,7 +5,6 @@ import { buildSameAs, serializeJsonLd } from '@screena/seo'
 
 import { EntityActions } from '../../../_components/entity-actions'
 import { EntityExternalIds } from '../../../_components/entity-external-ids'
-import { NewsListCard, SectionHead } from '../../../_components/ds'
 import { WatchAvailabilityPanel } from '../../../_components/watch-availability-panel'
 import { RatingsPanel } from '../../../_components/ratings-panel'
 import { canonicalRedirectPath } from '../../../../src/lib/canonical-redirect'
@@ -14,16 +13,22 @@ import { MOVIES_INDEX_PATH, NEWS_INDEX_PATH, SITE_URL, gatePublicRobots } from '
 import { getMoviePageData } from '../../../../src/server/movie-page'
 
 /**
- * Detalhe de filme — tela 06 do handoff (MovieDetailTemplate, EX-06-nohero):
- * top info bar CLARA (sem hero cover, por decisao registrada no canonico) com
- * poster 2/3 + titulo + metadata + acoes + ratings/streaming governados, e
- * secoes editoriais (sinopse, ficha, elenco, noticias) em container editorial.
+ * Detalhe de filme — tela 06 do canônico, na ESTRUTURA EXATA do HTML:
+ * hero editorial CLARO (#FDFCFA, container 1360/64: breadcrumb → badge FILME
+ * quadrado → H1 38/800 → chips de meta → sinopse → ações | coluna direita com
+ * Cinerie Score + Avaliações + Onde assistir) → faixa de mídia full-bleed
+ * (grid 1fr/3fr/2fr, 472px) → A obra (eyebrow com barra vermelha, lead 22 +
+ * corpo 16/1.75) → Guia Screen · crítica (full-bleed com overlay vermelho) →
+ * Elenco (faixa 6 col, retratos 3/4) → Notícias e bastidores (1.4fr/1fr/1fr)
+ * → Ficha técnica (320px) .
  *
- * Todos os dados vem do PostgreSQL local (invariantes 3/4); campo ausente e
- * OMITIDO (nunca "N/D"); ratings cada um na escala da propria fonte.
+ * Divergências documentadas (DESIGN-DELTA.md): chips de gênero e linha de
+ * prêmios não têm contrato de dado (omitidos, seção condicional); logos de
+ * provedores/fontes de rating são texto por licença (logo_allowed=false);
+ * célula de trailer sem play fake (sem contrato de vídeo na página);
+ * "Mais como este" sem dataset determinístico (omitido).
  */
 
-/** ISR relê apenas o snapshot local do PostgreSQL. */
 export const revalidate = 3600
 
 const REVIEW_BLOCK_TYPE = 'review_summary'
@@ -83,6 +88,9 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
   const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, ratings, externalIds } = data
   const isUnderReview = seo.decision !== 'index'
   const externalLinks = buildExternalLinks(externalIds, 'movie')
+  const metaText = [view.year !== null ? String(view.year) : null, view.runtimeLabel]
+    .filter((item): item is string => item !== null)
+    .join(' · ')
   const facts = [
     view.year === null ? null : { label: 'Ano', value: String(view.year) },
     view.runtimeLabel === null ? null : { label: 'Duração', value: view.runtimeLabel },
@@ -90,6 +98,9 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
     view.originalLanguageLabel === null
       ? null
       : { label: 'Idioma original', value: view.originalLanguageLabel },
+    view.certification === null
+      ? null
+      : { label: 'Classificação', value: view.certification },
   ].filter((fact): fact is MovieFact => fact !== null)
 
   const critiqueBlock = view.blocks.find((block) => block.blockType === REVIEW_BLOCK_TYPE) ?? null
@@ -98,13 +109,10 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
     view.blocks.find((block) => block.blockType === 'where_to_watch_text') ?? null
   const castContext = view.blocks.find((block) => block.blockType === 'cast_intro') ?? null
   const newsContext = view.blocks.find((block) => block.blockType === 'news_context') ?? null
-  const primaryCast = cast.slice(0, 8)
+  const primaryCast = cast.slice(0, 6)
   const editorialNews = relatedNews.slice(0, 3)
-  const topMeta = [
-    view.year !== null ? String(view.year) : null,
-    view.runtimeLabel,
-    view.statusLabel,
-  ].filter((item): item is string => item !== null)
+  const synopsisLead = workBlocks[0] ?? null
+  const synopsisRest = workBlocks.slice(1)
 
   const breadcrumbJsonLd = {
     '@context': 'https://schema.org',
@@ -138,10 +146,10 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
 
   return (
     <main data-vertical="movie">
-      {/* Top info bar clara (EX-06-nohero) */}
-      <div className="topinfo">
-        <div className="container">
-          <nav aria-label="Trilha de navegação" className="breadcrumb">
+      {/* ===== HERO editorial claro (canônico: vermelho = filme) ===== */}
+      <div className="detail-hero">
+        <div className="detail-container">
+          <nav aria-label="Trilha de navegação" className="detail-hero__crumbs">
             <ol>
               <li>
                 <a href="/pt/">Início</a>
@@ -153,60 +161,55 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
             </ol>
           </nav>
 
-          <div className="topinfo__grid">
-            <div
-              className={
-                view.media.poster === null
-                  ? 'topinfo__poster topinfo__poster--empty'
-                  : 'topinfo__poster'
-              }
-            >
-              {view.media.poster !== null ? (
-                <img
-                  alt={`Pôster de ${view.title}`}
-                  fetchPriority="high"
-                  height={view.media.poster.height}
-                  src={view.media.poster.src}
-                  width={view.media.poster.width}
-                />
-              ) : (
-                <span aria-hidden="true">{view.title.slice(0, 1).toUpperCase()}</span>
-              )}
-            </div>
-
-            <header>
-              <span className="badge badge--movie" data-entity-badge="movie">
-                Filme
-              </span>
-              <h1 className="topinfo__title">{view.title}</h1>
-              {topMeta.length > 0 ? (
-                <ul className="topinfo__meta">
-                  {topMeta.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
-              ) : null}
+          <div className="detail-hero__grid">
+            <div className="detail-hero__main">
+              <div className="detail-badge-row">
+                <span className="detail-badge" data-entity-badge="movie">
+                  Filme
+                </span>
+              </div>
+              <h1 className="detail-hero__title">{view.title}</h1>
+              <ul className="detail-hero__chips">
+                {metaText !== '' ? (
+                  <li className="detail-hero__meta-text">{metaText}</li>
+                ) : null}
+                {view.certification !== null ? (
+                  <li className="detail-hero__cert">{view.certification}</li>
+                ) : null}
+              </ul>
               {view.metaDescription !== null ? (
-                <p style={{ marginTop: 16 }}>{view.metaDescription}</p>
+                <p className="detail-hero__synopsis">{view.metaDescription}</p>
               ) : null}
-              <div className="topinfo__actions">
-                {/* Acoes de biblioteca (C8): client component fala com /api/me
-                    por fetch apos clique; zero chamada externa no render. */}
+              <div className="detail-actions">
+                {/* Ações REAIS de biblioteca (C8): fetch após clique, zero
+                    chamada externa no render. */}
                 <EntityActions entityType="movie" entityId={entityId} />
               </div>
               {externalLinks.length > 0 ? (
-                <div className="entity-links" style={{ marginTop: 18 }}>
+                <div className="entity-links" style={{ marginTop: 20 }}>
                   <EntityExternalIds links={externalLinks} />
                 </div>
               ) : null}
-            </header>
+            </div>
 
-            <aside aria-label="Notas e disponibilidade" className="topinfo__aside">
-              {/* Notas de terceiros, cada uma na escala da propria fonte e
-                  creditada; o painel se auto-omite sem nota licenciada. */}
-              <RatingsPanel view={ratings} />
-              {watch !== null ? (
+            <aside aria-label="Notas e disponibilidade" className="detail-hero__aside">
+              {/* Cinerie Score — estado HONESTO do contrato (sem número
+                  inventado; ativação é o Prompt 11). */}
+              <div className="score-line">
                 <div>
+                  <span className="score-line__label">Cinerie Score</span>
+                  <p className="score-line__note">Ainda não calculado</p>
+                </div>
+              </div>
+              <div className="detail-aside-block">
+                <p className="detail-aside-block__label">Avaliações</p>
+                {/* Notas de terceiros na escala da própria fonte, com crédito.
+                    Fonte em TEXTO: logo_allowed=false por licença. */}
+                <RatingsPanel view={ratings} />
+              </div>
+              {watch !== null ? (
+                <div className="detail-aside-block">
+                  <p className="detail-aside-block__label">Onde assistir</p>
                   <WatchAvailabilityPanel view={watch} />
                   {watchContext !== null ? (
                     <p className="watch-panel__note" data-block-type={watchContext.blockType}>
@@ -220,100 +223,232 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
         </div>
       </div>
 
-      <div className="container">
-        {workBlocks.length > 0 ? (
-          <section aria-labelledby="movie-work-title" className="section">
-            <SectionHead id="movie-work-title" title="A obra" />
-            {workBlocks.map((block) => (
-              <p key={block.blockType} data-block-type={block.blockType}>
-                {block.content}
+      {/* ===== Mídia full-bleed (1fr/3fr/2fr, 472px) — só imagens REAIS ===== */}
+      {view.media.poster !== null || view.media.backdrop !== null ? (
+        <div className="media-strip">
+          <div className="media-strip__grid">
+            <div className="media-strip__cell">
+              {view.media.poster !== null ? (
+                <img
+                  alt={`Pôster de ${view.title}`}
+                  fetchPriority="high"
+                  height={view.media.poster.height}
+                  src={view.media.poster.src}
+                  width={view.media.poster.width}
+                />
+              ) : null}
+            </div>
+            <div className="media-strip__cell">
+              {view.media.backdrop !== null ? (
+                <img
+                  alt=""
+                  height={view.media.backdrop.height}
+                  loading="lazy"
+                  src={view.media.backdrop.src}
+                  width={view.media.backdrop.width}
+                />
+              ) : null}
+              <span className="media-strip__caption">Mídia do título</span>
+            </div>
+            <div className="media-strip__stack">
+              <a className="media-strip__cell" href={NEWS_INDEX_PATH}>
+                {view.media.backdrop !== null ? (
+                  <img alt="" loading="lazy" src={view.media.backdrop.src} />
+                ) : null}
+                <span className="media-strip__caption">Notícias e Eventos</span>
+              </a>
+              <a className="media-strip__cell" href="/pt/onde-assistir/">
+                {view.media.poster !== null ? (
+                  <img alt="" loading="lazy" src={view.media.poster.src} />
+                ) : null}
+                <span className="media-strip__caption">Onde assistir</span>
+              </a>
+              <a className="media-strip__cell" href="/pt/em-breve/">
+                {view.media.backdrop !== null ? (
+                  <img alt="" loading="lazy" src={view.media.backdrop.src} />
+                ) : null}
+                <span className="media-strip__caption">Em breve</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* ===== A obra ===== */}
+      {(synopsisLead !== null || synopsisRest.length > 0) ? (
+        <section aria-labelledby="movie-work-title" className="detail-container" style={{ paddingTop: 60 }}>
+          <div className="eyebrow-bar">
+            <span id="movie-work-title">A obra</span>
+          </div>
+          {synopsisLead !== null ? (
+            <p className="synopsis-lead" data-block-type={synopsisLead.blockType}>
+              {synopsisLead.content}
+            </p>
+          ) : null}
+          {synopsisRest.map((block) => (
+            <p className="synopsis-body" data-block-type={block.blockType} key={block.blockType}>
+              {block.content}
+            </p>
+          ))}
+        </section>
+      ) : null}
+
+      {/* ===== Guia Screen · crítica (full-bleed, overlay vermelho) ===== */}
+      {critiqueBlock !== null ? (
+        <section aria-label="Crítica da redação" className="critic-band">
+          {view.media.backdrop !== null ? (
+            <img alt="" className="critic-band__img" loading="lazy" src={view.media.backdrop.src} />
+          ) : null}
+          <div className="critic-band__scrim-h" />
+          <div className="critic-band__scrim-v" />
+          <div className="critic-band__inner">
+            <div className="critic-band__content">
+              <span className="critic-band__eyebrow">Guia Cinerie · Crítica da redação</span>
+              <p className="critic-band__quote" data-block-type={critiqueBlock.blockType}>
+                {critiqueBlock.content}
               </p>
-            ))}
-          </section>
-        ) : null}
+              <p className="critic-band__byline">Redação Cinerie</p>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
-        {critiqueBlock !== null ? (
-          <section aria-labelledby="movie-review-title" className="section">
-            <SectionHead id="movie-review-title" title="Crítica da redação" />
-            <p data-block-type={critiqueBlock.blockType}>{critiqueBlock.content}</p>
-          </section>
-        ) : null}
-
-        {primaryCast.length > 0 ? (
-          <section aria-labelledby="movie-cast-title" className="section">
-            <SectionHead id="movie-cast-title" title="Elenco principal" />
-            {castContext !== null ? (
-              <p data-block-type={castContext.blockType}>{castContext.content}</p>
-            ) : null}
-            <ul className="cast-grid">
-              {primaryCast.map((member, index) => (
-                <li key={`${member.name}-${index}`}>
-                  <article className="cast-card">
-                    <span aria-hidden="true" className="cast-card__photo">
+      {/* ===== Elenco · faixa visual ===== */}
+      {primaryCast.length > 0 ? (
+        <section aria-labelledby="movie-cast-title" className="detail-container" style={{ paddingTop: 60 }}>
+          <div className="section-head" style={{ alignItems: 'flex-end', marginBottom: 26 }}>
+            <div>
+              <div className="eyebrow-bar">
+                <span>Elenco</span>
+              </div>
+              <h2 className="detail-section-title" id="movie-cast-title">
+                Elenco <span className="thin">principal</span>
+              </h2>
+            </div>
+            <a className="detail-see-all" href="/pt/pessoas/">
+              Ver pessoas →
+            </a>
+          </div>
+          {castContext !== null ? (
+            <p data-block-type={castContext.blockType}>{castContext.content}</p>
+          ) : null}
+          <ul className="cast-strip">
+            {primaryCast.map((member, index) => (
+              <li key={`${member.name}-${index}`}>
+                {member.href !== null ? (
+                  <a className="cast-tile" href={member.href}>
+                    <span className="cast-tile__photo">
                       {member.profile !== null ? (
                         <img alt="" loading="lazy" src={member.profile.src} />
                       ) : (
-                        member.name
-                          .split(' ')
-                          .slice(0, 2)
-                          .map((part) => part.slice(0, 1))
-                          .join('')
+                        <span aria-hidden="true">
+                          {member.name
+                            .split(' ')
+                            .slice(0, 2)
+                            .map((part) => part.slice(0, 1))
+                            .join('')}
+                        </span>
                       )}
                     </span>
-                    <div>
-                      <p className="cast-card__name">
-                        {member.href !== null ? (
-                          <a href={member.href}>{member.name}</a>
-                        ) : (
-                          <span>{member.name}</span>
-                        )}
-                      </p>
-                      {member.character !== null ? (
-                        <p className="cast-card__role">{member.character}</p>
-                      ) : null}
-                    </div>
-                  </article>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
+                    <p className="cast-tile__name">{member.name}</p>
+                    {member.character !== null ? (
+                      <p className="cast-tile__role">{member.character}</p>
+                    ) : null}
+                  </a>
+                ) : (
+                  <div className="cast-tile">
+                    <span className="cast-tile__photo">
+                      {member.profile !== null ? (
+                        <img alt="" loading="lazy" src={member.profile.src} />
+                      ) : (
+                        <span aria-hidden="true">
+                          {member.name
+                            .split(' ')
+                            .slice(0, 2)
+                            .map((part) => part.slice(0, 1))
+                            .join('')}
+                        </span>
+                      )}
+                    </span>
+                    <p className="cast-tile__name">{member.name}</p>
+                    {member.character !== null ? (
+                      <p className="cast-tile__role">{member.character}</p>
+                    ) : null}
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
-        {editorialNews.length > 0 ? (
-          <section aria-labelledby="movie-news-title" className="section">
-            <SectionHead
-              id="movie-news-title"
-              seeAllHref={NEWS_INDEX_PATH}
-              seeAllLabel="Ver todas"
-              title="Notícias relacionadas"
-            />
-            {newsContext !== null ? (
-              <p data-block-type={newsContext.blockType}>{newsContext.content}</p>
-            ) : null}
-            <ul className="news-grid">
-              {editorialNews.map((article) => (
-                <li key={article.href}>
-                  <NewsListCard card={article} />
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
+      {/* ===== Notícias e bastidores ===== */}
+      {editorialNews.length > 0 ? (
+        <section aria-labelledby="movie-news-title" className="detail-container" style={{ paddingTop: 64 }}>
+          <div className="section-head" style={{ alignItems: 'flex-end', marginBottom: 26 }}>
+            <div>
+              <div className="eyebrow-bar">
+                <span>Editorial</span>
+              </div>
+              <h2 className="detail-section-title" id="movie-news-title">
+                Notícias <span className="thin">e bastidores</span>
+              </h2>
+            </div>
+            <a className="see-all" href={NEWS_INDEX_PATH}>
+              Ver tudo
+            </a>
+          </div>
+          {newsContext !== null ? (
+            <p data-block-type={newsContext.blockType}>{newsContext.content}</p>
+          ) : null}
+          <ul className="mnews-grid">
+            {editorialNews.map((article) => (
+              <li key={article.href}>
+                <a className="mnews-card" href={article.href}>
+                  <span className="mnews-card__cover">
+                    {article.image !== null ? (
+                      <img alt="" loading="lazy" src={article.image.src} />
+                    ) : null}
+                  </span>
+                  {article.category !== null ? (
+                    <span className="mnews-card__cat">{article.category}</span>
+                  ) : null}
+                  <span className="mnews-card__title">{article.title}</span>
+                  <span className="mnews-card__meta">
+                    {[article.author, article.readTimeLabel]
+                      .filter((item): item is string => item !== null)
+                      .join(' · ')}
+                  </span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
-        {facts.length > 0 ? (
-          <section aria-labelledby="movie-facts-title" className="section">
-            <SectionHead id="movie-facts-title" title="Ficha técnica" />
-            <dl className="facts">
-              {facts.map((fact) => (
-                <div className="facts__row" key={fact.label}>
-                  <dt className="facts__label">{fact.label}</dt>
-                  <dd className="facts__value">{fact.value}</dd>
-                </div>
-              ))}
-            </dl>
-          </section>
-        ) : null}
+      {/* ===== Ficha técnica ===== */}
+      {facts.length > 0 ? (
+        <section aria-labelledby="movie-facts-title" className="detail-container" style={{ paddingTop: 64, paddingBottom: 72 }}>
+          <div className="ficha-grid">
+            <div>
+              <div className="eyebrow-bar">
+                <span id="movie-facts-title">Ficha técnica</span>
+              </div>
+              <dl className="ficha-rows">
+                {facts.map((fact) => (
+                  <div className="ficha-row" key={fact.label}>
+                    <dt>{fact.label}</dt>
+                    <dd>{fact.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+            <div />
+          </div>
+        </section>
+      ) : null}
 
+      <div className="detail-container">
         {isUnderReview ? (
           <p className="muted" data-editorial-state="in-review">
             Esta página ainda está em revisão editorial.

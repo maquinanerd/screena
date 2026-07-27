@@ -51,19 +51,33 @@ describe('shell público mínimo · detalhe de filme', () => {
     expect(code).toContain('data-editorial-state="in-review"')
   })
 
-  it('design canônico: pôster real com fallback honesto, sem dado inventado', () => {
-    // Guard ATUALIZADO DELIBERADAMENTE: a tela 06 do handoff exige a top info
-    // bar clara com pôster 2/3 REAL. A imagem vem só do asset governado
-    // (view.media.poster) e a ausência vira fallback de inicial — nunca
-    // imagem inventada nem "N/D".
+  it('design canônico (tela 06): estrutura EXATA do handoff, sem dado inventado', () => {
+    // Ordem canônica: hero editorial claro → mídia full-bleed → A obra →
+    // Guia crítica → Elenco (faixa 3/4) → Notícias e bastidores → Ficha.
+    const order = [
+      'className="detail-hero"',
+      'className="media-strip"',
+      'className="synopsis-lead"',
+      'className="critic-band"',
+      'className="cast-strip"',
+      'className="mnews-grid"',
+      'className="ficha-grid"',
+    ]
+    let cursor = -1
+    for (const marker of order) {
+      const at = code.indexOf(marker)
+      expect(at, `marcador ausente/fora de ordem: ${marker}`).toBeGreaterThan(cursor)
+      cursor = at
+    }
     expect(existsSync(path.join(ROOT, CSS_REL))).toBe(false)
     expect(code).not.toContain('.module.css')
-    expect(code).toContain('className="container"')
-    expect(code).toContain('view.media.poster !== null ?')
-    expect(code).toContain('topinfo__poster--empty')
-    expect(code).toMatch(/src=\{view\.media\.poster\.src\}/)
-    expect(code).not.toMatch(/(?:\?\?|=== null \?)\s*["']—["']/)
-    // Sem hotlink improvisado: toda <img> desta página usa asset do presenter.
+    // Imagens só de asset governado; sem hotlink improvisado; sem "N/D".
+    expect(code).toContain('view.media.poster !== null')
+    expect(code).toContain('view.media.backdrop !== null')
     expect(code).not.toMatch(/src="https?:/)
+    expect(code).not.toMatch(/(?:\?\?|=== null \?)\s*["']—["']/)
+    // Cinerie Score: estado honesto, nunca número inventado (Prompt 11).
+    expect(code).toContain('Ainda não calculado')
+    expect(code).not.toMatch(/score-line__value/)
   })
 })

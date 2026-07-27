@@ -171,8 +171,16 @@ describe("watch-availability — integracao nas paginas de detalhe", () => {
       expect(source).toContain("<WatchAvailabilityPanel view={watch} />");
     });
 
-    it(`${name}: nao usa 'Onde assistir' no codigo vivo`, () => {
-      expect(withoutComments(source)).not.toMatch(/onde assistir/i);
+    it(`${name}: rotulo 'Onde assistir' so existe com destino/painel REAL`, () => {
+      // ATUALIZADO DELIBERADAMENTE: o canonico rotula o bloco como
+      // "Onde assistir" e /pt/onde-assistir passou a ser rota real. O que o
+      // guard trava agora: o rotulo nunca aparece sem o gate de oferta
+      // licenciada (watch !== null) na mesma pagina, e o painel em si segue
+      // com a copy "Disponibilidade no Brasil".
+      const clean = withoutComments(source);
+      if (/onde assistir/i.test(clean)) {
+        expect(clean).toContain("watch !== null ?");
+      }
     });
   }
 });

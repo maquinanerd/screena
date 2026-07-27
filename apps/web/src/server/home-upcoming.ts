@@ -78,6 +78,7 @@ export const getHomeUpcomingMovies = cache(
     const inputs: UpcomingMovieInput[] = movies.map((movie) => {
       const key = movie.id.toString();
       return {
+        id: key,
         titleOriginal: movie.titleOriginal,
         translationTitle: titleByEntity.get(key) ?? null,
         slug: slugByEntity.get(key) ?? null,

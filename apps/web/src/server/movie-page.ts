@@ -101,6 +101,7 @@ export const getMoviePageData = cache(
           backdropPath: true,
           status: true,
           originalLanguage: true,
+          certification: true,
         },
       }),
       prisma.slug.findFirst({
@@ -159,6 +160,7 @@ export const getMoviePageData = cache(
         backdropPath: movie.backdropPath,
         status: movie.status,
         originalLanguage: movie.originalLanguage,
+        certification: movie.certification,
       },
       translation,
       blocks,

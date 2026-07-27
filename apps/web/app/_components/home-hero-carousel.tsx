@@ -92,9 +92,11 @@ export function HomeHeroCarousel({ slides }: { slides: readonly HeroSlide[] }): 
             >
               {[slide.eyebrow, ...slide.primaryMeta].join(' · ')}
             </a>
-            <h1 className="hero__title">
+            {/* Visual do H1 do canonico; o H1 SEMANTICO unico da home e o
+                institucional (governanca home-seo-identity). */}
+            <p className="hero__title">
               <a href={slide.href}>{slide.title}</a>
-            </h1>
+            </p>
             <div className="hero__meta-row">
               {stars !== null ? (
                 <span aria-label={`Nota ${slide.rating?.value} de ${slide.rating?.scale}`} className="hero__stars">

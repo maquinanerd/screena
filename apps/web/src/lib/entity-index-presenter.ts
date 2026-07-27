@@ -78,6 +78,10 @@ export interface EntityImageAsset {
 /** Card ja pronto para render (com href montado). */
 export interface EntityCard {
   kind: EntityIndexKind;
+  /** Id INTERNO do catalogo (bigint serializado) — referencia estavel para
+   *  acoes de biblioteca (bookmark/watchlist, C8); null quando a origem nao
+   *  fornece o id. */
+  entityId: string | null;
   title: string;
   href: string;
   /** Metadado curto: ano (filme), periodo (serie) ou funcao (pessoa). */
@@ -122,6 +126,8 @@ export interface ScreenScoreInput {
 }
 
 export interface MovieListItemInput extends ScreenScoreInput {
+  /** Id interno (bigint serializado), para acoes de biblioteca. */
+  id?: string | null;
   titleOriginal: string;
   translationTitle: string | null;
   slug: string | null;
@@ -130,6 +136,8 @@ export interface MovieListItemInput extends ScreenScoreInput {
 }
 
 export interface SeriesListItemInput extends ScreenScoreInput {
+  /** Id interno (bigint serializado), para acoes de biblioteca. */
+  id?: string | null;
   nameOriginal: string;
   translationTitle: string | null;
   slug: string | null;
@@ -139,6 +147,8 @@ export interface SeriesListItemInput extends ScreenScoreInput {
 }
 
 export interface PersonListItemInput {
+  /** Id interno (bigint serializado); pessoas nao tem acao de biblioteca. */
+  id?: string | null;
   name: string;
   translationTitle: string | null;
   slug: string | null;
@@ -266,6 +276,7 @@ export function buildMovieCard(input: MovieListItemInput): EntityCard | null {
   const year = validYearOrNull(input.year);
   return {
     kind: "movie",
+    entityId: trimToNull(input.id ?? null),
     title,
     href: `${MOVIE_PATH_PREFIX}${slug}/`,
     meta: year !== null ? String(year) : null,
@@ -280,6 +291,7 @@ export function buildSeriesCard(input: SeriesListItemInput): EntityCard | null {
   if (slug === null || title === null) return null;
   return {
     kind: "series",
+    entityId: trimToNull(input.id ?? null),
     title,
     href: `${SERIES_PATH_PREFIX}${slug}/`,
     meta: formatSeriesIndexPeriod(input.firstAirYear, input.lastAirYear),
@@ -294,6 +306,7 @@ export function buildPersonCard(input: PersonListItemInput): EntityCard | null {
   if (slug === null || title === null) return null;
   return {
     kind: "person",
+    entityId: trimToNull(input.id ?? null),
     title,
     href: `${PERSON_PATH_PREFIX}${slug}/`,
     meta: mapKnownForDepartment(input.knownForDepartment),

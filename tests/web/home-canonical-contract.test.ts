@@ -27,6 +27,7 @@ describe('home pública — design canônico (tela 02)', () => {
       'getHomeHeroSlides()',
       'getHomeUpcomingMovies()',
       'getSeriesIndexData()',
+      'getHomeTickerEpisodes()',
     ]) {
       expect(home).toContain(getter)
     }
@@ -39,18 +40,31 @@ describe('home pública — design canônico (tela 02)', () => {
     expect(home.match(/<h1[\s>]/g)).toHaveLength(1)
     expect(home).toContain('Cinerie — filmes, séries e pessoas')
     for (const destination of ['MOVIES_INDEX_PATH', 'SERIES_INDEX_PATH', 'NEWS_INDEX_PATH']) {
-      expect(home).toContain(`seeAllHref={${destination}}`)
+      expect(home).toContain(`href={${destination}}`)
     }
     // Pessoas/Explorar navegam pelo chrome global (header/footer), como no
     // canônico — a home não tem seção própria de pessoas.
   })
 
-  it('renderiza as composições do canônico só com dados persistidos', () => {
-    expect(home).toContain('<HomeHeroCarousel slides={heroSlides} />')
-    expect(home).toContain('<PosterGrid cards={movieCards} />')
-    expect(home).toContain('<PosterGrid cards={seriesWeekCards} />')
-    expect(home).toContain('upcomingMovies.map')
-    expect(home).toContain('NewsOverlayCard')
+  it('segue a ORDEM EXATA da tela 02 do canônico, só com dados persistidos', () => {
+    // hero → ticker → destaques → popular (rank) → filmes em alta → séries →
+    // em breve (glimpse) → notícias (lead + 2x2)
+    const order = [
+      '<HomeHeroCarousel slides={heroSlides} />',
+      '<HomeTicker items={tickerEpisodes} />',
+      'className="feat-grid"',
+      'className="pop-rail__rank"',
+      'className="fresh-rail" label="Filmes em alta"',
+      'className="fresh-rail" label="Séries da semana"',
+      'className="glimpse-rail"',
+      'className="hnews-grid"',
+    ]
+    let cursor = -1
+    for (const marker of order) {
+      const at = home.indexOf(marker)
+      expect(at, `marcador ausente/fora de ordem: ${marker}`).toBeGreaterThan(cursor)
+      cursor = at
+    }
     // Toda seção é condicionada ao dado real; vazio = seção omitida.
     expect(home).toContain('heroSlides.length > 0 ?')
     expect(home).toContain('movieCards.length > 0 ?')
