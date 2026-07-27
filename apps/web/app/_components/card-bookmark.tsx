@@ -68,11 +68,14 @@ export function CardBookmark({
   entityId,
   title,
   variant = 'square',
+  label,
 }: {
   entityType: 'movie' | 'tv'
   entityId: string
   title: string
   variant?: 'square' | 'circle'
+  /** Com label, vira o botao-pill rotulado do canonico (ex.: "Minha lista"). */
+  label?: string
 }): ReactNode {
   const [ready, setReady] = useState(false)
   const [authenticated, setAuthenticated] = useState(false)
@@ -91,7 +94,18 @@ export function CardBookmark({
     }
   }, [entityType, entityId])
 
-  const className = variant === 'circle' ? 'card-bookmark card-bookmark--circle' : 'card-bookmark'
+  const className =
+    label !== undefined
+      ? 'card-bookmark card-bookmark--pill'
+      : variant === 'circle'
+        ? 'card-bookmark card-bookmark--circle'
+        : 'card-bookmark'
+  const content = (
+    <>
+      <BookmarkIcon />
+      {label !== undefined ? <span>{label}</span> : null}
+    </>
+  )
 
   if (!ready || !authenticated) {
     // Anonimo (ou estado ainda carregando): a acao leva ao login REAL.
@@ -105,7 +119,7 @@ export function CardBookmark({
           event.stopPropagation()
         }}
       >
-        <BookmarkIcon />
+        {content}
       </a>
     )
   }
@@ -138,7 +152,7 @@ export function CardBookmark({
       onClick={(event) => void toggle(event)}
       type="button"
     >
-      <BookmarkIcon />
+      {content}
     </button>
   )
 }

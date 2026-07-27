@@ -40,6 +40,7 @@
     "validate:source-authorization-and-attribution": "corepack pnpm --filter @screena/legal validate:source-authorization"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.0",
     "@types/node": "^22.0.0",
     "eslint": "^9.10.0",
     "eslint-config-prettier": "^9.1.0",

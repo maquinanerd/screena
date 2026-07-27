@@ -17,6 +17,7 @@ import { getPrismaClient } from "@screena/db/server";
 import { SITE_URL } from "../lib/site";
 import {
   buildNewsArticleView,
+  buildNewsCard,
   buildNewsIndexView,
   evaluateArticleIndexability,
   evaluateNewsIndexIndexability,
@@ -27,6 +28,8 @@ import {
   resolvePublishedIso,
   type NewsArticleView,
   type NewsIndexView,
+  type NewsCardView,
+  type NewsEntityCardInput,
   type NewsListItemInput,
   type NewsRelatedEntityInput,
   type NewsRelatedEntityType,
@@ -47,6 +50,8 @@ export interface NewsArticleData {
   indexability: IndexabilityResult;
   canonicalSlug: string;
   canonicalUrl: string;
+  /** "Leia tambem" (tela 05): outros artigos publicaveis reais. */
+  readAlso: NewsCardView[];
 }
 
 function isoDate(date: Date | null): string | null {
@@ -186,6 +191,10 @@ export const getNewsArticleData = cache(
     }
 
     const related = await resolveRelated(prisma, translation.articleId);
+    const [entityCard, readAlso] = await Promise.all([
+      resolveEntityCard(prisma, translation.articleId),
+      resolveReadAlso(prisma, translation.slug),
+    ]);
 
     const view = buildNewsArticleView({
       facts: {
@@ -214,6 +223,7 @@ export const getNewsArticleData = cache(
         translationPublishedAtIso: isoDate(translation.publishedAt),
       },
       related,
+      entityCard,
     });
 
     const indexability = evaluateArticleIndexability({
@@ -227,6 +237,7 @@ export const getNewsArticleData = cache(
       indexability,
       canonicalSlug: translation.slug,
       canonicalUrl: newsCanonicalUrl(translation.slug),
+      readAlso,
     };
   },
 );
@@ -339,4 +350,145 @@ async function resolveTargets(
       });
     }
   }
+}
+
+/**
+ * "Ficha do titulo" (tela 05): hidrata a PRIMEIRA entidade movie|tv citada na
+ * materia com fatos persistidos (titulo pt-BR, slug canonico, poster, ano,
+ * temporadas, resumo). Sem entidade citada com slug -> null (ficha omitida).
+ */
+async function resolveEntityCard(
+  prisma: PrismaClient,
+  articleId: bigint,
+): Promise<NewsEntityCardInput | null> {
+  const links = await prisma.entityNewsLink.findMany({
+    where: { articleId, entityType: { in: ["movie", "tv"] } },
+    select: { entityType: true, entityId: true },
+    orderBy: { id: "asc" },
+    take: 4,
+  });
+  for (const link of links) {
+    const type = link.entityType;
+    if (type !== "movie" && type !== "tv") continue;
+    const slugRow = await prisma.slug.findFirst({
+      where: {
+        entityType: type,
+        entityId: link.entityId,
+        languageCode: LANGUAGE_CODE,
+        isCanonical: true,
+      },
+      select: { slug: true },
+    });
+    if (slugRow === null) continue;
+
+    const translationRow = await prisma.entityTranslation.findFirst({
+      where: { entityType: type, entityId: link.entityId, languageCode: LANGUAGE_CODE },
+      select: { title: true, summary: true },
+    });
+
+    if (type === "movie") {
+      const movie = await prisma.movie.findUnique({
+        where: { id: link.entityId },
+        select: { titleOriginal: true, releaseDate: true, posterPath: true },
+      });
+      if (movie === null) continue;
+      return {
+        entityType: "movie",
+        id: link.entityId.toString(),
+        titleOriginal: movie.titleOriginal,
+        translationTitle: translationRow?.title ?? null,
+        summary: translationRow?.summary ?? null,
+        slug: slugRow.slug,
+        posterPath: movie.posterPath,
+        year: movie.releaseDate === null ? null : movie.releaseDate.getUTCFullYear(),
+        seasonCount: null,
+      };
+    }
+    const show = await prisma.tvShow.findUnique({
+      where: { id: link.entityId },
+      select: { nameOriginal: true, firstAirDate: true, posterPath: true },
+    });
+    if (show === null) continue;
+    const seasonCount = await prisma.season.count({
+      where: { tvShowId: link.entityId, seasonNumber: { gt: 0 } },
+    });
+    return {
+      entityType: "tv",
+      id: link.entityId.toString(),
+      titleOriginal: show.nameOriginal,
+      translationTitle: translationRow?.title ?? null,
+      summary: translationRow?.summary ?? null,
+      slug: slugRow.slug,
+      posterPath: show.posterPath,
+      year: show.firstAirDate === null ? null : show.firstAirDate.getUTCFullYear(),
+      seasonCount: seasonCount > 0 ? seasonCount : null,
+    };
+  }
+  return null;
+}
+
+/** "Leia tambem" (tela 05): ate 4 outros artigos publicaveis mais recentes. */
+async function resolveReadAlso(
+  prisma: PrismaClient,
+  currentSlug: string,
+): Promise<NewsCardView[]> {
+  const rows = await prisma.articleTranslation.findMany({
+    where: {
+      languageCode: LANGUAGE_CODE,
+      reviewStatus: { in: [...NEWS_RENDERABLE_REVIEW_STATUSES] },
+      slug: { not: currentSlug },
+    },
+    orderBy: { publishedAt: "desc" },
+    take: 8,
+    select: {
+      slug: true,
+      title: true,
+      deck: true,
+      reviewStatus: true,
+      publishedAt: true,
+      article: {
+        select: {
+          authorName: true,
+          category: true,
+          heroImagePath: true,
+          publishedAt: true,
+          readTimeMinutes: true,
+          licenseStatus: true,
+          displayAllowed: true,
+          requiresAttribution: true,
+          requiresLinkback: true,
+          sourceName: true,
+          sourceUrl: true,
+        },
+      },
+    },
+  });
+  const nowIso = new Date().toISOString();
+  const cards: NewsCardView[] = [];
+  for (const row of rows) {
+    if (cards.length >= 4) break;
+    const card = buildNewsCard(
+      {
+        authorName: row.article.authorName,
+        category: row.article.category,
+        heroImagePath: row.article.heroImagePath,
+        articlePublishedAtIso: isoDate(row.article.publishedAt),
+        readTimeMinutes: row.article.readTimeMinutes,
+        licenseStatus: String(row.article.licenseStatus),
+        displayAllowed: row.article.displayAllowed,
+        requiresAttribution: row.article.requiresAttribution,
+        requiresLinkback: row.article.requiresLinkback,
+        sourceName: row.article.sourceName,
+        sourceUrl: row.article.sourceUrl,
+        slug: row.slug,
+        title: row.title,
+        deck: row.deck,
+        reviewStatus: String(row.reviewStatus),
+        translationPublishedAtIso: isoDate(row.publishedAt),
+      },
+      nowIso,
+    );
+    if (card !== null) cards.push(card);
+  }
+  return cards;
 }

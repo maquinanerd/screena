@@ -20,6 +20,8 @@ import {
   type IndexabilityResult,
 } from "@screena/seo";
 
+import { buildTmdbImageUrl } from "./tmdb-image-url";
+
 /** Estados de review que podem aparecer no render publico. */
 export const NEWS_RENDERABLE_REVIEW_STATUSES = ["human_reviewed", "published"] as const;
 const NEWS_RENDERABLE_REVIEW_SET: ReadonlySet<string> = new Set(NEWS_RENDERABLE_REVIEW_STATUSES);
@@ -165,6 +167,7 @@ export interface NewsArticleView {
   metaTitle: string | null;
   metaDescription: string | null;
   related: NewsRelatedEntity[];
+  entityCard: NewsEntityCard | null;
 }
 
 export interface NewsIndexIndexabilityInput {
@@ -392,10 +395,72 @@ export function buildNewsRelated(
   return out;
 }
 
+/** Payload controlado da "Ficha do titulo" (tela 05): 1a entidade citada. */
+export interface NewsEntityCardInput {
+  entityType: "movie" | "tv";
+  id: string;
+  titleOriginal: string | null;
+  translationTitle: string | null;
+  summary: string | null;
+  slug: string | null;
+  posterPath: string | null;
+  year: number | null;
+  /** Numero de temporadas conhecidas (apenas tv); null quando desconhecido. */
+  seasonCount: number | null;
+}
+
+export interface NewsEntityCard {
+  entityType: "movie" | "tv";
+  entityId: string;
+  title: string;
+  href: string;
+  posterUrl: string | null;
+  /** Linha de meta honesta (ano / temporadas reais); null quando nada ha. */
+  metaLine: string | null;
+  summary: string | null;
+  kicker: string;
+}
+
+/**
+ * Ficha do titulo citada na materia (tela 05). So nasce com titulo + slug
+ * reais; meta apenas com fatos persistidos (ano, temporadas) — nunca nota
+ * inventada (Cinerie Score continua bloqueado; ratings externos inativos).
+ */
+export function buildNewsEntityCard(
+  input: NewsEntityCardInput | null,
+): NewsEntityCard | null {
+  if (input === null) return null;
+  const title = trimToNull(input.translationTitle) ?? trimToNull(input.titleOriginal);
+  const slug = trimToNull(input.slug);
+  if (title === null || slug === null) return null;
+  const metaParts: string[] = [];
+  if (input.year !== null && Number.isInteger(input.year)) metaParts.push(String(input.year));
+  if (input.entityType === "tv") {
+    const seasons = positiveIntOrNull(input.seasonCount);
+    if (seasons !== null) {
+      metaParts.push(seasons === 1 ? "1 temporada" : `${seasons} temporadas`);
+    }
+  }
+  return {
+    entityType: input.entityType,
+    entityId: input.id,
+    title,
+    href: creditHref(input.entityType, slug),
+    posterUrl: buildTmdbImageUrl(input.posterPath, "w500"),
+    metaLine: metaParts.length > 0 ? metaParts.join(" · ") : null,
+    summary: trimToNull(input.summary),
+    kicker:
+      input.entityType === "movie"
+        ? "Filme · citado nesta matéria"
+        : "Série · citada nesta matéria",
+  };
+}
+
 export interface BuildNewsArticleViewInput {
   facts: ArticleFactsInput;
   translation: ArticleTranslationInput;
   related: NewsRelatedEntityInput[];
+  entityCard?: NewsEntityCardInput | null;
 }
 
 export function buildNewsArticleView(input: BuildNewsArticleViewInput): NewsArticleView {
@@ -427,6 +492,7 @@ export function buildNewsArticleView(input: BuildNewsArticleViewInput): NewsArti
     metaTitle: trimToNull(translation.metaTitle),
     metaDescription: trimToNull(translation.metaDescription),
     related: buildNewsRelated(input.related),
+    entityCard: buildNewsEntityCard(input.entityCard ?? null),
   };
 }
 

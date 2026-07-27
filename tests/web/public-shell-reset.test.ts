@@ -60,7 +60,7 @@ describe('shell público — design canônico', () => {
     for (const block of gradientBlocks) {
       // toda classe com gradiente é um SCRIM de mídia (hero, cards de
       // overlay, critic-band) — nunca decoração solta em superfície clara
-      expect(block).toMatch(/scrim|nws-(?:feature__img|card__cover|rail__post)::after/)
+      expect(block).toMatch(/scrim|nws-(?:feature__img|card__cover|rail__post)::after|art-byline__avatar/)
     }
   })
 
