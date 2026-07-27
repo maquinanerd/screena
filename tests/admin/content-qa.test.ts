@@ -12,7 +12,7 @@ import {
   buildQaIssue,
   calculateQaScore,
   CRITICAL_SCORE_CEILING,
-  evaluateArticleQa,
+  evaluateArticleQa as evaluateArticleQaAt,
   evaluateBodyQuality,
   evaluateContentBlockQa,
   evaluateSlugQuality,
@@ -41,6 +41,15 @@ function healthyArticle(overrides: Partial<ArticleQaInput> = {}): ArticleQaInput
     ...overrides,
   };
 }
+
+
+/** Instante bem depois das datas das fixtures; agendamento tem teste proprio. */
+const NOW = "2026-07-05T00:00:00.000Z";
+
+const evaluateArticleQa = (
+  input: ArticleQaInput,
+  options: { nowIso?: string; staleDays?: number } = {},
+) => evaluateArticleQaAt(input, { staleDays: options.staleDays, nowIso: options.nowIso ?? NOW });
 
 function categories(input: ArticleQaInput): string[] {
   return evaluateArticleQa(input).issues.map((i) => i.category);
@@ -109,11 +118,21 @@ describe("evaluateArticleQa — categorias criticas/warning", () => {
     expect(cats).not.toContain("index_ready");
   });
 
-  it("stale_content so com nowIso e updatedAt antigo", () => {
+  // `nowIso` deixou de ser opcional (ver QaOptions): a prontidao publica depende
+  // de comparar published_at com o presente, entao "agora" e sempre conhecido.
+  // Staleness passou a ser funcao da IDADE do conteudo, nao da presenca do
+  // parametro — e este teste mede exatamente isso nos dois sentidos.
+  it("stale_content depende da idade do updatedAt em relacao a nowIso", () => {
     const old = healthyArticle({ updatedAtIso: "2026-01-01T00:00:00.000Z" });
-    expect(evaluateArticleQa(old).issues.map((i) => i.category)).not.toContain("stale_content");
-    const withNow = evaluateArticleQa(old, { nowIso: "2027-01-01T00:00:00.000Z" });
-    expect(withNow.issues.map((i) => i.category)).toContain("stale_content");
+    const recent = healthyArticle({ updatedAtIso: "2026-12-20T00:00:00.000Z" });
+    const nowIso = "2027-01-01T00:00:00.000Z";
+
+    expect(evaluateArticleQa(old, { nowIso }).issues.map((i) => i.category)).toContain(
+      "stale_content",
+    );
+    expect(evaluateArticleQa(recent, { nowIso }).issues.map((i) => i.category)).not.toContain(
+      "stale_content",
+    );
   });
 });
 

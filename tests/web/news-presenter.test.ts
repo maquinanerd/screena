@@ -10,8 +10,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildNewsArticleView,
-  buildNewsCard,
-  buildNewsIndexView,
+  buildNewsCard as buildNewsCardAt,
+  buildNewsIndexView as buildNewsIndexViewAt,
   buildNewsRelated,
   bodyParagraphs,
   evaluateArticleIndexability,
@@ -26,6 +26,18 @@ import {
   type ArticleTranslationInput,
   type NewsListItemInput,
 } from "../../apps/web/src/lib/news-presenter";
+
+/**
+ * Instante de avaliacao dos casos existentes. Bem depois das datas de
+ * publicacao usadas nas fixtures, para que estes testes continuem medindo o que
+ * mediam (licenca/review/slug/imagem) e nao virem testes de relogio.
+ * O comportamento de agendamento tem describe proprio no fim do arquivo.
+ */
+const NOW = "2026-07-01T00:00:00.000Z";
+
+const buildNewsCard = (input: NewsListItemInput) => buildNewsCardAt(input, NOW);
+const buildNewsIndexView = (items: NewsListItemInput[]) =>
+  buildNewsIndexViewAt(items, NOW);
 
 const LONG_BODY = "x".repeat(MIN_ARTICLE_BODY_CHARS);
 

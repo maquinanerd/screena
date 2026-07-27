@@ -104,6 +104,12 @@ export interface SitemapDataInput {
   series: SitemapEntityCandidate[];
   people: SitemapEntityCandidate[];
   news: SitemapNewsCandidate[];
+  /**
+   * Instante de avaliacao (ISO), injetado. Necessario para que uma materia
+   * AGENDADA (published_at no futuro) nunca entre no sitemap: sem ele o
+   * gate so veria "tem data" e listaria o embargo.
+   */
+  nowIso: string;
 }
 
 interface StaticRouteSpec {
@@ -189,19 +195,25 @@ function entityDetailEntry(
  * gate da listagem e dos portais usa esta contagem — identica a dos cards das
  * paginas de noticias.
  */
-function isPublishableNewsCandidate(candidate: SitemapNewsCandidate): boolean {
+function isPublishableNewsCandidate(
+  candidate: SitemapNewsCandidate,
+  nowIso: string,
+): boolean {
   return (
-    isPublishableArticle({
-      reviewStatus: candidate.reviewStatus,
-      licenseStatus: candidate.licenseStatus,
-      displayAllowed: candidate.displayAllowed,
-      slug: candidate.slug,
-      title: candidate.title,
-      publishedAtIso: resolvePublishedIso(
-        candidate.translationPublishedAtIso,
-        candidate.articlePublishedAtIso,
-      ),
-    }) &&
+    isPublishableArticle(
+      {
+        reviewStatus: candidate.reviewStatus,
+        licenseStatus: candidate.licenseStatus,
+        displayAllowed: candidate.displayAllowed,
+        slug: candidate.slug,
+        title: candidate.title,
+        publishedAtIso: resolvePublishedIso(
+          candidate.translationPublishedAtIso,
+          candidate.articlePublishedAtIso,
+        ),
+      },
+      nowIso,
+    ) &&
     isNewsAttributionSatisfied({
       requiresAttribution: candidate.requiresAttribution ?? false,
       requiresLinkback: candidate.requiresLinkback ?? false,
@@ -214,8 +226,9 @@ function isPublishableNewsCandidate(candidate: SitemapNewsCandidate): boolean {
 /** Noticia entra so quando publicavel E indexavel (mesmo gate da pagina). */
 function newsDetailEntry(
   candidate: SitemapNewsCandidate,
+  nowIso: string,
 ): SitemapEntryView | null {
-  if (!isPublishableNewsCandidate(candidate)) return null;
+  if (!isPublishableNewsCandidate(candidate, nowIso)) return null;
   const indexability = evaluateArticleIndexability({
     indexStatus: candidate.indexStatus,
     bodySufficient: isSufficientBody(candidate.body),
@@ -248,11 +261,11 @@ export function buildSitemapEntries(input: SitemapDataInput): SitemapEntryView[]
   const movieCount = input.movies.filter(isValidCatalogItem).length;
   const seriesCount = input.series.filter(isValidCatalogItem).length;
   const peopleCount = input.people.filter(isValidCatalogItem).length;
-  const publishableNewsCount = input.news.filter(
-    isPublishableNewsCandidate,
+  const publishableNewsCount = input.news.filter((candidate) =>
+    isPublishableNewsCandidate(candidate, input.nowIso),
   ).length;
   const newsEntries = input.news
-    .map(newsDetailEntry)
+    .map((candidate) => newsDetailEntry(candidate, input.nowIso))
     .filter((entry): entry is SitemapEntryView => entry !== null);
 
   const listingIndexable: Record<string, boolean> = {

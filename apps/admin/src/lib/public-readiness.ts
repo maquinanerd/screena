@@ -40,6 +40,28 @@ export const NEWS_INDEX_PATH = "/pt/noticias/";
 /** Idiomas que publicam primeiro no MVP (invariante 7). */
 const PUBLISH_FIRST_LANGUAGES: ReadonlySet<string> = new Set(["pt-BR", "pt"]);
 
+/**
+ * `published_at` ainda no futuro (materia agendada/embargada).
+ *
+ * Espelha a regra de `evaluateArticlePublication` (@screena/seo), que e a fonte
+ * unica do gate publico. Aqui a regra e reimplementada de proposito: o admin e
+ * PURO e nao importa runtime do app publico — e `tests/admin/public-readiness-
+ * mirror.test.ts` trava as duas implementacoes uma contra a outra, entao uma
+ * divergencia falha o build em vez de virar um painel mentiroso.
+ *
+ * Fail-closed: data ilegivel ou relogio ilegivel contam como "ainda nao
+ * publicado".
+ */
+function isFuturePublication(publishedAtIso: string | null, nowIso: string): boolean {
+  const published = trimToNull(publishedAtIso);
+  if (published === null) return false; // ausencia e tratada por "sem publishedAt"
+  const publishedMs = Date.parse(published);
+  const nowMs = Date.parse(nowIso);
+  if (Number.isNaN(publishedMs)) return true;
+  if (Number.isNaN(nowMs)) return true;
+  return publishedMs > nowMs;
+}
+
 /* ------------------------------------------------------------------ */
 /* Tipos                                                              */
 /* ------------------------------------------------------------------ */
@@ -150,7 +172,10 @@ export function getReadinessLevel(gates: {
  * vira um item; sem segredo. Itens de corpo/index so afetam INDEXACAO, os demais
  * afetam EXIBICAO tambem.
  */
-export function buildReadinessIssues(input: ArticleReadinessInput): string[] {
+export function buildReadinessIssues(
+  input: ArticleReadinessInput,
+  nowIso: string,
+): string[] {
   const issues: string[] = [];
   if (isBlockedReview(input.reviewStatus)) {
     issues.push("review_status bloqueado/arquivado");
@@ -161,7 +186,11 @@ export function buildReadinessIssues(input: ArticleReadinessInput): string[] {
   if (input.displayAllowed !== true) issues.push("display_allowed=false");
   if (trimToNull(input.slug) === null) issues.push("sem slug");
   if (trimToNull(input.title) === null) issues.push("sem titulo");
-  if (trimToNull(input.publishedAtIso) === null) issues.push("sem publishedAt");
+  if (trimToNull(input.publishedAtIso) === null) {
+    issues.push("sem publishedAt");
+  } else if (isFuturePublication(input.publishedAtIso, nowIso)) {
+    issues.push("publicacao agendada (published_at no futuro)");
+  }
   if (!isPublishFirstLanguage(input.languageCode)) {
     issues.push("idioma nao publica no MVP (pt-BR primeiro; en/es nascem noindex)");
   }
@@ -181,25 +210,38 @@ export function buildReadinessIssues(input: ArticleReadinessInput): string[] {
  * `isPublishableArticle` do apps/web (mais o gate de idioma pt-BR do MVP);
  * `canIndex` espelha `evaluateArticleIndexability` (corpo suficiente + index_status=index).
  */
-export function evaluateArticlePublicReadiness(input: ArticleReadinessInput): PublicReadiness {
+export function evaluateArticlePublicReadiness(
+  input: ArticleReadinessInput,
+  nowIso: string,
+): PublicReadiness {
   const reviewPublishable = isPublishableReview(input.reviewStatus);
   const licenseOk = isDisplayableLicense(input.licenseStatus);
   const displayOk = input.displayAllowed === true;
   const hasSlug = trimToNull(input.slug) !== null;
   const hasTitle = trimToNull(input.title) !== null;
   const hasPublishedAt = trimToNull(input.publishedAtIso) !== null;
+  // Agendada: data preenchida mas ainda no futuro. O editor precisa ver isso
+  // como "ainda nao esta no ar", nao como "pronto" — senao o painel afirma uma
+  // publicacao que o site publico corretamente esconde.
+  const publicationReached = hasPublishedAt && !isFuturePublication(input.publishedAtIso, nowIso);
   const languageOk = isPublishFirstLanguage(input.languageCode);
   const bodyOk = isSufficientBodyChars(input.bodyChars);
   const indexRequested = input.indexStatus === "index";
 
   const canDisplay =
-    reviewPublishable && licenseOk && displayOk && hasSlug && hasTitle && hasPublishedAt && languageOk;
+    reviewPublishable &&
+    licenseOk &&
+    displayOk &&
+    hasSlug &&
+    hasTitle &&
+    publicationReached &&
+    languageOk;
   const canIndex = canDisplay && bodyOk && indexRequested;
 
   const hardBlocked = isBlockedReview(input.reviewStatus) || !licenseOk || !displayOk;
   const reviewPending = isPendingReview(input.reviewStatus);
 
-  const issues = buildReadinessIssues(input);
+  const issues = buildReadinessIssues(input, nowIso);
 
   return {
     level: getReadinessLevel({ canDisplay, canIndex, hardBlocked, reviewPending }),

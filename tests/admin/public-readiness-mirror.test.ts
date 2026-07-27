@@ -29,10 +29,20 @@ import {
   NEWS_INDEX_PATH as ADMIN_NEWS_INDEX_PATH,
   PUBLIC_SITE_ORIGIN,
   buildPublicArticleUrl,
-  evaluateArticlePublicReadiness,
+  evaluateArticlePublicReadiness as evaluateArticlePublicReadinessAt,
   isSufficientBodyChars,
   type ArticleReadinessInput,
 } from "../../apps/admin/src/lib/public-readiness";
+
+/** Instante bem depois das datas das fixtures; agendamento tem teste proprio. */
+const NOW = "2026-07-05T00:00:00.000Z";
+
+const evaluateArticlePublicReadiness = (input: ArticleReadinessInput) =>
+  evaluateArticlePublicReadinessAt(input, NOW);
+
+const isPublishableArticleNow = (input: Parameters<typeof isPublishableArticle>[0]) =>
+  isPublishableArticle(input, NOW);
+
 
 describe("constantes publicas espelhadas", () => {
   it("origin e path de noticias identicos ao apps/web", () => {
@@ -109,7 +119,7 @@ describe("matriz pt-BR: admin concorda com o pipeline publico real", () => {
               });
               const admin = evaluateArticlePublicReadiness(input);
 
-              const webPublishable = isPublishableArticle({
+              const webPublishable = isPublishableArticleNow({
                 reviewStatus,
                 licenseStatus,
                 displayAllowed,
@@ -148,7 +158,7 @@ describe("campos ausentes tambem espelham isPublishableArticle", () => {
     ] as Partial<ArticleReadinessInput>[]) {
       const input = article(override);
       const admin = evaluateArticlePublicReadiness(input);
-      const web = isPublishableArticle({
+      const web = isPublishableArticleNow({
         reviewStatus: input.reviewStatus,
         licenseStatus: input.licenseStatus,
         displayAllowed: input.displayAllowed,
