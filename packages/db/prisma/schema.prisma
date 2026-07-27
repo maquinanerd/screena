@@ -2371,8 +2371,8 @@ model ImportJob {
 // EDITORIAL / NEWS PLATFORM (Prompt 10) — fontes, itens recebidos,
 // proveniencia, deduplicacao e projecao publica de artigo.
 //
-// ADR: docs/adr/0015-editorial-news-platform.md
-// Regras: docs/editorial/README.md
+// Regras e decisoes: docs/editorial/README.md (inclui o que NAO foi feito)
+// Runbook operacional: docs/editorial/runbook.md
 //
 // Convencoes desta secao:
 //  - `articles`/`article_translations`/`entity_news_links` JA existiam e NAO

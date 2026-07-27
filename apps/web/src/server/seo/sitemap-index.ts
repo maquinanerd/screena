@@ -203,7 +203,7 @@ async function aggregateEntity(
         AND a.license_status IN ('official','licensed','third_party')
         AND a.display_allowed = true
         AND BTRIM(at.slug) <> '' AND BTRIM(at.title) <> ''
-        AND COALESCE(at.published_at, a.published_at) <= NOW()
+        AND COALESCE(at.published_at, a.published_at) <= (NOW() AT TIME ZONE 'UTC')
         AND at.index_status = 'index'
         AND LENGTH(BTRIM(COALESCE(at.body, ''))) >= ${MIN_ARTICLE_BODY_CHARS}
         AND (a.requires_attribution = false OR BTRIM(COALESCE(a.source_name, '')) <> '')
@@ -300,7 +300,7 @@ async function pageEntity(
       AND a.license_status IN ('official','licensed','third_party')
       AND a.display_allowed = true
       AND BTRIM(at.slug) <> '' AND BTRIM(at.title) <> ''
-      AND COALESCE(at.published_at, a.published_at) <= NOW()
+      AND COALESCE(at.published_at, a.published_at) <= (NOW() AT TIME ZONE 'UTC')
       AND at.index_status = 'index'
       AND LENGTH(BTRIM(COALESCE(at.body, ''))) >= ${MIN_ARTICLE_BODY_CHARS}
       AND (a.requires_attribution = false OR BTRIM(COALESCE(a.source_name, '')) <> '')

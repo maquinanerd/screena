@@ -114,6 +114,40 @@ export async function ingestSourceItem(
   }
 
   if (existing === undefined) {
+    // O MESMO recurso ja existe NESTA fonte com outro `external_id` — o caso
+    // rotineiro de feed que regenera GUIDs, ou de duas categorias do mesmo
+    // site carregando a mesma materia.
+    //
+    // Nao ha linha nova a criar: o unique parcial
+    // `source_items_source_normalized_url_unique` (source_id, normalized_url)
+    // existe exatamente para impedir que a mesma fonte guarde o mesmo recurso
+    // duas vezes. Tentar criar aqui abortaria a ingestao com violacao de
+    // unique — uma duplicata ESPERADA nunca pode virar erro (a mesma regra do
+    // C7B1.1: conflito previsto nao envenena a operacao).
+    //
+    // O primario e retido e devolvido; e por isso que `IngestSourceItemResult`
+    // preve o desfecho `duplicate`.
+    const sameSourceUrlOwner =
+      normalizedUrl === null
+        ? undefined
+        : candidateRows.find(
+            (row) => row.sourceId === sourceId && row.normalizedUrl === normalizedUrl,
+          )
+
+    if (sameSourceUrlOwner !== undefined) {
+      // Carimba a verificacao no primario (foi reconfirmado agora) sem
+      // reescrever conteudo: nada mudou nele.
+      await prisma.sourceItem.update({
+        where: { id: sameSourceUrlOwner.id },
+        data: { fetchedAt: new Date() },
+      })
+      return {
+        itemId: sameSourceUrlOwner.id.toString(),
+        outcome: 'duplicate',
+        verdict: 'duplicate',
+      }
+    }
+
     const created = await prisma.sourceItem.create({
       data: { sourceId, externalId, ...data },
       select: { id: true },
@@ -440,11 +474,26 @@ export async function readEditorialCensus(
     prisma.editorialSource.count({ where: { status: 'active' } }),
     prisma.sourceItem.count(),
     prisma.sourceItem.count({ where: { fetchedAt: { gte: dayAgo } } }),
+    // "Publicado" aqui precisa significar o MESMO que a projecao considera
+    // publicavel, senao a sentinela grita sozinha. Duas correcoes sobre a
+    // contagem ingenua por review_status:
+    //  - o gate de licenca/display entra (um artigo `published` porem
+    //    bloqueado por licenca corretamente NAO tem documento de busca; sem
+    //    este filtro ele acusaria `search_projection_stale` para sempre);
+    //  - a data cai para `articles.published_at` quando a traducao nao tem uma
+    //    propria, exatamente como `resolveArticlePublishedIso` faz.
     prisma.articleTranslation.count({
       where: {
         languageCode: LANGUAGE_CODE,
         reviewStatus: { in: ['human_reviewed', 'published'] },
-        publishedAt: { lte: now },
+        article: {
+          displayAllowed: true,
+          licenseStatus: { in: ['official', 'licensed', 'third_party'] },
+        },
+        OR: [
+          { publishedAt: { lte: now } },
+          { publishedAt: null, article: { publishedAt: { lte: now } } },
+        ],
       },
     }),
     prisma.searchDocument.count({ where: { docKind: 'article', locale: LANGUAGE_CODE } }),

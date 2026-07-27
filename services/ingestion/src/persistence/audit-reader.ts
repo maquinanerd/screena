@@ -168,9 +168,13 @@ export function createPrismaAuditReader(prisma: PrismaClient): AuditReaderPort {
     },
 
     async readSearchDocuments() {
+      // Este relatorio audita o CATALOGO. `search_documents` passou a abrigar
+      // tambem documentos de ARTIGO, entao sem o filtro por doc_kind os numeros
+      // do catalogo apareceriam inflados pelo acervo editorial.
+      const where = { docKind: 'entity' } as const
       const [total, grouped] = await Promise.all([
-        prisma.searchDocument.count(),
-        prisma.searchDocument.groupBy({ by: ['locale'], _count: { _all: true } }),
+        prisma.searchDocument.count({ where }),
+        prisma.searchDocument.groupBy({ by: ['locale'], where, _count: { _all: true } }),
       ])
       return {
         total,
@@ -280,7 +284,7 @@ export function createPrismaAuditReader(prisma: PrismaClient): AuditReaderPort {
       const rows = await prisma.$queryRawUnsafe<{ reason: string | null; n: number }[]>(
         `SELECT COALESCE(reason, '(sem razao)') AS reason, COUNT(*)::int AS n
            FROM page_indexability_decisions
-          WHERE is_current AND language_code = $1
+          WHERE is_current AND doc_kind = 'entity' AND language_code = $1
           GROUP BY 1 ORDER BY n DESC`,
         language,
       )

@@ -188,6 +188,25 @@ async function runChecks(url: string): Promise<void> {
       `outcome=${updated.outcome} itens=${afterUpdate}`,
     )
 
+    // REGRESSAO (revisao adversarial): o MESMO recurso reaparecendo na MESMA
+    // fonte com outro external_id - feed que regenera GUIDs, ou duas categorias
+    // do mesmo site carregando a mesma materia. O adapter tentava criar uma
+    // linha nova e batia no unique parcial (source_id, normalized_url),
+    // ABORTANDO a ingestao. Uma duplicata ESPERADA nunca pode virar erro.
+    const sameUrlOtherGuid = await ingestSourceItem(prisma, {
+      ...rawItem,
+      externalId: 'collider-123-regenerado',
+    })
+    const afterSameUrl = await prisma.sourceItem.count()
+    record(
+      31,
+      'mesmo recurso com outro external_id NA MESMA fonte deduplica sem abortar',
+      sameUrlOtherGuid.outcome === 'duplicate' &&
+        sameUrlOtherGuid.itemId === first.itemId &&
+        afterSameUrl === 1,
+      `outcome=${sameUrlOtherGuid.outcome} itens=${afterSameUrl}`,
+    )
+
     const excerptTooLong = await expectRejected(() =>
       prisma.sourceItem.create({
         data: {
