@@ -5,6 +5,7 @@ import { buildSameAs, serializeJsonLd } from '@screena/seo'
 
 import { EntityActions } from '../../../_components/entity-actions'
 import { EntityExternalIds } from '../../../_components/entity-external-ids'
+import { NewsListCard, SectionHead } from '../../../_components/ds'
 import { WatchAvailabilityPanel } from '../../../_components/watch-availability-panel'
 import { RatingsPanel } from '../../../_components/ratings-panel'
 import { canonicalRedirectPath } from '../../../../src/lib/canonical-redirect'
@@ -13,9 +14,13 @@ import { MOVIES_INDEX_PATH, NEWS_INDEX_PATH, SITE_URL, gatePublicRobots } from '
 import { getMoviePageData } from '../../../../src/server/movie-page'
 
 /**
- * Ficha pública mínima de filme. O shell não interpreta visualmente os dados:
- * ele mantém a rota, o conteúdo real e os contratos de SEO enquanto o design
- * público aguarda a próxima fonte canônica.
+ * Detalhe de filme — tela 06 do handoff (MovieDetailTemplate, EX-06-nohero):
+ * top info bar CLARA (sem hero cover, por decisao registrada no canonico) com
+ * poster 2/3 + titulo + metadata + acoes + ratings/streaming governados, e
+ * secoes editoriais (sinopse, ficha, elenco, noticias) em container editorial.
+ *
+ * Todos os dados vem do PostgreSQL local (invariantes 3/4); campo ausente e
+ * OMITIDO (nunca "N/D"); ratings cada um na escala da propria fonte.
  */
 
 /** ISR relê apenas o snapshot local do PostgreSQL. */
@@ -78,9 +83,6 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
   const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, ratings, externalIds } = data
   const isUnderReview = seo.decision !== 'index'
   const externalLinks = buildExternalLinks(externalIds, 'movie')
-  const summary = [view.year !== null ? String(view.year) : null, view.runtimeLabel].filter(
-    (item): item is string => item !== null,
-  )
   const facts = [
     view.year === null ? null : { label: 'Ano', value: String(view.year) },
     view.runtimeLabel === null ? null : { label: 'Duração', value: view.runtimeLabel },
@@ -96,8 +98,13 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
     view.blocks.find((block) => block.blockType === 'where_to_watch_text') ?? null
   const castContext = view.blocks.find((block) => block.blockType === 'cast_intro') ?? null
   const newsContext = view.blocks.find((block) => block.blockType === 'news_context') ?? null
-  const primaryCast = cast.slice(0, 6)
+  const primaryCast = cast.slice(0, 8)
   const editorialNews = relatedNews.slice(0, 3)
+  const topMeta = [
+    view.year !== null ? String(view.year) : null,
+    view.runtimeLabel,
+    view.statusLabel,
+  ].filter((item): item is string => item !== null)
 
   const breadcrumbJsonLd = {
     '@context': 'https://schema.org',
@@ -131,47 +138,92 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
 
   return (
     <main data-vertical="movie">
+      {/* Top info bar clara (EX-06-nohero) */}
+      <div className="topinfo">
+        <div className="container">
+          <nav aria-label="Trilha de navegação" className="breadcrumb">
+            <ol>
+              <li>
+                <a href="/pt/">Início</a>
+              </li>
+              <li>
+                <a href={MOVIES_INDEX_PATH}>Filmes</a>
+              </li>
+              <li aria-current="page">{view.title}</li>
+            </ol>
+          </nav>
+
+          <div className="topinfo__grid">
+            <div
+              className={
+                view.media.poster === null
+                  ? 'topinfo__poster topinfo__poster--empty'
+                  : 'topinfo__poster'
+              }
+            >
+              {view.media.poster !== null ? (
+                <img
+                  alt={`Pôster de ${view.title}`}
+                  fetchPriority="high"
+                  height={view.media.poster.height}
+                  src={view.media.poster.src}
+                  width={view.media.poster.width}
+                />
+              ) : (
+                <span aria-hidden="true">{view.title.slice(0, 1).toUpperCase()}</span>
+              )}
+            </div>
+
+            <header>
+              <span className="badge badge--movie" data-entity-badge="movie">
+                Filme
+              </span>
+              <h1 className="topinfo__title">{view.title}</h1>
+              {topMeta.length > 0 ? (
+                <ul className="topinfo__meta">
+                  {topMeta.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              ) : null}
+              {view.metaDescription !== null ? (
+                <p style={{ marginTop: 16 }}>{view.metaDescription}</p>
+              ) : null}
+              <div className="topinfo__actions">
+                {/* Acoes de biblioteca (C8): client component fala com /api/me
+                    por fetch apos clique; zero chamada externa no render. */}
+                <EntityActions entityType="movie" entityId={entityId} />
+              </div>
+              {externalLinks.length > 0 ? (
+                <div className="entity-links" style={{ marginTop: 18 }}>
+                  <EntityExternalIds links={externalLinks} />
+                </div>
+              ) : null}
+            </header>
+
+            <aside aria-label="Notas e disponibilidade" className="topinfo__aside">
+              {/* Notas de terceiros, cada uma na escala da propria fonte e
+                  creditada; o painel se auto-omite sem nota licenciada. */}
+              <RatingsPanel view={ratings} />
+              {watch !== null ? (
+                <div>
+                  <WatchAvailabilityPanel view={watch} />
+                  {watchContext !== null ? (
+                    <p className="watch-panel__note" data-block-type={watchContext.blockType}>
+                      {watchContext.content}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+            </aside>
+          </div>
+        </div>
+      </div>
+
       <div className="container">
-        <nav aria-label="Trilha de navegação">
-          <ol>
-            <li>
-              <a href={MOVIES_INDEX_PATH}>Filmes</a>
-            </li>
-            <li aria-current="page">{view.title}</li>
-          </ol>
-        </nav>
-
-        <header>
-          <p>
-            <strong data-entity-badge="movie">Filme</strong>
-          </p>
-          <h1>{view.title}</h1>
-          {summary.length > 0 ? <p>{summary.join(' · ')}</p> : null}
-          {view.metaDescription !== null ? <p>{view.metaDescription}</p> : null}
-          {externalLinks.length > 0 ? <EntityExternalIds links={externalLinks} /> : null}
-        </header>
-
-        {/* Acoes de biblioteca (C8). Client component: fala com /api/me por
-            fetch apos clique, sem chamada externa no render. */}
-        <EntityActions entityType="movie" entityId={entityId} />
-
-        {watch !== null ? (
-          <section aria-label="Disponibilidade legal">
-            <WatchAvailabilityPanel view={watch} />
-            {watchContext !== null ? (
-              <p data-block-type={watchContext.blockType}>{watchContext.content}</p>
-            ) : null}
-          </section>
-        ) : null}
-
-        {/* Notas de terceiros, cada uma na escala da propria fonte e creditada.
-            O painel se auto-omite quando nao ha nota licenciada: fonte desligada
-            some da pagina sem deixar buraco nem quebrar o layout. */}
-        <RatingsPanel view={ratings} />
-
         {workBlocks.length > 0 ? (
-          <section aria-labelledby="movie-work-title">
-            <h2 id="movie-work-title">A obra</h2>
+          <section aria-labelledby="movie-work-title" className="section">
+            <SectionHead id="movie-work-title" title="A obra" />
             {workBlocks.map((block) => (
               <p key={block.blockType} data-block-type={block.blockType}>
                 {block.content}
@@ -181,27 +233,46 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
         ) : null}
 
         {critiqueBlock !== null ? (
-          <section aria-labelledby="movie-review-title">
-            <h2 id="movie-review-title">Crítica da redação</h2>
+          <section aria-labelledby="movie-review-title" className="section">
+            <SectionHead id="movie-review-title" title="Crítica da redação" />
             <p data-block-type={critiqueBlock.blockType}>{critiqueBlock.content}</p>
           </section>
         ) : null}
 
         {primaryCast.length > 0 ? (
-          <section aria-labelledby="movie-cast-title">
-            <h2 id="movie-cast-title">Elenco principal</h2>
+          <section aria-labelledby="movie-cast-title" className="section">
+            <SectionHead id="movie-cast-title" title="Elenco principal" />
             {castContext !== null ? (
               <p data-block-type={castContext.blockType}>{castContext.content}</p>
             ) : null}
-            <ul>
+            <ul className="cast-grid">
               {primaryCast.map((member, index) => (
                 <li key={`${member.name}-${index}`}>
-                  {member.href !== null ? (
-                    <a href={member.href}>{member.name}</a>
-                  ) : (
-                    <span>{member.name}</span>
-                  )}
-                  {member.character !== null ? <span> — {member.character}</span> : null}
+                  <article className="cast-card">
+                    <span aria-hidden="true" className="cast-card__photo">
+                      {member.profile !== null ? (
+                        <img alt="" loading="lazy" src={member.profile.src} />
+                      ) : (
+                        member.name
+                          .split(' ')
+                          .slice(0, 2)
+                          .map((part) => part.slice(0, 1))
+                          .join('')
+                      )}
+                    </span>
+                    <div>
+                      <p className="cast-card__name">
+                        {member.href !== null ? (
+                          <a href={member.href}>{member.name}</a>
+                        ) : (
+                          <span>{member.name}</span>
+                        )}
+                      </p>
+                      {member.character !== null ? (
+                        <p className="cast-card__role">{member.character}</p>
+                      ) : null}
+                    </div>
+                  </article>
                 </li>
               ))}
             </ul>
@@ -209,44 +280,34 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
         ) : null}
 
         {editorialNews.length > 0 ? (
-          <section aria-labelledby="movie-news-title">
-            <h2 id="movie-news-title">Notícias relacionadas</h2>
+          <section aria-labelledby="movie-news-title" className="section">
+            <SectionHead
+              id="movie-news-title"
+              seeAllHref={NEWS_INDEX_PATH}
+              seeAllLabel="Ver todas"
+              title="Notícias relacionadas"
+            />
             {newsContext !== null ? (
               <p data-block-type={newsContext.blockType}>{newsContext.content}</p>
             ) : null}
-            <ul>
-              {editorialNews.map((article) => {
-                const meta = [article.author, article.dateLabel, article.readTimeLabel].filter(
-                  (item): item is string => item !== null,
-                )
-
-                return (
-                  <li key={article.href}>
-                    <article>
-                      <h3>
-                        <a href={article.href}>{article.title}</a>
-                      </h3>
-                      {article.category !== null ? <p>{article.category}</p> : null}
-                      {meta.length > 0 ? <p>{meta.join(' · ')}</p> : null}
-                    </article>
-                  </li>
-                )
-              })}
+            <ul className="news-grid">
+              {editorialNews.map((article) => (
+                <li key={article.href}>
+                  <NewsListCard card={article} />
+                </li>
+              ))}
             </ul>
-            <p>
-              <a href={NEWS_INDEX_PATH}>Ver todas as notícias</a>
-            </p>
           </section>
         ) : null}
 
         {facts.length > 0 ? (
-          <section aria-labelledby="movie-facts-title">
-            <h2 id="movie-facts-title">Ficha técnica</h2>
-            <dl>
+          <section aria-labelledby="movie-facts-title" className="section">
+            <SectionHead id="movie-facts-title" title="Ficha técnica" />
+            <dl className="facts">
               {facts.map((fact) => (
-                <div key={fact.label}>
-                  <dt>{fact.label}</dt>
-                  <dd>{fact.value}</dd>
+                <div className="facts__row" key={fact.label}>
+                  <dt className="facts__label">{fact.label}</dt>
+                  <dd className="facts__value">{fact.value}</dd>
                 </div>
               ))}
             </dl>
@@ -254,7 +315,9 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
         ) : null}
 
         {isUnderReview ? (
-          <p data-editorial-state="in-review">Esta página ainda está em revisão editorial.</p>
+          <p className="muted" data-editorial-state="in-review">
+            Esta página ainda está em revisão editorial.
+          </p>
         ) : null}
       </div>
 

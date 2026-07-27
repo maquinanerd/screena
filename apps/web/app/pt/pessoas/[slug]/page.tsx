@@ -3,6 +3,8 @@ import { notFound, permanentRedirect } from 'next/navigation'
 
 import { buildSameAs, serializeJsonLd } from '@screena/seo'
 
+import { AdSlot } from '../../../_components/ad-slot'
+import { EmptyState, NewsListCard, SectionHead } from '../../../_components/ds'
 import { EntityExternalIds } from '../../../_components/entity-external-ids'
 import { canonicalRedirectPath } from '../../../../src/lib/canonical-redirect'
 import { buildExternalLinks } from '../../../../src/lib/external-links'
@@ -11,8 +13,10 @@ import { SITE_URL, gatePublicRobots } from '../../../../src/lib/site'
 import { getPersonPageData } from '../../../../src/server/person-page'
 
 /**
- * Ficha pública mínima de pessoa. O shell conserva somente conteúdo real,
- * navegação, identidade externa e contratos de SEO.
+ * Pessoa — tela 09 do handoff (PersonDetailTemplate, contexto neutro):
+ * person-hero com portrait 3/4 (sem portrait -> avatar de iniciais, nunca
+ * imagem inventada), biografia em largura de leitura, filmografia com badge
+ * textual Filme/Série (invariante 11) e notícias relacionadas.
  */
 
 export const revalidate = 3600
@@ -117,6 +121,11 @@ export default async function PersonPage({ params }: { params: Promise<PersonPag
     (item): item is string => item !== null,
   )
   const externalLinks = buildExternalLinks(externalIds, 'person')
+  const initials = view.name
+    .split(' ')
+    .slice(0, 2)
+    .map((part) => part.slice(0, 1))
+    .join('')
 
   const breadcrumbJsonLd = {
     '@context': 'https://schema.org',
@@ -154,54 +163,125 @@ export default async function PersonPage({ params }: { params: Promise<PersonPag
 
   return (
     <main data-vertical="person">
+      {/* Person hero: portrait 3/4 + nome (topinfo claro, contexto neutro) */}
+      <div className="topinfo">
+        <div className="container">
+          <nav aria-label="Trilha de navegação" className="breadcrumb">
+            <ol>
+              <li>
+                <a href="/pt/">Início</a>
+              </li>
+              <li>
+                <a href={PESSOAS_INDEX_PATH}>Pessoas</a>
+              </li>
+              <li aria-current="page">{view.name}</li>
+            </ol>
+          </nav>
+
+          <div className="topinfo__grid">
+            <div
+              className={
+                view.profile === null
+                  ? 'topinfo__poster topinfo__poster--empty'
+                  : 'topinfo__poster'
+              }
+              style={{ aspectRatio: '3 / 4' }}
+            >
+              {view.profile !== null ? (
+                <img
+                  alt={`Retrato de ${view.name}`}
+                  fetchPriority="high"
+                  height={view.profile.height}
+                  src={view.profile.src}
+                  width={view.profile.width}
+                />
+              ) : (
+                <span aria-hidden="true">{initials}</span>
+              )}
+            </div>
+
+            <header>
+              <span className="badge">Pessoa</span>
+              <h1 className="topinfo__title">{view.name}</h1>
+              {summary.length > 0 ? (
+                <ul className="topinfo__meta">
+                  {summary.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              ) : null}
+              {externalLinks.length > 0 ? (
+                <div className="entity-links" style={{ marginTop: 18 }}>
+                  <EntityExternalIds links={externalLinks} />
+                </div>
+              ) : null}
+            </header>
+          </div>
+        </div>
+      </div>
+
       <div className="container">
-        <nav aria-label="Trilha de navegação">
-          <ol>
-            <li>
-              <a href={PESSOAS_INDEX_PATH}>Pessoas</a>
-            </li>
-            <li aria-current="page">{view.name}</li>
-          </ol>
-        </nav>
+        {biography.length > 0 ? (
+          <section aria-labelledby="person-bio-title" className="section">
+            <SectionHead id="person-bio-title" title="Biografia" />
+            <div className="article-body" style={{ maxWidth: 720, marginTop: 0 }}>
+              {biography.map((paragraph, index) => (
+                <p key={`${index}-${paragraph.slice(0, 24)}`}>{paragraph}</p>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
-        <header>
-          <p>Pessoa</p>
-          <h1>{view.name}</h1>
-          {summary.length > 0 ? <p>{summary.join(' · ')}</p> : null}
-          {biography.map((paragraph, index) => (
-            <p key={`${index}-${paragraph.slice(0, 24)}`}>{paragraph}</p>
-          ))}
-          {externalLinks.length > 0 ? <EntityExternalIds links={externalLinks} /> : null}
-        </header>
-
-        <section aria-labelledby="person-filmography-title">
-          <h2 id="person-filmography-title">Filmografia</h2>
+        <section aria-labelledby="person-filmography-title" className="section">
+          <SectionHead id="person-filmography-title" title="Filmografia" />
           {hasCredits ? (
-            <ul>
+            <ul className="news-grid">
               {view.credits.map((credit, index) => (
                 <li key={`${credit.entityType}-${credit.href}-${index}`}>
-                  <a data-entity-type={credit.entityType} href={credit.href}>
-                    <strong>{credit.title}</strong>
-                    <span> — {CREDIT_TYPE_LABELS[credit.entityType]}</span>
-                    {credit.year !== null ? <span> · {credit.year}</span> : null}
-                    {credit.roleLabel !== null ? <span> · {credit.roleLabel}</span> : null}
-                  </a>
+                  <article className="news-list-card" style={{ gridTemplateColumns: '1fr' }}>
+                    <div>
+                      <span
+                        className={
+                          credit.entityType === 'movie'
+                            ? 'badge badge--movie'
+                            : 'badge badge--series'
+                        }
+                      >
+                        {CREDIT_TYPE_LABELS[credit.entityType]}
+                      </span>
+                      <h3 className="news-list-card__title">
+                        <a data-entity-type={credit.entityType} href={credit.href}>
+                          {credit.title}
+                        </a>
+                      </h3>
+                      <p className="news-list-card__meta">
+                        {[
+                          credit.year !== null ? String(credit.year) : null,
+                          credit.roleLabel,
+                        ]
+                          .filter((item): item is string => item !== null)
+                          .join(' · ')}
+                      </p>
+                    </div>
+                  </article>
                 </li>
               ))}
             </ul>
           ) : (
-            <p>Filmografia ainda não disponível.</p>
+            <EmptyState title="Filmografia ainda não disponível." />
           )}
         </section>
 
+        <AdSlot format="leaderboard" slotId="person-credits" />
+
         {personalDetails.length > 0 ? (
-          <section aria-labelledby="person-details-title">
-            <h2 id="person-details-title">Detalhes pessoais</h2>
-            <dl>
+          <section aria-labelledby="person-details-title" className="section">
+            <SectionHead id="person-details-title" title="Detalhes pessoais" />
+            <dl className="facts">
               {personalDetails.map((detail) => (
-                <div key={detail.label}>
-                  <dt>{detail.label}</dt>
-                  <dd>{detail.value}</dd>
+                <div className="facts__row" key={detail.label}>
+                  <dt className="facts__label">{detail.label}</dt>
+                  <dd className="facts__value">{detail.value}</dd>
                 </div>
               ))}
             </dl>
@@ -209,35 +289,25 @@ export default async function PersonPage({ params }: { params: Promise<PersonPag
         ) : null}
 
         {relatedNews.length > 0 ? (
-          <section aria-labelledby="person-related-news-title">
-            <h2 id="person-related-news-title">Notícias relacionadas</h2>
+          <section aria-labelledby="person-related-news-title" className="section">
+            <SectionHead id="person-related-news-title" title="Notícias relacionadas" />
             {newsContext !== null ? (
               <p data-block-type={newsContext.blockType}>{newsContext.content}</p>
             ) : null}
-            <ul>
-              {relatedNews.map((card) => {
-                const meta = [card.author, card.dateLabel, card.readTimeLabel].filter(
-                  (item): item is string => item !== null,
-                )
-
-                return (
-                  <li key={card.href}>
-                    <article>
-                      <h3>
-                        <a href={card.href}>{card.title}</a>
-                      </h3>
-                      {card.category !== null ? <p>{card.category}</p> : null}
-                      {meta.length > 0 ? <p>{meta.join(' · ')}</p> : null}
-                    </article>
-                  </li>
-                )
-              })}
+            <ul className="news-grid">
+              {relatedNews.map((card) => (
+                <li key={card.href}>
+                  <NewsListCard card={card} />
+                </li>
+              ))}
             </ul>
           </section>
         ) : null}
 
         {isUnderReview ? (
-          <p data-editorial-state="in-review">Esta página ainda está em revisão editorial.</p>
+          <p className="muted" data-editorial-state="in-review">
+            Esta página ainda está em revisão editorial.
+          </p>
         ) : null}
       </div>
 

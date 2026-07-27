@@ -2,7 +2,8 @@ import type { ReactNode } from 'react'
 
 import { serializeJsonLd } from '@screena/seo'
 
-import type { EntityCard, EntityIndexView } from '../../src/lib/entity-index-presenter'
+import { EmptyState, PosterGrid } from './ds'
+import type { EntityIndexView } from '../../src/lib/entity-index-presenter'
 import { SITE_URL } from '../../src/lib/site'
 
 export type EntityIndexVertical = 'movie' | 'series' | 'person'
@@ -17,19 +18,24 @@ interface EntityIndexProps {
   emptyMessage?: string
 }
 
-const ENTITY_KIND_LABELS: Readonly<Record<EntityCard['kind'], string>> = {
-  movie: 'Filme',
-  series: 'Série',
-  person: 'Pessoa',
-}
-
 const DEFAULT_EMPTY_MESSAGES: Readonly<Record<EntityIndexVertical, string>> = {
   movie: 'Ainda não há filmes publicados nesta seção.',
   series: 'Ainda não há séries publicadas nesta seção.',
   person: 'Ainda não há pessoas publicadas nesta seção.',
 }
 
-/** Lista textual de entidades reais; sem pôster, card ou fallback decorativo. */
+/** Rotulo textual do contexto — a cor NUNCA e o unico sinal (invariante 11). */
+const VERTICAL_EYEBROW: Readonly<Record<EntityIndexVertical, string>> = {
+  movie: 'Cinema',
+  series: 'Séries',
+  person: 'Pessoas',
+}
+
+/**
+ * Listagem de entidades no design canonico (tela 04 / CatalogBrowseTemplate):
+ * breadcrumb + hero compacto com eyebrow por contexto + grid de posteres 2/3.
+ * Dados 100% reais; sem card fantasma; empty state honesto.
+ */
 export function EntityIndex({
   title,
   description,
@@ -81,32 +87,23 @@ export function EntityIndex({
           </ol>
         </nav>
 
-        <header className="page-header">
+        <header className="compact-hero page-header">
+          <p className="compact-hero__eyebrow">{VERTICAL_EYEBROW[vertical]}</p>
           <h1>{title}</h1>
           <p>{description}</p>
         </header>
 
         {hasItems ? (
           <>
-            <ul className="entity-list">
-              {view.cards.map((card) => (
-                <li key={card.href}>
-                  <a href={card.href}>
-                    <span className="entity-list__kind">{ENTITY_KIND_LABELS[card.kind]}: </span>
-                    <span>{card.title}</span>
-                    {card.meta !== null ? <span> — {card.meta}</span> : null}
-                  </a>
-                </li>
-              ))}
-            </ul>
+            <PosterGrid cards={view.cards} />
             {view.hasMore ? (
-              <p>
+              <p className="muted" style={{ marginTop: 24 }}>
                 Mostrando os primeiros {view.cards.length} de {view.totalCount}.
               </p>
             ) : null}
           </>
         ) : (
-          <p>{emptyMessage ?? DEFAULT_EMPTY_MESSAGES[vertical]}</p>
+          <EmptyState title={emptyMessage ?? DEFAULT_EMPTY_MESSAGES[vertical]} />
         )}
       </div>
 

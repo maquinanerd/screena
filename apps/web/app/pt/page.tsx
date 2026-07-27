@@ -2,25 +2,45 @@ import type { Metadata } from 'next'
 
 import { serializeJsonLd } from '@screena/seo'
 
+import { AdSlot } from '../_components/ad-slot'
+import { EmptyState, NewsOverlayCard, PosterGrid, SectionHead } from '../_components/ds'
+import { HomeHeroCarousel } from '../_components/home-hero-carousel'
 import type { EntityCard } from '../../src/lib/entity-index-presenter'
 import {
   countPopulatedSections,
   evaluatePortalIndexability,
+  HOME_ENTITY_CARD_LIMIT,
   HOME_NEWS_CARD_LIMIT,
   takeSectionCards,
 } from '../../src/lib/portal-presenter'
-import { EXPLORE_PATH, HOME_PATH, MOVIES_INDEX_PATH, NEWS_INDEX_PATH, PEOPLE_INDEX_PATH, SERIES_INDEX_PATH, SITE_URL, canonicalPublicUrl, publicRobots } from '../../src/lib/site'
+import {
+  HOME_PATH,
+  MOVIES_INDEX_PATH,
+  NEWS_INDEX_PATH,
+  SERIES_INDEX_PATH,
+  SITE_URL,
+  canonicalPublicUrl,
+  publicRobots,
+} from '../../src/lib/site'
 import { getHomeCatalogData } from '../../src/server/home-catalog'
 import { getHomeHeroSlides } from '../../src/server/home-hero'
 import { getHomeUpcomingMovies } from '../../src/server/home-upcoming'
 import { getNewsIndexData } from '../../src/server/news-pages'
+import { getSeriesIndexData } from '../../src/server/entity-indexes'
 
 /**
- * Home pública pt-BR reduzida ao conteúdo textual real já persistido.
+ * Home pública pt-BR — tela 02 do handoff canônico (HomeTemplate).
  *
- * Os getters e a decisão de indexabilidade continuam iguais aos da camada
- * anterior. A rota não cria destaques, rankings, anúncios ou affordances sem
- * contrato: apenas expõe links e dados vindos do PostgreSQL local.
+ * Estrutura fiel à especificação (43-PUBLIC-SCREEN-SPECIFICATIONS): hero em
+ * slides full-bleed, seções editoriais com cabeçalho de duas pesagens, banda
+ * escura sancionada para "Em breve", mosaico de notícias e AdSlots de
+ * leaderboard entre seções. Toda seção sem dado real é OMITIDA (nunca card
+ * fantasma); getters, canonical, robots e JSON-LD são os contratos já ativos.
+ *
+ * Divergência documentada (required by real data): "Today's Featured Picks" e
+ * "Popular This Week" exigem datasets editoriais próprios que ainda não
+ * existem; pela regra da própria spec ("seção omitida se vazia"), essas duas
+ * seções não renderizam nesta fase.
  */
 
 export const dynamic = 'force-dynamic'
@@ -28,7 +48,6 @@ export const dynamic = 'force-dynamic'
 const HOME_TITLE = 'Cinerie — filmes, séries, pessoas e notícias'
 const HOME_DESCRIPTION =
   'Base editorial de entretenimento em português: fichas de filmes e séries, perfis de pessoas e notícias com curadoria própria da redação da Cinerie.'
-const HOME_H1 = 'Cinerie — filmes, séries e pessoas'
 
 const HOME_ORGANIZATION_JSONLD = {
   '@context': 'https://schema.org',
@@ -46,11 +65,12 @@ const HOME_WEBSITE_JSONLD = {
 }
 
 async function getHomeData() {
-  const [catalog, news, heroSlides, upcomingMovies] = await Promise.all([
+  const [catalog, news, heroSlides, upcomingMovies, seriesIndex] = await Promise.all([
     getHomeCatalogData(),
     getNewsIndexData(),
     getHomeHeroSlides(),
     getHomeUpcomingMovies(),
+    getSeriesIndexData(),
   ])
 
   const sourceNews = [
@@ -68,7 +88,10 @@ async function getHomeData() {
   )
 
   const movieCards = catalog.movies
-  const seriesWeekCards: EntityCard[] = []
+  const seriesWeekCards: EntityCard[] = takeSectionCards(
+    seriesIndex.view.cards,
+    HOME_ENTITY_CARD_LIMIT,
+  )
   const indexability = evaluatePortalIndexability({
     populatedSectionCount: countPopulatedSections([
       heroSlides.length,
@@ -119,115 +142,105 @@ export default async function HomePage() {
 
   return (
     <main data-vertical="home">
+      <h1 className="visually-hidden">Cinerie — filmes, séries e pessoas</h1>
+
+      {heroSlides.length > 0 ? <HomeHeroCarousel slides={heroSlides} /> : null}
+
+      {movieCards.length > 0 ? (
+        <section aria-labelledby="home-movies-title" className="section">
+          <div className="container">
+            <SectionHead
+              id="home-movies-title"
+              seeAllHref={MOVIES_INDEX_PATH}
+              title="Filmes em alta"
+            />
+            <PosterGrid cards={movieCards} />
+          </div>
+        </section>
+      ) : null}
+
       <div className="container">
-        <header>
-          <h1>{HOME_H1}</h1>
-          <p>{HOME_DESCRIPTION}</p>
-        </header>
-
-        <nav aria-label="Áreas da Cinerie">
-          <ul>
-            <li>
-              <a href={MOVIES_INDEX_PATH}>Filmes</a>
-            </li>
-            <li>
-              <a href={SERIES_INDEX_PATH}>Séries</a>
-            </li>
-            <li>
-              <a href={PEOPLE_INDEX_PATH}>Pessoas</a>
-            </li>
-            <li>
-              <a href={NEWS_INDEX_PATH}>Notícias</a>
-            </li>
-            <li>
-              <a href={EXPLORE_PATH}>Explorar</a>
-            </li>
-          </ul>
-        </nav>
-
-        {heroSlides.length > 0 ? (
-          <section aria-labelledby="home-highlights-title">
-            <h2 id="home-highlights-title">Destaques</h2>
-            <ul>
-              {heroSlides.map((slide) => (
-                <li key={slide.href}>
-                  <a href={slide.href}>{slide.title}</a>
-                  <span> — {slide.eyebrow}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
-
-        {movieCards.length > 0 ? (
-          <section aria-labelledby="home-movies-title">
-            <h2 id="home-movies-title">Filmes em alta</h2>
-            <ul>
-              {movieCards.map((movie) => (
-                <li key={movie.href}>
-                  <a href={movie.href}>{movie.title}</a>
-                  {movie.meta !== null ? <span> — {movie.meta}</span> : null}
-                </li>
-              ))}
-            </ul>
-            <p>
-              <a href={MOVIES_INDEX_PATH}>Ver todos os filmes</a>
-            </p>
-          </section>
-        ) : null}
-
-        {seriesWeekCards.length > 0 ? (
-          <section aria-labelledby="home-series-title">
-            <h2 id="home-series-title">Séries da semana</h2>
-            <ul>
-              {seriesWeekCards.map((series) => (
-                <li key={series.href}>
-                  <a href={series.href}>{series.title}</a>
-                  {series.meta !== null ? <span> — {series.meta}</span> : null}
-                </li>
-              ))}
-            </ul>
-            <p>
-              <a href={SERIES_INDEX_PATH}>Ver todas as séries</a>
-            </p>
-          </section>
-        ) : null}
-
-        {upcomingMovies.length > 0 ? (
-          <section aria-labelledby="home-upcoming-title">
-            <h2 id="home-upcoming-title">Em breve</h2>
-            <ul>
-              {upcomingMovies.map((movie) => (
-                <li key={movie.href}>
-                  <a href={movie.href}>{movie.title}</a>
-                  <span> — estreia em {movie.date}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
-
-        {newsCards.length > 0 ? (
-          <section aria-labelledby="home-news-title">
-            <h2 id="home-news-title">Notícias</h2>
-            <ul>
-              {newsCards.map((article) => (
-                <li key={article.href}>
-                  <a href={article.href}>{article.title}</a>
-                  {article.dateLabel !== null ? <span> — {article.dateLabel}</span> : null}
-                </li>
-              ))}
-            </ul>
-            <p>
-              <a href={NEWS_INDEX_PATH}>Ver todas as notícias</a>
-            </p>
-          </section>
-        ) : null}
-
-        {!hasPublishedContent ? (
-          <p>Ainda não há conteúdo publicado para exibir na página inicial.</p>
-        ) : null}
+        <AdSlot format="leaderboard" slotId="home-filmes-alta" />
       </div>
+
+      {seriesWeekCards.length > 0 ? (
+        <section aria-labelledby="home-series-title" className="section">
+          <div className="container">
+            <SectionHead
+              id="home-series-title"
+              seeAllHref={SERIES_INDEX_PATH}
+              title="Séries da semana"
+            />
+            <PosterGrid cards={seriesWeekCards} />
+          </div>
+        </section>
+      ) : null}
+
+      {upcomingMovies.length > 0 ? (
+        <div className="dark-band">
+          <section aria-labelledby="home-upcoming-title" className="section">
+            <div className="container">
+              <SectionHead
+                id="home-upcoming-title"
+                seeAllHref="/pt/em-breve/"
+                title="Em breve"
+              />
+              <ul className="rail rail--wide">
+                {upcomingMovies.map((movie) => (
+                  <li key={movie.href}>
+                    <article className="trailer-card">
+                      <div className="trailer-card__media">
+                        {movie.imageUrl !== null ? (
+                          <img alt="" loading="lazy" src={movie.imageUrl} />
+                        ) : null}
+                      </div>
+                      <div className="trailer-card__body">
+                        <h3 className="trailer-card__title">
+                          <a href={movie.href}>{movie.title}</a>
+                        </h3>
+                        <p className="trailer-card__meta">Estreia em {movie.date}</p>
+                      </div>
+                    </article>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      <div className="container">
+        <AdSlot format="leaderboard" slotId="home-em-breve" />
+      </div>
+
+      {newsCards.length > 0 ? (
+        <section aria-labelledby="home-news-title" className="section">
+          <div className="container">
+            <SectionHead
+              id="home-news-title"
+              seeAllHref={NEWS_INDEX_PATH}
+              title="Notícias & Entrevistas"
+            />
+            <div className="news-mosaic">
+              {newsCards[0] !== undefined ? <NewsOverlayCard card={newsCards[0]} lead /> : null}
+              <div className="news-mosaic__side">
+                {newsCards.slice(1, 5).map((card) => (
+                  <NewsOverlayCard card={card} key={card.href} />
+                ))}
+              </div>
+            </div>
+            <AdSlot format="leaderboard" slotId="home-noticias" />
+          </div>
+        </section>
+      ) : null}
+
+      {!hasPublishedContent ? (
+        <div className="container section">
+          <EmptyState title="Ainda não há conteúdo publicado">
+            <p>Volte em breve: o catálogo e a redação da Cinerie estão em preparação.</p>
+          </EmptyState>
+        </div>
+      ) : null}
 
       <script
         type="application/ld+json"

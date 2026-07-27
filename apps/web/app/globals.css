@@ -2378,6 +2378,61 @@ a.tabs__tab[aria-current='page'] {
   font-weight: 600;
 }
 
+/* Paineis governados de detalhe: mesmos nomes de classe, visual do handoff */
+.ratings,
+.watch-availability {
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-card);
+  background: var(--c-bg-surface);
+  padding: 16px 18px;
+}
+
+.ratings__title,
+.watch-availability__title {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--c-text-secondary);
+  margin: 0 0 8px;
+}
+
+.ratings__note,
+.watch-availability__note {
+  font-size: 11px;
+  color: var(--c-text-secondary);
+  margin-bottom: 10px;
+}
+
+.ratings__list {
+  list-style: none;
+  padding-left: 0;
+}
+
+.ratings__item + .ratings__item {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--c-border-subtle);
+}
+
+.ratings__source {
+  font-weight: 700;
+}
+
+.watch-availability__group-title {
+  font-size: 12px;
+  font-weight: 700;
+  margin: 0 0 6px;
+}
+
+.watch-offer__link {
+  font-size: 13px;
+}
+
+.watch-offer__provider {
+  font-weight: 700;
+}
+
 .watch-availability__list,
 .watch-availability__groups,
 .watch-availability__group {
