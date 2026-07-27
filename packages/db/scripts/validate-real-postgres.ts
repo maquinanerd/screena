@@ -103,6 +103,8 @@ const EXPECTED_TABLES = [
   "rating_sources", "api_providers", "entity_external_ids",
   // Fase 4F-A — ambiente editorial/blog.
   "articles", "article_translations", "entity_news_links",
+  // Prompt 10 - cadeia de entrada editorial (fonte -> item -> proveniencia).
+  "editorial_sources", "source_items", "article_source_links",
   // P0-00a — raw sync TMDB (schema-only; worker-only, nao lido no render).
   "tmdb_raw", "tmdb_image_config",
   // Data governance hardening (2026-07) — registro polimorfico + quarentenas auditaveis.
@@ -138,6 +140,11 @@ const EXPECTED_ENUMS = [
   "EntityType", "ContentBlockType", "ContentSource", "ReviewStatus", "TranslationStatus",
   "IndexDecision", "JobType", "JobStatus", "LicenseStatus", "OfferType", "SyncStatus",
   "ValidationStatus", "ProviderKind",
+  // Prompt 10 - plataforma editorial. `PublicDocKind` e o discriminador que
+  // deixa artigo coexistir com entidade em search_documents e
+  // page_indexability_decisions sem que `EntityType` ganhe `article`.
+  "EditorialSourceKind", "EditorialSourceStatus", "EditorialSourceUseRights",
+  "SourceItemStatus", "SourceItemDedupVerdict", "ArticleSourceRole", "PublicDocKind",
   // P0-00a — discriminador dedicado do raw sync TMDB.
   "TmdbEntityKind",
   // Data governance hardening (2026-07).

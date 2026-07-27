@@ -332,3 +332,46 @@ ALTER TABLE "page_indexability_decisions"
     OR ("doc_kind" = 'article'
       AND "article_id" IS NOT NULL AND "entity_type" IS NULL AND "entity_id" IS NULL)
   );
+
+-- ============================================================
+-- 8) Guarda de supersedes: torna-la ciente de ARTIGO
+--
+-- `page_indexability_supersedes_same_group()` (criada em
+-- 20260715120000_data_governance_hardening) compara o grupo com `=`:
+--
+--     p."entity_type" = NEW."entity_type" AND p."entity_id" = NEW."entity_id"
+--
+-- Para uma decisao de ARTIGO os dois lados sao NULL, e `NULL = NULL` nao e
+-- TRUE: o EXISTS falha e a funcao levanta excecao em TODA cadeia de historico
+-- de artigo. Ou seja, sem este bloco a segunda decisao de qualquer artigo e
+-- recusada pelo banco.
+--
+-- A versao abaixo compara por KIND e usa `IS NOT DISTINCT FROM` (NULL-safe),
+-- alem de exigir que pai e filho sejam do MESMO `doc_kind` - encadear o
+-- historico de um artigo no de uma entidade continua proibido.
+--
+-- CREATE OR REPLACE substitui o corpo; o trigger existente passa a usar a nova
+-- definicao sem precisar ser recriado.
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION page_indexability_supersedes_same_group() RETURNS trigger AS $$
+BEGIN
+  IF NEW."supersedes_id" IS NOT NULL THEN
+    IF NEW."supersedes_id" = NEW."id" THEN
+      RAISE EXCEPTION 'page_indexability_decisions: supersedes_id nao pode ser autorreferencia';
+    END IF;
+    IF NOT EXISTS (
+      SELECT 1 FROM "page_indexability_decisions" p
+      WHERE p."id" = NEW."supersedes_id"
+        AND p."doc_kind" = NEW."doc_kind"
+        AND p."language_code" = NEW."language_code"
+        AND p."entity_type" IS NOT DISTINCT FROM NEW."entity_type"
+        AND p."entity_id" IS NOT DISTINCT FROM NEW."entity_id"
+        AND p."article_id" IS NOT DISTINCT FROM NEW."article_id"
+    ) THEN
+      RAISE EXCEPTION 'supersedes_id % deve referenciar decisao do mesmo (doc_kind, entity_type, entity_id, article_id, language_code)', NEW."supersedes_id";
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
