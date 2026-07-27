@@ -53,6 +53,9 @@ function news(
   };
 }
 
+/** Instante bem depois das datas das fixtures (materia agendada tem teste proprio). */
+const NOW = "2026-07-02T00:00:00.000Z";
+
 /** Snapshot rico: listagens e portais indexaveis + detalhes validos. */
 function richInput(): SitemapDataInput {
   const movies = ["filme-a", "filme-b", "filme-c"].map((slug) =>
@@ -65,7 +68,7 @@ function richInput(): SitemapDataInput {
     entity({ slug }),
   );
   const newsItems = ["not-a", "not-b", "not-c"].map((slug) => news({ slug }));
-  return { movies, series, people, news: newsItems };
+  return { movies, series, people, news: newsItems, nowIso: NOW };
 }
 
 function urls(input: SitemapDataInput): string[] {
@@ -126,6 +129,7 @@ describe("buildSitemapEntries — gates de listagem e portal (indexacao total)",
       series: [],
       people: [],
       news: [],
+      nowIso: NOW,
     };
     const emptyOut = urls(empty);
     expect(emptyOut).not.toContain(`${ORIGIN}/pt/`);
@@ -136,6 +140,7 @@ describe("buildSitemapEntries — gates de listagem e portal (indexacao total)",
       series: [],
       people: [],
       news: [],
+      nowIso: NOW,
     };
     const out = urls(onlyMovies);
     expect(out).toContain(`${ORIGIN}/pt/`);
@@ -148,6 +153,7 @@ describe("buildSitemapEntries — gates de listagem e portal (indexacao total)",
       series: [],
       people: [entity({ slug: "pessoa-a" })],
       news: [],
+      nowIso: NOW,
     };
     const out = urls(onlyPeople);
     // Home nao renderiza pessoas: 0 secoes -> fora. Explore conta pessoas: entra.
@@ -223,6 +229,7 @@ describe("buildSitemapEntries — detalhes de entidade", () => {
       series: [entity({ slug: "serie-a" })],
       people: [],
       news: [],
+      nowIso: NOW,
     };
     const entries = buildSitemapEntries(input);
     const withDate = entries.find((entry) => entry.url.includes("/com-data/"));

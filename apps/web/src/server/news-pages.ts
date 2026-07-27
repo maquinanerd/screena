@@ -108,7 +108,10 @@ export const getNewsIndexData = cache(async (): Promise<NewsIndexData> => {
     translationPublishedAtIso: isoDate(row.publishedAt),
   }));
 
-  const view = buildNewsIndexView(items);
+  // Instante da avaliacao: mantem materia agendada (published_at futuro) fora
+  // da listagem. Capturado UMA vez para que todos os cards do mesmo request
+  // sejam avaliados contra o mesmo relogio.
+  const view = buildNewsIndexView(items, new Date().toISOString());
   return {
     view,
     indexability: evaluateNewsIndexIndexability({ itemCount: view.totalCount }),
@@ -159,14 +162,17 @@ export const getNewsArticleData = cache(
     );
     const reviewStatus = String(translation.reviewStatus);
     if (
-      !isPublishableArticle({
-        reviewStatus,
-        licenseStatus: String(translation.article.licenseStatus),
-        displayAllowed: translation.article.displayAllowed,
-        slug: translation.slug,
-        title: translation.title,
-        publishedAtIso: publishedIso,
-      }) ||
+      !isPublishableArticle(
+        {
+          reviewStatus,
+          licenseStatus: String(translation.article.licenseStatus),
+          displayAllowed: translation.article.displayAllowed,
+          slug: translation.slug,
+          title: translation.title,
+          publishedAtIso: publishedIso,
+        },
+        new Date().toISOString(),
+      ) ||
       !isNewsAttributionSatisfied({
         requiresAttribution: translation.article.requiresAttribution,
         requiresLinkback: translation.article.requiresLinkback,
@@ -174,7 +180,8 @@ export const getNewsArticleData = cache(
         sourceUrl: translation.article.sourceUrl,
       })
     ) {
-      // Nao publicavel (rascunho, licenca/display/atribuicao bloqueados) -> 404.
+      // Nao publicavel (rascunho, agendada para o futuro, licenca/display/
+      // atribuicao bloqueados) -> 404.
       return null;
     }
 

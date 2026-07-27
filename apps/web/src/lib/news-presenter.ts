@@ -14,7 +14,11 @@
  *    noindex; a decisao editorial `index_status` tem a palavra final.
  */
 
-import { evaluateIndexability, type IndexabilityResult } from "@screena/seo";
+import {
+  evaluateIndexability,
+  isArticlePublishable,
+  type IndexabilityResult,
+} from "@screena/seo";
 
 /** Estados de review que podem aparecer no render publico. */
 export const NEWS_RENDERABLE_REVIEW_STATUSES = ["human_reviewed", "published"] as const;
@@ -253,24 +257,30 @@ export function isSufficientBody(body: string | null): boolean {
 
 /**
  * Um artigo e publicavel quando: review publicavel, slug/titulo reais,
- * publishedAt presente, licenca clara e display permitido (invariante 6).
+ * publishedAt presente E JA ALCANCADO, licenca clara e display permitido
+ * (invariante 6).
+ *
+ * Delega ao gate canonico `evaluateArticlePublication` de `@screena/seo` — a
+ * MESMA regra usada pelo sitemap, pela projecao de busca e pelo produtor de
+ * `page_indexability_decisions`. Manter uma copia local da regra aqui era o
+ * que permitia as superficies divergirem.
+ *
+ * `nowIso` e OBRIGATORIO e injetado: uma materia com `published_at` no futuro
+ * (agendada/embargada) tem data preenchida e review `published`, entao um gate
+ * que so pergunta "tem data?" a considera publicavel e vaza o embargo.
  */
-export function isPublishableArticle(input: {
-  reviewStatus: string;
-  licenseStatus: string;
-  displayAllowed: boolean;
-  slug: string | null;
-  title: string | null;
-  publishedAtIso: string | null;
-}): boolean {
-  return (
-    isPubliclyRenderableNewsReview(input.reviewStatus) &&
-    isDisplayableLicense(input.licenseStatus) &&
-    input.displayAllowed === true &&
-    trimToNull(input.slug) !== null &&
-    trimToNull(input.title) !== null &&
-    trimToNull(input.publishedAtIso) !== null
-  );
+export function isPublishableArticle(
+  input: {
+    reviewStatus: string;
+    licenseStatus: string;
+    displayAllowed: boolean;
+    slug: string | null;
+    title: string | null;
+    publishedAtIso: string | null;
+  },
+  nowIso: string,
+): boolean {
+  return isArticlePublishable(input, nowIso);
 }
 
 /** Fatos de atribuicao/linkback do artigo (Article). */
@@ -293,7 +303,10 @@ export function isNewsAttributionSatisfied(input: ArticleAttributionInput): bool
   return true;
 }
 
-export function buildNewsCard(input: NewsListItemInput): NewsCardView | null {
+export function buildNewsCard(
+  input: NewsListItemInput,
+  nowIso: string,
+): NewsCardView | null {
   const slug = trimToNull(input.slug);
   const title = trimToNull(input.title);
   const publishedIso = resolvePublishedIso(
@@ -301,14 +314,17 @@ export function buildNewsCard(input: NewsListItemInput): NewsCardView | null {
     input.articlePublishedAtIso,
   );
   if (
-    !isPublishableArticle({
-      reviewStatus: input.reviewStatus,
-      licenseStatus: input.licenseStatus,
-      displayAllowed: input.displayAllowed,
-      slug,
-      title,
-      publishedAtIso: publishedIso,
-    }) ||
+    !isPublishableArticle(
+      {
+        reviewStatus: input.reviewStatus,
+        licenseStatus: input.licenseStatus,
+        displayAllowed: input.displayAllowed,
+        slug,
+        title,
+        publishedAtIso: publishedIso,
+      },
+      nowIso,
+    ) ||
     !isNewsAttributionSatisfied({
       requiresAttribution: input.requiresAttribution ?? false,
       requiresLinkback: input.requiresLinkback ?? false,
@@ -333,9 +349,12 @@ export function buildNewsCard(input: NewsListItemInput): NewsCardView | null {
 }
 
 /** Listagem: publicaveis, ordenados por data desc (depois titulo), com featured. */
-export function buildNewsIndexView(items: NewsListItemInput[]): NewsIndexView {
+export function buildNewsIndexView(
+  items: NewsListItemInput[],
+  nowIso: string,
+): NewsIndexView {
   const cards = items
-    .map(buildNewsCard)
+    .map((item) => buildNewsCard(item, nowIso))
     .filter((card): card is NewsCardView => card !== null);
   cards.sort((a, b) => {
     const ad = a.dateIso ?? "";

@@ -133,6 +133,13 @@ jobs:
       - name: Autorizacao de fontes e atribuicao (registro governado; PostgreSQL 16 efemero)
         run: pnpm validate:source-authorization-and-attribution
 
+      # Backend D - cadeia editorial: fonte -> item recebido -> proveniencia ->
+      # artigo -> publicacao -> projecao publica. Prova, entre outras coisas,
+      # que rascunho, materia AGENDADA e materia retratada nunca entram na
+      # busca nem no indice, e que a reingestao e idempotente.
+      - name: Backend D - editorial, news e publication (PostgreSQL 16 efemero)
+        run: pnpm validate:editorial-platform
+
       # Backend C tem DOIS validadores de PostgreSQL real, com coberturas
       # DISJUNTAS — por isso sao dois passos, e nao um. O de @screena/db prova a
       # MIGRATION (constraints, indices parciais, backfill, upgrade); o de

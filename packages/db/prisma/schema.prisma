@@ -1031,10 +1031,16 @@ model WatchAvailability {
 // bruto) impede duas decisoes concorrentes marcadas como atuais. `policyVersion`
 // e `decisionOrigin` registram QUAL versao de politica/motor gerou a decisao;
 // `decidedBy` registra revisao humana quando aplicavel.
+// Prompt 10: a decisao de indexabilidade de ARTIGO editorial mora NESTA MESMA
+// tabela (proibido criar uma segunda tabela de indexabilidade). Mesmo padrao do
+// `search_documents`: discriminador `docKind` + `articleId`, com CHECK de forma
+// e unique parcial de decisao vigente POR KIND (SQL bruto na migration).
 model PageIndexabilityDecision {
   id               BigInt        @id @default(autoincrement())
-  entityType       EntityType    @map("entity_type")
-  entityId         BigInt        @map("entity_id")
+  docKind          PublicDocKind @default(entity) @map("doc_kind")
+  entityType       EntityType?   @map("entity_type")
+  entityId         BigInt?       @map("entity_id")
+  articleId        BigInt?       @map("article_id")
   languageCode     String        @map("language_code")
   url              String
   decision         IndexDecision @default(noindex) // default seguro (inv. 5)
@@ -1059,7 +1065,9 @@ model PageIndexabilityDecision {
   language     Language                   @relation(fields: [languageCode], references: [code])
   supersedes   PageIndexabilityDecision?  @relation("PageIndexabilityDecisionHistory", fields: [supersedesId], references: [id])
   supersededBy PageIndexabilityDecision[] @relation("PageIndexabilityDecisionHistory")
+  article      Article?                   @relation(fields: [articleId], references: [id], onDelete: Cascade)
 
+  @@index([articleId, languageCode])
   @@index([entityType, entityId, languageCode])
   @@index([decision])
   @@index([languageCode])
@@ -1298,10 +1306,18 @@ model CatalogJob {
 // a funcao IMMUTABLE `immutable_unaccent` vivem na migration (SQL bruto).
 // So entidades RENDERAVEIS entram (movie/tv/person) — resultados linkam paginas
 // publicas; nunca dado sem licenca/slug.
+// Prompt 10: artigos editoriais entram NESTA MESMA projecao (proibido criar um
+// segundo search engine). Como `EntityType` nao pode ganhar `article`, o
+// discriminador `docKind` + `articleId` convive com (entityType, entityId):
+// `entity` => entityType/entityId preenchidos e articleId NULL;
+// `article`  => articleId preenchido e entityType/entityId NULL.
+// CHECK de forma + uniques PARCIAIS por kind vivem na migration (SQL bruto).
 model SearchDocument {
-  id                BigInt     @id @default(autoincrement())
-  entityType        EntityType @map("entity_type") // renderavel: movie | tv | person
-  entityId          BigInt     @map("entity_id")
+  id                BigInt        @id @default(autoincrement())
+  docKind           PublicDocKind @default(entity) @map("doc_kind")
+  entityType        EntityType?   @map("entity_type") // renderavel: movie | tv | person
+  entityId          BigInt?       @map("entity_id")
+  articleId         BigInt?       @map("article_id")
   locale            String // BCP-47 (pt-BR); segue PUBLISHED_LOCALES
   primaryText       String     @map("primary_text") // titulo canonico/nome
   alternativeText   String     @default("") @map("alternative_text") // titulos alternativos/aliases (exibicao, ' | ')
@@ -1315,8 +1331,20 @@ model SearchDocument {
   createdAt         DateTime   @default(now()) @map("created_at")
   updatedAt         DateTime   @updatedAt @map("updated_at")
 
+  article Article? @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  // O unique de ENTIDADE continua sendo este (nao mudou de nome nem de forma).
+  // Ele segue travando entidades mesmo com as colunas agora anulaveis: linhas
+  // de artigo tem (NULL, NULL, locale) e NULL nunca colide em unique no
+  // PostgreSQL — ou seja, este indice simplesmente as ignora.
+  //
+  // Por isso mesmo ele NAO trava artigo: o unique PARCIAL
+  // `search_documents_article_unique` (article_id, locale) WHERE
+  // doc_kind='article' existe na migration para esse papel. Sem ele, o mesmo
+  // artigo poderia ganhar N documentos no mesmo locale (duplicata de busca).
   @@unique([entityType, entityId, locale])
   @@index([locale])
+  @@index([articleId])
   @@map("search_documents")
 }
 
@@ -1553,8 +1581,11 @@ model Article {
   createdAt           DateTime      @default(now()) @map("created_at")
   updatedAt           DateTime      @updatedAt @map("updated_at")
 
-  translations ArticleTranslation[]
-  entityLinks  EntityNewsLink[]
+  translations         ArticleTranslation[]
+  entityLinks          EntityNewsLink[]
+  sourceLinks          ArticleSourceLink[]
+  searchDocuments      SearchDocument[]
+  indexabilityDecision PageIndexabilityDecision[]
 
   // CHECK (category IS NULL OR category <> '') e (author_name IS NULL OR
   // author_name <> '') via SQL bruto (mesma convencao de imdb_id_not_empty).
@@ -1576,7 +1607,16 @@ model ArticleTranslation {
   metaDescription String?       @map("meta_description")
   reviewStatus    ReviewStatus  @default(draft) @map("review_status") // nasce draft (inv. 7/9)
   indexStatus     IndexDecision @default(noindex) @map("index_status") // nasce noindex
+  // `publishedAt` no FUTURO = materia agendada: NAO vaza para nenhuma
+  // superficie publica (listagem, artigo, relacionadas, sitemap, busca).
+  // O gate esta em `isPublishableArticle` (apps/web/src/lib/news-presenter.ts).
   publishedAt     DateTime?     @map("published_at")
+  // Correcao MATERIAL (distinta de atualizacao editorial normal): quando um
+  // fato publicado e corrigido, a evidencia fica registrada e visivel. Nunca
+  // apagar silenciosamente. CHECK: correctionNote exige correctedAt e
+  // vice-versa (SQL bruto).
+  correctedAt     DateTime?     @map("corrected_at")
+  correctionNote  String?       @map("correction_note")
   createdAt       DateTime      @default(now()) @map("created_at")
   updatedAt       DateTime      @updatedAt @map("updated_at")
 
@@ -2325,4 +2365,214 @@ model ImportJob {
 
   @@index([userId, status])
   @@map("user_import_jobs")
+}
+
+// ============================================================
+// EDITORIAL / NEWS PLATFORM (Prompt 10) — fontes, itens recebidos,
+// proveniencia, deduplicacao e projecao publica de artigo.
+//
+// Regras e decisoes: docs/editorial/README.md (inclui o que NAO foi feito)
+// Runbook operacional: docs/editorial/runbook.md
+//
+// Convencoes desta secao:
+//  - `articles`/`article_translations`/`entity_news_links` JA existiam e NAO
+//    sao remodelados; esta secao acrescenta a CADEIA DE ENTRADA (fonte -> item
+//    recebido -> proveniencia) que faltava, sem CMS paralelo.
+//  - Separacao conceitual obrigatoria: SOURCE != SOURCE ITEM != ARTICLE.
+//    Conteudo recebido NUNCA e artigo publico da Cinerie; fonte externa NUNCA
+//    e autor Cinerie.
+//  - Retencao minima de terceiro: `source_items` guarda identidade, URL
+//    canonica, metadados e FINGERPRINTS — nunca o corpo integral do artigo de
+//    terceiro. `excerpt` e curto e limitado por CHECK no proprio banco.
+//  - `EntityType` deliberadamente NAO ganha o valor `article` (artigos nao
+//    entram em `entities`/`slugs`); a coexistencia entidade/artigo em
+//    `search_documents` e `page_indexability_decisions` usa o discriminador
+//    `PublicDocKind` + `article_id`, com uniques PARCIAIS por kind.
+//  - Default seguro em tudo: fonte nasce `paused`, item nasce `received`.
+//    Sem evidencia de identidade estavel NAO se funde (fail-closed).
+// ============================================================
+
+// Natureza tecnica da fonte editorial. Descreve COMO o material chega, nunca
+// o direito de reproduzi-lo (isso vive em `useRights` + `source_licenses`).
+enum EditorialSourceKind {
+  rss_feed
+  api_feed
+  press_release
+  official_site
+  wire
+  partner
+  manual
+}
+
+// Ciclo de vida operacional de uma fonte. `paused` e o default seguro: uma
+// fonte recem-cadastrada nao ingere ate decisao humana. `retired` para de
+// ingerir mas PRESERVA a evidencia historica ja ligada a artigos.
+enum EditorialSourceStatus {
+  active
+  paused
+  retired
+}
+
+// O que a Cinerie pode fazer com o material da fonte. NAO e inferido: e uma
+// decisao humana registrada. `unknown` (default) autoriza apenas rastrear a
+// existencia do item — nunca exibir texto de terceiro em pagina publica.
+enum EditorialSourceUseRights {
+  unknown
+  headline_and_link_only
+  excerpt_with_attribution
+  full_syndication
+}
+
+// Estagio de processamento de um item recebido. `discarded` cobre tanto o
+// duplicado quanto o rejeitado por politica; o motivo vai em `discardReason`.
+enum SourceItemStatus {
+  received
+  deduplicated
+  linked
+  discarded
+  failed
+}
+
+// Veredito deterministico de deduplicacao. NAO existe fusao semantica:
+// `duplicate` exige identidade ESTAVEL (mesmo source+external_id, mesma URL
+// canonica normalizada ou mesmo fingerprint de conteudo). `related` e um
+// sinal FRACO (mesma entidade + janela temporal) que NUNCA funde nem
+// descarta — apenas agrupa para revisao humana.
+enum SourceItemDedupVerdict {
+  unique
+  duplicate
+  related
+  superseded
+}
+
+// Papel de uma fonte na proveniencia de um artigo. Um artigo pode ter varias.
+enum ArticleSourceRole {
+  primary
+  secondary
+  press_release
+  catalog
+}
+
+// Discriminador de documento publico. Existe porque `EntityType` NAO pode
+// ganhar `article` (artigos nao vivem em `entities`), mas artigo e entidade
+// coexistem nas MESMAS tabelas de busca e de indexabilidade — proibido criar
+// um segundo search engine ou uma segunda tabela de indexabilidade.
+enum PublicDocKind {
+  entity
+  article
+}
+
+// Fonte editorial registrada. Uma linha aqui significa "conhecemos e
+// rastreamos esta fonte" — NUNCA "podemos reproduzir o conteudo dela".
+// O direito de exibicao mora em `useRights` (decisao humana) e continua
+// subordinado a `source_licenses` (invariante 6).
+model EditorialSource {
+  id          BigInt                   @id @default(autoincrement())
+  slug        String                   @unique // identificador estavel e legivel (ex.: "collider")
+  name        String
+  domain      String                   @unique // host canonico, minusculo, sem www (CHECK via SQL bruto)
+  homepageUrl String?                  @map("homepage_url")
+  kind        EditorialSourceKind      @default(rss_feed)
+  status      EditorialSourceStatus    @default(paused) // default seguro: nao ingere sozinha
+  useRights   EditorialSourceUseRights @default(unknown) @map("use_rights") // default seguro (inv. 6)
+
+  // Atribuicao: quando exigida, o artigo derivado so publica com credito/link.
+  requiresAttribution Boolean @default(true) @map("requires_attribution")
+  requiresLinkback    Boolean @default(true) @map("requires_linkback")
+  attributionText     String? @map("attribution_text")
+
+  // Politica de ingestao (janela, cadencia); parametros, nunca segredo.
+  ingestPolicy   Json      @default("{}") @map("ingest_policy")
+  lastIngestedAt DateTime? @map("last_ingested_at")
+  notes          String?
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  items        SourceItem[]
+  articleLinks ArticleSourceLink[]
+
+  @@index([status])
+  @@index([kind])
+  @@map("editorial_sources")
+}
+
+// Item recebido de uma fonte. E a camada de AUDITORIA e IDENTIDADE da
+// entrada — nao e um artigo e nunca vira pagina publica por si so.
+//
+// Retencao: guardamos identidade + metadados + fingerprints + um `excerpt`
+// curto. O corpo integral de terceiro NAO e persistido; o CHECK de tamanho do
+// excerpt trava isso no proprio banco.
+model SourceItem {
+  id         BigInt  @id @default(autoincrement())
+  sourceId   BigInt  @map("source_id")
+  // Identidade estavel do item NA FONTE. E a chave de idempotencia primaria:
+  // reingerir o mesmo external_id atualiza, nunca duplica.
+  externalId String  @map("external_id")
+  canonicalUrl String? @map("canonical_url") // URL declarada pela fonte
+  // URL canonica NORMALIZADA (minuscula, sem query de tracking, sem fragmento,
+  // sem barra final): o eixo secundario de deduplicacao.
+  normalizedUrl String? @map("normalized_url")
+  title         String
+  author        String?
+  language      String?
+  excerpt       String? // trecho curto; CHECK de tamanho via SQL bruto
+
+  // Fingerprints deterministicos (sha-256 hex, 64 chars; CHECK via SQL bruto).
+  contentFingerprint String? @map("content_fingerprint") // hash do texto normalizado
+  payloadFingerprint String? @map("payload_fingerprint") // hash do payload cru recebido
+
+  publishedAt     DateTime? @map("published_at")
+  sourceUpdatedAt DateTime? @map("source_updated_at")
+  fetchedAt       DateTime  @default(now()) @map("fetched_at")
+
+  status       SourceItemStatus       @default(received)
+  dedupVerdict SourceItemDedupVerdict @default(unique) @map("dedup_verdict")
+  // Quando `duplicate`/`superseded`, aponta para o item PRIMARIO retido.
+  duplicateOfId BigInt? @map("duplicate_of_id")
+  discardReason String? @map("discard_reason")
+  metadata      Json    @default("{}")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  source       EditorialSource     @relation(fields: [sourceId], references: [id], onDelete: Restrict)
+  duplicateOf  SourceItem?         @relation("SourceItemDuplicate", fields: [duplicateOfId], references: [id], onDelete: SetNull)
+  duplicates   SourceItem[]        @relation("SourceItemDuplicate")
+  articleLinks ArticleSourceLink[]
+
+  // Idempotencia de ingestao: (fonte, id externo) e unico.
+  @@unique([sourceId, externalId])
+  // Segundo eixo de dedup: a mesma URL normalizada nao entra duas vezes na
+  // MESMA fonte. Unique PARCIAL (so quando normalized_url IS NOT NULL) via
+  // SQL bruto — duas fontes diferentes cobrindo a mesma URL sao um sinal
+  // legitimo de proveniencia, nao um erro de ingestao.
+  @@index([normalizedUrl])
+  @@index([contentFingerprint])
+  @@index([status])
+  @@index([sourceId, publishedAt])
+  @@map("source_items")
+}
+
+// Proveniencia: quais fontes sustentam um artigo. Um artigo pode ter N
+// fontes; a evidencia sobrevive a inativacao da fonte porque a FK para
+// `editorial_sources` e RESTRICT e a linha nunca e apagada em cascata.
+model ArticleSourceLink {
+  id           BigInt            @id @default(autoincrement())
+  articleId    BigInt            @map("article_id")
+  sourceId     BigInt            @map("source_id")
+  sourceItemId BigInt?           @map("source_item_id") // item exato, quando veio de um
+  role         ArticleSourceRole @default(secondary)
+  createdAt    DateTime          @default(now()) @map("created_at")
+
+  article    Article         @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  source     EditorialSource @relation(fields: [sourceId], references: [id], onDelete: Restrict)
+  sourceItem SourceItem?     @relation(fields: [sourceItemId], references: [id], onDelete: SetNull)
+
+  // Unique PARCIAL adicional (SQL bruto): no maximo UMA fonte `primary` por
+  // artigo, e no maximo uma linha por (artigo, fonte) quando sourceItemId e
+  // NULL — NULL nao colide em unique composto do PostgreSQL.
+  @@unique([articleId, sourceId, sourceItemId])
+  @@index([articleId])
+  @@index([sourceId])
+  @@map("article_source_links")
 }

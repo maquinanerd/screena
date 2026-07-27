@@ -13,7 +13,7 @@ import {
   buildPublicArticleUrl,
   buildReadinessIssues,
   contentBlockReadinessLabel,
-  evaluateArticlePublicReadiness,
+  evaluateArticlePublicReadiness as evaluateArticlePublicReadinessAt,
   evaluateContentBlockPublicReadiness,
   getReadinessLevel,
   isSufficientBodyChars,
@@ -40,6 +40,13 @@ function readyArticle(overrides: Partial<ArticleReadinessInput> = {}): ArticleRe
 function readyBlock(overrides: Partial<ContentBlockReadinessInput> = {}): ContentBlockReadinessInput {
   return { reviewStatus: "published", contentChars: 120, languageCode: "pt-BR", ...overrides };
 }
+
+
+/** Instante bem depois das datas das fixtures; agendamento tem teste proprio. */
+const NOW = "2026-07-05T00:00:00.000Z";
+
+const evaluateArticlePublicReadiness = (input: ArticleReadinessInput) =>
+  evaluateArticlePublicReadinessAt(input, NOW);
 
 const issuesText = (input: ArticleReadinessInput): string =>
   evaluateArticlePublicReadiness(input).issues.join(" | ");
@@ -214,7 +221,7 @@ describe("evaluateContentBlockPublicReadiness", () => {
 describe("determinismo e ausencia de segredo", () => {
   it("issues sao deterministas (mesma entrada -> mesma ordem)", () => {
     const input = readyArticle({ slug: null, title: null, displayAllowed: false, bodyChars: 5 });
-    expect(buildReadinessIssues(input)).toEqual(buildReadinessIssues(input));
+    expect(buildReadinessIssues(input, NOW)).toEqual(buildReadinessIssues(input, NOW));
   });
 
   it("nenhuma saida contem termo de segredo", () => {

@@ -108,7 +108,7 @@ function readinessOf(row: ArticleRow): ReturnType<typeof evaluateArticlePublicRe
     bodyChars: (row.body ?? "").trim().length,
     indexStatus: String(row.indexStatus),
     languageCode: row.languageCode,
-  });
+  }, new Date().toISOString());
 }
 
 function articleItem(row: ArticleRow): WorkflowItem {

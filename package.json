@@ -27,6 +27,7 @@
     "validate:catalog-platform-complete": "corepack pnpm --filter @screena/ingestion validate:catalog-platform-complete",
     "validate:external-intelligence-platform": "corepack pnpm --filter @screena/entity-writer validate:external",
     "validate:external-intelligence-product": "corepack pnpm --filter @screena/ratings validate:product",
+    "validate:editorial-platform": "corepack pnpm --filter @screena/news-ingestion validate:editorial-platform",
     "validate:news-pages": "corepack pnpm --filter @screena/web validate:news-pages",
     "validate:entity-indexes": "corepack pnpm --filter @screena/web validate:entity-indexes",
     "validate:movie-page": "corepack pnpm --filter @screena/web validate:movie-page",

@@ -22,6 +22,7 @@ import { getPrismaClient } from '@screena/db/server'
 
 import {
   buildSearchPageView,
+  type SearchNewsRowInput,
   type SearchPageView,
   type SearchRowInput,
 } from '../lib/search-presenter'
@@ -61,7 +62,12 @@ const SEARCH_SQL = `
     END AS match_tier,
     similarity(normalized_text, $1) AS sim
   FROM search_documents
-  WHERE locale = $3
+  -- doc_kind = 'entity' e obrigatorio desde que a tabela passou a abrigar
+  -- tambem documentos de ARTIGO. Sem este filtro as linhas de artigo entram no
+  -- resultado com entity_type NULL: o presenter as descarta, mas elas ja
+  -- consumiram slots do LIMIT, e a pagina perderia entidades silenciosamente.
+  WHERE doc_kind = 'entity'
+    AND locale = $3
     AND (
       normalized_text = $1
       OR normalized_text LIKE $2
@@ -74,6 +80,53 @@ const SEARCH_SQL = `
   ORDER BY match_tier ASC, sim DESC, popularity DESC NULLS LAST, year DESC NULLS LAST, entity_id ASC
   LIMIT $4 OFFSET $5
 `
+
+/**
+ * SQL de busca EDITORIAL (doc_kind='article'). Mesma tabela, mesma dobra e
+ * mesma disciplina de parametros da busca de entidades — nao existe um segundo
+ * search engine. As diferencas sao proprias do dominio: artigo nao tem ano nem
+ * popularidade para desempatar, entao o desempate final e por `article_id`.
+ *
+ * A projecao so contem artigo PUBLICAVEL (o worker remove o documento quando o
+ * artigo deixa de ser publicavel), entao rascunho, materia retratada e materia
+ * agendada nao tem linha aqui para casar.
+ */
+const NEWS_SEARCH_SQL = `
+  SELECT
+    article_id,
+    primary_text,
+    subtitle,
+    canonical_url,
+    CASE
+      WHEN immutable_unaccent(lower(primary_text)) = $1 THEN 0
+      WHEN immutable_unaccent(lower(primary_text)) LIKE $2 THEN 2
+      WHEN normalized_text LIKE $2 THEN 3
+      ELSE 4
+    END AS match_tier,
+    similarity(normalized_text, $1) AS sim
+  FROM search_documents
+  WHERE doc_kind = 'article'
+    AND locale = $3
+    AND (
+      normalized_text = $1
+      OR normalized_text LIKE $2
+      OR normalized_text % $1
+    )
+  ORDER BY match_tier ASC, sim DESC, article_id DESC
+  LIMIT $4
+`
+
+/** Quantas noticias acompanham uma busca (secao de apoio, nao a lista principal). */
+const NEWS_SEARCH_LIMIT = 5
+
+interface NewsSearchSqlRow {
+  article_id: bigint | number | string
+  primary_text: string
+  subtitle: string | null
+  canonical_url: string | null
+  match_tier: number | bigint
+  sim: number | null
+}
 
 /** Forma crua devolvida pelo SQL (subset usado; `popularity` so ordena). */
 interface SearchSqlRow {
@@ -164,18 +217,35 @@ export const getSearchPageData = cache(
     const term = foldSearchTerm(query)
 
     if (term === '') {
-      return buildSearchPageView({ query, rows: [], limit, offset })
+      return buildSearchPageView({ query, rows: [], newsRows: [], limit, offset })
     }
 
     const prisma = getPrismaClient()
-    const sqlRows = await prisma.$queryRawUnsafe<SearchSqlRow[]>(
-      SEARCH_SQL,
-      term,
-      `${term}%`,
-      SEARCH_LOCALE,
-      limit,
-      offset,
-    )
+    // Entidades e noticias sao duas consultas a MESMA tabela, disparadas juntas:
+    // sao listas independentes (a de noticias e um apoio de tamanho fixo e nao
+    // participa da paginacao das entidades).
+    const [sqlRows, newsSqlRows] = await Promise.all([
+      prisma.$queryRawUnsafe<SearchSqlRow[]>(
+        SEARCH_SQL,
+        term,
+        `${term}%`,
+        SEARCH_LOCALE,
+        limit,
+        offset,
+      ),
+      // Noticias so acompanham a PRIMEIRA pagina: repeti-las em cada pagina de
+      // entidades seria ruido, e paginar duas listas no mesmo controle mente
+      // sobre o que "proxima pagina" significa.
+      offset === 0
+        ? prisma.$queryRawUnsafe<NewsSearchSqlRow[]>(
+            NEWS_SEARCH_SQL,
+            term,
+            `${term}%`,
+            SEARCH_LOCALE,
+            NEWS_SEARCH_LIMIT,
+          )
+        : Promise.resolve([] as NewsSearchSqlRow[]),
+    ])
 
     const rows: SearchRowInput[] = sqlRows.map((row) => {
       const tier = toNumber(row.match_tier)
@@ -192,6 +262,18 @@ export const getSearchPageData = cache(
       }
     })
 
-    return buildSearchPageView({ query, rows, limit, offset })
+    const newsRows: SearchNewsRowInput[] = newsSqlRows.map((row) => {
+      const tier = toNumber(row.match_tier)
+      return {
+        articleId: String(row.article_id),
+        title: row.primary_text,
+        subtitle: row.subtitle,
+        canonicalUrl: row.canonical_url,
+        matchReason: matchReasonFromTier(tier),
+        score: scoreFromTier(tier, row.sim ?? 0),
+      }
+    })
+
+    return buildSearchPageView({ query, rows, newsRows, limit, offset })
   },
 )

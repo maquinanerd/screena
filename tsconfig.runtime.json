@@ -11,7 +11,9 @@
     "services/ratings/src/persistence/**/*.ts",
     "services/ratings/bin/ratings.ts",
     "services/streaming/src/persistence/**/*.ts",
-    "services/legal/bin/legal.ts"
+    "services/legal/bin/legal.ts",
+    "services/news-ingestion/src/persistence/**/*.ts",
+    "services/news-ingestion/bin/editorial.ts"
   ],
   "exclude": ["node_modules", "dist", "build", ".next", "coverage"]
 }

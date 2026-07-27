@@ -26,11 +26,12 @@ export interface RelatedNewsItemInput extends NewsListItemInput {
  */
 export function buildRelatedNewsCards(
   items: RelatedNewsItemInput[],
+  nowIso: string,
   limit: number = RELATED_NEWS_LIMIT,
 ): NewsCardView[] {
   const cards = items
     .filter((item) => item.indexStatus === "index")
-    .map(buildNewsCard)
+    .map((item) => buildNewsCard(item, nowIso))
     .filter((card): card is NewsCardView => card !== null);
   cards.sort((a, b) => {
     const ad = a.dateIso ?? "";

@@ -98,5 +98,7 @@ export async function getRelatedNewsForEntity(
     translationPublishedAtIso: isoDate(row.publishedAt),
   }));
 
-  return buildRelatedNewsCards(items);
+  // Mesmo gate das paginas de noticias, incluindo o embargo de materia
+  // agendada: relacionadas nunca podem ser um vazamento lateral.
+  return buildRelatedNewsCards(items, new Date().toISOString());
 }

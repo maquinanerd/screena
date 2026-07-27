@@ -277,8 +277,14 @@ export interface ArticleQaInput extends ArticleReadinessInput {
 
 /** Opcoes de avaliacao (ex.: referencia de "agora" para stale — sem usar Date interno). */
 export interface QaOptions {
-  /** ISO de referencia ("agora"), passado pela camada server; sem isso, sem stale. */
-  readonly nowIso?: string;
+  /**
+   * ISO de referencia ("agora"), passado pela camada server.
+   *
+   * Passou a ser OBRIGATORIO junto com o gate de materia agendada: a prontidao
+   * publica de um artigo depende de comparar `published_at` com o presente, e
+   * um "agora" opcional deixaria a QA silenciosamente cega para o embargo.
+   */
+  readonly nowIso: string;
   /** Dias apos os quais um conteudo e considerado stale. */
   readonly staleDays?: number;
 }
@@ -308,8 +314,8 @@ export interface ArticleQaResult {
  * licenca/indexacao + desfecho de prontidao (index_ready/visible_but_noindex).
  * Deterministico; `stale` so quando `nowIso` e fornecido.
  */
-export function evaluateArticleQa(input: ArticleQaInput, options: QaOptions = {}): ArticleQaResult {
-  const readiness = evaluateArticlePublicReadiness(input);
+export function evaluateArticleQa(input: ArticleQaInput, options: QaOptions): ArticleQaResult {
+  const readiness = evaluateArticlePublicReadiness(input, options.nowIso);
   const issues: QaIssue[] = [];
 
   const slugQ = evaluateSlugQuality(input.slug);

@@ -97,7 +97,7 @@ export default async function AdminArticleDetailPage({
     bodyChars: detail.bodyChars,
     indexStatus: detail.indexStatus,
     languageCode: detail.languageCode,
-  });
+  }, new Date().toISOString());
 
   const rows: DetailRow[] = [
     { label: "Titulo", value: detail.title },

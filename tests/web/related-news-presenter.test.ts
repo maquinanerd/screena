@@ -9,10 +9,18 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  buildRelatedNewsCards,
+  buildRelatedNewsCards as buildRelatedNewsCardsAt,
   RELATED_NEWS_LIMIT,
   type RelatedNewsItemInput,
 } from "../../apps/web/src/lib/related-news-presenter";
+
+/** Instante bem depois das datas das fixtures (ver news-presenter.test.ts). */
+const NOW = "2026-07-01T00:00:00.000Z";
+
+const buildRelatedNewsCards = (items: RelatedNewsItemInput[], limit?: number) =>
+  limit === undefined
+    ? buildRelatedNewsCardsAt(items, NOW)
+    : buildRelatedNewsCardsAt(items, NOW, limit);
 
 function item(overrides: Partial<RelatedNewsItemInput> = {}): RelatedNewsItemInput {
   return {

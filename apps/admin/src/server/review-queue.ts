@@ -98,7 +98,7 @@ function toArticleReadiness(row: {
     bodyChars: (row.body ?? "").trim().length,
     indexStatus: String(row.indexStatus),
     languageCode: row.languageCode,
-  });
+  }, new Date().toISOString());
 }
 
 export const getReviewQueueData = cache(async (): Promise<ReviewQueueData> => {

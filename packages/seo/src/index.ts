@@ -18,6 +18,7 @@ export * from "./person-eligibility.js";
 export * from "./catalog-indexability.js";
 export * from "./entity-schema.js";
 export * from "./json-ld.js";
+export * from "./article-publication.js";
 export * from "./redirects.js";
 export * from "./sitemap-plan.js";
 export * from "./sitemap-xml.js";
