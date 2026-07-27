@@ -13,11 +13,12 @@ import { getWatchBrowseData } from '../../../src/server/watch-browse'
  * ("O seu guia de streaming...", sub, kicker "Serviços de streaming" e fileira
  * de provedores como TEXTO — logo_allowed=false, licença) → POPULARES AGORA
  * (tabs reais de plataforma + grade de posters, ordenada pelo sinal técnico de
- * popularidade) → Ad → atribuições. A seção "Para você" (recomendações
- * personalizadas) é omitida: não há serviço de recomendação exposto ao app
- * público ainda (DESIGN-DELTA; nada de recomendação fake). Só oferta com
- * licença vigente e crédito devido (invariante 6); carimbo "Atualizado em"
- * sempre presente quando há dado.
+ * popularidade) → Ad → "PARA VOCÊ" com a composição canônica preservada em
+ * ESTADO HONESTO: não há serviço de recomendação exposto ao app público ainda
+ * (Prompt 11 não executado) — a seção declara isso, sem recomendação fake nem
+ * heurística ad hoc (DESIGN-DELTA). Só oferta com licença vigente e crédito
+ * devido (invariante 6); carimbo "Atualizado em" sempre presente quando há
+ * dado.
  */
 
 export const dynamic = 'force-dynamic'
@@ -140,6 +141,23 @@ export default async function WatchBrowsePage() {
         ) : null}
 
         <AdSlot format="leaderboard" slotId="browse-grid" />
+
+        {/* PARA VOCÊ — composição canônica em estado honesto: recomendações
+            personalizadas ainda não existem como serviço (nada de rec fake). */}
+        <section aria-labelledby="watch-foryou-title" className="section">
+          <div className="eyebrow-bar">
+            <span aria-hidden="true" className="eyebrow-bar__mark" />
+            <h2 className="section-title" id="watch-foryou-title">
+              <strong>Para</strong> <span>você</span>
+            </h2>
+          </div>
+          <EmptyState title="Recomendações personalizadas ainda não estão disponíveis.">
+            <p>
+              Em breve, esta seção vai se ajustar ao seu histórico. Enquanto isso, explore os
+              títulos populares acima ou <a href="/pt/explorar/">navegue pelo Explorar</a>.
+            </p>
+          </EmptyState>
+        </section>
       </div>
 
       <script
