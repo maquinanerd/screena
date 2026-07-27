@@ -20,6 +20,7 @@ import { cache } from 'react'
 import { getPrismaClient } from '@screena/db/server'
 
 import { licensedWatchWhere } from './entity-watch'
+import { buildTmdbImageUrl } from '../lib/tmdb-image-url'
 import { MOVIES_INDEX_PATH, SERIES_INDEX_PATH } from '../lib/site'
 
 const LANGUAGE_CODE = 'pt-BR'
@@ -35,6 +36,10 @@ export interface WatchBrowseTitle {
   title: string
   href: string
   offerTypes: string[]
+  /** Poster via helper governado (ou null). */
+  posterUrl: string | null
+  /** Sinal tecnico TMDB para ordenar "Populares agora" (nunca nota editorial). */
+  popularity: number
 }
 
 export interface WatchBrowseProvider {
@@ -101,22 +106,33 @@ export const getWatchBrowseData = cache(async (): Promise<WatchBrowseData> => {
     }),
     prisma.movie.findMany({
       where: { id: { in: [...movieIds] } },
-      select: { id: true, titleOriginal: true },
+      select: { id: true, titleOriginal: true, posterPath: true, popularity: true },
     }),
     prisma.tvShow.findMany({
       where: { id: { in: [...tvIds] } },
-      select: { id: true, nameOriginal: true },
+      select: { id: true, nameOriginal: true, posterPath: true, popularity: true },
     }),
   ])
 
   const titleByKey = new Map<string, string>()
+  const posterByKey = new Map<string, string | null>()
+  const popularityByKey = new Map<string, number>()
+  const toNumber = (value: { toString(): string } | number | null): number => {
+    if (value == null) return 0
+    const num = typeof value === 'number' ? value : Number(value.toString())
+    return Number.isFinite(num) ? num : 0
+  }
   for (const movie of movies) {
     const original = movie.titleOriginal.trim()
     if (original !== '') titleByKey.set(`movie:${movie.id}`, original)
+    posterByKey.set(`movie:${movie.id}`, buildTmdbImageUrl(movie.posterPath, 'w300'))
+    popularityByKey.set(`movie:${movie.id}`, toNumber(movie.popularity))
   }
   for (const show of shows) {
     const original = show.nameOriginal.trim()
     if (original !== '') titleByKey.set(`tv:${show.id}`, original)
+    posterByKey.set(`tv:${show.id}`, buildTmdbImageUrl(show.posterPath, 'w300'))
+    popularityByKey.set(`tv:${show.id}`, toNumber(show.popularity))
   }
   for (const row of translations) {
     const translated = row.title?.trim()
@@ -171,6 +187,8 @@ export const getWatchBrowseData = cache(async (): Promise<WatchBrowseData> => {
           title,
           href: `${indexPath}${slug}/`,
           offerTypes: offerType === null ? [] : [offerType],
+          posterUrl: posterByKey.get(key) ?? null,
+          popularity: popularityByKey.get(key) ?? 0,
         })
       }
     } else if (offerType !== null && !existing.offerTypes.includes(offerType)) {
@@ -183,7 +201,8 @@ export const getWatchBrowseData = cache(async (): Promise<WatchBrowseData> => {
     .map(([providerKey, bucket]) => ({
       providerKey,
       providerName: bucket.providerName,
-      titles: [...bucket.titles.values()],
+      // "Populares agora": ordena pelo sinal tecnico de popularidade (TMDB)
+      titles: [...bucket.titles.values()].sort((a, b) => b.popularity - a.popularity),
     }))
     .filter((provider) => provider.titles.length > 0)
     .sort((a, b) => b.titles.length - a.titles.length || a.providerName.localeCompare(b.providerName))

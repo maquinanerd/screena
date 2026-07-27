@@ -3,16 +3,21 @@ import type { Metadata } from 'next'
 import { serializeJsonLd } from '@screena/seo'
 
 import { AdSlot } from '../../_components/ad-slot'
-import { EmptyState, SectionHead } from '../../_components/ds'
+import { EmptyState } from '../../_components/ds'
+import { WatchPopular } from '../../_components/watch-popular'
 import { HOME_PATH, SITE_URL, canonicalPublicUrl, publicRobots } from '../../../src/lib/site'
 import { getWatchBrowseData } from '../../../src/server/watch-browse'
 
 /**
- * Onde assistir — tela 10 do handoff (CatalogBrowseTemplate, contexto neutro):
- * hub por PROVEDOR com titulos licenciados. So oferta com licenca vigente e
- * credito devido (invariante 6, mesma clausula do painel por entidade);
- * provedor sem titulos elegiveis e OMITIDO — nunca "streaming inventado".
- * Carimbo "Atualizado em" sempre presente quando ha dado (regra de ingestao).
+ * Onde assistir — tela 10 do canônico, estrutura EXATA: HERO escuro centrado
+ * ("O seu guia de streaming...", sub, kicker "Serviços de streaming" e fileira
+ * de provedores como TEXTO — logo_allowed=false, licença) → POPULARES AGORA
+ * (tabs reais de plataforma + grade de posters, ordenada pelo sinal técnico de
+ * popularidade) → Ad → atribuições. A seção "Para você" (recomendações
+ * personalizadas) é omitida: não há serviço de recomendação exposto ao app
+ * público ainda (DESIGN-DELTA; nada de recomendação fake). Só oferta com
+ * licença vigente e crédito devido (invariante 6); carimbo "Atualizado em"
+ * sempre presente quando há dado.
  */
 
 export const dynamic = 'force-dynamic'
@@ -21,15 +26,6 @@ const TITLE = 'Onde assistir'
 const DESCRIPTION =
   'Filmes e séries com disponibilidade legal de streaming no Brasil, organizados por provedor.'
 const BROWSE_PATH = '/pt/onde-assistir/'
-
-const OFFER_LABELS: Readonly<Record<string, string>> = {
-  subscription: 'Assinatura',
-  rent: 'Aluguel',
-  buy: 'Compra',
-  free: 'Grátis',
-  ads: 'Com anúncios',
-  addon: 'Canal adicional',
-}
 
 function formatUpdatedAt(iso: string | null): string | null {
   if (iso === null) return null
@@ -65,67 +61,58 @@ export default async function WatchBrowsePage() {
 
   return (
     <main data-vertical="watch">
-      <div className="container">
-        <nav aria-label="Trilha de navegação" className="breadcrumb">
-          <ol>
-            <li>
-              <a href={HOME_PATH}>Início</a>
-            </li>
-            <li aria-current="page">{TITLE}</li>
-          </ol>
-        </nav>
-
-        <header className="compact-hero page-header">
-          <h1>{TITLE}</h1>
-          <p>{DESCRIPTION}</p>
-          {updatedLabel !== null ? (
-            <p className="muted" style={{ fontSize: 12 }}>
-              Atualizado em {updatedLabel}. As ofertas podem mudar conforme região e assinatura.
-            </p>
-          ) : null}
-        </header>
-
-        <AdSlot format="leaderboard" slotId="browse-filters" />
-
-        {providers.length > 0 ? (
-          providers.map((provider) => (
-            <section
-              aria-labelledby={`provider-${provider.providerKey}`}
-              className="section"
-              key={provider.providerKey}
-            >
-              <SectionHead id={`provider-${provider.providerKey}`} title={provider.providerName} />
-              <ul className="news-grid">
-                {provider.titles.map((title) => (
-                  <li key={`${provider.providerKey}:${title.href}`}>
-                    <article className="news-list-card" style={{ gridTemplateColumns: '1fr' }}>
-                      <div>
-                        <span
-                          className={
-                            title.entityType === 'movie'
-                              ? 'badge badge--movie'
-                              : 'badge badge--series'
-                          }
-                        >
-                          {title.entityType === 'movie' ? 'Filme' : 'Série'}
-                        </span>
-                        <h3 className="news-list-card__title">
-                          <a href={title.href}>{title.title}</a>
-                        </h3>
-                        {title.offerTypes.length > 0 ? (
-                          <p className="news-list-card__meta">
-                            {title.offerTypes
-                              .map((offer) => OFFER_LABELS[offer] ?? offer)
-                              .join(' · ')}
-                          </p>
-                        ) : null}
-                      </div>
-                    </article>
-                  </li>
+      {/* HERO canônico do guia de streaming */}
+      <header className="watch-hero">
+        <div className="watch-hero__scrim" />
+        <div className="watch-hero__inner">
+          <h1 className="watch-hero__title">O seu guia de streaming para filmes e séries</h1>
+          <p className="watch-hero__sub">
+            Descubra onde ver conteúdos novos e populares em streaming com o Cinerie
+          </p>
+          {providers.length > 0 ? (
+            <>
+              <div className="watch-hero__kicker">Serviços de streaming no Cinerie</div>
+              <div className="watch-hero__services">
+                {/* Provedores como TEXTO: logo_allowed=false (licença) */}
+                {providers.map((provider) => (
+                  <span className="watch-hero__service" key={provider.providerKey}>
+                    {provider.providerName}
+                  </span>
                 ))}
-              </ul>
-            </section>
-          ))
+              </div>
+            </>
+          ) : null}
+        </div>
+      </header>
+
+      <div className="container">
+        {providers.length > 0 ? (
+          <section aria-labelledby="watch-popular-title" className="section">
+            <div className="eyebrow-bar" data-vertical="series">
+              <span aria-hidden="true" className="eyebrow-bar__mark" />
+              <h2 className="section-title" id="watch-popular-title">
+                <strong>Populares</strong> <span>agora</span>
+              </h2>
+            </div>
+            <WatchPopular
+              providers={providers.map((provider) => ({
+                providerKey: provider.providerKey,
+                providerName: provider.providerName,
+                titles: provider.titles.map((title) => ({
+                  entityType: title.entityType,
+                  title: title.title,
+                  href: title.href,
+                  posterUrl: title.posterUrl,
+                  offerTypes: title.offerTypes,
+                })),
+              }))}
+            />
+            {updatedLabel !== null ? (
+              <p className="muted" style={{ fontSize: 12, marginTop: 20 }}>
+                Atualizado em {updatedLabel}. As ofertas podem mudar conforme região e assinatura.
+              </p>
+            ) : null}
+          </section>
         ) : (
           <EmptyState title="Ainda não há disponibilidade de streaming licenciada para exibir.">
             <p>
