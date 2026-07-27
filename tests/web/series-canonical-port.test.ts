@@ -62,16 +62,35 @@ describe('shell público mínimo · detalhe de série', () => {
     expect(code).toContain('data-editorial-state="in-review"')
   })
 
-  it('design canônico: pôster/stills reais com fallback honesto, sem dado inventado', () => {
-    // Guard ATUALIZADO DELIBERADAMENTE (tela 07, EX-07-nohero): top info bar
-    // clara com pôster real; still de episódio só quando existe.
+  it('design canônico (tela 07): estrutura EXATA do handoff, sem dado inventado', () => {
+    // Ordem canônica: hero editorial claro (verde) → mídia → A obra →
+    // Guia crítica → EPISÓDIOS (catálogo) → Elenco → Notícias → Detalhes.
+    const order = [
+      'className="detail-hero"',
+      'className="media-strip"',
+      'className="synopsis-lead"',
+      'className="critic-band"',
+      'className="season-tabs"',
+      'className="cast-strip"',
+      'className="mnews-grid"',
+      'className="ficha-grid"',
+    ]
+    let cursor = -1
+    for (const marker of order) {
+      const at = code.indexOf(marker)
+      expect(at, `marcador ausente/fora de ordem: ${marker}`).toBeGreaterThan(cursor)
+      cursor = at
+    }
     expect(existsSync(path.join(ROOT, CSS_REL))).toBe(false)
     expect(code).not.toContain('.module.css')
-    expect(code).toContain('className="container"')
-    expect(code).toContain('view.media.poster !== null ?')
-    expect(code).toContain('topinfo__poster--empty')
-    expect(code).toContain('episode.still !== null ?')
-    expect(code).not.toMatch(/(?:\?\?|=== null \?)\s*["']—["']/)
+    expect(code).toContain('view.media.poster !== null')
+    expect(code).toContain('episode.still !== null')
+    expect(code).toContain('className="episode-row"')
     expect(code).not.toMatch(/src="https?:/)
+    expect(code).not.toMatch(/(?:\?\?|=== null \?)\s*["']—["']/)
+    // Cinerie Score honesto; 21k episódios nunca de uma vez (só a temporada
+    // selecionada renderiza).
+    expect(code).toContain('Ainda não calculado')
+    expect(code).toContain('season={selectedSeason}')
   })
 })

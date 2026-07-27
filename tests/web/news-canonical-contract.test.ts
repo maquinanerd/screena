@@ -49,16 +49,28 @@ describe('notícias após o reset visual', () => {
     expect(article.match(/application\/ld\+json/g)).toHaveLength(2)
   })
 
-  it('design canônico: mosaico/hero reais, AdSlot governado, um H1 por página', () => {
-    // Guard ATUALIZADO DELIBERADAMENTE (telas 03/05): o índice ganha o mosaico
-    // de destaques e o artigo ganha hero 16/9 QUANDO a matéria tem imagem
-    // real; anúncio só via AdSlot (rótulo + omissão por padrão).
+  it('design canônico (tela 03): layout magazine, AdSlot governado, um H1 por página', () => {
+    // Ordem: tabs+ad no header → magazine lead (feature 1.02/1.18 + rail
+    // 290px) → 3 cards → Ad → feed 1fr/340px.
+    const order = [
+      'className="nws-header"',
+      'className="nws-lead-grid"',
+      'className="nws-feature"',
+      'className="nws-cards3"',
+      'className="nws-rail"',
+      'className="nws-feed section"',
+    ]
+    let cursor = -1
+    for (const marker of order) {
+      const at = index.indexOf(marker)
+      expect(at, `marcador ausente/fora de ordem: ${marker}`).toBeGreaterThan(cursor)
+      cursor = at
+    }
     for (const page of [index, article]) {
       expect(page.match(/<h1[\s>]/g)).toHaveLength(1)
-      expect(page).toMatch(/<AdSlot format="leaderboard"/)
+      expect(page).toMatch(/<AdSlot format="(?:leaderboard|skyscraper)"/)
       expect(page).not.toMatch(/<iframe|doubleclick|adsbygoogle/i)
     }
-    expect(index).toContain('NewsOverlayCard')
     expect(article).toContain('view.heroImage !== null ?')
     expect(article).toContain('container--reading')
     // Entidades relacionadas persistidas (nunca inferidas no render)
