@@ -177,6 +177,8 @@ export interface FakeDb {
   /** Catalogo minimo para as sondas de existencia e o tracker. */
   entities: { entityType: string; entityId: bigint }[];
   episodes: FakeCatalogEpisodeRow[];
+  /** C8 — catalogo de filmes/series para o matching de importacao. */
+  catalogTitles: FakeCatalogTitleRow[];
   nextId: bigint;
 }
 
@@ -267,6 +269,16 @@ export interface FakeImportJobRow {
   updatedAt: Date;
 }
 
+/** C8 — titulo de catalogo (filme/serie) para o matching de importacao. */
+export interface FakeCatalogTitleRow {
+  readonly entityType: "movie" | "tv";
+  readonly entityId: bigint;
+  readonly title: string;
+  readonly year: number | null;
+  readonly tmdbId: number | null;
+  readonly imdbId: string | null;
+}
+
 export interface FakeCatalogEpisodeRow {
   readonly episodeId: bigint;
   readonly tvShowId: bigint;
@@ -309,6 +321,7 @@ export function createFakeDb(): FakeDb {
     importJobs: [],
     entities: [],
     episodes: [],
+    catalogTitles: [],
     nextId: 1n,
   };
 }

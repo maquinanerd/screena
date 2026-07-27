@@ -47,6 +47,11 @@ import {
   setEpisodeWatched,
 } from "../src/auth-runtime/tracker-services.js";
 import { anonymizeAccount, requestDataExport } from "../src/auth-runtime/privacy-services.js";
+import {
+  applyImport,
+  cancelImport,
+  createImportPreview,
+} from "../src/auth-runtime/import-services.js";
 import { createPrismaUserWatchStateStore, createEntityProbe } from "../src/persistence/prisma/index.js";
 import type { AuthenticatedContext } from "../src/auth-runtime/deps.js";
 import type { TransactionScope } from "../src/persistence/types.js";
@@ -527,6 +532,128 @@ async function runChecks(url: string): Promise<void> {
       entityId: filme,
     });
     record(41, "conta encerrada nao muta a biblioteca", !aposEncerrar.ok, `ok=${aposEncerrar.ok}`);
+
+    // -----------------------------------------------------------------------
+    // IMPORTACAO — preview sem escrita, exact aplicado, ambigua ignorada,
+    // retomada idempotente e cancelamento. Roda em Bob (ativo; nao purgado).
+    // Alien(tmdb 348) e Matrix(tmdb 603) ja existem no catalogo; a 3a linha nao
+    // tem id nem ano => AMBIGUA => nunca vira entidade nem watch state.
+    // -----------------------------------------------------------------------
+    const csvCinerie = [
+      "entity_type,tmdb_id,imdb_id,title,year,state,watched_at,list,rating",
+      "movie,348,,Alien,1979,watched,2020-01-02,,4.5",
+      "movie,603,,The Matrix,1999,watched,2021-05-05,,5",
+      // Sem id e sem ano: bate por titulo com Alien, mas sem ano nao ha veredito
+      // estavel => AMBIGUA => nunca aplicada e nunca cria entidade nova.
+      "movie,,,Alien,,watched,,,",
+      "",
+    ].join("\n");
+    const bytesCinerie = new TextEncoder().encode(csvCinerie);
+
+    const contarWatchBob = async (): Promise<number> => {
+      const [linha] = await q<{ c: bigint }>(
+        `SELECT count(*)::int AS c FROM "user_watch_states" WHERE user_id = ${bob}`,
+      );
+      return Number(linha!.c);
+    };
+
+    const antesPreview = await contarWatchBob();
+    const preview = await createImportPreview(deps, ctx(bob), {
+      source: "cinerie_csv",
+      targetState: "watched",
+      fileName: "cinerie-export.csv",
+      bytes: bytesCinerie,
+    });
+    record(42, "IMPORT: preview gerado (preview_ready)", preview.ok && preview.value.job.status === "preview_ready", preview.ok ? `status=${preview.value.job.status}` : "falhou");
+
+    if (preview.ok) {
+      const resumo = preview.value.plan.summary;
+      record(
+        43,
+        "IMPORT: 2 exact + 1 ambigua; so 2 aplicaveis (fail-closed)",
+        resumo.exact === 2 && resumo.ambiguous === 1 && resumo.applicable === 2,
+        `exact=${resumo.exact} ambiguous=${resumo.ambiguous} applicable=${resumo.applicable}`,
+      );
+
+      const depoisPreview = await contarWatchBob();
+      record(
+        44,
+        "IMPORT: preview NAO escreve na biblioteca",
+        antesPreview === 0 && depoisPreview === 0,
+        `antes=${antesPreview} depois=${depoisPreview}`,
+      );
+
+      const jobId = preview.value.job.id;
+      const aplicado = await applyImport(deps, ctx(bob), { jobId });
+      const watchDepoisApply = await contarWatchBob();
+      record(
+        45,
+        "IMPORT: apply grava SO os 2 exact",
+        aplicado.ok && aplicado.value.appliedCount === 2 && watchDepoisApply === 2,
+        aplicado.ok ? `applied=${aplicado.value.appliedCount} watch=${watchDepoisApply}` : "falhou",
+      );
+
+      // A linha ambigua nunca criou entidade de catalogo: continua havendo UM
+      // unico "Alien" no banco (o semeado), nao um duplicado inventado.
+      const [aliens] = await q<{ c: bigint }>(
+        `SELECT count(*)::int AS c FROM "movies" WHERE title_original = 'Alien'`,
+      );
+      record(46, "IMPORT: linha ambigua NAO cria entidade falsa", Number(aliens!.c) === 1, `movies_alien=${aliens!.c}`);
+
+      // Reaplicar um job ja `applied` e recusado (CAS de status): sem trabalho duplicado.
+      const reaplicado = await applyImport(deps, ctx(bob), { jobId });
+      const watchAposReaplicar = await contarWatchBob();
+      record(
+        47,
+        "IMPORT: reaplicar job concluido e RECUSADO (nao duplica)",
+        !reaplicado.ok && watchAposReaplicar === 2,
+        `ok=${reaplicado.ok} watch=${watchAposReaplicar}`,
+      );
+
+      // RETOMADA: forca o job de volta a `applying` no meio (como um crash) e
+      // reaplica — a acao repetida e idempotente (unique user+entidade), entao
+      // continua com EXATAMENTE 2 watch states.
+      await prisma.$executeRawUnsafe(
+        `UPDATE "user_import_jobs" SET status = 'applying', applied_count = 1 WHERE id = ${jobId}`,
+      );
+      const retomado = await applyImport(deps, ctx(bob), { jobId });
+      const watchAposRetomada = await contarWatchBob();
+      record(
+        48,
+        "IMPORT: retomada de crash continua e NAO duplica",
+        retomado.ok && retomado.value.appliedCount === 2 && watchAposRetomada === 2,
+        retomado.ok ? `applied=${retomado.value.appliedCount} watch=${watchAposRetomada}` : "falhou",
+      );
+    }
+
+    // OWNERSHIP + CANCELAMENTO: outro usuario nao aplica/cancela o job alheio;
+    // um job novo pode ser cancelado pelo dono antes de aplicar.
+    const carol = await seedUser(prisma, "carol@example.test");
+    const previewCarol = await createImportPreview(deps, ctx(carol), {
+      source: "cinerie_csv",
+      targetState: "watched",
+      fileName: "carol.csv",
+      bytes: bytesCinerie,
+    });
+    if (previewCarol.ok) {
+      const jobCarol = previewCarol.value.job.id;
+      const bobTentaAplicar = await applyImport(deps, ctx(bob), { jobId: jobCarol });
+      record(49, "IMPORT OWNERSHIP: outro usuario NAO aplica o job alheio", !bobTentaAplicar.ok, `ok=${bobTentaAplicar.ok}`);
+
+      const bobTentaCancelar = await cancelImport(deps, ctx(bob), { jobId: jobCarol });
+      record(50, "IMPORT OWNERSHIP: outro usuario NAO cancela o job alheio", !bobTentaCancelar.ok, `ok=${bobTentaCancelar.ok}`);
+
+      const cancelaDono = await cancelImport(deps, ctx(carol), { jobId: jobCarol });
+      const carolWatch = await q<{ c: bigint }>(
+        `SELECT count(*)::int AS c FROM "user_watch_states" WHERE user_id = ${carol}`,
+      );
+      record(
+        51,
+        "IMPORT: dono cancela o job antes de aplicar (sem efeitos)",
+        cancelaDono.ok && Number(carolWatch[0]!.c) === 0,
+        cancelaDono.ok ? `cancelado; watch=${carolWatch[0]!.c}` : "falhou",
+      );
+    }
   } finally {
     await prisma.$disconnect();
   }

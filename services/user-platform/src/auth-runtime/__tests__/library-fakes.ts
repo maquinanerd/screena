@@ -38,6 +38,33 @@ export function seedEntity(db: FakeDb, entityType: string, entityId: bigint): vo
 }
 
 /**
+ * Semeia um titulo de catalogo (filme/serie) para o matching de importacao, e
+ * ja registra a entidade — o import precisa das duas coisas: casar por
+ * tmdb/titulo E que a entidade exista para a escrita passar pela sonda.
+ */
+export function seedCatalogTitle(
+  db: FakeDb,
+  input: {
+    readonly entityType: "movie" | "tv";
+    readonly entityId: bigint;
+    readonly title: string;
+    readonly year: number | null;
+    readonly tmdbId?: number | null;
+    readonly imdbId?: string | null;
+  },
+): void {
+  seedEntity(db, input.entityType, input.entityId);
+  db.catalogTitles.push({
+    entityType: input.entityType,
+    entityId: input.entityId,
+    title: input.title,
+    year: input.year,
+    tmdbId: input.tmdbId ?? null,
+    imdbId: input.imdbId ?? null,
+  });
+}
+
+/**
  * Semeia uma serie com N episodios distribuidos em temporadas.
  *
  * `specials` cria a temporada 0, para que a politica de especiais possa ser
@@ -648,13 +675,40 @@ export function createFakeLibraryStores(db: FakeDb): LibraryStores {
             : input.includeSpecials || e.seasonNumber > 0,
         ).length;
     },
-    async findByExternalId() {
-      // O matching por id externo e exercitado no validador de Postgres real;
-      // aqui o duble devolve vazio para nao inventar catalogo.
-      return [];
+    async findByExternalId(_s, input) {
+      // Le o catalogo semeado via INDICE por tmdb/imdb (o schema real tem
+      // unique nesses campos). O indice mantem a busca O(1) — sem ele, um
+      // preview de milhares de linhas seria O(n^2) e o teste nao terminaria.
+      const idx = catalogIndex(db);
+      const porTmdb = input.tmdbId !== null ? idx.byTmdb.get(`${input.entityType}:${input.tmdbId}`) : undefined;
+      const porImdb = input.imdbId !== null ? idx.byImdb.get(`${input.entityType}:${input.imdbId}`) : undefined;
+      const encontrado = porTmdb ?? porImdb;
+      return encontrado === undefined
+        ? []
+        : [
+            {
+              entityType: encontrado.entityType,
+              entityId: encontrado.entityId,
+              title: encontrado.title,
+              year: encontrado.year,
+              tmdbId: encontrado.tmdbId,
+              imdbId: encontrado.imdbId,
+            },
+          ];
     },
-    async findByTitle() {
-      return [];
+    async findByTitle(_s, input) {
+      // Indice por (tipo, titulo-normalizado, ano). Comparacao case-insensitive
+      // como o adapter real (`mode: insensitive`).
+      const idx = catalogIndex(db);
+      const chave = `${input.entityType}:${input.title.toLowerCase()}:${input.year ?? ""}`;
+      return (idx.byTitle.get(chave) ?? []).slice(0, input.limit).map((t) => ({
+        entityType: t.entityType,
+        entityId: t.entityId,
+        title: t.title,
+        year: t.year,
+        tmdbId: t.tmdbId,
+        imdbId: t.imdbId,
+      }));
     },
     async sumMovieRuntime() {
       return { totalMinutes: 0, withRuntime: 0, withoutRuntime: 0 };
@@ -680,6 +734,44 @@ export function createFakeLibraryStores(db: FakeDb): LibraryStores {
     imports,
     catalog,
   };
+}
+
+/**
+ * Indice do catalogo de titulos, memoizado por comprimento do array.
+ *
+ * Reconstruir a cada lookup seria O(n) por chamada; memoizar enquanto o
+ * catalogo nao cresce mantem o matching de um preview grande em O(n) total em
+ * vez de O(n^2). A chave de invalidacao e o TAMANHO (o catalogo so cresce nos
+ * testes, via seedCatalogTitle).
+ */
+type CatalogTitleRow = FakeDb["catalogTitles"][number];
+interface CatalogIndex {
+  readonly size: number;
+  readonly byTmdb: Map<string, CatalogTitleRow>;
+  readonly byImdb: Map<string, CatalogTitleRow>;
+  readonly byTitle: Map<string, CatalogTitleRow[]>;
+}
+const catalogIndexCache = new WeakMap<FakeDb, CatalogIndex>();
+
+function catalogIndex(db: FakeDb): CatalogIndex {
+  const existente = catalogIndexCache.get(db);
+  if (existente !== undefined && existente.size === db.catalogTitles.length) {
+    return existente;
+  }
+  const byTmdb = new Map<string, CatalogTitleRow>();
+  const byImdb = new Map<string, CatalogTitleRow>();
+  const byTitle = new Map<string, CatalogTitleRow[]>();
+  for (const t of db.catalogTitles) {
+    if (t.tmdbId !== null) byTmdb.set(`${t.entityType}:${t.tmdbId}`, t);
+    if (t.imdbId !== null) byImdb.set(`${t.entityType}:${t.imdbId}`, t);
+    const chave = `${t.entityType}:${t.title.toLowerCase()}:${t.year ?? ""}`;
+    const lista = byTitle.get(chave);
+    if (lista === undefined) byTitle.set(chave, [t]);
+    else lista.push(t);
+  }
+  const idx: CatalogIndex = { size: db.catalogTitles.length, byTmdb, byImdb, byTitle };
+  catalogIndexCache.set(db, idx);
+  return idx;
 }
 
 /** Ordem canonica dos itens: posicao (nulls last), depois entrada. */
