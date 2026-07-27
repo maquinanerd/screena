@@ -30,3 +30,5 @@ export async function disconnectPrisma(): Promise<void> {
 }
 
 export type { PrismaClient } from '@prisma/client'
+// Tipos utilitarios do client (WhereInput etc.) para camadas server-only.
+export type { Prisma } from '@prisma/client'

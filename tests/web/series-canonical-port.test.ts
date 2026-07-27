@@ -31,7 +31,7 @@ describe('shell público mínimo · detalhe de série', () => {
   it('mantém um H1, breadcrumb e badge textual de Série', () => {
     expect(code.match(/<h1[\s>]/g)).toHaveLength(1)
     expect(code).toContain('data-vertical="series"')
-    expect(code).toContain('data-entity-badge="series">Série</strong>')
+    expect(code).toMatch(/data-entity-badge="series"[\s\S]{0,40}Série/)
     expect(code).toContain('href={SERIES_INDEX_PATH}>Séries</a>')
   })
 
@@ -62,14 +62,16 @@ describe('shell público mínimo · detalhe de série', () => {
     expect(code).toContain('data-editorial-state="in-review"')
   })
 
-  it('remove a camada visual interpretativa e não inventa dado ausente', () => {
+  it('design canônico: pôster/stills reais com fallback honesto, sem dado inventado', () => {
+    // Guard ATUALIZADO DELIBERADAMENTE (tela 07, EX-07-nohero): top info bar
+    // clara com pôster real; still de episódio só quando existe.
     expect(existsSync(path.join(ROOT, CSS_REL))).toBe(false)
     expect(code).not.toContain('.module.css')
     expect(code).toContain('className="container"')
-    expect(code.match(/className=/g)).toHaveLength(1)
-    expect(code).not.toContain('<img')
-    expect(code).not.toContain('view.media')
-    expect(code).not.toMatch(/poster|backdrop|fallback|mediaTile/i)
+    expect(code).toContain('view.media.poster !== null ?')
+    expect(code).toContain('topinfo__poster--empty')
+    expect(code).toContain('episode.still !== null ?')
     expect(code).not.toMatch(/(?:\?\?|=== null \?)\s*["']—["']/)
+    expect(code).not.toMatch(/src="https?:/)
   })
 })

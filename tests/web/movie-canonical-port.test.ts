@@ -31,7 +31,8 @@ describe('shell público mínimo · detalhe de filme', () => {
   it('mantém um H1, breadcrumb e badge textual de Filme', () => {
     expect(code.match(/<h1[\s>]/g)).toHaveLength(1)
     expect(code).toContain('data-vertical="movie"')
-    expect(code).toContain('data-entity-badge="movie">Filme</strong>')
+    // Badge do design canônico: continua TEXTUAL (invariante 11) e marcado.
+    expect(code).toMatch(/data-entity-badge="movie"[\s\S]{0,40}Filme/)
     expect(code).toContain('href={MOVIES_INDEX_PATH}>Filmes</a>')
   })
 
@@ -50,14 +51,19 @@ describe('shell público mínimo · detalhe de filme', () => {
     expect(code).toContain('data-editorial-state="in-review"')
   })
 
-  it('remove a camada visual interpretativa e não inventa dado ausente', () => {
+  it('design canônico: pôster real com fallback honesto, sem dado inventado', () => {
+    // Guard ATUALIZADO DELIBERADAMENTE: a tela 06 do handoff exige a top info
+    // bar clara com pôster 2/3 REAL. A imagem vem só do asset governado
+    // (view.media.poster) e a ausência vira fallback de inicial — nunca
+    // imagem inventada nem "N/D".
     expect(existsSync(path.join(ROOT, CSS_REL))).toBe(false)
     expect(code).not.toContain('.module.css')
     expect(code).toContain('className="container"')
-    expect(code.match(/className=/g)).toHaveLength(1)
-    expect(code).not.toContain('<img')
-    expect(code).not.toContain('view.media')
-    expect(code).not.toMatch(/poster|backdrop|fallback|mediaTile/i)
+    expect(code).toContain('view.media.poster !== null ?')
+    expect(code).toContain('topinfo__poster--empty')
+    expect(code).toMatch(/src=\{view\.media\.poster\.src\}/)
     expect(code).not.toMatch(/(?:\?\?|=== null \?)\s*["']—["']/)
+    // Sem hotlink improvisado: toda <img> desta página usa asset do presenter.
+    expect(code).not.toMatch(/src="https?:/)
   })
 })

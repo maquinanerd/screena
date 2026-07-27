@@ -39,7 +39,7 @@ describe('índices de entidades após o reset visual', () => {
     }
   })
 
-  it('remove o agregador visual de notícias, anúncios e lançamentos', () => {
+  it('rotas de índice continuam finas: só o getter + EntityIndex', () => {
     for (const page of [movies, series]) {
       expect(page).not.toMatch(/CategoryHome|getNewsIndexData|getHomeUpcomingMovies/)
       expect(page).not.toMatch(/AdSlot|<img/)
@@ -51,8 +51,13 @@ describe('índices de entidades após o reset visual', () => {
   })
 
   it('trava o contrato compartilhado de H1, links, schemas e empty states', () => {
+    // Guard ATUALIZADO DELIBERADAMENTE (tela 04): o EntityIndex renderiza o
+    // grid de pôsteres do design; o link do card vive no PosterCard (ds.tsx)
+    // como stretched-link acessível — o contrato de link real continua.
+    const posterCard = read('apps/web/app/_components/ds.tsx')
     expect(entityIndex.match(/<h1[\s>]/g)).toHaveLength(1)
-    expect(entityIndex).toContain('href={card.href}')
+    expect(entityIndex).toContain('<PosterGrid cards={view.cards} />')
+    expect(posterCard).toContain('href={card.href}')
     expect(entityIndex).toMatch(/["']@type["']:\s*["']CollectionPage["']/)
     expect(entityIndex).toMatch(/["']@type["']:\s*["']BreadcrumbList["']/)
     expect(entityIndex.match(/application\/ld\+json/g)).toHaveLength(2)

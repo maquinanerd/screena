@@ -2,11 +2,18 @@ import type { Metadata } from 'next'
 
 import { serializeJsonLd } from '@screena/seo'
 
+import { AdSlot } from '../../_components/ad-slot'
+import { EmptyState, NewsListCard, NewsOverlayCard, SectionHead } from '../../_components/ds'
 import type { NewsCardView } from '../../../src/lib/news-presenter'
 import { HOME_PATH, SITE_URL, publicRobots } from '../../../src/lib/site'
 import { getNewsIndexData } from '../../../src/server/news-pages'
 
-/** Lista textual de notícias publicadas pelo CMS real. */
+/**
+ * Notícias — tela 03 do handoff (NewsIndexTemplate): mosaico de destaques
+ * (1 grande + 4 pequenos em overlay escuro de mídia) + grid de cards claros +
+ * AdSlots. Somente artigos PUBLICADOS do CMS real; draft/agendada/retratada
+ * nunca chegam aqui (gate canônico em @screena/seo).
+ */
 
 export const dynamic = 'force-dynamic'
 
@@ -25,18 +32,13 @@ export async function generateMetadata(): Promise<Metadata> {
   }
 }
 
-function NewsMeta({ card }: { card: NewsCardView }) {
-  const items = [card.category, card.dateLabel, card.author, card.readTimeLabel].filter(
-    (item): item is string => item !== null,
-  )
-  return items.length > 0 ? <p>{items.join(' · ')}</p> : null
-}
-
 export default async function NewsIndexPage() {
   const { view, canonicalUrl } = await getNewsIndexData()
   const orderedCards = [view.featured, ...view.cards].filter(
     (card): card is NewsCardView => card !== null,
   )
+  const mosaic = orderedCards.slice(0, 5)
+  const rest = orderedCards.slice(5)
 
   const breadcrumbJsonLd = {
     '@context': 'https://schema.org',
@@ -75,7 +77,7 @@ export default async function NewsIndexPage() {
   return (
     <main data-vertical="news">
       <div className="container">
-        <nav aria-label="Trilha de navegação">
+        <nav aria-label="Trilha de navegação" className="breadcrumb">
           <ol>
             <li>
               <a href={HOME_PATH}>Início</a>
@@ -84,36 +86,56 @@ export default async function NewsIndexPage() {
           </ol>
         </nav>
 
-        <header>
-          <h1>{TITLE}</h1>
+        <header className="compact-hero page-header">
+          <h1>Notícias &amp; Entrevistas</h1>
           <p>{DESCRIPTION}</p>
         </header>
 
-        {orderedCards.length > 0 ? (
-          <section aria-labelledby="published-news-title">
-            <h2 id="published-news-title">Publicadas recentemente</h2>
-            <ul>
-              {orderedCards.map((card) => (
+        {mosaic.length > 0 ? (
+          <section aria-labelledby="news-mosaic-title">
+            <h2 className="visually-hidden" id="news-mosaic-title">
+              Destaques
+            </h2>
+            <div className="news-mosaic">
+              {mosaic[0] !== undefined ? <NewsOverlayCard card={mosaic[0]} lead /> : null}
+              {mosaic.length > 1 ? (
+                <div className="news-mosaic__side">
+                  {mosaic.slice(1).map((card) => (
+                    <NewsOverlayCard card={card} key={card.href} />
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
+
+        <AdSlot format="leaderboard" slotId="news-mosaic" />
+
+        {rest.length > 0 ? (
+          <section aria-labelledby="published-news-title" className="section">
+            <SectionHead id="published-news-title" title="Todas as notícias" />
+            <ul className="news-grid">
+              {rest.map((card) => (
                 <li key={card.href}>
-                  <article>
-                    <h3>
-                      <a href={card.href}>{card.title}</a>
-                    </h3>
-                    <NewsMeta card={card} />
-                    {card.deck !== null ? <p>{card.deck}</p> : null}
-                  </article>
+                  <NewsListCard card={card} />
                 </li>
               ))}
             </ul>
             {view.hasMore ? (
-              <p>
+              <p className="muted" style={{ marginTop: 20 }}>
                 Mostrando {orderedCards.length} de {view.totalCount} notícias.
               </p>
             ) : null}
           </section>
-        ) : (
-          <p>Ainda não há notícias publicadas nesta seção.</p>
-        )}
+        ) : null}
+
+        {orderedCards.length === 0 ? (
+          <EmptyState title="Ainda não há notícias publicadas nesta seção.">
+            <p>A redação da Cinerie publica novas matérias em breve.</p>
+          </EmptyState>
+        ) : null}
+
+        <AdSlot format="leaderboard" slotId="news-grid" />
       </div>
 
       <script

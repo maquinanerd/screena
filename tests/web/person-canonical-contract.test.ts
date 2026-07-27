@@ -47,15 +47,18 @@ describe('shell público mínimo · detalhe de pessoa', () => {
     expect(code).toContain('data-editorial-state="in-review"')
   })
 
-  it('remove a camada visual interpretativa e não inventa dado ausente', () => {
+  it('design canônico: retrato real com fallback de iniciais, sem dado inventado', () => {
+    // Guard ATUALIZADO DELIBERADAMENTE (tela 09): person-hero com portrait
+    // 3/4 do asset governado; sem portrait -> INICIAIS (nunca imagem
+    // inventada). AdSlot passa a existir na posição da spec (pe-credits).
     expect(existsSync(path.join(ROOT, CSS_REL))).toBe(false)
     expect(code).not.toContain('.module.css')
     expect(code).toContain('className="container"')
-    expect(code.match(/className=/g)).toHaveLength(1)
-    expect(code).not.toContain('<img')
-    expect(code).not.toContain('view.profile')
-    expect(code).not.toContain('AdSlot')
-    expect(code).not.toMatch(/portrait|fallback|newsMedia/i)
+    expect(code).toContain('view.profile !== null ?')
+    expect(code).toContain('topinfo__poster--empty')
+    expect(code).toContain('{initials}')
+    expect(code).toContain('<AdSlot format="leaderboard" slotId="person-credits" />')
     expect(code).not.toMatch(/(?:\?\?|=== null \?)\s*["']—["']/)
+    expect(code).not.toMatch(/src="https?:/)
   })
 })

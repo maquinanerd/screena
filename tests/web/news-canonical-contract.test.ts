@@ -49,11 +49,20 @@ describe('notícias após o reset visual', () => {
     expect(article.match(/application\/ld\+json/g)).toHaveLength(2)
   })
 
-  it('remove hero, imagens renderizadas, anúncios e CSS visual', () => {
+  it('design canônico: mosaico/hero reais, AdSlot governado, um H1 por página', () => {
+    // Guard ATUALIZADO DELIBERADAMENTE (telas 03/05): o índice ganha o mosaico
+    // de destaques e o artigo ganha hero 16/9 QUANDO a matéria tem imagem
+    // real; anúncio só via AdSlot (rótulo + omissão por padrão).
     for (const page of [index, article]) {
-      expect(page).not.toMatch(/AdSlot|<img|styles\./)
       expect(page.match(/<h1[\s>]/g)).toHaveLength(1)
+      expect(page).toMatch(/<AdSlot format="leaderboard"/)
+      expect(page).not.toMatch(/<iframe|doubleclick|adsbygoogle/i)
     }
+    expect(index).toContain('NewsOverlayCard')
+    expect(article).toContain('view.heroImage !== null ?')
+    expect(article).toContain('container--reading')
+    // Entidades relacionadas persistidas (nunca inferidas no render)
+    expect(article).toContain('view.related.length > 0 ?')
     expect(existsSync(path.join(ROOT, 'apps/web/app/pt/noticias/news-canonical.module.css'))).toBe(
       false,
     )

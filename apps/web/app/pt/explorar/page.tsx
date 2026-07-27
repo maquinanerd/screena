@@ -81,7 +81,7 @@ export default async function ExplorePage() {
   return (
     <main data-vertical="explore">
       <div className="container">
-        <nav aria-label="Trilha de navegação">
+        <nav aria-label="Trilha de navegação" className="breadcrumb">
           <ol>
             <li>
               <a href={HOME_PATH}>Início</a>
@@ -90,45 +90,89 @@ export default async function ExplorePage() {
           </ol>
         </nav>
 
-        <header>
+        <header className="compact-hero page-header">
           <h1>{TITLE}</h1>
           <p>{DESCRIPTION}</p>
         </header>
 
-        <section aria-labelledby="explore-areas-title">
-          <h2 id="explore-areas-title">Áreas da Cinerie</h2>
-          <ul>
+        <section aria-labelledby="explore-areas-title" className="section">
+          <div className="section-head">
+            <h2 className="section-title" id="explore-areas-title">
+              <strong>Áreas</strong> da Cinerie
+            </h2>
+          </div>
+          <ul className="chip-row">
             <li>
-              <a href={MOVIES_INDEX_PATH}>Filmes</a>
+              <a className="chip" href={MOVIES_INDEX_PATH}>
+                Filmes
+              </a>
             </li>
             <li>
-              <a href={SERIES_INDEX_PATH}>Séries</a>
+              <a className="chip" href={SERIES_INDEX_PATH}>
+                Séries
+              </a>
             </li>
             <li>
-              <a href={PEOPLE_INDEX_PATH}>Pessoas</a>
+              <a className="chip" href={PEOPLE_INDEX_PATH}>
+                Pessoas
+              </a>
             </li>
             <li>
-              <a href={NEWS_INDEX_PATH}>Notícias</a>
+              <a className="chip" href={NEWS_INDEX_PATH}>
+                Notícias
+              </a>
+            </li>
+            <li>
+              <a className="chip" href="/pt/onde-assistir/">
+                Onde assistir
+              </a>
+            </li>
+            <li>
+              <a className="chip" href="/pt/em-breve/">
+                Mais aguardados
+              </a>
+            </li>
+            <li>
+              <a className="chip" href="/pt/busca/">
+                Buscar
+              </a>
             </li>
           </ul>
         </section>
 
-        <section aria-labelledby="discover-releases-title">
-          <h2 id="discover-releases-title">Lançamentos da semana</h2>
+        <section aria-labelledby="discover-releases-title" className="section">
+          <div className="section-head">
+            <h2 className="section-title" id="discover-releases-title">
+              <strong>Lançamentos</strong> da semana
+            </h2>
+            <a className="see-all" href="/pt/em-breve/">
+              Ver tudo
+            </a>
+          </div>
           {upcomingMovies.length > 0 ? (
-            <ul>
+            <ul className="news-grid">
               {upcomingMovies.map((movie) => (
                 <li key={movie.href}>
-                  <a href={movie.href}>{movie.title}</a>
-                  <span>
-                    {' '}
-                    — Filme · {movie.weekday}, {movie.date}
-                  </span>
+                  <article className="news-list-card" style={{ gridTemplateColumns: '1fr' }}>
+                    <div>
+                      <span className="badge badge--movie">Filme</span>
+                      <h3 className="news-list-card__title">
+                        <a href={movie.href}>{movie.title}</a>
+                      </h3>
+                      <p className="news-list-card__meta">
+                        {movie.weekday}, {movie.date}
+                      </p>
+                    </div>
+                  </article>
                 </li>
               ))}
             </ul>
           ) : (
-            <p>Nenhum lançamento publicado para explorar no momento.</p>
+            <div className="empty-state">
+              <p className="empty-state__title">
+                Nenhum lançamento publicado para explorar no momento.
+              </p>
+            </div>
           )}
         </section>
       </div>
