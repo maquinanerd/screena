@@ -383,19 +383,50 @@ async function applyAction(
   // Chave estavel por (job, linha): reexecutar o mesmo job nao gera evento novo.
   const idempotencyKey = `import-${jobId.toString(10)}-${acao.rawRowNumber}`;
 
-  if (acao.targetState === "watchlist" || acao.targetState === "watched") {
+  // NUNCA REBAIXAR NO APPLY. A politica anti-rebaixamento do preview (plan.ts)
+  // e calculada contra um SNAPSHOT do estado no momento do preview. Entre o
+  // preview e o apply (tempo do usuario, retomada, ou o proprio arquivo listando
+  // a mesma entidade em dois estados) esse snapshot fica velho — entao a decisao
+  // e RE-DERIVADA aqui, de forma atomica, no proprio banco.
+  if (acao.targetState === "watched") {
+    // "Assistido" e uma PROMOCAO: setWatchState promove planned/watching ->
+    // watched e faz no-op quando ja assistido; nunca rebaixa.
     await setWatchState(deps, authenticated, {
       entityType: acao.entityType,
       entityId,
-      status: acao.targetState === "watchlist" ? "planned" : "watched",
+      status: "watched",
       idempotencyKey,
       expectedVersion: null,
     });
+  } else if (acao.targetState === "watchlist") {
+    // "Quero assistir" e o sinal MAIS FRACO. Importar nunca deve mudar um estado
+    // ja existente: escrita INSERT-ONLY (`expectedVersion: null` => o adapter
+    // emite `INSERT ... ON CONFLICT DO NOTHING`). Cria `planned` se nao houver
+    // estado; se ja houver QUALQUER estado (watched/watching/...), no-op — jamais
+    // rebaixa. Fecha o rebaixamento tanto no TOCTOU quanto no arquivo com a mesma
+    // entidade em duas linhas (watched antes de watchlist).
+    await deps.runInLibraryTransaction((scope, stores) =>
+      stores.watchStates.upsert(scope, {
+        userId: authenticated.userId,
+        entityType: acao.entityType,
+        entityId,
+        expectedVersion: null,
+        status: "planned",
+        startedAt: null,
+        completedAt: null,
+        rewatchCount: 0,
+        nextVersion: 1,
+        now,
+      }),
+    );
   }
 
   if (acao.rating !== null) {
+    // A nota do arquivo NUNCA sobrescreve a nota local: insercao atomica so se
+    // ausente (o preview ja anula a nota quando havia uma local; isto fecha a
+    // janela TOCTOU em que o usuario avalia entre o preview e o apply).
     await deps.runInLibraryTransaction((scope, stores) =>
-      stores.ratings.upsert(scope, {
+      stores.ratings.insertIfAbsent(scope, {
         userId: authenticated.userId,
         entityType: acao.entityType,
         entityId,

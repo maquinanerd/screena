@@ -559,6 +559,28 @@ export function createFakeLibraryStores(db: FakeDb): LibraryStores {
       row.updatedAt = input.now;
       return { kind: "saved", rating: { ...row, scale: 5 } };
     },
+    async insertIfAbsent(_s, input) {
+      const existe = db.entities.some(
+        (e) => e.entityType === input.entityType && e.entityId === input.entityId,
+      );
+      if (!existe) return { kind: "entity_not_found" };
+      const row = db.userRatings.find(
+        (r) =>
+          r.userId === input.userId &&
+          r.entityType === input.entityType &&
+          r.entityId === input.entityId,
+      );
+      if (row !== undefined) return { kind: "already_exists" };
+      db.userRatings.push({
+        userId: input.userId,
+        entityType: input.entityType,
+        entityId: input.entityId,
+        value: input.value,
+        createdAt: input.now,
+        updatedAt: input.now,
+      });
+      return { kind: "created" };
+    },
     async remove(_s, input) {
       const antes = db.userRatings.length;
       const restantes = db.userRatings.filter(

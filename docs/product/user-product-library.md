@@ -218,8 +218,21 @@ usuário aprovar. O job nasce `uploaded` e termina o preview em `preview_ready`.
 
 - **Idempotência**: a aplicação reusa os uniques de destino (watch state por
   `(user, entidade)`; evento por `idempotency_key`). Reaplicar não duplica.
-- **Nunca rebaixa**: apply não sobrescreve `watchedAt` já preenchido nem rebaixa
-  um estado local mais avançado sem conflito explícito.
+- **Nunca rebaixa — re-derivado atomicamente no apply.** A política anti-rebaixamento
+  do preview (`plan.ts`) é calculada contra um **snapshot** do estado no momento do
+  preview. Entre preview e apply esse snapshot envelhece (tempo do usuário, retomada,
+  ou o próprio arquivo listando a mesma entidade em duas linhas). Por isso a decisão é
+  **re-derivada no banco, de forma atômica**, no `applyAction`:
+  - **"Quero assistir" (`planned`)** usa escrita **insert-only** (`INSERT … ON
+    CONFLICT DO NOTHING`): cria `planned` se não houver estado; se já houver
+    **qualquer** estado (`watched`/`watching`/…), é no-op. `planned` é o sinal mais
+    fraco — importar nunca rebaixa um estado existente.
+  - **"Assistido" (`watched`)** é uma **promoção**: `planned`/`watching` → `watched`,
+    e no-op quando já assistido. Nunca rebaixa.
+  - **Nota do arquivo** entra por **insert-only** (`insertIfAbsent`): só grava se o
+    usuário ainda não tem nota; jamais sobrescreve a nota local (fecha o TOCTOU).
+  Provado no runtime (`import-services.test.ts` 5–7) e no PostgreSQL 16 real
+  (checks 52–53).
 - **Lotes curtos e retomáveis**: `IMPORT_APPLY_BATCH = 200` ações por transação;
   o `applied_count` avança como **cursor**. Se o processo cair no meio, uma nova
   chamada `applyImport` retoma do cursor (`applying → applying`), aplicando só o

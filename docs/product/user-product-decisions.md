@@ -228,8 +228,13 @@ modelos de usuário seguem o repo. Demais adaptações conscientes:
 
 - Fluxo `upload → parse → normalize → match → conflicts → preview (zero escrita) →
   apply`. Nunca aplica sem preview.
-- Idempotente (uniques de destino), **nunca rebaixa** estado/`watchedAt` local,
-  retomável por cursor (`applied_count`), com **CAS de status** (`preview_ready →
+- Idempotente (uniques de destino), **nunca rebaixa** estado/nota local — a
+  política anti-rebaixamento é **re-derivada atomicamente no apply** (não só no
+  preview): `planned` importado é insert-only (`ON CONFLICT DO NOTHING`, nunca
+  rebaixa `watched`); `watched` só promove; nota do arquivo é insert-only
+  (`insertIfAbsent`, nunca sobrescreve a nota do dono). Fecha o TOCTOU entre
+  preview e apply e o arquivo com a mesma entidade em dois estados.
+- Retomável por cursor (`applied_count`), com **CAS de status** (`preview_ready →
   applying`) elegendo um vencedor entre dois `apply` concorrentes.
 - `apply`/`cancel`/`read` são **por titular** (ownership do servidor, nunca do
   corpo).

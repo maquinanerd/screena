@@ -78,6 +78,31 @@ export function createPrismaUserRatingStore(
       return { kind: "saved", rating: toUserRatingRecord(row) };
     },
 
+    async insertIfAbsent(_scope, input) {
+      const existe = await probe.exists(input.entityType, input.entityId);
+      if (!existe) {
+        return { kind: "entity_not_found" };
+      }
+
+      // `createMany` + `skipDuplicates` = `INSERT ... ON CONFLICT DO NOTHING`:
+      // cria a nota se ausente e devolve 0 linhas (sem P2002) se ja houver uma.
+      // Nunca toca no `value` de uma nota existente — o import nao sobrescreve o
+      // que o dono avaliou aqui. Atomico: fecha o TOCTOU entre preview e apply.
+      const criadas = await executor.userRating.createMany({
+        data: [
+          {
+            userId: input.userId,
+            entityType: input.entityType,
+            entityId: input.entityId,
+            value: input.value,
+            scale: 5,
+          },
+        ],
+        skipDuplicates: true,
+      });
+      return { kind: criadas.count > 0 ? "created" : "already_exists" };
+    },
+
     async remove(
       _scope: TransactionScope,
       input: {

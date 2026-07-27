@@ -14,6 +14,7 @@ import {
   createImportPreview,
   readImport,
 } from "../import-services.js";
+import { setRating, setWatchState } from "../library-services.js";
 import { createTestRuntime, seedUser } from "./fakes.js";
 import { seedCatalogTitle } from "./library-fakes.js";
 import type { AuthenticatedContext } from "../deps.js";
@@ -198,6 +199,103 @@ describe("applyImport", () => {
     expect(retomada.value.appliedCount).toBe(6);
     // Continua com EXATAMENTE 6 — a retomada nao duplicou nada.
     expect(rt.db.watchStates.filter((w) => w.status === "watched")).toHaveLength(6);
+  });
+
+  it("(5) ANTI-REBAIXAMENTO: 'quero assistir' NUNCA rebaixa um titulo ja assistido", async () => {
+    const rt = createTestRuntime();
+    const userId = seedUser(rt.db, { emailNormalized: "a@b.test" });
+    seedCatalogTitle(rt.db, { entityType: "movie", entityId: 501n, title: "Filme 1", year: 2011, tmdbId: 1001 });
+
+    // O MESMO titulo em duas linhas: primeiro assistido, depois quero-assistir.
+    // A dedup separa por estado-alvo, entao AS DUAS viram acao exact. Sem a
+    // trava do apply, a 2a linha rebaixaria `watched` -> `planned`.
+    const csv = [
+      "entity_type,tmdb_id,title,year,state,watched_at",
+      "movie,1001,Filme 1,2011,watched,2024-01-15",
+      "movie,1001,Filme 1,2011,watchlist,",
+    ].join("\n");
+    const prev = await createImportPreview(rt.deps, auth(userId), {
+      source: "cinerie_csv",
+      targetState: "watched",
+      fileName: "f.csv",
+      bytes: bytesOf(csv),
+    });
+    expect(prev.ok).toBe(true);
+    if (!prev.ok) return;
+    const r = await applyImport(rt.deps, auth(userId), { jobId: prev.value.job.id });
+    expect(r.ok).toBe(true);
+
+    const estados = rt.db.watchStates.filter((w) => w.entityId === 501n);
+    expect(estados).toHaveLength(1);
+    // Continua ASSISTIDO: a acao 'watchlist' virou no-op (insert-only), nao rebaixou.
+    expect(estados[0]!.status).toBe("watched");
+  });
+
+  it("(6) ANTI-SOBRESCRITA: a nota do arquivo NAO apaga a nota local (TOCTOU)", async () => {
+    const rt = createTestRuntime();
+    const userId = seedUser(rt.db, { emailNormalized: "a@b.test" });
+    seedCatalogTitle(rt.db, { entityType: "movie", entityId: 502n, title: "Filme 2", year: 2012, tmdbId: 1002 });
+
+    const csv = [
+      "entity_type,tmdb_id,title,year,state,watched_at,rating",
+      "movie,1002,Filme 2,2012,watched,2024-01-15,4.5",
+    ].join("\n");
+    const prev = await createImportPreview(rt.deps, auth(userId), {
+      source: "cinerie_csv",
+      targetState: "watched",
+      fileName: "f.csv",
+      bytes: bytesOf(csv),
+    });
+    expect(prev.ok).toBe(true);
+    if (!prev.ok) return;
+
+    // TOCTOU: o usuario avalia o filme ENTRE o preview e o apply. No preview nao
+    // havia nota, entao a acao carrega a nota 4,5 do arquivo.
+    const nota = await setRating(rt.deps, auth(userId), { entityType: "movie", entityId: 502n, value: 3 });
+    expect(nota.ok).toBe(true);
+
+    const r = await applyImport(rt.deps, auth(userId), { jobId: prev.value.job.id });
+    expect(r.ok).toBe(true);
+
+    // A nota LOCAL (3) sobrevive: o apply insere so se ausente, nunca sobrescreve.
+    const salva = rt.db.userRatings.find((x) => x.entityId === 502n);
+    expect(salva?.value).toBe(3);
+  });
+
+  it("(7) 'assistido' importado PROMOVE um titulo que estava so na watchlist", async () => {
+    const rt = createTestRuntime();
+    const userId = seedUser(rt.db, { emailNormalized: "a@b.test" });
+    seedCatalogTitle(rt.db, { entityType: "movie", entityId: 503n, title: "Filme 3", year: 2013, tmdbId: 1003 });
+
+    // Estado local: quero assistir. O arquivo diz que foi assistido.
+    const planejado = await setWatchState(rt.deps, auth(userId), {
+      entityType: "movie",
+      entityId: 503n,
+      status: "planned",
+      idempotencyKey: "seed-planned-1",
+      expectedVersion: null,
+    });
+    expect(planejado.ok).toBe(true);
+
+    const csv = [
+      "entity_type,tmdb_id,title,year,state,watched_at",
+      "movie,1003,Filme 3,2013,watched,2024-01-15",
+    ].join("\n");
+    const prev = await createImportPreview(rt.deps, auth(userId), {
+      source: "cinerie_csv",
+      targetState: "watched",
+      fileName: "f.csv",
+      bytes: bytesOf(csv),
+    });
+    expect(prev.ok).toBe(true);
+    if (!prev.ok) return;
+    const r = await applyImport(rt.deps, auth(userId), { jobId: prev.value.job.id });
+    expect(r.ok).toBe(true);
+
+    const estados = rt.db.watchStates.filter((w) => w.entityId === 503n);
+    expect(estados).toHaveLength(1);
+    // Promocao real: planned -> watched (o sentido permitido).
+    expect(estados[0]!.status).toBe("watched");
   });
 });
 

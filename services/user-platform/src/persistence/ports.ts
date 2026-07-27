@@ -775,6 +775,18 @@ export interface UserListItemStore {
 export interface UserRatingStore {
   upsert(scope: TransactionScope, input: UserRatingUpsertInput): Promise<UserRatingUpsertResult>;
 
+  /**
+   * Insere a nota SOMENTE se ainda nao houver uma para (user, entidade). Se ja
+   * existir, NAO sobrescreve — devolve `already_exists`. É o caminho da
+   * IMPORTACAO: a nota de um arquivo nunca apaga a nota que o proprio usuario
+   * deu aqui (a sobrescrita e um `upsert` deliberado do dono, nunca do import).
+   * Atomico via `INSERT ... ON CONFLICT DO NOTHING`.
+   */
+  insertIfAbsent(
+    scope: TransactionScope,
+    input: UserRatingUpsertInput,
+  ): Promise<{ readonly kind: "created" | "already_exists" | "entity_not_found" }>;
+
   remove(
     scope: TransactionScope,
     input: { readonly userId: bigint; readonly entityType: RatableEntityType; readonly entityId: bigint },

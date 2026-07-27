@@ -654,6 +654,72 @@ async function runChecks(url: string): Promise<void> {
         cancelaDono.ok ? `cancelado; watch=${carolWatch[0]!.c}` : "falhou",
       );
     }
+
+    // -----------------------------------------------------------------------
+    // ANTI-REBAIXAMENTO / ANTI-SOBRESCRITA no APPLY (real DB). A politica do
+    // preview e re-derivada de forma atomica no banco: 'quero assistir' nunca
+    // rebaixa um 'assistido'; a nota do arquivo nunca apaga a nota local.
+    // -----------------------------------------------------------------------
+    const dave = await seedUser(prisma, "dave@example.test");
+
+    // dave ja assistiu Matrix (tmdb 603). O arquivo pede 'quero assistir'.
+    await setWatchState(deps, ctx(dave), {
+      entityType: "movie",
+      entityId: filme2,
+      status: "watched",
+      idempotencyKey: "dave-matrix-watched",
+      expectedVersion: null,
+    });
+    const csvRebaixa = [
+      "entity_type,tmdb_id,imdb_id,title,year,state,watched_at,list,rating",
+      "movie,603,,The Matrix,1999,watchlist,,,",
+      "",
+    ].join("\n");
+    const prevRebaixa = await createImportPreview(deps, ctx(dave), {
+      source: "cinerie_csv",
+      targetState: "watchlist",
+      fileName: "rebaixa.csv",
+      bytes: new TextEncoder().encode(csvRebaixa),
+    });
+    if (prevRebaixa.ok) {
+      await applyImport(deps, ctx(dave), { jobId: prevRebaixa.value.job.id });
+    }
+    const [estadoMatrix] = await q<{ status: string }>(
+      `SELECT status FROM "user_watch_states" WHERE user_id = ${dave} AND entity_id = ${filme2}`,
+    );
+    record(
+      52,
+      "IMPORT: 'quero assistir' NAO rebaixa um 'assistido' (real DB)",
+      estadoMatrix?.status === "watched",
+      `status=${estadoMatrix?.status}`,
+    );
+
+    // TOCTOU de nota: preview sem nota local, o usuario avalia, depois aplica.
+    const csvNota = [
+      "entity_type,tmdb_id,imdb_id,title,year,state,watched_at,list,rating",
+      "movie,348,,Alien,1979,watched,2020-01-02,,5",
+      "",
+    ].join("\n");
+    const prevNota = await createImportPreview(deps, ctx(dave), {
+      source: "cinerie_csv",
+      targetState: "watched",
+      fileName: "nota.csv",
+      bytes: new TextEncoder().encode(csvNota),
+    });
+    // O usuario da nota 3 ENTRE o preview e o apply.
+    await setRating(deps, ctx(dave), { entityType: "movie", entityId: filme, value: 3 });
+    if (prevNota.ok) {
+      await applyImport(deps, ctx(dave), { jobId: prevNota.value.job.id });
+    }
+    const [notaAlien] = await q<{ value: string }>(
+      `SELECT value::text AS value FROM "user_ratings" WHERE user_id = ${dave} AND entity_id = ${filme}`,
+    );
+    record(
+      53,
+      "IMPORT: nota do arquivo NAO sobrescreve a nota local (TOCTOU, real DB)",
+      notaAlien !== undefined && Number(notaAlien.value) === 3,
+      `nota=${notaAlien?.value}`,
+    );
   } finally {
     await prisma.$disconnect();
   }
