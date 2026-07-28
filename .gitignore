@@ -65,3 +65,7 @@ desktop.ini
 ruvector.db
 .claude/.proven-config-version
 .claude/proven-config.json
+
+# Uploads locais do CMS (desenvolvimento/teste). Nunca versionados.
+apps/cms/media/
+media/

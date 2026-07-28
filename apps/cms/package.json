@@ -15,7 +15,9 @@
     "payload:generate-types": "payload generate:types",
     "payload:migrate:create": "tsx scripts/ephemeral-postgres.ts migrate:create",
     "payload:migrate": "tsx scripts/ephemeral-postgres.ts migrate",
-    "payload:migrate:status": "tsx scripts/ephemeral-postgres.ts migrate:status"
+    "payload:migrate:status": "tsx scripts/ephemeral-postgres.ts migrate:status",
+    "test:integration": "vitest run --root . --config ./vitest.integration.config.ts",
+    "seed:dev": "tsx scripts/seed-dev.ts"
   },
   "dependencies": {
     "@payloadcms/db-postgres": "3.86.0",

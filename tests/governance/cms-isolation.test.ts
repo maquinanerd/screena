@@ -70,6 +70,10 @@ describe('CMS editorial: banco e codigo isolados', () => {
   it('o CMS nunca le DATABASE_URL (nem como fallback)', async () => {
     const offenders: string[] = []
     for (const file of await collect(CMS_DIR)) {
+      // O harness de teste DELETA `DATABASE_URL` do processo de proposito, para
+      // que um fallback acidental falhe em vez de ser mascarado. A guarda vale
+      // para o codigo de produto.
+      if (file.includes('__tests__')) continue
       const code = stripComments(await readFile(file, 'utf-8'))
       // `env.ts` DECLARA a chave para detectar colisao com a URL do CMS; ler o
       // valor para USAR e que e proibido.

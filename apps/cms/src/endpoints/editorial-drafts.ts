@@ -11,7 +11,7 @@
 
 import type { Endpoint, PayloadRequest, Where } from 'payload'
 
-import { toActor } from '../collections.js'
+import { toActor } from '../actor.js'
 import { intakeEditorialDraft, MAX_REQUEST_BYTES } from '../draft-intake.js'
 import type { ExistingArticleSnapshot } from '../idempotency.js'
 
@@ -51,8 +51,11 @@ async function findExistingArticle(
     where,
     limit: 1,
     depth: 0,
-    // A busca acontece com privilegio do servidor: a service account nao tem
-    // leitura geral da colecao, e nao deveria ganhar por um efeito colateral.
+    // BYPASS DE LEITURA, deliberado e confinado. A service account NAO tem
+    // `read` em `articles` (um draft humano em revisao nao e assunto de
+    // pipeline). Mas a decisao de idempotencia precisa do estado real, senao
+    // um reenvio criaria materia duplicada. O resultado NUNCA volta ao cliente:
+    // a resposta carrega so `outcome`, `articleId` e o hash.
     overrideAccess: true,
     req,
   })
@@ -180,7 +183,12 @@ export const editorialDraftsEndpoint: Endpoint = {
               await req.payload.create({
                 collection: 'articles',
                 data: data as never,
-                overrideAccess: true,
+                // ESCRITA EM NOME DO ATOR: respeita o access control da
+                // collection. A Local API ignora `access` por padrao — o
+                // `false` explicito e o que impede este caminho de virar uma
+                // porta dos fundos para quem nao poderia escrever.
+                overrideAccess: false,
+                user: req.user,
                 req,
               })
             ).id,
@@ -191,7 +199,8 @@ export const editorialDraftsEndpoint: Endpoint = {
                 collection: 'articles',
                 id: acceptance.articleId as string,
                 data: data as never,
-                overrideAccess: true,
+                overrideAccess: false,
+                user: req.user,
                 req,
               })
             ).id,

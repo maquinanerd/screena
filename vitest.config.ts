@@ -17,7 +17,15 @@ export default defineConfig({
     // Exclui saida de build/deps: o glob apps/** nao pode arrastar .next/ nem
     // node_modules (o default do vitest ja ignora node_modules; .next e dist
     // sao explicitados para o caso de artefatos de build presentes).
-    exclude: ['**/node_modules/**', '**/.next/**', '**/dist/**'],
+    exclude: [
+      '**/node_modules/**',
+      '**/.next/**',
+      '**/dist/**',
+      // A integracao do CMS sobe Payload + PostgreSQL efemero e tem gate
+      // proprio (`test:cms:integration`). Deixa-la aqui faria a suite geral
+      // levar minutos e depender de binario de banco.
+      '**/*.integration.test.ts',
+    ],
     environment: 'node',
   },
   resolve: {

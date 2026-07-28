@@ -22,6 +22,8 @@ import {
   outboxAccess,
   type Actor,
 } from './access.js'
+import { toActor as resolveActor } from './actor.js'
+import { emitPublicationEvent, enforceEditorialGovernance } from './hooks/articles.js'
 import { EDITORIAL_ROLES, WORKFLOW_STATUSES } from './workflow.js'
 import { OUTBOX_STATUSES } from './outbox.js'
 
@@ -29,37 +31,13 @@ import { OUTBOX_STATUSES } from './outbox.js'
 /* Ponte entre o `req.user` do Payload e o `Actor` puro                */
 /* ------------------------------------------------------------------ */
 
-interface PayloadUserLike {
-  readonly id?: unknown
-  readonly collection?: unknown
-  readonly role?: unknown
-}
-
-/**
- * Converte o usuario autenticado pelo Payload no `Actor` das regras puras.
- *
- * Fail-closed: qualquer coisa que nao seja um usuario reconhecido vira
- * `anonymous`, e `anonymous` nao passa em nenhuma politica.
- */
-export function toActor(user: unknown): Actor {
-  if (user === null || typeof user !== 'object') return { kind: 'anonymous' }
-  const candidate = user as PayloadUserLike
-  const id = typeof candidate.id === 'string' ? candidate.id : String(candidate.id ?? '')
-  if (id === '') return { kind: 'anonymous' }
-
-  if (candidate.collection === 'service-accounts') return { kind: 'service', id }
-  if (candidate.collection === 'editorial-users') {
-    const role = candidate.role
-    if (typeof role === 'string' && (EDITORIAL_ROLES as readonly string[]).includes(role)) {
-      return { kind: 'human', id, role: role as Actor extends { role: infer R } ? R : never }
-    }
-  }
-  return { kind: 'anonymous' }
-}
+// `toActor` vive em `./actor.js`: os hooks tambem precisam dele e sao
+// registrados AQUI dentro, entao mante-lo neste arquivo criaria um ciclo.
+export { toActor } from './actor.js'
 
 /** Adapta uma politica pura para a assinatura de `access` do Payload. */
 function policy(decide: (actor: Actor) => boolean): Access {
-  return ({ req }) => decide(toActor(req.user))
+  return ({ req }) => decide(resolveActor(req.user))
 }
 
 /* ------------------------------------------------------------------ */
@@ -377,6 +355,13 @@ export const Media: CollectionConfig = {
 export const Articles: CollectionConfig = {
   slug: 'articles',
   admin: { useAsTitle: 'title', group: 'Editorial' },
+  // Os hooks sao o UNICO caminho por onde uma mudanca de estado passa — venha
+  // ela do painel, da REST API ou da Local API. Sem eles, `_status: published`
+  // publicaria por fora do fluxo editorial.
+  hooks: {
+    beforeChange: [enforceEditorialGovernance],
+    afterChange: [emitPublicationEvent],
+  },
   versions: {
     drafts: { autosave: { interval: 2_000 } },
     maxPerDoc: 0,
