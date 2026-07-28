@@ -29,15 +29,8 @@ interface UserList {
 
 type Estado = 'carregando' | 'pronto' | 'erro' | 'nao-autenticado'
 
-/** Gradientes neutros do sistema visual para capa de lista sem mídia própria. */
-const CAPAS = [
-  'linear-gradient(135deg, #23201b 0%, #4a443a 100%)',
-  'linear-gradient(135deg, #2b1e1d 0%, #5a3734 100%)',
-  'linear-gradient(135deg, #1d2620 0%, #3b544332 100%), #2c3a31',
-  'linear-gradient(135deg, #201f2b 0%, #3d3b55 100%)',
-  'linear-gradient(135deg, #262019 0%, #55432b 100%)',
-  'linear-gradient(135deg, #1b2430 0%, #32475c 100%)',
-] as const
+/** Nº de capas-gradiente definidas em CSS (.list-card__media--gN). */
+const CAPAS = 6
 
 export function ListsPanel(): React.ReactElement {
   const [estado, setEstado] = useState<Estado>('carregando')
@@ -149,13 +142,8 @@ export function ListsPanel(): React.ReactElement {
         {estado === 'pronto' ? (
           <div className="lists-grid">
             {listas.map((l, index) => (
-              <a
-                className="list-card"
-                href={`/pt/listas/${l.id}/`}
-                key={l.id}
-                style={{ ['--list-cover' as string]: CAPAS[index % CAPAS.length] }}
-              >
-                <span className="list-card__media">
+              <a className="list-card" href={`/pt/listas/${l.id}/`} key={l.id}>
+                <span className={`list-card__media list-card__media--g${index % CAPAS}`}>
                   <span aria-hidden="true" className="list-card__scrim" />
                   <span className="list-card__privacy">
                     {l.visibility === 'public' ? 'Pública' : 'Privada'}

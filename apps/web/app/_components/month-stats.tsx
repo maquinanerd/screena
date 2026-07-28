@@ -21,7 +21,7 @@ interface HistoryItem {
 }
 
 interface MonthStat {
-  value: number
+  value: string
   label: string
 }
 
@@ -30,7 +30,7 @@ type State =
   | { kind: 'anonymous' }
   | { kind: 'ready'; stats: MonthStat[] }
 
-function computeMonthStats(items: readonly HistoryItem[]): MonthStat[] {
+function computeMonthStats(items: readonly HistoryItem[], truncated: boolean): MonthStat[] {
   const now = new Date()
   const month = now.getUTCMonth()
   const year = now.getUTCFullYear()
@@ -42,11 +42,14 @@ function computeMonthStats(items: readonly HistoryItem[]): MonthStat[] {
   const movies = inMonth.filter((item) => item.entityType === 'movie').length
   const episodes = inMonth.filter((item) => item.entityType === 'episode').length
   const series = inMonth.filter((item) => item.entityType === 'tv').length
+  // Sob teto de paginação os números são um piso, nunca um total — o sufixo
+  // "+" mantém a contagem honesta (m3 adversarial).
+  const plus = truncated ? '+' : ''
   return [
-    { value: movies, label: movies === 1 ? 'filme' : 'filmes' },
-    { value: episodes, label: episodes === 1 ? 'episódio' : 'episódios' },
-    { value: series, label: series === 1 ? 'série' : 'séries' },
-    { value: inMonth.length, label: inMonth.length === 1 ? 'registro' : 'registros' },
+    { value: `${movies}${plus}`, label: movies === 1 ? 'filme' : 'filmes' },
+    { value: `${episodes}${plus}`, label: episodes === 1 ? 'episódio' : 'episódios' },
+    { value: `${series}${plus}`, label: series === 1 ? 'série' : 'séries' },
+    { value: `${inMonth.length}${plus}`, label: inMonth.length === 1 ? 'registro' : 'registros' },
   ]
 }
 
@@ -68,8 +71,10 @@ export function MonthStats(): ReactNode {
           if (alive) setState({ kind: 'anonymous' })
           return
         }
-        const data = (await r.json()) as { items?: HistoryItem[] }
-        if (alive) setState({ kind: 'ready', stats: computeMonthStats(data.items ?? []) })
+        const data = (await r.json()) as { items?: HistoryItem[]; total?: number }
+        const items = data.items ?? []
+        const truncated = typeof data.total === 'number' && data.total > items.length
+        if (alive) setState({ kind: 'ready', stats: computeMonthStats(items, truncated) })
       } catch {
         if (alive) setState({ kind: 'anonymous' })
       }

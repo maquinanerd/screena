@@ -24,9 +24,19 @@ import { reprojectArticle } from '../src/persistence/editorial-store.js'
 function assertNotProduction(): void {
   const url = process.env.DATABASE_URL ?? ''
   if (url === '') throw new Error('DATABASE_URL ausente')
-  const suspicious = [/rss_prime/i, /_prod/i, /production/i, /screena-db/i, /cinerie-db/i]
-  if (suspicious.some((p) => p.test(url)) || process.env.NODE_ENV === 'production') {
-    throw new Error('DATABASE_URL/NODE_ENV parecem apontar para PRODUCAO. Abortado.')
+  // FAIL-CLOSED por ALLOWLIST: este seed cria artigos published/index — so
+  // roda contra banco LOCAL. Denylist de nomes nao basta (m4 adversarial).
+  let host = ''
+  try {
+    host = new URL(url).hostname
+  } catch {
+    throw new Error('DATABASE_URL invalida. Abortado.')
+  }
+  const localHosts = new Set(['127.0.0.1', 'localhost', '::1', '[::1]'])
+  if (!localHosts.has(host) || process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'qa-editorial-seed so roda contra banco LOCAL (host 127.0.0.1/localhost). Abortado.',
+    )
   }
 }
 

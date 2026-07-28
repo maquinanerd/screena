@@ -25,6 +25,32 @@ interface SharedState {
 
 let sharedPromise: Promise<SharedState> | null = null
 
+// Pub/sub por entidade: TODOS os controles da mesma entidade na página
+// refletem um toggle imediatamente (a mesma série pode aparecer como card de
+// série, de temporada e de episódio ao mesmo tempo — ex.: /pt/em-breve).
+const listeners = new Map<string, Set<(planned: boolean) => void>>()
+
+function subscribe(key: string, listener: (planned: boolean) => void): () => void {
+  let set = listeners.get(key)
+  if (set === undefined) {
+    set = new Set()
+    listeners.set(key, set)
+  }
+  set.add(listener)
+  return () => {
+    set?.delete(listener)
+  }
+}
+
+async function broadcastPlanned(key: string, planned: boolean): Promise<void> {
+  // Mantém o snapshot compartilhado coerente para montagens futuras…
+  const shared = await loadShared()
+  if (planned) shared.planned.add(key)
+  else shared.planned.delete(key)
+  // …e avisa todos os controles já montados desta entidade.
+  for (const listener of listeners.get(key) ?? []) listener(planned)
+}
+
 function loadShared(): Promise<SharedState> {
   if (sharedPromise !== null) return sharedPromise
   sharedPromise = (async () => {
@@ -82,30 +108,36 @@ export function useWatchlistEntry(
 
   useEffect(() => {
     let alive = true
+    const key = `${entityType}:${entityId}`
     void loadShared().then((shared) => {
       if (!alive) return
       setAuthenticated(shared.authenticated)
-      setPlanned(shared.planned.has(`${entityType}:${entityId}`))
+      setPlanned(shared.planned.has(key))
       setReady(true)
+    })
+    const unsubscribe = subscribe(key, (next) => {
+      if (alive) setPlanned(next)
     })
     return () => {
       alive = false
+      unsubscribe()
     }
   }, [entityType, entityId])
 
   const toggle = async () => {
+    const key = `${entityType}:${entityId}`
     if (planned) {
       const r = await authFetch('/api/me/watch-state/remove', {
         method: 'POST',
         body: JSON.stringify({ entityType, entityId }),
       })
-      if (r.ok) setPlanned(false)
+      if (r.ok) await broadcastPlanned(key, false)
     } else {
       const r = await authFetch('/api/me/watch-state', {
         method: 'POST',
         body: JSON.stringify({ entityType, entityId, status: 'planned' }),
       })
-      if (r.ok) setPlanned(true)
+      if (r.ok) await broadcastPlanned(key, true)
     }
   }
 
@@ -126,22 +158,9 @@ export function CardBookmark({
   /** Com label, vira o botao-pill rotulado do canonico (ex.: "Minha lista"). */
   label?: string
 }): ReactNode {
-  const [ready, setReady] = useState(false)
-  const [authenticated, setAuthenticated] = useState(false)
-  const [planned, setPlanned] = useState(false)
-
-  useEffect(() => {
-    let alive = true
-    void loadShared().then((shared) => {
-      if (!alive) return
-      setAuthenticated(shared.authenticated)
-      setPlanned(shared.planned.has(`${entityType}:${entityId}`))
-      setReady(true)
-    })
-    return () => {
-      alive = false
-    }
-  }, [entityType, entityId])
+  // Mesmo estado compartilhado por entidade do hook: dois controles da MESMA
+  // entidade na página nunca divergem após um toggle.
+  const { ready, authenticated, planned, toggle } = useWatchlistEntry(entityType, entityId)
 
   const className =
     label !== undefined
@@ -173,22 +192,10 @@ export function CardBookmark({
     )
   }
 
-  const toggle = async (event: React.MouseEvent) => {
+  const onToggle = async (event: React.MouseEvent) => {
     event.preventDefault()
     event.stopPropagation()
-    if (planned) {
-      const r = await authFetch('/api/me/watch-state/remove', {
-        method: 'POST',
-        body: JSON.stringify({ entityType, entityId }),
-      })
-      if (r.ok) setPlanned(false)
-    } else {
-      const r = await authFetch('/api/me/watch-state', {
-        method: 'POST',
-        body: JSON.stringify({ entityType, entityId, status: 'planned' }),
-      })
-      if (r.ok) setPlanned(true)
-    }
+    await toggle()
   }
 
   return (
@@ -198,7 +205,7 @@ export function CardBookmark({
       }
       aria-pressed={planned}
       className={className}
-      onClick={(event) => void toggle(event)}
+      onClick={(event) => void onToggle(event)}
       type="button"
     >
       {content}

@@ -64,6 +64,8 @@
   --c-accent-series-dark: #395c42; /* texto/links de serie, 7.5 AA */
   --c-accent-editorial: #f5c518; /* DD-04: sempre texto escuro */
   --c-rating-gold: #f5c84b;
+  --c-accent-episode: #b4884a; /* ambar informativo do canonico (episodio) */
+  --c-accent-episode-strong: #7a5a20; /* texto branco por cima (AA) */
 
   /* State */
   --c-state-success: #1f8a5b;
@@ -7857,7 +7859,7 @@ a.tabs__tab[aria-current='page'] {
 }
 
 .ant-card[data-entity-type='episode'] {
-  --ant-accent-strong: #7a5a20;
+  --ant-accent-strong: var(--c-accent-episode-strong);
 }
 
 .ant-card__type,
@@ -7880,3 +7882,11 @@ a.tabs__tab[aria-current='page'] {
 [id] {
   scroll-margin-top: calc(var(--nav-height) + 18px);
 }
+
+/* Capas de lista sem midia propria: gradientes neutros do sistema visual */
+.list-card__media--g0 { --list-cover: linear-gradient(135deg, #23201b 0%, #4a443a 100%); }
+.list-card__media--g1 { --list-cover: linear-gradient(135deg, #2b1e1d 0%, #5a3734 100%); }
+.list-card__media--g2 { --list-cover: linear-gradient(135deg, #1d2620 0%, #2c3a31 100%); }
+.list-card__media--g3 { --list-cover: linear-gradient(135deg, #201f2b 0%, #3d3b55 100%); }
+.list-card__media--g4 { --list-cover: linear-gradient(135deg, #262019 0%, #55432b 100%); }
+.list-card__media--g5 { --list-cover: linear-gradient(135deg, #1b2430 0%, #32475c 100%); }

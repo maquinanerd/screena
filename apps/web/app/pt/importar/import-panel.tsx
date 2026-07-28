@@ -110,7 +110,7 @@ const GARANTIAS: { icon: ReactNode; color: string; title: string; text: string }
   },
   {
     icon: <IcLayers size={16} />,
-    color: '#b4884a',
+    color: 'var(--c-accent-episode)',
     title: 'Duplicados são detectados',
     text: 'Itens já existentes não viram registros repetidos — a aplicação é idempotente.',
   },
@@ -153,6 +153,13 @@ export function ImportPanel(): React.ReactElement {
   }
 
   async function preVisualizar(file: File): Promise<void> {
+    // Upload novo abandona o preview anterior de forma explicita (nunca deixa
+    // job orfao pendente no servidor).
+    if (job !== null) {
+      await authFetch(`/api/me/imports/${job.id}/cancel`, { method: 'POST', body: '{}' })
+      setJob(null)
+      setResumo(null)
+    }
     setAviso(null)
     setNomeArquivo(file.name)
     setEtapa('enviando')
@@ -197,8 +204,8 @@ export function ImportPanel(): React.ReactElement {
       setAviso('Não foi possível aplicar a importação.')
       return
     }
-    const dados = (await r.json()) as { appliedCount: number }
-    setAviso(`${dados.appliedCount} item(ns) aplicado(s).`)
+    const dados = (await r.json().catch(() => null)) as { appliedCount?: number } | null
+    setAviso(`${dados?.appliedCount ?? 0} item(ns) aplicado(s).`)
     setEtapa('aplicado')
   }
 
@@ -271,7 +278,12 @@ export function ImportPanel(): React.ReactElement {
             aria-selected={fonte.value === f.value}
             className="imp-chip"
             key={f.value}
-            onClick={() => setFonte(f)}
+            onClick={() => {
+              // Trocar a origem com um preview ativo invalida o job: o apply
+              // usa os parametros do job, nunca os da tela (M1 adversarial).
+              if (job !== null) void cancelar()
+              setFonte(f)
+            }}
             role="tab"
             type="button"
           >
@@ -324,7 +336,10 @@ export function ImportPanel(): React.ReactElement {
               <input
                 checked={alvo === s.value}
                 name="alvo"
-                onChange={() => setAlvo(s.value)}
+                onChange={() => {
+                  if (job !== null) void cancelar()
+                  setAlvo(s.value)
+                }}
                 type="radio"
                 value={s.value}
               />

@@ -119,6 +119,7 @@ export function ListDetailPanel(): React.ReactElement {
   }
 
   async function excluirLista(): Promise<void> {
+    if (!window.confirm('Excluir esta lista? A ação não pode ser desfeita.')) return
     setAviso(null)
     const r = await authFetch(`/api/me/lists/${listId}/delete`, {
       method: 'POST',
@@ -128,7 +129,11 @@ export function ListDetailPanel(): React.ReactElement {
     if (r.ok) {
       window.location.assign('/pt/listas/')
     } else {
-      setAviso('Listas do sistema nao podem ser removidas.')
+      setAviso(
+        r.status === 409 || r.status === 422
+          ? 'Listas do sistema não podem ser removidas.'
+          : 'Não foi possível excluir a lista agora.',
+      )
     }
   }
 

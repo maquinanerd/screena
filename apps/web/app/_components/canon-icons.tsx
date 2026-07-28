@@ -253,5 +253,5 @@ export const CANON_TYPE = {
   movie: { label: 'Filme', accentVar: 'var(--c-accent-movie)', Icon: IcFilm },
   tv: { label: 'Série', accentVar: 'var(--c-accent-series)', Icon: IcTv },
   season: { label: 'Temporada', accentVar: 'var(--c-accent-series)', Icon: IcLayers },
-  episode: { label: 'Episódio', accentVar: '#b4884a', Icon: IcTv },
+  episode: { label: 'Episódio', accentVar: 'var(--c-accent-episode)', Icon: IcTv },
 } as const

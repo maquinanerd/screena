@@ -437,6 +437,10 @@ async function resolveReadAlso(
       languageCode: LANGUAGE_CODE,
       reviewStatus: { in: [...NEWS_RENDERABLE_REVIEW_STATUSES] },
       slug: { not: currentSlug },
+      // Agendados (futuro) nao ocupam a janela do "Leia tambem": o filtro de
+      // publicabilidade abaixo continua sendo o gate — isto so evita que
+      // materias embargadas esvaziem a secao (m5 adversarial).
+      publishedAt: { lte: new Date() },
     },
     orderBy: { publishedAt: "desc" },
     take: 8,
