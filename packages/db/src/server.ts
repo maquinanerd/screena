@@ -11,21 +11,25 @@
 
 import { PrismaClient } from '@prisma/client'
 
-let client: PrismaClient | undefined
+// Cache em globalThis, nao em variavel de modulo: o dev server do Next compila
+// o modulo uma vez POR ROTA, e um singleton de modulo viraria um pool de
+// conexoes por rota (esgotando o Postgres em desenvolvimento). Em producao ha
+// uma unica instancia de qualquer forma — o comportamento nao muda.
+const globalScope = globalThis as { __screenaPrismaClient?: PrismaClient }
 
 /** Devolve o Prisma Client compartilhado do processo (cria sob demanda). */
 export function getPrismaClient(): PrismaClient {
-  if (client === undefined) {
-    client = new PrismaClient()
+  if (globalScope.__screenaPrismaClient === undefined) {
+    globalScope.__screenaPrismaClient = new PrismaClient()
   }
-  return client
+  return globalScope.__screenaPrismaClient
 }
 
 /** Encerra a conexao Prisma (chamar ao final de um worker/CLI). */
 export async function disconnectPrisma(): Promise<void> {
-  if (client !== undefined) {
-    await client.$disconnect()
-    client = undefined
+  if (globalScope.__screenaPrismaClient !== undefined) {
+    await globalScope.__screenaPrismaClient.$disconnect()
+    globalScope.__screenaPrismaClient = undefined
   }
 }
 
