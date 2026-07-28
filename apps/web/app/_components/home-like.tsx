@@ -3,15 +3,21 @@ import type { ReactNode } from 'react'
 import { AdSlot } from './ad-slot'
 import { CardBookmark } from './card-bookmark'
 import { EmptyState, SectionTitle } from './ds'
+import { HomeEditorialHighlights } from './home-editorial-highlights'
 import { HomeHeroCarousel } from './home-hero-carousel'
 import { HomeTicker } from './home-ticker'
 import { MonthStats } from './month-stats'
 import { Rail } from './rail'
 import type { EntityCard } from '../../src/lib/entity-index-presenter'
+import {
+  hasEditorialHighlights,
+  type HomeEditorialHighlights as EditorialHighlights,
+  type HomeEditorialVertical,
+} from '../../src/lib/home-editorial-presenter'
 import type { HeroSlide } from '../../src/lib/home-hero-presenter'
+import type { HomeTickerItem } from '../../src/lib/home-ticker-presenter'
 import type { HomeUpcomingMovie } from '../../src/lib/home-upcoming-presenter'
 import type { NewsCardView } from '../../src/lib/news-presenter'
-import type { TickerEpisode } from '../../src/server/home-ticker'
 import { MOVIES_INDEX_PATH, NEWS_INDEX_PATH, SERIES_INDEX_PATH } from '../../src/lib/site'
 
 /**
@@ -24,7 +30,12 @@ import { MOVIES_INDEX_PATH, NEWS_INDEX_PATH, SERIES_INDEX_PATH } from '../../src
 
 export interface HomeLikeProps {
   heroSlides: readonly HeroSlide[]
-  tickerEpisodes: readonly TickerEpisode[]
+  /** Novidades reais da faixa amarela (4–5 no cenário completo). */
+  tickerItems: readonly HomeTickerItem[]
+  /** Matérias publicadas de "Destaques de hoje", por vertical. */
+  editorialHighlights: EditorialHighlights
+  /** Tab inicial da seção editorial (home = `movies`; categoria = a da rota). */
+  editorialInitialVertical?: HomeEditorialVertical
   movieCards: readonly EntityCard[]
   seriesCards: readonly EntityCard[]
   upcomingMovies: readonly HomeUpcomingMovie[]
@@ -78,7 +89,9 @@ function FreshCard({ card, series = false }: { card: EntityCard; series?: boolea
 
 export function HomeLike({
   heroSlides,
-  tickerEpisodes,
+  tickerItems,
+  editorialHighlights,
+  editorialInitialVertical = 'movies',
   movieCards,
   seriesCards,
   upcomingMovies,
@@ -88,97 +101,43 @@ export function HomeLike({
   adPrefix,
   emptyMessage,
 }: HomeLikeProps): ReactNode {
-  const featuredSource = showMoviesBand ? movieCards : seriesCards
-  const featured = featuredSource.slice(0, 3)
   const popularCards = showMoviesBand ? movieCards : seriesCards
   const newsCategories = [
     ...new Set(newsCards.map((card) => card.category).filter((c): c is string => c !== null)),
   ].slice(0, 6)
   const newsLead: NewsCardView | undefined = newsCards[0]
+  const hasEditorial = hasEditorialHighlights(editorialHighlights)
   const hasContent =
     heroSlides.length +
       movieCards.length +
       seriesCards.length +
       upcomingMovies.length +
       newsCards.length >
-    0
+      0 || hasEditorial
 
   return (
     <>
       {heroSlides.length > 0 ? <HomeHeroCarousel slides={heroSlides} /> : null}
 
-      {/* Faixa amarela: estrutura fixa da composição; o TEXTO é que muda
-          (hoje → próxima estreia confirmada → estado neutro honesto) */}
-      <HomeTicker items={tickerEpisodes} />
+      {/* Faixa amarela: CARROSSEL de novidades reais (episódio, estreia de
+          filme, estreia de temporada, chegada ao streaming). Estrutura fixa da
+          composição: sem novidade nenhuma ela permanece, em estado neutro. */}
+      <HomeTicker items={tickerItems} />
 
-      {/* Destaques de hoje — grid 1.62fr 1fr 1fr, cards de 460px */}
-      {featured.length > 0 ? (
+      {/* Destaques de hoje — seção EDITORIAL: três MATÉRIAS publicadas, grid
+          1.62fr 1fr 1fr, cards de 460px. `Filmes`/`Séries` são tabs internas
+          (não navegam); a seção some quando não há matéria em vertical alguma. */}
+      {hasEditorial ? (
         <section
           aria-labelledby={`${adPrefix}-featured-title`}
           className="container"
           style={{ paddingTop: 48, paddingBottom: 10 }}
         >
-          <div className="feat-head">
-            <SectionTitle id={`${adPrefix}-featured-title`} title="Destaques de hoje" />
-            <div className="seg-toggle">
-              <a
-                aria-current={showMoviesBand ? 'page' : undefined}
-                className="seg-toggle__opt"
-                href={MOVIES_INDEX_PATH}
-              >
-                Filmes
-              </a>
-              <a
-                aria-current={!showMoviesBand && showSeriesBand ? 'page' : undefined}
-                className="seg-toggle__opt"
-                href={SERIES_INDEX_PATH}
-              >
-                Séries
-              </a>
-            </div>
-          </div>
-          <div className="feat-grid">
-            {featured[0] !== undefined ? (
-              <a className="feat-card feat-card--lead" href={featured[0].href}>
-                {featured[0].image !== null ? (
-                  <img
-                    alt=""
-                    className="feat-card__img"
-                    fetchPriority="high"
-                    src={featured[0].image.src}
-                  />
-                ) : null}
-                <span className="feat-card__scrim" />
-                <span className="feat-card__body">
-                  <h3 className="feat-card__title">{featured[0].title}</h3>
-                  {featured[0].meta !== null ? (
-                    <p className="feat-card__sub">
-                      {featured[0].kind === 'series' ? 'Série' : 'Filme'} · {featured[0].meta}
-                    </p>
-                  ) : null}
-                </span>
-              </a>
-            ) : null}
-            {featured.slice(1, 3).map((card, index) => (
-              <a className="feat-card feat-card--poster" href={card.href} key={card.href}>
-                {card.image !== null ? (
-                  <img alt="" className="feat-card__img" loading="lazy" src={card.image.src} />
-                ) : null}
-                <span className="feat-card__scrim" />
-                <span className="feat-card__body">
-                  <span
-                    className={
-                      index === 0 ? 'feat-card__kicker' : 'feat-card__kicker feat-card__kicker--dim'
-                    }
-                  >
-                    {card.kind === 'series' ? 'Série' : 'Filme'}
-                    {card.meta !== null ? ` · ${card.meta}` : ''}
-                  </span>
-                  <h3 className="feat-card__title--sm">{card.title}</h3>
-                </span>
-              </a>
-            ))}
-          </div>
+          <HomeEditorialHighlights
+            headingId={`${adPrefix}-featured-title`}
+            highlights={editorialHighlights}
+            initialVertical={editorialInitialVertical}
+          />
         </section>
       ) : null}
 

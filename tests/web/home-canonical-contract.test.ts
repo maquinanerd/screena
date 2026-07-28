@@ -18,6 +18,15 @@ function read(relativePath: string): string {
   return readFileSync(path.join(ROOT, relativePath), 'utf8')
 }
 
+/**
+ * Código SEM comentários. Guards de "texto proibido" precisam medir o que o
+ * usuário vê, não a prosa que explica por que aquele texto não existe — senão
+ * documentar a regra passa a violá-la.
+ */
+function code(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
+}
+
 describe('home pública — design canônico (tela 02)', () => {
   const home = read(HOME_PATH)
   const homeLike = read(HOME_LIKE_PATH)
@@ -29,7 +38,8 @@ describe('home pública — design canônico (tela 02)', () => {
       'getHomeHeroSlides()',
       'getHomeUpcomingMovies()',
       'getSeriesIndexData()',
-      'getHomeTickerEpisodes()',
+      'getHomeTickerItems()',
+      'getHomeEditorialHighlights()',
     ]) {
       expect(home).toContain(getter)
     }
@@ -55,8 +65,8 @@ describe('home pública — design canônico (tela 02)', () => {
     // (rank) → filmes em alta → stats → séries → em breve → notícias.
     const order = [
       '<HomeHeroCarousel slides={heroSlides} />',
-      '<HomeTicker items={tickerEpisodes} />',
-      'className="feat-grid"',
+      '<HomeTicker items={tickerItems} />',
+      '<HomeEditorialHighlights',
       'className="pop-rail__rank"',
       'label="Filmes em alta"',
       '<MonthStats />',
@@ -174,20 +184,40 @@ describe('home pública — design canônico (tela 02)', () => {
     // A faixa não depende de `items.length > 0` para existir…
     expect(ticker).not.toMatch(/if \(items\.length === 0\) return null/)
     expect(ticker).toContain('className="ticker"')
-    // …mas o estado vazio é honesto: nada de episódio, data ou provedor fake.
-    expect(ticker).toContain('Nenhum episódio novo confirmado para hoje')
+    // …mas o estado vazio é honesto: nada de novidade, data ou provedor fake.
+    expect(ticker).toContain('Nenhuma novidade confirmada para hoje')
     expect(ticker).not.toMatch(/Netflix|Prime Video|Disney\+|Max\b|Apple TV/)
 
-    // O fallback lê o PRÓXIMO episódio já confirmado no banco (nunca estimado).
-    expect(tickerServer).toContain("'upcoming'")
-    expect(tickerServer).toMatch(/airDate: \{ gte: dayEnd/)
+    // A faixa agrega as QUATRO fontes reais (não é mais episódio-ou-fallback).
+    for (const kind of [
+      'episode_today',
+      'episode_upcoming',
+      'movie_release',
+      'series_release',
+      'streaming_arrival',
+    ]) {
+      expect(tickerServer).toMatch(new RegExp(`['"]${kind}['"]`))
+    }
+    // Toda data vem de coluna persistida — nenhuma é estimada.
+    expect(tickerServer).toMatch(/airDate: \{ gte: dayStart, lt: futureEnd \}/)
+    expect(tickerServer).toMatch(/releaseDate: \{ gte: dayStart, lt: futureEnd \}/)
+    expect(tickerServer).toMatch(/availableFrom: \{ gte: arrivalStart, lte: now \}/)
+    // `season_number` REAL (nunca deduzido) e "especiais" (0) fora da estreia.
+    expect(tickerServer).toMatch(/seasonNumber: \{ gt: 0 \}/)
+    expect(tickerServer).toContain('seasonNumber: season.seasonNumber')
 
     // PROVEDOR: reusa o gate compartilhado (nunca uma segunda regra de licença)
     // e consulta em LOTE (uma query para todas as séries — jamais N+1).
     expect(tickerServer).toContain('licensedWatchWhere(now)')
     expect(tickerServer).toContain('selectTickerWatchOffer')
-    expect(tickerServer).toMatch(/entityId: \{ in: \[\.\.\.showIds\] \}/)
+    expect(tickerServer).toMatch(/entityId: \{ in: \[\.\.\.movieIds\] \}/)
+    expect(tickerServer).toMatch(/entityId: \{ in: \[\.\.\.tvIds\] \}/)
     expect(tickerServer).not.toMatch(/for \([^)]*\) \{\s*await prisma\.watchAvailability/)
+    // "Em cartaz" NUNCA é inferido de `release_date`, e sessão de cinema
+    // (formato/idioma/rede/horário) não existe no banco — logo não é exibida.
+    expect(code(tickerServer)).not.toMatch(/em cartaz/i)
+    expect(code(tickerServer)).not.toMatch(/70mm|Legendado|sess(?:ão|ões)|Kinoplex|Cinesystem/i)
+    expect(code(ticker)).not.toMatch(/em cartaz/i)
     // Nenhum provedor hardcoded em lugar nenhum da faixa.
     expect(tickerServer).not.toMatch(/Netflix|Prime Video|Disney\+|Apple TV/)
     // O crédito exigido pela licença é renderizado VISIVELMENTE.

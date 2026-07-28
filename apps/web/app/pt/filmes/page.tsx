@@ -9,6 +9,7 @@ import {
 } from '../../../src/lib/portal-presenter'
 import { SITE_URL, publicRobots } from '../../../src/lib/site'
 import { getHomeCatalogData } from '../../../src/server/home-catalog'
+import { getHomeEditorialHighlights } from '../../../src/server/home-editorial'
 import { getHomeHeroSlides } from '../../../src/server/home-hero'
 import { getHomeUpcomingMovies } from '../../../src/server/home-upcoming'
 import { getMovieIndexData } from '../../../src/server/entity-indexes'
@@ -40,12 +41,13 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function MovieCategoryPage() {
-  const [index, catalog, news, heroSlides, upcoming] = await Promise.all([
+  const [index, catalog, news, heroSlides, upcoming, editorialHighlights] = await Promise.all([
     getMovieIndexData(),
     getHomeCatalogData(),
     getNewsIndexData(),
     getHomeHeroSlides(),
     getHomeUpcomingMovies(),
+    getHomeEditorialHighlights(),
   ])
 
   const movieHero = heroSlides.filter((slide) => slide.vertical === 'movie')
@@ -89,6 +91,8 @@ export default async function MovieCategoryPage() {
 
       <HomeLike
         adPrefix="filmes"
+        editorialHighlights={editorialHighlights}
+        editorialInitialVertical="movies"
         emptyMessage="Ainda não há filmes publicados nesta seção."
         heroSlides={movieHero}
         movieCards={movieCards}
@@ -96,7 +100,7 @@ export default async function MovieCategoryPage() {
         seriesCards={[]}
         showMoviesBand
         showSeriesBand={false}
-        tickerEpisodes={[]}
+        tickerItems={[]}
         upcomingMovies={upcoming}
       />
       <script

@@ -1,253 +1,486 @@
 /**
- * home-ticker.ts — Camada SERVER-ONLY da faixa amarela da home (canonico:
- * "slide de episodios novos hoje · atualiza diariamente").
+ * home-ticker.ts — Camada SERVER-ONLY da faixa amarela da home.
  *
- * Invariantes 3/4: le SOMENTE PostgreSQL local. So episodio cuja serie tem
- * titulo real e slug canonico pt-BR.
+ * A faixa é um CARROSSEL de novidades reais (4–5 itens, um visível por vez),
+ * não "o episódio de hoje ou um fallback". Este módulo agrega QUATRO fontes
+ * persistidas e entrega uma lista serializável já ordenada e deduplicada:
  *
- * A FAIXA e estrutura da home (fica sempre), mas o TEXTO nunca e inventado:
- *  1. episodio com `air_date` = HOJE (UTC)      -> kind "today";
- *  2. senao, proximos episodios confirmados     -> kind "upcoming" (com a data);
- *  3. senao, lista vazia -> a faixa exibe estado neutro e honesto ("nenhum
- *     episodio novo confirmado para hoje"), sem episodio, data ou plataforma
- *     fabricados.
+ *   1. `episodes.air_date`   -> episódio de hoje / próximo episódio confirmado
+ *   2. `movies.release_date` -> estreia de filme (hoje / confirmada)
+ *   3. `seasons.air_date`    -> estreia de temporada (com `season_number` REAL)
+ *   4. `watch_availability.available_from` -> chegada ao streaming, e SÓ com
+ *      oferta aprovada pelo gate compartilhado `licensedWatchWhere`
+ *
+ * Invariantes 3/4: lê SOMENTE PostgreSQL local. Zero API externa, zero Gemini.
+ *
+ * SEM N+1: o número de queries é CONSTANTE, independente da quantidade de itens.
+ * São 7 no caminho comum e no máximo 9:
+ *
+ *   4 de descoberta (episódio, filme, temporada, chegada ao streaming) — em paralelo
+ *   3 de resolução em lote (slugs + traduções + provedores licenciados)
+ *   0–2 de backfill de nome ORIGINAL, e só para as entidades que apareceram
+ *     exclusivamente pela chegada ao streaming (essa query traz id e data, não
+ *     título). Sem entidade nessa condição, as duas não acontecem.
+ *
+ * HONESTIDADE: só entra na faixa entidade com título real e slug canônico pt-BR.
+ * Sem novidade nenhuma, a lista volta vazia e a faixa assume o estado neutro —
+ * nunca episódio, data, sessão de cinema ou plataforma fabricados.
  */
 
-import { cache } from 'react'
-import { getPrismaClient } from '@screena/db/server'
+import { cache } from "react";
+import { getPrismaClient } from "@screena/db/server";
 
-import { licensedWatchWhere } from './entity-watch'
+import { licensedWatchWhere } from "./entity-watch";
+import {
+  formatEventDate,
+  HOME_TICKER_ARRIVAL_WINDOW_DAYS,
+  HOME_TICKER_FUTURE_WINDOW_DAYS,
+  HOME_TICKER_MAX_ITEMS,
+  orderAndDedupeTickerItems,
+  startOfUtcDay,
+  tickerItemId,
+  type HomeTickerEntityType,
+  type HomeTickerItem,
+  type TickerProvider,
+} from "../lib/home-ticker-presenter";
 import {
   selectTickerWatchOffer,
   type WatchAvailabilityRow,
-} from '../lib/watch-availability-presenter'
-import { SERIES_INDEX_PATH } from '../lib/site'
+} from "../lib/watch-availability-presenter";
+import { MOVIES_INDEX_PATH, SERIES_INDEX_PATH } from "../lib/site";
 
-const LANGUAGE_CODE = 'pt-BR'
-const TICKER_LIMIT = 6
+export type {
+  HomeTickerItem,
+  HomeTickerEpisodeItem,
+  HomeTickerMovieReleaseItem,
+  HomeTickerSeriesReleaseItem,
+  HomeTickerStreamingItem,
+  HomeTickerKind,
+  HomeTickerBadge,
+  TickerProvider,
+} from "../lib/home-ticker-presenter";
 
-/** Janela de "proxima estreia confirmada" quando nao ha episodio hoje. */
-const UPCOMING_WINDOW_DAYS = 30
-
-/** Teto defensivo de ofertas buscadas para o lote inteiro do ticker. */
-const WATCH_FETCH_LIMIT = 120
-
-/**
- * Provedor legal de UMA serie do ticker — ja aprovado pelo MESMO gate de
- * licenca do painel de detalhe (`licensedWatchWhere` + presenter puro). Nunca
- * plataforma inventada, nunca logo (a licenca do agregador nao autoriza logo).
- */
-export interface TickerProvider {
-  /** Nome do provedor como licenciado (texto; nunca logo). */
-  name: string
-  /** `watch_availability.provider_key` — chave estavel. */
-  key: string
-  /** Credito exigido pela licenca, quando exigido; senao null. */
-  attributionText: string | null
-  /** Linkback exigido pela licenca, quando exigido; senao null. */
-  attributionUrl: string | null
-}
-
-export interface TickerEpisode {
-  /** Estreia hoje ou proxima estreia confirmada. */
-  kind: 'today' | 'upcoming'
-  /** Nome da serie (traducao pt-BR ou original). */
-  series: string
-  /** Codigo curto "T2 · E5". */
-  seasonEp: string
-  /** Titulo do episodio, ou null (omitido). */
-  episodeTitle: string | null
-  /** Data de estreia formatada (so em `upcoming`), ou null. */
-  airDateLabel: string | null
-  /** `/pt/series/{slug}/` — destino real. */
-  href: string
-  /** Provedor legal quando ha oferta licenciada vigente; senao null. */
-  provider: TickerProvider | null
-}
-
-interface EpisodeRow {
-  tvShowId: bigint
-  episodeNumber: number
-  name: string | null
-  airDate: Date | null
-  season: { seasonNumber: number; tvShow: { nameOriginal: string } }
-}
-
-const EPISODE_SELECT = {
-  tvShowId: true,
-  episodeNumber: true,
-  name: true,
-  airDate: true,
-  // season_number e DERIVADO de seasons (o episodio nao o armazena).
-  season: { select: { seasonNumber: true, tvShow: { select: { nameOriginal: true } } } },
-} as const
-
-/** "30 de julho" — data curta pt-BR em UTC (sem alegar hora). */
-function formatAirDate(date: Date): string {
-  return new Intl.DateTimeFormat('pt-BR', {
-    day: 'numeric',
-    month: 'long',
-    timeZone: 'UTC',
-  }).format(date)
-}
+const LANGUAGE_CODE = "pt-BR";
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /**
- * Provedor legal por serie, em LOTE: UMA query de `watch_availability` para
- * todas as series do ticker (nunca N+1), com o gate compartilhado
- * `licensedWatchWhere(now)` — o MESMO usado pelo painel de detalhe e pelo hub
- * /pt/onde-assistir. Nao existe segunda regra de autorizacao neste caminho.
+ * Teto de linhas lidas por fonte de evento (cap EXPLÍCITO e consciente).
  *
- * A escolha final e do presenter puro `selectTickerWatchOffer`, que reaplica os
- * gates (display_allowed, modalidade legal, deep link http/https,
- * atribuicao/linkback exigidos) e ordena de forma deterministica.
+ * A faixa exibe no máximo `HOME_TICKER_MAX_ITEMS` e deduplica por ENTIDADE, ou
+ * seja: 60 linhas precisam render ~5 entidades distintas. Isso cobre com folga
+ * qualquer catálogo real. O caso extremo conhecido é uma temporada inteira
+ * estreando no mesmo dia numa única série (as 60 linhas seriam do mesmo
+ * `tv_show_id`): a faixa então mostra MENOS itens reais, nunca itens inventados
+ * para completar. É a troca certa — a alternativa seria fabricar novidade.
  */
-async function providersByShow(
-  prisma: ReturnType<typeof getPrismaClient>,
-  showIds: readonly bigint[],
+const EVENT_FETCH_LIMIT = 60;
+
+/** Teto de ofertas lidas na descoberta de chegadas ao streaming. */
+const ARRIVAL_FETCH_LIMIT = 40;
+
+/** Teto de ofertas lidas na resolução em lote de provedores. */
+const PROVIDER_FETCH_LIMIT = 160;
+
+type PrismaClient = ReturnType<typeof getPrismaClient>;
+
+/** Chave de mapa por entidade (`movie:12` / `tv:34`). */
+function entityKey(entityType: HomeTickerEntityType, entityId: bigint | string): string {
+  return `${entityType}:${entityId.toString()}`;
+}
+
+/** `YYYY-MM-DD` em UTC — a coluna é `@db.Date`; não alegamos hora. */
+function toDateIso(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+const WATCH_OFFER_SELECT = {
+  entityType: true,
+  entityId: true,
+  providerName: true,
+  providerKey: true,
+  offerType: true,
+  deepLink: true,
+  quality: true,
+  price: true,
+  currency: true,
+  displayAllowed: true,
+  fetchedAt: true,
+  requiresAttribution: true,
+  requiresLinkback: true,
+  attributionText: true,
+  attributionUrl: true,
+} as const;
+
+type WatchOfferRow = {
+  entityType: string;
+  entityId: bigint;
+  providerName: string;
+  providerKey: string | null;
+  offerType: unknown;
+  deepLink: string | null;
+  quality: string | null;
+  price: { toString: () => string } | null;
+  currency: string | null;
+  displayAllowed: boolean;
+  fetchedAt: Date | null;
+  requiresAttribution: boolean;
+  requiresLinkback: boolean;
+  attributionText: string | null;
+  attributionUrl: string | null;
+};
+
+function toWatchRow(row: WatchOfferRow): WatchAvailabilityRow {
+  return {
+    providerName: row.providerName,
+    providerKey: row.providerKey,
+    offerType: row.offerType === null ? null : String(row.offerType),
+    deepLink: row.deepLink,
+    quality: row.quality,
+    priceAmount: row.price === null ? null : row.price.toString(),
+    currency: row.currency,
+    displayAllowed: row.displayAllowed,
+    fetchedAtIso: row.fetchedAt === null ? null : row.fetchedAt.toISOString(),
+    requiresAttribution: row.requiresAttribution,
+    requiresLinkback: row.requiresLinkback,
+    attributionText: row.attributionText,
+    attributionUrl: row.attributionUrl,
+  };
+}
+
+/**
+ * Provedor legal por entidade, em UMA query para TODAS as entidades candidatas
+ * (filmes e séries juntos) — nunca uma consulta de streaming por item.
+ *
+ * O gate é o compartilhado `licensedWatchWhere(now)`, o MESMO do painel de
+ * detalhe e do hub /pt/onde-assistir; a escolha final é do presenter puro
+ * `selectTickerWatchOffer`, que reaplica os gates (display_allowed, modalidade
+ * legal, deep link http/https, atribuição/linkback exigidos) e ordena de forma
+ * determinística. Não existe segunda regra de autorização neste caminho.
+ */
+async function resolveProviders(
+  prisma: PrismaClient,
+  movieIds: readonly bigint[],
+  tvIds: readonly bigint[],
   now: Date,
 ): Promise<Map<string, TickerProvider>> {
-  const out = new Map<string, TickerProvider>()
-  if (showIds.length === 0) return out
+  const out = new Map<string, TickerProvider>();
+  if (movieIds.length === 0 && tvIds.length === 0) return out;
 
-  const rows = await prisma.watchAvailability.findMany({
-    where: { entityType: 'tv', entityId: { in: [...showIds] }, ...licensedWatchWhere(now) },
-    take: WATCH_FETCH_LIMIT,
-    select: {
-      entityId: true,
-      providerName: true,
-      providerKey: true,
-      offerType: true,
-      deepLink: true,
-      quality: true,
-      price: true,
-      currency: true,
-      displayAllowed: true,
-      fetchedAt: true,
-      requiresAttribution: true,
-      requiresLinkback: true,
-      attributionText: true,
-      attributionUrl: true,
-    },
-  })
+  const scope = [
+    ...(movieIds.length > 0
+      ? [{ entityType: "movie" as const, entityId: { in: [...movieIds] } }]
+      : []),
+    ...(tvIds.length > 0 ? [{ entityType: "tv" as const, entityId: { in: [...tvIds] } }] : []),
+  ];
 
-  const byShow = new Map<string, WatchAvailabilityRow[]>()
+  const rows = (await prisma.watchAvailability.findMany({
+    where: { AND: [{ OR: scope }, licensedWatchWhere(now)] },
+    take: PROVIDER_FETCH_LIMIT,
+    select: WATCH_OFFER_SELECT,
+  })) as unknown as WatchOfferRow[];
+
+  const grouped = new Map<string, WatchAvailabilityRow[]>();
   for (const row of rows) {
-    const key = row.entityId.toString()
-    const bucket = byShow.get(key) ?? []
-    bucket.push({
-      providerName: row.providerName,
-      providerKey: row.providerKey,
-      offerType: row.offerType === null ? null : String(row.offerType),
-      deepLink: row.deepLink,
-      quality: row.quality,
-      priceAmount: row.price === null ? null : row.price.toString(),
-      currency: row.currency,
-      displayAllowed: row.displayAllowed,
-      fetchedAtIso: row.fetchedAt === null ? null : row.fetchedAt.toISOString(),
-      requiresAttribution: row.requiresAttribution,
-      requiresLinkback: row.requiresLinkback,
-      attributionText: row.attributionText,
-      attributionUrl: row.attributionUrl,
-    })
-    byShow.set(key, bucket)
+    const key = entityKey(row.entityType as HomeTickerEntityType, row.entityId);
+    const bucket = grouped.get(key) ?? [];
+    bucket.push(toWatchRow(row));
+    grouped.set(key, bucket);
   }
 
-  for (const [key, candidateRows] of byShow) {
-    const offer = selectTickerWatchOffer(candidateRows)
-    if (offer === null) continue
+  for (const [key, candidates] of grouped) {
+    const offer = selectTickerWatchOffer(candidates);
+    if (offer === null) continue;
     out.set(key, {
       name: offer.providerName,
       key: offer.providerKey,
       attributionText: offer.attribution?.text ?? null,
       attributionUrl: offer.attribution?.url ?? null,
-    })
+    });
   }
-  return out
+  return out;
+}
+
+interface EntityIdentity {
+  title: string;
+  href: string;
 }
 
 /**
- * Resolve titulo/slug pt-BR das series envolvidas e monta os itens, uma entrada
- * por serie (a primeira que aparecer na ordenacao recebida). Serie sem slug
- * canonico ou sem titulo e descartada — nunca link quebrado.
+ * Título pt-BR (com fallback para o nome original) e rota canônica de todas as
+ * entidades candidatas — DUAS queries em lote (slugs e traduções), nunca uma
+ * por item. Entidade sem slug canônico ou sem título fica de fora: a faixa
+ * nunca produz link quebrado.
  */
-async function toTickerEpisodes(
-  prisma: ReturnType<typeof getPrismaClient>,
-  episodes: readonly EpisodeRow[],
-  kind: TickerEpisode['kind'],
-  now: Date,
-): Promise<TickerEpisode[]> {
-  if (episodes.length === 0) return []
-  const showIds = [...new Set(episodes.map((episode) => episode.tvShowId))]
-  const [translations, slugs, providers] = await Promise.all([
-    prisma.entityTranslation.findMany({
-      where: { entityType: 'tv', entityId: { in: showIds }, languageCode: LANGUAGE_CODE },
-      select: { entityId: true, title: true },
-    }),
-    prisma.slug.findMany({
-      where: {
-        entityType: 'tv',
-        entityId: { in: showIds },
-        languageCode: LANGUAGE_CODE,
-        isCanonical: true,
-      },
-      select: { entityId: true, slug: true },
-    }),
-    providersByShow(prisma, showIds, now),
-  ])
-  const titleById = new Map<string, string>()
-  for (const row of translations) {
-    const title = row.title?.trim()
-    if (title) titleById.set(row.entityId.toString(), title)
-  }
-  const slugById = new Map<string, string>()
-  for (const row of slugs) slugById.set(row.entityId.toString(), row.slug)
+async function resolveIdentities(
+  prisma: PrismaClient,
+  movieIds: readonly bigint[],
+  tvIds: readonly bigint[],
+  originalNames: ReadonlyMap<string, string>,
+): Promise<Map<string, EntityIdentity>> {
+  const out = new Map<string, EntityIdentity>();
+  if (movieIds.length === 0 && tvIds.length === 0) return out;
 
-  const out: TickerEpisode[] = []
-  const seenShows = new Set<string>()
-  for (const episode of episodes) {
-    const key = episode.tvShowId.toString()
-    if (seenShows.has(key)) continue
-    const slug = slugById.get(key)
-    const series = titleById.get(key) ?? episode.season.tvShow.nameOriginal.trim()
-    if (slug === undefined || series === '') continue
-    seenShows.add(key)
-    out.push({
-      kind,
-      series,
-      seasonEp: `T${episode.season.seasonNumber} · E${episode.episodeNumber}`,
-      episodeTitle: episode.name?.trim() || null,
-      airDateLabel:
-        kind === 'upcoming' && episode.airDate !== null ? formatAirDate(episode.airDate) : null,
-      href: `${SERIES_INDEX_PATH}${slug}/`,
-      provider: providers.get(key) ?? null,
-    })
-    if (out.length >= TICKER_LIMIT) break
+  const scope = [
+    ...(movieIds.length > 0
+      ? [{ entityType: "movie" as const, entityId: { in: [...movieIds] } }]
+      : []),
+    ...(tvIds.length > 0 ? [{ entityType: "tv" as const, entityId: { in: [...tvIds] } }] : []),
+  ];
+
+  const [slugs, translations] = await Promise.all([
+    prisma.slug.findMany({
+      where: { OR: scope, languageCode: LANGUAGE_CODE, isCanonical: true },
+      select: { entityType: true, entityId: true, slug: true },
+    }),
+    prisma.entityTranslation.findMany({
+      where: { OR: scope, languageCode: LANGUAGE_CODE },
+      select: { entityType: true, entityId: true, title: true },
+    }),
+  ]);
+
+  const titleByKey = new Map<string, string>();
+  for (const row of translations) {
+    const title = row.title?.trim();
+    if (title) titleByKey.set(entityKey(row.entityType as HomeTickerEntityType, row.entityId), title);
   }
-  return out
+
+  for (const row of slugs) {
+    const type = row.entityType as HomeTickerEntityType;
+    const key = entityKey(type, row.entityId);
+    const title = titleByKey.get(key) ?? originalNames.get(key)?.trim() ?? "";
+    if (title === "") continue;
+    const base = type === "movie" ? MOVIES_INDEX_PATH : SERIES_INDEX_PATH;
+    out.set(key, { title, href: `${base}${row.slug}/` });
+  }
+  return out;
 }
 
-export const getHomeTickerEpisodes = cache(async (): Promise<TickerEpisode[]> => {
-  const prisma = getPrismaClient()
-  const now = new Date()
-  const dayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
-  const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000)
+/**
+ * Itens da faixa amarela: novidades REAIS agregadas das quatro fontes, já
+ * ordenadas (hoje -> futuro por data -> chegada ao streaming) e deduplicadas
+ * (uma novidade por entidade). Lista vazia = faixa em estado neutro.
+ */
+export const getHomeTickerItems = cache(async (): Promise<HomeTickerItem[]> => {
+  const prisma = getPrismaClient();
+  const now = new Date();
+  const dayStart = startOfUtcDay(now);
+  const dayEnd = new Date(dayStart.getTime() + MS_PER_DAY);
+  const futureEnd = new Date(dayEnd.getTime() + HOME_TICKER_FUTURE_WINDOW_DAYS * MS_PER_DAY);
+  const arrivalStart = new Date(dayStart.getTime() - HOME_TICKER_ARRIVAL_WINDOW_DAYS * MS_PER_DAY);
 
-  const todayEpisodes = await prisma.episode.findMany({
-    where: { airDate: { gte: dayStart, lt: dayEnd } },
-    take: TICKER_LIMIT * 3,
-    orderBy: [{ tvShowId: 'asc' }, { episodeNumber: 'asc' }],
-    select: EPISODE_SELECT,
-  })
-  const today = await toTickerEpisodes(prisma, todayEpisodes, 'today', now)
-  if (today.length > 0) return today
+  // ------------------------------------------------------------ descoberta
+  // Quatro queries de EVENTO, cada uma com janela e teto próprios. Nenhuma
+  // depende do resultado das outras: rodam em paralelo.
+  const [episodes, movies, seasons, arrivals] = await Promise.all([
+    prisma.episode.findMany({
+      where: { airDate: { gte: dayStart, lt: futureEnd } },
+      take: EVENT_FETCH_LIMIT,
+      orderBy: [{ airDate: "asc" }, { tvShowId: "asc" }, { episodeNumber: "asc" }],
+      select: {
+        tvShowId: true,
+        episodeNumber: true,
+        name: true,
+        airDate: true,
+        // `season_number` é DERIVADO de seasons (o episódio não o armazena).
+        season: { select: { seasonNumber: true, tvShow: { select: { nameOriginal: true } } } },
+      },
+    }),
+    prisma.movie.findMany({
+      where: { releaseDate: { gte: dayStart, lt: futureEnd } },
+      take: EVENT_FETCH_LIMIT,
+      orderBy: [{ releaseDate: "asc" }, { id: "asc" }],
+      select: { id: true, titleOriginal: true, releaseDate: true },
+    }),
+    prisma.season.findMany({
+      // `season_number = 0` é "especiais" no TMDB: não é estreia de temporada.
+      where: { airDate: { gte: dayStart, lt: futureEnd }, seasonNumber: { gt: 0 } },
+      take: EVENT_FETCH_LIMIT,
+      orderBy: [{ airDate: "asc" }, { tvShowId: "asc" }, { seasonNumber: "asc" }],
+      select: {
+        tvShowId: true,
+        seasonNumber: true,
+        airDate: true,
+        tvShow: { select: { nameOriginal: true } },
+      },
+    }),
+    prisma.watchAvailability.findMany({
+      where: {
+        AND: [
+          { OR: [{ entityType: "movie" as const }, { entityType: "tv" as const }] },
+          { availableFrom: { gte: arrivalStart, lte: now } },
+          licensedWatchWhere(now),
+        ],
+      },
+      take: ARRIVAL_FETCH_LIMIT,
+      orderBy: [{ availableFrom: "desc" }, { id: "asc" }],
+      select: { entityType: true, entityId: true, availableFrom: true },
+    }),
+  ]);
 
-  // Fallback honesto: proxima estreia JA CONFIRMADA no banco (nunca estimada).
-  const windowEnd = new Date(dayEnd.getTime() + UPCOMING_WINDOW_DAYS * 24 * 60 * 60 * 1000)
-  const upcomingEpisodes = await prisma.episode.findMany({
-    where: { airDate: { gte: dayEnd, lt: windowEnd } },
-    take: TICKER_LIMIT * 3,
-    orderBy: [{ airDate: 'asc' }, { tvShowId: 'asc' }, { episodeNumber: 'asc' }],
-    select: EPISODE_SELECT,
-  })
-  return toTickerEpisodes(prisma, upcomingEpisodes, 'upcoming', now)
-})
+  // ------------------------------------------- candidatos e nomes originais
+  const movieIdSet = new Map<string, bigint>();
+  const tvIdSet = new Map<string, bigint>();
+  const originalNames = new Map<string, string>();
+
+  for (const episode of episodes) {
+    tvIdSet.set(episode.tvShowId.toString(), episode.tvShowId);
+    originalNames.set(entityKey("tv", episode.tvShowId), episode.season.tvShow.nameOriginal);
+  }
+  for (const movie of movies) {
+    movieIdSet.set(movie.id.toString(), movie.id);
+    originalNames.set(entityKey("movie", movie.id), movie.titleOriginal);
+  }
+  for (const season of seasons) {
+    tvIdSet.set(season.tvShowId.toString(), season.tvShowId);
+    originalNames.set(entityKey("tv", season.tvShowId), season.tvShow.nameOriginal);
+  }
+  for (const arrival of arrivals) {
+    if (arrival.entityType === "movie") movieIdSet.set(arrival.entityId.toString(), arrival.entityId);
+    else if (arrival.entityType === "tv") tvIdSet.set(arrival.entityId.toString(), arrival.entityId);
+  }
+
+  const movieIds = [...movieIdSet.values()];
+  const tvIds = [...tvIdSet.values()];
+  if (movieIds.length === 0 && tvIds.length === 0) return [];
+
+  // ------------------------------------------------- backfill de nome (0–2)
+  // A query de chegadas ao streaming traz só id e data. Quem apareceu SÓ por
+  // ela ainda não tem nome original — as outras três já trouxeram o seu. Só
+  // essas entidades são consultadas; sem nenhuma, nenhuma query acontece.
+  const movieIdsMissingName = movieIds.filter((id) => !originalNames.has(entityKey("movie", id)));
+  const tvIdsMissingName = tvIds.filter((id) => !originalNames.has(entityKey("tv", id)));
+  const [missingMovieNames, missingTvNames] = await Promise.all([
+    movieIdsMissingName.length > 0
+      ? prisma.movie.findMany({
+          where: { id: { in: movieIdsMissingName } },
+          select: { id: true, titleOriginal: true },
+        })
+      : Promise.resolve([]),
+    tvIdsMissingName.length > 0
+      ? prisma.tvShow.findMany({
+          where: { id: { in: tvIdsMissingName } },
+          select: { id: true, nameOriginal: true },
+        })
+      : Promise.resolve([]),
+  ]);
+  for (const row of missingMovieNames) {
+    originalNames.set(entityKey("movie", row.id), row.titleOriginal);
+  }
+  for (const row of missingTvNames) {
+    originalNames.set(entityKey("tv", row.id), row.nameOriginal);
+  }
+
+  const [identities, providers] = await Promise.all([
+    resolveIdentities(prisma, movieIds, tvIds, originalNames),
+    resolveProviders(prisma, movieIds, tvIds, now),
+  ]);
+
+  // ---------------------------------------------------------- montagem
+  const items: HomeTickerItem[] = [];
+  const todayMs = dayStart.getTime();
+  const isToday = (date: Date): boolean =>
+    date.getTime() >= todayMs && date.getTime() < todayMs + MS_PER_DAY;
+
+  for (const episode of episodes) {
+    if (episode.airDate === null) continue;
+    const key = entityKey("tv", episode.tvShowId);
+    const identity = identities.get(key);
+    if (identity === undefined) continue;
+    const today = isToday(episode.airDate);
+    const eventAtIso = toDateIso(episode.airDate);
+    const episodeTitle = episode.name?.trim() || null;
+    const seasonEp = `T${episode.season.seasonNumber} · E${episode.episodeNumber}`;
+    items.push({
+      kind: today ? "episode_today" : "episode_upcoming",
+      id: tickerItemId(today ? "episode_today" : "episode_upcoming", "tv", key, eventAtIso),
+      badge: today ? "NOVO" : "EM BREVE",
+      title: identity.title,
+      detail: [
+        seasonEp,
+        episodeTitle,
+        today ? "novo episódio hoje" : `estreia em ${formatEventDate(episode.airDate)}`,
+      ]
+        .filter((part): part is string => part !== null)
+        .join(" · "),
+      href: identity.href,
+      provider: providers.get(key) ?? null,
+      eventAtIso,
+      entityType: "tv",
+      entityId: episode.tvShowId.toString(),
+      seasonEp,
+      episodeTitle,
+    });
+  }
+
+  for (const movie of movies) {
+    if (movie.releaseDate === null) continue;
+    const key = entityKey("movie", movie.id);
+    const identity = identities.get(key);
+    if (identity === undefined) continue;
+    const today = isToday(movie.releaseDate);
+    const eventAtIso = toDateIso(movie.releaseDate);
+    items.push({
+      kind: "movie_release",
+      id: tickerItemId("movie_release", "movie", movie.id.toString(), eventAtIso),
+      badge: today ? "NOVO" : "EM BREVE",
+      title: identity.title,
+      // "estreia hoje" é o que `release_date` afirma. "Em cartaz" seria outro
+      // fato (sessão numa sala), que o sistema NÃO tem persistido.
+      detail: today ? "estreia hoje" : `estreia em ${formatEventDate(movie.releaseDate)}`,
+      href: identity.href,
+      provider: providers.get(key) ?? null,
+      eventAtIso,
+      entityType: "movie",
+      entityId: movie.id.toString(),
+    });
+  }
+
+  for (const season of seasons) {
+    if (season.airDate === null) continue;
+    const key = entityKey("tv", season.tvShowId);
+    const identity = identities.get(key);
+    if (identity === undefined) continue;
+    const today = isToday(season.airDate);
+    const eventAtIso = toDateIso(season.airDate);
+    items.push({
+      kind: "series_release",
+      id: tickerItemId("series_release", "tv", season.tvShowId.toString(), eventAtIso),
+      badge: today ? "NOVO" : "EM BREVE",
+      title: identity.title,
+      detail: today
+        ? `temporada ${season.seasonNumber} disponível hoje`
+        : `temporada ${season.seasonNumber} estreia em ${formatEventDate(season.airDate)}`,
+      href: identity.href,
+      provider: providers.get(key) ?? null,
+      eventAtIso,
+      entityType: "tv",
+      entityId: season.tvShowId.toString(),
+      seasonNumber: season.seasonNumber,
+    });
+  }
+
+  for (const arrival of arrivals) {
+    const type = arrival.entityType === "movie" ? "movie" : "tv";
+    const key = entityKey(type, arrival.entityId);
+    const identity = identities.get(key);
+    const provider = providers.get(key);
+    // Chegada ao streaming SÓ existe com provedor aprovado pelo gate: sem ele o
+    // item não é "recém-chegou a lugar nenhum" — simplesmente não existe.
+    if (identity === undefined || provider === undefined) continue;
+    const eventAtIso = arrival.availableFrom === null ? null : arrival.availableFrom.toISOString();
+    items.push({
+      kind: "streaming_arrival",
+      id: tickerItemId("streaming_arrival", type, arrival.entityId.toString(), eventAtIso),
+      badge: "NOVO",
+      title: identity.title,
+      detail: "chegou ao streaming",
+      href: identity.href,
+      provider,
+      eventAtIso,
+      entityType: type,
+      entityId: arrival.entityId.toString(),
+    });
+  }
+
+  return orderAndDedupeTickerItems(items, now, HOME_TICKER_MAX_ITEMS);
+});

@@ -59,10 +59,13 @@ describe('shell público — design canônico', () => {
     expect(gradientBlocks.length).toBeGreaterThan(0)
     for (const block of gradientBlocks) {
       // toda classe com gradiente é um SCRIM de mídia (hero, cards de
-      // overlay, critic-band) ou uma CAPA de mídia (lista sem imagem própria)
-      // — nunca decoração solta em superfície clara
+      // overlay, critic-band) ou uma CAPA de mídia (lista sem imagem própria,
+      // matéria sem imagem publicável) — nunca decoração solta em superfície
+      // clara. `feat-card__placeholder` entra como CAPA: ele ocupa o lugar da
+      // imagem da matéria, e é justamente por NÃO usar o pôster da entidade
+      // relacionada que precisa de uma superfície própria.
       expect(block).toMatch(
-        /scrim|nws-(?:feature__img|card__cover|rail__post)::after|art-byline__avatar|list-card__media--g/,
+        /scrim|nws-(?:feature__img|card__cover|rail__post)::after|art-byline__avatar|list-card__media--g|feat-card__placeholder/,
       )
     }
   })

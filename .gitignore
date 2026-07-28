@@ -30,6 +30,7 @@ next-env.d.ts
 
 # Capturas do QA visual da home (regeraveis por `pnpm --filter @screena/web qa:home-fold`)
 apps/web/.qa-home-fold/
+apps/web/.qa-home-editorial/
 
 # Ambiente — chaves vivem SO em env vars, nunca versionadas
 .env

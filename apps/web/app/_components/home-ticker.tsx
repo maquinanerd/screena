@@ -1,43 +1,43 @@
 'use client'
 
 /**
- * HomeTicker — faixa amarela do canonico, entre o hero e "Destaques de hoje".
- * Ela e ESTRUTURA da home: nao some quando o slide ativo e um filme nem quando
- * nao ha estreia hoje.
+ * HomeTicker — faixa amarela do canônico, entre o hero e "Destaques de hoje".
  *
- * O que muda e so o TEXTO, sempre com dado real do PostgreSQL:
- *  - `today`    -> selo NOVO + episodio que estreia hoje;
- *  - `upcoming` -> selo EM BREVE + proxima estreia JA CONFIRMADA (com a data);
- *  - lista vazia -> estado neutro e honesto, sem episodio, data ou plataforma
- *    inventados.
+ * Ela é um CARROSSEL INDEPENDENTE de novidades reais (4–5 itens no cenário
+ * completo), não "o episódio de hoje ou um fallback". Um item por vez; os dots
+ * representam TODOS os itens; autoplay + controle manual + teclado.
  *
- * PROVEDOR: o `provider` de cada item ja veio aprovado pelo gate compartilhado
+ * Cada item pode ser episódio (hoje/próximo), estreia de filme, estreia de
+ * temporada ou chegada ao streaming — o `kind` decide o texto e o CTA. Nenhum
+ * dado de sessão de cinema (formato, idioma, sala, rede, horário) é exibido:
+ * o sistema não persiste esses fatos.
+ *
+ * PROVEDOR: o `provider` de cada item já veio aprovado pelo gate compartilhado
  * de `watch_availability` (licensedWatchWhere + presenter puro). Quando ele
- * existe, o CTA vira "Onde assistir · <provedor>" e o CREDITO exigido pela
- * licenca e renderizado VISIVELMENTE ao lado (com linkback quando exigido) —
- * exibir a oferta sem o credito violaria a licenca que autoriza exibi-la.
- * Sem provedor permitido, o CTA cai para a ficha real da serie. Este componente
- * NUNCA renderiza logo de plataforma nem nome que nao tenha vindo do banco.
+ * existe, o CTA vira "Onde assistir · <provedor>" e o CRÉDITO exigido pela
+ * licença é renderizado VISIVELMENTE (com linkback quando exigido) — exibir a
+ * oferta sem o crédito violaria a licença que autoriza exibi-la. O crédito
+ * acompanha o item ATIVO: ao trocar de slide, o crédito do item anterior some.
  *
- * Dots como tabs reais (role=tab, setas do teclado) rotacionando os itens; o
- * CTA leva a uma rota real.
+ * A faixa é ESTRUTURA da home: sem novidade nenhuma ela permanece, em estado
+ * neutro e honesto.
+ *
+ * Independente do hero: autoplay e índice próprios, nunca sincronizados.
  */
 
-import { useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 
-import type { TickerEpisode, TickerProvider } from '../../src/server/home-ticker'
-// `routes` (nao `site`): modulo puro, importavel em client component.
+import type { HomeTickerItem, TickerProvider } from '../../src/lib/home-ticker-presenter'
+// `routes` (não `site`): módulo puro, importável em client component.
 import { SERIES_INDEX_PATH } from '../../src/lib/routes'
 
-const BADGE: Readonly<Record<TickerEpisode['kind'], string>> = {
-  today: 'NOVO',
-  upcoming: 'EM BREVE',
-}
+/** Intervalo do autoplay da faixa. Independente do autoplay do hero. */
+const AUTOPLAY_MS = 6000
 
 /**
- * Credito da licenca do agregador. Renderizado SEMPRE que o provedor exigir
- * atribuicao — sem ele a oferta nao poderia aparecer (invariante 6).
+ * Crédito da licença do agregador. Renderizado SEMPRE que o provedor exigir
+ * atribuição — sem ele a oferta não poderia aparecer (invariante 6).
  */
 function TickerCredit({ provider }: { provider: TickerProvider }): ReactNode {
   if (provider.attributionText === null) return null
@@ -54,65 +54,128 @@ function TickerCredit({ provider }: { provider: TickerProvider }): ReactNode {
   )
 }
 
-export function HomeTicker({ items }: { items: readonly TickerEpisode[] }): ReactNode {
-  const [active, setActive] = useState(0)
-  const item = items.length > 0 ? (items[Math.min(active, items.length - 1)] as TickerEpisode) : null
+/** Rótulo curto do item, usado no `aria-label` do dot correspondente. */
+function itemLabel(item: HomeTickerItem): string {
+  return `${item.title} — ${item.detail}`
+}
 
-  const onKey = (event: React.KeyboardEvent) => {
+/**
+ * CTA por tipo de novidade. Com provedor licenciado, "Onde assistir ·
+ * <provedor>"; sem ele, a ficha real da entidade ("Ver filme" / "Ver série").
+ * Nunca plataforma que não tenha vindo do banco, nunca logo.
+ */
+function ctaLabel(item: HomeTickerItem): ReactNode {
+  if (item.provider !== null) {
+    return (
+      <>
+        Onde assistir <strong>{item.provider.name}</strong>
+      </>
+    )
+  }
+  return item.entityType === 'movie' ? 'Ver filme' : 'Ver série'
+}
+
+export function HomeTicker({ items }: { items: readonly HomeTickerItem[] }): ReactNode {
+  const [active, setActive] = useState(0)
+  // Hover e foco sao rastreados SEPARADAMENTE de proposito: com um unico
+  // booleano, sair do foco (tab) religava o autoplay mesmo com o mouse ainda
+  // parado sobre a faixa — e o texto trocava embaixo do cursor de quem estava
+  // lendo.
+  const [hovered, setHovered] = useState(false)
+  const [focused, setFocused] = useState(false)
+  const paused = hovered || focused
+  const dotRefs = useRef<Array<HTMLButtonElement | null>>([])
+  const textId = useId()
+
+  const count = items.length
+  const index = count > 0 ? Math.min(active, count - 1) : 0
+  const item = count > 0 ? (items[index] as HomeTickerItem) : null
+
+  // Autoplay: desligado com 0/1 item, em hover/foco e sob `prefers-reduced-motion`.
+  // A navegação MANUAL continua funcionando em todos esses casos.
+  useEffect(() => {
+    if (count < 2 || paused) return undefined
+    const motionQuery =
+      typeof window.matchMedia === 'function'
+        ? window.matchMedia('(prefers-reduced-motion: reduce)')
+        : null
+    if (motionQuery?.matches === true) return undefined
+    const timer = window.setInterval(() => {
+      setActive((current) => (current + 1) % count)
+    }, AUTOPLAY_MS)
+    return () => window.clearInterval(timer)
+  }, [count, paused])
+
+  const go = (next: number): void => {
+    if (count === 0) return
+    const target = (next + count) % count
+    setActive(target)
+    dotRefs.current[target]?.focus()
+  }
+
+  const onKeyDown = (event: React.KeyboardEvent): void => {
     if (event.key === 'ArrowRight') {
       event.preventDefault()
-      setActive((current) => (current + 1) % items.length)
+      go(index + 1)
     } else if (event.key === 'ArrowLeft') {
       event.preventDefault()
-      setActive((current) => (current - 1 + items.length) % items.length)
+      go(index - 1)
     }
   }
 
   return (
-    <div aria-label="Agenda de episódios" className="ticker" role="region">
+    <div
+      aria-label="Novidades"
+      className="ticker"
+      onBlur={() => setFocused(false)}
+      onFocus={() => setFocused(true)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      role="region"
+    >
       <div className="ticker__inner">
-        <div className="ticker__lead">
-          <span className="ticker__label">{item === null ? 'AGENDA' : BADGE[item.kind]}</span>
-          <span className="ticker__text">
+        {/* `aria-live` polido e restrito ao TEXTO: anunciar o container inteiro
+            faria o leitor de tela repetir os dots e o CTA a cada troca de
+            slide. Com 1 item ou nenhum não há troca a anunciar. */}
+        <div aria-live={count > 1 ? 'polite' : 'off'} className="ticker__lead">
+          <span className="ticker__label">{item === null ? 'AGENDA' : item.badge}</span>
+          <span className="ticker__text" id={textId}>
             {item === null ? (
-              'Nenhum episódio novo confirmado para hoje'
+              'Nenhuma novidade confirmada para hoje'
             ) : (
               <>
-                <strong>{item.series}</strong> · {item.seasonEp}
-                {item.episodeTitle !== null ? <> · {item.episodeTitle}</> : null}
-                {item.airDateLabel !== null ? <> · estreia em {item.airDateLabel}</> : null}
+                <strong>{item.title}</strong> · {item.detail}
               </>
             )}
           </span>
         </div>
         <div className="ticker__controls">
-          {items.length > 1 ? (
-            <div aria-label="Selecionar episódio" className="ticker__dots" role="tablist">
-              {items.map((entry, index) => (
+          {count > 1 ? (
+            <div aria-label="Selecionar novidade" className="ticker__dots" role="tablist">
+              {items.map((entry, dotIndex) => (
                 <button
-                  aria-label={`${entry.series} ${entry.seasonEp}`}
-                  aria-selected={index === active}
+                  aria-controls={textId}
+                  aria-label={itemLabel(entry)}
+                  aria-selected={dotIndex === index}
                   className="ticker__dot"
-                  key={`${entry.href}:${entry.seasonEp}`}
-                  onClick={() => setActive(index)}
-                  onKeyDown={onKey}
+                  key={entry.id}
+                  onClick={() => go(dotIndex)}
+                  onKeyDown={onKeyDown}
+                  ref={(node) => {
+                    dotRefs.current[dotIndex] = node
+                  }}
                   role="tab"
-                  tabIndex={index === active ? 0 : -1}
+                  tabIndex={dotIndex === index ? 0 : -1}
                   type="button"
                 />
               ))}
             </div>
           ) : null}
-          {item?.provider != null ? (
-            <a className="ticker__cta" href={item.href}>
-              Onde assistir <strong>{item.provider.name}</strong>
-            </a>
-          ) : (
-            <a className="ticker__cta" href={item === null ? SERIES_INDEX_PATH : item.href}>
-              {item === null ? 'Ver séries' : 'Ver série'}
-            </a>
-          )}
+          <a className="ticker__cta" href={item === null ? SERIES_INDEX_PATH : item.href}>
+            {item === null ? 'Ver lançamentos' : ctaLabel(item)}
+          </a>
         </div>
+        {/* O crédito pertence ao item ATIVO: trocou de slide, trocou o crédito. */}
         {item?.provider != null ? <TickerCredit provider={item.provider} /> : null}
       </div>
     </div>
