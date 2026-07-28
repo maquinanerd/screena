@@ -110,6 +110,7 @@ export default async function AdminReviewQueuePage({
     error: firstValue(sp.error),
     ok: firstValue(sp.ok),
     fail: firstValue(sp.fail),
+    skip: firstValue(sp.skip),
   });
 
   return (

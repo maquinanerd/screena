@@ -168,7 +168,8 @@ describe("resultado e query de lote (sem segredo)", () => {
     const r = buildBulkActionResult("bulk_updated", "article_reviewStatus", {
       updated: 3,
       failed: 1,
-      total: 4,
+      rejected: 2,
+      total: 6,
     });
     expect(r).toEqual({
       ok: true,
@@ -176,7 +177,8 @@ describe("resultado e query de lote (sem segredo)", () => {
       scope: "article_reviewStatus",
       updated: 3,
       failed: 1,
-      total: 4,
+      rejected: 2,
+      total: 6,
     });
     const keys = Object.keys(r).sort();
     for (const forbidden of ["value", "payload", "ids", "id", "message", "stack", "password"]) {
@@ -191,9 +193,14 @@ describe("resultado e query de lote (sem segredo)", () => {
   it("bulkResultToQuery emite so tokens + contagens", () => {
     expect(
       bulkResultToQuery(
-        buildBulkActionResult("bulk_updated", "article_indexStatus", { updated: 2, failed: 0, total: 2 }),
+        buildBulkActionResult("bulk_updated", "article_indexStatus", {
+          updated: 2,
+          failed: 0,
+          rejected: 0,
+          total: 2,
+        }),
       ),
-    ).toBe("bulk_updated=article_indexStatus&ok=2&fail=0");
+    ).toBe("bulk_updated=article_indexStatus&ok=2&fail=0&skip=0");
     expect(bulkResultToQuery(buildBulkActionResult("bulk_actions_disabled"))).toBe(
       "error=bulk_actions_disabled",
     );

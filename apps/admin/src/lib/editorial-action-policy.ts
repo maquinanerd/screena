@@ -227,15 +227,21 @@ export function parseContentBlockActionInput(input: unknown): ContentBlockAction
 /**
  * Desfecho de uma acao — enum estavel e SEGURO para virar query string de
  * feedback. NUNCA contem payload, valor cru, stack trace nem segredo.
- *  - `updated`          — escrita aplicada com sucesso.
- *  - `actions_disabled` — flag desligada: escrita negada no servidor.
- *  - `invalid_input`    — id/campo/valor invalido.
- *  - `update_failed`    — a escrita falhou no banco (rotulo generico).
+ *  - `updated`               — escrita aplicada com sucesso.
+ *  - `actions_disabled`      — flag desligada: escrita negada no servidor.
+ *  - `invalid_input`         — id/campo/valor invalido.
+ *  - `forbidden_transition`  — a fonte unica do ciclo de vida recusou a transicao.
+ *  - `unchanged_state`       — o estado escolhido e o estado atual; nada a fazer.
+ *  - `stale_state`           — o registro mudou entre a leitura e a escrita (CAS perdido).
+ *  - `update_failed`         — a escrita falhou no banco (rotulo generico).
  */
 export type EditorialActionOutcome =
   | "updated"
   | "actions_disabled"
   | "invalid_input"
+  | "forbidden_transition"
+  | "unchanged_state"
+  | "stale_state"
   | "update_failed";
 
 /** Campos que podem aparecer no feedback (allowlist — nunca valor arbitrario). */
@@ -309,6 +315,23 @@ export function readActionFeedback(params: {
   }
   if (error === "invalid_input") {
     return { tone: "error", message: "Entrada invalida. Nada foi alterado." };
+  }
+  if (error === "forbidden_transition") {
+    return {
+      tone: "error",
+      message:
+        "Transicao de review_status nao permitida pelo ciclo de vida editorial. Nada foi alterado.",
+    };
+  }
+  if (error === "unchanged_state") {
+    return { tone: "error", message: "O estado escolhido ja e o estado atual. Nada foi alterado." };
+  }
+  if (error === "stale_state") {
+    return {
+      tone: "error",
+      message:
+        "O registro mudou enquanto a acao era processada. Recarregue e tente de novo. Nada foi alterado.",
+    };
   }
   if (error === "update_failed") {
     return { tone: "error", message: "Falha ao atualizar. Nada foi alterado." };

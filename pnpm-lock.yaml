@@ -54,6 +54,9 @@ importers:
       '@screena/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@screena/news-ingestion':
+        specifier: workspace:*
+        version: link:../../services/news-ingestion
       next:
         specifier: ^15.0.0
         version: 15.5.19(@playwright/test@1.62.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)

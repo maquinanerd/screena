@@ -14,13 +14,29 @@
  *   publishedAt). O writer editorial nao publica sozinho: nao carimba
  *   `publishedAt` — so muda o estado de revisao/indexacao que um humano escolheu.
  *
- * DUPLA TRAVA DE SEGURANCA:
+ * TRIPLA TRAVA DE SEGURANCA:
  *   1. ACESSO — o middleware (`apps/admin/middleware.ts`) ja exige Basic Auth em
  *      ambiente production-like (Fase 6C). Nenhuma acao chega aqui sem passar por
  *      ele quando a protecao e exigida.
  *   2. ESCRITA — mesmo autenticado, a escrita so ocorre se
  *      `ADMIN_EDITORIAL_ACTIONS_ENABLED === "true"` (feature flag). Sem a flag, a
  *      acao e negada no servidor (nunca confia no botao desabilitado do cliente).
+ *   3. CICLO DE VIDA — mesmo com flag ligada, uma mudanca de `reviewStatus` so
+ *      persiste se a FONTE UNICA (`canTransition`, de `@screena/news-ingestion`,
+ *      via `../lib/editorial-transition-policy`) permitir a transicao a partir do
+ *      estado LIDO DO BANCO. Antes disto o admin escrevia qualquer valor do enum
+ *      isoladamente, o que permitia `draft -> published` (pulando a revisao
+ *      humana) e `blocked -> published` (republicando uma materia retratada).
+ *
+ * CONCORRENCIA (compare-and-swap). Validar contra um estado lido e depois
+ * escrever sem condicao aceitaria silenciosamente um estado velho: entre a
+ * leitura e a escrita, outro operador pode ter movido a materia. Por isso o
+ * `where` do `update` carrega o estado lido como PRE-CONDICAO. Se ele nao casar
+ * mais, o Prisma devolve P2025, nada e escrito e o resultado e `stale_state`.
+ * Usamos `update` (nao `updateMany`) de proposito: `updateMany` esta proibido
+ * neste arquivo por `tests/admin/editorial-actions-guard.test.ts`, e o
+ * `where` estendido do Prisma 6 aceita pre-condicao escalar junto da chave
+ * unica — atingindo no maximo uma linha.
  *
  * FEEDBACK sem vazamento: cada acao termina redirecionando de volta ao detalhe
  * com uma query SEGURA (`?updated=<campo>` ou `?error=<codigo>`), montada por
@@ -44,6 +60,7 @@ import {
   parseArticleActionInput,
   parseContentBlockActionInput,
   type EditorialActionResult,
+  type ReviewStatusValue,
 } from "../lib/editorial-action-policy";
 import {
   buildBulkActionResult,
@@ -53,6 +70,22 @@ import {
   parseBulkContentBlockActionInput,
   type BulkActionResult,
 } from "../lib/editorial-bulk-policy";
+import { evaluateReviewStatusTransition } from "../lib/editorial-transition-policy";
+
+/**
+ * `true` quando o Prisma sinaliza "nenhum registro casou com o `where`" (P2025).
+ * Numa escrita condicionada ao estado lido, isso significa exatamente uma coisa:
+ * o registro sumiu ou mudou entre a leitura e a escrita. Checagem estrutural, sem
+ * importar o tipo de erro do Prisma (que arrastaria runtime para este modulo).
+ */
+function isRecordConditionUnmet(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { readonly code?: unknown }).code === "P2025"
+  );
+}
 
 /** Base das rotas de detalhe (para o redirect de feedback). */
 const ARTICLE_BASE = "/articles";
@@ -95,18 +128,36 @@ async function applyArticleAction(
   try {
     const prisma = getPrismaClient();
     if (parsed.field === "reviewStatus") {
+      const recordId = BigInt(parsed.id);
+      // Estado ATUAL vem do banco, nunca do formulario: a transicao e avaliada
+      // contra o que existe, nao contra o que o cliente afirma existir.
+      const current = await prisma.articleTranslation.findUnique({
+        where: { id: recordId },
+        select: { reviewStatus: true },
+      });
+      if (current === null) return buildActionResult("update_failed");
+
+      const verdict = evaluateReviewStatusTransition(current.reviewStatus, parsed.value);
+      if (!verdict.allowed) return buildActionResult(verdict.outcome);
+
+      // CAS: so escreve se o estado ainda for o que foi lido e validado.
       await prisma.articleTranslation.update({
-        where: { id: BigInt(parsed.id) },
+        where: { id: recordId, reviewStatus: current.reviewStatus },
         data: { reviewStatus: parsed.value },
       });
     } else {
+      // `indexStatus` NAO e campo de ciclo de vida: nao ha maquina de estados
+      // para ele, e por isso nao passa por `canTransition`. Continua sendo uma
+      // decisao editorial independente — e nunca e tocado como efeito colateral
+      // de uma mudanca de `reviewStatus`.
       await prisma.articleTranslation.update({
         where: { id: BigInt(parsed.id) },
         data: { indexStatus: parsed.value },
       });
     }
     return buildActionResult("updated", parsed.field);
-  } catch {
+  } catch (error) {
+    if (isRecordConditionUnmet(error)) return buildActionResult("stale_state");
     // Rotulo generico: nunca vazar a mensagem crua (poderia expor host/coluna).
     return buildActionResult("update_failed");
   }
@@ -127,12 +178,26 @@ async function applyContentBlockAction(
 
   try {
     const prisma = getPrismaClient();
+    const recordId = BigInt(parsed.id);
+    // `content_blocks.review_status` usa o MESMO enum e a MESMA semantica de
+    // revisao de `article_translations`. Aplicar a mesma allowlist e o que
+    // impede um bloco retratado (`blocked`) de voltar direto a `published`.
+    const current = await prisma.contentBlock.findUnique({
+      where: { id: recordId },
+      select: { reviewStatus: true },
+    });
+    if (current === null) return buildActionResult("update_failed");
+
+    const verdict = evaluateReviewStatusTransition(current.reviewStatus, parsed.value);
+    if (!verdict.allowed) return buildActionResult(verdict.outcome);
+
     await prisma.contentBlock.update({
-      where: { id: BigInt(parsed.id) },
+      where: { id: recordId, reviewStatus: current.reviewStatus },
       data: { reviewStatus: parsed.value },
     });
     return buildActionResult("updated", parsed.field);
-  } catch {
+  } catch (error) {
+    if (isRecordConditionUnmet(error)) return buildActionResult("stale_state");
     return buildActionResult("update_failed");
   }
 }
@@ -202,12 +267,39 @@ async function applyBulkArticleAction(
     parsed.field === "reviewStatus"
       ? { reviewStatus: parsed.value }
       : { indexStatus: parsed.value };
+  // Narrowing na uniao discriminada: `null` quando o lote nao mexe no ciclo de
+  // vida (campo `indexStatus`), o valor-alvo tipado quando mexe.
+  const lifecycleTarget: ReviewStatusValue | null =
+    parsed.field === "reviewStatus" ? parsed.value : null;
 
   let updated = 0;
   let failed = 0;
+  let rejected = 0;
   for (const id of parsed.ids) {
+    const recordId = BigInt(id);
+    // O lote aplica o MESMO valor a estados de origem DIFERENTES. Por isso a
+    // transicao e avaliada item a item: o mesmo "publicar" pode ser legitimo
+    // para um `human_reviewed` e proibido para um `blocked` na mesma selecao.
+    let expected: ReviewStatusValue | null = null;
+    if (lifecycleTarget !== null) {
+      const current = await prisma.articleTranslation.findUnique({
+        where: { id: recordId },
+        select: { reviewStatus: true },
+      });
+      if (current === null) {
+        failed += 1;
+        continue;
+      }
+      if (!evaluateReviewStatusTransition(current.reviewStatus, lifecycleTarget).allowed) {
+        rejected += 1;
+        continue;
+      }
+      expected = current.reviewStatus;
+    }
+
+    const where = expected === null ? { id: recordId } : { id: recordId, reviewStatus: expected };
     try {
-      await prisma.articleTranslation.update({ where: { id: BigInt(id) }, data });
+      await prisma.articleTranslation.update({ where, data });
       updated += 1;
     } catch {
       failed += 1;
@@ -218,6 +310,7 @@ async function applyBulkArticleAction(
   return buildBulkActionResult("bulk_updated", bulkScopeFor("article", parsed.field), {
     updated,
     failed,
+    rejected,
     total: parsed.ids.length,
   });
 }
@@ -239,10 +332,25 @@ async function applyBulkContentBlockAction(formData: FormData): Promise<BulkActi
   const prisma = getPrismaClient();
   let updated = 0;
   let failed = 0;
+  let rejected = 0;
   for (const id of parsed.ids) {
+    const recordId = BigInt(id);
+    const current = await prisma.contentBlock.findUnique({
+      where: { id: recordId },
+      select: { reviewStatus: true },
+    });
+    if (current === null) {
+      failed += 1;
+      continue;
+    }
+    if (!evaluateReviewStatusTransition(current.reviewStatus, parsed.value).allowed) {
+      rejected += 1;
+      continue;
+    }
+
     try {
       await prisma.contentBlock.update({
-        where: { id: BigInt(id) },
+        where: { id: recordId, reviewStatus: current.reviewStatus },
         data: { reviewStatus: parsed.value },
       });
       updated += 1;
@@ -255,6 +363,7 @@ async function applyBulkContentBlockAction(formData: FormData): Promise<BulkActi
   return buildBulkActionResult("bulk_updated", "contentBlock_reviewStatus", {
     updated,
     failed,
+    rejected,
     total: parsed.ids.length,
   });
 }
