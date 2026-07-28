@@ -1,8 +1,8 @@
 ---
 mission: "Home — destaques editoriais e ticker multi-item"
-status: "IN_PROGRESS"
+status: "DONE"
 date_started: "2026-07-28"
-date_finished: null
+date_finished: "2026-07-28"
 repository: "maquinanerd/screena"
 primary_checkout_protected: true
 worktree: ".claude/worktrees/home-primeira-dobra-relatorio-531524"
@@ -10,11 +10,11 @@ branch: "fix/home-editorial-highlights-ticker-carousel"
 base_branch: "main"
 base_sha: "143aef8ec48d30de34990a9433259c2dcda78f96"
 starting_head_sha: "143aef8ec48d30de34990a9433259c2dcda78f96"
-final_head_sha: null
-pull_request: null
-merge_sha: null
-pr_ci_status: null
-post_merge_ci_status: null
+final_head_sha: "d046cd5e30cf6831af123d6316f33da3e1cc1f96 (+ o commit que carrega este relatorio; ver secao 12)"
+pull_request: "https://github.com/maquinanerd/screena/pull/91"
+merge_sha: "registrado na PR #91 e no relatorio de sessao (ver secao 12)"
+pr_ci_status: "success (3/3) — run 30387229690 em d046cd5"
+post_merge_ci_status: "registrado na PR #91 e no relatorio de sessao (ver secao 12)"
 canonical_sources:
   - "docs/design-handoff/Screena-Design-System-Final-Handoff/Screen Screens v4.dc.html"
   - "docs/frontend/home-first-fold-correction.md"
@@ -604,7 +604,42 @@ amarelo editorial (`--c-accent-editorial`), consistente com o card B.
 
 ---
 
-## 12. Produção
+## 12. Git, PR e CI
+
+| Campo | Valor |
+| --- | --- |
+| Base (`origin/main` na abertura) | `143aef8ec48d30de34990a9433259c2dcda78f96` |
+| Branch | `fix/home-editorial-highlights-ticker-carousel` |
+| PR | [#91](https://github.com/maquinanerd/screena/pull/91) |
+| Commit de código + testes + relatório | `65431e5` |
+| Commit de correção do inventário/diffstat | `d046cd5` |
+| **CI da PR** | **success — 3/3**, [run 30387229690](https://github.com/maquinanerd/screena/actions/runs/30387229690) em `d046cd5` |
+
+Jobs da CI da PR, todos verdes em `d046cd5`:
+
+| Job | Duração |
+| --- | --- |
+| Typecheck, lint, test, auditorias e build publico | 5m35s |
+| Imagem Docker real (digest, nao-root, healthcheck) | 2m55s |
+| Backup + restore real (fidelidade de dados, PostgreSQL 16) | 1m6s |
+
+O job principal inclui `pnpm --filter @screena/web validate:all`, o que confirma
+que a assertiva de `validate:person-eligibility` citada em §10 passa em Linux — a
+falha local era mesmo o `initdb` sob caminho não-ASCII, não o código.
+
+### Por que três campos do front matter apontam para fora deste arquivo
+
+`final_head_sha`, `merge_sha` e `post_merge_ci_status` só existem **depois** que
+este arquivo é commitado e mergeado — nenhum documento pode conter o SHA do
+commit que o carrega, nem o SHA do squash que ainda não aconteceu. Eles ficam
+registrados na própria PR #91 e no relatório de sessão. Abrir uma PR documental
+adicional só para colar uma URL de run seria ruído, não rastreabilidade.
+
+Sem force push. Branch preservada. Nenhum deploy executado.
+
+---
+
+## 13. Produção
 
 ```
 deploy:              não executado
@@ -620,7 +655,7 @@ publicação) foi tomada por esta missão.
 
 ---
 
-## 13. Próxima sessão — resumo autocontido
+## 14. Próxima sessão — resumo autocontido
 
 **O que mudou.** "Destaques de hoje" deixou de ser catálogo e virou seção
 editorial: três matérias publicadas, todas linkando para `/pt/noticias/`, com
