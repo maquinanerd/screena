@@ -7600,3 +7600,143 @@ a.tabs__tab[aria-current='page'] {
     display: none;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Telas 17/18 — superfícies de anúncio (valores exatos do canônico)   */
+/* ------------------------------------------------------------------ */
+
+.ad-pop {
+  border: none;
+  background: transparent;
+  padding: 24px;
+  overflow: visible;
+  max-width: none;
+}
+
+.ad-pop::backdrop {
+  background: rgba(10, 10, 10, 0.9);
+}
+
+.ad-pop__card {
+  position: relative;
+  background: var(--c-bg-surface);
+  border-radius: var(--r-card);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+  padding: 20px 16px 16px;
+  width: min(92vw, 360px);
+}
+
+.ad-pop__close {
+  appearance: none;
+  position: absolute;
+  top: -13px;
+  right: -13px;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 50%;
+  background: var(--c-text-primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 14px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  /* Alvo efetivo >= 44px via área de toque expandida */
+  outline-offset: 4px;
+}
+
+.ad-pop__close::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+}
+
+.ad-pop__continue {
+  appearance: none;
+  border: none;
+  background: none;
+  display: block;
+  width: 100%;
+  text-align: center;
+  cursor: pointer;
+  margin-top: 14px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--c-text-secondary);
+  min-height: 44px;
+}
+
+.ad-tela {
+  border: none;
+  padding: 24px;
+  width: 100vw;
+  height: 100vh;
+  max-width: none;
+  max-height: none;
+  background: #0b0b0c;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.ad-tela:not([open]) {
+  display: none;
+}
+
+.ad-tela::backdrop {
+  background: #0b0b0c;
+}
+
+.ad-tela__top {
+  position: absolute;
+  top: 20px;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 24px;
+}
+
+.ad-tela__skip {
+  appearance: none;
+  background: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: var(--r-control);
+  min-height: 44px;
+}
+
+.ad-tela__media {
+  width: min(90vw, 760px);
+}
+
+.ad-tela__media .ad-slot {
+  margin: 0;
+}
+
+.ad-tela__cta {
+  appearance: none;
+  border: none;
+  margin-top: 26px;
+  cursor: pointer;
+  background: var(--c-accent-movie);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 13px 28px;
+  border-radius: var(--r-control);
+}

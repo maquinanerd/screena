@@ -1,16 +1,23 @@
 'use client'
 
 /**
- * Superficies de publicidade do handoff: pop-up (tela 17) e interstitial de
- * tela cheia (tela 18). Componentes CONTROLADOS — nunca disparam sozinhos:
- * nao ha logica de frequencia contratada nesta fase, entao eles so abrem
- * quando o chamador manda (`open`), e nada no app os invoca automaticamente.
+ * Superfícies de publicidade do canônico: pop-up (tela 17) e interstitial de
+ * tela cheia (tela 18), na composição EXATA do handoff 6936a341…:
  *
- * Acessibilidade obrigatoria (EX-17/18-ad):
+ *  - 17: scrim rgba(10,10,10,0.9), card branco min(92vw,360px) r10 com
+ *    rectangle 300×250, botão ✕ circular preto flutuante (-13px) e link
+ *    "Continuar para o site →";
+ *  - 18: tela #0B0B0C, "Pular anúncio ›" no topo direito, billboard central
+ *    min(90vw,760px) e CTA vermelho "Continuar para Cinerie".
+ *
+ * Componentes CONTROLADOS — nunca disparam sozinhos: não há contrato de ad
+ * server nesta fase, então só abrem quando o chamador manda (`open`) e nada
+ * no app os invoca automaticamente. Sem anúncio falso em produção: o creativo
+ * é o AdSlot governado (placeholder apenas em dev/QA).
+ *
+ * Acessibilidade obrigatória (EX-17/18-ad):
  *  - <dialog> nativo: foco preso, Escape fecha, foco retorna ao invocador;
- *  - botao de fechar com aria-label, alvo >= 44px;
- *  - rotulo "PUBLICIDADE" sempre visivel;
- *  - sem loop, sem trap, sem dark pattern.
+ *  - fechar com aria-label e alvo >= 44px; sem loop, sem trap, sem dark pattern.
  */
 
 import { useEffect, useRef } from 'react'
@@ -36,25 +43,27 @@ function useDialogOpen(open: boolean, onClose: () => void) {
   return ref
 }
 
-/** Tela 17 — anuncio pop-up (rectangle 300x250 centrado). */
+/** Tela 17 — anúncio pop-up (rectangle 300×250 centrado no card branco). */
 export function AdPopup({ open, onClose }: { open: boolean; onClose: () => void }): ReactNode {
   const ref = useDialogOpen(open, onClose)
   return (
-    <dialog aria-label="Publicidade" className="ad-modal" ref={ref}>
-      <div className="ad-modal__bar">
-        <span className="ad-slot__label">Publicidade</span>
-        <button aria-label="Fechar publicidade" className="icon-btn" onClick={onClose} type="button">
-          <svg aria-hidden="true" fill="none" height="18" viewBox="0 0 24 24" width="18">
-            <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
+    <dialog aria-label="Publicidade" className="ad-pop" ref={ref}>
+      <div className="ad-pop__card">
+        <button aria-label="Fechar publicidade" className="ad-pop__close" onClick={onClose} type="button">
+          <svg aria-hidden="true" fill="none" height="14" viewBox="0 0 24 24" width="14">
+            <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeLinecap="round" strokeWidth="2.4" />
           </svg>
         </button>
+        <AdSlot format="rectangle" slotId="ad-pop" />
+        <button className="ad-pop__continue" onClick={onClose} type="button">
+          Continuar para o site&nbsp;→
+        </button>
       </div>
-      <AdSlot format="rectangle" slotId="ad-pop" />
     </dialog>
   )
 }
 
-/** Tela 18 — interstitial de tela cheia (billboard). */
+/** Tela 18 — interstitial de tela cheia (billboard central + CTA vermelho). */
 export function AdInterstitial({
   open,
   onClose,
@@ -64,19 +73,18 @@ export function AdInterstitial({
 }): ReactNode {
   const ref = useDialogOpen(open, onClose)
   return (
-    <dialog aria-label="Publicidade em tela cheia" className="ad-modal" ref={ref}>
-      <div className="ad-modal__bar">
-        <span className="ad-slot__label">Publicidade</span>
-        <button
-          aria-label="Pular publicidade"
-          className="btn btn--outline btn--sm"
-          onClick={onClose}
-          type="button"
-        >
-          Pular
+    <dialog aria-label="Publicidade em tela cheia" className="ad-tela" ref={ref}>
+      <div className="ad-tela__top">
+        <button aria-label="Pular publicidade" className="ad-tela__skip" onClick={onClose} type="button">
+          Pular anúncio&nbsp;›
         </button>
       </div>
-      <AdSlot format="billboard" slotId="ad-tela" />
+      <div className="ad-tela__media">
+        <AdSlot format="billboard" slotId="ad-tela" />
+      </div>
+      <button className="ad-tela__cta" onClick={onClose} type="button">
+        Continuar para Cinerie
+      </button>
     </dialog>
   )
 }
