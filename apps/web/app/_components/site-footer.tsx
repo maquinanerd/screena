@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-import { HOME_HREF, NAV_ITEMS } from '../../src/lib/navigation'
+import { HOME_HREF, NAV_ITEMS, SECONDARY_NAV_ITEMS } from '../../src/lib/navigation'
 
 /**
  * SiteFooter — rodape CLARO editorial do design canonico (footer claro por
@@ -23,7 +23,9 @@ export function SiteFooter(): ReactNode {
           </a>
           <nav aria-label="Rodapé">
             <ul className="site-footer__links">
-              {NAV_ITEMS.map((item) => (
+              {/* Rodape carrega TODAS as rotas reais: as do menu primario mais
+                  Pessoas/Explorar, que ficam fora do header canonico. */}
+              {[...NAV_ITEMS, ...SECONDARY_NAV_ITEMS].map((item) => (
                 <li key={item.href}>
                   <a href={item.href}>{item.label}</a>
                 </li>

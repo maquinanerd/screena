@@ -14,6 +14,7 @@
 import { cache } from "react";
 import { getPrismaClient } from "@screena/db/server";
 
+import { resolveEditorialScoreSources } from "./editorial-score";
 import { SITE_URL } from "../lib/site";
 import {
   buildMovieIndexView,
@@ -112,6 +113,16 @@ export const getMovieIndexData = cache(async (): Promise<EntityIndexData> => {
       }),
       translationTitlesByEntity(prisma, "movie", ids),
     ]);
+    // Procedencia do Cinerie Score em LOTE (ver `editorial-score`).
+    const scoreSources = await resolveEditorialScoreSources(
+      prisma,
+      "movie",
+      movies.map((movie) => ({
+        entityId: movie.id,
+        screenScore: decimalToNumber(movie.screenScore),
+        screenScoreScale: movie.screenScoreScale,
+      })),
+    );
     items = movies.map((movie) => {
       const key = movie.id.toString();
       return {
@@ -124,6 +135,7 @@ export const getMovieIndexData = cache(async (): Promise<EntityIndexData> => {
         screenScore: decimalToNumber(movie.screenScore),
         screenScoreScale: movie.screenScoreScale,
         screenScoreDisplay: movie.screenScoreDisplay,
+        screenScoreSource: scoreSources.get(key) ?? null,
       };
     });
   }
@@ -158,6 +170,16 @@ export const getSeriesIndexData = cache(async (): Promise<EntityIndexData> => {
       }),
       translationTitlesByEntity(prisma, "tv", ids),
     ]);
+    // Procedencia do Cinerie Score em LOTE (ver `editorial-score`).
+    const scoreSources = await resolveEditorialScoreSources(
+      prisma,
+      "tv",
+      shows.map((show) => ({
+        entityId: show.id,
+        screenScore: decimalToNumber(show.screenScore),
+        screenScoreScale: show.screenScoreScale,
+      })),
+    );
     items = shows.map((show) => {
       const key = show.id.toString();
       return {
@@ -171,6 +193,7 @@ export const getSeriesIndexData = cache(async (): Promise<EntityIndexData> => {
         screenScore: decimalToNumber(show.screenScore),
         screenScoreScale: show.screenScoreScale,
         screenScoreDisplay: show.screenScoreDisplay,
+        screenScoreSource: scoreSources.get(key) ?? null,
       };
     });
   }

@@ -15,6 +15,7 @@ import { cache } from "react";
 import { getPrismaClient } from "@screena/db/server";
 
 import { getCastForEntity } from "./entity-cast";
+import { resolveEditorialScoreSources, type ScoredEntityType } from "./editorial-score";
 import {
   buildHeroSlides,
   type HeroSlide,
@@ -232,6 +233,31 @@ export const getHomeHeroSlides = cache(async (): Promise<HeroSlide[]> => {
   series.sort(byYearDesc);
   const selected = [...movies, ...series].slice(0, HOME_HERO_SLIDE_LIMIT);
 
+  // PROCEDENCIA do Cinerie Score em LOTE (uma query por tipo, nunca N+1). Sem
+  // calculo `calculated` coerente em `cinerie_score_calculations`, a nota fica
+  // sem origem editorial e o presenter oculta a estrela — fail-closed.
+  // A chave inclui o TIPO: `movies.id` e `tv_shows.id` sao sequencias
+  // independentes, entao um id 5 de filme e um id 5 de serie coexistem.
+  const scoreSources = await Promise.all(
+    (["movie", "tv"] as const).map(async (entityType: ScoredEntityType) => {
+      const resolved = await resolveEditorialScoreSources(
+        prisma,
+        entityType,
+        selected
+          .filter((candidate) => candidate.entityType === entityType)
+          .map((candidate) => ({
+            entityId: candidate.entityId,
+            screenScore: candidate.input.screenScore,
+            screenScoreScale: candidate.input.screenScoreScale,
+          })),
+      );
+      return [...resolved].map(
+        ([id, source]) => [`${entityType}:${id}`, source] as const,
+      );
+    }),
+  );
+  const sourceByKey = new Map(scoreSources.flat());
+
   const inputs: HeroSlideInput[] = await Promise.all(
     selected.map(async (candidate): Promise<HeroSlideInput> => {
       const [director, cast] = await Promise.all([
@@ -240,6 +266,8 @@ export const getHomeHeroSlides = cache(async (): Promise<HeroSlide[]> => {
       ]);
       return {
         ...candidate.input,
+        screenScoreSource:
+          sourceByKey.get(`${candidate.entityType}:${candidate.entityId.toString()}`) ?? null,
         director,
         cast: cast.map((member) => member.name),
       };

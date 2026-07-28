@@ -28,6 +28,9 @@ services/streaming/.data/
 next-env.d.ts
 *.tsbuildinfo
 
+# Capturas do QA visual da home (regeraveis por `pnpm --filter @screena/web qa:home-fold`)
+apps/web/.qa-home-fold/
+
 # Ambiente — chaves vivem SO em env vars, nunca versionadas
 .env
 .env.*

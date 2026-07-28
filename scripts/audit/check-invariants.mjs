@@ -124,6 +124,7 @@ const IGNORED_DIRS = new Set([
  *   include?: RegExp,
  *   exclude?: RegExp,
  *   codeOnly?: boolean,
+ *   allowedWhen?: RegExp,
  *   stripAllowedHomePlaceholderGates?: boolean,
  * }[]}
  */
@@ -169,6 +170,11 @@ const FORBIDDEN_PATTERNS = [
     include: /^apps\/web\/app\/_components\/.*\.tsx$/,
     exclude: /^apps\/web\/app\/_components\/(?:episodes-ticker|watch-providers)\.tsx$/,
     codeOnly: true,
+    // O componente pode prometer "Onde assistir" quando de fato carrega o
+    // contrato licenciado (o mesmo gate `licensedWatchWhere` do painel de
+    // detalhe). `TickerProvider`/`WatchAvailabilityView` so existem para dado
+    // que ja passou por esse gate — plataforma inventada continua proibida.
+    allowedWhen: /\bTickerProvider\b|\bWatchAvailabilityView\b|watch-availability-presenter/,
   },
   {
     name: "UI publica com pseudo-ranking ou affordance morta",
@@ -407,6 +413,13 @@ async function scanForbiddenPatterns() {
         if (!shouldScanPattern(relFile, pattern)) continue;
 
         const source = sourceForPattern(content, pattern);
+        // `allowedWhen`: o arquivo pode usar o literal SE carregar o contrato
+        // real que o justifica. E a diferenca entre "citar streaming" (proibido)
+        // e "exibir oferta ja aprovada pelo gate de licenca" (permitido). Sem
+        // isto a unica valvula era uma allowlist por NOME de arquivo, que nao
+        // prova nada sobre o conteudo.
+        if (pattern.allowedWhen && pattern.allowedWhen.test(source)) continue;
+
         const lines = source.split(/\r?\n/);
         for (let i = 0; i < lines.length; i += 1) {
           const line = lines[i];

@@ -26,6 +26,12 @@ export const NEWS_INDEX_PATH = `/${PT_LOCALE_SEGMENT}/noticias/`;
 /** Caminho do hub exploratorio (com barra final). */
 export const EXPLORE_PATH = `/${PT_LOCALE_SEGMENT}/explorar/`;
 
+/** Caminho das listas do titular (com barra final). Area privada: noindex. */
+export const LISTS_PATH = `/${PT_LOCALE_SEGMENT}/listas/`;
+
+/** Caminho do hub "Onde assistir" (com barra final). */
+export const WATCH_PATH = `/${PT_LOCALE_SEGMENT}/onde-assistir/`;
+
 /** Caminho canonico (relativo) da pagina de um filme, com barra final. */
 export function moviePath(slug: string): string {
   return `/${PT_LOCALE_SEGMENT}/filmes/${slug}/`;

@@ -3,7 +3,12 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { HOME_HREF, isActiveNavigationPath, NAV_ITEMS } from '../../apps/web/src/lib/navigation'
+import {
+  HOME_HREF,
+  isActiveNavigationPath,
+  NAV_ITEMS,
+  SECONDARY_NAV_ITEMS,
+} from '../../apps/web/src/lib/navigation'
 
 const ROOT = process.cwd()
 const WEB_APP_DIR = path.join(ROOT, 'apps', 'web', 'app')
@@ -18,19 +23,41 @@ function read(relativePath: string): string {
 }
 
 describe('navegação pública global', () => {
-  it('expõe somente as cinco áreas públicas reais', () => {
+  it('expõe o menu primário do canônico, na ordem da tela 02', () => {
+    // Guard ATUALIZADO DELIBERADAMENTE: o menu primário do design canônico é
+    // Início/Filmes/Séries/Listas/Notícias/Onde assistir. Pessoas e Explorar
+    // NÃO saíram do produto — mudaram de superfície (rodapé + menu mobile),
+    // e o teste abaixo continua provando que nenhuma rota virou link morto.
     expect(HOME_HREF).toBe('/pt/')
     expect(NAV_ITEMS).toEqual([
+      { label: 'Início', href: '/pt/' },
       { label: 'Filmes', href: '/pt/filmes/' },
       { label: 'Séries', href: '/pt/series/' },
-      { label: 'Pessoas', href: '/pt/pessoas/' },
+      { label: 'Listas', href: '/pt/listas/' },
       { label: 'Notícias', href: '/pt/noticias/' },
+      { label: 'Onde assistir', href: '/pt/onde-assistir/' },
+    ])
+    expect(SECONDARY_NAV_ITEMS).toEqual([
+      { label: 'Pessoas', href: '/pt/pessoas/' },
       { label: 'Explorar', href: '/pt/explorar/' },
     ])
   })
 
+  it('mantém Pessoas e Explorar navegáveis fora do header', () => {
+    const header = read('apps/web/app/_components/site-header.tsx')
+    const footer = read('apps/web/app/_components/site-footer.tsx')
+    // Menu mobile e rodapé carregam primário + secundário: sair do header
+    // nunca pode significar sumir do site.
+    expect(header).toContain('...NAV_ITEMS, ...SECONDARY_NAV_ITEMS')
+    expect(footer).toContain('...NAV_ITEMS, ...SECONDARY_NAV_ITEMS')
+  })
+
   it('não contém link morto e mantém caminhos internos pt-BR', () => {
-    for (const href of [HOME_HREF, ...NAV_ITEMS.map((item) => item.href)]) {
+    for (const href of [
+      HOME_HREF,
+      ...NAV_ITEMS.map((item) => item.href),
+      ...SECONDARY_NAV_ITEMS.map((item) => item.href),
+    ]) {
       expect(href).toMatch(/^\/pt\/(?:[a-z-]+\/)?$/)
       expect(existsSync(pageFileForPublicPath(href)), `rota ausente: ${href}`).toBe(true)
     }
@@ -62,7 +89,7 @@ describe('navegação pública global', () => {
 
   it('rodapé contém apenas rotas reais e a atribuição do TMDB', () => {
     const footer = read('apps/web/app/_components/site-footer.tsx')
-    expect(footer).toContain('NAV_ITEMS.map')
+    expect(footer).toContain('...NAV_ITEMS, ...SECONDARY_NAV_ITEMS].map')
     expect(footer).toContain('usa a API do TMDB')
     expect(footer).not.toMatch(/newsletter|social|Termos|Privacidade|Vagas/)
   })
