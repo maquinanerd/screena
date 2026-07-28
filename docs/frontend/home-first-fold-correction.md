@@ -11,13 +11,21 @@
 
 | Campo | Valor |
 | --- | --- |
-| Data | 2026-07-28 |
 | Repositório | `maquinanerd/screena` |
-| Base (`origin/main`) | `c3bb632ca72c310283772c6a54b29cb92ff359f1` (squash da PR #88) |
+| Base (`origin/main` na abertura) | `c3bb632ca72c310283772c6a54b29cb92ff359f1` (squash da PR #88) |
 | Branch | `claude/home-header-hero-fixes-76c7f0` |
 | Worktree | `.claude/worktrees/home-header-hero-fixes-76c7f0` (checkout primário intocado) |
-| PR | [#89](https://github.com/maquinanerd/screena/pull/89) |
-| Commits | `e305cb4` (1ª rodada) + integração de dados (2ª rodada) |
+| PR | [#89](https://github.com/maquinanerd/screena/pull/89) — **MERGED** |
+| Commits da branch | `e305cb4` (1ª rodada) · `73850de` (2ª rodada) |
+| **Head final** | `73850de476a7c02b0e5d26f1aad5f2cb0fb2762e` |
+| **Merge SHA** (squash em `main`) | `0b2481aec1a4f3820bb0b3274454486593db0733` |
+| Merge em | 2026-07-28T15:52:15Z |
+| CI na PR (head `73850de`) | 3/3 pass — typecheck+lint+test+auditorias+build · backup/restore PG16 · imagem Docker |
+| CI pós-merge em `main` (`0b2481a`) | **success** — [run 30375485358](https://github.com/maquinanerd/screena/actions/runs/30375485358) |
+
+> Este relatório foi **consolidado após o merge** e reflete o estado FINAL da
+> PR #89. Números, snippets e conclusões da primeira rodada que foram superados
+> pela segunda estão corrigidos aqui, não preservados.
 
 Este documento cobre **duas rodadas**. A primeira corrigiu chrome e CSS e
 declarou débitos; a segunda fechou os débitos e **corrigiu uma afirmação errada**
@@ -78,40 +86,68 @@ motivo para trocar o elemento em vez de só sobrescrever a decoração.
 
 ## 4. Inventário de arquivos
 
-### 4.1 Editados no repositório (12 arquivos, +346/−85)
+### 4.1 Inventário FINAL — 24 arquivos, +2683/−87
+
+Números conferidos contra o Git **e** contra a PR (os dois batem):
+
+```bash
+git diff --numstat c3bb632ca72c310283772c6a54b29cb92ff359f1..73850de476a7c02b0e5d26f1aad5f2cb0fb2762e
+# 24 files changed, 2683 insertions(+), 87 deletions(-)
+```
+
+> Os números da 1ª rodada ("12 arquivos, +346/−85") ficaram obsoletos com a 2ª e
+> **não** são preservados aqui.
+
+**Novos (3 arquivos, +1875):**
 
 | Arquivo | Δ | Natureza |
 | --- | --- | --- |
-| [apps/web/src/server/editorial-score.ts](../../apps/web/src/server/editorial-score.ts) | **novo** | procedência do Cinerie Score (fecha a cadeia quebrada) |
-| [apps/web/scripts/qa-home-first-fold-real-postgres.ts](../../apps/web/scripts/qa-home-first-fold-real-postgres.ts) | **novo** | QA visual no app Next real + PG16 efêmero |
+| [apps/web/scripts/qa-home-first-fold-real-postgres.ts](../../apps/web/scripts/qa-home-first-fold-real-postgres.ts) | +830 | QA visual no app Next real + PG16 efêmero |
+| [apps/web/src/server/editorial-score.ts](../../apps/web/src/server/editorial-score.ts) | +108 | procedência do Cinerie Score (fecha a cadeia quebrada) |
+| [docs/frontend/home-first-fold-correction.md](./home-first-fold-correction.md) | +937 | este relatório |
+
+**Código de produto (13 arquivos, +519/−80):**
+
+| Arquivo | Δ | Natureza |
+| --- | --- | --- |
+| [apps/web/src/server/home-ticker.ts](../../apps/web/src/server/home-ticker.ts) | +188/−22 | fallback de estreia + provedor licenciado em lote |
+| [apps/web/app/globals.css](../../apps/web/app/globals.css) | +89/−11 | header, título, dots, crédito e ticker mobile |
+| [apps/web/app/_components/home-ticker.tsx](../../apps/web/app/_components/home-ticker.tsx) | +69/−14 | faixa como estrutura fixa, 3 estados + provedor/crédito |
 | [apps/web/src/lib/watch-availability-presenter.ts](../../apps/web/src/lib/watch-availability-presenter.ts) | +32 | `selectTickerWatchOffer` + crédito por oferta |
-| [apps/web/src/server/home-catalog.ts](../../apps/web/src/server/home-catalog.ts) · [entity-indexes.ts](../../apps/web/src/server/entity-indexes.ts) | +38 | mesma procedência nos cards |
+| [apps/web/src/server/home-hero.ts](../../apps/web/src/server/home-hero.ts) | +28 | procedência do score no loader do hero |
+| [apps/web/app/_components/site-header.tsx](../../apps/web/app/_components/site-header.tsx) | +25/−12 | `data-context`, guarda de hero, menu mobile |
+| [apps/web/src/server/entity-indexes.ts](../../apps/web/src/server/entity-indexes.ts) | +23 | mesma procedência nos índices |
+| [apps/web/app/_components/home-hero-carousel.tsx](../../apps/web/app/_components/home-hero-carousel.tsx) | +19/−15 | título deixa de ser `<p>`, meta-row condicional, `data-vertical` |
+| [apps/web/src/lib/navigation.ts](../../apps/web/src/lib/navigation.ts) | +18/−2 | `NAV_ITEMS` novo + `SECONDARY_NAV_ITEMS` |
+| [apps/web/src/server/home-catalog.ts](../../apps/web/src/server/home-catalog.ts) | +15 | mesma procedência nos cards da home |
+| [apps/web/src/lib/routes.ts](../../apps/web/src/lib/routes.ts) | +6 | `LISTS_PATH`, `WATCH_PATH` |
+| [apps/web/app/_components/site-footer.tsx](../../apps/web/app/_components/site-footer.tsx) | +4/−2 | rodapé lista primário + secundário |
+| [apps/web/app/_components/home-like.tsx](../../apps/web/app/_components/home-like.tsx) | +3/−2 | ritmo 56 → 48 |
+
+**Testes e guards (4 arquivos, +234/−7):**
+
+| Arquivo | Δ | Natureza |
+| --- | --- | --- |
+| [tests/web/home-canonical-contract.test.ts](../../tests/web/home-canonical-contract.test.ts) | +113 | primeira dobra, acentos separados, procedência do score, faixa |
+| [tests/web/watch-availability-presenter.test.ts](../../tests/web/watch-availability-presenter.test.ts) | +46 | 7 casos de `selectTickerWatchOffer` |
+| [tests/governance/no-fake-streaming-in-ui.test.ts](../../tests/governance/no-fake-streaming-in-ui.test.ts) | +43/−2 | tokens reais + **controle negativo** |
+| [tests/web/public-navigation.test.ts](../../tests/web/public-navigation.test.ts) | +32/−5 | menu novo + prova de rota viva |
+
+**Infra e docs (4 arquivos, +55):**
+
+| Arquivo | Δ | Natureza |
+| --- | --- | --- |
+| [docs/frontend/page-map.md](./page-map.md) | +38 | navegação global, acentos e QA |
 | [scripts/audit/check-invariants.mjs](../../scripts/audit/check-invariants.mjs) | +13 | `allowedWhen` no guard de streaming |
-| [apps/web/app/globals.css](../../apps/web/app/globals.css) | +67/−12 | CSS do header, título, dots, ticker mobile |
-| [apps/web/app/_components/site-header.tsx](../../apps/web/app/_components/site-header.tsx) | +37/−14 | `data-context`, guarda de hero, menu mobile |
-| [apps/web/app/_components/site-footer.tsx](../../apps/web/app/_components/site-footer.tsx) | +6/−2 | rodapé passa a listar primário + secundário |
-| [apps/web/app/_components/home-hero-carousel.tsx](../../apps/web/app/_components/home-hero-carousel.tsx) | +34/−17 | título deixa de ser `<p>`, meta-row condicional, `data-vertical` nos dots |
-| [apps/web/app/_components/home-ticker.tsx](../../apps/web/app/_components/home-ticker.tsx) | +45/−15 | faixa vira estrutura fixa com 3 estados |
-| [apps/web/app/_components/home-like.tsx](../../apps/web/app/_components/home-like.tsx) | +5/−3 | ritmo 56 → 48 |
-| [apps/web/src/lib/navigation.ts](../../apps/web/src/lib/navigation.ts) | +20/−4 | `NAV_ITEMS` novo + `SECONDARY_NAV_ITEMS` |
-| [apps/web/src/lib/routes.ts](../../apps/web/src/lib/routes.ts) | +6/−0 | `LISTS_PATH`, `WATCH_PATH` |
-| [apps/web/src/server/home-ticker.ts](../../apps/web/src/server/home-ticker.ts) | +111/−34 | fallback para próxima estreia confirmada |
-| [tests/web/home-canonical-contract.test.ts](../../tests/web/home-canonical-contract.test.ts) | +46/−0 | 2 guards novos da primeira dobra |
-| [tests/web/public-navigation.test.ts](../../tests/web/public-navigation.test.ts) | +37/−5 | guard do menu atualizado + prova de rota viva |
-| [docs/frontend/page-map.md](./page-map.md) | +17/−0 | contrato de navegação global |
+| [.gitignore](../../.gitignore) | +3 | capturas do QA |
+| [apps/web/package.json](../../apps/web/package.json) | +1 | script `qa:home-fold` |
 
-### 4.2 Criados fora do repositório (QA, não versionados)
+### 4.2 Artefatos de QA não versionados
 
-Em `…/scratchpad/`:
-
-| Arquivo | Função |
+| Onde | Conteúdo |
 | --- | --- |
-| `fold-harness.html` | Reprodução do DOM emitido pelos componentes, carregando o `globals.css` **real** |
-| `fold-harness-series.html` | Variante com `data-context="series"` e ticker em estado neutro |
-| `globals.css`, `brand/*.svg`, `fonts/montserrat-latin-variable.woff2` | Cópias dos assets reais do app |
-| `hero.jpg` | Backdrop sintético claro/texturizado — caso **difícil** de contraste |
-| `shoot.mjs` | Script Playwright: 5 viewports, screenshot + relatório de bounding boxes |
-| `shot-*.png` | Capturas resultantes |
+| `apps/web/.qa-home-fold/` (gitignored) | capturas do **app Next real**, regeráveis por `qa:home-fold` |
+| `…/scratchpad/fold-harness*.html`, `shoot.mjs` | harness estático da 1ª rodada — teste rápido de CSS, **não** evidência final |
 
 ### 4.3 Nada foi deletado.
 
@@ -277,9 +313,25 @@ classificação:
 
 ### 5.6 `apps/web/src/server/home-ticker.ts` — reescrito
 
-Contrato estendido:
+Contrato **final** (com o provedor da 2ª rodada):
 
 ```ts
+/**
+ * Provedor legal de UMA serie do ticker — ja aprovado pelo MESMO gate de
+ * licenca do painel de detalhe (`licensedWatchWhere` + presenter puro). Nunca
+ * plataforma inventada, nunca logo (a licenca do agregador nao autoriza logo).
+ */
+export interface TickerProvider {
+  /** Nome do provedor como licenciado (texto; nunca logo). */
+  name: string
+  /** `watch_availability.provider_key` — chave estavel. */
+  key: string
+  /** Credito exigido pela licenca, quando exigido; senao null. */
+  attributionText: string | null
+  /** Linkback exigido pela licenca, quando exigido; senao null. */
+  attributionUrl: string | null
+}
+
 export interface TickerEpisode {
   /** Estreia hoje ou proxima estreia confirmada. */
   kind: 'today' | 'upcoming'
@@ -288,6 +340,8 @@ export interface TickerEpisode {
   episodeTitle: string | null
   airDateLabel: string | null   // so em 'upcoming'
   href: string             // /pt/series/{slug}/
+  /** Provedor legal quando ha oferta licenciada vigente; senao null. */
+  provider: TickerProvider | null
 }
 ```
 
@@ -316,8 +370,21 @@ return toTickerEpisodes(prisma, upcomingEpisodes, 'upcoming')
 
 `UPCOMING_WINDOW_DAYS = 30`. A resolução de título/slug foi extraída para
 `toTickerEpisodes()` e continua **em lote** (uma query de traduções + uma de
-slugs para todos os `tvShowId`) — sem N+1. Série sem slug canônico pt-BR ou sem
-título é descartada: nunca link quebrado.
+slugs + **uma de ofertas licenciadas** para todos os `tvShowId`) — sem N+1.
+Série sem slug canônico pt-BR ou sem título é descartada: nunca link quebrado.
+
+O provedor sai de `providersByShow()`, que reusa o gate compartilhado e delega a
+escolha ao presenter puro (detalhes na seção 10):
+
+```ts
+const rows = await prisma.watchAvailability.findMany({
+  where: { entityType: 'tv', entityId: { in: [...showIds] }, ...licensedWatchWhere(now) },
+  take: WATCH_FETCH_LIMIT,
+  select: { /* … provider, oferta, licenca, atribuicao … */ },
+})
+// …agrupa por serie e escolhe UMA oferta, deterministicamente:
+const offer = selectTickerWatchOffer(candidateRows)
+```
 
 Data formatada no servidor, em UTC, sem alegar hora:
 
@@ -355,11 +422,50 @@ const item = items.length > 0 ? (items[Math.min(active, items.length - 1)] as Ti
 </span>
 ```
 
+CTA **final** — três variantes, com o crédito da licença quando exigido:
+
 ```tsx
-<a className="ticker__cta" href={item === null ? SERIES_INDEX_PATH : item.href}>
-  {item === null ? 'Ver séries' : 'Ver série'}
-</a>
+{item?.provider != null ? (
+  <a className="ticker__cta" href={item.href}>
+    Onde assistir <strong>{item.provider.name}</strong>
+  </a>
+) : (
+  <a className="ticker__cta" href={item === null ? SERIES_INDEX_PATH : item.href}>
+    {item === null ? 'Ver séries' : 'Ver série'}
+  </a>
+)}
 ```
+
+```tsx
+{item?.provider != null ? <TickerCredit provider={item.provider} /> : null}
+```
+
+```tsx
+/**
+ * Credito da licenca do agregador. Renderizado SEMPRE que o provedor exigir
+ * atribuicao — sem ele a oferta nao poderia aparecer (invariante 6).
+ */
+function TickerCredit({ provider }: { provider: TickerProvider }): ReactNode {
+  if (provider.attributionText === null) return null
+  return (
+    <p className="ticker__credit">
+      {provider.attributionUrl !== null ? (
+        <a href={provider.attributionUrl} rel="nofollow noopener" target="_blank">
+          {provider.attributionText}
+        </a>
+      ) : (
+        provider.attributionText
+      )}
+    </p>
+  )
+}
+```
+
+| Estado | Selo | CTA | Crédito |
+| --- | --- | --- | --- |
+| Episódio + oferta aprovada | `NOVO`/`EM BREVE` | `Onde assistir **<provedor>**` | linha visível + linkback |
+| Episódio sem oferta aprovada | `NOVO`/`EM BREVE` | `Ver série` | — |
+| Nenhuma estreia | `AGENDA` | `Ver séries` | — |
 
 Import via `routes` e não `site`, porque é Client Component e `site.ts` lê env:
 
@@ -793,27 +899,32 @@ continua sendo reprovado; o mesmo texto com `TickerProvider` é aprovado.
 | --- | --- |
 | 3 — zero API externa no render | `audit:render` verde; ticker e hero só leem Prisma |
 | 4 — zero Gemini no render | inalterado |
-| 6 — licença antes de exibir | nenhum provider/oferta exibido; nenhuma linha promovida |
-| 8 — sem pirataria | nenhum link/embed introduzido |
+| 6 — licença antes de exibir | **Nenhuma oferta de produção foi lida, promovida ou exibida.** A integração do provedor foi comprovada exclusivamente com fixture local de QA, sujeita ao mesmo gate `licensedWatchWhere` usado em produção. O crédito exigido pela licença é renderizado junto da oferta |
+| 8 — sem pirataria | nenhum link/embed introduzido; só as 4 modalidades legais |
 | 9/10 — filme vermelho, série verde | `--c-accent-movie` / `--c-accent-series` nos dots e no `--nav-accent` de rota |
 | 11 — nunca só cor | dot ativo também muda de largura e tem `aria-selected`; item de menu tem `aria-current`; vertical continua em label+badge+breadcrumb+schema+URL |
-| 1/2 — fontes de rating | estrelas continuam exclusivas do Cinerie Score; nenhuma conversão de escala |
-| Chaves só em env | nenhum segredo tocado; `.env` não copiado |
+| 1/2 — fontes de rating | estrelas continuam exclusivas do Cinerie Score; nenhuma conversão de escala; guard varre `editorial-score` e reprova referência a fonte externa |
+| Chaves só em env | nenhum segredo tocado; `.env` de produção nunca lido nem copiado; o QA injeta uma `DATABASE_URL` local e aborta se não for `127.0.0.1` |
 
 ---
 
 ## 12. Verificação executada
 
+Estado **final** (head `73850de`; a 1ª rodada tinha 3772 testes, número superado
+pelos 10 casos novos da 2ª):
+
 | Gate | Resultado |
 | --- | --- |
-| `pnpm test` | **3772 passed** / 310 arquivos |
+| `pnpm test` | **3782 passed** / 310 arquivos |
 | `pnpm lint` | limpo |
 | `pnpm typecheck` (root) | limpo |
 | `pnpm typecheck:web` | limpo |
 | `pnpm build` | sucesso |
 | `pnpm audit:invariants` | 7 ok / 0 violação |
 | `pnpm audit:render` | 2 ok / 0 violação |
-| CI da PR #89 | 3/3 pass |
+| `qa:home-fold` (app real) | 25/25 checks |
+| CI da PR #89 (head `73850de`) | 3/3 pass |
+| CI pós-merge em `main` (`0b2481a`) | success |
 
 Pré-requisito descoberto: o worktree novo precisa de `pnpm install` **e**
 `pnpm --filter @screena/db db:generate` — sem o client Prisma gerado, o
@@ -854,7 +965,42 @@ determinístico e offline, capaz de julgar crop, scrim e contraste.
 | C7 | rota sem hero (`/pt/noticias/`) | sólido desde o topo |
 | C8 | 5 viewports com o estado completo | zero overflow em todas |
 
-### 12.2 Limitação declarada do ambiente
+### 12.2 O que os prints comprovam — e o que NÃO comprovam
+
+Camadas distintas, nunca sinônimos:
+
+| Camada | Neste QA | Significa |
+| --- | --- | --- |
+| **Fixture local de QA** | criada pelo script, em banco descartável | descreve um estado possível; não é dado real |
+| **Aplicação Next.js real** | `next start` sobre o build de produção | o DOM, os presenters e a hidratação são os de verdade |
+| **Banco efêmero (PG16)** | `embedded-postgres`, derrubado no fim | schema e triggers reais; conteúdo é fixture |
+| **Dado de produção** | **não consultado** | este relatório não afirma nada sobre o banco real |
+| **Screenshot de QA** | `apps/web/.qa-home-fold/` | prova o *comportamento* da UI para aquele estado |
+| **Comportamento após deploy** | ver abaixo | depende de a produção ter o dado governado |
+
+Os prints comprovam que a aplicação **se comporta corretamente** em cada estado:
+estrelas disponíveis e indisponíveis, provedor licenciado e bloqueado, ticker
+com episódio / próxima estreia / neutro, slide de filme e de série, desktop e
+mobile. Eles **não** comprovam que esses dados já existem em produção.
+
+### 12.3 O que esperar depois do deploy
+
+Consequência direta do gate ser fail-closed — e não sinal de integração faltando:
+
+- **Estrelas** só aparecem em títulos com cálculo persistido em
+  `cinerie_score_calculations` (`status='calculated'`), coerente com a coluna, e
+  com `screen_score_display=true` autorizado pelo trigger. Como a fórmula e a
+  alimentação seguem no Prompt 11, é esperado que **vários títulos ainda não
+  exibam estrelas** — e a composição continua honesta sem elas.
+- **Provedor** só aparece quando a produção tiver oferta vigente e aprovada por
+  todos os gates de `licensedWatchWhere`. Sem oferta aprovada, o CTA é
+  `Ver série`.
+- **Sem episódio** confirmado, a faixa mostra `AGENDA` — e permanece na tela.
+
+A capacidade está implementada e validada; o que a produção ainda precisa é dos
+**dados governados**.
+
+### 12.4 Limitação declarada do ambiente
 
 O cluster efêmero subiu com o **encoding padrão do SO**, não UTF8: no Windows o
 `initdb` recusa UTF8 quando os binários do Postgres embarcado vivem sob um
@@ -863,7 +1009,7 @@ Trabalho". O script tenta UTF8 primeiro, cai para o padrão e **registra qual
 usou**, em vez de fingir. Os textos das fixtures existem nos dois encodings, então
 o cenário visual é idêntico; em CI (caminho ASCII) o QA roda em UTF8.
 
-### 12.3 Harness estático (complementar, não evidência final)
+### 12.5 Harness estático (complementar, não evidência final)
 
 | Viewport | Overflow | Header bg | Menu | Underline ativo | Título | Dot ativo |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -882,7 +1028,7 @@ Variante `data-context="series"`: `dotActive` e `navUnderline` = `rgb(127,165,11
 O harness em `scratchpad/fold-harness.html` continua útil como teste rápido de
 CSS, mas **não é evidência final** — foi substituído pelo QA do app real acima.
 
-### 12.4 Esclarecimento sobre as capturas vermelha e verde (1ª rodada)
+### 12.6 Esclarecimento sobre as capturas vermelha e verde (1ª rodada)
 
 As duas capturas desktop mostram o mesmo filme com acentos diferentes. **Isso é
 artefato do harness, não comportamento do app.** A segunda foi gerada com um
@@ -890,7 +1036,12 @@ artefato do harness, não comportamento do app.** A segunda foi gerada com um
 rota de série. Em `/pt/`, `logoContextOf()` retorna sempre `neutral` (o pathname
 não começa com `/pt/series`), logo `--nav-accent` é sempre o vermelho da marca —
 independentemente do slide ativo. O dot, esse sim, segue o `data-vertical` do
-slide. Não há contradição no código; falta prová-lo no app real.
+slide.
+
+**Posteriormente comprovado no app Next.js real pelo cenário C2:** a Home com
+slide de série manteve `nav=rgb(240,68,62)` (vermelho) e `dot=rgb(127,165,111)`
+(verde), na mesma asserção. Não havia contradição no código, e agora isso está
+provado no runtime, não apenas por leitura.
 
 ---
 
