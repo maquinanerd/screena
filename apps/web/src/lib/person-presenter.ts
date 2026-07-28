@@ -132,6 +132,8 @@ export interface PersonCreditInput {
   year: number | null;
   /** Papel: personagem (elenco) ou funcao/departamento (equipe) ou null. */
   roleLabel: string | null;
+  /** Poster path TMDB do alvo (ou null). */
+  posterPath?: string | null;
 }
 
 /** Bloco ja aprovado para render publico. */
@@ -154,6 +156,8 @@ export interface PersonCredit {
   href: string;
   year: number | null;
   roleLabel: string | null;
+  /** Poster do alvo via helper governado (ou null — card so com dado real). */
+  posterUrl: string | null;
 }
 
 /** Modelo de exibicao final da pagina de pessoa. */
@@ -342,6 +346,7 @@ export function buildPersonCredits(
       href: creditHref(credit.entityType, slug),
       year: validYearOrNull(credit.year),
       roleLabel: trimToNull(credit.roleLabel),
+      posterUrl: buildTmdbImageUrl(credit.posterPath ?? null, "w300"),
     });
   }
   resolved.sort((a, b) => {

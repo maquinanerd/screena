@@ -15,8 +15,16 @@ import { NEWS_INDEX_PATH, SITE_URL, gatePublicRobots, seasonPath } from '../../.
 import { getSeriesPageData } from '../../../../src/server/series-page'
 
 /**
- * Ficha pública mínima de série. O shell mantém dados, navegação de temporadas
- * e contratos de SEO sem carregar a composição visual do design anterior.
+ * Detalhe de série — tela 07 do canônico, na ESTRUTURA EXATA do HTML:
+ * hero editorial CLARO (verde = série) → Sinopse ("A obra") → Guia crítica
+ * (overlay verde) → EPISÓDIOS (catálogo assistível: eyebrow "Catálogo",
+ * tabs de temporada à direita, linha de info da temporada, rows com still
+ * 288px + badge de número + título 19/750 + sinopse 66ch + chevron) →
+ * Elenco (faixa 6 col) → Notícias relacionadas → Detalhes (ficha 320px).
+ * A tela 08 (mobile) é ESTE MESMO template no breakpoint 390 (media queries).
+ *
+ * Série de ~21k episódios nunca vira 20k nós: só a temporada SELECIONADA
+ * renderiza (paginação por temporada já vem do getter).
  */
 
 export const revalidate = 3600
@@ -64,13 +72,39 @@ function EpisodeRow({
 
   return (
     <li>
-      <article>
-        <h4>
-          T{seasonNumber} · E{episode.episodeNumber}
-        </h4>
-        {episode.title !== null ? <p>{episode.title}</p> : null}
-        {episode.overview !== null ? <p>{episode.overview}</p> : null}
-        {episodeMeta.length > 0 ? <p>{episodeMeta.join(' · ')}</p> : null}
+      <article className="episode-row">
+        <div className="episode-row__media">
+          <span className="episode-row__num">
+            T{seasonNumber} · E{episode.episodeNumber}
+          </span>
+          {episode.still !== null ? (
+            <img
+              alt=""
+              height={episode.still.height}
+              loading="lazy"
+              src={episode.still.src}
+              width={episode.still.width}
+            />
+          ) : null}
+        </div>
+        <div>
+          {episode.title !== null ? (
+            <h4 className="episode-row__title" style={{ letterSpacing: '-0.01em', textTransform: 'none' }}>
+              {episode.title}
+            </h4>
+          ) : null}
+          {episode.overview !== null ? (
+            <p className="episode-row__synopsis">{episode.overview}</p>
+          ) : null}
+          {episodeMeta.length > 0 ? (
+            <p className="episode-row__meta">{episodeMeta.join(' · ')}</p>
+          ) : null}
+        </div>
+        <span aria-hidden="true" className="episode-row__chevron">
+          <svg fill="none" height="22" viewBox="0 0 24 24" width="22">
+            <path d="m10 6 6 6-6 6" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
+          </svg>
+        </span>
       </article>
     </li>
   )
@@ -79,7 +113,7 @@ function EpisodeRow({
 function SeasonGroup({ season }: { season: SeriesSeasonView }): ReactNode {
   const seasonMeta = [
     season.episodeCountLabel,
-    season.airYear !== null ? String(season.airYear) : null,
+    season.airYear !== null ? `estreou em ${season.airYear}` : null,
   ].filter((item): item is string => item !== null)
 
   return (
@@ -87,11 +121,15 @@ function SeasonGroup({ season }: { season: SeriesSeasonView }): ReactNode {
       id={`temporada-${season.seasonNumber}`}
       aria-labelledby={`temporada-${season.seasonNumber}-titulo`}
     >
-      <h3 id={`temporada-${season.seasonNumber}-titulo`}>{season.title}</h3>
-      {seasonMeta.length > 0 ? <p>{seasonMeta.join(' · ')}</p> : null}
-      {season.overview !== null ? <p>{season.overview}</p> : null}
+      <h3 className="visually-hidden" id={`temporada-${season.seasonNumber}-titulo`}>
+        {season.title}
+      </h3>
+      <div className="season-info">
+        {seasonMeta.length > 0 ? <span>{seasonMeta.join(' · ')}</span> : null}
+      </div>
+      {season.overview !== null ? <p className="synopsis-body" style={{ marginTop: 8 }}>{season.overview}</p> : null}
       {season.episodes.length > 0 ? (
-        <ol>
+        <ol className="episode-list" style={{ marginTop: 6 }}>
           {season.episodes.map((episode) => (
             <EpisodeRow
               key={episode.episodeNumber}
@@ -101,7 +139,7 @@ function SeasonGroup({ season }: { season: SeriesSeasonView }): ReactNode {
           ))}
         </ol>
       ) : (
-        <p>Nenhum episódio publicado nesta temporada.</p>
+        <p className="muted">Nenhum episódio publicado nesta temporada.</p>
       )}
     </section>
   )
@@ -152,9 +190,9 @@ export default async function SeriesPage({
 
   const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, ratings, externalIds } = data
   const isUnderReview = seo.decision !== 'index'
-  const summary = [view.periodLabel, view.seasonsCountLabel, view.episodesCountLabel].filter(
-    (item): item is string => item !== null,
-  )
+  const metaText = [view.periodLabel, view.seasonsCountLabel, view.episodesCountLabel]
+    .filter((item): item is string => item !== null)
+    .join(' · ')
   const facts = [
     view.periodLabel === null ? null : { label: 'Período', value: view.periodLabel },
     view.statusLabel === null ? null : { label: 'Situação', value: view.statusLabel },
@@ -177,12 +215,18 @@ export default async function SeriesPage({
   const castContext = view.blocks.find((block) => block.blockType === 'cast_intro') ?? null
   const newsContext = view.blocks.find((block) => block.blockType === 'news_context') ?? null
   const requestedSeasonNumber = seasonNumberFromQuery(query.temporada)
+  // Default canônico: Temporada 1 (primeira temporada REGULAR). "Especiais"
+  // (season 0) só aparece quando pedida explicitamente — ela pode ter dezenas
+  // de itens e nunca deve ser a carga inicial da página.
   const selectedSeason =
     view.seasons.find((season) => season.seasonNumber === requestedSeasonNumber) ??
+    view.seasons.find((season) => season.seasonNumber > 0) ??
     view.seasons[0] ??
     null
   const visibleCast = cast.slice(0, 6)
   const visibleNews = relatedNews.slice(0, 3)
+  const synopsisLead = editorialBlocks[0] ?? null
+  const synopsisRest = editorialBlocks.slice(1)
 
   const breadcrumbJsonLd = {
     '@context': 'https://schema.org',
@@ -215,161 +259,360 @@ export default async function SeriesPage({
 
   return (
     <main data-vertical="series">
-      <div className="container">
-        <nav aria-label="Trilha de navegação">
-          <ol>
-            <li>
-              <a href={SERIES_INDEX_PATH}>Séries</a>
-            </li>
-            <li aria-current="page">{view.title}</li>
-          </ol>
-        </nav>
+      {/* ===== HERO editorial claro (canônico: verde = série) ===== */}
+      <div className="detail-hero">
+        <div className="detail-container">
+          <nav aria-label="Trilha de navegação" className="detail-hero__crumbs">
+            <ol>
+              <li>
+                <a href="/pt/">Início</a>
+              </li>
+              <li>
+                <a href={SERIES_INDEX_PATH}>Séries</a>
+              </li>
+              <li aria-current="page">{view.title}</li>
+            </ol>
+          </nav>
 
-        <header>
-          <p>
-            <strong data-entity-badge="series">Série</strong>
-          </p>
-          <h1>{view.title}</h1>
-          {summary.length > 0 ? <p>{summary.join(' · ')}</p> : null}
-          {view.metaDescription !== null ? <p>{view.metaDescription}</p> : null}
-          {externalLinks.length > 0 ? <EntityExternalIds links={externalLinks} /> : null}
-        </header>
+          <div className="detail-hero__grid">
+            <div className="detail-hero__main">
+              <div className="detail-badge-row">
+                <span className="detail-badge" data-entity-badge="series">
+                  Série
+                </span>
+                {view.statusLabel !== null ? (
+                  <span className="season-info__status">{view.statusLabel}</span>
+                ) : null}
+              </div>
+              <h1 className="detail-hero__title">{view.title}</h1>
+              <ul className="detail-hero__chips">
+                {metaText !== '' ? (
+                  <li className="detail-hero__meta-text">{metaText}</li>
+                ) : null}
+              </ul>
+              {view.metaDescription !== null ? (
+                <p className="detail-hero__synopsis">{view.metaDescription}</p>
+              ) : null}
+              <div className="detail-actions">
+                {/* Ações REAIS de biblioteca e tracker (C8). */}
+                <EntityActions entityType="tv" entityId={entityId} />
+                <a href="/pt/tracker/">Acompanhar no tracker</a>
+              </div>
+              {externalLinks.length > 0 ? (
+                <div className="entity-links" style={{ marginTop: 20 }}>
+                  <EntityExternalIds links={externalLinks} />
+                </div>
+              ) : null}
+            </div>
 
-        {/* Acoes de biblioteca e tracker (C8). Client component, sem chamada
-            externa no render. */}
-        <EntityActions entityType="tv" entityId={entityId} />
-        <p>
-          <a href="/pt/tracker">Acompanhar o progresso desta serie no tracker</a>
-        </p>
+            <aside aria-label="Notas e disponibilidade" className="detail-hero__aside">
+              <div className="score-line">
+                <div>
+                  <span className="score-line__label" style={{ color: 'var(--c-accent-series-dark)' }}>
+                    Cinerie Score
+                  </span>
+                  <p className="score-line__note">Ainda não calculado</p>
+                </div>
+              </div>
+              <div className="detail-aside-block">
+                <p className="detail-aside-block__label">Avaliações</p>
+                <RatingsPanel view={ratings} />
+              </div>
+              {watch !== null ? (
+                <div className="detail-aside-block">
+                  <p className="detail-aside-block__label">Onde assistir</p>
+                  <WatchAvailabilityPanel view={watch} />
+                  {watchContext !== null ? (
+                    <p className="watch-panel__note" data-block-type={watchContext.blockType}>
+                      {watchContext.content}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+            </aside>
+          </div>
+        </div>
+      </div>
 
-        {watch !== null ? (
-          <section aria-label="Disponibilidade legal">
-            <WatchAvailabilityPanel view={watch} />
-            {watchContext !== null ? (
-              <p data-block-type={watchContext.blockType}>{watchContext.content}</p>
-            ) : null}
-          </section>
-        ) : null}
+      {/* ===== Mídia (pôster/backdrop reais) ===== */}
+      {view.media.poster !== null || view.media.backdrop !== null ? (
+        <div className="media-strip">
+          <div className="media-strip__grid">
+            <div className="media-strip__cell">
+              {view.media.poster !== null ? (
+                <img
+                  alt={`Pôster de ${view.title}`}
+                  fetchPriority="high"
+                  height={view.media.poster.height}
+                  src={view.media.poster.src}
+                  width={view.media.poster.width}
+                />
+              ) : null}
+            </div>
+            <div className="media-strip__cell">
+              {view.media.backdrop !== null ? (
+                <img
+                  alt=""
+                  height={view.media.backdrop.height}
+                  loading="lazy"
+                  src={view.media.backdrop.src}
+                  width={view.media.backdrop.width}
+                />
+              ) : null}
+              <span className="media-strip__caption">Mídia do título</span>
+            </div>
+            <div className="media-strip__stack">
+              <a className="media-strip__cell" href="#episodios">
+                {view.media.backdrop !== null ? (
+                  <img alt="" loading="lazy" src={view.media.backdrop.src} />
+                ) : null}
+                <span className="media-strip__caption">Episódios</span>
+              </a>
+              <a className="media-strip__cell" href={NEWS_INDEX_PATH}>
+                {view.media.poster !== null ? (
+                  <img alt="" loading="lazy" src={view.media.poster.src} />
+                ) : null}
+                <span className="media-strip__caption">Notícias e Eventos</span>
+              </a>
+              <a className="media-strip__cell" href="/pt/onde-assistir/">
+                {view.media.backdrop !== null ? (
+                  <img alt="" loading="lazy" src={view.media.backdrop.src} />
+                ) : null}
+                <span className="media-strip__caption">Onde assistir</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
-        {/* Notas de terceiros, cada uma na escala da propria fonte e creditada.
-            O painel se auto-omite quando nao ha nota licenciada: fonte desligada
-            some da pagina sem deixar buraco nem quebrar o layout. */}
-        <RatingsPanel view={ratings} />
+      {/* ===== A obra ===== */}
+      {(synopsisLead !== null || synopsisRest.length > 0) ? (
+        <section aria-labelledby="series-work-title" className="detail-container" style={{ paddingTop: 60 }}>
+          <div className="eyebrow-bar">
+            <span id="series-work-title">A obra</span>
+          </div>
+          {synopsisLead !== null ? (
+            <p className="synopsis-lead" data-block-type={synopsisLead.blockType}>
+              {synopsisLead.content}
+            </p>
+          ) : null}
+          {synopsisRest.map((block) => (
+            <p className="synopsis-body" data-block-type={block.blockType} key={block.blockType}>
+              {block.content}
+            </p>
+          ))}
+        </section>
+      ) : null}
 
-        {editorialBlocks.length > 0 ? (
-          <section aria-labelledby="series-work-title">
-            <h2 id="series-work-title">A obra</h2>
-            {editorialBlocks.map((block) => (
-              <p key={block.blockType} data-block-type={block.blockType}>
-                {block.content}
+      {/* ===== Guia Screen · crítica (overlay verde) ===== */}
+      {critiqueBlock !== null ? (
+        <section aria-label="Crítica da redação" className="critic-band">
+          {view.media.backdrop !== null ? (
+            <img alt="" className="critic-band__img" loading="lazy" src={view.media.backdrop.src} />
+          ) : null}
+          <div className="critic-band__scrim-h" />
+          <div className="critic-band__scrim-v" />
+          <div className="critic-band__inner">
+            <div className="critic-band__content">
+              <span className="critic-band__eyebrow" style={{ color: '#B6D3A8' }}>
+                Guia Cinerie · Crítica da redação
+              </span>
+              <p className="critic-band__quote" data-block-type={critiqueBlock.blockType}>
+                {critiqueBlock.content}
               </p>
-            ))}
-          </section>
-        ) : null}
+              <p className="critic-band__byline">Redação Cinerie</p>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
-        {critiqueBlock !== null ? (
-          <section aria-labelledby="series-review-title">
-            <h2 id="series-review-title">Crítica da redação</h2>
-            <p data-block-type={critiqueBlock.blockType}>{critiqueBlock.content}</p>
-          </section>
-        ) : null}
-
-        {view.seasons.length > 0 ? (
-          <section id="episodios" aria-labelledby="series-episodes-title">
-            <h2 id="series-episodes-title">Episódios</h2>
-            <nav aria-label="Temporadas">
-              <ul>
+      {/* ===== Episódios (catálogo assistível) ===== */}
+      {view.seasons.length > 0 ? (
+        <section aria-labelledby="series-episodes-title" className="detail-container" id="episodios" style={{ paddingTop: 60 }}>
+          <div className="section-head" style={{ alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <div>
+              <div className="eyebrow-bar">
+                <span>Catálogo</span>
+              </div>
+              <h2 className="detail-section-title" id="series-episodes-title">
+                Episódios
+              </h2>
+            </div>
+            {/* Tabs de temporada: links REAIS (rotas dedicadas de temporada,
+                com fallback por query) — overflow horizontal no mobile. */}
+            {view.seasons.length > 1 ? (
+              <nav aria-label="Temporadas" className="season-tabs">
                 {view.seasons.map((season) => {
                   const seasonHref =
                     seasonPath(data.canonicalSlug, season.seasonNumber) ??
                     `?temporada=${season.seasonNumber}#episodios`
+                  const isSelected = selectedSeason?.seasonNumber === season.seasonNumber
                   return (
-                    <li key={season.seasonNumber}>
-                      <a href={seasonHref}>Temporada {season.seasonNumber}</a>
-                    </li>
+                    <a
+                      aria-current={isSelected ? 'true' : undefined}
+                      href={seasonHref}
+                      key={season.seasonNumber}
+                    >
+                      Temporada {season.seasonNumber}
+                    </a>
                   )
                 })}
-              </ul>
-            </nav>
-            {episodeContextBlocks.map((block) => (
-              <p key={block.blockType} data-block-type={block.blockType}>
-                {block.content}
-              </p>
-            ))}
-            {selectedSeason !== null ? (
-              <SeasonGroup key={selectedSeason.seasonNumber} season={selectedSeason} />
+              </nav>
             ) : null}
-          </section>
-        ) : null}
-
-        {visibleCast.length > 0 ? (
-          <section aria-labelledby="series-cast-title">
-            <h2 id="series-cast-title">Elenco principal</h2>
-            {castContext !== null ? (
-              <p data-block-type={castContext.blockType}>{castContext.content}</p>
-            ) : null}
-            <ul>
-              {visibleCast.map((member, index) => (
-                <li key={`${member.name}-${index}`}>
-                  {member.href !== null ? (
-                    <a href={member.href}>{member.name}</a>
-                  ) : (
-                    <span>{member.name}</span>
-                  )}
-                  {member.character !== null ? <span> — {member.character}</span> : null}
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
-
-        {visibleNews.length > 0 ? (
-          <section aria-labelledby="series-news-title">
-            <h2 id="series-news-title">Notícias relacionadas</h2>
-            {newsContext !== null ? (
-              <p data-block-type={newsContext.blockType}>{newsContext.content}</p>
-            ) : null}
-            <ul>
-              {visibleNews.map((card) => {
-                const meta = [card.author, card.dateLabel, card.readTimeLabel].filter(
-                  (item): item is string => item !== null,
-                )
-
-                return (
-                  <li key={card.href}>
-                    <article>
-                      <h3>
-                        <a href={card.href}>{card.title}</a>
-                      </h3>
-                      {card.category !== null ? <p>{card.category}</p> : null}
-                      {meta.length > 0 ? <p>{meta.join(' · ')}</p> : null}
-                    </article>
-                  </li>
-                )
-              })}
-            </ul>
-            <p>
-              <a href={NEWS_INDEX_PATH}>Ver todas as notícias</a>
+          </div>
+          {episodeContextBlocks.map((block) => (
+            <p key={block.blockType} data-block-type={block.blockType}>
+              {block.content}
             </p>
-          </section>
-        ) : null}
+          ))}
+          {selectedSeason !== null ? (
+            <SeasonGroup key={selectedSeason.seasonNumber} season={selectedSeason} />
+          ) : null}
+        </section>
+      ) : null}
 
-        {facts.length > 0 ? (
-          <section aria-labelledby="series-details-title">
-            <h2 id="series-details-title">Ficha técnica</h2>
-            <dl>
-              {facts.map((fact) => (
-                <div key={fact.label}>
-                  <dt>{fact.label}</dt>
-                  <dd>{fact.value}</dd>
-                </div>
-              ))}
-            </dl>
-          </section>
-        ) : null}
+      {/* ===== Elenco · faixa visual ===== */}
+      {visibleCast.length > 0 ? (
+        <section aria-labelledby="series-cast-title" className="detail-container" style={{ paddingTop: 60 }}>
+          <div className="section-head" style={{ alignItems: 'flex-end', marginBottom: 26 }}>
+            <div>
+              <div className="eyebrow-bar">
+                <span>Elenco</span>
+              </div>
+              <h2 className="detail-section-title" id="series-cast-title">
+                Elenco <span className="thin">principal</span>
+              </h2>
+            </div>
+            <a className="detail-see-all" href="/pt/pessoas/">
+              Ver pessoas →
+            </a>
+          </div>
+          {castContext !== null ? (
+            <p data-block-type={castContext.blockType}>{castContext.content}</p>
+          ) : null}
+          <ul className="cast-strip">
+            {visibleCast.map((member, index) => (
+              <li key={`${member.name}-${index}`}>
+                {member.href !== null ? (
+                  <a className="cast-tile" href={member.href}>
+                    <span className="cast-tile__photo">
+                      {member.profile !== null ? (
+                        <img alt="" loading="lazy" src={member.profile.src} />
+                      ) : (
+                        <span aria-hidden="true">
+                          {member.name
+                            .split(' ')
+                            .slice(0, 2)
+                            .map((part) => part.slice(0, 1))
+                            .join('')}
+                        </span>
+                      )}
+                    </span>
+                    <p className="cast-tile__name">{member.name}</p>
+                    {member.character !== null ? (
+                      <p className="cast-tile__role">{member.character}</p>
+                    ) : null}
+                  </a>
+                ) : (
+                  <div className="cast-tile">
+                    <span className="cast-tile__photo">
+                      {member.profile !== null ? (
+                        <img alt="" loading="lazy" src={member.profile.src} />
+                      ) : (
+                        <span aria-hidden="true">
+                          {member.name
+                            .split(' ')
+                            .slice(0, 2)
+                            .map((part) => part.slice(0, 1))
+                            .join('')}
+                        </span>
+                      )}
+                    </span>
+                    <p className="cast-tile__name">{member.name}</p>
+                    {member.character !== null ? (
+                      <p className="cast-tile__role">{member.character}</p>
+                    ) : null}
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
+      {/* ===== Notícias relacionadas ===== */}
+      {visibleNews.length > 0 ? (
+        <section aria-labelledby="series-news-title" className="detail-container" style={{ paddingTop: 64 }}>
+          <div className="section-head" style={{ alignItems: 'flex-end', marginBottom: 26 }}>
+            <div>
+              <div className="eyebrow-bar">
+                <span>Editorial</span>
+              </div>
+              <h2 className="detail-section-title" id="series-news-title">
+                Notícias <span className="thin">relacionadas</span>
+              </h2>
+            </div>
+            <a className="see-all" href={NEWS_INDEX_PATH}>
+              Ver tudo
+            </a>
+          </div>
+          {newsContext !== null ? (
+            <p data-block-type={newsContext.blockType}>{newsContext.content}</p>
+          ) : null}
+          <ul className="mnews-grid">
+            {visibleNews.map((card) => (
+              <li key={card.href}>
+                <a className="mnews-card" href={card.href}>
+                  <span className="mnews-card__cover">
+                    {card.image !== null ? (
+                      <img alt="" loading="lazy" src={card.image.src} />
+                    ) : null}
+                  </span>
+                  {card.category !== null ? (
+                    <span className="mnews-card__cat" style={{ color: 'var(--c-accent-series-dark)' }}>
+                      {card.category}
+                    </span>
+                  ) : null}
+                  <span className="mnews-card__title">{card.title}</span>
+                  <span className="mnews-card__meta">
+                    {[card.author, card.readTimeLabel]
+                      .filter((item): item is string => item !== null)
+                      .join(' · ')}
+                  </span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {/* ===== Detalhes (ficha 320px) ===== */}
+      {facts.length > 0 ? (
+        <section aria-labelledby="series-details-title" className="detail-container" style={{ paddingTop: 64, paddingBottom: 72 }}>
+          <div className="ficha-grid">
+            <div>
+              <div className="eyebrow-bar">
+                <span id="series-details-title">Detalhes</span>
+              </div>
+              <dl className="ficha-rows">
+                {facts.map((fact) => (
+                  <div className="ficha-row" key={fact.label}>
+                    <dt>{fact.label}</dt>
+                    <dd>{fact.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+            <div />
+          </div>
+        </section>
+      ) : null}
+
+      <div className="detail-container">
         {isUnderReview ? (
-          <p data-editorial-state="in-review">Esta página ainda está em revisão editorial.</p>
+          <p className="muted" data-editorial-state="in-review">
+            Esta página ainda está em revisão editorial.
+          </p>
         ) : null}
       </div>
 

@@ -31,7 +31,8 @@ describe('shell público mínimo · detalhe de filme', () => {
   it('mantém um H1, breadcrumb e badge textual de Filme', () => {
     expect(code.match(/<h1[\s>]/g)).toHaveLength(1)
     expect(code).toContain('data-vertical="movie"')
-    expect(code).toContain('data-entity-badge="movie">Filme</strong>')
+    // Badge do design canônico: continua TEXTUAL (invariante 11) e marcado.
+    expect(code).toMatch(/data-entity-badge="movie"[\s\S]{0,40}Filme/)
     expect(code).toContain('href={MOVIES_INDEX_PATH}>Filmes</a>')
   })
 
@@ -50,14 +51,33 @@ describe('shell público mínimo · detalhe de filme', () => {
     expect(code).toContain('data-editorial-state="in-review"')
   })
 
-  it('remove a camada visual interpretativa e não inventa dado ausente', () => {
+  it('design canônico (tela 06): estrutura EXATA do handoff, sem dado inventado', () => {
+    // Ordem canônica: hero editorial claro → mídia full-bleed → A obra →
+    // Guia crítica → Elenco (faixa 3/4) → Notícias e bastidores → Ficha.
+    const order = [
+      'className="detail-hero"',
+      'className="media-strip"',
+      'className="synopsis-lead"',
+      'className="critic-band"',
+      'className="cast-strip"',
+      'className="mnews-grid"',
+      'className="ficha-grid"',
+    ]
+    let cursor = -1
+    for (const marker of order) {
+      const at = code.indexOf(marker)
+      expect(at, `marcador ausente/fora de ordem: ${marker}`).toBeGreaterThan(cursor)
+      cursor = at
+    }
     expect(existsSync(path.join(ROOT, CSS_REL))).toBe(false)
     expect(code).not.toContain('.module.css')
-    expect(code).toContain('className="container"')
-    expect(code.match(/className=/g)).toHaveLength(1)
-    expect(code).not.toContain('<img')
-    expect(code).not.toContain('view.media')
-    expect(code).not.toMatch(/poster|backdrop|fallback|mediaTile/i)
+    // Imagens só de asset governado; sem hotlink improvisado; sem "N/D".
+    expect(code).toContain('view.media.poster !== null')
+    expect(code).toContain('view.media.backdrop !== null')
+    expect(code).not.toMatch(/src="https?:/)
     expect(code).not.toMatch(/(?:\?\?|=== null \?)\s*["']—["']/)
+    // Cinerie Score: estado honesto, nunca número inventado (Prompt 11).
+    expect(code).toContain('Ainda não calculado')
+    expect(code).not.toMatch(/score-line__value/)
   })
 })

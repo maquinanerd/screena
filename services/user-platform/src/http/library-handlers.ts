@@ -361,7 +361,9 @@ export function createLibraryHttpHandlers(deps: LibraryHttpDeps): LibraryHttpHan
 
     async deleteList(request) {
       return mutation(deps, request, () => ({ ok: true as const, value: {} }), async (auth) => {
-        const id = idFromPath(new URL(request.url), 0);
+        // Rota montada: .../lists/<id>/delete — o id e o PENULTIMO segmento.
+        // (fromEnd 0 lia o sufixo "delete" e a exclusao respondia 400 sempre.)
+        const id = idFromPath(new URL(request.url), 1);
         if (!id.ok) return failureResponse(id);
         const r = await deleteList(rt, auth, { listId: id.value });
         return r.ok ? jsonResponse(200, { ok: true, ...r.value }) : failureResponse(r);
@@ -381,9 +383,10 @@ export function createLibraryHttpHandlers(deps: LibraryHttpDeps): LibraryHttpHan
     async removeListItem(request) {
       return mutation(deps, request, () => ({ ok: true as const, value: {} }), async (auth) => {
         const url = new URL(request.url);
-        // .../lists/<listId>/items/<itemId>
-        const itemId = idFromPath(url, 0);
-        const listId = idFromPath(url, 2);
+        // Rota montada: .../lists/<listId>/items/<itemId>/remove — o sufixo
+        // "remove" ocupa o ultimo segmento (fromEnd 0/2 liam "remove"/"items").
+        const itemId = idFromPath(url, 1);
+        const listId = idFromPath(url, 3);
         if (!itemId.ok) return failureResponse(itemId);
         if (!listId.ok) return failureResponse(listId);
         const r = await removeListItem(rt, auth, {

@@ -1,11 +1,13 @@
 import type { Metadata } from 'next'
 
+import { AuthShell } from '../entrar/auth-shell'
 import { RecoverRequestForm } from './recover-form'
 
 /**
- * PEDIDO de recuperacao de senha (C7C/C7D). Envia o e-mail para o endpoint que
- * responde SEMPRE 202 generico (anti-enumeracao). A confirmacao (nova senha)
- * acontece na pagina `/pt/redefinir-senha`, aberta pelo link do e-mail.
+ * PEDIDO de recuperação de senha (C7C/C7D) no card da tela 16 (sem tabs).
+ * Envia o e-mail para o endpoint que responde SEMPRE 202 genérico
+ * (anti-enumeração). A confirmação (nova senha) acontece em
+ * `/pt/redefinir-senha`, aberta pelo link do e-mail.
  */
 
 export const dynamic = 'force-dynamic'
@@ -18,15 +20,13 @@ export const metadata: Metadata = {
 export default function RecuperarSenhaPage() {
   return (
     <main data-vertical="account">
-      <div className="container">
-        <header>
-          <h1>Recuperar senha</h1>
-        </header>
+      <h1 className="visually-hidden">Recuperar senha</h1>
+      <AuthShell active="entrar" lede="Recupere o acesso à sua conta" showTabs={false}>
         <RecoverRequestForm />
-        <p>
-          <a href="/pt/entrar">Voltar para entrar</a>
+        <p className="auth-links">
+          <a href="/pt/entrar/">Voltar para entrar</a>
         </p>
-      </div>
+      </AuthShell>
     </main>
   )
 }

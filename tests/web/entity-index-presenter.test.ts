@@ -120,6 +120,7 @@ describe("cards individuais", () => {
     );
     expect(card).toEqual({
       kind: "movie",
+      entityId: null,
       title: "Filme PT",
       href: "/pt/filmes/filme-pt/",
       meta: "2020",

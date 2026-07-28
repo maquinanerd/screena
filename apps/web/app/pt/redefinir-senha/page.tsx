@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 
+import { AuthShell } from '../entrar/auth-shell'
 import { PasswordResetTokenForm } from './token-form'
 
 /**
@@ -25,12 +26,10 @@ export const metadata: Metadata = {
 export default function RedefinirSenhaPage() {
   return (
     <main data-vertical="account">
-      <div className="container">
-        <header>
-          <h1>Redefinicao de senha</h1>
-        </header>
+      <h1 className="visually-hidden">Redefinicao de senha</h1>
+      <AuthShell active="entrar" lede="Defina uma nova senha para sua conta" showTabs={false}>
         <PasswordResetTokenForm />
-      </div>
+      </AuthShell>
     </main>
   )
 }

@@ -2,23 +2,41 @@ import type { ReactNode } from 'react'
 
 import { HOME_HREF, NAV_ITEMS } from '../../src/lib/navigation'
 
-/** Rodapé mínimo: marca, rotas existentes e atribuição obrigatória do TMDB. */
+/**
+ * SiteFooter — rodape CLARO editorial do design canonico (footer claro por
+ * regra transversal do handoff: overlay escuro so em midia/hero, DD-20).
+ * Wordmark aprovada + rotas reais + atribuicao obrigatoria do TMDB.
+ */
 export function SiteFooter(): ReactNode {
   return (
     <footer className="site-footer">
       <div className="site-footer__inner">
-        <a className="site-footer__brand" href={HOME_HREF} aria-label="Cinerie — início">
-          Cinerie
-        </a>
-        <nav aria-label="Rodapé">
-          <ul className="site-footer__links">
-            {NAV_ITEMS.map((item) => (
-              <li key={item.href}>
-                <a href={item.href}>{item.label}</a>
+        <div className="site-footer__top">
+          <a href={HOME_HREF} aria-label="Cinerie — início">
+            <img
+              alt=""
+              className="site-footer__logo"
+              height={36}
+              src="/brand/cinerie-wordmark-black.svg"
+              width={116}
+            />
+          </a>
+          <nav aria-label="Rodapé">
+            <ul className="site-footer__links">
+              {NAV_ITEMS.map((item) => (
+                <li key={item.href}>
+                  <a href={item.href}>{item.label}</a>
+                </li>
+              ))}
+              <li>
+                <a href="/pt/busca/">Buscar</a>
               </li>
-            ))}
-          </ul>
-        </nav>
+              <li>
+                <a href="/pt/conta/">Minha conta</a>
+              </li>
+            </ul>
+          </nav>
+        </div>
         <p className="site-footer__attribution">
           Este produto usa a API do TMDB, mas não é endossado ou certificado pelo TMDB.
         </p>

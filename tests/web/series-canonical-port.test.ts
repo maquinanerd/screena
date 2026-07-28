@@ -31,7 +31,7 @@ describe('shell público mínimo · detalhe de série', () => {
   it('mantém um H1, breadcrumb e badge textual de Série', () => {
     expect(code.match(/<h1[\s>]/g)).toHaveLength(1)
     expect(code).toContain('data-vertical="series"')
-    expect(code).toContain('data-entity-badge="series">Série</strong>')
+    expect(code).toMatch(/data-entity-badge="series"[\s\S]{0,40}Série/)
     expect(code).toContain('href={SERIES_INDEX_PATH}>Séries</a>')
   })
 
@@ -62,14 +62,35 @@ describe('shell público mínimo · detalhe de série', () => {
     expect(code).toContain('data-editorial-state="in-review"')
   })
 
-  it('remove a camada visual interpretativa e não inventa dado ausente', () => {
+  it('design canônico (tela 07): estrutura EXATA do handoff, sem dado inventado', () => {
+    // Ordem canônica: hero editorial claro (verde) → mídia → A obra →
+    // Guia crítica → EPISÓDIOS (catálogo) → Elenco → Notícias → Detalhes.
+    const order = [
+      'className="detail-hero"',
+      'className="media-strip"',
+      'className="synopsis-lead"',
+      'className="critic-band"',
+      'className="season-tabs"',
+      'className="cast-strip"',
+      'className="mnews-grid"',
+      'className="ficha-grid"',
+    ]
+    let cursor = -1
+    for (const marker of order) {
+      const at = code.indexOf(marker)
+      expect(at, `marcador ausente/fora de ordem: ${marker}`).toBeGreaterThan(cursor)
+      cursor = at
+    }
     expect(existsSync(path.join(ROOT, CSS_REL))).toBe(false)
     expect(code).not.toContain('.module.css')
-    expect(code).toContain('className="container"')
-    expect(code.match(/className=/g)).toHaveLength(1)
-    expect(code).not.toContain('<img')
-    expect(code).not.toContain('view.media')
-    expect(code).not.toMatch(/poster|backdrop|fallback|mediaTile/i)
+    expect(code).toContain('view.media.poster !== null')
+    expect(code).toContain('episode.still !== null')
+    expect(code).toContain('className="episode-row"')
+    expect(code).not.toMatch(/src="https?:/)
     expect(code).not.toMatch(/(?:\?\?|=== null \?)\s*["']—["']/)
+    // Cinerie Score honesto; 21k episódios nunca de uma vez (só a temporada
+    // selecionada renderiza).
+    expect(code).toContain('Ainda não calculado')
+    expect(code).toContain('season={selectedSeason}')
   })
 })

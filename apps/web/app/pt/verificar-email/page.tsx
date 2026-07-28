@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 
+import { AuthShell } from '../entrar/auth-shell'
 import { EmailVerificationTokenForm } from './token-form'
 
 /**
@@ -30,12 +31,10 @@ export const metadata: Metadata = {
 export default function VerificarEmailPage() {
   return (
     <main data-vertical="account">
-      <div className="container">
-        <header>
-          <h1>Confirmacao de e-mail</h1>
-        </header>
+      <h1 className="visually-hidden">Confirmacao de e-mail</h1>
+      <AuthShell active="entrar" lede="Confirmando seu endereço de e-mail" showTabs={false}>
         <EmailVerificationTokenForm />
-      </div>
+      </AuthShell>
     </main>
   )
 }

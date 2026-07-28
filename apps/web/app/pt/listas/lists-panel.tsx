@@ -3,8 +3,19 @@
 import { useEffect, useState } from 'react'
 
 import { authFetch } from '../../../src/lib/csrf-client'
+import { IcPlusIcon } from './plus-icon'
 
-/** Painel de LISTAS (C8): cria, lista e remove listas do proprio titular. */
+/**
+ * Painel de LISTAS (C8) — tela 15 do canônico, estrutura EXATA:
+ * cabeçalho com barra vermelha + "Criar lista" → grade 3 colunas de cards
+ * 16:9 (badge de privacidade, nome sobreposto ao gradiente, contagem real)
+ * → célula tracejada "Criar nova lista".
+ *
+ * Dados 100% reais do titular (/api/me/lists). Sem curtidas nem "Listas em
+ * destaque" editoriais: não há produto de curtidas/listas editoriais — nunca
+ * métrica inventada (DIVERGENCIAS registra). Lista nasce PRIVADA; publicar é
+ * decisão separada e exige e-mail verificado.
+ */
 
 interface UserList {
   id: string
@@ -18,9 +29,13 @@ interface UserList {
 
 type Estado = 'carregando' | 'pronto' | 'erro' | 'nao-autenticado'
 
+/** Nº de capas-gradiente definidas em CSS (.list-card__media--gN). */
+const CAPAS = 6
+
 export function ListsPanel(): React.ReactElement {
   const [estado, setEstado] = useState<Estado>('carregando')
   const [listas, setListas] = useState<UserList[]>([])
+  const [criando, setCriando] = useState(false)
   const [titulo, setTitulo] = useState('')
   const [aviso, setAviso] = useState<string | null>(null)
 
@@ -52,73 +67,114 @@ export function ListsPanel(): React.ReactElement {
     setAviso(null)
     const r = await authFetch('/api/me/lists', {
       method: 'POST',
-      // Nasce PRIVADA: publicar e uma decisao separada e exige e-mail verificado.
+      // Nasce PRIVADA: publicar é uma decisão separada e exige e-mail verificado.
       body: JSON.stringify({ title: titulo, visibility: 'private', ordered: true }),
     })
     if (r.ok) {
       setTitulo('')
+      setCriando(false)
       await carregar()
     } else {
       const corpo = (await r.json().catch(() => null)) as { message?: string } | null
-      setAviso(corpo?.message ?? 'Nao foi possivel criar a lista.')
-    }
-  }
-
-  async function remover(id: string): Promise<void> {
-    setAviso(null)
-    const r = await authFetch(`/api/me/lists/${id}/delete`, { method: 'POST' })
-    if (r.ok) {
-      await carregar()
-    } else {
-      setAviso('Listas do sistema nao podem ser removidas.')
+      setAviso(corpo?.message ?? 'Não foi possível criar a lista.')
     }
   }
 
   if (estado === 'nao-autenticado') {
     return (
-      <p role="status">
-        <a href="/pt/entrar">Entre na sua conta</a> para ver suas listas.
+      <p className="lists-anon" role="status">
+        <a href="/pt/entrar/">Entre na sua conta</a> para ver suas listas.
       </p>
     )
   }
 
   return (
     <div>
-      <form onSubmit={criar}>
-        <label htmlFor="titulo-lista">Nova lista</label>
-        <input
-          id="titulo-lista"
-          type="text"
-          required
-          maxLength={120}
-          value={titulo}
-          onChange={(e) => setTitulo(e.target.value)}
-        />
-        <button type="submit">Criar lista</button>
-      </form>
+      <div className="lists-head">
+        <div>
+          <div className="lists-head__title">
+            <span aria-hidden="true" className="lists-head__bar" />
+            <h1>Suas listas</h1>
+          </div>
+          <p className="lists-head__sub">Coleções que você criou e salvou na Cinerie</p>
+        </div>
+        <button
+          aria-expanded={criando}
+          className="lists-create"
+          onClick={() => setCriando(!criando)}
+          type="button"
+        >
+          <IcPlusIcon /> Criar lista
+        </button>
+      </div>
+
+      {criando ? (
+        <form className="lists-form" onSubmit={criar}>
+          <label htmlFor="titulo-lista">Nome da nova lista</label>
+          <input
+            className="input"
+            id="titulo-lista"
+            maxLength={120}
+            onChange={(e) => setTitulo(e.target.value)}
+            required
+            type="text"
+            value={titulo}
+          />
+          <button className="imp-primary" type="submit">
+            Criar lista
+          </button>
+        </form>
+      ) : null}
 
       <div aria-live="polite">
-        {estado === 'carregando' ? <p role="status">Carregando...</p> : null}
-        {estado === 'erro' ? <p role="alert">Nao foi possivel carregar suas listas.</p> : null}
-        {estado === 'pronto' && listas.length === 0 ? (
-          <p role="status">Voce ainda nao tem listas.</p>
+        {estado === 'carregando' ? <p role="status">Carregando…</p> : null}
+        {estado === 'erro' ? (
+          <p className="alert alert--error" role="alert">
+            Não foi possível carregar suas listas.
+          </p>
         ) : null}
-        {estado === 'pronto' && listas.length > 0 ? (
-          <ul>
-            {listas.map((l) => (
-              <li key={l.id}>
-                <a href={`/pt/listas/${l.id}`}>{l.title}</a> — {l.itemCount} item(ns)
-                {l.kind === 'system' ? <em> (do sistema)</em> : null}
-                {l.kind === 'custom' ? (
-                  <button type="button" onClick={() => void remover(l.id)}>
-                    Remover
-                  </button>
-                ) : null}
-              </li>
+        {aviso !== null ? (
+          <p className="alert alert--error" role="alert">
+            {aviso}
+          </p>
+        ) : null}
+
+        {estado === 'pronto' ? (
+          <div className="lists-grid">
+            {listas.map((l, index) => (
+              <a className="list-card" href={`/pt/listas/${l.id}/`} key={l.id}>
+                <span className={`list-card__media list-card__media--g${index % CAPAS}`}>
+                  <span aria-hidden="true" className="list-card__scrim" />
+                  <span className="list-card__privacy">
+                    {l.visibility === 'public' ? 'Pública' : 'Privada'}
+                  </span>
+                  <span className="list-card__name">{l.title}</span>
+                </span>
+                <span className="list-card__foot">
+                  <span className="list-card__count">
+                    {l.itemCount} título{l.itemCount === 1 ? '' : 's'}
+                  </span>
+                  {l.kind === 'system' ? (
+                    <span className="list-card__system">do sistema</span>
+                  ) : null}
+                </span>
+              </a>
             ))}
-          </ul>
+            <button
+              className="list-card list-card--new"
+              onClick={() => {
+                setCriando(true)
+                document.getElementById('titulo-lista')?.focus()
+              }}
+              type="button"
+            >
+              <span aria-hidden="true" className="list-card__plus">
+                <IcPlusIcon size={20} />
+              </span>
+              <span className="list-card__new-label">Criar nova lista</span>
+            </button>
+          </div>
         ) : null}
-        {aviso !== null ? <p role="alert">{aviso}</p> : null}
       </div>
     </div>
   )

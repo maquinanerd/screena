@@ -32,7 +32,10 @@ describe('notícias após o reset visual', () => {
   it('renderiza o artigo real como texto e preserva seu estado editorial', () => {
     expect(article).toContain('getNewsArticleData(slug)')
     expect(article).toContain('notFound()')
-    expect(article).toContain('view.bodyParagraphs.map')
+    // Corpo real dividido em antes/depois do AdSlot mid-article (tela 05)
+    expect(article).toContain('view.bodyParagraphs')
+    expect(article).toContain('bodyBefore.map')
+    expect(article).toContain('bodyAfter.map')
     expect(article).toContain('view.source !== null')
     expect(article).toContain('view.aiAssisted')
     expect(article).toMatch(/indexability\.decision !== ['"]index['"]/)
@@ -49,11 +52,48 @@ describe('notícias após o reset visual', () => {
     expect(article.match(/application\/ld\+json/g)).toHaveLength(2)
   })
 
-  it('remove hero, imagens renderizadas, anúncios e CSS visual', () => {
-    for (const page of [index, article]) {
-      expect(page).not.toMatch(/AdSlot|<img|styles\./)
-      expect(page.match(/<h1[\s>]/g)).toHaveLength(1)
+  it('design canônico (tela 03): layout magazine, AdSlot governado, um H1 por página', () => {
+    // Ordem: tabs+ad no header → magazine lead (feature 1.02/1.18 + rail
+    // 290px) → 3 cards → Ad → feed 1fr/340px.
+    const order = [
+      'className="nws-header"',
+      'className="nws-lead-grid"',
+      'className="nws-feature"',
+      'className="nws-cards3"',
+      'className="nws-rail"',
+      'className="nws-feed section"',
+    ]
+    let cursor = -1
+    for (const marker of order) {
+      const at = index.indexOf(marker)
+      expect(at, `marcador ausente/fora de ordem: ${marker}`).toBeGreaterThan(cursor)
+      cursor = at
     }
+    for (const page of [index, article]) {
+      expect(page.match(/<h1[\s>]/g)).toHaveLength(1)
+      expect(page).toMatch(/<AdSlot format="(?:leaderboard|skyscraper)"/)
+      expect(page).not.toMatch(/<iframe|doubleclick|adsbygoogle/i)
+    }
+    expect(article).toContain('view.heroImage !== null ?')
+    // Tela 05: hero escuro -> corpo 720 -> ficha do titulo -> leia tambem
+    const articleOrder = [
+      'className="art-hero"',
+      'className="art-body"',
+      'className="art-ficha"',
+      'className="read-also"',
+    ]
+    let artCursor = -1
+    for (const marker of articleOrder) {
+      const at = article.indexOf(marker)
+      expect(at, `marcador ausente/fora de ordem: ${marker}`).toBeGreaterThan(artCursor)
+      artCursor = at
+    }
+    // Entidades citadas persistidas (nunca inferidas no render)
+    expect(article).toContain('view.related.length > 0 ?')
+    // Ficha do titulo: so com entidade real hidratada; score honesto (bloqueado)
+    expect(article).toContain('card !== null ?')
+    expect(article).toContain('ainda não calculado')
+    expect(article).not.toMatch(/AggregateRating/)
     expect(existsSync(path.join(ROOT, 'apps/web/app/pt/noticias/news-canonical.module.css'))).toBe(
       false,
     )
@@ -62,9 +102,18 @@ describe('notícias após o reset visual', () => {
     ).toBe(false)
   })
 
-  it('não introduz conteúdo, compartilhamento ou recursos sociais falsos', () => {
+  it('share/minha-lista são reais; nada de conteúdo fake ou de amostra', () => {
     expect(index).not.toMatch(/Mais lidas|Cinerie Daily|Screen Daily|Assinar grátis|trending/)
-    expect(article).not.toMatch(/Minha lista|Avaliar|Compartilhar|relatedArticles/)
+    // Compartilhar = links reais de share (sem SDK/script externo no render)
+    expect(article).toContain('x.com/intent/post')
+    expect(article).toContain('facebook.com/sharer')
+    expect(article).not.toMatch(/<script[^>]*src=|sdk\.js/)
+    // "Minha lista" e o CardBookmark REAL (Backend C); "Avaliar" nao existe
+    // como UI real ainda -> proibido botao morto
+    expect(article).toContain('CardBookmark')
+    expect(article).not.toMatch(/Avaliar/)
+    // Nunca dados de amostra do prototipo
     expect(article).not.toMatch(/Daredevil|Marvel|Collider/)
+    expect(article).not.toMatch(/relatedArticles/)
   })
 })

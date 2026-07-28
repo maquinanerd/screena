@@ -17,6 +17,7 @@
  */
 
 import { getPrismaClient } from "@screena/db/server";
+import type { Prisma } from "@screena/db/server";
 
 import {
   buildWatchAvailabilityView,
@@ -43,6 +44,42 @@ const WATCH_FETCH_LIMIT = 60;
  * deduplicado) de um titulo. Sem oferta permitida -> `null` e a pagina omite o
  * painel inteiro.
  */
+/**
+ * Clausula compartilhada do gate de licenca (invariante 6 + Backend B):
+ * so oferta exibivel, nao vencida e com DataUsageDecision VIGENTE cuja
+ * licenca-mae continua vigente e exibivel. Reusada pelo painel por entidade e
+ * pelo hub /pt/onde-assistir — um unico lugar para a regra critica.
+ */
+export function licensedWatchWhere(now: Date): Prisma.WatchAvailabilityWhereInput {
+  return {
+    countryCode: WATCH_COUNTRY,
+    providerApi: WATCH_PROVIDER_API,
+    displayAllowed: true,
+    OR: [{ availableUntil: null }, { availableUntil: { gt: now } }],
+    dataUsageDecision: {
+      is: {
+        useCase: "watch_offer_display" as const,
+        isCurrent: true,
+        stage: "approved_for_display" as const,
+        displayAllowed: true,
+        validFrom: { lte: now },
+        AND: [
+          { OR: [{ validUntil: null }, { validUntil: { gt: now } }] },
+          { OR: [{ territory: null }, { territory: WATCH_COUNTRY }] },
+        ],
+        sourceLicense: {
+          is: {
+            isCurrent: true,
+            displayAllowed: true,
+            contentType: "watch_availability" as const,
+            licenseStatus: { in: ["official", "licensed", "third_party"] as const },
+          },
+        },
+      },
+    },
+  };
+}
+
 export async function getWatchAvailabilityForEntity(
   prisma: PrismaClient,
   entityType: WatchEntityType,
@@ -51,41 +88,10 @@ export async function getWatchAvailabilityForEntity(
   const now = new Date();
 
   const rows = await prisma.watchAvailability.findMany({
-    where: {
-      entityType,
-      entityId,
-      countryCode: WATCH_COUNTRY,
-      providerApi: WATCH_PROVIDER_API,
-      displayAllowed: true,
-      // Ofertas vencidas nao entram: sem `available_until` (perene) ou ainda no futuro.
-      OR: [{ availableUntil: null }, { availableUntil: { gt: now } }],
-      // Backend B: a exibicao depende de uma DataUsageDecision VIGENTE cuja
-      // LICENCA-MAE continua vigente e exibivel. O trigger do banco garante
-      // isso na ESCRITA; decisao que expira pelo tempo ou licenca supersedida
-      // depois nao geram nenhum write na oferta — so a leitura enxerga (achado
-      // A1 da revisao adversarial da PR #74). Sem decisao anexada, nao exibe.
-      dataUsageDecision: {
-        is: {
-          useCase: "watch_offer_display",
-          isCurrent: true,
-          stage: "approved_for_display",
-          displayAllowed: true,
-          validFrom: { lte: now },
-          AND: [
-            { OR: [{ validUntil: null }, { validUntil: { gt: now } }] },
-            { OR: [{ territory: null }, { territory: WATCH_COUNTRY }] },
-          ],
-          sourceLicense: {
-            is: {
-              isCurrent: true,
-              displayAllowed: true,
-              contentType: "watch_availability",
-              licenseStatus: { in: ["official", "licensed", "third_party"] },
-            },
-          },
-        },
-      },
-    },
+    // Gate de licenca compartilhado (ver licensedWatchWhere acima): ofertas
+    // vencidas fora; exibicao exige DataUsageDecision VIGENTE cuja licenca-mae
+    // continua vigente e exibivel (achado A1 da revisao adversarial da PR #74).
+    where: { entityType, entityId, ...licensedWatchWhere(now) },
     take: WATCH_FETCH_LIMIT,
     select: {
       providerName: true,

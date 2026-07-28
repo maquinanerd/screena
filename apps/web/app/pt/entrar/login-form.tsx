@@ -3,12 +3,12 @@
 import { useState } from 'react'
 
 /**
- * Formulario de login (C7D). Envia por POST para `/api/auth/login`; em sucesso o
- * servidor emite os cookies de sessao e CSRF (o cliente nao os manipula) e a
- * pagina redireciona para a area de conta.
+ * Formulário de login (C7D) na composição da tela 16. Envia por POST para
+ * `/api/auth/login`; em sucesso o servidor emite os cookies de sessão e CSRF
+ * (o cliente não os manipula) e a página redireciona para a área de conta.
  *
- * Mensagem de erro UNICA (anti-enumeracao): o formulario nunca distingue
- * "conta nao existe" de "senha errada" — o servidor tambem nao.
+ * Mensagem de erro ÚNICA (anti-enumeração): o formulário nunca distingue
+ * "conta não existe" de "senha errada" — o servidor também não.
  */
 
 type Estado = 'pronto' | 'enviando' | 'erro' | 'bloqueado'
@@ -41,37 +41,52 @@ export function LoginForm(): React.ReactElement {
 
   return (
     <form onSubmit={enviar}>
-      <label htmlFor="email">E-mail</label>
-      <input
-        id="email"
-        name="email"
-        type="email"
-        autoComplete="username"
-        required
-        value={email}
-        onChange={(event) => setEmail(event.target.value)}
-      />
+      <div className="auth-field">
+        <label className="auth-field__label" htmlFor="email">
+          E-mail
+        </label>
+        <input
+          autoComplete="username"
+          className="auth-field__input"
+          id="email"
+          name="email"
+          onChange={(event) => setEmail(event.target.value)}
+          placeholder="voce@email.com"
+          required
+          type="email"
+          value={email}
+        />
+      </div>
 
-      <label htmlFor="senha">Senha</label>
-      <input
-        id="senha"
-        name="senha"
-        type="password"
-        autoComplete="current-password"
-        required
-        value={senha}
-        onChange={(event) => setSenha(event.target.value)}
-      />
+      <div className="auth-field auth-field--last">
+        <label className="auth-field__label" htmlFor="senha">
+          Senha
+        </label>
+        <input
+          autoComplete="current-password"
+          className="auth-field__input"
+          id="senha"
+          name="senha"
+          onChange={(event) => setSenha(event.target.value)}
+          required
+          type="password"
+          value={senha}
+        />
+      </div>
 
-      <button type="submit" disabled={estado === 'enviando'}>
-        {estado === 'enviando' ? 'Entrando...' : 'Entrar'}
+      <button className="auth-cta" disabled={estado === 'enviando'} type="submit">
+        {estado === 'enviando' ? 'Entrando…' : 'Entrar'}
       </button>
 
       {estado === 'erro' ? (
-        <p role="alert">E-mail ou senha invalidos.</p>
+        <p className="alert alert--error" role="alert">
+          E-mail ou senha inválidos.
+        </p>
       ) : null}
       {estado === 'bloqueado' ? (
-        <p role="alert">Muitas tentativas. Aguarde alguns minutos e tente de novo.</p>
+        <p className="alert alert--error" role="alert">
+          Muitas tentativas. Aguarde alguns minutos e tente de novo.
+        </p>
       ) : null}
     </form>
   )

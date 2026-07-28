@@ -94,6 +94,8 @@ export function ListDetailPanel(): React.ReactElement {
     setAviso(null)
     const r = await authFetch(`/api/me/lists/${listId}/items/${itemId}/remove`, {
       method: 'POST',
+      // Corpo {} explicito: a borda recusa corpo vazio (readJsonBody fail-closed)
+      body: '{}',
     })
     if (r.ok) {
       await carregar(listId)
@@ -116,6 +118,25 @@ export function ListDetailPanel(): React.ReactElement {
     }
   }
 
+  async function excluirLista(): Promise<void> {
+    if (!window.confirm('Excluir esta lista? A ação não pode ser desfeita.')) return
+    setAviso(null)
+    const r = await authFetch(`/api/me/lists/${listId}/delete`, {
+      method: 'POST',
+      // Corpo {} explicito: a borda recusa corpo vazio (readJsonBody fail-closed)
+      body: '{}',
+    })
+    if (r.ok) {
+      window.location.assign('/pt/listas/')
+    } else {
+      setAviso(
+        r.status === 409 || r.status === 422
+          ? 'Listas do sistema não podem ser removidas.'
+          : 'Não foi possível excluir a lista agora.',
+      )
+    }
+  }
+
   if (estado === 'nao-autenticado') {
     return (
       <p role="status">
@@ -129,8 +150,14 @@ export function ListDetailPanel(): React.ReactElement {
 
   return (
     <div>
-      <header>
-        <h1>{info?.title ?? 'Lista'}</h1>
+      <header className="lists-head">
+        <div className="lists-head__title">
+          <span aria-hidden="true" className="lists-head__bar" />
+          <h1>{info?.title ?? 'Lista'}</h1>
+        </div>
+        <button className="imp-secondary" onClick={() => void excluirLista()} type="button">
+          Excluir lista
+        </button>
       </header>
 
       <form onSubmit={adicionar}>
@@ -161,11 +188,9 @@ export function ListDetailPanel(): React.ReactElement {
           <ol>
             {itens.map((item, indice) => (
               <li key={item.itemId}>
-                <a
-                  href={`/pt/${item.entityType === 'movie' ? 'filmes' : 'series'}/${item.entityId}`}
-                >
-                  {item.entityType === 'movie' ? 'Filme' : 'Serie'} #{item.entityId}
-                </a>{' '}
+                <span>
+                  {item.entityType === 'movie' ? 'Filme' : 'Série'} #{item.entityId}
+                </span>{' '}
                 {info?.ordered === true ? (
                   <>
                     <button

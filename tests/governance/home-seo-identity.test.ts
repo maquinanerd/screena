@@ -42,7 +42,10 @@ describe('governança SEO: home entity-first e grafo de identidade', () => {
     const code = withoutComments(raw)
     expect(countMatches(code, /<h1[\s>]/g)).toBe(1)
     expect(raw).toContain('Cinerie — filmes, séries e pessoas')
-    expect(code).toContain('<h1>{HOME_H1}</h1>')
+    // Design canônico (tela 02): o H1 institucional é visually-hidden — o hero
+    // exibe o TÍTULO DO DESTAQUE, não o nome do site. O H1 continua único,
+    // estável e com o mesmo texto institucional.
+    expect(code).toContain('className="visually-hidden">Cinerie — filmes, séries e pessoas</h1>')
   })
 
   it('home emite Organization e WebSite, sem SearchAction nem AggregateRating', () => {

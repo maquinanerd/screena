@@ -1,23 +1,28 @@
 import type { Metadata } from 'next'
 
-import { EntityIndex } from '../../_components/entity-index'
+import { serializeJsonLd } from '@screena/seo'
+
+import { HomeLike } from '../../_components/home-like'
+import {
+  HOME_NEWS_CARD_LIMIT,
+  takeSectionCards,
+} from '../../../src/lib/portal-presenter'
+import { SITE_URL, publicRobots } from '../../../src/lib/site'
+import { getHomeCatalogData } from '../../../src/server/home-catalog'
+import { getHomeHeroSlides } from '../../../src/server/home-hero'
+import { getHomeUpcomingMovies } from '../../../src/server/home-upcoming'
 import { getMovieIndexData } from '../../../src/server/entity-indexes'
-import { publicRobots } from '../../../src/lib/site'
+import { getNewsIndexData } from '../../../src/server/news-pages'
 
 /**
- * Listagem publica de filmes - /pt/filmes/ (porta de entrada; acento vermelho).
- *
- * Server component puro: le somente PostgreSQL via `getMovieIndexData`. Zero API
- * externa, zero Gemini e zero TMDB no render. A rota lista somente filmes com
- * titulo e slug canonico reais, sem nota/streaming/ranking inventado.
+ * Categoria Filmes — tela 04 do canônico (EX-04-dual): "CATEGORY HOME sem
+ * layout próprio → home-like + bandas". A rota reusa o template `HomeLike`
+ * com dataset de FILMES, banda de filmes ligada (showMoviesBand) e acento/
+ * logo vermelhos por contexto (data-vertical + header por rota). Hero mostra
+ * só destaques de filme. Contratos de SEO (canonical, robots, CollectionPage,
+ * BreadcrumbList, ItemList) permanecem os do índice real.
  */
 
-/**
- * Render dinamico (server-rendered on demand): a rota reflete o estado atual do
- * PostgreSQL a cada request e NAO e pre-renderizada no build (que roda sem
- * DATABASE_URL). Continua PURA - le so PostgreSQL, sem API externa (invariantes
- * 3/4). Mesma natureza dinamica das rotas [slug].
- */
 export const dynamic = 'force-dynamic'
 
 const TITLE = 'Filmes'
@@ -34,17 +39,74 @@ export async function generateMetadata(): Promise<Metadata> {
   }
 }
 
-export default async function MovieIndexPage() {
-  const { view, canonicalUrl } = await getMovieIndexData()
+export default async function MovieCategoryPage() {
+  const [index, catalog, news, heroSlides, upcoming] = await Promise.all([
+    getMovieIndexData(),
+    getHomeCatalogData(),
+    getNewsIndexData(),
+    getHomeHeroSlides(),
+    getHomeUpcomingMovies(),
+  ])
+
+  const movieHero = heroSlides.filter((slide) => slide.vertical === 'movie')
+  const movieCards = catalog.movies.length > 0 ? catalog.movies : index.view.cards
+  const newsCards = takeSectionCards(
+    [...(news.view.featured !== null ? [news.view.featured] : []), ...news.view.cards],
+    HOME_NEWS_CARD_LIMIT,
+  )
+
+  const breadcrumbJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Início', item: `${SITE_URL}/pt/` },
+      { '@type': 'ListItem', position: 2, name: TITLE, item: index.canonicalUrl },
+    ],
+  }
+  const collectionJsonLd: Record<string, unknown> = {
+    '@context': 'https://schema.org',
+    '@type': 'CollectionPage',
+    name: TITLE,
+    url: index.canonicalUrl,
+    description: DESCRIPTION,
+  }
+  if (index.view.cards.length > 0) {
+    collectionJsonLd.mainEntity = {
+      '@type': 'ItemList',
+      numberOfItems: index.view.cards.length,
+      itemListElement: index.view.cards.map((card, position) => ({
+        '@type': 'ListItem',
+        position: position + 1,
+        url: `${SITE_URL}${card.href}`,
+        name: card.title,
+      })),
+    }
+  }
 
   return (
-    <EntityIndex
-      title={TITLE}
-      description={DESCRIPTION}
-      breadcrumbLabel="Filmes"
-      canonicalUrl={canonicalUrl}
-      vertical="movie"
-      view={view}
-    />
+    <main data-vertical="movie">
+      <h1 className="visually-hidden">{TITLE}</h1>
+
+      <HomeLike
+        adPrefix="filmes"
+        emptyMessage="Ainda não há filmes publicados nesta seção."
+        heroSlides={movieHero}
+        movieCards={movieCards}
+        newsCards={newsCards}
+        seriesCards={[]}
+        showMoviesBand
+        showSeriesBand={false}
+        tickerEpisodes={[]}
+        upcomingMovies={upcoming}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(collectionJsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }}
+      />
+    </main>
   )
 }

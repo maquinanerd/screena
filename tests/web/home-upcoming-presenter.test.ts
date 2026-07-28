@@ -74,6 +74,7 @@ describe("buildUpcomingMovies", () => {
     );
     expect(view).toEqual([
       {
+        entityId: null,
         title: "Antes",
         dateIso: "2026-07-20",
         date: "20 de Julho",
@@ -82,6 +83,7 @@ describe("buildUpcomingMovies", () => {
         imageUrl: null,
       },
       {
+        entityId: null,
         title: "Depois",
         dateIso: "2026-09-15",
         date: "15 de Setembro",

@@ -2,25 +2,32 @@ import type { Metadata } from 'next'
 
 import { serializeJsonLd } from '@screena/seo'
 
+import { HomeLike } from '../_components/home-like'
 import type { EntityCard } from '../../src/lib/entity-index-presenter'
 import {
   countPopulatedSections,
   evaluatePortalIndexability,
+  HOME_ENTITY_CARD_LIMIT,
   HOME_NEWS_CARD_LIMIT,
   takeSectionCards,
 } from '../../src/lib/portal-presenter'
-import { EXPLORE_PATH, HOME_PATH, MOVIES_INDEX_PATH, NEWS_INDEX_PATH, PEOPLE_INDEX_PATH, SERIES_INDEX_PATH, SITE_URL, canonicalPublicUrl, publicRobots } from '../../src/lib/site'
+import { HOME_PATH, SITE_URL, canonicalPublicUrl, publicRobots } from '../../src/lib/site'
 import { getHomeCatalogData } from '../../src/server/home-catalog'
 import { getHomeHeroSlides } from '../../src/server/home-hero'
+import { getHomeTickerEpisodes } from '../../src/server/home-ticker'
 import { getHomeUpcomingMovies } from '../../src/server/home-upcoming'
 import { getNewsIndexData } from '../../src/server/news-pages'
+import { getSeriesIndexData } from '../../src/server/entity-indexes'
 
 /**
- * Home pública pt-BR reduzida ao conteúdo textual real já persistido.
+ * Home pública pt-BR — tela 02 do handoff canônico, renderizada pelo template
+ * compartilhado `HomeLike` (a MESMA composição é reusada pelas categorias,
+ * tela 04, EX-04-dual). Na home, as DUAS bandas (filmes e séries) aparecem.
  *
- * Os getters e a decisão de indexabilidade continuam iguais aos da camada
- * anterior. A rota não cria destaques, rankings, anúncios ou affordances sem
- * contrato: apenas expõe links e dados vindos do PostgreSQL local.
+ * "Seu mês em números" e o bookmark dos cards são canônicos e REAIS: a faixa
+ * de stats é boundary autenticado no cliente (dado pessoal nunca entra no
+ * cache público; anônimo = convite honesto) e o bookmark liga no Backend C
+ * (watchlist = UserWatchState.planned) com UMA busca compartilhada por página.
  */
 
 export const dynamic = 'force-dynamic'
@@ -28,7 +35,6 @@ export const dynamic = 'force-dynamic'
 const HOME_TITLE = 'Cinerie — filmes, séries, pessoas e notícias'
 const HOME_DESCRIPTION =
   'Base editorial de entretenimento em português: fichas de filmes e séries, perfis de pessoas e notícias com curadoria própria da redação da Cinerie.'
-const HOME_H1 = 'Cinerie — filmes, séries e pessoas'
 
 const HOME_ORGANIZATION_JSONLD = {
   '@context': 'https://schema.org',
@@ -46,12 +52,15 @@ const HOME_WEBSITE_JSONLD = {
 }
 
 async function getHomeData() {
-  const [catalog, news, heroSlides, upcomingMovies] = await Promise.all([
-    getHomeCatalogData(),
-    getNewsIndexData(),
-    getHomeHeroSlides(),
-    getHomeUpcomingMovies(),
-  ])
+  const [catalog, news, heroSlides, upcomingMovies, seriesIndex, tickerEpisodes] =
+    await Promise.all([
+      getHomeCatalogData(),
+      getNewsIndexData(),
+      getHomeHeroSlides(),
+      getHomeUpcomingMovies(),
+      getSeriesIndexData(),
+      getHomeTickerEpisodes(),
+    ])
 
   const sourceNews = [
     ...(news.view.featured !== null ? [news.view.featured] : []),
@@ -68,7 +77,10 @@ async function getHomeData() {
   )
 
   const movieCards = catalog.movies
-  const seriesWeekCards: EntityCard[] = []
+  const seriesWeekCards: EntityCard[] = takeSectionCards(
+    seriesIndex.view.cards,
+    HOME_ENTITY_CARD_LIMIT,
+  )
   const indexability = evaluatePortalIndexability({
     populatedSectionCount: countPopulatedSections([
       heroSlides.length,
@@ -85,6 +97,7 @@ async function getHomeData() {
     seriesWeekCards,
     upcomingMovies,
     newsCards,
+    tickerEpisodes,
     indexability,
   }
 }
@@ -108,126 +121,25 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function HomePage() {
-  const { heroSlides, movieCards, seriesWeekCards, upcomingMovies, newsCards } = await getHomeData()
-  const hasPublishedContent =
-    heroSlides.length +
-      movieCards.length +
-      seriesWeekCards.length +
-      upcomingMovies.length +
-      newsCards.length >
-    0
+  const { heroSlides, movieCards, seriesWeekCards, upcomingMovies, newsCards, tickerEpisodes } =
+    await getHomeData()
 
   return (
     <main data-vertical="home">
-      <div className="container">
-        <header>
-          <h1>{HOME_H1}</h1>
-          <p>{HOME_DESCRIPTION}</p>
-        </header>
+      <h1 className="visually-hidden">Cinerie — filmes, séries e pessoas</h1>
 
-        <nav aria-label="Áreas da Cinerie">
-          <ul>
-            <li>
-              <a href={MOVIES_INDEX_PATH}>Filmes</a>
-            </li>
-            <li>
-              <a href={SERIES_INDEX_PATH}>Séries</a>
-            </li>
-            <li>
-              <a href={PEOPLE_INDEX_PATH}>Pessoas</a>
-            </li>
-            <li>
-              <a href={NEWS_INDEX_PATH}>Notícias</a>
-            </li>
-            <li>
-              <a href={EXPLORE_PATH}>Explorar</a>
-            </li>
-          </ul>
-        </nav>
-
-        {heroSlides.length > 0 ? (
-          <section aria-labelledby="home-highlights-title">
-            <h2 id="home-highlights-title">Destaques</h2>
-            <ul>
-              {heroSlides.map((slide) => (
-                <li key={slide.href}>
-                  <a href={slide.href}>{slide.title}</a>
-                  <span> — {slide.eyebrow}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
-
-        {movieCards.length > 0 ? (
-          <section aria-labelledby="home-movies-title">
-            <h2 id="home-movies-title">Filmes em alta</h2>
-            <ul>
-              {movieCards.map((movie) => (
-                <li key={movie.href}>
-                  <a href={movie.href}>{movie.title}</a>
-                  {movie.meta !== null ? <span> — {movie.meta}</span> : null}
-                </li>
-              ))}
-            </ul>
-            <p>
-              <a href={MOVIES_INDEX_PATH}>Ver todos os filmes</a>
-            </p>
-          </section>
-        ) : null}
-
-        {seriesWeekCards.length > 0 ? (
-          <section aria-labelledby="home-series-title">
-            <h2 id="home-series-title">Séries da semana</h2>
-            <ul>
-              {seriesWeekCards.map((series) => (
-                <li key={series.href}>
-                  <a href={series.href}>{series.title}</a>
-                  {series.meta !== null ? <span> — {series.meta}</span> : null}
-                </li>
-              ))}
-            </ul>
-            <p>
-              <a href={SERIES_INDEX_PATH}>Ver todas as séries</a>
-            </p>
-          </section>
-        ) : null}
-
-        {upcomingMovies.length > 0 ? (
-          <section aria-labelledby="home-upcoming-title">
-            <h2 id="home-upcoming-title">Em breve</h2>
-            <ul>
-              {upcomingMovies.map((movie) => (
-                <li key={movie.href}>
-                  <a href={movie.href}>{movie.title}</a>
-                  <span> — estreia em {movie.date}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
-
-        {newsCards.length > 0 ? (
-          <section aria-labelledby="home-news-title">
-            <h2 id="home-news-title">Notícias</h2>
-            <ul>
-              {newsCards.map((article) => (
-                <li key={article.href}>
-                  <a href={article.href}>{article.title}</a>
-                  {article.dateLabel !== null ? <span> — {article.dateLabel}</span> : null}
-                </li>
-              ))}
-            </ul>
-            <p>
-              <a href={NEWS_INDEX_PATH}>Ver todas as notícias</a>
-            </p>
-          </section>
-        ) : null}
-
-        {!hasPublishedContent ? (
-          <p>Ainda não há conteúdo publicado para exibir na página inicial.</p>
-        ) : null}
-      </div>
+      <HomeLike
+        adPrefix="home"
+        emptyMessage="Ainda não há conteúdo publicado"
+        heroSlides={heroSlides}
+        movieCards={movieCards}
+        newsCards={newsCards}
+        seriesCards={seriesWeekCards}
+        showMoviesBand
+        showSeriesBand
+        tickerEpisodes={tickerEpisodes}
+        upcomingMovies={upcomingMovies}
+      />
 
       <script
         type="application/ld+json"

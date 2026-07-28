@@ -92,6 +92,7 @@ export const getHomeCatalogData = cache(async (): Promise<HomeCatalogData> => {
   const movieInputs: MovieListItemInput[] = movies.map((movie) => {
     const key = movie.id.toString();
     return {
+      id: key,
       titleOriginal: movie.titleOriginal,
       translationTitle: movieIdentity.titleById.get(key) ?? null,
       slug: movieIdentity.slugById.get(key) ?? null,

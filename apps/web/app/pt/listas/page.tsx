@@ -1,13 +1,12 @@
 import type { Metadata } from 'next'
 
+import { AdSlot } from '../../_components/ad-slot'
 import { ListsPanel } from './lists-panel'
 
 /**
- * Minhas listas (C8) — Listas personalizadas do titular.
- *
- * Superficie funcional MINIMA: reusa o shell existente, sem redesenho e sem
- * fidelidade ao handoff visual (isso e do superprompt de frontend). noindex:
- * area privada do titular.
+ * Suas listas (C8) — tela 15 do canônico: Ad leaderboard → cabeçalho →
+ * grade de cards de lista → Ad billboard. Sem "Listas em destaque" (não há
+ * produto de listas editoriais). `noindex`: área privada do titular.
  */
 
 export const dynamic = 'force-dynamic'
@@ -20,14 +19,10 @@ export const metadata: Metadata = {
 export default function Pagina() {
   return (
     <main data-vertical="account">
-      <div className="container">
-        <header>
-          <h1>Minhas listas</h1>
-        </header>
+      <div className="lists-page">
+        <AdSlot format="leaderboard" slotId="lists-top" />
         <ListsPanel />
-        <p>
-          <a href="/pt/conta">Voltar para a conta</a>
-        </p>
+        <AdSlot format="billboard" slotId="lists-bottom" />
       </div>
     </main>
   )

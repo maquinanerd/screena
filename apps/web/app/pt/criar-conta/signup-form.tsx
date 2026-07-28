@@ -54,8 +54,8 @@ export function SignupForm(): React.ReactElement {
 
   if (estado === 'enviado') {
     return (
-      <p role="status">
-        Se este e-mail ainda nao tiver conta, enviamos um link de verificacao. Confira sua caixa de
+      <p className="alert alert--success" role="status">
+        Se este e-mail ainda não tiver conta, enviamos um link de verificação. Confira sua caixa de
         entrada.
       </p>
     )
@@ -63,74 +63,97 @@ export function SignupForm(): React.ReactElement {
 
   return (
     <form onSubmit={enviar}>
-      <label htmlFor="nome">Nome (opcional)</label>
-      <input
-        id="nome"
-        name="nome"
-        type="text"
-        autoComplete="name"
-        value={nome}
-        onChange={(event) => setNome(event.target.value)}
-      />
-
-      <label htmlFor="email">E-mail</label>
-      <input
-        id="email"
-        name="email"
-        type="email"
-        autoComplete="username"
-        required
-        value={email}
-        onChange={(event) => setEmail(event.target.value)}
-      />
-
-      <label htmlFor="senha">Senha</label>
-      <input
-        id="senha"
-        name="senha"
-        type="password"
-        autoComplete="new-password"
-        minLength={SENHA_MIN}
-        required
-        value={senha}
-        onChange={(event) => setSenha(event.target.value)}
-      />
-      <p>Use ao menos {SENHA_MIN} caracteres.</p>
-
-      <label>
+      <div className="auth-field">
+        <label className="auth-field__label" htmlFor="nome">
+          Nome (opcional)
+        </label>
         <input
-          type="checkbox"
-          checked={aceitouTermos}
-          onChange={(event) => setAceitouTermos(event.target.checked)}
+          autoComplete="name"
+          className="auth-field__input"
+          id="nome"
+          name="nome"
+          onChange={(event) => setNome(event.target.value)}
+          placeholder="Seu nome"
+          type="text"
+          value={nome}
         />
-        Li e aceito os <a href="/pt/termos">Termos de Uso</a> e a{' '}
-        <a href="/pt/privacidade">Politica de Privacidade</a>.
-      </label>
+      </div>
 
-      <label>
+      <div className="auth-field">
+        <label className="auth-field__label" htmlFor="email">
+          E-mail
+        </label>
         <input
-          type="checkbox"
-          checked={marketing}
-          onChange={(event) => setMarketing(event.target.checked)}
+          autoComplete="username"
+          className="auth-field__input"
+          id="email"
+          name="email"
+          onChange={(event) => setEmail(event.target.value)}
+          placeholder="voce@email.com"
+          required
+          type="email"
+          value={email}
         />
-        Quero receber novidades por e-mail (opcional).
-      </label>
+      </div>
 
-      <label>
+      <div className="auth-field auth-field--last">
+        <label className="auth-field__label" htmlFor="senha">
+          Senha
+        </label>
         <input
-          type="checkbox"
-          checked={analytics}
-          onChange={(event) => setAnalytics(event.target.checked)}
+          autoComplete="new-password"
+          className="auth-field__input"
+          id="senha"
+          minLength={SENHA_MIN}
+          name="senha"
+          onChange={(event) => setSenha(event.target.value)}
+          required
+          type="password"
+          value={senha}
         />
-        Permitir analise de uso para melhorar recomendacoes (opcional).
-      </label>
+        <p className="auth-field__hint">Use ao menos {SENHA_MIN} caracteres.</p>
+      </div>
 
-      <button type="submit" disabled={estado === 'enviando' || !aceitouTermos}>
-        {estado === 'enviando' ? 'Criando...' : 'Criar conta'}
+      <div className="auth-consents">
+        <label className="auth-check">
+          <input
+            checked={aceitouTermos}
+            onChange={(event) => setAceitouTermos(event.target.checked)}
+            type="checkbox"
+          />
+          <span>
+            Li e aceito os <a href="/pt/termos">Termos de Uso</a> e a{' '}
+            <a href="/pt/privacidade">Política de Privacidade</a>.
+          </span>
+        </label>
+
+        <label className="auth-check">
+          <input
+            checked={marketing}
+            onChange={(event) => setMarketing(event.target.checked)}
+            type="checkbox"
+          />
+          <span>Quero receber novidades por e-mail (opcional).</span>
+        </label>
+
+        <label className="auth-check">
+          <input
+            checked={analytics}
+            onChange={(event) => setAnalytics(event.target.checked)}
+            type="checkbox"
+          />
+          <span>Permitir análise de uso para melhorar recomendações (opcional).</span>
+        </label>
+      </div>
+
+      <button className="auth-cta" disabled={estado === 'enviando' || !aceitouTermos} type="submit">
+        {estado === 'enviando' ? 'Criando…' : 'Criar conta'}
       </button>
 
       {estado === 'erro' ? (
-        <p role="alert">Nao foi possivel concluir o cadastro. Verifique os dados e tente de novo.</p>
+        <p className="alert alert--error" role="alert">
+          Não foi possível concluir o cadastro. Verifique os dados e tente de novo.
+        </p>
       ) : null}
     </form>
   )

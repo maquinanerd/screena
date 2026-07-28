@@ -45,16 +45,19 @@ describe('navegação pública global', () => {
     expect(isActiveNavigationPath(null, '/pt/')).toBe(false)
   })
 
-  it('usa marca textual e não reintroduz chrome cinematográfico', () => {
+  it('usa a wordmark aprovada com nome acessível e menu mobile de verdade', () => {
+    // Guard ATUALIZADO DELIBERADAMENTE: o design canônico usa a wordmark
+    // aprovada do handoff (uploads/5a–5j) com sublinhado por contexto. A marca
+    // continua NOMEADA para leitores de tela via aria-label do link; o menu
+    // mobile usa <dialog> nativo (foco preso + Escape).
     const header = read('apps/web/app/_components/site-header.tsx')
-    // Regex tolerante a espaco/quebra de linha em vez de casar o trecho literal
-    // com '\n': o arquivo lido do disco tem CRLF no checkout Windows
-    // (core.autocrlf=true, repo sem .gitattributes), entao a versao literal
-    // falhava so no Windows e passava no CI Linux. A intencao do teste e "a
-    // marca e TEXTO, nao um logo" — nao a indentacao exata.
-    expect(header).toMatch(/>\s*Cinerie\s*<\/a>/)
+    expect(header).toContain('aria-label="Cinerie — início"')
+    expect(header).toMatch(/cinerie-wordmark-(?:black|white)/)
     expect(header).toContain('NAV_ITEMS.map')
-    expect(header).not.toMatch(/CinerieLogo|ScreenLogo|<svg|hero|drawer|useEffect/)
+    expect(header).toContain('<dialog')
+    expect(header).toContain("aria-current={active ? 'page' : undefined}")
+    // Wordmark é imagem decorativa DENTRO de link nomeado: alt vazio.
+    expect(header).toMatch(/alt=""/)
   })
 
   it('rodapé contém apenas rotas reais e a atribuição do TMDB', () => {
