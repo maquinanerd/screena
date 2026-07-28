@@ -215,8 +215,12 @@ export default async function SeriesPage({
   const castContext = view.blocks.find((block) => block.blockType === 'cast_intro') ?? null
   const newsContext = view.blocks.find((block) => block.blockType === 'news_context') ?? null
   const requestedSeasonNumber = seasonNumberFromQuery(query.temporada)
+  // Default canônico: Temporada 1 (primeira temporada REGULAR). "Especiais"
+  // (season 0) só aparece quando pedida explicitamente — ela pode ter dezenas
+  // de itens e nunca deve ser a carga inicial da página.
   const selectedSeason =
     view.seasons.find((season) => season.seasonNumber === requestedSeasonNumber) ??
+    view.seasons.find((season) => season.seasonNumber > 0) ??
     view.seasons[0] ??
     null
   const visibleCast = cast.slice(0, 6)
