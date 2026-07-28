@@ -79,10 +79,13 @@ function RankRail({
 export function DiscoverFilterableRails({
   emAlta,
   populares,
+  lead,
   children,
 }: {
   emAlta: DiscoverRailCard[]
   populares: DiscoverRailCard[]
+  /** DESTAQUE escuro — vem ANTES do "Em Alta", como no canônico. */
+  lead?: ReactNode
   /** Seções fixas (Continuar assistindo, Lançamentos, Mais aguardados) — não filtradas. */
   children?: ReactNode
 }): ReactNode {
@@ -112,6 +115,8 @@ export function DiscoverFilterableRails({
           ))}
         </div>
       </div>
+
+      {lead}
 
       <section aria-labelledby="disc-alta-title" className="disc-section">
         <div className="disc-section-head">

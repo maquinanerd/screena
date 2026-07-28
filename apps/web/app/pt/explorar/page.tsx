@@ -108,8 +108,12 @@ export default async function ExplorePage() {
 
         <AdSlot format="leaderboard" slotId="explore-top" />
 
-        <DiscoverFilterableRails emAlta={discover.emAlta} populares={discover.populares}>
-          {/* DESTAQUE escuro cinematográfico (fica fora do filtro, como o canônico) */}
+        <DiscoverFilterableRails
+          emAlta={discover.emAlta}
+          populares={discover.populares}
+          lead={
+            /* DESTAQUE escuro cinematográfico — ANTES do Em Alta (canônico) */
+            <>
           {featured !== null ? (
             <section aria-label={`Destaque: ${featured.title}`} className="disc-feature disc-section">
               {featured.backdropUrl !== null ? (
@@ -175,7 +179,9 @@ export default async function ExplorePage() {
               </div>
             </section>
           ) : null}
-
+            </>
+          }
+        >
           {/* CONTINUAR ASSISTINDO — fronteira autenticada real */}
           <section aria-labelledby="disc-cw-title" className="disc-section" data-vertical="series">
             <div className="disc-section-head">
