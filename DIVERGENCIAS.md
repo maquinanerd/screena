@@ -269,3 +269,47 @@ Esses pontos não alteram a autoridade do HTML raiz validado por SHA-256.
   explicitamente diferidas, sem copiar URLs ou imagens fictícias do protótipo.
 - **Impacto visual:** regiões sem mídia ou feature real são omitidas, preservando
   a ordem dos blocos restantes e evitando placeholders que pareçam conteúdo.
+
+## Deltas da missão de conclusão (telas 12–18 + QA final)
+
+Deltas honestos registrados na conclusão do frontend canônico (handoff
+6936a341…). Todos justificados por dado inexistente, licença, segurança,
+privacidade, acessibilidade ou arquitetura real — nunca por conveniência.
+
+- **D-101 — Métricas de comunidade não existem.** "X mil aguardando", curtidas
+  de lista, "Mais salvos" e contagens sociais do protótipo não têm agregado de
+  produto ativo. Composição preservada; métrica omitida (telas 11/12/15).
+- **D-102 — Chip de gênero no card de antecipação.** Não há vínculo
+  entidade↔gênero persistido no schema atual; o chip exibe a meta factual
+  (duração/episódios) e o gênero é omitido (tela 12).
+- **D-103 — Seções de configurações sem backend.** Assinatura Cinerie+,
+  notificações, comportamento, gêneros favoritos, usuários bloqueados, tema,
+  densidade e preferência de pôster não têm armazenamento/produto; nunca
+  renderizamos toggle sem efeito (tela 13). Switches reais: conta privada e
+  consentimentos LGPD.
+- **D-104 — Origens de importação limitadas às reais.** Apenas CSV canônico da
+  Cinerie e CSV do Letterboxd têm suporte na borda C8; TV Time/IMDb/Trakt/JSON
+  do protótipo ficam fora até existir backend (tela 14). A faixa demonstrativa
+  de estados do protótipo virou os estados REAIS do dropzone.
+- **D-105 — Sem "Limpar dados".** Não há endpoint de purge em massa; o card não
+  é renderizado (tela 14). Exportar usa a exportação LGPD real.
+- **D-106 — "Listas em destaque" omitidas.** Não há produto de listas
+  editoriais/curtidas; a tela 15 exibe apenas as listas reais do titular.
+- **D-107 — Sem SSO Google/Apple.** OAuth não existe como produto; os botões do
+  protótipo não são renderizados (tela 16). Link real "Esqueci minha senha"
+  adicionado (necessidade do produto).
+- **D-108 — Anúncios governados.** Superfícies 17/18 nunca disparam sozinhas e
+  só exibem o AdSlot governado (rótulo "PUBLICIDADE" sempre visível; placeholder
+  apenas em dev/QA; nunca criativo fictício em produção).
+- **D-109 — Tela 08 é breakpoint real.** O frame mobile do protótipo virou o
+  estado responsivo de /pt/series/[slug] (ordem mobile por flex; zero rota
+  duplicada). A ordem visual difere da ordem DOM apenas no breakpoint (tradeoff
+  documentado; foco segue a ordem lógica do documento).
+- **D-110 — Ticker e "hoje" dependem de dado real.** A faixa amarela de
+  episódios/sessões "hoje" só aparece com agenda real persistida.
+- **D-111 — Ratings/streaming seguem inativos como produto.** Notas, "onde
+  assistir" com logos e Tomatometer do protótipo permanecem em estado honesto
+  (invariantes 1/2/6); Cinerie Score exibe "Ainda não calculado" (Prompt 11).
+- **D-112 — Breadcrumb e atribuição TMDB.** Páginas reais carregam breadcrumb
+  (invariante 11) e o rodapé mantém a atribuição TMDB exigida; o protótipo não
+  os traz.
