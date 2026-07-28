@@ -7406,3 +7406,197 @@ a.tabs__tab[aria-current='page'] {
   font-size: 14px;
   font-weight: 700;
 }
+
+/* ------------------------------------------------------------------ */
+/* Tela 16 — Entrar / Cadastrar (valores exatos do canônico)           */
+/* ------------------------------------------------------------------ */
+
+.auth-layout {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 56px var(--pad-page) 0;
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  gap: 44px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .auth-layout {
+    grid-template-columns: 1fr;
+    padding-inline: var(--pad-page-mobile);
+    padding-top: 32px;
+  }
+}
+
+.auth-col {
+  max-width: 460px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.auth-brand {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+.auth-lede {
+  text-align: center;
+  font-size: 14px;
+  color: var(--c-text-secondary);
+  margin: 0 0 26px;
+}
+
+.auth-card {
+  background: var(--c-bg-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-card);
+  padding: 28px;
+}
+
+@media (max-width: 480px) {
+  .auth-card {
+    padding: 20px;
+  }
+}
+
+.auth-tabs {
+  display: flex;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-control);
+  overflow: hidden;
+  margin-bottom: 22px;
+}
+
+.auth-tab {
+  flex: 1;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 11px;
+  color: var(--c-text-secondary);
+  background: var(--c-bg-surface);
+  text-decoration: none;
+}
+
+.auth-tab--active {
+  color: #fff;
+  background: var(--c-text-primary);
+}
+
+.auth-field {
+  margin-bottom: 14px;
+}
+
+.auth-field--last {
+  margin-bottom: 18px;
+}
+
+.auth-field__label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--c-text-secondary);
+  margin-bottom: 6px;
+}
+
+.auth-field__input {
+  width: 100%;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-control);
+  padding: 11px 13px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--c-text-primary);
+  background: var(--c-bg-surface);
+}
+
+.auth-field__input::placeholder {
+  color: var(--c-text-muted);
+}
+
+.auth-field__hint {
+  font-size: 11.5px;
+  color: var(--c-text-secondary);
+  margin: 6px 0 0;
+}
+
+.auth-consents {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.auth-check {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  font-size: 12px;
+  color: var(--c-text-body);
+  line-height: 1.45;
+  cursor: pointer;
+}
+
+.auth-check input {
+  margin-top: 2px;
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+  accent-color: var(--c-text-primary);
+}
+
+.auth-cta {
+  appearance: none;
+  display: block;
+  width: 100%;
+  text-align: center;
+  cursor: pointer;
+  background: var(--c-accent-movie);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 13px;
+  border: none;
+  border-radius: var(--r-control);
+}
+
+.auth-cta:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.auth-cta:hover:not(:disabled) {
+  background: var(--c-accent-movie-hover);
+}
+
+.auth-links {
+  margin: 18px 0 0;
+  text-align: center;
+  font-size: 12.5px;
+}
+
+.auth-links a {
+  color: var(--c-text-secondary);
+  font-weight: 600;
+}
+
+.auth-terms {
+  text-align: center;
+  font-size: 11px;
+  color: var(--c-text-muted); /* DD-02: nota decorativa curta */
+  margin-top: 16px;
+}
+
+.auth-side {
+  position: sticky;
+  top: 96px;
+}
+
+@media (max-width: 900px) {
+  .auth-side {
+    display: none;
+  }
+}

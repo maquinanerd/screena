@@ -1,9 +1,11 @@
 import type { Metadata } from 'next'
 
+import { AuthShell } from '../entrar/auth-shell'
 import { SignupForm } from './signup-form'
 
 /**
- * Pagina de CADASTRO (C7D). Superficie funcional minima. `noindex`.
+ * Criar conta — tela 16 do canônico (modo Cadastrar): mesmo card central com
+ * tabs, formulário real do C7D (consentimento explícito LGPD). `noindex`.
  */
 
 export const dynamic = 'force-dynamic'
@@ -16,15 +18,10 @@ export const metadata: Metadata = {
 export default function CriarContaPage() {
   return (
     <main data-vertical="account">
-      <div className="container">
-        <header>
-          <h1>Criar conta na Cinerie</h1>
-        </header>
+      <h1 className="visually-hidden">Criar conta na Cinerie</h1>
+      <AuthShell active="criar" lede="Crie sua conta para acompanhar filmes, séries e listas">
         <SignupForm />
-        <p>
-          Ja tem conta? <a href="/pt/entrar">Entrar</a>
-        </p>
-      </div>
+      </AuthShell>
     </main>
   )
 }

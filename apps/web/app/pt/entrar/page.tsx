@@ -1,13 +1,12 @@
 import type { Metadata } from 'next'
 
+import { AuthShell } from './auth-shell'
 import { LoginForm } from './login-form'
 
 /**
- * Pagina de LOGIN (C7D).
- *
- * Superficie funcional MINIMA — nao e o frontend visual final (esse e o
- * superprompt do frontend). Reusa o shell existente. `noindex`: pagina
- * transacional de conta, nao entra no indice.
+ * Entrar — tela 16 do canônico: card central com tabs Entrar/Criar conta,
+ * formulário real do C7D e skyscraper de publicidade. `noindex`: página
+ * transacional de conta.
  */
 
 export const dynamic = 'force-dynamic'
@@ -20,18 +19,13 @@ export const metadata: Metadata = {
 export default function EntrarPage() {
   return (
     <main data-vertical="account">
-      <div className="container">
-        <header>
-          <h1>Entrar na Cinerie</h1>
-        </header>
+      <h1 className="visually-hidden">Entrar na Cinerie</h1>
+      <AuthShell active="entrar" lede="Entre para acompanhar filmes, séries e listas">
         <LoginForm />
-        <p>
-          Ainda nao tem conta? <a href="/pt/criar-conta">Criar conta</a>
+        <p className="auth-links">
+          <a href="/pt/recuperar-senha/">Esqueci minha senha</a>
         </p>
-        <p>
-          <a href="/pt/recuperar-senha">Esqueci minha senha</a>
-        </p>
-      </div>
+      </AuthShell>
     </main>
   )
 }
