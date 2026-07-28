@@ -81,7 +81,6 @@ export function PrivacyPanel(): React.ReactElement {
       await recarregar()
       setCarregando(false)
     })()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function alterarConsent(kind: string, granted: boolean): Promise<void> {

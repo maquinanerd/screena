@@ -81,6 +81,11 @@ describe('shell público — design canônico', () => {
     // Placeholder só por flag pública explícita de dev/QA
     expect(adSlot).toContain("NEXT_PUBLIC_AD_SLOTS === 'placeholder'")
     // Nenhum anunciante fictício
-    expect(adSlot).not.toMatch(/Netflix|Prime Video|Disney|advertiser/)
+    // Guard de anunciante ficticio: o arquivo continha 0x08 literais no
+    // lugar do escape de word boundary (regex vacuo). Substring simples basta
+    // e nao depende de word boundary.
+    for (const marca of ['Netflix', 'Prime Video', 'Disney', 'advertiser']) {
+      expect(adSlot).not.toContain(marca)
+    }
   })
 })

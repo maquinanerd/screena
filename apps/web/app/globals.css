@@ -331,7 +331,7 @@ dl {
 }
 
 .site-header[data-overlay='true'] {
-  /* Scrim superior: texto branco legivel (AA) sobre qualquer imagem de hero */
+  /* scrim superior de midia: texto branco legivel (AA) sobre qualquer hero */
   background: linear-gradient(180deg, rgba(5, 5, 5, 0.55) 0%, rgba(5, 5, 5, 0) 100%);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;

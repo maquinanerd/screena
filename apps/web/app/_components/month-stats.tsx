@@ -4,7 +4,7 @@
  * MonthStats — faixa "Seu mês em números" da home canonica (fundo #101010,
  * eyebrow amarela, valores 18/800 amarelos).
  *
- * DADO PESSOAL por boundary seguro: nada disto entra no render/​cache publico
+ * DADO PESSOAL por boundary seguro: nada disto entra no render/cache publico
  * compartilhado — o server component da home renderiza so a casca; os numeros
  * chegam por fetch autenticado no CLIENTE (`/api/me/history`, force-dynamic e
  * por sessao). Anonimo recebe o estado honesto (convite a entrar), nunca

@@ -28,7 +28,6 @@ export function AuthShell({
     <div className="auth-layout">
       <div className="auth-col">
         <div className="auth-brand">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img alt="Cinerie" height={28} src="/brand/cinerie-wordmark-black.svg" width={146} />
         </div>
         <p className="auth-lede">{lede}</p>
