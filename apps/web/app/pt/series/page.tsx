@@ -8,8 +8,9 @@ import {
   takeSectionCards,
 } from '../../../src/lib/portal-presenter'
 import { SITE_URL, publicRobots } from '../../../src/lib/site'
+import { getHomeEditorialHighlights } from '../../../src/server/home-editorial'
 import { getHomeHeroSlides } from '../../../src/server/home-hero'
-import { getHomeTickerEpisodes } from '../../../src/server/home-ticker'
+import { getHomeTickerItems } from '../../../src/server/home-ticker'
 import { getNewsIndexData } from '../../../src/server/news-pages'
 import { getSeriesIndexData } from '../../../src/server/entity-indexes'
 
@@ -37,11 +38,12 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function SeriesCategoryPage() {
-  const [index, news, heroSlides, ticker] = await Promise.all([
+  const [index, news, heroSlides, tickerItems, editorialHighlights] = await Promise.all([
     getSeriesIndexData(),
     getNewsIndexData(),
     getHomeHeroSlides(),
-    getHomeTickerEpisodes(),
+    getHomeTickerItems(),
+    getHomeEditorialHighlights(),
   ])
 
   const seriesHero = heroSlides.filter((slide) => slide.vertical === 'series')
@@ -84,6 +86,8 @@ export default async function SeriesCategoryPage() {
 
       <HomeLike
         adPrefix="series"
+        editorialHighlights={editorialHighlights}
+        editorialInitialVertical="series"
         emptyMessage="Ainda não há séries publicadas nesta seção."
         heroSlides={seriesHero}
         movieCards={[]}
@@ -91,7 +95,7 @@ export default async function SeriesCategoryPage() {
         seriesCards={index.view.cards}
         showMoviesBand={false}
         showSeriesBand
-        tickerEpisodes={ticker}
+        tickerItems={tickerItems}
         upcomingMovies={[]}
       />
 

@@ -116,7 +116,33 @@ Nunca use uma variável só para header e hero. São eixos distintos:
 Provado nos dois sentidos ao mesmo tempo pelos checks C1/C2 de
 `pnpm --filter @screena/web qa:home-fold` (app Next real + PostgreSQL real).
 
+### Primeira dobra: duas seções com contratos DIFERENTES
+
+Nunca trate as duas como a mesma coisa — a confusão entre elas foi exatamente o
+defeito corrigido em
+[`home-editorial-highlights-and-ticker-carousel.md`](./home-editorial-highlights-and-ticker-carousel.md).
+
+| Seção | O que consome | Destino dos links | Controles |
+| --- | --- | --- | --- |
+| **Faixa amarela** (`HomeTicker`) | 4 fontes de catálogo: `episodes.air_date`, `movies.release_date`, `seasons.air_date`, `watch_availability.available_from` | ficha real (`/pt/filmes/…`, `/pt/series/…`) | dots = carrossel de 4–5 novidades, 1 visível por vez |
+| **Destaques de hoje** (`HomeEditorialHighlights`) | cadeia EDITORIAL: `articles` + `article_translations` + `entity_news_links` | **sempre** `/pt/noticias/{slug}/` | `Filmes`/`Séries` = **tabs**, nunca navegação |
+
+- "Destaques de hoje" **não é catálogo**: nenhum pôster de entidade, nenhuma
+  metadata de ficha (`Filme · 2026`, nota, duração, temporada) entra nesses cards.
+- A vertical de uma matéria vem dos **vínculos persistidos** em
+  `entity_news_links` (`movie`/`tv`), nunca de palavra-chave no título nem de
+  `articles.category` — esse campo é texto livre sem vocabulário controlado e
+  serve apenas como eyebrow exibido.
+- A faixa **nunca** exibe sessão de cinema, formato (70mm), idioma, rede ou
+  horário: o sistema não persiste esses fatos. "Em cartaz" não é inferido de
+  `release_date`.
+
 ### QA visual da primeira dobra
+
+São **dois** harnesses, com coberturas disjuntas:
+
+- `qa:home-fold` — chrome, hero, Cinerie Score e provedor licenciado (PR #89);
+- `qa:home-editorial` — seção editorial e carrossel da faixa amarela (esta PR).
 
 `pnpm --filter @screena/web qa:home-fold` sobe um **PostgreSQL 16 efêmero**,
 aplica migrations + seed, cria fixtures de QA, sobe a **aplicação Next real** e

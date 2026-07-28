@@ -1,5 +1,11 @@
 # Correção da primeira dobra da Home — relatório técnico completo
 
+> **Continuação.** A missão seguinte corrigiu duas interpretações erradas que
+> sobreviveram a esta PR — "Destaques de hoje" era catálogo (e não editorial) e a
+> faixa amarela era um item só (e não um carrossel). Ver
+> [`home-editorial-highlights-and-ticker-carousel.md`](./home-editorial-highlights-and-ticker-carousel.md).
+> Nenhuma correção deste relatório foi revertida lá.
+
 > Documento de rastreabilidade da task "CINERIE — CORREÇÃO DEFINITIVA DA HOME:
 > HEADER + HERO + TICKER + PRIMEIRA DOBRA". Registra **tudo** que foi criado e
 > editado, o código antes/depois, o que passa a aparecer no site publicado e de

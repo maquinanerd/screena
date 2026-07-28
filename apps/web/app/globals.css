@@ -1014,6 +1014,32 @@ dl {
   background: rgba(16, 16, 16, 0.3);
   cursor: pointer;
   transition: width 0.3s ease, background 0.3s ease;
+  /* O indicador é pequeno por design; o ALVO de toque não pode ser. */
+  position: relative;
+}
+
+/*
+ * Alvo de toque ampliado SEM sobreposição. Os dots ficam a 6px um do outro, e
+ * uma área de 24px de largura invadiria o vizinho — o alvo de cima roubaria o
+ * clique do de baixo (defeito pego pelo QA no app real, não pelo CSS lido no
+ * papel). A área cresce só até a METADE do gap (`+6px`), então os alvos se
+ * encostam sem se cobrir; a altura, essa sim, vai a 24px.
+ */
+.ticker__dot::before {
+  content: '';
+  position: absolute;
+  left: -3px;
+  right: -3px;
+  top: 50%;
+  height: 24px;
+  transform: translateY(-50%);
+}
+
+/* Sem transição sob `prefers-reduced-motion` (o autoplay já fica desligado). */
+@media (prefers-reduced-motion: reduce) {
+  .ticker__dot {
+    transition: none;
+  }
 }
 
 .ticker__dot[aria-selected='true'] {
@@ -1152,9 +1178,44 @@ dl {
   overflow: hidden;
 }
 
+/*
+ * Composição HONESTA com menos de três matérias: o grid se adapta em vez de
+ * inventar o terceiro card (e nunca preenche o buraco com pôster de catálogo).
+ */
+.feat-grid[data-count='2'] {
+  grid-template-columns: 1.62fr 1fr;
+}
+
+.feat-grid[data-count='1'] {
+  grid-template-columns: 1fr;
+}
+
+/*
+ * Placeholder editorial: matéria sem imagem publicável preserva a altura e o
+ * ritmo do card, mas NÃO finge ser a capa real — nada de pôster da entidade
+ * relacionada no lugar da foto da matéria.
+ */
+.feat-card__placeholder {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(160deg, #2a2620 0%, #1b1815 100%);
+}
+
+/* Estado vazio da vertical: honesto, sem trocar de filtro nem cair no catálogo. */
+.feat-empty {
+  margin: 0;
+  padding: 40px 0 8px;
+  font-size: 15px;
+  color: var(--c-text-secondary);
+}
+
 @media (max-width: 1023px) {
   .feat-grid {
     grid-template-columns: 1fr 1fr;
+  }
+  .feat-grid[data-count='2'],
+  .feat-grid[data-count='1'] {
+    grid-template-columns: 1fr;
   }
   .feat-card--lead {
     grid-column: 1 / -1;

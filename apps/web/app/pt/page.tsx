@@ -13,8 +13,9 @@ import {
 } from '../../src/lib/portal-presenter'
 import { HOME_PATH, SITE_URL, canonicalPublicUrl, publicRobots } from '../../src/lib/site'
 import { getHomeCatalogData } from '../../src/server/home-catalog'
+import { getHomeEditorialHighlights } from '../../src/server/home-editorial'
 import { getHomeHeroSlides } from '../../src/server/home-hero'
-import { getHomeTickerEpisodes } from '../../src/server/home-ticker'
+import { getHomeTickerItems } from '../../src/server/home-ticker'
 import { getHomeUpcomingMovies } from '../../src/server/home-upcoming'
 import { getNewsIndexData } from '../../src/server/news-pages'
 import { getSeriesIndexData } from '../../src/server/entity-indexes'
@@ -52,15 +53,23 @@ const HOME_WEBSITE_JSONLD = {
 }
 
 async function getHomeData() {
-  const [catalog, news, heroSlides, upcomingMovies, seriesIndex, tickerEpisodes] =
-    await Promise.all([
-      getHomeCatalogData(),
-      getNewsIndexData(),
-      getHomeHeroSlides(),
-      getHomeUpcomingMovies(),
-      getSeriesIndexData(),
-      getHomeTickerEpisodes(),
-    ])
+  const [
+    catalog,
+    news,
+    heroSlides,
+    upcomingMovies,
+    seriesIndex,
+    tickerItems,
+    editorialHighlights,
+  ] = await Promise.all([
+    getHomeCatalogData(),
+    getNewsIndexData(),
+    getHomeHeroSlides(),
+    getHomeUpcomingMovies(),
+    getSeriesIndexData(),
+    getHomeTickerItems(),
+    getHomeEditorialHighlights(),
+  ])
 
   const sourceNews = [
     ...(news.view.featured !== null ? [news.view.featured] : []),
@@ -97,7 +106,8 @@ async function getHomeData() {
     seriesWeekCards,
     upcomingMovies,
     newsCards,
-    tickerEpisodes,
+    tickerItems,
+    editorialHighlights,
     indexability,
   }
 }
@@ -121,8 +131,15 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function HomePage() {
-  const { heroSlides, movieCards, seriesWeekCards, upcomingMovies, newsCards, tickerEpisodes } =
-    await getHomeData()
+  const {
+    heroSlides,
+    movieCards,
+    seriesWeekCards,
+    upcomingMovies,
+    newsCards,
+    tickerItems,
+    editorialHighlights,
+  } = await getHomeData()
 
   return (
     <main data-vertical="home">
@@ -130,6 +147,7 @@ export default async function HomePage() {
 
       <HomeLike
         adPrefix="home"
+        editorialHighlights={editorialHighlights}
         emptyMessage="Ainda não há conteúdo publicado"
         heroSlides={heroSlides}
         movieCards={movieCards}
@@ -137,7 +155,7 @@ export default async function HomePage() {
         seriesCards={seriesWeekCards}
         showMoviesBand
         showSeriesBand
-        tickerEpisodes={tickerEpisodes}
+        tickerItems={tickerItems}
         upcomingMovies={upcomingMovies}
       />
 

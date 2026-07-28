@@ -403,7 +403,8 @@ interface FoldReport {
   tickerText: string | null;
   tickerCta: string | null;
   tickerCredit: string | null;
-  featuredTop: number | null;
+  afterTickerTop: number | null;
+  editorialSectionPresent: boolean;
 }
 
 const READ_FOLD = `() => {
@@ -422,7 +423,16 @@ const READ_FOLD = `() => {
   const titleLink = q('.hero__title a');
   const activeDot = q('.hero__dot[aria-selected="true"]');
   const activeNav = q('.site-header__link[aria-current="page"]');
-  const featured = q('.feat-head');
+  // "Destaques de hoje" e EDITORIAL (materias). Este cenario nao semeia
+  // nenhuma materia, entao a secao corretamente NAO existe — o ritmo abaixo da
+  // faixa passa a ser medido pela PRIMEIRA banda de conteudo que vier depois
+  // dela, seja ela qual for.
+  const ticker0 = q('.ticker');
+  const afterTicker = ticker0
+    ? [...document.querySelectorAll('#main-content .container, #main-content .band')].find(
+        (el) => ticker0.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING,
+      )
+    : null;
   const brand = q('.site-header__brand');
   return {
     overflowOk: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
@@ -453,7 +463,10 @@ const READ_FOLD = `() => {
     tickerText: text('.ticker__text'),
     tickerCta: text('.ticker__cta'),
     tickerCredit: text('.ticker__credit'),
-    featuredTop: featured ? Math.round(featured.getBoundingClientRect().top + window.scrollY) : null,
+    afterTickerTop: afterTicker
+      ? Math.round(afterTicker.getBoundingClientRect().top + window.scrollY)
+      : null,
+    editorialSectionPresent: q('.feat-head') !== null,
   };
 }`;
 
@@ -729,17 +742,22 @@ async function main(): Promise<void> {
     await sql.x(`DELETE FROM episodes WHERE tv_show_id=${fixtures.showId}`);
     const s6 = await capture("07-ticker-neutral-1126x799", 1126, 799);
     record(
-      "C6 sem estreia nenhuma: faixa PERMANECE, em estado neutro e honesto",
+      "C6 sem novidade nenhuma: faixa PERMANECE, em estado neutro e honesto",
       s6.tickerHeight > 0 &&
         s6.tickerBadge === "AGENDA" &&
-        s6.tickerText === "Nenhum episódio novo confirmado para hoje" &&
-        s6.tickerCta === "Ver séries",
+        s6.tickerText === "Nenhuma novidade confirmada para hoje" &&
+        s6.tickerCta === "Ver lançamentos",
       `altura=${s6.tickerHeight} badge=${s6.tickerBadge} cta=${s6.tickerCta}`,
     );
     record(
-      "C6 'Destaques de hoje' comeca logo abaixo da faixa (ritmo preservado)",
-      s6.featuredTop !== null && s6.featuredTop > s6.tickerHeight,
-      `featuredTop=${s6.featuredTop} tickerH=${s6.tickerHeight}`,
+      "C6 sem MATERIA publicada, 'Destaques de hoje' nao existe (secao editorial honesta)",
+      !s6.editorialSectionPresent,
+      `secao presente=${s6.editorialSectionPresent}`,
+    );
+    record(
+      "C6 a banda seguinte comeca logo abaixo da faixa (ritmo preservado)",
+      s6.afterTickerTop !== null && s6.afterTickerTop > s6.tickerHeight,
+      `afterTickerTop=${s6.afterTickerTop} tickerH=${s6.tickerHeight}`,
     );
 
     // ---------------- CENARIO 7: header apos scroll e em rota SEM hero

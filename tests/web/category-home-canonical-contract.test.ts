@@ -40,8 +40,8 @@ describe('categorias (tela 04) e índice de pessoas', () => {
     expect(series).toContain('data-vertical="series"')
     expect(series).toContain("slide.vertical === 'series'")
     // Ticker de episódios (dataset de séries) só na categoria de séries.
-    expect(series).toContain('getHomeTickerEpisodes()')
-    expect(movies).not.toContain('getHomeTickerEpisodes()')
+    expect(series).toContain('getHomeTickerItems()')
+    expect(movies).not.toContain('getHomeTickerItems()')
   })
 
   it('mantém metadata, robots, canonical e JSON-LD do índice real', () => {

@@ -20,6 +20,7 @@
     "validate:season-episode-routes": "tsx scripts/validate-season-episode-routes-real-postgres.ts",
     "validate:all": "tsx scripts/validate-all-real-postgres.ts",
     "qa:home-fold": "tsx scripts/qa-home-first-fold-real-postgres.ts",
+    "qa:home-editorial": "tsx scripts/qa-home-editorial-ticker-real-postgres.ts",
     "seed:dev-movie": "tsx scripts/seed-dev-movie.ts",
     "gen:demo-media": "node scripts/generate-demo-media.mjs",
     "validate:person-eligibility": "tsx scripts/validate-person-eligibility-real-postgres.ts"
