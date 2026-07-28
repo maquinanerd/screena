@@ -144,7 +144,8 @@ As regras detalhadas vivem (ou viverao) em `.claude/`. Consulte-as antes de mexe
 - `.claude/rules/ingestion.md` — workers, sync com log, cache, `api_cache`/`api_sync_logs`.
 - `.claude/rules/i18n.md` — pt-BR primeiro; en/es em draft/noindex (invariante 7).
 - `.claude/rules/entity-writer.md` — payload controlado, anti-alucinacao, versionamento (invariantes 12, 13).
-- `docs/adr/0015-editorial-boundaries.md` — **fronteiras canonicas da arquitetura editorial**: quem e externo (RSS Prime, MNScr), quem esta fora (MN26), qual e o CMS aprovado (Payload), o que o `apps/admin` e e nao e, e qual e o papel de `services/news-ingestion`.
+- `docs/adr/0015-editorial-boundaries.md` — **fronteiras canonicas da arquitetura editorial**: quem e externo (RSS Prime, MNScr), quem esta fora (MN26), qual e o CMS aprovado (Payload), o que o `apps/admin` e e nao e, qual e o papel de `services/news-ingestion`, e as DUAS entradas do MNScr (`rss-prime-event-v1` + `cinerie-editorial-context-v1`).
+- `docs/adr/0016-content-block-lifecycle-separation.md` — `content_blocks` e `article_translations` compartilham o enum `ReviewStatus` e **nao** a maquina de estados. Leia antes de assumir simetria entre os dois dominios.
 - `.claude/skills/*` — skills operacionais do projeto.
 - `.claude/agents/*` — agentes especializados (ingestao, ratings, entity writer, SEO).
 

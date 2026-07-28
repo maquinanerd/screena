@@ -8,12 +8,21 @@
  * proibia os dois. Duas verdades sobre a mesma coluna nao sao flexibilidade: e a
  * garantia de que a mais fraca sera usada.
  *
- * Este arquivo prova tres coisas:
+ * Este arquivo prova quatro coisas:
  *   1. COMPORTAMENTO — o adaptador do admin decide exatamente como a fonte unica.
  *   2. PROCEDENCIA   — o adaptador IMPORTA `canTransition`; nao reimplementa.
  *   3. AUSENCIA      — nao existe tabela de transicoes duplicada em `apps/admin`.
+ *   4. FRONTEIRA     — `content_blocks` NAO herda a maquina de estados de artigo.
  *
- * Os itens 2 e 3 sao guardas TEXTUAIS (mesmo idioma de
+ * Sobre o item 4: os dois dominios compartilham o enum `ReviewStatus` e NAO
+ * compartilham as transicoes. Em artigo, `blocked`/`archived` sao RETRATACAO; em
+ * bloco, `blocked` e falha de geracao e `archived` e versao superada arquivada
+ * pelo proprio writer. A Fase 1 aplicou a allowlist de artigo aos blocos por
+ * simetria de enum e quebrou o caminho feliz do Entity Writer
+ * (`ai_generated -> human_reviewed`). Ver
+ * `docs/adr/0016-content-block-lifecycle-separation.md`.
+ *
+ * Os itens 2, 3 e 4 sao guardas TEXTUAIS (mesmo idioma de
  * `editorial-actions-guard.test.ts`), nao execucao: eles afirmam sobre o codigo
  * enviado, nao sobre uma chamada real ao banco.
  */
@@ -167,6 +176,58 @@ describe("procedencia da regra: o admin importa, nao reimplementa", () => {
       if (/ALLOWED_TRANSITIONS/.test(code)) offenders.push(`${file}: ALLOWED_TRANSITIONS`);
     }
     expect(offenders, JSON.stringify(offenders, null, 2)).toEqual([]);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* 4. FRONTEIRA: content_blocks NAO herda a maquina de estados          */
+/* ------------------------------------------------------------------ */
+
+describe("content_blocks: mesmo enum, dominio diferente (ADR 0016)", () => {
+  let actions = "";
+
+  beforeAll(async () => {
+    actions = stripComments(await readFile(ACTIONS_FILE, "utf-8"));
+  });
+
+  it("o caminho de content_block NAO chama o adaptador de transicao de artigo", () => {
+    // A validacao de transicao aparece so nos caminhos de artigo (unitario e
+    // lote). Se alguem reaplicar a allowlist de artigo aos blocos, o numero de
+    // chamadas sobe e este teste falha apontando o ADR 0016.
+    const calls = actions.match(/evaluateReviewStatusTransition\(/g) ?? [];
+    expect(
+      calls.length,
+      "content_blocks nao deve usar a allowlist de artigo — ver docs/adr/0016-content-block-lifecycle-separation.md",
+    ).toBe(2);
+  });
+
+  it("ai_generated -> human_reviewed: proibido para ARTIGO, e o caminho feliz do bloco", () => {
+    // Esta e a diferenca de dominio que a Fase 1 apagou por engano. O Entity
+    // Writer produz `ai_generated` para um bloco limpo (decide-status.ts); exigir
+    // passagem por `needs_review` afirmaria um warning que nao existe.
+    expect(evaluateReviewStatusTransition("ai_generated", "human_reviewed").allowed).toBe(false);
+    // Nenhuma trava equivalente existe do lado do bloco: a acao de bloco vai
+    // direto da validacao de enum para o compare-and-swap.
+    expect(actions).toContain("prisma.contentBlock.findUnique");
+    expect(actions).toContain("prisma.contentBlock.update(");
+  });
+
+  it("a protecao de CONCORRENCIA vale nos dois dominios", () => {
+    // O que blocos herdam da Fase 1 e o CAS, nao o ciclo de vida.
+    const conditioned = actions.match(/where:\s*\{\s*id:\s*recordId,\s*reviewStatus:/g) ?? [];
+    expect(conditioned.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("o Entity Writer continua proibido de escrever published/human_reviewed", async () => {
+    // A trava real da invariante 12 para blocos e do lado do WRITER, e nao foi
+    // criada nem removida por esta fase.
+    const plan = await readFile(
+      resolve(process.cwd(), "services", "entity-writer", "src", "pipeline", "persistence-plan.ts"),
+      "utf-8",
+    );
+    expect(plan).toContain("FORBIDDEN_WRITE_STATES");
+    expect(plan).toContain("published");
+    expect(plan).toContain("human_reviewed");
   });
 });
 

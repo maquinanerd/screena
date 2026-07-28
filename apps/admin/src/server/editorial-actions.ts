@@ -21,12 +21,16 @@
  *   2. ESCRITA — mesmo autenticado, a escrita so ocorre se
  *      `ADMIN_EDITORIAL_ACTIONS_ENABLED === "true"` (feature flag). Sem a flag, a
  *      acao e negada no servidor (nunca confia no botao desabilitado do cliente).
- *   3. CICLO DE VIDA — mesmo com flag ligada, uma mudanca de `reviewStatus` so
- *      persiste se a FONTE UNICA (`canTransition`, de `@screena/news-ingestion`,
- *      via `../lib/editorial-transition-policy`) permitir a transicao a partir do
- *      estado LIDO DO BANCO. Antes disto o admin escrevia qualquer valor do enum
- *      isoladamente, o que permitia `draft -> published` (pulando a revisao
- *      humana) e `blocked -> published` (republicando uma materia retratada).
+ *   3. CICLO DE VIDA — mesmo com flag ligada, uma mudanca de `reviewStatus` DE
+ *      ARTIGO so persiste se a FONTE UNICA (`canTransition`, de
+ *      `@screena/news-ingestion`, via `../lib/editorial-transition-policy`)
+ *      permitir a transicao a partir do estado LIDO DO BANCO. Antes disto o admin
+ *      escrevia qualquer valor do enum isoladamente, o que permitia
+ *      `draft -> published` (pulando a revisao humana) e `blocked -> published`
+ *      (republicando uma materia retratada).
+ *
+ *      Esta trava NAO vale para `content_blocks`: o enum e o mesmo, o dominio
+ *      NAO e. Ver `docs/adr/0016-content-block-lifecycle-separation.md`.
  *
  * CONCORRENCIA (compare-and-swap). Validar contra um estado lido e depois
  * escrever sem condicao aceitaria silenciosamente um estado velho: entre a
@@ -179,17 +183,23 @@ async function applyContentBlockAction(
   try {
     const prisma = getPrismaClient();
     const recordId = BigInt(parsed.id);
-    // `content_blocks.review_status` usa o MESMO enum e a MESMA semantica de
-    // revisao de `article_translations`. Aplicar a mesma allowlist e o que
-    // impede um bloco retratado (`blocked`) de voltar direto a `published`.
+    // ATENCAO — `content_blocks` NAO usa a maquina de estados de
+    // `article_translations`, apesar de compartilhar o enum `ReviewStatus`. Os
+    // mesmos rotulos significam coisas diferentes nos dois dominios (ver
+    // `docs/adr/0016-content-block-lifecycle-separation.md`):
+    //   - artigo:  `blocked`/`archived` = RETRATACAO de algo que foi publico;
+    //   - bloco:   `blocked` = falha de validacao na geracao (nasce assim) e
+    //              `archived` = versao superada, arquivada AUTOMATICAMENTE pelo
+    //              writer ao inserir a versao seguinte (archive + insert).
+    // Alem disso, `ai_generated -> human_reviewed` e o caminho feliz do Entity
+    // Writer e NAO existe na allowlist de artigo. Aplicar aquela allowlist aqui
+    // quebraria a aprovacao de bloco em um passo.
+    // O que permanece e a protecao de CONCORRENCIA (compare-and-swap).
     const current = await prisma.contentBlock.findUnique({
       where: { id: recordId },
       select: { reviewStatus: true },
     });
     if (current === null) return buildActionResult("update_failed");
-
-    const verdict = evaluateReviewStatusTransition(current.reviewStatus, parsed.value);
-    if (!verdict.allowed) return buildActionResult(verdict.outcome);
 
     await prisma.contentBlock.update({
       where: { id: recordId, reviewStatus: current.reviewStatus },
@@ -332,7 +342,10 @@ async function applyBulkContentBlockAction(formData: FormData): Promise<BulkActi
   const prisma = getPrismaClient();
   let updated = 0;
   let failed = 0;
-  let rejected = 0;
+  // `rejected` fica em 0 neste caminho: bloco NAO tem allowlist de transicao
+  // (ver `applyContentBlockAction`). A contagem existe para manter o mesmo
+  // formato de resultado dos lotes de artigo.
+  const rejected = 0;
   for (const id of parsed.ids) {
     const recordId = BigInt(id);
     const current = await prisma.contentBlock.findUnique({
@@ -341,10 +354,6 @@ async function applyBulkContentBlockAction(formData: FormData): Promise<BulkActi
     });
     if (current === null) {
       failed += 1;
-      continue;
-    }
-    if (!evaluateReviewStatusTransition(current.reviewStatus, parsed.value).allowed) {
-      rejected += 1;
       continue;
     }
 

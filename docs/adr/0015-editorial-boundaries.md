@@ -34,26 +34,61 @@ inexistência a partir de um `grep` local.
 
 ## 2. Fluxo canônico
 
+**O MNScr tem DUAS entradas independentes.** Tratá-lo como um consumidor apenas do RSS Prime
+descreveria um reescritor de notícia de terceiro — não o mecanismo de **supermatéria enriquecida**
+que o Cinerie quer publicar.
+
 ```
-RSS Prime (externo)
-  → MNScr (externo)
-     → draft editorial estruturado
-        → Payload  ── sala de redação: drafts, versões, workflow,
-        │                autores, mídia candidata, fontes, RBAC, auditoria
-        → revisão humana
-           → publicação
-              → publication event
-                 → mecanismo governado de projeção
-                    → services/news-ingestion   ── identidade, dedup, lifecycle,
-                    │                              slug, persistência, projeção
-                    → screen-db  ── projeção PÚBLICA
-                       → screen-app  ── render (lê só PostgreSQL/cache local)
+ENTRADA 1 — acontecimento externo
+  RSS Prime ──── rss-prime-event-v1 ────────────┐
+  (contrato do repositório do RSS Prime;        │
+   o Cinerie NÃO define sua estrutura interna)  │
+                                                ▼
+ENTRADA 2 — contexto interno do Cinerie      ┌──────────┐
+  Cinerie Context Service ─────────────────► │  MNScr   │
+        cinerie-editorial-context-v1         │(externo) │
+  (contrato DEFINIDO por este repositório)   └────┬─────┘
+                                                  │
+                                        editorial-draft-v1
+                                                  │
+                                                  ▼
+                                          ┌───────────────┐
+                                          │    Payload    │ sala de redação
+                                          └───────┬───────┘
+                                    revisão humana → aprovação humana
+                                                  │
+                                        publication-event-v1
+                                                  ▼
+                                     mecanismo governado de projeção
+                                                  ▼
+                                     services/news-ingestion
+                              (identidade, dedup, lifecycle, slug, projeção)
+                                                  ▼
+                                     screen-db  ── projeção PÚBLICA
+                                                  ▼
+                                     screen-app ── render (só PostgreSQL/cache local)
+```
+
+O **MN26 permanece fora deste fluxo**, em qualquer ponto.
+
+### O que a segunda entrada muda
+
+Sem ela, o MNScr só saberia o que ScreenRant, Variety, Collider e The Hollywood Reporter disseram.
+Com ela, o MNScr sabe **também** qual episódio, temporada, série, elenco, trailer, imagens e matérias
+anteriores o Cinerie já tem sobre aquele assunto — e é essa soma que produz a supermatéria:
+
+```
+fontes externas consolidadas  +  catálogo, entidades, mídia e cobertura anterior do Cinerie
+                              =  matéria consolidada do Cinerie
 ```
 
 ### Regras de fronteira (invioláveis)
 
 1. **A Cinerie não consome diretamente o contrato bruto do RSS Prime.** O consumidor do RSS Prime é o
    MNScr. Este repositório **não** congela `RSS Prime → UpsertSourceItemInput`.
+1-bis. **O MNScr tem duas entradas, não uma.** O acontecimento externo (`rss-prime-event-v1`) e o
+   contexto interno (`cinerie-editorial-context-v1`) chegam por caminhos independentes. Um desenho que
+   só contemple a primeira entrada produz reescrita de notícia de terceiro, não supermatéria.
 2. **O MNScr não escreve no `screen-db`.** Ele entrega draft ao Payload e para por aí.
 3. **O Payload não publica sozinho.** Publicação é ato humano registrado.
 4. **O Payload não é fonte de leitura pública em runtime.** O `screen-app` nunca o consulta; se o
@@ -68,16 +103,87 @@ RSS Prime (externo)
 
 **Define (quando as fases correspondentes forem autorizadas):**
 
+- `cinerie-editorial-context-v1` — **Cinerie Context Service → MNScr**. O contexto interno que
+  enriquece o acontecimento externo. **É o contrato central da supermatéria.**
 - `editorial-draft-v1` — **MNScr → Payload**. A forma do draft editorial estruturado que a redação aceita.
 - `publication-event-v1` — **Payload → projeção pública**. O que uma publicação, correção, despublicação
   ou retratação comunica ao lado público.
 
 **Não define:**
 
-- `RSS Prime → MNScr`. Esse contrato pertence ao repositório/chat do RSS Prime.
+- `rss-prime-event-v1` (**RSS Prime → MNScr**). Esse contrato pertence ao repositório do RSS Prime e ao
+  seu consumidor. Este repositório não define sua estrutura interna e não a congela.
 
-Nenhum dos dois contratos acima está congelado nesta fase. Ambos são pré-requisito da fundação do
-Payload e vêm **antes** de qualquer migration editorial no `screen-db`.
+Nenhum dos três contratos definidos aqui está congelado nesta fase. Todos são pré-requisito da
+fundação do Payload e vêm **antes** de qualquer migration editorial no `screen-db`.
+
+---
+
+## 3.1 Escopo de `cinerie-editorial-context-v1`
+
+O contrato deve permitir que o MNScr utilize, **conforme disponibilidade e licença**:
+
+| Grupo | Itens |
+| --- | --- |
+| Entidades | filmes, séries, temporadas, episódios, pessoas, personagens, franquias |
+| Identidade | IDs internos, IDs externos **verificados**, URLs canônicas |
+| Descrição | títulos localizados, sinopses, datas, duração |
+| Relações | elenco, equipe, relações entre entidades, cronologia |
+| Mídia | imagens autorizadas, trailers autorizados (ver §3.3) |
+| Disponibilidade | onde assistir **autorizado** |
+| Editorial | notícias publicadas, matérias relacionadas, contexto editorial anterior, vínculos notícia↔entidade |
+
+### Decisão editorial que o contexto habilita
+
+O contrato deve permitir que o MNScr **descubra** se: não existe matéria relacionada; já existe
+matéria sobre o mesmo acontecimento; existe cobertura anterior relacionada; uma notícia existente
+pode ser atualizada; um evergreen pode absorver a novidade; o item é duplicado; ou deve haver nova
+matéria com ligação à anterior.
+
+**O Cinerie fornece o contexto. O MNScr propõe** — criar, atualizar, vincular, consolidar ou rejeitar
+por duplicidade. **O MNScr não altera diretamente conteúdo publicado.** A decisão continua sendo
+transição editorial com gate e ator humano.
+
+---
+
+## 3.2 Cinerie Context Service (componente futuro)
+
+Será: **interno**, **autenticado**, **somente leitura**, **não acessível ao navegador**, independente
+do render público, baseado em **contrato versionado**, limitado aos dados necessários ao MNScr, e
+impedido de expor secrets, dados pessoais e conteúdo privado.
+
+**O MNScr não acessa diretamente**: Prisma, PostgreSQL, tabelas internas, `DATABASE_URL`, drafts
+privados, notas internas ou dados de usuários. O serviço oferece uma **abstração estável sobre o
+banco** — se o schema mudar, o contrato absorve a mudança; o MNScr não.
+
+Isso também protege a invariante 3: o Context Service é offline em relação ao render e não cria
+nenhum caminho novo do `screen-app` para fora.
+
+---
+
+## 3.3 Mídia contextual: existir no catálogo ≠ poder usar
+
+**Mídia presente no catálogo NÃO é automaticamente utilizável editorialmente.** O contrato futuro
+deve carregar, por item: `mediaId`, tipo, URL aprovada, dimensões, proporção, `alt`, legenda,
+crédito, fonte, licença, detentor, validade, `allowedForEditorial`, `allowedForHero`,
+`allowedForSocial`, `requiresAttribution` e restrições.
+
+**O MNScr não pode usar imagem, vídeo ou trailer apenas porque o item existe no banco.** Isso
+operacionaliza, do lado do contexto, a invariante 6 e a separação já vigente entre mídia de catálogo
+e mídia editorial — um pôster de catálogo nunca vira imagem de notícia por default.
+
+---
+
+## 3.4 Proveniência de cada fato
+
+Todo fato entregue ao MNScr preserva sua origem:
+
+`external_source` · `cinerie_catalog` · `cinerie_editorial` · `licensed_media` · `human_input` ·
+`inference`
+
+**A camada do MNScr organiza e redige, mas não é fonte primária de fatos.** É a mesma regra que já
+governa o Entity Writer (invariante 12), aplicada ao writer editorial: a IA escreve o texto, nunca
+estabelece a verdade.
 
 ---
 
@@ -158,6 +264,10 @@ operação da plataforma e acompanhamento da projeção pública.
   ser corrigido, não repetido.
 - Qualquer proposta de expandir `apps/admin` até virar CMS contraria este ADR.
 - Qualquer proposta de o Cinerie consumir o RSS Prime diretamente contraria este ADR.
+- Qualquer desenho do MNScr que contemple **uma só entrada** contraria este ADR: sem
+  `cinerie-editorial-context-v1` o resultado é reescrita de notícia de terceiro, não supermatéria.
+- O `cinerie-editorial-context-v1` é **pré-requisito** da fundação do Payload, junto dos outros dois
+  contratos — ele define o que o `screen-db` precisa saber expor, e portanto condiciona a migration.
 - A ordem de trabalho decorrente: **primeiro** o contrato arquitetural da fundação Payload e da
   projeção pública; **depois** a migration aditiva do `screen-db` (autor, taxonomia, mídia, blocos).
   Criar essas tabelas antes do contrato produziria duplicação de responsabilidade entre CMS e

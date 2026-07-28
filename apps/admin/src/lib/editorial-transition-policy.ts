@@ -1,6 +1,13 @@
 /**
  * editorial-transition-policy.ts — Adaptador do admin para a FONTE UNICA de
- * transicao editorial. PURO (sem rede/DB/IO/import de runtime).
+ * transicao editorial de ARTIGO. PURO (sem rede/DB/IO/import de runtime).
+ *
+ * ESCOPO: `article_translations.review_status`, e SO ele. `content_blocks` usa o
+ * MESMO enum `ReviewStatus` e um dominio DIFERENTE — os mesmos rotulos
+ * significam outra coisa la (`blocked` = falha de geracao, `archived` = versao
+ * superada arquivada pelo proprio writer). A separacao esta documentada em
+ * `docs/adr/0016-content-block-lifecycle-separation.md` e travada por
+ * `tests/admin/editorial-lifecycle-single-source.test.ts`.
  *
  * POR QUE ESTE MODULO EXISTE
  * --------------------------
