@@ -313,3 +313,9 @@ privacidade, acessibilidade ou arquitetura real — nunca por conveniência.
 - **D-112 — Breadcrumb e atribuição TMDB.** Páginas reais carregam breadcrumb
   (invariante 11) e o rodapé mantém a atribuição TMDB exigida; o protótipo não
   os traz.
+- **D-113 — Inventário de AdSlots: 19 de 21 montados.** O canônico declara 21
+  slots (verificado por contagem no HTML 6936a341…). A implementação monta 19
+  (17 em página + 2 nas superfícies modais 17/18); os 2 restantes pertencem a
+  posições dentro de seções omitidas por falta de produto (rail adicional de
+  Notícias e do guia de streaming). Slots são omitidos em produção por padrão
+  (sem ad server) — nenhum impacto visual real.
