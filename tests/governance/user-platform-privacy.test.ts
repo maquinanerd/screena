@@ -331,7 +331,7 @@ describe("user platform: fora do caminho de render publico (invariante 5, caso t
       "apps/web/app/pt/entrar/page.tsx",
       "apps/web/app/pt/entrar/login-form.tsx",
       "apps/web/app/pt/criar-conta/signup-form.tsx",
-      "apps/web/app/pt/conta/account-panel.tsx",
+      "apps/web/app/pt/conta/settings-panel.tsx",
       "apps/web/app/pt/conta/privacidade/privacy-panel.tsx",
       "apps/web/src/lib/csrf-client.ts",
     ];

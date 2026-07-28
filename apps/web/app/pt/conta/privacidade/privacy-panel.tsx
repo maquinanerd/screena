@@ -1,17 +1,30 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
 
 import { authFetch } from '../../../../src/lib/csrf-client'
+import {
+  IcAlert,
+  IcChat,
+  IcDownload,
+  IcEye,
+  IcGlobe,
+  IcLock,
+  IcMail,
+  IcTrash,
+} from '../../../_components/canon-icons'
 
 /**
- * Painel de privacidade (C7D): consentimentos versionados, exportacao LGPD e
- * encerramento de conta.
+ * Painel de privacidade (C7D) na linguagem visual da tela 13 do canônico:
+ * consentimentos versionados como linhas com switch REAL (`role="switch"`),
+ * exportação LGPD e encerramento de conta com confirmação de senha inline
+ * (sem window.prompt — campo de senha acessível e rotulado).
  *
- * A retirada de consentimento tem efeito REAL e imediato — a proxima gravacao
- * opcional daquela finalidade ja passa a ser barrada no servidor. Finalidades
- * nao-revogaveis (termos, privacidade) aparecem sem o controle de retirada, com
- * a base legal indicada.
+ * A retirada de consentimento tem efeito REAL e imediato — a próxima gravação
+ * opcional daquela finalidade já passa a ser barrada no servidor. Finalidades
+ * não-revogáveis (termos, privacidade) aparecem sem o controle de retirada,
+ * com a base legal indicada.
  */
 
 interface ConsentState {
@@ -32,15 +45,24 @@ interface PrivacyState {
 
 const LABELS: Record<string, string> = {
   terms_of_service: 'Termos de Uso',
-  privacy_policy: 'Politica de Privacidade',
-  marketing_email: 'Comunicacoes por e-mail',
-  analytics: 'Analise de uso',
+  privacy_policy: 'Política de Privacidade',
+  marketing_email: 'Comunicações por e-mail',
+  analytics: 'Análise de uso',
+}
+
+const CONSENT_ICONS: Record<string, ReactNode> = {
+  terms_of_service: <IcLock size={16} />,
+  privacy_policy: <IcEye size={16} />,
+  marketing_email: <IcMail size={16} />,
+  analytics: <IcGlobe size={16} />,
 }
 
 export function PrivacyPanel(): React.ReactElement {
   const [carregando, setCarregando] = useState(true)
   const [estado, setEstado] = useState<PrivacyState | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
+  const [encerrarAberto, setEncerrarAberto] = useState(false)
+  const [senha, setSenha] = useState('')
 
   async function recarregar(): Promise<void> {
     const r = await fetch('/api/account/privacy', { credentials: 'same-origin' })
@@ -59,6 +81,7 @@ export function PrivacyPanel(): React.ReactElement {
       await recarregar()
       setCarregando(false)
     })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function alterarConsent(kind: string, granted: boolean): Promise<void> {
@@ -70,7 +93,7 @@ export function PrivacyPanel(): React.ReactElement {
     if (r.ok) {
       await recarregar()
     } else {
-      setAviso('Nao foi possivel registrar a decisao.')
+      setAviso('Não foi possível registrar a decisão.')
     }
   }
 
@@ -78,10 +101,10 @@ export function PrivacyPanel(): React.ReactElement {
     setAviso(null)
     const r = await authFetch('/api/account/export', { method: 'POST' })
     if (!r.ok) {
-      setAviso('Nao foi possivel gerar a exportacao agora.')
+      setAviso('Não foi possível gerar a exportação agora.')
       return
     }
-    // Baixa o JSON como arquivo, no proprio navegador (sem storage no servidor).
+    // Baixa o JSON como arquivo, no próprio navegador (sem storage no servidor).
     const blob = await r.blob()
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -91,9 +114,10 @@ export function PrivacyPanel(): React.ReactElement {
     URL.revokeObjectURL(url)
   }
 
-  async function encerrar(): Promise<void> {
-    const senha = window.prompt('Confirme sua senha para encerrar a conta:')
-    if (senha === null || senha.length === 0) return
+  async function encerrar(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault()
+    if (senha.length === 0) return
+    setAviso(null)
     const r = await authFetch('/api/account/close', {
       method: 'POST',
       body: JSON.stringify({ password: senha }),
@@ -101,69 +125,145 @@ export function PrivacyPanel(): React.ReactElement {
     if (r.ok) {
       window.location.assign('/pt/entrar')
     } else {
-      setAviso('Nao foi possivel encerrar a conta.')
+      setAviso('Não foi possível encerrar a conta.')
     }
   }
 
-  if (carregando) return <p role="status">Carregando...</p>
-  if (estado === null) return <p role="status">Redirecionando...</p>
+  if (carregando) return <p role="status">Carregando…</p>
+  if (estado === null) return <p role="status">Redirecionando…</p>
 
   return (
-    <div>
-      <section aria-labelledby="consent-titulo">
-        <h2 id="consent-titulo">Consentimentos</h2>
-        <ul>
-          {estado.consents.map((c) => (
-            <li key={c.kind}>
-              <strong>{LABELS[c.kind] ?? c.kind}</strong>{' '}
-              {c.revocable ? (
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={c.granted === true}
-                    onChange={(e) => void alterarConsent(c.kind, e.target.checked)}
-                  />
-                  {c.granted === true ? 'Concedido' : 'Nao concedido'}
-                </label>
-              ) : (
-                <span> (obrigatorio — base legal: {c.legalBasis})</span>
-              )}
-              {c.needsRenewal ? <em> — nova versao disponivel</em> : null}
-            </li>
-          ))}
-        </ul>
-      </section>
+    <div className="set-content">
+      <div className="set-section-head" style={{ marginTop: 0 }}>
+        <div className="set-section-head__title">
+          <span aria-hidden="true" className="set-section-head__bar" />
+          <h2>
+            <strong>Consentimentos</strong>
+          </h2>
+        </div>
+      </div>
+      <div className="set-card">
+        {estado.consents.map((c) => (
+          <div className="set-row" key={c.kind}>
+            <span className="set-row__icon">{CONSENT_ICONS[c.kind] ?? <IcChat size={16} />}</span>
+            <div className="set-row__text">
+              <div className="set-row__title">{LABELS[c.kind] ?? c.kind}</div>
+              <div className="set-row__desc">
+                {c.revocable
+                  ? c.granted === true
+                    ? 'Concedido'
+                    : 'Não concedido'
+                  : `Obrigatório — base legal: ${c.legalBasis}`}
+                {c.needsRenewal ? ' · nova versão disponível' : ''}
+              </div>
+            </div>
+            {c.revocable ? (
+              <button
+                aria-checked={c.granted === true}
+                aria-label={LABELS[c.kind] ?? c.kind}
+                className="set-switch"
+                onClick={() => void alterarConsent(c.kind, c.granted !== true)}
+                role="switch"
+                type="button"
+              >
+                <span aria-hidden="true" className="set-switch__knob" />
+              </button>
+            ) : null}
+          </div>
+        ))}
+      </div>
 
-      <section aria-labelledby="dados-titulo">
-        <h2 id="dados-titulo">Meus dados</h2>
-        <p>
-          <button type="button" onClick={() => void exportar()}>
-            Exportar meus dados
-          </button>
-        </p>
-        <p>
-          A exportacao contem apenas seus proprios dados e nunca inclui senhas,
-          tokens ou informacoes internas de seguranca.
-        </p>
-      </section>
+      <div className="set-section-head">
+        <div className="set-section-head__title">
+          <span aria-hidden="true" className="set-section-head__bar" />
+          <h2>
+            <strong>Meus</strong> <span>dados</span>
+          </h2>
+        </div>
+      </div>
+      <div className="set-card">
+        <button className="set-row set-row--action" onClick={() => void exportar()} type="button">
+          <span className="set-row__icon">
+            <IcDownload size={16} />
+          </span>
+          <div className="set-row__text">
+            <div className="set-row__title">Exportar meus dados</div>
+            <div className="set-row__desc">
+              A exportação contém apenas seus próprios dados e nunca inclui senhas, tokens ou
+              informações internas de segurança.
+            </div>
+          </div>
+        </button>
+      </div>
 
-      <section aria-labelledby="encerrar-titulo">
-        <h2 id="encerrar-titulo">Encerrar conta</h2>
+      <div className="set-section-head">
+        <div className="set-section-head__title">
+          <span aria-hidden="true" className="set-section-head__bar" />
+          <h2>
+            <strong>Encerrar</strong> <span>conta</span>
+          </h2>
+        </div>
+      </div>
+      <div className="set-card">
         {estado.accountStatus === 'pending_deletion' ? (
-          <p role="status">
-            Sua conta esta em processo de encerramento. Para reativa-la dentro do prazo, fale com o
-            suporte.
-          </p>
+          <div className="set-row">
+            <span className="set-row__icon">
+              <IcAlert size={16} />
+            </span>
+            <div className="set-row__text">
+              <div className="set-row__title" role="status">
+                Sua conta está em processo de encerramento.
+              </div>
+              <div className="set-row__desc">
+                Para reativá-la dentro do prazo, fale com o suporte.
+              </div>
+            </div>
+          </div>
         ) : (
-          <p>
-            <button type="button" onClick={() => void encerrar()}>
-              Encerrar minha conta
+          <div className="set-row-group">
+            <button
+              aria-expanded={encerrarAberto}
+              className="set-row set-row--action"
+              onClick={() => setEncerrarAberto(!encerrarAberto)}
+              type="button"
+            >
+              <span className="set-row__icon">
+                <IcTrash size={16} />
+              </span>
+              <div className="set-row__text">
+                <div className="set-row__title">Encerrar minha conta</div>
+                <div className="set-row__desc">
+                  Ação irreversível após o prazo de reativação — confirme com sua senha.
+                </div>
+              </div>
             </button>
-          </p>
+            {encerrarAberto ? (
+              <form className="set-row__editor" onSubmit={encerrar}>
+                <label htmlFor="privacidade-senha">Confirme sua senha</label>
+                <input
+                  autoComplete="current-password"
+                  className="input"
+                  id="privacidade-senha"
+                  onChange={(event) => setSenha(event.target.value)}
+                  required
+                  type="password"
+                  value={senha}
+                />
+                <button className="set-save" type="submit">
+                  Encerrar conta
+                </button>
+              </form>
+            ) : null}
+          </div>
         )}
-      </section>
+      </div>
 
-      {aviso !== null ? <p role="alert">{aviso}</p> : null}
+      {aviso !== null ? (
+        <p className="alert alert--error" role="alert">
+          {aviso}
+        </p>
+      ) : null}
+      <div className="set-bottom-space" />
     </div>
   )
 }
