@@ -189,7 +189,7 @@ primeira dobra. Nenhuma dessas correções foi tocada — provado por
 
 ## 5. Inventário de arquivos
 
-### Criados (7)
+### Criados (9)
 
 | Arquivo | Linhas | Papel |
 | --- | ---: | --- |
@@ -201,8 +201,9 @@ primeira dobra. Nenhuma dessas correções foi tocada — provado por
 | `apps/web/src/lib/__tests__/home-ticker-presenter.test.ts` | 215 | 13 testes de ordenação/dedupe/teto |
 | `tests/web/home-editorial-and-ticker-contract.test.ts` | 206 | 21 travas estruturais |
 | `apps/web/scripts/qa-home-editorial-ticker-real-postgres.ts` | 1.248 | QA visual no app Next real + PG16 real |
+| `docs/frontend/home-editorial-highlights-and-ticker-carousel.md` | 653 | Este relatório |
 
-### Editados (13)
+### Editados (15)
 
 | Arquivo | +/− | Mudança |
 | --- | ---: | --- |
@@ -217,6 +218,8 @@ primeira dobra. Nenhuma dessas correções foi tocada — provado por
 | `tests/web/home-canonical-contract.test.ts` | +39 −9 | Contrato atualizado + guards novos |
 | `tests/web/public-shell-reset.test.ts` | +6 −3 | Placeholder entra na allowlist de capa de mídia |
 | `tests/web/category-home-canonical-contract.test.ts` | +2 −2 | Nome do getter |
+| `docs/frontend/page-map.md` | +26 −0 | Contrato das duas seções da primeira dobra |
+| `docs/frontend/home-first-fold-correction.md` | +6 −0 | Referência cruzada para este relatório |
 | `apps/web/package.json` | +1 | Script `qa:home-editorial` |
 | `.gitignore` | +1 | Capturas do QA novo |
 
@@ -225,7 +228,8 @@ primeira dobra. Nenhuma dessas correções foi tocada — provado por
 Nenhum arquivo removido. Nenhum arquivo temporário deixado no repositório: as
 capturas do QA vão para `apps/web/.qa-home-editorial/`, que está no `.gitignore`.
 
-**Diffstat real:** `21 files changed, 3570 insertions(+), 374 deletions(-)`.
+**Diffstat real do commit** (`git show --shortstat`):
+`24 files changed, 4255 insertions(+), 374 deletions(-)`.
 
 ---
 
