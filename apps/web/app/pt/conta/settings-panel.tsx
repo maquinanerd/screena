@@ -232,7 +232,7 @@ export function SettingsPanel(): React.ReactElement {
   }
 
   async function logout(todos: boolean): Promise<void> {
-    await authFetch(todos ? '/api/auth/logout-all' : '/api/auth/logout', { method: 'POST' })
+    await authFetch(todos ? '/api/auth/logout-all' : '/api/auth/logout', { method: 'POST', body: '{}' })
     window.location.assign('/pt/entrar')
   }
 

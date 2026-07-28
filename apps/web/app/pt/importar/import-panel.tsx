@@ -191,7 +191,7 @@ export function ImportPanel(): React.ReactElement {
     if (job === null) return
     setEtapa('aplicando')
     setAviso(null)
-    const r = await authFetch(`/api/me/imports/${job.id}/apply`, { method: 'POST' })
+    const r = await authFetch(`/api/me/imports/${job.id}/apply`, { method: 'POST', body: '{}' })
     if (!r.ok) {
       setEtapa('erro')
       setAviso('Não foi possível aplicar a importação.')
@@ -204,7 +204,7 @@ export function ImportPanel(): React.ReactElement {
 
   async function cancelar(): Promise<void> {
     if (job === null) return
-    await authFetch(`/api/me/imports/${job.id}/cancel`, { method: 'POST' })
+    await authFetch(`/api/me/imports/${job.id}/cancel`, { method: 'POST', body: '{}' })
     setEtapa('escolher')
     setJob(null)
     setResumo(null)
@@ -214,7 +214,7 @@ export function ImportPanel(): React.ReactElement {
 
   async function exportar(): Promise<void> {
     setAviso(null)
-    const r = await authFetch('/api/account/export', { method: 'POST' })
+    const r = await authFetch('/api/account/export', { method: 'POST', body: '{}' })
     if (!r.ok) {
       setAviso('Não foi possível gerar a exportação agora.')
       return

@@ -99,7 +99,7 @@ export function PrivacyPanel(): React.ReactElement {
 
   async function exportar(): Promise<void> {
     setAviso(null)
-    const r = await authFetch('/api/account/export', { method: 'POST' })
+    const r = await authFetch('/api/account/export', { method: 'POST', body: '{}' })
     if (!r.ok) {
       setAviso('Não foi possível gerar a exportação agora.')
       return

@@ -2857,8 +2857,14 @@ a.tabs__tab[aria-current='page'] {
 .media-strip__grid {
   display: grid;
   grid-template-columns: 1fr 3fr 2fr;
+  grid-template-rows: 100%;
   gap: 0;
   height: 472px;
+}
+
+.media-strip__grid > * {
+  min-height: 0;
+  min-width: 0;
 }
 
 .media-strip__cell {
@@ -2868,6 +2874,10 @@ a.tabs__tab[aria-current='page'] {
 }
 
 .media-strip__cell img {
+  /* Absoluta: a imagem nunca dita o layout da celula (senao a celula cresce
+     ate a altura natural e cobre/intercepta o conteudo abaixo). */
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -7936,4 +7946,9 @@ a.tabs__tab[aria-current='page'] {
 .ant-card[data-entity-type='season'] .ant-card__cta:not(.ant-card__cta--saved) {
   background: var(--ant-accent-strong);
   border-color: var(--ant-accent-strong);
+}
+
+/* Ancoras e alvos de scroll nunca ficam sob o header fixo */
+[id] {
+  scroll-margin-top: calc(var(--nav-height) + 18px);
 }
