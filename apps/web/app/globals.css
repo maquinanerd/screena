@@ -7740,3 +7740,96 @@ a.tabs__tab[aria-current='page'] {
   padding: 13px 28px;
   border-radius: var(--r-control);
 }
+
+/* ------------------------------------------------------------------ */
+/* Tela 08 — estado MOBILE da página de série (e detalhe em geral).    */
+/* O protótipo demonstra o comportamento num frame 390px; aqui ele é   */
+/* o breakpoint real de /pt/series/[slug] (mission §30 — sem rota      */
+/* duplicada). Valores do fragmento canônico 08.                       */
+/* ------------------------------------------------------------------ */
+
+@media (max-width: 767px) {
+  /* Título 30px/1.05 com tracking -0.03em (canônico mobile) */
+  .detail-hero__title {
+    font-size: 30px;
+    letter-spacing: -0.03em;
+    line-height: 1.05;
+  }
+
+  /* CTAs: pilha vertical — primário largura total, secundários em 2 col */
+  .detail-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 9px;
+    margin-top: 18px;
+  }
+
+  .detail-actions button,
+  .detail-actions > a {
+    justify-content: center;
+    width: 100%;
+    padding: 12px;
+  }
+
+  .detail-actions > :first-child {
+    grid-column: 1 / -1;
+    padding: 14px;
+  }
+
+  /* Elenco vira trilho horizontal de retratos circulares 64px */
+  .cast-strip {
+    display: flex;
+    overflow-x: auto;
+    gap: 16px;
+    padding-bottom: 4px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .cast-strip > li {
+    flex: 0 0 auto;
+    width: 84px;
+    text-align: center;
+  }
+
+  .cast-tile__photo {
+    width: 64px;
+    height: 64px;
+    aspect-ratio: auto;
+    margin: 0 auto;
+    border-radius: 50%;
+    box-shadow: none;
+    background: #f1ece3;
+  }
+
+  /* Episódios: card vertical com still 16:9 em cima (canônico mobile) */
+  .episode-row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    align-items: stretch;
+    padding: 14px 0;
+  }
+
+  .episode-row__media {
+    width: 100%;
+  }
+
+  .episode-row__chevron {
+    display: none;
+  }
+
+  /* Ficha técnica: pares k/v em linha única com valor à direita */
+  .entity-facts__row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 0;
+    margin-bottom: 0;
+    border-bottom: 1px solid #f0ece4;
+  }
+
+  .entity-facts__value {
+    text-align: right;
+    margin: 0;
+  }
+}
