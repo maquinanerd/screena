@@ -4779,6 +4779,637 @@ a.tabs__tab[aria-current='page'] {
 }
 
 /* ------------------------------------------------------------------ */
+/* Explorar (tela 11) — busca, destaque escuro, rails, agenda          */
+/* ------------------------------------------------------------------ */
+
+.disc-wrap {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 36px 80px 0;
+}
+
+/* Barra de busca (form real → /pt/busca/) */
+.disc-search {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-card);
+  padding: 16px 20px;
+  margin-bottom: 28px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.disc-search:focus-within {
+  border-color: var(--c-text-primary);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+}
+
+.disc-search svg {
+  width: 20px;
+  height: 20px;
+  color: var(--c-text-secondary);
+  flex-shrink: 0;
+}
+
+.disc-search input {
+  font: inherit;
+  font-size: 16px;
+  color: var(--c-text-primary);
+  background: none;
+  border: none;
+  outline: none;
+  flex: 1;
+  min-width: 0;
+}
+
+.disc-search input::placeholder {
+  color: var(--c-text-muted);
+}
+
+.disc-search__kbd {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #b7b0a5;
+  border: 1px solid var(--c-border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  flex-shrink: 0;
+}
+
+/* Cabeçalho da página + tabs de filtro */
+.disc-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+
+.disc-title {
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  color: var(--c-text-primary);
+  margin: 0;
+}
+
+.disc-sub {
+  font-size: 13.5px;
+  color: var(--c-text-secondary);
+  margin: 6px 0 0;
+}
+
+.disc-tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.disc-tab {
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 8px 15px;
+  min-height: 44px;
+  border-radius: var(--r-md);
+  color: var(--c-text-secondary);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  cursor: pointer;
+}
+
+.disc-tab[aria-selected='true'] {
+  color: #fff;
+  background: var(--c-text-primary);
+  border-color: var(--c-text-primary);
+  font-weight: 700;
+}
+
+/* Destaque escuro (banda cinematográfica) */
+.disc-feature {
+  position: relative;
+  border-radius: var(--r-card);
+  overflow: hidden;
+  background: #0a0a0c;
+  margin-bottom: 46px;
+  min-height: 308px;
+  display: flex;
+  color: #fff;
+}
+
+.disc-feature__bg {
+  position: absolute;
+  inset: 0;
+}
+
+.disc-feature__bg img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.disc-feature__scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(8, 8, 10, 0.95) 0%,
+    rgba(8, 8, 10, 0.82) 40%,
+    rgba(8, 8, 10, 0.4) 100%
+  );
+  pointer-events: none;
+}
+
+.disc-feature__inner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 34px;
+  padding: 32px 36px;
+  width: 100%;
+}
+
+.disc-feature__text {
+  flex: 1;
+  min-width: 0;
+  max-width: 580px;
+}
+
+.disc-feature__badges {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 13px;
+}
+
+.disc-feature__type {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--c-movie);
+  color: #fff;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.disc-feature__type--series {
+  background: var(--c-series-dark);
+}
+
+.disc-feature__kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--c-movie);
+}
+
+.disc-feature__title {
+  font-size: clamp(24px, 3.5vw, 34px);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #fff;
+  line-height: 1.02;
+  margin: 0;
+}
+
+.disc-feature__original {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.62);
+  margin-top: 6px;
+}
+
+.disc-feature__synopsis {
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.72);
+  margin: 14px 0 0;
+  max-width: 52ch;
+}
+
+.disc-feature__where {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.disc-feature__where-label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.4);
+  text-transform: uppercase;
+}
+
+.disc-feature__provider {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  padding: 4px 10px;
+  border-radius: 6px;
+}
+
+.disc-feature__actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.disc-feature__poster {
+  position: relative;
+  width: 158px;
+  flex-shrink: 0;
+  aspect-ratio: 2 / 3;
+  border-radius: var(--r-card);
+  overflow: hidden;
+  background: var(--c-bg-skeleton);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+  align-self: center;
+}
+
+.disc-feature__poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Seções + rails */
+.disc-section {
+  margin-bottom: 46px;
+}
+
+.disc-section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.section-title--sm {
+  font-size: 24px;
+}
+
+.disc-note {
+  font-size: 12px;
+  color: #9a9284;
+}
+
+.disc-rank {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 14px;
+}
+
+.disc-rank__card {
+  display: block;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.disc-rank__poster {
+  position: relative;
+  display: block;
+  aspect-ratio: 2 / 3;
+  border-radius: var(--r-card);
+  background: var(--c-bg-skeleton);
+  overflow: hidden;
+}
+
+.disc-rank__poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.disc-rank__type {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: var(--c-movie);
+  color: #fff;
+  padding: 3px 7px;
+  border-radius: 6px;
+}
+
+.disc-rank__type--series {
+  background: var(--c-series-dark);
+}
+
+.disc-rank__num {
+  position: absolute;
+  left: 5px;
+  bottom: 2px;
+  font-size: 44px;
+  font-weight: 900;
+  color: #fff;
+  line-height: 0.8;
+  letter-spacing: -0.05em;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.65);
+}
+
+.disc-rank__title {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--c-text-primary);
+  margin-top: 9px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.disc-rank__meta {
+  display: block;
+  font-size: 11px;
+  color: var(--c-text-secondary);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Continuar assistindo — cards 16/9 com barra de progresso */
+.cw-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+}
+
+.cw-card {
+  display: block;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-card);
+  overflow: hidden;
+  color: inherit;
+  text-decoration: none;
+}
+
+.cw-card__media {
+  position: relative;
+  display: block;
+  aspect-ratio: 16 / 9;
+  background: var(--c-bg-skeleton);
+  overflow: hidden;
+}
+
+.cw-card__media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.cw-card__type {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: var(--c-movie);
+  color: #fff;
+  padding: 3px 7px;
+  border-radius: 5px;
+}
+
+.cw-card__type--series {
+  background: var(--c-series-dark);
+}
+
+.cw-card__bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.28);
+  display: block;
+}
+
+.cw-card__bar > span {
+  display: block;
+  height: 100%;
+  background: var(--c-movie);
+}
+
+.cw-card__body {
+  display: block;
+  padding: 11px 13px 13px;
+}
+
+.cw-card__title {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--c-text-primary);
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cw-card__next {
+  display: block;
+  font-size: 11.5px;
+  color: var(--c-text-secondary);
+  margin-top: 4px;
+}
+
+.cw-card__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--c-text-primary);
+  margin-top: 10px;
+}
+
+/* Lançamentos — agenda da semana */
+.disc-agenda {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-card);
+  overflow: hidden;
+}
+
+.disc-agenda__row {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--c-bg-muted);
+  background: var(--c-surface);
+  color: inherit;
+  text-decoration: none;
+}
+
+.disc-agenda__row:last-child {
+  border-bottom: none;
+}
+
+.disc-agenda__date {
+  width: 66px;
+  flex-shrink: 0;
+  text-align: center;
+  padding: 14px 0;
+  border-right: 1px solid var(--c-bg-muted);
+}
+
+.disc-agenda__weekday {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--c-movie-dark);
+  text-transform: uppercase;
+}
+
+.disc-agenda__day {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--c-text-primary);
+  line-height: 1;
+  margin-top: 2px;
+}
+
+.disc-agenda__thumb {
+  position: relative;
+  width: 112px;
+  flex-shrink: 0;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--r-md);
+  background: var(--c-bg-skeleton);
+  overflow: hidden;
+  margin: 10px 14px;
+}
+
+.disc-agenda__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.disc-agenda__body {
+  flex: 1;
+  min-width: 0;
+  padding: 12px 8px;
+}
+
+.disc-agenda__kicker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--c-movie);
+}
+
+.disc-agenda__title {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--c-text-primary);
+  line-height: 1.2;
+}
+
+.disc-agenda__sub {
+  font-size: 12px;
+  color: var(--c-text-secondary);
+  margin-top: 3px;
+}
+
+.disc-agenda__side {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 18px;
+  flex-shrink: 0;
+}
+
+.disc-agenda__badge {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: var(--c-text-primary);
+  color: #fff;
+  padding: 5px 10px;
+  border-radius: 6px;
+}
+
+/* Mais aguardados compacto */
+.disc-soon__date {
+  display: block;
+  font-size: 11px;
+  color: var(--c-text-secondary);
+  margin-top: 3px;
+}
+
+@media (max-width: 1023px) {
+  .disc-wrap {
+    padding: 28px 24px 0;
+  }
+
+  .disc-rank {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .cw-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .disc-feature__poster {
+    display: none;
+  }
+}
+
+@media (max-width: 599px) {
+  .disc-wrap {
+    padding: 24px 16px 0;
+  }
+
+  .disc-rank {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .cw-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .disc-agenda__thumb {
+    display: none;
+  }
+
+  .disc-agenda__side {
+    padding: 0 10px;
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* AdSlot — espaco reservado + rotulo obrigatorio, sem CLS             */
 /* ------------------------------------------------------------------ */
 
