@@ -112,6 +112,61 @@ describe('home pública — design canônico (tela 02)', () => {
     )
   })
 
+  it('acentos SEPARADOS: menu segue a ROTA, indicador segue o SLIDE', () => {
+    const css = read('apps/web/app/globals.css')
+    const header = read('apps/web/app/_components/site-header.tsx')
+    const hero = read('apps/web/app/_components/home-hero-carousel.tsx')
+
+    // O contexto do header vem do PATHNAME — nunca do slide ativo. Em `/pt/` o
+    // contexto é `neutral`, então o sublinhado de Início é SEMPRE o vermelho da
+    // marca, mesmo quando o hero está exibindo uma série.
+    expect(header).toContain('data-context={context}')
+    expect(header).toContain('const context = logoContextOf(pathname)')
+    expect(header).not.toMatch(/slide|vertical|hero__dot/)
+    expect(css).toMatch(/\.site-header \{[^}]*--nav-accent: var\(--c-accent-movie\)/s)
+    expect(css).toMatch(
+      /\.site-header\[data-context='series'\] \{[^}]*--nav-accent: var\(--c-accent-series\)/s,
+    )
+    expect(css).toMatch(
+      /\.site-header__link\[aria-current='page'\] \{[^}]*border-bottom-color: var\(--nav-accent\)/s,
+    )
+
+    // O indicador do carrossel, ao contrário, segue a vertical do PRÓPRIO slide.
+    expect(hero).toContain('data-vertical={s.vertical}')
+    expect(css).not.toMatch(/\.hero__dot\[aria-selected='true'\][^{]*\{[^}]*--nav-accent/s)
+
+    // Prova dinâmica no app real (Next + PostgreSQL): checks C1/C2 de
+    // `pnpm --filter @screena/web qa:home-fold` — slide de filme => nav
+    // vermelho + dot vermelho; slide de série => nav vermelho + dot verde.
+    const qa = read('apps/web/scripts/qa-home-first-fold-real-postgres.ts')
+    expect(qa).toContain('C1 slide de FILME: underline de Início vermelho E dot ativo vermelho')
+    expect(qa).toContain('C2 slide de SERIE: underline de Início continua VERMELHO e dot fica VERDE')
+  })
+
+  it('Cinerie Score: procedência vem do banco, nunca de nota de terceiro', () => {
+    const provenance = read('apps/web/src/server/editorial-score.ts')
+    const heroLoader = read('apps/web/src/server/home-hero.ts')
+
+    // A origem editorial NÃO é inventada nem inferida da coluna: vem de
+    // `cinerie_score_calculations` com status `calculated` e valor coerente.
+    expect(provenance).toContain("status: \"calculated\"")
+    expect(provenance).toContain('SCREEN_SCORE_EDITORIAL_SOURCE')
+    expect(provenance).toMatch(/latest\.scale !== candidate\.screenScoreScale/)
+    // Nenhuma nota externa pode alimentar a estrela. (Varre o CÓDIGO: o
+    // cabeçalho do módulo cita essas fontes justamente para proibi-las.)
+    const provenanceCode = provenance.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*/g, '')
+    expect(provenanceCode).not.toMatch(
+      /voteAverage|imdb|rotten|metacritic|letterboxd|filmaffinity/i,
+    )
+
+    // O loader do hero passa a procedência adiante (a cadeia estava quebrada
+    // aqui: `screenScoreSource` nunca era populado por nenhum loader).
+    expect(heroLoader).toContain('resolveEditorialScoreSources')
+    expect(heroLoader).toContain('screenScoreSource:')
+    // Chave composta: `movies.id` e `tv_shows.id` são sequências independentes.
+    expect(heroLoader).toMatch(/`\$\{entityType\}:\$\{id\}`/)
+  })
+
   it('faixa amarela é estrutura fixa, mas nunca inventa episódio ou plataforma', () => {
     const ticker = read('apps/web/app/_components/home-ticker.tsx')
     const tickerServer = read('apps/web/src/server/home-ticker.ts')
@@ -126,6 +181,18 @@ describe('home pública — design canônico (tela 02)', () => {
     // O fallback lê o PRÓXIMO episódio já confirmado no banco (nunca estimado).
     expect(tickerServer).toContain("'upcoming'")
     expect(tickerServer).toMatch(/airDate: \{ gte: dayEnd/)
+
+    // PROVEDOR: reusa o gate compartilhado (nunca uma segunda regra de licença)
+    // e consulta em LOTE (uma query para todas as séries — jamais N+1).
+    expect(tickerServer).toContain('licensedWatchWhere(now)')
+    expect(tickerServer).toContain('selectTickerWatchOffer')
+    expect(tickerServer).toMatch(/entityId: \{ in: \[\.\.\.showIds\] \}/)
+    expect(tickerServer).not.toMatch(/for \([^)]*\) \{\s*await prisma\.watchAvailability/)
+    // Nenhum provedor hardcoded em lugar nenhum da faixa.
+    expect(tickerServer).not.toMatch(/Netflix|Prime Video|Disney\+|Apple TV/)
+    // O crédito exigido pela licença é renderizado VISIVELMENTE.
+    expect(ticker).toContain('ticker__credit')
+    expect(ticker).toContain('attributionText')
   })
 
   it('anúncios só via AdSlot governado (nunca criativo inline)', () => {

@@ -11,6 +11,14 @@
  *  - lista vazia -> estado neutro e honesto, sem episodio, data ou plataforma
  *    inventados.
  *
+ * PROVEDOR: o `provider` de cada item ja veio aprovado pelo gate compartilhado
+ * de `watch_availability` (licensedWatchWhere + presenter puro). Quando ele
+ * existe, o CTA vira "Onde assistir · <provedor>" e o CREDITO exigido pela
+ * licenca e renderizado VISIVELMENTE ao lado (com linkback quando exigido) —
+ * exibir a oferta sem o credito violaria a licenca que autoriza exibi-la.
+ * Sem provedor permitido, o CTA cai para a ficha real da serie. Este componente
+ * NUNCA renderiza logo de plataforma nem nome que nao tenha vindo do banco.
+ *
  * Dots como tabs reais (role=tab, setas do teclado) rotacionando os itens; o
  * CTA leva a uma rota real.
  */
@@ -18,13 +26,32 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 
-import type { TickerEpisode } from '../../src/server/home-ticker'
+import type { TickerEpisode, TickerProvider } from '../../src/server/home-ticker'
 // `routes` (nao `site`): modulo puro, importavel em client component.
 import { SERIES_INDEX_PATH } from '../../src/lib/routes'
 
 const BADGE: Readonly<Record<TickerEpisode['kind'], string>> = {
   today: 'NOVO',
   upcoming: 'EM BREVE',
+}
+
+/**
+ * Credito da licenca do agregador. Renderizado SEMPRE que o provedor exigir
+ * atribuicao — sem ele a oferta nao poderia aparecer (invariante 6).
+ */
+function TickerCredit({ provider }: { provider: TickerProvider }): ReactNode {
+  if (provider.attributionText === null) return null
+  return (
+    <p className="ticker__credit">
+      {provider.attributionUrl !== null ? (
+        <a href={provider.attributionUrl} rel="nofollow noopener" target="_blank">
+          {provider.attributionText}
+        </a>
+      ) : (
+        provider.attributionText
+      )}
+    </p>
+  )
 }
 
 export function HomeTicker({ items }: { items: readonly TickerEpisode[] }): ReactNode {
@@ -76,10 +103,17 @@ export function HomeTicker({ items }: { items: readonly TickerEpisode[] }): Reac
               ))}
             </div>
           ) : null}
-          <a className="ticker__cta" href={item === null ? SERIES_INDEX_PATH : item.href}>
-            {item === null ? 'Ver séries' : 'Ver série'}
-          </a>
+          {item?.provider != null ? (
+            <a className="ticker__cta" href={item.href}>
+              Onde assistir <strong>{item.provider.name}</strong>
+            </a>
+          ) : (
+            <a className="ticker__cta" href={item === null ? SERIES_INDEX_PATH : item.href}>
+              {item === null ? 'Ver séries' : 'Ver série'}
+            </a>
+          )}
         </div>
+        {item?.provider != null ? <TickerCredit provider={item.provider} /> : null}
       </div>
     </div>
   )

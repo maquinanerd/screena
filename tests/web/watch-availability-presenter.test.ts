@@ -15,6 +15,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildWatchAvailabilityView,
   formatWatchDate,
+  selectTickerWatchOffer,
   type WatchAvailabilityRow,
 } from "../../apps/web/src/lib/watch-availability-presenter";
 
@@ -292,5 +293,50 @@ describe("buildWatchAvailabilityView — atribuicao obrigatoria", () => {
     const texts = view!.attributions.map((a) => a.text);
     expect(texts).not.toContain("Credito que nao deve aparecer");
     expect(texts).toEqual(["Disponibilidade fornecida por Movie of the Night"]);
+  });
+});
+
+describe("selectTickerWatchOffer", () => {
+  it("escolhe UMA oferta na prioridade canonica (assinatura antes de aluguel)", () => {
+    const offer = selectTickerWatchOffer([
+      row({ providerName: "Aluga", providerKey: "aluga", offerType: "rent" }),
+      row({ providerName: "Assina", providerKey: "assina", offerType: "subscription" }),
+    ]);
+    expect(offer?.providerKey).toBe("assina");
+    expect(offer?.offerType).toBe("subscription");
+  });
+
+  it("desempata de forma DETERMINISTICA por nome do provedor (nunca popularidade)", () => {
+    const offer = selectTickerWatchOffer([
+      row({ providerName: "Zeta", providerKey: "zeta" }),
+      row({ providerName: "Alfa", providerKey: "alfa" }),
+    ]);
+    expect(offer?.providerName).toBe("Alfa");
+  });
+
+  it("carrega o credito DA OFERTA escolhida (a licenca que autoriza obriga creditar)", () => {
+    const offer = selectTickerWatchOffer([row()]);
+    expect(offer?.attribution).toEqual({
+      text: "Disponibilidade fornecida por Movie of the Night",
+      url: "https://www.movieofthenight.com/",
+    });
+  });
+
+  it("null quando a oferta nao pode ser exibida (gate de licenca, invariante 6)", () => {
+    expect(selectTickerWatchOffer([row({ displayAllowed: false })])).toBeNull();
+  });
+
+  it("null quando a licenca exige atribuicao e ela nao existe (fail-closed)", () => {
+    expect(selectTickerWatchOffer([row({ attributionText: null })])).toBeNull();
+    expect(selectTickerWatchOffer([row({ attributionUrl: null })])).toBeNull();
+  });
+
+  it("null para modalidade ilegal/desconhecida e para deep link nao http(s)", () => {
+    expect(selectTickerWatchOffer([row({ offerType: "addon" })])).toBeNull();
+    expect(selectTickerWatchOffer([row({ deepLink: "magnet:?xt=urn:btih:abc" })])).toBeNull();
+  });
+
+  it("null quando nao ha oferta nenhuma", () => {
+    expect(selectTickerWatchOffer([])).toBeNull();
   });
 });

@@ -349,6 +349,10 @@ dl {
   background: transparent;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
+  /* width 0 (nao so cor transparente): com a borda de 1px o header media 73px
+     e o canonico exige 72px exatos sobre o hero. Como a barra e `fixed`, zerar
+     a borda aqui nao desloca conteudo nenhum. */
+  border-bottom-width: 0;
   border-bottom-color: transparent;
   color: #fff;
 }
@@ -912,6 +916,29 @@ dl {
   align-items: center;
   justify-content: space-between;
   gap: 20px;
+  /* O credito de licenca (quando exigido) ocupa uma 2a linha propria. */
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+
+/*
+ * Credito da fonte agregadora. DESIGN-DELTA consciente: o canonico nao previa
+ * esta linha porque e um mock sem licenca. A licenca que autoriza exibir a
+ * oferta e a MESMA que obriga creditar (invariante 6) — omitir o credito para
+ * copiar o mock seria uso nao licenciado. So aparece quando ha provedor.
+ */
+.ticker__credit {
+  flex-basis: 100%;
+  margin: 0;
+  max-width: none;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: rgba(16, 16, 16, 0.72);
+}
+
+.ticker__credit a {
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
 }
 
 .ticker__label {
@@ -1004,6 +1031,12 @@ dl {
   font-weight: 600;
   padding: 8px 16px;
   border-radius: var(--r-control);
+  white-space: nowrap;
+}
+
+/* Nome do provedor dentro do CTA: TEXTO, nunca logo (logo_allowed=false). */
+.ticker__cta strong {
+  font-weight: 800;
 }
 
 /* Destaques de hoje — grid 1.62fr 1fr 1fr, cards 460px */

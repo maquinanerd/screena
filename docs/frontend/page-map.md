@@ -104,6 +104,27 @@ Fonte única: [`apps/web/src/lib/navigation.ts`](../../apps/web/src/lib/navigati
   `tests/web/public-navigation.test.ts` prova que toda rota de `NAV_ITEMS` e
   `SECONDARY_NAV_ITEMS` existe e aparece no rodapé/menu mobile.
 
+### Acentos: dois contratos DIFERENTES
+
+Nunca use uma variável só para header e hero. São eixos distintos:
+
+| Superfície | Segue | Home (`/pt/`) |
+| --- | --- | --- |
+| Sublinhado do item ativo do menu | a **ROTA** (`data-context` do header, derivado do pathname) | sempre **vermelho** da marca, mesmo com slide de série |
+| Indicador do carrossel | o **SLIDE** (`data-vertical` de cada dot) | vermelho em filme, **verde** em série |
+
+Provado nos dois sentidos ao mesmo tempo pelos checks C1/C2 de
+`pnpm --filter @screena/web qa:home-fold` (app Next real + PostgreSQL real).
+
+### QA visual da primeira dobra
+
+`pnpm --filter @screena/web qa:home-fold` sobe um **PostgreSQL 16 efêmero**,
+aplica migrations + seed, cria fixtures de QA, sobe a **aplicação Next real** e
+mede a Home em 5 viewports. Requer `pnpm build` antes. Nunca toca produção:
+a `DATABASE_URL` é sempre `127.0.0.1` num banco descartável, e o script aborta
+se não for. A URL de **imagem** do CDN do TMDB é interceptada no browser e
+servida por asset local — QA determinístico e offline.
+
 ## Fontes de dado por camada
 
 - **TMDB:** base canônica de entidade, consumida somente por ingestão offline.

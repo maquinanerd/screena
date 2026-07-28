@@ -10,6 +10,8 @@
 import { cache } from "react";
 import { getPrismaClient } from "@screena/db/server";
 
+import { resolveEditorialScoreSources } from "./editorial-score";
+
 import {
   buildTrendingMovieCards,
   HOME_TRENDING_CARD_LIMIT,
@@ -89,6 +91,18 @@ export const getHomeCatalogData = cache(async (): Promise<HomeCatalogData> => {
           },
         });
 
+  // Procedencia do Cinerie Score em LOTE (ver `editorial-score`): sem calculo
+  // `calculated` coerente, a nota fica sem origem editorial e o card a oculta.
+  const scoreSources = await resolveEditorialScoreSources(
+    prisma,
+    "movie",
+    movies.map((movie) => ({
+      entityId: movie.id,
+      screenScore: decimalToNumber(movie.screenScore),
+      screenScoreScale: movie.screenScoreScale,
+    })),
+  );
+
   const movieInputs: MovieListItemInput[] = movies.map((movie) => {
     const key = movie.id.toString();
     return {
@@ -101,6 +115,7 @@ export const getHomeCatalogData = cache(async (): Promise<HomeCatalogData> => {
       screenScore: decimalToNumber(movie.screenScore),
       screenScoreScale: movie.screenScoreScale,
       screenScoreDisplay: movie.screenScoreDisplay,
+      screenScoreSource: scoreSources.get(key) ?? null,
     };
   });
   return {

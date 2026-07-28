@@ -117,6 +117,14 @@ export interface WatchAvailabilityOffer {
   quality: string | null;
   /** Rotulo de preco (ex.: "R$ 14,90") so para aluguel/compra; senao null. */
   priceLabel: string | null;
+  /**
+   * Credito DESTA oferta (a licenca que autoriza exibir e a mesma que obriga
+   * creditar). `null` so quando a licenca nao exige atribuicao — uma oferta que
+   * exigia e nao tinha ja foi descartada. Superficies que mostram UMA oferta
+   * isolada (ex.: faixa da home) precisam do credito da oferta, nao do agregado
+   * do painel.
+   */
+  attribution: WatchAvailabilityAttribution | null;
 }
 
 /** Um grupo de modalidade com suas ofertas ordenadas. */
@@ -271,6 +279,8 @@ export function buildWatchAvailabilityView(
       deepLink,
       quality,
       priceLabel,
+      attribution:
+        attributionText === null ? null : { text: attributionText, url: attributionUrl },
     };
     const bucket = byType.get(offerType);
     if (bucket === undefined) byType.set(offerType, [offer]);
@@ -311,4 +321,26 @@ export function buildWatchAvailabilityView(
     updatedAtLabel: updatedDate === null ? null : `Atualizado em ${updatedDate}`,
     attributions,
   };
+}
+
+/**
+ * Escolhe UMA oferta para superficies compactas (faixa amarela da home), de
+ * forma DETERMINISTICA e sem duplicar regra: delega a
+ * `buildWatchAvailabilityView` — mesmos gates de licenca, mesma exclusao de
+ * modalidade ilegal/desconhecida, mesma exigencia de atribuicao/linkback,
+ * mesma ordenacao canonica — e devolve a primeira oferta do primeiro grupo.
+ *
+ * A politica de prioridade e, portanto, a ja publicada pelo painel:
+ * assinatura -> gratis -> aluguel -> compra; dentro do grupo, provedor (asc),
+ * qualidade (desc) e deep link (desempate estavel). Nao ha "provedor principal"
+ * por popularidade comercial: isso seria uma afirmacao sem dado persistido.
+ *
+ * `null` quando nao ha nenhuma oferta exibivel — a superficie entao cai no CTA
+ * generico, nunca em plataforma inventada.
+ */
+export function selectTickerWatchOffer(
+  rows: WatchAvailabilityRow[],
+): WatchAvailabilityOffer | null {
+  const view = buildWatchAvailabilityView(rows);
+  return view?.groups[0]?.offers[0] ?? null;
 }
