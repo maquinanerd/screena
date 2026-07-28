@@ -7188,3 +7188,221 @@ a.tabs__tab[aria-current='page'] {
   color: var(--c-text-secondary);
   margin: 0 0 18px;
 }
+
+/* ------------------------------------------------------------------ */
+/* Tela 15 — Suas listas (valores exatos do canônico)                  */
+/* ------------------------------------------------------------------ */
+
+.lists-page {
+  max-width: var(--container-editorial);
+  margin: 0 auto;
+  padding: 56px var(--pad-page) 0;
+}
+
+@media (max-width: 767px) {
+  .lists-page {
+    padding-inline: var(--pad-page-mobile);
+    padding-top: 32px;
+  }
+}
+
+.lists-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 28px;
+  flex-wrap: wrap;
+}
+
+.lists-head__title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.lists-head__bar {
+  width: 4px;
+  height: 20px;
+  border-radius: var(--r-hairline);
+  background: var(--c-accent-movie);
+}
+
+.lists-head__title h1 {
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--c-text-primary);
+  margin: 0;
+}
+
+.lists-head__sub {
+  font-size: 14px;
+  color: var(--c-text-secondary);
+  margin: 10px 0 0;
+  padding-left: 16px;
+}
+
+.lists-create {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--c-text-primary);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 11px 20px;
+  border: none;
+  border-radius: var(--r-control);
+  cursor: pointer;
+}
+
+.lists-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  margin-bottom: 22px;
+}
+
+.lists-form label {
+  flex-basis: 100%;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--c-text-primary);
+}
+
+.lists-form .input {
+  max-width: 340px;
+}
+
+.lists-anon {
+  padding: 40px 0;
+}
+
+.lists-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 22px;
+}
+
+@media (max-width: 1023px) {
+  .lists-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 639px) {
+  .lists-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.list-card {
+  display: block;
+  background: var(--c-bg-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-card);
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
+  cursor: pointer;
+}
+
+.list-card:hover {
+  border-color: var(--c-text-primary);
+  box-shadow: 0 4px 16px rgba(20, 18, 14, 0.06);
+}
+
+.list-card__media {
+  position: relative;
+  display: block;
+  aspect-ratio: 16 / 9;
+  background: var(--list-cover, var(--c-bg-skeleton));
+}
+
+.list-card__scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.05) 0%, rgba(0, 0, 0, 0.55) 100%);
+}
+
+.list-card__privacy {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  padding: 3px 8px;
+  border-radius: var(--r-sm);
+}
+
+.list-card__name {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 12px;
+  color: #fff;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+.list-card__foot {
+  padding: 13px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.list-card__count,
+.list-card__system {
+  font-size: 12px;
+  color: var(--c-text-secondary);
+}
+
+.list-card--new {
+  appearance: none;
+  font: inherit;
+  background: transparent;
+  border: 1.5px dashed #cfc8bc;
+  border-radius: var(--r-card);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 180px;
+  color: #8c857a;
+}
+
+.list-card--new:hover {
+  border-color: var(--c-text-primary);
+  color: var(--c-text-primary);
+  box-shadow: none;
+}
+
+.list-card__plus {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--c-bg-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--c-text-primary);
+}
+
+.list-card__new-label {
+  font-size: 14px;
+  font-weight: 700;
+}
