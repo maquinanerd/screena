@@ -63,6 +63,55 @@ function BookmarkIcon(): ReactNode {
   )
 }
 
+/**
+ * Estado real de watchlist de UMA entidade, compartilhando a busca de
+ * sessão+biblioteca da página (loadShared). Toggle via API com CSRF real.
+ */
+export function useWatchlistEntry(
+  entityType: 'movie' | 'tv',
+  entityId: string,
+): {
+  ready: boolean
+  authenticated: boolean
+  planned: boolean
+  toggle: () => Promise<void>
+} {
+  const [ready, setReady] = useState(false)
+  const [authenticated, setAuthenticated] = useState(false)
+  const [planned, setPlanned] = useState(false)
+
+  useEffect(() => {
+    let alive = true
+    void loadShared().then((shared) => {
+      if (!alive) return
+      setAuthenticated(shared.authenticated)
+      setPlanned(shared.planned.has(`${entityType}:${entityId}`))
+      setReady(true)
+    })
+    return () => {
+      alive = false
+    }
+  }, [entityType, entityId])
+
+  const toggle = async () => {
+    if (planned) {
+      const r = await authFetch('/api/me/watch-state/remove', {
+        method: 'POST',
+        body: JSON.stringify({ entityType, entityId }),
+      })
+      if (r.ok) setPlanned(false)
+    } else {
+      const r = await authFetch('/api/me/watch-state', {
+        method: 'POST',
+        body: JSON.stringify({ entityType, entityId, status: 'planned' }),
+      })
+      if (r.ok) setPlanned(true)
+    }
+  }
+
+  return { ready, authenticated, planned, toggle }
+}
+
 export function CardBookmark({
   entityType,
   entityId,
