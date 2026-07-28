@@ -36,6 +36,9 @@ export default defineConfig({
       '@screena/cinerie-score': fileURLToPath(
         new URL('./packages/cinerie-score/src/index.ts', import.meta.url),
       ),
+      '@screena/editorial-contracts': fileURLToPath(
+        new URL('./packages/editorial-contracts/src/index.ts', import.meta.url),
+      ),
       '@screena/legal': fileURLToPath(new URL('./services/legal/src/index.ts', import.meta.url)),
       '@screena/news-ingestion': fileURLToPath(
         new URL('./services/news-ingestion/src/index.ts', import.meta.url),

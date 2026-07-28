@@ -69,6 +69,16 @@ jobs:
       - name: Typecheck do admin
         run: pnpm typecheck:admin
 
+      # O CMS editorial (Payload) e uma aplicacao ISOLADA: banco proprio, sem
+      # Prisma e sem @screena/db. Typecheck e teste proprios porque o `vitest`
+      # da raiz nao alcanca `apps/**` e porque o stack do Payload fixa uma
+      # versao de Next DIFERENTE da de apps/web (ver apps/cms/README.md).
+      - name: Typecheck do CMS editorial (Payload)
+        run: pnpm typecheck:cms
+
+      - name: Testes do CMS editorial (nucleo puro, sem banco)
+        run: pnpm test:cms
+
       - name: Lint
         run: pnpm lint
 

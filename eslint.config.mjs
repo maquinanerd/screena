@@ -37,6 +37,13 @@ export default tseslint.config(
       '**/.vitest/**',
       // Arquivo gerado pelo Next (triple-slash refs; "should not be edited").
       '**/next-env.d.ts',
+      // Migrations do Payload sao GERADAS por `payload migrate:create` e
+      // reescritas a cada geracao. Editar a mao para satisfazer o lint seria
+      // desfeito na proxima migration — e o arquivo e um artefato de schema,
+      // nao codigo de produto.
+      'apps/cms/src/migrations/**',
+      // Tipos gerados por `payload generate:types`.
+      'apps/cms/src/payload-types.ts',
     ],
   },
   eslint.configs.recommended,

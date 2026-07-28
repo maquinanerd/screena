@@ -20,6 +20,7 @@
       "@screena/db": ["packages/db/src/index.ts"],
       "@screena/public-contracts": ["packages/public-contracts/src/index.ts"],
       "@screena/cinerie-score": ["packages/cinerie-score/src/index.ts"],
+      "@screena/editorial-contracts": ["packages/editorial-contracts/src/index.ts"],
       "@screena/legal": ["services/legal/src/index.ts"],
       "@screena/news-ingestion": ["services/news-ingestion/src/index.ts"],
       "@screena/tmdb-client": ["api-clients/tmdb/src/index.ts"],
