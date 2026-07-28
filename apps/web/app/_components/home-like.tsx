@@ -107,7 +107,8 @@ export function HomeLike({
     <>
       {heroSlides.length > 0 ? <HomeHeroCarousel slides={heroSlides} /> : null}
 
-      {/* Ticker de episódios novos HOJE — dado real ou nada */}
+      {/* Faixa amarela: estrutura fixa da composição; o TEXTO é que muda
+          (hoje → próxima estreia confirmada → estado neutro honesto) */}
       <HomeTicker items={tickerEpisodes} />
 
       {/* Destaques de hoje — grid 1.62fr 1fr 1fr, cards de 460px */}
@@ -115,7 +116,7 @@ export function HomeLike({
         <section
           aria-labelledby={`${adPrefix}-featured-title`}
           className="container"
-          style={{ paddingTop: 56, paddingBottom: 10 }}
+          style={{ paddingTop: 48, paddingBottom: 10 }}
         >
           <div className="feat-head">
             <SectionTitle id={`${adPrefix}-featured-title`} title="Destaques de hoje" />

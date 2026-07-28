@@ -330,11 +330,23 @@ dl {
   -webkit-backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--c-border);
   transition: background 0.35s ease, border-color 0.35s ease;
+
+  /* Acento do INDICADOR DE NAVEGACAO (estado ativo do menu). Neutro = acento
+     da marca Cinerie; nas verticais acompanha a rota. NAO e sinal de vertical:
+     a diferenciacao filme/serie continua em label + badge + breadcrumb +
+     schema + URL (invariante 11). */
+  --nav-accent: var(--c-accent-movie);
+}
+
+.site-header[data-context='series'] {
+  --nav-accent: var(--c-accent-series);
 }
 
 .site-header[data-overlay='true'] {
-  /* scrim superior de midia: texto branco legivel (AA) sobre qualquer hero */
-  background: linear-gradient(180deg, rgba(5, 5, 5, 0.55) 0%, rgba(5, 5, 5, 0) 100%);
+  /* TRANSPARENTE de verdade: nenhuma faixa/scrim proprio sobre o hero. O
+     escurecimento do topo ja vem do `hero__scrim-v` (0.55 em 0%), que mantem
+     a barra legivel (AA) sem duplicar gradiente nem criar banda visivel. */
+  background: transparent;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
   border-bottom-color: transparent;
@@ -380,11 +392,12 @@ dl {
 }
 
 .site-header__link {
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--c-text-primary);
   padding-block: 4px;
   border-bottom: 2px solid transparent;
+  white-space: nowrap;
   transition: color 0.35s;
 }
 
@@ -393,13 +406,13 @@ dl {
 }
 
 .site-header__link[aria-current='page'] {
-  color: var(--ctx-accent-dark);
-  border-bottom-color: var(--ctx-accent);
+  color: var(--c-text-primary);
+  border-bottom-color: var(--nav-accent);
 }
 
 .site-header[data-overlay='true'] .site-header__link[aria-current='page'] {
   color: #fff;
-  border-bottom-color: #fff;
+  border-bottom-color: var(--nav-accent);
 }
 
 .site-header__actions {
@@ -731,17 +744,30 @@ dl {
 }
 
 .hero__title {
-  font-size: 84px;
+  font-size: clamp(52px, 5.25vw, 84px);
   font-weight: 800;
   letter-spacing: -0.035em;
   color: rgba(255, 255, 255, 0.95);
   line-height: 0.9;
   margin: 0;
+  max-width: 620px;
   text-shadow: 0 2px 30px rgba(0, 0, 0, 0.5);
+  /* Titulo longo quebra em ate 3 linhas, equilibrado — nunca palavra picada */
+  text-wrap: balance;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
+/*
+ * O titulo NAVEGA para a ficha, mas o link nao pode mudar a aparencia do
+ * display: sem sublinhado, borda ou sombra herdados de `p a`/link global.
+ */
 .hero__title a {
   color: inherit;
+  text-decoration: none;
+  border: 0;
+  box-shadow: none;
+  background-image: none;
 }
 
 .hero__meta-row {
@@ -806,16 +832,25 @@ dl {
   appearance: none;
   border: none;
   padding: 0;
-  width: 22px;
+  width: 8px;
   height: 5px;
-  background: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.45);
   cursor: pointer;
   transition: width 0.3s ease, background 0.3s ease;
 }
 
+/*
+ * O indicador ATIVO carrega o acento da vertical do slide (filme = vermelho,
+ * serie = verde) — nunca branco. A cor e reforco: o estado ativo ja e
+ * anunciado por `aria-selected` e pela largura (invariante 11).
+ */
 .hero__dot[aria-selected='true'] {
-  width: 44px;
-  background: #fff;
+  width: 26px;
+  background: var(--c-accent-movie);
+}
+
+.hero__dot[aria-selected='true'][data-vertical='series'] {
+  background: var(--c-accent-series);
 }
 
 @media (max-width: 1023px) {
@@ -824,6 +859,7 @@ dl {
   }
   .hero__title {
     font-size: 56px;
+    max-width: none;
   }
 }
 
@@ -904,6 +940,15 @@ dl {
 @media (max-width: 767px) {
   .ticker__inner {
     padding-inline: var(--pad-page-mobile);
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  /* No mobile a faixa quebra em duas linhas — ela nunca some nem estoura. */
+  .ticker__text {
+    white-space: normal;
+  }
+  .ticker__lead {
+    flex-basis: 100%;
   }
 }
 

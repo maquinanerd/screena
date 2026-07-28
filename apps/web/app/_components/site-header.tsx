@@ -5,8 +5,9 @@
  *
  * Comportamento do handoff:
  *  - barra FIXA de 72px (container nav 1380/80px);
- *  - TRANSPARENTE sobre o hero das telas home-like e SOLIDA ao rolar
- *    (transicao .35s), com wordmark branca -> preta;
+ *  - TRANSPARENTE de verdade sobre o hero das telas home-like (sem faixa nem
+ *    scrim proprio: quem escurece o topo e o `hero__scrim-v`) e SOLIDA ao
+ *    rolar (transicao .35s), com wordmark branca -> preta;
  *  - logo por contexto: sublinhado vermelho em /pt/filmes, verde em
  *    /pt/series, neutro no resto (o contexto NUNCA e so a cor: a rota, o
  *    breadcrumb e os labels continuam carregando o sinal — invariante 11);
@@ -21,7 +22,12 @@ import { usePathname } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 
-import { HOME_HREF, isActiveNavigationPath, NAV_ITEMS } from '../../src/lib/navigation'
+import {
+  HOME_HREF,
+  isActiveNavigationPath,
+  NAV_ITEMS,
+  SECONDARY_NAV_ITEMS,
+} from '../../src/lib/navigation'
 
 /** Rotas cujo topo e um hero full-bleed (header transparente ate rolar). */
 const HERO_ROUTES = ['/pt', '/pt/filmes', '/pt/series']
@@ -52,23 +58,35 @@ export function SiteHeader(): ReactNode {
   const pathname = usePathname()
   const heroRoute = isHeroRoute(pathname)
   const [scrolled, setScrolled] = useState(false)
+  /**
+   * Rota de hero sem hero renderizado (catalogo vazio) existe: como o overlay
+   * agora e TRANSPARENTE de verdade, texto branco cairia sobre pagina clara.
+   * Comeca `true` (caso comum, sem flash no SSR) e o efeito corrige quando o
+   * hero de fato nao esta no documento.
+   */
+  const [hasHero, setHasHero] = useState(true)
   const menuRef = useRef<HTMLDialogElement>(null)
 
   useEffect(() => {
     if (!heroRoute) return
+    setHasHero(document.querySelector('#main-content .hero') !== null)
     const onScroll = () => setScrolled(window.scrollY > 24)
     onScroll()
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
-  }, [heroRoute])
+  }, [heroRoute, pathname])
 
-  const overlay = heroRoute && !scrolled
+  const overlay = heroRoute && hasHero && !scrolled
   const context = logoContextOf(pathname)
   const inNews = pathname !== null && pathname.startsWith('/pt/noticias')
 
   return (
     <>
-      <header className="site-header" data-overlay={overlay ? 'true' : 'false'}>
+      <header
+        className="site-header"
+        data-context={context}
+        data-overlay={overlay ? 'true' : 'false'}
+      >
         <div className="site-header__inner">
           <a className="site-header__brand" href={HOME_HREF} aria-label="Cinerie — início">
             {/* Wordmark aprovada do handoff (uploads/5a–5j); alt vazio: o aria-label do link ja nomeia. */}
@@ -136,12 +154,7 @@ export function SiteHeader(): ReactNode {
           Fechar menu
         </button>
         <ul className="mobile-menu__list">
-          <li>
-            <a href={HOME_HREF} onClick={() => menuRef.current?.close()}>
-              Início
-            </a>
-          </li>
-          {NAV_ITEMS.map((item) => (
+          {[...NAV_ITEMS, ...SECONDARY_NAV_ITEMS].map((item) => (
             <li key={item.href}>
               <a href={item.href} onClick={() => menuRef.current?.close()}>
                 {item.label}

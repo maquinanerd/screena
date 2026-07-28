@@ -82,6 +82,52 @@ describe('home pública — design canônico (tela 02)', () => {
     expect(home).toContain('Ainda não há conteúdo publicado')
   })
 
+  it('primeira dobra: header transparente, título limpo e dot com acento', () => {
+    const css = read('apps/web/app/globals.css')
+    const header = read('apps/web/app/_components/site-header.tsx')
+    const hero = read('apps/web/app/_components/home-hero-carousel.tsx')
+
+    // 1. Header sobre o hero é transparente de verdade — nenhuma faixa/scrim
+    //    próprio duplicando o `hero__scrim-v` (era a "faixa preta" do topo).
+    expect(css).toMatch(/\.site-header\[data-overlay='true'\] \{[^}]*background: transparent/s)
+    expect(css).not.toMatch(
+      /\.site-header\[data-overlay='true'\] \{[^}]*linear-gradient/s,
+    )
+    // Rota de hero sem hero renderizado não pode virar texto branco no claro.
+    expect(header).toContain("document.querySelector('#main-content .hero')")
+
+    // 2. O título do hero NÃO é <p> (o estilo global `p a` o sublinharia) e o
+    //    link interno não pode reintroduzir decoração.
+    expect(hero).toContain('<div className="hero__title">')
+    expect(hero).not.toMatch(/<p className="hero__title">/)
+    expect(css).toMatch(/\.hero__title a \{[^}]*text-decoration: none/s)
+
+    // 3. Indicador ativo carrega o acento da vertical do slide, nunca branco.
+    expect(hero).toContain('data-vertical={s.vertical}')
+    expect(css).toMatch(
+      /\.hero__dot\[aria-selected='true'\] \{[^}]*background: var\(--c-accent-movie\)/s,
+    )
+    expect(css).toMatch(
+      /\.hero__dot\[aria-selected='true'\]\[data-vertical='series'\] \{[^}]*var\(--c-accent-series\)/s,
+    )
+  })
+
+  it('faixa amarela é estrutura fixa, mas nunca inventa episódio ou plataforma', () => {
+    const ticker = read('apps/web/app/_components/home-ticker.tsx')
+    const tickerServer = read('apps/web/src/server/home-ticker.ts')
+
+    // A faixa não depende de `items.length > 0` para existir…
+    expect(ticker).not.toMatch(/if \(items\.length === 0\) return null/)
+    expect(ticker).toContain('className="ticker"')
+    // …mas o estado vazio é honesto: nada de episódio, data ou provedor fake.
+    expect(ticker).toContain('Nenhum episódio novo confirmado para hoje')
+    expect(ticker).not.toMatch(/Netflix|Prime Video|Disney\+|Max\b|Apple TV/)
+
+    // O fallback lê o PRÓXIMO episódio já confirmado no banco (nunca estimado).
+    expect(tickerServer).toContain("'upcoming'")
+    expect(tickerServer).toMatch(/airDate: \{ gte: dayEnd/)
+  })
+
   it('anúncios só via AdSlot governado (nunca criativo inline)', () => {
     expect(homeLike).toMatch(/<AdSlot format="leaderboard" slotId=\{`\$\{adPrefix\}-/)
     expect(homeLike).not.toMatch(/<iframe|doubleclick|adsbygoogle/i)

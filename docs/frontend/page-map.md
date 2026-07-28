@@ -87,6 +87,23 @@ Os antigos componentes de hero, cards, anúncios, rails, logo inline e inventár
 visuais foram removidos no reset. Não trate seus nomes históricos em presenters ou
 getters preservados como autorização para recriá-los.
 
+### Contrato de navegação global (header/rodapé)
+
+Fonte única: [`apps/web/src/lib/navigation.ts`](../../apps/web/src/lib/navigation.ts).
+
+- **Menu primário** (header, nesta ordem, tela 02 do canônico):
+  `Início · Filmes · Séries · Listas · Notícias · Onde assistir`.
+- **Secundário** (`SECONDARY_NAV_ITEMS`): `Pessoas` e `Explorar` — rotas reais que
+  ficam fora do header e continuam navegáveis pelo rodapé e pelo menu mobile.
+- O item ativo é marcado por `aria-current="page"` **e** por um sublinhado com o
+  acento do contexto (neutro/filme = vermelho da marca, série = verde). A cor é
+  reforço: nunca é o único sinal (invariante 11).
+- Sobre hero, o header é **transparente de verdade** — quem escurece o topo é o
+  `hero__scrim-v`. Rota de hero sem hero renderizado volta ao estado sólido.
+- Tirar um destino do menu primário nunca pode transformá-lo em link morto:
+  `tests/web/public-navigation.test.ts` prova que toda rota de `NAV_ITEMS` e
+  `SECONDARY_NAV_ITEMS` existe e aparece no rodapé/menu mobile.
+
 ## Fontes de dado por camada
 
 - **TMDB:** base canônica de entidade, consumida somente por ingestão offline.

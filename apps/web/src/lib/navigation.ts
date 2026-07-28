@@ -3,10 +3,12 @@
 import {
   EXPLORE_PATH,
   HOME_PATH,
+  LISTS_PATH,
   MOVIES_INDEX_PATH,
   NEWS_INDEX_PATH,
   PEOPLE_INDEX_PATH,
   SERIES_INDEX_PATH,
+  WATCH_PATH,
 } from './routes'
 
 export interface NavItem {
@@ -14,12 +16,26 @@ export interface NavItem {
   readonly href: string
 }
 
-/** Somente destinos públicos que possuem uma rota real no app. */
+/**
+ * Menu PRIMÁRIO do header, na ordem do design canônico (tela 02).
+ * Somente destinos públicos que possuem uma rota real no app.
+ */
 export const NAV_ITEMS: readonly NavItem[] = [
+  { label: 'Início', href: HOME_PATH },
   { label: 'Filmes', href: MOVIES_INDEX_PATH },
   { label: 'Séries', href: SERIES_INDEX_PATH },
-  { label: 'Pessoas', href: PEOPLE_INDEX_PATH },
+  { label: 'Listas', href: LISTS_PATH },
   { label: 'Notícias', href: NEWS_INDEX_PATH },
+  { label: 'Onde assistir', href: WATCH_PATH },
+]
+
+/**
+ * Destinos reais que NÃO fazem parte do menu primário do canônico (Pessoas e
+ * Explorar). As rotas continuam existindo e navegáveis: aparecem no rodapé e
+ * no menu mobile — sair do header nunca significa virar link morto.
+ */
+export const SECONDARY_NAV_ITEMS: readonly NavItem[] = [
+  { label: 'Pessoas', href: PEOPLE_INDEX_PATH },
   { label: 'Explorar', href: EXPLORE_PATH },
 ]
 

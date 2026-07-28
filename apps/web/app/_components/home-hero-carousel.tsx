@@ -93,23 +93,26 @@ export function HomeHeroCarousel({ slides }: { slides: readonly HeroSlide[] }): 
               {[slide.eyebrow, ...slide.primaryMeta].join(' · ')}
             </a>
             {/* Visual do H1 do canonico; o H1 SEMANTICO unico da home e o
-                institucional (governanca home-seo-identity). */}
-            <p className="hero__title">
+                institucional (governanca home-seo-identity). NAO e <p>: o
+                estilo global `p a` sublinharia o titulo. */}
+            <div className="hero__title">
               <a href={slide.href}>{slide.title}</a>
-            </p>
-            <div className="hero__meta-row">
-              {stars !== null ? (
-                <span aria-label={`Nota ${slide.rating?.value} de ${slide.rating?.scale}`} className="hero__stars">
-                  {stars.on}
-                  <span aria-hidden="true" className="hero__stars-off">
-                    {stars.off}
-                  </span>
-                </span>
-              ) : null}
-              {slide.certification !== null ? (
-                <span className="hero__cert">{slide.certification}</span>
-              ) : null}
             </div>
+            {stars !== null || slide.certification !== null ? (
+              <div className="hero__meta-row">
+                {stars !== null ? (
+                  <span aria-label={`Nota ${slide.rating?.value} de ${slide.rating?.scale}`} className="hero__stars">
+                    {stars.on}
+                    <span aria-hidden="true" className="hero__stars-off">
+                      {stars.off}
+                    </span>
+                  </span>
+                ) : null}
+                {slide.certification !== null ? (
+                  <span className="hero__cert">{slide.certification}</span>
+                ) : null}
+              </div>
+            ) : null}
           </div>
 
           <div className="hero__side">
@@ -135,6 +138,7 @@ export function HomeHeroCarousel({ slides }: { slides: readonly HeroSlide[] }): 
               aria-label={`Destaque ${index + 1}: ${s.title}`}
               aria-selected={index === active}
               className="hero__dot"
+              data-vertical={s.vertical}
               key={s.href}
               onClick={() => setActive(index)}
               onKeyDown={onDotKey}

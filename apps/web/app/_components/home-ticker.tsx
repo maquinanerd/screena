@@ -1,21 +1,35 @@
 'use client'
 
 /**
- * HomeTicker — faixa amarela do canonico: "episodios novos hoje", com dots
- * como tabs reais (role=tab, setas do teclado) rotacionando os itens.
- * So renderizada quando ha episodio REAL estreando hoje (dado do PostgreSQL);
- * o CTA leva a pagina real da serie.
+ * HomeTicker — faixa amarela do canonico, entre o hero e "Destaques de hoje".
+ * Ela e ESTRUTURA da home: nao some quando o slide ativo e um filme nem quando
+ * nao ha estreia hoje.
+ *
+ * O que muda e so o TEXTO, sempre com dado real do PostgreSQL:
+ *  - `today`    -> selo NOVO + episodio que estreia hoje;
+ *  - `upcoming` -> selo EM BREVE + proxima estreia JA CONFIRMADA (com a data);
+ *  - lista vazia -> estado neutro e honesto, sem episodio, data ou plataforma
+ *    inventados.
+ *
+ * Dots como tabs reais (role=tab, setas do teclado) rotacionando os itens; o
+ * CTA leva a uma rota real.
  */
 
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 
 import type { TickerEpisode } from '../../src/server/home-ticker'
+// `routes` (nao `site`): modulo puro, importavel em client component.
+import { SERIES_INDEX_PATH } from '../../src/lib/routes'
+
+const BADGE: Readonly<Record<TickerEpisode['kind'], string>> = {
+  today: 'NOVO',
+  upcoming: 'EM BREVE',
+}
 
 export function HomeTicker({ items }: { items: readonly TickerEpisode[] }): ReactNode {
   const [active, setActive] = useState(0)
-  if (items.length === 0) return null
-  const item = items[Math.min(active, items.length - 1)] as TickerEpisode
+  const item = items.length > 0 ? (items[Math.min(active, items.length - 1)] as TickerEpisode) : null
 
   const onKey = (event: React.KeyboardEvent) => {
     if (event.key === 'ArrowRight') {
@@ -28,13 +42,20 @@ export function HomeTicker({ items }: { items: readonly TickerEpisode[] }): Reac
   }
 
   return (
-    <div aria-label="Episódios novos hoje" className="ticker" role="region">
+    <div aria-label="Agenda de episódios" className="ticker" role="region">
       <div className="ticker__inner">
         <div className="ticker__lead">
-          <span className="ticker__label">NOVO</span>
+          <span className="ticker__label">{item === null ? 'AGENDA' : BADGE[item.kind]}</span>
           <span className="ticker__text">
-            <strong>{item.series}</strong> · {item.seasonEp}
-            {item.episodeTitle !== null ? <> · {item.episodeTitle}</> : null}
+            {item === null ? (
+              'Nenhum episódio novo confirmado para hoje'
+            ) : (
+              <>
+                <strong>{item.series}</strong> · {item.seasonEp}
+                {item.episodeTitle !== null ? <> · {item.episodeTitle}</> : null}
+                {item.airDateLabel !== null ? <> · estreia em {item.airDateLabel}</> : null}
+              </>
+            )}
           </span>
         </div>
         <div className="ticker__controls">
@@ -55,8 +76,8 @@ export function HomeTicker({ items }: { items: readonly TickerEpisode[] }): Reac
               ))}
             </div>
           ) : null}
-          <a className="ticker__cta" href={item.href}>
-            Ver série
+          <a className="ticker__cta" href={item === null ? SERIES_INDEX_PATH : item.href}>
+            {item === null ? 'Ver séries' : 'Ver série'}
           </a>
         </div>
       </div>
