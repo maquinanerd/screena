@@ -5488,34 +5488,12 @@ a.tabs__tab[aria-current='page'] {
 }
 
 /* Superficies de anuncio (pop-up / interstitial) */
-.ad-modal {
-  border: none;
-  border-radius: var(--r-card);
-  box-shadow: var(--sh-modal);
-  padding: 20px;
-}
 
-.ad-modal::backdrop {
-  background: rgba(0, 0, 0, 0.55);
-}
-
-.ad-modal__bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 10px;
-}
 
 /* ------------------------------------------------------------------ */
 /* Formularios                                                         */
 /* ------------------------------------------------------------------ */
 
-.form-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
 
 .field {
   display: flex;
@@ -5573,57 +5551,7 @@ a.tabs__tab[aria-current='page'] {
 }
 
 /* Switch real: role="switch" + aria-checked; o estado nunca e so cor */
-.switch {
-  appearance: none;
-  border: none;
-  background: none;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 44px;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--c-text-primary);
-}
 
-.switch__track {
-  width: 44px;
-  height: 24px;
-  border-radius: var(--r-pill);
-  background: var(--c-border-strong);
-  position: relative;
-  transition: background 0.2s ease;
-  flex-shrink: 0;
-}
-
-.switch__thumb {
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: #fff;
-  transition: transform 0.2s ease;
-}
-
-.switch[aria-checked='true'] .switch__track {
-  background: var(--c-state-success);
-}
-
-.switch[aria-checked='true'] .switch__thumb {
-  transform: translateX(20px);
-}
-
-.switch__state {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--c-text-secondary);
-  min-width: 64px;
-  text-align: left;
-}
 
 .alert {
   border: 1px solid var(--c-border);
