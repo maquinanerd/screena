@@ -106,7 +106,12 @@ export const editorialDraftsEndpoint: Endpoint = {
     // Pre-checagem barata de identidade antes de qualquer consulta ao banco.
     const preflight = intakeEditorialDraft({
       auth: {
-        authenticated: actor.kind !== 'anonymous',
+        // AUTENTICADO e IDENTIDADE UTILIZAVEL sao perguntas diferentes. O Payload
+        // pode reconhecer a credencial (`req.user`) enquanto `toActor` rebaixa a
+        // conta a anonima por estar INATIVA. Colapsar as duas devolveria 401
+        // ("quem e voce?") para quem a plataforma sabe exatamente quem e — o
+        // certo e 403 ("sei quem voce e, e voce nao pode").
+        authenticated: req.user !== null && req.user !== undefined,
         isServiceAccount: actor.kind === 'service',
         accountId: actor.kind === 'anonymous' ? null : actor.id,
       },
@@ -137,7 +142,12 @@ export const editorialDraftsEndpoint: Endpoint = {
 
     const result = intakeEditorialDraft({
       auth: {
-        authenticated: actor.kind !== 'anonymous',
+        // AUTENTICADO e IDENTIDADE UTILIZAVEL sao perguntas diferentes. O Payload
+        // pode reconhecer a credencial (`req.user`) enquanto `toActor` rebaixa a
+        // conta a anonima por estar INATIVA. Colapsar as duas devolveria 401
+        // ("quem e voce?") para quem a plataforma sabe exatamente quem e — o
+        // certo e 403 ("sei quem voce e, e voce nao pode").
+        authenticated: req.user !== null && req.user !== undefined,
         isServiceAccount: actor.kind === 'service',
         accountId: actor.kind === 'anonymous' ? null : actor.id,
       },

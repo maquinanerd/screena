@@ -3,6 +3,10 @@
 Sala de redacao do Cinerie, sobre **Payload 3**. Aplicacao **isolada**: banco
 proprio, migrations proprias, sem Prisma e sem leitura pelo render publico.
 
+> **Payload SELF-HOSTED, dentro deste repositorio.** Nao ha cadastro em
+> `payloadcms.com`, nao ha Payload Cloud e nao ha conta externa envolvida. O CMS
+> e a aplicacao `apps/cms`, roda no proprio ambiente e usa um PostgreSQL proprio.
+
 Fronteiras canonicas: [`docs/adr/0015-editorial-boundaries.md`](../../docs/adr/0015-editorial-boundaries.md).
 
 ---
@@ -87,6 +91,22 @@ ocultas do painel. Podem chamar o endpoint de drafts e criar/atualizar o proprio
 `automation_draft`. **Nao** publicam, nao despublicam, nao apagam, nao
 administram usuarios e **nao leem a colecao de artigos**.
 
+### Formato do `Authorization`
+
+O Payload autentica a collection por API key com **este** formato — nao `Bearer`,
+nao `X-API-Key`:
+
+```
+Authorization: service-accounts API-Key <CHAVE>
+```
+
+Internamente o Payload guarda `apiKeyIndex = HMAC-SHA256(PAYLOAD_SECRET, chave)`
+e busca por ele; a chave em si fica cifrada em `apiKey`. Consequencia pratica:
+**a chave nao e gerada pelo servidor** (no painel isso e um botao). Ao criar uma
+conta programaticamente e preciso fornecer `apiKey`, e ai o indice e derivado.
+
+Trocar o `PAYLOAD_SECRET` invalida todas as chaves existentes.
+
 ## 6. Endpoint de drafts
 
 ```
@@ -121,21 +141,101 @@ bloqueante, autor **ativo**, slug, e midia autorizada.
 `article_translations`, o registro da projecao publica; este governa a redacao.
 Mesma licao do [ADR 0016](../../docs/adr/0016-content-block-lifecycle-separation.md).
 
-## 8. Outbox
+## 8. Hooks, outbox e atomicidade
 
-Publicacao humana valida grava um `publication-event-v1` em
-`publication-outbox` (`pending`). O CMS **nao** chama o lado publico: se o
-`screen-db` estiver fora do ar, a materia nao se perde nem a publicacao trava.
-Ninguem cria, edita ou apaga evento pela UI.
+Os hooks de `articles` (`src/hooks/articles.ts`) sao o **unico** caminho por onde
+uma mudanca de estado passa — painel, REST ou Local API.
 
-## 9. Limitacoes desta fase
+- **`beforeChange`**: valida a transicao, aplica o gate de publicacao contra o
+  estado lido do banco e **deriva `_status` de `workflowStatus`**. Isso fecha a
+  armadilha do Payload: `_status: 'published'` publica mesmo com `draft: true`
+  na chamada, entao ele nunca e aceito como entrada independente.
+- **`afterChange`**: monta o `publication-event-v1` a partir do estado
+  persistido, valida contra o contrato e grava em `publication-outbox`.
 
-Nao implementados: **worker consumidor da outbox**, projecao no `screen-db`,
-Cinerie Context Service, integracao real com MNScr e RSS Prime, storage remoto
-(R2/S3), leitura pelo frontend publico. Midia usa **filesystem local**, valido
-so em desenvolvimento.
+**Atomicidade.** O `create` da outbox usa o **mesmo `req`** e e **aguardado**:
+sem `req` a linha sai da transacao, e sem `await` vira fire-and-forget. Evento
+invalido lanca e derruba a publicacao inteira — um artigo publicado sem evento e
+um estado que nao pode existir.
 
-## 10. Implantacao pretendida
+**Idempotencia.** `articleVersionId` deriva de um hash do **conteudo publico**,
+nao de um contador. Republicar o mesmo conteudo produz a mesma chave e colide na
+`UNIQUE` de `idempotency_key`; a violacao 23505 e tratada como idempotencia
+funcionando. Memoria nao serviria: duas requisicoes simultaneas leem "nao
+existe" ao mesmo tempo.
+
+### Eventos emitidos
+
+| Transicao | Evento |
+| --- | --- |
+| `ready_to_publish -> published` | `article.published` |
+| `needs_update -> published` | `article.updated` |
+| `published -> retracted` | `article.retracted` |
+| `published -> blocked \| archived` | `article.unpublished` |
+
+### Eventos NAO emitidos
+
+Criacao de draft, autosave, atualizacao de `automation_draft`, mudanca de
+`assignedTo`, notas de revisao, warnings, alteracao que so existe na versao
+draft, repeticao da mesma operacao sem mudanca publica material.
+
+## 9. Operacoes com e sem access control
+
+A Local API do Payload **ignora access control por padrao**. Por isso a regra
+aqui e explicita:
+
+- **Em nome de um ator** (endpoint de drafts): `overrideAccess: false` + `user`.
+  Sem isso, o caminho viraria porta dos fundos para quem nao poderia escrever.
+- **Bypass interno**, so em dois pontos, ambos comentados no codigo: a leitura de
+  idempotencia no endpoint (a service account nao tem `read` em `articles`, mas a
+  decisao precisa do estado real — e o resultado nunca volta ao cliente) e o
+  `create` da outbox no hook (a collection declara `create: false` para todos,
+  inclusive administrador).
+
+## 10. Seed de desenvolvimento
+
+```bash
+pnpm --filter @screena/cms seed:dev
+```
+
+Cria **apenas** o autor institucional `Redação Cinerie`. Idempotente: rodar duas
+vezes nao duplica, e uma segunda execucao so reconcilia `name`, `roleLabel` e
+`isOrganization` — `active` e `bio` sao decisao humana e nao sao desfeitos.
+
+**Nao cria** administrador, usuario com senha, service account nem API key. Seed
+que cria credencial conhecida e um backdoor com nome amigavel. Recusa execucao em
+producao e exige `PAYLOAD_DATABASE_URL`.
+
+## 11. Testes
+
+```bash
+pnpm --filter @screena/cms test              # nucleo puro, sem banco
+pnpm --filter @screena/cms test:integration  # Next + Payload + PostgreSQL 16 efemero
+```
+
+A suite de integracao sobe **PostgreSQL 16 descartavel**, aplica as migrations
+reais pelo CLI real, roda `next build` + `next start` numa porta livre e faz
+requisicoes **HTTP de verdade**. Identidades e API keys sao temporarias, criadas
+e destruidas junto com o banco. Nao usa EasyPanel, `screen-db`, `DATABASE_URL`
+nem credencial real.
+
+> Por que HTTP e nao `req` montado a mao: a primeira versao construia o
+> `PayloadRequest` manualmente e escondia dois defeitos ao mesmo tempo — o `req`
+> sintetico nao carregava `transactionID`, e cada `payload.auth()` abria uma
+> transacao que ninguem encerrava. Um teste que monta o proprio `req` nao prova
+> que o `req` de producao esta certo.
+
+## 12. Limitacoes desta fase
+
+**Este servico NAO esta pronto para producao.**
+
+Nao implementados: **worker consumidor da outbox** (o evento e gravado e ninguem
+o consome), projecao no `screen-db`, Cinerie Context Service, integracao real com
+MNScr e RSS Prime, **storage remoto** (R2/S3), leitura pelo frontend publico e
+**deploy no EasyPanel**. Midia usa **filesystem local**, valido so em
+desenvolvimento — em disco efemero a midia se perde.
+
+## 13. Implantacao pretendida
 
 > **INFORMACAO DECLARADA PELO USUARIO — PENDENTE DE VALIDACAO OPERACIONAL.**
 > Nada foi verificado no painel, e nenhum servico, banco, dominio ou secret foi

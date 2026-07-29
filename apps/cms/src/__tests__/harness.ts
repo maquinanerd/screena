@@ -1,16 +1,24 @@
 /**
- * harness.ts — Sobe Payload REAL sobre PostgreSQL 16 efemero.
+ * harness.ts — Sobe o CMS REAL (Next + Payload) sobre PostgreSQL 16 efemero.
  *
- * Nao e um mock. A suite que usa este harness exercita a configuracao real de
- * `apps/cms`: migrations reais, collections reais, hooks reais, access control
- * real e autenticacao real por API key. E por isso que ela consegue provar o que
- * os testes puros nao conseguiam — que o codigo esta LIGADO.
+ * POR QUE HTTP DE VERDADE, E NAO `payload.auth` + `req` montado a mao.
+ * A primeira versao deste harness construia um `PayloadRequest` manualmente e
+ * chamava o handler do endpoint direto. Isso escondia dois defeitos ao mesmo
+ * tempo: o `req` sintetico nao carregava `transactionID`, e cada
+ * `payload.auth()` abria uma transacao que ninguem encerrava — o pool esgotava e
+ * o erro que aparecia era `Connection terminated unexpectedly`, que nao diz nada
+ * sobre a causa. Um teste que monta o proprio `req` nao consegue provar que o
+ * `req` de producao esta certo.
  *
- * `DATABASE_URL` e removida do processo antes de qualquer import do Payload: se
- * um fallback aparecer por descuido, o teste falha em vez de mascarar.
+ * Agora: `next build` + `next start` numa porta livre, e as asercoes vao por
+ * `fetch`. A requisicao atravessa servidor Next real, route handler real,
+ * autenticacao real do Payload e o endpoint real.
+ *
+ * A Local API continua sendo usada — SO para montar fixtures (usuarios, autores,
+ * midia). Setup nao e a coisa sob teste; o caminho sob teste e o HTTP.
  */
 
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import net from 'node:net'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -23,7 +31,10 @@ import type { Payload } from 'payload'
 const cmsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 
 export interface CmsHarness {
+  /** Local API — SO para fixtures e para inspecionar o banco nas asercoes. */
   readonly payload: Payload
+  /** Base do servidor HTTP real (ex.: `http://127.0.0.1:3456`). */
+  readonly baseUrl: string
   stop(): Promise<void>
 }
 
@@ -39,16 +50,40 @@ async function freePort(): Promise<number> {
   })
 }
 
-/**
- * Inicializa o CMS contra um banco descartavel.
- *
- * O import do `payload.config.js` acontece DEPOIS de configurar o ambiente
- * porque o config chama `requireCmsConfig()` no topo do modulo — importar antes
- * derrubaria o processo com "configuracao invalida", que e exatamente o
- * comportamento desejado em producao.
- */
+/** Espera o servidor responder. Falha com mensagem util em vez de travar. */
+async function waitForServer(baseUrl: string, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  let lastError = 'sem resposta'
+  while (Date.now() < deadline) {
+    try {
+      // Sonda uma rota INEXISTENTE de proposito: o Next responde 404 sem tocar
+      // o Payload nem o banco. Sondar `/api/service-accounts/me` misturava duas
+      // perguntas — "o servidor atende?" e "o banco responde?" — e um banco
+      // lento aparecia como servidor morto (UND_ERR_HEADERS_TIMEOUT).
+      // `AbortSignal` evita ficar preso no timeout de headers do undici.
+      const response = await fetch(`${baseUrl}/__cms_readiness__`, {
+        signal: AbortSignal.timeout(5_000),
+      })
+      if (response.status > 0) return
+    } catch (error) {
+      // `fetch failed` do undici e um wrapper generico: a razao real (ECONNREFUSED,
+      // ENOTFOUND, EAI_AGAIN...) mora em `cause`. Sem isso o diagnostico para aqui.
+      if (error instanceof Error) {
+        const cause = error.cause as { message?: string; code?: string } | undefined
+        lastError = `${error.message}${
+          cause === undefined ? '' : ` | cause: ${cause.message ?? ''} (${cause.code ?? 'sem code'})`
+        }`
+      } else {
+        lastError = 'erro desconhecido'
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500))
+  }
+  throw new Error(`servidor do CMS nao respondeu em ${String(timeoutMs)}ms: ${lastError}`)
+}
+
 export async function startCmsHarness(): Promise<CmsHarness> {
-  const port = await freePort()
+  const pgPort = await freePort()
   const dataDir = mkdtempSync(path.join(tmpdir(), 'cinerie-cms-it-'))
   const database = 'cinerie_cms_integration'
 
@@ -56,7 +91,7 @@ export async function startCmsHarness(): Promise<CmsHarness> {
     databaseDir: dataDir,
     user: 'postgres',
     password: 'postgres',
-    port,
+    port: pgPort,
     persistent: false,
   })
 
@@ -64,30 +99,25 @@ export async function startCmsHarness(): Promise<CmsHarness> {
   await pg.start()
   await pg.createDatabase(database)
 
+  // `DATABASE_URL` sai do ambiente: se um fallback aparecer por descuido no
+  // codigo do CMS, o teste falha em vez de mascarar.
   delete process.env.DATABASE_URL
-  process.env.PAYLOAD_DATABASE_URL = `postgresql://postgres:postgres@127.0.0.1:${port}/${database}`
+  const databaseUrl = `postgresql://postgres:postgres@127.0.0.1:${String(pgPort)}/${database}`
+  process.env.PAYLOAD_DATABASE_URL = databaseUrl
   process.env.PAYLOAD_SECRET = 'integration-secret-0123456789abcdefghijklmno'
-  process.env.PAYLOAD_PUBLIC_SERVER_URL = `http://127.0.0.1:${String(port)}`
 
-  // Migrations REAIS, aplicadas pelo CLI REAL do Payload, em processo filho.
-  //
-  // Nao usamos `payload.db.migrate()` in-process de proposito: o arquivo de
-  // migration GERADO importa `MigrateUpArgs`/`MigrateDownArgs` como named
-  // imports, e sob o loader do vitest esses tipos nao existem em runtime — o
-  // import quebra. O `bin.js` do Payload transpila do jeito certo. Como bonus,
-  // este e literalmente o mesmo caminho que roda em producao.
+  const childEnv: NodeJS.ProcessEnv = { ...process.env }
+  delete childEnv.DATABASE_URL
+  childEnv.PAYLOAD_DATABASE_URL = databaseUrl
+  childEnv.PAYLOAD_CONFIG_PATH = path.join(cmsDir, 'src', 'payload.config.ts')
+
+  // Migrations REAIS pelo CLI REAL. Nao usamos `payload.db.migrate()` porque o
+  // arquivo gerado importa `MigrateUpArgs`/`MigrateDownArgs` como named imports
+  // e esses tipos nao existem em runtime sob o loader do vitest.
   const migration = spawnSync(
     'node',
     ['--no-warnings', path.join(cmsDir, 'node_modules', 'payload', 'bin.js'), 'migrate'],
-    {
-      cwd: cmsDir,
-      env: {
-        ...process.env,
-        PAYLOAD_CONFIG_PATH: path.join(cmsDir, 'src', 'payload.config.ts'),
-      },
-      stdio: 'pipe',
-      shell: false,
-    },
+    { cwd: cmsDir, env: childEnv, stdio: 'pipe', shell: false },
   )
   if (migration.status !== 0) {
     throw new Error(
@@ -95,27 +125,100 @@ export async function startCmsHarness(): Promise<CmsHarness> {
     )
   }
 
+  const nextBin = path.join(cmsDir, 'node_modules', 'next', 'dist', 'bin', 'next')
+
+  // Build de producao: a MESMA pipeline que rodaria no servico implantado.
+  // `CMS_IT_SKIP_BUILD=1` existe so para iterar localmente sobre um build ja
+  // feito; o CI nunca o define, entao la o build sempre acontece.
+  if (process.env.CMS_IT_SKIP_BUILD !== '1') {
+    const build = spawnSync('node', [nextBin, 'build'], {
+      cwd: cmsDir,
+      env: childEnv,
+      stdio: 'pipe',
+      shell: false,
+    })
+    if (build.status !== 0) {
+      throw new Error(
+        `build do CMS falhou (exit ${String(build.status)}): ${build.stdout?.toString().slice(-3000) ?? ''}`,
+      )
+    }
+  }
+
+  // A porta e alocada AGORA, imediatamente antes de ligar o servidor.
+  // Alocar antes do build significaria segurar um numero por varios minutos ate
+  // tentar bindar — tempo de sobra para outro processo tomar a porta, e o
+  // sintoma seria um `EADDRINUSE` invisivel virando "fetch failed" no
+  // `waitForServer`. Foi exatamente esse o defeito da primeira versao.
+  const httpPort = await freePort()
+  const baseUrl = `http://127.0.0.1:${String(httpPort)}`
+
+  // `next start` roda com o config JA COMPILADO no build. Deixar
+  // `PAYLOAD_CONFIG_PATH` apontando para o `.ts` faz o servidor de producao
+  // tentar carregar TypeScript em runtime.
+  const serverEnv: NodeJS.ProcessEnv = {
+    ...childEnv,
+    NODE_ENV: 'production',
+    PAYLOAD_PUBLIC_SERVER_URL: baseUrl,
+  }
+  delete serverEnv.PAYLOAD_CONFIG_PATH
+
+  const server: ChildProcess = spawn(
+    'node',
+    [nextBin, 'start', '--port', String(httpPort), '--hostname', '127.0.0.1'],
+    { cwd: cmsDir, env: serverEnv, stdio: 'pipe', shell: false },
+  )
+
+  // A saida do servidor e GUARDADA, nao descartada. Sem isso, uma falha de
+  // boot vira apenas "fetch failed" no `waitForServer` — que nao diz nada sobre
+  // a causa e foi exatamente o que travou o diagnostico da primeira tentativa.
+  let serverLog = ''
+  const capture = (chunk: unknown) => {
+    serverLog = `${serverLog}${String(chunk)}`.slice(-8_000)
+  }
+  server.stdout?.on('data', capture)
+  server.stderr?.on('data', capture)
+  let serverExit: string | null = null
+  server.on('exit', (code, signal) => {
+    serverExit = `code=${String(code)} signal=${String(signal)}`
+  })
+
+  try {
+    await waitForServer(baseUrl, 120_000)
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : 'erro desconhecido'
+    throw new Error(
+      `${reason}\n[saida do servidor${serverExit === null ? '' : ` — encerrou com ${serverExit}`}]\n${serverLog || '(sem saida)'}`,
+    )
+  }
+
+  // Local API para FIXTURES. Importada depois do ambiente estar pronto porque o
+  // `payload.config.ts` valida a configuracao no topo do modulo.
   const [{ getPayload }, configModule] = await Promise.all([
     import('payload'),
     import('../payload.config.js'),
   ])
-
   const payload = await getPayload({ config: configModule.default })
 
   return {
     payload,
+    baseUrl,
     async stop() {
+      try {
+        server.kill()
+      } catch {
+        /* pode ja ter morrido */
+      }
       try {
         await payload.db.destroy?.()
       } catch {
-        /* o pool pode ja ter sido fechado */
+        /* pool pode ja estar fechado */
       }
       try {
         await pg.stop()
       } catch {
         /* idem */
       }
-      // No Windows o Postgres segura handles por alguns instantes apos o stop.
+      // No Windows o Postgres segura handles por instantes apos o stop.
       for (let attempt = 0; attempt < 5; attempt += 1) {
         try {
           rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
@@ -128,10 +231,7 @@ export async function startCmsHarness(): Promise<CmsHarness> {
   }
 }
 
-/** Header de API key no formato exigido pelo Payload. */
-export function apiKeyHeaders(collectionSlug: string, apiKey: string): Headers {
-  return new Headers({
-    Authorization: `${collectionSlug} API-Key ${apiKey}`,
-    'content-type': 'application/json',
-  })
+/** Header de API key no formato exigido pelo Payload: `<slug> API-Key <chave>`. */
+export function apiKeyAuthorization(collectionSlug: string, apiKey: string): string {
+  return `${collectionSlug} API-Key ${apiKey}`
 }

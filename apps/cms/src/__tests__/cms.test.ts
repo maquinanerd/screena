@@ -6,6 +6,10 @@
  * exatamente por isso que ela e testavel aqui.
  */
 
+import { readFile } from 'node:fs/promises'
+import { dirname, resolve as resolvePath } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
 import { describe, expect, it } from 'vitest'
 
 import { validEditorialDraft, validPublicationEvent } from '@screena/editorial-contracts'
@@ -24,6 +28,12 @@ import { validateCmsConfig } from '../env.js'
 import { buildDraftIdentity, canonicalHash, decideIdempotency } from '../idempotency.js'
 import { buildEventIdempotencyKey, buildOutboxRecord, shouldSkipDuplicateEvent } from '../outbox.js'
 import { canTransition, evaluatePublishGate, publicationEventForTransition } from '../workflow.js'
+import {
+  INSTITUTIONAL_AUTHOR_SLUG,
+  SEEDED_AUTHOR_FIELDS,
+  looksLikeProduction,
+  seedInstitutionalAuthor,
+} from '../../scripts/seed-dev.js'
 
 const SAFE_DB = 'postgresql://cms:cms@127.0.0.1:5599/cinerie_cms_test'
 const SECRET = 'a'.repeat(40)
@@ -503,5 +513,105 @@ describe('publication outbox', () => {
     const key = validPublicationEvent.idempotencyKey
     expect(shouldSkipDuplicateEvent(key, [key])).toBe(true)
     expect(shouldSkipDuplicateEvent(key, [])).toBe(false)
+  })
+})
+
+/* ------------------------------------------------------------------ */
+/* Seed de desenvolvimento                                             */
+/* ------------------------------------------------------------------ */
+
+describe('seed:dev (autor institucional)', () => {
+  /** Fake minimo de Payload: so o suficiente para a logica de idempotencia. */
+  function fakePayload(initial: Record<string, unknown>[] = []) {
+    const rows = [...initial]
+    const calls = { create: 0, update: 0 }
+    return {
+      rows,
+      calls,
+      find: async () => ({ docs: rows.filter((r) => r.slug === INSTITUTIONAL_AUTHOR_SLUG) }),
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        calls.create += 1
+        const created = { id: rows.length + 1, ...data }
+        rows.push(created)
+        return created
+      },
+      update: async ({ id, data }: { id: unknown; data: Record<string, unknown> }) => {
+        calls.update += 1
+        const row = rows.find((r) => r.id === id)
+        Object.assign(row as Record<string, unknown>, data)
+        return row as Record<string, unknown>
+      },
+    }
+  }
+
+  it('cria o autor quando ele nao existe', async () => {
+    const fake = fakePayload()
+    const result = await seedInstitutionalAuthor(fake as never)
+    expect(result.outcome).toBe('created')
+    expect(fake.calls.create).toBe(1)
+    expect(fake.rows[0]?.slug).toBe(INSTITUTIONAL_AUTHOR_SLUG)
+  })
+
+  it('rodar duas vezes NAO duplica', async () => {
+    const fake = fakePayload()
+    await seedInstitutionalAuthor(fake as never)
+    const second = await seedInstitutionalAuthor(fake as never)
+    expect(second.outcome).toBe('unchanged')
+    expect(fake.calls.create).toBe(1)
+    expect(fake.rows).toHaveLength(1)
+  })
+
+  it('reconcilia SO os campos governados', async () => {
+    const fake = fakePayload([
+      {
+        id: 1,
+        slug: INSTITUTIONAL_AUTHOR_SLUG,
+        name: 'Nome Errado',
+        roleLabel: 'Errado',
+        isOrganization: false,
+        active: false,
+        bio: 'bio escrita por um humano',
+      },
+    ])
+    const result = await seedInstitutionalAuthor(fake as never)
+    expect(result.outcome).toBe('updated')
+    const row = fake.rows[0] as Record<string, unknown>
+    expect(row.name).toBe('Redação Cinerie')
+    expect(row.isOrganization).toBe(true)
+    // `active` e `bio` sao decisao humana: o seed nao os desfaz.
+    expect(row.active).toBe(false)
+    expect(row.bio).toBe('bio escrita por um humano')
+  })
+
+  it('os campos governados sao exatamente tres', () => {
+    expect([...SEEDED_AUTHOR_FIELDS]).toEqual(['name', 'roleLabel', 'isOrganization'])
+    expect(SEEDED_AUTHOR_FIELDS as readonly string[]).not.toContain('active')
+  })
+
+  it('recusa execucao em producao', () => {
+    expect(looksLikeProduction({ NODE_ENV: 'production' } as never)).toBe(true)
+    expect(looksLikeProduction({ NODE_ENV: 'development' } as never)).toBe(false)
+    expect(looksLikeProduction({} as never)).toBe(false)
+  })
+
+  it('o seed NAO cria usuario, service account nem API key', async () => {
+    // Caminho derivado do PROPRIO arquivo, nao de `process.cwd()`: a suite da
+    // raiz do monorepo tambem alcanca este teste, e la o cwd e outro.
+    const cmsRoot = resolvePath(dirname(fileURLToPath(import.meta.url)), '..', '..')
+    const source = await readFile(resolvePath(cmsRoot, 'scripts', 'seed-dev.ts'), 'utf-8')
+    for (const forbidden of ['editorial-users', 'service-accounts']) {
+      expect(
+        new RegExp(`collection:\\s*['"]${forbidden}['"]`).test(source),
+        `seed nao pode escrever em ${forbidden}`,
+      ).toBe(false)
+    }
+    // Controle negativo: o padrao PRECISA casar com a collection que o seed
+    // realmente escreve. Sem isto, um regex quebrado passaria em silencio.
+    expect(new RegExp(`collection:\\s*['"]authors['"]`).test(source)).toBe(true)
+
+    for (const secretish of ['apiKey', 'enableAPIKey', 'password']) {
+      expect(source.includes(secretish), `seed nao pode mencionar ${secretish}`).toBe(false)
+    }
+    expect(source).not.toContain('enableAPIKey')
   })
 })

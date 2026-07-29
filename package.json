@@ -20,6 +20,8 @@
     "typecheck:cms": "corepack pnpm --filter @screena/cms typecheck",
     "typecheck:apps": "corepack pnpm run typecheck:web && corepack pnpm run typecheck:admin && corepack pnpm run typecheck:cms",
     "test:cms": "corepack pnpm --filter @screena/cms test",
+    "test:cms:integration": "corepack pnpm --filter @screena/cms test:integration",
+    "seed:cms:dev": "corepack pnpm --filter @screena/cms seed:dev",
     "build:cms": "corepack pnpm --filter @screena/cms build",
     "test": "vitest run",
     "test:watch": "vitest",

@@ -134,11 +134,21 @@ export const enforceEditorialGovernance: CollectionBeforeChangeHook = async ({
 
   /* --- Service account: superficie minima --------------------------- */
   if (actor.kind === 'service') {
+    // Campos de decisao humana sao REMOVIDOS do payload da automacao, nao
+    // recusados.
+    //
+    // Recusar por presenca nao funciona: o Payload monta `data` com todos os
+    // campos da collection e ja aplica os defaults, entao `publishedAt: null` e
+    // `legalHold: false` aparecem mesmo quando o chamador nunca os enviou —
+    // presenca nao e intencao, e nem sequer o valor distingue (o default de um
+    // checkbox e `false`, indistinguivel de um `false` enviado de proposito).
+    //
+    // Remover garante o invariante — a automacao nao escreve estes campos — sem
+    // falso positivo. A tentativa EXPLICITA de publicar ja e recusada alto e
+    // claro na fronteira do contrato (422), antes de chegar aqui.
     for (const field of SERVICE_ACCOUNT_FORBIDDEN_FIELDS) {
       if (field === 'workflowStatus') continue
-      if (Object.prototype.hasOwnProperty.call(incoming, field)) {
-        deny(`service account nao pode escrever o campo "${field}"`)
-      }
+      delete incoming[field]
     }
     const target = String(next.workflowStatus ?? 'automation_draft')
     if (target !== 'automation_draft') {
@@ -164,8 +174,15 @@ export const enforceEditorialGovernance: CollectionBeforeChangeHook = async ({
   }
 
   /* --- `_status` e DERIVADO de `workflowStatus` --------------------- */
-  const wantsPublished = incoming._status === 'published'
-  if (wantsPublished && to !== 'published') {
+  //
+  // Mesma licao de "presenca nao e intencao", agora no `_status`: num artigo JA
+  // publicado o Payload ecoa `_status: 'published'` em `data` a cada alteracao
+  // de qualquer outro campo. Ler o eco como pedido de publicacao travava
+  // despublicar e retratar — operacoes que PARTEM de um artigo publicado.
+  // O que caracteriza intencao e a MUDANCA de nao-publicado para publicado.
+  const alreadyPublished = previous._status === 'published'
+  const wantsToPublish = incoming._status === 'published' && !alreadyPublished
+  if (wantsToPublish && to !== 'published') {
     deny('_status "published" exige workflowStatus "published" (que so vem de ready_to_publish)')
   }
 
@@ -253,6 +270,20 @@ export const emitPublicationEvent: CollectionAfterChangeHook = async ({
     )
   }
 
+  // Caminho normal: se o evento ja existe, nao ha o que emitir. A consulta e o
+  // que evita transformar uma republicacao legitima em erro; a UNIQUE abaixo
+  // continua sendo a garantia sob concorrencia, onde duas requisicoes leem
+  // "nao existe" ao mesmo tempo.
+  const alreadyEmitted = await req.payload.find({
+    collection: 'publication-outbox',
+    where: { idempotencyKey: { equals: built.record.idempotencyKey } },
+    limit: 1,
+    depth: 0,
+    overrideAccess: true,
+    req,
+  })
+  if (alreadyEmitted.totalDocs > 0) return doc
+
   try {
     // BYPASS EXPLICITO E CONFINADO. `publication-outbox` declara `create: false`
     // para todo mundo — inclusive administrador — porque evento nao se cria a
@@ -287,10 +318,19 @@ export const emitPublicationEvent: CollectionAfterChangeHook = async ({
   return doc
 }
 
-/** A falha e uma violacao de unicidade do PostgreSQL (23505)? */
+/**
+ * A falha e uma colisao de unicidade do evento?
+ *
+ * Duas formas, porque a colisao chega por dois caminhos diferentes:
+ *  - `23505` do PostgreSQL, quando a corrida passa pela UNIQUE do banco;
+ *  - `ValidationError` do Payload, que valida `unique` na camada de aplicacao
+ *    ANTES de chegar ao banco e reporta o campo por nome.
+ * Tratar so o 23505 fazia uma republicacao legitima virar erro de publicacao.
+ */
 function isUniqueViolation(error: unknown): boolean {
   if (error === null || typeof error !== 'object') return false
-  const candidate = error as { code?: unknown; cause?: unknown; message?: unknown }
+  const candidate = error as { code?: unknown; cause?: unknown; message?: unknown; name?: unknown }
+
   if (candidate.code === '23505') return true
   if (
     candidate.cause !== null &&
@@ -299,7 +339,14 @@ function isUniqueViolation(error: unknown): boolean {
   ) {
     return true
   }
-  return typeof candidate.message === 'string' && candidate.message.includes('23505')
+
+  const message = typeof candidate.message === 'string' ? candidate.message : ''
+  if (message.includes('23505')) return true
+
+  // O Payload nomeia o campo invalido; so aceitamos os DOIS campos de
+  // identidade do evento, para nao engolir uma validacao de outra coisa.
+  const isValidation = candidate.name === 'ValidationError'
+  return isValidation && (message.includes('eventId') || message.includes('idempotencyKey'))
 }
 
 export { buildEventIdempotencyKey }

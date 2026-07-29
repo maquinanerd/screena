@@ -40,6 +40,22 @@ function policy(decide: (actor: Actor) => boolean): Access {
   return ({ req }) => decide(resolveActor(req.user))
 }
 
+/**
+ * Leitura de identidade: administrador ve tudo; qualquer principal autenticado
+ * ve APENAS o proprio documento.
+ *
+ * Sem a parte do "proprio documento", `/api/<slug>/me` devolve um documento
+ * vazio — o Payload autentica, mas o access control filtra todos os campos. Um
+ * principal ler a si mesmo nao vaza nada: a API key vive cifrada em `apiKey` e
+ * o indice esta marcado como `hidden`.
+ */
+const readOwnIdentity: Access = ({ req }) => {
+  const actor = resolveActor(req.user)
+  if (identityAccess.read(actor)) return true
+  if (actor.kind === 'anonymous') return false
+  return { id: { equals: actor.id } }
+}
+
 /* ------------------------------------------------------------------ */
 /* Blocos do corpo (espelham @screena/editorial-contracts)             */
 /* ------------------------------------------------------------------ */
@@ -181,7 +197,7 @@ export const EditorialUsers: CollectionConfig = {
   admin: { useAsTitle: 'email', group: 'Identidade' },
   access: {
     create: policy(identityAccess.create),
-    read: policy(identityAccess.read),
+    read: readOwnIdentity,
     update: policy(identityAccess.update),
     delete: policy(identityAccess.delete),
   },
@@ -219,11 +235,18 @@ export const ServiceAccounts: CollectionConfig = {
   },
   access: {
     create: policy(identityAccess.create),
-    read: policy(identityAccess.read),
+    read: readOwnIdentity,
     update: policy(identityAccess.update),
     delete: policy(identityAccess.delete),
   },
   fields: [
+    // O Payload adiciona `apiKey` como campo base quando `useAPIKey` esta ligado,
+    // com um `afterRead` que DECIFRA a chave. Como a conta agora pode ler o
+    // proprio documento (`readOwnIdentity`, para `/me` funcionar), sem esta
+    // sobrescrita a chave em texto claro voltaria na resposta de `/me` — foi
+    // exatamente o que o teste de vazamento pegou. Uma credencial nunca e
+    // legivel depois de criada.
+    { name: 'apiKey', type: 'text', access: { read: () => false } },
     { name: 'label', type: 'text', required: true },
     {
       name: 'purpose',

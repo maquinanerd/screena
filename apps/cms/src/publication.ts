@@ -53,7 +53,7 @@ export function publicContentVersion(doc: Record<string, unknown>): string {
     subtitle: doc.subtitle ?? null,
     slug: doc.slug ?? null,
     summary: doc.summary ?? null,
-    body: doc.body ?? [],
+    body: toContractBlocks(doc.body),
     authors: idsOf(doc.authors),
     heroMedia: idsOf(doc.heroMedia),
     gallery: idsOf(doc.gallery),
@@ -62,6 +62,132 @@ export function publicContentVersion(doc: Record<string, unknown>): string {
     metaDescription: doc.metaDescription ?? null,
     noindex: doc.noindex === true,
   }).slice(0, 32)
+}
+
+/* ------------------------------------------------------------------ */
+/* Blocos: forma do Payload -> forma do contrato                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * O Payload persiste blocos com `blockType`/`blockId` e uma `id` propria de
+ * linha; o contrato discrimina por `type`/`id`. Sao duas formas do MESMO bloco,
+ * e sem esta traducao o `publication-event-v1` nunca valida — foi o que a suite
+ * de integracao pegou, com a publicacao falhando fechada (artigo nao publicado
+ * sem evento valido, exatamente como a atomicidade exige).
+ *
+ * A traducao e EXPLICITA por tipo, e nao um spread: um campo novo no CMS nao
+ * deve atravessar para o lado publico sem alguem decidir que ele atravessa.
+ */
+export function toContractBlocks(body: unknown): unknown[] {
+  if (!Array.isArray(body)) return []
+
+  // Anotacao explicita: sem ela o TS tenta unificar dez formas diferentes de
+  // bloco num unico tipo e falha. A validacao real e do contrato, no Zod.
+  return body.flatMap((raw): unknown[] => {
+    if (raw === null || typeof raw !== 'object') return []
+    const block = raw as Record<string, unknown>
+    const type = String(block.blockType ?? block.type ?? '')
+    const id = String(block.blockId ?? block.id ?? '')
+    if (type === '' || id === '') return []
+
+    const provenance = Array.isArray(block.provenance)
+      ? block.provenance.flatMap((entry) => {
+          if (entry === null || typeof entry !== 'object') return []
+          const ref = entry as Record<string, unknown>
+          const origin = text(ref.origin)
+          if (origin === undefined) return []
+          const value = text(ref.ref)
+          return [{ origin, ...(value === undefined ? {} : { ref: value }) }]
+        })
+      : []
+    const withProvenance = provenance.length === 0 ? {} : { provenance }
+
+    switch (type) {
+      case 'paragraph':
+        return [{ id, type, text: String(block.text ?? ''), ...withProvenance }]
+      case 'heading':
+        return [
+          {
+            id,
+            type,
+            // O select do painel guarda '2'|'3'|'4'; o contrato quer numero.
+            level: Number(block.level ?? 2),
+            text: String(block.text ?? ''),
+          },
+        ]
+      case 'image':
+        return [
+          {
+            id,
+            type,
+            mediaRef: idsOf(block.media)[0] ?? '',
+            alt: String(block.alt ?? ''),
+            ...(text(block.caption) === undefined ? {} : { caption: text(block.caption) }),
+            ...(text(block.credit) === undefined ? {} : { credit: text(block.credit) }),
+          },
+        ]
+      case 'video':
+        return [
+          {
+            id,
+            type,
+            provider: block.provider,
+            ...(text(block.externalId) === undefined
+              ? {}
+              : { externalId: text(block.externalId) }),
+            ...(text(block.url) === undefined ? {} : { url: text(block.url) }),
+            ...(text(block.title) === undefined ? {} : { title: text(block.title) }),
+            ...(text(block.credit) === undefined ? {} : { credit: text(block.credit) }),
+          },
+        ]
+      case 'quote':
+        return [
+          {
+            id,
+            type,
+            text: String(block.text ?? ''),
+            ...(text(block.attribution) === undefined
+              ? {}
+              : { attribution: text(block.attribution) }),
+            ...(text(block.sourceRef) === undefined ? {} : { sourceRef: text(block.sourceRef) }),
+          },
+        ]
+      case 'entityCard':
+        return [
+          {
+            id,
+            type,
+            entityKind: block.entityKind,
+            entityId: String(block.entityId ?? ''),
+            ...(text(block.note) === undefined ? {} : { note: text(block.note) }),
+          },
+        ]
+      case 'factBox':
+        return [
+          {
+            id,
+            type,
+            title: String(block.title ?? ''),
+            items: (Array.isArray(block.items) ? block.items : []).map((item) => {
+              const entry = item as Record<string, unknown>
+              return { label: String(entry.label ?? ''), value: String(entry.value ?? '') }
+            }),
+          },
+        ]
+      case 'relatedContent':
+        return [
+          { id, type, articleRefs: (block.articleRefs as unknown[] | null ?? []).map(String) },
+        ]
+      case 'sourceList':
+        return [{ id, type, sourceRefs: (block.sourceRefs as unknown[] | null ?? []).map(String) }]
+      case 'divider':
+        return [{ id, type }]
+      default:
+        // Tipo desconhecido nao atravessa: melhor um corpo menor do que um
+        // evento que o consumidor nao sabe interpretar.
+        return []
+    }
+  })
 }
 
 /** Monta o evento. `req` e usado so para LER autores e midia ja persistidos. */
@@ -186,7 +312,7 @@ export async function buildPublicationEvent(input: {
       slug: String(doc.slug),
       summary: String(doc.summary ?? ''),
       contentType: doc.contentType ?? 'news',
-      body: doc.body ?? [],
+      body: toContractBlocks(doc.body),
       authors,
       ...(text(doc.section) === undefined ? {} : { section: text(doc.section) }),
       publishedAt: isoOf(doc.publishedAt, now),

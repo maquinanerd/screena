@@ -79,6 +79,16 @@ jobs:
       - name: Testes do CMS editorial (nucleo puro, sem banco)
         run: pnpm test:cms
 
+      # Integracao REAL do CMS: sobe PostgreSQL 16 efemero, aplica as migrations
+      # do Payload pelo CLI oficial, faz `next build` + `next start` numa porta
+      # livre e bate no servidor por HTTP. Cria identidades e API keys
+      # TEMPORARIAS no proprio banco descartavel — sem EasyPanel, sem screen-db,
+      # sem DATABASE_URL e sem credencial real. Existe porque os testes puros
+      # nao conseguem provar que a governanca esta LIGADA: autenticacao por API
+      # key, access control, hooks, outbox e rollback so aparecem no runtime.
+      - name: Integracao do CMS editorial (Payload + PostgreSQL 16 efemero)
+        run: pnpm test:cms:integration
+
       - name: Lint
         run: pnpm lint
 
