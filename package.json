@@ -42,7 +42,8 @@
     "catalog": "corepack pnpm --filter @screena/ingestion catalog",
     "ratings": "corepack pnpm --filter @screena/ratings ratings",
     "legal": "corepack pnpm --filter @screena/legal legal",
-    "validate:source-authorization-and-attribution": "corepack pnpm --filter @screena/legal validate:source-authorization"
+    "validate:source-authorization-and-attribution": "corepack pnpm --filter @screena/legal validate:source-authorization",
+    "test:publication-projection:integration": "pnpm --filter @screena/news-ingestion test:integration"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.0",

@@ -272,3 +272,34 @@ operação da plataforma e acompanhamento da projeção pública.
   projeção pública; **depois** a migration aditiva do `screen-db` (autor, taxonomia, mídia, blocos).
   Criar essas tabelas antes do contrato produziria duplicação de responsabilidade entre CMS e
   projeção.
+
+---
+
+## 8. Adendo (FASE 2C) — a projeção pública implementada
+
+A projeção deixou de ser contrato e virou código. O que a implementação **fixou** e que este ADR
+não determinava:
+
+**A fila é a fonte da ordem, não o evento.** `publication-event-v1` não carrega número de versão
+monotônico: o campo `aggregateVersion` da outbox guarda um **hash do conteúdo** publicado, e hash
+não ordena. A ordem usada para descartar evento fora de ordem é o `id` serial da linha na outbox —
+a ordem real de emissão. O banco público guarda esse valor em `articles.projected_sequence`, e um
+evento com sequência menor ou igual à já projetada é recusado como `skipped_stale`.
+
+**Escopos disjuntos por conta técnica.** `draft_ingest` (MNScr) e `publication_projection` (worker)
+são poderes separados. Um booleano genérico de "automação" daria ao MNScr o direito de drenar a
+fila de publicação e ao worker o direito de criar rascunho.
+
+**O recibo é a trava de idempotência.** `editorial_projection_receipts.event_id` é único e é escrito
+na **mesma transação** da projeção. Não existe estado "publicado sem recibo" — seria exatamente o
+estado que faria um replay publicar duas vezes.
+
+**A assincronia continua real, e agora é observável.** O worker é o único processo que enxerga os
+dois bancos. Se ele parar, o site público não quebra: para de chegar conteúdo novo, não de servir o
+antigo. Detalhe operacional em
+[`docs/operations/editorial-projection-worker.md`](../operations/editorial-projection-worker.md).
+
+**Omissão deliberada: mídia.** A projeção não traz imagem. `articles.hero_image_path` é lida por um
+normalizador que recusa URL http(s) por design; gravar a URL do CMS ali criaria dado morto. Trazer a
+imagem exige pipeline de download e derivada local, fora desta fase — e cada matéria com mídia gera
+aviso no log, para que a ausência não passe por sucesso.

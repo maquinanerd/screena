@@ -183,7 +183,13 @@ export function assertNoHumanDecisionFields(document: ArticleDraftDocument): rea
 /** Contexto de autenticacao ja resolvido pelo adaptador. */
 export interface IntakeAuth {
   readonly authenticated: boolean
-  readonly isServiceAccount: boolean
+  /**
+   * A credencial carrega o escopo `draft_ingest`?
+   *
+   * Deliberadamente NAO e "e uma service account": o worker de projecao tambem
+   * e uma service account, e ele nao tem nada que criar rascunho editorial.
+   */
+  readonly hasIngestScope: boolean
   readonly accountId: string | null
 }
 
@@ -201,7 +207,7 @@ export function intakeEditorialDraft(input: {
   if (!input.auth.authenticated) {
     return reject('unauthenticated', 401, [{ path: '(auth)', message: 'credencial ausente' }])
   }
-  if (!input.auth.isServiceAccount) {
+  if (!input.auth.hasIngestScope) {
     // Um humano autenticado tambem e recusado: este canal e do pipeline. Humano
     // cria materia pelo painel, onde ha revisao e rastro de autoria.
     return reject('not_service_account', 403, [

@@ -44,6 +44,7 @@ const ids = {
 
 let activeKey = ''
 let inactiveKey = ''
+let scopelessKey = ''
 let humanToken = ''
 
 /* ------------------------------------------------------------------ */
@@ -197,11 +198,20 @@ beforeAll(async () => {
   // botao). Pela Local API a chave e fornecida, e o hook `beforeValidate` do
   // campo `apiKeyIndex` deriva HMAC-SHA256(secret, apiKey) — exatamente o que a
   // estrategia procura na autenticacao.
-  const makeServiceAccount = async (label: string, active: boolean) => {
+  const makeServiceAccount = async (label: string, active: boolean, scopes = ['draft_ingest']) => {
     const key = randomUUID()
     await payload.create({
       collection: 'service-accounts',
-      data: { label, purpose: 'mnscr', active, enableAPIKey: true, apiKey: key } as never,
+      data: {
+        label,
+        purpose: 'mnscr',
+        active,
+        // ESCOPO EXPLICITO. O MNScr ingere rascunho; nao consome a outbox de
+        // publicacao. Sem escopo, a conta autentica e nao pode nada.
+        scopes,
+        enableAPIKey: true,
+        apiKey: key,
+      } as never,
       overrideAccess: true,
     })
     return key
@@ -209,6 +219,7 @@ beforeAll(async () => {
 
   activeKey = await makeServiceAccount('mnscr-test', true)
   inactiveKey = await makeServiceAccount('mnscr-off', false)
+  scopelessKey = await makeServiceAccount('mnscr-sem-escopo', true, [])
 
   // Token humano REAL, obtido por login HTTP: e assim que um humano chegaria ao
   // endpoint, e e essa identidade que precisa ser recusada por ele.
@@ -362,6 +373,16 @@ describe('endpoint editorial-drafts (HTTP real)', () => {
       apiKeyAuthorization('service-accounts', randomUUID()),
     )
     expect(result.status).toBe(401)
+  })
+
+  it('conta tecnica SEM ESCOPO -> 403 (autenticar nao e poder)', async () => {
+    // A conta e valida e esta ativa; ela so nao recebeu `draft_ingest`. Sem
+    // este teste, "ser service account" voltaria a valer como permissao.
+    const result = await postDraft(
+      validEditorialDraft,
+      apiKeyAuthorization('service-accounts', scopelessKey),
+    )
+    expect(result.status).toBe(403)
   })
 
   it('usuario HUMANO autenticado -> 403 (este canal e do pipeline)', async () => {

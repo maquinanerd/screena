@@ -13,17 +13,22 @@
   "license": "UNLICENSED",
   "scripts": {
     "editorial": "tsx bin/editorial.ts",
-    "validate:editorial-platform": "tsx scripts/validate-editorial-platform-real-postgres.ts"
+    "validate:editorial-platform": "tsx scripts/validate-editorial-platform-real-postgres.ts",
+    "project:editorial": "tsx bin/project-editorial.ts",
+    "test:integration": "vitest run --root . --config ./vitest.integration.config.ts"
   },
   "dependencies": {
     "@screena/config": "workspace:*",
     "@screena/db": "workspace:*",
+    "@screena/editorial-contracts": "workspace:*",
     "@screena/seo": "workspace:*"
   },
   "devDependencies": {
     "@prisma/client": "^6.1.0",
     "embedded-postgres": "16.14.0-beta.17",
+    "payload": "3.86.0",
     "prisma": "^6.1.0",
-    "tsx": "^4.19.0"
+    "tsx": "^4.19.0",
+    "vitest": "^2.1.0"
   }
 }

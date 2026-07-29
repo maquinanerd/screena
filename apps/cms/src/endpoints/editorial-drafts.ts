@@ -12,6 +12,7 @@
 import type { Endpoint, PayloadRequest, Where } from 'payload'
 
 import { toActor } from '../actor.js'
+import { serviceHasScope } from '../access.js'
 import { intakeEditorialDraft, MAX_REQUEST_BYTES } from '../draft-intake.js'
 import type { ExistingArticleSnapshot } from '../idempotency.js'
 
@@ -112,7 +113,7 @@ export const editorialDraftsEndpoint: Endpoint = {
         // ("quem e voce?") para quem a plataforma sabe exatamente quem e — o
         // certo e 403 ("sei quem voce e, e voce nao pode").
         authenticated: req.user !== null && req.user !== undefined,
-        isServiceAccount: actor.kind === 'service',
+        hasIngestScope: serviceHasScope(actor, 'draft_ingest'),
         accountId: actor.kind === 'anonymous' ? null : actor.id,
       },
       rawBodyBytes,
@@ -148,7 +149,7 @@ export const editorialDraftsEndpoint: Endpoint = {
         // ("quem e voce?") para quem a plataforma sabe exatamente quem e — o
         // certo e 403 ("sei quem voce e, e voce nao pode").
         authenticated: req.user !== null && req.user !== undefined,
-        isServiceAccount: actor.kind === 'service',
+        hasIngestScope: serviceHasScope(actor, 'draft_ingest'),
         accountId: actor.kind === 'anonymous' ? null : actor.id,
       },
       rawBodyBytes,

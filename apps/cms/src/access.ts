@@ -8,11 +8,17 @@
  */
 
 import type { EditorialRole } from './workflow.js'
+import type { ServiceAccountScope } from './outbox-api.js'
 
 /** Identidade efetiva de quem esta agindo. */
 export type Actor =
   | { readonly kind: 'human'; readonly id: string; readonly role: EditorialRole }
-  | { readonly kind: 'service'; readonly id: string }
+  | {
+      readonly kind: 'service'
+      readonly id: string
+      /** Poderes EXPLICITOS. Sem escopo, a conta nao pode nada. */
+      readonly scopes: readonly ServiceAccountScope[]
+    }
   | { readonly kind: 'anonymous' }
 
 /** Papeis que administram o proprio CMS (usuarios, politicas). */
@@ -57,9 +63,14 @@ export function canAuthorContent(actor: Actor): boolean {
   return isHuman(actor) && CONTENT_ROLES.includes(actor.role)
 }
 
-/** Service accounts leem/escrevem SOMENTE pelo endpoint interno de drafts. */
+/** Service accounts leem/escrevem SOMENTE pelos endpoints internos. */
 export function isServiceAccount(actor: Actor): boolean {
   return actor.kind === 'service'
+}
+
+/** A conta tecnica possui o escopo exigido? Ausencia de escopo e negacao. */
+export function serviceHasScope(actor: Actor, scope: ServiceAccountScope): boolean {
+  return actor.kind === 'service' && actor.scopes.includes(scope)
 }
 
 /* ------------------------------------------------------------------ */
@@ -74,9 +85,11 @@ export function isServiceAccount(actor: Actor): boolean {
  * um draft humano em revisao nao e assunto de um pipeline externo.
  */
 export const articlesAccess = {
-  create: (actor: Actor): boolean => canAuthorContent(actor) || isServiceAccount(actor),
+  create: (actor: Actor): boolean =>
+    canAuthorContent(actor) || serviceHasScope(actor, 'draft_ingest'),
   read: (actor: Actor): boolean => isHuman(actor),
-  update: (actor: Actor): boolean => canAuthorContent(actor) || canReview(actor) || isServiceAccount(actor),
+  update: (actor: Actor): boolean =>
+    canAuthorContent(actor) || canReview(actor) || serviceHasScope(actor, 'draft_ingest'),
   delete: (actor: Actor): boolean => isAdministrator(actor),
 } as const
 

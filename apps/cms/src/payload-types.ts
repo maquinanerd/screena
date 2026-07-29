@@ -185,6 +185,10 @@ export interface ServiceAccount {
   purpose: 'mnscr' | 'internal_tooling';
   active?: boolean | null;
   /**
+   * Poderes EXPLICITOS. Um booleano generico de automacao daria ao MNScr o direito de consumir a outbox e ao worker de projecao o direito de criar drafts. Lista vazia = conta sem nenhum poder.
+   */
+  scopes?: ('draft_ingest' | 'publication_projection')[] | null;
+  /**
    * Nunca registre a chave aqui. A API key vive so no Payload.
    */
   notes?: string | null;
@@ -537,8 +541,12 @@ export interface PublicationOutbox {
   status: 'pending' | 'processing' | 'processed' | 'failed' | 'dead_letter';
   attempts: number;
   availableAt: string;
+  leaseToken?: string | null;
+  lockedBy?: string | null;
   lockedAt?: string | null;
+  leaseExpiresAt?: string | null;
   processedAt?: string | null;
+  errorCode?: string | null;
   lastError?: string | null;
   updatedAt: string;
   createdAt: string;
@@ -676,6 +684,7 @@ export interface ServiceAccountsSelect<T extends boolean = true> {
   label?: T;
   purpose?: T;
   active?: T;
+  scopes?: T;
   notes?: T;
   updatedAt?: T;
   createdAt?: T;
@@ -945,8 +954,12 @@ export interface PublicationOutboxSelect<T extends boolean = true> {
   status?: T;
   attempts?: T;
   availableAt?: T;
+  leaseToken?: T;
+  lockedBy?: T;
   lockedAt?: T;
+  leaseExpiresAt?: T;
   processedAt?: T;
+  errorCode?: T;
   lastError?: T;
   updatedAt?: T;
   createdAt?: T;

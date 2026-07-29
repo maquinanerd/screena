@@ -20,7 +20,7 @@
 
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import net from 'node:net'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -28,7 +28,41 @@ import { fileURLToPath } from 'node:url'
 import EmbeddedPostgres from 'embedded-postgres'
 import type { Payload } from 'payload'
 
+import {
+  evaluateBuildFreshness,
+  serializeSourceStamps,
+  skipBuildAllowed,
+  type SourceFileStamp,
+} from '../build-fingerprint.js'
+
 const cmsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
+
+/** Carimbos de todos os `.ts`/`.tsx` do fonte do CMS, recursivamente. */
+function collectSourceStamps(root: string): SourceFileStamp[] {
+  const stamps: SourceFileStamp[] = []
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name)
+      if (entry.isDirectory()) {
+        walk(full)
+        continue
+      }
+      if (!/\.(ts|tsx)$/.test(entry.name)) continue
+      const stat = statSync(full)
+      stamps.push({ path: path.relative(root, full), mtimeMs: stat.mtimeMs, size: stat.size })
+    }
+  }
+  walk(root)
+  return stamps
+}
+
+function readFingerprint(file: string): string | null {
+  try {
+    return readFileSync(file, 'utf8')
+  } catch {
+    return null
+  }
+}
 
 export interface CmsHarness {
   /** Local API — SO para fixtures e para inspecionar o banco nas asercoes. */
@@ -126,11 +160,31 @@ export async function startCmsHarness(): Promise<CmsHarness> {
   }
 
   const nextBin = path.join(cmsDir, 'node_modules', 'next', 'dist', 'bin', 'next')
+  const fingerprintFile = path.join(cmsDir, '.next', 'cms-it-source-fingerprint.txt')
+  const currentFingerprint = serializeSourceStamps(collectSourceStamps(path.join(cmsDir, 'src')))
 
   // Build de producao: a MESMA pipeline que rodaria no servico implantado.
-  // `CMS_IT_SKIP_BUILD=1` existe so para iterar localmente sobre um build ja
-  // feito; o CI nunca o define, entao la o build sempre acontece.
-  if (process.env.CMS_IT_SKIP_BUILD !== '1') {
+  //
+  // `CMS_IT_SKIP_BUILD=1` pula o build para iterar localmente — mas SO se o
+  // fonte nao mudou desde o build carimbado. Sem essa trava o atalho mente em
+  // silencio: a suite roda contra codigo antigo, passa, e a correcao recem
+  // escrita nunca chega a ser exercitada (aconteceu na FASE 2B). Em CI o atalho
+  // e ignorado por completo.
+  let skipped = false
+  if (skipBuildAllowed(process.env)) {
+    const recorded = readFingerprint(fingerprintFile)
+    const freshness = evaluateBuildFreshness(recorded, currentFingerprint)
+    if (freshness.fresh) {
+      skipped = true
+      console.warn('[cms-it] build pulado: fonte inalterado desde o ultimo build')
+    } else {
+      console.warn(
+        `[cms-it] CMS_IT_SKIP_BUILD ignorado (${freshness.reason}): reconstruindo`,
+      )
+    }
+  }
+
+  if (!skipped) {
     const build = spawnSync('node', [nextBin, 'build'], {
       cwd: cmsDir,
       env: childEnv,
@@ -141,6 +195,13 @@ export async function startCmsHarness(): Promise<CmsHarness> {
       throw new Error(
         `build do CMS falhou (exit ${String(build.status)}): ${build.stdout?.toString().slice(-3000) ?? ''}`,
       )
+    }
+    // Carimbo gravado SO apos build bem-sucedido: um build que falhou nao pode
+    // autorizar o atalho da proxima rodada.
+    try {
+      writeFileSync(fingerprintFile, currentFingerprint, 'utf8')
+    } catch {
+      /* sem carimbo, a proxima rodada simplesmente reconstroi */
     }
   }
 

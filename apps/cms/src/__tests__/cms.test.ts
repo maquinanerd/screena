@@ -21,6 +21,7 @@ import {
   identityAccess,
   outboxAccess,
   serviceAccountMayWriteField,
+  serviceHasScope,
   type Actor,
 } from '../access.js'
 import { assertNoHumanDecisionFields, intakeEditorialDraft } from '../draft-intake.js'
@@ -47,7 +48,11 @@ const chief: Actor = { kind: 'human', id: 'u2', role: 'editor_in_chief' }
 const editor: Actor = { kind: 'human', id: 'u3', role: 'editor' }
 const reviewer: Actor = { kind: 'human', id: 'u4', role: 'reviewer' }
 const writer: Actor = { kind: 'human', id: 'u5', role: 'writer' }
-const service: Actor = { kind: 'service', id: 's1' }
+// Duas contas tecnicas com escopos DIFERENTES: e o que prova que o poder vem
+// do escopo, e nao de "ser uma service account".
+const service: Actor = { kind: 'service', id: 's1', scopes: ['draft_ingest'] }
+const projector: Actor = { kind: 'service', id: 's2', scopes: ['publication_projection'] }
+const scopeless: Actor = { kind: 'service', id: 's3', scopes: [] }
 const anon: Actor = { kind: 'anonymous' }
 
 /* ------------------------------------------------------------------ */
@@ -144,6 +149,21 @@ describe('RBAC', () => {
     expect(articlesAccess.create(service)).toBe(true)
     expect(articlesAccess.read(service)).toBe(false)
     expect(articlesAccess.delete(service)).toBe(false)
+  })
+
+  it('o poder vem do ESCOPO, nao de ser uma service account', () => {
+    // O worker de projecao nao cria draft; o MNScr nao consome a outbox.
+    expect(articlesAccess.create(projector)).toBe(false)
+    expect(articlesAccess.update(projector)).toBe(false)
+    expect(serviceHasScope(projector, 'publication_projection')).toBe(true)
+    expect(serviceHasScope(service, 'publication_projection')).toBe(false)
+    expect(serviceHasScope(service, 'draft_ingest')).toBe(true)
+  })
+
+  it('conta sem escopo nao pode nada (fail-closed)', () => {
+    expect(articlesAccess.create(scopeless)).toBe(false)
+    expect(serviceHasScope(scopeless, 'draft_ingest')).toBe(false)
+    expect(serviceHasScope(scopeless, 'publication_projection')).toBe(false)
   })
 
   it('identidade (usuarios e service accounts) e so do administrador', () => {
@@ -384,7 +404,7 @@ describe('idempotencia', () => {
 /* ------------------------------------------------------------------ */
 
 describe('entrada de drafts (endpoint interno)', () => {
-  const auth = { authenticated: true, isServiceAccount: true, accountId: 's1' }
+  const auth = { authenticated: true, hasIngestScope: true, accountId: 's1' }
 
   it('aceita um draft valido e cria SEMPRE automation_draft', () => {
     const result = intakeEditorialDraft({ auth, rawBodyBytes: 500, body: validEditorialDraft, existing: null })
@@ -399,7 +419,7 @@ describe('entrada de drafts (endpoint interno)', () => {
   it('recusa anonimo e recusa humano autenticado', () => {
     expect(
       intakeEditorialDraft({
-        auth: { authenticated: false, isServiceAccount: false, accountId: null },
+        auth: { authenticated: false, hasIngestScope: false, accountId: null },
         rawBodyBytes: 10,
         body: validEditorialDraft,
         existing: null,
@@ -407,7 +427,7 @@ describe('entrada de drafts (endpoint interno)', () => {
     ).toBe(false)
 
     const human = intakeEditorialDraft({
-      auth: { authenticated: true, isServiceAccount: false, accountId: 'u1' },
+      auth: { authenticated: true, hasIngestScope: false, accountId: 'u1' },
       rawBodyBytes: 10,
       body: validEditorialDraft,
       existing: null,

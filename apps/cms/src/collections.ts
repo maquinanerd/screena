@@ -26,6 +26,7 @@ import { toActor as resolveActor } from './actor.js'
 import { emitPublicationEvent, enforceEditorialGovernance } from './hooks/articles.js'
 import { EDITORIAL_ROLES, WORKFLOW_STATUSES } from './workflow.js'
 import { OUTBOX_STATUSES } from './outbox.js'
+import { SERVICE_ACCOUNT_SCOPES } from './outbox-api.js'
 
 /* ------------------------------------------------------------------ */
 /* Ponte entre o `req.user` do Payload e o `Actor` puro                */
@@ -256,6 +257,22 @@ export const ServiceAccounts: CollectionConfig = {
       options: ['mnscr', 'internal_tooling'],
     },
     { name: 'active', type: 'checkbox', defaultValue: false },
+    {
+      name: 'scopes',
+      type: 'select',
+      hasMany: true,
+      // NAO e `required`. Lista vazia e um estado legitimo e util: e assim que
+      // se REVOGA o acesso de uma conta tecnica sem apaga-la (e sem perder a
+      // trilha de quem ela era). A trava nao esta no formulario e sim na
+      // politica: `serviceHasScope` nega tudo para lista vazia. Exigir um
+      // escopo aqui obrigaria a excluir a conta para tirar o poder dela.
+      defaultValue: [],
+      options: [...SERVICE_ACCOUNT_SCOPES],
+      admin: {
+        description:
+          'Poderes EXPLICITOS. Um booleano generico de automacao daria ao MNScr o direito de consumir a outbox e ao worker de projecao o direito de criar drafts. Lista vazia = conta sem nenhum poder.',
+      },
+    },
     {
       name: 'notes',
       type: 'textarea',
@@ -595,8 +612,15 @@ export const PublicationOutbox: CollectionConfig = {
     },
     { name: 'attempts', type: 'number', required: true, defaultValue: 0 },
     { name: 'availableAt', type: 'date', required: true },
+    // LEASE: o que impede dois workers de projetarem o mesmo evento. O token e
+    // aleatorio por claim, entao um ack atrasado (lease ja expirada e evento
+    // reclamado por outro) nao consegue confirmar trabalho alheio.
+    { name: 'leaseToken', type: 'text', index: true },
+    { name: 'lockedBy', type: 'text' },
     { name: 'lockedAt', type: 'date' },
+    { name: 'leaseExpiresAt', type: 'date', index: true },
     { name: 'processedAt', type: 'date' },
+    { name: 'errorCode', type: 'text' },
     { name: 'lastError', type: 'textarea' },
   ],
 }

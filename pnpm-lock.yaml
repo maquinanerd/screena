@@ -314,6 +314,9 @@ importers:
       '@screena/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@screena/editorial-contracts':
+        specifier: workspace:*
+        version: link:../../packages/editorial-contracts
       '@screena/seo':
         specifier: workspace:*
         version: link:../../packages/seo
@@ -324,12 +327,18 @@ importers:
       embedded-postgres:
         specifier: 16.14.0-beta.17
         version: 16.14.0-beta.17
+      payload:
+        specifier: 3.86.0
+        version: 3.86.0(graphql@16.14.2)(typescript@5.9.3)
       prisma:
         specifier: ^6.1.0
         version: 6.19.3(typescript@5.9.3)
       tsx:
         specifier: ^4.19.0
         version: 4.22.4
+      vitest:
+        specifier: ^2.1.0
+        version: 2.1.9(@types/node@22.20.0)(happy-dom@20.11.1)(sass@1.77.4)
 
   services/ratings:
     dependencies:

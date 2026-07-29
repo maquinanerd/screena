@@ -8,12 +8,14 @@
 
 import { EDITORIAL_ROLES, type EditorialRole } from './workflow.js'
 import type { Actor } from './access.js'
+import { SERVICE_ACCOUNT_SCOPES, type ServiceAccountScope } from './outbox-api.js'
 
 interface PayloadUserLike {
   readonly id?: unknown
   readonly collection?: unknown
   readonly role?: unknown
   readonly active?: unknown
+  readonly scopes?: unknown
 }
 
 function isEditorialRole(value: unknown): value is EditorialRole {
@@ -36,7 +38,14 @@ export function toActor(user: unknown): Actor {
 
   if (candidate.collection === 'service-accounts') {
     if (candidate.active !== true) return { kind: 'anonymous' }
-    return { kind: 'service', id }
+    // Escopo ausente ou malformado vira lista VAZIA — e uma conta sem escopo
+    // nao passa em nenhuma politica. Fail-closed tambem aqui.
+    const scopes = Array.isArray(candidate.scopes)
+      ? candidate.scopes.filter((scope): scope is ServiceAccountScope =>
+          (SERVICE_ACCOUNT_SCOPES as readonly unknown[]).includes(scope),
+        )
+      : []
+    return { kind: 'service', id, scopes }
   }
 
   if (candidate.collection === 'editorial-users') {

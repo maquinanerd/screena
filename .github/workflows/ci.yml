@@ -89,6 +89,18 @@ jobs:
       - name: Integracao do CMS editorial (Payload + PostgreSQL 16 efemero)
         run: pnpm test:cms:integration
 
+      # Projecao editorial CMS -> banco publico, com DOIS PostgreSQL 16
+      # efemeros ao mesmo tempo (o do Payload e o do screen-db). Prova o que
+      # nenhum dos dois lados prova sozinho: escopo da conta tecnica, lease
+      # exclusiva sob dois workers concorrentes, replay idempotente, evento
+      # fora de ordem, sanitizacao do erro que chega ao painel e retratacao que
+      # tira do indice sem apagar a materia.
+      #
+      # Nenhuma credencial real, nenhum banco real: contas e chaves nascem e
+      # morrem dentro dos bancos descartaveis.
+      - name: Integracao da projecao editorial (dois PostgreSQL 16 efemeros)
+        run: pnpm test:publication-projection:integration
+
       - name: Lint
         run: pnpm lint
 
