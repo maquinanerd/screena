@@ -17,6 +17,8 @@
 
 import { PUBLISHED_LOCALES } from '@screena/config'
 
+import { applyMediaToBlocks, type ResolvedMediaAsset } from './media/media-plan.js'
+
 /* ------------------------------------------------------------------ */
 /* Entrada: o recorte do evento que a projecao consome                 */
 /* ------------------------------------------------------------------ */
@@ -76,6 +78,8 @@ export interface ProjectionEvent {
     readonly primarySourceUrl: string | null
   }
   readonly media: readonly {
+    /** Id CANONICO do documento no CMS. E por ele que os bytes sao pedidos. */
+    readonly mediaId: string
     readonly role: string
     readonly requiresAttribution: boolean
     readonly credit: string | null
@@ -113,6 +117,16 @@ export interface ArticleWrite {
   readonly requiresAttribution: boolean
   readonly requiresLinkback: boolean
   readonly projectedSequence: number
+  /**
+   * Caminho publico da capa (`/media/editorial/...`) ou `null`.
+   *
+   * NUNCA uma URL http(s): `normalizeNewsLocalImagePath` no `apps/web` recusa
+   * URL absoluta por design, e gravar uma aqui produziria materia sem imagem em
+   * silencio — o defeito exato que a FASE 2D existe para fechar.
+   */
+  readonly heroImagePath: string | null
+  /** `mediaId` do CMS da capa, para o adapter resolver o vinculo do asset. */
+  readonly heroMediaId: string | null
 }
 
 export interface TranslationWrite {
@@ -213,6 +227,14 @@ export interface DecideProjectionInput {
   readonly existing: PublicArticleState | null
   /** Hash do conteudo, calculado fora (o nucleo nao faz IO nem cripto). */
   readonly contentVersion: string | null
+  /**
+   * Midias JA projetadas no storage publico, por `mediaId`.
+   *
+   * Chegam prontas de proposito: baixar arquivo e uma operacao de rede, e o
+   * nucleo de decisao nao faz IO. Vazio significa "nenhuma midia disponivel",
+   * nao "materia sem midia" — a diferenca e tratada abaixo.
+   */
+  readonly media?: ReadonlyMap<string, ResolvedMediaAsset>
 }
 
 export function decideProjection(input: DecideProjectionInput): ProjectionDecision {
@@ -315,12 +337,22 @@ export function decideProjection(input: DecideProjectionInput): ProjectionDecisi
   const body = blocksToPlainText(content.body)
   if (body === '') warnings.push('corpo achatado ficou vazio: nenhum bloco textual no evento')
 
-  // Midia NAO e projetada nesta fase. `articles.hero_image_path` e consumida
-  // por `normalizeNewsLocalImagePath`, que recusa URL http(s) por design —
-  // gravar a URL do CMS ali criaria dado morto. Trazer a imagem exige pipeline
-  // de download/derivada local, deliberadamente FORA desta fase.
-  if (event.media.length > 0) {
-    warnings.push(`${String(event.media.length)} midia(s) nao projetadas (pipeline de asset ausente)`)
+  // MIDIA (FASE 2D). Os assets chegam ja verificados e gravados no storage; aqui
+  // so resolvemos a capa e reescrevemos os blocos de imagem.
+  const media = input.media ?? new Map<string, ResolvedMediaAsset>()
+  const heroMediaId =
+    event.media.find((item) => item.role === 'hero')?.mediaId ?? null
+  const heroAsset = heroMediaId === null ? undefined : media.get(heroMediaId)
+  if (heroMediaId !== null && heroAsset === undefined) {
+    // Capa pedida e nao resolvida NAO vira materia sem foto em silencio. O
+    // chamador ja teria falhado o evento; este aviso existe para o caso de a
+    // politica de obrigatoriedade mudar sem que alguem lembre deste ponto.
+    warnings.push(`capa ${heroMediaId} nao foi projetada`)
+  }
+
+  const { blocks: projectedBlocks, unresolved } = applyMediaToBlocks(content.body, media)
+  for (const blockId of unresolved) {
+    warnings.push(`bloco de imagem ${blockId} sem asset projetado`)
   }
 
   const requiresAttribution = event.provenance.primarySourceName !== null
@@ -345,6 +377,8 @@ export function decideProjection(input: DecideProjectionInput): ProjectionDecisi
       requiresAttribution,
       requiresLinkback,
       projectedSequence: event.emissionSequence,
+      heroImagePath: heroAsset?.publicPath ?? null,
+      heroMediaId,
     },
     translation: {
       languageCode: event.language,
@@ -354,7 +388,7 @@ export function decideProjection(input: DecideProjectionInput): ProjectionDecisi
       body: body === '' ? null : body,
       // Blocos e versao andam SEMPRE juntos: o banco tem CHECK exigindo o par,
       // e blocos sem versao seriam impossiveis de comparar na reprojecao.
-      bodyBlocks: input.contentVersion === null ? null : content.body,
+      bodyBlocks: input.contentVersion === null ? null : projectedBlocks,
       bodyBlocksVersion: input.contentVersion,
       metaTitle: event.seo.metaTitle,
       metaDescription: event.seo.metaDescription,

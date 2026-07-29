@@ -13,6 +13,9 @@
  * Todo `access` daqui delega para `./access.js`, que e puro e testado sem CMS.
  */
 
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
 import type { Access, CollectionConfig } from 'payload'
 
 import {
@@ -27,6 +30,16 @@ import { emitPublicationEvent, enforceEditorialGovernance } from './hooks/articl
 import { EDITORIAL_ROLES, WORKFLOW_STATUSES } from './workflow.js'
 import { OUTBOX_STATUSES } from './outbox.js'
 import { SERVICE_ACCOUNT_SCOPES } from './outbox-api.js'
+
+/**
+ * Raiz dos uploads locais, ABSOLUTA e ancorada no diretorio de `apps/cms`.
+ *
+ * `EDITORIAL_MEDIA_CMS_STATIC_DIR` permite apontar para um volume duravel no
+ * deploy sem tocar em codigo.
+ */
+const MEDIA_STATIC_DIR =
+  process.env.EDITORIAL_MEDIA_CMS_STATIC_DIR?.trim() ||
+  path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'media')
 
 /* ------------------------------------------------------------------ */
 /* Ponte entre o `req.user` do Payload e o `Actor` puro                */
@@ -330,7 +343,13 @@ export const Media: CollectionConfig = {
   upload: {
     // Filesystem local: DESENVOLVIMENTO apenas. `payload.config.ts` recusa este
     // arranjo em producao, onde disco efemero significaria perder a midia.
-    staticDir: 'media',
+    //
+    // Caminho ABSOLUTO, ancorado no diretorio da aplicacao. Um `'media'`
+    // relativo resolve contra o `cwd` do PROCESSO: quem grava pela Local API a
+    // partir de outro diretorio (um worker, um script, a suite de integracao)
+    // deposita o arquivo num `media/` diferente do que o servidor le, e a midia
+    // simplesmente "some" com 404 sem nenhum erro no meio do caminho.
+    staticDir: MEDIA_STATIC_DIR,
     mimeTypes: ['image/png', 'image/jpeg', 'image/webp', 'image/avif'],
   },
   access: {

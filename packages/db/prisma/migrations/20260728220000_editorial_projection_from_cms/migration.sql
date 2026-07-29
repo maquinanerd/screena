@@ -2,7 +2,7 @@
 --
 -- ADITIVA. Nenhuma coluna existente muda de tipo, ganha NOT NULL ou some.
 -- Nenhuma linha existente e reescrita. Um deploy que aplique esta migration e
--- pare aqui deixa o site publico exatamente como estava — o corpo em texto
+-- pare aqui deixa o site publico exatamente como estava -- o corpo em texto
 -- (`article_translations.body`) continua sendo a fonte de todas as superficies.
 --
 -- 100% ASCII de proposito: caractere acentuado gravado em WIN1252 ja quebrou

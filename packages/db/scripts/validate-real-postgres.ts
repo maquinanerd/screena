@@ -138,6 +138,8 @@ const EXPECTED_TABLES = [
   // Projecao editorial (CMS -> banco publico): recibo de idempotencia do
   // consumidor da outbox do Payload.
   "editorial_projection_receipts",
+  // FASE 2D — midia editorial governada, projetada do CMS para o storage publico.
+  "editorial_media_assets",
 ];
 const EXPECTED_ENUMS = [
   "EntityType", "ContentBlockType", "ContentSource", "ReviewStatus", "TranslationStatus",
@@ -167,6 +169,8 @@ const EXPECTED_ENUMS = [
   "RecommendationContext", "RecommendationFeedbackType", "RecommendationFeedbackSource",
   // Projecao editorial — desfecho de cada tentativa de projecao.
   "EditorialProjectionOutcome",
+  // FASE 2D — licenca do asset de midia editorial (espelha o enum do CMS).
+  "EditorialMediaLicenseStatus",
 ];
 const EXPECTED_SCALES: Record<string, number> = {
   imdb: 10, rotten_tomatoes: 100, metacritic: 100, letterboxd: 5, filmaffinity: 10,
@@ -656,6 +660,73 @@ async function runChecks(url: string): Promise<void> {
     record(55, "recibo sobrevive a exclusao do artigo (article_id -> NULL)",
       survivor !== undefined && survivor.article_id === null,
       `article_id=${String(survivor?.article_id)}`);
+
+    /* ---------------------------------------------------------------- */
+    /* 56-63. Midia editorial governada (FASE 2D).                      */
+    /* ---------------------------------------------------------------- */
+
+    const HASH = `sha256:${"a".repeat(64)}`;
+    const goodAsset = (suffix: string, overrides: Record<string, string> = {}) => {
+      const cols = {
+        payload_media_id: `'m-${suffix}'`,
+        content_hash: `'${HASH}'`,
+        storage_key: `'editorial/aa/${"a".repeat(64)}-${suffix}.jpg'`,
+        public_path: `'/media/editorial/aa/${"a".repeat(64)}-${suffix}.jpg'`,
+        mime_type: `'image/jpeg'`,
+        byte_size: "1024",
+        alt: `'capa'`,
+        updated_at: "now()",
+        ...overrides,
+      };
+      return `INSERT INTO editorial_media_assets (${Object.keys(cols).join(", ")}) VALUES (${Object.values(cols).join(", ")})`;
+    };
+
+    // 56. CONTROLE POSITIVO. Sem ele, uma tabela que rejeitasse tudo passaria
+    //     em todos os checks negativos abaixo sem armazenar nada.
+    await exec(goodAsset("ok"));
+    const [{ assets }] = await q<{ assets: bigint }>(
+      "SELECT count(*) AS assets FROM editorial_media_assets",
+    );
+    record(56, "asset editorial valido e aceito", Number(assets) === 1, `assets=${String(assets)}`);
+
+    // 57. A REGRA CENTRAL DA FASE: caminho publico nunca e URL. O normalizador
+    //     do apps/web recusa http(s), entao uma URL aqui viraria materia sem
+    //     imagem em silencio.
+    await expectViolation(57, "asset: public_path com URL http barrado",
+      goodAsset("url", { payload_media_id: "'m-url'", public_path: "'https://cdn.exemplo/x.jpg'", storage_key: "'editorial/aa/url.jpg'" }));
+
+    await expectViolation(58, "asset: public_path relativo (sem barra) barrado",
+      goodAsset("rel", { payload_media_id: "'m-rel'", public_path: "'media/editorial/x.jpg'", storage_key: "'editorial/aa/rel.jpg'" }));
+
+    // 59. Path traversal na chave do storage escreveria fora da raiz do disco.
+    await expectViolation(59, "asset: storage_key com '..' barrado",
+      goodAsset("dots", { payload_media_id: "'m-dots'", storage_key: "'editorial/../../etc/passwd'", public_path: "'/media/x-dots.jpg'" }));
+
+    await expectViolation(60, "asset: storage_key absoluto barrado",
+      goodAsset("abs", { payload_media_id: "'m-abs'", storage_key: "'/etc/passwd'", public_path: "'/media/x-abs.jpg'" }));
+
+    // 61. Hash fora do formato indica que gravaram nome de upload ou URL ali.
+    await expectViolation(61, "asset: content_hash fora do formato sha256 barrado",
+      goodAsset("hash", { payload_media_id: "'m-hash'", content_hash: "'capa-final.jpg'", storage_key: "'editorial/aa/hash.jpg'", public_path: "'/media/x-hash.jpg'" }));
+
+    // 62. Um documento do CMS tem UM asset publico corrente; duplicar criaria
+    //     duas verdades para a mesma midia.
+    await expectViolation(62, "asset: payload_media_id duplicado barrado",
+      goodAsset("dup", { payload_media_id: "'m-ok'", storage_key: "'editorial/aa/dup.jpg'", public_path: "'/media/x-dup.jpg'" }));
+
+    // 63. Apagar um asset compartilhado NAO pode apagar artigos: a materia
+    //     perde a capa, nao a existencia.
+    const [assetRow] = await q<{ id: bigint }>(
+      "SELECT id FROM editorial_media_assets WHERE payload_media_id = 'm-ok'",
+    );
+    await exec(`INSERT INTO articles (payload_document_id, hero_media_asset_id, updated_at) VALUES ('doc-com-capa', ${Number(assetRow.id)}, now())`);
+    await exec(`DELETE FROM editorial_media_assets WHERE id = ${Number(assetRow.id)}`);
+    const [articleAfterAssetDrop] = await q<{ hero_media_asset_id: bigint | null }>(
+      "SELECT hero_media_asset_id FROM articles WHERE payload_document_id = 'doc-com-capa'",
+    );
+    record(63, "artigo sobrevive a exclusao do asset (hero -> NULL)",
+      articleAfterAssetDrop !== undefined && articleAfterAssetDrop.hero_media_asset_id === null,
+      `hero_media_asset_id=${String(articleAfterAssetDrop?.hero_media_asset_id)}`);
   } finally {
     await prisma.$disconnect();
   }

@@ -15,7 +15,8 @@
     "editorial": "tsx bin/editorial.ts",
     "validate:editorial-platform": "tsx scripts/validate-editorial-platform-real-postgres.ts",
     "project:editorial": "tsx bin/project-editorial.ts",
-    "test:integration": "vitest run --root . --config ./vitest.integration.config.ts"
+    "test:integration": "vitest run --root . --config ./vitest.integration.config.ts",
+    "test:media:integration": "vitest run --root . --config ./vitest.integration.config.ts -t \"midia\""
   },
   "dependencies": {
     "@screena/config": "workspace:*",

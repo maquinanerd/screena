@@ -1583,6 +1583,10 @@ model Article {
   // do Payload nao. UNICO: dois artigos publicos nunca apontam para o mesmo
   // documento de origem.
   payloadDocumentId   String?       @unique @map("payload_document_id")
+  /// Asset de capa GOVERNADO (projetado do CMS). `heroImagePath` continua sendo
+  /// o caminho lido pelo render; este vinculo preserva credito, licenca e
+  /// dimensoes, que um caminho de string sozinho perderia.
+  heroMediaAssetId    BigInt?       @map("hero_media_asset_id")
   // Maior sequencia de EMISSAO ja projetada para este artigo (o id serial da
   // linha na outbox do CMS, que e a ordem real em que os eventos nasceram).
   // E a trava contra evento FORA DE ORDEM: um retry antigo chegando depois de
@@ -1598,6 +1602,7 @@ model Article {
   entityLinks          EntityNewsLink[]
   sourceLinks          ArticleSourceLink[]
   projectionReceipts   EditorialProjectionReceipt[]
+  heroMediaAsset       EditorialMediaAsset?         @relation("ArticleHeroMedia", fields: [heroMediaAssetId], references: [id], onDelete: SetNull)
   searchDocuments      SearchDocument[]
   indexabilityDecision PageIndexabilityDecision[]
 
@@ -1606,6 +1611,7 @@ model Article {
   @@index([publishedAt])
   @@index([licenseStatus])
   @@index([category])
+  @@index([heroMediaAssetId])
   @@map("articles")
 }
 
@@ -2644,4 +2650,63 @@ model EditorialProjectionReceipt {
   @@index([projectedAt])
   @@index([articleId])
   @@map("editorial_projection_receipts")
+}
+
+/// Estado de licenca de um asset editorial, espelhando o enum do CMS.
+enum EditorialMediaLicenseStatus {
+  unknown
+  pending
+  approved
+  restricted
+  expired
+  prohibited
+}
+
+/// Asset de midia editorial JA PROJETADO para o armazenamento publico.
+///
+/// Nasce de um documento `media` aprovado no Payload, cujos BYTES foram pedidos
+/// ao endpoint interno, verificados (assinatura, MIME real, dimensoes, hash) e
+/// gravados por chave derivada do CONTEUDO. Nunca de uma URL arbitraria.
+///
+/// A deduplicacao e por `contentHash`: a mesma foto usada em dez materias ocupa
+/// um arquivo so. `payloadMediaId` e unico porque um documento do CMS tem um
+/// asset publico corrente — trocar o arquivo no CMS atualiza esta linha.
+model EditorialMediaAsset {
+  id             BigInt @id @default(autoincrement())
+  /// Documento de origem no CMS. Ancora estavel entre reprojecoes.
+  payloadMediaId String @unique @map("payload_media_id")
+  /// sha256 dos bytes efetivamente gravados (formato `sha256:<hex>`).
+  contentHash    String @map("content_hash")
+  /// Chave no storage (`editorial/<xx>/<sha256>.<ext>`). Determinista.
+  storageKey     String @unique @map("storage_key")
+  /// Caminho publico servido pelo screen-app. NUNCA URL http(s).
+  publicPath     String @unique @map("public_path")
+  mimeType       String @map("mime_type")
+  width          Int?
+  height         Int?
+  byteSize       Int    @map("byte_size")
+
+  alt          String
+  caption      String?
+  credit       String?
+  sourceName   String? @map("source_name")
+  sourceUrl    String? @map("source_url")
+  rightsHolder String? @map("rights_holder")
+
+  licenseStatus       EditorialMediaLicenseStatus @default(unknown) @map("license_status")
+  licenseReference    String?                     @map("license_reference")
+  licenseExpiresAt    DateTime?                   @map("license_expires_at")
+  requiresAttribution Boolean                     @default(true) @map("requires_attribution")
+  allowedForEditorial Boolean                     @default(false) @map("allowed_for_editorial")
+  allowedForHero      Boolean                     @default(false) @map("allowed_for_hero")
+  allowedForSocial    Boolean                     @default(false) @map("allowed_for_social")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  heroOfArticles Article[] @relation("ArticleHeroMedia")
+
+  @@index([contentHash])
+  @@index([licenseStatus])
+  @@map("editorial_media_assets")
 }

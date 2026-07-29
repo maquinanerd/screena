@@ -136,7 +136,7 @@ describe('decisao de projecao', () => {
   it('LICENCA: midia sem credito bloqueia a projecao (invariante 6)', () => {
     const decision = decideProjection({
       ...base,
-      event: event({ media: [{ role: 'hero', requiresAttribution: true, credit: null }] }),
+      event: event({ media: [{ mediaId: 'm1', role: 'hero', requiresAttribution: true, credit: null }] }),
     })
     expect(decision.outcome).toBe('skipped_unlicensed')
     expect(decision.translation).toBeNull()
@@ -204,14 +204,46 @@ describe('decisao de projecao', () => {
     expect(comVersao.translation?.bodyBlocksVersion).toBe('sha256:abc')
   })
 
-  it('midia nao e projetada nesta fase, e isso e AVISADO', () => {
-    // Silenciar seria pior: a redacao acharia que a foto foi publicada.
+  it('capa pedida e NAO resolvida e avisada, nunca silenciosa', () => {
+    // Uma materia que sai sem a foto que o editor escolheu, sem ninguem ser
+    // avisado, e o defeito que a FASE 2D existe para fechar.
     const decision = decideProjection({
       ...base,
-      event: event({ media: [{ role: 'hero', requiresAttribution: false, credit: 'Divulgacao' }] }),
+      event: event({
+        media: [{ mediaId: 'm1', role: 'hero', requiresAttribution: false, credit: 'Divulgacao' }],
+      }),
     })
     expect(decision.outcome).toBe('applied')
-    expect(decision.warnings.join(' ')).toContain('midia')
+    expect(decision.article?.heroImagePath).toBeNull()
+    expect(decision.warnings.join(' ')).toContain('capa m1 nao foi projetada')
+  })
+
+  it('capa RESOLVIDA vira caminho publico local, nunca URL', () => {
+    const decision = decideProjection({
+      ...base,
+      event: event({
+        media: [{ mediaId: 'm1', role: 'hero', requiresAttribution: false, credit: 'Divulgacao' }],
+      }),
+      media: new Map([
+        [
+          'm1',
+          {
+            mediaId: 'm1',
+            publicPath: '/media/editorial/ab/' + 'a'.repeat(64) + '.jpg',
+            contentHash: 'sha256:' + 'a'.repeat(64),
+            mimeType: 'image/jpeg',
+            width: 1200,
+            height: 630,
+            alt: 'capa',
+            caption: null,
+            credit: 'Divulgacao',
+          },
+        ],
+      ]),
+    })
+    expect(decision.article?.heroImagePath).toBe('/media/editorial/ab/' + 'a'.repeat(64) + '.jpg')
+    expect(decision.article?.heroImagePath).not.toMatch(/^https?:/)
+    expect(decision.article?.heroMediaId).toBe('m1')
   })
 
   it('fonte externa declarada exige atribuicao e linkback', () => {

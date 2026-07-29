@@ -26,6 +26,17 @@ import {
   type ProjectionWorkerConfig,
 } from '../src/projection-worker-config.js'
 import { applyProjectionEvent } from '../src/persistence/editorial-projection-store.js'
+import { planEventMedia } from '../src/media/media-plan.js'
+import {
+  MediaPipelineError,
+  projectEventMedia,
+  type ProjectedMediaAsset,
+} from '../src/media/media-pipeline.js'
+import { createLocalMediaStorage } from '../src/media/local-storage.js'
+import { createS3MediaStorage } from '../src/media/s3-storage.js'
+import { resolveMediaStorageConfig } from '../src/media/storage-config.js'
+import { DEFAULT_MEDIA_LIMITS } from '../src/media/media-validation.js'
+import type { MediaStoragePort } from '../src/media/storage-port.js'
 
 interface ClaimedEvent {
   readonly eventId: string
@@ -92,6 +103,7 @@ async function claim(config: ProjectionWorkerConfig): Promise<ClaimedEvent[]> {
 async function processEvent(
   prisma: PrismaClient,
   config: ProjectionWorkerConfig,
+  storage: MediaStoragePort,
   claimed: ClaimedEvent,
   dryRun: boolean,
 ): Promise<void> {
@@ -107,8 +119,46 @@ async function processEvent(
     )
   }
 
+  // MIDIA ANTES DA TRANSACAO. Baixar e gravar arquivo com uma transacao aberta
+  // seguraria conexao e travas de linha pelo tempo da rede.
+  const plan = planEventMedia(mapping.event)
+  for (const blockId of plan.malformedBlockIds) {
+    console.warn(`[projecao] aviso ${claimed.eventId}: bloco de imagem ${blockId} sem mediaRef`)
+  }
+
+  let media = new Map<string, ProjectedMediaAsset>()
+  if (plan.requests.length > 0 && !dryRun) {
+    try {
+      const projected = await projectEventMedia(
+        {
+          fetch: {
+            baseUrl: config.payloadInternalServiceUrl,
+            authorization: projectionAuthHeader(config),
+            requestTimeoutMs: config.requestTimeoutMs,
+            maxBytes: DEFAULT_MEDIA_LIMITS.maxBytes,
+          },
+          storage,
+        },
+        plan.requests,
+      )
+      media = projected.assets
+      for (const warning of projected.warnings) {
+        console.warn(`[projecao] aviso ${claimed.eventId}: ${warning}`)
+      }
+    } catch (error) {
+      if (error instanceof MediaPipelineError) {
+        // A causa decide o destino: licenca/MIME/hash sao permanentes; rede e
+        // storage sao transitorios. Nunca projetamos a materia PARCIALMENTE
+        // sem a capa que o editor escolheu.
+        throw new SafeError(error.code, `midia ${error.mediaId}: ${error.message}`, error.retryable)
+      }
+      throw error
+    }
+  }
+
   const result = await applyProjectionEvent(prisma, {
     event: mapping.event,
+    media,
     // O hash vem do CMS (`aggregateVersion` da outbox), nao e recalculado aqui:
     // duas implementacoes do mesmo hash divergiriam no primeiro campo novo.
     contentVersion: claimed.contentVersion,
@@ -137,6 +187,7 @@ async function processEvent(
 async function runCycle(
   prisma: PrismaClient,
   config: ProjectionWorkerConfig,
+  storage: MediaStoragePort,
   dryRun: boolean,
 ): Promise<number> {
   const events = await claim(config)
@@ -144,7 +195,7 @@ async function runCycle(
 
   for (const claimed of events) {
     try {
-      await processEvent(prisma, config, claimed, dryRun)
+      await processEvent(prisma, config, storage, claimed, dryRun)
     } catch (error) {
       const safe = error instanceof SafeError
       const code = safe ? error.code : 'projection_failed'
@@ -196,6 +247,19 @@ async function main(): Promise<void> {
   }
   const config = resolved.config
 
+  const storageResolved = resolveMediaStorageConfig(process.env)
+  if (!storageResolved.ok) {
+    // Sem storage valido nao ha projecao de midia — e em producao NAO ha
+    // fallback para disco: efemero significa publicar hoje e perder a imagem no
+    // proximo deploy, com o banco ainda apontando para ela.
+    console.error(`[projecao] storage invalido: ${storageResolved.errors.join('; ')}`)
+    process.exit(2)
+  }
+  const storage: MediaStoragePort =
+    storageResolved.config.driver === 'local'
+      ? createLocalMediaStorage(storageResolved.config)
+      : createS3MediaStorage(storageResolved.config)
+
   const prisma = new PrismaClient({ datasourceUrl: config.screenDatabaseUrl })
   let stopping = false
   const stop = (): void => {
@@ -211,12 +275,12 @@ async function main(): Promise<void> {
 
   try {
     if (!loop) {
-      const processed = await runCycle(prisma, config, dryRun)
+      const processed = await runCycle(prisma, config, storage, dryRun)
       console.log(`[projecao] ciclo unico concluido: ${String(processed)} evento(s)`)
       return
     }
     while (!stopping) {
-      const processed = await runCycle(prisma, config, dryRun)
+      const processed = await runCycle(prisma, config, storage, dryRun)
       if (stopping) break
       // Fila vazia espera o intervalo cheio; fila com trabalho volta na hora,
       // para nao arrastar um acumulo em passos de 15s.

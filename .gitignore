@@ -67,5 +67,11 @@ ruvector.db
 .claude/proven-config.json
 
 # Uploads locais do CMS (desenvolvimento/teste). Nunca versionados.
+#
+# Os padroes sao ANCORADOS de proposito. Um `media/` solto casa em QUALQUER
+# profundidade e engoliria codigo-fonte: `services/news-ingestion/src/media/`
+# (o pipeline de projecao de midia) sairia inteiro de um commit sem nenhum
+# aviso — foi exatamente o que quase aconteceu na FASE 2D.
 apps/cms/media/
-media/
+/media/
+services/*/media/

@@ -18,9 +18,21 @@ Payload (banco proprio)                 screen-db (banco publico)
                                                             page_indexability_decisions
 ```
 
-E o **unico** processo que enxerga os dois bancos. O `apps/web` nunca fala com o
-Payload, e o Payload nunca escreve no `screen-db` — se um dia isso acontecer, o
-isolamento do ADR 0015 deixou de existir.
+E o **unico** processo que fala com os dois lados, e a ponte e **ASSIMETRICA**:
+
+| Lado | Como o worker acessa | Como NAO acessa |
+| --- | --- | --- |
+| CMS (Payload) | API interna HTTP autenticada por API key | conexao Postgres, Drizzle, tabelas ou migrations do Payload |
+| Banco publico (screen-db) | Prisma sobre `SCREEN_DATABASE_URL` | — |
+
+Dizer "o worker acessa os dois bancos" descreveria outra arquitetura, pior: a
+outbox deixaria de ser fronteira e viraria tabela compartilhada, e toda mudanca
+de schema interno do CMS quebraria o pipeline publico. A proibicao e travada por
+`tests/governance/editorial-worker-boundary.test.ts`, que percorre o fecho
+TRANSITIVO de imports do worker — nao basta um modulo intermediario para
+escapar.
+
+O `apps/web` nunca fala com o Payload, e o Payload nunca escreve no `screen-db`.
 
 Invariantes 3 e 4 continuam intactas: nenhuma pagina publica depende deste
 worker estar de pe. Se ele parar, o site segue servindo o que ja foi projetado;

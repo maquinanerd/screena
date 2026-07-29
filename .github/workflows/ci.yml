@@ -101,6 +101,19 @@ jobs:
       - name: Integracao da projecao editorial (dois PostgreSQL 16 efemeros)
         run: pnpm test:publication-projection:integration
 
+      # Gate DEDICADO da midia editorial: mesmo cenario (CMS real, dois
+      # PostgreSQL 16 efemeros, storage local temporario), filtrado aos casos de
+      # midia. E um recorte do gate acima, nao uma segunda infraestrutura —
+      # subir outro CMS e outros dois bancos custaria ~5 minutos de CI para
+      # exercitar exatamente o mesmo caminho.
+      #
+      # Prova: bytes reais atravessam o endpoint interno, sao validados por
+      # assinatura, gravados em disco por chave derivada do conteudo e lidos de
+      # volta; licenca, finalidade e atribuicao barram o que deve barrar; e
+      # nenhuma URL http chega ao banco publico.
+      - name: Integracao da midia editorial (storage local + dois PG16)
+        run: pnpm test:editorial-media-projection:integration
+
       - name: Lint
         run: pnpm lint
 

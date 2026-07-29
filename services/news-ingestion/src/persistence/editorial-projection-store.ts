@@ -22,6 +22,7 @@ import {
   type PublicArticleState,
 } from '../editorial-projection.js'
 import { reprojectArticle } from './editorial-store.js'
+import type { ProjectedMediaAsset } from '../media/media-pipeline.js'
 
 export interface ProjectionApplication {
   readonly outcome: ProjectionOutcome
@@ -93,6 +94,14 @@ export async function applyProjectionEvent(
     readonly contentVersion: string | null
     readonly workerId: string
     readonly dryRun?: boolean
+    /**
+     * Midias JA baixadas, verificadas e gravadas no storage.
+     *
+     * Chegam prontas porque download e upload NAO podem acontecer dentro da
+     * transacao: segurar uma conexao e travas de linha pelo tempo de uma rede
+     * lenta transforma latencia de CDN em contencao no banco publico.
+     */
+    readonly media?: ReadonlyMap<string, ProjectedMediaAsset>
   },
 ): Promise<ProjectionApplication> {
   const { event } = input
@@ -105,6 +114,7 @@ export async function applyProjectionEvent(
     existingReceipt: existingReceipt === null ? null : { outcome: existingReceipt.outcome },
     existing,
     contentVersion: input.contentVersion,
+    ...(input.media === undefined ? {} : { media: input.media }),
   })
 
   if (input.dryRun === true) {
@@ -145,6 +155,47 @@ export async function applyProjectionEvent(
 
     if (decision.article !== null) {
       const write = decision.article
+
+      // Os assets sao gravados ANTES do artigo: o artigo referencia a capa por
+      // FK, e uma FK apontando para linha inexistente aborta a transacao
+      // inteira (levando junto o recibo, e transformando um evento projetavel
+      // em falha permanente sem motivo real).
+      let heroAssetId: bigint | null = null
+      for (const asset of (input.media ?? new Map<string, ProjectedMediaAsset>()).values()) {
+        const assetData = {
+          contentHash: asset.contentHash,
+          storageKey: asset.storageKey,
+          publicPath: asset.publicPath,
+          mimeType: asset.mimeType,
+          width: asset.width,
+          height: asset.height,
+          byteSize: asset.byteSize,
+          alt: asset.alt,
+          caption: asset.caption,
+          credit: asset.credit,
+          sourceName: asset.sourceName,
+          sourceUrl: asset.sourceUrl,
+          rightsHolder: asset.rightsHolder,
+          licenseStatus: asset.licenseStatus as never,
+          licenseReference: asset.licenseReference,
+          licenseExpiresAt:
+            asset.licenseExpiresAtIso === null ? null : new Date(asset.licenseExpiresAtIso),
+          requiresAttribution: asset.requiresAttribution,
+          allowedForEditorial: asset.allowedForEditorial,
+          allowedForHero: asset.allowedForHero,
+          allowedForSocial: asset.allowedForSocial,
+        }
+        // Upsert pelo documento de ORIGEM: trocar o arquivo no CMS atualiza esta
+        // linha em vez de criar uma segunda verdade para a mesma midia.
+        const stored = await tx.editorialMediaAsset.upsert({
+          where: { payloadMediaId: asset.mediaId },
+          create: { payloadMediaId: asset.mediaId, ...assetData },
+          update: assetData,
+          select: { id: true },
+        })
+        if (asset.mediaId === write.heroMediaId) heroAssetId = stored.id
+      }
+
       const data = {
         category: write.category,
         authorName: write.authorName,
@@ -157,6 +208,10 @@ export async function applyProjectionEvent(
         requiresAttribution: write.requiresAttribution,
         requiresLinkback: write.requiresLinkback,
         projectedSequence: write.projectedSequence,
+        // Capa: caminho publico LOCAL (o render recusa URL http(s)) mais o
+        // vinculo com o asset, que preserva credito, licenca e dimensoes.
+        heroImagePath: write.heroImagePath,
+        heroMediaAssetId: heroAssetId,
       }
       // Upsert pela ANCORA do CMS, nao pelo slug: slug muda em edicao, o
       // documento de origem nao. Sem isto, renomear o titulo criaria um

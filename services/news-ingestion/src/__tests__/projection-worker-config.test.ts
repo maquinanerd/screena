@@ -1,9 +1,11 @@
 /**
  * projection-worker-config.test.ts — Fronteira de configuracao do worker.
  *
- * O worker de projecao e o unico processo que enxerga os dois bancos. Estes
- * testes travam as duas coisas que nao podem falhar: ele nunca aponta os dois
- * lados para o mesmo banco, e nenhuma mensagem de erro carrega valor.
+ * O worker acessa a API do Payload e o banco publico do Screen-App — nunca o
+ * banco do CMS (isso e provado em `tests/governance/editorial-worker-boundary`).
+ * Estes testes travam as duas coisas que nao podem falhar na CONFIGURACAO: ele
+ * nunca aponta os dois lados para o mesmo banco, e nenhuma mensagem de erro
+ * carrega valor.
  */
 
 import { describe, expect, it } from 'vitest'

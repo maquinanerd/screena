@@ -80,12 +80,31 @@ async function countActiveAuthors(req: PayloadRequest, authorIds: string[]): Pro
  * Fail-closed: so conta como autorizado `licenseStatus === 'approved'` E
  * `allowedForEditorial === true`. Hero exige ainda `allowedForHero`.
  */
+/**
+ * Ids de midia referenciados DENTRO dos blocos de imagem do corpo.
+ *
+ * Sem isto, o gate de publicacao cobria capa e galeria mas deixava passar uma
+ * materia cujo CORPO aponta para midia proibida: ela publicava no CMS e depois
+ * morria no worker de projecao, deixando a redacao com um artigo "publicado"
+ * que nunca aparece no site. Melhor recusar na hora, onde ha um humano olhando.
+ */
+function bodyMediaIds(body: unknown): string[] {
+  if (!Array.isArray(body)) return []
+  return body.flatMap((raw) => {
+    if (raw === null || typeof raw !== 'object') return []
+    const block = raw as Record<string, unknown>
+    if (String(block.blockType ?? block.type ?? '') !== 'image') return []
+    return idsOf(block.media)
+  })
+}
+
 async function countUnauthorizedMedia(
   req: PayloadRequest,
   heroId: string | null,
   galleryIds: string[],
+  bodyIds: string[] = [],
 ): Promise<number> {
-  const allIds = [...new Set([...(heroId === null ? [] : [heroId]), ...galleryIds])]
+  const allIds = [...new Set([...(heroId === null ? [] : [heroId]), ...galleryIds, ...bodyIds])]
   if (allIds.length === 0) return 0
 
   const found = await req.payload.find({
@@ -209,6 +228,7 @@ export const enforceEditorialGovernance: CollectionBeforeChangeHook = async ({
         req,
         heroIds[0] ?? null,
         idsOf(next.gallery),
+        bodyMediaIds(next.body),
       ),
       legalHold: next.legalHold === true,
     })

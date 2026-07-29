@@ -2,9 +2,10 @@
  * projection-worker-config.ts — Fronteira de configuracao do worker de
  * projecao editorial. PURO (recebe o ambiente, nao le `process.env`).
  *
- * Este worker e o UNICO processo que fala com os dois bancos: le a outbox do
- * CMS por HTTP e escreve no banco publico por Prisma. Por isso a fronteira e
- * explicita e desconfiada:
+ * Este worker e o UNICO processo que fala com os dois lados, e a ponte e
+ * ASSIMETRICA: le a outbox do CMS pela API interna (HTTP) e escreve no banco
+ * publico por Prisma. Ele NAO abre conexao com o banco do CMS. Por isso a
+ * fronteira e explicita e desconfiada:
  *
  *  - o banco publico vem de `SCREEN_DATABASE_URL`, nunca de `PAYLOAD_DATABASE_URL`;
  *  - as duas URLs NAO podem ser a mesma (seria o CMS escrevendo no banco publico

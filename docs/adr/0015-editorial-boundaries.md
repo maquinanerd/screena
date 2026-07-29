@@ -294,12 +294,64 @@ fila de publicação e ao worker o direito de criar rascunho.
 na **mesma transação** da projeção. Não existe estado "publicado sem recibo" — seria exatamente o
 estado que faria um replay publicar duas vezes.
 
-**A assincronia continua real, e agora é observável.** O worker é o único processo que enxerga os
-dois bancos. Se ele parar, o site público não quebra: para de chegar conteúdo novo, não de servir o
-antigo. Detalhe operacional em
+**A assincronia continua real, e agora é observável.** O worker é o único processo que fala com os
+dois lados — e a ponte é **assimétrica**: ele acessa a **API do Payload** (HTTP autenticado) e o
+**banco público do Screen-App** (Prisma). Ele **não** abre conexão com o banco do CMS, e isso é
+travado por `tests/governance/editorial-worker-boundary.test.ts`, que percorre o fecho transitivo de
+imports do worker e recusa qualquer alcance a `payload`, `@payloadcms/*` ou `drizzle-orm`. Dizer "o
+worker acessa os dois bancos" descreveria uma arquitetura diferente — e pior: a outbox deixaria de
+ser fronteira e viraria tabela compartilhada. Se ele parar, o site público não quebra: para de chegar
+conteúdo novo, não de servir o antigo. Detalhe operacional em
 [`docs/operations/editorial-projection-worker.md`](../operations/editorial-projection-worker.md).
 
 **Omissão deliberada: mídia.** A projeção não traz imagem. `articles.hero_image_path` é lida por um
 normalizador que recusa URL http(s) por design; gravar a URL do CMS ali criaria dado morto. Trazer a
 imagem exige pipeline de download e derivada local, fora desta fase — e cada matéria com mídia gera
 aviso no log, para que a ausência não passe por sucesso.
+
+
+---
+
+## 9. Adendo (FASE 2D) — mídia editorial governada
+
+A omissão declarada na FASE 2C foi fechada: a imagem de capa e as imagens do corpo agora chegam ao
+site público, e chegam **governadas**.
+
+**A fronteira do worker virou teste, não frase.** `tests/governance/editorial-worker-boundary.test.ts`
+percorre o fecho **transitivo** de imports do worker e recusa qualquer alcance a `payload`,
+`@payloadcms/*`, `drizzle-orm` ou `@screena/cms`. A guarda foi verificada nos dois sentidos: um import
+proibido inserido num módulo **intermediário** (não no arquivo de entrada) é detectado. A redação
+correta, agora sustentada por código: **o worker acessa a API do Payload e o banco público do
+Screen-App** — não "os dois bancos".
+
+**Os bytes vêm do CMS, nunca de uma URL.** `publication-event-v1` carrega `media[].url`, e ela é
+ignorada de propósito. O worker pede `GET /api/internal/publication-media/:id?purpose=...` com escopo
+`publication_projection`; o CMS — único que conhece a licença — decide se entrega. Seguir a URL do
+evento seria SSRF com a credencial do worker.
+
+**A chave do arquivo é derivada do conteúdo** (`editorial/<xx>/<sha256>.<ext>`). Isso torna o retry
+inofensivo, deduplica a mesma foto entre matérias e elimina colisão por nome — o nome do upload nunca
+entra na chave.
+
+**`public_path` é caminho de site, com CHECK no banco.** Gravar `https://...` em `hero_image_path`
+produziria matéria sem imagem em silêncio, porque `normalizeNewsLocalImagePath` recusa URL absoluta
+por design. Isso deixou de ser convenção e virou constraint.
+
+**Duas lacunas reais fechadas no caminho:**
+
+1. O gate de publicação do CMS contava mídia de capa e galeria, mas **não** a referenciada dentro dos
+   blocos do corpo. Uma matéria com imagem proibida no meio do texto publicava no CMS e morria no
+   worker — a redação via um artigo "publicado" que nunca aparecia no site.
+2. `upload.staticDir` era relativo (`'media'`), portanto resolvido contra o **cwd do processo**. Quem
+   gravasse pela Local API a partir de outro diretório depositava o arquivo num `media/` diferente do
+   que o servidor lê, e a imagem sumia com 404 sem erro nenhum. Passou a ser caminho absoluto
+   ancorado em `apps/cms`.
+
+**Storage sem fallback silencioso.** Em `production`, driver ausente ou configuração incompleta faz o
+worker recusar subir; `local` é proibido lá. Disco efêmero significaria publicar hoje e perder a
+imagem no próximo deploy, com o banco ainda apontando para ela. Adapter S3-compatible implementado
+(SigV4 à mão, sem SDK) e testado com `fetch` injetado — **nenhum bucket, conta ou credencial real foi
+criado**.
+
+Detalhe operacional em
+[`docs/operations/editorial-media-projection.md`](../operations/editorial-media-projection.md).

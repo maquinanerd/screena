@@ -102,6 +102,7 @@ export function mapPublicationEvent(raw: unknown, emissionSequence: number): Eve
             },
       provenance: { primarySourceName: source.name, primarySourceUrl: source.url },
       media: event.media.map((item) => ({
+        mediaId: item.mediaId,
         role: item.role,
         requiresAttribution: item.requiresAttribution,
         credit: textOrNull(item.credit),

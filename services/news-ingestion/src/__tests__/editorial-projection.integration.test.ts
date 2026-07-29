@@ -13,7 +13,10 @@
  * sobre ela.
  */
 
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { Payload } from 'payload'
@@ -23,6 +26,10 @@ import { startCmsHarness, type CmsHarness } from '@cms-harness'
 import { mapPublicationEvent } from '../editorial-event-mapper.js'
 import { applyProjectionEvent } from '../persistence/editorial-projection-store.js'
 import { startScreenDbHarness, type ScreenDbHarness } from './screen-db-harness.js'
+import { createLocalMediaStorage } from '../media/local-storage.js'
+import { planEventMedia } from '../media/media-plan.js'
+import { projectEventMedia, MediaPipelineError } from '../media/media-pipeline.js'
+import type { MediaStoragePort } from '../media/storage-port.js'
 
 let cms: CmsHarness
 let screen: ScreenDbHarness
@@ -34,6 +41,51 @@ let projectionKey = ''
 let ingestKey = ''
 
 const WORKER = 'worker-integracao'
+
+let storageRoot = ''
+let storage: MediaStoragePort
+const mediaIdsByLabel: Record<string, number> = {}
+
+/** Id de uma midia semeada. Lanca se o rotulo nao existir: um `undefined` aqui
+ * viraria um teste que passa sem exercitar nada. */
+function mediaId(label: string): number {
+  const found = mediaIdsByLabel[label]
+  if (found === undefined) throw new Error(`fixture de midia ausente: ${label}`)
+  return found
+}
+
+/* ------------------------------------------------------------------ */
+/* Bytes de imagem REAIS (cabecalho valido, nao nome de arquivo)       */
+/* ------------------------------------------------------------------ */
+
+function jpegBytes(width: number, height: number, salt = 0): Buffer {
+  const bytes = [0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]
+  // `JFIF` + terminador. O zero vai por codigo, NUNCA como byte cru no fonte:
+  // um 0x00 literal aqui e invisivel em diff e ja quebrou arquivo neste repo.
+  bytes.push(...Array.from('JFIF', (char) => char.charCodeAt(0)), 0)
+  bytes.push(0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00)
+  bytes.push(0xff, 0xc0, 0x00, 0x11, 0x08)
+  bytes.push((height >> 8) & 0xff, height & 0xff, (width >> 8) & 0xff, width & 0xff)
+  bytes.push(0x03, 0x01, 0x22, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01)
+  // `salt` muda os bytes sem mudar o formato: serve para produzir imagens
+  // DIFERENTES (hash distinto) mantendo o cabecalho valido.
+  bytes.push(0xff, 0xfe, 0x00, 0x05, salt & 0xff, (salt >> 8) & 0xff, 0x00)
+  bytes.push(0xff, 0xd9)
+  return Buffer.from(bytes)
+}
+
+function pngBytes(width: number, height: number): Buffer {
+  const bytes = Buffer.alloc(64)
+  bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0)
+  bytes.set([0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52], 8)
+  bytes.writeUInt32BE(width, 16)
+  bytes.writeUInt32BE(height, 20)
+  return bytes
+}
+
+function sha256(bytes: Buffer): string {
+  return `sha256:${createHash('sha256').update(bytes).digest('hex')}`
+}
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                             */
@@ -82,7 +134,7 @@ async function userDoc(id: number) {
 }
 
 /** Artigo publicavel, levado ate `ready_to_publish` pelo fluxo real. */
-async function seedArticle(suffix: string) {
+async function seedArticle(suffix: string, extra: Record<string, unknown> = {}) {
   const created = await payload.create({
     collection: 'articles',
     data: {
@@ -104,6 +156,7 @@ async function seedArticle(suffix: string) {
       externalSources: [
         { sourceId: 's1', name: 'Variety', url: 'https://variety.com/x', role: 'primary' },
       ],
+      ...extra,
     } as never,
     overrideAccess: true,
     user: await userDoc(ids.chief),
@@ -120,6 +173,22 @@ async function seedArticle(suffix: string) {
     })
   }
   return id
+}
+
+/** Tenta publicar e devolve o motivo da recusa, se houver. */
+async function tryMoveTo(id: string, status: string): Promise<string | null> {
+  try {
+    await payload.update({
+      collection: 'articles',
+      id,
+      data: { workflowStatus: status } as never,
+      overrideAccess: false,
+      user: await userDoc(ids.chief),
+    })
+    return null
+  } catch (error) {
+    return error instanceof Error ? error.message : 'erro desconhecido'
+  }
 }
 
 async function moveTo(id: string, status: string, extra: Record<string, unknown> = {}) {
@@ -140,10 +209,30 @@ async function drain() {
     const mapping = mapPublicationEvent(event.payload, event.emissionSequence)
     expect(mapping.ok, `evento ${event.eventId} deveria passar no contrato`).toBe(true)
     if (!mapping.ok) continue
+
+    // MESMA ORDEM DO WORKER REAL: midia antes da transacao.
+    const plan = planEventMedia(mapping.event)
+    const projected =
+      plan.requests.length === 0
+        ? { assets: new Map(), warnings: [] }
+        : await projectEventMedia(
+            {
+              fetch: {
+                baseUrl,
+                authorization: auth(projectionKey),
+                requestTimeoutMs: 20_000,
+                maxBytes: 15 * 1024 * 1024,
+              },
+              storage,
+            },
+            plan.requests,
+          )
+
     const result = await applyProjectionEvent(screen.prisma as never, {
       event: mapping.event,
       contentVersion: event.contentVersion,
       workerId: WORKER,
+      media: projected.assets as never,
     })
     outcomes.push(result.outcome)
     await callOutbox('ack', {
@@ -215,10 +304,73 @@ beforeAll(async () => {
   }
   projectionKey = await makeAccount('projetor', ['publication_projection'])
   ingestKey = await makeAccount('mnscr', ['draft_ingest'])
+
+  // Storage LOCAL temporario. Arquivo real em disco real — o teste confere o
+  // filesystem, nao um dublê em memoria.
+  storageRoot = mkdtempSync(path.join(tmpdir(), 'cinerie-media-it-'))
+  storage = createLocalMediaStorage({
+    driver: 'local',
+    root: storageRoot,
+    publicBasePath: '/media',
+  })
+
+  const makeMedia = async (
+    label: string,
+    data: Buffer,
+    mimetype: string,
+    fields: Record<string, unknown>,
+  ) => {
+    const created = await payload.create({
+      collection: 'media',
+      data: {
+        alt: `alt ${label}`,
+        caption: `legenda ${label}`,
+        credit: 'Divulgacao',
+        licenseStatus: 'approved',
+        requiresAttribution: false,
+        allowedForEditorial: true,
+        allowedForHero: true,
+        allowedForSocial: false,
+        provenanceType: 'cinerie_editorial',
+        ...fields,
+      } as never,
+      overrideAccess: true,
+      file: {
+        data,
+        mimetype,
+        name: `${label}-${randomUUID()}.${mimetype === 'image/png' ? 'png' : 'jpg'}`,
+        size: data.byteLength,
+      },
+    })
+    mediaIdsByLabel[label] = Number(created.id)
+  }
+
+  await makeMedia('hero-jpeg', jpegBytes(1200, 630, 1), 'image/jpeg', {})
+  await makeMedia('hero-png', pngBytes(1200, 630), 'image/png', {})
+  await makeMedia('corpo', jpegBytes(800, 600, 2), 'image/jpeg', {})
+  await makeMedia('licenca-unknown', jpegBytes(400, 300, 3), 'image/jpeg', {
+    licenseStatus: 'unknown',
+  })
+  await makeMedia('licenca-pending', jpegBytes(400, 300, 4), 'image/jpeg', {
+    licenseStatus: 'pending',
+  })
+  await makeMedia('licenca-prohibited', jpegBytes(400, 300, 5), 'image/jpeg', {
+    licenseStatus: 'prohibited',
+  })
+  await makeMedia('licenca-vencida', jpegBytes(400, 300, 6), 'image/jpeg', {
+    licenseExpiresAt: '2020-01-01T00:00:00.000Z',
+  })
+  await makeMedia('sem-hero', jpegBytes(400, 300, 7), 'image/jpeg', { allowedForHero: false })
+  await makeMedia('sem-credito', jpegBytes(400, 300, 8), 'image/jpeg', {
+    requiresAttribution: true,
+    credit: '',
+  })
 }, 900_000)
 
 afterAll(async () => {
   await Promise.allSettled([cms?.stop(), screen?.stop()])
+  // Teardown nao deixa arquivo para tras.
+  if (storageRoot !== '') rmSync(storageRoot, { recursive: true, force: true })
 }, 300_000)
 
 /* ------------------------------------------------------------------ */
@@ -560,5 +712,289 @@ describe('retratacao projetada', () => {
       where: { docKind: 'article', articleId: retratada?.id },
     })
     expect(docs).toHaveLength(0)
+  })
+})
+
+/* ------------------------------------------------------------------ */
+/* 7. MIDIA EDITORIAL GOVERNADA (FASE 2D)                              */
+/* ------------------------------------------------------------------ */
+
+const FETCH_DEPS = () => ({
+  fetch: {
+    baseUrl,
+    authorization: auth(projectionKey),
+    requestTimeoutMs: 20_000,
+    maxBytes: 15 * 1024 * 1024,
+  },
+  storage,
+})
+
+/** Busca UM asset pelo endpoint interno, como o worker faria. */
+async function fetchAsset(mediaId: number, purpose: 'hero' | 'editorial' | 'social' = 'hero') {
+  return projectEventMedia(FETCH_DEPS(), [
+    { mediaId: String(mediaId), purpose, usage: 'hero' as const, required: true },
+  ])
+}
+
+async function mediaResponse(mediaId: string, purpose: string, key = projectionKey) {
+  return fetch(
+    `${baseUrl}/api/internal/publication-media/${encodeURIComponent(mediaId)}?purpose=${purpose}`,
+    { headers: { Authorization: auth(key) } },
+  )
+}
+
+describe('endpoint interno de midia: autorizacao', () => {
+  it('sem credencial nao entrega bytes', async () => {
+    const response = await fetch(
+      `${baseUrl}/api/internal/publication-media/${String(mediaId('hero-jpeg'))}?purpose=hero`,
+    )
+    expect(response.status).toBe(401)
+  })
+
+  it('chave de INGESTAO nao busca midia de publicacao', async () => {
+    const response = await mediaResponse(String(mediaId('hero-jpeg')), 'hero', ingestKey)
+    expect(response.status).toBe(403)
+  })
+
+  it('entrega midia aprovada com metadados VERIFICAVEIS em header', async () => {
+    const response = await mediaResponse(String(mediaId('hero-jpeg')), 'hero')
+    // O corpo entra na mensagem de falha: um 404 sem motivo obriga a instrumentar
+    // o endpoint a mao para descobrir se foi licenca, arquivo ou identidade.
+    const diagnostic = response.ok ? '' : await response.clone().text()
+    expect(response.status, diagnostic).toBe(200)
+    const bytes = Buffer.from(await response.arrayBuffer())
+    expect(bytes.byteLength).toBeGreaterThan(0)
+    // O hash prometido bate com os bytes recebidos: e o que permite ao worker
+    // detectar corpo alterado sem depender so do TLS.
+    expect(response.headers.get('x-cinerie-media-content-hash')).toBe(sha256(bytes))
+    expect(response.headers.get('content-type')).toBe('image/jpeg')
+    expect(decodeURIComponent(response.headers.get('x-cinerie-media-credit') ?? '')).toBe(
+      'Divulgacao',
+    )
+  })
+
+  it('licenca unknown, pending, prohibited e vencida sao recusadas', async () => {
+    for (const label of [
+      'licenca-unknown',
+      'licenca-pending',
+      'licenca-prohibited',
+      'licenca-vencida',
+    ]) {
+      const response = await mediaResponse(String(mediaId(label)), 'hero')
+      expect(response.status, label).toBe(403)
+      const body = (await response.json()) as { code?: string }
+      expect(['license_not_approved', 'license_expired'], label).toContain(body.code)
+    }
+  })
+
+  it('allowedForHero false recusa como HERO mas serve como editorial', async () => {
+    expect((await mediaResponse(String(mediaId('sem-hero')), 'hero')).status).toBe(403)
+    // Controle positivo: a mesma midia continua servindo no corpo.
+    expect((await mediaResponse(String(mediaId('sem-hero')), 'editorial')).status).toBe(200)
+  })
+
+  it('atribuicao obrigatoria sem credito e recusada (invariante 6)', async () => {
+    const response = await mediaResponse(String(mediaId('sem-credito')), 'hero')
+    expect(response.status).toBe(403)
+    expect(((await response.json()) as { code?: string }).code).toBe('attribution_missing')
+  })
+
+  it('mediaId inexistente ou malformado nao vaza erro de banco', async () => {
+    for (const bad of ['999999', 'nao-e-id', '../../etc/passwd']) {
+      const response = await mediaResponse(bad, 'hero')
+      expect([403, 404], bad).toContain(response.status)
+      const body = JSON.stringify(await response.json()).toLowerCase()
+      expect(body).not.toContain('prisma')
+      expect(body).not.toContain('postgres')
+      expect(body).not.toContain('select ')
+    }
+  })
+
+  it('finalidade desconhecida e recusada', async () => {
+    expect((await mediaResponse(String(mediaId('hero-jpeg')), 'qualquer')).status).toBe(400)
+  })
+})
+
+describe('projecao de midia: hero', () => {
+  it('hero JPEG aprovado vira arquivo real e caminho publico LOCAL', async () => {
+    const id = await seedArticle('capa-jpeg', { heroMedia: mediaId('hero-jpeg') })
+    await moveTo(id, 'published')
+    await drain()
+
+    const article = await publicArticle(id)
+    const heroPath = article?.heroImagePath ?? ''
+    expect(heroPath).toMatch(/^\/media\/editorial\/[0-9a-f]{2}\/[0-9a-f]{64}\.jpg$/)
+    // A REGRA DA FASE: nunca URL. O normalizador do apps/web recusa http(s).
+    expect(heroPath).not.toMatch(/^https?:/)
+
+    // O arquivo existe MESMO no storage, com os bytes certos.
+    const key = heroPath.replace('/media/', '')
+    expect(await storage.exists(key)).toBe(true)
+    const stored = await storage.read(key)
+    expect(stored).not.toBeNull()
+    const expectedHash = key.split('/').pop()?.split('.')[0] ?? ''
+    expect(sha256(Buffer.from(stored ?? []))).toBe(`sha256:${expectedHash}`)
+
+    // E o asset carrega a proveniencia que um caminho de string perderia.
+    const asset = await screen.prisma.editorialMediaAsset.findUnique({
+      where: { payloadMediaId: String(mediaId('hero-jpeg')) },
+    })
+    expect(asset?.mimeType).toBe('image/jpeg')
+    expect(asset?.width).toBe(1200)
+    expect(asset?.height).toBe(630)
+    expect(asset?.credit).toBe('Divulgacao')
+    expect(asset?.alt).toBe('alt hero-jpeg')
+    expect(String(asset?.licenseStatus)).toBe('approved')
+    expect(article?.heroMediaAssetId).toBe(asset?.id)
+  })
+
+  it('hero PNG aprovado tambem e projetado, com a extensao do MIME REAL', async () => {
+    const id = await seedArticle('capa-png', { heroMedia: mediaId('hero-png') })
+    await moveTo(id, 'published')
+    await drain()
+    const article = await publicArticle(id)
+    expect(article?.heroImagePath ?? '').toMatch(/\.png$/)
+  })
+
+  it('artigo SEM midia continua sendo publicado', async () => {
+    const id = await seedArticle('sem-capa')
+    await moveTo(id, 'published')
+    const { outcomes } = await drain()
+    expect(outcomes).toContain('applied')
+    const article = await publicArticle(id)
+    expect(article?.heroImagePath).toBeNull()
+    expect(article?.heroMediaAssetId).toBeNull()
+  })
+
+  it('capa com licenca proibida e recusada JA NO CMS — nao chega ao worker', async () => {
+    // Melhor recusar onde ha um humano olhando do que deixar publicar no CMS e
+    // morrer no worker, com a redacao vendo um artigo "publicado" que nunca
+    // aparece no site.
+    const id = await seedArticle('capa-proibida', { heroMedia: mediaId('licenca-prohibited') })
+    const failure = await tryMoveTo(id, 'published')
+    expect(failure ?? '').toContain('unauthorized_media')
+    expect(await publicArticle(id)).toBeNull()
+  })
+
+  it('capa sem permissao de HERO tambem e recusada na publicacao', async () => {
+    const id = await seedArticle('capa-sem-hero', { heroMedia: mediaId('sem-hero') })
+    const failure = await tryMoveTo(id, 'published')
+    expect(failure ?? '').toContain('unauthorized_media')
+  })
+
+  it('falha de licenca e PERMANENTE — nao gasta tentativa a toa', async () => {
+    await expect(fetchAsset(mediaId('licenca-vencida'))).rejects.toSatisfy(
+      (error: unknown) => error instanceof MediaPipelineError && error.retryable === false,
+    )
+  })
+})
+
+describe('projecao de midia: idempotencia', () => {
+  it('o MESMO asset em duas materias nao duplica arquivo nem linha', async () => {
+    const id = await seedArticle('capa-reuso', { heroMedia: mediaId('hero-jpeg') })
+    await moveTo(id, 'published')
+    await drain()
+    const rows = await screen.prisma.editorialMediaAsset.count({
+      where: { payloadMediaId: String(mediaId('hero-jpeg')) },
+    })
+    expect(rows).toBe(1)
+  })
+
+  it('reprojetar apos o storage ja ter o arquivo REAPROVEITA, nao regrava', async () => {
+    // Simula o retry depois de gravar o arquivo e antes do commit: a chave e
+    // derivada do conteudo, entao "ja existe" implica "identico".
+    const first = await fetchAsset(mediaId('corpo'), 'editorial')
+    const asset = first.assets.get(String(mediaId('corpo')))
+    expect(asset).toBeDefined()
+    const second = await fetchAsset(mediaId('corpo'), 'editorial')
+    const again = second.assets.get(String(mediaId('corpo')))
+    expect(again?.reused).toBe(true)
+    expect(again?.storageKey).toBe(asset?.storageKey)
+  })
+})
+
+describe('projecao de midia: blocos do corpo', () => {
+  it('bloco de imagem recebe caminho publico e perde o id interno do CMS', async () => {
+    const id = await seedArticle('corpo-com-imagem', {
+      body: [
+        {
+          blockType: 'paragraph',
+          blockId: 'p1',
+          text: 'Corpo editorial proprio da Cinerie antes da imagem.',
+        },
+        {
+          blockType: 'image',
+          blockId: 'img1',
+          media: mediaId('corpo'),
+          alt: 'alt do bloco',
+          caption: 'legenda do bloco',
+        },
+      ],
+    })
+    await moveTo(id, 'published')
+    await drain()
+
+    const article = await publicArticle(id)
+    const blocks = (article?.translations[0]?.bodyBlocks ?? []) as Record<string, unknown>[]
+    const image = blocks.find((block) => block.type === 'image')
+    expect(image).toBeDefined()
+    expect(String(image?.publicPath ?? '')).toMatch(/^\/media\/editorial\//)
+    // O id do CMS nao serve para nada no render e e vazamento de identificador.
+    expect(image?.mediaRef).toBeUndefined()
+    // Ordem, id e texto do bloco preservados.
+    expect(blocks.map((block) => block.id)).toEqual(['p1', 'img1'])
+    expect(image?.alt).toBe('alt do bloco')
+    expect(image?.caption).toBe('legenda do bloco')
+  })
+
+  it('bloco do CORPO com midia proibida e recusado na publicacao', async () => {
+    // Lacuna fechada nesta fase: o gate contava capa e galeria, mas nao a midia
+    // referenciada dentro dos blocos.
+    const id = await seedArticle('corpo-proibido', {
+      body: [
+        { blockType: 'paragraph', blockId: 'p1', text: 'Corpo editorial proprio para o teste.' },
+        { blockType: 'image', blockId: 'img1', media: mediaId('licenca-prohibited'), alt: 'proibida' },
+      ],
+    })
+    const failure = await tryMoveTo(id, 'published')
+    expect(failure ?? '').toContain('unauthorized_media')
+    expect(await publicArticle(id)).toBeNull()
+  })
+
+  it('pipeline recusa midia proibida mesmo se o gate for contornado', async () => {
+    // Defesa em profundidade: se um evento chegar por outro caminho (replay de
+    // fila antiga, fixture), a projecao ainda falha fechada.
+    await expect(
+      projectEventMedia(FETCH_DEPS(), [
+        {
+          mediaId: String(mediaId('licenca-prohibited')),
+          purpose: 'editorial' as const,
+          usage: { blockId: 'img1' },
+          required: true,
+        },
+      ]),
+    ).rejects.toBeInstanceOf(MediaPipelineError)
+  })
+})
+
+describe('nenhuma URL http chega ao banco publico', () => {
+  it('nem em hero_image_path, nem em public_path de asset', async () => {
+    const articles = await screen.prisma.article.findMany({
+      where: { heroImagePath: { not: null } },
+      select: { heroImagePath: true },
+    })
+    expect(articles.length).toBeGreaterThan(0)
+    for (const article of articles) {
+      expect(article.heroImagePath ?? '').toMatch(/^\//)
+      expect(article.heroImagePath ?? '').not.toMatch(/^https?:/)
+    }
+    const assets = await screen.prisma.editorialMediaAsset.findMany({
+      select: { publicPath: true, storageKey: true },
+    })
+    expect(assets.length).toBeGreaterThan(0)
+    for (const asset of assets) {
+      expect(asset.publicPath).not.toMatch(/^https?:/)
+      expect(asset.storageKey).not.toContain('..')
+    }
   })
 })
