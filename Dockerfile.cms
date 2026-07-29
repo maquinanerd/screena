@@ -1,0 +1,95 @@
+# Dockerfile.cms — servico `cinerie-cms` (Payload).
+#
+# Mesmo PADRAO do `Dockerfile` do screen-app: base pinada por digest, pnpm via
+# corepack, usuario nao-root, HEALTHCHECK com o fetch global do Node. Introduzir
+# multi-stage ou buildpack SO neste servico criaria dois padroes de deploy no
+# mesmo repositorio, e o segundo sempre envelhece.
+#
+# ISOLAMENTO (ADR 0015): esta imagem NAO recebe `DATABASE_URL`, nao roda Prisma e
+# nao conhece o `screen-db`. Ela fala com o proprio banco editorial
+# (`PAYLOAD_DATABASE_URL`) e com mais nada.
+ARG NODE_IMAGE=node:22-bookworm-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3
+FROM ${NODE_IMAGE}
+
+WORKDIR /app
+
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
+
+COPY . .
+
+# `NODE_ENV` so entra depois do build: com `production` o pnpm pula as
+# devDependencies, e tanto o `next build` quanto o CLI do Payload dependem delas.
+RUN PNPM_CONFIG_PROD=false pnpm install --frozen-lockfile
+
+# BUILD SEM BANCO E SEM SEGREDO REAL.
+#
+# `payload.config.ts` valida a configuracao no import, e o `next build` importa o
+# config para gerar o admin. Estes valores sao de BUILD e ficam so nesta camada
+# (`ARG`, nao `ENV`): nao persistem no runtime da imagem. O EasyPanel injeta os
+# valores reais como env do servico.
+#
+# O host `127.0.0.1:1` e deliberadamente inalcancavel: se alguma etapa do build
+# tentar de fato abrir conexao, ela falha aqui, em vez de silenciosamente tocar
+# um banco de verdade.
+# O driver de BUILD e `s3` com endpoint inalcancavel, e nao `local`. A razao e
+# semantica: `local` sob `NODE_ENV=production` exige
+# `PAYLOAD_UPLOAD_LOCAL_PERSISTENT_CONFIRMED=true`, e essa flag e uma DECLARACAO
+# do operador de que o caminho esta num volume duravel. Assar essa declaracao no
+# build seria mentir por conveniencia — e a mentira sobreviveria como exemplo
+# para quem copiasse este arquivo.
+#
+# `s3` apontando para `127.0.0.1:1` tem a forma completa que a validacao exige e
+# nao afirma nada sobre persistencia. Nenhuma conexao acontece no build; se
+# alguma etapa tentar, ela falha aqui em vez de tocar um storage de verdade.
+ARG PAYLOAD_SECRET=build-only-secret-nao-usar-em-runtime-0123456789
+ARG PAYLOAD_DATABASE_URL=postgresql://build:build@127.0.0.1:1/cinerie_cms_build
+RUN PAYLOAD_SECRET=${PAYLOAD_SECRET} \
+    PAYLOAD_DATABASE_URL=${PAYLOAD_DATABASE_URL} \
+    PAYLOAD_UPLOAD_STORAGE_DRIVER=s3 \
+    PAYLOAD_UPLOAD_S3_ENDPOINT=http://127.0.0.1:1 \
+    PAYLOAD_UPLOAD_S3_BUCKET=build-only \
+    PAYLOAD_UPLOAD_S3_ACCESS_KEY_ID=build-only \
+    PAYLOAD_UPLOAD_S3_SECRET_ACCESS_KEY=build-only \
+    pnpm --filter @screena/cms build
+
+ENV NODE_ENV=production
+ENV PORT=3002
+
+ARG CINERIE_BUILD_SHA=unknown
+ARG CINERIE_BUILD_VERSION=unknown
+ARG CINERIE_BUILD_TIME=unknown
+ENV CINERIE_BUILD_SHA=${CINERIE_BUILD_SHA} \
+    CINERIE_BUILD_VERSION=${CINERIE_BUILD_VERSION} \
+    CINERIE_BUILD_TIME=${CINERIE_BUILD_TIME}
+
+# Container NAO-root. O diretorio de uploads locais e criado aqui com dono
+# `node` para que um volume montado por cima herde permissao utilizavel.
+RUN mkdir -p /app/apps/cms/media && chown -R node:node /app
+USER node
+
+EXPOSE 3002
+
+# LIVENESS, nao readiness. `/healthz` nao toca banco: se o healthcheck do
+# container dependesse do PostgreSQL, uma queda do banco faria o orquestrador
+# REINICIAR em loop um container saudavel — e reiniciar nao devolve o banco.
+# Quem tira do balanceador e `/readyz`, configurado no orquestrador.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:3002/healthz').then(r=>process.exit(r.status===200?0:1)).catch(()=>process.exit(1))"
+
+# MIGRATION ANTES DO START, e o app NAO sobe se ela falhar.
+#
+# `payload migrate` aplica somente migrations pendentes de `src/migrations` —
+# nunca `migrate:create`, nunca `push`. Duas instancias subindo juntas nao
+# corrompem o estado: o adapter Postgres do Payload serializa a aplicacao por
+# transacao, e a perdedora encontra tudo aplicado.
+#
+# `exec` no start: o Next vira PID 1 e recebe SIGTERM direto do orquestrador, em
+# vez de ficar orfao sob o shell.
+CMD ["sh", "-c", "pnpm --filter @screena/cms cms:migrations:deploy || { echo '=== FATAL: migration do Payload falhou. O CMS NAO vai subir. ==='; echo '=== Runbook: docs/runbooks/EASYPANEL_EDITORIAL.md'; exit 1; }; exec pnpm --filter @screena/cms start"]

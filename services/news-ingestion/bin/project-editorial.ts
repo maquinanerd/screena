@@ -37,6 +37,15 @@ import { createS3MediaStorage } from '../src/media/s3-storage.js'
 import { resolveMediaStorageConfig } from '../src/media/storage-config.js'
 import { DEFAULT_MEDIA_LIMITS } from '../src/media/media-validation.js'
 import type { MediaStoragePort } from '../src/media/storage-port.js'
+import { startWorkerHealthServer } from '../src/worker-health-server.js'
+import { collectWorkerReadiness } from '../src/persistence/worker-readiness.js'
+import {
+  applyShutdownSignal,
+  hasLeaseBudget,
+  mayClaimMore,
+  INITIAL_SHUTDOWN,
+  type ShutdownState,
+} from '../src/worker-lifecycle.js'
 
 interface ClaimedEvent {
   readonly eventId: string
@@ -189,11 +198,32 @@ async function runCycle(
   config: ProjectionWorkerConfig,
   storage: MediaStoragePort,
   dryRun: boolean,
+  shutdown: () => ShutdownState,
 ): Promise<number> {
+  // Depois do SIGTERM nao se reclama NADA novo: eventos reclamados na janela de
+  // encerramento morreriam com lease aberta e ficariam presos ate ela expirar.
+  if (!mayClaimMore(shutdown())) return 0
+
   const events = await claim(config)
   if (events.length === 0) return 0
+  const claimedAtIso = new Date().toISOString()
 
   for (const claimed of events) {
+    // O lote inteiro ja foi reclamado — abandona-lo seria pior. Mas COMECAR um
+    // item sem tempo de lease sobrando e como convidar outro worker a projetar
+    // o mesmo evento em paralelo.
+    if (
+      !hasLeaseBudget({
+        claimedAtIso,
+        nowIso: new Date().toISOString(),
+        budget: { leaseMs: config.leaseMs, safetyMarginMs: 10_000 },
+      })
+    ) {
+      console.warn(
+        `[projecao] ${claimed.eventId}: lease sem folga; devolvido para o proximo ciclo`,
+      )
+      break
+    }
     try {
       await processEvent(prisma, config, storage, claimed, dryRun)
     } catch (error) {
@@ -261,13 +291,31 @@ async function main(): Promise<void> {
       : createS3MediaStorage(storageResolved.config)
 
   const prisma = new PrismaClient({ datasourceUrl: config.screenDatabaseUrl })
-  let stopping = false
+
+  let shutdown: ShutdownState = INITIAL_SHUTDOWN
   const stop = (): void => {
-    stopping = true
-    console.log('[projecao] encerrando apos o ciclo atual')
+    shutdown = applyShutdownSignal(shutdown, new Date().toISOString())
+    console.log('[projecao] sinal recebido: terminando o lote atual e parando de reclamar')
   }
   process.once('SIGINT', stop)
   process.once('SIGTERM', stop)
+
+  // Servidor de health SO no modo continuo: um `--once` de systemd timer vive
+  // segundos e nao tem o que expor.
+  const healthPort = Number.parseInt(process.env.PUBLICATION_WORKER_HEALTH_PORT ?? '', 10)
+  const health =
+    loop && Number.isFinite(healthPort) && healthPort > 0
+      ? await startWorkerHealthServer({
+          port: healthPort,
+          workerId: config.workerId,
+          // Liveness: vivo ate o processo comecar a encerrar.
+          isAlive: () => shutdown.phase !== 'stopped',
+          checkReadiness: () => collectWorkerReadiness({ prisma, storage }),
+        })
+      : null
+  if (health !== null) {
+    console.log(`[projecao] health em 0.0.0.0:${String(health.port)} (/healthz, /readyz)`)
+  }
 
   console.log(
     `[projecao] worker=${config.workerId} modo=${loop ? 'loop' : 'once'}${dryRun ? ' (dry-run)' : ''}`,
@@ -275,13 +323,13 @@ async function main(): Promise<void> {
 
   try {
     if (!loop) {
-      const processed = await runCycle(prisma, config, storage, dryRun)
+      const processed = await runCycle(prisma, config, storage, dryRun, () => shutdown)
       console.log(`[projecao] ciclo unico concluido: ${String(processed)} evento(s)`)
       return
     }
-    while (!stopping) {
-      const processed = await runCycle(prisma, config, storage, dryRun)
-      if (stopping) break
+    while (shutdown.phase === 'running') {
+      const processed = await runCycle(prisma, config, storage, dryRun, () => shutdown)
+      if (shutdown.phase !== 'running') break
       // Fila vazia espera o intervalo cheio; fila com trabalho volta na hora,
       // para nao arrastar um acumulo em passos de 15s.
       if (processed === 0) {
@@ -289,6 +337,8 @@ async function main(): Promise<void> {
       }
     }
   } finally {
+    shutdown = { phase: 'stopped', signalledAtIso: shutdown.signalledAtIso }
+    if (health !== null) await health.close()
     await prisma.$disconnect()
   }
 }

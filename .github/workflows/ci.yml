@@ -114,6 +114,20 @@ jobs:
       - name: Integracao da midia editorial (storage local + dois PG16)
         run: pnpm test:editorial-media-projection:integration
 
+      # PRONTIDAO DE IMPLANTACAO. Nao sobem banco nem container: provam a
+      # POLITICA que decide se um servico pode ser promovido — migration
+      # pendente bloqueia, schema publico atrasado bloqueia, storage sem
+      # persistencia declarada em producao e recusado, credencial e caminho
+      # nunca aparecem em mensagem de erro, e trocar o driver de storage nao
+      # muda os bytes entregues.
+      #
+      # Sao rapidos de proposito: rodam a cada push, antes dos gates caros.
+      - name: Prontidao de implantacao do CMS
+        run: pnpm test:cms:deployment-readiness
+
+      - name: Prontidao de implantacao do worker de projecao
+        run: pnpm test:publication-worker:deployment-readiness
+
       - name: Lint
         run: pnpm lint
 

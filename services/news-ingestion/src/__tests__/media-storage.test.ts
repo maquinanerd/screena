@@ -1,10 +1,14 @@
 /**
  * media-storage.test.ts — Chave determinista, adapters e configuracao.
  *
- * O adapter S3 e exercitado com `fetch` INJETADO: a suite nao abre socket, nao
- * precisa de bucket e nao depende de servico externo. O que se prova aqui e o
- * que sai do nosso lado — URL, verbo, headers, assinatura, idempotencia e
- * sanitizacao de erro.
+ * O adapter S3 e exercitado com um DUBLE do `S3Client`: a suite nao abre socket,
+ * nao precisa de bucket e nao depende de servico externo. O que se prova aqui e
+ * o que sai do NOSSO lado — comandos emitidos, bucket, chave, content-type,
+ * cache, metadados, idempotencia e sanitizacao de erro.
+ *
+ * A assinatura em si NAO e testada aqui de proposito: ela e responsabilidade do
+ * `@aws-sdk/client-s3` desde a FASE 2E. Testar assinatura contra a propria
+ * implementacao e o que tornava o signer manual arriscado.
  */
 
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -15,7 +19,6 @@ import { afterAll, describe, expect, it } from 'vitest'
 
 import { createLocalMediaStorage } from '../media/local-storage.js'
 import { createS3MediaStorage } from '../media/s3-storage.js'
-import { amzDateParts, encodeS3Path, signS3Request } from '../media/s3-signature.js'
 import { resolveMediaStorageConfig } from '../media/storage-config.js'
 import {
   editorialMediaKey,
@@ -126,59 +129,7 @@ describe('adapter local', () => {
 })
 
 /* ------------------------------------------------------------------ */
-/* Assinatura SigV4                                                    */
-/* ------------------------------------------------------------------ */
-
-describe('assinatura SigV4', () => {
-  const base = {
-    method: 'PUT',
-    endpoint: 'https://exemplo.r2.cloudflarestorage.com',
-    region: 'auto',
-    bucket: 'cinerie-media',
-    key: `editorial/aa/${HASH}.jpg`,
-    forcePathStyle: true,
-    accessKeyId: 'AKIA-TESTE',
-    secretAccessKey: 'segredo-de-teste-nao-real',
-    nowIso: '2026-07-29T01:30:00.000Z',
-    payload: new Uint8Array([1, 2, 3]),
-  }
-
-  it('mantem a barra separadora ao codificar o caminho', () => {
-    // `encodeURIComponent` sozinho escaparia as barras e o objeto iria parar
-    // numa chave com `%2F` no nome.
-    expect(encodeS3Path('editorial/aa/x y.jpg')).toBe('editorial/aa/x%20y.jpg')
-  })
-
-  it('formata a data como o SigV4 exige', () => {
-    expect(amzDateParts('2026-07-29T01:30:00.000Z')).toEqual({
-      amzDate: '20260729T013000Z',
-      dateStamp: '20260729',
-    })
-  })
-
-  it('e DETERMINISTICA para a mesma entrada', () => {
-    const a = signS3Request(base)
-    const b = signS3Request(base)
-    expect(a.headers.Authorization).toBe(b.headers.Authorization)
-  })
-
-  it('a assinatura muda quando o CORPO muda', () => {
-    // E o que faz o storage recusar um corpo alterado em transito: nao
-    // dependemos so do TLS para integridade.
-    const outro = signS3Request({ ...base, payload: new Uint8Array([9, 9, 9]) })
-    expect(outro.headers.Authorization).not.toBe(signS3Request(base).headers.Authorization)
-    expect(outro.headers['x-amz-content-sha256']).not.toBe('UNSIGNED-PAYLOAD')
-  })
-
-  it('path-style poe o bucket no caminho; virtual-host no host', () => {
-    expect(signS3Request(base).url).toContain('/cinerie-media/editorial/')
-    const virtual = signS3Request({ ...base, forcePathStyle: false })
-    expect(virtual.url).toContain('cinerie-media.exemplo.r2.cloudflarestorage.com')
-  })
-})
-
-/* ------------------------------------------------------------------ */
-/* Adapter S3 (fetch injetado)                                         */
+/* Adapter S3 sobre o SDK oficial (cliente injetado)                   */
 /* ------------------------------------------------------------------ */
 
 describe('adapter S3-compatible', () => {
@@ -194,75 +145,91 @@ describe('adapter S3-compatible', () => {
   }
   const key = `editorial/aa/${HASH}.webp`
 
-  function spy(status = 200) {
-    const calls: { url: string; init: RequestInit }[] = []
-    const storage = createS3MediaStorage(config, {
-      now: () => '2026-07-29T01:30:00.000Z',
-      fetchImpl: async (url, init) => {
-        calls.push({ url, init })
-        return new Response(status === 200 ? new Uint8Array([1]) : null, {
-          status,
-          headers: { 'content-length': '1' },
-        })
+  /** Duble do `S3Client`: registra os COMANDOS que o adapter emitiu. */
+  function spy(behavior: 'ok' | 'not_found' | 'boom' = 'ok') {
+    const commands: { name: string; input: Record<string, unknown> }[] = []
+    const client = {
+      async send(command: unknown) {
+        const wrapped = command as { constructor: { name: string }; input: Record<string, unknown> }
+        commands.push({ name: wrapped.constructor.name, input: wrapped.input })
+        if (behavior === 'not_found') {
+          throw Object.assign(new Error('nao existe'), {
+            name: 'NoSuchKey',
+            $metadata: { httpStatusCode: 404 },
+          })
+        }
+        if (behavior === 'boom') {
+          throw Object.assign(new Error(`falhou em ${config.bucket} com AKIA-TESTE`), {
+            name: 'InternalError',
+            $metadata: { httpStatusCode: 500 },
+          })
+        }
+        return { ContentLength: 2, Body: { transformToByteArray: async () => new Uint8Array([1, 2]) } }
       },
-    })
-    return { storage, calls }
+    }
+    return { storage: createS3MediaStorage(config, { client }), commands }
   }
 
-  it('PUT vai para bucket, chave, verbo e content-type corretos', async () => {
-    const { storage, calls } = spy()
+  it('PUT usa bucket, chave, content-type e cache imutavel', async () => {
+    const { storage, commands } = spy()
     await storage.put({ key, bytes: new Uint8Array([1, 2]), contentType: 'image/webp' })
-    expect(calls).toHaveLength(1)
-    const [call] = calls
-    expect(call?.init.method).toBe('PUT')
-    expect(call?.url).toContain('/cinerie-media/editorial/aa/')
-    const headers = call?.init.headers as Record<string, string>
-    expect(headers['content-type']).toBe('image/webp')
+    expect(commands).toHaveLength(1)
+    const [command] = commands
+    expect(command?.name).toBe('PutObjectCommand')
+    expect(command?.input.Bucket).toBe('cinerie-media')
+    expect(command?.input.Key).toBe(key)
+    expect(command?.input.ContentType).toBe('image/webp')
     // Midia enderecada por hash e imutavel: cache longo e correto e barato.
-    expect(headers['cache-control']).toContain('immutable')
-    expect(headers['x-amz-meta-content-sha256']).toBe(HASH)
-    expect(headers.Authorization).toContain('AWS4-HMAC-SHA256')
+    expect(String(command?.input.CacheControl)).toContain('immutable')
+    expect((command?.input.Metadata as Record<string, string>)['content-sha256']).toBe(HASH)
   })
 
-  it('repetir o PUT e idempotente: mesma chave, mesma assinatura', async () => {
-    const { storage, calls } = spy()
+  it('repetir o PUT e idempotente: mesma chave, mesmo corpo', async () => {
+    const { storage, commands } = spy()
     const bytes = new Uint8Array([1, 2])
     await storage.put({ key, bytes, contentType: 'image/webp' })
     await storage.put({ key, bytes, contentType: 'image/webp' })
-    expect(calls[0]?.url).toBe(calls[1]?.url)
-    expect((calls[0]?.init.headers as Record<string, string>).Authorization).toBe(
-      (calls[1]?.init.headers as Record<string, string>).Authorization,
-    )
+    expect(commands[0]?.input.Key).toBe(commands[1]?.input.Key)
+    expect(commands[0]?.input.Bucket).toBe(commands[1]?.input.Bucket)
   })
 
-  it('erro NAO vaza credencial nem URL assinada', async () => {
-    // A URL assinada carrega `Credential=` e `Signature=`. Nada disso pode
-    // chegar ao log do worker nem ao painel do CMS.
-    const { storage } = spy(500)
-    await expect(
-      storage.put({ key, bytes: new Uint8Array([1]), contentType: 'image/webp' }),
-    ).rejects.toThrow(/storage s3: PUT respondeu 500/)
-    try {
-      await storage.put({ key, bytes: new Uint8Array([1]), contentType: 'image/webp' })
-    } catch (error) {
-      const message = (error as Error).message
-      expect(message).not.toContain('segredo-de-teste-nao-real')
-      expect(message).not.toContain('AKIA-TESTE')
-      expect(message).not.toContain('Signature=')
-    }
-  })
-
-  it('DELETE trata 404 como sucesso', async () => {
-    const { storage } = spy(404)
+  it('objeto ausente vira `false`/`null`, nao excecao', async () => {
+    const { storage } = spy('not_found')
+    expect(await storage.exists(key)).toBe(false)
+    expect(await storage.stat(key)).toBeNull()
+    expect(await storage.read(key)).toBeNull()
+    // DELETE de objeto ausente e sucesso: o objetivo era nao existir.
     await expect(storage.delete(key)).resolves.toBeUndefined()
   })
 
-  it('recusa chave insegura antes de assinar', async () => {
-    const { storage, calls } = spy()
+  it('erro NAO vaza credencial nem nome de bucket', async () => {
+    // Erro do SDK carrega `$metadata`, bucket e as vezes a requisicao inteira.
+    // Nada disso pode chegar ao painel do CMS.
+    const { storage } = spy('boom')
+    try {
+      await storage.put({ key, bytes: new Uint8Array([1]), contentType: 'image/webp' })
+      expect.unreachable('deveria ter lancado')
+    } catch (error) {
+      const message = (error as Error).message
+      expect(message).toContain('storage s3: PUT falhou')
+      expect(message).not.toContain('AKIA-TESTE')
+      expect(message).not.toContain('segredo-de-teste-nao-real')
+      expect(message).not.toContain('cinerie-media')
+    }
+  })
+
+  it('recusa chave insegura ANTES de emitir comando', async () => {
+    const { storage, commands } = spy()
     await expect(
       storage.put({ key: '../fora.jpg', bytes: new Uint8Array([1]), contentType: 'image/jpeg' }),
     ).rejects.toThrow()
-    expect(calls).toHaveLength(0)
+    expect(commands).toHaveLength(0)
+  })
+
+  it('publicReference continua sendo caminho de site, nunca URL', () => {
+    const { storage } = spy()
+    expect(storage.publicReference(key)).toBe(`/media/${key}`)
+    expect(storage.publicReference(key)).not.toMatch(/^https?:/)
   })
 })
 

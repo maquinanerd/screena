@@ -17,8 +17,6 @@
  */
 
 import { createHash } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
-import path from 'node:path'
 
 import type { Endpoint, PayloadRequest } from 'payload'
 
@@ -29,6 +27,7 @@ import {
   isMediaPurpose,
   type MediaDocumentFacts,
 } from '../media-authorization.js'
+import { getMediaSource } from '../media-source-runtime.js'
 
 /** MIME entregaveis. Espelha o `upload.mimeTypes` da collection `media`. */
 export const DELIVERABLE_MIME_TYPES = [
@@ -140,7 +139,22 @@ export const publicationMediaEndpoint: Endpoint = {
       return json({ error: 'media_not_deliverable', code: verdict.code, detail: verdict.detail }, status)
     }
 
-    const bytes = await readMediaBytes(req, doc)
+    // A LEITURA passa pela porta `PayloadMediaSource`: o endpoint nao sabe se o
+    // arquivo esta em disco, em volume montado ou num bucket S3-compatible.
+    // Trocar o driver nao muda nada daqui para frente — nem o hash entregue,
+    // nem o `publication-event-v1`, nem a referencia publica final.
+    const source = getMediaSource()
+    if (source === null) {
+      // Configuracao de storage invalida NAO vira 500 com stack.
+      return json(
+        { error: 'media_not_deliverable', code: 'storage_unavailable', detail: 'storage de upload indisponivel' },
+        503,
+      )
+    }
+
+    const filename = text(doc?.filename)
+    const bytes =
+      filename === null ? null : await source.read(filename, MAX_DELIVERABLE_BYTES)
     if (bytes === null) {
       return json({ error: 'media_not_deliverable', code: 'file_missing', detail: 'sem bytes' }, 404)
     }
@@ -175,56 +189,10 @@ export const publicationMediaEndpoint: Endpoint = {
         'x-cinerie-media-allowed-editorial': doc?.allowedForEditorial === true ? 'true' : 'false',
         'x-cinerie-media-allowed-hero': doc?.allowedForHero === true ? 'true' : 'false',
         'x-cinerie-media-allowed-social': doc?.allowedForSocial === true ? 'true' : 'false',
+        // Referencia de DIAGNOSTICO: driver + nome. Nunca caminho, bucket,
+        // endpoint ou URL assinada — isso entregaria topologia da infra.
+        'x-cinerie-media-source': source.sourceReference(filename ?? ''),
       },
     })
   },
-}
-
-/**
- * Le os bytes do arquivo de upload.
- *
- * Direto do diretorio configurado da collection, e NAO por uma volta HTTP: a
- * rota publica de arquivo do Payload depende de `serverURL`, que e fixo por
- * configuracao e nao acompanha a porta real do processo (em teste, atras de
- * proxy, ou com porta dinamica ela aponta para outro lugar e o arquivo "some"
- * com 404). Ler do disco tira uma dependencia de rede do caminho critico.
- *
- * A defesa contra path traversal e `path.basename`: o nome vem do upload, e
- * concatena-lo cru a um diretorio e a receita classica de escrever/ler fora da
- * raiz. `basename` descarta qualquer componente de caminho — `../../etc/passwd`
- * vira `passwd`, que simplesmente nao existe ali.
- */
-async function readMediaBytes(
-  req: PayloadRequest,
-  doc: Record<string, unknown> | null,
-): Promise<Uint8Array | null> {
-  const filename = text(doc?.filename)
-  if (filename === null) return null
-
-  const collection = req.payload.config.collections.find(
-    (candidate) => candidate.slug === 'media',
-  )
-  const staticDir = text((collection?.upload as { staticDir?: unknown } | undefined)?.staticDir)
-  if (staticDir === null) return null
-
-  const safeName = path.basename(filename)
-  if (safeName === '' || safeName === '.' || safeName === '..') return null
-
-  // `staticDir` pode ser relativo ao diretorio do config (padrao do Payload).
-  const configDir = path.dirname(text(req.payload.config.admin?.importMap?.baseDir) ?? process.cwd())
-  const candidates = [
-    path.resolve(staticDir),
-    path.resolve(process.cwd(), staticDir),
-    path.resolve(configDir, staticDir),
-  ]
-
-  for (const dir of candidates) {
-    try {
-      const bytes = new Uint8Array(await readFile(path.join(dir, safeName)))
-      if (bytes.length > 0) return bytes
-    } catch {
-      /* tenta o proximo diretorio candidato */
-    }
-  }
-  return null
 }

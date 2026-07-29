@@ -12,6 +12,10 @@
  *  - as migrations Prisma nao foram tocadas por esta fase.
  */
 
+// Timeout EXPLICITO nos casos que percorrem o filesystem: eles nao sao lentos
+// por logica, e sim por IO recursivo sobre `apps/**`. Com o default de 5s do
+// vitest, a suite completa em paralelo os derrubava de forma intermitente — um
+// gate de governanca que falha as vezes acaba sendo ignorado.
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -65,7 +69,7 @@ describe('CMS editorial: banco e codigo isolados', () => {
       }
     }
     expect(offenders, JSON.stringify(offenders, null, 2)).toEqual([])
-  })
+  }, 30_000)
 
   it('o CMS nunca le DATABASE_URL (nem como fallback)', async () => {
     const offenders: string[] = []
@@ -80,7 +84,7 @@ describe('CMS editorial: banco e codigo isolados', () => {
       if (/process\.env\.DATABASE_URL/.test(code)) offenders.push(`${file}: process.env.DATABASE_URL`)
     }
     expect(offenders, JSON.stringify(offenders, null, 2)).toEqual([])
-  })
+  }, 30_000)
 
   it('o CMS nao importa apps/web nem apps/admin', async () => {
     const offenders: string[] = []
@@ -91,7 +95,7 @@ describe('CMS editorial: banco e codigo isolados', () => {
       }
     }
     expect(offenders, JSON.stringify(offenders, null, 2)).toEqual([])
-  })
+  }, 30_000)
 
   it('o render publico e o admin nao importam o CMS nem Payload', async () => {
     const offenders: string[] = []
@@ -104,7 +108,7 @@ describe('CMS editorial: banco e codigo isolados', () => {
       }
     }
     expect(offenders, JSON.stringify(offenders, null, 2)).toEqual([])
-  })
+  }, 30_000)
 
   it('apps/web e apps/admin nao declaram dependencia de Payload', async () => {
     for (const app of ['web', 'admin']) {

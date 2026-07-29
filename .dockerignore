@@ -16,3 +16,15 @@ services/ingestion/.data
 coverage
 dist
 build
+
+# Uploads locais do CMS e storage publico local: dado de DESENVOLVIMENTO. Assar
+# midia de teste na imagem infla o artefato e, pior, pode fazer uma foto de
+# fixture aparecer no site.
+apps/cms/media
+services/*/media
+var/editorial-media
+
+# Artefato de build do CMS: reconstruido dentro da imagem. Copiar o `.next` do
+# host levaria um build feito com OUTRA configuracao (e outro sistema de
+# arquivos) para dentro do container.
+apps/cms/.next

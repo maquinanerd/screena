@@ -34,10 +34,18 @@ import { SERVICE_ACCOUNT_SCOPES } from './outbox-api.js'
 /**
  * Raiz dos uploads locais, ABSOLUTA e ancorada no diretorio de `apps/cms`.
  *
- * `EDITORIAL_MEDIA_CMS_STATIC_DIR` permite apontar para um volume duravel no
- * deploy sem tocar em codigo.
+ * Vem de `PAYLOAD_UPLOAD_LOCAL_ROOT` quando configurado (o caminho do volume
+ * persistente no deploy). O default local existe so para desenvolvimento — em
+ * `production`, `resolvePayloadUploadConfig` recusa driver local sem
+ * confirmacao explicita de persistencia.
+ *
+ * Caminho ABSOLUTO sempre: um `'media'` relativo resolve contra o `cwd` do
+ * PROCESSO, e quem grava pela Local API de outro diretorio deposita o arquivo
+ * num `media/` diferente do que o servidor le — a imagem "some" com 404 sem
+ * erro nenhum no caminho (defeito real da FASE 2D).
  */
 const MEDIA_STATIC_DIR =
+  process.env.PAYLOAD_UPLOAD_LOCAL_ROOT?.trim() ||
   process.env.EDITORIAL_MEDIA_CMS_STATIC_DIR?.trim() ||
   path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'media')
 

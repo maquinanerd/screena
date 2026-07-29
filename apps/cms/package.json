@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "next dev --port 3002",
     "build": "next build",
-    "start": "next start --port 3002",
+    "start": "next start --port ${PORT:-3002} --hostname 0.0.0.0",
     "typecheck": "tsc --noEmit",
     "lint": "next lint",
     "test": "vitest run --root . --config ./vitest.config.ts",
@@ -17,12 +17,18 @@
     "payload:migrate": "tsx scripts/ephemeral-postgres.ts migrate",
     "payload:migrate:status": "tsx scripts/ephemeral-postgres.ts migrate:status",
     "test:integration": "vitest run --root . --config ./vitest.integration.config.ts",
-    "seed:dev": "tsx scripts/seed-dev.ts"
+    "seed:dev": "tsx scripts/seed-dev.ts",
+    "cms:preflight": "tsx scripts/preflight.ts",
+    "cms:migrations:status": "payload migrate:status",
+    "cms:migrations:deploy": "payload migrate",
+    "cms:storage:check": "tsx scripts/preflight.ts --with-storage-write"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1097.0",
     "@payloadcms/db-postgres": "3.86.0",
     "@payloadcms/next": "3.86.0",
     "@payloadcms/richtext-lexical": "3.86.0",
+    "@payloadcms/storage-s3": "3.86.0",
     "@screena/editorial-contracts": "workspace:*",
     "graphql": "16.14.2",
     "next": "15.4.11",
@@ -35,8 +41,8 @@
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "embedded-postgres": "16.14.0-beta.17",
+    "tsx": "^4.19.0",
     "typescript": "^5.5.0",
-    "vitest": "^2.1.0",
-    "tsx": "^4.19.0"
+    "vitest": "^2.1.0"
   }
 }

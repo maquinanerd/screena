@@ -65,6 +65,8 @@ function readFingerprint(file: string): string | null {
 }
 
 export interface CmsHarness {
+  /** Saida acumulada do servidor. Diagnostico de falha DEPOIS do boot. */
+  serverLog(): string
   /** Local API — SO para fixtures e para inspecionar o banco nas asercoes. */
   readonly payload: Payload
   /** Base do servidor HTTP real (ex.: `http://127.0.0.1:3456`). */
@@ -145,6 +147,27 @@ export async function startCmsHarness(): Promise<CmsHarness> {
   childEnv.PAYLOAD_DATABASE_URL = databaseUrl
   childEnv.PAYLOAD_CONFIG_PATH = path.join(cmsDir, 'src', 'payload.config.ts')
 
+  // Storage de upload EXPLICITO. Desde a FASE 2E nao ha default: o CMS recusa
+  // subir sem driver declarado, e essa recusa e o comportamento desejado — o
+  // harness declara em vez de o codigo adivinhar.
+  //
+  // Caminho ABSOLUTO e proprio deste run: o `staticDir` resolve contra ele, e
+  // dois harnesses simultaneos nao disputam o mesmo diretorio.
+  const uploadRoot = mkdtempSync(path.join(tmpdir(), 'cinerie-cms-uploads-'))
+  childEnv.PAYLOAD_UPLOAD_STORAGE_DRIVER = 'local'
+  childEnv.PAYLOAD_UPLOAD_LOCAL_ROOT = uploadRoot
+  // `next start` roda com `NODE_ENV=production`, e la o driver local exige a
+  // confirmacao de persistencia. Aqui a declaracao e VERDADEIRA: o diretorio
+  // temporario sobrevive por toda a vida do teste, que e o unico horizonte que
+  // importa. Nao e um contorno da regra — e a regra sendo respondida.
+  childEnv.PAYLOAD_UPLOAD_LOCAL_PERSISTENT_CONFIRMED = 'true'
+  // O processo de TESTE tambem grava pela Local API: sem isto ele depositaria
+  // os arquivos noutro diretorio e o servidor responderia 404 (o defeito da
+  // FASE 2D, agora impossivel de repetir em silencio).
+  process.env.PAYLOAD_UPLOAD_STORAGE_DRIVER = 'local'
+  process.env.PAYLOAD_UPLOAD_LOCAL_ROOT = uploadRoot
+  process.env.PAYLOAD_UPLOAD_LOCAL_PERSISTENT_CONFIRMED = 'true'
+
   // Migrations REAIS pelo CLI REAL. Nao usamos `payload.db.migrate()` porque o
   // arquivo gerado importa `MigrateUpArgs`/`MigrateDownArgs` como named imports
   // e esses tipos nao existem em runtime sob o loader do vitest.
@@ -161,7 +184,17 @@ export async function startCmsHarness(): Promise<CmsHarness> {
 
   const nextBin = path.join(cmsDir, 'node_modules', 'next', 'dist', 'bin', 'next')
   const fingerprintFile = path.join(cmsDir, '.next', 'cms-it-source-fingerprint.txt')
-  const currentFingerprint = serializeSourceStamps(collectSourceStamps(path.join(cmsDir, 'src')))
+  // O fingerprint cobre `src/` E `app/`. Cobrir so `src/` era uma LACUNA real:
+  // adicionar uma rota em `app/` (foi o caso de `/healthz` e `/readyz`) nao
+  // invalidava o carimbo, e o atalho de build rodava a suite contra um build sem
+  // aquelas rotas — o sintoma era um 404 em HTML no lugar de JSON.
+  const currentFingerprint = serializeSourceStamps([
+    ...collectSourceStamps(path.join(cmsDir, 'src')),
+    ...collectSourceStamps(path.join(cmsDir, 'app')).map((stamp) => ({
+      ...stamp,
+      path: `app/${stamp.path}`,
+    })),
+  ])
 
   // Build de producao: a MESMA pipeline que rodaria no servico implantado.
   //
@@ -263,6 +296,10 @@ export async function startCmsHarness(): Promise<CmsHarness> {
   return {
     payload,
     baseUrl,
+    // Ate agora a saida do servidor so aparecia quando o BOOT falhava. Um 500
+    // depois do boot (config valida, servidor de pe, requisicao quebrando)
+    // ficava invisivel — e era exatamente o caso mais dificil de diagnosticar.
+    serverLog: () => serverLog,
     async stop() {
       try {
         server.kill()

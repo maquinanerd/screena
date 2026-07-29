@@ -1,0 +1,68 @@
+# Dockerfile.publication-worker — servico `cinerie-publication-worker`.
+#
+# Mesmo PADRAO do `Dockerfile` do screen-app: base pinada por digest, pnpm via
+# corepack, usuario nao-root, HEALTHCHECK com o fetch global do Node.
+#
+# FRONTEIRA (ADR 0015): este servico fala com a **API do Payload** (HTTP
+# autenticado) e com o **banco publico** (Prisma). Ele NAO recebe
+# `PAYLOAD_DATABASE_URL` e nao abre conexao com o banco do CMS — a proibicao e
+# travada por `tests/governance/editorial-worker-boundary.test.ts`, que percorre
+# o fecho transitivo de imports.
+#
+# Este servico NUNCA aplica migration do `screen-db`: a migration publica
+# pertence ao processo governado do banco. Ele apenas RECUSA readiness enquanto o
+# schema estiver atrasado.
+ARG NODE_IMAGE=node:22-bookworm-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3
+FROM ${NODE_IMAGE}
+
+WORKDIR /app
+
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
+
+COPY . .
+
+RUN PNPM_CONFIG_PROD=false pnpm install --frozen-lockfile
+
+# O worker importa `@screena/db/server` -> `@prisma/client`. O client so existe
+# apos `prisma generate`; o postinstall do pacote roda dentro do store do pnpm e
+# nao alcanca `packages/db/prisma/schema.prisma`.
+#
+# `generate` NAO toca banco — le o schema e emite codigo. Nenhuma migration
+# acontece em tempo de build, aqui ou em qualquer outro passo.
+RUN pnpm --filter @screena/db db:generate
+
+ENV NODE_ENV=production
+ENV PUBLICATION_WORKER_HEALTH_PORT=3003
+
+ARG CINERIE_BUILD_SHA=unknown
+ARG CINERIE_BUILD_VERSION=unknown
+ARG CINERIE_BUILD_TIME=unknown
+ENV CINERIE_BUILD_SHA=${CINERIE_BUILD_SHA} \
+    CINERIE_BUILD_VERSION=${CINERIE_BUILD_VERSION} \
+    CINERIE_BUILD_TIME=${CINERIE_BUILD_TIME}
+
+# Diretorio do storage publico LOCAL, util em staging. Em `production` o driver
+# local e recusado pela configuracao (disco efemero perde midia); o caminho
+# existe para o caso de um volume ser montado por cima.
+RUN mkdir -p /app/var/editorial-media && chown -R node:node /app
+USER node
+
+EXPOSE 3003
+
+# LIVENESS, nao readiness — pelo mesmo motivo do CMS: um healthcheck que
+# dependesse do banco reiniciaria em loop um worker saudavel durante uma queda
+# do PostgreSQL.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:3003/healthz').then(r=>process.exit(r.status===200?0:1)).catch(()=>process.exit(1))"
+
+# `exec` para que o processo do worker seja PID 1 e receba SIGTERM direto: o
+# encerramento gracioso (terminar o lote atual, parar de reclamar, devolver as
+# leases) depende de o sinal chegar ao processo certo, e nao a um shell pai.
+CMD ["sh", "-c", "exec pnpm --filter @screena/news-ingestion publication-worker:start"]

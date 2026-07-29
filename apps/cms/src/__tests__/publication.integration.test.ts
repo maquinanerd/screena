@@ -231,7 +231,20 @@ beforeAll(async () => {
       password: 'senha-de-teste-editor_in_chief-0123456789',
     }),
   })
-  const loginBody = (await login.json()) as { token?: string }
+  // Parse DEFENSIVO com diagnostico. Um `.json()` cego sobre uma pagina de erro
+  // do Next estoura com "Unexpected token '<'" no `beforeAll`, a suite inteira
+  // e marcada como falha de colecao e o motivo real fica invisivel.
+  const loginText = await login.text()
+  let loginBody: { token?: string } = {}
+  try {
+    loginBody = JSON.parse(loginText) as { token?: string }
+  } catch {
+    throw new Error(
+      `login do humano nao devolveu JSON (status ${String(login.status)}): ${loginText.slice(0, 200)}
+[servidor]
+${harness.serverLog().slice(-3000)}`,
+    )
+  }
   humanToken = String(loginBody.token ?? '')
 
   const author = await payload.create({
@@ -754,5 +767,51 @@ describe('seed:dev contra PostgreSQL real', () => {
       .toBe(usersBefore.totalDocs)
     expect((await payload.count({ collection: 'service-accounts', overrideAccess: true })).totalDocs)
       .toBe(accountsBefore.totalDocs)
+  })
+})
+
+/* ------------------------------------------------------------------ */
+/* 7. PRONTIDAO DE IMPLANTACAO (FASE 2E)                               */
+/* ------------------------------------------------------------------ */
+
+describe('health e readiness do CMS (HTTP real)', () => {
+  it('/healthz responde sem tocar banco nem configuracao', async () => {
+    const response = await fetch(`${baseUrl}/healthz`)
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as Record<string, unknown>
+    expect(body.status).toBe('ok')
+    expect(body.service).toBe('cinerie-cms')
+    // Liveness nao pode expor topologia: nem banco, nem storage, nem versao de
+    // infraestrutura.
+    const text = JSON.stringify(body)
+    expect(text).not.toContain('postgres')
+    expect(text).not.toContain('secret')
+  })
+
+  it('/readyz fica PRONTO com banco e migrations aplicadas', async () => {
+    // O harness aplicou as migrations antes de subir o servidor: este e o
+    // CONTROLE POSITIVO da readiness. Sem ele, uma readiness que bloqueasse
+    // sempre passaria em todos os testes negativos sem nunca liberar o servico.
+    const response = await fetch(`${baseUrl}/readyz`)
+    const body = (await response.json()) as {
+      status?: string
+      checks?: { name: string; status: string; detail: string }[]
+    }
+    expect(response.status, JSON.stringify(body)).toBe(200)
+    expect(body.status).toBe('ready')
+
+    const byName = new Map((body.checks ?? []).map((check) => [check.name, check]))
+    expect(byName.get('database')?.status).toBe('ok')
+    expect(byName.get('migrations')?.status).toBe('ok')
+    expect(byName.get('collections')?.status).toBe('ok')
+  })
+
+  it('a readiness NUNCA expoe segredo, URL de banco ou caminho de storage', async () => {
+    const text = await (await fetch(`${baseUrl}/readyz`)).text()
+    for (const secret of ['postgresql://', 'PAYLOAD_SECRET=', 'password', 'AKIA']) {
+      expect(text).not.toContain(secret)
+    }
+    // Controle positivo: o relatorio realmente tem conteudo util.
+    expect(text).toContain('migrations')
   })
 })
