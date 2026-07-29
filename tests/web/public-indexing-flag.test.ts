@@ -212,7 +212,12 @@ describe("robots.txt e <meta robots> nunca discordam (mesmo gate)", () => {
   it("flag ligada: robots.txt libera E o meta segue a entidade — coerentes", () => {
     const env = withFlag("true");
     const txt = buildRobots(env);
-    expect(txt.sitemap).toBe("https://cinerie.com/sitemap.xml");
+    // Dois sitemaps sao anunciados: o geral e o do Google News (arquivo
+    // separado por causa da janela de 48h e do namespace proprio).
+    expect(txt.sitemap).toEqual([
+      "https://cinerie.com/sitemap.xml",
+      "https://cinerie.com/news-sitemap.xml",
+    ]);
     expect(publicRobots(true, env)).toEqual({ index: true, follow: true });
     expect(publicRobots(false, env)).toEqual({ index: false, follow: false });
   });
@@ -220,7 +225,7 @@ describe("robots.txt e <meta robots> nunca discordam (mesmo gate)", () => {
   it("REGRESSAO: robots.txt aceita 'true', nao so '1'", () => {
     // Antes exigia === "1": um operador que escrevesse =true derrubava o crawl
     // inteiro sem entender o motivo.
-    expect(buildRobots(withFlag("true")).sitemap).toBe("https://cinerie.com/sitemap.xml");
+    expect(buildRobots(withFlag("true")).sitemap).toContain("https://cinerie.com/sitemap.xml");
   });
 
   it("isOfficialIndexableEnvironment concorda com isPublicIndexingEnabled quando o resto e oficial", () => {

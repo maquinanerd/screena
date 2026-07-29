@@ -62,6 +62,14 @@ export interface NewsImageAsset {
   src: string;
   width: number;
   height: number;
+  /**
+   * `alt` APROVADO pelo CMS, quando existe.
+   *
+   * `null` significa "o CMS nao aprovou descricao", nao "imagem decorativa" —
+   * quem consome decide o fallback. Emitir string vazia aqui apagaria a
+   * diferenca entre as duas coisas.
+   */
+  alt: string | null;
 }
 
 /** Fatos do artigo (Article) independentes de idioma. */
@@ -88,9 +96,19 @@ export interface ArticleTranslationInput {
   body: string | null;
   metaTitle: string | null;
   metaDescription: string | null;
+  // SEO APROVADO pelo CMS. Sinais, nunca estrutura: canonical, robots e o
+  // JSON-LD final continuam DERIVADOS aqui no lado publico.
+  socialTitle: string | null;
+  socialDescription: string | null;
+  canonicalOverride: string | null;
+  articleSection: string | null;
+  schemaTypeRecommendation: string | null;
+  /** Lista APROVADA de `alt`, como projetada (JSON). */
+  approvedImageAlt: unknown;
   reviewStatus: string;
   indexStatus: string;
   translationPublishedAtIso: string | null;
+  translationUpdatedAtIso: string | null;
 }
 
 /** Item cru da listagem (facts + subset da traducao) para montar um card. */
@@ -166,6 +184,12 @@ export interface NewsArticleView {
   source: NewsArticleSource | null;
   metaTitle: string | null;
   metaDescription: string | null;
+  socialTitle: string | null;
+  socialDescription: string | null;
+  canonicalOverride: string | null;
+  articleSection: string | null;
+  schemaTypeRecommendation: string | null;
+  updatedAtIso: string | null;
   related: NewsRelatedEntity[];
   entityCard: NewsEntityCard | null;
 }
@@ -203,10 +227,28 @@ export function normalizeNewsLocalImagePath(
   return LOCAL_IMAGE_EXTENSION_PATTERN.test(value) ? value : null;
 }
 
-function heroImageAsset(path: string | null): NewsImageAsset | null {
+function heroImageAsset(path: string | null, alt: string | null = null): NewsImageAsset | null {
   const src = normalizeNewsLocalImagePath(path);
   if (src === null) return null;
-  return { src, width: HERO_IMAGE_SPEC.width, height: HERO_IMAGE_SPEC.height };
+  return { src, width: HERO_IMAGE_SPEC.width, height: HERO_IMAGE_SPEC.height, alt };
+}
+
+/**
+ * Primeiro `alt` APROVADO da lista projetada.
+ *
+ * Nao ha casamento por `mediaId` porque o lado publico guarda o caminho do
+ * arquivo, nao o id do documento do CMS. A lista chega ordenada com o hero
+ * primeiro, e usar o primeiro item e mais honesto do que inventar um pareamento
+ * que nao existe: um alt errado numa imagem e pior que nenhum.
+ */
+function firstApprovedAlt(value: unknown): string | null {
+  if (!Array.isArray(value)) return null;
+  for (const item of value) {
+    if (item === null || typeof item !== "object") continue;
+    const alt = (item as { alt?: unknown }).alt;
+    if (typeof alt === "string" && alt.trim() !== "") return alt.trim();
+  }
+  return null;
 }
 
 export function isPubliclyRenderableNewsReview(reviewStatus: string): boolean {
@@ -484,13 +526,21 @@ export function buildNewsArticleView(input: BuildNewsArticleViewInput): NewsArti
     author: trimToNull(facts.authorName),
     readTimeLabel: formatReadTime(facts.readTimeMinutes),
     deck: trimToNull(translation.deck),
-    heroImage: heroImageAsset(facts.heroImagePath),
+    heroImage: heroImageAsset(facts.heroImagePath, firstApprovedAlt(translation.approvedImageAlt)),
     bodyParagraphs: bodyParagraphs(translation.body),
     hasBody: isSufficientBody(translation.body),
     aiAssisted: facts.aiAssisted === true,
     source,
     metaTitle: trimToNull(translation.metaTitle),
     metaDescription: trimToNull(translation.metaDescription),
+    socialTitle: trimToNull(translation.socialTitle),
+    socialDescription: trimToNull(translation.socialDescription),
+    canonicalOverride: trimToNull(translation.canonicalOverride),
+    // A secao APROVADA vence `category`: `articles.category` e texto livre e
+    // nao classifica vertical, enquanto `articleSection` passou pela revisao.
+    articleSection: trimToNull(translation.articleSection) ?? trimToNull(facts.category),
+    schemaTypeRecommendation: trimToNull(translation.schemaTypeRecommendation),
+    updatedAtIso: translation.translationUpdatedAtIso,
     related: buildNewsRelated(input.related),
     entityCard: buildNewsEntityCard(input.entityCard ?? null),
   };

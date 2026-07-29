@@ -41,7 +41,15 @@ function row(overrides: Partial<Parameters<typeof evaluateClaimEligibility>[0]> 
 
 describe('escopos de service account', () => {
   it('reconhece apenas os escopos declarados', () => {
-    expect(SERVICE_ACCOUNT_SCOPES).toEqual(['draft_ingest', 'publication_projection'])
+    expect(SERVICE_ACCOUNT_SCOPES).toEqual([
+      'draft_ingest',
+      'publication_projection',
+      'editorial_auto_publish',
+    ])
+    // `editorial_auto_publish` (FASE 2F) e disjunto dos outros dois: quem pede
+    // publicacao nao drena a fila, e quem drena a fila nao publica.
+    expect(hasScope(['editorial_auto_publish'], 'publication_projection')).toBe(false)
+    expect(hasScope(['publication_projection'], 'editorial_auto_publish')).toBe(false)
     expect(hasScope(['draft_ingest'], 'draft_ingest')).toBe(true)
     expect(hasScope(['draft_ingest'], 'publication_projection')).toBe(false)
   })

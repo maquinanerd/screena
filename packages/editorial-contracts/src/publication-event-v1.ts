@@ -9,6 +9,8 @@
 
 import { z } from 'zod'
 
+import { publicationContentType } from './editorial-publication-request-v1.js'
+
 import { editorialBody } from './blocks.js'
 import {
   LIMITS,
@@ -84,6 +86,19 @@ export const publishedEntityLink = z.object({
   verified: z.literal(true),
 })
 
+/**
+ * SEO APROVADO pelo CMS. Nao e a sugestao do produtor.
+ *
+ * A fronteira importa: o MNScr propoe (`seoProposal`), o CMS valida e decide, e
+ * o que atravessa para o lado publico e a DECISAO. Um campo aqui significa "o
+ * CMS aceitou isto", nunca "o pipeline pediu isto".
+ *
+ * O que continua FORA, de proposito, porque pertence ao lado publico e nao ao
+ * editorial: `canonical` (derivada de `slugs`/`redirects`), `robots`, datas
+ * estruturadas e o JSON-LD montado. `canonicalOverride` e a unica excecao, e e
+ * uma excecao editorial explicita — sindicacao, conteudo espelhado —, nao a
+ * canonical de uso normal.
+ */
 export const publishedSeo = z.object({
   metaTitle: optionalPlainText(LIMITS.title),
   metaDescription: optionalPlainText(LIMITS.summary),
@@ -91,6 +106,44 @@ export const publishedSeo = z.object({
   noindex: z.boolean(),
   socialTitle: optionalPlainText(LIMITS.title),
   socialDescription: optionalPlainText(LIMITS.summary),
+
+  // --- Sinais de ranqueamento aprovados ---
+  focusKeyphrase: optionalPlainText(LIMITS.shortText),
+  relatedKeyphrases: z.array(plainText(LIMITS.shortText)).max(10).default([]),
+  editorialKeywords: z.array(plainText(LIMITS.shortText)).max(20).default([]),
+  /**
+   * Tipo de JSON-LD RECOMENDADO. O lado publico monta o JSON-LD final e pode
+   * recusar a recomendacao — emitir `Review` sem review propria seria schema
+   * falso, e essa decisao nao pertence ao CMS.
+   */
+  schemaTypeRecommendation: z
+    .enum(['NewsArticle', 'Article', 'Review', 'ItemList', 'HowTo'])
+    .optional(),
+  articleSection: optionalPlainText(LIMITS.shortText),
+  /**
+   * `alt` APROVADO por midia. Nao e o `alt` sugerido pelo pipeline: e o que
+   * sobreviveu a revisao de licenca e acessibilidade. Sem isto, o lado publico
+   * teria de escolher entre repetir a sugestao crua ou renderizar imagem sem
+   * descricao.
+   */
+  approvedImageAlt: z
+    .array(z.object({ mediaId: stableId, alt: plainText(LIMITS.shortText) }))
+    .max(LIMITS.mediaCandidates)
+    .default([]),
+  /**
+   * Links internos APROVADOS. So entidades que o CMS confirmou: um link para
+   * entidade nao verificada geraria 404 interno em pagina indexavel.
+   */
+  approvedInternalLinks: z
+    .array(
+      z.object({
+        targetType: z.enum(['movie', 'tv_show', 'person', 'article']),
+        targetId: stableId,
+        anchorText: plainText(LIMITS.shortText),
+      }),
+    )
+    .max(LIMITS.entitySuggestions)
+    .default([]),
 })
 
 /** Conteudo efetivamente aprovado para publicacao. */
@@ -99,7 +152,10 @@ export const publishedContent = z.object({
   subtitle: optionalPlainText(LIMITS.subtitle),
   slug: slugProposal,
   summary: plainText(LIMITS.summary),
-  contentType: z.enum(['news', 'feature', 'guide', 'list', 'interview', 'evergreen']),
+  // FONTE UNICA. O enum literal duplicado aqui divergiu do contrato de entrada
+  // quando `review` foi acrescentado la: o pedido era aceito e a publicacao
+  // morria na persistencia, com 503 e sem materia.
+  contentType: publicationContentType,
   body: editorialBody,
   authors: z.array(publishedAuthor).min(1, 'materia publicada exige autor'),
   section: optionalPlainText(LIMITS.shortText),

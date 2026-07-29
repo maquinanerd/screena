@@ -99,6 +99,23 @@ export function mapPublicationEvent(raw: unknown, emissionSequence: number): Eve
               metaTitle: textOrNull(event.seo.metaTitle),
               metaDescription: textOrNull(event.seo.metaDescription),
               noindex: event.seo.noindex,
+              socialTitle: textOrNull(event.seo.socialTitle),
+              socialDescription: textOrNull(event.seo.socialDescription),
+              canonicalOverride: textOrNull(event.seo.canonicalOverride),
+              focusKeyphrase: textOrNull(event.seo.focusKeyphrase),
+              relatedKeyphrases: [...event.seo.relatedKeyphrases],
+              editorialKeywords: [...event.seo.editorialKeywords],
+              schemaTypeRecommendation: textOrNull(event.seo.schemaTypeRecommendation),
+              articleSection: textOrNull(event.seo.articleSection),
+              approvedImageAlt: event.seo.approvedImageAlt.map((item) => ({
+                mediaId: item.mediaId,
+                alt: item.alt,
+              })),
+              approvedInternalLinks: event.seo.approvedInternalLinks.map((link) => ({
+                targetType: link.targetType,
+                targetId: link.targetId,
+                anchorText: link.anchorText,
+              })),
             },
       provenance: { primarySourceName: source.name, primarySourceUrl: source.url },
       media: event.media.map((item) => ({

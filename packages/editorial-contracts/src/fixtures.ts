@@ -174,6 +174,15 @@ export const validPublicationEvent: PublicationEventV1 = {
     metaTitle: 'Duna Parte Tres: data de estreia confirmada',
     metaDescription: 'A Warner confirmou quando Duna Parte Tres chega aos cinemas.',
     noindex: false,
+    focusKeyphrase: 'duna parte tres',
+    relatedKeyphrases: ['data de estreia', 'warner'],
+    editorialKeywords: ['duna', 'ficcao cientifica'],
+    schemaTypeRecommendation: 'NewsArticle',
+    articleSection: 'Cinema',
+    // Listas VAZIAS aparecem explicitamente porque este e o tipo de SAIDA: e o
+    // que o consumidor recebe depois do parse, com os defaults ja aplicados.
+    approvedImageAlt: [],
+    approvedInternalLinks: [],
   },
   provenance: {
     externalSources: [

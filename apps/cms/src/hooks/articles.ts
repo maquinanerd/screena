@@ -26,7 +26,7 @@ import type {
 import { APIError } from 'payload'
 
 import { toActor } from '../actor.js'
-import { SERVICE_ACCOUNT_FORBIDDEN_FIELDS } from '../access.js'
+import { AUTOMATION_PUBLISHER_FORBIDDEN_FIELDS, SERVICE_ACCOUNT_FORBIDDEN_FIELDS } from '../access.js'
 import { buildOutboxRecord, buildEventIdempotencyKey } from '../outbox.js'
 import {
   canTransition,
@@ -144,7 +144,19 @@ export const enforceEditorialGovernance: CollectionBeforeChangeHook = async ({
   const actor = toActor(req.user)
   if (actor.kind === 'anonymous') deny('escrita editorial exige autenticacao')
 
-  const actorKind: ActorKind = actor.kind === 'service' ? 'service' : actor.role
+  // As DUAS contas tecnicas nao sao o mesmo ator. Quem tem
+  // `editorial_auto_publish` publica sob politica e passa pelo gate; quem tem
+  // so `draft_ingest` continua confinado a `automation_draft`. Derivar isso do
+  // ESCOPO, e nao de `kind === 'service'`, e o que impede a conta de ingestao
+  // de herdar o poder de publicar.
+  const autoPublisher =
+    actor.kind === 'service' && actor.scopes.includes('editorial_auto_publish')
+  const actorKind: ActorKind =
+    actor.kind === 'service'
+      ? autoPublisher
+        ? 'automation_publisher'
+        : 'service'
+      : actor.role
   const previous = (originalDoc ?? {}) as Record<string, unknown>
   const incoming = data as Record<string, unknown>
   // Autosave envia PATCH parcial: validar so `data` deixaria o gate cego para o
@@ -152,7 +164,7 @@ export const enforceEditorialGovernance: CollectionBeforeChangeHook = async ({
   const next = { ...previous, ...incoming }
 
   /* --- Service account: superficie minima --------------------------- */
-  if (actor.kind === 'service') {
+  if (actor.kind === 'service' && !autoPublisher) {
     // Campos de decisao humana sao REMOVIDOS do payload da automacao, nao
     // recusados.
     //
@@ -178,6 +190,21 @@ export const enforceEditorialGovernance: CollectionBeforeChangeHook = async ({
     return incoming
   }
 
+  /* --- Automacao PUBLICADORA: superficie ampliada, nao ilimitada ----- */
+  if (autoPublisher) {
+    // A lista e curta e explicita. `authors`, `primaryAuthor`, `qaPassedAt` e
+    // `workflowStatus` saem dela porque sao exatamente o que a autopublicacao
+    // precisa escrever — e o que o gate de publicacao vai conferir logo abaixo,
+    // no servidor, contra o estado real do documento.
+    //
+    // O que continua fora do alcance da automacao sao as decisoes que tiram do
+    // ar ou reescrevem a historia: retencao juridica, correcao, retratacao,
+    // agendamento e o carimbo de publicacao (que o servidor emite).
+    for (const field of AUTOMATION_PUBLISHER_FORBIDDEN_FIELDS) {
+      delete incoming[field]
+    }
+  }
+
   /* --- Transicao de estado ----------------------------------------- */
   const from = operation === 'create' ? null : String(previous.workflowStatus ?? 'draft')
   const to = String(next.workflowStatus ?? 'draft') as WorkflowStatus
@@ -185,8 +212,15 @@ export const enforceEditorialGovernance: CollectionBeforeChangeHook = async ({
   if (operation === 'create') {
     // Humano nunca cria `automation_draft`: esse estado significa "veio do
     // pipeline", e mentir sobre a origem apaga a proveniencia.
-    if (to === 'automation_draft') deny('automation_draft e criado apenas pela automacao')
-    if (to !== 'draft') deny('artigo humano nasce em draft')
+    if (actorKind === 'automation_publisher') {
+      // A automacao publicadora tambem NASCE em `automation_draft`: a origem
+      // fica gravada no estado inicial, e a subida ate `published` percorre a
+      // allowlist como qualquer outra.
+      if (to !== 'automation_draft') deny('automacao cria artigo em automation_draft')
+    } else {
+      if (to === 'automation_draft') deny('automation_draft e criado apenas pela automacao')
+      if (to !== 'draft') deny('artigo humano nasce em draft')
+    }
   } else if (from !== null && to !== from) {
     const verdict = canTransition(from, to, actorKind)
     if (!verdict.allowed) deny(verdict.detail)

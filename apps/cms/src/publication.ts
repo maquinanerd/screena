@@ -191,6 +191,20 @@ export function toContractBlocks(body: unknown): unknown[] {
 }
 
 /** Monta o evento. `req` e usado so para LER autores e midia ja persistidos. */
+/**
+ * Tipos de entidade que viram LINK INTERNO no lado publico.
+ *
+ * `franchise` e `season` ficam de fora porque nao tem rota publica propria
+ * hoje: gerar link para elas produziria 404 em pagina indexavel.
+ */
+const INTERNAL_LINK_TARGETS = new Set(['movie', 'tv_show', 'person', 'article'])
+
+/** Lista de texto saneada. Entrada malformada vira lista vazia, nunca `[undefined]`. */
+function stringsOf(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.map((item) => String(item)).filter((item) => item.trim() !== '')
+}
+
 export async function buildPublicationEvent(input: {
   readonly req: PayloadRequest
   readonly doc: Record<string, unknown>
@@ -324,6 +338,26 @@ export async function buildPublicationEvent(input: {
         : { correctionNote: text(doc.correctionNote) }),
       aiAssisted: doc.aiAssisted === true,
     }
+    // SEO APROVADO. Tudo aqui saiu do documento persistido, nao do pedido: o
+    // que atravessa para o lado publico e a decisao do CMS, nunca a sugestao do
+    // produtor. Um campo que o CMS nao aceitou simplesmente nao existe aqui.
+    //
+    // `approvedImageAlt` sai da MIDIA, nao da sugestao: o `alt` que vale e o
+    // que sobreviveu a revisao de licenca e acessibilidade.
+    const approvedImageAlt = media
+      .filter((item) => item.alt !== 'sem descricao')
+      .map((item) => ({ mediaId: item.mediaId, alt: item.alt }))
+
+    // Links internos so para entidade CONFIRMADA por humano. Uma entidade nao
+    // verificada viraria link interno quebrado em pagina indexavel.
+    const approvedInternalLinks = entities
+      .filter((entity) => INTERNAL_LINK_TARGETS.has(String(entity.entityKind)))
+      .map((entity) => ({
+        targetType: String(entity.entityKind) as 'movie' | 'tv_show' | 'person' | 'article',
+        targetId: String(entity.entityId),
+        anchorText: String(doc.title),
+      }))
+
     event.seo = {
       ...(text(doc.metaTitle) === undefined ? {} : { metaTitle: text(doc.metaTitle) }),
       ...(text(doc.metaDescription) === undefined
@@ -334,6 +368,26 @@ export async function buildPublicationEvent(input: {
         ? {}
         : { socialDescription: text(doc.socialDescription) }),
       noindex: doc.noindex === true,
+      ...(text(doc.focusKeyphrase) === undefined
+        ? {}
+        : { focusKeyphrase: text(doc.focusKeyphrase) }),
+      relatedKeyphrases: stringsOf(doc.relatedKeyphrases),
+      editorialKeywords: stringsOf(doc.editorialKeywords),
+      ...(text(doc.schemaTypeRecommendation) === undefined
+        ? {}
+        : {
+            schemaTypeRecommendation: text(doc.schemaTypeRecommendation) as
+              | 'NewsArticle'
+              | 'Article'
+              | 'Review'
+              | 'ItemList'
+              | 'HowTo',
+          }),
+      ...(text(doc.articleSection) === undefined
+        ? {}
+        : { articleSection: text(doc.articleSection) }),
+      approvedImageAlt,
+      approvedInternalLinks,
     }
   }
 

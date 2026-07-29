@@ -74,6 +74,8 @@ export interface Config {
     media: Media;
     articles: Article;
     'publication-outbox': PublicationOutbox;
+    'autopublish-quota-counters': AutopublishQuotaCounter;
+    'autopublish-quota-usage': AutopublishQuotaUsage;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -87,6 +89,8 @@ export interface Config {
     media: MediaSelect<false> | MediaSelect<true>;
     articles: ArticlesSelect<false> | ArticlesSelect<true>;
     'publication-outbox': PublicationOutboxSelect<false> | PublicationOutboxSelect<true>;
+    'autopublish-quota-counters': AutopublishQuotaCountersSelect<false> | AutopublishQuotaCountersSelect<true>;
+    'autopublish-quota-usage': AutopublishQuotaUsageSelect<false> | AutopublishQuotaUsageSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -187,7 +191,7 @@ export interface ServiceAccount {
   /**
    * Poderes EXPLICITOS. Um booleano generico de automacao daria ao MNScr o direito de consumir a outbox e ao worker de projecao o direito de criar drafts. Lista vazia = conta sem nenhum poder.
    */
-  scopes?: ('draft_ingest' | 'publication_projection')[] | null;
+  scopes?: ('draft_ingest' | 'publication_projection' | 'editorial_auto_publish')[] | null;
   /**
    * Nunca registre a chave aqui. A API key vive so no Payload.
    */
@@ -216,6 +220,26 @@ export interface Author {
    * Autor inativo nao pode ser associado a nova publicacao.
    */
   active?: boolean | null;
+  /**
+   * Este autor aceita assinar materia publicada AUTOMATICAMENTE pelo pipeline? Nasce desligado.
+   */
+  automationPublishingAllowed?: boolean | null;
+  /**
+   * Vazio = sem restricao de tipo. Preenchido = SOMENTE estes tipos podem ser assinados automaticamente.
+   */
+  allowedAutomationContentTypes?: ('news' | 'feature' | 'guide' | 'list' | 'interview' | 'evergreen')[] | null;
+  /**
+   * Vazio = sem restricao de secao.
+   */
+  allowedAutomationSections?: string[] | null;
+  /**
+   * Teto diario proprio deste autor. Vazio = sem teto proprio (o teto global continua valendo).
+   */
+  automationDailyLimit?: number | null;
+  /**
+   * Como este autor aceita ser creditado em publicacao automatica. Vazio = nenhum modo aceito.
+   */
+  automationAttributionModes?: ('byline' | 'newsroom' | 'assisted')[] | null;
   /**
    * Marque para entidades editoriais como "Redacao Cinerie".
    */
@@ -281,7 +305,7 @@ export interface Article {
   subtitle?: string | null;
   slug?: string | null;
   summary?: string | null;
-  contentType: 'news' | 'feature' | 'guide' | 'list' | 'interview' | 'evergreen';
+  contentType: 'news' | 'feature' | 'review' | 'guide' | 'list' | 'interview' | 'evergreen';
   language: string;
   body?:
     | (
@@ -441,6 +465,42 @@ export interface Article {
       }[]
     | null;
   relatedArticleReferences?: (number | Article)[] | null;
+  /**
+   * Publicada automaticamente pelo pipeline, sem revisao previa.
+   */
+  autoPublished?: boolean | null;
+  automationActorId?: string | null;
+  /**
+   * Rotulo da conta tecnica no momento da operacao.
+   */
+  automationActorLabel?: string | null;
+  /**
+   * Escopos EFETIVAMENTE usados, derivados da credencial. Nunca declarados pelo cliente.
+   */
+  automationScopesUsed?: string[] | null;
+  /**
+   * Instante em que o SERVIDOR recebeu o pedido. Distinto de `generatedAt`, que e o relogio do produtor e nao e confiavel para auditoria.
+   */
+  automationReceivedAt?: string | null;
+  /**
+   * Chave do pedido. Reenvio identico nao duplica.
+   */
+  automationIdempotencyKey?: string | null;
+  automationSourceRevision?: number | null;
+  automationPayloadHash?: string | null;
+  automationPipelineVersion?: string | null;
+  automationContractVersion?: string | null;
+  automationContractName?: string | null;
+  automationSchemaHash?: string | null;
+  automationAttributionMode?: ('byline' | 'newsroom' | 'assisted') | null;
+  focusKeyphrase?: string | null;
+  relatedKeyphrases?: string[] | null;
+  editorialKeywords?: string[] | null;
+  /**
+   * RECOMENDACAO. O JSON-LD final e montado pelo screen-app.
+   */
+  schemaTypeRecommendation?: ('NewsArticle' | 'Article' | 'Review' | 'ItemList' | 'HowTo') | null;
+  articleSection?: string | null;
   externalSources?:
     | {
         sourceId: string;
@@ -553,6 +613,48 @@ export interface PublicationOutbox {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "autopublish-quota-counters".
+ */
+export interface AutopublishQuotaCounter {
+  id: number;
+  timeZone: string;
+  localDate: string;
+  dimensionType: 'global' | 'content_type' | 'section' | 'author' | 'article_update';
+  dimensionKey: string;
+  currentCount: number;
+  /**
+   * Teto vigente quando o contador subiu. Um dia auditado precisa saber contra QUE limite ele corria, nao o limite de hoje.
+   */
+  limitSnapshot: number;
+  windowStartUtc: string;
+  windowEndUtc: string;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "autopublish-quota-usage".
+ */
+export interface AutopublishQuotaUsage {
+  id: number;
+  requestId: string;
+  idempotencyKey: string;
+  sourceClusterId: string;
+  sourceRevision: number;
+  articleId?: string | null;
+  publicAuthorId: string;
+  publicationIntent: 'publish' | 'update';
+  localDate: string;
+  timeZone: string;
+  dimensionsConsumed?: string[] | null;
+  consumedAt: string;
+  serviceAccountId: string;
+  pipelineVersion?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
@@ -598,6 +700,14 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'publication-outbox';
         value: number | PublicationOutbox;
+      } | null)
+    | ({
+        relationTo: 'autopublish-quota-counters';
+        value: number | AutopublishQuotaCounter;
+      } | null)
+    | ({
+        relationTo: 'autopublish-quota-usage';
+        value: number | AutopublishQuotaUsage;
       } | null);
   globalSlug?: string | null;
   user:
@@ -705,6 +815,11 @@ export interface AuthorsSelect<T extends boolean = true> {
   publicEmail?: T;
   sameAs?: T;
   active?: T;
+  automationPublishingAllowed?: T;
+  allowedAutomationContentTypes?: T;
+  allowedAutomationSections?: T;
+  automationDailyLimit?: T;
+  automationAttributionModes?: T;
   isOrganization?: T;
   createdBy?: T;
   updatedBy?: T;
@@ -895,6 +1010,24 @@ export interface ArticlesSelect<T extends boolean = true> {
         id?: T;
       };
   relatedArticleReferences?: T;
+  autoPublished?: T;
+  automationActorId?: T;
+  automationActorLabel?: T;
+  automationScopesUsed?: T;
+  automationReceivedAt?: T;
+  automationIdempotencyKey?: T;
+  automationSourceRevision?: T;
+  automationPayloadHash?: T;
+  automationPipelineVersion?: T;
+  automationContractVersion?: T;
+  automationContractName?: T;
+  automationSchemaHash?: T;
+  automationAttributionMode?: T;
+  focusKeyphrase?: T;
+  relatedKeyphrases?: T;
+  editorialKeywords?: T;
+  schemaTypeRecommendation?: T;
+  articleSection?: T;
   externalSources?:
     | T
     | {
@@ -961,6 +1094,43 @@ export interface PublicationOutboxSelect<T extends boolean = true> {
   processedAt?: T;
   errorCode?: T;
   lastError?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "autopublish-quota-counters_select".
+ */
+export interface AutopublishQuotaCountersSelect<T extends boolean = true> {
+  timeZone?: T;
+  localDate?: T;
+  dimensionType?: T;
+  dimensionKey?: T;
+  currentCount?: T;
+  limitSnapshot?: T;
+  windowStartUtc?: T;
+  windowEndUtc?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "autopublish-quota-usage_select".
+ */
+export interface AutopublishQuotaUsageSelect<T extends boolean = true> {
+  requestId?: T;
+  idempotencyKey?: T;
+  sourceClusterId?: T;
+  sourceRevision?: T;
+  articleId?: T;
+  publicAuthorId?: T;
+  publicationIntent?: T;
+  localDate?: T;
+  timeZone?: T;
+  dimensionsConsumed?: T;
+  consumedAt?: T;
+  serviceAccountId?: T;
+  pipelineVersion?: T;
   updatedAt?: T;
   createdAt?: T;
 }

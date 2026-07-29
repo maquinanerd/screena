@@ -21,6 +21,8 @@ import { requireCmsConfig } from './env.js'
 import { editorialDraftsEndpoint } from './endpoints/editorial-drafts.js'
 import { publicationOutboxEndpoints } from './endpoints/publication-outbox.js'
 import { publicationMediaEndpoint } from './endpoints/publication-media.js'
+import { contractEndpoints } from './endpoints/contracts.js'
+import { editorialPublicationsEndpoint } from './endpoints/editorial-publications.js'
 import { resolvePayloadUploadConfig } from './upload-storage-config.js'
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -104,7 +106,13 @@ export default buildConfig({
     migrationDir: path.resolve(dirname, 'migrations'),
   }),
   sharp,
-  endpoints: [editorialDraftsEndpoint, ...publicationOutboxEndpoints, publicationMediaEndpoint],
+  endpoints: [
+    editorialDraftsEndpoint,
+    ...publicationOutboxEndpoints,
+    publicationMediaEndpoint,
+    ...contractEndpoints,
+    editorialPublicationsEndpoint,
+  ],
   plugins: storagePlugins,
   graphQL: {
     // O CMS nao expoe grafo publico: a superficie de entrada e o endpoint REST

@@ -7,7 +7,8 @@
  *
  *   RSS Prime  --rss-prime-event-v1----------------> MNScr   (definido FORA daqui)
  *   Cinerie    --cinerie-editorial-context-v1------> MNScr
- *   MNScr      --editorial-draft-v1---------------> Payload
+ *   MNScr      --editorial-draft-v1---------------> Payload   (revisao humana)
+ *   MNScr      --editorial-publication-request-v1-> Payload   (publicacao automatica governada)
  *   Payload    --publication-event-v1-------------> projecao publica
  */
 
@@ -16,4 +17,8 @@ export * from './blocks.js'
 export * from './editorial-draft-v1.js'
 export * from './publication-event-v1.js'
 export * from './cinerie-editorial-context-v1.js'
+export * from './seo-proposal.js'
+export * from './editorial-publication-request-v1.js'
+export * from './manifest.js'
+export * from './publication-fixtures.js'
 export * from './fixtures.js'

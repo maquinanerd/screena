@@ -18,7 +18,11 @@ import { fileURLToPath } from 'node:url'
 
 import type { Access, CollectionConfig } from 'payload'
 
+import { PUBLICATION_CONTENT_TYPES } from '@screena/editorial-contracts'
+
+import { QUOTA_DIMENSIONS } from './quota.js'
 import {
+  isAdministrator,
   articlesAccess,
   editorialAssetAccess,
   identityAccess,
@@ -330,6 +334,62 @@ export const Authors: CollectionConfig = {
       defaultValue: true,
       admin: { description: 'Autor inativo nao pode ser associado a nova publicacao.' },
     },
+
+    // ------------------------------------------------------------------
+    // Politica de ASSINATURA AUTOMATICA (FASE 2F)
+    //
+    // A autorizacao e do AUTOR, nao do pipeline: quem decide como o proprio
+    // nome e usado e ele. Uma redatora pode aceitar assinar `news` automatico e
+    // recusar `review` — e essa decisao mora aqui, no documento dela.
+    //
+    // Todos nascem FECHADOS. Ausencia de decisao e proibicao.
+    // ------------------------------------------------------------------
+    {
+      name: 'automationPublishingAllowed',
+      type: 'checkbox',
+      defaultValue: false,
+      admin: {
+        description:
+          'Este autor aceita assinar materia publicada AUTOMATICAMENTE pelo pipeline? Nasce desligado.',
+      },
+    },
+    {
+      name: 'allowedAutomationContentTypes',
+      type: 'select',
+      hasMany: true,
+      defaultValue: [],
+      options: ['news', 'feature', 'guide', 'list', 'interview', 'evergreen'],
+      admin: {
+        description:
+          'Vazio = sem restricao de tipo. Preenchido = SOMENTE estes tipos podem ser assinados automaticamente.',
+      },
+    },
+    {
+      name: 'allowedAutomationSections',
+      type: 'text',
+      hasMany: true,
+      defaultValue: [],
+      admin: { description: 'Vazio = sem restricao de secao.' },
+    },
+    {
+      name: 'automationDailyLimit',
+      type: 'number',
+      admin: {
+        description:
+          'Teto diario proprio deste autor. Vazio = sem teto proprio (o teto global continua valendo).',
+      },
+    },
+    {
+      name: 'automationAttributionModes',
+      type: 'select',
+      hasMany: true,
+      defaultValue: [],
+      options: ['byline', 'newsroom', 'assisted'],
+      admin: {
+        description:
+          'Como este autor aceita ser creditado em publicacao automatica. Vazio = nenhum modo aceito.',
+      },
+    },
     {
       name: 'isOrganization',
       type: 'checkbox',
@@ -459,7 +519,10 @@ export const Articles: CollectionConfig = {
       type: 'select',
       required: true,
       defaultValue: 'news',
-      options: ['news', 'feature', 'guide', 'list', 'interview', 'evergreen'],
+      // FONTE UNICA. A lista literal duplicada aqui divergiu do contrato quando
+      // `review` foi acrescentado la: o pedido passava na validacao e a
+      // publicacao morria na persistencia, com 503 e sem materia.
+      options: [...PUBLICATION_CONTENT_TYPES],
     },
     { name: 'language', type: 'text', required: true, defaultValue: 'pt-BR' },
     { name: 'body', type: 'blocks', blocks: editorialBlocks },
@@ -511,6 +574,78 @@ export const Articles: CollectionConfig = {
     { name: 'relatedArticleReferences', type: 'relationship', relationTo: 'articles', hasMany: true },
 
     // --- Governanca ---
+    // ------------------------------------------------------------------
+    // PUBLICACAO AUTOMATICA (FASE 2F)
+    //
+    // Aqui mora o ATOR TECNICO — quem operou. O AUTOR PUBLICO continua sendo
+    // `primaryAuthor`/`authors`, e e ele que aparece na ficha e no JSON-LD.
+    // Manter os dois separados e o que impede a automacao de virar "autor" na
+    // materia (falso) ou de sumir do registro (pior).
+    // ------------------------------------------------------------------
+    {
+      name: 'autoPublished',
+      type: 'checkbox',
+      defaultValue: false,
+      admin: { description: 'Publicada automaticamente pelo pipeline, sem revisao previa.' },
+    },
+    { name: 'automationActorId', type: 'text', admin: { readOnly: true } },
+    {
+      name: 'automationActorLabel',
+      type: 'text',
+      admin: { readOnly: true, description: 'Rotulo da conta tecnica no momento da operacao.' },
+    },
+    {
+      name: 'automationScopesUsed',
+      type: 'text',
+      hasMany: true,
+      defaultValue: [],
+      admin: {
+        readOnly: true,
+        description:
+          'Escopos EFETIVAMENTE usados, derivados da credencial. Nunca declarados pelo cliente.',
+      },
+    },
+    {
+      name: 'automationReceivedAt',
+      type: 'date',
+      admin: {
+        readOnly: true,
+        description:
+          'Instante em que o SERVIDOR recebeu o pedido. Distinto de `generatedAt`, que e o relogio do produtor e nao e confiavel para auditoria.',
+      },
+    },
+    {
+      name: 'automationIdempotencyKey',
+      type: 'text',
+      index: true,
+      admin: { readOnly: true, description: 'Chave do pedido. Reenvio identico nao duplica.' },
+    },
+    { name: 'automationSourceRevision', type: 'number', admin: { readOnly: true } },
+    { name: 'automationPayloadHash', type: 'text', admin: { readOnly: true } },
+    { name: 'automationPipelineVersion', type: 'text', admin: { readOnly: true } },
+    { name: 'automationContractVersion', type: 'text', admin: { readOnly: true } },
+    { name: 'automationContractName', type: 'text', admin: { readOnly: true } },
+    { name: 'automationSchemaHash', type: 'text', admin: { readOnly: true } },
+    {
+      name: 'automationAttributionMode',
+      type: 'select',
+      options: ['byline', 'newsroom', 'assisted'],
+      admin: { readOnly: true },
+    },
+
+    // SEO revalidado. Sao SUGESTOES do pipeline que o CMS aceitou — nunca
+    // canonical, robots, datas ou JSON-LD, que pertencem ao lado publico.
+    { name: 'focusKeyphrase', type: 'text' },
+    { name: 'relatedKeyphrases', type: 'text', hasMany: true, defaultValue: [] },
+    { name: 'editorialKeywords', type: 'text', hasMany: true, defaultValue: [] },
+    {
+      name: 'schemaTypeRecommendation',
+      type: 'select',
+      options: ['NewsArticle', 'Article', 'Review', 'ItemList', 'HowTo'],
+      admin: { description: 'RECOMENDACAO. O JSON-LD final e montado pelo screen-app.' },
+    },
+    { name: 'articleSection', type: 'text' },
+
     {
       name: 'externalSources',
       type: 'array',
@@ -652,6 +787,112 @@ export const PublicationOutbox: CollectionConfig = {
   ],
 }
 
+/**
+ * Contadores de quota. INTERNOS.
+ *
+ * Ninguem cria, edita ou apaga pela UI: a linha nasce e cresce dentro da
+ * transacao de publicacao. Um humano mexendo aqui mudaria o teto do dia sem
+ * passar por nenhuma decisao editorial — e sem deixar rastro do porque.
+ *
+ * A UNIQUE composta e o que sustenta o algoritmo: sem ela, duas transacoes que
+ * nao encontrassem a linha do dia criariam DUAS, e o teto valeria o dobro.
+ */
+const AutoPublishQuotaCounters: CollectionConfig = {
+  // Slug CURTO de proposito: o Payload deriva nomes de enum e indice a partir
+  // dele, e o Postgres corta identificadores em 63 caracteres. Um slug
+  // descritivo demais estoura esse teto e a migration falha na criacao.
+  slug: 'autopublish-quota-counters',
+  admin: {
+    useAsTitle: 'dimensionKey',
+    group: 'Editorial',
+    // Visivel para auditoria, nunca editavel.
+    hidden: ({ user }) => resolveActor(user).kind !== 'human',
+  },
+  access: {
+    create: () => false,
+    read: policy(isAdministrator),
+    update: () => false,
+    delete: () => false,
+  },
+  indexes: [
+    {
+      // Identidade da janela. `timeZone` entra na chave junto com a data porque
+      // mudar o fuso da operacao nao pode reaproveitar baldes do fuso antigo —
+      // eles cobrem intervalos diferentes de tempo real.
+      fields: ['timeZone', 'localDate', 'dimensionType', 'dimensionKey'],
+      unique: true,
+    },
+  ],
+  fields: [
+    { name: 'timeZone', type: 'text', required: true },
+    { name: 'localDate', type: 'text', required: true },
+    {
+      name: 'dimensionType',
+      type: 'select',
+      required: true,
+      options: [...QUOTA_DIMENSIONS],
+    },
+    { name: 'dimensionKey', type: 'text', required: true },
+    { name: 'currentCount', type: 'number', required: true, defaultValue: 0 },
+    {
+      name: 'limitSnapshot',
+      type: 'number',
+      required: true,
+      admin: {
+        description:
+          'Teto vigente quando o contador subiu. Um dia auditado precisa saber contra QUE limite ele corria, nao o limite de hoje.',
+      },
+    },
+    { name: 'windowStartUtc', type: 'date', required: true },
+    { name: 'windowEndUtc', type: 'date', required: true },
+  ],
+}
+
+/**
+ * Registro de consumo. INTERNO.
+ *
+ * Os contadores dizem QUANTO foi usado; este registro diz POR QUE. Sem ele, um
+ * numero divergente seria impossivel de reconstruir.
+ *
+ * A UNIQUE em `requestId` e a segunda linha de defesa da idempotencia: se a
+ * resolucao anterior falhar em enxergar o pedido repetido, a colisao aqui aborta
+ * a transacao inteira e nenhum contador sobrevive.
+ */
+const AutoPublishQuotaUsage: CollectionConfig = {
+  slug: 'autopublish-quota-usage',
+  admin: {
+    useAsTitle: 'requestId',
+    group: 'Editorial',
+    hidden: ({ user }) => resolveActor(user).kind !== 'human',
+  },
+  access: {
+    create: () => false,
+    read: policy(isAdministrator),
+    update: () => false,
+    delete: () => false,
+  },
+  fields: [
+    { name: 'requestId', type: 'text', required: true, unique: true, index: true },
+    { name: 'idempotencyKey', type: 'text', required: true, index: true },
+    { name: 'sourceClusterId', type: 'text', required: true },
+    { name: 'sourceRevision', type: 'number', required: true },
+    { name: 'articleId', type: 'text', index: true },
+    { name: 'publicAuthorId', type: 'text', required: true },
+    {
+      name: 'publicationIntent',
+      type: 'select',
+      required: true,
+      options: ['publish', 'update'],
+    },
+    { name: 'localDate', type: 'text', required: true },
+    { name: 'timeZone', type: 'text', required: true },
+    { name: 'dimensionsConsumed', type: 'text', hasMany: true, defaultValue: [] },
+    { name: 'consumedAt', type: 'date', required: true },
+    { name: 'serviceAccountId', type: 'text', required: true },
+    { name: 'pipelineVersion', type: 'text' },
+  ],
+}
+
 export const collections: CollectionConfig[] = [
   EditorialUsers,
   ServiceAccounts,
@@ -659,4 +900,6 @@ export const collections: CollectionConfig[] = [
   Media,
   Articles,
   PublicationOutbox,
+  AutoPublishQuotaCounters,
+  AutoPublishQuotaUsage,
 ]

@@ -1645,8 +1645,36 @@ model ArticleTranslation {
   // Versao do CONTEUDO (hash do corpo publicado no CMS), nao do schema. Serve
   // para detectar reprojecao sem mudanca e evitar reescrita inutil.
   bodyBlocksVersion String?       @map("body_blocks_version")
-  createdAt         DateTime      @default(now()) @map("created_at")
-  updatedAt         DateTime      @updatedAt @map("updated_at")
+
+  // --- SEO APROVADO pelo CMS (projetado; nunca sugestao crua do pipeline) ---
+  //
+  // Aditivo por construcao: nenhuma superficie existente muda de fonte por
+  // causa destas colunas. Quem sabe usa-las usa; quem nao sabe continua com
+  // `metaTitle`/`metaDescription`.
+  //
+  // O que NAO esta aqui e deliberado: `canonical`, `robots` e o JSON-LD final
+  // pertencem ao lado publico e sao DERIVADOS de `slugs`/`redirects` e da
+  // decisao de indexabilidade. Projetar canonical do CMS deixaria duas fontes
+  // discordando sobre a mesma URL.
+  socialTitle              String?  @map("social_title")
+  socialDescription        String?  @map("social_description")
+  // Excecao EDITORIAL explicita (sindicacao, conteudo espelhado). Nao e a
+  // canonical de uso normal, que continua derivada de `slugs`.
+  canonicalOverride        String?  @map("canonical_override")
+  focusKeyphrase           String?  @map("focus_keyphrase")
+  relatedKeyphrases        String[] @default([]) @map("related_keyphrases")
+  editorialKeywords        String[] @default([]) @map("editorial_keywords")
+  // RECOMENDACAO de tipo de JSON-LD. O render pode recusa-la: emitir `Review`
+  // sem review propria seria schema falso, e essa decisao e do lado publico.
+  schemaTypeRecommendation String?  @map("schema_type_recommendation")
+  articleSection           String?  @map("article_section")
+  // `alt` APROVADO por midia e links internos APROVADOS. Json porque sao listas
+  // pequenas, lidas inteiras e nunca consultadas por campo.
+  approvedImageAlt         Json?    @map("approved_image_alt")
+  approvedInternalLinks    Json?    @map("approved_internal_links")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   article  Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
   language Language @relation(fields: [languageCode], references: [code])

@@ -306,10 +306,33 @@ export async function startCmsHarness(): Promise<CmsHarness> {
       } catch {
         /* pode ja ter morrido */
       }
+      // `destroy()` do adapter NAO fecha o pool: ele so limpa schema, tabelas e
+      // relations em memoria. O pool sobrevive, ve o PostgreSQL cair e emite
+      // "Connection terminated unexpectedly" — que o vitest reporta como erro
+      // NAO TRATADO. O resultado era 33 testes verdes com o processo saindo em
+      // codigo 1: CI vermelho sem teste vermelho, o pior tipo de sinal.
+      //
+      // Fechar o pool ANTES de derrubar o banco resolve na ordem certa: as
+      // conexoes terminam por decisao nossa, nao por morte do servidor.
+      try {
+        const pool = (payload.db as unknown as { pool?: { end?: () => Promise<void> } }).pool
+        // COM TETO. `pool.end()` espera cada cliente em uso ser devolvido, e um
+        // cliente que nunca volta — transacao abortada, por exemplo — trava o
+        // teardown para sempre (o hook estourava os 300s). O teto de 5s tenta o
+        // fechamento gracioso e segue em frente quando ele nao vem: o processo
+        // esta terminando de qualquer forma, e derrubar o banco depois de
+        // tentar fechar e melhor do que nao tentar.
+        await Promise.race([
+          pool?.end?.() ?? Promise.resolve(),
+          new Promise((resolve) => setTimeout(resolve, 5_000)),
+        ])
+      } catch {
+        /* pool pode ja estar fechado */
+      }
       try {
         await payload.db.destroy?.()
       } catch {
-        /* pool pode ja estar fechado */
+        /* estado em memoria: falhar aqui nao impede derrubar o banco */
       }
       try {
         await pg.stop()

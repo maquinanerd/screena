@@ -114,7 +114,11 @@ describe('governanca: RapidAPI nunca alcanca o render (invariante 3)', () => {
       }
     }
     expect(offenders).toEqual([])
-  })
+    // Timeout EXPLICITO: este teste percorre a arvore de `apps/web` no disco, e
+    // o default de 5s do vitest e curto demais quando a suite roda junto com um
+    // PostgreSQL efemero disputando CPU e I/O. Um gate de governanca que fica
+    // vermelho por lentidao ensina a ignorar vermelho.
+  }, 60_000)
 
   it('apps/web nunca cita host/header RapidAPI', async () => {
     const files = await collectSource(WEB_DIR, ['.ts', '.tsx'])
@@ -132,7 +136,7 @@ describe('governanca: RapidAPI nunca alcanca o render (invariante 3)', () => {
       }
     }
     expect(offenders).toEqual([])
-  })
+  }, 60_000)
 })
 
 describe('governanca: nenhuma chave RapidAPI hardcoded (invariante: chave so em env)', () => {
@@ -248,7 +252,7 @@ describe('governanca: workers offline nao baixam imagem nem tocam screen_score',
     // num teste que passa sem varrer arquivo nenhum.
     expect(scanned).toBeGreaterThan(0)
     expect(offenders).toEqual([])
-  })
+  }, 60_000)
 
   it('nenhum worker toca screen_score como codigo (identificador ou coluna)', async () => {
     // NOTA: report.ts de AMBOS os workers cita `screen_score` numa linha de
@@ -268,5 +272,5 @@ describe('governanca: workers offline nao baixam imagem nem tocam screen_score',
     }
     expect(scanned).toBeGreaterThan(0)
     expect(offenders).toEqual([])
-  })
+  }, 60_000)
 })

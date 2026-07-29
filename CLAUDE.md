@@ -148,6 +148,8 @@ As regras detalhadas vivem (ou viverao) em `.claude/`. Consulte-as antes de mexe
 - `docs/operations/editorial-projection-worker.md` — operacao do **worker de projecao editorial** (CMS -> banco publico): escopos da conta tecnica, ciclo claim/ack/fail com lease, desfechos do recibo e diagnostico. Leia antes de mexer na outbox ou na projecao.
 - `docs/operations/editorial-media-projection.md` — **projecao de midia editorial**: endpoint interno de bytes, autorizacao por licenca/finalidade, formatos e limites, storage port (local + S3-compatible), chave por hash e referencia publica. Leia antes de mexer em imagem de materia.
 - `docs/adr/0016-content-block-lifecycle-separation.md` — `content_blocks` e `article_translations` compartilham o enum `ReviewStatus` e **nao** a maquina de estados. Leia antes de assumir simetria entre os dois dominios.
+- `docs/adr/0017-automation-publisher-actor.md` — **ingestao e autopublicacao sao ATORES diferentes**, derivados do escopo da credencial. `draft_ingest` continua confinado a `automation_draft`; `editorial_auto_publish` sobe ate `published` sem atravessar estados que afirmam revisao humana. Leia antes de mexer na maquina de estados ou em permissao de conta tecnica.
+- `docs/operations/editorial-auto-publication-quota.md` — **tetos diarios da autopublicacao**: as cinco dimensoes, o dia civil da redacao por fuso IANA, a reserva transacional (contador e publicacao vivem e morrem juntos) e os desfechos quando um teto esgota. Leia antes de mexer em limite, fuso ou contador.
 - `.claude/skills/*` — skills operacionais do projeto.
 - `.claude/agents/*` — agentes especializados (ingestao, ratings, entity writer, SEO).
 

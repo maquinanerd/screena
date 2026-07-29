@@ -54,7 +54,14 @@ export function buildRobots(env: SiteUrlEnv = process.env): MetadataRoute.Robots
         disallow: ["/api/", "/dev/", "/admin/"],
       },
     ],
-    sitemap: `${OFFICIAL_SITE_URL}/sitemap.xml`,
+    // Os DOIS sitemaps sao anunciados. O de noticias e um arquivo separado
+    // porque o Google News tem janela de 48h, teto de 1.000 URLs e namespace
+    // proprio; mante-lo fora do robots.txt significaria depender de descoberta
+    // por link, que para este arquivo nao existe.
+    sitemap: [
+      `${OFFICIAL_SITE_URL}/sitemap.xml`,
+      `${OFFICIAL_SITE_URL}/news-sitemap.xml`,
+    ],
   };
 }
 

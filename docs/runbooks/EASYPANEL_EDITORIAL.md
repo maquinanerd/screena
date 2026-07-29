@@ -146,14 +146,24 @@ cria apenas o autor institucional.
 
 Duas contas, **escopos disjuntos**:
 
-| Conta | Escopo | Usada por |
-|---|---|---|
-| ingestão | `draft_ingest` | MNScr |
-| projeção | `publication_projection` | worker |
+| Conta | Escopo | Usada por | Pode publicar? |
+|---|---|---|---|
+| ingestão | `draft_ingest` | MNScr | **não** |
+| projeção | `publication_projection` | worker | **não** |
+| autopublicação | `editorial_auto_publish` | MNScr | **sim** |
 
-Nunca dê os dois escopos à mesma conta. Um booleano genérico de "automação" daria
-ao MNScr o direito de drenar a fila de publicação e ao worker o direito de criar
-rascunho.
+Nunca dê dois desses escopos à mesma conta. Um booleano genérico de "automação"
+daria ao MNScr o direito de drenar a fila de publicação e ao worker o direito de
+criar rascunho.
+
+`editorial_auto_publish` é o **único** que publica, e o CMS trata quem o tem como
+um ator diferente (`automation_publisher`, ver
+[ADR 0017](../adr/0017-automation-publisher-actor.md)). Uma conta com
+`draft_ingest` continua confinada a `automation_draft` — não existe caminho pelo
+qual ela alcance `published`.
+
+Crie a conta de autopublicação **por último**, depois do canário: enquanto ela
+não existir, o MNScr não consegue publicar nem por engano.
 
 A API key aparece **uma vez** no painel. Copie direto para a variável do serviço.
 Conta com lista de escopos **vazia** autentica e não pode nada — é assim que se
@@ -193,6 +203,42 @@ Antes de habilitar: `pnpm --filter @screena/news-ingestion publication-worker:pr
 Só depois do canário verde. **Só então** integrar o MNScr — ele é o produtor de
 rascunhos, e ligá-lo antes encheria a fila com conteúdo que ninguém validou
 ponta a ponta.
+
+## Q. Habilitar a autopublicação (último passo)
+
+A automação nasce **desligada**. Variável ausente não autoriza publicação: em
+`production`, `EDITORIAL_AUTO_PUBLISH_ENABLED` precisa dizer `true`
+explicitamente. Um default ligado faria um deploy com env incompleta começar a
+publicar sozinho, e ninguém descobriria pela ausência de erro.
+
+| Variável | Obrigatória em produção | O que acontece se faltar |
+|---|---|---|
+| `EDITORIAL_AUTO_PUBLISH_ENABLED` | — | fica **desligada** (fail-closed) |
+| `EDITORIAL_AUTO_PUBLISH_TIME_ZONE` | **sim** | readiness bloqueada, endpoint responde 503 |
+| `EDITORIAL_AUTO_PUBLISH_DAILY_LIMIT` | não | teto conservador (50) |
+| `EDITORIAL_AUTO_PUBLISH_PER_AUTHOR_LIMIT` | não | teto conservador (20) |
+| `EDITORIAL_AUTO_PUBLISH_PER_SECTION_LIMIT` | não | teto conservador (30) |
+| `EDITORIAL_AUTO_PUBLISH_PER_CONTENT_TYPE_LIMIT` | não | teto conservador (40) |
+| `EDITORIAL_AUTO_PUBLISH_PER_ARTICLE_UPDATE_LIMIT` | não | teto conservador (5) |
+
+O fuso é **IANA** (`America/Sao_Paulo`). Offset fixo (`-03:00`) e abreviação
+(`BRT`) são recusados: os dois ignoram horário de verão e a conta erraria em
+silêncio justamente no dia da virada. Sem fuso correto, a janela do dia é
+calculada em UTC e o teto diário zera às 21h no horário da redação — o que não é
+um teto.
+
+Ordem sugerida:
+
+1. Definir as variáveis com `ENABLED=false` e conferir `/readyz`.
+2. Autorizar **um** autor (`automationPublishingAllowed`, tipos, seções, modo de
+   assinatura) e dar a ele um `automationDailyLimit` baixo. O teto efetivo é o
+   **menor** entre o dele e o da plataforma.
+3. Ligar `ENABLED=true` com `DAILY_LIMIT` pequeno (2 ou 3).
+4. Acompanhar `autopublish_quota_usage` — ela diz **quem** consumiu e **por quê**.
+5. Subir o teto só depois de conferir as primeiras matérias no site.
+
+Detalhes de operação, diagnóstico e o que fazer quando um número parece errado:
+[`docs/operations/editorial-auto-publication-quota.md`](../operations/editorial-auto-publication-quota.md).
 
 ---
 

@@ -68,11 +68,7 @@ export interface ProjectionEvent {
     readonly correctionNote: string | null
     readonly aiAssisted: boolean
   } | null
-  readonly seo: {
-    readonly metaTitle: string | null
-    readonly metaDescription: string | null
-    readonly noindex: boolean
-  } | null
+  readonly seo: ApprovedSeo | null
   readonly provenance: {
     readonly primarySourceName: string | null
     readonly primarySourceUrl: string | null
@@ -83,6 +79,37 @@ export interface ProjectionEvent {
     readonly role: string
     readonly requiresAttribution: boolean
     readonly credit: string | null
+  }[]
+}
+
+/**
+ * SEO APROVADO que atravessa para o lado publico.
+ *
+ * Note o que NAO esta aqui: `canonical`, `robots` e o JSON-LD montado. Esses sao
+ * DERIVADOS no lado publico, de `slugs`/`redirects` e da decisao de
+ * indexabilidade. Projeta-los do CMS criaria duas fontes discordando sobre a
+ * mesma URL — e a divergencia so apareceria no indice do buscador.
+ *
+ * `canonicalOverride` e a unica excecao, e e editorial explicita: sindicacao e
+ * conteudo espelhado.
+ */
+export interface ApprovedSeo {
+  readonly metaTitle: string | null
+  readonly metaDescription: string | null
+  readonly noindex: boolean
+  readonly socialTitle: string | null
+  readonly socialDescription: string | null
+  readonly canonicalOverride: string | null
+  readonly focusKeyphrase: string | null
+  readonly relatedKeyphrases: readonly string[]
+  readonly editorialKeywords: readonly string[]
+  readonly schemaTypeRecommendation: string | null
+  readonly articleSection: string | null
+  readonly approvedImageAlt: readonly { readonly mediaId: string; readonly alt: string }[]
+  readonly approvedInternalLinks: readonly {
+    readonly targetType: string
+    readonly targetId: string
+    readonly anchorText: string
   }[]
 }
 
@@ -139,6 +166,20 @@ export interface TranslationWrite {
   readonly bodyBlocksVersion: string | null
   readonly metaTitle: string | null
   readonly metaDescription: string | null
+  readonly socialTitle: string | null
+  readonly socialDescription: string | null
+  readonly canonicalOverride: string | null
+  readonly focusKeyphrase: string | null
+  readonly relatedKeyphrases: readonly string[]
+  readonly editorialKeywords: readonly string[]
+  readonly schemaTypeRecommendation: string | null
+  readonly articleSection: string | null
+  readonly approvedImageAlt: readonly { readonly mediaId: string; readonly alt: string }[]
+  readonly approvedInternalLinks: readonly {
+    readonly targetType: string
+    readonly targetId: string
+    readonly anchorText: string
+  }[]
   readonly reviewStatus: 'published' | 'archived' | 'blocked' | 'draft'
   readonly indexStatus: 'index' | 'noindex' | 'draft'
   readonly publishedAtIso: string | null
@@ -303,6 +344,19 @@ export function decideProjection(input: DecideProjectionInput): ProjectionDecisi
         bodyBlocksVersion: null,
         metaTitle: null,
         metaDescription: null,
+        // Idem para o SEO: retratar NAO apaga os sinais gravados, so tira do
+        // indice. Zerar aqui destruiria o historico de uma materia que pode
+        // voltar depois de revisao humana.
+        socialTitle: null,
+        socialDescription: null,
+        canonicalOverride: null,
+        focusKeyphrase: null,
+        relatedKeyphrases: [],
+        editorialKeywords: [],
+        schemaTypeRecommendation: null,
+        articleSection: null,
+        approvedImageAlt: [],
+        approvedInternalLinks: [],
         reviewStatus: isRetraction ? 'blocked' : 'archived',
         indexStatus: 'noindex',
         publishedAtIso: null,
@@ -392,6 +446,16 @@ export function decideProjection(input: DecideProjectionInput): ProjectionDecisi
       bodyBlocksVersion: input.contentVersion,
       metaTitle: event.seo.metaTitle,
       metaDescription: event.seo.metaDescription,
+      socialTitle: event.seo.socialTitle,
+      socialDescription: event.seo.socialDescription,
+      canonicalOverride: event.seo.canonicalOverride,
+      focusKeyphrase: event.seo.focusKeyphrase,
+      relatedKeyphrases: event.seo.relatedKeyphrases,
+      editorialKeywords: event.seo.editorialKeywords,
+      schemaTypeRecommendation: event.seo.schemaTypeRecommendation,
+      articleSection: event.seo.articleSection,
+      approvedImageAlt: event.seo.approvedImageAlt,
+      approvedInternalLinks: event.seo.approvedInternalLinks,
       // Idioma nao publicado nasce `draft`; nunca `published`.
       reviewStatus: publishedLocale ? 'published' : 'draft',
       indexStatus: !publishedLocale ? 'draft' : event.seo.noindex ? 'noindex' : 'index',

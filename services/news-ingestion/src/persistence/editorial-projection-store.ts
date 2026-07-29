@@ -257,6 +257,25 @@ export async function applyProjectionEvent(
           bodyBlocksVersion: write.bodyBlocksVersion,
           metaTitle: write.metaTitle,
           metaDescription: write.metaDescription,
+          socialTitle: write.socialTitle,
+          socialDescription: write.socialDescription,
+          canonicalOverride: write.canonicalOverride,
+          focusKeyphrase: write.focusKeyphrase,
+          relatedKeyphrases: [...write.relatedKeyphrases],
+          editorialKeywords: [...write.editorialKeywords],
+          schemaTypeRecommendation: write.schemaTypeRecommendation,
+          articleSection: write.articleSection,
+          // Lista VAZIA vira NULL de coluna, nao `[]` dentro do JSON: "o CMS
+          // nao aprovou nenhum alt" e "o CMS aprovou uma lista vazia" sao o
+          // mesmo fato, e gravar os dois criaria duas representacoes do nada.
+          approvedImageAlt:
+            write.approvedImageAlt.length === 0
+              ? Prisma.DbNull
+              : (write.approvedImageAlt as never),
+          approvedInternalLinks:
+            write.approvedInternalLinks.length === 0
+              ? Prisma.DbNull
+              : (write.approvedInternalLinks as never),
           reviewStatus: write.reviewStatus,
           indexStatus: write.indexStatus,
           publishedAt: write.publishedAtIso === null ? null : new Date(write.publishedAtIso),

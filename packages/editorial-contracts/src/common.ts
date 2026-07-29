@@ -107,6 +107,21 @@ export const slugProposal = z
   .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'slug deve ser kebab-case minusculo')
 
 /** Hash hexadecimal (sha-256 e o padrao do repositorio, mas nao e imposto aqui). */
+/**
+ * Hash de SCHEMA: `sha256:<64 hex>`.
+ *
+ * Deliberadamente distinto do `contentHash` abaixo, que e hex PURO e descreve
+ * PAYLOAD. Sao duas coisas diferentes com o mesmo nome informal, e reusar um
+ * validador pelo outro produz a recusa mais confusa possivel: "hash deve ser
+ * hexadecimal" para um hash que e hexadecimal.
+ *
+ * Vive aqui, e nao em `manifest.ts`, porque o manifesto IMPORTA os contratos —
+ * um contrato importando o manifesto fecharia um ciclo.
+ */
+export const schemaHash = z
+  .string()
+  .regex(/^sha256:[0-9a-f]{64}$/, 'schemaHash deve ser sha256:<64 hexadecimais>')
+
 export const contentHash = z
   .string()
   .min(16)

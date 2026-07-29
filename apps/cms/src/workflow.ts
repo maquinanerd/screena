@@ -46,8 +46,20 @@ export const EDITORIAL_ROLES = [
 
 export type EditorialRole = (typeof EDITORIAL_ROLES)[number]
 
-/** Ator de uma transicao. `service` cobre a conta tecnica do MNScr. */
-export type ActorKind = EditorialRole | 'service'
+/**
+ * Ator de uma transicao.
+ *
+ * As duas contas tecnicas sao ATORES DIFERENTES, nao a mesma com permissoes a
+ * mais:
+ *
+ *   `service`              — ingestao de rascunho (`draft_ingest`). Nunca
+ *                            publica; confinada a `automation_draft`.
+ *   `automation_publisher` — autopublicacao (`editorial_auto_publish`).
+ *
+ * Separar importa porque a alternativa seria afrouxar `service`, e ai a conta
+ * que so deveria ingerir rascunho herdaria o poder de publicar por tabela.
+ */
+export type ActorKind = EditorialRole | 'service' | 'automation_publisher'
 
 /* ------------------------------------------------------------------ */
 /* Transicoes                                                          */
@@ -58,14 +70,18 @@ export type ActorKind = EditorialRole | 'service'
  * de permissoes, nunca de proibicoes.
  *
  * Pontos que NAO sao acidentais:
- *  - `automation_draft` nao alcanca `published` por nenhum caminho direto;
+ *  - `automation_draft` alcanca `ready_to_publish` — e SO por ali chega a
+ *    `published`, porque o gate de publicacao roda nessa aresta. O caminho e
+ *    exclusivo do `automation_publisher` (ver `ROLES_ALLOWED_TO_REACH`);
+ *  - a automacao NAO atravessa `in_review` nem `human_reviewed`: passar por
+ *    esses estados gravaria que um humano revisou quando nenhum revisou;
  *  - `published` so vem de `ready_to_publish` (o gate de publicacao roda la);
  *  - `blocked`/`retracted` voltam so para `needs_review`: republicar sem nova
  *    revisao exatamente o que foi retirado e o pior desfecho possivel;
  *  - `archived` e terminal para o fluxo de publicacao.
  */
 const ALLOWED_TRANSITIONS: Readonly<Record<WorkflowStatus, readonly WorkflowStatus[]>> = {
-  automation_draft: ['draft', 'needs_review', 'blocked', 'archived'],
+  automation_draft: ['draft', 'needs_review', 'ready_to_publish', 'blocked', 'archived'],
   draft: ['needs_review', 'blocked', 'archived'],
   needs_review: ['in_review', 'changes_requested', 'draft', 'blocked', 'archived'],
   in_review: ['human_reviewed', 'changes_requested', 'needs_review', 'blocked', 'archived'],
@@ -82,20 +98,26 @@ const ALLOWED_TRANSITIONS: Readonly<Record<WorkflowStatus, readonly WorkflowStat
 /**
  * Quem pode EXECUTAR a transicao para cada estado de destino.
  *
- * A regra decisiva: `published` so por `editor_in_chief` e `administrator`.
- * `editor` nao publica — a decisao ja esta documentada e nao e reaberta aqui.
- * `service` so alcanca `automation_draft`.
+ * A regra decisiva: entre humanos, `published` so por `editor_in_chief` e
+ * `administrator`. `editor` nao publica — a decisao ja esta documentada e nao e
+ * reaberta aqui. `service` so alcanca `automation_draft`.
+ *
+ * `automation_publisher` alcanca `needs_review`, `ready_to_publish`,
+ * `published` e `needs_update` — e mais nada. Fora dessa lista ficam
+ * deliberadamente `in_review` e `human_reviewed` (afirmariam revisao humana
+ * inexistente) e `blocked`, `archived` e `retracted` (tirar do ar e decisao
+ * humana; uma automacao em loop nao pode despublicar sozinha).
  */
 const ROLES_ALLOWED_TO_REACH: Readonly<Record<WorkflowStatus, readonly ActorKind[]>> = {
-  automation_draft: ['service', 'administrator'],
+  automation_draft: ['service', 'administrator', 'automation_publisher'],
   draft: ['administrator', 'editor_in_chief', 'editor', 'writer'],
-  needs_review: ['administrator', 'editor_in_chief', 'editor', 'writer', 'reviewer'],
+  needs_review: ['administrator', 'editor_in_chief', 'editor', 'writer', 'reviewer', 'automation_publisher'],
   in_review: ['administrator', 'editor_in_chief', 'editor', 'reviewer'],
   changes_requested: ['administrator', 'editor_in_chief', 'editor', 'reviewer'],
   human_reviewed: ['administrator', 'editor_in_chief', 'editor', 'reviewer'],
-  ready_to_publish: ['administrator', 'editor_in_chief', 'editor'],
-  published: ['administrator', 'editor_in_chief'],
-  needs_update: ['administrator', 'editor_in_chief', 'editor'],
+  ready_to_publish: ['administrator', 'editor_in_chief', 'editor', 'automation_publisher'],
+  published: ['administrator', 'editor_in_chief', 'automation_publisher'],
+  needs_update: ['administrator', 'editor_in_chief', 'editor', 'automation_publisher'],
   blocked: ['administrator', 'editor_in_chief'],
   archived: ['administrator', 'editor_in_chief'],
   retracted: ['administrator', 'editor_in_chief'],

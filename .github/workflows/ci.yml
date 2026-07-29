@@ -86,6 +86,12 @@ jobs:
       # sem DATABASE_URL e sem credencial real. Existe porque os testes puros
       # nao conseguem provar que a governanca esta LIGADA: autenticacao por API
       # key, access control, hooks, outbox e rollback so aparecem no runtime.
+      #
+      # Inclui a QUOTA de autopublicacao sob concorrencia real (transacoes
+      # simultaneas disputando o mesmo contador) e o rollback que garante que
+      # contador e publicacao vivem e morrem juntos. Nenhum dos dois aparece em
+      # teste puro: um teste sequencial nunca dispara a corrida que o contador
+      # existe para vencer.
       - name: Integracao do CMS editorial (Payload + PostgreSQL 16 efemero)
         run: pnpm test:cms:integration
 

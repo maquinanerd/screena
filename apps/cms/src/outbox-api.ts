@@ -20,8 +20,21 @@ import type { OutboxStatus } from './outbox.js'
  * Escopos explicitos. Um booleano generico de "automacao" daria ao MNScr o
  * poder de consumir a outbox e ao worker de projecao o poder de criar drafts —
  * dois sistemas diferentes herdando os poderes um do outro por descuido.
+ *
+ *   draft_ingest            cria/atualiza rascunho; NAO publica
+ *   editorial_auto_publish  pede publicacao automatica; NAO consome a outbox
+ *   publication_projection  consome a outbox; NAO publica no Payload
+ *
+ * `draft_ingest` e `editorial_auto_publish` podem coexistir numa conta (o MNScr
+ * usa os dois modos). `publication_projection` fica SOZINHO na conta do worker:
+ * quem drena a fila nao tem por que criar conteudo, e quem cria conteudo nao tem
+ * por que drenar a fila.
  */
-export const SERVICE_ACCOUNT_SCOPES = ['draft_ingest', 'publication_projection'] as const
+export const SERVICE_ACCOUNT_SCOPES = [
+  'draft_ingest',
+  'publication_projection',
+  'editorial_auto_publish',
+] as const
 export type ServiceAccountScope = (typeof SERVICE_ACCOUNT_SCOPES)[number]
 
 export function hasScope(scopes: unknown, required: ServiceAccountScope): boolean {

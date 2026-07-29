@@ -1,11 +1,20 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 
-import { serializeJsonLd } from '@screena/seo'
+import {
+  articleRobots,
+  buildArticleJsonLd,
+  buildOpenGraph,
+  buildTwitter,
+  resolveCanonical,
+  serializeJsonLd,
+  type ArticleSeoFacts,
+} from '@screena/seo'
 
 import { AdSlot } from '../../../_components/ad-slot'
 import { CardBookmark } from '../../../_components/card-bookmark'
-import { HOME_PATH, SITE_URL, publicRobots } from '../../../../src/lib/site'
+import type { NewsArticleView } from '../../../../src/lib/news-presenter'
+import { HOME_PATH, SITE_URL, gatePublicRobots } from '../../../../src/lib/site'
 import { getNewsArticleData } from '../../../../src/server/news-pages'
 
 /**
@@ -49,15 +58,61 @@ export async function generateMetadata({
   }
 
   const { view, indexability, canonicalUrl } = data
-  const shouldIndex = indexability.decision === 'index'
+  const facts = seoFactsOf(view, indexability.decision, canonicalUrl)
+  const canonical = resolveCanonical(facts)
+
   const metadata: Metadata = {
     title: view.metaTitle ?? `${view.title} — Notícias`,
-    robots: publicRobots(shouldIndex),
-    alternates: { canonical: canonicalUrl },
+    // `robots` e `canonical` sao DERIVADOS da decisao de indexabilidade, nunca
+    // projetados do CMS. O override editorial so entra quando a pagina indexa —
+    // `resolveCanonical` e quem resolve esse conflito.
+    //
+    // `gatePublicRobots` por cima NAO e redundante: `articleRobots` e puro e so
+    // conhece a decisao da MATERIA. O kill switch de AMBIENTE — que mantem
+    // preview e staging inteiramente fora do indice — vive no gate, e sem ele
+    // um deploy de preview indexaria materia por materia.
+    robots: gatePublicRobots(articleRobots(indexability.decision)),
+    alternates: { canonical: canonical.href },
+    openGraph: buildOpenGraph(facts),
+    twitter: buildTwitter(facts),
   }
   const description = view.metaDescription ?? view.deck
   if (description !== null) metadata.description = description
   return metadata
+}
+
+/**
+ * View publica -> fatos de SEO tecnico.
+ *
+ * Ponte deliberadamente boba: toda a decisao mora em `@screena/seo`, que e puro
+ * e testado. Espalhar `if` de SEO pela pagina foi exatamente o que produziu, no
+ * passado, duas superficies discordando sobre a mesma URL.
+ */
+function seoFactsOf(
+  view: NewsArticleView,
+  decision: ArticleSeoFacts['decision'],
+  canonicalUrl: string,
+): ArticleSeoFacts {
+  return {
+    canonicalUrl,
+    canonicalOverride: view.canonicalOverride,
+    decision,
+    title: view.title,
+    metaTitle: view.metaTitle,
+    metaDescription: view.metaDescription,
+    deck: view.deck,
+    socialTitle: view.socialTitle,
+    socialDescription: view.socialDescription,
+    articleSection: view.articleSection,
+    schemaTypeRecommendation: view.schemaTypeRecommendation,
+    imageUrl: view.heroImage === null ? null : `${SITE_URL}${view.heroImage.src}`,
+    imageAlt: view.heroImage?.alt ?? null,
+    publishedAtIso: view.dateIso,
+    updatedAtIso: view.updatedAtIso,
+    authorName: view.author,
+    siteName: 'Cinerie',
+    locale: 'pt-BR',
+  }
 }
 
 export default async function NewsArticlePage({ params }: { params: Promise<NewsArticleParams> }) {
@@ -99,22 +154,12 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
     ],
   }
 
-  const articleJsonLd: Record<string, unknown> = {
-    '@context': 'https://schema.org',
-    '@type': 'NewsArticle',
-    headline: view.title,
-    url: canonicalUrl,
-  }
-  if (view.dateIso !== null) articleJsonLd.datePublished = view.dateIso
-  const jsonDescription = view.metaDescription ?? view.deck
-  if (jsonDescription !== null) articleJsonLd.description = jsonDescription
-  if (view.author !== null) {
-    articleJsonLd.author = { '@type': 'Person', name: view.author }
-  }
-  if (view.category !== null) articleJsonLd.articleSection = view.category
-  if (view.heroImage !== null) {
-    articleJsonLd.image = `${SITE_URL}${view.heroImage.src}`
-  }
+  // JSON-LD DERIVADO, com o tipo resolvido no lado publico: a recomendacao do
+  // CMS e uma sugestao. `Review` sem review propria seria schema falso, e a
+  // decisao de ter review propria nao pertence ao pipeline editorial.
+  const articleJsonLd = buildArticleJsonLd(
+    seoFactsOf(view, indexability.decision, canonicalUrl),
+  )
 
   return (
     <main data-vertical="news">

@@ -23,6 +23,7 @@ import {
   describeUploadConfig,
   resolvePayloadUploadConfig,
 } from '../src/upload-storage-config.js'
+import { describeAutoPublish, resolveAutoPublishConfig } from '../src/env-auto-publish.js'
 
 type Verdict = 'OK' | 'WARNING' | 'BLOCKED'
 
@@ -105,6 +106,19 @@ async function main(): Promise<void> {
 
   // 4. Banco, migrations e collections — pelo MESMO coletor do readiness, para
   //    que preflight e readiness nunca discordem sobre o mesmo fato.
+  // Auto-publicacao: kill switch NAO bloqueia (desligado e decisao), mas fuso
+  // invalido bloqueia (e defeito de plataforma).
+  const autoPublish = resolveAutoPublishConfig(env)
+  if (!autoPublish.ok) {
+    record('BLOCKED', 'auto-publicacao', autoPublish.errors.join('; '))
+  } else {
+    record(
+      autoPublish.config.enabled ? 'OK' : 'WARNING',
+      'auto-publicacao',
+      describeAutoPublish(autoPublish.config),
+    )
+  }
+
   const facts = await collectCmsReadinessFacts(env)
   const report = evaluateCmsReadiness(facts)
   for (const check of report.checks) {

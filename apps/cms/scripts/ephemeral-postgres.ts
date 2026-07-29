@@ -71,6 +71,11 @@ async function main(): Promise<void> {
     delete childEnv.DATABASE_URL
     childEnv.PAYLOAD_DATABASE_URL = url
     childEnv.PAYLOAD_SECRET = 'ephemeral-secret-for-migrations-only-0123456789'
+    // Storage EXPLICITO: desde a FASE 2E o CMS recusa subir sem driver
+    // declarado, e essa recusa e o comportamento desejado. O script declara em
+    // vez de o codigo adivinhar. O diretorio e descartavel como o banco.
+    childEnv.PAYLOAD_UPLOAD_STORAGE_DRIVER = 'local'
+    childEnv.PAYLOAD_UPLOAD_LOCAL_ROOT = path.join(dataDir, 'uploads')
     childEnv.PAYLOAD_CONFIG_PATH = path.join(cmsDir, 'src', 'payload.config.ts')
     childEnv.NODE_OPTIONS = `${childEnv.NODE_OPTIONS ?? ''} --no-deprecation`.trim()
 

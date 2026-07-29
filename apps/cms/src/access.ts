@@ -145,6 +145,26 @@ export const SERVICE_ACCOUNT_FORBIDDEN_FIELDS = [
   '_status',
 ] as const
 
+/**
+ * Campos fora do alcance da automacao PUBLICADORA (`editorial_auto_publish`).
+ *
+ * Bem mais curta que a de `draft_ingest`, e de proposito: quem publica precisa
+ * escrever autoria, QA e estado de workflow. O que fica de fora sao as decisoes
+ * que tiram do ar ou reescrevem a historia — retencao juridica, correcao,
+ * retratacao, agendamento — mais `publishedAt` e `_status`, que o SERVIDOR
+ * deriva. Deixar a automacao carimbar a data de publicacao permitiria publicar
+ * com data no passado.
+ */
+export const AUTOMATION_PUBLISHER_FORBIDDEN_FIELDS = [
+  'publishedAt',
+  'scheduledFor',
+  'correctedAt',
+  'correctionNote',
+  'retractionReason',
+  'legalHold',
+  '_status',
+] as const
+
 export function serviceAccountMayWriteField(field: string): boolean {
   return !(SERVICE_ACCOUNT_FORBIDDEN_FIELDS as readonly string[]).includes(field)
 }

@@ -14,6 +14,7 @@ import {
   hasUncreditedMedia,
   isPublishedLocale,
   type ProjectionEvent,
+  type ApprovedSeo,
 } from '../editorial-projection.js'
 
 const OCCURRED = '2026-07-28T12:00:00.000Z'
@@ -45,7 +46,7 @@ function event(overrides: Partial<ProjectionEvent> = {}): ProjectionEvent {
       correctionNote: null,
       aiAssisted: false,
     },
-    seo: { metaTitle: 'Meta', metaDescription: 'Desc', noindex: false },
+    seo: approvedSeo({ metaTitle: 'Meta', metaDescription: 'Desc' }),
     provenance: { primarySourceName: null, primarySourceUrl: null },
     media: [],
     ...overrides,
@@ -53,6 +54,32 @@ function event(overrides: Partial<ProjectionEvent> = {}): ProjectionEvent {
 }
 
 const base = { existingReceipt: null, existing: null, contentVersion: 'sha256:abc' }
+
+/**
+ * SEO aprovado com os campos opcionais zerados.
+ *
+ * Existe para o teste declarar SO o que ele mede. Sem isso, cada cenario
+ * precisaria repetir dez campos irrelevantes, e um campo novo no contrato
+ * quebraria todos os testes em vez de um.
+ */
+function approvedSeo(overrides: Partial<ApprovedSeo> = {}): ApprovedSeo {
+  return {
+    metaTitle: null,
+    metaDescription: null,
+    noindex: false,
+    socialTitle: null,
+    socialDescription: null,
+    canonicalOverride: null,
+    focusKeyphrase: null,
+    relatedKeyphrases: [],
+    editorialKeywords: [],
+    schemaTypeRecommendation: null,
+    articleSection: null,
+    approvedImageAlt: [],
+    approvedInternalLinks: [],
+    ...overrides,
+  }
+}
 
 describe('achatamento de blocos', () => {
   it('junta paragrafos e ITENS de lista', () => {
@@ -153,7 +180,7 @@ describe('decisao de projecao', () => {
   it('noindex declarado no SEO e respeitado mesmo em idioma publicado', () => {
     const decision = decideProjection({
       ...base,
-      event: event({ seo: { metaTitle: null, metaDescription: null, noindex: true } }),
+      event: event({ seo: approvedSeo({ noindex: true }) }),
     })
     expect(decision.translation?.indexStatus).toBe('noindex')
   })

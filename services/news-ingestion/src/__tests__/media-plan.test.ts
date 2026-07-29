@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from 'vitest'
 
-import type { ProjectionBlock, ProjectionEvent } from '../editorial-projection.js'
+import type { ApprovedSeo, ProjectionBlock, ProjectionEvent } from '../editorial-projection.js'
 import {
   applyMediaToBlocks,
   isAllowedVideoBlock,
@@ -53,7 +53,7 @@ function event(overrides: Partial<ProjectionEvent> = {}): ProjectionEvent {
       correctionNote: null,
       aiAssisted: false,
     },
-    seo: { metaTitle: null, metaDescription: null, noindex: false },
+    seo: approvedSeo(),
     provenance: { primarySourceName: null, primarySourceUrl: null },
     media: [],
     ...overrides,
@@ -67,6 +67,32 @@ function imageBlock(id: string, mediaRef: string | null): ProjectionBlock {
     ...(mediaRef === null ? {} : { mediaRef }),
     alt: `alt ${id}`,
     caption: `legenda ${id}`,
+  }
+}
+
+/**
+ * SEO aprovado com os campos opcionais zerados.
+ *
+ * Existe para o teste declarar SO o que ele mede. Sem isso, cada cenario
+ * precisaria repetir dez campos irrelevantes, e um campo novo no contrato
+ * quebraria todos os testes em vez de um.
+ */
+function approvedSeo(overrides: Partial<ApprovedSeo> = {}): ApprovedSeo {
+  return {
+    metaTitle: null,
+    metaDescription: null,
+    noindex: false,
+    socialTitle: null,
+    socialDescription: null,
+    canonicalOverride: null,
+    focusKeyphrase: null,
+    relatedKeyphrases: [],
+    editorialKeywords: [],
+    schemaTypeRecommendation: null,
+    articleSection: null,
+    approvedImageAlt: [],
+    approvedInternalLinks: [],
+    ...overrides,
   }
 }
 

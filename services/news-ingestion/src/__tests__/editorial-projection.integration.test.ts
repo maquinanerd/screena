@@ -368,7 +368,18 @@ beforeAll(async () => {
 }, 900_000)
 
 afterAll(async () => {
-  await Promise.allSettled([cms?.stop(), screen?.stop()])
+  // SEQUENCIAL. Derrubar os dois PostgreSQL ao mesmo tempo no Windows e a mesma
+  // disputa de I/O que obriga a SUBIR os dois em serie.
+  //
+  // Isto NAO foi o que causou o "Connection terminated unexpectedly" que
+  // aparecia aqui — essa era o pool do Payload sobrevivendo ao banco, e o
+  // conserto esta em `apps/cms/src/__tests__/harness.ts`. Serializar continua
+  // valendo por si, mas nao e o remedio daquele sintoma.
+  //
+  // `allSettled` com UM item por vez preserva a garantia original: falhar ao
+  // parar o primeiro nao impede parar o segundo.
+  await Promise.allSettled([cms?.stop()])
+  await Promise.allSettled([screen?.stop()])
   // Teardown nao deixa arquivo para tras.
   if (storageRoot !== '') rmSync(storageRoot, { recursive: true, force: true })
 }, 300_000)
