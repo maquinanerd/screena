@@ -17,6 +17,11 @@
 
 import { PUBLISHED_LOCALES } from '@screena/config'
 
+import {
+  planEntityLinks,
+  type EventEntityLink,
+  type PlannedEntityLink,
+} from './editorial-entity-links.js'
 import { applyMediaToBlocks, type ResolvedMediaAsset } from './media/media-plan.js'
 
 /* ------------------------------------------------------------------ */
@@ -80,6 +85,14 @@ export interface ProjectionEvent {
     readonly requiresAttribution: boolean
     readonly credit: string | null
   }[]
+  /**
+   * Entidades do catalogo CONFIRMADAS por humano no CMS.
+   *
+   * Conjunto AUTORITATIVO do documento: o que nao esta aqui foi desmarcado pelo
+   * editor. Por isso a projecao pode reconciliar `entity_news_links` em vez de
+   * so inserir.
+   */
+  readonly entities: readonly EventEntityLink[]
 }
 
 /**
@@ -192,6 +205,17 @@ export interface ProjectionDecision {
   readonly reason: string
   readonly article: ArticleWrite | null
   readonly translation: TranslationWrite | null
+  /**
+   * Conjunto AUTORITATIVO de vinculos entidade<->materia, ou `null` quando o
+   * evento nao carrega conteudo (replay, stale, remocao).
+   *
+   * `null` e `[]` sao estados DIFERENTES: `null` significa "nao reconcilie
+   * nada"; `[]` significa "o editor nao deixou nenhuma entidade" — e ai os
+   * vinculos antigos precisam sair. Colapsar os dois faria uma retratacao
+   * apagar vinculos, ou uma materia sem entidades manter para sempre a citacao
+   * que o editor removeu.
+   */
+  readonly entityLinks: readonly PlannedEntityLink[] | null
   /** Avisos operacionais — nao bloqueiam, mas ficam no log do worker. */
   readonly warnings: readonly string[]
 }
@@ -291,6 +315,7 @@ export function decideProjection(input: DecideProjectionInput): ProjectionDecisi
       reason: `evento ${event.eventId} ja possui recibo (${input.existingReceipt.outcome})`,
       article: null,
       translation: null,
+      entityLinks: null,
       warnings,
     }
   }
@@ -305,6 +330,7 @@ export function decideProjection(input: DecideProjectionInput): ProjectionDecisi
       reason: `emissao ${String(event.emissionSequence)} <= projetada ${String(projected)}`,
       article: null,
       translation: null,
+      entityLinks: null,
       warnings,
     }
   }
@@ -317,6 +343,7 @@ export function decideProjection(input: DecideProjectionInput): ProjectionDecisi
       reason: 'midia com requiresAttribution sem credito preenchido',
       article: null,
       translation: null,
+      entityLinks: null,
       warnings,
     }
   }
@@ -363,6 +390,12 @@ export function decideProjection(input: DecideProjectionInput): ProjectionDecisi
         correctedAtIso: isRetraction ? event.occurredAtIso : null,
         correctionNote: isRetraction ? event.retractionReason : null,
       },
+      // `null`, nao `[]`: despublicar/retratar NAO apaga os vinculos, do mesmo
+      // jeito que nao apaga o texto. O que tira a materia das relacionadas do
+      // filme e o `indexStatus: noindex` aplicado acima — o gate esta na
+      // leitura. Se a materia voltar apos revisao humana, as citacoes voltam
+      // com ela.
+      entityLinks: null,
       warnings,
     }
   }
@@ -376,6 +409,7 @@ export function decideProjection(input: DecideProjectionInput): ProjectionDecisi
       reason: `${event.eventType} sem publishedContent/seo`,
       article: null,
       translation: null,
+      entityLinks: null,
       warnings,
     }
   }
@@ -411,6 +445,11 @@ export function decideProjection(input: DecideProjectionInput): ProjectionDecisi
 
   const requiresAttribution = event.provenance.primarySourceName !== null
   const requiresLinkback = event.provenance.primarySourceUrl !== null
+
+  // VINCULOS DE ENTIDADE. O plano e puro; a verificacao contra o catalogo e a
+  // reconciliacao acontecem no adapter, dentro da mesma transacao do artigo.
+  const entityPlan = planEntityLinks(event.entities)
+  warnings.push(...entityPlan.warnings)
 
   return {
     outcome: 'applied',
@@ -463,6 +502,7 @@ export function decideProjection(input: DecideProjectionInput): ProjectionDecisi
       correctedAtIso: content.correctedAtIso,
       correctionNote: content.correctionNote,
     },
+    entityLinks: entityPlan.links,
     warnings,
   }
 }

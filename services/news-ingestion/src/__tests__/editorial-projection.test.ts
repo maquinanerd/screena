@@ -49,6 +49,7 @@ function event(overrides: Partial<ProjectionEvent> = {}): ProjectionEvent {
     seo: approvedSeo({ metaTitle: 'Meta', metaDescription: 'Desc' }),
     provenance: { primarySourceName: null, primarySourceUrl: null },
     media: [],
+    entities: [],
     ...overrides,
   }
 }

@@ -124,6 +124,19 @@ export function mapPublicationEvent(raw: unknown, emissionSequence: number): Eve
         requiresAttribution: item.requiresAttribution,
         credit: textOrNull(item.credit),
       })),
+      // ENTIDADES. Atravessam INTEIRAS (kind incluido, sem filtro) de proposito:
+      // o recorte de "o que o lado publico sabe vincular" mora em
+      // `editorial-entity-links.ts`, que emite aviso para cada tipo recusado.
+      // Filtrar aqui perderia o aviso e faria uma entidade citada desaparecer
+      // sem rastro no log do worker.
+      //
+      // O contrato ja garante `verified: true` em todo item; o CMS so emite
+      // entidade confirmada por humano.
+      entities: event.entities.map((item) => ({
+        entityKind: item.entityKind,
+        entityId: item.entityId,
+        relation: item.relation,
+      })),
     },
   }
 }
