@@ -26,7 +26,11 @@ import type {
 import { APIError } from 'payload'
 
 import { toActor } from '../actor.js'
-import { AUTOMATION_PUBLISHER_FORBIDDEN_FIELDS, SERVICE_ACCOUNT_FORBIDDEN_FIELDS } from '../access.js'
+import {
+  AUTOMATION_PUBLISHER_FORBIDDEN_FIELDS,
+  HUMAN_FORBIDDEN_FIELDS,
+  SERVICE_ACCOUNT_FORBIDDEN_FIELDS,
+} from '../access.js'
 import { buildOutboxRecord, buildEventIdempotencyKey } from '../outbox.js'
 import {
   canTransition,
@@ -40,6 +44,20 @@ import { buildPublicationEvent } from '../publication.js'
 /** Erro de governanca: vira 403 e NUNCA carrega payload nem credencial. */
 function deny(message: string): never {
   throw new APIError(message, 403)
+}
+
+/**
+ * Id de ator no formato que o campo `relationship` aceita.
+ *
+ * `Actor.id` e `string` porque as regras puras nao devem conhecer o dialeto do
+ * banco. Mas a PK de `editorial-users` no PostgreSQL e INTEIRA, e o Payload
+ * valida o TIPO do id do alvo: gravar `createdBy: "3"` e recusado com
+ * "This relationship field has the following invalid relationships" — o mesmo
+ * tropeco que ja aconteceu com `authors: ["1"]`. A conversao mora aqui, na
+ * fronteira, e nao no `Actor`.
+ */
+function relationshipId(id: string): string | number {
+  return /^\d+$/.test(id) ? Number(id) : id
 }
 
 /* ------------------------------------------------------------------ */
@@ -205,6 +223,57 @@ export const enforceEditorialGovernance: CollectionBeforeChangeHook = async ({
     }
   }
 
+  /* --- Rastro HUMANO ------------------------------------------------ */
+  //
+  // Derivado do `req.user`, NUNCA aceito do corpo. Um cliente que pudesse
+  // enviar `publishedBy` escolheria quem assina a decisao de publicar — e a
+  // auditoria apontaria para a pessoa errada exatamente no caso em que ela
+  // importa.
+  //
+  // Automacao NAO entra aqui: `editorial-users` e `service-accounts` sao
+  // colecoes diferentes, e forcar a conta tecnica nesta relacao a faria
+  // aparecer como pessoa. Publicacao automatica deixa os tres vazios e preenche
+  // `automationActorId`; a AUSENCIA e o sinal de que nao houve humano.
+  if (actor.kind === 'human') {
+    // Mao dupla do rastro: assim como a automacao nao escreve `publishedBy`,
+    // um humano nao escreve a proveniencia TECNICA. `admin.readOnly` protege o
+    // formulario, nao a REST API — sem esta remocao um `PATCH` com
+    // `autoPublished: true` faria uma materia escrita a mao se declarar
+    // publicada pelo pipeline.
+    //
+    // REMOVER, e nao recusar: o Payload ecoa TODOS os campos da collection em
+    // `data`, entao presenca nao e intencao (a mesma licao do `_status`).
+    // Remover preserva o valor ja gravado — uma materia autopublicada
+    // continua marcada como tal depois de um humano corrigir uma virgula.
+    for (const field of HUMAN_FORBIDDEN_FIELDS) delete incoming[field]
+    // `autoPublished` e a UNICA excecao a remocao, e so na criacao: removido,
+    // o adapter grava NULL, e "nulo" nao e uma resposta — a pergunta
+    // "publicou automaticamente?" precisa de um `false` afirmativo para o lado
+    // publico e para a auditoria poderem confiar nela.
+    if (operation === 'create') incoming.autoPublished = false
+
+    // O rastro e DERIVADO, entao o que veio no corpo e descartado ANTES de
+    // qualquer coisa. Sobrescrever `createdBy`/`updatedBy` logo abaixo ja
+    // bastaria para esses dois, mas `publishedBy` so e escrito na transicao de
+    // publicacao — sem esta remocao, um `PATCH` num rascunho gravaria quem
+    // "publicou" uma materia que nunca foi ao ar, e o valor forjado
+    // sobreviveria ate a publicacao de verdade.
+    delete incoming.createdBy
+    delete incoming.updatedBy
+    delete incoming.publishedBy
+
+    const actorRef = relationshipId(actor.id)
+    if (operation === 'create') incoming.createdBy = actorRef
+    incoming.updatedBy = actorRef
+    // `publishedBy` marca a TRANSICAO, nao o estado. Preencher sempre que o
+    // artigo estiver publicado faria uma correcao de virgula reescrever quem
+    // publicou.
+    const becomingPublic =
+      String(next.workflowStatus ?? 'draft') === 'published' &&
+      previous.workflowStatus !== 'published'
+    if (becomingPublic) incoming.publishedBy = actorRef
+  }
+
   /* --- Transicao de estado ----------------------------------------- */
   const from = operation === 'create' ? null : String(previous.workflowStatus ?? 'draft')
   const to = String(next.workflowStatus ?? 'draft') as WorkflowStatus
@@ -300,7 +369,31 @@ export const emitPublicationEvent: CollectionAfterChangeHook = async ({
   const fromStatus = String(before.workflowStatus ?? 'draft') as WorkflowStatus
   const toStatus = String(current.workflowStatus ?? 'draft') as WorkflowStatus
 
-  const eventType = publicationEventForTransition(fromStatus, toStatus)
+  // "Ja foi publica alguma vez?" — a resposta esta na PROPRIA FILA, e nao no
+  // par de estados: a outbox e o registro duravel do que ja foi anunciado ao
+  // lado publico. Nem `previousDoc.workflowStatus` (que na reedicao vale
+  // `ready_to_publish`, igual ao de uma estreia) nem `_status` (rebaixado a
+  // `draft` ao sair de `published`) sobrevivem ao caminho de volta.
+  const alreadyPublishedOnce =
+    toStatus === 'published'
+      ? (
+          await req.payload.find({
+            collection: 'publication-outbox',
+            where: {
+              and: [
+                { aggregateId: { equals: String(current.id) } },
+                { eventType: { equals: 'article.published' } },
+              ],
+            },
+            limit: 1,
+            depth: 0,
+            overrideAccess: true,
+            req,
+          })
+        ).totalDocs > 0
+      : false
+
+  const eventType = publicationEventForTransition(fromStatus, toStatus, { alreadyPublishedOnce })
   // Movimento interno da redacao (draft, autosave, revisao, assignedTo): o lado
   // publico nao precisa saber, e emitir aqui poluiria a fila.
   if (eventType === null) return doc

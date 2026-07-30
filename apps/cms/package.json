@@ -21,7 +21,9 @@
     "cms:preflight": "tsx scripts/preflight.ts",
     "cms:migrations:status": "payload migrate:status",
     "cms:migrations:deploy": "payload migrate",
-    "cms:storage:check": "tsx scripts/preflight.ts --with-storage-write"
+    "cms:storage:check": "tsx scripts/preflight.ts --with-storage-write",
+    "test:e2e": "playwright test --config ./playwright.config.ts",
+    "test:manual-editorial": "vitest run --root . --config ./vitest.integration.config.ts src/__tests__/manual-editorial.integration.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1097.0",

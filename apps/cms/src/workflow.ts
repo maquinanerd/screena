@@ -233,6 +233,25 @@ export function evaluatePublishGate(input: PublishGateInput): PublishGateResult 
 import type { PublicationEventType } from '@screena/editorial-contracts'
 
 /**
+ * Fatos alem do par de estados que a decisao de evento precisa conhecer.
+ *
+ * `alreadyPublishedOnce` existe porque o par de estados NAO basta para
+ * distinguir primeira publicacao de atualizacao. O caminho de reedicao real e
+ * `published -> needs_update -> ... -> ready_to_publish -> published`: quando a
+ * transicao final acontece, `from` e `ready_to_publish` — exatamente igual ao
+ * de uma estreia. Decidir so por `from === 'needs_update'` deixava a regra
+ * inalcancavel na pratica (a allowlist nao permite `needs_update -> published`
+ * direto), e toda reedicao anunciava "publicado pela primeira vez" de novo para
+ * a mesma URL.
+ *
+ * O fato vem de fora porque so quem tem o historico sabe responde-lo; o modulo
+ * puro nao consulta banco nem fila.
+ */
+export interface PublicationEventContext {
+  readonly alreadyPublishedOnce?: boolean
+}
+
+/**
  * Uma transicao gera evento de publicacao? Qual?
  *
  * `null` significa "movimento interno da redacao": o lado publico nao precisa
@@ -241,12 +260,14 @@ import type { PublicationEventType } from '@screena/editorial-contracts'
 export function publicationEventForTransition(
   from: WorkflowStatus,
   to: WorkflowStatus,
+  context: PublicationEventContext = {},
 ): PublicationEventType | null {
   if (to === 'published') {
-    // Vindo de `needs_update` a materia JA era publica: e atualizacao, nao
-    // primeira publicacao. Emitir `published` de novo criaria um segundo
-    // "publicado pela primeira vez" para a mesma URL.
-    return from === 'needs_update' ? 'article.updated' : 'article.published'
+    // Materia que JA foi publica alguma vez: e atualizacao, nao estreia.
+    // Emitir `published` de novo criaria um segundo "publicado pela primeira
+    // vez" para a mesma URL.
+    const republication = from === 'needs_update' || context.alreadyPublishedOnce === true
+    return republication ? 'article.updated' : 'article.published'
   }
   if (from === 'published' && to === 'retracted') return 'article.retracted'
   if (from === 'published' && (to === 'blocked' || to === 'archived')) return 'article.unpublished'

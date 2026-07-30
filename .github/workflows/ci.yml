@@ -120,6 +120,44 @@ jobs:
       - name: Integracao da midia editorial (storage local + dois PG16)
         run: pnpm test:editorial-media-projection:integration
 
+      # CAMINHO EDITORIAL HUMANO (FASE 2G). Gate NOMEADO, apontando so para o
+      # caminho manual: quando ele falha, a mensagem ja diz que o problema e da
+      # redacao humana, e nao da autopublicacao. O arquivo tambem roda dentro de
+      # `test:cms:integration`; aqui ele volta isolado de proposito, porque um
+      # gate generico vermelho nao responde "o CMS manual quebrou?".
+      #
+      # Prova, contra Next + Payload + PostgreSQL 16 efemeros: publicacao SOLO
+      # de administrador e editor-chefe, rastro createdBy/updatedBy/publishedBy
+      # derivado da sessao (nunca do corpo), autor publico != usuario do CMS,
+      # corpo e SEO manuais, midia licenciada, e — o ponto da fase — publicacao
+      # SEM nenhum campo, credencial ou variavel do MNScr, com `/healthz` e
+      # `/readyz` em 200 nesse mesmo ambiente.
+      - name: Caminho editorial humano (CMS manual sem MNScr)
+        run: pnpm test:manual-editorial:integration
+
+      # PAINEL REAL, NAVEGADOR REAL. Chromium ja instalado na imagem do runner
+      # via `playwright install --with-deps chromium` (passo abaixo). Cobre o
+      # que nenhuma chamada HTTP prova: que as oito abas existem na tela, que o
+      # rascunho salva por autosave, que o campo de automacao chega desabilitado
+      # e que o botao generico "Publish changes" do Payload NAO burla o fluxo
+      # editorial.
+      - name: Instalar Chromium para o E2E do painel
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: E2E do painel editorial manual (Playwright)
+        run: pnpm test:manual-editorial:e2e
+
+      # CANARIO PONTA A PONTA da publicacao MANUAL: humano -> Payload -> outbox
+      # -> worker -> screen-db -> presenter publico -> JSON-LD, sitemap pt-BR e
+      # News Sitemap. Dois PostgreSQL 16 efemeros e storage temporario.
+      #
+      # E o unico gate que fecha o circuito inteiro: os demais provam pedacos.
+      # Ele aborta se qualquer `MNSCR_*`/`EDITORIAL_AUTO_PUBLISH_*` estiver no
+      # ambiente — um canario que rodasse com automacao ligada nao provaria a
+      # independencia que ele existe para provar.
+      - name: Canario da publicacao manual ate a pagina publica
+        run: pnpm test:manual-publication-projection:integration
+
       # PRONTIDAO DE IMPLANTACAO. Nao sobem banco nem container: provam a
       # POLITICA que decide se um servico pode ser promovido — migration
       # pendente bloqueia, schema publico atrasado bloqueia, storage sem

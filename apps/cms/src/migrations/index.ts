@@ -6,6 +6,7 @@ import * as migration_20260729_170140_automation_audit_fields from './20260729_1
 import * as migration_20260729_180427_auto_publish_quota_counters from './20260729_180427_auto_publish_quota_counters';
 import * as migration_20260729_180503_drop_legacy_contract_hash from './20260729_180503_drop_legacy_contract_hash';
 import * as migration_20260729_184812_content_type_review from './20260729_184812_content_type_review';
+import * as migration_20260729_223310_human_publication_trail from './20260729_223310_human_publication_trail';
 
 export const migrations = [
   {
@@ -46,6 +47,11 @@ export const migrations = [
   {
     up: migration_20260729_184812_content_type_review.up,
     down: migration_20260729_184812_content_type_review.down,
-    name: '20260729_184812_content_type_review'
+    name: '20260729_184812_content_type_review',
+  },
+  {
+    up: migration_20260729_223310_human_publication_trail.up,
+    down: migration_20260729_223310_human_publication_trail.down,
+    name: '20260729_223310_human_publication_trail'
   },
 ];

@@ -500,231 +500,329 @@ export const Articles: CollectionConfig = {
     delete: policy(articlesAccess.delete),
   },
   fields: [
-    // --- Identidade e idempotencia (preenchidos pelo endpoint) ---
-    { name: 'automationDraftId', type: 'text', index: true },
-    { name: 'idempotencyKey', type: 'text', index: true },
-    { name: 'sourceClusterId', type: 'text', index: true },
-    { name: 'sourceRevision', type: 'number' },
-    { name: 'sourcePayloadHash', type: 'text' },
-    { name: 'draftPayloadHash', type: 'text' },
-    { name: 'pipelineVersion', type: 'text' },
-
-    // --- Conteudo ---
-    { name: 'title', type: 'text', required: true },
-    { name: 'subtitle', type: 'text' },
-    { name: 'slug', type: 'text', index: true },
-    { name: 'summary', type: 'textarea' },
-    {
-      name: 'contentType',
-      type: 'select',
-      required: true,
-      defaultValue: 'news',
-      // FONTE UNICA. A lista literal duplicada aqui divergiu do contrato quando
-      // `review` foi acrescentado la: o pedido passava na validacao e a
-      // publicacao morria na persistencia, com 503 e sem materia.
-      options: [...PUBLICATION_CONTENT_TYPES],
-    },
-    { name: 'language', type: 'text', required: true, defaultValue: 'pt-BR' },
-    { name: 'body', type: 'blocks', blocks: editorialBlocks },
-    { name: 'heroMedia', type: 'relationship', relationTo: 'media' },
-    { name: 'gallery', type: 'relationship', relationTo: 'media', hasMany: true },
-
-    // --- Autoria ---
-    { name: 'authors', type: 'relationship', relationTo: 'authors', hasMany: true },
-    { name: 'primaryAuthor', type: 'relationship', relationTo: 'authors' },
-
-    // --- Organizacao PROVISORIA (a taxonomia publica nao vive aqui) ---
-    { name: 'section', type: 'text' },
-    { name: 'internalTags', type: 'text', hasMany: true },
-
-    // --- Relacoes (sugeridas pela automacao, confirmadas por humano) ---
-    {
-      name: 'entityReferences',
-      type: 'array',
-      fields: [
-        {
-          name: 'entityKind',
-          type: 'select',
-          required: true,
-          options: ['movie', 'tv', 'season', 'episode', 'person', 'character', 'franchise'],
-        },
-        { name: 'entityId', type: 'text', required: true },
-        {
-          name: 'relation',
-          type: 'select',
-          required: true,
-          options: [
-            'primary_subject',
-            'secondary_subject',
-            'mentioned',
-            'reviewed',
-            'recommended',
-            'compared',
-          ],
-        },
-        { name: 'confidence', type: 'number' },
-        {
-          name: 'verified',
-          type: 'checkbox',
-          defaultValue: false,
-          admin: { description: 'So um humano marca. A automacao envia sempre false.' },
-        },
-      ],
-    },
-    { name: 'relatedArticleReferences', type: 'relationship', relationTo: 'articles', hasMany: true },
-
-    // --- Governanca ---
-    // ------------------------------------------------------------------
-    // PUBLICACAO AUTOMATICA (FASE 2F)
+    // ABAS SEM NOME.
     //
-    // Aqui mora o ATOR TECNICO — quem operou. O AUTOR PUBLICO continua sendo
-    // `primaryAuthor`/`authors`, e e ele que aparece na ficha e no JSON-LD.
-    // Manter os dois separados e o que impede a automacao de virar "autor" na
-    // materia (falso) ou de sumir do registro (pior).
-    // ------------------------------------------------------------------
+    // Aba NOMEADA no Payload aninha o caminho de armazenamento
+    // (`seo.metaTitle` em vez de `metaTitle`). Isso exigiria migration,
+    // quebraria a projecao para o screen-db e invalidaria o contrato ja
+    // congelado em f4c49c4. Aba SEM nome reorganiza somente a interface: o
+    // schema do banco fica identico.
+    //
+    // A ordem das abas e a ordem em que uma redacao humana trabalha. Antes
+    // desta mudanca os SETE primeiros campos do formulario eram internos de
+    // automacao, editaveis, e o titulo aparecia em oitavo lugar.
     {
-      name: 'autoPublished',
-      type: 'checkbox',
-      defaultValue: false,
-      admin: { description: 'Publicada automaticamente pelo pipeline, sem revisao previa.' },
-    },
-    { name: 'automationActorId', type: 'text', admin: { readOnly: true } },
-    {
-      name: 'automationActorLabel',
-      type: 'text',
-      admin: { readOnly: true, description: 'Rotulo da conta tecnica no momento da operacao.' },
-    },
-    {
-      name: 'automationScopesUsed',
-      type: 'text',
-      hasMany: true,
-      defaultValue: [],
-      admin: {
-        readOnly: true,
+      type: 'tabs',
+      tabs: [
+      {
+        label: 'Conteudo',
         description:
-          'Escopos EFETIVAMENTE usados, derivados da credencial. Nunca declarados pelo cliente.',
-      },
-    },
-    {
-      name: 'automationReceivedAt',
-      type: 'date',
-      admin: {
-        readOnly: true,
-        description:
-          'Instante em que o SERVIDOR recebeu o pedido. Distinto de `generatedAt`, que e o relogio do produtor e nao e confiavel para auditoria.',
-      },
-    },
-    {
-      name: 'automationIdempotencyKey',
-      type: 'text',
-      index: true,
-      admin: { readOnly: true, description: 'Chave do pedido. Reenvio identico nao duplica.' },
-    },
-    { name: 'automationSourceRevision', type: 'number', admin: { readOnly: true } },
-    { name: 'automationPayloadHash', type: 'text', admin: { readOnly: true } },
-    { name: 'automationPipelineVersion', type: 'text', admin: { readOnly: true } },
-    { name: 'automationContractVersion', type: 'text', admin: { readOnly: true } },
-    { name: 'automationContractName', type: 'text', admin: { readOnly: true } },
-    { name: 'automationSchemaHash', type: 'text', admin: { readOnly: true } },
-    {
-      name: 'automationAttributionMode',
-      type: 'select',
-      options: ['byline', 'newsroom', 'assisted'],
-      admin: { readOnly: true },
-    },
-
-    // SEO revalidado. Sao SUGESTOES do pipeline que o CMS aceitou — nunca
-    // canonical, robots, datas ou JSON-LD, que pertencem ao lado publico.
-    { name: 'focusKeyphrase', type: 'text' },
-    { name: 'relatedKeyphrases', type: 'text', hasMany: true, defaultValue: [] },
-    { name: 'editorialKeywords', type: 'text', hasMany: true, defaultValue: [] },
-    {
-      name: 'schemaTypeRecommendation',
-      type: 'select',
-      options: ['NewsArticle', 'Article', 'Review', 'ItemList', 'HowTo'],
-      admin: { description: 'RECOMENDACAO. O JSON-LD final e montado pelo screen-app.' },
-    },
-    { name: 'articleSection', type: 'text' },
-
-    {
-      name: 'externalSources',
-      type: 'array',
-      fields: [
-        { name: 'sourceId', type: 'text', required: true },
-        { name: 'name', type: 'text', required: true },
-        { name: 'url', type: 'text', required: true },
+          'O texto da materia. E por aqui que uma redacao humana comeca.',
+        fields: [
+        // --- Conteudo ---
+      { name: 'title', type: 'text', required: true },
+        { name: 'subtitle', type: 'text' },
+        { name: 'slug', type: 'text', index: true },
+        { name: 'summary', type: 'textarea' },
         {
-          name: 'role',
-          type: 'select',
-          required: true,
-          options: ['primary', 'secondary', 'press_release', 'catalog'],
+        name: 'contentType',
+        type: 'select',
+        required: true,
+        defaultValue: 'news',
+        // FONTE UNICA. A lista literal duplicada aqui divergiu do contrato quando
+        // `review` foi acrescentado la: o pedido passava na validacao e a
+        // publicacao morria na persistencia, com 503 e sem materia.
+        options: [...PUBLICATION_CONTENT_TYPES],
+      },
+        { name: 'language', type: 'text', required: true, defaultValue: 'pt-BR' },
+        { name: 'body', type: 'blocks', blocks: editorialBlocks },
+        ],
+      },
+      {
+        label: 'Midia',
+        description:
+          'Capa e galeria. Midia sem licenca aprovada NAO publica.',
+        fields: [
+        { name: 'heroMedia', type: 'relationship', relationTo: 'media' },
+        { name: 'gallery', type: 'relationship', relationTo: 'media', hasMany: true },
+        ],
+      },
+      {
+        label: 'Autoria',
+        description:
+          'Autor PUBLICO da materia. Diferente do usuario do CMS que a editou.',
+        fields: [
+        // --- Autoria ---
+      { name: 'authors', type: 'relationship', relationTo: 'authors', hasMany: true },
+        { name: 'primaryAuthor', type: 'relationship', relationTo: 'authors' },
+        { name: 'assignedTo', type: 'relationship', relationTo: 'editorial-users' },
+        // --- Organizacao PROVISORIA (a taxonomia publica nao vive aqui) ---
+      { name: 'section', type: 'text' },
+        { name: 'internalTags', type: 'text', hasMany: true },
+        ],
+      },
+      {
+        label: 'SEO',
+        description:
+          'SINAIS editoriais. Canonical, robots e JSON-LD sao derivados no site.',
+        fields: [
+        // --- SEO ---
+      { name: 'metaTitle', type: 'text' },
+        { name: 'metaDescription', type: 'textarea' },
+        // SEO revalidado. Sao SUGESTOES do pipeline que o CMS aceitou — nunca
+      // canonical, robots, datas ou JSON-LD, que pertencem ao lado publico.
+      { name: 'focusKeyphrase', type: 'text' },
+        { name: 'relatedKeyphrases', type: 'text', hasMany: true, defaultValue: [] },
+        { name: 'editorialKeywords', type: 'text', hasMany: true, defaultValue: [] },
+        {
+        name: 'schemaTypeRecommendation',
+        type: 'select',
+        options: ['NewsArticle', 'Article', 'Review', 'ItemList', 'HowTo'],
+        admin: { description: 'RECOMENDACAO. O JSON-LD final e montado pelo screen-app.' },
+      },
+        { name: 'articleSection', type: 'text' },
+        { name: 'socialTitle', type: 'text' },
+        { name: 'socialDescription', type: 'textarea' },
+        { name: 'socialMedia', type: 'relationship', relationTo: 'media' },
+        { name: 'canonicalOverride', type: 'text' },
+        { name: 'noindex', type: 'checkbox', defaultValue: false },
+        ],
+      },
+      {
+        label: 'Entidades',
+        description:
+          'Filmes, series e pessoas citados. So entidade VERIFICADA atravessa para o site.',
+        fields: [
+        // --- Relacoes (sugeridas pela automacao, confirmadas por humano) ---
+      {
+        name: 'entityReferences',
+        type: 'array',
+        fields: [
+          {
+            name: 'entityKind',
+            type: 'select',
+            required: true,
+            options: ['movie', 'tv', 'season', 'episode', 'person', 'character', 'franchise'],
+          },
+          { name: 'entityId', type: 'text', required: true },
+          {
+            name: 'relation',
+            type: 'select',
+            required: true,
+            options: [
+              'primary_subject',
+              'secondary_subject',
+              'mentioned',
+              'reviewed',
+              'recommended',
+              'compared',
+            ],
+          },
+          { name: 'confidence', type: 'number' },
+          {
+            name: 'verified',
+            type: 'checkbox',
+            defaultValue: false,
+            admin: { description: 'So um humano marca. A automacao envia sempre false.' },
+          },
+        ],
+      },
+        { name: 'relatedArticleReferences', type: 'relationship', relationTo: 'articles', hasMany: true },
+        ],
+      },
+      {
+        label: 'Fontes e QA',
+        description:
+          'Lastro documental. Materia assistida por IA sem fonte nao publica.',
+        fields: [
+        {
+        name: 'externalSources',
+        type: 'array',
+        fields: [
+          { name: 'sourceId', type: 'text', required: true },
+          { name: 'name', type: 'text', required: true },
+          { name: 'url', type: 'text', required: true },
+          {
+            name: 'role',
+            type: 'select',
+            required: true,
+            options: ['primary', 'secondary', 'press_release', 'catalog'],
+          },
+        ],
+      },
+        {
+        name: 'claims',
+        type: 'array',
+        fields: [
+          { name: 'claimId', type: 'text', required: true },
+          { name: 'text', type: 'textarea', required: true },
+          {
+            name: 'origin',
+            type: 'select',
+            required: true,
+            options: [
+              'external_source',
+              'cinerie_catalog',
+              'cinerie_editorial',
+              'licensed_media',
+              'human_input',
+              'inference',
+            ],
+          },
+          { name: 'sourceRefs', type: 'text', hasMany: true },
+          { name: 'conflictsWith', type: 'text', hasMany: true },
+        ],
+      },
+        { name: 'provenanceJson', type: 'json' },
+        { name: 'aiAssisted', type: 'checkbox', defaultValue: false },
+        { name: 'blockingErrors', type: 'text', hasMany: true },
+        { name: 'warnings', type: 'text', hasMany: true },
+        { name: 'qaVersion', type: 'text' },
+        { name: 'qaPassedAt', type: 'date' },
+        ],
+      },
+      {
+        label: 'Publicacao',
+        description:
+          'Estado editorial e datas. O servidor carimba publishedAt.',
+        fields: [
+        // --- Publicacao ---
+      {
+        name: 'workflowStatus',
+        type: 'select',
+        required: true,
+        defaultValue: 'draft',
+        index: true,
+        options: [...WORKFLOW_STATUSES],
+        admin: {
+          description:
+            'Fonte da verdade do fluxo editorial. `_status` do Payload tem 2 valores; o fluxo real tem 12.',
         },
+      },
+        { name: 'scheduledFor', type: 'date' },
+        { name: 'publishedAt', type: 'date' },
+        { name: 'correctedAt', type: 'date' },
+        { name: 'correctionNote', type: 'textarea' },
+        { name: 'retractionReason', type: 'textarea' },
+        {
+        name: 'legalHold',
+        type: 'checkbox',
+        defaultValue: false,
+        admin: { description: 'Retencao juridica: bloqueia publicacao ate liberacao.' },
+      },
+        {
+          // RASTRO HUMANO. Tres perguntas distintas que a auditoria precisa
+          // responder separadamente: quem CRIOU, quem alterou por ULTIMO e
+          // quem PUBLICOU. Colapsar em "ultimo editor" perderia justamente a
+          // informacao que importa quando uma materia sai errada — quem
+          // apertou o botao de publicar.
+          //
+          // Sao relacoes com `editorial-users`, nao com `service-accounts`:
+          // conta tecnica NAO e usuario humano, e forcar as duas na mesma
+          // coluna faria a automacao aparecer como pessoa na auditoria.
+          // Publicacao automatica deixa os tres VAZIOS e preenche
+          // `automationActorId` — a ausencia aqui e o sinal.
+          name: 'createdBy',
+          type: 'relationship',
+          relationTo: 'editorial-users',
+          admin: {
+            readOnly: true,
+            description: 'Usuario do CMS que criou. Vazio em materia da automacao.',
+          },
+        },
+        {
+          name: 'updatedBy',
+          type: 'relationship',
+          relationTo: 'editorial-users',
+          admin: { readOnly: true, description: 'Ultimo usuario do CMS que alterou.' },
+        },
+        {
+          name: 'publishedBy',
+          type: 'relationship',
+          relationTo: 'editorial-users',
+          admin: {
+            readOnly: true,
+            description: 'Usuario do CMS que PUBLICOU. Vazio em autopublicacao.',
+          },
+        },
+        ],
+      },
+      {
+        label: 'Automacao (auditoria)',
+        description:
+          'SO LEITURA. Preenchido pela autopublicacao; vazio em materia humana.',
+        fields: [
+        // --- Governanca ---
+      // ------------------------------------------------------------------
+      // PUBLICACAO AUTOMATICA (FASE 2F)
+      //
+      // Aqui mora o ATOR TECNICO — quem operou. O AUTOR PUBLICO continua sendo
+      // `primaryAuthor`/`authors`, e e ele que aparece na ficha e no JSON-LD.
+      // Manter os dois separados e o que impede a automacao de virar "autor" na
+      // materia (falso) ou de sumir do registro (pior).
+      // ------------------------------------------------------------------
+      {
+        name: 'autoPublished',
+        type: 'checkbox',
+        defaultValue: false,
+        admin: { readOnly: true, description: 'Publicada automaticamente pelo pipeline, sem revisao previa.' },
+      },
+        { name: 'automationActorId', type: 'text', admin: { readOnly: true } },
+        {
+        name: 'automationActorLabel',
+        type: 'text',
+        admin: { readOnly: true, description: 'Rotulo da conta tecnica no momento da operacao.' },
+      },
+        {
+        name: 'automationScopesUsed',
+        type: 'text',
+        hasMany: true,
+        defaultValue: [],
+        admin: {
+          readOnly: true,
+          description:
+            'Escopos EFETIVAMENTE usados, derivados da credencial. Nunca declarados pelo cliente.',
+        },
+      },
+        {
+        name: 'automationReceivedAt',
+        type: 'date',
+        admin: {
+          readOnly: true,
+          description:
+            'Instante em que o SERVIDOR recebeu o pedido. Distinto de `generatedAt`, que e o relogio do produtor e nao e confiavel para auditoria.',
+        },
+      },
+        {
+        name: 'automationIdempotencyKey',
+        type: 'text',
+        index: true,
+        admin: { readOnly: true, description: 'Chave do pedido. Reenvio identico nao duplica.' },
+      },
+        { name: 'automationSourceRevision', type: 'number', admin: { readOnly: true } },
+        { name: 'automationPayloadHash', type: 'text', admin: { readOnly: true } },
+        { name: 'automationPipelineVersion', type: 'text', admin: { readOnly: true } },
+        { name: 'automationContractVersion', type: 'text', admin: { readOnly: true } },
+        { name: 'automationContractName', type: 'text', admin: { readOnly: true } },
+        { name: 'automationSchemaHash', type: 'text', admin: { readOnly: true } },
+        {
+        name: 'automationAttributionMode',
+        type: 'select',
+        options: ['byline', 'newsroom', 'assisted'],
+        admin: { readOnly: true },
+      },
+        // --- Identidade e idempotencia (preenchidos pelo endpoint) ---
+      { name: 'automationDraftId', admin: { readOnly: true }, type: 'text', index: true },
+        { name: 'idempotencyKey', admin: { readOnly: true }, type: 'text', index: true },
+        { name: 'sourceClusterId', admin: { readOnly: true }, type: 'text', index: true },
+        { name: 'sourceRevision', admin: { readOnly: true }, type: 'number' },
+        { name: 'sourcePayloadHash', admin: { readOnly: true }, type: 'text' },
+        { name: 'draftPayloadHash', admin: { readOnly: true }, type: 'text' },
+        { name: 'pipelineVersion', admin: { readOnly: true }, type: 'text' },
+        ],
+      },
       ],
     },
-    {
-      name: 'claims',
-      type: 'array',
-      fields: [
-        { name: 'claimId', type: 'text', required: true },
-        { name: 'text', type: 'textarea', required: true },
-        {
-          name: 'origin',
-          type: 'select',
-          required: true,
-          options: [
-            'external_source',
-            'cinerie_catalog',
-            'cinerie_editorial',
-            'licensed_media',
-            'human_input',
-            'inference',
-          ],
-        },
-        { name: 'sourceRefs', type: 'text', hasMany: true },
-        { name: 'conflictsWith', type: 'text', hasMany: true },
-      ],
-    },
-    { name: 'provenanceJson', type: 'json' },
-    { name: 'aiAssisted', type: 'checkbox', defaultValue: false },
-    { name: 'assignedTo', type: 'relationship', relationTo: 'editorial-users' },
-    {
-      name: 'legalHold',
-      type: 'checkbox',
-      defaultValue: false,
-      admin: { description: 'Retencao juridica: bloqueia publicacao ate liberacao.' },
-    },
-    { name: 'blockingErrors', type: 'text', hasMany: true },
-    { name: 'warnings', type: 'text', hasMany: true },
-    { name: 'qaVersion', type: 'text' },
-    { name: 'qaPassedAt', type: 'date' },
-
-    // --- Publicacao ---
-    {
-      name: 'workflowStatus',
-      type: 'select',
-      required: true,
-      defaultValue: 'draft',
-      index: true,
-      options: [...WORKFLOW_STATUSES],
-      admin: {
-        description:
-          'Fonte da verdade do fluxo editorial. `_status` do Payload tem 2 valores; o fluxo real tem 12.',
-      },
-    },
-    { name: 'scheduledFor', type: 'date' },
-    { name: 'publishedAt', type: 'date' },
-    { name: 'correctedAt', type: 'date' },
-    { name: 'correctionNote', type: 'textarea' },
-    { name: 'retractionReason', type: 'textarea' },
-
-    // --- SEO ---
-    { name: 'metaTitle', type: 'text' },
-    { name: 'metaDescription', type: 'textarea' },
-    { name: 'canonicalOverride', type: 'text' },
-    { name: 'noindex', type: 'checkbox', defaultValue: false },
-    { name: 'socialTitle', type: 'text' },
-    { name: 'socialDescription', type: 'textarea' },
-    { name: 'socialMedia', type: 'relationship', relationTo: 'media' },
   ],
 }
 

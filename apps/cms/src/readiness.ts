@@ -56,6 +56,12 @@ export interface CmsReadinessInput {
   readonly storagePersistent: boolean
   readonly collectionCount: number
   readonly isProduction: boolean
+  /**
+   * Estado da autopublicacao, ja avaliado por
+   * `evaluateAutoPublishReadiness`. Entra como FATO para o nucleo continuar
+   * puro — e para o CMS manual poder passar `ok` sem env de automacao alguma.
+   */
+  readonly autoPublish: { readonly status: CheckStatus; readonly detail: string }
 }
 
 /** Collections que o CMS precisa ter registrado para funcionar. */
@@ -120,6 +126,23 @@ export function evaluateCmsReadiness(input: CmsReadinessInput): ReadinessReport 
     name: 'collections',
     status: input.collectionCount >= REQUIRED_CMS_COLLECTIONS ? 'ok' : 'blocked',
     detail: `${String(input.collectionCount)} registrada(s)`,
+  })
+
+  // AUTOPUBLICACAO. O check aparece SEMPRE, inclusive quando a automacao esta
+  // desligada — e nesse caso com status `ok`.
+  //
+  // Existe para fechar uma lacuna que a documentacao ja prometia e o codigo nao
+  // cumpria: o runbook afirmava que fuso invalido "bloqueia readiness", mas
+  // nenhum check consultava a configuracao. Quem ligasse a automacao com fuso
+  // errado descobriria a cada request, em vez de no deploy.
+  //
+  // O que ele NAO faz: exigir configuracao de automacao para o CMS ficar
+  // pronto. Um Payload que publica apenas por redacao humana e um Payload
+  // saudavel, e o kill switch desligado e estado conhecido — nao avaria.
+  checks.push({
+    name: 'auto_publish',
+    status: input.autoPublish.status,
+    detail: input.autoPublish.detail,
   })
 
   return summarizeReadiness(checks)

@@ -294,13 +294,6 @@ export interface Media {
  */
 export interface Article {
   id: number;
-  automationDraftId?: string | null;
-  idempotencyKey?: string | null;
-  sourceClusterId?: string | null;
-  sourceRevision?: number | null;
-  sourcePayloadHash?: string | null;
-  draftPayloadHash?: string | null;
-  pipelineVersion?: string | null;
   title: string;
   subtitle?: string | null;
   slug?: string | null;
@@ -449,8 +442,24 @@ export interface Article {
   gallery?: (number | Media)[] | null;
   authors?: (number | Author)[] | null;
   primaryAuthor?: (number | null) | Author;
+  assignedTo?: (number | null) | EditorialUser;
   section?: string | null;
   internalTags?: string[] | null;
+  metaTitle?: string | null;
+  metaDescription?: string | null;
+  focusKeyphrase?: string | null;
+  relatedKeyphrases?: string[] | null;
+  editorialKeywords?: string[] | null;
+  /**
+   * RECOMENDACAO. O JSON-LD final e montado pelo screen-app.
+   */
+  schemaTypeRecommendation?: ('NewsArticle' | 'Article' | 'Review' | 'ItemList' | 'HowTo') | null;
+  articleSection?: string | null;
+  socialTitle?: string | null;
+  socialDescription?: string | null;
+  socialMedia?: (number | null) | Media;
+  canonicalOverride?: string | null;
+  noindex?: boolean | null;
   entityReferences?:
     | {
         entityKind: 'movie' | 'tv' | 'season' | 'episode' | 'person' | 'character' | 'franchise';
@@ -465,42 +474,6 @@ export interface Article {
       }[]
     | null;
   relatedArticleReferences?: (number | Article)[] | null;
-  /**
-   * Publicada automaticamente pelo pipeline, sem revisao previa.
-   */
-  autoPublished?: boolean | null;
-  automationActorId?: string | null;
-  /**
-   * Rotulo da conta tecnica no momento da operacao.
-   */
-  automationActorLabel?: string | null;
-  /**
-   * Escopos EFETIVAMENTE usados, derivados da credencial. Nunca declarados pelo cliente.
-   */
-  automationScopesUsed?: string[] | null;
-  /**
-   * Instante em que o SERVIDOR recebeu o pedido. Distinto de `generatedAt`, que e o relogio do produtor e nao e confiavel para auditoria.
-   */
-  automationReceivedAt?: string | null;
-  /**
-   * Chave do pedido. Reenvio identico nao duplica.
-   */
-  automationIdempotencyKey?: string | null;
-  automationSourceRevision?: number | null;
-  automationPayloadHash?: string | null;
-  automationPipelineVersion?: string | null;
-  automationContractVersion?: string | null;
-  automationContractName?: string | null;
-  automationSchemaHash?: string | null;
-  automationAttributionMode?: ('byline' | 'newsroom' | 'assisted') | null;
-  focusKeyphrase?: string | null;
-  relatedKeyphrases?: string[] | null;
-  editorialKeywords?: string[] | null;
-  /**
-   * RECOMENDACAO. O JSON-LD final e montado pelo screen-app.
-   */
-  schemaTypeRecommendation?: ('NewsArticle' | 'Article' | 'Review' | 'ItemList' | 'HowTo') | null;
-  articleSection?: string | null;
   externalSources?:
     | {
         sourceId: string;
@@ -536,11 +509,6 @@ export interface Article {
     | boolean
     | null;
   aiAssisted?: boolean | null;
-  assignedTo?: (number | null) | EditorialUser;
-  /**
-   * Retencao juridica: bloqueia publicacao ate liberacao.
-   */
-  legalHold?: boolean | null;
   blockingErrors?: string[] | null;
   warnings?: string[] | null;
   qaVersion?: string | null;
@@ -566,13 +534,57 @@ export interface Article {
   correctedAt?: string | null;
   correctionNote?: string | null;
   retractionReason?: string | null;
-  metaTitle?: string | null;
-  metaDescription?: string | null;
-  canonicalOverride?: string | null;
-  noindex?: boolean | null;
-  socialTitle?: string | null;
-  socialDescription?: string | null;
-  socialMedia?: (number | null) | Media;
+  /**
+   * Retencao juridica: bloqueia publicacao ate liberacao.
+   */
+  legalHold?: boolean | null;
+  /**
+   * Usuario do CMS que criou. Vazio em materia da automacao.
+   */
+  createdBy?: (number | null) | EditorialUser;
+  /**
+   * Ultimo usuario do CMS que alterou.
+   */
+  updatedBy?: (number | null) | EditorialUser;
+  /**
+   * Usuario do CMS que PUBLICOU. Vazio em autopublicacao.
+   */
+  publishedBy?: (number | null) | EditorialUser;
+  /**
+   * Publicada automaticamente pelo pipeline, sem revisao previa.
+   */
+  autoPublished?: boolean | null;
+  automationActorId?: string | null;
+  /**
+   * Rotulo da conta tecnica no momento da operacao.
+   */
+  automationActorLabel?: string | null;
+  /**
+   * Escopos EFETIVAMENTE usados, derivados da credencial. Nunca declarados pelo cliente.
+   */
+  automationScopesUsed?: string[] | null;
+  /**
+   * Instante em que o SERVIDOR recebeu o pedido. Distinto de `generatedAt`, que e o relogio do produtor e nao e confiavel para auditoria.
+   */
+  automationReceivedAt?: string | null;
+  /**
+   * Chave do pedido. Reenvio identico nao duplica.
+   */
+  automationIdempotencyKey?: string | null;
+  automationSourceRevision?: number | null;
+  automationPayloadHash?: string | null;
+  automationPipelineVersion?: string | null;
+  automationContractVersion?: string | null;
+  automationContractName?: string | null;
+  automationSchemaHash?: string | null;
+  automationAttributionMode?: ('byline' | 'newsroom' | 'assisted') | null;
+  automationDraftId?: string | null;
+  idempotencyKey?: string | null;
+  sourceClusterId?: string | null;
+  sourceRevision?: number | null;
+  sourcePayloadHash?: string | null;
+  draftPayloadHash?: string | null;
+  pipelineVersion?: string | null;
   updatedAt: string;
   createdAt: string;
   _status?: ('draft' | 'published') | null;
@@ -871,13 +883,6 @@ export interface MediaSelect<T extends boolean = true> {
  * via the `definition` "articles_select".
  */
 export interface ArticlesSelect<T extends boolean = true> {
-  automationDraftId?: T;
-  idempotencyKey?: T;
-  sourceClusterId?: T;
-  sourceRevision?: T;
-  sourcePayloadHash?: T;
-  draftPayloadHash?: T;
-  pipelineVersion?: T;
   title?: T;
   subtitle?: T;
   slug?: T;
@@ -997,8 +1002,21 @@ export interface ArticlesSelect<T extends boolean = true> {
   gallery?: T;
   authors?: T;
   primaryAuthor?: T;
+  assignedTo?: T;
   section?: T;
   internalTags?: T;
+  metaTitle?: T;
+  metaDescription?: T;
+  focusKeyphrase?: T;
+  relatedKeyphrases?: T;
+  editorialKeywords?: T;
+  schemaTypeRecommendation?: T;
+  articleSection?: T;
+  socialTitle?: T;
+  socialDescription?: T;
+  socialMedia?: T;
+  canonicalOverride?: T;
+  noindex?: T;
   entityReferences?:
     | T
     | {
@@ -1010,24 +1028,6 @@ export interface ArticlesSelect<T extends boolean = true> {
         id?: T;
       };
   relatedArticleReferences?: T;
-  autoPublished?: T;
-  automationActorId?: T;
-  automationActorLabel?: T;
-  automationScopesUsed?: T;
-  automationReceivedAt?: T;
-  automationIdempotencyKey?: T;
-  automationSourceRevision?: T;
-  automationPayloadHash?: T;
-  automationPipelineVersion?: T;
-  automationContractVersion?: T;
-  automationContractName?: T;
-  automationSchemaHash?: T;
-  automationAttributionMode?: T;
-  focusKeyphrase?: T;
-  relatedKeyphrases?: T;
-  editorialKeywords?: T;
-  schemaTypeRecommendation?: T;
-  articleSection?: T;
   externalSources?:
     | T
     | {
@@ -1049,8 +1049,6 @@ export interface ArticlesSelect<T extends boolean = true> {
       };
   provenanceJson?: T;
   aiAssisted?: T;
-  assignedTo?: T;
-  legalHold?: T;
   blockingErrors?: T;
   warnings?: T;
   qaVersion?: T;
@@ -1061,13 +1059,30 @@ export interface ArticlesSelect<T extends boolean = true> {
   correctedAt?: T;
   correctionNote?: T;
   retractionReason?: T;
-  metaTitle?: T;
-  metaDescription?: T;
-  canonicalOverride?: T;
-  noindex?: T;
-  socialTitle?: T;
-  socialDescription?: T;
-  socialMedia?: T;
+  legalHold?: T;
+  createdBy?: T;
+  updatedBy?: T;
+  publishedBy?: T;
+  autoPublished?: T;
+  automationActorId?: T;
+  automationActorLabel?: T;
+  automationScopesUsed?: T;
+  automationReceivedAt?: T;
+  automationIdempotencyKey?: T;
+  automationSourceRevision?: T;
+  automationPayloadHash?: T;
+  automationPipelineVersion?: T;
+  automationContractVersion?: T;
+  automationContractName?: T;
+  automationSchemaHash?: T;
+  automationAttributionMode?: T;
+  automationDraftId?: T;
+  idempotencyKey?: T;
+  sourceClusterId?: T;
+  sourceRevision?: T;
+  sourcePayloadHash?: T;
+  draftPayloadHash?: T;
+  pipelineVersion?: T;
   updatedAt?: T;
   createdAt?: T;
   _status?: T;

@@ -27,6 +27,31 @@ O worker é o único processo que fala com os dois lados, e de forma **assimétr
 API do Payload por HTTP, banco público por Prisma. Ele **não** conecta ao banco
 do CMS.
 
+### Três camadas independentes — implante nesta ordem
+
+A separação importa porque **cada camada é útil sozinha**, e tratá-las como um
+bloco único faz uma redação esperar pelo pipeline que ela não usa.
+
+| Camada | O que precisa | O que entrega sozinha | Seções |
+| --- | --- | --- | --- |
+| **1. CMS manual** | Payload + banco editorial + storage de upload + um usuário humano | redação escreve, revisa e **publica** | C–L |
+| **2. Publicação pública** | worker de projeção + `screen-db` + storage público | a matéria publicada **aparece no site** | N–P |
+| **3. Autopublicação (MNScr)** | conta `editorial_auto_publish` + kill switch + quotas + fuso | matéria que nasce publicada | M (parcial), Q |
+
+- Parando na camada **1**, o CMS é utilizável: `/readyz` responde 200 e a
+  redação publica. A matéria fica na `publication-outbox` esperando o worker —
+  ela **não** aparece no site ainda, e isso é o comportamento correto, não uma
+  falha.
+- Parando na camada **2**, o produto editorial está completo: humano publica e o
+  site mostra. **É o estado alvo de quem não usa o MNScr.**
+- A camada **3** é opcional e **último passo**. Nada em 1 e 2 depende dela: sem
+  `EDITORIAL_AUTO_PUBLISH_ENABLED=true`, o check `auto_publish` do `/readyz` sai
+  `ok` com detalhe "desabilitada" — kill switch desligado é estado conhecido,
+  não avaria.
+
+Operação diária da camada 1 (papéis, abas, corpo, SEO, mídia, workflow,
+auditoria): [`../operations/manual-editorial-workflow.md`](../operations/manual-editorial-workflow.md).
+
 ---
 
 ## A. Validar o projeto

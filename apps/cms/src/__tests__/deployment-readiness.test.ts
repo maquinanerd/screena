@@ -20,6 +20,7 @@ import {
   resolvePayloadUploadConfig,
 } from '../upload-storage-config.js'
 import { safeUploadName } from '../media-source.js'
+import { evaluateAutoPublishReadiness } from '../env-auto-publish.js'
 
 function facts(overrides: Partial<CmsReadinessInput> = {}): CmsReadinessInput {
   return {
@@ -32,6 +33,9 @@ function facts(overrides: Partial<CmsReadinessInput> = {}): CmsReadinessInput {
     storagePersistent: true,
     collectionCount: REQUIRED_CMS_COLLECTIONS,
     isProduction: true,
+    // Default: automacao DESLIGADA e readiness `ok`. E o estado do CMS manual,
+    // e ele precisa ser o caso base — nao a excecao.
+    autoPublish: { status: 'ok', detail: 'autopublicacao desabilitada' },
     ...overrides,
   }
 }
@@ -200,5 +204,88 @@ describe('nome de arquivo de upload', () => {
     expect(safeUploadName('')).toBeNull()
     expect(safeUploadName('.')).toBeNull()
     expect(safeUploadName('..')).toBeNull()
+  })
+})
+
+/* ------------------------------------------------------------------ */
+/* Autopublicacao na readiness                                         */
+/* ------------------------------------------------------------------ */
+
+describe('evaluateAutoPublishReadiness', () => {
+  // Este bloco existe porque a documentacao (runbook e doc de quota) prometia
+  // que fuso invalido "bloqueia readiness" enquanto NENHUM check consultava a
+  // configuracao. Promessa em documento que o codigo nao cumpre e pior que
+  // ausencia de promessa: o operador confia nela.
+
+  it('automacao DESLIGADA e `ok` — CMS manual e CMS saudavel', () => {
+    // Kill switch desligado e estado operacional CONHECIDO, nao avaria. Tratar
+    // como bloqueio faria o orquestrador tirar do ar um Payload que publica
+    // perfeitamente por redacao humana.
+    for (const env of [
+      {},
+      { EDITORIAL_AUTO_PUBLISH_ENABLED: 'false' },
+      { NODE_ENV: 'production' },
+      // Producao, sem fuso, sem nenhuma variavel de automacao: exatamente o
+      // ambiente de um CMS manual.
+      { NODE_ENV: 'production', EDITORIAL_AUTO_PUBLISH_ENABLED: 'false' },
+    ]) {
+      const verdict = evaluateAutoPublishReadiness(env)
+      expect(verdict.status).toBe('ok')
+      expect(verdict.detail).toContain('desabilitada')
+    }
+  })
+
+  it('automacao LIGADA e bem configurada e `ok`', () => {
+    const verdict = evaluateAutoPublishReadiness({
+      NODE_ENV: 'production',
+      EDITORIAL_AUTO_PUBLISH_ENABLED: 'true',
+      EDITORIAL_AUTO_PUBLISH_TIME_ZONE: 'America/Sao_Paulo',
+    })
+    expect(verdict.status).toBe('ok')
+    expect(verdict.detail).toContain('America/Sao_Paulo')
+  })
+
+  it('automacao LIGADA sem fuso em producao BLOQUEIA', () => {
+    // Quem ligou a automacao espera que ela publique. Descobrir o fuso ausente
+    // a cada request seria descobrir tarde.
+    const verdict = evaluateAutoPublishReadiness({
+      NODE_ENV: 'production',
+      EDITORIAL_AUTO_PUBLISH_ENABLED: 'true',
+    })
+    expect(verdict.status).toBe('blocked')
+  })
+
+  it('automacao LIGADA com fuso invalido BLOQUEIA', () => {
+    for (const timeZone of ['-03:00', 'BRT', 'Nao/Existe']) {
+      const verdict = evaluateAutoPublishReadiness({
+        NODE_ENV: 'production',
+        EDITORIAL_AUTO_PUBLISH_ENABLED: 'true',
+        EDITORIAL_AUTO_PUBLISH_TIME_ZONE: timeZone,
+      })
+      expect(verdict.status).toBe('blocked')
+    }
+  })
+
+  it('o detalhe NAO vaza valor de configuracao', () => {
+    // Readiness e lida por quem tem o painel aberto. O nome da variavel basta
+    // para agir; o valor errado nao precisa aparecer.
+    const verdict = evaluateAutoPublishReadiness({
+      NODE_ENV: 'production',
+      EDITORIAL_AUTO_PUBLISH_ENABLED: 'true',
+      EDITORIAL_AUTO_PUBLISH_TIME_ZONE: 'Zona/Secreta',
+    })
+    expect(verdict.detail).not.toContain('Zona/Secreta')
+  })
+
+  it('o check entra no relatorio e um bloqueio derruba a readiness', () => {
+    const green = evaluateCmsReadiness(facts())
+    expect(green.checks.map((check) => check.name)).toContain('auto_publish')
+    expect(green.ready).toBe(true)
+
+    const red = evaluateCmsReadiness(
+      facts({ autoPublish: { status: 'blocked', detail: 'configuracao invalida' } }),
+    )
+    expect(red.ready).toBe(false)
+    expect(readinessHttpStatus(red)).toBe(503)
   })
 })

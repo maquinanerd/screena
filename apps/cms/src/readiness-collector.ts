@@ -14,6 +14,7 @@ import { getPayload } from 'payload'
 
 import { getMediaSource } from './media-source-runtime.js'
 import { validateCmsConfig } from './env.js'
+import { evaluateAutoPublishReadiness } from './env-auto-publish.js'
 import {
   describeUploadConfig,
   resolvePayloadUploadConfig,
@@ -83,6 +84,7 @@ export async function collectCmsReadinessFacts(
       storagePersistent: false,
       collectionCount: 0,
       isProduction,
+      autoPublish: evaluateAutoPublishReadiness(env),
     }
   }
 
@@ -138,5 +140,6 @@ export async function collectCmsReadinessFacts(
     storagePersistent: describe.persistent,
     collectionCount,
     isProduction,
+    autoPublish: evaluateAutoPublishReadiness(env),
   }
 }

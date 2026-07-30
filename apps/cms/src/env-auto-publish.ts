@@ -235,3 +235,46 @@ export function describeAutoPublish(config: AutoPublishConfig): string {
   const author = config.perAuthorLimit === null ? 'sem teto' : String(config.perAuthorLimit)
   return `${config.enabled ? 'habilitada' : 'DESABILITADA'}; diario ${daily}; por autor ${author}; fuso ${config.timeZone}`
 }
+
+/* ------------------------------------------------------------------ */
+/* Readiness da autopublicacao                                         */
+/* ------------------------------------------------------------------ */
+
+export type AutoPublishReadiness =
+  | { readonly status: 'ok'; readonly detail: string }
+  | { readonly status: 'blocked'; readonly detail: string }
+
+/**
+ * A autopublicacao esta em estado que permite atender?
+ *
+ * A CONDICAO AO KILL SWITCH E O PONTO. `resolveAutoPublishConfig` recusa fuso
+ * ausente em `production` INDEPENDENTEMENTE de a automacao estar ligada — e usar
+ * esse veredito cru na readiness derrubaria um CMS que publica apenas por
+ * redacao humana, so porque ele nao declarou uma variavel que nao usa.
+ *
+ * Entao:
+ *  - DESLIGADA  -> `ok`. Kill switch desligado e estado operacional conhecido,
+ *                  nao indisponibilidade. Um CMS manual e um CMS saudavel.
+ *  - LIGADA e configurada -> `ok`.
+ *  - LIGADA e mal configurada -> `blocked`. Aqui sim: quem ligou a automacao
+ *    espera que ela publique, e descobrir o fuso invalido a cada request seria
+ *    descobrir tarde.
+ */
+export function evaluateAutoPublishReadiness(
+  env: Record<string, string | undefined>,
+): AutoPublishReadiness {
+  const declared = (env.EDITORIAL_AUTO_PUBLISH_ENABLED ?? '').trim().toLowerCase()
+  const enabled = declared === 'true' || declared === '1'
+
+  if (!enabled) {
+    return { status: 'ok', detail: 'autopublicacao desabilitada (estado operacional, nao falha)' }
+  }
+
+  const result = resolveAutoPublishConfig(env)
+  if (!result.ok) {
+    // Motivo de POLITICA, sem valor: um readiness e lido por quem tem o painel
+    // aberto, e o nome da variavel basta para agir.
+    return { status: 'blocked', detail: 'autopublicacao habilitada com configuracao invalida' }
+  }
+  return { status: 'ok', detail: `autopublicacao habilitada; fuso ${result.config.timeZone}` }
+}

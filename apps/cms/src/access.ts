@@ -143,6 +143,11 @@ export const SERVICE_ACCOUNT_FORBIDDEN_FIELDS = [
   'authors',
   'primaryAuthor',
   '_status',
+  // Rastro HUMANO: derivado do `req.user`, nunca aceito do corpo. Sem isto,
+  // uma conta tecnica poderia gravar um usuario humano como autor da decisao.
+  'createdBy',
+  'updatedBy',
+  'publishedBy',
 ] as const
 
 /**
@@ -163,8 +168,58 @@ export const AUTOMATION_PUBLISHER_FORBIDDEN_FIELDS = [
   'retractionReason',
   'legalHold',
   '_status',
+  // Rastro HUMANO: derivado do `req.user`, nunca aceito do corpo. Sem isto,
+  // uma conta tecnica poderia gravar um usuario humano como autor da decisao.
+  'createdBy',
+  'updatedBy',
+  'publishedBy',
 ] as const
 
 export function serviceAccountMayWriteField(field: string): boolean {
   return !(SERVICE_ACCOUNT_FORBIDDEN_FIELDS as readonly string[]).includes(field)
+}
+
+/**
+ * Campos que NENHUM humano escreve — nem o administrador.
+ *
+ * Sao o registro de PROVENIENCIA TECNICA: quem operou (conta de automacao),
+ * sob qual contrato, com qual chave de idempotencia. Todos aparecem no
+ * formulario com `admin: { readOnly: true }`, mas `readOnly` e uma decisao de
+ * INTERFACE: a REST API do Payload aceita o campo normalmente. Um `PATCH`
+ * gravando `autoPublished: true` numa materia escrita a mao faria a auditoria
+ * afirmar que o pipeline publicou algo que o pipeline nunca viu — e como
+ * `autoPublished` e justamente o indicador EXPLICITO de automacao (a ausencia
+ * de `publishedBy` sozinha nao serve), corrompe-lo apaga a fronteira inteira.
+ *
+ * O caminho inverso ja estava fechado: `createdBy`/`updatedBy`/`publishedBy`
+ * saem do alcance das duas contas tecnicas.
+ */
+export const HUMAN_FORBIDDEN_FIELDS = [
+  // Indicador explicito de autopublicacao.
+  'autoPublished',
+  // Ator tecnico e contrato sob o qual ele operou.
+  'automationActorId',
+  'automationActorLabel',
+  'automationScopesUsed',
+  'automationReceivedAt',
+  'automationIdempotencyKey',
+  'automationSourceRevision',
+  'automationPayloadHash',
+  'automationPipelineVersion',
+  'automationContractVersion',
+  'automationContractName',
+  'automationSchemaHash',
+  'automationAttributionMode',
+  // Identidade e idempotencia da ingestao de rascunho.
+  'automationDraftId',
+  'idempotencyKey',
+  'sourceClusterId',
+  'sourceRevision',
+  'sourcePayloadHash',
+  'draftPayloadHash',
+  'pipelineVersion',
+] as const
+
+export function humanMayWriteField(field: string): boolean {
+  return !(HUMAN_FORBIDDEN_FIELDS as readonly string[]).includes(field)
 }
