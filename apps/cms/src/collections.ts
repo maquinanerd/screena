@@ -68,19 +68,47 @@ function policy(decide: (actor: Actor) => boolean): Access {
 
 /**
  * Leitura de identidade: administrador ve tudo; qualquer principal autenticado
- * ve APENAS o proprio documento.
+ * ve APENAS o proprio documento, e SOMENTE na collection a que ele pertence.
  *
  * Sem a parte do "proprio documento", `/api/<slug>/me` devolve um documento
- * vazio — o Payload autentica, mas o access control filtra todos os campos. Um
- * principal ler a si mesmo nao vaza nada: a API key vive cifrada em `apiKey` e
- * o indice esta marcado como `hidden`.
+ * vazio — o Payload autentica, mas o access control filtra todos os campos.
+ *
+ * O parametro `ownerKind` nao e cerimonia. O filtro devolvido e
+ * `{ id: { equals: <id do ator> } }`, e `editorial_users` e `service_accounts`
+ * sao tabelas SEPARADAS, cada uma com autoincrement proprio: o id 2 existe nas
+ * duas e nao aponta para a mesma pessoa nem para a mesma coisa. Aplicar o filtro
+ * sem checar a collection de origem fazia um editor-chefe de id 2 ler a conta
+ * tecnica de id 2 (label, purpose, scopes, notes) e uma conta tecnica de id 1
+ * ler o `editorial-users` de id 1 (e-mail, nome, papel do administrador).
+ *
+ * Isso estava mascarado por `admin.hidden: true`: o item nao aparecia no menu, e
+ * a REST API continuava respondendo. Esconder nao e negar.
  */
-const readOwnIdentity: Access = ({ req }) => {
-  const actor = resolveActor(req.user)
-  if (identityAccess.read(actor)) return true
-  if (actor.kind === 'anonymous') return false
-  return { id: { equals: actor.id } }
+function readOwnIdentity(ownerKind: 'human' | 'service'): Access {
+  return ({ req }) => {
+    const actor = resolveActor(req.user)
+    if (identityAccess.read(actor)) return true
+    // Anonimo primeiro, e separado: e o unico membro de `Actor` sem `id`, e
+    // descarta-lo aqui e o que deixa `actor.id` bem tipado abaixo.
+    if (actor.kind === 'anonymous') return false
+    // Principal de OUTRA natureza nao tem "proprio documento" nesta collection.
+    if (actor.kind !== ownerKind) return false
+    return { id: { equals: actor.id } }
+  }
 }
+
+/**
+ * A collection de contas tecnicas aparece no menu SO para administrador.
+ *
+ * Espelha exatamente `identityAccess` (as quatro operacoes exigem
+ * `isAdministrator`): mostrar no menu o que a politica recusa produziria uma
+ * tela de erro em vez de uma navegacao honesta.
+ *
+ * `hidden` e apenas INTERFACE — a negacao real esta em `access`. As duas
+ * caminham juntas de proposito; nenhuma substitui a outra.
+ */
+const hiddenFromNonAdministrators = ({ user }: { user?: unknown }): boolean =>
+  !isAdministrator(resolveActor(user))
 
 /* ------------------------------------------------------------------ */
 /* Blocos do corpo (espelham @screena/editorial-contracts)             */
@@ -223,7 +251,7 @@ export const EditorialUsers: CollectionConfig = {
   admin: { useAsTitle: 'email', group: 'Identidade' },
   access: {
     create: policy(identityAccess.create),
-    read: readOwnIdentity,
+    read: readOwnIdentity('human'),
     update: policy(identityAccess.update),
     delete: policy(identityAccess.delete),
   },
@@ -256,12 +284,14 @@ export const ServiceAccounts: CollectionConfig = {
   admin: {
     useAsTitle: 'label',
     group: 'Identidade',
-    // Nao aparece na navegacao: nao e superficie de trabalho editorial.
-    hidden: true,
+    // Visivel SO para administrador. Nao e superficie de trabalho editorial —
+    // mas e superficie de ADMINISTRACAO, e escondê-la de quem tem a politica
+    // para usá-la obrigava a criar conta tecnica fora do painel.
+    hidden: hiddenFromNonAdministrators,
   },
   access: {
     create: policy(identityAccess.create),
-    read: readOwnIdentity,
+    read: readOwnIdentity('service'),
     update: policy(identityAccess.update),
     delete: policy(identityAccess.delete),
   },
