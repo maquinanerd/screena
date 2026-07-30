@@ -74,14 +74,48 @@ export interface CmsHarness {
   stop(): Promise<void>
 }
 
+/**
+ * Reserva um numero de porta livre e DEVOLVE A PORTA DESOCUPADA.
+ *
+ * O `close` antes do `resolve` nao e detalhe de higiene — e a correcao do
+ * defeito. A primeira versao resolvia dentro do callback do `listen`, deixando
+ * o socket de sondagem bound pelo resto do processo de teste. `unref()` so tira
+ * o handle da contagem do event loop; a porta continua ocupada. Quem tentasse
+ * bindar depois — o Postgres efemero e o `next start` — colidia com o proprio
+ * harness.
+ *
+ * No Windows o sintoma nao aparecia; no runner Linux o `listen(0)` sem host
+ * binda em `::` cobrindo o par IPv4+IPv6, e o Postgres falhava em `::1` E em
+ * `127.0.0.1` ("could not create any TCP/IP sockets"). Por isso o bind agora e
+ * explicito em `127.0.0.1`: sonda exatamente a interface que os servidores vao
+ * usar, sem depender do comportamento dual-stack do sistema.
+ */
 async function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = net.createServer()
     server.unref()
-    server.on('error', reject)
-    server.listen(0, () => {
+    server.once('error', reject)
+    server.listen({ host: '127.0.0.1', port: 0, exclusive: true }, () => {
       const address = server.address()
-      resolve(typeof address === 'object' && address !== null ? address.port : 0)
+      const port = typeof address === 'object' && address !== null ? address.port : 0
+
+      // Porta 0 aqui significa que o endereco nao veio como esperado. Devolver
+      // esse zero adiante faria o Postgres escolher uma porta que o harness nao
+      // conhece, e a falha apareceria longe da causa.
+      if (port <= 0) {
+        server.close(() => {
+          reject(new Error('nao foi possivel reservar uma porta TCP valida'))
+        })
+        return
+      }
+
+      server.close((error) => {
+        if (error !== undefined) {
+          reject(error)
+          return
+        }
+        resolve(port)
+      })
     })
   })
 }
