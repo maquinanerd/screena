@@ -28,6 +28,25 @@ import {
   DEFAULT_RETRY_POLICY,
 } from '../outbox-api.js'
 
+interface OutboxPool {
+  query: (text: string, params: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>
+}
+
+/**
+ * Pool do adapter Postgres do Payload.
+ *
+ * Usado SO pelo compare-and-swap do `claim`, que precisa de uma unica
+ * declaracao SQL atomica (ver o comentario no ponto de uso). Todo o resto da
+ * outbox continua passando pela API do Payload.
+ */
+function outboxPool(req: PayloadRequest): OutboxPool {
+  const pool = (req.payload.db as unknown as { pool?: OutboxPool }).pool
+  if (pool === undefined) {
+    throw new Error('adapter do Payload sem pool Postgres: claim nao pode ser atomico')
+  }
+  return pool
+}
+
 function json(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -128,51 +147,72 @@ export const claimPublicationEventsEndpoint: Endpoint = {
       })
 
       try {
-        // COMPARE-AND-SWAP. A pre-condicao e o estado LIDO — status e, quando
-        // recuperamos uma lease expirada, o token exato que enxergamos. Dois
-        // workers correndo: o segundo nao encontra a linha naquele estado, o
-        // Payload devolve P2025 e ele simplesmente pula. E isto, e nao um
-        // mutex de processo, que garante um evento para um worker so.
-        const precondition: Record<string, unknown> = {
-          id: { equals: row.id },
-          status: { equals: row.status },
-        }
+        // COMPARE-AND-SWAP ATOMICO, em UMA declaracao SQL.
+        //
+        // `payload.update({ where })` NAO entrega esta garantia: o adapter
+        // resolve o `where` num SELECT e so entao aplica o UPDATE por id. Entre
+        // os dois, outro worker atualiza a mesma linha — e os DOIS ganham. O
+        // sintoma era intermitente e so a CI pegou: "o MESMO evento nunca e
+        // entregue a dois workers" falhando de vez em quando, com o mesmo
+        // eventId nas duas listas.
+        //
+        // Um unico `UPDATE ... WHERE status = <o que foi lido> RETURNING`
+        // fecha a janela: sob READ COMMITTED o segundo worker espera o primeiro
+        // comitar, reavalia o WHERE contra a versao nova da linha, nao casa, e
+        // volta com zero linhas. E isto — nao um mutex de processo — que
+        // garante um evento para um worker so.
+        const conditions = [
+          '"id" = $7',
+          '"status" = $8::"public"."enum_publication_outbox_status"',
+        ]
+        const params: unknown[] = [
+          mutation.status,
+          mutation.leaseToken,
+          mutation.lockedBy,
+          mutation.lockedAtIso,
+          mutation.leaseExpiresAtIso,
+          mutation.attempts,
+          row.id,
+          row.status,
+        ]
+        // Recuperando lease expirada, o token LIDO tambem entra na
+        // pre-condicao. `IS NOT DISTINCT FROM` trata NULL como valor, entao
+        // "sem token" tambem e uma pre-condicao verificavel.
         if (eligibility.kind === 'expired_lease') {
-          precondition.leaseToken =
-            row.leaseToken === null || row.leaseToken === undefined
-              ? { exists: false }
-              : { equals: row.leaseToken }
+          conditions.push('"lease_token" IS NOT DISTINCT FROM $9')
+          params.push(row.leaseToken ?? null)
         }
 
-        const updated = await req.payload.update({
-          collection: 'publication-outbox',
-          where: precondition as Where,
-          data: {
-            status: mutation.status,
-            leaseToken: mutation.leaseToken,
-            lockedBy: mutation.lockedBy,
-            lockedAt: mutation.lockedAtIso,
-            leaseExpiresAt: mutation.leaseExpiresAtIso,
-            attempts: mutation.attempts,
-          } as never,
-          overrideAccess: true,
-          req,
-        })
+        const { rows } = await outboxPool(req).query(
+          `UPDATE "publication_outbox"
+              SET "status" = $1::"public"."enum_publication_outbox_status",
+                  "lease_token" = $2,
+                  "locked_by" = $3,
+                  "locked_at" = $4::timestamptz,
+                  "lease_expires_at" = $5::timestamptz,
+                  "attempts" = $6,
+                  "updated_at" = now()
+            WHERE ${conditions.join(' AND ')}
+        RETURNING "id", "event_id", "idempotency_key", "event_type", "aggregate_id",
+                  "aggregate_version", "attempts", "payload"`,
+          params,
+        )
 
-        const doc = (updated.docs?.[0] ?? null) as Record<string, unknown> | null
-        if (doc === null) continue
+        const doc = rows[0]
+        if (doc === undefined) continue
 
         claimed.push({
-          eventId: doc.eventId,
-          idempotencyKey: doc.idempotencyKey,
-          eventType: doc.eventType,
-          aggregateId: doc.aggregateId,
+          eventId: doc.event_id,
+          idempotencyKey: doc.idempotency_key,
+          eventType: doc.event_type,
+          aggregateId: doc.aggregate_id,
           // ORDEM DE EMISSAO: o id serial da linha. E o unico campo da outbox
           // que ordena de fato. `aggregateVersion` guarda um HASH do conteudo
           // publicado — util para detectar mudanca, inutil para ordenar.
           emissionSequence: Number(doc.id),
-          contentVersion: doc.aggregateVersion,
-          attempts: doc.attempts,
+          contentVersion: doc.aggregate_version,
+          // `attempts` e `numeric` no Postgres, e o driver devolve string.
+          attempts: Number(doc.attempts),
           leaseToken: mutation.leaseToken,
           leaseExpiresAt: mutation.leaseExpiresAtIso,
           payload: doc.payload,
