@@ -10,7 +10,7 @@
  *  - `PAYLOAD_DATABASE_URL` obrigatoria; `DATABASE_URL` NUNCA e fallback;
  *  - `PAYLOAD_SECRET` obrigatoria e com tamanho minimo;
  *  - se `PAYLOAD_DATABASE_URL === DATABASE_URL`, aborta;
- *  - se a URL parecer um banco publico conhecido do Cinerie, aborta.
+ *  - se host ou nome do database parecerem o banco publico do Cinerie, aborta.
  *
  * Nenhuma funcao aqui imprime URL, usuario, senha ou segredo — nem em erro.
  */
@@ -32,13 +32,13 @@ export const PAYLOAD_SECRET_KEY = 'PAYLOAD_SECRET' as const
 export const MIN_SECRET_LENGTH = 32
 
 /**
- * Padroes de nome que denunciam o banco publico do Cinerie.
+ * Padroes que denunciam o NOME do database publico.
  *
- * Heuristica por NOME, igual a barreira ja usada em
- * `services/news-ingestion/bin/editorial.ts`. E a segunda camada; a primeira e
- * exigir uma variavel separada.
+ * Aqui `rss_prime` continua proibido: esse texto no PATH da URL e nome de
+ * database. O mesmo texto no HOST, porem, pode ser apenas o prefixo do projeto
+ * que o EasyPanel adiciona a todos os servicos (`rss_prime_cinerie-cms-db`).
  */
-const PUBLIC_DATABASE_PATTERNS: readonly RegExp[] = [
+const PUBLIC_DATABASE_NAME_PATTERNS: readonly RegExp[] = [
   /rss_prime/i,
   /screen-db/i,
   /screen_db/i,
@@ -47,6 +47,22 @@ const PUBLIC_DATABASE_PATTERNS: readonly RegExp[] = [
   /cinerie_db/i,
   /_prod\b/i,
   /production/i,
+]
+
+/**
+ * Padroes que denunciam o HOST do banco publico.
+ *
+ * Deliberadamente NAO contem `rss_prime`: no EasyPanel esse e o nome do projeto,
+ * nao evidencia de que o database seja o publico. `screen-db` continua bloqueado
+ * mesmo quando vem prefixado, por exemplo `rss_prime_screen-db`.
+ */
+const PUBLIC_DATABASE_HOST_PATTERNS: readonly RegExp[] = [
+  /(^|[._-])screen-db($|[._-])/i,
+  /(^|[._-])screen_db($|[._-])/i,
+  /(^|[._-])screena($|[._-])/i,
+  /(^|[._-])cinerie-db($|[._-])/i,
+  /(^|[._-])cinerie_db($|[._-])/i,
+  /(^|[._-])production($|[._-])/i,
 ]
 
 export type CmsConfigErrorCode =
@@ -128,11 +144,15 @@ export function validateCmsConfig(env: CmsEnv): CmsConfigResult {
     }
 
     if (parsed !== null) {
-      // Compara host + caminho (nome do database). Usuario e senha ficam de fora
-      // de proposito: nao ha motivo para tocar em credencial nesta checagem.
-      const surface = `${parsed.hostname}${parsed.pathname}`
-      const hit = PUBLIC_DATABASE_PATTERNS.find((pattern) => pattern.test(surface))
-      if (hit !== undefined) {
+      // Usuario e senha ficam de fora de proposito. O hostname e o nome do
+      // database sao avaliados separadamente para nao confundir o prefixo do
+      // projeto EasyPanel com o database publico.
+      const hostname = parsed.hostname
+      const databaseName = parsed.pathname.replace(/^\/+/, '')
+      const hostHit = PUBLIC_DATABASE_HOST_PATTERNS.find((pattern) => pattern.test(hostname))
+      const databaseHit = PUBLIC_DATABASE_NAME_PATTERNS.find((pattern) => pattern.test(databaseName))
+
+      if (hostHit !== undefined || databaseHit !== undefined) {
         errors.push({
           code: 'payload_database_url_looks_public',
           message:
