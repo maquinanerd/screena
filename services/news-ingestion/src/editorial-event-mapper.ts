@@ -117,7 +117,16 @@ export function mapPublicationEvent(raw: unknown, emissionSequence: number): Eve
                 anchorText: link.anchorText,
               })),
             },
-      provenance: { primarySourceName: source.name, primarySourceUrl: source.url },
+      provenance: {
+        primarySourceName: source.name,
+        primarySourceUrl: source.url,
+        externalSources: event.provenance.externalSources.map((item) => ({
+          sourceId: textOrNull(item.sourceId),
+          name: item.name,
+          url: item.url,
+          role: item.role,
+        })),
+      },
       media: event.media.map((item) => ({
         mediaId: item.mediaId,
         role: item.role,

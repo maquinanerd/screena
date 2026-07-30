@@ -14,6 +14,12 @@
 import { cache } from "react";
 import { getPrismaClient } from "@screena/db/server";
 
+import {
+  buildArticleBodyBlocks,
+  collectArticleBodyReferences,
+  type ArticleBodyBlock,
+  type ArticleBodyHydration,
+} from "../lib/article-body-presenter";
 import { SITE_URL } from "../lib/site";
 import {
   buildNewsArticleView,
@@ -52,6 +58,12 @@ export interface NewsArticleData {
   canonicalUrl: string;
   /** "Leia tambem" (tela 05): outros artigos publicaveis reais. */
   readAlso: NewsCardView[];
+  /**
+   * Corpo ESTRUTURADO projetado do CMS. Vazio = a pagina cai no corpo textual
+   * legado (`view.bodyParagraphs`). Os dois nunca sao renderizados juntos: seria
+   * o mesmo texto duas vezes.
+   */
+  bodyBlocks: ArticleBodyBlock[];
 }
 
 function isoDate(date: Date | null): string | null {
@@ -136,6 +148,7 @@ export const getNewsArticleData = cache(
         title: true,
         deck: true,
         body: true,
+        bodyBlocks: true,
         metaTitle: true,
         metaDescription: true,
         socialTitle: true,
@@ -198,10 +211,12 @@ export const getNewsArticleData = cache(
     }
 
     const related = await resolveRelated(prisma, translation.articleId);
-    const [entityCard, readAlso] = await Promise.all([
+    const [entityCard, readAlso, bodyHydration] = await Promise.all([
       resolveEntityCard(prisma, translation.articleId),
       resolveReadAlso(prisma, translation.slug),
+      resolveBodyHydration(prisma, translation.bodyBlocks),
     ]);
+    const bodyBlocks = buildArticleBodyBlocks(translation.bodyBlocks, bodyHydration);
 
     const view = buildNewsArticleView({
       facts: {
@@ -252,6 +267,7 @@ export const getNewsArticleData = cache(
       canonicalSlug: translation.slug,
       canonicalUrl: newsCanonicalUrl(translation.slug),
       readAlso,
+      bodyBlocks,
     };
   },
 );
@@ -384,61 +400,159 @@ async function resolveEntityCard(
   for (const link of links) {
     const type = link.entityType;
     if (type !== "movie" && type !== "tv") continue;
-    const slugRow = await prisma.slug.findFirst({
-      where: {
-        entityType: type,
-        entityId: link.entityId,
-        languageCode: LANGUAGE_CODE,
-        isCanonical: true,
-      },
-      select: { slug: true },
-    });
-    if (slugRow === null) continue;
+    const card = await loadEntityCardInput(prisma, type, link.entityId);
+    if (card !== null) return card;
+  }
+  return null;
+}
 
-    const translationRow = await prisma.entityTranslation.findFirst({
-      where: { entityType: type, entityId: link.entityId, languageCode: LANGUAGE_CODE },
-      select: { title: true, summary: true },
-    });
+/**
+ * Fatos persistidos de UMA entidade movie|tv, no formato da ficha.
+ *
+ * Extraido de `resolveEntityCard` para servir tambem aos blocos `entityCard` do
+ * corpo. Ter duas consultas montando a "mesma" ficha e como duas superficies
+ * discordarem sobre o titulo do mesmo filme.
+ *
+ * Sem slug canonico pt-BR -> `null`: uma ficha sem link e um card que nao leva a
+ * lugar nenhum.
+ */
+async function loadEntityCardInput(
+  prisma: PrismaClient,
+  entityType: "movie" | "tv",
+  entityId: bigint,
+): Promise<NewsEntityCardInput | null> {
+  const slugRow = await prisma.slug.findFirst({
+    where: { entityType, entityId, languageCode: LANGUAGE_CODE, isCanonical: true },
+    select: { slug: true },
+  });
+  if (slugRow === null) return null;
 
-    if (type === "movie") {
-      const movie = await prisma.movie.findUnique({
-        where: { id: link.entityId },
-        select: { titleOriginal: true, releaseDate: true, posterPath: true },
-      });
-      if (movie === null) continue;
-      return {
-        entityType: "movie",
-        id: link.entityId.toString(),
-        titleOriginal: movie.titleOriginal,
-        translationTitle: translationRow?.title ?? null,
-        summary: translationRow?.summary ?? null,
-        slug: slugRow.slug,
-        posterPath: movie.posterPath,
-        year: movie.releaseDate === null ? null : movie.releaseDate.getUTCFullYear(),
-        seasonCount: null,
-      };
-    }
-    const show = await prisma.tvShow.findUnique({
-      where: { id: link.entityId },
-      select: { nameOriginal: true, firstAirDate: true, posterPath: true },
+  const translationRow = await prisma.entityTranslation.findFirst({
+    where: { entityType, entityId, languageCode: LANGUAGE_CODE },
+    select: { title: true, summary: true },
+  });
+
+  if (entityType === "movie") {
+    const movie = await prisma.movie.findUnique({
+      where: { id: entityId },
+      select: { titleOriginal: true, releaseDate: true, posterPath: true },
     });
-    if (show === null) continue;
-    const seasonCount = await prisma.season.count({
-      where: { tvShowId: link.entityId, seasonNumber: { gt: 0 } },
-    });
+    if (movie === null) return null;
     return {
-      entityType: "tv",
-      id: link.entityId.toString(),
-      titleOriginal: show.nameOriginal,
+      entityType: "movie",
+      id: entityId.toString(),
+      titleOriginal: movie.titleOriginal,
       translationTitle: translationRow?.title ?? null,
       summary: translationRow?.summary ?? null,
       slug: slugRow.slug,
-      posterPath: show.posterPath,
-      year: show.firstAirDate === null ? null : show.firstAirDate.getUTCFullYear(),
-      seasonCount: seasonCount > 0 ? seasonCount : null,
+      posterPath: movie.posterPath,
+      year: movie.releaseDate === null ? null : movie.releaseDate.getUTCFullYear(),
+      seasonCount: null,
     };
   }
-  return null;
+
+  const show = await prisma.tvShow.findUnique({
+    where: { id: entityId },
+    select: { nameOriginal: true, firstAirDate: true, posterPath: true },
+  });
+  if (show === null) return null;
+  const seasonCount = await prisma.season.count({
+    where: { tvShowId: entityId, seasonNumber: { gt: 0 } },
+  });
+  return {
+    entityType: "tv",
+    id: entityId.toString(),
+    titleOriginal: show.nameOriginal,
+    translationTitle: translationRow?.title ?? null,
+    summary: translationRow?.summary ?? null,
+    slug: slugRow.slug,
+    posterPath: show.posterPath,
+    year: show.firstAirDate === null ? null : show.firstAirDate.getUTCFullYear(),
+    seasonCount: seasonCount > 0 ? seasonCount : null,
+  };
+}
+
+/**
+ * Resolve as referencias dos blocos do corpo contra o banco publico.
+ *
+ * Duas familias de referencia, cada uma com o mesmo gate das superficies
+ * existentes:
+ *  - `entityCard` -> catalogo (titulo pt-BR + slug canonico reais);
+ *  - `relatedContent` -> artigo PUBLICAVEL (o mesmo `isPublishableArticle` das
+ *    outras telas, incluindo o embargo de materia agendada).
+ *
+ * O que nao resolve simplesmente nao chega ao presenter, que descarta o bloco.
+ */
+async function resolveBodyHydration(
+  prisma: PrismaClient,
+  rawBlocks: unknown,
+): Promise<ArticleBodyHydration> {
+  const refs = collectArticleBodyReferences(rawBlocks);
+  const entityCards = new Map<string, NewsEntityCardInput>();
+  const relatedArticles = new Map<string, { title: string; slug: string }>();
+  if (refs.entities.length === 0 && refs.articleRefs.length === 0) {
+    return { entityCards, relatedArticles };
+  }
+
+  await Promise.all([
+    ...refs.entities.map(async (ref) => {
+      // So movie|tv: a ficha do canonico e de titulo. `person` (e o resto) nao
+      // tem ficha desenhada, e improvisar uma seria inventar componente.
+      if (ref.entityKind !== "movie" && ref.entityKind !== "tv") return;
+      if (!/^[0-9]+$/.test(ref.entityId)) return;
+      const card = await loadEntityCardInput(prisma, ref.entityKind, BigInt(ref.entityId));
+      if (card !== null) entityCards.set(`${ref.entityKind}:${ref.entityId}`, card);
+    }),
+    (async () => {
+      if (refs.articleRefs.length === 0) return;
+      const rows = await prisma.article.findMany({
+        where: { payloadDocumentId: { in: refs.articleRefs } },
+        select: {
+          payloadDocumentId: true,
+          publishedAt: true,
+          licenseStatus: true,
+          displayAllowed: true,
+          translations: {
+            where: {
+              languageCode: LANGUAGE_CODE,
+              reviewStatus: { in: [...NEWS_RENDERABLE_REVIEW_STATUSES] },
+            },
+            select: { slug: true, title: true, reviewStatus: true, publishedAt: true },
+            take: 1,
+          },
+        },
+      });
+      const nowIso = new Date().toISOString();
+      for (const row of rows) {
+        const translation = row.translations[0];
+        if (translation === undefined || row.payloadDocumentId === null) continue;
+        if (
+          !isPublishableArticle(
+            {
+              reviewStatus: String(translation.reviewStatus),
+              licenseStatus: String(row.licenseStatus),
+              displayAllowed: row.displayAllowed,
+              slug: translation.slug,
+              title: translation.title,
+              publishedAtIso: resolvePublishedIso(
+                isoDate(translation.publishedAt),
+                isoDate(row.publishedAt),
+              ),
+            },
+            nowIso,
+          )
+        ) {
+          continue;
+        }
+        relatedArticles.set(row.payloadDocumentId, {
+          title: translation.title,
+          slug: translation.slug,
+        });
+      }
+    })(),
+  ]);
+
+  return { entityCards, relatedArticles };
 }
 
 /** "Leia tambem" (tela 05): ate 4 outros artigos publicaveis mais recentes. */

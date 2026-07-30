@@ -170,6 +170,17 @@ export const publishedProvenance = z.object({
   externalSources: z
     .array(
       z.object({
+        /**
+         * Id da fonte DENTRO do documento. ADITIVO (opcional) — o contrato e
+         * declarado `additive` no manifesto e consumidor antigo segue valendo.
+         *
+         * Existe porque o bloco `sourceList` do corpo referencia fontes por id
+         * (`sourceRefs`). Sem o id aqui, o lado publico recebia a lista de
+         * fontes e a lista de refs sem nenhuma forma de casar as duas — e o
+         * bloco ficava impossivel de renderizar sem inventar o pareamento,
+         * que e como se credita a fonte errada.
+         */
+        sourceId: stableId.optional(),
         name: plainText(LIMITS.shortText),
         url: httpUrl,
         role: z.enum(['primary', 'secondary', 'press_release', 'catalog']),

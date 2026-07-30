@@ -283,7 +283,14 @@ export async function buildPublicationEvent(input: {
   const externalSources = (Array.isArray(doc.externalSources) ? doc.externalSources : []).map(
     (source) => {
       const entry = source as Record<string, unknown>
-      return { name: String(entry.name), url: String(entry.url), role: entry.role }
+      return {
+        // `sourceId` atravessa porque o bloco `sourceList` do corpo cita fontes
+        // por id. Sem ele, o lado publico nao consegue casar ref com fonte.
+        ...(text(entry.sourceId) === undefined ? {} : { sourceId: text(entry.sourceId) }),
+        name: String(entry.name),
+        url: String(entry.url),
+        role: entry.role,
+      }
     },
   )
 
