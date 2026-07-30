@@ -31,27 +31,18 @@ RUN PNPM_CONFIG_PROD=false pnpm install --frozen-lockfile
 # BUILD SEM BANCO E SEM SEGREDO REAL.
 #
 # `payload.config.ts` valida a configuracao no import, e o `next build` importa o
-# config para gerar o admin. Estes valores sao de BUILD e ficam so nesta camada
-# (`ARG`, nao `ENV`): nao persistem no runtime da imagem. O EasyPanel injeta os
-# valores reais como env do servico.
+# config para gerar o admin. Os valores abaixo sao literais fixos de BUILD. Eles
+# NAO sao `ARG`: um orquestrador que transforma variaveis de runtime em build args
+# nao consegue sobrescreve-los com credenciais reais.
 #
 # O host `127.0.0.1:1` e deliberadamente inalcancavel: se alguma etapa do build
-# tentar de fato abrir conexao, ela falha aqui, em vez de silenciosamente tocar
-# um banco de verdade.
-# O driver de BUILD e `s3` com endpoint inalcancavel, e nao `local`. A razao e
-# semantica: `local` sob `NODE_ENV=production` exige
-# `PAYLOAD_UPLOAD_LOCAL_PERSISTENT_CONFIRMED=true`, e essa flag e uma DECLARACAO
-# do operador de que o caminho esta num volume duravel. Assar essa declaracao no
-# build seria mentir por conveniencia — e a mentira sobreviveria como exemplo
-# para quem copiasse este arquivo.
+# tentar abrir conexao, ela falha em vez de tocar um banco real.
 #
-# `s3` apontando para `127.0.0.1:1` tem a forma completa que a validacao exige e
-# nao afirma nada sobre persistencia. Nenhuma conexao acontece no build; se
-# alguma etapa tentar, ela falha aqui em vez de tocar um storage de verdade.
-ARG PAYLOAD_SECRET=build-only-secret-nao-usar-em-runtime-0123456789
-ARG PAYLOAD_DATABASE_URL=postgresql://build:build@127.0.0.1:1/cinerie_cms_build
-RUN PAYLOAD_SECRET=${PAYLOAD_SECRET} \
-    PAYLOAD_DATABASE_URL=${PAYLOAD_DATABASE_URL} \
+# O driver de BUILD e `s3` com endpoint inalcancavel, e nao `local`. `local` sob
+# `NODE_ENV=production` exigiria uma declaracao de persistencia que nao pertence
+# ao build.
+RUN PAYLOAD_SECRET=build-only-secret-nao-usar-em-runtime-0123456789 \
+    PAYLOAD_DATABASE_URL=postgresql://build:build@127.0.0.1:1/cinerie_cms_build \
     PAYLOAD_UPLOAD_STORAGE_DRIVER=s3 \
     PAYLOAD_UPLOAD_S3_ENDPOINT=http://127.0.0.1:1 \
     PAYLOAD_UPLOAD_S3_BUCKET=build-only \
@@ -71,7 +62,7 @@ ENV CINERIE_BUILD_SHA=${CINERIE_BUILD_SHA} \
 
 # Container NAO-root. O diretorio de uploads locais e criado aqui com dono
 # `node` para que um volume montado por cima herde permissao utilizavel.
-RUN mkdir -p /app/apps/cms/media && chown -R node:node /app
+RUN mkdir -p /app/apps/cms/media /run/secrets && chown -R node:node /app /run/secrets
 USER node
 
 EXPOSE 3002
@@ -83,13 +74,17 @@ EXPOSE 3002
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:3002/healthz').then(r=>process.exit(r.status===200?0:1)).catch(()=>process.exit(1))"
 
-# MIGRATION ANTES DO START, e o app NAO sobe se ela falhar.
+# SEGREDOS DE RUNTIME.
 #
-# `payload migrate` aplica somente migrations pendentes de `src/migrations` —
-# nunca `migrate:create`, nunca `push`. Duas instancias subindo juntas nao
-# corrompem o estado: o adapter Postgres do Payload serializa a aplicacao por
-# transacao, e a perdedora encontra tudo aplicado.
+# EasyPanel pode disponibilizar variaveis de Ambiente tambem como build args. Para
+# impedir que banco e segredo aparecam na linha de `docker build`, o deploy pode
+# monta-los como arquivos:
+#   /run/secrets/payload_database_url
+#   /run/secrets/payload_secret
 #
-# `exec` no start: o Next vira PID 1 e recebe SIGTERM direto do orquestrador, em
-# vez de ficar orfao sob o shell.
-CMD ["sh", "-c", "pnpm --filter @screena/cms cms:migrations:deploy || { echo '=== FATAL: migration do Payload falhou. O CMS NAO vai subir. ==='; echo '=== Runbook: docs/runbooks/EASYPANEL_EDITORIAL.md'; exit 1; }; exec pnpm --filter @screena/cms start"]
+# Variaveis de runtime continuam aceitas para outros orquestradores. Os arquivos
+# so sao lidos quando a variavel correspondente estiver ausente.
+#
+# MIGRATION ANTES DO START, e o app NAO sobe se ela falhar. `exec` mantem o Next
+# como PID 1 para receber SIGTERM diretamente.
+CMD ["sh", "-c", "if [ -z \"${PAYLOAD_DATABASE_URL:-}\" ] && [ -f /run/secrets/payload_database_url ]; then export PAYLOAD_DATABASE_URL=\"$(cat /run/secrets/payload_database_url)\"; fi; if [ -z \"${PAYLOAD_SECRET:-}\" ] && [ -f /run/secrets/payload_secret ]; then export PAYLOAD_SECRET=\"$(cat /run/secrets/payload_secret)\"; fi; pnpm --filter @screena/cms cms:migrations:deploy || { echo '=== FATAL: migration do Payload falhou. O CMS NAO vai subir. ==='; echo '=== Runbook: docs/runbooks/EASYPANEL_EDITORIAL.md'; exit 1; }; exec pnpm --filter @screena/cms start"]
