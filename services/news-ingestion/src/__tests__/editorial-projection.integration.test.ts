@@ -253,6 +253,61 @@ async function publicArticle(payloadDocumentId: string) {
   })
 }
 
+/** Vinculos de entidade de uma materia, em forma comparavel. */
+async function entityLinks(payloadDocumentId: string): Promise<string[]> {
+  const article = await publicArticle(payloadDocumentId)
+  if (article === null) return []
+  const links = await screen.prisma.entityNewsLink.findMany({
+    where: { articleId: article.id },
+    orderBy: { id: 'asc' },
+    select: { entityType: true, entityId: true },
+  })
+  return links.map((link) => `${String(link.entityType)}:${link.entityId.toString()}`)
+}
+
+/**
+ * Filme REAL no catalogo publico (com slug canonico e titulo pt-BR).
+ *
+ * A linha em `entities` nasce por TRIGGER do `movies` (migration
+ * `20260715120000_data_governance_hardening`) — nao e criada aqui de proposito:
+ * se o trigger regredir, o vinculo passa a abortar a transacao e este teste
+ * precisa ser quem descobre.
+ */
+async function seedCatalogMovie(opts: {
+  tmdbId: number
+  titleOriginal: string
+  slug: string
+}): Promise<string> {
+  const movie = await screen.prisma.movie.create({
+    data: {
+      tmdbId: opts.tmdbId,
+      titleOriginal: opts.titleOriginal,
+      releaseDate: new Date('2025-07-11T00:00:00.000Z'),
+      posterPath: '/poster-superman.jpg',
+    },
+    select: { id: true },
+  })
+  await screen.prisma.slug.create({
+    data: {
+      entityType: 'movie',
+      entityId: movie.id,
+      languageCode: 'pt-BR',
+      slug: opts.slug,
+      isCanonical: true,
+    },
+  })
+  await screen.prisma.entityTranslation.create({
+    data: {
+      entityType: 'movie',
+      entityId: movie.id,
+      languageCode: 'pt-BR',
+      title: opts.titleOriginal,
+      summary: 'Resumo pt-BR do catalogo.',
+    },
+  })
+  return movie.id.toString()
+}
+
 /* ------------------------------------------------------------------ */
 /* Setup                                                              */
 /* ------------------------------------------------------------------ */
@@ -985,6 +1040,287 @@ describe('projecao de midia: blocos do corpo', () => {
         },
       ]),
     ).rejects.toBeInstanceOf(MediaPipelineError)
+  })
+})
+
+/* ------------------------------------------------------------------ */
+/* 8. VINCULO COM O CATALOGO (`entity_news_links`)                     */
+/* ------------------------------------------------------------------ */
+
+describe('vinculo entidade <-> materia', () => {
+  it('entidade movie VERIFICADA vira exatamente UM vinculo', async () => {
+    const movieId = await seedCatalogMovie({
+      tmdbId: 1_061_474,
+      titleOriginal: 'Superman',
+      slug: 'superman',
+    })
+    const id = await seedArticle('com-entidade', {
+      entityReferences: [
+        { entityKind: 'movie', entityId: movieId, relation: 'primary_subject', verified: true },
+      ],
+    })
+    await moveTo(id, 'published')
+    const { outcomes } = await drain()
+    expect(outcomes).toContain('applied')
+
+    expect(await entityLinks(id)).toEqual([`movie:${movieId}`])
+  })
+
+  it('entidade NAO verificada nao atravessa (o CMS ja a barra)', async () => {
+    const movieId = await seedCatalogMovie({
+      tmdbId: 1_061_475,
+      titleOriginal: 'Nao Verificado',
+      slug: 'nao-verificado',
+    })
+    const id = await seedArticle('entidade-nao-verificada', {
+      entityReferences: [
+        { entityKind: 'movie', entityId: movieId, relation: 'mentioned', verified: false },
+      ],
+    })
+    await moveTo(id, 'published')
+    await drain()
+    expect(await entityLinks(id)).toEqual([])
+  })
+
+  it('tipo NAO suportado nao vira vinculo e a materia continua publicada', async () => {
+    // `franchise` e relacao editorial legitima no CMS, mas nao existe como
+    // `EntityType` no banco publico: gravar abortaria a transacao no enum.
+    const id = await seedArticle('entidade-franquia', {
+      entityReferences: [
+        { entityKind: 'franchise', entityId: '999', relation: 'mentioned', verified: true },
+      ],
+    })
+    await moveTo(id, 'published')
+    const { outcomes } = await drain()
+    expect(outcomes).toContain('applied')
+    expect(await publicArticle(id)).not.toBeNull()
+    expect(await entityLinks(id)).toEqual([])
+  })
+
+  it('entidade INEXISTENTE no catalogo nao cria vinculo falso — nem derruba a materia', async () => {
+    // O caminho que a FK composta (entity_type, entity_id) -> entities tornaria
+    // fatal: sem a verificacao previa, a transacao inteira abortaria e levaria
+    // junto artigo, traducao e recibo.
+    const id = await seedArticle('entidade-fantasma', {
+      entityReferences: [
+        { entityKind: 'movie', entityId: '987654321', relation: 'primary_subject', verified: true },
+      ],
+    })
+    await moveTo(id, 'published')
+    const { outcomes } = await drain()
+    expect(outcomes).toContain('applied')
+
+    const article = await publicArticle(id)
+    expect(article).not.toBeNull()
+    expect(String(article?.translations[0]?.indexStatus)).toBe('index')
+    expect(await entityLinks(id)).toEqual([])
+  })
+
+  it('REPROCESSAR o mesmo evento nao duplica o vinculo', async () => {
+    const movieId = await seedCatalogMovie({
+      tmdbId: 1_061_476,
+      titleOriginal: 'Reprocessado',
+      slug: 'reprocessado',
+    })
+    const id = await seedArticle('vinculo-replay', {
+      entityReferences: [
+        { entityKind: 'movie', entityId: movieId, relation: 'primary_subject', verified: true },
+      ],
+    })
+    await moveTo(id, 'published')
+    const { events } = await claim()
+    const target = events.find((event) => event.eventId.startsWith(id))
+    expect(target).toBeDefined()
+    if (target === undefined) return
+
+    const mapping = mapPublicationEvent(target.payload, target.emissionSequence)
+    expect(mapping.ok).toBe(true)
+    if (!mapping.ok) return
+
+    const first = await applyProjectionEvent(screen.prisma as never, {
+      event: mapping.event,
+      contentVersion: target.contentVersion,
+      workerId: WORKER,
+    })
+    expect(first.outcome).toBe('applied')
+    expect(await entityLinks(id)).toEqual([`movie:${movieId}`])
+
+    // Mesmo evento de novo (worker morreu entre o commit e o ack).
+    const second = await applyProjectionEvent(screen.prisma as never, {
+      event: mapping.event,
+      contentVersion: target.contentVersion,
+      workerId: WORKER,
+    })
+    expect(second.outcome).toBe('skipped_duplicate')
+    expect(await entityLinks(id)).toEqual([`movie:${movieId}`])
+
+    // E um evento NOVO com o mesmo conjunto (edicao que nao mexeu nas
+    // entidades) tambem nao duplica: a unique + reconciliacao seguram.
+    const reedicao = await applyProjectionEvent(screen.prisma as never, {
+      event: {
+        ...mapping.event,
+        eventId: `${target.eventId}-reedicao`,
+        emissionSequence: mapping.event.emissionSequence + 1,
+      },
+      contentVersion: `${target.contentVersion}-2`,
+      workerId: WORKER,
+    })
+    expect(reedicao.outcome).toBe('applied')
+    expect(await entityLinks(id)).toEqual([`movie:${movieId}`])
+  })
+
+  it('entidade REMOVIDA pelo editor sai das relacionadas na reprojecao', async () => {
+    // So inserir deixaria a materia citada para sempre numa ficha da qual ela
+    // foi retirada. O evento carrega o conjunto autoritativo, entao reconcilia.
+    const movieId = await seedCatalogMovie({
+      tmdbId: 1_061_477,
+      titleOriginal: 'Removido',
+      slug: 'removido',
+    })
+    const id = await seedArticle('vinculo-removido', {
+      entityReferences: [
+        { entityKind: 'movie', entityId: movieId, relation: 'primary_subject', verified: true },
+      ],
+    })
+    await moveTo(id, 'published')
+    await drain()
+    expect(await entityLinks(id)).toEqual([`movie:${movieId}`])
+
+    // O editor desmarca a entidade e republica pelo caminho real de edicao:
+    // `published -> needs_update -> ready_to_publish -> published` (a allowlist
+    // de transicao nao permite atalho).
+    await moveTo(id, 'needs_update')
+    await payload.update({
+      collection: 'articles',
+      id,
+      data: { entityReferences: [] } as never,
+      overrideAccess: true,
+      user: await userDoc(ids.chief),
+    })
+    await moveTo(id, 'ready_to_publish')
+    await moveTo(id, 'published')
+    await drain()
+
+    expect(await entityLinks(id)).toEqual([])
+  })
+
+  it('retratacao NAO apaga os vinculos — o gate e o indexStatus', async () => {
+    const movieId = await seedCatalogMovie({
+      tmdbId: 1_061_478,
+      titleOriginal: 'Retratado',
+      slug: 'retratado',
+    })
+    const id = await seedArticle('vinculo-retratado', {
+      entityReferences: [
+        { entityKind: 'movie', entityId: movieId, relation: 'primary_subject', verified: true },
+      ],
+    })
+    await moveTo(id, 'published')
+    await drain()
+
+    await moveTo(id, 'retracted', { retractionReason: 'Fato nao confirmado.' })
+    await drain()
+
+    const article = await publicArticle(id)
+    expect(String(article?.translations[0]?.indexStatus)).toBe('noindex')
+    // O vinculo sobrevive, como o texto: se a materia voltar apos revisao
+    // humana, a citacao volta com ela. O que a tira das relacionadas do filme e
+    // o `indexStatus`, filtrado na LEITURA (`related-news.ts`).
+    expect(await entityLinks(id)).toEqual([`movie:${movieId}`])
+  })
+})
+
+/* ------------------------------------------------------------------ */
+/* 9. CORPO ESTRUTURADO (blocos que so existem em `body_blocks`)        */
+/* ------------------------------------------------------------------ */
+
+describe('corpo estruturado projetado', () => {
+  it('os blocos do contrato chegam ao banco publico com id, ordem e tipo', async () => {
+    const movieId = await seedCatalogMovie({
+      tmdbId: 1_061_479,
+      titleOriginal: 'Corpo Estruturado',
+      slug: 'corpo-estruturado',
+    })
+    const id = await seedArticle('corpo-rico', {
+      entityReferences: [
+        { entityKind: 'movie', entityId: movieId, relation: 'primary_subject', verified: true },
+      ],
+      body: [
+        { blockType: 'paragraph', blockId: 'p1', text: 'Abertura editorial propria da Cinerie.' },
+        { blockType: 'heading', blockId: 'h1', level: '2', text: 'O que se sabe' },
+        { blockType: 'quote', blockId: 'q1', text: 'Uma frase atribuida.', attribution: 'James Gunn' },
+        {
+          blockType: 'entityCard',
+          blockId: 'ec1',
+          entityKind: 'movie',
+          entityId: movieId,
+          note: 'Nota do editor sobre o filme.',
+        },
+        {
+          blockType: 'factBox',
+          blockId: 'fb1',
+          title: 'Ficha tecnica',
+          items: [{ label: 'Diretor', value: 'James Gunn' }],
+        },
+        { blockType: 'sourceList', blockId: 'sl1', sourceRefs: ['s1'] },
+        { blockType: 'divider', blockId: 'dv1' },
+      ],
+    })
+    await moveTo(id, 'published')
+    const { outcomes } = await drain()
+    expect(outcomes).toContain('applied')
+
+    const article = await publicArticle(id)
+    const blocks = (article?.translations[0]?.bodyBlocks ?? []) as Record<string, unknown>[]
+    expect(blocks.map((block) => block.id)).toEqual(['p1', 'h1', 'q1', 'ec1', 'fb1', 'sl1', 'dv1'])
+    expect(blocks.map((block) => block.type)).toEqual([
+      'paragraph',
+      'heading',
+      'quote',
+      'entityCard',
+      'factBox',
+      'sourceList',
+      'divider',
+    ])
+    // Blocos e versao andam juntos (CHECK do banco).
+    expect(article?.translations[0]?.bodyBlocksVersion ?? '').not.toBe('')
+  })
+
+  it('bloco sourceList chega RESOLVIDO (nome + url), sem o id interno do CMS', async () => {
+    const id = await seedArticle('corpo-fontes', {
+      body: [
+        { blockType: 'paragraph', blockId: 'p1', text: 'Corpo editorial proprio para o teste.' },
+        { blockType: 'sourceList', blockId: 'sl1', sourceRefs: ['s1'] },
+      ],
+    })
+    await moveTo(id, 'published')
+    await drain()
+
+    const article = await publicArticle(id)
+    const blocks = (article?.translations[0]?.bodyBlocks ?? []) as Record<string, unknown>[]
+    const sourceList = blocks.find((block) => block.type === 'sourceList')
+    expect(sourceList).toBeDefined()
+    // `seedArticle` declara a fonte `s1` = Variety.
+    expect(sourceList?.sources).toEqual([{ name: 'Variety', url: 'https://variety.com/x' }])
+    // Id interno do CMS nao serve ao render e e vazamento de identificador.
+    expect(sourceList?.sourceRefs).toBeUndefined()
+  })
+
+  it('ref de fonte que nao existe e DESCARTADA, nunca substituida por outra', async () => {
+    const id = await seedArticle('corpo-fonte-fantasma', {
+      body: [
+        { blockType: 'paragraph', blockId: 'p1', text: 'Corpo editorial proprio para o teste.' },
+        { blockType: 'sourceList', blockId: 'sl1', sourceRefs: ['nao-existe'] },
+      ],
+    })
+    await moveTo(id, 'published')
+    await drain()
+
+    const article = await publicArticle(id)
+    const blocks = (article?.translations[0]?.bodyBlocks ?? []) as Record<string, unknown>[]
+    const sourceList = blocks.find((block) => block.type === 'sourceList')
+    // Creditar a fonte errada e pior do que nao creditar.
+    expect(sourceList?.sources).toEqual([])
   })
 })
 
