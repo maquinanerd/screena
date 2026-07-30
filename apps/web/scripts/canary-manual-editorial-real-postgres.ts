@@ -190,6 +190,72 @@ async function servePublicPage(databaseUrl: string): Promise<void> {
       (await (await fetch(`${base}/pt/noticias/`)).text()).includes('Materia manual do canario'),
       'listagem contem o titulo',
     )
+
+    /* --- O CORPO ESTRUTURADO, no HTML servido -------------------- */
+    //
+    // O passo que os presenters nao provam: o render dos blocos. Um erro no
+    // componente devolve 500 sem nenhum presenter falhar.
+    record(
+      'o HTML traz os blocos estruturados (heading, citacao, factBox, fontes, divisor)',
+      html.includes('O que se sabe ate agora') &&
+        html.includes('A frase que a fonte disse') &&
+        html.includes('James Gunn') &&
+        html.includes('Ficha tecnica do canario') &&
+        html.includes('art-sources') &&
+        html.includes('art-divider'),
+      `heading=${String(html.includes('O que se sabe ate agora'))} quote=${String(html.includes('A frase que a fonte disse'))} factbox=${String(html.includes('Ficha tecnica do canario'))}`,
+    )
+    record(
+      'o HTML traz a FICHA DO FILME hidratada pelo catalogo (titulo, link, ano, poster)',
+      html.includes(MOVIE_TITLE) &&
+        html.includes(`/pt/filmes/${MOVIE_SLUG}/`) &&
+        html.includes('2025') &&
+        html.includes('canario-poster.jpg'),
+      `titulo=${String(html.includes(MOVIE_TITLE))} href=${String(html.includes(`/pt/filmes/${MOVIE_SLUG}/`))} poster=${String(html.includes('canario-poster.jpg'))}`,
+    )
+    // Contagem dentro do `<article class="art-body">`, nao no documento inteiro:
+    // o payload RSC do Next (`self.__next_f.push`) reserializa as props no fim
+    // do HTML, entao qualquer texto do corpo aparece duas vezes no documento e
+    // uma busca global mediria a hidratacao, nao o render.
+    const bodyStart = html.indexOf('class="art-body"')
+    const bodyHtml =
+      bodyStart === -1 ? '' : html.slice(bodyStart, html.indexOf('</article>', bodyStart))
+    const openingOccurrences =
+      bodyHtml.split('Abertura escrita por uma pessoa da redacao').length - 1
+    record(
+      'o corpo estruturado SUBSTITUIU o fallback textual (sem texto duplicado)',
+      // Se os dois caminhos renderizassem, o mesmo paragrafo sairia duas vezes
+      // dentro do corpo — o defeito exato que o `hasStructuredBody` evita.
+      bodyHtml !== '' && openingOccurrences === 1,
+      `ocorrencias no corpo=${String(openingOccurrences)}`,
+    )
+    // O LINKBACK que a licenca exige. `view.source` fica NULL de proposito
+    // quando `requiresLinkback` e true (o rodape nao renderiza URL externa), e
+    // por isso a URL da fonte so pode ter vindo do bloco `sourceList` — que era
+    // exatamente o bloco que nao existia no render antes desta fatia.
+    const sourceLinkRendered = /<a[^>]+href="https:\/\/variety\.com\/exemplo"[^>]*rel="noopener noreferrer"/.test(
+      html,
+    )
+    record(
+      'a fonte externa vira LINKBACK real, com rel=noopener noreferrer',
+      sourceLinkRendered,
+      `link da fonte presente: ${String(sourceLinkRendered)}`,
+    )
+
+    /* --- A DIRECAO INVERSA, no HTML da ficha do filme ------------- */
+    const movieResponse = await fetch(`${base}/pt/filmes/${MOVIE_SLUG}/`)
+    const movieHtml = await movieResponse.text()
+    record(
+      'GET /pt/filmes/<slug>/ responde 200',
+      movieResponse.status === 200,
+      `status=${String(movieResponse.status)}`,
+    )
+    record(
+      'a ficha do filme LISTA a materia em "Noticias e bastidores"',
+      movieHtml.includes('Materia manual do canario') &&
+        movieHtml.includes(`/pt/noticias/${SLUG}/`),
+      `titulo=${String(movieHtml.includes('Materia manual do canario'))} link=${String(movieHtml.includes(`/pt/noticias/${SLUG}/`))}`,
+    )
   } finally {
     try {
       server.kill()
@@ -205,6 +271,19 @@ async function servePublicPage(databaseUrl: string): Promise<void> {
 
 const WORKER = 'canary-manual-2g'
 const SLUG = `canario-manual-${randomUUID().slice(0, 8)}`
+
+/**
+ * Filme do catalogo que a materia cita.
+ *
+ * O canario precisa de uma entidade REAL para provar a ponta que faltava: o
+ * vinculo `entity_news_links`. Sem ele, a materia ia ao ar sem saber de que
+ * filme falava, e a ficha do titulo, os chips de entidade citada e as
+ * "noticias relacionadas" da pagina do filme ficavam vazias com o dado
+ * existindo dos dois lados.
+ */
+const MOVIE_TMDB_ID = 1_061_474
+const MOVIE_TITLE = 'Superman'
+const MOVIE_SLUG = `superman-${randomUUID().slice(0, 8)}`
 
 async function main(): Promise<void> {
   // GUARDA DE INDEPENDENCIA, antes de subir qualquer coisa. Um canario que
@@ -310,6 +389,46 @@ async function main(): Promise<void> {
       file: { data: bytes, mimetype: 'image/jpeg', name: `capa-${SLUG}.jpg`, size: bytes.byteLength },
     })
 
+    /* --- 2b. Filme REAL no catalogo publico ------------------------ */
+    //
+    // A linha em `entities` NAO e criada aqui: ela nasce por trigger de
+    // `movies` (migration 20260715120000). Se o trigger regredir, o vinculo
+    // passa a abortar a transacao da projecao — e o canario tem de ser quem
+    // descobre.
+    const movie = await screen.prisma.movie.create({
+      data: {
+        tmdbId: MOVIE_TMDB_ID,
+        titleOriginal: MOVIE_TITLE,
+        releaseDate: new Date('2025-07-11T00:00:00.000Z'),
+        posterPath: '/canario-poster.jpg',
+      },
+      select: { id: true },
+    })
+    const movieId = movie.id.toString()
+    await screen.prisma.slug.create({
+      data: {
+        entityType: 'movie',
+        entityId: movie.id,
+        languageCode: 'pt-BR',
+        slug: MOVIE_SLUG,
+        isCanonical: true,
+      },
+    })
+    await screen.prisma.entityTranslation.create({
+      data: {
+        entityType: 'movie',
+        entityId: movie.id,
+        languageCode: 'pt-BR',
+        title: MOVIE_TITLE,
+        summary: 'Resumo pt-BR do catalogo para o filme citado na materia.',
+      },
+    })
+    record(
+      'filme do catalogo semeado com slug canonico pt-BR',
+      true,
+      `movie=${movieId} slug=${MOVIE_SLUG}`,
+    )
+
     /* --- 3. Materia MANUAL, por HTTP, sem campo nenhum do MNScr ----- */
     const created = await asHuman('POST', '/api/articles', {
       title: 'Materia manual do canario',
@@ -333,10 +452,44 @@ async function main(): Promise<void> {
         },
         { blockType: 'image', blockId: 'i-1', media: Number(media.id), alt: 'Cena de divulgacao', credit: 'Divulgacao' },
         {
+          blockType: 'quote',
+          blockId: 'q-1',
+          text: 'A frase que a fonte disse, entre aspas e atribuida a quem a disse.',
+          attribution: 'James Gunn',
+        },
+        // Ficha do filme NO MEIO do texto, hidratada pelo catalogo.
+        {
+          blockType: 'entityCard',
+          blockId: 'ec-1',
+          entityKind: 'movie',
+          entityId: movieId,
+          note: 'Nota do editor sobre o filme citado nesta materia.',
+        },
+        {
+          blockType: 'factBox',
+          blockId: 'fb-1',
+          title: 'Ficha tecnica do canario',
+          items: [
+            { label: 'Diretor', value: 'James Gunn' },
+            { label: 'Estreia', value: '11 de julho de 2025' },
+          ],
+        },
+        { blockType: 'sourceList', blockId: 'sl-1', sourceRefs: ['s-1'] },
+        { blockType: 'divider', blockId: 'dv-1' },
+        {
           blockType: 'paragraph',
           blockId: 'p-3',
           text: 'Fechamento com o proximo passo da cobertura e o que ainda depende de confirmacao oficial.',
         },
+      ],
+      // Entidades CONFIRMADAS por humano + duas que NAO devem virar vinculo:
+      // `franchise` nao existe como EntityType no banco publico, e o id
+      // fantasma nao existe no catalogo. As duas precisam ser ignoradas SEM
+      // derrubar a publicacao.
+      entityReferences: [
+        { entityKind: 'movie', entityId: movieId, relation: 'primary_subject', verified: true },
+        { entityKind: 'franchise', entityId: '4242', relation: 'mentioned', verified: true },
+        { entityKind: 'movie', entityId: '987654321', relation: 'compared', verified: true },
       ],
       heroMedia: Number(media.id),
       authors: [Number(author.id)],
@@ -564,6 +717,51 @@ async function main(): Promise<void> {
       `heroImagePath=${String(heroPath)}`,
     )
 
+    /* --- 8b. VINCULO com o catalogo (entity_news_links) ------------- */
+    const links =
+      publicArticle === null
+        ? []
+        : await screen.prisma.entityNewsLink.findMany({
+            where: { articleId: publicArticle.id },
+            orderBy: { id: 'asc' },
+            select: { entityType: true, entityId: true },
+          })
+    const linkKeys = links.map((link) => `${String(link.entityType)}:${link.entityId.toString()}`)
+    record(
+      'a materia gravou EXATAMENTE um entity_news_link, para o filme citado',
+      linkKeys.length === 1 && linkKeys[0] === `movie:${movieId}`,
+      `vinculos=${JSON.stringify(linkKeys)}`,
+    )
+    record(
+      'tipo nao suportado e entidade fantasma foram ignorados sem derrubar a materia',
+      linkKeys.length === 1 && publicArticle !== null,
+      'franchise:4242 e movie:987654321 fora; artigo publicado',
+    )
+
+    /* --- 8c. CORPO ESTRUTURADO no banco publico -------------------- */
+    const rawBlocks = (publicArticle?.translations.find((row) => row.languageCode === 'pt-BR')
+      ?.bodyBlocks ?? []) as Record<string, unknown>[]
+    const blockTypes = rawBlocks.map((block) => String(block.type))
+    record(
+      'body_blocks preserva ordem e todos os tipos do contrato',
+      blockTypes.join(',') ===
+        'paragraph,heading,paragraph,image,quote,entityCard,factBox,sourceList,divider,paragraph',
+      `tipos=${blockTypes.join(',')}`,
+    )
+    const sourceListBlock = rawBlocks.find((block) => block.type === 'sourceList')
+    // Comparacao por CAMPO, nao por `JSON.stringify`: o `jsonb` do PostgreSQL
+    // nao preserva a ordem das chaves, e comparar bytes serializados aqui
+    // testaria o formato de armazenamento em vez do dado.
+    const projectedSources = (sourceListBlock?.sources ?? []) as { name?: string; url?: string }[]
+    record(
+      'bloco sourceList chega RESOLVIDO (nome + url), sem o id interno do CMS',
+      projectedSources.length === 1 &&
+        projectedSources[0]?.name === 'Variety' &&
+        projectedSources[0]?.url === 'https://variety.com/exemplo' &&
+        sourceListBlock?.sourceRefs === undefined,
+      `sources=${JSON.stringify(projectedSources)}`,
+    )
+
     /* --- 9. PAGINA PUBLICA: presenter + SEO ------------------------ */
     //
     // A partir daqui o canario le o banco publico pelo MESMO codigo do site.
@@ -611,6 +809,55 @@ async function main(): Promise<void> {
         view.author === 'Redacao Cinerie',
       `title=${String(view.title)} autor=${String(view.author)} paragrafos=${String(paragraphs.length)} corpo=${String(bodyText.length)} chars`,
     )
+    /* --- 9b. Corpo ESTRUTURADO e ficha, como o render os recebe ----- */
+    const renderBlocks = (page.bodyBlocks ?? []) as { kind: string; id: string }[]
+    record(
+      'o render recebe os blocos estruturados normalizados',
+      renderBlocks.map((block) => block.kind).join(',') ===
+        'paragraph,heading,paragraph,image,quote,entityCard,factBox,sourceList,divider,paragraph',
+      `blocos=${renderBlocks.map((block) => block.kind).join(',')}`,
+    )
+    const inlineCard = renderBlocks.find((block) => block.kind === 'entityCard') as
+      | { card?: { title?: string; href?: string; posterUrl?: string | null; metaLine?: string | null } }
+      | undefined
+    record(
+      'o entityCard inline foi HIDRATADO pelo catalogo (titulo, href, poster, ano)',
+      inlineCard?.card?.title === MOVIE_TITLE &&
+        inlineCard?.card?.href === `/pt/filmes/${MOVIE_SLUG}/` &&
+        typeof inlineCard?.card?.posterUrl === 'string' &&
+        String(inlineCard?.card?.metaLine ?? '').includes('2025'),
+      `title=${String(inlineCard?.card?.title)} href=${String(inlineCard?.card?.href)} meta=${String(inlineCard?.card?.metaLine)}`,
+    )
+
+    // A ficha do RODAPE e os chips de entidade citada saem do MESMO vinculo —
+    // eram justamente as superficies que ficavam vazias sem ele.
+    const footerCard = view.entityCard as { title?: string; href?: string } | null
+    record(
+      'a ficha do titulo (rodape) resolve a partir do entity_news_link',
+      footerCard?.title === MOVIE_TITLE && footerCard?.href === `/pt/filmes/${MOVIE_SLUG}/`,
+      `ficha=${JSON.stringify(footerCard)}`,
+    )
+    const relatedChips = (view.related ?? []) as { entityType?: string; title?: string }[]
+    record(
+      'os chips de entidade citada listam SO a entidade vinculavel resolvida',
+      relatedChips.length === 1 &&
+        relatedChips[0]?.entityType === 'movie' &&
+        relatedChips[0]?.title === MOVIE_TITLE,
+      `chips=${JSON.stringify(relatedChips)}`,
+    )
+
+    /* --- 9c. A DIRECAO INVERSA: da ficha do filme para a materia ---- */
+    const { getMoviePageData } = (await import('../src/server/movie-page.ts')) as {
+      getMoviePageData: (slug: string) => Promise<Record<string, unknown> | null>
+    }
+    const moviePage = await getMoviePageData(MOVIE_SLUG)
+    const movieRelatedNews = (moviePage?.relatedNews ?? []) as { title?: string; href?: string }[]
+    record(
+      'a materia aparece nas NOTICIAS RELACIONADAS da ficha do filme',
+      movieRelatedNews.some((item) => item.title === 'Materia manual do canario'),
+      `relacionadas=${JSON.stringify(movieRelatedNews.map((item) => item.title))}`,
+    )
+
     const heroImage = view.heroImage as { src?: string; alt?: string } | null
     record(
       'imagem chega com caminho local e ALT aprovado',

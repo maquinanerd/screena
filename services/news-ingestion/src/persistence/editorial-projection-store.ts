@@ -21,6 +21,7 @@ import {
   type ProjectionOutcome,
   type PublicArticleState,
 } from '../editorial-projection.js'
+import type { PlannedEntityLink } from '../editorial-entity-links.js'
 import { reprojectArticle } from './editorial-store.js'
 import type { ProjectedMediaAsset } from '../media/media-pipeline.js'
 
@@ -75,6 +76,118 @@ export async function findProjectionReceipt(
     outcome: receipt.outcome as ProjectionOutcome,
     articleId: receipt.articleId === null ? null : String(receipt.articleId),
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Vinculos entidade <-> materia                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * O recorte do cliente de transacao que a reconciliacao usa.
+ *
+ * Estrutural em vez do tipo gerado do Prisma porque este arquivo ja vive fora
+ * do typecheck puro; declarar o que se usa e mais honesto que um `as never`
+ * que esconde a superficie real.
+ */
+interface EntityLinkTx {
+  readonly entity: {
+    findMany(args: unknown): Promise<{ entityType: unknown; entityId: bigint }[]>
+  }
+  readonly entityNewsLink: {
+    findMany(args: unknown): Promise<{ id: bigint; entityType: unknown; entityId: bigint }[]>
+    deleteMany(args: unknown): Promise<unknown>
+    createMany(args: unknown): Promise<unknown>
+  }
+}
+
+function linkKey(entityType: unknown, entityId: bigint): string {
+  return `${String(entityType)}:${entityId.toString()}`
+}
+
+/**
+ * Reconcilia `entity_news_links` com o conjunto que o CMS declarou.
+ *
+ * RECONCILIA, nao acrescenta. O evento carrega TODAS as entidades verificadas do
+ * documento, entao o que nao esta nele foi desmarcado pelo editor — e um vinculo
+ * removido no CMS tem de sair das relacionadas do filme. So inserir deixaria a
+ * materia citada para sempre numa ficha da qual ela foi retirada.
+ *
+ * A verificacao contra `entities` acontece ANTES da escrita, e nao e paranoia:
+ * `entity_news_links` tem FK COMPOSTA `(entity_type, entity_id) -> entities`
+ * (migration `20260715120000_data_governance_hardening`). Um id que nao existe
+ * abortaria a transacao INTEIRA — inclusive o artigo, a traducao e o recibo —
+ * transformando "o editor digitou um id errado" em falha permanente da
+ * publicacao. Fail-closed com aviso e o desfecho correto: a materia vai ao ar,
+ * o vinculo falso nao nasce, e o operador ve o motivo no log.
+ */
+export async function reconcileEntityLinks(
+  tx: EntityLinkTx,
+  articleId: bigint,
+  planned: readonly PlannedEntityLink[],
+): Promise<string[]> {
+  const warnings: string[] = []
+
+  // 1. Quais entidades planejadas EXISTEM de fato no catalogo publico.
+  //
+  //    `entities` e mantida por trigger a partir de movies/tv_shows/people
+  //    (mesma migration), entao consultar o registro cobre as tres raizes de
+  //    uma vez, sem tres queries e sem assumir qual tabela e a dona.
+  const verified: { entityType: string; entityId: bigint }[] = []
+  if (planned.length > 0) {
+    const rows = await tx.entity.findMany({
+      where: {
+        OR: planned.map((link) => ({
+          entityType: link.entityType,
+          entityId: BigInt(link.entityId),
+        })),
+      },
+      select: { entityType: true, entityId: true },
+    })
+    const present = new Set(rows.map((row) => linkKey(row.entityType, row.entityId)))
+    for (const link of planned) {
+      const key = `${link.entityType}:${link.entityId}`
+      if (!present.has(key)) {
+        warnings.push(
+          `entidade ${key} nao existe no catalogo publico: vinculo NAO criado (materia publicada sem ele)`,
+        )
+        continue
+      }
+      verified.push({ entityType: link.entityType, entityId: BigInt(link.entityId) })
+    }
+  }
+
+  const current = await tx.entityNewsLink.findMany({
+    where: { articleId },
+    select: { id: true, entityType: true, entityId: true },
+  })
+
+  const desiredKeys = new Set(verified.map((link) => linkKey(link.entityType, link.entityId)))
+  const currentKeys = new Set(current.map((row) => linkKey(row.entityType, row.entityId)))
+
+  // 2. Sai o que o editor removeu.
+  const staleIds = current
+    .filter((row) => !desiredKeys.has(linkKey(row.entityType, row.entityId)))
+    .map((row) => row.id)
+  if (staleIds.length > 0) {
+    await tx.entityNewsLink.deleteMany({ where: { id: { in: staleIds } } })
+  }
+
+  // 3. Entra o que falta. `skipDuplicates` mapeia para `ON CONFLICT DO NOTHING`,
+  //    que NAO envenena a transacao: um conflito esperado (dois workers na mesma
+  //    materia) nao pode derrubar a projecao inteira.
+  const missing = verified.filter((link) => !currentKeys.has(linkKey(link.entityType, link.entityId)))
+  if (missing.length > 0) {
+    await tx.entityNewsLink.createMany({
+      data: missing.map((link) => ({
+        articleId,
+        entityType: link.entityType,
+        entityId: link.entityId,
+      })),
+      skipDuplicates: true,
+    })
+  }
+
+  return warnings
 }
 
 /* ------------------------------------------------------------------ */
@@ -148,6 +261,10 @@ export async function applyProjectionEvent(
       changed: false,
     }
   }
+
+  // Avisos que so a persistencia conhece (ex.: entidade ausente do catalogo).
+  // Ficam FORA do array do nucleo, que e `readonly`, e sao concatenados no fim.
+  const persistenceWarnings: string[] = []
 
   const articleId = await prisma.$transaction(async (tx) => {
     let resolvedId: bigint | null =
@@ -295,6 +412,16 @@ export async function applyProjectionEvent(
       }
     }
 
+    // VINCULOS DE ENTIDADE, na MESMA transacao do artigo e do recibo.
+    //
+    // `null` = evento sem conteudo (remocao/retratacao): nao reconcilia nada.
+    // `[]` = o editor nao deixou nenhuma entidade: reconcilia para vazio.
+    if (decision.entityLinks !== null && resolvedId !== null) {
+      persistenceWarnings.push(
+        ...(await reconcileEntityLinks(tx as unknown as EntityLinkTx, resolvedId, decision.entityLinks)),
+      )
+    }
+
     // O RECIBO na mesma transacao. A unique em `event_id` e a trava de replay:
     // se duas instancias do worker projetarem o mesmo evento em paralelo, a
     // segunda colide aqui e a transacao INTEIRA e desfeita — inclusive as
@@ -326,7 +453,7 @@ export async function applyProjectionEvent(
     outcome: decision.outcome,
     reason: decision.reason,
     articleId: articleId === null ? null : String(articleId),
-    warnings: decision.warnings,
+    warnings: [...decision.warnings, ...persistenceWarnings],
     changed: decision.outcome === 'applied',
   }
 }

@@ -17,6 +17,11 @@
 
 import { PUBLISHED_LOCALES } from '@screena/config'
 
+import {
+  planEntityLinks,
+  type EventEntityLink,
+  type PlannedEntityLink,
+} from './editorial-entity-links.js'
 import { applyMediaToBlocks, type ResolvedMediaAsset } from './media/media-plan.js'
 
 /* ------------------------------------------------------------------ */
@@ -72,6 +77,17 @@ export interface ProjectionEvent {
   readonly provenance: {
     readonly primarySourceName: string | null
     readonly primarySourceUrl: string | null
+    /**
+     * TODAS as fontes externas declaradas, com o id que o bloco `sourceList`
+     * usa em `sourceRefs`. So o `primary` vira credito visivel da materia
+     * (`source_name`/`source_url`); esta lista existe para resolver os blocos.
+     */
+    readonly externalSources: readonly {
+      readonly sourceId: string | null
+      readonly name: string
+      readonly url: string
+      readonly role: string
+    }[]
   }
   readonly media: readonly {
     /** Id CANONICO do documento no CMS. E por ele que os bytes sao pedidos. */
@@ -80,6 +96,14 @@ export interface ProjectionEvent {
     readonly requiresAttribution: boolean
     readonly credit: string | null
   }[]
+  /**
+   * Entidades do catalogo CONFIRMADAS por humano no CMS.
+   *
+   * Conjunto AUTORITATIVO do documento: o que nao esta aqui foi desmarcado pelo
+   * editor. Por isso a projecao pode reconciliar `entity_news_links` em vez de
+   * so inserir.
+   */
+  readonly entities: readonly EventEntityLink[]
 }
 
 /**
@@ -192,6 +216,17 @@ export interface ProjectionDecision {
   readonly reason: string
   readonly article: ArticleWrite | null
   readonly translation: TranslationWrite | null
+  /**
+   * Conjunto AUTORITATIVO de vinculos entidade<->materia, ou `null` quando o
+   * evento nao carrega conteudo (replay, stale, remocao).
+   *
+   * `null` e `[]` sao estados DIFERENTES: `null` significa "nao reconcilie
+   * nada"; `[]` significa "o editor nao deixou nenhuma entidade" — e ai os
+   * vinculos antigos precisam sair. Colapsar os dois faria uma retratacao
+   * apagar vinculos, ou uma materia sem entidades manter para sempre a citacao
+   * que o editor removeu.
+   */
+  readonly entityLinks: readonly PlannedEntityLink[] | null
   /** Avisos operacionais — nao bloqueiam, mas ficam no log do worker. */
   readonly warnings: readonly string[]
 }
@@ -233,6 +268,64 @@ export function blocksToPlainText(blocks: readonly ProjectionBlock[]): string {
     .map(blockText)
     .filter((text) => text !== '')
     .join('\n\n')
+}
+
+/* ------------------------------------------------------------------ */
+/* Blocos de fonte (`sourceList`)                                      */
+/* ------------------------------------------------------------------ */
+
+/** Fonte externa ja resolvida, pronta para o render. */
+export interface ProjectedSource {
+  readonly name: string
+  readonly url: string
+}
+
+/**
+ * Reescreve blocos `sourceList` trocando `sourceRefs` (ids internos do documento
+ * no CMS) pelas fontes RESOLVIDAS (nome + url).
+ *
+ * Mesma disciplina de `applyMediaToBlocks`: o bloco publico carrega o dado
+ * pronto, nunca um identificador que so o CMS entende. A alternativa seria o
+ * render receber `["s1","s2"]` e ter de adivinhar a que fonte cada id
+ * corresponde — e adivinhar aqui significa creditar a fonte errada.
+ *
+ * Ref que nao resolve e DESCARTADA (com aviso), nao substituida pela primeira
+ * fonte da lista: um credito errado e pior do que um credito ausente.
+ */
+export function applySourcesToBlocks(
+  blocks: readonly ProjectionBlock[],
+  sources: readonly { readonly sourceId: string | null; readonly name: string; readonly url: string }[],
+): { readonly blocks: ProjectionBlock[]; readonly warnings: string[] } {
+  const warnings: string[] = []
+  const byId = new Map<string, ProjectedSource>()
+  for (const source of sources) {
+    const id = source.sourceId?.trim() ?? ''
+    if (id === '') continue
+    byId.set(id, { name: source.name, url: source.url })
+  }
+
+  const projected = blocks.map((block) => {
+    if (block.type !== 'sourceList') return block
+    const refs = Array.isArray(block.sourceRefs) ? block.sourceRefs : []
+    const resolved: ProjectedSource[] = []
+    const seen = new Set<string>()
+    for (const ref of refs) {
+      if (typeof ref !== 'string') continue
+      const source = byId.get(ref.trim())
+      if (source === undefined) {
+        warnings.push(`bloco de fontes ${block.id}: ref ${ref} nao resolve para fonte declarada`)
+        continue
+      }
+      if (seen.has(source.url)) continue
+      seen.add(source.url)
+      resolved.push(source)
+    }
+    // `sourceRefs` sai do bloco publico: id interno do CMS nao serve ao render.
+    const { sourceRefs: _dropped, ...rest } = block
+    return { ...rest, sources: resolved } as ProjectionBlock
+  })
+
+  return { blocks: projected, warnings }
 }
 
 /* ------------------------------------------------------------------ */
@@ -291,6 +384,7 @@ export function decideProjection(input: DecideProjectionInput): ProjectionDecisi
       reason: `evento ${event.eventId} ja possui recibo (${input.existingReceipt.outcome})`,
       article: null,
       translation: null,
+      entityLinks: null,
       warnings,
     }
   }
@@ -305,6 +399,7 @@ export function decideProjection(input: DecideProjectionInput): ProjectionDecisi
       reason: `emissao ${String(event.emissionSequence)} <= projetada ${String(projected)}`,
       article: null,
       translation: null,
+      entityLinks: null,
       warnings,
     }
   }
@@ -317,6 +412,7 @@ export function decideProjection(input: DecideProjectionInput): ProjectionDecisi
       reason: 'midia com requiresAttribution sem credito preenchido',
       article: null,
       translation: null,
+      entityLinks: null,
       warnings,
     }
   }
@@ -363,6 +459,12 @@ export function decideProjection(input: DecideProjectionInput): ProjectionDecisi
         correctedAtIso: isRetraction ? event.occurredAtIso : null,
         correctionNote: isRetraction ? event.retractionReason : null,
       },
+      // `null`, nao `[]`: despublicar/retratar NAO apaga os vinculos, do mesmo
+      // jeito que nao apaga o texto. O que tira a materia das relacionadas do
+      // filme e o `indexStatus: noindex` aplicado acima — o gate esta na
+      // leitura. Se a materia voltar apos revisao humana, as citacoes voltam
+      // com ela.
+      entityLinks: null,
       warnings,
     }
   }
@@ -376,6 +478,7 @@ export function decideProjection(input: DecideProjectionInput): ProjectionDecisi
       reason: `${event.eventType} sem publishedContent/seo`,
       article: null,
       translation: null,
+      entityLinks: null,
       warnings,
     }
   }
@@ -404,13 +507,26 @@ export function decideProjection(input: DecideProjectionInput): ProjectionDecisi
     warnings.push(`capa ${heroMediaId} nao foi projetada`)
   }
 
-  const { blocks: projectedBlocks, unresolved } = applyMediaToBlocks(content.body, media)
+  const { blocks: withMedia, unresolved } = applyMediaToBlocks(content.body, media)
   for (const blockId of unresolved) {
     warnings.push(`bloco de imagem ${blockId} sem asset projetado`)
   }
 
+  // FONTES. Depois da midia, sobre os mesmos blocos: cada passo troca uma
+  // referencia interna do CMS pelo dado pronto do lado publico.
+  const { blocks: projectedBlocks, warnings: sourceWarnings } = applySourcesToBlocks(
+    withMedia,
+    event.provenance.externalSources,
+  )
+  warnings.push(...sourceWarnings)
+
   const requiresAttribution = event.provenance.primarySourceName !== null
   const requiresLinkback = event.provenance.primarySourceUrl !== null
+
+  // VINCULOS DE ENTIDADE. O plano e puro; a verificacao contra o catalogo e a
+  // reconciliacao acontecem no adapter, dentro da mesma transacao do artigo.
+  const entityPlan = planEntityLinks(event.entities)
+  warnings.push(...entityPlan.warnings)
 
   return {
     outcome: 'applied',
@@ -463,6 +579,7 @@ export function decideProjection(input: DecideProjectionInput): ProjectionDecisi
       correctedAtIso: content.correctedAtIso,
       correctionNote: content.correctionNote,
     },
+    entityLinks: entityPlan.links,
     warnings,
   }
 }

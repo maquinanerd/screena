@@ -54,8 +54,9 @@ function event(overrides: Partial<ProjectionEvent> = {}): ProjectionEvent {
       aiAssisted: false,
     },
     seo: approvedSeo(),
-    provenance: { primarySourceName: null, primarySourceUrl: null },
+    provenance: { primarySourceName: null, primarySourceUrl: null, externalSources: [] },
     media: [],
+    entities: [],
     ...overrides,
   }
 }

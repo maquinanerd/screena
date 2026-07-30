@@ -12,6 +12,7 @@ import {
 } from '@screena/seo'
 
 import { AdSlot } from '../../../_components/ad-slot'
+import { ArticleBody } from '../../../_components/article-body'
 import { CardBookmark } from '../../../_components/card-bookmark'
 import type { NewsArticleView } from '../../../../src/lib/news-presenter'
 import { HOME_PATH, SITE_URL, gatePublicRobots } from '../../../../src/lib/site'
@@ -120,9 +121,13 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
   const data = await getNewsArticleData(slug)
   if (data === null) notFound()
 
-  const { view, indexability, canonicalUrl, readAlso } = data
+  const { view, indexability, canonicalUrl, readAlso, bodyBlocks } = data
   const isUnderReview = indexability.decision !== 'index'
   const card = view.entityCard
+
+  // Corpo ESTRUTURADO quando o CMS o projetou; corpo textual legado quando não.
+  // Nunca os dois: seria o mesmo texto duas vezes na página.
+  const hasStructuredBody = bodyBlocks.length > 0
 
   // AdSlot mid-article do canônico: entra no meio do corpo quando há corpo
   // suficiente; senão, depois do último parágrafo.
@@ -130,6 +135,15 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
   const adAfter = paragraphs.length >= 4 ? Math.ceil(paragraphs.length * 0.6) : paragraphs.length
   const bodyBefore = paragraphs.slice(0, adAfter)
   const bodyAfter = paragraphs.slice(adAfter)
+
+  // Mesma regra de posição do anúncio, aplicada aos blocos: só conta bloco de
+  // TEXTO. Cortar no meio de uma contagem que inclui divisores e fichas colocaria
+  // o anúncio entre uma imagem e a legenda dela.
+  const textBlockCount = bodyBlocks.filter(
+    (block) => block.kind === 'paragraph' || block.kind === 'quote',
+  ).length
+  const blockAdAfter =
+    textBlockCount >= 4 ? Math.ceil(bodyBlocks.length * 0.6) : bodyBlocks.length
 
   const shareUrl = encodeURIComponent(canonicalUrl)
   const shareText = encodeURIComponent(view.title)
@@ -223,17 +237,31 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
 
       {/* Corpo de leitura 720 */}
       <article className="art-body">
-        {bodyBefore.map((paragraph, index) => (
-          <p key={`${index}-${paragraph.slice(0, 24)}`}>{paragraph}</p>
-        ))}
+        {hasStructuredBody ? (
+          <>
+            <ArticleBody blocks={bodyBlocks.slice(0, blockAdAfter)} />
 
-        <div className="art-ad">
-          <AdSlot format="leaderboard" slotId="article-mid" />
-        </div>
+            <div className="art-ad">
+              <AdSlot format="leaderboard" slotId="article-mid" />
+            </div>
 
-        {bodyAfter.map((paragraph, index) => (
-          <p key={`after-${index}-${paragraph.slice(0, 24)}`}>{paragraph}</p>
-        ))}
+            <ArticleBody blocks={bodyBlocks.slice(blockAdAfter)} />
+          </>
+        ) : (
+          <>
+            {bodyBefore.map((paragraph, index) => (
+              <p key={`${index}-${paragraph.slice(0, 24)}`}>{paragraph}</p>
+            ))}
+
+            <div className="art-ad">
+              <AdSlot format="leaderboard" slotId="article-mid" />
+            </div>
+
+            {bodyAfter.map((paragraph, index) => (
+              <p key={`after-${index}-${paragraph.slice(0, 24)}`}>{paragraph}</p>
+            ))}
+          </>
+        )}
 
         {/* Ficha do título — entity card real da 1ª entidade citada */}
         {card !== null ? (

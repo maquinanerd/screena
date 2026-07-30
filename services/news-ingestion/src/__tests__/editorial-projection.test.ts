@@ -9,6 +9,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  applySourcesToBlocks,
   blocksToPlainText,
   decideProjection,
   hasUncreditedMedia,
@@ -47,8 +48,9 @@ function event(overrides: Partial<ProjectionEvent> = {}): ProjectionEvent {
       aiAssisted: false,
     },
     seo: approvedSeo({ metaTitle: 'Meta', metaDescription: 'Desc' }),
-    provenance: { primarySourceName: null, primarySourceUrl: null },
+    provenance: { primarySourceName: null, primarySourceUrl: null, externalSources: [] },
     media: [],
+    entities: [],
     ...overrides,
   }
 }
@@ -277,11 +279,70 @@ describe('decisao de projecao', () => {
     const decision = decideProjection({
       ...base,
       event: event({
-        provenance: { primarySourceName: 'Collider', primarySourceUrl: 'https://collider.test/x' },
+        provenance: {
+          primarySourceName: 'Collider',
+          primarySourceUrl: 'https://collider.test/x',
+          externalSources: [
+            {
+              sourceId: 's1',
+              name: 'Collider',
+              url: 'https://collider.test/x',
+              role: 'primary',
+            },
+          ],
+        },
       }),
     })
     expect(decision.article?.requiresAttribution).toBe(true)
     expect(decision.article?.requiresLinkback).toBe(true)
     expect(decision.article?.sourceName).toBe('Collider')
+  })
+})
+
+describe('blocos de fonte (sourceList)', () => {
+  const sources = [
+    { sourceId: 's1', name: 'Variety', url: 'https://variety.test/a' },
+    { sourceId: 's2', name: 'Collider', url: 'https://collider.test/b' },
+  ]
+
+  it('troca sourceRefs pelas fontes resolvidas e descarta o id interno', () => {
+    const { blocks } = applySourcesToBlocks(
+      [{ type: 'sourceList', id: 'src1', sourceRefs: ['s2', 's1'] }],
+      sources,
+    )
+    // Ordem do BLOCO, nao da lista de fontes: o editor escolheu a ordem.
+    expect(blocks[0]?.sources).toEqual([
+      { name: 'Collider', url: 'https://collider.test/b' },
+      { name: 'Variety', url: 'https://variety.test/a' },
+    ])
+    expect(blocks[0]?.sourceRefs).toBeUndefined()
+  })
+
+  it('ref que nao resolve e DESCARTADA com aviso, nunca substituida', () => {
+    // Substituir pela primeira fonte da lista creditaria a fonte errada — pior
+    // do que nao creditar.
+    const { blocks, warnings } = applySourcesToBlocks(
+      [{ type: 'sourceList', id: 'src1', sourceRefs: ['fantasma', 's1'] }],
+      sources,
+    )
+    expect(blocks[0]?.sources).toEqual([{ name: 'Variety', url: 'https://variety.test/a' }])
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('fantasma')
+  })
+
+  it('fonte sem sourceId nao e resolvivel (contrato antigo) e nao vira credito', () => {
+    const { blocks, warnings } = applySourcesToBlocks(
+      [{ type: 'sourceList', id: 'src1', sourceRefs: ['s1'] }],
+      [{ sourceId: null, name: 'Variety', url: 'https://variety.test/a' }],
+    )
+    expect(blocks[0]?.sources).toEqual([])
+    expect(warnings).toHaveLength(1)
+  })
+
+  it('nao toca blocos que nao sao sourceList', () => {
+    const original = [{ type: 'paragraph', id: 'p1', text: 'texto' }]
+    const { blocks, warnings } = applySourcesToBlocks(original, sources)
+    expect(blocks[0]).toEqual(original[0])
+    expect(warnings).toEqual([])
   })
 })
