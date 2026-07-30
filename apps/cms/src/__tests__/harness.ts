@@ -20,7 +20,15 @@
 
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import net from 'node:net'
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -90,6 +98,43 @@ export interface CmsHarness {
  * explicito em `127.0.0.1`: sonda exatamente a interface que os servidores vao
  * usar, sem depender do comportamento dual-stack do sistema.
  */
+/**
+ * Diretorio-base dos uploads de teste, DENTRO da arvore do CMS.
+ *
+ * Nao pode ser `tmpdir()`. O harness sobe o `next start` com
+ * `NODE_ENV=production`, e em production a guarda de storage
+ * (`upload-storage-config.ts`) recusa raiz em filesystem efemero conhecido —
+ * `/tmp/` entre eles. No Linux `tmpdir()` E `/tmp`, entao o CMS se recusava a
+ * subir e toda requisicao virava 500; no Windows `tmpdir()` cai em
+ * `AppData/Local/Temp`, que nao casa com nenhum prefixo da lista, e o defeito
+ * ficava invisivel.
+ *
+ * A guarda esta CERTA: apontar uploads de producao para `/tmp` e um erro que so
+ * aparece semanas depois. Quem estava errado era o harness. Aqui o caminho e
+ * absoluto, persiste por todo o horizonte do teste e esta coberto pelo
+ * `.gitignore` (`apps/cms/media/`), entao a declaracao de persistencia
+ * continua sendo verdade, nao contorno.
+ */
+const uploadsBaseDir = path.join(cmsDir, 'media')
+
+function createUploadRoot(): string {
+  mkdirSync(uploadsBaseDir, { recursive: true })
+  return mkdtempSync(path.join(uploadsBaseDir, 'integration-'))
+}
+
+/**
+ * Remove SO a pasta exclusiva deste run — nunca a base compartilhada, que pode
+ * guardar midia de outro harness rodando em paralelo ou de uso local.
+ */
+function removeUploadRoot(uploadRoot: string): void {
+  try {
+    rmSync(uploadRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+  } catch {
+    // No Windows um handle preso por instantes nao pode transformar teste verde
+    // em vermelho. A pasta e descartavel e esta fora do Git.
+  }
+}
+
 async function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = net.createServer()
@@ -153,6 +198,20 @@ async function waitForServer(baseUrl: string, timeoutMs: number): Promise<void> 
 }
 
 export async function startCmsHarness(): Promise<CmsHarness> {
+  // O diretorio nasce ANTES do boot justamente para poder ser removido quando o
+  // boot falhar: sem isto, cada migration quebrada ou servidor que nao sobe
+  // deixaria uma pasta orfa em `apps/cms/media/`, porque o `stop()` — unico
+  // lugar que limpava — so existe depois do `return`.
+  const uploadRoot = createUploadRoot()
+  try {
+    return await bootCmsHarness(uploadRoot)
+  } catch (error) {
+    removeUploadRoot(uploadRoot)
+    throw error
+  }
+}
+
+async function bootCmsHarness(uploadRoot: string): Promise<CmsHarness> {
   const pgPort = await freePort()
   const dataDir = mkdtempSync(path.join(tmpdir(), 'cinerie-cms-it-'))
   const database = 'cinerie_cms_integration'
@@ -185,9 +244,9 @@ export async function startCmsHarness(): Promise<CmsHarness> {
   // subir sem driver declarado, e essa recusa e o comportamento desejado — o
   // harness declara em vez de o codigo adivinhar.
   //
-  // Caminho ABSOLUTO e proprio deste run: o `staticDir` resolve contra ele, e
-  // dois harnesses simultaneos nao disputam o mesmo diretorio.
-  const uploadRoot = mkdtempSync(path.join(tmpdir(), 'cinerie-cms-uploads-'))
+  // Caminho ABSOLUTO e proprio deste run (ver `createUploadRoot`): o
+  // `staticDir` resolve contra ele, e dois harnesses simultaneos nao disputam o
+  // mesmo diretorio.
   childEnv.PAYLOAD_UPLOAD_STORAGE_DRIVER = 'local'
   childEnv.PAYLOAD_UPLOAD_LOCAL_ROOT = uploadRoot
   // `next start` roda com `NODE_ENV=production`, e la o driver local exige a
@@ -382,6 +441,7 @@ export async function startCmsHarness(): Promise<CmsHarness> {
           await new Promise((resolve) => setTimeout(resolve, 400))
         }
       }
+      removeUploadRoot(uploadRoot)
     },
   }
 }

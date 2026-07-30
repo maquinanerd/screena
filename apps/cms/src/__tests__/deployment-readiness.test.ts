@@ -136,7 +136,15 @@ describe('storage de upload do Payload', () => {
   it('PRODUCTION recusa raiz em diretorio EFEMERO conhecido', () => {
     // Apontar uploads de producao para /tmp e um erro silencioso que so aparece
     // semanas depois, quando alguem nota que as fotos antigas sumiram.
-    for (const root of ['/tmp/uploads', '/var/tmp/x', '/dev/shm/y', '/app/.next/cache']) {
+    for (const root of [
+      '/tmp/uploads',
+      // A raiz que o harness de integracao usava. Ficou aqui como regressao: se
+      // alguem afrouxar a guarda para "fazer o teste passar", este caso cai.
+      '/tmp/cinerie-cms-uploads-x',
+      '/var/tmp/x',
+      '/dev/shm/y',
+      '/app/.next/cache',
+    ]) {
       const result = resolvePayloadUploadConfig({
         NODE_ENV: 'production',
         PAYLOAD_UPLOAD_STORAGE_DRIVER: 'local',
@@ -144,6 +152,25 @@ describe('storage de upload do Payload', () => {
         PAYLOAD_UPLOAD_LOCAL_PERSISTENT_CONFIRMED: 'true',
       })
       expect(result.ok, root).toBe(false)
+    }
+  })
+
+  it('PRODUCTION aceita raiz DURAVEL dentro da arvore do repositorio', () => {
+    // Contrapartida do caso acima: a guarda recusa o efemero SEM recusar o
+    // caminho duravel que o harness passou a usar (`apps/cms/media/...`). Os
+    // dois formatos cobrem os runners reais — POSIX na CI, unidade nomeada no
+    // Windows — sem fixar o caminho de nenhuma maquina.
+    for (const root of [
+      '/home/runner/work/screena/screena/apps/cms/media/integration-ab12cd',
+      'D:\\repos\\screena\\apps\\cms\\media\\integration-ab12cd',
+    ]) {
+      const result = resolvePayloadUploadConfig({
+        NODE_ENV: 'production',
+        PAYLOAD_UPLOAD_STORAGE_DRIVER: 'local',
+        PAYLOAD_UPLOAD_LOCAL_ROOT: root,
+        PAYLOAD_UPLOAD_LOCAL_PERSISTENT_CONFIRMED: 'true',
+      })
+      expect(result.ok, root).toBe(true)
     }
   })
 
