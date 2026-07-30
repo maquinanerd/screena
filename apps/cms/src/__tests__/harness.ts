@@ -165,6 +165,49 @@ async function freePort(): Promise<number> {
   })
 }
 
+/**
+ * Prova que a Local API do Payload esta ligada ao MESMO banco que o harness
+ * acabou de migrar.
+ *
+ * Sem esta checagem, um Payload apontado para o banco errado (ou um `payload
+ * migrate` que saiu 0 sem aplicar nada) so aparece dezenas de segundos depois,
+ * como um `relation "..." does not exist` no meio de um teste — longe da causa
+ * e sem dizer QUAL banco respondeu. A saida do `migrate` tambem e capturada e
+ * so aparece aqui: no caminho feliz ela e descartada, e era justamente a
+ * informacao que faltava para diagnosticar.
+ */
+async function assertPayloadSchema(
+  payload: Payload,
+  expected: { database: string; port: number; migrationOutput: string },
+): Promise<void> {
+  const pool = (
+    payload.db as unknown as {
+      pool?: { query?: (text: string) => Promise<{ rows: Record<string, unknown>[] }> }
+    }
+  ).pool
+  if (pool?.query === undefined) {
+    throw new Error('harness do CMS: pool do Payload indisponivel para verificar o schema')
+  }
+  const { rows } = await pool.query(
+    "select current_database() as db, inet_server_port() as port, to_regclass('public.editorial_users')::text as rel",
+  )
+  const row: Record<string, unknown> = rows[0] ?? {}
+  const db = String(row.db ?? '')
+  const port = Number(row.port ?? 0)
+  const rel = row.rel === null || row.rel === undefined ? null : String(row.rel)
+
+  if (db !== expected.database || port !== expected.port || rel === null) {
+    throw new Error(
+      [
+        'harness do CMS: a Local API do Payload NAO esta no banco que o harness migrou.',
+        `esperado: db=${expected.database} porta=${String(expected.port)} tabela=editorial_users`,
+        `obtido:   db=${db} porta=${String(port)} tabela=${rel ?? '(ausente)'}`,
+        `saida de 'payload migrate':\n${expected.migrationOutput.trim() || '(vazia)'}`,
+      ].join('\n'),
+    )
+  }
+}
+
 /** Espera o servidor responder. Falha com mensagem util em vez de travar. */
 async function waitForServer(baseUrl: string, timeoutMs: number): Promise<void> {
   const deadline = Date.now() + timeoutMs
@@ -269,6 +312,7 @@ async function bootCmsHarness(uploadRoot: string): Promise<CmsHarness> {
     ['--no-warnings', path.join(cmsDir, 'node_modules', 'payload', 'bin.js'), 'migrate'],
     { cwd: cmsDir, env: childEnv, stdio: 'pipe', shell: false },
   )
+  const migrationOutput = `${migration.stdout?.toString() ?? ''}\n${migration.stderr?.toString() ?? ''}`
   if (migration.status !== 0) {
     throw new Error(
       `migrations do CMS falharam (exit ${String(migration.status)}): ${migration.stderr?.toString() ?? ''}`,
@@ -385,6 +429,7 @@ async function bootCmsHarness(uploadRoot: string): Promise<CmsHarness> {
     import('../payload.config.js'),
   ])
   const payload = await getPayload({ config: configModule.default })
+  await assertPayloadSchema(payload, { database, port: pgPort, migrationOutput })
 
   return {
     payload,
