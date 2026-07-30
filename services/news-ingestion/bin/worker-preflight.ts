@@ -12,7 +12,7 @@
 
 import process from 'node:process'
 
-import { PrismaClient } from '@screena/db/server'
+import { createPrismaClient } from '@screena/db/server'
 
 import { createLocalMediaStorage } from '../src/media/local-storage.js'
 import { createS3MediaStorage } from '../src/media/s3-storage.js'
@@ -69,7 +69,7 @@ async function main(): Promise<void> {
       ? createLocalMediaStorage(storageResult.config)
       : createS3MediaStorage(storageResult.config)
 
-  const prisma = new PrismaClient({ datasourceUrl: configResult.config.screenDatabaseUrl })
+  const prisma = createPrismaClient({ datasourceUrl: configResult.config.screenDatabaseUrl })
   try {
     const report = await collectWorkerReadiness({ prisma, storage, env })
     for (const check of report.checks) {

@@ -17,7 +17,7 @@
 
 import process from 'node:process'
 
-import { PrismaClient } from '@screena/db/server'
+import { createPrismaClient, type PrismaClient } from '@screena/db/server'
 
 import { mapPublicationEvent } from '../src/editorial-event-mapper.js'
 import {
@@ -290,7 +290,7 @@ async function main(): Promise<void> {
       ? createLocalMediaStorage(storageResolved.config)
       : createS3MediaStorage(storageResolved.config)
 
-  const prisma = new PrismaClient({ datasourceUrl: config.screenDatabaseUrl })
+  const prisma = createPrismaClient({ datasourceUrl: config.screenDatabaseUrl })
 
   let shutdown: ShutdownState = INITIAL_SHUTDOWN
   const stop = (): void => {

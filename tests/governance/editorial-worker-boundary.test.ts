@@ -251,11 +251,29 @@ describe('fronteira do worker de projecao editorial', () => {
 
   it('o cliente Prisma do worker e criado SO com SCREEN_DATABASE_URL', () => {
     const source = readFileSync(path.join(repoRoot, WORKER_ENTRY), 'utf8')
-    const clientCalls = source.match(/new PrismaClient\([^)]*\)/g) ?? []
+    // `createPrismaClient` (fabrica de `@screena/db/server`) OU o construtor
+    // cru: a regra e sobre o DATASOURCE, nao sobre a forma de construir.
+    const clientCalls = source.match(/(?:new PrismaClient|createPrismaClient)\([^)]*\)/g) ?? []
     expect(clientCalls.length).toBeGreaterThan(0)
     for (const call of clientCalls) {
       expect(call).toContain('screenDatabaseUrl')
       expect(call).not.toContain('payload')
     }
+  })
+
+  it('o entrypoint NAO importa PrismaClient como valor', () => {
+    // Regressao real: `import { PrismaClient } from '@screena/db/server'` usado
+    // como construtor. Aquele modulo so reexporta `PrismaClient` como TIPO, e
+    // sob ESM isso lanca "does not provide an export named 'PrismaClient'" NO
+    // IMPORT — o container do worker morria antes de logar qualquer coisa.
+    //
+    // O teste acima nao pegava: ele inspeciona o ARGUMENTO da chamada, e o
+    // argumento estava certo. E nenhuma suite pegava tambem, porque os testes
+    // importam os modulos de `src/`, nunca o entrypoint. `pnpm typecheck`
+    // agora cobre `services/news-ingestion/bin/**` e reprova com TS1362; esta
+    // asercao existe para que a causa fique nomeada junto da fronteira.
+    const source = readFileSync(path.join(repoRoot, WORKER_ENTRY), 'utf8')
+    const valueImport = /import\s*\{[^}]*(?<!type\s)\bPrismaClient\b[^}]*\}\s*from\s*'@screena\/db\/server'/
+    expect(source).not.toMatch(valueImport)
   })
 })
