@@ -1,0 +1,497 @@
+/**
+ * harness.ts — Sobe o CMS REAL (Next + Payload) sobre PostgreSQL 16 efemero.
+ *
+ * POR QUE HTTP DE VERDADE, E NAO `payload.auth` + `req` montado a mao.
+ * A primeira versao deste harness construia um `PayloadRequest` manualmente e
+ * chamava o handler do endpoint direto. Isso escondia dois defeitos ao mesmo
+ * tempo: o `req` sintetico nao carregava `transactionID`, e cada
+ * `payload.auth()` abria uma transacao que ninguem encerrava — o pool esgotava e
+ * o erro que aparecia era `Connection terminated unexpectedly`, que nao diz nada
+ * sobre a causa. Um teste que monta o proprio `req` nao consegue provar que o
+ * `req` de producao esta certo.
+ *
+ * Agora: `next build` + `next start` numa porta livre, e as asercoes vao por
+ * `fetch`. A requisicao atravessa servidor Next real, route handler real,
+ * autenticacao real do Payload e o endpoint real.
+ *
+ * A Local API continua sendo usada — SO para montar fixtures (usuarios, autores,
+ * midia). Setup nao e a coisa sob teste; o caminho sob teste e o HTTP.
+ */
+
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
+import net from 'node:net'
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+import EmbeddedPostgres from 'embedded-postgres'
+import type { Payload } from 'payload'
+
+import {
+  evaluateBuildFreshness,
+  serializeSourceStamps,
+  skipBuildAllowed,
+  type SourceFileStamp,
+} from '../build-fingerprint.js'
+
+const cmsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
+
+/** Carimbos de todos os `.ts`/`.tsx` do fonte do CMS, recursivamente. */
+function collectSourceStamps(root: string): SourceFileStamp[] {
+  const stamps: SourceFileStamp[] = []
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name)
+      if (entry.isDirectory()) {
+        walk(full)
+        continue
+      }
+      if (!/\.(ts|tsx)$/.test(entry.name)) continue
+      const stat = statSync(full)
+      stamps.push({ path: path.relative(root, full), mtimeMs: stat.mtimeMs, size: stat.size })
+    }
+  }
+  walk(root)
+  return stamps
+}
+
+function readFingerprint(file: string): string | null {
+  try {
+    return readFileSync(file, 'utf8')
+  } catch {
+    return null
+  }
+}
+
+export interface CmsHarness {
+  /** Saida acumulada do servidor. Diagnostico de falha DEPOIS do boot. */
+  serverLog(): string
+  /** Local API — SO para fixtures e para inspecionar o banco nas asercoes. */
+  readonly payload: Payload
+  /** Base do servidor HTTP real (ex.: `http://127.0.0.1:3456`). */
+  readonly baseUrl: string
+  stop(): Promise<void>
+}
+
+/**
+ * Reserva um numero de porta livre e DEVOLVE A PORTA DESOCUPADA.
+ *
+ * O `close` antes do `resolve` nao e detalhe de higiene — e a correcao do
+ * defeito. A primeira versao resolvia dentro do callback do `listen`, deixando
+ * o socket de sondagem bound pelo resto do processo de teste. `unref()` so tira
+ * o handle da contagem do event loop; a porta continua ocupada. Quem tentasse
+ * bindar depois — o Postgres efemero e o `next start` — colidia com o proprio
+ * harness.
+ *
+ * No Windows o sintoma nao aparecia; no runner Linux o `listen(0)` sem host
+ * binda em `::` cobrindo o par IPv4+IPv6, e o Postgres falhava em `::1` E em
+ * `127.0.0.1` ("could not create any TCP/IP sockets"). Por isso o bind agora e
+ * explicito em `127.0.0.1`: sonda exatamente a interface que os servidores vao
+ * usar, sem depender do comportamento dual-stack do sistema.
+ */
+/**
+ * Diretorio-base dos uploads de teste, DENTRO da arvore do CMS.
+ *
+ * Nao pode ser `tmpdir()`. O harness sobe o `next start` com
+ * `NODE_ENV=production`, e em production a guarda de storage
+ * (`upload-storage-config.ts`) recusa raiz em filesystem efemero conhecido —
+ * `/tmp/` entre eles. No Linux `tmpdir()` E `/tmp`, entao o CMS se recusava a
+ * subir e toda requisicao virava 500; no Windows `tmpdir()` cai em
+ * `AppData/Local/Temp`, que nao casa com nenhum prefixo da lista, e o defeito
+ * ficava invisivel.
+ *
+ * A guarda esta CERTA: apontar uploads de producao para `/tmp` e um erro que so
+ * aparece semanas depois. Quem estava errado era o harness. Aqui o caminho e
+ * absoluto, persiste por todo o horizonte do teste e esta coberto pelo
+ * `.gitignore` (`apps/cms/media/`), entao a declaracao de persistencia
+ * continua sendo verdade, nao contorno.
+ */
+const uploadsBaseDir = path.join(cmsDir, 'media')
+
+function createUploadRoot(): string {
+  mkdirSync(uploadsBaseDir, { recursive: true })
+  return mkdtempSync(path.join(uploadsBaseDir, 'integration-'))
+}
+
+/**
+ * Remove SO a pasta exclusiva deste run — nunca a base compartilhada, que pode
+ * guardar midia de outro harness rodando em paralelo ou de uso local.
+ */
+function removeUploadRoot(uploadRoot: string): void {
+  try {
+    rmSync(uploadRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+  } catch {
+    // No Windows um handle preso por instantes nao pode transformar teste verde
+    // em vermelho. A pasta e descartavel e esta fora do Git.
+  }
+}
+
+async function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer()
+    server.unref()
+    server.once('error', reject)
+    server.listen({ host: '127.0.0.1', port: 0, exclusive: true }, () => {
+      const address = server.address()
+      const port = typeof address === 'object' && address !== null ? address.port : 0
+
+      // Porta 0 aqui significa que o endereco nao veio como esperado. Devolver
+      // esse zero adiante faria o Postgres escolher uma porta que o harness nao
+      // conhece, e a falha apareceria longe da causa.
+      if (port <= 0) {
+        server.close(() => {
+          reject(new Error('nao foi possivel reservar uma porta TCP valida'))
+        })
+        return
+      }
+
+      server.close((error) => {
+        if (error !== undefined) {
+          reject(error)
+          return
+        }
+        resolve(port)
+      })
+    })
+  })
+}
+
+/**
+ * Prova que a Local API do Payload esta ligada ao MESMO banco que o harness
+ * acabou de migrar.
+ *
+ * Sem esta checagem, um Payload apontado para o banco errado (ou um `payload
+ * migrate` que saiu 0 sem aplicar nada) so aparece dezenas de segundos depois,
+ * como um `relation "..." does not exist` no meio de um teste — longe da causa
+ * e sem dizer QUAL banco respondeu. A saida do `migrate` tambem e capturada e
+ * so aparece aqui: no caminho feliz ela e descartada, e era justamente a
+ * informacao que faltava para diagnosticar.
+ */
+async function assertPayloadSchema(
+  payload: Payload,
+  expected: { database: string; port: number; migrationOutput: string },
+): Promise<void> {
+  const pool = (
+    payload.db as unknown as {
+      pool?: { query?: (text: string) => Promise<{ rows: Record<string, unknown>[] }> }
+    }
+  ).pool
+  if (pool?.query === undefined) {
+    throw new Error('harness do CMS: pool do Payload indisponivel para verificar o schema')
+  }
+  const { rows } = await pool.query(
+    "select current_database() as db, inet_server_port() as port, to_regclass('public.editorial_users')::text as rel",
+  )
+  const row: Record<string, unknown> = rows[0] ?? {}
+  const db = String(row.db ?? '')
+  const port = Number(row.port ?? 0)
+  const rel = row.rel === null || row.rel === undefined ? null : String(row.rel)
+
+  if (db !== expected.database || port !== expected.port || rel === null) {
+    throw new Error(
+      [
+        'harness do CMS: a Local API do Payload NAO esta no banco que o harness migrou.',
+        `esperado: db=${expected.database} porta=${String(expected.port)} tabela=editorial_users`,
+        `obtido:   db=${db} porta=${String(port)} tabela=${rel ?? '(ausente)'}`,
+        `saida de 'payload migrate':\n${expected.migrationOutput.trim() || '(vazia)'}`,
+      ].join('\n'),
+    )
+  }
+}
+
+/** Espera o servidor responder. Falha com mensagem util em vez de travar. */
+async function waitForServer(baseUrl: string, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  let lastError = 'sem resposta'
+  while (Date.now() < deadline) {
+    try {
+      // Sonda uma rota INEXISTENTE de proposito: o Next responde 404 sem tocar
+      // o Payload nem o banco. Sondar `/api/service-accounts/me` misturava duas
+      // perguntas — "o servidor atende?" e "o banco responde?" — e um banco
+      // lento aparecia como servidor morto (UND_ERR_HEADERS_TIMEOUT).
+      // `AbortSignal` evita ficar preso no timeout de headers do undici.
+      const response = await fetch(`${baseUrl}/__cms_readiness__`, {
+        signal: AbortSignal.timeout(5_000),
+      })
+      if (response.status > 0) return
+    } catch (error) {
+      // `fetch failed` do undici e um wrapper generico: a razao real (ECONNREFUSED,
+      // ENOTFOUND, EAI_AGAIN...) mora em `cause`. Sem isso o diagnostico para aqui.
+      if (error instanceof Error) {
+        const cause = error.cause as { message?: string; code?: string } | undefined
+        lastError = `${error.message}${
+          cause === undefined ? '' : ` | cause: ${cause.message ?? ''} (${cause.code ?? 'sem code'})`
+        }`
+      } else {
+        lastError = 'erro desconhecido'
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500))
+  }
+  throw new Error(`servidor do CMS nao respondeu em ${String(timeoutMs)}ms: ${lastError}`)
+}
+
+export async function startCmsHarness(): Promise<CmsHarness> {
+  // O diretorio nasce ANTES do boot justamente para poder ser removido quando o
+  // boot falhar: sem isto, cada migration quebrada ou servidor que nao sobe
+  // deixaria uma pasta orfa em `apps/cms/media/`, porque o `stop()` — unico
+  // lugar que limpava — so existe depois do `return`.
+  const uploadRoot = createUploadRoot()
+  try {
+    return await bootCmsHarness(uploadRoot)
+  } catch (error) {
+    removeUploadRoot(uploadRoot)
+    throw error
+  }
+}
+
+async function bootCmsHarness(uploadRoot: string): Promise<CmsHarness> {
+  const pgPort = await freePort()
+  const dataDir = mkdtempSync(path.join(tmpdir(), 'cinerie-cms-it-'))
+  const database = 'cinerie_cms_integration'
+
+  const pg = new EmbeddedPostgres({
+    databaseDir: dataDir,
+    user: 'postgres',
+    password: 'postgres',
+    port: pgPort,
+    persistent: false,
+  })
+
+  await pg.initialise()
+  await pg.start()
+  await pg.createDatabase(database)
+
+  // `DATABASE_URL` sai do ambiente: se um fallback aparecer por descuido no
+  // codigo do CMS, o teste falha em vez de mascarar.
+  delete process.env.DATABASE_URL
+  const databaseUrl = `postgresql://postgres:postgres@127.0.0.1:${String(pgPort)}/${database}`
+  process.env.PAYLOAD_DATABASE_URL = databaseUrl
+  process.env.PAYLOAD_SECRET = 'integration-secret-0123456789abcdefghijklmno'
+
+  const childEnv: NodeJS.ProcessEnv = { ...process.env }
+  delete childEnv.DATABASE_URL
+  childEnv.PAYLOAD_DATABASE_URL = databaseUrl
+  childEnv.PAYLOAD_CONFIG_PATH = path.join(cmsDir, 'src', 'payload.config.ts')
+
+  // Storage de upload EXPLICITO. Desde a FASE 2E nao ha default: o CMS recusa
+  // subir sem driver declarado, e essa recusa e o comportamento desejado — o
+  // harness declara em vez de o codigo adivinhar.
+  //
+  // Caminho ABSOLUTO e proprio deste run (ver `createUploadRoot`): o
+  // `staticDir` resolve contra ele, e dois harnesses simultaneos nao disputam o
+  // mesmo diretorio.
+  childEnv.PAYLOAD_UPLOAD_STORAGE_DRIVER = 'local'
+  childEnv.PAYLOAD_UPLOAD_LOCAL_ROOT = uploadRoot
+  // `next start` roda com `NODE_ENV=production`, e la o driver local exige a
+  // confirmacao de persistencia. Aqui a declaracao e VERDADEIRA: o diretorio
+  // temporario sobrevive por toda a vida do teste, que e o unico horizonte que
+  // importa. Nao e um contorno da regra — e a regra sendo respondida.
+  childEnv.PAYLOAD_UPLOAD_LOCAL_PERSISTENT_CONFIRMED = 'true'
+  // O processo de TESTE tambem grava pela Local API: sem isto ele depositaria
+  // os arquivos noutro diretorio e o servidor responderia 404 (o defeito da
+  // FASE 2D, agora impossivel de repetir em silencio).
+  process.env.PAYLOAD_UPLOAD_STORAGE_DRIVER = 'local'
+  process.env.PAYLOAD_UPLOAD_LOCAL_ROOT = uploadRoot
+  process.env.PAYLOAD_UPLOAD_LOCAL_PERSISTENT_CONFIRMED = 'true'
+
+  // Migrations REAIS pelo CLI REAL. Nao usamos `payload.db.migrate()` porque o
+  // arquivo gerado importa `MigrateUpArgs`/`MigrateDownArgs` como named imports
+  // e esses tipos nao existem em runtime sob o loader do vitest.
+  const migration = spawnSync(
+    'node',
+    ['--no-warnings', path.join(cmsDir, 'node_modules', 'payload', 'bin.js'), 'migrate'],
+    { cwd: cmsDir, env: childEnv, stdio: 'pipe', shell: false },
+  )
+  const migrationOutput = `${migration.stdout?.toString() ?? ''}\n${migration.stderr?.toString() ?? ''}`
+  if (migration.status !== 0) {
+    throw new Error(
+      `migrations do CMS falharam (exit ${String(migration.status)}): ${migration.stderr?.toString() ?? ''}`,
+    )
+  }
+
+  const nextBin = path.join(cmsDir, 'node_modules', 'next', 'dist', 'bin', 'next')
+  const fingerprintFile = path.join(cmsDir, '.next', 'cms-it-source-fingerprint.txt')
+  // O fingerprint cobre `src/` E `app/`. Cobrir so `src/` era uma LACUNA real:
+  // adicionar uma rota em `app/` (foi o caso de `/healthz` e `/readyz`) nao
+  // invalidava o carimbo, e o atalho de build rodava a suite contra um build sem
+  // aquelas rotas — o sintoma era um 404 em HTML no lugar de JSON.
+  const currentFingerprint = serializeSourceStamps([
+    ...collectSourceStamps(path.join(cmsDir, 'src')),
+    ...collectSourceStamps(path.join(cmsDir, 'app')).map((stamp) => ({
+      ...stamp,
+      path: `app/${stamp.path}`,
+    })),
+  ])
+
+  // Build de producao: a MESMA pipeline que rodaria no servico implantado.
+  //
+  // `CMS_IT_SKIP_BUILD=1` pula o build para iterar localmente — mas SO se o
+  // fonte nao mudou desde o build carimbado. Sem essa trava o atalho mente em
+  // silencio: a suite roda contra codigo antigo, passa, e a correcao recem
+  // escrita nunca chega a ser exercitada (aconteceu na FASE 2B). Em CI o atalho
+  // e ignorado por completo.
+  let skipped = false
+  if (skipBuildAllowed(process.env)) {
+    const recorded = readFingerprint(fingerprintFile)
+    const freshness = evaluateBuildFreshness(recorded, currentFingerprint)
+    if (freshness.fresh) {
+      skipped = true
+      console.warn('[cms-it] build pulado: fonte inalterado desde o ultimo build')
+    } else {
+      console.warn(
+        `[cms-it] CMS_IT_SKIP_BUILD ignorado (${freshness.reason}): reconstruindo`,
+      )
+    }
+  }
+
+  if (!skipped) {
+    const build = spawnSync('node', [nextBin, 'build'], {
+      cwd: cmsDir,
+      env: childEnv,
+      stdio: 'pipe',
+      shell: false,
+    })
+    if (build.status !== 0) {
+      throw new Error(
+        `build do CMS falhou (exit ${String(build.status)}): ${build.stdout?.toString().slice(-3000) ?? ''}`,
+      )
+    }
+    // Carimbo gravado SO apos build bem-sucedido: um build que falhou nao pode
+    // autorizar o atalho da proxima rodada.
+    try {
+      writeFileSync(fingerprintFile, currentFingerprint, 'utf8')
+    } catch {
+      /* sem carimbo, a proxima rodada simplesmente reconstroi */
+    }
+  }
+
+  // A porta e alocada AGORA, imediatamente antes de ligar o servidor.
+  // Alocar antes do build significaria segurar um numero por varios minutos ate
+  // tentar bindar — tempo de sobra para outro processo tomar a porta, e o
+  // sintoma seria um `EADDRINUSE` invisivel virando "fetch failed" no
+  // `waitForServer`. Foi exatamente esse o defeito da primeira versao.
+  const httpPort = await freePort()
+  const baseUrl = `http://127.0.0.1:${String(httpPort)}`
+
+  // `next start` roda com o config JA COMPILADO no build. Deixar
+  // `PAYLOAD_CONFIG_PATH` apontando para o `.ts` faz o servidor de producao
+  // tentar carregar TypeScript em runtime.
+  const serverEnv: NodeJS.ProcessEnv = {
+    ...childEnv,
+    NODE_ENV: 'production',
+    PAYLOAD_PUBLIC_SERVER_URL: baseUrl,
+  }
+  delete serverEnv.PAYLOAD_CONFIG_PATH
+
+  const server: ChildProcess = spawn(
+    'node',
+    [nextBin, 'start', '--port', String(httpPort), '--hostname', '127.0.0.1'],
+    { cwd: cmsDir, env: serverEnv, stdio: 'pipe', shell: false },
+  )
+
+  // A saida do servidor e GUARDADA, nao descartada. Sem isso, uma falha de
+  // boot vira apenas "fetch failed" no `waitForServer` — que nao diz nada sobre
+  // a causa e foi exatamente o que travou o diagnostico da primeira tentativa.
+  let serverLog = ''
+  const capture = (chunk: unknown) => {
+    serverLog = `${serverLog}${String(chunk)}`.slice(-8_000)
+  }
+  server.stdout?.on('data', capture)
+  server.stderr?.on('data', capture)
+  let serverExit: string | null = null
+  server.on('exit', (code, signal) => {
+    serverExit = `code=${String(code)} signal=${String(signal)}`
+  })
+
+  try {
+    await waitForServer(baseUrl, 120_000)
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : 'erro desconhecido'
+    throw new Error(
+      `${reason}\n[saida do servidor${serverExit === null ? '' : ` — encerrou com ${serverExit}`}]\n${serverLog || '(sem saida)'}`,
+    )
+  }
+
+  // Local API para FIXTURES. Importada depois do ambiente estar pronto porque o
+  // `payload.config.ts` valida a configuracao no topo do modulo.
+  const [{ getPayload }, configModule] = await Promise.all([
+    import('payload'),
+    import('../payload.config.js'),
+  ])
+  const payload = await getPayload({ config: configModule.default })
+  await assertPayloadSchema(payload, { database, port: pgPort, migrationOutput })
+
+  return {
+    payload,
+    baseUrl,
+    // Ate agora a saida do servidor so aparecia quando o BOOT falhava. Um 500
+    // depois do boot (config valida, servidor de pe, requisicao quebrando)
+    // ficava invisivel — e era exatamente o caso mais dificil de diagnosticar.
+    serverLog: () => serverLog,
+    async stop() {
+      try {
+        server.kill()
+      } catch {
+        /* pode ja ter morrido */
+      }
+      // `destroy()` do adapter NAO fecha o pool: ele so limpa schema, tabelas e
+      // relations em memoria. O pool sobrevive, ve o PostgreSQL cair e emite
+      // "Connection terminated unexpectedly" — que o vitest reporta como erro
+      // NAO TRATADO. O resultado era 33 testes verdes com o processo saindo em
+      // codigo 1: CI vermelho sem teste vermelho, o pior tipo de sinal.
+      //
+      // Fechar o pool ANTES de derrubar o banco resolve na ordem certa: as
+      // conexoes terminam por decisao nossa, nao por morte do servidor.
+      try {
+        const pool = (payload.db as unknown as { pool?: { end?: () => Promise<void> } }).pool
+        // COM TETO. `pool.end()` espera cada cliente em uso ser devolvido, e um
+        // cliente que nunca volta — transacao abortada, por exemplo — trava o
+        // teardown para sempre (o hook estourava os 300s). O teto de 5s tenta o
+        // fechamento gracioso e segue em frente quando ele nao vem: o processo
+        // esta terminando de qualquer forma, e derrubar o banco depois de
+        // tentar fechar e melhor do que nao tentar.
+        await Promise.race([
+          pool?.end?.() ?? Promise.resolve(),
+          new Promise((resolve) => setTimeout(resolve, 5_000)),
+        ])
+      } catch {
+        /* pool pode ja estar fechado */
+      }
+      try {
+        await payload.db.destroy?.()
+      } catch {
+        /* estado em memoria: falhar aqui nao impede derrubar o banco */
+      }
+      try {
+        await pg.stop()
+      } catch {
+        /* idem */
+      }
+      // No Windows o Postgres segura handles por instantes apos o stop.
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        try {
+          rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+          break
+        } catch {
+          await new Promise((resolve) => setTimeout(resolve, 400))
+        }
+      }
+      removeUploadRoot(uploadRoot)
+    },
+  }
+}
+
+/** Header de API key no formato exigido pelo Payload: `<slug> API-Key <chave>`. */
+export function apiKeyAuthorization(collectionSlug: string, apiKey: string): string {
+  return `${collectionSlug} API-Key ${apiKey}`
+}

@@ -18,7 +18,9 @@
 
 Estado real atual: **fundacao avancada / vertical slice tecnica**. O repositorio nao e mais uma Fase 0 pura. Ja existem partes reais de Fase 1, Fase 2 e Fase 3A: monorepo pnpm, `apps/web` em Next.js App Router, Prisma/PostgreSQL em `packages/db`, migrations/seeds reais, client TMDB em TypeScript, ingestao TMDB em `services/ingestion`, sync/stale policy, Entity Writer offline em TypeScript, adapter Gemini separado do render, rotas publicas para filmes/series/pessoas/noticias, presenters puros, gates de indexabilidade/licenca, testes de governanca e CI.
 
-Ainda **nao** estao funcionais como produto: ratings externos, streaming/onde assistir, RSSPRIME/MN26, admin editorial completo, usuarios/community, reviews/favoritos/listas/watchlist e app publicavel em escala. Nao implemente essas features por inferencia neste ciclo de alinhamento.
+Ainda **nao** estao funcionais como produto: ratings externos, streaming/onde assistir, ingestao de noticias ponta a ponta, redacao editorial (autoria/corpo/midia/taxonomia), usuarios/community publicos e app publicavel em escala. Nao implemente essas features por inferencia neste ciclo de alinhamento.
+
+**RSS Prime e MNScr sao sistemas EXTERNOS, em repositorios proprios** — nao estao neste monorepo e nao devem ser classificados como inexistentes. O que existe aqui e a camada editorial que os recebe (ver secao 5 e [`docs/adr/0015-editorial-boundaries.md`](docs/adr/0015-editorial-boundaries.md)). **MN26 esta fora da arquitetura da Cinerie**: permanece exclusivo da Maquina Nerd e nao participa de nenhum fluxo daqui.
 
 ## 2. REGRAS DE OURO (invariantes inegociaveis)
 
@@ -92,9 +94,10 @@ Fluxo mental: **API externa -> worker (offline, com log) -> PostgreSQL -> [Entit
 | `services/streaming` | `@screena/streaming` — disponibilidade de streaming via RapidAPI (gateado por licenca). |
 | `services/legal` | `@screena/legal` — registro de autorizacao de fontes e atribuicao. |
 | `services/user-platform` | `@screena/user-platform` — identidade, credencial, sessao, tokens, e-mail transacional (runtime de auth WIRED nas rotas `/api/auth/**`). |
-| `services/news-ingestion`, `api-clients/imdb`, `api-clients/kaso` | Placeholders de roadmap (apenas `README.md`, sem `package.json` nem codigo). Nao sao workspaces ativos. |
-| `workers/` | Workers Python (esqueletos/roadmap): ratings, streaming, news e scheduler; TMDB legado/scaffold nao substitui o client TS atual. |
-| `api-clients/` | Clients externos; `tmdb`, `rapidapi-core`, `film_show_ratings` e `streaming_availability` sao reais em TS/Node. `imdb`/`kaso` sao placeholders. |
+| `services/news-ingestion` | `@screena/news-ingestion` — **workspace ATIVO e real** (nao e placeholder). Plataforma editorial: identidade de item, deduplicacao determinista, ciclo de vida do artigo, slug/redirect, projecao de busca/indexabilidade, metricas e portas. Nucleo PURO em `src/` (sem Prisma), adapters Prisma em `src/persistence/`, CLI de desenvolvimento em `bin/editorial.ts` (com barreira anti-producao) e testes proprios. **Nao reconstroi RSS Prime nem MN26**: implementa o contrato de entrada e a projecao publica governada. Desde a FASE 2C tambem hospeda o **worker de projecao editorial** (`bin/project-editorial.ts`): consome a outbox do CMS por HTTP e projeta no banco publico. E o UNICO processo que fala com os DOIS LADOS — e a ponte e assimetrica: **API do Payload** (HTTP autenticado) de um lado, **banco publico do Screen-App** (Prisma) do outro. Ele NAO abre conexao com o banco do CMS; a proibicao e travada por `tests/governance/editorial-worker-boundary.test.ts`. |
+| `api-clients/imdb`, `api-clients/kaso`, `api-clients/rotten_tomatoes` | Placeholders de roadmap (apenas `README.md`, sem `package.json` nem codigo). Nao sao workspaces ativos. |
+| `workers/` | Workers Python (esqueletos/roadmap): ratings, streaming, news e scheduler; TMDB legado/scaffold nao substitui o client TS atual. `rssprime_worker.py` descreve um contrato antigo (inclusive `news_clusters`, tabela que NAO existe) — nao e fonte de verdade. |
+| `api-clients/` | Clients externos; `tmdb`, `rapidapi-core`, `film_show_ratings` e `streaming_availability` sao reais em TS/Node. `imdb`, `kaso` e `rotten_tomatoes` sao placeholders. |
 | `database/` | Legado: `migrations/` vazio e `seeds/` so com README. A fonte executavel atual e `packages/db/prisma`. |
 | `prompts/` | Prompts de IA (pt-BR) para os content_blocks. |
 | `docs/` | `SPEC.md`, `BUILD_PLAN.md`, `API_SOURCES.md`, `SEO_PROGRAMMATIC.md`, `RATING_ATTRIBUTION.md`, `ENTITY_WRITER.md`, `CLOUDPANEL_DEPLOY.md`. |
@@ -116,6 +119,7 @@ Cada pacote em `packages/*` tem: `package.json` (com `"main": "./src/index.ts"` 
 @screena/public-contracts           -> packages/public-contracts/src/index.ts
 @screena/cinerie-score              -> packages/cinerie-score/src/index.ts
 @screena/legal                      -> services/legal/src/index.ts
+@screena/news-ingestion             -> services/news-ingestion/src/index.ts
 @screena/tmdb-client                -> api-clients/tmdb/src/index.ts
 @screena/rapidapi-core              -> api-clients/rapidapi-core/src/index.ts
 @screena/film-show-ratings-client   -> api-clients/film_show_ratings/src/index.ts
@@ -140,6 +144,12 @@ As regras detalhadas vivem (ou viverao) em `.claude/`. Consulte-as antes de mexe
 - `.claude/rules/ingestion.md` — workers, sync com log, cache, `api_cache`/`api_sync_logs`.
 - `.claude/rules/i18n.md` — pt-BR primeiro; en/es em draft/noindex (invariante 7).
 - `.claude/rules/entity-writer.md` — payload controlado, anti-alucinacao, versionamento (invariantes 12, 13).
+- `docs/adr/0015-editorial-boundaries.md` — **fronteiras canonicas da arquitetura editorial**: quem e externo (RSS Prime, MNScr), quem esta fora (MN26), qual e o CMS aprovado (Payload), o que o `apps/admin` e e nao e, qual e o papel de `services/news-ingestion`, e as DUAS entradas do MNScr (`rss-prime-event-v1` + `cinerie-editorial-context-v1`).
+- `docs/operations/editorial-projection-worker.md` — operacao do **worker de projecao editorial** (CMS -> banco publico): escopos da conta tecnica, ciclo claim/ack/fail com lease, desfechos do recibo e diagnostico. Leia antes de mexer na outbox ou na projecao.
+- `docs/operations/editorial-media-projection.md` — **projecao de midia editorial**: endpoint interno de bytes, autorizacao por licenca/finalidade, formatos e limites, storage port (local + S3-compatible), chave por hash e referencia publica. Leia antes de mexer em imagem de materia.
+- `docs/adr/0016-content-block-lifecycle-separation.md` — `content_blocks` e `article_translations` compartilham o enum `ReviewStatus` e **nao** a maquina de estados. Leia antes de assumir simetria entre os dois dominios.
+- `docs/adr/0017-automation-publisher-actor.md` — **ingestao e autopublicacao sao ATORES diferentes**, derivados do escopo da credencial. `draft_ingest` continua confinado a `automation_draft`; `editorial_auto_publish` sobe ate `published` sem atravessar estados que afirmam revisao humana. Leia antes de mexer na maquina de estados ou em permissao de conta tecnica.
+- `docs/operations/editorial-auto-publication-quota.md` — **tetos diarios da autopublicacao**: as cinco dimensoes, o dia civil da redacao por fuso IANA, a reserva transacional (contador e publicacao vivem e morrem juntos) e os desfechos quando um teto esgota. Leia antes de mexer em limite, fuso ou contador.
 - `.claude/skills/*` — skills operacionais do projeto.
 - `.claude/agents/*` — agentes especializados (ingestao, ratings, entity writer, SEO).
 

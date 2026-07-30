@@ -1319,17 +1319,17 @@ model SearchDocument {
   entityId          BigInt?       @map("entity_id")
   articleId         BigInt?       @map("article_id")
   locale            String // BCP-47 (pt-BR); segue PUBLISHED_LOCALES
-  primaryText       String     @map("primary_text") // titulo canonico/nome
-  alternativeText   String     @default("") @map("alternative_text") // titulos alternativos/aliases (exibicao, ' | ')
-  normalizedText    String     @map("normalized_text") // fold(primaryText + aliases): sem acento + minusculo (casamento base)
-  normalizedAliases String     @default("") @map("normalized_aliases") // aliases dobrados, '|'-delimitados (casamento exato de alias)
+  primaryText       String        @map("primary_text") // titulo canonico/nome
+  alternativeText   String        @default("") @map("alternative_text") // titulos alternativos/aliases (exibicao, ' | ')
+  normalizedText    String        @map("normalized_text") // fold(primaryText + aliases): sem acento + minusculo (casamento base)
+  normalizedAliases String        @default("") @map("normalized_aliases") // aliases dobrados, '|'-delimitados (casamento exato de alias)
   subtitle          String? // linha de apoio (ano/tipo) para o resultado
   year              Int?
   popularity        Decimal? // desempate de ranking (sinal TMDB tecnico, nunca nota editorial)
-  imagePath         String?    @map("image_path") // file_path cru; URL montada no render por buildTmdbImageUrl
-  canonicalUrl      String?    @map("canonical_url")
-  createdAt         DateTime   @default(now()) @map("created_at")
-  updatedAt         DateTime   @updatedAt @map("updated_at")
+  imagePath         String?       @map("image_path") // file_path cru; URL montada no render por buildTmdbImageUrl
+  canonicalUrl      String?       @map("canonical_url")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
 
   article Article? @relation(fields: [articleId], references: [id], onDelete: Cascade)
 
@@ -1578,12 +1578,31 @@ model Article {
   displayAllowed      Boolean       @default(false) @map("display_allowed") // gate-mestra de exibicao
   requiresAttribution Boolean       @default(false) @map("requires_attribution")
   requiresLinkback    Boolean       @default(false) @map("requires_linkback")
+  // Ancora do documento no CMS editorial (Payload). E o que permite reprojetar
+  // o MESMO artigo depois de uma edicao sem depender do slug — slug muda, id
+  // do Payload nao. UNICO: dois artigos publicos nunca apontam para o mesmo
+  // documento de origem.
+  payloadDocumentId   String?       @unique @map("payload_document_id")
+  /// Asset de capa GOVERNADO (projetado do CMS). `heroImagePath` continua sendo
+  /// o caminho lido pelo render; este vinculo preserva credito, licenca e
+  /// dimensoes, que um caminho de string sozinho perderia.
+  heroMediaAssetId    BigInt?       @map("hero_media_asset_id")
+  // Maior sequencia de EMISSAO ja projetada para este artigo (o id serial da
+  // linha na outbox do CMS, que e a ordem real em que os eventos nasceram).
+  // E a trava contra evento FORA DE ORDEM: um retry antigo chegando depois de
+  // uma edicao nova nao pode reescrever o estado mais recente por cima.
+  //
+  // Deliberadamente NAO e o `aggregateVersion` da outbox: aquele campo guarda
+  // um HASH do conteudo publicado, nao um contador — nao ordena nada.
+  projectedSequence   Int?          @map("projected_sequence")
   createdAt           DateTime      @default(now()) @map("created_at")
   updatedAt           DateTime      @updatedAt @map("updated_at")
 
   translations         ArticleTranslation[]
   entityLinks          EntityNewsLink[]
   sourceLinks          ArticleSourceLink[]
+  projectionReceipts   EditorialProjectionReceipt[]
+  heroMediaAsset       EditorialMediaAsset?         @relation("ArticleHeroMedia", fields: [heroMediaAssetId], references: [id], onDelete: SetNull)
   searchDocuments      SearchDocument[]
   indexabilityDecision PageIndexabilityDecision[]
 
@@ -1592,33 +1611,70 @@ model Article {
   @@index([publishedAt])
   @@index([licenseStatus])
   @@index([category])
+  @@index([heroMediaAssetId])
   @@map("articles")
 }
 
 model ArticleTranslation {
-  id              BigInt        @id @default(autoincrement())
-  articleId       BigInt        @map("article_id")
-  languageCode    String        @map("language_code")
-  slug            String // slug proprio por idioma (unico por idioma)
-  title           String
-  deck            String? // subtitulo/excerpt editorial
-  body            String? // corpo proprio (nunca copiado); ausencia -> pagina fina
-  metaTitle       String?       @map("meta_title")
-  metaDescription String?       @map("meta_description")
-  reviewStatus    ReviewStatus  @default(draft) @map("review_status") // nasce draft (inv. 7/9)
-  indexStatus     IndexDecision @default(noindex) @map("index_status") // nasce noindex
+  id                BigInt        @id @default(autoincrement())
+  articleId         BigInt        @map("article_id")
+  languageCode      String        @map("language_code")
+  slug              String // slug proprio por idioma (unico por idioma)
+  title             String
+  deck              String? // subtitulo/excerpt editorial
+  body              String? // corpo proprio (nunca copiado); ausencia -> pagina fina
+  metaTitle         String?       @map("meta_title")
+  metaDescription   String?       @map("meta_description")
+  reviewStatus      ReviewStatus  @default(draft) @map("review_status") // nasce draft (inv. 7/9)
+  indexStatus       IndexDecision @default(noindex) @map("index_status") // nasce noindex
   // `publishedAt` no FUTURO = materia agendada: NAO vaza para nenhuma
   // superficie publica (listagem, artigo, relacionadas, sitemap, busca).
   // O gate esta em `isPublishableArticle` (apps/web/src/lib/news-presenter.ts).
-  publishedAt     DateTime?     @map("published_at")
+  publishedAt       DateTime?     @map("published_at")
   // Correcao MATERIAL (distinta de atualizacao editorial normal): quando um
   // fato publicado e corrigido, a evidencia fica registrada e visivel. Nunca
   // apagar silenciosamente. CHECK: correctionNote exige correctedAt e
   // vice-versa (SQL bruto).
-  correctedAt     DateTime?     @map("corrected_at")
-  correctionNote  String?       @map("correction_note")
-  createdAt       DateTime      @default(now()) @map("created_at")
-  updatedAt       DateTime      @updatedAt @map("updated_at")
+  correctedAt       DateTime?     @map("corrected_at")
+  correctionNote    String?       @map("correction_note")
+  // Corpo ESTRUTURADO (blocos do contrato editorial). `body` continua sendo a
+  // representacao em texto — nenhuma superficie existente muda de fonte por
+  // causa desta coluna. Os blocos sao aditivos: quem sabe renderiza-los usa,
+  // quem nao sabe continua com `body`.
+  bodyBlocks        Json?         @map("body_blocks")
+  // Versao do CONTEUDO (hash do corpo publicado no CMS), nao do schema. Serve
+  // para detectar reprojecao sem mudanca e evitar reescrita inutil.
+  bodyBlocksVersion String?       @map("body_blocks_version")
+
+  // --- SEO APROVADO pelo CMS (projetado; nunca sugestao crua do pipeline) ---
+  //
+  // Aditivo por construcao: nenhuma superficie existente muda de fonte por
+  // causa destas colunas. Quem sabe usa-las usa; quem nao sabe continua com
+  // `metaTitle`/`metaDescription`.
+  //
+  // O que NAO esta aqui e deliberado: `canonical`, `robots` e o JSON-LD final
+  // pertencem ao lado publico e sao DERIVADOS de `slugs`/`redirects` e da
+  // decisao de indexabilidade. Projetar canonical do CMS deixaria duas fontes
+  // discordando sobre a mesma URL.
+  socialTitle              String?  @map("social_title")
+  socialDescription        String?  @map("social_description")
+  // Excecao EDITORIAL explicita (sindicacao, conteudo espelhado). Nao e a
+  // canonical de uso normal, que continua derivada de `slugs`.
+  canonicalOverride        String?  @map("canonical_override")
+  focusKeyphrase           String?  @map("focus_keyphrase")
+  relatedKeyphrases        String[] @default([]) @map("related_keyphrases")
+  editorialKeywords        String[] @default([]) @map("editorial_keywords")
+  // RECOMENDACAO de tipo de JSON-LD. O render pode recusa-la: emitir `Review`
+  // sem review propria seria schema falso, e essa decisao e do lado publico.
+  schemaTypeRecommendation String?  @map("schema_type_recommendation")
+  articleSection           String?  @map("article_section")
+  // `alt` APROVADO por midia e links internos APROVADOS. Json porque sao listas
+  // pequenas, lidas inteiras e nunca consultadas por campo.
+  approvedImageAlt         Json?    @map("approved_image_alt")
+  approvedInternalLinks    Json?    @map("approved_internal_links")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   article  Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
   language Language @relation(fields: [languageCode], references: [code])
@@ -2372,7 +2428,8 @@ model ImportJob {
 // proveniencia, deduplicacao e projecao publica de artigo.
 //
 // Regras e decisoes: docs/editorial/README.md (inclui o que NAO foi feito)
-// Runbook operacional: docs/editorial/runbook.md
+// Runbook operacional: docs/editorial/runbook.md
+
 //
 // Convencoes desta secao:
 //  - `articles`/`article_translations`/`entity_news_links` JA existiam e NAO
@@ -2503,12 +2560,12 @@ model EditorialSource {
 // curto. O corpo integral de terceiro NAO e persistido; o CHECK de tamanho do
 // excerpt trava isso no proprio banco.
 model SourceItem {
-  id         BigInt  @id @default(autoincrement())
-  sourceId   BigInt  @map("source_id")
+  id            BigInt  @id @default(autoincrement())
+  sourceId      BigInt  @map("source_id")
   // Identidade estavel do item NA FONTE. E a chave de idempotencia primaria:
   // reingerir o mesmo external_id atualiza, nunca duplica.
-  externalId String  @map("external_id")
-  canonicalUrl String? @map("canonical_url") // URL declarada pela fonte
+  externalId    String  @map("external_id")
+  canonicalUrl  String? @map("canonical_url") // URL declarada pela fonte
   // URL canonica NORMALIZADA (minuscula, sem query de tracking, sem fragmento,
   // sem barra final): o eixo secundario de deduplicacao.
   normalizedUrl String? @map("normalized_url")
@@ -2525,12 +2582,12 @@ model SourceItem {
   sourceUpdatedAt DateTime? @map("source_updated_at")
   fetchedAt       DateTime  @default(now()) @map("fetched_at")
 
-  status       SourceItemStatus       @default(received)
-  dedupVerdict SourceItemDedupVerdict @default(unique) @map("dedup_verdict")
+  status        SourceItemStatus       @default(received)
+  dedupVerdict  SourceItemDedupVerdict @default(unique) @map("dedup_verdict")
   // Quando `duplicate`/`superseded`, aponta para o item PRIMARIO retido.
-  duplicateOfId BigInt? @map("duplicate_of_id")
-  discardReason String? @map("discard_reason")
-  metadata      Json    @default("{}")
+  duplicateOfId BigInt?                @map("duplicate_of_id")
+  discardReason String?                @map("discard_reason")
+  metadata      Json                   @default("{}")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -2575,4 +2632,109 @@ model ArticleSourceLink {
   @@index([articleId])
   @@index([sourceId])
   @@map("article_source_links")
+}
+
+/// Resultado de uma tentativa de projetar um evento do CMS no banco publico.
+enum EditorialProjectionOutcome {
+  applied /// o evento mudou o banco publico
+  skipped_duplicate /// evento ja projetado antes (replay)
+  skipped_stale /// versao mais nova ja projetada; evento antigo ignorado
+  skipped_unlicensed /// bloqueado pela invariante 6 (sem licenca clara)
+}
+
+/// Recibo de projecao editorial (Payload -> banco publico).
+///
+/// E o REGISTRO DE IDEMPOTENCIA do consumidor da outbox. O worker grava o
+/// recibo na MESMA transacao em que aplica a projecao: ou os dois existem, ou
+/// nenhum. Um evento reentregue encontra o recibo e nao reaplica nada.
+///
+/// Tambem e a trilha de auditoria de quem publicou o que no site publico —
+/// publicacao e decisao humana registrada (invariante 12), e o recibo prova
+/// qual decisao do CMS gerou qual estado publico.
+model EditorialProjectionReceipt {
+  id               BigInt                     @id @default(autoincrement())
+  /// Identificador do evento na outbox do CMS. UNICO: e a trava de replay.
+  eventId          String                     @unique @map("event_id")
+  /// Chave de idempotencia do produtor (quando informada).
+  idempotencyKey   String?                    @map("idempotency_key")
+  eventType        String                     @map("event_type")
+  /// Documento de origem no Payload (aggregate do evento).
+  aggregateId      String                     @map("aggregate_id")
+  /// Ordem de EMISSAO do evento (id da linha na outbox do CMS).
+  emissionSequence Int                        @map("emission_sequence")
+  /// Artigo publico afetado. NULL quando o evento foi ignorado antes de
+  /// resolver o artigo (ex.: bloqueio de licenca).
+  articleId        BigInt?                    @map("article_id")
+  /// Hash do conteudo publicado, para detectar reprojecao sem mudanca.
+  contentVersion   String?                    @map("content_version")
+  outcome          EditorialProjectionOutcome
+  /// Quem projetou (identidade do worker), para auditoria operacional.
+  workerId         String                     @map("worker_id")
+  projectedAt      DateTime                   @default(now()) @map("projected_at")
+
+  article Article? @relation(fields: [articleId], references: [id], onDelete: SetNull)
+
+  @@index([aggregateId, emissionSequence])
+  @@index([projectedAt])
+  @@index([articleId])
+  @@map("editorial_projection_receipts")
+}
+
+/// Estado de licenca de um asset editorial, espelhando o enum do CMS.
+enum EditorialMediaLicenseStatus {
+  unknown
+  pending
+  approved
+  restricted
+  expired
+  prohibited
+}
+
+/// Asset de midia editorial JA PROJETADO para o armazenamento publico.
+///
+/// Nasce de um documento `media` aprovado no Payload, cujos BYTES foram pedidos
+/// ao endpoint interno, verificados (assinatura, MIME real, dimensoes, hash) e
+/// gravados por chave derivada do CONTEUDO. Nunca de uma URL arbitraria.
+///
+/// A deduplicacao e por `contentHash`: a mesma foto usada em dez materias ocupa
+/// um arquivo so. `payloadMediaId` e unico porque um documento do CMS tem um
+/// asset publico corrente — trocar o arquivo no CMS atualiza esta linha.
+model EditorialMediaAsset {
+  id             BigInt @id @default(autoincrement())
+  /// Documento de origem no CMS. Ancora estavel entre reprojecoes.
+  payloadMediaId String @unique @map("payload_media_id")
+  /// sha256 dos bytes efetivamente gravados (formato `sha256:<hex>`).
+  contentHash    String @map("content_hash")
+  /// Chave no storage (`editorial/<xx>/<sha256>.<ext>`). Determinista.
+  storageKey     String @unique @map("storage_key")
+  /// Caminho publico servido pelo screen-app. NUNCA URL http(s).
+  publicPath     String @unique @map("public_path")
+  mimeType       String @map("mime_type")
+  width          Int?
+  height         Int?
+  byteSize       Int    @map("byte_size")
+
+  alt          String
+  caption      String?
+  credit       String?
+  sourceName   String? @map("source_name")
+  sourceUrl    String? @map("source_url")
+  rightsHolder String? @map("rights_holder")
+
+  licenseStatus       EditorialMediaLicenseStatus @default(unknown) @map("license_status")
+  licenseReference    String?                     @map("license_reference")
+  licenseExpiresAt    DateTime?                   @map("license_expires_at")
+  requiresAttribution Boolean                     @default(true) @map("requires_attribution")
+  allowedForEditorial Boolean                     @default(false) @map("allowed_for_editorial")
+  allowedForHero      Boolean                     @default(false) @map("allowed_for_hero")
+  allowedForSocial    Boolean                     @default(false) @map("allowed_for_social")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  heroOfArticles Article[] @relation("ArticleHeroMedia")
+
+  @@index([contentHash])
+  @@index([licenseStatus])
+  @@map("editorial_media_assets")
 }

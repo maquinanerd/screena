@@ -9,6 +9,14 @@
 > incoerentes. A marca pública atual é **Cinerie** (`https://cinerie.com`);
 > a fonte viva é [`CLAUDE.md`](../CLAUDE.md) e
 > [`REBRANDING-CINERIE.md`](../REBRANDING-CINERIE.md).
+>
+> **Achados de ESTADO tambem estao superados (2026-07-28).** Este snapshot afirma que
+> `services/news-ingestion` e "apenas um README", sem `package.json` e sem codigo. Isso era
+> verdade na data da auditoria e **deixou de ser** com o Prompt 10 (commit `812417a`): hoje o
+> pacote e um workspace ativo, com nucleo puro, adapters Prisma, CLI e testes. As afirmacoes
+> historicas nao foram reescritas de proposito (falsificariam o registro). O estado vivo esta em
+> [`CLAUDE.md`](../CLAUDE.md), [`docs/editorial/README.md`](./editorial/README.md) e
+> [`docs/adr/0015-editorial-boundaries.md`](./adr/0015-editorial-boundaries.md).
 
 > Snapshot auditado: `origin/main` em `df0a89c` (`feat(web): port canonical cinematic frontend exactly (#61)`), em 14/07/2026.
 >

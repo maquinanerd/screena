@@ -115,6 +115,7 @@ export default async function AdminWorkflowPage({
     error: firstValue(sp.error),
     ok: firstValue(sp.ok),
     fail: firstValue(sp.fail),
+    skip: firstValue(sp.skip),
   });
 
   return (

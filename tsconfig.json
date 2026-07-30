@@ -22,7 +22,23 @@
     "services/ingestion/**/persistence/**",
     "services/news-ingestion/**/persistence/**",
     "services/**/scripts/**",
-    "services/**/bin/**",
+    // BIN POR SERVICO, e nao `services/**/bin/**`.
+    //
+    // A exclusao geral deixava de fora o `bin/` do news-ingestion — que contem
+    // o ENTRYPOINT DE PRODUCAO do worker de projecao (`project-editorial.ts`,
+    // o CMD do Dockerfile.publication-worker). Um `import { PrismaClient }`
+    // que so existe como TIPO passou despercebido ali e derrubava o container
+    // no import, antes de qualquer log. Nenhum teste pegava: a suite importa os
+    // modulos de `src/`, nunca o entrypoint.
+    //
+    // Os demais `bin/` continuam fora por divida pre-existente (7 erros em
+    // `services/ingestion/bin`), nao por decisao de arquitetura.
+    "services/entity-writer/bin/**",
+    "services/ingestion/bin/**",
+    "services/legal/bin/**",
+    "services/ratings/bin/**",
+    "services/streaming/bin/**",
+    "services/sync/bin/**",
     "services/ingestion/src/composition.ts"
   ]
 }

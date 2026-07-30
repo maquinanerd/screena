@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs'
+import { buildArticleJsonLd } from '@screena/seo'
 import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
@@ -43,13 +44,42 @@ describe('notícias após o reset visual', () => {
   })
 
   it('preserva NewsArticle e BreadcrumbList em JSON-LD', () => {
-    expect(article).toMatch(/['"]@type['"]:\s*['"]NewsArticle['"]/)
+    // O JSON-LD do artigo deixou de ser montado a mao na pagina e passou a vir
+    // de `buildArticleJsonLd` (@screena/seo), que e puro e testado. Este teste
+    // segue a indirecao em vez de grepar o literal: continuar exigindo
+    // `"@type": "NewsArticle"` no arquivo da pagina forcaria a duplicacao de
+    // volta so para o grep passar — e a duplicacao e o defeito.
+    expect(article).toContain('buildArticleJsonLd(')
     expect(article).toMatch(/['"]@type['"]:\s*['"]BreadcrumbList['"]/)
-    expect(article).toContain('articleJsonLd.datePublished')
-    expect(article).toContain('articleJsonLd.author')
-    expect(article).toContain('articleJsonLd.articleSection')
-    expect(article).toContain('articleJsonLd.image')
     expect(article.match(/application\/ld\+json/g)).toHaveLength(2)
+
+    // O COMPORTAMENTO, provado de verdade: o tipo emitido e `NewsArticle`, e a
+    // marcacao carrega data, autor, secao e imagem quando existem.
+    const jsonLd = buildArticleJsonLd({
+      canonicalUrl: 'https://cinerie.com/pt/noticias/x/',
+      canonicalOverride: null,
+      decision: 'index',
+      title: 'Titulo',
+      metaTitle: null,
+      metaDescription: 'Descricao',
+      deck: null,
+      socialTitle: null,
+      socialDescription: null,
+      articleSection: 'Series',
+      schemaTypeRecommendation: null,
+      imageUrl: 'https://cinerie.com/img.jpg',
+      imageAlt: 'alt',
+      publishedAtIso: '2026-07-29T12:00:00.000Z',
+      updatedAtIso: null,
+      authorName: 'Redacao',
+      siteName: 'Cinerie',
+      locale: 'pt-BR',
+    })
+    expect(jsonLd['@type']).toBe('NewsArticle')
+    expect(jsonLd.datePublished).toBe('2026-07-29T12:00:00.000Z')
+    expect(jsonLd.author).toEqual({ '@type': 'Person', name: 'Redacao' })
+    expect(jsonLd.articleSection).toBe('Series')
+    expect(jsonLd.image).toEqual(['https://cinerie.com/img.jpg'])
   })
 
   it('design canônico (tela 03): layout magazine, AdSlot governado, um H1 por página', () => {

@@ -25,6 +25,28 @@ export function getPrismaClient(): PrismaClient {
   return globalScope.__screenaPrismaClient
 }
 
+/**
+ * Cria um client DEDICADO para uma URL de banco explicita.
+ *
+ * Existe porque nem todo processo fala com o banco default. O worker de
+ * projecao editorial aponta para o `screen-db` via `SCREEN_DATABASE_URL` e
+ * **nunca** deve cair em `DATABASE_URL` (ADR 0015): `getPrismaClient()` acima
+ * usaria o datasource default e apagaria essa fronteira em silencio.
+ *
+ * Tambem fecha um buraco de forma: `PrismaClient` so era reexportado como
+ * TIPO daqui. Um chamador que fizesse `import { PrismaClient }` para dar
+ * `new PrismaClient(...)` compilava — `services/**\/bin/**` esta fora do
+ * typecheck — e explodia em runtime com "does not provide an export named
+ * 'PrismaClient'", no import, antes de qualquer log. Uma fabrica de VALOR
+ * elimina a tentacao de importar o tipo como se fosse construtor.
+ *
+ * NAO entra no singleton: quem cria um client dedicado e dono do ciclo de vida
+ * dele e precisa chamar `$disconnect()`.
+ */
+export function createPrismaClient(options: { readonly datasourceUrl: string }): PrismaClient {
+  return new PrismaClient({ datasourceUrl: options.datasourceUrl })
+}
+
 /** Encerra a conexao Prisma (chamar ao final de um worker/CLI). */
 export async function disconnectPrisma(): Promise<void> {
   if (globalScope.__screenaPrismaClient !== undefined) {

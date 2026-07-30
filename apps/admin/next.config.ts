@@ -11,10 +11,15 @@ import type { NextConfig } from "next";
  * `@screena/db` e consumido como FONTE TypeScript (main = src/index.ts); o Next
  * precisa transpila-lo. O `extensionAlias` faz a ponte dos imports ESM com
  * extensao `.js` que apontam para arquivos `.ts` (convencao dos pacotes).
+ *
+ * `@screena/news-ingestion` entra pelo mesmo motivo: o admin consome dele a
+ * FONTE UNICA das transicoes editoriais (`canTransition`). So o nucleo PURO e
+ * alcancado — `src/index.ts` nao exporta os adapters Prisma de `src/persistence/`,
+ * entao nada de banco atravessa para o bundle por esta porta.
  */
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  transpilePackages: ["@screena/db"],
+  transpilePackages: ["@screena/db", "@screena/news-ingestion"],
   webpack: (config) => {
     config.resolve = config.resolve ?? {};
     config.resolve.extensionAlias = {

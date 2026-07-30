@@ -69,6 +69,109 @@ jobs:
       - name: Typecheck do admin
         run: pnpm typecheck:admin
 
+      # O CMS editorial (Payload) e uma aplicacao ISOLADA: banco proprio, sem
+      # Prisma e sem @screena/db. Typecheck e teste proprios porque o `vitest`
+      # da raiz nao alcanca `apps/**` e porque o stack do Payload fixa uma
+      # versao de Next DIFERENTE da de apps/web (ver apps/cms/README.md).
+      - name: Typecheck do CMS editorial (Payload)
+        run: pnpm typecheck:cms
+
+      - name: Testes do CMS editorial (nucleo puro, sem banco)
+        run: pnpm test:cms
+
+      # Integracao REAL do CMS: sobe PostgreSQL 16 efemero, aplica as migrations
+      # do Payload pelo CLI oficial, faz `next build` + `next start` numa porta
+      # livre e bate no servidor por HTTP. Cria identidades e API keys
+      # TEMPORARIAS no proprio banco descartavel — sem EasyPanel, sem screen-db,
+      # sem DATABASE_URL e sem credencial real. Existe porque os testes puros
+      # nao conseguem provar que a governanca esta LIGADA: autenticacao por API
+      # key, access control, hooks, outbox e rollback so aparecem no runtime.
+      #
+      # Inclui a QUOTA de autopublicacao sob concorrencia real (transacoes
+      # simultaneas disputando o mesmo contador) e o rollback que garante que
+      # contador e publicacao vivem e morrem juntos. Nenhum dos dois aparece em
+      # teste puro: um teste sequencial nunca dispara a corrida que o contador
+      # existe para vencer.
+      - name: Integracao do CMS editorial (Payload + PostgreSQL 16 efemero)
+        run: pnpm test:cms:integration
+
+      # Projecao editorial CMS -> banco publico, com DOIS PostgreSQL 16
+      # efemeros ao mesmo tempo (o do Payload e o do screen-db). Prova o que
+      # nenhum dos dois lados prova sozinho: escopo da conta tecnica, lease
+      # exclusiva sob dois workers concorrentes, replay idempotente, evento
+      # fora de ordem, sanitizacao do erro que chega ao painel e retratacao que
+      # tira do indice sem apagar a materia.
+      #
+      # Nenhuma credencial real, nenhum banco real: contas e chaves nascem e
+      # morrem dentro dos bancos descartaveis.
+      - name: Integracao da projecao editorial (dois PostgreSQL 16 efemeros)
+        run: pnpm test:publication-projection:integration
+
+      # Gate DEDICADO da midia editorial: mesmo cenario (CMS real, dois
+      # PostgreSQL 16 efemeros, storage local temporario), filtrado aos casos de
+      # midia. E um recorte do gate acima, nao uma segunda infraestrutura —
+      # subir outro CMS e outros dois bancos custaria ~5 minutos de CI para
+      # exercitar exatamente o mesmo caminho.
+      #
+      # Prova: bytes reais atravessam o endpoint interno, sao validados por
+      # assinatura, gravados em disco por chave derivada do conteudo e lidos de
+      # volta; licenca, finalidade e atribuicao barram o que deve barrar; e
+      # nenhuma URL http chega ao banco publico.
+      - name: Integracao da midia editorial (storage local + dois PG16)
+        run: pnpm test:editorial-media-projection:integration
+
+      # CAMINHO EDITORIAL HUMANO (FASE 2G). Gate NOMEADO, apontando so para o
+      # caminho manual: quando ele falha, a mensagem ja diz que o problema e da
+      # redacao humana, e nao da autopublicacao. O arquivo tambem roda dentro de
+      # `test:cms:integration`; aqui ele volta isolado de proposito, porque um
+      # gate generico vermelho nao responde "o CMS manual quebrou?".
+      #
+      # Prova, contra Next + Payload + PostgreSQL 16 efemeros: publicacao SOLO
+      # de administrador e editor-chefe, rastro createdBy/updatedBy/publishedBy
+      # derivado da sessao (nunca do corpo), autor publico != usuario do CMS,
+      # corpo e SEO manuais, midia licenciada, e — o ponto da fase — publicacao
+      # SEM nenhum campo, credencial ou variavel do MNScr, com `/healthz` e
+      # `/readyz` em 200 nesse mesmo ambiente.
+      - name: Caminho editorial humano (CMS manual sem MNScr)
+        run: pnpm test:manual-editorial:integration
+
+      # PAINEL REAL, NAVEGADOR REAL. Chromium ja instalado na imagem do runner
+      # via `playwright install --with-deps chromium` (passo abaixo). Cobre o
+      # que nenhuma chamada HTTP prova: que as oito abas existem na tela, que o
+      # rascunho salva por autosave, que o campo de automacao chega desabilitado
+      # e que o botao generico "Publish changes" do Payload NAO burla o fluxo
+      # editorial.
+      - name: Instalar Chromium para o E2E do painel
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: E2E do painel editorial manual (Playwright)
+        run: pnpm test:manual-editorial:e2e
+
+      # CANARIO PONTA A PONTA da publicacao MANUAL: humano -> Payload -> outbox
+      # -> worker -> screen-db -> presenter publico -> JSON-LD, sitemap pt-BR e
+      # News Sitemap. Dois PostgreSQL 16 efemeros e storage temporario.
+      #
+      # E o unico gate que fecha o circuito inteiro: os demais provam pedacos.
+      # Ele aborta se qualquer `MNSCR_*`/`EDITORIAL_AUTO_PUBLISH_*` estiver no
+      # ambiente — um canario que rodasse com automacao ligada nao provaria a
+      # independencia que ele existe para provar.
+      - name: Canario da publicacao manual ate a pagina publica
+        run: pnpm test:manual-publication-projection:integration
+
+      # PRONTIDAO DE IMPLANTACAO. Nao sobem banco nem container: provam a
+      # POLITICA que decide se um servico pode ser promovido — migration
+      # pendente bloqueia, schema publico atrasado bloqueia, storage sem
+      # persistencia declarada em producao e recusado, credencial e caminho
+      # nunca aparecem em mensagem de erro, e trocar o driver de storage nao
+      # muda os bytes entregues.
+      #
+      # Sao rapidos de proposito: rodam a cada push, antes dos gates caros.
+      - name: Prontidao de implantacao do CMS
+        run: pnpm test:cms:deployment-readiness
+
+      - name: Prontidao de implantacao do worker de projecao
+        run: pnpm test:publication-worker:deployment-readiness
+
       - name: Lint
         run: pnpm lint
 

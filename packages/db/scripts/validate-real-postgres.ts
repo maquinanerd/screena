@@ -135,6 +135,11 @@ const EXPECTED_TABLES = [
   "user_import_jobs",
   // C7A — fundacao de persistencia: feedback explicito de recomendacao.
   "user_recommendation_feedback",
+  // Projecao editorial (CMS -> banco publico): recibo de idempotencia do
+  // consumidor da outbox do Payload.
+  "editorial_projection_receipts",
+  // FASE 2D — midia editorial governada, projetada do CMS para o storage publico.
+  "editorial_media_assets",
 ];
 const EXPECTED_ENUMS = [
   "EntityType", "ContentBlockType", "ContentSource", "ReviewStatus", "TranslationStatus",
@@ -162,6 +167,10 @@ const EXPECTED_ENUMS = [
   "ImportJobStatus", "ReportReason", "ReportStatus",
   // C7A — enums de recomendacao (espelham as unions fechadas do dominio puro).
   "RecommendationContext", "RecommendationFeedbackType", "RecommendationFeedbackSource",
+  // Projecao editorial — desfecho de cada tentativa de projecao.
+  "EditorialProjectionOutcome",
+  // FASE 2D — licenca do asset de midia editorial (espelha o enum do CMS).
+  "EditorialMediaLicenseStatus",
 ];
 const EXPECTED_SCALES: Record<string, number> = {
   imdb: 10, rotten_tomatoes: 100, metacritic: 100, letterboxd: 5, filmaffinity: 10,
@@ -566,6 +575,158 @@ async function runChecks(url: string): Promise<void> {
     ))[0];
     await expectViolation(45, "source_licenses: supersedes_id cross-group barrado pelo guard",
       `INSERT INTO source_licenses (source_key, content_type, rating_source_key, is_current, supersedes_id, updated_at) VALUES ('imdb', 'rating', 'imdb', false, ${Number(rtLic.id)}, now())`);
+
+    /* ---------------------------------------------------------------- */
+    /* 46-52. Projecao editorial: CMS (Payload) -> banco publico.        */
+    /* ---------------------------------------------------------------- */
+
+    // Base: dois artigos publicos para exercitar a ancora do documento.
+    await exec("INSERT INTO articles (payload_document_id, updated_at) VALUES ('payload-doc-a', now())");
+    const [artA] = await q<{ id: bigint }>(
+      "SELECT id FROM articles WHERE payload_document_id = 'payload-doc-a'",
+    );
+
+    // 46. CONTROLE POSITIVO. Sem ele, um `payload_document_id` que rejeitasse
+    //     tudo passaria nos checks negativos abaixo sem projetar nada.
+    record(46, "articles: payload_document_id valido e aceito",
+      artA !== undefined && artA.id !== undefined, `id=${String(artA?.id)}`);
+
+    // 47. Dois artigos publicos nunca apontam para o MESMO documento do CMS —
+    //     senao reprojetar criaria duplicata em vez de atualizar.
+    await expectViolation(47, "articles: payload_document_id duplicado barrado",
+      "INSERT INTO articles (payload_document_id, updated_at) VALUES ('payload-doc-a', now())");
+
+    // 48. NULL nao colide em UNIQUE do PostgreSQL: artigo legado (sem origem no
+    //     CMS) continua podendo existir aos montes. Se esta linha falhasse, a
+    //     migration teria quebrado todo o acervo anterior.
+    await exec("INSERT INTO articles (payload_document_id, updated_at) VALUES (NULL, now())");
+    await exec("INSERT INTO articles (payload_document_id, updated_at) VALUES (NULL, now())");
+    const [{ legacy }] = await q<{ legacy: bigint }>(
+      "SELECT count(*) AS legacy FROM articles WHERE payload_document_id IS NULL",
+    );
+    record(48, "articles: varios artigos legados sem documento do CMS convivem",
+      Number(legacy) >= 2, `sem payload_document_id: ${String(legacy)}`);
+
+    // 49. String vazia ocuparia o unico slot da chave unica fingindo ser um
+    //     documento. Nao e ausencia nem presenca: e proibida.
+    await expectViolation(49, "articles: payload_document_id vazio barrado",
+      "INSERT INTO articles (payload_document_id, updated_at) VALUES ('', now())");
+
+    // 50. Blocos precisam ser LISTA. Objeto solto quebraria todo consumidor que
+    //     iterar a coluna.
+    await exec(
+      `INSERT INTO article_translations (article_id, language_code, slug, title, body_blocks, body_blocks_version, updated_at)
+       VALUES (${Number(artA.id)}, 'pt-BR', 'projecao-editorial-ok', 'Projecao', '[{"type":"paragraph"}]'::jsonb, 'sha256:abc', now())`,
+    );
+    const [{ blocks }] = await q<{ blocks: number }>(
+      "SELECT jsonb_array_length(body_blocks) AS blocks FROM article_translations WHERE slug = 'projecao-editorial-ok'",
+    );
+    record(50, "article_translations: body_blocks em lista e aceito", Number(blocks) === 1,
+      `blocos=${String(blocks)}`);
+
+    await expectViolation(51, "article_translations: body_blocks que nao e lista barrado",
+      `INSERT INTO article_translations (article_id, language_code, slug, title, body_blocks, body_blocks_version, updated_at)
+       VALUES (${Number(artA.id)}, 'en', 'projecao-objeto-solto', 'X', '{"type":"paragraph"}'::jsonb, 'sha256:abc', now())`);
+
+    // 52. Blocos sem versao (ou versao sem blocos) e um estado que ninguem sabe
+    //     interpretar na reprojecao.
+    await expectViolation(52, "article_translations: body_blocks sem versao barrado",
+      `INSERT INTO article_translations (article_id, language_code, slug, title, body_blocks, updated_at)
+       VALUES (${Number(artA.id)}, 'es', 'projecao-sem-versao', 'X', '[]'::jsonb, now())`);
+
+    /* 53-55. Recibo de projecao — a trava de replay do consumidor. */
+
+    await exec(
+      `INSERT INTO editorial_projection_receipts (event_id, event_type, aggregate_id, emission_sequence, article_id, outcome, worker_id)
+       VALUES ('evt-1', 'article.published', 'payload-doc-a', 1, ${Number(artA.id)}, 'applied', 'worker-teste')`,
+    );
+    const [{ receipts }] = await q<{ receipts: bigint }>(
+      "SELECT count(*) AS receipts FROM editorial_projection_receipts WHERE event_id = 'evt-1'",
+    );
+    record(53, "recibo de projecao e gravado", Number(receipts) === 1, `recibos=${String(receipts)}`);
+
+    // 54. O MESMO evento nunca projeta duas vezes. Esta unique e o que faz o
+    //     replay da outbox ser seguro: a segunda tentativa colide e a transacao
+    //     inteira (projecao + recibo) e descartada.
+    await expectViolation(54, "recibo: event_id duplicado barrado (trava de replay)",
+      `INSERT INTO editorial_projection_receipts (event_id, event_type, aggregate_id, emission_sequence, outcome, worker_id)
+       VALUES ('evt-1', 'article.published', 'payload-doc-a', 2, 'applied', 'worker-teste')`);
+
+    // 55. Apagar o artigo NAO apaga a prova de que ele foi publicado um dia.
+    await exec(`DELETE FROM articles WHERE id = ${Number(artA.id)}`);
+    const [survivor] = await q<{ article_id: bigint | null }>(
+      "SELECT article_id FROM editorial_projection_receipts WHERE event_id = 'evt-1'",
+    );
+    record(55, "recibo sobrevive a exclusao do artigo (article_id -> NULL)",
+      survivor !== undefined && survivor.article_id === null,
+      `article_id=${String(survivor?.article_id)}`);
+
+    /* ---------------------------------------------------------------- */
+    /* 56-63. Midia editorial governada (FASE 2D).                      */
+    /* ---------------------------------------------------------------- */
+
+    const HASH = `sha256:${"a".repeat(64)}`;
+    const goodAsset = (suffix: string, overrides: Record<string, string> = {}) => {
+      const cols = {
+        payload_media_id: `'m-${suffix}'`,
+        content_hash: `'${HASH}'`,
+        storage_key: `'editorial/aa/${"a".repeat(64)}-${suffix}.jpg'`,
+        public_path: `'/media/editorial/aa/${"a".repeat(64)}-${suffix}.jpg'`,
+        mime_type: `'image/jpeg'`,
+        byte_size: "1024",
+        alt: `'capa'`,
+        updated_at: "now()",
+        ...overrides,
+      };
+      return `INSERT INTO editorial_media_assets (${Object.keys(cols).join(", ")}) VALUES (${Object.values(cols).join(", ")})`;
+    };
+
+    // 56. CONTROLE POSITIVO. Sem ele, uma tabela que rejeitasse tudo passaria
+    //     em todos os checks negativos abaixo sem armazenar nada.
+    await exec(goodAsset("ok"));
+    const [{ assets }] = await q<{ assets: bigint }>(
+      "SELECT count(*) AS assets FROM editorial_media_assets",
+    );
+    record(56, "asset editorial valido e aceito", Number(assets) === 1, `assets=${String(assets)}`);
+
+    // 57. A REGRA CENTRAL DA FASE: caminho publico nunca e URL. O normalizador
+    //     do apps/web recusa http(s), entao uma URL aqui viraria materia sem
+    //     imagem em silencio.
+    await expectViolation(57, "asset: public_path com URL http barrado",
+      goodAsset("url", { payload_media_id: "'m-url'", public_path: "'https://cdn.exemplo/x.jpg'", storage_key: "'editorial/aa/url.jpg'" }));
+
+    await expectViolation(58, "asset: public_path relativo (sem barra) barrado",
+      goodAsset("rel", { payload_media_id: "'m-rel'", public_path: "'media/editorial/x.jpg'", storage_key: "'editorial/aa/rel.jpg'" }));
+
+    // 59. Path traversal na chave do storage escreveria fora da raiz do disco.
+    await expectViolation(59, "asset: storage_key com '..' barrado",
+      goodAsset("dots", { payload_media_id: "'m-dots'", storage_key: "'editorial/../../etc/passwd'", public_path: "'/media/x-dots.jpg'" }));
+
+    await expectViolation(60, "asset: storage_key absoluto barrado",
+      goodAsset("abs", { payload_media_id: "'m-abs'", storage_key: "'/etc/passwd'", public_path: "'/media/x-abs.jpg'" }));
+
+    // 61. Hash fora do formato indica que gravaram nome de upload ou URL ali.
+    await expectViolation(61, "asset: content_hash fora do formato sha256 barrado",
+      goodAsset("hash", { payload_media_id: "'m-hash'", content_hash: "'capa-final.jpg'", storage_key: "'editorial/aa/hash.jpg'", public_path: "'/media/x-hash.jpg'" }));
+
+    // 62. Um documento do CMS tem UM asset publico corrente; duplicar criaria
+    //     duas verdades para a mesma midia.
+    await expectViolation(62, "asset: payload_media_id duplicado barrado",
+      goodAsset("dup", { payload_media_id: "'m-ok'", storage_key: "'editorial/aa/dup.jpg'", public_path: "'/media/x-dup.jpg'" }));
+
+    // 63. Apagar um asset compartilhado NAO pode apagar artigos: a materia
+    //     perde a capa, nao a existencia.
+    const [assetRow] = await q<{ id: bigint }>(
+      "SELECT id FROM editorial_media_assets WHERE payload_media_id = 'm-ok'",
+    );
+    await exec(`INSERT INTO articles (payload_document_id, hero_media_asset_id, updated_at) VALUES ('doc-com-capa', ${Number(assetRow.id)}, now())`);
+    await exec(`DELETE FROM editorial_media_assets WHERE id = ${Number(assetRow.id)}`);
+    const [articleAfterAssetDrop] = await q<{ hero_media_asset_id: bigint | null }>(
+      "SELECT hero_media_asset_id FROM articles WHERE payload_document_id = 'doc-com-capa'",
+    );
+    record(63, "artigo sobrevive a exclusao do asset (hero -> NULL)",
+      articleAfterAssetDrop !== undefined && articleAfterAssetDrop.hero_media_asset_id === null,
+      `hero_media_asset_id=${String(articleAfterAssetDrop?.hero_media_asset_id)}`);
   } finally {
     await prisma.$disconnect();
   }

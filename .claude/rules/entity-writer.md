@@ -145,6 +145,14 @@ explicito para a feature correspondente.
 Status (`review_status`): `draft`, `ai_generated`, `needs_review`,
 `human_reviewed`, `published`, `needs_update`, `blocked`, `archived`.
 
+> **`content_blocks` compartilha o ENUM com `article_translations`, nao a maquina
+> de estados.** Aqui `blocked` significa **falha de validacao na geracao** (o bloco
+> nasce assim) e `archived` significa **versao superada**, arquivada
+> automaticamente pelo writer no `archive + insert`. Em artigo, os mesmos dois
+> rotulos significam **retratacao**. Nao aplique a allowlist de transicao de
+> artigo a blocos — ver
+> [`docs/adr/0016-content-block-lifecycle-separation.md`](../../docs/adr/0016-content-block-lifecycle-separation.md).
+
 Um bloco **so conta como valor** de qualidade/ranqueamento se: veio de payload
 controlado; passou na validacao anti-alucinacao; esta salvo em
 `content_blocks`; tem `prompt_version` e `input_hash`; nao copia sinopse

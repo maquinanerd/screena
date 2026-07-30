@@ -1,0 +1,20 @@
+{
+  "name": "@screena/editorial-contracts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Contratos versionados da cadeia editorial da Cinerie: editorial-draft-v1 (MNScr -> Payload), publication-event-v1 (Payload -> projecao publica) e cinerie-editorial-context-v1 (Cinerie -> MNScr). PURO: sem rede, sem banco, sem IO. Namespace tecnico legado: @screena/*.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "sideEffects": false,
+  "license": "UNLICENSED",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "4.4.3"
+  }
+}

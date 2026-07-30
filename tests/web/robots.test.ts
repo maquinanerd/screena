@@ -28,10 +28,17 @@ describe("robots.ts - producao oficial", () => {
   const result = buildRobots(OFFICIAL_PRODUCTION_ENV);
 
   it("aponta o sitemap para a origem oficial canônica", () => {
-    expect(result.sitemap).toBe(`${OFFICIAL_SITE_URL}/sitemap.xml`);
-    const sitemap = new URL(String(result.sitemap));
-    expect(sitemap.origin).toBe(OFFICIAL_SITE_URL);
-    expect(sitemap.pathname).toBe("/sitemap.xml");
+    // TODOS os sitemaps anunciados precisam apontar para a origem oficial. A
+    // asercao varre a lista em vez de checar so o primeiro: um arquivo novo
+    // apontando para preview ou dominio legado passaria despercebido.
+    const announced = Array.isArray(result.sitemap)
+      ? result.sitemap
+      : [String(result.sitemap)];
+    expect(announced).toContain(`${OFFICIAL_SITE_URL}/sitemap.xml`);
+    expect(announced).toContain(`${OFFICIAL_SITE_URL}/news-sitemap.xml`);
+    for (const entry of announced) {
+      expect(new URL(String(entry)).origin).toBe(OFFICIAL_SITE_URL);
+    }
   });
 
   it("nao usa dominio nem marca legados (screena.media, thescreen.media, 'The Screen')", () => {

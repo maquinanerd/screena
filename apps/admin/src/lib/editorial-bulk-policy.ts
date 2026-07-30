@@ -212,10 +212,18 @@ export const BULK_SCOPES = [
 ] as const;
 export type BulkScope = (typeof BULK_SCOPES)[number];
 
-/** Contagens inteiras seguras de um lote. */
+/**
+ * Contagens inteiras seguras de um lote.
+ *
+ * `rejected` e uma categoria SEPARADA de `failed` de proposito. Um item recusado
+ * pelo ciclo de vida (ex.: `blocked -> published`) nao e uma falha de banco: e
+ * uma decisao de governanca. Some-lo a `failed` esconderia a regra; some-lo a
+ * `updated` seria mentira. O operador precisa ver os tres numeros.
+ */
 export interface BulkCounts {
   readonly updated: number;
   readonly failed: number;
+  readonly rejected: number;
   readonly total: number;
 }
 
@@ -226,6 +234,7 @@ export interface BulkActionResult {
   readonly scope?: BulkScope;
   readonly updated?: number;
   readonly failed?: number;
+  readonly rejected?: number;
   readonly total?: number;
 }
 
@@ -256,6 +265,7 @@ export function buildBulkActionResult(
       scope,
       updated: safeCount(counts.updated),
       failed: safeCount(counts.failed),
+      rejected: safeCount(counts.rejected),
       total: safeCount(counts.total),
     };
   }
@@ -268,12 +278,15 @@ function safeCount(n: number): number {
 
 /**
  * Serializa o resultado como a QUERY STRING de feedback do redirect. So tokens do
- * enum + contagens inteiras (`bulk_updated=<escopo>&ok=N&fail=M` ou
+ * enum + contagens inteiras (`bulk_updated=<escopo>&ok=N&fail=M&skip=R` ou
  * `error=<codigo>`). Sem segredo.
  */
 export function bulkResultToQuery(result: BulkActionResult): string {
   if (result.ok && result.outcome === "bulk_updated" && result.scope !== undefined) {
-    return `bulk_updated=${result.scope}&ok=${result.updated ?? 0}&fail=${result.failed ?? 0}`;
+    return (
+      `bulk_updated=${result.scope}&ok=${result.updated ?? 0}` +
+      `&fail=${result.failed ?? 0}&skip=${result.rejected ?? 0}`
+    );
   }
   return `error=${result.outcome === "bulk_updated" ? "bulk_update_failed" : result.outcome}`;
 }
@@ -306,14 +319,18 @@ export function readBulkFeedback(params: {
   readonly error?: string;
   readonly ok?: string;
   readonly fail?: string;
+  readonly skip?: string;
 }): ActionFeedback | null {
   const { bulk_updated, error } = params;
   if (isBulkScope(bulk_updated)) {
     const updated = toSafeCount(params.ok);
     const failed = toSafeCount(params.fail);
+    const rejected = toSafeCount(params.skip);
     return {
       tone: updated > 0 ? "success" : "error",
-      message: `${updated} ${SCOPE_LABELS[bulk_updated]} atualizado(s). ${failed} falha(s).`,
+      message:
+        `${updated} ${SCOPE_LABELS[bulk_updated]} atualizado(s). ` +
+        `${failed} falha(s). ${rejected} recusado(s) pelo ciclo de vida.`,
     };
   }
   if (error === "bulk_actions_disabled") {

@@ -65,3 +65,22 @@ desktop.ini
 ruvector.db
 .claude/.proven-config-version
 .claude/proven-config.json
+
+# Uploads locais do CMS (desenvolvimento/teste). Nunca versionados.
+#
+# Os padroes sao ANCORADOS de proposito. Um `media/` solto casa em QUALQUER
+# profundidade e engoliria codigo-fonte: `services/news-ingestion/src/media/`
+# (o pipeline de projecao de midia) sairia inteiro de um commit sem nenhum
+# aviso — foi exatamente o que quase aconteceu na FASE 2D.
+apps/cms/media/
+/media/
+services/*/media/
+
+# Saida do Playwright (traces, screenshots e relatorio do E2E do painel).
+#
+# ANCORADO no diretorio do CMS, e nao um `test-results/` solto: o padrao solto
+# casaria em qualquer profundidade e poderia engolir um diretorio de fonte com
+# esse nome — a mesma armadilha do `media/` logo acima.
+apps/cms/test-results/
+apps/cms/playwright-report/
+apps/cms/.playwright/

@@ -310,8 +310,12 @@ Ingestão de feeds RSS como matéria-prima de notícias.
 
 ### Entregáveis
 
-- Serviço de ingestão RSS em `services/news-ingestion/` (RSSPRIME): coleta, normalização e
-  deduplicação de itens de feed.
+- **Atualização 2026-07-28:** a coleta de feed **não** acontece aqui. O RSS Prime é um sistema
+  externo (repositório próprio) e seu consumidor é o MNScr, também externo — ver
+  [`adr/0015-editorial-boundaries.md`](./adr/0015-editorial-boundaries.md). `services/news-ingestion`
+  já existe e implementa o lado da Cinerie: contrato de entrada de fonte/item, proveniência,
+  deduplicação determinista, ciclo de vida, slug e projeção pública.
+- Normalização e deduplicação de itens recebidos em `services/news-ingestion/`.
 - Persistência de itens crus com log em `api_sync_logs`.
 - Mapeamento inicial item de feed → candidatos a `articles`/`entity_news_links`.
 

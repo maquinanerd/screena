@@ -4,6 +4,20 @@
 > sintoma, diagnostico e acao. Em pt-BR.
 >
 > Arquitetura: [`README.md`](./README.md).
+> Operacao da redacao humana (papeis, abas, corpo, SEO, midia, workflow,
+> auditoria): [`../operations/manual-editorial-workflow.md`](../operations/manual-editorial-workflow.md).
+
+**Antes de diagnosticar, saiba em qual camada voce esta.** Sao tres, e elas
+falham por motivos diferentes:
+
+| Camada | Sintoma tipico de falha | Onde olhar |
+| --- | --- | --- |
+| **CMS manual** (Payload, banco editorial, storage de upload, usuario humano) | nao consigo salvar, publicar recusado, campo bloqueado | este runbook (cenarios 4, 7, 10, 11) + [`manual-editorial-workflow.md`](../operations/manual-editorial-workflow.md) |
+| **Publicacao publica** (worker de projecao, screen-db, storage publico) | painel diz `published` e o site nao mostra | [`../operations/editorial-projection-worker.md`](../operations/editorial-projection-worker.md) |
+| **Autopublicacao** (MNScr, conta tecnica, kill switch, quotas) | materia do pipeline nao entra, ou entra demais | [`../operations/editorial-auto-publication-quota.md`](../operations/editorial-auto-publication-quota.md) |
+
+"Painel diz publicado mas o site nao mudou" quase sempre e a camada 2, nao a 1:
+publicar no CMS grava um EVENTO; quem muda o site e o worker.
 
 **Regra que atravessa todos os cenarios:** nenhum comando aqui roda contra
 producao sem decisao humana explicita. Validador e desenvolvimento usam

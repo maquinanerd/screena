@@ -510,7 +510,9 @@ Há scripts de seed/dev para amostras de filme no app web, mas o seed canônico 
 |---|---|---|
 | Ratings externos via RapidAPI/provedores | Parcial/planejado | Há schema, README e invariantes; feature pública ainda não está completa. |
 | Streaming/onde assistir | Parcial/planejado | `WatchAvailability` existe no Prisma e há README; UI pública ainda não entrega a feature. |
-| RSSPRIME/MN26/news ingestion | Planejado | Há documentação/README, mas não implementação completa equivalente à TMDB. |
+| Plataforma editorial (`services/news-ingestion`) | **Implementado** | Workspace ativo: identidade, deduplicação, lifecycle, slug, projeção, métricas, portas puras, adapters Prisma, CLI e validador PG16 no CI. |
+| RSS Prime / MNScr | **Externo** | Sistemas em repositórios próprios; **não estão neste monorepo**. Ver [`docs/adr/0015-editorial-boundaries.md`](./docs/adr/0015-editorial-boundaries.md). Não classificar como inexistentes. |
+| MN26 | **Fora da arquitetura** | Exclusivo da Máquina Nerd; não participa de nenhum fluxo da Cinerie. |
 | Redis | Opcional/documentado | Aparece em `.env.example` como futuro/cache opcional. |
 | CloudPanel/VPS/systemd | Documentado | Guia em `docs/CLOUDPANEL_DEPLOY.md`; deploy real não é comprovado pelo repo. |
 
@@ -836,7 +838,7 @@ Variáveis usadas pelo código do admin e não listadas em `.env.example` no mom
 - Ratings externos: schema, seed, regras e documentação existem; experiência pública ainda não está funcional como produto.
 - Streaming/onde assistir: model `WatchAvailability` e README existem; UI pública e integração real ainda estão incompletas.
 - Admin editorial: já tem ações de status, mas não edição completa de conteúdo/title/slug/body/publicação.
-- Notícias/editorial: páginas e models existem; ingestão RSSPRIME/MN26 ainda não está completa.
+- Notícias/editorial: páginas, models e a **plataforma editorial** (`services/news-ingestion`) existem e são reais — fonte, item, proveniência, dedup, lifecycle, publicação e projeção. O que falta é a **redação** (autoria, corpo estruturado, mídia licenciada, taxonomia, RBAC), que será o Payload. RSS Prime e MNScr são externos a este repositório.
 - Internacionalização: en/es existem como preparação, mas devem ficar draft/noindex até revisão humana.
 - Deploy CloudPanel/systemd: documentado, mas não validado por evidência de ambiente neste repo.
 

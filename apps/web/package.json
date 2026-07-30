@@ -23,7 +23,8 @@
     "qa:home-editorial": "tsx scripts/qa-home-editorial-ticker-real-postgres.ts",
     "seed:dev-movie": "tsx scripts/seed-dev-movie.ts",
     "gen:demo-media": "node scripts/generate-demo-media.mjs",
-    "validate:person-eligibility": "tsx scripts/validate-person-eligibility-real-postgres.ts"
+    "validate:person-eligibility": "tsx scripts/validate-person-eligibility-real-postgres.ts",
+    "canary:manual-editorial": "tsx scripts/canary-manual-editorial-real-postgres.ts"
   },
   "dependencies": {
     "next": "^15.0.0",
