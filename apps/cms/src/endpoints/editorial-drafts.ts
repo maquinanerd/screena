@@ -13,7 +13,13 @@ import type { Endpoint, PayloadRequest, Where } from 'payload'
 
 import { toActor } from '../actor.js'
 import { serviceHasScope } from '../access.js'
-import { intakeEditorialDraft, MAX_REQUEST_BYTES } from '../draft-intake.js'
+import {
+  collectAcervoMediaRefs,
+  intakeEditorialDraft,
+  MAX_REQUEST_BYTES,
+  type AcervoMediaIndex,
+} from '../draft-intake.js'
+import type { ResolvedMediaId } from '../editorial-body-mapper.js'
 import type { ExistingArticleSnapshot } from '../idempotency.js'
 
 /** Resposta JSON compacta e sem eco do payload. */
@@ -81,6 +87,43 @@ async function findExistingArticle(
   }
 }
 
+/**
+ * Quais referencias de acervo declaradas no draft EXISTEM mesmo em `media`?
+ *
+ * O filtro numerico nao e cosmetico: a PK de `media` no PostgreSQL e inteira, e
+ * mandar `'catalog-image-7788'` para um `where id in (...)` compara texto com
+ * inteiro. Referencia nao numerica simplesmente nao tem como apontar para uma
+ * linha — resolver para nada e a resposta correta, nao um contorno.
+ *
+ * Falha de leitura devolve indice VAZIO (fail-closed): sem confirmacao, nenhuma
+ * imagem ganha relacao de midia. O bloco entao vira aviso nomeado para o
+ * revisor, que e melhor do que um vinculo que nao conseguimos verificar.
+ */
+async function resolveAcervoMedia(
+  req: PayloadRequest,
+  refs: readonly string[],
+): Promise<AcervoMediaIndex> {
+  const numeric = refs.filter((ref) => /^\d+$/.test(ref))
+  if (numeric.length === 0) return new Map()
+  try {
+    const found = await req.payload.find({
+      collection: 'media',
+      where: { id: { in: numeric } },
+      limit: numeric.length,
+      depth: 0,
+      // Leitura INTERNA de verificacao: precisa do estado real do acervo, e o
+      // resultado nunca volta ao cliente.
+      overrideAccess: true,
+      req,
+    })
+    const index = new Map<string, ResolvedMediaId>()
+    for (const media of found.docs) index.set(String(media.id), media.id)
+    return index
+  } catch {
+    return new Map()
+  }
+}
+
 export const editorialDraftsEndpoint: Endpoint = {
   path: '/internal/editorial-drafts',
   method: 'post',
@@ -140,6 +183,7 @@ export const editorialDraftsEndpoint: Endpoint = {
       sourceClusterId,
       targetArticleId,
     )
+    const acervoMedia = await resolveAcervoMedia(req, collectAcervoMediaRefs(body))
 
     const result = intakeEditorialDraft({
       auth: {
@@ -155,6 +199,7 @@ export const editorialDraftsEndpoint: Endpoint = {
       rawBodyBytes,
       body,
       existing,
+      acervoMedia,
     })
 
     if (!result.ok) {

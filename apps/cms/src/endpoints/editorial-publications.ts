@@ -38,6 +38,7 @@ import {
   type PublicationDecision,
 } from '../auto-publication.js'
 import { canonicalizeSlug, decideSlugChange, resolveSlugCollision } from '../canonical-slug.js'
+import { toPayloadBlocks, type MappedBody } from '../editorial-body-mapper.js'
 import { localDateIn } from '../quota.js'
 import {
   consumeQuotas,
@@ -533,19 +534,26 @@ export const editorialPublicationsEndpoint: Endpoint = {
 /**
  * Blocos do contrato -> blocos do Payload.
  *
- * O contrato discrimina por `type` e carrega `id`; o Payload espera `blockType`
- * e, aqui, `blockId`. Sao vocabularios diferentes de proposito — o contrato e
- * publico e nao deve herdar nomes internos do CMS —, mas isso significa que a
- * traducao precisa existir. Sem ela o Payload descarta a chave desconhecida em
- * silencio e o artigo e salvo sem corpo.
+ * A traducao propriamente dita vive em `../editorial-body-mapper.js`, comum a
+ * este fluxo e ao de ingestao de rascunho. Aqui fica so o que e PROPRIO da
+ * publicacao: a resolucao de midia.
+ *
+ * Antes esta funcao era um spread (`{ ...rest, blockType, blockId }`), e o
+ * spread nao traduzia dois campos que precisam de traducao: `heading.level`
+ * (numero no contrato, ENUM de texto na coluna) e `image.mediaRef` (referencia
+ * de contrato, relacao `media_id` na coluna). O resultado era heading sem nivel
+ * e imagem sem relacao — invisivel para o gate de midia do corpo, que le
+ * `block.media`.
+ *
+ * Na publicacao o salto e curto: o contrato define `media[].mediaId` como midia
+ * JA APROVADA no CMS, entao `block.mediaRef` que casa com um `mediaId` E o id
+ * da linha. Nao ha candidata pendente neste fluxo — quem publica ja passou pelo
+ * gate de licenca.
  */
-function toPayloadBody(blocks: EditorialPublicationRequestV1['blocks']): unknown[] {
-  return blocks.map((block) => {
-    const { type, id, ...rest } = block as Record<string, unknown> & {
-      type: string
-      id: string
-    }
-    return { ...rest, blockType: type, blockId: id }
+function toPayloadBody(request: EditorialPublicationRequestV1): MappedBody {
+  const approved = new Set(request.media.map((item) => item.mediaId))
+  return toPayloadBlocks(request.blocks, {
+    resolveMedia: (mediaRef) => (approved.has(mediaRef) ? mediaRef : null),
   })
 }
 
@@ -588,16 +596,18 @@ async function persistPublication(
     ? Number(request.publicAuthorId)
     : request.publicAuthorId
 
+  // O campo se chama `body`, e o Payload discrimina bloco por `blockType` —
+  // o contrato usa `type`/`id`. Gravar `blocks: request.blocks` cru nao
+  // falhava alto: o Payload ignorava a chave desconhecida e a materia ficava
+  // SEM CORPO, publicada e vazia.
+  const mappedBody = toPayloadBody(request)
+
   const common: Record<string, unknown> = {
     title: request.title,
     summary: request.summary,
     language: request.language,
     contentType: request.contentType,
-    // O campo se chama `body`, e o Payload discrimina bloco por `blockType` —
-    // o contrato usa `type`/`id`. Gravar `blocks: request.blocks` cru nao
-    // falhava alto: o Payload ignorava a chave desconhecida e a materia ficava
-    // SEM CORPO, publicada e vazia.
-    body: toPayloadBody(request.blocks),
+    body: mappedBody.blocks,
     // Autoria PUBLICA. O ator tecnico vai nos campos de automacao abaixo.
     //
     // O id vai como NUMERO: no Postgres o id do Payload e inteiro, e a
@@ -620,7 +630,9 @@ async function persistPublication(
       role: source.role,
     })),
     blockingErrors: [...request.qa.blockingErrors],
-    warnings: [...request.qa.warnings],
+    // Bloco que o mapper nao conseguiu traduzir vira aviso NOMEADO, nunca
+    // sumico silencioso — a mesma politica do caminho de ingestao.
+    warnings: [...request.qa.warnings, ...mappedBody.warnings],
     qaVersion: request.qa.version,
     // Carimbo do SERVIDOR, condicionado ao veredito do QA. Copiar um horario do
     // produtor deixaria o pipeline decidir sozinho que passou no QA.
