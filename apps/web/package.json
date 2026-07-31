@@ -24,7 +24,8 @@
     "seed:dev-movie": "tsx scripts/seed-dev-movie.ts",
     "gen:demo-media": "node scripts/generate-demo-media.mjs",
     "validate:person-eligibility": "tsx scripts/validate-person-eligibility-real-postgres.ts",
-    "canary:manual-editorial": "tsx scripts/canary-manual-editorial-real-postgres.ts"
+    "canary:manual-editorial": "tsx scripts/canary-manual-editorial-real-postgres.ts",
+    "canary:editorial-entity-links": "tsx scripts/canary-editorial-entity-links-real-postgres.ts"
   },
   "dependencies": {
     "next": "^15.0.0",
