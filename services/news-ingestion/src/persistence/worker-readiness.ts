@@ -32,6 +32,16 @@ export interface WorkerReadinessDeps {
   readonly env?: Record<string, string | undefined>
   readonly fetchImpl?: (url: string, init: RequestInit) => Promise<Response>
   readonly timeoutMs?: number
+  /**
+   * Mesma autorizacao explicita que o processo principal usou para subir
+   * (`--allow-production-url` no entrypoint).
+   *
+   * Sem repassa-la, o readiness reavalia a configuracao SEM a decisao que ja foi
+   * tomada e reprova a mesma URL que o worker aceitou: `/healthz` 200 com
+   * `/readyz` 503 dizendo "SCREEN_DATABASE_URL parece apontar para producao".
+   * O default continua `false` — quem nao passa nada segue protegido.
+   */
+  readonly allowProductionShapedUrl?: boolean
 }
 
 /**
@@ -71,7 +81,9 @@ export async function collectWorkerReadiness(deps: WorkerReadinessDeps): Promise
   const env = deps.env ?? process.env
   const timeoutMs = deps.timeoutMs ?? 5_000
 
-  const configResult = resolveProjectionWorkerConfig(env)
+  const configResult = resolveProjectionWorkerConfig(env, {
+    allowProductionShapedUrl: deps.allowProductionShapedUrl === true,
+  })
   const storageResult = resolveMediaStorageConfig(env)
   const configValid = configResult.ok && storageResult.ok
   const configErrors = [

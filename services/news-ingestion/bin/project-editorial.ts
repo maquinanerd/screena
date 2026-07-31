@@ -10,6 +10,12 @@
  *   tsx bin/project-editorial.ts --once
  *   tsx bin/project-editorial.ts --once --dry-run
  *   tsx bin/project-editorial.ts --loop
+ *   tsx bin/project-editorial.ts --loop --allow-production-url
+ *
+ * `--allow-production-url` e a autorizacao EXPLICITA para uma
+ * `SCREEN_DATABASE_URL` com cara de producao (ver PRODUCTION_SHAPES). Ela vale
+ * para o processo inteiro — inclusive para o `/readyz`, que reavalia a mesma
+ * configuracao a cada batida do orquestrador.
  *
  * NUNCA imprime credencial, URL de banco, header de autorizacao ou corpo de
  * materia. O que sai no log e: id do evento, tipo, desfecho e motivo.
@@ -263,12 +269,20 @@ async function main(): Promise<void> {
   const dryRun = args.has('--dry-run')
   const loop = args.has('--loop')
   if (!loop && !args.has('--once')) {
-    console.error('uso: project-editorial.ts (--once | --loop) [--dry-run]')
+    console.error(
+      'uso: project-editorial.ts (--once | --loop) [--dry-run] [--allow-production-url]',
+    )
     process.exit(2)
   }
 
+  // UMA decisao, lida uma vez. O readiness reavalia a MESMA configuracao; se
+  // cada ponto relesse a flag por conta propria, um deles poderia divergir do
+  // outro — que foi exatamente o bug: o processo subia autorizado e o `/readyz`
+  // reprovava a URL que o processo ja tinha aceitado.
+  const allowProductionShapedUrl = args.has('--allow-production-url')
+
   const resolved = resolveProjectionWorkerConfig(process.env, {
-    allowProductionShapedUrl: args.has('--allow-production-url'),
+    allowProductionShapedUrl,
   })
   if (!resolved.ok) {
     // So os NOMES das variaveis saem daqui.
@@ -310,7 +324,8 @@ async function main(): Promise<void> {
           workerId: config.workerId,
           // Liveness: vivo ate o processo comecar a encerrar.
           isAlive: () => shutdown.phase !== 'stopped',
-          checkReadiness: () => collectWorkerReadiness({ prisma, storage }),
+          checkReadiness: () =>
+            collectWorkerReadiness({ prisma, storage, allowProductionShapedUrl }),
         })
       : null
   if (health !== null) {

@@ -70,6 +70,18 @@ O worker **recusa subir** quando:
 - `SCREEN_DATABASE_URL` tem cara de producao (`rss_prime`, `_prod`,
   `production`) sem `--allow-production-url` explicito.
 
+`--allow-production-url` vale para o **processo inteiro**, inclusive para o
+`/readyz`: o readiness reavalia a mesma configuracao a cada batida do
+orquestrador e usa a mesma autorizacao. Enquanto ele nao usava, o container
+subia com `/healthz` 200 e `/readyz` 503 permanente dizendo
+`SCREEN_DATABASE_URL parece apontar para producao; recusado` — o worker
+trabalhava, mas o orquestrador o tratava como nao-pronto. Travado por
+[`worker-readiness.test.ts`](../../services/news-ingestion/src/__tests__/worker-readiness.test.ts).
+
+> O `publication-worker:preflight` **nao** tem essa flag por design: ele e uma
+> verificacao pre-deploy contra um alvo nao-produtivo. Rodado contra uma URL de
+> producao, ele continua (corretamente) acusando `BLOCKED`.
+
 Nenhuma mensagem de erro imprime valor de variavel — so o **nome**. Um timer
 mal configurado nao pode virar vazamento de credencial no journal.
 
