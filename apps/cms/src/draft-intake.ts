@@ -19,6 +19,7 @@ import {
 } from '@screena/editorial-contracts'
 
 import { SERVICE_ACCOUNT_FORBIDDEN_FIELDS } from './access.js'
+import { toPayloadBlocks, type ResolvedMediaId } from './editorial-body-mapper.js'
 import {
   buildDraftIdentity,
   decideIdempotency,
@@ -102,17 +103,81 @@ function reject(
 }
 
 /**
+ * Indice de midia ja existente no CMS, por REFERENCIA DE ACERVO.
+ *
+ * A chave e `mediaCandidates[].mediaRef` (o item que ja existe no acervo do
+ * Cinerie), e o valor e o id da linha em `media`. Quem monta este indice e o
+ * adaptador HTTP, que tem banco; o nucleo continua puro e apenas consulta.
+ */
+export type AcervoMediaIndex = ReadonlyMap<string, ResolvedMediaId>
+
+/**
+ * Referencias de acervo declaradas nas candidatas do corpo bruto.
+ *
+ * Lida do JSON CRU de proposito: o adaptador precisa do indice ANTES de o
+ * nucleo parsear, e aqui so nos interessam strings. Entrada malformada e
+ * simplesmente ignorada — quem recusa contrato invalido e o parse, nao isto.
+ */
+export function collectAcervoMediaRefs(body: unknown): string[] {
+  if (body === null || typeof body !== 'object') return []
+  const candidates = (body as Record<string, unknown>).mediaCandidates
+  if (!Array.isArray(candidates)) return []
+  const refs = candidates.flatMap((raw) => {
+    if (raw === null || typeof raw !== 'object') return []
+    const ref = (raw as Record<string, unknown>).mediaRef
+    return typeof ref === 'string' && ref !== '' ? [ref] : []
+  })
+  return [...new Set(refs)]
+}
+
+/**
+ * Resolve o `mediaRef` de um BLOCO ate a linha de `media`, quando ela existe.
+ *
+ * A cadeia tem dois saltos, e os dois importam:
+ *
+ *     block.mediaRef -> mediaCandidates[].id -> mediaCandidates[].mediaRef -> media
+ *
+ * O bloco nunca aponta para o CMS diretamente — ele aponta para uma CANDIDATA
+ * declarada no mesmo draft (o contrato exige, ver `editorial-draft-v1.ts`), e
+ * so a candidata pode carregar uma referencia de acervo. Sem o segundo salto,
+ * uma imagem legitima ficaria eternamente sem relacao.
+ */
+function draftMediaResolver(
+  draft: EditorialDraftV1,
+  acervo: AcervoMediaIndex,
+): (mediaRef: string) => ResolvedMediaId {
+  const candidateToAcervo = new Map<string, string | undefined>(
+    draft.mediaCandidates.map((candidate) => [candidate.id, candidate.mediaRef]),
+  )
+  return (blockMediaRef) => {
+    const acervoRef = candidateToAcervo.get(blockMediaRef)
+    if (acervoRef === undefined) return null
+    return acervo.get(acervoRef) ?? null
+  }
+}
+
+/**
  * Projeta o draft no documento de artigo.
  *
  * O `workflowStatus` e um LITERAL, nao um campo derivado do payload: nenhuma
  * combinacao de entrada consegue mudar o estado inicial. E a razao de este
  * mapeamento existir em vez de um spread do draft — spread deixaria campo novo
  * do contrato virar campo de artigo sem revisao.
+ *
+ * O `body` passa pelo mapper compartilhado. Antes ele recebia `draft.blocks`
+ * cru — a forma do CONTRATO — e o Payload, que casa linha por `blockType`,
+ * descartava o corpo INTEIRO em silencio, criando o artigo com `body: []` e
+ * respondendo 201.
  */
 export function toArticleDocument(
   draft: EditorialDraftV1,
   identity: DraftIdentity,
+  acervo: AcervoMediaIndex = new Map(),
 ): ArticleDraftDocument {
+  const body = toPayloadBlocks(draft.blocks, {
+    resolveMedia: draftMediaResolver(draft, acervo),
+  })
+
   const document: ArticleDraftDocument = {
     workflowStatus: 'automation_draft',
     automationDraftId: draft.draftId,
@@ -128,7 +193,7 @@ export function toArticleDocument(
     summary: draft.summary,
     contentType: draft.contentType,
     language: draft.language,
-    body: draft.blocks,
+    body: body.blocks,
     // `verified` e forcado a false: confirmar vinculo e ato humano.
     entityReferences: draft.entitySuggestions.map((suggestion) => ({
       entityKind: suggestion.entityKind,
@@ -153,7 +218,10 @@ export function toArticleDocument(
     provenanceJson: draft.provenance,
     aiAssisted: true,
     blockingErrors: draft.qa.blockingErrors,
-    warnings: draft.qa.warnings,
+    // Perda de bloco NUNCA e silenciosa: o que o mapper nao conseguiu traduzir
+    // (imagem sem midia aprovada, tipo desconhecido) chega ao revisor pelo
+    // mesmo canal onde ele ja procura pendencia.
+    warnings: [...draft.qa.warnings, ...body.warnings],
     qaVersion: draft.qa.version,
     ...(draft.seoProposal?.metaTitle === undefined
       ? {}
@@ -203,6 +271,13 @@ export function intakeEditorialDraft(input: {
   readonly rawBodyBytes: number
   readonly body: unknown
   readonly existing: ExistingArticleSnapshot | null
+  /**
+   * Midia do acervo que o adaptador confirmou existir em `media`.
+   *
+   * Ausente (o default) significa "nada resolvido": imagem nenhuma ganha
+   * relacao. E o padrao seguro — o nucleo nunca inventa vinculo de midia.
+   */
+  readonly acervoMedia?: AcervoMediaIndex
 }): IntakeResult {
   if (!input.auth.authenticated) {
     return reject('unauthenticated', 401, [{ path: '(auth)', message: 'credencial ausente' }])
@@ -249,7 +324,9 @@ export function intakeEditorialDraft(input: {
       status,
       articleId: decision.articleId,
       identity,
-      document: writes ? toArticleDocument(draft, identity) : null,
+      document: writes
+        ? toArticleDocument(draft, identity, input.acervoMedia ?? new Map())
+        : null,
       // Candidata: registrada para o revisor ver, NUNCA aprovada aqui.
       mediaCandidates: draft.mediaCandidates,
       detail: decision.detail,

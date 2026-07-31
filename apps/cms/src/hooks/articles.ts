@@ -105,15 +105,60 @@ async function countActiveAuthors(req: PayloadRequest, authorIds: string[]): Pro
  * materia cujo CORPO aponta para midia proibida: ela publicava no CMS e depois
  * morria no worker de projecao, deixando a redacao com um artigo "publicado"
  * que nunca aparece no site. Melhor recusar na hora, onde ha um humano olhando.
+ *
+ * O QUE CHEGA AQUI, e por que a leitura e mais larga do que parece necessario:
+ *
+ *  - `block.media` como ID cru — o formato normal, vindo do formulario ou do
+ *    mapper (`editorial-body-mapper.ts`);
+ *  - `block.media` como OBJETO populado — o Payload popula relacao conforme a
+ *    profundidade da leitura, e `originalDoc` nem sempre vem com `depth: 0`.
+ *    `idsOf` ja extrai `.id` nesse caso;
+ *  - `block.blockType` OU `block.type` — o segundo e o vocabulario do contrato.
+ *    Continua aceito por LEITURA DEFENSIVA, nao como formato principal. Vale
+ *    registrar o que a integracao mostrou: linha com `type` nunca chegou a
+ *    existir no banco, porque o Payload descartava o bloco inteiro antes de
+ *    gravar. A leitura fica por custar nada e cobrir escrita direta em SQL.
+ *
+ * `mediaRef` (a referencia do CONTRATO) NAO e aceita como se fosse `media`. Ela
+ * nunca aponta para uma linha de `media` — aponta para uma candidata cuja
+ * aprovacao e humana. Trata-la como relacao faria o gate consultar um id que
+ * nao existe e, pior, poderia sugerir autorizacao onde nao ha nenhuma. O bloco
+ * que so tem `mediaRef` nao entra no corpo (o mapper o converte em aviso), e se
+ * algum documento legado o carregar, ele conta como midia NAO VERIFICAVEL —
+ * ver `countUnauthorizedMedia`, onde id ausente do acervo ja soma como nao
+ * autorizado.
  */
+function isImageBlock(raw: unknown): raw is Record<string, unknown> {
+  if (raw === null || typeof raw !== 'object') return false
+  const block = raw as Record<string, unknown>
+  return String(block.blockType ?? block.type ?? '') === 'image'
+}
+
 function bodyMediaIds(body: unknown): string[] {
   if (!Array.isArray(body)) return []
-  return body.flatMap((raw) => {
-    if (raw === null || typeof raw !== 'object') return []
-    const block = raw as Record<string, unknown>
-    if (String(block.blockType ?? block.type ?? '') !== 'image') return []
-    return idsOf(block.media)
-  })
+  return body.flatMap((raw) => (isImageBlock(raw) ? idsOf(raw.media) : []))
+}
+
+/**
+ * Blocos de imagem do corpo que NAO tem relacao de midia verificavel.
+ *
+ * Contados a parte, e nao junto de `bodyMediaIds`, por uma razao concreta: a PK
+ * de `media` e INTEIRA, e enfiar uma referencia de contrato num
+ * `where id in (...)` compara texto com inteiro — o gate morreria com 500 em vez
+ * de recusar com motivo. Aqui a contagem entra direto em
+ * `unauthorizedMediaCount`, que e exatamente o significado: nao consigo
+ * verificar, logo nao esta autorizada.
+ *
+ * O caminho que produz esse estado NAO e hipotetico, e nao e o mapper: a FK de
+ * `articles_blocks_image.media_id` e `ON DELETE set null`. Apagar uma linha de
+ * `media` esvazia a relacao nos blocos que a usavam e deixa para tras um bloco
+ * de imagem apontando para nada — que, sem esta contagem, publicaria normal.
+ * Criar o bloco assim pela API e impossivel (`media` e `required`, e o Payload
+ * recusa), entao esta e a unica porta — e ela esta coberta por teste.
+ */
+function unverifiableBodyMediaCount(body: unknown): number {
+  if (!Array.isArray(body)) return 0
+  return body.filter((raw) => isImageBlock(raw) && idsOf(raw.media).length === 0).length
 }
 
 async function countUnauthorizedMedia(
@@ -327,12 +372,13 @@ export const enforceEditorialGovernance: CollectionBeforeChangeHook = async ({
         : String(next.qaPassedAt),
       aiAssisted: next.aiAssisted === true,
       externalSourceCount: Array.isArray(next.externalSources) ? next.externalSources.length : 0,
-      unauthorizedMediaCount: await countUnauthorizedMedia(
-        req,
-        heroIds[0] ?? null,
-        idsOf(next.gallery),
-        bodyMediaIds(next.body),
-      ),
+      unauthorizedMediaCount:
+        (await countUnauthorizedMedia(
+          req,
+          heroIds[0] ?? null,
+          idsOf(next.gallery),
+          bodyMediaIds(next.body),
+        )) + unverifiableBodyMediaCount(next.body),
       legalHold: next.legalHold === true,
     })
     if (!gate.canPublish) {
