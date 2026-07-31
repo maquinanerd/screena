@@ -242,8 +242,28 @@ async function main(): Promise<void> {
       return { status: response.status, json, text }
     }
 
-    /** Consome a fila inteira pelo caminho real e devolve os avisos vistos. */
-    const drainOutbox = async (): Promise<{ processed: number; warnings: string[] }> => {
+    /**
+     * O que o worker efetivamente entregou a projecao para UM evento.
+     *
+     * O `event` mapeado e o `contentVersion` sao guardados porque o replay do
+     * passo 10 reaplica o evento ORIGINAL — o mesmo `eventId`, o mesmo payload,
+     * a mesma versao de conteudo. Fabricar um evento novo provaria outra coisa.
+     */
+    interface AppliedEvent {
+      readonly eventId: string
+      readonly eventType: string
+      readonly emissionSequence: number
+      readonly contentVersion: string
+      readonly event: Parameters<typeof applyProjectionEvent>[1]['event']
+      readonly outcome: string
+    }
+
+    /** Consome a fila inteira pelo caminho real e devolve o que foi aplicado. */
+    const drainOutbox = async (): Promise<{
+      processed: number
+      warnings: string[]
+      applied: AppliedEvent[]
+    }> => {
       const claimed = await callOutbox('claim', { workerId: WORKER, batchSize: 20 })
       const events = (claimed.json.events ?? []) as {
         eventId: string
@@ -253,25 +273,34 @@ async function main(): Promise<void> {
         payload: unknown
       }[]
       const warnings: string[] = []
+      const applied: AppliedEvent[] = []
       for (const event of events) {
         const mapping = mapPublicationEvent(event.payload, event.emissionSequence)
         if (!mapping.ok) {
           throw new Error(`evento fora do contrato: ${JSON.stringify(mapping.issues).slice(0, 300)}`)
         }
-        const applied = await applyProjectionEvent(screen.prisma, {
+        const result = await applyProjectionEvent(screen.prisma, {
           event: mapping.event,
           contentVersion: event.contentVersion,
           workerId: WORKER,
         })
-        warnings.push(...applied.warnings)
+        warnings.push(...result.warnings)
+        applied.push({
+          eventId: event.eventId,
+          eventType: mapping.event.eventType,
+          emissionSequence: event.emissionSequence,
+          contentVersion: event.contentVersion,
+          event: mapping.event,
+          outcome: result.outcome,
+        })
         await callOutbox('ack', {
           workerId: WORKER,
           eventId: event.eventId,
           leaseToken: event.leaseToken,
-          outcome: applied.outcome,
+          outcome: result.outcome,
         })
       }
-      return { processed: events.length, warnings }
+      return { processed: events.length, warnings, applied }
     }
 
     /* --- 4. Materia A: movie + person verificados, tv AUSENTE ------ */
@@ -347,6 +376,19 @@ async function main(): Promise<void> {
       'worker projetou o evento de publicacao',
       drainA.processed === 1,
       `eventos=${String(drainA.processed)} avisos=${JSON.stringify(drainA.warnings).slice(0, 200)}`,
+    )
+
+    // GUARDADO PARA O PASSO 10. Este e o evento da PRIMEIRA publicacao: o mais
+    // antigo da materia, emitido quando ela ainda tinha `movie` + `person` e
+    // estava no ar. E exatamente o evento que, reaplicado depois da retratacao,
+    // ressuscitaria a materia se a trava de replay nao existisse.
+    const firstPublication = drainA.applied[0]
+    record(
+      'evento da primeira publicacao capturado para o replay do passo 10',
+      firstPublication !== undefined && firstPublication.outcome === 'applied',
+      firstPublication === undefined
+        ? 'nenhum evento aplicado'
+        : `eventId=${firstPublication.eventId} tipo=${firstPublication.eventType} emissao=${String(firstPublication.emissionSequence)} desfecho=${firstPublication.outcome}`,
     )
 
     /* --- 5. Banco publico ------------------------------------------ */
@@ -582,16 +624,122 @@ async function main(): Promise<void> {
       `vinculos=${JSON.stringify(linksAfterRetraction)}`,
     )
 
-    /* --- 10. Replay de evento antigo apos a retratacao ------------- */
+    /* --- 10. Replay DELIBERADO do evento da primeira publicacao ---- */
     //
-    // Um evento ja processado NAO pode ressuscitar materia retratada.
-    const replay = await drainOutbox()
-    const afterReplay = await surfaces(SLUG_A)
+    // Nao basta drenar a fila de novo: ela ja foi consumida, e uma fila vazia
+    // nao prova nada sobre reentrega. A outbox REENTREGA de verdade quando um
+    // `ack` se perde na rede — o evento volta ao worker e e reaplicado.
+    //
+    // Entao o replay aqui e feito a mao, pelo MESMO adapter real, com o MESMO
+    // `eventId`, o MESMO payload e a MESMA `contentVersion` da primeira
+    // publicacao. Nada e fabricado: e literalmente o evento do passo 4.
+    //
+    // O desfecho correto e `skipped_duplicate`, e nao `skipped_stale`, porque a
+    // ordem dos gates de `decideProjection` e arquitetural: o recibo por
+    // `eventId` e consultado ANTES da comparacao de sequencia
+    // (`editorial-projection.ts`, gates 1 e 2). `skipped_stale` e o desfecho de
+    // um evento DIFERENTE com sequencia menor — nao de uma reentrega identica.
+    // A distincao importa: o recibo prova "ja processei ESTE evento"; a
+    // sequencia prova "ja projetei algo MAIS NOVO". Sao duas travas, e este
+    // teste exercita a primeira.
+    const beforeReplay = await screen.prisma.articleTranslation.findFirst({
+      where: { slug: SLUG_A, languageCode: 'pt-BR' },
+      // So o par de estado: `title`/`publishedAt` nao discriminam nada aqui,
+      // porque o rebaixamento da retratacao nao toca nenhum dos dois.
+      select: { reviewStatus: true, indexStatus: true },
+    })
+    const seqBeforeReplay =
+      publicArticle === null
+        ? null
+        : (
+            await screen.prisma.article.findUnique({
+              where: { id: publicArticle.id },
+              select: { projectedSequence: true },
+            })
+          )?.projectedSequence ?? null
+
+    const pending = await drainOutbox()
     record(
-      'replay da fila nao republica materia retratada',
-      !afterReplay.news && !afterReplay.movie,
-      `eventos reprocessados=${String(replay.processed)}`,
+      'fila vazia antes do replay (precondicao, nao a prova)',
+      pending.processed === 0,
+      `eventos pendentes=${String(pending.processed)}`,
     )
+
+    if (firstPublication === undefined) {
+      record('replay deliberado do evento da primeira publicacao', false, 'evento nao capturado')
+    } else {
+      const replayed = await applyProjectionEvent(screen.prisma, {
+        event: firstPublication.event,
+        contentVersion: firstPublication.contentVersion,
+        workerId: WORKER,
+      })
+      record(
+        'replay identico e recusado pelo recibo (skipped_duplicate, sem escrita)',
+        replayed.outcome === 'skipped_duplicate' && !replayed.changed,
+        `desfecho=${replayed.outcome} changed=${String(replayed.changed)} motivo=${replayed.reason.slice(0, 120)}`,
+      )
+
+      const afterReplay = await surfaces(SLUG_A)
+      record(
+        'replay NAO ressuscita a retratada em /noticias nem na Home',
+        !afterReplay.news && !afterReplay.homeMovies && !afterReplay.homeSeries,
+        `noticias=${String(afterReplay.news)} homeFilmes=${String(afterReplay.homeMovies)} homeSeries=${String(afterReplay.homeSeries)}`,
+      )
+      record(
+        'replay NAO ressuscita a retratada em filme, serie nem pessoa',
+        !afterReplay.movie && !afterReplay.tv && !afterReplay.person,
+        `filme=${String(afterReplay.movie)} serie=${String(afterReplay.tv)} pessoa=${String(afterReplay.person)}`,
+      )
+
+      // O evento replayado e ANTIGO: carrega `movie` + `person` e o estado
+      // publicado. Se ele tivesse sido reaplicado, os tres vinculos da versao
+      // hibrida cairiam para dois e o estado voltaria a `published`.
+      const afterState = await screen.prisma.articleTranslation.findFirst({
+        where: { slug: SLUG_A, languageCode: 'pt-BR' },
+        select: { reviewStatus: true, indexStatus: true, title: true, publishedAt: true },
+      })
+      record(
+        'replay NAO reverte o estado: a materia continua retratada',
+        afterState?.reviewStatus === 'blocked' &&
+          afterState.reviewStatus === beforeReplay?.reviewStatus &&
+          afterState.indexStatus === beforeReplay.indexStatus,
+        `antes=${String(beforeReplay?.reviewStatus)}/${String(beforeReplay?.indexStatus)} depois=${String(afterState?.reviewStatus)}/${String(afterState?.indexStatus)}`,
+      )
+
+      const keysAfterReplay = publicArticle === null ? [] : await linkKeys(publicArticle.id)
+      record(
+        'replay NAO sobrescreve os dados mais novos: os TRES vinculos hibridos permanecem',
+        keysAfterReplay.length === 3 &&
+          keysAfterReplay.join(',') === linksAfterRetraction.join(','),
+        `vinculos=${JSON.stringify(keysAfterReplay)}`,
+      )
+
+      const seqAfterReplay =
+        publicArticle === null
+          ? null
+          : (
+              await screen.prisma.article.findUnique({
+                where: { id: publicArticle.id },
+                select: { projectedSequence: true },
+              })
+            )?.projectedSequence ?? null
+      record(
+        'replay NAO regride a sequencia projetada',
+        seqAfterReplay === seqBeforeReplay && seqAfterReplay !== null,
+        `antes=${String(seqBeforeReplay)} depois=${String(seqAfterReplay)}`,
+      )
+
+      // Um segundo recibo para o mesmo `eventId` significaria que a unique nao
+      // segurou — e que uma terceira reentrega poderia escrever de verdade.
+      const receipts = await screen.prisma.editorialProjectionReceipt.count({
+        where: { eventId: firstPublication.eventId },
+      })
+      record(
+        'o replay nao criou um segundo recibo para o mesmo eventId',
+        receipts === 1,
+        `recibos=${String(receipts)} eventId=${firstPublication.eventId}`,
+      )
+    }
 
     /* --- 11. Materia AGENDADA nao vaza ---------------------------- */
     const SLUG_FUTURE = `materia-agendada-${RUN}`
