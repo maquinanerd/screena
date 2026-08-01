@@ -139,6 +139,39 @@ enum SyncStatus {
   aborted
 }
 
+enum AdminRole {
+  viewer
+  reviewer
+  editor
+  administrator
+}
+
+enum NewsClusterStatus {
+  captured
+  normalized
+  gated
+  needs_review
+  blocked
+  processed
+  dead_letter
+}
+
+enum NewsEditorialDecisionKind {
+  accepted
+  rejected
+  needs_review
+  blocked_license
+  blocked_source
+  duplicate
+  insufficient_evidence
+}
+
+enum NewsEntityCandidateDecision {
+  pending
+  approved
+  rejected
+}
+
 enum ValidationStatus {
   passed
   warnings
@@ -279,6 +312,8 @@ model SourceLicense {
   territory    Country?        @relation(fields: [territoryCode], references: [code])
   supersedes   SourceLicense?  @relation("SourceLicenseHistory", fields: [supersedesId], references: [id])
   supersededBy SourceLicense[] @relation("SourceLicenseHistory")
+  newsSources NewsClusterSource[]
+  newsFacts   NewsFact[]
 
   // Licenca VIGENTE unica por (source_key, content_type, provider, territorio)
   // via indice unico PARCIAL WHERE is_current (SQL bruto); historico livre.
@@ -1029,11 +1064,13 @@ model Article {
   displayAllowed      Boolean       @default(false) @map("display_allowed") // gate-mestra de exibicao
   requiresAttribution Boolean       @default(false) @map("requires_attribution")
   requiresLinkback    Boolean       @default(false) @map("requires_linkback")
+  clusterId           BigInt?       @unique @map("cluster_id")
   createdAt           DateTime      @default(now()) @map("created_at")
   updatedAt           DateTime      @updatedAt @map("updated_at")
 
   translations ArticleTranslation[]
   entityLinks  EntityNewsLink[]
+  cluster      NewsCluster?        @relation(fields: [clusterId], references: [id])
 
   // CHECK (category IS NULL OR category <> '') e (author_name IS NULL OR
   // author_name <> '') via SQL bruto (mesma convencao de imdb_id_not_empty).
@@ -1056,6 +1093,7 @@ model ArticleTranslation {
   reviewStatus    ReviewStatus  @default(draft) @map("review_status") // nasce draft (inv. 7/9)
   indexStatus     IndexDecision @default(noindex) @map("index_status") // nasce noindex
   publishedAt     DateTime?     @map("published_at")
+  version         Int           @default(1)
   createdAt       DateTime      @default(now()) @map("created_at")
   updatedAt       DateTime      @updatedAt @map("updated_at")
 
@@ -1088,4 +1126,239 @@ model EntityNewsLink {
   @@index([entityType, entityId])
   @@index([articleId])
   @@map("entity_news_links")
+}
+
+// ============================================================
+// OPERACOES EDITORIAIS — Fases 12–13
+// ============================================================
+
+model AdminUser {
+  id               BigInt    @id @default(autoincrement())
+  email            String    @unique
+  displayName      String    @map("display_name")
+  passwordHash     String    @map("password_hash")
+  role             AdminRole @default(viewer)
+  enabled          Boolean   @default(true)
+  failedLoginCount Int       @default(0) @map("failed_login_count")
+  lockedUntil      DateTime? @map("locked_until")
+  passwordChangedAt DateTime @default(now()) @map("password_changed_at")
+  disabledAt       DateTime? @map("disabled_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  sessions AdminSession[]
+  audits   AdminAuditLog[]
+
+  @@map("admin_users")
+}
+
+model AdminSession {
+  id         BigInt    @id @default(autoincrement())
+  userId     BigInt    @map("user_id")
+  tokenHash  String    @unique @map("token_hash")
+  csrfSecret String    @map("csrf_secret")
+  expiresAt  DateTime  @map("expires_at")
+  revokedAt  DateTime? @map("revoked_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  user AdminUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("admin_sessions")
+}
+
+model AdminAuditLog {
+  id             BigInt    @id @default(autoincrement())
+  actorId        BigInt?   @map("actor_id")
+  actorRole      AdminRole? @map("actor_role")
+  action         String
+  resource       String
+  entityType     String?   @map("entity_type")
+  entityId       String?   @map("entity_id")
+  beforeJson     Json?     @map("before_json")
+  afterJson      Json?     @map("after_json")
+  reason         String?
+  requestId      String?   @map("request_id")
+  idempotencyKey String?   @map("idempotency_key")
+  outcome        String
+  errorCode      String?   @map("error_code")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  actor AdminUser? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([actorId])
+  @@index([resource, entityId])
+  @@index([createdAt])
+  @@map("admin_audit_logs")
+}
+
+model AdminIdempotencyRecord {
+  id             BigInt   @id @default(autoincrement())
+  actorId        BigInt   @map("actor_id")
+  key            String
+  requestHash    String   @map("request_hash")
+  responseJson   Json?    @map("response_json")
+  createdAt      DateTime @default(now()) @map("created_at")
+  expiresAt      DateTime @map("expires_at")
+
+  @@unique([actorId, key])
+  @@index([expiresAt])
+  @@map("admin_idempotency_records")
+}
+
+model NewsCluster {
+  id                BigInt            @id @default(autoincrement())
+  externalClusterId String?           @unique @map("external_cluster_id")
+  eventKey          String?           @unique @map("event_key")
+  fingerprint       String            @unique
+  topic             String?
+  title             String
+  summary           String?
+  languageCode      String?           @map("language_code")
+  countryCode       String?           @map("country_code")
+  sourceCount       Int               @default(0) @map("source_count")
+  confidence        Float?
+  primarySource     String?           @map("primary_source")
+  payload           Json
+  payloadHash       String            @map("payload_hash")
+  status            NewsClusterStatus @default(captured)
+  firstSeen         DateTime?         @map("first_seen")
+  lastSeen          DateTime?         @map("last_seen")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+
+  sources           NewsClusterSource[]
+  urls              NewsClusterUrl[]
+  decisions         NewsEditorialDecision[]
+  facts             NewsFact[]
+  entityCandidates  NewsEntityCandidate[]
+  checkpoints       NewsPipelineCheckpoint[]
+  deadLetters       NewsDeadLetter[]
+  article           Article?
+
+  @@index([status])
+  @@index([topic])
+  @@map("news_clusters")
+}
+
+model NewsClusterSource {
+  id              BigInt   @id @default(autoincrement())
+  clusterId       BigInt   @map("cluster_id")
+  sourceName      String   @map("source_name")
+  sourceUrl       String?
+  sourceLicenseId BigInt?  @map("source_license_id")
+  blocked         Boolean  @default(false)
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  cluster       NewsCluster    @relation(fields: [clusterId], references: [id], onDelete: Cascade)
+  sourceLicense SourceLicense? @relation(fields: [sourceLicenseId], references: [id], onDelete: SetNull)
+
+  @@unique([clusterId, sourceName])
+  @@map("news_cluster_sources")
+}
+
+model NewsClusterUrl {
+  id           BigInt   @id @default(autoincrement())
+  clusterId    BigInt   @map("cluster_id")
+  url          String
+  canonicalUrl String?  @map("canonical_url")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  cluster NewsCluster @relation(fields: [clusterId], references: [id], onDelete: Cascade)
+
+  @@unique([clusterId, url])
+  @@index([canonicalUrl])
+  @@map("news_cluster_urls")
+}
+
+model NewsEditorialDecision {
+  id            BigInt                    @id @default(autoincrement())
+  clusterId     BigInt                    @map("cluster_id")
+  decision      NewsEditorialDecisionKind
+  score         Float
+  policyVersion String                    @map("policy_version")
+  reasonsJson   Json                      @map("reasons_json")
+  signalsJson   Json                      @map("signals_json")
+  warningsJson  Json?                     @map("warnings_json")
+  createdAt     DateTime                  @default(now()) @map("created_at")
+
+  cluster NewsCluster @relation(fields: [clusterId], references: [id], onDelete: Cascade)
+
+  @@index([clusterId, createdAt])
+  @@map("news_editorial_decisions")
+}
+
+model NewsFact {
+  id             BigInt   @id @default(autoincrement())
+  clusterId      BigInt   @map("cluster_id")
+  factType       String   @map("fact_type")
+  valueJson      Json     @map("value_json")
+  sourceUrl      String?  @map("source_url")
+  sourceLicenseId BigInt? @map("source_license_id")
+  confidence     Float?
+  fingerprint    String
+  conflictKey    String?  @map("conflict_key")
+  extractedAt    DateTime @default(now()) @map("extracted_at")
+
+  cluster       NewsCluster    @relation(fields: [clusterId], references: [id], onDelete: Cascade)
+  sourceLicense SourceLicense? @relation(fields: [sourceLicenseId], references: [id], onDelete: SetNull)
+
+  @@unique([clusterId, fingerprint])
+  @@index([clusterId, conflictKey])
+  @@map("news_facts")
+}
+
+model NewsEntityCandidate {
+  id         BigInt                      @id @default(autoincrement())
+  clusterId  BigInt                      @map("cluster_id")
+  entityType EntityType                  @map("entity_type")
+  entityId   BigInt                      @map("entity_id")
+  confidence Float
+  evidence   Json
+  decision   NewsEntityCandidateDecision @default(pending)
+  decidedBy  String?                     @map("decided_by")
+  decidedAt  DateTime?                   @map("decided_at")
+  createdAt  DateTime                    @default(now()) @map("created_at")
+
+  cluster NewsCluster @relation(fields: [clusterId], references: [id], onDelete: Cascade)
+
+  @@unique([clusterId, entityType, entityId])
+  @@map("news_entity_candidates")
+}
+
+model NewsPipelineCheckpoint {
+  id          BigInt   @id @default(autoincrement())
+  pipeline    String
+  topic       String?
+  cursor      String?
+  etag        String?
+  lastModified String? @map("last_modified")
+  clusterId   BigInt?  @map("cluster_id")
+  heartbeatAt DateTime @default(now()) @map("heartbeat_at")
+  done        Boolean  @default(false)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  cluster NewsCluster? @relation(fields: [clusterId], references: [id], onDelete: SetNull)
+
+  @@unique([pipeline, topic])
+  @@map("news_pipeline_checkpoints")
+}
+
+model NewsDeadLetter {
+  id          BigInt   @id @default(autoincrement())
+  clusterId   BigInt?  @map("cluster_id")
+  stage       String
+  errorCode   String   @map("error_code")
+  attempts    Int      @default(1)
+  payloadJson Json?    @map("payload_json")
+  resolvedAt  DateTime? @map("resolved_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  cluster NewsCluster? @relation(fields: [clusterId], references: [id], onDelete: SetNull)
+
+  @@index([resolvedAt])
+  @@map("news_dead_letters")
 }

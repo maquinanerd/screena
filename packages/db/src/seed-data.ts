@@ -127,6 +127,7 @@ export const API_PROVIDER_SEED: readonly ApiProviderSeed[] = [
   { key: "imdb236", name: "IMDb (RapidAPI imdb236)", kind: "ratings", homepageUrl: "https://rapidapi.com" },
   { key: "rapidapi_film_show_ratings", name: "Film/Show Ratings (RapidAPI)", kind: "ratings", homepageUrl: "https://rapidapi.com" },
   { key: "streaming_availability", name: "Streaming Availability (RapidAPI)", kind: "streaming", homepageUrl: "https://rapidapi.com" },
+  { key: "rssprime", name: "RSSPRIME", kind: "news", homepageUrl: null },
 ];
 
 /**
