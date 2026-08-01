@@ -1,6 +1,22 @@
 @layer payload {
   :root {
     color-scheme: light;
+
+    /* ------------------------------------------------------------------ */
+    /* Tokens                                                              */
+    /*                                                                     */
+    /* NAO e um design system paralelo: os valores abaixo sao os MESMOS de  */
+    /* `apps/web/app/globals.css`, que e onde o produto publico os define.  */
+    /*                                                                     */
+    /*   --cinerie-brand        = --c-accent-movie      (#f0443e)          */
+    /*   --cinerie-brand-accent = --c-accent-editorial  (#f5c518)          */
+    /*   --cinerie-series       = --c-accent-series     (#7fa56f)          */
+    /*   --cinerie-series-ink   = --c-accent-series-dark(#395c42)          */
+    /*   --cinerie-person       = --c-accent-episode    (#b4884a)          */
+    /*                                                                     */
+    /* Um vermelho so, e ele e o do produto. Ver o relatorio desta entrega  */
+    /* sobre `#E24B4A`, que nao existe em nenhum lugar do repositorio.      */
+    /* ------------------------------------------------------------------ */
     --cinerie-brand: #f0443e;
     --cinerie-brand-dark: #c9312c;
     --cinerie-brand-soft: #fff0ee;
@@ -12,6 +28,19 @@
     --cinerie-border: #ded8cc;
     --cinerie-green: #2e9e5b;
     --cinerie-blue: #3178c6;
+
+    /* Verticais editoriais. Cada uma tem um par: o tom de PREENCHIMENTO e o
+       tom de TEXTO, porque o preenchimento sozinho nao passa em contraste
+       sobre o creme. Series e pessoas usam o tom escuro do produto (7.5 AA e
+       equivalente); nunca texto branco sobre o tom claro. */
+    --cinerie-movie: #f0443e;
+    --cinerie-movie-ink: #8a1e1a;
+    --cinerie-series: #7fa56f;
+    --cinerie-series-ink: #395c42;
+    --cinerie-person: #b4884a;
+    --cinerie-person-ink: #7a5a20;
+    --cinerie-news: #3178c6;
+    --cinerie-news-ink: #1f4f88;
 
     --theme-bg: var(--cinerie-paper);
     --theme-text: var(--cinerie-ink);
@@ -121,10 +150,16 @@
     background: transparent;
   }
 
+  /* SIDEBAR CLARA.
+   *
+   * Era `#171717`: a ultima superficie escura do painel, e ela ocupava a
+   * lateral inteira. Agora e creme como o resto, separada por borda em vez de
+   * sombra pesada. O item ativo se distingue por FUNDO + BARRA + peso da
+   * fonte — nunca so pela cor, que sozinha nao chega a quem nao a enxerga. */
   .nav {
-    background: #171717;
-    border-right: 0;
-    box-shadow: 12px 0 36px rgba(18, 16, 14, 0.08);
+    background: var(--cinerie-brand-surface);
+    border-right: 1px solid var(--cinerie-border);
+    box-shadow: none;
   }
 
   .nav,
@@ -132,13 +167,14 @@
   .nav button,
   .nav__label,
   .nav__link {
-    color: rgba(255, 255, 255, 0.78);
+    color: var(--cinerie-ink);
   }
 
   .nav a:hover,
   .nav button:hover,
   .nav__link:hover {
-    color: #ffffff;
+    background: var(--cinerie-brand-soft);
+    color: var(--cinerie-brand-dark);
   }
 
   .nav__link,
@@ -148,12 +184,15 @@
 
   .nav__link--active,
   .nav a[aria-current="page"] {
-    background: rgba(240, 68, 62, 0.16);
-    color: #ffffff;
+    background: var(--cinerie-brand-soft);
+    border-left: 3px solid var(--cinerie-brand);
+    color: var(--cinerie-brand-dark);
+    font-weight: 700;
   }
 
   .nav-group__toggle,
   .nav__label {
+    color: var(--cinerie-muted);
     font-size: 10px;
     font-weight: 800;
     letter-spacing: 0.13em;
@@ -161,7 +200,7 @@
   }
 
   .nav__controls {
-    border-color: rgba(255, 255, 255, 0.12);
+    border-color: var(--cinerie-border);
   }
 
   .gutter--left,
@@ -300,10 +339,14 @@
     color: var(--cinerie-ink);
   }
 
+  /* Aba ativa: fundo branco + sublinhado de marca + peso. Tres sinais, nenhum
+     deles escuro — e nenhum deles a cor sozinha. */
   .tabs-field__tab-button--active,
   .tabs-field__tab-button[aria-selected="true"] {
-    background: var(--cinerie-ink);
-    color: #ffffff;
+    background: #ffffff;
+    border-bottom: 3px solid var(--cinerie-brand);
+    color: var(--cinerie-brand-dark);
+    font-weight: 800;
   }
 
   .blocks-field__block,
@@ -354,44 +397,41 @@
     margin: 4px 0 30px;
   }
 
+  /* MASTHEAD CLARO.
+   *
+   * Era um bloco vermelho solido com texto branco. A regra da casa e base
+   * clara em TODA superficie, masthead incluido: o vermelho volta como
+   * ACENTO (borda superior e olho-vivo), nao como fundo. Texto em tinta
+   * escura sobre creme passa contraste com folga, o que o branco sobre
+   * `#f0443e` (3.6:1) nao fazia em corpo de texto. */
   .cinerie-dashboard__hero {
     align-items: flex-end;
     background:
-      linear-gradient(120deg, rgba(240, 68, 62, 0.96), rgba(191, 45, 41, 0.98)),
-      #f0443e;
+      radial-gradient(circle at 88% -30%, rgba(240, 68, 62, 0.1), transparent 22rem),
+      var(--cinerie-brand-surface);
+    border: 1px solid var(--cinerie-border);
     border-radius: 22px;
-    box-shadow: 0 22px 55px rgba(172, 44, 39, 0.2);
-    color: #ffffff;
+    border-top: 4px solid var(--cinerie-brand);
+    color: var(--cinerie-ink);
     display: flex;
     gap: 28px;
     justify-content: space-between;
-    min-height: 210px;
+    min-height: 190px;
     overflow: hidden;
-    padding: clamp(28px, 4vw, 48px);
+    padding: clamp(24px, 4vw, 44px);
     position: relative;
   }
 
-  .cinerie-dashboard__hero::after {
-    border: 1px solid rgba(255, 255, 255, 0.24);
-    border-radius: 999px;
-    content: "";
-    height: 260px;
-    position: absolute;
-    right: -80px;
-    top: -105px;
-    width: 260px;
-  }
-
   .cinerie-dashboard__hero h1 {
-    color: #ffffff;
-    font-size: clamp(34px, 5vw, 58px);
-    line-height: 0.95;
+    color: var(--cinerie-ink);
+    font-size: clamp(30px, 4.4vw, 50px);
+    line-height: 1;
     margin: 8px 0 15px;
     max-width: 700px;
   }
 
   .cinerie-dashboard__hero p {
-    color: rgba(255, 255, 255, 0.78);
+    color: var(--cinerie-muted);
     font-size: 15px;
     line-height: 1.6;
     margin: 0;
@@ -407,14 +447,13 @@
   }
 
   .cinerie-dashboard__hero .cinerie-dashboard__eyebrow {
-    color: rgba(255, 255, 255, 0.7);
+    color: var(--cinerie-brand-dark);
   }
 
   .cinerie-dashboard__automation {
     align-items: center;
-    backdrop-filter: blur(12px);
-    background: rgba(255, 255, 255, 0.12);
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: #ffffff;
+    border: 1px solid var(--cinerie-border);
     border-radius: 14px;
     display: flex;
     flex: 0 0 auto;
@@ -424,16 +463,17 @@
     z-index: 1;
   }
 
+  /* O ponto e apoio, nao o sinal: o estado tambem esta escrito por extenso
+     ("Ativada"/"Desativada") logo ao lado. Cor sozinha nao informa. */
   .cinerie-dashboard__automation-dot {
-    background: #ffffff;
+    background: var(--cinerie-muted);
     border-radius: 999px;
-    box-shadow: 0 0 0 5px rgba(255, 255, 255, 0.12);
     height: 8px;
     width: 8px;
   }
 
   .cinerie-dashboard__automation.is-enabled .cinerie-dashboard__automation-dot {
-    background: #7fe3a1;
+    background: var(--cinerie-green);
   }
 
   .cinerie-dashboard__automation span:last-child {
@@ -442,11 +482,12 @@
   }
 
   .cinerie-dashboard__automation strong {
+    color: var(--cinerie-ink);
     font-size: 12px;
   }
 
   .cinerie-dashboard__automation small {
-    color: rgba(255, 255, 255, 0.7);
+    color: var(--cinerie-muted);
     font-size: 11px;
   }
 
@@ -553,14 +594,17 @@
     transform: translateY(-1px);
   }
 
+  /* A acao principal se destaca por BORDA e FUNDO de marca, nao por um bloco
+     escuro. Tinta sobre creme-rosado, com a borda vermelha carregando a
+     enfase. */
   .cinerie-dashboard__action.is-primary {
-    background: var(--cinerie-ink);
-    border-color: var(--cinerie-ink);
-    color: #ffffff;
+    background: var(--cinerie-brand-soft);
+    border-color: var(--cinerie-brand);
+    color: var(--cinerie-brand-dark);
   }
 
   .cinerie-dashboard__action.is-primary small {
-    color: rgba(255, 255, 255, 0.62);
+    color: var(--cinerie-muted);
   }
 
   .cinerie-dashboard__action-icon {
@@ -686,6 +730,610 @@
 
     .cinerie-dashboard__workflow small {
       grid-column: 2;
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Barra de transicao de workflow (substitui o botao nativo de publicar) */
+  /* ------------------------------------------------------------------ */
+
+  .cinerie-workflow {
+    background: var(--cinerie-brand-surface);
+    border: 1px solid var(--cinerie-border);
+    border-radius: 14px;
+    display: grid;
+    gap: 12px;
+    padding: 14px 16px;
+    width: 100%;
+  }
+
+  .cinerie-workflow__state {
+    align-items: baseline;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  /* O estado nao depende so da cor: o rotulo esta escrito por extenso, e
+     `data-status` carrega o codigo para quem inspeciona. */
+  .cinerie-workflow__badge {
+    background: #ffffff;
+    border: 1px solid var(--cinerie-border);
+    border-left: 4px solid var(--cinerie-muted);
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    padding: 5px 11px;
+    text-transform: uppercase;
+  }
+
+  .cinerie-workflow__badge.is-progress { border-left-color: var(--cinerie-brand-accent); }
+  .cinerie-workflow__badge.is-review { border-left-color: var(--cinerie-news); }
+  .cinerie-workflow__badge.is-ready { border-left-color: var(--cinerie-series); }
+
+  .cinerie-workflow__badge.is-live {
+    border-left-color: var(--cinerie-green);
+    color: var(--cinerie-series-ink);
+  }
+
+  .cinerie-workflow__badge.is-halted {
+    border-left-color: var(--cinerie-brand);
+    color: var(--cinerie-movie-ink);
+  }
+
+  .cinerie-workflow__hint {
+    color: var(--cinerie-muted);
+    font-size: 12.5px;
+    margin: 0;
+  }
+
+  .cinerie-workflow__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .cinerie-workflow__action {
+    background: #ffffff;
+    border: 1px solid var(--cinerie-border);
+    border-radius: 10px;
+    color: var(--cinerie-ink);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 9px 14px;
+    transition: background 140ms ease, border-color 140ms ease;
+  }
+
+  .cinerie-workflow__action:hover:not(:disabled) {
+    background: var(--cinerie-brand-soft);
+    border-color: var(--cinerie-brand);
+  }
+
+  .cinerie-workflow__action.is-primary {
+    background: var(--cinerie-brand-soft);
+    border-color: var(--cinerie-brand);
+    color: var(--cinerie-brand-dark);
+  }
+
+  .cinerie-workflow__action.is-danger {
+    color: var(--cinerie-movie-ink);
+  }
+
+  .cinerie-workflow__action:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+
+  .cinerie-workflow__waiting {
+    align-self: center;
+    color: var(--cinerie-muted);
+    font-size: 12.5px;
+    font-style: italic;
+  }
+
+  .cinerie-workflow__blocks {
+    background: #ffffff;
+    border: 1px solid var(--cinerie-border);
+    border-left: 4px solid var(--cinerie-brand-accent);
+    border-radius: 10px;
+    font-size: 13px;
+    padding: 11px 14px;
+  }
+
+  .cinerie-workflow__blocks ul {
+    display: grid;
+    gap: 6px;
+    margin: 8px 0 0;
+    padding-left: 18px;
+  }
+
+  .cinerie-workflow__jump {
+    background: none;
+    border: 0;
+    color: var(--cinerie-brand-dark);
+    cursor: pointer;
+    font: inherit;
+    padding: 0;
+    text-decoration: underline;
+  }
+
+  .cinerie-workflow__error {
+    color: var(--cinerie-movie-ink);
+    font-size: 13px;
+    margin: 0;
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Campo de slug                                                       */
+  /* ------------------------------------------------------------------ */
+
+  .cinerie-slug__header {
+    align-items: center;
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+  }
+
+  .cinerie-slug__regenerate {
+    background: none;
+    border: 1px solid var(--cinerie-border);
+    border-radius: 8px;
+    color: var(--cinerie-brand-dark);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 4px 10px;
+  }
+
+  .cinerie-slug__regenerate:disabled {
+    color: var(--cinerie-muted);
+    cursor: not-allowed;
+  }
+
+  .cinerie-slug__preview {
+    color: var(--cinerie-muted);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    margin: 5px 0 0;
+  }
+
+  .cinerie-slug__problem {
+    color: var(--cinerie-movie-ink);
+    font-size: 12.5px;
+    margin: 5px 0 0;
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Controle de QA                                                      */
+  /* ------------------------------------------------------------------ */
+
+  .cinerie-qa {
+    background: #ffffff;
+    border: 1px solid var(--cinerie-border);
+    border-radius: 12px;
+    display: grid;
+    gap: 11px;
+    padding: 14px 16px;
+  }
+
+  .cinerie-qa__header {
+    align-items: baseline;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: space-between;
+  }
+
+  .cinerie-qa__title {
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .cinerie-qa__state {
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 4px 10px;
+  }
+
+  .cinerie-qa__state.is-pending {
+    background: var(--cinerie-brand-soft);
+    color: var(--cinerie-movie-ink);
+  }
+
+  .cinerie-qa__state.is-done {
+    background: #eef4ea;
+    color: var(--cinerie-series-ink);
+  }
+
+  .cinerie-qa__facts {
+    display: grid;
+    gap: 7px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .cinerie-qa__facts li {
+    align-items: start;
+    display: grid;
+    font-size: 13px;
+    gap: 9px;
+    grid-template-columns: 18px 1fr;
+  }
+
+  .cinerie-qa__facts small {
+    color: var(--cinerie-muted);
+    display: block;
+    font-size: 12px;
+  }
+
+  .cinerie-qa__fact-mark {
+    font-weight: 800;
+  }
+
+  .cinerie-qa__facts .is-ok .cinerie-qa__fact-mark { color: var(--cinerie-series-ink); }
+  .cinerie-qa__facts .is-pending .cinerie-qa__fact-mark { color: var(--cinerie-movie-ink); }
+
+  .cinerie-qa__actions {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 11px;
+  }
+
+  .cinerie-qa__approve,
+  .cinerie-qa__revoke {
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 8px 14px;
+  }
+
+  .cinerie-qa__approve {
+    background: var(--cinerie-brand-soft);
+    border: 1px solid var(--cinerie-brand);
+    color: var(--cinerie-brand-dark);
+  }
+
+  .cinerie-qa__revoke {
+    background: #ffffff;
+    border: 1px solid var(--cinerie-border);
+    color: var(--cinerie-muted);
+  }
+
+  .cinerie-qa__note {
+    color: var(--cinerie-muted);
+    font-size: 12px;
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Licenca de midia                                                    */
+  /* ------------------------------------------------------------------ */
+
+  .cinerie-media-notice {
+    background: #ffffff;
+    border: 1px solid var(--cinerie-border);
+    border-left: 4px solid var(--cinerie-brand);
+    border-radius: 12px;
+    font-size: 13px;
+    padding: 12px 15px;
+    width: 100%;
+  }
+
+  .cinerie-media-notice ul {
+    display: grid;
+    gap: 5px;
+    margin: 8px 0;
+    padding-left: 18px;
+  }
+
+  .cinerie-media-notice small {
+    color: var(--cinerie-muted);
+    display: block;
+    font-size: 12px;
+  }
+
+  .cinerie-media-release {
+    background: #ffffff;
+    border: 1px solid var(--cinerie-border);
+    border-radius: 12px;
+    display: grid;
+    gap: 12px;
+    padding: 14px 16px;
+    width: 100%;
+  }
+
+  .cinerie-media-release.is-blocked { border-left: 4px solid var(--cinerie-brand); }
+  .cinerie-media-release.is-released { border-left: 4px solid var(--cinerie-green); }
+
+  .cinerie-media-release__state {
+    align-items: baseline;
+    display: flex;
+    gap: 10px;
+    justify-content: space-between;
+  }
+
+  .cinerie-media-release__state span {
+    color: var(--cinerie-muted);
+    font-size: 12.5px;
+  }
+
+  .cinerie-media-release__permissions {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .cinerie-media-release__permissions li {
+    align-items: start;
+    display: grid;
+    font-size: 12.5px;
+    gap: 7px;
+    grid-template-columns: 14px 1fr;
+  }
+
+  .cinerie-media-release__permissions small {
+    color: var(--cinerie-muted);
+    display: block;
+    font-size: 11.5px;
+  }
+
+  .cinerie-media-release__permissions .is-on span:first-child { color: var(--cinerie-series-ink); }
+  .cinerie-media-release__permissions .is-off span:first-child { color: var(--cinerie-muted); }
+
+  .cinerie-media-release__action {
+    display: grid;
+    gap: 7px;
+  }
+
+  .cinerie-media-release__action button {
+    background: var(--cinerie-brand-soft);
+    border: 1px solid var(--cinerie-brand);
+    border-radius: 10px;
+    color: var(--cinerie-brand-dark);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 700;
+    justify-self: start;
+    padding: 8px 14px;
+  }
+
+  .cinerie-media-release__action small,
+  .cinerie-media-release__partial {
+    color: var(--cinerie-muted);
+    font-size: 12px;
+  }
+
+  .cinerie-media-release__error {
+    color: var(--cinerie-movie-ink);
+    font-size: 12.5px;
+    margin: 0;
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Origem na lista de materias                                         */
+  /* ------------------------------------------------------------------ */
+
+  .cinerie-origin {
+    border-radius: 7px;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 3px 9px;
+    white-space: nowrap;
+  }
+
+  .cinerie-origin.is-human {
+    background: #f2efe8;
+    color: var(--cinerie-muted);
+  }
+
+  .cinerie-origin.is-automated {
+    background: #eaf1fa;
+    color: var(--cinerie-news-ink);
+  }
+
+  .cinerie-origin small {
+    font-weight: 500;
+    opacity: 0.85;
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Painel de automacao (MNScr)                                         */
+  /* ------------------------------------------------------------------ */
+
+  .cinerie-automation {
+    background: #ffffff;
+    border: 1px solid var(--cinerie-border);
+    border-radius: 18px;
+    display: grid;
+    gap: 15px;
+    padding: clamp(18px, 2.4vw, 26px);
+  }
+
+  .cinerie-automation__heading {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    justify-content: space-between;
+  }
+
+  .cinerie-automation__heading h2 {
+    font-size: 20px;
+    margin: 3px 0 0;
+  }
+
+  .cinerie-automation__flag {
+    border-radius: 9px;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 5px 11px;
+  }
+
+  .cinerie-automation__flag.is-on {
+    background: #eef4ea;
+    color: var(--cinerie-series-ink);
+  }
+
+  .cinerie-automation__flag.is-off {
+    background: #f2efe8;
+    color: var(--cinerie-muted);
+  }
+
+  .cinerie-automation__day {
+    color: var(--cinerie-muted);
+    font-size: 12.5px;
+    margin: 0;
+  }
+
+  .cinerie-automation__quota {
+    border-collapse: collapse;
+    font-size: 13px;
+    width: 100%;
+  }
+
+  .cinerie-automation__quota caption {
+    color: var(--cinerie-muted);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    padding-bottom: 7px;
+    text-align: left;
+    text-transform: uppercase;
+  }
+
+  .cinerie-automation__quota th,
+  .cinerie-automation__quota td {
+    border-bottom: 1px solid var(--cinerie-border);
+    padding: 8px 10px;
+    text-align: left;
+  }
+
+  .cinerie-automation__quota thead th {
+    color: var(--cinerie-muted);
+    font-size: 11.5px;
+    font-weight: 700;
+  }
+
+  /* Perto do teto: fundo + tinta + peso. Os numeros continuam na linha, entao
+     a cor nunca e a unica portadora do aviso. */
+  .cinerie-automation__quota .is-near-limit {
+    background: var(--cinerie-brand-soft);
+    color: var(--cinerie-movie-ink);
+    font-weight: 700;
+  }
+
+  .cinerie-automation__queue {
+    display: grid;
+    gap: 9px;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .cinerie-automation__queue-cell {
+    background: #faf8f2;
+    border: 1px solid var(--cinerie-border);
+    border-radius: 11px;
+    display: grid;
+    gap: 3px;
+    padding: 10px 12px;
+  }
+
+  .cinerie-automation__queue-cell span {
+    color: var(--cinerie-muted);
+    font-size: 11.5px;
+  }
+
+  .cinerie-automation__queue-cell strong {
+    font-size: 21px;
+    font-weight: 800;
+  }
+
+  .cinerie-automation__queue-cell.is-dead_letter strong,
+  .cinerie-automation__queue-cell.is-failed strong {
+    color: var(--cinerie-movie-ink);
+  }
+
+  .cinerie-automation__worker {
+    border-radius: 10px;
+    font-size: 13px;
+    margin: 0;
+    padding: 10px 13px;
+  }
+
+  .cinerie-automation__worker.is-ok {
+    background: #f5f8f3;
+    color: var(--cinerie-series-ink);
+  }
+
+  .cinerie-automation__worker.is-stuck {
+    background: var(--cinerie-brand-soft);
+    color: var(--cinerie-movie-ink);
+    font-weight: 600;
+  }
+
+  .cinerie-automation__dead {
+    color: var(--cinerie-movie-ink);
+    font-size: 13px;
+    font-weight: 600;
+    margin: 0;
+  }
+
+  .cinerie-automation.is-misconfigured {
+    border-left: 4px solid var(--cinerie-brand);
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Foco visivel                                                        */
+  /*                                                                     */
+  /* Os botoes novos sao operados por teclado tanto quanto por mouse.     */
+  /* ------------------------------------------------------------------ */
+
+  .cinerie-workflow__action:focus-visible,
+  .cinerie-workflow__jump:focus-visible,
+  .cinerie-slug__regenerate:focus-visible,
+  .cinerie-qa__approve:focus-visible,
+  .cinerie-qa__revoke:focus-visible,
+  .cinerie-media-release__action button:focus-visible {
+    outline: 2px solid var(--cinerie-brand-dark);
+    outline-offset: 2px;
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Notebook e tablet                                                   */
+  /* ------------------------------------------------------------------ */
+
+  @media (max-width: 1280px) {
+    .cinerie-automation__queue {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 900px) {
+    .cinerie-automation__queue {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .cinerie-media-release__permissions {
+      grid-template-columns: 1fr;
+    }
+
+    .cinerie-workflow__actions {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .cinerie-automation__quota {
+      display: block;
+      overflow-x: auto;
     }
   }
 }

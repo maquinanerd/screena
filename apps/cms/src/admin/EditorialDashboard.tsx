@@ -1,10 +1,14 @@
 import type { Payload } from 'payload'
 import React from 'react'
 
+import { resolveAutoPublishConfig } from '../env-auto-publish.js'
 import type { WorkflowStatus } from '../workflow.js'
+import AutomationPanel from './AutomationPanel.js'
 
 interface EditorialDashboardProps {
   readonly payload: Payload
+  /** Vem de `ServerProps`. Decide se o painel de automação aparece. */
+  readonly user?: unknown
 }
 
 async function countArticles(payload: Payload, workflowStatus: WorkflowStatus): Promise<number> {
@@ -31,7 +35,7 @@ async function countCollection(
   }
 }
 
-export default async function EditorialDashboard({ payload }: EditorialDashboardProps) {
+export default async function EditorialDashboard({ payload, user }: EditorialDashboardProps) {
   const [drafts, needsReview, inReview, ready, published, media, authors] = await Promise.all([
     countArticles(payload, 'draft'),
     countArticles(payload, 'needs_review'),
@@ -42,7 +46,15 @@ export default async function EditorialDashboard({ payload }: EditorialDashboard
     countCollection(payload, 'authors'),
   ])
 
-  const autoPublishEnabled = process.env.EDITORIAL_AUTO_PUBLISH_ENABLED === 'true'
+  // RESOLVEDOR CANONICO, nunca uma comparacao propria.
+  //
+  // A leitura anterior era `=== 'true'`, mas `resolveAutoPublishConfig` aceita
+  // `'true'` E `'1'` (env-auto-publish.ts). Com
+  // `EDITORIAL_AUTO_PUBLISH_ENABLED=1` a autopublicacao rodava e este badge
+  // anunciava "Desativada" — o painel mentindo sobre o unico fato que ele
+  // existia para mostrar. Um segundo leitor de env e uma segunda verdade.
+  const autoPublish = resolveAutoPublishConfig(process.env)
+  const autoPublishEnabled = autoPublish.ok && autoPublish.config.enabled
 
   const metrics = [
     { label: 'Rascunhos', value: drafts, tone: 'neutral' },
@@ -146,6 +158,10 @@ export default async function EditorialDashboard({ payload }: EditorialDashboard
           </ol>
         </article>
       </div>
+
+      {/* So administrador enxerga: o painel decide isso por dentro, a partir do
+          papel do usuario, porque a Local API nao aplica access control. */}
+      <AutomationPanel payload={payload} user={user} />
     </section>
   )
 }

@@ -407,7 +407,19 @@ export const Authors: CollectionConfig = {
 
 export const Media: CollectionConfig = {
   slug: 'media',
-  admin: { useAsTitle: 'alt', group: 'Editorial' },
+  admin: {
+    useAsTitle: 'alt',
+    group: 'Editorial',
+    defaultColumns: ['alt', 'licenseStatus', 'credit', 'updatedAt'],
+    components: {
+      edit: {
+        // O estado de liberacao passa a ser a PRIMEIRA coisa visivel do
+        // documento — e a liberacao acontece aqui, onde estao o credito, a
+        // fonte e o detentor dos direitos, nao no meio do fluxo de publicacao.
+        beforeDocumentControls: ['/src/admin/MediaReleaseControl'],
+      },
+    },
+  },
   upload: {
     // Filesystem local: DESENVOLVIMENTO apenas. `payload.config.ts` recusa este
     // arranjo em producao, onde disco efemero significaria perder a midia.
@@ -481,7 +493,25 @@ export const Media: CollectionConfig = {
 
 export const Articles: CollectionConfig = {
   slug: 'articles',
-  admin: { useAsTitle: 'title', group: 'Editorial' },
+  admin: {
+    useAsTitle: 'title',
+    group: 'Editorial',
+    // Colunas da lista: o que uma redacao pergunta ao abrir a tela — em que pe
+    // esta, de onde veio, quem assina, quando foi ao ar.
+    defaultColumns: ['title', 'workflowStatus', 'autoPublished', 'section', 'publishedAt'],
+    components: {
+      edit: {
+        // SUBSTITUI o botao nativo "Publish changes", que manda `_status`
+        // solto e leva 403 do hook de governanca (corretamente). A trava do
+        // servidor NAO muda; o que muda e a interface parar de oferecer um
+        // caminho inexistente e passar a oferecer as transicoes reais.
+        PublishButton: '/src/admin/WorkflowTransitionBar',
+        // A midia sem licenca se anuncia ANTES da tentativa de publicar, em vez
+        // de virar um `unauthorized_media` depois do texto pronto.
+        beforeDocumentControls: ['/src/admin/MediaLicenseNotice'],
+      },
+    },
+  },
   // Os hooks sao o UNICO caminho por onde uma mudanca de estado passa — venha
   // ela do painel, da REST API ou da Local API. Sem eles, `_status: published`
   // publicaria por fora do fluxo editorial.
@@ -522,7 +552,15 @@ export const Articles: CollectionConfig = {
         // --- Conteudo ---
       { name: 'title', type: 'text', required: true },
         { name: 'subtitle', type: 'text' },
-        { name: 'slug', type: 'text', index: true },
+        {
+          name: 'slug',
+          type: 'text',
+          index: true,
+          // Mesma coluna, mesma validacao, mesmo tipo: o componente so gera o
+          // valor a partir do titulo com a MESMA `canonicalizeSlug` que a
+          // autopublicacao ja usa, e para de gerar quando alguem edita a mao.
+          admin: { components: { Field: '/src/admin/SlugField' } },
+        },
         { name: 'summary', type: 'textarea' },
         {
         name: 'contentType',
@@ -678,7 +716,15 @@ export const Articles: CollectionConfig = {
         { name: 'blockingErrors', type: 'text', hasMany: true },
         { name: 'warnings', type: 'text', hasMany: true },
         { name: 'qaVersion', type: 'text' },
-        { name: 'qaPassedAt', type: 'date' },
+        {
+          name: 'qaPassedAt',
+          type: 'date',
+          // Continua sendo a MESMA data que o gate exige. O componente troca o
+          // seletor cru por um ato explicito ("Marcar QA como aprovado"), que
+          // carimba o instante do clique e mostra ao lado o que ja da para
+          // conferir no proprio documento.
+          admin: { components: { Field: '/src/admin/QaApprovalField' } },
+        },
         ],
       },
       {
@@ -765,7 +811,14 @@ export const Articles: CollectionConfig = {
         name: 'autoPublished',
         type: 'checkbox',
         defaultValue: false,
-        admin: { readOnly: true, description: 'Publicada automaticamente pelo pipeline, sem revisao previa.' },
+        admin: {
+          readOnly: true,
+          description: 'Publicada automaticamente pelo pipeline, sem revisao previa.',
+          // Na LISTA, uma caixa marcada nao distingue automacao de qualquer
+          // outro checkbox nem diz qual conta operou. A celula le a propria
+          // linha e responde as duas coisas.
+          components: { Cell: '/src/admin/OriginCell' },
+        },
       },
         { name: 'automationActorId', type: 'text', admin: { readOnly: true } },
         {
