@@ -17,10 +17,17 @@ import {
   decideAutoPublication,
   outcomeHttpStatus,
   evaluateSchemaChoice,
+  retryAfterSeconds,
   shouldRetry,
   validateSeoForPublication,
+  PUBLICATION_OUTCOMES,
   type PublicationGateInput,
 } from '../auto-publication.js'
+import {
+  nextEligibleAt,
+  quotaExhaustionIsDeferrable,
+  QUOTA_DIMENSIONS,
+} from '../quota.js'
 import { SCHEMA_BY_CONTENT_TYPE } from '@screena/editorial-contracts'
 import { authorizeAutomationAuthor, type AuthorAutomationFacts } from '../author-automation.js'
 import {
@@ -38,6 +45,9 @@ import {
   isWithinEditorialDay,
   resolveAutoPublishConfig,
 } from '../env-auto-publish.js'
+
+/** Fim da janela do dia civil da redacao, em UTC. */
+const WINDOW_END = '2026-08-02T03:00:00.000Z'
 
 function gate(overrides: Partial<PublicationGateInput> = {}): PublicationGateInput {
   return {
@@ -174,9 +184,79 @@ describe('desfecho da publicacao automatica', () => {
     expect(decision.outcome).toBe('BLOCKED')
   })
 
-  it('nenhum desfecho manda o produtor retentar cegamente', () => {
-    // Reenviar igual repete o defeito; o que muda tem de mudar do lado dele.
-    expect(shouldRetry()).toBe(false)
+  it('so DEFERRED manda o produtor retentar; os demais nao', () => {
+    // Reenviar igual repete o defeito — EXCETO quando o defeito nao era do
+    // pedido e sim do calendario. Em `DEFERRED` nada foi persistido e nada foi
+    // consumido: o mesmo pedido, depois da janela, publica.
+    expect(shouldRetry('DEFERRED')).toBe(true)
+
+    // `ROUTED_TO_REVIEW` e o contraste que importa: ali o conteudo ESTA
+    // guardado em `needs_review`. Retentar criaria um segundo rascunho do mesmo
+    // material para o editor descartar.
+    for (const outcome of ['PUBLISHED', 'ROUTED_TO_REVIEW', 'BLOCKED', 'CONFLICT'] as const) {
+      expect(shouldRetry(outcome)).toBe(false)
+    }
+  })
+})
+
+/* ------------------------------------------------------------------ */
+/* DEFERRED: teto esgotado nao e revisao humana                        */
+/* ------------------------------------------------------------------ */
+
+describe('DEFERRED — adiado, nao recusado nem enfileirado', () => {
+  it('429 com Retry-After e a unica combinacao que descreve "volte depois"', () => {
+    // 202 dizia "guardamos, um humano decide" — e nada tinha sido guardado.
+    // 4xx generico diria "seu pedido esta errado" — e ele estava certo.
+    expect(outcomeHttpStatus('DEFERRED')).toBe(429)
+  })
+
+  it('cada desfecho tem um status PROPRIO — nenhum colide', () => {
+    // A colisao e o que criou o defeito original: dois caminhos opostos sob o
+    // mesmo 202, e o produtor sem como distinguir "existe algo para revisar" de
+    // "nao existe nada".
+    const statuses = PUBLICATION_OUTCOMES.map(outcomeHttpStatus)
+    expect(new Set(statuses).size).toBe(PUBLICATION_OUTCOMES.length)
+  })
+
+  it('Retry-After arredonda para CIMA e nunca devolve o produtor cedo demais', () => {
+    const now = '2026-08-01T10:00:00.000Z'
+    // 90,4s viram 91: 90 traria o produtor de volta antes da virada, para levar
+    // outro 429 imediato.
+    expect(retryAfterSeconds('2026-08-01T10:01:30.400Z', now)).toBe(91)
+    expect(retryAfterSeconds('2026-08-01T10:00:01.000Z', now)).toBe(1)
+  })
+
+  it('horario ja passado vira piso de 1s, nunca 0 nem negativo', () => {
+    // `Retry-After: 0` convida a um laco quente; um valor negativo nem e valido.
+    expect(retryAfterSeconds('2026-08-01T09:59:00.000Z', '2026-08-01T10:00:00.000Z')).toBe(1)
+  })
+
+  it('sem horario prometido nao ha header — silencio e melhor que valor inventado', () => {
+    expect(retryAfterSeconds(null, '2026-08-01T10:00:00.000Z')).toBeNull()
+    expect(retryAfterSeconds('nao e uma data', '2026-08-01T10:00:00.000Z')).toBeNull()
+  })
+
+  it('as quatro dimensoes DIARIAS sao adiaveis; `article_update` nao e', () => {
+    // O teto por artigo existe para conter automacao em LACO. Prometer "volte
+    // amanha" ali autorizaria reescrever a mesma materia todo dia — que e
+    // exatamente o comportamento que o teto foi criado para impedir.
+    for (const dimension of ['global', 'content_type', 'section', 'author'] as const) {
+      expect(quotaExhaustionIsDeferrable(dimension)).toBe(true)
+      expect(nextEligibleAt(dimension, WINDOW_END)).toBe(WINDOW_END)
+    }
+    expect(quotaExhaustionIsDeferrable('article_update')).toBe(false)
+    expect(nextEligibleAt('article_update', WINDOW_END)).toBeNull()
+  })
+
+  it('horario prometido e desfecho adiavel NUNCA se contradizem', () => {
+    // Os dois derivam do mesmo predicado. Duas listas separadas divergiriam no
+    // primeiro dia em que alguem mexesse numa so — e a resposta passaria a
+    // prometer um horario que o desfecho nega, ou o contrario.
+    for (const dimension of QUOTA_DIMENSIONS) {
+      expect(nextEligibleAt(dimension, WINDOW_END) !== null).toBe(
+        quotaExhaustionIsDeferrable(dimension),
+      )
+    }
   })
 })
 

@@ -13,6 +13,7 @@ import {
   canonicalJson,
   checkContractCompatibility,
   contractHashOf,
+  CONTRACTS,
   contractSchemaHash,
   jsonSchemaOf,
   findContract,
@@ -76,6 +77,41 @@ describe('manifesto de contratos', () => {
     expect(contract).not.toBeNull()
     const mutated = contractHashOf({ ...jsonSchemaOf(contract!.schema), extra: true })
     expect(mutated).not.toBe(original)
+  })
+
+  it('a IDENTIDADE do contrato de entrada esta PREGADA', () => {
+    // Golden deliberado. `checkContractCompatibility` compara versao e hash com
+    // igualdade ESTRITA: qualquer alteracao aqui faz TODO pedido do MNScr em voo
+    // virar `CONFLICT` por `version_mismatch`/`hash_mismatch`. Prender o valor
+    // transforma "quebrei a integracao" num teste vermelho local, em vez de um
+    // incidente no consumidor.
+    //
+    // Se este teste ficar vermelho, a pergunta NAO e "atualizo o valor?" — e
+    // "eu queria mesmo mudar o contrato de entrada, e o MNScr foi avisado?".
+    const entry = buildContractManifest().find(
+      (candidate) => candidate.contractName === 'editorial-publication-request-v1',
+    )
+    expect(entry?.contractVersion).toBe('1.0.0')
+    expect(entry?.schemaHash).toBe(
+      'sha256:930243294465802778f73151d53ee510a2313d44673de9e6e7866032bfe6c6f8',
+    )
+  })
+
+  it('o VOCABULARIO DE DESFECHO nao pertence a nenhum contrato publicado', () => {
+    // O hash cobre o JSON Schema do PEDIDO. A resposta do endpoint (`PUBLISHED`,
+    // `ROUTED_TO_REVIEW`, `DEFERRED`, `BLOCKED`, `CONFLICT`) nunca foi contrato:
+    // ela vive em `apps/cms/src/auto-publication.ts`.
+    //
+    // E por isso que acrescentar `DEFERRED` NAO mexe em versao nem em hash — e e
+    // por isso que este teste existe: no dia em que alguem promover a resposta a
+    // contrato, este teste fica vermelho e forca a decisao de versionamento a ser
+    // TOMADA, em vez de acontecer por acidente.
+    const published = JSON.stringify(
+      CONTRACTS.map((contract) => jsonSchemaOf(contract.schema)),
+    )
+    for (const outcome of ['ROUTED_TO_REVIEW', 'DEFERRED', 'CONFLICT'] as const) {
+      expect(published).not.toContain(outcome)
+    }
   })
 })
 

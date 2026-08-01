@@ -34,8 +34,10 @@ import {
 import {
   decideAutoPublication,
   outcomeHttpStatus,
+  retryAfterSeconds,
   type BodyShapeFacts,
   type PublicationDecision,
+  type PublicationOutcome,
 } from '../auto-publication.js'
 import { canonicalizeSlug, decideSlugChange, resolveSlugCollision } from '../canonical-slug.js'
 import { toPayloadBlocks, type MappedBody } from '../editorial-body-mapper.js'
@@ -65,10 +67,14 @@ function strictestLimit(a: number | null, b: number | null): number | null {
   return Math.min(a, b)
 }
 
-function json(body: unknown, status: number): Response {
+function json(body: unknown, status: number, extraHeaders: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+      ...extraHeaders,
+    },
   })
 }
 
@@ -325,8 +331,23 @@ export const editorialPublicationsEndpoint: Endpoint = {
 
     const decision: PublicationDecision = decideAutoPublication({
       limits: config,
-      // Zerados de proposito: o teto e aplicado na RESERVA transacional, nao
-      // aqui. Manter uma contagem lida antes so recriaria a corrida.
+      // ZERADOS DE PROPOSITO. NAO "CONSERTE" ISTO.
+      //
+      // Parece um pre-cheque quebrado — um teto que nunca dispara — e a correcao
+      // obvia seria alimentar `usage` com a contagem real do dia. Essa correcao
+      // reabriria exatamente a corrida que a reserva transacional existe para
+      // fechar: entre o `SELECT COUNT` e o `INSERT` da publicacao ha uma janela,
+      // e duas requisicoes simultaneas leem o mesmo numero, ambas concluem que
+      // cabe mais uma, e o dia fecha acima do teto. Com um pipeline que dispara
+      // em lote, isso nao e raro: e o caso normal.
+      //
+      // O teto e aplicado em UM lugar so, dentro da transacao, por
+      // `consumeQuotas` (ver `quota-store.ts`). Ter duas aplicacoes seria pior
+      // que ter uma: a de fora recusaria antes, com outro desfecho, e as duas
+      // divergiriam na primeira mudanca de limite.
+      //
+      // O gate abaixo continua recebendo o campo porque decide desfechos que NAO
+      // dependem de corrida (kill switch, QA, autoria, SEO).
       usage: { publishedTodayGlobal: 0, publishedTodayByAuthor: 0 },
       authorAuthorization: authorizeAutomationAuthor({
         facts: authorFacts,
@@ -491,16 +512,38 @@ export const editorialPublicationsEndpoint: Endpoint = {
         | { readonly code: string; readonly dimension: string; readonly nextEligibleAtIso: string | null }
         | null
       if (rejection !== null) {
-        // Limite esgotado com conteudo VALIDO: revisao humana, nao erro. Nada
-        // publicado, nada na outbox, nenhuma dimensao consumida.
+        // TETO ESGOTADO — e aqui esta a distincao que faltava.
+        //
+        // Nada foi publicado, nada foi para a outbox, nenhuma dimensao ficou
+        // consumida e — o ponto — NENHUM ARTIGO FOI CRIADO: a reserva roda antes
+        // de `persistPublication`, e o rollback desfaz o conjunto. Nao existe
+        // rascunho nenhum esperando um editor.
+        //
+        // Por isso a resposta NAO e `ROUTED_TO_REVIEW`. Aquele desfecho promete
+        // uma fila com algo dentro; este caminho deixa a fila vazia. Responder
+        // "encaminhado para revisao" mandava o produtor esperar por uma revisao
+        // que nunca existiria, e `shouldRetry` mandava nao reenviar — a materia
+        // se perdia com 202 na resposta.
+        //
+        // `nextEligibleAtIso` decide entre ESPERAR e DESISTIR (a regra e de
+        // `quotaExhaustionIsDeferrable`): ha horario prometido -> `DEFERRED`,
+        // retentavel; nao ha -> `BLOCKED`, e reenviar so repetiria a recusa.
+        const deferrable = rejection.nextEligibleAtIso !== null
+        const outcome: PublicationOutcome = deferrable ? 'DEFERRED' : 'BLOCKED'
+        // O header sai do MESMO instante e do MESMO horario que vao no corpo:
+        // um `Retry-After` derivado de outro relogio contradiria o
+        // `nextEligibleAt` da resposta.
+        const retryAfter = retryAfterSeconds(rejection.nextEligibleAtIso, receivedAtIso)
         return json(
           {
             ...responseBody,
-            outcome: 'ROUTED_TO_REVIEW',
+            outcome,
             reasons: [{ code: rejection.code, detail: `dimensao ${rejection.dimension}` }],
             nextEligibleAt: rejection.nextEligibleAtIso,
+            retryable: deferrable,
           },
-          outcomeHttpStatus('ROUTED_TO_REVIEW'),
+          outcomeHttpStatus(outcome),
+          retryAfter === null ? {} : { 'retry-after': String(retryAfter) },
         )
       }
       // Falha de persistencia: nada foi publicado e nenhum contador sobreviveu.

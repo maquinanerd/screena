@@ -159,15 +159,40 @@ export type QuotaVerdict =
   | { readonly ok: false; readonly dimension: QuotaDimension; readonly code: string }
 
 /**
+ * Esgotar esta dimensao e uma ESPERA ou um FIM DE LINHA?
+ *
+ * O produtor precisa dessa distincao mais do que precisa do numero: "volte a
+ * meia-noite" e "nao insista" levam a comportamentos opostos, e errar o rotulo
+ * produz ou uma materia perdida ou um laco infinito.
+ *
+ *  - diarias (`global`, `content_type`, `section`, `author`) -> ESPERA. A
+ *    janela vira sozinha; reenviar depois publica.
+ *  - `article_update` -> FIM DE LINHA. Nao porque o contador seja eterno, e sim
+ *    porque este teto existe justamente para conter automacao em LACO: mandar o
+ *    produtor voltar amanha e autorizar a reescrever a mesma materia todo dia,
+ *    que e o comportamento contra o qual o teto foi criado. Quem quiser mais uma
+ *    reescrita pede a um humano.
+ *
+ * ATENCAO a uma assimetria real: o contador de `article_update` E gravado por
+ * dia civil (a unique de `autopublish_quota_counters` inclui `local_date`),
+ * entao ele DE FATO reabre a meia-noite. O que esta funcao decide nao e se ha
+ * espaco amanha — e se prometemos esse espaco ao produtor. Nao prometemos.
+ */
+export function quotaExhaustionIsDeferrable(dimension: QuotaDimension): boolean {
+  return dimension !== 'article_update'
+}
+
+/**
  * Momento em que a dimensao volta a ter espaco.
  *
- * So para as dimensoes DIARIAS: `article_update` nao e diario — o teto de
- * reescritas de um artigo nao se renova a meia-noite, e prometer um horario ali
- * mandaria o produtor reenviar para sempre.
+ * So para as dimensoes ADIAVEIS — deriva de `quotaExhaustionIsDeferrable` de
+ * proposito: um horario prometido sem desfecho de espera (ou o inverso) faria a
+ * resposta se contradizer, e duas listas separadas divergem no primeiro dia em
+ * que alguem mexer numa so.
  */
 export function nextEligibleAt(
   dimension: QuotaDimension,
   windowEndUtcIso: string,
 ): string | null {
-  return dimension === 'article_update' ? null : windowEndUtcIso
+  return quotaExhaustionIsDeferrable(dimension) ? windowEndUtcIso : null
 }
