@@ -87,6 +87,8 @@ const EXPECTED_TABLES = [
   "articles", "article_translations", "entity_news_links",
   // P0-00a — raw sync TMDB (schema-only; worker-only, nao lido no render).
   "tmdb_raw", "tmdb_image_config",
+  // Data governance hardening (2026-07) — registro polimorfico + quarentena de orfaos.
+  "entities", "entity_reference_orphans",
 ];
 const EXPECTED_ENUMS = [
   "EntityType", "ContentBlockType", "ContentSource", "ReviewStatus", "TranslationStatus",
@@ -94,6 +96,8 @@ const EXPECTED_ENUMS = [
   "ValidationStatus", "ProviderKind",
   // P0-00a — discriminador dedicado do raw sync TMDB.
   "TmdbEntityKind",
+  // Data governance hardening (2026-07).
+  "SourceLicenseContentType",
 ];
 const EXPECTED_SCALES: Record<string, number> = {
   imdb: 10, rotten_tomatoes: 100, metacritic: 100, letterboxd: 5, filmaffinity: 10,
@@ -115,20 +119,21 @@ async function runChecks(url: string): Promise<void> {
   }
 
   try {
-    // 3. 29 tabelas esperadas (27 Fase 1/4F-A + tmdb_raw + tmdb_image_config do P0-00a)
+    // 3. 31 tabelas esperadas (27 Fase 1/4F-A + tmdb_raw + tmdb_image_config do
+    // P0-00a + entities + entity_reference_orphans do hardening 2026-07)
     const tables = (await q<{ table_name: string }>(
       "SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'",
     )).map((r) => r.table_name).filter((t) => t !== "_prisma_migrations");
     const missing = EXPECTED_TABLES.filter((t) => !tables.includes(t));
-    record(3, "29 tabelas esperadas", tables.length === 29 && missing.length === 0,
+    record(3, "31 tabelas esperadas", tables.length === 31 && missing.length === 0,
       `encontradas ${tables.length}${missing.length ? ", faltando " + missing.join(",") : ""}`);
 
-    // 4. 14 enums esperados (13 + TmdbEntityKind do P0-00a)
+    // 4. 15 enums esperados (13 + TmdbEntityKind do P0-00a + SourceLicenseContentType do hardening 2026-07)
     const enums = (await q<{ typname: string }>(
       "SELECT typname FROM pg_type WHERE typtype='e' AND typnamespace='public'::regnamespace",
     )).map((r) => r.typname);
     const missingEnums = EXPECTED_ENUMS.filter((e) => !enums.includes(e));
-    record(4, "14 enums esperados", enums.length === 14 && missingEnums.length === 0,
+    record(4, "15 enums esperados", enums.length === 15 && missingEnums.length === 0,
       `encontrados ${enums.length}${missingEnums.length ? ", faltando " + missingEnums.join(",") : ""}`);
 
     // 5/6/7. languages
@@ -165,14 +170,20 @@ async function runChecks(url: string): Promise<void> {
     }
 
     // 12. slug canonico: unique parcial barra 2o canonico
-    await exec("INSERT INTO slugs (entity_type, entity_id, language_code, slug, is_canonical, updated_at) VALUES ('movie', 1, 'pt-BR', 'slug-a', true, now())");
+    // Entidade REAL necessaria: as tabelas polimorficas agora tem FK composta
+    // para `entities` (hardening 2026-07); entity_id=1 solto nao existe mais.
+    const seedMovieRow = (await q<{ id: bigint }>(
+      "INSERT INTO movies (tmdb_id, title_original, updated_at) VALUES (900001, 'Validation Movie', now()) RETURNING id",
+    ))[0];
+    const movieId = Number(seedMovieRow.id);
+    await exec(`INSERT INTO slugs (entity_type, entity_id, language_code, slug, is_canonical, updated_at) VALUES ('movie', ${movieId}, 'pt-BR', 'slug-a', true, now())`);
     await expectViolation(12, "indice unico parcial de slug canonico",
-      "INSERT INTO slugs (entity_type, entity_id, language_code, slug, is_canonical, updated_at) VALUES ('movie', 1, 'pt-BR', 'slug-b', true, now())");
+      `INSERT INTO slugs (entity_type, entity_id, language_code, slug, is_canonical, updated_at) VALUES ('movie', ${movieId}, 'pt-BR', 'slug-b', true, now())`);
 
     // 13. job ativo: unique parcial barra 2o ativo
-    await exec("INSERT INTO entity_writer_jobs (entity_type, entity_id, language_code, job_type, status, updated_at) VALUES ('movie', 1, 'pt-BR', 'generate_block', 'queued', now())");
+    await exec(`INSERT INTO entity_writer_jobs (entity_type, entity_id, language_code, job_type, status, updated_at) VALUES ('movie', ${movieId}, 'pt-BR', 'generate_block', 'queued', now())`);
     await expectViolation(13, "indice unico parcial de job ativo",
-      "INSERT INTO entity_writer_jobs (entity_type, entity_id, language_code, job_type, status, updated_at) VALUES ('movie', 1, 'pt-BR', 'generate_block', 'queued', now())");
+      `INSERT INTO entity_writer_jobs (entity_type, entity_id, language_code, job_type, status, updated_at) VALUES ('movie', ${movieId}, 'pt-BR', 'generate_block', 'queued', now())`);
 
     // 14. redirect from_path <> to_path
     await expectViolation(14, "CHECK redirect from_path <> to_path",
@@ -180,7 +191,8 @@ async function runChecks(url: string): Promise<void> {
 
     // 15. watch price exige currency
     await expectViolation(15, "CHECK watch price/currency",
-      "INSERT INTO watch_availability (entity_type, entity_id, country_code, provider_name, offer_type, price, updated_at) VALUES ('movie', 1, 'BR', 'TestProv', 'rent', 9.90, now())");
+      `INSERT INTO watch_availability (entity_type, entity_id, country_code, provider_name, offer_type, price, updated_at) VALUES ('movie', ${movieId}, 'BR', 'TestProv', 'rent', 9.90, now())`);
+
 
     // 16. FK composta episodes(season_id, tv_show_id) -> seasons(id, tv_show_id)
     const tv = (await q<{ id: bigint }>("INSERT INTO tv_shows (tmdb_id, name_original, updated_at) VALUES (999001, 'Test Show', now()) RETURNING id"))[0];
@@ -215,6 +227,104 @@ async function runChecks(url: string): Promise<void> {
       "SELECT count(*) AS c FROM information_schema.columns WHERE table_name='seasons' AND column_name='season_number'",
     ))[0].c);
     record(18, "seasons TEM coluna season_number", seSeasonNum === 1, `colunas season_number em seasons: ${seSeasonNum}`);
+
+    // ============================================================
+    // Data governance hardening (2026-07) — checks 19+
+    // ============================================================
+
+    // 19. trigger de insert: `entities` e populada automaticamente ao criar movie/tv/season/episode
+    const entityRows = await q<{ entity_type: string; entity_id: bigint }>(
+      `SELECT entity_type, entity_id FROM entities WHERE (entity_type = 'movie' AND entity_id = ${movieId})
+          OR (entity_type = 'tv' AND entity_id = ${tvId})
+          OR (entity_type = 'season' AND entity_id = ${seasonId})`,
+    );
+    record(19, "trigger populate entities on insert", entityRows.length === 3,
+      `esperado 3 linhas (movie/tv/season), encontrado ${entityRows.length}`);
+
+    // 20. FK composta bloqueia referencia polimorfica orfa (entidade inexistente).
+    // Usa um person_id REAL (isola o teste na FK de entities; um person_id
+    // tambem invalido violaria a FK de people e mascararia o que estamos testando).
+    const seedPersonRow = (await q<{ id: bigint }>(
+      "INSERT INTO people (tmdb_id, name, updated_at) VALUES (900001, 'Validation Person', now()) RETURNING id",
+    ))[0];
+    const personId = Number(seedPersonRow.id);
+    await expectViolation(20, "FK entities barra orfao em cast_members",
+      `INSERT INTO cast_members (person_id, entity_type, entity_id, updated_at) VALUES (${personId}, 'movie', 999999999, now())`,
+    );
+
+    // 21. trigger de delete + FK RESTRICT: nao da pra apagar uma entidade que ainda tem dependente polimorfico
+    await expectViolation(21, "entities RESTRICT barra delete de movie com slug dependente",
+      `DELETE FROM movies WHERE id = ${movieId}`,
+    );
+
+    // 22. source_licenses: content_type default 'rating' + rating_source_key FK real (RatingSource != ApiProvider)
+    const imdbLicense = (await q<{ content_type: string; rating_source_key: string | null; provider_key: string | null }>(
+      "SELECT content_type, rating_source_key, provider_key FROM source_licenses WHERE source_key = 'imdb'",
+    ))[0];
+    record(22, "source_licenses.imdb: content_type=rating e rating_source_key=imdb",
+      imdbLicense?.content_type === "rating" && imdbLicense?.rating_source_key === "imdb",
+      `content_type=${imdbLicense?.content_type}, rating_source_key=${imdbLicense?.rating_source_key}`);
+
+    // 23. source_licenses: chave natural funcional barra duplicata (source_key+content_type+provider/territorio)
+    await expectViolation(23, "chave natural funcional de source_licenses",
+      "INSERT INTO source_licenses (source_key, content_type, rating_source_key, updated_at) VALUES ('imdb', 'rating', 'imdb', now())",
+    );
+
+    // 24. source_licenses: CHECK exige rating_source_key quando content_type='rating'
+    await expectViolation(24, "CHECK source_licenses_rating_requires_source",
+      "INSERT INTO source_licenses (source_key, content_type, updated_at) VALUES ('imdb_v2', 'rating', now())",
+    );
+
+    // 25. watch_availability: chave natural cai para provider_name quando provider_key falta
+    //     (duas plataformas SEM provider_key para a mesma entidade/pais/modalidade sao ofertas DISTINTAS)
+    await exec(`INSERT INTO watch_availability (entity_type, entity_id, country_code, provider_name, offer_type, updated_at) VALUES ('movie', ${movieId}, 'BR', 'Max', 'subscription', now())`);
+    let distinctProvidersOk = false;
+    try {
+      await exec(`INSERT INTO watch_availability (entity_type, entity_id, country_code, provider_name, offer_type, updated_at) VALUES ('movie', ${movieId}, 'BR', 'Prime Video', 'subscription', now())`);
+      distinctProvidersOk = true;
+    } catch (e) {
+      record(25, "watch_availability natural key: plataformas distintas sem provider_key nao colidem", false,
+        `INSERT legitimo REJEITADO: ${(e as Error).message.split("\n")[0]}`);
+    }
+    if (distinctProvidersOk) {
+      await expectViolation(25, "watch_availability natural key: mesma plataforma/oferta duplicada e barrada",
+        `INSERT INTO watch_availability (entity_type, entity_id, country_code, provider_name, offer_type, updated_at) VALUES ('movie', ${movieId}, 'BR', 'Max', 'subscription', now())`,
+      );
+    }
+
+    // 26. page_indexability_decisions: so 1 decisao "vigente" por entidade/idioma; historico preservado
+    await exec(`INSERT INTO page_indexability_decisions (entity_type, entity_id, language_code, url, decision) VALUES ('movie', ${movieId}, 'pt-BR', '/pt/filmes/validation-movie/', 'index')`);
+    await expectViolation(26, "indice unico parcial de decisao vigente (is_current)",
+      `INSERT INTO page_indexability_decisions (entity_type, entity_id, language_code, url, decision) VALUES ('movie', ${movieId}, 'pt-BR', '/pt/filmes/validation-movie/', 'index')`,
+    );
+    let historyOk = false;
+    try {
+      await exec(`INSERT INTO page_indexability_decisions (entity_type, entity_id, language_code, url, decision, is_current) VALUES ('movie', ${movieId}, 'pt-BR', '/pt/filmes/validation-movie/', 'noindex', false)`);
+      historyOk = true;
+    } catch {
+      // Falha ja e refletida por historyOk=false abaixo; nada a fazer aqui.
+    }
+    record(27, "historico preservado: linha is_current=false coexiste com a vigente", historyOk,
+      historyOk ? "insercao historica aceita" : "insercao historica REJEITADA (deveria ser aceita)");
+
+    // 28. Concorrencia: 2 inserts SIMULTANEOS tentando ser is_current=true para o MESMO
+    // (entity_type, entity_id, language_code) -> exatamente 1 deve vencer.
+    const concurrent = await Promise.allSettled([
+      exec(`INSERT INTO page_indexability_decisions (entity_type, entity_id, language_code, url, decision, is_current) VALUES ('movie', ${movieId}, 'en', '/en/movies/validation-movie/', 'draft', true)`),
+      exec(`INSERT INTO page_indexability_decisions (entity_type, entity_id, language_code, url, decision, is_current) VALUES ('movie', ${movieId}, 'en', '/en/movies/validation-movie/', 'draft', true)`),
+    ]);
+    const fulfilledCount = concurrent.filter((r) => r.status === "fulfilled").length;
+    record(28, "concorrencia: so 1 decisao concorrente vira is_current", fulfilledCount === 1,
+      `insercoes aceitas=${fulfilledCount}/2`);
+
+    // 29. articles: CHECK barra category/author_name vazios (nao apenas NULL)
+    await expectViolation(29, "CHECK articles_category_not_empty",
+      "INSERT INTO articles (category, updated_at) VALUES ('', now())",
+    );
+
+    // 30. entity_reference_orphans existe (quarentena auditavel, ainda vazia neste banco fresco)
+    const orphanCount = Number((await q<{ c: bigint }>("SELECT count(*) AS c FROM entity_reference_orphans"))[0].c);
+    record(30, "entity_reference_orphans existe e comeca vazia (banco fresco)", orphanCount === 0, `linhas=${orphanCount}`);
   } finally {
     await prisma.$disconnect();
   }
