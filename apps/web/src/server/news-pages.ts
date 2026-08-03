@@ -45,6 +45,24 @@ import type { IndexabilityResult } from "@screena/seo";
 const LANGUAGE_CODE = "pt-BR";
 const NEWS_INDEX_PATH = "/pt/noticias/";
 
+/**
+ * Colunas do asset de capa (`editorial_media_assets`) que o render consome.
+ *
+ * SO estas quatro. A linha tem licenca, hash, chave de storage e MIME — nada
+ * disso e assunto de render, e trazer coluna a mais numa listagem sem `take`
+ * (ver `getNewsIndexData`) multiplica payload por artigo publicado.
+ *
+ * Custo: `heroMediaAsset` e relacao to-one e o schema NAO liga o preview
+ * `relationJoins`, entao o Prisma resolve com UMA consulta extra em lote
+ * (`WHERE id IN (...)`) por chamada — nao um SELECT por artigo. Sem N+1.
+ */
+const HERO_MEDIA_SELECT = {
+  alt: true,
+  credit: true,
+  width: true,
+  height: true,
+} as const;
+
 export interface NewsIndexData {
   view: NewsIndexView;
   indexability: IndexabilityResult;
@@ -101,6 +119,7 @@ export const getNewsIndexData = cache(async (): Promise<NewsIndexData> => {
           requiresLinkback: true,
           sourceName: true,
           sourceUrl: true,
+          heroMediaAsset: { select: HERO_MEDIA_SELECT },
         },
       },
     },
@@ -110,6 +129,7 @@ export const getNewsIndexData = cache(async (): Promise<NewsIndexData> => {
     authorName: row.article.authorName,
     category: row.article.category,
     heroImagePath: row.article.heroImagePath,
+    heroMedia: row.article.heroMediaAsset,
     articlePublishedAtIso: isoDate(row.article.publishedAt),
     readTimeMinutes: row.article.readTimeMinutes,
     licenseStatus: String(row.article.licenseStatus),
@@ -175,6 +195,7 @@ export const getNewsArticleData = cache(
             displayAllowed: true,
             requiresAttribution: true,
             requiresLinkback: true,
+            heroMediaAsset: { select: HERO_MEDIA_SELECT },
           },
         },
       },
@@ -223,6 +244,7 @@ export const getNewsArticleData = cache(
         authorName: translation.article.authorName,
         category: translation.article.category,
         heroImagePath: translation.article.heroImagePath,
+        heroMedia: translation.article.heroMediaAsset,
         articlePublishedAtIso: isoDate(translation.article.publishedAt),
         readTimeMinutes: translation.article.readTimeMinutes,
         aiAssisted: translation.article.aiAssisted,
@@ -591,6 +613,7 @@ async function resolveReadAlso(
           requiresLinkback: true,
           sourceName: true,
           sourceUrl: true,
+          heroMediaAsset: { select: HERO_MEDIA_SELECT },
         },
       },
     },
@@ -604,6 +627,7 @@ async function resolveReadAlso(
         authorName: row.article.authorName,
         category: row.article.category,
         heroImagePath: row.article.heroImagePath,
+        heroMedia: row.article.heroMediaAsset,
         articlePublishedAtIso: isoDate(row.article.publishedAt),
         readTimeMinutes: row.article.readTimeMinutes,
         licenseStatus: String(row.article.licenseStatus),

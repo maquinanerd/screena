@@ -82,3 +82,54 @@ describe('governanca: /media/editorial e servido pelo screen-app', () => {
     expect(/from\s+["']@screena\/db/.test(source)).toBe(false)
   })
 })
+
+/* ------------------------------------------------------------------ */
+/* Fiacao do render: credito e alt da capa                             */
+/* ------------------------------------------------------------------ */
+
+const NEWS_INDEX_PAGE = resolve(ROOT, 'apps', 'web', 'app', 'pt', 'noticias', 'page.tsx')
+const NEWS_ARTICLE_PAGE = resolve(ROOT, 'apps', 'web', 'app', 'pt', 'noticias', '[slug]', 'page.tsx')
+
+/**
+ * Nao ha testing-library nem ambiente DOM neste repositorio, entao a asserção e
+ * sobre o FONTE, nao sobre HTML renderizado. E menos do que um teste de render
+ * daria — mas pega exatamente a regressao que existia: o valor era calculado
+ * pelo presenter e o JSX o descartava. O valor em si tem teste proprio em
+ * `tests/web/news-hero-media.test.ts`.
+ */
+describe('governanca: a capa editorial e atribuida e descrita', () => {
+  it('o hero da materia RENDERIZA o credito da capa', async () => {
+    const source = await readFile(NEWS_ARTICLE_PAGE, 'utf-8')
+    expect(
+      /heroImage\?\.credit|heroImage\.credit/.test(source),
+      'requires_attribution e true e a pagina precisa atribuir (invariante 6)',
+    ).toBe(true)
+    // Reusa o estilo de credito que ja existe para imagem de corpo, em vez de
+    // inventar classe nova.
+    expect(source).toContain('art-figure__credit')
+  })
+
+  it('o hero da materia MANTEM alt vazio — decisao consciente, nao esquecimento', async () => {
+    const source = await readFile(NEWS_ARTICLE_PAGE, 'utf-8')
+    const heroStart = source.indexOf('art-hero__img')
+    expect(heroStart, 'bloco do hero nao encontrado').toBeGreaterThan(-1)
+    const heroBlock = source.slice(heroStart, heroStart + 400)
+    expect(
+      heroBlock.includes('alt=""'),
+      'com scrim e manchete em texto por cima, a capa e decorativa: alt vazio e o correto',
+    ).toBe(true)
+  })
+
+  it('NENHUM card da listagem usa alt vazio fixo', async () => {
+    const source = await readFile(NEWS_INDEX_PAGE, 'utf-8')
+    // No card a imagem e o unico identificador visual do link; alt fixo vazio
+    // deixava os quatro layouts mudos para leitor de tela.
+    expect(source).not.toContain('alt=""')
+    expect(/alt=\{[^}]*\.alt\s*\?\?\s*''\}/.test(source)).toBe(true)
+  })
+
+  it('o "Leia tambem" da materia usa a mesma regra dos cards', async () => {
+    const source = await readFile(NEWS_ARTICLE_PAGE, 'utf-8')
+    expect(/alt=\{item\.image\.alt\s*\?\?\s*''\}/.test(source)).toBe(true)
+  })
+})
