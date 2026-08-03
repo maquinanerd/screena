@@ -11,8 +11,17 @@ Payload media (aprovada por humano)
    -> worker: valida assinatura, MIME real, dimensoes e hash
    -> storage: editorial/<xx>/<sha256>.<ext>   (chave derivada do CONTEUDO)
    -> screen-db: editorial_media_assets + articles.hero_image_path
-   -> apps/web: le /media/editorial/... como qualquer imagem local
+   -> apps/web: rota /media/editorial/** casa public_path -> le storage_key
 ```
+
+A ultima seta e um **route handler**
+([`apps/web/app/media/editorial/[...key]/route.ts`](../../apps/web/app/media/editorial/%5B...key%5D/route.ts)),
+nao um arquivo em `public/`. A distincao importa: com driver `s3` os bytes nunca
+tocam o disco do screen-app, entao servir estaticamente e impossivel por
+construcao. A rota casa o caminho da URL com a linha de `editorial_media_assets`
+e le o objeto apontado pela coluna `storage_key` — **a URL nunca vira chave de
+storage**. Config e assimetrias em
+[`easypanel-deployment-checkpoint.md` §12.1](./easypanel-deployment-checkpoint.md).
 
 O worker **nunca** baixa de uma URL. O contrato carrega `media[].url`, e ela e
 deliberadamente ignorada: seguir um link escrito por um editor, vindo do MNScr ou
