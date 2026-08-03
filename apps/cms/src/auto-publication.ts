@@ -5,16 +5,32 @@
  * nada, nao consulta banco e nao chama rede: recebe fatos ja coletados e devolve
  * um dos quatro desfechos.
  *
- * OS QUATRO DESFECHOS EXISTEM PARA NAO COLAPSAR CAUSAS DIFERENTES:
+ * OS CINCO DESFECHOS EXISTEM PARA NAO COLAPSAR CAUSAS DIFERENTES:
  *
  *   PUBLISHED         publicou.
- *   ROUTED_TO_REVIEW  conteudo bom, decisao humana necessaria. NADA publico.
+ *   ROUTED_TO_REVIEW  conteudo bom, decisao humana necessaria. Fica PERSISTIDO
+ *                     em `needs_review` — ha o que revisar.
+ *   DEFERRED          conteudo bom, teto do dia esgotado. NADA foi persistido;
+ *                     reenviar depois da janela publica.
  *   BLOCKED           erro permanente. Reenviar igual nao adianta.
  *   CONFLICT          o pedido nao encaixa no estado atual (revisao antiga,
  *                     idempotencia divergente, contrato incompativel).
  *
  * Transformar tudo em "vira draft" apagaria a diferenca entre "revise isto" e
  * "seu pipeline esta quebrado" — e o produtor ficaria reenviando para sempre.
+ *
+ * POR QUE `DEFERRED` NAO E `ROUTED_TO_REVIEW`.
+ *
+ * Os dois nasciam com o mesmo rotulo e significavam o oposto. `ROUTED_TO_REVIEW`
+ * PERSISTE a materia em `needs_review`: existe algo na fila, um editor abre e
+ * decide. Teto esgotado nao persiste nada — a reserva de quota falha DENTRO da
+ * transacao e o rollback leva junto o artigo que ainda nem tinha sido criado.
+ * Responder "encaminhado para revisao" ali era mandar o produtor esperar por uma
+ * revisao que nunca apareceria numa fila vazia, e `shouldRetry` mandava nao
+ * retentar. O conteudo evaporava em silencio, com 202 na resposta.
+ *
+ * `DEFERRED` diz a verdade: nao foi recusado, foi adiado; nada existe do nosso
+ * lado; volte depois de `nextEligibleAt`.
  */
 
 import {
@@ -30,6 +46,7 @@ import { type AuthorAuthorization } from './author-automation.js'
 export const PUBLICATION_OUTCOMES = [
   'PUBLISHED',
   'ROUTED_TO_REVIEW',
+  'DEFERRED',
   'BLOCKED',
   'CONFLICT',
 ] as const
@@ -431,20 +448,55 @@ export function decideAutoPublication(input: PublicationGateInput): PublicationD
 /** Codigo HTTP de cada desfecho. */
 export function outcomeHttpStatus(outcome: PublicationOutcome): number {
   if (outcome === 'PUBLISHED') return 201
-  // 202: aceito e guardado, aguardando decisao humana. Nao e erro do produtor.
+  // 202: aceito e GUARDADO, aguardando decisao humana. Nao e erro do produtor.
   if (outcome === 'ROUTED_TO_REVIEW') return 202
+  // 429: o pedido estava certo; o que faltou foi cota. E literalmente o caso que
+  // "Too Many Requests" descreve, e e o unico status que o produtor ja sabe ler
+  // como "reduza o ritmo e volte", com `Retry-After` junto.
+  if (outcome === 'DEFERRED') return 429
   if (outcome === 'CONFLICT') return 409
   return 422
 }
 
 /**
- * O produtor deve tentar de novo?
+ * O produtor deve tentar de novo com o MESMO pedido?
+ *
+ * So `DEFERRED`. Ali nada foi persistido e nada foi consumido: a janela vira
+ * sozinha e o reenvio publica. Sem isto o produtor trataria "adiado" como
+ * "resolvido" e a materia sumiria — foi exatamente o que acontecia enquanto teto
+ * esgotado respondia `ROUTED_TO_REVIEW`.
  *
  * `BLOCKED` nunca: o pedido tem defeito e reenviar igual repete o defeito.
  * `CONFLICT` tampouco sem mudar algo — mas a mudanca e do lado dele (revisao
- * nova, contrato atualizado). `ROUTED_TO_REVIEW` nao e falha: nao ha o que
- * retentar, ha o que esperar.
+ * nova, contrato atualizado). `ROUTED_TO_REVIEW` nao e falha: o conteudo ESTA
+ * guardado, nao ha o que retentar, ha o que esperar. `PUBLISHED` ja terminou.
  */
-export function shouldRetry(): boolean {
-  return false
+export function shouldRetry(outcome: PublicationOutcome): boolean {
+  return outcome === 'DEFERRED'
+}
+
+/**
+ * `Retry-After`, em segundos, a partir do instante em que a resposta foi montada.
+ *
+ * Deriva do MESMO `nextEligibleAt` que vai no corpo: dois relogios independentes
+ * na mesma resposta se contradiriam, e o produtor nao teria como saber em qual
+ * acreditar.
+ *
+ * Arredonda para CIMA: um segundo a menos devolveria o produtor antes da virada,
+ * e ele levaria outro 429 imediato. Piso de 1s pelo mesmo motivo — `0` convida a
+ * um laco quente contra a mesma parede.
+ *
+ * `null` quando nao ha horario a prometer (`article_update`) ou quando a data e
+ * ilegivel: nesses casos o header simplesmente nao e emitido. Emitir um
+ * `Retry-After` invalido e pior do que nao emitir nenhum.
+ */
+export function retryAfterSeconds(
+  nextEligibleAtIso: string | null,
+  nowIso: string,
+): number | null {
+  if (nextEligibleAtIso === null) return null
+  const target = Date.parse(nextEligibleAtIso)
+  const now = Date.parse(nowIso)
+  if (!Number.isFinite(target) || !Number.isFinite(now)) return null
+  return Math.max(1, Math.ceil((target - now) / 1000))
 }
