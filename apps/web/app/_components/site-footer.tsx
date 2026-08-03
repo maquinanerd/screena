@@ -1,11 +1,16 @@
 import type { ReactNode } from 'react'
 
 import { HOME_HREF, NAV_ITEMS, SECONDARY_NAV_ITEMS } from '../../src/lib/navigation'
+import { PRIVACY_PATH, TERMS_PATH } from '../../src/lib/routes'
 
 /**
  * SiteFooter — rodape CLARO editorial do design canonico (footer claro por
  * regra transversal do handoff: overlay escuro so em midia/hero, DD-20).
  * Wordmark aprovada + rotas reais + atribuicao obrigatoria do TMDB.
+ *
+ * Os documentos legais ficam numa linha PROPRIA, separada da navegacao de
+ * produto: sao o destino do aceite obrigatorio do cadastro e precisam estar
+ * alcancaveis de qualquer pagina, nao diluidos entre Filmes/Series/Listas.
  */
 export function SiteFooter(): ReactNode {
   return (
@@ -39,6 +44,16 @@ export function SiteFooter(): ReactNode {
             </ul>
           </nav>
         </div>
+        <nav aria-label="Documentos legais">
+          <ul className="site-footer__legal">
+            <li>
+              <a href={TERMS_PATH}>Termos de Uso</a>
+            </li>
+            <li>
+              <a href={PRIVACY_PATH}>Política de Privacidade</a>
+            </li>
+          </ul>
+        </nav>
         <p className="site-footer__attribution">
           Este produto usa a API do TMDB, mas não é endossado ou certificado pelo TMDB.
         </p>

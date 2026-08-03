@@ -32,6 +32,15 @@ export const LISTS_PATH = `/${PT_LOCALE_SEGMENT}/listas/`;
 /** Caminho do hub "Onde assistir" (com barra final). */
 export const WATCH_PATH = `/${PT_LOCALE_SEGMENT}/onde-assistir/`;
 
+/**
+ * Documentos legais. Sao os destinos dos dois links do aceite OBRIGATORIO do
+ * cadastro (`app/pt/criar-conta/signup-form.tsx`): exigir o aceite e apontar
+ * para uma rota inexistente e o pior dos dois mundos, entao estes caminhos
+ * existem como constante para que o formulario e as paginas nunca divirjam.
+ */
+export const TERMS_PATH = `/${PT_LOCALE_SEGMENT}/termos/`;
+export const PRIVACY_PATH = `/${PT_LOCALE_SEGMENT}/privacidade/`;
+
 /** Caminho canonico (relativo) da pagina de um filme, com barra final. */
 export function moviePath(slug: string): string {
   return `/${PT_LOCALE_SEGMENT}/filmes/${slug}/`;
