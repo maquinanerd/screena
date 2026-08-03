@@ -2,6 +2,8 @@
 
 import { useState } from 'react'
 
+import { PRIVACY_PATH, TERMS_PATH } from '../../../src/lib/routes'
+
 /**
  * Formulario de cadastro (C7D).
  *
@@ -122,8 +124,8 @@ export function SignupForm(): React.ReactElement {
             type="checkbox"
           />
           <span>
-            Li e aceito os <a href="/pt/termos">Termos de Uso</a> e a{' '}
-            <a href="/pt/privacidade">Política de Privacidade</a>.
+            Li e aceito os <a href={TERMS_PATH}>Termos de Uso</a> e a{' '}
+            <a href={PRIVACY_PATH}>Política de Privacidade</a>.
           </span>
         </label>
 
