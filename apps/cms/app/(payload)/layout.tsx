@@ -11,6 +11,7 @@ import type { ServerFunctionClient } from 'payload'
 import React from 'react'
 
 import { importMap } from './admin/importMap.js'
+import './custom.scss'
 
 const serverFunction: ServerFunctionClient = async function (args) {
   'use server'

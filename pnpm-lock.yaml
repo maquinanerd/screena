@@ -94,6 +94,9 @@ importers:
       '@payloadcms/storage-s3':
         specifier: 3.86.0
         version: 3.86.0(@types/react@19.2.17)(monaco-editor@0.56.0)(next@15.4.11(@playwright/test@1.62.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(sass@1.77.4))(payload@3.86.0(graphql@16.14.2)(typescript@5.9.3))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.3)
+      '@payloadcms/ui':
+        specifier: 3.86.0
+        version: 3.86.0(@types/react@19.2.17)(monaco-editor@0.56.0)(next@15.4.11(@playwright/test@1.62.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(sass@1.77.4))(payload@3.86.0(graphql@16.14.2)(typescript@5.9.3))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.3)
       '@screena/editorial-contracts':
         specifier: workspace:*
         version: link:../../packages/editorial-contracts

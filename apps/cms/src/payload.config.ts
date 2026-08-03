@@ -90,7 +90,16 @@ export default buildConfig({
   serverURL: process.env.PAYLOAD_PUBLIC_SERVER_URL ?? 'http://localhost:3002',
   admin: {
     user: 'editorial-users',
+    theme: 'light',
+    dateFormat: 'dd/MM/yyyy HH:mm',
     importMap: { baseDir: path.resolve(dirname, '..') },
+    components: {
+      graphics: {
+        Icon: '/src/admin/CinerieIcon',
+        Logo: '/src/admin/CinerieLogo',
+      },
+      beforeDashboard: ['/src/admin/EditorialDashboard'],
+    },
   },
   collections,
   editor: lexicalEditor(),
