@@ -52,6 +52,18 @@ function Segment({ segment }: { segment: ArticleBodyTextSegment }) {
   return node
 }
 
+/**
+ * Rótulo pt-BR do crédito de imagem — FONTE ÚNICA da página.
+ *
+ * Exportado porque a capa (hero) e as imagens de corpo creditam a mesma coisa e
+ * não podem divergir: crédito é obrigação de atribuição (invariante 6), e duas
+ * grafias para a mesma obrigação é o começo de uma sumir numa refatoração.
+ * Fica aqui — junto de `PROVIDER_LABELS` e do JSX que já renderiza crédito —
+ * seguindo a convenção do app: rótulo de UI é `const` de módulo no componente
+ * que o desenha, não string solta no meio do JSX.
+ */
+export const IMAGE_CREDIT_LABEL = 'Crédito'
+
 function Block({ block }: { block: ArticleBodyBlock }) {
   switch (block.kind) {
     case 'paragraph':
@@ -88,11 +100,20 @@ function Block({ block }: { block: ArticleBodyBlock }) {
               {...(block.image.height === null ? {} : { height: block.image.height })}
             />
           </div>
+          {/* Legenda e crédito no MESMO bloco, nessa ordem: a legenda descreve,
+              o crédito atribui. Os quatro casos são explícitos porque três deles
+              produziam resíduo: sem nenhum dos dois o `figcaption` inteiro não
+              existe (nada de caixa vazia embaixo da imagem); só crédito não
+              ganha separador pendurado; só legenda não ganha o rótulo
+              "Crédito:" órfão. */}
           {block.image.caption !== null || block.image.credit !== null ? (
             <figcaption className="art-figure__caption">
               {block.image.caption}
+              {block.image.caption !== null && block.image.credit !== null ? ' ' : null}
               {block.image.credit !== null ? (
-                <span className="art-figure__credit">{block.image.credit}</span>
+                <span className="art-figure__credit">
+                  {IMAGE_CREDIT_LABEL}: {block.image.credit}
+                </span>
               ) : null}
             </figcaption>
           ) : null}

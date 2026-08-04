@@ -104,9 +104,41 @@ describe('governanca: a capa editorial e atribuida e descrita', () => {
       /heroImage\?\.credit|heroImage\.credit/.test(source),
       'requires_attribution e true e a pagina precisa atribuir (invariante 6)',
     ).toBe(true)
-    // Reusa o estilo de credito que ja existe para imagem de corpo, em vez de
-    // inventar classe nova.
-    expect(source).toContain('art-figure__credit')
+    /*
+     * Guard ATUALIZADO DELIBERADAMENTE. A regra continua a mesma — a capa TEM
+     * de ser atribuida — mas o credito saiu do topo da coluna de leitura (onde
+     * ficava orfao, acima do primeiro paragrafo, sem imagem por perto) para o
+     * canto do proprio hero. Sobre o scrim, `art-figure__credit` seria texto
+     * `--c-text-muted-aa` (escuro) em cima de imagem escurecida: ilegivel.
+     * Por isso a classe propria.
+     */
+    expect(source).toContain('art-hero__credit')
+    // E fica DENTRO do hero: credito de imagem longe da imagem nao credita.
+    const heroStart = source.indexOf('className="art-hero"')
+    const bodyStart = source.indexOf('className="art-body"')
+    const creditAt = source.indexOf('art-hero__credit')
+    expect(heroStart).toBeGreaterThan(-1)
+    expect(bodyStart).toBeGreaterThan(heroStart)
+    expect(
+      creditAt > heroStart && creditAt < bodyStart,
+      'o credito precisa estar no bloco do hero, nao na coluna de leitura',
+    ).toBe(true)
+  })
+
+  it('o rotulo de credito e UM so na pagina inteira', async () => {
+    const article = await readFile(NEWS_ARTICLE_PAGE, 'utf-8')
+    const body = await readFile(
+      resolve(ROOT, 'apps', 'web', 'app', '_components', 'article-body.tsx'),
+      'utf-8',
+    )
+    // Capa e imagem de corpo creditam a MESMA coisa; duas grafias para a mesma
+    // obrigacao e o comeco de uma sumir numa refatoracao.
+    expect(body).toContain("export const IMAGE_CREDIT_LABEL = 'Crédito'")
+    expect(article).toContain('IMAGE_CREDIT_LABEL')
+    expect(
+      /['"`]Cr[ée]dito['"`:]/.test(article.replace(/IMAGE_CREDIT_LABEL/g, '')),
+      'rotulo de credito hardcoded fora da fonte unica',
+    ).toBe(false)
   })
 
   it('o hero da materia MANTEM alt vazio — decisao consciente, nao esquecimento', async () => {

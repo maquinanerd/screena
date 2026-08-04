@@ -381,6 +381,19 @@ dl {
   display: block;
 }
 
+/* Wordmark: as duas versoes estao no HTML, o CSS mostra uma. Padrao = solida. */
+.site-header__logo--inverse {
+  display: none;
+}
+
+.site-header[data-overlay='true'] .site-header__logo--solid {
+  display: none;
+}
+
+.site-header[data-overlay='true'] .site-header__logo--inverse {
+  display: block;
+}
+
 .site-header__news {
   font-size: 24px;
   font-weight: 800;
@@ -521,6 +534,73 @@ dl {
   .site-header__inner {
     padding-inline: var(--pad-page-mobile);
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Header sobre a capa da materia (tela 05)                            */
+/*                                                                     */
+/* Blocos SEPARADOS dos de `[data-overlay='true']` de proposito: um    */
+/* seletor invalido invalida a LISTA inteira, entao juntar `:has()` as */
+/* regras da home derrubaria o overlay da home em browser sem `:has()`.*/
+/* Separados, o browser antigo ignora so estes — e a materia fica com  */
+/* a barra solida de sempre, que e legivel em qualquer cenario.        */
+/*                                                                     */
+/* O gatilho e o HTML do SERVIDOR (`data-hero-media`), nao JS: assim   */
+/* materia SEM capa — pagina clara — jamais nasce com menu branco. O   */
+/* JS so acrescenta `data-past-hero` para voltar ao solido.            */
+/* ------------------------------------------------------------------ */
+
+body:has(.art-hero[data-hero-media='true']) .site-header:not([data-past-hero='true']) {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-bottom-width: 0;
+  border-bottom-color: transparent;
+  color: #fff;
+}
+
+body:has(.art-hero[data-hero-media='true'])
+  .site-header:not([data-past-hero='true'])
+  .site-header__link {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+body:has(.art-hero[data-hero-media='true'])
+  .site-header:not([data-past-hero='true'])
+  .site-header__link[aria-current='page'] {
+  color: #fff;
+}
+
+body:has(.art-hero[data-hero-media='true'])
+  .site-header:not([data-past-hero='true'])
+  .site-header__icon-link {
+  color: #fff;
+}
+
+body:has(.art-hero[data-hero-media='true'])
+  .site-header:not([data-past-hero='true'])
+  .site-header__avatar {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+body:has(.art-hero[data-hero-media='true'])
+  .site-header:not([data-past-hero='true'])
+  .site-header__logo--solid {
+  display: none;
+}
+
+body:has(.art-hero[data-hero-media='true'])
+  .site-header:not([data-past-hero='true'])
+  .site-header__logo--inverse {
+  display: block;
+}
+
+/* O spacer existe para o conteudo nao nascer embaixo da barra fixa. Com capa
+   full-bleed ele e justamente o que impede a imagem de encostar no topo. Some
+   por CSS (e nao removendo o spacer no componente) porque a decisao mora no
+   HTML da PAGINA, e o header nao sabe se a materia tem capa. */
+body:has(.art-hero[data-hero-media='true']) .site-header__spacer {
+  display: none;
 }
 
 /* ------------------------------------------------------------------ */
@@ -3930,15 +4010,37 @@ a.tabs__tab[aria-current='page'] {
 }
 
 /* ------------------------------------------------------------------ */
-/* Artigo (tela 05) — hero escuro 880 + corpo 720 + ficha + leia também */
+/* Artigo (tela 05) — hero de capa full-bleed + corpo 720 + ficha       */
+/*                                                                     */
+/* DOIS estados, e o segundo nao e degradacao:                         */
+/*  - COM capa (`[data-hero-media]`): imagem em toda a largura da       */
+/*    viewport, escurecida por scrim, texto branco por cima, header     */
+/*    transparente. E a excecao sancionada ao tema claro — e imagem,    */
+/*    nao bloco escuro de layout.                                       */
+/*  - SEM capa: tema claro do site. Titulo escuro na coluna de leitura, */
+/*    header solido. Materia de fonte RSS costuma nao ter imagem, entao */
+/*    esse caso e comum, nao raro.                                      */
 /* ------------------------------------------------------------------ */
 
 .art-hero {
   position: relative;
   width: 100%;
-  min-height: 560px;
   overflow: hidden;
-  background: #0a0708;
+}
+
+/* Altura da capa.
+   `68vh` mede ~70% da tela (a referencia) e deixa o inicio do texto DENTRO da
+   primeira dobra em toda viewport comum: 1920x1080 -> 643px de hero e ~300px de
+   corpo visivel. `100vh` faria a dobra inteira ser imagem.
+   O piso de 520px protege telas baixas (notebook 1366x768 em janela reduzida),
+   onde 68vh nao caberia nem o proprio texto do hero; o teto de 720px impede que
+   monitor 1440p transforme a capa numa parede de 900px. Como e `min-height`, um
+   titulo longo ainda faz o hero crescer. */
+.art-hero[data-hero-media='true'] {
+  display: flex;
+  flex-direction: column;
+  min-height: clamp(520px, 68vh, 720px);
+  background: var(--c-bg-hero);
   color: #fff;
 }
 
@@ -3947,6 +4049,8 @@ a.tabs__tab[aria-current='page'] {
   inset: 0;
 }
 
+/* `cover`: preenche recortando. `contain` deformaria a moldura ou deixaria
+   barras, e a proporcao da capa vem de fonte externa — nunca e garantida. */
 .art-hero__img img {
   width: 100%;
   height: 100%;
@@ -3954,18 +4058,32 @@ a.tabs__tab[aria-current='page'] {
   display: block;
 }
 
-/* Scrim canônico do hero de artigo (legibilidade sobre a imagem) */
+/* Scrim: DUAS camadas, porque sao dois problemas diferentes.
+   1) Banda superior em PX (nao %): cobre a barra fixa de 72px e o breadcrumb
+      logo abaixo dela, na mesma altura independentemente do tamanho do hero.
+   2) Banda inferior em %: cobre data, titulo, resumo, assinatura e credito.
+   Somadas, a opacidade combinada nunca cai abaixo de ~0.66 em nenhum ponto do
+   hero — inclusive no meio, por onde o header transparente passa enquanto o
+   usuario rola. Dimensionado para o PIOR caso (capa inteiramente branca), nao
+   para uma foto escura de exemplo: as imagens vem do TMDB e de fontes RSS. */
 .art-hero__scrim {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: linear-gradient(
-    180deg,
-    rgba(5, 3, 3, 0.45) 0%,
-    rgba(5, 3, 3, 0) 30%,
-    rgba(5, 3, 3, 0.2) 60%,
-    rgba(5, 3, 3, 0.92) 100%
-  );
+  background:
+    linear-gradient(
+      180deg,
+      rgba(0, 0, 0, 0.75) 0,
+      rgba(0, 0, 0, 0.62) 190px,
+      rgba(0, 0, 0, 0) 340px
+    ),
+    linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.9) 0%,
+      rgba(0, 0, 0, 0.8) 38%,
+      rgba(0, 0, 0, 0.42) 66%,
+      rgba(0, 0, 0, 0) 100%
+    );
 }
 
 .art-hero__inner {
@@ -3975,55 +4093,83 @@ a.tabs__tab[aria-current='page'] {
   padding: 150px 40px 60px;
 }
 
+/* Breadcrumb encostado no topo, o resto do texto no rodape do hero — como na
+   referencia. Nao e so estetica: junta data/titulo/resumo/assinatura na faixa
+   onde o scrim e mais forte, em vez de espalhar texto pelo meio da imagem. */
+.art-hero[data-hero-media='true'] .art-hero__inner {
+  width: 100%;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.art-hero[data-hero-media='true'] .art-hero__text {
+  margin-top: auto;
+}
+
 .art-crumb {
   display: flex;
   align-items: center;
   gap: 9px;
   font-size: 11px;
   letter-spacing: 0.06em;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--c-text-muted-aa);
   margin-bottom: 28px;
+}
+
+/* 0.82 e nao 0.6: o breadcrumb fica na parte ALTA do hero, onde o scrim e mais
+   fraco que no rodape. Em 0.6 sobre capa clara ele media 2,1:1 — reprovado. */
+.art-hero[data-hero-media='true'] .art-crumb {
+  color: rgba(255, 255, 255, 0.82);
 }
 
 .art-crumb a {
   color: inherit;
 }
 
-.art-crumb [aria-current='page'] {
-  color: rgba(255, 255, 255, 0.9);
+.art-hero[data-hero-media='true'] .art-crumb [aria-current='page'] {
+  color: #fff;
 }
 
 .art-crumb__sep {
   opacity: 0.5;
 }
 
-.art-chip {
-  display: inline-block;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  background: var(--c-accent-movie-cta);
-  color: #fff;
-  padding: 7px 13px;
+.art-hero__date {
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  color: var(--c-text-secondary);
+  margin: 0 0 14px;
+}
+
+.art-hero[data-hero-media='true'] .art-hero__date {
+  color: rgba(255, 255, 255, 0.75);
 }
 
 .art-title {
   font-size: clamp(30px, 5vw, 52px);
   font-weight: 800;
   letter-spacing: -0.03em;
-  color: #fff;
+  color: var(--c-text-primary);
   line-height: 1.05;
-  margin: 22px 0 0;
+  margin: 0;
+}
+
+.art-hero[data-hero-media='true'] .art-title {
+  color: #fff;
   text-shadow: 0 4px 40px rgba(0, 0, 0, 0.5);
 }
 
 .art-deck {
   font-size: 18px;
   line-height: 1.55;
-  color: rgba(255, 255, 255, 0.82);
+  color: var(--c-text-secondary);
   margin: 22px 0 0;
   max-width: 62ch;
+}
+
+.art-hero[data-hero-media='true'] .art-deck {
+  color: rgba(255, 255, 255, 0.82);
 }
 
 .art-byline {
@@ -4033,7 +4179,29 @@ a.tabs__tab[aria-current='page'] {
   gap: 10px 16px;
   margin-top: 30px;
   font-size: 12px;
+  color: var(--c-text-secondary);
+}
+
+.art-hero[data-hero-media='true'] .art-byline {
   color: rgba(255, 255, 255, 0.7);
+}
+
+/* Credito da capa: canto inferior DIREITO, sobre o trecho mais escuro do scrim.
+   Ancorado ao mesmo container do texto, entao a borda direita do credito bate
+   com a borda direita do titulo. Discreto, mas atribuicao e obrigacao
+   (invariante 6) — por isso 0.72 de opacidade (9,2:1 no pior caso), e nao um
+   sussurro decorativo. Quando nao ha credito o elemento nao existe: sem rotulo
+   solto, sem linha reservada. */
+.art-hero__credit {
+  position: absolute;
+  right: 40px;
+  bottom: 18px;
+  margin: 0;
+  max-width: min(52ch, 60%);
+  text-align: right;
+  font-size: 11px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.72);
 }
 
 .art-byline__author {
@@ -4051,12 +4219,26 @@ a.tabs__tab[aria-current='page'] {
 }
 
 .art-byline__author strong {
-  color: #fff;
+  color: var(--c-text-primary);
   font-weight: 600;
+}
+
+.art-hero[data-hero-media='true'] .art-byline__author strong {
+  color: #fff;
 }
 
 .art-byline__sep {
   opacity: 0.5;
+}
+
+/* Materia SEM capa: nada de bloco escuro vazio no topo. O cabecalho da materia
+   vira parte da propria coluna de leitura — mesma largura (`--container-reading`)
+   e MESMO padding lateral de `.art-body`, para o titulo alinhar exatamente com
+   o primeiro paragrafo. O header do site fica solido (nenhum `data-hero-media`
+   para o `:has()` encontrar) e o spacer de 72px continua valendo. */
+.art-hero:not([data-hero-media='true']) .art-hero__inner {
+  max-width: var(--container-reading);
+  padding: 48px 20px 0;
 }
 
 /* Corpo de leitura 720 (justificado, como no canônico) */
@@ -4098,9 +4280,14 @@ a.tabs__tab[aria-current='page'] {
   display: block;
 }
 
+/* Legenda + credito da imagem de corpo, na largura da imagem e em corpo menor
+   que o texto da materia. `--c-text-muted-aa` e nao `--c-text-muted`: o token
+   apagado reprova AA (2,9:1) e este bloco carrega a ATRIBUICAO da imagem, que
+   precisa ser lida — a hierarquia vem do tamanho e do italico do credito, nao
+   de apagar a cor abaixo do legivel. */
 .art-figure figcaption {
   font-size: 12px;
-  color: var(--c-text-muted);
+  color: var(--c-text-muted-aa);
   margin-top: 12px;
   line-height: 1.5;
 }
@@ -4253,11 +4440,14 @@ h4.art-body__heading {
   line-height: 1.4;
 }
 
+/* Credito de imagem de CORPO: continua a legenda no mesmo bloco e na mesma
+   largura da imagem, como na referencia — nao pula linha. `inline` (nao
+   `block`) e o que permite "legenda. Credito: X" fluir como um paragrafo so.
+   Cor mais apagada que a legenda para separar descricao de atribuicao sem
+   precisar de tamanho ou familia diferente. */
 .art-figure__credit {
-  display: block;
-  color: var(--c-text-muted);
-  font-size: 11px;
-  margin-top: 4px;
+  display: inline;
+  font-style: italic;
 }
 
 /* Vídeo é LINK, não embed: nenhum script de terceiro no render. */
@@ -4529,8 +4719,57 @@ h4.art-body__heading {
 }
 
 @media (max-width: 599px) {
+  /* Capa mais baixa no celular. A dobra util de um 360x640 tem ~570px: com os
+     68vh do desktop a imagem comeria a tela inteira e o leitor rolaria uma
+     parede antes da primeira linha. Em 62vh com teto de 520px sobra sempre um
+     naco de texto visivel — ~170px no 360x640, ~230px no 390x844 (iPhone 12+).
+     Piso de 400px para o proprio texto do hero nao ficar espremido. */
+  .art-hero[data-hero-media='true'] {
+    min-height: clamp(400px, 62vh, 520px);
+  }
+
   .art-hero__inner {
-    padding: 120px 20px 44px;
+    padding: 92px 20px 30px;
+  }
+
+  /* Escala de texto propria do celular. Nao e cosmetica: com a escala do
+     desktop, uma manchete de ~100 caracteres quebrava em sete linhas de 30px e
+     empurrava o hero para 692px num 360x640 — 108% da dobra, exatamente a
+     "parede antes do texto". Reduzida, a mesma manchete cabe e ainda sobra
+     corpo visivel. O `min-height` acima e piso, nao teto: manchete longa
+     continua podendo crescer, porque cortar a manchete seria pior. */
+  .art-crumb {
+    margin-bottom: 18px;
+  }
+
+  .art-hero__date {
+    font-size: 12px;
+    margin-bottom: 10px;
+  }
+
+  .art-title {
+    font-size: clamp(24px, 6.4vw, 30px);
+    line-height: 1.12;
+  }
+
+  .art-deck {
+    font-size: 15px;
+    line-height: 1.5;
+    margin-top: 14px;
+  }
+
+  .art-byline {
+    margin-top: 18px;
+  }
+
+  /* No celular o credito sai do posicionamento absoluto e entra no FLUXO, como
+     ultima linha do hero. Absoluto num hero estreito encavalaria a assinatura
+     assim que o credito passasse de uma linha — e credito de agencia costuma
+     ser longo. No fluxo, colisao e impossivel por construcao. */
+  .art-hero__credit {
+    position: static;
+    max-width: none;
+    margin-top: 12px;
   }
 
   .art-ficha {

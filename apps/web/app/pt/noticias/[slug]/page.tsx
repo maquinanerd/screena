@@ -12,21 +12,29 @@ import {
 } from '@screena/seo'
 
 import { AdSlot } from '../../../_components/ad-slot'
-import { ArticleBody } from '../../../_components/article-body'
+import { ArticleBody, IMAGE_CREDIT_LABEL } from '../../../_components/article-body'
 import { CardBookmark } from '../../../_components/card-bookmark'
 import type { NewsArticleView } from '../../../../src/lib/news-presenter'
 import { HOME_PATH, SITE_URL, gatePublicRobots } from '../../../../src/lib/site'
 import { getNewsArticleData } from '../../../../src/server/news-pages'
 
 /**
- * Artigo — tela 05 do canônico, estrutura EXATA: hero ESCURO full-width
- * (breadcrumb → chip de categoria → headline 52 → deck → byline com avatar/
- * data/tempo de leitura) → corpo de leitura 720 justificado (17/1.8) → AdSlot
- * mid-article → FICHA DO TÍTULO (entity card real da 1ª entidade citada) →
- * fonte → entidades citadas + share → nota de transparência de IA → LEIA
- * TAMBÉM (4 artigos reais). Dados 100% do CMS/catálogo; sem dado -> estado
- * honesto ou omissão registrada em DESIGN-DELTA (nunca substituição
- * semântica). Draft/agendada/retratada dão 404 pelo gate canônico.
+ * Artigo — tela 05 do canônico: hero de CAPA full-bleed sob o header
+ * transparente (breadcrumb no topo; data → headline 52 → deck → assinatura
+ * no rodapé do hero; crédito da capa no canto inferior direito) → corpo de
+ * leitura 720 justificado (17/1.8) → AdSlot mid-article → FICHA DO TÍTULO
+ * (entity card real da 1ª entidade citada) → fonte → entidades citadas +
+ * share → nota de transparência de IA → LEIA TAMBÉM (4 artigos reais).
+ *
+ * O hero tem DOIS estados, e o segundo não é degradação: matéria COM capa é
+ * imagem full-bleed com scrim e texto branco; matéria SEM capa (o caso comum
+ * quando a fonte é RSS) mantém o tema claro do site — título escuro na coluna
+ * de leitura, header sólido. Quem decide é `data-hero-media`, no HTML do
+ * servidor.
+ *
+ * Dados 100% do CMS/catálogo; sem dado -> estado honesto ou omissão registrada
+ * em DESIGN-DELTA (nunca substituição semântica). Draft/agendada/retratada dão
+ * 404 pelo gate canônico.
  */
 
 export const dynamic = 'force-dynamic'
@@ -177,20 +185,32 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
 
   return (
     <main data-vertical="news">
-      {/* HERO escuro (canônico): breadcrumb → chip → headline → deck → byline */}
-      <header className="art-hero">
+      {/* HERO: capa full-bleed sob o header + breadcrumb (topo) → data →
+          headline → deck → assinatura (rodapé do hero).
+
+          `data-hero-media` é o ÚNICO sinal de que existe capa, e é ele que o
+          CSS lê — para pintar o hero, para deixar o header transparente por
+          cima e para suprimir o spacer da barra. Sai do HTML do SERVIDOR: se
+          esse estado dependesse de JS, matéria SEM capa nasceria com texto
+          branco sobre fundo claro até a hidratação corrigir. Matéria sem capa
+          não recebe o atributo, e a página inteira volta ao tema claro. */}
+      <header className="art-hero" data-hero-media={view.heroImage !== null ? 'true' : undefined}>
         {view.heroImage !== null ? (
-          <div className="art-hero__img">
-            <img
-              alt=""
-              fetchPriority="high"
-              height={view.heroImage.height}
-              src={view.heroImage.src}
-              width={view.heroImage.width}
-            />
-          </div>
+          <>
+            <div className="art-hero__img">
+              <img
+                alt=""
+                fetchPriority="high"
+                height={view.heroImage.height}
+                src={view.heroImage.src}
+                width={view.heroImage.width}
+              />
+            </div>
+            {/* Scrim só existe com imagem por baixo: sobre a base clara ele
+                seria um gradiente preto no meio do nada. */}
+            <div className="art-hero__scrim" />
+          </>
         ) : null}
-        <div className="art-hero__scrim" />
         <div className="art-hero__inner">
           <nav aria-label="Trilha de navegação" className="art-crumb">
             <a href={HOME_PATH}>Início</a>
@@ -198,6 +218,9 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
               ›
             </span>
             <a href={NEWS_INDEX_PATH}>Notícias</a>
+            {/* A seção editorial vive AQUI, na trilha — e só aqui. O chip que
+                existia logo abaixo repetia a mesma palavra dois centímetros
+                depois, sem acrescentar sinal nenhum. */}
             {view.category !== null ? (
               <>
                 <span aria-hidden="true" className="art-crumb__sep">
@@ -207,50 +230,44 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
               </>
             ) : null}
           </nav>
-          {view.category !== null ? <span className="art-chip">{view.category}</span> : null}
-          <h1 className="art-title">{view.title}</h1>
-          {view.deck !== null ? <p className="art-deck">{view.deck}</p> : null}
-          <div className="art-byline">
-            {view.author !== null ? (
-              <span className="art-byline__author">
-                <span aria-hidden="true" className="art-byline__avatar" />
-                por <strong>{view.author}</strong>
-              </span>
-            ) : null}
-            {view.author !== null && view.dateLabel !== null ? (
-              <span aria-hidden="true" className="art-byline__sep">
-                ·
-              </span>
-            ) : null}
-            {view.dateLabel !== null ? <span>{view.dateLabel}</span> : null}
-            {view.readTimeLabel !== null ? (
-              <>
+          <div className="art-hero__text">
+            {view.dateLabel !== null ? <p className="art-hero__date">{view.dateLabel}</p> : null}
+            <h1 className="art-title">{view.title}</h1>
+            {view.deck !== null ? <p className="art-deck">{view.deck}</p> : null}
+            <div className="art-byline">
+              {view.author !== null ? (
+                <span className="art-byline__author">
+                  <span aria-hidden="true" className="art-byline__avatar" />
+                  por <strong>{view.author}</strong>
+                </span>
+              ) : null}
+              {view.author !== null && view.readTimeLabel !== null ? (
                 <span aria-hidden="true" className="art-byline__sep">
                   ·
                 </span>
-                <span>{view.readTimeLabel}</span>
-              </>
-            ) : null}
+              ) : null}
+              {view.readTimeLabel !== null ? <span>{view.readTimeLabel}</span> : null}
+            </div>
           </div>
+          {/* Crédito da capa, no canto inferior direito do hero.
+              Saiu do topo da coluna de leitura (onde ficava órfão, acima do
+              primeiro parágrafo, sem imagem por perto a que se referir) e
+              passou a encostar na imagem que credita.
+
+              Renderiza SÓ quando existe — nem rótulo solto, nem linha vazia.
+              Quando a licença exige atribuição o CMS recusa projetar sem
+              `credit` (`attribution_missing`), então crédito presente equivale
+              a atribuição satisfeita: exibi-lo é a obrigação, não enfeite. */}
+          {view.heroImage?.credit != null ? (
+            <p className="art-hero__credit">
+              {IMAGE_CREDIT_LABEL}: {view.heroImage.credit}
+            </p>
+          ) : null}
         </div>
       </header>
 
       {/* Corpo de leitura 720 */}
       <article className="art-body">
-        {/* Crédito da capa. Fica AQUI, e não dentro do `art-hero`, por dois
-            motivos: o hero é `position:absolute` sob um scrim escuro, onde
-            `--c-text-muted` perde contraste; e a coluna de leitura é o mesmo
-            contexto em que o crédito de imagem de corpo já é renderizado, então
-            reusar `art-figure__credit` mantém uma única linguagem visual de
-            crédito na página — sem classe nem posicionamento novos.
-
-            Só aparece quando existe: quando a licença exige atribuição, o CMS
-            recusa projetar sem `credit` (`attribution_missing`), então crédito
-            presente == atribuição satisfeita. */}
-        {view.heroImage?.credit != null ? (
-          <p className="art-figure__credit">{view.heroImage.credit}</p>
-        ) : null}
-
         {hasStructuredBody ? (
           <>
             <ArticleBody blocks={bodyBlocks.slice(0, blockAdAfter)} />
