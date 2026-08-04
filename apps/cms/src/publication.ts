@@ -14,6 +14,7 @@ import type { PublicationEventType } from '@screena/editorial-contracts'
 import { toActor } from './actor.js'
 import { buildEventIdempotencyKey } from './outbox.js'
 import { canonicalHash } from './idempotency.js'
+import { sanitizeMarks } from './inline-marks.js'
 
 function idsOf(value: unknown): string[] {
   if (value === null || value === undefined) return []
@@ -103,8 +104,15 @@ export function toContractBlocks(body: unknown): unknown[] {
     const withProvenance = provenance.length === 0 ? {} : { provenance }
 
     switch (type) {
-      case 'paragraph':
-        return [{ id, type, text: String(block.text ?? ''), ...withProvenance }]
+      case 'paragraph': {
+        const paragraphText = String(block.text ?? '')
+        const marks = sanitizeMarks(paragraphText, block.marks)
+        // A chave `marks` so aparece quando ha formatacao. Emiti-la vazia mudaria
+        // `publicContentVersion` de TODA materia ja publicada e dispararia uma
+        // republicacao em massa sem nenhuma mudanca de conteudo.
+        const withMarks = marks === null || marks.length === 0 ? {} : { marks }
+        return [{ id, type, text: paragraphText, ...withMarks, ...withProvenance }]
+      }
       case 'heading':
         return [
           {

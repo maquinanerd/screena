@@ -1,4 +1,7 @@
-import type { ArticleBodyBlock } from '../../src/lib/article-body-presenter'
+import type {
+  ArticleBodyBlock,
+  ArticleBodyTextSegment,
+} from '../../src/lib/article-body-presenter'
 
 /**
  * ArticleBody — corpo ESTRUTURADO da matéria (os 10 blocos do contrato
@@ -23,10 +26,45 @@ const PROVIDER_LABELS: Readonly<Record<string, string>> = {
   vimeo: 'Vimeo',
 }
 
+/**
+ * Formatação inline CONSTRUÍDA, nunca interpretada.
+ *
+ * O presenter entrega trechos (`{ text, bold, italic, href }`); aqui eles viram
+ * `<strong>`, `<em>` e `<a>`. Em nenhum ponto existe uma string de HTML — é o
+ * que permite ter negrito, itálico e link numa página indexável sem abrir mão
+ * do `dangerouslySetInnerHTML` proibido neste componente.
+ *
+ * A ordem do aninhamento é fixa (link por fora, negrito, itálico por dentro):
+ * o resultado visual é o mesmo em qualquer ordem, e fixá-la torna a saída
+ * determinística — dois trechos iguais produzem sempre a mesma árvore.
+ */
+function Segment({ segment }: { segment: ArticleBodyTextSegment }) {
+  let node = <>{segment.text}</>
+  if (segment.italic) node = <em>{node}</em>
+  if (segment.bold) node = <strong>{node}</strong>
+  if (segment.href !== null) {
+    node = (
+      <a href={segment.href} rel="noopener noreferrer" target="_blank">
+        {node}
+      </a>
+    )
+  }
+  return node
+}
+
 function Block({ block }: { block: ArticleBodyBlock }) {
   switch (block.kind) {
     case 'paragraph':
-      return <p>{block.text}</p>
+      return (
+        <p>
+          {block.segments.map((segment, index) => (
+            // A chave é o índice DE PROPÓSITO: os trechos vêm de um corte
+            // determinístico do mesmo texto, então a posição é a identidade —
+            // não há reordenação possível dentro do parágrafo.
+            <Segment key={`${block.id}-${String(index)}`} segment={segment} />
+          ))}
+        </p>
+      )
 
     case 'heading': {
       // `h1` pertence ao título da página; o corpo começa em `h2`. O nível vem

@@ -11,7 +11,7 @@ import { z } from 'zod'
 
 import { publicationContentType } from './editorial-publication-request-v1.js'
 
-import { editorialBody } from './blocks.js'
+import { publishedEditorialBody } from './blocks.js'
 import {
   LIMITS,
   contentHash,
@@ -156,7 +156,9 @@ export const publishedContent = z.object({
   // quando `review` foi acrescentado la: o pedido era aceito e a publicacao
   // morria na persistencia, com 503 e sem materia.
   contentType: publicationContentType,
-  body: editorialBody,
+  // Corpo PUBLICADO: aceita formatacao inline. Os contratos de ENTRADA seguem
+  // com `editorialBody` e hash inalterado — ver `publishedEditorialBody`.
+  body: publishedEditorialBody,
   authors: z.array(publishedAuthor).min(1, 'materia publicada exige autor'),
   section: optionalPlainText(LIMITS.shortText),
   publishedAt: isoDateTime,

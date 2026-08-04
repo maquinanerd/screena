@@ -13,6 +13,7 @@ import {
   EDITORIAL_BLOCK_TYPES,
   FACT_ORIGINS,
   editorialBody,
+  publishedEditorialBody,
   findForbiddenMarkup,
   findForbiddenPublishKey,
   isMediaUsableForEditorial,
@@ -163,6 +164,74 @@ describe('blocos editoriais', () => {
 
   it('recusa corpo vazio', () => {
     expect(editorialBody.safeParse([]).success).toBe(false)
+  })
+
+  /*
+   * A formatacao inline vive SO no corpo publicado — e este e o teste que
+   * segura o desenho.
+   *
+   * Os contratos de ENTRADA sao comparados por hash com igualdade estrita
+   * (`checkContractCompatibility`), e o MNScr declara esse hash a cada pedido.
+   * Se alguem "simplificar" trocando `editorialBody` por `publishedEditorialBody`
+   * no contrato de entrada, o hash muda e TODO pedido em voo vira
+   * `hash_mismatch` — em producao, sem nada aqui ficar vermelho. Estes dois
+   * testes sao o alarme.
+   */
+  it('o corpo de ENTRADA continua sem formatacao inline', () => {
+    const result = editorialBody.safeParse([
+      { id: 'x', type: 'paragraph', text: 'negrito', marks: [{ start: 0, end: 3, type: 'bold' }] },
+    ])
+    expect(result.success).toBe(true)
+    // `z.object` REMOVE chave desconhecida; nao recusa. E por isso que um campo
+    // irmao "so no CMS" sumiria em silencio no meio do caminho.
+    if (result.success) expect(result.data[0]).not.toHaveProperty('marks')
+  })
+
+  it('o corpo PUBLICADO preserva a formatacao inline', () => {
+    const marks = [{ start: 0, end: 3, type: 'bold' as const }]
+    const result = publishedEditorialBody.safeParse([
+      { id: 'x', type: 'paragraph', text: 'negrito', marks },
+    ])
+    expect(result.success).toBe(true)
+    if (result.success) {
+      const block = result.data[0]
+      expect(block?.type === 'paragraph' ? block.marks : null).toEqual(marks)
+    }
+  })
+
+  it('o corpo PUBLICADO recusa marcacao que o render nao saberia desenhar', () => {
+    const cases: readonly unknown[] = [
+      [{ start: 0, end: 99, type: 'bold' }],
+      [{ start: 3, end: 1, type: 'bold' }],
+      [{ start: 0, end: 3, type: 'link' }],
+      [{ start: 0, end: 3, type: 'link', href: 'javascript:alert(1)' }],
+      [{ start: 0, end: 3, type: 'bold', href: 'https://x.test' }],
+      [
+        { start: 0, end: 4, type: 'bold' },
+        { start: 2, end: 6, type: 'bold' },
+      ],
+    ]
+    for (const marks of cases) {
+      const result = publishedEditorialBody.safeParse([
+        { id: 'x', type: 'paragraph', text: 'negrito', marks },
+      ])
+      expect(result.success, JSON.stringify(marks)).toBe(false)
+    }
+  })
+
+  it('o corpo PUBLICADO aceita tipos DIFERENTES sobrepostos', () => {
+    const result = publishedEditorialBody.safeParse([
+      {
+        id: 'x',
+        type: 'paragraph',
+        text: 'negrito',
+        marks: [
+          { start: 0, end: 7, type: 'bold' },
+          { start: 0, end: 7, type: 'link', href: 'https://cinerie.com' },
+        ],
+      },
+    ])
+    expect(result.success).toBe(true)
   })
 
   it('detecta markup proibido', () => {

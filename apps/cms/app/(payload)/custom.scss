@@ -1427,6 +1427,86 @@
     border: 1px solid var(--cinerie-border);
     color: var(--cinerie-ink);
   }
+
+  /* ------------------------------------------------------------------ */
+  /* Paragrafo: editor com formatacao inline                             */
+  /* ------------------------------------------------------------------ */
+
+  .cinerie-paragraph__toolbar {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 4px;
+  }
+
+  .cinerie-paragraph__tool {
+    background: #ffffff;
+    border: 1px solid var(--cinerie-border);
+    border-radius: 6px;
+    color: var(--cinerie-ink);
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+    min-height: 28px;
+    min-width: 32px;
+    padding: 6px 10px;
+
+    &:hover {
+      background: var(--cinerie-brand-soft);
+      border-color: var(--cinerie-brand);
+    }
+
+    /* Foco visivel: a barra e operavel so pelo teclado. */
+    &:focus-visible {
+      outline: 2px solid var(--cinerie-brand);
+      outline-offset: 1px;
+    }
+  }
+
+  /*
+   * O `contenteditable` imita o `textarea` que existia aqui.
+   *
+   * `white-space: pre-wrap` importa: sem ele, Shift+Enter insere a quebra no
+   * modelo e ela nao aparece na tela — o texto salvo deixaria de bater com o
+   * texto visto.
+   */
+  .cinerie-paragraph__input {
+    background: #ffffff;
+    border: 1px solid var(--cinerie-border);
+    border-radius: 8px;
+    color: var(--cinerie-ink);
+    font-size: 14px;
+    line-height: 1.55;
+    min-height: 92px;
+    outline: none;
+    padding: 10px 12px;
+    white-space: pre-wrap;
+    word-break: break-word;
+
+    &:focus {
+      border-color: var(--cinerie-brand);
+      box-shadow: 0 0 0 2px var(--cinerie-brand-soft);
+    }
+  }
+
+  /*
+   * A formatacao precisa ser VISIVEL no editor.
+   *
+   * O Lexical so aplica a classe do tema; sem estilo, negrito e italico
+   * existiriam no dado e nao na tela — e o revisor marcaria a mesma palavra
+   * duas vezes por nao ver a primeira.
+   */
+  .cinerie-paragraph__bold {
+    font-weight: 700;
+  }
+
+  .cinerie-paragraph__italic {
+    font-style: italic;
+  }
+
+  .cinerie-paragraph__link {
+    color: var(--cinerie-brand-dark);
+    text-decoration: underline;
+  }
 }
 
 /* ==================================================================== */
