@@ -1336,4 +1336,48 @@
       overflow-x: auto;
     }
   }
+
+  /* ------------------------------------------------------------------ */
+  /* Ancora do bloco (gerada)                                            */
+  /* ------------------------------------------------------------------ */
+
+  .cinerie-block-id__value {
+    color: var(--cinerie-muted);
+    display: block;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    margin-top: 2px;
+  }
+
+  .cinerie-block-id__hint,
+  .cinerie-paragraph__hint {
+    color: var(--cinerie-muted);
+    font-size: 12px;
+    margin: 4px 0 0;
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Paragrafo                                                           */
+  /* ------------------------------------------------------------------ */
+
+  .cinerie-paragraph__empty,
+  .cinerie-paragraph__notice {
+    border-radius: 8px;
+    font-size: 12px;
+    margin: 6px 0 0;
+    padding: 6px 10px;
+  }
+
+  /* Aviso, nao recusa: quem recusa e o `required` e o gate do servidor. */
+  .cinerie-paragraph__empty {
+    background: var(--cinerie-brand-soft);
+    border: 1px solid var(--cinerie-brand);
+    color: var(--cinerie-brand-dark);
+  }
+
+  .cinerie-paragraph__notice {
+    background: #ffffff;
+    border: 1px solid var(--cinerie-border);
+    color: var(--cinerie-ink);
+  }
 }

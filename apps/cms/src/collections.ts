@@ -141,7 +141,14 @@ const blockIdField = {
   name: 'blockId',
   type: 'text' as const,
   required: true,
-  admin: { description: 'Id estavel: ancora comentario e correcao entre versoes.' },
+  admin: {
+    // NASCE SOZINHO. Era digitado a mao em todo bloco — quinze identificadores
+    // inventados por pessoa numa materia de quinze blocos. O componente gera na
+    // criacao e mostra em leitura; a ancora continua existindo e continua
+    // estavel a reordenacao (ver `block-id.ts`).
+    components: { Field: '/src/admin/BlockIdField' },
+    description: 'Âncora deste trecho. Gerada automaticamente.',
+  },
 }
 
 /**
@@ -151,7 +158,18 @@ const blockIdField = {
 export const editorialBlocks = [
   {
     slug: 'paragraph',
-    fields: [blockIdField, { name: 'text', type: 'textarea' as const, required: true }, provenanceField],
+    fields: [
+      blockIdField,
+      {
+        name: 'text',
+        type: 'textarea' as const,
+        required: true,
+        // Colar de fora vira N blocos; Enter no fim cria o proximo; bloco vazio
+        // avisa DURANTE a escrita, e nao so na recusa da publicacao.
+        admin: { components: { Field: '/src/admin/ParagraphTextField' } },
+      },
+      provenanceField,
+    ],
   },
   {
     slug: 'heading',
