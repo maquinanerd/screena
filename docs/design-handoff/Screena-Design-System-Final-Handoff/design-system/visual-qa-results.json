@@ -1,0 +1,69 @@
+{
+  "meta": { "unit": "D3B", "generatedAt": "2026-07-21", "validations": 2 },
+  "qc1_library": {
+    "allComponentsHavePurpose": true,
+    "variantsJustified": true,
+    "statesComplete": true,
+    "tokensValid": true,
+    "contrastFailuresInCanonicalVariants": 0,
+    "movieContrastFixed": "movie fill #D42A2E/branco = 5.04 AA (texto normal) — gate D3B; antes #F0443E/branco 3.75 reprovava",
+    "contrastFlags": ["movie fill #D42A2E/branco = 5.04 AA texto normal (CORRIGIDO)", "movie accent #F0443E/branco 3.75 = so AA-large, valido apenas em display >=24px", "series claro #7FA56F/branco = PROIBIDO (usar #395C42)", "text.muted como corpo = PROIBIDO"],
+    "allIconButtonsHaveLabel": true,
+    "allControlsHaveFocus": true,
+    "buttonVsLinkDistinct": true,
+    "headersUseCorrectLogos": true,
+    "footerNeutral": true,
+    "jsonValid": true
+  },
+  "qc2_coverage": {
+    "buttonsMapped": "40/40",
+    "buttonDistributionExact": "23 Button + 4 editorial(Button/Link) + 12 Chip/Tabs/Toggle + 1 NECESSITA_DECISAO = 40 (sem aproximacao)",
+    "carouselControlsMapped": "4/4 -> IconButton (prev/next)",
+    "tagCountsVerifiedAgainstSource": { "span": 64, "div": 40, "h1": 1, "article": 1, "total": 106, "method": "regex sobre Screen Screens v4.dc.html: 106 tags com onClick" },
+    "clickablesClassified": "106/106",
+    "headersMapped": true,
+    "footersMapped": true,
+    "searchMapped": true,
+    "breadcrumbMapped": true,
+    "tabsMapped": true,
+    "paginationMapped": "definida (padrão canônico; telas atuais não têm paginação real — sem contrato falso)",
+    "pillsTogglesMapped": true,
+    "countsVanishedWithoutExplanation": 0
+  },
+  "divergences": [
+    { "item": "'106 spans' (D2) vs 106 clicáveis reais", "detail": "na verdade 64 span + 40 div + 1 h1 + 1 article; total 106 confirmado", "resolution": "documentado em 40-INTERACTIVE-SEMANTICS-MAP" }
+  ],
+  "openDecisions": [
+    { "id": "series-button-contrast", "detail": "regra do sistema JÁ decidida (DD-17): série preenchida usa verde-escuro #395C42 (AA 7.54) ou texto escuro; branco sobre #7FA56F reprova (2.79). Resta apenas, por instância na migração D4, escolher entre fill-escuro e texto-escuro.", "severity": "P2", "status": "REGRA_DECIDIDA_APLICACAO_D4" }
+  ],
+  "notMigrated": true,
+  "spansReplaced": 0,
+  "authScreensCreated": 0,
+  "zipGenerated": false,
+  "d3c_qc1_components": { "allComponentsHavePurpose": true, "variantsJustified": true, "statesComplete": true, "tokensValid": true, "noMockAsData": true, "noInventedScore": true, "noInventedStreaming": true, "contrastApproved": true, "formsAccessible": true, "overlaysAccessible": true, "cinerieScore6States": true, "cardsNotDivOnClick": true, "jsonValid": true },
+  "d3c_qc2_coverage": { "familiesDiagnosed": 15, "allFamiliesHaveComponent": true, "consolidate": 12, "alreadyComponentized": 1, "defineNew": 2, "adSlots": "21/21 (leaderboard 14/skyscraper 3/billboard 3/rectangle 1)", "imageSlots": "39/39", "formControlsInCanonical": 0, "feedbackInCanonical": 0, "homePatternsAdded": ["HighlightRailCard","NewsOverlayCard","TrailerCard"], "noFamilyVanished": true },
+  "d3c_totals": { "componentsAdded": 80, "componentsTotal": 104, "dataVisualContracts": 13, "docsNew": ["15","22","23","24","25","41","42"], "docsUpdated": ["13","14","20","35","36"], "visualPage": "Components-Content-Forms-Feedback.dc.html PASS (render sem erro de console)" },
+  "d3c_notMigrated": true, "d3c_authScreensCreated": 0, "d3c_zipGenerated": false,
+  "d4a_qc_structural": { "screens": "18/18", "templates": 13, "allTemplatesHaveConsumerScreen": true, "allComponentsExistInContracts": true, "allTokensExist": true, "allRoutesPresent": true, "adSlotsMapped": "21/21", "imageSlotsMapped": "39/39", "noSectionWithoutComponent": true, "noInteractionWithoutSemantics": true, "noSpanDivOnClick": true, "jsonValid": true },
+  "d4a_qc_visual": { "page": "Templates-And-Public-Screens.dc.html", "opens": true, "consoleErrors": 0, "brokenAssets": 0, "logosCorrect": true, "homeMatchesCanonical": true, "darkContextsRestricted": "só mídia/hero (home em breve, mosaico)", "footerLight": true, "sectionHeaderNoBar": true, "authScreensCreated": 0, "result": "PASS" },
+  "d4a_totals": { "screensSpecified": 18, "templates": 13, "adSlots": 21, "imageSlots": 39, "docsNew": ["16","17","43"], "jsonNew": ["page-templates.json","page-specifications.json","responsive-matrix.json"], "jsonUpdated": ["screen-inventory.json","component-migration-matrix.json","visual-qa-results.json","design-decisions.json"], "notMigrated": true, "authScreens": 0, "zip": false }
+,
+  "d4b_migration": {
+    "unit": "D4B", "status": "COMPLETE", "date": "2026-07-23",
+    "hashInitial": "0cc8fcd6…677bfe74", "hashFinal": "8cb1f3fc…d103b213",
+    "bytesInitial": 367827, "bytesFinal": 380216,
+    "baseline": "106 = 64 span + 40 div + 1 h1 + 1 article",
+    "inadequateRemaining": 0,
+    "distribution": { "LINK_to_a": 77, "TAB_to_button": 24, "ICON_BUTTON": 4, "REMOVER": 1 },
+    "tagBalance": "a 77/77, button 29/29, div 785/785, article 2/2, h1 12/12",
+    "adSlots": 21, "imageSlots": 39,
+    "screensVerified": 18, "batchesCompleted": 6,
+    "structuralQA": "PASS", "visualSweep": "PASS (18/18, badHref/nested/wrapper=0)",
+    "consoleErrors": 0, "brokenAssets": 0, "nestedLinks": 0, "nestedControls": 0, "wrapperAnchors": 0, "duplicateIds": 0,
+    "keyboardFocus": "PASS (navGuard interceptor; <a>/<button> nativos; role=tab; aria-label)",
+    "responsiveF03": "desktop verificado ao vivo 18/18; mobile/tablet herdados (migração semântica); screen 08 sem overflow",
+    "placeholderWarnings": "pré-existentes (loop-scoped), presentes no backup, não impedem render",
+    "authScreensCreated": 0, "react": false, "backend": false, "zip": false,
+    "result": "PASS"
+  }
+}

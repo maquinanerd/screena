@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,300..900;1,400..700&display=swap" rel="stylesheet">
+<style>
+  body { margin:0; background:#FDFDFD; -webkit-font-smoothing:antialiased; }
+  a { color:#8A1E1A; }
+  a:hover { color:#F0443E; }
+</style>
+</helmet>
+<div style="font-family:'Montserrat',sans-serif; color:#101010; max-width:1100px; margin:0 auto; padding:64px 48px 120px;">
+
+  <div style="font-size:11px; font-weight:800; letter-spacing:0.14em; text-transform:uppercase; color:#9A958C;">Cinerie · Design System · D3A</div>
+  <h1 style="font-size:56px; font-weight:800; letter-spacing:-0.035em; line-height:1.02; margin:8px 0 6px;">Foundations</h1>
+  <p style="font-size:15px; line-height:1.55; color:#6E6E6E; max-width:60ch; margin:0;">Prova visual dos tokens canônicos. Documentação — não é tela pública, não é a home. Valores em <code>design-tokens.json</code>.</p>
+
+  <!-- COLORS -->
+  <h2 style="font-size:19px; font-weight:800; letter-spacing:0.16em; text-transform:uppercase; color:#3a3a3a; margin:56px 0 20px; padding-bottom:10px; border-bottom:1px solid #E3DED6;">Cores</h2>
+
+  <div style="font-size:13px; font-weight:700; margin:0 0 12px;">Background</div>
+  <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:28px;">
+    <div><div style="height:76px; background:#FDFDFD; border:1px solid #E3DED6; border-radius:10px;"></div><div style="font-size:12px; font-weight:600; margin-top:7px;">page</div><div style="font-size:11px; color:#6E6E6E;">#FDFDFD</div></div>
+    <div><div style="height:76px; background:#FFFFFF; border:1px solid #E3DED6; border-radius:10px;"></div><div style="font-size:12px; font-weight:600; margin-top:7px;">surface</div><div style="font-size:11px; color:#6E6E6E;">#FFFFFF</div></div>
+    <div><div style="height:76px; background:#F6F3EE; border:1px solid #E3DED6; border-radius:10px;"></div><div style="font-size:12px; font-weight:600; margin-top:7px;">subtle</div><div style="font-size:11px; color:#6E6E6E;">#F6F3EE</div></div>
+    <div><div style="height:76px; background:#F1EDE6; border:1px solid #E3DED6; border-radius:10px;"></div><div style="font-size:12px; font-weight:600; margin-top:7px;">muted</div><div style="font-size:11px; color:#6E6E6E;">#F1EDE6</div></div>
+  </div>
+
+  <div style="font-size:13px; font-weight:700; margin:0 0 12px;">Accent semântico</div>
+  <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:28px;">
+    <div><div style="height:76px; background:#F0443E; border-radius:10px; display:flex; align-items:center; justify-content:center; color:#fff; font-size:15px; font-weight:800;">FILME</div><div style="font-size:12px; font-weight:600; margin-top:7px;">accent.movie · #F0443E</div><div style="font-size:11px; color:#6E6E6E;">texto branco só ≥18px/bold (3.75)</div></div>
+    <div><div style="height:76px; background:#7FA56F; border-radius:10px; display:flex; align-items:center; justify-content:center; color:#12100E; font-size:15px; font-weight:800;">SÉRIE</div><div style="font-size:12px; font-weight:600; margin-top:7px;">accent.series · #7FA56F</div><div style="font-size:11px; color:#6E6E6E;">nunca texto branco (2.79)</div></div>
+    <div><div style="height:76px; background:#F5C518; border-radius:10px; display:flex; align-items:center; justify-content:center; color:#101010; font-size:15px; font-weight:800;">NOTA</div><div style="font-size:12px; font-weight:600; margin-top:7px;">accent.editorial · #F5C518</div><div style="font-size:11px; color:#6E6E6E;">sempre texto escuro (11.67)</div></div>
+  </div>
+
+  <div style="font-size:13px; font-weight:700; margin:0 0 12px;">Texto (com contraste WCAG)</div>
+  <div style="background:#FFFFFF; border:1px solid #E3DED6; border-radius:10px; padding:22px 24px; margin-bottom:14px;">
+    <div style="font-size:17px; color:#101010; margin-bottom:8px;">text.primary #101010 — AA 19.0 · títulos e corpo forte</div>
+    <div style="font-size:15px; color:#6E6E6E; margin-bottom:8px;">text.secondary #6E6E6E — AA 5.0 · metadados e apoio</div>
+    <div style="font-size:15px; color:#9A958C;">text.muted #9A958C — FALHA 2.9 · só texto grande/decorativo, nunca corpo</div>
+  </div>
+  <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:8px;">
+    <span style="font-size:12px; padding:5px 11px; border:1px solid #E3DED6; border-radius:999px; color:#6E6E6E;">link filme <b style="color:#8A1E1A;">#8A1E1A</b> AA 9.2</span>
+    <span style="font-size:12px; padding:5px 11px; border:1px solid #E3DED6; border-radius:999px; color:#6E6E6E;">link série <b style="color:#395C42;">#395C42</b> AA 7.5</span>
+    <span style="font-size:12px; padding:5px 11px; border:1px solid #E3DED6; border-radius:999px; color:#6E6E6E;">rating <b style="color:#101010;">★</b> gold #F5C84B</span>
+  </div>
+
+  <!-- TYPOGRAPHY -->
+  <h2 style="font-size:19px; font-weight:800; letter-spacing:0.16em; text-transform:uppercase; color:#3a3a3a; margin:56px 0 20px; padding-bottom:10px; border-bottom:1px solid #E3DED6;">Tipografia · Montserrat</h2>
+  <div style="display:flex; flex-direction:column; gap:14px;">
+    <div style="display:flex; align-items:baseline; gap:16px;"><span style="width:120px; flex-shrink:0; font-size:11px; color:#9A958C; font-weight:600;">display-xl 84/800</span><span style="font-size:64px; font-weight:800; letter-spacing:-0.035em; line-height:1;">Cinerie</span></div>
+    <div style="display:flex; align-items:baseline; gap:16px;"><span style="width:120px; flex-shrink:0; font-size:11px; color:#9A958C; font-weight:600;">heading-h1 34/800</span><span style="font-size:34px; font-weight:800; letter-spacing:-0.03em;">Detalhe do título</span></div>
+    <div style="display:flex; align-items:baseline; gap:16px;"><span style="width:120px; flex-shrink:0; font-size:11px; color:#9A958C; font-weight:600;">heading-h2 · seção</span><span><span style="font-size:26px; font-weight:900; letter-spacing:-0.01em; text-transform:uppercase;">Destaques</span><span style="font-size:26px; font-weight:400; letter-spacing:-0.01em; text-transform:uppercase;"> de hoje</span></span></div>
+    <div style="display:flex; align-items:baseline; gap:16px;"><span style="width:120px; flex-shrink:0; font-size:11px; color:#9A958C; font-weight:600;">title-md 18/700</span><span style="font-size:18px; font-weight:700;">Título de card</span></div>
+    <div style="display:flex; align-items:baseline; gap:16px;"><span style="width:120px; flex-shrink:0; font-size:11px; color:#9A958C; font-weight:600;">body-lg 17/400</span><span style="font-size:17px; font-weight:400; line-height:1.7;">Corpo de artigo em leitura confortável.</span></div>
+    <div style="display:flex; align-items:baseline; gap:16px;"><span style="width:120px; flex-shrink:0; font-size:11px; color:#9A958C; font-weight:600;">body-md 15/400</span><span style="font-size:15px; font-weight:400; line-height:1.55;">Corpo padrão da interface.</span></div>
+    <div style="display:flex; align-items:baseline; gap:16px;"><span style="width:120px; flex-shrink:0; font-size:11px; color:#9A958C; font-weight:600;">metadata 12/500</span><span style="font-size:12px; font-weight:500; color:#6E6E6E;">há 4 horas · Redação Cinerie</span></div>
+    <div style="display:flex; align-items:baseline; gap:16px;"><span style="width:120px; flex-shrink:0; font-size:11px; color:#9A958C; font-weight:600;">eyebrow 11/800</span><span style="font-size:11px; font-weight:800; letter-spacing:0.14em; text-transform:uppercase; color:#F0443E;">Em alta</span></div>
+    <div style="display:flex; align-items:baseline; gap:16px;"><span style="width:120px; flex-shrink:0; font-size:11px; color:#9A958C; font-weight:600;">numeric-lg 47/800</span><span style="font-size:47px; font-weight:800; letter-spacing:-0.045em; color:#12100E;">82</span></div>
+  </div>
+
+  <!-- SPACING -->
+  <h2 style="font-size:19px; font-weight:800; letter-spacing:0.16em; text-transform:uppercase; color:#3a3a3a; margin:56px 0 20px; padding-bottom:10px; border-bottom:1px solid #E3DED6;">Espaçamento</h2>
+  <div style="display:flex; flex-direction:column; gap:8px;">
+    <div style="display:flex; align-items:center; gap:14px;"><span style="width:90px; font-size:11px; color:#9A958C;">space-2 · 4</span><span style="height:14px; width:4px; background:#F0443E;"></span></div>
+    <div style="display:flex; align-items:center; gap:14px;"><span style="width:90px; font-size:11px; color:#9A958C;">space-4 · 8</span><span style="height:14px; width:8px; background:#F0443E;"></span></div>
+    <div style="display:flex; align-items:center; gap:14px;"><span style="width:90px; font-size:11px; color:#9A958C;">space-6 · 12</span><span style="height:14px; width:12px; background:#F0443E;"></span></div>
+    <div style="display:flex; align-items:center; gap:14px;"><span style="width:90px; font-size:11px; color:#9A958C;">space-8 · 16</span><span style="height:14px; width:16px; background:#F0443E;"></span></div>
+    <div style="display:flex; align-items:center; gap:14px;"><span style="width:90px; font-size:11px; color:#9A958C;">space-10 · 24</span><span style="height:14px; width:24px; background:#F0443E;"></span></div>
+    <div style="display:flex; align-items:center; gap:14px;"><span style="width:90px; font-size:11px; color:#9A958C;">space-11 · 32</span><span style="height:14px; width:32px; background:#F0443E;"></span></div>
+    <div style="display:flex; align-items:center; gap:14px;"><span style="width:90px; font-size:11px; color:#9A958C;">space-13 · 48</span><span style="height:14px; width:48px; background:#F0443E;"></span></div>
+    <div style="display:flex; align-items:center; gap:14px;"><span style="width:90px; font-size:11px; color:#9A958C;">space-14 · 56</span><span style="height:14px; width:56px; background:#F0443E;"></span></div>
+    <div style="display:flex; align-items:center; gap:14px;"><span style="width:90px; font-size:11px; color:#9A958C;">space-16 · 80</span><span style="height:14px; width:80px; background:#F0443E;"></span></div>
+  </div>
+
+  <!-- RADIUS + SHADOW -->
+  <h2 style="font-size:19px; font-weight:800; letter-spacing:0.16em; text-transform:uppercase; color:#3a3a3a; margin:56px 0 20px; padding-bottom:10px; border-bottom:1px solid #E3DED6;">Radius, bordas e sombras</h2>
+  <div style="font-size:13px; font-weight:700; margin:0 0 12px;">Radius (9 sancionados)</div>
+  <div style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:28px;">
+    <div style="text-align:center;"><div style="width:72px; height:56px; background:#FFFFFF; border:1px solid #E3DED6; border-radius:0;"></div><div style="font-size:11px; color:#6E6E6E; margin-top:6px;">none 0</div></div>
+    <div style="text-align:center;"><div style="width:72px; height:56px; background:#FFFFFF; border:1px solid #E3DED6; border-radius:2px;"></div><div style="font-size:11px; color:#6E6E6E; margin-top:6px;">hairline 2</div></div>
+    <div style="text-align:center;"><div style="width:72px; height:56px; background:#FFFFFF; border:1px solid #E3DED6; border-radius:6px;"></div><div style="font-size:11px; color:#6E6E6E; margin-top:6px;">sm 6</div></div>
+    <div style="text-align:center;"><div style="width:72px; height:56px; background:#FFFFFF; border:1px solid #E3DED6; border-radius:8px;"></div><div style="font-size:11px; color:#6E6E6E; margin-top:6px;">control 8</div></div>
+    <div style="text-align:center;"><div style="width:72px; height:56px; background:#FFFFFF; border:1px solid #E3DED6; border-radius:10px;"></div><div style="font-size:11px; color:#6E6E6E; margin-top:6px;">card 10</div></div>
+    <div style="text-align:center;"><div style="width:72px; height:56px; background:#FFFFFF; border:1px solid #E3DED6; border-radius:12px;"></div><div style="font-size:11px; color:#6E6E6E; margin-top:6px;">media 12</div></div>
+    <div style="text-align:center;"><div style="width:56px; height:56px; background:#FFFFFF; border:1px solid #E3DED6; border-radius:50%; margin:0 auto;"></div><div style="font-size:11px; color:#6E6E6E; margin-top:6px;">circle</div></div>
+  </div>
+  <div style="font-size:13px; font-weight:700; margin:0 0 12px;">Sombras (7 tokens)</div>
+  <div style="display:flex; gap:24px; flex-wrap:wrap;">
+    <div style="text-align:center;"><div style="width:120px; height:70px; background:#fff; border-radius:10px; box-shadow:0 3px 14px rgba(20,18,14,0.05);"></div><div style="font-size:11px; color:#6E6E6E; margin-top:10px;">card</div></div>
+    <div style="text-align:center;"><div style="width:120px; height:70px; background:#fff; border-radius:10px; box-shadow:0 4px 16px rgba(20,18,14,0.12);"></div><div style="font-size:11px; color:#6E6E6E; margin-top:10px;">card-hover</div></div>
+    <div style="text-align:center;"><div style="width:120px; height:70px; background:#fff; border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,0.06);"></div><div style="font-size:11px; color:#6E6E6E; margin-top:10px;">dropdown</div></div>
+    <div style="text-align:center;"><div style="width:120px; height:70px; background:#fff; border-radius:10px; box-shadow:0 30px 70px rgba(0,0,0,0.18);"></div><div style="font-size:11px; color:#6E6E6E; margin-top:10px;">modal</div></div>
+  </div>
+
+  <!-- CONTROLS -->
+  <h2 style="font-size:19px; font-weight:800; letter-spacing:0.16em; text-transform:uppercase; color:#3a3a3a; margin:56px 0 20px; padding-bottom:10px; border-bottom:1px solid #E3DED6;">Alturas de controle</h2>
+  <div style="display:flex; align-items:flex-end; gap:16px; flex-wrap:wrap;">
+    <div style="text-align:center;"><div style="height:30px; padding:0 12px; background:#101010; color:#fff; border-radius:8px; display:flex; align-items:center; font-size:12px; font-weight:700;">xs 30</div></div>
+    <div style="text-align:center;"><div style="height:36px; padding:0 16px; background:#101010; color:#fff; border-radius:8px; display:flex; align-items:center; font-size:13px; font-weight:700;">sm 36</div></div>
+    <div style="text-align:center;"><div style="height:44px; padding:0 22px; background:#F0443E; color:#fff; border-radius:8px; display:flex; align-items:center; font-size:14px; font-weight:700;">md 44 (toque)</div></div>
+    <div style="text-align:center;"><div style="height:52px; padding:0 28px; background:#F0443E; color:#fff; border-radius:8px; display:flex; align-items:center; font-size:14px; font-weight:700;">lg 52</div></div>
+  </div>
+  <p style="font-size:12px; color:#9A958C; margin:14px 0 0;">Toque mínimo 44×44. Estes são só os degraus de altura — a família Button (variantes/estados) é a unidade D3B.</p>
+
+  <!-- ASPECT + Z -->
+  <h2 style="font-size:19px; font-weight:800; letter-spacing:0.16em; text-transform:uppercase; color:#3a3a3a; margin:56px 0 20px; padding-bottom:10px; border-bottom:1px solid #E3DED6;">Proporções de mídia</h2>
+  <div style="display:flex; gap:16px; flex-wrap:wrap; align-items:flex-end;">
+    <div style="text-align:center;"><div style="width:80px; aspect-ratio:2/3; background:linear-gradient(160deg,#2e1a18,#130c0b); border-radius:12px;"></div><div style="font-size:11px; color:#6E6E6E; margin-top:7px;">poster 2:3</div></div>
+    <div style="text-align:center;"><div style="width:140px; aspect-ratio:16/9; background:linear-gradient(160deg,#1a2a22,#0c130f); border-radius:12px;"></div><div style="font-size:11px; color:#6E6E6E; margin-top:7px;">backdrop 16:9</div></div>
+    <div style="text-align:center;"><div style="width:80px; aspect-ratio:3/4; background:linear-gradient(160deg,#262030,#100d15); border-radius:12px;"></div><div style="font-size:11px; color:#6E6E6E; margin-top:7px;">portrait 3:4</div></div>
+    <div style="text-align:center;"><div style="width:80px; aspect-ratio:1/1; background:linear-gradient(160deg,#2c2618,#15110a); border-radius:12px;"></div><div style="font-size:11px; color:#6E6E6E; margin-top:7px;">square 1:1</div></div>
+  </div>
+
+  <p style="font-size:12px; color:#9A958C; margin:56px 0 0; padding-top:20px; border-top:1px solid #E3DED6;">Cinerie White Cinematic Editorial System · Foundations (D3A) · documentação, não tela pública. Tokens: <code>cinerie-design-system-handoff/design-tokens.json</code>.</p>
+</div>
+</x-dc>
+</body>
+</html>

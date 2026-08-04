@@ -1,0 +1,2614 @@
+{
+ "meta": {
+  "unit": "D4A",
+  "generatedAt": "2026-07-21",
+  "status": "SPECIFIED_NOT_MIGRATED",
+  "totalScreens": 18,
+  "adSlotTotal": 21,
+  "imageSlotTotal": 39,
+  "note": "Especificação exata das 18 telas. adSlotTotal=21 (mapeados individualmente). imageSlotTotal=39 (por template; loops rendem N em execução): 02:8,06:9,07:10,08:3,11:7,12:1,13:1. NÃO migrado ao canônico."
+ },
+ "imageSlotCountsByScreen": {
+  "11": 7,
+  "12": 1,
+  "13": 1,
+  "02": 8,
+  "06": 9,
+  "07": 10,
+  "08": 3
+ },
+ "screens": [
+  {
+   "screenId": "01",
+   "name": "Switcher (overlay)",
+   "route": null,
+   "context": "dev",
+   "template": "DevOverlayTemplate",
+   "logo": "n/a",
+   "priority": "P3",
+   "componentTree": [
+    "Overlay",
+    "└── RouteList (button/link)"
+   ],
+   "sections": [
+    {
+     "id": "switch-list",
+     "title": "Rotas do protótipo",
+     "component": "button",
+     "container": "overlay",
+     "width": "auto",
+     "grid": "lista",
+     "initialItems": 20,
+     "verTudo": false,
+     "dataDep": [
+      "routeFlags"
+     ],
+     "omitWhen": "nunca",
+     "ad": "none",
+     "empty": "n/a"
+    }
+   ],
+   "tokens": {
+    "zIndex": "z-90 (protótipo, NÃO token de produto)",
+    "note": "remover no build"
+   },
+   "interactions": [
+    {
+     "type": "button",
+     "target": "button",
+     "action": "navegar entre flags de tela (dev)"
+    }
+   ],
+   "dataContracts": [
+    "routeFlags(dev)"
+   ],
+   "adSlots": [],
+   "imageSlots": [],
+   "states": [
+    "open"
+   ],
+   "exceptions": [
+    {
+     "exceptionId": "EX-01-dev",
+     "reason": "overlay de dev; z-90 fora do sistema; remover no build"
+    }
+   ],
+   "status": "SPECIFIED_NOT_MIGRATED"
+  },
+  {
+   "screenId": "02",
+   "name": "Home",
+   "route": "/pt",
+   "context": "neutro",
+   "template": "HomeTemplate",
+   "logo": "neutro (branca no hero / preta no scroll)",
+   "priority": "P0",
+   "componentTree": [
+    "Page",
+    "├── Header (transparent→solid)",
+    "├── HomeHero (slides)",
+    "├── Main",
+    "│   ├── Section 'Today's Featured Picks' (feature + poster grid)",
+    "│   ├── AdSlot(leaderboard)",
+    "│   ├── Section 'Popular This Week' (highlight-rail-card)",
+    "│   ├── Section 'Filmes em alta' (band condicional + monthStats)",
+    "│   ├── AdSlot(leaderboard)",
+    "│   ├── Section 'Séries da semana' (band condicional)",
+    "│   ├── Section 'Get a Glimpse / Em breve' (trailer-card rail)",
+    "│   ├── AdSlot(leaderboard)",
+    "│   └── Section 'Notícias & Entrevistas' (news-overlay mosaic)",
+    "│       └── AdSlot(leaderboard)",
+    "└── Footer (claro)"
+   ],
+   "sections": [
+    {
+     "id": "hero",
+     "title": "(sem título — slides)",
+     "component": "home-hero",
+     "container": "container-full-bleed",
+     "width": "full-bleed",
+     "grid": "1 slide visível",
+     "initialItems": 1,
+     "verTudo": false,
+     "dataDep": [
+      "heroSlides"
+     ],
+     "omitWhen": "nunca (sempre ≥1)",
+     "ad": "none",
+     "empty": "fallback neutro claro se sem backdrop"
+    },
+    {
+     "id": "featured",
+     "title": "Today's Featured Picks",
+     "component": "editorial-feature-card + content-grid",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "feature + grid-poster",
+     "initialItems": 7,
+     "verTudo": true,
+     "dataDep": [
+      "homeFeatured",
+      "top10Big",
+      "top10Small"
+     ],
+     "omitWhen": "seção omitida se vazia",
+     "ad": "after→leaderboard",
+     "empty": "omite"
+    },
+    {
+     "id": "popular",
+     "title": "Popular This Week",
+     "component": "highlight-rail-card",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "content-rail (196px)",
+     "initialItems": 8,
+     "verTudo": true,
+     "dataDep": [
+      "top10Big"
+     ],
+     "omitWhen": "omitida se vazia",
+     "ad": "none",
+     "empty": "skeleton no loading"
+    },
+    {
+     "id": "filmes-alta",
+     "title": "Filmes em alta",
+     "component": "movie-card + monthStats",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "content-rail + stats",
+     "initialItems": 6,
+     "verTudo": true,
+     "dataDep": [
+      "filmesAlta",
+      "monthStats"
+     ],
+     "omitWhen": "band só quando showMoviesBand",
+     "ad": "after→leaderboard",
+     "empty": "omite"
+    },
+    {
+     "id": "series-semana",
+     "title": "Séries da semana",
+     "component": "series-card",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "content-rail",
+     "initialItems": 6,
+     "verTudo": true,
+     "dataDep": [
+      "seriesWeek"
+     ],
+     "omitWhen": "band só quando showSeriesBand",
+     "ad": "none",
+     "empty": "omite"
+    },
+    {
+     "id": "em-breve",
+     "title": "Get a Glimpse (Em breve)",
+     "component": "trailer-card",
+     "container": "container-full-bleed (faixa escura de mídia)",
+     "width": "full-bleed",
+     "grid": "content-rail (332px)",
+     "initialItems": 6,
+     "verTudo": true,
+     "dataDep": [
+      "comingSoon"
+     ],
+     "omitWhen": "omitida se vazia",
+     "ad": "after→leaderboard",
+     "empty": "omite"
+    },
+    {
+     "id": "noticias",
+     "title": "Notícias & Entrevistas",
+     "component": "news-overlay-card",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "grid-news 1.25fr/1fr (1 grande + 4 pequenos)",
+     "initialItems": 5,
+     "verTudo": true,
+     "dataDep": [
+      "homeGridNews"
+     ],
+     "omitWhen": "omitida se vazia",
+     "ad": "none",
+     "empty": "omite"
+    }
+   ],
+   "tokens": {
+    "container": "container-editorial 1280 + full-bleed nas faixas de mídia",
+    "sectionRhythm": "56px",
+    "typography": "section-header 26px (2 pesagens), display-xl no hero",
+    "media": "backdrop 16/9, poster 2/3, trailer-still 16/10",
+    "accent": "movie #D42A2E (CTA), scrim em mídia"
+   },
+   "interactions": [
+    {
+     "type": "carousel",
+     "target": "home-hero",
+     "action": "slides autoplay 6s pausável, reduced-motion"
+    },
+    {
+     "type": "link",
+     "target": "highlight-rail-card/movie-card/series-card",
+     "action": "título é link principal"
+    },
+    {
+     "type": "button",
+     "target": "entity-actions",
+     "action": "Ver detalhes / Ver trailer / bookmark(icon-button)"
+    },
+    {
+     "type": "button",
+     "target": "content-rail",
+     "action": "prev/next icon-button"
+    }
+   ],
+   "dataContracts": [
+    "Hero",
+    "MovieCard",
+    "SeriesCard",
+    "RecommendationCard",
+    "NewsCard",
+    "AdSlot"
+   ],
+   "adSlots": [
+    {
+     "sectionId": "featured",
+     "format": "leaderboard"
+    },
+    {
+     "sectionId": "filmes-alta",
+     "format": "leaderboard"
+    },
+    {
+     "sectionId": "em-breve",
+     "format": "leaderboard"
+    },
+    {
+     "sectionId": "noticias",
+     "format": "leaderboard"
+    }
+   ],
+   "imageSlots": [
+    {
+     "id": "hero-slide-1..N",
+     "aspect": "16/9",
+     "type": "backdrop"
+    },
+    {
+     "id": "featured-lead",
+     "aspect": "16/9",
+     "type": "backdrop"
+    },
+    {
+     "id": "featured-poster-1..4",
+     "aspect": "2/3",
+     "type": "poster"
+    },
+    {
+     "id": "news-mosaic-1..5",
+     "aspect": "16/9|1/1",
+     "type": "news"
+    },
+    {
+     "count": 8,
+     "note": "8 slots de imagem no template (loops rendem N em execução)"
+    }
+   ],
+   "states": [
+    "default",
+    "loading(skeleton rails)",
+    "empty(seção omitida)",
+    "hero-no-image(neutro claro)"
+   ],
+   "exceptions": [
+    {
+     "exceptionId": "EX-02-band",
+     "reason": "04 reusa este template com bands condicionais + acento por contexto"
+    }
+   ],
+   "status": "SPECIFIED_NOT_MIGRATED"
+  },
+  {
+   "screenId": "03",
+   "name": "Notícias",
+   "route": "/pt/noticias",
+   "context": "noticia",
+   "template": "NewsIndexTemplate",
+   "logo": "neutro",
+   "priority": "P1",
+   "componentTree": [
+    "Page",
+    "├── Header",
+    "├── Main",
+    "│   ├── SectionHeader 'Notícias & Entrevistas'",
+    "│   ├── Chips (categorias)",
+    "│   ├── NewsOverlay mosaic (1 grande + 4 pequenos)",
+    "│   ├── AdSlot ×N",
+    "│   ├── Grid de NewsCard/ArticleCard",
+    "│   ├── (band de categoria embutida — newsIsCat)",
+    "│   └── Pagination",
+    "└── Footer"
+   ],
+   "sections": [
+    {
+     "id": "news-head",
+     "title": "Notícias & Entrevistas",
+     "component": "section-header",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "—",
+     "initialItems": 1,
+     "verTudo": false,
+     "dataDep": [],
+     "omitWhen": "nunca",
+     "ad": "none",
+     "empty": "n/a"
+    },
+    {
+     "id": "news-cats",
+     "title": "Categorias",
+     "component": "chip",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "inline chips",
+     "initialItems": 6,
+     "verTudo": false,
+     "dataDep": [
+      "newsCategories"
+     ],
+     "omitWhen": "nunca",
+     "ad": "none",
+     "empty": "n/a"
+    },
+    {
+     "id": "news-mosaic",
+     "title": "Destaques",
+     "component": "news-overlay-card",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "grid-news 1.25fr/1fr",
+     "initialItems": 5,
+     "verTudo": false,
+     "dataDep": [
+      "newsFeatured"
+     ],
+     "omitWhen": "omite se vazio",
+     "ad": "around→leaderboards",
+     "empty": "empty-state"
+    },
+    {
+     "id": "news-grid",
+     "title": "Todas as notícias",
+     "component": "news-card + article-card",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "grid 3col→1",
+     "initialItems": 12,
+     "verTudo": true,
+     "dataDep": [
+      "newsList"
+     ],
+     "omitWhen": "zero-results→empty-state",
+     "ad": "interleaved leaderboards",
+     "empty": "zero-results"
+    },
+    {
+     "id": "news-cat-band",
+     "title": "Filmes/Séries (categoria embutida)",
+     "component": "content-rail",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "content-rail",
+     "initialItems": 6,
+     "verTudo": true,
+     "dataDep": [
+      "newsIsCat"
+     ],
+     "omitWhen": "só quando newsIsCat",
+     "ad": "2 leaderboards contam aqui",
+     "empty": "omite"
+    },
+    {
+     "id": "news-pag",
+     "title": "Paginação",
+     "component": "pagination",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "—",
+     "initialItems": 1,
+     "verTudo": false,
+     "dataDep": [
+      "newsPageInfo"
+     ],
+     "omitWhen": "1 página→omite",
+     "ad": "none",
+     "empty": "n/a"
+    }
+   ],
+   "tokens": {
+    "container": "container-editorial 1280",
+    "grid": "grid-news",
+    "typography": "section-header 26px",
+    "newsCategory": "cores de editoria (exception, semânticas)"
+   },
+   "interactions": [
+    {
+     "type": "chip",
+     "target": "chip",
+     "action": "filtrar categoria (não só cor: texto+estado)"
+    },
+    {
+     "type": "link",
+     "target": "news-card",
+     "action": "headline é link"
+    },
+    {
+     "type": "pagination",
+     "target": "pagination",
+     "action": "link de página (altera URL)"
+    }
+   ],
+   "dataContracts": [
+    "NewsCard",
+    "ArticleHeader",
+    "AdSlot"
+   ],
+   "adSlots": [
+    {
+     "sectionId": "news-mosaic",
+     "format": "leaderboard"
+    },
+    {
+     "sectionId": "news-grid",
+     "format": "leaderboard"
+    },
+    {
+     "sectionId": "news-grid",
+     "format": "leaderboard"
+    },
+    {
+     "sectionId": "news-grid",
+     "format": "leaderboard"
+    },
+    {
+     "sectionId": "news-cat-band",
+     "format": "leaderboard"
+    },
+    {
+     "sectionId": "news-cat-band",
+     "format": "leaderboard"
+    }
+   ],
+   "imageSlots": [],
+   "states": [
+    "default",
+    "loading",
+    "empty",
+    "zero-results"
+   ],
+   "exceptions": [],
+   "status": "SPECIFIED_NOT_MIGRATED"
+  },
+  {
+   "screenId": "04",
+   "name": "Categoria (Filmes/Séries)",
+   "route": "/pt/filmes,/pt/series",
+   "context": "filme|serie",
+   "template": "HomeTemplate",
+   "logo": "cinema vermelha (filmes) | serie verde (séries)",
+   "priority": "P0",
+   "componentTree": [
+    "Page",
+    "├── Header (logo por contexto)",
+    "├── HomeHero",
+    "├── Main (layout home-like + band condicional showMoviesBand/showSeriesBand)",
+    "└── Footer"
+   ],
+   "sections": [
+    {
+     "id": "cat-hero",
+     "title": "(hero)",
+     "component": "home-hero",
+     "container": "container-full-bleed",
+     "width": "full-bleed",
+     "grid": "1",
+     "initialItems": 1,
+     "verTudo": false,
+     "dataDep": [
+      "heroSlides"
+     ],
+     "omitWhen": "nunca",
+     "ad": "none",
+     "empty": "neutro claro"
+    },
+    {
+     "id": "cat-band",
+     "title": "Banda da categoria",
+     "component": "movie-card|series-card",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "content-rail/grid-poster",
+     "initialItems": 8,
+     "verTudo": true,
+     "dataDep": [
+      "showMoviesBand",
+      "showSeriesBand"
+     ],
+     "omitWhen": "band da branch ativa",
+     "ad": "none",
+     "empty": "omite"
+    },
+    {
+     "id": "cat-rest",
+     "title": "Seções home-like",
+     "component": "content-rail",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "como Home",
+     "initialItems": 8,
+     "verTudo": true,
+     "dataDep": [
+      "catDataset"
+     ],
+     "omitWhen": "reusa seções da Home",
+     "ad": "leaderboards conforme Home",
+     "empty": "omite"
+    }
+   ],
+   "tokens": {
+    "note": "idêntico a HomeTemplate; muda dataset + acento (movie #D42A2E / series #395C42) + logo",
+    "accent": "vermelho (filme) / verde (série)"
+   },
+   "interactions": [
+    {
+     "type": "link",
+     "target": "movie-card|series-card",
+     "action": "título link"
+    },
+    {
+     "type": "button",
+     "target": "content-rail",
+     "action": "prev/next"
+    }
+   ],
+   "dataContracts": [
+    "MovieCard",
+    "SeriesCard",
+    "Hero"
+   ],
+   "adSlots": [],
+   "imageSlots": [
+    {
+     "note": "herda slots do layout home-like (loops)"
+    }
+   ],
+   "states": [
+    "default(filme)",
+    "default(serie)",
+    "loading",
+    "empty"
+   ],
+   "exceptions": [
+    {
+     "exceptionId": "EX-04-dual",
+     "reason": "mesma tela, dois contextos (branch catRed/catGreen); logo e acento por branch"
+    }
+   ],
+   "status": "SPECIFIED_NOT_MIGRATED"
+  },
+  {
+   "screenId": "05",
+   "name": "Artigo",
+   "route": "/pt/noticias/[slug]",
+   "context": "noticia",
+   "template": "ArticleTemplate",
+   "logo": "neutro",
+   "priority": "P1",
+   "componentTree": [
+    "Page",
+    "├── Header",
+    "├── ArticleHero",
+    "├── Main (container-reading 720)",
+    "│   ├── ArticleHeader (byline/datas/tempo)",
+    "│   ├── ArticleBody (pull-quote/fact-box/inline-media)",
+    "│   ├── SourceAttribution",
+    "│   ├── CorrectionNotice",
+    "│   ├── AIDisclosure",
+    "│   ├── AdSlot(leaderboard)",
+    "│   ├── RelatedEntities",
+    "│   └── RelatedArticles",
+    "└── Footer"
+   ],
+   "sections": [
+    {
+     "id": "art-hero",
+     "title": "(headline)",
+     "component": "article-hero",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "full-width",
+     "initialItems": 1,
+     "verTudo": false,
+     "dataDep": [
+      "article"
+     ],
+     "omitWhen": "sem imagem→hero compacto neutro",
+     "ad": "none",
+     "empty": "n/a"
+    },
+    {
+     "id": "art-header",
+     "title": "Cabeçalho",
+     "component": "article-header",
+     "container": "container-reading",
+     "width": "720",
+     "grid": "coluna",
+     "initialItems": 1,
+     "verTudo": false,
+     "dataDep": [
+      "article.byline",
+      "article.dates",
+      "article.readingTime"
+     ],
+     "omitWhen": "tempo/atualização omitidos se ausentes",
+     "ad": "none",
+     "empty": "n/a"
+    },
+    {
+     "id": "art-body",
+     "title": "Corpo",
+     "component": "article-body",
+     "container": "container-reading",
+     "width": "720",
+     "grid": "coluna 720",
+     "initialItems": 1,
+     "verTudo": false,
+     "dataDep": [
+      "article.body"
+     ],
+     "omitWhen": "nunca (obrigatório)",
+     "ad": "none",
+     "empty": "n/a"
+    },
+    {
+     "id": "art-sources",
+     "title": "Fontes & transparência",
+     "component": "source-attribution + correction-notice + ai-disclosure",
+     "container": "container-reading",
+     "width": "720",
+     "grid": "coluna",
+     "initialItems": 1,
+     "verTudo": false,
+     "dataDep": [
+      "article.sources",
+      "article.corrections",
+      "article.ai"
+     ],
+     "omitWhen": "cada bloco omitido se ausente",
+     "ad": "after→leaderboard",
+     "empty": "omite"
+    },
+    {
+     "id": "art-rel-ent",
+     "title": "Entidades relacionadas",
+     "component": "related-entities",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "inline/rail",
+     "initialItems": 6,
+     "verTudo": true,
+     "dataDep": [
+      "article.relatedEntities"
+     ],
+     "omitWhen": "omite se vazio",
+     "ad": "none",
+     "empty": "omite"
+    },
+    {
+     "id": "art-rel-art",
+     "title": "Leia também",
+     "component": "related-articles + related-content-card",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "grid 3col",
+     "initialItems": 6,
+     "verTudo": true,
+     "dataDep": [
+      "article.relatedArticles"
+     ],
+     "omitWhen": "omite se vazio",
+     "ad": "none",
+     "empty": "omite"
+    }
+   ],
+   "tokens": {
+    "container": "container-reading 720 (corpo)",
+    "typography": "body-lg 17/1.7, heading-h1 34",
+    "media": "news 16/9"
+   },
+   "interactions": [
+    {
+     "type": "link",
+     "target": "article-body/related",
+     "action": "links descritivos"
+    },
+    {
+     "type": "button",
+     "target": "article-footer",
+     "action": "compartilhar (icon-button)"
+    }
+   ],
+   "dataContracts": [
+    "ArticleHeader",
+    "NewsCard",
+    "AdSlot"
+   ],
+   "adSlots": [
+    {
+     "sectionId": "art-sources",
+     "format": "leaderboard"
+    }
+   ],
+   "imageSlots": [],
+   "states": [
+    "default",
+    "partial(sem tempo/atualização)",
+    "no-hero-image"
+   ],
+   "exceptions": [],
+   "status": "SPECIFIED_NOT_MIGRATED"
+  },
+  {
+   "screenId": "06",
+   "name": "Detalhe de Filme",
+   "route": "/pt/filmes/[slug]",
+   "context": "filme",
+   "template": "MovieDetailTemplate",
+   "logo": "cinema (vermelha)",
+   "priority": "P0",
+   "componentTree": [
+    "Page",
+    "├── Header (sólida vermelha)",
+    "├── TopInfoBar (claro, sem hero cover)",
+    "│   ├── MediaImage(poster 2/3)",
+    "│   ├── EntityTitle + EntityMetadata",
+    "│   ├── EntityActions (trailer/watchlist/share)",
+    "│   ├── CinerieScore + ExternalRating (RatingSourceList)",
+    "│   └── StreamingAvailability",
+    "├── Main",
+    "│   ├── Section Sinopse",
+    "│   ├── Section Ficha técnica (CreatorCredits/EntityMetadata)",
+    "│   ├── Section Elenco (CastList)",
+    "│   ├── Section Mídia (trailer/fotos — MediaGallery)",
+    "│   ├── Section Editorial relacionado (ArticleCard)",
+    "│   └── Section Recomendações (ContentRail/RecommendationCard)",
+    "└── Footer"
+   ],
+   "sections": [
+    {
+     "id": "mv-info",
+     "title": "Top info bar",
+     "component": "entity-title+entity-metadata+entity-actions+cinerie-score+external-rating+streaming-availability",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "poster + info",
+     "initialItems": 1,
+     "verTudo": false,
+     "dataDep": [
+      "movieDetails",
+      "cinerieScore",
+      "externalRatings",
+      "streaming"
+     ],
+     "omitWhen": "score/streaming ausentes→estado honesto",
+     "ad": "none",
+     "empty": "estado honesto (não vazio)"
+    },
+    {
+     "id": "mv-synopsis",
+     "title": "Sinopse",
+     "component": "article-body(curto)",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "coluna",
+     "initialItems": 1,
+     "verTudo": false,
+     "dataDep": [
+      "movie.synopsis"
+     ],
+     "omitWhen": "omite se ausente",
+     "ad": "none",
+     "empty": "omite"
+    },
+    {
+     "id": "mv-facts",
+     "title": "Ficha técnica",
+     "component": "creator-credits+entity-metadata",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "lista k/v",
+     "initialItems": 1,
+     "verTudo": false,
+     "dataDep": [
+      "movieDetails.d"
+     ],
+     "omitWhen": "campo ausente omitido (sem N/D)",
+     "ad": "none",
+     "empty": "omite"
+    },
+    {
+     "id": "mv-cast",
+     "title": "Elenco",
+     "component": "cast-list",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "grid-portrait/rail",
+     "initialItems": 8,
+     "verTudo": true,
+     "dataDep": [
+      "movieCast"
+     ],
+     "omitWhen": "omite se vazio",
+     "ad": "none",
+     "empty": "omite"
+    },
+    {
+     "id": "mv-media",
+     "title": "Mídia",
+     "component": "media-gallery",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "grid-detail-media 1fr/3fr/2fr",
+     "initialItems": 6,
+     "verTudo": true,
+     "dataDep": [
+      "movie.trailer",
+      "movie.fotos"
+     ],
+     "omitWhen": "still ausente→muted",
+     "ad": "none",
+     "empty": "omite"
+    },
+    {
+     "id": "mv-editorial",
+     "title": "Do editorial",
+     "component": "article-card",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "grid 3col",
+     "initialItems": 3,
+     "verTudo": true,
+     "dataDep": [
+      "movieEditorial"
+     ],
+     "omitWhen": "omite se vazio",
+     "ad": "none",
+     "empty": "omite"
+    },
+    {
+     "id": "mv-recs",
+     "title": "Você também pode gostar",
+     "component": "recommendation-card",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "content-rail",
+     "initialItems": 6,
+     "verTudo": true,
+     "dataDep": [
+      "movieRecs"
+     ],
+     "omitWhen": "omite se vazio",
+     "ad": "none",
+     "empty": "omite"
+    }
+   ],
+   "tokens": {
+    "container": "container-editorial 1280",
+    "grid": "grid-detail-media 1fr/3fr/2fr",
+    "media": "poster 2/3, backdrop 16/9",
+    "score": "numeric-lg 47 (Cinerie Score), numeric-md 22 (rating)",
+    "accent": "movie #D42A2E CTA / #8A1E1A links"
+   },
+   "interactions": [
+    {
+     "type": "button",
+     "target": "entity-actions",
+     "action": "Assistir trailer / +Watchlist / Compartilhar(icon-button)"
+    },
+    {
+     "type": "link",
+     "target": "cast-list/recommendation-card",
+     "action": "nome/título link"
+    },
+    {
+     "type": "carousel",
+     "target": "media-gallery",
+     "action": "prev/next"
+    },
+    {
+     "type": "link",
+     "target": "streaming-availability",
+     "action": "link externo do provedor"
+    }
+   ],
+   "dataContracts": [
+    "Hero(top-info)",
+    "CinerieScore",
+    "ExternalRating",
+    "StreamingAvailability",
+    "MovieCard",
+    "RecommendationCard",
+    "ArticleHeader",
+    "AdSlot(n/a)"
+   ],
+   "adSlots": [],
+   "imageSlots": [
+    {
+     "id": "movie-poster",
+     "aspect": "2/3",
+     "type": "poster"
+    },
+    {
+     "id": "movie-trailer",
+     "aspect": "16/9",
+     "type": "trailer-still"
+    },
+    {
+     "id": "movie-fotos",
+     "aspect": "16/9",
+     "type": "gallery"
+    },
+    {
+     "id": "movie-noticias",
+     "aspect": "16/9",
+     "type": "editorial"
+    },
+    {
+     "id": "movie-premios",
+     "aspect": "16/9",
+     "type": "editorial"
+    },
+    {
+     "id": "movie-critica",
+     "aspect": "16/9",
+     "type": "editorial(cena-chave)"
+    },
+    {
+     "id": "mcast-{initials}",
+     "aspect": "3/4",
+     "type": "cast(loop)"
+    },
+    {
+     "id": "{a.slotId}",
+     "aspect": "varia",
+     "type": "editorial(loop)"
+    },
+    {
+     "id": "{m.slotId}",
+     "aspect": "2/3",
+     "type": "poster(loop)"
+    }
+   ],
+   "states": [
+    "default",
+    "no-score(6 estados honestos)",
+    "no-streaming",
+    "partial-media",
+    "no-image(fallback)"
+   ],
+   "exceptions": [
+    {
+     "exceptionId": "EX-06-nohero",
+     "reason": "hero cover removido por decisão do usuário → top-info-bar branca; nav sólida"
+    }
+   ],
+   "status": "SPECIFIED_NOT_MIGRATED"
+  },
+  {
+   "screenId": "07",
+   "name": "Detalhe de Série",
+   "route": "/pt/series/[slug]",
+   "context": "serie",
+   "template": "SeriesDetailTemplate",
+   "logo": "serie (verde)",
+   "priority": "P0",
+   "componentTree": [
+    "Page",
+    "├── Header (sólida verde)",
+    "├── TopInfoBar (poster/título/status/ações/score/streaming)",
+    "├── Main",
+    "│   ├── SeasonSelector",
+    "│   ├── SeasonSummary",
+    "│   ├── Episode list (EpisodeCard ×N)",
+    "│   ├── Section Elenco (CastList)",
+    "│   ├── Section Mídia (MediaGallery)",
+    "│   ├── Section Editorial (ArticleCard)",
+    "│   └── Section More like this (ContentRail)",
+    "└── Footer"
+   ],
+   "sections": [
+    {
+     "id": "sr-info",
+     "title": "Top info bar",
+     "component": "entity-title+entity-metadata+entity-actions+cinerie-score+streaming-availability",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "poster + info",
+     "initialItems": 1,
+     "verTudo": false,
+     "dataDep": [
+      "seriesDetails",
+      "cinerieScore",
+      "streaming"
+     ],
+     "omitWhen": "status/score/streaming honestos",
+     "ad": "none",
+     "empty": "estado honesto"
+    },
+    {
+     "id": "sr-seasons",
+     "title": "Temporadas",
+     "component": "season-selector",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "tabs/roving",
+     "initialItems": 1,
+     "verTudo": false,
+     "dataDep": [
+      "seasons"
+     ],
+     "omitWhen": "1 temporada→sem seletor",
+     "ad": "none",
+     "empty": "n/a"
+    },
+    {
+     "id": "sr-season-sum",
+     "title": "Resumo da temporada",
+     "component": "season-summary",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "—",
+     "initialItems": 1,
+     "verTudo": false,
+     "dataDep": [
+      "seasonInfo"
+     ],
+     "omitWhen": "temporada futura→'em breve'",
+     "ad": "none",
+     "empty": "'em breve'"
+    },
+    {
+     "id": "sr-eps",
+     "title": "Episódios",
+     "component": "episode-card",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "lista vertical",
+     "initialItems": 10,
+     "verTudo": false,
+     "dataDep": [
+      "episodes"
+     ],
+     "omitWhen": "futuro→sem still/sinopse; spoiler oculto",
+     "ad": "none",
+     "empty": "'em breve'"
+    },
+    {
+     "id": "sr-cast",
+     "title": "Elenco",
+     "component": "cast-list",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "grid-portrait/rail",
+     "initialItems": 8,
+     "verTudo": true,
+     "dataDep": [
+      "castSeries"
+     ],
+     "omitWhen": "omite se vazio",
+     "ad": "none",
+     "empty": "omite"
+    },
+    {
+     "id": "sr-media",
+     "title": "Mídia",
+     "component": "media-gallery",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "grid-detail-media",
+     "initialItems": 6,
+     "verTudo": true,
+     "dataDep": [
+      "media"
+     ],
+     "omitWhen": "still ausente→muted",
+     "ad": "none",
+     "empty": "omite"
+    },
+    {
+     "id": "sr-editorial",
+     "title": "Do editorial",
+     "component": "article-card",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "grid 3col",
+     "initialItems": 3,
+     "verTudo": true,
+     "dataDep": [
+      "seriesArticles"
+     ],
+     "omitWhen": "omite se vazio",
+     "ad": "none",
+     "empty": "omite"
+    },
+    {
+     "id": "sr-recs",
+     "title": "Mais como este",
+     "component": "recommendation-card",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "content-rail",
+     "initialItems": 6,
+     "verTudo": true,
+     "dataDep": [
+      "moreLikeThis"
+     ],
+     "omitWhen": "omite se vazio",
+     "ad": "none",
+     "empty": "omite"
+    }
+   ],
+   "tokens": {
+    "container": "container-editorial 1280",
+    "media": "still 16/9, poster 2/3",
+    "accent": "series #395C42 (texto/links) / #7FA56F (ponto)",
+    "score": "numeric-lg 47"
+   },
+   "interactions": [
+    {
+     "type": "tabs",
+     "target": "season-selector",
+     "action": "trocar temporada (aria-selected, roving)"
+    },
+    {
+     "type": "button",
+     "target": "episode-card",
+     "action": "revelar spoiler / abrir episódio"
+    },
+    {
+     "type": "link",
+     "target": "cast-list/recommendation-card",
+     "action": "link"
+    },
+    {
+     "type": "button",
+     "target": "entity-actions",
+     "action": "trailer/watchlist/share"
+    }
+   ],
+   "dataContracts": [
+    "CinerieScore",
+    "ExternalRating",
+    "StreamingAvailability",
+    "SeasonCard",
+    "EpisodeCard",
+    "SeriesCard",
+    "RecommendationCard"
+   ],
+   "adSlots": [],
+   "imageSlots": [
+    {
+     "id": "series-poster",
+     "aspect": "2/3",
+     "type": "poster"
+    },
+    {
+     "id": "media-trailer",
+     "aspect": "16/9",
+     "type": "trailer-still"
+    },
+    {
+     "id": "media-fotos",
+     "aspect": "16/9",
+     "type": "gallery"
+    },
+    {
+     "id": "media-noticias",
+     "aspect": "16/9",
+     "type": "editorial"
+    },
+    {
+     "id": "media-premios",
+     "aspect": "16/9",
+     "type": "editorial"
+    },
+    {
+     "id": "series-critica",
+     "aspect": "16/9",
+     "type": "editorial(cena-chave)"
+    },
+    {
+     "id": "ep-{slotId}",
+     "aspect": "16/9",
+     "type": "episode-still(loop)"
+    },
+    {
+     "id": "cast-{initials}",
+     "aspect": "3/4",
+     "type": "cast(loop)"
+    },
+    {
+     "id": "{a.slotId}",
+     "aspect": "varia",
+     "type": "editorial(loop)"
+    },
+    {
+     "id": "{m.slotId}",
+     "aspect": "2/3",
+     "type": "poster(loop)"
+    }
+   ],
+   "states": [
+    "default",
+    "future-season",
+    "spoiler-hidden",
+    "no-score",
+    "no-streaming",
+    "partial-episode"
+   ],
+   "exceptions": [
+    {
+     "exceptionId": "EX-07-nohero",
+     "reason": "top-info-bar branca (hero removido); temporada/episódio são seções, não telas"
+    }
+   ],
+   "status": "SPECIFIED_NOT_MIGRATED"
+  },
+  {
+   "screenId": "08",
+   "name": "Série (mobile)",
+   "route": "/pt/series/[slug] @390",
+   "context": "serie",
+   "template": "SeriesDetailTemplate",
+   "logo": "serie (verde)",
+   "priority": "P1",
+   "componentTree": [
+    "Page(390)",
+    "├── MobileNavigation",
+    "├── TopInfoBar compacto",
+    "├── SeasonSelector (overflow horizontal)",
+    "├── EpisodeCard list",
+    "└── Footer mobile"
+   ],
+   "sections": [
+    {
+     "id": "m-info",
+     "title": "Top info (mobile)",
+     "component": "entity-title+entity-metadata+entity-actions",
+     "container": "full-width",
+     "width": "390",
+     "grid": "coluna",
+     "initialItems": 1,
+     "verTudo": false,
+     "dataDep": [
+      "seriesDetails"
+     ],
+     "omitWhen": "—",
+     "ad": "none",
+     "empty": "estado honesto"
+    },
+    {
+     "id": "m-seasons",
+     "title": "Temporadas",
+     "component": "season-selector",
+     "container": "full-width",
+     "width": "390",
+     "grid": "overflow-x roving",
+     "initialItems": 1,
+     "verTudo": false,
+     "dataDep": [
+      "seasons"
+     ],
+     "omitWhen": "—",
+     "ad": "none",
+     "empty": "n/a"
+    },
+    {
+     "id": "m-eps",
+     "title": "Episódios",
+     "component": "episode-card",
+     "container": "full-width",
+     "width": "390",
+     "grid": "lista vertical",
+     "initialItems": 6,
+     "verTudo": false,
+     "dataDep": [
+      "episodes"
+     ],
+     "omitWhen": "futuro→'em breve'; spoiler oculto",
+     "ad": "none",
+     "empty": "'em breve'"
+    }
+   ],
+   "tokens": {
+    "container": "full-width mobile 390",
+    "touchTarget": "≥44px",
+    "typography": "reduzida vs desktop"
+   },
+   "interactions": [
+    {
+     "type": "tabs",
+     "target": "season-selector",
+     "action": "overflow horizontal roving"
+    },
+    {
+     "type": "button",
+     "target": "mobile-navigation",
+     "action": "drawer (foco preso, Escape, safe-area)"
+    },
+    {
+     "type": "button",
+     "target": "episode-card",
+     "action": "revelar spoiler"
+    }
+   ],
+   "dataContracts": [
+    "SeasonCard",
+    "EpisodeCard",
+    "SeriesCard"
+   ],
+   "adSlots": [],
+   "imageSlots": [
+    {
+     "id": "m-series-poster",
+     "aspect": "2/3",
+     "type": "poster"
+    },
+    {
+     "id": "m-ep-{slotId}",
+     "aspect": "16/9",
+     "type": "episode-still(loop)"
+    },
+    {
+     "id": "m-media",
+     "aspect": "16/9",
+     "type": "gallery"
+    }
+   ],
+   "states": [
+    "default(390)",
+    "future-season",
+    "spoiler-hidden",
+    "drawer-open"
+   ],
+   "exceptions": [
+    {
+     "exceptionId": "EX-08-mobile",
+     "reason": "variante mobile do 07 (mesmo template, breakpoint 390)"
+    }
+   ],
+   "status": "SPECIFIED_NOT_MIGRATED"
+  },
+  {
+   "screenId": "09",
+   "name": "Pessoa",
+   "route": "/pt/pessoas/[slug]",
+   "context": "pessoa",
+   "template": "PersonDetailTemplate",
+   "logo": "neutro",
+   "priority": "P1",
+   "componentTree": [
+    "Page",
+    "├── Header",
+    "├── PersonHero (portrait + nome)",
+    "├── Main",
+    "│   ├── Biografia",
+    "│   ├── EntityMetadata",
+    "│   ├── PersonCredits (filmografia)",
+    "│   ├── AdSlot(leaderboard)",
+    "│   ├── Notícias relacionadas",
+    "│   └── Related people",
+    "└── Footer"
+   ],
+   "sections": [
+    {
+     "id": "pe-hero",
+     "title": "(nome)",
+     "component": "person-hero",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "portrait + nome",
+     "initialItems": 1,
+     "verTudo": false,
+     "dataDep": [
+      "person"
+     ],
+     "omitWhen": "sem portrait→avatar iniciais",
+     "ad": "none",
+     "empty": "neutro claro"
+    },
+    {
+     "id": "pe-bio",
+     "title": "Biografia",
+     "component": "article-body(curto)",
+     "container": "container-reading",
+     "width": "720",
+     "grid": "coluna",
+     "initialItems": 1,
+     "verTudo": false,
+     "dataDep": [
+      "person.bio"
+     ],
+     "omitWhen": "sem bio→omite bloco",
+     "ad": "none",
+     "empty": "omite"
+    },
+    {
+     "id": "pe-meta",
+     "title": "Dados",
+     "component": "entity-metadata",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "lista",
+     "initialItems": 1,
+     "verTudo": false,
+     "dataDep": [
+      "person.meta"
+     ],
+     "omitWhen": "campo ausente omitido",
+     "ad": "none",
+     "empty": "omite"
+    },
+    {
+     "id": "pe-credits",
+     "title": "Filmografia",
+     "component": "person-credits + movie-card + series-card",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "content-grid/rail",
+     "initialItems": 12,
+     "verTudo": true,
+     "dataDep": [
+      "person.credits"
+     ],
+     "omitWhen": "omite se vazio",
+     "ad": "after→leaderboard",
+     "empty": "empty-state"
+    },
+    {
+     "id": "pe-news",
+     "title": "Notícias",
+     "component": "related-articles",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "grid 3col",
+     "initialItems": 3,
+     "verTudo": true,
+     "dataDep": [
+      "person.news"
+     ],
+     "omitWhen": "omite se vazio",
+     "ad": "none",
+     "empty": "omite"
+    },
+    {
+     "id": "pe-related",
+     "title": "Pessoas relacionadas",
+     "component": "related-content-card",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "content-rail",
+     "initialItems": 6,
+     "verTudo": true,
+     "dataDep": [
+      "person.related"
+     ],
+     "omitWhen": "omite se vazio",
+     "ad": "none",
+     "empty": "omite"
+    }
+   ],
+   "tokens": {
+    "container": "container-editorial 1280 + reading 720 (bio)",
+    "media": "portrait 3/4",
+    "typography": "heading-h1 34"
+   },
+   "interactions": [
+    {
+     "type": "link",
+     "target": "person-credits/movie-card",
+     "action": "título link"
+    },
+    {
+     "type": "button",
+     "target": "content-rail",
+     "action": "prev/next"
+    }
+   ],
+   "dataContracts": [
+    "PersonCard",
+    "MovieCard",
+    "SeriesCard",
+    "NewsCard",
+    "AdSlot"
+   ],
+   "adSlots": [
+    {
+     "sectionId": "pe-credits",
+     "format": "leaderboard"
+    }
+   ],
+   "imageSlots": [],
+   "states": [
+    "default",
+    "no-image(avatar)",
+    "no-bio",
+    "partial"
+   ],
+   "exceptions": [],
+   "status": "SPECIFIED_NOT_MIGRATED"
+  },
+  {
+   "screenId": "10",
+   "name": "Onde assistir (Browse)",
+   "route": "/pt/onde-assistir",
+   "context": "neutro",
+   "template": "CatalogBrowseTemplate",
+   "logo": "neutro",
+   "priority": "P1",
+   "componentTree": [
+    "Page",
+    "├── Header",
+    "├── CompactHero (título + descrição)",
+    "├── Main",
+    "│   ├── Filtros (Chip/SegmentedControl)",
+    "│   ├── AdSlot(leaderboard)",
+    "│   ├── Rails por provedor (ContentRail)",
+    "│   ├── PosterGrid",
+    "│   ├── AdSlot(leaderboard)",
+    "│   └── Pagination",
+    "└── Footer"
+   ],
+   "sections": [
+    {
+     "id": "br-hero",
+     "title": "Onde assistir",
+     "component": "compact-hero",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "título+desc",
+     "initialItems": 1,
+     "verTudo": false,
+     "dataDep": [
+      "browseIntro"
+     ],
+     "omitWhen": "sem imagem→sem fundo escuro",
+     "ad": "none",
+     "empty": "n/a"
+    },
+    {
+     "id": "br-filters",
+     "title": "Filtros",
+     "component": "chip+toggle-segmented",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "inline",
+     "initialItems": 8,
+     "verTudo": false,
+     "dataDep": [
+      "providers",
+      "genres"
+     ],
+     "omitWhen": "nunca",
+     "ad": "after→leaderboard",
+     "empty": "n/a"
+    },
+    {
+     "id": "br-rails",
+     "title": "Por provedor",
+     "component": "content-rail + movie-card/series-card",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "content-rail",
+     "initialItems": 8,
+     "verTudo": true,
+     "dataDep": [
+      "byProvider"
+     ],
+     "omitWhen": "provedor sem títulos→omite/streaming-unavailable",
+     "ad": "none",
+     "empty": "omite"
+    },
+    {
+     "id": "br-grid",
+     "title": "Catálogo",
+     "component": "content-grid",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "grid-poster",
+     "initialItems": 24,
+     "verTudo": true,
+     "dataDep": [
+      "catalog"
+     ],
+     "omitWhen": "zero-results→empty",
+     "ad": "after→leaderboard",
+     "empty": "zero-results"
+    },
+    {
+     "id": "br-pag",
+     "title": "Paginação",
+     "component": "pagination",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "—",
+     "initialItems": 1,
+     "verTudo": false,
+     "dataDep": [
+      "pageInfo"
+     ],
+     "omitWhen": "1 página→omite",
+     "ad": "none",
+     "empty": "n/a"
+    }
+   ],
+   "tokens": {
+    "container": "container-editorial 1280",
+    "media": "poster 2/3",
+    "control": "chip 30/36px, segmented"
+   },
+   "interactions": [
+    {
+     "type": "chip",
+     "target": "chip",
+     "action": "filtrar (texto+estado, não só cor)"
+    },
+    {
+     "type": "toggle",
+     "target": "toggle-segmented",
+     "action": "alternar modalidade"
+    },
+    {
+     "type": "link",
+     "target": "movie-card",
+     "action": "título link"
+    },
+    {
+     "type": "pagination",
+     "target": "pagination",
+     "action": "link de página"
+    }
+   ],
+   "dataContracts": [
+    "StreamingAvailability",
+    "MovieCard",
+    "SeriesCard",
+    "AdSlot"
+   ],
+   "adSlots": [
+    {
+     "sectionId": "br-filters",
+     "format": "leaderboard"
+    },
+    {
+     "sectionId": "br-grid",
+     "format": "leaderboard"
+    }
+   ],
+   "imageSlots": [],
+   "states": [
+    "default",
+    "filtered",
+    "loading",
+    "empty",
+    "zero-results"
+   ],
+   "exceptions": [],
+   "status": "SPECIFIED_NOT_MIGRATED"
+  },
+  {
+   "screenId": "11",
+   "name": "Explorar (Discover)",
+   "route": "/pt/explorar",
+   "context": "neutro",
+   "template": "ExploreTemplate",
+   "logo": "neutro (preta)",
+   "priority": "P1",
+   "componentTree": [
+    "Page",
+    "├── Header",
+    "├── Main",
+    "│   ├── SectionHeader + Tabs/Chips",
+    "│   ├── Coleções (ContentRail/Carousel)",
+    "│   ├── PosterGrid",
+    "│   ├── AdSlot(leaderboard)",
+    "│   └── Pagination",
+    "└── Footer"
+   ],
+   "sections": [
+    {
+     "id": "dc-head",
+     "title": "Explorar",
+     "component": "section-header + tabs",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "header+tabs",
+     "initialItems": 1,
+     "verTudo": false,
+     "dataDep": [
+      "discoverTabs"
+     ],
+     "omitWhen": "nunca",
+     "ad": "none",
+     "empty": "n/a"
+    },
+    {
+     "id": "dc-collections",
+     "title": "Coleções",
+     "component": "content-rail + carousel",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "content-rail",
+     "initialItems": 8,
+     "verTudo": true,
+     "dataDep": [
+      "collections"
+     ],
+     "omitWhen": "omite se vazio",
+     "ad": "none",
+     "empty": "omite"
+    },
+    {
+     "id": "dc-grid",
+     "title": "Resultados",
+     "component": "content-grid",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "grid-poster",
+     "initialItems": 24,
+     "verTudo": true,
+     "dataDep": [
+      "discoverGrid"
+     ],
+     "omitWhen": "zero-results→empty",
+     "ad": "after→leaderboard",
+     "empty": "zero-results"
+    },
+    {
+     "id": "dc-pag",
+     "title": "Paginação",
+     "component": "pagination",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "—",
+     "initialItems": 1,
+     "verTudo": false,
+     "dataDep": [
+      "pageInfo"
+     ],
+     "omitWhen": "1 página→omite",
+     "ad": "none",
+     "empty": "n/a"
+    }
+   ],
+   "tokens": {
+    "container": "container-editorial 1280",
+    "media": "poster 2/3, backdrop 16/9",
+    "grid": "grid-poster"
+   },
+   "interactions": [
+    {
+     "type": "tabs",
+     "target": "tabs",
+     "action": "trocar categoria"
+    },
+    {
+     "type": "chip",
+     "target": "chip",
+     "action": "filtro"
+    },
+    {
+     "type": "carousel",
+     "target": "carousel",
+     "action": "coleções prev/next"
+    },
+    {
+     "type": "link",
+     "target": "movie-card",
+     "action": "link"
+    }
+   ],
+   "dataContracts": [
+    "MovieCard",
+    "SeriesCard",
+    "RecommendationCard",
+    "AdSlot"
+   ],
+   "adSlots": [
+    {
+     "sectionId": "dc-grid",
+     "format": "leaderboard"
+    }
+   ],
+   "imageSlots": [
+    {
+     "id": "discover-collection-1..7",
+     "aspect": "16/9|2/3",
+     "type": "backdrop/poster",
+     "note": "7 slots no template"
+    }
+   ],
+   "states": [
+    "default",
+    "filtered",
+    "loading",
+    "empty",
+    "zero-results"
+   ],
+   "exceptions": [],
+   "status": "SPECIFIED_NOT_MIGRATED"
+  },
+  {
+   "screenId": "12",
+   "name": "Mais aguardados",
+   "route": "/pt/em-breve",
+   "context": "neutro/misto",
+   "template": "ExploreTemplate",
+   "logo": "neutro (preta)",
+   "priority": "P2",
+   "componentTree": [
+    "Page",
+    "├── Header",
+    "├── Main",
+    "│   ├── SectionHeader 'Mais aguardados'",
+    "│   ├── TrailerCard rail (Em breve)",
+    "│   └── PosterGrid por data",
+    "└── Footer"
+   ],
+   "sections": [
+    {
+     "id": "an-head",
+     "title": "Mais aguardados",
+     "component": "section-header",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "header",
+     "initialItems": 1,
+     "verTudo": false,
+     "dataDep": [],
+     "omitWhen": "nunca",
+     "ad": "none",
+     "empty": "n/a"
+    },
+    {
+     "id": "an-trailers",
+     "title": "Em breve",
+     "component": "trailer-card",
+     "container": "container-full-bleed (faixa escura)",
+     "width": "full-bleed",
+     "grid": "content-rail (332px)",
+     "initialItems": 6,
+     "verTudo": true,
+     "dataDep": [
+      "comingSoon"
+     ],
+     "omitWhen": "omite se vazio",
+     "ad": "none",
+     "empty": "omite"
+    },
+    {
+     "id": "an-grid",
+     "title": "Por estreia",
+     "component": "content-grid + movie-card",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "grid-poster",
+     "initialItems": 24,
+     "verTudo": true,
+     "dataDep": [
+      "anticipated"
+     ],
+     "omitWhen": "sem data→'a definir' (não inventa)",
+     "ad": "none",
+     "empty": "empty"
+    }
+   ],
+   "tokens": {
+    "container": "container-editorial 1280 + full-bleed (trailers)",
+    "media": "trailer-still 16/10, poster 2/3"
+   },
+   "interactions": [
+    {
+     "type": "button",
+     "target": "trailer-card",
+     "action": "Watch / bookmark"
+    },
+    {
+     "type": "link",
+     "target": "movie-card",
+     "action": "link"
+    },
+    {
+     "type": "button",
+     "target": "content-rail",
+     "action": "prev/next"
+    }
+   ],
+   "dataContracts": [
+    "MovieCard",
+    "RecommendationCard"
+   ],
+   "adSlots": [],
+   "imageSlots": [
+    {
+     "id": "anticipated-lead",
+     "aspect": "16/10",
+     "type": "trailer-still",
+     "note": "1 slot no template"
+    }
+   ],
+   "states": [
+    "default",
+    "loading",
+    "empty"
+   ],
+   "exceptions": [
+    {
+     "exceptionId": "EX-12-nodate",
+     "reason": "estreia ausente → 'a definir', nunca data inventada"
+    }
+   ],
+   "status": "SPECIFIED_NOT_MIGRATED"
+  },
+  {
+   "screenId": "13",
+   "name": "Configurações",
+   "route": "/pt/configuracoes",
+   "context": "neutro",
+   "template": "SettingsTemplate",
+   "logo": "neutro (preta)",
+   "priority": "P1",
+   "componentTree": [
+    "Page",
+    "├── Header",
+    "├── Main (container ~720–960)",
+    "│   ├── SectionHeader 'Configurações'",
+    "│   ├── Tabs/anchor (seções)",
+    "│   ├── Field groups (field/select/switch/checkbox)",
+    "│   ├── FormActions",
+    "│   └── Alert/Toast (feedback)",
+    "└── Footer"
+   ],
+   "sections": [
+    {
+     "id": "st-head",
+     "title": "Configurações",
+     "component": "section-header",
+     "container": "container-reading",
+     "width": "720",
+     "grid": "header",
+     "initialItems": 1,
+     "verTudo": false,
+     "dataDep": [],
+     "omitWhen": "nunca",
+     "ad": "none",
+     "empty": "n/a"
+    },
+    {
+     "id": "st-nav",
+     "title": "Seções",
+     "component": "tabs",
+     "container": "container-reading",
+     "width": "720",
+     "grid": "tabs/anchor",
+     "initialItems": 1,
+     "verTudo": false,
+     "dataDep": [
+      "settingsSections"
+     ],
+     "omitWhen": "nunca",
+     "ad": "none",
+     "empty": "n/a"
+    },
+    {
+     "id": "st-account",
+     "title": "Conta",
+     "component": "field+avatar",
+     "container": "container-reading",
+     "width": "720",
+     "grid": "form",
+     "initialItems": 1,
+     "verTudo": false,
+     "dataDep": [
+      "account"
+     ],
+     "omitWhen": "email não verificado→product-state",
+     "ad": "none",
+     "empty": "n/a"
+    },
+    {
+     "id": "st-prefs",
+     "title": "Preferências",
+     "component": "switch+select+checkbox",
+     "container": "container-reading",
+     "width": "720",
+     "grid": "form",
+     "initialItems": 1,
+     "verTudo": false,
+     "dataDep": [
+      "prefs"
+     ],
+     "omitWhen": "opcional marcado 'opcional'",
+     "ad": "none",
+     "empty": "n/a"
+    },
+    {
+     "id": "st-actions",
+     "title": "Salvar",
+     "component": "form-actions + toast",
+     "container": "container-reading",
+     "width": "720",
+     "grid": "—",
+     "initialItems": 1,
+     "verTudo": false,
+     "dataDep": [],
+     "omitWhen": "nunca",
+     "ad": "none",
+     "empty": "n/a"
+    }
+   ],
+   "tokens": {
+    "container": "container-reading/edit ~720–960",
+    "control": "height-md 44, radius-control 8",
+    "state": "focus #101010, error #C7382F"
+   },
+   "interactions": [
+    {
+     "type": "tabs",
+     "target": "tabs",
+     "action": "trocar seção"
+    },
+    {
+     "type": "switch",
+     "target": "switch",
+     "action": "ligar/desligar (role switch)"
+    },
+    {
+     "type": "select",
+     "target": "select",
+     "action": "escolher"
+    },
+    {
+     "type": "button",
+     "target": "form-actions",
+     "action": "Salvar (loading não muda largura)"
+    }
+   ],
+   "dataContracts": [
+    "(forms — data-visual: n/a de catálogo)"
+   ],
+   "adSlots": [],
+   "imageSlots": [
+    {
+     "id": "settings-avatar",
+     "aspect": "1/1",
+     "type": "avatar",
+     "note": "1 slot"
+    }
+   ],
+   "states": [
+    "default",
+    "focus",
+    "invalid",
+    "success",
+    "loading",
+    "disabled",
+    "readonly",
+    "email-unverified"
+   ],
+   "exceptions": [
+    {
+     "exceptionId": "EX-13-auth",
+     "reason": "tela existe mas funcionalidade autenticada NÃO é implementada nesta unidade (só estrutura/estados)"
+    }
+   ],
+   "status": "SPECIFIED_NOT_MIGRATED"
+  },
+  {
+   "screenId": "14",
+   "name": "Importar dados",
+   "route": "/pt/configuracoes/dados",
+   "context": "neutro",
+   "template": "SettingsTemplate",
+   "logo": "neutro (preta)",
+   "priority": "P2",
+   "componentTree": [
+    "Page",
+    "├── Header",
+    "├── Main (container ~720)",
+    "│   ├── SectionHeader 'Importar dados'",
+    "│   ├── Field de upload/fonte",
+    "│   ├── FormActions",
+    "│   └── Estados: loading/success/error (Alert)",
+    "└── Footer"
+   ],
+   "sections": [
+    {
+     "id": "dt-head",
+     "title": "Importar dados",
+     "component": "section-header",
+     "container": "container-reading",
+     "width": "720",
+     "grid": "header",
+     "initialItems": 1,
+     "verTudo": false,
+     "dataDep": [],
+     "omitWhen": "nunca",
+     "ad": "none",
+     "empty": "n/a"
+    },
+    {
+     "id": "dt-source",
+     "title": "Fonte",
+     "component": "field+select",
+     "container": "container-reading",
+     "width": "720",
+     "grid": "form",
+     "initialItems": 1,
+     "verTudo": false,
+     "dataDep": [
+      "importSources"
+     ],
+     "omitWhen": "nunca",
+     "ad": "none",
+     "empty": "n/a"
+    },
+    {
+     "id": "dt-run",
+     "title": "Importar",
+     "component": "form-actions + alert",
+     "container": "container-reading",
+     "width": "720",
+     "grid": "—",
+     "initialItems": 1,
+     "verTudo": false,
+     "dataDep": [],
+     "omitWhen": "nunca",
+     "ad": "none",
+     "empty": "estados loading/success/error"
+    },
+    {
+     "id": "dt-log",
+     "title": "Resultado",
+     "component": "alert + loading-state",
+     "container": "container-reading",
+     "width": "720",
+     "grid": "—",
+     "initialItems": 1,
+     "verTudo": false,
+     "dataDep": [
+      "importResult"
+     ],
+     "omitWhen": "sem resultado→omite",
+     "ad": "none",
+     "empty": "empty"
+    }
+   ],
+   "tokens": {
+    "container": "container-reading ~720",
+    "control": "height-md 44"
+   },
+   "interactions": [
+    {
+     "type": "select",
+     "target": "select",
+     "action": "fonte"
+    },
+    {
+     "type": "button",
+     "target": "form-actions",
+     "action": "Importar (loading)"
+    },
+    {
+     "type": "button",
+     "target": "button",
+     "action": "Cancelar"
+    }
+   ],
+   "dataContracts": [
+    "(forms)"
+   ],
+   "adSlots": [],
+   "imageSlots": [],
+   "states": [
+    "default",
+    "loading",
+    "success",
+    "error",
+    "empty"
+   ],
+   "exceptions": [
+    {
+     "exceptionId": "EX-14-auth",
+     "reason": "sem integração real; só estrutura e estados"
+    }
+   ],
+   "status": "SPECIFIED_NOT_MIGRATED"
+  },
+  {
+   "screenId": "15",
+   "name": "Listas",
+   "route": "/pt/listas",
+   "context": "neutro/misto",
+   "template": "CollectionTemplate",
+   "logo": "neutro (preta)",
+   "priority": "P1",
+   "componentTree": [
+    "Page",
+    "├── Header",
+    "├── Main",
+    "│   ├── SectionHeader 'Listas'",
+    "│   ├── AdSlot(leaderboard)",
+    "│   ├── Cards de lista (Horizontal/Compact)",
+    "│   ├── PosterGrid da lista",
+    "│   ├── AdSlot(leaderboard) ×2",
+    "│   └── EmptyState (sem listas)",
+    "└── Footer"
+   ],
+   "sections": [
+    {
+     "id": "ls-head",
+     "title": "Listas",
+     "component": "section-header",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "header",
+     "initialItems": 1,
+     "verTudo": false,
+     "dataDep": [],
+     "omitWhen": "nunca",
+     "ad": "none",
+     "empty": "n/a"
+    },
+    {
+     "id": "ls-cards",
+     "title": "Suas listas",
+     "component": "horizontal-content-card+compact-content-card",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "grid/coluna",
+     "initialItems": 6,
+     "verTudo": true,
+     "dataDep": [
+      "userLists"
+     ],
+     "omitWhen": "sem listas→empty-state",
+     "ad": "around→leaderboards",
+     "empty": "empty-state"
+    },
+    {
+     "id": "ls-grid",
+     "title": "Itens da lista",
+     "component": "content-grid + movie-card/series-card",
+     "container": "container-editorial",
+     "width": "1280",
+     "grid": "grid-poster",
+     "initialItems": 24,
+     "verTudo": true,
+     "dataDep": [
+      "listItems"
+     ],
+     "omitWhen": "lista vazia→empty-state",
+     "ad": "after→leaderboard",
+     "empty": "empty-state 'lista vazia'"
+    }
+   ],
+   "tokens": {
+    "container": "container-editorial 1280",
+    "media": "poster 2/3"
+   },
+   "interactions": [
+    {
+     "type": "link",
+     "target": "horizontal-content-card",
+     "action": "abrir lista"
+    },
+    {
+     "type": "link",
+     "target": "movie-card",
+     "action": "link"
+    },
+    {
+     "type": "button",
+     "target": "empty-state",
+     "action": "ação sugerida"
+    }
+   ],
+   "dataContracts": [
+    "MovieCard",
+    "SeriesCard",
+    "AdSlot"
+   ],
+   "adSlots": [
+    {
+     "sectionId": "ls-cards",
+     "format": "leaderboard"
+    },
+    {
+     "sectionId": "ls-cards",
+     "format": "leaderboard"
+    },
+    {
+     "sectionId": "ls-grid",
+     "format": "leaderboard"
+    }
+   ],
+   "imageSlots": [],
+   "states": [
+    "default",
+    "empty",
+    "loading",
+    "private",
+    "unauthenticated"
+   ],
+   "exceptions": [
+    {
+     "exceptionId": "EX-15-auth",
+     "reason": "listas de usuário: estados private/unauthenticated como product-state; sem tela autenticada plena"
+    }
+   ],
+   "status": "SPECIFIED_NOT_MIGRATED"
+  },
+  {
+   "screenId": "16",
+   "name": "Entrar",
+   "route": "/pt/entrar",
+   "context": "neutro",
+   "template": "AuthTemplate",
+   "logo": "neutro (preta)",
+   "priority": "P1",
+   "componentTree": [
+    "Page",
+    "├── Header (minimal)",
+    "├── Main (coluna centrada ~420)",
+    "│   ├── Título",
+    "│   ├── Field (email)",
+    "│   ├── PasswordInput",
+    "│   ├── FormActions (Entrar)",
+    "│   ├── Link secundário (cadastrar/recuperar)",
+    "│   └── AdSlot(leaderboard)",
+    "└── Footer (minimal)"
+   ],
+   "sections": [
+    {
+     "id": "en-head",
+     "title": "Entrar",
+     "component": "section-header(sm)",
+     "container": "centered",
+     "width": "420",
+     "grid": "coluna",
+     "initialItems": 1,
+     "verTudo": false,
+     "dataDep": [],
+     "omitWhen": "nunca",
+     "ad": "none",
+     "empty": "n/a"
+    },
+    {
+     "id": "en-form",
+     "title": "Formulário",
+     "component": "field+password-input+form-actions",
+     "container": "centered",
+     "width": "420",
+     "grid": "coluna",
+     "initialItems": 1,
+     "verTudo": false,
+     "dataDep": [
+      "authFields"
+     ],
+     "omitWhen": "nunca",
+     "ad": "none",
+     "empty": "erro→alert"
+    },
+    {
+     "id": "en-alt",
+     "title": "Alternativas",
+     "component": "link",
+     "container": "centered",
+     "width": "420",
+     "grid": "coluna",
+     "initialItems": 1,
+     "verTudo": false,
+     "dataDep": [],
+     "omitWhen": "nunca",
+     "ad": "after→leaderboard",
+     "empty": "n/a"
+    }
+   ],
+   "tokens": {
+    "container": "coluna centrada ~420",
+    "control": "height-md 44, radius-control 8"
+   },
+   "interactions": [
+    {
+     "type": "button",
+     "target": "form-actions",
+     "action": "Entrar (loading)"
+    },
+    {
+     "type": "link",
+     "target": "link",
+     "action": "cadastrar/recuperar"
+    }
+   ],
+   "dataContracts": [
+    "(forms)",
+    "AdSlot"
+   ],
+   "adSlots": [
+    {
+     "sectionId": "en-alt",
+     "format": "leaderboard"
+    }
+   ],
+   "imageSlots": [],
+   "states": [
+    "default",
+    "focus",
+    "invalid",
+    "loading",
+    "error"
+   ],
+   "exceptions": [
+    {
+     "exceptionId": "EX-16-auth",
+     "reason": "formulário de entrada; sem backend/autenticação real nesta unidade"
+    }
+   ],
+   "status": "SPECIFIED_NOT_MIGRATED"
+  },
+  {
+   "screenId": "17",
+   "name": "Anúncio · pop-up",
+   "route": null,
+   "context": "publicidade",
+   "template": "AdScreenTemplate",
+   "logo": "neutro",
+   "priority": "P3",
+   "componentTree": [
+    "ModalOverlay",
+    "├── AdSlot(rectangle)",
+    "├── AdLabel 'PUBLICIDADE'",
+    "└── IconButton(fechar)"
+   ],
+   "sections": [
+    {
+     "id": "ad-pop",
+     "title": "Pop-up",
+     "component": "ad-slot(rectangle)+icon-button",
+     "container": "overlay centrado",
+     "width": "300×250",
+     "grid": "slot único",
+     "initialItems": 1,
+     "verTudo": false,
+     "dataDep": [
+      "adCreative"
+     ],
+     "omitWhen": "sem criativo→unavailable",
+     "ad": "reservado",
+     "empty": "unavailable"
+    }
+   ],
+   "tokens": {
+    "zIndex": "z-modal 100 / backdrop 90",
+    "shadow": "shadow-modal"
+   },
+   "interactions": [
+    {
+     "type": "button",
+     "target": "icon-button",
+     "action": "fechar (aria-label, Escape)"
+    },
+    {
+     "type": "modal",
+     "target": "modal",
+     "action": "foco preso, retorno de foco"
+    }
+   ],
+   "dataContracts": [
+    "AdSlot"
+   ],
+   "adSlots": [
+    {
+     "sectionId": "ad-pop",
+     "format": "rectangle"
+    }
+   ],
+   "imageSlots": [],
+   "states": [
+    "filled",
+    "placeholder",
+    "unavailable",
+    "closing"
+   ],
+   "exceptions": [
+    {
+     "exceptionId": "EX-17-ad",
+     "reason": "superfície de publicidade; não é tela de produto plena; rótulo obrigatório"
+    }
+   ],
+   "status": "SPECIFIED_NOT_MIGRATED"
+  },
+  {
+   "screenId": "18",
+   "name": "Anúncio · tela cheia",
+   "route": null,
+   "context": "publicidade",
+   "template": "AdScreenTemplate",
+   "logo": "neutro",
+   "priority": "P3",
+   "componentTree": [
+    "Interstitial(full-bleed)",
+    "├── AdSlot(billboard)",
+    "├── AdLabel 'PUBLICIDADE'",
+    "└── IconButton(fechar/pular)"
+   ],
+   "sections": [
+    {
+     "id": "ad-tela",
+     "title": "Interstitial",
+     "component": "ad-slot(billboard)+icon-button",
+     "container": "full-bleed",
+     "width": "970×250+",
+     "grid": "slot único",
+     "initialItems": 1,
+     "verTudo": false,
+     "dataDep": [
+      "adCreative"
+     ],
+     "omitWhen": "sem criativo→unavailable",
+     "ad": "reservado",
+     "empty": "unavailable"
+    }
+   ],
+   "tokens": {
+    "zIndex": "z-modal 100",
+    "note": "full-bleed"
+   },
+   "interactions": [
+    {
+     "type": "button",
+     "target": "icon-button",
+     "action": "fechar/pular (aria-label, temporizador)"
+    }
+   ],
+   "dataContracts": [
+    "AdSlot"
+   ],
+   "adSlots": [
+    {
+     "sectionId": "ad-tela",
+     "format": "billboard"
+    }
+   ],
+   "imageSlots": [],
+   "states": [
+    "filled",
+    "placeholder",
+    "unavailable",
+    "closing"
+   ],
+   "exceptions": [
+    {
+     "exceptionId": "EX-18-ad",
+     "reason": "interstitial de publicidade; rótulo obrigatório; espaço reservado"
+    }
+   ],
+   "status": "SPECIFIED_NOT_MIGRATED"
+  }
+ ]
+}

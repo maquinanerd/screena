@@ -1,0 +1,157 @@
+{
+  "project": "Cinerie",
+  "package": "Cinerie White Cinematic Editorial System",
+  "brand": { "public": "Cinerie", "domain": "cinerie.com", "scoreName": "Cinerie Score", "legacyIdentifiers": ["Screena", "Screen", "The Screen", "thescreen.media"] },
+  "canonicalDesign": {
+    "path": "Screen Screens v4.dc.html",
+    "pathNote": "nome de arquivo preservado por estabilidade de referência; a marca renderizada e documentada e Cinerie",
+    "sizeBytes": 367827,
+    "sha256": "0cc8fcd6afe74b64afcbf4c1e4d7c50b62585d6baf8d1faf2df68f18677bfe74",
+    "ads": 21,
+    "imageSlots": 39,
+    "revision": "2026-07-21"
+  },
+  "canonicalDocuments": [
+    "00-LEIA-PRIMEIRO.md",
+    "MANIFESTO-CANONICO.json",
+    "PROMPT-CLAUDE-CODE.md",
+    "docs/implementacao-fiel-screen-v4.md",
+    "docs/contrato-responsividade-screen-v4.md",
+    "docs/contrato-mapeamento-dados-reais.md",
+    "docs/contrato-acessibilidade-semantica.md",
+    "docs/inventario-anuncios-screen-v4.md",
+    "docs/inventario-slots-imagem-screen-v4.md",
+    "CLAUDE.md",
+    "docs/inventario-tokens-screen-v4.md",
+    "docs/inventario-componentes-screen-v4.md",
+    "docs/inventario-interacoes-screen-v4.md",
+    "docs/mapa-telas-rotas-screen-v4.md"
+  ],
+  "canonicalPages": [
+    "paginas/00-principal-completo.html",
+    "paginas/01-switcher-open.html",
+    "paginas/01-switcher-open.md",
+    "paginas/02-home.html",
+    "paginas/02-home.md",
+    "paginas/03-news.html",
+    "paginas/03-news.md",
+    "paginas/04-cat-home.html",
+    "paginas/04-cat-home.md",
+    "paginas/05-article.html",
+    "paginas/05-article.md",
+    "paginas/06-movie-detail.html",
+    "paginas/06-movie-detail.md",
+    "paginas/07-series-detail.html",
+    "paginas/07-series-detail.md",
+    "paginas/08-series-mobile.html",
+    "paginas/08-series-mobile.md",
+    "paginas/09-person.html",
+    "paginas/09-person.md",
+    "paginas/10-browse.html",
+    "paginas/10-browse.md",
+    "paginas/11-discover.html",
+    "paginas/11-discover.md",
+    "paginas/12-anticipated.html",
+    "paginas/12-anticipated.md",
+    "paginas/13-settings.html",
+    "paginas/13-settings.md",
+    "paginas/14-data.html",
+    "paginas/14-data.md",
+    "paginas/15-listas.html",
+    "paginas/15-listas.md",
+    "paginas/16-entrar.html",
+    "paginas/16-entrar.md",
+    "paginas/17-ad-pop.html",
+    "paginas/17-ad-pop.md",
+    "paginas/18-ad-tela.html",
+    "paginas/18-ad-tela.md"
+  ],
+  "legacyDirectories": [
+    "screen-v4-design-handoff",
+    "design_handoff_the_screen",
+    "handoff",
+    "backups"
+  ],
+  "legacyFiles": [
+    "LEGACY__Screen-Screens-v4-print.dc.html",
+    "screen-v4-design-handoff/source/LEGACY__Screen-Screens-v4__273832-bytes.dc.html",
+    "design_handoff_the_screen/LEGACY__Screen-Screens-v4__273832-bytes.dc.html",
+    "Screen Screens v2-print-1d2pn2e.dc.html",
+    "Screena Screens-print-14iwq9v.dc.html",
+    "Rank Badges System-print-1ph8zeg.dc.html",
+    "docs/mapa-de-padroes.md",
+    "RELATORIO_The_Screen.md",
+    "PROMPT-CLAUDE-CODE.original.md"
+  ],
+  "referenceOnlyDirectories": [
+    "uploads",
+    "screenshots",
+    "assets",
+    "docs (arquivos editoriais auxiliares)"
+  ],
+  "generatedAt": "2026-07-21T00:00:00.000Z",
+  "validation": {
+    "sha256Verified": true,
+    "sizeVerified": true,
+    "adsCount": 21,
+    "imageSlotsCount": 39,
+    "copyIdenticalToCanonical": true,
+    "slotDistribution": {
+      "02-home": 8,
+      "06-movie-detail": 9,
+      "07-series-detail": 10,
+      "08-series-mobile": 3,
+      "11-discover": 7,
+      "12-anticipated": 1,
+      "13-settings": 1
+    },
+    "adDistribution": {
+      "home": 4,
+      "news": 6,
+      "article": 1,
+      "person": 1,
+      "browse": 2,
+      "discover": 1,
+      "listas": 3,
+      "entrar": 1,
+      "ad-pop": 1,
+      "ad-tela": 1
+    },
+    "fontWeightsUsed": [
+      300,
+      400,
+      500,
+      600,
+      650,
+      700,
+      750,
+      800,
+      900
+    ]
+  },
+  "revision20260715": {
+    "supersedes": {
+      "sizeBytes": 340582,
+      "sha256": "cb852d6f4b012c9c1351ce7c506994e3a863e1d8592f55868e06ea23fc69973d"
+    },
+    "changes": [
+      "Home recomposta (hero em slides; Today’s Featured Picks; Popular This Week; certified-fresh; Get a Glimpse; Notícias & Entrevistas; 8 slots + 4 ads)",
+      "CATEGORY HOME sem layout próprio → home-like + bandas showMoviesBand/showSeriesBand",
+      "Totais: anúncios 23 → 21 · slots 31 → 39",
+      "docs/ e paginas/ regenerados sobre a revisão atual (pacote Screen-Design-Canonical/)"
+    ]
+  },
+  "revision20260721": {
+    "supersedes": {
+      "sizeBytes": 367965,
+      "sha256": "99b6d56591740e29c304c2c71e9f3d6e67937e73d9a9bf8b8b89adf0b54a5760"
+    },
+    "changes": [
+      "Rebrand textual completo: 'The Screen'/'thescreen.media' → 'Cinerie'/'cinerie.com' em todo o canônico",
+      "'Screen Score' → 'Cinerie Score'; 'THE SCREEN+' → 'CINERIE+'",
+      "Propagado à cópia idêntica (paginas/00-principal-completo.html), aos 18 pares paginas/*.md, e aos docs/*.md vivos (não-legado)",
+      "Logo já era o wordmark SVG 'cinerie' (uploads/5a–5j) desde revisão anterior — sem mudança nesta passada",
+      "Arquivos históricos/legados (screen-v4-design-handoff/, design_handoff_the_screen/, handoff/, backups/, LEGACY__*, *-print-*.dc.html) NAO foram alterados — preservam o estado antigo por design"
+    ]
+  }
+}

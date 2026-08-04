@@ -1,0 +1,136 @@
+{
+ "meta": {
+  "unit": "D4B",
+  "generatedAt": "2026-07-23",
+  "status": "F03_DESKTOP_VERIFIED_MOBILE_INHERITED",
+  "breakpoints": {
+   "mobile": "390px",
+   "tablet": "768px",
+   "desktop": "1280px"
+  },
+  "combinations": "18 telas × 3 = 54",
+  "method": "desktop verificado ao vivo por tela (sweep); mobile/tablet herdados — a migração D4B é semântica (a/button) e não altera o CSS responsivo do canônico; screen 08 confirmado nativo-mobile sem overflow",
+  "toolLimitation": "screenshot de conteúdo de <iframe> não suportado → sem captura pixel a 390/768; recomenda-se validação pixel dedicada na unidade de responsividade"
+ },
+ "breakpointsList": [
+  "390",
+  "768",
+  "1280"
+ ],
+ "grid": {
+  "grid-poster": "6→4→3→2",
+  "grid-top10": "4→2→1",
+  "grid-news": "1.25fr/1fr → 1col",
+  "grid-detail-media": "1/3/2 → 1col"
+ },
+ "screens": {
+  "10": {
+   "390": "INHERITED (CSS de largura intacto)",
+   "768": "INHERITED (CSS intacto)",
+   "1280": "PASS (verificado ao vivo)",
+   "name": "Onde assistir"
+  },
+  "11": {
+   "390": "INHERITED (CSS de largura intacto)",
+   "768": "INHERITED (CSS intacto)",
+   "1280": "PASS (verificado ao vivo)",
+   "name": "Explorar"
+  },
+  "12": {
+   "390": "INHERITED (CSS de largura intacto)",
+   "768": "INHERITED (CSS intacto)",
+   "1280": "PASS (verificado ao vivo)",
+   "name": "Mais aguardados"
+  },
+  "13": {
+   "390": "INHERITED (CSS de largura intacto)",
+   "768": "INHERITED (CSS intacto)",
+   "1280": "PASS (verificado ao vivo)",
+   "name": "Configurações"
+  },
+  "14": {
+   "390": "INHERITED (CSS de largura intacto)",
+   "768": "INHERITED (CSS intacto)",
+   "1280": "PASS (verificado ao vivo)",
+   "name": "Importar dados"
+  },
+  "15": {
+   "390": "INHERITED (CSS de largura intacto)",
+   "768": "INHERITED (CSS intacto)",
+   "1280": "PASS (verificado ao vivo)",
+   "name": "Listas"
+  },
+  "16": {
+   "390": "INHERITED (CSS de largura intacto)",
+   "768": "INHERITED (CSS intacto)",
+   "1280": "PASS (verificado ao vivo)",
+   "name": "Entrar"
+  },
+  "17": {
+   "390": "INHERITED (CSS de largura intacto)",
+   "768": "INHERITED (CSS intacto)",
+   "1280": "PASS (verificado ao vivo)",
+   "name": "Anúncio pop-up"
+  },
+  "18": {
+   "390": "INHERITED (CSS de largura intacto)",
+   "768": "INHERITED (CSS intacto)",
+   "1280": "PASS (verificado ao vivo)",
+   "name": "Anúncio tela cheia"
+  },
+  "01": {
+   "390": "INHERITED (CSS de largura intacto)",
+   "768": "INHERITED (CSS intacto)",
+   "1280": "PASS (verificado ao vivo)",
+   "name": "Switcher"
+  },
+  "02": {
+   "390": "INHERITED (CSS de largura intacto)",
+   "768": "INHERITED (CSS intacto)",
+   "1280": "PASS (verificado ao vivo)",
+   "name": "Home"
+  },
+  "03": {
+   "390": "INHERITED (CSS de largura intacto)",
+   "768": "INHERITED (CSS intacto)",
+   "1280": "PASS (verificado ao vivo)",
+   "name": "Notícias"
+  },
+  "04": {
+   "390": "INHERITED (CSS de largura intacto)",
+   "768": "INHERITED (CSS intacto)",
+   "1280": "PASS (verificado ao vivo)",
+   "name": "Categoria Filmes"
+  },
+  "05": {
+   "390": "INHERITED (CSS de largura intacto)",
+   "768": "INHERITED (CSS intacto)",
+   "1280": "PASS (verificado ao vivo)",
+   "name": "Artigo"
+  },
+  "06": {
+   "390": "INHERITED (CSS de largura intacto)",
+   "768": "INHERITED (CSS intacto)",
+   "1280": "PASS (verificado ao vivo)",
+   "name": "Detalhe Filme"
+  },
+  "07": {
+   "390": "INHERITED (CSS de largura intacto)",
+   "768": "INHERITED (CSS intacto)",
+   "1280": "PASS (verificado ao vivo)",
+   "name": "Detalhe Série"
+  },
+  "08": {
+   "390": "PASS (nativo mobile, sem overflow)",
+   "768": "INHERITED (CSS intacto)",
+   "1280": "PASS (verificado ao vivo)",
+   "name": "Série mobile"
+  },
+  "09": {
+   "390": "INHERITED (CSS de largura intacto)",
+   "768": "INHERITED (CSS intacto)",
+   "1280": "PASS (verificado ao vivo)",
+   "name": "Pessoa"
+  }
+ }
+}

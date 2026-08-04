@@ -1,0 +1,15 @@
+# Preserva os bytes do handoff exatamente como recebidos.
+#
+# O `globals.css` documenta o SHA-256 do canonico
+# (`Screen Screens v4.dc.html` = 6936a341...) como contrato verificavel. O repo
+# roda com `core.autocrlf=true` e o canonico e LF puro (3.453 linhas, zero CRLF):
+# sem esta regra, o git escreveria CRLF no checkout, somando 3.453 bytes e
+# trocando o hash. A referencia do `globals.css` ficaria FALSA em todo clone
+# novo — inclusive na CI — e ninguem conseguiria conferir a fonte de verdade.
+#
+# `-text` desliga a conversao de fim de linha sem desligar o diff, entao os .md
+# e .json do design-system/ continuam revisaveis normalmente.
+#
+# Escopo proposital: este arquivo vale so para docs/design-handoff/. A politica
+# de EOL do resto do repositorio NAO muda aqui.
+* -text

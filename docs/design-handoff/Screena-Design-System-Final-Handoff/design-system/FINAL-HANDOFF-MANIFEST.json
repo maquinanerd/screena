@@ -1,0 +1,181 @@
+{
+ "project": "Cinerie White Cinematic Editorial System",
+ "unit": "D4C — Final QA & Handoff",
+ "generatedAt": "2026-07-23",
+ "status": "HANDOFF_READY",
+ "canonical": {
+  "file": "Screen Screens v4.dc.html",
+  "sha256": "6936a3416d9d008d46c0e88b87127817e7cc30a3acd5829da86e8b61296ca770",
+  "bytes": 380309,
+  "note": "migrado (D4B) + controles de Settings corrigidos (D4C)"
+ },
+ "snapshot": {
+  "dir": "POST-REBRAND-SNAPSHOT/",
+  "status": "imutável — não usar como fonte de implementação"
+ },
+ "backup": {
+  "file": "backups/Screen Screens v4.PRE-D4B.dc.html",
+  "note": "pré-migração; só para comparação/rollback"
+ },
+ "authorityFiles": {
+  "canonical": [
+   "Screen Screens v4.dc.html",
+   "Foundations.dc.html",
+   "Components-Primitives-Navigation.dc.html",
+   "Components-Content-Forms-Feedback.dc.html",
+   "Templates-And-Public-Screens.dc.html"
+  ],
+  "tokensAndContracts": [
+   "cinerie-design-system-handoff/design-tokens.json",
+   "cinerie-design-system-handoff/design-decisions.json",
+   "cinerie-design-system-handoff/component-contracts.json",
+   "cinerie-design-system-handoff/component-inventory.json",
+   "cinerie-design-system-handoff/component-migration-matrix.json",
+   "cinerie-design-system-handoff/interactive-semantics-map.json",
+   "cinerie-design-system-handoff/data-visual-contracts.json",
+   "cinerie-design-system-handoff/page-templates.json",
+   "cinerie-design-system-handoff/page-specifications.json",
+   "cinerie-design-system-handoff/responsive-matrix.json",
+   "cinerie-design-system-handoff/migration-results.json",
+   "cinerie-design-system-handoff/screen-inventory.json",
+   "cinerie-design-system-handoff/visual-qa-results.json"
+  ],
+  "specifications": [
+   "cinerie-design-system-handoff/16-PAGE-TEMPLATES.md",
+   "cinerie-design-system-handoff/17-PUBLIC-SCREENS.md",
+   "cinerie-design-system-handoff/43-PUBLIC-SCREEN-SPECIFICATIONS.md"
+  ],
+  "accessibility": [
+   "cinerie-design-system-handoff/20-ACCESSIBILITY.md"
+  ],
+  "migration": [
+   "cinerie-design-system-handoff/44-MIGRATION-LOG.md",
+   "cinerie-design-system-handoff/45-FINAL-QA-AND-HANDOFF.md"
+  ],
+  "contentDocs": [
+   "cinerie-design-system-handoff/13-COMPONENT-SPECS.md",
+   "cinerie-design-system-handoff/14-COMPONENT-STATES.md",
+   "cinerie-design-system-handoff/15-PATTERNS.md",
+   "cinerie-design-system-handoff/22-CONTENT-MICROCOPY.md",
+   "cinerie-design-system-handoff/23-DATA-VISUAL-CONTRACTS.md",
+   "cinerie-design-system-handoff/24-EMPTY-LOADING-ERROR-STATES.md",
+   "cinerie-design-system-handoff/25-ADVERTISEMENT-SLOTS.md",
+   "cinerie-design-system-handoff/41-CONTENT-COMPONENTS.md",
+   "cinerie-design-system-handoff/42-FORMS-AND-FEEDBACK.md"
+  ],
+  "referenceScreenshots": [
+   "cinerie-design-system-handoff/final-reference-screenshots/02-home-desktop.png",
+   "cinerie-design-system-handoff/final-reference-screenshots/03-noticias-desktop.png",
+   "cinerie-design-system-handoff/final-reference-screenshots/06-detalhe-filme-desktop.png",
+   "cinerie-design-system-handoff/final-reference-screenshots/07-detalhe-serie-desktop.png"
+  ],
+  "assets": [
+   "duna-mrl9wv0y-3uwo.webp",
+   "oppen-mrl9x0bt-jdxr.webp",
+   "duna-mrl9w9sp-5qjc.webp",
+   "uploads/ (logos 5a–5j)",
+   "image-slot.js",
+   "support.js",
+   "AdSlot.dc.html"
+  ]
+ },
+ "legacyDoNotUse": [
+  "Screen Screens v2-print-1d2pn2e.dc.html",
+  "Screena Screens-print-14iwq9v.dc.html",
+  "Rank Badges System-print-1ph8zeg.dc.html",
+  "_logo_compare.html",
+  "RELATORIO_The_Screen.md",
+  "ARQUIVOS-LEGADOS-E-HISTORICOS.md",
+  "PROMPT-CLAUDE-CODE.original.md",
+  "design_handoff_the_screen/",
+  "screen-v4-design-handoff/",
+  "Screen-Design-Canonical/ (verificar duplicidade)"
+ ],
+ "brandRule": "marca pública = Cinerie (cinerie.com). 'Screena'/'The Screen'/'thescreen.media' são legado — não devem aparecer em superfícies visíveis.",
+ "finalCounts": {
+  "screens": 18,
+  "anchors": 77,
+  "buttons": 29,
+  "roleTab": 21,
+  "roleSwitch": 3,
+  "iconButtonsAriaLabel": 5,
+  "adSlots": 21,
+  "imageSlots": 39,
+  "inadequateRemaining": 0
+ },
+ "checksums": {
+  "Screen Screens v4.dc.html": {
+   "bytes": 380309,
+   "sha256": "6936a3416d9d008d…"
+  },
+  "Foundations.dc.html": {
+   "bytes": 16444,
+   "sha256": "d3510eb781f5c79f…"
+  },
+  "Components-Primitives-Navigation.dc.html": {
+   "bytes": 25221,
+   "sha256": "172e8e005d24f0d5…"
+  },
+  "Components-Content-Forms-Feedback.dc.html": {
+   "bytes": 92515,
+   "sha256": "183b8c30fc5f799a…"
+  },
+  "Templates-And-Public-Screens.dc.html": {
+   "bytes": 30218,
+   "sha256": "f1b473c13765fcda…"
+  },
+  "cinerie-design-system-handoff/design-tokens.json": {
+   "bytes": 18822,
+   "sha256": "c22c018c7131709e…"
+  },
+  "cinerie-design-system-handoff/design-decisions.json": {
+   "bytes": 14084,
+   "sha256": "5d51b7994c91d8f6…"
+  },
+  "cinerie-design-system-handoff/component-contracts.json": {
+   "bytes": 39072,
+   "sha256": "2975e8f589e5e121…"
+  },
+  "cinerie-design-system-handoff/component-inventory.json": {
+   "bytes": 4944,
+   "sha256": "cffd415aafd762d5…"
+  },
+  "cinerie-design-system-handoff/component-migration-matrix.json": {
+   "bytes": 6267,
+   "sha256": "664bdc1bbd4eca31…"
+  },
+  "cinerie-design-system-handoff/interactive-semantics-map.json": {
+   "bytes": 3217,
+   "sha256": "b47ceb3e7a549909…"
+  },
+  "cinerie-design-system-handoff/data-visual-contracts.json": {
+   "bytes": 6674,
+   "sha256": "84ee0a962dce0dc6…"
+  },
+  "cinerie-design-system-handoff/page-templates.json": {
+   "bytes": 18035,
+   "sha256": "388044898b9f44ee…"
+  },
+  "cinerie-design-system-handoff/page-specifications.json": {
+   "bytes": 60331,
+   "sha256": "6b35c1d479e1ef62…"
+  },
+  "cinerie-design-system-handoff/responsive-matrix.json": {
+   "bytes": 3844,
+   "sha256": "9c15d294ae0f190a…"
+  },
+  "cinerie-design-system-handoff/migration-results.json": {
+   "bytes": 7341,
+   "sha256": "a1e5004233b19780…"
+  },
+  "cinerie-design-system-handoff/screen-inventory.json": {
+   "bytes": 4950,
+   "sha256": "5fd13f1e4d947c50…"
+  },
+  "cinerie-design-system-handoff/visual-qa-results.json": {
+   "bytes": 5772,
+   "sha256": "027c4a876b535190…"
+  }
+ },
+ "nextAction": "entregar pacote ao Claude Code via PROMPT-FINAL-CLAUDE-CODE.md"
+}

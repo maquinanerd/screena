@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,300..900;1,400..700&display=swap" rel="stylesheet">
+<style>
+  body { margin:0; background:#FDFDFD; -webkit-font-smoothing:antialiased; }
+  a { color:#8A1E1A; } a:hover { color:#D42A2E; }
+  .wf { display:flex; flex-direction:column; gap:4px; }
+  .bar { border-radius:5px; padding:6px 9px; font-size:10.5px; font-weight:600; line-height:1.25; }
+  .b-hero { background:#1a1512; color:#fff; }
+  .b-sec { background:#F1EDE6; color:#3a3a3a; }
+  .b-ad { background:repeating-linear-gradient(135deg,#F7EFEA 0 6px,#FBF7F3 6px 12px); border:1px dashed #D9C9C0; color:#9A6B5E; text-align:center; font-weight:800; letter-spacing:0.08em; font-size:8.5px; text-transform:uppercase; }
+  .b-form { background:#EEF1F5; color:#3a4a5a; }
+  .b-foot { background:#E9E4DB; color:#6E6E6E; text-align:center; font-size:9px; letter-spacing:0.06em; text-transform:uppercase; }
+</style>
+</helmet>
+<div style="font-family:'Montserrat',sans-serif; color:#101010; max-width:1240px; margin:0 auto; padding:60px 48px 140px;">
+  <div style="font-size:11px; font-weight:800; letter-spacing:0.14em; text-transform:uppercase; color:#9A958C;">Cinerie · Design System · D4A</div>
+  <h1 style="font-size:50px; font-weight:800; letter-spacing:-0.035em; line-height:1.03; margin:8px 0 8px;">Templates & Telas Públicas</h1>
+  <p style="font-size:15px; line-height:1.55; color:#6E6E6E; max-width:70ch; margin:0;">Estrutura exata das 18 telas para o Claude Code implementar sem decidir layout. Wireframes de fidelidade estrutural, árvore de componentes e ordem de seções. Especificação completa em <code>page-specifications.json</code> / <code>43-PUBLIC-SCREEN-SPECIFICATIONS.md</code>. <b>Nada aplicado ao canônico.</b></p>
+
+  <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin:26px 0 8px;">
+    <div style="background:#fff; border:1px solid #E3DED6; border-radius:10px; padding:16px 18px;"><div style="font-size:32px; font-weight:800; letter-spacing:-0.03em;">18</div><div style="font-size:11px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:#6E6E6E;">telas públicas</div></div>
+    <div style="background:#fff; border:1px solid #E3DED6; border-radius:10px; padding:16px 18px;"><div style="font-size:32px; font-weight:800; letter-spacing:-0.03em;">13</div><div style="font-size:11px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:#6E6E6E;">templates</div></div>
+    <div style="background:#fff; border:1px solid #E3DED6; border-radius:10px; padding:16px 18px;"><div style="font-size:32px; font-weight:800; letter-spacing:-0.03em;">21</div><div style="font-size:11px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:#6E6E6E;">ad slots</div></div>
+    <div style="background:#fff; border:1px solid #E3DED6; border-radius:10px; padding:16px 18px;"><div style="font-size:32px; font-weight:800; letter-spacing:-0.03em;">39</div><div style="font-size:11px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:#6E6E6E;">image slots</div></div>
+  </div>
+
+  <!-- TOKENS + LOGOS -->
+  <h2 style="font-size:26px; font-weight:400; letter-spacing:-0.01em; text-transform:uppercase; margin:52px 0 14px;"><span style="font-weight:900;">Tokens</span> & logos</h2>
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+    <div style="background:#fff; border:1px solid #E3DED6; border-radius:10px; padding:18px 20px; font-size:12.5px; line-height:1.9; color:#3a3a3a;">
+      <b style="font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:#9A958C;">Layout</b><br>
+      container-editorial <b>1280</b> · reading <b>720</b> · nav 1380 · full-bleed<br>
+      ritmo de seção <b>56px</b> · padding lateral <b>80px</b><br>
+      section-header <b>26px</b> uppercase (1ª palavra 800–900 / resto 300–400, <b>sem barra</b>)<br>
+      radius: card 10 · media 12 · control 8 · pill 999<br>
+      grids: poster 6col · top10 4col · news 1.25fr/1fr · detail 1/3/2
+    </div>
+    <div style="background:#fff; border:1px solid #E3DED6; border-radius:10px; padding:18px 20px;">
+      <b style="font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:#9A958C;">Logo por contexto</b>
+      <div style="display:flex; flex-direction:column; gap:10px; margin-top:12px;">
+        <div style="display:flex; align-items:center; gap:10px;"><span style="width:26px; height:26px; border-radius:6px; background:#F0443E;"></span><span style="font-size:12.5px;"><b>Vermelha</b> — filmes (04, 06)</span></div>
+        <div style="display:flex; align-items:center; gap:10px;"><span style="width:26px; height:26px; border-radius:6px; background:#7FA56F;"></span><span style="font-size:12.5px;"><b>Verde</b> — séries (07, 08)</span></div>
+        <div style="display:flex; align-items:center; gap:10px;"><span style="width:26px; height:26px; border-radius:6px; background:#101010;"></span><span style="font-size:12.5px;"><b>Neutra</b> — home/notícias/pessoa/institucional (demais)</span></div>
+        <div style="font-size:11px; color:#9A958C; margin-top:2px;">CTA de filme = fill #D42A2E (5.04 AA). Logo esperada == encontrada em 100%.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TEMPLATES -->
+  <h2 style="font-size:26px; font-weight:400; letter-spacing:-0.01em; text-transform:uppercase; margin:52px 0 14px;"><span style="font-weight:900;">13</span> templates → 18 telas</h2>
+  <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:14px;">
+    <div style="background:#fff; border:1px solid #E3DED6; border-radius:10px; padding:14px 16px;"><div style="font-size:14px; font-weight:800;">HomeTemplate</div><div style="font-size:11.5px; color:#6E6E6E; margin-top:3px;">telas 02, 04 · hero slides · 1280</div></div>
+    <div style="background:#fff; border:1px solid #E3DED6; border-radius:10px; padding:14px 16px;"><div style="font-size:14px; font-weight:800;">NewsIndexTemplate</div><div style="font-size:11.5px; color:#6E6E6E; margin-top:3px;">tela 03 · mosaico · 1280</div></div>
+    <div style="background:#fff; border:1px solid #E3DED6; border-radius:10px; padding:14px 16px;"><div style="font-size:14px; font-weight:800;">ArticleTemplate</div><div style="font-size:11.5px; color:#6E6E6E; margin-top:3px;">tela 05 · reading 720</div></div>
+    <div style="background:#fff; border:1px solid #E3DED6; border-radius:10px; padding:14px 16px;"><div style="font-size:14px; font-weight:800;">MovieDetailTemplate</div><div style="font-size:11.5px; color:#6E6E6E; margin-top:3px;">tela 06 · top-info-bar · vermelha</div></div>
+    <div style="background:#fff; border:1px solid #E3DED6; border-radius:10px; padding:14px 16px;"><div style="font-size:14px; font-weight:800;">SeriesDetailTemplate</div><div style="font-size:11.5px; color:#6E6E6E; margin-top:3px;">telas 07, 08 · temporadas · verde</div></div>
+    <div style="background:#fff; border:1px solid #E3DED6; border-radius:10px; padding:14px 16px;"><div style="font-size:14px; font-weight:800;">PersonDetailTemplate</div><div style="font-size:11.5px; color:#6E6E6E; margin-top:3px;">tela 09 · person-hero · neutra</div></div>
+    <div style="background:#fff; border:1px solid #E3DED6; border-radius:10px; padding:14px 16px;"><div style="font-size:14px; font-weight:800;">CatalogBrowseTemplate</div><div style="font-size:11.5px; color:#6E6E6E; margin-top:3px;">tela 10 · filtros + rails</div></div>
+    <div style="background:#fff; border:1px solid #E3DED6; border-radius:10px; padding:14px 16px;"><div style="font-size:14px; font-weight:800;">ExploreTemplate</div><div style="font-size:11.5px; color:#6E6E6E; margin-top:3px;">telas 11, 12 · grids + coleções</div></div>
+    <div style="background:#fff; border:1px solid #E3DED6; border-radius:10px; padding:14px 16px;"><div style="font-size:14px; font-weight:800;">CollectionTemplate</div><div style="font-size:11.5px; color:#6E6E6E; margin-top:3px;">tela 15 · listas + empty</div></div>
+    <div style="background:#fff; border:1px solid #E3DED6; border-radius:10px; padding:14px 16px;"><div style="font-size:14px; font-weight:800;">SettingsTemplate</div><div style="font-size:11.5px; color:#6E6E6E; margin-top:3px;">telas 13, 14 · forms</div></div>
+    <div style="background:#fff; border:1px solid #E3DED6; border-radius:10px; padding:14px 16px;"><div style="font-size:14px; font-weight:800;">AuthTemplate</div><div style="font-size:11.5px; color:#6E6E6E; margin-top:3px;">tela 16 · form centrado</div></div>
+    <div style="background:#fff; border:1px solid #E3DED6; border-radius:10px; padding:14px 16px;"><div style="font-size:14px; font-weight:800;">AdScreenTemplate</div><div style="font-size:11.5px; color:#6E6E6E; margin-top:3px;">telas 17, 18 · publicidade</div></div>
+    <div style="background:#FBFAF7; border:1px dashed #D9D2C6; border-radius:10px; padding:14px 16px;"><div style="font-size:14px; font-weight:800; color:#6E6E6E;">DevOverlayTemplate</div><div style="font-size:11.5px; color:#9A958C; margin-top:3px;">tela 01 · dev — remover no build</div></div>
+  </div>
+  <p style="font-size:11.5px; color:#9A958C; margin:12px 0 0;"><b>Não criados</b> (sem tela consumidora): EntityDetail (dividido em Movie/Series), Season/EpisodeDetail (são seções do SeriesDetail), SearchTemplate (drawer global), CatalogIndex (coberto), Institutional (nenhuma entre as 18).</p>
+
+  <!-- 18 WIREFRAMES -->
+  <h2 style="font-size:26px; font-weight:400; letter-spacing:-0.01em; text-transform:uppercase; margin:52px 0 14px;"><span style="font-weight:900;">18</span> telas — wireframes estruturais</h2>
+  <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:16px;">
+
+    <!-- 02 Home -->
+    <div style="background:#fff; border:1px solid #E3DED6; border-radius:12px; padding:16px; box-shadow:0 3px 14px rgba(20,18,14,0.05);">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;"><span style="font-size:10px; font-weight:800; background:#101010; color:#fff; padding:3px 7px; border-radius:5px;">02</span><span style="font-size:13.5px; font-weight:800;">Home</span><span style="width:12px; height:12px; border-radius:3px; background:#101010; margin-left:auto;" title="logo neutra"></span></div>
+      <div style="font-size:10.5px; color:#9A958C; margin-bottom:10px;">/pt · HomeTemplate · P0</div>
+      <div class="wf"><div class="bar b-hero">HomeHero (slides)</div><div class="bar b-sec">Today's Featured Picks</div><div class="bar b-ad">Publicidade</div><div class="bar b-sec">Popular This Week · rail</div><div class="bar b-sec">Filmes em alta (band)</div><div class="bar b-ad">Publicidade</div><div class="bar b-sec">Séries da semana (band)</div><div class="bar b-hero">Em breve · trailer rail</div><div class="bar b-ad">Publicidade</div><div class="bar b-sec">Notícias & Entrevistas (mosaico)</div><div class="bar b-ad">Publicidade</div><div class="bar b-foot">Footer claro</div></div>
+      <div style="font-size:10px; color:#6E6E6E; margin-top:10px;">4 ads · 8 img slots</div>
+    </div>
+
+    <!-- 04 Categoria -->
+    <div style="background:#fff; border:1px solid #E3DED6; border-radius:12px; padding:16px; box-shadow:0 3px 14px rgba(20,18,14,0.05);">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;"><span style="font-size:10px; font-weight:800; background:#101010; color:#fff; padding:3px 7px; border-radius:5px;">04</span><span style="font-size:13.5px; font-weight:800;">Categoria</span><span style="display:flex; gap:3px; margin-left:auto;"><span style="width:12px; height:12px; border-radius:3px; background:#F0443E;"></span><span style="width:12px; height:12px; border-radius:3px; background:#7FA56F;"></span></span></div>
+      <div style="font-size:10.5px; color:#9A958C; margin-bottom:10px;">/pt/filmes · /pt/series · HomeTemplate · P0</div>
+      <div class="wf"><div class="bar b-hero">HomeHero</div><div class="bar b-sec">Banda da categoria (showMovies/Series)</div><div class="bar b-sec">Seções home-like</div><div class="bar b-foot">Footer claro</div></div>
+      <div style="font-size:10px; color:#6E6E6E; margin-top:10px;">0 ads · logo/acento por branch</div>
+    </div>
+
+    <!-- 03 Notícias -->
+    <div style="background:#fff; border:1px solid #E3DED6; border-radius:12px; padding:16px; box-shadow:0 3px 14px rgba(20,18,14,0.05);">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;"><span style="font-size:10px; font-weight:800; background:#101010; color:#fff; padding:3px 7px; border-radius:5px;">03</span><span style="font-size:13.5px; font-weight:800;">Notícias</span><span style="width:12px; height:12px; border-radius:3px; background:#101010; margin-left:auto;"></span></div>
+      <div style="font-size:10.5px; color:#9A958C; margin-bottom:10px;">/pt/noticias · NewsIndexTemplate · P1</div>
+      <div class="wf"><div class="bar b-sec">SectionHeader + Chips categoria</div><div class="bar b-sec">Mosaico overlay (1 + 4)</div><div class="bar b-ad">Publicidade ×N</div><div class="bar b-sec">Grid de NewsCard</div><div class="bar b-sec">Band de categoria (newsIsCat)</div><div class="bar b-sec">Paginação</div><div class="bar b-foot">Footer claro</div></div>
+      <div style="font-size:10px; color:#6E6E6E; margin-top:10px;">6 ads · 0 img slots</div>
+    </div>
+
+    <!-- 05 Artigo -->
+    <div style="background:#fff; border:1px solid #E3DED6; border-radius:12px; padding:16px; box-shadow:0 3px 14px rgba(20,18,14,0.05);">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;"><span style="font-size:10px; font-weight:800; background:#101010; color:#fff; padding:3px 7px; border-radius:5px;">05</span><span style="font-size:13.5px; font-weight:800;">Artigo</span><span style="width:12px; height:12px; border-radius:3px; background:#101010; margin-left:auto;"></span></div>
+      <div style="font-size:10.5px; color:#9A958C; margin-bottom:10px;">/pt/noticias/[slug] · ArticleTemplate · P1</div>
+      <div class="wf"><div class="bar b-hero">ArticleHero (headline)</div><div class="bar b-sec">ArticleHeader (byline/datas)</div><div class="bar b-sec">ArticleBody 720 (pull-quote/fact-box)</div><div class="bar b-sec">Fontes · Correção · IA</div><div class="bar b-ad">Publicidade</div><div class="bar b-sec">Related entities + articles</div><div class="bar b-foot">Footer claro</div></div>
+      <div style="font-size:10px; color:#6E6E6E; margin-top:10px;">1 ad · leitura 720</div>
+    </div>
+
+    <!-- 06 Filme -->
+    <div style="background:#fff; border:1px solid #E3DED6; border-radius:12px; padding:16px; box-shadow:0 3px 14px rgba(20,18,14,0.05);">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;"><span style="font-size:10px; font-weight:800; background:#F0443E; color:#12100E; padding:3px 7px; border-radius:5px;">06</span><span style="font-size:13.5px; font-weight:800;">Detalhe de Filme</span><span style="width:12px; height:12px; border-radius:3px; background:#F0443E; margin-left:auto;"></span></div>
+      <div style="font-size:10.5px; color:#9A958C; margin-bottom:10px;">/pt/filmes/[slug] · MovieDetailTemplate · P0</div>
+      <div class="wf"><div class="bar b-sec">Top info bar (poster/título/ações/score/streaming)</div><div class="bar b-sec">Sinopse</div><div class="bar b-sec">Ficha técnica</div><div class="bar b-sec">Elenco (cast-list)</div><div class="bar b-sec">Mídia (trailer/fotos)</div><div class="bar b-sec">Do editorial</div><div class="bar b-sec">Recomendações · rail</div><div class="bar b-foot">Footer claro</div></div>
+      <div style="font-size:10px; color:#6E6E6E; margin-top:10px;">0 ads · 9 img slots · sem hero cover</div>
+    </div>
+
+    <!-- 07 Série -->
+    <div style="background:#fff; border:1px solid #E3DED6; border-radius:12px; padding:16px; box-shadow:0 3px 14px rgba(20,18,14,0.05);">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;"><span style="font-size:10px; font-weight:800; background:#7FA56F; color:#12100E; padding:3px 7px; border-radius:5px;">07</span><span style="font-size:13.5px; font-weight:800;">Detalhe de Série</span><span style="width:12px; height:12px; border-radius:3px; background:#7FA56F; margin-left:auto;"></span></div>
+      <div style="font-size:10.5px; color:#9A958C; margin-bottom:10px;">/pt/series/[slug] · SeriesDetailTemplate · P0</div>
+      <div class="wf"><div class="bar b-sec">Top info bar (score/status/streaming)</div><div class="bar b-sec">SeasonSelector</div><div class="bar b-sec">SeasonSummary</div><div class="bar b-sec">Episódios (episode-card ×N)</div><div class="bar b-sec">Elenco · Mídia · Editorial</div><div class="bar b-sec">Mais como este · rail</div><div class="bar b-foot">Footer claro</div></div>
+      <div style="font-size:10px; color:#6E6E6E; margin-top:10px;">0 ads · 10 img slots</div>
+    </div>
+
+    <!-- 08 Série mobile -->
+    <div style="background:#fff; border:1px solid #E3DED6; border-radius:12px; padding:16px; box-shadow:0 3px 14px rgba(20,18,14,0.05);">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;"><span style="font-size:10px; font-weight:800; background:#7FA56F; color:#12100E; padding:3px 7px; border-radius:5px;">08</span><span style="font-size:13.5px; font-weight:800;">Série · mobile</span><span style="width:12px; height:12px; border-radius:3px; background:#7FA56F; margin-left:auto;"></span></div>
+      <div style="font-size:10.5px; color:#9A958C; margin-bottom:10px;">@390 · SeriesDetailTemplate · P1</div>
+      <div style="max-width:150px; margin:0 auto;"><div class="wf"><div class="bar b-sec" style="text-align:center;">MobileNav</div><div class="bar b-sec">Top info compacto</div><div class="bar b-sec">SeasonSelector (overflow)</div><div class="bar b-sec">Episódios</div><div class="bar b-foot">Footer mobile</div></div></div>
+      <div style="font-size:10px; color:#6E6E6E; margin-top:10px;">0 ads · 3 img slots · touch ≥44</div>
+    </div>
+
+    <!-- 09 Pessoa -->
+    <div style="background:#fff; border:1px solid #E3DED6; border-radius:12px; padding:16px; box-shadow:0 3px 14px rgba(20,18,14,0.05);">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;"><span style="font-size:10px; font-weight:800; background:#101010; color:#fff; padding:3px 7px; border-radius:5px;">09</span><span style="font-size:13.5px; font-weight:800;">Pessoa</span><span style="width:12px; height:12px; border-radius:3px; background:#101010; margin-left:auto;"></span></div>
+      <div style="font-size:10.5px; color:#9A958C; margin-bottom:10px;">/pt/pessoas/[slug] · PersonDetailTemplate · P1</div>
+      <div class="wf"><div class="bar b-hero">PersonHero (portrait + nome)</div><div class="bar b-sec">Biografia 720</div><div class="bar b-sec">Metadata</div><div class="bar b-sec">Filmografia · grid/rail</div><div class="bar b-ad">Publicidade</div><div class="bar b-sec">Notícias · Related people</div><div class="bar b-foot">Footer claro</div></div>
+      <div style="font-size:10px; color:#6E6E6E; margin-top:10px;">1 ad · sem imagem→avatar</div>
+    </div>
+
+    <!-- 10 Browse -->
+    <div style="background:#fff; border:1px solid #E3DED6; border-radius:12px; padding:16px; box-shadow:0 3px 14px rgba(20,18,14,0.05);">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;"><span style="font-size:10px; font-weight:800; background:#101010; color:#fff; padding:3px 7px; border-radius:5px;">10</span><span style="font-size:13.5px; font-weight:800;">Onde assistir</span><span style="width:12px; height:12px; border-radius:3px; background:#101010; margin-left:auto;"></span></div>
+      <div style="font-size:10.5px; color:#9A958C; margin-bottom:10px;">/pt/onde-assistir · CatalogBrowseTemplate · P1</div>
+      <div class="wf"><div class="bar b-sec">CompactHero</div><div class="bar b-sec">Filtros (chip/segmented)</div><div class="bar b-ad">Publicidade</div><div class="bar b-sec">Rails por provedor</div><div class="bar b-sec">Catálogo · poster grid</div><div class="bar b-ad">Publicidade</div><div class="bar b-sec">Paginação</div><div class="bar b-foot">Footer claro</div></div>
+      <div style="font-size:10px; color:#6E6E6E; margin-top:10px;">2 ads · streaming honesto</div>
+    </div>
+
+    <!-- 11 Explorar -->
+    <div style="background:#fff; border:1px solid #E3DED6; border-radius:12px; padding:16px; box-shadow:0 3px 14px rgba(20,18,14,0.05);">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;"><span style="font-size:10px; font-weight:800; background:#101010; color:#fff; padding:3px 7px; border-radius:5px;">11</span><span style="font-size:13.5px; font-weight:800;">Explorar</span><span style="width:12px; height:12px; border-radius:3px; background:#101010; margin-left:auto;"></span></div>
+      <div style="font-size:10.5px; color:#9A958C; margin-bottom:10px;">/pt/explorar · ExploreTemplate · P1</div>
+      <div class="wf"><div class="bar b-sec">SectionHeader + Tabs</div><div class="bar b-sec">Coleções · rail/carousel</div><div class="bar b-sec">Resultados · poster grid</div><div class="bar b-ad">Publicidade</div><div class="bar b-sec">Paginação</div><div class="bar b-foot">Footer claro</div></div>
+      <div style="font-size:10px; color:#6E6E6E; margin-top:10px;">1 ad · 7 img slots</div>
+    </div>
+
+    <!-- 12 Aguardados -->
+    <div style="background:#fff; border:1px solid #E3DED6; border-radius:12px; padding:16px; box-shadow:0 3px 14px rgba(20,18,14,0.05);">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;"><span style="font-size:10px; font-weight:800; background:#101010; color:#fff; padding:3px 7px; border-radius:5px;">12</span><span style="font-size:13.5px; font-weight:800;">Mais aguardados</span><span style="width:12px; height:12px; border-radius:3px; background:#101010; margin-left:auto;"></span></div>
+      <div style="font-size:10.5px; color:#9A958C; margin-bottom:10px;">/pt/em-breve · ExploreTemplate · P2</div>
+      <div class="wf"><div class="bar b-sec">SectionHeader</div><div class="bar b-hero">Em breve · trailer rail</div><div class="bar b-sec">Por estreia · poster grid</div><div class="bar b-foot">Footer claro</div></div>
+      <div style="font-size:10px; color:#6E6E6E; margin-top:10px;">0 ads · 1 img slot · sem data→'a definir'</div>
+    </div>
+
+    <!-- 13 Configurações -->
+    <div style="background:#fff; border:1px solid #E3DED6; border-radius:12px; padding:16px; box-shadow:0 3px 14px rgba(20,18,14,0.05);">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;"><span style="font-size:10px; font-weight:800; background:#101010; color:#fff; padding:3px 7px; border-radius:5px;">13</span><span style="font-size:13.5px; font-weight:800;">Configurações</span><span style="width:12px; height:12px; border-radius:3px; background:#101010; margin-left:auto;"></span></div>
+      <div style="font-size:10.5px; color:#9A958C; margin-bottom:10px;">/pt/configuracoes · SettingsTemplate · P1</div>
+      <div class="wf"><div class="bar b-sec">SectionHeader + Tabs</div><div class="bar b-form">Conta (field/avatar)</div><div class="bar b-form">Preferências (switch/select)</div><div class="bar b-form">FormActions + Toast</div><div class="bar b-foot">Footer claro</div></div>
+      <div style="font-size:10px; color:#6E6E6E; margin-top:10px;">0 ads · 1 img slot · sem auth real</div>
+    </div>
+
+    <!-- 14 Dados -->
+    <div style="background:#fff; border:1px solid #E3DED6; border-radius:12px; padding:16px; box-shadow:0 3px 14px rgba(20,18,14,0.05);">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;"><span style="font-size:10px; font-weight:800; background:#101010; color:#fff; padding:3px 7px; border-radius:5px;">14</span><span style="font-size:13.5px; font-weight:800;">Importar dados</span><span style="width:12px; height:12px; border-radius:3px; background:#101010; margin-left:auto;"></span></div>
+      <div style="font-size:10.5px; color:#9A958C; margin-bottom:10px;">/pt/configuracoes/dados · SettingsTemplate · P2</div>
+      <div class="wf"><div class="bar b-sec">SectionHeader</div><div class="bar b-form">Fonte (field/select)</div><div class="bar b-form">Importar (FormActions)</div><div class="bar b-form">Resultado · loading/success/error</div><div class="bar b-foot">Footer claro</div></div>
+      <div style="font-size:10px; color:#6E6E6E; margin-top:10px;">0 ads · estados de importação</div>
+    </div>
+
+    <!-- 15 Listas -->
+    <div style="background:#fff; border:1px solid #E3DED6; border-radius:12px; padding:16px; box-shadow:0 3px 14px rgba(20,18,14,0.05);">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;"><span style="font-size:10px; font-weight:800; background:#101010; color:#fff; padding:3px 7px; border-radius:5px;">15</span><span style="font-size:13.5px; font-weight:800;">Listas</span><span style="width:12px; height:12px; border-radius:3px; background:#101010; margin-left:auto;"></span></div>
+      <div style="font-size:10.5px; color:#9A958C; margin-bottom:10px;">/pt/listas · CollectionTemplate · P1</div>
+      <div class="wf"><div class="bar b-sec">SectionHeader</div><div class="bar b-ad">Publicidade</div><div class="bar b-sec">Suas listas (cards)</div><div class="bar b-sec">Itens da lista · poster grid</div><div class="bar b-ad">Publicidade ×2</div><div class="bar b-foot">Footer claro</div></div>
+      <div style="font-size:10px; color:#6E6E6E; margin-top:10px;">3 ads · vazio→empty-state</div>
+    </div>
+
+    <!-- 16 Entrar -->
+    <div style="background:#fff; border:1px solid #E3DED6; border-radius:12px; padding:16px; box-shadow:0 3px 14px rgba(20,18,14,0.05);">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;"><span style="font-size:10px; font-weight:800; background:#101010; color:#fff; padding:3px 7px; border-radius:5px;">16</span><span style="font-size:13.5px; font-weight:800;">Entrar</span><span style="width:12px; height:12px; border-radius:3px; background:#101010; margin-left:auto;"></span></div>
+      <div style="font-size:10.5px; color:#9A958C; margin-bottom:10px;">/pt/entrar · AuthTemplate · P1</div>
+      <div style="max-width:150px; margin:0 auto;"><div class="wf"><div class="bar b-sec" style="text-align:center;">Título</div><div class="bar b-form">Field e-mail</div><div class="bar b-form">PasswordInput</div><div class="bar b-form">Entrar (FormActions)</div><div class="bar b-ad">Publicidade</div></div></div>
+      <div style="font-size:10px; color:#6E6E6E; margin-top:10px;">1 ad · coluna centrada 420</div>
+    </div>
+
+    <!-- 17 Ad pop -->
+    <div style="background:#fff; border:1px solid #E3DED6; border-radius:12px; padding:16px; box-shadow:0 3px 14px rgba(20,18,14,0.05);">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;"><span style="font-size:10px; font-weight:800; background:#9A958C; color:#fff; padding:3px 7px; border-radius:5px;">17</span><span style="font-size:13.5px; font-weight:800;">Anúncio · pop-up</span><span style="width:12px; height:12px; border-radius:3px; background:#101010; margin-left:auto;"></span></div>
+      <div style="font-size:10.5px; color:#9A958C; margin-bottom:10px;">overlay · AdScreenTemplate · P3</div>
+      <div style="display:flex; align-items:center; justify-content:center; background:#F4EFE9; border-radius:8px; padding:22px;"><div class="bar b-ad" style="width:120px;">Rectangle 300×250 + fechar</div></div>
+      <div style="font-size:10px; color:#6E6E6E; margin-top:10px;">1 ad · modal, foco preso</div>
+    </div>
+
+    <!-- 18 Ad tela -->
+    <div style="background:#fff; border:1px solid #E3DED6; border-radius:12px; padding:16px; box-shadow:0 3px 14px rgba(20,18,14,0.05);">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;"><span style="font-size:10px; font-weight:800; background:#9A958C; color:#fff; padding:3px 7px; border-radius:5px;">18</span><span style="font-size:13.5px; font-weight:800;">Anúncio · tela cheia</span><span style="width:12px; height:12px; border-radius:3px; background:#101010; margin-left:auto;"></span></div>
+      <div style="font-size:10.5px; color:#9A958C; margin-bottom:10px;">interstitial · AdScreenTemplate · P3</div>
+      <div style="display:flex; align-items:center; justify-content:center; background:#F4EFE9; border-radius:8px; padding:22px;"><div class="bar b-ad" style="width:100%;">Billboard 970×250 + pular</div></div>
+      <div style="font-size:10px; color:#6E6E6E; margin-top:10px;">1 ad · full-bleed</div>
+    </div>
+
+    <!-- 01 Switcher -->
+    <div style="background:#FBFAF7; border:1px dashed #D9D2C6; border-radius:12px; padding:16px;">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;"><span style="font-size:10px; font-weight:800; background:#B7B0A5; color:#fff; padding:3px 7px; border-radius:5px;">01</span><span style="font-size:13.5px; font-weight:800; color:#6E6E6E;">Switcher</span></div>
+      <div style="font-size:10.5px; color:#9A958C; margin-bottom:10px;">dev · DevOverlayTemplate · P3</div>
+      <div class="wf"><div class="bar b-sec" style="opacity:0.6;">Lista de rotas do protótipo</div></div>
+      <div style="font-size:10px; color:#9A958C; margin-top:10px;">dev-only — remover no build</div>
+    </div>
+
+  </div>
+
+  <p style="font-size:12px; color:#9A958C; margin:52px 0 0; padding-top:20px; border-top:1px solid #E3DED6;">Cinerie DS · D4A · <b>SPECIFIED_NOT_MIGRATED</b> — nenhum componente aplicado às 18 telas; canônico intacto. Estrutura completa: <code>page-specifications.json</code> · <code>page-templates.json</code> · <code>43-PUBLIC-SCREEN-SPECIFICATIONS.md</code>. Próxima: D4B (migração).</p>
+</div>
+</x-dc>
+</body>
+</html>

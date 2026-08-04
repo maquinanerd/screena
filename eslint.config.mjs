@@ -44,6 +44,13 @@ export default tseslint.config(
       'apps/cms/src/migrations/**',
       // Tipos gerados por `payload generate:types`.
       'apps/cms/src/payload-types.ts',
+      // Handoff de design VENDORIZADO: HTML/JS de navegador entregues pelo
+      // pacote canonico, versionados como fonte de verdade visual — nao sao
+      // codigo de produto e nao entram em nenhum bundle. Rodam em `window`,
+      // `document` e `customElements`, que o `globals` do repo (Node + Next)
+      // nao declara. Editar para satisfazer o lint quebraria o SHA-256 do
+      // canonico que o `globals.css` referencia.
+      'docs/design-handoff/**',
     ],
   },
   eslint.configs.recommended,
