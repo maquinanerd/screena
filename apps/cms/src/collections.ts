@@ -191,8 +191,21 @@ export const editorialBlocks = [
     admin: blockRowLabel,
     fields: [
       blockIdField,
-      { name: 'level', type: 'select' as const, required: true, options: ['2', '3', '4'] },
-      { name: 'text', type: 'text' as const, required: true },
+      {
+        name: 'level',
+        type: 'select' as const,
+        required: true,
+        label: 'Nível',
+        // NASCE em h2: o corpo comeca em h2 porque h1 pertence ao titulo da
+        // pagina. Antes nascia VAZIO e oferecia "2 / 3 / 4" cru.
+        defaultValue: '2',
+        options: [
+          { label: 'H2 — seção principal', value: '2' },
+          { label: 'H3 — subseção', value: '3' },
+          { label: 'H4 — detalhe', value: '4' },
+        ],
+      },
+      { name: 'text', type: 'text' as const, required: true, label: 'Texto' },
     ],
   },
   {
@@ -201,9 +214,9 @@ export const editorialBlocks = [
     fields: [
       blockIdField,
       { name: 'media', type: 'relationship' as const, relationTo: 'media' as const, required: true },
-      { name: 'alt', type: 'text' as const, required: true },
-      { name: 'caption', type: 'text' as const },
-      { name: 'credit', type: 'text' as const },
+      { name: 'alt', type: 'text' as const, required: true, label: 'Texto alternativo' },
+      { name: 'caption', type: 'text' as const, label: 'Legenda' },
+      { name: 'credit', type: 'text' as const, label: 'Crédito' },
     ],
   },
   {
@@ -621,8 +634,8 @@ export const Articles: CollectionConfig = {
           'O texto da materia. E por aqui que uma redacao humana comeca.',
         fields: [
         // --- Conteudo ---
-      { name: 'title', type: 'text', required: true },
-        { name: 'subtitle', type: 'text' },
+      { name: 'title', type: 'text', required: true, label: 'Título' },
+        { name: 'subtitle', type: 'text', label: 'Linha de apoio' },
         {
           name: 'slug',
           type: 'text',
@@ -632,7 +645,7 @@ export const Articles: CollectionConfig = {
           // autopublicacao ja usa, e para de gerar quando alguem edita a mao.
           admin: { components: { Field: '/src/admin/SlugField' } },
         },
-        { name: 'summary', type: 'textarea' },
+        { name: 'summary', type: 'textarea', label: 'Resumo' },
         {
         name: 'contentType',
         type: 'select',
@@ -643,8 +656,25 @@ export const Articles: CollectionConfig = {
         // publicacao morria na persistencia, com 503 e sem materia.
         options: [...PUBLICATION_CONTENT_TYPES],
       },
-        { name: 'language', type: 'text', required: true, defaultValue: 'pt-BR' },
-        { name: 'body', type: 'blocks', blocks: editorialBlocks },
+        {
+          name: 'language',
+          type: 'select',
+          required: true,
+          defaultValue: 'pt-BR',
+          label: 'Idioma',
+          // Era caixa de texto LIVRE com "pt-BR" digitado: um `pt_BR` ou `PT-BR`
+          // atravessava e so quebrava na projecao. A coluna continua a mesma.
+          options: [
+            { label: 'Português (Brasil)', value: 'pt-BR' },
+            { label: 'Inglês', value: 'en' },
+            { label: 'Espanhol', value: 'es' },
+          ],
+          admin: {
+            description:
+              'Só pt-BR é publicado hoje. Inglês e espanhol ficam em rascunho até revisão humana.',
+          },
+        },
+        { name: 'body', type: 'blocks', blocks: editorialBlocks, label: 'Corpo' },
         ],
       },
       {
@@ -652,7 +682,19 @@ export const Articles: CollectionConfig = {
         description:
           'Capa e galeria. Midia sem licenca aprovada NAO publica.',
         fields: [
-        { name: 'heroMedia', type: 'relationship', relationTo: 'media' },
+        {
+          name: 'heroMedia',
+          type: 'relationship',
+          relationTo: 'media',
+          label: 'Capa',
+          // O gate NAO exige capa — `heroMedia` nao aparece em `workflow.ts`.
+          // A interface dizia isso por omissao, e dava para chegar em "pronta
+          // para publicar" sem capa sem entender por que. Agora esta escrito.
+          admin: {
+            description:
+              'Não bloqueia a publicação, mas matéria sem capa perde espaço nas listas e no compartilhamento.',
+          },
+        },
         { name: 'gallery', type: 'relationship', relationTo: 'media', hasMany: true },
         ],
       },
@@ -662,7 +704,20 @@ export const Articles: CollectionConfig = {
           'Autor PUBLICO da materia. Diferente do usuario do CMS que a editou.',
         fields: [
         // --- Autoria ---
-      { name: 'authors', type: 'relationship', relationTo: 'authors', hasMany: true },
+      {
+        name: 'authors',
+        type: 'relationship',
+        relationTo: 'authors',
+        hasMany: true,
+        label: 'Autores',
+        // O gate EXIGE ao menos um autor ativo (`missing_active_author`,
+        // `workflow.ts:214-215`), mas o campo nao pode ser `required`: rascunho
+        // legitimamente nasce sem autor. A exigencia e dita por escrito.
+        admin: {
+          description:
+            'Obrigatório para publicar: ao menos um autor ativo. Um rascunho pode ficar sem autor.',
+        },
+      },
         { name: 'primaryAuthor', type: 'relationship', relationTo: 'authors' },
         { name: 'assignedTo', type: 'relationship', relationTo: 'editorial-users' },
         // --- Organizacao PROVISORIA (a taxonomia publica nao vive aqui) ---
@@ -676,8 +731,35 @@ export const Articles: CollectionConfig = {
           'SINAIS editoriais. Canonical, robots e JSON-LD sao derivados no site.',
         fields: [
         // --- SEO ---
-      { name: 'metaTitle', type: 'text' },
-        { name: 'metaDescription', type: 'textarea' },
+      {
+          name: 'metaTitle',
+          type: 'text',
+          label: 'Título para busca',
+          admin: {
+            description:
+              'O que aparece como título no Google. Cerca de 60 caracteres — acima disso, corta.',
+          },
+        },
+        {
+          name: 'metaDescription',
+          type: 'textarea',
+          label: 'Descrição para busca',
+          admin: {
+            description:
+              'O trecho abaixo do título no resultado. Cerca de 155 caracteres — acima disso, corta.',
+          },
+        },
+        {
+          // BASICO vs AVANCADO. Eram 12 campos planos, sem hierarquia: quem
+          // escreve precisa de dois, e via doze. Os dez restantes seguem
+          // acessiveis, recolhidos.
+          //
+          // `collapsible` SEM `name` nao aninha armazenamento — o schema do banco
+          // fica identico e a projecao continua lendo `metaTitle` na raiz.
+          type: 'collapsible',
+          label: 'Sinais avançados',
+          admin: { initCollapsed: true },
+          fields: [
         // SEO revalidado. Sao SUGESTOES do pipeline que o CMS aceitou — nunca
       // canonical, robots, datas ou JSON-LD, que pertencem ao lado publico.
       { name: 'focusKeyphrase', type: 'text' },
@@ -695,6 +777,8 @@ export const Articles: CollectionConfig = {
         { name: 'socialMedia', type: 'relationship', relationTo: 'media' },
         { name: 'canonicalOverride', type: 'text' },
         { name: 'noindex', type: 'checkbox', defaultValue: false },
+          ],
+        },
         ],
       },
       {
@@ -812,8 +896,14 @@ export const Articles: CollectionConfig = {
         index: true,
         options: [...WORKFLOW_STATUSES],
         admin: {
+          // FORA DO ALCANCE, nao fora do documento. A barra do topo era para ter
+          // substituido este seletor e apenas conviveu com ele: havia DOIS
+          // caminhos de mudar estado, e o cru nao passa pelas transicoes
+          // permitidas. `readOnly` e interface — a recusa real continua no hook
+          // de governanca, que nao muda aqui. O valor persistido e o mesmo.
+          readOnly: true,
           description:
-            'Fonte da verdade do fluxo editorial. `_status` do Payload tem 2 valores; o fluxo real tem 12.',
+            'Em que pé está a matéria. Para avançar ou voltar, use os botões no topo da tela.',
         },
       },
         { name: 'scheduledFor', type: 'date' },
@@ -865,10 +955,28 @@ export const Articles: CollectionConfig = {
         ],
       },
       {
+        // O ROTULO NAO MUDA. Ele e a chave do vinculo em
+        // `editorial-vocabulary.ts:219`, que alimenta o deep-link do painel de
+        // bloqueios. Acentua-lo quebraria a navegacao — a melhoria de item 3 e
+        // nos rotulos de CAMPO, nao no identificador da aba.
         label: 'Automacao (auditoria)',
         description:
-          'SO LEITURA. Preenchido pela autopublicacao; vazio em materia humana.',
+          'Rastro da publicação automática. Em matéria escrita por uma pessoa, esta aba fica vazia.',
         fields: [
+        {
+          // 22 campos de auditoria, VAZIOS em toda materia escrita por pessoa.
+          // Recolhidos por padrao: quem precisa do rastro abre; quem escreve
+          // nao rola por 22 campos em branco.
+          //
+          // `collapsible` SEM `name` nao aninha armazenamento — o schema do
+          // banco fica identico, igual as abas ja existentes. Um `condition` por
+          // campo esconderia melhor, mas exigiria repetir a regra 22 vezes e
+          // faria a aba parecer vazia quando o rastro EXISTE porem ainda nao
+          // carregou.
+          type: 'collapsible' as const,
+          label: 'Rastro da automação',
+          admin: { initCollapsed: true },
+          fields: [
         // --- Governanca ---
       // ------------------------------------------------------------------
       // PUBLICACAO AUTOMATICA (FASE 2F)
@@ -943,6 +1051,8 @@ export const Articles: CollectionConfig = {
         { name: 'sourcePayloadHash', admin: { readOnly: true }, type: 'text' },
         { name: 'draftPayloadHash', admin: { readOnly: true }, type: 'text' },
         { name: 'pipelineVersion', admin: { readOnly: true }, type: 'text' },
+          ],
+        },
         ],
       },
       ],
