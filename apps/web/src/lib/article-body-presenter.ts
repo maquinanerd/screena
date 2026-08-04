@@ -56,8 +56,32 @@ export interface ArticleBodyLink {
   href: string;
 }
 
+/**
+ * Um trecho de paragrafo com formatacao uniforme.
+ *
+ * O presenter entrega TRECHOS, nao HTML. Quem renderiza monta `<strong>`,
+ * `<em>` e `<a>` a partir destes campos — nenhuma string de markup atravessa a
+ * fronteira, e por isso `dangerouslySetInnerHTML` continua restrito ao JSON-LD.
+ */
+export interface ArticleBodyTextSegment {
+  text: string;
+  bold: boolean;
+  italic: boolean;
+  /** Destino ja validado como http(s), ou `null`. */
+  href: string | null;
+}
+
 export type ArticleBodyBlock =
-  | { kind: "paragraph"; id: string; text: string }
+  | {
+      kind: "paragraph";
+      id: string;
+      text: string;
+      /**
+       * Sempre presente. Sem formatacao, e um unico trecho com tudo `false` —
+       * o componente nao precisa de dois caminhos de render.
+       */
+      segments: ArticleBodyTextSegment[];
+    }
   | { kind: "heading"; id: string; level: ArticleBodyHeadingLevel; text: string }
   | { kind: "image"; id: string; image: ArticleBodyImage }
   | {
@@ -284,6 +308,90 @@ function entityCardBlock(
   return { kind: "entityCard", id, card, note: text(block.note) };
 }
 
+/** `true` quando cortar em `index` partiria um par surrogado ao meio. */
+function splitsSurrogatePair(value: string, index: number): boolean {
+  if (index <= 0 || index >= value.length) return false;
+  const before = value.charCodeAt(index - 1);
+  const at = value.charCodeAt(index);
+  return before >= 0xd800 && before <= 0xdbff && at >= 0xdc00 && at <= 0xdfff;
+}
+
+interface ParsedMark {
+  start: number;
+  end: number;
+  type: "bold" | "italic" | "link";
+  href: string | null;
+}
+
+/**
+ * Marcacoes inline -> trechos prontos para render.
+ *
+ * FAIL-CLOSED por paragrafo: qualquer marcacao malformada, fora do texto ou com
+ * destino inseguro degrada o paragrafo INTEIRO para texto puro. O texto sempre
+ * aparece — o pior desfecho e uma materia sem negrito, nunca uma pagina
+ * quebrada nem um `<a>` apontando para lugar nenhum.
+ *
+ * Corta em toda fronteira de marcacao e resolve cada pedaco pelo que o cobre.
+ * Percorrer fronteiras (em vez de aninhar marcacao a marcacao) e o que faz
+ * SOBREPOSICAO — negrito dentro de link — sair certa sem caso especial.
+ */
+export function toTextSegments(
+  value: string,
+  rawMarks: unknown,
+): ArticleBodyTextSegment[] {
+  const plain: ArticleBodyTextSegment[] = [
+    { text: value, bold: false, italic: false, href: null },
+  ];
+  if (!Array.isArray(rawMarks) || rawMarks.length === 0) return plain;
+
+  const marks: ParsedMark[] = [];
+  for (const entry of rawMarks) {
+    const mark = record(entry);
+    if (mark === null) return plain;
+    const { start, end } = mark;
+    const type = mark.type;
+    if (typeof start !== "number" || !Number.isInteger(start)) return plain;
+    if (typeof end !== "number" || !Number.isInteger(end)) return plain;
+    if (type !== "bold" && type !== "italic" && type !== "link") return plain;
+    if (start < 0 || end > value.length || end <= start) return plain;
+    if (splitsSurrogatePair(value, start) || splitsSurrogatePair(value, end)) {
+      return plain;
+    }
+    if (type === "link") {
+      const href = externalHref(mark.href, null);
+      if (href === null) return plain;
+      marks.push({ start, end, type, href });
+    } else {
+      marks.push({ start, end, type, href: null });
+    }
+  }
+
+  const boundaries = new Set<number>([0, value.length]);
+  for (const mark of marks) {
+    boundaries.add(mark.start);
+    boundaries.add(mark.end);
+  }
+  const ordered = [...boundaries].sort((a, b) => a - b);
+
+  const segments: ArticleBodyTextSegment[] = [];
+  for (let i = 0; i < ordered.length - 1; i += 1) {
+    const start = ordered[i]!;
+    const end = ordered[i + 1]!;
+    if (end <= start) continue;
+    const covering = marks.filter(
+      (mark) => mark.start <= start && mark.end >= end,
+    );
+    const link = covering.find((mark) => mark.type === "link");
+    segments.push({
+      text: value.slice(start, end),
+      bold: covering.some((mark) => mark.type === "bold"),
+      italic: covering.some((mark) => mark.type === "italic"),
+      href: link?.href ?? null,
+    });
+  }
+  return segments.length === 0 ? plain : segments;
+}
+
 function mapBlock(
   raw: unknown,
   index: number,
@@ -300,7 +408,13 @@ function mapBlock(
   switch (type) {
     case "paragraph": {
       const value = text(block.text);
-      return value === null ? null : { kind: "paragraph", id, text: value };
+      if (value === null) return null;
+      return {
+        kind: "paragraph",
+        id,
+        text: value,
+        segments: toTextSegments(value, block.marks),
+      };
     }
     case "heading": {
       const value = text(block.text);

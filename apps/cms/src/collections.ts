@@ -179,9 +179,20 @@ export const editorialBlocks = [
         name: 'text',
         type: 'textarea' as const,
         required: true,
-        // Colar de fora vira N blocos; Enter no fim cria o proximo; bloco vazio
-        // avisa DURANTE a escrita, e nao so na recusa da publicacao.
+        // Editor Lexical com negrito/italico/link. Colar de fora vira N blocos
+        // PRESERVANDO formatacao; Enter no fim cria o proximo; bloco vazio avisa
+        // DURANTE a escrita, e nao so na recusa da publicacao.
         admin: { components: { Field: '/src/admin/ParagraphTextField' } },
+      },
+      {
+        name: 'marks',
+        type: 'json' as const,
+        // Intervalos `{ start, end, type }` sobre `text`. Escrito SO pelo editor
+        // acima — nao ha campo proprio na tela porque um humano editando offset
+        // a mao produziria marcacao desalinhada do texto, que e o unico jeito de
+        // quebrar isto. O texto continua limpo: a formatacao viaja ao lado, e
+        // nenhuma tag entra em `text` (contrato: `common.ts:58`).
+        admin: { hidden: true },
       },
       provenanceField,
     ],

@@ -33,6 +33,15 @@ export const LIMITS = {
   shortText: 500,
   /** Texto de um unico bloco de paragrafo/citacao. */
   blockText: 5_000,
+  /**
+   * Marcacoes inline (negrito/italico/link) em UM bloco de paragrafo.
+   *
+   * Teto generoso o bastante para um paragrafo denso de links e enxuto o
+   * bastante para que a lista nao vire um vetor de payload gigante: o corpo
+   * inteiro ja tem teto de blocos, mas sem teto AQUI um unico paragrafo
+   * carregaria marcacoes ilimitadas.
+   */
+  marks: 200,
   url: 2_048,
   hash: 128,
   id: 200,

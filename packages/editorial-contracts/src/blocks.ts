@@ -170,3 +170,151 @@ export const editorialBody = z
   })
 
 export type EditorialBody = z.infer<typeof editorialBody>
+
+/* ------------------------------------------------------------------ */
+/* Formatacao inline (SOMENTE no corpo PUBLICADO)                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Marcacao inline sobre o texto de um paragrafo.
+ *
+ * O corpo continua SEM HTML: o texto e string limpa e a formatacao viaja ao
+ * lado, como intervalo (`start`/`end`) sobre esse texto. Quem renderiza
+ * CONSTROI `<strong>`, `<em>` e `<a>` a partir daqui — nunca interpreta markup
+ * vindo do dado. A recusa de markup em `common.ts` continua valendo intacta,
+ * porque nada aqui e concatenado no texto.
+ *
+ * Offsets sao indices de string JavaScript (unidades UTF-16), a mesma unidade
+ * que `String.prototype.slice` usa no render. Casar as duas unidades e o que
+ * dispensa qualquer conversao — e converter era onde um emoji desalinhava a
+ * marcacao inteira do paragrafo.
+ */
+export const TEXT_MARK_TYPES = ['bold', 'italic', 'link'] as const
+export type TextMarkType = (typeof TEXT_MARK_TYPES)[number]
+
+export const textMark = z.object({
+  /** Inicio inclusivo, em unidades UTF-16. */
+  start: z.int().min(0),
+  /** Fim EXCLUSIVO, em unidades UTF-16. */
+  end: z.int().min(1),
+  type: z.enum(TEXT_MARK_TYPES),
+  /** Obrigatorio em `link`, proibido nos demais. Somente http(s). */
+  href: httpUrl.optional(),
+})
+
+export type TextMark = z.infer<typeof textMark>
+
+/** Paragrafo do corpo PUBLICADO: mesmo texto limpo, mais marcacoes opcionais. */
+export const publishedParagraphBlock = paragraphBlock.extend({
+  marks: z.array(textMark).max(LIMITS.marks).optional(),
+})
+
+export const publishedEditorialBlock = z.discriminatedUnion('type', [
+  publishedParagraphBlock,
+  headingBlock,
+  imageBlock,
+  videoBlock,
+  quoteBlock,
+  entityCardBlock,
+  factBoxBlock,
+  relatedContentBlock,
+  sourceListBlock,
+  dividerBlock,
+])
+
+/** `true` quando cortar em `index` partiria um par surrogado ao meio. */
+function splitsSurrogatePair(text: string, index: number): boolean {
+  if (index <= 0 || index >= text.length) return false
+  const before = text.charCodeAt(index - 1)
+  const at = text.charCodeAt(index)
+  return before >= 0xd800 && before <= 0xdbff && at >= 0xdc00 && at <= 0xdfff
+}
+
+/**
+ * Valida as marcacoes de UM paragrafo contra o texto dele.
+ *
+ * Vive no nivel do CORPO, e nao dentro do bloco, porque `z.discriminatedUnion`
+ * exige objetos puros nos ramos: um `superRefine` no ramo o transformaria em
+ * outro tipo de schema e a uniao deixaria de discriminar.
+ */
+function checkMarks(
+  block: { readonly text: string; readonly marks?: readonly TextMark[] },
+  ctx: z.RefinementCtx,
+  blockIndex: number,
+): void {
+  const marks = block.marks
+  if (marks === undefined) return
+  const length = block.text.length
+
+  const issue = (index: number, message: string): void => {
+    ctx.addIssue({ code: 'custom', path: [blockIndex, 'marks', index], message })
+  }
+
+  marks.forEach((mark, index) => {
+    if (mark.end <= mark.start) {
+      issue(index, `marcacao vazia ou invertida: ${String(mark.start)}..${String(mark.end)}`)
+    }
+    if (mark.end > length) {
+      issue(index, `marcacao fora do texto: fim ${String(mark.end)} > ${String(length)}`)
+    }
+    if (splitsSurrogatePair(block.text, mark.start) || splitsSurrogatePair(block.text, mark.end)) {
+      issue(index, 'marcacao corta um caractere ao meio')
+    }
+    // `link` sem destino nao e link; `bold`/`italic` com destino e um link
+    // disfarcado que o render nao mostraria — os dois sao erro, nao aviso.
+    if (mark.type === 'link' && mark.href === undefined) {
+      issue(index, 'link sem href')
+    }
+    if (mark.type !== 'link' && mark.href !== undefined) {
+      issue(index, `href so e permitido em link, veio em ${mark.type}`)
+    }
+  })
+
+  // Sobreposicao entre tipos DIFERENTES e legitima (negrito dentro de link).
+  // Entre marcacoes do MESMO tipo nao e: sao duas formas de dizer a mesma coisa,
+  // e o render teria de escolher uma sem criterio.
+  for (const type of TEXT_MARK_TYPES) {
+    const sameType = marks
+      .map((mark, index) => ({ mark, index }))
+      .filter((entry) => entry.mark.type === type)
+      .sort((a, b) => a.mark.start - b.mark.start)
+    for (let i = 1; i < sameType.length; i += 1) {
+      const previous = sameType[i - 1]!
+      const current = sameType[i]!
+      if (current.mark.start < previous.mark.end) {
+        issue(current.index, `marcacoes ${type} sobrepostas`)
+      }
+    }
+  }
+}
+
+/**
+ * Corpo do artigo PUBLICADO: identico ao de entrada, mais formatacao inline.
+ *
+ * Separado de `editorialBody` de proposito. Os contratos de ENTRADA
+ * (`editorial-draft-v1`, `editorial-publication-request-v1`) sao comparados por
+ * hash com igualdade estrita em `checkContractCompatibility`, e o MNScr declara
+ * esse hash a cada pedido. Acrescentar campo la — mesmo opcional — faria todo
+ * pedido em voo virar `hash_mismatch`. A formatacao nasce na redacao humana,
+ * nao na automacao, entao ela so precisa existir na SAIDA.
+ */
+export const publishedEditorialBody = z
+  .array(publishedEditorialBlock)
+  .min(1, 'corpo vazio')
+  .max(LIMITS.blocks, `corpo acima do limite de ${LIMITS.blocks} blocos`)
+  .superRefine((blocks, ctx) => {
+    const seen = new Set<string>()
+    for (const [index, block] of blocks.entries()) {
+      if (seen.has(block.id)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: [index, 'id'],
+          message: `id de bloco duplicado: ${block.id}`,
+        })
+      }
+      seen.add(block.id)
+      if (block.type === 'paragraph') checkMarks(block, ctx, index)
+    }
+  })
+
+export type PublishedEditorialBody = z.infer<typeof publishedEditorialBody>

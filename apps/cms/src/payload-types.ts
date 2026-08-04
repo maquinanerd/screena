@@ -311,6 +311,15 @@ export interface Article {
              */
             blockId: string;
             text: string;
+            marks?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             /**
              * De onde veio este bloco. O writer nao e fonte primaria.
              */
@@ -912,6 +921,7 @@ export interface ArticlesSelect<T extends boolean = true> {
           | {
               blockId?: T;
               text?: T;
+              marks?: T;
               provenance?:
                 | T
                 | {
