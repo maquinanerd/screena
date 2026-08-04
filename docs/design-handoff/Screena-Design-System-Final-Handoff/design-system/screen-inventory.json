@@ -1,0 +1,30 @@
+{
+  "generatedAt": "2026-07-21",
+  "source": "Screen Screens v4.dc.html (canônico) + paginas/01-18",
+  "totalScreens": 18,
+  "distinctRouteFlags": 20,
+  "scIfBlocks": 28,
+  "scForLoops": 81,
+  "screens": [
+    { "id": "01", "name": "Switcher (overlay)", "file": "paginas/01-switcher-open.html", "route": null, "context": "dev", "logoExpected": "n/a", "logoFound": "n/a", "hero": false, "ads": 0, "priority": "P3", "note": "overlay de protótipo; remover no build real" },
+    { "id": "02", "name": "Home", "file": "paginas/02-home.html", "route": "/pt", "context": "neutro", "logoExpected": "branca-branco/preta-preto", "logoFound": "branca-branco/preta-preto", "hero": true, "ads": 4, "priority": "P0" },
+    { "id": "03", "name": "Notícias", "file": "paginas/03-news.html", "route": "/pt/noticias", "context": "noticia", "logoExpected": "noticias(neutro)", "logoFound": "noticias(neutro)", "hero": false, "ads": 6, "priority": "P1" },
+    { "id": "04", "name": "Categoria (Filmes/Séries)", "file": "paginas/04-cat-home.html", "route": "/pt/filmes,/pt/series", "context": "filme|serie", "logoExpected": "cinema(red)|serie(green)", "logoFound": "cinema(red)|serie(green)", "hero": true, "ads": 0, "priority": "P0" },
+    { "id": "05", "name": "Artigo", "file": "paginas/05-article.html", "route": "/pt/noticias/[slug]", "context": "noticia", "logoExpected": "noticias(neutro)", "logoFound": "noticias(neutro)", "hero": true, "ads": 1, "priority": "P1" },
+    { "id": "06", "name": "Detalhe de Filme", "file": "paginas/06-movie-detail.html", "route": "/pt/filmes/[slug]", "context": "filme", "logoExpected": "cinema(red)", "logoFound": "cinema(red)", "hero": false, "ads": 2, "priority": "P0" },
+    { "id": "07", "name": "Detalhe de Série", "file": "paginas/07-series-detail.html", "route": "/pt/series/[slug]", "context": "serie", "logoExpected": "serie(green)", "logoFound": "serie(green)", "hero": false, "ads": 2, "priority": "P0" },
+    { "id": "08", "name": "Série (mobile)", "file": "paginas/08-series-mobile.html", "route": "/pt/series/[slug]@390", "context": "serie", "logoExpected": "serie(green)", "logoFound": "serie(green)", "hero": false, "ads": 0, "priority": "P1" },
+    { "id": "09", "name": "Pessoa", "file": "paginas/09-person.html", "route": "/pt/pessoas/[slug]", "context": "pessoa", "logoExpected": "pessoas(neutro)", "logoFound": "pessoas(neutro)", "hero": true, "ads": 1, "priority": "P1" },
+    { "id": "10", "name": "Onde assistir (Browse)", "file": "paginas/10-browse.html", "route": "/pt/onde-assistir", "context": "neutro", "logoExpected": "branca/preta neutro", "logoFound": "branca/preta neutro", "hero": true, "ads": 2, "priority": "P1" },
+    { "id": "11", "name": "Explorar (Discover)", "file": "paginas/11-discover.html", "route": "/pt/explorar", "context": "neutro", "logoExpected": "preta-preto", "logoFound": "preta-preto", "hero": false, "ads": 1, "priority": "P1" },
+    { "id": "12", "name": "Mais aguardados", "file": "paginas/12-anticipated.html", "route": "/pt/em-breve", "context": "neutro/misto", "logoExpected": "preta-preto", "logoFound": "preta-preto", "hero": false, "ads": 0, "priority": "P2" },
+    { "id": "13", "name": "Configurações", "file": "paginas/13-settings.html", "route": "/pt/configuracoes", "context": "neutro", "logoExpected": "preta-preto", "logoFound": "preta-preto", "hero": false, "ads": 0, "priority": "P1" },
+    { "id": "14", "name": "Importar dados", "file": "paginas/14-data.html", "route": "/pt/configuracoes/dados", "context": "neutro", "logoExpected": "preta-preto", "logoFound": "preta-preto", "hero": false, "ads": 0, "priority": "P2" },
+    { "id": "15", "name": "Listas", "file": "paginas/15-listas.html", "route": "/pt/listas", "context": "neutro/misto", "logoExpected": "preta-preto", "logoFound": "preta-preto", "hero": false, "ads": 3, "priority": "P1" },
+    { "id": "16", "name": "Entrar", "file": "paginas/16-entrar.html", "route": "/pt/entrar", "context": "neutro", "logoExpected": "preta-preto", "logoFound": "preta-preto", "hero": false, "ads": 1, "priority": "P1" },
+    { "id": "17", "name": "Anúncio · pop-up", "file": "paginas/17-ad-pop.html", "route": null, "context": "publicidade", "logoExpected": "neutro", "logoFound": "neutro", "hero": false, "ads": 1, "priority": "P3" },
+    { "id": "18", "name": "Anúncio · tela cheia", "file": "paginas/18-ad-tela.html", "route": null, "context": "publicidade", "logoExpected": "neutro", "logoFound": "neutro", "hero": false, "ads": 1, "priority": "P3" }
+  ],
+  "logoContextMatch": "100% (esperada == encontrada em todas as telas)",
+  "d4aSpecStatus": { "unit": "D4A", "status": "SPECIFIED_NOT_MIGRATED", "specifiedScreens": 18, "templates": 13, "adSlotsMapped": 21, "imageSlotsMapped": 39, "specFiles": ["page-specifications.json","page-templates.json","43-PUBLIC-SCREEN-SPECIFICATIONS.md","17-PUBLIC-SCREENS.md","16-PAGE-TEMPLATES.md"], "note": "estrutura exata definida; nenhuma tela migrada" }
+}

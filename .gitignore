@@ -84,3 +84,16 @@ services/*/media/
 apps/cms/test-results/
 apps/cms/playwright-report/
 apps/cms/.playwright/
+
+# Moodboard do handoff de design (134 MB de material de REFERENCIA).
+#
+# O `docs/design-handoff/` E versionado — mas so o subconjunto que e fonte de
+# verdade (7 HTML canonicos + MANIFESTO + design-system/, 2,9 MB). O `uploads/`
+# fica de fora: sao capturas de concorrente, PDFs de artigo e fotos de banco,
+# declarados `referenceOnlyDirectories` pelo proprio MANIFESTO-CANONICO.json.
+# Alem de nao ser fonte de verdade, 39,8 MB dos 134 MB sao duplicata byte-a-byte.
+#
+# ANCORADO no caminho completo, e nao um `uploads/` solto: o padrao solto casaria
+# em qualquer profundidade e engoliria diretorio de fonte com esse nome — a mesma
+# armadilha do `media/` acima. Ver docs/design-handoff/README.md.
+docs/design-handoff/Screena-Design-System-Final-Handoff/uploads/

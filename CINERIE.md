@@ -83,8 +83,8 @@ Screnaa/
 |   |-- admin/
 |   `-- web/
 |-- database/
-|-- design-handoff/
 |-- docs/
+|   `-- design-handoff/
 |-- packages/
 |   |-- config/
 |   |-- db/

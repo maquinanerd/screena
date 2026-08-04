@@ -1,0 +1,21 @@
+{
+  "generatedAt": "2026-07-21",
+  "unit": "D2",
+  "source": "Screen Screens v4.dc.html",
+  "summary": { "P0_open": 0, "P1": 4, "P2": 5, "P3": 4 },
+  "findings": [
+    { "id": "F-01", "category": "botoes", "screen": "todas", "component": "Button", "description": "40 botões, 32 assinaturas visuais; primário/escuro/branco com padding e radius (0/8/999px) divergentes", "severity": "P1", "classification": "INCONSISTENTE", "evidence": "component-inventory.json.buttons", "futureFix": "definir família Button em D3 e migrar todas as telas", "status": "REGISTRADO" },
+    { "id": "F-02", "category": "ui-honesta", "screen": "06,07", "component": "Cinerie Score", "description": "nota mock fixa sem estado vazio/indisponível/aguardando/não-autorizado", "severity": "P1", "classification": "CONFLITO_DE_UI_HONESTA", "evidence": "movie 8.2, series 8.6", "futureFix": "desenhar estados de omissão do score", "status": "REGISTRADO" },
+    { "id": "F-03", "category": "responsividade", "screen": "02,04,06,07", "component": "layout", "description": "telas P0 sem mobile canônico (só 08 tem); desktop-first sem media queries", "severity": "P1", "classification": "SEM_RESPONSIVIDADE", "evidence": "container 1280 fixo", "futureFix": "mobile canônico 390/768", "status": "REGISTRADO" },
+    { "id": "F-04", "category": "estados/a11y", "screen": "todas", "component": "interativos", "description": "hover/focus-visible/loading/empty/skeleton/error ausentes; 106 onClick em <span> (não <button>/<a>), sem foco visível", "severity": "P1", "classification": "SEM_ESTADO,SEM_ACESSIBILIDADE", "evidence": "onClick 106 / cursor:pointer 196", "futureFix": "D-estados + D-acessibilidade", "status": "REGISTRADO" },
+    { "id": "F-05", "category": "tipografia", "screen": "todas", "component": "font-size", "description": "41 tamanhos distintos; meios-pixels redundantes (8.5/9.5/10.5/11.5/12.5/13.5/14.5px)", "severity": "P2", "classification": "INCONSISTENTE", "evidence": "component-inventory.json.typography", "futureFix": "escala tipográfica tokenizada (D3)", "status": "REGISTRADO" },
+    { "id": "F-06", "category": "spacing", "screen": "todas", "component": "gap", "description": "32 valores de gap; 7/8/9/10px coexistem sem degraus canônicos", "severity": "P2", "classification": "INCONSISTENTE", "futureFix": "escala de spacing (D3)", "status": "REGISTRADO" },
+    { "id": "F-07", "category": "sombras", "screen": "todas", "component": "box-shadow", "description": "19 sombras; 1 dominante + 18 quase-únicas", "severity": "P2", "classification": "CONSOLIDAR", "futureFix": "~5 tokens de sombra", "status": "REGISTRADO" },
+    { "id": "F-08", "category": "cores", "screen": "todas", "component": "hex", "description": "176 hex; ~15 sistema, ~40 marcas externas legítimas (não normalizar), ~120 cauda de quase-duplicatas (near-blacks/cinzas)", "severity": "P2", "classification": "INCONSISTENTE", "futureFix": "tokenizar sistema, documentar externas como exceção", "status": "REGISTRADO" },
+    { "id": "F-09", "category": "botoes", "screen": "todas", "component": "Button radius", "description": "radius do primário misto (0/8px/999px)", "severity": "P2", "classification": "INCONSISTENTE", "futureFix": "ligar a F-01", "status": "REGISTRADO" },
+    { "id": "F-10", "category": "tipografia", "screen": "todas", "component": "font-weight", "description": "pesos 900 (2x) e 400 (1x) quase não usados", "severity": "P3", "classification": "NECESSITA_DECISAO", "futureFix": "remover da escala?", "status": "REGISTRADO" },
+    { "id": "F-11", "category": "radius", "screen": "todas", "component": "border-radius", "description": "radius 12px (1x) e 14px (2x) outliers de uso dentro do conjunto sancionado", "severity": "P3", "classification": "CORRETO_CANONICO", "futureFix": "manter (CLAUDE.md proíbe unificar raios)", "status": "ACEITO" },
+    { "id": "F-12", "category": "protótipo", "screen": "01", "component": "Switcher", "description": "overlay de navegação do protótipo", "severity": "P3", "classification": "REMOVER", "futureFix": "remover no build real", "status": "REGISTRADO" },
+    { "id": "F-13", "category": "publicidade", "screen": "17,18", "component": "Ad screens", "description": "telas de anúncio; comportamento correto", "severity": "P3", "classification": "CORRETO_CANONICO", "status": "ACEITO" }
+  ]
+}

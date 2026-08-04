@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,300..900;1,400..700&display=swap" rel="stylesheet">
+<style>
+  body { margin:0; background:#FDFDFD; -webkit-font-smoothing:antialiased; }
+  a { color:#8A1E1A; }
+  a:hover { color:#F0443E; }
+  .cn-btn:focus-visible { outline:2px solid #101010; outline-offset:2px; }
+  .cn-swatch { font-family:'Montserrat',sans-serif; }
+</style>
+</helmet>
+<div style="font-family:'Montserrat',sans-serif; color:#101010; max-width:1120px; margin:0 auto; padding:64px 48px 120px;">
+  <div style="font-size:11px; font-weight:800; letter-spacing:0.14em; text-transform:uppercase; color:#9A958C;">Cinerie · Design System · D3B</div>
+  <h1 style="font-size:56px; font-weight:800; letter-spacing:-0.035em; line-height:1.02; margin:8px 0 6px;">Componentes · Primitivos & Navegação</h1>
+  <p style="font-size:15px; line-height:1.55; color:#6E6E6E; max-width:64ch; margin:0;">Biblioteca canônica (definida, <b>não migrada</b> às 18 telas). Contratos em <code>component-contracts.json</code>. Conteúdo real da Cinerie, sem lorem.</p>
+
+  <!-- BUTTONS -->
+  <h2 style="font-size:26px; font-weight:400; letter-spacing:-0.01em; text-transform:uppercase; margin:56px 0 6px;"><span style="font-weight:900;">Button</span> família</h2>
+  <p style="font-size:13px; color:#6E6E6E; margin:0 0 22px;">Uma família única substitui as 32 assinaturas atuais. Elemento: <code>&lt;button&gt;</code> (ação) — nunca <code>&lt;span onClick&gt;</code>. Tamanhos xs/sm/md/lg (alturas 30/36/44/52, toque md=44). Radius <code>radius-control 8</code> (ou <code>0</code> em contexto editorial).</p>
+
+  <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-bottom:18px;">
+    <button class="cn-btn" style="font-family:'Montserrat',sans-serif; height:44px; padding:0 22px; border:none; border-radius:8px; background:#101010; color:#fff; font-size:14px; font-weight:700; cursor:pointer;">Primary neutro</button>
+    <button class="cn-btn" style="font-family:'Montserrat',sans-serif; height:44px; padding:0 22px; border:1px solid #E3DED6; border-radius:8px; background:#fff; color:#101010; font-size:14px; font-weight:700; cursor:pointer;">Secondary</button>
+    <button class="cn-btn" style="font-family:'Montserrat',sans-serif; height:44px; padding:0 18px; border:none; border-radius:8px; background:transparent; color:#101010; font-size:14px; font-weight:700; cursor:pointer;">Tertiary</button>
+    <button class="cn-btn" style="font-family:'Montserrat',sans-serif; height:44px; padding:0 18px; border:none; border-radius:8px; background:transparent; color:#101010; font-size:14px; font-weight:600; cursor:pointer; text-decoration:underline; text-underline-offset:3px;">Text</button>
+    <button class="cn-btn" style="font-family:'Montserrat',sans-serif; height:44px; padding:0 22px; border:none; border-radius:8px; background:#C7382F; color:#fff; font-size:14px; font-weight:700; cursor:pointer;">Destructive</button>
+  </div>
+  <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-bottom:18px;">
+    <button class="cn-btn" style="font-family:'Montserrat',sans-serif; height:44px; padding:0 22px; border:none; border-radius:8px; background:#D42A2E; color:#fff; font-size:15px; font-weight:800; cursor:pointer;">Movie (filme)</button>
+    <button class="cn-btn" style="font-family:'Montserrat',sans-serif; height:44px; padding:0 22px; border:none; border-radius:8px; background:#395C42; color:#fff; font-size:14px; font-weight:700; cursor:pointer;">Series (série)</button>
+    <button class="cn-btn" style="font-family:'Montserrat',sans-serif; height:44px; padding:0 22px; border:none; border-radius:8px; background:#F5C518; color:#101010; font-size:14px; font-weight:700; cursor:pointer;">Editorial · Ver tudo</button>
+    <span style="display:inline-flex; align-items:center; padding:0 14px; height:44px; background:#0E0E10; border-radius:8px;"><button class="cn-btn" style="font-family:'Montserrat',sans-serif; height:32px; padding:0 16px; border:1px solid rgba(255,255,255,0.28); border-radius:999px; background:transparent; color:#fff; font-size:12px; font-weight:600; cursor:pointer;">Inverse</button></span>
+  </div>
+
+  <div style="font-size:12px; font-weight:700; color:#6E6E6E; margin:8px 0 10px;">Tamanhos · movie</div>
+  <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-bottom:18px;">
+    <button class="cn-btn" style="font-family:'Montserrat',sans-serif; height:30px; padding:0 12px; border:none; border-radius:8px; background:#D42A2E; color:#fff; font-size:12px; font-weight:800; cursor:pointer;">xs 30</button>
+    <button class="cn-btn" style="font-family:'Montserrat',sans-serif; height:36px; padding:0 16px; border:none; border-radius:8px; background:#D42A2E; color:#fff; font-size:13px; font-weight:800; cursor:pointer;">sm 36</button>
+    <button class="cn-btn" style="font-family:'Montserrat',sans-serif; height:44px; padding:0 22px; border:none; border-radius:8px; background:#D42A2E; color:#fff; font-size:15px; font-weight:800; cursor:pointer;">md 44</button>
+    <button class="cn-btn" style="font-family:'Montserrat',sans-serif; height:52px; padding:0 28px; border:none; border-radius:8px; background:#D42A2E; color:#fff; font-size:15px; font-weight:800; cursor:pointer;">lg 52</button>
+  </div>
+
+  <div style="font-size:12px; font-weight:700; color:#6E6E6E; margin:8px 0 10px;">Estados · primary neutro (default / hover / pressed / focus / disabled / loading)</div>
+  <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-bottom:14px;">
+    <button class="cn-btn" style="font-family:'Montserrat',sans-serif; height:44px; padding:0 22px; border:none; border-radius:8px; background:#101010; color:#fff; font-size:14px; font-weight:700;">default</button>
+    <button class="cn-btn" style="font-family:'Montserrat',sans-serif; height:44px; padding:0 22px; border:none; border-radius:8px; background:#2a2a2a; color:#fff; font-size:14px; font-weight:700;">hover</button>
+    <button class="cn-btn" style="font-family:'Montserrat',sans-serif; height:44px; padding:0 22px; border:none; border-radius:8px; background:#000; color:#fff; font-size:14px; font-weight:700; transform:scale(0.99);">pressed</button>
+    <button class="cn-btn" style="font-family:'Montserrat',sans-serif; height:44px; padding:0 22px; border:none; border-radius:8px; background:#101010; color:#fff; font-size:14px; font-weight:700; outline:2px solid #101010; outline-offset:2px;">focus</button>
+    <button class="cn-btn" disabled style="font-family:'Montserrat',sans-serif; height:44px; padding:0 22px; border:none; border-radius:8px; background:#E3DED6; color:#B7B0A5; font-size:14px; font-weight:700; cursor:not-allowed;">disabled</button>
+    <button class="cn-btn" style="font-family:'Montserrat',sans-serif; height:44px; padding:0 22px; border:none; border-radius:8px; background:#101010; color:#fff; font-size:14px; font-weight:700; display:inline-flex; align-items:center; gap:9px;"><span style="width:15px; height:15px; border:2px solid rgba(255,255,255,0.4); border-top-color:#fff; border-radius:50%; display:inline-block;"></span>loading</button>
+  </div>
+  <div style="background:#FBF4F3; border:1px solid #F0C9C6; border-radius:8px; padding:12px 16px; font-size:12.5px; color:#8A1E1A; max-width:70ch;">Contraste (AA, texto normal): primary 19.0 · secondary 19.0 · destructive 5.2 · editorial 11.67 (tinta escura) · series-dark #395C42 7.54 · <b>movie fill #D42A2E branco 5.04</b> (corrigido — #F0443E branco = 3.75 reprova AA em texto normal; só vale como acento). Marca de filme #F0443E permanece: badge Filme usa tinta escura #12100E = 4.98. <b>Verde claro #7FA56F com branco = 2.79 REPROVADO</b> → série usa #395C42.</div>
+
+  <!-- LINKS -->
+  <h2 style="font-size:26px; font-weight:400; letter-spacing:-0.01em; text-transform:uppercase; margin:56px 0 6px;"><span style="font-weight:900;">Link</span> família</h2>
+  <p style="font-size:13px; color:#6E6E6E; margin:0 0 18px;">Elemento <code>&lt;a href&gt;</code> para navegação. ~77 dos 106 clicáveis atuais são navegação e devem virar Link (ver <code>40-INTERACTIVE-SEMANTICS-MAP</code>).</p>
+  <div style="display:flex; gap:26px; flex-wrap:wrap; align-items:center; font-size:14px;">
+    <span>inline: <a href="#" style="color:#8A1E1A; text-decoration:underline; text-underline-offset:2px;">Ler mais</a></span>
+    <span style="color:#101010; font-weight:700; cursor:pointer;">navigation: Início</span>
+    <span style="color:#101010; font-weight:600; cursor:pointer;">editorial: Ver tudo <span style="color:#101010;">›</span></span>
+    <span style="font-size:12px; color:#6E6E6E; cursor:pointer;">metadata: por Beth Mendes</span>
+    <span style="font-size:11px; font-weight:800; letter-spacing:0.14em; text-transform:uppercase; color:#8A1E1A; cursor:pointer;">breadcrumb ›</span>
+  </div>
+
+  <!-- ICON BUTTONS -->
+  <h2 style="font-size:26px; font-weight:400; letter-spacing:-0.01em; text-transform:uppercase; margin:56px 0 6px;"><span style="font-weight:900;">Icon</span> button</h2>
+  <p style="font-size:13px; color:#6E6E6E; margin:0 0 18px;">Sempre com <code>aria-label</code> e toque ≥44px. Ícone stroke currentColor. Ex.: busca, play, próximo/anterior (controles de carrossel → 5 dos spans atuais).</p>
+  <div style="display:flex; gap:14px; flex-wrap:wrap; align-items:center;">
+    <button class="cn-btn" aria-label="Buscar" style="width:44px; height:44px; border:1px solid #E3DED6; border-radius:50%; background:#fff; cursor:pointer; display:inline-flex; align-items:center; justify-content:center;"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#101010" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.5" y2="16.5"></line></svg></button>
+    <button class="cn-btn" aria-label="Reproduzir trailer" style="width:52px; height:52px; border:2px solid #fff; border-radius:50%; background:rgba(16,16,16,0.6); cursor:pointer; display:inline-flex; align-items:center; justify-content:center;"><svg viewBox="0 0 24 24" width="20" height="20" fill="#fff"><polygon points="7,5 19,12 7,19"></polygon></svg></button>
+    <button class="cn-btn" aria-label="Anterior" style="width:40px; height:40px; border:1px solid #E3DED6; border-radius:50%; background:#fff; cursor:pointer; display:inline-flex; align-items:center; justify-content:center;"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#101010" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 6 9 12 15 18"></polyline></svg></button>
+    <button class="cn-btn" aria-label="Próximo" style="width:40px; height:40px; border:1px solid #E3DED6; border-radius:50%; background:#fff; cursor:pointer; display:inline-flex; align-items:center; justify-content:center;"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#101010" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"></polyline></svg></button>
+    <button class="cn-btn" aria-label="Adicionar à watchlist" style="width:38px; height:38px; border:none; border-radius:50%; background:#101010; cursor:pointer; display:inline-flex; align-items:center; justify-content:center;"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>
+  </div>
+
+  <!-- BADGES / CHIPS -->
+  <h2 style="font-size:26px; font-weight:400; letter-spacing:-0.01em; text-transform:uppercase; margin:56px 0 6px;"><span style="font-weight:900;">Badges</span> & chips</h2>
+  <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-bottom:14px;">
+    <span style="font-size:10px; font-weight:800; letter-spacing:0.1em; text-transform:uppercase; background:#F0443E; color:#12100E; padding:5px 10px; border-radius:8px;">Filme</span>
+    <span style="font-size:10px; font-weight:800; letter-spacing:0.1em; text-transform:uppercase; background:#7FA56F; color:#12100E; padding:5px 10px; border-radius:8px;">Série</span>
+    <span style="font-size:10px; font-weight:800; letter-spacing:0.09em; text-transform:uppercase; color:#F5C518;">Em cartaz agora</span>
+    <span style="display:inline-flex; align-items:center; gap:5px; font-size:12px; font-weight:700; color:#12100E;"><span style="color:#F5C84B;">★</span> 8.2</span>
+    <span style="font-size:11px; font-weight:700; background:rgba(16,16,16,0.72); color:#fff; padding:4px 9px; border-radius:999px;">Netflix</span>
+  </div>
+  <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+    <span style="font-size:12.5px; font-weight:700; background:#101010; color:#fff; padding:9px 18px; border-radius:999px; cursor:pointer;">Recomendados</span>
+    <span style="font-size:12.5px; font-weight:600; background:#fff; color:#6E6E6E; border:1px solid #E3DED6; padding:9px 18px; border-radius:999px; cursor:pointer;">Filmes</span>
+    <span style="font-size:12.5px; font-weight:600; background:#fff; color:#6E6E6E; border:1px solid #E3DED6; padding:9px 18px; border-radius:999px; cursor:pointer;">Séries</span>
+    <span style="display:inline-flex; align-items:center; gap:7px; font-size:12.5px; font-weight:600; background:#F1EDE6; color:#101010; padding:9px 14px; border-radius:999px; cursor:pointer;">Ação <span aria-hidden="true">×</span></span>
+  </div>
+
+  <!-- TOGGLE / SEGMENTED -->
+  <h2 style="font-size:26px; font-weight:400; letter-spacing:-0.01em; text-transform:uppercase; margin:56px 0 6px;"><span style="font-weight:900;">Toggle</span> / segmented</h2>
+  <p style="font-size:13px; color:#6E6E6E; margin:0 0 16px;">Pill de segmento da home (Filmes/Séries). Seleção não depende só de cor: pill ativo tem fundo branco + sombra + peso maior.</p>
+  <div style="display:inline-flex; align-items:center; gap:4px; background:#EFEBE3; border-radius:999px; padding:4px;">
+    <span style="font-size:13px; font-weight:600; color:#6E6E6E; padding:7px 18px; border-radius:999px; cursor:pointer;">Filmes</span>
+    <span style="font-size:13px; font-weight:700; color:#101010; background:#fff; padding:7px 20px; border-radius:999px; box-shadow:0 1px 3px rgba(20,18,14,0.12); cursor:pointer;">Séries</span>
+  </div>
+
+  <!-- SECTION HEADER -->
+  <h2 style="font-size:26px; font-weight:400; letter-spacing:-0.01em; text-transform:uppercase; margin:56px 0 6px;"><span style="font-weight:900;">Section</span> header</h2>
+  <p style="font-size:13px; color:#6E6E6E; margin:0 0 18px;">Padrão da home: 26px CAIXA ALTA, 1ª palavra 900 + resto 400, -0.01em. CTA "Ver tudo" à direita. Sem traço vermelho (removido a pedido).</p>
+  <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:24px; border:1px dashed #E3DED6; border-radius:10px; padding:22px 24px; margin-bottom:14px;">
+    <h3 style="font-size:26px; font-weight:400; letter-spacing:-0.01em; text-transform:uppercase; margin:0;"><span style="font-weight:900;">Destaques</span> de hoje</h3>
+    <span style="display:inline-flex; align-items:center; gap:8px; border:1px solid #E3DED6; color:#101010; font-size:12px; font-weight:600; padding:9px 18px; border-radius:999px; cursor:pointer;">Ver tudo ›</span>
+  </div>
+  <div style="display:flex; align-items:center; justify-content:space-between; gap:24px; background:#0E0E10; border-radius:10px; padding:22px 24px;">
+    <h3 style="font-size:26px; font-weight:400; letter-spacing:-0.005em; text-transform:uppercase; color:#fff; margin:0;"><span style="font-weight:800;">Popular</span> <span style="font-weight:300; color:rgba(255,255,255,0.88);">essa semana</span></h3>
+    <span style="display:inline-flex; align-items:center; gap:8px; border:1px solid rgba(255,255,255,0.28); color:#fff; font-size:12px; font-weight:600; padding:9px 18px; border-radius:999px; cursor:pointer;">Ver tudo ›</span>
+  </div>
+
+  <!-- HEADER -->
+  <h2 style="font-size:26px; font-weight:400; letter-spacing:-0.01em; text-transform:uppercase; margin:56px 0 6px;"><span style="font-weight:900;">Header</span> canônico</h2>
+  <p style="font-size:13px; color:#6E6E6E; margin:0 0 16px;">Variantes: default-light · transparent-on-image · mobile. Logo contextual (neutra/vermelha/verde/branca). Nunca header escuro só para logo branca.</p>
+  <div style="border:1px solid #E3DED6; border-radius:10px; overflow:hidden; margin-bottom:14px;">
+    <div style="height:64px; background:rgba(253,253,253,0.96); border-bottom:1px solid #E3DED6; display:flex; align-items:center; justify-content:space-between; padding:0 28px;">
+      <div style="display:flex; align-items:center; gap:30px;"><div style="width:88px; height:26px; background:url('./uploads/5a-logo-preta-sublinhado-preto.svg') left center / contain no-repeat;"></div><span style="font-size:13px; font-weight:700; color:#101010;">Início</span><span style="font-size:13px; font-weight:700; color:#6E6E6E;">Filmes</span><span style="font-size:13px; font-weight:700; color:#6E6E6E;">Séries</span><span style="font-size:13px; font-weight:700; color:#6E6E6E;">Notícias</span></div>
+      <div style="display:flex; align-items:center; gap:14px;"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#101010" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.5" y2="16.5"></line></svg><span style="font-size:12px; font-weight:700; background:#F5C518; color:#101010; padding:8px 16px;">Entrar</span><span style="width:32px; height:32px; border-radius:50%; background:#101010;"></span></div>
+    </div>
+    <div style="height:64px; background:linear-gradient(90deg,#2e1a18,#130c0b); display:flex; align-items:center; justify-content:space-between; padding:0 28px;">
+      <div style="display:flex; align-items:center; gap:30px;"><div style="width:88px; height:26px; background:url('./uploads/5g-logo-branca-sublinhado-cinema.svg') left center / contain no-repeat;"></div><span style="font-size:13px; font-weight:700; color:#fff;">Início</span><span style="font-size:13px; font-weight:700; color:rgba(255,255,255,0.7);">Filmes</span></div>
+      <span style="font-size:11px; color:rgba(255,255,255,0.7);">transparent-on-image · logo branca vermelha (filme)</span>
+    </div>
+  </div>
+
+  <!-- MOBILE NAV + SEARCH + BREADCRUMB + TABS + PAGINATION -->
+  <div style="display:grid; grid-template-columns:300px 1fr; gap:24px; align-items:start; margin-top:14px;">
+    <div style="border:1px solid #E3DED6; border-radius:10px; overflow:hidden;">
+      <div style="background:#101010; color:#fff; padding:16px 18px; display:flex; align-items:center; justify-content:space-between;"><span style="font-size:14px; font-weight:800;">Menu</span><span aria-hidden="true" style="font-size:18px;">×</span></div>
+      <div style="padding:8px 0;">
+        <div style="padding:14px 18px; font-size:15px; font-weight:700; border-bottom:1px solid #F1EDE6;">Início</div>
+        <div style="padding:14px 18px; font-size:15px; font-weight:600; color:#6E6E6E; border-bottom:1px solid #F1EDE6;">Filmes</div>
+        <div style="padding:14px 18px; font-size:15px; font-weight:600; color:#6E6E6E; border-bottom:1px solid #F1EDE6;">Séries</div>
+        <div style="padding:14px 18px; font-size:15px; font-weight:600; color:#6E6E6E;">Notícias</div>
+      </div>
+      <div style="font-size:11px; color:#9A958C; padding:0 18px 14px;">MobileNavigation · drawer, toque 44, foco preso, editorial (não dashboard)</div>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:20px;">
+      <div>
+        <div style="font-size:12px; font-weight:700; color:#6E6E6E; margin-bottom:8px;">Search field</div>
+        <div style="display:flex; align-items:center; gap:14px; background:#fff; border:1px solid #E3DED6; border-radius:10px; padding:14px 18px;"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#6E6E6E" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.5" y2="16.5"></line></svg><span style="font-size:16px; color:#9A958C; flex:1;">Buscar filmes, séries, pessoas…</span><span style="font-size:10px; font-weight:700; color:#B7B0A5; border:1px solid #E3DED6; border-radius:6px; padding:4px 8px;">/</span></div>
+      </div>
+      <div>
+        <div style="font-size:12px; font-weight:700; color:#6E6E6E; margin-bottom:8px;">Breadcrumb</div>
+        <div style="display:flex; align-items:center; gap:8px; font-size:12px; color:#6E6E6E;"><a href="#" style="color:#8A1E1A;">Início</a><span>›</span><a href="#" style="color:#8A1E1A;">Filmes</a><span>›</span><span aria-current="page" style="color:#101010; font-weight:700;">Oppenheimer</span></div>
+      </div>
+      <div>
+        <div style="font-size:12px; font-weight:700; color:#6E6E6E; margin-bottom:8px;">Tabs (indicador ativo, não só cor)</div>
+        <div style="display:flex; gap:28px; border-bottom:1px solid #E3DED6;"><span style="font-size:14px; font-weight:700; color:#101010; padding:0 2px 12px; border-bottom:2px solid #101010; margin-bottom:-1px;">Tudo</span><span style="font-size:14px; font-weight:500; color:#6E6E6E; padding:0 2px 12px;">Filmes</span><span style="font-size:14px; font-weight:500; color:#6E6E6E; padding:0 2px 12px;">Séries</span></div>
+      </div>
+      <div>
+        <div style="font-size:12px; font-weight:700; color:#6E6E6E; margin-bottom:8px;">Pagination</div>
+        <div style="display:flex; gap:8px; align-items:center;"><span style="width:36px; height:36px; border:1px solid #E3DED6; border-radius:8px; display:inline-flex; align-items:center; justify-content:center; font-size:13px; color:#6E6E6E;">‹</span><span style="width:36px; height:36px; border-radius:8px; background:#101010; color:#fff; display:inline-flex; align-items:center; justify-content:center; font-size:13px; font-weight:700;">1</span><span style="width:36px; height:36px; border:1px solid #E3DED6; border-radius:8px; display:inline-flex; align-items:center; justify-content:center; font-size:13px;">2</span><span style="width:36px; height:36px; border:1px solid #E3DED6; border-radius:8px; display:inline-flex; align-items:center; justify-content:center; font-size:13px;">3</span><span style="color:#9A958C;">…</span><span style="width:36px; height:36px; border:1px solid #E3DED6; border-radius:8px; display:inline-flex; align-items:center; justify-content:center; font-size:13px;">12</span><span style="width:36px; height:36px; border:1px solid #E3DED6; border-radius:8px; display:inline-flex; align-items:center; justify-content:center; font-size:13px; color:#6E6E6E;">›</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <h2 style="font-size:26px; font-weight:400; letter-spacing:-0.01em; text-transform:uppercase; margin:56px 0 6px;"><span style="font-weight:900;">Footer</span> canônico (claro)</h2>
+  <p style="font-size:13px; color:#6E6E6E; margin:0 0 16px;">Sempre claro. Logo neutra (nunca contextual filme/série). Sem redes/contatos inventados.</p>
+  <div style="background:#F1EEE8; border:1px solid #E3DED6; border-radius:10px; padding:32px 28px;">
+    <div style="display:grid; grid-template-columns:300px 1fr 1fr 1fr; gap:24px;">
+      <div><div style="width:120px; height:30px; background:url('./uploads/5a-logo-preta-sublinhado-preto.svg') left center / contain no-repeat;"></div><p style="font-size:13px; color:#6E6E6E; line-height:1.55; margin:16px 0 0; max-width:34ch;">Filmes, séries, pessoas, notícias e onde assistir — em português.</p></div>
+      <div><div style="font-size:11px; font-weight:800; letter-spacing:0.12em; text-transform:uppercase; color:#101010; margin-bottom:12px;">Filmes</div><div style="font-size:13px; color:#6E6E6E; line-height:2;">Top 50<br>Em cartaz<br>Em breve</div></div>
+      <div><div style="font-size:11px; font-weight:800; letter-spacing:0.12em; text-transform:uppercase; color:#101010; margin-bottom:12px;">Séries</div><div style="font-size:13px; color:#6E6E6E; line-height:2;">Populares<br>Novas temporadas<br>Mais vistas</div></div>
+      <div><div style="font-size:11px; font-weight:800; letter-spacing:0.12em; text-transform:uppercase; color:#101010; margin-bottom:12px;">Cinerie</div><div style="font-size:13px; color:#6E6E6E; line-height:2;">Sobre<br>Imprensa<br>Contato</div></div>
+    </div>
+    <div style="border-top:1px solid #E3DED6; margin-top:24px; padding-top:18px; font-size:11px; color:#6E6E6E;">© 2026 Cinerie · cinerie.com</div>
+  </div>
+
+  <p style="font-size:12px; color:#9A958C; margin:56px 0 0; padding-top:20px; border-top:1px solid #E3DED6;">Cinerie DS · D3B · componentes CANONICAL_DEFINED_NOT_MIGRATED. Contratos: <code>cinerie-design-system-handoff/component-contracts.json</code>.</p>
+</div>
+</x-dc>
+</body>
+</html>

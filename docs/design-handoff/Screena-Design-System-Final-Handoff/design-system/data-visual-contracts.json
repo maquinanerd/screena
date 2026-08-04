@@ -1,0 +1,284 @@
+{
+ "meta": {
+  "unit": "D3C",
+  "generatedAt": "2026-07-21",
+  "status": "CANONICAL_DEFINED_NOT_MIGRATED",
+  "note": "Necessidades e comportamentos VISUAIS de dado (não é contrato de backend/schema). required/optional/forbidden/fallback/omitWhen + estados loading/empty/error/partialData + provenance/licensing."
+ },
+ "contracts": [
+  {
+   "component": "MovieCard",
+   "required": [
+    "title",
+    "slug"
+   ],
+   "optional": [
+    "poster",
+    "releaseYear",
+    "genres",
+    "certification",
+    "runtime",
+    "cinerieScore"
+   ],
+   "forbidden": [
+    "nota inventada",
+    "gênero fabricado"
+   ],
+   "fallback": "sem poster → placeholder neutro rotulado",
+   "omitWhen": "campo ausente → linha não renderiza (sem N/D)",
+   "loading": "skeleton (poster + 2 linhas)",
+   "empty": "n/a (card sempre tem título)",
+   "error": "card não renderiza; item sai da lista",
+   "partialData": "renderiza com o que existe",
+   "provenance": "catálogo Cinerie",
+   "licensing": "poster = arte do distribuidor (atribuição quando exigida)"
+  },
+  {
+   "component": "SeriesCard",
+   "required": [
+    "title",
+    "slug"
+   ],
+   "optional": [
+    "poster",
+    "firstAirYear",
+    "genres",
+    "status",
+    "seasonCount",
+    "cinerieScore"
+   ],
+   "forbidden": [
+    "status inventado",
+    "temporadas fabricadas"
+   ],
+   "fallback": "sem poster → placeholder",
+   "omitWhen": "status/temporadas ausentes omitidos",
+   "loading": "skeleton",
+   "partialData": "ok",
+   "provenance": "catálogo Cinerie",
+   "licensing": "poster do distribuidor"
+  },
+  {
+   "component": "PersonCard",
+   "required": [
+    "name",
+    "slug"
+   ],
+   "optional": [
+    "portrait",
+    "role",
+    "knownFor"
+   ],
+   "forbidden": [
+    "foto genérica"
+   ],
+   "fallback": "avatar com iniciais",
+   "omitWhen": "knownFor ausente omitido",
+   "loading": "skeleton",
+   "partialData": "ok"
+  },
+  {
+   "component": "NewsCard",
+   "required": [
+    "headline",
+    "slug"
+   ],
+   "optional": [
+    "image",
+    "category",
+    "publishedAt"
+   ],
+   "forbidden": [
+    "headline placeholder"
+   ],
+   "fallback": "sem imagem → card só texto",
+   "omitWhen": "categoria/data ausentes omitidas",
+   "loading": "skeleton",
+   "provenance": "redação Cinerie / fonte citada"
+  },
+  {
+   "component": "Hero",
+   "required": [
+    "title"
+   ],
+   "optional": [
+    "backdrop",
+    "eyebrow",
+    "metadata",
+    "actions"
+   ],
+   "forbidden": [
+    "rating/streaming/estreia inventados"
+   ],
+   "fallback": "sem backdrop → fundo neutro claro (nunca escuro estrutural)",
+   "omitWhen": "metadata ausente omitida",
+   "loading": "skeleton do backdrop",
+   "partialData": "título + o que houver",
+   "licensing": "backdrop do distribuidor + scrim para contraste"
+  },
+  {
+   "component": "CinerieScore",
+   "required": [
+    "state"
+   ],
+   "optional": [
+    "value(0-100)",
+    "sampleSize"
+   ],
+   "forbidden": [
+    "nota mock",
+    "valor fixo",
+    "zero como ausência",
+    "‘em breve’ sem contrato"
+   ],
+   "fallback": "sem valor → estado textual (insufficient_data/not_calculated/unavailable/blocked)",
+   "omitWhen": "state=omitted → não renderiza",
+   "loading": "skeleton do selo",
+   "empty": "insufficient_data (‘< 5 avaliações’)",
+   "error": "unavailable",
+   "partialData": "not_calculated",
+   "provenance": "cálculo proprietário Cinerie",
+   "licensing": "marca própria — nunca preenchida com nota externa"
+  },
+  {
+   "component": "ExternalRating",
+   "required": [
+    "source",
+    "value",
+    "scale"
+   ],
+   "optional": [
+    "url"
+   ],
+   "forbidden": [
+    "apresentar como Cinerie Score",
+    "misturar escalas"
+   ],
+   "fallback": "sem valor → não renderiza a fonte",
+   "omitWhen": "fonte sem dado omitida",
+   "provenance": "fonte externa nomeada (TMDb/Rotten Tomatoes/etc.)",
+   "licensing": "identidade e escala da marca de terceiros preservadas"
+  },
+  {
+   "component": "StreamingAvailability",
+   "required": [
+    "region",
+    "state"
+   ],
+   "optional": [
+    "providers[]",
+    "updatedAt"
+   ],
+   "forbidden": [
+    "disponibilidade fabricada",
+    "inferência por poster/trailer"
+   ],
+   "fallback": "no-data → mensagem, sem provedor sugerido",
+   "omitWhen": "região sem oferta → region-unavailable",
+   "loading": "skeleton de linhas",
+   "empty": "region-unavailable",
+   "error": "no-data",
+   "partialData": "lista o que há + disclaimer",
+   "provenance": "agregador citado (ex.: JustWatch) + data",
+   "licensing": "logos de provedores são marcas de terceiros"
+  },
+  {
+   "component": "SeasonCard",
+   "required": [
+    "seasonNumber"
+   ],
+   "optional": [
+    "still",
+    "episodeCount",
+    "year"
+   ],
+   "forbidden": [
+    "contagem inventada"
+   ],
+   "fallback": "sem still → neutro",
+   "omitWhen": "futura → sem contagem",
+   "loading": "skeleton",
+   "partialData": "ok"
+  },
+  {
+   "component": "EpisodeCard",
+   "required": [
+    "episodeNumber",
+    "title"
+   ],
+   "optional": [
+    "still",
+    "runtime",
+    "airDate",
+    "synopsis"
+   ],
+   "forbidden": [
+    "sinopse de episódio futuro fabricada",
+    "spoiler visível por padrão"
+   ],
+   "fallback": "sem still → neutro; spoiler → oculto revelável",
+   "omitWhen": "futuro → sem sinopse/still",
+   "loading": "skeleton",
+   "partialData": "código+título mínimos"
+  },
+  {
+   "component": "ArticleHeader",
+   "required": [
+    "headline"
+   ],
+   "optional": [
+    "category",
+    "dek",
+    "author",
+    "publishedAt",
+    "updatedAt",
+    "readingTime"
+   ],
+   "forbidden": [
+    "data falsa",
+    "tempo de leitura sem cálculo"
+   ],
+   "fallback": "sem autor → omite byline",
+   "omitWhen": "tempo/atualização ausentes omitidos",
+   "provenance": "redação Cinerie",
+   "licensing": "crédito de imagem quando aplicável"
+  },
+  {
+   "component": "AdSlot",
+   "required": [
+    "format"
+   ],
+   "optional": [
+    "creative"
+   ],
+   "forbidden": [
+    "anunciante fictício",
+    "aparência de conteúdo editorial"
+   ],
+   "fallback": "AdPlaceholder → AdUnavailable (espaço reservado)",
+   "omitWhen": "nunca colapsa (evita layout shift)",
+   "loading": "espaço reservado",
+   "empty": "AdUnavailable",
+   "provenance": "rede de anúncios",
+   "licensing": "rótulo ‘PUBLICIDADE’ obrigatório"
+  },
+  {
+   "component": "RecommendationCard",
+   "required": [
+    "title",
+    "slug",
+    "reason"
+   ],
+   "optional": [
+    "poster"
+   ],
+   "forbidden": [
+    "motivo genérico",
+    "recomendação sem base"
+   ],
+   "fallback": "sem poster → placeholder",
+   "omitWhen": "sem motivo real → não renderiza",
+   "provenance": "motor de recomendação Cinerie"
+  }
+ ]
+}

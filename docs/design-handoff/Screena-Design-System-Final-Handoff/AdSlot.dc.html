@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<div style="margin: {{ margin }}; display:flex; flex-direction:column; align-items:center;">
+  <sc-if value="{{ showLabel }}" hint-placeholder-val="{{ true }}">
+    <div style="font-family:'Montserrat',sans-serif; font-size:9px; font-weight:700; letter-spacing:0.18em; text-transform:uppercase; color:#9A958C; margin-bottom:8px;">{{ labelText }}</div>
+  </sc-if>
+  <div style="width: {{ boxW }}; max-width:100%; height: {{ boxH }}; background:#FFFFFF; border:1px dashed #D8D1C6; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px;">
+    <div style="font-family:'Montserrat',sans-serif; font-size:11px; font-weight:700; color:#B5AFA4; letter-spacing:0.04em;">{{ sizeText }}</div>
+    <div style="font-family:'Montserrat',sans-serif; font-size:9px; color:#CFC7B8; letter-spacing:0.08em; text-transform:uppercase;">Anúncio</div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;: {&quot;width&quot;: 900, &quot;height&quot;: 180}, &quot;variant&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;default&quot;: &quot;leaderboard&quot;, &quot;options&quot;: [&quot;leaderboard&quot;, &quot;billboard&quot;, &quot;skyscraper&quot;, &quot;rectangle&quot;], &quot;tsType&quot;: &quot;string&quot;}, &quot;margin&quot;: {&quot;editor&quot;: &quot;text&quot;, &quot;default&quot;: &quot;0&quot;, &quot;tsType&quot;: &quot;string&quot;}, &quot;label&quot;: {&quot;editor&quot;: &quot;text&quot;, &quot;default&quot;: &quot;Publicidade&quot;, &quot;tsType&quot;: &quot;string&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const sizes = {
+      leaderboard: { w: 728, h: 90 },
+      billboard: { w: 970, h: 250 },
+      skyscraper: { w: 300, h: 600 },
+      rectangle: { w: 300, h: 250 },
+    };
+    const variant = this.props.variant ?? "leaderboard";
+    const s = sizes[variant] || sizes.leaderboard;
+    const label = this.props.label ?? "Publicidade";
+    return {
+      margin: this.props.margin ?? "0",
+      boxW: s.w + "px",
+      boxH: s.h + "px",
+      sizeText: "Google AdSense · " + s.w + "×" + s.h,
+      showLabel: label !== "",
+      labelText: label,
+    };
+  }
+}
+</script>
+</body>
+</html>

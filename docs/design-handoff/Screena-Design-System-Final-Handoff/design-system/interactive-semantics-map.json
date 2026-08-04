@@ -1,0 +1,109 @@
+{
+  "meta": {
+    "unit": "D3B",
+    "generatedAt": "2026-07-21",
+    "source": "Screen Screens v4.dc.html — 106 elementos com onClick",
+    "method": "extração por nome de handler + tag do elemento",
+    "d4bMigration": {
+      "status": "MIGRATED",
+      "date": "2026-07-23",
+      "canonicalHash": "8cb1f3fc…d103b213",
+      "applied": {
+        "LINK_to_a": 77,
+        "TAB_to_button_roletab": 24,
+        "ICON_BUTTON_to_button": 4,
+        "REMOVER_switcher": 1,
+        "total": 106,
+        "inadequateRemaining": 0
+      },
+      "evidence": "Screen Screens v4.dc.html: 0 span/div/h1/article com onClick; 77 <a> balanceados; 29 <button> balanceados; h1 heading preservado; article estrutural com stretched-link"
+    }
+  },
+  "totals": {
+    "clickable": 106,
+    "byTag": {
+      "span": 64,
+      "div": 40,
+      "h1": 1,
+      "article": 1
+    },
+    "note": "a D2 chamou de '106 <span onClick>'; a contagem real é 106 clicáveis: 64 span + 40 div + 1 h1 + 1 article"
+  },
+  "classification": [
+    {
+      "role": "LINK",
+      "targetElement": "<a href>",
+      "count": 77,
+      "handlers": {
+        "goArticle": 15,
+        "goBrowse": 11,
+        "m.go": 8,
+        "goHome": 7,
+        "goSeries": 7,
+        "goPerson": 6,
+        "goNews": 4,
+        "feat.go": 3,
+        "goSerie": 3,
+        "hero.go": 2,
+        "goSettings": 2,
+        "goCinema": 2,
+        "goDiscover": 1,
+        "tickerNow.go": 1,
+        "p.go": 1,
+        "goMovie": 1,
+        "goSeriesMobile": 1,
+        "goSeriesDesktop": 1,
+        "goAnticipated": 1
+      },
+      "reason": "navegam para outra rota/entidade — devem ser âncoras reais (foco, teclado, abrir em nova aba, SEO)",
+      "a11y": "role de link nativo; foco visível; Enter ativa"
+    },
+    {
+      "role": "TAB",
+      "targetElement": "<button role=tab> em <div role=tablist> (ou filtro)",
+      "count": 24,
+      "handlers": {
+        "t.onClick": 10,
+        "n.onClick": 3,
+        "s.onClick": 3,
+        "r.t.onClick": 3,
+        "d.onClick": 2,
+        "f.onClick": 1,
+        "p.onClick": 1,
+        "ch.onClick": 1
+      },
+      "reason": "gerados por mkTabs — selecionam filtro/aba (discover/anticipated/news/plataforma)",
+      "a11y": "roving tabindex, aria-selected, setas do teclado; seleção não só por cor"
+    },
+    {
+      "role": "ICON_BUTTON",
+      "targetElement": "<button aria-label>",
+      "count": 4,
+      "handlers": {
+        "movieRecsPrev": 1,
+        "movieRecsNext": 1,
+        "scrollRecsLeft": 1,
+        "scrollRecsRight": 1
+      },
+      "reason": "controles de carrossel (setas de scroll)",
+      "a11y": "aria-label; toque 44; foco"
+    },
+    {
+      "role": "REMOVER",
+      "targetElement": "—",
+      "count": 1,
+      "handlers": {
+        "toggleSwitcher": 1
+      },
+      "reason": "switcher de protótipo — remover no build de produção"
+    }
+  ],
+  "summary": {
+    "LINK": 77,
+    "TAB": 24,
+    "ICON_BUTTON": 4,
+    "REMOVER": 1,
+    "NECESSITA_DECISAO": 0
+  },
+  "rule": "nenhum <span onClick>/<div onClick> permanece no build: navegação→<a>, ação→<button>, aba→role=tab, controle→icon-button. Migração das telas é D4 (esta unidade só classifica)."
+}

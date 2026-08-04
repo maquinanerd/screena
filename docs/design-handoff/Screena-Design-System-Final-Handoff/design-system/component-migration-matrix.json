@@ -1,0 +1,225 @@
+{
+  "meta": {
+    "unit": "D3B",
+    "generatedAt": "2026-07-21",
+    "note": "mapeamento por assinatura; casamento por instância = D4. Nenhuma tela migrada.",
+    "d4bApplied": {
+      "status": "APPLIED",
+      "date": "2026-07-23",
+      "buttons40": "aplicados no canônico (navegação→<a>, ação/aba/controle→<button>)",
+      "clickables106": "migrados (0 inadequados restantes)",
+      "adSlots": "21 preservados",
+      "imageSlots": "39 preservados",
+      "evidence": "migration-results.json + 44-MIGRATION-LOG.md"
+    }
+  },
+  "buttons": {
+    "totalInstances": 40,
+    "distinctSignatures": 32,
+    "groups": [
+      {
+        "signature": "#F0443E + padding/radius variados",
+        "count": 6,
+        "component": "Button",
+        "variant": "movie|primary",
+        "size": "md|lg",
+        "status": "MAPEADO"
+      },
+      {
+        "signature": "#101010 + padding/radius variados",
+        "count": 8,
+        "component": "Button",
+        "variant": "primary",
+        "size": "sm|md",
+        "status": "MAPEADO"
+      },
+      {
+        "signature": "#FFFFFF + borda + padding variados",
+        "count": 7,
+        "component": "Button",
+        "variant": "secondary",
+        "size": "sm|md",
+        "status": "MAPEADO"
+      },
+      {
+        "signature": "#7FA56F",
+        "count": 1,
+        "component": "Button",
+        "variant": "series",
+        "size": "md",
+        "status": "NECESSITA_DECISAO",
+        "note": "contraste — usar #395C42 ou texto escuro"
+      },
+      {
+        "signature": "transparent + borda",
+        "count": 1,
+        "component": "Button",
+        "variant": "ghost",
+        "size": "md",
+        "status": "MAPEADO"
+      },
+      {
+        "signature": "data-driven {{t.bg}}/{{n.bg}}/{{f.bg}}/{{s.bg}}/{{ch.bg}}/{{p.bg}}",
+        "count": 12,
+        "component": "Chip|Tabs|ToggleSegmented",
+        "variant": "filter|selected",
+        "status": "NAO_DEVERIA_SER_BUTTON"
+      },
+      {
+        "signature": "{{c.primaryBg}} card CTA",
+        "count": 1,
+        "component": "Button",
+        "variant": "primary",
+        "size": "sm",
+        "status": "MAPEADO"
+      },
+      {
+        "signature": "'Ver tudo'/'Continuar' (#F0443E/#101010)",
+        "count": 4,
+        "component": "Button|Link",
+        "variant": "editorial",
+        "size": "sm",
+        "status": "MAPEADO",
+        "note": "vira Link editorial quando navega"
+      }
+    ],
+    "distribution": {
+      "toButton": 23,
+      "editorial_ButtonOrLink": 4,
+      "notButton_ChipTabsToggle": 12,
+      "needsDecision_seriesContrast": 1,
+      "unmapped": 0,
+      "total": 40,
+      "note": "soma exata 40 (sem aproximacao); editorial vira Link quando navega; contraste de serie ja resolvido por DD-17, aplicacao em D4"
+    }
+  },
+  "clickables": {
+    "total": 106,
+    "LINK": 77,
+    "TAB": 24,
+    "ICON_BUTTON": 4,
+    "REMOVER": 1
+  },
+  "chrome": [
+    {
+      "current": "Nav fixa compartilhada",
+      "component": "Header",
+      "status": "MAPEADO"
+    },
+    {
+      "current": "Footer claro",
+      "component": "Footer",
+      "status": "MAPEADO"
+    },
+    {
+      "current": "LOGOS map (10 slots)",
+      "component": "Header.logo contextual",
+      "status": "MAPEADO_JA_CONFORME"
+    },
+    {
+      "current": "AdSlot dc-import",
+      "component": "AdvertisementSlot",
+      "status": "JA_COMPONENTIZADO"
+    }
+  ],
+  "contentFamilies": {
+    "note": "famílias de conteúdo mapeadas para componentes D3C; casamento instância-a-instância = D4. Nenhuma tela migrada.",
+    "map": [
+      {
+        "family": "Mídia/Poster",
+        "instances": "39 image-slots",
+        "component": "MediaImage/Avatar",
+        "status": "CONSOLIDAR"
+      },
+      {
+        "family": "Publicidade",
+        "instances": "21 (4 formatos)",
+        "component": "AdSlot",
+        "status": "JA_COMPONENTIZADO"
+      },
+      {
+        "family": "Cards filme/série (em alta/top10/watchlist)",
+        "instances": "data-driven sc-for",
+        "component": "MovieCard/SeriesCard/HighlightRailCard",
+        "status": "CONSOLIDAR"
+      },
+      {
+        "family": "Hero",
+        "instances": "75 menções",
+        "component": "Home/Entity/Article/Person/CompactHero",
+        "status": "CONSOLIDAR"
+      },
+      {
+        "family": "Rail/scroll",
+        "instances": "26/37",
+        "component": "ContentRail/Carousel",
+        "status": "CONSOLIDAR"
+      },
+      {
+        "family": "Notícias overlay (mosaico)",
+        "instances": "home+news",
+        "component": "NewsOverlayCard",
+        "status": "CONSOLIDAR"
+      },
+      {
+        "family": "Trailer/Em breve",
+        "instances": "comingSoon",
+        "component": "TrailerCard",
+        "status": "CONSOLIDAR"
+      },
+      {
+        "family": "Rating/Score",
+        "instances": "rating 141 + Cinerie Score",
+        "component": "CinerieScore(6 estados)/ExternalRating",
+        "status": "CONSOLIDAR"
+      },
+      {
+        "family": "Streaming",
+        "instances": "providers; onde assistir 8",
+        "component": "StreamingAvailability",
+        "status": "CONSOLIDAR"
+      },
+      {
+        "family": "Temporada/Episódio",
+        "instances": "72/38",
+        "component": "Season*/Episode*",
+        "status": "CONSOLIDAR"
+      },
+      {
+        "family": "Elenco/Pessoas",
+        "instances": "cast 30",
+        "component": "CastList/PersonCredits",
+        "status": "CONSOLIDAR"
+      },
+      {
+        "family": "Notícia/Artigo",
+        "instances": "news 77",
+        "component": "Article*/News*",
+        "status": "CONSOLIDAR"
+      },
+      {
+        "family": "Newsletter",
+        "instances": "3",
+        "component": "NewsletterCard",
+        "status": "CONSOLIDAR"
+      },
+      {
+        "family": "Formulários",
+        "instances": "0 controles",
+        "component": "Field/Input/Select/Checkbox/Radio/Switch/...",
+        "status": "DEFINIR_NOVO"
+      },
+      {
+        "family": "Feedback/overlays/skeleton/empty",
+        "instances": "0",
+        "component": "Alert/Toast/Modal/Drawer/Skeleton/Empty/Error/...",
+        "status": "DEFINIR_NOVO"
+      }
+    ],
+    "totals": {
+      "CONSOLIDAR": 12,
+      "JA_COMPONENTIZADO": 1,
+      "DEFINIR_NOVO": 2
+    }
+  }
+}

@@ -1,0 +1,323 @@
+{
+ "meta": {
+  "unit": "D4B",
+  "generatedAt": "2026-07-23",
+  "status": "COMPLETE",
+  "tool": "1 executor + verificação por probe"
+ },
+ "hashes": {
+  "initial": "0cc8fcd6afe74b64afcbf4c1e4d7c50b62585d6baf8d1faf2df68f18677bfe74",
+  "final": "8cb1f3fca5bca12c26290266ce6ca0f590bd876f91cc8ee5837e09f5d103b213",
+  "backup": "backups/Screen Screens v4.PRE-D4B.dc.html (== initial)"
+ },
+ "bytes": {
+  "initial": 367827,
+  "final": 380216,
+  "delta": "+12389 (href/route/interceptor + a/button attrs)"
+ },
+ "baseline": {
+  "clickable": 106,
+  "span": 64,
+  "div": 40,
+  "h1": 1,
+  "article": 1
+ },
+ "semantic": {
+  "inadequateBefore": 106,
+  "inadequateAfter": 0,
+  "distribution": {
+   "LINK_to_a": 77,
+   "TAB_to_button_roletab": 24,
+   "ICON_BUTTON_to_button": 4,
+   "REMOVER_switcher": 1
+  },
+  "note": "h1 permanece heading (link interno); article permanece estrutural com stretched-link; 0 links aninhados; 0 controles aninhados; 0 âncora-invólucro; 0 card com onClick"
+ },
+ "finalCounts": {
+  "anchors": 77,
+  "anchorsWithHref": 77,
+  "buttons": 29,
+  "buttonsTypeButton": 29,
+  "buttonRoleTab": 24,
+  "buttonAriaLabel": 5,
+  "dataNavAnchors": 77
+ },
+ "tagBalance": {
+  "a": "77/77",
+  "button": "29/29",
+  "div": "785/785",
+  "span": "553/553",
+  "article": "2/2",
+  "h1": "12/12",
+  "scFor": "81/81",
+  "scIf": "28/28"
+ },
+ "componentsApplied": {
+  "buttons40": "aplicados (Button/Link/IconButton/Tab semânticos)",
+  "clickables106": "migrados",
+  "note": "navegação=<a>, ação/aba/controle=<button>"
+ },
+ "preserved": {
+  "adSlots": 21,
+  "imageSlots": 39,
+  "sectionHeaders": "preservados (sem barra)",
+  "homeCards": "preservados",
+  "staticIds": "60 sem duplicatas"
+ },
+ "screens": [
+  {
+   "id": "01",
+   "name": "Switcher",
+   "state": "(overlay)",
+   "batch": "A",
+   "result": "PASS",
+   "note": "dev overlay; toggleSwitcher→button"
+  },
+  {
+   "id": "02",
+   "name": "Home",
+   "state": "home",
+   "batch": "E",
+   "anchors": 45,
+   "buttons": 18,
+   "bad": 0,
+   "result": "PASS"
+  },
+  {
+   "id": "03",
+   "name": "Notícias",
+   "state": "news",
+   "batch": "C",
+   "anchors": 16,
+   "buttons": 10,
+   "bad": 0,
+   "result": "PASS"
+  },
+  {
+   "id": "04",
+   "name": "Categoria Filmes",
+   "state": "cinema",
+   "batch": "E",
+   "anchors": 38,
+   "buttons": 13,
+   "bad": 0,
+   "result": "PASS",
+   "note": "logo vermelha; 24 img-slots"
+  },
+  {
+   "id": "04b",
+   "name": "Categoria Séries",
+   "state": "serie",
+   "batch": "E",
+   "anchors": 40,
+   "buttons": 16,
+   "bad": 0,
+   "result": "PASS",
+   "note": "logo verde; 26 img-slots"
+  },
+  {
+   "id": "05",
+   "name": "Artigo",
+   "state": "article",
+   "batch": "D",
+   "anchors": 12,
+   "buttons": 7,
+   "bad": 0,
+   "result": "PASS",
+   "note": "1 article estrutural + stretched-link"
+  },
+  {
+   "id": "06",
+   "name": "Detalhe Filme",
+   "state": "movieDetail",
+   "batch": "F",
+   "anchors": "~40",
+   "buttons": "~13",
+   "bad": 0,
+   "result": "PASS"
+  },
+  {
+   "id": "07",
+   "name": "Detalhe Série",
+   "state": "seriesDetail",
+   "batch": "F",
+   "anchors": 28,
+   "buttons": 13,
+   "tabs": 10,
+   "bad": 0,
+   "result": "PASS"
+  },
+  {
+   "id": "08",
+   "name": "Série mobile",
+   "state": "seriesMobile",
+   "batch": "F",
+   "anchors": 16,
+   "buttons": 3,
+   "bad": 0,
+   "overflowX": false,
+   "result": "PASS"
+  },
+  {
+   "id": "09",
+   "name": "Pessoa",
+   "state": "person",
+   "batch": "D",
+   "anchors": 3,
+   "buttons": 7,
+   "bad": 0,
+   "result": "PASS"
+  },
+  {
+   "id": "10",
+   "name": "Onde assistir",
+   "state": "browse",
+   "batch": "C",
+   "anchors": 252,
+   "buttons": 12,
+   "bad": 0,
+   "result": "PASS",
+   "note": "tela mais densa"
+  },
+  {
+   "id": "11",
+   "name": "Explorar",
+   "state": "discover",
+   "batch": "C",
+   "anchors": 4,
+   "buttons": 11,
+   "bad": 0,
+   "result": "PASS",
+   "note": "32 img-slots"
+  },
+  {
+   "id": "12",
+   "name": "Mais aguardados",
+   "state": "anticipated",
+   "batch": "C",
+   "anchors": 3,
+   "buttons": 18,
+   "bad": 0,
+   "result": "PASS",
+   "note": "10 img-slots"
+  },
+  {
+   "id": "13",
+   "name": "Configurações",
+   "state": "settings",
+   "batch": "B",
+   "anchors": 3,
+   "buttons": 54,
+   "tabs": 53,
+   "bad": 0,
+   "result": "PASS"
+  },
+  {
+   "id": "14",
+   "name": "Importar dados",
+   "state": "data",
+   "batch": "B",
+   "anchors": 3,
+   "buttons": 17,
+   "bad": 0,
+   "result": "PASS"
+  },
+  {
+   "id": "15",
+   "name": "Listas",
+   "state": "listas",
+   "batch": "C",
+   "anchors": 3,
+   "buttons": 7,
+   "bad": 0,
+   "result": "PASS"
+  },
+  {
+   "id": "16",
+   "name": "Entrar",
+   "state": "entrar",
+   "batch": "A",
+   "anchors": 3,
+   "buttons": 9,
+   "bad": 0,
+   "result": "PASS"
+  },
+  {
+   "id": "17",
+   "name": "Anúncio pop-up",
+   "state": "adpop",
+   "batch": "A",
+   "bad": 0,
+   "result": "PASS",
+   "note": "overlay sobre base; rótulo PUBLICIDADE presente"
+  },
+  {
+   "id": "18",
+   "name": "Anúncio tela cheia",
+   "state": "adtela",
+   "batch": "A",
+   "bad": 0,
+   "result": "PASS",
+   "note": "overlay; rótulo PUBLICIDADE"
+  }
+ ],
+ "screensVerified": 18,
+ "batchesCompleted": 6,
+ "qa": {
+  "structural": "PASS",
+  "consoleErrors": 0,
+  "brokenAssets": 0,
+  "nestedLinks": 0,
+  "nestedControls": 0,
+  "wrapperAnchors": 0,
+  "duplicateIds": 0,
+  "jsErrors": 0,
+  "placeholderWarnings": "pré-existentes (holes loop-scoped {{m.title}} etc. na passada de placeholder); presentes também no backup; não impedem render; documentados à parte"
+ },
+ "keyboardFocus": {
+  "navGuard": "interceptor global preventDefault em a[data-nav] → SPA navega sem recarregar",
+  "nav": "testado home→news OK",
+  "tabs": "role=tab",
+  "iconButtons": "aria-label",
+  "result": "PASS (foco nativo de <a>/<button>)"
+ },
+ "responsive": {
+  "breakpoints": [
+   "390",
+   "768",
+   "1280"
+  ],
+  "desktop": "verificado ao vivo nas 18 telas (sem overflow/invólucro)",
+  "mobile768_390": "herdado do canônico (migração semântica não altera CSS de largura); seriesMobile confirmado sem overflow",
+  "toolLimitation": "captura de iframe não suportada pelas ferramentas de screenshot; sem evidência pixel a 390/768"
+ },
+ "divergences": [
+  {
+   "type": "CORREÇÃO SEMÂNTICA SEM IMPACTO VISUAL",
+   "detail": "106 elementos trocados para <a>/<button> preservando estilos inline (reset + display:block em divs sem display)"
+  },
+  {
+   "type": "REGRESSÃO CORRIGIDA",
+   "detail": "1ª transformação trocou só tags de abertura (fechamento <span>/<div> intacto) → âncoras-invólucro malformadas; refeito a partir do backup com parser balanceado de open/close"
+  },
+  {
+   "type": "CORREÇÃO SEMÂNTICA",
+   "detail": "factories sem href (deck, discFeature, movieRecs, knownFor, catDetail) receberam go/href para tornar cards de recomendação links reais"
+  }
+ ],
+ "pendingDecisions": [
+  {
+   "id": "NECESSITA_DECISAO",
+   "detail": "settings usa 53 button[role=tab] para toggles/segmented; role=switch seria mais preciso — manter role=tab (classificação D3B) ou refinar em D4C"
+  }
+ ],
+ "gates": {
+  "preflight": "PASS",
+  "batchesA_F": "PASS",
+  "structuralQA": "PASS",
+  "visualSweep": "PASS(18/18)",
+  "responsiveF03": "desktop PASS; mobile/tablet herdado",
+  "finalHash": "8cb1f3fca5bca12c26290266ce6ca0f590bd876f91cc8ee5837e09f5d103b213"
+ },
+ "notMigratedNote": "nenhuma tela autenticada funcional criada; nenhum React/backend/GitHub/ZIP"
+}

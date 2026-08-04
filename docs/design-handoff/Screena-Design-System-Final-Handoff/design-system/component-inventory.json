@@ -1,0 +1,59 @@
+{
+  "generatedAt": "2026-07-21",
+  "source": "Screen Screens v4.dc.html + paginas/_logica-component.js",
+  "method": "regex sobre estilos inline (design é 100% inline-styled, sem classes CSS)",
+  "typography": {
+    "families": { "'Montserrat',sans-serif": 682 },
+    "familyCount": 1,
+    "weights": { "800": 221, "700": 135, "600": 64, "300": 32, "650": 15, "750": 12, "500": 5, "900": 2, "400": 1 },
+    "distinctFontSizes": 41,
+    "fontSizeTop": { "11px": 97, "12px": 89, "13px": 82, "10px": 38, "14px": 32, "12.5px": 29, "16px": 25, "17px": 24, "15px": 19, "13.5px": 16 },
+    "halfPixelSizes": ["8.5px","9.5px","10.5px","11.5px","12.5px","13.5px","14.5px"]
+  },
+  "geometry": {
+    "radius": { "10px": 63, "8px": 53, "50%": 38, "999px": 22, "6px": 20, "2px": 15, "5px": 5, "14px": 2, "12px": 1 },
+    "radiusDistinct": 9,
+    "radiusNote": "dentro do conjunto sancionado por CLAUDE.md (2/5/6/8/10/12/14px,50%,999px) — NÃO normalizar",
+    "shadowsDistinct": 19,
+    "shadowDominant": "0 3px 14px rgba(20,18,14,0.05) (28x)",
+    "gapDistinct": 32,
+    "gapTop": { "10px": 44, "8px": 37, "9px": 34, "14px": 30, "12px": 28, "7px": 22, "6px": 21, "24px": 18, "20px": 16, "5px": 16 }
+  },
+  "colors": {
+    "distinctHex": 176,
+    "coreSystem": { "#101010": 240, "#6E6E6E": 125, "#E3DED6": 108, "#FFFFFF": 106, "#fff": 105, "#F0443E": 87, "#9A958C": 74, "#12100E": 69, "#7FA56F": 63 },
+    "brandMovieRed": "#F0443E",
+    "brandSeriesGreen": "#7FA56F",
+    "ratingGold": ["#F5C84B", "#F5C518"],
+    "externalBrandColorsSample": ["#E50914 Netflix", "#1399FF Prime", "#002BE7 Max", "#FA320A/#3CB54A Rotten", "#0D253F/#01B4E4 TMDB", "#F47521 Crunchyroll", "#00A8E1", "#0064FF"],
+    "newsCategoryColorsSample": ["#9A57C9", "#2A6FDB", "#C9A24B"],
+    "note": "das 176, ~15 são sistema, ~40 são cores de marca externas (streaming/rating/categoria, legítimas), ~120 são cauda de quase-duplicatas (near-blacks de scrim/gradiente de hero, cinzas redundantes)"
+  },
+  "buttons": {
+    "buttonLikeInstances": 40,
+    "distinctSignatures": 32,
+    "onClickTotal": 106,
+    "cursorPointerTotal": 196,
+    "primaryRedVariants": ["#F0443E pad=13px 28px rad=8px", "#F0443E pad=11px 20px rad=8px", "#F0443E pad=13px rad=8px", "#F0443E pad=12px rad=0", "#F0443E pad=12px 26px rad=0"],
+    "darkVariants": ["#101010 pad=12px 18px rad=0", "#101010 pad=8px 16px rad=8px", "#101010 pad=9px 18px rad=999px", "#101010 pad=12px rad=8px", "#101010 pad=11px 20px rad=0/8px", "#101010 pad=12px 26px rad=0"],
+    "whiteVariants": ["#FFFFFF pad=14px 20px rad=8px", "#FFFFFF pad=12px rad=0", "#FFFFFF pad=7px 20px rad=999px", "#FFFFFF pad=7px 12px rad=0", "#FFFFFF pad=9px 12px rad=0"],
+    "verdict": "sem família Button única; primário/escuro/branco com 5+ paddings e radius mistos (0/8px/999px) — P1"
+  },
+  "cards": {
+    "posters2x3": 14,
+    "wide16x9": 6,
+    "lightSurfacesBorderE3DED6": 68,
+    "note": "superfícies embutidas sempre claras (nunca preto) — conforme CLAUDE.md"
+  },
+  "alreadyComponentized": ["AdSlot (dc-import, 4 variantes)", "Header/nav (compartilhado)", "Footer (compartilhado)", "Logo contextual (10 slots)"],
+  "d3bCanonicalComponents": {
+    "status": "CANONICAL_DEFINED_NOT_MIGRATED",
+    "note": "definidos em component-contracts.json + Components-Primitives-Navigation.dc.html; não aplicados às 18 telas (D4)",
+    "primitives": ["Surface","Container","Stack","Inline","Grid","Divider","AspectRatio","VisuallyHidden","FocusRing"],
+    "actions": ["Button (11 variantes, 4 tamanhos)","IconButton","Chip","ToggleSegmented"],
+    "navigation": ["Link (9 variantes)","Header (4 variantes)","MainNavigation","MobileNavigation","Search","Breadcrumb","Tabs","Pagination","Footer"],
+    "content": ["Badge","SectionHeader"]
+  },
+  "d3cContentDiagnostic": {"method":"regex sobre Screen Screens v4.dc.html (sem estimativa)","imageSlots":39,"adSlots":{"total":21,"leaderboard":14,"skyscraper":3,"billboard":3,"rectangle":1},"formControls":0,"feedbackOverlays":0,"skeletonLoadingEmpty":0,"presentMarkers":{"poster":19,"backdrop":15,"hero":75,"rail":26,"scroll":37,"rating":141,"cinerieScore":2,"temporada":72,"episodio":38,"cast":30,"news":77,"newsletter":3,"trailer":20,"watchlist":14,"spoiler":4},"streamingBrands":{"netflix":14,"primeVideo":10,"max":"presente","disney":6,"appleTv":12},"verdict":"protótipo editorial estático: rico em mídia/cards/hero/rating/streaming; SEM formulários e SEM loading/skeleton/empty (novos no sistema — F-02/F-03)"},
+  "d3cCanonicalComponents": {"status":"CANONICAL_DEFINED_NOT_MIGRATED","count":80,"note":"definidos em component-contracts.json + Components-Content-Forms-Feedback.dc.html; não aplicados às 18 telas (D4)","families":["Media(2)","EntityCards(5)","EditorialCards(8)","Hero(5)","Layout(4)","Metadata(4)","Rating(5)","Streaming(3)","Season/Episode(5)","People(3)","Article(8)","Advertising(1)","Newsletter(1)","Forms(9)","Feedback(13)","ProductState(1)","HomePatterns(3)"]}
+}

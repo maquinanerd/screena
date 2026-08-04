@@ -1,0 +1,637 @@
+{
+ "meta": {
+  "unit": "D4A",
+  "generatedAt": "2026-07-21",
+  "status": "TEMPLATES_DEFINED_NOT_MIGRATED",
+  "note": "13 templates cobrindo as 18 telas. Só templates com tela consumidora. NÃO aplicados ao canônico.",
+  "templateCount": 13,
+  "notCreated": {
+   "reason": "sem tela consumidora entre as 18",
+   "templates": [
+    "EntityDetailTemplate (dividido em Movie/SeriesDetail por contexto real)",
+    "SeasonDetailTemplate + EpisodeDetailTemplate (temporada/episódio são SEÇÕES do SeriesDetail, não telas standalone)",
+    "SearchTemplate (busca é componente/drawer global, não tela dedicada)",
+    "CatalogIndexTemplate (coberto por CatalogBrowse + Explore)",
+    "InstitutionalTemplate (nenhuma tela puramente institucional entre as 18; settings tem template próprio)"
+   ]
+  }
+ },
+ "templates": [
+  {
+   "id": "HomeTemplate",
+   "purpose": "home editorial e home de categoria (mesmo layout, dataset+acento por contexto)",
+   "screens": [
+    "02",
+    "04"
+   ],
+   "logo": "neutro (branca no hero / preta no scroll); vermelha na branch filme, verde na branch série (04)",
+   "header": "transparent-on-image no topo → default-light sólido no scroll (350ms)",
+   "hero": "home-hero (slides, autoplay 6s, pausável)",
+   "container": "container-editorial 1280 (faixas de mídia = full-bleed)",
+   "grid": "grid-poster / grid-top10 / grid-news conforme seção",
+   "sidebar": "nenhuma",
+   "sections": "hero → Today's Featured Picks → Popular This Week → Filmes em alta (band condicional) → Séries da semana (band condicional) → Get a Glimpse (Em breve) → Notícias & Entrevistas",
+   "ads": "4 leaderboards intercalados (só 02; 04 = 0)",
+   "newsletter": "não (é do footer global)",
+   "related": "n/a",
+   "footer": "footer claro global",
+   "sticky": [
+    "header"
+   ],
+   "noImage": "pôster→poster-fallback; hero sem backdrop→fundo neutro claro (nunca escuro estrutural)",
+   "partial": "seção sem itens é omitida (não renderiza cabeçalho vazio)",
+   "states": [
+    "default",
+    "loading(skeleton de rails)",
+    "empty(seção omitida)"
+   ],
+   "allowed": [
+    "home-hero",
+    "section-header",
+    "highlight-rail-card",
+    "content-rail",
+    "content-grid",
+    "news-overlay-card",
+    "trailer-card",
+    "movie-card",
+    "series-card",
+    "chip",
+    "ad-slot",
+    "button",
+    "icon-button",
+    "carousel"
+   ],
+   "forbidden": [
+    "entity-hero",
+    "article-body",
+    "form fields",
+    "fundo escuro fora de mídia/hero"
+   ]
+  },
+  {
+   "id": "NewsIndexTemplate",
+   "purpose": "índice de notícias e entrevistas com mosaico e categorias",
+   "screens": [
+    "03"
+   ],
+   "logo": "neutro",
+   "header": "default-light",
+   "hero": "não (destaque via mosaico)",
+   "container": "container-editorial 1280",
+   "grid": "grid-news 1.25fr/1fr (mosaico 1 grande + 4 pequenos) + grid de cards",
+   "sidebar": "nenhuma (band de categoria embutida quando newsIsCat)",
+   "sections": "section-header 'Notícias & Entrevistas' → chips de categoria → mosaico overlay → grid de news-card → paginação",
+   "ads": "6 leaderboards (inclui 2 da band de categoria embutida)",
+   "newsletter": "não",
+   "related": "n/a",
+   "footer": "footer claro",
+   "sticky": [
+    "header"
+   ],
+   "noImage": "news sem imagem→card só texto; overlay sem imagem→superfície muted",
+   "partial": "campos ausentes omitidos",
+   "states": [
+    "default",
+    "loading",
+    "empty",
+    "zero-results"
+   ],
+   "allowed": [
+    "section-header",
+    "chip",
+    "news-overlay-card",
+    "news-card",
+    "article-card",
+    "compact-content-card",
+    "pagination",
+    "ad-slot",
+    "tabs"
+   ],
+   "forbidden": [
+    "entity-hero",
+    "cinerie-score",
+    "streaming-availability"
+   ]
+  },
+  {
+   "id": "ArticleTemplate",
+   "purpose": "leitura de artigo/notícia individual",
+   "screens": [
+    "05"
+   ],
+   "logo": "neutro",
+   "header": "default-light",
+   "hero": "article-hero (headline + imagem de topo)",
+   "container": "container-reading 720 (corpo) dentro de container-editorial",
+   "grid": "coluna única de leitura + trilhos relacionados full-width",
+   "sidebar": "nenhuma (relacionados abaixo)",
+   "sections": "article-hero → article-header (byline/datas/tempo) → article-body (pull-quote/fact-box/inline-media) → source-attribution → correction-notice → ai-disclosure → related-entities → related-articles → ad-slot → footer",
+   "ads": "1 leaderboard (entre corpo e relacionados)",
+   "newsletter": "não (footer)",
+   "related": "related-entities + related-articles",
+   "footer": "footer claro",
+   "sticky": [
+    "header"
+   ],
+   "noImage": "sem imagem de topo→article-hero compacto neutro",
+   "partial": "tempo de leitura/atualização omitidos se ausentes",
+   "states": [
+    "default",
+    "loading",
+    "partial"
+   ],
+   "allowed": [
+    "article-hero",
+    "article-header",
+    "article-body",
+    "source-attribution",
+    "correction-notice",
+    "ai-disclosure",
+    "related-entities",
+    "related-articles",
+    "article-footer",
+    "related-content-card",
+    "ad-slot",
+    "link"
+   ],
+   "forbidden": [
+    "entity-hero",
+    "cinerie-score",
+    "movie-card como corpo"
+   ]
+  },
+  {
+   "id": "MovieDetailTemplate",
+   "purpose": "detalhe de filme (top-info-bar clara, sem hero cover)",
+   "screens": [
+    "06"
+   ],
+   "logo": "cinema (vermelha)",
+   "header": "default-light sólida (sem transparência — decisão do usuário)",
+   "hero": "não (top-info-bar branca: poster + título + metadata + ações)",
+   "container": "container-editorial 1280",
+   "grid": "grid-detail-media 1fr/3fr/2fr nas faixas de mídia",
+   "sidebar": "nenhuma",
+   "sections": "top-info-bar (poster/entity-title/entity-metadata/entity-actions/cinerie-score/external-rating/streaming) → sinopse → ficha técnica (creator-credits/entity-metadata) → elenco (cast-list) → mídia (trailer/fotos) → editorial relacionado → recomendações (content-rail)",
+   "ads": "0 (revisão 15/07 removeu os 2 leaderboards)",
+   "newsletter": "não",
+   "related": "related-articles + recommendation-card rail",
+   "footer": "footer claro",
+   "sticky": [
+    "header"
+   ],
+   "noImage": "poster ausente→poster-fallback; still ausente→muted",
+   "partial": "score/rating/streaming ausentes seguem estados honestos (não renderiza vazio)",
+   "states": [
+    "default",
+    "no-score(insufficient/not_calculated/unavailable/blocked/omitted)",
+    "no-streaming",
+    "partial-media",
+    "no-image"
+   ],
+   "allowed": [
+    "entity-title",
+    "entity-metadata",
+    "entity-actions",
+    "creator-credits",
+    "cinerie-score",
+    "external-rating",
+    "rating-source-list",
+    "user-rating",
+    "streaming-availability",
+    "streaming-unavailable",
+    "cast-list",
+    "media-gallery",
+    "content-rail",
+    "recommendation-card",
+    "related-articles",
+    "media-image",
+    "button",
+    "icon-button"
+   ],
+   "forbidden": [
+    "home-hero",
+    "article-body como corpo principal",
+    "nota fictícia",
+    "streaming inferido"
+   ]
+  },
+  {
+   "id": "SeriesDetailTemplate",
+   "purpose": "detalhe de série (+ temporadas/episódios como seções); variante mobile",
+   "screens": [
+    "07",
+    "08"
+   ],
+   "logo": "serie (verde)",
+   "header": "default-light sólida (07); mobile-navigation (08)",
+   "hero": "não (top-info-bar) — mobile: header compacto",
+   "container": "container-editorial 1280 (08: full-width mobile 390)",
+   "grid": "grid-detail-media; episódios em lista vertical",
+   "sidebar": "nenhuma",
+   "sections": "top-info-bar (poster/entity-title/entity-metadata/status/actions/score/streaming) → season-selector → season-summary → episode list (episode-card) → elenco → mídia → editorial → more like this (content-rail)",
+   "ads": "0",
+   "newsletter": "não",
+   "related": "recommendation-card rail (moreLikeThis)",
+   "footer": "footer claro (07); rodapé mobile compacto (08)",
+   "sticky": [
+    "header",
+    "season-selector (opcional)"
+   ],
+   "noImage": "still de episódio ausente→muted; poster→fallback",
+   "partial": "temporada futura sem episódios→season-summary 'em breve'; spoiler oculto",
+   "states": [
+    "default",
+    "future-season",
+    "spoiler-hidden",
+    "no-score",
+    "no-streaming",
+    "partial-episode",
+    "mobile(390)"
+   ],
+   "allowed": [
+    "entity-title",
+    "entity-metadata",
+    "entity-actions",
+    "cinerie-score",
+    "external-rating",
+    "streaming-availability",
+    "season-selector",
+    "season-summary",
+    "episode-card",
+    "episode-metadata",
+    "episode-progress",
+    "cast-list",
+    "media-gallery",
+    "content-rail",
+    "recommendation-card",
+    "mobile-navigation",
+    "media-image"
+   ],
+   "forbidden": [
+    "home-hero",
+    "tratar temporada como movie-card",
+    "tracking autenticado funcional"
+   ]
+  },
+  {
+   "id": "PersonDetailTemplate",
+   "purpose": "detalhe de pessoa (biografia + créditos)",
+   "screens": [
+    "09"
+   ],
+   "logo": "neutro",
+   "header": "default-light",
+   "hero": "person-hero (portrait + nome; sem imagem→neutro claro)",
+   "container": "container-editorial 1280",
+   "grid": "portrait + coluna de biografia; créditos em content-grid/rail",
+   "sidebar": "nenhuma",
+   "sections": "person-hero → biografia → metadata → person-credits (filmografia) → notícias relacionadas → related people → ad-slot",
+   "ads": "1 leaderboard",
+   "newsletter": "não",
+   "related": "related-content-card (pessoas) + related-articles",
+   "footer": "footer claro",
+   "sticky": [
+    "header"
+   ],
+   "noImage": "portrait ausente→avatar iniciais; sem bio→omite bloco",
+   "partial": "função/conhecido-por omitidos se ausentes",
+   "states": [
+    "default",
+    "no-image",
+    "no-bio",
+    "partial"
+   ],
+   "allowed": [
+    "person-hero",
+    "avatar",
+    "person-credits",
+    "movie-card",
+    "series-card",
+    "content-grid",
+    "content-rail",
+    "related-content-card",
+    "related-articles",
+    "ad-slot",
+    "link"
+   ],
+   "forbidden": [
+    "cinerie-score",
+    "streaming-availability",
+    "entity-hero"
+   ]
+  },
+  {
+   "id": "CatalogBrowseTemplate",
+   "purpose": "onde assistir — navegação por provedores/filtros",
+   "screens": [
+    "10"
+   ],
+   "logo": "neutro",
+   "header": "default-light",
+   "hero": "compact-hero (título + descrição; sem imagem estrutural escura)",
+   "container": "container-editorial 1280",
+   "grid": "grid-poster + rails por provedor",
+   "sidebar": "nenhuma (filtros em chips/segmented)",
+   "sections": "compact-hero → filtros (chip/toggle-segmented) → rails por provedor (content-rail) → poster grid → paginação → ad-slot",
+   "ads": "2 leaderboards",
+   "newsletter": "não",
+   "related": "n/a",
+   "footer": "footer claro",
+   "sticky": [
+    "header",
+    "barra de filtros (opcional)"
+   ],
+   "noImage": "poster→fallback",
+   "partial": "provedor sem títulos→seção omitida; sem oferta→streaming-unavailable",
+   "states": [
+    "default",
+    "filtered",
+    "loading",
+    "empty",
+    "zero-results"
+   ],
+   "allowed": [
+    "compact-hero",
+    "section-header",
+    "chip",
+    "toggle-segmented",
+    "content-rail",
+    "content-grid",
+    "movie-card",
+    "series-card",
+    "streaming-availability",
+    "streaming-region-notice",
+    "pagination",
+    "ad-slot"
+   ],
+   "forbidden": [
+    "entity-hero",
+    "article-body",
+    "disponibilidade inventada"
+   ]
+  },
+  {
+   "id": "ExploreTemplate",
+   "purpose": "explorar/descobrir e mais aguardados (grids filtráveis + coleções)",
+   "screens": [
+    "11",
+    "12"
+   ],
+   "logo": "neutro (preta)",
+   "header": "default-light",
+   "hero": "não (título + descrição compactos)",
+   "container": "container-editorial 1280",
+   "grid": "grid-poster + coleções em content-rail; trailer-card para 'em breve' (12)",
+   "sidebar": "nenhuma (filtros em chips/tabs)",
+   "sections": "section-header → filtros/tabs (chip/tabs) → coleções (content-rail) → poster grid → trailer-card rail (12: Em breve) → paginação → ad-slot",
+   "ads": "1 leaderboard (11); 0 (12)",
+   "newsletter": "não",
+   "related": "n/a",
+   "footer": "footer claro",
+   "sticky": [
+    "header"
+   ],
+   "noImage": "poster→fallback; trailer still→muted",
+   "partial": "coleção vazia omitida",
+   "states": [
+    "default",
+    "filtered",
+    "loading",
+    "empty",
+    "zero-results"
+   ],
+   "allowed": [
+    "section-header",
+    "chip",
+    "tabs",
+    "content-rail",
+    "content-grid",
+    "movie-card",
+    "series-card",
+    "trailer-card",
+    "carousel",
+    "pagination",
+    "ad-slot"
+   ],
+   "forbidden": [
+    "entity-hero",
+    "cinerie-score isolado sem contexto",
+    "data de estreia inventada"
+   ]
+  },
+  {
+   "id": "CollectionTemplate",
+   "purpose": "listas do usuário (visão pública/editorial das coleções)",
+   "screens": [
+    "15"
+   ],
+   "logo": "neutro",
+   "header": "default-light",
+   "hero": "não (cabeçalho de coleção)",
+   "container": "container-editorial 1280",
+   "grid": "grid-poster por lista + cards de lista",
+   "sidebar": "nenhuma",
+   "sections": "section-header → cards de lista (compact/horizontal) → poster grid da lista selecionada → ad-slot → empty-state (sem listas)",
+   "ads": "3 leaderboards",
+   "newsletter": "não",
+   "related": "n/a",
+   "footer": "footer claro",
+   "sticky": [
+    "header"
+   ],
+   "noImage": "poster→fallback",
+   "partial": "lista vazia→empty-state 'sua lista está vazia' (sem cards fantasma)",
+   "states": [
+    "default",
+    "empty",
+    "loading",
+    "private(product-state)",
+    "unauthenticated(product-state)"
+   ],
+   "allowed": [
+    "section-header",
+    "horizontal-content-card",
+    "compact-content-card",
+    "content-grid",
+    "movie-card",
+    "series-card",
+    "empty-state",
+    "product-state",
+    "ad-slot",
+    "button"
+   ],
+   "forbidden": [
+    "entity-hero",
+    "dado fictício em lista vazia"
+   ]
+  },
+  {
+   "id": "SettingsTemplate",
+   "purpose": "configurações e importação de dados (formulários, sem funcionalidade autenticada nesta unidade)",
+   "screens": [
+    "13",
+    "14"
+   ],
+   "logo": "neutro (preta)",
+   "header": "default-light",
+   "hero": "não (cabeçalho de página)",
+   "container": "container-reading/edit ~720–960",
+   "grid": "coluna única de formulário; seções de field",
+   "sidebar": "nav interna de seções (opcional, tabs/anchor)",
+   "sections": "section-header → grupos de field (field/select/checkbox/switch) → form-actions → alert/toast de feedback (13); importação: field de arquivo + estados loading/success/error (14)",
+   "ads": "0",
+   "newsletter": "não",
+   "related": "n/a",
+   "footer": "footer claro",
+   "sticky": [
+    "header"
+   ],
+   "noImage": "n/a (14 sem imagem; 13: 1 slot de avatar)",
+   "partial": "campos opcionais marcados 'opcional'",
+   "states": [
+    "default",
+    "focus",
+    "invalid",
+    "success",
+    "loading",
+    "disabled",
+    "readonly",
+    "email-unverified(product-state)"
+   ],
+   "allowed": [
+    "section-header",
+    "field",
+    "select",
+    "checkbox",
+    "radio",
+    "switch",
+    "textarea",
+    "password-input",
+    "form-actions",
+    "alert",
+    "toast",
+    "button",
+    "tabs",
+    "product-state"
+   ],
+   "forbidden": [
+    "card grid decorativo",
+    "placeholder como único label",
+    "criar telas autenticadas completas"
+   ]
+  },
+  {
+   "id": "AuthTemplate",
+   "purpose": "entrar/cadastrar (formulário centrado)",
+   "screens": [
+    "16"
+   ],
+   "logo": "neutro (preta)",
+   "header": "default-light minimal",
+   "hero": "não",
+   "container": "coluna centrada ~420–480",
+   "grid": "coluna única",
+   "sidebar": "nenhuma",
+   "sections": "logo → título → field (email/senha) → form-actions (Entrar) → link secundário → ad-slot → footer minimal",
+   "ads": "1 leaderboard",
+   "newsletter": "não",
+   "related": "n/a",
+   "footer": "footer claro (minimal)",
+   "sticky": [],
+   "noImage": "n/a",
+   "partial": "n/a",
+   "states": [
+    "default",
+    "focus",
+    "invalid",
+    "loading",
+    "error"
+   ],
+   "allowed": [
+    "field",
+    "password-input",
+    "form-actions",
+    "button",
+    "link",
+    "ad-slot",
+    "alert"
+   ],
+   "forbidden": [
+    "hero de imagem",
+    "fundo escuro estrutural",
+    "dado fictício de conta"
+   ]
+  },
+  {
+   "id": "AdScreenTemplate",
+   "purpose": "superfícies de publicidade (pop-up e interstitial) — não são telas de produto plenas",
+   "screens": [
+    "17",
+    "18"
+   ],
+   "logo": "neutro",
+   "header": "não (overlay) / minimal",
+   "hero": "não",
+   "container": "overlay centrado (17) / full-bleed interstitial (18)",
+   "grid": "slot único",
+   "sidebar": "nenhuma",
+   "sections": "ad-slot (rectangle/pop 17; billboard/interstitial 18) + botão fechar (icon-button) + rótulo PUBLICIDADE",
+   "ads": "1 cada (17 e 18)",
+   "newsletter": "não",
+   "related": "n/a",
+   "footer": "não",
+   "sticky": [],
+   "noImage": "sem criativo→ad-slot unavailable (espaço reservado)",
+   "partial": "n/a",
+   "states": [
+    "filled",
+    "placeholder",
+    "unavailable",
+    "closing"
+   ],
+   "allowed": [
+    "ad-slot",
+    "icon-button",
+    "modal",
+    "product-state"
+   ],
+   "forbidden": [
+    "parecer conteúdo editorial",
+    "anunciante fictício"
+   ]
+  },
+  {
+   "id": "DevOverlayTemplate",
+   "purpose": "switcher de protótipo — DEV ONLY, remover no build de produção",
+   "screens": [
+    "01"
+   ],
+   "logo": "n/a",
+   "header": "não",
+   "hero": "não",
+   "container": "overlay",
+   "grid": "lista de rotas",
+   "sidebar": "nenhuma",
+   "sections": "lista de flags/rotas do protótipo",
+   "ads": "0",
+   "newsletter": "não",
+   "related": "n/a",
+   "footer": "não",
+   "sticky": [],
+   "noImage": "n/a",
+   "partial": "n/a",
+   "states": [
+    "open"
+   ],
+   "allowed": [
+    "button",
+    "link"
+   ],
+   "forbidden": [
+    "ir para produção",
+    "z-index de produto"
+   ]
+  }
+ ]
+}

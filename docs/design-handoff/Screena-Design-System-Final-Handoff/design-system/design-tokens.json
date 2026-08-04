@@ -1,0 +1,208 @@
+{
+  "meta": {
+    "system": "Cinerie White Cinematic Editorial System",
+    "unit": "D3A",
+    "generatedAt": "2026-07-21",
+    "source": "consolidação de component-inventory.json (D2) + verificação de contraste WCAG",
+    "canonical": "Screen Screens v4.dc.html",
+    "canonicalSha256": "0cc8fcd6afe74b64afcbf4c1e4d7c50b62585d6baf8d1faf2df68f18677bfe74",
+    "note": "Tokens definidos, NÃO aplicados às 18 telas (migração é D4). status: canonical=adotar; preserved=já em uso e mantido; deprecated=migrar para alias; exception=fora do sistema, documentado."
+  },
+  "color": {
+    "background": {
+      "page": { "value": "#FDFDFD", "type": "color", "description": "fundo global da página (claro)", "status": "preserved", "source": "#FDFDFD/#FFFFFF" },
+      "surface": { "value": "#FFFFFF", "type": "color", "description": "cards, boxes, superfícies embutidas (sempre claras)", "status": "preserved" },
+      "subtle": { "value": "#F6F3EE", "type": "color", "description": "faixa off-white de alternância de seção", "status": "canonical", "aliases": ["#F6F2EA","#F5F1EA","#FBFAF7"] },
+      "muted": { "value": "#F1EDE6", "type": "color", "description": "superfície secundária controlada", "status": "canonical", "aliases": ["#F1EEE8","#F0ECE4","#EFEBE3"] },
+      "elevated": { "value": "#FFFFFF", "type": "color", "description": "card elevado (usar com shadow.card)", "status": "canonical" },
+      "skeleton": { "value": "#EAE4D9", "type": "color", "description": "placeholder de carregamento", "status": "canonical", "aliases": ["#E4DED3","#ECE6DC"] },
+      "scrim": { "value": "rgba(0,0,0,0.5)", "type": "color", "description": "scrim escuro sobre imagem para legibilidade", "status": "preserved", "aliases": ["rgba(0,0,0,0.45)","rgba(0,0,0,0.55)"] }
+    },
+    "text": {
+      "primary": { "value": "#101010", "type": "color", "description": "títulos e texto forte — AA 18.7 sobre page", "status": "preserved" },
+      "ink-deep": { "value": "#12100E", "type": "color", "description": "numerais grandes/score", "status": "preserved" },
+      "secondary": { "value": "#6E6E6E", "type": "color", "description": "metadados/apoio — AA 5.0 sobre page", "status": "preserved" },
+      "muted": { "value": "#9A958C", "type": "color", "description": "rótulos discretos — CONTRASTE 2.9 (FALHA AA): só texto grande/decorativo, nunca corpo", "status": "canonical", "aliases": ["#9A9284","#A79F92"] },
+      "disabled": { "value": "#B7B0A5", "type": "color", "description": "texto desabilitado", "status": "canonical" },
+      "inverse": { "value": "#FFFFFF", "type": "color", "description": "texto sobre fundo escuro/hero/scrim", "status": "preserved" },
+      "link": { "value": "#8A1E1A", "type": "color", "description": "link em texto (contexto filme) — AA 9.2 sobre surface", "status": "preserved", "aliases": ["#395C42 (série)"] },
+      "link-hover": { "value": "#F0443E", "type": "color", "description": "hover de link", "status": "canonical" }
+    },
+    "border": {
+      "subtle": { "value": "#F1EDE6", "type": "color", "description": "divisória leve", "status": "canonical", "aliases": ["#E9E3D8"] },
+      "default": { "value": "#E3DED6", "type": "color", "description": "borda padrão de card/controle (108 usos)", "status": "preserved" },
+      "strong": { "value": "#D8D2C8", "type": "color", "description": "borda de ênfase", "status": "canonical", "aliases": ["#CFC8BC","#C4BCAE"] },
+      "selected": { "value": "#101010", "type": "color", "description": "estado selecionado/hover de card", "status": "canonical" },
+      "focus": { "value": "#101010", "type": "color", "description": "anel de foco (2px + offset) — não depender só de cor", "status": "canonical" },
+      "error": { "value": "#C7382F", "type": "color", "description": "borda de erro", "status": "canonical" }
+    },
+    "accent": {
+      "movie": { "value": "#F0443E", "type": "color", "description": "FILME. sobre branco = 3.75 (AA-large): texto branco só ≥18px/bold", "status": "preserved" },
+      "movie-hover": { "value": "#E0392F", "type": "color", "status": "canonical", "description": "hover do CTA de filme" },
+      "movie-pressed": { "value": "#C7322A", "type": "color", "status": "canonical", "description": "pressed do CTA de filme" },
+      "movie-dark": { "value": "#8A1E1A", "type": "color", "status": "preserved", "description": "vermelho escuro p/ links e scrims de filme" },
+      "series": { "value": "#7FA56F", "type": "color", "description": "SÉRIE. sobre branco 2.79 (FALHA): NÃO usar texto branco em fundo verde — usar series-dark ou texto escuro", "status": "preserved" },
+      "series-hover": { "value": "#6E9260", "type": "color", "status": "canonical" },
+      "series-pressed": { "value": "#5C7D4F", "type": "color", "status": "canonical" },
+      "series-dark": { "value": "#395C42", "type": "color", "description": "verde escuro p/ texto/links de série — AA 7.5 sobre branco", "status": "preserved" },
+      "editorial": { "value": "#F5C518", "type": "color", "description": "amarelo informação/nota. SEMPRE texto escuro (branco falha 1.63)", "status": "preserved" },
+      "editorial-hover": { "value": "#E0B416", "type": "color", "status": "canonical" }
+    },
+    "state": {
+      "success": { "value": "#1F8A5B", "type": "color", "status": "canonical", "aliases": ["#2E8B3C"] },
+      "warning": { "value": "#B26A00", "type": "color", "status": "canonical", "description": "warning acessível; #E8A31E só p/ ícone/fundo", "aliases": ["#E8A31E"] },
+      "danger": { "value": "#C7382F", "type": "color", "status": "canonical", "aliases": ["#B0201C","#A32B23"] },
+      "information": { "value": "#2A6FDB", "type": "color", "status": "canonical" },
+      "disabled": { "value": "#B7B0A5", "type": "color", "status": "canonical" },
+      "focus": { "value": "#101010", "type": "color", "status": "canonical" }
+    },
+    "media": {
+      "rating-gold": { "value": "#F5C84B", "type": "color", "description": "preenchimento de estrela (só nota/rating)", "status": "preserved" },
+      "poster-fallback": { "value": "linear-gradient placeholder (g(i))", "type": "gradient", "description": "stand-in de pôster; trocar por <img> real no build", "status": "canonical" },
+      "scrim": { "value": "rgba(0,0,0,0.5)", "type": "color", "status": "preserved" },
+      "caption-bg": { "value": "rgba(0,0,0,0.6)", "type": "color", "status": "canonical" }
+    },
+    "external": {
+      "description": "cores de MARCA de terceiros — exceções documentadas; NÃO reutilizar em controles do sistema",
+      "status": "exception",
+      "values": { "netflix": "#E50914", "prime": "#1399FF", "max": "#002BE7", "appletv": "#111111", "rotten-fresh": "#FA320A", "rotten-splat": "#3CB54A", "tmdb-navy": "#0D253F", "tmdb-cyan": "#01B4E4", "crunchyroll": "#F47521", "imdb": "#F5C518" }
+    },
+    "newsCategory": {
+      "description": "cores categóricas de editoria de notícias (badges) — semânticas, não decorativas",
+      "status": "exception",
+      "values": { "premios": "#C9A24B", "entrevista": "#9A57C9", "streaming": "#2A6FDB" }
+    }
+  },
+  "typography": {
+    "family": { "value": "'Montserrat', sans-serif", "type": "fontFamily", "status": "preserved", "description": "família única (682 usos, zero outras)" },
+    "styles": {
+      "display-xl": { "size": "84px", "weight": 800, "lineHeight": 0.9, "letterSpacing": "-0.035em", "use": "hero da home", "status": "preserved" },
+      "display-lg": { "size": "56px", "weight": 800, "lineHeight": 1.05, "letterSpacing": "-0.035em", "use": "hero de browse/institucional", "status": "preserved" },
+      "display-md": { "size": "40px", "weight": 800, "lineHeight": 1.0, "letterSpacing": "-0.03em", "use": "destaque secundário", "status": "canonical", "consolidates": ["38px","40px"] },
+      "heading-h1": { "size": "34px", "weight": 800, "lineHeight": 1.05, "letterSpacing": "-0.03em", "status": "preserved", "consolidates": ["32px","34px"] },
+      "heading-h2": { "size": "26px", "weight": 400, "lineHeight": 1.05, "letterSpacing": "-0.01em", "textTransform": "uppercase", "use": "título de seção (padrão real da home)", "status": "preserved", "note": "duas pesagens: 1a palavra 800-900, restante 300-400" },
+      "section-header": { "size": "26px", "weight": "900 (1a palavra) / 400 (resto)", "lineHeight": 1.05, "letterSpacing": "-0.01em", "textTransform": "uppercase", "use": "cabeçalho de seção editorial da home (duas pesagens em caixa alta)", "status": "preserved" },
+      "heading-h3": { "size": "24px", "weight": 700, "lineHeight": 1.2, "status": "preserved", "consolidates": ["23px","24px","25px"] },
+      "heading-h4": { "size": "19px", "weight": 800, "lineHeight": 1.25, "letterSpacing": "0.18em", "textTransform": "uppercase", "use": "eyebrow de seção de detalhe", "status": "preserved", "consolidates": ["19px","20px"] },
+      "title-lg": { "size": "22px", "weight": 750, "lineHeight": 1.25, "status": "preserved", "consolidates": ["21px","22px"] },
+      "title-md": { "size": "18px", "weight": 700, "lineHeight": 1.3, "status": "preserved", "consolidates": ["17px","18px"] },
+      "title-sm": { "size": "16px", "weight": 700, "lineHeight": 1.35, "status": "preserved" },
+      "body-lg": { "size": "17px", "weight": 400, "lineHeight": 1.7, "use": "corpo de artigo", "status": "preserved" },
+      "body-md": { "size": "15px", "weight": 400, "lineHeight": 1.55, "status": "preserved", "consolidates": ["14.5px","15px","16px"] },
+      "body-sm": { "size": "13px", "weight": 400, "lineHeight": 1.5, "status": "canonical", "consolidates": ["13px","13.5px"] },
+      "label-lg": { "size": "14px", "weight": 700, "lineHeight": 1.2, "status": "preserved", "consolidates": ["14px","14.5px"] },
+      "label-md": { "size": "13px", "weight": 600, "lineHeight": 1.2, "status": "preserved" },
+      "label-sm": { "size": "12px", "weight": 600, "lineHeight": 1.2, "status": "preserved", "consolidates": ["11.5px","12px","12.5px"] },
+      "metadata": { "size": "12px", "weight": 500, "lineHeight": 1.4, "color": "text.secondary", "status": "canonical" },
+      "caption": { "size": "11px", "weight": 500, "lineHeight": 1.5, "status": "preserved", "consolidates": ["10.5px","11px"] },
+      "eyebrow": { "size": "11px", "weight": 800, "letterSpacing": "0.14em", "textTransform": "uppercase", "status": "preserved" },
+      "navigation": { "size": "13px", "weight": 700, "status": "preserved" },
+      "button": { "size": "14px", "weight": 700, "status": "preserved", "consolidates": ["13px","14px"] },
+      "badge": { "size": "10px", "weight": 800, "letterSpacing": "0.1em", "textTransform": "uppercase", "status": "preserved", "consolidates": ["9px","9.5px","10px"] },
+      "numeric-lg": { "size": "47px", "weight": 800, "letterSpacing": "-0.045em", "use": "Cinerie Score", "status": "preserved" },
+      "numeric-md": { "size": "22px", "weight": 800, "letterSpacing": "-0.02em", "use": "nota de avaliação", "status": "preserved" }
+    },
+    "deprecatedSizes": { "8px": "badge/caption", "8.5px": "→8px", "9.5px": "→badge 10px", "10.5px": "→caption 11px", "11.5px": "→label-sm 12px", "12.5px": "→label-sm/metadata 12px", "13.5px": "→body-sm 13px", "14.5px": "→label-lg 14px" }
+  },
+  "spacing": {
+    "scale": {
+      "space-0": "0", "space-1": "2px", "space-2": "4px", "space-3": "6px", "space-4": "8px", "space-5": "10px", "space-6": "12px", "space-7": "14px", "space-8": "16px", "space-9": "20px", "space-10": "24px", "space-11": "32px", "space-12": "40px", "space-13": "48px", "space-14": "56px", "space-15": "64px", "space-16": "80px", "space-17": "96px", "space-18": "120px"
+    },
+    "type": "dimension",
+    "status": "canonical",
+    "sectionRhythm": "56px (space-14) topo de seção",
+    "pagePadding": "80px (space-16) lateral desktop",
+    "deprecated": { "3px": "→space-2/4", "5px": "→space-4/6", "7px": "→space-6/8", "9px": "→space-8/10", "11px": "→space-6 12", "13px": "→space-6/7", "18px": "→space-8/9", "22px": "→space-9/10", "26px": "→space-10", "28px": "→space-10/11", "30px": "→space-11", "34px": "→space-11", "36px": "→space-11/12", "44px": "→space-12/13", "52px": "→space-13/14", "60px": "→space-14/15", "72px": "→space-15/16", "102px": "→space-17/18" }
+  },
+  "grid": {
+    "container-editorial": { "maxWidth": "1280px", "padding": "0 80px", "status": "preserved" },
+    "container-nav": { "maxWidth": "1380px", "padding": "0 80px", "status": "preserved" },
+    "container-reading": { "maxWidth": "720px", "padding": "0 40px", "status": "canonical", "use": "corpo de artigo" },
+    "container-full-bleed": { "maxWidth": "100%", "status": "preserved", "use": "hero, faixas de mídia" },
+    "grid-poster": { "columns": "repeat(auto-fill,minmax(150px,1fr))", "desktopFixed": "repeat(6,1fr)", "gap": "16px", "status": "canonical" },
+    "grid-top10": { "columns": "repeat(4,1fr)", "gap": "24px", "status": "preserved" },
+    "grid-news": { "columns": "1.25fr 1fr", "gap": "18px", "status": "preserved" },
+    "grid-detail-media": { "columns": "1fr 3fr 2fr", "gap": "4px", "status": "preserved" }
+  },
+  "breakpoint": {
+    "mobile-small": { "value": "390px", "type": "dimension", "status": "canonical" },
+    "mobile": { "value": "480px", "type": "dimension", "status": "canonical" },
+    "tablet": { "value": "768px", "type": "dimension", "status": "canonical" },
+    "desktop": { "value": "1280px", "type": "dimension", "status": "canonical" },
+    "desktop-wide": { "value": "1440px", "type": "dimension", "status": "canonical" }
+  },
+  "radius": {
+    "radius-none": { "value": "0", "type": "dimension", "status": "preserved", "use": "Top News, Entrar, telas de detalhe borderless" },
+    "radius-hairline": { "value": "2px", "status": "preserved", "use": "barras de acento de seção" },
+    "radius-xs": { "value": "5px", "status": "preserved" },
+    "radius-sm": { "value": "6px", "status": "preserved" },
+    "radius-control": { "value": "8px", "status": "preserved", "use": "chips, CTAs, badges, mini-pôster" },
+    "radius-card": { "value": "10px", "status": "preserved", "use": "cards (valor mais comum, 63x)" },
+    "radius-media": { "value": "12px", "status": "preserved", "use": "pôsteres 2:3, thumbs 16:9", "aliases": ["14px"] },
+    "radius-pill": { "value": "999px", "status": "preserved" },
+    "radius-circle": { "value": "50%", "status": "preserved", "use": "avatar, play, setas circulares" },
+    "note": "9 valores sancionados por CLAUDE.md — NÃO unificar. Matriz componente→radius em 09-RADIUS-BORDERS-SHADOWS.md"
+  },
+  "border": {
+    "width-none": { "value": "0", "status": "canonical" },
+    "width-hairline": { "value": "1px", "status": "preserved", "use": "padrão (único em uso real)" },
+    "width-strong": { "value": "1.5px", "status": "canonical", "use": "borda tracejada/ênfase" }
+  },
+  "shadow": {
+    "shadow-none": { "value": "none", "status": "canonical" },
+    "shadow-card": { "value": "0 3px 14px rgba(20,18,14,0.05)", "status": "preserved", "description": "sombra padrão de card (dominante, 28x)" },
+    "shadow-card-hover": { "value": "0 4px 16px rgba(20,18,14,0.12)", "status": "canonical", "consolidates": ["0 8px 20px rgba(0,0,0,0.1)","0 8px 20px rgba(0,0,0,0.14)"] },
+    "shadow-dropdown": { "value": "0 8px 24px rgba(0,0,0,0.06)", "status": "canonical", "consolidates": ["0 8px 22px rgba(0,0,0,0.22)"] },
+    "shadow-modal": { "value": "0 30px 70px rgba(0,0,0,0.18)", "status": "canonical", "consolidates": ["0 30px 80px rgba(0,0,0,0.45)","0 18px 44px rgba(0,0,0,0.18)"] },
+    "shadow-editorial-image": { "value": "0 12px 28px rgba(0,0,0,0.5)", "status": "preserved", "consolidates": ["0 16px 40px rgba(0,0,0,0.5)","0 10px 26px rgba(0,0,0,0.22)"] },
+    "shadow-sticky-header": { "value": "0 1px 3px rgba(20,18,14,0.12)", "status": "canonical" }
+  },
+  "motion": {
+    "duration-instant": { "value": "0ms", "status": "canonical" },
+    "duration-fast": { "value": "120ms", "status": "canonical", "use": "hover/pressed" },
+    "duration-standard": { "value": "240ms", "status": "canonical", "use": "dropdown, fade" },
+    "duration-slow": { "value": "350ms", "status": "preserved", "use": "transição de nav transparente→sólida" },
+    "easing-standard": { "value": "cubic-bezier(0.4,0,0.2,1)", "status": "canonical" },
+    "easing-enter": { "value": "cubic-bezier(0,0,0.2,1)", "status": "canonical" },
+    "easing-exit": { "value": "cubic-bezier(0.4,0,1,1)", "status": "canonical" },
+    "easing-emphasized": { "value": "cubic-bezier(0.2,0,0,1)", "status": "canonical" },
+    "reduced-motion": { "value": "respeitar prefers-reduced-motion: reduce", "status": "canonical" }
+  },
+  "icon": {
+    "icon-xs": { "value": "12px", "status": "canonical" },
+    "icon-sm": { "value": "16px", "status": "preserved", "aliases": ["15px"] },
+    "icon-md": { "value": "20px", "status": "canonical", "aliases": ["18px"] },
+    "icon-lg": { "value": "24px", "status": "preserved" },
+    "icon-xl": { "value": "32px", "status": "canonical" },
+    "style": { "value": "sprite SVG <symbol id='ic-*'>, stroke 1.8-2, currentColor, viewBox 24", "status": "preserved" }
+  },
+  "control": {
+    "control-height-xs": { "value": "30px", "padding": "6px 12px", "status": "canonical", "use": "chip compacto" },
+    "control-height-sm": { "value": "36px", "padding": "8px 16px", "status": "canonical" },
+    "control-height-md": { "value": "44px", "padding": "12px 22px", "status": "canonical", "use": "toque mínimo (44x44)" },
+    "control-height-lg": { "value": "52px", "padding": "15px 28px", "status": "canonical", "use": "CTA de hero" },
+    "touchTargetMin": { "value": "44px", "status": "canonical" }
+  },
+  "media": {
+    "poster": { "value": "2/3", "status": "preserved" },
+    "backdrop": { "value": "16/9", "status": "preserved" },
+    "portrait": { "value": "3/4", "status": "canonical" },
+    "episode-still": { "value": "16/9", "status": "canonical" },
+    "news-landscape": { "value": "16/9", "status": "canonical" },
+    "news-square": { "value": "1/1", "status": "canonical" },
+    "hero": { "value": "full-bleed 90vh (min 640, max 900)", "status": "preserved" },
+    "og-image": { "value": "1.91/1", "status": "canonical" }
+  },
+  "zIndex": {
+    "z-base": { "value": 0, "status": "canonical" },
+    "z-sticky": { "value": 10, "status": "canonical" },
+    "z-header": { "value": 60, "status": "preserved" },
+    "z-dropdown": { "value": 70, "status": "canonical" },
+    "z-popover": { "value": 80, "status": "canonical" },
+    "z-drawer": { "value": 85, "status": "canonical" },
+    "z-modal-backdrop": { "value": 90, "status": "canonical" },
+    "z-modal": { "value": 100, "status": "canonical" },
+    "z-toast": { "value": 110, "status": "canonical" },
+    "note": "switcher de protótipo usa z-90 e será removido no build; não é token de produto"
+  }
+}
