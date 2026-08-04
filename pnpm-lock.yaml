@@ -140,6 +140,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@aws-sdk/client-s3':
+        specifier: ^3.1097.0
+        version: 3.1097.0
       '@screena/config':
         specifier: workspace:*
         version: link:../../packages/config

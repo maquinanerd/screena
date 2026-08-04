@@ -124,6 +124,15 @@ derivada. O preflight do worker checa essa colisão.
 
 Variáveis: `EDITORIAL_MEDIA_*`.
 
+> **Os DOIS lados precisam dessas variáveis.** O worker **escreve** no bucket; o
+> screen-app **lê** dele, pela rota `/media/editorial/**`, para servir o
+> `public_path` gravado no banco. Configurar só o worker publica a matéria com a
+> imagem em 404 — o sintoma é exatamente esse, e não aparece em nenhum log.
+>
+> A credencial do screen-app deve ser **somente-leitura**: o site nunca escreve
+> nem apaga mídia. Tabela completa em
+> [`easypanel-deployment-checkpoint.md` §12.1](../operations/easypanel-deployment-checkpoint.md).
+
 ## G–J. Criar o serviço do CMS
 
 | Campo | Valor |

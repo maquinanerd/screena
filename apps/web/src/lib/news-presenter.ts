@@ -70,6 +70,30 @@ export interface NewsImageAsset {
    * diferenca entre as duas coisas.
    */
   alt: string | null;
+  /**
+   * Credito de quem detem o direito sobre a imagem.
+   *
+   * `null` = o asset nao declarou credito. NAO e estetica: quando a licenca
+   * exige atribuicao, o CMS recusa projetar sem `credit` (`attribution_missing`,
+   * ver `docs/operations/editorial-media-projection.md` §2). Logo credito
+   * presente equivale a atribuicao satisfeita, e exibi-lo e a obrigacao —
+   * nunca um enfeite.
+   */
+  credit: string | null;
+}
+
+/**
+ * Asset de capa GOVERNADO, projetado do CMS (`editorial_media_assets`).
+ *
+ * Chega pelo vinculo `articles.hero_media_asset_id`, entao o pareamento com a
+ * capa e EXATO — diferente de `approvedImageAlt`, que so consegue chutar pela
+ * ordem da lista (ver `firstApprovedAlt`).
+ */
+export interface NewsHeroMediaInput {
+  alt: string | null;
+  credit: string | null;
+  width: number | null;
+  height: number | null;
 }
 
 /** Fatos do artigo (Article) independentes de idioma. */
@@ -86,6 +110,8 @@ export interface ArticleFactsInput {
   displayAllowed: boolean;
   requiresAttribution: boolean;
   requiresLinkback: boolean;
+  /** Asset de capa projetado do CMS. Ausente em artigo sem capa governada. */
+  heroMedia?: NewsHeroMediaInput | null;
 }
 
 /** Traducao pt-BR do artigo (ArticleTranslation). */
@@ -130,6 +156,15 @@ export interface NewsListItemInput {
   deck: string | null;
   reviewStatus: string;
   translationPublishedAtIso: string | null;
+  /**
+   * Asset de capa projetado do CMS.
+   *
+   * No card ele e a UNICA origem de `alt`: a listagem nao carrega
+   * `approvedImageAlt` (que vive na traducao). Sem ele o card ficava com
+   * `alt` nulo na origem, e a imagem — unico identificador visual do link —
+   * chegava muda ao leitor de tela.
+   */
+  heroMedia?: NewsHeroMediaInput | null;
 }
 
 /** Entidade relacionada JA resolvida pelo server (titulo + slug reais). */
@@ -227,10 +262,50 @@ export function normalizeNewsLocalImagePath(
   return LOCAL_IMAGE_EXTENSION_PATTERN.test(value) ? value : null;
 }
 
-function heroImageAsset(path: string | null, alt: string | null = null): NewsImageAsset | null {
+/**
+ * Placeholder que o CMS grava quando o editor NAO descreveu a imagem
+ * (`publication.ts:259`) e que ele proprio filtra ao montar `approvedImageAlt`
+ * (`publication.ts:355`). Filtrar aqui tambem impede que a nao-descricao
+ * atravesse para o atributo `alt` — um alt que nao descreve e pior que nenhum,
+ * porque o leitor de tela o anuncia como se fosse conteudo.
+ */
+const ALT_PLACEHOLDER = "sem descricao";
+
+/** `alt` do asset, ja descartando o placeholder de nao-descricao. */
+function mediaAlt(media: NewsHeroMediaInput | null): string | null {
+  const alt = trimToNull(media?.alt ?? null);
+  if (alt === null) return null;
+  return alt.toLowerCase() === ALT_PLACEHOLDER ? null : alt;
+}
+
+/**
+ * Monta a capa.
+ *
+ * ORIGEM DO `alt`, em ordem: o asset vinculado vence `approvedImageAlt`. O
+ * vinculo `hero_media_asset_id` identifica EXATAMENTE a imagem da capa,
+ * enquanto `approvedImageAlt` e uma lista sem pareamento por `mediaId` — ela
+ * assume que o hero e o primeiro item. `approvedImageAlt` fica como fallback
+ * para linhas projetadas antes do vinculo existir.
+ *
+ * `width`/`height` reais substituem o `HERO_IMAGE_SPEC` fixo quando o asset os
+ * traz: 1280x720 fixo e uma afirmacao sobre o arquivo que pode simplesmente
+ * nao ser verdade. O layout nao muda (as caixas sao dimensionadas por CSS, com
+ * `object-fit: cover`) — o ganho e de correcao, nao de CLS.
+ */
+function heroImageAsset(
+  path: string | null,
+  approvedAlt: string | null = null,
+  media: NewsHeroMediaInput | null = null,
+): NewsImageAsset | null {
   const src = normalizeNewsLocalImagePath(path);
   if (src === null) return null;
-  return { src, width: HERO_IMAGE_SPEC.width, height: HERO_IMAGE_SPEC.height, alt };
+  return {
+    src,
+    width: positiveIntOrNull(media?.width ?? null) ?? HERO_IMAGE_SPEC.width,
+    height: positiveIntOrNull(media?.height ?? null) ?? HERO_IMAGE_SPEC.height,
+    alt: mediaAlt(media) ?? approvedAlt,
+    credit: trimToNull(media?.credit ?? null),
+  };
 }
 
 /**
@@ -389,7 +464,7 @@ export function buildNewsCard(
     author: trimToNull(input.authorName),
     deck: trimToNull(input.deck),
     readTimeLabel: formatReadTime(input.readTimeMinutes),
-    image: heroImageAsset(input.heroImagePath),
+    image: heroImageAsset(input.heroImagePath, null, input.heroMedia ?? null),
   };
 }
 
@@ -526,7 +601,11 @@ export function buildNewsArticleView(input: BuildNewsArticleViewInput): NewsArti
     author: trimToNull(facts.authorName),
     readTimeLabel: formatReadTime(facts.readTimeMinutes),
     deck: trimToNull(translation.deck),
-    heroImage: heroImageAsset(facts.heroImagePath, firstApprovedAlt(translation.approvedImageAlt)),
+    heroImage: heroImageAsset(
+      facts.heroImagePath,
+      firstApprovedAlt(translation.approvedImageAlt),
+      facts.heroMedia ?? null,
+    ),
     bodyParagraphs: bodyParagraphs(translation.body),
     hasBody: isSufficientBody(translation.body),
     aiAssisted: facts.aiAssisted === true,

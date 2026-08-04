@@ -392,6 +392,41 @@ Duas recusas ativas, ambas em código:
 O Screen-App **não vira cliente do Payload**: ele lê o screen-db e o storage
 público. Nenhuma variável do CMS entra nele.
 
+### 12.1. Leitura do storage público (rota `/media/editorial/**`)
+
+O caminho gravado em `editorial_media_assets.public_path` é servido pelo route
+handler [`apps/web/app/media/editorial/[...key]/route.ts`](../../apps/web/app/media/editorial/%5B...key%5D/route.ts).
+Ele casa o caminho com a linha do banco, reconfere a licença e devolve os bytes
+do objeto apontado pela coluna `storage_key`. **A URL nunca vira chave de
+storage** — a chave sai do banco.
+
+Sem estas variáveis no screen-app a rota responde **503** (indisponível), nunca
+404: um bucket mal configurado não pode ser registrado como "imagem não existe".
+
+| Variável | Obrigatória | Segredo | Observação |
+| --- | --- | --- | --- |
+| `EDITORIAL_MEDIA_STORAGE_DRIVER` | **sim** em produção | não | `s3` \| `local`. Ausente em `production` ⇒ 503 |
+| `EDITORIAL_MEDIA_S3_ENDPOINT` / `_BUCKET` | se `s3` | não | **mesmo bucket** do worker |
+| `EDITORIAL_MEDIA_S3_ACCESS_KEY_ID` / `_SECRET_ACCESS_KEY` | se `s3` | **sim** | credencial **somente-leitura**: o site nunca escreve nem apaga |
+| `EDITORIAL_MEDIA_S3_REGION` | não | não | default `auto` |
+| `EDITORIAL_MEDIA_S3_FORCE_PATH_STYLE` | não | não | default `true` (R2/MinIO) |
+| `EDITORIAL_MEDIA_LOCAL_ROOT` | se `local` | não | raiz do volume montado |
+
+Duas assimetrias deliberadas em relação ao worker:
+
+- o site usa **somente-leitura**. O `MediaStoragePort` do worker tem `put` e
+  `delete`; nada disso entra no processo público, então a credencial do
+  screen-app pode e deve ser um token sem permissão de escrita;
+- o site **aceita** o driver `local` em produção. A recusa no worker
+  (`storage-config.ts:82-91`) existe porque *escrever* em disco efêmero perde
+  mídia no próximo deploy. *Ler* de um volume montado de propósito é legítimo, e
+  recusar transformaria uma escolha de infraestrutura válida em 503.
+
+> **O prefixo `/media` é o caminho do arquivo de rota, não configuração.**
+> Se `EDITORIAL_MEDIA_PUBLIC_BASE_PATH` do worker deixar de ser `/media`, o
+> banco passa a gravar um caminho que esta rota não atende e a imagem volta a
+> 404 — silenciosamente. Mantenha o default dos dois lados.
+
 ---
 
 ## 13. Storage de ORIGEM (uploads do Payload)

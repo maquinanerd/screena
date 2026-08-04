@@ -237,6 +237,20 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
 
       {/* Corpo de leitura 720 */}
       <article className="art-body">
+        {/* Crédito da capa. Fica AQUI, e não dentro do `art-hero`, por dois
+            motivos: o hero é `position:absolute` sob um scrim escuro, onde
+            `--c-text-muted` perde contraste; e a coluna de leitura é o mesmo
+            contexto em que o crédito de imagem de corpo já é renderizado, então
+            reusar `art-figure__credit` mantém uma única linguagem visual de
+            crédito na página — sem classe nem posicionamento novos.
+
+            Só aparece quando existe: quando a licença exige atribuição, o CMS
+            recusa projetar sem `credit` (`attribution_missing`), então crédito
+            presente == atribuição satisfeita. */}
+        {view.heroImage?.credit != null ? (
+          <p className="art-figure__credit">{view.heroImage.credit}</p>
+        ) : null}
+
         {hasStructuredBody ? (
           <>
             <ArticleBody blocks={bodyBlocks.slice(0, blockAdAfter)} />
@@ -391,7 +405,13 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
             {readAlso.map((item) => (
               <a href={item.href} key={item.href}>
                 <span className="read-also__cover">
-                  {item.image !== null ? <img alt="" loading="lazy" src={item.image.src} /> : null}
+                  {/* Mesmo caso dos cards da listagem: a imagem identifica o
+                      link. `?? ""` quando o CMS não aprovou descrição — sem
+                      descrição aprovada a imagem É decorativa, e o texto do
+                      card já nomeia o link. */}
+                  {item.image !== null ? (
+                    <img alt={item.image.alt ?? ''} loading="lazy" src={item.image.src} />
+                  ) : null}
                 </span>
                 {item.category !== null ? (
                   <span className="read-also__cat">{item.category}</span>

@@ -135,8 +135,12 @@ export default async function NewsIndexPage() {
                   <span className="nws-readmore">Ler mais →</span>
                 </a>
                 <a aria-hidden="true" className="nws-feature__img" href={feature.href} tabIndex={-1}>
+                  {/* A imagem é o identificador visual do link, então carrega o
+                      `alt` aprovado quando existe. `?? ""` quando não existe: o
+                      CMS não aprovou descrição, e alt inventado é pior que
+                      nenhum — o texto do card já nomeia o link. */}
                   {feature.image !== null ? (
-                    <img alt="" fetchPriority="high" src={feature.image.src} />
+                    <img alt={feature.image.alt ?? ''} fetchPriority="high" src={feature.image.src} />
                   ) : null}
                 </a>
               </div>
@@ -148,7 +152,7 @@ export default async function NewsIndexPage() {
                       <a href={card.href}>
                         <span className="nws-card__cover">
                           {card.image !== null ? (
-                            <img alt="" loading="lazy" src={card.image.src} />
+                            <img alt={card.image.alt ?? ''} loading="lazy" src={card.image.src} />
                           ) : null}
                         </span>
                         <h3 className="nws-card__title">{card.title}</h3>
@@ -170,7 +174,7 @@ export default async function NewsIndexPage() {
                   <li key={card.href}>
                     <a className="nws-rail__post" href={card.href}>
                       {card.image !== null ? (
-                        <img alt="" loading="lazy" src={card.image.src} />
+                        <img alt={card.image.alt ?? ''} loading="lazy" src={card.image.src} />
                       ) : null}
                       <span className="nws-rail__body">
                         <h3 className="nws-rail__title">{card.title}</h3>
@@ -201,7 +205,7 @@ export default async function NewsIndexPage() {
                   <a className="nws-feed__item" href={card.href}>
                     <span className="nws-feed__thumb">
                       {card.image !== null ? (
-                        <img alt="" loading="lazy" src={card.image.src} />
+                        <img alt={card.image.alt ?? ''} loading="lazy" src={card.image.src} />
                       ) : null}
                     </span>
                     <span>
