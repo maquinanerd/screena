@@ -1336,4 +1336,154 @@
       overflow-x: auto;
     }
   }
+
+  /* ------------------------------------------------------------------ */
+  /* Rotulo do bloco recolhido                                           */
+  /* ------------------------------------------------------------------ */
+
+  .cinerie-row-label {
+    align-items: baseline;
+    display: flex;
+    gap: 8px;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .cinerie-row-label__position {
+    color: var(--cinerie-muted);
+    flex: none;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .cinerie-row-label__type {
+    flex: none;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  /* O trecho cede espaco primeiro: o TIPO nunca some, o resumo e que encurta. */
+  .cinerie-row-label__preview {
+    color: var(--cinerie-muted);
+    font-size: 13px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Vazio nao depende so da cor: a palavra esta escrita. */
+  .cinerie-row-label__empty {
+    background: var(--cinerie-brand-soft);
+    border: 1px solid var(--cinerie-brand);
+    border-radius: 999px;
+    color: var(--cinerie-brand-dark);
+    flex: none;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 1px 8px;
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Ancora do bloco (gerada)                                            */
+  /* ------------------------------------------------------------------ */
+
+  .cinerie-block-id__value {
+    color: var(--cinerie-muted);
+    display: block;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    margin-top: 2px;
+  }
+
+  .cinerie-block-id__hint,
+  .cinerie-paragraph__hint {
+    color: var(--cinerie-muted);
+    font-size: 12px;
+    margin: 4px 0 0;
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Paragrafo                                                           */
+  /* ------------------------------------------------------------------ */
+
+  .cinerie-paragraph__empty,
+  .cinerie-paragraph__notice {
+    border-radius: 8px;
+    font-size: 12px;
+    margin: 6px 0 0;
+    padding: 6px 10px;
+  }
+
+  /* Aviso, nao recusa: quem recusa e o `required` e o gate do servidor. */
+  .cinerie-paragraph__empty {
+    background: var(--cinerie-brand-soft);
+    border: 1px solid var(--cinerie-brand);
+    color: var(--cinerie-brand-dark);
+  }
+
+  .cinerie-paragraph__notice {
+    background: #ffffff;
+    border: 1px solid var(--cinerie-border);
+    color: var(--cinerie-ink);
+  }
+}
+
+/* ==================================================================== */
+/* Cabecalho do documento — FORA de `@layer payload`, de proposito       */
+/* ==================================================================== */
+
+/*
+ * O DEFEITO: a barra de fluxo cobre as abas e o conteudo da materia.
+ *
+ * `.doc-controls__wrapper` tem `height: var(--doc-controls-height)` — altura
+ * FIXA — e e um flex row (`@payloadcms/ui/.../DocumentControls/index.scss:26-32`).
+ * O slot `PublishButton` cai em `__controls-wrapper` (`:98-106`), dentro dessa
+ * linha travada. A barra de fluxo e um painel de bloco, com estado, dicas e
+ * lista de bloqueios: ela transborda a altura fixa para baixo e cobre o que
+ * vem depois. A correcao e devolver espaco — deixar a linha crescer e dar ao
+ * painel a linha inteira.
+ *
+ * POR QUE ESTAS TRES REGRAS VIVEM FORA DA CAMADA.
+ *
+ * O resto deste arquivo esta em `@layer payload`. O Payload declara os proprios
+ * componentes em `@layer payload-default`
+ * (`@payloadcms/ui/.../DocumentControls/index.scss:3`), e na ordem final de
+ * camadas do bundle do Next `payload-default` vence `payload`. Camada ganha de
+ * ESPECIFICIDADE: nao adianta o seletor ser mais especifico.
+ *
+ * O sintoma disso e enganoso, e foi medido no navegador com estas regras ainda
+ * dentro da camada: `flex-wrap: wrap` PEGAVA e `height: auto`, da MESMA regra,
+ * NAO — porque o Payload nao declara `flex-wrap`, mas declara `height` e
+ * `position`. Ou seja, a regra parecia ativa e estava inerte justamente nas
+ * duas propriedades que importam.
+ *
+ * Declaracao SEM camada vence qualquer declaracao COM camada, seja qual for a
+ * ordem entre elas. E a unica forma que nao depende de como o Next resolveu
+ * ordenar os chunks de CSS neste build.
+ *
+ * Evidencia do defeito: com as regras dentro da camada, na aba "Automacao
+ * (auditoria)", `.cinerie-workflow` media 617x242 a partir de y=200 enquanto
+ * `.doc-controls` terminava em y=180 — e `document.elementFromPoint` no centro
+ * do toggle de "Rastro da automacao" devolvia `SECTION.cinerie-workflow`. Nem o
+ * Playwright nem uma pessoa conseguiam abrir a secao.
+ */
+.doc-controls__wrapper:has(.cinerie-workflow) {
+  flex-wrap: wrap;
+  height: auto;
+  row-gap: 10px;
+}
+
+/* O painel ocupa a propria linha, abaixo do titulo, em vez de disputa-la. */
+.doc-controls__controls-wrapper:has(.cinerie-workflow) {
+  flex-basis: 100%;
+}
+
+/*
+ * Com o painel dentro, o cabecalho fica alto demais para grudar no topo: os
+ * ~236px medidos cobririam boa parte da tela durante a rolagem. As abas ficam
+ * logo abaixo e continuam alcancaveis.
+ */
+.doc-controls:has(.cinerie-workflow) {
+  position: static;
 }

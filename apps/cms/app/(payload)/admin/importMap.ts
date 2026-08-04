@@ -1,9 +1,12 @@
+import BlockIdField from '../../../src/admin/BlockIdField.js'
+import BlockRowLabel from '../../../src/admin/BlockRowLabel.js'
 import CinerieIcon from '../../../src/admin/CinerieIcon.js'
 import CinerieLogo from '../../../src/admin/CinerieLogo.js'
 import EditorialDashboard from '../../../src/admin/EditorialDashboard.js'
 import MediaLicenseNotice from '../../../src/admin/MediaLicenseNotice.js'
 import MediaReleaseControl from '../../../src/admin/MediaReleaseControl.js'
 import OriginCell from '../../../src/admin/OriginCell.js'
+import ParagraphTextField from '../../../src/admin/ParagraphTextField.js'
 import QaApprovalField from '../../../src/admin/QaApprovalField.js'
 import SlugField from '../../../src/admin/SlugField.js'
 import WorkflowTransitionBar from '../../../src/admin/WorkflowTransitionBar.js'
@@ -26,12 +29,15 @@ import WorkflowTransitionBar from '../../../src/admin/WorkflowTransitionBar.js'
  * estas chaves com o que a configuracao realmente pede.
  */
 export const importMap = {
+  '/src/admin/BlockIdField#default': BlockIdField,
+  '/src/admin/BlockRowLabel#default': BlockRowLabel,
   '/src/admin/CinerieIcon#default': CinerieIcon,
   '/src/admin/CinerieLogo#default': CinerieLogo,
   '/src/admin/EditorialDashboard#default': EditorialDashboard,
   '/src/admin/MediaLicenseNotice#default': MediaLicenseNotice,
   '/src/admin/MediaReleaseControl#default': MediaReleaseControl,
   '/src/admin/OriginCell#default': OriginCell,
+  '/src/admin/ParagraphTextField#default': ParagraphTextField,
   '/src/admin/QaApprovalField#default': QaApprovalField,
   '/src/admin/SlugField#default': SlugField,
   '/src/admin/WorkflowTransitionBar#default': WorkflowTransitionBar,

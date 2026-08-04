@@ -299,12 +299,15 @@ export interface Article {
   slug?: string | null;
   summary?: string | null;
   contentType: 'news' | 'feature' | 'review' | 'guide' | 'list' | 'interview' | 'evergreen';
-  language: string;
+  /**
+   * Só pt-BR é publicado hoje. Inglês e espanhol ficam em rascunho até revisão humana.
+   */
+  language: 'pt-BR' | 'en' | 'es';
   body?:
     | (
         | {
             /**
-             * Id estavel: ancora comentario e correcao entre versoes.
+             * Âncora deste trecho. Gerada automaticamente.
              */
             blockId: string;
             text: string;
@@ -330,7 +333,7 @@ export interface Article {
           }
         | {
             /**
-             * Id estavel: ancora comentario e correcao entre versoes.
+             * Âncora deste trecho. Gerada automaticamente.
              */
             blockId: string;
             level: '2' | '3' | '4';
@@ -341,7 +344,7 @@ export interface Article {
           }
         | {
             /**
-             * Id estavel: ancora comentario e correcao entre versoes.
+             * Âncora deste trecho. Gerada automaticamente.
              */
             blockId: string;
             media: number | Media;
@@ -354,7 +357,7 @@ export interface Article {
           }
         | {
             /**
-             * Id estavel: ancora comentario e correcao entre versoes.
+             * Âncora deste trecho. Gerada automaticamente.
              */
             blockId: string;
             provider: 'youtube' | 'vimeo' | 'internal';
@@ -368,7 +371,7 @@ export interface Article {
           }
         | {
             /**
-             * Id estavel: ancora comentario e correcao entre versoes.
+             * Âncora deste trecho. Gerada automaticamente.
              */
             blockId: string;
             text: string;
@@ -380,7 +383,7 @@ export interface Article {
           }
         | {
             /**
-             * Id estavel: ancora comentario e correcao entre versoes.
+             * Âncora deste trecho. Gerada automaticamente.
              */
             blockId: string;
             entityKind: 'movie' | 'tv' | 'season' | 'episode' | 'person' | 'character' | 'franchise';
@@ -392,7 +395,7 @@ export interface Article {
           }
         | {
             /**
-             * Id estavel: ancora comentario e correcao entre versoes.
+             * Âncora deste trecho. Gerada automaticamente.
              */
             blockId: string;
             title: string;
@@ -409,7 +412,7 @@ export interface Article {
           }
         | {
             /**
-             * Id estavel: ancora comentario e correcao entre versoes.
+             * Âncora deste trecho. Gerada automaticamente.
              */
             blockId: string;
             articleRefs: string[];
@@ -419,7 +422,7 @@ export interface Article {
           }
         | {
             /**
-             * Id estavel: ancora comentario e correcao entre versoes.
+             * Âncora deste trecho. Gerada automaticamente.
              */
             blockId: string;
             sourceRefs: string[];
@@ -429,7 +432,7 @@ export interface Article {
           }
         | {
             /**
-             * Id estavel: ancora comentario e correcao entre versoes.
+             * Âncora deste trecho. Gerada automaticamente.
              */
             blockId: string;
             id?: string | null;
@@ -438,14 +441,26 @@ export interface Article {
           }
       )[]
     | null;
+  /**
+   * Não bloqueia a publicação, mas matéria sem capa perde espaço nas listas e no compartilhamento.
+   */
   heroMedia?: (number | null) | Media;
   gallery?: (number | Media)[] | null;
+  /**
+   * Obrigatório para publicar: ao menos um autor ativo. Um rascunho pode ficar sem autor.
+   */
   authors?: (number | Author)[] | null;
   primaryAuthor?: (number | null) | Author;
   assignedTo?: (number | null) | EditorialUser;
   section?: string | null;
   internalTags?: string[] | null;
+  /**
+   * O que aparece como título no Google. Cerca de 60 caracteres — acima disso, corta.
+   */
   metaTitle?: string | null;
+  /**
+   * O trecho abaixo do título no resultado. Cerca de 155 caracteres — acima disso, corta.
+   */
   metaDescription?: string | null;
   focusKeyphrase?: string | null;
   relatedKeyphrases?: string[] | null;
@@ -514,7 +529,7 @@ export interface Article {
   qaVersion?: string | null;
   qaPassedAt?: string | null;
   /**
-   * Fonte da verdade do fluxo editorial. `_status` do Payload tem 2 valores; o fluxo real tem 12.
+   * Em que pé está a matéria. Para avançar ou voltar, use os botões no topo da tela.
    */
   workflowStatus:
     | 'automation_draft'
