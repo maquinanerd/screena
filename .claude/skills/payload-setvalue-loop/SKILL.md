@@ -94,8 +94,12 @@ isso.
 
 ## Ancoras
 
-- Caso concreto: **PR #104**, `apps/cms/src/admin/SlugField.tsx` — o efeito que
-  acompanha `title` chamava `setValue(result.slug)` sem comparar.
+- Caso concreto: **PR #104**, mergeada em `627de4b`. O efeito que acompanha
+  `title` em `apps/cms/src/admin/SlugField.tsx` chamava `setValue(result.slug)`
+  sem comparar. A versao corrigida na `main` e a **implementacao de
+  referencia**: ela extrai a decisao para uma funcao pura
+  (`decision.action === 'write'`) em vez de decidir dentro do efeito — o que
+  tambem a torna testavel, ja que o vitest do CMS **nao coleta `.tsx`**.
 - Comportamento no pacote: `@payloadcms/ui`, `dist/forms/useField/index.js` — o
   `setValue` despacha `UPDATE` e chama `setModified(true)` sem comparar; a
   validacao roda sob `useThrottledEffect(..., 150, ...)`. As linhas apontadas na
