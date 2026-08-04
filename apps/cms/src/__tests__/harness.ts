@@ -42,6 +42,15 @@ import {
   skipBuildAllowed,
   type SourceFileStamp,
 } from '../build-fingerprint.js'
+import {
+  decideMigrationOutcome,
+  describeDatabaseFailure,
+  describeSchemaDiagnosis,
+  diagnoseSchema,
+  isDatabaseGoneError,
+  type SchemaExpectation,
+  type SchemaProbe,
+} from './harness-diagnostics.js'
 
 const cmsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 
@@ -166,8 +175,45 @@ async function freePort(): Promise<number> {
 }
 
 /**
+ * Sonda o banco PELA CONEXAO DO PAYLOAD e devolve uma observacao — ou a
+ * constatacao de que nao houve resposta.
+ *
+ * A falha de conexao e CAPTURADA de proposito. Deixar a rejeicao subir daqui
+ * produzia um `57P01` cru no relatorio do vitest, sem uma palavra sobre o que o
+ * harness estava tentando provar. O veredito e a mensagem ficam em
+ * `harness-diagnostics.ts`, que e puro e testado.
+ */
+async function probePayloadSchema(payload: Payload): Promise<SchemaProbe> {
+  const pool = (
+    payload.db as unknown as {
+      pool?: { query?: (text: string) => Promise<{ rows: Record<string, unknown>[] }> }
+    }
+  ).pool
+  if (pool?.query === undefined) {
+    return { kind: 'unreachable', detail: 'pool do Payload indisponivel' }
+  }
+
+  try {
+    const { rows } = await pool.query(
+      "select current_database() as db, inet_server_port() as port, to_regclass('public.editorial_users')::text as rel",
+    )
+    const row: Record<string, unknown> = rows[0] ?? {}
+    return {
+      kind: 'observed',
+      observation: {
+        database: String(row.db ?? ''),
+        port: Number(row.port ?? 0),
+        editorialUsersPresent: row.rel !== null && row.rel !== undefined,
+      },
+    }
+  } catch (error) {
+    return { kind: 'unreachable', detail: describeDatabaseFailure(error) }
+  }
+}
+
+/**
  * Prova que a Local API do Payload esta ligada ao MESMO banco que o harness
- * acabou de migrar.
+ * acabou de migrar, E que aquele banco tem o schema.
  *
  * Sem esta checagem, um Payload apontado para o banco errado (ou um `payload
  * migrate` que saiu 0 sem aplicar nada) so aparece dezenas de segundos depois,
@@ -178,34 +224,161 @@ async function freePort(): Promise<number> {
  */
 async function assertPayloadSchema(
   payload: Payload,
-  expected: { database: string; port: number; migrationOutput: string },
+  expected: SchemaExpectation & { migrationOutput: string },
 ): Promise<void> {
-  const pool = (
-    payload.db as unknown as {
-      pool?: { query?: (text: string) => Promise<{ rows: Record<string, unknown>[] }> }
-    }
-  ).pool
-  if (pool?.query === undefined) {
-    throw new Error('harness do CMS: pool do Payload indisponivel para verificar o schema')
-  }
-  const { rows } = await pool.query(
-    "select current_database() as db, inet_server_port() as port, to_regclass('public.editorial_users')::text as rel",
-  )
-  const row: Record<string, unknown> = rows[0] ?? {}
-  const db = String(row.db ?? '')
-  const port = Number(row.port ?? 0)
-  const rel = row.rel === null || row.rel === undefined ? null : String(row.rel)
+  const probe = await probePayloadSchema(payload)
+  const diagnosis = diagnoseSchema(expected, probe)
+  if (diagnosis === 'ok') return
 
-  if (db !== expected.database || port !== expected.port || rel === null) {
-    throw new Error(
-      [
-        'harness do CMS: a Local API do Payload NAO esta no banco que o harness migrou.',
-        `esperado: db=${expected.database} porta=${String(expected.port)} tabela=editorial_users`,
-        `obtido:   db=${db} porta=${String(port)} tabela=${rel ?? '(ausente)'}`,
-        `saida de 'payload migrate':\n${expected.migrationOutput.trim() || '(vazia)'}`,
-      ].join('\n'),
+  throw new Error(
+    describeSchemaDiagnosis(diagnosis, {
+      expected,
+      probe,
+      migrationOutput: expected.migrationOutput,
+    }),
+  )
+}
+
+/**
+ * Quantas vezes tentar o `payload migrate` antes de desistir.
+ *
+ * Nao e paciencia com um banco lento — o CLI e SINCRONO e ja terminou quando
+ * verificamos. E tolerancia a uma saida 0 que nao aplicou nada (ver
+ * `applyCmsMigrations`). Tres tentativas: uma falha e o caso observado, duas
+ * seguidas nunca foram, e um teto baixo mantem o custo do caminho ruim baixo.
+ */
+const MIGRATION_ATTEMPTS = 3
+
+/**
+ * O schema do CMS existe NESTE banco?
+ *
+ * Pergunta feita por uma conexao propria e curta, direto ao cluster efemero —
+ * nao pela Local API, que so nasce depois do build. Verificar aqui, antes dos
+ * ~2 minutos de `next build`, e o que transforma "falhou no fim do boot" em
+ * "falhou onde a causa esta".
+ */
+async function cmsSchemaExists(pg: EmbeddedPostgres, database: string): Promise<boolean> {
+  // Host EXPLICITO: o default de `getPgClient` e `localhost`, que em runner
+  // dual-stack pode sair por `::1` enquanto o resto do harness fala `127.0.0.1`.
+  // Sondar por outra interface responderia sobre outra conexao.
+  const client = pg.getPgClient(database, '127.0.0.1')
+  await client.connect()
+  try {
+    const { rows } = await client.query<{ migrations: boolean; users: boolean }>(
+      "select to_regclass('public.payload_migrations') is not null as migrations," +
+        " to_regclass('public.editorial_users') is not null as users",
     )
+    const row = rows[0]
+    return row !== undefined && row.migrations && row.users
+  } finally {
+    await client.end()
   }
+}
+
+/**
+ * Aplica as migrations e PROVA que elas chegaram — nao confia no codigo de
+ * saida.
+ *
+ * POR QUE NAO CONFIAR NO EXIT CODE. O `bin.js` do Payload dispara todo o corpo
+ * do CLI com `void start()`: sem `await`, sem `catch` e sem propagar o
+ * resultado para o codigo de saida do processo. O codigo de saida do `node`
+ * fica, portanto, DESACOPLADO de a migration ter rodado. Em CI isso aparecia
+ * como `payload migrate` saindo 0 com stdout E stderr vazios (nem o aviso de
+ * email adapter, que e a primeira linha que o `payload.init()` emite) e nenhuma
+ * tabela criada. O harness seguia em frente, gastava ~2 minutos de `next build`
+ * e so descobria o problema no fim, com uma mensagem que apontava para o banco
+ * errado. Era esta a flake que obrigava re-run em quase toda PR.
+ *
+ * Migrations REAIS pelo CLI REAL continuam sendo o certo: nao usamos
+ * `payload.db.migrate()` porque o arquivo gerado importa
+ * `MigrateUpArgs`/`MigrateDownArgs` como named imports e esses tipos nao existem
+ * em runtime sob o loader do vitest. O que muda e a prova: o veredito passa a
+ * ser o estado do BANCO, nao o do processo.
+ */
+async function applyCmsMigrations(
+  pg: EmbeddedPostgres,
+  database: string,
+  childEnv: NodeJS.ProcessEnv,
+): Promise<string> {
+  const binJs = path.join(cmsDir, 'node_modules', 'payload', 'bin.js')
+  const silentAttempts: string[] = []
+
+  for (let attempt = 1; attempt <= MIGRATION_ATTEMPTS; attempt += 1) {
+    const migration = spawnSync('node', ['--no-warnings', binJs, 'migrate'], {
+      cwd: cmsDir,
+      env: childEnv,
+      stdio: 'pipe',
+      shell: false,
+    })
+    const output = `${migration.stdout?.toString() ?? ''}\n${migration.stderr?.toString() ?? ''}`
+
+    // A pergunta e feita ao BANCO, nao ao processo. `decideMigrationOutcome` e
+    // pura e esta coberta por teste: a regra nao mora nesta glue.
+    let schemaPresent = false
+    if (migration.status === 0) {
+      try {
+        schemaPresent = await cmsSchemaExists(pg, database)
+      } catch (error) {
+        // Nao ha o que retentar contra um cluster que morreu, e chamar isso de
+        // "migration ausente" repetiria o defeito que esta correcao desfaz:
+        // atribuir a schema uma falha que e de conexao.
+        if (isDatabaseGoneError(error)) {
+          throw new Error(
+            [
+              'harness do CMS: o PostgreSQL efemero caiu durante a verificacao das migrations.',
+              `detalhe: ${describeDatabaseFailure(error)}`,
+            ].join('\n'),
+          )
+        }
+        throw error
+      }
+    }
+    const decision = decideMigrationOutcome({
+      attempt,
+      maxAttempts: MIGRATION_ATTEMPTS,
+      exitStatus: migration.status,
+      schemaPresent,
+    })
+
+    if (decision === 'accept') {
+      if (attempt > 1) {
+        console.warn(
+          `[cms-it] 'payload migrate' saiu 0 sem aplicar nada ${String(attempt - 1)}x; ` +
+            `o schema so apareceu na tentativa ${String(attempt)}.`,
+        )
+      }
+      return output
+    }
+
+    if (decision === 'fail_reported') {
+      throw new Error(
+        `migrations do CMS falharam (exit ${String(migration.status)}, sinal ${String(
+          migration.signal,
+        )}): ${migration.stderr?.toString() ?? ''}`,
+      )
+    }
+
+    silentAttempts.push(
+      `tentativa ${String(attempt)}: exit 0, ${String(output.trim().length)} bytes de saida, ` +
+        'schema ainda ausente',
+    )
+
+    if (decision === 'fail_silent') {
+      throw new Error(
+        [
+          `harness do CMS: 'payload migrate' saiu 0 em ${String(MIGRATION_ATTEMPTS)} tentativas`,
+          'sem criar o schema no banco efemero.',
+          'O codigo de saida do CLI do Payload NAO prova que a migration rodou (`bin.js` dispara',
+          '`void start()`, sem await e sem catch), por isso o harness verifica o BANCO.',
+          ...silentAttempts,
+        ].join('\n'),
+      )
+    }
+  }
+
+  // Inalcancavel: `decideMigrationOutcome` devolve `fail_silent` na ultima
+  // tentativa. Existe para o TypeScript e como rede se o teto mudar.
+  throw new Error("harness do CMS: 'payload migrate' nao produziu veredito")
 }
 
 /** Espera o servidor responder. Falha com mensagem util em vez de travar. */
@@ -240,23 +413,126 @@ async function waitForServer(baseUrl: string, timeoutMs: number): Promise<void> 
   throw new Error(`servidor do CMS nao respondeu em ${String(timeoutMs)}ms: ${lastError}`)
 }
 
+/**
+ * Tudo que o boot cria e que PRECISA morrer, em qualquer desfecho.
+ *
+ * Os campos sao opcionais porque o boot falha em qualquer ponto: o que ja
+ * nasceu e desligado, o que nao nasceu e ignorado.
+ */
+interface HarnessResources {
+  readonly uploadRoot: string
+  dataDir?: string
+  pg?: EmbeddedPostgres
+  server?: ChildProcess
+  payload?: Payload
+}
+
+/**
+ * Desliga o harness na ordem certa. UNICO caminho de teardown — o `stop()` e o
+ * caminho de boot falho chamam este mesmo codigo.
+ *
+ * A ORDEM e a correcao. Antes, um boot que falhava so removia o diretorio de
+ * upload: o `next start`, o pool do Payload e o PostgreSQL efemero ficavam de
+ * pe. Quem os derrubava era o gancho de saida de processo do proprio
+ * `embedded-postgres` ("automatically shut down when the script exits"), que
+ * manda um `pg_ctl stop -m fast` — e o fast shutdown derruba os backends com
+ * `57P01`. Como o pool do Payload nunca fora fechado, o erro chegava ao vitest
+ * como excecao NAO TRATADA, DEPOIS do ambiente de teste ter sido desmontado.
+ * O resultado eram duas mensagens para uma unica falha: a real (schema) e um
+ * `57P01` barulhento que parecia a causa e nao era.
+ *
+ * Alem disso, `afterAll(() => harness?.stop())` NAO cobria esse caso: quando o
+ * boot lanca, `harness` continua `undefined` e o `?.` faz o teardown virar
+ * no-op. Por isso a limpeza mora aqui, e nao no teste.
+ */
+async function shutdownHarness(resources: HarnessResources): Promise<void> {
+  // 1. O servidor primeiro: enquanto ele vive, continua emitindo consultas.
+  if (resources.server !== undefined) {
+    try {
+      resources.server.kill()
+    } catch {
+      /* pode ja ter morrido */
+    }
+  }
+
+  // 2. `destroy()` do adapter NAO fecha o pool: ele so limpa schema, tabelas e
+  // relations em memoria. O pool sobrevive, ve o PostgreSQL cair e emite
+  // "Connection terminated unexpectedly" — que o vitest reporta como erro
+  // NAO TRATADO. O resultado era 33 testes verdes com o processo saindo em
+  // codigo 1: CI vermelho sem teste vermelho, o pior tipo de sinal.
+  //
+  // Fechar o pool ANTES de derrubar o banco resolve na ordem certa: as
+  // conexoes terminam por decisao nossa, nao por morte do servidor.
+  if (resources.payload !== undefined) {
+    try {
+      const pool = (resources.payload.db as unknown as { pool?: { end?: () => Promise<void> } })
+        .pool
+      // COM TETO. `pool.end()` espera cada cliente em uso ser devolvido, e um
+      // cliente que nunca volta — transacao abortada, por exemplo — trava o
+      // teardown para sempre (o hook estourava os 300s). O teto de 5s tenta o
+      // fechamento gracioso e segue em frente quando ele nao vem: o processo
+      // esta terminando de qualquer forma, e derrubar o banco depois de
+      // tentar fechar e melhor do que nao tentar.
+      await Promise.race([
+        pool?.end?.() ?? Promise.resolve(),
+        new Promise((resolve) => setTimeout(resolve, 5_000)),
+      ])
+    } catch {
+      /* pool pode ja estar fechado */
+    }
+    try {
+      await resources.payload.db.destroy?.()
+    } catch {
+      /* estado em memoria: falhar aqui nao impede derrubar o banco */
+    }
+  }
+
+  // 3. So agora o banco. Se algum cliente escapou dos passos acima, e aqui que
+  // ele levaria `57P01` — e a essa altura ninguem mais esta ouvindo.
+  if (resources.pg !== undefined) {
+    try {
+      await resources.pg.stop()
+    } catch {
+      /* idem */
+    }
+  }
+
+  // No Windows o Postgres segura handles por instantes apos o stop.
+  if (resources.dataDir !== undefined) {
+    const dataDir = resources.dataDir
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      try {
+        rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+        break
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, 400))
+      }
+    }
+  }
+
+  removeUploadRoot(resources.uploadRoot)
+}
+
 export async function startCmsHarness(): Promise<CmsHarness> {
   // O diretorio nasce ANTES do boot justamente para poder ser removido quando o
   // boot falhar: sem isto, cada migration quebrada ou servidor que nao sobe
   // deixaria uma pasta orfa em `apps/cms/media/`, porque o `stop()` — unico
   // lugar que limpava — so existe depois do `return`.
-  const uploadRoot = createUploadRoot()
+  const resources: HarnessResources = { uploadRoot: createUploadRoot() }
   try {
-    return await bootCmsHarness(uploadRoot)
+    return await bootCmsHarness(resources)
   } catch (error) {
-    removeUploadRoot(uploadRoot)
+    // Limpeza COMPLETA, nao so o diretorio de upload: ver `shutdownHarness`.
+    await shutdownHarness(resources)
     throw error
   }
 }
 
-async function bootCmsHarness(uploadRoot: string): Promise<CmsHarness> {
+async function bootCmsHarness(resources: HarnessResources): Promise<CmsHarness> {
+  const { uploadRoot } = resources
   const pgPort = await freePort()
   const dataDir = mkdtempSync(path.join(tmpdir(), 'cinerie-cms-it-'))
+  resources.dataDir = dataDir
   const database = 'cinerie_cms_integration'
 
   const pg = new EmbeddedPostgres({
@@ -269,6 +545,9 @@ async function bootCmsHarness(uploadRoot: string): Promise<CmsHarness> {
 
   await pg.initialise()
   await pg.start()
+  // Registrado SO depois do `start()`: parar um cluster que nunca subiu falha e
+  // esconderia o erro real do boot atras de um erro de teardown.
+  resources.pg = pg
   await pg.createDatabase(database)
 
   // `DATABASE_URL` sai do ambiente: se um fallback aparecer por descuido no
@@ -304,20 +583,10 @@ async function bootCmsHarness(uploadRoot: string): Promise<CmsHarness> {
   process.env.PAYLOAD_UPLOAD_LOCAL_ROOT = uploadRoot
   process.env.PAYLOAD_UPLOAD_LOCAL_PERSISTENT_CONFIRMED = 'true'
 
-  // Migrations REAIS pelo CLI REAL. Nao usamos `payload.db.migrate()` porque o
-  // arquivo gerado importa `MigrateUpArgs`/`MigrateDownArgs` como named imports
-  // e esses tipos nao existem em runtime sob o loader do vitest.
-  const migration = spawnSync(
-    'node',
-    ['--no-warnings', path.join(cmsDir, 'node_modules', 'payload', 'bin.js'), 'migrate'],
-    { cwd: cmsDir, env: childEnv, stdio: 'pipe', shell: false },
-  )
-  const migrationOutput = `${migration.stdout?.toString() ?? ''}\n${migration.stderr?.toString() ?? ''}`
-  if (migration.status !== 0) {
-    throw new Error(
-      `migrations do CMS falharam (exit ${String(migration.status)}): ${migration.stderr?.toString() ?? ''}`,
-    )
-  }
+  // Migrations aplicadas e VERIFICADAS contra o banco (ver `applyCmsMigrations`).
+  // Roda antes do `next build` de proposito: falhar aqui custa segundos, falhar
+  // depois do build custava ~2 minutos e apontava para a causa errada.
+  const migrationOutput = await applyCmsMigrations(pg, database, childEnv)
 
   const nextBin = path.join(cmsDir, 'node_modules', 'next', 'dist', 'bin', 'next')
   const fingerprintFile = path.join(cmsDir, '.next', 'cms-it-source-fingerprint.txt')
@@ -398,6 +667,10 @@ async function bootCmsHarness(uploadRoot: string): Promise<CmsHarness> {
     [nextBin, 'start', '--port', String(httpPort), '--hostname', '127.0.0.1'],
     { cwd: cmsDir, env: serverEnv, stdio: 'pipe', shell: false },
   )
+  // Registrado JA: se o `waitForServer` ou a guarda de schema falharem daqui em
+  // diante, este processo precisa morrer junto — um `next start` orfao segura a
+  // porta e conexoes com o banco que esta prestes a cair.
+  resources.server = server
 
   // A saida do servidor e GUARDADA, nao descartada. Sem isso, uma falha de
   // boot vira apenas "fetch failed" no `waitForServer` — que nao diz nada sobre
@@ -429,6 +702,10 @@ async function bootCmsHarness(uploadRoot: string): Promise<CmsHarness> {
     import('../payload.config.js'),
   ])
   const payload = await getPayload({ config: configModule.default })
+  // Registrado ANTES da guarda: se a guarda reprovar, o pool precisa ser fechado
+  // pelo teardown. Era exatamente este pool orfao que recebia o `57P01` quando o
+  // gancho de saida do `embedded-postgres` derrubava o cluster.
+  resources.payload = payload
   await assertPayloadSchema(payload, { database, port: pgPort, migrationOutput })
 
   return {
@@ -438,56 +715,7 @@ async function bootCmsHarness(uploadRoot: string): Promise<CmsHarness> {
     // depois do boot (config valida, servidor de pe, requisicao quebrando)
     // ficava invisivel — e era exatamente o caso mais dificil de diagnosticar.
     serverLog: () => serverLog,
-    async stop() {
-      try {
-        server.kill()
-      } catch {
-        /* pode ja ter morrido */
-      }
-      // `destroy()` do adapter NAO fecha o pool: ele so limpa schema, tabelas e
-      // relations em memoria. O pool sobrevive, ve o PostgreSQL cair e emite
-      // "Connection terminated unexpectedly" — que o vitest reporta como erro
-      // NAO TRATADO. O resultado era 33 testes verdes com o processo saindo em
-      // codigo 1: CI vermelho sem teste vermelho, o pior tipo de sinal.
-      //
-      // Fechar o pool ANTES de derrubar o banco resolve na ordem certa: as
-      // conexoes terminam por decisao nossa, nao por morte do servidor.
-      try {
-        const pool = (payload.db as unknown as { pool?: { end?: () => Promise<void> } }).pool
-        // COM TETO. `pool.end()` espera cada cliente em uso ser devolvido, e um
-        // cliente que nunca volta — transacao abortada, por exemplo — trava o
-        // teardown para sempre (o hook estourava os 300s). O teto de 5s tenta o
-        // fechamento gracioso e segue em frente quando ele nao vem: o processo
-        // esta terminando de qualquer forma, e derrubar o banco depois de
-        // tentar fechar e melhor do que nao tentar.
-        await Promise.race([
-          pool?.end?.() ?? Promise.resolve(),
-          new Promise((resolve) => setTimeout(resolve, 5_000)),
-        ])
-      } catch {
-        /* pool pode ja estar fechado */
-      }
-      try {
-        await payload.db.destroy?.()
-      } catch {
-        /* estado em memoria: falhar aqui nao impede derrubar o banco */
-      }
-      try {
-        await pg.stop()
-      } catch {
-        /* idem */
-      }
-      // No Windows o Postgres segura handles por instantes apos o stop.
-      for (let attempt = 0; attempt < 5; attempt += 1) {
-        try {
-          rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
-          break
-        } catch {
-          await new Promise((resolve) => setTimeout(resolve, 400))
-        }
-      }
-      removeUploadRoot(uploadRoot)
-    },
+    stop: () => shutdownHarness(resources),
   }
 }
 

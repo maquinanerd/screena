@@ -7,7 +7,8 @@
  * tese do ADR 0015, e um teste que rodasse os dois lados sobre a mesma base
  * nao provaria nada sobre ela.
  *
- * DESCARTAVEL. Nenhum segredo, URL so em memoria, PG derrubado no `stop()`.
+ * DESCARTAVEL. Nenhum segredo, URL so em memoria, PG derrubado no `stop()` — e
+ * tambem quando o boot falha no meio, pelo MESMO teardown (ver `startScreenDbHarness`).
  */
 
 import { execFileSync } from 'node:child_process'
@@ -33,15 +34,48 @@ export interface ScreenDbHarness {
   stop(): Promise<void>
 }
 
+/**
+ * Reserva um numero de porta livre e DEVOLVE A PORTA DESOCUPADA.
+ *
+ * O `close` antes do `resolve` nao e higiene — e a correcao de um defeito. A
+ * versao anterior resolvia dentro do callback do `listen` e so entao chamava
+ * `close()`: quem recebia a porta podia tentar bindar antes de o socket de
+ * sondagem ter saido, e o Postgres efemero colidia com o proprio harness.
+ * `unref()` nao ajuda — ele tira o handle da contagem do event loop, mas a
+ * porta continua ocupada.
+ *
+ * E o mesmo defeito ja documentado e corrigido em
+ * `apps/cms/src/__tests__/harness.ts`; aqui ele havia sobrevivido. O `host`
+ * explicito ja estava certo e permanece: sem ele, `listen(0)` binda em `::`
+ * cobrindo o par IPv4+IPv6, e no runner Linux o Postgres falhava em `::1` E em
+ * `127.0.0.1`.
+ */
 function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const srv = net.createServer()
     srv.unref()
-    srv.on('error', reject)
-    srv.listen(0, '127.0.0.1', () => {
+    srv.once('error', reject)
+    srv.listen({ host: '127.0.0.1', port: 0, exclusive: true }, () => {
       const addr = srv.address()
-      resolve(typeof addr === 'object' && addr !== null ? addr.port : 0)
-      srv.close()
+      const port = typeof addr === 'object' && addr !== null ? addr.port : 0
+
+      // Porta 0 aqui significa que o endereco nao veio como esperado. Devolver
+      // esse zero adiante faria o Postgres escolher uma porta que o harness nao
+      // conhece, e a falha apareceria longe da causa.
+      if (port <= 0) {
+        srv.close(() => {
+          reject(new Error('nao foi possivel reservar uma porta TCP valida'))
+        })
+        return
+      }
+
+      srv.close((error) => {
+        if (error !== undefined) {
+          reject(error)
+          return
+        }
+        resolve(port)
+      })
     })
   })
 }
@@ -68,44 +102,75 @@ export async function startScreenDbHarness(): Promise<ScreenDbHarness> {
 
   await pg.initialise()
   await pg.start()
-  await pg.createDatabase(database)
-  const url = `postgresql://postgres:postgres@127.0.0.1:${String(port)}/${database}`
 
-  // Migration REAL, nao SQL sintetico: o teste tem que falhar se a migration
-  // que vai para producao estiver errada.
-  const env = { ...process.env, DATABASE_URL: url }
-  execFileSync('node', [prismaBin(), 'migrate', 'deploy', '--schema', schemaPath], {
-    env,
-    stdio: 'pipe',
-    cwd: dbDir,
-  })
-  // O seed traz `languages` (pt-BR/en/es), sem o qual a FK da traducao recusa.
-  execFileSync('node', [prismaBin(), 'db', 'seed', '--schema', schemaPath], {
-    env,
-    stdio: 'pipe',
-    cwd: dbDir,
-  })
+  // O cliente so nasce no fim do boot, mas o teardown precisa enxerga-lo desde
+  // ja: e o MESMO teardown que roda quando o boot falha no meio, e nesse
+  // momento ele pode existir ou nao.
+  let prisma: PrismaClient | null = null
 
-  const prisma = new PrismaClient({ datasources: { db: { url } } })
-
-  return {
-    prisma,
-    url,
-    stop: async (): Promise<void> => {
-      await prisma.$disconnect()
+  /**
+   * Desligamento UNICO — usado pelo `stop()` devolvido E pelo caminho de falha.
+   *
+   * Uma copia so, porque a ORDEM e o que importa. `pg.stop()` executa
+   * `pg_ctl stop -m fast`, que manda SIGTERM aos backends: qualquer conexao
+   * ainda aberta recebe `57P01 terminating connection due to administrator
+   * command`. Desconectar o Prisma ANTES faz as conexoes terminarem por decisao
+   * nossa, nao por morte do servidor. Duas copias desta sequencia divergiriam.
+   *
+   * Cada passo e isolado: falhar ao desconectar nao pode impedir derrubar o
+   * banco, e falhar ao derrubar o banco nao pode impedir remover o `dataDir`.
+   */
+  const teardown = async (): Promise<void> => {
+    try {
+      await prisma?.$disconnect()
+    } catch {
+      /* pode ja estar desconectado */
+    }
+    try {
+      await pg.stop()
+    } catch {
+      /* o processo pode ja ter morrido */
+    }
+    for (let attempt = 0; attempt < 5; attempt += 1) {
       try {
-        await pg.stop()
+        rmSync(dataDir, { recursive: true, force: true })
+        return
       } catch {
-        /* o processo pode ja ter morrido */
+        await new Promise((resolve) => setTimeout(resolve, 300))
       }
-      for (let attempt = 0; attempt < 5; attempt += 1) {
-        try {
-          rmSync(dataDir, { recursive: true, force: true })
-          return
-        } catch {
-          await new Promise((resolve) => setTimeout(resolve, 300))
-        }
-      }
-    },
+    }
+  }
+
+  try {
+    await pg.createDatabase(database)
+    const url = `postgresql://postgres:postgres@127.0.0.1:${String(port)}/${database}`
+
+    // Migration REAL, nao SQL sintetico: o teste tem que falhar se a migration
+    // que vai para producao estiver errada.
+    const env = { ...process.env, DATABASE_URL: url }
+    execFileSync('node', [prismaBin(), 'migrate', 'deploy', '--schema', schemaPath], {
+      env,
+      stdio: 'pipe',
+      cwd: dbDir,
+    })
+    // O seed traz `languages` (pt-BR/en/es), sem o qual a FK da traducao recusa.
+    execFileSync('node', [prismaBin(), 'db', 'seed', '--schema', schemaPath], {
+      env,
+      stdio: 'pipe',
+      cwd: dbDir,
+    })
+
+    const client = new PrismaClient({ datasources: { db: { url } } })
+    prisma = client
+
+    return { prisma: client, url, stop: teardown }
+  } catch (error) {
+    // Sem este teardown o `stop()` nunca chega ao chamador e o cluster efemero
+    // fica de pe. Quem o derruba entao e o gancho de saida do proprio
+    // `embedded-postgres` — DEPOIS que o ambiente de teste ja foi desmontado. O
+    // `57P01` resultante chega ao vitest como excecao NAO TRATADA e esconde o
+    // erro real (migration quebrada, seed falhando) atras de um sintoma de banco.
+    await teardown()
+    throw error
   }
 }

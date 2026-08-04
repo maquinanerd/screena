@@ -52,34 +52,59 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
 
   const harness = await startCmsHarness()
 
-  const email = `admin.e2e@cinerie.test`
-  const password = `senha-e2e-${randomUUID()}`
-  const admin = await harness.payload.create({
-    collection: 'editorial-users',
-    data: {
-      email,
-      password,
-      displayName: 'Administradora E2E',
-      role: 'administrator',
-      active: true,
-    } as never,
-    overrideAccess: true,
-  })
+  // A partir daqui o CMS esta DE PE. Qualquer falha na montagem das fixtures
+  // precisa derruba-lo antes de subir: sem isto, o `return` com o teardown nunca
+  // acontece, e o PostgreSQL efemero so morre pelo gancho de saida do
+  // `embedded-postgres` — um `pg_ctl stop -m fast` que atinge o pool aberto do
+  // Payload e chega ao relatorio como `57P01` nao tratado, escondendo o erro
+  // real por tras de um sintoma de banco.
+  let fixtureDir: string | null = null
+  try {
+    const email = `admin.e2e@cinerie.test`
+    const password = `senha-e2e-${randomUUID()}`
+    const admin = await harness.payload.create({
+      collection: 'editorial-users',
+      data: {
+        email,
+        password,
+        displayName: 'Administradora E2E',
+        role: 'administrator',
+        active: true,
+      } as never,
+      overrideAccess: true,
+    })
 
-  // Arquivo de imagem para o upload PELO PAINEL. O teste sobe este arquivo pelo
-  // seletor real de `input[type=file]`, nao pela Local API.
-  const fixtureDir = mkdtempSync(path.join(tmpdir(), 'cinerie-e2e-fixture-'))
-  const mediaFixturePath = path.join(fixtureDir, 'capa-e2e.jpg')
-  writeFileSync(mediaFixturePath, jpegBytes())
+    // Arquivo de imagem para o upload PELO PAINEL. O teste sobe este arquivo pelo
+    // seletor real de `input[type=file]`, nao pela Local API.
+    fixtureDir = mkdtempSync(path.join(tmpdir(), 'cinerie-e2e-fixture-'))
+    const mediaFixturePath = path.join(fixtureDir, 'capa-e2e.jpg')
+    writeFileSync(mediaFixturePath, jpegBytes())
 
-  const state: E2EState = {
-    baseUrl: harness.baseUrl,
-    admin: { email, password, id: Number(admin.id) },
-    mediaFixturePath,
+    const state: E2EState = {
+      baseUrl: harness.baseUrl,
+      admin: { email, password, id: Number(admin.id) },
+      mediaFixturePath,
+    }
+    const stateFile = process.env.CMS_E2E_STATE ?? STATE_FILE
+    writeFileSync(stateFile, JSON.stringify(state), 'utf8')
+
+    return buildTeardown(harness, stateFile, fixtureDir)
+  } catch (error) {
+    try {
+      if (fixtureDir !== null) rmSync(fixtureDir, { recursive: true, force: true })
+    } catch {
+      /* diretorio temporario: nao pode impedir derrubar o CMS */
+    }
+    await harness.stop()
+    throw error
   }
-  const stateFile = process.env.CMS_E2E_STATE ?? STATE_FILE
-  writeFileSync(stateFile, JSON.stringify(state), 'utf8')
+}
 
+function buildTeardown(
+  harness: Awaited<ReturnType<typeof startCmsHarness>>,
+  stateFile: string,
+  fixtureDir: string,
+): () => Promise<void> {
   return async () => {
     try {
       rmSync(stateFile, { force: true })
