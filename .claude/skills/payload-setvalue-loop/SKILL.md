@@ -35,16 +35,18 @@ Foi assim que o CMS caiu: uma PR e dois dias de perda de dados em producao.
 
 ## A regra
 
-**Todo componente de campo customizado que deriva valor de outro campo compara
-antes de setar.**
+**Todo componente de campo customizado que deriva valor de outro campo precisa
+de uma guarda que faca a escrita atingir ponto fixo.** Qual guarda depende de o
+valor derivado ser deterministico.
+
+**1. Valor deterministico — compare por igualdade.** A mesma origem sempre
+produz a mesma saida.
 
 ```tsx
 // ERRADO — seta sempre que a origem muda, mesmo sem mudanca real
-useEffect(() => {
-  setValue(derive(source))
-}, [source, setValue])
+useEffect(() => { setValue(derive(source)) }, [source, setValue])
 
-// CERTO — so escreve quando o valor realmente muda
+// CERTO
 useEffect(() => {
   const next = derive(source)
   if (next === value) return
@@ -52,8 +54,38 @@ useEffect(() => {
 }, [source, value, setValue])
 ```
 
-Considere **debounce** quando a origem e um campo de texto digitado: a
-comparacao mata o laco, o debounce evita o trabalho inutil a cada tecla.
+**2. Valor NAO deterministico — compare por predicado, nunca por igualdade.**
+Se a geracao sorteia (id aleatorio, timestamp), `next === value` e sempre falso
+e o laco nunca para. Guarde no estado ATUAL: "ja tem valor utilizavel?"
+
+```tsx
+useEffect(() => {
+  if (isUsable(value)) return   // ponto fixo: escreve uma vez, na criacao
+  setValue(generate())
+}, [value, setValue])
+```
+
+Ver `apps/cms/src/admin/BlockIdField.tsx` — `isUsableBlockId(value)`.
+
+**3. Valor composto em mais de um `setValue`** — serialize e compare num `ref`,
+para que as duas escritas sejam decididas juntas.
+
+```tsx
+const lastWritten = useRef<string | null>(null)
+const write = useCallback((text, marks) => {
+  const serialized = JSON.stringify({ text, marks })
+  if (lastWritten.current === serialized) return
+  lastWritten.current = serialized
+  setValue(text); setMarks(marks)
+}, [setValue, setMarks])
+```
+
+Ver `apps/cms/src/admin/ParagraphTextField.tsx` (#106) — vale tambem quando a
+escrita vem de um listener registrado em efeito (`registerUpdateListener`), que
+dispara a cada tecla como um efeito dispararia.
+
+Considere **debounce** quando a origem e texto digitado: a guarda mata o laco, o
+debounce evita o trabalho inutil a cada tecla.
 
 Escopo: a regra vale para `setValue` chamado em **efeito**. Em handler de clique
 (`onClick`) nao ha laco — o handler nao se re-dispara sozinho. Ver
