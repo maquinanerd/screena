@@ -152,12 +152,27 @@ const blockIdField = {
 }
 
 /**
+ * Rotulo da linha recolhida, para TODO bloco.
+ *
+ * Sem isto o painel mostra "01 Paragraph Untitled" quinze vezes numa materia de
+ * quinze blocos, e achar um paragrafo exige abrir um por um.
+ *
+ * A chave e `Label`, nao `RowLabel`: em bloco o Payload chama o componente de
+ * `admin.components.Label` (`fields/Blocks/BlockRow.js:142-143`); `RowLabel` e a
+ * chave do campo `array`. O contexto de linha, esse, e o mesmo dos dois — o
+ * `RowLabelProvider` deriva `data` do caminho da linha, entao `useRowLabel`
+ * enxerga o bloco inteiro.
+ */
+const blockRowLabel = { components: { Label: '/src/admin/BlockRowLabel' } }
+
+/**
  * Blocos do corpo. NAO existe bloco de HTML livre — o corpo e estruturado, e a
  * ausencia desse bloco e a defesa contra injecao vinda do writer.
  */
 export const editorialBlocks = [
   {
     slug: 'paragraph',
+    admin: blockRowLabel,
     fields: [
       blockIdField,
       {
@@ -173,6 +188,7 @@ export const editorialBlocks = [
   },
   {
     slug: 'heading',
+    admin: blockRowLabel,
     fields: [
       blockIdField,
       { name: 'level', type: 'select' as const, required: true, options: ['2', '3', '4'] },
@@ -181,6 +197,7 @@ export const editorialBlocks = [
   },
   {
     slug: 'image',
+    admin: blockRowLabel,
     fields: [
       blockIdField,
       { name: 'media', type: 'relationship' as const, relationTo: 'media' as const, required: true },
@@ -191,6 +208,7 @@ export const editorialBlocks = [
   },
   {
     slug: 'video',
+    admin: blockRowLabel,
     fields: [
       blockIdField,
       {
@@ -207,6 +225,7 @@ export const editorialBlocks = [
   },
   {
     slug: 'quote',
+    admin: blockRowLabel,
     fields: [
       blockIdField,
       { name: 'text', type: 'textarea' as const, required: true },
@@ -216,6 +235,7 @@ export const editorialBlocks = [
   },
   {
     slug: 'entityCard',
+    admin: blockRowLabel,
     fields: [
       blockIdField,
       {
@@ -230,6 +250,7 @@ export const editorialBlocks = [
   },
   {
     slug: 'factBox',
+    admin: blockRowLabel,
     fields: [
       blockIdField,
       { name: 'title', type: 'text' as const, required: true },
@@ -247,6 +268,7 @@ export const editorialBlocks = [
   },
   {
     slug: 'relatedContent',
+    admin: blockRowLabel,
     fields: [
       blockIdField,
       { name: 'articleRefs', type: 'text' as const, hasMany: true, required: true },
@@ -254,9 +276,10 @@ export const editorialBlocks = [
   },
   {
     slug: 'sourceList',
+    admin: blockRowLabel,
     fields: [blockIdField, { name: 'sourceRefs', type: 'text' as const, hasMany: true, required: true }],
   },
-  { slug: 'divider', fields: [blockIdField] },
+  { slug: 'divider', admin: blockRowLabel, fields: [blockIdField] },
 ]
 
 /* ------------------------------------------------------------------ */

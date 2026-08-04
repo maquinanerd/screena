@@ -1,4 +1,5 @@
 import BlockIdField from '../../../src/admin/BlockIdField.js'
+import BlockRowLabel from '../../../src/admin/BlockRowLabel.js'
 import CinerieIcon from '../../../src/admin/CinerieIcon.js'
 import CinerieLogo from '../../../src/admin/CinerieLogo.js'
 import EditorialDashboard from '../../../src/admin/EditorialDashboard.js'
@@ -29,6 +30,7 @@ import WorkflowTransitionBar from '../../../src/admin/WorkflowTransitionBar.js'
  */
 export const importMap = {
   '/src/admin/BlockIdField#default': BlockIdField,
+  '/src/admin/BlockRowLabel#default': BlockRowLabel,
   '/src/admin/CinerieIcon#default': CinerieIcon,
   '/src/admin/CinerieLogo#default': CinerieLogo,
   '/src/admin/EditorialDashboard#default': EditorialDashboard,
