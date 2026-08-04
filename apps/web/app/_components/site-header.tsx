@@ -8,6 +8,11 @@
  *  - TRANSPARENTE de verdade sobre o hero das telas home-like (sem faixa nem
  *    scrim proprio: quem escurece o topo e o `hero__scrim-v`) e SOLIDA ao
  *    rolar (transicao .35s), com wordmark branca -> preta;
+ *  - MESMA transparencia sobre a capa da materia (`/pt/noticias/{slug}`), com
+ *    duas diferencas: quem liga o estado e o CSS lendo o HTML do servidor (nao
+ *    este componente), e a volta ao solido e MEDIDA no layout — acontece quando
+ *    o primeiro texto do hero encosta na barra, nao num limiar fixo de 24px.
+ *    Materia sem capa nunca entra nesse estado;
  *  - logo por contexto: sublinhado vermelho em /pt/filmes, verde em
  *    /pt/series, neutro no resto (o contexto NUNCA e so a cor: a rota, o
  *    breadcrumb e os labels continuam carregando o sinal — invariante 11);
@@ -38,6 +43,21 @@ function isHeroRoute(pathname: string | null): boolean {
   return HERO_ROUTES.includes(clean)
 }
 
+/**
+ * Seletor do hero de CAPA da matéria (tela 05).
+ *
+ * A matéria não entra em `HERO_ROUTES` de propósito: lá o overlay é decidido em
+ * JS, e aqui ele precisa estar certo no PRIMEIRO PAINT — matéria sem capa é
+ * página clara, e um quadro de logo/menu branco sobre ela seria ilegível. Quem
+ * pinta o overlay da matéria é o CSS (`body:has(...)`), lendo o mesmo atributo
+ * que a página emite no HTML do servidor. O JS abaixo só faz o inverso: marca
+ * quando o hero JÁ PASSOU, para a barra voltar a ser sólida.
+ */
+const ARTICLE_HERO_SELECTOR = '.art-hero[data-hero-media="true"]'
+
+/** Altura da barra fixa (`--nav-height`), em px. */
+const NAV_HEIGHT_PX = 72
+
 type LogoContext = 'movie' | 'series' | 'neutral'
 
 function logoContextOf(pathname: string | null): LogoContext {
@@ -47,12 +67,15 @@ function logoContextOf(pathname: string | null): LogoContext {
   return 'neutral'
 }
 
-function logoSrc(context: LogoContext, inverse: boolean): string {
-  if (inverse) return '/brand/cinerie-wordmark-white.svg'
+/** Wordmark para barra SÓLIDA (fundo claro), com o sublinhado do contexto. */
+function solidLogoSrc(context: LogoContext): string {
   if (context === 'movie') return '/brand/cinerie-wordmark-black-cinema.svg'
   if (context === 'series') return '/brand/cinerie-wordmark-black-serie.svg'
   return '/brand/cinerie-wordmark-black.svg'
 }
+
+/** Wordmark para barra TRANSPARENTE (sobre imagem escurecida). */
+const INVERSE_LOGO_SRC = '/brand/cinerie-wordmark-white.svg'
 
 export function SiteHeader(): ReactNode {
   const pathname = usePathname()
@@ -65,6 +88,14 @@ export function SiteHeader(): ReactNode {
    * hero de fato nao esta no documento.
    */
   const [hasHero, setHasHero] = useState(true)
+  /**
+   * Só para a matéria: o hero de capa já saiu de baixo da barra.
+   *
+   * Começa `false` (barra transparente) porque esse é o estado de quem abre a
+   * página no topo, e é o mesmo que o CSS pinta no primeiro paint — assim JS e
+   * CSS nunca discordam num quadro. O único caminho é false -> true.
+   */
+  const [pastHero, setPastHero] = useState(false)
   const menuRef = useRef<HTMLDialogElement>(null)
 
   useEffect(() => {
@@ -76,6 +107,53 @@ export function SiteHeader(): ReactNode {
     return () => window.removeEventListener('scroll', onScroll)
   }, [heroRoute, pathname])
 
+  useEffect(() => {
+    if (document.querySelector(ARTICLE_HERO_SELECTOR) === null) {
+      setPastHero(false)
+      return
+    }
+    /**
+     * A barra fica transparente enquanto tem SÓ IMAGEM por baixo, e vira sólida
+     * no instante em que o primeiro texto do hero encosta nela.
+     *
+     * Não é o mesmo que "quando o hero inteiro passar", e a diferença não é
+     * teórica: com a barra transparente até o fim do hero, a manchete de 52px
+     * sobe POR CIMA do menu e as duas camadas de texto se sobrepõem no meio da
+     * tela. Contraste não resolve isso — os dois lados estão legíveis, e ainda
+     * assim ilegíveis juntos. O limite honesto do estado transparente é o ponto
+     * em que ele deixaria de flutuar sobre imagem.
+     *
+     * A medida é feita UMA vez (e a cada `resize`), não a cada scroll: ler
+     * geometria dentro do handler forçaria reflow a cada quadro. O evento em si
+     * só compara dois números.
+     */
+    const firstText = document.querySelector(`${ARTICLE_HERO_SELECTOR} .art-crumb`)
+    if (firstText === null) {
+      setPastHero(false)
+      return
+    }
+    let flipAt = 0
+    const measure = () => {
+      flipAt = Math.max(
+        0,
+        firstText.getBoundingClientRect().top + window.scrollY - NAV_HEIGHT_PX,
+      )
+    }
+    const onScroll = () => setPastHero(window.scrollY >= flipAt)
+    const onResize = () => {
+      measure()
+      onScroll()
+    }
+    measure()
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('resize', onResize, { passive: true })
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      window.removeEventListener('resize', onResize)
+    }
+  }, [pathname])
+
   const overlay = heroRoute && hasHero && !scrolled
   const context = logoContextOf(pathname)
   const inNews = pathname !== null && pathname.startsWith('/pt/noticias')
@@ -86,15 +164,30 @@ export function SiteHeader(): ReactNode {
         className="site-header"
         data-context={context}
         data-overlay={overlay ? 'true' : 'false'}
+        data-past-hero={pastHero ? 'true' : undefined}
       >
         <div className="site-header__inner">
           <a className="site-header__brand" href={HOME_HREF} aria-label="Cinerie — início">
-            {/* Wordmark aprovada do handoff (uploads/5a–5j); alt vazio: o aria-label do link ja nomeia. */}
+            {/* Wordmark aprovada do handoff (uploads/5a–5j); alt vazio: o
+                aria-label do link ja nomeia.
+
+                As DUAS versoes vao no HTML e quem escolhe e o CSS. Trocar o
+                `src` em JS custaria um quadro com a wordmark preta sobre a capa
+                escura da materia, porque a decisao de transparencia da materia
+                nasce do proprio HTML e nao espera hidratacao. Apenas uma esta
+                visivel; a outra e `display:none`. */}
             <img
               alt=""
-              className="site-header__logo"
+              className="site-header__logo site-header__logo--solid"
               height={30}
-              src={logoSrc(context, overlay)}
+              src={solidLogoSrc(context)}
+              width={97}
+            />
+            <img
+              alt=""
+              className="site-header__logo site-header__logo--inverse"
+              height={30}
+              src={INVERSE_LOGO_SRC}
               width={97}
             />
             {inNews ? <span aria-hidden="true" className="site-header__news">NEWS</span> : null}
