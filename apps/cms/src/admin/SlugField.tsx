@@ -17,14 +17,49 @@
  *
  * O aviso de slug repetida e AVISO: nao bloqueia, nao escreve. A unicidade real
  * e do par (idioma, slug) e continua sendo decidida do lado publico.
+ *
+ * ---------------------------------------------------------------------------
+ * CORRECAO DO LACO DE RENDER (React #185, "Maximum update depth exceeded").
+ *
+ * Como estava, o efeito chamava `setValue(...)` a CADA passagem, sem comparar
+ * com a slug que ja estava no formulario. Uma escrita que nao muda nada nao e
+ * inofensiva no Payload: `setValue` despacha `{type:'UPDATE'}` e chama
+ * `setModified(true)` incondicionalmente (`@payloadcms/ui/dist/forms/useField/
+ * index.js:87-101`). Cada despacho recria o objeto do campo no estado do
+ * formulario, o que reidentifica `field` (`useField/index.js:44-56`), rearma o
+ * efeito de validacao com throttle de 150ms (`useField/index.js:274`) e marca o
+ * documento como modificado, que por sua vez rearma o autosave.
+ *
+ * Digitando devagar, cada ciclo desses drena antes da proxima tecla. Numa rajada
+ * sustentada as passagens se empilham mais rapido do que o throttle e o autosave
+ * escoam, e o React corta no seu teto de atualizacoes aninhadas.
+ *
+ * Duas travas, na raiz:
+ *  1. PONTO FIXO — `decideSlugFromTitle` so devolve `write` quando a slug
+ *     calculada DIFERE da atual. Sem diferenca, nenhum despacho acontece. Esta e
+ *     a correcao de verdade, e e ela que tem teste.
+ *  2. DEBOUNCE — a derivacao espera a digitacao assentar. Uma rajada de 70
+ *     teclas passa a produzir UMA derivacao em vez de 70. E defesa em
+ *     profundidade: a trava 1 ja fecha o laco sozinha.
+ *
+ * A geracao automatica continua ligada e com o mesmo comportamento visivel.
  */
 
 import { FieldLabel, TextInput, useConfig, useDocumentInfo, useField, useFormFields } from '@payloadcms/ui'
 import type { TextFieldClientComponent } from 'payload'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 
-import { canonicalizeSlug, SLUG_LIMITS } from '../canonical-slug.js'
+import { SLUG_LIMITS } from '../canonical-slug.js'
 import { apiBase, slugIsTaken } from './admin-rest.js'
+import { decideSlugFromTitle } from './slug-derivation.js'
+
+/**
+ * Quanto a derivacao espera a digitacao assentar.
+ *
+ * Curto o bastante para a slug parecer instantanea a quem escreve, longo o
+ * bastante para uma frase digitada de enfiada virar uma derivacao so.
+ */
+const DERIVATION_DELAY_MS = 250
 
 /** Motivo da recusa, em portugues. */
 const REJECTION_MESSAGES = {
@@ -57,27 +92,33 @@ export const SlugField: TextFieldClientComponent = ({ field, path, readOnly }) =
    */
   const following = useRef((value ?? '') === '')
 
-  const applyFromTitle = useCallback(
-    (source: string, { manual }: { manual: boolean }): void => {
-      const result = canonicalizeSlug(source)
-      if (!result.ok) {
-        // So reclama quando a pessoa PEDIU a geracao. Enquanto o titulo esta
-        // sendo digitado, "ainda nao da para gerar" e ruido, nao erro.
-        setProblem(manual ? REJECTION_MESSAGES[result.reason] : null)
-        return
-      }
-      setProblem(null)
-      setValue(result.slug)
-    },
-    [setValue],
-  )
-
+  /*
+   * Derivacao automatica.
+   *
+   * `value` ESTA nas dependencias de proposito: depois de uma escrita o efeito
+   * roda mais uma vez e a decisao volta `idle`, porque a slug ja e a calculada.
+   * E o ponto fixo se fechando — duas passagens, nao infinitas. Sem a guarda de
+   * `decideSlugFromTitle` esta mesma dependencia seria o laco.
+   */
   useEffect(() => {
-    if (readOnly === true) return
-    if (!following.current) return
-    if (title.trim() === '') return
-    applyFromTitle(title, { manual: false })
-  }, [title, applyFromTitle, readOnly])
+    if (readOnly === true) return undefined
+
+    const timer = setTimeout(() => {
+      const decision = decideSlugFromTitle({
+        title,
+        currentSlug: value ?? '',
+        following: following.current,
+        readOnly: false,
+        // Digitando nao se reclama de titulo que ainda nao produz slug.
+        manual: false,
+      })
+      if (decision.action === 'write') setValue(decision.slug)
+    }, DERIVATION_DELAY_MS)
+
+    return () => {
+      clearTimeout(timer)
+    }
+  }, [title, value, readOnly, setValue])
 
   /* --- Aviso de colisao --------------------------------------------- */
   useEffect(() => {
@@ -115,10 +156,27 @@ export const SlugField: TextFieldClientComponent = ({ field, path, readOnly }) =
     [setValue],
   )
 
+  /*
+   * "Regenerar do titulo" e um PEDIDO explicito: nao passa pelo debounce (a
+   * pessoa acabou de clicar e espera resposta imediata) e pode reclamar de um
+   * titulo que nao produz endereco valido.
+   */
   const regenerate = useCallback((): void => {
     following.current = true
-    applyFromTitle(title, { manual: true })
-  }, [applyFromTitle, title])
+    const decision = decideSlugFromTitle({
+      title,
+      currentSlug: value ?? '',
+      following: true,
+      readOnly: readOnly === true,
+      manual: true,
+    })
+    if (decision.action === 'reject') {
+      setProblem(REJECTION_MESSAGES[decision.reason])
+      return
+    }
+    setProblem(null)
+    if (decision.action === 'write') setValue(decision.slug)
+  }, [title, value, readOnly, setValue])
 
   return (
     <div className="cinerie-slug field-type text">

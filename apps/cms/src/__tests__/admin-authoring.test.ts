@@ -1,6 +1,7 @@
 /**
- * admin-authoring.test.ts — as duas regras puras da reforma de escrita do admin:
- * id de bloco automatico e paste que quebra em paragrafos.
+ * admin-authoring.test.ts — as regras puras da reforma de escrita do admin: id
+ * de bloco automatico, paste que quebra em paragrafos e o agrupamento
+ * basico/avancado do formulario de materia.
  *
  * LIMITE, dito com todas as letras: os componentes React que consomem estas
  * regras NAO sao testados aqui. `apps/cms/vitest.config.ts` roda
@@ -13,6 +14,7 @@ import { describe, expect, it } from 'vitest'
 
 import { BLOCK_ID_PATTERN, generateBlockId, isUsableBlockId } from '../admin/block-id.js'
 import { PASTE_MAX_BLOCKS, planPaste, splitPastedHtml, splitPastedText } from '../admin/paste-to-blocks.js'
+import { Articles } from '../collections.js'
 
 /* ------------------------------------------------------------------ */
 /* Id de bloco                                                         */
@@ -139,5 +141,83 @@ describe('planPaste', () => {
     const plan = planPaste({ text: many })
     expect(plan.paragraphs).toHaveLength(PASTE_MAX_BLOCKS)
     expect(plan.dropped).toBe(7)
+  })
+})
+
+/* ------------------------------------------------------------------ */
+/* Secoes recolhidas                                                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * BASICO vs AVANCADO — a decisao, medida na configuracao.
+ *
+ * Estas asercoes existem porque o E2E NAO pode cobrir isto de forma confiavel: o
+ * Payload guarda o estado recolhido nas PREFERENCIAS do usuario, entao "nasceu
+ * fechada" no navegador so vale na primeira visita daquela conta, e o E2E roda
+ * contra um banco que sobrevive aos testes anteriores. Aqui e deterministico.
+ *
+ * O que o E2E cobre e o outro lado, que a config nao alcanca: que a secao ABRE
+ * e que os campos ficam preenchiveis depois de aberta.
+ */
+interface AnyField {
+  readonly type: string
+  readonly name?: string
+  readonly label?: string
+  readonly fields?: readonly AnyField[]
+  readonly tabs?: readonly AnyField[]
+  readonly admin?: { readonly initCollapsed?: boolean }
+}
+
+/** Toda secao recolhivel da collection, em ordem de formulario. */
+function collectCollapsibles(fields: readonly AnyField[]): AnyField[] {
+  const out: AnyField[] = []
+  for (const field of fields) {
+    if (field.type === 'collapsible') out.push(field)
+    out.push(...collectCollapsibles(field.fields ?? []))
+    out.push(...collectCollapsibles(field.tabs ?? []))
+  }
+  return out
+}
+
+describe('secoes recolhidas do formulario de materia', () => {
+  const collapsibles = collectCollapsibles(Articles.fields as unknown as readonly AnyField[])
+
+  it('os campos raros nascem RECOLHIDOS, nao escondidos', () => {
+    // Recolhido != removido: o campo continua no formulario e continua gravavel.
+    // Se algum dia isto virar `condition`, o E2E para de achar o campo e este
+    // teste diz por que.
+    expect(collapsibles.map((section) => section.label)).toEqual([
+      'Sinais avançados',
+      'Rastro da automação',
+    ])
+    for (const section of collapsibles) {
+      expect(section.admin?.initCollapsed, `secao "${section.label}"`).toBe(true)
+    }
+  })
+
+  it('a secao NAO aninha armazenamento — a projecao continua lendo na raiz', () => {
+    // `collapsible` SEM `name` e um agrupamento visual. Ganhar um `name` mudaria
+    // a coluna no banco e quebraria a projecao calada.
+    for (const section of collapsibles) {
+      expect(section, `secao "${section.label}"`).not.toHaveProperty('name')
+    }
+  })
+
+  it('os campos que o E2E preenche estao onde o E2E espera', () => {
+    // Ancora do defeito que derrubou o E2E da #106: `focusKeyphrase` saiu da
+    // superficie da aba SEO e foi para dentro de "Sinais avançados", enquanto
+    // `metaTitle`/`metaDescription` ficaram fora. O teste do navegador tem de
+    // abrir a secao antes de digitar — e este par de listas e o contrato disso.
+    const advanced = collapsibles.find((section) => section.label === 'Sinais avançados')
+    const inside = (advanced?.fields ?? []).map((field) => (field as { name?: string }).name)
+    expect(inside).toContain('focusKeyphrase')
+    expect(inside).toContain('articleSection')
+    expect(inside).not.toContain('metaTitle')
+    expect(inside).not.toContain('metaDescription')
+
+    const trail = collapsibles.find((section) => section.label === 'Rastro da automação')
+    expect((trail?.fields ?? []).map((field) => (field as { name?: string }).name)).toContain(
+      'autoPublished',
+    )
   })
 })
