@@ -39,15 +39,48 @@ function record(n: number, name: string, ok: boolean, detail: string): void {
   console.log(`[${ok ? 'PASS' : 'FAIL'}] ${n}. ${name} — ${detail}`)
 }
 
+/**
+ * Reserva um numero de porta livre e DEVOLVE A PORTA JA DESOCUPADA.
+ *
+ * O `close` ANTES do `resolve` nao e higiene — e a correcao de um defeito. A
+ * versao anterior resolvia dentro do callback do `listen` e so entao chamava
+ * `close()`: quem recebia a porta podia tentar bindar antes de o socket de
+ * sondagem ter saido, e o Postgres efemero colidia com o proprio script.
+ * `unref()` nao ajuda — tira o handle da contagem do event loop, mas a porta
+ * continua ocupada.
+ *
+ * Mesmo defeito ja corrigido em `apps/cms/src/__tests__/harness.ts` e em
+ * `services/news-ingestion/src/__tests__/screen-db-harness.ts`; aqui ele havia
+ * sobrevivido porque este script e de execucao manual e nao passa pela CI. O
+ * `host` explicito importa: sem ele, `listen(0)` binda em `::` cobrindo o par
+ * IPv4+IPv6, e no runner Linux o Postgres falha em `::1` E em `127.0.0.1`.
+ */
 function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const srv = net.createServer()
     srv.unref()
-    srv.on('error', reject)
-    srv.listen(0, '127.0.0.1', () => {
+    srv.once('error', reject)
+    srv.listen({ host: '127.0.0.1', port: 0, exclusive: true }, () => {
       const addr = srv.address()
-      resolve(typeof addr === 'object' && addr ? addr.port : 0)
-      srv.close()
+      const port = typeof addr === 'object' && addr !== null ? addr.port : 0
+
+      // Porta 0 aqui significa que o endereco nao veio como esperado. Devolver
+      // esse zero adiante faria o Postgres escolher uma porta que o script nao
+      // conhece, e a falha apareceria longe da causa.
+      if (port <= 0) {
+        srv.close(() => {
+          reject(new Error('nao foi possivel reservar uma porta TCP valida'))
+        })
+        return
+      }
+
+      srv.close((error) => {
+        if (error !== undefined) {
+          reject(error)
+          return
+        }
+        resolve(port)
+      })
     })
   })
 }
