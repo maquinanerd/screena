@@ -135,6 +135,41 @@ function idFromUrl(url: string): string {
   return id
 }
 
+/**
+ * Abre uma secao recolhida (`collapsible`) pelo rotulo que a redacao le.
+ *
+ * A reforma do painel agrupou os campos raros em `collapsible` com
+ * `initCollapsed: true`: dez sinais de SEO sob "Sinais avancados", vinte e dois
+ * campos de auditoria sob "Rastro da automacao". O Payload NAO desmonta esses
+ * campos — `AnimateHeight` mantem tudo no DOM com altura zero. Logo o
+ * `#field-<nome>` existe e `toHaveCount` continua enxergando, mas o campo esta
+ * invisivel; `fill()` espera visibilidade e trava ate estourar o teste.
+ *
+ * Por que nao `getByRole('button', { name: rotulo })`, como nas abas: o botao de
+ * toggle do Payload nao carrega o rotulo da secao. Seu nome acessivel e a string
+ * generica de i18n `fields:toggleBlock` — identica em toda secao da tela. O
+ * rotulo vive ao lado, em `.collapsible__header-wrap`. Ancoramos pelo texto que
+ * a redacao ve e clicamos o toggle daquela secao; `toHaveCount(1)` recusa rotulo
+ * ambiguo em vez de abrir a secao errada em silencio.
+ *
+ * Idempotente de proposito: o Payload guarda o estado recolhido nas PREFERENCIAS
+ * do usuario, nao no componente. Depois de expandir uma vez, uma proxima
+ * abertura pode ja vir aberta — e um clique cego fecharia a secao.
+ */
+async function expandSection(page: Page, label: string): Promise<void> {
+  const section = page.locator('.collapsible', {
+    has: page.locator('.collapsible__header-wrap', { hasText: label }),
+  })
+  await expect(section, `secao "${label}" nao encontrada, ou o rotulo e ambiguo`).toHaveCount(1)
+
+  const toggle = section.locator('.collapsible__toggle').first()
+  await expect(toggle).toBeVisible()
+  if (((await toggle.getAttribute('class')) ?? '').includes('collapsible__toggle--collapsed')) {
+    await toggle.click()
+  }
+  await expect(toggle).toHaveClass(/collapsible__toggle--open/)
+}
+
 /* ------------------------------------------------------------------ */
 /* O caminho completo, num unico teste                                 */
 /* ------------------------------------------------------------------ */
@@ -215,17 +250,24 @@ test('redacao humana publica pelo painel, do login ao evento na outbox', async (
   // Aba SEO — SINAIS editoriais. Canonical, robots e JSON-LD nao sao pedidos
   // aqui: sao derivados no site.
   await page.getByRole('button', { name: 'SEO', exact: true }).click()
+  // Os DOIS que a redacao sempre escreve ficam na superficie da aba.
   await page.locator('#field-metaTitle').fill('Titulo de busca escrito pela redacao')
   await page.locator('#field-metaDescription').fill('Descricao propria, sem copiar sinopse.')
+  // Os outros dez foram recolhidos sob "Sinais avancados" — continuam
+  // acessiveis, a um clique. E o clique faz parte do caminho da redacao.
+  await expandSection(page, 'Sinais avançados')
   await page.locator('#field-focusKeyphrase').fill('estreia da temporada')
   await page.locator('#field-articleSection').fill('Series')
-  // O painel NAO pede estrutura. A ausencia e a asercao.
+  // O painel NAO pede estrutura. A ausencia e a asercao — e ela vale com a
+  // secao ABERTA: nao ha campo escondido atras do recolhimento.
   for (const absent of ['#field-robots', '#field-canonical', '#field-jsonLd', '#field-publisher']) {
     await expect(page.locator(absent)).toHaveCount(0)
   }
 
-  // Aba AUTOMACAO — existe, e nao e editavel por humano.
+  // Aba AUTOMACAO — existe, e nao e editavel por humano. Os 22 campos de
+  // auditoria tambem nascem recolhidos.
   await page.getByRole('button', { name: 'Automacao (auditoria)', exact: true }).click()
+  await expandSection(page, 'Rastro da automação')
   const autoPublished = page.locator('#field-autoPublished')
   await expect(autoPublished).toBeVisible()
   await expect(autoPublished).toBeDisabled()

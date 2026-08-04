@@ -1338,44 +1338,6 @@
   }
 
   /* ------------------------------------------------------------------ */
-  /* Cabecalho do documento: a barra de fluxo para de cobrir o titulo     */
-  /* ------------------------------------------------------------------ */
-
-  /*
-   * O DIAGNOSTICO, e por que nao e z-index.
-   *
-   * `.doc-controls__wrapper` tem `height: var(--doc-controls-height)` — altura
-   * FIXA — e e um flex row (`@payloadcms/ui/.../DocumentControls/index.scss:26-32`).
-   * O slot `PublishButton` cai em `__controls-wrapper` (`:98-106`), dentro dessa
-   * linha travada. A barra de fluxo e um painel de bloco, com estado, dicas e
-   * lista de bloqueios: ela transborda a altura fixa para baixo (cobrindo as
-   * abas) e, sendo `width: 100%` num flex item, aperta o `__content`, que tem
-   * `overflow: hidden` (`:35-39`) e carrega o <h1>.
-   *
-   * Nao ha sobreposicao de CAMADA para resolver: e espaco ocupado. A correcao e
-   * devolver espaco — deixar a linha crescer e dar ao painel a linha inteira.
-   */
-  .doc-controls__wrapper:has(.cinerie-workflow) {
-    flex-wrap: wrap;
-    height: auto;
-    row-gap: 10px;
-  }
-
-  /* O painel ocupa a propria linha, abaixo do titulo, em vez de disputa-la. */
-  .doc-controls__controls-wrapper:has(.cinerie-workflow) {
-    flex-basis: 100%;
-  }
-
-  /*
-   * Com o painel dentro, o cabecalho fica alto demais para grudar no topo: os
-   * ~236px medidos cobririam boa parte da tela durante a rolagem. As abas ficam
-   * logo abaixo e continuam alcancaveis.
-   */
-  .doc-controls:has(.cinerie-workflow) {
-    position: static;
-  }
-
-  /* ------------------------------------------------------------------ */
   /* Rotulo do bloco recolhido                                           */
   /* ------------------------------------------------------------------ */
 
@@ -1465,4 +1427,63 @@
     border: 1px solid var(--cinerie-border);
     color: var(--cinerie-ink);
   }
+}
+
+/* ==================================================================== */
+/* Cabecalho do documento — FORA de `@layer payload`, de proposito       */
+/* ==================================================================== */
+
+/*
+ * O DEFEITO: a barra de fluxo cobre as abas e o conteudo da materia.
+ *
+ * `.doc-controls__wrapper` tem `height: var(--doc-controls-height)` — altura
+ * FIXA — e e um flex row (`@payloadcms/ui/.../DocumentControls/index.scss:26-32`).
+ * O slot `PublishButton` cai em `__controls-wrapper` (`:98-106`), dentro dessa
+ * linha travada. A barra de fluxo e um painel de bloco, com estado, dicas e
+ * lista de bloqueios: ela transborda a altura fixa para baixo e cobre o que
+ * vem depois. A correcao e devolver espaco — deixar a linha crescer e dar ao
+ * painel a linha inteira.
+ *
+ * POR QUE ESTAS TRES REGRAS VIVEM FORA DA CAMADA.
+ *
+ * O resto deste arquivo esta em `@layer payload`. O Payload declara os proprios
+ * componentes em `@layer payload-default`
+ * (`@payloadcms/ui/.../DocumentControls/index.scss:3`), e na ordem final de
+ * camadas do bundle do Next `payload-default` vence `payload`. Camada ganha de
+ * ESPECIFICIDADE: nao adianta o seletor ser mais especifico.
+ *
+ * O sintoma disso e enganoso, e foi medido no navegador com estas regras ainda
+ * dentro da camada: `flex-wrap: wrap` PEGAVA e `height: auto`, da MESMA regra,
+ * NAO — porque o Payload nao declara `flex-wrap`, mas declara `height` e
+ * `position`. Ou seja, a regra parecia ativa e estava inerte justamente nas
+ * duas propriedades que importam.
+ *
+ * Declaracao SEM camada vence qualquer declaracao COM camada, seja qual for a
+ * ordem entre elas. E a unica forma que nao depende de como o Next resolveu
+ * ordenar os chunks de CSS neste build.
+ *
+ * Evidencia do defeito: com as regras dentro da camada, na aba "Automacao
+ * (auditoria)", `.cinerie-workflow` media 617x242 a partir de y=200 enquanto
+ * `.doc-controls` terminava em y=180 — e `document.elementFromPoint` no centro
+ * do toggle de "Rastro da automacao" devolvia `SECTION.cinerie-workflow`. Nem o
+ * Playwright nem uma pessoa conseguiam abrir a secao.
+ */
+.doc-controls__wrapper:has(.cinerie-workflow) {
+  flex-wrap: wrap;
+  height: auto;
+  row-gap: 10px;
+}
+
+/* O painel ocupa a propria linha, abaixo do titulo, em vez de disputa-la. */
+.doc-controls__controls-wrapper:has(.cinerie-workflow) {
+  flex-basis: 100%;
+}
+
+/*
+ * Com o painel dentro, o cabecalho fica alto demais para grudar no topo: os
+ * ~236px medidos cobririam boa parte da tela durante a rolagem. As abas ficam
+ * logo abaixo e continuam alcancaveis.
+ */
+.doc-controls:has(.cinerie-workflow) {
+  position: static;
 }
