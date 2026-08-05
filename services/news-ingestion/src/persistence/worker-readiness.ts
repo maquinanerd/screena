@@ -17,6 +17,7 @@ import type { PrismaClient } from '@screena/db/server'
 import { inspectScreenSchema } from '../media/screen-schema-preflight.js'
 import {
   evaluateWorkerReadiness,
+  type CheckStatus,
   type ReadinessReport,
 } from '../media/worker-readiness-types.js'
 import {
@@ -42,6 +43,15 @@ export interface WorkerReadinessDeps {
    * O default continua `false` — quem nao passa nada segue protegido.
    */
   readonly allowProductionShapedUrl?: boolean
+  /**
+   * Estado VIVO do loop de projecao, lido no instante da batida.
+   *
+   * E uma funcao, nao um valor: o `/readyz` e registrado uma vez na subida e
+   * respondido muitas vezes depois. Um snapshot capturado no registro
+   * congelaria a saude do loop no momento em que ele ainda nem tinha comecado,
+   * e o check reportaria para sempre o mesmo veredito.
+   */
+  readonly loopHealth?: () => { readonly status: CheckStatus; readonly detail: string }
 }
 
 /**
@@ -81,6 +91,18 @@ export async function collectWorkerReadiness(deps: WorkerReadinessDeps): Promise
   const env = deps.env ?? process.env
   const timeoutMs = deps.timeoutMs ?? 5_000
 
+  // Lido AGORA, na batida. Se a leitura do proprio estado do loop explodir, o
+  // readiness nao pode explodir junto: a mesma disciplina do resto do arquivo —
+  // falha vira fato negativo, nunca excecao.
+  let loop: { status: CheckStatus; detail: string } | undefined
+  if (deps.loopHealth !== undefined) {
+    try {
+      loop = deps.loopHealth()
+    } catch {
+      loop = { status: 'blocked', detail: 'estado do loop ilegivel' }
+    }
+  }
+
   const configResult = resolveProjectionWorkerConfig(env, {
     allowProductionShapedUrl: deps.allowProductionShapedUrl === true,
   })
@@ -103,6 +125,7 @@ export async function collectWorkerReadiness(deps: WorkerReadinessDeps): Promise
       payloadAuthAccepted: false,
       storageReady: false,
       storageDriver: 'desconhecido',
+      ...(loop === undefined ? {} : { loop }),
     })
   }
 
@@ -156,5 +179,6 @@ export async function collectWorkerReadiness(deps: WorkerReadinessDeps): Promise
     payloadAuthAccepted: payload.authAccepted,
     storageReady,
     storageDriver: storageResult.ok ? storageResult.config.driver : 'desconhecido',
+    ...(loop === undefined ? {} : { loop }),
   })
 }

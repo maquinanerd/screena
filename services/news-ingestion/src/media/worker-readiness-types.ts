@@ -35,6 +35,16 @@ export interface WorkerReadinessInput {
   readonly payloadAuthAccepted: boolean
   readonly storageReady: boolean
   readonly storageDriver: string
+  /**
+   * Veredito do LOOP de projecao, quando ha um loop rodando.
+   *
+   * OPCIONAL porque nem todo consumidor deste avaliador tem loop: o
+   * `worker-preflight` e uma verificacao pre-deploy de processo curto, e o
+   * `--once` termina antes de existir loop para observar. Ausente, o check nao
+   * aparece no relatorio — melhor do que um `ok` que afirmaria saude de algo
+   * que ninguem mediu.
+   */
+  readonly loop?: { readonly status: CheckStatus; readonly detail: string }
 }
 
 /**
@@ -84,5 +94,15 @@ export function evaluateWorkerReadiness(input: WorkerReadinessInput): ReadinessR
       detail: input.storageReady ? `driver ${input.storageDriver}` : 'storage publico indisponivel',
     },
   ]
+
+  // O LOOP entra por ultimo e so quando existe. Sem este check, o `/readyz`
+  // media exclusivamente as DEPENDENCIAS do worker (config, banco, CMS,
+  // storage) e respondia 200 com o loop de projecao completamente parado — o
+  // servidor de health esta de pe, entao o painel fica verde. Era possivel ter
+  // todas as dependencias saudaveis e nenhum evento sendo projetado.
+  if (input.loop !== undefined) {
+    checks.push({ name: 'projection_loop', status: input.loop.status, detail: input.loop.detail })
+  }
+
   return summarizeReadiness(checks)
 }
