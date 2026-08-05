@@ -336,7 +336,9 @@ interface AnyField {
   readonly fields?: readonly AnyField[]
   readonly tabs?: readonly AnyField[]
   readonly label?: string
-  readonly admin?: { readonly readOnly?: boolean }
+  // `position` entrou junto com o canvas: e o que distingue campo de sidebar de
+  // campo do corpo, e o Payload so o le em campo de TOPO.
+  readonly admin?: { readonly readOnly?: boolean; readonly position?: string }
 }
 
 /**
@@ -416,7 +418,42 @@ describe('abas do formulario nao alteram o schema', () => {
     expect(nested).toEqual([])
   })
 
-  it('as 8 abas cobrem TODOS os campos — nenhum ficou de fora', () => {
+  it('CANVAS: escrita e slug vivem no TOPO, fora do tabs', () => {
+    // Nao e preferencia de layout: `admin.position: 'sidebar'` so e lido pelo
+    // particionador de `DocumentFields`, que percorre APENAS
+    // `collection.fields[]`. Dentro do `tabs` a propriedade typecheca e e
+    // ignorada em silencio. Enquanto tudo vivia em abas, a sidebar do painel
+    // era vazia por CONSTRUCAO — e o titulo abria em oitavo lugar.
+    const topLevel = (Articles.fields as unknown as readonly AnyField[])
+      .filter((field) => field.type !== 'tabs')
+      .map((field) => field.name)
+
+    for (const name of ['title', 'subtitle', 'summary', 'body', 'slug']) {
+      expect(topLevel, `${name} precisa estar no topo`).toContain(name)
+    }
+
+    // A ORDEM e o mecanismo de ordenacao do Payload: o texto vem antes das
+    // abas, senao a tela volta a abrir num formulario em vez de abrir
+    // escrevendo.
+    expect(topLevel.slice(0, 4)).toEqual(['title', 'subtitle', 'summary', 'body'])
+  })
+
+  it('a slug e o unico campo de topo na SIDEBAR', () => {
+    const sidebar = (Articles.fields as unknown as readonly AnyField[])
+      .filter((field) => field.admin?.position === 'sidebar')
+      .map((field) => field.name)
+    expect(sidebar).toEqual(['slug'])
+  })
+
+  it('CONTROLE NEGATIVO: nenhum campo se perdeu na promocao', () => {
+    // O teste anterior comparava "campos em abas" com "campos totais". Quando a
+    // escrita saiu das abas, ele passou a acusar diferenca — e a tentacao seria
+    // baixar o numero. Baixar esconderia justamente o acidente que aconteceu
+    // aqui: um recorte mal feito APAGOU `articles.slug` do formulario, e o
+    // typecheck passou, porque campo perdido e so um item a menos num array.
+    //
+    // A invariante correta e mais forte: todo campo esta OU no topo OU numa aba,
+    // e a soma bate com o total.
     const tabsField = (Articles.fields as unknown as readonly AnyField[]).find(
       (field) => field.type === 'tabs',
     )
@@ -424,7 +461,16 @@ describe('abas do formulario nao alteram o schema', () => {
       (total, tab) => total + flatten(tab.fields ?? []).length,
       0,
     )
-    expect(inTabs).toBe(articleFields.length)
+    const topLevel = flatten(
+      (Articles.fields as unknown as AnyField[]).filter((field) => field.type !== 'tabs'),
+    ).length
+
+    expect(inTabs + topLevel).toBe(articleFields.length)
+    // E os campos que a redacao usa continuam existindo, nominalmente.
+    const names = new Set(articleFields.map((entry) => entry.path))
+    for (const required of ['title', 'slug', 'body', 'summary', 'language', 'contentType']) {
+      expect(names, `${required} sumiu da collection`).toContain(required)
+    }
     // O formulario tem dezenas de campos: uma lista PLANA e o problema que a
     // FASE 2G veio resolver. O numero exato e congelado abaixo.
     expect(articleFields.length).toBeGreaterThan(50)

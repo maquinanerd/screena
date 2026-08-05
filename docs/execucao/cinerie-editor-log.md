@@ -295,7 +295,87 @@ terceiro e re-hospedagem. O cartao guarda TEXTO e permalink; a imagem, se
 entrar, passa pela biblioteca de midia com decisao editorial de licenca, como
 qualquer outra foto.
 
-### F6, F7, F9..F13 — PENDENTES
+### F6 — Canvas editorial — DECISAO ARQUITETURAL REGISTRADA (implementacao em curso)
+
+**A pergunta que o mandato mandou confirmar antes de prometer: a sidebar e
+possivel?** Resposta verificada no PAYLOAD INSTALADO (3.86.0), nao em
+documentacao de outra versao.
+
+**(i) `admin.position: 'sidebar'` so funciona em campo de TOPO.** O predicado
+`fieldIsSidebar` (`payload/dist/fields/config/types.js:34-36`) tem UM unico
+consumidor em todo o pacote de UI:
+`@payloadcms/ui/dist/elements/DocumentFields/index.js:26-41`, que particiona
+`docConfig.fields` — o array de topo da collection. `RenderFields`, que desenha
+todos os niveis aninhados (inclusive o conteudo das abas,
+`fields/Tabs/index.js:361`), **nunca** consulta `fieldIsSidebar`.
+**Consequencia: `position: 'sidebar'` num campo dentro de `tabs` TYPECHECKA e e
+silenciosamente ignorado** — o campo aparece inline na aba. E armadilha de tipo,
+nao erro de compilacao. Hoje TODO campo de `articles` vive dentro de um unico
+`tabs`, entao hoje a sidebar esta vazia por construcao.
+
+**(ii) Edit View customizada e possivel, e e a escolha ERRADA aqui.** O slot
+existe: `admin.components.views.edit.default.Component`
+(`payload/dist/config/types.d.ts:1372-1411`). Mas o provider `<Form>` e montado
+DENTRO do `DefaultEditView` (`@payloadcms/ui/dist/views/Edit/index.js:452`), e a
+view customizada e renderizada ACIMA dele
+(`@payloadcms/next/dist/views/Document/index.js:364-369`). Substituir a view
+substitui o provider junto.
+
+Reusar `Form` + `RenderFields` por conta propria obrigaria a reescrever a cola do
+`DefaultEditView` (~600 linhas): a `action`, o `onChange -> getFormState`, o
+`onSuccess`, os modais de lock/takeover, `LeaveWithoutSaving`,
+`SetDocumentStepNav`. **Perder o `onChange -> getFormState` quebra
+`admin.condition` e todo componente de campo renderizado no servidor** — em
+silencio, do jeito que este projeto ja foi mordido tres vezes. Recusado.
+
+**(iii) O caminho seguro, e o que sera usado:** ordenar `collection.fields[]` no
+TOPO (a ordem do array E o mecanismo de ordenacao) e usar
+`admin.components.Field` num campo CONTENEDOR (`group`/`row`/`collapsible`/
+`tabs`), que recebe `field.fields` + `path`/`schemaPath`/`permissions` e pode
+reemitir com `RenderFields` no layout que quisermos — **rodando dentro do `Form`
+de verdade, com zero estado de formulario reimplementado**.
+
+**(iv) Nao existe** `beforeFields`/`afterFields` em nivel de collection em 3.86
+(grep nos `.d.ts`: zero). Nao existe API de reordenacao declarativa. O
+`Description` de collection existe mas so aparece no cabecalho.
+
+**Consequencia de escopo, dita com todas as letras:** entregar o canvas
+(titulo grande no topo, corpo no centro, resto na sidebar) exige **tirar campos
+de dentro do `tabs` e promove-los ao topo**. Isso mexe em dois testes travados —
+`manual-editorial.test.ts` ("as 8 abas cobrem TODOS os campos") e o E2E que
+clica nas abas pelo nome. O mandato permite, exigindo atualizar os dois sem
+reduzir cobertura. E o unico caminho: enquanto tudo viver dentro do `tabs`,
+nenhuma sidebar e possivel, por construcao do Payload.
+
+**IMPLEMENTACAO (branch `claude/cms-canvas-editorial`):**
+
+- **O que foi feito:** `title`, `subtitle`, `summary` e `body` promovidos ao TOPO
+  de `collection.fields[]`, antes do `tabs` — a ordem do array E o mecanismo de
+  ordenacao, entao a tela abre escrevendo em vez de abrir num formulario. `slug`
+  promovida ao topo com `position: 'sidebar'`, onde a propriedade finalmente e
+  lida.
+- **As 8 abas ficaram intactas** de proposito: cada uma continua com campo, o
+  rotulo nao mudou, e o E2E que clica nelas pelo nome segue valendo. So o teste
+  de cobertura mudou — e ficou MAIS forte (abaixo).
+- **ACIDENTE REAL, e o que ele ensinou.** Um recorte automatizado removeu
+  `articles.slug` do formulario e **o typecheck passou** — campo perdido e so um
+  item a menos num array. Foi pego por `grep -c` na conferencia, nao por gate.
+  Por isso o teste antigo ("as 8 abas cobrem TODOS os campos") NAO foi apenas
+  ajustado para o numero novo: baixar o numero teria escondido exatamente esse
+  acidente. A invariante agora e `topo + abas === total`, mais uma verificacao
+  NOMINAL de que `title`, `slug`, `body`, `summary`, `language` e `contentType`
+  continuam existindo.
+- **Testes criados:** canvas no topo com ordem congelada; `slug` como unico campo
+  de sidebar; controle negativo de campo perdido.
+- **Migration:** nenhuma. Promover campo entre `tabs` e topo **nao muda o
+  schema** — as abas sao SEM NOME, entao o armazenamento ja era plano. Confirmado
+  pelo teste de snapshot de colunas, que continua verde.
+- **Gates:** unitarios `482/482` · typecheck `0`.
+- **SEM CONFIRMACAO VISUAL:** o canvas e a sidebar nao foram vistos no navegador
+  (Node 24 impede o Playwright local). Conferir depois: titulo grande no topo,
+  corpo no centro, slug na coluna da direita.
+
+### F7, F9..F13 — PENDENTES
 
 F6 canvas · F7 editor e menu `/` · F8 embeds e galeria · F9 midia · F10 SEO ·
 F11 preview · F12 limpeza e os dois defeitos de queda silenciosa · F13 teste de
