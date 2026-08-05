@@ -176,7 +176,9 @@ describe('POST /api/internal/publish-now', () => {
       overrideAccess: true,
     })
     const seen = new Set(
-      versions.docs.map((doc) => String((doc.version as Record<string, unknown>).workflowStatus)),
+      versions.docs.map((doc) =>
+        String((doc.version as unknown as Record<string, unknown>).workflowStatus),
+      ),
     )
     // Era este o requisito da fase: juntar os CLIQUES, nunca as transicoes.
     for (const step of ['needs_review', 'in_review', 'human_reviewed', 'ready_to_publish', 'published']) {
