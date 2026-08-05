@@ -21,6 +21,7 @@ import {
 } from '../draft-intake.js'
 import type { ResolvedMediaId } from '../editorial-body-mapper.js'
 import type { ExistingArticleSnapshot } from '../idempotency.js'
+import { resolveAvailableSlug } from '../slug-availability.js'
 
 /** Resposta JSON compacta e sem eco do payload. */
 function json(body: unknown, status: number): Response {
@@ -220,8 +221,27 @@ export const editorialDraftsEndpoint: Endpoint = {
       )
     }
 
+    // SLUG LIVRE ANTES DE ESCREVER.
+    //
+    // Este caminho gravava a `slugProposal` crua (`draft-intake.ts:192`). Sem
+    // constraint, duas materias com a mesma slug conviviam e a briga so aparecia
+    // na projecao. Com o indice unico `(language, slug)`, gravar cru estoura no
+    // INSERT com mensagem do PostgreSQL nomeando o indice — foi o que a suite de
+    // integracao mostrou assim que o indice entrou.
+    //
+    // A automacao NAO deve falhar por colisao: ela sufixa e segue. Falhar so
+    // quando nem o sufixo resolve, e ai com frase que diz qual slug esta tomada.
+    const proposedSlug = String((acceptance.document as { slug?: unknown }).slug ?? '')
+    const language = String((acceptance.document as { language?: unknown }).language ?? 'pt-BR')
+    const availableSlug = await resolveAvailableSlug(req, {
+      slug: proposedSlug,
+      language,
+      excludeId: acceptance.outcome === 'create' ? null : acceptance.articleId,
+    })
+
     const data = {
       ...acceptance.document,
+      slug: availableSlug,
       // A midia chega como CANDIDATA: fica registrada em `warnings` para o
       // revisor avaliar, e nenhuma linha de `media` e criada ou aprovada aqui.
       warnings: [

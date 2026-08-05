@@ -39,7 +39,8 @@ import {
   type PublicationDecision,
   type PublicationOutcome,
 } from '../auto-publication.js'
-import { canonicalizeSlug, decideSlugChange, resolveSlugCollision } from '../canonical-slug.js'
+import { canonicalizeSlug, decideSlugChange } from '../canonical-slug.js'
+import { resolveAvailableSlug } from '../slug-availability.js'
 import { toPayloadBlocks, type MappedBody } from '../editorial-body-mapper.js'
 import { localDateIn } from '../quota.js'
 import {
@@ -617,22 +618,13 @@ async function persistPublication(
   const publish = input.decision.outcome === 'PUBLISHED'
 
   // Slug: derivada, e resolvida contra colisao de forma DETERMINISTICA.
+  // SEM SAIDA SILENCIOSA. Antes havia um `catch {}` vazio aqui: quando a busca
+  // de colisao falhava, a publicacao seguia com a slug colidida — 2xx neste
+  // ponto e falha depois, na projecao, com erro de outro sistema. O resolvedor
+  // agora e compartilhado com a ingestao de rascunho, que nao tinha nenhum.
   let slug = input.slug ?? ''
-  if (slug !== '' && input.existingId === null) {
-    try {
-      const collisions = await req.payload.find({
-        collection: 'articles',
-        where: { slug: { like: `${slug}%` } },
-        limit: 60,
-        depth: 0,
-        overrideAccess: true,
-        req,
-      })
-      const taken = new Set(collisions.docs.map((doc) => String((doc as { slug?: unknown }).slug ?? '')))
-      slug = resolveSlugCollision(slug, taken) ?? slug
-    } catch {
-      /* sem colisao conhecida: segue com a slug derivada */
-    }
+  if (input.existingId === null) {
+    slug = await resolveAvailableSlug(req, { slug, language: request.language })
   }
 
   const authorRef: string | number = /^\d+$/.test(request.publicAuthorId)

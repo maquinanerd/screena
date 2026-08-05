@@ -114,6 +114,48 @@ export function resolveSlugCollision(
   return null
 }
 
+/**
+ * Como identificar, para um humano, a materia que ja segurava a slug.
+ *
+ * O titulo vem primeiro porque e o que a redacao reconhece; o id vem junto
+ * porque titulo se repete e id abre a materia direto no painel. Sem titulo
+ * (rascunho recem-criado) o id sozinho ainda resolve.
+ */
+export function describeArticleHolder(doc: Record<string, unknown>): string {
+  const id = doc.id === undefined || doc.id === null ? null : String(doc.id)
+  const title = typeof doc.title === 'string' ? doc.title.trim() : ''
+  if (title !== '' && id !== null) return `"${title}" (id ${id})`
+  if (title !== '') return `"${title}"`
+  if (id !== null) return `materia sem titulo (id ${id})`
+  return 'outra materia'
+}
+
+/**
+ * Colisao de slug que o sufixo nao resolveu.
+ *
+ * Existe como TIPO, e nao como string solta, porque o chamador precisa
+ * distingui-la de qualquer outra falha para devolver o status certo — e porque
+ * a mensagem tem de chegar em portugues a quem opera, dizendo QUAL slug esta
+ * tomada e POR QUEM. "constraint violation" nao e informacao para a redacao.
+ */
+export class SlugCollisionError extends Error {
+  readonly slug: string
+  readonly language: string
+  readonly holder: string | null
+
+  constructor(slug: string, language: string, holder: string | null) {
+    super(
+      holder === null
+        ? `A slug "${slug}" ja esta em uso no idioma ${language}, e as variacoes numeradas tambem. Escolha outro titulo.`
+        : `A slug "${slug}" ja esta em uso no idioma ${language} pela materia ${holder}, e as variacoes numeradas tambem. Escolha outro titulo.`,
+    )
+    this.name = 'SlugCollisionError'
+    this.slug = slug
+    this.language = language
+    this.holder = holder
+  }
+}
+
 export type SlugChangePolicy =
   | { readonly action: 'keep'; readonly reason: string }
   | { readonly action: 'change'; readonly slug: string; readonly needsRedirect: boolean }
