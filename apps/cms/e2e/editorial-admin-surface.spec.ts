@@ -198,6 +198,56 @@ async function clickTransition(page: Page, label: string): Promise<void> {
 }
 
 /* ------------------------------------------------------------------ */
+/* 4.0 — O botao "Publicar" sobe a escada inteira num clique          */
+/* ------------------------------------------------------------------ */
+
+/*
+ * O teste de integracao ja prova o SERVIDOR: cinco degraus, rastro completo,
+ * um evento na outbox. O que so o navegador prova e que o botao existe na
+ * tela, esta habilitado e dispara o endpoint certo — foi exatamente aqui que
+ * a primeira versao quebrou, com dois botoes chamados "Publicar" na mesma
+ * barra e um seletor ambiguo.
+ */
+test('o botao "Publicar" leva a materia de draft a published num clique', async ({ page }) => {
+  test.setTimeout(240_000)
+  await login(page)
+
+  const { articleId } = await readyArticle(page, `um-clique-${RUN}`)
+  await page.goto(`${BASE}/admin/collections/articles/${articleId}`, {
+    waitUntil: 'domcontentloaded',
+  })
+
+  await expect(page.locator('.cinerie-workflow')).toBeVisible({ timeout: 30_000 })
+  await expect(page.locator('.cinerie-workflow__badge')).toHaveAttribute('data-status', 'draft')
+
+  // Selecao por CLASSE, nao por nome: a barra tem outros botoes, e o rotulo
+  // "Publicar" volta a existir sozinho quando so falta um degrau.
+  const oneClick = page.locator('.cinerie-workflow__action.is-publish-now')
+  await expect(oneClick).toHaveCount(1)
+  await expect(oneClick).toBeEnabled({ timeout: 20_000 })
+
+  const settled = page.waitForResponse(
+    (res) => res.url().includes('/api/internal/publish-now') && res.request().method() === 'POST',
+    { timeout: 120_000 },
+  )
+  await oneClick.click()
+  const response = await settled
+  expect(response.status(), await response.text()).toBe(200)
+
+  // A tela recarrega sozinha; o badge tem de acompanhar o documento.
+  await expect(page.locator('.cinerie-workflow__badge')).toHaveAttribute(
+    'data-status',
+    'published',
+    { timeout: 60_000 },
+  )
+
+  // Leitura SEM `draft=true`: o que importa e o documento principal.
+  const doc = (await api(page, 'GET', `/api/articles/${articleId}?depth=0`)).json
+  expect(doc.workflowStatus, 'documento PRINCIPAL, nao a versao').toBe('published')
+  expect(doc._status).toBe('published')
+})
+
+/* ------------------------------------------------------------------ */
 /* 4.1 — A barra de transicao muda o DOCUMENTO, nao so a versao       */
 /* ------------------------------------------------------------------ */
 

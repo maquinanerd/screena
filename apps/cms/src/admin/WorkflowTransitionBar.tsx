@@ -149,6 +149,12 @@ export default function WorkflowTransitionBar(): React.ReactElement | null {
   // degraus, e como rotular o botao. Quem executa e o servidor, que recalcula
   // o mesmo plano — a tela nunca manda a lista de degraus, porque um cliente
   // que dita a escada e um cliente que pode pular degrau.
+  //
+  // O botao so aparece com MAIS DE UM degrau pela frente. Com um degrau so, a
+  // transicao granular ja E um clique e ja se chama "Publicar" — dois botoes
+  // com o mesmo nome na mesma barra confundem quem le a tela e quebraram o
+  // E2E por ambiguidade de seletor. A condicao elimina a colisao por
+  // construcao, em vez de renomear um dos dois para disfarcar.
   const publishPlan = useMemo(
     () => (actor === null ? null : planPublishPath(savedStatus, actor)),
     [savedStatus, actor],
@@ -281,7 +287,7 @@ export default function WorkflowTransitionBar(): React.ReactElement | null {
           mas porque `planPublishPath` devolve `forbidden_for_role` para quem
           nao publica. A regra continua sendo a mesma do servidor.
         */}
-        {publishPlan !== null && publishPlan.ok ? (
+        {publishPlan !== null && publishPlan.ok && publishPlan.path.length > 1 ? (
           <button
             className="cinerie-workflow__action is-publish-now"
             disabled={pending !== null || !gate.canPublish}
