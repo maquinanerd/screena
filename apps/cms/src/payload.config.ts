@@ -23,6 +23,7 @@ import { publicationOutboxEndpoints } from './endpoints/publication-outbox.js'
 import { publicationMediaEndpoint } from './endpoints/publication-media.js'
 import { contractEndpoints } from './endpoints/contracts.js'
 import { editorialPublicationsEndpoint } from './endpoints/editorial-publications.js'
+import { publishNowEndpoint } from './endpoints/publish-now.js'
 import { resolvePayloadUploadConfig } from './upload-storage-config.js'
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -121,6 +122,7 @@ export default buildConfig({
     publicationMediaEndpoint,
     ...contractEndpoints,
     editorialPublicationsEndpoint,
+    publishNowEndpoint,
   ],
   plugins: storagePlugins,
   graphQL: {

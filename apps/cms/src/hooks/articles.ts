@@ -37,6 +37,7 @@ import {
   evaluatePublishGate,
   publicationEventForTransition,
   type ActorKind,
+  type PublishGateInput,
   type WorkflowStatus,
 } from '../workflow.js'
 import { buildPublicationEvent } from '../publication.js'
@@ -198,6 +199,52 @@ async function countUnauthorizedMedia(
 /* beforeChange — governanca                                           */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Reune os FATOS que o gate de publicacao julga, lendo o acervo.
+ *
+ * Existe exportada porque tem dois chamadores: este hook, no instante em que a
+ * materia vira publica, e o endpoint do botao "Publicar", que precisa saber
+ * ANTES de mover qualquer degrau se a subida terminaria barrada.
+ *
+ * E uma funcao so de proposito. Um segundo montador — ainda que escrito no
+ * mesmo dia, com as mesmas regras — divergiria no primeiro fato novo, e a
+ * divergencia apareceria do pior jeito possivel: o botao prometendo que da
+ * para publicar e o servidor recusando no ultimo degrau, com a materia ja
+ * parada num estado intermediario.
+ *
+ * `workflowStatus` entra por parametro porque os dois chamadores perguntam de
+ * pontos diferentes da linha do tempo — o hook passa o estado ANTERIOR, e o
+ * endpoint passa `ready_to_publish`, que e onde a materia estara quando o
+ * ultimo degrau for tentado.
+ */
+export async function assemblePublishGateInput(
+  req: PayloadRequest,
+  doc: Record<string, unknown>,
+  workflowStatus: string,
+): Promise<PublishGateInput> {
+  const heroIds = idsOf(doc.heroMedia)
+  return {
+    workflowStatus,
+    slug: (doc.slug as string | null) ?? null,
+    title: (doc.title as string | null) ?? null,
+    language: (doc.language as string | null) ?? null,
+    activeAuthorCount: await countActiveAuthors(req, idsOf(doc.authors)),
+    blockingErrors: Array.isArray(doc.blockingErrors) ? (doc.blockingErrors as string[]) : [],
+    qaPassedAt:
+      doc.qaPassedAt === undefined || doc.qaPassedAt === null ? null : String(doc.qaPassedAt),
+    aiAssisted: doc.aiAssisted === true,
+    externalSourceCount: Array.isArray(doc.externalSources) ? doc.externalSources.length : 0,
+    unauthorizedMediaCount:
+      (await countUnauthorizedMedia(
+        req,
+        heroIds[0] ?? null,
+        idsOf(doc.gallery),
+        bodyMediaIds(doc.body),
+      )) + unverifiableBodyMediaCount(doc.body),
+    legalHold: doc.legalHold === true,
+  }
+}
+
 export const enforceEditorialGovernance: CollectionBeforeChangeHook = async ({
   data,
   req,
@@ -356,31 +403,9 @@ export const enforceEditorialGovernance: CollectionBeforeChangeHook = async ({
   /* --- Gate de publicacao ------------------------------------------ */
   const becomingPublic = to === 'published' && previous.workflowStatus !== 'published'
   if (becomingPublic) {
-    const authorIds = idsOf(next.authors)
-    const heroIds = idsOf(next.heroMedia)
-    const gate = evaluatePublishGate({
-      workflowStatus: String(previous.workflowStatus ?? 'draft'),
-      slug: (next.slug as string | null) ?? null,
-      title: (next.title as string | null) ?? null,
-      language: (next.language as string | null) ?? null,
-      activeAuthorCount: await countActiveAuthors(req, authorIds),
-      blockingErrors: Array.isArray(next.blockingErrors)
-        ? (next.blockingErrors as string[])
-        : [],
-      qaPassedAt: next.qaPassedAt === undefined || next.qaPassedAt === null
-        ? null
-        : String(next.qaPassedAt),
-      aiAssisted: next.aiAssisted === true,
-      externalSourceCount: Array.isArray(next.externalSources) ? next.externalSources.length : 0,
-      unauthorizedMediaCount:
-        (await countUnauthorizedMedia(
-          req,
-          heroIds[0] ?? null,
-          idsOf(next.gallery),
-          bodyMediaIds(next.body),
-        )) + unverifiableBodyMediaCount(next.body),
-      legalHold: next.legalHold === true,
-    })
+    const gate = evaluatePublishGate(
+      await assemblePublishGateInput(req, next, String(previous.workflowStatus ?? 'draft')),
+    )
     if (!gate.canPublish) {
       deny(`publicacao bloqueada: ${gate.reasons.join(', ')}`)
     }

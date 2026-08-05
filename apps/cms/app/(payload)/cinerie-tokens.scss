@@ -350,6 +350,43 @@
 }
 
 /* ---------------------------------------------------------------------- */
+/* Acao principal do fluxo: "Publicar"                                     */
+/*                                                                         */
+/* Fora da camada, como o resto deste arquivo: `.cinerie-workflow__action`  */
+/* ja e estilizado em `custom.scss` dentro de `@layer payload`, e uma       */
+/* variante declarada la ao lado perderia para o que o Payload declara nos  */
+/* proprios botoes.                                                          */
+/*                                                                         */
+/* E o unico botao PREENCHIDO da barra. Os degraus granulares continuam de  */
+/* contorno: a hierarquia diz qual e o caminho normal sem esconder os       */
+/* outros, que o revisor ainda precisa.                                     */
+/* ---------------------------------------------------------------------- */
+.cinerie-workflow__action.is-publish-now {
+  background: var(--cms-accent-primary);
+  border-color: var(--cms-accent-primary);
+  color: var(--cin-text-inverse);
+  font-weight: 800;
+}
+
+.cinerie-workflow__action.is-publish-now:hover:not(:disabled) {
+  background: var(--cms-accent-primary-hover);
+  border-color: var(--cms-accent-primary-hover);
+}
+
+.cinerie-workflow__action.is-publish-now:active:not(:disabled) {
+  background: var(--cms-accent-primary-active);
+  border-color: var(--cms-accent-primary-active);
+}
+
+/* Desabilitado nao pode depender so de opacidade: o motivo esta escrito na
+   lista de pendencias logo abaixo, e o `title` carrega a causa. */
+.cinerie-workflow__action.is-publish-now:disabled {
+  background: var(--cms-disabled-background);
+  border-color: var(--cms-border-strong);
+  color: var(--cms-disabled-foreground);
+}
+
+/* ---------------------------------------------------------------------- */
 /* Coluna de escrita                                                       */
 /*                                                                         */
 /* O corpo da materia e o unico campo que se le como texto corrido, e o     */

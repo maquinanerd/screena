@@ -1061,6 +1061,14 @@ export const Articles: CollectionConfig = {
           // caminhos de mudar estado, e o cru nao passa pelas transicoes
           // permitidas. `readOnly` e interface — a recusa real continua no hook
           // de governanca, que nao muda aqui. O valor persistido e o mesmo.
+          //
+          // FASE 1: `readOnly` deixava o select cru na tela, ocupando espaco e
+          // parecendo um controle. O estado ja e anunciado pela barra do topo,
+          // com rotulo por extenso e cor de apoio — repeti-lo como enum tecnico
+          // so oferecia um segundo caminho, pior, para a mesma decisao. A
+          // ESCRITA continua permitida a humanos (a barra escreve por aqui);
+          // `hidden` e sobre a tela, nao sobre a permissao.
+          hidden: true,
           readOnly: true,
           description:
             'Em que pé está a matéria. Para avançar ou voltar, use os botões no topo da tela.',
