@@ -138,6 +138,17 @@ function Block({ block }: { block: ArticleBodyBlock }) {
         </figure>
       )
 
+    case 'entityNote':
+      /*
+       * A NOTA sobrevive quando a ficha nao pode ser montada.
+       *
+       * O site so hidrata filme e serie. Para pessoa, temporada, episodio,
+       * personagem e franquia — todos legais no contrato — o bloco inteiro
+       * sumia, levando junto o texto que a redacao escreveu. Aqui ele fica, como
+       * nota editorial, sem fingir ser uma ficha com link.
+       */
+      return <aside className="art-entity-note">{block.note}</aside>
+
     case 'embed': {
       /*
        * CLIQUE PARA CARREGAR, e por que ele nao e opcional.

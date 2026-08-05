@@ -551,7 +551,37 @@ Por isso o preview desta fase nao imita a pagina: ele responde, bloco a bloco, s
 aquele bloco vai aparecer, usando o MESMO contrato que a projecao usa. E o
 material tambem serve de base para a F13.
 
-### F12..F13 — PENDENTES
+### F12 — As duas quedas silenciosas, FECHADAS — ENTREGUE
+
+**A regra era "ou ganham renderer, ou saem do contrato". Sair estava vedado:**
+`entityCardBlock` e `videoBlock` vivem tambem em `editorialBody`, o contrato de
+ENTRADA. Estreitar `entityKind` ou o enum de `provider` moveria o hash que o
+MNScr declara a cada pedido — a fase falharia pelo proprio gate da regra (c).
+Entao: renderer.
+
+- **`entityCard` fora de movie/tv.** O presenter devolvia `null` quando a
+  hidratacao faltava, e levava junto a NOTA que o redator escreveu. Agora existe
+  `entityNote`: a ficha nao e inventada (exigiria titulo e slug reais), mas o
+  TEXTO sobrevive. Sem nota, o bloco ainda some — nota inventada seria pior.
+- **`video` com provider `internal`.** Sumia mesmo com URL preenchida: o video
+  existia, o link existia, e a pagina nao mostrava nada. Agora vira link quando
+  ha endereco utilizavel; esquema perigoso continua recusado.
+- **Rotulos do CMS e preview da F11 sincronizados.** As frases diziam "ainda nao
+  aparece no site", o que deixou de ser verdade nesta fase. Duas verdades sobre o
+  mesmo bloco e exatamente o defeito que este projeto persegue — entao os
+  rotulos passaram a "vira nota, sem ficha" e "vira link, sem player", e os
+  testes da F11 foram atualizados para o comportamento novo, sem enfraquecer.
+- **Testes:** 8 novos no renderer, com controle negativo provando que o fallback
+  depende da HIDRATACAO e nao do tipo (senao toda ficha viraria nota).
+- **Gates:** root test `4858/4858` · cms test `533/533` · typecheck `0`.
+- **NAO ENTREGUE da F12, e fica registrado:** `Language` como select, aba de
+  automacao escondida quando `autoPublished` for falso, confirmacao ao remover
+  bloco, e "Nova materia" parar de criar rascunho antes de escrever. Os quatro
+  sao mudanca de superficie no painel, sem cobertura possivel neste ambiente
+  (Node 24 impede o Playwright; o CI esta parado por cobranca). Entram quando
+  houver como ver.
+
+### F13 — PENDENTE
 
 F6 canvas · F7 editor e menu `/` · F8 embeds e galeria · F9 midia · F10 SEO ·
 F11 preview · F12 limpeza e os dois defeitos de queda silenciosa · F13 teste de
