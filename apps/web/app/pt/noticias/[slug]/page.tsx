@@ -215,6 +215,11 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
                 mas nao e projetado para o lado publico, e liga-lo exigiria
                 migration no banco publico. Quando isso acontecer, basta o CSS
                 passar a ler a coordenada; o resto desta pagina nao muda. */}
+            {/* `alt` vazio abaixo e de PROPOSITO: a manchete vem em texto por
+                cima do scrim, entao a capa e decorativa e descreve-la faria o
+                leitor de tela repetir o titulo. O card de listagem, que nao tem
+                texto por cima, usa alt de verdade. Travado nos dois sentidos por
+                `tests/governance/editorial-media-route.test.ts`. */}
             <div className="art-hero__img" data-crop={heroCropOf(view.heroImage.width, view.heroImage.height)}>
               <img
                 alt=""

@@ -20,6 +20,8 @@
 
 import { randomUUID } from 'node:crypto'
 
+import sharp from 'sharp'
+
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { Payload } from 'payload'
 
@@ -315,15 +317,25 @@ ${harness.serverLog().slice(-2000)}`,
   })
   ids.bylineAuthor = Number(byline.id)
 
-  // Midia REAL, com bytes de JPEG validos (cabecalho, nao nome de arquivo).
-  const jpeg = Buffer.from([
-    0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10,
-    ...Array.from('JFIF', (char) => char.charCodeAt(0)), 0,
-    0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00,
-    0xff, 0xc0, 0x00, 0x11, 0x08, 0x02, 0x76, 0x04, 0xb0,
-    0x03, 0x01, 0x22, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01,
-    0xff, 0xd9,
-  ])
+  /*
+   * Midia REAL — agora DECODIFICAVEL, nao so com cabecalho valido.
+   *
+   * Antes era um JPEG montado a mao com SOI + JFIF + SOF0 + EOI e NENHUM
+   * segmento de scan. Passava na checagem de cabecalho do Payload e nunca
+   * precisava ser decodificado, entao servia.
+   *
+   * Deixou de servir quando `media.upload` ganhou `imageSizes`: gerar a
+   * miniatura obriga o sharp a DECODIFICAR os bytes, e ele recusa com
+   * "missing SOS marker" — corretamente, porque aquilo nao era uma imagem.
+   *
+   * Gerado pelo proprio sharp, que ja e dependencia: bytes de verdade, mínimos,
+   * e o teste volta a exercitar o caminho real de upload em vez de um atalho.
+   */
+  const jpeg = await sharp({
+    create: { width: 16, height: 12, channels: 3, background: { r: 20, g: 20, b: 20 } },
+  })
+    .jpeg()
+    .toBuffer()
 
   const makeMedia = async (label: string, fields: Record<string, unknown>) => {
     const created = await payload.create({
