@@ -420,6 +420,34 @@ varredura de contrato.
 
 ---
 
+## BLOQUEIO EXTERNO — CI parado por cobranca (2026-08-05)
+
+**O CI nao roda mais.** A partir da PR #120 os tres jobs falham em 3-9 segundos,
+antes de qualquer passo, com a anotacao do proprio GitHub:
+
+> The job was not started because recent account payments have failed or your
+> spending limit needs to be increased. Please check the 'Billing & plans'
+> section in your settings.
+
+Nao e defeito de codigo: nenhum job chegou a iniciar. **So o dono da conta
+resolve** (Billing & plans no GitHub).
+
+**O que isso muda, e o que NAO muda:**
+- PRs a partir da #120 **nao podem ser mergeadas** — nao ha CI verde para
+  autorizar. Elas ficam abertas, empilhadas, prontas.
+- Os gates LOCAIS continuam valendo e continuam sendo rodados: `typecheck`,
+  `test` (root e cms) e `test:integration` contra PostgreSQL 16 real. E o que da
+  para provar daqui.
+- O que se perde e a unica janela de verificacao de NAVEGADOR que este ambiente
+  tinha (o E2E do CI roda Node 22; a maquina local tem 24). Ou seja: da #120 em
+  diante, **nenhuma mudanca de superficie tem confirmacao visual de especie
+  alguma** ate a cobranca ser resolvida.
+- Merges anteriores (#114, #116, #117, #118) passaram por CI verde e estao na
+  main.
+
+**Decisao:** seguir implementando as fases seguintes com gates locais e deixar as
+PRs abertas. Quando o CI voltar, elas sao mergeadas na ordem.
+
 ## Pendencias herdadas
 
 1. **`blocksToPlainText` perde conteudo.** O whitelist `TEXT_KEYS`
