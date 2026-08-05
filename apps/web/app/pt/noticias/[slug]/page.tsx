@@ -14,6 +14,7 @@ import {
 import { AdSlot } from '../../../_components/ad-slot'
 import { ArticleBody, IMAGE_CREDIT_LABEL } from '../../../_components/article-body'
 import { CardBookmark } from '../../../_components/card-bookmark'
+import { authorInitials, heroCropOf, sectionCrumbLabel } from '../../../../src/lib/article-hero'
 import type { NewsArticleView } from '../../../../src/lib/news-presenter'
 import { HOME_PATH, SITE_URL, gatePublicRobots } from '../../../../src/lib/site'
 import { getNewsArticleData } from '../../../../src/server/news-pages'
@@ -156,6 +157,16 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
   const shareUrl = encodeURIComponent(canonicalUrl)
   const shareText = encodeURIComponent(view.title)
 
+  // Iniciais do avatar: o contrato nao projeta retrato, entao o circulo do
+  // byline so pode mostrar o que existe. `null` quando o nome nao tem letra —
+  // ai nao ha circulo nenhum (ver `authorInitials`).
+  const initials = view.author === null ? null : authorInitials(view.author)
+
+  // Ultimo degrau da trilha. Prefere a secao APROVADA; `category` e texto livre
+  // da fonte, e feed RSS carimba a categoria do proprio feed — era dai que saia
+  // o `Inicio > Noticias > news`, com o mesmo degrau repetido em ingles.
+  const sectionLabel = sectionCrumbLabel(view.articleSection ?? view.category)
+
   const breadcrumbJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
@@ -197,7 +208,14 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
       <header className="art-hero" data-hero-media={view.heroImage !== null ? 'true' : undefined}>
         {view.heroImage !== null ? (
           <>
-            <div className="art-hero__img">
+            {/* `data-crop` e a ANCORA do recorte, derivada da proporcao real do
+                arquivo (ver `heroCropOf`). Existe porque o hero e largo e baixo:
+                no `cover`, arquivo alto perde topo e base, e e no terco superior
+                que ficam os rostos. Nao e focal point — o campo existe no CMS
+                mas nao e projetado para o lado publico, e liga-lo exigiria
+                migration no banco publico. Quando isso acontecer, basta o CSS
+                passar a ler a coordenada; o resto desta pagina nao muda. */}
+            <div className="art-hero__img" data-crop={heroCropOf(view.heroImage.width, view.heroImage.height)}>
               <img
                 alt=""
                 fetchPriority="high"
@@ -220,24 +238,53 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
             <a href={NEWS_INDEX_PATH}>Notícias</a>
             {/* A seção editorial vive AQUI, na trilha — e só aqui. O chip que
                 existia logo abaixo repetia a mesma palavra dois centímetros
-                depois, sem acrescentar sinal nenhum. */}
-            {view.category !== null ? (
+                depois, sem acrescentar sinal nenhum.
+
+                O rótulo passa por `sectionCrumbLabel`: `category` é texto livre
+                da fonte, e feed RSS carimba a categoria técnica do próprio feed.
+                Era daí que vinha o degrau `news` logo depois de `Notícias` — o
+                mesmo nível escrito duas vezes, a segunda em inglês. */}
+            {sectionLabel !== null ? (
               <>
                 <span aria-hidden="true" className="art-crumb__sep">
                   ›
                 </span>
-                <span aria-current="page">{view.category}</span>
+                <span aria-current="page">{sectionLabel}</span>
               </>
             ) : null}
           </nav>
           <div className="art-hero__text">
-            {view.dateLabel !== null ? <p className="art-hero__date">{view.dateLabel}</p> : null}
+            {/* `<time datetime>` legível por máquina ao lado da data em pt-BR.
+                O JSON-LD já declara `datePublished`, mas ele descreve a página
+                inteira — quem lê o cabeçalho (leitor de tela, extração de
+                snippet) não tem como ligar aquela data A ESTA linha sem o
+                elemento semântico. Sem `dateIso` fica só o rótulo: um
+                `datetime` vazio é pior que nenhum. */}
+            {view.dateLabel !== null ? (
+              <p className="art-hero__date">
+                {view.dateIso !== null ? (
+                  <time dateTime={view.dateIso}>{view.dateLabel}</time>
+                ) : (
+                  view.dateLabel
+                )}
+              </p>
+            ) : null}
             <h1 className="art-title">{view.title}</h1>
             {view.deck !== null ? <p className="art-deck">{view.deck}</p> : null}
             <div className="art-byline">
               {view.author !== null ? (
                 <span className="art-byline__author">
-                  <span aria-hidden="true" className="art-byline__avatar" />
+                  {/* Avatar com INICIAIS, não um círculo cinza vazio. O contrato
+                      público não projeta retrato, então o degradê que existia
+                      aqui não era um avatar carregando: era um buraco com
+                      aparência de imagem quebrada. Iniciais são a única coisa
+                      verdadeira que dá para desenhar com o dado que existe — e
+                      quando nem isso sobra, não há círculo. */}
+                  {initials !== null ? (
+                    <span aria-hidden="true" className="art-byline__avatar">
+                      {initials}
+                    </span>
+                  ) : null}
                   por <strong>{view.author}</strong>
                 </span>
               ) : null}

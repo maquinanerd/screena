@@ -4029,17 +4029,22 @@ a.tabs__tab[aria-current='page'] {
 }
 
 /* Altura da capa.
-   `68vh` mede ~70% da tela (a referencia) e deixa o inicio do texto DENTRO da
-   primeira dobra em toda viewport comum: 1920x1080 -> 643px de hero e ~300px de
-   corpo visivel. `100vh` faria a dobra inteira ser imagem.
-   O piso de 520px protege telas baixas (notebook 1366x768 em janela reduzida),
-   onde 68vh nao caberia nem o proprio texto do hero; o teto de 720px impede que
-   monitor 1440p transforme a capa numa parede de 900px. Como e `min-height`, um
-   titulo longo ainda faz o hero crescer. */
+   A capa e o assunto da primeira dobra, nao um enfeite acima do texto: em
+   `88svh` ela ocupa a tela quase inteira e o bloco editorial encosta no rodape,
+   que e o que faz a pagina ler como materia e nao como landing page.
+   O piso de 560px protege janela baixa (1366x768 reduzida), onde a proporcao
+   sozinha espremeria a propria manchete; o teto de 1000px impede que um monitor
+   alto transforme a capa numa parede de 1300px. Como e `min-height`, manchete
+   longa continua podendo crescer o hero.
+   `svh` e o viewport PEQUENO (barra de URL visivel): no celular ele nao muda
+   quando a barra recolhe, entao o hero nao pula durante o scroll. A linha `vh`
+   acima e a base para quem nao tem `svh` — a segunda declaracao simplesmente
+   vence onde a unidade existe. */
 .art-hero[data-hero-media='true'] {
   display: flex;
   flex-direction: column;
-  min-height: clamp(520px, 68vh, 720px);
+  min-height: clamp(560px, 88vh, 1000px);
+  min-height: clamp(560px, 88svh, 1000px);
   background: var(--c-bg-hero);
   color: #fff;
 }
@@ -4050,22 +4055,54 @@ a.tabs__tab[aria-current='page'] {
 }
 
 /* `cover`: preenche recortando. `contain` deformaria a moldura ou deixaria
-   barras, e a proporcao da capa vem de fonte externa — nunca e garantida. */
+   barras, e a proporcao da capa vem de fonte externa — nunca e garantida.
+
+   `object-position` sai de `--art-hero-focus`, e a variavel existe para ser o
+   ENCAIXE do focal point: o campo ja existe no CMS mas nao e projetado para o
+   lado publico (exigiria migration no banco publico). Quando for, basta a
+   coordenada real alimentar esta variavel — nenhuma outra regra muda.
+   Ate la a ancora vem da proporcao declarada, sempre para CIMA: num hero largo
+   e baixo o `cover` come topo e base, e e no terco superior que ficam rostos. */
 .art-hero__img img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: var(--art-hero-focus, 50% 45%);
   display: block;
 }
 
-/* Scrim: DUAS camadas, porque sao dois problemas diferentes.
-   1) Banda superior em PX (nao %): cobre a barra fixa de 72px e o breadcrumb
-      logo abaixo dela, na mesma altura independentemente do tamanho do hero.
-   2) Banda inferior em %: cobre data, titulo, resumo, assinatura e credito.
-   Somadas, a opacidade combinada nunca cai abaixo de ~0.66 em nenhum ponto do
-   hero — inclusive no meio, por onde o header transparente passa enquanto o
-   usuario rola. Dimensionado para o PIOR caso (capa inteiramente branca), nao
-   para uma foto escura de exemplo: as imagens vem do TMDB e de fontes RSS. */
+/* 16:9 e mais largo cabe quase inteiro na moldura: 45% ja e a ancora neutra.
+   Quanto mais alto o arquivo, mais corte vertical — e mais alto o ponto de
+   ancoragem precisa ficar para o assunto sobreviver ao recorte. */
+.art-hero__img[data-crop='standard'] {
+  --art-hero-focus: 50% 35%;
+}
+
+.art-hero__img[data-crop='portrait'] {
+  --art-hero-focus: 50% 26%;
+}
+
+/* Scrim: TRES bandas com destino declarado + uma base plana fraca.
+   1) Banda do TOPO, em PX (nao %): cobre a barra fixa de 72px e o breadcrumb,
+      na mesma altura independentemente do tamanho do hero.
+   2) Banda do RODAPE, em %: sustenta data, titulo, resumo, assinatura, credito.
+   3) Banda da ESQUERDA: so o lado onde o texto vive. E ela que permite as outras
+      duas serem fracas — protege a manchete sem escurecer a metade direita da
+      foto, onde normalmente esta o assunto.
+   4) Base plana de 0.2: assenta a imagem sob o texto branco sem apaga-la.
+
+   O que mudou e por que: a versao anterior somava duas bandas fortes e a
+   opacidade combinada nunca caia abaixo de ~0.66 em ponto nenhum — inclusive no
+   meio do hero, onde nao ha texto para proteger. O resultado era uma parede
+   preta com uma foto vagamente visivel atras. Aqui a combinacao fica em ~0.29
+   no terco superior direito e ~0.41 no meio, e sobe para 0.86-0.93 exatamente
+   sob cada linha de texto.
+
+   Continua dimensionado para o PIOR caso (capa inteiramente branca), nao para a
+   foto escura de exemplo — as capas vem do TMDB e de fontes RSS. Medido sobre
+   #fff: manchete 15,8:1; breadcrumb 6,0:1; assinatura 9,3:1; credito 9,6:1;
+   links do menu sobre a banda do topo 6,0:1. Nenhuma vinheta: as bandas sao
+   lineares e direcionais, nunca radiais. */
 .art-hero__scrim {
   position: absolute;
   inset: 0;
@@ -4073,24 +4110,47 @@ a.tabs__tab[aria-current='page'] {
   background:
     linear-gradient(
       180deg,
-      rgba(0, 0, 0, 0.75) 0,
-      rgba(0, 0, 0, 0.62) 190px,
-      rgba(0, 0, 0, 0) 340px
+      rgba(0, 0, 0, 0.68) 0,
+      rgba(0, 0, 0, 0.4) 110px,
+      rgba(0, 0, 0, 0) 260px
     ),
     linear-gradient(
       0deg,
-      rgba(0, 0, 0, 0.9) 0%,
-      rgba(0, 0, 0, 0.8) 38%,
-      rgba(0, 0, 0, 0.42) 66%,
-      rgba(0, 0, 0, 0) 100%
-    );
+      rgba(0, 0, 0, 0.88) 0%,
+      rgba(0, 0, 0, 0.72) 22%,
+      rgba(0, 0, 0, 0.26) 50%,
+      rgba(0, 0, 0, 0) 76%
+    ),
+    linear-gradient(
+      90deg,
+      rgba(0, 0, 0, 0.66) 0%,
+      rgba(0, 0, 0, 0.34) 34%,
+      rgba(0, 0, 0, 0.08) 62%,
+      rgba(0, 0, 0, 0) 80%
+    ),
+    rgba(0, 0, 0, 0.2);
 }
 
+/* GRADE do hero — a MESMA de `.site-header__inner`, e isso e o ponto.
+   Antes: `max-width: 880px` centrado com 40px de recuo. Numa tela de 1920 isso
+   punha a borda esquerda do texto em 552px, enquanto a wordmark do header —
+   que usa `--container-nav` (1380) com `--pad-page` (80) — nascia em 350px. Os
+   dois blocos ficavam 200px fora de eixo, e nenhum ajuste de espacamento
+   conserta isso: era grade diferente, nao margem errada.
+   Repetir aqui os mesmos dois tokens do header e o que faz a manchete cair
+   exatamente sob o logo. Vale como contrato, e o QA mede as duas bordas. */
 .art-hero__inner {
   position: relative;
-  max-width: 880px;
+  width: 100%;
+  max-width: var(--container-nav);
   margin: 0 auto;
-  padding: 150px 40px 60px;
+  /* O recuo do topo e `--nav-height` + folga, e a folga NAO e decorativa: e ela
+     que define por quanto tempo a barra fica transparente. O header volta ao
+     solido quando o PRIMEIRO texto do hero encosta nele (`site-header.tsx`), e
+     esse primeiro texto e o breadcrumb — entao a distancia entre a barra e o
+     breadcrumb E a distancia de rolagem do estado transparente. Com folga
+     pequena a barra piscaria para solida quase no primeiro toque do scroll. */
+  padding: calc(var(--nav-height) + 64px) var(--pad-page) 54px;
 }
 
 /* Breadcrumb encostado no topo, o resto do texto no rodape do hero — como na
@@ -4107,10 +4167,19 @@ a.tabs__tab[aria-current='page'] {
   margin-top: auto;
 }
 
+/* `fit-content` NAO e cosmetico: como bloco, a trilha ocupava os 1220px do
+   container enquanto sua tinta media ~200px. Uma caixa dez vezes maior que o
+   texto que ela contem mente sobre o proprio fundo — e sobre uma capa com scrim
+   direcional (forte a esquerda, fraco a direita) essa mentira e justamente o que
+   a medicao de contraste le. Encolhendo a caixa ate o texto, o fundo medido
+   passa a ser o fundo que o leitor enxerga atras das letras.
+   `max-width: 100%` mantem a trilha longa dentro do container. */
 .art-crumb {
   display: flex;
   align-items: center;
   gap: 9px;
+  width: fit-content;
+  max-width: 100%;
   font-size: 11px;
   letter-spacing: 0.06em;
   color: var(--c-text-muted-aa);
@@ -4135,7 +4204,11 @@ a.tabs__tab[aria-current='page'] {
   opacity: 0.5;
 }
 
+/* Mesma razao da trilha: a data e uma linha curta que ocupava a largura inteira
+   do container como bloco. A caixa passa a ser do tamanho do texto. */
 .art-hero__date {
+  width: fit-content;
+  max-width: 100%;
   font-size: 13px;
   letter-spacing: 0.02em;
   color: var(--c-text-secondary);
@@ -4155,8 +4228,31 @@ a.tabs__tab[aria-current='page'] {
   margin: 0;
 }
 
+/* Escala EDITORIAL, e so com capa: sem capa o titulo vive na coluna de leitura
+   de 720px, onde 76px seria absurdo — por isso a base acima nao muda.
+   `4.6vw` cresce com a tela e trava em 76px (1650px+); em 1440 da 66px, em 1280
+   da 59px. O `max-width` de 920px e o que produz a quebra em 2-3 linhas da
+   referencia: sem ele a manchete correria os 1220px do container e viraria uma
+   faixa fina de texto.
+   `text-wrap: balance` distribui as linhas em vez de deixar a ultima com uma
+   palavra solta — a alternativa seria `<br>` na mao, que quebra em toda
+   viewport que nao for a do print. */
 .art-hero[data-hero-media='true'] .art-title {
   color: #fff;
+  /* `min(vw, svh)` — e NAO so `vw`.
+     A manchete cresce com a largura, mas o espaco que ela consome e ALTURA. Numa
+     tela larga e baixa (1760x900, 1366x768) o termo em `vw` sozinho produzia uma
+     manchete de 76px que, com titulo longo, empilhava quatro linhas e o bloco
+     editorial subia ate 78% do hero — saindo da faixa protegida do scrim e
+     derrubando o contraste da data e do breadcrumb. Amarrar a escala tambem a
+     altura resolve os dois defeitos de uma vez, porque os dois eram o MESMO
+     defeito. A linha `vh` antes e a base para quem nao tem `svh`. */
+  font-size: clamp(34px, min(4.6vw, 7.2vh), 76px);
+  font-size: clamp(34px, min(4.6vw, 7.2svh), 76px);
+  line-height: 0.98;
+  letter-spacing: -0.035em;
+  max-width: min(920px, 100%);
+  text-wrap: balance;
   text-shadow: 0 4px 40px rgba(0, 0, 0, 0.5);
 }
 
@@ -4168,16 +4264,32 @@ a.tabs__tab[aria-current='page'] {
   max-width: 62ch;
 }
 
+/* O resumo e mais ESTREITO que a manchete (660 contra 920), nao mais largo:
+   e o degrau seguinte da hierarquia, e uma linha que corre mais que o titulo
+   inverte a leitura. `pretty` so evita a viuva da ultima linha — `balance` num
+   paragrafo de tres linhas encurtaria todas elas sem motivo. */
 .art-hero[data-hero-media='true'] .art-deck {
   color: rgba(255, 255, 255, 0.82);
+  /* Mesma razao da manchete: em tela baixa o resumo tambem precisa ceder
+     altura, senao devolve por baixo o que o titulo economizou por cima. */
+  font-size: clamp(16px, min(1.35vw, 2.4vh), 21px);
+  font-size: clamp(16px, min(1.35vw, 2.4svh), 21px);
+  line-height: 1.5;
+  max-width: min(660px, 100%);
+  margin-top: 18px;
+  text-wrap: pretty;
 }
 
+/* A assinatura e o degrau MAIS BAIXO do hero: vem depois da manchete de 76px e
+   do resumo, e nao pode disputar com nenhum dos dois. Por isso 12px, peso
+   normal e opacidade abaixo da do resumo (0.7 contra 0.82) — o nome continua
+   perfeitamente legivel (9,3:1 medido sobre capa branca), so nao grita. */
 .art-byline {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 10px 16px;
-  margin-top: 30px;
+  margin-top: 26px;
   font-size: 12px;
   color: var(--c-text-secondary);
 }
@@ -4194,7 +4306,7 @@ a.tabs__tab[aria-current='page'] {
    solto, sem linha reservada. */
 .art-hero__credit {
   position: absolute;
-  right: 40px;
+  right: var(--pad-page);
   bottom: 18px;
   margin: 0;
   max-width: min(52ch, 60%);
@@ -4210,12 +4322,28 @@ a.tabs__tab[aria-current='page'] {
   gap: 9px;
 }
 
+/* Avatar de INICIAIS. O degrade cinza que existia aqui nao era um avatar: era
+   um circulo vazio, que na tela le como imagem que nao carregou. O contrato
+   publico nao projeta retrato, entao as iniciais sao o unico conteudo honesto
+   possivel — e quando nem elas existem, o componente nao renderiza circulo
+   nenhum (ver `authorInitials`). */
 .art-byline__avatar {
-  width: 30px;
-  height: 30px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #8a8a8a, #2a2a2a);
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  background: var(--c-bg-muted);
+  color: var(--c-text-secondary);
+}
+
+.art-hero[data-hero-media='true'] .art-byline__avatar {
+  background: rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.92);
 }
 
 .art-byline__author strong {
@@ -4241,21 +4369,43 @@ a.tabs__tab[aria-current='page'] {
   padding: 48px 20px 0;
 }
 
-/* Corpo de leitura 720 (justificado, como no canônico) */
+/* Corpo de leitura 720.
+   O respiro de 64px no topo e o que separa a capa do texto: com os 40px de
+   antes, o primeiro paragrafo encostava na borda inferior do hero e a passagem
+   de uma secao para a outra lia como corte de template, nao como virada de
+   bloco editorial.
+   `text-align: justify` SAIU. Em coluna de 720px com palavra longa de pt-BR ele
+   abre rios de espaco entre as palavras e cada linha ganha um espacamento
+   diferente — alinhado a esquerda a mancha fica regular. `hyphens: auto` fica,
+   porque ajuda justamente a coluna estreita do celular. */
 .art-body {
-  max-width: 720px;
+  max-width: var(--container-reading);
   margin: 0 auto;
-  padding: 40px 20px 20px;
-  text-align: justify;
+  padding: 64px 20px 20px;
   hyphens: auto;
 }
 
+/* ATENCAO: `.art-body` NAO e exclusivo da materia. A biografia da pagina de
+   pessoa (`/pt/pessoas/{slug}`) reusa a mesma classe. Por isso a tipografia
+   BASE fica como estava, e a escala de leitura nova entra escopada logo abaixo
+   — o corpo da pessoa nao pertence a esta tarefa. */
 .art-body > p {
   font-size: 17px;
   line-height: 1.8;
   color: #3a3a3a;
   margin: 26px 0 0;
   max-width: none;
+}
+
+/* Escala de leitura da MATERIA (18px/1.75). Escopada em `[data-vertical='news']`
+   — que a materia emite em `<main>` e a pagina de pessoa nao — porque a mesma
+   classe serve os dois. Sem o escopo, a biografia da pessoa herdava a fonte
+   maior, o entrelinhas menor e a cor nova de carona numa tarefa que e so da
+   tela de materia. */
+[data-vertical='news'] .art-body > p {
+  font-size: 18px;
+  line-height: 1.75;
+  color: var(--c-text-body);
 }
 
 .art-body > p:first-child {
@@ -4704,6 +4854,18 @@ h4.art-body__heading {
 }
 
 @media (max-width: 1023px) {
+  /* MESMO ponto de quebra em que `.site-header__inner` troca `--pad-page` por
+     `--pad-page-mobile` (e o menu vira hamburguer). Trocar aqui num limiar
+     diferente reabriria, so nesta faixa, exatamente o desalinhamento entre
+     manchete e wordmark que a grade acima existe para fechar. */
+  .art-hero__inner {
+    padding-inline: var(--pad-page-mobile);
+  }
+
+  .art-hero__credit {
+    right: var(--pad-page-mobile);
+  }
+
   .art-ficha {
     margin-left: 0;
     margin-right: 0;
@@ -4719,17 +4881,27 @@ h4.art-body__heading {
 }
 
 @media (max-width: 599px) {
-  /* Capa mais baixa no celular. A dobra util de um 360x640 tem ~570px: com os
-     68vh do desktop a imagem comeria a tela inteira e o leitor rolaria uma
-     parede antes da primeira linha. Em 62vh com teto de 520px sobra sempre um
-     naco de texto visivel — ~170px no 360x640, ~230px no 390x844 (iPhone 12+).
-     Piso de 400px para o proprio texto do hero nao ficar espremido. */
+  /* No celular a capa continua sendo o assunto da dobra — reduzi-la a uma faixa
+     de 62vh era "encolher tudo proporcionalmente", nao adaptar. Em 78svh ela
+     mantem a presenca cinematografica e ainda deixa corpo visivel abaixo:
+     ~186px num 390x844, ~141px num 360x640. Teto de 640px para o hero nao
+     acompanhar celular alto ate virar duas telas; piso de 420px para o proprio
+     texto nao se espremer.
+     `svh` importa MAIS aqui que no desktop: com `vh` o hero cresceria no
+     instante em que a barra de URL recolhe, empurrando o texto e reflowando a
+     pagina no meio do scroll. */
   .art-hero[data-hero-media='true'] {
-    min-height: clamp(400px, 62vh, 520px);
+    min-height: clamp(420px, 78vh, 640px);
+    min-height: clamp(420px, 78svh, 640px);
   }
 
+  /* `env()` para o texto nao cair sob o entalhe/cantos arredondados em paisagem;
+     `max()` mantem os 20px quando nao ha safe area (o caso comum). */
   .art-hero__inner {
-    padding: 92px 20px 30px;
+    padding-top: calc(var(--nav-height) + 28px);
+    padding-bottom: 28px;
+    padding-left: max(var(--pad-page-mobile), env(safe-area-inset-left));
+    padding-right: max(var(--pad-page-mobile), env(safe-area-inset-right));
   }
 
   /* Escala de texto propria do celular. Nao e cosmetica: com a escala do
@@ -4747,6 +4919,7 @@ h4.art-body__heading {
     margin-bottom: 10px;
   }
 
+  /* Materia SEM capa: titulo escuro na coluna de leitura. */
   .art-title {
     font-size: clamp(24px, 6.4vw, 30px);
     line-height: 1.12;
@@ -4758,8 +4931,38 @@ h4.art-body__heading {
     margin-top: 14px;
   }
 
+  /* Materia COM capa. O seletor precisa repetir `[data-hero-media='true']`:
+     a regra do desktop tem especificidade (0,2,0) e um `.art-title` solto aqui
+     dentro (0,1,0) simplesmente NAO a venceria — estar dentro de `@media` nao
+     acrescenta peso nenhum. Escrito com a especificidade errada, o celular
+     herdaria a manchete de 76px do desktop. */
+  .art-hero[data-hero-media='true'] .art-title {
+    font-size: clamp(28px, 8vw, 42px);
+    line-height: 1.04;
+    letter-spacing: -0.025em;
+    max-width: none;
+  }
+
+  .art-hero[data-hero-media='true'] .art-deck {
+    font-size: 15px;
+    line-height: 1.5;
+    max-width: none;
+    margin-top: 14px;
+  }
+
   .art-byline {
     margin-top: 18px;
+  }
+
+  /* No celular a assinatura quebra em duas linhas (nome + tempo de leitura), e
+     o separador ficava PENDURADO no fim da primeira: "por Fulano de Tal  ·" e
+     entao, embaixo, "6 min de leitura". Mesmo residuo que a legenda de imagem
+     ja evita — marca de pontuacao sem nada depois dela.
+     O separador e decorativo (`aria-hidden`) e o proprio `gap` do flex ja separa
+     os dois blocos, entao some. Nao da para detectar a quebra em CSS; o que da
+     para garantir e que na faixa onde ela acontece nao sobre marca solta. */
+  .art-byline__sep {
+    display: none;
   }
 
   /* No celular o credito sai do posicionamento absoluto e entra no FLUXO, como
