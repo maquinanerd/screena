@@ -369,6 +369,9 @@ export interface Article {
              * Âncora deste trecho. Gerada automaticamente.
              */
             blockId: string;
+            /**
+             * O site publica o vídeo como link para o provedor, nunca como player incorporado.
+             */
             provider: 'youtube' | 'vimeo' | 'internal';
             externalId?: string | null;
             url?: string | null;
@@ -395,6 +398,9 @@ export interface Article {
              * Âncora deste trecho. Gerada automaticamente.
              */
             blockId: string;
+            /**
+             * Hoje o site só monta o cartão para filme e série. Os demais tipos são aceitos, mas o cartão não é exibido na matéria publicada.
+             */
             entityKind: 'movie' | 'tv' | 'season' | 'episode' | 'person' | 'character' | 'franchise';
             entityId: string;
             note?: string | null;
@@ -454,14 +460,29 @@ export interface Article {
    * Não bloqueia a publicação, mas matéria sem capa perde espaço nas listas e no compartilhamento.
    */
   heroMedia?: (number | null) | Media;
+  /**
+   * Ficam vinculadas à matéria para reuso e crédito. Não viram galeria na página: para exibir uma imagem no texto, use o bloco de imagem no corpo.
+   */
   gallery?: (number | Media)[] | null;
   /**
    * Obrigatório para publicar: ao menos um autor ativo. Um rascunho pode ficar sem autor.
    */
   authors?: (number | Author)[] | null;
+  /**
+   * Entre os autores acima, quem encabeça a assinatura pública da matéria.
+   */
   primaryAuthor?: (number | null) | Author;
+  /**
+   * Controle interno de quem toca a matéria. Não aparece no site.
+   */
   assignedTo?: (number | null) | EditorialUser;
+  /**
+   * Ex.: Filmes, Séries, Streaming. Campo livre — não há taxonomia fechada ainda.
+   */
   section?: string | null;
+  /**
+   * Organização da redação. Não são as tags públicas da matéria.
+   */
   internalTags?: string[] | null;
   /**
    * O que aparece como título no Google. Cerca de 60 caracteres — acima disso, corta.
@@ -471,18 +492,45 @@ export interface Article {
    * O trecho abaixo do título no resultado. Cerca de 155 caracteres — acima disso, corta.
    */
   metaDescription?: string | null;
+  /**
+   * Ferramenta interna de foco. Não vira meta keywords nem sai no HTML da página.
+   */
   focusKeyphrase?: string | null;
+  /**
+   * Apoio de pauta. Também não sai no HTML.
+   */
   relatedKeyphrases?: string[] | null;
+  /**
+   * Vocabulário da redação para busca interna.
+   */
   editorialKeywords?: string[] | null;
   /**
-   * RECOMENDACAO. O JSON-LD final e montado pelo screen-app.
+   * Sugestão. O JSON-LD final é montado pelo site, que hoje só aceita NewsArticle e Article — Review, ItemList e HowTo são ignorados.
    */
   schemaTypeRecommendation?: ('NewsArticle' | 'Article' | 'Review' | 'ItemList' | 'HowTo') | null;
+  /**
+   * Vai no articleSection do JSON-LD. Costuma repetir a editoria.
+   */
   articleSection?: string | null;
+  /**
+   * Vazio, herda o título para busca; se este também estiver vazio, o título da matéria.
+   */
   socialTitle?: string | null;
+  /**
+   * Vazio, herda a descrição para busca; se esta também estiver vazia, a linha de apoio.
+   */
   socialDescription?: string | null;
+  /**
+   * Vazio, usa a capa. A imagem precisa estar liberada para uso social.
+   */
   socialMedia?: (number | null) | Media;
+  /**
+   * Só para matéria republicada de outra origem. Precisa ser https absoluta, e é ignorada quando a página não indexa.
+   */
   canonicalOverride?: string | null;
+  /**
+   * Marca a matéria como noindex e a mantém fora do sitemap.
+   */
   noindex?: boolean | null;
   entityReferences?:
     | {
@@ -554,9 +602,18 @@ export interface Article {
     | 'archived'
     | 'retracted';
   scheduledFor?: string | null;
+  /**
+   * Carimbada pelo servidor no momento em que a matéria vai ao ar.
+   */
   publishedAt?: string | null;
   correctedAt?: string | null;
+  /**
+   * O que mudou depois de publicada. Fica no registro editorial.
+   */
   correctionNote?: string | null;
+  /**
+   * Obrigatório em retratação: explica por que a matéria saiu do ar.
+   */
   retractionReason?: string | null;
   /**
    * Retencao juridica: bloqueia publicacao ate liberacao.
