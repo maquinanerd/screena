@@ -13,6 +13,11 @@
  * extracao produz TRECHOS FORMATADOS em vez de texto cru. Continua nao havendo
  * tag nenhuma na saida: a formatacao vira intervalo, nao markup.
  *
+ * IMAGEM continua nao atravessando — nao ha bloco de imagem "solto", e uma foto
+ * so publica depois de subir para a biblioteca de midia e ter a licenca decidida
+ * por gente. O que mudou: a perda deixou de ser SILENCIOSA. `countPastedImages`
+ * conta o que ficou para tras e o campo diz quantos arquivos faltam subir.
+ *
  * Sem DOM de proposito: `DOMParser` nao existe no ambiente de teste deste
  * pacote (`vitest.config.ts` roda `environment: 'node'`), e um parser de HTML
  * completo seria peso desnecessario para o unico uso real — separar paragrafos
@@ -62,6 +67,64 @@ function stripDangerous(html: string): string {
     .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, ' ')
     .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, ' ')
     .replace(/<!--[\s\S]*?-->/g, ' ')
+}
+
+/* ------------------------------------------------------------------ */
+/* Imagens perdidas na colagem                                         */
+/* ------------------------------------------------------------------ */
+
+/** `<img ...>` com atributos, tolerando `>` dentro de valor entre aspas. */
+const IMG_TAG = /<img\b((?:"[^"]*"|'[^']*'|[^>])*)>/gi
+
+/** `src="..."`, e NAO `data-src` — a fronteira antes de `src` impede o casamento. */
+const IMG_SRC = /(?:^|[\s/])src\s*=\s*(["'])([\s\S]*?)\1/i
+
+/**
+ * Quantas imagens o texto colado trazia — e que NAO atravessam.
+ *
+ * O corpo da Cinerie e estruturado: imagem entra por BLOCO de imagem, apontando
+ * para um item da biblioteca de midia com licenca decidida por gente. Uma `<img>`
+ * colada de um portal nao tem para onde ir — e ate agora sumia sem dizer nada,
+ * que e o pior desfecho possivel: quem escreve so descobre a perda relendo a
+ * materia publicada.
+ *
+ * Conta por ARQUIVO, nao por tag. A mesma `src` repetida (fallback de
+ * `<noscript>`, placeholder de lazy-load, a mesma foto usada duas vezes na
+ * pagina) e um upload so, e o aviso existe justamente para dizer QUANTOS
+ * arquivos precisam subir. `<img>` sem `src` legivel nao tem por onde ser
+ * deduplicada, entao cada uma conta por si — errar para mais aqui e melhor do
+ * que anunciar menos perda do que houve.
+ *
+ * Roda sobre o HTML ja limpo de `<script>`, `<style>` e comentario: imagem
+ * dentro de codigo morto nao e imagem da materia.
+ */
+export function countPastedImages(html: string): number {
+  const source = stripDangerous(html)
+  const files = new Set<string>()
+  let withoutSource = 0
+
+  IMG_TAG.lastIndex = 0
+  let match: RegExpExecArray | null
+  while ((match = IMG_TAG.exec(source)) !== null) {
+    const src = IMG_SRC.exec(match[1] ?? '')?.[2]?.trim() ?? ''
+    if (src === '') withoutSource += 1
+    else files.add(decodeEntities(src))
+  }
+
+  return files.size + withoutSource
+}
+
+/**
+ * Frase do que a colagem perdeu em imagem. `null` quando nao perdeu nada.
+ *
+ * Vive aqui, e nao no `.tsx` do campo, por um motivo mecanico: o vitest do CMS
+ * nao coleta `.tsx`. Uma frase escrita la nasceria sem teste, e o plural errado
+ * so apareceria para o redator.
+ */
+export function droppedImagesMessage(count: number): string | null {
+  if (!Number.isFinite(count) || count < 1) return null
+  if (count === 1) return '1 imagem não foi importada — envie para a biblioteca de mídia.'
+  return `${String(count)} imagens não foram importadas — envie para a biblioteca de mídia.`
 }
 
 function normalizeWhitespace(value: string): string {
@@ -258,18 +321,26 @@ export function splitPastedHtmlRich(html: string): InlineSpan[][] {
 export function planRichPaste(input: {
   readonly html?: string
   readonly text?: string
-}): { readonly paragraphs: readonly InlineSpan[][]; readonly dropped: number } {
+}): {
+  readonly paragraphs: readonly InlineSpan[][]
+  readonly dropped: number
+  readonly droppedImages: number
+} {
   const fromHtml = typeof input.html === 'string' && input.html.trim() !== ''
   const paragraphs = fromHtml
     ? splitPastedHtmlRich(input.html ?? '')
     : splitPastedText(input.text ?? '').map((text) => [
         { text, bold: false, italic: false, href: null },
       ])
+  // `text/plain` nao carrega imagem nenhuma: contar sobre ele so poderia
+  // inventar perda a partir de um `<img>` que o usuario DIGITOU como texto.
+  const droppedImages = fromHtml ? countPastedImages(input.html ?? '') : 0
 
-  if (paragraphs.length <= PASTE_MAX_BLOCKS) return { paragraphs, dropped: 0 }
+  if (paragraphs.length <= PASTE_MAX_BLOCKS) return { paragraphs, dropped: 0, droppedImages }
   return {
     paragraphs: paragraphs.slice(0, PASTE_MAX_BLOCKS),
     dropped: paragraphs.length - PASTE_MAX_BLOCKS,
+    droppedImages,
   }
 }
 
@@ -292,6 +363,14 @@ export interface PastePlan {
   readonly paragraphs: readonly string[]
   /** Quantos foram descartados pelo teto — nunca some em silencio. */
   readonly dropped: number
+  /**
+   * Quantas imagens ficaram para tras — pela mesma razao do campo acima.
+   *
+   * Existe nos DOIS planos de proposito. `planPaste` e `planRichPaste` sao a
+   * mesma decisao com saidas diferentes; dar o relatorio de perda a so um deles
+   * criaria uma segunda verdade sobre o que a colagem custou.
+   */
+  readonly droppedImages: number
 }
 
 /**
@@ -306,10 +385,12 @@ export function planPaste(input: { readonly html?: string; readonly text?: strin
   const paragraphs = fromHtml
     ? splitPastedHtml(input.html ?? '')
     : splitPastedText(input.text ?? '')
+  const droppedImages = fromHtml ? countPastedImages(input.html ?? '') : 0
 
-  if (paragraphs.length <= PASTE_MAX_BLOCKS) return { paragraphs, dropped: 0 }
+  if (paragraphs.length <= PASTE_MAX_BLOCKS) return { paragraphs, dropped: 0, droppedImages }
   return {
     paragraphs: paragraphs.slice(0, PASTE_MAX_BLOCKS),
     dropped: paragraphs.length - PASTE_MAX_BLOCKS,
+    droppedImages,
   }
 }
