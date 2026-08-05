@@ -61,12 +61,39 @@ const OUT_DIR = path.join(webDir, ".qa-article-hero");
 const HERO_PATH_BRIGHT = "/media/editorial/aa/aabbccddeeff0011.jpg";
 const HERO_PATH_DARK = "/media/editorial/bb/bbccddeeff002233.jpg";
 
-/** Viewports pedidos na revisao (celular pequeno, celular comum, tablet, desktop). */
+/**
+ * Viewports do bloco CARO (screenshot + leitura completa de estado).
+ * Celular pequeno, celular comum, tablet e desktop de referencia.
+ */
 const VIEWPORTS: ReadonlyArray<readonly [string, number, number]> = [
   ["360x640", 360, 640],
   ["390x844", 390, 844],
   ["768x1024", 768, 1024],
   ["1440x900", 1440, 900],
+];
+
+/**
+ * Matriz RESPONSIVA completa da revisao, para as checagens BARATAS de
+ * geometria: alinhamento com a grade do header, ancoragem do bloco editorial no
+ * rodape do hero, colisao com a barra fixa e transbordo horizontal.
+ *
+ * Separada de `VIEWPORTS` de proposito: medir geometria custa uma avaliacao de
+ * JS, enquanto contraste custa screenshot + decodificacao de PNG por elemento.
+ * Rodar as dez telas no bloco caro multiplicaria o tempo do QA sem acrescentar
+ * informacao — os defeitos que so aparecem em largura intermediaria sao de
+ * LAYOUT, e e layout que este bloco mede.
+ */
+const RESPONSIVE_MATRIX: ReadonlyArray<readonly [string, number, number]> = [
+  ["1920x1080", 1920, 1080],
+  ["1760x900", 1760, 900],
+  ["1440x900", 1440, 900],
+  ["1366x768", 1366, 768],
+  ["1280x800", 1280, 800],
+  ["1024x768", 1024, 768],
+  ["768x1024", 768, 1024],
+  ["430x932", 430, 932],
+  ["390x844", 390, 844],
+  ["360x800", 360, 800],
 ];
 
 interface CheckResult {
@@ -205,7 +232,25 @@ interface Fixtures {
   withoutHero: string;
   heroNoCredit: string;
   darkHero: string;
+  /** Cenario A: manchete MEDIA — o caso tipico, e o da referencia. */
+  mediumTitle: string;
+  /** Cenario B: manchete longa, SEM resumo, SEM autor, SEM credito. */
+  longTitle: string;
+  /** Cenario C: manchete curta, capa RETRATO, categoria tecnica na trilha. */
+  shortTitlePortrait: string;
 }
+
+/**
+ * Caminhos proprios dos cenarios B e C.
+ *
+ * `public_path` tem UNIQUE no banco, entao cada asset precisa do seu — reusar o
+ * caminho de outro cenario aborta o seed. O PREFIXO continua importando: e ele
+ * que a interceptacao do browser usa para escolher o PNG (`/bb/` = capa escura,
+ * qualquer outro = capa branca).
+ */
+const HERO_PATH_LONG_TITLE = "/media/editorial/bb/bb00112233445566.jpg";
+const HERO_PATH_MEDIUM = "/media/editorial/aa/aa99887766554433.jpg";
+const HERO_PATH_PORTRAIT = "/media/editorial/aa/aa00ff1122334455.jpg";
 
 const PAST = "now() - interval '2 days'";
 
@@ -267,6 +312,9 @@ async function seedFixtures({ q, x }: Sql): Promise<Fixtures> {
     payloadId: string,
     publicPath: string,
     credit: string | null,
+    // Dimensao REAL do asset: e dela que sai `data-crop`, entao o cenario de
+    // capa retrato precisa poder declarar uma proporcao alta de verdade.
+    size: readonly [number, number] = [1600, 900],
   ): Promise<string> =>
     (
       await q<{ id: bigint }>(
@@ -275,7 +323,7 @@ async function seedFixtures({ q, x }: Sql): Promise<Fixtures> {
             byte_size, alt, caption, credit, license_status, requires_attribution,
             allowed_for_editorial, allowed_for_hero, allowed_for_social, updated_at)
          VALUES (${lit(payloadId)}, ${lit(fakeSha())}, ${lit(`editorial/qa/${payloadId}.jpg`)},
-                 ${lit(publicPath)}, 'image/jpeg', 1600, 900, 120000,
+                 ${lit(publicPath)}, 'image/jpeg', ${size[0]}, ${size[1]}, 120000,
                  'Cena de abertura da materia', NULL, ${lit(credit)}, 'approved', true,
                  true, true, true, now())
          RETURNING id`,
@@ -291,6 +339,7 @@ async function seedFixtures({ q, x }: Sql): Promise<Fixtures> {
       deck: string | null;
       author: string | null;
       withBlocks: boolean;
+      category?: string;
     },
   ): Promise<string> => {
     const id = (
@@ -299,7 +348,7 @@ async function seedFixtures({ q, x }: Sql): Promise<Fixtures> {
            (category, author_name, hero_image_path, published_at, read_time_minutes, ai_assisted,
             source_name, source_url, license_status, display_allowed, requires_attribution,
             requires_linkback, hero_media_asset_id, updated_at)
-         VALUES ('Cinema', ${lit(opts.author)}, ${lit(opts.heroPath)}, ${PAST}, 6, false,
+         VALUES (${lit(opts.category ?? "Cinema")}, ${lit(opts.author)}, ${lit(opts.heroPath)}, ${PAST}, 6, false,
                  'Redacao Cinerie', 'https://cinerie.com/', 'official', true, false, false,
                  ${opts.heroMedia ?? "NULL"}, now())
          RETURNING id`,
@@ -327,6 +376,21 @@ async function seedFixtures({ q, x }: Sql): Promise<Fixtures> {
   );
   const darkMedia = await mediaId("qa-hero-dark", HERO_PATH_DARK, "Divulgacao/Estudio Cinerie");
   const noCreditMedia = await mediaId("qa-hero-nocredit", "/media/editorial/cc/ccdd001122334455.jpg", null);
+  // Cenario B: sem credito, para o hero ficar com o minimo de elementos.
+  const longTitleMedia = await mediaId("qa-hero-longtitle", HERO_PATH_LONG_TITLE, null);
+  const mediumMedia = await mediaId(
+    "qa-hero-medium",
+    HERO_PATH_MEDIUM,
+    "Divulgacao/Paramount+",
+  );
+  // Cenario C: proporcao 2:3 REAL — e ela que faz `heroCropOf` devolver
+  // `portrait` e o CSS subir a ancora do recorte.
+  const portraitMedia = await mediaId(
+    "qa-hero-portrait",
+    HERO_PATH_PORTRAIT,
+    "Divulgacao/Sony Pictures",
+    [1000, 1500],
+  );
 
   return {
     // Titulo LONGO de proposito: exercita a quebra em varias linhas no celular.
@@ -367,6 +431,44 @@ async function seedFixtures({ q, x }: Sql): Promise<Fixtures> {
       author: "Redacao Cinerie",
       withBlocks: false,
     }),
+    /* Cenario A — manchete de tamanho MEDIO (duas linhas no desktop), resumo de
+       uma frase, autor com iniciais e credito. E o formato da materia real e o
+       da referencia; e aqui que a composicao precisa mostrar folga de sobra. */
+    mediumTitle: await article({
+      heroPath: HERO_PATH_MEDIUM,
+      heroMedia: mediumMedia,
+      slug: "qa-materia-titulo-medio",
+      title: "Landman consolida drama familiar intenso no Paramount+",
+      deck: "A serie de Taylor Sheridan explora as tensoes de uma familia poderosa no setor petrolifero do Texas.",
+      author: "Pablo Eduardo Gameleira",
+      withBlocks: false,
+    }),
+    /* Cenario B — o hero com o MENOR numero de elementos e o maior titulo.
+       Sem resumo, sem autor e sem credito, tudo que segura a manchete no rodape
+       do hero desaparece: e aqui que um bloco mal ancorado volta a flutuar. */
+    longTitle: await article({
+      heroPath: HERO_PATH_LONG_TITLE,
+      heroMedia: longTitleMedia,
+      slug: "qa-materia-titulo-longo-sem-resumo",
+      title:
+        "Estudio confirma que a proxima fase do universo compartilhado sera reorganizada em tres blocos narrativos ate o fim da decada",
+      deck: null,
+      author: null,
+      withBlocks: false,
+    }),
+    /* Cenario C — manchete curta com capa RETRATO (proporcao 2:3), que e o caso
+       em que o `cover` mais corta verticalmente, e categoria `news`: o texto
+       livre que produzia `Inicio > Noticias > news` na trilha. */
+    shortTitlePortrait: await article({
+      heroPath: HERO_PATH_PORTRAIT,
+      heroMedia: portraitMedia,
+      slug: "qa-materia-titulo-curto-capa-retrato",
+      title: "Sequencia ganha data",
+      deck: "Resumo curto para o cenario de manchete curta com capa vertical.",
+      author: "Ana Paula Nogueira",
+      withBlocks: false,
+      category: "news",
+    }),
   };
 }
 
@@ -405,6 +507,27 @@ const READ_STATE = `() => {
     byline: pick('.art-byline'),
     credit: pick('.art-hero__credit'),
     navLink: pick('.site-header__link'),
+    /* Wordmark do header: e contra ELA que a manchete precisa alinhar. Foi a
+       divergencia entre estas duas bordas esquerdas — 350px contra 552px numa
+       tela de 1920 — que fez a composicao anterior parecer template. */
+    brand: pick('.site-header__brand'),
+    bylineAuthor: pick('.art-byline__author'),
+    bylineAvatar: pick('.art-byline__avatar'),
+    heroInner: pick('.art-hero__inner'),
+    heroImg: pick('.art-hero__img'),
+    bodyParagraph: pick('.art-body > p'),
+    /* Transbordo horizontal: scrollWidth maior que clientWidth no documento
+       inteiro e a unica forma honesta de provar que nada vazou para a direita.
+       (Sem crase neste comentario: o bloco vive DENTRO de um template literal,
+       e uma crase aqui encerra a string e quebra o arquivo.) */
+    docScrollWidth: document.documentElement.scrollWidth,
+    docClientWidth: document.documentElement.clientWidth,
+    heroCrop: document.querySelector('.art-hero__img')
+      ? document.querySelector('.art-hero__img').getAttribute('data-crop')
+      : null,
+    crumbText: document.querySelector('.art-crumb')
+      ? (document.querySelector('.art-crumb').textContent || '').replace(/\\s+/g, ' ').trim()
+      : null,
     bodyTop: document.querySelector('.art-body')
       ? document.querySelector('.art-body').getBoundingClientRect().top
       : null,
@@ -678,6 +801,154 @@ async function main(): Promise<void> {
       await page.close();
     }
 
+    // -------------------- 1b. GRADE, ancoragem e transbordo em 10 viewports
+    /*
+     * O bloco que tranca a causa raiz da composicao anterior.
+     *
+     * `alinhamento`: a borda esquerda da manchete tem de cair sobre a borda
+     * esquerda da wordmark. Eram 552px contra 350px numa tela de 1920 — duas
+     * grades diferentes, nao margem errada.
+     *
+     * `respiro`: a fracao do hero que fica SO com imagem acima do bloco
+     * editorial. E esta a medida de "presenca cinematografica": a versao
+     * anterior deixava 42% e o texto ocupava o miolo da foto; ancorado de
+     * verdade, o bloco desce e sobra mais da metade de imagem limpa.
+     */
+    const NAV_HEIGHT = 72;
+    for (const [name, w, h] of RESPONSIVE_MATRIX) {
+      const page = await openPage(w, h);
+      await page.goto(heroUrl, { waitUntil: "networkidle" });
+      await page.waitForTimeout(200);
+      const s = (await page.evaluate(`(${READ_STATE})()`)) as {
+        heroTop: number;
+        heroHeight: number;
+        viewportHeight: number;
+        title: Rect;
+        brand: Rect;
+        date: Rect;
+        crumb: Rect;
+        byline: Rect | null;
+        docScrollWidth: number;
+        docClientWidth: number;
+      };
+
+      const drift = Math.abs(s.title.left - s.brand.left);
+      record(
+        `grade @${name}: manchete alinhada a wordmark do header`,
+        drift <= 1.5,
+        `titulo x=${s.title.left.toFixed(1)}px vs wordmark x=${s.brand.left.toFixed(1)}px (desvio ${drift.toFixed(1)}px)`,
+      );
+
+      /*
+       * ANCORAGEM — a propriedade que o defeito original violava ("o conteudo
+       * nao esta ancorado na base do hero"). Independe do tamanho da manchete:
+       * seja qual for a altura do bloco, a ULTIMA linha dele encosta no rodape
+       * do hero, a uma distancia constante (o `padding-bottom`). Se o bloco
+       * voltar a flutuar no meio, esta folga cresce e o teste cai.
+       */
+      const lastText = s.byline ?? s.title;
+      const floorGap = s.heroTop + s.heroHeight - lastText.bottom;
+      record(
+        `ancoragem @${name}: bloco editorial encosta no rodape do hero`,
+        floorGap >= 0 && floorGap <= 96,
+        `${Math.round(floorGap)}px entre a ultima linha e a base do hero (teto 96px)`,
+      );
+
+      /*
+       * RESPIRO — quanto do hero fica SO com imagem acima do texto.
+       *
+       * O piso e 30%, e o numero merece explicacao: a fixture usa de proposito
+       * uma manchete de 95 caracteres COM resumo de tres linhas, que e o pior
+       * caso editorial real, nao o caso tipico. Nessa mesma fixture a composicao
+       * anterior deixava ~13%; uma manchete de tamanho medio (cenario A, abaixo)
+       * passa dos 55%. Calibrar o piso pelo caso tipico deixaria o pior caso
+       * passar sem ser medido — e e o pior caso que produz o defeito.
+       */
+      const cleanImage = (s.date.top - s.heroTop) / s.heroHeight;
+      record(
+        `respiro @${name}: imagem limpa acima do bloco editorial`,
+        cleanImage >= 0.3,
+        `${Math.round(cleanImage * 100)}% do hero e imagem limpa acima do texto (minimo 30%, manchete de pior caso)`,
+      );
+
+      /*
+       * A folga entre a barra e o breadcrumb NAO e so estetica: o header volta
+       * ao solido quando o primeiro texto do hero encosta nele, entao esta
+       * distancia E o quanto de rolagem o estado transparente sobrevive. Com
+       * folga curta a barra pisca para solida no primeiro toque do scroll, e o
+       * efeito da capa cinematografica morre antes de existir.
+       */
+      const transparentBudget = s.crumb.top - NAV_HEIGHT;
+      record(
+        `barra @${name}: breadcrumb abaixo da barra, com folga de rolagem util`,
+        transparentBudget >= 20,
+        `breadcrumb em y=${Math.round(s.crumb.top)}px — ${Math.round(transparentBudget)}px de rolagem com a barra transparente`,
+      );
+
+      record(
+        `transbordo @${name}: nada vaza na horizontal`,
+        s.docScrollWidth <= s.docClientWidth + 1,
+        `scrollWidth=${s.docScrollWidth} clientWidth=${s.docClientWidth}`,
+      );
+
+      // Texto encostando na borda le como erro mesmo quando cabe.
+      const rightGap = w - s.title.right;
+      record(
+        `margem @${name}: manchete nao encosta nas laterais`,
+        s.title.left >= 16 && rightGap >= 8,
+        `esquerda=${Math.round(s.title.left)}px direita=${Math.round(rightGap)}px`,
+      );
+      await page.close();
+    }
+
+    // ------------------- 1c. a FOTO continua visivel (nao virou parede preta)
+    {
+      /*
+       * Mede o brilho real do fundo composto num trecho do hero SEM texto — o
+       * quadrante superior direito — sobre uma capa inteiramente BRANCA.
+       *
+       * E a unica checagem que pega o defeito oposto ao de contraste: um scrim
+       * pesado passa em todos os testes de legibilidade e ainda assim destroi a
+       * pagina, porque apaga a imagem. Com o scrim anterior este ponto media
+       * ~73/255 (quase preto); o piso de 120 fica acima dele e abaixo do valor
+       * atual, entao a regressao volta a falhar aqui.
+       */
+      const page = await openPage(1440, 900);
+      await page.goto(heroUrl, { waitUntil: "networkidle" });
+      await page.waitForTimeout(300);
+      const s = (await page.evaluate(`(${READ_STATE})()`)) as {
+        heroTop: number;
+        heroHeight: number;
+        title: Rect;
+      };
+      await page.evaluate(`(${HIDE_TEXT})()`);
+      const upperRight = await sampleBackground(page, {
+        left: 1440 * 0.62,
+        top: s.heroTop + s.heroHeight * 0.16,
+        width: 1440 * 0.3,
+        height: s.heroHeight * 0.22,
+      });
+      const middle = await sampleBackground(page, {
+        left: 1440 * 0.55,
+        top: s.heroTop + s.heroHeight * 0.42,
+        width: 1440 * 0.35,
+        height: s.heroHeight * 0.16,
+      });
+      await page.evaluate(`(${SHOW_TEXT})()`);
+      const bright = (rgb: readonly [number, number, number]) => Math.round((rgb[0] + rgb[1] + rgb[2]) / 3);
+      record(
+        "capa branca: terco superior da foto continua visivel",
+        bright(upperRight) >= 120,
+        `brilho medio ${bright(upperRight)}/255 no quadrante superior direito (minimo 120)`,
+      );
+      record(
+        "capa branca: meio da foto continua visivel",
+        bright(middle) >= 100,
+        `brilho medio ${bright(middle)}/255 no meio do hero (minimo 100)`,
+      );
+      await page.close();
+    }
+
     // ------------------------------------- 2. CONTRASTE sobre capa BRANCA
     {
       const page = await openPage(1440, 900);
@@ -899,6 +1170,19 @@ async function main(): Promise<void> {
         clears,
         `credito.top=${Math.round(s.credit.top)} byline.bottom=${Math.round(s.byline.bottom)} deck.bottom=${Math.round(s.deck.bottom)}`,
       );
+      /*
+       * Separador PENDURADO: no celular a assinatura quebra em duas linhas e o
+       * "·" sobrava no fim da primeira, sem nada depois. Mesmo residuo que a
+       * legenda de imagem ja evita.
+       */
+      const sepDisplay = await page.evaluate(
+        `(() => { const el = document.querySelector('.art-byline__sep'); return el ? getComputedStyle(el).display : 'absent'; })()`,
+      );
+      record(
+        `assinatura @${name}: sem separador pendurado quando a linha quebra`,
+        sepDisplay === "none" || sepDisplay === "absent",
+        `display do separador: ${String(sepDisplay)}`,
+      );
       await page.close();
     }
 
@@ -941,6 +1225,195 @@ async function main(): Promise<void> {
         path: path.join(OUT_DIR, "09-legendas-corpo-1440x900.png"),
         fullPage: true,
       });
+      await page.close();
+    }
+
+    // ------------------------- 6a. CENARIO A: manchete media (o caso tipico)
+    /*
+     * O piso e por VIEWPORT, e nao um numero unico, porque a razao muda com a
+     * forma da tela: o bloco editorial tem altura quase fixa (linhas de texto),
+     * enquanto o hero acompanha a altura da janela. Num celular de 844px o mesmo
+     * bloco pesa proporcionalmente mais que num monitor de 1080px. Um piso unico
+     * ou seria frouxo no desktop ou impossivel no celular.
+     */
+    for (const [name, w, h, floor] of [
+      ["1920x1080", 1920, 1080, 0.5] as const,
+      ["1440x900", 1440, 900, 0.46] as const,
+      ["390x844", 390, 844, 0.4] as const,
+    ]) {
+      const page = await openPage(w, h);
+      await page.goto(`${base}/pt/noticias/qa-materia-titulo-medio/`, {
+        waitUntil: "networkidle",
+      });
+      await page.waitForTimeout(250);
+      await page.screenshot({ path: path.join(OUT_DIR, `13-cenario-a-titulo-medio-${name}.png`) });
+      const s = (await page.evaluate(`(${READ_STATE})()`)) as {
+        heroTop: number;
+        heroHeight: number;
+        title: Rect;
+        brand: Rect;
+        date: Rect;
+        byline: Rect;
+        credit: Rect;
+        docScrollWidth: number;
+        docClientWidth: number;
+      };
+      /*
+       * Aqui o piso e ALTO (50%). E a manchete do formato real — a mesma da
+       * referencia —, e num artigo tipico a foto tem de dominar a dobra. O piso
+       * de 30% do bloco anterior existe so para o pior caso editorial.
+       */
+      const cleanImage = (s.date.top - s.heroTop) / s.heroHeight;
+      record(
+        `cenario A @${name}: manchete tipica deixa a foto dominar a dobra`,
+        cleanImage >= floor,
+        `${Math.round(cleanImage * 100)}% do hero e imagem limpa acima do texto (minimo ${Math.round(floor * 100)}%)`,
+      );
+      record(
+        `cenario A @${name}: grade, ancoragem e ausencia de transbordo`,
+        Math.abs(s.title.left - s.brand.left) <= 1.5 &&
+          s.heroTop + s.heroHeight - s.byline.bottom <= 96 &&
+          s.docScrollWidth <= s.docClientWidth + 1,
+        `desvio=${Math.abs(s.title.left - s.brand.left).toFixed(1)}px folga=${Math.round(s.heroTop + s.heroHeight - s.byline.bottom)}px scrollWidth=${s.docScrollWidth}`,
+      );
+      // Avatar com iniciais reais: "Pablo Eduardo Gameleira" -> "PG".
+      const avatar = await page.evaluate(
+        `(() => { const el = document.querySelector('.art-byline__avatar'); return el ? el.textContent.trim() : null; })()`,
+      );
+      record(
+        `cenario A @${name}: avatar mostra iniciais, nao um circulo vazio`,
+        avatar === "PG",
+        `iniciais renderizadas: ${String(avatar)}`,
+      );
+      /*
+       * A escala de leitura da materia e ESCOPADA em `[data-vertical='news']`,
+       * porque `.art-body` tambem serve a biografia da pagina de pessoa. Aqui
+       * se mede que o escopo de fato ALCANCA a materia — a auditoria ja provou
+       * que ele nao alcanca a pessoa, mas um escopo que erra o alvo dos dois
+       * lados passaria despercebido.
+       */
+      const bodyType = (await page.evaluate(
+        `(() => { const p = document.querySelector('.art-body > p'); if (!p) return null; const cs = getComputedStyle(p); return cs.fontSize + ' / ' + cs.lineHeight; })()`,
+      )) as string | null;
+      record(
+        `cenario A @${name}: corpo da materia recebe a escala de leitura escopada`,
+        bodyType !== null && bodyType.startsWith("18px"),
+        `font-size / line-height do primeiro paragrafo: ${String(bodyType)}`,
+      );
+      await page.close();
+    }
+
+    // ------------------- 6b. CENARIO B: manchete longa, sem resumo/autor/credito
+    /*
+     * O hero com o MENOR numero de elementos e a MAIOR manchete. Sem resumo,
+     * sem assinatura e sem credito, some tudo o que empurrava o titulo para
+     * baixo — e uma ancoragem que dependesse do volume de texto se desfaz aqui.
+     */
+    for (const [name, w, h] of [
+      ["1440x900", 1440, 900] as const,
+      ["390x844", 390, 844] as const,
+    ]) {
+      const page = await openPage(w, h);
+      await page.goto(`${base}/pt/noticias/qa-materia-titulo-longo-sem-resumo/`, {
+        waitUntil: "networkidle",
+      });
+      await page.waitForTimeout(250);
+      await page.screenshot({ path: path.join(OUT_DIR, `11-cenario-b-titulo-longo-${name}.png`) });
+      const s = (await page.evaluate(`(${READ_STATE})()`)) as {
+        heroTop: number;
+        heroHeight: number;
+        viewportHeight: number;
+        title: Rect;
+        brand: Rect;
+        date: Rect;
+        deck: Rect | null;
+        byline: Rect | null;
+        bylineAuthor: Rect | null;
+        bylineAvatar: Rect | null;
+        credit: Rect | null;
+        docScrollWidth: number;
+        docClientWidth: number;
+      };
+      /*
+       * Sem AUTOR nao ha assinatura nem avatar — mas a linha do byline continua
+       * existindo, porque ela tambem carrega o tempo de leitura, que a materia
+       * tem. Exigir o sumico da linha inteira seria exigir que um dado presente
+       * desaparecesse junto com um dado ausente.
+       */
+      record(
+        `cenario B @${name}: sem resumo, sem autor, sem avatar e sem credito — nenhum residuo`,
+        s.deck === null &&
+          s.bylineAuthor === null &&
+          s.bylineAvatar === null &&
+          s.credit === null,
+        `deck=${s.deck === null ? "ausente" : "presente"} autor=${s.bylineAuthor === null ? "ausente" : "presente"} avatar=${s.bylineAvatar === null ? "ausente" : "presente"} credito=${s.credit === null ? "ausente" : "presente"}`,
+      );
+      record(
+        `cenario B @${name}: manchete longa continua alinhada e ancorada`,
+        Math.abs(s.title.left - s.brand.left) <= 1.5 &&
+          (s.date.top - s.heroTop) / s.heroHeight >= 0.3,
+        `desvio=${Math.abs(s.title.left - s.brand.left).toFixed(1)}px imagem limpa=${Math.round(((s.date.top - s.heroTop) / s.heroHeight) * 100)}% (minimo 30%, pior caso)`,
+      );
+      record(
+        `cenario B @${name}: manchete longa nao estoura a tela nem transborda`,
+        s.heroHeight <= s.viewportHeight * 1.15 && s.docScrollWidth <= s.docClientWidth + 1,
+        `hero=${Math.round(s.heroHeight)}px (${Math.round((s.heroHeight / s.viewportHeight) * 100)}% da dobra), scrollWidth=${s.docScrollWidth}`,
+      );
+      await page.close();
+    }
+
+    // ------------ 6c. CENARIO C: manchete curta, capa RETRATO, trilha tecnica
+    /*
+     * Roda em desktop E celular. A tela estreita nao e redundante aqui: e nela
+     * que o `cover` de um arquivo 2:3 corta MAIS na vertical, entao e o pior
+     * caso da ancora de recorte — exatamente o que este cenario existe para
+     * exercitar.
+     */
+    for (const [name, w, h] of [
+      ["1440x900", 1440, 900] as const,
+      ["390x844", 390, 844] as const,
+    ]) {
+      const page = await openPage(w, h);
+      await page.goto(`${base}/pt/noticias/qa-materia-titulo-curto-capa-retrato/`, {
+        waitUntil: "networkidle",
+      });
+      await page.waitForTimeout(250);
+      await page.screenshot({ path: path.join(OUT_DIR, `12-cenario-c-retrato-${name}.png`) });
+      const s = (await page.evaluate(`(${READ_STATE})()`)) as {
+        heroTop: number;
+        heroHeight: number;
+        title: Rect;
+        brand: Rect;
+        heroCrop: string | null;
+        crumbText: string | null;
+        docScrollWidth: number;
+        docClientWidth: number;
+      };
+      record(
+        `cenario C @${name}: capa 2:3 e classificada como retrato e sobe a ancora do recorte`,
+        s.heroCrop === "portrait",
+        `data-crop=${s.heroCrop ?? "ausente"} (esperado portrait para 1000x1500)`,
+      );
+      record(
+        `cenario C @${name}: trilha nao repete Noticias em ingles no ultimo degrau`,
+        s.crumbText !== null && !/\bnews\b/i.test(s.crumbText),
+        `trilha="${s.crumbText ?? "ausente"}"`,
+      );
+      record(
+        `cenario C @${name}: manchete curta continua na grade, sem transbordo`,
+        Math.abs(s.title.left - s.brand.left) <= 1.5 &&
+          s.docScrollWidth <= s.docClientWidth + 1,
+        `desvio=${Math.abs(s.title.left - s.brand.left).toFixed(1)}px scrollWidth=${s.docScrollWidth}`,
+      );
+      // A ancora alta so tem valor se o recorte de fato subiu.
+      const objectPosition = await page.evaluate(
+        `getComputedStyle(document.querySelector('.art-hero__img img')).objectPosition`,
+      );
+      record(
+        `cenario C @${name}: object-position sobe para preservar o assunto do enquadramento`,
+        typeof objectPosition === "string" && objectPosition.includes("26%"),
+        `object-position=${String(objectPosition)}`,
+      );
       await page.close();
     }
 
