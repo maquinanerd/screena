@@ -232,7 +232,12 @@ test('o botao "Publicar" leva a materia de draft a published num clique', async 
   )
   await oneClick.click()
   const response = await settled
-  expect(response.status(), await response.text()).toBe(200)
+  // SO o status. O componente recarrega a pagina no sucesso, e a navegacao
+  // descarta o corpo da resposta antes que o Playwright consiga le-lo
+  // (`Network.getResponseBody: No resource with given identifier found`).
+  // O `status()` sobrevive porque ja veio nos headers; quem prova o desfecho
+  // e o badge logo abaixo, que le o documento recarregado.
+  expect(response.status()).toBe(200)
 
   // A tela recarrega sozinha; o badge tem de acompanhar o documento.
   await expect(page.locator('.cinerie-workflow__badge')).toHaveAttribute(
