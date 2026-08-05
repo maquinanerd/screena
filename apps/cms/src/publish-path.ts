@@ -28,6 +28,7 @@ import {
   WORKFLOW_STATUSES,
   canTransition,
   type ActorKind,
+  type PublishBlockReason,
   type WorkflowStatus,
 } from './workflow.js'
 
@@ -99,6 +100,28 @@ export function planPublishPath(from: string, actor: ActorKind): PublishPathPlan
   // O grafo tem caminho (todo estado chega a `ready_to_publish`), mas o papel
   // nao fecha o ultimo degrau. Dizer "impossivel" seria mentir sobre o motivo.
   return { ok: false, reason: 'forbidden_for_role' }
+}
+
+/**
+ * Dos motivos de bloqueio, quais AINDA valem para o botao de um clique.
+ *
+ * `not_ready_to_publish` sai — e a unica pendencia que subir a escada resolve,
+ * e e o estado normal de toda materia em rascunho. Mante-la desabilitaria o
+ * botao exatamente onde ele serve. Todos os outros motivos ficam: sem autor
+ * ativo, sem QA, com midia sem licenca ou sob retencao juridica, percorrer os
+ * degraus nao resolveria nada, e o ultimo recusaria de qualquer forma.
+ *
+ * E o espelho, no cliente, do que o servidor faz no pre-voo — la o gate e
+ * consultado com `ready_to_publish` no lugar do estado atual, o que remove
+ * este mesmo motivo e preserva os demais.
+ *
+ * Vive aqui, e nao dentro do componente, porque o vitest deste app nao coleta
+ * `.tsx`: a regra so vira teste se for uma funcao.
+ */
+export function blocksForOneClickPublish(
+  reasons: readonly PublishBlockReason[],
+): readonly PublishBlockReason[] {
+  return reasons.filter((reason) => reason !== 'not_ready_to_publish')
 }
 
 function rebuild(

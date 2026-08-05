@@ -26,7 +26,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import type { ActorKind, WorkflowStatus } from '../workflow.js'
 import { WORKFLOW_STATUSES } from '../workflow.js'
-import { planPublishPath } from '../publish-path.js'
+import { blocksForOneClickPublish, planPublishPath } from '../publish-path.js'
 import {
   explainServerRejection,
   PUBLISH_BLOCK_EXPLANATIONS,
@@ -160,6 +160,20 @@ export default function WorkflowTransitionBar(): React.ReactElement | null {
     [savedStatus, actor],
   )
 
+  /*
+   * O gate de previsao julga o estado ATUAL, entao de `draft` ele sempre
+   * devolve `not_ready_to_publish` — e essa e justamente a condicao que este
+   * botao existe para resolver, subindo a escada. Manter o motivo aqui deixava
+   * o botao permanentemente desabilitado no unico lugar onde ele serve.
+   *
+   * O servidor faz a MESMA coisa por outro caminho: no pre-voo ele pergunta ao
+   * gate com `ready_to_publish` no lugar do estado atual. Aqui o equivalente e
+   * descartar esse unico motivo. Os demais bloqueios continuam valendo — sem
+   * autor ativo, sem QA, com midia sem licenca, o botao segue desabilitado,
+   * porque subir a escada nao resolveria nenhum deles.
+   */
+  const oneClickBlocks = useMemo(() => blocksForOneClickPublish(gate.reasons), [gate.reasons])
+
   const publishNow = useCallback(async (): Promise<void> => {
     if (id === undefined || id === null) return
     setPending('published')
@@ -290,10 +304,10 @@ export default function WorkflowTransitionBar(): React.ReactElement | null {
         {publishPlan !== null && publishPlan.ok && publishPlan.path.length > 1 ? (
           <button
             className="cinerie-workflow__action is-publish-now"
-            disabled={pending !== null || !gate.canPublish}
+            disabled={pending !== null || oneClickBlocks.length > 0}
             onClick={() => { void publishNow() }}
             title={
-              gate.canPublish
+              oneClickBlocks.length === 0
                 ? `Percorre ${String(publishPlan.path.length)} transições registradas uma a uma.`
                 : 'Resolva os pendentes abaixo para publicar'
             }

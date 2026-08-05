@@ -9,7 +9,7 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { planPublishPath } from '../publish-path.js'
+import { blocksForOneClickPublish, planPublishPath } from '../publish-path.js'
 import { WORKFLOW_STATUSES, canTransition, type WorkflowStatus } from '../workflow.js'
 
 describe('planPublishPath', () => {
@@ -114,6 +114,26 @@ describe('planPublishPath', () => {
       expect(plan.path, `partindo de ${from}`).not.toContain('blocked')
       expect(plan.path, `partindo de ${from}`).not.toContain('archived')
     }
+  })
+
+  it('rascunho sem pendencia real habilita o botao de um clique', () => {
+    // O defeito que o E2E pegou: de `draft` o gate de previsao sempre devolve
+    // `not_ready_to_publish`, e o botao nascia desabilitado no unico lugar
+    // onde ele serve. Publicar em um clique E sair de `draft`.
+    expect(blocksForOneClickPublish(['not_ready_to_publish'])).toEqual([])
+  })
+
+  it('CONTROLE NEGATIVO do detector de pendencias: ele NAO deixa passar o resto', () => {
+    // Este teste existe porque o defeito real foi o oposto — o botao ficava
+    // desabilitado sempre. Um filtro largo demais criaria o defeito espelhado:
+    // botao habilitado prometendo publicar o que o servidor recusaria.
+    const restantes = blocksForOneClickPublish([
+      'not_ready_to_publish',
+      'missing_active_author',
+      'qa_not_passed',
+      'legal_hold',
+    ])
+    expect(restantes).toEqual(['missing_active_author', 'qa_not_passed', 'legal_hold'])
   })
 
   it('service e automation_publisher nao usam este botao', () => {
