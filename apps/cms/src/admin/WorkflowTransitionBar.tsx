@@ -29,7 +29,9 @@ import { WORKFLOW_STATUSES } from '../workflow.js'
 import { blocksForOneClickPublish, planPublishPath } from '../publish-path.js'
 import {
   explainServerRejection,
+  partialAdvanceMessage,
   PUBLISH_BLOCK_EXPLANATIONS,
+  PUBLISHER_ROLES,
   STATUS_HINTS,
   STATUS_LABELS,
   STATUS_TONES,
@@ -191,9 +193,23 @@ export default function WorkflowTransitionBar(): React.ReactElement | null {
         reasons?: readonly string[]
         message?: string
         stoppedAt?: string
+        /** Avancou ate onde o papel alcanca, sem publicar. */
+        partial?: boolean
       }
 
       if (response.ok) {
+        // AVANCO PARCIAL: a materia andou, mas nao publicou. Sem esta frase o
+        // defeito e mudo — a pessoa aperta "Publicar", a materia sobe alguns
+        // degraus, nada anuncia o que houve, e ela aperta de novo.
+        if (payload.partial === true && typeof payload.stoppedAt === 'string') {
+          setServerError(
+            partialAdvanceMessage(payload.stoppedAt as WorkflowStatus, PUBLISHER_ROLES),
+          )
+          // Recarrega DEPOIS de anunciar: o estado mudou de verdade e a barra
+          // precisa refletir o novo ponto de partida.
+          window.setTimeout(() => { window.location.reload() }, 2500)
+          return
+        }
         // Recarrega para a tela refletir o documento PRINCIPAL, nao o rascunho
         // que o autosave deixou em memoria.
         window.location.reload()

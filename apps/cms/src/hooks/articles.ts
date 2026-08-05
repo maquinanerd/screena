@@ -338,6 +338,31 @@ export const enforceEditorialGovernance: CollectionBeforeChangeHook = async ({
     // Remover preserva o valor ja gravado — uma materia autopublicada
     // continua marcada como tal depois de um humano corrigir uma virgula.
     for (const field of HUMAN_FORBIDDEN_FIELDS) delete incoming[field]
+
+    /* --- Rastro do colapso: estampado AQUI, depois da remocao ----------
+     *
+     * A ordem importa. Os quatro campos acabaram de ser removidos junto com o
+     * resto do que humano nao escreve — inclusive se alguem os tivesse mandado
+     * no corpo do PATCH. So agora, DEPOIS, o servidor os estampa a partir de
+     * `req.context`, que nenhum cliente consegue preencher: o contexto e
+     * montado no processo, pelo endpoint `/internal/publish-now`.
+     *
+     * O resultado e que a marca de "isto foi publicacao direta" so pode vir de
+     * um colapso de verdade. Nao da para forjar num artigo que passou por
+     * revisao, nem para apagar de um que nao passou.
+     *
+     * Os quatro valores sao os MESMOS nas cinco chamadas de update — o endpoint
+     * os gera uma vez e reusa —, entao as cinco linhas de versao ficam
+     * agrupaveis por `collapseId`.
+     */
+    const collapse = (req.context as { publishCollapse?: unknown } | undefined)?.publishCollapse
+    if (collapse !== undefined && collapse !== null && typeof collapse === 'object') {
+      const stamp = collapse as Record<string, unknown>
+      incoming.collapseId = stamp.collapseId
+      incoming.collapsedAt = stamp.collapsedAt
+      incoming.collapsedFrom = stamp.collapsedFrom
+      incoming.collapseReason = stamp.collapseReason
+    }
     // `autoPublished` e a UNICA excecao a remocao, e so na criacao: removido,
     // o adapter grava NULL, e "nulo" nao e uma resposta — a pergunta
     // "publicou automaticamente?" precisa de um `false` afirmativo para o lado
