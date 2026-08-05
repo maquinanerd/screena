@@ -148,6 +148,58 @@ export function toContractBlocks(body: unknown): unknown[] {
             ...(text(block.credit) === undefined ? {} : { credit: text(block.credit) }),
           },
         ]
+      case 'embed': {
+        // DADO TIPADO, nunca markup. Se um destes faltar, o bloco nao tem como
+        // virar nem player nem cartao — some, em vez de publicar um buraco.
+        const canonicalUrl = text(block.canonicalUrl)
+        const externalId = text(block.externalId)
+        const provider = text(block.provider)
+        if (canonicalUrl === undefined || externalId === undefined || provider === undefined) {
+          return []
+        }
+        return [
+          {
+            id,
+            type,
+            provider,
+            externalId,
+            canonicalUrl,
+            originalUrl: text(block.originalUrl) ?? canonicalUrl,
+            ...(text(block.caption) === undefined ? {} : { caption: text(block.caption) }),
+            ...(text(block.authorName) === undefined ? {} : { authorName: text(block.authorName) }),
+            ...(text(block.excerpt) === undefined ? {} : { excerpt: text(block.excerpt) }),
+          },
+        ]
+      }
+      case 'gallery': {
+        // A imagem entra por REFERENCIA; a resolucao para caminho publico e da
+        // projecao, como no bloco `image`. Item sem midia e descartado — galeria
+        // com buraco seria publicar o descuido.
+        const items = (Array.isArray(block.items) ? block.items : [])
+          .map((row) => {
+            const item = row as Record<string, unknown> | null
+            const mediaRef = idsOf(item?.media)[0]
+            const alt = text(item?.alt)
+            if (mediaRef === undefined || mediaRef === '' || alt === undefined) return null
+            return {
+              mediaRef,
+              alt,
+              ...(text(item?.caption) === undefined ? {} : { caption: text(item?.caption) }),
+              ...(text(item?.credit) === undefined ? {} : { credit: text(item?.credit) }),
+            }
+          })
+          .filter((item): item is NonNullable<typeof item> => item !== null)
+        if (items.length === 0) return []
+        const initialIndex = typeof block.initialIndex === 'number' ? block.initialIndex : undefined
+        return [
+          {
+            id,
+            type,
+            items,
+            ...(initialIndex === undefined || initialIndex >= items.length ? {} : { initialIndex }),
+          },
+        ]
+      }
       case 'list': {
         // O array do Payload guarda `{ text }` por linha; o contrato quer
         // string pura. Item vazio e DESCARTADO aqui, nao no site: publicar uma

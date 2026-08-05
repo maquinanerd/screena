@@ -93,6 +93,22 @@ export type ArticleBodyBlock =
       credit: string | null;
     }
   | { kind: "list"; id: string; ordered: boolean; items: string[] }
+  | {
+      kind: "embed";
+      /**
+       * `playerUrl` so existe para YouTube. Instagram e X viram CARTAO com
+       * link — carregar o script deles numa pagina indexavel e execucao de
+       * terceiro sem acao do usuario, que o contrato editorial recusa.
+       */
+      id: string;
+      provider: "youtube" | "instagram" | "x";
+      playerUrl: string | null;
+      href: string;
+      caption: string | null;
+      authorName: string | null;
+      excerpt: string | null;
+    }
+  | { kind: "gallery"; id: string; items: ArticleBodyImage[]; initialIndex: number }
   | { kind: "quote"; id: string; text: string; attribution: string | null }
   | { kind: "entityCard"; id: string; card: NewsEntityCard; note: string | null }
   | { kind: "factBox"; id: string; title: string; items: ArticleBodyFactItem[] }
@@ -181,27 +197,35 @@ function externalHref(value: unknown, allowedHosts: ReadonlySet<string> | null):
 /* Blocos                                                             */
 /* ------------------------------------------------------------------ */
 
-function imageBlock(id: string, block: Record<string, unknown>): ArticleBodyBlock | null {
-  // O worker grava `publicPath`; `src` existe como tolerancia a linhas antigas.
+/**
+ * Uma imagem do corpo, ou `null` quando nao ha caminho utilizavel.
+ *
+ * Extraida de `imageBlock` para a galeria reusar: duas montagens paralelas
+ * divergiriam no primeiro campo novo, e a galeria e justamente onde uma imagem
+ * sem `credit` passa despercebida.
+ */
+function imageOf(block: Record<string, unknown> | null): ArticleBodyImage | null {
+  if (block === null) return null;
   const src = normalizeNewsLocalImagePath(
     text(block.publicPath) ?? text(block.src) ?? null,
   );
   if (src === null) return null;
-  // `alt` vazio e ACEITO (imagem decorativa); ausente vira string vazia em vez
-  // de bloquear o bloco. O que nao pode e `alt` inventado.
   const alt = typeof block.alt === "string" ? block.alt.trim() : "";
   return {
-    kind: "image",
-    id,
-    image: {
-      src,
-      alt,
-      caption: text(block.caption),
-      credit: text(block.credit),
-      width: positiveInt(block.width),
-      height: positiveInt(block.height),
-    },
+    src,
+    alt,
+    caption: text(block.caption),
+    credit: text(block.credit),
+    width: positiveInt(block.width),
+    height: positiveInt(block.height),
   };
+}
+
+function imageBlock(id: string, block: Record<string, unknown>): ArticleBodyBlock | null {
+  // O worker grava `publicPath`; `src` existe como tolerancia a linhas antigas.
+  // `alt` vazio e ACEITO (imagem decorativa); o que nao pode e `alt` inventado.
+  const image = imageOf(block);
+  return image === null ? null : { kind: "image", id, image };
 }
 
 /**
@@ -446,6 +470,42 @@ function mapBlock(
         .filter((item): item is string => item !== null);
       if (items.length === 0) return null;
       return { kind: "list", id, ordered: block.ordered === true, items };
+    }
+    case "embed": {
+      const provider = block.provider;
+      if (provider !== "youtube" && provider !== "instagram" && provider !== "x") return null;
+      // O ENDERECO e obrigatorio: sem ele o bloco nao degrada para link, e um
+      // embed que nao carrega vira buraco na materia.
+      const href = externalHref(text(block.canonicalUrl) ?? text(block.originalUrl), null);
+      if (href === null) return null;
+      // O player e montado AQUI, do id — nunca vem pronto do dado.
+      const externalId = text(block.externalId);
+      const playerUrl =
+        provider === "youtube" && externalId !== null && /^[A-Za-z0-9_-]{11}$/.test(externalId)
+          ? `https://www.youtube-nocookie.com/embed/${externalId}`
+          : null;
+      return {
+        kind: "embed",
+        id,
+        provider,
+        playerUrl,
+        href,
+        caption: text(block.caption),
+        authorName: text(block.authorName),
+        excerpt: text(block.excerpt),
+      };
+    }
+    case "gallery": {
+      const raw = Array.isArray(block.items) ? block.items : [];
+      // FALLBACK POR IMAGEM: uma imagem sem caminho nao derruba a galeria.
+      const items = raw
+        .map((item) => imageOf(item as Record<string, unknown> | null))
+        .filter((item): item is ArticleBodyImage => item !== null);
+      if (items.length === 0) return null;
+      const wanted = typeof block.initialIndex === "number" ? block.initialIndex : 0;
+      // Indice fora da faixa abre na primeira, em vez de abrir em nada.
+      const initialIndex = Number.isInteger(wanted) && wanted >= 0 && wanted < items.length ? wanted : 0;
+      return { kind: "gallery", id, items, initialIndex };
     }
     case "quote": {
       const value = text(block.text);

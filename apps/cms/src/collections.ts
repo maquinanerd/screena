@@ -262,6 +262,80 @@ export const editorialBlocks = [
     ],
   },
   {
+    slug: 'embed',
+    admin: blockRowLabel,
+    fields: [
+      blockIdField,
+      {
+        name: 'provider',
+        type: 'select' as const,
+        required: true,
+        label: 'Provedor',
+        options: [
+          { label: 'YouTube — vídeo incorporado', value: 'youtube' },
+          { label: 'Instagram — cartão com link', value: 'instagram' },
+          { label: 'X — cartão com link', value: 'x' },
+        ],
+        admin: {
+          // A DIFERENCA ESTA NO ROTULO, e ela e real: so o YouTube vira player
+          // de verdade. Instagram e X exigiriam o script deles, que nao carrega
+          // sem acao do usuario em pagina indexavel — entao o site desenha
+          // cartao proprio. Dizer isso aqui evita a surpresa depois de publicar.
+          description:
+            'Só o YouTube vira player. Instagram e X aparecem como cartão com link — o site não carrega script de terceiro.',
+        },
+      },
+      {
+        name: 'externalId',
+        type: 'text' as const,
+        required: true,
+        label: 'Identificador no provedor',
+        admin: { description: 'Extraído da URL. É com ele que o site monta o player.' },
+      },
+      { name: 'canonicalUrl', type: 'text' as const, required: true, label: 'Endereço canônico' },
+      { name: 'originalUrl', type: 'text' as const, required: true, label: 'Endereço colado' },
+      { name: 'caption', type: 'text' as const, label: 'Legenda' },
+      { name: 'authorName', type: 'text' as const, label: 'Autor no provedor' },
+      { name: 'excerpt', type: 'text' as const, label: 'Trecho' },
+    ],
+  },
+  {
+    slug: 'gallery',
+    admin: blockRowLabel,
+    fields: [
+      blockIdField,
+      {
+        name: 'items',
+        type: 'array' as const,
+        minRows: 1,
+        maxRows: 30,
+        label: 'Imagens',
+        // DIREITOS POR IMAGEM. Credito de foto e por foto: uma galeria com um
+        // credito so mente sobre todas as outras.
+        fields: [
+          {
+            name: 'media',
+            type: 'relationship' as const,
+            relationTo: 'media' as const,
+            required: true,
+            label: 'Imagem',
+          },
+          { name: 'alt', type: 'text' as const, required: true, label: 'Texto alternativo' },
+          { name: 'caption', type: 'text' as const, label: 'Legenda' },
+          { name: 'credit', type: 'text' as const, label: 'Crédito' },
+        ],
+      },
+      {
+        name: 'initialIndex',
+        type: 'number' as const,
+        min: 0,
+        max: 29,
+        label: 'Imagem de abertura',
+        admin: { description: 'Posição da primeira imagem, contando do zero. Vazio abre na primeira.' },
+      },
+    ],
+  },
+  {
     slug: 'list',
     admin: blockRowLabel,
     fields: [
