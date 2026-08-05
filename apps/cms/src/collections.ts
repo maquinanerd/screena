@@ -1074,6 +1074,50 @@ export const Articles: CollectionConfig = {
             'Em que pé está a matéria. Para avançar ou voltar, use os botões no topo da tela.',
         },
       },
+        /* --- Rastro do COLAPSO ------------------------------------------
+         *
+         * Gravados IDENTICOS nas cinco linhas de versao quando o botao
+         * "Publicar" sobe a escada inteira de uma vez. Sem eles, o rastro
+         * mostra cinco transicoes e um leitor entende que houve revisao de
+         * terceiro — quando houve uma pessoa apertando um botao.
+         *
+         * QUEM ESCREVE E O HOOK, nunca o formulario e nunca o cliente: os
+         * quatro estao em `HUMAN_FORBIDDEN_FIELDS` e sao estampados a partir
+         * de `req.context.publishCollapse`. `readOnly` aqui e so a interface.
+         */
+        {
+          name: 'collapseId',
+          type: 'text',
+          label: 'Identificador da publicação direta',
+          index: true,
+          admin: {
+            readOnly: true,
+            description:
+              'Agrupa as transições feitas de uma vez. Vazio quando a matéria avançou passo a passo.',
+          },
+        },
+        {
+          name: 'collapsedAt',
+          type: 'date',
+          label: 'Momento da publicação direta',
+          admin: { readOnly: true },
+        },
+        {
+          name: 'collapsedFrom',
+          type: 'text',
+          label: 'Estado de partida da publicação direta',
+          admin: { readOnly: true },
+        },
+        {
+          name: 'collapseReason',
+          type: 'text',
+          label: 'Motivo do agrupamento',
+          admin: {
+            readOnly: true,
+            description: 'Hoje só existe um: publicação direta pelo botão "Publicar".',
+          },
+        },
+
         { name: 'scheduledFor', type: 'date', label: 'Agendada para' },
         {
           name: 'publishedAt',

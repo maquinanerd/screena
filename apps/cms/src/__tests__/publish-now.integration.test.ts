@@ -231,20 +231,104 @@ describe('POST /api/internal/publish-now', () => {
     expect(article._status).not.toBe('published')
   }, 120_000)
 
-  it('editor nao publica, e a recusa nao move nada', async () => {
+  it('editor avanca ate a fronteira da alcada e NAO publica', async () => {
+    // MUDANCA DELIBERADA DE COMPORTAMENTO (amarra 2). Antes a recusa era seca e
+    // a materia nao saia do lugar: a pessoa apertava "Publicar", nada mudava, e
+    // apertava de novo. Agora a materia anda ate onde o papel alcanca e a tela
+    // diz o que faltou. O que NAO pode mudar e o teto: `editor` nao publica.
     const id = await makeReadyArticle('editor')
     const { status, body } = await publishNow(id, tokens.editor ?? '')
 
-    expect(status).toBe(409)
+    expect(status, JSON.stringify(body)).toBe(200)
+    expect(body.partial).toBe(true)
     expect(body.reason).toBe('forbidden_for_role')
-    expect((await readArticle(id)).workflowStatus).toBe('draft')
+    expect(body.stoppedAt).toBe('ready_to_publish')
+
+    const article = await readArticle(id)
+    expect(article.workflowStatus).toBe('ready_to_publish')
+    // A trava de governanca continua inteira.
+    expect(article.workflowStatus).not.toBe('published')
+    expect(article._status).not.toBe('published')
   }, 120_000)
 
-  it('writer tambem nao publica', async () => {
+  it('writer para em needs_review, que e onde a alcada dele termina', async () => {
     const id = await makeReadyArticle('writer')
-    const { status } = await publishNow(id, tokens.writer ?? '')
-    expect(status).toBe(409)
-    expect((await readArticle(id)).workflowStatus).toBe('draft')
+    const { status, body } = await publishNow(id, tokens.writer ?? '')
+
+    expect(status, JSON.stringify(body)).toBe(200)
+    expect(body.partial).toBe(true)
+    expect(body.stoppedAt).toBe('needs_review')
+
+    const article = await readArticle(id)
+    expect(article.workflowStatus).toBe('needs_review')
+    expect(article._status).not.toBe('published')
+  }, 120_000)
+
+  it('AMARRA: o carimbo do colapso sai IDENTICO nas cinco linhas de versao', async () => {
+    // A prova central. Sem ela, "as cinco linhas carregam o mesmo carimbo" e uma
+    // afirmacao de commit, nao um fato verificado — e e justamente o que impede
+    // o trilho de parecer revisao de terceiro.
+    const id = await makeReadyArticle('carimbo')
+    const { status } = await publishNow(id, tokens.administrator ?? '')
+    expect(status).toBe(200)
+
+    const versions = await payload.findVersions({
+      collection: 'articles',
+      where: { parent: { equals: id } },
+      limit: 200,
+      overrideAccess: true,
+    })
+
+    const stamped = versions.docs
+      .map((doc) => doc.version as unknown as Record<string, unknown>)
+      .filter((version) => version.collapseId !== null && version.collapseId !== undefined)
+
+    // Os cinco degraus da escada completa.
+    expect(stamped.length).toBeGreaterThanOrEqual(5)
+
+    const ids = new Set(stamped.map((version) => String(version.collapseId)))
+    const ats = new Set(stamped.map((version) => String(version.collapsedAt)))
+    const froms = new Set(stamped.map((version) => String(version.collapsedFrom)))
+    const reasons = new Set(stamped.map((version) => String(version.collapseReason)))
+
+    // UM valor para cada campo em TODAS as linhas — e isso que as agrupa como
+    // uma unica operacao.
+    expect(ids.size, 'collapseId deveria ser o mesmo nas cinco').toBe(1)
+    expect(ats.size, 'collapsedAt deveria ser o mesmo nas cinco').toBe(1)
+    expect(froms).toEqual(new Set(['draft']))
+    expect(reasons).toEqual(new Set(['publicacao_direta']))
+
+    // CONTROLE NEGATIVO: `updatedAt` NAO foi sobrescrito — ele continua honesto
+    // sobre quando cada linha foi escrita. Se alguem "consertar" isso igualando
+    // os `updatedAt`, este teste avisa.
+    const updatedAts = new Set(stamped.map((version) => String(version.updatedAt)))
+    expect(updatedAts.size, 'updatedAt deveria VARIAR entre as linhas').toBeGreaterThan(1)
+  }, 120_000)
+
+  it('AMARRA: humano nao consegue FORJAR o carimbo pela API', async () => {
+    // O carimbo so pode vir de um colapso de verdade. Se o formulario pudesse
+    // escrever, daria para afirmar "publicacao direta" numa materia que passou
+    // por revisao — ou apagar a marca de um colapso real.
+    const id = await makeReadyArticle('forja')
+    const response = await fetch(`${baseUrl}/api/articles/${String(id)}`, {
+      body: JSON.stringify({
+        collapseId: 'forjado-por-humano',
+        collapseReason: 'invencao',
+        collapsedFrom: 'published',
+      }),
+      headers: {
+        'content-type': 'application/json',
+        Authorization: `JWT ${tokens.administrator ?? ''}`,
+      },
+      method: 'PATCH',
+    })
+    expect(response.status).toBeLessThan(500)
+
+    const article = await readArticle(id)
+    expect(article.collapseId, 'o campo forjado nao pode ter sido gravado').not.toBe(
+      'forjado-por-humano',
+    )
+    expect(article.collapseReason).not.toBe('invencao')
   }, 120_000)
 
   it('anonimo e recusado antes de qualquer leitura do acervo', async () => {

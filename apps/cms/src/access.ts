@@ -195,6 +195,16 @@ export function serviceAccountMayWriteField(field: string): boolean {
  * saem do alcance das duas contas tecnicas.
  */
 export const HUMAN_FORBIDDEN_FIELDS = [
+  // Rastro do colapso do botao "Publicar". Quem estampa e o hook, a partir de
+  // `req.context.publishCollapse`. Se o formulario pudesse escrever, uma pessoa
+  // poderia FORJAR "isto foi publicacao direta" numa materia que passou por
+  // revisao de verdade — ou o contrario, apagar a marca de um colapso real. Nos
+  // dois sentidos o trilho passaria a mentir, que e exatamente o que estas
+  // colunas existem para impedir.
+  'collapseId',
+  'collapsedAt',
+  'collapsedFrom',
+  'collapseReason',
   // Indicador explicito de autopublicacao.
   'autoPublished',
   // Ator tecnico e contrato sob o qual ele operou.

@@ -601,6 +601,16 @@ export interface Article {
     | 'blocked'
     | 'archived'
     | 'retracted';
+  /**
+   * Agrupa as transições feitas de uma vez. Vazio quando a matéria avançou passo a passo.
+   */
+  collapseId?: string | null;
+  collapsedAt?: string | null;
+  collapsedFrom?: string | null;
+  /**
+   * Hoje só existe um: publicação direta pelo botão "Publicar".
+   */
+  collapseReason?: string | null;
   scheduledFor?: string | null;
   /**
    * Carimbada pelo servidor no momento em que a matéria vai ao ar.
@@ -1136,6 +1146,10 @@ export interface ArticlesSelect<T extends boolean = true> {
   qaVersion?: T;
   qaPassedAt?: T;
   workflowStatus?: T;
+  collapseId?: T;
+  collapsedAt?: T;
+  collapsedFrom?: T;
+  collapseReason?: T;
   scheduledFor?: T;
   publishedAt?: T;
   correctedAt?: T;

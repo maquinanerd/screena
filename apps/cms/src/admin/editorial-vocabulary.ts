@@ -188,6 +188,42 @@ export function transitionsFrom(
   return options.sort((a, b) => rank[a.weight] - rank[b.weight])
 }
 
+/**
+ * Quem pode levar uma materia a `published`.
+ *
+ * DERIVADO, nunca escrito a mao: sai da mesma allowlist que o servidor usa. Uma
+ * lista literal aqui viraria segunda verdade e sobreviveria calada a uma mudanca
+ * de governanca — a tela diria "exige editor-chefe" depois de o editor-chefe
+ * deixar de publicar.
+ */
+export const PUBLISHER_ROLES: readonly EditorialRole[] =
+  transitionsFrom('ready_to_publish', 'administrator').find((option) => option.to === 'published')
+    ?.allowedRoles ?? []
+
+/**
+ * O que dizer quando o botao "Publicar" avancou a materia mas NAO publicou.
+ *
+ * Sem esta frase o defeito e mudo: a pessoa aperta "Publicar", a materia sobe
+ * dois ou tres degraus, nada na tela anuncia o que houve, e ela aperta de novo.
+ *
+ * Duas regras de redacao aqui, as duas deliberadas:
+ *  - NADA de nome de estado cru. "ready_to_publish" e vocabulario de banco;
+ *    quem le e a redacao, e `STATUS_LABELS` ja tem o rotulo em portugues.
+ *  - Dizer o que FALTA, nao so o que aconteceu. "Avancou ate X" sozinho deixa a
+ *    pessoa sem saber o proximo passo; o papel que publica e a informacao que
+ *    resolve.
+ */
+export function partialAdvanceMessage(
+  stoppedAt: WorkflowStatus,
+  publisherRoles: readonly EditorialRole[],
+): string {
+  const reached = `A matéria avançou até "${STATUS_LABELS[stoppedAt]}".`
+  if (publisherRoles.length === 0) return `${reached} Publicar depende da automação.`
+  const names = publisherRoles.map((role) => ROLE_LABELS[role])
+  const who = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} ou ${names[names.length - 1]}`
+  return `${reached} Publicar exige ${who}.`
+}
+
 /** Frase de espera: "aguardando editor-chefe". */
 export function waitingForLabel(roles: readonly EditorialRole[]): string {
   if (roles.length === 0) return 'somente a automação alcança este estado'

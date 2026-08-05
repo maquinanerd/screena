@@ -187,11 +187,73 @@ fallback e teste que prove que o renderer desenha.
   ainda e do PostgreSQL, nao a frase humana. Cobrir isso exigiria capturar o
   codigo `23505` na fronteira dos dois endpoints — fica registrado, nao feito.
 
-### F5 — Amarras do trilho de auditoria — PENDENTE
+### F5 — Amarras do trilho de auditoria — EM CURSO (`claude/cms-amarras-colapso`)
 
-Parte ja pronta em `claude/cms-amarras-colapso` (`99d60c1`): avanco parcial com
-`partialPath`, 17/17 verdes. Falta a migration dos quatro campos e a UI da
-explicacao.
+- **Escopo:** as tres amarras da opcao (a) — mesmo ator, carimbo identico nas
+  cinco linhas, permissao validada nas cinco transicoes — mais a UI da explicacao
+  do avanco parcial.
+- **Estado anterior:** a Fase 1 mergeou ANTES das amarras chegarem. O trilho
+  gravava cinco transicoes sem nada que as marcasse como colapsadas; um leitor
+  podia entender que houve revisao de terceiro.
+- **O que foi feito:**
+  - Quatro colunas em `articles` **e** em `_articles_v` (`version_*`): as cinco
+    linhas do rastro sao linhas de VERSAO — carimbar so a tabela viva deixaria
+    justamente o rastro sem a marca.
+  - `collapseId` (uuid) alem de `collapsedAt`, porque carimbo de tempo sozinho e
+    chave fragil: a mesma materia pode ser colapsada duas vezes e dois relogios
+    iguais ao milissegundo agrupariam operacoes diferentes.
+  - **Quem estampa e o HOOK**, a partir de `req.context.publishCollapse`, e os
+    quatro campos entraram em `HUMAN_FORBIDDEN_FIELDS`. A ordem importa: o hook
+    remove os campos do corpo (junto com o resto do que humano nao escreve) e SO
+    DEPOIS estampa os proprios. Sem isso, uma pessoa poderia **forjar** "isto foi
+    publicacao direta" numa materia revisada de verdade, ou **apagar** a marca de
+    um colapso real — nos dois sentidos o trilho passaria a mentir.
+  - Permissao nas cinco: ja era assim — `planPublishPath` chama `canTransition`
+    (que checa papel) em CADA degrau candidato. A amarra estava atendida; o que
+    faltava era o avanco parcial, agora executado pelo endpoint.
+  - UI: `partialAdvanceMessage` diz ate onde foi e o que falta, sem nome de
+    estado cru. `PUBLISHER_ROLES` e **derivado** de `transitionsFrom`, nao escrito
+    a mao — lista literal viraria segunda verdade e sobreviveria calada a uma
+    mudanca de governanca.
+- **Migration e rollback:** `20260805_175144_publish_collapse_trail` — aditiva,
+  oito colunas NULLABLE + dois indices. `down` derruba tudo. Nada reescrito,
+  nenhum default: `NULL` significa "nao veio de colapso", que e a verdade para
+  todas as materias existentes.
+- **DESVIO DE CARONA, e a armadilha do snapshot.** O gerador propos junto a
+  conversao de `articles.language` de `varchar` para enum (e o par em `_v`) e um
+  `DEFAULT '2'` no `level` do heading — o MESMO desvio que a #106 ja recusara.
+  Trimei o SQL, como la. **Mas desta vez o `.json` gerado REGISTRAVA o desvio**
+  (na #106 nao registrava — verificado, `grep -c` = 0). Manter o snapshot como
+  veio esconderia a conversao PARA SEMPRE: o gerador nunca mais a proporia.
+  Corrigi o `.json` a mao para descrever o banco real (`language` = `varchar`,
+  `level` sem default, os dois enums fora).
+  **CONTROLE EXECUTADO:** rodei `payload migrate:create` de novo depois da
+  correcao. O gerador continuou propondo **so** o desvio (enum + default) e
+  **nenhuma** das minhas colunas — provando que o snapshot registra as minhas
+  como aplicadas e mantem o desvio visivel para a migration propria que ele
+  merece. Artefatos do controle removidos.
+- **Testes criados:** quatro em `partialAdvanceMessage`, incluindo controle
+  negativo que varre TODOS os estados provando que nenhum nome cru vaza para a
+  frase (um `STATUS_LABELS` incompleto produziria "avancou ate undefined", pior
+  que o silencio que isto veio corrigir).
+- **Provas de integracao (as centrais da amarra):**
+  - o carimbo sai IDENTICO nas cinco linhas de versao — um `collapseId`, um
+    `collapsedAt`, `collapsedFrom='draft'`, `collapseReason='publicacao_direta'`;
+  - **controle negativo** no mesmo teste: `updatedAt` VARIA entre as linhas. Se
+    alguem "consertar" isso igualando os carimbos do ORM, o teste avisa;
+  - humano nao consegue FORJAR o carimbo por `PATCH` direto na API.
+- **Dois testes da Fase 1 mudaram de expectativa, de proposito.** "editor nao
+  publica, e a recusa nao move nada" e o par do writer afirmavam o comportamento
+  ANTIGO (recusa seca). A amarra 2 o substituiu: agora a materia avanca ate a
+  fronteira da alcada. Reescritos para afirmar a garantia NOVA — avanca ate
+  `ready_to_publish`/`needs_review` e **continua sem publicar** —, nao
+  enfraquecidos.
+- **Gates:** integracao `159/159` com PostgreSQL real · unitarios `474/474` ·
+  typecheck `0`.
+- **O que foi visto rodando:** a migration aplicando no harness e o carimbo
+  gravado nas cinco versoes, lido de volta do banco. A FRASE do avanco parcial na
+  tela ainda nao foi vista em navegador — o E2E local nao roda em Node 24 (ver
+  pendencia 4). Quem prova e o CI.
 
 ### F8 — Decisao por provedor (registrada ANTES de implementar) — PENDENTE
 
