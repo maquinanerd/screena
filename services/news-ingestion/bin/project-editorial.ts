@@ -17,6 +17,25 @@
  * para o processo inteiro — inclusive para o `/readyz`, que reavalia a mesma
  * configuracao a cada batida do orquestrador.
  *
+ * FALHA DE CICLO NAO E MORTE DE PROCESSO (modo `--loop`). O `claim()` ja ficou
+ * fora de qualquer `try`: um 500 do CMS, um ECONNREFUSED durante o deploy do
+ * CMS, um ECONNRESET ou um timeout escapavam do `while` ate `main().catch` e
+ * matavam o processo com exit 1 — crash-loop com o painel verde, porque o
+ * health server subia de novo a cada encarnacao. Hoje o ciclo inteiro roda
+ * dentro de `try`, a falha e registrada e o loop espera `pollIntervalMs`.
+ *
+ * O preco disso e um worker que nunca morre — e um worker que nunca morre e
+ * falha em todo ciclo seria PIOR do que um que morre, porque some do radar. Por
+ * isso a saude do loop e observavel e as duas condicoes ficam separadas:
+ *
+ *   `/readyz`  — o loop esta FALHANDO. Reiniciar nao levanta o CMS: e caso de
+ *                olhar, nao de reiniciar.
+ *   `/healthz` — o loop esta TRAVADO (parou de bater). E a unica falha que
+ *                reinicio resolve. Continua sem tocar banco, CMS ou storage.
+ *
+ * `--once` mantem a semantica fatal: um systemd timer precisa que a falha vire
+ * exit != 0.
+ *
  * NUNCA imprime credencial, URL de banco, header de autorizacao ou corpo de
  * materia. O que sai no log e: id do evento, tipo, desfecho e motivo.
  */
@@ -52,6 +71,17 @@ import {
   INITIAL_SHUTDOWN,
   type ShutdownState,
 } from '../src/worker-lifecycle.js'
+import {
+  classifyCycleError,
+  evaluateLoopHealth,
+  initialLoopHealth,
+  isLoopStalled,
+  recordCycleFailure,
+  recordCycleSuccess,
+  recordLoopProgress,
+  resolveLoopHealthThresholds,
+  type LoopHealthState,
+} from '../src/worker-loop-health.js'
 
 interface ClaimedEvent {
   readonly eventId: string
@@ -205,11 +235,16 @@ async function runCycle(
   storage: MediaStoragePort,
   dryRun: boolean,
   shutdown: () => ShutdownState,
+  onProgress: () => void = () => undefined,
 ): Promise<number> {
   // Depois do SIGTERM nao se reclama NADA novo: eventos reclamados na janela de
   // encerramento morreriam com lease aberta e ficariam presos ate ela expirar.
   if (!mayClaimMore(shutdown())) return 0
 
+  // Batida ANTES do claim. Um lote grande com midia pode levar minutos; sem
+  // batida aqui e por evento, o watchdog de liveness leria "travado" em cima de
+  // um worker que esta justamente trabalhando.
+  onProgress()
   const events = await claim(config)
   if (events.length === 0) return 0
   const claimedAtIso = new Date().toISOString()
@@ -230,6 +265,7 @@ async function runCycle(
       )
       break
     }
+    onProgress()
     try {
       await processEvent(prisma, config, storage, claimed, dryRun)
     } catch (error) {
@@ -314,6 +350,17 @@ async function main(): Promise<void> {
   process.once('SIGINT', stop)
   process.once('SIGTERM', stop)
 
+  // SAUDE DO LOOP, separada da saude do processo. Ate aqui as duas eram a mesma
+  // coisa: o loop morria, o processo morria junto, e a unica evidencia era o
+  // exit 1. Agora o loop sobrevive as falhas e precisa DECLARAR que esta
+  // falhando — senao a correcao apenas troca crash-loop visivel por worker
+  // parado e invisivel.
+  const loopThresholds = resolveLoopHealthThresholds(config)
+  let loopHealth: LoopHealthState = initialLoopHealth(new Date().toISOString())
+  const noteProgress = (): void => {
+    loopHealth = recordLoopProgress(loopHealth, new Date().toISOString())
+  }
+
   // Servidor de health SO no modo continuo: um `--once` de systemd timer vive
   // segundos e nao tem o que expor.
   const healthPort = Number.parseInt(process.env.PUBLICATION_WORKER_HEALTH_PORT ?? '', 10)
@@ -322,10 +369,24 @@ async function main(): Promise<void> {
       ? await startWorkerHealthServer({
           port: healthPort,
           workerId: config.workerId,
-          // Liveness: vivo ate o processo comecar a encerrar.
-          isAlive: () => shutdown.phase !== 'stopped',
+          // LIVENESS. Continua sem tocar banco, CMS ou storage — uma queda de
+          // dependencia externa nao pode virar reinicio, porque reinicio nao
+          // levanta a dependencia. O que ENTROU e o watchdog de loop travado:
+          // um loop que parou de bater e a unica falha que reinicio resolve, e
+          // era invisivel aqui (`phase !== 'stopped'` responde 200 com o loop
+          // parado ha horas).
+          isAlive: () =>
+            shutdown.phase !== 'stopped' &&
+            !isLoopStalled(loopHealth, new Date().toISOString(), loopThresholds.stallAfterMs),
           checkReadiness: () =>
-            collectWorkerReadiness({ prisma, storage, allowProductionShapedUrl }),
+            collectWorkerReadiness({
+              prisma,
+              storage,
+              allowProductionShapedUrl,
+              // READINESS: "falhando" mora aqui, nao na liveness.
+              loopHealth: () =>
+                evaluateLoopHealth(loopHealth, new Date().toISOString(), loopThresholds),
+            }),
         })
       : null
   if (health !== null) {
@@ -338,12 +399,46 @@ async function main(): Promise<void> {
 
   try {
     if (!loop) {
+      // `--once` MANTEM a semantica fatal: um systemd timer precisa que a falha
+      // vire exit != 0, senao o ciclo perdido some do journal. Quem nao pode
+      // morrer e o processo CONTINUO.
       const processed = await runCycle(prisma, config, storage, dryRun, () => shutdown)
       console.log(`[projecao] ciclo unico concluido: ${String(processed)} evento(s)`)
       return
     }
     while (shutdown.phase === 'running') {
-      const processed = await runCycle(prisma, config, storage, dryRun, () => shutdown)
+      // O CICLO INTEIRO DENTRO DO try. Antes, o `claim()` ficava fora de
+      // qualquer captura: um 500 do CMS, um ECONNREFUSED durante o deploy, um
+      // ECONNRESET ou um timeout escapavam do `while`, chegavam ao
+      // `main().catch` e matavam o processo com exit 1. O orquestrador
+      // reiniciava, o health server subia de novo, e o painel mostrava verde
+      // sobre um crash-loop.
+      //
+      // FALHA DE CICLO NAO E MORTE DE PROCESSO. O CMS estar fora do ar e um
+      // estado esperado (ele reinicia em todo deploy); a resposta certa e
+      // esperar e tentar de novo, nao suicidar. Quem denuncia a falha
+      // persistente e o `/readyz`.
+      let processed = 0
+      try {
+        processed = await runCycle(prisma, config, storage, dryRun, () => shutdown, noteProgress)
+        loopHealth = recordCycleSuccess(loopHealth, new Date().toISOString())
+      } catch (error) {
+        const classified = classifyCycleError(error)
+        loopHealth = recordCycleFailure(loopHealth, new Date().toISOString(), classified.code)
+        console.error(
+          `[projecao] ciclo FALHOU (${classified.code}): ${classified.message}` +
+            ` — ${String(loopHealth.consecutiveFailures)} seguida(s); nova tentativa em ${String(
+              Math.round(config.pollIntervalMs / 1000),
+            )}s`,
+        )
+        // Falha espera o intervalo cheio antes de tentar de novo. Sem a espera,
+        // um CMS fora do ar viraria um laco apertado de ECONNREFUSED queimando
+        // CPU e enchendo o log.
+        if (shutdown.phase !== 'running') break
+        await new Promise((resolve) => setTimeout(resolve, config.pollIntervalMs))
+        continue
+      }
+
       if (shutdown.phase !== 'running') break
       // Fila vazia espera o intervalo cheio; fila com trabalho volta na hora,
       // para nao arrastar um acumulo em passos de 15s.
@@ -359,6 +454,16 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-  console.error('[projecao] erro fatal:', error instanceof Error ? error.name : 'desconhecido')
+  // No modo `--loop` este caminho passou a ser EXCEPCIONAL: o ciclo trata as
+  // proprias falhas. Chegar aqui significa falha de subida (config, storage,
+  // health server) ou um defeito de verdade.
+  //
+  // O log deixou de ser `error.name`. `TypeError` era o que saia para
+  // ECONNREFUSED, ECONNRESET, DNS e corpo malformado — quatro causas
+  // diferentes com a mesma palavra, e o operador sem como distinguir. O
+  // classificador devolve um codigo estavel sem vazar mensagem crua (que
+  // carregaria connection string ou header de autorizacao).
+  const classified = classifyCycleError(error)
+  console.error(`[projecao] erro fatal (${classified.code}): ${classified.message}`)
   process.exit(1)
 })

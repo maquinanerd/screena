@@ -82,6 +82,27 @@ trabalhava, mas o orquestrador o tratava como nao-pronto. Travado por
 > verificacao pre-deploy contra um alvo nao-produtivo. Rodado contra uma URL de
 > producao, ele continua (corretamente) acusando `BLOCKED`.
 
+### ANTES DE REBUILDAR: confira o comando vivo no painel
+
+`publication-worker:start` e `tsx bin/project-editorial.ts --loop`, **sem
+`--allow-production-url`**, e o `CMD` do `Dockerfile.publication-worker` chama
+exatamente esse script. Mas `PRODUCTION_SHAPES` casa com o banco real
+`rss_prime_screen-db`. Medido:
+
+```
+$ SCREEN_DATABASE_URL=...rss_prime_screen-db ... node --import tsx bin/project-editorial.ts --loop
+[projecao] configuracao invalida: SCREEN_DATABASE_URL parece apontar para producao; recusado
+EXIT=2
+```
+
+**Exit 2, nao 1, e ANTES de abrir a porta 3003.** Nao e 503 e nao e crash-loop:
+e porta que nunca abre.
+
+Se o servico no EasyPanel hoje **sobrescreve** o comando para incluir a flag, um
+rebuild que perca esse override troca um problema por outro. **O comando vivo no
+painel nao esta confirmado** — precisa ser conferido a mao antes de qualquer
+rebuild. A correcao do crash-loop **nao elimina** essa armadilha.
+
 Nenhuma mensagem de erro imprime valor de variavel — so o **nome**. Um timer
 mal configurado nao pode virar vazamento de credencial no journal.
 
@@ -148,21 +169,75 @@ nao ordena nada.
 - **Nao apaga materia.** Despublicar rebaixa para `archived`; retratar rebaixa
   para `blocked` e grava o motivo em `correction_note`. O texto permanece.
 
-## 8. Diagnostico
+## 8. Saude do processo vs. saude do loop
+
+Sao **duas coisas diferentes**, e trata-las como uma so produziu um crash-loop
+invisivel em producao.
+
+O `claim()` ficava fora de qualquer `try`. Um 500 do CMS, um `ECONNREFUSED`
+enquanto o CMS reiniciava no deploy, um `ECONNRESET` ou um timeout escapavam do
+`while`, chegavam ao `main().catch` e matavam o processo com **exit 1**. O
+orquestrador reiniciava, o health server subia de novo e respondia 200 nos
+primeiros segundos de cada encarnacao — **o painel ficava verde sobre um
+crash-loop**, e o log dizia apenas `erro fatal: TypeError`, a mesma palavra para
+rede recusada, conexao derrubada, DNS e corpo malformado.
+
+> **Fila vazia NUNCA foi esse caminho.** O endpoint `claim` do CMS responde
+> `200` com `events: []` na hora — nao ha long-poll. Fila vazia sempre foi
+> ociosidade normal (espera `PROJECTION_POLL_INTERVAL_MS` e volta). Um
+> `TimeoutError` significa **CMS lento ou inalcancavel**, nunca "nao ha
+> trabalho".
+
+Hoje o ciclo inteiro roda dentro de `try`: a falha e registrada com codigo
+estavel, o loop dorme `PROJECTION_POLL_INTERVAL_MS` e tenta de novo. Como um
+worker que nunca morre e falha em todo ciclo seria **pior** que um que morre
+(some do radar), a saude do loop virou observavel:
+
+| Endpoint | Pergunta | Responde 503 quando | Reiniciar resolve? |
+| --- | --- | --- | --- |
+| `/healthz` | o loop esta **vivo**? | o loop parou de bater (travado). Nao toca banco, CMS nem storage. | **sim** — e o unico caso |
+| `/readyz` | o loop esta **trabalhando**? | 3 ciclos seguidos falharam, via o check `projection_loop` | nao — reiniciar nao levanta o CMS |
+
+A janela de "travado" e derivada da configuracao e deliberadamente generosa
+(`max(pollInterval + requestTimeout, lease) * 3`, piso de 120s), e o loop bate
+tambem **a cada evento** do lote: um lote longo com midia nao pode ser
+confundido com processo preso.
+
+> **O healthcheck do `Dockerfile.publication-worker` bate em `/healthz`**, que e
+> liveness por design, e **deve continuar assim**. Apontar o HEALTHCHECK para
+> `/readyz` faria uma queda do CMS derrubar o worker — o crash-loop voltaria
+> pela mao do orquestrador, so que por um caminho novo.
+>
+> **Ressalva que sobra, e ela e real:** um worker vivo porem falhando ha horas
+> so aparece em `/readyz`. Se ninguem consultar essa rota, esse estado segue sem
+> alarme. Segundo o operador, o **EasyPanel v2.32.1 nao expoe evento de
+> crash/restart nos Canais de Notificacao** (nao verificado neste repositorio),
+> entao o alarme precisa ser **externo**: um monitor que bata em
+> `GET http://<worker>:3003/readyz` e alerte em `503`, ou que leia o check
+> `projection_loop` do corpo. Ate existir esse monitor, a deteccao continua
+> manual.
+
+## 9. Diagnostico
 
 | Sintoma | Causa provavel |
 | --- | --- |
 | `configuracao invalida: ...` na subida | Falta variavel, ou os dois bancos coincidem. O erro nomeia a variavel. |
+| `ciclo FALHOU (cms_unreachable_econnrefused)` | CMS fora do ar (tipicamente durante o deploy dele). O loop continua e volta sozinho quando o CMS subir. |
+| `ciclo FALHOU (cms_timeout)` | O CMS nao respondeu dentro de `PROJECTION_REQUEST_TIMEOUT_MS`. **Nao** e fila vazia. |
+| `ciclo FALHOU (outbox_http_401/403)` | Credencial ou escopo `publication_projection` recusados. O loop nao morre, mas nao projeta: ver `/readyz`. |
+| `/readyz` com `projection_loop` `blocked` | Falha persistente. O codigo no `detail` diz qual. |
+| `/healthz` 503 com o processo de pe | Loop travado (sem batida na janela). Este e caso de reiniciar. |
 | Evento parado em `processing` | Worker morreu com a lease aberta. Ela expira em `PROJECTION_LEASE_MS` e o proximo ciclo recupera. |
 | Evento em `dead_letter` com `contract_invalid` | O evento nao passa em `publication-event-v1`. Nao adianta retentar: o corpo nao muda sozinho. Investigar o emissor no CMS. |
 | Materia publicada mas fora da busca | O refresh do modelo derivado roda **depois** do commit. Rodar o worker de novo converge: o replay refresca a busca mesmo pulando a escrita. |
 | `lastError` com `[redigido]` | Sanitizacao funcionando: a mensagem original carregava connection string ou header de autorizacao. |
 
-## 9. Testes
+## 10. Testes
 
 | Gate | O que prova |
 | --- | --- |
 | `pnpm test` | Nucleo puro: elegibilidade de claim, lease, backoff, decisao de projecao, fronteira de configuracao. |
+| `pnpm test:publication-worker:deployment-readiness` | Inclui `projection-loop-resilience.test.ts`, que **sobe o worker de verdade** contra um CMS de mentira e prova que fila vazia, 500, `ECONNREFUSED`, `ECONNRESET` e timeout nao matam o processo — e que a falha persistente aparece em `/readyz`. |
 | `pnpm test:cms:integration` | CMS real: escopo, autenticacao por API key, hooks, outbox. |
 | `pnpm test:publication-projection:integration` | **Dois PostgreSQL 16 efemeros**: publicacao ponta a ponta, concorrencia de dois workers, replay, evento fora de ordem, dead-letter, retratacao. |
 | `pnpm --filter @screena/db db:validate:real` | Migration real em PG16: ancora unica, CHECKs dos blocos, trava de replay do recibo. |

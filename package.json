@@ -46,7 +46,7 @@
     "test:publication-projection:integration": "pnpm --filter @screena/news-ingestion test:integration",
     "test:editorial-media-projection:integration": "pnpm --filter @screena/news-ingestion test:media:integration",
     "test:cms:deployment-readiness": "pnpm --filter @screena/cms test -- -t \"readiness do CMS|storage de upload|nome de arquivo de upload|storage de ORIGEM|adapter local|adapter S3|trocar o driver|nome de upload\"",
-    "test:publication-worker:deployment-readiness": "vitest run services/news-ingestion/src/__tests__/worker-deployment-readiness.test.ts services/news-ingestion/src/__tests__/worker-readiness.test.ts services/news-ingestion/src/__tests__/media-storage.test.ts services/news-ingestion/src/__tests__/projection-worker-config.test.ts tests/governance/editorial-worker-boundary.test.ts",
+    "test:publication-worker:deployment-readiness": "vitest run services/news-ingestion/src/__tests__/worker-deployment-readiness.test.ts services/news-ingestion/src/__tests__/worker-readiness.test.ts services/news-ingestion/src/__tests__/worker-loop-health.test.ts services/news-ingestion/src/__tests__/projection-loop-resilience.test.ts services/news-ingestion/src/__tests__/media-storage.test.ts services/news-ingestion/src/__tests__/projection-worker-config.test.ts tests/governance/editorial-worker-boundary.test.ts",
     "test:manual-editorial:integration": "corepack pnpm --filter @screena/cms test:manual-editorial",
     "test:manual-editorial:e2e": "corepack pnpm --filter @screena/cms test:e2e",
     "test:manual-publication-projection:integration": "corepack pnpm --filter @screena/web canary:manual-editorial"
