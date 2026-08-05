@@ -375,7 +375,44 @@ nenhuma sidebar e possivel, por construcao do Payload.
   (Node 24 impede o Playwright local). Conferir depois: titulo grande no topo,
   corpo no centro, slug na coluna da direita.
 
-### F7, F9..F13 — PENDENTES
+### F7 — Bloco `list` (contrato + CMS + renderer) — ENTREGUE
+
+- **Escopo:** lista com marcador e numerada, a primeira aplicacao da regra (c) e
+  da regra inegociavel na mesma PR.
+- **GATE MECANICO DA REGRA (c) — PASSOU.** Hashes do contrato de ENTRADA
+  capturados antes e depois, e IDENTICOS:
+  - `editorial-draft-v1` = `sha256:46a21c99...f77ba` (antes = depois)
+  - `editorial-publication-request-v1` = `sha256:93024329...c6f8` (antes = depois)
+  `listBlock` entrou SO em `publishedEditorialBlock`, depois de `editorialBody`,
+  como o `marks` na #106. Nenhum pedido do MNScr em voo vira `hash_mismatch`.
+- **Os tres lados, na mesma PR:** contrato (`blocks.ts`), editor no CMS (bloco
+  `list` com `ordered` + `items`), renderer no `apps/web` (presenter devolve
+  `kind: 'list'`; JSX escolhe `<ol>` ou `<ul>` **conforme o dado**, nunca CSS
+  fingindo semantica — leitor de tela anuncia a lista a partir do elemento).
+- **Fallback em duas camadas:** item vazio e descartado (por item, nao por
+  bloco); lista sem nenhum item some em vez de virar `<ul>` vazia. O mapeador do
+  CMS descarta antes de publicar — lista com buraco seria publicar o descuido.
+- **Migration:** `20260805_224024_list_block` — quatro tabelas NOVAS, nada
+  alterado, `down` derruba so elas. Materia existente nao tem bloco `list` e
+  renderiza igual.
+- **Desvio herdado removido a mao pela TERCEIRA vez** (enum de idioma + default
+  do heading), e o `.json` corrigido para o banco real. Sem a correcao o gerador
+  nunca mais proporia a conversao.
+- **Testes:** 9, incluindo DOIS controles negativos — lista sem item some, e o
+  detector reconhece tipo inexistente (sem ele os outros casos poderiam passar
+  por acidente).
+- **Gates:** root test `4783/4783` · cms test `488/488` · root typecheck `0` ·
+  cms typecheck `0`.
+- **NAO ENTREGUE nesta fase, e por que:** menu `/`, colagem limpa e toolbar
+  contextual sao componentes `.tsx` — o vitest deste app nao coleta `.tsx`, e o
+  Playwright nao sobe em Node 24. Entrariam sem teste local nenhum. Ficam para
+  uma fase propria, com a logica extraida para `.ts` testavel.
+- **Ctrl+B NAO foi tocado:** o mandato manda reproduzir antes de mexer, e o
+  componente implementa Ctrl+B/I/K com `preventDefault` (`ParagraphTextField`).
+  Sem reproducao, mexer seria consertar relato.
+- **SEM CONFIRMACAO VISUAL:** o bloco `list` no painel e a lista na pagina.
+
+### F9..F13 — PENDENTES
 
 F6 canvas · F7 editor e menu `/` · F8 embeds e galeria · F9 midia · F10 SEO ·
 F11 preview · F12 limpeza e os dois defeitos de queda silenciosa · F13 teste de
