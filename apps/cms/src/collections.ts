@@ -637,7 +637,12 @@ export const Media: CollectionConfig = {
   admin: {
     useAsTitle: 'alt',
     group: 'Editorial',
-    defaultColumns: ['alt', 'licenseStatus', 'credit', 'updatedAt'],
+    // A MINIATURA VEM PRIMEIRO. Escolher foto por nome e errado para quem
+    // trabalha com imagem — e o seletor de relacionamento reusa estas colunas.
+    defaultColumns: ['filename', 'alt', 'licenseStatus', 'credit', 'updatedAt'],
+    // Busca por texto no acervo: alt, credito e fonte sao o que a redacao
+    // lembra de uma foto. Sem isto, achar imagem exige rolar a lista.
+    listSearchableFields: ['alt', 'credit', 'sourceName', 'rightsHolder', 'filename'],
     components: {
       edit: {
         // O estado de liberacao passa a ser a PRIMEIRA coisa visivel do
@@ -658,6 +663,12 @@ export const Media: CollectionConfig = {
     // simplesmente "some" com 404 sem nenhum erro no meio do caminho.
     staticDir: MEDIA_STATIC_DIR,
     mimeTypes: ['image/png', 'image/jpeg', 'image/webp', 'image/avif'],
+    // MINIATURA. Sem isto a lista e o seletor sao texto puro, e escolher uma
+    // foto vira adivinhacao pelo nome do arquivo.
+    adminThumbnail: 'thumbnail',
+    imageSizes: [
+      { name: 'thumbnail', width: 320, height: 240, position: 'centre' },
+    ],
   },
   access: {
     create: policy(editorialAssetAccess.create),
@@ -674,6 +685,9 @@ export const Media: CollectionConfig = {
     { name: 'rightsHolder', type: 'text' },
     {
       name: 'licenseStatus',
+      // A CELULA responde "da para usar?" em vez de ecoar o enum. O componente
+      // so desenha; quem decide e `mediaUsability`, pura e testada.
+      admin: { components: { Cell: '/src/admin/MediaUsabilityCell' } },
       type: 'select',
       required: true,
       // Default seguro: midia recem-enviada NAO publica ate decisao humana.

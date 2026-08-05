@@ -5,6 +5,7 @@ import CinerieLogo from '../../../src/admin/CinerieLogo.js'
 import EditorialDashboard from '../../../src/admin/EditorialDashboard.js'
 import MediaLicenseNotice from '../../../src/admin/MediaLicenseNotice.js'
 import MediaReleaseControl from '../../../src/admin/MediaReleaseControl.js'
+import MediaUsabilityCell from '../../../src/admin/MediaUsabilityCell.js'
 import OriginCell from '../../../src/admin/OriginCell.js'
 import ParagraphTextField from '../../../src/admin/ParagraphTextField.js'
 import QaApprovalField from '../../../src/admin/QaApprovalField.js'
@@ -36,6 +37,7 @@ export const importMap = {
   '/src/admin/EditorialDashboard#default': EditorialDashboard,
   '/src/admin/MediaLicenseNotice#default': MediaLicenseNotice,
   '/src/admin/MediaReleaseControl#default': MediaReleaseControl,
+  '/src/admin/MediaUsabilityCell#default': MediaUsabilityCell,
   '/src/admin/OriginCell#default': OriginCell,
   '/src/admin/ParagraphTextField#default': ParagraphTextField,
   '/src/admin/QaApprovalField#default': QaApprovalField,
