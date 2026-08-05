@@ -667,6 +667,47 @@ export const Articles: CollectionConfig = {
     // A ordem das abas e a ordem em que uma redacao humana trabalha. Antes
     // desta mudanca os SETE primeiros campos do formulario eram internos de
     // automacao, editaveis, e o titulo aparecia em oitavo lugar.
+      /* ================================================================
+       * CANVAS DE ESCRITA — campos de TOPO, fora do `tabs`.
+       *
+       * Estao aqui por uma razao mecanica, nao estetica: `admin.position:
+       * 'sidebar'` so e lido pelo particionador de `DocumentFields`, que
+       * percorre APENAS `collection.fields[]`. Dentro de `tabs` a propriedade
+       * typecheca e e ignorada em silencio (`fieldIsSidebar` tem um unico
+       * consumidor em todo o @payloadcms/ui). Enquanto tudo vivia dentro do
+       * `tabs`, a sidebar do painel era vazia por CONSTRUCAO.
+       *
+       * A ordem do array E o mecanismo de ordenacao: titulo, apoio, resumo e
+       * corpo aparecem antes das abas, que e o que faz a tela abrir escrevendo
+       * em vez de abrir num formulario.
+       * ================================================================ */
+      { name: 'title', type: 'text', required: true, label: 'Título' },
+      { name: 'subtitle', type: 'text', label: 'Linha de apoio' },
+      { name: 'summary', type: 'textarea', label: 'Resumo' },
+      { name: 'body', type: 'blocks', blocks: editorialBlocks, label: 'Corpo' },
+
+      /* ----------------------------------------------------------------
+       * SIDEBAR — o que a redacao consulta ENQUANTO escreve.
+       *
+       * Tambem de topo, e pelo mesmo motivo mecanico do canvas: `position:
+       * 'sidebar'` so e lido pelo particionador de `DocumentFields`, que
+       * percorre apenas `collection.fields[]`. Dentro do `tabs` a propriedade
+       * typecheca e e ignorada em silencio.
+       * ---------------------------------------------------------------- */
+      {
+        name: 'slug',
+        type: 'text',
+        label: 'Endereço da matéria (slug)',
+        index: true,
+        // Mesma coluna, mesma validacao, mesmo tipo: o componente so gera o
+        // valor a partir do titulo com a MESMA `canonicalizeSlug` que a
+        // autopublicacao ja usa, e para de gerar quando alguem edita a mao.
+        admin: {
+          position: 'sidebar',
+          components: { Field: '/src/admin/SlugField' },
+        },
+      },
+
     {
       type: 'tabs',
       tabs: [
@@ -676,19 +717,6 @@ export const Articles: CollectionConfig = {
           'O texto da materia. E por aqui que uma redacao humana comeca.',
         fields: [
         // --- Conteudo ---
-      { name: 'title', type: 'text', required: true, label: 'Título' },
-        { name: 'subtitle', type: 'text', label: 'Linha de apoio' },
-        {
-          name: 'slug',
-          type: 'text',
-          label: 'Endereço da matéria (slug)',
-          index: true,
-          // Mesma coluna, mesma validacao, mesmo tipo: o componente so gera o
-          // valor a partir do titulo com a MESMA `canonicalizeSlug` que a
-          // autopublicacao ja usa, e para de gerar quando alguem edita a mao.
-          admin: { components: { Field: '/src/admin/SlugField' } },
-        },
-        { name: 'summary', type: 'textarea', label: 'Resumo' },
         {
         name: 'contentType',
         type: 'select',
@@ -718,7 +746,6 @@ export const Articles: CollectionConfig = {
               'Só pt-BR é publicado hoje. Inglês e espanhol ficam em rascunho até revisão humana.',
           },
         },
-        { name: 'body', type: 'blocks', blocks: editorialBlocks, label: 'Corpo' },
         ],
       },
       {

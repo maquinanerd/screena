@@ -347,6 +347,34 @@ clica nas abas pelo nome. O mandato permite, exigindo atualizar os dois sem
 reduzir cobertura. E o unico caminho: enquanto tudo viver dentro do `tabs`,
 nenhuma sidebar e possivel, por construcao do Payload.
 
+**IMPLEMENTACAO (branch `claude/cms-canvas-editorial`):**
+
+- **O que foi feito:** `title`, `subtitle`, `summary` e `body` promovidos ao TOPO
+  de `collection.fields[]`, antes do `tabs` — a ordem do array E o mecanismo de
+  ordenacao, entao a tela abre escrevendo em vez de abrir num formulario. `slug`
+  promovida ao topo com `position: 'sidebar'`, onde a propriedade finalmente e
+  lida.
+- **As 8 abas ficaram intactas** de proposito: cada uma continua com campo, o
+  rotulo nao mudou, e o E2E que clica nelas pelo nome segue valendo. So o teste
+  de cobertura mudou — e ficou MAIS forte (abaixo).
+- **ACIDENTE REAL, e o que ele ensinou.** Um recorte automatizado removeu
+  `articles.slug` do formulario e **o typecheck passou** — campo perdido e so um
+  item a menos num array. Foi pego por `grep -c` na conferencia, nao por gate.
+  Por isso o teste antigo ("as 8 abas cobrem TODOS os campos") NAO foi apenas
+  ajustado para o numero novo: baixar o numero teria escondido exatamente esse
+  acidente. A invariante agora e `topo + abas === total`, mais uma verificacao
+  NOMINAL de que `title`, `slug`, `body`, `summary`, `language` e `contentType`
+  continuam existindo.
+- **Testes criados:** canvas no topo com ordem congelada; `slug` como unico campo
+  de sidebar; controle negativo de campo perdido.
+- **Migration:** nenhuma. Promover campo entre `tabs` e topo **nao muda o
+  schema** — as abas sao SEM NOME, entao o armazenamento ja era plano. Confirmado
+  pelo teste de snapshot de colunas, que continua verde.
+- **Gates:** unitarios `482/482` · typecheck `0`.
+- **SEM CONFIRMACAO VISUAL:** o canvas e a sidebar nao foram vistos no navegador
+  (Node 24 impede o Playwright local). Conferir depois: titulo grande no topo,
+  corpo no centro, slug na coluna da direita.
+
 ### F7, F9..F13 — PENDENTES
 
 F6 canvas · F7 editor e menu `/` · F8 embeds e galeria · F9 midia · F10 SEO ·
