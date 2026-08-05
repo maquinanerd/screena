@@ -56,7 +56,22 @@ export type PublishPathPlan =
        */
       readonly path: readonly WorkflowStatus[]
     }
-  | { readonly ok: false; readonly reason: PublishPathRejection }
+  | {
+      readonly ok: false
+      readonly reason: PublishPathRejection
+      /**
+       * Ate onde ESTE papel consegue levar a materia, quando nao consegue
+       * publicar.
+       *
+       * Existe porque recusar tudo era pior que avancar o possivel: um redator
+       * que aperta "Publicar" e ve nada acontecer nao aprende que o trabalho
+       * dele termina em `needs_review`. Com o caminho parcial, a materia anda
+       * ate a fronteira da alcada e a tela diz qual foi e por que parou.
+       *
+       * Vazio quando nao ha nem um degrau disponivel.
+       */
+      readonly partialPath: readonly WorkflowStatus[]
+    }
 
 function isWorkflowStatus(value: string): value is WorkflowStatus {
   return (WORKFLOW_STATUSES as readonly string[]).includes(value)
@@ -73,8 +88,12 @@ function isWorkflowStatus(value: string): value is WorkflowStatus {
  * deterministico: mesma entrada, mesmo caminho, sempre.
  */
 export function planPublishPath(from: string, actor: ActorKind): PublishPathPlan {
-  if (!isWorkflowStatus(from)) return { ok: false, reason: 'unknown_state' }
-  if (from === TARGET) return { ok: false, reason: 'already_published' }
+  if (!isWorkflowStatus(from)) {
+    return { ok: false, reason: 'unknown_state', partialPath: [] }
+  }
+  if (from === TARGET) {
+    return { ok: false, reason: 'already_published', partialPath: [] }
+  }
 
   // BFS. `cameFrom` guarda o predecessor de cada estado alcancado, e e o que
   // permite reconstruir o caminho no fim sem carregar listas pela fila.
@@ -98,8 +117,76 @@ export function planPublishPath(from: string, actor: ActorKind): PublishPathPlan
   }
 
   // O grafo tem caminho (todo estado chega a `ready_to_publish`), mas o papel
-  // nao fecha o ultimo degrau. Dizer "impossivel" seria mentir sobre o motivo.
-  return { ok: false, reason: 'forbidden_for_role' }
+  // nao fecha o ultimo degrau. Dizer "impossivel" seria mentir sobre o motivo —
+  // e parar tudo seria pior ainda: a materia nao anda e ninguem aprende ate
+  // onde aquela alcada vai. Entao devolvemos ate onde da para chegar.
+  return {
+    ok: false,
+    reason: 'forbidden_for_role',
+    partialPath: furthestReachable(cameFrom, seen, from),
+  }
+}
+
+/**
+ * Distancia de cada estado ate `published` no grafo CRU, sem filtro de papel.
+ *
+ * Serve de regua para "mais avancado": avancado nao e quantos degraus a materia
+ * andou, e sim quantos FALTAM. `administrator` e usado como ator permissivo
+ * porque e o unico papel presente em todas as listas de
+ * `ROLES_ALLOWED_TO_REACH` — com ele, `canTransition` descreve o grafo inteiro
+ * e nao a alcada de ninguem.
+ */
+function distanceToTarget(): ReadonlyMap<WorkflowStatus, number> {
+  const distance = new Map<WorkflowStatus, number>([[TARGET, 0]])
+  let frontier: WorkflowStatus[] = [TARGET]
+  let step = 0
+  while (frontier.length > 0) {
+    step += 1
+    const next: WorkflowStatus[] = []
+    for (const goal of frontier) {
+      for (const candidate of WORKFLOW_STATUSES) {
+        if (distance.has(candidate)) continue
+        // Aresta REVERSA: quem consegue chegar em `goal`?
+        if (!canTransition(candidate, goal, 'administrator').allowed) continue
+        distance.set(candidate, step)
+        next.push(candidate)
+      }
+    }
+    frontier = next
+  }
+  return distance
+}
+
+/**
+ * O estado alcancavel por este papel que fica MAIS PERTO de `published`.
+ *
+ * `blocked`, `archived` e `retracted` ficam de fora mesmo sendo alcancaveis:
+ * sao estados que IMPEDEM publicacao, e levar a materia para la ao apertar
+ * "Publicar" seria o oposto do pedido.
+ */
+function furthestReachable(
+  cameFrom: ReadonlyMap<WorkflowStatus, WorkflowStatus>,
+  reachable: ReadonlySet<WorkflowStatus>,
+  from: WorkflowStatus,
+): readonly WorkflowStatus[] {
+  const distance = distanceToTarget()
+  const DEAD_ENDS: readonly WorkflowStatus[] = ['blocked', 'archived', 'retracted']
+
+  let best: WorkflowStatus | null = null
+  let bestDistance = distance.get(from) ?? Number.POSITIVE_INFINITY
+  for (const candidate of WORKFLOW_STATUSES) {
+    if (candidate === from) continue
+    if (!reachable.has(candidate)) continue
+    if (DEAD_ENDS.includes(candidate)) continue
+    const candidateDistance = distance.get(candidate) ?? Number.POSITIVE_INFINITY
+    // ESTRITAMENTE menor: empate nao move a materia sem ganho.
+    if (candidateDistance < bestDistance) {
+      best = candidate
+      bestDistance = candidateDistance
+    }
+  }
+
+  return best === null ? [] : rebuild(cameFrom, from, best)
 }
 
 /**

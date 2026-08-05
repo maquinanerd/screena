@@ -63,11 +63,50 @@ describe('planPublishPath', () => {
     expect(plan.ok).toBe(false)
     if (plan.ok) return
     expect(plan.reason).toBe('forbidden_for_role')
+    // NAO para em `draft`: anda ate a fronteira da alcada. `editor` alcanca
+    // `ready_to_publish` (so `published` e do editor-chefe).
+    expect(plan.partialPath[plan.partialPath.length - 1]).toBe('ready_to_publish')
+    expect(plan.partialPath).not.toContain('published')
   })
 
-  it('writer tambem nao publica', () => {
+  it('writer para em needs_review, que e onde a alcada dele termina', () => {
     const plan = planPublishPath('draft', 'writer')
     expect(plan.ok).toBe(false)
+    if (plan.ok) return
+    // `writer` so alcanca `draft` e `needs_review` — nao revisa nem libera.
+    expect(plan.partialPath).toEqual(['needs_review'])
+  })
+
+  it('CONTROLE NEGATIVO: o caminho parcial tambem nao contem salto invalido', () => {
+    // O parcial e escrito no banco como o completo. Se ele pudesse pular
+    // degrau, o bypass entraria justamente pela porta de quem tem MENOS
+    // permissao — o pior lugar possivel.
+    for (const role of ['writer', 'editor', 'reviewer'] as const) {
+      for (const from of WORKFLOW_STATUSES as readonly WorkflowStatus[]) {
+        const plan = planPublishPath(from, role)
+        if (plan.ok) continue
+        let cursor: WorkflowStatus = from
+        for (const hop of plan.partialPath) {
+          expect(
+            canTransition(cursor, hop, role).allowed,
+            `${role}: ${cursor} -> ${hop} nao e transicao valida`,
+          ).toBe(true)
+          cursor = hop
+        }
+      }
+    }
+  })
+
+  it('o caminho parcial nunca leva a materia para um estado que IMPEDE publicar', () => {
+    for (const role of ['writer', 'editor', 'reviewer'] as const) {
+      for (const from of WORKFLOW_STATUSES as readonly WorkflowStatus[]) {
+        const plan = planPublishPath(from, role)
+        if (plan.ok) continue
+        for (const dead of ['blocked', 'archived', 'retracted']) {
+          expect(plan.partialPath, `${role} partindo de ${from}`).not.toContain(dead)
+        }
+      }
+    }
   })
 
   it('editor_in_chief publica', () => {
