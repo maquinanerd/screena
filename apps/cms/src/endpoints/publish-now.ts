@@ -23,6 +23,8 @@
  * (`assemblePublishGateInput`), e nada se move se ele barrar.
  */
 
+import { randomUUID } from 'node:crypto'
+
 import type { Endpoint, PayloadRequest } from 'payload'
 
 import { toActor } from '../actor.js'
@@ -79,28 +81,58 @@ export const publishNowEndpoint: Endpoint = {
 
     const from = String(article.workflowStatus ?? 'draft')
     const plan = planPublishPath(from, actor.role)
-    if (!plan.ok) {
+
+    // Nao ha nem caminho parcial: ja publicada, ou estado corrompido.
+    if (!plan.ok && (plan.reason !== 'forbidden_for_role' || plan.partialPath.length === 0)) {
       return json({ error: 'no_path', reason: plan.reason, from }, 409)
     }
 
-    // Pre-voo. `ready_to_publish` e o estado em que a materia estara quando o
-    // ultimo degrau for tentado — perguntar com o estado ATUAL devolveria
-    // `not_ready_to_publish` para toda materia em rascunho, que e justamente o
-    // que este botao existe para resolver.
-    const gate = evaluatePublishGate(
-      await assemblePublishGateInput(req, article, 'ready_to_publish'),
-    )
-    if (!gate.canPublish) {
-      // Os codigos voltam crus: a traducao para portugues e o link para a aba
-      // vivem em `editorial-vocabulary.ts`, que ja e a fonte unica dessas
-      // frases. Traduzir aqui criaria um segundo texto para o mesmo bloqueio.
-      return json({ error: 'blocked', reasons: gate.reasons, from }, 422)
+    // O gate so vale para PUBLICAR. Um avanco parcial que para em
+    // `ready_to_publish` nao publica nada, entao exigir autor ativo ali
+    // impediria o redator de mandar para revisao uma materia que ainda nem tem
+    // assinatura definida — que e o estado normal de quem esta escrevendo.
+    if (plan.ok) {
+      // Pre-voo. `ready_to_publish` e o estado em que a materia estara quando o
+      // ultimo degrau for tentado — perguntar com o estado ATUAL devolveria
+      // `not_ready_to_publish` para toda materia em rascunho, que e justamente o
+      // que este botao existe para resolver.
+      const gate = evaluatePublishGate(
+        await assemblePublishGateInput(req, article, 'ready_to_publish'),
+      )
+      if (!gate.canPublish) {
+        // Os codigos voltam crus: a traducao para portugues e o link para a aba
+        // vivem em `editorial-vocabulary.ts`, que ja e a fonte unica dessas
+        // frases. Traduzir aqui criaria um segundo texto para o mesmo bloqueio.
+        return json({ error: 'blocked', reasons: gate.reasons, from }, 422)
+      }
+    }
+
+    const ladder = plan.ok ? plan.path : plan.partialPath
+
+    /* --- O carimbo do colapso -----------------------------------------
+     *
+     * Gerado UMA vez, aqui, e reusado nas cinco chamadas — e isso que faz as
+     * cinco linhas de versao serem agrupaveis como UMA operacao.
+     *
+     * `collapseId` existe porque `collapsedAt` sozinho e chave fragil: a mesma
+     * materia pode ser colapsada mais de uma vez (publicar, retratar, publicar
+     * de novo), e dois carimbos iguais ao milissegundo agrupariam operacoes
+     * diferentes. O uuid nao tem esse problema.
+     *
+     * O `updatedAt` do Payload NAO e tocado: ele continua honesto sobre quando
+     * cada linha foi escrita. Quem agrupa e o `collapseId`, que e nosso.
+     */
+    const collapseStamp = {
+      collapseId: randomUUID(),
+      collapsedAt: new Date().toISOString(),
+      collapsedFrom: from,
+      collapseReason: 'publicacao_direta',
     }
 
     // A subida. Um `update` por degrau, em ordem, cada um com access control
     // ligado e passando pelos hooks.
     const walked: string[] = []
-    for (const hop of plan.path) {
+    for (const hop of ladder) {
       try {
         await req.payload.update({
           collection: 'articles',
@@ -108,7 +140,12 @@ export const publishNowEndpoint: Endpoint = {
           data: { workflowStatus: hop },
           overrideAccess: false,
           user: req.user,
-          req,
+          // O carimbo viaja pelo CONTEXTO, nunca pelo `data`: os quatro campos
+          // estao em `HUMAN_FORBIDDEN_FIELDS` e o hook os remove do corpo antes
+          // de estampar os proprios. Cliente nenhum consegue preencher isto.
+          req: Object.assign(req, {
+            context: { ...(req.context ?? {}), publishCollapse: collapseStamp },
+          }),
         })
         walked.push(hop)
       } catch (error) {
@@ -126,6 +163,24 @@ export const publishNowEndpoint: Endpoint = {
           422,
         )
       }
+    }
+
+    // AVANCO PARCIAL: a materia andou, mas nao publicou. A resposta diz ate
+    // onde foi e por que parou, para a tela nao anunciar sucesso — quem aperta
+    // "Publicar" e ve a materia em `ready_to_publish` sem explicacao aperta de
+    // novo. A frase em portugues e montada no cliente, pela fonte unica de
+    // vocabulario editorial; aqui vai so o estado alcancado.
+    if (!plan.ok) {
+      return json(
+        {
+          ok: false,
+          partial: true,
+          reason: 'forbidden_for_role',
+          stoppedAt: walked[walked.length - 1] ?? from,
+          walked,
+        },
+        200,
+      )
     }
 
     return json({ ok: true, walked }, 200)

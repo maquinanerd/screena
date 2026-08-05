@@ -13,7 +13,9 @@ import {
   ARTICLE_TABS,
   explainServerRejection,
   mediaBlockReason,
+  partialAdvanceMessage,
   PUBLISH_BLOCK_EXPLANATIONS,
+  ROLE_LABELS,
   STATUS_HINTS,
   STATUS_LABELS,
   STATUS_TONES,
@@ -199,5 +201,36 @@ describe('a barra nao inventa estado', () => {
         expect(valid.has(option.to as WorkflowStatus)).toBe(true)
       }
     }
+  })
+})
+
+describe('partialAdvanceMessage', () => {
+  it('diz ate onde foi e o que falta, sem nome de estado cru', () => {
+    const message = partialAdvanceMessage('ready_to_publish', ['editor_in_chief'])
+    // O rotulo em portugues, nao a chave do banco.
+    expect(message).not.toContain('ready_to_publish')
+    expect(message).toContain(STATUS_LABELS.ready_to_publish)
+    // E o que resolve: quem publica.
+    expect(message).toContain(ROLE_LABELS.editor_in_chief)
+  })
+
+  it('lista mais de um papel de forma legivel', () => {
+    const message = partialAdvanceMessage('ready_to_publish', ['administrator', 'editor_in_chief'])
+    expect(message).toContain(' ou ')
+    expect(message).toContain(ROLE_LABELS.administrator)
+  })
+
+  it('CONTROLE NEGATIVO: nenhum estado cru vaza para a frase, em nenhum estado', () => {
+    // Um `STATUS_LABELS` incompleto devolveria `undefined` e a frase sairia
+    // "avancou ate undefined" — pior que o silencio que isto veio corrigir.
+    for (const status of WORKFLOW_STATUSES) {
+      const message = partialAdvanceMessage(status, ['editor_in_chief'])
+      expect(message, status).not.toContain('undefined')
+      expect(message, status).not.toContain(status)
+    }
+  })
+
+  it('sem papel humano, aponta a automacao em vez de frase quebrada', () => {
+    expect(partialAdvanceMessage('ready_to_publish', [])).toContain('automação')
   })
 })
