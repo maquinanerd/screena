@@ -239,7 +239,21 @@ export const editorialBlocks = [
         name: 'provider',
         type: 'select' as const,
         required: true,
-        options: ['youtube', 'vimeo', 'internal'],
+        label: 'Origem do vídeo',
+        // `internal` e legal no contrato e MORRE no renderizador publico:
+        // `article-body-presenter.ts` devolve null para tudo que nao seja
+        // youtube/vimeo, e o bloco some da pagina sem deixar rastro. O valor
+        // continua aqui (removê-lo mudaria o contrato, que nao e desta
+        // entrega); o rotulo passa a dizer a verdade antes da publicacao.
+        options: [
+          { label: 'YouTube', value: 'youtube' },
+          { label: 'Vimeo', value: 'vimeo' },
+          { label: 'Interno — ainda não aparece no site', value: 'internal' },
+        ],
+        admin: {
+          description:
+            'O site publica o vídeo como link para o provedor, nunca como player incorporado.',
+        },
       },
       { name: 'externalId', type: 'text' as const },
       { name: 'url', type: 'text' as const },
@@ -266,7 +280,24 @@ export const editorialBlocks = [
         name: 'entityKind',
         type: 'select' as const,
         required: true,
-        options: ['movie', 'tv', 'season', 'episode', 'person', 'character', 'franchise'],
+        label: 'Tipo de entidade',
+        // So `movie` e `tv` sao hidratados no lado publico
+        // (`news-pages.ts`); os outros cinco fazem o cartao inteiro sumir da
+        // materia publicada, silenciosamente. Sao legais no contrato, entao
+        // continuam selecionaveis — mas quem escolhe precisa saber.
+        options: [
+          { label: 'Filme', value: 'movie' },
+          { label: 'Série', value: 'tv' },
+          { label: 'Temporada — ainda não aparece no site', value: 'season' },
+          { label: 'Episódio — ainda não aparece no site', value: 'episode' },
+          { label: 'Pessoa — ainda não aparece no site', value: 'person' },
+          { label: 'Personagem — ainda não aparece no site', value: 'character' },
+          { label: 'Franquia — ainda não aparece no site', value: 'franchise' },
+        ],
+        admin: {
+          description:
+            'Hoje o site só monta o cartão para filme e série. Os demais tipos são aceitos, mas o cartão não é exibido na matéria publicada.',
+        },
       },
       { name: 'entityId', type: 'text' as const, required: true },
       { name: 'note', type: 'text' as const },
@@ -650,6 +681,7 @@ export const Articles: CollectionConfig = {
         {
           name: 'slug',
           type: 'text',
+          label: 'Endereço da matéria (slug)',
           index: true,
           // Mesma coluna, mesma validacao, mesmo tipo: o componente so gera o
           // valor a partir do titulo com a MESMA `canonicalizeSlug` que a
@@ -660,6 +692,7 @@ export const Articles: CollectionConfig = {
         {
         name: 'contentType',
         type: 'select',
+        label: 'Tipo editorial',
         required: true,
         defaultValue: 'news',
         // FONTE UNICA. A lista literal duplicada aqui divergiu do contrato quando
@@ -706,7 +739,23 @@ export const Articles: CollectionConfig = {
               'Não bloqueia a publicação, mas matéria sem capa perde espaço nas listas e no compartilhamento.',
           },
         },
-        { name: 'gallery', type: 'relationship', relationTo: 'media', hasMany: true },
+        {
+          name: 'gallery',
+          type: 'relationship',
+          relationTo: 'media',
+          hasMany: true,
+          label: 'Imagens de apoio',
+          admin: {
+            // HONESTIDADE DE ESCOPO. Nao existe bloco `gallery` em lugar nenhum
+            // da pilha: nem no contrato (`publishedEditorialBlock` tem 10 tipos
+            // e nenhum e galeria), nem no renderizador publico. Estas imagens
+            // viajam com a materia e ficam disponiveis para reuso, mas NAO
+            // viram uma galeria na pagina. Quem quiser a foto no meio do texto
+            // usa o bloco "image" no corpo.
+            description:
+              'Ficam vinculadas à matéria para reuso e crédito. Não viram galeria na página: para exibir uma imagem no texto, use o bloco de imagem no corpo.',
+          },
+        },
         ],
       },
       {
@@ -729,11 +778,43 @@ export const Articles: CollectionConfig = {
             'Obrigatório para publicar: ao menos um autor ativo. Um rascunho pode ficar sem autor.',
         },
       },
-        { name: 'primaryAuthor', type: 'relationship', relationTo: 'authors' },
-        { name: 'assignedTo', type: 'relationship', relationTo: 'editorial-users' },
+        // AUTORIA TEM TRES PAPEIS DIFERENTES, e um `select` sem rotulo nao os
+        // distingue. `authors` assina publicamente; `primaryAuthor` e quem
+        // encabeca a assinatura; `assignedTo` e responsabilidade INTERNA e
+        // nunca aparece no site.
+        {
+          name: 'primaryAuthor',
+          type: 'relationship',
+          relationTo: 'authors',
+          label: 'Autor principal',
+          admin: {
+            description:
+              'Entre os autores acima, quem encabeça a assinatura pública da matéria.',
+          },
+        },
+        {
+          name: 'assignedTo',
+          type: 'relationship',
+          relationTo: 'editorial-users',
+          label: 'Responsável na redação',
+          admin: {
+            description: 'Controle interno de quem toca a matéria. Não aparece no site.',
+          },
+        },
         // --- Organizacao PROVISORIA (a taxonomia publica nao vive aqui) ---
-      { name: 'section', type: 'text' },
-        { name: 'internalTags', type: 'text', hasMany: true },
+      {
+          name: 'section',
+          type: 'text',
+          label: 'Editoria',
+          admin: { description: 'Ex.: Filmes, Séries, Streaming. Campo livre — não há taxonomia fechada ainda.' },
+        },
+        {
+          name: 'internalTags',
+          type: 'text',
+          hasMany: true,
+          label: 'Marcadores internos',
+          admin: { description: 'Organização da redação. Não são as tags públicas da matéria.' },
+        },
         ],
       },
       {
@@ -773,21 +854,89 @@ export const Articles: CollectionConfig = {
           fields: [
         // SEO revalidado. Sao SUGESTOES do pipeline que o CMS aceitou — nunca
       // canonical, robots, datas ou JSON-LD, que pertencem ao lado publico.
-      { name: 'focusKeyphrase', type: 'text' },
-        { name: 'relatedKeyphrases', type: 'text', hasMany: true, defaultValue: [] },
-        { name: 'editorialKeywords', type: 'text', hasMany: true, defaultValue: [] },
+      {
+          name: 'focusKeyphrase',
+          type: 'text',
+          label: 'Termo principal',
+          admin: {
+            description:
+              'Ferramenta interna de foco. Não vira meta keywords nem sai no HTML da página.',
+          },
+        },
+        {
+          name: 'relatedKeyphrases',
+          type: 'text',
+          hasMany: true,
+          defaultValue: [],
+          label: 'Termos relacionados',
+          admin: { description: 'Apoio de pauta. Também não sai no HTML.' },
+        },
+        {
+          name: 'editorialKeywords',
+          type: 'text',
+          hasMany: true,
+          defaultValue: [],
+          label: 'Palavras-chave editoriais',
+          admin: { description: 'Vocabulário da redação para busca interna.' },
+        },
         {
         name: 'schemaTypeRecommendation',
         type: 'select',
+        label: 'Tipo de dado estruturado (sugestão)',
         options: ['NewsArticle', 'Article', 'Review', 'ItemList', 'HowTo'],
-        admin: { description: 'RECOMENDACAO. O JSON-LD final e montado pelo screen-app.' },
+        admin: {
+          // MEDIDO no lado publico: so `NewsArticle` e `Article` sao aceitos ao
+          // montar o JSON-LD. Os outros tres continuam selecionaveis e caem
+          // fora sem aviso. Dizer isso aqui e mais barato que descobrir depois
+          // que o dado estruturado nao saiu.
+          description:
+            'Sugestão. O JSON-LD final é montado pelo site, que hoje só aceita NewsArticle e Article — Review, ItemList e HowTo são ignorados.',
+        },
       },
-        { name: 'articleSection', type: 'text' },
-        { name: 'socialTitle', type: 'text' },
-        { name: 'socialDescription', type: 'textarea' },
-        { name: 'socialMedia', type: 'relationship', relationTo: 'media' },
-        { name: 'canonicalOverride', type: 'text' },
-        { name: 'noindex', type: 'checkbox', defaultValue: false },
+        {
+          name: 'articleSection',
+          type: 'text',
+          label: 'Seção declarada ao buscador',
+          admin: { description: 'Vai no articleSection do JSON-LD. Costuma repetir a editoria.' },
+        },
+        // CADEIA DE HERANCA REAL, nao suposta. Medida no renderizador publico:
+        // social -> meta -> linha de apoio. Escrever "deriva do titulo" sem
+        // conferir seria inventar comportamento; abaixo esta o que o codigo faz.
+        {
+          name: 'socialTitle',
+          type: 'text',
+          label: 'Título para redes sociais',
+          admin: { description: 'Vazio, herda o título para busca; se este também estiver vazio, o título da matéria.' },
+        },
+        {
+          name: 'socialDescription',
+          type: 'textarea',
+          label: 'Descrição para redes sociais',
+          admin: { description: 'Vazio, herda a descrição para busca; se esta também estiver vazia, a linha de apoio.' },
+        },
+        {
+          name: 'socialMedia',
+          type: 'relationship',
+          relationTo: 'media',
+          label: 'Imagem para redes sociais',
+          admin: { description: 'Vazio, usa a capa. A imagem precisa estar liberada para uso social.' },
+        },
+        {
+          name: 'canonicalOverride',
+          type: 'text',
+          label: 'Canônica manual',
+          admin: {
+            description:
+              'Só para matéria republicada de outra origem. Precisa ser https absoluta, e é ignorada quando a página não indexa.',
+          },
+        },
+        {
+          name: 'noindex',
+          type: 'checkbox',
+          defaultValue: false,
+          label: 'Pedir para não indexar',
+          admin: { description: 'Marca a matéria como noindex e a mantém fora do sitemap.' },
+        },
           ],
         },
         ],
@@ -912,16 +1061,39 @@ export const Articles: CollectionConfig = {
           // caminhos de mudar estado, e o cru nao passa pelas transicoes
           // permitidas. `readOnly` e interface — a recusa real continua no hook
           // de governanca, que nao muda aqui. O valor persistido e o mesmo.
+          //
+          // FASE 1: `readOnly` deixava o select cru na tela, ocupando espaco e
+          // parecendo um controle. O estado ja e anunciado pela barra do topo,
+          // com rotulo por extenso e cor de apoio — repeti-lo como enum tecnico
+          // so oferecia um segundo caminho, pior, para a mesma decisao. A
+          // ESCRITA continua permitida a humanos (a barra escreve por aqui);
+          // `hidden` e sobre a tela, nao sobre a permissao.
+          hidden: true,
           readOnly: true,
           description:
             'Em que pé está a matéria. Para avançar ou voltar, use os botões no topo da tela.',
         },
       },
-        { name: 'scheduledFor', type: 'date' },
-        { name: 'publishedAt', type: 'date' },
-        { name: 'correctedAt', type: 'date' },
-        { name: 'correctionNote', type: 'textarea' },
-        { name: 'retractionReason', type: 'textarea' },
+        { name: 'scheduledFor', type: 'date', label: 'Agendada para' },
+        {
+          name: 'publishedAt',
+          type: 'date',
+          label: 'Publicada em',
+          admin: { description: 'Carimbada pelo servidor no momento em que a matéria vai ao ar.' },
+        },
+        { name: 'correctedAt', type: 'date', label: 'Corrigida em' },
+        {
+          name: 'correctionNote',
+          type: 'textarea',
+          label: 'Nota de correção',
+          admin: { description: 'O que mudou depois de publicada. Fica no registro editorial.' },
+        },
+        {
+          name: 'retractionReason',
+          type: 'textarea',
+          label: 'Motivo da retratação',
+          admin: { description: 'Obrigatório em retratação: explica por que a matéria saiu do ar.' },
+        },
         {
         name: 'legalHold',
         type: 'checkbox',

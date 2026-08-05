@@ -1,0 +1,416 @@
+/* ====================================================================== */
+/* Design System local do CMS editorial da Cinerie                        */
+/*                                                                        */
+/* ORIGEM DOS VALORES: extraidos do site publico https://cinerie.com em   */
+/* 2026-08-04, lendo as CSS custom properties `--c-*` reais declaradas em  */
+/* `:root` no bundle `/_next/static/css/cfec72529f60175f.css`, mais os     */
+/* estilos COMPUTADOS de componentes reais (header, h1, corpo de materia,  */
+/* botoes, foco). Nao ha valor adivinhado neste arquivo: cada token abaixo */
+/* cita a propriedade `--c-*` de onde veio, ou a medicao que o originou.   */
+/*                                                                        */
+/* O QUE ESTE ARQUIVO NAO E: nao e uma copia do CSS publico, nao importa   */
+/* folha remota, nao faz hotlink. Sao valores extraidos e reexpressos como */
+/* tokens locais, dentro de CMS_ROOT.                                      */
+/*                                                                        */
+/* POR QUE TUDO AQUI VIVE FORA DE `@layer`                                 */
+/* ---------------------------------------------------------------------- */
+/* `custom.scss` inteiro (linhas 2-1509) vive em `@layer payload`, e o     */
+/* Payload declara os proprios componentes em `@layer payload-default`,    */
+/* que VENCE `payload` na ordem final do bundle do Next. Camada ganha de   */
+/* especificidade: seletor mais especifico nao resolve. Uma declaracao SEM */
+/* camada vence qualquer declaracao COM camada, seja qual for a ordem —    */
+/* e a unica forma que nao depende de como o Next ordenou os chunks.       */
+/* Ver o bloco de comentario em `custom.scss:1516-1550`, que documenta o   */
+/* sintoma que enganou antes: numa MESMA regra, `flex-wrap` pegava e       */
+/* `height` nao, porque o Payload declara uma e nao a outra.               */
+/*                                                                        */
+/* Este arquivo e carregado ANTES de `custom.scss` (`layout.tsx`), para    */
+/* que os tokens existam quando aquele arquivo os consome.                 */
+/* ====================================================================== */
+
+/* ---------------------------------------------------------------------- */
+/* Tipografia do produto                                                   */
+/*                                                                         */
+/* O site publico serve Montserrat variavel (100-900) de                   */
+/* `/fonts/montserrat-latin-variable.woff2` — confirmado lendo a regra     */
+/* @font-face real do site. O arquivo e SIL Open Font License 1.1, e a     */
+/* copia dentro de `apps/cms/public/fonts/` vem acompanhada do `OFL.txt`   */
+/* exigido pela licenca. Sem esta declaracao o painel caia para Arial: a   */
+/* familia estava escrita na pilha de `custom.scss:72-80` mas o arquivo    */
+/* nunca era carregado dentro do CMS.                                      */
+/* ---------------------------------------------------------------------- */
+@font-face {
+  font-family: "Montserrat";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/montserrat-latin-variable.woff2") format("woff2-variations");
+}
+
+:root {
+  /* ==================================================================== */
+  /* 1. PRIMITIVOS — espelho fiel do site publico                         */
+  /* ==================================================================== */
+
+  /* Fundos. Origem: --c-bg-page / --c-bg-surface / --c-bg-subtle /
+     --c-bg-muted / --c-bg-skeleton. O painel NAO usa --c-bg-hero nem
+     --c-bg-dark-band: sao superficies escuras de vitrine, e o teste
+     `e2e/editorial-admin-surface.spec.ts:453` exige luminancia > 0.5 em
+     toda superficie estrutural do admin. */
+  --cin-bg-page: #fdfdfd;
+  --cin-bg-surface: #ffffff;
+  --cin-bg-subtle: #f6f3ee;
+  --cin-bg-muted: #f1ede6;
+  --cin-bg-skeleton: #eae4d9;
+
+  /* Texto. Origem: --c-text-primary / --c-text-body / --c-text-secondary /
+     --c-text-muted-aa / --c-text-disabled / --c-text-inverse.
+     Usamos --c-text-muted-aa (#6e6a61) e NAO --c-text-muted (#9a958c):
+     o segundo nao alcanca 4.5:1 sobre creme, e este painel e ferramenta de
+     trabalho, nao vitrine. */
+  --cin-text-primary: #101010;
+  --cin-text-body: #242424;
+  --cin-text-secondary: #6e6e6e;
+  --cin-text-muted: #6e6a61;
+  --cin-text-disabled: #b7b0a5;
+  --cin-text-inverse: #ffffff;
+
+  /* Bordas. Origem: --c-border-subtle / --c-border / --c-border-strong. */
+  --cin-border-subtle: #f1ede6;
+  --cin-border: #e3ded6;
+  --cin-border-strong: #d8d2c8;
+
+  /* Acentos de vertical. Origem: --c-accent-movie / --c-accent-movie-cta /
+     --c-accent-movie-hover / --c-accent-movie-dark / --c-accent-series /
+     --c-accent-series-dark / --c-accent-editorial / --c-accent-episode /
+     --c-accent-episode-strong.
+     Cada vertical tem PAR: tom de preenchimento e tom de TINTA. O tom claro
+     sozinho nao passa contraste como texto sobre creme. */
+  --cin-movie: #f0443e;
+  --cin-movie-cta: #d42a2e;
+  --cin-movie-hover: #e0392f;
+  --cin-movie-ink: #8a1e1a;
+  --cin-series: #7fa56f;
+  --cin-series-ink: #395c42;
+  --cin-editorial: #f5c518;
+  --cin-episode: #b4884a;
+  --cin-episode-ink: #7a5a20;
+
+  /* Estado. Origem: --c-state-success / --c-state-warning / --c-state-danger /
+     --c-state-info. */
+  --cin-success: #1f8a5b;
+  --cin-warning: #b26a00;
+  --cin-danger: #c7382f;
+  --cin-info: #2a6fdb;
+
+  /* Foco. Origem: --c-focus (#101010) e a regra real do site
+     `:focus-visible { outline: 2px solid var(--c-focus); outline-offset: 3px }`.
+     Tinta, nao marca: sobrevive a qualquer fundo do painel. */
+  --cin-focus: #101010;
+
+  /* Raio. Origem: --r-hairline / --r-xs / --r-sm / --r-control / --r-card /
+     --r-media / --r-pill. */
+  --cin-radius-xs: 5px;
+  --cin-radius-sm: 6px;
+  --cin-radius-control: 8px;
+  --cin-radius-card: 10px;
+  --cin-radius-media: 12px;
+  --cin-radius-pill: 999px;
+
+  /* Sombra. Origem: --sh-card / --sh-card-hover / --sh-dropdown / --sh-modal /
+     --sh-sticky-header. --sh-editorial-image ficou de fora: e uma sombra de
+     vitrine (0 12px 28px rgba(0,0,0,0.5)), pesada demais para formulario. */
+  --cin-shadow-card: 0 3px 14px rgba(20, 18, 14, 0.05);
+  --cin-shadow-card-hover: 0 4px 16px rgba(20, 18, 14, 0.12);
+  --cin-shadow-dropdown: 0 8px 24px rgba(0, 0, 0, 0.06);
+  --cin-shadow-modal: 0 30px 70px rgba(0, 0, 0, 0.18);
+  --cin-shadow-header: 0 1px 3px rgba(20, 18, 14, 0.12);
+
+  /* Movimento. Origem: transicoes reais medidas no site (0.15s a 0.35s).
+     O site respeita `prefers-reduced-motion` — confirmado: a media query
+     existe no bundle publico. O painel faz o mesmo no fim deste arquivo. */
+  --cin-motion-fast: 140ms;
+  --cin-motion: 200ms;
+  --cin-motion-slow: 350ms;
+  --cin-ease: cubic-bezier(0.2, 0, 0.2, 1);
+
+  /* Breakpoints, como referencia legivel. Origem: media queries reais do
+     site (420, 480, 599/640, 720, 767, 900, 1023, 1279). O CMS usa as tres
+     de cima; o editor completo nao e forcado para celular. */
+  --cin-bp-notebook: 1279px;
+  --cin-bp-tablet: 1023px;
+  --cin-bp-compact: 900px;
+
+  /* ==================================================================== */
+  /* 2. TOKENS SEMANTICOS DO CMS                                          */
+  /*                                                                      */
+  /* Nomes exigidos pela especificacao desta entrega. Cada um aponta para  */
+  /* um primitivo acima — nenhum valor literal novo entra aqui. E esta a   */
+  /* camada que os componentes devem consumir; a de cima e so vocabulario. */
+  /* ==================================================================== */
+
+  --cms-background-page: var(--cin-bg-subtle);
+  --cms-background-surface: var(--cin-bg-surface);
+  --cms-background-elevated: var(--cin-bg-page);
+  --cms-background-subtle: var(--cin-bg-muted);
+
+  --cms-foreground-primary: var(--cin-text-primary);
+  --cms-foreground-secondary: var(--cin-text-body);
+  --cms-foreground-muted: var(--cin-text-muted);
+
+  --cms-border-default: var(--cin-border);
+  --cms-border-strong: var(--cin-border-strong);
+
+  --cms-accent-primary: var(--cin-movie);
+  --cms-accent-primary-hover: var(--cin-movie-hover);
+  --cms-accent-primary-active: var(--cin-movie-cta);
+
+  --cms-focus-ring: var(--cin-focus);
+
+  --cms-success: var(--cin-success);
+  --cms-warning: var(--cin-warning);
+  --cms-danger: var(--cin-danger);
+  --cms-info: var(--cin-info);
+
+  --cms-disabled-background: var(--cin-bg-muted);
+  --cms-disabled-foreground: var(--cin-text-disabled);
+
+  --cms-movie-accent: var(--cin-movie);
+  --cms-series-accent: var(--cin-series);
+  --cms-news-accent: var(--cin-info);
+  --cms-editorial-accent: var(--cin-editorial);
+
+  /* ==================================================================== */
+  /* 3. TIPOGRAFIA ADMINISTRATIVA                                         */
+  /*                                                                      */
+  /* Derivada da escala real do site, reduzida para densidade de trabalho. */
+  /* O site usa h1 34px/w800/ls-1.02px na home e 52px no titulo de materia; */
+  /* nenhum dos dois cabe num formulario. O que se preserva e a ASSINATURA */
+  /* (peso 800 e tracking negativo no display), nao o tamanho de vitrine.   */
+  /* ==================================================================== */
+
+  --cms-font-sans:
+    Montserrat, Inter, ui-sans-serif, system-ui, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --cms-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --cms-text-display: 700 30px / 1.1 var(--cms-font-sans);
+  --cms-text-page-title: 800 22px / 1.2 var(--cms-font-sans);
+  --cms-text-section: 700 16px / 1.3 var(--cms-font-sans);
+  --cms-text-field-label: 700 13px / 1.35 var(--cms-font-sans);
+  --cms-text-body: 400 14px / 1.55 var(--cms-font-sans);
+  --cms-text-label: 600 12px / 1.4 var(--cms-font-sans);
+  --cms-text-caption: 400 12px / 1.45 var(--cms-font-sans);
+  --cms-text-metadata: 600 11px / 1.4 var(--cms-font-sans);
+  --cms-text-button: 700 13px / 1 var(--cms-font-sans);
+  --cms-text-code: 400 12px / 1.5 var(--cms-font-mono);
+
+  /* Corpo de LEITURA do editor.
+     O site publica a materia numa coluna de 680px medidos
+     (`--container-reading: 720px` menos o respiro lateral). O editor usa
+     760px: e a mesma medida de leitura MAIS a calha que o texto publicado
+     nao tem — alca de arrastar, recolher e acoes de linha do bloco. Abaixo
+     disso o controle do bloco come a palavra. */
+  --cms-measure-editor: 760px;
+  --cms-text-reading: 400 16px / 1.65 var(--cms-font-sans);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Correcao de deriva                                                      */
+/*                                                                         */
+/* `custom.scss:20-43` declara os `--cinerie-*` afirmando espelhar o site.  */
+/* A leitura do site publico confirma o essencial — marca `#f0443e`, acento */
+/* `#f5c518`, serie `#7fa56f`, pessoa `#b4884a` batem exatamente. Mas SEIS  */
+/* tokens haviam derivado do produto. Reapontados aqui para o valor real,   */
+/* fora da camada, sem renomear nada: ~1500 linhas de `custom.scss` e os    */
+/* componentes dependem destes nomes, e trocar nome seria refatoracao       */
+/* gratuita com risco visual em toda a superficie do painel.                */
+/* ---------------------------------------------------------------------- */
+:root {
+  /* era #171717 — o site usa #101010 em --c-text-primary */
+  --cinerie-ink: var(--cin-text-primary);
+  /* era #706d66 — #6e6a61 e o tom AA que o proprio site separou para texto */
+  --cinerie-muted: var(--cin-text-muted);
+  /* era #f6f3eb — --c-bg-subtle e #f6f3ee */
+  --cinerie-paper: var(--cin-bg-subtle);
+  /* era #ded8cc — --c-border e #e3ded6 */
+  --cinerie-border: var(--cin-border);
+  /* era #2e9e5b — --c-state-success e #1f8a5b */
+  --cinerie-green: var(--cin-success);
+  /* era #3178c6 — --c-state-info e #2a6fdb */
+  --cinerie-blue: var(--cin-info);
+  --cinerie-news: var(--cin-info);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Foco visivel, igual ao do produto                                       */
+/*                                                                         */
+/* O site declara `:focus-visible { outline: 2px solid var(--c-focus);      */
+/* outline-offset: 3px }`. O painel repete a regra para QUALQUER elemento   */
+/* focavel, inclusive os nativos do Payload — fora da camada, porque o      */
+/* Payload declara `outline` nos proprios controles e uma regra em          */
+/* `@layer payload` ficaria inerte exatamente nessa propriedade.            */
+/* ---------------------------------------------------------------------- */
+.template-default :focus-visible,
+.template-minimal :focus-visible {
+  outline: 2px solid var(--cms-focus-ring);
+  outline-offset: 3px;
+}
+
+/* Campo de texto tem respiro menor: 3px descolaria o anel da caixa. */
+.template-default input:focus-visible,
+.template-default textarea:focus-visible,
+.template-default select:focus-visible,
+.template-minimal input:focus-visible,
+.template-minimal textarea:focus-visible,
+.template-minimal select:focus-visible {
+  outline: 2px solid var(--cms-focus-ring);
+  outline-offset: 1px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Estados editoriais                                                      */
+/*                                                                         */
+/* Os DOZE estados reais de `src/workflow.ts:20-34`. Nao ha estado          */
+/* inventado aqui: "QA pendente" e "legal hold" NAO sao estados de fluxo    */
+/* neste CMS — sao, respectivamente, o campo `qaPassedAt` e a trava         */
+/* `legalHold`, e apareceriam como estado falso se entrassem nesta lista.   */
+/*                                                                         */
+/* REGRA: estado nunca depende so da cor. Cada `.cms-status` carrega o      */
+/* rotulo por extenso, uma MARCA textual propria (o `::before`, que         */
+/* sobrevive a daltonismo, alto contraste e impressao em cinza) e o codigo  */
+/* em `data-status` para quem inspeciona. A cor e o quarto sinal, nunca o   */
+/* primeiro.                                                                */
+/* ---------------------------------------------------------------------- */
+.cms-status {
+  align-items: baseline;
+  background: var(--cms-background-surface);
+  border: 1px solid var(--cms-border-default);
+  border-left: 4px solid var(--cms-foreground-muted);
+  border-radius: var(--cin-radius-control);
+  display: inline-flex;
+  font: var(--cms-text-metadata);
+  gap: 6px;
+  letter-spacing: 0.04em;
+  padding: 4px 10px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.cms-status::before {
+  content: attr(data-mark);
+  font-weight: 800;
+}
+
+/* Rascunho e entrada da automacao: sem cor de estado, ainda nao e trabalho
+   em revisao. A automacao se distingue do rascunho humano pela marca. */
+.cms-status[data-status="automation_draft"],
+.cms-status[data-status="draft"] {
+  border-left-color: var(--cms-foreground-muted);
+  color: var(--cms-foreground-secondary);
+}
+
+/* Em movimento pela redacao. */
+.cms-status[data-status="needs_review"],
+.cms-status[data-status="in_review"],
+.cms-status[data-status="needs_update"] {
+  border-left-color: var(--cms-info);
+  color: var(--cin-text-primary);
+}
+
+/* Devolvida: exige acao de quem escreveu. */
+.cms-status[data-status="changes_requested"] {
+  border-left-color: var(--cms-warning);
+  color: var(--cin-text-primary);
+}
+
+/* Aprovada / pronta. */
+.cms-status[data-status="human_reviewed"],
+.cms-status[data-status="ready_to_publish"] {
+  border-left-color: var(--cms-series-accent);
+  color: var(--cin-series-ink);
+}
+
+/* No ar. */
+.cms-status[data-status="published"] {
+  border-left-color: var(--cms-success);
+  color: var(--cin-series-ink);
+}
+
+/* Parada: bloqueada, retratada ou arquivada. */
+.cms-status[data-status="blocked"],
+.cms-status[data-status="retracted"] {
+  border-left-color: var(--cms-danger);
+  color: var(--cin-movie-ink);
+}
+
+.cms-status[data-status="archived"] {
+  border-left-color: var(--cms-border-strong);
+  color: var(--cms-foreground-muted);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Acao principal do fluxo: "Publicar"                                     */
+/*                                                                         */
+/* Fora da camada, como o resto deste arquivo: `.cinerie-workflow__action`  */
+/* ja e estilizado em `custom.scss` dentro de `@layer payload`, e uma       */
+/* variante declarada la ao lado perderia para o que o Payload declara nos  */
+/* proprios botoes.                                                          */
+/*                                                                         */
+/* E o unico botao PREENCHIDO da barra. Os degraus granulares continuam de  */
+/* contorno: a hierarquia diz qual e o caminho normal sem esconder os       */
+/* outros, que o revisor ainda precisa.                                     */
+/* ---------------------------------------------------------------------- */
+.cinerie-workflow__action.is-publish-now {
+  background: var(--cms-accent-primary);
+  border-color: var(--cms-accent-primary);
+  color: var(--cin-text-inverse);
+  font-weight: 800;
+}
+
+.cinerie-workflow__action.is-publish-now:hover:not(:disabled) {
+  background: var(--cms-accent-primary-hover);
+  border-color: var(--cms-accent-primary-hover);
+}
+
+.cinerie-workflow__action.is-publish-now:active:not(:disabled) {
+  background: var(--cms-accent-primary-active);
+  border-color: var(--cms-accent-primary-active);
+}
+
+/* Desabilitado nao pode depender so de opacidade: o motivo esta escrito na
+   lista de pendencias logo abaixo, e o `title` carrega a causa. */
+.cinerie-workflow__action.is-publish-now:disabled {
+  background: var(--cms-disabled-background);
+  border-color: var(--cms-border-strong);
+  color: var(--cms-disabled-foreground);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Coluna de escrita                                                       */
+/*                                                                         */
+/* O corpo da materia e o unico campo que se le como texto corrido, e o     */
+/* unico que merece medida de leitura. Os demais campos continuam na        */
+/* largura do formulario: encolher um `select` nao ajuda ninguem.           */
+/* ---------------------------------------------------------------------- */
+.field-type.blocks .blocks-field__block .cinerie-paragraph__input {
+  font: var(--cms-text-reading);
+  max-width: var(--cms-measure-editor);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Movimento reduzido                                                      */
+/*                                                                         */
+/* O site publico respeita a preferencia; o painel tambem passa a respeitar.*/
+/* Fora da camada de proposito: as transicoes do Payload sao declaradas nos */
+/* componentes dele, e uma regra layered nao as alcancaria.                 */
+/* ---------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .template-default *,
+  .template-minimal * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

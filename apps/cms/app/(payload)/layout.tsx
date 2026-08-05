@@ -11,6 +11,10 @@ import type { ServerFunctionClient } from 'payload'
 import React from 'react'
 
 import { importMap } from './admin/importMap.js'
+// Tokens ANTES de `custom.scss`: aquele arquivo consome os `--cinerie-*` que
+// este reaponta para o valor real do site publico. Ordem invertida deixaria a
+// correcao de deriva sem efeito no primeiro paint.
+import './cinerie-tokens.scss'
 import './custom.scss'
 
 const serverFunction: ServerFunctionClient = async function (args) {

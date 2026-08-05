@@ -26,6 +26,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import type { ActorKind, WorkflowStatus } from '../workflow.js'
 import { WORKFLOW_STATUSES } from '../workflow.js'
+import { blocksForOneClickPublish, planPublishPath } from '../publish-path.js'
 import {
   explainServerRejection,
   PUBLISH_BLOCK_EXPLANATIONS,
@@ -142,6 +143,85 @@ export default function WorkflowTransitionBar(): React.ReactElement | null {
     [savedStatus, actor],
   )
 
+  /* --- Publicar em um clique ---------------------------------------- */
+  //
+  // O plano e calculado aqui so para DECIDIR A TELA: se ha caminho, quantos
+  // degraus, e como rotular o botao. Quem executa e o servidor, que recalcula
+  // o mesmo plano — a tela nunca manda a lista de degraus, porque um cliente
+  // que dita a escada e um cliente que pode pular degrau.
+  //
+  // O botao so aparece com MAIS DE UM degrau pela frente. Com um degrau so, a
+  // transicao granular ja E um clique e ja se chama "Publicar" — dois botoes
+  // com o mesmo nome na mesma barra confundem quem le a tela e quebraram o
+  // E2E por ambiguidade de seletor. A condicao elimina a colisao por
+  // construcao, em vez de renomear um dos dois para disfarcar.
+  const publishPlan = useMemo(
+    () => (actor === null ? null : planPublishPath(savedStatus, actor)),
+    [savedStatus, actor],
+  )
+
+  /*
+   * O gate de previsao julga o estado ATUAL, entao de `draft` ele sempre
+   * devolve `not_ready_to_publish` — e essa e justamente a condicao que este
+   * botao existe para resolver, subindo a escada. Manter o motivo aqui deixava
+   * o botao permanentemente desabilitado no unico lugar onde ele serve.
+   *
+   * O servidor faz a MESMA coisa por outro caminho: no pre-voo ele pergunta ao
+   * gate com `ready_to_publish` no lugar do estado atual. Aqui o equivalente e
+   * descartar esse unico motivo. Os demais bloqueios continuam valendo — sem
+   * autor ativo, sem QA, com midia sem licenca, o botao segue desabilitado,
+   * porque subir a escada nao resolveria nenhum deles.
+   */
+  const oneClickBlocks = useMemo(() => blocksForOneClickPublish(gate.reasons), [gate.reasons])
+
+  const publishNow = useCallback(async (): Promise<void> => {
+    if (id === undefined || id === null) return
+    setPending('published')
+    setServerBlocks([])
+    setServerError(null)
+    try {
+      const response = await fetch(`${base}/internal/publish-now`, {
+        body: JSON.stringify({ id: String(id) }),
+        credentials: 'include',
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
+      })
+      const payload = (await response.json()) as {
+        error?: string
+        reasons?: readonly string[]
+        message?: string
+        stoppedAt?: string
+      }
+
+      if (response.ok) {
+        // Recarrega para a tela refletir o documento PRINCIPAL, nao o rascunho
+        // que o autosave deixou em memoria.
+        window.location.reload()
+        return
+      }
+
+      if (payload.error === 'blocked' && Array.isArray(payload.reasons)) {
+        // Traducao pela fonte unica: o servidor devolve codigo, o vocabulario
+        // editorial devolve a frase em portugues e a aba onde se resolve.
+        setServerBlocks(
+          payload.reasons
+            .map((reason) => PUBLISH_BLOCK_EXPLANATIONS[reason as keyof typeof PUBLISH_BLOCK_EXPLANATIONS])
+            .filter((explanation): explanation is PublishBlockExplanation => explanation !== undefined),
+        )
+      } else if (payload.error === 'transition_failed') {
+        setServerError(
+          `A subida parou em "${STATUS_LABELS[(payload.stoppedAt ?? savedStatus) as WorkflowStatus] ?? String(payload.stoppedAt)}". ${payload.message ?? ''}`.trim(),
+        )
+      } else {
+        setServerError(payload.message ?? 'Nao foi possivel publicar agora.')
+      }
+    } catch {
+      setServerError('Nao foi possivel falar com o servidor. A materia nao mudou de estado.')
+    } finally {
+      setPending(null)
+    }
+  }, [base, id, savedStatus])
+
   /* --- A acao: o mesmo save, com o estado certo --------------------- */
   const previousStatus = useRef(savedStatus)
   useEffect(() => {
@@ -214,6 +294,29 @@ export default function WorkflowTransitionBar(): React.ReactElement | null {
       </header>
 
       <div className="cinerie-workflow__actions">
+        {/*
+          O ATALHO DE CLIQUE, NAO DE GOVERNANCA.
+          Aparece so quando ha caminho para ESTE papel. Um editor ve os degraus
+          normais e nao ve este botao — nao porque a tela o esconda por gosto,
+          mas porque `planPublishPath` devolve `forbidden_for_role` para quem
+          nao publica. A regra continua sendo a mesma do servidor.
+        */}
+        {publishPlan !== null && publishPlan.ok && publishPlan.path.length > 1 ? (
+          <button
+            className="cinerie-workflow__action is-publish-now"
+            disabled={pending !== null || oneClickBlocks.length > 0}
+            onClick={() => { void publishNow() }}
+            title={
+              oneClickBlocks.length === 0
+                ? `Percorre ${String(publishPlan.path.length)} transições registradas uma a uma.`
+                : 'Resolva os pendentes abaixo para publicar'
+            }
+            type="button"
+          >
+            {pending === 'published' ? 'Publicando…' : 'Publicar'}
+          </button>
+        ) : null}
+
         {options.map((option) => {
           const publishing = option.to === 'published'
           const blockedByGate = publishing && !gate.canPublish
