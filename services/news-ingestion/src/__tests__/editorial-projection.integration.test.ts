@@ -1190,7 +1190,7 @@ describe('vinculo entidade <-> materia', () => {
     // So inserir deixaria a materia citada para sempre numa ficha da qual ela
     // foi retirada. O evento carrega o conjunto autoritativo, entao reconcilia.
     const movieId = await seedCatalogMovie({
-      tmdbId: 1_061_477,
+      tmdbId: 1_061_480,
       titleOriginal: 'Removido',
       slug: 'removido',
     })
