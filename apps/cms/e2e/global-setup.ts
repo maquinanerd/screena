@@ -21,20 +21,8 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
-import { startCmsHarness } from '../src/__tests__/harness.js'
+import { decodableJpegBytes, startCmsHarness } from '../src/__tests__/harness.js'
 import { STATE_FILE, type E2EState } from './state.js'
-
-/** Bytes de um JPEG minimo VALIDO (cabecalho real, nao extensao de arquivo). */
-function jpegBytes(): Buffer {
-  return Buffer.from([
-    0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10,
-    ...Array.from('JFIF', (char) => char.charCodeAt(0)), 0,
-    0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00,
-    0xff, 0xc0, 0x00, 0x11, 0x08, 0x02, 0x76, 0x04, 0xb0,
-    0x03, 0x01, 0x22, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01,
-    0xff, 0xd9,
-  ])
-}
 
 export default async function globalSetup(): Promise<() => Promise<void>> {
   // GUARDA DE INDEPENDENCIA. Fail-closed: qualquer sinal de automacao no
@@ -75,10 +63,12 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     })
 
     // Arquivo de imagem para o upload PELO PAINEL. O teste sobe este arquivo pelo
-    // seletor real de `input[type=file]`, nao pela Local API.
+    // seletor real de `input[type=file]`, nao pela Local API — e o painel passa
+    // pelo mesmo `imageSizes` que exige uma imagem DECODIFICAVEL, nao apenas um
+    // cabecalho valido.
     fixtureDir = mkdtempSync(path.join(tmpdir(), 'cinerie-e2e-fixture-'))
     const mediaFixturePath = path.join(fixtureDir, 'capa-e2e.jpg')
-    writeFileSync(mediaFixturePath, jpegBytes())
+    writeFileSync(mediaFixturePath, await decodableJpegBytes(1200, 630))
 
     const state: E2EState = {
       baseUrl: harness.baseUrl,

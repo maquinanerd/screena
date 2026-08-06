@@ -21,7 +21,12 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { Payload } from 'payload'
 
-import { startCmsHarness, type CmsHarness } from '@cms-harness'
+import {
+  decodableJpegBytes as jpegBytes,
+  decodablePngBytes as pngBytes,
+  startCmsHarness,
+  type CmsHarness,
+} from '@cms-harness'
 
 import { mapPublicationEvent } from '../editorial-event-mapper.js'
 import { applyProjectionEvent } from '../persistence/editorial-projection-store.js'
@@ -58,30 +63,13 @@ function mediaId(label: string): number {
 /* Bytes de imagem REAIS (cabecalho valido, nao nome de arquivo)       */
 /* ------------------------------------------------------------------ */
 
-function jpegBytes(width: number, height: number, salt = 0): Buffer {
-  const bytes = [0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]
-  // `JFIF` + terminador. O zero vai por codigo, NUNCA como byte cru no fonte:
-  // um 0x00 literal aqui e invisivel em diff e ja quebrou arquivo neste repo.
-  bytes.push(...Array.from('JFIF', (char) => char.charCodeAt(0)), 0)
-  bytes.push(0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00)
-  bytes.push(0xff, 0xc0, 0x00, 0x11, 0x08)
-  bytes.push((height >> 8) & 0xff, height & 0xff, (width >> 8) & 0xff, width & 0xff)
-  bytes.push(0x03, 0x01, 0x22, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01)
-  // `salt` muda os bytes sem mudar o formato: serve para produzir imagens
-  // DIFERENTES (hash distinto) mantendo o cabecalho valido.
-  bytes.push(0xff, 0xfe, 0x00, 0x05, salt & 0xff, (salt >> 8) & 0xff, 0x00)
-  bytes.push(0xff, 0xd9)
-  return Buffer.from(bytes)
-}
-
-function pngBytes(width: number, height: number): Buffer {
-  const bytes = Buffer.alloc(64)
-  bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0)
-  bytes.set([0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52], 8)
-  bytes.writeUInt32BE(width, 16)
-  bytes.writeUInt32BE(height, 20)
-  return bytes
-}
+// As duas funcoes abaixo vinham montadas a mao aqui e produziam arquivos com
+// cabecalho valido porem INDECODIFICAVEIS — o JPEG sem SOS e sem varredura, o
+// PNG so com IHDR. Isso bastava enquanto a coleccao `media` nao gerava
+// miniatura; com `imageSizes`, o sharp precisa decodificar e recusa os dois ja
+// no `metadata()`. A geracao real vive no harness do CMS, que e a ponte unica
+// deste pacote para `apps/cms` e o unico lado onde `sharp` e dependencia
+// declarada.
 
 function sha256(bytes: Buffer): string {
   return `sha256:${createHash('sha256').update(bytes).digest('hex')}`
@@ -400,23 +388,23 @@ beforeAll(async () => {
     mediaIdsByLabel[label] = Number(created.id)
   }
 
-  await makeMedia('hero-jpeg', jpegBytes(1200, 630, 1), 'image/jpeg', {})
-  await makeMedia('hero-png', pngBytes(1200, 630), 'image/png', {})
-  await makeMedia('corpo', jpegBytes(800, 600, 2), 'image/jpeg', {})
-  await makeMedia('licenca-unknown', jpegBytes(400, 300, 3), 'image/jpeg', {
+  await makeMedia('hero-jpeg', await jpegBytes(1200, 630, 1), 'image/jpeg', {})
+  await makeMedia('hero-png', await pngBytes(1200, 630), 'image/png', {})
+  await makeMedia('corpo', await jpegBytes(800, 600, 2), 'image/jpeg', {})
+  await makeMedia('licenca-unknown', await jpegBytes(400, 300, 3), 'image/jpeg', {
     licenseStatus: 'unknown',
   })
-  await makeMedia('licenca-pending', jpegBytes(400, 300, 4), 'image/jpeg', {
+  await makeMedia('licenca-pending', await jpegBytes(400, 300, 4), 'image/jpeg', {
     licenseStatus: 'pending',
   })
-  await makeMedia('licenca-prohibited', jpegBytes(400, 300, 5), 'image/jpeg', {
+  await makeMedia('licenca-prohibited', await jpegBytes(400, 300, 5), 'image/jpeg', {
     licenseStatus: 'prohibited',
   })
-  await makeMedia('licenca-vencida', jpegBytes(400, 300, 6), 'image/jpeg', {
+  await makeMedia('licenca-vencida', await jpegBytes(400, 300, 6), 'image/jpeg', {
     licenseExpiresAt: '2020-01-01T00:00:00.000Z',
   })
-  await makeMedia('sem-hero', jpegBytes(400, 300, 7), 'image/jpeg', { allowedForHero: false })
-  await makeMedia('sem-credito', jpegBytes(400, 300, 8), 'image/jpeg', {
+  await makeMedia('sem-hero', await jpegBytes(400, 300, 7), 'image/jpeg', { allowedForHero: false })
+  await makeMedia('sem-credito', await jpegBytes(400, 300, 8), 'image/jpeg', {
     requiresAttribution: true,
     credit: '',
   })

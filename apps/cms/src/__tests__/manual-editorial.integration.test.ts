@@ -20,12 +20,15 @@
 
 import { randomUUID } from 'node:crypto'
 
-import sharp from 'sharp'
-
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { Payload } from 'payload'
 
-import { apiKeyAuthorization, startCmsHarness, type CmsHarness } from './harness.js'
+import {
+  apiKeyAuthorization,
+  decodableJpegBytes,
+  startCmsHarness,
+  type CmsHarness,
+} from './harness.js'
 
 let harness: CmsHarness
 let payload: Payload
@@ -318,24 +321,22 @@ ${harness.serverLog().slice(-2000)}`,
   ids.bylineAuthor = Number(byline.id)
 
   /*
-   * Midia REAL — agora DECODIFICAVEL, nao so com cabecalho valido.
+   * Midia REAL — DECODIFICAVEL, nao apenas com cabecalho valido.
    *
    * Antes era um JPEG montado a mao com SOI + JFIF + SOF0 + EOI e NENHUM
    * segmento de scan. Passava na checagem de cabecalho do Payload e nunca
    * precisava ser decodificado, entao servia.
    *
    * Deixou de servir quando `media.upload` ganhou `imageSizes`: gerar a
-   * miniatura obriga o sharp a DECODIFICAR os bytes, e ele recusa com
-   * "missing SOS marker" — corretamente, porque aquilo nao era uma imagem.
+   * miniatura obriga o sharp a DECODIFICAR os bytes, e ele recusa ja no
+   * `metadata()` — corretamente, porque aquilo nao era uma imagem.
    *
-   * Gerado pelo proprio sharp, que ja e dependencia: bytes de verdade, mínimos,
-   * e o teste volta a exercitar o caminho real de upload em vez de um atalho.
+   * A geracao vive no harness porque QUATRO superficies sobem midia (esta
+   * suite, o `global-setup` do E2E, a projecao editorial do news-ingestion e o
+   * canario de `apps/web`), e as outras tres quebravam pelo mesmo motivo.
+   * Corrigir so aqui deixaria as outras para a proxima volta de CI.
    */
-  const jpeg = await sharp({
-    create: { width: 16, height: 12, channels: 3, background: { r: 20, g: 20, b: 20 } },
-  })
-    .jpeg()
-    .toBuffer()
+  const jpeg = await decodableJpegBytes(1200, 630)
 
   const makeMedia = async (label: string, fields: Record<string, unknown>) => {
     const created = await payload.create({
