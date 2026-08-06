@@ -19,18 +19,20 @@ import {
  * 2026-08). Substitui a minuta técnica anterior. A redação é do controlador e
  * NÃO deve ser reescrita por conveniência de implementação.
  *
- * ATENÇÃO — dois compromissos deste texto ainda NÃO são cumpridos pelo código:
+ * O TEXTO FOI ALINHADO AO SISTEMA (2026-08-06). Os dois compromissos que o
+ * código não cumpria deixaram de ser afirmados:
  *
- *  - item 2 ("Idade mínima"): o cadastro não exige a declaração de 18 anos.
- *    `parseSignupCommand`, na plataforma de identidade, tem allowlist de seis
- *    chaves e RECUSARIA um campo de idade — ligar isso exige mudar o contrato,
- *    não só o formulário. (O caminho do arquivo não é citado aqui de
- *    propósito: a guarda `tests/governance/user-platform-privacy.test.ts`
- *    proíbe o literal em arquivo de página, e com razão — ela não distingue
- *    comentário de import.)
- *  - item 4.2: o aviso do TMDB existe no rodapé global, mas não há logotipo do
- *    TMDB no repositório e `services/legal/src/authorization-spec.ts` registra
- *    `logoAllowed: false` para o TMDB.
+ *  - item "Idade mínima": o cadastro NÃO tem caixa de seleção de idade — são
+ *    três caixas, e `parseSignupCommand`, na plataforma de identidade, tem
+ *    allowlist de seis chaves e RECUSARIA um campo de idade. O texto deixou de
+ *    mandar marcar uma declaração inexistente: a idade mínima passou a ser
+ *    condição destes Termos, declarada pelo aceite deles. (O caminho do arquivo
+ *    não é citado aqui de propósito: a guarda
+ *    `tests/governance/user-platform-privacy.test.ts` proíbe o literal em
+ *    arquivo de página, e com razão — ela não distingue comentário de import.)
+ *  - item 4.2: a atribuição ao TMDB é declarada em TEXTO, no rodapé. Não há
+ *    logotipo do TMDB no repositório e `services/legal/src/authorization-spec.ts`
+ *    registra `logoAllowed: false` — exibi-lo contrariaria a matriz de licença.
  *
  * Por isso a página permanece fora do índice até autorização explícita do
  * controlador.
