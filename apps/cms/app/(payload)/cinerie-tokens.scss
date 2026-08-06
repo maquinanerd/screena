@@ -387,6 +387,41 @@
 }
 
 /* ---------------------------------------------------------------------- */
+/* Liberacao da midia, na lista e no seletor                               */
+/*                                                                         */
+/* Fora da camada, como o resto: a celula vive dentro da tabela do Payload, */
+/* que declara cor e peso nas proprias celulas.                            */
+/*                                                                         */
+/* O estado NUNCA depende so da cor. O rotulo esta escrito ("Liberada",     */
+/* "Só no corpo", "Bloqueada"), o motivo vem no `title`, e a borda esquerda */
+/* da um segundo sinal de forma — que sobrevive a daltonismo, alto          */
+/* contraste e impressao em cinza.                                          */
+/* ---------------------------------------------------------------------- */
+.cinerie-media-usability {
+  border-left: 3px solid var(--cms-foreground-muted);
+  border-radius: var(--cin-radius-xs);
+  display: inline-block;
+  font: var(--cms-text-metadata);
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+.cinerie-media-usability.is-ok {
+  border-left-color: var(--cms-success);
+  color: var(--cin-series-ink);
+}
+
+.cinerie-media-usability.is-partial {
+  border-left-color: var(--cms-warning);
+  color: var(--cin-text-primary);
+}
+
+.cinerie-media-usability.is-blocked {
+  border-left-color: var(--cms-danger);
+  color: var(--cin-movie-ink);
+}
+
+/* ---------------------------------------------------------------------- */
 /* Coluna de escrita                                                       */
 /*                                                                         */
 /* O corpo da materia e o unico campo que se le como texto corrido, e o     */

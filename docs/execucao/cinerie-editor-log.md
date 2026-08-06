@@ -455,7 +455,44 @@ nenhuma sidebar e possivel, por construcao do Payload.
   galeria na pagina. O CI esta parado por cobranca (ver bloqueio acima), entao
   esta fase nao teve nem a janela de navegador do CI.
 
-### F9..F13 — PENDENTES
+### F9 — Midia: miniatura, licenca e busca no seletor — ENTREGUE
+
+- **O defeito:** dava para vincular midia BLOQUEADA a uma materia e so descobrir
+  na publicacao, quando o gate recusa com `unauthorized_media`. O redator
+  escolhia a foto, escrevia a legenda, tentava publicar — e ai aprendia que
+  aquela imagem nunca poderia ter sido usada. A resposta precisava estar onde a
+  escolha acontece.
+- **Estado anterior com ancora:** `upload` sem `adminThumbnail` (nenhuma
+  miniatura em lugar nenhum), `defaultColumns` com `licenseStatus` CRU, e sem
+  `listSearchableFields` — achar imagem exigia rolar a lista.
+- **O que foi feito:**
+  - `adminThumbnail: 'thumbnail'` + `imageSizes` — o seletor de relacionamento
+    reusa as colunas da collection, entao a miniatura aparece nos dois lugares;
+  - `MediaUsabilityCell` no lugar da coluna crua: responde "Liberada" / "Só no
+    corpo" / "Bloqueada", em pt-BR, com o motivo no `title`;
+  - `listSearchableFields` com alt, credito, fonte, detentor e nome do arquivo —
+    o que a redacao lembra de uma foto.
+- **TRES desfechos, nao dois:** "liberada para o corpo mas nao para capa" e
+  estado real e frequente. Dizer so "bloqueada" faria o redator descartar foto
+  que ele PODE usar no texto.
+- **A regra e PURA e reusa a existente.** `mediaUsability` delega a
+  `mediaBlockReason`, que ja e a fonte do aviso na tela de materia. Uma segunda
+  regra divergiria da primeira no primeiro caso novo — e as duas falariam sobre a
+  MESMA foto. O `.tsx` so desenha.
+- **FAIL-CLOSED, testado:** fato ausente, `null`, numero ou string no lugar de
+  booleano NAO viram "liberada". O erro seguro e recusar demais.
+- **NAO foi tocado**, como o mandato exige: o botao "Liberar para uso editorial e
+  capa" e o semaforo de tres estados (`MediaReleaseControl`).
+- **Migration:** `20260805_231638_media_thumbnail` — colunas novas e NULLABLE de
+  `sizes.thumbnail`. Sem regeneracao retroativa: gerar derivada de todo o acervo
+  dentro da migration seria trabalho pesado no caminho de subida, e o
+  `Dockerfile.cms` derruba o container se ela falhar. Midia antiga continua
+  servida pelo original e ganha miniatura quando for reenviada.
+- **Testes:** 7, incluindo fail-closed e controle negativo.
+- **Gates:** cms test `509/509` · cms typecheck `0`.
+- **SEM CONFIRMACAO VISUAL:** miniatura e rotulo de liberacao no seletor.
+
+### F10..F13 — PENDENTES
 
 F6 canvas · F7 editor e menu `/` · F8 embeds e galeria · F9 midia · F10 SEO ·
 F11 preview · F12 limpeza e os dois defeitos de queda silenciosa · F13 teste de
