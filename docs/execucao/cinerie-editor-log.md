@@ -581,7 +581,40 @@ Entao: renderer.
   (Node 24 impede o Playwright; o CI esta parado por cobranca). Entram quando
   houver como ver.
 
-### F13 — PENDENTE
+### F13 — Varredura de contrato — ENTREGUE
+
+**O item de maior alavancagem da fila, e o que fecha a serie.** Quatro defeitos
+da MESMA classe apareceram um a um nesta sessao: valor LEGAL no contrato,
+selecionavel no CMS, invisivel na pagina publicada, sem erro nenhum.
+
+- **A defesa e ESTRUTURAL, nao uma lista.** A varredura le a uniao do proprio
+  contrato (`publishedEditorialBlock.options`) e exige fixture para cada membro.
+  Um tipo de bloco novo que ninguem cobriu **faz o teste falhar** em vez de virar
+  o quinto defeito da serie.
+- **Provou-se na primeira execucao:** falhou acusando `gallery` sem fixture — um
+  bloco que EU mesmo tinha acrescentado na F8 duas fases antes. A protecao pegou
+  o autor dela.
+- **DESCOBERTA QUE VALE REGISTRAR: a forma do CONTRATO nao e a forma que chega ao
+  renderer.** O worker de projecao reescreve blocos antes de gravar — `mediaRef`
+  vira `publicPath` + dimensoes, `sourceRefs` vira `sources` ja resolvidas. Um
+  teste com a forma do contrato acusaria "o site nao desenha sourceList" quando o
+  site desenha; e o inverso esconderia defeito real. As fixtures sao
+  pos-projecao, e as que divergem estao marcadas.
+- **Varre tambem os VALORES**, que e onde os defeitos moravam: os 7 `entityKind`,
+  os 3 `provider` de video, os `EMBED_PROVIDERS` (derivados do contrato) e os 3
+  niveis de heading.
+- **Tres controles negativos:** a leitura da uniao encontra tipos de verdade
+  (senao a varredura passaria vazia); tipo inexistente REALMENTE some; e bloco
+  valido de forma mas vazio some — o detector distingue "tipo suportado" de
+  "conteudo utilizavel".
+- **Gates:** root test `4867/4867` · typecheck `0`.
+
+---
+
+## Fila concluida
+
+F4 a F13 entregues. O que ficou de fora, por fase, esta registrado acima com o
+motivo — nao ha item silenciosamente abandonado.
 
 F6 canvas · F7 editor e menu `/` · F8 embeds e galeria · F9 midia · F10 SEO ·
 F11 preview · F12 limpeza e os dois defeitos de queda silenciosa · F13 teste de
