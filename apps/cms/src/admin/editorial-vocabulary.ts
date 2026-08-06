@@ -393,3 +393,36 @@ export function explainServerRejection(
 
   return explanations.length > 0 ? explanations : null
 }
+
+/* ------------------------------------------------------------------ */
+/* Visibilidade da aba de automacao                                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A aba "Automacao (auditoria)" aparece para ESTE documento e ESTE usuario?
+ *
+ * DUAS condicoes, e as duas sao necessarias por motivos diferentes:
+ *
+ *  - **materia automatizada** (`autoPublished`): ai a aba descreve algo que
+ *    aconteceu de verdade, e esconde-la apagaria o rastro de quem publicou.
+ *  - **administrador**: mesmo numa materia escrita a mao, a aba e a prova
+ *    VISIVEL de que os campos de automacao sao somente leitura. O E2E de
+ *    governanca conta com isso — ele abre a aba numa materia manual e verifica
+ *    que `autoPublished` esta desabilitado.
+ *
+ * Para redator, revisor e editor numa materia manual, a aba some: sao vinte
+ * campos de auditoria que nao dizem nada sobre o texto que eles estao
+ * escrevendo.
+ *
+ * Esconder e INTERFACE, nunca permissao. A recusa real continua em
+ * `HUMAN_FORBIDDEN_FIELDS`, que o hook aplica a toda escrita humana — inclusive
+ * a de administrador. Ver `cms-identity-cross-collection-leak`: esconder nao e
+ * negar, e as duas coisas caminham juntas.
+ */
+export function showsAutomationTab(input: {
+  readonly autoPublished: unknown
+  readonly role: unknown
+}): boolean {
+  if (input.autoPublished === true) return true
+  return input.role === 'administrator'
+}

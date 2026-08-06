@@ -611,6 +611,42 @@ selecionavel no CMS, invisivel na pagina publicada, sem erro nenhum.
 
 ---
 
+### F12-bis — Os quatro itens adiados, reavaliados — DOIS ENTREGUES, DOIS BARRADOS
+
+**1. `Language` como select — JA ESTAVA FEITO.** Sexta premissa falsa da sessao.
+E `type: 'select'` com opcoes rotuladas em pt-BR (`collections.ts`), e o
+comentario no proprio campo registra que veio de caixa de texto livre numa PR
+anterior. Nada a fazer.
+
+**2. Aba de automacao escondida — ENTREGUE, com uma condicao a mais.** Some para
+quem ESCREVE numa materia manual (vinte campos de auditoria que nao dizem nada
+sobre o texto), e continua visivel em dois casos: materia automatizada (a aba
+descreve algo que aconteceu) e **administrador**.
+
+O segundo caso nao e conveniencia. O E2E de governanca abre essa aba numa materia
+MANUAL e verifica que `autoPublished` esta desabilitado — a aba e a prova VISIVEL
+de que campo de automacao nao e editavel por humano. Como o E2E entra como
+administrador, a condicao preserva o teste inteiro e ainda limpa a tela de quem
+escreve. Esconder e INTERFACE; a recusa real segue em `HUMAN_FORBIDDEN_FIELDS`.
+
+**3. Confirmacao ao remover bloco — BARRADO PELO FRAMEWORK.** O Payload 3.86 nao
+expoe slot para o botao de remover linha/bloco: as unicas chaves de
+`admin.components` de campo sao `Field`, `Label`, `Cell`, `Description`, `Diff`,
+`Filter`, `beforeInput`, `afterInput` e `Error` — nenhuma alcanca a acao de
+remover. Entregar isso exigiria DOM hack ou monkey patch, que o proprio mandato
+proibe. **Nao feito, e nao vou fingir que da.**
+
+**4. "Nova materia" nao criar rascunho antes de escrever — BARRADO PELO
+FRAMEWORK.** As unicas opcoes de `versions.drafts` sao `autosave` (objeto,
+booleano ou `false`) e `showSaveDraftButton`. Nao existe "adiar a criacao do
+documento". A unica forma de o rascunho nao nascer cedo seria **desligar o
+autosave inteiro**, o que mudaria o comportamento de toda a redacao, quebraria o
+E2E que verifica persistencia por autosave, e tiraria a recuperacao de trabalho
+perdido. O custo e maior que o incomodo. **Nao feito, com motivo.**
+
+- **Gates:** cms test `537/537` · cms typecheck `0`.
+- **SEM CONFIRMACAO VISUAL:** o sumico da aba para redator.
+
 ## Fila concluida
 
 F4 a F13 entregues. O que ficou de fora, por fase, esta registrado acima com o
