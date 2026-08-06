@@ -24,6 +24,7 @@ import {
 import type { PlannedEntityLink } from '../editorial-entity-links.js'
 import { reprojectArticle } from './editorial-store.js'
 import type { ProjectedMediaAsset } from '../media/media-pipeline.js'
+import { ProjectionFailure } from '../projection-failure.js'
 
 export interface ProjectionApplication {
   readonly outcome: ProjectionOutcome
@@ -419,6 +420,49 @@ export async function applyProjectionEvent(
     if (decision.entityLinks !== null && resolvedId !== null) {
       persistenceWarnings.push(
         ...(await reconcileEntityLinks(tx as unknown as EntityLinkTx, resolvedId, decision.entityLinks)),
+      )
+    }
+
+    // A SEQUENCIA PROJETADA AVANCA MESMO QUANDO NAO HA ESCRITA DE ARTIGO.
+    //
+    // No ramo de remocao `decision.article` e `null`, entao o `upsert` acima
+    // nao roda e `projected_sequence` ficava parada no valor da ultima
+    // PUBLICACAO. Retratar no evento 50 deixava a sequencia em 30; um
+    // `article.updated` de 40 reentregue depois passava pelo portao de "fora de
+    // ordem" (40 > 30) e REPUBLICAVA a materia retratada — no ar de novo, sem
+    // ninguem ter decidido isso.
+    //
+    // Este `update` e condicionado no proprio SQL (`lt`): duas projecoes
+    // concorrentes nao podem fazer a sequencia RETROCEDER, mesmo que a mais
+    // antiga commite por ultimo.
+    if (decision.article === null && decision.sequenceAdvance !== null && resolvedId !== null) {
+      await tx.article.updateMany({
+        where: {
+          id: resolvedId,
+          OR: [{ projectedSequence: null }, { projectedSequence: { lt: decision.sequenceAdvance } }],
+        },
+        data: { projectedSequence: decision.sequenceAdvance },
+      })
+    }
+
+    // RETIRADA SEM MATERIA NAO E "APLICADA".
+    //
+    // Sem artigo resolvido, o bloco de traducao acima nao roda (ele exige
+    // `resolvedId`), nada e escrito — e mesmo assim o recibo nascia com
+    // `outcome: 'applied'` e `article_id: NULL`. Pior que o registro errado: o
+    // recibo e a TRAVA DE REPLAY. Uma retratacao registrada assim ficava
+    // aplicada para sempre sem nunca ter sido aplicada, e o evento nao voltava.
+    //
+    // A causa mais comum e uma corrida legitima: a retratacao chega antes de o
+    // `published` daquele artigo ter sido projetado. Falhar de forma
+    // RETENTAVEL e a resposta certa — a publicacao aterrissa, o retry aplica a
+    // retratacao, e o backoff/dead-letter da outbox cuida do caso que nao
+    // converge. Lancar aqui derruba a transacao inteira: nenhum recibo.
+    if (decision.outcome === 'applied' && resolvedId === null) {
+      throw new ProjectionFailure(
+        'projection_target_missing',
+        `evento ${event.eventType} sem materia publica correspondente (documento ${event.payloadDocumentId}); nada foi aplicado`,
+        true,
       )
     }
 
