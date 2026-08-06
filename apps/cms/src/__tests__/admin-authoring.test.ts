@@ -132,8 +132,12 @@ describe('planPaste', () => {
   })
 
   it('paste vazio nao produz bloco nenhum', () => {
-    expect(planPaste({ text: '   \n\n  ' })).toEqual({ paragraphs: [], dropped: 0 })
-    expect(planPaste({})).toEqual({ paragraphs: [], dropped: 0 })
+    expect(planPaste({ text: '   \n\n  ' })).toEqual({
+      paragraphs: [],
+      dropped: 0,
+      droppedImages: 0,
+    })
+    expect(planPaste({})).toEqual({ paragraphs: [], dropped: 0, droppedImages: 0 })
   })
 
   it('acima do teto CORTA e diz quantos cortou — nunca some calado', () => {

@@ -13,8 +13,11 @@ import { describe, expect, it } from 'vitest'
 import { spansToInlineContent } from '../inline-marks.js'
 import {
   PASTE_MAX_BLOCKS,
+  countPastedImages,
+  droppedImagesMessage,
   planPaste,
   planRichPaste,
+  splitPastedHtml,
   splitPastedHtmlRich,
 } from '../admin/paste-to-blocks.js'
 
@@ -158,6 +161,89 @@ describe('planRichPaste', () => {
     const plan = planRichPaste({ html })
     expect(plan.paragraphs).toHaveLength(PASTE_MAX_BLOCKS)
     expect(plan.dropped).toBe(3)
+  })
+})
+
+/* ------------------------------------------------------------------ */
+/* Imagem colada: some do corpo, mas NAO some do aviso                 */
+/* ------------------------------------------------------------------ */
+
+describe('countPastedImages', () => {
+  it('conta a imagem que o corpo estruturado nao aceita', () => {
+    expect(countPastedImages('<p>antes</p><img src="https://portal/foto.jpg"><p>depois</p>')).toBe(1)
+  })
+
+  it('conta uma vez por ARQUIVO, nao por tag', () => {
+    // Portal ilustrado repete a mesma `src` (fallback de <noscript>, placeholder
+    // de lazy-load). O redator vai subir UM arquivo, entao o aviso diz um.
+    const html = '<img src="/foto.jpg"><p>meio</p><img src="/foto.jpg">'
+    expect(countPastedImages(html)).toBe(1)
+  })
+
+  it('conta arquivos diferentes separadamente', () => {
+    expect(countPastedImages('<img src="/a.jpg"><img src="/b.jpg"><img src="/c.png">')).toBe(3)
+  })
+
+  it('imagem sem src legivel conta por si — errar para mais e melhor que calar', () => {
+    // `data-src` NAO e `src`: a fronteira do padrao impede o casamento, e sem
+    // src nao ha como deduplicar. Duas tags, duas imagens anunciadas.
+    expect(countPastedImages('<img data-src="/a.jpg"><img data-src="/b.jpg">')).toBe(2)
+  })
+
+  it('CONTROLE NEGATIVO: imagem dentro de codigo morto nao e imagem da materia', () => {
+    expect(countPastedImages('<script>var t = \'<img src="/x.jpg">\'</script><p>oi</p>')).toBe(0)
+    expect(countPastedImages('<!-- <img src="/x.jpg"> --><p>oi</p>')).toBe(0)
+    expect(countPastedImages('<style>.a{background:url(<img src="/x.jpg">)}</style>')).toBe(0)
+  })
+
+  it('CONTROLE NEGATIVO: texto sem imagem nao inventa perda', () => {
+    expect(countPastedImages('<p>Duna e <b>otimo</b></p>')).toBe(0)
+    expect(countPastedImages('')).toBe(0)
+  })
+
+  it('CONTROLE NEGATIVO: a imagem no meio nao cria paragrafo vazio', () => {
+    // O aviso existe porque a imagem some. O que NAO pode e ela deixar um bloco
+    // fantasma no lugar — o corpo continua com dois paragrafos e nada mais.
+    expect(splitPastedHtml('<p>um</p><img src="/a.jpg"><p>dois</p>')).toEqual(['um', 'dois'])
+  })
+})
+
+describe('droppedImagesMessage', () => {
+  it('silencia quando nao houve perda', () => {
+    expect(droppedImagesMessage(0)).toBeNull()
+    expect(droppedImagesMessage(-1)).toBeNull()
+    expect(droppedImagesMessage(Number.NaN)).toBeNull()
+  })
+
+  it('concorda no singular e no plural', () => {
+    expect(droppedImagesMessage(1)).toBe(
+      '1 imagem não foi importada — envie para a biblioteca de mídia.',
+    )
+    expect(droppedImagesMessage(3)).toBe(
+      '3 imagens não foram importadas — envie para a biblioteca de mídia.',
+    )
+  })
+})
+
+describe('o plano de colagem relata a perda de imagem', () => {
+  it('conta as imagens do HTML colado', () => {
+    const plan = planRichPaste({
+      html: '<p>um</p><img src="/a.jpg"><p>dois</p><img src="/b.jpg">',
+      text: 'um dois',
+    })
+    expect(plan.paragraphs).toHaveLength(2)
+    expect(plan.droppedImages).toBe(2)
+  })
+
+  it('CONTROLE NEGATIVO: colagem de texto puro nunca acusa imagem', () => {
+    // Sem HTML, o `<img>` que chega e literal DIGITADO — nao ha arquivo perdido.
+    expect(planRichPaste({ text: 'um <img src="/a.jpg"> dois' }).droppedImages).toBe(0)
+    expect(planPaste({ text: 'um <img src="/a.jpg"> dois' }).droppedImages).toBe(0)
+  })
+
+  it('os dois planos relatam a MESMA perda', () => {
+    const html = '<p>um</p><img src="/a.jpg"><p>dois</p>'
+    expect(planPaste({ html }).droppedImages).toBe(planRichPaste({ html }).droppedImages)
   })
 })
 
