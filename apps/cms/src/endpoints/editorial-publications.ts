@@ -41,7 +41,19 @@ import {
 } from '../auto-publication.js'
 import { canonicalizeSlug, decideSlugChange } from '../canonical-slug.js'
 import { resolveAvailableSlug } from '../slug-availability.js'
-import { toPayloadBlocks, type MappedBody } from '../editorial-body-mapper.js'
+import {
+  toPayloadBlocks,
+  type EditorialWarning,
+  type MappedBody,
+} from '../editorial-body-mapper.js'
+import {
+  findStrippedBlockMarks,
+  planSeoPersistence,
+  resolveEntityReferences,
+  resolveHeroMedia,
+  type EntityReferenceRow,
+  type MediaAuthorizationFacts,
+} from '../publication-intake.js'
 import { localDateIn } from '../quota.js'
 import {
   consumeQuotas,
@@ -143,13 +155,41 @@ async function readAuthorFacts(
   }
 }
 
-/** Midia referenciada que o CMS NAO consegue autorizar (invariante 6). */
-async function countUnauthorizedMedia(
+/** Nada se sabe sobre esta midia — e por isso ela nao serve para nada. */
+const UNKNOWN_MEDIA: MediaAuthorizationFacts = {
+  exists: false,
+  licenseApproved: false,
+  allowedForHero: false,
+}
+
+interface MediaAuthorizationReport {
+  /** Midia referenciada que o CMS NAO consegue autorizar (invariante 6). */
+  readonly unauthorizedCount: number
+  /** Os MESMOS fatos, por id, para quem precisa decidir a capa. */
+  readonly authorizations: ReadonlyMap<string, MediaAuthorizationFacts>
+}
+
+/**
+ * Le a autorizacao de toda midia referenciada — UMA vez.
+ *
+ * Antes esta funcao so devolvia a contagem, e a contagem so servia ao gate de
+ * licenca; os fatos por item eram descartados. Como `intendedUse: 'hero'` agora
+ * precisa dos mesmos fatos para decidir a capa, devolver o mapa evita uma
+ * segunda consulta que poderia ate discordar da primeira.
+ */
+async function readMediaAuthorizations(
   req: PayloadRequest,
   request: EditorialPublicationRequestV1,
-): Promise<number> {
+): Promise<MediaAuthorizationReport> {
   const ids = [...new Set(request.media.map((item) => item.mediaId))]
-  if (ids.length === 0) return 0
+  if (ids.length === 0) return { unauthorizedCount: 0, authorizations: new Map() }
+
+  /** Fail-closed: nada verificado e nada autorizado. */
+  const allUnknown = (): MediaAuthorizationReport => ({
+    unauthorizedCount: ids.length,
+    authorizations: new Map(ids.map((id) => [id, UNKNOWN_MEDIA])),
+  })
+
   try {
     const found = await req.payload.find({
       collection: 'media',
@@ -159,6 +199,7 @@ async function countUnauthorizedMedia(
       overrideAccess: true,
       req,
     })
+    const authorizations = new Map<string, MediaAuthorizationFacts>()
     let unauthorized = 0
     const seen = new Set<string>()
     for (const media of found.docs) {
@@ -166,17 +207,21 @@ async function countUnauthorizedMedia(
       seen.add(id)
       const approved =
         media.licenseStatus === 'approved' && (media as { allowedForEditorial?: unknown }).allowedForEditorial === true
+      const allowedForHero = (media as { allowedForHero?: unknown }).allowedForHero === true
+      authorizations.set(id, { exists: true, licenseApproved: approved, allowedForHero })
       const heroOk =
         !request.media.some((item) => item.mediaId === id && item.intendedUse === 'hero') ||
-        (media as { allowedForHero?: unknown }).allowedForHero === true
+        allowedForHero
       if (!approved || !heroOk) unauthorized += 1
     }
     // Referencia para midia INEXISTENTE tambem conta: nao publicamos apontando
     // para um item que nao conseguimos verificar.
-    return unauthorized + ids.filter((id) => !seen.has(id)).length
+    const missing = ids.filter((id) => !seen.has(id))
+    for (const id of missing) authorizations.set(id, UNKNOWN_MEDIA)
+    return { unauthorizedCount: unauthorized + missing.length, authorizations }
   } catch {
     // Falha ao verificar NAO vira "autorizado": fail-closed.
-    return ids.length
+    return allUnknown()
   }
 }
 
@@ -330,6 +375,54 @@ export const editorialPublicationsEndpoint: Endpoint = {
       existing.automationPayloadHash !== request.sourcePayloadHash &&
       request.publicationIntent === 'publish'
 
+    /* ---------------------------------------------------------------- */
+    /* O que o pedido VIRA — e o que ele PERDE                          */
+    /* ---------------------------------------------------------------- */
+    //
+    // Este bloco roda ANTES da resposta, e essa ordem e a correcao.
+    //
+    // Ate aqui o corpo so era mapeado la dentro de `persistPublication`, depois
+    // que a resposta ja estava montada: os avisos do mapeador iam para o
+    // registro do artigo e para um log, e o emissor recebia um `2xx` limpo
+    // enquanto uma imagem, uma proveniencia ou um bloco inteiro ficavam pelo
+    // caminho. Mapear antes e o que permite devolver a verdade.
+    //
+    // Roda tambem para os desfechos que NAO persistem (BLOCKED, CONFLICT): o
+    // pedido recusado e justamente o que mais precisa saber o que estava errado.
+    const mediaReport = await readMediaAuthorizations(req, request)
+    const mappedBody = toPayloadBody(request)
+    const hero = resolveHeroMedia(request.media, mediaReport.authorizations)
+    const entityRefs = resolveEntityReferences(request.entityLinks)
+    const seoPlan = planSeoPersistence(request.seo)
+
+    // A varredura de `marks` usa o JSON CRU, nao o pedido validado: o `z.object`
+    // do paragrafo remove a chave em silencio, e a essa altura nao ha mais o que
+    // reportar.
+    const strippedMarks = findStrippedBlockMarks(body)
+
+    // Vinculo de entidade NAO e reaplicado em update. Diferente do titulo ou do
+    // SEO, `entityReferences` carrega uma decisao HUMANA dentro (`verified`), e
+    // reescrever o array a cada atualizacao apagaria a curadoria com linhas
+    // `verified: false`. Mesma regra da capa, pelo mesmo motivo.
+    const entityLinksSkippedOnUpdate: readonly EditorialWarning[] =
+      existing !== null && entityRefs.rows.length > 0
+        ? [
+            {
+              code: 'ENTITY_LINK_NOT_REAPPLIED',
+              field: 'entityLinks',
+              detail: `${String(entityRefs.rows.length)} vinculo(s) NAO reaplicado(s): a materia ja existe e o campo carrega confirmacao humana, que uma reescrita automatica apagaria`,
+            },
+          ]
+        : []
+
+    const intakeWarnings: readonly EditorialWarning[] = [
+      ...mappedBody.details,
+      ...strippedMarks,
+      ...hero.warnings,
+      ...(existing === null ? entityRefs.warnings : entityLinksSkippedOnUpdate),
+      ...seoPlan.warnings,
+    ]
+
     const decision: PublicationDecision = decideAutoPublication({
       limits: config,
       // ZERADOS DE PROPOSITO. NAO "CONSERTE" ISTO.
@@ -364,7 +457,7 @@ export const editorialPublicationsEndpoint: Endpoint = {
       seo: request.seo,
       body: inspectBody(request),
       contentType: request.contentType,
-      unauthorizedMediaCount: await countUnauthorizedMedia(req, request),
+      unauthorizedMediaCount: mediaReport.unauthorizedCount,
       staleRevision,
       idempotencyConflict,
       slugValid: slug.ok,
@@ -373,12 +466,22 @@ export const editorialPublicationsEndpoint: Endpoint = {
 
     // A resposta e AUDITAVEL e nao vaza conteudo: desfecho, motivos com codigo,
     // avisos e a identidade do pedido.
+    //
+    // `warnings` continua sendo LISTA DE STRINGS, o formato de sempre — so que
+    // agora completa: as perdas do mapeamento, da capa, dos vinculos e do SEO
+    // entram nela em vez de morrer num log interno. `warningDetails` e o campo
+    // NOVO, com codigo e campo, para o pipeline decidir por codigo em vez de
+    // casar substring de uma frase em portugues.
+    //
+    // Acrescentar campo a RESPOSTA nao mexe no `schemaHash`, que cobre o pedido:
+    // nenhum emissor em voo passa a receber `hash_mismatch` por causa disto.
     const responseBody = {
       outcome: decision.outcome,
       requestId: request.requestId,
       idempotencyKey: request.idempotencyKey,
       reasons: decision.reasons,
-      warnings: decision.warnings,
+      warnings: [...decision.warnings, ...intakeWarnings.map((warning) => warning.detail)],
+      warningDetails: intakeWarnings,
       // O ATOR TECNICO fica registrado; o autor publico e o do pedido.
       technicalActorId: actor.kind === 'service' ? actor.id : null,
       publicAuthorId: request.publicAuthorId,
@@ -476,6 +579,12 @@ export const editorialPublicationsEndpoint: Endpoint = {
           decision,
           slug: slug.ok ? slug.slug : null,
           existingId: existing === null ? null : String(existing.id),
+          mappedBody,
+          heroMediaId: hero.heroMediaId,
+          entityReferences: entityRefs.rows,
+          seoFields: seoPlan.fields,
+          // O revisor humano ve no admin a MESMA lista que o emissor recebeu.
+          intakeWarnings: intakeWarnings.map((warning) => warning.detail),
           // TUDO derivado da credencial autenticada, nada do corpo.
           technicalActorId,
           technicalActorLabel: text((req.user as { label?: unknown } | null)?.label) ?? null,
@@ -608,6 +717,13 @@ async function persistPublication(
     readonly decision: PublicationDecision
     readonly slug: string | null
     readonly existingId: string | null
+    /** Corpo JA mapeado pelo handler — a resposta depende dele, entao ele nasce la. */
+    readonly mappedBody: MappedBody
+    /** Capa a GRAVAR. `null` = nao ha capa a gravar; NUNCA "apague a capa". */
+    readonly heroMediaId: string | null
+    readonly entityReferences: readonly EntityReferenceRow[]
+    readonly seoFields: Readonly<Record<string, unknown>>
+    readonly intakeWarnings: readonly string[]
     readonly technicalActorId: string
     readonly technicalActorLabel: string | null
     readonly scopesUsed: readonly string[]
@@ -635,7 +751,28 @@ async function persistPublication(
   // o contrato usa `type`/`id`. Gravar `blocks: request.blocks` cru nao
   // falhava alto: o Payload ignorava a chave desconhecida e a materia ficava
   // SEM CORPO, publicada e vazia.
-  const mappedBody = toPayloadBody(request)
+  //
+  // O mapeamento agora vem PRONTO do handler: ele precisa dos avisos para
+  // montar a resposta, e mapear duas vezes deixaria a resposta e a persistencia
+  // livres para divergir.
+  const { mappedBody } = input
+
+  // A CAPA so entra quando ha uma capa autorizada a gravar.
+  //
+  // A ausencia da chave e o que preserva o hero que um humano escolheu: um
+  // pedido de update sem capa nao pode apagar a que ja existe. Gravar `null`
+  // aqui — a alternativa obvia — faria exatamente isso.
+  //
+  // O id vai como NUMERO pelo mesmo motivo do autor: no Postgres o id do
+  // Payload e inteiro e a validacao de relacionamento recusa a string.
+  const heroRef =
+    input.heroMediaId === null
+      ? {}
+      : {
+          heroMedia: /^\d+$/.test(input.heroMediaId)
+            ? Number(input.heroMediaId)
+            : input.heroMediaId,
+        }
 
   const common: Record<string, unknown> = {
     title: request.title,
@@ -664,10 +801,13 @@ async function persistPublication(
       url: source.url,
       role: source.role,
     })),
+    ...heroRef,
     blockingErrors: [...request.qa.blockingErrors],
     // Bloco que o mapper nao conseguiu traduzir vira aviso NOMEADO, nunca
-    // sumico silencioso — a mesma politica do caminho de ingestao.
-    warnings: [...request.qa.warnings, ...mappedBody.warnings],
+    // sumico silencioso — a mesma politica do caminho de ingestao. Agora a
+    // lista carrega tambem as perdas de capa, vinculo e SEO: o revisor humano
+    // ve no admin a mesma verdade que o emissor recebeu por HTTP.
+    warnings: [...request.qa.warnings, ...mappedBody.warnings, ...input.intakeWarnings],
     qaVersion: request.qa.version,
     // Carimbo do SERVIDOR, condicionado ao veredito do QA. Copiar um horario do
     // produtor deixaria o pipeline decidir sozinho que passou no QA.
@@ -690,6 +830,13 @@ async function persistPublication(
     automationSchemaHash: request.schemaHash,
     automationAttributionMode: request.attributionMode,
     // SEO: sugestoes revalidadas, guardadas como decisao do CMS.
+    //
+    // Os cinco campos abaixo sempre atravessaram. O que `seoFields` acrescenta
+    // e o resto do que o contrato ja aceitava e a whitelist descartava sem uma
+    // linha de log: palavras-chave editoriais, termos relacionados e o par
+    // social. O que continua sem coluna sai como aviso, nao como silencio (ver
+    // `planSeoPersistence`).
+    ...input.seoFields,
     metaTitle: request.seo.title,
     metaDescription: request.seo.metaDescription,
     focusKeyphrase: request.seo.focusKeyphrase,
@@ -738,6 +885,13 @@ async function persistPublication(
       data: {
         ...common,
         slug,
+        // VINCULOS DE ENTIDADE, so na CRIACAO.
+        //
+        // O campo carrega `verified`, que e decisao humana; reescrever o array
+        // a cada update apagaria a curadoria e devolveria tudo a `false`. Por
+        // isso o update nao toca nele — e diz isso ao emissor, pelo aviso
+        // `ENTITY_LINK_NOT_REAPPLIED`.
+        entityReferences: input.entityReferences.map((row) => ({ ...row })),
         // Nasce marcado como origem de automacao e SOBE pela maquina de
         // estados — nao ha atalho que pule o gate de publicacao.
         workflowStatus: 'automation_draft',

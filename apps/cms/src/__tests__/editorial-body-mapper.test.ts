@@ -275,9 +275,86 @@ describe('toPayloadBlocks — invariantes', () => {
     expect(warnings.some((warning) => warning.includes('h1'))).toBe(true)
   })
 
-  it('entrada nao-objeto e ignorada sem quebrar', () => {
-    const { blocks } = toPayloadBlocks([null, 'texto', 42, undefined], resolveNone)
+  it('entrada nao-objeto e ignorada sem quebrar — e NOMEADA', () => {
+    const { blocks, warnings } = toPayloadBlocks([null, 'texto', 42, undefined], resolveNone)
     expect(blocks).toEqual([])
+    // Era o unico descarte totalmente mudo do mapper: `continue` sem warning.
+    expect(warnings).toHaveLength(4)
+  })
+})
+
+/* ------------------------------------------------------------------ */
+/* Avisos ESTRUTURADOS                                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * O texto do aviso serve ao revisor humano no admin; o CODIGO serve ao pipeline
+ * que enviou o pedido. Os dois convivem: `warnings` continua sendo a lista de
+ * strings que a collection ja guarda, e `details` e o que atravessa a resposta
+ * HTTP com campo e bloco nomeados.
+ */
+describe('toPayloadBlocks — details com codigo, campo e bloco', () => {
+  const codes = (details: readonly { readonly code: string }[]): string[] =>
+    details.map((detail) => detail.code)
+
+  it('cada aviso de texto tem um detail correspondente', () => {
+    const { warnings, details } = toPayloadBlocks(
+      [{ id: 'x1', type: 'inexistente' }, { type: 'paragraph', text: 'sem id' }],
+      resolveNone,
+    )
+    expect(warnings).toHaveLength(details.length)
+  })
+
+  it('bloco nao-objeto: BLOCK_NOT_AN_OBJECT com o indice no campo', () => {
+    const { details } = toPayloadBlocks(['texto'], resolveNone)
+    expect(codes(details)).toEqual(['BLOCK_NOT_AN_OBJECT'])
+    expect(details[0]?.field).toBe('blocks[0]')
+    expect(details[0]?.blockId).toBeUndefined()
+  })
+
+  it('tipo desconhecido: BLOCK_TYPE_UNKNOWN', () => {
+    const { details } = toPayloadBlocks([{ id: 'x1', type: 'carrossel' }], resolveNone)
+    expect(codes(details)).toEqual(['BLOCK_TYPE_UNKNOWN'])
+    expect(details[0]?.field).toBe('blocks[0].type')
+  })
+
+  it('bloco sem id: BLOCK_ID_MISSING', () => {
+    const { details } = toPayloadBlocks([{ type: 'paragraph', text: 'oi' }], resolveNone)
+    expect(codes(details)).toEqual(['BLOCK_ID_MISSING'])
+    expect(details[0]?.field).toBe('blocks[0].id')
+  })
+
+  it('imagem sem par em media[]: BLOCK_IMAGE_MEDIA_UNRESOLVED nomeia o bloco', () => {
+    const { details } = toPayloadBlocks(
+      [{ id: 'i9', type: 'image', mediaRef: 'media-404', alt: 'a' }],
+      resolveNone,
+    )
+    expect(codes(details)).toEqual(['BLOCK_IMAGE_MEDIA_UNRESOLVED'])
+    expect(details[0]?.blockId).toBe('i9')
+    expect(details[0]?.field).toBe('blocks[0].mediaRef')
+    expect(details[0]?.detail).toContain('media-404')
+  })
+
+  it('proveniencia fora de paragrafo: um BLOCK_PROVENANCE_DROPPED por bloco', () => {
+    const { details } = toPayloadBlocks(
+      [
+        { id: 'p1', type: 'paragraph', text: 'ok', provenance: [{ origin: 'external_source' }] },
+        { id: 'h1', type: 'heading', level: 2, text: 'x', provenance: [{ origin: 'inference' }] },
+        { id: 'd1', type: 'divider', provenance: [{ origin: 'inference' }] },
+      ],
+      resolveNone,
+    )
+    expect(codes(details)).toEqual(['BLOCK_PROVENANCE_DROPPED', 'BLOCK_PROVENANCE_DROPPED'])
+    expect(details.map((detail) => detail.blockId)).toEqual(['h1', 'd1'])
+  })
+
+  it('corpo integro nao produz detail nenhum', () => {
+    const { warnings, details } = toPayloadBlocks(
+      [{ id: 'p1', type: 'paragraph', text: 'ok' }],
+      resolveNone,
+    )
+    expect(warnings).toEqual([])
+    expect(details).toEqual([])
   })
 })
 
