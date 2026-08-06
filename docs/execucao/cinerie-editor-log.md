@@ -492,7 +492,66 @@ nenhuma sidebar e possivel, por construcao do Payload.
 - **Gates:** cms test `509/509` · cms typecheck `0`.
 - **SEM CONFIRMACAO VISUAL:** miniatura e rotulo de liberacao no seletor.
 
-### F10..F13 — PENDENTES
+### F10 — SEO: preview, contadores e tres defeitos de JSON-LD — ENTREGUE
+
+- **`publisher` estava AUSENTE.** `NewsArticle` sem editora perde a atribuicao
+  que distingue materia de jornal de texto solto. Agora emitido, com a URL
+  DERIVADA da canonical ja resolvida — fixar constante faria ambiente de teste
+  anunciar o dominio de producao.
+- **`articleSection` saia `"news"`**, em ingles, num site em pt-BR: o presenter
+  caia para `category`, que carrega o TIPO de conteudo, nao a editoria. Tipo de
+  conteudo passa a ser recusado, com controle negativo provando que "Crítica" e
+  "Notícias" continuam passando.
+- **`author.url` NAO foi "corrigido", e a ausencia virou deliberada.** O banco
+  publico guarda so `authorName` — nao existe pagina de autor nem slug para
+  apontar. Emitir URL para pagina inexistente promete perfil verificavel e
+  entrega 404. Documentado no codigo e no teste.
+- **PREMISSA DERRUBADA — `alt` vazio no hero NAO e defeito.** E decisao de
+  acessibilidade documentada e TRAVADA por
+  `tests/governance/editorial-media-route.test.ts`: a capa fica sob scrim com a
+  manchete em TEXTO por cima, entao a imagem e decorativa e descreve-la faria o
+  leitor de tela repetir o titulo. Ha teste do outro lado garantindo que card de
+  listagem NAO usa alt vazio — a distincao e deliberada. Eu mudei, o teste pegou,
+  e eu revertí.
+- **Painel de SEO (`seo-preview.ts`, puro):** preview de SERP com a URL REAL
+  (`/pt/noticias/<slug>/`, e lacuna visivel quando a slug esta vazia), contador
+  com limite de truncamento, e derivacao que **nunca sobrescreve o escrito** —
+  `manual` vence sempre, com controle negativo provando que o texto volta byte a
+  byte. Os limites sao referencia de corte, nao promessa de exibicao: o buscador
+  monta o snippet do conteudo, e prometer ranqueamento seria folclore.
+- **Testes:** 12 no painel + 8 no JSON-LD.
+- **Gates:** root test `4838/4838` · cms test `521/521` · root typecheck `0`.
+
+### F11 — Preview — DECISAO REGISTRADA
+
+**Escolhida a rota A (preview dentro do CMS), e nao por preferencia — por custo
+medido.**
+
+A rota B (`/pt/preview/[id]` no `apps/web` buscando o rascunho na API do CMS)
+custa muito mais do que parece:
+
+1. **Atravessa a fronteira que `tests/governance/editorial-worker-boundary.test.ts`
+   protege.** Hoje o worker de projecao e o UNICO processo que fala com os dois
+   lados, e a ponte e assimetrica de proposito. Um segundo atravessador
+   enfraquece a garantia arquitetural mais forte deste sistema — e a excecao,
+   uma vez aberta, e reusada.
+2. **Poe o `apps/web` chamando servico externo em tempo de request.** Mesmo numa
+   rota nao indexavel, e o padrao que a invariante 3 existe para impedir; a
+   proxima rota copia o padrao.
+3. Exige emissao e verificacao de token curto, endpoint de leitura de rascunho no
+   CMS, e tratamento de erro/expiracao — superficie nova em DOIS aplicativos.
+
+A rota A tem um limite honesto: **nao e a pagina real**, e nao vai ter o CSS do
+site. Mas responde a pergunta que a redacao faz de verdade — e, principalmente,
+responde a pergunta que este repositorio erra ha quatro vezes: **o que vai
+SUMIR**. `entityCard` de pessoa, `video` interno, lista sem item, galeria sem
+imagem — todos legais no CMS e todos invisiveis na pagina.
+
+Por isso o preview desta fase nao imita a pagina: ele responde, bloco a bloco, se
+aquele bloco vai aparecer, usando o MESMO contrato que a projecao usa. E o
+material tambem serve de base para a F13.
+
+### F12..F13 — PENDENTES
 
 F6 canvas · F7 editor e menu `/` · F8 embeds e galeria · F9 midia · F10 SEO ·
 F11 preview · F12 limpeza e os dois defeitos de queda silenciosa · F13 teste de

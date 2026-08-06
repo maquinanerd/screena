@@ -320,10 +320,22 @@ ${harness.serverLog().slice(-2000)}`,
   })
   ids.bylineAuthor = Number(byline.id)
 
-  // Midia REAL, com bytes de JPEG DECODIFICAVEIS — nao apenas cabecalho valido.
-  // A coleccao `media` gera miniatura via `imageSizes`, e para isso o sharp
-  // decodifica a imagem inteira; um arquivo so-cabecalho e recusado ja no
-  // `metadata()`. Ver `decodableJpegBytes` no harness.
+  /*
+   * Midia REAL — DECODIFICAVEL, nao apenas com cabecalho valido.
+   *
+   * Antes era um JPEG montado a mao com SOI + JFIF + SOF0 + EOI e NENHUM
+   * segmento de scan. Passava na checagem de cabecalho do Payload e nunca
+   * precisava ser decodificado, entao servia.
+   *
+   * Deixou de servir quando `media.upload` ganhou `imageSizes`: gerar a
+   * miniatura obriga o sharp a DECODIFICAR os bytes, e ele recusa ja no
+   * `metadata()` — corretamente, porque aquilo nao era uma imagem.
+   *
+   * A geracao vive no harness porque QUATRO superficies sobem midia (esta
+   * suite, o `global-setup` do E2E, a projecao editorial do news-ingestion e o
+   * canario de `apps/web`), e as outras tres quebravam pelo mesmo motivo.
+   * Corrigir so aqui deixaria as outras para a proxima volta de CI.
+   */
   const jpeg = await decodableJpegBytes(1200, 630)
 
   const makeMedia = async (label: string, fields: Record<string, unknown>) => {
