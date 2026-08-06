@@ -604,7 +604,12 @@ export const editorialPublicationsEndpoint: Endpoint = {
       idempotencyKey: request.idempotencyKey,
       reasons: decision.reasons,
       warnings: [...decision.warnings, ...intakeWarnings.map((warning) => warning.detail)],
-      warningDetails: intakeWarnings,
+      // Os avisos do GATE entram junto com os da INGESTAO. Antes so os da
+      // ingestao tinham codigo; os do gate (SEO fora da faixa ideal, QA)
+      // chegavam ao produtor como frase solta em `warnings`, e casar substring
+      // de uma frase em portugues e como um pipeline quebra na primeira
+      // reescrita do texto.
+      warningDetails: [...decision.warningDetails, ...intakeWarnings],
       // O ATOR TECNICO fica registrado; o autor publico e o do pedido.
       technicalActorId: actor.kind === 'service' ? actor.id : null,
       publicAuthorId: request.publicAuthorId,
