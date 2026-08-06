@@ -723,3 +723,64 @@ async function bootCmsHarness(resources: HarnessResources): Promise<CmsHarness> 
 export function apiKeyAuthorization(collectionSlug: string, apiKey: string): string {
   return `${collectionSlug} API-Key ${apiKey}`
 }
+
+/* ------------------------------------------------------------------ */
+/* Bytes de imagem DECODIFICAVEIS                                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * POR QUE ISTO EXISTE, e por que cabecalho valido deixou de bastar.
+ *
+ * Ate a coleccao `media` ganhar `imageSizes`, os testes subiam um JPEG montado
+ * a mao — SOI + JFIF + SOF0 + EOI, sem SOS e sem dados de varredura. Aquilo era
+ * suficiente para o proposito da epoca: provar que a midia era aceita pelos
+ * BYTES e nao pela extensao do nome do arquivo.
+ *
+ * Com `imageSizes`, o Payload passa a gerar uma miniatura, e para isso o sharp
+ * precisa DECODIFICAR a imagem, nao apenas ler a dimensao do cabecalho. Um
+ * arquivo so-cabecalho e rejeitado ja no `metadata()` — `Input buffer has
+ * corrupt header` — e o upload morre com `FileUploadError` 400, longe do
+ * codigo que causou a mudanca. O mesmo vale para o PNG de 64 bytes que so
+ * tinha IHDR.
+ *
+ * Estas funcoes usam o proprio sharp (dependencia declarada de `apps/cms`)
+ * para produzir imagens REAIS na dimensao pedida. Sao a fonte unica das quatro
+ * superficies que sobem midia — os dois testes de integracao do CMS, o
+ * `global-setup` do E2E e o canario de `apps/web` —, porque a licao que trouxe
+ * este comentario foi corrigir UMA fixture e deixar tres iguais para tras.
+ *
+ * `salt` muda a cor de fundo: bytes diferentes, hash diferente, mesma dimensao.
+ * Serve para os casos que precisam distinguir midias sem distinguir formato.
+ */
+export async function decodableJpegBytes(
+  width: number,
+  height: number,
+  salt = 0,
+): Promise<Buffer> {
+  const { default: sharp } = await import('sharp')
+  return sharp({
+    create: {
+      width,
+      height,
+      channels: 3,
+      background: { r: (salt * 37) % 256, g: (salt * 73) % 256, b: (salt * 151) % 256 },
+    },
+  })
+    .jpeg()
+    .toBuffer()
+}
+
+/** Contraparte PNG de {@link decodableJpegBytes}. */
+export async function decodablePngBytes(width: number, height: number, salt = 0): Promise<Buffer> {
+  const { default: sharp } = await import('sharp')
+  return sharp({
+    create: {
+      width,
+      height,
+      channels: 3,
+      background: { r: (salt * 37) % 256, g: (salt * 73) % 256, b: (salt * 151) % 256 },
+    },
+  })
+    .png()
+    .toBuffer()
+}
