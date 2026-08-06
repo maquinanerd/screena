@@ -45,6 +45,7 @@ import process from 'node:process'
 import { createPrismaClient, type PrismaClient } from '@screena/db/server'
 
 import { mapPublicationEvent } from '../src/editorial-event-mapper.js'
+import { parseClaimResponse } from '../src/outbox-claim-response.js'
 import {
   projectionAuthHeader,
   resolveProjectionWorkerConfig,
@@ -137,12 +138,25 @@ async function callOutbox(
 }
 
 async function claim(config: ProjectionWorkerConfig): Promise<ClaimedEvent[]> {
-  const result = (await callOutbox(config, '/internal/publication-outbox/claim', {
+  const result = await callOutbox(config, '/internal/publication-outbox/claim', {
     workerId: config.workerId,
     batchSize: config.batchSize,
     leaseMs: config.leaseMs,
-  })) as { events?: ClaimedEvent[] }
-  return Array.isArray(result.events) ? result.events : []
+  })
+
+  // FILA VAZIA E FALHA DEIXAM DE SER A MESMA COISA.
+  //
+  // Antes: `Array.isArray(result.events) ? result.events : []`. Toda resposta
+  // que nao trouxesse uma lista virava lista vazia — corpo de erro com 200,
+  // HTML de proxy, campo renomeado. O ciclo terminava "com sucesso", o
+  // `/readyz` seguia verde e a projecao ficava parada sem sintoma nenhum.
+  //
+  // Agora a falha e RETENTAVEL e sobe: o `catch` do laco a registra em
+  // `recordCycleFailure`, espera o intervalo cheio e denuncia no `/readyz`.
+  // Fila vazia continua sendo `events: []` — uma lista com zero itens.
+  const parsed = parseClaimResponse(result)
+  if (!parsed.ok) throw new SafeError(parsed.code, parsed.detail, true)
+  return parsed.events as ClaimedEvent[]
 }
 
 async function processEvent(
