@@ -611,6 +611,42 @@ selecionavel no CMS, invisivel na pagina publicada, sem erro nenhum.
 
 ---
 
+### F12-bis — Os quatro itens adiados, reavaliados — DOIS ENTREGUES, DOIS BARRADOS
+
+**1. `Language` como select — JA ESTAVA FEITO.** Sexta premissa falsa da sessao.
+E `type: 'select'` com opcoes rotuladas em pt-BR (`collections.ts`), e o
+comentario no proprio campo registra que veio de caixa de texto livre numa PR
+anterior. Nada a fazer.
+
+**2. Aba de automacao escondida — ENTREGUE, com uma condicao a mais.** Some para
+quem ESCREVE numa materia manual (vinte campos de auditoria que nao dizem nada
+sobre o texto), e continua visivel em dois casos: materia automatizada (a aba
+descreve algo que aconteceu) e **administrador**.
+
+O segundo caso nao e conveniencia. O E2E de governanca abre essa aba numa materia
+MANUAL e verifica que `autoPublished` esta desabilitado — a aba e a prova VISIVEL
+de que campo de automacao nao e editavel por humano. Como o E2E entra como
+administrador, a condicao preserva o teste inteiro e ainda limpa a tela de quem
+escreve. Esconder e INTERFACE; a recusa real segue em `HUMAN_FORBIDDEN_FIELDS`.
+
+**3. Confirmacao ao remover bloco — BARRADO PELO FRAMEWORK.** O Payload 3.86 nao
+expoe slot para o botao de remover linha/bloco: as unicas chaves de
+`admin.components` de campo sao `Field`, `Label`, `Cell`, `Description`, `Diff`,
+`Filter`, `beforeInput`, `afterInput` e `Error` — nenhuma alcanca a acao de
+remover. Entregar isso exigiria DOM hack ou monkey patch, que o proprio mandato
+proibe. **Nao feito, e nao vou fingir que da.**
+
+**4. "Nova materia" nao criar rascunho antes de escrever — BARRADO PELO
+FRAMEWORK.** As unicas opcoes de `versions.drafts` sao `autosave` (objeto,
+booleano ou `false`) e `showSaveDraftButton`. Nao existe "adiar a criacao do
+documento". A unica forma de o rascunho nao nascer cedo seria **desligar o
+autosave inteiro**, o que mudaria o comportamento de toda a redacao, quebraria o
+E2E que verifica persistencia por autosave, e tiraria a recuperacao de trabalho
+perdido. O custo e maior que o incomodo. **Nao feito, com motivo.**
+
+- **Gates:** cms test `537/537` · cms typecheck `0`.
+- **SEM CONFIRMACAO VISUAL:** o sumico da aba para redator.
+
 ## Fila concluida
 
 F4 a F13 entregues. O que ficou de fora, por fase, esta registrado acima com o
@@ -649,6 +685,77 @@ resolve** (Billing & plans no GitHub).
 
 **Decisao:** seguir implementando as fases seguintes com gates locais e deixar as
 PRs abertas. Quando o CI voltar, elas sao mergeadas na ordem.
+
+**Desfecho (2026-08-06):** o repositorio foi tornado publico pelo humano e a cota
+deixou de bloquear. O dreno rodou, e o que ele revelou esta nas duas secoes
+abaixo.
+
+## Dreno da pilha: o metodo de merge teve de mudar no meio
+
+A #120 (F7) entrou por **squash**, e isso quebrou a #121. Com squash, os commits
+que as duas branches compartilhavam deixam de ser ancestrais da main — viram um
+commit novo. O merge-base da PR empilhada despenca para antes da pilha inteira, e
+o git apresenta como conflito `add/add` arquivos que ninguem disputou: os dois
+lados "criaram" o mesmo conteudo por caminhos diferentes. Foram 7 arquivos, 9
+regioes.
+
+Resolvido uma vez, classificando antes de tocar: `git diff HEAD origin/main`
+mostrou 11.600 linhas exclusivas da branch e **15** exclusivas da main. As 15 eram
+as unicas que mereciam leitura, e eram duas coisas — a virgula final do ultimo
+item em `migrations/index.ts` e a versao PRE-refatoracao de `imageBlock()`, que a
+F8 substituiu por `imageOf()`. Nenhuma era conteudo perdido.
+
+Controle da resolucao: **identidade de arvore**, nao "compilou". Depois de
+resolver, `git diff --cached 08d1efb` veio vazio — a arvore ficou byte-identica a
+ponta da branch, o que prova de uma vez que nada da branch saiu e nada da main
+ficou de fora.
+
+**A cura foi parar de esquashar.** O repositorio permite merge commit; com ele os
+commits ficam na main e a branch seguinte continua compartilhando historia. Da
+#121 em diante a pilha foi mergeada com `--merge`, e as quatro cascatas seguintes
+deram exit 0 sem nenhum conflito. Armadilha registrada: `--delete-branch=false`
+impede o GitHub de reapontar a PR seguinte, entao `gh pr edit N --base main`
+virou passo explicito.
+
+## Defeito REAL achado pelo CI na F9 — e os tres que ele escondia
+
+O CI da #122 caiu com `FileUploadError` 400 no upload para `media`. Causa da
+propria F9: `imageSizes` faz o Payload gerar miniatura, e para isso o sharp
+precisa DECODIFICAR a imagem — nao apenas ler a dimensao do cabecalho, que era
+tudo que os testes exigiam antes.
+
+Os fixtures montados a mao (JPEG com SOI+JFIF+SOF0+EOI, sem SOS; PNG de 64 bytes
+so com IHDR) sao recusados ja no `metadata()`. Verificado direto, com controle
+positivo: JPEG so-cabecalho falha em metadata e em resize; PNG stub idem; PNG 1x1
+real devolve 1x1 e redimensiona.
+
+**QUATRO superficies sobem midia, e o CI so mostrou uma** — o job aborta no
+primeiro passo vermelho e PULA os seguintes:
+
+1. `apps/cms/src/__tests__/manual-editorial.integration.test.ts` (a que falhou)
+2. `apps/cms/e2e/global-setup.ts` — sobe pelo `input[type=file]` REAL do painel
+3. `services/news-ingestion/src/__tests__/editorial-projection.integration.test.ts`
+4. `apps/web/scripts/canary-manual-editorial-real-postgres.ts`
+
+A geracao real passou a viver em `decodableJpegBytes`/`decodablePngBytes`, no
+harness do CMS — que ja e declarado como a ponte unica entre `news-ingestion` e
+`apps/cms`, e `apps/cms` e o unico workspace onde `sharp` e dependencia declarada.
+Nenhuma dependencia nova entrou.
+
+**Licao de processo:** a F10 JA havia corrigido o item 1, com sharp inline. A
+correcao ficou uma PR DEPOIS da fase que causou o defeito — por isso a #122
+estava vermelha e a #123 nao estaria. Numa pilha, isso significa que a PR de
+baixo nunca mergeia. Correcao de fixture quebrado por mudanca de config pertence
+a MESMA PR da mudanca.
+
+**Divida paga de carona:** `apps/cms/src/payload-types.ts` estava versionado
+defasado desde a F6 — faltava `Media.sizes.thumbnail` e a ordem de campos. Entrou
+regenerado, depois de conferir que e reordenacao + adicao (contentType, language
+e slug reaparecem em outra posicao; nenhum campo se perdeu).
+
+**O que NAO foi visto rodando:** dos quatro sitios, so o (1) foi provado
+localmente (`test:manual-editorial:integration`, 28/28). Os outros tres dependem
+de dois PostgreSQL efemeros e/ou de navegador, e so o CI os exercita.
 
 ## Pendencias herdadas
 

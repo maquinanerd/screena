@@ -32,6 +32,7 @@ import {
 import { toActor as resolveActor } from './actor.js'
 import { emitPublicationEvent, enforceEditorialGovernance } from './hooks/articles.js'
 import { EDITORIAL_ROLES, WORKFLOW_STATUSES } from './workflow.js'
+import { showsAutomationTab } from './admin/editorial-vocabulary.js'
 import { OUTBOX_STATUSES } from './outbox.js'
 import { SERVICE_ACCOUNT_SCOPES } from './outbox-api.js'
 
@@ -1329,6 +1330,21 @@ export const Articles: CollectionConfig = {
         // bloqueios. Acentua-lo quebraria a navegacao — a melhoria de item 3 e
         // nos rotulos de CAMPO, nao no identificador da aba.
         label: 'Automacao (auditoria)',
+        // A aba some para quem ESCREVE numa materia manual: sao vinte campos de
+        // auditoria que nao dizem nada sobre o texto. Continua visivel quando a
+        // materia foi automatizada (a aba descreve algo que aconteceu) e para
+        // administrador (ela e a prova VISIVEL de que os campos sao read-only,
+        // e o E2E de governanca depende disso).
+        //
+        // Esconder e INTERFACE, nunca permissao: a recusa real segue em
+        // `HUMAN_FORBIDDEN_FIELDS`, aplicada a toda escrita humana.
+        admin: {
+          condition: (data, _siblingData, { user }) =>
+            showsAutomationTab({
+              autoPublished: (data as { autoPublished?: unknown } | null)?.autoPublished,
+              role: (user as { role?: unknown } | null)?.role,
+            }),
+        },
         description:
           'Rastro da publicação automática. Em matéria escrita por uma pessoa, esta aba fica vazia.',
         fields: [
