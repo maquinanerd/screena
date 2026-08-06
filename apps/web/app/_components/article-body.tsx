@@ -138,6 +138,20 @@ function Block({ block }: { block: ArticleBodyBlock }) {
         </figure>
       )
 
+    case 'list': {
+      // `<ol>` ou `<ul>` conforme o dado, nunca CSS fingindo semantica: leitor
+      // de tela anuncia "lista de N itens" a partir do elemento, e uma lista
+      // numerada desenhada com marcador perde a ordem que era o ponto dela.
+      const List = block.ordered ? 'ol' : 'ul'
+      return (
+        <List className={`art-list art-list--${block.ordered ? 'ordered' : 'bulleted'}`}>
+          {block.items.map((item, index) => (
+            <li key={`${block.id}-${String(index)}`}>{item}</li>
+          ))}
+        </List>
+      )
+    }
+
     case 'quote':
       return (
         <figure className="art-quote">

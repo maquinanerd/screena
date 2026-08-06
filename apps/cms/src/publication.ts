@@ -148,6 +148,18 @@ export function toContractBlocks(body: unknown): unknown[] {
             ...(text(block.credit) === undefined ? {} : { credit: text(block.credit) }),
           },
         ]
+      case 'list': {
+        // O array do Payload guarda `{ text }` por linha; o contrato quer
+        // string pura. Item vazio e DESCARTADO aqui, nao no site: publicar uma
+        // lista com buraco seria publicar o descuido.
+        const items = (Array.isArray(block.items) ? block.items : [])
+          .map((row) => text((row as { text?: unknown } | null)?.text))
+          .filter((item): item is string => item !== undefined)
+        // Lista sem nenhum item nao e lista. Some do corpo publicado em vez de
+        // virar `<ul>` vazia — o contrato tambem a recusaria (`min(1)`).
+        if (items.length === 0) return []
+        return [{ id, type, ordered: block.ordered === true, items }]
+      }
       case 'quote':
         return [
           {

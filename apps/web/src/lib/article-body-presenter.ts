@@ -92,6 +92,7 @@ export type ArticleBodyBlock =
       title: string | null;
       credit: string | null;
     }
+  | { kind: "list"; id: string; ordered: boolean; items: string[] }
   | { kind: "quote"; id: string; text: string; attribution: string | null }
   | { kind: "entityCard"; id: string; card: NewsEntityCard; note: string | null }
   | { kind: "factBox"; id: string; title: string; items: ArticleBodyFactItem[] }
@@ -431,6 +432,21 @@ function mapBlock(
       return imageBlock(id, block);
     case "video":
       return videoBlock(id, block);
+    case "list": {
+      // FALLBACK POR ITEM, nao por bloco: um item vazio no meio nao pode
+      // derrubar a lista inteira. Se sobrar zero item, ai sim o bloco nao tem o
+      // que desenhar e some — mesmo criterio do paragrafo vazio.
+      const raw = Array.isArray(block.items) ? block.items : [];
+      const items = raw
+        .map((item) =>
+          typeof item === "string"
+            ? text(item)
+            : text((item as { text?: unknown } | null)?.text),
+        )
+        .filter((item): item is string => item !== null);
+      if (items.length === 0) return null;
+      return { kind: "list", id, ordered: block.ordered === true, items };
+    }
     case "quote": {
       const value = text(block.text);
       return value === null

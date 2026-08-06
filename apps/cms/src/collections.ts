@@ -262,6 +262,33 @@ export const editorialBlocks = [
     ],
   },
   {
+    slug: 'list',
+    admin: blockRowLabel,
+    fields: [
+      blockIdField,
+      {
+        name: 'ordered',
+        type: 'checkbox' as const,
+        defaultValue: false,
+        label: 'Lista numerada',
+        admin: {
+          description: 'Desmarcado usa marcadores; marcado numera os itens no site.',
+        },
+      },
+      {
+        name: 'items',
+        type: 'array' as const,
+        minRows: 1,
+        maxRows: 30,
+        label: 'Itens',
+        // TEXTO LIMPO, um por item — igual ao paragrafo. Nao ha markup aqui: o
+        // contrato recusa HTML, e a numeracao/marcador e decidida pelo
+        // `ordered`, nao escrita pelo redator.
+        fields: [{ name: 'text', type: 'text' as const, required: true, label: 'Texto' }],
+      },
+    ],
+  },
+  {
     slug: 'quote',
     admin: blockRowLabel,
     fields: [

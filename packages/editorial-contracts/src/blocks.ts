@@ -209,8 +209,29 @@ export const publishedParagraphBlock = paragraphBlock.extend({
   marks: z.array(textMark).max(LIMITS.marks).optional(),
 })
 
+/**
+ * Lista com marcador ou numerada. SO NA SAIDA.
+ *
+ * Segue a mesma regra do `marks`, e pelo mesmo motivo: os contratos de ENTRADA
+ * sao comparados por hash com igualdade ESTRITA, e o MNScr declara esse hash a
+ * cada pedido. Acrescentar `list` em `editorialBody` — mesmo como membro novo de
+ * uniao — mudaria o JSON Schema de entrada e faria todo pedido em voo virar
+ * `hash_mismatch`. Lista nasce na redacao humana, nao no pipeline; ela so
+ * precisa existir depois que a materia e publicada.
+ *
+ * `items` guarda TEXTO LIMPO, um por item — sem markup, como o paragrafo. O
+ * `ordered` decide `<ol>` ou `<ul>` no site; nao ha "estilo" livre.
+ */
+export const listBlock = z.object({
+  ...blockBase,
+  type: z.literal('list'),
+  ordered: z.boolean(),
+  items: z.array(plainText(LIMITS.shortText)).min(1, 'lista sem itens').max(30),
+})
+
 export const publishedEditorialBlock = z.discriminatedUnion('type', [
   publishedParagraphBlock,
+  listBlock,
   headingBlock,
   imageBlock,
   videoBlock,
