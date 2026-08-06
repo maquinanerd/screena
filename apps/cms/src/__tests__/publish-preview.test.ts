@@ -11,29 +11,43 @@ import { describe, expect, it } from 'vitest'
 import { previewBlock, previewBody } from '../admin/publish-preview.js'
 
 describe('quedas silenciosas conhecidas', () => {
-  it('entityCard de PESSOA some — e o aviso diz o que fazer', () => {
+  it('entityCard de PESSOA COM nota: so a ficha some, o texto fica', () => {
+    // Mudou na F12: antes o bloco inteiro sumia e levava a nota junto.
     const preview = previewBlock(0, {
       blockType: 'entityCard',
       entityKind: 'person',
       entityId: '42',
+      note: 'Ela dirigiu os dois primeiros episódios.',
     })
+    expect(preview.outcome).toBe('degrades')
+    expect(preview.note).toContain('nota')
+  })
+
+  it('entityCard de PESSOA SEM nota some — e o aviso diz o que fazer', () => {
+    const preview = previewBlock(0, { blockType: 'entityCard', entityKind: 'person', entityId: '42' })
     expect(preview.outcome).toBe('vanishes')
     expect(preview.note).toContain('filme e série')
     // A frase precisa oferecer saida, nao so diagnostico.
-    expect(preview.note).toContain('troque o tipo')
+    expect(preview.note).toContain('escreva uma nota')
   })
 
-  it('os cinco tipos de entidade nao hidratados somem; filme e serie aparecem', () => {
+  it('os cinco tipos nao hidratados perdem a FICHA; filme e serie a mantem', () => {
     for (const entityKind of ['season', 'episode', 'person', 'character', 'franchise']) {
-      expect(previewBlock(0, { blockType: 'entityCard', entityKind, entityId: '1' }).outcome, entityKind).toBe('vanishes')
+      expect(
+        previewBlock(0, { blockType: 'entityCard', entityKind, entityId: '1', note: 'n' }).outcome,
+        entityKind,
+      ).toBe('degrades')
     }
     for (const entityKind of ['movie', 'tv']) {
       expect(previewBlock(0, { blockType: 'entityCard', entityKind, entityId: '1' }).outcome, entityKind).toBe('renders')
     }
   })
 
-  it('video INTERNO some; youtube e vimeo viram link', () => {
+  it('video INTERNO com endereco vira link; sem endereco, some', () => {
     expect(previewBlock(0, { blockType: 'video', provider: 'internal' }).outcome).toBe('vanishes')
+    expect(
+      previewBlock(0, { blockType: 'video', provider: 'internal', url: 'https://cdn.test/v.mp4' }).outcome,
+    ).toBe('degrades')
     for (const provider of ['youtube', 'vimeo']) {
       const preview = previewBlock(0, { blockType: 'video', provider })
       // Nao e "renders": o site publica LINK, nao player. Dizer "aparece" seria
@@ -119,6 +133,7 @@ describe('previewBody', () => {
       { blockType: 'entityCard', entityKind: 'person', entityId: '1' },
       { blockType: 'video', provider: 'internal' },
       { blockType: 'embed', provider: 'instagram' },
+      { blockType: 'entityCard', entityKind: 'person', entityId: '1', note: 'n' },
       { blockType: 'list', items: [] },
     ]
     for (const block of amostras) {

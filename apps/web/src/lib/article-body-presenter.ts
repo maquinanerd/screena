@@ -87,7 +87,7 @@ export type ArticleBodyBlock =
   | {
       kind: "video";
       id: string;
-      provider: "youtube" | "vimeo";
+      provider: "youtube" | "vimeo" | "internal";
       href: string;
       title: string | null;
       credit: string | null;
@@ -111,6 +111,14 @@ export type ArticleBodyBlock =
   | { kind: "gallery"; id: string; items: ArticleBodyImage[]; initialIndex: number }
   | { kind: "quote"; id: string; text: string; attribution: string | null }
   | { kind: "entityCard"; id: string; card: NewsEntityCard; note: string | null }
+  /**
+   * Entidade que o site nao consegue FICHAR (pessoa, temporada, episodio,
+   * personagem, franquia), mas sobre a qual a redacao escreveu uma nota.
+   *
+   * Existe para o texto nao sumir junto com a ficha: antes, `entityCard` de
+   * pessoa devolvia `null` e levava a nota do redator embora, sem erro nenhum.
+   */
+  | { kind: "entityNote"; id: string; note: string }
   | { kind: "factBox"; id: string; title: string; items: ArticleBodyFactItem[] }
   | { kind: "relatedContent"; id: string; items: ArticleBodyLink[] }
   | { kind: "sourceList"; id: string; items: ArticleBodyLink[] }
@@ -239,9 +247,24 @@ function imageBlock(id: string, block: Record<string, unknown>): ArticleBodyBloc
  */
 function videoBlock(id: string, block: Record<string, unknown>): ArticleBodyBlock | null {
   const provider = text(block.provider);
+  if (provider === "internal") {
+    // `internal` NAO tem player proprio, mas pode ter endereco. Antes o bloco
+    // inteiro sumia mesmo com URL preenchida — o video existia, o link existia,
+    // e a pagina nao mostrava nada. Agora vira link quando ha para onde apontar.
+    const internalHref = externalHref(block.url, null);
+    return internalHref === null
+      ? null
+      : {
+          kind: "video",
+          id,
+          provider: "internal",
+          href: internalHref,
+          title: text(block.title),
+          credit: text(block.credit),
+        };
+  }
   if (provider !== "youtube" && provider !== "vimeo") {
-    // `internal` nao tem destino publico nesta fatia; provider desconhecido
-    // nunca vira link.
+    // Provider desconhecido nunca vira link.
     return null;
   }
   const externalId = text(block.externalId);
@@ -323,8 +346,15 @@ function entityCardBlock(
   const kind = text(block.entityKind);
   const entityId = text(block.entityId);
   if (kind === null || entityId === null) return null;
+  const note = text(block.note);
   const hydrated = hydration.entityCards.get(`${kind}:${entityId}`);
-  if (hydrated === undefined) return null;
+  if (hydrated === undefined) {
+    // SEM FICHA, MAS COM NOTA: o site so hidrata `movie` e `tv`. Para os outros
+    // cinco tipos legais no contrato, devolver `null` apagava tambem o que a
+    // pessoa escreveu. A nota sobrevive sozinha; a ficha, que exigiria titulo e
+    // slug reais, nao e inventada.
+    return note === null ? null : { kind: "entityNote", id, note };
+  }
   // `buildNewsEntityCard` e o MESMO construtor da ficha do rodape: exige titulo
   // e slug reais e nunca inventa nota. Reusa-lo mantem uma unica definicao de
   // "ficha honesta" no produto.

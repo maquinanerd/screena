@@ -248,7 +248,7 @@ export const editorialBlocks = [
         options: [
           { label: 'YouTube', value: 'youtube' },
           { label: 'Vimeo', value: 'vimeo' },
-          { label: 'Interno — ainda não aparece no site', value: 'internal' },
+          { label: 'Interno — vira link, sem player', value: 'internal' },
         ],
         admin: {
           description:
@@ -389,15 +389,15 @@ export const editorialBlocks = [
         options: [
           { label: 'Filme', value: 'movie' },
           { label: 'Série', value: 'tv' },
-          { label: 'Temporada — ainda não aparece no site', value: 'season' },
-          { label: 'Episódio — ainda não aparece no site', value: 'episode' },
-          { label: 'Pessoa — ainda não aparece no site', value: 'person' },
-          { label: 'Personagem — ainda não aparece no site', value: 'character' },
-          { label: 'Franquia — ainda não aparece no site', value: 'franchise' },
+          { label: 'Temporada — vira nota, sem ficha', value: 'season' },
+          { label: 'Episódio — vira nota, sem ficha', value: 'episode' },
+          { label: 'Pessoa — vira nota, sem ficha', value: 'person' },
+          { label: 'Personagem — vira nota, sem ficha', value: 'character' },
+          { label: 'Franquia — vira nota, sem ficha', value: 'franchise' },
         ],
         admin: {
           description:
-            'Hoje o site só monta o cartão para filme e série. Os demais tipos são aceitos, mas o cartão não é exibido na matéria publicada.',
+            'O site monta ficha completa só para filme e série. Nos demais tipos, a sua nota aparece como texto — a ficha, não.',
         },
       },
       { name: 'entityId', type: 'text' as const, required: true },

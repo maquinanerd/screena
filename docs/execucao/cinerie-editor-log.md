@@ -551,7 +551,70 @@ Por isso o preview desta fase nao imita a pagina: ele responde, bloco a bloco, s
 aquele bloco vai aparecer, usando o MESMO contrato que a projecao usa. E o
 material tambem serve de base para a F13.
 
-### F12..F13 — PENDENTES
+### F12 — As duas quedas silenciosas, FECHADAS — ENTREGUE
+
+**A regra era "ou ganham renderer, ou saem do contrato". Sair estava vedado:**
+`entityCardBlock` e `videoBlock` vivem tambem em `editorialBody`, o contrato de
+ENTRADA. Estreitar `entityKind` ou o enum de `provider` moveria o hash que o
+MNScr declara a cada pedido — a fase falharia pelo proprio gate da regra (c).
+Entao: renderer.
+
+- **`entityCard` fora de movie/tv.** O presenter devolvia `null` quando a
+  hidratacao faltava, e levava junto a NOTA que o redator escreveu. Agora existe
+  `entityNote`: a ficha nao e inventada (exigiria titulo e slug reais), mas o
+  TEXTO sobrevive. Sem nota, o bloco ainda some — nota inventada seria pior.
+- **`video` com provider `internal`.** Sumia mesmo com URL preenchida: o video
+  existia, o link existia, e a pagina nao mostrava nada. Agora vira link quando
+  ha endereco utilizavel; esquema perigoso continua recusado.
+- **Rotulos do CMS e preview da F11 sincronizados.** As frases diziam "ainda nao
+  aparece no site", o que deixou de ser verdade nesta fase. Duas verdades sobre o
+  mesmo bloco e exatamente o defeito que este projeto persegue — entao os
+  rotulos passaram a "vira nota, sem ficha" e "vira link, sem player", e os
+  testes da F11 foram atualizados para o comportamento novo, sem enfraquecer.
+- **Testes:** 8 novos no renderer, com controle negativo provando que o fallback
+  depende da HIDRATACAO e nao do tipo (senao toda ficha viraria nota).
+- **Gates:** root test `4858/4858` · cms test `533/533` · typecheck `0`.
+- **NAO ENTREGUE da F12, e fica registrado:** `Language` como select, aba de
+  automacao escondida quando `autoPublished` for falso, confirmacao ao remover
+  bloco, e "Nova materia" parar de criar rascunho antes de escrever. Os quatro
+  sao mudanca de superficie no painel, sem cobertura possivel neste ambiente
+  (Node 24 impede o Playwright; o CI esta parado por cobranca). Entram quando
+  houver como ver.
+
+### F13 — Varredura de contrato — ENTREGUE
+
+**O item de maior alavancagem da fila, e o que fecha a serie.** Quatro defeitos
+da MESMA classe apareceram um a um nesta sessao: valor LEGAL no contrato,
+selecionavel no CMS, invisivel na pagina publicada, sem erro nenhum.
+
+- **A defesa e ESTRUTURAL, nao uma lista.** A varredura le a uniao do proprio
+  contrato (`publishedEditorialBlock.options`) e exige fixture para cada membro.
+  Um tipo de bloco novo que ninguem cobriu **faz o teste falhar** em vez de virar
+  o quinto defeito da serie.
+- **Provou-se na primeira execucao:** falhou acusando `gallery` sem fixture — um
+  bloco que EU mesmo tinha acrescentado na F8 duas fases antes. A protecao pegou
+  o autor dela.
+- **DESCOBERTA QUE VALE REGISTRAR: a forma do CONTRATO nao e a forma que chega ao
+  renderer.** O worker de projecao reescreve blocos antes de gravar — `mediaRef`
+  vira `publicPath` + dimensoes, `sourceRefs` vira `sources` ja resolvidas. Um
+  teste com a forma do contrato acusaria "o site nao desenha sourceList" quando o
+  site desenha; e o inverso esconderia defeito real. As fixtures sao
+  pos-projecao, e as que divergem estao marcadas.
+- **Varre tambem os VALORES**, que e onde os defeitos moravam: os 7 `entityKind`,
+  os 3 `provider` de video, os `EMBED_PROVIDERS` (derivados do contrato) e os 3
+  niveis de heading.
+- **Tres controles negativos:** a leitura da uniao encontra tipos de verdade
+  (senao a varredura passaria vazia); tipo inexistente REALMENTE some; e bloco
+  valido de forma mas vazio some — o detector distingue "tipo suportado" de
+  "conteudo utilizavel".
+- **Gates:** root test `4867/4867` · typecheck `0`.
+
+---
+
+## Fila concluida
+
+F4 a F13 entregues. O que ficou de fora, por fase, esta registrado acima com o
+motivo — nao ha item silenciosamente abandonado.
 
 F6 canvas · F7 editor e menu `/` · F8 embeds e galeria · F9 midia · F10 SEO ·
 F11 preview · F12 limpeza e os dois defeitos de queda silenciosa · F13 teste de

@@ -78,12 +78,19 @@ export function previewBlock(index: number, raw: unknown): BlockPreview {
     case 'entityCard': {
       const kind = text(block.entityKind)
       if (!HYDRATED_ENTITY_KINDS.has(kind)) {
-        return {
-          ...base,
-          outcome: 'vanishes',
-          // A frase diz o que fazer, nao so o que esta errado.
-          note: `O site só monta cartão para filme e série. Como "${kind}", este cartão não vai aparecer — troque o tipo ou cite a entidade no texto.`,
-        }
+        // Desde a F12 a NOTA sobrevive: some a ficha, nao o texto. Sem nota, ai
+        // sim nao resta nada para desenhar.
+        return text(block.note) === ''
+          ? {
+              ...base,
+              outcome: 'vanishes',
+              note: `O site só monta ficha para filme e série. Como "${kind}" e sem nota escrita, nada vai aparecer — escreva uma nota ou troque o tipo.`,
+            }
+          : {
+              ...base,
+              outcome: 'degrades',
+              note: 'Só a sua nota vai aparecer; a ficha da entidade, não.',
+            }
       }
       return text(block.entityId) === ''
         ? { ...base, outcome: 'vanishes', note: 'Cartão sem entidade escolhida não aparece.' }
@@ -92,12 +99,14 @@ export function previewBlock(index: number, raw: unknown): BlockPreview {
 
     case 'video': {
       const provider = text(block.provider)
+      if (provider === 'internal') {
+        // Desde a F12 vira LINK quando ha endereco. Sem endereco, some.
+        return text(block.url) === ''
+          ? { ...base, outcome: 'vanishes', note: 'Vídeo interno sem endereço não aparece.' }
+          : { ...base, outcome: 'degrades', note: 'Aparece como link, não como player.' }
+      }
       if (!RENDERED_VIDEO_PROVIDERS.has(provider)) {
-        return {
-          ...base,
-          outcome: 'vanishes',
-          note: 'Vídeo interno não aparece no site. Use YouTube ou Vimeo.',
-        }
+        return { ...base, outcome: 'vanishes', note: 'Provedor desconhecido não aparece no site.' }
       }
       return {
         ...base,
