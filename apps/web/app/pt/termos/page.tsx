@@ -135,9 +135,10 @@ export default function TermosPage() {
           A criação e utilização de uma conta Cinerie são permitidas somente para pessoas com 18 anos
           completos ou mais.
         </p>
-        <p>Ao criar uma conta, você deverá marcar a declaração:</p>
         <p>
-          <em>&quot;Declaro possuir 18 anos completos ou mais.&quot;</em>
+          Não há uma caixa de seleção separada para a idade no cadastro. Ao marcar o aceite destes
+          Termos e da Política de Privacidade — obrigatório para criar conta — você declara possuir
+          18 anos completos ou mais.
         </p>
         <p>
           A Cinerie não oferece contas para menores de idade nem possui, na configuração atual, um
