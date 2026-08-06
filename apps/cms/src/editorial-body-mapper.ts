@@ -85,12 +85,25 @@ export interface MappedBody {
    */
   readonly warnings: readonly string[]
   /**
-   * As MESMAS perdas, com codigo e campo.
+   * As MESMAS perdas, com codigo e campo. E isto que atravessa a resposta HTTP
+   * do endpoint de publicacao: ate a F-anterior a lista de strings morria no
+   * registro do artigo e o emissor recebia `2xx` sem saber que metade do que
+   * mandou nao chegou.
    *
-   * Uma por entrada de `warnings`, na mesma ordem. E isto que atravessa a
-   * resposta HTTP do endpoint de publicacao: ate agora a lista de strings
-   * morria no registro do artigo e o emissor recebia `2xx` sem saber que metade
-   * do que mandou nao chegou.
+   * NAO ha paridade 1:1 com `warnings`, e ja houve um comentario aqui afirmando
+   * que havia. A relacao real e:
+   *
+   *  - **perda de bloco** (tipo desconhecido, nao-objeto, imagem sem par...):
+   *    1 detail para 1 string, com a MESMA frase — `warnings.push(w.detail)` e
+   *    `details.push(w)` saem do mesmo lugar;
+   *  - **proveniencia descartada**: 1 detail POR BLOCO, porque um codigo que
+   *    cita tres blocos de uma vez nao ajuda o emissor a localizar nada — mas
+   *    so UMA string agregada no fim, que mantem o formato de sempre.
+   *
+   * Logo `details.length >= warnings.length`, e os indices nao se
+   * correspondem. Quem precisa da verdade completa deve ler `details`; somar as
+   * duas listas grava a mesma perda duas vezes (foi o que aconteceu com
+   * `articles.warnings`). Travado por `editorial-body-mapper.test.ts`.
    */
   readonly details: readonly EditorialWarning[]
 }

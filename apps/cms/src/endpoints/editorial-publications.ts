@@ -415,11 +415,31 @@ export const editorialPublicationsEndpoint: Endpoint = {
           ]
         : []
 
+    // O update NAO troca todos os avisos de vinculo pelo de "nao reaplicado".
+    // So UM deles deixa de valer: `ENTITY_LINK_UNVERIFIED` afirma que linhas
+    // foram GRAVADAS como nao verificadas, e no update nada e gravado — repetir
+    // esse seria a mentira simetrica. A recusa por id malformado continua
+    // valendo em qualquer intencao: um id externo aponta para outra entidade,
+    // exista a materia ou nao.
+    //
+    // O filtro e pelo que SAI, nao pelo que fica. Listar o que fica
+    // recriaria este mesmo defeito no dia em que alguem acrescentar um codigo
+    // de recusa a `resolveEntityReferences`: ele nasceria fora da lista e
+    // sumiria calado no update — exatamente o que esta correcao existe para
+    // impedir. Assim, aviso novo sobrevive por padrao.
+    const entityLinkWarnings: readonly EditorialWarning[] =
+      existing === null
+        ? entityRefs.warnings
+        : [
+            ...entityRefs.warnings.filter((warning) => warning.code !== 'ENTITY_LINK_UNVERIFIED'),
+            ...entityLinksSkippedOnUpdate,
+          ]
+
     const intakeWarnings: readonly EditorialWarning[] = [
       ...mappedBody.details,
       ...strippedMarks,
       ...hero.warnings,
-      ...(existing === null ? entityRefs.warnings : entityLinksSkippedOnUpdate),
+      ...entityLinkWarnings,
       ...seoPlan.warnings,
     ]
 
@@ -804,10 +824,18 @@ async function persistPublication(
     ...heroRef,
     blockingErrors: [...request.qa.blockingErrors],
     // Bloco que o mapper nao conseguiu traduzir vira aviso NOMEADO, nunca
-    // sumico silencioso — a mesma politica do caminho de ingestao. Agora a
-    // lista carrega tambem as perdas de capa, vinculo e SEO: o revisor humano
-    // ve no admin a mesma verdade que o emissor recebeu por HTTP.
-    warnings: [...request.qa.warnings, ...mappedBody.warnings, ...input.intakeWarnings],
+    // sumico silencioso — a mesma politica do caminho de ingestao. A lista
+    // carrega tambem as perdas de capa, vinculo e SEO: o revisor humano ve no
+    // admin a mesma verdade que o emissor recebeu por HTTP.
+    //
+    // `mappedBody.warnings` NAO entra aqui, e a ausencia e o conserto.
+    // `input.intakeWarnings` ja comeca com os detalhes do mapper (a frase de
+    // cada perda), entao somar as duas listas gravava cada perda de bloco DUAS
+    // vezes — a mesma string — e acrescentava a redacao AGREGADA da
+    // proveniencia, que a resposta HTTP nunca carregou. O admin passava a
+    // mostrar mais e diferente do que o emissor recebeu, justo no campo cuja
+    // razao de existir e as duas pontas baterem. Ver `MappedBody.details`.
+    warnings: [...request.qa.warnings, ...input.intakeWarnings],
     qaVersion: request.qa.version,
     // Carimbo do SERVIDOR, condicionado ao veredito do QA. Copiar um horario do
     // produtor deixaria o pipeline decidir sozinho que passou no QA.

@@ -294,6 +294,51 @@ describe('F1: avisos do mapeamento chegam ao emissor', () => {
     expect(warning?.field).toBe('blocks[1].provenance')
   })
 
+  it('o admin guarda EXATAMENTE os avisos que o emissor recebeu — sem duplicata', async () => {
+    // A promessa escrita em `persistPublication` e que "o revisor humano ve no
+    // admin a mesma verdade que o emissor recebeu por HTTP". Este caso cobra a
+    // promessa nos DOIS sentidos, com uma perda de cada familia do mapeador:
+    //
+    //  - `image` sem par em `media[]` => aviso de par 1:1 (string e detail sao
+    //    a MESMA frase). Se a lista do artigo somar as duas origens, a frase
+    //    aparece DUAS vezes.
+    //  - `heading` com `provenance` => detail POR BLOCO mais uma string
+    //    AGREGADA. A agregada nao tem par na resposta: e um aviso que so o
+    //    admin ve, com outra redacao para o mesmo fato.
+    const { body: response } = await publish(
+      requestBody({
+        blocks: [
+          { type: 'paragraph', id: 'b1', text: 'Um paragrafo com corpo suficiente para o QA.' },
+          { type: 'image', id: 'i1', mediaRef: 'media-que-nao-veio', alt: 'Cartaz oficial' },
+          {
+            type: 'heading',
+            id: 'h1',
+            level: 2,
+            text: 'Um subtitulo',
+            provenance: [{ origin: 'external_source', ref: 'src-variety' }],
+          },
+        ],
+      }),
+    )
+    expect(response.outcome).toBe('PUBLISHED')
+
+    const details = (response.warningDetails as { detail: string }[]).map((entry) => entry.detail)
+    expect(details.length).toBeGreaterThan(0)
+
+    const article = await readArticle(String(response.articleId))
+    const persisted = article.warnings as string[]
+
+    // (a) cada aviso da resposta aparece UMA vez no artigo.
+    for (const detail of details) {
+      expect(persisted.filter((entry) => entry === detail)).toHaveLength(1)
+    }
+
+    // (b) e o artigo nao carrega aviso que a resposta nao carregue. O QA entra
+    // por outra porta (`request.qa.warnings`) e nao conta aqui — a fixture o
+    // mantem vazio, entao qualquer sobra e do mapeador.
+    expect(persisted.filter((entry) => !details.includes(entry))).toEqual([])
+  })
+
   it('marks removido pelo contrato de entrada vira aviso, nao silencio', async () => {
     // `marks` so existe no bloco PUBLICADO. Na entrada o `z.object` remove a
     // chave sem erro: o emissor mandava negrito e recebia `2xx` sem formatacao.
@@ -554,6 +599,57 @@ describe('F3: entityLinks viram entityReferences', () => {
     const refs = after.entityReferences as Record<string, unknown>[]
     expect(refs).toHaveLength(1)
     expect(refs[0]?.verified).toBe(true)
+  })
+
+  it('update com id EXTERNO ainda recusa o vinculo — e diz que recusou', async () => {
+    // O buraco que este caso fecha: na atualizacao, TODO aviso de vinculo era
+    // trocado pelo de "nao reaplicado" — e esse so existe quando alguma linha
+    // sobrevive a validacao. Com um id externo unico, nada sobrevive, entao a
+    // lista ficava vazia e o emissor recebia um `2xx` limpo com o vinculo
+    // perdido. Id malformado e malformado em qualquer intencao: a recusa nao
+    // depende de a materia ja existir.
+    const key = `idem-${randomUUID()}`
+    const cluster = `cluster-${randomUUID().slice(0, 8)}`
+    const slug = `materia-vinculo-ext-${randomUUID().slice(0, 8)}`
+
+    const created = await publish(
+      requestBody({
+        idempotencyKey: key,
+        sourceClusterId: cluster,
+        sourceRevision: 1,
+        seo: { slugSuggestion: slug },
+      }),
+    )
+    expect(created.body.outcome).toBe('PUBLISHED')
+    const articleId = String(created.body.articleId)
+
+    const updated = await publish(
+      requestBody({
+        idempotencyKey: key,
+        sourceClusterId: cluster,
+        sourceRevision: 2,
+        publicationIntent: 'update',
+        targetArticleId: articleId,
+        // Um id do TMDB, sozinho: nenhuma linha valida sobra.
+        entityLinks: [
+          { entityKind: 'movie', entityId: 'tt0111161', relation: 'mentioned', confidence: 0.5 },
+        ],
+        seo: { slugSuggestion: slug },
+      }),
+    )
+    expect(updated.body.outcome).toBe('PUBLISHED')
+
+    const refused = warningFor(updated.body, 'ENTITY_LINK_ID_NOT_INTERNAL')
+    expect(refused?.field).toBe('entityLinks[0].entityId')
+    expect(String(refused?.detail)).toContain('tt0111161')
+
+    // O aviso de "gravados como NAO verificados" continua fora do update: no
+    // update nada e gravado, e afirma-lo seria a mentira simetrica.
+    expect(warningCodes(updated.body)).not.toContain('ENTITY_LINK_UNVERIFIED')
+
+    // E o admin ve a mesma recusa.
+    const after = await readArticle(articleId)
+    expect((after.warnings as string[]).some((entry) => entry.includes('tt0111161'))).toBe(true)
   })
 })
 

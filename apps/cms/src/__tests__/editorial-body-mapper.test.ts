@@ -297,12 +297,51 @@ describe('toPayloadBlocks — details com codigo, campo e bloco', () => {
   const codes = (details: readonly { readonly code: string }[]): string[] =>
     details.map((detail) => detail.code)
 
-  it('cada aviso de texto tem um detail correspondente', () => {
+  it('perda de bloco: uma string para cada detail, com a MESMA frase', () => {
     const { warnings, details } = toPayloadBlocks(
       [{ id: 'x1', type: 'inexistente' }, { type: 'paragraph', text: 'sem id' }],
       resolveNone,
     )
     expect(warnings).toHaveLength(details.length)
+    // A frase e a mesma dos dois lados — e por isso que somar as duas listas
+    // no registro do artigo gravava cada perda DUAS vezes.
+    expect(warnings).toEqual(details.map((detail) => detail.detail))
+  })
+
+  it('proveniencia descartada: um detail POR BLOCO, mas UMA string agregada', () => {
+    // A assimetria e deliberada, e por muito tempo o JSDoc afirmou o contrario
+    // ("uma por entrada de `warnings`, na mesma ordem"). O detail nomeia o
+    // bloco, porque um codigo que cita tres blocos de uma vez nao ajuda o
+    // emissor a localizar nada; a string mantem o formato agregado de sempre.
+    const { warnings, details } = toPayloadBlocks(
+      [
+        {
+          type: 'heading',
+          id: 'h1',
+          level: 2,
+          text: 'A',
+          provenance: [{ origin: 'external_source' }],
+        },
+        {
+          type: 'heading',
+          id: 'h2',
+          level: 2,
+          text: 'B',
+          provenance: [{ origin: 'external_source' }],
+        },
+      ],
+      resolveNone,
+    )
+
+    expect(codes(details)).toEqual(['BLOCK_PROVENANCE_DROPPED', 'BLOCK_PROVENANCE_DROPPED'])
+    expect(details.map((detail) => detail.blockId)).toEqual(['h1', 'h2'])
+
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('h1')
+    expect(warnings[0]).toContain('h2')
+
+    // Logo NAO ha paridade 1:1: `details` e estritamente mais granular.
+    expect(details.length).toBeGreaterThan(warnings.length)
   })
 
   it('bloco nao-objeto: BLOCK_NOT_AN_OBJECT com o indice no campo', () => {
