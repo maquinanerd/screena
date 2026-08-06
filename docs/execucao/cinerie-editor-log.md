@@ -412,6 +412,49 @@ nenhuma sidebar e possivel, por construcao do Payload.
   Sem reproducao, mexer seria consertar relato.
 - **SEM CONFIRMACAO VISUAL:** o bloco `list` no painel e a lista na pagina.
 
+### F8 — Embeds e galeria — ENTREGUE (PR aberta, CI bloqueado por cobranca)
+
+- **GATE (c) — PASSOU.** Hashes de ENTRADA identicos antes e depois
+  (`editorial-draft-v1` = `sha256:46a21c99...`, `editorial-publication-request-v1`
+  = `sha256:93024329...`). `embedBlock` e `galleryBlock` entraram SO em
+  `publishedEditorialBlock`.
+- **DADO TIPADO, nunca HTML.** O bloco guarda `provider`, `externalId`,
+  `canonicalUrl`, `originalUrl`, `caption` e metadados opcionais. **Nao existe
+  campo de HTML**, e isso e testado: `z.object` remove chave desconhecida em
+  silencio, entao um `html` colado nao sobrevive ao parse. O site MONTA o player
+  a partir do id.
+- **`parseEmbedUrl` — allowlist FECHADA, em `.ts` puro e testado.** Recusa
+  `javascript:`, `data:`, `file:`, host parecido (`youtube.com.evil.test`),
+  provedor certo sem recurso (`/@canal`), e id fora do alfabeto seguro.
+  **Descoberta durante o teste:** `new URL()` NORMALIZA o caminho, entao
+  `youtu.be/../../etc` chegava como `/etc` e `etc` passava no alfabeto — virava
+  embed com id inventado. Corrigido exigindo os 11 caracteres reais do id do
+  YouTube.
+- **Clique-para-carregar.** O `<iframe>` do YouTube so entra no DOM apos acao da
+  pessoa, via `srcDoc` (sem JavaScript nosso, sem estado de cliente), em
+  `youtube-nocookie`, com `sandbox` SEM `allow-same-origin`. E o que sustenta a
+  promessa "nenhum script de terceiro sem acao do usuario".
+- **INSTAGRAM E X ENTREGAM MENOS QUE EMBED NATIVO.** Viram CARTAO com link, nao
+  o post renderizado — render nativo exigiria o script deles. A garantia e
+  mecanica, nao de intencao: `embedPlayerUrl` devolve `null` para os dois, entao
+  nao ha iframe possivel. O rotulo do select no CMS diz isso ao redator ANTES de
+  publicar.
+- **Galeria:** varias imagens, ordem preservada, `alt`/`caption`/`credit` POR
+  IMAGEM (credito de foto e por foto; um credito so mentiria sobre as demais),
+  e imagem de abertura com indice — fora da faixa cai para a primeira.
+  `imageOf` foi extraida para `image` e `gallery` compartilharem a montagem:
+  duas paralelas divergiriam no primeiro campo novo.
+- **Migration:** `20260805_225957_embed_gallery`, aditiva, so tabelas novas,
+  `down` derruba so elas. Desvio herdado removido a mao pela QUARTA vez e
+  snapshot corrigido.
+- **Testes:** 14 no parser de URL + 14 no renderer, com controles negativos nos
+  dois lados.
+- **Gates:** root test `4811/4811` · cms test `502/502` · root typecheck `0` ·
+  cms typecheck `0`.
+- **SEM CONFIRMACAO VISUAL:** o clique-para-carregar, o cartao de Instagram/X e a
+  galeria na pagina. O CI esta parado por cobranca (ver bloqueio acima), entao
+  esta fase nao teve nem a janela de navegador do CI.
+
 ### F9..F13 — PENDENTES
 
 F6 canvas · F7 editor e menu `/` · F8 embeds e galeria · F9 midia · F10 SEO ·

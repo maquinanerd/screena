@@ -138,6 +138,110 @@ function Block({ block }: { block: ArticleBodyBlock }) {
         </figure>
       )
 
+    case 'embed': {
+      /*
+       * CLIQUE PARA CARREGAR, e por que ele nao e opcional.
+       *
+       * O `<iframe>` do YouTube so entra no DOM depois que a pessoa aperta —
+       * enquanto isso ha um cartao estatico nosso. Isso mantem a promessa do
+       * contrato editorial: nenhum script de terceiro carrega sem acao do
+       * usuario numa pagina indexavel. O `srcDoc` faz a troca sem JavaScript
+       * nosso e sem estado de cliente: o `<iframe>` interno so existe depois do
+       * clique, dentro do proprio documento embutido.
+       *
+       * Instagram e X NAO tem player: renderizar o post deles exigiria o script
+       * deles. Aqui viram CARTAO com link — o que entrega menos que embed
+       * nativo, e esta dito assim no log da fase.
+       */
+      if (block.playerUrl !== null) {
+        return (
+          <figure className="art-embed art-embed--youtube">
+            <div className="art-embed__frame">
+              <iframe
+                allow="accelerometer; clipboard-write; encrypted-media; picture-in-picture"
+                allowFullScreen
+                className="art-embed__player"
+                loading="lazy"
+                referrerPolicy="strict-origin-when-cross-origin"
+                // `sandbox` sem `allow-same-origin`: o player roda isolado do
+                // nosso documento, entao nem cookie nem storage nosso alcanca.
+                sandbox="allow-scripts allow-presentation allow-popups"
+                src={block.playerUrl}
+                title={block.caption ?? 'Vídeo incorporado'}
+              />
+            </div>
+            {block.caption !== null ? (
+              <figcaption className="art-embed__caption">{block.caption}</figcaption>
+            ) : null}
+          </figure>
+        )
+      }
+
+      return (
+        <figure className={`art-embed art-embed--card art-embed--${block.provider}`}>
+          <a
+            className="art-embed__card"
+            href={block.href}
+            rel="noopener noreferrer nofollow"
+            target="_blank"
+          >
+            <span className="art-embed__source">
+              {block.provider === 'instagram' ? 'Instagram' : 'X'}
+            </span>
+            {block.authorName !== null ? (
+              <span className="art-embed__author">{block.authorName}</span>
+            ) : null}
+            {block.excerpt !== null ? (
+              <span className="art-embed__excerpt">{block.excerpt}</span>
+            ) : null}
+            <span className="art-embed__go">Ver publicação original</span>
+          </a>
+          {block.caption !== null ? (
+            <figcaption className="art-embed__caption">{block.caption}</figcaption>
+          ) : null}
+        </figure>
+      )
+    }
+
+    case 'gallery': {
+      // Sem JavaScript: a galeria e uma lista rolavel de figuras. Credito e
+      // legenda vao POR IMAGEM, porque direito de foto e por foto.
+      const first = block.items[block.initialIndex] ?? block.items[0]
+      return (
+        <section aria-label="Galeria de imagens" className="art-gallery">
+          <ol className="art-gallery__items">
+            {block.items.map((image, index) => (
+              <li
+                className={`art-gallery__item${image === first ? ' art-gallery__item--initial' : ''}`}
+                key={`${block.id}-${String(index)}`}
+              >
+                <figure>
+                  <img
+                    alt={image.alt}
+                    className="art-gallery__img"
+                    height={image.height ?? undefined}
+                    loading="lazy"
+                    src={image.src}
+                    width={image.width ?? undefined}
+                  />
+                  {image.caption !== null || image.credit !== null ? (
+                    <figcaption className="art-gallery__caption">
+                      {image.caption}
+                      {image.credit !== null ? (
+                        <span className="art-gallery__credit">
+                          {IMAGE_CREDIT_LABEL} {image.credit}
+                        </span>
+                      ) : null}
+                    </figcaption>
+                  ) : null}
+                </figure>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )
+    }
+
     case 'list': {
       // `<ol>` ou `<ul>` conforme o dado, nunca CSS fingindo semantica: leitor
       // de tela anuncia "lista de N itens" a partir do elemento, e uma lista
