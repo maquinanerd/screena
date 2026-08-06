@@ -23,7 +23,12 @@ import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { Payload } from 'payload'
 
-import { apiKeyAuthorization, startCmsHarness, type CmsHarness } from './harness.js'
+import {
+  apiKeyAuthorization,
+  decodableJpegBytes,
+  startCmsHarness,
+  type CmsHarness,
+} from './harness.js'
 
 let harness: CmsHarness
 let payload: Payload
@@ -315,15 +320,11 @@ ${harness.serverLog().slice(-2000)}`,
   })
   ids.bylineAuthor = Number(byline.id)
 
-  // Midia REAL, com bytes de JPEG validos (cabecalho, nao nome de arquivo).
-  const jpeg = Buffer.from([
-    0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10,
-    ...Array.from('JFIF', (char) => char.charCodeAt(0)), 0,
-    0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00,
-    0xff, 0xc0, 0x00, 0x11, 0x08, 0x02, 0x76, 0x04, 0xb0,
-    0x03, 0x01, 0x22, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01,
-    0xff, 0xd9,
-  ])
+  // Midia REAL, com bytes de JPEG DECODIFICAVEIS — nao apenas cabecalho valido.
+  // A coleccao `media` gera miniatura via `imageSizes`, e para isso o sharp
+  // decodifica a imagem inteira; um arquivo so-cabecalho e recusado ja no
+  // `metadata()`. Ver `decodableJpegBytes` no harness.
+  const jpeg = await decodableJpegBytes(1200, 630)
 
   const makeMedia = async (label: string, fields: Record<string, unknown>) => {
     const created = await payload.create({
