@@ -32,6 +32,7 @@ import {
 import { toActor as resolveActor } from './actor.js'
 import { emitPublicationEvent, enforceEditorialGovernance } from './hooks/articles.js'
 import { EDITORIAL_ROLES, WORKFLOW_STATUSES } from './workflow.js'
+import { showsAutomationTab } from './admin/editorial-vocabulary.js'
 import { OUTBOX_STATUSES } from './outbox.js'
 import { SERVICE_ACCOUNT_SCOPES } from './outbox-api.js'
 
@@ -248,7 +249,7 @@ export const editorialBlocks = [
         options: [
           { label: 'YouTube', value: 'youtube' },
           { label: 'Vimeo', value: 'vimeo' },
-          { label: 'Interno — ainda não aparece no site', value: 'internal' },
+          { label: 'Interno — vira link, sem player', value: 'internal' },
         ],
         admin: {
           description:
@@ -259,6 +260,107 @@ export const editorialBlocks = [
       { name: 'url', type: 'text' as const },
       { name: 'title', type: 'text' as const },
       { name: 'credit', type: 'text' as const },
+    ],
+  },
+  {
+    slug: 'embed',
+    admin: blockRowLabel,
+    fields: [
+      blockIdField,
+      {
+        name: 'provider',
+        type: 'select' as const,
+        required: true,
+        label: 'Provedor',
+        options: [
+          { label: 'YouTube — vídeo incorporado', value: 'youtube' },
+          { label: 'Instagram — cartão com link', value: 'instagram' },
+          { label: 'X — cartão com link', value: 'x' },
+        ],
+        admin: {
+          // A DIFERENCA ESTA NO ROTULO, e ela e real: so o YouTube vira player
+          // de verdade. Instagram e X exigiriam o script deles, que nao carrega
+          // sem acao do usuario em pagina indexavel — entao o site desenha
+          // cartao proprio. Dizer isso aqui evita a surpresa depois de publicar.
+          description:
+            'Só o YouTube vira player. Instagram e X aparecem como cartão com link — o site não carrega script de terceiro.',
+        },
+      },
+      {
+        name: 'externalId',
+        type: 'text' as const,
+        required: true,
+        label: 'Identificador no provedor',
+        admin: { description: 'Extraído da URL. É com ele que o site monta o player.' },
+      },
+      { name: 'canonicalUrl', type: 'text' as const, required: true, label: 'Endereço canônico' },
+      { name: 'originalUrl', type: 'text' as const, required: true, label: 'Endereço colado' },
+      { name: 'caption', type: 'text' as const, label: 'Legenda' },
+      { name: 'authorName', type: 'text' as const, label: 'Autor no provedor' },
+      { name: 'excerpt', type: 'text' as const, label: 'Trecho' },
+    ],
+  },
+  {
+    slug: 'gallery',
+    admin: blockRowLabel,
+    fields: [
+      blockIdField,
+      {
+        name: 'items',
+        type: 'array' as const,
+        minRows: 1,
+        maxRows: 30,
+        label: 'Imagens',
+        // DIREITOS POR IMAGEM. Credito de foto e por foto: uma galeria com um
+        // credito so mente sobre todas as outras.
+        fields: [
+          {
+            name: 'media',
+            type: 'relationship' as const,
+            relationTo: 'media' as const,
+            required: true,
+            label: 'Imagem',
+          },
+          { name: 'alt', type: 'text' as const, required: true, label: 'Texto alternativo' },
+          { name: 'caption', type: 'text' as const, label: 'Legenda' },
+          { name: 'credit', type: 'text' as const, label: 'Crédito' },
+        ],
+      },
+      {
+        name: 'initialIndex',
+        type: 'number' as const,
+        min: 0,
+        max: 29,
+        label: 'Imagem de abertura',
+        admin: { description: 'Posição da primeira imagem, contando do zero. Vazio abre na primeira.' },
+      },
+    ],
+  },
+  {
+    slug: 'list',
+    admin: blockRowLabel,
+    fields: [
+      blockIdField,
+      {
+        name: 'ordered',
+        type: 'checkbox' as const,
+        defaultValue: false,
+        label: 'Lista numerada',
+        admin: {
+          description: 'Desmarcado usa marcadores; marcado numera os itens no site.',
+        },
+      },
+      {
+        name: 'items',
+        type: 'array' as const,
+        minRows: 1,
+        maxRows: 30,
+        label: 'Itens',
+        // TEXTO LIMPO, um por item — igual ao paragrafo. Nao ha markup aqui: o
+        // contrato recusa HTML, e a numeracao/marcador e decidida pelo
+        // `ordered`, nao escrita pelo redator.
+        fields: [{ name: 'text', type: 'text' as const, required: true, label: 'Texto' }],
+      },
     ],
   },
   {
@@ -288,15 +390,15 @@ export const editorialBlocks = [
         options: [
           { label: 'Filme', value: 'movie' },
           { label: 'Série', value: 'tv' },
-          { label: 'Temporada — ainda não aparece no site', value: 'season' },
-          { label: 'Episódio — ainda não aparece no site', value: 'episode' },
-          { label: 'Pessoa — ainda não aparece no site', value: 'person' },
-          { label: 'Personagem — ainda não aparece no site', value: 'character' },
-          { label: 'Franquia — ainda não aparece no site', value: 'franchise' },
+          { label: 'Temporada — vira nota, sem ficha', value: 'season' },
+          { label: 'Episódio — vira nota, sem ficha', value: 'episode' },
+          { label: 'Pessoa — vira nota, sem ficha', value: 'person' },
+          { label: 'Personagem — vira nota, sem ficha', value: 'character' },
+          { label: 'Franquia — vira nota, sem ficha', value: 'franchise' },
         ],
         admin: {
           description:
-            'Hoje o site só monta o cartão para filme e série. Os demais tipos são aceitos, mas o cartão não é exibido na matéria publicada.',
+            'O site monta ficha completa só para filme e série. Nos demais tipos, a sua nota aparece como texto — a ficha, não.',
         },
       },
       { name: 'entityId', type: 'text' as const, required: true },
@@ -536,7 +638,12 @@ export const Media: CollectionConfig = {
   admin: {
     useAsTitle: 'alt',
     group: 'Editorial',
-    defaultColumns: ['alt', 'licenseStatus', 'credit', 'updatedAt'],
+    // A MINIATURA VEM PRIMEIRO. Escolher foto por nome e errado para quem
+    // trabalha com imagem — e o seletor de relacionamento reusa estas colunas.
+    defaultColumns: ['filename', 'alt', 'licenseStatus', 'credit', 'updatedAt'],
+    // Busca por texto no acervo: alt, credito e fonte sao o que a redacao
+    // lembra de uma foto. Sem isto, achar imagem exige rolar a lista.
+    listSearchableFields: ['alt', 'credit', 'sourceName', 'rightsHolder', 'filename'],
     components: {
       edit: {
         // O estado de liberacao passa a ser a PRIMEIRA coisa visivel do
@@ -557,6 +664,12 @@ export const Media: CollectionConfig = {
     // simplesmente "some" com 404 sem nenhum erro no meio do caminho.
     staticDir: MEDIA_STATIC_DIR,
     mimeTypes: ['image/png', 'image/jpeg', 'image/webp', 'image/avif'],
+    // MINIATURA. Sem isto a lista e o seletor sao texto puro, e escolher uma
+    // foto vira adivinhacao pelo nome do arquivo.
+    adminThumbnail: 'thumbnail',
+    imageSizes: [
+      { name: 'thumbnail', width: 320, height: 240, position: 'centre' },
+    ],
   },
   access: {
     create: policy(editorialAssetAccess.create),
@@ -573,6 +686,9 @@ export const Media: CollectionConfig = {
     { name: 'rightsHolder', type: 'text' },
     {
       name: 'licenseStatus',
+      // A CELULA responde "da para usar?" em vez de ecoar o enum. O componente
+      // so desenha; quem decide e `mediaUsability`, pura e testada.
+      admin: { components: { Cell: '/src/admin/MediaUsabilityCell' } },
       type: 'select',
       required: true,
       // Default seguro: midia recem-enviada NAO publica ate decisao humana.
@@ -667,6 +783,47 @@ export const Articles: CollectionConfig = {
     // A ordem das abas e a ordem em que uma redacao humana trabalha. Antes
     // desta mudanca os SETE primeiros campos do formulario eram internos de
     // automacao, editaveis, e o titulo aparecia em oitavo lugar.
+      /* ================================================================
+       * CANVAS DE ESCRITA — campos de TOPO, fora do `tabs`.
+       *
+       * Estao aqui por uma razao mecanica, nao estetica: `admin.position:
+       * 'sidebar'` so e lido pelo particionador de `DocumentFields`, que
+       * percorre APENAS `collection.fields[]`. Dentro de `tabs` a propriedade
+       * typecheca e e ignorada em silencio (`fieldIsSidebar` tem um unico
+       * consumidor em todo o @payloadcms/ui). Enquanto tudo vivia dentro do
+       * `tabs`, a sidebar do painel era vazia por CONSTRUCAO.
+       *
+       * A ordem do array E o mecanismo de ordenacao: titulo, apoio, resumo e
+       * corpo aparecem antes das abas, que e o que faz a tela abrir escrevendo
+       * em vez de abrir num formulario.
+       * ================================================================ */
+      { name: 'title', type: 'text', required: true, label: 'Título' },
+      { name: 'subtitle', type: 'text', label: 'Linha de apoio' },
+      { name: 'summary', type: 'textarea', label: 'Resumo' },
+      { name: 'body', type: 'blocks', blocks: editorialBlocks, label: 'Corpo' },
+
+      /* ----------------------------------------------------------------
+       * SIDEBAR — o que a redacao consulta ENQUANTO escreve.
+       *
+       * Tambem de topo, e pelo mesmo motivo mecanico do canvas: `position:
+       * 'sidebar'` so e lido pelo particionador de `DocumentFields`, que
+       * percorre apenas `collection.fields[]`. Dentro do `tabs` a propriedade
+       * typecheca e e ignorada em silencio.
+       * ---------------------------------------------------------------- */
+      {
+        name: 'slug',
+        type: 'text',
+        label: 'Endereço da matéria (slug)',
+        index: true,
+        // Mesma coluna, mesma validacao, mesmo tipo: o componente so gera o
+        // valor a partir do titulo com a MESMA `canonicalizeSlug` que a
+        // autopublicacao ja usa, e para de gerar quando alguem edita a mao.
+        admin: {
+          position: 'sidebar',
+          components: { Field: '/src/admin/SlugField' },
+        },
+      },
+
     {
       type: 'tabs',
       tabs: [
@@ -676,19 +833,6 @@ export const Articles: CollectionConfig = {
           'O texto da materia. E por aqui que uma redacao humana comeca.',
         fields: [
         // --- Conteudo ---
-      { name: 'title', type: 'text', required: true, label: 'Título' },
-        { name: 'subtitle', type: 'text', label: 'Linha de apoio' },
-        {
-          name: 'slug',
-          type: 'text',
-          label: 'Endereço da matéria (slug)',
-          index: true,
-          // Mesma coluna, mesma validacao, mesmo tipo: o componente so gera o
-          // valor a partir do titulo com a MESMA `canonicalizeSlug` que a
-          // autopublicacao ja usa, e para de gerar quando alguem edita a mao.
-          admin: { components: { Field: '/src/admin/SlugField' } },
-        },
-        { name: 'summary', type: 'textarea', label: 'Resumo' },
         {
         name: 'contentType',
         type: 'select',
@@ -718,7 +862,6 @@ export const Articles: CollectionConfig = {
               'Só pt-BR é publicado hoje. Inglês e espanhol ficam em rascunho até revisão humana.',
           },
         },
-        { name: 'body', type: 'blocks', blocks: editorialBlocks, label: 'Corpo' },
         ],
       },
       {
@@ -1187,6 +1330,21 @@ export const Articles: CollectionConfig = {
         // bloqueios. Acentua-lo quebraria a navegacao — a melhoria de item 3 e
         // nos rotulos de CAMPO, nao no identificador da aba.
         label: 'Automacao (auditoria)',
+        // A aba some para quem ESCREVE numa materia manual: sao vinte campos de
+        // auditoria que nao dizem nada sobre o texto. Continua visivel quando a
+        // materia foi automatizada (a aba descreve algo que aconteceu) e para
+        // administrador (ela e a prova VISIVEL de que os campos sao read-only,
+        // e o E2E de governanca depende disso).
+        //
+        // Esconder e INTERFACE, nunca permissao: a recusa real segue em
+        // `HUMAN_FORBIDDEN_FIELDS`, aplicada a toda escrita humana.
+        admin: {
+          condition: (data, _siblingData, { user }) =>
+            showsAutomationTab({
+              autoPublished: (data as { autoPublished?: unknown } | null)?.autoPublished,
+              role: (user as { role?: unknown } | null)?.role,
+            }),
+        },
         description:
           'Rastro da publicação automática. Em matéria escrita por uma pessoa, esta aba fica vazia.',
         fields: [

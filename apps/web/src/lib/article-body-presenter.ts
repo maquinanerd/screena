@@ -87,13 +87,38 @@ export type ArticleBodyBlock =
   | {
       kind: "video";
       id: string;
-      provider: "youtube" | "vimeo";
+      provider: "youtube" | "vimeo" | "internal";
       href: string;
       title: string | null;
       credit: string | null;
     }
+  | { kind: "list"; id: string; ordered: boolean; items: string[] }
+  | {
+      kind: "embed";
+      /**
+       * `playerUrl` so existe para YouTube. Instagram e X viram CARTAO com
+       * link — carregar o script deles numa pagina indexavel e execucao de
+       * terceiro sem acao do usuario, que o contrato editorial recusa.
+       */
+      id: string;
+      provider: "youtube" | "instagram" | "x";
+      playerUrl: string | null;
+      href: string;
+      caption: string | null;
+      authorName: string | null;
+      excerpt: string | null;
+    }
+  | { kind: "gallery"; id: string; items: ArticleBodyImage[]; initialIndex: number }
   | { kind: "quote"; id: string; text: string; attribution: string | null }
   | { kind: "entityCard"; id: string; card: NewsEntityCard; note: string | null }
+  /**
+   * Entidade que o site nao consegue FICHAR (pessoa, temporada, episodio,
+   * personagem, franquia), mas sobre a qual a redacao escreveu uma nota.
+   *
+   * Existe para o texto nao sumir junto com a ficha: antes, `entityCard` de
+   * pessoa devolvia `null` e levava a nota do redator embora, sem erro nenhum.
+   */
+  | { kind: "entityNote"; id: string; note: string }
   | { kind: "factBox"; id: string; title: string; items: ArticleBodyFactItem[] }
   | { kind: "relatedContent"; id: string; items: ArticleBodyLink[] }
   | { kind: "sourceList"; id: string; items: ArticleBodyLink[] }
@@ -180,27 +205,35 @@ function externalHref(value: unknown, allowedHosts: ReadonlySet<string> | null):
 /* Blocos                                                             */
 /* ------------------------------------------------------------------ */
 
-function imageBlock(id: string, block: Record<string, unknown>): ArticleBodyBlock | null {
-  // O worker grava `publicPath`; `src` existe como tolerancia a linhas antigas.
+/**
+ * Uma imagem do corpo, ou `null` quando nao ha caminho utilizavel.
+ *
+ * Extraida de `imageBlock` para a galeria reusar: duas montagens paralelas
+ * divergiriam no primeiro campo novo, e a galeria e justamente onde uma imagem
+ * sem `credit` passa despercebida.
+ */
+function imageOf(block: Record<string, unknown> | null): ArticleBodyImage | null {
+  if (block === null) return null;
   const src = normalizeNewsLocalImagePath(
     text(block.publicPath) ?? text(block.src) ?? null,
   );
   if (src === null) return null;
-  // `alt` vazio e ACEITO (imagem decorativa); ausente vira string vazia em vez
-  // de bloquear o bloco. O que nao pode e `alt` inventado.
   const alt = typeof block.alt === "string" ? block.alt.trim() : "";
   return {
-    kind: "image",
-    id,
-    image: {
-      src,
-      alt,
-      caption: text(block.caption),
-      credit: text(block.credit),
-      width: positiveInt(block.width),
-      height: positiveInt(block.height),
-    },
+    src,
+    alt,
+    caption: text(block.caption),
+    credit: text(block.credit),
+    width: positiveInt(block.width),
+    height: positiveInt(block.height),
   };
+}
+
+function imageBlock(id: string, block: Record<string, unknown>): ArticleBodyBlock | null {
+  // O worker grava `publicPath`; `src` existe como tolerancia a linhas antigas.
+  // `alt` vazio e ACEITO (imagem decorativa); o que nao pode e `alt` inventado.
+  const image = imageOf(block);
+  return image === null ? null : { kind: "image", id, image };
 }
 
 /**
@@ -214,9 +247,24 @@ function imageBlock(id: string, block: Record<string, unknown>): ArticleBodyBloc
  */
 function videoBlock(id: string, block: Record<string, unknown>): ArticleBodyBlock | null {
   const provider = text(block.provider);
+  if (provider === "internal") {
+    // `internal` NAO tem player proprio, mas pode ter endereco. Antes o bloco
+    // inteiro sumia mesmo com URL preenchida — o video existia, o link existia,
+    // e a pagina nao mostrava nada. Agora vira link quando ha para onde apontar.
+    const internalHref = externalHref(block.url, null);
+    return internalHref === null
+      ? null
+      : {
+          kind: "video",
+          id,
+          provider: "internal",
+          href: internalHref,
+          title: text(block.title),
+          credit: text(block.credit),
+        };
+  }
   if (provider !== "youtube" && provider !== "vimeo") {
-    // `internal` nao tem destino publico nesta fatia; provider desconhecido
-    // nunca vira link.
+    // Provider desconhecido nunca vira link.
     return null;
   }
   const externalId = text(block.externalId);
@@ -298,8 +346,15 @@ function entityCardBlock(
   const kind = text(block.entityKind);
   const entityId = text(block.entityId);
   if (kind === null || entityId === null) return null;
+  const note = text(block.note);
   const hydrated = hydration.entityCards.get(`${kind}:${entityId}`);
-  if (hydrated === undefined) return null;
+  if (hydrated === undefined) {
+    // SEM FICHA, MAS COM NOTA: o site so hidrata `movie` e `tv`. Para os outros
+    // cinco tipos legais no contrato, devolver `null` apagava tambem o que a
+    // pessoa escreveu. A nota sobrevive sozinha; a ficha, que exigiria titulo e
+    // slug reais, nao e inventada.
+    return note === null ? null : { kind: "entityNote", id, note };
+  }
   // `buildNewsEntityCard` e o MESMO construtor da ficha do rodape: exige titulo
   // e slug reais e nunca inventa nota. Reusa-lo mantem uma unica definicao de
   // "ficha honesta" no produto.
@@ -431,6 +486,57 @@ function mapBlock(
       return imageBlock(id, block);
     case "video":
       return videoBlock(id, block);
+    case "list": {
+      // FALLBACK POR ITEM, nao por bloco: um item vazio no meio nao pode
+      // derrubar a lista inteira. Se sobrar zero item, ai sim o bloco nao tem o
+      // que desenhar e some — mesmo criterio do paragrafo vazio.
+      const raw = Array.isArray(block.items) ? block.items : [];
+      const items = raw
+        .map((item) =>
+          typeof item === "string"
+            ? text(item)
+            : text((item as { text?: unknown } | null)?.text),
+        )
+        .filter((item): item is string => item !== null);
+      if (items.length === 0) return null;
+      return { kind: "list", id, ordered: block.ordered === true, items };
+    }
+    case "embed": {
+      const provider = block.provider;
+      if (provider !== "youtube" && provider !== "instagram" && provider !== "x") return null;
+      // O ENDERECO e obrigatorio: sem ele o bloco nao degrada para link, e um
+      // embed que nao carrega vira buraco na materia.
+      const href = externalHref(text(block.canonicalUrl) ?? text(block.originalUrl), null);
+      if (href === null) return null;
+      // O player e montado AQUI, do id — nunca vem pronto do dado.
+      const externalId = text(block.externalId);
+      const playerUrl =
+        provider === "youtube" && externalId !== null && /^[A-Za-z0-9_-]{11}$/.test(externalId)
+          ? `https://www.youtube-nocookie.com/embed/${externalId}`
+          : null;
+      return {
+        kind: "embed",
+        id,
+        provider,
+        playerUrl,
+        href,
+        caption: text(block.caption),
+        authorName: text(block.authorName),
+        excerpt: text(block.excerpt),
+      };
+    }
+    case "gallery": {
+      const raw = Array.isArray(block.items) ? block.items : [];
+      // FALLBACK POR IMAGEM: uma imagem sem caminho nao derruba a galeria.
+      const items = raw
+        .map((item) => imageOf(item as Record<string, unknown> | null))
+        .filter((item): item is ArticleBodyImage => item !== null);
+      if (items.length === 0) return null;
+      const wanted = typeof block.initialIndex === "number" ? block.initialIndex : 0;
+      // Indice fora da faixa abre na primeira, em vez de abrir em nada.
+      const initialIndex = Number.isInteger(wanted) && wanted >= 0 && wanted < items.length ? wanted : 0;
+      return { kind: "gallery", id, items, initialIndex };
+    }
     case "quote": {
       const value = text(block.text);
       return value === null

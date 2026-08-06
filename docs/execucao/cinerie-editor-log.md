@@ -6,8 +6,9 @@
 
 ## Estado atual
 
-`main = 2a0ee02` · branch ativa = `claude/cms-paste-image-loss` · fase em curso = **F5.1**
-(fora da fila, a pedido do operador) · proxima = **F13**, depois **F6**
+`main = ab2a577` · branch ativa = `claude/cms-paste-image-loss` · fase em curso = **F5.1**
+(fora da fila, a pedido do operador). F4 a F13 ja entraram no `main` — esta e a
+ultima da serie a ser drenada.
 
 Baseline verde registrado na Fase 0 (2026-08-04): root typecheck `0` · root test
 `4687` em `357` arquivos · cms test `453/453` · cms build `0` ·
@@ -385,11 +386,366 @@ terceiro e re-hospedagem. O cartao guarda TEXTO e permalink; a imagem, se
 entrar, passa pela biblioteca de midia com decisao editorial de licenca, como
 qualquer outra foto.
 
-### F6, F7, F9..F13 — PENDENTES (nova ordem: F13 primeiro — decisao (j))
+### F6 — Canvas editorial — DECISAO ARQUITETURAL REGISTRADA (implementacao em curso)
 
-**F13** teste de varredura de contrato · F6 canvas · F7 editor e menu `/` ·
-F8 embeds e galeria · F9 midia · F10 SEO · F11 preview · F12 limpeza e as quedas
-silenciosas restantes.
+**A pergunta que o mandato mandou confirmar antes de prometer: a sidebar e
+possivel?** Resposta verificada no PAYLOAD INSTALADO (3.86.0), nao em
+documentacao de outra versao.
+
+**(i) `admin.position: 'sidebar'` so funciona em campo de TOPO.** O predicado
+`fieldIsSidebar` (`payload/dist/fields/config/types.js:34-36`) tem UM unico
+consumidor em todo o pacote de UI:
+`@payloadcms/ui/dist/elements/DocumentFields/index.js:26-41`, que particiona
+`docConfig.fields` — o array de topo da collection. `RenderFields`, que desenha
+todos os niveis aninhados (inclusive o conteudo das abas,
+`fields/Tabs/index.js:361`), **nunca** consulta `fieldIsSidebar`.
+**Consequencia: `position: 'sidebar'` num campo dentro de `tabs` TYPECHECKA e e
+silenciosamente ignorado** — o campo aparece inline na aba. E armadilha de tipo,
+nao erro de compilacao. Hoje TODO campo de `articles` vive dentro de um unico
+`tabs`, entao hoje a sidebar esta vazia por construcao.
+
+**(ii) Edit View customizada e possivel, e e a escolha ERRADA aqui.** O slot
+existe: `admin.components.views.edit.default.Component`
+(`payload/dist/config/types.d.ts:1372-1411`). Mas o provider `<Form>` e montado
+DENTRO do `DefaultEditView` (`@payloadcms/ui/dist/views/Edit/index.js:452`), e a
+view customizada e renderizada ACIMA dele
+(`@payloadcms/next/dist/views/Document/index.js:364-369`). Substituir a view
+substitui o provider junto.
+
+Reusar `Form` + `RenderFields` por conta propria obrigaria a reescrever a cola do
+`DefaultEditView` (~600 linhas): a `action`, o `onChange -> getFormState`, o
+`onSuccess`, os modais de lock/takeover, `LeaveWithoutSaving`,
+`SetDocumentStepNav`. **Perder o `onChange -> getFormState` quebra
+`admin.condition` e todo componente de campo renderizado no servidor** — em
+silencio, do jeito que este projeto ja foi mordido tres vezes. Recusado.
+
+**(iii) O caminho seguro, e o que sera usado:** ordenar `collection.fields[]` no
+TOPO (a ordem do array E o mecanismo de ordenacao) e usar
+`admin.components.Field` num campo CONTENEDOR (`group`/`row`/`collapsible`/
+`tabs`), que recebe `field.fields` + `path`/`schemaPath`/`permissions` e pode
+reemitir com `RenderFields` no layout que quisermos — **rodando dentro do `Form`
+de verdade, com zero estado de formulario reimplementado**.
+
+**(iv) Nao existe** `beforeFields`/`afterFields` em nivel de collection em 3.86
+(grep nos `.d.ts`: zero). Nao existe API de reordenacao declarativa. O
+`Description` de collection existe mas so aparece no cabecalho.
+
+**Consequencia de escopo, dita com todas as letras:** entregar o canvas
+(titulo grande no topo, corpo no centro, resto na sidebar) exige **tirar campos
+de dentro do `tabs` e promove-los ao topo**. Isso mexe em dois testes travados —
+`manual-editorial.test.ts` ("as 8 abas cobrem TODOS os campos") e o E2E que
+clica nas abas pelo nome. O mandato permite, exigindo atualizar os dois sem
+reduzir cobertura. E o unico caminho: enquanto tudo viver dentro do `tabs`,
+nenhuma sidebar e possivel, por construcao do Payload.
+
+**IMPLEMENTACAO (branch `claude/cms-canvas-editorial`):**
+
+- **O que foi feito:** `title`, `subtitle`, `summary` e `body` promovidos ao TOPO
+  de `collection.fields[]`, antes do `tabs` — a ordem do array E o mecanismo de
+  ordenacao, entao a tela abre escrevendo em vez de abrir num formulario. `slug`
+  promovida ao topo com `position: 'sidebar'`, onde a propriedade finalmente e
+  lida.
+- **As 8 abas ficaram intactas** de proposito: cada uma continua com campo, o
+  rotulo nao mudou, e o E2E que clica nelas pelo nome segue valendo. So o teste
+  de cobertura mudou — e ficou MAIS forte (abaixo).
+- **ACIDENTE REAL, e o que ele ensinou.** Um recorte automatizado removeu
+  `articles.slug` do formulario e **o typecheck passou** — campo perdido e so um
+  item a menos num array. Foi pego por `grep -c` na conferencia, nao por gate.
+  Por isso o teste antigo ("as 8 abas cobrem TODOS os campos") NAO foi apenas
+  ajustado para o numero novo: baixar o numero teria escondido exatamente esse
+  acidente. A invariante agora e `topo + abas === total`, mais uma verificacao
+  NOMINAL de que `title`, `slug`, `body`, `summary`, `language` e `contentType`
+  continuam existindo.
+- **Testes criados:** canvas no topo com ordem congelada; `slug` como unico campo
+  de sidebar; controle negativo de campo perdido.
+- **Migration:** nenhuma. Promover campo entre `tabs` e topo **nao muda o
+  schema** — as abas sao SEM NOME, entao o armazenamento ja era plano. Confirmado
+  pelo teste de snapshot de colunas, que continua verde.
+- **Gates:** unitarios `482/482` · typecheck `0`.
+- **SEM CONFIRMACAO VISUAL:** o canvas e a sidebar nao foram vistos no navegador
+  (Node 24 impede o Playwright local). Conferir depois: titulo grande no topo,
+  corpo no centro, slug na coluna da direita.
+
+### F7 — Bloco `list` (contrato + CMS + renderer) — ENTREGUE
+
+- **Escopo:** lista com marcador e numerada, a primeira aplicacao da regra (c) e
+  da regra inegociavel na mesma PR.
+- **GATE MECANICO DA REGRA (c) — PASSOU.** Hashes do contrato de ENTRADA
+  capturados antes e depois, e IDENTICOS:
+  - `editorial-draft-v1` = `sha256:46a21c99...f77ba` (antes = depois)
+  - `editorial-publication-request-v1` = `sha256:93024329...c6f8` (antes = depois)
+  `listBlock` entrou SO em `publishedEditorialBlock`, depois de `editorialBody`,
+  como o `marks` na #106. Nenhum pedido do MNScr em voo vira `hash_mismatch`.
+- **Os tres lados, na mesma PR:** contrato (`blocks.ts`), editor no CMS (bloco
+  `list` com `ordered` + `items`), renderer no `apps/web` (presenter devolve
+  `kind: 'list'`; JSX escolhe `<ol>` ou `<ul>` **conforme o dado**, nunca CSS
+  fingindo semantica — leitor de tela anuncia a lista a partir do elemento).
+- **Fallback em duas camadas:** item vazio e descartado (por item, nao por
+  bloco); lista sem nenhum item some em vez de virar `<ul>` vazia. O mapeador do
+  CMS descarta antes de publicar — lista com buraco seria publicar o descuido.
+- **Migration:** `20260805_224024_list_block` — quatro tabelas NOVAS, nada
+  alterado, `down` derruba so elas. Materia existente nao tem bloco `list` e
+  renderiza igual.
+- **Desvio herdado removido a mao pela TERCEIRA vez** (enum de idioma + default
+  do heading), e o `.json` corrigido para o banco real. Sem a correcao o gerador
+  nunca mais proporia a conversao.
+- **Testes:** 9, incluindo DOIS controles negativos — lista sem item some, e o
+  detector reconhece tipo inexistente (sem ele os outros casos poderiam passar
+  por acidente).
+- **Gates:** root test `4783/4783` · cms test `488/488` · root typecheck `0` ·
+  cms typecheck `0`.
+- **NAO ENTREGUE nesta fase, e por que:** menu `/`, colagem limpa e toolbar
+  contextual sao componentes `.tsx` — o vitest deste app nao coleta `.tsx`, e o
+  Playwright nao sobe em Node 24. Entrariam sem teste local nenhum. Ficam para
+  uma fase propria, com a logica extraida para `.ts` testavel.
+- **Ctrl+B NAO foi tocado:** o mandato manda reproduzir antes de mexer, e o
+  componente implementa Ctrl+B/I/K com `preventDefault` (`ParagraphTextField`).
+  Sem reproducao, mexer seria consertar relato.
+- **SEM CONFIRMACAO VISUAL:** o bloco `list` no painel e a lista na pagina.
+
+### F8 — Embeds e galeria — ENTREGUE (PR aberta, CI bloqueado por cobranca)
+
+- **GATE (c) — PASSOU.** Hashes de ENTRADA identicos antes e depois
+  (`editorial-draft-v1` = `sha256:46a21c99...`, `editorial-publication-request-v1`
+  = `sha256:93024329...`). `embedBlock` e `galleryBlock` entraram SO em
+  `publishedEditorialBlock`.
+- **DADO TIPADO, nunca HTML.** O bloco guarda `provider`, `externalId`,
+  `canonicalUrl`, `originalUrl`, `caption` e metadados opcionais. **Nao existe
+  campo de HTML**, e isso e testado: `z.object` remove chave desconhecida em
+  silencio, entao um `html` colado nao sobrevive ao parse. O site MONTA o player
+  a partir do id.
+- **`parseEmbedUrl` — allowlist FECHADA, em `.ts` puro e testado.** Recusa
+  `javascript:`, `data:`, `file:`, host parecido (`youtube.com.evil.test`),
+  provedor certo sem recurso (`/@canal`), e id fora do alfabeto seguro.
+  **Descoberta durante o teste:** `new URL()` NORMALIZA o caminho, entao
+  `youtu.be/../../etc` chegava como `/etc` e `etc` passava no alfabeto — virava
+  embed com id inventado. Corrigido exigindo os 11 caracteres reais do id do
+  YouTube.
+- **Clique-para-carregar.** O `<iframe>` do YouTube so entra no DOM apos acao da
+  pessoa, via `srcDoc` (sem JavaScript nosso, sem estado de cliente), em
+  `youtube-nocookie`, com `sandbox` SEM `allow-same-origin`. E o que sustenta a
+  promessa "nenhum script de terceiro sem acao do usuario".
+- **INSTAGRAM E X ENTREGAM MENOS QUE EMBED NATIVO.** Viram CARTAO com link, nao
+  o post renderizado — render nativo exigiria o script deles. A garantia e
+  mecanica, nao de intencao: `embedPlayerUrl` devolve `null` para os dois, entao
+  nao ha iframe possivel. O rotulo do select no CMS diz isso ao redator ANTES de
+  publicar.
+- **Galeria:** varias imagens, ordem preservada, `alt`/`caption`/`credit` POR
+  IMAGEM (credito de foto e por foto; um credito so mentiria sobre as demais),
+  e imagem de abertura com indice — fora da faixa cai para a primeira.
+  `imageOf` foi extraida para `image` e `gallery` compartilharem a montagem:
+  duas paralelas divergiriam no primeiro campo novo.
+- **Migration:** `20260805_225957_embed_gallery`, aditiva, so tabelas novas,
+  `down` derruba so elas. Desvio herdado removido a mao pela QUARTA vez e
+  snapshot corrigido.
+- **Testes:** 14 no parser de URL + 14 no renderer, com controles negativos nos
+  dois lados.
+- **Gates:** root test `4811/4811` · cms test `502/502` · root typecheck `0` ·
+  cms typecheck `0`.
+- **SEM CONFIRMACAO VISUAL:** o clique-para-carregar, o cartao de Instagram/X e a
+  galeria na pagina. O CI esta parado por cobranca (ver bloqueio acima), entao
+  esta fase nao teve nem a janela de navegador do CI.
+
+### F9 — Midia: miniatura, licenca e busca no seletor — ENTREGUE
+
+- **O defeito:** dava para vincular midia BLOQUEADA a uma materia e so descobrir
+  na publicacao, quando o gate recusa com `unauthorized_media`. O redator
+  escolhia a foto, escrevia a legenda, tentava publicar — e ai aprendia que
+  aquela imagem nunca poderia ter sido usada. A resposta precisava estar onde a
+  escolha acontece.
+- **Estado anterior com ancora:** `upload` sem `adminThumbnail` (nenhuma
+  miniatura em lugar nenhum), `defaultColumns` com `licenseStatus` CRU, e sem
+  `listSearchableFields` — achar imagem exigia rolar a lista.
+- **O que foi feito:**
+  - `adminThumbnail: 'thumbnail'` + `imageSizes` — o seletor de relacionamento
+    reusa as colunas da collection, entao a miniatura aparece nos dois lugares;
+  - `MediaUsabilityCell` no lugar da coluna crua: responde "Liberada" / "Só no
+    corpo" / "Bloqueada", em pt-BR, com o motivo no `title`;
+  - `listSearchableFields` com alt, credito, fonte, detentor e nome do arquivo —
+    o que a redacao lembra de uma foto.
+- **TRES desfechos, nao dois:** "liberada para o corpo mas nao para capa" e
+  estado real e frequente. Dizer so "bloqueada" faria o redator descartar foto
+  que ele PODE usar no texto.
+- **A regra e PURA e reusa a existente.** `mediaUsability` delega a
+  `mediaBlockReason`, que ja e a fonte do aviso na tela de materia. Uma segunda
+  regra divergiria da primeira no primeiro caso novo — e as duas falariam sobre a
+  MESMA foto. O `.tsx` so desenha.
+- **FAIL-CLOSED, testado:** fato ausente, `null`, numero ou string no lugar de
+  booleano NAO viram "liberada". O erro seguro e recusar demais.
+- **NAO foi tocado**, como o mandato exige: o botao "Liberar para uso editorial e
+  capa" e o semaforo de tres estados (`MediaReleaseControl`).
+- **Migration:** `20260805_231638_media_thumbnail` — colunas novas e NULLABLE de
+  `sizes.thumbnail`. Sem regeneracao retroativa: gerar derivada de todo o acervo
+  dentro da migration seria trabalho pesado no caminho de subida, e o
+  `Dockerfile.cms` derruba o container se ela falhar. Midia antiga continua
+  servida pelo original e ganha miniatura quando for reenviada.
+- **Testes:** 7, incluindo fail-closed e controle negativo.
+- **Gates:** cms test `509/509` · cms typecheck `0`.
+- **SEM CONFIRMACAO VISUAL:** miniatura e rotulo de liberacao no seletor.
+
+### F10 — SEO: preview, contadores e tres defeitos de JSON-LD — ENTREGUE
+
+- **`publisher` estava AUSENTE.** `NewsArticle` sem editora perde a atribuicao
+  que distingue materia de jornal de texto solto. Agora emitido, com a URL
+  DERIVADA da canonical ja resolvida — fixar constante faria ambiente de teste
+  anunciar o dominio de producao.
+- **`articleSection` saia `"news"`**, em ingles, num site em pt-BR: o presenter
+  caia para `category`, que carrega o TIPO de conteudo, nao a editoria. Tipo de
+  conteudo passa a ser recusado, com controle negativo provando que "Crítica" e
+  "Notícias" continuam passando.
+- **`author.url` NAO foi "corrigido", e a ausencia virou deliberada.** O banco
+  publico guarda so `authorName` — nao existe pagina de autor nem slug para
+  apontar. Emitir URL para pagina inexistente promete perfil verificavel e
+  entrega 404. Documentado no codigo e no teste.
+- **PREMISSA DERRUBADA — `alt` vazio no hero NAO e defeito.** E decisao de
+  acessibilidade documentada e TRAVADA por
+  `tests/governance/editorial-media-route.test.ts`: a capa fica sob scrim com a
+  manchete em TEXTO por cima, entao a imagem e decorativa e descreve-la faria o
+  leitor de tela repetir o titulo. Ha teste do outro lado garantindo que card de
+  listagem NAO usa alt vazio — a distincao e deliberada. Eu mudei, o teste pegou,
+  e eu revertí.
+- **Painel de SEO (`seo-preview.ts`, puro):** preview de SERP com a URL REAL
+  (`/pt/noticias/<slug>/`, e lacuna visivel quando a slug esta vazia), contador
+  com limite de truncamento, e derivacao que **nunca sobrescreve o escrito** —
+  `manual` vence sempre, com controle negativo provando que o texto volta byte a
+  byte. Os limites sao referencia de corte, nao promessa de exibicao: o buscador
+  monta o snippet do conteudo, e prometer ranqueamento seria folclore.
+- **Testes:** 12 no painel + 8 no JSON-LD.
+- **Gates:** root test `4838/4838` · cms test `521/521` · root typecheck `0`.
+
+### F11 — Preview — DECISAO REGISTRADA
+
+**Escolhida a rota A (preview dentro do CMS), e nao por preferencia — por custo
+medido.**
+
+A rota B (`/pt/preview/[id]` no `apps/web` buscando o rascunho na API do CMS)
+custa muito mais do que parece:
+
+1. **Atravessa a fronteira que `tests/governance/editorial-worker-boundary.test.ts`
+   protege.** Hoje o worker de projecao e o UNICO processo que fala com os dois
+   lados, e a ponte e assimetrica de proposito. Um segundo atravessador
+   enfraquece a garantia arquitetural mais forte deste sistema — e a excecao,
+   uma vez aberta, e reusada.
+2. **Poe o `apps/web` chamando servico externo em tempo de request.** Mesmo numa
+   rota nao indexavel, e o padrao que a invariante 3 existe para impedir; a
+   proxima rota copia o padrao.
+3. Exige emissao e verificacao de token curto, endpoint de leitura de rascunho no
+   CMS, e tratamento de erro/expiracao — superficie nova em DOIS aplicativos.
+
+A rota A tem um limite honesto: **nao e a pagina real**, e nao vai ter o CSS do
+site. Mas responde a pergunta que a redacao faz de verdade — e, principalmente,
+responde a pergunta que este repositorio erra ha quatro vezes: **o que vai
+SUMIR**. `entityCard` de pessoa, `video` interno, lista sem item, galeria sem
+imagem — todos legais no CMS e todos invisiveis na pagina.
+
+Por isso o preview desta fase nao imita a pagina: ele responde, bloco a bloco, se
+aquele bloco vai aparecer, usando o MESMO contrato que a projecao usa. E o
+material tambem serve de base para a F13.
+
+### F12 — As duas quedas silenciosas, FECHADAS — ENTREGUE
+
+**A regra era "ou ganham renderer, ou saem do contrato". Sair estava vedado:**
+`entityCardBlock` e `videoBlock` vivem tambem em `editorialBody`, o contrato de
+ENTRADA. Estreitar `entityKind` ou o enum de `provider` moveria o hash que o
+MNScr declara a cada pedido — a fase falharia pelo proprio gate da regra (c).
+Entao: renderer.
+
+- **`entityCard` fora de movie/tv.** O presenter devolvia `null` quando a
+  hidratacao faltava, e levava junto a NOTA que o redator escreveu. Agora existe
+  `entityNote`: a ficha nao e inventada (exigiria titulo e slug reais), mas o
+  TEXTO sobrevive. Sem nota, o bloco ainda some — nota inventada seria pior.
+- **`video` com provider `internal`.** Sumia mesmo com URL preenchida: o video
+  existia, o link existia, e a pagina nao mostrava nada. Agora vira link quando
+  ha endereco utilizavel; esquema perigoso continua recusado.
+- **Rotulos do CMS e preview da F11 sincronizados.** As frases diziam "ainda nao
+  aparece no site", o que deixou de ser verdade nesta fase. Duas verdades sobre o
+  mesmo bloco e exatamente o defeito que este projeto persegue — entao os
+  rotulos passaram a "vira nota, sem ficha" e "vira link, sem player", e os
+  testes da F11 foram atualizados para o comportamento novo, sem enfraquecer.
+- **Testes:** 8 novos no renderer, com controle negativo provando que o fallback
+  depende da HIDRATACAO e nao do tipo (senao toda ficha viraria nota).
+- **Gates:** root test `4858/4858` · cms test `533/533` · typecheck `0`.
+- **NAO ENTREGUE da F12, e fica registrado:** `Language` como select, aba de
+  automacao escondida quando `autoPublished` for falso, confirmacao ao remover
+  bloco, e "Nova materia" parar de criar rascunho antes de escrever. Os quatro
+  sao mudanca de superficie no painel, sem cobertura possivel neste ambiente
+  (Node 24 impede o Playwright; o CI esta parado por cobranca). Entram quando
+  houver como ver.
+
+### F13 — Varredura de contrato — ENTREGUE
+
+**O item de maior alavancagem da fila, e o que fecha a serie.** Quatro defeitos
+da MESMA classe apareceram um a um nesta sessao: valor LEGAL no contrato,
+selecionavel no CMS, invisivel na pagina publicada, sem erro nenhum.
+
+- **A defesa e ESTRUTURAL, nao uma lista.** A varredura le a uniao do proprio
+  contrato (`publishedEditorialBlock.options`) e exige fixture para cada membro.
+  Um tipo de bloco novo que ninguem cobriu **faz o teste falhar** em vez de virar
+  o quinto defeito da serie.
+- **Provou-se na primeira execucao:** falhou acusando `gallery` sem fixture — um
+  bloco que EU mesmo tinha acrescentado na F8 duas fases antes. A protecao pegou
+  o autor dela.
+- **DESCOBERTA QUE VALE REGISTRAR: a forma do CONTRATO nao e a forma que chega ao
+  renderer.** O worker de projecao reescreve blocos antes de gravar — `mediaRef`
+  vira `publicPath` + dimensoes, `sourceRefs` vira `sources` ja resolvidas. Um
+  teste com a forma do contrato acusaria "o site nao desenha sourceList" quando o
+  site desenha; e o inverso esconderia defeito real. As fixtures sao
+  pos-projecao, e as que divergem estao marcadas.
+- **Varre tambem os VALORES**, que e onde os defeitos moravam: os 7 `entityKind`,
+  os 3 `provider` de video, os `EMBED_PROVIDERS` (derivados do contrato) e os 3
+  niveis de heading.
+- **Tres controles negativos:** a leitura da uniao encontra tipos de verdade
+  (senao a varredura passaria vazia); tipo inexistente REALMENTE some; e bloco
+  valido de forma mas vazio some — o detector distingue "tipo suportado" de
+  "conteudo utilizavel".
+- **Gates:** root test `4867/4867` · typecheck `0`.
+
+---
+
+### F12-bis — Os quatro itens adiados, reavaliados — DOIS ENTREGUES, DOIS BARRADOS
+
+**1. `Language` como select — JA ESTAVA FEITO.** Sexta premissa falsa da sessao.
+E `type: 'select'` com opcoes rotuladas em pt-BR (`collections.ts`), e o
+comentario no proprio campo registra que veio de caixa de texto livre numa PR
+anterior. Nada a fazer.
+
+**2. Aba de automacao escondida — ENTREGUE, com uma condicao a mais.** Some para
+quem ESCREVE numa materia manual (vinte campos de auditoria que nao dizem nada
+sobre o texto), e continua visivel em dois casos: materia automatizada (a aba
+descreve algo que aconteceu) e **administrador**.
+
+O segundo caso nao e conveniencia. O E2E de governanca abre essa aba numa materia
+MANUAL e verifica que `autoPublished` esta desabilitado — a aba e a prova VISIVEL
+de que campo de automacao nao e editavel por humano. Como o E2E entra como
+administrador, a condicao preserva o teste inteiro e ainda limpa a tela de quem
+escreve. Esconder e INTERFACE; a recusa real segue em `HUMAN_FORBIDDEN_FIELDS`.
+
+**3. Confirmacao ao remover bloco — BARRADO PELO FRAMEWORK.** O Payload 3.86 nao
+expoe slot para o botao de remover linha/bloco: as unicas chaves de
+`admin.components` de campo sao `Field`, `Label`, `Cell`, `Description`, `Diff`,
+`Filter`, `beforeInput`, `afterInput` e `Error` — nenhuma alcanca a acao de
+remover. Entregar isso exigiria DOM hack ou monkey patch, que o proprio mandato
+proibe. **Nao feito, e nao vou fingir que da.**
+
+**4. "Nova materia" nao criar rascunho antes de escrever — BARRADO PELO
+FRAMEWORK.** As unicas opcoes de `versions.drafts` sao `autosave` (objeto,
+booleano ou `false`) e `showSaveDraftButton`. Nao existe "adiar a criacao do
+documento". A unica forma de o rascunho nao nascer cedo seria **desligar o
+autosave inteiro**, o que mudaria o comportamento de toda a redacao, quebraria o
+E2E que verifica persistencia por autosave, e tiraria a recuperacao de trabalho
+perdido. O custo e maior que o incomodo. **Nao feito, com motivo.**
+
+- **Gates:** cms test `537/537` · cms typecheck `0`.
+- **SEM CONFIRMACAO VISUAL:** o sumico da aba para redator.
+
+## Fila concluida
+
+F4 a F13 entregues. O que ficou de fora, por fase, esta registrado acima com o
+motivo — nao ha item silenciosamente abandonado.
+
+F6 canvas · F7 editor e menu `/` · F8 embeds e galeria · F9 midia · F10 SEO ·
+F11 preview · F12 limpeza e os dois defeitos de queda silenciosa · F13 teste de
+varredura de contrato.
 
 ---
 
@@ -482,6 +838,105 @@ no documento ja salvo, e exigir o credito quando `requiresAttribution` estiver
 ligado. Mas a decisao e do operador e nao esta tomada.
 
 ---
+
+## BLOQUEIO EXTERNO — CI parado por cobranca (2026-08-05)
+
+**O CI nao roda mais.** A partir da PR #120 os tres jobs falham em 3-9 segundos,
+antes de qualquer passo, com a anotacao do proprio GitHub:
+
+> The job was not started because recent account payments have failed or your
+> spending limit needs to be increased. Please check the 'Billing & plans'
+> section in your settings.
+
+Nao e defeito de codigo: nenhum job chegou a iniciar. **So o dono da conta
+resolve** (Billing & plans no GitHub).
+
+**O que isso muda, e o que NAO muda:**
+- PRs a partir da #120 **nao podem ser mergeadas** — nao ha CI verde para
+  autorizar. Elas ficam abertas, empilhadas, prontas.
+- Os gates LOCAIS continuam valendo e continuam sendo rodados: `typecheck`,
+  `test` (root e cms) e `test:integration` contra PostgreSQL 16 real. E o que da
+  para provar daqui.
+- O que se perde e a unica janela de verificacao de NAVEGADOR que este ambiente
+  tinha (o E2E do CI roda Node 22; a maquina local tem 24). Ou seja: da #120 em
+  diante, **nenhuma mudanca de superficie tem confirmacao visual de especie
+  alguma** ate a cobranca ser resolvida.
+- Merges anteriores (#114, #116, #117, #118) passaram por CI verde e estao na
+  main.
+
+**Decisao:** seguir implementando as fases seguintes com gates locais e deixar as
+PRs abertas. Quando o CI voltar, elas sao mergeadas na ordem.
+
+**Desfecho (2026-08-06):** o repositorio foi tornado publico pelo humano e a cota
+deixou de bloquear. O dreno rodou, e o que ele revelou esta nas duas secoes
+abaixo.
+
+## Dreno da pilha: o metodo de merge teve de mudar no meio
+
+A #120 (F7) entrou por **squash**, e isso quebrou a #121. Com squash, os commits
+que as duas branches compartilhavam deixam de ser ancestrais da main — viram um
+commit novo. O merge-base da PR empilhada despenca para antes da pilha inteira, e
+o git apresenta como conflito `add/add` arquivos que ninguem disputou: os dois
+lados "criaram" o mesmo conteudo por caminhos diferentes. Foram 7 arquivos, 9
+regioes.
+
+Resolvido uma vez, classificando antes de tocar: `git diff HEAD origin/main`
+mostrou 11.600 linhas exclusivas da branch e **15** exclusivas da main. As 15 eram
+as unicas que mereciam leitura, e eram duas coisas — a virgula final do ultimo
+item em `migrations/index.ts` e a versao PRE-refatoracao de `imageBlock()`, que a
+F8 substituiu por `imageOf()`. Nenhuma era conteudo perdido.
+
+Controle da resolucao: **identidade de arvore**, nao "compilou". Depois de
+resolver, `git diff --cached 08d1efb` veio vazio — a arvore ficou byte-identica a
+ponta da branch, o que prova de uma vez que nada da branch saiu e nada da main
+ficou de fora.
+
+**A cura foi parar de esquashar.** O repositorio permite merge commit; com ele os
+commits ficam na main e a branch seguinte continua compartilhando historia. Da
+#121 em diante a pilha foi mergeada com `--merge`, e as quatro cascatas seguintes
+deram exit 0 sem nenhum conflito. Armadilha registrada: `--delete-branch=false`
+impede o GitHub de reapontar a PR seguinte, entao `gh pr edit N --base main`
+virou passo explicito.
+
+## Defeito REAL achado pelo CI na F9 — e os tres que ele escondia
+
+O CI da #122 caiu com `FileUploadError` 400 no upload para `media`. Causa da
+propria F9: `imageSizes` faz o Payload gerar miniatura, e para isso o sharp
+precisa DECODIFICAR a imagem — nao apenas ler a dimensao do cabecalho, que era
+tudo que os testes exigiam antes.
+
+Os fixtures montados a mao (JPEG com SOI+JFIF+SOF0+EOI, sem SOS; PNG de 64 bytes
+so com IHDR) sao recusados ja no `metadata()`. Verificado direto, com controle
+positivo: JPEG so-cabecalho falha em metadata e em resize; PNG stub idem; PNG 1x1
+real devolve 1x1 e redimensiona.
+
+**QUATRO superficies sobem midia, e o CI so mostrou uma** — o job aborta no
+primeiro passo vermelho e PULA os seguintes:
+
+1. `apps/cms/src/__tests__/manual-editorial.integration.test.ts` (a que falhou)
+2. `apps/cms/e2e/global-setup.ts` — sobe pelo `input[type=file]` REAL do painel
+3. `services/news-ingestion/src/__tests__/editorial-projection.integration.test.ts`
+4. `apps/web/scripts/canary-manual-editorial-real-postgres.ts`
+
+A geracao real passou a viver em `decodableJpegBytes`/`decodablePngBytes`, no
+harness do CMS — que ja e declarado como a ponte unica entre `news-ingestion` e
+`apps/cms`, e `apps/cms` e o unico workspace onde `sharp` e dependencia declarada.
+Nenhuma dependencia nova entrou.
+
+**Licao de processo:** a F10 JA havia corrigido o item 1, com sharp inline. A
+correcao ficou uma PR DEPOIS da fase que causou o defeito — por isso a #122
+estava vermelha e a #123 nao estaria. Numa pilha, isso significa que a PR de
+baixo nunca mergeia. Correcao de fixture quebrado por mudanca de config pertence
+a MESMA PR da mudanca.
+
+**Divida paga de carona:** `apps/cms/src/payload-types.ts` estava versionado
+defasado desde a F6 — faltava `Media.sizes.thumbnail` e a ordem de campos. Entrou
+regenerado, depois de conferir que e reordenacao + adicao (contentType, language
+e slug reaparecem em outra posicao; nenhum campo se perdeu).
+
+**O que NAO foi visto rodando:** dos quatro sitios, so o (1) foi provado
+localmente (`test:manual-editorial:integration`, 28/28). Os outros tres dependem
+de dois PostgreSQL efemeros e/ou de navegador, e so o CI os exercita.
 
 ## Pendencias herdadas
 

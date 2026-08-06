@@ -21,6 +21,7 @@ import {
   STATUS_TONES,
   TRANSITION_LABELS,
   transitionsFrom,
+  showsAutomationTab,
   waitingForLabel,
 } from '../admin/editorial-vocabulary.js'
 import { canTransition, WORKFLOW_STATUSES, type WorkflowStatus } from '../workflow.js'
@@ -232,5 +233,36 @@ describe('partialAdvanceMessage', () => {
 
   it('sem papel humano, aponta a automacao em vez de frase quebrada', () => {
     expect(partialAdvanceMessage('ready_to_publish', [])).toContain('automação')
+  })
+})
+
+describe('visibilidade da aba de automacao', () => {
+  it('materia AUTOMATIZADA mostra a aba para qualquer papel', () => {
+    for (const role of ['writer', 'reviewer', 'editor', 'editor_in_chief', 'administrator']) {
+      expect(showsAutomationTab({ autoPublished: true, role }), role).toBe(true)
+    }
+  })
+
+  it('materia MANUAL esconde a aba de quem escreve, e mantem para administrador', () => {
+    for (const role of ['writer', 'reviewer', 'editor', 'editor_in_chief']) {
+      expect(showsAutomationTab({ autoPublished: false, role }), role).toBe(false)
+    }
+    // O administrador mantem a aba porque ela e a prova VISIVEL de que os campos
+    // de automacao sao somente leitura — e o E2E de governanca depende disso.
+    expect(showsAutomationTab({ autoPublished: false, role: 'administrator' })).toBe(true)
+  })
+
+  it('FAIL-VISIBLE: dado ausente nao esconde auditoria de administrador', () => {
+    // Esconder por engano e pior que mostrar de mais: a aba e read-only, e o
+    // custo de exibi-la a mais e ruido, nao risco.
+    expect(showsAutomationTab({ autoPublished: undefined, role: 'administrator' })).toBe(true)
+    expect(showsAutomationTab({ autoPublished: null, role: 'administrator' })).toBe(true)
+  })
+
+  it('valor truthy que NAO e `true` nao conta como automatizada', () => {
+    // `autoPublished` e booleano no schema; string "false" ou 1 seriam dado
+    // corrompido, e tratar como automatizada mentiria sobre a origem.
+    expect(showsAutomationTab({ autoPublished: 'false', role: 'writer' })).toBe(false)
+    expect(showsAutomationTab({ autoPublished: 1, role: 'writer' })).toBe(false)
   })
 })

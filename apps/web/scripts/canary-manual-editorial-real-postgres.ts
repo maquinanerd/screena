@@ -49,17 +49,11 @@ function record(name: string, ok: boolean, detail: string): void {
   console.log(`[${ok ? 'PASS' : 'FAIL'}] ${String(step)}. ${name} - ${detail}`)
 }
 
-/** Bytes de um JPEG minimo VALIDO (cabecalho real, nao extensao de arquivo). */
-function jpegBytes(): Buffer {
-  return Buffer.from([
-    0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10,
-    ...Array.from('JFIF', (char) => char.charCodeAt(0)), 0,
-    0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00,
-    0xff, 0xc0, 0x00, 0x11, 0x08, 0x02, 0x76, 0x04, 0xb0,
-    0x03, 0x01, 0x22, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01,
-    0xff, 0xd9,
-  ])
-}
+// Os bytes de imagem vinham montados a mao aqui: cabecalho JPEG valido, porem
+// sem SOS e sem dados de varredura. Isso deixou de bastar quando a coleccao
+// `media` ganhou `imageSizes` — gerar miniatura obriga o sharp a DECODIFICAR, e
+// um arquivo so-cabecalho e recusado ja no `metadata()`. A geracao real vem do
+// harness do CMS, importado logo abaixo junto com `startCmsHarness`.
 
 function isEmpty(value: unknown): boolean {
   if (value === null || value === undefined) return true
@@ -297,7 +291,9 @@ async function main(): Promise<void> {
   process.env.EDITORIAL_AUTO_PUBLISH_ENABLED = 'false'
   record('ambiente sem automacao do MNScr', true, 'nenhuma MNSCR_*/EDITORIAL_AUTO_PUBLISH_* presente')
 
-  const { startCmsHarness } = await import('../../cms/src/__tests__/harness.ts')
+  const { startCmsHarness, decodableJpegBytes } = await import(
+    '../../cms/src/__tests__/harness.ts'
+  )
   const { startScreenDbHarness } = await import(
     '../../../services/news-ingestion/src/__tests__/screen-db-harness.ts'
   )
@@ -373,7 +369,7 @@ async function main(): Promise<void> {
     }
 
     /* --- 2. Midia licenciada --------------------------------------- */
-    const bytes = jpegBytes()
+    const bytes = await decodableJpegBytes(1200, 630)
     const media = await payload.create({
       collection: 'media',
       data: {

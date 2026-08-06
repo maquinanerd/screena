@@ -209,8 +209,95 @@ export const publishedParagraphBlock = paragraphBlock.extend({
   marks: z.array(textMark).max(LIMITS.marks).optional(),
 })
 
+/**
+ * Lista com marcador ou numerada. SO NA SAIDA.
+ *
+ * Segue a mesma regra do `marks`, e pelo mesmo motivo: os contratos de ENTRADA
+ * sao comparados por hash com igualdade ESTRITA, e o MNScr declara esse hash a
+ * cada pedido. Acrescentar `list` em `editorialBody` — mesmo como membro novo de
+ * uniao — mudaria o JSON Schema de entrada e faria todo pedido em voo virar
+ * `hash_mismatch`. Lista nasce na redacao humana, nao no pipeline; ela so
+ * precisa existir depois que a materia e publicada.
+ *
+ * `items` guarda TEXTO LIMPO, um por item — sem markup, como o paragrafo. O
+ * `ordered` decide `<ol>` ou `<ul>` no site; nao ha "estilo" livre.
+ */
+export const listBlock = z.object({
+  ...blockBase,
+  type: z.literal('list'),
+  ordered: z.boolean(),
+  items: z.array(plainText(LIMITS.shortText)).min(1, 'lista sem itens').max(30),
+})
+
+/**
+ * Provedores de incorporacao aceitos. Allowlist FECHADA, nao validacao de URL.
+ *
+ * O redator cola uma URL; o CMS extrai o id e guarda DADO TIPADO. O site monta o
+ * que for preciso a partir desse id. Em nenhum momento HTML ou script de
+ * terceiro atravessa o editor — e a diferenca entre "incorporar um video" e
+ * "executar o que colarem".
+ */
+export const EMBED_PROVIDERS = ['youtube', 'instagram', 'x'] as const
+export type EmbedProvider = (typeof EMBED_PROVIDERS)[number]
+
+/**
+ * Incorporacao por DADO, nunca por markup. SO NA SAIDA (regra do `marks`).
+ *
+ * `externalId` e o que o site usa para montar o player do YouTube. `canonicalUrl`
+ * e a forma normalizada (sem rastreador, sem `si=`), e e o que vira link quando
+ * o embed nao carrega. `originalUrl` fica para auditoria: e o que a pessoa
+ * colou, e diverge da canonica com frequencia.
+ *
+ * NAO ha campo de HTML, e isso e deliberado: se existisse, o oEmbed do provedor
+ * acabaria guardado nele e o site passaria a injetar markup de terceiro.
+ */
+export const embedBlock = z.object({
+  ...blockBase,
+  type: z.literal('embed'),
+  provider: z.enum(EMBED_PROVIDERS),
+  externalId: plainText(LIMITS.shortText),
+  canonicalUrl: httpUrl,
+  originalUrl: httpUrl,
+  caption: optionalPlainText(LIMITS.shortText),
+  /**
+   * Metadados colhidos NA COLAGEM, dentro do painel — nunca no render publico.
+   * Opcionais de proposito: se o provedor nao responder, o cartao degrada para
+   * link em vez de a publicacao falhar.
+   */
+  authorName: optionalPlainText(LIMITS.shortText),
+  excerpt: optionalPlainText(LIMITS.shortText),
+})
+
+/**
+ * Galeria: varias imagens do acervo, em ordem, com direitos por imagem.
+ *
+ * `mediaRef` aponta para a midia ja aprovada — a galeria nao cria nem libera
+ * nada. `alt`, `caption` e `credit` viajam por IMAGEM porque credito de foto e
+ * por foto, e uma galeria com um credito so mente sobre as demais.
+ */
+export const galleryBlock = z.object({
+  ...blockBase,
+  type: z.literal('gallery'),
+  items: z
+    .array(
+      z.object({
+        mediaRef: stableId,
+        alt: plainText(LIMITS.shortText),
+        caption: optionalPlainText(LIMITS.shortText),
+        credit: optionalPlainText(LIMITS.shortText),
+      }),
+    )
+    .min(1, 'galeria sem imagem')
+    .max(30),
+  /** Indice da imagem de abertura. Fora da faixa, o site usa a primeira. */
+  initialIndex: z.number().int().min(0).max(29).optional(),
+})
+
 export const publishedEditorialBlock = z.discriminatedUnion('type', [
   publishedParagraphBlock,
+  listBlock,
+  embedBlock,
+  galleryBlock,
   headingBlock,
   imageBlock,
   videoBlock,

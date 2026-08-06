@@ -292,11 +292,64 @@ export function buildArticleJsonLd(facts: ArticleSeoFacts): Record<string, unkno
   // Quando nao ha data de atualizacao, a de publicacao e a verdade disponivel.
   const modified = facts.updatedAtIso ?? facts.publishedAtIso
   if (modified !== null) jsonLd.dateModified = modified
-  if (author !== '') jsonLd.author = { '@type': 'Person', name: author }
-  if (section !== '') jsonLd.articleSection = section
+  if (author !== '') {
+    // SEM `url`, e de proposito. O banco publico guarda so `authorName` — nao ha
+    // pagina de autor, nem slug para apontar. Emitir `author.url` para uma
+    // pagina que nao existe e pior que omitir: promete perfil verificavel e
+    // entrega 404. Quando a pagina de autor existir, o campo entra aqui.
+    jsonLd.author = { '@type': 'Person', name: author }
+  }
+
+  /*
+   * PUBLISHER — estava AUSENTE, e a ausencia e um defeito de verdade.
+   *
+   * `NewsArticle` sem `publisher` perde a atribuicao de quem publicou, que e
+   * justamente o que distingue uma materia de jornal de um texto solto. O nome
+   * vem de `siteName` e a URL e a RAIZ da canonical ja resolvida — derivar em
+   * vez de fixar evita que um ambiente de teste anuncie o dominio de producao.
+   */
+  const publisherUrl = originOf(canonical.href)
+  jsonLd.publisher = {
+    '@type': 'Organization',
+    name: facts.siteName,
+    ...(publisherUrl === null ? {} : { url: publisherUrl }),
+  }
+
+  /*
+   * `articleSection` so entra quando e SECAO EDITORIAL de verdade.
+   *
+   * O presenter caia para `category`, que carrega o TIPO DE CONTEUDO — e o
+   * resultado era `articleSection: "news"`, em ingles, num site em pt-BR.
+   * "news" nao e editoria: e o formato do texto. Secao inventada e pior que
+   * secao ausente, porque o buscador a usa para agrupar assunto.
+   */
+  if (section !== '' && !isContentTypeName(section)) jsonLd.articleSection = section
   if (facts.imageUrl !== null) jsonLd.image = [facts.imageUrl]
 
   return jsonLd
+}
+
+/** Raiz (`https://host`) de uma URL absoluta, ou `null` se ela nao for uma. */
+function originOf(href: string): string | null {
+  try {
+    return new URL(href).origin
+  } catch {
+    return null
+  }
+}
+
+/**
+ * O valor e um TIPO DE CONTEUDO disfarcado de secao?
+ *
+ * Lista fechada e minuscula: sao os valores de `contentType` do contrato, que
+ * vazavam para `articleSection` pelo fallback do presenter. Uma editoria de
+ * verdade chamada "Review" existiria em portugues ("Crítica") — a comparacao e
+ * feita sem acento e em minuscula justamente para nao recusar isso.
+ */
+const CONTENT_TYPE_NAMES = new Set(['news', 'review', 'feature', 'interview', 'list', 'guide'])
+
+function isContentTypeName(value: string): boolean {
+  return CONTENT_TYPE_NAMES.has(value.trim().toLowerCase())
 }
 
 /* ------------------------------------------------------------------ */

@@ -287,6 +287,16 @@ export interface Media {
   height?: number | null;
   focalX?: number | null;
   focalY?: number | null;
+  sizes?: {
+    thumbnail?: {
+      url?: string | null;
+      width?: number | null;
+      height?: number | null;
+      mimeType?: string | null;
+      filesize?: number | null;
+      filename?: string | null;
+    };
+  };
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -296,13 +306,7 @@ export interface Article {
   id: number;
   title: string;
   subtitle?: string | null;
-  slug?: string | null;
   summary?: string | null;
-  contentType: 'news' | 'feature' | 'review' | 'guide' | 'list' | 'interview' | 'evergreen';
-  /**
-   * Só pt-BR é publicado hoje. Inglês e espanhol ficam em rascunho até revisão humana.
-   */
-  language: 'pt-BR' | 'en' | 'es';
   body?:
     | (
         | {
@@ -386,6 +390,69 @@ export interface Article {
              * Âncora deste trecho. Gerada automaticamente.
              */
             blockId: string;
+            /**
+             * Só o YouTube vira player. Instagram e X aparecem como cartão com link — o site não carrega script de terceiro.
+             */
+            provider: 'youtube' | 'instagram' | 'x';
+            /**
+             * Extraído da URL. É com ele que o site monta o player.
+             */
+            externalId: string;
+            canonicalUrl: string;
+            originalUrl: string;
+            caption?: string | null;
+            authorName?: string | null;
+            excerpt?: string | null;
+            id?: string | null;
+            blockName?: string | null;
+            blockType: 'embed';
+          }
+        | {
+            /**
+             * Âncora deste trecho. Gerada automaticamente.
+             */
+            blockId: string;
+            items?:
+              | {
+                  media: number | Media;
+                  alt: string;
+                  caption?: string | null;
+                  credit?: string | null;
+                  id?: string | null;
+                }[]
+              | null;
+            /**
+             * Posição da primeira imagem, contando do zero. Vazio abre na primeira.
+             */
+            initialIndex?: number | null;
+            id?: string | null;
+            blockName?: string | null;
+            blockType: 'gallery';
+          }
+        | {
+            /**
+             * Âncora deste trecho. Gerada automaticamente.
+             */
+            blockId: string;
+            /**
+             * Desmarcado usa marcadores; marcado numera os itens no site.
+             */
+            ordered?: boolean | null;
+            items?:
+              | {
+                  text: string;
+                  id?: string | null;
+                }[]
+              | null;
+            id?: string | null;
+            blockName?: string | null;
+            blockType: 'list';
+          }
+        | {
+            /**
+             * Âncora deste trecho. Gerada automaticamente.
+             */
+            blockId: string;
             text: string;
             attribution?: string | null;
             sourceRef?: string | null;
@@ -456,6 +523,12 @@ export interface Article {
           }
       )[]
     | null;
+  slug?: string | null;
+  contentType: 'news' | 'feature' | 'review' | 'guide' | 'list' | 'interview' | 'evergreen';
+  /**
+   * Só pt-BR é publicado hoje. Inglês e espanhol ficam em rascunho até revisão humana.
+   */
+  language: 'pt-BR' | 'en' | 'es';
   /**
    * Não bloqueia a publicação, mas matéria sem capa perde espaço nas listas e no compartilhamento.
    */
@@ -968,6 +1041,20 @@ export interface MediaSelect<T extends boolean = true> {
   height?: T;
   focalX?: T;
   focalY?: T;
+  sizes?:
+    | T
+    | {
+        thumbnail?:
+          | T
+          | {
+              url?: T;
+              width?: T;
+              height?: T;
+              mimeType?: T;
+              filesize?: T;
+              filename?: T;
+            };
+      };
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -976,10 +1063,7 @@ export interface MediaSelect<T extends boolean = true> {
 export interface ArticlesSelect<T extends boolean = true> {
   title?: T;
   subtitle?: T;
-  slug?: T;
   summary?: T;
-  contentType?: T;
-  language?: T;
   body?:
     | T
     | {
@@ -1028,6 +1112,51 @@ export interface ArticlesSelect<T extends boolean = true> {
               url?: T;
               title?: T;
               credit?: T;
+              id?: T;
+              blockName?: T;
+            };
+        embed?:
+          | T
+          | {
+              blockId?: T;
+              provider?: T;
+              externalId?: T;
+              canonicalUrl?: T;
+              originalUrl?: T;
+              caption?: T;
+              authorName?: T;
+              excerpt?: T;
+              id?: T;
+              blockName?: T;
+            };
+        gallery?:
+          | T
+          | {
+              blockId?: T;
+              items?:
+                | T
+                | {
+                    media?: T;
+                    alt?: T;
+                    caption?: T;
+                    credit?: T;
+                    id?: T;
+                  };
+              initialIndex?: T;
+              id?: T;
+              blockName?: T;
+            };
+        list?:
+          | T
+          | {
+              blockId?: T;
+              ordered?: T;
+              items?:
+                | T
+                | {
+                    text?: T;
+                    id?: T;
+                  };
               id?: T;
               blockName?: T;
             };
@@ -1090,6 +1219,9 @@ export interface ArticlesSelect<T extends boolean = true> {
               blockName?: T;
             };
       };
+  slug?: T;
+  contentType?: T;
+  language?: T;
   heroMedia?: T;
   gallery?: T;
   authors?: T;
