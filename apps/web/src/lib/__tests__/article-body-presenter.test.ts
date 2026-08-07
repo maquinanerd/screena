@@ -10,6 +10,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  bodyBlocksShowImage,
   buildArticleBodyBlocks,
   collectArticleBodyReferences,
   type ArticleBodyHydration,
@@ -367,5 +368,71 @@ describe("coleta de referencias a resolver", () => {
 
   it("entrada nao-lista nao produz consulta nenhuma", () => {
     expect(collectArticleBodyReferences(null)).toEqual({ entities: [], articleRefs: [] });
+  });
+});
+
+describe("o corpo mostra alguma imagem?", () => {
+  // A nota de transparencia da materia afirmava "Imagens meramente
+  // ilustrativas" em pagina sem nenhuma imagem. A pergunta e feita sobre os
+  // blocos JA MAPEADOS de proposito: e o mapeamento que decide o que sobrevive.
+  it("bloco de imagem com caminho local conta", () => {
+    const blocks = buildArticleBodyBlocks([
+      { type: "image", id: "img1", publicPath: "/media/editorial/ab/abc.jpg", alt: "a" },
+    ]);
+    expect(bodyBlocksShowImage(blocks)).toBe(true);
+  });
+
+  it("bloco de imagem RECUSADO pelo mapeador nao conta", () => {
+    // O caso que separa "a coluna tem imagem" de "a tela mostra imagem": a URL
+    // absoluta e descartada, e ai nao ha imagem nenhuma sobre a qual avisar.
+    const blocks = buildArticleBodyBlocks([
+      { type: "image", id: "img1", publicPath: "https://cdn.terceiro.test/foto.jpg", alt: "a" },
+      { type: "paragraph", id: "p1", text: "Texto." },
+    ]);
+    expect(blocks).toHaveLength(1);
+    expect(bodyBlocksShowImage(blocks)).toBe(false);
+  });
+
+  it("galeria conta", () => {
+    const blocks = buildArticleBodyBlocks([
+      {
+        type: "gallery",
+        id: "g1",
+        items: [{ publicPath: "/media/editorial/ab/abc.jpg", alt: "a" }],
+      },
+    ]);
+    expect(bodyBlocksShowImage(blocks)).toBe(true);
+  });
+
+  it("ficha COM poster conta; sem poster, nao", () => {
+    const withPoster = buildArticleBodyBlocks(
+      [{ type: "entityCard", id: "e1", entityKind: "movie", entityId: "10" }],
+      hydration(),
+    );
+    expect(bodyBlocksShowImage(withPoster)).toBe(true);
+
+    const withoutPoster = buildArticleBodyBlocks(
+      [{ type: "entityCard", id: "e1", entityKind: "movie", entityId: "10" }],
+      hydration({ entityCards: new Map([["movie:10", { ...MOVIE, posterPath: null }]]) }),
+    );
+    expect(withoutPoster).toHaveLength(1);
+    expect(bodyBlocksShowImage(withoutPoster)).toBe(false);
+  });
+
+  it("corpo so de texto, video, embed e citacao nao conta", () => {
+    // `video` e `embed` sao LINK/player, nao imagem editorial da materia.
+    const blocks = buildArticleBodyBlocks([
+      { type: "paragraph", id: "p1", text: "Texto." },
+      { type: "heading", id: "h1", level: 2, text: "Titulo" },
+      { type: "quote", id: "q1", text: "Citacao." },
+      { type: "video", id: "v1", provider: "youtube", externalId: "dQw4w9WgXcQ" },
+      { type: "divider", id: "d1" },
+    ]);
+    expect(blocks.length).toBeGreaterThan(0);
+    expect(bodyBlocksShowImage(blocks)).toBe(false);
+  });
+
+  it("corpo vazio nao conta", () => {
+    expect(bodyBlocksShowImage([])).toBe(false);
   });
 });
