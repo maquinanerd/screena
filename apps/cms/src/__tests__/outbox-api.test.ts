@@ -45,11 +45,18 @@ describe('escopos de service account', () => {
       'draft_ingest',
       'publication_projection',
       'editorial_auto_publish',
+      'editorial_media_ingest',
     ])
     // `editorial_auto_publish` (FASE 2F) e disjunto dos outros dois: quem pede
     // publicacao nao drena a fila, e quem drena a fila nao publica.
     expect(hasScope(['editorial_auto_publish'], 'publication_projection')).toBe(false)
     expect(hasScope(['publication_projection'], 'editorial_auto_publish')).toBe(false)
+    // `editorial_media_ingest` e separado de `draft_ingest` porque a foto e o
+    // unico dado que atravessa a fronteira como BYTES e que, uma vez no acervo,
+    // e servido publicamente. Quem so escreve texto nao ganha essa capacidade.
+    expect(hasScope(['draft_ingest'], 'editorial_media_ingest')).toBe(false)
+    expect(hasScope(['editorial_media_ingest'], 'draft_ingest')).toBe(false)
+    expect(hasScope(['editorial_media_ingest'], 'publication_projection')).toBe(false)
     expect(hasScope(['draft_ingest'], 'draft_ingest')).toBe(true)
     expect(hasScope(['draft_ingest'], 'publication_projection')).toBe(false)
   })

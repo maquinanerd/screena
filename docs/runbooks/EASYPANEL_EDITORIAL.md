@@ -182,13 +182,19 @@ Duas contas, **escopos disjuntos**:
 
 | Conta | Escopo | Usada por | Pode publicar? |
 |---|---|---|---|
-| ingestão | `draft_ingest` | MNScr | **não** |
+| ingestão de texto | `draft_ingest` | MNScr | **não** |
+| ingestão de foto | `editorial_media_ingest` | MNScr | **não** |
 | projeção | `publication_projection` | worker | **não** |
 | autopublicação | `editorial_auto_publish` | MNScr | **sim** |
 
-Nunca dê dois desses escopos à mesma conta. Um booleano genérico de "automação"
-daria ao MNScr o direito de drenar a fila de publicação e ao worker o direito de
-criar rascunho.
+Nunca dê `publication_projection` junto com qualquer outro. Um booleano genérico
+de "automação" daria ao MNScr o direito de drenar a fila de publicação e ao
+worker o direito de criar rascunho.
+
+`editorial_media_ingest` é separado de `draft_ingest` **de propósito**: a foto é o
+único dado que atravessa a fronteira como **bytes** e o único que, uma vez no
+acervo, é servido publicamente. Quem só escreve texto não ganha essa capacidade.
+Operação e contrato da rota: [`../operations/editorial-media-ingest.md`](../operations/editorial-media-ingest.md).
 
 `editorial_auto_publish` é o **único** que publica, e o CMS trata quem o tem como
 um ator diferente (`automation_publisher`, ver

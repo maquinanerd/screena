@@ -191,7 +191,7 @@ export interface ServiceAccount {
   /**
    * Poderes EXPLICITOS. Um booleano generico de automacao daria ao MNScr o direito de consumir a outbox e ao worker de projecao o direito de criar drafts. Lista vazia = conta sem nenhum poder.
    */
-  scopes?: ('draft_ingest' | 'publication_projection' | 'editorial_auto_publish')[] | null;
+  scopes?: ('draft_ingest' | 'publication_projection' | 'editorial_auto_publish' | 'editorial_media_ingest')[] | null;
   /**
    * Nunca registre a chave aqui. A API key vive so no Payload.
    */
@@ -274,6 +274,10 @@ export interface Media {
     y?: number | null;
   };
   contentHash?: string | null;
+  /**
+   * Preenchido pela ingestao automatica (POST /api/internal/editorial-media). Junto com a URL de origem, e o que faz o reenvio da mesma foto encontrar esta entrada em vez de criar outra. Vazio = foto enviada por uma pessoa no painel.
+   */
+  ingestedForArticle?: (number | null) | Article;
   provenanceType: 'external_source' | 'cinerie_catalog' | 'cinerie_editorial' | 'licensed_media' | 'human_input';
   restrictions?: string[] | null;
   updatedAt: string;
@@ -466,7 +470,7 @@ export interface Article {
              */
             blockId: string;
             /**
-             * Hoje o site só monta o cartão para filme e série. Os demais tipos são aceitos, mas o cartão não é exibido na matéria publicada.
+             * O site monta ficha completa só para filme e série. Nos demais tipos, a sua nota aparece como texto — a ficha, não.
              */
             entityKind: 'movie' | 'tv' | 'season' | 'episode' | 'person' | 'character' | 'franchise';
             entityId: string;
@@ -1028,6 +1032,7 @@ export interface MediaSelect<T extends boolean = true> {
         y?: T;
       };
   contentHash?: T;
+  ingestedForArticle?: T;
   provenanceType?: T;
   restrictions?: T;
   updatedAt?: T;

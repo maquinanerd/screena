@@ -24,16 +24,24 @@ import type { OutboxStatus } from './outbox.js'
  *   draft_ingest            cria/atualiza rascunho; NAO publica
  *   editorial_auto_publish  pede publicacao automatica; NAO consome a outbox
  *   publication_projection  consome a outbox; NAO publica no Payload
+ *   editorial_media_ingest  sobe FOTO para uma materia; NAO cria materia
  *
- * `draft_ingest` e `editorial_auto_publish` podem coexistir numa conta (o MNScr
- * usa os dois modos). `publication_projection` fica SOZINHO na conta do worker:
- * quem drena a fila nao tem por que criar conteudo, e quem cria conteudo nao tem
- * por que drenar a fila.
+ * `draft_ingest`, `editorial_auto_publish` e `editorial_media_ingest` podem
+ * coexistir numa conta (o MNScr usa os tres modos). `publication_projection`
+ * fica SOZINHO na conta do worker: quem drena a fila nao tem por que criar
+ * conteudo, e quem cria conteudo nao tem por que drenar a fila.
+ *
+ * `editorial_media_ingest` e separado de `draft_ingest` de proposito, e nao por
+ * simetria: a foto e o unico dado que atravessa a fronteira como BYTES, e o
+ * unico que, uma vez no acervo, e servido publicamente. Dar essa capacidade a
+ * quem so precisa escrever texto seria alargar o raio de estrago de uma chave
+ * vazada sem nenhum ganho.
  */
 export const SERVICE_ACCOUNT_SCOPES = [
   'draft_ingest',
   'publication_projection',
   'editorial_auto_publish',
+  'editorial_media_ingest',
 ] as const
 export type ServiceAccountScope = (typeof SERVICE_ACCOUNT_SCOPES)[number]
 
