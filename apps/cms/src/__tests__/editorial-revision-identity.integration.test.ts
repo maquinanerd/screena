@@ -481,6 +481,176 @@ describe('guardas que so existem quando a materia e encontrada', () => {
 })
 
 /* ------------------------------------------------------------------ */
+/* 2-bis. A DECLARACAO nao desliga a guarda                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * As guardas julgam a intencao RESOLVIDA, nao a declarada.
+ *
+ * O desvio era este: `staleRevision` lia `request.publicationIntent` — o que o
+ * cliente DIZ — e so disparava para `update`. A cota e a persistencia liam
+ * `resolvedIntent`, derivado do banco. Bastava rotular o pedido de `publish`
+ * para a guarda se calar enquanto a persistencia fazia `UPDATE` do mesmo jeito.
+ *
+ * Nao havia truque nenhum a fazer: o contrato PROIBE `targetArticleId` em
+ * `publish`, entao o pedido "de criacao" que atualizava materia existente
+ * passava na validacao de forma sem uma unica divergencia visivel — e voltava
+ * `201`, como se tivesse criado.
+ */
+describe('guarda burlavel pelo corpo do pedido', () => {
+  it('declarar `publish` sobre revisao JA APLICADA vira CONFLICT, nao UPDATE silencioso', async () => {
+    const cluster = `cluster-${randomUUID().slice(0, 8)}`
+    const slug = `intent-mentiroso-${randomUUID().slice(0, 8)}`
+
+    const first = await publish(
+      revisionBody({
+        cluster,
+        revision: 5,
+        slugSuggestion: slug,
+        intent: 'publish',
+        title: 'Texto original que NAO pode ser sobrescrito',
+      }),
+    )
+    expect(first.status).toBe(201)
+    const articleId = String(first.body.articleId)
+
+    // A MESMA revisao 5, reenviada como se fosse criacao. O hash bate (mesmo
+    // cluster, mesma revisao), entao `idempotencyConflict` nao pega: quem tem de
+    // pegar e `staleRevision` — e ele so pega se ler a intencao resolvida.
+    //
+    // `revisionBody` sorteia um `requestId` novo a cada chamada, e essa e a
+    // diferenca que separa este caso do retry legitimo (coberto logo abaixo):
+    // outro pedido trazendo a mesma revisao e duplicata; o MESMO pedido chegando
+    // duas vezes e o HTTP que se perdeu no caminho.
+    const smuggled = await publish(
+      revisionBody({
+        cluster,
+        revision: 5,
+        slugSuggestion: slug,
+        intent: 'publish',
+        title: 'Texto contrabandeado pela declaracao de intent',
+      }),
+    )
+
+    expect(smuggled.status).toBe(409)
+    expect(reasonCodes(smuggled.body)).toContain('stale_revision')
+    // A divergencia entre o declarado e o resolvido chega ao emissor NOMEADA.
+    expect(warningCodes(smuggled.body)).toContain('PUBLICATION_INTENT_DIVERGENTE')
+
+    // O ponto do teste: a materia nao foi tocada. Antes da correcao este mesmo
+    // pedido respondia 201 e o titulo abaixo seria o contrabandeado.
+    const doc = await articleById(articleId)
+    expect(String(doc.title)).toBe('Texto original que NAO pode ser sobrescrito')
+    expect(Number(doc.automationSourceRevision)).toBe(5)
+
+    // Nem duplicou, nem consumiu cota de atualizacao.
+    expect(await articlesForCluster(cluster)).toHaveLength(1)
+    expect(await counterFor('article_update', articleId)).toBe(0)
+  })
+
+  it('o RETRY do mesmo pedido continua idempotente, e nao vira CONFLICT', async () => {
+    // O outro lado da guarda recem-ligada, e o motivo de a leitura do consumo
+    // anterior ter subido para antes dela. Um retry carrega, por definicao, a
+    // revisao ja aplicada — se `staleRevision` julgasse antes de saber que
+    // aquele `requestId` ja foi processado, o produtor que so quer confirmar o
+    // desfecho de um HTTP perdido levaria `409` no lugar da confirmacao.
+    const cluster = `cluster-${randomUUID().slice(0, 8)}`
+    const body = revisionBody({
+      cluster,
+      revision: 1,
+      slugSuggestion: `retry-idempotente-${randomUUID().slice(0, 8)}`,
+      intent: 'publish',
+    })
+
+    const first = await publish(body)
+    expect(first.status).toBe(201)
+    const articleId = String(first.body.articleId)
+
+    // O MESMO corpo, byte a byte — inclusive o `requestId`.
+    const retry = await publish(body)
+
+    expect(retry.status).toBe(201)
+    expect(retry.body.idempotent).toBe(true)
+    expect(reasonCodes(retry.body)).toContain('ALREADY_CONSUMED')
+    expect(String(retry.body.articleId)).toBe(articleId)
+    expect(await articlesForCluster(cluster)).toHaveLength(1)
+    // Nada foi reaplicado: o retry nao consome cota de atualizacao.
+    expect(await counterFor('article_update', articleId)).toBe(0)
+  })
+
+  it('declarar `publish` com bytes diferentes na mesma revisao segue CONFLICT', async () => {
+    // Regressao do caminho que ja funcionava: a correcao nao pode abrir a porta
+    // que o ramo antigo fechava por acidente.
+    const cluster = `cluster-${randomUUID().slice(0, 8)}`
+    const slug = `intent-mentiroso-hash-${randomUUID().slice(0, 8)}`
+
+    const first = await publish(
+      revisionBody({
+        cluster,
+        revision: 3,
+        slugSuggestion: slug,
+        intent: 'publish',
+        payloadHash: hash64('cccc3333'),
+      }),
+    )
+    expect(first.status).toBe(201)
+
+    const conflicting = await publish(
+      revisionBody({
+        cluster,
+        revision: 3,
+        slugSuggestion: slug,
+        intent: 'publish',
+        payloadHash: hash64('dddd4444'),
+        title: 'Outros bytes sob a mesma revisao, rotulados de criacao',
+      }),
+    )
+
+    expect(conflicting.status).toBe(409)
+    expect(reasonCodes(conflicting.body)).toContain('idempotency_conflict')
+    const doc = await articleById(String(first.body.articleId))
+    expect(String(doc.title)).not.toBe('Outros bytes sob a mesma revisao, rotulados de criacao')
+  })
+
+  it('revisao NOVA rotulada de `publish` atualiza a materia do cluster, com aviso', async () => {
+    // O outro lado da mesma moeda, e por isso ele fica aqui: sob a intencao
+    // resolvida, `publish` deixa de ser uma palavra magica que recusa o pedido
+    // (o ramo antigo transformava toda revisao nova rotulada de `publish` em
+    // `idempotency_conflict`) e passa a ser apenas um rotulo errado. Quem decide
+    // e o banco: existe materia no cluster, entao e atualizacao — e o emissor
+    // recebe a correcao por escrito em vez de um `201` que parece criacao.
+    const cluster = `cluster-${randomUUID().slice(0, 8)}`
+    const slug = `intent-rotulo-errado-${randomUUID().slice(0, 8)}`
+
+    const first = await publish(
+      revisionBody({ cluster, revision: 1, slugSuggestion: slug, intent: 'publish' }),
+    )
+    expect(first.status).toBe(201)
+    const articleId = String(first.body.articleId)
+
+    const second = await publish(
+      revisionBody({
+        cluster,
+        revision: 2,
+        slugSuggestion: slug,
+        intent: 'publish',
+        title: 'Revisao nova que chegou rotulada de criacao',
+      }),
+    )
+
+    expect(second.status).toBe(201)
+    expect(String(second.body.articleId)).toBe(articleId)
+    expect(warningCodes(second.body)).toContain('PUBLICATION_INTENT_DIVERGENTE')
+    expect(await articlesForCluster(cluster)).toHaveLength(1)
+
+    const doc = await articleById(articleId)
+    expect(String(doc.title)).toBe('Revisao nova que chegou rotulada de criacao')
+    // A cota consumida e a de ATUALIZACAO — a mesma que a persistencia executou.
+    expect(await counterFor('article_update', articleId)).toBe(1)
+  })
+})
+
+/* ------------------------------------------------------------------ */
 /* 3. `targetArticleId` e conferencia, nunca chave de busca           */
 /* ------------------------------------------------------------------ */
 
