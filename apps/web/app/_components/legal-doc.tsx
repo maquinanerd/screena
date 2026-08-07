@@ -39,7 +39,7 @@ import { HOME_PATH } from '../../src/lib/routes'
  * faz o painel de privacidade marcar `needsRenewal` e pedir novo aceite
  * (`auth-runtime/privacy-services.ts`, `currentPolicyVersion`).
  */
-export const LEGAL_POLICY_VERSION = '2026-07'
+export const LEGAL_POLICY_VERSION = '2026-08'
 
 /**
  * Marca um dado que só o controlador pode preencher (razão social, CNPJ,

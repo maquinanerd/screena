@@ -39,15 +39,20 @@ export const AUTH_EMAIL_ENV_KEYS = {
 
 /**
  * Defaults dos parametros C7D. Sao SEGUROS, nao arbitrarios:
- *  - versoes `2026-07`: a versao inicial dos documentos; o deploy sobrescreve
+ *  - versoes `2026-08`: a versao vigente dos documentos legais (texto final do
+ *    controlador, vigente desde 4 de agosto de 2026); o deploy sobrescreve
  *    quando os textos mudarem, e trocar a versao forca novo aceite (a tela
- *    marca `needsRenewal`);
+ *    marca `needsRenewal`). Este valor tem de acompanhar
+ *    `LEGAL_POLICY_VERSION` em `apps/web/app/_components/legal-doc.tsx`: e a
+ *    versao EXIBIDA que precisa bater com a versao CARIMBADA na prova de
+ *    consentimento, senao o registro aponta para um texto diferente do que a
+ *    pessoa leu;
  *  - TTL de 720 h (30 dias): espelha `SESSION_TTL_HOURS` do dominio (policy.ts);
  *  - carencia de 30 dias: janela de arrependimento antes da anonimizacao.
  */
 export const C7D_DEFAULTS = {
-  termsPolicyVersion: "2026-07",
-  privacyPolicyVersion: "2026-07",
+  termsPolicyVersion: "2026-08",
+  privacyPolicyVersion: "2026-08",
   sessionTtlHours: 720,
   deletionGraceDays: 30,
 } as const;

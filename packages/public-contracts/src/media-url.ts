@@ -25,8 +25,20 @@
  * (w300/w500/w780/w1280/original), nunca reescrevendo a extensão.
  */
 
+/**
+ * Host do CDN de imagens do TMDB, isolado como export.
+ *
+ * Existe porque a Política de Privacidade precisa NOMEAR esse domínio para o
+ * titular (é ele que recebe IP e user-agent do navegador ao carregar a imagem),
+ * e o guard de pureza de render proíbe o literal fora deste arquivo. Em vez de
+ * abrir uma segunda exceção no guard — que valeria para qualquer arquivo de
+ * `apps/web` para sempre —, o texto legal importa daqui. Assim o documento e a
+ * URL realmente servida não podem divergir.
+ */
+export const TMDB_IMAGE_HOST = 'image.tmdb.org'
+
 /** Base pública do CDN de imagens do TMDB (sem token; só serve imagem). */
-const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p'
+const TMDB_IMAGE_BASE = `https://${TMDB_IMAGE_HOST}/t/p`
 
 /** Prefixos de asset LOCAL antigo — rejeitados (não são `file_path` cru do TMDB). */
 const LOCAL_ASSET_PREFIXES = ['/media/', '/uploads/', '/brand/'] as const
