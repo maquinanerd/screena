@@ -102,7 +102,7 @@ beforeAll(async () => {
       email: `chefe-${randomUUID().slice(0, 8)}@exemplo.test`,
       password: `senha-de-teste-${randomUUID()}`,
       displayName: 'Editor-chefe de teste',
-      role: 'chief_editor',
+      role: 'editor_in_chief',
       active: true,
     } as never,
     overrideAccess: true,
