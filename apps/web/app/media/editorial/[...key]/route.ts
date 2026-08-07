@@ -26,6 +26,11 @@ import type { NextRequest } from "next/server";
 
 import { editorialMediaLookupPath } from "../../../../src/lib/editorial-media-path";
 import {
+  buildEditorialMediaMiss,
+  formatEditorialMediaMiss,
+  type EditorialMediaMissReason,
+} from "../../../../src/lib/editorial-media-report";
+import {
   findServeableEditorialMedia,
   readEditorialMediaBytes,
 } from "../../../../src/server/editorial-media";
@@ -36,12 +41,23 @@ export const runtime = "nodejs";
 const IMMUTABLE_CACHE = "public, max-age=31536000, immutable";
 
 /**
- * Corpo vazio em todo erro.
+ * Corpo vazio em todo erro — e uma linha no LOG dizendo a causa.
  *
- * Nao ha diferenca observavel entre "caminho malformado", "asset inexistente" e
- * "licenca nao permite": distinguir so ajudaria a enumerar o bucket.
+ * A resposta continua sem diferenca observavel entre "caminho malformado",
+ * "asset inexistente" e "licenca nao permite": distinguir na resposta so
+ * ajudaria a enumerar o bucket.
+ *
+ * Mas o silencio TOTAL tinha um custo real: a pagina da materia responde 200 com
+ * um `<img>` quebrado, e quem publicou nunca fica sabendo. A causa vai para o
+ * servidor, onde o operador ve e o atacante nao. `object_missing` sai marcado
+ * como `actionable` — e o unico dos tres que significa "banco e storage
+ * discordam AGORA".
  */
-function notFound(): Response {
+function notFound(reason: EditorialMediaMissReason, publicPath: string | null): Response {
+  // `console.warn` e o canal de log do container (EasyPanel coleta stdout/stderr).
+  // Nao ha logger estruturado em `apps/web`; introduzir um aqui seria decidir
+  // observabilidade do app inteiro dentro de uma rota de imagem.
+  console.warn(formatEditorialMediaMiss(buildEditorialMediaMiss(reason, publicPath)));
   return new Response(null, {
     status: 404,
     headers: { "cache-control": "no-store" },
@@ -68,7 +84,7 @@ export async function GET(
   const { key } = await context.params;
 
   const lookupPath = editorialMediaLookupPath(key);
-  if (lookupPath === null) return notFound();
+  if (lookupPath === null) return notFound("malformed_path", null);
 
   let asset: Awaited<ReturnType<typeof findServeableEditorialMedia>>;
   try {
@@ -78,14 +94,14 @@ export async function GET(
     // acima. Sem detalhe do erro: a mensagem do Prisma carrega a DATABASE_URL.
     return unavailable();
   }
-  if (asset === null) return notFound();
+  if (asset === null) return notFound("no_serveable_row", lookupPath);
 
   const result = await readEditorialMediaBytes(asset.storageKey);
   if (result.status === "unavailable") return unavailable();
   // Objeto ausente com linha presente e ORFAO invertido (linha sem arquivo).
   // 404 e a resposta honesta; o `no-store` deixa a correcao aparecer assim que
   // uma reprojecao regravar o arquivo.
-  if (result.status === "missing") return notFound();
+  if (result.status === "missing") return notFound("object_missing", lookupPath);
 
   // `Uint8Array<ArrayBufferLike>` deixou de casar com `BodyInit` quando o TS 5.7
   // tornou o tipo generico sobre o buffer. Em runtime o `Response` do Node

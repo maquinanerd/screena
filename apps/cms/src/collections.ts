@@ -713,6 +713,21 @@ export const Media: CollectionConfig = {
     },
     { name: 'contentHash', type: 'text' },
     {
+      name: 'ingestedForArticle',
+      type: 'relationship',
+      relationTo: 'articles',
+      label: 'Ingerida para a materia',
+      admin: {
+        // Somente-leitura na interface: quem preenche e o endpoint de ingestao.
+        // Um humano que mudasse este campo trocaria a CHAVE DE IDEMPOTENCIA da
+        // foto, e o proximo reenvio do MNScr criaria uma segunda entrada em vez
+        // de encontrar esta.
+        readOnly: true,
+        description:
+          'Preenchido pela ingestao automatica (POST /api/internal/editorial-media). Junto com a URL de origem, e o que faz o reenvio da mesma foto encontrar esta entrada em vez de criar outra. Vazio = foto enviada por uma pessoa no painel.',
+      },
+    },
+    {
       name: 'provenanceType',
       type: 'select',
       required: true,
