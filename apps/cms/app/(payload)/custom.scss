@@ -1408,6 +1408,7 @@
   /* ------------------------------------------------------------------ */
 
   .cinerie-paragraph__empty,
+  .cinerie-paragraph__media-notice,
   .cinerie-paragraph__notice {
     border-radius: 8px;
     font-size: 12px;
@@ -1426,6 +1427,16 @@
     background: #ffffff;
     border: 1px solid var(--cinerie-border);
     color: var(--cinerie-ink);
+  }
+
+  /* Perda de conteudo, nao informacao. Herda a linguagem do aviso de paragrafo
+     vazio de proposito: os dois cobram uma acao de quem escreve, e o vizinho
+     neutro (`__notice`) diz apenas o que o editor fez. */
+  .cinerie-paragraph__media-notice {
+    background: var(--cinerie-brand-soft);
+    border: 1px solid var(--cinerie-brand);
+    color: var(--cinerie-brand-dark);
+    font-weight: 600;
   }
 
   /* ------------------------------------------------------------------ */
