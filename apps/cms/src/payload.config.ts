@@ -20,6 +20,7 @@ import { collections } from './collections.js'
 import { requireCmsConfig } from './env.js'
 import { editorialDraftsEndpoint } from './endpoints/editorial-drafts.js'
 import { editorialMediaEndpoint } from './endpoints/editorial-media.js'
+import { editorialMediaHeroEndpoint } from './endpoints/editorial-media-hero.js'
 import { publicationOutboxEndpoints } from './endpoints/publication-outbox.js'
 import { publicationMediaEndpoint } from './endpoints/publication-media.js'
 import { contractEndpoints } from './endpoints/contracts.js'
@@ -120,6 +121,7 @@ export default buildConfig({
   endpoints: [
     editorialDraftsEndpoint,
     editorialMediaEndpoint,
+    editorialMediaHeroEndpoint,
     ...publicationOutboxEndpoints,
     publicationMediaEndpoint,
     ...contractEndpoints,
