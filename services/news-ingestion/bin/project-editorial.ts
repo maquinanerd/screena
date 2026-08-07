@@ -46,6 +46,7 @@ import { createPrismaClient, type PrismaClient } from '@screena/db/server'
 
 import { mapPublicationEvent } from '../src/editorial-event-mapper.js'
 import { parseClaimResponse } from '../src/outbox-claim-response.js'
+import { isClassifiedFailure } from '../src/projection-failure.js'
 import {
   projectionAuthHeader,
   resolveProjectionWorkerConfig,
@@ -283,7 +284,12 @@ async function runCycle(
     try {
       await processEvent(prisma, config, storage, claimed, dryRun)
     } catch (error) {
-      const safe = error instanceof SafeError
+      // Reconhecimento ESTRUTURAL: a persistencia vive em `src/` e nao pode
+      // importar o `SafeError` daqui, mas emite a mesma forma
+      // (`ProjectionFailure`). Sem isto, uma falha ja classificada — como
+      // `projection_target_missing` — chegaria a outbox como "nao
+      // classificada" e perderia o motivo.
+      const safe = error instanceof SafeError || isClassifiedFailure(error)
       const code = safe ? error.code : 'projection_failed'
       const retryable = safe ? error.retryable : true
       const message = safe

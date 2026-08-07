@@ -227,6 +227,17 @@ export interface ProjectionDecision {
    * que o editor removeu.
    */
   readonly entityLinks: readonly PlannedEntityLink[] | null
+  /**
+   * Ate onde a SEQUENCIA PROJETADA deste artigo deve avancar.
+   *
+   * Existe porque `article` e `null` na REMOCAO — e era ali que a sequencia
+   * parava de andar. Retratar no evento 50 deixava `projected_sequence` no 30
+   * da ultima publicacao, e um `article.updated` de 40 reentregue depois
+   * passava pelo portao de "fora de ordem" e REPUBLICAVA a materia retratada.
+   *
+   * `null` = nao mexa (replay, stale, licenca). Numero = grave este valor.
+   */
+  readonly sequenceAdvance: number | null
   /** Avisos operacionais — nao bloqueiam, mas ficam no log do worker. */
   readonly warnings: readonly string[]
 }
@@ -385,6 +396,7 @@ export function decideProjection(input: DecideProjectionInput): ProjectionDecisi
       article: null,
       translation: null,
       entityLinks: null,
+      sequenceAdvance: null,
       warnings,
     }
   }
@@ -400,6 +412,7 @@ export function decideProjection(input: DecideProjectionInput): ProjectionDecisi
       article: null,
       translation: null,
       entityLinks: null,
+      sequenceAdvance: null,
       warnings,
     }
   }
@@ -413,6 +426,7 @@ export function decideProjection(input: DecideProjectionInput): ProjectionDecisi
       article: null,
       translation: null,
       entityLinks: null,
+      sequenceAdvance: null,
       warnings,
     }
   }
@@ -465,6 +479,15 @@ export function decideProjection(input: DecideProjectionInput): ProjectionDecisi
       // leitura. Se a materia voltar apos revisao humana, as citacoes voltam
       // com ela.
       entityLinks: null,
+      // A REMOCAO AVANCA A SEQUENCIA. Este numero e a correcao inteira.
+      //
+      // Como o ramo de remocao devolve `article: null`, nada gravava
+      // `projected_sequence` — ela ficava no valor da ultima PUBLICACAO.
+      // Retratar no evento 50 deixava a sequencia em 30, e um `article.updated`
+      // de 40 reentregue depois (retry apos backoff longo, redelivery da fila)
+      // passava pelo portao de "fora de ordem" e ressuscitava a materia
+      // retratada — publicada de novo, indexavel de novo, sem ninguem decidir.
+      sequenceAdvance: event.emissionSequence,
       warnings,
     }
   }
@@ -479,6 +502,7 @@ export function decideProjection(input: DecideProjectionInput): ProjectionDecisi
       article: null,
       translation: null,
       entityLinks: null,
+      sequenceAdvance: null,
       warnings,
     }
   }
@@ -580,6 +604,10 @@ export function decideProjection(input: DecideProjectionInput): ProjectionDecisi
       correctionNote: content.correctionNote,
     },
     entityLinks: entityPlan.links,
+    // Mesmo valor que `article.projectedSequence` acima. Redundante de
+    // proposito: o adapter passa a ter UMA fonte para "ate onde este artigo
+    // ja foi projetado", em vez de depender de qual dos dois ramos correu.
+    sequenceAdvance: event.emissionSequence,
     warnings,
   }
 }
