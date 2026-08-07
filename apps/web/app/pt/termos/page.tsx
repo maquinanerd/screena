@@ -9,7 +9,7 @@ import {
   SITE_URL,
   TERMS_PATH,
   canonicalPublicUrl,
-  publicRobots,
+  legalDocRobots,
 } from '../../../src/lib/site'
 
 /**
@@ -50,7 +50,7 @@ export function generateMetadata(): Metadata {
   return {
     title: TITLE,
     description: DESCRIPTION,
-    robots: publicRobots(true),
+    robots: legalDocRobots(),
     alternates: { canonical: canonicalPublicUrl(TERMS_PATH) },
   }
 }

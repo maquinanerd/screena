@@ -55,6 +55,16 @@ export const LOCAL_SITE_URL = "http://localhost:3000";
 export interface SiteUrlEnv {
   readonly CINERIE_PUBLIC_SITE_URL?: string;
   readonly CINERIE_PUBLIC_INDEXING_ENABLED?: string;
+  /**
+   * Kill switch PROPRIO dos documentos legais (`/pt/termos/`, `/pt/privacidade/`).
+   *
+   * Existe porque as duas paginas terminam ANTES do catalogo: elas sao um
+   * bloqueador de lancamento (o aceite do cadastro aponta para elas) e nao
+   * dependem de dado sincronizado nem de licenca de terceiro. Sem uma chave
+   * propria, a unica forma de indexa-las seria ligar
+   * `CINERIE_PUBLIC_INDEXING_ENABLED`, que abre o site INTEIRO.
+   */
+  readonly CINERIE_LEGAL_DOCS_INDEXING_ENABLED?: string;
   /** Legado (marca anterior) — lido so como fallback. */
   readonly THE_SCREEN_PUBLIC_SITE_URL?: string;
   readonly THE_SCREEN_PUBLIC_INDEXING_ENABLED?: string;
@@ -152,14 +162,17 @@ export function isOfficialSiteUrl(siteUrl: string): boolean {
 }
 
 /**
- * Robots so pode liberar indexacao quando a origem configurada e exatamente a
- * oficial, a flag explicita esta ligada e o ambiente nao se declara
- * preview/dev/test.
+ * A SUPERFICIE e a producao oficial? (origem canonica + ambiente de producao)
+ *
+ * Metade do gate de indexacao, sem a flag. Extraido para que um segundo kill
+ * switch (o dos documentos legais) possa reusar EXATAMENTE as mesmas condicoes
+ * de ambiente sem reimplementa-las: duas copias divergiriam na primeira vez que
+ * alguem adicionasse uma condicao aqui, e a copia esquecida indexaria em
+ * staging.
+ *
+ * Nao decide nada sozinha — nenhuma flag e consultada aqui.
  */
-export function isOfficialIndexableEnvironment(
-  env: SiteUrlEnv = process.env,
-): boolean {
-  if (!isPublicIndexingEnabled(env)) return false;
+function isOfficialProductionSurface(env: SiteUrlEnv): boolean {
   if (configuredSiteUrl(env) !== OFFICIAL_SITE_URL) return false;
 
   const nodeEnv = readTrimmed(env.NODE_ENV)?.toLowerCase() ?? null;
@@ -169,6 +182,45 @@ export function isOfficialIndexableEnvironment(
   if (vercelEnv !== null && vercelEnv !== "production") return false;
 
   return true;
+}
+
+/**
+ * Robots so pode liberar indexacao quando a origem configurada e exatamente a
+ * oficial, a flag explicita esta ligada e o ambiente nao se declara
+ * preview/dev/test.
+ */
+export function isOfficialIndexableEnvironment(
+  env: SiteUrlEnv = process.env,
+): boolean {
+  if (!isPublicIndexingEnabled(env)) return false;
+  return isOfficialProductionSurface(env);
+}
+
+/**
+ * Kill switch PROPRIO dos documentos legais.
+ *
+ * Mesmo parser fail-closed das demais flags: so `"true"`/`"1"` ligam; ausente,
+ * vazio ou invalido desliga.
+ */
+export function isLegalDocsIndexingEnabled(
+  env: SiteUrlEnv = process.env,
+): boolean {
+  return parseBooleanEnvFlag(env.CINERIE_LEGAL_DOCS_INDEXING_ENABLED);
+}
+
+/**
+ * O ambiente pode indexar os DOCUMENTOS LEGAIS?
+ *
+ * Mesmas condicoes de superficie do gate geral (origem oficial + producao), mas
+ * lendo a flag propria. E deliberadamente INDEPENDENTE de
+ * `CINERIE_PUBLIC_INDEXING_ENABLED`: o objetivo e poder indexar Termos e
+ * Privacidade enquanto o catalogo segue fechado.
+ */
+export function isOfficialLegalDocsIndexableEnvironment(
+  env: SiteUrlEnv = process.env,
+): boolean {
+  if (!isLegalDocsIndexingEnabled(env)) return false;
+  return isOfficialProductionSurface(env);
 }
 
 /** Forma de `robots` do Next para metadata de pagina. */
@@ -208,6 +260,40 @@ export function publicRobots(
 ): PageRobots {
   if (!isOfficialIndexableEnvironment(env)) return NOINDEX;
   return shouldIndex ? { index: true, follow: true } : NOINDEX;
+}
+
+/**
+ * `<meta robots>` dos DOIS documentos legais (`/pt/termos/`, `/pt/privacidade/`).
+ *
+ * POR QUE UM HELPER PROPRIO, E NAO `publicRobots(true)`.
+ *
+ * As duas paginas sao um bloqueador de lancamento: o aceite obrigatorio do
+ * cadastro aponta para elas, e o texto ficou pronto (#127 + #133) muito antes do
+ * catalogo. Com `publicRobots(true)` a unica maneira de indexa-las e ligar
+ * `CINERIE_PUBLIC_INDEXING_ENABLED` — que abre o site INTEIRO, com o catalogo
+ * ainda incompleto. Uma decisao de indexacao (invariante 5) e humana e
+ * registrada; ela nao pode vir de carona.
+ *
+ * Contrato (OR de dois gates, ambos exigindo producao oficial):
+ *  1. o site inteiro pode indexar (`isOfficialIndexableEnvironment`) — entao os
+ *     documentos legais indexam junto, como qualquer pagina; OU
+ *  2. so os documentos legais foram liberados
+ *     (`isOfficialLegalDocsIndexableEnvironment`).
+ *
+ * E OR, nao AND, de proposito: a chave dos legais **adiciona** uma permissao,
+ * nunca remove uma que ja existe. Com o site aberto, esquecer de ligar
+ * `CINERIE_LEGAL_DOCS_INDEXING_ENABLED` nao pode desindexar a Politica de
+ * Privacidade.
+ *
+ * `robots.txt` acompanha: `app/robots.ts` libera o crawl DESTES DOIS caminhos
+ * quando (2) vale sem (1). Sem isso o gate seria inerte — o meta diria `index` e
+ * o `Disallow: /` impediria o crawler de chegar a ler o meta.
+ */
+export function legalDocRobots(env: SiteUrlEnv = process.env): PageRobots {
+  const allowed =
+    isOfficialIndexableEnvironment(env) ||
+    isOfficialLegalDocsIndexableEnvironment(env);
+  return allowed ? { index: true, follow: true } : NOINDEX;
 }
 
 /**

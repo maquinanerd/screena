@@ -70,20 +70,33 @@ describe('governanca: TMDB provider_api != rating_source (invariantes 1, 2)', ()
     expect([...RATING_SOURCES]).not.toContain(TMDB_PROVIDER_API)
   })
 
-  it('o codigo de ingestao/TMDB nao referencia external_ratings/rating_source', async () => {
-    const offenders: string[] = []
-    for (const root of SCAN_ROOTS) {
-      for (const file of await collectTs(root)) {
-        const content = stripComments(await readFile(file, 'utf8'))
-        content.split(/\r?\n/).forEach((line, index) => {
-          for (const pattern of FORBIDDEN) {
-            if (pattern.test(line)) {
-              offenders.push(`${relative(process.cwd(), file)}:${index + 1} -> ${line.trim()}`)
+  it(
+    'o codigo de ingestao/TMDB nao referencia external_ratings/rating_source',
+    async () => {
+      const offenders: string[] = []
+      for (const root of SCAN_ROOTS) {
+        for (const file of await collectTs(root)) {
+          const content = stripComments(await readFile(file, 'utf8'))
+          content.split(/\r?\n/).forEach((line, index) => {
+            for (const pattern of FORBIDDEN) {
+              if (pattern.test(line)) {
+                offenders.push(`${relative(process.cwd(), file)}:${index + 1} -> ${line.trim()}`)
+              }
             }
-          }
-        })
+          })
+        }
       }
-    }
-    expect(offenders).toEqual([])
-  })
+      expect(offenders).toEqual([])
+    },
+    // TIMEOUT EXPLICITO. Este teste percorre duas arvores de fonte inteiras e le
+    // cada `.ts` — dezenas de chamadas de filesystem em serie. Sozinho leva
+    // ~180ms; dentro da suite completa, com centenas de arquivos de teste
+    // disputando IO, ele estourava o default de 5s do vitest de forma
+    // intermitente. O sintoma engana: "Test timed out in 5000ms" num teste de
+    // governanca parece violacao de invariante, e nao fila de disco.
+    //
+    // O que muda e SO o orcamento de IO; a asercao continua identica. Mesma
+    // correcao ja aplicada a `cms-isolation.test.ts` pelo mesmo motivo.
+    30_000,
+  )
 })
