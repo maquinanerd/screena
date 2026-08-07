@@ -446,6 +446,26 @@ export const editorialPublicationsEndpoint: Endpoint = {
     const resolution = await resolveExistingArticle(req, request)
     const existing = resolution.existing
 
+    // REPLAY: este `requestId` JA foi processado.
+    //
+    // A leitura subiu para ca, antes das guardas de conflito, e a ordem e a
+    // correcao: `requestId` e a identidade do RETRY — e o unico campo que
+    // distingue "o HTTP se perdeu no caminho" de "chegou outro pedido". Um
+    // replay carrega, por definicao, a revisao ja aplicada e o hash ja gravado,
+    // entao ele dispara `staleRevision` como qualquer duplicata — e o produtor
+    // que so quer confirmar o que aconteceu levaria `409` no lugar da confirmacao.
+    //
+    // Antes isto nao aparecia porque `staleRevision` so olhava `update`, e o
+    // retry de uma criacao vinha rotulado de `publish`: a guarda estava desligada
+    // justamente no caso em que ela erraria. Ligar a guarda pela intencao
+    // resolvida expos a dependencia — e ela se resolve aqui, no lugar certo.
+    //
+    // O que NAO e replay: outro pedido (`requestId` novo) trazendo a mesma
+    // revisao. Esse continua caindo em `staleRevision`, que e o desfecho certo
+    // para "isto ja foi aplicado".
+    const previousConsumption = await findPreviousConsumption(req, request.requestId)
+    const isReplay = previousConsumption !== null
+
     // A INTENCAO EFETIVA. O corpo declara uma; o estado do banco decide a outra,
     // e e a do banco que vale — tanto para a cota quanto para a persistencia.
     // Manter dois valores divergentes foi exatamente o defeito: o pedido dizia
@@ -468,34 +488,77 @@ export const editorialPublicationsEndpoint: Endpoint = {
       currentAuthorId !== '' &&
       currentAuthorId !== request.publicAuthorId
 
+    // DIVERGENCIA entre o que o pedido DECLARA e o que o banco RESOLVE.
+    //
+    // Nao e recusa: o produtor pode legitimamente nao saber que o cluster ja tem
+    // materia (foi outra revisao, ou outro processo, que a criou). E aviso —
+    // porque o silencio aqui era metade do defeito: o emissor recebia `2xx` de
+    // "publiquei" e o CMS tinha ATUALIZADO uma materia que ele nao sabia existir.
+    const intentDivergence: readonly EditorialWarning[] =
+      request.publicationIntent === resolvedIntent
+        ? []
+        : [
+            {
+              code: 'PUBLICATION_INTENT_DIVERGENTE',
+              field: 'publicationIntent',
+              detail: `o pedido declarou "${request.publicationIntent}", mas o estado do banco resolve para "${resolvedIntent}"${
+                resolvedTargetArticleId === null
+                  ? ' (nenhuma materia responde ao cluster)'
+                  : ` (materia ${resolvedTargetArticleId})`
+              }; prevalece a resolucao pelo banco, e as guardas foram avaliadas sobre ela`,
+            },
+          ]
+
     const appliedRevision =
       existing !== null && typeof existing.automationSourceRevision === 'number'
         ? existing.automationSourceRevision
         : null
+
+    // AS GUARDAS JULGAM A INTENCAO RESOLVIDA, NUNCA A DECLARADA.
+    //
+    // Ate aqui `staleRevision` e `idempotencyConflict` liam
+    // `request.publicationIntent` — o que o CLIENTE DIZ —, enquanto a cota e a
+    // persistencia liam `resolvedIntent`, derivado do banco. Os dois lados
+    // podiam discordar, e discordar era o bastante para escapar: bastava
+    // declarar `publish` sobre um cluster que ja tem materia para `staleRevision`
+    // nao disparar (ele so olhava `update`) e a persistencia fazer `UPDATE`
+    // assim mesmo, porque ela nunca leu a declaracao. Um guard que se desliga
+    // porque o corpo pediu nao e guard.
+    //
+    // O contrato reforca que o desvio era acessivel sem nenhum truque:
+    // `publicationIntent: 'publish'` nao pode nem declarar `targetArticleId`
+    // (`editorial-publication-request-v1.ts`), entao o pedido "de criacao" que
+    // atualiza materia alheia passava na validacao de forma sem uma unica
+    // divergencia visivel.
     const staleRevision =
-      request.publicationIntent === 'update' &&
+      !isReplay &&
+      resolvedIntent === 'update' &&
       appliedRevision !== null &&
       request.sourceRevision <= appliedRevision
     // MESMA IDENTIDADE, BYTES DIFERENTES.
     //
-    // Em `publish` a identidade e a chave: reusar a mesma `idempotencyKey` com
-    // outro conteudo e bug do produtor.
+    // Quem identifica o conteudo de uma materia que JA EXISTE e a REVISAO — a
+    // `idempotencyKey` muda a cada uma delas. Reenviar a revisao ja aplicada com
+    // outros bytes significa que um dos dois envios da revisao N esta errado, e
+    // adivinhar qual seria pior do que recusar. Reenvio IDENTICO da mesma
+    // revisao nao cai aqui (o hash bate) — sai por `staleRevision`, que e o
+    // desfecho certo para "isto ja foi aplicado".
     //
-    // Em `update` a chave muda a cada revisao — quem identifica o conteudo e a
-    // REVISAO. Reenviar a revisao ja aplicada com outros bytes e o mesmo defeito
-    // sob outro nome: um dos dois envios da revisao N esta errado, e adivinhar
-    // qual seria pior do que recusar. Reenvio IDENTICO da mesma revisao nao cai
-    // aqui (o hash bate) — sai por `staleRevision`, que e o desfecho certo para
-    // "isto ja foi aplicado".
+    // Nao ha mais o ramo `publicationIntent === 'publish'`: sob a intencao
+    // RESOLVIDA, `publish` significa exatamente `existing === null`, e sem
+    // materia existente nao ha hash anterior com que conflitar. O ramo antigo
+    // dependia da declaracao, e era ele que fazia um `update` honesto de revisao
+    // NOVA ser recusado como conflito so por vir rotulado de `publish`.
     const sameHash =
       typeof existing?.automationPayloadHash === 'string' &&
       existing.automationPayloadHash === request.sourcePayloadHash
     const idempotencyConflict =
+      !isReplay &&
       existing !== null &&
       typeof existing.automationPayloadHash === 'string' &&
       !sameHash &&
-      (request.publicationIntent === 'publish' ||
-        (appliedRevision !== null && request.sourceRevision === appliedRevision))
+      appliedRevision !== null &&
+      request.sourceRevision === appliedRevision
 
     /* ---------------------------------------------------------------- */
     /* O que o pedido VIRA — e o que ele PERDE                          */
@@ -539,6 +602,7 @@ export const editorialPublicationsEndpoint: Endpoint = {
 
     const intakeWarnings: readonly EditorialWarning[] = [
       ...resolution.warnings,
+      ...intentDivergence,
       ...mappedBody.details,
       ...strippedMarks,
       ...hero.warnings,
@@ -635,7 +699,12 @@ export const editorialPublicationsEndpoint: Endpoint = {
     // Um retry cujo HTTP se perdeu no caminho ja consumiu o teto na primeira
     // tentativa. Consumir de novo faria o produtor gastar o dia inteiro
     // reenviando o MESMO pedido — e o teto protegeria contra a coisa errada.
-    const previous = await findPreviousConsumption(req, request.requestId)
+    //
+    // A consulta em si ja aconteceu la em cima, junto das guardas de conflito:
+    // o mesmo fato responde as duas perguntas ("isto e um retry?" e "quanto
+    // disto ja foi cobrado?"), e le-lo duas vezes deixaria as duas respostas
+    // livres para divergir no meio do pedido.
+    const previous = previousConsumption
     if (previous !== null) {
       return json(
         {
