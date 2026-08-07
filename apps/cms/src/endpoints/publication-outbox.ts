@@ -23,6 +23,7 @@ import {
   decideFailOutcome,
   evaluateClaimEligibility,
   sanitizeErrorMessage,
+  summarizeClaimAttempt,
   validateLease,
   DEFAULT_LEASE_MS,
   DEFAULT_RETRY_POLICY,
@@ -111,18 +112,44 @@ export const claimPublicationEventsEndpoint: Endpoint = {
         { status: { equals: 'processing' } },
       ],
     }
-    const candidates = await req.payload.find({
-      collection: 'publication-outbox',
-      where,
-      sort: 'createdAt',
-      limit: batchSize * 3,
-      depth: 0,
-      overrideAccess: true,
-      req,
-    })
+    // A CONSULTA TAMBEM PODE FALHAR, e uma falha aqui nao pode virar 500 de
+    // HTML do Next: o worker le JSON, e uma pagina de erro chegaria a ele como
+    // corpo ilegivel. Banco fora, schema divergente ou permissao negada saem
+    // como 503 nomeado, que e o que o laco do worker sabe tratar.
+    let candidateDocs: unknown[] = []
+    let candidatesRead = true
+    try {
+      const candidates = await req.payload.find({
+        collection: 'publication-outbox',
+        where,
+        sort: 'createdAt',
+        limit: batchSize * 3,
+        depth: 0,
+        overrideAccess: true,
+        req,
+      })
+      candidateDocs = candidates.docs
+    } catch {
+      candidatesRead = false
+    }
+
+    // O POOL e resolvido UMA vez, fora do laco. Antes ele era chamado dentro do
+    // `try` de cada candidato: um adapter sem pool levantava a mesma excecao N
+    // vezes, todas engolidas pelo `catch` de "perdeu a corrida", e a resposta
+    // saia 200 com lote vazio.
+    let pool: OutboxPool | null = null
+    if (candidatesRead) {
+      try {
+        pool = outboxPool(req)
+      } catch {
+        candidatesRead = false
+      }
+    }
 
     const claimed: Record<string, unknown>[] = []
-    for (const raw of candidates.docs) {
+    /** Tentativas de tomada que ERRARAM. Perder a corrida nao conta (ver abaixo). */
+    let failures = 0
+    for (const raw of candidateDocs) {
       if (claimed.length >= batchSize) break
       const row = raw as unknown as Record<string, unknown>
 
@@ -183,7 +210,7 @@ export const claimPublicationEventsEndpoint: Endpoint = {
           params.push(row.leaseToken ?? null)
         }
 
-        const { rows } = await outboxPool(req).query(
+        const { rows } = await (pool as OutboxPool).query(
           `UPDATE "publication_outbox"
               SET "status" = $1::"public"."enum_publication_outbox_status",
                   "lease_token" = $2,
@@ -217,13 +244,40 @@ export const claimPublicationEventsEndpoint: Endpoint = {
           leaseExpiresAt: mutation.leaseExpiresAtIso,
           payload: doc.payload,
         })
-      } catch {
-        // Perdeu a corrida (ou a linha mudou): outro worker levou. Seguir.
+      } catch (error) {
+        // ERRO DE VERDADE, e agora ele CONTA.
+        //
+        // Perder a corrida NAO chega aqui: sob READ COMMITTED o segundo worker
+        // reavalia o `WHERE`, nao casa, e o `RETURNING` devolve zero linhas sem
+        // excecao — isso sai pelo `doc === undefined` acima. O que cai neste
+        // `catch` e conexao caida, coluna ausente, permissao negada. Antes tudo
+        // isso virava `continue`, e a resposta final era indistinguivel de uma
+        // fila vazia.
+        failures += 1
+        req.payload.logger.error({
+          msg: 'claim: tentativa de tomada falhou',
+          eventRowId: String(row.id),
+          errorKind: error instanceof Error ? error.constructor.name : typeof error,
+        })
         continue
       }
     }
 
-    return json({ workerId, claimed: claimed.length, events: claimed }, 200)
+    const summary = summarizeClaimAttempt({
+      candidatesRead,
+      claimed: claimed.length,
+      failures,
+    })
+    if (!summary.ok) {
+      // 503 e nao 200-com-lote-vazio. `callOutbox` no worker classifica >= 500
+      // como retentavel, e o laco registra a falha de ciclo — que e o que
+      // acende o `/readyz`.
+      return json({ error: summary.code, detail: summary.detail, workerId, failures }, summary.status)
+    }
+
+    // `failures` viaja mesmo no 200: uma falha parcial nao derruba o lote, mas
+    // tambem nao pode sumir.
+    return json({ workerId, claimed: claimed.length, events: claimed, failures }, 200)
   },
 }
 
