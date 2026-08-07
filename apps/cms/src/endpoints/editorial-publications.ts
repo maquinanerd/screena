@@ -226,6 +226,118 @@ async function readMediaAuthorizations(
 }
 
 /* ------------------------------------------------------------------ */
+/* Que materia este pedido ATUALIZA                                    */
+/* ------------------------------------------------------------------ */
+
+interface ExistingResolution {
+  readonly existing: Record<string, unknown> | null
+  readonly warnings: readonly EditorialWarning[]
+}
+
+/**
+ * Resolve a materia que este pedido atualiza — pelo CLUSTER, nao pela chave.
+ *
+ * A busca antiga era `automationIdempotencyKey: { equals: request.idempotencyKey }`,
+ * e a chave MUDA a cada revisao. Consequencia: nenhum pedido de update jamais
+ * encontrava a materia anterior, `existingId` nascia nulo e a persistencia caia
+ * sempre no `create`. Toda revisao virava materia nova, com slug nova e URL
+ * nova. Com indexacao ligada, isso poria rev-1, rev-2 e rev-3 no indice do
+ * Google como tres paginas concorrendo entre si — e as quatro guardas de
+ * atualizacao (revisao antiga, troca de autor, vinculo curado, conflito de
+ * hash) ficariam dormentes para sempre, porque todas dependem de `existing`.
+ *
+ * O que identifica a MATERIA ao longo das revisoes e `sourceClusterId`: o
+ * agrupamento que o RSS Prime atribui ao assunto e que o MNScr repassa
+ * inalterado. O campo ja existe em `articles`, ja e indexado
+ * (`articles_source_cluster_id_idx`) e ja e a chave que
+ * `/internal/editorial-drafts` usa — este endpoint era o unico fora do padrao.
+ *
+ * `automationIdempotencyKey` continua no `or` por dois motivos: cobre o reenvio
+ * EXATO do mesmo pedido, e cobre as materias publicadas ANTES desta correcao,
+ * que nasceram sem `sourceClusterId` gravado (o backfill em
+ * `scripts/backfill-source-cluster-id.ts` fecha o resto).
+ *
+ * `targetArticleId` NAO entra na busca. Id vindo do corpo como chave de busca e
+ * escrita arbitraria: bastaria o produtor mandar um id qualquer para reescrever
+ * a materia daquele id. Ele entra so como CONFERENCIA — e a divergencia vira
+ * aviso, nunca sobrescrita.
+ */
+async function resolveExistingArticle(
+  req: PayloadRequest,
+  request: EditorialPublicationRequestV1,
+): Promise<ExistingResolution> {
+  const warnings: EditorialWarning[] = []
+
+  let docs: Record<string, unknown>[] = []
+  try {
+    const found = await req.payload.find({
+      collection: 'articles',
+      where: {
+        or: [
+          { sourceClusterId: { equals: request.sourceClusterId } },
+          { automationIdempotencyKey: { equals: request.idempotencyKey } },
+        ],
+      },
+      // ORDEM DETERMINISTA, e a mais antiga primeiro. A materia mais antiga do
+      // cluster e a que ja tem URL viva; trocar de alvo entre revisoes faria o
+      // mesmo estrago que duplicar, so que mais dificil de enxergar.
+      sort: 'createdAt',
+      // Mais de um resultado e anomalia — provavelmente duplicata deixada pelo
+      // proprio defeito que esta correcao fecha. Pedimos alguns para poder
+      // CONTAR e avisar, em vez de escolher um em silencio.
+      limit: 5,
+      depth: 0,
+      // Leitura interna: a service account nao tem `read` em `articles`, e o
+      // resultado nunca volta ao cliente (so contagem e id no aviso).
+      overrideAccess: true,
+      req,
+    })
+    docs = found.docs as unknown as Record<string, unknown>[]
+  } catch {
+    // Fail-closed ao contrario seria pior: sem leitura confiavel nao ha como
+    // afirmar que a materia existe. Cair para `create` e o comportamento antigo
+    // — porem agora ele fica registrado como aviso, nao como silencio.
+    warnings.push({
+      code: 'ARTIGO_EXISTENTE_NAO_VERIFICADO',
+      field: 'sourceClusterId',
+      detail:
+        'falha ao consultar materia existente para este cluster; o pedido segue como criacao',
+    })
+    return { existing: null, warnings }
+  }
+
+  const existing = docs[0] ?? null
+
+  if (docs.length > 1) {
+    warnings.push({
+      code: 'SOURCE_CLUSTER_AMBIGUO',
+      field: 'sourceClusterId',
+      detail: `${String(docs.length)} materias respondem ao cluster ${request.sourceClusterId}; atualizada a mais antiga (id ${String(existing?.id ?? '?')})`,
+    })
+  }
+
+  // CONFERENCIA de `targetArticleId`. Nunca chave de busca, nunca sobrescrita.
+  const claimed = request.targetArticleId
+  if (claimed !== undefined && claimed !== null && String(claimed).trim() !== '') {
+    if (existing === null) {
+      warnings.push({
+        code: 'TARGET_ARTICLE_ID_SEM_CORRESPONDENCIA',
+        field: 'targetArticleId',
+        detail: `o pedido aponta para a materia ${String(claimed)}, mas nenhuma materia responde ao cluster ${request.sourceClusterId}; o pedido segue como criacao e o id declarado NAO foi usado`,
+      })
+    } else if (String(existing.id) !== String(claimed)) {
+      warnings.push({
+        code: 'TARGET_ARTICLE_ID_DIVERGENTE',
+        field: 'targetArticleId',
+        detail: `o pedido aponta para a materia ${String(claimed)}, mas o cluster ${request.sourceClusterId} resolve para ${String(existing.id)}; prevalece a resolucao pelo cluster`,
+      })
+    }
+  }
+
+  return { existing, warnings }
+}
+
+/* ------------------------------------------------------------------ */
 /* Endpoint                                                            */
 /* ------------------------------------------------------------------ */
 
@@ -330,21 +442,16 @@ export const editorialPublicationsEndpoint: Endpoint = {
 
     const slug = canonicalizeSlug(request.seo.slugSuggestion)
 
-    // Idempotencia e revisao: procuramos um artigo com a MESMA chave.
-    let existing: Record<string, unknown> | null = null
-    try {
-      const found = await req.payload.find({
-        collection: 'articles',
-        where: { automationIdempotencyKey: { equals: request.idempotencyKey } },
-        limit: 1,
-        depth: 0,
-        overrideAccess: true,
-        req,
-      })
-      existing = (found.docs[0] ?? null) as Record<string, unknown> | null
-    } catch {
-      existing = null
-    }
+    // Idempotencia e revisao: procuramos a materia que este pedido ATUALIZA.
+    const resolution = await resolveExistingArticle(req, request)
+    const existing = resolution.existing
+
+    // A INTENCAO EFETIVA. O corpo declara uma; o estado do banco decide a outra,
+    // e e a do banco que vale — tanto para a cota quanto para a persistencia.
+    // Manter dois valores divergentes foi exatamente o defeito: o pedido dizia
+    // "atualize", o contador acreditava, e o `create` fazia outra coisa.
+    const resolvedTargetArticleId = existing === null ? null : String(existing.id)
+    const resolvedIntent: 'publish' | 'update' = existing === null ? 'publish' : 'update'
 
     // TROCA DE AUTOR em materia ja publicada.
     //
@@ -369,11 +476,26 @@ export const editorialPublicationsEndpoint: Endpoint = {
       request.publicationIntent === 'update' &&
       appliedRevision !== null &&
       request.sourceRevision <= appliedRevision
+    // MESMA IDENTIDADE, BYTES DIFERENTES.
+    //
+    // Em `publish` a identidade e a chave: reusar a mesma `idempotencyKey` com
+    // outro conteudo e bug do produtor.
+    //
+    // Em `update` a chave muda a cada revisao — quem identifica o conteudo e a
+    // REVISAO. Reenviar a revisao ja aplicada com outros bytes e o mesmo defeito
+    // sob outro nome: um dos dois envios da revisao N esta errado, e adivinhar
+    // qual seria pior do que recusar. Reenvio IDENTICO da mesma revisao nao cai
+    // aqui (o hash bate) — sai por `staleRevision`, que e o desfecho certo para
+    // "isto ja foi aplicado".
+    const sameHash =
+      typeof existing?.automationPayloadHash === 'string' &&
+      existing.automationPayloadHash === request.sourcePayloadHash
     const idempotencyConflict =
       existing !== null &&
       typeof existing.automationPayloadHash === 'string' &&
-      existing.automationPayloadHash !== request.sourcePayloadHash &&
-      request.publicationIntent === 'publish'
+      !sameHash &&
+      (request.publicationIntent === 'publish' ||
+        (appliedRevision !== null && request.sourceRevision === appliedRevision))
 
     /* ---------------------------------------------------------------- */
     /* O que o pedido VIRA — e o que ele PERDE                          */
@@ -416,6 +538,7 @@ export const editorialPublicationsEndpoint: Endpoint = {
         : []
 
     const intakeWarnings: readonly EditorialWarning[] = [
+      ...resolution.warnings,
       ...mappedBody.details,
       ...strippedMarks,
       ...hero.warnings,
@@ -546,11 +669,24 @@ export const editorialPublicationsEndpoint: Endpoint = {
       }
       await (async () => {
         const reservation = await consumeQuotas(req, quotaWindow, {
-          publicationIntent: request.publicationIntent,
+          // A COTA CONTA O QUE A PERSISTENCIA VAI FAZER.
+          //
+          // Antes, `publicationIntent` vinha do corpo e `targetArticleId`
+          // tambem: um pedido que se declarava `update` reservava a dimensao
+          // `article_update` — com a chave que o produtor mandou — e logo
+          // depois a persistencia CRIAVA uma materia nova, porque `existing`
+          // era sempre nulo. Uma revisao queimava teto de atualizacao E
+          // duplicava. Pior: o contador subia numa chave (o id declarado) que
+          // podia nao existir, entao nem auditoria o teto tinha.
+          //
+          // Os dois lados passam a ler a MESMA resolucao. Sem materia
+          // resolvida nao ha o que atualizar: e criacao, e `planQuotaConsumption`
+          // nem monta a dimensao `article_update`.
+          publicationIntent: resolvedIntent,
           contentType: request.contentType,
           section,
           publicAuthorId: request.publicAuthorId,
-          targetArticleId: request.targetArticleId ?? null,
+          targetArticleId: resolvedTargetArticleId,
           limits: {
             dailyLimit: config.dailyLimit,
             // O teto do AUTOR e o mais restritivo entre a plataforma e o proprio
@@ -578,7 +714,7 @@ export const editorialPublicationsEndpoint: Endpoint = {
           request,
           decision,
           slug: slug.ok ? slug.slug : null,
-          existingId: existing === null ? null : String(existing.id),
+          existingId: resolvedTargetArticleId,
           mappedBody,
           heroMediaId: hero.heroMediaId,
           entityReferences: entityRefs.rows,
@@ -604,7 +740,11 @@ export const editorialPublicationsEndpoint: Endpoint = {
           sourceRevision: request.sourceRevision,
           articleId: persisted.articleId,
           publicAuthorId: request.publicAuthorId,
-          publicationIntent: request.publicationIntent,
+          // O registro guarda o que ACONTECEU, nao o que o corpo pediu: um
+          // ledger que dissesse "update" ao lado de um `articleId` recem-criado
+          // seria uma auditoria que mente. O pedido cru continua rastreavel pelo
+          // `requestId`.
+          publicationIntent: resolvedIntent,
           window: quotaWindow,
           dimensionsConsumed: reservation.consumed,
           serviceAccountId: technicalActorId,
@@ -824,6 +964,18 @@ async function persistPublication(
     automationIdempotencyKey: request.idempotencyKey,
     automationSourceRevision: request.sourceRevision,
     automationPayloadHash: request.sourcePayloadHash,
+    // A IDENTIDADE QUE SOBREVIVE AS REVISOES.
+    //
+    // `automationIdempotencyKey` muda a cada revisao; `sourceClusterId` nao. Ele
+    // e a chave que `resolveExistingArticle` consulta, e por isso precisa estar
+    // gravado NA CRIACAO — sem esta linha a busca nova nao acharia nada e a
+    // revisao seguinte duplicaria de novo, exatamente como antes.
+    //
+    // Reescrito tambem no update, e de proposito: o valor e o mesmo (a busca
+    // encontrou a materia por ele), e uma materia adotada pelo caminho antigo —
+    // achada pela chave de idempotencia, sem cluster gravado — ganha o campo na
+    // primeira atualizacao, sem depender do backfill.
+    sourceClusterId: request.sourceClusterId,
     automationPipelineVersion: request.pipelineVersion,
     automationContractName: request.contractName,
     automationContractVersion: request.contractVersion,
