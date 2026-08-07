@@ -50,6 +50,28 @@ export interface BodyMapperOptions {
   readonly resolveMedia: (mediaRef: string) => ResolvedMediaId
 }
 
+/**
+ * Uma perda, em forma de DADO — nao de frase.
+ *
+ * A string de `warnings` serve ao revisor humano no admin, que le portugues. O
+ * codigo serve ao PIPELINE que enviou o pedido, que precisa decidir se corrige
+ * o emissor ou se aquilo era esperado — e nao pode fazer isso casando substring
+ * de uma mensagem que muda quando alguem melhora a redacao.
+ *
+ * Os dois convivem de proposito: `warnings` continua sendo a lista de strings
+ * que a collection ja guarda, com o mesmo formato de sempre.
+ */
+export interface EditorialWarning {
+  /** Codigo estavel, em UPPER_SNAKE. E o que o emissor compara. */
+  readonly code: string
+  /** Caminho do campo no PEDIDO (ex.: `blocks[3].mediaRef`). */
+  readonly field: string
+  /** Id do bloco, quando o descarte pertence a um bloco identificavel. */
+  readonly blockId?: string
+  /** Frase humana. Mesmo texto do `warnings` correspondente. */
+  readonly detail: string
+}
+
 export interface MappedBody {
   /** Blocos prontos para o campo `body` da collection `articles`. */
   readonly blocks: readonly Record<string, unknown>[]
@@ -62,6 +84,15 @@ export interface MappedBody {
    * o defeito que este arquivo corrige.
    */
   readonly warnings: readonly string[]
+  /**
+   * As MESMAS perdas, com codigo e campo.
+   *
+   * Uma por entrada de `warnings`, na mesma ordem. E isto que atravessa a
+   * resposta HTTP do endpoint de publicacao: ate agora a lista de strings
+   * morria no registro do artigo e o emissor recebia `2xx` sem saber que metade
+   * do que mandou nao chegou.
+   */
+  readonly details: readonly EditorialWarning[]
 }
 
 /** Bloco em forma de contrato, ainda nao validado por este modulo. */
@@ -115,28 +146,64 @@ export function toPayloadBlocks(
 ): MappedBody {
   const mapped: Record<string, unknown>[] = []
   const warnings: string[] = []
+  const details: EditorialWarning[] = []
   const provenanceDropped: string[] = []
 
-  for (const raw of blocks) {
-    if (raw === null || typeof raw !== 'object') continue
+  /** Uma perda entra nas DUAS listas, sempre, e sempre em par. */
+  const lose = (warning: EditorialWarning): void => {
+    warnings.push(warning.detail)
+    details.push(warning)
+  }
+
+  for (const [index, raw] of blocks.entries()) {
+    if (raw === null || typeof raw !== 'object') {
+      // Era o unico descarte MUDO que sobrava aqui: um `continue` seco. Um
+      // corpo que chegasse com uma entrada malformada perdia o bloco e ninguem
+      // ficava sabendo — nem o revisor, nem o emissor.
+      lose({
+        code: 'BLOCK_NOT_AN_OBJECT',
+        field: `blocks[${String(index)}]`,
+        detail: `entrada ${String(index)} do corpo nao e um bloco (${
+          raw === null ? 'null' : typeof raw
+        }): descartada`,
+      })
+      continue
+    }
     const block = raw as ContractBlock
 
     const type = String(block.type ?? '')
     const blockId = String(block.id ?? '')
 
     if (!(EDITORIAL_BLOCK_TYPES as readonly string[]).includes(type)) {
-      warnings.push(`bloco de tipo desconhecido descartado: "${type || '(sem tipo)'}"`)
+      lose({
+        code: 'BLOCK_TYPE_UNKNOWN',
+        field: `blocks[${String(index)}].type`,
+        ...(blockId === '' ? {} : { blockId }),
+        detail: `bloco de tipo desconhecido descartado: "${type || '(sem tipo)'}"`,
+      })
       continue
     }
     if (blockId === '') {
-      warnings.push(`bloco "${type}" sem id descartado: id estavel e obrigatorio`)
+      lose({
+        code: 'BLOCK_ID_MISSING',
+        field: `blocks[${String(index)}].id`,
+        detail: `bloco "${type}" sem id descartado: id estavel e obrigatorio`,
+      })
       continue
     }
 
     // `provenance` existe no contrato para todo bloco e na collection so em
-    // `paragraph`. Registrar a perda uma vez, no fim, em vez de por bloco.
+    // `paragraph`. A STRING sai agregada uma vez no fim (formato de sempre); o
+    // detail sai por bloco, porque um codigo que nomeia tres blocos de uma vez
+    // nao serve para o emissor localizar nada.
     if (type !== 'paragraph' && Array.isArray(block.provenance) && block.provenance.length > 0) {
       provenanceDropped.push(blockId)
+      details.push({
+        code: 'BLOCK_PROVENANCE_DROPPED',
+        field: `blocks[${String(index)}].provenance`,
+        blockId,
+        detail: `proveniencia do bloco "${blockId}" (${type}) nao persistida: a collection so a guarda em paragrafo`,
+      })
     }
 
     const base = { blockType: type, blockId }
@@ -163,9 +230,12 @@ export function toPayloadBlocks(
           // persistido (`media` e obrigatorio na collection), entao ele sai do
           // corpo — mas sai NOMEADO, para o revisor saber que havia uma imagem
           // ali e qual candidata ela esperava.
-          warnings.push(
-            `imagem do bloco "${blockId}" aguarda midia aprovada no CMS (referencia "${mediaRef}"): bloco nao persistido`,
-          )
+          lose({
+            code: 'BLOCK_IMAGE_MEDIA_UNRESOLVED',
+            field: `blocks[${String(index)}].mediaRef`,
+            blockId,
+            detail: `imagem do bloco "${blockId}" aguarda midia aprovada no CMS (referencia "${mediaRef}"): bloco nao persistido`,
+          })
           break
         }
         mapped.push({
@@ -234,15 +304,21 @@ export function toPayloadBlocks(
       default:
         // Inalcancavel: a allowlist acima ja filtrou. Fica como rede para o dia
         // em que um tipo novo entrar no contrato sem passar por aqui.
-        warnings.push(`bloco "${type}" sem traducao para a collection: descartado`)
+        lose({
+          code: 'BLOCK_WITHOUT_MAPPING',
+          field: `blocks[${String(index)}].type`,
+          blockId,
+          detail: `bloco "${type}" sem traducao para a collection: descartado`,
+        })
     }
   }
 
   if (provenanceDropped.length > 0) {
+    // So a STRING e agregada — os details ja sairam por bloco, acima.
     warnings.push(
       `proveniencia nao persistida (a collection so a guarda em paragrafo) nos blocos: ${provenanceDropped.join(', ')}`,
     )
   }
 
-  return { blocks: mapped, warnings }
+  return { blocks: mapped, warnings, details }
 }

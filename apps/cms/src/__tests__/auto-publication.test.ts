@@ -275,33 +275,61 @@ describe('SEO: transporte x auto-publicacao', () => {
     ).toContain('SEO_META_MISSING')
   })
 
-  it('BORDAS do titulo', () => {
+  it('BORDAS do titulo: o PISO bloqueia, o TETO so avisa', () => {
     const at = (length: number) =>
       validateSeoForPublication({ ...base, title: 'a'.repeat(length) })
-    // 14 = fora do transporte; 15 = elegivel; 65 = elegivel; 66 = revisao;
-    // 120 = revisao; 121 = fora do transporte.
+    const idealCodes = (length: number) => at(length).warningDetails.map((r) => r.code)
+    // O PISO continua onde estava: 14 nao passa. O TETO da autopublicacao
+    // (65) deixou de barrar — de 66 a 120 publica com aviso, e 121 sai do
+    // transporte e volta a bloquear.
     expect(at(14).blocking.map((r) => r.code)).toContain('SEO_TITLE_OUT_OF_TRANSPORT_RANGE')
     expect(at(15).blocking).toEqual([])
     expect(at(15).review).toEqual([])
     expect(at(65).review).toEqual([])
-    expect(at(66).review.map((r) => r.code)).toContain('SEO_TITLE_OUTSIDE_AUTO_PUBLISH_RANGE')
-    expect(at(120).review.map((r) => r.code)).toContain('SEO_TITLE_OUTSIDE_AUTO_PUBLISH_RANGE')
+    expect(at(65).warningDetails).toEqual([])
+    expect(at(66).review).toEqual([])
+    expect(idealCodes(66)).toContain('SEO_FORA_DA_FAIXA_IDEAL')
+    expect(at(120).review).toEqual([])
+    expect(idealCodes(120)).toContain('SEO_FORA_DA_FAIXA_IDEAL')
     expect(at(120).blocking).toEqual([])
     expect(at(121).blocking.map((r) => r.code)).toContain('SEO_TITLE_OUT_OF_TRANSPORT_RANGE')
   })
 
-  it('BORDAS da meta description', () => {
+  it('BORDAS da meta description: o PISO bloqueia, o resto so avisa', () => {
     const at = (length: number) =>
       validateSeoForPublication({ ...base, metaDescription: 'a'.repeat(length) })
+    const idealCodes = (length: number) => at(length).warningDetails.map((r) => r.code)
     expect(at(69).blocking.map((r) => r.code)).toContain('SEO_META_OUT_OF_TRANSPORT_RANGE')
-    expect(at(70).review.map((r) => r.code)).toContain('SEO_META_TOO_SHORT_FOR_AUTO_PUBLISH')
-    expect(at(119).review.map((r) => r.code)).toContain('SEO_META_TOO_SHORT_FOR_AUTO_PUBLISH')
-    expect(at(120).review).toEqual([])
+    // 70-119 e 161-320 continuavam sendo 202. Agora publicam com aviso.
+    expect(at(70).review).toEqual([])
+    expect(idealCodes(70)).toContain('SEO_FORA_DA_FAIXA_IDEAL')
+    expect(at(119).review).toEqual([])
+    expect(idealCodes(119)).toContain('SEO_FORA_DA_FAIXA_IDEAL')
     expect(at(160).review).toEqual([])
-    expect(at(161).review.map((r) => r.code)).toContain('SEO_META_TOO_LONG_FOR_AUTO_PUBLISH')
-    expect(at(320).review.map((r) => r.code)).toContain('SEO_META_TOO_LONG_FOR_AUTO_PUBLISH')
+    expect(at(161).review).toEqual([])
+    expect(idealCodes(161)).toContain('SEO_FORA_DA_FAIXA_IDEAL')
+    expect(at(320).review).toEqual([])
+    expect(idealCodes(320)).toContain('SEO_FORA_DA_FAIXA_IDEAL')
     expect(at(320).blocking).toEqual([])
     expect(at(321).blocking.map((r) => r.code)).toContain('SEO_META_OUT_OF_TRANSPORT_RANGE')
+  })
+
+  it('o aviso NOMEIA a medida e a faixa ideal, para o produtor poder corrigir', () => {
+    const detail = validateSeoForPublication({ ...base, title: 'a'.repeat(88) })
+      .warningDetails.find((r) => r.field === 'seo.title')?.detail
+    expect(detail).toContain('88')
+    expect(detail).toContain('65')
+  })
+
+  it('SEO fora da faixa ideal NAO produz mais 202', () => {
+    // Este e o ponto da mudanca: com o portao antigo, um titulo de 88
+    // caracteres — perfeitamente publicavel — parava a materia em revisao
+    // humana que ninguem ia fazer, e a redacao ficava sem materia no ar.
+    const decision = decideAutoPublication(
+      gate({ seo: { ...base, title: 'a'.repeat(88), metaDescription: 'a'.repeat(300) } }),
+    )
+    expect(decision.outcome).toBe('PUBLISHED')
+    expect(decision.warningDetails.map((r) => r.code)).toContain('SEO_FORA_DA_FAIXA_IDEAL')
   })
 
   it('faixa PREFERENCIAL da redacao avisa, nao impede', () => {

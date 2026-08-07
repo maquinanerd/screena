@@ -61,7 +61,7 @@ import {
   spansToInlineContent,
   type InlineSpan,
 } from '../inline-marks.js'
-import { planRichPaste } from './paste-to-blocks.js'
+import { droppedImagesMessage, planRichPaste } from './paste-to-blocks.js'
 
 /** `body.3.text` -> `{ parentPath: 'body', rowIndex: 3, marksPath: 'body.3.marks' }`. */
 function locateRow(
@@ -137,7 +137,10 @@ function seedEditor(text: string, marks: unknown): void {
 
 interface BehaviorProps {
   readonly onEnterAtEnd: () => void
-  readonly onPasteParagraphs: (paragraphs: readonly InlineSpan[][]) => boolean
+  readonly onPasteParagraphs: (
+    paragraphs: readonly InlineSpan[][],
+    droppedImages: number,
+  ) => boolean
   readonly onLinkRequest: () => void
 }
 
@@ -182,7 +185,7 @@ function BehaviorPlugin({ onEnterAtEnd, onPasteParagraphs, onLinkRequest }: Beha
               text: event.clipboardData.getData('text/plain'),
             })
             if (plan.paragraphs.length === 0) return false
-            if (!onPasteParagraphs(plan.paragraphs)) return false
+            if (!onPasteParagraphs(plan.paragraphs, plan.droppedImages)) return false
             event.preventDefault()
             return true
           },
@@ -295,7 +298,7 @@ function ChangeBridge({
 interface BridgeProps {
   readonly setContent: (text: string, marks: TextMark[]) => void
   readonly requestLink: React.MutableRefObject<(() => void) | null>
-  readonly appendSpans: (paragraphs: readonly InlineSpan[][]) => boolean
+  readonly appendSpans: (paragraphs: readonly InlineSpan[][], droppedImages: number) => boolean
   readonly onEnterAtEnd: () => void
   readonly readOnly: boolean
 }
@@ -357,7 +360,7 @@ function Bridge({
   }, [requestLink, onLinkRequest])
 
   const onPasteParagraphs = useCallback(
-    (paragraphs: readonly InlineSpan[][]): boolean => {
+    (paragraphs: readonly InlineSpan[][], droppedImages: number): boolean => {
       const [first, ...rest] = paragraphs
       if (first === undefined) return false
 
@@ -382,7 +385,9 @@ function Bridge({
         }
       })
 
-      if (rest.length > 0) appendSpans(rest)
+      // Sempre chamado, mesmo sem paragrafo extra: a perda de imagem precisa ser
+      // dita tambem quando o que colou coube num paragrafo so.
+      appendSpans(rest, droppedImages)
       return true
     },
     [editor, appendSpans],
@@ -417,6 +422,15 @@ export const ParagraphTextField: TextareaFieldClientComponent = ({
   const { addFieldRow } = useForm()
 
   const [notice, setNotice] = useState<string | null>(null)
+  /**
+   * Imagens que a ultima colagem deixou para tras.
+   *
+   * Estado SEPARADO do `notice`, e nao a mesma frase concatenada, porque os dois
+   * dizem coisas de peso diferente: um informa o que o editor fez com o texto, o
+   * outro cobra uma acao de quem escreve. Juntar os dois numa linha so faria o
+   * segundo herdar o tom neutro do primeiro.
+   */
+  const [lostImages, setLostImages] = useState(0)
   const requestLink = useRef<(() => void) | null>(null)
 
   // O schemaPath do CAMPO e `...body.paragraph.text`; a linha vive dois niveis
@@ -451,6 +465,7 @@ export const ParagraphTextField: TextareaFieldClientComponent = ({
       if (lastWritten.current === serialized) return
       lastWritten.current = serialized
       setNotice(null)
+      setLostImages(0)
       setValue(text)
       setMarks(marks.length === 0 ? null : marks)
     },
@@ -482,14 +497,20 @@ export const ParagraphTextField: TextareaFieldClientComponent = ({
   const onEnterAtEnd = useCallback(() => {
     if (row === null) return
     setNotice(null)
+    setLostImages(0)
     appendParagraphs([[]], row.rowIndex + 1)
   }, [appendParagraphs, row])
 
   const appendSpans = useCallback(
-    (paragraphs: readonly InlineSpan[][]): boolean => {
+    (paragraphs: readonly InlineSpan[][], droppedImages: number): boolean => {
       if (row === null) return false
-      appendParagraphs(paragraphs, row.rowIndex + 1)
-      setNotice(`Texto colado dividido em ${String(paragraphs.length + 1)} parágrafos.`)
+      // Lista vazia e um caso legitimo: a colagem coube neste mesmo paragrafo.
+      // Nao ha o que anexar, mas ha o que RELATAR sobre a imagem perdida.
+      if (paragraphs.length > 0) {
+        appendParagraphs(paragraphs, row.rowIndex + 1)
+        setNotice(`Texto colado dividido em ${String(paragraphs.length + 1)} parágrafos.`)
+      }
+      setLostImages(droppedImages)
       return true
     },
     [appendParagraphs, row],
@@ -569,10 +590,18 @@ export const ParagraphTextField: TextareaFieldClientComponent = ({
         </p>
       )}
 
+      {/* Perda de conteudo pede `alert`, e nao `status`: o leitor de tela
+          interrompe, porque ha uma acao pendente do outro lado da frase. */}
+      {lostImages > 0 ? (
+        <p className="cinerie-paragraph__media-notice" role="alert">
+          {droppedImagesMessage(lostImages)}
+        </p>
+      ) : null}
+
       <p className="cinerie-paragraph__hint">
         Ctrl+B negrito, Ctrl+I itálico, Ctrl+K link. Enter cria o próximo parágrafo. Shift+Enter
         quebra a linha aqui dentro. Texto colado vira um bloco por parágrafo, com a formatação
-        preservada.
+        preservada — imagens não vêm junto, use o bloco de imagem.
       </p>
     </div>
   )
