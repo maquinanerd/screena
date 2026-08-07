@@ -14,6 +14,7 @@ import {
 import { AdSlot } from '../../../_components/ad-slot'
 import { ArticleBody, IMAGE_CREDIT_LABEL } from '../../../_components/article-body'
 import { CardBookmark } from '../../../_components/card-bookmark'
+import { bodyBlocksShowImage } from '../../../../src/lib/article-body-presenter'
 import { authorInitials, heroCropOf, sectionCrumbLabel } from '../../../../src/lib/article-hero'
 import type { NewsArticleView } from '../../../../src/lib/news-presenter'
 import { HOME_PATH, SITE_URL, gatePublicRobots } from '../../../../src/lib/site'
@@ -153,6 +154,20 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
   ).length
   const blockAdAfter =
     textBlockCount >= 4 ? Math.ceil(bodyBlocks.length * 0.6) : bodyBlocks.length
+
+  // A MATÉRIA MOSTRA ALGUMA IMAGEM?
+  //
+  // A nota de transparência do rodapé afirmava "Imagens meramente ilustrativas"
+  // em toda matéria assistida por IA — inclusive nas que não têm imagem nenhuma
+  // (o caso comum quando a fonte é RSS e a capa nunca foi apontada). O aviso
+  // ficava falando de algo que não está na página.
+  //
+  // Três superfícies contam, e são as três que exibem imagem DENTRO da matéria:
+  // a capa, os blocos do corpo (`image`, `gallery`, ficha com pôster) e a ficha
+  // do título no fim do corpo. Ficam de fora os cards de "Leia também", que são
+  // navegação, e estão fora do `<article>`.
+  const showsImage =
+    view.heroImage !== null || bodyBlocksShowImage(bodyBlocks) || card?.posterUrl != null
 
   const shareUrl = encodeURIComponent(canonicalUrl)
   const shareText = encodeURIComponent(view.title)
@@ -450,7 +465,8 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
         {view.aiAssisted ? (
           <p className="art-note" role="note">
             Conteúdo produzido pela equipe editorial da Cinerie, com apoio de ferramentas de
-            inteligência artificial. Imagens meramente ilustrativas.
+            inteligência artificial.
+            {showsImage ? ' Imagens meramente ilustrativas.' : null}
           </p>
         ) : null}
 

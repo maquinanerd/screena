@@ -189,9 +189,35 @@ interface ArticleData {
     aiAssisted: boolean;
     source: { name: string } | null;
     related: ReadonlyArray<{ entityType: string; title: string; href: string }>;
+    entityCard: { posterUrl: string | null } | null;
   };
   indexability: { decision: string };
   canonicalUrl: string;
+  bodyBlocks: ReadonlyArray<{ kind: string }>;
+}
+
+/**
+ * Ha alguma imagem POSSIVEL na materia? — o gate do aviso "Imagens meramente
+ * ilustrativas", visto do lado dos DADOS.
+ *
+ * Deliberadamente MAIS FROUXO que a pagina: aqui todo bloco `entityCard` conta,
+ * enquanto la so conta o que traz poster. A frouxidao aponta para o lado seguro
+ * — se esta funcao responde `false`, a pagina tambem responde `false` —, e e ela
+ * que faz o caso negativo valer alguma coisa.
+ *
+ * Nao substitui o teste puro de `bodyBlocksShowImage`. O que ele nao alcanca, e
+ * este validador alcanca, e que os TRES campos existam no retorno REAL do
+ * servidor e cheguem vazios numa materia sem imagem. Foi essa conferencia que
+ * faltou, e por isso o aviso apareceu em pagina sem uma unica imagem.
+ */
+function mayShowImage(data: ArticleData): boolean {
+  return (
+    data.view.heroImage !== null ||
+    data.bodyBlocks.some(
+      (block) => block.kind === "image" || block.kind === "gallery" || block.kind === "entityCard",
+    ) ||
+    data.view.entityCard?.posterUrl != null
+  );
 }
 interface IndexData {
   view: {
@@ -253,13 +279,44 @@ async function runChecks(prisma: PrismaLike, g: Getters): Promise<void> {
   record(14, "E. disclaimer de IA ativo e fonte em texto", rich?.view.aiAssisted === true && rich?.view.source?.name === "Collider", `ai=${rich?.view.aiAssisted} fonte=${rich?.view.source?.name ?? "null"}`);
   record(15, "E. relacionado resolve so alvo com slug (movie), pessoa sem slug omitida", rich?.view.related.length === 1 && rich?.view.related[0]?.href === "/pt/filmes/filme-rel/" && rich?.view.related[0]?.title === "Filme Rel", `related=[${(rich?.view.related ?? []).map((r) => r.href).join(", ")}]`);
 
-  // Mais dois publicaveis para a listagem indexar (>= 3 publicaveis: fina + rica + 2).
+  // O aviso de imagem so pode falar de imagem que existe.
+  //
+  // Materia assistida por IA, publicada, SEM capa, SEM bloco de corpo e SEM
+  // ficha — o caso comum quando a fonte e RSS e a capa nunca foi apontada. Era
+  // exatamente esta materia que exibia "Imagens meramente ilustrativas" sem uma
+  // unica imagem na tela.
+  await seedArticle(prisma, {
+    slug: "noticia-ia-sem-imagem",
+    title: "Noticia de IA sem imagem",
+    reviewStatus: "published",
+    indexStatus: "index",
+    body: LONG_BODY,
+    aiAssisted: true,
+    sourceName: "Collider",
+    publishedAt: new Date("2026-06-25T00:00:00.000Z"),
+  });
+  const semImagem = await g.getNewsArticleData("noticia-ia-sem-imagem");
+  record(
+    20,
+    "E2. materia de IA SEM imagem nenhuma -> aviso de imagem nao se aplica",
+    semImagem !== null && semImagem.view.aiAssisted === true && !mayShowImage(semImagem),
+    `ai=${String(semImagem?.view.aiAssisted)} hero=${semImagem?.view.heroImage === null ? "null" : "presente"} blocos=${String(semImagem?.bodyBlocks.length ?? -1)} ficha=${semImagem?.view.entityCard === null ? "null" : "presente"}`,
+  );
+  record(
+    21,
+    "E2. materia de IA COM capa -> aviso de imagem se aplica",
+    rich !== null && rich.view.aiAssisted === true && mayShowImage(rich),
+    `ai=${String(rich?.view.aiAssisted)} hero=${rich?.view.heroImage?.src ?? "null"}`,
+  );
+
+  // Mais dois publicaveis para a listagem indexar (>= 3 publicaveis).
   await seedArticle(prisma, { slug: "noticia-rica-2", title: "Rica 2", reviewStatus: "published", indexStatus: "index", body: LONG_BODY, publishedAt: new Date("2026-06-20T00:00:00.000Z") });
   await seedArticle(prisma, { slug: "noticia-rica-3", title: "Rica 3", reviewStatus: "human_reviewed", indexStatus: "index", body: LONG_BODY, publishedAt: new Date("2026-06-10T00:00:00.000Z") });
 
   const list = await g.getNewsIndexData();
   record(16, "F. listagem canonicalUrl /pt/noticias/", list.canonicalUrl === "https://cinerie.com/pt/noticias/", `canonicalUrl=${list.canonicalUrl}`);
-  record(17, "F. so publicaveis entram (rascunho/bloqueada fora) -> totalCount=4", list.view.totalCount === 4, `totalCount=${list.view.totalCount}`);
+  // 5 publicaveis: fina + rica + ia-sem-imagem + rica-2 + rica-3.
+  record(17, "F. so publicaveis entram (rascunho/bloqueada fora) -> totalCount=5", list.view.totalCount === 5, `totalCount=${list.view.totalCount}`);
   record(18, "F. listagem com itens suficientes -> index", list.indexability.decision === "index", `decision=${list.indexability.decision}`);
   record(19, "F. featured e o mais recente (Noticia Rica, 30/06)", list.view.featured?.title === "Noticia Rica", `featured=${list.view.featured?.title ?? "null"}`);
 }

@@ -585,6 +585,34 @@ export function buildArticleBodyBlocks(
   return out;
 }
 
+/**
+ * O corpo renderizado mostra alguma IMAGEM?
+ *
+ * Existe por causa da nota de transparencia da materia, que afirmava "Imagens
+ * meramente ilustrativas" em pagina sem nenhuma imagem — um aviso sobre algo
+ * que nao esta ali. A pergunta e feita sobre os blocos JA MAPEADOS, e nao sobre
+ * a coluna crua, porque e o mapeamento que decide o que sobrevive: um bloco de
+ * imagem cuja midia nao resolveu vira `null` e nunca chega a tela.
+ *
+ * `entityCard` conta quando traz poster: e imagem exibida dentro do corpo. O
+ * card sem poster nao conta — ele renderiza so texto.
+ */
+export function bodyBlocksShowImage(blocks: readonly ArticleBodyBlock[]): boolean {
+  return blocks.some((block) => {
+    switch (block.kind) {
+      // `image` e `gallery` so chegam aqui com imagem: o mapeador descarta a
+      // imagem sem caminho local e a galeria que ficou sem nenhum item.
+      case "image":
+      case "gallery":
+        return true;
+      case "entityCard":
+        return block.card.posterUrl !== null;
+      default:
+        return false;
+    }
+  });
+}
+
 /* ------------------------------------------------------------------ */
 /* Referencias a resolver no servidor                                  */
 /* ------------------------------------------------------------------ */
