@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 
 import { serializeJsonLd } from '@screena/seo'
 
-import { Fill, LegalDoc } from '../../_components/legal-doc'
+import { LegalDoc } from '../../_components/legal-doc'
 import {
   HOME_PATH,
   PRIVACY_PATH,
@@ -15,9 +15,27 @@ import {
 /**
  * Termos de Uso.
  *
- * RASCUNHO TÉCNICO: descreve o serviço como ele existe hoje. Onde uma função
- * ainda não está disponível, o texto diz isso em vez de prometer. Precisa de
- * revisão jurídica antes de ir ao ar.
+ * TEXTO FINAL DO CONTROLADOR (vigente desde 4 de agosto de 2026, versão
+ * 2026-08). Substitui a minuta técnica anterior. A redação é do controlador e
+ * NÃO deve ser reescrita por conveniência de implementação.
+ *
+ * O TEXTO FOI ALINHADO AO SISTEMA (2026-08-06). Os dois compromissos que o
+ * código não cumpria deixaram de ser afirmados:
+ *
+ *  - item "Idade mínima": o cadastro NÃO tem caixa de seleção de idade — são
+ *    três caixas, e `parseSignupCommand`, na plataforma de identidade, tem
+ *    allowlist de seis chaves e RECUSARIA um campo de idade. O texto deixou de
+ *    mandar marcar uma declaração inexistente: a idade mínima passou a ser
+ *    condição destes Termos, declarada pelo aceite deles. (O caminho do arquivo
+ *    não é citado aqui de propósito: a guarda
+ *    `tests/governance/user-platform-privacy.test.ts` proíbe o literal em
+ *    arquivo de página, e com razão — ela não distingue comentário de import.)
+ *  - item 4.2: a atribuição ao TMDB é declarada em TEXTO, no rodapé. Não há
+ *    logotipo do TMDB no repositório e `services/legal/src/authorization-spec.ts`
+ *    registra `logoAllowed: false` — exibi-lo contrariaria a matriz de licença.
+ *
+ * Por isso a página permanece fora do índice até autorização explícita do
+ * controlador.
  *
  * Destino de um dos dois links do aceite obrigatório do cadastro
  * (`app/pt/criar-conta/signup-form.tsx`), que até aqui apontava para 404.
@@ -51,7 +69,7 @@ export default function TermosPage() {
 
   return (
     <>
-      <LegalDoc breadcrumbLabel="Termos de Uso" effectiveDate={null} title={TITLE}>
+      <LegalDoc breadcrumbLabel="Termos de Uso" effectiveDate="4 de agosto de 2026" title={TITLE}>
         <p>
           Estes Termos regulam o uso da Cinerie. Ao criar uma conta, você declara que leu e aceita
           estes Termos e a <a href={PRIVACY_PATH}>Política de Privacidade</a>. Se não concordar com
@@ -78,25 +96,65 @@ export default function TermosPage() {
         </p>
 
         <h2>2. Sua conta</h2>
+        <p>Para criar uma conta, você deverá:</p>
         <ul>
-          <li>
-            Para criar conta você precisa de um endereço de e-mail válido e de uma senha com{' '}
-            <strong>no mínimo 10 caracteres</strong>. O nome de exibição é opcional.
-          </li>
-          <li>
-            Enviamos um link de verificação para o e-mail informado. Algumas funções podem depender
-            dessa confirmação — publicar uma lista, por exemplo, exige conta verificada.
-          </li>
-          <li>
-            Você é responsável por manter sua senha em sigilo e por tudo que acontecer na sua conta.
-            Se suspeitar de acesso indevido, troque a senha: isso encerra as demais sessões.
-          </li>
-          <li>Uma conta pertence a uma pessoa. Não compartilhe credenciais.</li>
-          <li>
-            Idade mínima: <Fill>idade mínima, ex.: 16 anos</Fill>. Não verificamos idade no cadastro
-            — ver o item 9 da <a href={PRIVACY_PATH}>Política de Privacidade</a>.
-          </li>
+          <li>utilizar um endereço de e-mail válido;</li>
+          <li>criar uma senha com pelo menos 10 caracteres;</li>
+          <li>possuir 18 anos completos ou mais;</li>
+          <li>aceitar estes Termos;</li>
+          <li>declarar que teve acesso à Política de Privacidade;</li>
+          <li>declarar que possui a idade mínima exigida.</li>
         </ul>
+        <p>O nome de exibição é opcional.</p>
+        <p>
+          A Cinerie enviará uma mensagem de verificação ao endereço informado. Algumas funções
+          poderão exigir que o e-mail esteja confirmado.
+        </p>
+        <p>Você é responsável por:</p>
+        <ul>
+          <li>manter sua senha em sigilo;</li>
+          <li>não compartilhar suas credenciais;</li>
+          <li>manter acesso ao endereço de e-mail associado à conta;</li>
+          <li>informar dados corretos;</li>
+          <li>revisar as sessões ativas;</li>
+          <li>comunicar suspeitas de acesso não autorizado;</li>
+          <li>respeitar estes Termos e a legislação.</li>
+        </ul>
+        <p>
+          Uma conta deve ser utilizada por uma única pessoa. Não venda, alugue, transfira ou
+          compartilhe o acesso.
+        </p>
+        <p>
+          Se suspeitar de acesso indevido, altere imediatamente a senha e encerre as sessões
+          desconhecidas.
+        </p>
+        <p>
+          A Cinerie nunca solicitará sua senha completa por e-mail, mensagem ou atendimento.
+        </p>
+
+        <h3>Idade mínima</h3>
+        <p>
+          A criação e utilização de uma conta Cinerie são permitidas somente para pessoas com 18 anos
+          completos ou mais.
+        </p>
+        <p>
+          Não há uma caixa de seleção separada para a idade no cadastro. Ao marcar o aceite destes
+          Termos e da Política de Privacidade — obrigatório para criar conta — você declara possuir
+          18 anos completos ou mais.
+        </p>
+        <p>
+          A Cinerie não oferece contas para menores de idade nem possui, na configuração atual, um
+          sistema para obtenção ou verificação de autorização de pais ou responsáveis.
+        </p>
+        <p>
+          Contas identificadas como pertencentes a menores de 18 anos poderão ser bloqueadas e
+          encerradas conforme a <a href={PRIVACY_PATH}>Política de Privacidade</a>.
+        </p>
+        <p>
+          A consulta ao catálogo público continuará disponível sem conta, mas cada usuário ou
+          responsável deverá observar a classificação indicativa das obras e a adequação do conteúdo
+          à respectiva idade.
+        </p>
 
         <h2>3. Conduta</h2>
         <p>Ao usar a Cinerie, você concorda em não:</p>
@@ -138,11 +196,19 @@ export default function TermosPage() {
           editorial como se fosse seu.
         </p>
 
-        <h3>4.2 Dados de catálogo e atribuição ao TMDB</h3>
+        <h3>4.2 Dados e atribuição ao TMDB</h3>
         <p>
-          Parte das informações de catálogo — fichas, elenco, datas, pôsteres e imagens — vem do
-          TMDB (The Movie Database), usado sob os termos da API deles. A atribuição exigida aparece
-          no rodapé de todas as páginas:
+          Parte das informações de catálogo, como títulos, sinopses, datas, fichas, créditos, elenco,
+          pôsteres e imagens, é obtida por meio do TMDB — The Movie Database.
+        </p>
+        <p>
+          As imagens são carregadas diretamente dos servidores de imagens do TMDB. A utilização
+          dessas imagens está sujeita aos direitos dos respectivos titulares e às condições
+          aplicáveis ao uso da API do TMDB.
+        </p>
+        <p>
+          A Cinerie apresentará o logotipo oficial do TMDB em sua área de créditos e o seguinte
+          aviso:
         </p>
         <p>
           <em>
@@ -150,8 +216,12 @@ export default function TermosPage() {
           </em>
         </p>
         <p>
-          Esses dados pertencem ao TMDB e a seus respectivos titulares, não à Cinerie. Nenhuma
-          licença sobre eles é transferida a você pelo uso do serviço.
+          O logotipo do TMDB será apresentado de forma menos proeminente que a marca Cinerie e não
+          será alterado de maneira incompatível com as regras de identidade do fornecedor.
+        </p>
+        <p>
+          O uso da Cinerie não transfere ao usuário qualquer licença sobre a base do TMDB, imagens,
+          marcas ou materiais de terceiros.
         </p>
 
         <h3>4.3 Obras, cartazes e marcas de terceiros</h3>
@@ -273,28 +343,62 @@ export default function TermosPage() {
 
         <h2>10. Alterações destes Termos</h2>
         <p>
-          Podemos alterar estes Termos. Mudança relevante é publicada aqui com nova data de vigência
-          e nova identificação de versão, e a tela de privacidade passa a pedir seu aceite outra vez.
-          Continuar usando o serviço depois disso significa concordar com a versão nova. Se não
-          concordar, encerre a conta (item 7).
+          Estes Termos entram em vigor em 4 de agosto de 2026 e correspondem à versão 2026-08.
         </p>
-        <p>A versão e a data de vigência destes Termos estão no topo desta página.</p>
+        <p>Alterações relevantes terão:</p>
+        <ul>
+          <li>nova identificação de versão;</li>
+          <li>nova data de vigência;</li>
+          <li>aviso na conta ou por e-mail;</li>
+          <li>descrição das principais mudanças;</li>
+          <li>solicitação de novo aceite quando necessário.</li>
+        </ul>
+        <p>
+          Caso não concorde com a nova versão, você poderá exportar seus dados e encerrar a conta.
+        </p>
 
         <h2>11. Lei aplicável e foro</h2>
         <p>
-          Estes Termos são regidos pela lei brasileira, em especial o Marco Civil da Internet (Lei
-          12.965/2014), a Lei Geral de Proteção de Dados (Lei 13.709/2018) e, quando aplicável, o
-          Código de Defesa do Consumidor.
+          Estes Termos são regidos pela legislação brasileira, incluindo, conforme aplicável:
+        </p>
+        <ul>
+          <li>Lei nº 12.965/2014 — Marco Civil da Internet;</li>
+          <li>Lei nº 13.709/2018 — Lei Geral de Proteção de Dados Pessoais;</li>
+          <li>Lei nº 8.078/1990 — Código de Defesa do Consumidor;</li>
+          <li>Lei nº 9.610/1998 — Lei de Direitos Autorais;</li>
+          <li>Lei nº 8.069/1990 — Estatuto da Criança e do Adolescente;</li>
+          <li>Lei nº 15.211/2025 — Estatuto Digital da Criança e do Adolescente.</li>
+        </ul>
+        <p>
+          Para controvérsias que não possam ser resolvidas diretamente, fica eleito o foro da comarca
+          de Aparecida de Goiânia, Goiás.
         </p>
         <p>
-          Fica eleito o foro da comarca de <Fill>comarca do foro eleito</Fill> para dirimir
-          controvérsias, ressalvado o direito do consumidor de acionar o foro do seu domicílio.
+          Essa escolha não impede que o consumidor utilize o foro de seu próprio domicílio ou outra
+          competência obrigatoriamente estabelecida pela legislação.
         </p>
 
         <h2>12. Contato</h2>
         <p>
-          Dúvidas sobre estes Termos: <Fill>e-mail de contato</Fill>. Dados do controlador e canal
-          específico de privacidade estão no item 1 da{' '}
+          Dúvidas gerais sobre estes Termos poderão ser enviadas para:{' '}
+          <strong>contato@cinerie.com</strong>
+        </p>
+        <p>
+          Questões relacionadas a dados pessoais, privacidade ou exercício de direitos deverão ser
+          enviadas para: <strong>privacidade@cinerie.com</strong>
+        </p>
+        <p>O responsável pela Cinerie é:</p>
+        <p>
+          Pablo Eduardo Gameleira
+          <br />
+          Nome fantasia: Grupo Maquina Nerd
+          <br />
+          CNPJ: 22.739.386/0001-90
+          <br />
+          Sede: Aparecida de Goiânia, Goiás
+        </p>
+        <p>
+          Os dados do controlador e o canal específico de privacidade também constam do item 1 da{' '}
           <a href={PRIVACY_PATH}>Política de Privacidade</a>.
         </p>
       </LegalDoc>

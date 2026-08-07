@@ -22,6 +22,7 @@
     "cms:migrations:status": "payload migrate:status",
     "cms:migrations:deploy": "payload migrate",
     "cms:storage:check": "tsx scripts/preflight.ts --with-storage-write",
+    "cms:backfill:cluster": "tsx scripts/backfill-source-cluster-id.ts",
     "test:e2e": "playwright test --config ./playwright.config.ts",
     "test:manual-editorial": "vitest run --root . --config ./vitest.integration.config.ts src/__tests__/manual-editorial.integration.test.ts"
   },

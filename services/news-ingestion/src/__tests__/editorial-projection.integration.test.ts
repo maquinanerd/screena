@@ -1104,6 +1104,35 @@ describe('vinculo entidade <-> materia', () => {
     expect(await entityLinks(id)).toEqual([])
   })
 
+  it('id que EXISTE porem com tipo divergente nao vira vinculo', async () => {
+    // A armadilha do ADR 0018, do lado onde ela e checavel: o numero e um id
+    // interno de verdade — so que de um FILME. Declarado como `person`, ele
+    // parece bem-formado e passaria por qualquer validacao de forma.
+    //
+    // A guarda e a chave COMPOSTA `(entityType, entityId)` no registro
+    // `entities`: procurar so pelo id acharia a linha e criaria um vinculo para
+    // a entidade errada, que e pior do que nao ter vinculo nenhum — ninguem
+    // revisa uma ligacao que parece certa.
+    const movieId = await seedCatalogMovie({
+      tmdbId: 1_061_477,
+      titleOriginal: 'Tipo Divergente',
+      slug: 'tipo-divergente',
+    })
+    const id = await seedArticle('entidade-tipo-divergente', {
+      entityReferences: [
+        // MESMO id, tipo trocado.
+        { entityKind: 'person', entityId: movieId, relation: 'mentioned', verified: true },
+      ],
+    })
+    await moveTo(id, 'published')
+    const { outcomes } = await drain()
+    expect(outcomes).toContain('applied')
+
+    // A materia publica; o vinculo NAO nasce.
+    expect(await publicArticle(id)).not.toBeNull()
+    expect(await entityLinks(id)).toEqual([])
+  })
+
   it('REPROCESSAR o mesmo evento nao duplica o vinculo', async () => {
     const movieId = await seedCatalogMovie({
       tmdbId: 1_061_476,
@@ -1161,7 +1190,7 @@ describe('vinculo entidade <-> materia', () => {
     // So inserir deixaria a materia citada para sempre numa ficha da qual ela
     // foi retirada. O evento carrega o conjunto autoritativo, entao reconcilia.
     const movieId = await seedCatalogMovie({
-      tmdbId: 1_061_477,
+      tmdbId: 1_061_480,
       titleOriginal: 'Removido',
       slug: 'removido',
     })

@@ -302,3 +302,63 @@ export function sanitizeErrorMessage(message: unknown, maxLength = 500): string 
   safe = safe.replace(/\s+/g, ' ').trim()
   return safe.length > maxLength ? `${safe.slice(0, maxLength)}...` : safe
 }
+
+/* ------------------------------------------------------------------ */
+/* Lote vazio x lote que FALHOU                                        */
+/* ------------------------------------------------------------------ */
+
+export type ClaimAttemptSummary =
+  | { readonly ok: true; readonly status: 200 }
+  | { readonly ok: false; readonly status: 503; readonly code: string; readonly detail: string }
+
+export interface ClaimAttemptFacts {
+  /** A consulta de candidatos chegou a concluir? `false` = banco/schema fora. */
+  readonly candidatesRead: boolean
+  /** Quantos eventos o compare-and-swap conseguiu tomar. */
+  readonly claimed: number
+  /**
+   * Quantas tentativas de tomada ERRARAM.
+   *
+   * Perder a corrida para outro worker NAO conta aqui: aquilo devolve zero
+   * linhas sem excecao, e e o funcionamento normal. Aqui so entra erro de
+   * verdade — conexao caida, coluna que nao existe, permissao negada.
+   */
+  readonly failures: number
+}
+
+/**
+ * O `claim` respondeu "nao ha nada" ou "eu nao consegui olhar"?
+ *
+ * O endpoint respondia `200 { claimed: 0, events: [] }` nos dois casos. O
+ * `catch` do laco de tomada engolia qualquer erro — inclusive adapter sem pool,
+ * coluna ausente depois de uma migration pela metade e permissao negada — e
+ * seguia para o proximo candidato. Esgotados os candidatos, a resposta era
+ * indistinguivel de uma fila vazia.
+ *
+ * O efeito e uma projecao PARADA com os dois lados verdes: o CMS respondendo
+ * 200 e o worker dormindo satisfeito. Separar os dois desfechos e o que
+ * transforma isso num 503 que o `/readyz` do worker enxerga.
+ *
+ * Falha PARCIAL (tomou alguns, errou outros) continua 200: houve progresso, e
+ * derrubar o lote inteiro por um erro numa linha entregaria menos. A contagem
+ * de falhas vai no corpo para nao sumir.
+ */
+export function summarizeClaimAttempt(facts: ClaimAttemptFacts): ClaimAttemptSummary {
+  if (!facts.candidatesRead) {
+    return {
+      ok: false,
+      status: 503,
+      code: 'claim_query_failed',
+      detail: 'nao foi possivel consultar a fila de eventos',
+    }
+  }
+  if (facts.claimed === 0 && facts.failures > 0) {
+    return {
+      ok: false,
+      status: 503,
+      code: 'claim_all_attempts_failed',
+      detail: `${String(facts.failures)} tentativa(s) de tomada falharam e nenhum evento foi reclamado`,
+    }
+  }
+  return { ok: true, status: 200 }
+}
