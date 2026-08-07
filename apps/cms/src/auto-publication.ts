@@ -42,6 +42,7 @@ import {
 } from '@screena/editorial-contracts'
 
 import { type AuthorAuthorization } from './author-automation.js'
+import { type EditorialWarning } from './editorial-body-mapper.js'
 
 export const PUBLICATION_OUTCOMES = [
   'PUBLISHED',
@@ -63,6 +64,14 @@ export interface PublicationDecision {
   readonly reasons: readonly OutcomeReason[]
   /** Avisos que NAO impedem a publicacao, mas ficam registrados. */
   readonly warnings: readonly string[]
+  /**
+   * Os MESMOS avisos, com codigo e campo.
+   *
+   * `warnings` e lista de frases em portugues, e casar substring de frase e
+   * como um pipeline quebra em silencio na primeira reescrita do texto. Aqui o
+   * produtor decide por CODIGO.
+   */
+  readonly warningDetails: readonly EditorialWarning[]
 }
 
 /* ------------------------------------------------------------------ */
@@ -152,10 +161,21 @@ export function evaluateSchemaChoice(
 export interface SeoVerdict {
   /** Impede publicar E impede aceitar: o valor nao cabe nem para revisao. */
   readonly blocking: readonly OutcomeReason[]
-  /** Aceito para revisao humana, porem NAO elegivel a publicacao automatica. */
+  /**
+   * Aceito para revisao humana, porem NAO elegivel a publicacao automatica.
+   *
+   * TAMANHO DE TITULO E DE META NAO ENTRAM MAIS AQUI (ver o comentario da
+   * funcao). O campo continua existindo porque a escolha de Schema.org ainda
+   * roteia para revisao por ele.
+   */
   readonly review: readonly OutcomeReason[]
   readonly warnings: readonly string[]
+  /** Os mesmos avisos, com codigo e campo, para o produtor decidir por codigo. */
+  readonly warningDetails: readonly EditorialWarning[]
 }
+
+/** Codigo unico do desvio de tamanho de SEO. */
+const SEO_IDEAL_RANGE_WARNING = 'SEO_FORA_DA_FAIXA_IDEAL'
 
 /**
  * Revalida o SEO no SERVIDOR.
@@ -164,18 +184,41 @@ export interface SeoVerdict {
  * produtor mandou, e esta funcao roda com a politica canonica do momento. Se um
  * dia os limites mudarem, e aqui que a mudanca vale, sem depender de o produtor
  * atualizar o schema dele.
+ *
+ * O TETO CAIU; O PISO NAO (2026-08).
+ *
+ * O portao de autopublicacao era mais estreito que o de transporte: aceitava
+ * receber titulo de 15-120 e meta de 70-320, mas so publicava sozinho com
+ * 15-65 e 120-160. Todo o resto virava `ROUTED_TO_REVIEW` — 202, materia
+ * parada esperando um humano. Na pratica isso nao melhorava SEO nenhum: a
+ * materia simplesmente nao ia ao ar, e um titulo de 88 caracteres no ar rende
+ * mais do que um titulo perfeito que ninguem publicou. Um teto de comprimento
+ * tambem nao e um erro de conteudo — a SERP corta o excedente, ela nao pune.
+ *
+ * O que MUDOU: o portao de autopublicacao passou a ser a faixa do transporte.
+ * Fora da faixa ideal vira AVISO nomeado (`SEO_FORA_DA_FAIXA_IDEAL`), com a
+ * medida e a faixa no texto, para o produtor corrigir na fonte.
+ *
+ * O que NAO mudou: os PISOS. Titulo vazio, titulo com menos de 15, meta vazia,
+ * meta com menos de 70, keyphrase curta e keyword stuffing continuam
+ * BLOQUEANDO. Caiu o teto, nao o piso.
  */
 export function validateSeoForPublication(seo: EditorialSeoProposal): SeoVerdict {
   const blocking: OutcomeReason[] = []
   const review: OutcomeReason[] = []
   const warnings: string[] = []
+  const warningDetails: EditorialWarning[] = []
+
+  const outsideIdeal = (field: string, detail: string): void => {
+    warningDetails.push({ code: SEO_IDEAL_RANGE_WARNING, field, detail })
+    warnings.push(detail)
+  }
 
   const title = seo.title.trim()
   const meta = seo.metaDescription.trim()
 
-  // TITULO. Fora da faixa de TRANSPORTE bloqueia; dentro do transporte porem
-  // fora da faixa de AUTO-PUBLICACAO vai para revisao. Publicar sozinho um
-  // titulo de 100 caracteres seria aceitar que a SERP o corte pela metade.
+  // TITULO. Fora da faixa de TRANSPORTE bloqueia. Dentro do transporte e acima
+  // da faixa ideal publica COM AVISO.
   if (title === '') {
     blocking.push({ code: 'SEO_TITLE_MISSING', detail: 'titulo de SEO ausente' })
   } else if (title.length < SEO_POLICY.title.min || title.length > SEO_POLICY.title.max) {
@@ -184,10 +227,10 @@ export function validateSeoForPublication(seo: EditorialSeoProposal): SeoVerdict
       detail: `titulo com ${String(title.length)} caracteres fora de ${String(SEO_POLICY.title.min)}-${String(SEO_POLICY.title.max)}`,
     })
   } else if (title.length > SEO_POLICY.title.autoMax) {
-    review.push({
-      code: 'SEO_TITLE_OUTSIDE_AUTO_PUBLISH_RANGE',
-      detail: `titulo com ${String(title.length)} caracteres acima de ${String(SEO_POLICY.title.autoMax)} para publicacao automatica`,
-    })
+    outsideIdeal(
+      'seo.title',
+      `titulo com ${String(title.length)} caracteres acima da faixa ideal de ${String(SEO_POLICY.title.min)}-${String(SEO_POLICY.title.autoMax)}; publicado assim mesmo, a SERP corta o excedente`,
+    )
   }
 
   // META. Ausente bloqueia: sem ela o buscador inventa o resumo a partir do
@@ -202,21 +245,20 @@ export function validateSeoForPublication(seo: EditorialSeoProposal): SeoVerdict
       code: 'SEO_META_OUT_OF_TRANSPORT_RANGE',
       detail: `meta com ${String(meta.length)} caracteres fora de ${String(SEO_POLICY.metaDescription.min)}-${String(SEO_POLICY.metaDescription.max)}`,
     })
-  } else if (meta.length < SEO_POLICY.metaDescription.autoMin) {
-    review.push({
-      code: 'SEO_META_TOO_SHORT_FOR_AUTO_PUBLISH',
-      detail: `meta com ${String(meta.length)} caracteres abaixo de ${String(SEO_POLICY.metaDescription.autoMin)}`,
-    })
-  } else if (meta.length > SEO_POLICY.metaDescription.autoMax) {
-    review.push({
-      code: 'SEO_META_TOO_LONG_FOR_AUTO_PUBLISH',
-      detail: `meta com ${String(meta.length)} caracteres acima de ${String(SEO_POLICY.metaDescription.autoMax)}`,
-    })
+  } else if (
+    meta.length < SEO_POLICY.metaDescription.autoMin ||
+    meta.length > SEO_POLICY.metaDescription.autoMax
+  ) {
+    outsideIdeal(
+      'seo.metaDescription',
+      `meta com ${String(meta.length)} caracteres fora da faixa ideal de ${String(SEO_POLICY.metaDescription.autoMin)}-${String(SEO_POLICY.metaDescription.autoMax)}`,
+    )
   } else if (
     meta.length < SEO_POLICY.metaDescription.editorialMin ||
     meta.length > SEO_POLICY.metaDescription.editorialMax
   ) {
-    // Faixa preferencial da redacao: AVISO. Apertar aqui rejeitaria material bom.
+    // Faixa preferencial da redacao, DENTRO da faixa ideal. Aviso mais fino,
+    // sem codigo proprio: e preferencia de estilo, nao desvio de politica.
     warnings.push(
       `meta fora da faixa preferencial ${String(SEO_POLICY.metaDescription.editorialMin)}-${String(SEO_POLICY.metaDescription.editorialMax)}`,
     )
@@ -234,7 +276,7 @@ export function validateSeoForPublication(seo: EditorialSeoProposal): SeoVerdict
     })
   }
 
-  return { blocking, review, warnings }
+  return { blocking, review, warnings, warningDetails }
 }
 
 /* ------------------------------------------------------------------ */
@@ -300,6 +342,9 @@ export interface PublicationGateInput {
  */
 export function decideAutoPublication(input: PublicationGateInput): PublicationDecision {
   const warnings: string[] = [...input.qaWarnings]
+  // Espelho ESTRUTURADO de `warnings`. Preenchido junto com ele, para que
+  // nenhum desfecho devolva uma frase sem o codigo correspondente.
+  const warningDetails: EditorialWarning[] = []
 
   // 1. CONFLITO
   if (!input.contractCompatible) {
@@ -309,6 +354,7 @@ export function decideAutoPublication(input: PublicationGateInput): PublicationD
         { code: 'contract_incompatible', detail: 'versao ou hash de contrato divergente' },
       ],
       warnings,
+      warningDetails,
     }
   }
   if (input.idempotencyConflict) {
@@ -321,6 +367,7 @@ export function decideAutoPublication(input: PublicationGateInput): PublicationD
         },
       ],
       warnings,
+      warningDetails,
     }
   }
   if (input.staleRevision) {
@@ -330,6 +377,7 @@ export function decideAutoPublication(input: PublicationGateInput): PublicationD
       outcome: 'CONFLICT',
       reasons: [{ code: 'stale_revision', detail: 'revisao anterior a ja aplicada' }],
       warnings,
+      warningDetails,
     }
   }
 
@@ -356,6 +404,7 @@ export function decideAutoPublication(input: PublicationGateInput): PublicationD
   const seoVerdict = validateSeoForPublication(input.seo)
   blocking.push(...seoVerdict.blocking)
   warnings.push(...seoVerdict.warnings)
+  warningDetails.push(...seoVerdict.warningDetails)
 
   const schemaVerdict = evaluateSchemaChoice(
     input.seo.schemaTypeRecommendation,
@@ -365,7 +414,7 @@ export function decideAutoPublication(input: PublicationGateInput): PublicationD
   if (schemaVerdict.kind === 'blocked') blocking.push(schemaVerdict.reason)
 
   if (blocking.length > 0) {
-    return { outcome: 'BLOCKED', reasons: blocking, warnings }
+    return { outcome: 'BLOCKED', reasons: blocking, warnings, warningDetails }
   }
 
   // 3. REVISAO HUMANA
@@ -381,7 +430,7 @@ export function decideAutoPublication(input: PublicationGateInput): PublicationD
     })
   }
   if (review.length > 0) {
-    return { outcome: 'ROUTED_TO_REVIEW', reasons: review, warnings }
+    return { outcome: 'ROUTED_TO_REVIEW', reasons: review, warnings, warningDetails }
   }
 
   // Kill switch DESLIGADO nao e erro: e uma decisao operacional. O conteudo
@@ -393,6 +442,7 @@ export function decideAutoPublication(input: PublicationGateInput): PublicationD
         { code: 'auto_publish_disabled', detail: 'publicacao automatica desabilitada' },
       ],
       warnings,
+      warningDetails,
     }
   }
 
@@ -406,6 +456,7 @@ export function decideAutoPublication(input: PublicationGateInput): PublicationD
         },
       ],
       warnings,
+      warningDetails,
     }
   }
 
@@ -422,6 +473,7 @@ export function decideAutoPublication(input: PublicationGateInput): PublicationD
         },
       ],
       warnings,
+      warningDetails,
     }
   }
 
@@ -438,11 +490,12 @@ export function decideAutoPublication(input: PublicationGateInput): PublicationD
         },
       ],
       warnings,
+      warningDetails,
     }
   }
 
   // 4. PUBLICA
-  return { outcome: 'PUBLISHED', reasons: [], warnings }
+  return { outcome: 'PUBLISHED', reasons: [], warnings, warningDetails }
 }
 
 /** Codigo HTTP de cada desfecho. */

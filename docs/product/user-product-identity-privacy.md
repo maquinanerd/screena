@@ -140,8 +140,8 @@ qualquer `userId` injetado no corpo.
 
 | Variavel | Default | Efeito |
 | --- | --- | --- |
-| `CINERIE_TERMS_POLICY_VERSION` | `2026-07` | Versao vigente dos termos. |
-| `CINERIE_PRIVACY_POLICY_VERSION` | `2026-07` | Versao vigente da privacidade. |
+| `CINERIE_TERMS_POLICY_VERSION` | `2026-08` | Versao vigente dos termos. |
+| `CINERIE_PRIVACY_POLICY_VERSION` | `2026-08` | Versao vigente da privacidade. |
 | `SESSION_TTL_HOURS` | `720` | Vida da sessao (30 dias). |
 | `ACCOUNT_DELETION_GRACE_DAYS` | `30` | Janela de arrependimento. |
 

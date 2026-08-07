@@ -1,8 +1,9 @@
 import type { Metadata } from 'next'
 
+import { TMDB_IMAGE_HOST } from '@screena/public-contracts'
 import { serializeJsonLd } from '@screena/seo'
 
-import { Fill, LegalDoc } from '../../_components/legal-doc'
+import { LegalDoc } from '../../_components/legal-doc'
 import {
   HOME_PATH,
   PRIVACY_PATH,
@@ -15,9 +16,43 @@ import {
 /**
  * Política de Privacidade (LGPD, Lei 13.709/2018).
  *
- * RASCUNHO TÉCNICO: cada afirmação descreve o que o código FAZ hoje, não o que
- * seria desejável. Onde o produto ainda não entrega algo, o texto declara a
- * limitação em vez de prometer. Precisa de revisão jurídica antes de ir ao ar.
+ * TEXTO FINAL DO CONTROLADOR (vigente desde 4 de agosto de 2026, versão
+ * 2026-08). Substitui a minuta técnica anterior. A redação é do controlador e
+ * NÃO deve ser reescrita por conveniência de implementação.
+ *
+ * O TEXTO FOI ALINHADO AO SISTEMA (2026-08-06). O levantamento anterior listava
+ * cinco promessas que a infraestrutura não cumpria. Quatro foram corrigidas NO
+ * TEXTO — um documento legal não pode afirmar o que o código não faz, e o
+ * caminho certo é a política descrever o estado real, não o estado desejado:
+ *
+ *  - item 5.2: a atribuição ao TMDB passou a ser declarada em TEXTO, sem
+ *    logotipo. Não há logo do TMDB no repositório e
+ *    `services/legal/src/authorization-spec.ts` registra `logoAllowed: false`;
+ *    exibi-lo contrariaria a própria matriz de licença que o item descreve.
+ *  - item 5.4: os backups são descritos como são hoje — diários, acesso
+ *    restrito, soma de verificação, rodízio das 14 cópias mais recentes
+ *    (`scripts/backup/backup.sh`). A criptografia em repouso e a retenção de 30
+ *    dias passaram a constar como MELHORIA PLANEJADA, não como fato.
+ *  - item 5.1: o rastreamento de abertura/clique da Brevo está ATIVO no padrão
+ *    da plataforma (`providers/brevo/transactional-email.ts` não envia os
+ *    parâmetros de desativação). O texto passou a dizer isso, e a declarar que
+ *    a Cinerie não consulta nem usa esses indicadores.
+ *  - item 9 / item 4: o cadastro tem TRÊS caixas de seleção
+ *    (`app/pt/criar-conta/signup-form.tsx`) e `parseSignupCommand` recusaria um
+ *    campo de idade. A declaração de 18 anos deixou de ser apresentada como
+ *    caixa própria e passou a derivar do aceite dos Termos — o que também
+ *    resolve a contradição entre o item 4 ("três caixas") e o item 9, que
+ *    acrescentava uma quarta.
+ *
+ * PENDÊNCIA QUE O TEXTO NÃO RESOLVE: `privacidade@cinerie.com` e
+ * `contato@cinerie.com` ainda não existem como caixas configuradas. São os
+ * canais canônicos declarados pelo controlador e por isso permanecem no texto,
+ * mas precisam existir ANTES de a página entrar no índice — uma política de
+ * privacidade sem canal de contato funcional descumpre a própria LGPD que ela
+ * invoca. Criar as caixas é ação do controlador, não do código.
+ *
+ * Por isso a página permanece fora do índice até autorização explícita do
+ * controlador — ver a nota de indexabilidade abaixo.
  *
  * Destino de um dos dois links do aceite obrigatório do cadastro
  * (`app/pt/criar-conta/signup-form.tsx`), que até aqui apontava para 404.
@@ -56,7 +91,7 @@ export default function PrivacidadePage() {
 
   return (
     <>
-      <LegalDoc breadcrumbLabel="Privacidade" effectiveDate={null} title={TITLE}>
+      <LegalDoc breadcrumbLabel="Privacidade" effectiveDate="4 de agosto de 2026" title={TITLE}>
         <p>
           Esta política explica como a Cinerie trata dados pessoais de quem usa o site e,
           principalmente, de quem cria uma conta. Ela descreve o funcionamento real do produto: o
@@ -71,13 +106,34 @@ export default function PrivacidadePage() {
 
         <h2>1. Quem é o controlador</h2>
         <p>
-          O controlador dos dados é <Fill>razão social completa</Fill>, inscrita no CNPJ sob o nº{' '}
-          <Fill>CNPJ</Fill>, com sede em <Fill>endereço completo</Fill>.
+          O controlador dos dados pessoais tratados pela Cinerie é Pablo Eduardo Gameleira, nome
+          fantasia Grupo Maquina Nerd, inscrito no CNPJ sob o nº 22.739.386/0001-90, com sede em
+          Aparecida de Goiânia, Goiás, responsável pela operação da Cinerie.
         </p>
         <p>
-          Para falar sobre privacidade, exercer direitos ou tirar dúvidas sobre esta política, o
-          contato é <Fill>e-mail do encarregado/DPO</Fill>. Respondemos em até{' '}
-          <Fill>prazo de resposta, ex.: 15 dias</Fill>.
+          Para assuntos relacionados à privacidade, proteção de dados pessoais ou exercício dos
+          direitos previstos na Lei Geral de Proteção de Dados Pessoais — LGPD, utilize:
+        </p>
+        <p>
+          <strong>Canal de privacidade: privacidade@cinerie.com</strong>
+        </p>
+        <p>
+          O Grupo Maquina Nerd atua como agente de tratamento de pequeno porte e, na configuração
+          atual, não possui encarregado pelo tratamento de dados pessoais formalmente nomeado. O
+          canal acima exerce a função de comunicação com titulares e com a Agência Nacional de
+          Proteção de Dados — ANPD.
+        </p>
+        <p>
+          Pedidos relacionados a dados pessoais serão confirmados e analisados sem demora indevida. A
+          Cinerie buscará apresentar resposta completa em até 15 dias corridos, salvo quando a
+          natureza ou a complexidade do pedido exigir prazo adicional permitido pela legislação.
+          Nesse caso, o titular será informado.
+        </p>
+        <p>
+          O canal geral para dúvidas que não estejam relacionadas à proteção de dados é:
+        </p>
+        <p>
+          <strong>Contato geral: contato@cinerie.com</strong>
         </p>
 
         <h2>2. Quais dados tratamos e para quê</h2>
@@ -329,73 +385,177 @@ export default function PrivacidadePage() {
           histórico não é sobrescrito.
         </p>
 
-        <h2>5. Com quem compartilhamos</h2>
+        <h2>5. Com quem compartilhamos dados</h2>
         <p>
-          Não vendemos dados pessoais e não os compartilhamos para publicidade de terceiros. Os
-          únicos terceiros envolvidos são fornecedores necessários para o serviço funcionar:
+          A Cinerie não vende dados pessoais, não forma audiências publicitárias com base na
+          atividade da conta e não compartilha informações de usuários para publicidade
+          comportamental de terceiros.
         </p>
-        <div className="legal-table-wrap">
-          <table className="legal-table">
-            <thead>
-              <tr>
-                <th scope="col">Terceiro</th>
-                <th scope="col">Papel</th>
-                <th scope="col">Que dado seu chega até ele</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <th scope="row">Brevo</th>
-                <td>Envio de e-mail transacional (verificação de e-mail, redefinição de senha).</td>
-                <td>
-                  Apenas o <strong>endereço de e-mail</strong> de destino e o conteúdo da mensagem.
-                  Nada além disso é enviado.
-                </td>
-              </tr>
-              <tr>
-                <th scope="row">TMDB (The Movie Database)</th>
-                <td>
-                  Fonte do catálogo (fichas, elenco, imagens). Os dados do catálogo são sincronizados
-                  fora do fluxo de navegação e servidos do nosso banco.
-                </td>
-                <td>
-                  Nenhum dado de conta. Porém: <strong>as imagens de pôster e capa são carregadas
-                  direto dos servidores do TMDB</strong> pelo seu navegador. Nessa requisição, o
-                  TMDB recebe seu IP e seu user-agent, como acontece com qualquer imagem hospedada
-                  fora do site.
-                </td>
-              </tr>
-              <tr>
-                <th scope="row">Provedor de infraestrutura e backup</th>
-                <td>
-                  Hospedagem da aplicação e do banco de dados, e armazenamento das cópias de
-                  segurança.
-                </td>
-                <td>
-                  Os dados ficam armazenados na infraestrutura contratada, inclusive nas cópias de
-                  segurança periódicas. O fornecedor atua como operador, sem usar os dados para
-                  finalidade própria. Identificação: <Fill>fornecedor de hospedagem e de backup</Fill>.
-                </td>
-              </tr>
-              <tr>
-                <th scope="row">
-                  Fornecedores técnicos de dados de catálogo (ex.: RapidAPI)
-                </th>
-                <td>
-                  Entregam <em>para nós</em> informações sobre obras (notas de fontes externas,
-                  disponibilidade em streaming).
-                </td>
-                <td>
-                  <strong>Nenhum.</strong> O fluxo é de entrada: consultamos esses fornecedores em
-                  processos que rodam fora do site, sem enviar qualquer dado de usuário.
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        <p>Os fornecedores utilizados para viabilizar o serviço são os seguintes.</p>
+
+        <h3>5.1 Brevo</h3>
         <p>
-          Também podemos compartilhar dados quando houver obrigação legal, ordem judicial ou pedido
-          de autoridade competente — apenas na medida exigida.
+          A Brevo é utilizada para o envio de mensagens relacionadas à conta, incluindo:
+        </p>
+        <ul>
+          <li>verificação de endereço de e-mail;</li>
+          <li>redefinição de senha;</li>
+          <li>alertas de segurança;</li>
+          <li>comunicações essenciais sobre a conta;</li>
+          <li>novidades por e-mail, somente quando houver consentimento.</li>
+        </ul>
+        <p>São enviados à Brevo apenas:</p>
+        <ul>
+          <li>endereço de e-mail;</li>
+          <li>assunto e conteúdo da mensagem;</li>
+          <li>identificadores técnicos necessários ao envio;</li>
+          <li>registros de entrega, falha, rejeição ou descadastro.</li>
+        </ul>
+        <p>
+          A Brevo pode armazenar metadados técnicos relacionados à entrega das mensagens.{' '}
+          <strong>
+            Os recursos de rastreamento de abertura e clique da Brevo permanecem no padrão da
+            plataforma e podem registrar essas interações.
+          </strong>{' '}
+          A Cinerie não consulta, não exporta e não usa esses indicadores para nenhuma finalidade —
+          nem para perfil, nem para segmentação, nem para publicidade. Desativá-los na origem é uma
+          mudança de configuração planejada; enquanto não estiver aplicada, esta política não a
+          afirma como feita.
+        </p>
+        <p>
+          Os bancos de dados da Brevo são processados na União Europeia, utilizando infraestrutura
+          localizada principalmente na França, Alemanha e Bélgica.
+        </p>
+        <p>
+          A relação com a Brevo deverá permanecer sujeita ao respectivo Acordo de Processamento de
+          Dados — DPA.
+        </p>
+
+        <h3>5.2 TMDB — The Movie Database</h3>
+        <p>
+          O TMDB é utilizado como fonte de dados e imagens relacionados a filmes, séries, temporadas,
+          episódios, pessoas e empresas do setor audiovisual.
+        </p>
+        <p>
+          Nenhum dado da conta Cinerie é enviado ao TMDB nos processos de sincronização do catálogo.
+        </p>
+        <p>
+          As imagens de pôster, capa, perfil, fundo e demais mídias do catálogo são carregadas
+          diretamente dos servidores externos do TMDB, normalmente pelo domínio técnico{' '}
+          {TMDB_IMAGE_HOST}.
+        </p>
+        <p>
+          Ao abrir uma página que contenha essas imagens, o navegador do usuário realiza uma conexão
+          direta com a infraestrutura do TMDB. Nessa conexão, o TMDB ou seu provedor de distribuição
+          de conteúdo poderá receber:
+        </p>
+        <ul>
+          <li>endereço IP;</li>
+          <li>user-agent;</li>
+          <li>data e hora da requisição;</li>
+          <li>endereço da imagem solicitada;</li>
+          <li>informações técnicas normalmente transmitidas pelo navegador.</li>
+        </ul>
+        <p>A Cinerie não controla a retenção desses registros pelo TMDB.</p>
+        <p>
+          A Cinerie apresenta, no rodapé de todas as páginas públicas, o seguinte aviso de
+          atribuição:
+        </p>
+        <p>
+          <em>
+            &quot;Este produto usa a API do TMDB, mas não é endossado ou certificado pelo TMDB.&quot;
+          </em>
+        </p>
+        <p>
+          A atribuição é feita <strong>em texto</strong>. A matriz de licenças que a Cinerie mantém
+          para cada fonte registra o TMDB sem autorização de uso do logotipo, e exibir a marca sem
+          essa autorização contrariaria a própria licença que este item descreve.
+        </p>
+
+        <h3>5.3 Contabo GmbH</h3>
+        <p>
+          A infraestrutura principal da Cinerie será hospedada em servidores virtuais privados
+          fornecidos pela Contabo GmbH, em região localizada na União Europeia.
+        </p>
+        <p>
+          A aplicação, o banco de dados e os serviços internos serão administrados pelo Grupo Maquina
+          Nerd em ambiente privado, utilizando o EasyPanel como ferramenta de gerenciamento.
+        </p>
+        <p>A Contabo poderá processar:</p>
+        <ul>
+          <li>arquivos da aplicação;</li>
+          <li>banco de dados;</li>
+          <li>dados das contas;</li>
+          <li>registros técnicos;</li>
+          <li>endereços IP presentes em conexões de rede;</li>
+          <li>cópias de segurança;</li>
+          <li>informações necessárias à operação do servidor.</li>
+        </ul>
+        <p>
+          A Contabo atua como operadora de infraestrutura e não está autorizada a utilizar os dados
+          da Cinerie para finalidades próprias incompatíveis com a prestação do serviço.
+        </p>
+        <p>
+          O Grupo Maquina Nerd deverá formalizar o Acordo de Processamento de Dados — DPA —
+          disponibilizado pela Contabo.
+        </p>
+
+        <h3>5.4 Cópias de segurança</h3>
+        <p>
+          As cópias de segurança serão armazenadas em ambiente separado do servidor principal,
+          preferencialmente em armazenamento de objetos ou serviço de backup localizado na União
+          Europeia.
+        </p>
+        <p>Hoje, as cópias de segurança:</p>
+        <ul>
+          <li>são executadas diariamente;</li>
+          <li>têm acesso restrito no sistema de arquivos;</li>
+          <li>
+            têm sua integridade conferida por soma de verificação gravada junto com a cópia;
+          </li>
+          <li>
+            são mantidas em rodízio das <strong>14 cópias mais recentes</strong>, e a mais antiga é
+            substituída automaticamente a cada nova execução;
+          </li>
+          <li>passam por teste periódico de restauração.</li>
+        </ul>
+        <p>
+          <strong>As cópias ainda não são criptografadas em repouso.</strong> A criptografia e a
+          transferência para armazenamento de objetos fora do servidor principal são melhorias
+          planejadas; enquanto não estiverem em produção, esta política não as afirma. Não
+          utilizamos snapshots do servidor como único mecanismo de backup.
+        </p>
+
+        <h3>5.5 RapidAPI e fornecedores de catálogo</h3>
+        <p>
+          A Cinerie poderá utilizar serviços disponibilizados por meio da RapidAPI para consultar:
+        </p>
+        <ul>
+          <li>avaliações externas;</li>
+          <li>disponibilidade legal em serviços de streaming;</li>
+          <li>informações complementares sobre filmes e séries.</li>
+        </ul>
+        <p>
+          Nenhum dado de conta, e-mail, lista, nota, histórico ou progresso do usuário será enviado
+          nesses processos.
+        </p>
+        <p>
+          As consultas serão realizadas por serviços internos da Cinerie e conterão apenas
+          identificadores de catálogo, como título, ano, IMDb ID ou TMDB ID.
+        </p>
+
+        <h3>5.6 Cumprimento de obrigações legais</h3>
+        <p>Dados poderão ser compartilhados quando isso for necessário para:</p>
+        <ul>
+          <li>cumprir obrigação legal ou regulatória;</li>
+          <li>atender ordem judicial;</li>
+          <li>responder a requisição válida de autoridade competente;</li>
+          <li>investigar fraude ou incidente de segurança;</li>
+          <li>exercer ou defender direitos em processo judicial, administrativo ou extrajudicial.</li>
+        </ul>
+        <p>
+          O fornecimento será limitado às informações necessárias ao atendimento da obrigação ou
+          requisição válida.
         </p>
 
         <h2>6. Cookies</h2>
@@ -443,57 +603,89 @@ export default function PrivacidadePage() {
           navega sem conta não recebe cookie nenhum.
         </p>
 
-        <h2>7. Por quanto tempo guardamos</h2>
+        <h2>7. Por quanto tempo guardamos os dados</h2>
         <div className="legal-table-wrap">
           <table className="legal-table">
             <thead>
               <tr>
                 <th scope="col">Categoria</th>
-                <th scope="col">Retenção</th>
+                <th scope="col">Período de retenção</th>
               </tr>
             </thead>
             <tbody>
               <tr>
-                <th scope="row">Conteúdo criado por você (listas, notas, histórico, perfil)</th>
-                <td>Enquanto a conta existir. É apagado no encerramento.</td>
-              </tr>
-              <tr>
-                <th scope="row">Senha, sessões e tokens</th>
+                <th scope="row">
+                  Perfil, listas, notas, histórico, progresso e conteúdo pessoal
+                </th>
                 <td>
-                  Enquanto necessários. Sessões e tokens expiram sozinhos; tudo é apagado no
-                  encerramento.
+                  Enquanto a conta estiver ativa e durante o período de arrependimento do
+                  encerramento
                 </td>
               </tr>
               <tr>
-                <th scope="row">Registros de autenticação (segurança)</th>
+                <th scope="row">Senha e parâmetros criptográficos</th>
+                <td>Enquanto a conta existir</td>
+              </tr>
+              <tr>
+                <th scope="row">Sessões</th>
+                <td>Até 30 dias, salvo encerramento, revogação ou troca de senha anterior</td>
+              </tr>
+              <tr>
+                <th scope="row">Tokens de verificação e recuperação</th>
+                <td>Até sua utilização ou expiração</td>
+              </tr>
+              <tr>
+                <th scope="row">Registros de autenticação e segurança</th>
                 <td>
-                  <strong>365 dias</strong>. Depois disso a referência ao titular é anonimizada.
+                  365 dias após o evento, salvo investigação, incidente ou exercício regular de
+                  direitos
                 </td>
               </tr>
               <tr>
-                <th scope="row">Registros de consentimento e pedidos LGPD</th>
+                <th scope="row">Identificadores derivados de IP</th>
                 <td>
-                  Mantidos por prazo indeterminado, por obrigação legal: são a prova de que
-                  respeitamos suas escolhas. Após o encerramento, ficam sem vínculo com você.
+                  365 dias ou pelo período do registro de segurança ao qual estiverem vinculados
                 </td>
               </tr>
               <tr>
-                <th scope="row">Identificação da conta (e-mail, apelido, nome)</th>
-                <td>
-                  <strong>Anonimizada</strong>, não apagada. Ver o item 8.
-                </td>
+                <th scope="row">Registros de consentimento e versões aceitas</th>
+                <td>5 anos após o encerramento da conta</td>
               </tr>
               <tr>
-                <th scope="row">Cópias de segurança</th>
+                <th scope="row">Pedidos relacionados à LGPD</th>
+                <td>5 anos após a conclusão do pedido</td>
+              </tr>
+              <tr>
+                <th scope="row">Metadados de importações</th>
+                <td>Enquanto a conta existir</td>
+              </tr>
+              <tr>
+                <th scope="row">Registros de envio de e-mail</th>
+                <td>Até 180 dias, ressalvados registros mantidos diretamente pela Brevo</td>
+              </tr>
+              <tr>
+                <th scope="row">Backups da Cinerie</th>
+                <td>Até 30 dias</td>
+              </tr>
+              <tr>
+                <th scope="row">Registros relacionados a fraude, incidente ou processo</th>
                 <td>
-                  Backups periódicos podem conter dados já apagados da base ativa até que o ciclo de
-                  retenção do backup se complete. Período de retenção:{' '}
-                  <Fill>retenção dos backups, ex.: 30 dias</Fill>.
+                  Enquanto forem necessários para investigação, cumprimento de obrigação legal ou
+                  exercício regular de direitos
                 </td>
               </tr>
             </tbody>
           </table>
         </div>
+        <p>
+          Depois do encerramento definitivo, e-mail, nome, apelido, perfil, listas, notas, histórico
+          e progresso serão eliminados da base ativa.
+        </p>
+        <p>
+          Registros conservados para demonstrar cumprimento da legislação serão segregados, terão
+          acesso restrito e não poderão ser utilizados para publicidade, personalização, recomendação
+          ou reativação automática da conta.
+        </p>
 
         <h2>8. Seus direitos e como exercer cada um</h2>
         <p>
@@ -588,14 +780,60 @@ export default function PrivacidadePage() {
 
         <h2>9. Crianças e adolescentes</h2>
         <p>
-          A Cinerie não é destinada a menores de <Fill>idade mínima, ex.: 16 anos</Fill> e não
-          coletamos intencionalmente dados de crianças.
+          A consulta ao catálogo público da Cinerie não exige conta. O catálogo poderá ser acessado
+          por pessoas de diferentes idades, observadas as classificações indicativas e os avisos
+          apresentados junto às obras.
         </p>
         <p>
-          <strong>Não verificamos idade no cadastro</strong> — não há campo de data de nascimento.
-          Se tomarmos conhecimento de conta criada por menor de idade sem o consentimento previsto
-          no art. 14 da LGPD, encerramos a conta e eliminamos os dados. Responsáveis podem pedir
-          isso pelo contato do item 1.
+          A criação e utilização de uma conta Cinerie são permitidas somente a pessoas com 18 anos
+          completos ou mais.
+        </p>
+        <p>
+          A Cinerie não oferece contas infantis, contas juvenis, perfis supervisionados ou mecanismos
+          para obtenção de autorização de pais ou responsáveis.
+        </p>
+        <p>
+          O cadastro <strong>não</strong> traz uma caixa de seleção separada para a idade. Ao marcar
+          o aceite dos Termos de Uso e desta Política — obrigatório para criar conta — você declara
+          possuir 18 anos completos ou mais, porque a idade mínima é condição dos próprios Termos
+          (item &quot;Idade mínima&quot;).
+        </p>
+        <p>
+          A Cinerie não solicita data de nascimento nem documento de identidade no cadastro comum.
+          Entretanto, poderá adotar medidas proporcionais de verificação quando houver indícios de
+          que uma conta pertence a uma pessoa menor de 18 anos.
+        </p>
+        <p>Se identificarmos uma conta pertencente a uma pessoa menor de 18 anos:</p>
+        <ul>
+          <li>a conta poderá ser preventivamente bloqueada;</li>
+          <li>as sessões serão encerradas;</li>
+          <li>
+            o responsável poderá ser contatado quando isso for juridicamente permitido e necessário;
+          </li>
+          <li>os dados serão eliminados, ressalvadas as hipóteses legais de conservação;</li>
+          <li>
+            registros mínimos poderão ser mantidos para documentar o atendimento do caso e prevenir
+            novas violações.
+          </li>
+        </ul>
+        <p>
+          Pais ou responsáveis podem solicitar análise e exclusão pelo e-mail:{' '}
+          <strong>privacidade@cinerie.com</strong>
+        </p>
+        <p>
+          A restrição de idade para contas não significa que todo conteúdo público da Cinerie seja
+          adequado a menores. Filmes, séries, notícias, imagens e textos podem tratar de violência,
+          sexualidade, drogas, linguagem imprópria ou outros temas destinados a diferentes faixas
+          etárias.
+        </p>
+        <p>
+          Quando disponível, a classificação indicativa da obra será apresentada como informação ao
+          usuário.
+        </p>
+        <p>
+          A Cinerie observará o melhor interesse de crianças e adolescentes, a LGPD, o Estatuto da
+          Criança e do Adolescente e o Estatuto Digital da Criança e do Adolescente também nas áreas
+          públicas do serviço.
         </p>
 
         <h2>10. Segurança</h2>
@@ -618,16 +856,53 @@ export default function PrivacidadePage() {
 
         <h2>11. Transferência internacional</h2>
         <p>
-          Alguns fornecedores do item 5 podem processar dados fora do Brasil. Quando isso acontece, a
-          transferência se apoia nas hipóteses do art. 33 da LGPD. Detalhamento por fornecedor:{' '}
-          <Fill>países de processamento e garantias contratuais de cada fornecedor</Fill>.
+          A Cinerie utiliza fornecedores que podem processar dados pessoais fora do Brasil.
+        </p>
+        <p>
+          <strong>Contabo</strong> — A aplicação, o banco de dados e os backups serão mantidos
+          preferencialmente em região da União Europeia contratada junto à Contabo GmbH. Os dados
+          transferidos podem incluir informações da conta, conteúdo pessoal, registros de segurança e
+          cópias de segurança. A relação deverá ser protegida pelo Acordo de Processamento de Dados
+          disponibilizado pela Contabo e pelas garantias contratuais exigidas pela legislação
+          aplicável.
+        </p>
+        <p>
+          <strong>Brevo</strong> — A Brevo processa os endereços de e-mail, conteúdos de mensagens e
+          metadados de entrega na União Europeia, especialmente na França, Alemanha e Bélgica. O
+          tratamento deverá permanecer sujeito ao DPA da Brevo.
+        </p>
+        <p>
+          <strong>TMDB</strong> — O navegador do usuário se conecta diretamente à infraestrutura de
+          imagens do TMDB. Essa infraestrutura pode utilizar servidores e redes de distribuição de
+          conteúdo localizados fora do Brasil. Nessa operação, o TMDB poderá receber endereço IP,
+          user-agent e informações sobre a imagem solicitada.
+        </p>
+        <p>
+          <strong>RapidAPI e APIs integradas</strong> — Consultas técnicas feitas pela Cinerie podem
+          ser processadas fora do Brasil. Essas consultas não incluirão dados de conta ou dados
+          comportamentais dos usuários.
+        </p>
+        <p>
+          As transferências internacionais serão realizadas conforme as hipóteses autorizadas pelos
+          arts. 33 e seguintes da LGPD e pela regulamentação da ANPD, utilizando contratos, cláusulas
+          de proteção de dados e outras garantias aplicáveis.
         </p>
 
-        <h2>12. Alterações desta política</h2>
+        <h2>12. Alterações desta Política</h2>
         <p>
-          Se esta política mudar de forma relevante, publicamos a nova versão aqui com nova data de
-          vigência e nova identificação de versão, e a tela de privacidade passa a pedir seu aceite
-          outra vez. Aceites anteriores continuam registrados com a versão a que se referiam.
+          Esta Política entra em vigor em 4 de agosto de 2026 e corresponde à versão 2026-08.
+        </p>
+        <p>Mudanças relevantes serão acompanhadas de:</p>
+        <ul>
+          <li>nova identificação de versão;</li>
+          <li>nova data de vigência;</li>
+          <li>aviso dentro da conta ou por e-mail;</li>
+          <li>novo aceite quando houver alteração contratual relevante;</li>
+          <li>novo consentimento quando uma nova finalidade depender dessa base legal.</li>
+        </ul>
+        <p>
+          Os registros anteriores permanecerão vinculados à versão apresentada no momento da
+          respectiva decisão.
         </p>
         <p>
           A versão e a data de vigência desta política estão no topo desta página. Os Termos de Uso

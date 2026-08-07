@@ -6,7 +6,9 @@
 
 ## Estado atual
 
-`main = 0f1a4da` · branch ativa = `claude/cms-slug-uniqueness` · fase em curso = **F4**
+`main = ab2a577` · branch ativa = `claude/cms-paste-image-loss` · fase em curso = **F5.1**
+(fora da fila, a pedido do operador). F4 a F13 ja entraram no `main` — esta e a
+ultima da serie a ser drenada.
 
 Baseline verde registrado na Fase 0 (2026-08-04): root typecheck `0` · root test
 `4687` em `357` arquivos · cms test `453/453` · cms build `0` ·
@@ -64,6 +66,24 @@ recusariam mutuamente. Evidencia: `slug` nao e `required` nem `NOT NULL`
 **(h) A regra inegociavel** vale em todas as fases: bloco no contrato ⟺ editor no
 CMS ⟺ renderer no `apps/web`. Os tres na mesma PR ou nenhum, mais validacao,
 fallback e teste que prove que o renderer desenha.
+
+**(i) F6 canvas — escopo definido pelo operador (2026-08-05).** Superficie de
+escrita: titulo grande no topo, subtitulo e resumo discretos, corpo continuo no
+centro (**nao** cartao por bloco), sidebar colapsavel com o resto, campos
+tecnicos e de auditoria fora da vista de quem escreve. Largura de leitura entre
+**760 e 900 px**. Tipografia de artigo ENTRA; sumario lateral **NAO** entra.
+Reusar o formulario do Payload — nao reimplementar estado de formulario.
+
+**(j) F13 SOBE para antes do F6.** Sao **seis** quedas silenciosas ja conhecidas
+(video `internal`, `entityCard` fora de filme/serie, imagem com URL absoluta, o
+campo `gallery` que nao vira galeria, imagem colada, `blocksToPlainText`
+descartando `factBox`), todas achadas **uma a uma**, por leitura. O teste de
+varredura mata a CATEGORIA e passa a cobrir de graca tudo que F6..F12
+construirem — construir primeiro e varrer depois seria descobrir a setima do
+mesmo jeito que descobrimos as seis.
+
+**(k) Ordem da fila apos esta sessao:** F5.1 (esta PR) → **F13** → F6 → F7 → F8 →
+F9 → F10 → F11 → F12.
 
 ---
 
@@ -129,7 +149,7 @@ fallback e teste que prove que o renderer desenha.
   O trilho hoje grava cinco transicoes sem nada que as marque como colapsadas —
   um leitor pode entender que houve revisao de terceiro. **F5 corrige.**
 
-### F4 — Unicidade de slug — EM CURSO (branch `claude/cms-slug-uniqueness`)
+### F4 — Unicidade de slug — ENTREGUE (main `3a5e9ba`, PR #116)
 
 - **Escopo:** indice unico parcial `(language, slug)`, checagem de duplicatas
   preexistentes ANTES de criar, fim do `catch` silencioso do suffixing, teste da
@@ -187,7 +207,7 @@ fallback e teste que prove que o renderer desenha.
   ainda e do PostgreSQL, nao a frase humana. Cobrir isso exigiria capturar o
   codigo `23505` na fronteira dos dois endpoints — fica registrado, nao feito.
 
-### F5 — Amarras do trilho de auditoria — EM CURSO (`claude/cms-amarras-colapso`)
+### F5 — Amarras do trilho de auditoria — ENTREGUE (main `2a0ee02`, PR #117)
 
 - **Escopo:** as tres amarras da opcao (a) — mesmo ator, carimbo identico nas
   cinco linhas, permissao validada nas cinco transicoes — mais a UI da explicacao
@@ -254,6 +274,77 @@ fallback e teste que prove que o renderer desenha.
   gravado nas cinco versoes, lido de volta do banco. A FRASE do avanco parcial na
   tela ainda nao foi vista em navegador — o E2E local nao roda em Node 24 (ver
   pendencia 4). Quem prova e o CI.
+
+### F5.1 — Imagem colada deixa de sumir calada — EM CURSO (`claude/cms-paste-image-loss`)
+
+- **Por que fura a fila:** o fluxo real do operador e colar de portal ilustrado.
+  A perda nao era eventual — acontecia em **toda** materia.
+- **Estado anterior:** `<img>` colada nao produzia texto nenhum e era ignorada
+  pelo scanner (`paste-to-blocks.ts:233-235`). Nada avisava. Quem escreve so
+  descobria a perda relendo a materia publicada. O contador `dropped` ja existia
+  para o teto de paragrafos e **nem ele era lido** no campo
+  (`ParagraphTextField.tsx:180-187`).
+- **O que foi feito:**
+  - `countPastedImages` conta por **ARQUIVO**, nao por tag: a mesma `src`
+    repetida (fallback de `<noscript>`, placeholder de lazy-load, a mesma foto
+    duas vezes na pagina) e **um** upload, e o aviso existe para dizer quantos
+    arquivos subir. `<img>` sem `src` legivel nao tem como ser deduplicada e
+    conta por si — errar para MAIS e melhor do que anunciar menos perda do que
+    houve.
+  - Conta sobre o HTML ja limpo de `<script>`, `<style>` e comentario: imagem
+    dentro de codigo morto nao e imagem da materia (controle negativo no teste).
+  - `droppedImagesMessage` vive em `.ts`, e nao no `.tsx` do campo, **por motivo
+    mecanico**: o vitest do CMS nao coleta `.tsx`. Escrita la, a frase nasceria
+    sem teste e o plural errado so apareceria para o redator.
+  - `planPaste` **e** `planRichPaste` passam a relatar `droppedImages`. Dar o
+    relatorio a so um dos dois criaria segunda verdade sobre o que a colagem
+    custou — e ha teste provando que os dois respondem o mesmo.
+  - **Defeito vizinho corrigido de carona:** o aviso de colagem so era emitido
+    quando havia paragrafo EXTRA (`if (rest.length > 0) appendSpans(rest)`).
+    Colagem que cabia num paragrafo so nao dizia nada — e e exatamente o caso de
+    colar um trecho curto com uma foto. Agora o relato sai sempre; o texto de
+    "dividido em N paragrafos" continua saindo so quando houve divisao (senao
+    diria "dividido em 1 paragrafos").
+  - O aviso e elemento PROPRIO (`role="alert"`, linguagem visual do aviso de
+    paragrafo vazio), nao uma frase concatenada no aviso neutro: um cobra acao,
+    o outro so informa o que o editor fez.
+  - O texto de ajuda passa a dizer antes do gesto: "imagens nao vem junto, use o
+    bloco de imagem".
+- **Migration:** nenhuma. **Contrato:** intocado — nada aqui muda
+  `editorialBody` nem `publishedEditorialBody`.
+- **O que NAO foi feito, de proposito:** filtro de pixel de rastreamento (`<img>`
+  1x1). Nao ha evidencia de que ele apareca em HTML de area de transferencia
+  (que carrega o fragmento SELECIONADO), e um filtro por `width`/`height`
+  chutado erraria nos dois sentidos. Fica registrado: se o aviso passar a acusar
+  imagem onde nao ha, e aqui que se olha.
+- **Testes criados (12, em `rich-paste.test.ts`, que vai de 18 para 30):** conta
+  uma imagem; dedup por arquivo; arquivos diferentes contados separadamente
+  (**controle da dedup** — sem ele, uma implementacao que sempre devolvesse 1
+  passaria); imagem sem `src` conta por si; **CONTROLE NEGATIVO** de imagem
+  dentro de `<script>`/comentario/`<style>`; **CONTROLE NEGATIVO** de texto sem
+  imagem; **CONTROLE NEGATIVO** provando que a imagem no meio nao deixa bloco
+  fantasma; singular/plural/`null` da frase; o plano relatando a contagem;
+  **CONTROLE NEGATIVO** de colagem em texto puro (um `<img>` DIGITADO nao e
+  arquivo perdido); e os dois planos relatando a MESMA perda.
+- **Gates (Node 24, local):** cms test `498/498` em 22 arquivos · root test
+  `4784/4784` em 362 arquivos · cms typecheck `0` · root typecheck `0` · lint dos
+  arquivos alterados `0` · `audit:invariants` PASSOU (7 ok) · `audit:render`
+  PASSOU (2 ok) · **cms build OK** (`✓ Compiled successfully`, page data
+  coletada).
+  - Nota de ambiente: `pnpm --filter @screena/cms build` **sem env** falha em
+    `Failed to collect page data` — sao as guardas de `env.ts` e
+    `upload-storage-config.ts` funcionando (`PAYLOAD_DATABASE_URL`,
+    `PAYLOAD_SECRET`, `PAYLOAD_UPLOAD_STORAGE_DRIVER`,
+    `PAYLOAD_UPLOAD_LOCAL_PERSISTENT_CONFIRMED`, `PAYLOAD_UPLOAD_LOCAL_ROOT`).
+    O build acima rodou com valores DESCARTAVEIS de verificacao; nada real.
+  - O worktree estava sem `node_modules`: `pnpm install` completo (nunca
+    filtrado) + `pnpm --filter @screena/db db:generate`. Sem o generate, o
+    typecheck da raiz acusa 7 erros em `services/user-platform/**` que **nao**
+    sao do codigo — sao o client do Prisma faltando.
+- **O que NAO foi visto rodando:** o painel. O E2E local nao roda em Node 24
+  (pendencia 4) e a colagem depende de `ClipboardEvent` real. **Quem prova a
+  tela e o CI.** O que esta provado aqui e a contagem, a frase e o plano — a
+  parte pura, que e onde estavam os dois defeitos.
 
 ### F8 — Decisao por provedor (registrada ANTES de implementar) — PENDENTE
 
@@ -658,6 +749,96 @@ varredura de contrato.
 
 ---
 
+## Diagnostico registrado — default de licenca da midia (2026-08-05)
+
+**Pergunta do operador.** Ele e o unico operador: sobe, decide e responde pelos
+direitos. Quanto custa (a) upload feito por administrador nascer `approved` +
+`allowedForEditorial`, ou (b) um controle unico de "respondo por esta" no proprio
+upload? **NAO IMPLEMENTADO — registrado para leitura humana.**
+
+### O que trava hoje, e onde
+
+| Camada | Regra | Arquivo |
+| --- | --- | --- |
+| Nascimento | `licenseStatus: 'unknown'`, tres permissoes `false` | `apps/cms/src/collections.ts:575-588` |
+| Gate de publicacao (CMS) | conta como nao autorizada toda midia que nao seja `approved` **e** `allowedForEditorial`; capa exige `allowedForHero` | `apps/cms/src/hooks/articles.ts:185-195` → `workflow.ts:223` |
+| Contrato do evento | recusa midia com `requiresAttribution` e sem `credit` | `packages/editorial-contracts/src/publication-event-v1.ts:251-259` |
+| Entrega dos bytes | `approved` (so ele), licenca nao vencida, permissao da finalidade, credito quando exigido | `apps/cms/src/media-authorization.ts:81-140` |
+| Projecao | recusa o EVENTO INTEIRO se houver midia sem credito exigido | `services/news-ingestion/src/editorial-projection.ts:348-350`, `:406-418` |
+
+### Achado 1 — mudar o default nao quebra teste nenhum, e isso e o problema
+
+Varri `apps/cms/src/__tests__/**` e `tests/governance/**`: **nenhum teste afirma
+o default da collection `media`**. Os dois que travam `licenseStatus: 'unknown'`
+falam de OUTRA coisa — `schema-safe-defaults.test.ts:66` e sobre a tabela
+`source_licenses` do banco PUBLICO (Prisma), e `rapidapi-offline-only.test.ts:203`
+e sobre o store de ratings. Controle negativo executado: `grep` por
+`defaultValue` nos testes do CMS nao retorna nada.
+
+Ou seja: hoje o fail-closed da midia do CMS e sustentado por um **comentario**
+(`collections.ts:578`, `:585`), nao por uma trava. Qualquer das duas opcoes pode
+ser implementada sem nenhum teste ficar vermelho — o que significa que a decisao
+nao tem rede de seguranca. **Se qualquer uma for adiante, o teste que falta vem
+JUNTO, nao depois.**
+
+### Achado 2 — o custo real da opcao (a) nao e a licenca, e o CREDITO
+
+`requiresAttribution` nasce **`true`** (`collections.ts:584`) e nao muda com a
+licenca. Entao, com upload nascendo `approved`, o caminho comum passa a ser:
+imagem liberada, credito vazio. E ai o desfecho **depende de onde a imagem foi
+usada**, o que hoje e assimetrico:
+
+- **Capa ou galeria** — o evento e montado com `hero` + `gallery`
+  (`publication.ts:249`), o contrato recusa (`publication-event-v1.ts:252`), e o
+  hook **lanca `APIError` 500 e derruba a transacao**
+  (`hooks/articles.ts:506-513`). Publicar responde com erro tecnico em vez de
+  publicar. Barulhento, mas feio.
+- **Imagem do CORPO** — `mediaIds` **nao** inclui a midia dos blocos de imagem.
+  O evento passa, a materia publica, e a recusa so acontece la na frente: o
+  worker pede os bytes e recebe `attribution_missing`
+  (`media-authorization.ts:117-124`), com o pedido marcado `required: true`
+  (`services/news-ingestion/src/media/media-plan.ts:44-49`). Resultado: **materia
+  publicada no CMS que nao aparece no site** — exatamente o desfecho que o
+  comentario do gate diz existir para evitar (`hooks/articles.ts:105-108`).
+
+**Esta assimetria ja existe hoje**; ela e apenas rara, porque hoje toda midia
+passa pela mao de alguem que ve o campo de credito ao liberar. A opcao (a) tira
+esse momento do caminho e transforma o caso raro em caso comum. **Achado novo
+desta sessao — entra na lista de quedas silenciosas do F13 (seria a setima).**
+
+### Achado 3 — o que se perde com um segundo redator
+
+- `canAuthorContent` inclui `administrator`, `editor_in_chief`, `editor` e
+  `writer` (`access.ts:31-36`), e **qualquer um deles** cria e edita `media`
+  (`access.ts:97-102`). Amarrar o nascimento-aprovado a `administrator` cria dois
+  comportamentos para o mesmo gesto: a mesma foto, subida por duas pessoas,
+  nasce com licencas diferentes. Quem sobe pelo caminho "errado" nao ve erro —
+  ve a publicacao ser recusada depois, sem entender por que.
+- **A collection `media` nao tem `versions`** (`collections.ts:534-560`, comparar
+  com `Authors`, `:442`). Nao existe registro de QUEM liberou uma imagem nem
+  QUANDO. Hoje isso e tolerável porque ha um operador so; com dois, a pergunta
+  "quem respondeu por esta foto?" **nao tem resposta no sistema**. Isso vale para
+  as duas opcoes, e e o unico ponto em que (b) e estritamente melhor que (a): um
+  ato explicito tem onde ser carimbado; um default nao tem.
+
+### Custo comparado
+
+| | (a) nascer approved para administrador | (b) controle unico "respondo por esta" |
+| --- | --- | --- |
+| Superficie de codigo | 1 arquivo (`collections.ts`) + hook para nao valer para service account | 1 componente + 1 campo (o `MediaReleaseControl` ja existe e ja faz isso em 1 clique, `admin/MediaReleaseControl.tsx:50-60`) |
+| Credito vazio | vira o caso comum → achado 2 | o controle pode exigir credito no mesmo gesto |
+| Trilha de quem decidiu | nenhuma (default nao carimba) | tem onde carimbar |
+| Invariante 6 | passa a ser "confio no papel" | continua sendo "alguem decidiu" |
+| Segundo redator | dois comportamentos para o mesmo gesto | mesmo gesto para todo mundo |
+| Teste que falta | o que trava o default (achado 1) | o mesmo, mais o do controle |
+
+**O que eu recomendo, se me perguntarem:** (b) — e menor do que parece, porque o
+controle **ja existe**; o que falta e ele estar no formulario de UPLOAD e nao so
+no documento ja salvo, e exigir o credito quando `requiresAttribution` estiver
+ligado. Mas a decisao e do operador e nao esta tomada.
+
+---
+
 ## BLOQUEIO EXTERNO — CI parado por cobranca (2026-08-05)
 
 **O CI nao roda mais.** A partir da PR #120 os tres jobs falham em 3-9 segundos,
@@ -780,6 +961,15 @@ de dois PostgreSQL efemeros e/ou de navegador, e so o CI os exercita.
 5. **`isSufficientBody` le so a coluna legada** (`apps/web/src/server/news-pages.ts:282`),
    com `bodyBlocks` selecionado e ignorado (`:171`). Nao e o bloqueio de hoje
    (ver premissa derrubada), mas e fragilidade estrutural.
+6. **Credito de imagem do CORPO nao e checado na publicacao** (achado de
+   2026-08-05, ver diagnostico abaixo). `mediaIds` do evento e so capa +
+   galeria (`apps/cms/src/publication.ts:249`), entao a regra de credito do
+   contrato (`publication-event-v1.ts:251-259`) **nao alcanca** a imagem do
+   corpo. Ela e barrada so na ENTREGA dos bytes
+   (`media-authorization.ts:117-124`), com o pedido `required: true`
+   (`media/media-plan.ts:44-49`) — ou seja, materia publicada no CMS que nao
+   aparece no site. Hoje e raro porque a liberacao passa pela mao de alguem que
+   ve o campo de credito. **Entra no F13.**
 
 ---
 
