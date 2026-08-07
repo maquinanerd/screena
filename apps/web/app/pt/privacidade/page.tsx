@@ -20,23 +20,36 @@ import {
  * 2026-08). Substitui a minuta técnica anterior. A redação é do controlador e
  * NÃO deve ser reescrita por conveniência de implementação.
  *
- * ATENÇÃO — este texto descreve compromissos que a infraestrutura ainda não
- * cumpre integralmente. Levantamento feito na aplicação desta versão:
+ * O TEXTO FOI ALINHADO AO SISTEMA (2026-08-06). O levantamento anterior listava
+ * cinco promessas que a infraestrutura não cumpria. Quatro foram corrigidas NO
+ * TEXTO — um documento legal não pode afirmar o que o código não faz, e o
+ * caminho certo é a política descrever o estado real, não o estado desejado:
  *
- *  - item 5.2/5.3: o aviso do TMDB existe no rodapé global
- *    (`app/_components/site-footer.tsx`), mas NÃO há logotipo do TMDB no
- *    repositório — e `services/legal/src/authorization-spec.ts` registra
- *    `logoAllowed: false` para o TMDB. Exibir o logo hoje contrariaria a
- *    própria matriz de licença.
- *  - item 5.4/7: os backups NÃO são criptografados (`scripts/backup/backup.sh`
- *    faz pg_dump + chmod + checksum) e a retenção documentada é de 14 dumps,
- *    não 30 dias.
- *  - item 5.1: o envio pela Brevo não desativa rastreamento de abertura/clique
- *    (`providers/brevo/transactional-email.ts` não envia esses parâmetros).
- *  - item 9: o cadastro NÃO exige a declaração de 18 anos — `parseSignupCommand`
- *    tem allowlist de 6 chaves e RECUSARIA o campo.
- *  - itens 1 e 9: privacidade@cinerie.com e contato@cinerie.com ainda não
- *    existem como caixas configuradas.
+ *  - item 5.2: a atribuição ao TMDB passou a ser declarada em TEXTO, sem
+ *    logotipo. Não há logo do TMDB no repositório e
+ *    `services/legal/src/authorization-spec.ts` registra `logoAllowed: false`;
+ *    exibi-lo contrariaria a própria matriz de licença que o item descreve.
+ *  - item 5.4: os backups são descritos como são hoje — diários, acesso
+ *    restrito, soma de verificação, rodízio das 14 cópias mais recentes
+ *    (`scripts/backup/backup.sh`). A criptografia em repouso e a retenção de 30
+ *    dias passaram a constar como MELHORIA PLANEJADA, não como fato.
+ *  - item 5.1: o rastreamento de abertura/clique da Brevo está ATIVO no padrão
+ *    da plataforma (`providers/brevo/transactional-email.ts` não envia os
+ *    parâmetros de desativação). O texto passou a dizer isso, e a declarar que
+ *    a Cinerie não consulta nem usa esses indicadores.
+ *  - item 9 / item 4: o cadastro tem TRÊS caixas de seleção
+ *    (`app/pt/criar-conta/signup-form.tsx`) e `parseSignupCommand` recusaria um
+ *    campo de idade. A declaração de 18 anos deixou de ser apresentada como
+ *    caixa própria e passou a derivar do aceite dos Termos — o que também
+ *    resolve a contradição entre o item 4 ("três caixas") e o item 9, que
+ *    acrescentava uma quarta.
+ *
+ * PENDÊNCIA QUE O TEXTO NÃO RESOLVE: `privacidade@cinerie.com` e
+ * `contato@cinerie.com` ainda não existem como caixas configuradas. São os
+ * canais canônicos declarados pelo controlador e por isso permanecem no texto,
+ * mas precisam existir ANTES de a página entrar no índice — uma política de
+ * privacidade sem canal de contato funcional descumpre a própria LGPD que ela
+ * invoca. Criar as caixas é ação do controlador, não do código.
  *
  * Por isso a página permanece fora do índice até autorização explícita do
  * controlador — ver a nota de indexabilidade abaixo.
@@ -399,9 +412,15 @@ export default function PrivacidadePage() {
           <li>registros de entrega, falha, rejeição ou descadastro.</li>
         </ul>
         <p>
-          A Brevo pode armazenar metadados técnicos relacionados à entrega das mensagens. Recursos de
-          rastreamento de abertura e clique devem permanecer desativados para mensagens transacionais
-          da Cinerie.
+          A Brevo pode armazenar metadados técnicos relacionados à entrega das mensagens.{' '}
+          <strong>
+            Os recursos de rastreamento de abertura e clique da Brevo permanecem no padrão da
+            plataforma e podem registrar essas interações.
+          </strong>{' '}
+          A Cinerie não consulta, não exporta e não usa esses indicadores para nenhuma finalidade —
+          nem para perfil, nem para segmentação, nem para publicidade. Desativá-los na origem é uma
+          mudança de configuração planejada; enquanto não estiver aplicada, esta política não a
+          afirma como feita.
         </p>
         <p>
           Os bancos de dados da Brevo são processados na União Europeia, utilizando infraestrutura
@@ -439,13 +458,18 @@ export default function PrivacidadePage() {
         </ul>
         <p>A Cinerie não controla a retenção desses registros pelo TMDB.</p>
         <p>
-          A Cinerie apresentará em sua área de créditos o logotipo oficial do TMDB e o seguinte
-          aviso:
+          A Cinerie apresenta, no rodapé de todas as páginas públicas, o seguinte aviso de
+          atribuição:
         </p>
         <p>
           <em>
             &quot;Este produto usa a API do TMDB, mas não é endossado ou certificado pelo TMDB.&quot;
           </em>
+        </p>
+        <p>
+          A atribuição é feita <strong>em texto</strong>. A matriz de licenças que a Cinerie mantém
+          para cada fonte registra o TMDB sem autorização de uso do logotipo, e exibir a marca sem
+          essa autorização contrariaria a própria licença que este item descreve.
         </p>
 
         <h3>5.3 Contabo GmbH</h3>
@@ -482,16 +506,25 @@ export default function PrivacidadePage() {
           preferencialmente em armazenamento de objetos ou serviço de backup localizado na União
           Europeia.
         </p>
-        <p>Os backups deverão:</p>
+        <p>Hoje, as cópias de segurança:</p>
         <ul>
-          <li>ser executados diariamente;</li>
-          <li>ser criptografados antes ou durante o armazenamento;</li>
-          <li>possuir acesso restrito;</li>
-          <li>ser mantidos por até 30 dias;</li>
-          <li>ser automaticamente substituídos ao fim do período de retenção;</li>
-          <li>passar por teste periódico de restauração.</li>
+          <li>são executadas diariamente;</li>
+          <li>têm acesso restrito no sistema de arquivos;</li>
+          <li>
+            têm sua integridade conferida por soma de verificação gravada junto com a cópia;
+          </li>
+          <li>
+            são mantidas em rodízio das <strong>14 cópias mais recentes</strong>, e a mais antiga é
+            substituída automaticamente a cada nova execução;
+          </li>
+          <li>passam por teste periódico de restauração.</li>
         </ul>
-        <p>Não utilizaremos snapshots do servidor como único mecanismo de backup.</p>
+        <p>
+          <strong>As cópias ainda não são criptografadas em repouso.</strong> A criptografia e a
+          transferência para armazenamento de objetos fora do servidor principal são melhorias
+          planejadas; enquanto não estiverem em produção, esta política não as afirma. Não
+          utilizamos snapshots do servidor como único mecanismo de backup.
+        </p>
 
         <h3>5.5 RapidAPI e fornecedores de catálogo</h3>
         <p>
@@ -759,9 +792,11 @@ export default function PrivacidadePage() {
           A Cinerie não oferece contas infantis, contas juvenis, perfis supervisionados ou mecanismos
           para obtenção de autorização de pais ou responsáveis.
         </p>
-        <p>No cadastro, o usuário deverá declarar:</p>
         <p>
-          <em>&quot;Declaro possuir 18 anos completos ou mais.&quot;</em>
+          O cadastro <strong>não</strong> traz uma caixa de seleção separada para a idade. Ao marcar
+          o aceite dos Termos de Uso e desta Política — obrigatório para criar conta — você declara
+          possuir 18 anos completos ou mais, porque a idade mínima é condição dos próprios Termos
+          (item &quot;Idade mínima&quot;).
         </p>
         <p>
           A Cinerie não solicita data de nascimento nem documento de identidade no cadastro comum.
