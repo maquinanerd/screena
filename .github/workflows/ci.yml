@@ -141,17 +141,10 @@ jobs:
       # rascunho salva por autosave, que o campo de automacao chega desabilitado
       # e que o botao generico "Publish changes" do Payload NAO burla o fluxo
       # editorial.
-      #
-      # ORCAMENTO DE CI (2026-08-06): o E2E so roda no push para `main`. Baixar o
-      # Chromium com `--with-deps` e subir Next + Payload + PostgreSQL num
-      # navegador real e o trecho mais caro do job; em PR ele nao roda, no merge
-      # ele roda. A cobertura de `main` fica intacta — o que muda e QUANDO paga.
       - name: Instalar Chromium para o E2E do painel
-        if: github.event_name == 'push'
         run: pnpm exec playwright install --with-deps chromium
 
       - name: E2E do painel editorial manual (Playwright)
-        if: github.event_name == 'push'
         run: pnpm test:manual-editorial:e2e
 
       # CANARIO PONTA A PONTA da publicacao MANUAL: humano -> Payload -> outbox
@@ -369,14 +362,8 @@ jobs:
   # aguarda o HEALTHCHECK e valida HTTP + versao + migrations + gravabilidade.
   # Falha se o digest nao existir, o container nao iniciar, o healthcheck falhar
   # ou houver erro de permissao.
-  #
-  # ORCAMENTO DE CI (2026-08-06): job restrito ao push para `main`. Ele constroi
-  # a imagem inteira e sobe container + PostgreSQL, e o que ele prova (digest,
-  # nao-root, healthcheck) so muda quando Dockerfile/digest mudam — coisa que o
-  # merge para `main` cobre. Em PR ele nao roda.
   docker-image:
     name: Imagem Docker real (digest, nao-root, healthcheck)
-    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
