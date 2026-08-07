@@ -78,15 +78,20 @@ Corpo: `{ outcome, mediaId, contentHash }`.
 
 ### Esta rota NAO aponta a capa
 
-Uma versao anterior aceitava `setAsHero`. O teste de integracao mostrou por que
-isso nao pode existir: o hook de governanca (`hooks/articles.ts`) **forca**
-`workflowStatus = 'automation_draft'` para qualquer service account sem
-`editorial_auto_publish`. Subir a foto de uma materia que um humano deixou em
-`ready_to_publish` a **rebaixaria para rascunho de automacao**, em silencio, como
-efeito colateral de anexar uma imagem.
+Uma versao anterior aceitava `setAsHero`, e ele saiu inteiro: **anexar uma imagem
+nao pode ter como efeito colateral uma escrita em `articles`**. O hook de
+governanca (`hooks/articles.ts`) trata `workflowStatus` de toda service account
+sem `editorial_auto_publish`, e uma foto subindo para uma materia que um humano
+deixou em `ready_to_publish` esbarrava nele — no melhor caso com erro opaco.
 
-A capa continua sendo escolhida por quem escreve: no painel, ou pelo contrato de
-`editorial-drafts`, que passa pelo gate certo.
+Apontar a capa tem rota **propria**, com as travas que faltavam ali:
+[`PATCH /api/internal/editorial-media/:mediaId/hero`](./editorial-media-hero.md).
+Ela recusa **antes de escrever** (so aceita materia em `automation_draft`), exige
+que a foto tenha sido ingerida **para aquela materia** e nao troca capa escolhida
+por gente.
+
+A capa tambem continua podendo ser escolhida por quem escreve: no painel, ou pelo
+contrato de `editorial-drafts`, que passa pelo gate certo.
 
 ### Recusas
 
