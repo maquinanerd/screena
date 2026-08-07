@@ -171,6 +171,22 @@ jobs:
       - name: Canario dos vinculos editoriais ate as superficies publicas
         run: pnpm --filter @screena/web canary:editorial-entity-links
 
+      # ROTA INTERNA DE RESOLUCAO DE ENTIDADE, com Next REAL e PostgreSQL 16
+      # efemero. Passo proprio porque o que ele prova nao aparece em teste puro:
+      # o SQL de casamento por titulo (`immutable_unaccent` e
+      # `string_to_array(normalized_aliases,'|')` so existem no banco), a
+      # credencial e o teto LIGADOS no handler, os cabecalhos de rota interna
+      # (`X-Robots-Tag`, `no-store`, ausencia de CORS) e o `405`.
+      #
+      # O ultimo passo e o que justifica o custo: ele pega o id que a ROTA
+      # devolveu, poe num bloco `entityCard` e renderiza pela mesma funcao da
+      # pagina publica. Se a ficha nao aparecer, o bloco teria sumido em
+      # silencio — que e exatamente o defeito que a rota existe para fechar.
+      #
+      # Chave sorteada no processo; nenhuma credencial real.
+      - name: Rota interna de resolucao de entidade (Next real + PostgreSQL 16 efemero)
+        run: pnpm --filter @screena/web validate:entity-resolve
+
       # PRONTIDAO DE IMPLANTACAO. Nao sobem banco nem container: provam a
       # POLITICA que decide se um servico pode ser promovido — migration
       # pendente bloqueia, schema publico atrasado bloqueia, storage sem
