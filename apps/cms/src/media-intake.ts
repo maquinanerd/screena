@@ -143,7 +143,6 @@ export interface MediaIngestCommand {
   readonly caption: string | null
   readonly contentType: IngestibleMime
   readonly bytes: Uint8Array
-  readonly setAsHero: boolean
 }
 
 export type MediaIngestRejectionCode =
@@ -278,10 +277,6 @@ export function intakeEditorialMedia(input: {
     issues.push(`caption acima de ${String(MAX_TEXT_LENGTH)} caracteres`)
   }
 
-  if (raw.setAsHero !== undefined && typeof raw.setAsHero !== 'boolean') {
-    issues.push('setAsHero precisa ser booleano')
-  }
-
   const declaredType = text(raw.contentType)
   if (declaredType === null) issues.push('contentType ausente')
 
@@ -335,7 +330,6 @@ export function intakeEditorialMedia(input: {
       caption,
       contentType: actual,
       bytes,
-      setAsHero: raw.setAsHero === true,
     },
   }
 }

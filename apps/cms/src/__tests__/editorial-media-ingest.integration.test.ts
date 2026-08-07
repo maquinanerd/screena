@@ -40,8 +40,22 @@ let baseUrl: string
 let ingestKey = ''
 let draftOnlyKey = ''
 let articleId = 0
+let chiefId = 0
 
 const INGEST_PATH = '/api/internal/editorial-media'
+
+/**
+ * Usuario editorial dono das fixtures.
+ *
+ * `overrideAccess: true` dispensa ACCESS CONTROL, mas NAO dispensa ator: o hook
+ * de governanca (`hooks/articles.ts`) recusa escrita anonima em `articles`. Sem
+ * isto o `beforeAll` inteiro morria com 403 e os 18 casos saiam "skipped" — que
+ * na tabela final se parece com sucesso.
+ */
+async function userDoc(id: number) {
+  const doc = await payload.findByID({ collection: 'editorial-users', id, overrideAccess: true })
+  return { ...doc, collection: 'editorial-users' } as never
+}
 
 async function makeServiceAccount(label: string, scopes: string[]): Promise<string> {
   const apiKey = randomUUID()
@@ -82,6 +96,19 @@ beforeAll(async () => {
   payload = harness.payload
   baseUrl = harness.baseUrl
 
+  const chief = await payload.create({
+    collection: 'editorial-users',
+    data: {
+      email: `chefe-${randomUUID().slice(0, 8)}@exemplo.test`,
+      password: `senha-de-teste-${randomUUID()}`,
+      displayName: 'Editor-chefe de teste',
+      role: 'chief_editor',
+      active: true,
+    } as never,
+    overrideAccess: true,
+  })
+  chiefId = Number(chief.id)
+
   ingestKey = await makeServiceAccount('mnscr — midia', ['editorial_media_ingest'])
   // Conta com o escopo de TEXTO, para provar que ele nao habilita foto.
   draftOnlyKey = await makeServiceAccount('mnscr — texto', ['draft_ingest'])
@@ -95,6 +122,7 @@ beforeAll(async () => {
       workflowStatus: 'draft',
     } as never,
     overrideAccess: true,
+    user: await userDoc(chiefId),
   })
   articleId = Number(article.id)
 }, 300_000)
@@ -269,6 +297,7 @@ describe('a mesma foto em DUAS materias nao colide', () => {
         workflowStatus: 'draft',
       } as never,
       overrideAccess: true,
+      user: await userDoc(chiefId),
     })
 
     const png = await decodablePngBytes(200, 150, 3)
@@ -359,47 +388,6 @@ describe('recusas que chegam ao EMISSOR', () => {
   })
 })
 
-describe('capa', () => {
-  it('setAsHero aponta a capa da materia para a foto ingerida', async () => {
-    const jpeg = await decodableJpegBytes(400, 250, 7)
-    const response = await post(
-      payloadFor(
-        { sourceUrl: 'https://exemplo.com/capa.jpg', setAsHero: true },
-        jpeg,
-        'image/jpeg',
-      ),
-      ingestKey,
-    )
-    expect(response.status).toBe(201)
-    const body = (await response.json()) as Record<string, string>
-
-    const article = await payload.findByID({
-      collection: 'articles',
-      id: articleId,
-      depth: 0,
-      overrideAccess: true,
-    })
-    expect(String(article.heroMedia)).toBe(body.mediaId)
-  })
-
-  it('sem setAsHero a capa NAO e tocada', async () => {
-    const antes = await payload.findByID({
-      collection: 'articles',
-      id: articleId,
-      depth: 0,
-      overrideAccess: true,
-    })
-    const jpeg = await decodableJpegBytes(400, 250, 11)
-    await post(payloadFor({ sourceUrl: 'https://exemplo.com/nao-capa.jpg' }, jpeg, 'image/jpeg'), ingestKey)
-    const depois = await payload.findByID({
-      collection: 'articles',
-      id: articleId,
-      depth: 0,
-      overrideAccess: true,
-    })
-    expect(String(depois.heroMedia)).toBe(String(antes.heroMedia))
-  })
-})
 
 /** Conta com o escopo do worker, criada sob demanda para o teste de entrega. */
 let cachedProjectionKey = ''

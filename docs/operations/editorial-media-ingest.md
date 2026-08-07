@@ -16,7 +16,7 @@ MNScr ── POST /api/internal/editorial-media  ──► foto no acervo   [EST
 ```
 
 Ela **nao** publica, **nao** cria materia e **nao** escreve no `screen-db`. Ela
-poe a foto no acervo do CMS e, opcionalmente, aponta a capa da materia para ela.
+poe a foto no acervo do CMS, vinculada a materia — e nada alem disso.
 
 ## 2. Credencial
 
@@ -43,8 +43,7 @@ Authorization: service-accounts API-Key <chave>
   "alt":           "Cena do filme",          // obrigatorio
   "caption":       "Legenda opcional",       // opcional
   "contentType":   "image/jpeg",             // jpeg | png | webp
-  "contentBase64": "...",                    // obrigatorio, os BYTES
-  "setAsHero":     true                      // opcional, default false
+  "contentBase64": "..."                     // obrigatorio, os BYTES
 }
 ```
 
@@ -75,9 +74,19 @@ Sem exigir na entrada, a foto entraria no acervo e morreria calada.
 | `200` | `unchanged` | reenvio identico — nenhum upload, nenhuma escrita |
 | `200` | `replaced` | mesma url, conteudo diferente: a fonte trocou a foto |
 
-Corpo: `{ outcome, mediaId, contentHash }`. Com `setAsHero` e falha ao apontar a
-capa, entra `warnings: ["hero_not_set"]` — a foto **entrou**, so a capa nao foi
-apontada.
+Corpo: `{ outcome, mediaId, contentHash }`.
+
+### Esta rota NAO aponta a capa
+
+Uma versao anterior aceitava `setAsHero`. O teste de integracao mostrou por que
+isso nao pode existir: o hook de governanca (`hooks/articles.ts`) **forca**
+`workflowStatus = 'automation_draft'` para qualquer service account sem
+`editorial_auto_publish`. Subir a foto de uma materia que um humano deixou em
+`ready_to_publish` a **rebaixaria para rascunho de automacao**, em silencio, como
+efeito colateral de anexar uma imagem.
+
+A capa continua sendo escolhida por quem escreve: no painel, ou pelo contrato de
+`editorial-drafts`, que passa pelo gate certo.
 
 ### Recusas
 

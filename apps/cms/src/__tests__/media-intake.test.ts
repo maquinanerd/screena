@@ -93,15 +93,8 @@ describe('ingestao de midia — controle positivo', () => {
     expect(result.command.alt).toBe('Cena do filme')
     expect(result.command.contentType).toBe('image/png')
     expect(result.command.bytes.length).toBe(PNG_BYTES.length)
-    expect(result.command.setAsHero).toBe(false)
   })
 
-  it('setAsHero e opt-in explicito', () => {
-    const off = intake()
-    const on = intake({ setAsHero: true })
-    expect(off.ok && off.command.setAsHero).toBe(false)
-    expect(on.ok && on.command.setAsHero).toBe(true)
-  })
 
   it('caption e opcional e vira null quando ausente', () => {
     const result = intake()

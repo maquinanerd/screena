@@ -10,8 +10,9 @@
  * imagem — e era esse o ultimo bloqueio para a foto ir ao ar sem intervencao.
  *
  * O QUE ELA NAO FAZ, por contrato:
- *  - nao cria materia (isso e `editorial-drafts`), nao publica e nao mexe em
- *    `workflowStatus`;
+ *  - nao cria materia (isso e `editorial-drafts`), nao publica, nao mexe em
+ *    `workflowStatus` e NAO APONTA A CAPA — ver `media-intake.ts` para o motivo
+ *    (o hook de governanca rebaixaria a materia a `automation_draft`);
  *  - nao BAIXA de `sourceUrl`. Os bytes vem no corpo. Seguir um link escrito por
  *    terceiro seria buscar conteudo num host arbitrario com a credencial do CMS
  *    no bolso (SSRF); `sourceUrl` e prova de origem, nao endereco de download;
@@ -230,26 +231,6 @@ export const editorialMediaEndpoint: Endpoint = {
 
     const mediaId = String(created.id)
 
-    if (command.setAsHero) {
-      try {
-        await req.payload.update({
-          collection: 'articles',
-          id: articleId,
-          depth: 0,
-          overrideAccess: true,
-          req,
-          data: { heroMedia: Number(mediaId) },
-        })
-      } catch {
-        // A foto ENTROU no acervo; so a capa nao foi apontada. Responder erro
-        // faria o emissor reenviar e criar ruido; responder 200 calado esconderia
-        // o que faltou. O desfecho e verdadeiro e nomeia a lacuna.
-        return json(
-          { outcome, mediaId, contentHash, warnings: ['hero_not_set'] },
-          outcome === 'created' ? 201 : 200,
-        )
-      }
-    }
 
     return json({ outcome, mediaId, contentHash }, outcome === 'created' ? 201 : 200)
   },
