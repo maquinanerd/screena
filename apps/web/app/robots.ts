@@ -2,7 +2,10 @@ import type { MetadataRoute } from "next";
 
 import {
   OFFICIAL_SITE_URL,
+  PRIVACY_PATH,
+  TERMS_PATH,
   isOfficialIndexableEnvironment,
+  isOfficialLegalDocsIndexableEnvironment,
   type SiteUrlEnv,
 } from "../src/lib/site";
 
@@ -36,6 +39,32 @@ export const dynamic = "force-dynamic";
 
 export function buildRobots(env: SiteUrlEnv = process.env): MetadataRoute.Robots {
   if (!isOfficialIndexableEnvironment(env)) {
+    // SITE FECHADO, DOCUMENTOS LEGAIS LIBERADOS.
+    //
+    // `CINERIE_LEGAL_DOCS_INDEXING_ENABLED` sozinha nao bastaria: o
+    // `<meta robots>` de `/pt/termos/` e `/pt/privacidade/` diria `index`,
+    // enquanto `Disallow: /` impediria o crawler de buscar a pagina — e ele
+    // nunca leria o meta. O resultado nao seria "nao indexado": seria o pior
+    // dos dois mundos, a URL entrando no indice SEM conteudo (o Google indexa
+    // URL bloqueada que encontra por link). Por isso o robots.txt acompanha a
+    // chave.
+    //
+    // `Allow` mais especifico vence `Disallow: /` (RFC 9309 §2.2.2: o match de
+    // maior comprimento decide, e empate resolve a favor do allow). Nao ha
+    // sitemap aqui de proposito: o sitemap lista o catalogo, que continua
+    // noindex — anuncia-lo convidaria o crawler exatamente ao que esta fechado.
+    if (isOfficialLegalDocsIndexableEnvironment(env)) {
+      return {
+        rules: [
+          {
+            userAgent: "*",
+            allow: [TERMS_PATH, PRIVACY_PATH],
+            disallow: "/",
+          },
+        ],
+      };
+    }
+
     return {
       rules: [
         {

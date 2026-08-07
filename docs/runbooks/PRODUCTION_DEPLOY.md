@@ -70,9 +70,34 @@ A imagem **nao assa** nenhuma env publica. Configure no EasyPanel:
 | Env | Valor em producao | Efeito |
 | --- | --- | --- |
 | `CINERIE_PUBLIC_SITE_URL` | `https://cinerie.com` | Origem canonica (canonical, JSON-LD, sitemap). |
-| `CINERIE_PUBLIC_INDEXING_ENABLED` | `true` ou `false` | **Kill switch de indexacao.** |
+| `CINERIE_PUBLIC_INDEXING_ENABLED` | `true` ou `false` | **Kill switch de indexacao** do site inteiro. |
+| `CINERIE_LEGAL_DOCS_INDEXING_ENABLED` | `true` ou `false` | Kill switch **so** de `/pt/termos/` e `/pt/privacidade/`. |
 | `NODE_ENV` | `production` | Exigido para indexar. |
 | `DATABASE_URL` | (segredo) | Postgres. |
+
+**As duas chaves de indexacao sao independentes, e a relacao entre elas e OR.**
+Os documentos legais ficam prontos antes do catalogo — o aceite obrigatorio do
+cadastro aponta para eles —, e indexa-los nao pode exigir abrir o site inteiro
+com o catalogo incompleto.
+
+| `PUBLIC_INDEXING` | `LEGAL_DOCS_INDEXING` | `/pt/` e catalogo | `/pt/termos/` e `/pt/privacidade/` |
+| --- | --- | --- | --- |
+| off | off | `noindex` | `noindex` |
+| off | **on** | `noindex` | **`index`** |
+| on | off | decisao da entidade | **`index`** |
+| on | on | decisao da entidade | **`index`** |
+
+A chave legal so **adiciona** permissao: com o site aberto, esquecer de liga-la
+nao desindexa a Politica de Privacidade. As duas exigem, alem da flag, origem
+oficial e `NODE_ENV`/`VERCEL_ENV` de producao — em staging nenhuma das duas
+indexa nada.
+
+O `robots.txt` acompanha: com so a chave legal ligada, ele serve
+`Allow: /pt/termos/` + `Allow: /pt/privacidade/` antes do `Disallow: /` (allow
+mais especifico vence, RFC 9309 §2.2.2) e **nao** anuncia sitemap — o sitemap
+lista o catalogo, que continua fechado. Sem esse par, o gate seria inerte: o
+`<meta robots>` diria `index` e o `Disallow: /` impediria o crawler de chegar a
+ler o meta, o que poe a URL no indice **sem conteudo**.
 
 **Parser da flag** (`parseBooleanEnvFlag`, fail-closed):
 

@@ -71,9 +71,20 @@ describe("governanca: o kill switch de indexacao nao pode ser burlado por pagina
       const code = stripComments(readFileSync(file, "utf-8"));
       const assignments = [...code.matchAll(/robots:\s*([^,\n]+)/g)].map((m) => (m[1] ?? "").trim());
       for (const value of assignments) {
-        // Permitido: noindex literal (fail-closed) e os dois helpers.
+        // Permitido: noindex literal (fail-closed) e os tres helpers.
         if (value.startsWith("{ index: false")) continue;
-        if (value.startsWith("publicRobots(") || value.startsWith("gatePublicRobots(")) continue;
+        if (
+          value.startsWith("publicRobots(") ||
+          value.startsWith("gatePublicRobots(") ||
+          // `legalDocRobots` tem chave PROPRIA
+          // (CINERIE_LEGAL_DOCS_INDEXING_ENABLED), mas passa pelas MESMAS
+          // condicoes de ambiente — a asercao abaixo prova isso no fonte, para
+          // que entrar nesta allowlist nao vire uma porta de fuga do kill
+          // switch.
+          value.startsWith("legalDocRobots(")
+        ) {
+          continue;
+        }
         offenders.push(`${path.relative(repoRoot, file)} -> robots: ${value}`);
       }
     }
@@ -87,10 +98,32 @@ describe("governanca: o kill switch de indexacao nao pode ser burlado por pagina
     const site = stripComments(readFileSync(siteLib, "utf-8"));
     expect(site).toContain("export function publicRobots");
     expect(site).toContain("export function gatePublicRobots");
+    expect(site).toContain("export function legalDocRobots");
     // Ambos passam pelo mesmo gate de ambiente — e o que mantem robots.txt,
     // <meta robots> e sitemap coerentes por construcao.
     const publicRobotsBody = site.slice(site.indexOf("export function publicRobots"));
     expect(publicRobotsBody).toContain("isOfficialIndexableEnvironment");
+  });
+
+  it("legalDocRobots nao e uma porta de fuga: exige producao oficial", () => {
+    // A allowlist acima aceita `legalDocRobots(` sem argumento nenhum — o que
+    // seria uma porta aberta se o helper pudesse devolver `index` fora da
+    // producao oficial. Ele so pode liberar por um dos dois gates, e AMBOS
+    // exigem `isOfficialProductionSurface` (origem canonica + NODE_ENV/VERCEL_ENV
+    // de producao). Esta asercao trava isso no fonte.
+    const site = stripComments(readFileSync(siteLib, "utf-8"));
+    const start = site.indexOf("export function legalDocRobots");
+    const body = site.slice(start, site.indexOf("}", site.indexOf("return", start)));
+    expect(body).toContain("isOfficialIndexableEnvironment");
+    expect(body).toContain("isOfficialLegalDocsIndexableEnvironment");
+
+    const legalEnvStart = site.indexOf(
+      "export function isOfficialLegalDocsIndexableEnvironment",
+    );
+    expect(legalEnvStart).toBeGreaterThan(-1);
+    const legalEnvBody = site.slice(legalEnvStart, legalEnvStart + 400);
+    expect(legalEnvBody).toContain("isLegalDocsIndexingEnabled");
+    expect(legalEnvBody).toContain("isOfficialProductionSurface");
   });
 
   it("robots.txt e dinamico: a flag vale em runtime, sem exigir rebuild", () => {

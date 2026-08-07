@@ -10,7 +10,7 @@ import {
   SITE_URL,
   TERMS_PATH,
   canonicalPublicUrl,
-  publicRobots,
+  legalDocRobots,
 } from '../../../src/lib/site'
 
 /**
@@ -57,10 +57,12 @@ import {
  * Destino de um dos dois links do aceite obrigatório do cadastro
  * (`app/pt/criar-conta/signup-form.tsx`), que até aqui apontava para 404.
  *
- * Indexabilidade: `publicRobots(true)` — a página é pública e indexável por
- * natureza, e o gate global (`CINERIE_PUBLIC_INDEXING_ENABLED` + origem oficial)
- * decide sozinho se algum `index` sai. Nunca montar `robots` na mão
- * (tests/governance/no-raw-robots-metadata.test.ts).
+ * Indexabilidade: `legalDocRobots()` — chave PRÓPRIA
+ * (`CINERIE_LEGAL_DOCS_INDEXING_ENABLED`), porque esta página fica pronta antes
+ * do catálogo e indexá-la não pode exigir abrir o site inteiro. Nunca montar
+ * `robots` na mão, e nunca voltar ao helper genérico do site — as duas coisas
+ * são travadas por tests/governance/no-raw-robots-metadata.test.ts e
+ * tests/governance/legal-docs-indexing.test.ts.
  */
 
 const TITLE = 'Política de Privacidade'
@@ -72,7 +74,7 @@ export function generateMetadata(): Metadata {
   return {
     title: TITLE,
     description: DESCRIPTION,
-    robots: publicRobots(true),
+    robots: legalDocRobots(),
     alternates: { canonical: canonicalPublicUrl(PRIVACY_PATH) },
   }
 }
