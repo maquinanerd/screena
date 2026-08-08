@@ -679,12 +679,12 @@ async function runFoldParityCheck(): Promise<void> {
 
   // CONTROLE NEGATIVO. Sem ele o caso acima passaria mesmo se `immutable_fold`
   // fosse a identidade — bastaria as duas pontas nao fazerem nada.
-  // O ` ` e ESPACO INQUEBRAVEL, e ele esta aqui de proposito: ele NAO entra em
+  // O `U+00A0` e ESPACO INQUEBRAVEL, e ele esta aqui de proposito: ele NAO entra em
   // `[[:space:]]` sob ctype C, entao sem o `replace(..., chr(160), ' ')` da funcao
   // este caso volta com dois espacos e o titulo nunca casaria.
   const identity = await prisma.$queryRawUnsafe<{ folded: string }[]>(
     "SELECT immutable_fold($1::text) AS folded",
-    "  ÁGUA   Viva   ",
+    "  ÁGUA \u00A0 Viva   ",
   );
   record(
     "o controle NEGATIVO acusa: a dobra do banco realmente TRANSFORMA",
