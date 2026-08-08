@@ -6,10 +6,9 @@
  * decisao e `entity-resolve-auth.test.ts` cobre credencial e teto. O que nenhum
  * dos dois alcanca e justamente onde uma rota interna costuma falhar:
  *
- *  1. o SQL de casamento por titulo. Ele usa `immutable_unaccent(lower(...))` e
- *     `string_to_array(normalized_aliases, '|')` — funcao e formato que so
- *     existem no banco. Um erro ali nao aparece em teste puro: aparece como
- *     `not_found` para um titulo que existe;
+ *  1. o SQL de casamento por titulo. Ele usa `immutable_fold(...)` — uma funcao
+ *     que so existe no banco. Um erro ali nao aparece em teste puro: aparece
+ *     como `not_found` para um titulo que existe;
  *  2. a credencial e o teto ligados no handler — teste puro prova a funcao, nao
  *     o fio;
  *  3. os cabecalhos de rota interna (`X-Robots-Tag`, `no-store`, ausencia de
@@ -17,6 +16,24 @@
  *  4. O FECHO DO CIRCUITO: que o id devolvido pela rota e o MESMO id que a
  *     renderizacao da materia aceita. Esse e o defeito que a rota inteira existe
  *     para fechar, e ele so se prova rodando os dois lados contra o mesmo banco.
+ *
+ * O QUE MUDOU AQUI, e por que a versao anterior deste arquivo passou verde
+ * enquanto a rota estava morta em producao.
+ *
+ * A semente gravava `search_documents` A MAO, com `prisma.searchDocument.create`.
+ * Isso fabricava a unica precondicao que producao nao tinha: a projecao de busca
+ * ja rodada, com o texto certo, no locale certo. O teste media o SQL e nao media
+ * a DEPENDENCIA — e a dependencia era o defeito. Medido em producao: `tmdbId`
+ * resolvia 3 de 3 e titulo/nome resolvia 0 de 11.
+ *
+ * Agora a semente grava SO O CATALOGO: a entidade, a slug, a traducao e os
+ * titulos alternativos. **Nenhuma linha de `search_documents` e criada em lugar
+ * nenhum deste arquivo** — se a rota voltar a depender da projecao, todo
+ * casamento por texto aqui fica vermelho.
+ *
+ * E o casamento nao usa titulo escolhido pelo autor do teste: ele usa o
+ * `canonicalTitle` que a PROPRIA ROTA devolveu. Casar por id nao provava nada —
+ * foi exatamente o que mascarou o defeito.
  *
  * Nao chama rede externa, nao usa banco remoto, nao cria credencial real: a
  * chave e sorteada e morre com o processo.
@@ -122,21 +139,22 @@ type PrismaLike = {
   person: { create: (args: unknown) => Promise<{ id: bigint }> };
   slug: { create: (args: unknown) => Promise<unknown> };
   entityTranslation: { create: (args: unknown) => Promise<unknown> };
-  searchDocument: { create: (args: unknown) => Promise<unknown> };
+  entityAlternativeTitle: { create: (args: unknown) => Promise<unknown> };
+  searchDocument: { count: (args?: unknown) => Promise<number> };
   article: { create: (args: unknown) => Promise<{ id: bigint }> };
   articleTranslation: { create: (args: unknown) => Promise<unknown> };
+  $queryRawUnsafe: <T>(sql: string, ...params: unknown[]) => Promise<T>;
 };
 
 interface SeedEntity {
   readonly kind: "movie" | "tv" | "person";
   readonly tmdbId: number;
+  /** Titulo ORIGINAL, gravado em `movies`/`tv_shows`/`people`. */
   readonly title: string;
   readonly year: number | null;
   readonly slug: string | null;
   readonly translatedTitle?: string;
   readonly aliases?: readonly string[];
-  /** `false` semeia a entidade SEM documento de busca. */
-  readonly searchable?: boolean;
 }
 
 async function seedEntity(prisma: PrismaLike, entity: SeedEntity): Promise<bigint> {
@@ -192,23 +210,19 @@ async function seedEntity(prisma: PrismaLike, entity: SeedEntity): Promise<bigin
     });
   }
 
-  if (entity.searchable !== false) {
-    const aliases = entity.aliases ?? [];
-    await prisma.searchDocument.create({
-      data: {
-        docKind: "entity",
-        entityType: entity.kind,
-        entityId: id,
-        locale: LANGUAGE,
-        primaryText: entity.title,
-        alternativeText: aliases.join(" | "),
-        normalizedText: fold([entity.title, ...aliases].join(" ")),
-        normalizedAliases: aliases.map((alias) => fold(alias)).join("|"),
-        year: entity.year,
-      },
+  // TITULOS ALTERNATIVOS no CATALOGO, e nao em `search_documents`. Esta e a
+  // fonte de verdade dos aliases; a projecao de busca so os copiava.
+  for (const alias of entity.aliases ?? []) {
+    await prisma.entityAlternativeTitle.create({
+      // `normalized` e obrigatorio na tabela e e usado por OUTRAS superficies;
+      // esta rota nao le essa coluna (ela dobra `title` no SQL). Semeamos com a
+      // dobra so para a linha ficar realista.
+      data: { entityType: entity.kind, entityId: id, title: alias, normalized: fold(alias) },
     });
   }
 
+  // NENHUM `searchDocument.create` aqui, de proposito. Ver o cabecalho: era ele
+  // que fabricava a precondicao que producao nao tinha.
   return id;
 }
 
@@ -265,6 +279,7 @@ function rows(response: ResolveResponse): ResultRow[] {
 
 interface SeededIds {
   fightClub: bigint;
+  espacoDuplo: bigint;
   gemeasA: bigint;
   gemeasB: bigint;
   ruptura: bigint;
@@ -366,14 +381,61 @@ async function runHttpChecks(base: string, ids: SeededIds): Promise<void> {
     `reason=${rows(tmdbWins)[0]?.reason ?? "null"}`,
   );
 
+  /* --- O DEFEITO MEDIDO: ida e volta pelo proprio canonicalTitle ---
+   *
+   * ESTE E O BLOCO CENTRAL DO ARQUIVO.
+   *
+   * Em producao a rota devolvia `canonicalTitle: "A Origem"` para
+   * `{kind:movie, tmdbId:27205}` e devolvia `not_found` para
+   * `{kind:movie, title:"A Origem", year:2010}` — o titulo que ela mesma
+   * acabara de emitir. Onze titulos, onze `not_found`.
+   *
+   * O casamento por ID nao prova nada aqui: foi ele que mascarou o defeito. O
+   * que prova e o CICLO — perguntar por id, pegar o rotulo que voltou, e
+   * perguntar de novo por esse rotulo.
+   */
+
+  const label = await callResolve(base, [
+    { kind: "movie", tmdbId: 550 },
+    { kind: "tv", tmdbId: 12001 },
+    { kind: "person", tmdbId: 192 },
+  ]);
+  const labelRows = rows(label);
+  const movieTitle = labelRows[0]?.canonicalTitle ?? "";
+  const tvTitle = labelRows[1]?.canonicalTitle ?? "";
+  const personName = labelRows[2]?.canonicalTitle ?? "";
+
+  const roundTrip = await callResolve(base, [
+    { kind: "movie", title: movieTitle, year: 1999 },
+    { kind: "tv", title: tvTitle, year: 2022 },
+    { kind: "person", name: personName },
+  ]);
+  const tripRows = rows(roundTrip);
+  record(
+    "IDA E VOLTA: o canonicalTitle que a rota devolveu resolve para o MESMO id",
+    tripRows[0]?.entityId === ids.fightClub.toString() &&
+      tripRows[1]?.entityId === ids.ruptura.toString() &&
+      tripRows[2]?.entityId === ids.freeman.toString(),
+    `"${movieTitle}"->${tripRows[0]?.entityId ?? tripRows[0]?.reason ?? "null"} · ` +
+      `"${tvTitle}"->${tripRows[1]?.entityId ?? tripRows[1]?.reason ?? "null"} · ` +
+      `"${personName}"->${tripRows[2]?.entityId ?? tripRows[2]?.reason ?? "null"}`,
+  );
+
   /* --- titulo + ano (o SQL de verdade) ---------------------------- */
 
   const byTitle = await callResolve(base, [{ kind: "movie", title: "Clube da Luta", year: 1999 }]);
   record(
-    "titulo + ano casa pelo SQL real (immutable_unaccent + lower)",
+    "TRADUCAO pt-BR casa pelo SQL real (immutable_fold nos dois lados)",
     rows(byTitle)[0]?.entityId === ids.fightClub.toString() &&
       rows(byTitle)[0]?.matchedBy === "exact_title_year",
     `entityId=${rows(byTitle)[0]?.entityId ?? "null"} matchedBy=${rows(byTitle)[0]?.matchedBy ?? "null"}`,
+  );
+
+  const byOriginal = await callResolve(base, [{ kind: "movie", title: "Fight Club", year: 1999 }]);
+  record(
+    "TITULO ORIGINAL casa — o emissor nem sempre usa o titulo pt-BR",
+    rows(byOriginal)[0]?.entityId === ids.fightClub.toString(),
+    `entityId=${rows(byOriginal)[0]?.entityId ?? "null"} reason=${rows(byOriginal)[0]?.reason ?? "null"}`,
   );
 
   const byAccent = await callResolve(base, [
@@ -385,11 +447,13 @@ async function runHttpChecks(base: string, ids: SeededIds): Promise<void> {
     `entityId=${rows(byAccent)[0]?.entityId ?? "null"}`,
   );
 
-  const byAlias = await callResolve(base, [{ kind: "movie", title: "Fight Club", year: 1999 }]);
+  const byAlias = await callResolve(base, [
+    { kind: "movie", title: "O Clube da Luta", year: 1999 },
+  ]);
   record(
     "ALIAS casa — e como o MNScr costuma citar a obra",
     rows(byAlias)[0]?.entityId === ids.fightClub.toString(),
-    `entityId=${rows(byAlias)[0]?.entityId ?? "null"}`,
+    `entityId=${rows(byAlias)[0]?.entityId ?? "null"} reason=${rows(byAlias)[0]?.reason ?? "null"}`,
   );
 
   const accented = await callResolve(base, [{ kind: "tv", title: "ruptura", year: 2022 }]);
@@ -397,6 +461,17 @@ async function runHttpChecks(base: string, ids: SeededIds): Promise<void> {
     "titulo com acento no banco casa com o termo sem acento",
     rows(accented)[0]?.entityId === ids.ruptura.toString(),
     `entityId=${rows(accented)[0]?.entityId ?? "null"} esperado=${ids.ruptura.toString()}`,
+  );
+
+  const doubleSpacedInDb = await callResolve(base, [
+    { kind: "movie", title: "Filme Com Espaco Duplo", year: 2015 },
+  ]);
+  record(
+    // `immutable_unaccent(lower(x))` NAO colapsa espaco; a dobra do JS colapsa.
+    // Este caso e o que separa as duas funcoes, e ele so falha contra banco real.
+    "ESPACO DUPLO no BANCO casa com um espaco so na entrada",
+    rows(doubleSpacedInDb)[0]?.entityId === ids.espacoDuplo.toString(),
+    `entityId=${rows(doubleSpacedInDb)[0]?.entityId ?? "null"} reason=${rows(doubleSpacedInDb)[0]?.reason ?? "null"}`,
   );
 
   const noYear = await callResolve(base, [{ kind: "movie", title: "Clube da Luta" }]);
@@ -497,6 +572,134 @@ async function runHttpChecks(base: string, ids: SeededIds): Promise<void> {
     limited === null
       ? "nao disparou em 40 chamadas (teto do ambiente = 5?)"
       : `retry-after=${limited.headers.get("retry-after") ?? "ausente"}`,
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* A dobra do JS e a dobra do BANCO                                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Corpus em que uma dobra "equivalente" costuma escorregar.
+ *
+ * E o MESMO corpus de `tests/governance/entity-resolve-fold.test.ts`, e a
+ * repeticao e o ponto: aquele teste compara JS com JS e passou verde durante
+ * todo o periodo em que o casamento por titulo estava morto. O que faltava era
+ * comparar o JS com o SQL — e isso nao existe fora de um banco.
+ */
+const FOLD_CORPUS: readonly string[] = [
+  "Clube da Luta",
+  "Amélie",
+  "CORAÇÃO",
+  "A Viagem  de   Chihiro",
+  "   Cidade de Deus   ",
+  "Homem-Aranha: Sem Volta Para Casa",
+  "Star Wars: Episódio V — O Império Contra-Ataca",
+  "Ó Irmão, Onde Estás?",
+  "WALL·E",
+  "¡Ay, Carmela!",
+  "Spider-Man 2",
+  // Os dois casos em que `unaccent` transforma ALEM do acento e o NFD do JS nao
+  // transforma nada. Se a comparacao fosse "dobra do JS contra dobra do SQL",
+  // estas duas linhas nunca casariam; dobrando os dois lados, casam.
+  "Æon Flux",
+  "Straße ohne Ende",
+  "Crouching Tiger, Hidden Dragon",
+  "Não",
+  "ÑOÑO",
+  "Café Society",
+  "“Aspas” e ‘apóstrofos’",
+  "Emoji 🎬 no título",
+  "A Origem",
+  "a origem",
+  "Rúptura",
+  "Morgan Freeman",
+  "Christopher Nolan",
+];
+
+/**
+ * A PROPRIEDADE de que o casamento por titulo depende.
+ *
+ * Nao e "a dobra do SQL e igual a dobra do JS" — essa promessa e fragil e nao e
+ * o que o desenho pede. A consulta aplica `immutable_fold` aos DOIS lados: ao
+ * valor da coluna (crua) e ao termo (que ja chegou dobrado pelo JS). O
+ * casamento so acontece se:
+ *
+ *     immutable_fold( foldEntityText(x) )  ==  immutable_fold( x )
+ *
+ * ou seja: a pre-dobra do JS nao pode LEVAR a entrada para fora do espaco em que
+ * a dobra do SQL poe a coluna. E isto que este passo mede — e so um banco de
+ * verdade pode medir, porque `immutable_fold` mora la.
+ */
+async function runFoldParityCheck(): Promise<void> {
+  const dbServer = (await import("@screena/db/server")) as { getPrismaClient: () => PrismaLike };
+  const prisma = dbServer.getPrismaClient();
+
+  // O CLUSTER LOCAL NEM SEMPRE E UTF8. Este harness (como os demais deste
+  // repositorio) tenta `initdb --encoding=UTF8` e CAI para o encoding do SO
+  // quando o caminho tem caractere nao-ASCII — no Windows, WIN1252. Mandar um
+  // emoji para um cluster WIN1252 estoura com `22P05` antes de a dobra ser
+  // exercida, e isso nao diz nada sobre a dobra.
+  //
+  // Entao o corpus e RECORTADO ao que o cluster consegue representar, e o
+  // recorte aparece no relatorio. Em CI (Linux, UTF8) o corpus roda inteiro.
+  const [{ server_encoding: encoding }] = await prisma.$queryRawUnsafe<
+    { server_encoding: string }[]
+  >("SHOW server_encoding");
+  const representable =
+    encoding.toUpperCase() === "UTF8"
+      ? FOLD_CORPUS
+      : FOLD_CORPUS.filter((value) => [...value].every((ch) => (ch.codePointAt(0) ?? 0) <= 0xff));
+
+  const pairs = await prisma.$queryRawUnsafe<
+    { input: string; direct: string; viaJs: string }[]
+  >(
+    `SELECT t.input,
+            immutable_fold(t.input) AS "direct",
+            immutable_fold(t.pre)   AS "viaJs"
+       FROM unnest($1::text[], $2::text[]) AS t(input, pre)`,
+    [...representable],
+    representable.map((value) => fold(value)),
+  );
+
+  const divergent = pairs.filter((row) => row.direct !== row.viaJs);
+  record(
+    "dobrar o termo no JS ANTES nao muda o resultado da dobra do banco",
+    divergent.length === 0 && pairs.length === representable.length,
+    divergent.length === 0
+      ? `${String(pairs.length)}/${String(FOLD_CORPUS.length)} entradas conferidas (acento, caixa, espaco duplo, ligadura, AE ligado, eszett, aspas) — cluster ${encoding}`
+      : divergent
+          .slice(0, 4)
+          .map(
+            (row) =>
+              `${JSON.stringify(row.input)}: coluna=${JSON.stringify(row.direct)} termo=${JSON.stringify(row.viaJs)}`,
+          )
+          .join(" | "),
+  );
+
+  // CONTROLE NEGATIVO. Sem ele o caso acima passaria mesmo se `immutable_fold`
+  // fosse a identidade — bastaria as duas pontas nao fazerem nada.
+  // O ` ` e ESPACO INQUEBRAVEL, e ele esta aqui de proposito: ele NAO entra em
+  // `[[:space:]]` sob ctype C, entao sem o `replace(..., chr(160), ' ')` da funcao
+  // este caso volta com dois espacos e o titulo nunca casaria.
+  const identity = await prisma.$queryRawUnsafe<{ folded: string }[]>(
+    "SELECT immutable_fold($1::text) AS folded",
+    "  ÁGUA   Viva   ",
+  );
+  record(
+    "o controle NEGATIVO acusa: a dobra do banco realmente TRANSFORMA",
+    identity[0]?.folded === "agua viva",
+    `immutable_fold("  AGUA <nbsp> Viva   ") = ${JSON.stringify(identity[0]?.folded ?? null)}`,
+  );
+
+  // A PRECONDICAO QUE PRODUCAO NAO TINHA. Se algum passo deste arquivo voltar a
+  // semear a projecao de busca, todo casamento por texto acima passa a medir a
+  // projecao de novo — e o defeito volta a ser invisivel.
+  const projected = await prisma.searchDocument.count();
+  record(
+    "NENHUM documento de busca foi semeado: o casamento por titulo leu o CATALOGO",
+    projected === 0,
+    `search_documents = ${String(projected)} linha(s)`,
   );
 }
 
@@ -627,14 +830,26 @@ async function main(): Promise<void> {
     const prisma = dbServer.getPrismaClient();
 
     const ids: SeededIds = {
+      // As TRES origens de texto numa entidade so: original em `movies`,
+      // traducao pt-BR em `entity_translations` e alias em
+      // `entity_alternative_titles`. A rota tem de casar pelas tres.
       fightClub: await seedEntity(prisma, {
         kind: "movie",
         tmdbId: 550,
-        title: "Clube da Luta",
+        title: "Fight Club",
         year: 1999,
         slug: "clube-da-luta",
         translatedTitle: "Clube da Luta",
-        aliases: ["Fight Club"],
+        aliases: ["O Clube da Luta"],
+      }),
+      // ESPACO DUPLO gravado NO BANCO. O emissor manda "Filme Com Espaco
+      // Duplo" com um espaco so; `immutable_unaccent(lower(x))` nunca casaria.
+      espacoDuplo: await seedEntity(prisma, {
+        kind: "movie",
+        tmdbId: 15001,
+        title: "Filme  Com   Espaco Duplo",
+        year: 2015,
+        slug: "filme-com-espaco-duplo",
       }),
       // Duas obras com o MESMO titulo e o MESMO ano: a ambiguidade que a rota
       // recusa em vez de resolver por popularidade.
@@ -690,7 +905,11 @@ async function main(): Promise<void> {
         slug: null,
       }),
     };
-    record("catalogo semeado (8 entidades, com os dois casos ambiguos)", true, "ok");
+    record(
+      "catalogo semeado (9 entidades) — e NENHUM documento de busca",
+      true,
+      "so movies/tv_shows/people + slugs + traducoes + titulos alternativos",
+    );
 
     /* --- Next real ------------------------------------------------ */
 
@@ -740,6 +959,7 @@ async function main(): Promise<void> {
     record("Next real no ar", true, base);
 
     await runHttpChecks(base, ids);
+    await runFoldParityCheck();
     await runRenderCheck(ids.fightClub.toString());
 
     await dbServer.disconnectPrisma();
