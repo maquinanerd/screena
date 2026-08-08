@@ -48,6 +48,18 @@
 -- Uma migration que so aplica em UTF8 quebraria TODOS os validadores locais.
 -- `immutable_unaccent` e `chr(160)` funcionam em qualquer encoding.
 --
+-- `public.immutable_unaccent`, QUALIFICADO, e nao `immutable_unaccent`.
+--
+-- MEDIDO na CI: sem o schema, o job de backup+restore falha em
+-- `pg_restore` com `function immutable_unaccent(text) does not exist` ao
+-- recriar os indices. O `pg_restore` roda com `search_path = ''`, e a funcao
+-- e INLINADA na expressao do indice -- a chamada interna e resolvida ali, sem
+-- schema nenhum no caminho. A migration aplica limpa nos dois casos; so o
+-- restore quebra, e um backup que nao restaura nao e backup.
+--
+-- E o mesmo motivo pelo qual `immutable_unaccent` ja qualifica
+-- `public.unaccent(...)` no corpo dela.
+--
 -- `chr(160)` e o espaco inquebravel: ele nao esta em `[[:space:]]` sob ctype C,
 -- e e o unico espaco nao-ASCII que aparece de fato em titulo copiado de site.
 CREATE OR REPLACE FUNCTION immutable_fold(text)
@@ -59,7 +71,7 @@ CREATE OR REPLACE FUNCTION immutable_fold(text)
 AS $$
     SELECT btrim(
         regexp_replace(
-            replace(lower(immutable_unaccent($1)), chr(160), ' '),
+            replace(lower(public.immutable_unaccent($1)), chr(160), ' '),
             '[[:space:]]+',
             ' ',
             'g'
