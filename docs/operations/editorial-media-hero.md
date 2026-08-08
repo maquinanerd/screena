@@ -38,6 +38,7 @@ nao servem:
 | reenviar a materia com `media[]` | bate em `staleRevision`: a revisao nao mudou |
 | reenviar como `update` | reescreve `workflowStatus` e consome cota `article_update` (5/materia/dia) |
 | trazer de volta o `setAsHero` | e o desenho removido no PR #136 — ver §6 |
+| esperar a materia voltar a `automation_draft` | ela nunca volta: o intake de publicacao a tira de la na mesma chamada — ver §7 |
 
 ## 2. Credencial
 
@@ -94,26 +95,46 @@ versoes que nao mudaram nada.
 | `404` | `article_not_found` | a materia nao existe |
 | `409` | `media_not_ingested_for_article` | a foto nao foi ingerida **para aquela materia** |
 | `409` | `media_not_hero_eligible` | licenca editorial revogada, ou `allowedForHero` desligado |
-| `409` | `article_not_automation_draft` | a materia saiu do alcance da automacao |
+| `409` | `article_not_automation_origin` | a materia nao veio do pipeline — capa de materia humana e decisao humana |
+| `409` | `article_withdrawn` | a materia esta `retracted`, `blocked` ou `archived` |
 | `409` | `hero_not_owned_by_automation` | a capa atual foi escolhida por gente |
 | `500` | `hero_write_failed` | a decisao aprovou e a escrita falhou; a causa vai para o log do servidor |
 
-Os `409` sao **todos** de estado, e a ordem em que sao avaliados aponta a causa
-mais corrigivel primeiro: pertencimento -> licenca -> estado da materia ->
-proveniencia da capa atual. Um emissor que recebe `article_not_automation_draft`
-sabe que o `mediaId` estava certo.
+A ordem em que os `409` sao avaliados aponta a causa mais corrigivel primeiro:
+pertencimento -> licenca -> **proveniencia da materia** -> materia fora de
+circulacao -> proveniencia da capa atual. Um emissor que recebe
+`article_not_automation_origin` sabe que o `mediaId` estava certo.
+
+> **Mudou desde o PR #139.** O codigo `article_not_automation_draft` **nao
+> existe mais**. Ele recusava toda materia fora de `automation_draft` — e,
+> como a §7 explica, isso era **toda materia** no caminho real. Quem tratava
+> esse codigo pode remover o tratamento: ele nunca mais e emitido.
 
 ## 5. O que a rota NAO faz
 
-- **nao muda `workflowStatus`** (o `data` do update carrega um campo: `heroMedia`);
+- **nao muda `workflowStatus`** nem `_status` — os dois sao reescritos com o
+  valor ANTERIOR, e o teste de integracao confere isso numa materia
+  `ready_to_publish` e numa materia `published`;
 - **nao consome cota** de autopublicacao;
 - **nao le nem escreve `sourceRevision`**, e nao passa por `staleRevision`;
-- **nao emite evento na outbox** — apontar capa nao e publicacao, correcao nem
-  retratacao, e o lado publico nao tem nada a saber;
 - **nao escreve no `screen-db`** nem chama o `screen-app`.
 
-Os cinco sao verificados por teste de integracao contra Payload + PostgreSQL 16
+Os quatro sao verificados por teste de integracao contra Payload + PostgreSQL 16
 reais, e nao por leitura de codigo.
+
+### A excecao: materia JA PUBLICADA emite `article.updated`
+
+Materia que ainda nao esta no ar **nao gera evento** (medido: a outbox nao muda).
+Materia **`published`** gera um `article.updated` — e precisa gerar.
+
+Nao e esta rota que emite: quem emite e `emitPublicationEvent`, pela regra que ja
+valia para qualquer edicao de materia publicada. E ela nao pode ser suprimida
+aqui, porque o evento e o unico caminho pelo qual a capa chega ao lado publico.
+Suprimir deixaria a foto vinculada no CMS e a pagina publica sem capa —
+exatamente a falha silenciosa que esta rota existe para fechar.
+
+A consequencia operacional e uma reprojecao a mais por materia autopublicada que
+recebe capa. Nenhuma cota e consumida, e o evento e idempotente.
 
 ## 6. Por que isto nao reintroduz o problema do PR #136
 
@@ -123,24 +144,31 @@ governanca (`hooks/articles.ts`) forca `workflowStatus = 'automation_draft'` par
 toda service account sem `editorial_auto_publish`, e subir a foto de uma materia
 que um humano deixou em `ready_to_publish` a rebaixaria em silencio.
 
-**A diferenca e a ORDEM.** Esta rota **recusa antes de escrever**: so aceita
-materia que **ja esta** em `automation_draft`. Nesse estado o valor que o hook
-forca e o valor ja gravado — nao ha degrau para descer.
+**O PR #139 tratou isso com uma trava de ESTADO** (so aceitar materia ja em
+`automation_draft`). A trava funcionava contra o rebaixamento e tornou a rota
+inalcancavel — ver §7. Ela foi substituida, e a substituicao **fecha o mesmo
+defeito por dentro**, em vez de por fora:
 
-**Registro do que foi medido, porque contraria a leitura obvia.** Removendo essa
-trava e rodando o teste de integracao, a materia em `ready_to_publish` **nao** e
-rebaixada: o hook calcula o estado alvo a partir de `originalDoc` e **nega** a
-escrita; a linha que rebaixaria so roda depois da negativa. O que se observa e um
-`500` opaco.
+1. **o hook nao escreve estado nesta rota.** A escrita viaja com
+   `context.heroMediaLink`, montado no processo pelo handler (nenhum corpo HTTP
+   preenche `req.context`). Nessa excecao o hook reescreve `workflowStatus` e
+   `_status` com **os valores anteriores** — nao ha degrau para descer porque
+   nao ha escrita de estado nenhuma. Antes a garantia era "a rota nunca escreve
+   fora de `automation_draft`"; agora e "a rota nunca escreve estado";
+2. **a excecao e estreita.** Ela exige as tres coisas ao mesmo tempo:
+   `req.context.heroMediaLink`, o escopo `editorial_media_ingest` e
+   `operation === 'update'`. `draft_ingest` nao alcanca; o painel nao alcanca;
+   nenhum cliente HTTP consegue ligar a chave.
 
-A trava continua sendo a certa por duas razoes que o `500` deixa claras:
+**O que protegia a decisao humana nunca foi o estado.** Era — e continua sendo —
+a **proveniencia da capa atual**: se a capa ja gravada nao veio da ingestao por
+maquina daquela materia, ela veio de gente, e a rota recusa
+(`hero_not_owned_by_automation`). Esse teste nao mudou uma linha.
 
-1. **o motivo chega ao emissor.** `500` diz "o servidor quebrou" e nao diz o que
-   corrigir; `409 article_not_automation_draft` diz que o `mediaId` estava certo;
-2. **a seguranca fica local.** Depender da negativa do hook e depender de
-   `originalDoc` estar presente e de o calculo do alvo continuar como esta. Basta
-   esta rota um dia mandar `workflowStatus` no `data` — ou o hook passar a
-   tolerar payload parcial — para o rebaixamento silencioso voltar inteiro.
+**O que foi medido**, com o teste de integracao rodando contra Payload +
+PostgreSQL reais: materia em `ready_to_publish` recebe a capa e **continua** em
+`ready_to_publish`; materia `published` recebe a capa e **continua** `published`
+(inclusive `_status`); materia sem marca de automacao e recusada com `409`.
 
 Alem disso, esta rota tem duas travas que o `setAsHero` nao tinha:
 
@@ -149,14 +177,20 @@ Alem disso, esta rota tem duas travas que o `setAsHero` nao tinha:
   pendurar qualquer imagem do acervo em qualquer materia;
 - **capa de gente nao e reescrita por robo.** Se a capa atual nao veio da
   ingestao por maquina daquela materia, ela veio de um humano — e a rota recusa.
-  Mesma regra dos vinculos de entidade.
+  Mesma regra dos vinculos de entidade;
+- **materia de gente nao recebe capa de robo**, nem quando ainda nao tem capa
+  nenhuma (`article_not_automation_origin`). O acervo e compartilhado: sem isto
+  bastaria ingerir uma foto "para" uma pauta humana para pendurar a capa nela.
 
-## 7. Sequencia recomendada para o MNScr
+## 7. Sequencia para o MNScr
+
+Vale para **os dois** intakes. O passo 1 e o que o pipeline ja usa:
 
 ```
-1. POST /api/internal/editorial-drafts        -> articleId
-2. POST /api/internal/editorial-media         -> mediaId   (articleId do passo 1)
-3. PATCH /api/internal/editorial-media/:mediaId/hero  { articleId }
+1a. POST /api/internal/editorial-drafts        -> articleId  (materia fica em automation_draft)
+1b. POST /api/internal/editorial-publications  -> articleId  (materia fica em needs_review OU published)
+2.  POST /api/internal/editorial-media         -> mediaId    (articleId do passo 1)
+3.  PATCH /api/internal/editorial-media/:mediaId/hero  { articleId }
 ```
 
 Os tres passos sao idempotentes e podem ser repetidos na integra a cada revisao:
@@ -165,9 +199,28 @@ o passo 2 devolve `unchanged` quando os bytes nao mudaram, e o passo 3 devolve
 endereco, o passo 2 devolve `replaced` com um `mediaId` novo e o passo 3 devolve
 `replaced` — a capa acompanha.
 
-**Depois que a materia sai de `automation_draft`, o passo 3 passa a recusar com
-`409`.** Isso e o desenho, nao uma falha: dali em diante a capa e assunto de
-quem esta editando a materia.
+### O que estava errado aqui, e foi medido em producao
+
+A versao anterior desta secao listava **so o `1a`** e afirmava: *"depois que a
+materia sai de `automation_draft`, o passo 3 passa a recusar com `409` — isso e o
+desenho"*. A recomendacao descrevia uma sequencia que o codigo do mesmo
+repositorio proibia.
+
+`/internal/editorial-publications` cria a materia em `automation_draft` e, na
+**mesma chamada**, caminha por `['ready_to_publish', 'published']` (desfecho
+`201`) ou `['needs_review']` (desfecho `202`) **antes** de a resposta com o
+`articleId` sair. Quando o emissor tem o id para chamar o passo 3, a materia ja
+saiu do unico estado que o passo 3 aceitava — nos **dois** desfechos. Medido:
+materia 23, midia 18, `409 article_not_automation_draft`.
+
+O passo 3 hoje pergunta pela **proveniencia**, nao pelo estado: ele aceita
+qualquer materia que carregue marca de automacao
+(`sourceClusterId`/`automationDraftId`/`automationActorId` — campos que
+`HUMAN_FORBIDDEN_FIELDS` impede qualquer pessoa de escrever ou apagar), e recusa
+so o que saiu de circulacao (`retracted`, `blocked`, `archived`).
+
+**Nao ha mais passo manual, e nao ha janela para perder.** O passo 3 continua
+valendo depois que um humano promove a materia — e nao mexe no estado dela.
 
 ## 8. Variaveis de ambiente
 

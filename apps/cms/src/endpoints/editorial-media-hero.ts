@@ -16,10 +16,16 @@
  * `screen-db`. Ver `hero-link.ts` para o porque de cada um.
  *
  * ESCRITA MINIMA, E DE PROPOSITO. O `data` do update carrega UM campo:
- * `heroMedia`. O hook de governanca acrescenta `workflowStatus` e `_status` ao
- * payload — e e justamente por isso que a rota so aceita materia ja em
- * `automation_draft`: nesse estado os dois campos que o hook forca ja valem o
- * que ele vai gravar.
+ * `heroMedia`. E ele viaja com `context.heroMediaLink`, que abre no hook de
+ * governanca a UNICA excecao existente: nessa escrita o hook nao forca
+ * `workflowStatus` nem `_status` — preserva os dois valores anteriores.
+ *
+ * O `context` e a peca de seguranca, e nao um detalhe de implementacao: ele e
+ * montado NO PROCESSO, por este handler, e nenhum cliente HTTP consegue
+ * preencher — o mesmo mecanismo que `publish-now.ts` usa para o rastro do
+ * colapso. Se a excecao dependesse de olhar o `data`, ela seria inutil: o
+ * Payload ecoa TODOS os campos da collection em `data`, entao "so veio
+ * heroMedia" nao e uma pergunta que o hook consiga responder.
  */
 
 import type { Endpoint, PayloadRequest } from 'payload'
@@ -106,6 +112,29 @@ async function readArticle(
   }
 }
 
+/**
+ * Marcas que so a automacao grava — e que nenhum humano consegue gravar.
+ *
+ * As tres estao em `HUMAN_FORBIDDEN_FIELDS` (`../access.js`): o hook de
+ * governanca as remove de todo payload de pessoa, tanto no painel quanto na
+ * REST API. Por isso servem de prova de origem, e nao apenas de indicio.
+ *
+ * TRES, e nao uma, porque os dois intakes gravam conjuntos diferentes:
+ * `/internal/editorial-drafts` grava `automationDraftId` + `sourceClusterId`;
+ * `/internal/editorial-publications` grava `automationActorId` +
+ * `sourceClusterId`. Exigir so o campo de um dos dois deixaria o outro caminho
+ * de fora — que e a forma do defeito que esta correcao fecha.
+ */
+const AUTOMATION_ORIGIN_FIELDS = [
+  'sourceClusterId',
+  'automationDraftId',
+  'automationActorId',
+] as const
+
+function hasAutomationOrigin(doc: Record<string, unknown>): boolean {
+  return AUTOMATION_ORIGIN_FIELDS.some((field) => text(doc[field]) !== null)
+}
+
 function mediaFacts(doc: Record<string, unknown> | null): HeroLinkMediaFacts {
   if (doc === null) {
     // Fail-closed: nada verificado, nada autorizado.
@@ -184,6 +213,7 @@ export const editorialMediaHeroEndpoint: Endpoint = {
     const article: HeroLinkArticleFacts = {
       exists: articleDoc !== null,
       workflowStatus: articleDoc === null ? null : text(articleDoc.workflowStatus),
+      automationOrigin: articleDoc !== null && hasAutomationOrigin(articleDoc),
       currentHeroMediaId,
       currentHeroIngestedForArticleId:
         currentHero === null ? null : relationId(currentHero.ingestedForArticle),
@@ -215,6 +245,11 @@ export const editorialMediaHeroEndpoint: Endpoint = {
         // rota promete nao tocar.
         data: { heroMedia: Number(command.mediaId) } as never,
         overrideAccess: true,
+        // A EXCECAO DO HOOK, e ela vive AQUI porque so aqui ela e verdadeira.
+        // Sem esta chave o hook forca `automation_draft` e a escrita e negada
+        // em toda materia que ja saiu daquele estado — que, no caminho real, e
+        // toda materia (ver o cabecalho de `../hero-link.js`).
+        context: { ...(req.context ?? {}), heroMediaLink: true },
         req,
       })
     } catch (error) {
