@@ -125,8 +125,44 @@ se `matchedBy === null` e `reason !== null`. Nao existe resultado meio resolvido
 | `exact_title_year` | `0.9` | titulo **dobrado** (ou alias) + **ano** + `kind`, e **unico** |
 | `exact_name` | `0.85` | nome dobrado + `kind`, e **unico**. So `person` |
 
-"Dobrado" = NFD, sem acentos, minusculo, espacos colapsados. `"  clube DA
-luta "` e `"Clube da Luta"` sao o mesmo termo; `"Clube de Luta"` **nao** e.
+"Dobrado" = sem acentos, minusculo, espacos colapsados, sem espaco nas pontas.
+`"  clube DA   luta "` e `"Clube da Luta"` sao o mesmo termo; `"Clube de Luta"`
+**nao** e.
+
+### De onde sai o texto que casa
+
+Cinco origens, **todas no catalogo** (o mesmo banco que o `tmdbId` consulta):
+
+| Origem | Cobre |
+| --- | --- |
+| `entity_translations` (pt-BR) | o titulo pt-BR — o mesmo que a rota devolve em `canonicalTitle` |
+| `movies.title_original` | o titulo original do filme |
+| `tv_shows.name_original` | o nome original da serie |
+| `people.name` | o nome da pessoa |
+| `entity_alternative_titles` | os titulos alternativos (o "alias") |
+
+**Isto mudou desde o PR #140, e a mudanca corrige um defeito medido em
+producao.** A versao anterior casava contra `search_documents` — a projecao de
+busca, escrita por um worker offline (`catalog search-reindex`). Enquanto a
+projecao nao alcanca uma entidade, ela existe no catalogo e nao existe na
+projecao: `tmdbId` resolve e titulo devolve `not_found`, sem erro, sem log e sem
+teste vermelho. Medido: **3 de 3 por id, 0 de 11 por titulo** — com titulos que a
+propria rota tinha acabado de emitir em `canonicalTitle`.
+
+Nenhuma parte desta rota le `search_documents`. Ela nao depende de job nenhum
+ter rodado.
+
+### A dobra e aplicada aos DOIS lados
+
+A comparacao acontece dentro de uma consulta so, com a **mesma** funcao
+(`immutable_fold`, migration
+`20260808120000_entity_resolve_folded_title_indexes`) aplicada ao valor da
+coluna **e** ao termo procurado.
+
+Nao e "uma dobra em JS igual a uma dobra em SQL". Duas funcoes equivalentes
+divergem no primeiro caractere exotico, e o sintoma e mudo — o casamento exato
+deixa de casar. Uma funcao so nao tem como divergir de si mesma. O passo de
+corpus da §9 mede exatamente essa propriedade, contra banco real.
 
 **Nao ha fuzzy, nao ha prefixo, nao ha "melhor aproximacao".** A busca do site
 tem os tres — e esta certa, porque la existe uma pessoa lendo a lista e
@@ -245,12 +281,37 @@ Nenhuma outra variavel. Nenhuma chave nova no CMS.
   todos medindo recusa);
 - `apps/web/src/lib/__tests__/entity-resolve-auth.test.ts` — credencial e teto;
 - `tests/governance/entity-resolve-fold.test.ts` — **a dobra desta rota e a dobra
-  da ingestao sao a mesma funcao**. Divergir nao quebra nada ruidosamente: so faz
-  o casamento exato deixar de casar, e a rota responder `not_found` para titulos
-  que existem;
+  da ingestao sao a mesma funcao**. Este teste passou verde durante todo o
+  periodo em que o casamento por titulo estava morto em producao, e a licao vale
+  registrar: ele compara **JS com JS**, e a fonte do casamento estava no banco;
 - `pnpm --filter @screena/web validate:entity-resolve` — **Next real + PostgreSQL
-  16 efemero** (gate de CI). Prova o SQL de casamento, a credencial e o teto
-  ligados no handler, os cabecalhos de rota interna — e, no ultimo passo, que **o
-  id devolvido pela rota renderiza como ficha na materia**. Sem esse passo, um
-  `entityId` valido em teoria poderia sumir na pagina, que e o defeito que a rota
-  inteira existe para fechar.
+  16 efemero** (gate de CI, 39 checks). Prova o SQL de casamento, a credencial e
+  o teto ligados no handler, os cabecalhos de rota interna — e, no ultimo passo,
+  que **o id devolvido pela rota renderiza como ficha na materia**.
+
+Tres passos deste validador existem por causa do defeito de producao, e nenhum
+deles passa por leitura de codigo:
+
+1. **ida e volta pelo `canonicalTitle`.** Pergunta por `tmdbId`, pega o rotulo
+   que voltou e pergunta de novo POR ESSE ROTULO. Casar por id nao provava nada
+   — foi o que mascarou o defeito;
+2. **a semente nao grava `search_documents`.** So catalogo: entidade, slug,
+   traducao e titulos alternativos. Um passo confere que a tabela ficou com
+   **zero linhas** — se a rota voltar a depender da projecao, todo casamento por
+   texto fica vermelho;
+3. **corpus da dobra, contra o banco.** Confere que dobrar o termo em JS antes
+   nao muda o resultado da dobra do PostgreSQL, sobre acento, caixa, espaco
+   duplo, espaco inquebravel, ligadura, AE ligado e eszett. Uma funcao SQL nao
+   existe em teste puro.
+
+**Controle negativo executado**: rodando este validador contra a versao anterior
+de `src/server/entity-resolve.ts` (a que lia `search_documents`), **11 checks
+falham, todos com `not_found`** — a mesma assinatura medida em producao.
+
+### Operacao: esta rota exige a migration aplicada
+
+O casamento por titulo chama `immutable_fold`, criada em
+`20260808120000_entity_resolve_folded_title_indexes`. Sem `prisma migrate
+deploy`, a rota responde `503 resolve_failed` (retentavel) no casamento por
+texto — e nao `not_found`. A distincao e deliberada: falha de leitura nunca pode
+chegar ao emissor como "nao existe".
