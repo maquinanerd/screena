@@ -9,17 +9,48 @@
  * o operador acaba desligando. Por isso as candidatas sao buscadas para o lote
  * inteiro e o casamento acontece em memoria, item a item, no modulo puro.
  *
- * O CASAMENTO DE TITULO USA `search_documents`, e a escolha e deliberada: e a
- * projecao PUBLICA, com o texto ja dobrado pela mesma funcao
- * (`services/ingestion/src/search/fold.ts`) e com os aliases separados em
- * `normalized_aliases`. Casar contra `movies.title_original` cru significaria
- * repetir a dobra em SQL e perder os titulos alternativos — que sao justamente
- * como o MNScr costuma citar uma obra ("Homem-Aranha" vs "Spider-Man").
+ * O CASAMENTO DE TITULO LE O CATALOGO. Isto MUDOU, e a mudanca e a correcao de
+ * um defeito medido em producao.
  *
- * O predicado de igualdade e o MESMO que `search-page.ts` usa para o `tier 0`
- * (`immutable_unaccent(lower(primary_text))` e alias exato). Nao existe um
- * segundo motor de casamento — existe um so, e este modulo usa a metade EXATA
- * dele, sem prefixo e sem similaridade.
+ * A primeira versao (PR #140) casava titulo contra `search_documents` — a
+ * projecao PUBLICA de busca. A escolha parecia boa (texto ja dobrado, aliases
+ * separados) e tinha um custo que so aparece em producao: `search_documents` e
+ * escrita por um WORKER OFFLINE (`catalog search-reindex`). Uma entidade existe
+ * no catalogo muito antes de existir na projecao — e enquanto nao existe la, o
+ * casamento por titulo devolve `not_found` sem log, sem erro e sem teste
+ * vermelho.
+ *
+ * Foi exatamente o que se mediu: `tmdbId` resolvia 3 de 3 (ele le o catalogo
+ * direto) e titulo/nome resolvia 0 de 11 — com titulos que a PROPRIA rota tinha
+ * acabado de devolver em `canonicalTitle`. Duas metades da mesma rota lendo
+ * fontes diferentes, uma delas dependente de um job que ninguem foi mandado
+ * rodar.
+ *
+ * O codigo abaixo le a MESMA fonte nos dois caminhos: o catalogo. Cinco origens
+ * de texto, todas do banco autoritativo:
+ *
+ *   entity_translations (pt-BR)  titulo traduzido — o rotulo que a rota devolve
+ *   movies.title_original        titulo original de filme
+ *   tv_shows.name_original       nome original de serie
+ *   people.name                  nome de pessoa
+ *   entity_alternative_titles    titulos alternativos (o alias)
+ *
+ * OS DOIS LADOS SAO DOBRADOS PELA MESMA FUNCAO, e essa e a peca de desenho que
+ * fecha o outro modo de falha. `immutable_fold` (migration
+ * `20260808120000_entity_resolve_folded_title_indexes`) e aplicada ao valor da
+ * COLUNA **e** ao TERMO procurado, dentro da mesma consulta. Cada uma das cinco
+ * origens tem indice funcional sobre ela.
+ *
+ * Por que nao "uma dobra em JS igualzinha a uma dobra em SQL": duas funcoes
+ * equivalentes divergem no primeiro caractere exotico, e a divergencia e muda —
+ * o casamento exato deixa de casar, sem erro e sem log. Uma funcao so nao tem
+ * como divergir de si mesma. O termo chega pre-dobrado pelo modulo puro (para
+ * deduplicar o lote) e e REDOBRADO no SQL; e a redobra que poe os dois lados no
+ * mesmo espaco.
+ *
+ * Comparar termo dobrado com valor CRU do banco — que e a outra forma de matar
+ * este casamento — nao e possivel aqui: nao existe comparacao contra coluna crua
+ * neste arquivo.
  */
 
 import { getPrismaClient } from "@screena/db/server";
@@ -28,14 +59,11 @@ import type { ResolvableKind, ResolveCandidate, ResolveQuery } from "../lib/enti
 
 const LANGUAGE_CODE = "pt-BR";
 
-/** Linha crua de `search_documents` que interessa ao casamento por texto. */
-interface SearchRow {
+/** Linha do casamento por texto: uma entidade e as dobras dela que bateram. */
+interface FoldedMatchRow {
   entity_type: string;
   entity_id: bigint;
-  primary_text: string;
-  folded_primary: string;
-  normalized_aliases: string;
-  year: number | null;
+  folded_matches: string[];
 }
 
 /**
@@ -44,29 +72,62 @@ interface SearchRow {
  * `$1` = locale, `$2` = array dos textos dobrados. Nenhum literal do cliente e
  * interpolado: os dois vao como parametro.
  *
- * `doc_kind = 'entity'` e obrigatorio — a tabela tambem abriga documentos de
- * ARTIGO, com `entity_type` nulo. Sem o filtro eles entrariam no lote e sairiam
- * descartados depois, mas so depois de terem sido lidos.
+ * `wanted` guarda DOIS valores por termo: `term`, o texto dobrado pelo modulo
+ * puro (a chave que volta ao chamador), e `folded`, o MESMO texto passado por
+ * `immutable_fold` (a chave de comparacao). Os cinco ramos se juntam por
+ * igualdade sobre `immutable_fold(coluna)` — a expressao indexada. E por isso
+ * que um lote de 50 titulos custa 50 buscas em indice, e nao cinco varreduras.
+ *
+ * O `array_agg` devolve `w.term`, e nao `w.folded`: quem compara de novo em
+ * memoria e o modulo puro, que so conhece a dobra dele. Devolver a dobra do SQL
+ * faria o filtro em memoria recusar exatamente o que o SQL acabou de casar.
+ *
+ * O filtro `entity_type IN (...)` nos ramos de traducao e de titulo alternativo
+ * nao e cosmetico: `EntityType` tambem tem `season` e `episode`, que esta rota
+ * nao resolve (uma "Temporada 2" existe as centenas). Sem o filtro elas entrariam
+ * no lote e virariam ambiguidade.
+ *
+ * O agrupamento no fim entrega UMA linha por entidade com TODAS as dobras que
+ * bateram. O modulo puro so precisa saber que bateu; guardar quais bateram
+ * mantem a candidata autoexplicativa em log e em teste.
  */
 const CANDIDATES_BY_TEXT_SQL = `
-  SELECT
-    entity_type::text AS entity_type,
-    entity_id,
-    primary_text,
-    immutable_unaccent(lower(primary_text)) AS folded_primary,
-    normalized_aliases,
-    year
-  FROM search_documents
-  WHERE doc_kind = 'entity'
-    AND entity_type IS NOT NULL
-    AND locale = $1
-    AND (
-      immutable_unaccent(lower(primary_text)) = ANY($2::text[])
-      OR (normalized_aliases <> '' AND EXISTS (
-        SELECT 1 FROM unnest(string_to_array(normalized_aliases, '|')) AS a(alias)
-        WHERE alias = ANY($2::text[])
-      ))
-    )
+  WITH wanted AS (
+    SELECT DISTINCT term, immutable_fold(term) AS folded
+    FROM unnest($2::text[]) AS t(term)
+  ),
+  matches AS (
+    SELECT t.entity_type::text AS entity_type, t.entity_id, w.term
+    FROM entity_translations t
+    JOIN wanted w ON w.folded = immutable_fold(t.title)
+    WHERE t.language_code = $1
+      AND t.title IS NOT NULL
+      AND t.entity_type IN ('movie', 'tv', 'person')
+
+    UNION ALL
+    SELECT 'movie', m.id, w.term
+    FROM movies m
+    JOIN wanted w ON w.folded = immutable_fold(m.title_original)
+
+    UNION ALL
+    SELECT 'tv', s.id, w.term
+    FROM tv_shows s
+    JOIN wanted w ON w.folded = immutable_fold(s.name_original)
+
+    UNION ALL
+    SELECT 'person', p.id, w.term
+    FROM people p
+    JOIN wanted w ON w.folded = immutable_fold(p.name)
+
+    UNION ALL
+    SELECT a.entity_type::text, a.entity_id, w.term
+    FROM entity_alternative_titles a
+    JOIN wanted w ON w.folded = immutable_fold(a.title)
+    WHERE a.entity_type IN ('movie', 'tv')
+  )
+  SELECT entity_type, entity_id, array_agg(DISTINCT term) AS folded_matches
+  FROM matches
+  GROUP BY entity_type, entity_id
 `;
 
 function isResolvableKind(value: string): value is ResolvableKind {
@@ -175,6 +236,13 @@ async function loadPublicFacts(
  * se serve) e do modulo puro. Esta funcao nao decide nada — nem sequer descarta
  * a candidata sem slug, porque o motivo `no_canonical_slug` precisa chegar ao
  * cliente e um filtro aqui o transformaria num `not_found` enganoso.
+ *
+ * Consequencia de ler o catalogo em vez da projecao: entidade SEM slug canonico
+ * agora tambem vira candidata por texto (a projecao so indexava quem tinha
+ * slug). Se duas obras dividem titulo e ano e uma delas nao tem pagina, o
+ * resultado e `ambiguous_title` — e nao a escolha silenciosa da que tem pagina.
+ * E o desfecho certo pela regra da rota: um `null` e inofensivo, um id errado e
+ * uma mentira publicada.
  */
 export async function loadResolveCandidates(
   queries: readonly ResolveQuery[],
@@ -199,23 +267,20 @@ export async function loadResolveCandidates(
   const [byTmdb, textRows] = await Promise.all([
     findByTmdbIds(prisma, tmdbWanted),
     foldedList.length > 0
-      ? prisma.$queryRawUnsafe<SearchRow[]>(CANDIDATES_BY_TEXT_SQL, LANGUAGE_CODE, foldedList)
-      : Promise.resolve([] as SearchRow[]),
+      ? prisma.$queryRawUnsafe<FoldedMatchRow[]>(CANDIDATES_BY_TEXT_SQL, LANGUAGE_CODE, foldedList)
+      : Promise.resolve([] as FoldedMatchRow[]),
   ]);
 
-  // Candidatas de TEXTO. Uma entidade pode aparecer uma vez so (o unique de
-  // search_documents e por entidade+locale), mas a deduplicacao por chave fica
-  // porque o casamento por id pode trazer a MESMA entidade de novo.
+  // Candidatas de TEXTO. O `GROUP BY` do SQL ja entrega uma linha por entidade;
+  // a deduplicacao por chave fica porque o casamento por id pode trazer a MESMA
+  // entidade de novo.
   const collected = new Map<
     string,
     {
       kind: ResolvableKind;
       entityId: bigint;
       tmdbId: number | null;
-      folded: string;
-      foldedAliases: string[];
-      year: number | null;
-      primaryText: string;
+      foldedMatches: string[];
     }
   >();
 
@@ -226,17 +291,12 @@ export async function loadResolveCandidates(
       kind: row.entity_type,
       entityId: row.entity_id,
       tmdbId: null,
-      folded: row.folded_primary,
-      foldedAliases: row.normalized_aliases === "" ? [] : row.normalized_aliases.split("|"),
-      year: row.year,
-      primaryText: row.primary_text,
+      foldedMatches: [...row.folded_matches],
     });
   }
 
-  // Candidatas por TMDB ID. Elas nao precisam de `search_documents`: o
-  // identificador ja resolveu a entidade, e obrigar um documento de busca faria
-  // um id perfeitamente valido virar `not_found` so porque a projecao de busca
-  // ainda nao rodou.
+  // Candidatas por TMDB ID. Elas nao trazem dobra nenhuma: o identificador ja
+  // resolveu a entidade, e o casamento por texto nem chega a olhar para elas.
   const tmdbKeys: { kind: ResolvableKind; entityId: bigint; tmdbId: number }[] = [];
   for (const [key, row] of byTmdb) {
     const kind = key.split(":")[0] ?? "";
@@ -254,38 +314,33 @@ export async function loadResolveCandidates(
       kind: entry.kind,
       entityId: entry.entityId,
       tmdbId: entry.tmdbId,
-      folded: "",
-      foldedAliases: [],
-      year: null,
-      primaryText: "",
+      foldedMatches: [],
     });
   }
 
   const keys = [...collected.values()].map((row) => ({ kind: row.kind, entityId: row.entityId }));
-  const facts = await loadPublicFacts(prisma, keys);
-
-  // TITULO ORIGINAL como ultimo recurso do rotulo. So e lido para as candidatas
-  // que nao tem nem traducao pt-BR nem `primary_text` — o caso de uma entidade
-  // achada por `tmdbId` e ainda sem documento de busca.
-  const needsOriginal = [...collected.values()].filter((row) => {
-    const fact = facts.get(`${row.kind}:${row.entityId.toString()}`);
-    return row.primaryText === "" && (fact?.translatedTitle ?? null) === null;
-  });
-  const originals = await loadOriginalTitles(prisma, needsOriginal);
+  const [facts, catalog] = await Promise.all([
+    loadPublicFacts(prisma, keys),
+    loadCatalogFacts(prisma, keys),
+  ]);
 
   const candidates: ResolveCandidate[] = [];
   for (const row of collected.values()) {
     const key = `${row.kind}:${row.entityId.toString()}`;
     const fact = facts.get(key);
-    const canonicalTitle =
-      fact?.translatedTitle ?? (row.primaryText === "" ? (originals.get(key) ?? "") : row.primaryText);
+    const base = catalog.get(key);
+    // O rotulo: traducao pt-BR quando existe, senao o titulo/nome original.
+    // Nunca inventado, e nunca uma dobra — a dobra e chave de casamento, nao
+    // texto para humano ler.
+    const canonicalTitle = fact?.translatedTitle ?? base?.originalTitle ?? "";
+    const [first, ...rest] = row.foldedMatches;
     candidates.push({
       kind: row.kind,
       entityId: row.entityId.toString(),
       tmdbId: row.tmdbId,
-      folded: row.folded,
-      foldedAliases: row.foldedAliases,
-      year: row.year,
+      folded: first ?? "",
+      foldedAliases: rest,
+      year: base?.year ?? null,
       canonicalTitle,
       canonicalSlug: fact?.slug ?? null,
     });
@@ -294,31 +349,65 @@ export async function loadResolveCandidates(
   return candidates;
 }
 
-/** Titulo original das candidatas sem `primary_text` nem traducao pt-BR. */
-async function loadOriginalTitles(
+/**
+ * Titulo/nome ORIGINAL e ANO, direto das tabelas do catalogo.
+ *
+ * O ano vinha de `search_documents.year`; agora vem de `release_date` /
+ * `first_air_date`, que e de onde a projecao o tirava. Ler a fonte remove um
+ * modo de falha inteiro: uma entidade projetada ANTES de a data ser preenchida
+ * ficava com `year` nulo na projecao, e `exact_title_year` nunca casava — sem
+ * nenhum sinal de que o problema era o frescor da projecao.
+ *
+ * `getUTCFullYear` no lado do JS e `@db.Date` no banco: a coluna nao tem fuso,
+ * entao o ano lido aqui e o mesmo ano que a ingestao gravou.
+ */
+async function loadCatalogFacts(
   prisma: ReturnType<typeof getPrismaClient>,
   rows: readonly { kind: ResolvableKind; entityId: bigint }[],
-): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
+): Promise<Map<string, { originalTitle: string; year: number | null }>> {
+  const out = new Map<string, { originalTitle: string; year: number | null }>();
   if (rows.length === 0) return out;
 
   const ids = (kind: ResolvableKind): bigint[] =>
     rows.filter((row) => row.kind === kind).map((row) => row.entityId);
 
+  const yearOf = (date: Date | null): number | null =>
+    date === null ? null : date.getUTCFullYear();
+
   const [movies, shows, people] = await Promise.all([
     ids("movie").length > 0
-      ? prisma.movie.findMany({ where: { id: { in: ids("movie") } }, select: { id: true, titleOriginal: true } })
+      ? prisma.movie.findMany({
+          where: { id: { in: ids("movie") } },
+          select: { id: true, titleOriginal: true, releaseDate: true },
+        })
       : Promise.resolve([]),
     ids("tv").length > 0
-      ? prisma.tvShow.findMany({ where: { id: { in: ids("tv") } }, select: { id: true, nameOriginal: true } })
+      ? prisma.tvShow.findMany({
+          where: { id: { in: ids("tv") } },
+          select: { id: true, nameOriginal: true, firstAirDate: true },
+        })
       : Promise.resolve([]),
     ids("person").length > 0
       ? prisma.person.findMany({ where: { id: { in: ids("person") } }, select: { id: true, name: true } })
       : Promise.resolve([]),
   ]);
 
-  for (const row of movies) out.set(`movie:${row.id.toString()}`, row.titleOriginal);
-  for (const row of shows) out.set(`tv:${row.id.toString()}`, row.nameOriginal);
-  for (const row of people) out.set(`person:${row.id.toString()}`, row.name);
+  for (const row of movies) {
+    out.set(`movie:${row.id.toString()}`, {
+      originalTitle: row.titleOriginal,
+      year: yearOf(row.releaseDate),
+    });
+  }
+  for (const row of shows) {
+    out.set(`tv:${row.id.toString()}`, {
+      originalTitle: row.nameOriginal,
+      year: yearOf(row.firstAirDate),
+    });
+  }
+  // Pessoa nao tem ano: `exact_name` e o unico casamento por texto dela, e ele
+  // se sustenta na UNICIDADE do nome, nunca num ano de nascimento.
+  for (const row of people) {
+    out.set(`person:${row.id.toString()}`, { originalTitle: row.name, year: null });
+  }
   return out;
 }

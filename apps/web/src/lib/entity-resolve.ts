@@ -128,13 +128,23 @@ const COMBINING_MARKS = /[̀-ͯ]/g;
 /**
  * Decompoe (NFD), remove acentos, minusculo, colapsa espacos.
  *
- * **Tem de ser bit a bit igual** a `foldText` de
- * `services/ingestion/src/search/fold.ts`, que e quem grava
- * `search_documents.normalized_aliases` e alimenta
- * `immutable_unaccent(lower(primary_text))`. Divergir aqui nao quebra nada
- * ruidosamente: apenas faz o casamento exato deixar de casar, e o tradutor
- * devolve `not_found` para titulos que existem. Por isso a igualdade e travada
- * por teste de governanca, e nao por comentario.
+ * **Tem de ser bit a bit igual** a DUAS outras dobras, e as duas igualdades sao
+ * travadas por teste — nao por comentario:
+ *
+ *  1. `foldText` de `services/ingestion/src/search/fold.ts` (a dobra da
+ *     ingestao). Travada por `tests/governance/entity-resolve-fold.test.ts`,
+ *     que compara as duas funcoes sobre um corpus. E um teste JS contra JS;
+ *  2. **`immutable_fold(text)` no PostgreSQL** (migration
+ *     `20260808120000_entity_resolve_folded_title_indexes`), que e quem dobra o
+ *     LADO DO BANCO no casamento por titulo. Travada pelo passo de corpus de
+ *     `pnpm --filter @screena/web validate:entity-resolve`, que so roda contra
+ *     banco real — uma funcao SQL nao existe em teste puro.
+ *
+ * A distincao entre (1) e (2) e a licao do defeito de producao: o teste de (1)
+ * passava, e o casamento por titulo estava morto assim mesmo, porque a
+ * divergencia que importava era com o BANCO. Divergir nao quebra nada
+ * ruidosamente — nao ha erro, nao ha log, so `not_found` para titulos que
+ * existem.
  */
 export function foldEntityText(input: string): string {
   return input
@@ -287,9 +297,16 @@ export interface ResolveCandidate {
   readonly kind: ResolvableKind;
   readonly entityId: string;
   readonly tmdbId: number | null;
-  /** Titulo/nome dobrado, como esta no catalogo. */
+  /**
+   * Uma das dobras da entidade que BATERAM com o lote.
+   *
+   * Vazia quando a candidata veio por `tmdbId` — nesse caminho nao ha texto a
+   * casar. O casamento por texto ja aconteceu no SQL; `folded` e
+   * `foldedAliases` existem para que a candidata continue autoexplicativa (em
+   * log e em teste) e para que a decisao siga sendo verificavel aqui.
+   */
   readonly folded: string;
-  /** Aliases dobrados (titulos alternativos). Vazio para pessoa. */
+  /** As demais dobras que bateram (traducao, original, titulo alternativo). */
   readonly foldedAliases: readonly string[];
   readonly year: number | null;
   /** Titulo pt-BR quando existe; senao o original. Nunca inventado. */
