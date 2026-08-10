@@ -22,21 +22,30 @@
  *    que FORCA `automation_draft` para toda service account sem
  *    `editorial_auto_publish`.
  *
- *    MEDIDO, e vale registrar porque contraria a leitura obvia: hoje o hook
- *    RECUSA essa escrita em vez de rebaixar a materia. Ele calcula o estado alvo
- *    a partir de `originalDoc` e nega quando o alvo nao e `automation_draft`; a
- *    linha que rebaixaria so roda depois dessa negativa. Sem a trava desta rota,
- *    o resultado observado e um `500` opaco — nao um rebaixamento.
+ *    A PRIMEIRA VERSAO DESTA ROTA (PR #139) tratou isso exigindo que a materia
+ *    JA ESTIVESSE em `automation_draft`. Medido em producao (materia 23, midia
+ *    18): `409 article_not_automation_draft` — a rota era INALCANCAVEL pelo
+ *    caminho real. `editorial-publications.ts` cria a materia em
+ *    `automation_draft` e, na mesma chamada, caminha por
+ *    `ready_to_publish`/`published` (ou `needs_review`) ANTES de a resposta com
+ *    o `articleId` sair. Quando o emissor tem o id para chamar esta rota, a
+ *    materia ja saiu do unico estado que ela aceitava — nos DOIS desfechos.
  *
- *    A trava existe assim mesmo, e por duas razoes que o `500` deixa claras: o
- *    emissor precisa do MOTIVO (um `409` nomeado diz que o `mediaId` estava
- *    certo), e a seguranca precisa ser LOCAL. Depender da negativa do hook e
- *    depender de `originalDoc` estar presente e de o calculo do alvo continuar
- *    como esta — basta esta rota um dia mandar `workflowStatus` no `data` para o
- *    rebaixamento silencioso voltar inteiro. Aceitando so materia que JA ESTA em
- *    `automation_draft`, a rota nao escreve fora desse estado seja qual for o
- *    comportamento do hook. E a diferenca para o desenho antigo continua sendo a
- *    ordem: o `setAsHero` escrevia primeiro e descobria depois.
+ *    A trava de ESTADO era um proxy para a pergunta que importa: **esta materia
+ *    e de origem automacao?** O proxy foi trocado pela coisa. Hoje a rota exige
+ *    PROVENIENCIA (`automationOrigin`, derivada dos campos que
+ *    `HUMAN_FORBIDDEN_FIELDS` impede qualquer pessoa de escrever), e o hook
+ *    ganhou uma excecao ESTREITA para escrita que so toca `heroMedia` vinda do
+ *    escopo `editorial_media_ingest`: nessa excecao ele NAO forca
+ *    `workflowStatus` nem `_status` — preserva os dois valores anteriores.
+ *
+ *    Por que isso nao reabre o PR #136. Aquele defeito era um REBAIXAMENTO
+ *    silencioso: a escrita acontecia e a materia descia de estado. Aqui nao ha
+ *    degrau para descer porque nao ha escrita de estado nenhuma — o hook
+ *    reescreve `workflowStatus` com o valor que ja estava gravado. O que
+ *    protegia a decisao humana nunca foi o estado: e a PROVENIENCIA DA CAPA
+ *    ATUAL (`hero_not_owned_by_automation`, mais abaixo), e essa continua
+ *    intacta.
  *
  *  - **nao consome cota.** Cota de autopublicacao conta materia publicada e
  *    materia atualizada. Apontar capa nao e nenhuma das duas, e gastar teto aqui
@@ -81,7 +90,8 @@ export type HeroLinkRejectionCode =
   | 'article_not_found'
   | 'media_not_ingested_for_article'
   | 'media_not_hero_eligible'
-  | 'article_not_automation_draft'
+  | 'article_not_automation_origin'
+  | 'article_withdrawn'
   | 'hero_not_owned_by_automation'
 
 export interface HeroLinkRejection {
@@ -185,6 +195,24 @@ export interface HeroLinkMediaFacts {
 export interface HeroLinkArticleFacts {
   readonly exists: boolean
   readonly workflowStatus: string | null
+  /**
+   * A materia veio do pipeline?
+   *
+   * NAO e "esta em automation_draft" — esse era o proxy que tornou a rota
+   * inalcancavel. E a presenca de pelo menos uma marca de automacao no
+   * documento: `sourceClusterId`, `automationDraftId` ou `automationActorId`.
+   *
+   * As tres estao em `HUMAN_FORBIDDEN_FIELDS` (`access.ts`), e o hook de
+   * governanca as REMOVE de todo payload humano. Ou seja: nenhuma pessoa
+   * consegue marcar uma materia propria como sendo de automacao, nem apagar a
+   * marca de uma que e. E por isso que a proveniencia serve de gate e o estado
+   * do fluxo editorial nao servia — o estado muda o tempo todo, por desenho.
+   *
+   * As tres, e nao uma: os dois intakes gravam conjuntos diferentes.
+   * `editorial-drafts` grava `automationDraftId` + `sourceClusterId`;
+   * `editorial-publications` grava `automationActorId` + `sourceClusterId`.
+   */
+  readonly automationOrigin: boolean
   /** Capa atual, como texto. `null` quando a materia ainda nao tem capa. */
   readonly currentHeroMediaId: string | null
   /**
@@ -210,21 +238,34 @@ export type HeroLinkDecision =
   | { readonly ok: false; readonly rejection: HeroLinkRejection }
 
 /**
- * O estado em que a automacao pode escrever a capa.
+ * Estados em que a materia SAIU de circulacao, e nos quais a automacao nao
+ * toca mesmo tendo posto a foto no acervo.
  *
- * UM valor so, e literal. A alternativa — uma lista de estados "ainda nao
- * revisados" — envelheceria mal: bastaria um estado novo na maquina de estados
- * para a automacao ganhar terreno que ninguem lhe deu.
+ * Uma DENYLIST curta, e nao a antiga allowlist de um valor so. A diferenca nao
+ * e estilo: a allowlist descrevia "onde a automacao ainda manda", e essa
+ * pergunta e respondida pela proveniencia; esta lista descreve "o que ja foi
+ * decidido tirar do ar", que e uma decisao humana registrada NO ESTADO. Trocar
+ * a capa de uma materia retratada nao tem desfecho util — no melhor caso nao
+ * muda nada, no pior mexe num documento que a redacao removeu de proposito.
+ *
+ * Um estado NOVO na maquina de estados nasce fora desta lista, ou seja,
+ * PERMITIDO. E o certo aqui: a guarda de verdade e a proveniencia da materia e
+ * a da capa atual, e um estado novo nao diz nada sobre nenhuma das duas.
  */
-export const HERO_LINK_ALLOWED_WORKFLOW_STATUS = 'automation_draft'
+export const HERO_LINK_WITHDRAWN_WORKFLOW_STATUSES: readonly string[] = [
+  'retracted',
+  'blocked',
+  'archived',
+]
 
 /**
  * Esta foto pode virar a capa desta materia?
  *
  * A ORDEM das recusas e escolhida para que a mensagem aponte a causa mais
- * corrigivel primeiro: existencia -> pertencimento -> licenca -> estado da
- * materia -> proveniencia da capa atual. Um emissor que recebe
- * "materia nao esta em automation_draft" sabe que o `mediaId` estava certo.
+ * corrigivel primeiro: existencia -> pertencimento -> licenca -> proveniencia
+ * da materia -> materia fora de circulacao -> proveniencia da capa atual. Um
+ * emissor que recebe "a materia nao e de automacao" sabe que o `mediaId` estava
+ * certo.
  */
 export function decideHeroLink(input: {
   readonly command: HeroLinkCommand
@@ -263,34 +304,27 @@ export function decideHeroLink(input: {
     ])
   }
 
-  // A TRAVA QUE IMPEDE O DEFEITO DO PR #136 DE VOLTAR.
+  // PROVENIENCIA DA MATERIA — a pergunta que a trava de estado so aproximava.
   //
-  // O hook forca `automation_draft` em toda escrita de service account sem
-  // `editorial_auto_publish`. Recusando aqui tudo que ja NAO esta nesse estado,
-  // o valor forcado passa a ser o valor que ja estava gravado — e rebaixamento
-  // silencioso deixa de ser possivel, porque nao ha degrau para descer.
-  // A TRAVA QUE IMPEDE O DEFEITO DO PR #136 DE VOLTAR.
+  // Materia escrita por gente nao recebe capa de robo, nem quando ela ainda nao
+  // tem capa nenhuma: o acervo e compartilhado, e sem esta linha bastaria
+  // ingerir uma foto "para" uma pauta humana para pendurar a capa nela.
   //
-  // O hook de governanca ja recusa esta escrita — hoje. Ele calcula o estado
-  // ALVO a partir de `originalDoc` e nega quando o alvo nao e `automation_draft`;
-  // o `incoming.workflowStatus = 'automation_draft'` que rebaixaria a materia so
-  // roda DEPOIS dessa negativa. Medido: sem esta guarda, a rota devolve `500`
-  // opaco, e nao um rebaixamento.
-  //
-  // A guarda continua sendo a certa, por duas razoes que o `500` deixa claras:
-  //
-  //  1. **o motivo chega ao emissor.** `500` diz "o servidor quebrou" e nao diz o
-  //     que corrigir; `409 article_not_automation_draft` diz que o `mediaId`
-  //     estava certo e a materia e que saiu do alcance da automacao;
-  //  2. **a seguranca fica LOCAL.** Depender da negativa do hook e depender de
-  //     `originalDoc` estar presente e de o calculo do alvo continuar como esta.
-  //     Basta um dia esta rota mandar `workflowStatus` no `data` — ou o hook
-  //     passar a tolerar payload parcial — para o rebaixamento silencioso do
-  //     PR #136 voltar inteiro. Recusando aqui, a rota nao escreve fora de
-  //     `automation_draft` seja qual for o comportamento do hook.
-  if (article.workflowStatus !== HERO_LINK_ALLOWED_WORKFLOW_STATUS) {
-    return reject('article_not_automation_draft', 409, [
-      `a materia ${command.articleId} esta em "${String(article.workflowStatus ?? 'desconhecido')}"; a capa por maquina so entra em "${HERO_LINK_ALLOWED_WORKFLOW_STATUS}"`,
+  // Diferente do estado, isto NAO muda ao longo da vida da materia — e por isso
+  // e um gate honesto. As marcas sao human-forbidden: ninguem consegue forjar
+  // nem apagar.
+  if (!article.automationOrigin) {
+    return reject('article_not_automation_origin', 409, [
+      `a materia ${command.articleId} nao carrega marca de origem de automacao; capa de materia humana e decisao humana`,
+    ])
+  }
+
+  // MATERIA FORA DE CIRCULACAO. Retratada, bloqueada ou arquivada e uma decisao
+  // humana de tirar do ar; trocar a capa dela nao tem desfecho util.
+  const status = article.workflowStatus ?? ''
+  if (HERO_LINK_WITHDRAWN_WORKFLOW_STATUSES.includes(status)) {
+    return reject('article_withdrawn', 409, [
+      `a materia ${command.articleId} esta em "${status}"; capa por maquina nao entra em materia fora de circulacao`,
     ])
   }
 

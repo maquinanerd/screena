@@ -10,7 +10,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  HERO_LINK_ALLOWED_WORKFLOW_STATUS,
+  HERO_LINK_WITHDRAWN_WORKFLOW_STATUSES,
   MAX_HERO_LINK_REQUEST_BYTES,
   decideHeroLink,
   intakeHeroLink,
@@ -45,11 +45,14 @@ function media(overrides: Partial<HeroLinkMediaFacts> = {}): HeroLinkMediaFacts 
   }
 }
 
-/** Materia 19, em `automation_draft`, ainda sem capa. */
+/** Materia 19, de origem automacao, em `needs_review`, ainda sem capa. */
 function article(overrides: Partial<HeroLinkArticleFacts> = {}): HeroLinkArticleFacts {
   return {
     exists: true,
-    workflowStatus: HERO_LINK_ALLOWED_WORKFLOW_STATUS,
+    // `needs_review` de proposito, e nao `automation_draft`: e onde a materia
+    // REALMENTE esta quando o emissor recebe o `articleId` e chama esta rota.
+    workflowStatus: 'needs_review',
+    automationOrigin: true,
     currentHeroMediaId: null,
     currentHeroIngestedForArticleId: null,
     ...overrides,
@@ -220,45 +223,66 @@ describe('licenca por finalidade (invariante 6)', () => {
   })
 })
 
-describe('a trava que impede o defeito do PR #136 de voltar', () => {
-  it('so `automation_draft` aceita capa por maquina', () => {
-    // Recusando aqui tudo que nao esta em `automation_draft`, a rota nunca
-    // escreve num estado em que o hook de governanca teria de intervir — e o
-    // valor que ele forca passa a ser o valor ja gravado. A garantia fica desta
-    // rota, e nao emprestada do comportamento atual do hook.
+describe('a rota e alcancavel pelo caminho REAL do emissor', () => {
+  it('todo estado em que a materia realmente esta ao receber o articleId aceita a capa', () => {
+    // ESTE CASO E O DEFEITO MEDIDO EM PRODUCAO (materia 23, midia 18).
+    //
+    // A versao anterior exigia `automation_draft`, mas
+    // `editorial-publications.ts` cria a materia nesse estado e caminha ate
+    // `needs_review` ou `published` na MESMA chamada, ANTES de a resposta com o
+    // `articleId` sair. Nenhum destes estados existia quando o emissor podia
+    // chamar a rota — e por isso ela recusava sempre, nos dois desfechos.
     for (const status of [
+      'automation_draft',
+      'needs_review',
       'draft',
       'in_review',
       'human_reviewed',
       'ready_to_publish',
       'published',
       'needs_update',
-      'retracted',
-      'archived',
-      'blocked',
       null,
     ]) {
       const result = decide({}, { workflowStatus: status })
-      expect(result.ok, String(status)).toBe(false)
+      expect(result, String(status)).toEqual({ ok: true, outcome: 'linked' })
+    }
+  })
+
+  it('materia fora de circulacao continua recusada, com motivo proprio', () => {
+    for (const status of HERO_LINK_WITHDRAWN_WORKFLOW_STATUSES) {
+      const result = decide({}, { workflowStatus: status })
+      expect(result.ok, status).toBe(false)
+      if (!result.ok) {
+        expect(result.rejection).toMatchObject({ code: 'article_withdrawn', status: 409 })
+        expect(result.rejection.issues.join(' ')).toContain(status)
+      }
+    }
+  })
+})
+
+describe('proveniencia da MATERIA: o gate que substituiu a trava de estado', () => {
+  it('materia sem marca de automacao recusa a capa, em qualquer estado', () => {
+    // O acervo e compartilhado. Sem esta recusa bastaria ingerir uma foto "para"
+    // uma pauta escrita por gente para pendurar a capa nela.
+    for (const status of ['draft', 'in_review', 'ready_to_publish', 'published']) {
+      const result = decide({}, { automationOrigin: false, workflowStatus: status })
+      expect(result.ok, status).toBe(false)
       if (!result.ok) {
         expect(result.rejection).toMatchObject({
-          code: 'article_not_automation_draft',
+          code: 'article_not_automation_origin',
           status: 409,
         })
       }
     }
   })
 
-  it('a materia em `ready_to_publish` e recusada ANTES de qualquer escrita', () => {
-    // O cenario do PR #136: um humano deixou a materia pronta para publicar e a
-    // maquina tenta anexar a foto. A diferenca para o desenho antigo e a ORDEM —
-    // aquele escrevia primeiro e descobria depois. Medido no teste de
-    // integracao: sem esta recusa a escrita e tentada e volta `500` opaco.
-    const result = decide({}, { workflowStatus: 'ready_to_publish' })
+  it('a proveniencia e julgada ANTES do estado de circulacao', () => {
+    // Materia humana arquivada: o emissor precisa saber que o problema e a
+    // materia nao ser dele, e nao o arquivamento — corrigir o estado nao daria
+    // acesso nenhum.
+    const result = decide({}, { automationOrigin: false, workflowStatus: 'archived' })
     expect(result.ok).toBe(false)
-    if (!result.ok) {
-      expect(result.rejection.issues.join(' ')).toContain('ready_to_publish')
-    }
+    if (!result.ok) expect(result.rejection.code).toBe('article_not_automation_origin')
   })
 })
 
@@ -292,16 +316,16 @@ describe('capa escolhida por gente nao e reescrita por robo', () => {
 })
 
 describe('a ordem das recusas aponta a causa mais corrigivel primeiro', () => {
-  it('foto de outra materia EM materia publicada acusa o pertencimento, nao o estado', () => {
-    // O emissor que recebe "materia nao esta em automation_draft" sabe que o
-    // `mediaId` estava certo. Inverter a ordem faria ele corrigir a coisa errada.
-    const result = decide({ ingestedForArticleId: '77' }, { workflowStatus: 'published' })
+  it('foto de outra materia EM materia humana acusa o pertencimento, nao a origem', () => {
+    // O emissor que recebe "a materia nao e de automacao" sabe que o `mediaId`
+    // estava certo. Inverter a ordem faria ele corrigir a coisa errada.
+    const result = decide({ ingestedForArticleId: '77' }, { automationOrigin: false })
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.rejection.code).toBe('media_not_ingested_for_article')
   })
 
   it('midia inexistente vence tudo', () => {
-    const result = decide({ exists: false }, { exists: false, workflowStatus: 'published' })
+    const result = decide({ exists: false }, { exists: false, automationOrigin: false })
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.rejection.code).toBe('media_not_found')
   })

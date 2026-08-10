@@ -291,6 +291,53 @@ export const enforceEditorialGovernance: CollectionBeforeChangeHook = async ({
       if (field === 'workflowStatus') continue
       delete incoming[field]
     }
+
+    /* --- A UNICA excecao: apontar a CAPA -----------------------------
+     *
+     * Ela existe porque a regra logo abaixo tornava a rota de capa
+     * (`endpoints/editorial-media-hero.ts`) INALCANCAVEL pelo caminho real.
+     * `editorial-publications.ts` cria a materia em `automation_draft` e, na
+     * MESMA chamada, caminha ate `needs_review` ou `published` antes de
+     * devolver o `articleId`. Quando o emissor tem o id para apontar a capa, o
+     * `target` abaixo ja nao e `automation_draft` — e a escrita e negada. Medido
+     * em producao: materia 23, midia 18, `409` nos dois desfechos.
+     *
+     * TRES condicoes, e nenhuma delas vem do cliente:
+     *
+     *  1. `req.context.heroMediaLink` — montado NO PROCESSO pelo handler da
+     *     rota de capa. Nenhum corpo HTTP consegue preencher `req.context`;
+     *  2. o escopo `editorial_media_ingest` — a MESMA conta que poe a foto no
+     *     acervo. `draft_ingest` nao alcanca isto;
+     *  3. `operation === 'update'` — a excecao nunca cria materia.
+     *
+     * O que a excecao faz e NAO ESCREVER estado: `workflowStatus` e `_status`
+     * voltam a valer o que ja valiam. Nao ha degrau para descer, entao o
+     * rebaixamento silencioso do PR #136 continua impossivel por aqui — a
+     * decisao humana que ele destruia era o ESTADO, e o estado nao e tocado.
+     * Quem protege a capa escolhida por gente e outra guarda, em
+     * `hero-link.ts`: a proveniencia da capa ATUAL.
+     *
+     * A excecao NAO restringe os demais campos, e isso e deliberado: o Payload
+     * ecoa TODOS os campos da collection em `data`, entao "so veio heroMedia"
+     * nao e uma pergunta respondivel aqui. O que confina a escrita e a origem
+     * do `context` — um handler que manda UM campo no `data`.
+     */
+    const heroMediaLink =
+      operation === 'update' &&
+      (req.context as { heroMediaLink?: unknown } | undefined)?.heroMediaLink === true &&
+      actor.scopes.includes('editorial_media_ingest')
+
+    if (heroMediaLink) {
+      // Reescrever com o valor ANTERIOR, em vez de apenas remover: assim a
+      // afirmacao "o estado nao mudou" fica no codigo, e nao na expectativa de
+      // que o merge do Payload preserve campo ausente.
+      if (previous.workflowStatus === undefined) delete incoming.workflowStatus
+      else incoming.workflowStatus = previous.workflowStatus
+      if (previous._status === undefined) delete incoming._status
+      else incoming._status = previous._status
+      return incoming
+    }
+
     const target = String(next.workflowStatus ?? 'automation_draft')
     if (target !== 'automation_draft') {
       deny('service account so pode manter o artigo em automation_draft')

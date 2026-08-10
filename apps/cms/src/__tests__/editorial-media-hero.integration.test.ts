@@ -21,14 +21,35 @@
  *
  * O caminho testado e o REAL: rascunho pelo endpoint do MNScr -> foto pelo
  * endpoint de midia -> capa por esta rota. Nenhum artigo e criado a mao.
+ *
+ * O QUE ESTE ARQUIVO NAO ALCANCAVA, e que deixou passar o defeito medido em
+ * producao (materia 23, midia 18, `409 article_not_automation_draft`): ele so
+ * chegava a materia por `/internal/editorial-drafts`, que a DEIXA em
+ * `automation_draft`. O caminho que produz a materia em producao e
+ * `/internal/editorial-publications`, que cria em `automation_draft` e caminha
+ * ate `needs_review` ou `published` na MESMA chamada, ANTES de devolver o
+ * `articleId`. Os dois intakes agora estao aqui, e o segundo e o que prova a
+ * correcao.
  */
 
 import { randomUUID } from 'node:crypto'
 
+// O endpoint de autopublicacao le estas envs no PROCESSO DO SERVIDOR, que o
+// harness sobe por `spawn` herdando o ambiente. Sem o kill switch ligado todo
+// pedido sai como `ROUTED_TO_REVIEW`, e o desfecho `published` — o que de fato
+// quebrou em producao — nunca seria exercido.
+process.env.EDITORIAL_AUTO_PUBLISH_ENABLED = 'true'
+process.env.EDITORIAL_AUTO_PUBLISH_DAILY_LIMIT = '80'
+process.env.EDITORIAL_AUTO_PUBLISH_PER_AUTHOR_LIMIT = '40'
+process.env.EDITORIAL_AUTO_PUBLISH_PER_SECTION_LIMIT = '80'
+process.env.EDITORIAL_AUTO_PUBLISH_PER_CONTENT_TYPE_LIMIT = '80'
+process.env.EDITORIAL_AUTO_PUBLISH_PER_ARTICLE_UPDATE_LIMIT = '5'
+process.env.EDITORIAL_AUTO_PUBLISH_TIME_ZONE = 'America/Sao_Paulo'
+
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { Payload } from 'payload'
 
-import { validEditorialDraft } from '@screena/editorial-contracts'
+import { validEditorialDraft, validPublicationRequest } from '@screena/editorial-contracts'
 
 import {
   apiKeyAuthorization,
@@ -43,7 +64,9 @@ let baseUrl = ''
 
 let mediaKey = ''
 let draftKey = ''
+let publisherKey = ''
 let chiefId = 0
+let authorId = ''
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                             */
@@ -128,6 +151,50 @@ async function createAutomationDraft(): Promise<string> {
   return String(result.body.articleId)
 }
 
+/**
+ * Cria a materia pelo OUTRO caminho real: o de autopublicacao.
+ *
+ * E este que produz o estado de producao. `qaPassed: false` desvia para
+ * `ROUTED_TO_REVIEW` (202, materia em `needs_review`); `true` publica (201,
+ * materia em `published`). Nos DOIS a materia ja saiu de `automation_draft`
+ * quando o `articleId` chega ao emissor.
+ */
+async function createViaPublications(qaPassed: boolean): Promise<string> {
+  const id = randomUUID()
+  const base = JSON.parse(JSON.stringify(validPublicationRequest)) as Record<string, unknown>
+  // `qa.passed=false` sem `blockingErrors` e recusado pelo CONTRATO ("exige ao
+  // menos um blockingError declarado"), antes de qualquer decisao editorial.
+  const qa = {
+    ...(base.qa as Record<string, unknown>),
+    passed: qaPassed,
+    ...(qaPassed ? {} : { blockingErrors: ['revisao humana pedida pelo teste'] }),
+  }
+  const result = await request('POST', '/api/internal/editorial-publications', publisherKey, {
+    ...base,
+    // A fixture aponta para `media-9001`, que nao existe neste banco — e midia
+    // nao verificavel bloqueia a publicacao, com razao. A capa deste arquivo
+    // entra pela rota que ele testa, nao pelo contrato.
+    media: [],
+    requestId: `req-${id}`,
+    idempotencyKey: `idem-${id}`,
+    sourceClusterId: `cluster-${id.slice(0, 8)}`,
+    publicAuthorId: authorId,
+    qa,
+    seo: {
+      ...(base.seo as Record<string, unknown>),
+      imageAltSuggestions: [],
+      slugSuggestion: `materia-pub-${id.slice(0, 8)}`,
+    },
+  })
+  const articleId = result.body.articleId
+  if (typeof articleId !== 'string' || articleId === '') {
+    throw new Error(
+      `publicacao nao devolveu articleId (${String(result.status)}): ${JSON.stringify(result.body)}`,
+    )
+  }
+  return articleId
+}
+
 /** Ingere uma foto PARA aquela materia, pelo endpoint real. */
 async function ingestMedia(articleId: string, salt: number): Promise<string> {
   const jpeg = await decodableJpegBytes(320, 200, salt)
@@ -208,6 +275,23 @@ beforeAll(async () => {
   mediaKey = await makeServiceAccount('mnscr — midia (capa)', ['editorial_media_ingest'])
   // A conta de TEXTO. Ela cria o rascunho e — o ponto — NAO aponta a capa.
   draftKey = await makeServiceAccount('mnscr — texto (capa)', ['draft_ingest'])
+  // A conta que PUBLICA. E o caminho de producao, e o que o arquivo nao cobria.
+  publisherKey = await makeServiceAccount('mnscr — publicacao (capa)', ['editorial_auto_publish'])
+
+  const author = await payload.create({
+    collection: 'authors',
+    data: {
+      name: 'Redacao Cinerie (capa)',
+      slug: `redacao-capa-${randomUUID().slice(0, 6)}`,
+      active: true,
+      automationPublishingAllowed: true,
+      allowedAutomationContentTypes: ['news'],
+      allowedAutomationSections: ['Series'],
+      automationAttributionModes: ['newsroom'],
+    } as never,
+    overrideAccess: true,
+  })
+  authorId = String(author.id)
 }, 600_000)
 
 afterAll(async () => {
@@ -324,17 +408,17 @@ describe('a capa e apontada FORA do eixo de revisao', () => {
 /* ------------------------------------------------------------------ */
 
 describe('materia tocada por humano nao tem capa trocada por robo', () => {
-  it('materia em `ready_to_publish` recusa a capa E CONTINUA em ready_to_publish', async () => {
-    // ESTE E O TESTE CENTRAL DO ARQUIVO.
+  it('a materia promovida a `ready_to_publish` recebe a capa E CONTINUA em ready_to_publish', async () => {
+    // ESTE E O TESTE CENTRAL DO ARQUIVO, e ele mudou de sentido com a correcao.
     //
-    // O `setAsHero` removido no PR #136 escrevia primeiro e descobria depois.
-    // Aqui a recusa acontece ANTES de qualquer escrita, e a prova nao e o status
-    // HTTP: e o estado da materia DEPOIS da recusa.
+    // Antes ele media a RECUSA por estado. Aquela recusa era o defeito: no
+    // caminho real a materia NUNCA esta em `automation_draft` quando o emissor
+    // recebe o `articleId`, e a rota inteira ficava inalcancavel.
     //
-    // CONTROLE NEGATIVO EXECUTADO (removendo a guarda de `hero-link.ts`): a
-    // escrita e tentada, o hook a recusa e a rota devolve `500` opaco. Ou seja,
-    // hoje o rebaixamento nao acontece — o que a guarda entrega e o MOTIVO no
-    // lugar do `500`, e uma garantia que nao depende do hook continuar negando.
+    // O que continua sendo o invariante do PR #136 e o que ele media de fato: o
+    // ESTADO NAO SE MEXE. O `setAsHero` removido naquele PR rebaixava a materia
+    // a `automation_draft` e devolvia sucesso. Aqui a escrita acontece e o
+    // estado promovido pelo humano sobrevive byte a byte.
     const articleId = await createAutomationDraft()
     const mediaId = await ingestMedia(articleId, 31)
 
@@ -345,15 +429,43 @@ describe('materia tocada por humano nao tem capa trocada por robo', () => {
       overrideAccess: true,
       user: await chief(),
     })
-    expect((await articleById(articleId)).workflowStatus).toBe('ready_to_publish')
+    const before = await articleById(articleId)
+    expect(before.workflowStatus).toBe('ready_to_publish')
 
     const result = await setHero(mediaId, articleId, mediaKey)
-    expect(result.status).toBe(409)
-    expect(result.body).toMatchObject({ error: 'article_not_automation_draft' })
+    expect(result.status).toBe(200)
+    expect(result.body).toMatchObject({ outcome: 'linked' })
 
     const doc = await articleById(articleId)
     expect(doc.workflowStatus).toBe('ready_to_publish')
-    expect(doc.heroMedia ?? null).toBeNull()
+    expect(doc._status).toBe(before._status)
+    expect(String(doc.heroMedia)).toBe(mediaId)
+  })
+
+  it('materia ESCRITA POR GENTE recusa a capa da maquina, mesmo sem capa nenhuma', async () => {
+    // A proveniencia que substituiu a trava de estado, medida no unico lugar em
+    // que ela pode ser medida: uma materia sem NENHUMA marca de automacao.
+    // Sem esta recusa, bastaria ingerir uma foto "para" uma pauta humana para
+    // pendurar a capa nela.
+    const humanArticle = await payload.create({
+      collection: 'articles',
+      data: {
+        title: 'Materia escrita por uma pessoa',
+        slug: `humana-${randomUUID().slice(0, 8)}`,
+        language: 'pt-BR',
+        contentType: 'news',
+        workflowStatus: 'draft',
+      } as never,
+      overrideAccess: true,
+      user: await chief(),
+    })
+    const articleId = String(humanArticle.id)
+    const mediaId = await ingestMedia(articleId, 33)
+
+    const result = await setHero(mediaId, articleId, mediaKey)
+    expect(result.status).toBe(409)
+    expect(result.body).toMatchObject({ error: 'article_not_automation_origin' })
+    expect((await articleById(articleId)).heroMedia ?? null).toBeNull()
   })
 
   it('capa escolhida por gente sobrevive ao pedido da maquina', async () => {
@@ -397,6 +509,90 @@ describe('materia tocada por humano nao tem capa trocada por robo', () => {
     expect(result.status).toBe(409)
     expect(result.body).toMatchObject({ error: 'hero_not_owned_by_automation' })
     expect(String((await articleById(articleId)).heroMedia)).toBe(String(humanMedia.id))
+  })
+})
+
+/* ------------------------------------------------------------------ */
+/* 3b. O DEFEITO MEDIDO EM PRODUCAO: o caminho de autopublicacao       */
+/* ------------------------------------------------------------------ */
+
+describe('a capa alcanca a materia que o MNScr acabou de enviar por editorial-publications', () => {
+  it('desfecho 202 (`needs_review`): a capa entra, e o estado nao se mexe', async () => {
+    // Producao registrou `409 article_not_automation_draft` aqui. O motivo esta
+    // no proprio endpoint: ele cria em `automation_draft` e caminha por
+    // `['needs_review']` ANTES de a resposta com o `articleId` sair.
+    const articleId = await createViaPublications(false)
+    const antes = await articleById(articleId)
+    expect(antes.workflowStatus).toBe('needs_review')
+
+    const mediaId = await ingestMedia(articleId, 91)
+    const outboxBefore = await outboxCountFor(articleId)
+    const quotaBefore = await quotaCounterTotal()
+
+    const result = await setHero(mediaId, articleId, mediaKey)
+    expect(result.status).toBe(200)
+    expect(result.body).toMatchObject({ outcome: 'linked', articleId, mediaId })
+
+    const depois = await articleById(articleId)
+    expect(String(depois.heroMedia)).toBe(mediaId)
+    expect(depois.workflowStatus).toBe('needs_review')
+    expect(depois._status).toBe(antes._status)
+
+    // Materia nao publica nao anuncia nada ao lado publico.
+    expect(await outboxCountFor(articleId)).toBe(outboxBefore)
+    // Apontar capa nao e `article_update`: gastar teto aqui faria o pipeline
+    // perder o dia da redacao por causa de uma foto.
+    expect(await quotaCounterTotal()).toBe(quotaBefore)
+  })
+
+  it('desfecho 201 (`published`): a capa entra, a materia continua publicada', async () => {
+    const articleId = await createViaPublications(true)
+    const antes = await articleById(articleId)
+    expect(antes.workflowStatus).toBe('published')
+    expect(antes._status).toBe('published')
+
+    const mediaId = await ingestMedia(articleId, 92)
+    const quotaBefore = await quotaCounterTotal()
+
+    const result = await setHero(mediaId, articleId, mediaKey)
+    expect(result.status).toBe(200)
+    expect(result.body).toMatchObject({ outcome: 'linked' })
+
+    const depois = await articleById(articleId)
+    expect(String(depois.heroMedia)).toBe(mediaId)
+    // O invariante do PR #136, no estado mais sensivel que existe: uma materia
+    // PUBLICA nao pode ser rebaixada a rascunho por causa de uma foto.
+    expect(depois.workflowStatus).toBe('published')
+    expect(depois._status).toBe('published')
+    expect(await quotaCounterTotal()).toBe(quotaBefore)
+  })
+
+  it('a capa da materia PUBLICA chega ao lado publico por `article.updated`', async () => {
+    // A UNICA propriedade do desenho original que esta correcao nao preserva, e
+    // ela nao poderia preservar: a materia ja esta no ar. Sem evento, a capa
+    // ficaria so no CMS e a pagina publica continuaria sem foto — que e a
+    // mesma falha silenciosa que a rota existe para fechar.
+    //
+    // O evento nao e emitido por esta rota: quem emite e `emitPublicationEvent`,
+    // pela regra que ja valia para qualquer edicao de materia publicada. Em
+    // materia nao publicada ele continua devolvendo `null` (caso acima).
+    const articleId = await createViaPublications(true)
+    const mediaId = await ingestMedia(articleId, 93)
+    const antes = await outboxCountFor(articleId)
+
+    await setHero(mediaId, articleId, mediaKey)
+
+    const eventos = await payload.find({
+      collection: 'publication-outbox',
+      where: { aggregateId: { equals: articleId } },
+      limit: 20,
+      depth: 0,
+      overrideAccess: true,
+    })
+    expect(eventos.totalDocs).toBe(antes + 1)
+    expect(eventos.docs.map((doc) => String((doc as { eventType: unknown }).eventType))).toContain(
+      'article.updated',
+    )
   })
 })
 
