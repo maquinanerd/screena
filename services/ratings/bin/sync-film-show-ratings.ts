@@ -206,6 +206,9 @@ async function main(): Promise<void> {
   const { createPrismaExternalRatings } = await import(
     '../src/persistence/external-ratings-store.js'
   )
+  const { createPrismaRatingCreditLookup } = await import(
+    '../src/persistence/rating-credit-lookup.js'
+  )
 
   const syncLog = createPrismaSyncLog(prisma, FILM_SHOW_RATINGS_PROVIDER_API)
 
@@ -233,7 +236,16 @@ async function main(): Promise<void> {
         entities: args.apply ? createPrismaEntityLookup(prisma) : NOOP_ENTITIES,
         // Candidatos locais so sao selecionados quando `--id` nao foi informado.
         candidates: args.id === null ? createPrismaEntityCandidates(prisma) : NOOP_CANDIDATES,
-        ratings: args.apply ? createPrismaExternalRatings(prisma) : NOOP_RATINGS,
+        // A nota nasce fail-closed e, logo apos persistida, a politica de
+        // exibicao decide se acende — com base na licenca que o proprietario
+        // autorizou (services/legal). Nenhuma recusa e silenciosa: o motivo
+        // sempre vai para o console.
+        ratings: args.apply
+          ? createPrismaExternalRatings(prisma, {
+              credits: createPrismaRatingCreditLookup(prisma),
+              log: (message) => console.warn(message),
+            })
+          : NOOP_RATINGS,
         now: () => new Date(),
         requestCount: () => client.getRequestCount(),
       },

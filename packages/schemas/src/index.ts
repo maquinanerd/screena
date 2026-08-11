@@ -9,4 +9,5 @@
 
 export * from "./ratings.js";
 export * from "./rating-freshness.js";
+export * from "./display-authorization.js";
 export * from "./entity-writer-output.js";
