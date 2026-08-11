@@ -713,3 +713,7 @@ contentType + deduplicação"):
    entrevistas"**: `excludeEditorialHighlights` (presenter puro) remove dos
    destaques os hrefs que o bloco de notícias já mostra. Sem compensação: o
    grid se adapta e o estado vazio honesto permanece.
+4. **Mobile (≤767px) é um SLIDER horizontal, não pilha vertical** (decisão do
+   humano, 2026-08-11): o `feat-grid` vira trilho scroll-snap no idioma dos
+   rails do site (86% por card, espiada do próximo, scroll nativo sem JS). O
+   check D4 390x844 do harness prova que o trilho rola e a página não.

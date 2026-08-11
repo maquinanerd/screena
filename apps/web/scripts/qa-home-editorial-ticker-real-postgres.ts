@@ -606,6 +606,8 @@ interface FoldReport {
   gridColumns: string | null;
   /** Hrefs do bloco "Notícias & entrevistas" (para provar a deduplicação). */
   newsHrefs: string[];
+  /** O grid de destaques rola horizontalmente? (slider mobile de 3 matérias) */
+  gridScrollable: boolean;
   // Faixa amarela
   tickerHeight: number;
   tickerDots: number;
@@ -648,6 +650,7 @@ const READ_FOLD = `() => {
     highlightsText: (q('[role="tabpanel"]') || { innerText: '' }).innerText.replace(/\\s+/g, ' '),
     gridColumns: grid ? getComputedStyle(grid).gridTemplateColumns : null,
     newsHrefs: all('.hnews-lead, .hnews-card').map((a) => a.getAttribute('href') || ''),
+    gridScrollable: grid ? grid.scrollWidth > grid.clientWidth + 4 : false,
     tickerHeight: ticker ? Math.round(ticker.getBoundingClientRect().height) : 0,
     tickerDots: all('.ticker__dot').length,
     tickerBadge: text('.ticker__label'),
@@ -1008,6 +1011,7 @@ async function main(): Promise<void> {
         await clickCentered(page, ".seg-toggle__opt:nth-of-type(2)");
         await page.waitForTimeout(200);
       });
+      const mobile = label === "390x844";
       record(
         `D4 ${label}: seção presente nas duas tabs, sem overflow e sem navegar`,
         filmes.overflowOk &&
@@ -1016,6 +1020,13 @@ async function main(): Promise<void> {
           series.cardCount > 0 &&
           series.url === "/pt/",
         `filmes=${filmes.cardCount} séries=${series.cardCount} url=${series.url}`,
+      );
+      record(
+        `D4 ${label}: ${mobile ? "SLIDER horizontal (trilho rola, página não)" : "grid de 3 colunas SEM trilho"}`,
+        mobile
+          ? filmes.gridScrollable && series.gridScrollable
+          : !filmes.gridScrollable && !series.gridScrollable,
+        `gridScrollable filmes=${filmes.gridScrollable} séries=${series.gridScrollable}`,
       );
     }
 
