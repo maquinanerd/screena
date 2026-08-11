@@ -4376,13 +4376,16 @@ a.tabs__tab[aria-current='page'] {
    bloco editorial.
    `text-align: justify` SAIU. Em coluna de 720px com palavra longa de pt-BR ele
    abre rios de espaco entre as palavras e cada linha ganha um espacamento
-   diferente — alinhado a esquerda a mancha fica regular. `hyphens: auto` fica,
-   porque ajuda justamente a coluna estreita do celular. */
+   diferente — alinhado a esquerda a mancha fica regular.
+   `hyphens: auto` SAIU tambem. Sem `text-align: justify` ele nao tinha mais o
+   que resolver, e cobrava um preco real: quebrava palavra no fim da linha e o
+   leitor lia o pedaco como palavra inteira ("confli-" virou "confli"), gerando
+   falso alarme de texto truncado. Coluna estreita de celular sobrevive bem com
+   `overflow-wrap` do proprio navegador. */
 .art-body {
   max-width: var(--container-reading);
   margin: 0 auto;
   padding: 64px 20px 20px;
-  hyphens: auto;
 }
 
 /* ATENCAO: `.art-body` NAO e exclusivo da materia. A biografia da pagina de
