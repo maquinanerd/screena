@@ -156,7 +156,17 @@ async function main(): Promise<void> {
 
     if (args.apply) {
       const { createPrismaWatchStore } = await import('../src/persistence/watch-store.js')
-      watch = createPrismaWatchStore(prisma)
+      const { createPrismaWatchCreditLookup } = await import(
+        '../src/persistence/watch-credit-lookup.js'
+      )
+      // A oferta nasce fail-closed e, logo apos reconciliada, a politica de
+      // exibicao decide se acende — com base na licenca que o proprietario
+      // autorizou (services/legal). Nenhuma recusa e silenciosa: o motivo sempre
+      // vai para o console.
+      watch = createPrismaWatchStore(prisma, {
+        credits: createPrismaWatchCreditLookup(prisma),
+        log: (message) => console.warn(message),
+      })
     }
   }
 
