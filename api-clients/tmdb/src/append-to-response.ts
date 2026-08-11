@@ -83,12 +83,18 @@ export const TV_EPISODE_APPEND = [
   'translations',
 ] as const
 
-/** `append_to_response` maximo para `GET /person/{id}`. */
+/**
+ * `append_to_response` maximo para `GET /person/{id}`.
+ *
+ * `movie_credits` e `tv_credits` SAIRAM: `combined_credits` ja e a uniao dos
+ * dois, e cada credito carrega `media_type` (`movie`/`tv`) para separa-los. Pedir
+ * os tres arquivava o mesmo credito DUAS vezes em `tmdb_raw`, em 4,86 M pessoas.
+ * Removido apos confirmar (grep repo-wide, snake_case e camelCase) que nenhum
+ * normalizador/consumidor le os dois campos separados.
+ */
 export const PERSON_APPEND = [
   'external_ids',
   'combined_credits',
-  'movie_credits',
-  'tv_credits',
   'images',
   'tagged_images',
   'translations',
