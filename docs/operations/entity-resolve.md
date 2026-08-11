@@ -267,13 +267,21 @@ openssl rand -hex 32
 
 Nenhuma outra variavel. Nenhuma chave nova no CMS.
 
-## 8. O que o MNScr precisa saber, em quatro linhas
+## 8. O que o MNScr precisa saber, em cinco linhas
 
 1. **Escopo:** `catalog_resolve`, credencial nova, **nao** reaproveite as do CMS.
 2. **Endpoint:** `POST https://cinerie.com/api/internal/entity-resolve`.
 3. **Nunca publique um `entityId` que veio com `reason` preenchido.** O `null` e
    a resposta correta; o bloco simplesmente nao entra na materia.
 4. **Prefira `tmdbId`.** Ele e o unico casamento que nao tem ambiguidade.
+5. **Repasse o `confidence` que voltou daqui**, sem arredondar, em
+   `entityLinks[].confidence` do pedido de publicacao. Desde o
+   [ADR 0019](../adr/0019-entity-link-confidence-verification.md) e ele que decide se o vinculo
+   nasce **verificado** (`>= 0.9`, limiar configuravel) ou espera confirmacao humana no admin.
+   `tmdb_id` (`1`) e `exact_title_year` (`0.9`) atravessam; `exact_name` (`0.85`) nao — de
+   proposito, porque e o unico casamento sem um segundo campo confirmando identidade. Inventar um
+   numero mais alto do que o que a rota devolveu nao acelera nada: apenas transforma um palpite em
+   uma afirmacao publicada.
 
 ## 9. Como isto e verificado
 

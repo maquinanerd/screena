@@ -1,6 +1,13 @@
 # ADR 0018 — Vinculo de entidade vindo de maquina nasce NAO verificado
 
-- **Status:** aceito.
+> **EMENDADO pelo [ADR 0019](0019-entity-link-confidence-verification.md) (2026-08-11).** A §3
+> abaixo diz "sem excecao, sem caminho que suba para `true`". Isso **nao vale mais**: um vinculo com
+> `confidence >= 0.9` (limiar configuravel) de tipo `movie`/`tv`/`person` nasce `verified: true`.
+> O que motivou a mudanca foi a criacao da rota `/api/internal/entity-resolve`, que este ADR listou
+> em §4 como trabalho ainda nao feito. Todo o resto deste documento continua valendo — inclusive a
+> analise da §2, que segue sendo a razao de o limiar **nao** dispensar nenhuma das outras guardas.
+
+- **Status:** aceito, emendado na §3 pelo ADR 0019.
 - **Data:** 2026-08-06.
 - **Migration:** nenhuma. `articles.entityReferences` e o campo `verified` ja existem desde a FASE 2B.
 - **Invariantes tocadas:** 12 (automacao nao afirma o que nao apurou), 6 (dado sem verificacao nao vira pagina publica).
@@ -47,6 +54,10 @@ afirmacao falsa que ninguem revisa porque parece bem-formada.
 **Um vinculo vindo de maquina e sempre persistido com `verified: false`.** Sem excecao, sem
 caminho que suba para `true`.
 
+> **Emendado pelo ADR 0019:** ha hoje UM caminho — `confidence >= limiar`, com `movie`/`tv`/`person`
+> e id na forma interna. As duas guardas descritas abaixo (forma do id no CMS, existencia e tipo no
+> worker) continuam intactas.
+
 Isso e mais conservador do que a alternativa considerada — marcar `verified: true` quando o
 endpoint confirmasse que a entidade existe — e a razao e estrutural, nao de gosto:
 
@@ -75,6 +86,10 @@ Duas camadas, nesta ordem:
 1. **O humano no admin.** O vinculo aparece em `entityReferences` para curadoria, com
    `confidence` a vista. So um humano marca `verified` (e o proprio campo diz isso:
    *"So um humano marca. A automacao envia sempre false."*).
+   > **Emendado pelo ADR 0019.** A frase citada nao esta mais no campo: com `confidence` acima do
+   > limiar, a automacao marca. O que segue valendo e o resto — o humano continua sendo quem decide
+   > tudo o que fica abaixo do limiar, e a marcacao dele **nunca** e rebaixada nem reescrita por
+   > maquina. A coluna `verificationSource` diz qual das duas afirmou.
 2. **O worker de projecao.** Mesmo depois de confirmado, `reconcileEntityLinks`
    (`services/news-ingestion/src/persistence/editorial-projection-store.ts`) consulta o registro
    `entities` do banco publico pela chave **composta** `(entityType, entityId)`. Um id que nao

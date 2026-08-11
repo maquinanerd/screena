@@ -34,6 +34,13 @@ export interface AutoPublishConfig {
   readonly perArticleUpdateLimit: number | null
   /** Fuso do DIA CIVIL da redacao. Identificador IANA. */
   readonly timeZone: string
+  /**
+   * Confianca MINIMA para um vinculo de entidade nascer `verified: true`.
+   *
+   * Existe para apertar ou afrouxar o corte sem deploy de codigo. Ver ADR 0019.
+   * Valor invalido cai no default — nunca em `0`, que auto-verificaria tudo.
+   */
+  readonly entityLinkAutoVerifyMinConfidence: number
 }
 
 export type AutoPublishConfigResult =
@@ -49,6 +56,32 @@ export const CONSERVATIVE_PER_AUTHOR_LIMIT = 20
 export const CONSERVATIVE_PER_SECTION_LIMIT = 30
 export const CONSERVATIVE_PER_CONTENT_TYPE_LIMIT = 40
 export const CONSERVATIVE_PER_ARTICLE_UPDATE_LIMIT = 5
+
+/**
+ * Limiar padrao de auto-verificacao de vinculo de entidade.
+ *
+ * `0.9` e o valor de `exact_title_year` na rota `/api/internal/entity-resolve`:
+ * titulo dobrado + ano + tipo, unico no catalogo. Abaixo disso fica
+ * `exact_name` (`0.85`), o unico casamento sem um SEGUNDO campo confirmando
+ * identidade — e por isso o unico que continua esperando humano. Ver ADR 0019.
+ */
+export const DEFAULT_ENTITY_LINK_MIN_CONFIDENCE = 0.9
+
+/**
+ * Limiar declarado, ou o default.
+ *
+ * FORA DE `(0, 1]` CAI NO DEFAULT, e isso e mais do que higiene: `parseFloat`
+ * devolve `0` para `"0,9"` (virgula decimal, o erro de digitacao mais provavel
+ * aqui) e `NaN` para `"noventa por cento"`. Um `0` aceito faria TODO vinculo
+ * nascer verificado — o oposto exato do que a variavel existe para controlar.
+ */
+function confidenceThreshold(value: string | undefined): number {
+  const parsed = Number.parseFloat((value ?? '').trim())
+  if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 1) {
+    return DEFAULT_ENTITY_LINK_MIN_CONFIDENCE
+  }
+  return parsed
+}
 
 function positiveIntOrNull(value: string | undefined): number | null {
   const parsed = Number.parseInt((value ?? '').trim(), 10)
@@ -132,6 +165,9 @@ export function resolveAutoPublishConfig(
       perArticleUpdateLimit:
         perArticleUpdateLimit ?? (isProduction ? CONSERVATIVE_PER_ARTICLE_UPDATE_LIMIT : null),
       timeZone: declaredZone === '' ? DEFAULT_EDITORIAL_TIME_ZONE : declaredZone,
+      entityLinkAutoVerifyMinConfidence: confidenceThreshold(
+        env.EDITORIAL_ENTITY_LINK_AUTO_VERIFY_MIN_CONFIDENCE,
+      ),
     },
   }
 }
@@ -233,7 +269,7 @@ export function isWithinEditorialDay(instantIso: string, window: DayWindowUtc): 
 export function describeAutoPublish(config: AutoPublishConfig): string {
   const daily = config.dailyLimit === null ? 'sem teto' : String(config.dailyLimit)
   const author = config.perAuthorLimit === null ? 'sem teto' : String(config.perAuthorLimit)
-  return `${config.enabled ? 'habilitada' : 'DESABILITADA'}; diario ${daily}; por autor ${author}; fuso ${config.timeZone}`
+  return `${config.enabled ? 'habilitada' : 'DESABILITADA'}; diario ${daily}; por autor ${author}; fuso ${config.timeZone}; vinculo auto-verificado a partir de ${String(config.entityLinkAutoVerifyMinConfidence)}`
 }
 
 /* ------------------------------------------------------------------ */

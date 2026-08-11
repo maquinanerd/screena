@@ -129,49 +129,130 @@ describe('resolveHeroMedia', () => {
 /* ------------------------------------------------------------------ */
 
 describe('resolveEntityReferences', () => {
+  /** Abaixo do limiar: o caso que continua esperando humano. */
   const link = {
     entityKind: 'movie',
     entityId: '4210',
     relation: 'primary_subject',
-    confidence: 0.9,
+    confidence: 0.85,
   }
+  /** O limiar de producao. Toda chamada declara o seu — nao ha default aqui. */
+  const options = { minConfidence: 0.9 }
 
-  it('vinculo com id interno atravessa — sempre como NAO verificado', () => {
-    const result = resolveEntityReferences([link])
+  it('confianca ABAIXO do limiar atravessa como NAO verificado, sem proveniencia', () => {
+    const result = resolveEntityReferences([link], options)
+    expect(result.rows).toEqual([
+      {
+        entityKind: 'movie',
+        entityId: '4210',
+        relation: 'primary_subject',
+        confidence: 0.85,
+        verified: false,
+      },
+    ])
+    expect(result.autoVerified).toEqual([])
+  })
+
+  it('confianca NO limiar ja nasce verificada, com a proveniencia da maquina', () => {
+    // O corte e `>=`, nao `>`: `exact_title_year` da entity-resolve vale
+    // exatamente 0.9, e um `>` deixaria de fora justamente o casamento que o
+    // ADR 0019 decidiu incluir.
+    const result = resolveEntityReferences([{ ...link, confidence: 0.9 }], options)
     expect(result.rows).toEqual([
       {
         entityKind: 'movie',
         entityId: '4210',
         relation: 'primary_subject',
         confidence: 0.9,
-        verified: false,
+        verified: true,
+        verificationSource: 'automation_confidence',
       },
+    ])
+    expect(result.autoVerified).toEqual([
+      { entityKind: 'movie', entityId: '4210', confidence: 0.9 },
     ])
   })
 
+  it('tmdb_id (1.0) nasce verificado; exact_name (0.85) nao — na mesma chamada', () => {
+    const result = resolveEntityReferences(
+      [
+        { ...link, confidence: 1 },
+        { ...link, entityKind: 'person', entityId: '77', confidence: 0.85 },
+      ],
+      options,
+    )
+    expect(result.rows.map((row) => [row.entityId, row.verified])).toEqual([
+      ['4210', true],
+      ['77', false],
+    ])
+    expect(codes(result.warnings)).toEqual([
+      'ENTITY_LINK_AUTO_VERIFIED',
+      'ENTITY_LINK_UNVERIFIED',
+    ])
+  })
+
+  it('o limiar e CONFIGURAVEL: apertar o corte devolve o vinculo ao humano', () => {
+    const result = resolveEntityReferences([{ ...link, confidence: 0.9 }], {
+      minConfidence: 0.95,
+    })
+    expect(result.rows[0]?.verified).toBe(false)
+    expect(result.autoVerified).toEqual([])
+  })
+
+  it('limiar invalido NAO auto-verifica nada — nem com confianca 1', () => {
+    // `0` e o que `parseFloat("0,9")` devolve. Se ele valesse como limiar, o
+    // erro de digitacao mais provavel desta variavel seria o que verifica tudo.
+    for (const minConfidence of [0, Number.NaN, -1, 2]) {
+      const result = resolveEntityReferences([{ ...link, confidence: 1 }], { minConfidence })
+      expect(result.rows[0]?.verified).toBe(false)
+      expect(result.rows[0]?.verificationSource).toBeUndefined()
+    }
+  })
+
+  it('tipo que a resolucao de entidade nao traduz nunca nasce verificado', () => {
+    // `season`, `episode`, `character` e `franchise` nao tem resolvedor atras do
+    // numero: a confianca ali e um julgamento que ninguem reproduz.
+    for (const entityKind of ['season', 'episode', 'character', 'franchise']) {
+      const result = resolveEntityReferences([{ ...link, entityKind, confidence: 1 }], options)
+      expect(result.rows[0]?.verified).toBe(false)
+    }
+  })
+
   it('lista vazia nao produz linha nem aviso', () => {
-    const result = resolveEntityReferences([])
+    const result = resolveEntityReferences([], options)
     expect(result.rows).toEqual([])
     expect(result.warnings).toEqual([])
   })
 
-  it('avisa que o vinculo nao chega ao site sem confirmacao humana', () => {
-    const result = resolveEntityReferences([link])
+  it('avisa que o vinculo abaixo do limiar nao chega ao site sem confirmacao humana', () => {
+    const result = resolveEntityReferences([link], options)
     expect(codes(result.warnings)).toEqual(['ENTITY_LINK_UNVERIFIED'])
+  })
+
+  it('o aviso de auto-verificacao nomeia confianca e limiar', () => {
+    const result = resolveEntityReferences([{ ...link, confidence: 1 }], options)
+    const notice = result.warnings.find((warning) => warning.code === 'ENTITY_LINK_AUTO_VERIFIED')
+    expect(notice?.detail).toContain('0.9')
+    expect(notice?.detail).toContain('movie:4210=1')
   })
 
   it('id fora da forma de id interno e RECUSADO, nunca gravado no otimismo', () => {
     // O caso perigoso: um id do TMDB e um inteiro valido e nao falha em lugar
     // nenhum — ele vincula a entidade ERRADA se o numero existir como id
     // interno. Aqui so a FORMA e checavel; a existencia e o tipo sao conferidos
-    // no lado publico (ver ADR 0018).
-    const result = resolveEntityReferences([
-      { ...link, entityId: 'tt0111161' },
-      { ...link, entityId: 'tmdb:550' },
-      { ...link, entityId: '0' },
-      { ...link, entityId: '007' },
-    ])
+    // no lado publico (ADR 0018), e o ADR 0019 NAO afrouxou isso: confianca 1.0
+    // sobre id de forma errada continua recusada.
+    const result = resolveEntityReferences(
+      [
+        { ...link, entityId: 'tt0111161', confidence: 1 },
+        { ...link, entityId: 'tmdb:550', confidence: 1 },
+        { ...link, entityId: '0', confidence: 1 },
+        { ...link, entityId: '007', confidence: 1 },
+      ],
+      options,
+    )
     expect(result.rows).toEqual([])
+    expect(result.autoVerified).toEqual([])
     expect(codes(result.warnings)).toEqual([
       'ENTITY_LINK_ID_NOT_INTERNAL',
       'ENTITY_LINK_ID_NOT_INTERNAL',
@@ -181,7 +262,7 @@ describe('resolveEntityReferences', () => {
   })
 
   it('recusa um vinculo nao derruba os demais', () => {
-    const result = resolveEntityReferences([{ ...link, entityId: 'tt0111161' }, link])
+    const result = resolveEntityReferences([{ ...link, entityId: 'tt0111161' }, link], options)
     expect(result.rows.map((row) => row.entityId)).toEqual(['4210'])
     expect(codes(result.warnings)).toEqual([
       'ENTITY_LINK_ID_NOT_INTERNAL',
@@ -190,7 +271,7 @@ describe('resolveEntityReferences', () => {
   })
 
   it('o aviso de recusa nomeia o indice do vinculo', () => {
-    const result = resolveEntityReferences([link, { ...link, entityId: 'nope' }])
+    const result = resolveEntityReferences([link, { ...link, entityId: 'nope' }], options)
     const refused = result.warnings.find((warning) => warning.code === 'ENTITY_LINK_ID_NOT_INTERNAL')
     expect(refused?.field).toBe('entityLinks[1].entityId')
   })
