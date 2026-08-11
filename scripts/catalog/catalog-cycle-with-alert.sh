@@ -27,8 +27,36 @@ set -uo pipefail
 # EXIT CODE: sempre o do trabalho, nunca o do alerta. O alerta é observabilidade;
 # ele jamais mascara o resultado.
 #
+# ============== GATE DE PRODUÇÃO: por que este bloco existe ==============
+# A CLI tem um gate (src/cli/exit.ts) que, sob NODE_ENV=production, exige
+# `--force` para ESCRITA e `--confirm-production-read` para LEITURA. Este script
+# não passava nenhuma das duas — então, agendado em produção, os QUATRO comandos
+# do ciclo saíam com exit 3 (blocked) e o ciclo nunca rodava:
+#
+#   catalog audit-database --json    -> leitura   -> exigia --confirm-production-read
+#   catalog worker                   -> leitura*  -> exigia --confirm-production-read
+#   catalog search-reindex --apply   -> escrita   -> exigia --force
+#   catalog index-decisions --apply  -> escrita   -> exigia --force
+#
+#   (*) `worker` é classificado como leitura porque o gate deriva `mutates` de
+#       `--apply`, e o worker não tem `--apply`. Ele é, na prática, o maior
+#       ESCRITOR do ciclo. A classificação é frouxa; o gate abaixo compensa.
+#
+# A correção NÃO é passar `--force` incondicionalmente — isso apagaria o gate e
+# devolveria exatamente o descuido que ele existe para impedir (um `--apply`
+# copiado de um runbook de staging mutando produção). O script passa as flags
+# SOMENTE quando o operador declarou, por variável de ambiente, que este host é
+# autorizado a escrever em produção:
+#
+#   CINERIE_CATALOG_CYCLE_PRODUCTION_CONFIRMED=true
+#
+# Sem a variável, em produção, o script RECUSA e sai com 3 — em vez de rodar
+# quatro comandos que falhariam um a um e emitir um alerta confuso. Fora de
+# produção nada muda: as flags não são passadas e o gate já libera.
+#
 # Uso (tipicamente via systemd timer):
 #   DATABASE_URL=... TMDB_READ_ACCESS_TOKEN=... \
+#   CINERIE_CATALOG_CYCLE_PRODUCTION_CONFIRMED=true \
 #   CATALOG_ALERT_WEBHOOK_URL=https://hooks.slack.com/... \
 #   BACKUP_ALERT_PROVIDER=slack \
 #   scripts/catalog/catalog-cycle-with-alert.sh
@@ -43,14 +71,32 @@ WORKER_MAX_JOBS="${CATALOG_WORKER_MAX_JOBS:-5000}"
 WORKER_CONCURRENCY="${CATALOG_WORKER_CONCURRENCY:-4}"
 WORKER_TIMEOUT_MS="${CATALOG_WORKER_TIMEOUT_MS:-300000}"
 
-catalog() {
+# Flags do gate de produção, resolvidas UMA vez na subida (ver o bloco acima).
+# Arrays vazios fora de produção: `"${GATE_READ[@]}"` some da linha de comando.
+GATE_READ=()
+GATE_WRITE=()
+if [[ "${NODE_ENV:-}" == "production" ]]; then
+  if [[ "${CINERIE_CATALOG_CYCLE_PRODUCTION_CONFIRMED:-}" != "true" ]]; then
+    echo "catalog-cycle: BLOQUEADO — NODE_ENV=production sem CINERIE_CATALOG_CYCLE_PRODUCTION_CONFIRMED=true." >&2
+    echo "catalog-cycle: escrita em produção exige autorização explícita do operador." >&2
+    exit 3
+  fi
+  GATE_READ=(--confirm-production-read)
+  GATE_WRITE=(--force)
+fi
+
+catalog_read() {
   # `pnpm --filter` evita depender do cwd; a CLI é a mesma que o operador usa.
-  (cd "$REPO_ROOT" && corepack pnpm --filter @screena/ingestion exec tsx bin/catalog.ts "$@")
+  (cd "$REPO_ROOT" && corepack pnpm --filter @screena/ingestion exec tsx bin/catalog.ts "$@" "${GATE_READ[@]}")
+}
+
+catalog_write() {
+  (cd "$REPO_ROOT" && corepack pnpm --filter @screena/ingestion exec tsx bin/catalog.ts "$@" "${GATE_WRITE[@]}")
 }
 
 snapshot() {
   # Uma linha JSON com o que o sentinela precisa. Read-only.
-  catalog audit-database --json 2>/dev/null || echo '{}'
+  catalog_read audit-database --json 2>/dev/null || echo '{}'
 }
 
 emit_alert() {
@@ -83,7 +129,9 @@ run_cycle() {
 
   before="$(snapshot)"
 
-  if ! catalog worker \
+  # `worker` é classificado como LEITURA pelo gate (não tem `--apply`), embora
+  # seja o maior escritor do ciclo. Passa a flag de leitura para não sair com 3.
+  if ! catalog_read worker \
       --concurrency "$WORKER_CONCURRENCY" \
       --max-jobs "$WORKER_MAX_JOBS" \
       --timeout-ms "$WORKER_TIMEOUT_MS"; then
@@ -94,8 +142,8 @@ run_cycle() {
 
   # Projeção de busca e decisões de indexabilidade fazem parte do ciclo: sem
   # elas, entidade nova não entra na busca nem tem decisão registrada.
-  catalog search-reindex --apply || echo "catalog-cycle: search-reindex falhou (seguindo)." >&2
-  catalog index-decisions --apply || echo "catalog-cycle: index-decisions falhou (seguindo)." >&2
+  catalog_write search-reindex --apply || echo "catalog-cycle: search-reindex falhou (seguindo)." >&2
+  catalog_write index-decisions --apply || echo "catalog-cycle: index-decisions falhou (seguindo)." >&2
 
   after="$(snapshot)"
 

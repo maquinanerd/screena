@@ -17,6 +17,8 @@
     "validate:tmdb-catalog": "tsx scripts/validate-tmdb-platform-real-postgres.ts",
     "validate:catalog-platform-complete": "tsx scripts/validate-catalog-platform-real-postgres.ts",
     "catalog": "tsx bin/catalog.ts",
+    "catalog-worker:start": "tsx bin/catalog-worker-service.ts",
+    "prove:catalog-worker": "tsx scripts/prove-catalog-worker-service.ts",
     "validate:indexability-producer": "tsx scripts/validate-indexability-producer-real-postgres.ts",
     "validate:catalog-integrity": "tsx scripts/validate-catalog-integrity-real-postgres.ts"
   },

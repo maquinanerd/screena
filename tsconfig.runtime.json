@@ -8,6 +8,11 @@
     "services/ingestion/src/composition.ts",
     "services/ingestion/src/persistence/**/*.ts",
     "services/ingestion/bin/catalog.ts",
+    // Entrypoint do servico de catalogo. Esta na lista pelo mesmo motivo que o
+    // `bin/` do publication-worker entrou: la, um import de tipo usado como
+    // VALOR passou despercebido porque `bin/**` estava fora do typecheck, e o
+    // container subia e morria no import — antes de qualquer log.
+    "services/ingestion/bin/catalog-worker-service.ts",
     "services/ratings/src/persistence/**/*.ts",
     "services/ratings/bin/ratings.ts",
     "services/streaming/src/persistence/**/*.ts",
