@@ -17,6 +17,7 @@
   "dependencies": {
     "@screena/db": "workspace:*",
     "@screena/rapidapi-core": "workspace:*",
+    "@screena/schemas": "workspace:*",
     "@screena/streaming-availability-client": "workspace:*"
   },
   "devDependencies": {

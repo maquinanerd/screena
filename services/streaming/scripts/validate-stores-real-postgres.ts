@@ -23,7 +23,10 @@ import { fileURLToPath } from 'node:url'
 import EmbeddedPostgres from 'embedded-postgres'
 import { PrismaClient } from '@prisma/client'
 
-import { createPrismaWatchStore } from '../src/persistence/watch-store.js'
+import { STREAMING_AVAILABILITY_ATTRIBUTION_URL } from '@screena/streaming-availability-client'
+
+import { STREAMING_AUTO_REVIEWER, createPrismaWatchStore } from '../src/persistence/watch-store.js'
+import { createPrismaWatchCreditLookup } from '../src/persistence/watch-credit-lookup.js'
 import { createPrismaReviewStore } from '../src/persistence/watch-review-store.js'
 
 const require = createRequire(import.meta.url)
@@ -113,6 +116,13 @@ function offer(overrides: Record<string, unknown> = {}): Record<string, unknown>
     providerName: 'Netflix',
     offerType: 'subscription',
     deepLink: 'https://netflix/x',
+    // Explicitos (e nao `undefined` por omissao): estes tres entram na CHAVE DE
+    // IDENTIDADE da oferta. Deixa-los ausentes faz o adapter interpolar
+    // `undefined` no `watch_offer_identity_key_v1`, e o alvo do UPDATE deixaria
+    // de ser deterministico.
+    externalOfferId: null,
+    webUrl: null,
+    package: null,
     price: null,
     currency: null,
     quality: 'hd',
@@ -274,6 +284,110 @@ async function main(): Promise<void> {
     record(11, 'mudanca de web_url revoga a aprovacao no sync (sem derrubar o run)',
       !webUrlSyncThrew && afterWebUrl.display_allowed === false && afterWebUrl.web_url === 'https://netflix/watch/novo',
       `threw=${webUrlSyncThrew}, display=${afterWebUrl.display_allowed}, web_url=${afterWebUrl.web_url}`)
+
+    // --- Exibicao automatica COM credito (hidratacao licenca -> oferta) ---
+    //
+    // Ate aqui, TODO o caminho de exibicao de streaming dependia de um humano
+    // rodando `pnpm streaming promote`. E esse caminho nunca escreveu
+    // `license_status`/`attribution_text` — como o sync tambem nao escrevia, a
+    // oferta ficava presa em `license_status='unknown'` e o trigger recusava.
+    // Os checks abaixo provam a hidratacao no BANCO REAL, contra o trigger real.
+
+    const autoLogs: string[] = []
+    const watchStoreAuto = createPrismaWatchStore(prisma as never, {
+      credits: createPrismaWatchCreditLookup(prisma as never),
+      log: (message: string) => autoLogs.push(message),
+    } as never)
+
+    // Zera o estado de licenca da Netflix para provar que a HIDRATACAO e que
+    // preenche — e nao um resquicio do passo humano simulado no check 4.
+    await prisma.$executeRawUnsafe(
+      `UPDATE watch_availability SET license_status='unknown', attribution_text=NULL, attribution_url=NULL, reviewed_by=NULL, reviewed_at=NULL, approved_payload_hash=NULL, watch_provider_id=NULL, data_usage_decision_id=NULL WHERE id=${netflixId}`,
+    )
+
+    // 12. sync COM credits: a oferta sai exibida, creditada e carimbada pela
+    //     politica (nunca por um nome de pessoa).
+    let autoSyncThrew = false
+    try {
+      await watchStoreAuto.replaceSnapshot({
+        entityType: 'movie', entityId: movieId, countryCode: 'BR',
+        offers: [
+          offer({ entityId: movieId, quality: '4k', webUrl: 'https://netflix/watch/novo' }),
+          // Reaparece no snapshot so para provar que provedor SEM alias continua
+          // fail-closed mesmo com a hidratacao ligada (check 15).
+          offer({ entityId: movieId, providerKey: 'max', providerName: 'Max' }),
+        ],
+        fetchedAt: new Date('2026-07-15T15:00:00.000Z'), staleAfter: stale1,
+      } as never)
+    } catch { autoSyncThrew = true }
+
+    const auto = (await q<{
+      display_allowed: boolean; reviewed_by: string | null; license_status: string
+      attribution_text: string | null; attribution_url: string | null
+      watch_provider_id: bigint | null; data_usage_decision_id: bigint | null
+    }>(`SELECT display_allowed, reviewed_by, license_status::text AS license_status, attribution_text, attribution_url, watch_provider_id, data_usage_decision_id FROM watch_availability WHERE id=${netflixId}`))[0]!
+    record(12, 'sync com credits hidrata licenca/atribuicao e acende a oferta (reviewed_by automation:)',
+      !autoSyncThrew && auto.display_allowed === true
+        && auto.reviewed_by === STREAMING_AUTO_REVIEWER
+        && auto.reviewed_by.startsWith('automation:')
+        && auto.license_status === 'official'
+        && auto.attribution_text === 'Movie of the Night'
+        && auto.attribution_url === STREAMING_AVAILABILITY_ATTRIBUTION_URL
+        && auto.watch_provider_id !== null && auto.data_usage_decision_id !== null,
+      `threw=${autoSyncThrew}, display=${auto.display_allowed}, revisor=${auto.reviewed_by}, licenca=${auto.license_status}, credito=${auto.attribution_text}, linkback=${auto.attribution_url}`)
+
+    // 13. o hash aprovado foi computado sobre os valores NOVOS de licenca.
+    //     Se o UPDATE tivesse lido `w."license_status"` (valor ANTIGO) dentro do
+    //     SET, o trigger — que recomputa com os novos — teria abortado a
+    //     statement e o check 12 ja falharia. Este check e a prova DIRETA: o
+    //     hash gravado bate com o fingerprint recomputado da linha atual.
+    const hashOk = (await q<{ ok: boolean | null }>(
+      `SELECT approved_payload_hash = watch_offer_payload_fingerprint_v1(
+         provider_api, external_offer_id, entity_type, entity_id, country_code, offer_type,
+         provider_key, provider_name, package, quality, price, currency, deep_link, web_url,
+         available_from, available_until, license_status, requires_attribution,
+         requires_linkback, attribution_text, attribution_url) AS ok
+       FROM watch_availability WHERE id=${netflixId}`,
+    ))[0]!.ok
+    record(13, 'approved_payload_hash foi computado sobre os valores NOVOS de licenca',
+      hashOk === true, `hash_bate=${hashOk}`)
+
+    // 14. provedor SEM alias canonico continua fail-closed, e o motivo e
+    //     DIFERENTE de "sem licenca" (o operador precisa cadastrar o alias).
+    const maxAfterAuto = (await q<{ display_allowed: boolean }>(`SELECT display_allowed FROM watch_availability WHERE id=${maxId}`))[0]!.display_allowed
+    const maxLogged = autoLogs.some((l) => l.includes('sem alias canonico') && l.includes('max'))
+    record(14, 'oferta de provedor sem alias nao acende e o motivo e logado (nao ha descarte mudo)',
+      maxAfterAuto === false && maxLogged,
+      `display=${maxAfterAuto}, logado=${maxLogged}`)
+
+    // 15. SEM ATRIBUICAO NAO PASSA. Provedor com alias, licenca vigente,
+    //     decisao aprovada — e `attribution_text` NULL com
+    //     `requires_attribution=true`. A oferta NAO pode acender.
+    await prisma.$executeRawUnsafe(`INSERT INTO watch_providers (slug, canonical_name, homepage_url, updated_at) VALUES ('star-plus','Star+','https://www.starplus.com/', now())`)
+    await prisma.$executeRawUnsafe(`INSERT INTO watch_provider_aliases (provider_id, provider_api, external_key, display_name, updated_at) SELECT id,'streaming_availability','star','Star+', now() FROM watch_providers WHERE slug='star-plus'`)
+    await prisma.$executeRawUnsafe(`INSERT INTO source_licenses (source_key, content_type, provider_key, territory_code, license_status, display_allowed, requires_attribution, requires_linkback, attribution_text, is_current, decided_by, decided_at, policy_version, updated_at) VALUES ('star-plus','watch_availability','streaming_availability','BR','third_party',true,true,true,NULL,true,'ana@screen',now(),'validation/v1',now())`)
+    await prisma.$executeRawUnsafe(`INSERT INTO data_usage_decisions (source_license_id, use_case, territory, stage, display_allowed, storage_allowed, attribution_required, linkback_required, policy_version, decided_by, reason, updated_at) SELECT id,'watch_offer_display','BR','approved_for_display',true,true,true,true,'validation/v1','ana@screen','cenario sem atribuicao', now() FROM source_licenses WHERE source_key='star-plus' AND content_type='watch_availability'`)
+
+    autoLogs.length = 0
+    await watchStoreAuto.replaceSnapshot({
+      entityType: 'movie', entityId: movieId, countryCode: 'BR',
+      offers: [
+        offer({ entityId: movieId, quality: '4k', webUrl: 'https://netflix/watch/novo' }),
+        offer({ entityId: movieId, providerKey: 'star', providerName: 'Star+', deepLink: 'https://starplus/x' }),
+      ],
+      fetchedAt: new Date('2026-07-15T16:00:00.000Z'), staleAfter: stale1,
+    } as never)
+    const starRow = (await q<{ display_allowed: boolean; attribution_text: string | null }>(`SELECT display_allowed, attribution_text FROM watch_availability WHERE entity_id=${movieId} AND provider_key='star'`))[0]!
+    const starLogged = autoLogs.some((l) => l.includes('missing-attribution'))
+    record(15, 'licenca que EXIGE atribuicao e nao tem texto de credito NAO acende a oferta',
+      starRow.display_allowed === false && starRow.attribution_text === null && starLogged,
+      `display=${starRow.display_allowed}, credito=${starRow.attribution_text}, motivo_logado=${starLogged}`)
+
+    // 16. o ciclo seguinte, com payload identico, MANTEM a oferta exibida. Sem
+    //     isto a exibicao seria um piscar: acende num sync e apaga no proximo.
+    const netflixStable = (await q<{ display_allowed: boolean }>(`SELECT display_allowed FROM watch_availability WHERE id=${netflixId}`))[0]!.display_allowed
+    record(16, 'sync seguinte com payload identico mantem a oferta exibida (nao pisca)',
+      netflixStable === true, `display=${netflixStable}`)
   } catch (e) {
     record(0, 'execucao', false, (e as Error).message.split('\n')[0])
   } finally {
