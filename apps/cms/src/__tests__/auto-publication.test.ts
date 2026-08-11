@@ -39,6 +39,7 @@ import {
 import {
   CONSERVATIVE_DAILY_LIMIT,
   DEFAULT_EDITORIAL_TIME_ZONE,
+  DEFAULT_ENTITY_LINK_MIN_CONFIDENCE,
   describeAutoPublish,
   editorialDayWindowUtc,
   isValidIanaTimeZone,
@@ -639,6 +640,40 @@ describe('kill switch', () => {
     expect(text).toContain('habilitada')
     expect(text).toContain('America/Sao_Paulo')
     expect(text).not.toMatch(/key|secret|postgres/i)
+  })
+})
+
+describe('limiar de auto-verificacao de vinculo de entidade', () => {
+  const VAR = 'EDITORIAL_ENTITY_LINK_AUTO_VERIFY_MIN_CONFIDENCE'
+
+  it('ausente vale 0.9 — o `exact_title_year` da entity-resolve', () => {
+    expect(config({}).entityLinkAutoVerifyMinConfidence).toBe(
+      DEFAULT_ENTITY_LINK_MIN_CONFIDENCE,
+    )
+    expect(DEFAULT_ENTITY_LINK_MIN_CONFIDENCE).toBe(0.9)
+  })
+
+  it('valor declarado na faixa (0, 1] vale — e e assim que se aperta o corte', () => {
+    expect(config({ [VAR]: '0.95' }).entityLinkAutoVerifyMinConfidence).toBe(0.95)
+    expect(config({ [VAR]: '1' }).entityLinkAutoVerifyMinConfidence).toBe(1)
+    expect(config({ [VAR]: ' 0.5 ' }).entityLinkAutoVerifyMinConfidence).toBe(0.5)
+  })
+
+  it('valor invalido cai no DEFAULT, nunca em 0', () => {
+    // `parseFloat("0,9")` devolve `0`, e um `0` aceito faria TODO vinculo nascer
+    // verificado — o oposto exato do que a variavel controla. A virgula decimal
+    // e o erro de digitacao mais provavel aqui, e por isso e o primeiro caso.
+    for (const value of ['0,9', '0', '-0.5', '1.5', 'noventa', '', '   ']) {
+      expect(config({ [VAR]: value }).entityLinkAutoVerifyMinConfidence, value).toBe(
+        DEFAULT_ENTITY_LINK_MIN_CONFIDENCE,
+      )
+    }
+  })
+
+  it('o resumo mostra o limiar aplicado', () => {
+    // Quem digitou `0,9` precisa ver `0.9` no preflight, e nao um silencio.
+    expect(describeAutoPublish(config({ [VAR]: '0,9' }))).toContain('a partir de 0.9')
+    expect(describeAutoPublish(config({ [VAR]: '0.95' }))).toContain('a partir de 0.95')
   })
 })
 

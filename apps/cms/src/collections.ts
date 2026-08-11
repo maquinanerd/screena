@@ -1134,7 +1134,29 @@ export const Articles: CollectionConfig = {
             name: 'verified',
             type: 'checkbox',
             defaultValue: false,
-            admin: { description: 'So um humano marca. A automacao envia sempre false.' },
+            // A frase e para a REDACAO, nao para quem le o ADR: ela diz o que
+            // muda na tela, e o criterio em linguagem de gente. A politica em si
+            // esta no ADR 0019.
+            admin: {
+              description:
+                'So entidade marcada aqui atravessa para o site. A automacao marca sozinha quando a identidade e inequivoca (id do catalogo, ou titulo + ano unicos); nos demais casos, quem marca e voce.',
+            },
+          },
+          {
+            // PROVENIENCIA, nao estado. Vazio com `verified` marcado significa
+            // marcacao HUMANA — inclusive nas linhas anteriores ao ADR 0019,
+            // quando a automacao nao tinha como marcar. E o que permite auditar
+            // (ou reverter em massa) so o que a maquina afirmou.
+            name: 'verificationSource',
+            type: 'select',
+            options: [
+              { label: 'Automacao (confianca acima do limiar)', value: 'automation_confidence' },
+            ],
+            admin: {
+              readOnly: true,
+              description:
+                'Preenchido pela automacao. Vazio = a marcacao nao veio da maquina.',
+            },
           },
         ],
       },

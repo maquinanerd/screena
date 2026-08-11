@@ -389,11 +389,15 @@ describe('guardas que so existem quando a materia e encontrada', () => {
   it('VINCULO CURADO por humano sobrevive a atualizacao', async () => {
     const cluster = `cluster-${randomUUID().slice(0, 8)}`
     const slug = `vinculo-curado-${randomUUID().slice(0, 8)}`
+    // ABAIXO do limiar do ADR 0019 de proposito: assim o vinculo nasce
+    // `verified: false` e a marcacao seguinte e inequivocamente HUMANA. Com
+    // `0.95` a maquina ja teria marcado, e este teste passaria a medir a
+    // sobrevivencia da propria automacao — nao a da curadoria.
     const link = {
       entityKind: 'tv',
       entityId: '12345',
       relation: 'primary_subject',
-      confidence: 0.95,
+      confidence: 0.5,
     }
 
     const first = await publish(
@@ -413,6 +417,7 @@ describe('guardas que so existem quando a materia e encontrada', () => {
     const created = await articleById(articleId)
     const refs = created.entityReferences as Record<string, unknown>[]
     expect(refs).toHaveLength(1)
+    expect(refs[0]?.verified).toBe(false)
     await payload.update({
       collection: 'articles',
       id: articleId,
@@ -440,6 +445,9 @@ describe('guardas que so existem quando a materia e encontrada', () => {
     const afterRefs = after.entityReferences as Record<string, unknown>[]
     expect(afterRefs).toHaveLength(1)
     expect(afterRefs[0]?.verified).toBe(true)
+    // Origem VAZIA: a decisao continua sendo do humano, e nenhuma reescrita
+    // automatica a reivindicou (ADR 0019).
+    expect(afterRefs[0]?.verificationSource ?? null).toBeNull()
   })
 
   it('MESMA revisao com bytes diferentes e conflito, tambem em update', async () => {

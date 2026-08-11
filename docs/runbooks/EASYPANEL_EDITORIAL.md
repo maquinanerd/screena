@@ -260,6 +260,17 @@ publicar sozinho, e ninguém descobriria pela ausência de erro.
 | `EDITORIAL_AUTO_PUBLISH_PER_SECTION_LIMIT` | não | teto conservador (30) |
 | `EDITORIAL_AUTO_PUBLISH_PER_CONTENT_TYPE_LIMIT` | não | teto conservador (40) |
 | `EDITORIAL_AUTO_PUBLISH_PER_ARTICLE_UPDATE_LIMIT` | não | teto conservador (5) |
+| `EDITORIAL_ENTITY_LINK_AUTO_VERIFY_MIN_CONFIDENCE` | não | limiar padrão **0.9** |
+
+`EDITORIAL_ENTITY_LINK_AUTO_VERIFY_MIN_CONFIDENCE` é o corte a partir do qual um
+vínculo de entidade vindo do MNScr nasce **verificado** e chega ao site sem
+confirmação humana ([ADR 0019](../adr/0019-entity-link-confidence-verification.md)).
+O padrão `0.9` inclui `tmdb_id` (1.0) e `exact_title_year` (0.9) da
+`/api/internal/entity-resolve`, e deixa de fora `exact_name` (0.85) — o único
+casamento sem um segundo campo confirmando identidade. Subir para `0.95` deixa só
+o casamento por identificador; **valor fora de `(0, 1]` cai no padrão**, e não em
+`0` (que verificaria tudo). O valor em vigor aparece no `cms:preflight` e em todo
+log de auto-verificação.
 
 O fuso é **IANA** (`America/Sao_Paulo`). Offset fixo (`-03:00`) e abreviação
 (`BRT`) são recusados: os dois ignoram horário de verão e a conta erraria em

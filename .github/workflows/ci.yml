@@ -171,6 +171,19 @@ jobs:
       - name: Canario dos vinculos editoriais ate as superficies publicas
         run: pnpm --filter @screena/web canary:editorial-entity-links
 
+      # MESMA cadeia, pela porta da AUTOMACAO. Os dois canarios acima entram
+      # pelo caminho humano — o de vinculos ate se recusa a rodar com
+      # `EDITORIAL_AUTO_PUBLISH_*` no ambiente. Este entra pelo endpoint do
+      # MNScr e mede o trecho que ninguem media: o limiar de confianca do
+      # ADR 0019 separando, DE PONTA A PONTA, o vinculo que atravessa
+      # (`tmdb_id`, 1.0) do que espera humano (`exact_name`, 0.85) — ate
+      # `entity_news_links`, ate a ficha do filme e ate a vertical da Home.
+      #
+      # Era exatamente aqui que morava o defeito: `201` na resposta, ids certos,
+      # `entity_news_links` vazio e nenhum erro em lugar nenhum.
+      - name: Canario da auto-verificacao de vinculo por confianca (automacao)
+        run: pnpm --filter @screena/web canary:entity-link-auto-verification
+
       # ROTA INTERNA DE RESOLUCAO DE ENTIDADE, com Next REAL e PostgreSQL 16
       # efemero. Passo proprio porque o que ele prova nao aparece em teste puro:
       # o SQL de casamento por titulo (`immutable_unaccent` e

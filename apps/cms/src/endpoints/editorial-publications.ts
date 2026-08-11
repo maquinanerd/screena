@@ -47,6 +47,7 @@ import {
   type MappedBody,
 } from '../editorial-body-mapper.js'
 import {
+  AUTOMATION_VERIFICATION_SOURCE,
   findStrippedBlockMarks,
   planSeoPersistence,
   resolveEntityReferences,
@@ -577,7 +578,9 @@ export const editorialPublicationsEndpoint: Endpoint = {
     const mediaReport = await readMediaAuthorizations(req, request)
     const mappedBody = toPayloadBody(request)
     const hero = resolveHeroMedia(request.media, mediaReport.authorizations)
-    const entityRefs = resolveEntityReferences(request.entityLinks)
+    const entityRefs = resolveEntityReferences(request.entityLinks, {
+      minConfidence: config.entityLinkAutoVerifyMinConfidence,
+    })
     const seoPlan = planSeoPersistence(request.seo)
 
     // A varredura de `marks` usa o JSON CRU, nao o pedido validado: o `z.object`
@@ -827,6 +830,33 @@ export const editorialPublicationsEndpoint: Endpoint = {
         })
       })()
       await commitTransaction(req)
+
+      // AUTO-VERIFICACAO REGISTRADA, uma linha por vinculo.
+      //
+      // Depois do commit de proposito: um log emitido antes descreveria uma
+      // afirmacao que o rollback pode nunca ter gravado, e uma auditoria que
+      // conta vinculos inexistentes e pior do que nenhuma.
+      //
+      // So a CRIACAO chega aqui com vinculos: no update o array nao e
+      // reaplicado (`ENTITY_LINK_NOT_REAPPLIED`), entao nao ha o que registrar.
+      //
+      // Nada de conteudo da materia: id, tipo, confianca e o limiar aplicado. O
+      // limiar vai junto porque e ele que explica a decisao — um operador que
+      // digitou `0,9` ve `limiar=0.9` ao lado do valor que ele achou ter posto.
+      if (resolvedTargetArticleId === null) {
+        for (const link of entityRefs.autoVerified) {
+          req.payload.logger.info({
+            msg: 'vinculo de entidade auto-verificado por confianca',
+            requestId: request.requestId,
+            articleId,
+            entityKind: link.entityKind,
+            entityId: link.entityId,
+            confidence: link.confidence,
+            threshold: config.entityLinkAutoVerifyMinConfidence,
+            verificationSource: AUTOMATION_VERIFICATION_SOURCE,
+          })
+        }
+      }
     } catch (error) {
       // Rollback SEMPRE, antes de qualquer resposta. Deixar a transacao aberta
       // seguraria uma conexao do pool ate o timeout e manteria as linhas de
@@ -1113,10 +1143,14 @@ async function persistPublication(
         slug,
         // VINCULOS DE ENTIDADE, so na CRIACAO.
         //
-        // O campo carrega `verified`, que e decisao humana; reescrever o array
-        // a cada update apagaria a curadoria e devolveria tudo a `false`. Por
-        // isso o update nao toca nele — e diz isso ao emissor, pelo aviso
+        // O campo carrega curadoria HUMANA dentro de `verified`; reescrever o
+        // array a cada update apagaria essa curadoria — inclusive rebaixando
+        // para `false` um vinculo que alguem confirmou a mao. Por isso o update
+        // nao toca nele, e diz isso ao emissor pelo aviso
         // `ENTITY_LINK_NOT_REAPPLIED`.
+        //
+        // O ADR 0019 nao afrouxou isto: a auto-verificacao decide com que
+        // estado um vinculo NASCE, e nasce so uma vez.
         entityReferences: input.entityReferences.map((row) => ({ ...row })),
         // Nasce marcado como origem de automacao e SOBE pela maquina de
         // estados — nao ha atalho que pule o gate de publicacao.
