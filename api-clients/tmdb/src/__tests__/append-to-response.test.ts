@@ -60,12 +60,17 @@ describe('constantes de append_to_response', () => {
     expect(PERSON_APPEND).not.toContain('watch/providers')
   })
 
-  it('creditos por tipo: aggregate_credits em serie/temporada; person usa *_credits', () => {
+  it('creditos por tipo: aggregate_credits em serie/temporada; person usa combined_credits', () => {
     expect(TV_APPEND).toContain('aggregate_credits')
     expect(TV_SEASON_APPEND).toContain('aggregate_credits')
-    expect(PERSON_APPEND).toEqual(
-      expect.arrayContaining(['combined_credits', 'movie_credits', 'tv_credits']),
-    )
+    expect(PERSON_APPEND).toContain('combined_credits')
+  })
+
+  it('person NAO pede movie_credits/tv_credits: combined_credits ja e a uniao', () => {
+    // Corte de desperdicio: os tres juntos arquivavam cada credito 2x em
+    // `tmdb_raw`. `media_type` dentro de combined_credits separa filme de serie.
+    expect(PERSON_APPEND).not.toContain('movie_credits')
+    expect(PERSON_APPEND).not.toContain('tv_credits')
   })
 })
 

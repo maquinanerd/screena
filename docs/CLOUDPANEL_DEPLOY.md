@@ -562,9 +562,10 @@ server {
 | `TMDB_API_KEY` | worker/service `tmdb` | Nao | Chave v3 do TMDB (fallback quando `TMDB_READ_ACCESS_TOKEN` estiver ausente). So o pipeline offline usa; nunca o render. |
 | `GEMINI_API_KEY` | worker/service `entity-writer` | Nao | Chave do Gemini. So o Entity Writer offline a usa (Invariante 4). |
 | `GEMINI_MODEL` | worker/service `entity-writer` | Nao | Modelo Gemini usado pelo Entity Writer offline. |
-| `SCREENA_RATINGS_PROVIDER_KEY` | worker `ratings` | Nao | Chave do provedor tecnico de ratings (`provider_api`), distinto da fonte editorial (Invariante 2). |
-| `SCREENA_STREAMING_PROVIDER_KEY` | worker `streaming` | Nao | Chave do provedor de disponibilidade "onde assistir". |
-| `SCREENA_REDIS_URL` | web (cache) + workers (fila) | Nao | URL do Redis (`redis://:senha@127.0.0.1:6379/0`). Opcional; se ausente, cai para cache local. |
+| `RAPIDAPI_FILM_SHOW_RATINGS_KEY` | worker `ratings` | Nao | Chave do provedor tecnico de ratings (`provider_api`), distinto da fonte editorial (Invariante 2). |
+| `RAPIDAPI_STREAMING_AVAILABILITY_KEY` | worker `streaming` | Nao | Chave do provedor de disponibilidade "onde assistir". |
+| `CINERIE_RATINGS_PROVIDER_AUTHORIZED` | worker `ratings` | Nao | `true` (string exata) declara que o uso do provedor de ratings esta autorizado nesta instalacao. Ausente/qualquer outro valor = bloqueio em producao. Decisao HUMANA de licenca. |
+| `CINERIE_STREAMING_PROVIDER_AUTHORIZED` | worker `streaming` | Nao | `true` (string exata) declara que o uso do provedor de streaming esta autorizado nesta instalacao. Ausente/qualquer outro valor = bloqueio em producao. Decisao HUMANA de licenca. |
 
 ### 7.1 Exemplo de `.env.production` (valores fictícios)
 
@@ -582,12 +583,19 @@ TMDB_READ_ACCESS_TOKEN=coloque_o_token_v4_aqui
 TMDB_API_KEY=coloque_a_chave_v3_aqui
 GEMINI_API_KEY=coloque_a_chave_aqui
 GEMINI_MODEL=gemini-3.1-flash-lite
-SCREENA_RATINGS_PROVIDER_KEY=coloque_a_chave_aqui
-SCREENA_STREAMING_PROVIDER_KEY=coloque_a_chave_aqui
+RAPIDAPI_FILM_SHOW_RATINGS_KEY=coloque_a_chave_aqui
+RAPIDAPI_STREAMING_AVAILABILITY_KEY=coloque_a_chave_aqui
 
-# --- Cache/fila (opcional) ---
-SCREENA_REDIS_URL=redis://:TROQUE_ESTA_SENHA@127.0.0.1:6379/0
+# --- Autorizacao por provedor (decisao humana de licenca) ---
+CINERIE_RATINGS_PROVIDER_AUTHORIZED=true
+CINERIE_STREAMING_PROVIDER_AUTHORIZED=true
 ```
+
+> **Redis nao e usado.** Existiu aqui um `SCREENA_REDIS_URL`; **nenhum codigo do
+> repositorio le essa variavel** (grep repo-wide: as unicas ocorrencias de
+> "Redis" sao comentarios dizendo que um teto compartilhado *exigiria* Redis).
+> Se houver um servico Redis provisionado no EasyPanel, ele esta ocioso e pode
+> ser desligado.
 
 > Apenas variaveis explicitamente publicas (ex.: `THE_SCREEN_PUBLIC_SITE_URL`)
 > podem ser expostas ao cliente via prefixo de build do Next. Toda chave de
