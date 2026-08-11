@@ -24,11 +24,28 @@ function toPersonStub(credit: TmdbCastCredit | TmdbCrewCredit): PersonStub {
 export interface NormalizedCredits {
   readonly cast: CastMemberInput[]
   readonly crew: CrewMemberInput[]
+  /**
+   * true quando a FONTE trouxe a lista de elenco (um array), mesmo VAZIO.
+   *
+   * Distingue "a fonte nao falou sobre elenco" de "a fonte disse que nao ha
+   * elenco" — sem isso as duas chegam ao store como `cast: []` e um payload
+   * sem o append `credits` (raw antigo, corpo truncado) apaga o elenco ja
+   * gravado. Mesmo motivo pelo qual `streaming-availability/mapping.ts` marca
+   * `recognized: false` num corpo anomalo em vez de deixar o replace rodar.
+   */
+  readonly castPresent: boolean
+  /** Idem para a lista de equipe (`crew`). */
+  readonly crewPresent: boolean
 }
 
 /** Normaliza cast e crew, descartando entradas sem id de pessoa. */
 export function normalizeCredits(credits: TmdbCredits | undefined): NormalizedCredits {
-  const cast = (credits?.cast ?? [])
+  // Array (mesmo vazio) = a fonte afirmou a lista. Ausente ou nao-array
+  // (bloco `credits` sem append, corpo truncado) = nao sabemos nada.
+  const rawCast = credits?.cast
+  const rawCrew = credits?.crew
+
+  const cast = (Array.isArray(rawCast) ? rawCast : [])
     .filter((entry) => typeof entry.id === 'number')
     .map(
       (entry): CastMemberInput => ({
@@ -40,7 +57,7 @@ export function normalizeCredits(credits: TmdbCredits | undefined): NormalizedCr
       }),
     )
 
-  const crew = (credits?.crew ?? [])
+  const crew = (Array.isArray(rawCrew) ? rawCrew : [])
     .filter((entry) => typeof entry.id === 'number')
     .map(
       (entry): CrewMemberInput => ({
@@ -52,5 +69,5 @@ export function normalizeCredits(credits: TmdbCredits | undefined): NormalizedCr
       }),
     )
 
-  return { cast, crew }
+  return { cast, crew, castPresent: Array.isArray(rawCast), crewPresent: Array.isArray(rawCrew) }
 }

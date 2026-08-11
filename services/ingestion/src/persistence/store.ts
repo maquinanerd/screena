@@ -8,7 +8,9 @@
 
 import type { PrismaClient } from '@screena/db/server'
 import type {
+  CreditsWriteOutcome,
   EntityStorePort,
+  EntityUpsertOutcome,
   SeasonUpsertOutcome,
   StoreMovieInput,
   StorePersonInput,
@@ -90,61 +92,124 @@ async function upsertPeopleStubs(
   return new Map(rows.map((row) => [row.tmdbId, row.id]))
 }
 
+/** Presenca declarada pela fonte (ver `StoreMovieInput.castPresent`). */
+interface CreditsPresence {
+  readonly castPresent: boolean
+  readonly crewPresent: boolean
+}
+
+/**
+ * Replace-set de creditos — mas SO das listas que a fonte de fato trouxe.
+ *
+ * O `deleteMany` roda apenas quando `castPresent`/`crewPresent` afirma que a
+ * FONTE declarou aquela lista. Antes ele era incondicional: um payload sem o
+ * bloco `credits` (raw antigo reprocessado por `reprocess_raw`, corpo truncado)
+ * chegava aqui como `cast: []` e APAGAVA o elenco ja gravado, e o ciclo ainda
+ * reportava `updated: 1` — perda de dado silenciosa. Lista presente porem
+ * VAZIA continua limpando: ali a fonte afirmou que nao ha creditos.
+ *
+ * Mesma regra que `services/streaming/src/streaming-availability/mapping.ts`
+ * ja aplica: corpo anomalo nao roda replace, para nao apagar dado bom.
+ */
 async function replaceCredits(
   tx: Tx,
   entityType: CreditEntityType,
   entityId: bigint,
   cast: readonly CastMemberInput[],
   crew: readonly CrewMemberInput[],
+  presence: CreditsPresence,
   lastSyncedAt: Date,
-): Promise<void> {
-  const stubs: PersonStub[] = [...cast.map((c) => c.person), ...crew.map((c) => c.person)]
+): Promise<CreditsWriteOutcome> {
+  const { castPresent, crewPresent } = presence
+  const empty: CreditsWriteOutcome = {
+    castReplaced: false,
+    crewReplaced: false,
+    castLinked: 0,
+    crewLinked: 0,
+    castDropped: 0,
+    crewDropped: 0,
+  }
+  // A fonte nao falou de elenco NEM de equipe: nada a fazer. Sai antes de
+  // tocar `people` para nao carimbar `last_synced_at` a toa.
+  if (!castPresent && !crewPresent) return empty
+
+  const stubs: PersonStub[] = [
+    ...(castPresent ? cast.map((c) => c.person) : []),
+    ...(crewPresent ? crew.map((c) => c.person) : []),
+  ]
   const idByTmdb = await upsertPeopleStubs(tx, stubs, lastSyncedAt)
 
-  await tx.castMember.deleteMany({ where: { entityType, entityId } })
-  await tx.crewMember.deleteMany({ where: { entityType, entityId } })
+  let castLinked = 0
+  let crewLinked = 0
+  let castDropped = 0
+  let crewDropped = 0
 
-  const castData = cast
-    .map((credit) => {
-      const personId = idByTmdb.get(credit.personTmdbId)
-      if (personId === undefined) return undefined
-      return {
-        personId,
-        entityType,
-        entityId,
-        character: credit.character,
-        billingOrder: credit.billingOrder,
-        creditId: credit.creditId,
-      }
-    })
-    .filter((row): row is NonNullable<typeof row> => row !== undefined)
-  if (castData.length > 0) {
-    await tx.castMember.createMany({ data: castData, skipDuplicates: true })
+  if (castPresent) {
+    await tx.castMember.deleteMany({ where: { entityType, entityId } })
+    const castData = cast
+      .map((credit) => {
+        const personId = idByTmdb.get(credit.personTmdbId)
+        // Stub de pessoa ausente: o credito nao tem onde se ligar. Contado em
+        // `castDropped` — antes era descartado sem deixar rastro.
+        if (personId === undefined) {
+          castDropped += 1
+          return undefined
+        }
+        return {
+          personId,
+          entityType,
+          entityId,
+          character: credit.character,
+          billingOrder: credit.billingOrder,
+          creditId: credit.creditId,
+        }
+      })
+      .filter((row): row is NonNullable<typeof row> => row !== undefined)
+    if (castData.length > 0) {
+      await tx.castMember.createMany({ data: castData, skipDuplicates: true })
+    }
+    castLinked = castData.length
   }
 
-  const crewData = crew
-    .map((credit) => {
-      const personId = idByTmdb.get(credit.personTmdbId)
-      if (personId === undefined) return undefined
-      return {
-        personId,
-        entityType,
-        entityId,
-        department: credit.department,
-        job: credit.job,
-        creditId: credit.creditId,
-      }
-    })
-    .filter((row): row is NonNullable<typeof row> => row !== undefined)
-  if (crewData.length > 0) {
-    await tx.crewMember.createMany({ data: crewData, skipDuplicates: true })
+  if (crewPresent) {
+    await tx.crewMember.deleteMany({ where: { entityType, entityId } })
+    const crewData = crew
+      .map((credit) => {
+        const personId = idByTmdb.get(credit.personTmdbId)
+        if (personId === undefined) {
+          crewDropped += 1
+          return undefined
+        }
+        return {
+          personId,
+          entityType,
+          entityId,
+          department: credit.department,
+          job: credit.job,
+          creditId: credit.creditId,
+        }
+      })
+      .filter((row): row is NonNullable<typeof row> => row !== undefined)
+    if (crewData.length > 0) {
+      await tx.crewMember.createMany({ data: crewData, skipDuplicates: true })
+    }
+    crewLinked = crewData.length
+  }
+
+  return {
+    castReplaced: castPresent,
+    crewReplaced: crewPresent,
+    castLinked,
+    crewLinked,
+    castDropped,
+    crewDropped,
   }
 }
 
 /** Cria um `EntityStorePort` apoiado no Prisma. */
 export function createPrismaStore(prisma: PrismaClient): EntityStorePort {
   return {
-    async upsertMovie(input: StoreMovieInput): Promise<UpsertOutcome> {
+    async upsertMovie(input: StoreMovieInput): Promise<EntityUpsertOutcome> {
       return prisma.$transaction(async (tx) => {
         const existing = await tx.movie.findUnique({
           where: { tmdbId: input.movie.tmdbId },
@@ -172,8 +237,16 @@ export function createPrismaStore(prisma: PrismaClient): EntityStorePort {
           select: { id: true },
         })
         await replaceExternalIds(tx, 'movie', row.id, input.externalIds)
-        await replaceCredits(tx, 'movie', row.id, input.cast, input.crew, input.timestamps.lastSyncedAt)
-        return { id: row.id.toString(), created: existing === null }
+        const credits = await replaceCredits(
+          tx,
+          'movie',
+          row.id,
+          input.cast,
+          input.crew,
+          { castPresent: input.castPresent, crewPresent: input.crewPresent },
+          input.timestamps.lastSyncedAt,
+        )
+        return { id: row.id.toString(), created: existing === null, credits }
       })
     },
 
@@ -185,7 +258,7 @@ export function createPrismaStore(prisma: PrismaClient): EntityStorePort {
       return count > 0
     },
 
-    async upsertTvShow(input: StoreTvShowInput): Promise<UpsertOutcome> {
+    async upsertTvShow(input: StoreTvShowInput): Promise<EntityUpsertOutcome> {
       return prisma.$transaction(async (tx) => {
         const existing = await tx.tvShow.findUnique({
           where: { tmdbId: input.tvShow.tmdbId },
@@ -215,8 +288,16 @@ export function createPrismaStore(prisma: PrismaClient): EntityStorePort {
           select: { id: true },
         })
         await replaceExternalIds(tx, 'tv', row.id, input.externalIds)
-        await replaceCredits(tx, 'tv', row.id, input.cast, input.crew, input.timestamps.lastSyncedAt)
-        return { id: row.id.toString(), created: existing === null }
+        const credits = await replaceCredits(
+          tx,
+          'tv',
+          row.id,
+          input.cast,
+          input.crew,
+          { castPresent: input.castPresent, crewPresent: input.crewPresent },
+          input.timestamps.lastSyncedAt,
+        )
+        return { id: row.id.toString(), created: existing === null, credits }
       })
     },
 

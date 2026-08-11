@@ -66,6 +66,7 @@ import type {
   CatalogMediaSyncPort,
   CatalogReprocessRawPort,
   CatalogSeasonsSyncPort,
+  CreditsSyncOutcome,
   DetailSyncOutcome,
   DiscoverIdsOutcome,
   DiscoveryListFetchPort,
@@ -77,7 +78,7 @@ import type { ReferenceOwnerType } from '../catalog-entities/store-port.js'
 import type { ImportResult } from '../import/types.js'
 import type { CatalogDisplayFields } from '../display-fields.js'
 import { desiredCatalogSlug } from '../public-catalog-slug.js'
-import type { TmdbReadPort } from '../ports.js'
+import type { CreditsWriteOutcome, TmdbReadPort } from '../ports.js'
 import type { PrismaClient } from '@screena/db/server'
 import type { TmdbCatalogEndpoints } from '@screena/tmdb-client'
 import { promoteMoviesFromRaw, promotePeopleFromRaw, promoteTvShowsFromRaw } from '../raw-promote/run.js'
@@ -130,6 +131,37 @@ function requireNumber(value: number | null, field: string, kind: string): numbe
     throw new PermanentJobError('invalid_job_input', `"${field}" e obrigatorio para ${kind}`)
   }
   return value
+}
+
+/**
+ * Traduz o resumo do replace-set de creditos para o relatorio do `sync_credits`.
+ *
+ * Quando o payload nao trouxe NENHUMA das duas listas, nada foi regravado — e o
+ * job precisa dizer isso. Antes esse caso devolvia `{ cast: 0, skipped: false }`,
+ * ou seja, "sucesso, zero creditos", enquanto o store apagava o elenco existente.
+ */
+function creditsSyncOutcome(credits: CreditsWriteOutcome): CreditsSyncOutcome {
+  if (!credits.castReplaced && !credits.crewReplaced) {
+    return {
+      cast: 0,
+      crew: 0,
+      guestStars: 0,
+      skipped: true,
+      skipReason: 'payload sem bloco credits: elenco/equipe preservados',
+    }
+  }
+  return {
+    cast: credits.castLinked,
+    crew: credits.crewLinked,
+    guestStars: 0,
+    skipped: false,
+    // Credito descartado por falta de stub de pessoa e perda de dado: aparece
+    // no relatorio em vez de sumir no `.filter`.
+    skipReason:
+      credits.castDropped + credits.crewDropped > 0
+        ? `creditos sem pessoa resolvida descartados: elenco=${credits.castDropped} equipe=${credits.crewDropped}`
+        : null,
+  }
 }
 
 /** Opcoes de montagem dos servicos do catalogo. */
@@ -377,35 +409,27 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
           externalIds: normalized.externalIds,
           cast: normalized.cast,
           crew: normalized.crew,
+          castPresent: normalized.castPresent,
+          crewPresent: normalized.crewPresent,
           timestamps: { lastSyncedAt: now(), staleAfter: new Date(now().getTime() + staleWindowMs) },
         })
         await syncEntityReferences('movie', tmdbId, detail)
-        return {
-          cast: normalized.cast.length,
-          crew: normalized.crew.length,
-          guestStars: 0,
-          skipped: outcome === null,
-          skipReason: null,
-        }
+        return creditsSyncOutcome(outcome.credits)
       }
       if (kind === 'tv') {
         const detail = await tmdb.getTvShow(tmdbId)
         const normalized = normalizeTvShow(detail)
-        await persistence.store.upsertTvShow({
+        const outcome = await persistence.store.upsertTvShow({
           tvShow: normalized.tvShow,
           externalIds: normalized.externalIds,
           cast: normalized.cast,
           crew: normalized.crew,
+          castPresent: normalized.castPresent,
+          crewPresent: normalized.crewPresent,
           timestamps: { lastSyncedAt: now(), staleAfter: new Date(now().getTime() + staleWindowMs) },
         })
         await syncEntityReferences('tv', tmdbId, detail)
-        return {
-          cast: normalized.cast.length,
-          crew: normalized.crew.length,
-          guestStars: 0,
-          skipped: false,
-          skipReason: null,
-        }
+        return creditsSyncOutcome(outcome.credits)
       }
       // `season`: os creditos de temporada nao tem tabela propria; o nivel util
       // e o episodio. Reportar skip explicito e melhor que fingir sucesso.
@@ -442,6 +466,11 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
           externalIds: normalized.externalIds,
           cast: normalized.cast,
           crew: normalized.crew,
+          // Este job existe para external_ids. Se o detalhe vier sem o bloco
+          // `credits`, os flags nascem `false` e o elenco fica intocado — um
+          // sync de IDs nunca pode ter efeito colateral sobre creditos.
+          castPresent: normalized.castPresent,
+          crewPresent: normalized.crewPresent,
           timestamps: { lastSyncedAt: now(), staleAfter: new Date(now().getTime() + staleWindowMs) },
         })
         return { upserted: normalized.externalIds.length, changed: 0, skipped: false, skipReason: null }
@@ -453,6 +482,9 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
           externalIds: normalized.externalIds,
           cast: normalized.cast,
           crew: normalized.crew,
+          // Ver o ramo de filme: sync de IDs nao mexe em creditos.
+          castPresent: normalized.castPresent,
+          crewPresent: normalized.crewPresent,
           timestamps: { lastSyncedAt: now(), staleAfter: new Date(now().getTime() + staleWindowMs) },
         })
         return { upserted: normalized.externalIds.length, changed: 0, skipped: false, skipReason: null }

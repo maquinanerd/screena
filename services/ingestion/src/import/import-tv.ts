@@ -40,6 +40,8 @@ export async function importTvShow(ctx: ImportContext, tmdbId: number): Promise<
         externalIds: normalized.externalIds,
         cast: normalized.cast,
         crew: normalized.crew,
+        castPresent: normalized.castPresent,
+        crewPresent: normalized.crewPresent,
         timestamps,
       })
       created = outcome.created
