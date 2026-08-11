@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildHomeEditorialHighlights,
   classifyEditorialVerticals,
+  excludeEditorialHighlights,
   hasEditorialHighlights,
   HOME_EDITORIAL_LOADER_LIMIT,
   type HomeEditorialArticleInput,
@@ -229,6 +230,27 @@ describe("home editorial — forma do card e ordenação", () => {
     expect(semCategoria.series[0]?.eyebrow).toBe("Séries");
   });
 
+  it("token do contrato em `category` vira rótulo pt-BR — nunca vaza cru", () => {
+    // A projeção do CMS grava o `contentType` do contrato editorial em
+    // `articles.category`. O card exibe o rótulo mapeado, jamais "NEWS"/"LIST".
+    const casos: ReadonlyArray<readonly [string, string]> = [
+      ["news", "Notícia"],
+      ["feature", "Especial"],
+      ["review", "Crítica"],
+      ["guide", "Guia"],
+      ["list", "Explorar coleção"],
+      ["interview", "Entrevista"],
+      ["evergreen", "Atemporal"],
+    ];
+    for (const [token, label] of casos) {
+      const out = buildHomeEditorialHighlights(
+        [article({ articleId: "93", category: token })],
+        NOW,
+      );
+      expect(out.movies[0]?.eyebrow, `token ${token}`).toBe(label);
+    }
+  });
+
   it("imagem só LOCAL válida; externa/tmdb/travessia viram placeholder (null)", () => {
     const ok = buildHomeEditorialHighlights(
       [article({ articleId: "100", heroImagePath: "/media/capa.jpg" })],
@@ -310,5 +332,42 @@ describe("home editorial — forma do card e ordenação", () => {
       HOME_EDITORIAL_LOADER_LIMIT,
     );
     expect(buildHomeEditorialHighlights(many, NOW, 3).movies).toHaveLength(3);
+  });
+});
+
+describe("home editorial — deduplicação contra outra seção da página", () => {
+  const base = buildHomeEditorialHighlights(
+    [
+      article({ articleId: "300", slug: "repetida", linkedEntityTypes: ["movie", "tv"] }),
+      article({ articleId: "301", slug: "so-nos-destaques", linkedEntityTypes: ["movie"] }),
+    ],
+    NOW,
+  );
+
+  it("remove das DUAS verticais a matéria que já aparece na outra seção", () => {
+    const out = excludeEditorialHighlights(
+      base,
+      new Set(["/pt/noticias/repetida/"]),
+    );
+    expect(out.movies.map((c) => c.slug)).toEqual(["so-nos-destaques"]);
+    expect(out.series).toHaveLength(0);
+  });
+
+  it("sem interseção, nada muda (mesma referência, zero cópia)", () => {
+    expect(excludeEditorialHighlights(base, new Set())).toBe(base);
+    const semColisao = excludeEditorialHighlights(
+      base,
+      new Set(["/pt/noticias/outra-materia/"]),
+    );
+    expect(semColisao.movies).toHaveLength(2);
+    expect(semColisao.series).toHaveLength(1);
+  });
+
+  it("esvaziar as duas verticais é resultado válido — a seção some, honesta", () => {
+    const out = excludeEditorialHighlights(
+      base,
+      new Set(["/pt/noticias/repetida/", "/pt/noticias/so-nos-destaques/"]),
+    );
+    expect(hasEditorialHighlights(out)).toBe(false);
   });
 });

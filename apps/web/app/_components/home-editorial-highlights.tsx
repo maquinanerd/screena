@@ -54,12 +54,13 @@ function EditorialImage({ card }: { card: HomeEditorialHighlight }): ReactNode {
 }
 
 function LeadCard({ card }: { card: HomeEditorialHighlight }): ReactNode {
+  // O card principal do canônico NÃO tem kicker: só título + deck. O eyebrow
+  // editorial (derivado do contentType) pertence aos dois cards menores.
   return (
     <a className="feat-card feat-card--lead" href={card.href}>
       <EditorialImage card={card} />
       <span className="feat-card__scrim" />
       <span className="feat-card__body">
-        <span className="feat-card__kicker">{card.eyebrow}</span>
         <h3 className="feat-card__title">{card.title}</h3>
         {card.deck !== null ? <p className="feat-card__sub">{card.deck}</p> : null}
       </span>

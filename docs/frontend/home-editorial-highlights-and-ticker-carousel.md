@@ -690,3 +690,26 @@ agregadas de quatro fontes persistidas.
 exibição, idioma da sessão, rede/sala e horário: o sistema **não persiste** esses
 fatos. Enquanto não existir integração real, a faixa não os menciona — mesmo que
 o protótipo os mostre.
+
+---
+
+## Adendo (2026-08-11) — kicker por contentType, lead sem kicker e deduplicação
+
+Três mudanças posteriores a este registro (PR "Destaques de hoje: kicker do
+contentType + deduplicação"):
+
+1. **O eyebrow agora mapeia o `contentType` do contrato.** A projeção editorial
+   grava o token cru do CMS (`news`, `feature`, `review`, `guide`, `list`,
+   `interview`, `evergreen`) em `articles.category`; o presenter converte esses
+   tokens em rótulos pt-BR (`HOME_EDITORIAL_CONTENT_TYPE_EYEBROW`, ex.: `list`
+   → "Explorar coleção"). Texto livre legado continua passando como está, e o
+   fallback segue sendo o rótulo da vertical. A seção 6.2 acima permanece
+   correta no que importa: `category` NUNCA classifica a vertical — ela só
+   alimenta o rótulo exibido.
+2. **O card principal não exibe kicker** (título + deck apenas), alinhado ao
+   canônico; o eyebrow pertence aos dois cards menores. O check do harness
+   passou de "eyebrow nos 3" para "eyebrow nos 2 pôsteres".
+3. **A home não repete matéria entre "Destaques de hoje" e "Notícias &
+   entrevistas"**: `excludeEditorialHighlights` (presenter puro) remove dos
+   destaques os hrefs que o bloco de notícias já mostra. Sem compensação: o
+   grid se adapta e o estado vazio honesto permanece.
