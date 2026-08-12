@@ -13,7 +13,8 @@
   "license": "UNLICENSED",
   "scripts": {
     "legal": "tsx bin/legal.ts",
-    "validate:source-authorization": "tsx scripts/validate-source-authorization-and-attribution.ts"
+    "validate:source-authorization": "tsx scripts/validate-source-authorization-and-attribution.ts",
+    "validate:source-authorization-supersede": "tsx scripts/validate-source-authorization-supersede.ts"
   },
   "dependencies": {
     "@screena/config": "workspace:*",

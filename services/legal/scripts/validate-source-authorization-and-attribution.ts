@@ -26,6 +26,7 @@ import { fileURLToPath } from "node:url";
 import EmbeddedPostgres from "embedded-postgres";
 import { PrismaClient } from "@prisma/client";
 
+import { applyAuthorizationWithin } from "../src/apply.js";
 import {
   STATIC_AUTHORIZATION,
   streamingProviderEntries,
@@ -33,7 +34,6 @@ import {
   ratingRequiresLinkback,
   type AuthorizationEntry,
 } from "../src/authorization-spec.js";
-import { assertNoBlockedGrants, planAuthorization, isPlanClean } from "../src/plan.js";
 
 const require = createRequire(import.meta.url);
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -114,10 +114,14 @@ async function safeRm(dir: string): Promise<void> {
 }
 
 /**
- * Apply REAL do registry contra `tx`. É uma cópia fiel do laço do bin — o bin
- * não é importável (fora do typecheck principal), então o laço vive aqui e no
- * bin; ambos exercitam o MESMO plano puro (`planAuthorization`) e as mesmas
- * funções de fingerprint do banco. O que este validador prova é o resultado.
+ * Apply REAL do registry contra `tx`. Não é mais uma cópia do laço do bin: o
+ * laço vive em `@screena/legal` (`src/apply.ts`) e é o MESMO que
+ * `pnpm legal sources apply --confirm` executa. Aqui fica só a transação.
+ *
+ * A cópia anterior custou caro: ela e o bin carregavam o mesmo defeito de ordem
+ * no `supersede`, e este validador não o via porque partia de um banco cujas
+ * licenças a supersedir ainda não tinham decisões vigentes. Ver
+ * `validate-source-authorization-supersede.ts`, que exercita esse estado.
  */
 async function applyAuthorization(
   prisma: PrismaClient,
@@ -125,87 +129,10 @@ async function applyAuthorization(
   reviewer: string,
 ): Promise<void> {
   await prisma.$transaction(async (tx) => {
-    const licenses = (await tx.$queryRawUnsafe<Array<Record<string, unknown>>>(
-      `SELECT id, source_key, content_type::text AS content_type, rating_source_key, provider_key,
-              territory_code, license_status::text AS license_status, display_allowed, logo_allowed,
-              score_allowed, review_quote_allowed, requires_attribution, requires_linkback,
-              attribution_text, policy_version FROM source_licenses WHERE is_current = true`,
-    )).map((r) => ({
-      id: String(r.id), sourceKey: r.source_key as string, contentType: r.content_type as string,
-      ratingSourceKey: (r.rating_source_key as string | null) ?? null, providerKey: (r.provider_key as string | null) ?? null,
-      territory: (r.territory_code as string | null) ?? null, licenseStatus: r.license_status as string,
-      displayAllowed: r.display_allowed as boolean, logoAllowed: r.logo_allowed as boolean, scoreAllowed: r.score_allowed as boolean,
-      reviewQuoteAllowed: r.review_quote_allowed as boolean, requiresAttribution: r.requires_attribution as boolean,
-      requiresLinkback: r.requires_linkback as boolean, attributionText: (r.attribution_text as string | null) ?? null,
-      policyVersion: (r.policy_version as string | null) ?? null,
-    }));
-    const decisions = (await tx.$queryRawUnsafe<Array<Record<string, unknown>>>(
-      `SELECT id, source_license_id, use_case, territory, stage::text AS stage, display_allowed,
-              storage_allowed, derivative_allowed, attribution_required, linkback_required, policy_version
-         FROM data_usage_decisions WHERE is_current = true`,
-    )).map((r) => ({
-      id: String(r.id), sourceLicenseId: String(r.source_license_id), useCase: r.use_case as string,
-      territory: (r.territory as string | null) ?? null, stage: r.stage as string, displayAllowed: r.display_allowed as boolean,
-      storageAllowed: r.storage_allowed as boolean, derivativeAllowed: r.derivative_allowed as boolean,
-      attributionRequired: r.attribution_required as boolean, linkbackRequired: r.linkback_required as boolean,
-      policyVersion: (r.policy_version as string | null) ?? null,
-    }));
-
-    const plan = planAuthorization(entries, licenses, decisions);
-    assertNoBlockedGrants(plan);
-    if (isPlanClean(plan)) return;
-
-    for (const entry of plan.entries) {
-      let licenseId: string;
-      const l = entry.license.target;
-      const insertLicense = async (supersedes: string | null): Promise<string> => {
-        const rows = await tx.$queryRaw<Array<{ id: bigint }>>`
-          INSERT INTO "source_licenses" (
-            "source_key","content_type","rating_source_key","provider_key","territory_code",
-            "license_status","display_allowed","logo_allowed","score_allowed","review_quote_allowed",
-            "requires_attribution","requires_linkback","attribution_text","is_current","supersedes_id",
-            "decided_by","decided_at","decision_origin","policy_version","notes","updated_at"
-          ) VALUES (
-            ${l.sourceKey}, ${l.contentType}::"SourceLicenseContentType", ${l.ratingSourceKey}, ${l.providerKey}, ${l.territory},
-            ${l.licenseStatus}::"LicenseStatus", ${l.displayAllowed}, ${l.logoAllowed}, ${l.scoreAllowed}, ${l.reviewQuoteAllowed},
-            ${l.requiresAttribution}, ${l.requiresLinkback}, ${l.attributionText}, true,
-            ${supersedes === null ? null : BigInt(supersedes)}, ${reviewer}, now(), 'owner_authorization',
-            ${l.policyVersion}, ${l.notes}, now()
-          ) RETURNING "id"`;
-        return String(rows[0]!.id);
-      };
-
-      if (entry.license.action === "keep") {
-        licenseId = entry.license.currentId!;
-      } else if (entry.license.action === "create") {
-        licenseId = await insertLicense(null);
-      } else {
-        await tx.$executeRaw`UPDATE "source_licenses" SET "is_current"=false, "updated_at"=now() WHERE "id"=${BigInt(entry.license.currentId!)}`;
-        for (const oldId of entry.deactivateDecisionIds) {
-          await tx.$executeRaw`UPDATE "data_usage_decisions" SET "is_current"=false, "updated_at"=now() WHERE "id"=${BigInt(oldId)}`;
-        }
-        licenseId = await insertLicense(entry.license.currentId);
-      }
-
-      for (const d of entry.decisions) {
-        if (d.action === "keep") continue;
-        if (d.action === "supersede") {
-          await tx.$executeRaw`UPDATE "data_usage_decisions" SET "is_current"=false, "updated_at"=now() WHERE "id"=${BigInt(d.currentId!)}`;
-        }
-        const t = d.target;
-        await tx.$executeRaw`
-          INSERT INTO "data_usage_decisions" (
-            "source_license_id","use_case","territory","stage","display_allowed","storage_allowed",
-            "derivative_allowed","attribution_required","linkback_required","valid_from","policy_version",
-            "decided_by","reason","is_current","supersedes_id","updated_at"
-          ) VALUES (
-            ${BigInt(licenseId)}, ${t.useCase}, ${t.territory}, ${t.stage}::"DataUsageStage",
-            ${t.displayAllowed}, ${t.storageAllowed}, ${t.derivativeAllowed}, ${t.attributionRequired}, ${t.linkbackRequired},
-            now(), ${t.policyVersion}, ${reviewer}, 'validacao do registro de autorizacao', true,
-            ${d.action === "supersede" ? BigInt(d.currentId!) : null}, now()
-          )`;
-      }
-    }
+    await applyAuthorizationWithin(tx, entries, {
+      reviewer,
+      reason: "validacao do registro de autorizacao",
+    });
   });
 }
 
