@@ -1,52 +1,54 @@
 #!/usr/bin/env node
 /**
- * bin/sync-film-show-ratings.ts — Worker OFFLINE do Film/Show Ratings (RapidAPI).
+ * bin/sync-omdb-ratings.ts — Worker OFFLINE de ratings via OMDb.
  * Worker-only — NUNCA no render.
  *
  * Fica em `services/ratings/bin`: EXCLUIDO do typecheck e do bundle de render.
- * Usa o core PURO em `../src/**` (typechecked + testado) e adiciona so o IO:
- * client HTTP, Prisma (api_cache / api_sync_logs / external_ratings), sample e
- * relatorio em `.data/` (gitignored).
+ * Usa o core PURO em `../src/omdb/**` (typechecked + testado) e adiciona so o
+ * IO: client HTTP, Prisma (api_cache / api_sync_logs / external_ratings), sample
+ * e relatorio em `.data/` (gitignored).
  *
- * ENDPOINT: `GET /item/?id=<IMDb_ID>`. O plano Pro NAO libera `/popular/` (403),
- * entao o worker enriquece entidades locais JA existentes, uma por vez, por
- * identificador inequivoco (IMDb id). Nunca casa por titulo/ano.
+ * ENDPOINT: `GET /?i=<IMDb_ID>`. Um payload devolve as notas de TRES fontes
+ * editoriais (IMDb, Rotten Tomatoes, Metacritic) de uma vez — cada uma vira sua
+ * propria linha em `external_ratings`, com sua escala e seu credito.
+ * `omdb` e o fornecedor TECNICO e nunca a fonte de nota nenhuma (invariante 2).
  *
  * O QUE FAZ:
- *  - Dry-run (default): reporta o PLANO (endpoint + ids que SERIAM consultados).
- *    ZERO rede, ZERO DB, ZERO quota.
- *  - `--sample`: busca o(s) payload(s) REAL(is) de `/item/`, grava `api_cache` +
- *    `api_sync_logs` e escreve um sample SANITIZADO por id em `.data/`. NAO grava
- *    `external_ratings`.
- *  - `--apply`: idem, e grava `external_ratings` SO para o que tiver mapping
- *    inequivoco (fonte editorial + metrica + escala) e entidade local resolvida
- *    por IMDb id. Tudo o mais e recusado e contado no relatorio.
+ *  - Dry-run (default): reporta o PLANO. ZERO rede, ZERO DB, ZERO cota.
+ *  - `--sample`: busca o(s) payload(s) REAL(is), grava `api_cache` +
+ *    `api_sync_logs` e escreve um sample SANITIZADO por id em `.data/`. NAO
+ *    grava `external_ratings`.
+ *  - `--apply`: idem, e grava `external_ratings` so para o que tiver mapping
+ *    inequivoco e entidade local resolvida por IMDb id. Tudo o mais e recusado
+ *    e contado no relatorio.
  *
  * SELECAO DE IDS:
- *  - `--id=tt...`: enriquece exatamente esse id.
+ *  - `--id=tt...`: consulta exatamente esse id (ignora frescor: foi pedido).
  *  - sem `--id`: seleciona ate `--limit` (default 20) entidades locais do
- *    `--type` (movie/tv) que tenham IMDb id.
+ *    `--type` (movie/tv) que tenham IMDb id E cuja coleta OMDb esteja fora da
+ *    janela de frescor (`RATING_STALE_POLICY`). `--ignore-freshness` desliga o
+ *    filtro (queima cota; use so apos mudanca de licenca/politica).
  *
- * NAO FAZ: exibir nada publicamente; tocar `screen_score` (nota editorial
- * PROPRIA da Cinerie, que jamais recebe dado de terceiro); alterar slugs,
- * canonical, redirects ou UI; baixar imagem; criar migration; chamar `/popular/`.
+ * COTA: o plano gratuito sao 1.000 requisicoes por DIA. Uma requisicao rende as
+ * tres notas, entao o teto vale em ENTIDADES/dia. O relatorio informa o gasto.
+ * Protecao ativa: 3 falhas CONSECUTIVAS (ou circuito aberto) interrompem o lote
+ * e o relatorio diz quantos ids ficaram sem consulta.
  *
- * SEGREDO: `RAPIDAPI_FILM_SHOW_RATINGS_KEY` so em env var. Nunca e impressa,
- * nunca entra em URL, relatorio, sample ou log.
+ * NAO FAZ: exibir nada publicamente; tocar `screen_score`; alterar slugs,
+ * canonical, redirects ou UI; baixar imagem; criar migration.
  *
- * FAIL-CLOSED: aborta em producao; `--sample`/`--apply` exigem a chave E
- * `DATABASE_URL` (toda chamada externa grava `api_cache` + `api_sync_logs`);
- * `--apply` exige tambem `--type`; `--sample` sem `--id` exige `--type`.
+ * SEGREDO: `OMDB_API_KEY` so em env var. A OMDb nao aceita header, entao a
+ * chave viaja em query — e nunca e impressa, nunca entra em relatorio, sample,
+ * log ou `api_cache`.
  *
- * Uso (a partir da raiz). Resolva o cli do tsx e rode, como os demais bins:
+ * FAIL-CLOSED: producao exige `CINERIE_RATINGS_PROVIDER_AUTHORIZED=true`;
+ * `--sample`/`--apply` exigem a chave E `DATABASE_URL`; `--apply` exige `--type`.
+ *
+ * Uso (a partir da raiz):
  *   TSX="$(ls node_modules/.pnpm/tsx@*\/node_modules/tsx/dist/cli.mjs | head -1)"
- *   node "$TSX" services/ratings/bin/sync-film-show-ratings.ts --type=film --limit=20
- *   node "$TSX" services/ratings/bin/sync-film-show-ratings.ts --type=film --id=tt9603208 --sample
- *   node "$TSX" services/ratings/bin/sync-film-show-ratings.ts --type=film --limit=5 --sample
- *   node "$TSX" services/ratings/bin/sync-film-show-ratings.ts --type=film --limit=5 --apply
- *
- *   Flags de valor aceitam `--flag=valor` e `--flag valor`. Valor ausente, flag
- *   desconhecida ou valor invalido FALHAM com erro claro (nunca default silencioso).
+ *   node "$TSX" services/ratings/bin/sync-omdb-ratings.ts --type=movie --limit=20
+ *   node "$TSX" services/ratings/bin/sync-omdb-ratings.ts --id=tt3896198 --sample
+ *   node "$TSX" services/ratings/bin/sync-omdb-ratings.ts --type=movie --limit=5 --apply
  */
 
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
@@ -54,32 +56,29 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import {
-  createFilmShowRatingsClient,
-  loadFilmShowRatingsConfig,
-  FILM_SHOW_RATINGS_ITEM_ENDPOINT,
-  FILM_SHOW_RATINGS_KEY_ENV,
-  FILM_SHOW_RATINGS_PROVIDER_API,
-} from '@screena/film-show-ratings-client'
+  createOmdbClient,
+  loadOmdbConfig,
+  OMDB_ENDPOINT,
+  OMDB_KEY_ENV,
+  OMDB_PROVIDER_API,
+} from '@screena/omdb-client'
 import { sanitizePayload } from '@screena/rapidapi-core'
 import { disconnectPrisma, getPrismaClient } from '@screena/db/server'
 
-import { parseFilmShowRatingsArgs } from '../src/film-show-ratings/args.js'
-import { describeRatingsGateReason, evaluateRatingsGate } from '../src/film-show-ratings/gate.js'
+import { parseOmdbArgs } from '../src/omdb/args.js'
+import { describeOmdbGateReason, evaluateOmdbGate } from '../src/omdb/gate.js'
 import {
-  buildItemRatingsReport,
-  renderRatingsReport,
-  runMode,
-  serializeRatingsReportJson,
-} from '../src/film-show-ratings/report.js'
-import {
-  DEFAULT_ITEM_CANDIDATE_LIMIT,
-  runFilmShowRatingsItemSync,
-} from '../src/film-show-ratings/run.js'
+  buildOmdbReport,
+  omdbRunMode,
+  renderOmdbReport,
+  serializeOmdbReportJson,
+} from '../src/omdb/report.js'
+import { DEFAULT_OMDB_CANDIDATE_LIMIT, runOmdbRatingsSync } from '../src/omdb/run.js'
 import type {
   CachePort,
-  EntityCandidateSelectPort,
   EntityLookupPort,
   ExternalRatingsPort,
+  StaleEntityCandidateSelectPort,
   SyncLogPort,
 } from '../src/ports.js'
 
@@ -108,9 +107,9 @@ const NOOP_ENTITIES: EntityLookupPort = {
     return null
   },
 }
-const NOOP_CANDIDATES: EntityCandidateSelectPort = {
-  async selectByType() {
-    return []
+const NOOP_CANDIDATES: StaleEntityCandidateSelectPort = {
+  async selectStaleByType() {
+    return { candidates: [], skippedFresh: 0 }
   },
 }
 const NOOP_RATINGS: ExternalRatingsPort = {
@@ -122,7 +121,7 @@ const NOOP_RATINGS: ExternalRatingsPort = {
 async function main(): Promise<void> {
   loadRepoEnv()
 
-  const parsed = parseFilmShowRatingsArgs(process.argv.slice(2))
+  const parsed = parseOmdbArgs(process.argv.slice(2))
   if (!parsed.ok) {
     console.error(`Argumentos invalidos: ${parsed.error}`)
     process.exitCode = 1
@@ -130,53 +129,45 @@ async function main(): Promise<void> {
   }
   const args = parsed.args
 
-  const isProd =
-    process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production'
-  const hasKey = Boolean(process.env[FILM_SHOW_RATINGS_KEY_ENV]?.trim())
+  const isProd = process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production'
+  const hasKey = Boolean(process.env[OMDB_KEY_ENV]?.trim())
   const hasDb = Boolean(process.env.DATABASE_URL?.trim())
 
-  // Autorizacao explicita do provedor (ver o cabecalho de `gate.ts`). Comparacao
-  // com a string exata: "1", "yes" ou "sim" NAO autorizam consulta em producao.
+  // Comparacao com a string exata: "1", "yes" ou "sim" NAO autorizam producao.
   const providerAuthorized = process.env.CINERIE_RATINGS_PROVIDER_AUTHORIZED?.trim() === 'true'
 
-  // Provedor DESLIGADO por padrao desde 2026-08-12 (403 sem assinatura). Ver o
-  // cabecalho de `gate.ts` para o que reativa-lo exige. Comparacao com a string
-  // exata: "1"/"yes"/"sim" nao ligam.
-  const providerEnabled =
-    process.env.CINERIE_RATINGS_FILM_SHOW_RATINGS_ENABLED?.trim() === 'true'
-
-  const gate = evaluateRatingsGate({
+  const gate = evaluateOmdbGate({
     isProd,
     apply: args.apply,
     sample: args.sample,
     hasKey,
     hasDb,
     providerAuthorized,
-    providerEnabled,
   })
   if (!gate.allowed && gate.reason !== null) {
-    console.error(describeRatingsGateReason(gate.reason))
+    console.error(describeOmdbGateReason(gate.reason))
     process.exitCode = 1
     return
   }
 
   const touchesNetwork = args.apply || args.sample
-  const mode = runMode(args)
+  const mode = omdbRunMode(args)
 
   // Dry-run PURO: sem rede, sem DB, sem cliente HTTP, sem chave.
   if (!touchesNetwork) {
-    const result = await runFilmShowRatingsItemSync(
+    const result = await runOmdbRatingsSync(
       {
         apply: false,
         sample: false,
-        type: args.type,
+        entityType: args.type,
         id: args.id,
         limit: args.limit,
-        providerApi: FILM_SHOW_RATINGS_PROVIDER_API,
+        providerApi: OMDB_PROVIDER_API,
         cacheTtlMs: 0,
+        ignoreFreshness: args.ignoreFreshness,
       },
       {
-        fetchItem: () => Promise.reject(new Error('dry-run nao busca payload')),
+        fetchTitle: () => Promise.reject(new Error('dry-run nao busca payload')),
         cache: NOOP_CACHE,
         syncLog: NOOP_SYNC_LOG,
         entities: NOOP_ENTITIES,
@@ -186,10 +177,10 @@ async function main(): Promise<void> {
         requestCount: () => 0,
       },
     )
-    const report = buildItemRatingsReport(result, {
+    const report = buildOmdbReport(result, {
       apply: false,
       sample: false,
-      providerApi: FILM_SHOW_RATINGS_PROVIDER_API,
+      providerApi: OMDB_PROVIDER_API,
     })
     writeReport(report, args.report, mode, args.type)
 
@@ -197,24 +188,26 @@ async function main(): Promise<void> {
       args.id !== null
         ? `id=${args.id}`
         : args.type !== null
-          ? `ate ${args.limit ?? DEFAULT_ITEM_CANDIDATE_LIMIT} candidato(s) ${args.type} local(is)`
-          : '(informe --id=tt... ou --type=film|show)'
+          ? `ate ${args.limit ?? DEFAULT_OMDB_CANDIDATE_LIMIT} candidato(s) ${args.type} local(is) fora da janela de frescor`
+          : '(informe --id=tt... ou --type=movie|tv)'
     console.log(
-      `[dry-run] plano: GET ${result.endpoint}?id=<IMDb> · alvo: ${target} · ` +
+      `[dry-run] plano: GET ${result.endpoint}?i=<IMDb> · alvo: ${target} · ` +
         'nada foi chamado, nada foi gravado.',
     )
     return
   }
 
   // A partir daqui a rede sera tocada, e o gate ja garantiu chave + DATABASE_URL.
-  const config = loadFilmShowRatingsConfig(process.env)
-  const client = createFilmShowRatingsClient(config)
+  const config = loadOmdbConfig(process.env)
+  const client = createOmdbClient(config)
   const prisma = getPrismaClient()
 
   const { createPrismaCache } = await import('../src/persistence/cache.js')
   const { createPrismaSyncLog } = await import('../src/persistence/sync-log.js')
   const { createPrismaEntityLookup } = await import('../src/persistence/entity-lookup.js')
-  const { createPrismaEntityCandidates } = await import('../src/persistence/entity-candidates.js')
+  const { createPrismaStaleEntityCandidates } = await import(
+    '../src/persistence/stale-entity-candidates.js'
+  )
   const { createPrismaExternalRatings } = await import(
     '../src/persistence/external-ratings-store.js'
   )
@@ -222,7 +215,7 @@ async function main(): Promise<void> {
     '../src/persistence/rating-credit-lookup.js'
   )
 
-  const syncLog = createPrismaSyncLog(prisma, FILM_SHOW_RATINGS_PROVIDER_API)
+  const syncLog = createPrismaSyncLog(prisma, OMDB_PROVIDER_API)
 
   // O core ja grava a linha AUTORITATIVA de `api_sync_logs` quando toca a rede.
   // Este flag impede que uma falha POSTERIOR (escrita de sample/relatorio em
@@ -230,24 +223,26 @@ async function main(): Promise<void> {
   let mainLogWritten = false
 
   try {
-    const result = await runFilmShowRatingsItemSync(
+    const result = await runOmdbRatingsSync(
       {
         apply: args.apply,
         sample: args.sample,
-        type: args.type,
+        entityType: args.type,
         id: args.id,
         limit: args.limit,
-        providerApi: FILM_SHOW_RATINGS_PROVIDER_API,
+        providerApi: OMDB_PROVIDER_API,
         cacheTtlMs: config.cacheTtlMs,
+        ignoreFreshness: args.ignoreFreshness,
       },
       {
-        fetchItem: (id) => client.getItem(id),
-        cache: createPrismaCache(prisma, FILM_SHOW_RATINGS_PROVIDER_API),
+        fetchTitle: (imdbId) => client.getByImdbId(imdbId),
+        cache: createPrismaCache(prisma, OMDB_PROVIDER_API),
         syncLog,
         // Em `--sample` (sem `--apply`) o core nunca resolve nem grava entidade.
         entities: args.apply ? createPrismaEntityLookup(prisma) : NOOP_ENTITIES,
         // Candidatos locais so sao selecionados quando `--id` nao foi informado.
-        candidates: args.id === null ? createPrismaEntityCandidates(prisma) : NOOP_CANDIDATES,
+        candidates:
+          args.id === null ? createPrismaStaleEntityCandidates(prisma) : NOOP_CANDIDATES,
         // A nota nasce fail-closed e, logo apos persistida, a politica de
         // exibicao decide se acende — com base na licenca que o proprietario
         // autorizou (services/legal). Nenhuma recusa e silenciosa: o motivo
@@ -268,7 +263,6 @@ async function main(): Promise<void> {
     mainLogWritten = result.touchedNetwork
 
     if (args.sample) {
-      // Um sample sanitizado por id consultado: `...-item-<id>.json`.
       for (const item of result.items) {
         if (item.rawPayload === null) continue
         try {
@@ -277,7 +271,7 @@ async function main(): Promise<void> {
             secrets: [config.apiKey],
             maxArrayItems: 5,
           })
-          const samplePath = path.join(dataDir(), `film-show-ratings-sample-item-${item.id}.json`)
+          const samplePath = path.join(dataDir(), `omdb-sample-${item.id}.json`)
           mkdirSync(path.dirname(samplePath), { recursive: true })
           writeFileSync(samplePath, `${JSON.stringify(sanitized, null, 2)}\n`)
           console.log(`Sample sanitizado: ${samplePath}`)
@@ -290,36 +284,43 @@ async function main(): Promise<void> {
       }
     }
 
-    const report = buildItemRatingsReport(result, {
+    const report = buildOmdbReport(result, {
       apply: args.apply,
       sample: args.sample,
-      providerApi: FILM_SHOW_RATINGS_PROVIDER_API,
+      providerApi: OMDB_PROVIDER_API,
     })
     writeReport(report, args.report, mode, args.type)
 
     if (result.idsQueried > 0 && result.counters.ratingsRecognized === 0) {
       console.log(
         'Nenhum rating reconhecido nos ids consultados. Inspecione o sample e, se ' +
-          'necessario, estenda o reconhecedor (services/ratings/src/film-show-ratings/mapping.ts).',
+          'necessario, estenda o reconhecedor (services/ratings/src/omdb/sources.ts).',
       )
     }
+    if (result.idsQueried === 0 && result.idsSkippedFresh > 0) {
+      console.log(
+        `Nada a consultar: ${result.idsSkippedFresh} entidade(s) ja coletada(s) dentro da janela de ` +
+          `${result.refreshWindowHours ?? '-'}h. Use --ignore-freshness para forcar.`,
+      )
+    }
+    const bySource = report.by_source.map((s) => `${s.source}=${s.count}`).join(' ')
     console.log(
       `status=${result.status} · ids=${result.idsQueried} · falhas=${result.idsFailed} · ` +
-        `ratings reconhecidos=${result.counters.ratingsRecognized} · ` +
+        `frescos pulados=${result.idsSkippedFresh} · ratings reconhecidos=${result.counters.ratingsRecognized}` +
+        `${bySource === '' ? '' : ` (${bySource})`} · ` +
         `gravados=${result.counters.ratingsWritten} · sem entidade=${result.idsWithoutEntity} · ` +
-        `quota=${result.quotaCost}`,
+        `cota=${result.quotaCost}/${report.quota.daily_limit} por dia`,
     )
     if (result.status === 'failed') process.exitCode = 1
   } catch (error) {
     // Todo sync externo gera log — inclusive o abortado por erro inesperado.
-    // MAS so se a linha autoritativa ainda nao saiu: um ciclo que ja logou
-    // `success` nunca pode ganhar uma 2a linha `aborted` contraditoria.
+    // MAS so se a linha autoritativa ainda nao saiu.
     try {
       if (!mainLogWritten) {
         await syncLog.write({
-          endpoint: FILM_SHOW_RATINGS_ITEM_ENDPOINT,
+          endpoint: OMDB_ENDPOINT,
           status: 'aborted',
-          errorCode: 'film_show_ratings_unexpected_error',
+          errorCode: 'omdb_unexpected_error',
         })
       }
     } catch (logError) {
@@ -330,7 +331,7 @@ async function main(): Promise<void> {
     }
     process.exitCode = 1
     console.error(
-      'Sync de ratings abortado por erro inesperado:',
+      'Sync de ratings (OMDb) abortado por erro inesperado:',
       error instanceof Error ? error.message : error,
     )
   } finally {
@@ -340,7 +341,7 @@ async function main(): Promise<void> {
 
 /** Escreve o relatorio (best-effort: uma falha de disco nunca invalida o sync). */
 function writeReport(
-  report: ReturnType<typeof buildItemRatingsReport>,
+  report: ReturnType<typeof buildOmdbReport>,
   explicitPath: string | null,
   mode: string,
   type: string | null,
@@ -348,15 +349,15 @@ function writeReport(
   try {
     const target =
       explicitPath === null
-        ? path.join(dataDir(), `film-show-ratings-report-${mode}-${type ?? 'all'}.md`)
+        ? path.join(dataDir(), `omdb-report-${mode}-${type ?? 'all'}.md`)
         : path.isAbsolute(explicitPath)
           ? explicitPath
           : path.resolve(process.cwd(), explicitPath)
 
     mkdirSync(path.dirname(target), { recursive: true })
     const body = target.endsWith('.json')
-      ? serializeRatingsReportJson(report)
-      : renderRatingsReport(report)
+      ? serializeOmdbReportJson(report)
+      : renderOmdbReport(report)
     writeFileSync(target, `${body}\n`)
     console.log(`Relatorio: ${target}`)
   } catch (error) {
@@ -368,6 +369,9 @@ function writeReport(
 }
 
 main().catch((error: unknown) => {
-  console.error('Falha no sync de ratings:', error instanceof Error ? error.message : error)
+  console.error(
+    'Falha no sync de ratings (OMDb):',
+    error instanceof Error ? error.message : error,
+  )
   process.exitCode = 1
 })

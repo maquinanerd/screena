@@ -126,6 +126,10 @@ export const API_PROVIDER_SEED: readonly ApiProviderSeed[] = [
   { key: "gemini", name: "Google Gemini", kind: "ai", homepageUrl: "https://ai.google.dev" },
   { key: "imdb236", name: "IMDb (RapidAPI imdb236)", kind: "ratings", homepageUrl: "https://rapidapi.com" },
   { key: "rapidapi_film_show_ratings", name: "Film/Show Ratings (RapidAPI)", kind: "ratings", homepageUrl: "https://rapidapi.com" },
+  // OMDb — agregador tecnico: um payload traz IMDb, Rotten Tomatoes e
+  // Metacritic de uma vez. Como todo provider, ele NUNCA e a fonte da nota;
+  // quem reatribui cada uma a sua fonte editorial e `services/ratings`.
+  { key: "omdb", name: "OMDb API", kind: "ratings", homepageUrl: "https://www.omdbapi.com" },
   { key: "streaming_availability", name: "Streaming Availability (RapidAPI)", kind: "streaming", homepageUrl: "https://rapidapi.com" },
 ];
 

@@ -11,8 +11,22 @@
  *  4. cache local — responsabilidade do worker (ver `buildCacheKey`/`hashPayload`);
  *  5. hash de payload — idem.
  *
- * SEGREDO: a `x-rapidapi-key` viaja SO em header. Nunca entra na URL, no erro,
- * no log ou no relatorio. Ver `errors.ts`.
+ * SEGREDO — dois modos de auth, e a diferenca importa:
+ *
+ *  - `rapidapi-headers` (DEFAULT, usado por todos os clients RapidAPI): a
+ *    `x-rapidapi-key` viaja SO em header. Nunca entra na URL.
+ *  - `query-param`: a chave viaja na QUERYSTRING, porque o provedor nao oferece
+ *    outra forma (caso da OMDb: `?apikey=...`). NAO e um afrouxamento da regra —
+ *    e o unico mecanismo que aquele upstream aceita.
+ *
+ * Em AMBOS os modos o segredo continua fora de erro, log, relatorio e
+ * `api_cache`, e isso e ESTRUTURAL, nao disciplina:
+ *  - `RapidApiHttpError` carrega `endpoint` (o PATH), nunca a URL montada;
+ *  - a falha de transporte e substituida por uma mensagem sintetica, entao o
+ *    erro cru do `fetch` (que carrega a URL em `cause`) nunca propaga;
+ *  - a chave e injetada em `buildUrl` e NUNCA entra no `params` que o client
+ *    passa a `buildCacheKey` — logo jamais chega a `api_cache.request_key`.
+ * Travado por `__tests__/http-auth.test.ts`.
  *
  * `transport`/`now`/`sleep`/`random` sao INJETAVEIS: throttle, backoff e breaker
  * ficam testaveis sem rede e sem tempo real.
@@ -45,9 +59,26 @@ export type HttpTransport = (request: HttpRequest) => Promise<HttpResponse>
 export type QueryParams = Record<string, string | number | undefined>
 
 /**
- * Configuracao resolvida de um client RapidAPI.
+ * Como a chave e apresentada ao upstream.
  *
- * `apiKey` NUNCA e logado, serializado ou interpolado em URL/erro.
+ * `rapidapi-headers` e o DEFAULT e mantem o comportamento historico intacto:
+ * um chamador que nao conhece este campo continua enviando `x-rapidapi-key` +
+ * `x-rapidapi-host`, exatamente como antes.
+ */
+export type ExternalApiAuthMode =
+  | { readonly kind: 'rapidapi-headers' }
+  /**
+   * Chave na querystring, sob o nome `param` (ex.: `apikey` da OMDb). Usado so
+   * quando o provedor nao aceita header — nunca por conveniencia.
+   */
+  | { readonly kind: 'query-param'; readonly param: string }
+
+/**
+ * Configuracao resolvida de um client HTTP externo.
+ *
+ * `apiKey` NUNCA e logado, serializado ou interpolado em erro. Sob
+ * `auth.kind === 'query-param'` ela entra na URL enviada ao upstream (unico
+ * mecanismo daquele provedor) e em nenhum outro lugar.
  */
 export interface RapidApiClientConfig {
   /** Fornecedor tecnico (`api_providers.key`). NUNCA e a fonte editorial. */
@@ -62,6 +93,11 @@ export interface RapidApiClientConfig {
   readonly timeoutMs: number
   /** TTL do `api_cache` para este provider (usado pelo worker, nao pelo client). */
   readonly cacheTtlMs: number
+  /**
+   * Modo de auth. AUSENTE => `rapidapi-headers` (compatibilidade: todo client
+   * escrito antes deste campo continua funcionando sem alteracao).
+   */
+  readonly auth?: ExternalApiAuthMode
 }
 
 /** Dependencias injetaveis (transporte + relogio + sleep + random). */
@@ -272,19 +308,38 @@ export class RapidApiHttpClient {
     await this.sleep(Math.min(exponential + jitter, BACKOFF_MAX_MS))
   }
 
+  /** Modo de auth efetivo (ausente => headers RapidAPI, comportamento historico). */
+  private authMode(): ExternalApiAuthMode {
+    return this.config.auth ?? { kind: 'rapidapi-headers' }
+  }
+
   /**
-   * Monta a URL. A chave NUNCA entra aqui (nem como query param) — so header.
-   * `path` ja vem montado pelo client (ex.: `/shows/movie/278`).
+   * Monta a URL enviada ao upstream. `path` ja vem montado pelo client.
+   *
+   * Sob `rapidapi-headers` a chave NUNCA entra aqui. Sob `query-param` ela e
+   * injetada AQUI e so aqui — depois de `params`, que e o objeto que o client
+   * usa para a chave de `api_cache`. Essa ordem e o que garante que a chave
+   * nunca seja persistida: quem monta o cache key nunca ve este valor.
    */
   private buildUrl(path: string, params: QueryParams): string {
     const url = new URL(this.config.baseUrl + path)
     for (const [key, value] of Object.entries(params)) {
       if (value !== undefined) url.searchParams.set(key, String(value))
     }
+    const auth = this.authMode()
+    if (auth.kind === 'query-param') {
+      url.searchParams.set(auth.param, this.config.apiKey)
+    }
     return url.toString()
   }
 
   private buildHeaders(): Record<string, string> {
+    // Sob `query-param` os headers RapidAPI seriam ruido inutil enviado a um
+    // host que nao e da RapidAPI — e um deles carregaria o segredo para um
+    // destino que nao o pediu. Nao os enviamos.
+    if (this.authMode().kind === 'query-param') {
+      return { accept: 'application/json' }
+    }
     return {
       accept: 'application/json',
       [RAPIDAPI_KEY_HEADER]: this.config.apiKey,

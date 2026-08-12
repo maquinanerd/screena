@@ -1,14 +1,21 @@
 /**
  * gate.test.ts — Gate FAIL-CLOSED do worker de ratings.
  *
- * Precedencia (mais restritivo primeiro): producao sem autorizacao -> chave ->
- * banco -> liberado. Dry-run puro nunca toca rede nem banco, entao passa sem
- * chave/DB.
+ * Precedencia (mais restritivo primeiro): provedor desligado -> producao sem
+ * autorizacao -> chave -> banco -> liberado. Dry-run puro nunca toca rede nem
+ * banco, entao passa sem chave/DB.
  *
  * A partir de 2026-08-11 o bloqueio em producao deixou de ser incondicional e
  * virou AUTORIZACAO EXPLICITA por provedor. Os testes abaixo provam as duas
  * pontas: sem autorizacao o comportamento e identico ao de antes; com
  * autorizacao, e so ela que muda.
+ *
+ * A partir de 2026-08-12 este provedor esta DESLIGADO por padrao (a API responde
+ * 403 por falta de assinatura; o provedor ativo e a OMDb). Por isso os casos
+ * abaixo que TOCAM A REDE passam `providerEnabled: true` explicitamente: eles
+ * testam a precedencia a JUSANTE do desligamento, que continua valendo intacta
+ * no dia em que a assinatura voltar. O desligamento em si e testado em
+ * `omdb/__tests__/args-and-gate.test.ts`.
  */
 
 import { describe, it, expect } from 'vitest'
@@ -42,7 +49,8 @@ describe('evaluateRatingsGate', () => {
       sample: true,
       hasKey: true,
       hasDb: true,
-    })
+        providerEnabled: true,
+      })
     expect(result.reason).toBe('production-unauthorized')
   })
 
@@ -56,7 +64,8 @@ describe('evaluateRatingsGate', () => {
       sample: false,
       hasKey: true,
       hasDb: true,
-    })
+        providerEnabled: true,
+      })
     const explicitoFalse = evaluateRatingsGate({
       isProd: true,
       apply: true,
@@ -64,7 +73,8 @@ describe('evaluateRatingsGate', () => {
       hasKey: true,
       hasDb: true,
       providerAuthorized: false,
-    })
+        providerEnabled: true,
+      })
     expect(omitido).toEqual(explicitoFalse)
     expect(omitido.reason).toBe('production-unauthorized')
   })
@@ -77,7 +87,8 @@ describe('evaluateRatingsGate', () => {
       hasKey: true,
       hasDb: true,
       providerAuthorized: true,
-    })
+        providerEnabled: true,
+      })
     expect(result.allowed).toBe(true)
     expect(result.reason).toBeNull()
   })
@@ -93,6 +104,7 @@ describe('evaluateRatingsGate', () => {
         hasKey: false,
         hasDb: true,
         providerAuthorized: true,
+        providerEnabled: true,
       }).reason,
     ).toBe('no-api-key')
 
@@ -104,6 +116,7 @@ describe('evaluateRatingsGate', () => {
         hasKey: true,
         hasDb: false,
         providerAuthorized: true,
+        providerEnabled: true,
       }).reason,
     ).toBe('no-database-url')
   })
@@ -115,7 +128,8 @@ describe('evaluateRatingsGate', () => {
       sample: false,
       hasKey: true,
       hasDb: true,
-    })
+        providerEnabled: true,
+      })
     const comAutorizacao = evaluateRatingsGate({
       isProd: false,
       apply: true,
@@ -123,7 +137,8 @@ describe('evaluateRatingsGate', () => {
       hasKey: true,
       hasDb: true,
       providerAuthorized: true,
-    })
+        providerEnabled: true,
+      })
     expect(semAutorizacao).toEqual(comAutorizacao)
     expect(semAutorizacao.allowed).toBe(true)
   })
@@ -135,7 +150,8 @@ describe('evaluateRatingsGate', () => {
       sample: true,
       hasKey: false,
       hasDb: false,
-    })
+        providerEnabled: true,
+      })
     expect(result.allowed).toBe(false)
     expect(result.reason).toBe('no-api-key')
   })
@@ -147,7 +163,8 @@ describe('evaluateRatingsGate', () => {
       sample: false,
       hasKey: false,
       hasDb: true,
-    })
+        providerEnabled: true,
+      })
     expect(result.allowed).toBe(false)
     expect(result.reason).toBe('no-api-key')
   })
@@ -159,7 +176,8 @@ describe('evaluateRatingsGate', () => {
       sample: false,
       hasKey: true,
       hasDb: false,
-    })
+        providerEnabled: true,
+      })
     expect(result.allowed).toBe(false)
     expect(result.reason).toBe('no-database-url')
   })
@@ -173,7 +191,8 @@ describe('evaluateRatingsGate', () => {
       sample: true,
       hasKey: true,
       hasDb: false,
-    })
+        providerEnabled: true,
+      })
     expect(result.allowed).toBe(false)
     expect(result.reason).toBe('no-database-url')
   })
@@ -201,6 +220,7 @@ describe('needsNetwork', () => {
 
 describe('describeRatingsGateReason', () => {
   const reasons: readonly RatingsGateReason[] = [
+    'provider-disabled',
     'production-unauthorized',
     'no-api-key',
     'no-database-url',

@@ -92,6 +92,40 @@ export interface EntityCandidateSelectPort {
   ): Promise<readonly RatingsEntityCandidate[]>
 }
 
+/** Uma selecao de candidatos que ja levou o frescor em conta. */
+export interface StaleCandidateSelection {
+  /** Candidatos a consultar (ja excluidos os recentes). */
+  readonly candidates: readonly RatingsEntityCandidate[]
+  /**
+   * Quantas entidades foram PULADAS por terem coleta recente demais. Reportado
+   * ao operador: "0 consultados" com 40 pulados e um resultado saudavel, e sem
+   * este numero pareceria falha.
+   */
+  readonly skippedFresh: number
+}
+
+/**
+ * Porta de selecao de candidatos que PRECISAM de re-consulta.
+ *
+ * Separada de `EntityCandidateSelectPort` de proposito: aquela lista candidatos
+ * por tipo, sem olhar o relogio. Esta aplica a janela de frescor
+ * (`omdbRefreshCutoff`) para nao queimar cota reconfirmando nota que nao mudou.
+ * Manter as duas evita mudar a semantica do adapter antigo.
+ */
+export interface StaleEntityCandidateSelectPort {
+  /**
+   * Ate `limit` entidades do tipo, com IMDb id, cuja nota mais recente daquele
+   * `providerApi` foi coletada ANTES de `cutoff` (ou que nunca foram coletadas).
+   * `cutoff = null` desliga o filtro de frescor (sem politica declarada).
+   */
+  selectStaleByType(input: {
+    readonly entityType: RatingsEntityType
+    readonly limit: number
+    readonly providerApi: string
+    readonly cutoff: Date | null
+  }): Promise<StaleCandidateSelection>
+}
+
 /** Resultado de um upsert em `external_ratings`. */
 export interface ExternalRatingUpsertOutcome {
   /** A linha foi criada agora? */
