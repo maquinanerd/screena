@@ -1,36 +1,27 @@
 /**
- * validate-source-authorization-legacy-grants.ts — Reconstrói, em PostgreSQL 16
- * REAL e efêmero, o estado de produção em que `legal sources apply --confirm`
- * empaca com:
+ * validate-source-authorization-legacy-grants.ts — O ciclo completo do reparo,
+ * em PostgreSQL 16 REAL e efêmero, partindo do estado de produção.
  *
- *   P0001: data_usage_decisions fail-closed: licenca 8 com license_status unknown
- *          nao permite uso concedido
+ * O PROBLEMA. Até 2026-08-12, `db:seed` rodado depois de `legal sources apply`
+ * fazia `update` IN PLACE na licença VIGENTE de cada fonte de rating — mesmo id,
+ * mesmo `is_current`, mesmas decisões penduradas — rebaixando para
+ * `license_status='unknown'`/`display_allowed=false`. As decisões continuavam
+ * concedendo sob licença não-exibível. Elas eram LEGAIS quando nasceram (o
+ * guarda `data_usage_decisions_guard` está armado desde a criação da tabela);
+ * a licença é que foi rebaixada debaixo delas. Daí o impasse: a decisão não sai
+ * porque a licença-mãe é `unknown`; a licença não é substituída porque a
+ * decisão não sai.
  *
- * E prova COMO esse estado nasceu — pelo caminho real, sem SQL sintético:
- *
- *   1. `db:seed`  -> 5 licenças de rating conservadoras (`unknown`), 0 decisões
- *   2. `legal apply` -> supersede as 5, cria as vigentes (`third_party`) + as
- *                       13 decisões (5 delas rating_display/BR concedendo display)
- *   3. `db:seed` DE NOVO -> **o clobber**: o seed faz `update` IN PLACE na licença
- *                       VIGENTE de cada fonte de rating e a rebaixa para
- *                       `unknown`/`display_allowed=false`, mantendo o MESMO id,
- *                       `is_current=true` e todas as decisões penduradas nela.
- *
- * A partir daí as 5 decisões `rating_display` concedem display sob licença
- * `unknown`. Elas eram LEGAIS quando nasceram — a licença é que foi rebaixada
- * debaixo delas. Nenhuma delas poderia ser criada hoje.
- *
- * O impasse que isso produz: a decisão velha não sai porque a licença-mãe é
- * `unknown` (guarda de decisões, ramo `license_status`); a licença não é
- * substituída porque a decisão velha não sai.
- *
- * NÃO é caso isolado: `packages/db/prisma/seed.ts` refaz o rebaixamento a CADA
- * execução de `pnpm --filter @screena/db db:seed` posterior a um apply. E nada
- * o impede: o único trigger de `source_licenses`
- * (`source_licenses_supersedes_guard`) só valida a cadeia `supersedes_id` —
- * não há guarda contra rebaixar uma licença sob decisões vivas. A assimetria é
- * estrutural: `data_usage_decisions` é fail-closed na escrita; `source_licenses`
- * não é fail-closed contra rebaixamento retroativo.
+ * O QUE ESTE VALIDADOR PROVA, nesta ordem:
+ *   (b1) `db:seed` rodado DEPOIS do apply não muda mais NADA.
+ *   (b4) o rebaixamento é recusado NA ORIGEM pelo trigger novo.
+ *   ---- desarma o trigger só para reconstruir o estado legado (que nasceu
+ *        antes dele existir) — o próprio desarme é a prova de que (b4) o impede
+ *   (a)  a remediação aposenta as decisões legadas zerando os grants,
+ *        preservando stage/use_case/policy_version/decided_by/reason/valid_from;
+ *        recusa por inteiro o que não bate a impressão digital.
+ *   ---- e então o `legal sources apply` volta a passar, e uma nota exibe com
+ *        crédito.
  *
  * FERRAMENTA DE DESENVOLVIMENTO DESCARTÁVEL — nunca em produto/render/produção.
  * Motor: embedded-postgres (PostgreSQL 16 real, efêmero), devDependency-only.
@@ -50,14 +41,19 @@ import { fileURLToPath } from "node:url";
 import EmbeddedPostgres from "embedded-postgres";
 import { PrismaClient } from "@prisma/client";
 
-import { applyAuthorizationWithin, readCurrentState } from "../src/apply.js";
+import { applyAuthorizationWithin } from "../src/apply.js";
 import {
   STATIC_AUTHORIZATION,
   AUTHORIZATION_REASON,
   DECIDED_BY,
   type AuthorizationEntry,
 } from "../src/authorization-spec.js";
-import { planAuthorization } from "../src/plan.js";
+import {
+  applyRemediationWithin,
+  planRemediation,
+  readLegacyGrants,
+  renderRemediationRecord,
+} from "../src/remediation.js";
 
 const require = createRequire(import.meta.url);
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -111,9 +107,26 @@ async function safeRm(dir: string): Promise<void> {
 
 const msg = (e: unknown): string => (e as Error).message.replace(/\s+/g, " ").trim();
 
+/**
+ * O UPDATE que `seed.ts` fazia ATÉ 2026-08-12 — verbatim nos campos que ele
+ * tocava (os de `SOURCE_LICENSE_SEED`). `decision_origin` e `policy_version`
+ * NÃO estão aqui de propósito: o seed nunca os escreveu, e é essa combinação
+ * (`unknown` + `owner_authorization` + policy preenchida) que vira a impressão
+ * digital do rebaixamento.
+ */
+const CLOBBER_SQL = `
+  UPDATE source_licenses
+     SET license_status='unknown', display_allowed=false, logo_allowed=false,
+         score_allowed=false, review_quote_allowed=false,
+         requires_attribution=true, requires_linkback=true,
+         notes='Licenca nao confirmada; nada exibivel ate revisao humana (Fase 1, default seguro).',
+         updated_at=now()
+   WHERE is_current=true AND content_type='rating'`;
+
 async function runChecks(url: string, runSeed: () => void): Promise<void> {
   const prisma = new PrismaClient({ datasourceUrl: url });
   const q = <T>(sql: string): Promise<T[]> => prisma.$queryRawUnsafe<T[]>(sql);
+  const exec = (sql: string): Promise<number> => prisma.$executeRawUnsafe(sql);
   const count = async (sql: string): Promise<number> =>
     Number((await q<{ c: number }>(`SELECT count(*)::int AS c ${sql}`))[0]!.c);
 
@@ -123,138 +136,216 @@ async function runChecks(url: string, runSeed: () => void): Promise<void> {
       await applyAuthorizationWithin(tx, entries, { reviewer: DECIDED_BY, reason: AUTHORIZATION_REASON });
     });
 
+  // `id` vem como BigInt do Prisma e JSON.stringify nao serializa BigInt.
+  const snapshot = async (): Promise<string> =>
+    JSON.stringify(
+      await q(
+        `SELECT id, license_status::text AS s, display_allowed, score_allowed, requires_linkback, policy_version, decision_origin
+           FROM source_licenses ORDER BY id`,
+      ),
+      (_k, v: unknown) => (typeof v === "bigint" ? String(v) : v),
+    );
+
   try {
-    // Produção não tem provedor canônico de streaming registrado.
-    const entries = STATIC_AUTHORIZATION;
+    const entries = STATIC_AUTHORIZATION; // produção não tem provedor de streaming registrado
 
-    // ============ 1. SEED: a licença conservadora, sem decisão nenhuma ============
-    record(1, "seed inicial: 5 licencas de rating unknown, 0 decisoes",
-      (await count(`FROM source_licenses WHERE is_current=true AND license_status='unknown'`)) === 5 &&
-        (await count(`FROM data_usage_decisions`)) === 0,
-      `unknown vigentes=${await count(`FROM source_licenses WHERE is_current=true AND license_status='unknown'`)} decisoes=${await count(`FROM data_usage_decisions`)}`);
-
-    // ============ 2. APPLY: a leva de autorizacao, legal e completa ============
+    // ============ 1-2. (b1) O SEED NAO REBAIXA MAIS ============
     await apply(entries);
-    const legalAntes = await count(
-      `FROM data_usage_decisions d JOIN source_licenses l ON l.id=d.source_license_id
-        WHERE d.is_current AND d.display_allowed AND l.license_status IN ('official','licensed','third_party')`,
-    );
-    record(2, "apply cria 13 decisoes LEGAIS (todo grant sob licenca exibivel)",
-      (await count(`FROM data_usage_decisions WHERE is_current=true`)) === 13 && legalAntes === 5,
-      `decisoes vigentes=${await count(`FROM data_usage_decisions WHERE is_current=true`)} grants sob licenca exibivel=${legalAntes}`);
+    record(1, "apply cria a leva completa (8 licencas vigentes, 13 decisoes)",
+      (await count(`FROM source_licenses WHERE is_current=true`)) === 8 &&
+        (await count(`FROM data_usage_decisions WHERE is_current=true`)) === 13,
+      `licencas=${await count(`FROM source_licenses WHERE is_current=true`)} decisoes=${await count(`FROM data_usage_decisions WHERE is_current=true`)}`);
 
-    // ============ 3. O CLOBBER: db:seed rodado DEPOIS do apply ============
-    //
-    // `seed.ts` procura a licenca VIGENTE de (source_key, 'rating', provider_key
-    // NULL, territory NULL) e faz `update` IN PLACE — mesmo id, mesmo
-    // is_current, mesmas decisoes penduradas — rebaixando para unknown.
+    const antesDoSeed = await snapshot();
     runSeed();
+    const depoisDoSeed = await snapshot();
+    record(2, "(b1) db:seed rodado DEPOIS do apply nao muda NADA em source_licenses",
+      antesDoSeed === depoisDoSeed,
+      antesDoSeed === depoisDoSeed ? "estado identico (o seed pulou e logou)" : "O SEED AINDA MEXE NA LICENCA VIGENTE");
 
-    const rebaixadas = await q<{ id: bigint; source_key: string; license_status: string; display_allowed: boolean; decision_origin: string | null; policy_version: string | null }>(
-      `SELECT id, source_key, license_status::text AS license_status, display_allowed, decision_origin, policy_version
-         FROM source_licenses WHERE is_current=true AND content_type='rating' ORDER BY id`,
-    );
-    record(3, "db:seed rebaixa IN PLACE as 5 licencas vigentes de rating para unknown/display=false",
-      rebaixadas.length === 5 && rebaixadas.every((l) => l.license_status === "unknown" && !l.display_allowed),
-      `ids=${rebaixadas.map((l) => String(l.id)).join(",")} status=${[...new Set(rebaixadas.map((l) => l.license_status))].join(",")}`);
+    record(3, "(b1) o seed tambem nao cria linha nova nem mexe em decisao",
+      (await count(`FROM source_licenses`)) === 13 && (await count(`FROM data_usage_decisions`)) === 13,
+      `licencas=${await count(`FROM source_licenses`)} decisoes=${await count(`FROM data_usage_decisions`)}`);
 
-    // A IMPRESSÃO DIGITAL do clobber: o apply NUNCA escreve `unknown`, e o seed
-    // NUNCA escreve decision_origin/policy_version. Uma linha com os dois é
-    // prova de que a licença do apply foi sobrescrita pelo seed.
-    const digitais = rebaixadas.filter(
-      (l) => l.license_status === "unknown" && l.decision_origin === "owner_authorization" && (l.policy_version ?? "") !== "",
-    );
-    record(4, "impressao digital do clobber: license_status=unknown COM decision_origin=owner_authorization",
-      digitais.length === 5,
-      `linhas com a assinatura=${digitais.length}/5 (ex.: id=${String(digitais[0]?.id ?? "?")} origin=${digitais[0]?.decision_origin} policy=${digitais[0]?.policy_version})`);
+    // ============ 4. (b4) O REBAIXAMENTO E RECUSADO NA ORIGEM ============
+    let recusaDowngrade = "";
+    try {
+      await exec(CLOBBER_SQL);
+    } catch (e) {
+      recusaDowngrade = msg(e);
+    }
+    record(4, "(b4) rebaixar licenca vigente com decisao viva concedendo e RECUSADO pelo banco",
+      recusaDowngrade.toLowerCase().includes("nao pode ser rebaixada"),
+      recusaDowngrade === "" ? "O REBAIXAMENTO PASSOU (a trava nao existe)" : recusaDowngrade.slice(0, 175));
 
-    // ============ 5. O ESTADO EXATO DE PRODUCAO ============
+    // (b4) não pode ser zeloso demais: aposentar licença continua permitido (é o
+    // caminho do supersede) e mexer em campo irrelevante também.
+    let colateral = "";
+    try {
+      await exec(`UPDATE source_licenses SET notes = notes || ' ' WHERE is_current=true AND content_type='rating'`);
+    } catch (e) {
+      colateral = msg(e);
+    }
+    record(5, "(b4) nao e zelosa demais: UPDATE que nao rebaixa continua passando",
+      colateral === "", colateral === "" ? "UPDATE neutro aceito" : `BARRADO INDEVIDAMENTE: ${colateral.slice(0, 150)}`);
+
+    // ============ 6. RECONSTRUCAO DO ESTADO LEGADO ============
+    // O estado legado nasceu ANTES de (b4). Reconstruí-lo exige desarmar o
+    // trigger — e precisar desarmar é, em si, a prova de que (b4) o impede.
+    await exec(`ALTER TABLE source_licenses DISABLE TRIGGER "source_licenses_no_downgrade_guard"`);
+    await exec(CLOBBER_SQL);
+    await exec(`ALTER TABLE source_licenses ENABLE TRIGGER "source_licenses_no_downgrade_guard"`);
+
     const licCurrent = await count(`FROM source_licenses WHERE is_current=true`);
     const licTotal = await count(`FROM source_licenses`);
     const decCurrent = await count(`FROM data_usage_decisions WHERE is_current=true`);
     const ratingDisplay = await count(
       `FROM data_usage_decisions WHERE is_current=true AND use_case='rating_display' AND territory='BR' AND display_allowed=true`,
     );
-    record(5, "estado == producao (8 licencas vigentes de 13; 13 decisoes vigentes; 5 rating_display/BR display=true)",
+    record(6, "estado == producao (8 licencas vigentes de 13; 13 decisoes vigentes; 5 rating_display/BR display=true)",
       licCurrent === 8 && licTotal === 13 && decCurrent === 13 && ratingDisplay === 5,
       `vigentes=${licCurrent}/${licTotal} decisoes=${decCurrent} rating_display/BR=${ratingDisplay}`);
 
-    // As 5 linhas legadas: concedem display sob licenca `unknown`. Ilegais hoje.
-    const ilegais = await q<{ dec: bigint; lic: bigint; source_key: string }>(
-      `SELECT d.id AS dec, l.id AS lic, l.source_key
-         FROM data_usage_decisions d JOIN source_licenses l ON l.id=d.source_license_id
-        WHERE d.is_current AND d.display_allowed AND l.license_status NOT IN ('official','licensed','third_party')
-        ORDER BY l.id`,
-    );
-    record(6, "as 5 decisoes legadas concedem display sob licenca unknown (nao poderiam nascer hoje)",
-      ilegais.length === 5,
-      ilegais.map((r) => `dec ${r.dec}->lic ${r.lic}(${r.source_key})`).join(" "));
-
-    // ============ 7. NENHUMA DELAS PODERIA SER CRIADA HOJE ============
-    // Controle: tentar inserir HOJE uma decisao igual a uma das legadas.
-    let recusaCriacao = "";
-    try {
-      await prisma.$transaction(async (tx) => {
-        await tx.$executeRawUnsafe(
-          `INSERT INTO data_usage_decisions (source_license_id, use_case, territory, stage, display_allowed,
-             storage_allowed, derivative_allowed, attribution_required, linkback_required, valid_from,
-             policy_version, decided_by, reason, is_current, updated_at)
-           VALUES (${ilegais[0]!.lic},'rating_display','BR','approved_for_display',true,true,false,true,true,now(),
-             'x/v1','${DECIDED_BY.replace(/'/g, "''")}','controle',false,now())`,
-        );
-        throw new Error("ROLLBACK-INTENCIONAL: o INSERT proibido foi ACEITO");
-      });
-    } catch (e) {
-      recusaCriacao = msg(e);
-    }
-    record(7, "controle: criar HOJE uma decisao igual a legada e recusado pelo guarda",
-      recusaCriacao.toLowerCase().includes("nao permite uso concedido"),
-      recusaCriacao.includes("ROLLBACK-INTENCIONAL") ? "O INSERT PROIBIDO PASSOU" : recusaCriacao.slice(0, 150));
-
-    // ============ 8. O GUARDA NAO EXISTIA ANTES? EXISTIA. ============
-    // `data_usage_decisions` e seu trigger nascem na MESMA migration
-    // (20260717120000, tabela na linha 85, trigger na 236) e nenhuma migration
-    // insere decisoes. Logo nenhuma linha pode preceder o guarda: toda decisao
-    // foi escrita com ele armado — e era legal no momento em que nasceu.
-    const guardaAtivo = await count(
-      `FROM pg_trigger WHERE tgname = 'data_usage_decisions_guard' AND NOT tgisinternal`,
-    );
-    record(8, "o guarda estava armado desde a criacao da tabela (nao foi adicionado depois)",
-      guardaAtivo === 1, `triggers data_usage_decisions_guard=${guardaAtivo}`);
-
-    // ============ 9. NADA PROTEGE A LICENCA ============
-    // O unico trigger de source_licenses so valida a cadeia supersedes_id.
-    const triggersLicenca = await q<{ tgname: string }>(
-      `SELECT tgname FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid
-        WHERE c.relname='source_licenses' AND NOT t.tgisinternal ORDER BY tgname`,
-    );
-    record(9, "source_licenses NAO tem guarda contra rebaixar licenca sob decisoes vivas",
-      triggersLicenca.length === 1 && triggersLicenca[0]!.tgname === "source_licenses_supersedes_guard",
-      `triggers=${triggersLicenca.map((t) => t.tgname).join(",") || "<nenhum>"}`);
-
-    // ============ 10-11. O IMPASSE ============
-    const { licenses, decisions } = await readCurrentState(prisma);
-    const s = planAuthorization(entries, licenses, decisions).summary;
-    record(10, "dry-run reproduz o plano de producao (supersede=5, keep=3, decisoes create=10)",
-      s.licensesSupersede === 5 && s.licensesKeep === 3 && s.decisionsCreate === 10,
-      `supersede=${s.licensesSupersede} keep=${s.licensesKeep} decCreate=${s.decisionsCreate} decKeep=${s.decisionsKeep}`);
-
+    // ============ 7. O IMPASSE, ANTES DO REPARO ============
     let impasse = "";
     try {
       await apply(entries);
     } catch (e) {
       impasse = msg(e);
     }
-    record(11, "apply empaca no OUTRO ramo do guarda: license_status unknown nao permite uso concedido",
+    record(7, "apply empaca: license_status unknown nao permite uso concedido",
       impasse.toLowerCase().includes("nao permite uso concedido"),
-      impasse === "" ? "O APPLY PASSOU (o impasse nao foi reproduzido)" : impasse.slice(0, 190));
+      impasse === "" ? "O APPLY PASSOU (impasse nao reproduzido)" : impasse.slice(0, 175));
 
-    // A transacao voltou atras inteira: o impasse nao corrompe nada.
-    record(12, "o impasse e atomico: nada mudou no banco (como em producao)",
-      (await count(`FROM source_licenses`)) === 13 && (await count(`FROM data_usage_decisions`)) === 13,
-      `licencas=${await count(`FROM source_licenses`)} decisoes=${await count(`FROM data_usage_decisions`)}`);
+    // ============ 8-10. (a) A REMEDIACAO ============
+    const grants = await readLegacyGrants(prisma);
+    const plan = planRemediation(grants);
+    record(8, "remediacao enxerga TODA decisao viva concedendo sob licenca unknown",
+      plan.items.length === 10 && plan.remediable.length === 10 && plan.refused.length === 0,
+      `total=${plan.items.length} reparaveis=${plan.remediable.length} recusadas=${plan.refused.length} ` +
+        `(display=${plan.items.filter((i) => i.grant.displayAllowed).length}, so storage=${plan.items.filter((i) => !i.grant.displayAllowed).length})`);
+
+    // Dry-run não escreve.
+    const decAntes = await count(`FROM data_usage_decisions WHERE is_current=true`);
+    record(9, "dry-run nao escreve nada",
+      decAntes === 13, `decisoes vigentes apos o dry-run=${decAntes}`);
+    console.log("\n--- REGISTRO NOMINAL (o que vai para docs/legal/) ---");
+    console.log(renderRemediationRecord(plan, "2026-08-12"));
+    console.log("--- fim do registro ---\n");
+
+    const antesPorId = new Map(
+      (await q<{ id: bigint; stage: string; use_case: string; policy_version: string; decided_by: string; reason: string; valid_from: Date }>(
+        `SELECT id, stage::text AS stage, use_case, policy_version, decided_by, reason, valid_from FROM data_usage_decisions`,
+      )).map((r) => [String(r.id), r]),
+    );
+
+    const retired = await prisma.$transaction(async (tx) => applyRemediationWithin(tx, plan));
+    record(10, "--confirm aposenta as 10 decisoes legadas",
+      retired === 10 && (await count(`FROM data_usage_decisions WHERE is_current=true`)) === 3,
+      `aposentadas=${retired} vigentes restantes=${await count(`FROM data_usage_decisions WHERE is_current=true`)}`);
+
+    // ============ 11-12. O QUE SOBREVIVEU / O QUE SE PERDEU ============
+    const depois = await q<{ id: bigint; stage: string; use_case: string; policy_version: string; decided_by: string; reason: string; valid_from: Date; display_allowed: boolean; storage_allowed: boolean; derivative_allowed: boolean; is_current: boolean }>(
+      `SELECT id, stage::text AS stage, use_case, policy_version, decided_by, reason, valid_from,
+              display_allowed, storage_allowed, derivative_allowed, is_current
+         FROM data_usage_decisions WHERE is_current=false ORDER BY id`,
+    );
+    const preservado = depois.every((d) => {
+      const a = antesPorId.get(String(d.id));
+      return a !== undefined && a.stage === d.stage && a.use_case === d.use_case &&
+        a.policy_version === d.policy_version && a.decided_by === d.decided_by && a.reason === d.reason &&
+        new Date(a.valid_from).getTime() === new Date(d.valid_from).getTime();
+    });
+    record(11, "auditoria preservada: stage, use_case, policy_version, decided_by, reason e valid_from intactos",
+      depois.length === 10 && preservado,
+      `linhas aposentadas=${depois.length} stages=${[...new Set(depois.map((d) => d.stage))].join(",")}`);
+
+    record(12, "grants zerados (a perda declarada) e nada mais",
+      depois.every((d) => !d.display_allowed && !d.storage_allowed && !d.derivative_allowed && !d.is_current),
+      `com grant remanescente=${depois.filter((d) => d.display_allowed || d.storage_allowed).length}`);
+
+    // ============ 13-15. O APPLY VOLTA A PASSAR ============
+    let applyDepois = "";
+    try {
+      await apply(entries);
+    } catch (e) {
+      applyDepois = msg(e);
+    }
+    record(13, "apos a remediacao, o apply passa",
+      applyDepois === "", applyDepois === "" ? "aplicado" : `BARRADO: ${applyDepois.slice(0, 175)}`);
+
+    record(14, "as 5 licencas de rating voltam a ser third_party/display=true",
+      (await count(`FROM source_licenses WHERE is_current=true AND content_type='rating' AND license_status='third_party' AND display_allowed=true`)) === 5,
+      `third_party vigentes=${await count(`FROM source_licenses WHERE is_current=true AND content_type='rating' AND license_status='third_party'`)}`);
+
+    record(15, "nenhuma decisao vigente concede sob licenca nao-exibivel",
+      (await readLegacyGrants(prisma)).length === 0,
+      `linhas legadas restantes=${(await readLegacyGrants(prisma)).length}`);
+
+    // ============ 16. UMA NOTA EXIBINDO COM CREDITO ============
+    const movie = await q<{ id: bigint }>(
+      `INSERT INTO movies (tmdb_id, title_original, updated_at) VALUES (930001,'Filme Pos-Remediacao',now()) RETURNING id`,
+    );
+    const movieId = Number(movie[0]!.id);
+    await exec(
+      `INSERT INTO external_ratings (entity_type, entity_id, rating_source, rating_label, metric, score_type,
+         rating_value, rating_scale, rating_url, provider_api, license_status, requires_attribution, requires_linkback,
+         attribution_text, attribution_url, fetched_at, updated_at)
+       VALUES ('movie',${movieId},'imdb','IMDb','audience','audience',8.4,10,'https://www.imdb.com/title/tt0111161/',
+         'omdb','third_party',true,true,'Nota fornecida por IMDb','https://www.imdb.com/title/tt0111161/', now(), now())`,
+    );
+    let notaErro = "";
+    try {
+      await exec(
+        `UPDATE external_ratings r SET display_allowed=true, reviewed_at=now(), reviewed_by='ana@cinerie',
+           data_usage_decision_id=(SELECT d.id FROM data_usage_decisions d JOIN source_licenses l ON l.id=d.source_license_id
+             WHERE d.use_case='rating_display' AND d.is_current AND d.stage='approved_for_display'
+               AND l.rating_source_key='imdb' AND l.is_current AND l.content_type='rating'
+               AND (d.territory IS NULL OR d.territory='BR') ORDER BY (d.territory IS NOT NULL) DESC LIMIT 1),
+           approved_payload_hash=external_rating_payload_fingerprint_v1(r.entity_type,r.entity_id,r.rating_source,r.metric,
+             r.score_type,r.rating_label,r.rating_value,r.rating_scale,r.rating_count,r.rating_url,r.provider_api,
+             r.license_status,r.requires_attribution,r.requires_linkback,r.attribution_text,r.attribution_url)
+         WHERE r.entity_id=${movieId}`,
+      );
+    } catch (e) {
+      notaErro = msg(e);
+    }
+    const nota = (await q<{ display_allowed: boolean; attribution_text: string | null }>(
+      `SELECT display_allowed, attribution_text FROM external_ratings WHERE entity_id=${movieId}`,
+    ))[0];
+    record(16, "nota IMDb exibe com credito pelo caminho governado",
+      notaErro === "" && nota?.display_allowed === true && (nota?.attribution_text ?? "") === "Nota fornecida por IMDb",
+      notaErro !== "" ? `BARRADO: ${notaErro.slice(0, 150)}` : `display=${nota?.display_allowed} credito="${nota?.attribution_text}"`);
+
+    // ============ 17. CONTROLE NEGATIVO: IMPRESSAO DIGITAL QUE NAO BATE ============
+    // `blocked` e decisao humana deliberada — a remediacao tem de RECUSAR, nao
+    // "consertar". Reconstruido do mesmo jeito (desarmando (b4)), o que de novo
+    // prova que a trava esta funcionando.
+    const alvo = (await q<{ id: bigint }>(
+      `SELECT id FROM source_licenses WHERE is_current=true AND content_type='rating' ORDER BY id LIMIT 1`,
+    ))[0]!;
+    await exec(`ALTER TABLE source_licenses DISABLE TRIGGER "source_licenses_no_downgrade_guard"`);
+    await exec(`UPDATE source_licenses SET license_status='blocked', display_allowed=false WHERE id=${alvo.id}`);
+    await exec(`ALTER TABLE source_licenses ENABLE TRIGGER "source_licenses_no_downgrade_guard"`);
+
+    const planBlocked = planRemediation(await readLegacyGrants(prisma));
+    record(17, "controle negativo: licenca 'blocked' NAO bate a impressao digital e a remediacao recusa",
+      planBlocked.items.length > 0 && planBlocked.remediable.length === 0 &&
+        planBlocked.refused.length === planBlocked.items.length &&
+        planBlocked.refused.every((r) => r.failedConditions.some((c) => c.includes("blocked"))),
+      `itens=${planBlocked.items.length} reparaveis=${planBlocked.remediable.length} recusadas=${planBlocked.refused.length} motivo="${planBlocked.refused[0]?.failedConditions[0] ?? ""}"`);
+
+    let recusaEscrita = "";
+    try {
+      await prisma.$transaction(async (tx) => applyRemediationWithin(tx, planBlocked));
+    } catch (e) {
+      recusaEscrita = msg(e);
+    }
+    record(18, "controle negativo: a escrita tambem recusa (fail-closed, nao so o relatorio)",
+      recusaEscrita.toLowerCase().includes("remediacao recusada"),
+      recusaEscrita === "" ? "A ESCRITA PASSOU" : recusaEscrita.slice(0, 150));
   } catch (e) {
-    record(0, "execucao", false, msg(e).slice(0, 200));
+    record(0, "execucao", false, msg(e).slice(0, 220));
   } finally {
     await prisma.$disconnect();
   }
@@ -265,7 +356,7 @@ async function main(): Promise<void> {
   const dataDir = mkdtempSync(path.join(tmpdir(), "cinerie-legal-legacy-pg-"));
   const pg = new EmbeddedPostgres({ databaseDir: dataDir, user: "postgres", password: "postgres", port, persistent: false });
   const url = `postgresql://postgres:postgres@127.0.0.1:${port}/cinerie_legal?schema=public`;
-  console.log(`\n=== decisoes legadas concedendo sob licenca unknown — PostgreSQL efemero :${port} (postgres:****) ===\n`);
+  console.log(`\n=== remediacao de decisoes legadas sob licenca unknown — PostgreSQL efemero :${port} (postgres:****) ===\n`);
 
   let started = false;
   try {
@@ -296,12 +387,12 @@ async function main(): Promise<void> {
 
   const failed = results.filter((r) => !r.ok);
   const total = results.filter((r) => r.n > 0).length;
-  console.log(`\nRESUMO (decisoes legadas sob licenca unknown): ${total - failed.filter((f) => f.n > 0).length}/${total} checks OK.`);
+  console.log(`\nRESUMO (remediacao de decisoes legadas): ${total - failed.filter((f) => f.n > 0).length}/${total} checks OK.`);
   if (failed.length > 0) {
     console.error("FALHAS:", failed.map((f) => `${f.n}.${f.name}`).join(" | "));
     process.exit(1);
   }
-  console.log("Resultado: PASSOU. Origem reproduzida (db:seed rebaixa a licenca vigente IN PLACE) e impasse confirmado.");
+  console.log("Resultado: PASSOU. Seed nao rebaixa mais, banco recusa rebaixamento, remediacao aposenta preservando auditoria, apply volta a passar.");
 }
 
 main().catch((e) => {

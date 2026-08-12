@@ -35,8 +35,15 @@ import {
   type CurrentDecision,
   type CurrentLicense,
 } from "../src/plan.js";
+import {
+  applyRemediationWithin,
+  planRemediation,
+  readLegacyGrants,
+  renderRemediationPlan,
+  renderRemediationRecord,
+} from "../src/remediation.js";
 import { renderPlan } from "../src/report.js";
-import { parseLegalArgs, renderLegalHelp, type ApplyArgs } from "../src/cli/args.js";
+import { parseLegalArgs, renderLegalHelp, type ApplyArgs, type RemediateArgs } from "../src/cli/args.js";
 
 const EXIT = { ok: 0, unexpected: 1, usage: 2, environment: 3 } as const;
 
@@ -82,6 +89,51 @@ async function applyPlan(prisma: PrismaClient, entries: readonly AuthorizationEn
   });
 }
 
+/**
+ * `sources remediate` — REPARO DE DADO, nunca uma leva.
+ *
+ * Dry-run por default. Recusa por inteiro se houver linha corrompida fora da
+ * impressao digital diagnosticada: reparar so a parte conhecida deixaria o
+ * resto invisivel. O `apply` NAO chama isto — ele continua falhando alto
+ * diante de estado corrompido.
+ */
+async function runRemediation(prisma: PrismaClient, args: RemediateArgs): Promise<void> {
+  const grants = await readLegacyGrants(prisma);
+  const plan = planRemediation(grants);
+
+  console.log(
+    args.json
+      ? JSON.stringify(plan, null, 2)
+      : renderRemediationPlan(plan, args.confirm && plan.refused.length === 0 ? "apply" : "dry-run"),
+  );
+
+  if (plan.refused.length > 0) {
+    console.error(
+      `erro: ${plan.refused.length} linha(s) concedendo sob licenca nao-exibivel NAO batem a impressao digital. Nada foi escrito.`,
+    );
+    process.exitCode = EXIT.unexpected;
+    return;
+  }
+
+  if (!args.confirm) {
+    console.log("REGISTRO — cole em docs/legal/ antes de rodar com --confirm:\n");
+    console.log(renderRemediationRecord(plan, new Date().toISOString().slice(0, 10)));
+    console.log("\n(dry-run: nada foi escrito. Use --confirm --reviewer=<quem> para aplicar.)");
+    process.exitCode = EXIT.ok;
+    return;
+  }
+
+  if (plan.remediable.length === 0) {
+    process.exitCode = EXIT.ok;
+    return;
+  }
+
+  const retired = await prisma.$transaction(async (tx) => applyRemediationWithin(tx, plan));
+  console.log(`\n${retired} decisao(oes) legada(s) aposentada(s) por ${args.reviewer}.`);
+  console.log("stage, use_case, territorio, policy_version, decided_by, reason e valid_from preservados.");
+  console.log("display_allowed/storage_allowed/derivative_allowed ZERADOS — registro nominal em docs/legal/.");
+}
+
 async function main(): Promise<void> {
   const parsed = parseLegalArgs(process.argv.slice(2));
   if (!parsed.ok) {
@@ -97,6 +149,11 @@ async function main(): Promise<void> {
 
   const prisma = openPrisma();
   try {
+    if (args.sub === "remediate") {
+      await runRemediation(prisma, args);
+      return;
+    }
+
     const { entries, licenses, decisions } = await loadState(prisma);
     const plan = planAuthorization(entries, licenses, decisions);
     assertNoBlockedGrants(plan);
