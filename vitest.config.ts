@@ -28,6 +28,13 @@ export default defineConfig({
     ],
     environment: 'node',
   },
+  // JSX pelo runtime AUTOMATICO — o mesmo do Next. Sem isto o esbuild usa o
+  // transform classico e emite `React.createElement` em arquivos que (como todo
+  // componente do App Router) nao importam `React`, e um teste de componente
+  // morre com "React is not defined" — que parece bug do componente e nao da
+  // configuracao de teste. `apps/**/*.test.tsx` ja estava no include; faltava
+  // isto para o include valer alguma coisa.
+  esbuild: { jsx: 'automatic' },
   resolve: {
     alias: {
       '@screena/config': fileURLToPath(new URL('./packages/config/src/index.ts', import.meta.url)),
