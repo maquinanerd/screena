@@ -117,6 +117,10 @@ usam dados sinteticos ASCII — so dado real expoe.
    ```
    corepack pnpm --filter @screena/ingestion exec tsx bin/discover-ids.ts --apply
    ```
+   Para uma amostra de dev, a flag é `--max-per-type=N` (não `--limit`, que é
+   do `pnpm catalog bootstrap`): ela seleciona o **top-N por popularidade** de
+   cada export — lê o arquivo inteiro e nunca corta prefixo, então a amostra
+   contém os títulos que o público procura, não os ids mais antigos do TMDB.
 3. **Raw sync** (detalhe bruto → `tmdb_raw`, idempotente por hash):
    ```
    corepack pnpm --filter @screena/ingestion exec tsx bin/sync-tmdb-raw.ts --apply
