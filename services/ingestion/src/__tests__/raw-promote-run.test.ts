@@ -6,7 +6,12 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import type { EntityStorePort, StoreMovieInput, UpsertOutcome } from '../ports.js'
+import type {
+  CreditsWriteOutcome,
+  EntityStorePort,
+  EntityUpsertOutcome,
+  StoreMovieInput,
+} from '../ports.js'
 import { promoteMoviesFromRaw, readMovieDisplayFields } from '../raw-promote/run.js'
 import type { CatalogFinalizePort, RawMovieRow, RawMovieSource } from '../raw-promote/types.js'
 
@@ -43,19 +48,29 @@ function makeSource(rows: readonly RawMovieRow[]): RawMovieSource & { listed: nu
   }
 }
 
+/** Resumo neutro: o replace-set de creditos e testado no adapter Prisma. */
+const NO_CREDITS_WRITTEN: CreditsWriteOutcome = {
+  castReplaced: false,
+  crewReplaced: false,
+  castLinked: 0,
+  crewLinked: 0,
+  castDropped: 0,
+  crewDropped: 0,
+}
+
 /** Store fake: upsertMovie idempotente (created na 1a vez, updated depois). */
 function makeStore(seeded: number[] = []) {
   const seen = new Set<number>(seeded)
   const calls: Array<{ tmdbId: number; created: boolean }> = []
   let idSeq = 100
   const store: EntityStorePort = {
-    upsertMovie(input: StoreMovieInput): Promise<UpsertOutcome> {
+    upsertMovie(input: StoreMovieInput): Promise<EntityUpsertOutcome> {
       const tmdbId = input.movie.tmdbId
       const created = !seen.has(tmdbId)
       seen.add(tmdbId)
       idSeq += 1
       calls.push({ tmdbId, created })
-      return Promise.resolve({ id: String(idSeq), created })
+      return Promise.resolve({ id: String(idSeq), created, credits: NO_CREDITS_WRITTEN })
     },
     touchMovie: () => Promise.reject(new Error('n/a')),
     upsertTvShow: () => Promise.reject(new Error('n/a')),
@@ -187,7 +202,7 @@ describe('promoteMoviesFromRaw', () => {
     const store: EntityStorePort = {
       upsertMovie(input) {
         seen.push({ ...input.timestamps })
-        return Promise.resolve({ id: '1', created: true })
+        return Promise.resolve({ id: '1', created: true, credits: NO_CREDITS_WRITTEN })
       },
       touchMovie: () => Promise.reject(new Error('n/a')),
       upsertTvShow: () => Promise.reject(new Error('n/a')),

@@ -7,7 +7,12 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import type { EntityStorePort, StorePersonInput, UpsertOutcome } from '../ports.js'
+import type {
+  CreditsWriteOutcome,
+  EntityStorePort,
+  StorePersonInput,
+  UpsertOutcome,
+} from '../ports.js'
 import {
   promoteMoviesFromRaw,
   promotePeopleFromRaw,
@@ -60,6 +65,16 @@ function makePersonSource(rows: readonly RawEntityRow[]): RawPersonSource & { li
   }
 }
 
+/** Resumo neutro: estes spies nunca devem ser chamados pela promocao de pessoa. */
+const NO_CREDITS_WRITTEN: CreditsWriteOutcome = {
+  castReplaced: false,
+  crewReplaced: false,
+  castLinked: 0,
+  crewLinked: 0,
+  castDropped: 0,
+  crewDropped: 0,
+}
+
 /** Store fake: upsertPerson idempotente + spies em upsertMovie/upsertTvShow. */
 function makePersonStore(seeded: number[] = []) {
   const seen = new Set<number>(seeded)
@@ -77,11 +92,11 @@ function makePersonStore(seeded: number[] = []) {
     },
     upsertMovie: (input) => {
       movieCalls.push(input)
-      return Promise.resolve({ id: '0', created: true })
+      return Promise.resolve({ id: '0', created: true, credits: NO_CREDITS_WRITTEN })
     },
     upsertTvShow: (input) => {
       tvCalls.push(input)
-      return Promise.resolve({ id: '0', created: true })
+      return Promise.resolve({ id: '0', created: true, credits: NO_CREDITS_WRITTEN })
     },
     touchMovie: () => Promise.reject(new Error('n/a')),
     touchTvShow: () => Promise.reject(new Error('n/a')),

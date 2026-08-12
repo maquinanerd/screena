@@ -54,6 +54,8 @@ export async function importMovie(ctx: ImportContext, tmdbId: number): Promise<I
       externalIds: normalized.externalIds,
       cast: normalized.cast,
       crew: normalized.crew,
+      castPresent: normalized.castPresent,
+      crewPresent: normalized.crewPresent,
       timestamps,
     })
     await ctx.syncLog.write({

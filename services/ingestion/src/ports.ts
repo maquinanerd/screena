@@ -47,6 +47,37 @@ export interface SeasonUpsertOutcome extends UpsertOutcome {
   readonly episodesUpserted: number
 }
 
+/**
+ * Resumo da escrita de creditos (replace-set) de um upsert de filme/serie.
+ *
+ * Existe para que "nao mexi no elenco" e "regravei o elenco" deixem de ser
+ * indistinguiveis no relatorio: antes, um payload sem o bloco `credits` apagava
+ * o elenco e o ciclo reportava `updated: 1` / `cast: 0` como SUCESSO.
+ */
+export interface CreditsWriteOutcome {
+  /** O replace-set de elenco rodou (a fonte trouxe a lista). */
+  readonly castReplaced: boolean
+  /** O replace-set de equipe rodou (a fonte trouxe a lista). */
+  readonly crewReplaced: boolean
+  /** Creditos de elenco efetivamente gravados. */
+  readonly castLinked: number
+  /** Creditos de equipe efetivamente gravados. */
+  readonly crewLinked: number
+  /**
+   * Creditos de elenco DESCARTADOS por falta de stub de pessoa. Deveria ser
+   * sempre 0 (o stub e upsertado a partir do proprio credito); qualquer valor
+   * acima disso e perda de dado e precisa aparecer, nunca sumir em silencio.
+   */
+  readonly castDropped: number
+  /** Idem para equipe. */
+  readonly crewDropped: number
+}
+
+/** Resultado do upsert de filme/serie (upsert + resumo do replace-set de creditos). */
+export interface EntityUpsertOutcome extends UpsertOutcome {
+  readonly credits: CreditsWriteOutcome
+}
+
 /** Porta de leitura TMDB (client real ou fake de teste). */
 export interface TmdbReadPort {
   getMovie(tmdbId: number): Promise<TmdbMovieDetail>
@@ -108,6 +139,15 @@ export interface StoreMovieInput {
   readonly externalIds: readonly ExternalIdInput[]
   readonly cast: readonly CastMemberInput[]
   readonly crew: readonly CrewMemberInput[]
+  /**
+   * A FONTE trouxe a lista de elenco (array, mesmo vazio)? OBRIGATORIO (nao
+   * opcional) de proposito: um default silencioso reintroduziria o defeito —
+   * default `true` apagaria elenco em payload sem `credits`, default `false`
+   * impediria para sempre uma limpeza legitima. Cada chamador declara.
+   */
+  readonly castPresent: boolean
+  /** Idem para a lista de equipe. */
+  readonly crewPresent: boolean
   readonly timestamps: SyncTimestamps
 }
 
@@ -117,6 +157,10 @@ export interface StoreTvShowInput {
   readonly externalIds: readonly ExternalIdInput[]
   readonly cast: readonly CastMemberInput[]
   readonly crew: readonly CrewMemberInput[]
+  /** Ver `StoreMovieInput.castPresent`. */
+  readonly castPresent: boolean
+  /** Ver `StoreMovieInput.crewPresent`. */
+  readonly crewPresent: boolean
   readonly timestamps: SyncTimestamps
 }
 
@@ -137,9 +181,9 @@ export interface StorePersonInput {
 
 /** Porta de persistencia de entidades (upserts idempotentes + touch de frescor). */
 export interface EntityStorePort {
-  upsertMovie(input: StoreMovieInput): Promise<UpsertOutcome>
+  upsertMovie(input: StoreMovieInput): Promise<EntityUpsertOutcome>
   touchMovie(tmdbId: number, timestamps: SyncTimestamps): Promise<boolean>
-  upsertTvShow(input: StoreTvShowInput): Promise<UpsertOutcome>
+  upsertTvShow(input: StoreTvShowInput): Promise<EntityUpsertOutcome>
   touchTvShow(tmdbId: number, timestamps: SyncTimestamps): Promise<boolean>
   upsertSeasonWithEpisodes(input: StoreSeasonInput): Promise<SeasonUpsertOutcome>
   touchSeason(tvShowTmdbId: number, seasonNumber: number, lastSyncedAt: Date): Promise<boolean>

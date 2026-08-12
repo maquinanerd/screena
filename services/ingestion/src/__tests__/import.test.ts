@@ -12,7 +12,9 @@ import type {
   CacheFetchInput,
   CachePort,
   CacheResult,
+  CreditsWriteOutcome,
   EntityStorePort,
+  EntityUpsertOutcome,
   SeasonUpsertOutcome,
   StoreMovieInput,
   StorePersonInput,
@@ -40,6 +42,23 @@ class FakeCache implements CachePort {
   }
 }
 
+/** Resumo de creditos de um fake: o replace-set real vive no adapter Prisma. */
+function fakeCredits(input: {
+  readonly cast: readonly unknown[]
+  readonly crew: readonly unknown[]
+  readonly castPresent: boolean
+  readonly crewPresent: boolean
+}): CreditsWriteOutcome {
+  return {
+    castReplaced: input.castPresent,
+    crewReplaced: input.crewPresent,
+    castLinked: input.castPresent ? input.cast.length : 0,
+    crewLinked: input.crewPresent ? input.crew.length : 0,
+    castDropped: 0,
+    crewDropped: 0,
+  }
+}
+
 /** Store fake: conta upserts/touches e guarda entidades por tmdbId. */
 class FakeStore implements EntityStorePort {
   readonly movies = new Map<number, true>()
@@ -55,21 +74,21 @@ class FakeStore implements EntityStorePort {
   upsertPersonCount = 0
   touchPersonCount = 0
 
-  async upsertMovie(input: StoreMovieInput): Promise<UpsertOutcome> {
+  async upsertMovie(input: StoreMovieInput): Promise<EntityUpsertOutcome> {
     this.upsertMovieCount += 1
     const created = !this.movies.has(input.movie.tmdbId)
     this.movies.set(input.movie.tmdbId, true)
-    return { id: `movie-${input.movie.tmdbId}`, created }
+    return { id: `movie-${input.movie.tmdbId}`, created, credits: fakeCredits(input) }
   }
   async touchMovie(tmdbId: number): Promise<boolean> {
     this.touchMovieCount += 1
     return this.movies.has(tmdbId)
   }
-  async upsertTvShow(input: StoreTvShowInput): Promise<UpsertOutcome> {
+  async upsertTvShow(input: StoreTvShowInput): Promise<EntityUpsertOutcome> {
     this.upsertTvCount += 1
     const created = !this.tvShows.has(input.tvShow.tmdbId)
     this.tvShows.set(input.tvShow.tmdbId, true)
-    return { id: `tv-${input.tvShow.tmdbId}`, created }
+    return { id: `tv-${input.tvShow.tmdbId}`, created, credits: fakeCredits(input) }
   }
   async touchTvShow(tmdbId: number): Promise<boolean> {
     this.touchTvCount += 1

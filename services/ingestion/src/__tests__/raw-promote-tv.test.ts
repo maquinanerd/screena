@@ -8,11 +8,12 @@
 
 import { describe, expect, it } from 'vitest'
 import type {
+  CreditsWriteOutcome,
   EntityStorePort,
+  EntityUpsertOutcome,
   SeasonUpsertOutcome,
   StoreSeasonInput,
   StoreTvShowInput,
-  UpsertOutcome,
 } from '../ports.js'
 import {
   promoteMoviesFromRaw,
@@ -68,6 +69,16 @@ function makeTvSource(rows: readonly RawEntityRow[]): RawTvSource & { listed: nu
   }
 }
 
+/** Resumo neutro: o replace-set de creditos e testado no adapter Prisma. */
+const NO_CREDITS_WRITTEN: CreditsWriteOutcome = {
+  castReplaced: false,
+  crewReplaced: false,
+  castLinked: 0,
+  crewLinked: 0,
+  castDropped: 0,
+  crewDropped: 0,
+}
+
 /** Store fake: upsertTvShow idempotente + spy em upsertSeasonWithEpisodes. */
 function makeTvStore(seeded: number[] = []) {
   const seen = new Set<number>(seeded)
@@ -75,12 +86,12 @@ function makeTvStore(seeded: number[] = []) {
   const seasonCalls: StoreSeasonInput[] = []
   let idSeq = 500
   const store: EntityStorePort = {
-    upsertTvShow(input: StoreTvShowInput): Promise<UpsertOutcome> {
+    upsertTvShow(input: StoreTvShowInput): Promise<EntityUpsertOutcome> {
       const created = !seen.has(input.tvShow.tmdbId)
       seen.add(input.tvShow.tmdbId)
       idSeq += 1
       tvCalls.push(input)
-      return Promise.resolve({ id: String(idSeq), created })
+      return Promise.resolve({ id: String(idSeq), created, credits: NO_CREDITS_WRITTEN })
     },
     upsertSeasonWithEpisodes(input: StoreSeasonInput): Promise<SeasonUpsertOutcome> {
       // Se a promocao chamar isto, o teste "nao cria season" deve falhar.
