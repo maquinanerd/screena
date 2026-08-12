@@ -6,10 +6,12 @@ import { buildSameAs, serializeJsonLd } from '@screena/seo'
 
 import { EntityActions } from '../../../_components/entity-actions'
 import { EntityExternalIds } from '../../../_components/entity-external-ids'
+import { SectionBoundary } from '../../../_components/section-boundary'
 import { WatchAvailabilityPanel } from '../../../_components/watch-availability-panel'
 import { RatingsPanel } from '../../../_components/ratings-panel'
 import { canonicalRedirectPath } from '../../../../src/lib/canonical-redirect'
 import { buildExternalLinks } from '../../../../src/lib/external-links'
+import { decideSection } from '../../../../src/lib/section-absence'
 import type { SeriesEpisodeView, SeriesSeasonView } from '../../../../src/lib/series-presenter'
 import { NEWS_INDEX_PATH, SITE_URL, gatePublicRobots, seasonPath } from '../../../../src/lib/site'
 import { getSeriesPageData } from '../../../../src/server/series-page'
@@ -25,6 +27,17 @@ import { getSeriesPageData } from '../../../../src/server/series-page'
  *
  * Série de ~21k episódios nunca vira 20k nós: só a temporada SELECIONADA
  * renderiza (paginação por temporada já vem do getter).
+ *
+ * A PALETA É A ÚNICA DIFERENÇA VISUAL para o filme, e ela vive em CSS
+ * (`[data-vertical='series']`), não duplicada aqui: selo verde, links
+ * `--c-vertical-link`, kicker `--c-vertical-kicker`, overlay da crítica em
+ * `rgba(16,32,22,…)`. A diferenciação NUNCA depende só da cor (invariante 11):
+ * label "Série" + badge + breadcrumb + schema `TVSeries` + URL `/pt/series/`.
+ *
+ * O botão "Ver no celular" do canônico é ferramenta de protótipo e NÃO é
+ * portado. As mesmas ausências da página de filme valem aqui (Cinerie Score,
+ * prêmios, "Original Screen") — ver o cabeçalho de `filmes/[slug]/page.tsx` e
+ * DESIGN-DELTA.md.
  */
 
 export const revalidate = 3600
@@ -228,6 +241,34 @@ export default async function SeriesPage({
   const synopsisLead = editorialBlocks[0] ?? null
   const synopsisRest = editorialBlocks.slice(1)
 
+  // Blocos dirigidos por dado; cada ausência carrega o motivo (section-absence).
+  const entityRef = { entityType: 'tv', entityId: String(entityId) } as const
+  const ratingsSection = decideSection(ratings, {
+    ...entityRef,
+    section: 'avaliacoes',
+    reason: 'no_authorized_rating',
+  })
+  const watchSection = decideSection(watch, {
+    ...entityRef,
+    section: 'onde-assistir',
+    reason: 'no_authorized_provider',
+  })
+  const critiqueSection = decideSection(critiqueBlock, {
+    ...entityRef,
+    section: 'guia-critica',
+    reason: 'no_editorial_review',
+  })
+  const castSection = decideSection(visibleCast, {
+    ...entityRef,
+    section: 'elenco',
+    reason: 'no_cast',
+  })
+  const newsSection = decideSection(visibleNews, {
+    ...entityRef,
+    section: 'noticias',
+    reason: 'no_linked_article',
+  })
+
   const breadcrumbJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
@@ -306,29 +347,28 @@ export default async function SeriesPage({
             </div>
 
             <aside aria-label="Notas e disponibilidade" className="detail-hero__aside">
-              <div className="score-line">
-                <div>
-                  <span className="score-line__label" style={{ color: 'var(--c-accent-series-dark)' }}>
-                    Cinerie Score
-                  </span>
-                  <p className="score-line__note">Ainda não calculado</p>
-                </div>
-              </div>
-              <div className="detail-aside-block">
-                <p className="detail-aside-block__label">Avaliações</p>
-                <RatingsPanel view={ratings} />
-              </div>
-              {watch !== null ? (
-                <div className="detail-aside-block">
-                  <p className="detail-aside-block__label">Onde assistir</p>
-                  <WatchAvailabilityPanel view={watch} />
-                  {watchContext !== null ? (
-                    <p className="watch-panel__note" data-block-type={watchContext.blockType}>
-                      {watchContext.content}
-                    </p>
-                  ) : null}
-                </div>
-              ) : null}
+              {/* Sem Cinerie Score: não há fórmula aprovada. Ver o cabeçalho. */}
+              <SectionBoundary decision={ratingsSection}>
+                {(view) => (
+                  <div className="detail-aside-block detail-aside-block--first">
+                    <p className="detail-aside-block__label">Avaliações</p>
+                    <RatingsPanel view={view} />
+                  </div>
+                )}
+              </SectionBoundary>
+              <SectionBoundary decision={watchSection}>
+                {(view) => (
+                  <div className="detail-aside-block">
+                    <p className="detail-aside-block__label">Onde assistir</p>
+                    <WatchAvailabilityPanel view={view} />
+                    {watchContext !== null ? (
+                      <p className="watch-panel__note" data-block-type={watchContext.blockType}>
+                        {watchContext.content}
+                      </p>
+                    ) : null}
+                  </div>
+                )}
+              </SectionBoundary>
             </aside>
           </div>
         </div>
@@ -404,27 +444,31 @@ export default async function SeriesPage({
         </section>
       ) : null}
 
-      {/* ===== Guia Screen · crítica (overlay verde) ===== */}
-      {critiqueBlock !== null ? (
-        <section aria-label="Crítica da redação" className="critic-band">
-          {view.media.backdrop !== null ? (
-            <img alt="" className="critic-band__img" loading="lazy" src={view.media.backdrop.src} />
-          ) : null}
-          <div className="critic-band__scrim-h" />
-          <div className="critic-band__scrim-v" />
-          <div className="critic-band__inner">
-            <div className="critic-band__content">
-              <span className="critic-band__eyebrow" style={{ color: '#B6D3A8' }}>
-                Guia Cinerie · Crítica da redação
-              </span>
-              <p className="critic-band__quote" data-block-type={critiqueBlock.blockType}>
-                {critiqueBlock.content}
-              </p>
-              <p className="critic-band__byline">Redação Cinerie</p>
+      {/* ===== Guia Cinerie · crítica (overlay verde) =====
+          O kicker verde vem do token da vertical em CSS
+          (`[data-vertical='series'] .critic-band__eyebrow`), não de um hex
+          inline: cor de marca hardcoded em componente é o que faz filme e série
+          divergirem em silêncio quando um dos dois é editado. */}
+      <SectionBoundary decision={critiqueSection}>
+        {(block) => (
+          <section aria-label="Crítica da redação" className="critic-band">
+            {view.media.backdrop !== null ? (
+              <img alt="" className="critic-band__img" loading="lazy" src={view.media.backdrop.src} />
+            ) : null}
+            <div className="critic-band__scrim-h" />
+            <div className="critic-band__scrim-v" />
+            <div className="critic-band__inner">
+              <div className="critic-band__content">
+                <span className="critic-band__eyebrow">Guia Cinerie · Crítica da redação</span>
+                <p className="critic-band__quote" data-block-type={block.blockType}>
+                  {block.content}
+                </p>
+                <p className="critic-band__byline">Redação Cinerie</p>
+              </div>
             </div>
-          </div>
-        </section>
-      ) : null}
+          </section>
+        )}
+      </SectionBoundary>
 
       {/* ===== Episódios (catálogo assistível) ===== */}
       {view.seasons.length > 0 ? (
@@ -472,7 +516,8 @@ export default async function SeriesPage({
       ) : null}
 
       {/* ===== Elenco · faixa visual ===== */}
-      {visibleCast.length > 0 ? (
+      <SectionBoundary decision={castSection}>
+        {(members) => (
         <section aria-labelledby="series-cast-title" className="detail-container" style={{ paddingTop: 60 }}>
           <div className="section-head" style={{ alignItems: 'flex-end', marginBottom: 26 }}>
             <div>
@@ -491,7 +536,7 @@ export default async function SeriesPage({
             <p data-block-type={castContext.blockType}>{castContext.content}</p>
           ) : null}
           <ul className="cast-strip">
-            {visibleCast.map((member, index) => (
+            {members.map((member, index) => (
               <li key={`${member.name}-${index}`}>
                 {member.href !== null ? (
                   <a className="cast-tile" href={member.href}>
@@ -538,10 +583,12 @@ export default async function SeriesPage({
             ))}
           </ul>
         </section>
-      ) : null}
+        )}
+      </SectionBoundary>
 
       {/* ===== Notícias relacionadas ===== */}
-      {visibleNews.length > 0 ? (
+      <SectionBoundary decision={newsSection}>
+        {(articles) => (
         <section aria-labelledby="series-news-title" className="detail-container" style={{ paddingTop: 64 }}>
           <div className="section-head" style={{ alignItems: 'flex-end', marginBottom: 26 }}>
             <div>
@@ -560,7 +607,7 @@ export default async function SeriesPage({
             <p data-block-type={newsContext.blockType}>{newsContext.content}</p>
           ) : null}
           <ul className="mnews-grid">
-            {visibleNews.map((card) => (
+            {articles.map((card) => (
               <li key={card.href}>
                 <a className="mnews-card" href={card.href}>
                   <span className="mnews-card__cover">
@@ -568,10 +615,9 @@ export default async function SeriesPage({
                       <img alt="" loading="lazy" src={card.image.src} />
                     ) : null}
                   </span>
+                  {/* Cor do kicker por vertical vem do CSS, não de inline. */}
                   {card.category !== null ? (
-                    <span className="mnews-card__cat" style={{ color: 'var(--c-accent-series-dark)' }}>
-                      {card.category}
-                    </span>
+                    <span className="mnews-card__cat">{card.category}</span>
                   ) : null}
                   <span className="mnews-card__title">{card.title}</span>
                   <span className="mnews-card__meta">
@@ -584,7 +630,8 @@ export default async function SeriesPage({
             ))}
           </ul>
         </section>
-      ) : null}
+        )}
+      </SectionBoundary>
 
       {/* ===== Detalhes (ficha 320px) ===== */}
       {facts.length > 0 ? (

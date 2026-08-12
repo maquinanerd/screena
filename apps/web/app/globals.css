@@ -115,10 +115,18 @@
 [data-vertical='movies'] {
   --ctx-accent: var(--c-accent-movie-cta);
   --ctx-accent-dark: var(--c-accent-movie-dark);
+  /* Kicker de secao e kicker sobre a faixa escura da critica. Sao dois valores
+     distintos porque o contraste exigido e outro: um assenta sobre #FDFCFA, o
+     outro sobre um overlay quase preto. Ficam aqui, e nao inline no JSX, para
+     que filme e serie nao possam divergir quando so um dos dois for editado. */
+  --ctx-kicker: var(--c-state-danger);
+  --ctx-kicker-on-dark: #e7a59f;
 }
 [data-vertical='series'] {
   --ctx-accent: var(--c-accent-series);
   --ctx-accent-dark: var(--c-accent-series-dark);
+  --ctx-kicker: var(--c-accent-series-dark);
+  --ctx-kicker-on-dark: #9fc48a;
 }
 
 /* ------------------------------------------------------------------ */
@@ -3117,6 +3125,221 @@ a.tabs__tab[aria-current='page'] {
   margin: 0 0 14px;
 }
 
+/* O canonico abre a coluna com o Cinerie Score e so entao separa "Avaliacoes"
+   com um filete. Sem score, o primeiro bloco nao pode comecar com um filete
+   solto pendurado no topo da coluna. */
+.detail-aside-block--first {
+  margin-top: 0;
+  border-top: 0;
+  padding-top: 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* Fileira de chips de nota (canonico: marca / numero / meta)          */
+/* ------------------------------------------------------------------ */
+
+.rating-chips__row {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.rating-chip {
+  display: flex;
+  align-items: stretch;
+  /* `flex:1 1 0` com `min-width:0` divide a largura por igual entre 1, 2, 3 ou
+     4 chips sem que o mais largo empurre os outros para fora. */
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* A divisoria e LIDERANTE (do 2o chip em diante) — nunca sobra na ponta. */
+.rating-chip__divider {
+  flex: 0 0 1px;
+  align-self: stretch;
+  background: #e9e3d8;
+  margin-inline: 10px;
+}
+
+.rating-chip__body {
+  display: block;
+  min-width: 0;
+}
+
+/* Slot da marca: TEXTO, nunca logo (logo_allowed = false em toda licenca).
+   Ocupa a mesma faixa vertical que o SVG do canonico (21px) para a fileira
+   manter o ritmo. */
+.rating-chip__mark {
+  display: block;
+  min-height: 21px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #12100e;
+  overflow-wrap: anywhere;
+}
+
+.rating-chip__score {
+  display: block;
+  font-size: 22px;
+  font-weight: 800;
+  color: #12100e;
+  margin-top: 9px;
+  letter-spacing: -0.03em;
+}
+
+.rating-chip__suffix {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--c-text-muted-aa);
+}
+
+/* Tomatometer (critica) e Popcornmeter (publico) medem coisas diferentes: o
+   rotulo da metrica e a natureza andam sempre juntos do numero. */
+.rating-chip__metric {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--c-text-muted-aa);
+  margin-top: 3px;
+  line-height: 1.35;
+}
+
+/* A linha meta carrega o CREDITO. Ele nao pode sair daqui: a licenca exige
+   credito visivel JUNTO da nota (ver o cabecalho de ratings-panel.tsx). */
+.rating-chip__meta {
+  display: block;
+  margin-top: 4px;
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--c-text-muted-aa);
+}
+
+.rating-chip__count {
+  display: block;
+  font-weight: 600;
+}
+
+.rating-chip__credit {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.rating-chip__credit-link {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.rating-chips__note,
+.rating-chips__updated {
+  font-size: 11px;
+  color: var(--c-text-muted-aa);
+  margin: 12px 0 0;
+}
+
+/* Abaixo de 480px quatro chips lado a lado esmagariam o numero e o credito.
+   Duas colunas mantem os dois legiveis; a divisoria vertical vira o proprio
+   espacamento da grade (um filete horizontal entre linhas seria um separador
+   NOVO, nao previsto no canonico). */
+@media (max-width: 479px) {
+  .rating-chips__row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px 14px;
+  }
+  .rating-chip__divider {
+    display: none;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Ausencia de bloco: aviso de DESENVOLVIMENTO (nunca vai a producao)  */
+/* ------------------------------------------------------------------ */
+
+.section-absent-dev {
+  margin: 12px 0;
+  padding: 8px 10px;
+  border: 1px dashed var(--c-border-strong);
+  border-radius: var(--r-control);
+  background: var(--c-bg-subtle);
+  font-size: 12px;
+  color: var(--c-text-muted-aa);
+}
+
+.section-absent-dev code {
+  font-size: 12px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Faixa de premios (componente pronto; SEM fonte de dado ligada hoje) */
+/* ------------------------------------------------------------------ */
+
+.awards-band {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  max-width: 1360px;
+  margin-inline: auto;
+  padding: 26px 64px;
+  border-bottom: 1px solid #e4ded3;
+}
+
+.awards-band__icon {
+  flex-shrink: 0;
+  color: #b98a2e;
+}
+
+.awards-band__text {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 15px;
+  color: #3a362f;
+}
+
+.awards-band__label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--c-text-muted-aa);
+  margin-right: 12px;
+}
+
+.awards-band__tally {
+  font-size: 15px;
+  font-weight: 800;
+  color: #12100e;
+}
+
+.awards-band__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  min-height: 44px;
+  color: var(--ctx-accent-dark);
+}
+
+@media (max-width: 1023px) {
+  .awards-band {
+    padding-inline: 32px;
+  }
+}
+
+@media (max-width: 767px) {
+  .awards-band {
+    flex-wrap: wrap;
+    gap: 12px;
+    padding-inline: var(--pad-page-mobile);
+  }
+}
+
 /* Midia full-bleed: grid 1fr 3fr 2fr, altura 472 */
 .media-strip {
   width: 100%;
@@ -3171,20 +3394,60 @@ a.tabs__tab[aria-current='page'] {
   gap: 0;
 }
 
+/* ------------------------------------------------------------------ *
+ * DERIVACAO DA FAIXA DE MIDIA — o contrato de responsividade NAO cobre
+ * esta faixa (ele descreve grids de poster, rails, elenco, episodios e
+ * ficha, nao um full-bleed 1fr/3fr/2fr de altura fixa). O que segue e
+ * derivado dele de forma conservadora, e esta registrado em
+ * DESIGN-DELTA.md por ser derivacao e nao contrato.
+ *
+ * A regra que a derivacao respeita: **nenhuma celula desaparece**. As tres
+ * da direita sao ATALHOS DE NAVEGACAO (notícias, onde assistir, em breve);
+ * escondê-las em <1024px nao "simplifica o layout", apaga tres links em
+ * exatamente as larguras onde a navegacao lateral ja nao existe. A altura
+ * fixa e que cede — ela e a parte decorativa.
+ *
+ * Tablet (<=1023): poster + destaque continuam lado a lado em cima, e os
+ * tres atalhos EMPILHAM ABAIXO, em linha de 3 colunas.
+ * Mobile (<=767): sobra poster + destaque na primeira faixa; os atalhos
+ * viram uma faixa de 3 colunas mais baixa, com o rotulo ainda legivel.
+ * ------------------------------------------------------------------ */
 @media (max-width: 1023px) {
   .media-strip__grid {
     grid-template-columns: 1fr 2fr;
-    height: 360px;
+    /* `auto` no lugar da altura fixa: a segunda linha (os atalhos) precisa de
+       altura propria, e 472px travados cortariam uma das duas. */
+    grid-template-rows: 360px auto;
+    height: auto;
   }
   .media-strip__stack {
-    display: none;
+    /* Ocupa a largura inteira ABAIXO das duas celulas de cima. */
+    grid-column: 1 / -1;
+    grid-template-rows: none;
+    grid-template-columns: repeat(3, 1fr);
+    height: 132px;
   }
 }
 
 @media (max-width: 767px) {
   .media-strip__grid {
-    height: 240px;
+    grid-template-rows: 240px auto;
   }
+  .media-strip__stack {
+    height: 104px;
+  }
+  .media-strip__caption {
+    left: 10px;
+    bottom: 10px;
+    padding: 4px 8px;
+    /* Nunca abaixo de 12px (regra transversal do contrato). */
+    font-size: 12px;
+  }
+}
+
+/* O atalho e um link: alvo minimo de 44px em qualquer viewport. */
+a.media-strip__cell {
+  min-height: 44px;
 }
 
 /* Eyebrow com barra vermelha (16x2) das secoes de detalhe */
@@ -3328,7 +3591,9 @@ a.tabs__tab[aria-current='page'] {
   font-weight: 800;
   letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: #e7a59f;
+  /* Token da vertical: rosa sobre a faixa vermelha (filme), verde-claro sobre
+     a verde (serie). O fallback cobre o uso fora de um `[data-vertical]`. */
+  color: var(--ctx-kicker-on-dark, #e7a59f);
   margin-bottom: 24px;
   display: block;
 }
@@ -3473,7 +3738,8 @@ a.tabs__tab[aria-current='page'] {
   font-weight: 800;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--c-state-danger);
+  /* Kicker por vertical (token, nunca hex inline no JSX). */
+  color: var(--ctx-kicker, var(--c-state-danger));
   display: block;
   margin-top: 15px;
 }
@@ -3650,62 +3916,11 @@ a.tabs__tab[aria-current='page'] {
   }
 }
 
-/* Painel de ratings externos (fonte + escala fixas por fonte) */
-.ratings-panel {
-  border: 1px solid var(--c-border);
-  border-radius: var(--r-card);
-  background: var(--c-bg-surface);
-  padding: 16px 18px;
-}
-
-.ratings-panel__title {
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--c-text-secondary);
-  margin: 0 0 10px;
-}
-
-.ratings-panel__list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.ratings-panel__row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  font-size: 13px;
-}
-
-.ratings-panel__source {
-  font-weight: 700;
-}
-
-.ratings-panel__value {
-  font-size: 22px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  white-space: nowrap;
-}
-
-.ratings-panel__scale {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--c-text-secondary);
-}
-
-.ratings-panel__attribution {
-  font-size: 11px;
-  color: var(--c-text-secondary);
-  margin: 12px 0 0;
-}
+/* As regras `.ratings-panel*` que ficavam aqui foram REMOVIDAS: nenhuma
+   marcacao as usava (`.ratings-panel__scale` era de uma versao anterior do
+   painel). Alem de mortas, eram perigosas — `__scale` desenhava o denominador
+   como sufixo universal, que e exatamente a apresentacao que fazia o
+   Tomatometer sair como "84/100". A fileira viva e `.rating-chip*`. */
 
 /* Cinerie Score — 6 estados honestos; NUNCA numero inventado */
 .score-box {
@@ -6529,8 +6744,11 @@ h4.art-body__heading {
   font-weight: 600;
 }
 
-/* Paineis governados de detalhe: mesmos nomes de classe, visual do handoff */
-.ratings,
+/* Paineis governados de detalhe: mesmos nomes de classe, visual do handoff.
+   As regras `.ratings*` que existiam aqui foram REMOVIDAS junto com a lista
+   empilhada que elas vestiam — a fileira de notas agora e `.rating-chip*`
+   (secao "Fileira de chips de nota"). CSS orfao de marcacao inexistente e o
+   tipo de coisa que ressuscita um layout antigo no primeiro reuso de nome. */
 .watch-availability {
   border: 1px solid var(--c-border);
   border-radius: var(--r-card);
@@ -6538,7 +6756,6 @@ h4.art-body__heading {
   padding: 16px 18px;
 }
 
-.ratings__title,
 .watch-availability__title {
   font-size: 11px;
   font-weight: 800;
@@ -6548,26 +6765,10 @@ h4.art-body__heading {
   margin: 0 0 8px;
 }
 
-.ratings__note,
 .watch-availability__note {
   font-size: 11px;
   color: var(--c-text-secondary);
   margin-bottom: 10px;
-}
-
-.ratings__list {
-  list-style: none;
-  padding-left: 0;
-}
-
-.ratings__item + .ratings__item {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--c-border-subtle);
-}
-
-.ratings__source {
-  font-weight: 700;
 }
 
 .watch-availability__group-title {
@@ -6607,31 +6808,9 @@ h4.art-body__heading {
 }
 
 .watch-availability__attribution,
-.ratings__attribution,
-.ratings__updated,
 .watch-availability__updated {
   font-size: 12px;
   color: var(--c-text-secondary);
-}
-
-.ratings__list {
-  margin: 0;
-  padding-left: 1.25rem;
-}
-
-.ratings__score-type::before,
-.ratings__metric::before,
-.ratings__score::before,
-.ratings__count::before {
-  content: ' · ';
-}
-
-.ratings__score {
-  font-weight: 700;
-}
-
-.ratings__attribution {
-  display: block;
 }
 
 /* ------------------------------------------------------------------ */

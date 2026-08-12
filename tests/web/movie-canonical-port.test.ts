@@ -43,11 +43,18 @@ describe('shell público mínimo · detalhe de filme', () => {
     expect(code).toContain('block.blockType === "where_to_watch_text"')
     expect(code).toContain('block.blockType === "cast_intro"')
     expect(code).toContain('block.blockType === "news_context"')
-    expect(code).toContain('watch !== null ?')
-    expect(code).toContain('<WatchAvailabilityPanel view={watch} />')
+    // O gate de oferta licenciada virou fronteira de secao: alem de manter o
+    // painel fora do DOM, ela REGISTRA o motivo da ausencia (o ternario
+    // anterior cumpria so a primeira metade).
+    expect(code).toMatch(/decideSection\(watch,/)
+    expect(code).toContain('<WatchAvailabilityPanel view={view} />')
     expect(code).toContain('<EntityExternalIds links={externalLinks} />')
-    expect(code).toContain('primaryCast.map(')
-    expect(code).toContain('editorialNews.map(')
+    // Elenco e noticias tambem passam pela fronteira; a lista chega como
+    // argumento ja garantido nao-vazio.
+    expect(code).toMatch(/decideSection\(primaryCast,/)
+    expect(code).toMatch(/decideSection\(editorialNews,/)
+    expect(code).toContain('members.map(')
+    expect(code).toContain('articles.map(')
     expect(code).toContain('data-editorial-state="in-review"')
   })
 
@@ -76,8 +83,16 @@ describe('shell público mínimo · detalhe de filme', () => {
     expect(code).toContain('view.media.backdrop !== null')
     expect(code).not.toMatch(/src="https?:/)
     expect(code).not.toMatch(/(?:\?\?|=== null \?)\s*["']—["']/)
-    // Cinerie Score: estado honesto, nunca número inventado (Prompt 11).
-    expect(code).toContain('Ainda não calculado')
+    // Cinerie Score: nunca número inventado — e agora nem placeholder.
+    //
+    // O canônico dá ao score o maior peso tipográfico da página (47px/800).
+    // Não existe fórmula aprovada (`PRODUCTION_FORMULA_REGISTRY` está vazio) nem
+    // decisão `cinerie_score_display` com `derivative_allowed`. A página escrevia
+    // "Ainda não calculado" — texto solto ocupando a posição de maior destaque
+    // para dizer que não há nada ali. O contrato de dados reais manda o oposto:
+    // "se não há conteúdo, a seção inteira não renderiza". O bloco saiu.
     expect(code).not.toMatch(/score-line__value/)
+    expect(code).not.toMatch(/Ainda não calculado/)
+    expect(code).not.toMatch(/Cinerie Score/)
   })
 })

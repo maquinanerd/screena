@@ -54,11 +54,14 @@ describe('shell público mínimo · detalhe de série', () => {
     expect(code).toContain('block.blockType === "where_to_watch_text"')
     expect(code).toContain('block.blockType === "cast_intro"')
     expect(code).toContain('block.blockType === "news_context"')
-    expect(code).toContain('watch !== null ?')
-    expect(code).toContain('<WatchAvailabilityPanel view={watch} />')
+    // Gate de oferta licenciada = fronteira de secao (decide E registra).
+    expect(code).toMatch(/decideSection\(watch,/)
+    expect(code).toContain('<WatchAvailabilityPanel view={view} />')
     expect(code).toContain('<EntityExternalIds links={externalLinks} />')
-    expect(code).toContain('visibleCast.map(')
-    expect(code).toContain('visibleNews.map(')
+    expect(code).toMatch(/decideSection\(visibleCast,/)
+    expect(code).toMatch(/decideSection\(visibleNews,/)
+    expect(code).toContain('members.map(')
+    expect(code).toContain('articles.map(')
     expect(code).toContain('data-editorial-state="in-review"')
   })
 
@@ -88,9 +91,13 @@ describe('shell público mínimo · detalhe de série', () => {
     expect(code).toContain('className="episode-row"')
     expect(code).not.toMatch(/src="https?:/)
     expect(code).not.toMatch(/(?:\?\?|=== null \?)\s*["']—["']/)
-    // Cinerie Score honesto; 21k episódios nunca de uma vez (só a temporada
-    // selecionada renderiza).
-    expect(code).toContain('Ainda não calculado')
+    // Cinerie Score: sem fórmula aprovada, o bloco inteiro não renderiza —
+    // nem número inventado, nem placeholder na posição de maior destaque da
+    // coluna (ver o mesmo caso em movie-canonical-port.test.ts).
+    expect(code).not.toMatch(/score-line__value/)
+    expect(code).not.toMatch(/Ainda não calculado/)
+    expect(code).not.toMatch(/Cinerie Score/)
+    // 21k episódios nunca de uma vez (só a temporada selecionada renderiza).
     expect(code).toContain('season={selectedSeason}')
   })
 })

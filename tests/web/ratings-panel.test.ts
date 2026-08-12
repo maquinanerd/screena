@@ -46,10 +46,15 @@ function withoutComments(source: string): string {
 describe("ratings-panel — componente publico", () => {
   const code = withoutComments(readSource(PANEL_REL));
 
-  it("exibe fonte, natureza e escala junto do numero", () => {
+  it("exibe fonte, natureza e MEDIDA junto do numero", () => {
     expect(code).toContain("item.sourceLabel");
     expect(code).toContain("item.scoreTypeLabel");
-    expect(code).toContain("item.scoreLabel");
+    // A fileira de chips tipografa o numero e o sufixo em tamanhos diferentes
+    // (canonico: `84` em 22/800 e `%` em 11/600), entao os dois pedacos sao
+    // renderizados separados em vez de `item.scoreLabel` colado. A REGRA nao
+    // mudou: o numero nunca aparece sem a medida.
+    expect(code).toContain("item.valueLabel");
+    expect(code).toContain("item.valueSuffix");
   });
 
   it("exibe o credito da fonte junto da nota", () => {
@@ -126,7 +131,13 @@ describe("ratings — wiring ate a pagina e ate o gate de SEO", () => {
 
       it("a pagina monta o painel", () => {
         expect(pageCode).toContain("RatingsPanel");
-        expect(pageCode).toContain("view={ratings}");
+        // A view agora chega pela fronteira de secao — que garante, na MESMA
+        // linha, que a ausencia sai do DOM e vira log. `decideSection(ratings,
+        // ...)` continua provando que e a view GOVERNADA que alimenta o painel,
+        // e nao um dado qualquer.
+        expect(pageCode).toMatch(/decideSection\(ratings,/);
+        expect(pageCode).toMatch(/<SectionBoundary decision=\{ratingsSection\}>/);
+        expect(pageCode).toContain("<RatingsPanel view={view} />");
       });
 
       it("displayedRatings NAO e mais uma lista vazia fixa (gate cego)", () => {

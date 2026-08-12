@@ -5,10 +5,12 @@ import { buildSameAs, serializeJsonLd } from '@screena/seo'
 
 import { EntityActions } from '../../../_components/entity-actions'
 import { EntityExternalIds } from '../../../_components/entity-external-ids'
+import { SectionBoundary } from '../../../_components/section-boundary'
 import { WatchAvailabilityPanel } from '../../../_components/watch-availability-panel'
 import { RatingsPanel } from '../../../_components/ratings-panel'
 import { canonicalRedirectPath } from '../../../../src/lib/canonical-redirect'
 import { buildExternalLinks } from '../../../../src/lib/external-links'
+import { decideSection } from '../../../../src/lib/section-absence'
 import { MOVIES_INDEX_PATH, NEWS_INDEX_PATH, SITE_URL, gatePublicRobots } from '../../../../src/lib/site'
 import { getMoviePageData } from '../../../../src/server/movie-page'
 
@@ -16,17 +18,29 @@ import { getMoviePageData } from '../../../../src/server/movie-page'
  * Detalhe de filme — tela 06 do canônico, na ESTRUTURA EXATA do HTML:
  * hero editorial CLARO (#FDFCFA, container 1360/64: breadcrumb → badge FILME
  * quadrado → H1 38/800 → chips de meta → sinopse → ações | coluna direita com
- * Cinerie Score + Avaliações + Onde assistir) → faixa de mídia full-bleed
- * (grid 1fr/3fr/2fr, 472px) → A obra (eyebrow com barra vermelha, lead 22 +
- * corpo 16/1.75) → Guia Screen · crítica (full-bleed com overlay vermelho) →
- * Elenco (faixa 6 col, retratos 3/4) → Notícias e bastidores (1.4fr/1fr/1fr)
- * → Ficha técnica (320px) .
+ * Avaliações + Onde assistir) → faixa de mídia full-bleed (grid 1fr/3fr/2fr,
+ * 472px) → A obra (eyebrow com barra vermelha, lead 22 + corpo 16/1.75) →
+ * Guia Cinerie · crítica (full-bleed com overlay vermelho) → Elenco (faixa 6
+ * col, retratos 3/4) → Notícias e bastidores (1.4fr/1fr/1fr) → Ficha técnica
+ * (320px).
  *
- * Divergências documentadas (DESIGN-DELTA.md): chips de gênero e linha de
- * prêmios não têm contrato de dado (omitidos, seção condicional); logos de
- * provedores/fontes de rating são texto por licença (logo_allowed=false);
- * célula de trailer sem play fake (sem contrato de vídeo na página);
- * "Mais como este" sem dataset determinístico (omitido).
+ * BLOCOS DO CANÔNICO QUE NÃO RENDERIZAM, E POR QUÊ (detalhe em DESIGN-DELTA.md):
+ *  - "Original Screen" (rótulo ao lado do selo): resíduo do rebrand E afirmação
+ *    FALSA — "original" significa produção própria, e a Cinerie não produz
+ *    filme. Não é portado. Travado por `original-screen-absent.test.tsx`.
+ *  - Cinerie Score (o "82"): não existe fórmula aprovada
+ *    (`PRODUCTION_FORMULA_REGISTRY` vazio) nem decisão `cinerie_score_display`
+ *    com `derivative_allowed`. O bloco não renderiza — nunca um número
+ *    inventado nem "ainda não calculado" ocupando a hierarquia do desenho.
+ *  - Faixa de prêmios: sem fonte (a API da TMDB não expõe prêmios). Componente
+ *    pronto em `_components/awards-band.tsx`, não importado.
+ *  - Chips de gênero: `movies` não tem relação com `genres` (a tabela é a lista
+ *    canônica por media_type, sem junção com o título).
+ *  - "Mais como este": sem dataset de recomendação determinístico.
+ *  - Logos de fontes/provedores: `logo_allowed = false` em toda licença.
+ *
+ * Toda ausência acima passa por `SectionBoundary`, que registra o motivo em log
+ * estruturado. Bloco que some sem dizer por quê é defeito, não economia.
  */
 
 export const revalidate = 3600
@@ -114,6 +128,39 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
   const synopsisLead = workBlocks[0] ?? null
   const synopsisRest = workBlocks.slice(1)
 
+  // Blocos dirigidos por dado. Cada decisão carrega o motivo da ausência — não
+  // existe "sumiu e não há o que registrar" (ver `section-absence.ts`).
+  const entityRef = { entityType: 'movie', entityId: String(entityId) } as const
+  const ratingsSection = decideSection(ratings, {
+    ...entityRef,
+    section: 'avaliacoes',
+    reason: 'no_authorized_rating',
+  })
+  const watchSection = decideSection(watch, {
+    ...entityRef,
+    section: 'onde-assistir',
+    // Hoje NÃO há um único provedor autorizado no banco: o registro canônico
+    // nunca foi populado (Bloco 2 do runbook). Enquanto for assim, a causa é
+    // essa — e não "este filme não está em lugar nenhum", que é um fato sobre
+    // o título e se pareceria exatamente igual na tela.
+    reason: 'no_authorized_provider',
+  })
+  const critiqueSection = decideSection(critiqueBlock, {
+    ...entityRef,
+    section: 'guia-critica',
+    reason: 'no_editorial_review',
+  })
+  const castSection = decideSection(primaryCast, {
+    ...entityRef,
+    section: 'elenco',
+    reason: 'no_cast',
+  })
+  const newsSection = decideSection(editorialNews, {
+    ...entityRef,
+    section: 'noticias',
+    reason: 'no_linked_article',
+  })
+
   const breadcrumbJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
@@ -193,31 +240,33 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
             </div>
 
             <aside aria-label="Notas e disponibilidade" className="detail-hero__aside">
-              {/* Cinerie Score — estado HONESTO do contrato (sem número
-                  inventado; ativação é o Prompt 11). */}
-              <div className="score-line">
-                <div>
-                  <span className="score-line__label">Cinerie Score</span>
-                  <p className="score-line__note">Ainda não calculado</p>
-                </div>
-              </div>
-              <div className="detail-aside-block">
-                <p className="detail-aside-block__label">Avaliações</p>
-                {/* Notas de terceiros na escala da própria fonte, com crédito.
-                    Fonte em TEXTO: logo_allowed=false por licença. */}
-                <RatingsPanel view={ratings} />
-              </div>
-              {watch !== null ? (
-                <div className="detail-aside-block">
-                  <p className="detail-aside-block__label">Onde assistir</p>
-                  <WatchAvailabilityPanel view={watch} />
-                  {watchContext !== null ? (
-                    <p className="watch-panel__note" data-block-type={watchContext.blockType}>
-                      {watchContext.content}
-                    </p>
-                  ) : null}
-                </div>
-              ) : null}
+              {/* O canônico abre esta coluna com o Cinerie Score em 47/800 — o
+                  maior peso tipográfico da página. Não há fórmula aprovada,
+                  então o bloco não existe aqui e a coluna começa direto em
+                  "Avaliações". Ver o cabeçalho do arquivo. */}
+              <SectionBoundary decision={ratingsSection}>
+                {(view) => (
+                  <div className="detail-aside-block detail-aside-block--first">
+                    <p className="detail-aside-block__label">Avaliações</p>
+                    {/* Notas de terceiros na medida da própria fonte, com o
+                        crédito DENTRO de cada chip (condição de licença). */}
+                    <RatingsPanel view={view} />
+                  </div>
+                )}
+              </SectionBoundary>
+              <SectionBoundary decision={watchSection}>
+                {(view) => (
+                  <div className="detail-aside-block">
+                    <p className="detail-aside-block__label">Onde assistir</p>
+                    <WatchAvailabilityPanel view={view} />
+                    {watchContext !== null ? (
+                      <p className="watch-panel__note" data-block-type={watchContext.blockType}>
+                        {watchContext.content}
+                      </p>
+                    ) : null}
+                  </div>
+                )}
+              </SectionBoundary>
             </aside>
           </div>
         </div>
@@ -293,28 +342,37 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
         </section>
       ) : null}
 
-      {/* ===== Guia Screen · crítica (full-bleed, overlay vermelho) ===== */}
-      {critiqueBlock !== null ? (
-        <section aria-label="Crítica da redação" className="critic-band">
-          {view.media.backdrop !== null ? (
-            <img alt="" className="critic-band__img" loading="lazy" src={view.media.backdrop.src} />
-          ) : null}
-          <div className="critic-band__scrim-h" />
-          <div className="critic-band__scrim-v" />
-          <div className="critic-band__inner">
-            <div className="critic-band__content">
-              <span className="critic-band__eyebrow">Guia Cinerie · Crítica da redação</span>
-              <p className="critic-band__quote" data-block-type={critiqueBlock.blockType}>
-                {critiqueBlock.content}
-              </p>
-              <p className="critic-band__byline">Redação Cinerie</p>
+      {/* ===== Guia Cinerie · crítica (full-bleed, overlay vermelho) =====
+          A fonte É real e já está ligada: um `content_block` de tipo
+          `review_summary` com `review_status` publicável. O que não existe é
+          conteúdo — ninguém escreveu nenhum ainda. Sem bloco, sem faixa (e sem
+          a imagem editorial que ela pediria). A nota em estrela e a assinatura
+          nominal do canônico NÃO têm contrato: `content_blocks` guarda texto,
+          não veredito numérico nem autoria. Ver DESIGN-DELTA.md. */}
+      <SectionBoundary decision={critiqueSection}>
+        {(block) => (
+          <section aria-label="Crítica da redação" className="critic-band">
+            {view.media.backdrop !== null ? (
+              <img alt="" className="critic-band__img" loading="lazy" src={view.media.backdrop.src} />
+            ) : null}
+            <div className="critic-band__scrim-h" />
+            <div className="critic-band__scrim-v" />
+            <div className="critic-band__inner">
+              <div className="critic-band__content">
+                <span className="critic-band__eyebrow">Guia Cinerie · Crítica da redação</span>
+                <p className="critic-band__quote" data-block-type={block.blockType}>
+                  {block.content}
+                </p>
+                <p className="critic-band__byline">Redação Cinerie</p>
+              </div>
             </div>
-          </div>
-        </section>
-      ) : null}
+          </section>
+        )}
+      </SectionBoundary>
 
       {/* ===== Elenco · faixa visual ===== */}
-      {primaryCast.length > 0 ? (
+      <SectionBoundary decision={castSection}>
+        {(members) => (
         <section aria-labelledby="movie-cast-title" className="detail-container" style={{ paddingTop: 60 }}>
           <div className="section-head" style={{ alignItems: 'flex-end', marginBottom: 26 }}>
             <div>
@@ -333,7 +391,7 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
             <p data-block-type={castContext.blockType}>{castContext.content}</p>
           ) : null}
           <ul className="cast-strip">
-            {primaryCast.map((member, index) => (
+            {members.map((member, index) => (
               <li key={`${member.name}-${index}`}>
                 {member.href !== null ? (
                   <a className="cast-tile" href={member.href}>
@@ -380,10 +438,12 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
             ))}
           </ul>
         </section>
-      ) : null}
+        )}
+      </SectionBoundary>
 
       {/* ===== Notícias e bastidores ===== */}
-      {editorialNews.length > 0 ? (
+      <SectionBoundary decision={newsSection}>
+        {(articles) => (
         <section aria-labelledby="movie-news-title" className="detail-container" style={{ paddingTop: 64 }}>
           <div className="section-head" style={{ alignItems: 'flex-end', marginBottom: 26 }}>
             <div>
@@ -402,7 +462,7 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
             <p data-block-type={newsContext.blockType}>{newsContext.content}</p>
           ) : null}
           <ul className="mnews-grid">
-            {editorialNews.map((article) => (
+            {articles.map((article) => (
               <li key={article.href}>
                 <a className="mnews-card" href={article.href}>
                   <span className="mnews-card__cover">
@@ -424,7 +484,8 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
             ))}
           </ul>
         </section>
-      ) : null}
+        )}
+      </SectionBoundary>
 
       {/* ===== Ficha técnica ===== */}
       {facts.length > 0 ? (

@@ -150,6 +150,18 @@ export interface RatingsPanelItem {
   countLabel: string | null;
   /** Credito da FONTE (nunca do fornecedor tecnico). Obrigatorio. */
   attribution: { text: string; url: string | null };
+  /**
+   * Este chip desenha a divisoria vertical do canonico a sua ESQUERDA?
+   *
+   * A divisoria e modelada como LIDERANTE (do 2o chip em diante), nao como
+   * separador emitido depois de cada chip. E a diferenca entre uma regra que
+   * pode errar e uma que nao pode: com divisoria a direita, o ultimo chip
+   * precisa de um `if` para nao deixar um risco sobrando na ponta — e esse `if`
+   * e exatamente o que quebra quando a fileira passa de 3 para 1 ou para 4
+   * fontes. Liderante, "n chips => n-1 divisorias, nunca uma na borda" e
+   * consequencia da forma, nao de uma condicao que alguem precisa lembrar.
+   */
+  leadingDivider: boolean;
 }
 
 /** Modelo de exibicao do painel de notas. */
@@ -254,6 +266,9 @@ function toPanelItem(rating: PublicExternalRating): RatingsPanelItem | null {
     valueLabel,
     best: rating.best,
     valueSuffix,
+    // Provisorio: so a fileira ORDENADA sabe quem e o primeiro. Definido em
+    // `buildRatingsView`, apos o sort.
+    leadingDivider: false,
     // Valor e MEDIDA sempre juntos. A medida vem da fonte: o Metascore e
     // "78/100", o Tomatometer e "88%" — e um nunca vira o outro.
     scoreLabel: `${valueLabel}${valueSuffix}`,
@@ -305,9 +320,13 @@ export function buildRatingsView(payload: RatingsPayload): RatingsPanelView | nu
     return a.metricLabel.localeCompare(b.metricLabel);
   });
 
+  // Divisoria liderante: todos menos o primeiro. Uma unica expressao decide a
+  // fileira inteira, para 1, 2, 3 ou 4 chips.
+  const rowed = items.map((item, index) => ({ ...item, leadingDivider: index > 0 }));
+
   const updatedDate = formatRatingDate(mostRecentIso(updatedAts));
   return {
-    items,
+    items: rowed,
     updatedAtLabel: updatedDate === null ? null : `Atualizado em ${updatedDate}`,
   };
 }
