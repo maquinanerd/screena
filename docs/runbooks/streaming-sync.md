@@ -114,7 +114,7 @@ liga `display_allowed`: acender continua sendo o passo 4.
 ### 3. Revisão
 
 ```
-node --import tsx services/streaming/bin/review-watch-availability.ts --kind=movie --country=BR --limit=50 --json
+pnpm --filter @screena/streaming review-watch-availability --kind=movie --country=BR --limit=50 --json
 ```
 
 Read-only. Lista candidatas das **duas** origens governadas e o veredito dos
@@ -125,10 +125,14 @@ oferta ainda não tem licença/decisão — rode o passo 2 do `legal`).
 
 ```
 # dry-run (default)
-node --import tsx services/streaming/bin/promote-watch-availability.ts --ids=1,2,3
+pnpm --filter @screena/streaming promote-watch-availability --ids=1,2,3
 # executa:
-node --import tsx services/streaming/bin/promote-watch-availability.ts --ids=1,2,3 --confirm --reviewer=ana@cinerie
+pnpm --filter @screena/streaming promote-watch-availability --ids=1,2,3 --confirm --reviewer=ana@cinerie
 ```
+
+Recusa do banco NÃO é silenciosa: o comando imprime o id e a causa, e **sai com
+erro**. `missing-attribution` significa que a origem daquela oferta ainda não tem
+licença — volte ao passo 2.
 
 Pré-condição: alias mapeado **e** `DataUsageDecision` vigente de
 `watch_offer_display` cuja licença tenha `source_key = slug` do provedor e cujo
@@ -138,7 +142,7 @@ UPDATE; o trigger valida tudo.
 ### 5. Revogação
 
 ```
-node --import tsx services/streaming/bin/promote-watch-availability.ts --ids=1 --revoke --confirm
+pnpm --filter @screena/streaming promote-watch-availability --ids=1 --revoke --confirm
 ```
 
 ## Exibição pública
