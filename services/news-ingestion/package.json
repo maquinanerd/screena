@@ -13,6 +13,7 @@
   "license": "UNLICENSED",
   "scripts": {
     "editorial": "tsx bin/editorial.ts",
+    "unpublish-article": "tsx bin/unpublish-article.ts",
     "validate:editorial-platform": "tsx scripts/validate-editorial-platform-real-postgres.ts",
     "project:editorial": "tsx bin/project-editorial.ts",
     "test:integration": "vitest run --root . --config ./vitest.integration.config.ts",
