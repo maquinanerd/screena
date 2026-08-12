@@ -17,7 +17,23 @@ RUN apt-get update \
 
 RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
 
-COPY . .
+# NAO-ROOT DESDE O COMECO DO WORKSPACE — e por que isso vale 11 minutos.
+#
+# O desenho anterior copiava e construia tudo como root e terminava com
+# `RUN chown -R node:node /app`: no build medido em producao, SO esse chown
+# levou 661 s, e a camada resultante DUPLICA o conteudo inteiro de /app
+# (workspace + node_modules + .next) — que e o que inflava o unpack da imagem
+# (257 s). chown recursivo em camada nova nao "muda dono": reescreve tudo.
+#
+# Agora o `node` e dono de /app e /pnpm ANTES de qualquer arquivo existir
+# (dois chown nao-recursivos em diretorios vazios: instantaneos), o COPY ja
+# entrega os arquivos com o dono certo e install/generate/build rodam como
+# `node` — tudo nasce com a posse certa e nenhuma camada de chown existe.
+# /pnpm precisa da posse porque PNPM_HOME aponta para la (store do pnpm).
+RUN mkdir -p /pnpm && chown node:node /app /pnpm
+USER node
+
+COPY --chown=node:node . .
 
 # NODE_ENV so e definido depois do build: com NODE_ENV=production o pnpm pula as
 # devDependencies, e tanto o `next build` (tailwindcss, typescript) quanto o
@@ -67,12 +83,9 @@ ENV CINERIE_BUILD_SHA=${CINERIE_BUILD_SHA} \
     CINERIE_BUILD_VERSION=${CINERIE_BUILD_VERSION} \
     CINERIE_BUILD_TIME=${CINERIE_BUILD_TIME}
 
-# Container NAO-root: a imagem base ja traz o usuario `node` (uid 1000). O app
-# so precisa LER node_modules/build e ESCREVER o cache de revalidacao do Next
-# (.next/cache); dar a posse de /app ao `node` cobre ambos. `migrate deploy` so
-# faz rede. Reversivel: remover o chown + USER volta a rodar como root.
-RUN chown -R node:node /app
-USER node
+# Container NAO-root: o `USER node` foi definido ANTES do COPY/install/build —
+# tudo em /app ja pertence ao `node` (inclusive .next/cache, que o runtime
+# escreve). Nenhum chown recursivo e necessario aqui.
 
 EXPOSE 3000
 
