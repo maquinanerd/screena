@@ -20,6 +20,7 @@ import {
   type IndexabilityResult,
 } from "@screena/seo";
 
+import { mapKnownForDepartment } from "./person-presenter";
 import { buildTmdbImageUrl } from "./tmdb-image-url";
 
 /** Estados de review que podem aparecer no render publico. */
@@ -514,7 +515,7 @@ export function buildNewsRelated(
 
 /** Payload controlado da "Ficha do titulo" (tela 05): 1a entidade citada. */
 export interface NewsEntityCardInput {
-  entityType: "movie" | "tv";
+  entityType: "movie" | "tv" | "person";
   id: string;
   titleOriginal: string | null;
   translationTitle: string | null;
@@ -524,15 +525,20 @@ export interface NewsEntityCardInput {
   year: number | null;
   /** Numero de temporadas conhecidas (apenas tv); null quando desconhecido. */
   seasonCount: number | null;
+  /**
+   * `known_for_department` cru do TMDB (apenas person); traduzido no builder
+   * pelo MESMO mapa da pagina de pessoa — desconhecido nao vaza ingles cru.
+   */
+  knownForDepartment?: string | null;
 }
 
 export interface NewsEntityCard {
-  entityType: "movie" | "tv";
+  entityType: "movie" | "tv" | "person";
   entityId: string;
   title: string;
   href: string;
   posterUrl: string | null;
-  /** Linha de meta honesta (ano / temporadas reais); null quando nada ha. */
+  /** Linha de meta honesta (ano / temporadas / funcao reais); null quando nada ha. */
   metaLine: string | null;
   summary: string | null;
   kicker: string;
@@ -558,6 +564,12 @@ export function buildNewsEntityCard(
       metaParts.push(seasons === 1 ? "1 temporada" : `${seasons} temporadas`);
     }
   }
+  if (input.entityType === "person") {
+    // A MESMA traducao da pagina de pessoa: valor desconhecido -> null, nunca
+    // ingles cru do TMDB nem funcao inventada.
+    const role = mapKnownForDepartment(input.knownForDepartment ?? null);
+    if (role !== null) metaParts.push(role);
+  }
   return {
     entityType: input.entityType,
     entityId: input.id,
@@ -566,12 +578,32 @@ export function buildNewsEntityCard(
     posterUrl: buildTmdbImageUrl(input.posterPath, "w500"),
     metaLine: metaParts.length > 0 ? metaParts.join(" · ") : null,
     summary: trimToNull(input.summary),
-    kicker:
-      input.entityType === "movie"
-        ? "Filme · citado nesta matéria"
-        : "Série · citada nesta matéria",
+    kicker: ENTITY_CARD_KICKERS[input.entityType],
   };
 }
+
+/**
+ * Kicker por tipo — os TRES tipos linkaveis da ficha. `person` existia no
+ * contrato desde sempre e era descartado em silencio no render (o emissor
+ * estava certo; o renderizador nao linkava pessoa).
+ */
+const ENTITY_CARD_KICKERS: Readonly<Record<NewsEntityCard["entityType"], string>> = {
+  movie: "Filme · citado nesta matéria",
+  tv: "Série · citada nesta matéria",
+  person: "Pessoa · citada nesta matéria",
+};
+
+/**
+ * Rotulo do link da ficha, por tipo — o TEXTO diz o tipo, nunca so a cor
+ * (invariante 11). Fonte unica para o bloco do corpo e para a ficha do rodape.
+ */
+export const NEWS_ENTITY_CARD_LINK_LABELS: Readonly<
+  Record<NewsEntityCard["entityType"], string>
+> = {
+  movie: "Ver página do filme",
+  tv: "Ver página da série",
+  person: "Ver página da pessoa",
+};
 
 export interface BuildNewsArticleViewInput {
   facts: ArticleFactsInput;

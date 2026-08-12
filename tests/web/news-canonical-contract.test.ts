@@ -120,8 +120,9 @@ describe('notícias após o reset visual', () => {
     }
     // Entidades citadas persistidas (nunca inferidas no render)
     expect(article).toContain('view.related.length > 0 ?')
-    // Ficha do titulo: so com entidade real hidratada; score honesto (bloqueado)
-    expect(article).toContain('card !== null ?')
+    // Ficha do titulo: so com entidade real hidratada (movie|tv por design — a
+    // ficha do TITULO nao vira ficha de pessoa); score honesto (bloqueado)
+    expect(article).toContain("card !== null && card.entityType !== 'person' ?")
     expect(article).toContain('ainda não calculado')
     expect(article).not.toMatch(/AggregateRating/)
     expect(existsSync(path.join(ROOT, 'apps/web/app/pt/noticias/news-canonical.module.css'))).toBe(

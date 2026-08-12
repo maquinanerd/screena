@@ -279,6 +279,75 @@ describe("entityCard: hidratado pelo catalogo, nunca inventado", () => {
     );
     expect(blocks).toEqual([]);
   });
+
+  it("os TRES tipos linkaveis viram ficha COM LINK: movie, tv e person", () => {
+    // O caso real (article 42): so o filme virava link; os cartoes de pessoa
+    // (Cillian Murphy, Emily Blunt) degradavam para nota sem ficha — e sem
+    // nota sumiam por completo. O emissor estava certo; o descarte era aqui.
+    const TV: NewsEntityCardInput = {
+      ...MOVIE,
+      entityType: "tv",
+      id: "20",
+      titleOriginal: "Ruptura",
+      translationTitle: "Ruptura",
+      slug: "ruptura",
+      seasonCount: 2,
+    };
+    const PERSON: NewsEntityCardInput = {
+      entityType: "person",
+      id: "7",
+      titleOriginal: "Cillian Murphy",
+      translationTitle: null,
+      summary: null,
+      slug: "cillian-murphy",
+      posterPath: "/perfil.jpg",
+      year: null,
+      seasonCount: null,
+      knownForDepartment: "Acting",
+    };
+    const blocks = buildArticleBodyBlocks(
+      [
+        { type: "entityCard", id: "e1", entityKind: "movie", entityId: "10" },
+        { type: "entityCard", id: "e2", entityKind: "tv", entityId: "20" },
+        { type: "entityCard", id: "e3", entityKind: "person", entityId: "7" },
+      ],
+      hydration({
+        entityCards: new Map([
+          ["movie:10", MOVIE],
+          ["tv:20", TV],
+          ["person:7", PERSON],
+        ]),
+      }),
+    );
+    expect(blocks).toHaveLength(3);
+    expect(blocks[0]).toMatchObject({
+      kind: "entityCard",
+      card: { entityType: "movie", href: "/pt/filmes/superman/" },
+    });
+    expect(blocks[1]).toMatchObject({
+      kind: "entityCard",
+      card: { entityType: "tv", href: "/pt/series/ruptura/" },
+    });
+    expect(blocks[2]).toMatchObject({
+      kind: "entityCard",
+      card: {
+        entityType: "person",
+        href: "/pt/pessoas/cillian-murphy/",
+        title: "Cillian Murphy",
+        kicker: "Pessoa · citada nesta matéria",
+        // known_for_department traduzido pelo MESMO mapa da pagina de pessoa.
+        metaLine: "Atuacao",
+      },
+    });
+  });
+
+  it("pessoa SEM ficha hidratada preserva a nota (nao inventa card)", () => {
+    const blocks = buildArticleBodyBlocks(
+      [{ type: "entityCard", id: "e1", entityKind: "person", entityId: "999", note: "Nota." }],
+      hydration(),
+    );
+    expect(blocks[0]).toMatchObject({ kind: "entityNote", note: "Nota." });
+  });
 });
 
 describe("relatedContent: so artigo publicavel", () => {
