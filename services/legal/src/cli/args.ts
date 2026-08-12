@@ -11,7 +11,7 @@ import { AUTHORIZATION_BATCH } from "../authorization-spec.js";
 export const LEGAL_COMMANDS = ["sources", "help"] as const;
 export type LegalCommand = (typeof LEGAL_COMMANDS)[number];
 
-export const LEGAL_SUBCOMMANDS = ["review", "apply"] as const;
+export const LEGAL_SUBCOMMANDS = ["review", "apply", "remediate"] as const;
 export type LegalSubcommand = (typeof LEGAL_SUBCOMMANDS)[number];
 
 /** `legal sources review` — mostra o plano, nunca escreve. */
@@ -31,11 +31,27 @@ export interface ApplyArgs {
   readonly json: boolean;
 }
 
+/**
+ * `legal sources remediate` — aposenta decisoes legadas que concedem sob
+ * licenca nao-exibivel. Dry-run por default; `--confirm` escreve.
+ *
+ * NAO exige `--policy-version`: nao e uma leva de autorizacao, e reparo de dado
+ * corrompido. Nada e concedido aqui — so retirado. Exige `--reviewer` porque
+ * mutacao de registro legal tem dono.
+ */
+export interface RemediateArgs {
+  readonly command: "sources";
+  readonly sub: "remediate";
+  readonly reviewer: string | null;
+  readonly confirm: boolean;
+  readonly json: boolean;
+}
+
 export interface HelpArgs {
   readonly command: "help";
 }
 
-export type LegalArgs = ReviewArgs | ApplyArgs | HelpArgs;
+export type LegalArgs = ReviewArgs | ApplyArgs | RemediateArgs | HelpArgs;
 
 export type ParseResult =
   | { readonly ok: true; readonly args: LegalArgs }
@@ -74,7 +90,7 @@ export function parseLegalArgs(argv: readonly string[]): ParseResult {
     return { ok: false, error: `comando desconhecido: "${command}" (use: sources)` };
   }
   if (sub === undefined || !(LEGAL_SUBCOMMANDS as readonly string[]).includes(sub)) {
-    return { ok: false, error: `subcomando invalido: "${sub ?? ""}" (use: review | apply)` };
+    return { ok: false, error: `subcomando invalido: "${sub ?? ""}" (use: review | apply | remediate)` };
   }
 
   const { flags, error } = readFlags(rest);
@@ -88,6 +104,20 @@ export function parseLegalArgs(argv: readonly string[]): ParseResult {
   const rawReviewer = flags.get("reviewer");
   if (rawReviewer === true) return { ok: false, error: "--reviewer exige uma identidade humana" };
   const reviewer = typeof rawReviewer === "string" ? rawReviewer.trim() : null;
+
+  if (sub === "remediate") {
+    const confirmRemediate = isTrue(flags.get("confirm"));
+    if (confirmRemediate && (reviewer === null || reviewer === "")) {
+      return { ok: false, error: "--confirm exige --reviewer=<identidade humana>" };
+    }
+    if (flags.has("policy-version")) {
+      return {
+        ok: false,
+        error: "remediate nao aceita --policy-version: nao e uma leva de autorizacao, e reparo de dado",
+      };
+    }
+    return { ok: true, args: { command: "sources", sub: "remediate", reviewer, confirm: confirmRemediate, json } };
+  }
 
   const rawPolicy = flags.get("policy-version");
   if (rawPolicy === true) return { ok: false, error: "--policy-version exige um valor" };
@@ -127,10 +157,16 @@ COMANDOS
                    bloqueados). Read-only, so banco.
   sources apply    Prepara/aplica novas versoes de source_licenses e
                    data_usage_decisions. DRY-RUN por default; --confirm escreve.
+  sources remediate
+                   REPARO DE DADO (nao e leva): aposenta decisoes legadas que
+                   concedem sob licenca nao-exibivel, zerando os grants e
+                   preservando stage/policy_version/decided_by. So toca linha
+                   que bate a impressao digital do rebaixamento pelo seed; se
+                   nao bater, RECUSA e diz por que. DRY-RUN por default.
 
 FLAGS
   --reviewer=<quem>         identidade HUMANA (obrigatoria com --confirm)
-  --policy-version=<leva>   deve ser "${AUTHORIZATION_BATCH}" (obrigatoria com --confirm)
+  --policy-version=<leva>   deve ser "${AUTHORIZATION_BATCH}" (so em apply)
   --confirm                 executa de verdade (idempotente; historico preservado)
   --json                    saida JSON
 

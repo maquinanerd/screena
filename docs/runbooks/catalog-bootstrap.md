@@ -76,6 +76,10 @@ deles. A ordem correta e:
 
 ```
 # 1. tabelas de referencia (api_providers, languages, countries, rating sources)
+#    Seguro a qualquer momento: desde 2026-08-12 o seed CRIA licenca de fonte
+#    quando falta e PULA quando ja existe (voce vera "PULADA" no log). Antes
+#    disso ele sobrescrevia a licenca vigente e rebaixava a autorizacao do
+#    proprietario para `unknown` — ver docs/legal/2026-08-12-remediacao-decisoes-legadas.md
 corepack pnpm --filter @screena/db db:seed
 
 # 2. taxonomias + configuracao de imagens do TMDB

@@ -60,4 +60,36 @@ describe("legal args", () => {
   it("subcomando inválido falha", () => {
     expect(parse("sources destroy").ok).toBe(false);
   });
+
+  // ============ remediate: REPARO DE DADO, não uma leva ============
+
+  it("remediate sem --confirm é dry-run e não exige reviewer", () => {
+    const r = parse("sources remediate");
+    expect(r.ok).toBe(true);
+    if (r.ok && r.args.command === "sources" && r.args.sub === "remediate") {
+      expect(r.args.confirm).toBe(false);
+      expect(r.args.reviewer).toBeNull();
+    }
+  });
+
+  it("remediate --confirm exige --reviewer (mutação de registro legal tem dono)", () => {
+    const r = parse("sources remediate --confirm");
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/reviewer/);
+  });
+
+  it("remediate RECUSA --policy-version: não é leva de autorização", () => {
+    const r = parse(`sources remediate --confirm --reviewer=Pablo --policy-version=${AUTHORIZATION_BATCH}`);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/nao aceita --policy-version/);
+  });
+
+  it("remediate completo é aceito", () => {
+    const r = parse("sources remediate --confirm --reviewer=Pablo");
+    expect(r.ok).toBe(true);
+    if (r.ok && r.args.command === "sources" && r.args.sub === "remediate") {
+      expect(r.args.confirm).toBe(true);
+      expect(r.args.reviewer).toBe("Pablo");
+    }
+  });
 });
