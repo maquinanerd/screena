@@ -121,10 +121,27 @@ export const getHomeEditorialHighlights = cache(
       };
     });
 
-    return buildHomeEditorialHighlights(
+    const highlights = buildHomeEditorialHighlights(
       inputs,
       new Date().toISOString(),
       HOME_EDITORIAL_LOADER_LIMIT,
     );
+    if (highlights.movies.length === 0 && highlights.series.length === 0) {
+      // Nunca em silêncio: a seção agora declara o vazio na própria página, e
+      // este log conta ao operador o PORQUÊ (matérias publicadas sem vínculo
+      // classificável ≠ zero matérias). Uma vez por processo — a home é
+      // force-dynamic e logar por request seria ruído.
+      logEmptyHighlightsOnce(translations.length);
+    }
+    return highlights;
   },
 );
+
+let emptyHighlightsLogged = false;
+function logEmptyHighlightsOnce(publishedTranslations: number): void {
+  if (emptyHighlightsLogged) return;
+  emptyHighlightsLogged = true;
+  console.info(
+    `[home-editorial] destaques vazios: ${publishedTranslations} matéria(s) publicada(s), nenhuma com vínculo movie/tv classificável — a seção exibe o estado vazio.`,
+  );
+}

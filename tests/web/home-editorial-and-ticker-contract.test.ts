@@ -94,10 +94,24 @@ describe('Destaques de hoje — seção editorial, não catálogo', () => {
     expect(editorialCode).not.toMatch(/alt=""/)
   })
 
-  it('o template só renderiza a seção quando há matéria de verdade', () => {
-    expect(homeLike).toContain('hasEditorialHighlights(editorialHighlights)')
-    expect(homeLike).toContain('{hasEditorial ? (')
+  it('a seção NUNCA some: renderiza sempre, com estado vazio explícito', () => {
+    // O defeito nº 3 do descarte silencioso: a seção existia desde a PR #91 e
+    // uma auditoria inteira a declarou inexistente porque ela se escondia
+    // quando não havia vínculo. Agora ela é estrutura fixa: o template não
+    // pode voltar a envolvê-la num guard condicional.
     expect(homeLike).toContain('<HomeEditorialHighlights')
+    const homeLikeCode = code(homeLike)
+    expect(homeLikeCode, 'a seção voltou a se esconder atrás de hasEditorial').not.toMatch(
+      /hasEditorial\s*\?[\s\S]{0,400}<HomeEditorialHighlights/,
+    )
+    // Com ZERO vínculos, o que o usuário vê é a mensagem honesta da vertical
+    // ativa (EMPTY_MESSAGE do componente) — nunca uma página sem a seção.
+    expect(editorialCode).toContain('EMPTY_MESSAGE[tab.vertical]')
+  })
+
+  it('o loader avisa (uma vez) quando os destaques resolvem vazios', () => {
+    expect(server).toContain('logEmptyHighlightsOnce')
+    expect(server).toContain('destaques vazios')
   })
 
   it('a home NÃO repete nos destaques matéria do bloco "Notícias & entrevistas"', () => {
