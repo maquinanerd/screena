@@ -53,11 +53,21 @@ import path from 'node:path'
 import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
 
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3'
+
 import { createTmdbClient } from '@screena/tmdb-client'
 import { disconnectPrisma, getPrismaClient } from '@screena/db/server'
 import { parseRawSyncArgs } from '../src/raw-sync/args.js'
 import { createPrismaSyncLog } from '../src/persistence/sync-log.js'
 import { createPrismaTmdbRawStore } from '../src/persistence/tmdb-raw-store.js'
+import { composeRawEntityStore } from '../src/raw-store/compose.js'
+import { resolveRawStoreConfig } from '../src/raw-store/config.js'
 import { describeRawSyncGateReason, evaluateRawSyncGate } from '../src/raw-sync/gate.js'
 import {
   createPilotSelector,
@@ -119,7 +129,7 @@ function newestQueueFile(): string | null {
     .map((f) => path.join(dir, f))
   if (candidates.length === 0) return null
   candidates.sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)
-  return candidates[0]
+  return candidates[0] ?? null
 }
 
 /** Resolve o arquivo de fila: --queue explicito ou o mais recente em .data/. */
@@ -216,10 +226,13 @@ async function main(): Promise<void> {
     process.exitCode = 1
     return
   }
-  // Gate permitiu -> fila garantidamente existe (exigida nos dois modos).
+  // Gate permitiu -> fila garantidamente existe (exigida nos dois modos). A
+  // variavel estreitada torna a garantia visivel ao compilador — o gate ja a
+  // provou em runtime.
+  if (queueFile === null) throw new Error('inalcancavel: gate exigiu a fila')
   console.log(`Fila: ${queueFile}`)
 
-  const reportPath = report ?? defaultReportPath(queueFile!)
+  const reportPath = report ?? defaultReportPath(queueFile)
 
   // ---- Dry-run: so plano (sem rede, sem DB, sem log). ----
   if (!apply) {
@@ -258,7 +271,48 @@ async function main(): Promise<void> {
   }
 
   const prisma = getPrismaClient()
-  const store = createPrismaTmdbRawStore(prisma)
+
+  // O STORE do payload bruto e escolhido por TMDB_RAW_STORE_DRIVER — a camada
+  // da #149 que existia e ninguem consumia. `postgres` (tmdb_raw via Prisma) e
+  // o default de dev; `r2` grava no bucket S3-compatible. A config RECUSA
+  // `postgres` em producao ("o payload bruto cresceria no disco do banco") e
+  // recusa omissao de driver em producao — a decisao de armazenamento nunca e
+  // um default silencioso la.
+  const storeConfig = resolveRawStoreConfig(process.env)
+  if (!storeConfig.ok) {
+    for (const error of storeConfig.errors) console.error(`Store do raw sync: ${error}`)
+    process.exitCode = 1
+    return
+  }
+  if (storeConfig.config.baseLanguage !== BASE_LANGUAGE) {
+    console.error(
+      `Store do raw sync: TMDB_RAW_BASE_LANGUAGE="${storeConfig.config.baseLanguage}" difere da lingua do piloto (${BASE_LANGUAGE}).`,
+    )
+    process.exitCode = 1
+    return
+  }
+  const composed = composeRawEntityStore(storeConfig.config, {
+    createPrismaStore: () => createPrismaTmdbRawStore(prisma),
+    createS3Client: (config) => ({
+      client: new S3Client({
+        endpoint: config.endpoint,
+        region: config.region,
+        forcePathStyle: config.forcePathStyle,
+        credentials: {
+          accessKeyId: config.accessKeyId,
+          secretAccessKey: config.secretAccessKey,
+        },
+      }),
+      commands: {
+        headObject: (input) => new HeadObjectCommand(input),
+        putObject: (input) => new PutObjectCommand(input),
+        getObject: (input) => new GetObjectCommand(input),
+        deleteObject: (input) => new DeleteObjectCommand(input),
+      },
+    }),
+  })
+  const store = composed.store
+  console.log(`Store: ${composed.description}`)
   const syncLog = createPrismaSyncLog(prisma)
 
   // Teto EFETIVO de requisicoes: por padrao o limite natural (selecionaveis x
