@@ -36,9 +36,26 @@ Uma oferta só pode ser exibida se o par `(provider_api, provider_key)` do upstr
 tiver um alias apontando para um `watch_providers`. Sem isso, `watch_provider_id`
 fica `NULL` e a promoção recusa.
 
-Cadastro (decisão humana): inserir a linha canônica em `watch_providers` (slug
-minúsculo, homepage HTTPS) e o alias em `watch_provider_aliases`
-(`provider_api = streaming_availability`, `external_key = <provider_key upstream>`).
+Cadastro **versionado e idempotente** (nunca script solto):
+
+```
+pnpm --filter @screena/streaming register-watch-providers            # dry-run
+pnpm --filter @screena/streaming register-watch-providers -- --apply
+# em produção: --apply --confirm-production
+```
+
+O dado canônico vive em `services/streaming/src/provider-registry.ts` (slug +
+nome + aliases dos DOIS fornecedores: `streaming_availability` por `service.id`,
+`tmdb` por `String(provider_id)`). Regras do comando: nunca apaga, nunca
+retargeteia alias de outro provedor (conflito aborta, alto), alias do banco
+desconhecido do registro é reportado e intocado. Alias **não se inventa**: para
+descobrir chaves que faltam, rode a colheita
+`services/ingestion/bin/reprocess-watch-providers.ts` (lista os provedores TMDB
+VISTOS no dado real) e estenda o registro numa PR.
+
+**Depois do registro, rode `pnpm legal sources apply ... --confirm`** — é ele
+que gera a licença `watch_availability` + a decisão `watch_offer_display` por
+provedor registrado. Sem esse passo, oferta continua sem display.
 
 ### 3. Revisão
 
