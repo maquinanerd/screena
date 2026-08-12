@@ -51,6 +51,29 @@ describe('tabela de fontes da OMDb', () => {
     }
   })
 
+  // O par `(rating_source, metric)` NAO e cosmetico: com `entity_type` e
+  // `entity_id` ele forma o UNIQUE de `external_ratings`. Trocar o metric do
+  // Rotten Tomatoes para `audience` reescreveria a LINHA ERRADA (a do
+  // Popcornmeter), deixaria `rotten_tomatoes/critics` orfa e faria a pagina
+  // exibir nota de CRITICO com rotulo de PUBLICO — a violacao exata da
+  // invariante 1. Ancorado literal, para nao poder mudar em silencio.
+  it('o par (fonte, metric) e EXATAMENTE o esperado — o Tomatometer e critics', () => {
+    const pairs = RECOGNIZED_OMDB_SOURCE_NAMES.map((name) => {
+      const recognized = recognizeOmdbSource(name)!
+      return `${recognized.ratingSource}/${recognized.metric}`
+    }).sort()
+
+    expect(pairs).toEqual(['imdb/audience', 'metacritic/critics', 'rotten_tomatoes/critics'])
+  })
+
+  it('o "85%" da OMDb NUNCA e gravado como rotten_tomatoes/audience', () => {
+    // O Popcornmeter (publico) nao vem neste payload. Se algum dia vier, ele
+    // precisa de uma ENTRADA PROPRIA na tabela — nunca reaproveitar esta.
+    const rt = recognizeOmdbSource('Rotten Tomatoes')!
+    expect(rt.metric).not.toBe('audience')
+    expect(rt.expectedScoreType).not.toBe('audience')
+  })
+
   it('toda fonte reconhecida tem escala canonica declarada', () => {
     for (const name of RECOGNIZED_OMDB_SOURCE_NAMES) {
       const source = recognizeOmdbSource(name)!.ratingSource

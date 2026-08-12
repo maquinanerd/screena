@@ -49,6 +49,70 @@ desligado. Dry-run puro continua liberado (relatar o plano não gasta cota).
 
 ---
 
+## 2.1 Migração das notas do provedor anterior — 15 reescritas, 15 órfãs
+
+Medição em produção (2026-08-12): **30 linhas** de `rapidapi_film_show_ratings`,
+5 filmes × 6 pares `(rating_source, metric)`, de **cinco** fontes. A OMDb cobre
+só **três** desses pares.
+
+| `(rating_source, metric)` | linhas | a OMDb entrega? | destino |
+| --- | ---: | --- | --- |
+| `imdb` / `audience` | 5 | sim (`7.6/10`) | **reescrita no lugar** |
+| `rotten_tomatoes` / `critics` | 5 | sim (`85%` = Tomatometer) | **reescrita no lugar** |
+| `metacritic` / `critics` | 5 | sim (`67/100` = Metascore) | **reescrita no lugar** |
+| `rotten_tomatoes` / `audience` | 5 | **não** (Popcornmeter não vem no payload) | **órfã** |
+| `letterboxd` / `audience` | 5 | **não** | **órfã** |
+| `filmaffinity` / `audience` | 5 | **não** | **órfã** |
+
+A reescrita das 15 primeiras é automática: o unique
+`(entity_type, entity_id, rating_source, metric)` faz o upsert cair na mesma
+linha, que troca `provider_api` para `omdb` e ganha licença, crédito e revisor
+`automation:`.
+
+### Por que as 15 órfãs não acendem — e por que os dois grupos são diferentes
+
+- **`letterboxd` e `filmaffinity` (10 linhas) são estruturalmente inexibíveis**,
+  independente de licença: nenhuma das duas tem janela em `RATING_STALE_POLICY`
+  (que só declara `imdb`, `rotten_tomatoes` e `metacritic`), então
+  `evaluateRatingFreshness` devolve `unknown-policy` e o caminho de leitura as
+  descarta **sempre**. Não é falta de licença: é falta de política de frescor, e
+  inventar uma seria fabricar uma afirmação de atualidade.
+- **`rotten_tomatoes/audience` (5 linhas) é outro caso**: tem política (168h/720h)
+  e tem licença. Ela não está morta — está **sem alimentação**, porque nenhum
+  provedor ativo entrega o Popcornmeter. Promovida à mão, exibiria; e expiraria
+  30 dias depois, sem ninguém para renová-la.
+
+### Ordem segura para limpar
+
+**Apague depois de rodar o sync, nunca antes.** Depois do `--apply`, as 15
+reescritas já carregam `provider_api = 'omdb'` — então
+`provider_api = 'rapidapi_film_show_ratings'` passa a selecionar **exatamente** as
+15 órfãs, e o filtro vira autoexplicativo em vez de depender de acertar a lista
+de pares.
+
+Confirme antes (deve devolver só os três pares órfãos, todos com
+`alguma_exibida = false`):
+
+```sql
+SELECT rating_source, metric, count(*) AS linhas, bool_or(display_allowed) AS alguma_exibida
+  FROM external_ratings
+ WHERE provider_api = 'rapidapi_film_show_ratings'
+ GROUP BY 1, 2 ORDER BY 1, 2;
+```
+
+A remoção em si é decisão humana registrada — ver a seção "Como revogar" de
+[`docs/legal/ratings-streaming-provider-authorization.md`](../legal/ratings-streaming-provider-authorization.md)
+para o princípio: dado coletado não some por efeito colateral de sync.
+
+> **Não há trigger de DELETE em `external_ratings`** (os dois guards são
+> `BEFORE INSERT OR UPDATE`) e nenhuma FK aponta para a tabela. Ou seja: a
+> remoção é segura do ponto de vista relacional, **e não deixa rastro no banco**.
+> A procedência do que foi coletado sobrevive em `api_cache` (payload bruto) e
+> `api_sync_logs` (todo sync gera log) — mas o registro de que aquelas linhas
+> existiram fica só na decisão que autorizou apagá-las.
+
+---
+
 ## 3. Variáveis de ambiente
 
 | Variável | Obrigatória | Para quê |

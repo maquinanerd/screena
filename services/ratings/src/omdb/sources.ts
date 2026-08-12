@@ -27,7 +27,16 @@ export interface RecognizedOmdbSource {
    * Usamos deliberadamente o MESMO vocabulario do adapter anterior
    * (`audience` / `critics`), e isso tem uma consequencia querida: as linhas ja
    * existentes daquela ingestao sao REESCRITAS no lugar, com licenca e credito,
-   * em vez de ganharem linhas paralelas. Ver o relatorio da PR (T5).
+   * em vez de ganharem linhas paralelas.
+   *
+   * ATENCAO — a reescrita e PARCIAL, e o par exato importa. O adapter anterior
+   * gravava SEIS pares; a OMDb cobre TRES. `rotten_tomatoes/critics` e reescrito;
+   * `rotten_tomatoes/audience` (o Popcornmeter, que a OMDb nao entrega) fica
+   * orfao. Trocar o `metric` do Rotten Tomatoes para `audience` reescreveria a
+   * LINHA ERRADA: gravaria nota de CRITICO sob o par do PUBLICO, deixaria
+   * `critics` orfa e faria a pagina rotular Tomatometer como Popcornmeter —
+   * exatamente o que a invariante 1 proibe. Ver
+   * `docs/operations/ratings-provider-runbook.md` secao 2.1.
    */
   readonly metric: 'audience' | 'critics'
   /**
