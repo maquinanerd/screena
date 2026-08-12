@@ -19,6 +19,13 @@
     "packages/**/scripts/**",
     "packages/db/src/server.ts",
     "api-clients/**/bin/**",
+    // persistence/** e os bins listados dependem do Prisma Client GERADO e por
+    // isso vivem em OUTRO projeto de tsc: tsconfig.runtime.json. Nao e regiao
+    // sem gate — `pnpm typecheck` ENCADEIA o typecheck de runtime (exige
+    // `pnpm --filter @screena/db db:generate` antes; o preflight avisa), e no
+    // CI os dois rodam apos o db:generate. Quem mexe em adapter Prisma e ve o
+    // typecheck "passar" deve conferir se o arquivo esta coberto pelo include
+    // de tsconfig.runtime.json — bin novo precisa ser LISTADO la.
     "services/ingestion/**/persistence/**",
     "services/news-ingestion/**/persistence/**",
     "services/**/scripts/**",
