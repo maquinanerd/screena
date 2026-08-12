@@ -106,7 +106,9 @@ async function downloadExport(exp: IdExportFile, date: Date, maxPerType: number 
     throw new Error(`HTTP ${res.status} em ${exportFileName(exp.file, date)}`)
   }
 
-  const nodeStream = Readable.fromWeb(res.body)
+  // O mesmo cast de plan-seed.ts: o ReadableStream do fetch (tipos DOM) e o do
+  // node:stream/web divergem so no tipo — em runtime e o mesmo objeto.
+  const nodeStream = Readable.fromWeb(res.body as Parameters<typeof Readable.fromWeb>[0])
   const rl = createInterface({ input: nodeStream.pipe(createGunzip()), crlfDelay: Infinity })
 
   // movie/person trazem `adult` por linha -> ausencia e fail-closed (unsafe).
