@@ -18,13 +18,13 @@ import {
 const BASE = { isProd: false, apply: false, sample: false, hasKey: false, hasDb: false }
 
 describe('evaluateStreamingGate — precedencia fail-closed', () => {
-  it('producao bloqueia PRIMEIRO, mesmo em dry-run puro', () => {
+  it('producao SEM autorizacao bloqueia PRIMEIRO, mesmo em dry-run puro', () => {
     const result = evaluateStreamingGate({ ...BASE, isProd: true })
     expect(result.allowed).toBe(false)
-    expect(result.reason).toBe('production')
+    expect(result.reason).toBe('production-unauthorized')
   })
 
-  it('producao vence "sem chave" e "sem banco" (mais restritivo)', () => {
+  it('producao SEM autorizacao vence "sem chave" e "sem banco" (mais restritivo)', () => {
     const result = evaluateStreamingGate({
       isProd: true,
       apply: true,
@@ -32,7 +32,64 @@ describe('evaluateStreamingGate — precedencia fail-closed', () => {
       hasKey: false,
       hasDb: false,
     })
-    expect(result.reason).toBe('production')
+    expect(result.reason).toBe('production-unauthorized')
+  })
+
+  it('FAIL-CLOSED por OMISSAO: campo ausente nao e autorizacao', () => {
+    const omitido = evaluateStreamingGate({
+      isProd: true,
+      apply: true,
+      sample: false,
+      hasKey: true,
+      hasDb: true,
+    })
+    const explicitoFalse = evaluateStreamingGate({
+      isProd: true,
+      apply: true,
+      sample: false,
+      hasKey: true,
+      hasDb: true,
+      providerAuthorized: false,
+    })
+    expect(omitido).toEqual(explicitoFalse)
+    expect(omitido.reason).toBe('production-unauthorized')
+  })
+
+  it('producao COM autorizacao explicita libera (chave e banco presentes)', () => {
+    const result = evaluateStreamingGate({
+      isProd: true,
+      apply: true,
+      sample: false,
+      hasKey: true,
+      hasDb: true,
+      providerAuthorized: true,
+    })
+    expect(result.allowed).toBe(true)
+    expect(result.reason).toBeNull()
+  })
+
+  it('autorizacao NAO dispensa chave nem banco', () => {
+    expect(
+      evaluateStreamingGate({
+        isProd: true,
+        apply: true,
+        sample: false,
+        hasKey: false,
+        hasDb: true,
+        providerAuthorized: true,
+      }).reason,
+    ).toBe('no-api-key')
+
+    expect(
+      evaluateStreamingGate({
+        isProd: true,
+        apply: true,
+        sample: false,
+        hasKey: true,
+        hasDb: false,
+        providerAuthorized: true,
+      }).reason,
+    ).toBe('no-database-url')
   })
 
   it('--sample sem chave -> no-api-key', () => {
@@ -79,7 +136,11 @@ describe('needsNetwork', () => {
 })
 
 describe('describeStreamingGateReason', () => {
-  const reasons: readonly StreamingGateReason[] = ['production', 'no-api-key', 'no-database-url']
+  const reasons: readonly StreamingGateReason[] = [
+    'production-unauthorized',
+    'no-api-key',
+    'no-database-url',
+  ]
 
   it('cada motivo tem mensagem pt-BR nao-vazia e sem segredo', () => {
     for (const reason of reasons) {

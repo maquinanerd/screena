@@ -135,12 +135,17 @@ async function main(): Promise<void> {
   const hasKey = Boolean(process.env[FILM_SHOW_RATINGS_KEY_ENV]?.trim())
   const hasDb = Boolean(process.env.DATABASE_URL?.trim())
 
+  // Autorizacao explicita do provedor (ver o cabecalho de `gate.ts`). Comparacao
+  // com a string exata: "1", "yes" ou "sim" NAO autorizam consulta em producao.
+  const providerAuthorized = process.env.CINERIE_RATINGS_PROVIDER_AUTHORIZED?.trim() === 'true'
+
   const gate = evaluateRatingsGate({
     isProd,
     apply: args.apply,
     sample: args.sample,
     hasKey,
     hasDb,
+    providerAuthorized,
   })
   if (!gate.allowed && gate.reason !== null) {
     console.error(describeRatingsGateReason(gate.reason))

@@ -105,12 +105,18 @@ async function main(): Promise<void> {
   const hasKey = Boolean(process.env[STREAMING_AVAILABILITY_KEY_ENV]?.trim())
   const hasDb = Boolean(process.env.DATABASE_URL?.trim())
 
+  // Autorizacao explicita do provedor (ver o cabecalho de `gate.ts`). SEPARADA
+  // da de ratings: os dois provedores tem licencas diferentes, e desligar um
+  // nao pode desligar o outro. Comparacao com a string exata.
+  const providerAuthorized = process.env.CINERIE_STREAMING_PROVIDER_AUTHORIZED?.trim() === 'true'
+
   const gate = evaluateStreamingGate({
     isProd,
     apply: args.apply,
     sample: args.sample,
     hasKey,
     hasDb,
+    providerAuthorized,
   })
   if (!gate.allowed && gate.reason !== null) {
     console.error(describeStreamingGateReason(gate.reason))

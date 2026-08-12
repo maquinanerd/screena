@@ -48,8 +48,8 @@ import {
 import { runMediaSync } from '../catalog-sync/media-sync.js'
 import type { MediaTarget } from '../catalog-sync/media-sync.js'
 import { extractListItems } from '../discovery-snapshots/index.js'
-import { parseIdExport, exportUrl, DAILY_ID_EXPORTS } from '../discovery/id-exports.js'
-import { filterAdult } from '../discovery/adult-filter.js'
+import { exportUrl, DAILY_ID_EXPORTS } from '../discovery/id-exports.js'
+import { discoverIdsFromExportText } from '../discovery/export-discovery.js'
 import { reindexEntity } from '../search-projection/index.js'
 import type { SearchProjectionSourcePort } from '../search-projection/index.js'
 import type { SearchStorePort } from '../search/store-port.js'
@@ -896,6 +896,27 @@ async function discoverFromLists(
  * FAIL-CLOSED por linha — `false` e seguro; `true` e descartado; qualquer valor
  * presente porem malformado ("true", 1, null) e descartado como unsafe, nunca
  * presumido seguro.
+ *
+ * ORDEM: POPULARIDADE DECRESCENTE, nunca ordem de arquivo.
+ * --------------------------------------------------------
+ * O export vem em ordem de `id` (aproximadamente cronologica de cadastro), e
+ * `--limit N` e um CORTE DE PREFIXO. Cortar o prefixo da ordem de arquivo
+ * sincroniza os N ids mais ANTIGOS do TMDB — curta obscuro de 1913 — enquanto os
+ * titulos que o publico procura hoje ficam para o fim da fila. Num espelho
+ * incremental isso significa dias de ingestao antes de o primeiro nome
+ * reconhecivel entrar, e link interno de materia que nao resolve nesse meio
+ * tempo.
+ *
+ * O proprio export ja carrega `popularity` por linha (verificado no export de
+ * 2026-08-10: presente em movie/tv/person), entao ordenar NAO custa uma unica
+ * chamada de API nem um byte de cota — e so nao jogar fora um campo que ja veio.
+ *
+ * `buildSyncQueue` e o ordenador canonico e ja era usado pelo caminho NDJSON de
+ * `bin/discover-ids.ts`; o pipeline da fila usava outro caminho e por isso nao
+ * herdava a ordem. Ele dedupa por `(kind, tmdbId)`, ordena por popularidade
+ * desc (nulls por ultimo) com desempate por `tmdbId` asc — ordem TOTAL, entao
+ * duas execucoes sobre o mesmo export produzem exatamente a mesma fila — e
+ * reaplica `classifyAdult` como rede secundaria.
  */
 async function discoverFromDailyExports(
   kind: 'movie' | 'tv' | 'person',
@@ -913,34 +934,13 @@ async function discoverFromDailyExports(
   // O export do dia so fica pronto ~08:00 UTC; usamos o dia anterior.
   const date = new Date(now().getTime() - 24 * 60 * 60 * 1000)
   const text = await fetchText(exportUrl(file.file, date))
-  const records = parseIdExport(text)
 
-  // `filterAdult` E a camada 2: `adult === true` e descartado, e um `adult`
-  // malformado ("true", 1, null) ou AUSENTE num export que deveria traze-lo
-  // (movie/person, via `hasAdultField`) tambem cai — nunca presumido seguro.
-  const filtered = filterAdult(records, { adultFieldRequired: file.hasAdultField })
-
-  const ids = []
-  const seen = new Set()
-  let duplicate = 0
-
-  for (const record of filtered.kept) {
-    if (seen.has(record.id)) {
-      duplicate += 1
-      continue
-    }
-    seen.add(record.id)
-    ids.push(record.id)
-    if (limit !== null && ids.length >= limit) break
-  }
-
-  return {
-    discovered: records.length,
-    accepted: ids.length,
-    // Descarte "unsafe" conta junto com adulto: os dois sao o filtro protegendo
-    // a fila, e somar os dois e o numero que o operador precisa vigiar.
-    rejectedAdult: filtered.adultDropped + filtered.unsafeDropped,
-    duplicate,
-    ids,
-  }
+  // Todo o resto (filtro anti-adulto, dedup, ORDEM por popularidade, corte) e
+  // puro e vive em `discovery/export-discovery.ts`, onde tem teste proprio.
+  return discoverIdsFromExportText({
+    text,
+    kind,
+    hasAdultField: file.hasAdultField,
+    limit,
+  })
 }
