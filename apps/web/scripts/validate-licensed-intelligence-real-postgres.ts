@@ -407,7 +407,9 @@ async function runChecks(
 
   const withUsOffer = await readPage("filme-licenciado");
   const linksBr = (withUsOffer?.watch?.groups ?? []).flatMap((g) =>
-    ((g as { offers: Array<{ deepLink: string }> }).offers ?? []).map((o) => o.deepLink),
+    ((g as { offers: Array<{ destinationUrl: string }> }).offers ?? []).map(
+      (o) => o.destinationUrl,
+    ),
   );
   record(
     18,

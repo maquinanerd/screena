@@ -39,13 +39,13 @@ No container com o repo e `DATABASE_URL` apontando para o banco público
 (screen-db):
 
 ```bash
-pnpm --filter @screena/news-ingestion unpublish-article -- --article 41
+pnpm --filter @screena/news-ingestion unpublish-article --article 41
 ```
 
 Sem `--apply` é **dry-run**: mostra o estado atual e o plano. Para executar:
 
 ```bash
-pnpm --filter @screena/news-ingestion unpublish-article -- --article 41 --reason "motivo aqui" --apply --confirm-production
+pnpm --filter @screena/news-ingestion unpublish-article --article 41 --reason "motivo aqui" --apply --confirm-production
 ```
 
 - `--confirm-production` é obrigatória quando `DATABASE_URL`/`NODE_ENV`

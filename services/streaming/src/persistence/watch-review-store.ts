@@ -18,7 +18,8 @@
  */
 
 import type { PrismaClient } from '@screena/db/server'
-import { STREAMING_AVAILABILITY_PROVIDER_API } from '@screena/streaming-availability-client'
+
+import { PROMOTION_PROVIDER_APIS } from '../promotion/guardrails.js'
 
 import type {
   PromotionResult,
@@ -38,12 +39,21 @@ const CANDIDATE_SELECT = {
   providerName: true,
   offerType: true,
   deepLink: true,
+  // Destino do agregador (unico que a origem TMDB tem) e o credito ja hidratado:
+  // os guardrails passaram a decidir com os dois, entao a projecao precisa
+  // trazer os dois. Sem eles, `missing-link`/`missing-attribution` julgariam
+  // `undefined` e recusariam oferta boa.
+  webUrl: true,
   price: true,
   currency: true,
   quality: true,
   availableUntil: true,
   fetchedAt: true,
   displayAllowed: true,
+  requiresAttribution: true,
+  requiresLinkback: true,
+  attributionText: true,
+  attributionUrl: true,
 } as const
 
 interface WatchRow {
@@ -56,12 +66,17 @@ interface WatchRow {
   readonly providerName: string
   readonly offerType: string
   readonly deepLink: string | null
+  readonly webUrl: string | null
   readonly price: unknown
   readonly currency: string | null
   readonly quality: string | null
   readonly availableUntil: Date | null
   readonly fetchedAt: Date | null
   readonly displayAllowed: boolean
+  readonly requiresAttribution: boolean
+  readonly requiresLinkback: boolean
+  readonly attributionText: string | null
+  readonly attributionUrl: string | null
 }
 
 /** Prisma Decimal -> number | null (o relatorio nunca carrega Decimal). */
@@ -83,12 +98,17 @@ function toCandidate(row: WatchRow, title: string | null): PromotionCandidate {
     providerName: row.providerName,
     offerType: row.offerType,
     deepLink: row.deepLink,
+    webUrl: row.webUrl,
     price: toNumber(row.price),
     currency: row.currency,
     quality: row.quality,
     availableUntil: row.availableUntil,
     fetchedAt: row.fetchedAt,
     displayAllowed: row.displayAllowed,
+    requiresAttribution: row.requiresAttribution,
+    requiresLinkback: row.requiresLinkback,
+    attributionText: row.attributionText,
+    attributionUrl: row.attributionUrl,
   }
 }
 
@@ -147,8 +167,8 @@ export function createPrismaReviewStore(prisma: PrismaClient): ReviewStorePort {
   return {
     async listCandidates(query: ReviewQuery): Promise<readonly PromotionCandidate[]> {
       const where: Record<string, unknown> = {
-        // A listagem NUNCA traz outro fornecedor nem outro pais.
-        providerApi: query.providerApi,
+        // A listagem NUNCA traz fornecedor NAO GOVERNADO nem outro pais.
+        providerApi: { in: [...query.providerApis] },
         countryCode: query.countryCode,
       }
       if (query.entityType !== null) where.entityType = query.entityType
@@ -185,6 +205,7 @@ export function createPrismaReviewStore(prisma: PrismaClient): ReviewStorePort {
         throw new Error('promote: revisor humano obrigatorio (reviewed_by)')
       }
       let updated = 0
+      const refusals: { id: string; message: string }[] = []
       // Um id por statement: se o trigger permanente de governanca rejeitar uma
       // oferta incompleta (sem licenca/atribuicao/hash valido), SO aquele id
       // falha — fail-closed —, os demais seguem. A promocao grava, atomicamente,
@@ -231,6 +252,14 @@ export function createPrismaReviewStore(prisma: PrismaClient): ReviewStorePort {
                      AND l."is_current"
                      AND l."content_type" = 'watch_availability'
                      AND l."source_key" = p."slug"
+                     -- PROVENIENCIA: existe UMA licenca de watch_availability por
+                     -- FORNECEDOR TECNICO (Movie of the Night para
+                     -- streaming_availability, JustWatch para tmdb). Sem este
+                     -- filtro o ORDER BY abaixo escolheria a decisao mais recente
+                     -- entre as DUAS, e a oferta seria promovida sob a licenca da
+                     -- outra origem — creditando a fonte errada em silencio.
+                     -- Ver services/legal/src/authorization-spec.ts.
+                     AND l."provider_key" = w."provider_api"
                      AND l."display_allowed"
                      AND l."license_status" IN ('official', 'licensed', 'third_party')
                    ORDER BY (d."territory" IS NOT NULL) DESC, d."id" DESC
@@ -244,16 +273,26 @@ export function createPrismaReviewStore(prisma: PrismaClient): ReviewStorePort {
                   w."attribution_text", w."attribution_url"),
                 "updated_at" = now()
             WHERE w."id" = ${BigInt(id)}
-              AND w."provider_api" = ${STREAMING_AVAILABILITY_PROVIDER_API}
+              AND w."provider_api" = ANY(${[...PROMOTION_PROVIDER_APIS]})
               AND w."country_code" = 'BR'
               AND w."display_allowed" = false
           `
           updated += Number(affected)
-        } catch {
-          // Trigger rejeitou (governanca incompleta): fail-closed, nao promove.
+        } catch (error) {
+          // Trigger rejeitou (governanca incompleta): fail-closed, NAO promove.
+          //
+          // O `catch` vazio anterior tornava esta a unica falha muda do caminho:
+          // o operador via "0 promovidas" sem uma linha sequer dizendo por que, e
+          // a causa mais comum (falta de licenca/atribuicao para aquela origem)
+          // era exatamente a que ele precisava ler. Agora a recusa e NOMEADA e
+          // devolvida ao chamador, que a imprime no relatorio.
+          refusals.push({
+            id,
+            message: error instanceof Error ? error.message : String(error),
+          })
         }
       }
-      return { updated }
+      return { updated, refusals }
     },
 
     async revoke(ids: readonly string[]): Promise<StoreMutationOutcome> {
@@ -261,7 +300,7 @@ export function createPrismaReviewStore(prisma: PrismaClient): ReviewStorePort {
       const result = await prisma.watchAvailability.updateMany({
         where: {
           id: { in: ids.map((id) => BigInt(id)) },
-          providerApi: STREAMING_AVAILABILITY_PROVIDER_API,
+          providerApi: { in: [...PROMOTION_PROVIDER_APIS] },
           displayAllowed: true,
         },
         data: { displayAllowed: false },

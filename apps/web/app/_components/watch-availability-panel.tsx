@@ -50,12 +50,26 @@ export function WatchAvailabilityPanel({
             <ul className="watch-availability__list">
               {group.offers.map((offer) => (
                 <li
-                  key={`${offer.providerKey}:${offer.offerType}:${offer.deepLink}`}
+                  key={`${offer.providerKey}:${offer.offerType}:${offer.destinationUrl}`}
                   className="watch-offer"
                 >
+                  {/*
+                    O destino tem DUAS naturezas e o rotulo acessivel diz qual:
+                    `provider` leva ao titulo no proprio servico; `aggregator`
+                    leva a pagina do titulo no agregador daquele pais (o unico
+                    link que a origem TMDB/JustWatch publica). Prometer "ir para
+                    a Netflix" num link que leva ao agregador seria afirmar um
+                    destino que o upstream nunca prometeu.
+                  */}
                   <a
                     className="watch-offer__link"
-                    href={offer.deepLink}
+                    href={offer.destinationUrl}
+                    data-destination-kind={offer.destinationKind}
+                    aria-label={
+                      offer.destinationKind === "provider"
+                        ? `${offer.providerName}: abrir no serviço`
+                        : `${offer.providerName}: abrir página de disponibilidade`
+                    }
                     rel="nofollow sponsored noopener"
                     target="_blank"
                   >

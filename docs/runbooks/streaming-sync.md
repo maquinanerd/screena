@@ -1,8 +1,20 @@
 # Runbook — sync e promoção de streaming (onde assistir)
 
 Operação do slice de streaming. **Worker-only, offline — nunca no render.**
-País do MVP: **Brasil**. Fornecedor técnico: `streaming_availability` (RapidAPI).
-Marca: Cinerie.
+País do MVP: **Brasil**. Marca: Cinerie.
+
+**Duas origens de oferta, com créditos DIFERENTES — nunca as misture:**
+
+| Origem (`provider_api`) | De onde vem | Destino da oferta | Crédito obrigatório |
+| --- | --- | --- | --- |
+| `streaming_availability` | Streaming Availability API (Movie of the Night, via RapidAPI). Consome cota. | `deep_link` **por oferta** (leva ao serviço) | Movie of the Night |
+| `tmdb` | bloco `watch/providers` já arquivado em `tmdb_raw`. **Zero rede, zero cota.** | `web_url` — o `link` **por país** (leva ao agregador) | **JustWatch** |
+
+O TMDB **revende** dado do JustWatch, e seus termos exigem creditar o JustWatch
+nominalmente, sob pena de **revogação do acesso à API** — a mesma API que sustenta
+fichas, elenco e imagens do catálogo inteiro. Cada origem tem sua própria licença
+em `source_licenses` (mesma `source_key`, `provider_key` diferente); creditar uma
+com o texto da outra é proveniência falsa, não detalhe de copy.
 
 > Nenhuma oferta nasce exibível (`display_allowed = false`). Exibir exige provedor
 > canônico mapeado + decisão de uso vigente + revisor humano — o trigger
@@ -30,6 +42,22 @@ snapshot são **revogadas + marcadas stale**, nunca apagadas (histórico
 preservado). O sync resolve `watch_provider_id` pelo **alias** — sem alias, a
 oferta é ingerida e auditável, mas não exibível.
 
+> ### ⚠️ NUNCA use `--` para separar argumentos
+>
+> Com o pnpm **9.15.4** deste repo, `--` **não é consumido**: ele chega ao script
+> como argumento literal. Medido nos dois níveis de encaminhamento:
+>
+> | Comando | `process.argv.slice(2)` |
+> | --- | --- |
+> | `pnpm --filter p s --apply` | `["--apply"]` ✅ |
+> | `pnpm --filter p s -- --apply` | `["--","--apply"]` ❌ |
+> | `pnpm <script-raiz> sources apply --confirm` | `["sources","apply","--confirm"]` ✅ |
+> | `pnpm <script-raiz> sources apply -- --confirm` | `["sources","apply","--","--confirm"]` ❌ |
+>
+> Isso já custou duas rodadas de produção — e este runbook era uma das fontes do
+> erro. Passe as flags direto, sempre. Travado por
+> [`tests/governance/no-double-dash-in-docs.test.ts`](../../tests/governance/no-double-dash-in-docs.test.ts).
+
 ### 2. Mapear o provedor canônico (pré-requisito de exibição)
 
 Uma oferta só pode ser exibida se o par `(provider_api, provider_key)` do upstream
@@ -40,7 +68,7 @@ Cadastro **versionado e idempotente** (nunca script solto):
 
 ```
 pnpm --filter @screena/streaming register-watch-providers            # dry-run
-pnpm --filter @screena/streaming register-watch-providers -- --apply
+pnpm --filter @screena/streaming register-watch-providers --apply
 # em produção: --apply --confirm-production
 ```
 
@@ -57,13 +85,41 @@ VISTOS no dado real) e estenda o registro numa PR.
 que gera a licença `watch_availability` + a decisão `watch_offer_display` por
 provedor registrado. Sem esse passo, oferta continua sem display.
 
+### 2b. Reprocessar o `watch/providers` já arquivado (origem `tmdb`)
+
+Materializa ofertas a partir de `tmdb_raw`. **Não faz uma única chamada de rede e
+não gasta cota** — o bloco já foi baixado a cada sync de detalhe.
+
+```
+# forma do dado real (quantas linhas NÃO têm o bloco arquivado)
+pnpm --filter @screena/ingestion reprocess-watch-providers --sample --kind=movie
+
+# COLHEITA: lista os provider_id REAIS vistos no dado (insumo dos aliases)
+pnpm --filter @screena/ingestion reprocess-watch-providers --kind=movie --limit=500
+
+# grava (as linhas nascem display_allowed=false)
+pnpm --filter @screena/ingestion reprocess-watch-providers --kind=movie --apply
+
+# em produção: acrescente --confirm-production a qualquer um deles
+```
+
+A colheita imprime a lista **inteira** de provedores vistos. Se você passar
+`--print-limit=N`, ela diz quantos ficaram de fora — truncar em silêncio é como
+alguém acaba inventando um alias.
+
+O reprocessamento hidrata o **crédito** (licença + atribuição + decisão de uso)
+junto com a oferta, derivado da licença vigente daquela origem. Ele **nunca**
+liga `display_allowed`: acender continua sendo o passo 4.
+
 ### 3. Revisão
 
 ```
 node --import tsx services/streaming/bin/review-watch-availability.ts --kind=movie --country=BR --limit=50 --json
 ```
 
-Read-only. Lista candidatas e o veredito dos guardrails.
+Read-only. Lista candidatas das **duas** origens governadas e o veredito dos
+guardrails. Motivos de recusa incluem `missing-attribution` (a origem daquela
+oferta ainda não tem licença/decisão — rode o passo 2 do `legal`).
 
 ### 4. Promoção
 
@@ -90,8 +146,19 @@ node --import tsx services/streaming/bin/promote-watch-availability.ts --ids=1 -
 O painel "Disponibilidade no Brasil"
 ([`apps/web/app/_components/watch-availability-panel.tsx`](../../apps/web/app/_components/watch-availability-panel.tsx))
 lê via [`entity-watch.ts`](../../apps/web/src/server/entity-watch.ts), que filtra
-`display_allowed = true`, BR, `streaming_availability` e validade. Sem oferta
-permitida, o painel é omitido. Zero chamada externa no render (invariante 3).
+`display_allowed = true`, BR e validade — **não** por fornecedor técnico. Quem
+autoriza exibir é a cadeia de licença (decisão vigente + licença-mãe vigente e
+exibível), nunca o nome de quem transportou o dado.
+
+**Precedência entre origens:** para a mesma plataforma canônica e a mesma
+modalidade, a oferta com destino **no provedor** (`deep_link`) vence a com destino
+**no agregador** (`web_url`) — o deep link leva ao título no serviço; a página do
+agregador leva a mais uma escolha. Variantes reais (aluguel HD vs 4K) não são
+colapsadas. A oferta carrega `destinationKind` para que o painel não prometa
+"abrir na Netflix" num link que vai para o agregador.
+
+Sem oferta permitida, o painel é omitido. Zero chamada externa no render
+(invariante 3).
 
 ## Diagnóstico
 

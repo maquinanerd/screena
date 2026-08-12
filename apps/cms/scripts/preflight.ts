@@ -10,7 +10,7 @@
  *
  * Uso:
  *   pnpm --filter @screena/cms cms:preflight
- *   pnpm --filter @screena/cms cms:preflight -- --with-storage-write
+ *   pnpm --filter @screena/cms cms:preflight --with-storage-write
  */
 
 import process from 'node:process'

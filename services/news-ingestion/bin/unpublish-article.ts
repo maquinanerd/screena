@@ -3,8 +3,8 @@
  * direto no banco publico. Worker-only/offline (invariantes 3 e 4).
  *
  * Uso (a partir da raiz):
- *   pnpm --filter @screena/news-ingestion unpublish-article -- --article 41
- *   pnpm --filter @screena/news-ingestion unpublish-article -- --article 41 --apply
+ *   pnpm --filter @screena/news-ingestion unpublish-article --article 41
+ *   pnpm --filter @screena/news-ingestion unpublish-article --article 41 --apply
  *   pnpm --filter @screena/news-ingestion unpublish-article -- \
  *     --article 41 --mode blocked --reason "decisao judicial X" --apply --confirm-production
  *

@@ -101,7 +101,23 @@ async function main(): Promise<void> {
         `Dry-run: ${result.eligibleIds.length} elegivel(is). Repita com --confirm para aplicar (ids=${result.eligibleIds.join(',')}).`,
       )
     }
-    if (args.confirm && result.updated < result.eligibleIds.length) {
+    // RECUSA DO BANCO NUNCA E MUDA. O trigger de governanca pode barrar uma
+    // linha que os guardrails aprovaram (licenca/atribuicao ausente para aquela
+    // origem, hash divergente...). Antes isso morria num `catch` vazio e o
+    // operador via so "0 mutadas". Agora a causa e impressa, e o comando SAI
+    // COM ERRO — um ciclo integralmente recusado nao pode passar por sucesso.
+    if (result.refusals.length > 0) {
+      console.error(`\nRECUSADAS PELO BANCO (${result.refusals.length}) — governanca incompleta:`)
+      for (const refusal of result.refusals) {
+        console.error(`  #${refusal.id}: ${refusal.message}`)
+      }
+      console.error(
+        'Causa mais comum: a origem da oferta (provider_api) ainda nao tem licenca + decisao ' +
+          'watch_offer_display. Rode `pnpm legal sources review` e confira a licenca daquele provedor.',
+      )
+      process.exitCode = 1
+    }
+    if (args.confirm && result.updated < result.eligibleIds.length && result.refusals.length === 0) {
       console.warn(
         `Atencao: ${result.eligibleIds.length} elegivel(is), mas ${result.updated} mutada(s). ` +
           'Alguma linha saiu do escopo entre a leitura e o update (provider/pais/estado).',

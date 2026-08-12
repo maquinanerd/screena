@@ -387,49 +387,119 @@ export const STATIC_AUTHORIZATION: readonly AuthorizationEntry[] = [
 ];
 
 /**
- * Autorização de EXIBIÇÃO por provedor canônico de streaming.
+ * ============ PROVENIENCIA DA OFERTA: UMA LICENCA POR FORNECEDOR TECNICO ============
+ *
+ * Uma oferta de streaming pode chegar por DOIS caminhos tecnicos, e eles NAO
+ * compartilham credito:
+ *
+ *  - `streaming_availability` (Movie of the Night, via RapidAPI) — agregador
+ *    proprio, com deep link por oferta. Credito: "Movie of the Night".
+ *  - `tmdb` (bloco `watch/providers`) — o TMDB REVENDE dado do **JustWatch**, e
+ *    os termos do endpoint exigem, nominalmente, creditar o JustWatch sob pena
+ *    de revogacao do acesso a API. Credito: "JustWatch".
+ *
+ * Creditar "Movie of the Night" num dado vindo do TMDB nao seria credito
+ * faltando — seria **proveniencia falsa**. Por isso cada fornecedor tecnico tem
+ * a SUA licenca, com o SEU `attribution_text`/`attribution_url`.
+ *
+ * POR QUE ISSO CABE SEM MIGRATION: o indice `source_licenses_current_unique` e
+ * `(source_key, content_type, COALESCE(provider_key,''), COALESCE(territory_code,''))`
+ * — e `provider_key` esta nele. `licenseGroupKey` em `plan.ts` espelha o mesmo
+ * conjunto. Logo duas licencas vigentes por slug, uma por `provider_key`, sao
+ * grupos DIFERENTES e coexistem legitimamente. O trigger
+ * `watch_availability_display_guard` exige `license.source_key = <slug>` e
+ * `content_type='watch_availability'`, e nao restringe `provider_key`: ele
+ * valida a licenca da decisao que a oferta aponta.
+ *
+ * CONSEQUENCIA QUE NAO PODE SER ESQUECIDA: com duas licencas por slug, TODO
+ * lookup de credito e TODA resolucao de decisao precisam filtrar por
+ * `provider_key = <provider_api da oferta>`. Sem esse filtro, um `ORDER BY id
+ * DESC` entrega a licenca mais nova para os dois caminhos — e o dado da RapidAPI
+ * passaria a ser creditado ao JustWatch (ou vice-versa) em silencio. Esse filtro
+ * esta em `watch-credit-lookup.ts` e em `watch-review-store.ts`, e e travado por
+ * teste.
+ */
+
+/** Fornecedores tecnicos que podem originar uma oferta de streaming. */
+interface StreamingOrigin {
+  /** `api_providers.key` — vai para `source_licenses.provider_key`. */
+  readonly providerApi: string;
+  /** Credito textual exigido por ESTE fornecedor. */
+  readonly attributionText: string;
+  /** De onde o credito vem, para a nota de auditoria. */
+  readonly note: string;
+}
+
+/**
+ * As duas origens, declaradas como literais (mesmo padrao do resto do arquivo:
+ * o spec nao importa client de API). Os valores espelham
+ * `STREAMING_AVAILABILITY_PROVIDER_API` / `STREAMING_AVAILABILITY_ATTRIBUTION_URL`
+ * e `TMDB_PROVIDER_API` / `TMDB_WATCH_ATTRIBUTION_TEXT`; a igualdade e travada
+ * por `tests/governance/watch-attribution-provenance.test.ts`, que importa os
+ * dois lados — divergir aqui produziria oferta ingerida com credito errado.
+ */
+const STREAMING_ORIGINS: readonly StreamingOrigin[] = [
+  {
+    providerApi: "streaming_availability",
+    attributionText: "Disponibilidade fornecida por Movie of the Night",
+    note: "via Streaming Availability API (Movie of the Night, RapidAPI): agregador proprio, com deep link por oferta.",
+  },
+  {
+    providerApi: "tmdb",
+    attributionText: "Disponibilidade fornecida por JustWatch",
+    note: "via bloco watch/providers do TMDB, que REVENDE dado do JustWatch. Os termos do endpoint exigem creditar o JustWatch nominalmente, sob pena de revogacao do acesso a API do TMDB — que sustenta o catalogo inteiro. O destino da oferta e o link por PAIS do proprio payload (web_url), nunca um deep link fabricado por provedor.",
+  },
+];
+
+/**
+ * Autorização de EXIBIÇÃO por provedor canônico de streaming, POR ORIGEM.
  *
  * Gerada a partir dos provedores REALMENTE registrados em `watch_providers`
  * (nunca inventada). Em produção, com zero provedores registrados, retorna
  * lista vazia — e não há decisão `watch_offer_display` nenhuma, o que está
  * correto: a exibição de ofertas espera o onboarding real dos provedores.
  * Convenção do banco: `source_licenses.source_key` = `watch_providers.slug`.
+ *
+ * Cada provedor rende UMA entrada POR ORIGEM (ver `STREAMING_ORIGINS`): o
+ * crédito pertence ao fornecedor técnico do dado, não ao provedor canônico.
  */
 export function streamingProviderEntries(
   providers: readonly { readonly slug: string; readonly canonicalName: string }[],
 ): readonly AuthorizationEntry[] {
-  return providers.map((provider) => ({
-    label: `Streaming: ${provider.canonicalName}`,
-    role: "streaming-aggregator",
-    license: {
-      sourceKey: provider.slug,
-      contentType: "watch_availability",
-      ratingSourceKey: null,
-      providerKey: "streaming_availability",
-      territory: CINERIE_TERRITORY,
-      licenseStatus: "third_party",
-      displayAllowed: true,
-      logoAllowed: false,
-      scoreAllowed: false,
-      reviewQuoteAllowed: false,
-      requiresAttribution: true,
-      requiresLinkback: true,
-      attributionText: "Disponibilidade fornecida por Movie of the Night",
-      policyVersion: AUTHORIZATION_BATCH,
-      notes: `Provedor canonico ${provider.canonicalName} (slug ${provider.slug}) via Streaming Availability API. Ofertas exibidas apenas apos promocao humana (pnpm streaming), nunca por este registro.`,
-    },
-    decisions: [
-      {
-        useCase: "watch_offer_display",
+  return providers.flatMap((provider) =>
+    STREAMING_ORIGINS.map((origin) => ({
+      label: `Streaming: ${provider.canonicalName} (${origin.providerApi})`,
+      role: "streaming-aggregator" as const,
+      license: {
+        sourceKey: provider.slug,
+        contentType: "watch_availability" as const,
+        ratingSourceKey: null,
+        providerKey: origin.providerApi,
         territory: CINERIE_TERRITORY,
-        stage: "approved_for_display",
+        licenseStatus: "third_party" as const,
         displayAllowed: true,
-        storageAllowed: true,
-        derivativeAllowed: false,
-        attributionRequired: true,
-        linkbackRequired: true,
+        logoAllowed: false as const,
+        scoreAllowed: false,
+        reviewQuoteAllowed: false as const,
+        requiresAttribution: true as const,
+        requiresLinkback: true,
+        attributionText: origin.attributionText,
         policyVersion: AUTHORIZATION_BATCH,
+        notes: `Provedor canonico ${provider.canonicalName} (slug ${provider.slug}) ${origin.note} Ofertas exibidas apenas apos promocao humana (pnpm streaming), nunca por este registro.`,
       },
-    ],
-  }));
+      decisions: [
+        {
+          useCase: "watch_offer_display" as const,
+          territory: CINERIE_TERRITORY,
+          stage: "approved_for_display" as const,
+          displayAllowed: true,
+          storageAllowed: true,
+          derivativeAllowed: false as const,
+          attributionRequired: true as const,
+          linkbackRequired: true,
+          policyVersion: AUTHORIZATION_BATCH,
+        },
+      ],
+    })),
+  );
 }

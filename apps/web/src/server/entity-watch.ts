@@ -10,10 +10,14 @@
  *  - LICENCA antes de exibir: a query ja filtra `display_allowed = true` (gate
  *    de origem, invariante 6); o presenter reaplica o filtro (defesa em
  *    profundidade). Este PR NAO promove nenhuma linha para `display_allowed`.
- *  - Pais do MVP = Brasil (pt-BR publica primeiro) e provider tecnico
- *    `streaming_availability`. Sem oferta permitida -> `null` e a pagina omite o
- *    painel. Ofertas vencidas (`available_until` no passado) sao excluidas.
- *    Nunca exibe pirataria.
+ *  - Pais do MVP = Brasil (pt-BR publica primeiro). Sem oferta permitida ->
+ *    `null` e a pagina omite o painel. Ofertas vencidas (`available_until` no
+ *    passado) sao excluidas. Nunca exibe pirataria.
+ *  - O gate NAO filtra por fornecedor tecnico. O que autoriza exibir uma oferta
+ *    e a cadeia de licenca (`display_allowed` + decisao vigente + licenca-mae
+ *    vigente), nunca o NOME de quem transportou o dado. Filtrar por
+ *    `provider_api` era um gate acidental: ele deixava invisivel toda oferta de
+ *    origem TMDB/JustWatch mesmo depois de licenciada, revisada e promovida.
  */
 
 import { getPrismaClient } from "@screena/db/server";
@@ -33,11 +37,15 @@ type PrismaClient = ReturnType<typeof getPrismaClient>;
 /** Pais do MVP (pt-BR publica primeiro): disponibilidade legal no Brasil. */
 const WATCH_COUNTRY = "BR";
 
-/** Fornecedor tecnico do slice de streaming (nunca e a fonte editorial). */
-const WATCH_PROVIDER_API = "streaming_availability";
-
-/** Teto defensivo de linhas buscadas (o presenter agrupa/deduplica). */
-const WATCH_FETCH_LIMIT = 60;
+/**
+ * Teto defensivo de linhas buscadas (o presenter agrupa/deduplica).
+ *
+ * Subiu junto com a abertura a multiplos fornecedores: a MESMA plataforma pode
+ * agora aparecer duas vezes na leitura (RapidAPI e TMDB) antes de o presenter
+ * resolver a precedencia. Um teto apertado truncaria arbitrariamente e poderia
+ * cortar justamente a linha vencedora.
+ */
+const WATCH_FETCH_LIMIT = 120;
 
 /**
  * Retorna o painel "Disponibilidade no Brasil" (ja licenciado, agrupado e
@@ -53,7 +61,10 @@ const WATCH_FETCH_LIMIT = 60;
 export function licensedWatchWhere(now: Date): Prisma.WatchAvailabilityWhereInput {
   return {
     countryCode: WATCH_COUNTRY,
-    providerApi: WATCH_PROVIDER_API,
+    // SEM filtro de `providerApi` de proposito — ver cabecalho. A autoridade e a
+    // cadeia de licenca abaixo, que e por PROVEDOR CANONICO e por origem; o
+    // fornecedor tecnico ja esta representado nela (a decisao vigente pertence a
+    // licenca daquele `provider_key`).
     displayAllowed: true,
     OR: [{ availableUntil: null }, { availableUntil: { gt: now } }],
     dataUsageDecision: {
@@ -96,8 +107,16 @@ export async function getWatchAvailabilityForEntity(
     select: {
       providerName: true,
       providerKey: true,
+      // Slug canonico: identidade da plataforma ENTRE fornecedores tecnicos. Sem
+      // ele o presenter nao tem como saber que a "Netflix" da RapidAPI e a "8"
+      // do TMDB sao a mesma coisa, e o painel a mostraria duas vezes.
+      watchProvider: { select: { slug: true } },
       offerType: true,
       deepLink: true,
+      // Destino da oferta de origem TMDB: o `link` por PAIS do payload
+      // (alimentado pelo JustWatch). Estava sendo gravado desde sempre e nunca
+      // lido — a oferta chegava ao presenter sem destino e era descartada.
+      webUrl: true,
       quality: true,
       price: true,
       currency: true,
@@ -117,8 +136,10 @@ export async function getWatchAvailabilityForEntity(
   const inputs: WatchAvailabilityRow[] = rows.map((row) => ({
     providerName: row.providerName,
     providerKey: row.providerKey,
+    providerSlug: row.watchProvider?.slug ?? null,
     offerType: row.offerType === null ? null : String(row.offerType),
     deepLink: row.deepLink,
+    webUrl: row.webUrl,
     quality: row.quality,
     priceAmount: row.price === null ? null : row.price.toString(),
     currency: row.currency,

@@ -6,7 +6,12 @@
  * (elegivel ou motivo) fica explicita por linha.
  */
 
-import { deepLinkHost, PROMOTION_COUNTRY, PROMOTION_PROVIDER_API } from './guardrails.js'
+import {
+  deepLinkHost,
+  PROMOTION_COUNTRY,
+  PROMOTION_PROVIDER_APIS,
+  promotionDestination,
+} from './guardrails.js'
 import type { EvaluatedCandidate, PromotionResult, PromotionSummary, ReviewResult } from './run.js'
 import type { PromotionCandidate } from './types.js'
 
@@ -47,7 +52,7 @@ function governanceLines(): string[] {
   return [
     '## Governanca',
     '',
-    `- provider_api governado: \`${PROMOTION_PROVIDER_API}\` (nunca outro fornecedor).`,
+    `- provider_api governados: ${PROMOTION_PROVIDER_APIS.map((p) => `\`${p}\``).join(', ')} (nunca outro fornecedor).`,
     `- pais promovel: \`${PROMOTION_COUNTRY}\` apenas.`,
     '- Promocao vira `display_allowed` de `false` para `true`; nunca cria linha.',
     '- Modalidades promoveis: `subscription`, `free`, `rent`, `buy` (nunca `ads`/`cinema`/`addon`).',
@@ -81,7 +86,7 @@ export function renderReviewReport(result: ReviewResult): string {
       lines.push(
         `| ${c.id} | ${cell(c.entityType)} | ${c.entityId} | ${cell(c.title)} | ${cell(c.providerKey)} | ` +
           `${cell(c.providerName)} | ${cell(c.offerType)} | ${cell(c.quality)} | ${priceLabel(c)} | ` +
-          `${isoDate(c.availableUntil)} | ${isoDate(c.fetchedAt)} | ${cell(deepLinkHost(c.deepLink))} | ` +
+          `${isoDate(c.availableUntil)} | ${isoDate(c.fetchedAt)} | ${cell(deepLinkHost(promotionDestination(c)))} | ` +
           `${c.displayAllowed ? 'sim' : 'nao'} | ${decisionLabel(entry)} |`,
       )
     }
@@ -166,7 +171,7 @@ export function buildReviewJson(result: ReviewResult): ReviewJson {
         availableUntil: isoOrNull(c.availableUntil),
         fetchedAt: isoOrNull(c.fetchedAt),
         displayAllowed: c.displayAllowed,
-        deepLinkHost: deepLinkHost(c.deepLink),
+        deepLinkHost: deepLinkHost(promotionDestination(c)),
         eligible: entry.eligible,
         rejectionReason: entry.reason,
       }
@@ -198,7 +203,7 @@ export function renderPromotionReport(result: PromotionResult): string {
       const c = entry.candidate
       lines.push(
         `| ${c.id} | ${cell(c.entityType)} | ${c.entityId} | ${cell(c.title)} | ${cell(c.providerName)} | ` +
-          `${cell(c.offerType)} | ${cell(deepLinkHost(c.deepLink))} | ${c.displayAllowed ? 'sim' : 'nao'} | ` +
+          `${cell(c.offerType)} | ${cell(deepLinkHost(promotionDestination(c)))} | ${c.displayAllowed ? 'sim' : 'nao'} | ` +
           `${decisionLabel(entry)} |`,
       )
     }

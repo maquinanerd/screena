@@ -26,6 +26,14 @@ function reasons(result: { rejections: readonly { reason: string }[] }): string[
   return result.rejections.map((r) => r.reason)
 }
 
+/**
+ * O `link` por PAIS faz parte do payload REAL do TMDB — e o unico destino que
+ * a oferta de origem TMDB pode ter. Omiti-lo nas fixturas tornaria cada uma
+ * mais pobre que o dado de producao e acumularia a recusa
+ * `missing-country-link`, mascarando o motivo que o teste realmente mede.
+ */
+const LINK = 'https://www.themoviedb.org/movie/1/watch?locale=BR'
+
 describe('normalizeWatchProviders — payload reconhecido', () => {
   const result = normalizeWatchProviders('movie', 550, WATCH_PROVIDERS_MOVIE_PAYLOAD)
 
@@ -131,7 +139,7 @@ describe('normalizeWatchProviders — "nao ha oferta" != "nao da para saber"', (
 
   it('aceita a chave alternativa watch_providers sem inventar o bloco', () => {
     const result = normalizeWatchProviders('tv', 1399, {
-      watch_providers: { results: { BR: { flatrate: [{ provider_id: 384, provider_name: 'Max' }] } } },
+      watch_providers: { results: { BR: { link: LINK, flatrate: [{ provider_id: 384, provider_name: 'Max' }] } } },
     })
     expect(result.recognized).toBe(true)
     expect(result.offers).toHaveLength(1)
@@ -142,7 +150,7 @@ describe('normalizeWatchProviders — todo descarte grita (B-H)', () => {
   it('bucket desconhecido e descartado COM motivo, nunca aproximado', () => {
     const result = normalizeWatchProviders('movie', 1, {
       'watch/providers': {
-        results: { BR: { subscription_with_ads: [{ provider_id: 8, provider_name: 'Netflix' }] } },
+        results: { BR: { link: LINK, subscription_with_ads: [{ provider_id: 8, provider_name: 'Netflix' }] } },
       },
     })
     expect(result.offers).toEqual([])
@@ -152,7 +160,7 @@ describe('normalizeWatchProviders — todo descarte grita (B-H)', () => {
 
   it('bucket que nao e lista e descartado COM motivo', () => {
     const result = normalizeWatchProviders('movie', 1, {
-      'watch/providers': { results: { BR: { flatrate: { provider_id: 8 } } } },
+      'watch/providers': { results: { BR: { link: LINK, flatrate: { provider_id: 8 } } } },
     })
     expect(result.offers).toEqual([])
     expect(reasons(result)).toEqual(['bucket-not-array'])
@@ -160,7 +168,7 @@ describe('normalizeWatchProviders — todo descarte grita (B-H)', () => {
 
   it('item que nao e objeto e descartado COM motivo', () => {
     const result = normalizeWatchProviders('movie', 1, {
-      'watch/providers': { results: { BR: { flatrate: ['Netflix', null] } } },
+      'watch/providers': { results: { BR: { link: LINK, flatrate: ['Netflix', null] } } },
     })
     expect(result.offers).toEqual([])
     expect(reasons(result)).toEqual(['offer-not-object', 'offer-not-object'])
@@ -171,6 +179,7 @@ describe('normalizeWatchProviders — todo descarte grita (B-H)', () => {
       'watch/providers': {
         results: {
           BR: {
+            link: LINK,
             flatrate: [
               { provider_name: 'Sem id' },
               { provider_id: '8', provider_name: 'Id string' },
@@ -192,7 +201,7 @@ describe('normalizeWatchProviders — todo descarte grita (B-H)', () => {
 
   it('sem provider_name: nunca inventa plataforma', () => {
     const result = normalizeWatchProviders('movie', 1, {
-      'watch/providers': { results: { BR: { flatrate: [{ provider_id: 8, provider_name: '   ' }] } } },
+      'watch/providers': { results: { BR: { link: LINK, flatrate: [{ provider_id: 8, provider_name: '   ' }] } } },
     })
     expect(result.offers).toEqual([])
     expect(reasons(result)).toEqual(['missing-provider-name'])
@@ -219,6 +228,7 @@ describe('normalizeWatchProviders — todo descarte grita (B-H)', () => {
       'watch/providers': {
         results: {
           BR: {
+            link: LINK,
             flatrate: [
               { provider_id: 8, provider_name: 'Netflix' },
               { provider_id: 8, provider_name: 'Netflix' },
@@ -236,6 +246,7 @@ describe('normalizeWatchProviders — todo descarte grita (B-H)', () => {
       'watch/providers': {
         results: {
           BR: {
+            link: LINK,
             rent: [{ provider_id: 2, provider_name: 'Apple TV' }],
             buy: [{ provider_id: 2, provider_name: 'Apple TV' }],
           },
@@ -270,6 +281,55 @@ describe('normalizeWatchProviders — anti-pirataria (invariante 8)', () => {
   it('aceita http e https limpos', () => {
     expect(isSafeWatchLink('https://www.themoviedb.org/movie/550/watch?locale=BR')).toBe(true)
     expect(isSafeWatchLink('http://example.com/a')).toBe(true)
+  })
+
+  /**
+   * AUSENCIA DE LINK E UM DESFECHO REAL, E PRECISA DE NOME.
+   *
+   * O TMDB nao publica deep link por oferta — este `link` por pais e o UNICO
+   * destino que a oferta pode ter. Sem ele, o presenter descarta a oferta na
+   * exibicao. Antes, a ausencia nao gerava recusa nenhuma: o relatorio dizia
+   * "reconhecida, aplicada" e a oferta simplesmente nao aparecia na tela, sem
+   * uma linha em lugar algum explicando por que.
+   */
+  it('pais SEM link: a oferta sobrevive, mas a ausencia e REGISTRADA', () => {
+    const result = normalizeWatchProviders('movie', 1, {
+      'watch/providers': {
+        results: { BR: { flatrate: [{ provider_id: 8, provider_name: 'Netflix' }] } },
+      },
+    })
+    expect(result.recognized).toBe(true)
+    expect(result.offers).toHaveLength(1)
+    expect(result.offers[0]?.webUrl).toBeNull()
+    expect(reasons(result)).toContain('missing-country-link')
+  })
+
+  it('link vazio/em branco conta como AUSENTE, nao como inseguro', () => {
+    for (const link of ['', '   ']) {
+      const result = normalizeWatchProviders('movie', 1, {
+        'watch/providers': {
+          results: { BR: { link, flatrate: [{ provider_id: 8, provider_name: 'Netflix' }] } },
+        },
+      })
+      expect(reasons(result)).toContain('missing-country-link')
+      expect(reasons(result)).not.toContain('unsafe-country-link')
+    }
+  })
+
+  it('CONTROLE POSITIVO: pais COM link bom nao gera nenhuma das duas recusas', () => {
+    const result = normalizeWatchProviders('movie', 1, {
+      'watch/providers': {
+        results: {
+          BR: {
+            link: 'https://www.themoviedb.org/movie/550/watch?locale=BR',
+            flatrate: [{ provider_id: 8, provider_name: 'Netflix' }],
+          },
+        },
+      },
+    })
+    expect(result.offers[0]?.webUrl).toBe('https://www.themoviedb.org/movie/550/watch?locale=BR')
+    expect(reasons(result)).not.toContain('missing-country-link')
+    expect(reasons(result)).not.toContain('unsafe-country-link')
   })
 })
 

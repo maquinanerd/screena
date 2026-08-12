@@ -95,8 +95,10 @@ describe('ratings: credito e requisito BLOQUEANTE de exibicao', () => {
 const OFERTA_CREDITADA = {
   providerKey: 'netflix',
   providerName: 'Netflix',
+  providerSlug: 'netflix',
   offerType: 'subscription',
   deepLink: 'https://www.netflix.com/title/00000000',
+  webUrl: null,
   quality: 'hd',
   priceAmount: null,
   currency: null,

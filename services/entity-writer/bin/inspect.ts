@@ -10,7 +10,7 @@
  * Uso:
  *   tsx services/entity-writer/bin/inspect.ts --limit 20
  *   tsx services/entity-writer/bin/inspect.ts --entity-type movie --json
- *   pnpm --filter @screena/entity-writer inspect -- --limit 20
+ *   pnpm --filter @screena/entity-writer inspect --limit 20
  *
  * Flags: --limit N (default 20), --entity-type movie|tv|season|episode|person
  *        (opcional), --language pt-BR (default), --json (saida estruturada).

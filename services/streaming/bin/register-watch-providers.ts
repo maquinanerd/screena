@@ -5,7 +5,7 @@
  *
  * Uso (a partir da raiz):
  *   pnpm --filter @screena/streaming register-watch-providers            # dry-run
- *   pnpm --filter @screena/streaming register-watch-providers -- --apply
+ *   pnpm --filter @screena/streaming register-watch-providers --apply
  *   # em producao: --apply --confirm-production
  *
  * ONDE ISTO ENTRA NA CADEIA (o elo que faltava):

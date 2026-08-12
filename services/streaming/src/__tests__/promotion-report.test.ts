@@ -28,12 +28,17 @@ function candidate(overrides: Partial<PromotionCandidate> = {}): PromotionCandid
     providerName: 'Netflix',
     offerType: 'subscription',
     deepLink: 'https://www.netflix.com/title/1?token=SUPER_SECRET_TOKEN_XYZ',
+    webUrl: null,
     price: null,
     currency: null,
     quality: 'hd',
     availableUntil: null,
     fetchedAt: NOW,
     displayAllowed: false,
+    requiresAttribution: true,
+    requiresLinkback: true,
+    attributionText: 'Disponibilidade fornecida por Movie of the Night',
+    attributionUrl: 'https://www.movieofthenight.com/about/api',
     ...overrides,
   }
 }

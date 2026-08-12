@@ -41,7 +41,7 @@ o que atrasa e a **chegada** de conteudo novo, nao a disponibilidade do antigo.
 ## 2. Como rodar
 
 ```bash
-pnpm --filter @screena/news-ingestion project:editorial -- --once
+pnpm --filter @screena/news-ingestion project:editorial --once
 ```
 
 | Modo | Efeito |

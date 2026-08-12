@@ -79,6 +79,15 @@ export interface WatchCreditLookup {
  *
  * A decisao de uso e subconsulta correlacionada (nao JOIN) para que a escolha
  * territorial-vence-global aconteca dentro dela, sem multiplicar linhas.
+ *
+ * `l."provider_key" = $1` NAO e redundante — e o que impede o cruzamento de
+ * proveniencia. Desde que existe uma licenca de `watch_availability` POR
+ * FORNECEDOR TECNICO (Movie of the Night para `streaming_availability`,
+ * JustWatch para `tmdb` — ver `authorization-spec.ts`), o mesmo `source_key`
+ * tem DUAS licencas vigentes. Sem este filtro, o `ORDER BY l."id" DESC LIMIT 1`
+ * entregaria a mais recente para os dois caminhos, e o dado da RapidAPI passaria
+ * a ser creditado ao JustWatch em silencio — exatamente a proveniencia falsa que
+ * esta separacao existe para impedir.
  */
 const CREDIT_SQL = `
   SELECT
@@ -111,14 +120,26 @@ const CREDIT_SQL = `
     ON l."source_key" = p."slug"
    AND l."content_type" = 'watch_availability'
    AND l."is_current"
+   AND l."provider_key" = $1
   WHERE a."provider_api" = $1
     AND a."external_key" = $2
   ORDER BY l."id" DESC
   LIMIT 1
 `
 
-/** Cria o lookup de credito de streaming com cache por execucao. */
-export function createPrismaWatchCreditLookup(prisma: PrismaClient): WatchCreditLookup {
+/**
+ * Cria o lookup de credito de streaming com cache por execucao.
+ *
+ * `providerApi` e o FORNECEDOR TECNICO da oferta (`watch_availability.provider_api`)
+ * e governa os dois lados da consulta: qual alias resolve o provedor canonico E
+ * qual licenca carrega o credito. Passar o fornecedor errado aqui produziria
+ * credito de outra proveniencia — por isso ele e parametro explicito, nunca
+ * constante embutida. Default preservado para o caminho historico da RapidAPI.
+ */
+export function createPrismaWatchCreditLookup(
+  prisma: PrismaClient,
+  providerApi: string = STREAMING_AVAILABILITY_PROVIDER_API,
+): WatchCreditLookup {
   const cache = new Map<string, WatchCreditResolution>()
 
   return {
@@ -136,7 +157,7 @@ export function createPrismaWatchCreditLookup(prisma: PrismaClient): WatchCredit
 
       const rows = await prisma.$queryRawUnsafe<Array<CreditRow & { provider_slug: string }>>(
         CREDIT_SQL,
-        STREAMING_AVAILABILITY_PROVIDER_API,
+        providerApi,
         providerKey,
         countryCode,
       )

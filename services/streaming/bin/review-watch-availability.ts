@@ -21,11 +21,14 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { STREAMING_AVAILABILITY_PROVIDER_API } from '@screena/streaming-availability-client'
 import { disconnectPrisma, getPrismaClient } from '@screena/db/server'
 
 import { parseReviewArgs } from '../src/promotion/args.js'
-import { deepLinkHost } from '../src/promotion/guardrails.js'
+import {
+  deepLinkHost,
+  PROMOTION_PROVIDER_APIS,
+  promotionDestination,
+} from '../src/promotion/guardrails.js'
 import { buildReviewJson, renderReviewReport, summaryLine } from '../src/promotion/report.js'
 import { runReview } from '../src/promotion/run.js'
 
@@ -73,7 +76,7 @@ async function main(): Promise<void> {
         country: args.country,
         entityId: args.entityId === null ? null : String(args.entityId),
         limit: args.limit,
-        providerApi: STREAMING_AVAILABILITY_PROVIDER_API,
+        providerApis: PROMOTION_PROVIDER_APIS,
       },
       { store, now: () => new Date() },
     )
@@ -83,14 +86,14 @@ async function main(): Promise<void> {
       console.log(JSON.stringify(buildReviewJson(result), null, 2))
     } else {
       console.log(
-        `Revisao · provider=${STREAMING_AVAILABILITY_PROVIDER_API} · tipo=${args.kind ?? 'movie+tv'} · pais=${args.country}`,
+        `Revisao · providers=${PROMOTION_PROVIDER_APIS.join('+')} · tipo=${args.kind ?? 'movie+tv'} · pais=${args.country}`,
       )
       for (const entry of result.evaluated) {
         const c = entry.candidate
         const decision = entry.eligible ? 'ELEGIVEL' : `rejeitada:${entry.reason}`
         console.log(
           `  #${c.id} ${c.entityType}#${c.entityId} "${c.title ?? '—'}" · ${c.offerType ?? '—'} · ` +
-            `${deepLinkHost(c.deepLink)} · display_allowed=${c.displayAllowed} · ${decision}`,
+            `${deepLinkHost(promotionDestination(c))} · display_allowed=${c.displayAllowed} · ${decision}`,
         )
       }
       console.log(summaryLine(result.summary))
