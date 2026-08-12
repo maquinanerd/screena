@@ -37,7 +37,7 @@ import { getSeriesPageData } from '../../../../src/server/series-page'
  * O botão "Ver no celular" do canônico é ferramenta de protótipo e NÃO é
  * portado. As mesmas ausências da página de filme valem aqui (Cinerie Score,
  * prêmios, "Original Screen") — ver o cabeçalho de `filmes/[slug]/page.tsx` e
- * DESIGN-DELTA.md.
+ * docs/frontend/DESIGN-DELTA-detalhe.md.
  */
 
 export const revalidate = 3600

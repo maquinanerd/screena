@@ -1,0 +1,17 @@
+{
+  // tsconfig APENAS das dev tools de `scripts/` (elas ficam fora do typecheck
+  // do app — ver `exclude` em ../tsconfig.json).
+  //
+  // Existe por um motivo so: `jsx: "react-jsx"`. O tsconfig do app usa
+  // `jsx: "preserve"`, que o SWC do Next exige — mas quando o `tsx` do CLI
+  // compila um componente com essa opção ele emite o transform CLASSICO
+  // (`React.createElement`), e nenhum componente do App Router importa `React`.
+  // O harness morre com "React is not defined", que parece bug do componente e
+  // e so a configuração do runner.
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "noEmit": true
+  },
+  "include": ["./**/*.ts", "../app/**/*.tsx", "../src/**/*.ts"]
+}
