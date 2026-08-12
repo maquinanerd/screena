@@ -100,16 +100,61 @@ SELECT rating_source, metric, count(*) AS linhas, bool_or(display_allowed) AS al
  GROUP BY 1, 2 ORDER BY 1, 2;
 ```
 
-A remoção em si é decisão humana registrada — ver a seção "Como revogar" de
-[`docs/legal/ratings-streaming-provider-authorization.md`](../legal/ratings-streaming-provider-authorization.md)
-para o princípio: dado coletado não some por efeito colateral de sync.
-
 > **Não há trigger de DELETE em `external_ratings`** (os dois guards são
 > `BEFORE INSERT OR UPDATE`) e nenhuma FK aponta para a tabela. Ou seja: a
 > remoção é segura do ponto de vista relacional, **e não deixa rastro no banco**.
 > A procedência do que foi coletado sobrevive em `api_cache` (payload bruto) e
 > `api_sync_logs` (todo sync gera log) — mas o registro de que aquelas linhas
-> existiram fica só na decisão que autorizou apagá-las.
+> existiram fica **só aqui**. É por isso que a decisão está escrita abaixo em vez
+> de viver numa conversa.
+
+### Decisão registrada — remover as 15 órfãs
+
+| Campo | Valor |
+| --- | --- |
+| **Quem decidiu** | Pablo Eduardo, dono do projeto |
+| **Quando** | 2026-08-12 |
+| **O quê** | Remover as **15 linhas órfãs**, os três pares no mesmo tratamento — incluindo `rotten_tomatoes/audience` |
+| **Ciência** | Sim — decidido sabendo que a remoção não deixa rastro no banco |
+
+Razão registrada, nas palavras da decisão: linha com licença e política mas
+**sem quem alimente** é convite a alguém promover à mão e ver expirar em 30 dias
+sem entender; e um Popcornmeter velho ao lado de um Tomatometer fresco é a
+confusão crítico/público que a **invariante 1** existe para impedir. Se um dia
+houver provedor de Popcornmeter, o sync **recria** a linha — nada se perde.
+
+Execute **depois** do primeiro `--apply` (ver ordem acima). A transação aborta
+sozinha se o número não for exatamente 15, ou se sobrar qualquer linha do
+provedor morto:
+
+```sql
+BEGIN;
+DO $$
+DECLARE removidas integer; restantes integer;
+BEGIN
+  DELETE FROM external_ratings
+   WHERE provider_api = 'rapidapi_film_show_ratings'
+     AND display_allowed = false
+     AND (rating_source, metric) IN (
+       ('filmaffinity', 'audience'),
+       ('letterboxd', 'audience'),
+       ('rotten_tomatoes', 'audience'));
+  GET DIAGNOSTICS removidas = ROW_COUNT;
+  IF removidas <> 15 THEN
+    RAISE EXCEPTION 'esperava 15 linhas orfas, encontrou %; NADA foi apagado', removidas;
+  END IF;
+  SELECT count(*) INTO restantes FROM external_ratings
+   WHERE provider_api = 'rapidapi_film_show_ratings';
+  IF restantes <> 0 THEN
+    RAISE EXCEPTION 'restaram % linhas do provedor morto; NADA foi apagado', restantes;
+  END IF;
+END $$;
+COMMIT;
+```
+
+O `display_allowed = false` é a trava que mais importa: se alguma linha tiver
+sido promovida entre a conferência e a execução, a transação aborta **inteira**
+em vez de apagar algo que já foi público.
 
 ---
 

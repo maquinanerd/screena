@@ -30,6 +30,7 @@ import {
   STATIC_AUTHORIZATION,
   streamingProviderEntries,
   DECIDED_BY,
+  ratingRequiresLinkback,
   type AuthorizationEntry,
 } from "../src/authorization-spec.js";
 import { assertNoBlockedGrants, planAuthorization, isPlanClean } from "../src/plan.js";
@@ -265,7 +266,29 @@ async function runChecks(url: string): Promise<void> {
     const ratingSources = new Set(ratingDecisions.map((r) => r.source_key));
     const fiveRatings = ["imdb", "rotten_tomatoes", "metacritic", "letterboxd", "filmaffinity"].every((s) => ratingSources.has(s));
     record(3, "rating_display existe para as 5 fontes de rating", fiveRatings, `fontes=${[...ratingSources].join(",")}`);
-    record(4, "rating_display: territorio=BR e atribuicao/linkback obrigatorios", ratingDecisions.every((r) => r.territory === "BR" && r.attribution_required && r.linkback_required), `n=${ratingDecisions.length}`);
+    record(4, "rating_display: territorio=BR em todas as decisoes", ratingDecisions.every((r) => r.territory === "BR"), `n=${ratingDecisions.length} fora de BR=${ratingDecisions.filter((r) => r.territory !== "BR").length}`);
+
+    // 4a. ATRIBUICAO e obrigatoria em TODAS as fontes, sem excecao. A decisao de
+    // 2026-08-12 dispensou LINKBACK, nunca o credito textual — e e este check que
+    // impede alguem confundir as duas coisas depois.
+    record(4.1, "rating_display: atribuicao obrigatoria em TODAS as fontes (nunca dispensada)", ratingDecisions.every((r) => r.attribution_required), `sem atribuicao=${ratingDecisions.filter((r) => !r.attribution_required).map((r) => r.source_key).join(",") || "nenhuma"}`);
+
+    // 4b. LINKBACK: obrigatorio, EXCETO nas fontes nominalmente dispensadas.
+    //
+    // Este check ficou MAIS ESTRITO, nao mais frouxo. Antes exigia linkback das 5
+    // e nao distinguia nada; agora exige o valor EXATO por fonte. Ligar a dispensa
+    // numa terceira fonte (ou tira-la do Rotten Tomatoes) passa a FALHAR aqui.
+    //
+    // A lista vem de `ratingRequiresLinkback` (@screena/legal) e nao e redigitada:
+    // duplica-la deixaria o validador e o spec divergirem em silencio — que e o
+    // unico jeito de uma dispensa nao autorizada passar despercebida.
+    //
+    // Contexto da decisao: a OMDb nao entrega identificador para Rotten Tomatoes
+    // nem Metacritic, entao nao ha URL canonica derivavel; com linkback exigido,
+    // as duas cairiam em `missing-linkback` para sempre. Registro:
+    // docs/legal/ratings-streaming-provider-authorization.md secao 1.1.
+    const linkbackDivergente = ratingDecisions.filter((r) => r.linkback_required !== ratingRequiresLinkback(r.source_key));
+    record(4.2, "rating_display: linkback obrigatorio EXCETO nas fontes nominalmente dispensadas", linkbackDivergente.length === 0, linkbackDivergente.length === 0 ? `exigem=${ratingDecisions.filter((r) => r.linkback_required).map((r) => r.source_key).sort().join(",")} | dispensadas=${ratingDecisions.filter((r) => !r.linkback_required).map((r) => r.source_key).sort().join(",")}` : `divergentes=${linkbackDivergente.map((r) => `${r.source_key}:${r.linkback_required}`).join(",")}`);
 
     // 5. watch_offer_display existe para o provedor real, território BR.
     const watchDecisions = await q<{ territory: string | null; attribution_required: boolean }>(
