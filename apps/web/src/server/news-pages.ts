@@ -429,7 +429,7 @@ async function resolveEntityCard(
 }
 
 /**
- * Fatos persistidos de UMA entidade movie|tv, no formato da ficha.
+ * Fatos persistidos de UMA entidade movie|tv|person, no formato da ficha.
  *
  * Extraido de `resolveEntityCard` para servir tambem aos blocos `entityCard` do
  * corpo. Ter duas consultas montando a "mesma" ficha e como duas superficies
@@ -440,7 +440,7 @@ async function resolveEntityCard(
  */
 async function loadEntityCardInput(
   prisma: PrismaClient,
-  entityType: "movie" | "tv",
+  entityType: "movie" | "tv" | "person",
   entityId: bigint,
 ): Promise<NewsEntityCardInput | null> {
   const slugRow = await prisma.slug.findFirst({
@@ -448,6 +448,29 @@ async function loadEntityCardInput(
     select: { slug: true },
   });
   if (slugRow === null) return null;
+
+  if (entityType === "person") {
+    // Pessoa nao tem traducao de titulo: o nome e o fato. A funcao vem de
+    // `known_for_department` e e traduzida no presenter (mesmo mapa da pagina
+    // de pessoa); a imagem e o profile_path, nao poster.
+    const person = await prisma.person.findUnique({
+      where: { id: entityId },
+      select: { name: true, profilePath: true, knownForDepartment: true },
+    });
+    if (person === null) return null;
+    return {
+      entityType: "person",
+      id: entityId.toString(),
+      titleOriginal: person.name,
+      translationTitle: null,
+      summary: null,
+      slug: slugRow.slug,
+      posterPath: person.profilePath,
+      year: null,
+      seasonCount: null,
+      knownForDepartment: person.knownForDepartment,
+    };
+  }
 
   const translationRow = await prisma.entityTranslation.findFirst({
     where: { entityType, entityId, languageCode: LANGUAGE_CODE },
@@ -518,9 +541,14 @@ async function resolveBodyHydration(
 
   await Promise.all([
     ...refs.entities.map(async (ref) => {
-      // So movie|tv: a ficha do canonico e de titulo. `person` (e o resto) nao
-      // tem ficha desenhada, e improvisar uma seria inventar componente.
-      if (ref.entityKind !== "movie" && ref.entityKind !== "tv") return;
+      // movie|tv|person viram ficha com link (os tres tem rota publica
+      // canonica). `person` era descartado aqui em silencio — o emissor
+      // (entity-resolve) estava certo e o cartao nunca nascia. Os demais tipos
+      // do contrato (season/episode/franchise...) continuam sem ficha porque
+      // nao tem rota propria; o presenter preserva a nota editorial deles.
+      if (ref.entityKind !== "movie" && ref.entityKind !== "tv" && ref.entityKind !== "person") {
+        return;
+      }
       if (!/^[0-9]+$/.test(ref.entityId)) return;
       const card = await loadEntityCardInput(prisma, ref.entityKind, BigInt(ref.entityId));
       if (card !== null) entityCards.set(`${ref.entityKind}:${ref.entityId}`, card);

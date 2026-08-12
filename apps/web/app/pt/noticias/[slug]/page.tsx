@@ -361,8 +361,11 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
           </>
         )}
 
-        {/* Ficha do título — entity card real da 1ª entidade citada */}
-        {card !== null ? (
+        {/* Ficha do título — entity card real da 1ª entidade citada.
+            POR DESIGN só movie|tv chegam aqui (é a ficha do TÍTULO;
+            `resolveEntityCard` filtra) — o guard abaixo torna o contrato
+            visível ao compilador em vez de depender do filtro distante. */}
+        {card !== null && card.entityType !== 'person' ? (
           <aside
             aria-label={`Ficha de ${card.title}`}
             className="art-ficha"

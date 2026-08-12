@@ -2,6 +2,7 @@ import type {
   ArticleBodyBlock,
   ArticleBodyTextSegment,
 } from '../../src/lib/article-body-presenter'
+import { NEWS_ENTITY_CARD_LINK_LABELS } from '../../src/lib/news-presenter'
 
 /**
  * ArticleBody — corpo ESTRUTURADO da matéria (os 10 blocos do contrato
@@ -25,6 +26,7 @@ const PROVIDER_LABELS: Readonly<Record<string, string>> = {
   youtube: 'YouTube',
   vimeo: 'Vimeo',
 }
+
 
 /**
  * Formatação inline CONSTRUÍDA, nunca interpretada.
@@ -282,7 +284,17 @@ function Block({ block }: { block: ArticleBodyBlock }) {
         <aside
           aria-label={`Ficha de ${block.card.title}`}
           className="art-ficha art-ficha--inline"
-          data-vertical={block.card.entityType === 'movie' ? 'movie' : 'series'}
+          /* movie=vermelho, series=verde; person cai no acento NEUTRO (nenhum
+             seletor CSS casa 'person') — pessoa nao e vertical de filme nem de
+             serie, e cor nunca e o unico sinal (invariante 11): o kicker e o
+             rotulo do link ja dizem o tipo por texto. */
+          data-vertical={
+            block.card.entityType === 'movie'
+              ? 'movie'
+              : block.card.entityType === 'tv'
+                ? 'series'
+                : 'person'
+          }
         >
           <a aria-hidden="true" className="art-ficha__poster" href={block.card.href} tabIndex={-1}>
             {block.card.posterUrl !== null ? (
@@ -306,7 +318,7 @@ function Block({ block }: { block: ArticleBodyBlock }) {
             ) : null}
             <div className="art-ficha__footer">
               <a className="art-ficha__link" href={block.card.href}>
-                {block.card.entityType === 'movie' ? 'Ver página do filme' : 'Ver página da série'} →
+                {NEWS_ENTITY_CARD_LINK_LABELS[block.card.entityType]} →
               </a>
             </div>
           </div>
