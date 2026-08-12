@@ -18,6 +18,7 @@
     "services/ratings/src/persistence/**/*.ts",
     "services/ratings/bin/ratings.ts",
     "services/streaming/src/persistence/**/*.ts",
+    "services/streaming/bin/register-watch-providers.ts",
     "services/legal/bin/legal.ts",
     "services/news-ingestion/src/persistence/**/*.ts",
     "services/news-ingestion/bin/editorial.ts"

@@ -12,6 +12,7 @@
   "sideEffects": false,
   "license": "UNLICENSED",
   "scripts": {
+    "register-watch-providers": "tsx bin/register-watch-providers.ts",
     "validate:stores": "tsx scripts/validate-stores-real-postgres.ts"
   },
   "dependencies": {
