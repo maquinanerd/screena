@@ -105,12 +105,18 @@ async function main(): Promise<void> {
   const hasKey = Boolean(process.env[STREAMING_AVAILABILITY_KEY_ENV]?.trim())
   const hasDb = Boolean(process.env.DATABASE_URL?.trim())
 
+  // Autorizacao explicita do provedor (ver o cabecalho de `gate.ts`). SEPARADA
+  // da de ratings: os dois provedores tem licencas diferentes, e desligar um
+  // nao pode desligar o outro. Comparacao com a string exata.
+  const providerAuthorized = process.env.CINERIE_STREAMING_PROVIDER_AUTHORIZED?.trim() === 'true'
+
   const gate = evaluateStreamingGate({
     isProd,
     apply: args.apply,
     sample: args.sample,
     hasKey,
     hasDb,
+    providerAuthorized,
   })
   if (!gate.allowed && gate.reason !== null) {
     console.error(describeStreamingGateReason(gate.reason))
@@ -156,7 +162,17 @@ async function main(): Promise<void> {
 
     if (args.apply) {
       const { createPrismaWatchStore } = await import('../src/persistence/watch-store.js')
-      watch = createPrismaWatchStore(prisma)
+      const { createPrismaWatchCreditLookup } = await import(
+        '../src/persistence/watch-credit-lookup.js'
+      )
+      // A oferta nasce fail-closed e, logo apos reconciliada, a politica de
+      // exibicao decide se acende — com base na licenca que o proprietario
+      // autorizou (services/legal). Nenhuma recusa e silenciosa: o motivo sempre
+      // vai para o console.
+      watch = createPrismaWatchStore(prisma, {
+        credits: createPrismaWatchCreditLookup(prisma),
+        log: (message) => console.warn(message),
+      })
     }
   }
 

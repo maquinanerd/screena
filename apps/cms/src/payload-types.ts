@@ -616,9 +616,13 @@ export interface Article {
         relation: 'primary_subject' | 'secondary_subject' | 'mentioned' | 'reviewed' | 'recommended' | 'compared';
         confidence?: number | null;
         /**
-         * So um humano marca. A automacao envia sempre false.
+         * So entidade marcada aqui atravessa para o site. A automacao marca sozinha quando a identidade e inequivoca (id do catalogo, ou titulo + ano unicos); nos demais casos, quem marca e voce.
          */
         verified?: boolean | null;
+        /**
+         * Preenchido pela automacao. Vazio = a marcacao nao veio da maquina.
+         */
+        verificationSource?: 'automation_confidence' | null;
         id?: string | null;
       }[]
     | null;
@@ -1254,6 +1258,7 @@ export interface ArticlesSelect<T extends boolean = true> {
         relation?: T;
         confidence?: T;
         verified?: T;
+        verificationSource?: T;
         id?: T;
       };
   relatedArticleReferences?: T;

@@ -1,8 +1,14 @@
 /**
  * gate.test.ts — Gate FAIL-CLOSED do worker de ratings.
  *
- * Precedencia (mais restritivo primeiro): producao -> chave -> banco -> liberado.
- * Dry-run puro nunca toca rede nem banco, entao passa sem chave/DB.
+ * Precedencia (mais restritivo primeiro): producao sem autorizacao -> chave ->
+ * banco -> liberado. Dry-run puro nunca toca rede nem banco, entao passa sem
+ * chave/DB.
+ *
+ * A partir de 2026-08-11 o bloqueio em producao deixou de ser incondicional e
+ * virou AUTORIZACAO EXPLICITA por provedor. Os testes abaixo provam as duas
+ * pontas: sem autorizacao o comportamento e identico ao de antes; com
+ * autorizacao, e so ela que muda.
  */
 
 import { describe, it, expect } from 'vitest'
@@ -17,7 +23,7 @@ import {
 const FAKE_SECRET = 'test-key-0000000000'
 
 describe('evaluateRatingsGate', () => {
-  it('producao bloqueia SEMPRE, mesmo com apply=false e sample=false (checada primeiro)', () => {
+  it('producao SEM autorizacao bloqueia, mesmo em dry-run puro (checada primeiro)', () => {
     const result = evaluateRatingsGate({
       isProd: true,
       apply: false,
@@ -26,10 +32,10 @@ describe('evaluateRatingsGate', () => {
       hasDb: false,
     })
     expect(result.allowed).toBe(false)
-    expect(result.reason).toBe('production')
+    expect(result.reason).toBe('production-unauthorized')
   })
 
-  it('producao vence mesmo quando apply/sample/chave/db estao presentes', () => {
+  it('producao SEM autorizacao vence mesmo com apply/sample/chave/db presentes', () => {
     const result = evaluateRatingsGate({
       isProd: true,
       apply: true,
@@ -37,8 +43,89 @@ describe('evaluateRatingsGate', () => {
       hasKey: true,
       hasDb: true,
     })
-    // Producao e checada antes de qualquer outra condicao.
-    expect(result.reason).toBe('production')
+    expect(result.reason).toBe('production-unauthorized')
+  })
+
+  it('FAIL-CLOSED por OMISSAO: campo ausente nao e autorizacao', () => {
+    // Um chamador antigo que nao conheca o campo passa `undefined`. Se o gate
+    // usasse `!input.providerAuthorized === false` ou algo equivalente a
+    // "nao explicitamente negado", a omissao viraria liberacao silenciosa.
+    const omitido = evaluateRatingsGate({
+      isProd: true,
+      apply: true,
+      sample: false,
+      hasKey: true,
+      hasDb: true,
+    })
+    const explicitoFalse = evaluateRatingsGate({
+      isProd: true,
+      apply: true,
+      sample: false,
+      hasKey: true,
+      hasDb: true,
+      providerAuthorized: false,
+    })
+    expect(omitido).toEqual(explicitoFalse)
+    expect(omitido.reason).toBe('production-unauthorized')
+  })
+
+  it('producao COM autorizacao explicita libera (chave e banco presentes)', () => {
+    const result = evaluateRatingsGate({
+      isProd: true,
+      apply: true,
+      sample: false,
+      hasKey: true,
+      hasDb: true,
+      providerAuthorized: true,
+    })
+    expect(result.allowed).toBe(true)
+    expect(result.reason).toBeNull()
+  })
+
+  it('autorizacao NAO dispensa chave nem banco', () => {
+    // Autorizar o provedor e uma decisao de LICENCA. Ela nao substitui a
+    // credencial nem a regra "todo sync externo gera log".
+    expect(
+      evaluateRatingsGate({
+        isProd: true,
+        apply: true,
+        sample: false,
+        hasKey: false,
+        hasDb: true,
+        providerAuthorized: true,
+      }).reason,
+    ).toBe('no-api-key')
+
+    expect(
+      evaluateRatingsGate({
+        isProd: true,
+        apply: true,
+        sample: false,
+        hasKey: true,
+        hasDb: false,
+        providerAuthorized: true,
+      }).reason,
+    ).toBe('no-database-url')
+  })
+
+  it('a autorizacao e IRRELEVANTE fora de producao (nao muda nada)', () => {
+    const semAutorizacao = evaluateRatingsGate({
+      isProd: false,
+      apply: true,
+      sample: false,
+      hasKey: true,
+      hasDb: true,
+    })
+    const comAutorizacao = evaluateRatingsGate({
+      isProd: false,
+      apply: true,
+      sample: false,
+      hasKey: true,
+      hasDb: true,
+      providerAuthorized: true,
+    })
+    expect(semAutorizacao).toEqual(comAutorizacao)
+    expect(semAutorizacao.allowed).toBe(true)
   })
 
   it('sample=true sem chave -> no-api-key', () => {
@@ -113,7 +200,11 @@ describe('needsNetwork', () => {
 })
 
 describe('describeRatingsGateReason', () => {
-  const reasons: readonly RatingsGateReason[] = ['production', 'no-api-key', 'no-database-url']
+  const reasons: readonly RatingsGateReason[] = [
+    'production-unauthorized',
+    'no-api-key',
+    'no-database-url',
+  ]
 
   it('retorna string pt-BR nao-vazia para cada motivo e nunca vaza segredo', () => {
     for (const reason of reasons) {
@@ -134,5 +225,11 @@ describe('describeRatingsGateReason', () => {
   it('no-database-url cita DATABASE_URL', () => {
     const message = describeRatingsGateReason('no-database-url')
     expect(message).toContain('DATABASE_URL')
+  })
+
+  it('production-unauthorized diz QUAL variavel destrava e ONDE a decisao esta registrada', () => {
+    const message = describeRatingsGateReason('production-unauthorized')
+    expect(message).toContain('CINERIE_RATINGS_PROVIDER_AUTHORIZED')
+    expect(message).toContain('ratings-streaming-provider-authorization')
   })
 })

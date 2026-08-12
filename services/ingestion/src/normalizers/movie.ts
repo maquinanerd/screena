@@ -21,6 +21,10 @@ export interface NormalizedMovie {
   readonly externalIds: ExternalIdInput[]
   readonly cast: CastMemberInput[]
   readonly crew: CrewMemberInput[]
+  /** A fonte trouxe a lista de elenco (array, mesmo vazio)? Ver NormalizedCredits. */
+  readonly castPresent: boolean
+  /** A fonte trouxe a lista de equipe (array, mesmo vazio)? Ver NormalizedCredits. */
+  readonly crewPresent: boolean
 }
 
 /** Normaliza um filme; lanca NormalizationError sem id ou sem titulo. */
@@ -55,5 +59,7 @@ export function normalizeMovie(detail: TmdbMovieDetail): NormalizedMovie {
     externalIds: buildExternalIds('movie', detail.id, imdbId),
     cast: credits.cast,
     crew: credits.crew,
+    castPresent: credits.castPresent,
+    crewPresent: credits.crewPresent,
   }
 }

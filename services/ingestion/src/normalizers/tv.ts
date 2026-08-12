@@ -24,6 +24,10 @@ export interface NormalizedTvShow {
   readonly externalIds: ExternalIdInput[]
   readonly cast: CastMemberInput[]
   readonly crew: CrewMemberInput[]
+  /** A fonte trouxe a lista de elenco (array, mesmo vazio)? Ver NormalizedCredits. */
+  readonly castPresent: boolean
+  /** A fonte trouxe a lista de equipe (array, mesmo vazio)? Ver NormalizedCredits. */
+  readonly crewPresent: boolean
   readonly seasonNumbers: number[]
 }
 
@@ -65,6 +69,8 @@ export function normalizeTvShow(detail: TmdbTvDetail): NormalizedTvShow {
     externalIds: buildExternalIds('tv', detail.id, imdbId),
     cast: credits.cast,
     crew: credits.crew,
+    castPresent: credits.castPresent,
+    crewPresent: credits.crewPresent,
     seasonNumbers,
   }
 }

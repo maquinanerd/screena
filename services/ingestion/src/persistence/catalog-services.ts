@@ -48,8 +48,8 @@ import {
 import { runMediaSync } from '../catalog-sync/media-sync.js'
 import type { MediaTarget } from '../catalog-sync/media-sync.js'
 import { extractListItems } from '../discovery-snapshots/index.js'
-import { parseIdExport, exportUrl, DAILY_ID_EXPORTS } from '../discovery/id-exports.js'
-import { filterAdult } from '../discovery/adult-filter.js'
+import { exportUrl, DAILY_ID_EXPORTS } from '../discovery/id-exports.js'
+import { discoverIdsFromExportText } from '../discovery/export-discovery.js'
 import { reindexEntity } from '../search-projection/index.js'
 import type { SearchProjectionSourcePort } from '../search-projection/index.js'
 import type { SearchStorePort } from '../search/store-port.js'
@@ -66,6 +66,7 @@ import type {
   CatalogMediaSyncPort,
   CatalogReprocessRawPort,
   CatalogSeasonsSyncPort,
+  CreditsSyncOutcome,
   DetailSyncOutcome,
   DiscoverIdsOutcome,
   DiscoveryListFetchPort,
@@ -77,7 +78,7 @@ import type { ReferenceOwnerType } from '../catalog-entities/store-port.js'
 import type { ImportResult } from '../import/types.js'
 import type { CatalogDisplayFields } from '../display-fields.js'
 import { desiredCatalogSlug } from '../public-catalog-slug.js'
-import type { TmdbReadPort } from '../ports.js'
+import type { CreditsWriteOutcome, TmdbReadPort } from '../ports.js'
 import type { PrismaClient } from '@screena/db/server'
 import type { TmdbCatalogEndpoints } from '@screena/tmdb-client'
 import { promoteMoviesFromRaw, promotePeopleFromRaw, promoteTvShowsFromRaw } from '../raw-promote/run.js'
@@ -130,6 +131,37 @@ function requireNumber(value: number | null, field: string, kind: string): numbe
     throw new PermanentJobError('invalid_job_input', `"${field}" e obrigatorio para ${kind}`)
   }
   return value
+}
+
+/**
+ * Traduz o resumo do replace-set de creditos para o relatorio do `sync_credits`.
+ *
+ * Quando o payload nao trouxe NENHUMA das duas listas, nada foi regravado — e o
+ * job precisa dizer isso. Antes esse caso devolvia `{ cast: 0, skipped: false }`,
+ * ou seja, "sucesso, zero creditos", enquanto o store apagava o elenco existente.
+ */
+function creditsSyncOutcome(credits: CreditsWriteOutcome): CreditsSyncOutcome {
+  if (!credits.castReplaced && !credits.crewReplaced) {
+    return {
+      cast: 0,
+      crew: 0,
+      guestStars: 0,
+      skipped: true,
+      skipReason: 'payload sem bloco credits: elenco/equipe preservados',
+    }
+  }
+  return {
+    cast: credits.castLinked,
+    crew: credits.crewLinked,
+    guestStars: 0,
+    skipped: false,
+    // Credito descartado por falta de stub de pessoa e perda de dado: aparece
+    // no relatorio em vez de sumir no `.filter`.
+    skipReason:
+      credits.castDropped + credits.crewDropped > 0
+        ? `creditos sem pessoa resolvida descartados: elenco=${credits.castDropped} equipe=${credits.crewDropped}`
+        : null,
+  }
 }
 
 /** Opcoes de montagem dos servicos do catalogo. */
@@ -377,35 +409,27 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
           externalIds: normalized.externalIds,
           cast: normalized.cast,
           crew: normalized.crew,
+          castPresent: normalized.castPresent,
+          crewPresent: normalized.crewPresent,
           timestamps: { lastSyncedAt: now(), staleAfter: new Date(now().getTime() + staleWindowMs) },
         })
         await syncEntityReferences('movie', tmdbId, detail)
-        return {
-          cast: normalized.cast.length,
-          crew: normalized.crew.length,
-          guestStars: 0,
-          skipped: outcome === null,
-          skipReason: null,
-        }
+        return creditsSyncOutcome(outcome.credits)
       }
       if (kind === 'tv') {
         const detail = await tmdb.getTvShow(tmdbId)
         const normalized = normalizeTvShow(detail)
-        await persistence.store.upsertTvShow({
+        const outcome = await persistence.store.upsertTvShow({
           tvShow: normalized.tvShow,
           externalIds: normalized.externalIds,
           cast: normalized.cast,
           crew: normalized.crew,
+          castPresent: normalized.castPresent,
+          crewPresent: normalized.crewPresent,
           timestamps: { lastSyncedAt: now(), staleAfter: new Date(now().getTime() + staleWindowMs) },
         })
         await syncEntityReferences('tv', tmdbId, detail)
-        return {
-          cast: normalized.cast.length,
-          crew: normalized.crew.length,
-          guestStars: 0,
-          skipped: false,
-          skipReason: null,
-        }
+        return creditsSyncOutcome(outcome.credits)
       }
       // `season`: os creditos de temporada nao tem tabela propria; o nivel util
       // e o episodio. Reportar skip explicito e melhor que fingir sucesso.
@@ -442,6 +466,11 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
           externalIds: normalized.externalIds,
           cast: normalized.cast,
           crew: normalized.crew,
+          // Este job existe para external_ids. Se o detalhe vier sem o bloco
+          // `credits`, os flags nascem `false` e o elenco fica intocado — um
+          // sync de IDs nunca pode ter efeito colateral sobre creditos.
+          castPresent: normalized.castPresent,
+          crewPresent: normalized.crewPresent,
           timestamps: { lastSyncedAt: now(), staleAfter: new Date(now().getTime() + staleWindowMs) },
         })
         return { upserted: normalized.externalIds.length, changed: 0, skipped: false, skipReason: null }
@@ -453,6 +482,9 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
           externalIds: normalized.externalIds,
           cast: normalized.cast,
           crew: normalized.crew,
+          // Ver o ramo de filme: sync de IDs nao mexe em creditos.
+          castPresent: normalized.castPresent,
+          crewPresent: normalized.crewPresent,
           timestamps: { lastSyncedAt: now(), staleAfter: new Date(now().getTime() + staleWindowMs) },
         })
         return { upserted: normalized.externalIds.length, changed: 0, skipped: false, skipReason: null }
@@ -864,6 +896,27 @@ async function discoverFromLists(
  * FAIL-CLOSED por linha — `false` e seguro; `true` e descartado; qualquer valor
  * presente porem malformado ("true", 1, null) e descartado como unsafe, nunca
  * presumido seguro.
+ *
+ * ORDEM: POPULARIDADE DECRESCENTE, nunca ordem de arquivo.
+ * --------------------------------------------------------
+ * O export vem em ordem de `id` (aproximadamente cronologica de cadastro), e
+ * `--limit N` e um CORTE DE PREFIXO. Cortar o prefixo da ordem de arquivo
+ * sincroniza os N ids mais ANTIGOS do TMDB — curta obscuro de 1913 — enquanto os
+ * titulos que o publico procura hoje ficam para o fim da fila. Num espelho
+ * incremental isso significa dias de ingestao antes de o primeiro nome
+ * reconhecivel entrar, e link interno de materia que nao resolve nesse meio
+ * tempo.
+ *
+ * O proprio export ja carrega `popularity` por linha (verificado no export de
+ * 2026-08-10: presente em movie/tv/person), entao ordenar NAO custa uma unica
+ * chamada de API nem um byte de cota — e so nao jogar fora um campo que ja veio.
+ *
+ * `buildSyncQueue` e o ordenador canonico e ja era usado pelo caminho NDJSON de
+ * `bin/discover-ids.ts`; o pipeline da fila usava outro caminho e por isso nao
+ * herdava a ordem. Ele dedupa por `(kind, tmdbId)`, ordena por popularidade
+ * desc (nulls por ultimo) com desempate por `tmdbId` asc — ordem TOTAL, entao
+ * duas execucoes sobre o mesmo export produzem exatamente a mesma fila — e
+ * reaplica `classifyAdult` como rede secundaria.
  */
 async function discoverFromDailyExports(
   kind: 'movie' | 'tv' | 'person',
@@ -881,34 +934,13 @@ async function discoverFromDailyExports(
   // O export do dia so fica pronto ~08:00 UTC; usamos o dia anterior.
   const date = new Date(now().getTime() - 24 * 60 * 60 * 1000)
   const text = await fetchText(exportUrl(file.file, date))
-  const records = parseIdExport(text)
 
-  // `filterAdult` E a camada 2: `adult === true` e descartado, e um `adult`
-  // malformado ("true", 1, null) ou AUSENTE num export que deveria traze-lo
-  // (movie/person, via `hasAdultField`) tambem cai — nunca presumido seguro.
-  const filtered = filterAdult(records, { adultFieldRequired: file.hasAdultField })
-
-  const ids = []
-  const seen = new Set()
-  let duplicate = 0
-
-  for (const record of filtered.kept) {
-    if (seen.has(record.id)) {
-      duplicate += 1
-      continue
-    }
-    seen.add(record.id)
-    ids.push(record.id)
-    if (limit !== null && ids.length >= limit) break
-  }
-
-  return {
-    discovered: records.length,
-    accepted: ids.length,
-    // Descarte "unsafe" conta junto com adulto: os dois sao o filtro protegendo
-    // a fila, e somar os dois e o numero que o operador precisa vigiar.
-    rejectedAdult: filtered.adultDropped + filtered.unsafeDropped,
-    duplicate,
-    ids,
-  }
+  // Todo o resto (filtro anti-adulto, dedup, ORDEM por popularidade, corte) e
+  // puro e vive em `discovery/export-discovery.ts`, onde tem teste proprio.
+  return discoverIdsFromExportText({
+    text,
+    kind,
+    hasAdultField: file.hasAdultField,
+    limit,
+  })
 }

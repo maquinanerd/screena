@@ -397,6 +397,9 @@ importers:
       '@screena/rapidapi-core':
         specifier: workspace:*
         version: link:../../api-clients/rapidapi-core
+      '@screena/schemas':
+        specifier: workspace:*
+        version: link:../../packages/schemas
       '@screena/streaming-availability-client':
         specifier: workspace:*
         version: link:../../api-clients/streaming_availability

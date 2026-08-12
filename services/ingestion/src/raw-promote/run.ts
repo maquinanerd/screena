@@ -87,6 +87,11 @@ export function createMovieStrategy(store: EntityStorePort): PromoteStrategy {
         externalIds: normalized.externalIds,
         cast: normalized.cast,
         crew: normalized.crew,
+        // Raw ANTIGO (gravado antes do append set atual) nao tem bloco `credits`:
+        // estes flags nascem `false` e o replace-set nao roda, preservando o
+        // elenco/equipe ja gravados em vez de apaga-los.
+        castPresent: normalized.castPresent,
+        crewPresent: normalized.crewPresent,
         // Frescor herdada do raw: o tipado e tao fresco quanto o payload coletado.
         timestamps: { lastSyncedAt: row.fetchedAt, staleAfter: null },
       })
@@ -111,6 +116,9 @@ export function createTvStrategy(store: EntityStorePort): PromoteStrategy {
         externalIds: normalized.externalIds,
         cast: normalized.cast,
         crew: normalized.crew,
+        // Ver a estrategia de filme: raw sem `credits` preserva o ja gravado.
+        castPresent: normalized.castPresent,
+        crewPresent: normalized.crewPresent,
         timestamps: { lastSyncedAt: row.fetchedAt, staleAfter: null },
       })
       const d = readTvDisplayFields(row.payload)

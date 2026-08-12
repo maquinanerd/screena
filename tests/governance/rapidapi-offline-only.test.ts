@@ -179,7 +179,28 @@ describe('governanca: nenhuma chave RapidAPI hardcoded (invariante: chave so em 
   )
 })
 
-describe('governanca: stores nascem fail-closed', () => {
+/**
+ * MUDANCA DE POLITICA (2026-08-11, decisao do proprietario): a exibicao deixou
+ * de exigir uma pessoa clicando em cada linha e passou a ser AUTOMATICA, desde
+ * que o credito exigido pela licenca esteja satisfeito.
+ *
+ * O que NAO mudou, e e o que estas guardas travam:
+ *  - a linha continua NASCENDO fail-closed (`display_allowed = false`,
+ *    `license_status = 'unknown'`) no caminho de escrita do sync;
+ *  - ligar a exibicao e um passo SEPARADO, posterior a persistencia, que so
+ *    existe quando o chamador injeta o resolvedor de credito (sem ele, o store
+ *    se comporta como antes);
+ *  - o valor NUNCA vem do chamador nem da linha existente;
+ *  - quem carimba e a POLITICA, e isso e legivel na auditoria: `reviewed_by`
+ *    com prefixo `automation:`;
+ *  - o hash aprovado sai de uma funcao DO BANCO, nunca reimplementado em TS.
+ *
+ * Trocar `display_allowed = true` por "nunca aparece no arquivo" era a guarda
+ * antiga. Ela nao pode simplesmente cair: o que a substitui e mais estreito —
+ * a exibicao so pode ser ligada ACOMPANHADA de revisor de automacao e do
+ * fingerprint do banco, na mesma statement.
+ */
+describe('governanca: stores nascem fail-closed e so acendem pela politica', () => {
   const ratingsStore = resolve(
     ROOT,
     'services',
@@ -197,7 +218,7 @@ describe('governanca: stores nascem fail-closed', () => {
     'watch-store.ts',
   )
 
-  it('external-ratings-store fixa display/license e NAO os aceita como parametro', async () => {
+  it('external-ratings-store fixa display/license no upsert e NAO os aceita como parametro', async () => {
     const content = await readFile(ratingsStore, 'utf8')
     expect(content).toContain('displayAllowed: false')
     expect(content).toContain("licenseStatus: 'unknown'")
@@ -207,14 +228,38 @@ describe('governanca: stores nascem fail-closed', () => {
     expect(content).not.toContain('displayAllowed: true')
   })
 
+  it('external-ratings-store so liga exibicao junto de revisor `automation:` e do hash do banco', async () => {
+    const code = stripComments(await readFile(ratingsStore, 'utf8'))
+
+    // Se o arquivo liga display em SQL, tem de ser no mesmo bloco em que grava
+    // o revisor de automacao e o fingerprint calculado PELO BANCO.
+    if (/display_allowed"?\s*=\s*true/i.test(code)) {
+      expect(code).toContain('external_rating_payload_fingerprint_v1')
+      expect(code).toMatch(/reviewed_by/i)
+      expect(code).toContain("'automation:")
+    }
+    // A politica pura mora em @screena/schemas; o store nao a reimplementa.
+    expect(code).toContain('resolveDisplayAllowed')
+  })
+
   it('watch-store: fail-closed, upsert por identidade, escopo provider_api e SEM DELETE cego', async () => {
     const raw = await readFile(watchStore, 'utf8')
     const code = stripComments(raw)
 
-    // Fail-closed: o sync NUNCA liga display_allowed (nasce false).
+    // A oferta NASCE fail-closed: o INSERT do sync grava display_allowed=false.
     expect(code).toMatch(/false,\s*now\(\)/i) // INSERT ... display_allowed=false
-    expect(code).not.toMatch(/display_allowed"?\s*=\s*true/i)
+    // E nunca aceita o valor do chamador nem da linha existente.
     expect(code).not.toMatch(/displayAllowed:\s*true/i)
+    expect(code).not.toMatch(/display_allowed"?\s*=\s*\$?\{?(input|offer|row)\./i)
+
+    // Acender e passo SEPARADO e sempre acompanhado de revisor de automacao +
+    // fingerprint do banco. Sem os tres juntos, a guarda cai.
+    if (/display_allowed"?\s*=\s*true/i.test(code)) {
+      expect(code).toContain('watch_offer_payload_fingerprint_v1')
+      expect(code).toMatch(/reviewed_by/i)
+      expect(code).toContain("'automation:")
+      expect(code).toContain('resolveDisplayAllowed')
+    }
 
     // NAO apaga snapshot as cegas: sem deleteMany, sem DELETE FROM watch_availability.
     expect(code).not.toContain('deleteMany')
@@ -227,6 +272,16 @@ describe('governanca: stores nascem fail-closed', () => {
 
     // Ofertas sumidas do snapshot: revogadas (display false) + marcadas stale.
     expect(code).toMatch(/stale_after"?\s*=\s*now\(\)/i)
+  })
+
+  it('CONTROLE POSITIVO: os dois stores realmente contem o bloco que acende', async () => {
+    // Sem este controle, os `if (...)` acima ficariam verdes por VACUIDADE se o
+    // bloco de exibicao sumisse ou fosse renomeado — exatamente o falso verde
+    // que a guarda antiga produziria ao ser apenas removida.
+    const ratings = stripComments(await readFile(ratingsStore, 'utf8'))
+    const watch = stripComments(await readFile(watchStore, 'utf8'))
+    expect(ratings).toMatch(/display_allowed"?\s*=\s*true/i)
+    expect(watch).toMatch(/display_allowed"?\s*=\s*true/i)
   })
 })
 

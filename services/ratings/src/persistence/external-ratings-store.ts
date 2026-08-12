@@ -17,8 +17,27 @@
  */
 
 import type { PrismaClient } from '@screena/db/server'
+import { resolveDisplayAllowed } from '@screena/schemas'
+
 import type { ExternalRatingUpsertOutcome, ExternalRatingsPort } from '../ports.js'
 import type { ExternalRatingRow } from '../film-show-ratings/types.js'
+import type { RatingCreditLookup } from './rating-credit-lookup.js'
+
+/**
+ * Identidade gravada em `reviewed_by` quando a exibicao e ligada pela POLITICA,
+ * e nao por uma pessoa olhando a linha.
+ *
+ * Decisao do proprietario (2026-08-11): a exibicao passa a ser automatica desde
+ * que o credito exigido pela licenca esteja satisfeito. A autoridade continua
+ * sendo humana — e a licenca de `services/legal/src/authorization-spec.ts`,
+ * decidida por `DECIDED_BY` — mas quem CARIMBA cada linha e o worker.
+ *
+ * O prefixo `automation:` e deliberado e nunca deve ser removido: `reviewed_by`
+ * antes afirmava "uma pessoa revisou ESTA linha". Agora afirma "esta linha
+ * passou pela politica X". Uma auditoria precisa conseguir separar os dois com
+ * um `LIKE 'automation:%'`, sem adivinhar por formato de nome.
+ */
+export const RATINGS_AUTO_REVIEWER = 'automation:ratings-sync/display-policy-v1'
 
 /** `Decimal` do Prisma vira `number` para comparacao (escalas pequenas, seguras). */
 function decimalToNumber(value: unknown): number | null {
@@ -27,8 +46,123 @@ function decimalToNumber(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null
 }
 
+/** Opcoes do store. Sem `credits`, o comportamento e o fail-closed historico. */
+export interface ExternalRatingsStoreOptions {
+  /**
+   * Resolve o credito da fonte. AUSENTE => nenhuma linha e promovida (o store
+   * se comporta exatamente como antes desta feature). Fail-closed por omissao.
+   */
+  readonly credits?: RatingCreditLookup
+  /**
+   * Para onde vai o diagnostico. Nenhum caminho de falha desta feature retorna
+   * vazio em silencio: ou promove, ou diz por que nao promoveu.
+   */
+  readonly log?: (message: string) => void
+}
+
+/**
+ * Liga a exibicao de UMA nota, se e somente se a politica permitir.
+ *
+ * Roda DEPOIS do upsert fail-closed, nunca no lugar dele: a linha sempre nasce
+ * `display_allowed=false` e so entao e considerada para exibicao. Se este passo
+ * falhar por qualquer motivo, a linha continua exatamente como nasceu — nao ha
+ * estado parcial possivel.
+ */
+async function applyDisplayDecision(
+  prisma: PrismaClient,
+  row: ExternalRatingRow,
+  options: ExternalRatingsStoreOptions,
+): Promise<void> {
+  const { credits, log } = options
+  if (credits === undefined) return
+
+  const license = await credits.find(row.ratingSource)
+  const decision = resolveDisplayAllowed(
+    {
+      sourceKey: row.ratingSource,
+      // Exibir uma NOTA e exibir o numero: a licenca precisa de `score_allowed`.
+      needsScorePermission: true,
+      // `score_type` null = critics/audience nao classificados (invariante 1).
+      classified: row.scoreType !== null,
+    },
+    license === null
+      ? null
+      : {
+          ...license,
+          // O linkback de uma nota e a URL DAQUELA nota na fonte. A licenca nao
+          // tem essa coluna — ela e por linha.
+          attributionUrl: row.ratingUrl,
+        },
+  )
+
+  if (!decision.displayAllowed) {
+    // B9: nada de descarte silencioso. Uma nota que nao acende TEM de dizer
+    // por que — senao "a pagina esta vazia" vira investigacao as cegas.
+    log?.(
+      `[ratings] nao exibida ${row.ratingSource}/${row.metric} entidade ${row.entityType}:${row.entityId} — ${decision.reason}: ${decision.detail}`,
+    )
+    return
+  }
+
+  // O hash sai de uma funcao DO BANCO, nunca reimplementada em TS.
+  //
+  // ATENCAO ao que e `$n` e o que e `r."..."` dentro do fingerprint: os campos
+  // de licenca estao sendo ESCRITOS neste mesmo UPDATE, e em Postgres um
+  // `r."license_status"` na clausula SET le o valor ANTIGO. Passar `r."..."`
+  // ali gravaria um hash do payload PRE-atualizacao; o trigger recomputa com os
+  // valores novos, os dois nao bateriam e o UPDATE inteiro abortaria. Por isso
+  // licenca/atribuicao entram como parametro ($1..$5) e so os campos NAO
+  // tocados aqui (nota, escala, provider...) vem de `r."..."`.
+  try {
+    await prisma.$executeRawUnsafe(
+      `UPDATE "external_ratings" r
+          SET "license_status" = $1::"LicenseStatus",
+              "requires_attribution" = $2,
+              "requires_linkback" = $3,
+              "attribution_text" = $4,
+              "attribution_url" = $5,
+              "data_usage_decision_id" = $6,
+              "reviewed_at" = now(),
+              "reviewed_by" = $7,
+              "display_allowed" = true,
+              "approved_payload_hash" = external_rating_payload_fingerprint_v1(
+                r."entity_type", r."entity_id", r."rating_source", r."metric",
+                r."score_type", r."rating_label", r."rating_value", r."rating_scale",
+                r."rating_count", r."rating_url", r."provider_api",
+                $1::"LicenseStatus", $2, $3, $4, $5),
+              "updated_at" = now()
+        WHERE r."entity_type" = $8::"EntityType"
+          AND r."entity_id" = $9
+          AND r."rating_source" = $10
+          AND r."metric" = $11`,
+      license!.licenseStatus,
+      license!.requiresAttribution,
+      license!.requiresLinkback,
+      license!.attributionText,
+      row.ratingUrl,
+      BigInt(license!.usageDecisionId as string),
+      RATINGS_AUTO_REVIEWER,
+      row.entityType,
+      BigInt(row.entityId),
+      row.ratingSource,
+      row.metric,
+    )
+  } catch (error) {
+    // O trigger e a autoridade: se ele recusou, a politica pura e o banco
+    // discordam e a linha fica NAO exibida (fail-closed). Levantar aqui mataria
+    // o sync inteiro por causa de uma nota; engolir sem log esconderia uma
+    // divergencia real entre as duas camadas. Logamos, alto.
+    log?.(
+      `[ratings] TRIGGER RECUSOU exibicao de ${row.ratingSource}/${row.metric} entidade ${row.entityType}:${row.entityId} — politica e banco divergem: ${String(error)}`,
+    )
+  }
+}
+
 /** Cria um `ExternalRatingsPort` apoiado em `external_ratings` via Prisma. */
-export function createPrismaExternalRatings(prisma: PrismaClient): ExternalRatingsPort {
+export function createPrismaExternalRatings(
+  prisma: PrismaClient,
+  options: ExternalRatingsStoreOptions = {},
+): ExternalRatingsPort {
   return {
     async upsert(row: ExternalRatingRow): Promise<ExternalRatingUpsertOutcome> {
       const where = {
@@ -81,6 +215,10 @@ export function createPrismaExternalRatings(prisma: PrismaClient): ExternalRatin
                    "stale_after" = ${row.staleAfter === null ? null : row.staleAfter.toISOString()}::timestamptz AT TIME ZONE 'UTC'
              WHERE "id" = ${existing.id}
           `
+          // Sem mudanca de conteudo, mas a POLITICA pode ter mudado: uma
+          // licenca cadastrada depois desta linha so acende aqui. Reavaliar e o
+          // que faz o proximo ciclo do worker recuperar notas antigas.
+          await applyDisplayDecision(prisma, row, options)
           return { created: false, changed: false }
         }
 
@@ -113,6 +251,10 @@ export function createPrismaExternalRatings(prisma: PrismaClient): ExternalRatin
             dataUsageDecisionId: null,
           },
         })
+        // A nota MUDOU: o update acima revogou a exibicao e limpou a aprovacao.
+        // Reavaliar aqui reaprova o valor NOVO — a aprovacao nunca e herdada,
+        // e sempre recomputada sobre o payload atual.
+        await applyDisplayDecision(prisma, row, options)
         return { created: false, changed: true }
       }
 
@@ -145,6 +287,9 @@ export function createPrismaExternalRatings(prisma: PrismaClient): ExternalRatin
           dataUsageDecisionId: null,
         },
       })
+      // A linha NASCEU fail-closed (display=false, licenca unknown). So agora,
+      // com ela ja persistida e auditavel, a politica decide se acende.
+      await applyDisplayDecision(prisma, row, options)
       return { created: true, changed: true }
     },
   }

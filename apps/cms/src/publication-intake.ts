@@ -121,19 +121,65 @@ export interface EntityLinkInput {
   readonly confidence: number
 }
 
+/** Como um vinculo chegou a `verified: true`. Ver ADR 0019. */
+export const AUTOMATION_VERIFICATION_SOURCE = 'automation_confidence'
+
 /** Linha de `entityReferences` pronta para a collection `articles`. */
 export interface EntityReferenceRow {
   readonly entityKind: string
   readonly entityId: string
   readonly relation: string
   readonly confidence: number
-  /** SEMPRE `false` vindo de maquina. Ver ADR 0018. */
-  readonly verified: false
+  /** `true` so quando a confianca declarada alcanca o limiar. Ver ADR 0019. */
+  readonly verified: boolean
+  /**
+   * PROVENIENCIA da marcacao, nao estado dela.
+   *
+   * Presente **so** quando foi a maquina que verificou. Ausente significa uma
+   * de duas coisas, e as duas se distinguem por `verified`: nao verificado, ou
+   * verificado por HUMANO no admin. E isso que permite auditar — ou reverter em
+   * massa — apenas o que a automacao afirmou.
+   */
+  readonly verificationSource?: typeof AUTOMATION_VERIFICATION_SOURCE
+}
+
+/** O que foi auto-verificado, para o LOG do endpoint. */
+export interface AutoVerifiedEntityLink {
+  readonly entityKind: string
+  readonly entityId: string
+  readonly confidence: number
 }
 
 export interface EntityReferenceResolution {
   readonly rows: readonly EntityReferenceRow[]
   readonly warnings: readonly EditorialWarning[]
+  readonly autoVerified: readonly AutoVerifiedEntityLink[]
+}
+
+/**
+ * Tipos de entidade que a rota `/api/internal/entity-resolve` sabe traduzir.
+ *
+ * O limiar de confianca so significa alguma coisa porque existe um resolvedor
+ * conservador atras do numero (ver ADR 0019). Para `season`, `episode`,
+ * `character` e `franchise` esse resolvedor **nao existe**: a confianca vem de
+ * um julgamento que ninguem consegue reproduzir, e um `1.0` ali seria so uma
+ * afirmacao mais enfatica. Eles continuam nascendo nao verificados.
+ */
+const AUTO_VERIFIABLE_KINDS = new Set(['movie', 'tv', 'person'])
+
+// O DEFAULT do limiar NAO mora aqui: ele e configuracao, e vive com as outras
+// (`env-auto-publish.ts`, `DEFAULT_ENTITY_LINK_MIN_CONFIDENCE`). Uma copia neste
+// arquivo seria uma segunda verdade sobre o mesmo numero, e as duas divergiriam
+// na primeira mudanca de politica. Aqui o limiar e sempre RECEBIDO.
+export interface EntityReferenceOptions {
+  /**
+   * Confianca MINIMA para um vinculo nascer verificado.
+   *
+   * Fora de `(0, 1]` — inclusive `NaN` — nada e auto-verificado. Um limiar
+   * invalido nao pode virar "verifica tudo": e exatamente o valor `0` que um
+   * `parseFloat("0,9")` produz.
+   */
+  readonly minConfidence: number
 }
 
 /**
@@ -156,27 +202,40 @@ const INTERNAL_ENTITY_ID = /^[1-9][0-9]*$/
  * persistencia simplesmente nao copiava o campo: o vinculo morria no salto para
  * o CMS, mesmo com o id certo.
  *
- * DUAS GUARDAS, e vale entender por que sao so duas:
+ * TRES GUARDAS:
  *
  *  - **Forma do id.** Um id do TMDB nao falha em lugar nenhum — ele e um inteiro
  *    valido. Se aquele numero existir como id INTERNO, o vinculo aponta para a
  *    entidade errada com toda a aparencia de estar certo. A unica coisa
  *    checavel aqui e a forma; e ela ja recusa `tt0111161` e `tmdb:550`.
- *  - **`verified: false`, sempre.** O CMS **nao consegue** confirmar que a
- *    entidade existe nem que o tipo declarado bate com a linha: ele tem banco
- *    proprio e nao alcanca o catalogo publico (ADR 0015, travado por
- *    `tests/governance/cms-isolation.test.ts`). Marcar `verified: true` daqui
- *    seria afirmar uma verificacao que ninguem fez.
+ *  - **Limiar de confianca.** `confidence >= minConfidence` nasce verificado;
+ *    abaixo disso, nao. O numero so vale porque atras dele existe a rota
+ *    `/api/internal/entity-resolve`, que recusa ambiguidade, recusa entidade sem
+ *    pagina canonica e devolve `null` em vez de palpite — ver ADR 0019, que
+ *    emenda o ADR 0018 nesta unica linha.
+ *  - **Tipo resolvivel.** So `movie`/`tv`/`person` podem nascer verificados: sao
+ *    os tipos que aquele resolvedor traduz. Ver `AUTO_VERIFIABLE_KINDS`.
  *
- * Quem confere existencia e tipo e o worker de projecao, que le o catalogo
- * publico (`reconcileEntityLinks`), e o vinculo so chega ate la depois de um
- * humano confirmar no admin. Ver ADR 0018.
+ * O que NAO mudou: o CMS continua sem conseguir confirmar que a entidade EXISTE
+ * e que o tipo declarado bate com a linha — ele tem banco proprio e nao alcanca
+ * o catalogo publico (ADR 0015, travado por
+ * `tests/governance/cms-isolation.test.ts`). Quem confere isso segue sendo o
+ * worker de projecao (`reconcileEntityLinks`), que le as duas pontas. O limiar
+ * decide se o vinculo espera um humano; ele nao substitui aquela checagem.
  */
 export function resolveEntityReferences(
   links: readonly EntityLinkInput[],
+  options: EntityReferenceOptions,
 ): EntityReferenceResolution {
   const rows: EntityReferenceRow[] = []
   const warnings: EditorialWarning[] = []
+  const autoVerified: AutoVerifiedEntityLink[] = []
+
+  // FAIL-CLOSED no limiar. `0` auto-verificaria ate `confidence: 0`, e `0` e
+  // justamente o que um `parseFloat("0,9")` devolve — o erro de digitacao mais
+  // provavel desta variavel nao pode ser o que abre tudo.
+  const threshold = options.minConfidence
+  const usableThreshold = Number.isFinite(threshold) && threshold > 0 && threshold <= 1
 
   for (const [index, link] of links.entries()) {
     if (!INTERNAL_ENTITY_ID.test(link.entityId)) {
@@ -187,24 +246,50 @@ export function resolveEntityReferences(
       })
       continue
     }
+    const verified =
+      usableThreshold &&
+      AUTO_VERIFIABLE_KINDS.has(link.entityKind) &&
+      Number.isFinite(link.confidence) &&
+      link.confidence >= threshold
     rows.push({
       entityKind: link.entityKind,
       entityId: link.entityId,
       relation: link.relation,
       confidence: link.confidence,
-      verified: false,
+      verified,
+      // A chave so existe quando a maquina verificou: gravar a proveniencia num
+      // vinculo nao verificado registraria uma decisao que nao foi tomada.
+      ...(verified ? { verificationSource: AUTOMATION_VERIFICATION_SOURCE } : {}),
     })
+    if (verified) {
+      autoVerified.push({
+        entityKind: link.entityKind,
+        entityId: link.entityId,
+        confidence: link.confidence,
+      })
+    }
   }
 
-  if (rows.length > 0) {
+  const pending = rows.length - autoVerified.length
+
+  if (autoVerified.length > 0) {
+    warnings.push({
+      code: 'ENTITY_LINK_AUTO_VERIFIED',
+      field: 'entityLinks',
+      detail: `${String(autoVerified.length)} vinculo(s) gravado(s) como VERIFICADOS por confianca (limiar ${String(threshold)}): ${autoVerified
+        .map((link) => `${link.entityKind}:${link.entityId}=${String(link.confidence)}`)
+        .join(', ')}`,
+    })
+  }
+  if (pending > 0) {
     warnings.push({
       code: 'ENTITY_LINK_UNVERIFIED',
       field: 'entityLinks',
-      detail: `${String(rows.length)} vinculo(s) gravado(s) como NAO verificados: so aparecem no site depois de confirmacao humana no admin`,
+      detail: `${String(pending)} vinculo(s) gravado(s) como NAO verificados (confianca abaixo de ${String(threshold)}, ou tipo que a resolucao de entidade nao traduz): so aparecem no site depois de confirmacao humana no admin`,
     })
   }
 
-  return { rows, warnings }
+  return { rows, warnings, autoVerified }
 }
 
 /* ------------------------------------------------------------------ */

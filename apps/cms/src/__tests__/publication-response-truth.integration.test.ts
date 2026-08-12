@@ -458,11 +458,14 @@ describe('F2: intendedUse hero vira heroMedia', () => {
 /* ------------------------------------------------------------------ */
 
 describe('F3: entityLinks viram entityReferences', () => {
-  it('vinculo com id interno e gravado — como NAO verificado', async () => {
+  it('confianca ABAIXO do limiar e gravada como NAO verificada', async () => {
+    // `0.85` e o `exact_name` da entity-resolve: nome unico, sem um SEGUNDO
+    // campo confirmando identidade. E o unico casamento que continua esperando
+    // humano depois do ADR 0019.
     const { body: response } = await publish(
       requestBody({
         entityLinks: [
-          { entityKind: 'movie', entityId: '4210', relation: 'primary_subject', confidence: 0.9 },
+          { entityKind: 'person', entityId: '4210', relation: 'primary_subject', confidence: 0.85 },
         ],
       }),
     )
@@ -471,13 +474,59 @@ describe('F3: entityLinks viram entityReferences', () => {
     const article = await readArticle(String(response.articleId))
     const refs = article.entityReferences as Record<string, unknown>[]
     expect(refs).toHaveLength(1)
-    expect(refs[0]?.entityKind).toBe('movie')
+    expect(refs[0]?.entityKind).toBe('person')
     expect(refs[0]?.entityId).toBe('4210')
     expect(refs[0]?.relation).toBe('primary_subject')
-    // `verified` e ato HUMANO. A automacao nunca o afirma (ADR 0018), e o
-    // evento de publicacao so leva o que esta verificado.
     expect(refs[0]?.verified).toBe(false)
+    // Proveniencia VAZIA: nao houve verificacao nenhuma a registrar.
+    expect(refs[0]?.verificationSource ?? null).toBeNull()
     expect(warningCodes(response)).toContain('ENTITY_LINK_UNVERIFIED')
+  })
+
+  it('confianca NO limiar nasce verificada, com a proveniencia da maquina (ADR 0019)', async () => {
+    const { body: response } = await publish(
+      requestBody({
+        entityLinks: [
+          { entityKind: 'movie', entityId: '4210', relation: 'primary_subject', confidence: 0.9 },
+          { entityKind: 'person', entityId: '77', relation: 'mentioned', confidence: 0.85 },
+        ],
+      }),
+    )
+    expect(response.outcome).toBe('PUBLISHED')
+
+    const article = await readArticle(String(response.articleId))
+    const refs = article.entityReferences as Record<string, unknown>[]
+    expect(refs.map((ref) => [ref.entityId, ref.verified])).toEqual([
+      ['4210', true],
+      ['77', false],
+    ])
+    // A DISTINCAO que permite auditar depois: so a linha auto-verificada carrega
+    // a origem. `verified: true` com origem VAZIA continua significando humano.
+    expect(refs[0]?.verificationSource).toBe('automation_confidence')
+    expect(refs[1]?.verificationSource ?? null).toBeNull()
+
+    // O emissor recebe as duas contagens, com codigo proprio.
+    expect(warningCodes(response)).toContain('ENTITY_LINK_AUTO_VERIFIED')
+    expect(warningCodes(response)).toContain('ENTITY_LINK_UNVERIFIED')
+    expect(warningFor(response, 'ENTITY_LINK_AUTO_VERIFIED')?.detail).toContain('movie:4210')
+  })
+
+  it('confianca alta sobre id de FORMA errada continua recusada', async () => {
+    // O limiar nao afrouxou a guarda de forma: uma afirmacao confiante sobre a
+    // coisa errada e pior do que uma afirmacao insegura.
+    const { body: response } = await publish(
+      requestBody({
+        entityLinks: [
+          { entityKind: 'movie', entityId: 'tmdb:550', relation: 'primary_subject', confidence: 1 },
+        ],
+      }),
+    )
+    expect(response.outcome).toBe('PUBLISHED')
+    expect(warningCodes(response)).toContain('ENTITY_LINK_ID_NOT_INTERNAL')
+    expect(warningCodes(response)).not.toContain('ENTITY_LINK_AUTO_VERIFIED')
+
+    const article = await readArticle(String(response.articleId))
+    expect(article.entityReferences as unknown[]).toHaveLength(0)
   })
 
   it('id fora da forma de id interno e RECUSADO, e o resto do pedido sobrevive', async () => {
@@ -506,13 +555,16 @@ describe('F3: entityLinks viram entityReferences', () => {
     const cluster = `cluster-${randomUUID().slice(0, 8)}`
     const slug = `materia-vinculo-${randomUUID().slice(0, 8)}`
 
+    // `0.85` de proposito: nasce NAO verificado, entao a marcacao seguinte e
+    // inequivocamente humana. Com `0.9` a maquina ja teria marcado, e o teste
+    // provaria a sobrevivencia da propria automacao — nao a da curadoria.
     const created = await publish(
       requestBody({
         idempotencyKey: key,
         sourceClusterId: cluster,
         sourceRevision: 1,
         entityLinks: [
-          { entityKind: 'movie', entityId: '4210', relation: 'primary_subject', confidence: 0.9 },
+          { entityKind: 'person', entityId: '4210', relation: 'primary_subject', confidence: 0.85 },
         ],
         seo: { slugSuggestion: slug },
       }),
@@ -522,6 +574,7 @@ describe('F3: entityLinks viram entityReferences', () => {
 
     // Um humano confirma o vinculo no admin.
     const before = await readArticle(articleId)
+    expect((before.entityReferences as Record<string, unknown>[])[0]?.verified).toBe(false)
     await payload.update({
       collection: 'articles',
       id: articleId,
@@ -534,6 +587,9 @@ describe('F3: entityLinks viram entityReferences', () => {
       user: await chief(),
     })
 
+    // O pedido seguinte manda confianca ALTA no mesmo vinculo e um vinculo NOVO.
+    // Nenhum dos dois pode tocar o array: reescrever devolveria a curadoria a
+    // `false` a cada revisao do pipeline.
     const updated = await publish(
       requestBody({
         idempotencyKey: key,
@@ -542,7 +598,8 @@ describe('F3: entityLinks viram entityReferences', () => {
         publicationIntent: 'update',
         targetArticleId: articleId,
         entityLinks: [
-          { entityKind: 'movie', entityId: '4210', relation: 'primary_subject', confidence: 0.9 },
+          { entityKind: 'person', entityId: '4210', relation: 'mentioned', confidence: 1 },
+          { entityKind: 'movie', entityId: '999', relation: 'primary_subject', confidence: 1 },
         ],
         seo: { slugSuggestion: slug },
       }),
@@ -554,6 +611,10 @@ describe('F3: entityLinks viram entityReferences', () => {
     const refs = after.entityReferences as Record<string, unknown>[]
     expect(refs).toHaveLength(1)
     expect(refs[0]?.verified).toBe(true)
+    // A relacao continua a que o humano viu, e a origem segue VAZIA: quem
+    // marcou foi gente, e nenhuma reescrita automatica reivindicou a decisao.
+    expect(refs[0]?.relation).toBe('primary_subject')
+    expect(refs[0]?.verificationSource ?? null).toBeNull()
   })
 })
 

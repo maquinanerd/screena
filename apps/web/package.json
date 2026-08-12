@@ -27,7 +27,8 @@
     "gen:demo-media": "node scripts/generate-demo-media.mjs",
     "validate:person-eligibility": "tsx scripts/validate-person-eligibility-real-postgres.ts",
     "canary:manual-editorial": "tsx scripts/canary-manual-editorial-real-postgres.ts",
-    "canary:editorial-entity-links": "tsx scripts/canary-editorial-entity-links-real-postgres.ts"
+    "canary:editorial-entity-links": "tsx scripts/canary-editorial-entity-links-real-postgres.ts",
+    "canary:entity-link-auto-verification": "tsx scripts/canary-entity-link-auto-verification-real-postgres.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1097.0",
