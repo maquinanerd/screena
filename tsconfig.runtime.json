@@ -16,6 +16,7 @@
     "services/ingestion/bin/discover-ids.ts",
     "services/ingestion/bin/plan-seed.ts",
     "services/ingestion/bin/reprocess-watch-providers.ts",
+    "services/ingestion/bin/sync-tmdb-raw.ts",
     "services/ratings/src/persistence/**/*.ts",
     "services/ratings/bin/ratings.ts",
     "services/streaming/src/persistence/**/*.ts",
