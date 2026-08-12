@@ -35,7 +35,8 @@
  *   #   --apply           escreve o artefato + loga (sem a flag = dry-run)
  *   #   --date=YYYY-MM-DD data do export (default: hoje em UTC)
  *   #   --only=a,b        subconjunto de kinds (movie,tv,person,collection,network,company,keyword)
- *   #   --max-per-type=N  amostragem para dev (default: sem limite)
+ *   #   --max-per-type=N  amostragem para dev: TOP-N por POPULARIDADE de cada
+ *   #                     export (le o arquivo inteiro; nunca corte de prefixo)
  */
 
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
@@ -45,7 +46,7 @@ import { Readable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 import { createGunzip } from 'node:zlib'
 
-import { filterAdult } from '../src/discovery/adult-filter.js'
+import { createTopRecordSampler } from '../src/discovery/export-sample.js'
 import {
   DAILY_ID_EXPORTS,
   exportFileName,
@@ -53,7 +54,6 @@ import {
   formatExportDate,
   parseIdExportLine,
   type IdExportFile,
-  type IdExportRecord,
 } from '../src/discovery/id-exports.js'
 import { buildSyncQueue, type DiscoverySource } from '../src/discovery/sync-queue.js'
 import { hashPayload } from '../src/utils/hash.js'
@@ -87,17 +87,35 @@ function resolveDate(argv: string[]): Date {
   return new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])))
 }
 
-/** Baixa + gunzip + parseia UM export, filtrando adult/ids invalidos (streaming). */
+/**
+ * Baixa + gunzip + parseia UM export (streaming), amostrando o TOP-N por
+ * POPULARIDADE quando ha `--max-per-type`.
+ *
+ * O corte NUNCA e de prefixo: a versao anterior parava de ler na linha N, e
+ * como o export vem em ordem de id (data de cadastro), a amostra de dev era
+ * o museu do TMDB — os N ids mais antigos — com o `buildSyncQueue` ordenando
+ * um universo ja truncado. O sampler consome o arquivo INTEIRO e so decide na
+ * ultima linha, com memoria O(N); a ordem e a MESMA total do `buildSyncQueue`
+ * (popularidade desc, sem-popularidade por ultimo, id asc no empate), entao
+ * amostra e fila final nunca discordam. Custo: ler o arquivo ate o fim — que
+ * e exatamente o preco de uma amostra representativa.
+ */
 async function downloadExport(exp: IdExportFile, date: Date, maxPerType: number | null) {
   const res = await fetch(exportUrl(exp.file, date))
   if (!res.ok || res.body === null) {
     throw new Error(`HTTP ${res.status} em ${exportFileName(exp.file, date)}`)
   }
 
-  const nodeStream = Readable.fromWeb(res.body)
+  // O mesmo cast de plan-seed.ts: o ReadableStream do fetch (tipos DOM) e o do
+  // node:stream/web divergem so no tipo — em runtime e o mesmo objeto.
+  const nodeStream = Readable.fromWeb(res.body as Parameters<typeof Readable.fromWeb>[0])
   const rl = createInterface({ input: nodeStream.pipe(createGunzip()), crlfDelay: Infinity })
 
-  const raw: IdExportRecord[] = []
+  // movie/person trazem `adult` por linha -> ausencia e fail-closed (unsafe).
+  const sampler = createTopRecordSampler({
+    limit: maxPerType,
+    adultFieldRequired: exp.hasAdultField,
+  })
   let skippedLines = 0
   for await (const line of rl) {
     const record = parseIdExportLine(line)
@@ -105,16 +123,18 @@ async function downloadExport(exp: IdExportFile, date: Date, maxPerType: number 
       skippedLines += 1
       continue
     }
-    raw.push(record)
-    if (maxPerType !== null && raw.length >= maxPerType) {
-      rl.close()
-      nodeStream.destroy()
-      break
-    }
+    sampler.offer(record)
   }
 
-  // movie/person trazem `adult` por linha -> ausencia e fail-closed (unsafe).
-  return { ...filterAdult(raw, { adultFieldRequired: exp.hasAdultField }), skippedLines }
+  const sample = sampler.finish()
+  return {
+    kept: sample.kept,
+    adultDropped: sample.counts.adultDropped,
+    unsafeDropped: sample.counts.unsafeDropped,
+    invalidDropped: sample.counts.invalidDropped,
+    duplicate: sample.counts.duplicate,
+    skippedLines,
+  }
 }
 
 async function main() {
@@ -161,14 +181,14 @@ async function main() {
     const startedAt = Date.now()
     const endpoint = `/p/exports/${exportFileName(exp.file, date)}`
     try {
-      const { kept, adultDropped, unsafeDropped, invalidDropped, skippedLines } =
+      const { kept, adultDropped, unsafeDropped, invalidDropped, duplicate, skippedLines } =
         await downloadExport(exp, date, maxPerType)
-      sources.push({ kind: exp.kind, records: kept })
+      sources.push({ kind: exp.kind, records: [...kept] })
       totalKept += kept.length
       totalAdult += adultDropped
       totalUnsafe += unsafeDropped
       console.log(
-        `  ${exp.kind}: ${kept.length} mantidos, ${adultDropped} adultos, ${unsafeDropped} adult-malformado/ausente (fail-closed), ${invalidDropped} id-invalido, ${skippedLines} linhas puladas.`,
+        `  ${exp.kind}: ${kept.length} mantidos, ${adultDropped} adultos, ${unsafeDropped} adult-malformado/ausente (fail-closed), ${invalidDropped} id-invalido, ${duplicate} duplicados, ${skippedLines} linhas puladas.`,
       )
       if (syncLog !== null) {
         await syncLog.write({

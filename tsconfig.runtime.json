@@ -13,6 +13,7 @@
     // VALOR passou despercebido porque `bin/**` estava fora do typecheck, e o
     // container subia e morria no import — antes de qualquer log.
     "services/ingestion/bin/catalog-worker-service.ts",
+    "services/ingestion/bin/discover-ids.ts",
     "services/ingestion/bin/plan-seed.ts",
     "services/ingestion/bin/reprocess-watch-providers.ts",
     "services/ratings/src/persistence/**/*.ts",
