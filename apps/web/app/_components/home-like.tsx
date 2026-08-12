@@ -126,20 +126,25 @@ export function HomeLike({
 
       {/* Destaques de hoje — seção EDITORIAL: três MATÉRIAS publicadas, grid
           1.62fr 1fr 1fr, cards de 460px. `Filmes`/`Séries` são tabs internas
-          (não navegam); a seção some quando não há matéria em vertical alguma. */}
-      {hasEditorial ? (
-        <section
-          aria-labelledby={`${adPrefix}-featured-title`}
-          className="container"
-          style={{ paddingTop: 48, paddingBottom: 10 }}
-        >
-          <HomeEditorialHighlights
-            headingId={`${adPrefix}-featured-title`}
-            highlights={editorialHighlights}
-            initialVertical={editorialInitialVertical}
-          />
-        </section>
-      ) : null}
+          (não navegam).
+
+          A seção NUNCA some: sem matéria em vertical alguma, ela declara o
+          estado vazio ("Ainda não há destaques...") em vez de desaparecer.
+          Sumir em silêncio foi exatamente o defeito nº 3 da lista de descarte
+          silencioso — a seção existia desde a PR #91 e uma auditoria inteira a
+          declarou inexistente porque ela se escondia quando não havia vínculo.
+          Estrutura fixa da composição, como o ticker logo acima. */}
+      <section
+        aria-labelledby={`${adPrefix}-featured-title`}
+        className="container"
+        style={{ paddingTop: 48, paddingBottom: 10 }}
+      >
+        <HomeEditorialHighlights
+          headingId={`${adPrefix}-featured-title`}
+          highlights={editorialHighlights}
+          initialVertical={editorialInitialVertical}
+        />
+      </section>
 
       {/* Popular essa semana — banda escura com ranking */}
       {popularCards.length > 0 ? (

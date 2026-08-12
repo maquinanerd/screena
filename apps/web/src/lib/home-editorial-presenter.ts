@@ -304,7 +304,14 @@ export function excludeEditorialHighlights(
   };
 }
 
-/** Há alguma matéria em qualquer vertical? Seção vazia = seção omitida. */
+/**
+ * Há alguma matéria em qualquer vertical?
+ *
+ * NÃO esconde mais a seção: "Destaques de hoje" é estrutura fixa da composição
+ * e declara o estado vazio na própria página (sumir em silêncio foi o defeito
+ * nº 3 do descarte silencioso). Continua útil para sinais agregados da página
+ * (ex.: o EmptyState de página 100% vazia do template `HomeLike`).
+ */
 export function hasEditorialHighlights(
   highlights: HomeEditorialHighlights,
 ): boolean {
