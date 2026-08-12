@@ -32,6 +32,13 @@ import { MigrateUpArgs, MigrateDownArgs, sql } from '@payloadcms/db-postgres'
  * emitiria aquelas linhas. Do jeito que ficou, o proximo `migrate:create`
  * REEMITE o desvio, que e como ele deve continuar aparecendo ate alguem trata-lo
  * numa migration propria, com decisao humana e verificacao dos dados.
+ *
+ * FECHADO em `20260811_221529_articles_language_enum` — a migration propria que
+ * este paragrafo pedia, gerada inteira pelo tool (`.ts` + `.json` da MESMA
+ * geracao, zero corte a mao) com uma guarda de dados por cima. Nao ha mais
+ * desvio a reemitir: `migrate:create` numa arvore limpa responde "No schema
+ * changes detected" e nao cria arquivo. O corte a mao descrito acima continua
+ * valendo como registro do que foi feito AQUI.
  */
 export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
   await db.execute(sql`
