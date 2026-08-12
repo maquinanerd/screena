@@ -21,7 +21,7 @@ por quê é defeito, não economia.
 | Bloco do canônico | Estado | Motivo | O que falta para acender |
 | --- | --- | --- | --- |
 | **Cinerie Score** (o "82" em 47px/800) | não renderiza | `PRODUCTION_FORMULA_REGISTRY` está **vazio** e não existe decisão `cinerie_score_display` com `derivative_allowed` (`docs/legal/source-operations-inventory.md` §4: "Bloqueado"). O motor devolve `BLOCKED_BY_DECISION`. | Decisão humana de produto + licença. Ver [`docs/product/cinerie-score-decision.md`](../product/cinerie-score-decision.md). **Código novo.** |
-| **Onde assistir** (wordmarks NETFLIX/prime/Max/Apple TV+) | não renderiza | **Zero provedores autorizados** no banco. `reason=no_authorized_provider`. | Bloco 2 do runbook de provedores (`register-watch-providers` → `legal sources apply` → `reprocess-watch-providers`). **Só operação** — o bloco acende sozinho. |
+| **Onde assistir** (wordmarks NETFLIX/prime/Max/Apple TV+) | não renderiza | **Zero ofertas exibíveis.** `reason=no_authorized_provider`. **Não é só falta de operação** — a cadeia tem três paradas independentes de código. Ver §5. | Correção de código na cadeia de streaming **antes** de qualquer comando. **Não acende sozinho.** |
 | **Faixa de prêmios** (troféu + "2 vitórias · 6 indicações") | componente pronto, **não importado** | Não há fonte. A API da TMDB **não expõe prêmios** (o site tem `/award`; a API v3 não tem endpoint nem chave de `append_to_response`). Raspar aquela página custaria o acesso à TMDB. | Confirmar o campo `Awards` da OMDb no payload real, decidir a licença (`use_case` próprio — **não** cabe em `rating_display`) e persistir. Componente: [`awards-band.tsx`](../../apps/web/app/_components/awards-band.tsx); parser: [`awards-presenter.ts`](../../apps/web/src/lib/awards-presenter.ts). **Código novo + decisão de licença.** |
 | **Guia Cinerie · Crítica da redação** | contrato ligado, sem conteúdo | A fonte **existe e está ligada**: um `content_block` de tipo `review_summary` com `review_status` publicável. Ninguém escreveu nenhum ainda. | Redação escrever. **Só conteúdo.** |
 | **Nota em estrela (8.2) e assinatura nominal** da faixa de crítica | não renderiza | `content_blocks` guarda **texto**, não veredito numérico nem autoria. Não há coluna para nenhum dos dois. | Modelagem de dados editorial. **Código novo + schema.** |
@@ -191,7 +191,77 @@ Se a crítica por temporada existir um dia, o segundo seletor volta junto com el
 
 ---
 
-## 5. Como auditar
+## 5. "Onde assistir" NÃO acende com operação — três paradas de código
+
+> **Correção de 2026-08-12.** A primeira versão desta tabela dizia que o bloco
+> "acende sozinho depois do Bloco 2 do runbook". **Está errado**, e a afirmação
+> não foi verificada: foi repetida do enunciado da tarefa como se fosse achado.
+> A cadeia de streaming foi então lida linha a linha. O que segue tem
+> arquivo:linha.
+
+A ausência do bloco **não** é falta de um comando de operação. São três paradas
+**independentes**, e qualquer uma sozinha mantém o bloco apagado — corrigir duas
+não acende nada.
+
+### 5.1 O render e o worker falam de provedores diferentes (a decisiva)
+
+| Lado | Arquivo | Valor |
+| --- | --- | --- |
+| Leitura | [`entity-watch.ts:37`](../../apps/web/src/server/entity-watch.ts) → usado como filtro em `:56` | `providerApi = "streaming_availability"` |
+| Escrita | [`watch-providers-store.ts:122`](../../services/ingestion/src/persistence/watch-providers-store.ts) | `provider_api = TMDB_PROVIDER_API` (`'tmdb'`) |
+
+A query do render filtra por um `provider_api` que o worker de reprocessamento
+**nunca grava**. O resultado é zero linhas — independentemente de licença,
+decisão ou runbook.
+
+### 5.2 A linha nasce invisível, e a ferramenta de promoção recusa promovê-la
+
+`watch-providers-store.ts:122` grava `display_allowed` como o literal `false`, e
+o contrato da porta é explícito
+([`watch-providers/types.ts:66-70`](../../services/ingestion/src/watch-providers/types.ts)):
+
+> "Toda linha nasce `display_allowed = false` (invariante 6). Este contrato NAO
+> expoe nenhum campo de licenca/atribuicao/revisao: acender a exibicao e decisao
+> HUMANA, feita por outro caminho."
+
+O "outro caminho" é `promote-watch-availability`, e ele **recusa** essas linhas:
+[`services/streaming/src/promotion/guardrails.ts:61`](../../services/streaming/src/promotion/guardrails.ts)
+devolve `wrong-provider` para tudo que não seja `streaming_availability` —
+"nunca tocamos dado de outro fornecedor" (comentário na linha 11 do mesmo
+arquivo). O dado do TMDB não tem como ser promovido pela ferramenta que existe.
+
+### 5.3 `deep_link` é NULL, e o presenter descarta oferta sem ele
+
+`watch-providers-store.ts:120` grava `NULL`, com o motivo escrito ao lado: o
+TMDB publica **um link por país**, que vai em `web_url`; derivar um deep link
+dele afirmaria um destino que o upstream nunca prometeu. A decisão está certa.
+
+Só que [`watch-availability-presenter.ts`](../../apps/web/src/lib/watch-availability-presenter.ts)
+exige `deep_link` http/https válido para a oferta existir. As duas regras estão
+certas isoladamente e se anulam juntas.
+
+### 5.4 Sem `attribution_text` — e o texto que existe credita a fonte errada
+
+A porta não expõe campo de atribuição (§5.2), então nenhuma linha vinda daí tem
+`attribution_text`. O presenter descarta oferta que exige atribuição e não a tem.
+
+Pior que ausente: o texto registrado para streaming em
+`services/legal/src/authorization-spec.ts` é **"Disponibilidade fornecida por
+Movie of the Night"** — o fornecedor do slice RapidAPI. Aplicá-lo a dado vindo
+do TMDB creditaria o fornecedor errado. A disponibilidade do TMDB é **JustWatch**,
+e a atribuição a JustWatch é condição do acesso à TMDB.
+
+### 5.5 Consequência para quem for planejar
+
+O bloco de front está construído, correto e dirigido por dado — ele acende no
+instante em que uma oferta exibível existir. O que falta é **código na cadeia de
+streaming**, com decisão humana de licença junto (qual fornecedor é a fonte, e
+qual crédito). Rodar `register-watch-providers` → `legal sources apply` →
+`reprocess-watch-providers` **não** produz uma oferta exibível hoje.
+
+---
+
+## 6. Como auditar
 
 ```bash
 pnpm --filter @screena/web qa:detail-responsive
