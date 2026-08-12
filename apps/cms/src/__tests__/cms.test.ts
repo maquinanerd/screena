@@ -28,7 +28,12 @@ import { assertNoHumanDecisionFields, intakeEditorialDraft } from '../draft-inta
 import { validateCmsConfig } from '../env.js'
 import { buildDraftIdentity, canonicalHash, decideIdempotency } from '../idempotency.js'
 import { buildEventIdempotencyKey, buildOutboxRecord, shouldSkipDuplicateEvent } from '../outbox.js'
-import { canTransition, evaluatePublishGate, publicationEventForTransition } from '../workflow.js'
+import {
+  articleDeleteVerdict,
+  canTransition,
+  evaluatePublishGate,
+  publicationEventForTransition,
+} from '../workflow.js'
 import {
   INSTITUTIONAL_AUTHOR_SLUG,
   SEEDED_AUTHOR_FIELDS,
@@ -235,6 +240,56 @@ describe('workflow do CMS', () => {
     expect(publicationEventForTransition('published', 'retracted')).toBe('article.retracted')
     expect(publicationEventForTransition('published', 'blocked')).toBe('article.unpublished')
     expect(publicationEventForTransition('draft', 'needs_review')).toBeNull()
+  })
+
+  it('bloquear/arquivar artigo JA PUBLICADO emite remocao mesmo sem vir de `published`', () => {
+    // O buraco real: a materia continua NO AR durante a reedicao
+    // (published -> needs_update -> ...). Sem isto, `needs_update -> blocked`
+    // deixava o CMS dizendo "blocked" e o lado publico servindo para sempre.
+    expect(
+      publicationEventForTransition('needs_update', 'blocked', { alreadyPublishedOnce: true }),
+    ).toBe('article.unpublished')
+    expect(
+      publicationEventForTransition('needs_review', 'archived', { alreadyPublishedOnce: true }),
+    ).toBe('article.unpublished')
+  })
+
+  it('bloquear/arquivar artigo NUNCA publicado nao emite nada (nao ha o que remover)', () => {
+    expect(
+      publicationEventForTransition('draft', 'blocked', { alreadyPublishedOnce: false }),
+    ).toBeNull()
+    expect(publicationEventForTransition('needs_review', 'archived')).toBeNull()
+  })
+})
+
+/* ------------------------------------------------------------------ */
+/* Exclusao de artigo — excluir NAO despublica                         */
+/* ------------------------------------------------------------------ */
+
+describe('veredicto de exclusao de artigo', () => {
+  it('recusa excluir materia NO AR (published, needs_update)', () => {
+    for (const status of ['published', 'needs_update'] as const) {
+      const verdict = articleDeleteVerdict(status)
+      expect(verdict.allowed).toBe(false)
+      if (!verdict.allowed) expect(verdict.detail).toContain('excluir nao despublica')
+    }
+  })
+
+  it('permite excluir nos demais estados (rascunho, revisao, ja retirado do ar)', () => {
+    for (const status of [
+      'automation_draft',
+      'draft',
+      'needs_review',
+      'in_review',
+      'changes_requested',
+      'human_reviewed',
+      'ready_to_publish',
+      'blocked',
+      'archived',
+      'retracted',
+    ] as const) {
+      expect(articleDeleteVerdict(status).allowed).toBe(true)
+    }
   })
 })
 

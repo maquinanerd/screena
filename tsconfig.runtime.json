@@ -20,7 +20,11 @@
     "services/streaming/src/persistence/**/*.ts",
     "services/legal/bin/legal.ts",
     "services/news-ingestion/src/persistence/**/*.ts",
-    "services/news-ingestion/bin/editorial.ts"
+    "services/news-ingestion/bin/editorial.ts",
+    // Entrypoint da despublicacao de emergencia: mesmo motivo dos demais bins
+    // listados — fora do typecheck, um import quebrado so aparece na hora da
+    // emergencia, que e exatamente quando nao pode falhar.
+    "services/news-ingestion/bin/unpublish-article.ts"
   ],
   "exclude": ["node_modules", "dist", "build", ".next", "coverage"]
 }

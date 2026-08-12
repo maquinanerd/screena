@@ -270,6 +270,54 @@ export function publicationEventForTransition(
     return republication ? 'article.updated' : 'article.published'
   }
   if (from === 'published' && to === 'retracted') return 'article.retracted'
-  if (from === 'published' && (to === 'blocked' || to === 'archived')) return 'article.unpublished'
+  if (to === 'blocked' || to === 'archived') {
+    // Saindo DIRETO de `published`, a remocao e obvia. Mas a materia continua
+    // NO AR durante toda a reedicao (`published -> needs_update -> needs_review
+    // -> ...`): so um evento de remocao a tira de la. Decidir apenas por
+    // `from === 'published'` deixava o caminho `needs_update -> blocked` mudo —
+    // o CMS dizia "blocked" e o lado publico continuava servindo a materia
+    // para sempre. Por isso: bloquear/arquivar QUALQUER artigo que ja foi
+    // publicado emite `article.unpublished`. Emissao redundante (artigo ja
+    // rebaixado no lado publico) e inofensiva — a remocao na projecao e
+    // idempotente e a fila dedupa por idempotencyKey; remocao FALTANDO e uma
+    // materia orfa no ar.
+    if (from === 'published') return 'article.unpublished'
+    return context.alreadyPublishedOnce === true ? 'article.unpublished' : null
+  }
   return null
+}
+
+/** Estados em que a redacao considera a materia NO AR (ou voltando ao ar). */
+const ON_AIR_STATUSES: readonly WorkflowStatus[] = ['published', 'needs_update']
+
+export type ArticleDeleteVerdict =
+  | { readonly allowed: true }
+  | { readonly allowed: false; readonly detail: string }
+
+/**
+ * Excluir um artigo do CMS e permitido neste estado?
+ *
+ * Excluir NAO despublica: o documento some do Payload, mas a projecao no banco
+ * publico continua servindo a materia — e sem documento nao ha mais transicao
+ * de workflow capaz de emitir o evento de remocao. Foi exatamente o caso do
+ * article 41: apagado no admin, orfao no ar.
+ *
+ * Regra: materia em estado de ar (`published`, `needs_update`) nao pode ser
+ * excluida — o operador precisa antes retratar/bloquear/arquivar (transicoes
+ * que emitem `article.retracted`/`article.unpublished`). Nos demais estados a
+ * exclusao segue permitida (rascunho nunca publicado nao tem projecao; artigo
+ * ja retratado/bloqueado/arquivado ja teve a remocao anunciada — e o
+ * `afterDelete` ainda emite a rede de seguranca para qualquer artigo que ja
+ * foi publicado um dia).
+ */
+export function articleDeleteVerdict(status: WorkflowStatus): ArticleDeleteVerdict {
+  if (ON_AIR_STATUSES.includes(status)) {
+    return {
+      allowed: false,
+      detail:
+        `excluir nao despublica: a materia esta "${status}" e continuaria no ar, orfa, no lado publico. ` +
+        'Retrate (retracted), bloqueie (blocked) ou arquive (archived) antes — essas transicoes emitem o evento que tira a materia do ar.',
+    }
+  }
+  return { allowed: true }
 }

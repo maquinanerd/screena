@@ -30,7 +30,12 @@ import {
   type Actor,
 } from './access.js'
 import { toActor as resolveActor } from './actor.js'
-import { emitPublicationEvent, enforceEditorialGovernance } from './hooks/articles.js'
+import {
+  emitDeletionUnpublish,
+  emitPublicationEvent,
+  enforceEditorialGovernance,
+  guardArticleDelete,
+} from './hooks/articles.js'
 import { EDITORIAL_ROLES, WORKFLOW_STATUSES } from './workflow.js'
 import { showsAutomationTab } from './admin/editorial-vocabulary.js'
 import { OUTBOX_STATUSES } from './outbox.js'
@@ -772,9 +777,16 @@ export const Articles: CollectionConfig = {
   // Os hooks sao o UNICO caminho por onde uma mudanca de estado passa — venha
   // ela do painel, da REST API ou da Local API. Sem eles, `_status: published`
   // publicaria por fora do fluxo editorial.
+  //
+  // Delete tambem passa por hook: excluir NAO despublica (o documento some do
+  // CMS mas a projecao publica fica orfa no ar — caso real do article 41).
+  // `beforeDelete` recusa excluir materia no ar; `afterDelete` emite
+  // `article.unpublished` para qualquer artigo que ja foi publicado um dia.
   hooks: {
     beforeChange: [enforceEditorialGovernance],
     afterChange: [emitPublicationEvent],
+    beforeDelete: [guardArticleDelete],
+    afterDelete: [emitDeletionUnpublish],
   },
   versions: {
     drafts: { autosave: { interval: 2_000 } },

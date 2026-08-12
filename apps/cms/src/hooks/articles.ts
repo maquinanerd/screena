@@ -20,7 +20,9 @@
 
 import type {
   CollectionAfterChangeHook,
+  CollectionAfterDeleteHook,
   CollectionBeforeChangeHook,
+  CollectionBeforeDeleteHook,
   PayloadRequest,
 } from 'payload'
 import { APIError } from 'payload'
@@ -33,6 +35,7 @@ import {
 } from '../access.js'
 import { buildOutboxRecord, buildEventIdempotencyKey } from '../outbox.js'
 import {
+  articleDeleteVerdict,
   canTransition,
   evaluatePublishGate,
   publicationEventForTransition,
@@ -517,36 +520,62 @@ export const emitPublicationEvent: CollectionAfterChangeHook = async ({
   // lado publico. Nem `previousDoc.workflowStatus` (que na reedicao vale
   // `ready_to_publish`, igual ao de uma estreia) nem `_status` (rebaixado a
   // `draft` ao sair de `published`) sobrevivem ao caminho de volta.
-  const alreadyPublishedOnce =
-    toStatus === 'published'
-      ? (
-          await req.payload.find({
-            collection: 'publication-outbox',
-            where: {
-              and: [
-                { aggregateId: { equals: String(current.id) } },
-                { eventType: { equals: 'article.published' } },
-              ],
-            },
-            limit: 1,
-            depth: 0,
-            overrideAccess: true,
-            req,
-          })
-        ).totalDocs > 0
-      : false
+  //
+  // A resposta importa em DOIS destinos: `published` (estreia vs atualizacao) e
+  // `blocked`/`archived` (a materia pode estar no ar mesmo vindo de
+  // `needs_update`/`needs_review` — so quem ja publicou precisa de remocao).
+  const needsHistory =
+    toStatus === 'published' || toStatus === 'blocked' || toStatus === 'archived'
+  const alreadyPublishedOnce = needsHistory
+    ? await wasEverPublished(req, String(current.id))
+    : false
 
   const eventType = publicationEventForTransition(fromStatus, toStatus, { alreadyPublishedOnce })
   // Movimento interno da redacao (draft, autosave, revisao, assignedTo): o lado
   // publico nao precisa saber, e emitir aqui poluiria a fila.
   if (eventType === null) return doc
 
-  const event = await buildPublicationEvent({ req, doc: current, eventType })
+  await persistPublicationEvent({ req, doc: current, eventType })
+
+  return doc
+}
+
+/** O artigo ja emitiu `article.published` alguma vez? (consulta a propria fila) */
+async function wasEverPublished(req: PayloadRequest, articleId: string): Promise<boolean> {
+  const found = await req.payload.find({
+    collection: 'publication-outbox',
+    where: {
+      and: [
+        { aggregateId: { equals: articleId } },
+        { eventType: { equals: 'article.published' } },
+      ],
+    },
+    limit: 1,
+    depth: 0,
+    overrideAccess: true,
+    req,
+  })
+  return found.totalDocs > 0
+}
+
+/**
+ * Monta, valida e grava UM evento na outbox — com dedup por idempotencia.
+ * Usado pelo `afterChange` (transicoes) e pelo `afterDelete` (rede de
+ * seguranca). Lancar aqui derruba a transacao inteira do Payload: a operacao
+ * nao conclui sem o evento correspondente.
+ */
+async function persistPublicationEvent(input: {
+  readonly req: PayloadRequest
+  readonly doc: Record<string, unknown>
+  readonly eventType: Parameters<typeof buildPublicationEvent>[0]['eventType']
+}): Promise<void> {
+  const { req, doc, eventType } = input
+  const event = await buildPublicationEvent({ req, doc, eventType })
 
   const built = buildOutboxRecord({
     event,
     eventType,
-    articleId: String(current.id),
+    articleId: String(doc.id),
     articleVersionId: String(event.articleVersionId),
     availableAtIso: new Date().toISOString(),
   })
@@ -572,7 +601,7 @@ export const emitPublicationEvent: CollectionAfterChangeHook = async ({
     overrideAccess: true,
     req,
   })
-  if (alreadyEmitted.totalDocs > 0) return doc
+  if (alreadyEmitted.totalDocs > 0) return
 
   try {
     // BYPASS EXPLICITO E CONFINADO. `publication-outbox` declara `create: false`
@@ -601,10 +630,74 @@ export const emitPublicationEvent: CollectionAfterChangeHook = async ({
     // concorrencia — memoria nao serve, porque duas requisicoes simultaneas
     // leem "nao existe" ao mesmo tempo. Colisao aqui significa que o mesmo
     // evento ja foi registrado: nao e erro, e idempotencia funcionando.
-    if (isUniqueViolation(error)) return doc
+    if (isUniqueViolation(error)) return
     throw error
   }
+}
 
+/* ------------------------------------------------------------------ */
+/* beforeDelete / afterDelete — excluir NAO despublica                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Recusa a exclusao de materia NO AR (`published`/`needs_update`).
+ *
+ * O caso real que motivou a trava: article 41 foi apagado no admin do Payload
+ * e a projecao publica ficou orfa no ar — sem documento, nao ha mais transicao
+ * de workflow capaz de emitir `article.unpublished`. Excluir e operacao de
+ * limpeza de acervo, nunca de despublicacao; despublicar e transicao de
+ * workflow (retracted/blocked/archived), que emite evento e o worker projeta.
+ */
+export const guardArticleDelete: CollectionBeforeDeleteHook = async ({ req, id }) => {
+  const doc = (await req.payload.findByID({
+    collection: 'articles',
+    id,
+    depth: 0,
+    overrideAccess: true,
+    req,
+  })) as unknown as Record<string, unknown>
+
+  const status = String(doc.workflowStatus ?? 'draft') as WorkflowStatus
+  const verdict = articleDeleteVerdict(status)
+  if (!verdict.allowed) {
+    req.payload.logger.warn(
+      { articleId: String(id), workflowStatus: status },
+      'exclusao de artigo RECUSADA: materia no ar',
+    )
+    throw new APIError(`Exclusao recusada — ${verdict.detail}`, 409)
+  }
+}
+
+/**
+ * Rede de seguranca da exclusao: artigo que JA foi publicado um dia emite
+ * `article.unpublished` ao ser excluido.
+ *
+ * O `beforeDelete` acima ja barra os estados de ar; esta rede cobre o resto do
+ * historico — ex.: um artigo que saiu do ar por um caminho antigo que nao
+ * emitia evento (`needs_update -> blocked` antes desta correcao) e cuja
+ * projecao publica ainda esta viva. Emissao redundante e inofensiva (a fila
+ * dedupa por idempotencia e a remocao na projecao e idempotente); remocao
+ * faltando e uma materia orfa no ar para sempre.
+ */
+export const emitDeletionUnpublish: CollectionAfterDeleteHook = async ({ req, id, doc }) => {
+  const articleId = String(id)
+  if (!(await wasEverPublished(req, articleId))) {
+    req.payload.logger.info(
+      { articleId },
+      'exclusao de artigo sem historico de publicacao: nenhum evento a emitir',
+    )
+    return doc
+  }
+
+  await persistPublicationEvent({
+    req,
+    doc: (doc ?? { id }) as unknown as Record<string, unknown>,
+    eventType: 'article.unpublished',
+  })
+  req.payload.logger.warn(
+    { articleId },
+    'exclusao de artigo ja publicado: article.unpublished emitido como rede de seguranca',
+  )
   return doc
 }
 
