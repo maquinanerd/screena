@@ -1326,8 +1326,33 @@ body:has(.art-hero[data-hero-media='true']) .site-header__spacer {
 }
 
 @media (max-width: 767px) {
-  .feat-grid {
-    grid-template-columns: 1fr;
+  /*
+   * Mobile: as três matérias viram um SLIDE horizontal (um card por vez, com
+   * espiada do próximo), no mesmo idioma de rail/snap do resto do site.
+   * Scroll nativo — toque, teclado e leitores de tela continuam funcionando
+   * sem nenhum JS extra. A pilha vertical foi descartada por decisão editorial.
+   */
+  .feat-grid,
+  .feat-grid[data-count='2'],
+  .feat-grid[data-count='1'] {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: 86%;
+    gap: 12px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    padding-bottom: 8px;
+  }
+  .feat-grid::-webkit-scrollbar {
+    display: none;
+  }
+  .feat-grid > * {
+    scroll-snap-align: start;
+  }
+  /* O lead ocupa UMA coluna do trilho (anula o span herdado do breakpoint 1023). */
+  .feat-card--lead {
+    grid-column: auto;
   }
   .feat-card {
     height: 380px;

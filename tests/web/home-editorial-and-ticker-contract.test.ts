@@ -99,6 +99,16 @@ describe('Destaques de hoje — seção editorial, não catálogo', () => {
     expect(homeLike).toContain('{hasEditorial ? (')
     expect(homeLike).toContain('<HomeEditorialHighlights')
   })
+
+  it('a home NÃO repete nos destaques matéria do bloco "Notícias & entrevistas"', () => {
+    // A deduplicação é aplicada na montagem da home: os hrefs dos newsCards
+    // (exatamente o que a banda de notícias renderiza) são excluídos dos
+    // destaques ANTES de o template receber os dados.
+    const homePage = read('apps/web/app/pt/page.tsx')
+    expect(homePage).toContain('excludeEditorialHighlights(')
+    expect(homePage).toContain('new Set(newsCards.map((card) => card.href))')
+    expect(homePage).toContain('editorialHighlights: dedupedHighlights')
+  })
 })
 
 describe('Filmes/Séries são TABS, não navegação', () => {

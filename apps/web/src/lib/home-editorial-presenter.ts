@@ -48,6 +48,28 @@ export const HOME_EDITORIAL_VERTICAL_LABEL: Readonly<
   series: "Séries",
 };
 
+/**
+ * Kicker por TIPO EDITORIAL do contrato (`PUBLICATION_CONTENT_TYPES`): a
+ * projeção do CMS grava o token cru do `contentType` em `articles.category`,
+ * então sem este mapa o card exibiria "NEWS"/"LIST" em inglês. O kicker deriva
+ * do dado persistido — nunca é texto fixo do layout ("EM CARTAZ AGORA" do
+ * design não tem fato persistido que o sustente e por isso não existe aqui).
+ *
+ * `category` com texto livre legado (ex.: "Bastidores") não está no mapa e
+ * continua exibida como está — é rótulo editorial humano, não token.
+ */
+export const HOME_EDITORIAL_CONTENT_TYPE_EYEBROW: Readonly<
+  Record<string, string>
+> = {
+  news: "Notícia",
+  feature: "Especial",
+  review: "Crítica",
+  guide: "Guia",
+  list: "Explorar coleção",
+  interview: "Entrevista",
+  evergreen: "Atemporal",
+};
+
 /** Cards visíveis por vez na seção (composição canônica: 1 lead + 2 pôsteres). */
 export const HOME_EDITORIAL_VISIBLE = 3;
 
@@ -215,12 +237,16 @@ function buildHighlight(
   // só para o compilador (nunca relaxa a regra).
   if (slug === null || title === null || publishedIso === null) return null;
 
+  const category = trimToNull(input.category);
   return {
     articleId: input.articleId,
     slug,
     href: `${NEWS_INDEX_PATH}${slug}/`,
     vertical,
-    eyebrow: trimToNull(input.category) ?? HOME_EDITORIAL_VERTICAL_LABEL[vertical],
+    eyebrow:
+      (category !== null ? HOME_EDITORIAL_CONTENT_TYPE_EYEBROW[category] : undefined) ??
+      category ??
+      HOME_EDITORIAL_VERTICAL_LABEL[vertical],
     title,
     deck: trimToNull(input.deck),
     imagePath: normalizeNewsLocalImagePath(input.heroImagePath),
@@ -256,6 +282,25 @@ export function buildHomeEditorialHighlights(
   return {
     movies: movies.sort(compareHighlights).slice(0, cap),
     series: series.sort(compareHighlights).slice(0, cap),
+  };
+}
+
+/**
+ * Remove dos destaques as matérias que JÁ aparecem em outra seção da mesma
+ * página (ex.: o bloco "Notícias & entrevistas" logo abaixo na home). A mesma
+ * matéria nunca deve ocupar dois cards na mesma tela — duplicação foi apontada
+ * como defeito em auditoria. A exclusão é por `href` (identidade pública do
+ * card) e NUNCA é compensada com conteúdo inventado: se sobrar menos que três,
+ * o grid se adapta; se sobrar nada, a vertical mostra o estado vazio honesto.
+ */
+export function excludeEditorialHighlights(
+  highlights: HomeEditorialHighlights,
+  excludedHrefs: ReadonlySet<string>,
+): HomeEditorialHighlights {
+  if (excludedHrefs.size === 0) return highlights;
+  return {
+    movies: highlights.movies.filter((card) => !excludedHrefs.has(card.href)),
+    series: highlights.series.filter((card) => !excludedHrefs.has(card.href)),
   };
 }
 

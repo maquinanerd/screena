@@ -425,7 +425,10 @@ async function seedFixtures(sql: Sql): Promise<Fixtures> {
     slug: "filme-article-1",
     title: "O ano em que o terror voltou a lotar as salas",
     deck: "De estreias independentes a franquias consagradas, o gênero reencontrou o público — e a crítica seguiu junto.",
-    category: "Cinema",
+    // Token do CONTRATO editorial (a projeção grava `contentType` cru em
+    // `articles.category`): o kicker do card deve exibir "Notícia", nunca
+    // o token "news" em inglês.
+    category: "news",
     heroImagePath: "/media/qa/editorial-1.png",
     reviewStatus: "published",
     publishedAt: tsPlusDays(-1),
@@ -435,7 +438,9 @@ async function seedFixtures(sql: Sql): Promise<Fixtures> {
     slug: "filme-article-2",
     title: "Os bastidores da produção mais cara do ano",
     deck: null,
-    category: "Bastidores",
+    // Token do contrato num card MENOR (o lead não exibe kicker): `feature`
+    // deve virar o kicker "Especial" no primeiro pôster.
+    category: "feature",
     heroImagePath: "/media/qa/editorial-2.png",
     reviewStatus: "human_reviewed",
     publishedAt: tsPlusDays(-2),
@@ -477,12 +482,31 @@ async function seedFixtures(sql: Sql): Promise<Fixtures> {
     slug: "serie-article-3",
     title: "O guia de temporadas para quem vai começar agora",
     deck: null,
-    category: "Streaming",
+    // Outro token do contrato: `list` vira o kicker "Explorar coleção".
+    category: "list",
     heroImagePath: "/media/qa/editorial-5.png",
     reviewStatus: "published",
     publishedAt: tsPlusDays(-4),
     links: seriesLinks,
   });
+
+  // ---------------------------------------- MATERIAS DO BLOCO DE NOTICIAS
+  // Quatro materias MAIS RECENTES que as dos destaques, SEM vinculo movie/tv.
+  // Elas ocupam o bloco "Noticias & entrevistas" (top 5 por data) e provam a
+  // DEDUPLICACAO: nenhuma materia dos destaques pode repetir o que o bloco de
+  // noticias ja mostra — e vice-versa, os destaques seguem com 3+3 proprias.
+  for (let i = 0; i < 4; i += 1) {
+    await createArticle(sql, {
+      slug: `noticia-bloco-${i + 1}`,
+      title: `Giro da redação ${i + 1}: o dia na indústria do entretenimento`,
+      deck: i === 0 ? "Aquisições, audiência e bastidores do mercado em um só lugar." : null,
+      category: "news",
+      heroImagePath: `/media/qa/editorial-${(i % 5) + 1}.png`,
+      reviewStatus: "published",
+      publishedAt: tsPlusDays(-0.05 * (i + 1)),
+      links: [],
+    });
+  }
 
   // ----------------------------------------------------- CONTROLES NEGATIVOS
   // Materia AGENDADA: published_at no FUTURO. Titulo com "filme" de proposito.
@@ -535,7 +559,10 @@ async function seedFixtures(sql: Sql): Promise<Fixtures> {
     category: "Cinema",
     heroImagePath: null,
     reviewStatus: "published",
-    publishedAt: tsPlusDays(-1),
+    // Mais fresca que as materias dos destaques (-1d) e mais velha que as 4 do
+    // bloco de noticias (-0.05..-0.2d): ela ocupa DETERMINISTICAMENTE a 5a vaga
+    // do bloco "Noticias & entrevistas" — visivel na home, fora dos destaques.
+    publishedAt: tsPlusDays(-0.5),
     links: [{ type: "person", id: personId }],
   });
 
@@ -577,6 +604,10 @@ interface FoldReport {
   /** Texto SÓ do painel de destaques (a home tem outra banda de notícias). */
   highlightsText: string;
   gridColumns: string | null;
+  /** Hrefs do bloco "Notícias & entrevistas" (para provar a deduplicação). */
+  newsHrefs: string[];
+  /** O grid de destaques rola horizontalmente? (slider mobile de 3 matérias) */
+  gridScrollable: boolean;
   // Faixa amarela
   tickerHeight: number;
   tickerDots: number;
@@ -618,6 +649,8 @@ const READ_FOLD = `() => {
     featEmpty: text('.feat-empty'),
     highlightsText: (q('[role="tabpanel"]') || { innerText: '' }).innerText.replace(/\\s+/g, ' '),
     gridColumns: grid ? getComputedStyle(grid).gridTemplateColumns : null,
+    newsHrefs: all('.hnews-lead, .hnews-card').map((a) => a.getAttribute('href') || ''),
+    gridScrollable: grid ? grid.scrollWidth > grid.clientWidth + 4 : false,
     tickerHeight: ticker ? Math.round(ticker.getBoundingClientRect().height) : 0,
     tickerDots: all('.ticker__dot').length,
     tickerBadge: text('.ticker__label'),
@@ -725,7 +758,7 @@ async function main(): Promise<void> {
 
     const fixtures = await seedFixtures(sql);
     record(
-      "fixtures QA criadas (5 novidades de entidades distintas, 3+3 matérias, 4 controles negativos)",
+      "fixtures QA criadas (5 novidades, 3+3 matérias de destaque, 4 matérias do bloco de notícias, 4 controles negativos)",
       true,
       `movieHoje=${fixtures.movieTodayId} chegada=${fixtures.movieArrivalId} epHoje=${fixtures.showEpisodeTodayId} epFuturo=${fixtures.showEpisodeUpcomingId} temporada=${fixtures.showSeasonId}`,
     );
@@ -872,8 +905,8 @@ async function main(): Promise<void> {
       `grid-template-columns=${d1.gridColumns}`,
     );
     record(
-      "D1 card principal exibe DECK; cards têm eyebrow editorial",
-      d1.leadDeck !== null && d1.leadDeck.length > 20 && d1.cardEyebrows.length === 3,
+      "D1 lead SEM kicker (título + deck); só os dois pôsteres têm eyebrow",
+      d1.leadDeck !== null && d1.leadDeck.length > 20 && d1.cardEyebrows.length === 2,
       `deck=${d1.leadDeck?.slice(0, 60)} eyebrows=${d1.cardEyebrows.join(" | ")}`,
     );
     record(
@@ -887,6 +920,17 @@ async function main(): Promise<void> {
       `alts=${d1.cardImgAlts.join(" | ")} placeholders=${d1.placeholderCount}`,
     );
     record("D1 zero overflow horizontal", d1.overflowOk, `${d1.scrollWidth}<=${d1.clientWidth}`);
+    record(
+      "D1 kicker deriva do contentType do contrato — token cru NUNCA aparece",
+      d1.cardEyebrows.includes("Especial") &&
+        !d1.cardEyebrows.some((e) => /^(news|feature|review|guide|list|interview|evergreen)$/.test(e)),
+      `eyebrows=${d1.cardEyebrows.join(" | ")}`,
+    );
+    record(
+      "D1 DEDUPLICAÇÃO: nenhum destaque repete matéria do bloco de notícias",
+      d1.newsHrefs.length === 5 && d1.cardHrefs.every((h) => !d1.newsHrefs.includes(h)),
+      `noticias=${d1.newsHrefs.join(" | ")}`,
+    );
 
     // ------------------------------------------- controles negativos na home
     // Materia AGENDADA/rascunho/retratada e INPUBLICAVEL: nao pode aparecer em
@@ -933,6 +977,16 @@ async function main(): Promise<void> {
       d2.cardHrefs.every((h) => h.startsWith("/pt/noticias/")),
       d2.cardHrefs.join(" | "),
     );
+    record(
+      "D2 kicker mapeado também em Séries (list → Explorar coleção)",
+      d2.cardEyebrows.includes("Explorar coleção") && !d2.cardEyebrows.includes("list"),
+      `eyebrows=${d2.cardEyebrows.join(" | ")}`,
+    );
+    record(
+      "D2 deduplicação vale nas DUAS verticais",
+      d2.cardHrefs.every((h) => !d2.newsHrefs.includes(h)),
+      `destaques=${d2.cardHrefs.join(" | ")}`,
+    );
 
     // ================================================= D3: teclado nas tabs
     const d3 = await capture("03-destaques-teclado-1576x892", 1576, 892, async (page) => {
@@ -945,6 +999,36 @@ async function main(): Promise<void> {
       d3.tabSelected?.trim() === "Séries" && d3.url === "/pt/",
       `tab=${d3.tabSelected} url=${d3.url}`,
     );
+
+    // ================= D4: viewports de revisão (Filmes e Séries lado a lado)
+    for (const [label, w, h] of [
+      ["1440x1000", 1440, 1000],
+      ["1280x800", 1280, 800],
+      ["390x844", 390, 844],
+    ] as const) {
+      const filmes = await capture(`10-destaques-filmes-${label}`, w, h);
+      const series = await capture(`11-destaques-series-${label}`, w, h, async (page) => {
+        await clickCentered(page, ".seg-toggle__opt:nth-of-type(2)");
+        await page.waitForTimeout(200);
+      });
+      const mobile = label === "390x844";
+      record(
+        `D4 ${label}: seção presente nas duas tabs, sem overflow e sem navegar`,
+        filmes.overflowOk &&
+          series.overflowOk &&
+          filmes.cardCount > 0 &&
+          series.cardCount > 0 &&
+          series.url === "/pt/",
+        `filmes=${filmes.cardCount} séries=${series.cardCount} url=${series.url}`,
+      );
+      record(
+        `D4 ${label}: ${mobile ? "SLIDER horizontal (trilho rola, página não)" : "grid de 3 colunas SEM trilho"}`,
+        mobile
+          ? filmes.gridScrollable && series.gridScrollable
+          : !filmes.gridScrollable && !series.gridScrollable,
+        `gridScrollable filmes=${filmes.gridScrollable} séries=${series.gridScrollable}`,
+      );
+    }
 
     // ======================================== T1: faixa com 5 novidades reais
     record(

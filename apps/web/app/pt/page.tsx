@@ -11,6 +11,7 @@ import {
   HOME_NEWS_CARD_LIMIT,
   takeSectionCards,
 } from '../../src/lib/portal-presenter'
+import { excludeEditorialHighlights } from '../../src/lib/home-editorial-presenter'
 import { HOME_PATH, SITE_URL, canonicalPublicUrl, publicRobots } from '../../src/lib/site'
 import { getHomeCatalogData } from '../../src/server/home-catalog'
 import { getHomeEditorialHighlights } from '../../src/server/home-editorial'
@@ -85,6 +86,14 @@ async function getHomeData() {
     HOME_NEWS_CARD_LIMIT,
   )
 
+  // A mesma matéria nunca aparece duas vezes na página: "Destaques de hoje"
+  // cede para o bloco "Notícias & entrevistas" (que mostra exatamente estes
+  // `newsCards`). Sem compensação — sobrando menos que três, o grid se adapta.
+  const dedupedHighlights = excludeEditorialHighlights(
+    editorialHighlights,
+    new Set(newsCards.map((card) => card.href)),
+  )
+
   const movieCards = catalog.movies
   const seriesWeekCards: EntityCard[] = takeSectionCards(
     seriesIndex.view.cards,
@@ -107,7 +116,7 @@ async function getHomeData() {
     upcomingMovies,
     newsCards,
     tickerItems,
-    editorialHighlights,
+    editorialHighlights: dedupedHighlights,
     indexability,
   }
 }
