@@ -13,12 +13,15 @@
   "license": "UNLICENSED",
   "scripts": {
     "ratings": "tsx bin/ratings.ts",
+    "ratings:omdb": "tsx bin/sync-omdb-ratings.ts",
+    "validate:omdb": "tsx scripts/validate-omdb-ratings-real-postgres.ts",
     "validate:product": "tsx scripts/validate-external-intelligence-product.ts"
   },
   "dependencies": {
     "@screena/config": "workspace:*",
     "@screena/db": "workspace:*",
     "@screena/film-show-ratings-client": "workspace:*",
+    "@screena/omdb-client": "workspace:*",
     "@screena/rapidapi-core": "workspace:*",
     "@screena/schemas": "workspace:*"
   },

@@ -31,6 +31,7 @@
       "@screena/tmdb-client": ["api-clients/tmdb/src/index.ts"],
       "@screena/rapidapi-core": ["api-clients/rapidapi-core/src/index.ts"],
       "@screena/film-show-ratings-client": ["api-clients/film_show_ratings/src/index.ts"],
+      "@screena/omdb-client": ["api-clients/omdb/src/index.ts"],
       "@screena/streaming-availability-client": [
         "api-clients/streaming_availability/src/index.ts"
       ]

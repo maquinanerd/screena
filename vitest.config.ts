@@ -57,6 +57,9 @@ export default defineConfig({
       '@screena/rapidapi-core': fileURLToPath(
         new URL('./api-clients/rapidapi-core/src/index.ts', import.meta.url),
       ),
+      '@screena/omdb-client': fileURLToPath(
+        new URL('./api-clients/omdb/src/index.ts', import.meta.url),
+      ),
       '@screena/film-show-ratings-client': fileURLToPath(
         new URL('./api-clients/film_show_ratings/src/index.ts', import.meta.url),
       ),

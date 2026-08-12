@@ -69,7 +69,21 @@ export interface LicenseTarget {
   /** SEMPRE false neste spec (citações integrais bloqueadas). */
   readonly reviewQuoteAllowed: false;
   readonly requiresAttribution: true;
-  readonly requiresLinkback: true;
+  /**
+   * Exigir linkback (URL clicavel) alem do credito textual.
+   *
+   * Era `true` LITERAL. Deixou de ser em 2026-08-12, e o motivo importa: o
+   * provedor de ratings passou a ser a OMDb, cujo payload **nao traz
+   * identificador** para Rotten Tomatoes nem Metacritic — so para o IMDb
+   * (`imdbID`). Com `requiresLinkback: true` essas duas fontes cairiam
+   * permanentemente em `missing-linkback` (ver `resolveDisplayAllowed` em
+   * @screena/schemas e o trigger `external_ratings_display_guard`) e nunca
+   * apareceriam, mesmo com credito textual correto.
+   *
+   * NAO e relaxamento geral: ver `ratingEntry` para a dispensa nominal, o IMDb
+   * que a mantem obrigatoria, e o gatilho de reversao automatica.
+   */
+  readonly requiresLinkback: boolean;
   readonly attributionText: string;
   readonly policyVersion: string;
   readonly notes: string;
@@ -86,7 +100,12 @@ export interface DecisionTarget {
   /** SEMPRE false (obra derivada não autorizada). */
   readonly derivativeAllowed: false;
   readonly attributionRequired: true;
-  readonly linkbackRequired: true;
+  /**
+   * Espelha `LicenseTarget.requiresLinkback` da licenca-mae. O gate de exibicao
+   * le o campo da LICENCA, nao o da decisao — mas deixar os dois divergentes
+   * faria o registro afirmar "linkback obrigatorio" enquanto a licenca dispensa.
+   */
+  readonly linkbackRequired: boolean;
   readonly policyVersion: string;
 }
 
@@ -107,21 +126,97 @@ const RATING_ATTRIBUTION: Record<string, string> = {
 };
 
 const RATING_POLICY: Record<string, string> = {
-  imdb: "cinerie-source-auth/imdb/2026-07-v1",
-  rotten_tomatoes: "cinerie-source-auth/rotten-tomatoes/2026-07-v1",
-  metacritic: "cinerie-source-auth/metacritic/2026-07-v1",
+  // As três fontes servidas pela OMDb sobem para `2026-08-v1`: a mudança de
+  // fornecedor (e, para RT/Metacritic, a dispensa de linkback) é material e
+  // precisa gerar uma versão nova de licença, com histórico — nunca um UPDATE
+  // silencioso sobre a versão de julho.
+  imdb: "cinerie-source-auth/imdb/2026-08-v1",
+  rotten_tomatoes: "cinerie-source-auth/rotten-tomatoes/2026-08-v1",
+  metacritic: "cinerie-source-auth/metacritic/2026-08-v1",
+  // Letterboxd e FilmAffinity NÃO são servidas pela OMDb e não mudam nada nesta
+  // leva. Manter a versão de julho é o que faz o registry devolver `keep` para
+  // elas em vez de supersedir licenças que ninguém tocou.
   letterboxd: "cinerie-source-auth/letterboxd/2026-07-v1",
   filmaffinity: "cinerie-source-auth/filmaffinity/2026-07-v1",
 };
 
 /**
- * Fontes editoriais de rating. Chegam pela Film & Show Ratings API (RapidAPI),
- * um agregador técnico — por isso `third_party`, nunca `official` (elas não são
- * a API da própria fonte). Licença GLOBAL (a autorização não é limitada por
- * território); o DISPLAY é gated à BR pela decisão `rating_display`.
+ * Fontes que a OMDb entrega num único payload. Espelha
+ * `services/ratings/src/omdb/sources.ts` — divergir aqui produziria uma nota
+ * ingerida sem licença correspondente.
+ */
+const OMDB_SERVED_SOURCES: readonly string[] = ["imdb", "rotten_tomatoes", "metacritic"];
+
+/**
+ * ============ DISPENSA DE LINKBACK — decisão de 2026-08-12 ============
+ *
+ * QUEM DECIDIU: Pablo Eduardo — proprietário da Cinerie (mesma identidade de
+ * `DECIDED_BY`, o padrão deste arquivo).
+ *
+ * O QUE FOI DECIDIDO: Rotten Tomatoes e Metacritic passam a exibir com **crédito
+ * textual, sem link**. IMDb **mantém o linkback obrigatório**.
+ *
+ * POR QUÊ: o provedor de ratings passou a ser a OMDb, e o payload dela traz
+ * `imdbID` — logo o IMDb tem URL canônica derivável — mas **nenhum
+ * identificador** para Rotten Tomatoes ou Metacritic. Sem identificador não há
+ * deep link possível, e derivar um slug do título fabricaria um link que pode
+ * não existir. Com `requiresLinkback: true`, essas duas fontes cairiam
+ * permanentemente em `missing-linkback` e nunca apareceriam.
+ *
+ * O QUE **NÃO** FOI DECIDIDO: isto não é relaxamento geral de política. A
+ * dispensa é NOMINAL (duas fontes, nomeadas abaixo) e motivada por uma limitação
+ * concreta do fornecedor. `requiresAttribution` continua `true` para todas: o
+ * crédito textual nunca é dispensado, em nenhuma fonte.
+ *
+ * GATILHO DE REVERSÃO AUTOMÁTICA — e ele já está armado:
+ *
+ *   `requiresLinkback: false` significa "não EXIGE link", nunca "não PODE ter".
+ *   O adapter de escrita grava `attribution_url = external_ratings.rating_url`
+ *   incondicionalmente. Portanto, no dia em que existir um resolvedor de URL
+ *   para Rotten Tomatoes ou Metacritic, basta ele preencher `rating_url`: a
+ *   nota volta a exibir COM link, no ciclo seguinte do worker, **sem nova
+ *   decisão humana e sem tocar neste arquivo**. `resolveDisplayAllowed` só pula
+ *   a checagem de obrigatoriedade; a checagem de HTTPS (`unsafe-attribution-url`)
+ *   continua valendo, então um link ruim nunca passa.
+ *
+ *   Travado por `services/legal/src/__tests__/omdb-linkback-dispensation.test.ts`
+ *   e por `services/ratings/src/__tests__/omdb-display-gate.test.ts`.
+ * ======================================================================
+ */
+const LINKBACK_DISPENSED_SOURCES: readonly string[] = ["rotten_tomatoes", "metacritic"];
+
+/** A fonte exige linkback para exibir? Só as dispensadas nominalmente não exigem. */
+export function ratingRequiresLinkback(source: string): boolean {
+  return !LINKBACK_DISPENSED_SOURCES.includes(source);
+}
+
+const OMDB_NOTES_BASE =
+  "Fonte editorial via OMDb API (fornecedor tecnico intermediario, provider_api=omdb), por isso third_party e nunca official. Logo e citacao integral de critica NAO autorizados.";
+
+const LINKBACK_DISPENSED_NOTE =
+  " LINKBACK DISPENSADO (decisao de Pablo Eduardo, 2026-08-12): a OMDb nao entrega identificador desta fonte, entao nao ha URL canonica derivavel e inventar slug a partir do titulo e proibido. O credito TEXTUAL permanece obrigatorio. Dispensa nominal, nao relaxamento geral: o IMDb continua exigindo linkback. REVERSAO AUTOMATICA: se um resolvedor de URL passar a preencher external_ratings.rating_url, a nota volta a exibir COM link no ciclo seguinte, sem nova decisao humana.";
+
+const LINKBACK_REQUIRED_NOTE =
+  " LINKBACK OBRIGATORIO: a OMDb entrega imdbID, entao a URL canonica (imdb.com/title/<id>/) e derivavel do proprio payload. A dispensa concedida a Rotten Tomatoes e Metacritic NAO se aplica aqui.";
+
+/**
+ * Fontes editoriais de rating. Chegam pela OMDb API, um agregador técnico — por
+ * isso `third_party`, nunca `official` (elas não são a API da própria fonte).
+ * Licença GLOBAL (a autorização não é limitada por território); o DISPLAY é
+ * gated à BR pela decisão `rating_display`.
+ *
+ * Letterboxd e FilmAffinity não são servidas pela OMDb: mantêm o texto e a
+ * versão de julho, e portanto não são supersedidas por esta leva.
  */
 function ratingEntry(source: string): AuthorizationEntry {
   const policy = RATING_POLICY[source]!;
+  const servedByOmdb = OMDB_SERVED_SOURCES.includes(source);
+  const requiresLinkback = servedByOmdb ? ratingRequiresLinkback(source) : true;
+
+  const notes = servedByOmdb
+    ? OMDB_NOTES_BASE + (requiresLinkback ? LINKBACK_REQUIRED_NOTE : LINKBACK_DISPENSED_NOTE)
+    : "Fonte editorial via Film & Show Ratings API (RapidAPI), fornecedor tecnico intermediario. Logo e citacao integral de critica NAO autorizados.";
+
   return {
     label: source,
     role: "editorial-rating-source",
@@ -131,8 +226,8 @@ function ratingEntry(source: string): AuthorizationEntry {
       ratingSourceKey: source,
       // null mantém o MESMO grupo da licença-semente (Fase 1), que esta
       // autorização supersede em vez de deixar uma linha `unknown` órfã. O
-      // fornecedor técnico (rapidapi_film_show_ratings) fica em `notes` e na
-      // matriz — provider_key na licença é informativo e não muda o gating.
+      // fornecedor técnico fica em `notes` e na matriz — provider_key na licença
+      // é informativo e não muda o gating.
       providerKey: null,
       territory: null,
       licenseStatus: "third_party",
@@ -141,11 +236,10 @@ function ratingEntry(source: string): AuthorizationEntry {
       scoreAllowed: true,
       reviewQuoteAllowed: false,
       requiresAttribution: true,
-      requiresLinkback: true,
+      requiresLinkback,
       attributionText: RATING_ATTRIBUTION[source]!,
       policyVersion: policy,
-      notes:
-        "Fonte editorial via Film & Show Ratings API (RapidAPI), fornecedor tecnico intermediario. Logo e citacao integral de critica NAO autorizados.",
+      notes,
     },
     decisions: [
       {
@@ -156,7 +250,7 @@ function ratingEntry(source: string): AuthorizationEntry {
         storageAllowed: true,
         derivativeAllowed: false,
         attributionRequired: true,
-        linkbackRequired: true,
+        linkbackRequired: requiresLinkback,
         policyVersion: policy,
       },
       {
@@ -167,7 +261,7 @@ function ratingEntry(source: string): AuthorizationEntry {
         storageAllowed: true,
         derivativeAllowed: false,
         attributionRequired: true,
-        linkbackRequired: true,
+        linkbackRequired: requiresLinkback,
         policyVersion: policy,
       },
     ],

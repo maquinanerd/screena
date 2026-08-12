@@ -23,6 +23,47 @@ Texto da autorização, como recebido:
 
 ---
 
+## 1.1 Emenda de 2026-08-12 — troca de provedor e dispensa de linkback
+
+| Campo | Valor |
+| --- | --- |
+| **Quem decidiu** | Pablo Eduardo, dono do projeto |
+| **Quando** | 2026-08-12 |
+| **O que mudou** | (a) o provedor de **ratings** passou a ser a **OMDb API**; (b) **Rotten Tomatoes** e **Metacritic** passam a exibir com **crédito textual, sem link** |
+| **O que NÃO mudou** | IMDb mantém o **linkback obrigatório**; o crédito textual continua obrigatório em **todas** as fontes |
+
+**Por que o provedor mudou.** A Film & Show Ratings API responde **HTTP 403 —
+"You are not subscribed to this API"**. A conta não tem assinatura, e a
+assinatura não pôde ser feita. O adapter antigo **não foi apagado**: está
+desligado por configuração e volta sem reescrita (ver
+[`docs/operations/ratings-provider-runbook.md`](../operations/ratings-provider-runbook.md)).
+
+**Por que a dispensa de linkback.** O payload da OMDb traz `imdbID` — logo o
+IMDb tem URL canônica derivável (`imdb.com/title/<id>/`) — mas **nenhum
+identificador** para Rotten Tomatoes ou Metacritic. Sem identificador não há
+deep link possível, e derivar um slug a partir do título fabricaria um link que
+pode não existir. Com `requires_linkback = true`, essas duas fontes cairiam
+permanentemente em `missing-linkback` e **nunca apareceriam**, mesmo com crédito
+textual correto.
+
+**A dispensa é nominal, não geral.** Ela vale para `rotten_tomatoes` e
+`metacritic`, nomeadas em `LINKBACK_DISPENSED_SOURCES`
+([`services/legal/src/authorization-spec.ts`](../../services/legal/src/authorization-spec.ts)).
+IMDb, Letterboxd e FilmAffinity seguem exigindo linkback.
+
+**Gatilho de reversão automática — já armado.** `requires_linkback = false`
+significa "não **exige** link", nunca "não **pode** ter". O adapter de escrita
+grava `attribution_url = external_ratings.rating_url` incondicionalmente. No dia
+em que existir um resolvedor de URL para Rotten Tomatoes ou Metacritic, basta
+ele preencher `rating_url`: a nota volta a exibir **com link** no ciclo seguinte
+do worker, **sem nova decisão humana e sem alterar o spec**. A checagem de HTTPS
+continua valendo, então um link ruim nunca passa.
+
+Provado em banco real (triggers ativos) por
+`pnpm --filter @screena/ratings validate:omdb`.
+
+---
+
 ## 2. Como a autorização é expressa
 
 O bloqueio anterior era **incondicional**: `evaluateRatingsGate` e

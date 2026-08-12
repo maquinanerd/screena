@@ -19,6 +19,14 @@
     "services/ingestion/bin/sync-tmdb-raw.ts",
     "services/ratings/src/persistence/**/*.ts",
     "services/ratings/bin/ratings.ts",
+    // Os DOIS workers de ratings. Sao os entrypoints que o operador roda de
+    // fato, e estavam fora do typecheck — a mesma lacuna que ja fez um
+    // container morrer no import antes de emitir log. `sync-omdb-ratings.ts` e
+    // o provedor ATIVO; `sync-film-show-ratings.ts` e o legado desligado por
+    // configuracao, que precisa continuar compilando para poder voltar sem
+    // reescrita se a assinatura for feita um dia.
+    "services/ratings/bin/sync-omdb-ratings.ts",
+    "services/ratings/bin/sync-film-show-ratings.ts",
     "services/streaming/src/persistence/**/*.ts",
     "services/streaming/bin/register-watch-providers.ts",
     "services/legal/bin/legal.ts",

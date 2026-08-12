@@ -5,6 +5,16 @@ Servico de **ingestao e atribuicao de ratings externos**. Popula e mantem a tabe
 (`rating_source`) e **fornecedor tecnico** (`provider_api`), alem do estado de licenca
 em `source_licenses`.
 
+> **Provedor ativo desde 2026-08-12: OMDb** (`provider_api = "omdb"`).
+> O adapter Film & Show Ratings (RapidAPI) continua no repositorio, **desligado
+> por configuracao** — a API responde 403 por falta de assinatura. Operacao,
+> variaveis, cota e reativacao:
+> [`docs/operations/ratings-provider-runbook.md`](../../docs/operations/ratings-provider-runbook.md).
+>
+> Um payload da OMDb carrega **tres fontes editoriais** (IMDb, Rotten Tomatoes,
+> Metacritic) e cada uma vira sua propria linha, na sua propria escala. `omdb` e
+> o fornecedor **tecnico** e nunca a fonte de nota nenhuma (invariante 2).
+
 ## O que faz
 - Coleta notas de fontes editoriais distintas (IMDb, Rotten Tomatoes, Metacritic,
   Letterboxd, FilmAffinity) via os **api-clients** apropriados.
@@ -24,7 +34,19 @@ em `source_licenses`.
 - **NUNCA e chamado no render publico.** A pagina le notas ja persistidas e atribuidas
   no PostgreSQL.
 
-### Endpoint: `/item/?id=<IMDb>` (o plano Pro NAO libera `/popular/`)
+### Endpoint ATIVO: OMDb `GET /?i=<IMDb>`
+
+Uma requisicao devolve as notas das **tres** fontes de uma vez. A entidade e
+resolvida por **identificador inequivoco** (IMDb id) — **nunca** por titulo/ano.
+Plano gratuito: **1.000 requisicoes/dia**, entao o teto vale em entidades/dia; a
+selecao de candidatos pula quem foi coletado dentro da janela de frescor
+(`RATING_STALE_POLICY`).
+
+```bash
+corepack pnpm --filter @screena/ratings ratings:omdb -- --type=movie --limit=20 --apply
+```
+
+### Endpoint LEGADO (desligado): `/item/?id=<IMDb>` do Film & Show Ratings
 
 O plano contratado **nao libera** `/popular/` (retorna 403). Em vez de listar populares, o
 worker **enriquece entidades locais JA existentes**, uma por vez, via

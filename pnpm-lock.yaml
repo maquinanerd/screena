@@ -39,6 +39,12 @@ importers:
         specifier: workspace:*
         version: link:../rapidapi-core
 
+  api-clients/omdb:
+    dependencies:
+      '@screena/rapidapi-core':
+        specifier: workspace:*
+        version: link:../rapidapi-core
+
   api-clients/rapidapi-core: {}
 
   api-clients/streaming_availability:
@@ -369,6 +375,9 @@ importers:
       '@screena/film-show-ratings-client':
         specifier: workspace:*
         version: link:../../api-clients/film_show_ratings
+      '@screena/omdb-client':
+        specifier: workspace:*
+        version: link:../../api-clients/omdb
       '@screena/rapidapi-core':
         specifier: workspace:*
         version: link:../../api-clients/rapidapi-core
