@@ -21,7 +21,7 @@ por quê é defeito, não economia.
 | Bloco do canônico | Estado | Motivo | O que falta para acender |
 | --- | --- | --- | --- |
 | **Cinerie Score** (o "82" em 47px/800) | não renderiza | `PRODUCTION_FORMULA_REGISTRY` está **vazio** e não existe decisão `cinerie_score_display` com `derivative_allowed` (`docs/legal/source-operations-inventory.md` §4: "Bloqueado"). O motor devolve `BLOCKED_BY_DECISION`. | Decisão humana de produto + licença. Ver [`docs/product/cinerie-score-decision.md`](../product/cinerie-score-decision.md). **Código novo.** |
-| **Onde assistir** (wordmarks NETFLIX/prime/Max/Apple TV+) | não renderiza | **Zero ofertas exibíveis.** `reason=no_authorized_provider`. **Não é só falta de operação** — a cadeia tem três paradas independentes de código. Ver §5. | Correção de código na cadeia de streaming **antes** de qualquer comando. **Não acende sozinho.** |
+| **Onde assistir** (canônico desenha wordmarks NETFLIX/prime/Max/Apple TV+) | não renderiza | **Zero ofertas exibíveis.** `reason=no_authorized_provider`. A cadeia de código **foi corrigida na PR #164**; o que resta é operação (§5). Os **wordmarks não são portáveis**: a licença dá `logoAllowed: false` — ver §5.4. | Rodar a sequência do [runbook de streaming](../runbooks/streaming-sync.md). **Agora acende com operação** — mas com o nome da plataforma em **texto**, não com a marca gráfica. |
 | **Faixa de prêmios** (troféu + "2 vitórias · 6 indicações") | componente pronto, **não importado** | Não há fonte. A API da TMDB **não expõe prêmios** (o site tem `/award`; a API v3 não tem endpoint nem chave de `append_to_response`). Raspar aquela página custaria o acesso à TMDB. | Confirmar o campo `Awards` da OMDb no payload real, decidir a licença (`use_case` próprio — **não** cabe em `rating_display`) e persistir. Componente: [`awards-band.tsx`](../../apps/web/app/_components/awards-band.tsx); parser: [`awards-presenter.ts`](../../apps/web/src/lib/awards-presenter.ts). **Código novo + decisão de licença.** |
 | **Guia Cinerie · Crítica da redação** | contrato ligado, sem conteúdo | A fonte **existe e está ligada**: um `content_block` de tipo `review_summary` com `review_status` publicável. Ninguém escreveu nenhum ainda. | Redação escrever. **Só conteúdo.** |
 | **Nota em estrela (8.2) e assinatura nominal** da faixa de crítica | não renderiza | `content_blocks` guarda **texto**, não veredito numérico nem autoria. Não há coluna para nenhum dos dois. | Modelagem de dados editorial. **Código novo + schema.** |
@@ -191,73 +191,91 @@ Se a crítica por temporada existir um dia, o segundo seletor volta junto com el
 
 ---
 
-## 5. "Onde assistir" NÃO acende com operação — três paradas de código
+## 5. "Onde assistir": a cadeia de código foi corrigida — o que resta é operação
 
-> **Correção de 2026-08-12.** A primeira versão desta tabela dizia que o bloco
-> "acende sozinho depois do Bloco 2 do runbook". **Está errado**, e a afirmação
-> não foi verificada: foi repetida do enunciado da tarefa como se fosse achado.
-> A cadeia de streaming foi então lida linha a linha. O que segue tem
-> arquivo:linha.
+> **Histórico desta seção, porque ele é o valor dela.**
+>
+> 1. A primeira versão dizia que o bloco "acende sozinho depois do Bloco 2 do
+>    runbook". **Errado**, e não verificado: repetido do enunciado como se fosse
+>    achado.
+> 2. A segunda versão (2026-08-12) leu a cadeia linha a linha e listou as
+>    paradas de código. **Correta na época.**
+> 3. Esta versão: a [PR #164](https://github.com/maquinanerd/screena/pull/164)
+>    **corrigiu todas elas**. O que sobrou é operação — e duas divergências
+>    novas, registradas em §5.4 e §5.5, que não são bloqueio de acendimento mas
+>    mudam o que aparece na tela.
 
-A ausência do bloco **não** é falta de um comando de operação. São três paradas
-**independentes**, e qualquer uma sozinha mantém o bloco apagado — corrigir duas
-não acende nada.
+### 5.1 O que estava quebrado e como foi fechado
 
-### 5.1 O render e o worker falam de provedores diferentes (a decisiva)
-
-| Lado | Arquivo | Valor |
+| Parada | Estado antes | Como foi fechada na #164 |
 | --- | --- | --- |
-| Leitura | [`entity-watch.ts:37`](../../apps/web/src/server/entity-watch.ts) → usado como filtro em `:56` | `providerApi = "streaming_availability"` |
-| Escrita | [`watch-providers-store.ts:122`](../../services/ingestion/src/persistence/watch-providers-store.ts) | `provider_api = TMDB_PROVIDER_API` (`'tmdb'`) |
+| O render filtrava `providerApi = "streaming_availability"`, valor que o reprocessamento nunca grava | zero linhas, sempre | `licensedWatchWhere` deixou de filtrar por fornecedor técnico. Quem autoriza é a **cadeia de licença**, nunca o nome de quem transportou o dado ([`entity-watch.ts`](../../apps/web/src/server/entity-watch.ts)) |
+| `deep_link` NULL e o presenter exigia deep link | oferta descartada em silêncio | O presenter resolve `deep_link ?? web_url` e carrega `destinationKind`. O `link` por país **já era gravado** em `web_url` desde sempre — só nunca era lido |
+| Sem `attribution_text`, e o texto existente creditava Movie of the Night | oferta sem crédito → descartada; com o crédito errado → proveniência falsa | Licença **por fornecedor técnico**: `tmdb` credita **JustWatch**, `streaming_availability` credita Movie of the Night. O reprocessamento hidrata o crédito da licença vigente **daquela origem** |
+| `promote-watch-availability` recusava `provider_api='tmdb'` com `wrong-provider` | impossível promover | Conjunto autorizado ampliado; nenhuma verificação removida, e um motivo novo (`missing-attribution`) recusa oferta sem crédito em **qualquer** origem |
 
-A query do render filtra por um `provider_api` que o worker de reprocessamento
-**nunca grava**. O resultado é zero linhas — independentemente de licença,
-decisão ou runbook.
+`display_allowed` continua nascendo `false`. **Acender segue sendo decisão humana**, pelo passo de promoção.
 
-### 5.2 A linha nasce invisível, e a ferramenta de promoção recusa promovê-la
+### 5.2 A sequência que acende (nunca use `--`)
 
-`watch-providers-store.ts:122` grava `display_allowed` como o literal `false`, e
-o contrato da porta é explícito
-([`watch-providers/types.ts:66-70`](../../services/ingestion/src/watch-providers/types.ts)):
+Está inteira em [`docs/runbooks/streaming-sync.md`](../runbooks/streaming-sync.md).
+A ordem importa: o registro de provedores vem antes da licença, e a licença
+antes do reprocessamento — é dela que o crédito é hidratado.
 
-> "Toda linha nasce `display_allowed = false` (invariante 6). Este contrato NAO
-> expoe nenhum campo de licenca/atribuicao/revisao: acender a exibicao e decisao
-> HUMANA, feita por outro caminho."
+### 5.3 O que passou a valer para TODO consumidor de `licensedWatchWhere`
 
-O "outro caminho" é `promote-watch-availability`, e ele **recusa** essas linhas:
-[`services/streaming/src/promotion/guardrails.ts:61`](../../services/streaming/src/promotion/guardrails.ts)
-devolve `wrong-provider` para tudo que não seja `streaming_availability` —
-"nunca tocamos dado de outro fornecedor" (comentário na linha 11 do mesmo
-arquivo). O dado do TMDB não tem como ser promovido pela ferramenta que existe.
+A cláusula é compartilhada por **quatro** leitores: o painel de detalhe, a faixa
+da home, [`discover.ts`](../../apps/web/src/server/discover.ts) e o hub
+[`watch-browse.ts`](../../apps/web/src/server/watch-browse.ts). Abrir o portão
+abriu para os quatro ao mesmo tempo. Ver §5.5.
 
-### 5.3 `deep_link` é NULL, e o presenter descarta oferta sem ele
+### 5.4 Os wordmarks do canônico NÃO são portáveis
 
-`watch-providers-store.ts:120` grava `NULL`, com o motivo escrito ao lado: o
-TMDB publica **um link por país**, que vai em `web_url`; derivar um deep link
-dele afirmaria um destino que o upstream nunca prometeu. A decisão está certa.
+O canônico desenha a fileira com as marcas gráficas — `NETFLIX` em `#E50914`,
+`prime video` em `#1399FF`, `Max` em `#002BE7`. **Não podemos usá-las**, pela
+mesma razão que os chips de nota saíram com o nome da fonte em texto:
 
-Só que [`watch-availability-presenter.ts`](../../apps/web/src/lib/watch-availability-presenter.ts)
-exige `deep_link` http/https válido para a oferta existir. As duas regras estão
-certas isoladamente e se anulam juntas.
+Em [`services/legal/src/authorization-spec.ts`](../../services/legal/src/authorization-spec.ts)
+o campo é o literal `readonly logoAllowed: false` — **é o tipo, não um valor** —
+e vale para toda licença que o spec emite, inclusive as de
+`content_type='watch_availability'` geradas por `streamingProviderEntries`.
 
-### 5.4 Sem `attribution_text` — e o texto que existe credita a fonte errada
+O painel hoje está **correto**: renderiza `{offer.providerName}` em texto e o
+comentário de cabeçalho declara que nunca renderiza logo de provedor. Portar o
+wordmark seria violação — não é escolha de front.
 
-A porta não expõe campo de atribuição (§5.2), então nenhuma linha vinda daí tem
-`attribution_text`. O presenter descarta oferta que exige atribuição e não a tem.
+### 5.5 Duas divergências abertas (não impedem acender; mudam o que se vê)
 
-Pior que ausente: o texto registrado para streaming em
-`services/legal/src/authorization-spec.ts` é **"Disponibilidade fornecida por
-Movie of the Night"** — o fornecedor do slice RapidAPI. Aplicá-lo a dado vindo
-do TMDB creditaria o fornecedor errado. A disponibilidade do TMDB é **JustWatch**,
-e a atribuição a JustWatch é condição do acesso à TMDB.
+**(a) O hub `/pt/onde-assistir` agrupa por `provider_key`, e as duas origens
+usam chaves diferentes para a mesma plataforma.** Em
+[`watch-browse.ts`](../../apps/web/src/server/watch-browse.ts) o balde é
+`row.providerKey`: a RapidAPI grava `"netflix"`, o TMDB grava `"8"` (o
+`provider_id` numérico). Com as duas origens ativas o hub lista **"Netflix"
+duas vezes**, como se fossem dois serviços. É o mesmo defeito que o painel de
+detalhe resolveu com `providerSlug` (a identidade canônica **entre**
+fornecedores); o hub não recebeu o campo. Enquanto só uma origem estiver
+promovida, é latente.
 
-### 5.5 Consequência para quem for planejar
+**(b) O motivo da ausência fica falso no instante em que a operação der certo.**
+As duas páginas de detalhe fixam `reason: 'no_authorized_provider'`, com o
+comentário dizendo "enquanto for assim" — isto é, enquanto houver zero
+provedores autorizados. Depois do runbook a causa comum vira a outra: há
+provedor autorizado e **este título** não tem oferta. O enum já tem
+`no_offer_for_entity` (`actionable: false`) para exatamente isso, e ele não é
+usado em lugar nenhum de produção. Sem a distinção, todo título sem oferta passa
+a emitir um evento `actionable: true` — o ruído que
+[`section-absence.ts`](../../apps/web/src/lib/section-absence.ts) descreve como
+o que "afogaria o único evento que importa".
 
-O bloco de front está construído, correto e dirigido por dado — ele acende no
-instante em que uma oferta exibível existir. O que falta é **código na cadeia de
-streaming**, com decisão humana de licença junto (qual fornecedor é a fonte, e
-qual crédito). Rodar `register-watch-providers` → `legal sources apply` →
-`reprocess-watch-providers` **não** produz uma oferta exibível hoje.
+**(c) O destino do clique é o agregador, e só o leitor de tela sabe.** Pelo
+caminho TMDB o destino é o `link` por país — uma página da própria TMDB, não a
+Netflix. O painel carrega `destinationKind` e diferencia no `aria-label` ("abrir
+página de disponibilidade" vs "abrir no serviço") e num `data-destination-kind`,
+mas **não há nada visível**: não existe regra de CSS para esse atributo, e o
+texto do link é o nome da plataforma nos dois casos. É a mesma distinção que a
+fileira de notas resolveu ao exigir crédito como **texto visível** — atributo de
+acessibilidade não é divulgação para quem enxerga. Como resolver (rótulo,
+alvo do clique, ou não linkar) é decisão de produto, não de front.
 
 ---
 
