@@ -35,7 +35,17 @@ const CONTEXT = {
   entityId: "43",
 } as const;
 
-describe("onde assistir sem provedor autorizado", () => {
+/**
+ * A secao e identificada pela CHAVE `onde-assistir` (que e o que vai para o
+ * log); o conteudo de exemplo usa a copy do painel real ("Disponibilidade no
+ * Brasil"), nao o rotulo do bloco.
+ *
+ * Nao e preciosismo: o auditor de invariantes proibe o literal "Onde assistir"
+ * em `app/_components/**` sem o contrato de watch por perto, e um teste nao tem
+ * esse contrato. Usar o rotulo aqui obrigaria a abrir uma excecao no guard —
+ * trocar a fixture custa nada e mantem o guard estrito.
+ */
+describe("secao onde-assistir sem provedor autorizado", () => {
   beforeEach(() => {
     // O caminho de PRODUCAO e o que interessa: e la que a ausencia some do DOM.
     vi.stubEnv("NODE_ENV", "production");
@@ -50,7 +60,7 @@ describe("onde assistir sem provedor autorizado", () => {
     const observed = observe(() =>
       renderToStaticMarkup(
         <SectionBoundary decision={decision}>
-          {() => <div className="watch-block">Onde assistir</div>}
+          {() => <div className="watch-block">Disponibilidade no Brasil</div>}
         </SectionBoundary>,
       ),
     );
@@ -132,6 +142,6 @@ describe("em desenvolvimento a ausencia tambem e VISIVEL", () => {
     expect(observed.markup).toContain('data-section-absent-reason="no_authorized_provider"');
     expect(observed.logs).toHaveLength(1);
     // O aviso de dev nunca finge ser conteudo.
-    expect(observed.markup).not.toContain("Onde assistir");
+    expect(observed.markup).not.toContain("Disponibilidade no Brasil");
   });
 });

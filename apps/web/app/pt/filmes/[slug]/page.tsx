@@ -24,7 +24,7 @@ import { getMoviePageData } from '../../../../src/server/movie-page'
  * col, retratos 3/4) → Notícias e bastidores (1.4fr/1fr/1fr) → Ficha técnica
  * (320px).
  *
- * BLOCOS DO CANÔNICO QUE NÃO RENDERIZAM, E POR QUÊ (detalhe em DESIGN-DELTA.md):
+ * BLOCOS DO CANÔNICO QUE NÃO RENDERIZAM, E POR QUÊ (detalhe em docs/frontend/DESIGN-DELTA-detalhe.md):
  *  - "Original Screen" (rótulo ao lado do selo): resíduo do rebrand E afirmação
  *    FALSA — "original" significa produção própria, e a Cinerie não produz
  *    filme. Não é portado. Travado por `original-screen-absent.test.tsx`.
@@ -348,7 +348,7 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
           conteúdo — ninguém escreveu nenhum ainda. Sem bloco, sem faixa (e sem
           a imagem editorial que ela pediria). A nota em estrela e a assinatura
           nominal do canônico NÃO têm contrato: `content_blocks` guarda texto,
-          não veredito numérico nem autoria. Ver DESIGN-DELTA.md. */}
+          não veredito numérico nem autoria. Ver docs/frontend/DESIGN-DELTA-detalhe.md. */}
       <SectionBoundary decision={critiqueSection}>
         {(block) => (
           <section aria-label="Crítica da redação" className="critic-band">

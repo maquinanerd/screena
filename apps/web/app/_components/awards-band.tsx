@@ -20,7 +20,7 @@ import type { AwardsView } from "../../src/lib/awards-presenter";
  *
  * O componente existe agora para que a frente de dados saiba EXATAMENTE que
  * forma entregar (`AwardsView`, de `awards-presenter.ts`) — e nao para deixar
- * um bloco bonito e vazio no ar. Ver DESIGN-DELTA.md.
+ * um bloco bonito e vazio no ar. Ver docs/frontend/DESIGN-DELTA-detalhe.md.
  *
  * `href` e opcional e so vira link quando houver uma pagina de premios de
  * verdade. Sem ela, o resumo e texto — nunca um CTA que nao leva a lugar

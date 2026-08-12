@@ -4,7 +4,7 @@
  *
  * ESTADO: SEM FONTE LIGADA. Este modulo e o CONTRATO DE EXIBICAO, nao a
  * ingestao. Nenhuma pagina o consome hoje, porque nenhuma coluna do banco
- * carrega o texto de premios. Ver DESIGN-DELTA.md para o que a frente de dados
+ * carrega o texto de premios. Ver docs/frontend/DESIGN-DELTA-detalhe.md para o que a frente de dados
  * precisa fazer para acender a faixa.
  *
  * POR QUE O CONTRATO E UM LITERAL, E NAO NUMEROS

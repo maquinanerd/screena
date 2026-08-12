@@ -33,7 +33,7 @@ import type {
  *    propria nota das licencas diz "Logo e citacao integral de critica NAO
  *    autorizados". O slot da marca carrega o NOME da fonte em texto, com a
  *    tipografia da pagina — nunca a cor, a forma ou o desenho da marca alheia.
- *    Esta divergencia esta registrada em DESIGN-DELTA.md.
+ *    Esta divergencia esta registrada em docs/frontend/DESIGN-DELTA-detalhe.md.
  *
  * Governanca de leitura (invariantes 1 e 2):
  *  - Cada nota aparece na escala/medida da PROPRIA fonte. O sufixo vem da fonte
