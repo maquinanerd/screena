@@ -22,6 +22,10 @@ const TODAY = "2026-07-28";
 const PROVIDER: TickerProvider = {
   name: "Max",
   key: "max",
+  // Obrigatorio desde que a faixa passou a dizer o que a oferta CUSTA: nomear a
+  // plataforma sem a modalidade afirma que o titulo esta incluso na assinatura
+  // que o leitor ja paga, e compra/aluguel sao a maioria do corpus.
+  modalityLabel: "Assinatura",
   attributionText: "Disponibilidade fornecida por Movie of the Night",
   attributionUrl: "https://www.movieofthenight.com/",
 };
