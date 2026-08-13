@@ -96,12 +96,40 @@ describe("buildWatchAvailabilityView — deep link e pirataria", () => {
     ).not.toBeNull();
   });
 
-  it("descarta addon e qualquer modalidade fora das 4 legais", () => {
+  it("descarta addon e qualquer modalidade fora do vocabulario", () => {
     expect(buildWatchAvailabilityView([row({ offerType: "addon" })])).toBeNull();
+    // `cinema` existe no enum `OfferType` do banco mas NAO e modalidade de
+    // streaming: rotula-la aqui afirmaria disponibilidade domestica de uma
+    // sessao de cinema.
     expect(buildWatchAvailabilityView([row({ offerType: "cinema" })])).toBeNull();
-    expect(buildWatchAvailabilityView([row({ offerType: "ads" })])).toBeNull();
     expect(buildWatchAvailabilityView([row({ offerType: "torrent" })])).toBeNull();
     expect(buildWatchAvailabilityView([row({ offerType: "unknown" })])).toBeNull();
+  });
+
+  it("`ads` ENTRA — era descartado em silencio e nao devia", () => {
+    // Mudanca de comportamento deliberada. `ads` e catalogo gratuito com
+    // anuncio (FAST) e esta no enum `OfferType`; o presenter conhecia so 4
+    // modalidades e o fazia sumir com um `continue` mudo. Em producao isso
+    // apagava da tela toda oferta de Mercado Play, NetMovies, Pluto TV e
+    // "Amazon Prime Video Free with Ads".
+    const view = buildWatchAvailabilityView([row({ offerType: "ads" })]);
+    expect(view).not.toBeNull();
+    expect(view!.groups.map((g) => g.offerType)).toEqual(["ads"]);
+    expect(view!.groups[0]!.label).toBe("Grátis com anúncios");
+  });
+
+  it("descarte de modalidade desconhecida NUNCA e silencioso", () => {
+    const seen: Array<{ message: string; raw: string | null }> = [];
+    const view = buildWatchAvailabilityView([row({ offerType: "addon" })], {
+      onUnsupportedOfferType: (message, raw) => seen.push({ message, raw }),
+    });
+    expect(view).toBeNull();
+    expect(seen).toHaveLength(1);
+    // O VALOR CRU chega ao log — e ele que identifica contrato de upstream que
+    // mudou. E nenhum rotulo e inventado para ele.
+    expect(seen[0]!.raw).toBe("addon");
+    expect(seen[0]!.message).toContain('"addon"');
+    expect(seen[0]!.message).not.toContain("Assinatura");
   });
 });
 

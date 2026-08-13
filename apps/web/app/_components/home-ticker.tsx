@@ -68,7 +68,21 @@ function ctaLabel(item: HomeTickerItem): ReactNode {
   if (item.provider !== null) {
     return (
       <>
+        {/*
+          MODALIDADE em TEXTO VISIVEL, ao lado do nome — nao em `aria-label`,
+          nao em `title`, nao em atributo sem estilo. Compra e aluguel sao a
+          maioria do corpus: "Onde assistir <loja>" sozinho afirma ao leitor que
+          o titulo esta incluso no que ele ja paga, quando o que existe e um
+          aluguel avulso. Informacao que muda o que o leitor espera nao pode
+          viver so em atributo de acessibilidade — a mesma regra que o rotulo
+          "pagina de disponibilidade" ja fixou no painel de detalhe.
+
+          Nenhum nome de plataforma aparece neste arquivo, nem em comentario: o
+          guard de governanca varre o TEXTO do componente, e uma marca citada em
+          comentario reprova igual (ver no-fake-streaming-in-ui).
+        */}
         Onde assistir <strong>{item.provider.name}</strong>
+        <span className="home-ticker__modality"> · {item.provider.modalityLabel}</span>
       </>
     )
   }

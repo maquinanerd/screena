@@ -9,9 +9,14 @@
  *    Qualquer linha sem essa flag e descartada aqui — defesa em profundidade,
  *    alem do gate `displayAllowed: true` da query na camada server. Este PR NAO
  *    promove nenhuma linha para `display_allowed = true`.
- *  - SEM pirataria: so as 4 modalidades LEGAIS de streaming pago/gratis
- *    (assinatura/gratis/aluguel/compra) sao rotuladas. `addon` e qualquer tipo
- *    fora do conjunto sao descartados. Nunca torrent/IPTV/player ilegal.
+ *  - SEM pirataria: so as modalidades LEGAIS de streaming pago/gratis sao
+ *    rotuladas, e o vocabulario e UNICO (`watch-offer-modality.ts`, comum aos
+ *    quatro consumidores de `licensedWatchWhere`). Tipo fora do conjunto e
+ *    descartado COM LOG do valor cru — nunca torrent/IPTV/player ilegal, e
+ *    nunca rotulo inventado.
+ *  - `ads` (catalogo gratuito com anuncio) ENTRA. Ele estava fora do conjunto e
+ *    era descartado em silencio: as ofertas de Mercado Play, NetMovies, Pluto TV
+ *    e "Amazon Prime Video Free with Ads" sumiam da tela sem uma linha de log.
  *  - NAO inventa disponibilidade: exibe so o que veio de `watch_availability`.
  *    Cada oferta so aparece com `provider_name`, `provider_key`, `offer_type` e
  *    um DESTINO http/https valido; sem qualquer um deles, a linha e descartada
@@ -27,30 +32,33 @@
  *    incluidas (frescor honesto). Sem `fetched_at`, nao alega atualizacao.
  */
 
-/** Modalidades de streaming exibidas no painel (subconjunto legal do enum). */
-export type WatchAvailabilityOfferType = "subscription" | "free" | "rent" | "buy";
+import {
+  PRICED_WATCH_MODALITIES,
+  WATCH_MODALITY_ORDER,
+  describeUnsupportedWatchModality,
+  resolveWatchModality,
+  watchModalityLabel,
+  type WatchModality,
+} from "./watch-offer-modality";
 
-/** Rotulo pt-BR de cada modalidade. */
-const GROUP_LABELS: Readonly<Record<WatchAvailabilityOfferType, string>> = {
-  subscription: "Assinatura",
-  free: "Grátis",
-  rent: "Aluguel",
-  buy: "Compra",
-};
+/**
+ * Modalidades de streaming exibidas no painel.
+ *
+ * Alias do tipo canonico de `watch-offer-modality.ts` — o vocabulario (conjunto,
+ * rotulos e ORDEM) mora la, num lugar so, compartilhado com os outros tres
+ * consumidores de `licensedWatchWhere`.
+ */
+export type WatchAvailabilityOfferType = WatchModality;
 
-/** Ordem canonica e estavel dos grupos (assinatura -> gratis -> aluguel -> compra). */
-const GROUP_ORDER: readonly WatchAvailabilityOfferType[] = [
-  "subscription",
-  "free",
-  "rent",
-  "buy",
-];
-
-/** Modalidades transacionais em que o preco (quando existir) e exibido. */
-const PRICED_OFFER_TYPES: ReadonlySet<WatchAvailabilityOfferType> = new Set([
-  "rent",
-  "buy",
-]);
+/**
+ * Ordem canonica dos grupos: **o que esta incluso vem antes do que custa**
+ * (assinatura -> gratis -> gratis com anuncios -> aluguel -> compra).
+ *
+ * Nesta superficie a ordem e ESTRUTURAL, nao um sort key: o painel agrupa por
+ * MODALIDADE e o leitor que varre de cima para baixo encontra primeiro o que
+ * nao lhe custa nada. Ver a nota de agrupamento em `watch-offer-modality.ts`.
+ */
+const GROUP_ORDER: readonly WatchAvailabilityOfferType[] = WATCH_MODALITY_ORDER;
 
 /** Simbolo por moeda (ISO 4217). Fora do mapa, usa o proprio codigo. */
 const CURRENCY_SYMBOLS: Readonly<Record<string, string>> = {
@@ -188,8 +196,17 @@ function trimToNull(value: string | null | undefined): string | null {
   return trimmed === "" ? null : trimmed;
 }
 
-function isOfferType(value: string): value is WatchAvailabilityOfferType {
-  return Object.prototype.hasOwnProperty.call(GROUP_LABELS, value);
+/**
+ * Opcoes do presenter.
+ *
+ * `onUnsupportedOfferType` existe porque o descarte silencioso era o defeito:
+ * um `offer_type` fora do conjunto sumia com um `continue` mudo. O modulo
+ * continua PURO (nao escreve em lugar nenhum) — quem chama e que decide onde a
+ * linha aparece. Omitir o callback e permitido, mas os quatro consumidores de
+ * producao o passam.
+ */
+export interface WatchAvailabilityOptions {
+  onUnsupportedOfferType?: (message: string, rawOfferType: string | null) => void;
 }
 
 /** Aceita apenas deep links http/https; qualquer outro esquema vira null. */
@@ -213,7 +230,7 @@ function buildPriceLabel(
   amount: string | null,
   currency: string | null,
 ): string | null {
-  if (!PRICED_OFFER_TYPES.has(offerType)) return null;
+  if (!PRICED_WATCH_MODALITIES.has(offerType)) return null;
   const value = trimToNull(amount);
   if (value === null) return null;
   const code = trimToNull(currency);
@@ -291,6 +308,7 @@ function keyOfProvenanceRivalry(accepted: AcceptedOffer): string {
  */
 export function buildWatchAvailabilityView(
   rows: WatchAvailabilityRow[],
+  options: WatchAvailabilityOptions = {},
 ): WatchAvailabilityView | null {
   // ---- Passada 1: gates. Nada entra aqui sem licenca, credito e destino. ----
   const accepted: AcceptedOffer[] = [];
@@ -300,8 +318,16 @@ export function buildWatchAvailabilityView(
     if (row.displayAllowed !== true) continue;
 
     const offerTypeRaw = trimToNull(row.offerType);
-    if (offerTypeRaw === null || !isOfferType(offerTypeRaw)) continue; // descarta addon/desconhecido
-    const offerType = offerTypeRaw;
+    const offerType = resolveWatchModality(offerTypeRaw);
+    if (offerType === null) {
+      // NUNCA um `continue` mudo: o valor cru vai para o chamador. Foi este
+      // descarte silencioso que apagou as ofertas `ads` da tela.
+      options.onUnsupportedOfferType?.(
+        describeUnsupportedWatchModality(offerTypeRaw),
+        offerTypeRaw,
+      );
+      continue;
+    }
 
     const providerName = trimToNull(row.providerName);
     const providerKey = trimToNull(row.providerKey);
@@ -422,7 +448,7 @@ export function buildWatchAvailabilityView(
       if (byQuality !== 0) return byQuality;
       return a.destinationUrl.localeCompare(b.destinationUrl); // desempate estavel
     });
-    groups.push({ offerType, label: GROUP_LABELS[offerType], offers });
+    groups.push({ offerType, label: watchModalityLabel(offerType), offers });
   }
 
   if (groups.length === 0) return null;
@@ -454,7 +480,25 @@ export function buildWatchAvailabilityView(
  */
 export function selectTickerWatchOffer(
   rows: WatchAvailabilityRow[],
+  options: WatchAvailabilityOptions = {},
 ): WatchAvailabilityOffer | null {
-  const view = buildWatchAvailabilityView(rows);
+  const view = buildWatchAvailabilityView(rows, options);
   return view?.groups[0]?.offers[0] ?? null;
+}
+
+/**
+ * Modalidades DISTINTAS de uma plataforma, ja na ordem canonica.
+ *
+ * E o insumo das superficies COMPACTAS ("Prime Video · Assinatura · Aluguel"):
+ * uma linha por plataforma com as modalidades ao lado, nunca duas entradas da
+ * mesma marca. Deriva das ofertas que passaram por TODOS os gates — uma
+ * modalidade cuja oferta foi descartada por licenca, credito ou destino nao
+ * pode aparecer como chip, senao o chip prometeria algo que nao esta na tela.
+ */
+export function distinctOfferTypesOf(
+  offers: readonly WatchAvailabilityOffer[],
+): WatchAvailabilityOfferType[] {
+  const seen = new Set<WatchAvailabilityOfferType>();
+  for (const offer of offers) seen.add(offer.offerType);
+  return GROUP_ORDER.filter((offerType) => seen.has(offerType));
 }

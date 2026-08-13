@@ -337,6 +337,7 @@ describe('runWatchProvidersReprocess — relatorio de recusas e provedores', () 
         providerKey: '8',
         providerName: 'Netflix',
         offers: 2,
+        offersInScope: 2,
         offerTypes: { subscription: 2 },
         countries: ['BR'],
       },
@@ -344,6 +345,7 @@ describe('runWatchProvidersReprocess — relatorio de recusas e provedores', () 
         providerKey: '2',
         providerName: 'Apple TV',
         offers: 1,
+        offersInScope: 1,
         offerTypes: { rent: 1 },
         countries: ['BR'],
       },
@@ -444,6 +446,36 @@ describe('runWatchProvidersReprocess — escopo territorial (a FK de 2026-08-13)
     expect(report.countriesSeen).toEqual(['AD', 'BR'])
     expect(report.providersSeen[0]?.offers).toBe(2)
     expect(report.providersSeen[0]?.countries).toEqual(['AD', 'BR'])
+    // ...mas o numero que DECIDE registro de alias e o do escopo, nao o global:
+    // um provedor com muito volume mundial pode nao ter uma oferta em BR.
+    expect(report.providersSeen[0]?.offersInScope).toBe(1)
+  })
+
+  it('offersInScope separa volume GLOBAL de volume no territorio ingerido', async () => {
+    const rows: RawWatchSourceRow[] = [
+      {
+        tmdbId: 1,
+        baseLanguage: 'pt-BR',
+        payload: {
+          'watch/providers': {
+            results: {
+              // Provedor "global" com muita oferta e NENHUMA em BR...
+              AD: { link: COUNTRY_LINK, flatrate: [{ provider_id: 77, provider_name: 'So Fora' }] },
+              ZW: { link: COUNTRY_LINK, flatrate: [{ provider_id: 77, provider_name: 'So Fora' }] },
+              // ...e um provedor local com uma unica oferta, em BR.
+              BR: { link: COUNTRY_LINK, ads: [{ provider_id: 2302, provider_name: 'Mercado Play' }] },
+            },
+          },
+        },
+      },
+    ]
+    const report = await runWatchProvidersReprocess(baseOptions(rows, [1]))
+    const byKey = new Map(report.providersSeen.map((p) => [p.providerKey, p]))
+    expect(byKey.get('77')).toMatchObject({ offers: 2, offersInScope: 0 })
+    expect(byKey.get('2302')).toMatchObject({ offers: 1, offersInScope: 1 })
+    // E a ORDEM segue o escopo: quem nao tem oferta em BR nao lidera a colheita
+    // de um site que so ingere BR.
+    expect(report.providersSeen[0]?.providerKey).toBe('2302')
   })
 })
 

@@ -87,6 +87,13 @@ import type { WatchProvidersEntityType } from '../src/watch-providers/types.js'
 const DAY_MS = 24 * 60 * 60 * 1000
 
 /**
+ * Teto de CODIGOS de pais impressos por provedor. Acima dele a linha diz quantos
+ * ficaram de fora e o total — truncar em silencio e como alguem acaba
+ * concluindo que um provedor global so existe em tres paises.
+ */
+const COUNTRY_CODES_PRINT_LIMIT = 20
+
+/**
  * A URL/ambiente parecem producao? Espelha LITERALMENTE
  * `services/streaming/bin/register-watch-providers.ts` — os dois comandos sao da
  * mesma cadeia e divergir na deteccao faria um recusar onde o outro aceita.
@@ -325,10 +332,21 @@ async function main(): Promise<void> {
           .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
           .map(([type, count]) => `${type}=${count}`)
           .join(' ')
+        // Os CODIGOS de pais, nao so a contagem. "em 3 pais(es)" nao permitiu
+        // decidir se o id 122 ("Disney+") e a marca conjunta Disney+/Hotstar ou
+        // o mesmo servico do id 337 — a lista resolve, a contagem nao.
+        const countries =
+          provider.countries.length <= COUNTRY_CODES_PRINT_LIMIT
+            ? provider.countries.join(',')
+            : `${provider.countries.slice(0, COUNTRY_CODES_PRINT_LIMIT).join(',')} +${
+                provider.countries.length - COUNTRY_CODES_PRINT_LIMIT
+              } (${provider.countries.length} no total)`
         console.log(
-          `    ${provider.providerKey.padStart(6)} ${provider.providerName} (${provider.offers}) ` +
-            `[${byType}] em ${provider.countries.length} pais(es)`,
+          `    ${provider.providerKey.padStart(6)} ${provider.providerName} ` +
+            `— NO ESCOPO ${provider.offersInScope} · global ${provider.offers} ` +
+            `[${byType}]`,
         )
+        console.log(`           paises: ${countries}`)
       }
       const omitted = report.providersSeen.length - shown.length
       if (omitted > 0) {

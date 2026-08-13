@@ -73,33 +73,78 @@ export interface ProviderRegistryEntry {
  * ids apontando para um slug e exatamente o que um registro POR ALIAS existe
  * para permitir; forcar um id por plataforma e que produziria oferta orfa.
  *
- * ============ DOIS IDS QUE NAO ENTRAM (e por que) ============
+ * ============ LOJA != SERVICO, E A REGRA VALE PARA AS TRES ============
  *
- *    10  Amazon Video        (5123 ofertas)  -> NAO MAPEADO
- *   122  Disney+             (  57 ofertas)  -> NAO MAPEADO
+ * A colheita ENRIQUECIDA (modalidade por provedor) desfez uma contradicao que a
+ * #167 deixou de pe. Ela recusou mapear `10` "Amazon Video" POR SER LOJA — e
+ * naquele momento duas lojas identicas ja estavam mapeadas e passando:
  *
- * `10` NAO tem o nome das outras duas Amazon: "Amazon Video" e o rotulo com que
- * o TMDB identifica a LOJA transacional (aluguel/compra), enquanto "Amazon
- * Prime Video" e o servico por assinatura. Aponta-lo para `prime-video`
- * afirmaria que uma compra avulsa esta inclusa na assinatura — uma afirmacao
- * comercial falsa na tela do usuario, e do mesmo tipo que a invariante 1
- * proibe entre fontes de rating. Ele merece slug proprio, mas isso e criar um
- * provedor canonico novo (que puxa licenca e decisao de uso no `legal apply`):
- * decisao de produto, nao efeito colateral desta PR.
+ *      2  Apple TV Store      buy=5162 rent=4973  subscription=0  -> apple-tv
+ *      3  Google Play Movies  buy=4698 rent=4345  subscription=0  -> google-play
+ *     10  Amazon Video        buy=2579 rent=2544  subscription=0  -> amazon-video
  *
- * `122` colide com `337` no nome exibido ("Disney+" vs "Disney Plus") com 21x
- * menos volume, e o id 122 do TMDB carrega historicamente a marca conjunta
- * Disney+/Hotstar em alguns territorios. Mapea-lo para `disney-plus` pelo nome
- * creditaria possivelmente outra plataforma. Fica aberto ate a colheita
- * enriquecida (modalidade + paises por provedor, ver
- * `WatchProviderSighting.offerTypes`) responder pelo PAYLOAD: se `122` aparecer
- * so em IN/ID e `337` no resto, sao servicos distintos; se dividirem
- * territorio, sao o mesmo e entram juntos.
+ * Os tres sao a MESMA natureza: catalogo transacional, zero assinatura. O
+ * fixture da RapidAPI confirma o mesmo para os dois primeiros
+ * (`titanic-show.ts`: `apple`/rent com link `tv.apple.com/.../rent`,
+ * `google`/buy com link `play.google.com/store`). Nao havia principio que
+ * separasse `10` de `2` — havia uma decisao aplicada a um e nao ao outro.
  *
- * Os outros ~280 provedores da colheita NAO entram: a maioria e canal dentro de
- * outro servico ("HBO Max Amazon Channel", "Paramount+ Amazon Channel"), e
- * exibir um canal como se fosse assinatura propria e decisao de produto. Ver o
- * relatorio da PR para a lista curta que merece discussao.
+ * O QUE TORNA MAPEAR LOJA HONESTO: a fileira "Onde assistir" passou a exibir a
+ * MODALIDADE em texto visivel nos quatro consumidores
+ * (`apps/web/src/lib/watch-offer-modality.ts`). "Apple TV Store · Compra" nao
+ * afirma nada falso; "Apple TV" sozinho, num titulo que so tem compra, afirma
+ * que esta incluso na assinatura que o leitor ja paga. **Este mapeamento so e
+ * valido enquanto a modalidade estiver na tela** — se ela sair, estas tres
+ * linhas voltam a mentir.
+ *
+ * `amazon-video` nasce como slug PROPRIO, nunca dobrado em `prime-video`: a
+ * loja e o servico de assinatura sao produtos comerciais distintos, e colapsa-los
+ * afirmaria que uma compra avulsa esta inclusa na assinatura. `apple-tv` foi
+ * RENOMEADO para "Apple TV Store" (o rotulo que o proprio TMDB publica hoje):
+ * o slug fica, porque `source_licenses.source_key` aponta para ele e renomea-lo
+ * orfanaria a licenca — mas o nome exibido deixa de disputar com o "Apple TV+",
+ * que e outro provedor (id 350) e ainda nao esta registrado.
+ *
+ * ============ VARIANTES DE PLANO: COLAPSAM NA MARCA ============
+ *
+ *   2100  Amazon Prime Video with Ads       subscription=238 -> prime-video
+ *   1796  Netflix Standard with Ads         subscription=172 -> netflix
+ *    613  Amazon Prime Video Free with Ads  ads=6            -> prime-video
+ *    175  Netflix Kids                      subscription=2   -> netflix
+ *
+ * Sao PLANOS dentro do mesmo servico, nao servicos distintos. Listar "Netflix"
+ * e "Netflix Standard with Ads" como duas linhas na mesma pagina e o defeito do
+ * hub duplicado com outra roupa.
+ *
+ * `613` merece a nota que o resto nao merece: ele e `ads`, nao `subscription`.
+ * Colapsa-lo em `prime-video` SEM a modalidade afirmaria que precisa de
+ * assinatura. Com ela, a linha le "Prime Video · Grátis com anúncios" — que e
+ * exatamente o que o dado diz. E a modalidade do render que torna o colapso
+ * seguro, nao o alias.
+ *
+ * ============ AINDA ABERTO: 122 vs 337 ============
+ *
+ *   122  Disney+       subscription=57    em 3 paises   -> NAO MAPEADO
+ *   337  Disney Plus   subscription=1204  em 57 paises  -> disney-plus
+ *
+ * A colheita imprimia "em N pais(es)", nao os CODIGOS — e sem eles a pergunta
+ * nao tem resposta. Se `122` estiver so em IN/ID (ou equivalente), e a marca
+ * conjunta Disney+/Hotstar e e OUTRO servico; se dividir territorio com `337`,
+ * sao o mesmo e os dois entram no mesmo slug. A saida da colheita passou a
+ * imprimir a lista de codigos (`WatchProviderSighting.countries`) exatamente
+ * para fechar isso na proxima passada. **Nao decidir pelo nome**: "Disney+" e
+ * "Disney Plus" sao o mesmo texto para um humano e podem ser produtos
+ * diferentes para o TMDB.
+ *
+ * ============ OS ~250 RESTANTES ============
+ *
+ * Nao entram. A maioria e canal dentro de outro servico ("HBO Max Amazon
+ * Channel", "Paramount+ Amazon Channel", "Telecine Amazon Channel"), e exibir
+ * um canal como se fosse assinatura propria e decisao de EXIBICAO, nao de
+ * alias. As plataformas brasileiras avulsas (Claro video, Mercado Play, Looke,
+ * Oldflix...) tambem nao entram ainda: a colheita mede volume GLOBAL, e um
+ * provedor com 324 ofertas em 7 paises pode nao ter nenhuma em BR. O campo
+ * `offersInScope` foi acrescentado para responder isso — ver o relatorio da PR.
  *
  * Oferta sem alias continua ingerida, auditavel e invisivel, logando `no-alias`
  * — nunca some.
@@ -111,6 +156,10 @@ export const WATCH_PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     aliases: [
       { providerApi: 'streaming_availability', externalKey: 'netflix', displayName: 'Netflix' },
       { providerApi: 'tmdb', externalKey: '8', displayName: 'Netflix' },
+      // PLANOS da Netflix, nao servicos distintos: duas linhas "Netflix" e
+      // "Netflix Standard with Ads" na mesma pagina e o hub duplicado de novo.
+      { providerApi: 'tmdb', externalKey: '1796', displayName: 'Netflix Standard with Ads' },
+      { providerApi: 'tmdb', externalKey: '175', displayName: 'Netflix Kids' },
     ],
   },
   {
@@ -119,10 +168,24 @@ export const WATCH_PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     aliases: [
       { providerApi: 'streaming_availability', externalKey: 'prime', displayName: 'Prime Video' },
       // Dois ids do TMDB, uma plataforma: o upstream exibe o MESMO nome nos
-      // dois. `10` ("Amazon Video", a loja) fica de fora — ver doc no topo.
+      // dois. `10` ("Amazon Video", a LOJA) tem slug proprio — ver `amazon-video`.
       { providerApi: 'tmdb', externalKey: '119', displayName: 'Amazon Prime Video' },
       { providerApi: 'tmdb', externalKey: '9', displayName: 'Amazon Prime Video' },
+      // PLANOS do Prime Video. `613` e `ads` (gratuito com anuncio), nao
+      // assinatura — o colapso so e honesto porque a MODALIDADE vai para a tela:
+      // a linha le "Prime Video · Grátis com anúncios", nunca "Assinatura".
+      { providerApi: 'tmdb', externalKey: '2100', displayName: 'Amazon Prime Video with Ads' },
+      { providerApi: 'tmdb', externalKey: '613', displayName: 'Amazon Prime Video Free with Ads' },
     ],
+  },
+  {
+    // A LOJA transacional da Amazon (buy+rent, zero assinatura). Slug PROPRIO,
+    // nunca dobrado em `prime-video`: colapsar afirmaria que uma compra avulsa
+    // esta inclusa na assinatura. Mesma natureza de `apple-tv` e `google-play`,
+    // e agora com o MESMO tratamento — ver a nota "LOJA != SERVICO" no topo.
+    slug: 'amazon-video',
+    canonicalName: 'Amazon Video',
+    aliases: [{ providerApi: 'tmdb', externalKey: '10', displayName: 'Amazon Video' }],
   },
   {
     slug: 'max',
@@ -134,10 +197,16 @@ export const WATCH_PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
   },
   {
     slug: 'apple-tv',
-    canonicalName: 'Apple TV',
+    // RENOMEADO. A colheita provou `subscription=0` neste id: e a LOJA, e o
+    // proprio TMDB ja a publica como "Apple TV Store". O slug fica como esta —
+    // `source_licenses.source_key` aponta para ele, e renomear orfanaria a
+    // licenca vigente. O nome exibido, sim, muda: "Apple TV" disputava leitura
+    // com o "Apple TV+" (id 350 do TMDB), que e outro provedor e ainda nao esta
+    // registrado.
+    canonicalName: 'Apple TV Store',
     aliases: [
       { providerApi: 'streaming_availability', externalKey: 'apple', displayName: 'Apple TV' },
-      { providerApi: 'tmdb', externalKey: '2', displayName: 'Apple TV' },
+      { providerApi: 'tmdb', externalKey: '2', displayName: 'Apple TV Store' },
     ],
   },
   {

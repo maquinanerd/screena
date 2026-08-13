@@ -16,7 +16,16 @@ export interface WatchPopularTitle {
   title: string
   href: string
   posterUrl: string | null
-  offerTypes: string[]
+  /**
+   * ROTULOS pt-BR ja prontos ("Assinatura", "Aluguel"), na ordem canonica.
+   *
+   * Este componente tinha um mapa de rotulos PROPRIO, divergente do painel de
+   * detalhe: conhecia `addon` (valor que nao existe no enum `OfferType`), nao
+   * conhecia `cinema`, e caia para `?? offer` — um valor novo do upstream ia
+   * para a tela como jargao de API em ingles. O vocabulario agora e um so
+   * (`watch-offer-modality.ts`) e a traducao acontece no servidor.
+   */
+  offerTypeLabels: string[]
 }
 
 export interface WatchPopularProvider {
@@ -26,15 +35,6 @@ export interface WatchPopularProvider {
 }
 
 const GRID_LIMIT = 12
-
-const OFFER_LABELS: Readonly<Record<string, string>> = {
-  subscription: 'Assinatura',
-  rent: 'Aluguel',
-  buy: 'Compra',
-  free: 'Grátis',
-  ads: 'Com anúncios',
-  addon: 'Canal adicional',
-}
 
 export function WatchPopular({ providers }: { providers: WatchPopularProvider[] }): ReactNode {
   const [active, setActive] = useState<string>('all')
@@ -90,10 +90,14 @@ export function WatchPopular({ providers }: { providers: WatchPopularProvider[] 
               </span>
             </span>
             <span className="watch-card__title">{title.title}</span>
-            {title.offerTypes.length > 0 ? (
-              <span className="watch-card__meta">
-                {title.offerTypes.map((offer) => OFFER_LABELS[offer] ?? offer).join(' · ')}
-              </span>
+            {/*
+              MODALIDADE em texto visivel, junto do titulo — os rotulos ja vem
+              traduzidos e ordenados do servidor. Nada de `?? offer`: um valor
+              que a tela nao sabe nomear e descartado com log, nunca impresso
+              cru.
+            */}
+            {title.offerTypeLabels.length > 0 ? (
+              <span className="watch-card__meta">{title.offerTypeLabels.join(' · ')}</span>
             ) : null}
           </a>
         ))}

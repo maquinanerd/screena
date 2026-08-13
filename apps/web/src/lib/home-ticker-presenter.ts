@@ -50,6 +50,19 @@ export interface TickerProvider {
   name: string;
   /** `watch_availability.provider_key` — chave estável. */
   key: string;
+  /**
+   * Rótulo pt-BR da MODALIDADE desta oferta ("Assinatura", "Aluguel"…), em
+   * TEXTO VISÍVEL ao lado do nome.
+   *
+   * Sem ele a faixa nomeava só a loja para um título que só tem aluguel avulso
+   * — afirmando ao leitor que já está incluso no que ele paga. Compra e aluguel
+   * são a MAIORIA do corpus (18.077 + 18.330 contra 10.970 assinaturas), então
+   * esse não era um caso de borda. (Nenhuma marca é citada neste arquivo, nem em
+   * comentário: o guard de governança varre o texto.)
+   *
+   * Vocabulário único: `watch-offer-modality.ts`.
+   */
+  modalityLabel: string;
   /** Crédito exigido pela licença, quando exigido; senão null. */
   attributionText: string | null;
   /** Linkback exigido pela licença, quando exigido; senão null. */

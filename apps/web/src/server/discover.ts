@@ -16,7 +16,13 @@ import { cache } from 'react'
 import { getPrismaClient } from '@screena/db/server'
 
 import { licensedWatchWhere } from './entity-watch'
-import { distinctWatchPlatforms } from '../lib/watch-platform-identity'
+import { distinctWatchPlatforms, resolveWatchPlatform } from '../lib/watch-platform-identity'
+import {
+  describeUnsupportedWatchModality,
+  resolveWatchModality,
+  watchModalityLabels,
+  type WatchModality,
+} from '../lib/watch-offer-modality'
 import { buildTmdbImageUrl } from '../lib/tmdb-image-url'
 import { MOVIES_INDEX_PATH, SERIES_INDEX_PATH } from '../lib/site'
 
@@ -33,12 +39,28 @@ export interface DiscoverCard {
   year: number | null
 }
 
+/** Uma plataforma do destaque, com as modalidades que ela realmente oferece. */
+export interface DiscoverWatchPlatform {
+  /** Nome canonico da plataforma (nunca o nome do fornecedor tecnico). */
+  name: string
+  /** Rotulos pt-BR ja na ordem canonica (incluso antes do que custa). */
+  modalityLabels: string[]
+}
+
 export interface DiscoverFeatured extends DiscoverCard {
   originalTitle: string | null
   backdropUrl: string | null
   summary: string | null
-  /** Nomes de provedores com oferta LICENCIADA vigente (texto, nunca logo). */
-  watchProviders: string[]
+  /**
+   * Plataformas com oferta LICENCIADA vigente (texto, nunca logo), cada uma com
+   * as MODALIDADES que ela oferece — "Prime Video · Assinatura · Aluguel".
+   *
+   * Era `string[]` (so o nome). Compra e aluguel sao a maioria do corpus, entao
+   * listar "Apple TV" sem dizer "Compra" afirmava disponibilidade inclusa numa
+   * assinatura que o leitor talvez ja pague. Uma linha por PLATAFORMA, com as
+   * modalidades ao lado — nunca duas entradas da mesma marca.
+   */
+  watchProviders: DiscoverWatchPlatform[]
 }
 
 export interface DiscoverData {
@@ -207,6 +229,10 @@ export const getDiscoverData = cache(async (): Promise<DiscoverData> => {
         // este campo esvaziaria a lista de provedores do destaque em silencio.
         providerKey: true,
         watchProvider: { select: { slug: true, canonicalName: true } },
+        // MODALIDADE: o destaque dizia so a marca. Compra e aluguel sao a
+        // maioria do corpus — sem este campo, "Apple TV" no destaque afirma
+        // disponibilidade inclusa numa assinatura que o leitor talvez ja pague.
+        offerType: true,
       },
       take: 6,
     })
@@ -214,15 +240,39 @@ export const getDiscoverData = cache(async (): Promise<DiscoverData> => {
     // deduplicar por NOME de fornecedor nao e identidade — as duas origens
     // escrevem o mesmo servico com strings proprias ("Prime Video" vs
     // "Amazon Prime Video"). A identidade da plataforma e o slug canonico.
-    const providerNames = distinctWatchPlatforms(
-      watch.map((row) => ({
-        providerName: row.providerName,
-        providerKey: row.providerKey,
-        providerSlug: row.watchProvider?.slug ?? null,
-        canonicalName: row.watchProvider?.canonicalName ?? null,
-      })),
-    )
-      .map((platform) => platform.displayName)
+    const platformSources = watch.map((row) => ({
+      providerName: row.providerName,
+      providerKey: row.providerKey,
+      providerSlug: row.watchProvider?.slug ?? null,
+      canonicalName: row.watchProvider?.canonicalName ?? null,
+    }))
+    // Modalidades acumuladas POR PLATAFORMA (mesma chave de balde do modulo
+    // compartilhado), para que a mesma marca nunca vire duas entradas.
+    const modalitiesByBucket = new Map<string, WatchModality[]>()
+    for (const [index, row] of watch.entries()) {
+      const source = platformSources[index]
+      if (source === undefined) continue
+      const identity = resolveWatchPlatform(source)
+      if (identity === null) continue
+      const modality = resolveWatchModality(row.offerType === null ? null : String(row.offerType))
+      if (modality === null) {
+        // Descarte NUNCA silencioso: o valor cru vai para o log.
+        console.warn(describeUnsupportedWatchModality(row.offerType === null ? null : String(row.offerType)))
+        continue
+      }
+      const bucket = modalitiesByBucket.get(identity.bucketKey)
+      if (bucket === undefined) modalitiesByBucket.set(identity.bucketKey, [modality])
+      else bucket.push(modality)
+    }
+    const providerNames = distinctWatchPlatforms(platformSources)
+      .map((platform) => ({
+        name: platform.displayName,
+        modalityLabels: watchModalityLabels(modalitiesByBucket.get(platform.bucketKey) ?? []),
+      }))
+      // Plataforma cuja unica oferta tinha modalidade desconhecida sai da lista:
+      // exibir a marca sem dizer o que ela custa e exatamente o que esta
+      // mudanca existe para impedir.
+      .filter((platform) => platform.modalityLabels.length > 0)
       .slice(0, 3)
     featured = {
       ...card,

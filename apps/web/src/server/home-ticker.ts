@@ -47,6 +47,7 @@ import {
   selectTickerWatchOffer,
   type WatchAvailabilityRow,
 } from "../lib/watch-availability-presenter";
+import { watchModalityLabel } from "../lib/watch-offer-modality";
 import { MOVIES_INDEX_PATH, SERIES_INDEX_PATH } from "../lib/site";
 
 export type {
@@ -198,11 +199,19 @@ async function resolveProviders(
   }
 
   for (const [key, candidates] of grouped) {
-    const offer = selectTickerWatchOffer(candidates);
+    const offer = selectTickerWatchOffer(candidates, {
+      // Descarte NUNCA silencioso: um `offer_type` que a tela nao sabe nomear
+      // vira linha de log com o valor cru, nunca rotulo inventado.
+      onUnsupportedOfferType: (message) => console.warn(message),
+    });
     if (offer === null) continue;
     out.set(key, {
       name: offer.providerName,
       key: offer.providerKey,
+      // MODALIDADE em texto visivel (ver TickerProvider): nomear a loja sem
+      // dizer "Aluguel" afirma que o titulo esta incluso numa assinatura.
+      // (Sem citar marca nem em comentario: o guard varre o TEXTO do arquivo.)
+      modalityLabel: watchModalityLabel(offer.offerType),
       attributionText: offer.attribution?.text ?? null,
       attributionUrl: offer.attribution?.url ?? null,
     });

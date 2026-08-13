@@ -251,7 +251,19 @@ describe('NAO-REGRESSAO: o caminho streaming_availability nao mudou', () => {
 
   it('modalidade ilegal/desconhecida continua descartada nas DUAS origens', () => {
     expect(buildWatchAvailabilityView([aggregatorRow({ offerType: 'addon' })])).toBeNull()
-    expect(buildWatchAvailabilityView([tmdbRow({ offerType: 'ads' })])).toBeNull()
+    expect(buildWatchAvailabilityView([tmdbRow({ offerType: 'addon' })])).toBeNull()
     expect(buildWatchAvailabilityView([tmdbRow({ offerType: 'cinema' })])).toBeNull()
+    expect(buildWatchAvailabilityView([aggregatorRow({ offerType: 'torrent' })])).toBeNull()
+  })
+
+  it('`ads` passa a ser exibida nas DUAS origens, com o mesmo rotulo', () => {
+    // Antes `ads` era descartada e sumia da tela sem log. O vocabulario agora e
+    // unico (`watch-offer-modality.ts`), entao as duas origens produzem o MESMO
+    // rotulo — divergir aqui seria a mesma plataforma dizendo precos diferentes
+    // conforme quem transportou o dado.
+    const viaAggregator = buildWatchAvailabilityView([aggregatorRow({ offerType: 'ads' })])
+    const viaTmdb = buildWatchAvailabilityView([tmdbRow({ offerType: 'ads' })])
+    expect(viaAggregator?.groups[0]?.label).toBe('Grátis com anúncios')
+    expect(viaTmdb?.groups[0]?.label).toBe('Grátis com anúncios')
   })
 })
