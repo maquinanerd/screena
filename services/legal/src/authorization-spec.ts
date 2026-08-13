@@ -268,6 +268,137 @@ function ratingEntry(source: string): AuthorizationEntry {
   };
 }
 
+/**
+ * ============ PREMIACAO (`entity_awards`) — DECISAO DE 2026-08-13 ============
+ *
+ * QUEM DECIDIU: Pablo Eduardo — proprietario da Cinerie (mesma identidade de
+ * `DECIDED_BY`).
+ *
+ * O QUE FOI DECIDIDO: o fato de premiacao ("Venceu 4 Oscars. 160 vitorias · 220
+ * indicacoes") e creditado a **OMDb**, com o texto
+ * **"Dados de premiacao fornecidos por OMDb"**.
+ *
+ * POR QUE ISTO NAO VIOLA A INVARIANTE 2. A invariante existe porque uma NOTA e
+ * uma OPINIAO: `8,5/10` pertence a quem julgou, e por isso IMDb, Rotten Tomatoes
+ * e Metacritic sao creditados separadamente mesmo chegando todos pela OMDb —
+ * colapsa-los seria mentira, e o guard de `external_ratings` continua recusando
+ * essa igualdade, intocado.
+ *
+ * Um PREMIO nao e opiniao. E fato publico: "Inception venceu 4 Oscars" e verdade
+ * independentemente de quem conta, e quem premiou foi a Academia — nao o IMDb,
+ * nao a OMDb, nao a Cinerie. Nao existe autoria editorial a proteger, porque nao
+ * existe juizo. Logo a pergunta que a invariante faz ("de quem e essa
+ * opiniao?") nao se aplica, e sobra a que tem resposta unica, verificavel e nao
+ * contestada: **quem entregou este dado?** A OMDb.
+ *
+ * O VERBO CARREGA A DECISAO. "fornecidos por" e transporte, nao autoria — e por
+ * isso o texto NAO segue a forma curta da casa ("Premiacao fornecida por OMDb"),
+ * que se leria como se a OMDb tivesse PREMIADO alguem. A forma longa e mais
+ * feia e diz a coisa certa; a feiura fica.
+ *
+ * POR QUE NAO O IMDb: o payload nao o nomeia (`Ratings[]` traz `Source` em cada
+ * item; `Awards` e string de topo sem rotulo) e a OMDb nega a afiliacao por
+ * escrito ("This site is not endorsed by or affiliated with IMDb.com").
+ * Credita-lo seria afirmar proveniencia que nao se consegue provar — a mesma
+ * familia de defeito que a PR #164 consertou no streaming.
+ *
+ * Historico completo da pergunta, da evidencia levantada e da decisao:
+ * `docs/legal/omdb-awards-source-provenance.md`.
+ * ======================================================================
+ */
+
+/**
+ * `content_type` da licenca de premiacao. `other` porque premio nao e nota,
+ * nao e oferta, nao e imagem e nao e texto de noticia — e nenhum valor novo do
+ * enum e necessario para dize-lo.
+ */
+export const AWARDS_LICENSE_CONTENT_TYPE = "other" as const;
+
+/** `use_case` que autoriza exibir o fato de premiacao. */
+export const AWARDS_DISPLAY_USE_CASE = "awards_display" as const;
+
+/** Fonte creditada pelo fato de premiacao (decisao de 2026-08-13). */
+export const AWARDS_SOURCE_KEY = "omdb";
+
+/**
+ * Credito exibido ao lado do fato, DENTRO da faixa.
+ *
+ * "Dados de premiacao fornecidos por" — e nao "Premiacao fornecida por", a forma
+ * curta usada nas notas e nas ofertas. A forma curta se leria como se a OMDb
+ * tivesse concedido o premio. Quem premia e a Academia; a OMDb entrega o dado.
+ */
+export const AWARDS_ATTRIBUTION_TEXT = "Dados de premiacao fornecidos por OMDb";
+
+/**
+ * Versao de politica DA FONTE (mesmo molde por fonte de `RATING_POLICY`).
+ *
+ * NAO e a leva: a leva continua sendo `AUTHORIZATION_BATCH`, e e ela que o
+ * `--policy-version` da CLI exige. Nenhuma leva nova foi criada aqui.
+ */
+export const AWARDS_POLICY_VERSION = "cinerie-source-auth/omdb/2026-08-v1";
+
+/**
+ * A entrada de autorizacao de premiacao.
+ *
+ * `sourceKey` e quem RECEBE O CREDITO do fato. Para premiacao ele e o proprio
+ * fornecedor (`omdb`) — ver a decisao acima —, e `providerKey` registra o mesmo
+ * valor porque e por ali que o dado chega. Os dois campos continuam separados no
+ * schema; o que mudou e que, para um FATO, eles coincidem sem mentir.
+ *
+ * Continua sendo uma FUNCAO, e nao um literal inline, porque e ela que documenta
+ * a forma exigida quando a fonte mudar (um agregador de premios de verdade, por
+ * exemplo): trocar a fonte e trocar os argumentos, nao reescrever a entrada.
+ */
+export function awardsAuthorizationEntry(input: {
+  readonly sourceKey: string;
+  readonly attributionText: string;
+  readonly policyVersion: string;
+  readonly requiresLinkback: boolean;
+  readonly notes: string;
+}): AuthorizationEntry {
+  return {
+    label: `Premiacao: ${input.sourceKey}`,
+    role: "editorial-rating-source",
+    license: {
+      sourceKey: input.sourceKey,
+      contentType: AWARDS_LICENSE_CONTENT_TYPE,
+      // Premio nao e nota: nao ha `rating_sources.key` a apontar, e o CHECK do
+      // banco so exige `rating_source_key` quando content_type='rating'.
+      ratingSourceKey: null,
+      providerKey: AWARDS_SOURCE_KEY === input.sourceKey ? input.sourceKey : "omdb",
+      territory: CINERIE_TERRITORY,
+      // `third_party`, nunca `official`: a OMDb entrega o dado, mas nao e a
+      // autoridade que concedeu o premio (isso e a Academia, o BAFTA, o Emmy).
+      licenseStatus: "third_party",
+      displayAllowed: true,
+      logoAllowed: false,
+      // Premio nao tem escala nem numero de nota. `score_allowed` governa o
+      // NUMERO DA NOTA (regra de ratings secao 5) e nao e lido pelo gate de
+      // premiacao — deixa-lo false mantem a licenca minima.
+      scoreAllowed: false,
+      reviewQuoteAllowed: false,
+      requiresAttribution: true,
+      requiresLinkback: input.requiresLinkback,
+      attributionText: input.attributionText,
+      policyVersion: input.policyVersion,
+      notes: input.notes,
+    },
+    decisions: [
+      {
+        useCase: AWARDS_DISPLAY_USE_CASE,
+        territory: CINERIE_TERRITORY,
+        stage: "approved_for_display",
+        displayAllowed: true,
+        storageAllowed: true,
+        derivativeAllowed: false,
+        attributionRequired: true,
+        linkbackRequired: input.requiresLinkback,
+        policyVersion: input.policyVersion,
+      },
+    ],
+  };
+}
+
 /** Autorização estática (independe do estado do banco). */
 export const STATIC_AUTHORIZATION: readonly AuthorizationEntry[] = [
   // TMDB — catálogo/metadados via a PRÓPRIA API oficial do TMDB (official).
@@ -344,6 +475,37 @@ export const STATIC_AUTHORIZATION: readonly AuthorizationEntry[] = [
     ],
   },
   ...["imdb", "rotten_tomatoes", "metacritic", "letterboxd", "filmaffinity"].map(ratingEntry),
+  // PREMIACAO — o FATO ("Venceu 4 Oscars"), creditado a quem o entregou.
+  // Decisao de 2026-08-13; o raciocinio inteiro esta no bloco de premiacao
+  // abaixo e em docs/legal/omdb-awards-source-provenance.md.
+  //
+  // LINKBACK DISPENSADO, e o motivo e MECANICO, nao de politica: `apply.ts` nao
+  // escreve `terms_url` (a coluna nao esta no INSERT de `source_licenses`), e o
+  // lookup de credito de premiacao le `terms_url` como URL de linkback. Com
+  // `requiresLinkback: true` a faixa cairia em `missing-linkback` para SEMPRE —
+  // exatamente o que aconteceria com Rotten Tomatoes e Metacritic antes da
+  // dispensa nominal delas. O credito TEXTUAL continua obrigatorio.
+  //
+  // REVERSAO AUTOMATICA, ja armada: `requiresLinkback: false` significa "nao
+  // EXIGE link", nunca "nao PODE ter". No dia em que `terms_url` for preenchido
+  // (por `apply.ts` ou a mao), o lookup passa a devolver a URL e a faixa exibe
+  // COM link no ciclo seguinte do worker, sem nova decisao humana. A checagem de
+  // HTTPS continua valendo, entao um link ruim nunca passa.
+  awardsAuthorizationEntry({
+    sourceKey: AWARDS_SOURCE_KEY,
+    attributionText: AWARDS_ATTRIBUTION_TEXT,
+    policyVersion: AWARDS_POLICY_VERSION,
+    requiresLinkback: false,
+    notes:
+      "Fato de premiacao (campo Awards da OMDb), promovido de api_cache para entity_awards. " +
+      "Premio e FATO PUBLICO, nao opiniao: quem premiou foi a Academia/BAFTA/Emmy, e nao ha " +
+      "autoria editorial a proteger. Por isso o credito e de quem ENTREGOU o dado (OMDb) e o " +
+      "verbo e 'fornecidos por', nunca 'apurados por'. NAO se aplica a notas: la vale a " +
+      "invariante 2 e o guard de external_ratings continua recusando provider=fonte. " +
+      "Logo NAO autorizado (logo_allowed=false). Linkback dispensado por limitacao mecanica " +
+      "(apply.ts nao escreve terms_url); credito textual obrigatorio. " +
+      "Decisao de Pablo Eduardo, 2026-08-13: docs/legal/omdb-awards-source-provenance.md.",
+  }),
   // Movie of the Night — AGREGADOR de streaming (via Streaming Availability API,
   // RapidAPI). É a fonte cuja atribuição vai perto do painel de streaming. NÃO é
   // um provedor de streaming (Netflix, etc.) — por isso content_type='other',
@@ -385,112 +547,6 @@ export const STATIC_AUTHORIZATION: readonly AuthorizationEntry[] = [
     ],
   },
 ];
-
-/**
- * ============ PREMIACAO (`entity_awards`): DECISAO DE FONTE **PENDENTE** ============
- *
- * O campo `Awards` da OMDb ("Won 4 Oscars. 160 wins & 220 nominations total")
- * esta em `api_cache` desde o primeiro sync e foi promovido para `entity_awards`
- * pelo worker `pnpm --filter @screena/ratings awards:promote`. Ele NAO aparece
- * na tela, e nao vai aparecer, porque **nao ha licenca nem decisao de uso
- * registrada aqui**.
- *
- * NAO E ESQUECIMENTO. A pergunta que precede a licenca — **quem e a fonte
- * editorial do fato "ganhou 4 Oscars"?** — nao foi respondida com evidencia:
- *
- *  - o PAYLOAD nao declara fonte para este campo. `Ratings[]` traz `Source` em
- *    cada item; `Awards` e uma string de topo, sem rotulo. O mesmo fornecedor
- *    que sabe nomear a fonte quando esta repassando uma nao nomeia nenhuma
- *    aqui;
- *  - a DOCUMENTACAO da OMDb afirma que "all content and images on the site are
- *    contributed and maintained by our users" e carrega o aviso "This site is
- *    not endorsed by or affiliated with IMDb.com";
- *  - o FORMATO da frase e o do resumo de premios do IMDb, e terceiros descrevem
- *    a OMDb como dado do IMDb sistematizado — indicio forte, mas indicio.
- *
- * Creditar o IMDb afirmaria uma proveniencia que o IMDb nunca declarou e que a
- * OMDb desmente por escrito. Creditar a OMDb colapsaria fornecedor tecnico e
- * fonte editorial. As duas saidas sao afirmacoes que a evidencia disponivel nao
- * sustenta — e proveniencia falsa e exatamente o defeito que a separacao por
- * fornecedor (ver o bloco seguinte, streaming) existe para impedir.
- *
- * Dossie completo, com as duas opcoes e o que cada uma implica:
- * `docs/legal/omdb-awards-source-provenance.md`. A decisao e do proprietario.
- *
- * COMO A DECISAO ENTRA (uma linha): acrescentar a chamada de
- * `awardsAuthorizationEntry(...)` ao `STATIC_AUTHORIZATION` com a fonte
- * decidida, o texto de credito dela e a versao de politica. Nada mais no codigo
- * precisa mudar: o worker resolve o credito CONSULTANDO a licenca vigente —
- * ele nao conhece nenhuma fonte de premio por nome, de proposito.
- * ======================================================================
- */
-
-/**
- * `content_type` da licenca de premiacao. `other` porque premio nao e nota,
- * nao e oferta, nao e imagem e nao e texto de noticia — e nenhum valor novo do
- * enum e necessario para dize-lo.
- */
-export const AWARDS_LICENSE_CONTENT_TYPE = "other" as const;
-
-/** `use_case` que autoriza exibir o fato de premiacao. */
-export const AWARDS_DISPLAY_USE_CASE = "awards_display" as const;
-
-/**
- * A entrada de autorizacao de premiacao, pronta para quando a fonte for
- * decidida. **Nao e chamada por `STATIC_AUTHORIZATION` hoje** — ver o bloco
- * acima.
- *
- * `sourceKey` e a FONTE EDITORIAL do fato (quem contou os premios), nunca o
- * fornecedor tecnico. `providerKey` registra por onde o dado chegou (`omdb`),
- * como em toda licenca: os dois campos coexistem e nunca colapsam.
- */
-export function awardsAuthorizationEntry(input: {
-  readonly sourceKey: string;
-  readonly attributionText: string;
-  readonly policyVersion: string;
-  readonly requiresLinkback: boolean;
-  readonly notes: string;
-}): AuthorizationEntry {
-  return {
-    label: `Premiacao: ${input.sourceKey}`,
-    role: "editorial-rating-source",
-    license: {
-      sourceKey: input.sourceKey,
-      contentType: AWARDS_LICENSE_CONTENT_TYPE,
-      // Premio nao e nota: nao ha `rating_sources.key` a apontar, e o CHECK do
-      // banco so exige `rating_source_key` quando content_type='rating'.
-      ratingSourceKey: null,
-      providerKey: "omdb",
-      territory: CINERIE_TERRITORY,
-      licenseStatus: "third_party",
-      displayAllowed: true,
-      logoAllowed: false,
-      // Premio nao tem escala nem numero de nota. `score_allowed` governa o
-      // NUMERO DA NOTA (regra de ratings secao 5) e nao e lido pelo gate de
-      // premiacao — deixa-lo false mantem a licenca minima.
-      scoreAllowed: false,
-      reviewQuoteAllowed: false,
-      requiresAttribution: true,
-      requiresLinkback: input.requiresLinkback,
-      attributionText: input.attributionText,
-      policyVersion: input.policyVersion,
-      notes: input.notes,
-    },
-    decisions: [
-      {
-        useCase: AWARDS_DISPLAY_USE_CASE,
-        territory: CINERIE_TERRITORY,
-        stage: "approved_for_display",
-        displayAllowed: true,
-        storageAllowed: true,
-        derivativeAllowed: false,
-        attributionRequired: true,
-        linkbackRequired: input.requiresLinkback,
-        policyVersion: input.policyVersion,
-      },
-    ],
-  };
-}
 
 /**
  * ============ PROVENIENCIA DA OFERTA: UMA LICENCA POR FORNECEDOR TECNICO ============

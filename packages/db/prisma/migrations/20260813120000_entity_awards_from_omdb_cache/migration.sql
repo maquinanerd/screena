@@ -182,11 +182,26 @@ BEGIN
       RAISE EXCEPTION 'entity_awards fail-closed: source_key obrigatorio para display_allowed (a fonte editorial do fato de premiacao nao foi decidida - ver docs/legal/omdb-awards-source-provenance.md)';
     END IF;
 
-    -- Invariante 2 em outra roupa: o fornecedor tecnico nunca vira a fonte do
-    -- fato por descuido de escrita.
-    IF lower(btrim(NEW."source_key")) = lower(btrim(NEW."provider_api")) THEN
-      RAISE EXCEPTION 'entity_awards fail-closed: source_key nao pode ser igual a provider_api (%) - fornecedor tecnico nao e fonte editorial (invariante 2)', NEW."provider_api";
-    END IF;
+    -- POR QUE NAO HA CHECK `source_key <> provider_api` AQUI.
+    --
+    -- A invariante 2 (`provider_api` nunca e `rating_source`) existe porque uma
+    -- NOTA e uma opiniao: 8,5/10 pertence a quem julgou, e colapsar o
+    -- transportador com o autor do juizo seria mentira. Por isso IMDb, Rotten
+    -- Tomatoes e Metacritic sao creditados separadamente mesmo chegando todos
+    -- pela OMDb, e por isso o guard de `external_ratings` recusa a igualdade -
+    -- ele continua exatamente como estava.
+    --
+    -- Um PREMIO nao e opiniao: e fato publico. "Venceu 4 Oscars" e verdade
+    -- independentemente de quem conta, e quem premiou foi a Academia. Nao ha
+    -- autoria editorial a proteger, entao a pergunta "de quem e esse juizo?" nao
+    -- se aplica; sobra "quem entregou o dado?", que tem resposta unica e
+    -- verificavel. Creditar o transportador aqui descreve o que aconteceu - o
+    -- verbo do credito e "fornecidos por", nao "apurados por".
+    --
+    -- A trava real continua sendo a de baixo: `source_key` tem de casar com uma
+    -- LICENCA vigente que carregue uma decisao `awards_display`. Escrever
+    -- `source_key` a mao sem licenca nao passa.
+    -- Decisao do proprietario, 2026-08-13: docs/legal/omdb-awards-source-provenance.md.
 
     IF NEW."approved_payload_hash" IS NULL
        OR NEW."approved_payload_hash" <> entity_award_payload_fingerprint_v1(

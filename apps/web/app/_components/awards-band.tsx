@@ -26,6 +26,11 @@ export type { AwardsCredit };
  * Sem `credit.text` a faixa NAO renderiza — mesma trava, mesmo motivo que
  * `ratings-presenter.ts`. Nunca existe faixa sem credito.
  *
+ * O texto vem da LICENCA ("Dados de premiacao fornecidos por OMDb"), nunca
+ * daqui. Premio e fato publico, entao o credito e de quem ENTREGOU o dado, com
+ * o verbo do transporte — decisao de 2026-08-13, em
+ * docs/legal/omdb-awards-source-provenance.md.
+ *
  * `href` e opcional e so vira link quando houver uma pagina de premios de
  * verdade. Sem ela, o resumo e texto — nunca um CTA que nao leva a lugar
  * nenhum.

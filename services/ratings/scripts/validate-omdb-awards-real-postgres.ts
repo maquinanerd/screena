@@ -21,12 +21,16 @@
  *   4. CONTROLE POSITIVO DO CONTROLE NEGATIVO: o MESMO UPDATE, integro, passa —
  *      senao um erro de SQL qualquer deixaria os negativos verdes.
  *
- * A FONTE USADA AQUI E FICTICIA, E ISSO E DELIBERADO. A fonte editorial real do
- * campo `Awards` da OMDb NAO foi determinada (ver
- * docs/legal/omdb-awards-source-provenance.md). O validador prova o MECANISMO —
- * que a cadeia licenca -> decisao -> credito -> trigger funciona — sem afirmar
- * de quem e o credito. Nomear o IMDb aqui seria decidir a questao num script de
- * teste.
+ * A LICENCA VEM DO SPEC REAL (`STATIC_AUTHORIZATION`), nao de valores digitados
+ * aqui. E isso que faz o cenario provar o SPEC em vez de uma copia dele: se
+ * alguem mudar o credito, a versao ou o linkback em
+ * `services/legal/src/authorization-spec.ts`, este validador muda de
+ * comportamento junto.
+ *
+ * A decisao que ele exercita (2026-08-13): premio e FATO PUBLICO, nao opiniao,
+ * entao o credito e de quem ENTREGOU o dado — `source_key = 'omdb'`, igual ao
+ * `provider_api`. Para NOTAS essa igualdade continua proibida, e o guard de
+ * `external_ratings` que a recusa nao foi tocado.
  *
  * Motor: `embedded-postgres` (PostgreSQL 16 real, binario portatil, EFEMERO).
  *
@@ -49,7 +53,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { OMDB_PROVIDER_API } from '@screena/omdb-client'
-import { awardsAuthorizationEntry, CINERIE_TERRITORY } from '@screena/legal'
+import { AWARDS_DISPLAY_USE_CASE, CINERIE_TERRITORY, STATIC_AUTHORIZATION } from '@screena/legal'
 import EmbeddedPostgres from 'embedded-postgres'
 
 import { runAwardsPromotion } from '../src/awards/run.js'
@@ -65,11 +69,10 @@ const IMDB_ID = 'tt1375666'
 /** A frase MEDIDA em producao para este titulo. */
 const AWARDS_RAW = 'Won 4 Oscars. 160 wins & 220 nominations total'
 
-/**
- * Fonte FICTICIA do cenario. Nao e o IMDb, nao e a OMDb, nao e ninguem: e um
- * rotulo de validacao. Ver o cabecalho.
- */
-const FICTIONAL_SOURCE = 'validador-fonte-de-premiacao'
+/** A entrada REAL de premiacao do spec — nada e digitado a mao aqui. */
+const AWARDS_ENTRY = STATIC_AUTHORIZATION.find((entry) =>
+  entry.decisions.some((decision) => decision.useCase === AWARDS_DISPLAY_USE_CASE),
+)!
 
 interface CheckResult {
   readonly n: number
@@ -228,13 +231,7 @@ async function runChecks(prisma: PrismaLike): Promise<void> {
   )
 
   // ------- 5. COM licenca (hipotetica), a mesma linha acende pelo trigger ----
-  const entry = awardsAuthorizationEntry({
-    sourceKey: FICTIONAL_SOURCE,
-    attributionText: 'Premiacao fornecida por Fonte de Validacao',
-    policyVersion: 'validador/premiacao/2026-08-v1',
-    requiresLinkback: true,
-    notes: 'Licenca FICTICIA criada pelo validador. Nao representa decisao nenhuma.',
-  })
+  const entry = AWARDS_ENTRY
   const licenseRows = await q<{ id: bigint }>(
     `INSERT INTO source_licenses (
        source_key, content_type, rating_source_key, provider_key, territory_code,
@@ -247,7 +244,13 @@ async function runChecks(prisma: PrismaLike): Promise<void> {
        ${lit(entry.license.licenseStatus)}::"LicenseStatus", ${entry.license.displayAllowed},
        ${entry.license.logoAllowed}, ${entry.license.scoreAllowed}, ${entry.license.reviewQuoteAllowed},
        ${entry.license.requiresAttribution}, ${entry.license.requiresLinkback},
-       ${lit(entry.license.attributionText)}, 'https://exemplo.invalid/premios',
+       ${lit(entry.license.attributionText)},
+       -- terms_url fica NULL de PROPOSITO: apply.ts nao escreve esta coluna.
+       -- Preenche-la aqui faria o validador provar um estado que producao nunca
+       -- alcanca, e a dispensa de linkback existe exatamente por causa disso.
+       -- (Sem crase nesta linha: uma crase dentro do SQL FECHA o template
+       -- literal, e o erro aparece como sintaxe TypeScript numa linha de SQL.)
+       NULL,
        'validador@cinerie', now(), true, 'validator', ${lit(entry.license.policyVersion)},
        ${lit(entry.license.notes)}, now()
      ) RETURNING id`,
@@ -270,7 +273,12 @@ async function runChecks(prisma: PrismaLike): Promise<void> {
        )`,
     )
   }
-  record(8, 'licenca de premiacao (FICTICIA) + decisao awards_display aplicadas', true, 'ok')
+  record(
+    8,
+    'licenca de premiacao do SPEC REAL + decisao awards_display aplicadas',
+    true,
+    `source_key=${entry.license.sourceKey} politica=${entry.license.policyVersion}`,
+  )
 
   // Lookup NOVO: o cache e por execucao, e a licenca acabou de nascer.
   const second = await runAwardsPromotion(
@@ -286,14 +294,20 @@ async function runChecks(prisma: PrismaLike): Promise<void> {
   )
   record(
     10,
-    'COM licenca: o credito gravado e o da licenca (texto + linkback), nunca do provedor tecnico',
-    lit2?.source_key === FICTIONAL_SOURCE &&
-      lit2?.attribution_text === 'Premiacao fornecida por Fonte de Validacao' &&
-      lit2?.attribution_url === 'https://exemplo.invalid/premios',
-    `source=${String(lit2?.source_key)} texto=${JSON.stringify(lit2?.attribution_text ?? null)}`,
+    'COM licenca: o credito gravado e o da LICENCA, literal (texto de transporte, sem link)',
+    lit2?.source_key === entry.license.sourceKey &&
+      lit2?.attribution_text === entry.license.attributionText &&
+      lit2?.attribution_url === null,
+    `source=${String(lit2?.source_key)} texto=${JSON.stringify(lit2?.attribution_text ?? null)} url=${String(lit2?.attribution_url)}`,
   )
   record(
     11,
+    'source_key = provider_api PASSA para PREMIO (fato), e continua proibido para NOTA (opiniao)',
+    lit2?.source_key === 'omdb' && lit2.display_allowed === true,
+    `source_key=${String(lit2?.source_key)} provider_api=omdb display=${String(lit2?.display_allowed)}`,
+  )
+  record(
+    12,
     'IDEMPOTENTE: reexecutar nao cria linha nova',
     (await q<{ n: bigint }>(`SELECT count(*) AS n FROM entity_awards`))[0]!.n.toString() === '1',
     'uma linha para o titulo',
@@ -342,7 +356,7 @@ async function runChecks(prisma: PrismaLike): Promise<void> {
       ${WHERE}`,
   )
   record(
-    12,
+    13,
     'CONTROLE NEGATIVO (a): sem FONTE nomeada o trigger recusa (o gate da decisao pendente)',
     noSource !== null && noSource.includes('source_key obrigatorio'),
     noSource === null ? 'o UPDATE passou — o trigger NAO barrou' : `mensagem: ${noSource.slice(0, 130)}`,
@@ -355,7 +369,7 @@ async function runChecks(prisma: PrismaLike): Promise<void> {
       ${WHERE}`,
   )
   record(
-    13,
+    14,
     'CONTROLE NEGATIVO (b): sem ATRIBUICAO o trigger recusa (com hash valido)',
     noAttribution !== null && noAttribution.includes('attribution_text exigido ausente'),
     noAttribution === null
@@ -396,7 +410,7 @@ async function runChecks(prisma: PrismaLike): Promise<void> {
       ${WHERE}`,
   )
   record(
-    14,
+    15,
     'CONTROLE NEGATIVO (c): decisao de rating_display NAO acende a faixa de premios',
     wrongUseCase !== null && wrongUseCase.includes('so awards_display autoriza'),
     wrongUseCase === null
@@ -413,7 +427,7 @@ async function runChecks(prisma: PrismaLike): Promise<void> {
       ${WHERE}`,
   )
   record(
-    15,
+    16,
     'CONTROLE POSITIVO: o MESMO UPDATE, integro, PASSA (o gate e a governanca, nao o SQL)',
     intactOk === null,
     intactOk === null ? 'UPDATE aceito' : `recusado: ${intactOk.slice(0, 130)}`,
@@ -428,7 +442,7 @@ async function runChecks(prisma: PrismaLike): Promise<void> {
   await runAwardsPromotion(OPTIONS, deps(createPrismaAwardsCreditLookup(prisma as never)))
   const changed = await stored()
   record(
-    16,
+    17,
     'MUDANCA REVOGA e REAPROVA: a frase nova entra e o hash e recomputado sobre ela',
     changed?.awards_raw === 'Won 5 Oscars. 161 wins & 221 nominations total' &&
       changed?.highlight_count === 5 &&

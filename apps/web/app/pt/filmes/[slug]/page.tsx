@@ -33,12 +33,13 @@ import { getMoviePageData } from '../../../../src/server/movie-page'
  *    (`PRODUCTION_FORMULA_REGISTRY` vazio) nem decisão `cinerie_score_display`
  *    com `derivative_allowed`. O bloco não renderiza — nunca um número
  *    inventado nem "ainda não calculado" ocupando a hierarquia do desenho.
- *  - Faixa de prêmios: o dado EXISTE (`entity_awards`, promovido do campo
- *    `Awards` da OMDb que estava em `api_cache`) e a faixa está LIGADA — mas
- *    ela só acende com licença. Hoje não há: a fonte editorial do fato
- *    ("quem contou os 4 Oscars?") não foi determinada, então `display_allowed`
- *    é `false` em toda linha e o bloco não renderiza. Ver
- *    `docs/legal/omdb-awards-source-provenance.md`.
+ *  - Faixa de prêmios: LIGADA e licenciada. O dado vem de `entity_awards`
+ *    (promovido do campo `Awards` da OMDb que estava em `api_cache`) e o
+ *    crédito é da OMDb — prêmio é FATO público, não opinião, então quem recebe
+ *    o crédito é quem entregou o dado, com o verbo do transporte ("Dados de
+ *    premiação fornecidos por"). Decisão de 2026-08-13 em
+ *    `docs/legal/omdb-awards-source-provenance.md`. A faixa só aparece em
+ *    títulos cuja linha passou pelo gate; sem ela, o motivo vai para o log.
  *  - Chips de gênero: `movies` não tem relação com `genres` (a tabela é a lista
  *    canônica por media_type, sem junção com o título).
  *  - "Mais como este": sem dataset de recomendação determinístico.
@@ -156,9 +157,10 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
   const awardsSection = decideSection(awards, {
     ...entityRef,
     section: 'premios',
-    // DERIVADO do estado do catalogo, nunca escrito a mao aqui: "a fonte do
-    // fato nao foi decidida" e passo pendente; "este titulo nao ganhou nada" e
-    // fato sobre a obra. Os dois sao identicos na tela, e so o log separa.
+    // DERIVADO do estado do catalogo, nunca escrito a mao aqui: "nao ha faixa
+    // exibivel em titulo nenhum" e passo pendente (licenca nao aplicada no
+    // banco, promocao nao reexecutada); "este titulo nao ganhou nada" e fato
+    // sobre a obra. Os dois sao identicos na tela, e so o log separa.
     // O `??` nunca e usado: `awardsAbsence` so e null quando ha faixa.
     reason: awardsAbsence ?? 'no_awards_source',
   })

@@ -264,9 +264,10 @@ export default async function SeriesPage({
   const awardsSection = decideSection(awards, {
     ...entityRef,
     section: 'premios',
-    // DERIVADO do estado do catalogo, nunca escrito a mao aqui: "a fonte do
-    // fato nao foi decidida" e passo pendente; "este titulo nao ganhou nada" e
-    // fato sobre a obra. Os dois sao identicos na tela, e so o log separa.
+    // DERIVADO do estado do catalogo, nunca escrito a mao aqui: "nao ha faixa
+    // exibivel em titulo nenhum" e passo pendente (licenca nao aplicada no
+    // banco, promocao nao reexecutada); "este titulo nao ganhou nada" e fato
+    // sobre a obra. Os dois sao identicos na tela, e so o log separa.
     // O `??` nunca e usado: `awardsAbsence` so e null quando ha faixa.
     reason: awardsAbsence ?? 'no_awards_source',
   })

@@ -1,12 +1,33 @@
-# Prêmios da OMDb — de quem é o crédito? (**decisão PENDENTE**)
+# Prêmios da OMDb — de quem é o crédito? (**DECIDIDO em 2026-08-13**)
 
-> Registro de uma pergunta que **não foi respondida com evidência**, e do que
-> depende dela. Idioma: pt-BR. Nenhum valor de chave, token ou senha aparece
-> aqui.
+> Registro de uma pergunta, da evidência levantada, e da decisão que a fechou.
+> Idioma: pt-BR. Nenhum valor de chave, token ou senha aparece aqui.
 >
-> **Estado: BLOQUEADO.** O dado está no banco, o pipeline está pronto e testado,
-> e a faixa de prêmios **não aparece** — porque não sabemos a quem creditar o
-> fato. A decisão é do proprietário.
+> **Estado: DECIDIDO.** O crédito é da **OMDb**, com o texto
+> **"Dados de premiação fornecidos por OMDb"**. As seções 1–4 são o histórico da
+> pergunta — ficam como estão, porque é o que impede a próxima pessoa de reabrir
+> isto do zero. A decisão e o raciocínio que a sustenta estão na **seção 5**.
+
+---
+
+## 0. A decisão, em uma tela
+
+| Campo | Valor |
+| --- | --- |
+| **Quem decidiu** | Pablo Eduardo — proprietário da Cinerie |
+| **Quando** | 2026-08-13 |
+| **Crédito** | `Dados de premiação fornecidos por OMDb` |
+| **`source_key`** | `omdb` |
+| **`use_case`** | `awards_display` |
+| **`content_type`** | `other` (prêmio não é nota, oferta, imagem nem notícia) |
+| **`policy_version`** (da fonte) | `cinerie-source-auth/omdb/2026-08-v1` |
+| **Leva** (`--policy-version` da CLI) | `cinerie-source-auth/2026-07-v1` — **nenhuma leva nova** |
+| **Logo** | **não autorizado** (`logo_allowed = false`) |
+| **Linkback** | dispensado (motivo mecânico — ver seção 5); crédito textual **obrigatório** |
+| **Território** | `BR` |
+
+Onde vive: [`services/legal/src/authorization-spec.ts`](../../services/legal/src/authorization-spec.ts),
+travada por [`awards-authorization.test.ts`](../../services/legal/src/__tests__/awards-authorization.test.ts).
 
 ---
 
@@ -95,18 +116,63 @@ autor. Não sabemos qual.
 
 ---
 
-## 3. Por que isso não pode ser resolvido no chute
+## 3. A decisão: o crédito é da OMDb — e por que isso não colapsa a invariante 2
 
-As duas saídas disponíveis são, ambas, afirmações que a evidência não sustenta:
+**Decidido por Pablo Eduardo em 2026-08-13**, depois de o levantamento acima ter
+parado sem resposta. O raciocínio, na íntegra:
 
-| Saída | O que ela afirma | Por que não se sustenta |
-| --- | --- | --- |
-| **Creditar o IMDb** | "o IMDb publicou esta contagem e a repassou pela OMDb" | O IMDb nunca declarou isso, e a OMDb **desmente a afiliação por escrito**. Seria a mesma proveniência falsa que a PR #164 acabou de consertar no streaming (creditar "Movie of the Night" a dado que vinha do TMDB/JustWatch). |
-| **Creditar a OMDb** | "a OMDb apurou esta contagem" | Colapsa fornecedor técnico e fonte editorial — o núcleo da invariante 2. E a frase "contributed by our users" é boilerplate de um site com formulário de contribuição, não prova de que **esta** contagem foi apurada lá. |
+### 3.1 A invariante 2 foi escrita para **opinião**, e prêmio não é opinião
 
-**Por isso a decisão parou aqui.** Não é excesso de zelo: um crédito errado é
-pior que crédito ausente — ele afirma publicamente que uma organização disse
-algo que ela não disse.
+`provider_api` nunca é `rating_source` — e está certo, porque **uma nota é uma
+opinião**. `8,5/10` pertence a quem julgou. É por isso que IMDb, Rotten Tomatoes
+e Metacritic são creditados separadamente mesmo chegando todos no mesmo payload
+da OMDb, e por isso colapsá-los seria mentira.
+
+Um prêmio **não é opinião. É fato público.** "Inception venceu 4 Oscars" é
+verdade independentemente de quem conta. Quem premiou foi a Academia — não o
+IMDb, não a OMDb, não a Cinerie. Não existe autoria editorial a proteger, porque
+não existe juízo: existe um evento que aconteceu.
+
+Então a pergunta que a invariante faz — *"de quem é essa opinião?"* — **não se
+aplica**. A que sobra é *"quem entregou este dado?"*, e essa tem resposta única,
+verificável e não contestada: a OMDb.
+
+### 3.2 O verbo carrega a decisão
+
+O crédito é **"Dados de premiação fornecidos por OMDb"**, e não a forma curta da
+casa (`"Premiação fornecida por OMDb"`, no molde de *"Nota fornecida por IMDb"*).
+
+A forma curta se leria como se a OMDb tivesse **premiado** alguém. A longa diz o
+que de fato aconteceu: **fornecidos por** é transporte, não autoria. É mais feia
+e está certa; a feiura fica, e há teste literal impedindo o "conserto".
+
+### 3.3 Creditar o IMDb seria pior
+
+Pelo motivo levantado na seção 2: o payload não o nomeia, e a OMDb nega a
+afiliação por escrito. Seria afirmar uma proveniência que não se consegue provar
+— a mesma família de defeito que a PR #164 consertou no streaming (creditar
+"Movie of the Night" a dado que vinha do TMDB/JustWatch).
+
+### 3.4 O que esta decisão **não** autoriza
+
+- **Não** vale para notas. Para `external_ratings` a invariante 2 continua
+  inteira, e o guard do banco que recusa `provider_api = rating_source` **não foi
+  tocado**. Travado por
+  [`awards-authorization.test.ts`](../../services/legal/src/__tests__/awards-authorization.test.ts),
+  que verifica as duas metades: a licença de premiação existe **e** nenhuma
+  licença de `rating` credita um fornecedor técnico.
+- **Não** autoriza logo. `logo_allowed = false`: o nome da OMDb aparece em texto,
+  nunca a marca gráfica.
+- **Não** autoriza obra derivada (`derivative_allowed = false`).
+
+### 3.5 O único ponto do código que contradizia a decisão — e foi removido
+
+A migration `20260813120000_entity_awards_from_omdb_cache` nascia com um check
+`source_key <> provider_api` no trigger de premiação. **Ele não vinha de nenhuma
+invariante do projeto**: era uma extensão da regra de notas para um domínio que
+ela não cobre, escrita por precaução antes de a decisão existir. Foi removido, com
+o motivo registrado no próprio SQL. A trava real permanece: `source_key` tem de
+casar com uma **licença vigente** que carregue uma decisão `awards_display`.
 
 ---
 
@@ -132,71 +198,92 @@ de 2026-08-12
 A autorização vigente foi tomada "com ciência explícita do licenciamento de cada
 fonte"; esta nota apenas deixa a cláusula escrita onde ela pode ser lida.
 
+**Isto não é uma pendência aberta.** A decisão sobre usar a OMDb foi tomada pelo
+proprietário, com informação completa, quando ela foi escolhida para as notas —
+que estão no ar desde 2026-08-12. Estender o mesmo fornecedor à premiação é a
+**mesma decisão**, não uma nova. O registro fica aqui; nenhuma tarefa foi aberta,
+nenhum aviso foi adicionado ao código.
+
 ---
 
-## 5. O que já está pronto, esperando a decisão
+## 5. Como a decisão é executada pelo sistema
 
-Tudo, exceto a decisão. **Nenhuma linha de código deste repositório nomeia a
-fonte editorial do fato de premiação** — e isso é estrutural, não disciplina:
+**Nenhuma linha de código nomeia a fonte de premiação por conta própria** — isso
+não mudou com a decisão, e é o que a torna reversível:
 
-- **O dado está no domínio.** `entity_awards` guarda o literal bruto **e** a
-  forma reconhecida (`outcome`, `highlight_count`, `award_name`, `wins`,
-  `nominations`), com `provider_api = 'omdb'`, hash do payload e `fetched_at`.
-- **Toda linha nasce fail-closed:** `display_allowed = false`,
-  `license_status = 'unknown'`, `source_key = NULL`.
 - **O worker DESCOBRE a fonte perguntando à licença.**
   [`awards-credit-lookup.ts`](../../services/ratings/src/persistence/awards-credit-lookup.ts)
-  não recebe fonte como argumento: ele lê a licença vigente de premiação e usa o
-  `source_key` **dela**. Sem licença → `no-license`, e o motivo é reportado.
-  Duas licenças → `ambiguous`, e ele recusa em vez de sortear.
-- **O banco trava.** O trigger `entity_awards_display_guard_trg` recusa
-  `display_allowed = true` sem fonte nomeada, sem crédito, ou com decisão de
-  outro `use_case` — provado contra PostgreSQL real por
-  `pnpm --filter @screena/ratings validate:awards` (16/16 checks).
-- **A faixa está ligada na página**, dentro de um `<SectionBoundary>`. Como não
-  há licença, ela não renderiza e o log sai:
-  `{"event":"section_absent","section":"premios","reason":"no_awards_source","actionable":true}`.
+  não recebe fonte como argumento: lê a licença vigente de premiação e usa o
+  `source_key` **dela**. Sem licença → `no-license`, motivo reportado. Duas
+  licenças → `ambiguous`, e ele **recusa em vez de sortear**. Trocar a fonte um
+  dia (um agregador de prêmios de verdade, por exemplo) é trocar os argumentos de
+  `awardsAuthorizationEntry(...)`, não reescrever o pipeline.
+- **O crédito é hidratado NA ESCRITA.** `entity_awards` guarda o literal bruto e
+  a forma reconhecida; a licença entra no mesmo `upsert`. Consequência
+  operacional que não pode ser esquecida: **aplicar a licença sozinho não acende
+  nada** — é preciso reexecutar o worker (ver seção 6).
+- **Toda linha nasce fail-closed** (`display_allowed = false`,
+  `license_status = 'unknown'`, `source_key = NULL`) e só então a política decide
+  se acende.
+- **O banco trava.** `entity_awards_display_guard_trg` recusa
+  `display_allowed = true` sem fonte nomeada, sem crédito, com hash divergente ou
+  com decisão de outro `use_case`.
+
+### Por que o linkback é dispensado (motivo mecânico, não de política)
+
+`apply.ts` **não escreve `terms_url`** — a coluna não está no `INSERT` de
+`source_licenses` —, e é dela que o lookup de premiação tira a URL de crédito.
+Com `requires_linkback = true`, a faixa cairia em `missing-linkback` **para
+sempre**, exatamente como aconteceria com Rotten Tomatoes e Metacritic antes da
+dispensa nominal delas.
+
+O crédito **textual** continua obrigatório: sem ele, nada aparece.
+
+**Reversão automática, já armada:** `requires_linkback = false` significa "não
+**exige** link", nunca "não **pode** ter". No dia em que `terms_url` for
+preenchido, o lookup passa a devolver a URL e a faixa exibe **com link** no ciclo
+seguinte do worker, sem nova decisão humana. A checagem de HTTPS continua
+valendo, então um link ruim nunca passa.
 
 ---
 
-## 6. Como a decisão entra (uma linha)
+## 6. Sequência para produção
 
-Decidida a fonte, acrescente a chamada abaixo a `STATIC_AUTHORIZATION` em
-[`services/legal/src/authorization-spec.ts`](../../services/legal/src/authorization-spec.ts):
+Na ordem. **Sem `--`**: no pnpm 9.15.4 deste repositório o separador chega
+literal e é recusado pelos parsers.
 
-```ts
-awardsAuthorizationEntry({
-  sourceKey: '<a fonte decidida>',
-  attributionText: '<o crédito textual exigido por ela>',
-  policyVersion: 'cinerie-source-auth/<fonte>/2026-08-v1',
-  requiresLinkback: <true|false>,
-  notes: '<por que, e sob que base>',
-})
+```bash
+corepack pnpm legal sources review
 ```
 
-Três pontos que a decisão precisa cobrir:
+```bash
+corepack pnpm legal sources apply --reviewer="Pablo Eduardo — proprietario da Cinerie" --policy-version="cinerie-source-auth/2026-07-v1" --confirm
+```
 
-1. **`sourceKey`** — a fonte editorial. Nunca `omdb` (o trigger recusa
-   `source_key = provider_api`).
-2. **`attributionText`** — o crédito exibido na faixa, ao lado do fato. Ele é
-   obrigatório: sem ele nada aparece.
-3. **`requiresLinkback`** — se `true`, a licença precisa de `terms_url` (é dela
-   que sai o link do crédito; não há URL por título para um fato de premiação, e
-   fabricar uma a partir do nome do filme está fora de questão).
+```bash
+corepack pnpm --filter @screena/ratings awards:promote --apply
+```
 
-Sobre `policy_version`: as fontes de rating usam versão **por fonte**
-(`cinerie-source-auth/imdb/2026-08-v1`). Se a decisão exigir uma **leva nova**
-(rótulo de lote, como `AUTHORIZATION_BATCH`), isso é decisão do proprietário —
-não foi criada nenhuma aqui.
+Notas sobre o segundo comando:
 
-Depois de aplicar a licença (`pnpm legal apply --confirm`), o comando que faz a
-primeira faixa aparecer está em
+- `--policy-version` é a **leva** (`AUTHORIZATION_BATCH`), e a CLI **recusa
+  qualquer outro valor**. A versão por fonte
+  (`cinerie-source-auth/omdb/2026-08-v1`) vive dentro da entrada do spec, não
+  na linha de comando. Nenhuma leva nova foi criada.
+- `--confirm` exige `--reviewer` **e** `--policy-version`; sem elas o comando
+  mostra o plano e não escreve.
+- O terceiro comando **não é opcional**: o crédito é gravado na escrita da linha,
+  então sem ele as linhas já promovidas continuam com `source_key = NULL`.
+  Em produção ele exige `CINERIE_AWARDS_PROMOTION_AUTHORIZED=true`.
+
+Runbook operacional completo (flags, motivos de recusa, diagnóstico):
 [`docs/operations/awards-promotion-runbook.md`](../operations/awards-promotion-runbook.md).
 
 ---
 
 ## 7. Resumo em uma frase
 
-**O dado está guardado, o caminho inteiro está pronto e travado, e a faixa não
-acende — porque a única coisa que falta é uma afirmação sobre o mundo que só o
-proprietário pode fazer: de quem é o crédito.**
+**Prêmio é fato, não opinião: não há autoria editorial a proteger, então o
+crédito é de quem entregou o dado — a OMDb —, com o verbo do transporte
+("fornecidos por"), sem logo e sem link, e a invariante 2 segue intacta onde ela
+foi escrita para valer: nas notas.**

@@ -5,13 +5,16 @@
 
 ---
 
-## 0. Estado de hoje, em uma linha
+## 0. Estado, em uma linha
 
-O dado **está no banco**; a faixa **não aparece**, porque a fonte editorial do
-campo `Awards` da OMDb ainda não foi decidida —
-[`docs/legal/omdb-awards-source-provenance.md`](../legal/omdb-awards-source-provenance.md).
-Rodar a promoção agora **é correto e útil**: ela grava o fato para auditoria com
-`display_allowed = false` e diz, no relatório, por que nada acendeu.
+A licença está **decidida** (2026-08-13): o crédito é da **OMDb**, com o texto
+`Dados de premiação fornecidos por OMDb` —
+[dossiê](../legal/omdb-awards-source-provenance.md). Aplicada a licença e
+reexecutada a promoção, a faixa acende.
+
+**O crédito é gravado na ESCRITA da linha.** Aplicar a licença sozinho não acende
+nada: linhas já promovidas continuam com `source_key = NULL` até o próximo ciclo
+do worker. A ordem da seção 4 não é sugestão.
 
 ---
 
@@ -93,7 +96,8 @@ payloads=51 · reconhecidos=41 · criados=41 · ... · exibiveis=0 · recusas=11
 
 | Motivo | Significa | Ação |
 | --- | --- | --- |
-| `no-license` | não há licença `awards_display` vigente | decidir a fonte (ver o dossiê legal). Aparece **uma vez** por ciclo, não uma por título |
+| `no-license` | não há licença `awards_display` vigente no banco | rodar `legal sources apply` (seção 4). Aparece **uma vez** por ciclo, não uma por título |
+| `ambiguous` (dentro de `no-license`) | há **duas** licenças de premiação vigentes | escolher uma seria sortear de quem é o crédito; o worker recusa e nomeia as candidatas. Aposente a que sobra em `services/legal` |
 | `awards-not-available` | a OMDb respondeu `"N/A"` | **nenhuma.** Título sem prêmio é fato, não falha — e não vira registro |
 | `awards-absent` | campo ausente ou vazio | nenhuma; idem acima |
 | `awards-unrecognized` | frase fora dos formatos conhecidos | o **literal bruto** está no detalhe: estender `packages/schemas/src/omdb-awards.ts` com evidência |
@@ -108,26 +112,40 @@ Na medição de produção de 2026-08-13: **51 payloads, 41 com valor real, 10
 
 ## 4. Como a faixa acende (a ordem importa)
 
-1. **Decidir a fonte** e registrar a licença + decisão `awards_display` em
-   [`services/legal/src/authorization-spec.ts`](../../services/legal/src/authorization-spec.ts)
-   (ver seção 6 do dossiê legal).
-2. Aplicar a autorização:
+A licença já está no spec (`STATIC_AUTHORIZATION`). O que falta é **materializá-la
+no banco** e **reexecutar o worker**.
+
+**1. Ver o plano** (read-only, não escreve nada):
 
 ```bash
-corepack pnpm legal apply --confirm
+corepack pnpm legal sources review
 ```
 
-3. Reexecutar a promoção — é ela que hidrata crédito e `display_allowed`:
+**2. Aplicar a autorização.** As três flags são obrigatórias juntas — sem elas o
+comando mostra o plano e não muta:
+
+```bash
+corepack pnpm legal sources apply --reviewer="Pablo Eduardo — proprietario da Cinerie" --policy-version="cinerie-source-auth/2026-07-v1" --confirm
+```
+
+`--policy-version` é a **leva** (`AUTHORIZATION_BATCH`), e a CLI **recusa
+qualquer outro valor**. A versão por fonte (`cinerie-source-auth/omdb/2026-08-v1`)
+vive dentro da entrada do spec, nunca na linha de comando.
+
+**3. Reexecutar a promoção** — é ela que hidrata crédito e `display_allowed`:
 
 ```bash
 corepack pnpm --filter @screena/ratings awards:promote --apply
 ```
 
-O passo 3 **é obrigatório**: o crédito é fato da licença, gravado no momento da
-escrita. Aplicar a licença sozinho não acende nada, porque as linhas já gravadas
-continuam com `source_key = NULL` até o próximo ciclo do worker.
+O passo 3 **é obrigatório**, e é o erro mais fácil de cometer aqui: o crédito é
+fato da licença, gravado no momento da escrita da linha. Sem ele, `legal apply`
+termina com sucesso e a faixa continua apagada.
 
-4. A página é `revalidate = 3600`; a faixa aparece no próximo ciclo de ISR.
+**4.** A página é `revalidate = 3600`; a faixa aparece no próximo ciclo de ISR.
+
+O que se espera ver no passo 3: `exibiveis=` maior que zero, e o texto
+`Dados de premiacao fornecidos por OMDb` gravado em `attribution_text`.
 
 ### Como saber que não acendeu, e por quê
 
@@ -161,6 +179,7 @@ este não ganhou nada. É fato sobre a obra.
 - não chama a OMDb (nem qualquer rede);
 - não cria entidade nem toca `movies` / `tv_shows`;
 - não encosta em `external_ratings`, no gate de ratings ou no Cinerie Score;
-- não decide licença: se não houver uma registrada, ele grava o fato e diz que
-  não acendeu;
+- não decide licença: ele **lê** a que estiver vigente. Sem licença no banco,
+  grava o fato e diz que não acendeu; com duas, recusa como `ambiguous` em vez de
+  sortear de quem é o crédito;
 - não traduz nome de prêmio. `"Oscars"` chega ao banco e à tela como `"Oscars"`.

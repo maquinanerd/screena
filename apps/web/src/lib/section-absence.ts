@@ -60,11 +60,11 @@ export type SectionAbsenceReason =
   /** Nao existe formula de Cinerie Score aprovada (decisao humana pendente). */
   | "no_approved_formula"
   /**
-   * NENHUMA faixa de premios exibivel no catalogo inteiro. Hoje a causa e uma
-   * so e ela e acionavel: a fonte editorial do campo `Awards` da OMDb nao foi
-   * decidida, entao nao ha licenca `awards_display` e nenhuma linha de
-   * `entity_awards` pode acender. Alguem precisa decidir; nao adianta olhar
-   * este titulo. Ver docs/legal/omdb-awards-source-provenance.md.
+   * NENHUMA faixa de premios exibivel no catalogo inteiro — passo de operacao
+   * pendente, nao fato sobre este titulo. A licenca de premiacao existe no spec
+   * desde 2026-08-13 (credito da OMDb), mas ela precisa estar aplicada NO BANCO
+   * e a promocao precisa ter rodado DEPOIS disso: o credito e gravado na escrita
+   * da linha. Ver docs/operations/awards-promotion-runbook.md secao 4.
    */
   | "no_awards_source"
   /**
