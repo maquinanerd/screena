@@ -50,13 +50,30 @@ export interface PromotionCandidate {
   readonly providerKey: string | null
   readonly providerName: string | null
   readonly offerType: string | null
+  /** Destino NO PROVEDOR. `null` em toda oferta de origem TMDB. */
   readonly deepLink: string | null
+  /**
+   * Destino no AGREGADOR do pais (`web_url`) — o `link` por pais do payload
+   * TMDB, alimentado pelo JustWatch. E o unico destino que a origem TMDB tem, e
+   * por isso entra nos guardrails: recusar por `missing-link` uma oferta que TEM
+   * destino legitimo seria barrar dado bom por um campo que aquele fornecedor
+   * nunca preenche.
+   */
+  readonly webUrl: string | null
   readonly price: number | null
   readonly currency: string | null
   readonly quality: string | null
   readonly availableUntil: Date | null
   readonly fetchedAt: Date | null
   readonly displayAllowed: boolean
+  /** `requires_attribution` da linha (nasce `true` por default no banco). */
+  readonly requiresAttribution: boolean
+  /** `requires_linkback` da linha (nasce `true` por default no banco). */
+  readonly requiresLinkback: boolean
+  /** Credito textual JA hidratado na linha; `null` = ainda nao licenciada. */
+  readonly attributionText: string | null
+  /** Linkback do credito JA hidratado na linha. */
+  readonly attributionUrl: string | null
 }
 
 /**
@@ -72,6 +89,18 @@ export type PromotionRejectionReason =
   | 'missing-provider'
   | 'missing-link'
   | 'unsafe-link'
+  /**
+   * A oferta exige credito (`requires_attribution`/`requires_linkback`) e nao o
+   * tem hidratado. O trigger do banco ja recusaria — mas com uma EXCECAO, que o
+   * laco de promocao engolia num `catch` vazio, e o operador via "0 promovidas"
+   * sem motivo. Nomear a recusa aqui transforma um erro mudo numa instrucao:
+   * falta rodar `pnpm legal sources apply` para aquele provedor/origem.
+   *
+   * E o terceiro dos tres negativos independentes que impedem oferta TMDB sem
+   * credito de JustWatch de ir ao ar (os outros dois: o gate de escrita e o
+   * presenter).
+   */
+  | 'missing-attribution'
   | 'expired'
 
 /** Motivos de recusa de uma reversao (revoke). */

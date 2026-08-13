@@ -20,7 +20,12 @@ import type { PromotionCandidate } from './types.js'
 
 /** Consulta de listagem (o store aplica os filtros no banco). */
 export interface ReviewQuery {
-  readonly providerApi: string
+  /**
+   * Fornecedores tecnicos a listar. Plural desde que a promocao passou a
+   * governar mais de uma origem: listar so um deles esconderia do revisor
+   * exatamente as ofertas que ele precisa decidir.
+   */
+  readonly providerApis: readonly string[]
   readonly countryCode: string
   /** `null` = filme e serie. */
   readonly entityType: string | null
@@ -29,9 +34,24 @@ export interface ReviewQuery {
   readonly limit: number
 }
 
+/** Uma linha que o banco RECUSOU, com a causa. Nunca uma falha muda. */
+export interface StoreRefusal {
+  readonly id: string
+  readonly message: string
+}
+
 /** Resultado de uma mutacao no store. */
 export interface StoreMutationOutcome {
   readonly updated: number
+  /**
+   * Ids que o trigger de governanca recusou, COM a mensagem do banco.
+   *
+   * Existe porque o laco de promocao engolia a excecao num `catch` vazio: o
+   * operador via "0 promovidas" e nenhuma pista, enquanto a causa quase sempre
+   * era acionavel ("falta licenca/atribuicao para esta origem"). Opcional para
+   * nao quebrar implementacoes de porta que nao recusam nada.
+   */
+  readonly refusals?: readonly StoreRefusal[]
 }
 
 /**
@@ -94,6 +114,12 @@ export interface PromotionResult {
   readonly eligibleIds: readonly string[]
   /** Quantas linhas o banco realmente mutou (0 em dry-run). */
   readonly updated: number
+  /**
+   * Linhas ELEGIVEIS pelos guardrails que o banco ainda assim recusou, com a
+   * causa. Elegivel + recusado e o desfecho mais confuso possivel para o
+   * operador — e era o unico que nao aparecia em lugar nenhum.
+   */
+  readonly refusals: readonly StoreRefusal[]
   readonly summary: PromotionSummary
 }
 
@@ -138,12 +164,19 @@ export const REVOKE_LOG_ENDPOINT = 'revoke:watch_availability'
 
 /** Executa a revisao (read-only): lista, avalia e resume. */
 export async function runReview(
-  input: { readonly kind: string | null; readonly country: string; readonly entityId: string | null; readonly limit: number; readonly providerApi: string },
+  input: {
+    readonly kind: string | null
+    readonly country: string
+    readonly entityId: string | null
+    readonly limit: number
+    /** Fornecedores tecnicos a listar (plural: a promocao governa mais de um). */
+    readonly providerApis: readonly string[]
+  },
   deps: ReviewDeps,
 ): Promise<ReviewResult> {
   const now = deps.now()
   const candidates = await deps.store.listCandidates({
-    providerApi: input.providerApi,
+    providerApis: input.providerApis,
     countryCode: input.country,
     entityType: input.kind,
     entityId: input.entityId,
@@ -206,16 +239,22 @@ export async function runPromotion(
   const eligibleIds = evaluated.filter((entry) => entry.eligible).map((entry) => entry.candidate.id)
 
   let updated = 0
+  let refusals: readonly StoreRefusal[] = []
   if (input.confirm && eligibleIds.length > 0) {
     const outcome = input.revoke
       ? await deps.store.revoke(eligibleIds)
       : await deps.store.promote(eligibleIds, input.reviewer)
     updated = outcome.updated
+    refusals = outcome.refusals ?? []
 
     // Auditoria leve: 1 linha tecnica por acao efetiva (todo mutacao gera log).
     await deps.syncLog.write({
       endpoint: input.revoke ? REVOKE_LOG_ENDPOINT : PROMOTE_LOG_ENDPOINT,
-      status: updated > 0 ? 'success' : 'empty',
+      // Recusa do banco e FALHA, nunca "vazio". Com o `catch` mudo, um ciclo
+      // 100% recusado logava `empty` — indistinguivel de "nao havia nada a
+      // fazer" —, e o alarme nunca disparava.
+      status:
+        refusals.length > 0 ? (updated > 0 ? 'partial' : 'failed') : updated > 0 ? 'success' : 'empty',
       itemsProcessed: eligibleIds.length,
       itemsUpdated: updated,
     })
@@ -231,6 +270,7 @@ export async function runPromotion(
     evaluated,
     eligibleIds,
     updated,
+    refusals,
     summary: summarize(evaluated),
   }
 }

@@ -54,8 +54,10 @@ function row(overrides: Partial<WatchAvailabilityRow> = {}): WatchAvailabilityRo
   return {
     providerName: "Netflix",
     providerKey: "netflix",
+    providerSlug: "netflix",
     offerType: "subscription",
     deepLink: "https://www.netflix.com/title/1",
+    webUrl: null,
     quality: null,
     priceAmount: null,
     currency: null,
@@ -125,12 +127,40 @@ describe("watch-availability — camada server-only", () => {
   const source = readSource(SERVER_REL);
   const code = withoutComments(source);
 
-  it("filtra por display_allowed=true, BR e provider streaming_availability", () => {
+  it("filtra por display_allowed=true e BR", () => {
     expect(code).toContain("displayAllowed: true");
     expect(code).toContain('const WATCH_COUNTRY = "BR"');
     expect(code).toContain("countryCode: WATCH_COUNTRY");
-    expect(code).toContain('const WATCH_PROVIDER_API = "streaming_availability"');
-    expect(code).toContain("providerApi: WATCH_PROVIDER_API");
+  });
+
+  /**
+   * O GATE MUDOU, E DE PROPOSITO. Antes a query filtrava
+   * `providerApi: "streaming_availability"`, o que era um gate ACIDENTAL: ele
+   * deixava invisivel toda oferta de origem TMDB/JustWatch mesmo depois de
+   * licenciada, revisada e promovida. Quem autoriza exibir e a CADEIA DE
+   * LICENCA (decisao vigente + licenca-mae vigente e exibivel), nunca o nome de
+   * quem transportou o dado.
+   *
+   * Este teste trava as DUAS metades: a ausencia do filtro por fornecedor E a
+   * presenca da cadeia. Remover o filtro sem manter a cadeia seria abrir o
+   * painel, nao corrigi-lo.
+   */
+  it("NAO filtra por fornecedor tecnico; a autoridade e a cadeia de licenca", () => {
+    expect(code).not.toContain("providerApi:");
+    expect(code).not.toContain('"streaming_availability"');
+
+    expect(code).toContain("dataUsageDecision");
+    expect(code).toContain('useCase: "watch_offer_display"');
+    expect(code).toContain('stage: "approved_for_display"');
+    expect(code).toContain("sourceLicense");
+    expect(code).toContain('contentType: "watch_availability"');
+  });
+
+  it("le o destino do agregador e o slug canonico (as duas origens no painel)", () => {
+    // `web_url` e o unico destino que a oferta de origem TMDB tem; o slug e a
+    // identidade da plataforma ENTRE fornecedores (sem ele o painel duplicaria).
+    expect(code).toContain("webUrl: true");
+    expect(code).toContain("watchProvider: { select: { slug: true } }");
   });
 
   it("omite ofertas vencidas por available_until", () => {

@@ -14,8 +14,15 @@
  *    fora do conjunto sao descartados. Nunca torrent/IPTV/player ilegal.
  *  - NAO inventa disponibilidade: exibe so o que veio de `watch_availability`.
  *    Cada oferta so aparece com `provider_name`, `provider_key`, `offer_type` e
- *    um `deep_link` http/https validos; sem qualquer um deles, a linha e
- *    descartada (nunca CTA falso, logo externo, imagem ou nota).
+ *    um DESTINO http/https valido; sem qualquer um deles, a linha e descartada
+ *    (nunca CTA falso, logo externo, imagem ou nota).
+ *  - DESTINO tem duas naturezas, e elas nao podem ser confundidas na tela:
+ *    `deep_link` leva a pagina do titulo NO PROVEDOR (Netflix, Max...);
+ *    `web_url` leva a pagina do titulo NO AGREGADOR daquele pais (o `link` que o
+ *    TMDB publica por pais, alimentado pelo JustWatch). O TMDB nao publica deep
+ *    link por oferta, entao a oferta de origem TMDB so tem o segundo. Rotular os
+ *    dois como "ir para a Netflix" seria afirmar um destino que o upstream nunca
+ *    prometeu — por isso a oferta carrega `destinationKind`, e o painel usa isso.
  *  - Carimbo "Atualizado em": derivado do `fetched_at` mais recente das ofertas
  *    incluidas (frescor honesto). Sem `fetched_at`, nao alega atualizacao.
  */
@@ -67,10 +74,26 @@ export interface WatchAvailabilityRow {
   providerName: string | null;
   /** `watch_availability.provider_key`. */
   providerKey: string | null;
+  /**
+   * `watch_providers.slug` do provedor CANONICO (via `watch_provider_id`).
+   *
+   * E a unica identidade estavel ENTRE fornecedores tecnicos: a Netflix e
+   * `"netflix"` para a RapidAPI e `"8"` para o TMDB, mas o mesmo slug nos dois.
+   * Sem ele, a mesma plataforma apareceria duas vezes no painel quando os dois
+   * caminhos tivessem oferta. `null` quando o alias ainda nao esta mapeado —
+   * nesse caso a oferta nem chega aqui exibivel (o trigger a barra).
+   */
+  providerSlug: string | null;
   /** `watch_availability.offer_type` cru (string do enum). */
   offerType: string | null;
-  /** `watch_availability.deep_link` (destino legal; so http/https e aceito). */
+  /** `watch_availability.deep_link` — destino NO PROVEDOR; so http/https. */
   deepLink: string | null;
+  /**
+   * `watch_availability.web_url` — destino NO AGREGADOR do pais (a pagina que o
+   * TMDB publica por pais, alimentada pelo JustWatch). Usado como destino quando
+   * nao ha `deep_link`, que e sempre o caso da origem TMDB.
+   */
+  webUrl: string | null;
   /** `watch_availability.quality` (ex.: "hd", "uhd") ou null. */
   quality: string | null;
   /** `watch_availability.price` serializado (string decimal) ou null. */
@@ -106,13 +129,25 @@ export interface WatchAvailabilityAttribution {
   url: string | null;
 }
 
+/**
+ * Natureza do destino de uma oferta. NUNCA colapsar os dois: o rotulo que a UI
+ * pode prometer depende disto.
+ */
+export type WatchDestinationKind =
+  /** `deep_link`: a pagina do titulo NO PROVEDOR. */
+  | "provider"
+  /** `web_url`: a pagina do titulo no AGREGADOR daquele pais. */
+  | "aggregator";
+
 /** Uma oferta legal ja validada e pronta para render. */
 export interface WatchAvailabilityOffer {
   providerName: string;
   providerKey: string;
   offerType: WatchAvailabilityOfferType;
   /** URL http/https de destino legal (renderizada com rel nofollow sponsored). */
-  deepLink: string;
+  destinationUrl: string;
+  /** O que `destinationUrl` REALMENTE e — provedor ou agregador. */
+  destinationKind: WatchDestinationKind;
   /** Qualidade quando informada; senao null. */
   quality: string | null;
   /** Rotulo de preco (ex.: "R$ 14,90") so para aluguel/compra; senao null. */
@@ -211,13 +246,45 @@ function mostRecentIso(values: Array<string | null>): string | null {
   return latest;
 }
 
+/** Uma oferta que passou por TODOS os gates, ainda com o contexto de escolha. */
+interface AcceptedOffer {
+  readonly offer: WatchAvailabilityOffer;
+  /** Identidade da plataforma ENTRE fornecedores (slug canonico ou fallback). */
+  readonly canonicalId: string;
+  readonly fetchedAtIso: string | null;
+}
+
+/**
+ * PRECEDENCIA ENTRE FORNECEDORES TECNICOS — declarada, nao emergente.
+ *
+ * A mesma plataforma pode chegar por dois caminhos: `streaming_availability`
+ * (RapidAPI), que publica deep link POR OFERTA, e `tmdb`, que so publica um link
+ * por PAIS (a pagina do agregador). Quando os dois trazem oferta para a mesma
+ * plataforma e a mesma modalidade, o painel mostraria "Netflix — Assinatura"
+ * duas vezes, com destinos diferentes.
+ *
+ * A REGRA: para um mesmo (plataforma canonica, modalidade), a oferta com destino
+ * NO PROVEDOR vence a oferta com destino no AGREGADOR. O motivo e o usuario, nao
+ * o fornecedor — o deep link leva ao titulo no servico; a pagina do agregador
+ * leva a mais uma escolha. Nunca o inverso, e nunca "a mais recente".
+ *
+ * O QUE ESTA REGRA **NAO** FAZ: ela nao colapsa variantes legitimas. Aluguel em
+ * HD e aluguel em 4K, do mesmo provedor, continuam sendo duas linhas — a
+ * deduplicacao fina (link/qualidade/preco) segue depois e inalterada. So a
+ * duplicata de PROVENIENCIA e removida.
+ */
+function keyOfProvenanceRivalry(accepted: AcceptedOffer): string {
+  return `${accepted.canonicalId}|${accepted.offer.offerType}`;
+}
+
 /**
  * Monta o painel "Disponibilidade no Brasil": mantem so ofertas com
  * `display_allowed = true`, modalidade legal conhecida (assinatura/gratis/
- * aluguel/compra), `provider_name`/`provider_key` presentes e `deep_link`
- * http/https; deduplica ofertas identicas; agrupa por modalidade na ordem
- * canonica; ordena por provedor (asc) e qualidade (desc); e deriva o carimbo de
- * frescor.
+ * aluguel/compra), `provider_name`/`provider_key` presentes e um DESTINO
+ * http/https (deep link do provedor ou, na falta dele, a pagina do agregador
+ * daquele pais); resolve a precedencia entre fornecedores tecnicos; deduplica
+ * ofertas identicas; agrupa por modalidade na ordem canonica; ordena por
+ * provedor (asc) e qualidade (desc); e deriva o carimbo de frescor.
  *
  * Retorna `null` quando nao ha nenhuma oferta permitida — a pagina entao NAO
  * renderiza o painel (nunca heading vazio, plataforma inventada ou pirataria).
@@ -225,11 +292,8 @@ function mostRecentIso(values: Array<string | null>): string | null {
 export function buildWatchAvailabilityView(
   rows: WatchAvailabilityRow[],
 ): WatchAvailabilityView | null {
-  const seen = new Set<string>();
-  const byType = new Map<WatchAvailabilityOfferType, WatchAvailabilityOffer[]>();
-  const fetchedAts: Array<string | null> = [];
-  const attributions: WatchAvailabilityAttribution[] = [];
-  const seenAttributions = new Set<string>();
+  // ---- Passada 1: gates. Nada entra aqui sem licenca, credito e destino. ----
+  const accepted: AcceptedOffer[] = [];
 
   for (const row of rows) {
     // Gate de licenca (invariante 6): sem display_allowed, a oferta nao existe.
@@ -241,8 +305,19 @@ export function buildWatchAvailabilityView(
 
     const providerName = trimToNull(row.providerName);
     const providerKey = trimToNull(row.providerKey);
-    const deepLink = safeDeepLink(row.deepLink);
-    if (providerName === null || providerKey === null || deepLink === null) continue;
+    if (providerName === null || providerKey === null) continue;
+
+    // DESTINO: o deep link do provedor quando existe; senao a pagina do pais no
+    // agregador. A ordem e a precedencia, e a natureza viaja junto para que a UI
+    // nao possa prometer "ir para a Netflix" apontando para o agregador.
+    // A oferta de origem TMDB SEMPRE cai no segundo caso: o upstream nao publica
+    // deep link por oferta, e fabricar um seria afirmar destino inexistente.
+    const providerLink = safeDeepLink(row.deepLink);
+    const aggregatorLink = safeDeepLink(row.webUrl);
+    const destinationUrl = providerLink ?? aggregatorLink;
+    if (destinationUrl === null) continue;
+    const destinationKind: WatchDestinationKind =
+      providerLink !== null ? "provider" : "aggregator";
 
     // ATRIBUICAO EXIGIDA E AUSENTE = NAO EXIBE (invariante 6). Mesma regra que
     // `toPublicRating` ja aplica as notas: a licenca que autoriza exibir e a
@@ -261,40 +336,77 @@ export function buildWatchAvailabilityView(
     const quality = trimToNull(row.quality);
     const priceLabel = buildPriceLabel(offerType, row.priceAmount, row.currency);
 
-    // Dedupe por provedor/modalidade/link/qualidade/preco.
+    accepted.push({
+      // Slug canonico e a identidade ENTRE fornecedores; sem ele (alias nao
+      // mapeado) a oferta so pode rivalizar consigo mesma, e o fallback pela
+      // chave tecnica preserva o comportamento historico de um fornecedor so.
+      canonicalId: (trimToNull(row.providerSlug) ?? providerKey).toLowerCase(),
+      fetchedAtIso: row.fetchedAtIso,
+      offer: {
+        providerName,
+        providerKey,
+        offerType,
+        destinationUrl,
+        destinationKind,
+        quality,
+        priceLabel,
+        attribution:
+          attributionText === null ? null : { text: attributionText, url: attributionUrl },
+      },
+    });
+  }
+
+  // ---- Passada 2: precedencia de proveniencia (ver keyOfProvenanceRivalry). --
+  const providerBacked = new Set<string>();
+  for (const candidate of accepted) {
+    if (candidate.offer.destinationKind === "provider") {
+      providerBacked.add(keyOfProvenanceRivalry(candidate));
+    }
+  }
+
+  const byType = new Map<WatchAvailabilityOfferType, WatchAvailabilityOffer[]>();
+  const fetchedAts: Array<string | null> = [];
+  const attributions: WatchAvailabilityAttribution[] = [];
+  const seenAttributions = new Set<string>();
+  const seen = new Set<string>();
+
+  for (const candidate of accepted) {
+    if (
+      candidate.offer.destinationKind === "aggregator" &&
+      providerBacked.has(keyOfProvenanceRivalry(candidate))
+    ) {
+      continue; // a mesma plataforma/modalidade ja tem destino no provedor
+    }
+
+    const { offer } = candidate;
+    // Dedupe fino por provedor/modalidade/destino/qualidade/preco. Preservado
+    // como estava: variantes reais (HD vs 4K) continuam sendo linhas distintas.
     const dedupeKey = [
-      providerKey.toLowerCase(),
-      offerType,
-      deepLink,
-      quality ?? "",
-      priceLabel ?? "",
+      offer.providerKey.toLowerCase(),
+      offer.offerType,
+      offer.destinationUrl,
+      offer.quality ?? "",
+      offer.priceLabel ?? "",
     ].join("|");
     if (seen.has(dedupeKey)) continue;
     seen.add(dedupeKey);
 
-    const offer: WatchAvailabilityOffer = {
-      providerName,
-      providerKey,
-      offerType,
-      deepLink,
-      quality,
-      priceLabel,
-      attribution:
-        attributionText === null ? null : { text: attributionText, url: attributionUrl },
-    };
-    const bucket = byType.get(offerType);
-    if (bucket === undefined) byType.set(offerType, [offer]);
+    const bucket = byType.get(offer.offerType);
+    if (bucket === undefined) byType.set(offer.offerType, [offer]);
     else bucket.push(offer);
 
-    fetchedAts.push(row.fetchedAtIso);
+    fetchedAts.push(candidate.fetchedAtIso);
 
     // Credito so da oferta que REALMENTE entrou. Uma oferta descartada acima
     // nao arrasta seu credito para a tela (credito orfao = credito mentiroso).
-    if (attributionText !== null) {
-      const key = `${attributionText}|${attributionUrl ?? ""}`;
+    // Vale tambem para a perdedora da precedencia: se a oferta TMDB saiu, o
+    // credito do JustWatch sai com ela.
+    const { attribution } = offer;
+    if (attribution !== null) {
+      const key = `${attribution.text}|${attribution.url ?? ""}`;
       if (!seenAttributions.has(key)) {
         seenAttributions.add(key);
-        attributions.push({ text: attributionText, url: attributionUrl });
+        attributions.push(attribution);
       }
     }
   }
@@ -308,7 +420,7 @@ export function buildWatchAvailabilityView(
       if (byName !== 0) return byName;
       const byQuality = qualityRankOf(b.quality) - qualityRankOf(a.quality); // desc
       if (byQuality !== 0) return byQuality;
-      return a.deepLink.localeCompare(b.deepLink); // desempate estavel
+      return a.destinationUrl.localeCompare(b.destinationUrl); // desempate estavel
     });
     groups.push({ offerType, label: GROUP_LABELS[offerType], offers });
   }
@@ -332,8 +444,10 @@ export function buildWatchAvailabilityView(
  *
  * A politica de prioridade e, portanto, a ja publicada pelo painel:
  * assinatura -> gratis -> aluguel -> compra; dentro do grupo, provedor (asc),
- * qualidade (desc) e deep link (desempate estavel). Nao ha "provedor principal"
+ * qualidade (desc) e destino (desempate estavel). Nao ha "provedor principal"
  * por popularidade comercial: isso seria uma afirmacao sem dado persistido.
+ * A precedencia entre fornecedores tecnicos tambem vem de la — a faixa da home
+ * nunca mostra o destino do agregador quando existe deep link do provedor.
  *
  * `null` quando nao ha nenhuma oferta exibivel — a superficie entao cai no CTA
  * generico, nunca em plataforma inventada.

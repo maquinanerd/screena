@@ -73,7 +73,7 @@ disco/.env.
 # AVISO: chama a API REAL do Gemini. Exige --confirm-live.
 tsx services/entity-writer/bin/smoke-gemini.ts --entity-type movie --entity-id 123 --language pt-BR --confirm-live
 tsx services/entity-writer/bin/smoke-gemini.ts --entity-type tv --entity-id 456 --language pt-BR --confirm-live
-# ou: pnpm --filter @screena/entity-writer smoke:gemini -- --entity-type movie --entity-id 123 --confirm-live
+# ou: pnpm --filter @screena/entity-writer smoke:gemini --entity-type movie --entity-id 123 --confirm-live
 ```
 
 Responde, com uma entidade **real do banco**, a pergunta: *o Gemini real devolve JSON
@@ -95,7 +95,7 @@ real, chama o **GeminiAdapter real** e roda `runGeneration`, imprimindo um resum
 tsx services/entity-writer/bin/run-offline.ts --entity-type movie --missing --limit 10 --fake --dry-run
 tsx services/entity-writer/bin/run-offline.ts --entity-type movie --missing --limit 10 --fake
 tsx services/entity-writer/bin/run-offline.ts --entity-type tv --missing --limit 25 --confirm-live   # Gemini REAL
-# ou: pnpm --filter @screena/entity-writer run:offline -- --entity-type movie --missing --limit 10
+# ou: pnpm --filter @screena/entity-writer run:offline --entity-type movie --missing --limit 10
 ```
 
 Encadeia, numa unica passada controlada, **enqueue dos faltantes -> runner**. Serve para
@@ -113,7 +113,7 @@ daemon/cron/systemd e NUNCA publica.
 ```
 tsx services/entity-writer/bin/inspect.ts --limit 20
 tsx services/entity-writer/bin/inspect.ts --entity-type movie --json
-# ou: pnpm --filter @screena/entity-writer inspect -- --limit 20
+# ou: pnpm --filter @screena/entity-writer inspect --limit 20
 ```
 
 Responde rapidamente ao estado operacional do Entity Writer: **jobs por status/tipo/entidade**,

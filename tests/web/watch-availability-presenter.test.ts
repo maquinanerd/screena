@@ -23,8 +23,12 @@ function row(overrides: Partial<WatchAvailabilityRow> = {}): WatchAvailabilityRo
   return {
     providerName: "Netflix",
     providerKey: "netflix",
+    // Slug canonico: a fabrica padrao representa a oferta do agregador
+    // (RapidAPI), que e o caminho historico. Testes de proveniencia sobrescrevem.
+    providerSlug: "netflix",
     offerType: "subscription",
     deepLink: "https://www.netflix.com/title/1",
+    webUrl: null,
     quality: null,
     priceAmount: null,
     currency: null,
@@ -73,7 +77,7 @@ describe("buildWatchAvailabilityView — licenca (invariante 6)", () => {
     expect(view).not.toBeNull();
     const offer = view!.groups[0]?.offers[0];
     expect(offer?.providerName).toBe("Netflix");
-    expect(offer?.deepLink).toBe("https://www.netflix.com/title/1");
+    expect(offer?.destinationUrl).toBe("https://www.netflix.com/title/1");
   });
 });
 

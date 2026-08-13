@@ -206,31 +206,31 @@ Todos a partir da raiz do repositório.
 **Dry-run (default) — zero rede, zero DB, zero cota. Só o plano:**
 
 ```bash
-corepack pnpm --filter @screena/ratings ratings:omdb -- --type=movie --limit=20
+corepack pnpm --filter @screena/ratings ratings:omdb --type=movie --limit=20
 ```
 
 **Sample — busca o payload real, grava `api_cache` + `api_sync_logs`, escreve um sample sanitizado. NÃO grava notas:**
 
 ```bash
-corepack pnpm --filter @screena/ratings ratings:omdb -- --id=tt3896198 --sample
+corepack pnpm --filter @screena/ratings ratings:omdb --id=tt3896198 --sample
 ```
 
 **Apply — grava `external_ratings` (as notas nascem fail-closed; a licença decide se acendem):**
 
 ```bash
-corepack pnpm --filter @screena/ratings ratings:omdb -- --type=movie --limit=20 --apply
+corepack pnpm --filter @screena/ratings ratings:omdb --type=movie --limit=20 --apply
 ```
 
 **Séries:**
 
 ```bash
-corepack pnpm --filter @screena/ratings ratings:omdb -- --type=tv --limit=20 --apply
+corepack pnpm --filter @screena/ratings ratings:omdb --type=tv --limit=20 --apply
 ```
 
 **Reprocessar ignorando o frescor (após mudança de licença/política):**
 
 ```bash
-corepack pnpm --filter @screena/ratings ratings:omdb -- --type=movie --limit=50 --apply --ignore-freshness
+corepack pnpm --filter @screena/ratings ratings:omdb --type=movie --limit=50 --apply --ignore-freshness
 ```
 
 **Validar o adapter contra PostgreSQL real, com os triggers ativos:**

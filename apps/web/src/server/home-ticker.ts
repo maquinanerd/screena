@@ -98,8 +98,14 @@ const WATCH_OFFER_SELECT = {
   entityId: true,
   providerName: true,
   providerKey: true,
+  // Mesmos dois campos que o painel de detalhe passou a ler: o slug canonico
+  // (identidade da plataforma entre fornecedores) e o destino do agregador
+  // (unico que a origem TMDB tem). Sem eles a faixa da home aplicaria uma regra
+  // de precedencia diferente da do painel — duas verdades para o mesmo dado.
+  watchProvider: { select: { slug: true } },
   offerType: true,
   deepLink: true,
+  webUrl: true,
   quality: true,
   price: true,
   currency: true,
@@ -116,8 +122,10 @@ type WatchOfferRow = {
   entityId: bigint;
   providerName: string;
   providerKey: string | null;
+  watchProvider: { slug: string } | null;
   offerType: unknown;
   deepLink: string | null;
+  webUrl: string | null;
   quality: string | null;
   price: { toString: () => string } | null;
   currency: string | null;
@@ -133,8 +141,10 @@ function toWatchRow(row: WatchOfferRow): WatchAvailabilityRow {
   return {
     providerName: row.providerName,
     providerKey: row.providerKey,
+    providerSlug: row.watchProvider?.slug ?? null,
     offerType: row.offerType === null ? null : String(row.offerType),
     deepLink: row.deepLink,
+    webUrl: row.webUrl,
     quality: row.quality,
     priceAmount: row.price === null ? null : row.price.toString(),
     currency: row.currency,

@@ -174,11 +174,18 @@ async function runChecks(url: string): Promise<void> {
     await applyAuthorization(prisma, entries, DECIDED_BY);
 
     // 1. Toda fonte declarada tem licença vigente com policy version + decided_by pessoa.
-    const licRows = await q<{ source_key: string; content_type: string; license_status: string; policy_version: string | null; decided_by: string | null }>(
-      `SELECT source_key, content_type::text AS content_type, license_status::text AS license_status, policy_version, decided_by FROM source_licenses WHERE is_current=true AND decision_origin='owner_authorization'`,
+    const licRows = await q<{ source_key: string; content_type: string; provider_key: string | null; license_status: string; policy_version: string | null; decided_by: string | null }>(
+      `SELECT source_key, content_type::text AS content_type, provider_key, license_status::text AS license_status, policy_version, decided_by FROM source_licenses WHERE is_current=true AND decision_origin='owner_authorization'`,
     );
-    const expectedSources = new Set(entries.map((e) => `${e.license.sourceKey}/${e.license.contentType}`));
-    const gotSources = new Set(licRows.map((r) => `${r.source_key}/${r.content_type}`));
+    // A identidade de uma licenca inclui o FORNECEDOR TECNICO. Chavear so por
+    // (source_key, content_type) colapsaria as duas licencas de streaming de um
+    // mesmo provedor canonico — uma creditando Movie of the Night, outra
+    // JustWatch — e o validador acusaria "sobrou licenca" onde o banco esta
+    // certo. Espelha `source_licenses_current_unique` e `licenseGroupKey`.
+    const expectedSources = new Set(
+      entries.map((e) => `${e.license.sourceKey}/${e.license.contentType}/${e.license.providerKey ?? ""}`),
+    );
+    const gotSources = new Set(licRows.map((r) => `${r.source_key}/${r.content_type}/${r.provider_key ?? ""}`));
     const allPresent = [...expectedSources].every((s) => gotSources.has(s));
     record(1, "fontes declaradas possuem licenca vigente (owner_authorization)", allPresent && licRows.length === expectedSources.size, `esperadas=${expectedSources.size} obtidas=${licRows.length}`);
 
@@ -218,10 +225,26 @@ async function runChecks(url: string): Promise<void> {
     record(4.2, "rating_display: linkback obrigatorio EXCETO nas fontes nominalmente dispensadas", linkbackDivergente.length === 0, linkbackDivergente.length === 0 ? `exigem=${ratingDecisions.filter((r) => r.linkback_required).map((r) => r.source_key).sort().join(",")} | dispensadas=${ratingDecisions.filter((r) => !r.linkback_required).map((r) => r.source_key).sort().join(",")}` : `divergentes=${linkbackDivergente.map((r) => `${r.source_key}:${r.linkback_required}`).join(",")}`);
 
     // 5. watch_offer_display existe para o provedor real, território BR.
-    const watchDecisions = await q<{ territory: string | null; attribution_required: boolean }>(
-      `SELECT d.territory, d.attribution_required FROM data_usage_decisions d WHERE d.is_current=true AND d.use_case='watch_offer_display' AND d.stage='approved_for_display'`,
+    // UMA decisao POR ORIGEM (fornecedor tecnico), nao uma por provedor: o
+    // credito de uma oferta pertence a origem do dado. Com um provedor real
+    // registrado, o esperado sao 2 — `streaming_availability` (Movie of the
+    // Night) e `tmdb` (JustWatch). Esperar 1 aqui era o que sobrava do tempo em
+    // que a licenca de streaming ignorava a proveniencia.
+    const watchDecisions = await q<{ territory: string | null; attribution_required: boolean; provider_key: string | null }>(
+      `SELECT d.territory, d.attribution_required, l.provider_key
+         FROM data_usage_decisions d
+         JOIN source_licenses l ON l.id = d.source_license_id
+        WHERE d.is_current=true AND d.use_case='watch_offer_display' AND d.stage='approved_for_display'`,
     );
-    record(5, "watch_offer_display existe para streaming (provedor real), territorio BR", watchDecisions.length === 1 && watchDecisions[0]!.territory === "BR" && watchDecisions[0]!.attribution_required, `n=${watchDecisions.length}`);
+    const watchOrigins = [...new Set(watchDecisions.map((d) => d.provider_key ?? ""))].sort();
+    record(
+      5,
+      "watch_offer_display existe para streaming (provedor real), territorio BR, UMA por origem",
+      watchDecisions.length === 2 &&
+        watchDecisions.every((d) => d.territory === "BR" && d.attribution_required) &&
+        watchOrigins.join(",") === "streaming_availability,tmdb",
+      `n=${watchDecisions.length} origens=${watchOrigins.join(",")}`,
+    );
 
     // 6. Logos continuam bloqueados em TODA licença.
     const anyLogo = Number((await q<{ c: number }>(`SELECT count(*)::int AS c FROM source_licenses WHERE is_current=true AND logo_allowed=true`))[0]!.c);

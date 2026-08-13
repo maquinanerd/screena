@@ -24,7 +24,20 @@ import type {
 const FIXED_NOW = new Date('2026-08-11T12:00:00.000Z')
 const DAY_MS = 24 * 60 * 60 * 1000
 
+/**
+ * O `link` por PAIS faz parte do payload REAL do TMDB — e o unico destino que a
+ * oferta de origem TMDB pode ter. Omiti-lo aqui tornaria a fixture mais pobre
+ * que o dado de producao e faria toda linha acumular a recusa
+ * `missing-country-link`, mascarando as recusas que cada teste realmente mede.
+ */
+const COUNTRY_LINK = 'https://www.themoviedb.org/movie/550/watch?locale=BR'
+
 function payloadWith(offers: Record<string, unknown>): unknown {
+  return { 'watch/providers': { results: { BR: { link: COUNTRY_LINK, ...offers } } } }
+}
+
+/** Variante SEM `link`: o pais existe, mas as ofertas ficam sem destino. */
+function payloadWithoutLink(offers: Record<string, unknown>): unknown {
   return { 'watch/providers': { results: { BR: offers } } }
 }
 
@@ -284,6 +297,21 @@ describe('runWatchProvidersReprocess — relatorio de recusas e provedores', () 
     ]
     const report = await runWatchProvidersReprocess(baseOptions(rows, []))
     expect(report.rejections).toEqual({ 'unmapped-offer-bucket': 2, 'missing-provider-id': 1 })
+  })
+
+  it('pais sem `link` aparece no relatorio como missing-country-link', async () => {
+    const rows: RawWatchSourceRow[] = [
+      {
+        tmdbId: 1,
+        baseLanguage: 'pt-BR',
+        payload: payloadWithoutLink({ flatrate: [{ provider_id: 8, provider_name: 'Netflix' }] }),
+      },
+    ]
+    const report = await runWatchProvidersReprocess(baseOptions(rows, []))
+    // A oferta continua sendo reconhecida e contada — o que muda e existir uma
+    // linha no relatorio dizendo por que ela nao tera destino na tela.
+    expect(report.counts.unrecognized).toBe(0)
+    expect(report.rejections).toEqual({ 'missing-country-link': 1 })
   })
 
   it('lista provedores vistos ordenados por volume — insumo dos aliases', async () => {

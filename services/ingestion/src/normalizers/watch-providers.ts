@@ -118,6 +118,14 @@ export type WatchProviderRejectionReason =
   | 'missing-provider-name'
   /** Link do pais recusado (esquema nao-http(s) ou marcador de pirataria). */
   | 'unsafe-country-link'
+  /**
+   * O pais NAO trouxe `link` no payload. As ofertas daquele pais continuam
+   * validas e ingeridas — so ficam sem destino, e o presenter as descarta na
+   * exibicao. Ausencia de link e um desfecho REAL e comum do upstream; sem esta
+   * recusa nomeada ele era indistinguivel de "link presente e aceito", e uma
+   * oferta sumia da tela sem que nada no relatorio dissesse por que.
+   */
+  | 'missing-country-link'
   /** Mesma (pais, provedor, modalidade) repetida no mesmo payload. */
   | 'duplicate-offer'
 
@@ -293,19 +301,31 @@ export function normalizeWatchProviders(
 
     // Link de nivel de pais. Recusa NAO derruba as ofertas do pais: elas
     // continuam validas sem URL, e a recusa fica registrada.
+    //
+    // Os TRES desfechos sao nomeados, e isso importa: o TMDB nao publica deep
+    // link por oferta, entao ESTE link e o unico destino que a oferta pode ter.
+    // Um pais sem link produz ofertas que o presenter vai descartar — se a
+    // ausencia nao virasse recusa contada, a oferta sumiria da tela e o
+    // relatorio diria "reconhecida, aplicada", sem nenhuma pista do motivo.
     let webUrl: string | null = null
     const rawLink = readText(countryValue.link)
-    if (rawLink !== null) {
-      if (isSafeWatchLink(rawLink)) {
-        webUrl = rawLink
-      } else {
-        rejections.push(
-          reject(
-            'unsafe-country-link',
-            `${entityType}#${tmdbId} pais ${countryCode}: link recusado (esquema invalido ou marcador de pirataria)`,
-          ),
-        )
-      }
+    if (rawLink === null) {
+      rejections.push(
+        reject(
+          'missing-country-link',
+          `${entityType}#${tmdbId} pais ${countryCode}: sem "link" no payload — ofertas ficam sem destino ` +
+            '(o TMDB nao publica deep link por oferta; derivar um afirmaria destino que o upstream nunca prometeu)',
+        ),
+      )
+    } else if (isSafeWatchLink(rawLink)) {
+      webUrl = rawLink
+    } else {
+      rejections.push(
+        reject(
+          'unsafe-country-link',
+          `${entityType}#${tmdbId} pais ${countryCode}: link recusado (esquema invalido ou marcador de pirataria)`,
+        ),
+      )
     }
 
     for (const [bucket, bucketValue] of Object.entries(countryValue)) {

@@ -21,6 +21,42 @@ export const TMDB_PROVIDER_API = 'tmdb'
 /** Base URL padrao da API TMDB v3. */
 export const TMDB_DEFAULT_BASE_URL = 'https://api.themoviedb.org/3'
 
+/**
+ * ============ ATRIBUICAO DO "ONDE ASSISTIR": JustWatch, NAO TMDB ============
+ *
+ * O sub-recurso `watch/providers` NAO e dado do TMDB: o TMDB o revende, e a
+ * fonte e o **JustWatch**. Os termos do endpoint sao explicitos e a sancao e
+ * nominal:
+ *
+ *   "In order to use this data you must attribute the source of the data as
+ *    JustWatch. If we find any usage not complying with these terms we will
+ *    revoke access to the API."
+ *
+ * POR QUE ISTO E CRITICO ALEM DESTE BLOCO: o acesso ao TMDB e a fundacao do
+ * catalogo inteiro (fichas, elenco, imagens, temporadas). Creditar errado aqui
+ * nao arrisca so o painel de streaming — arrisca a API que sustenta o site.
+ *
+ * POR QUE NAO REUSAR O CREDITO DO AGREGADOR: `streaming_availability` (Movie of
+ * the Night) e um fornecedor DIFERENTE, com dado diferente e credito diferente.
+ * Reusar aquele texto num dado vindo do TMDB nao seria credito faltando — seria
+ * **proveniencia falsa**, que e pior, porque afirma uma origem que nao e a
+ * verdadeira. Cada fornecedor tecnico carrega o seu proprio credito.
+ *
+ * SEPARACAO QUE NAO PODE COLAPSAR: este URL e a ATRIBUICAO (quem forneceu a
+ * disponibilidade). Ele nao e o destino da oferta — esse e o `link` por PAIS do
+ * proprio payload, que vai para `watch_availability.web_url`. Sao dois campos,
+ * dois propositos; confundi-los faria o credito virar CTA ou o CTA virar credito.
+ */
+
+/** Fonte editorial REAL do bloco `watch/providers` (nunca "TMDB"). */
+export const TMDB_WATCH_DATA_SOURCE = 'JustWatch'
+
+/** Texto de credito exibido junto ao painel de streaming de origem TMDB. */
+export const TMDB_WATCH_ATTRIBUTION_TEXT = 'Disponibilidade fornecida por JustWatch'
+
+/** Linkback do credito: a fonte do dado, nao o destino da oferta. */
+export const TMDB_WATCH_ATTRIBUTION_URL = 'https://www.justwatch.com/'
+
 /** Tipos de entidade TMDB que sabemos mapear para URLs canonicas. */
 export type TmdbEntityKind = 'movie' | 'tv' | 'person'
 

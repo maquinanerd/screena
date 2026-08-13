@@ -26,7 +26,7 @@
  *
  * Uso:
  *   pnpm --filter @screena/cms cms:backfill:cluster            # relatorio
- *   pnpm --filter @screena/cms cms:backfill:cluster -- --apply # escreve
+ *   pnpm --filter @screena/cms cms:backfill:cluster --apply # escreve
  */
 
 import process from 'node:process'

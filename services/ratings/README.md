@@ -43,7 +43,7 @@ selecao de candidatos pula quem foi coletado dentro da janela de frescor
 (`RATING_STALE_POLICY`).
 
 ```bash
-corepack pnpm --filter @screena/ratings ratings:omdb -- --type=movie --limit=20 --apply
+corepack pnpm --filter @screena/ratings ratings:omdb --type=movie --limit=20 --apply
 ```
 
 ### Endpoint LEGADO (desligado): `/item/?id=<IMDb>` do Film & Show Ratings

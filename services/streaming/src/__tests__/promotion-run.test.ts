@@ -10,7 +10,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import type { SyncLogPort } from '../ports.js'
-import { PROMOTION_PROVIDER_API } from '../promotion/guardrails.js'
+import { PROMOTION_PROVIDER_API, PROMOTION_PROVIDER_APIS } from '../promotion/guardrails.js'
 import {
   PROMOTE_LOG_ENDPOINT,
   REVOKE_LOG_ENDPOINT,
@@ -34,12 +34,17 @@ function candidate(overrides: Partial<PromotionCandidate>): PromotionCandidate {
     providerName: 'Netflix',
     offerType: 'subscription',
     deepLink: 'https://n/x',
+    webUrl: null,
     price: null,
     currency: null,
     quality: 'hd',
     availableUntil: null,
     fetchedAt: NOW,
     displayAllowed: false,
+    requiresAttribution: true,
+    requiresLinkback: true,
+    attributionText: 'Disponibilidade fornecida por Movie of the Night',
+    attributionUrl: 'https://www.movieofthenight.com/about/api',
     ...overrides,
   }
 }
@@ -68,16 +73,18 @@ function makeHarness(rows: readonly PromotionCandidate[]): Harness {
 }
 
 describe('runReview — listagem escopada', () => {
-  it('pede ao store SO provider=streaming_availability e o pais informado', async () => {
+  it('pede ao store SO os fornecedores governados e o pais informado', async () => {
     const h = makeHarness([candidate({ id: '1' })])
     await runReview(
-      { kind: 'movie', country: 'BR', entityId: null, limit: 20, providerApi: PROMOTION_PROVIDER_API },
+      { kind: 'movie', country: 'BR', entityId: null, limit: 20, providerApis: PROMOTION_PROVIDER_APIS },
       { store: h.store, now: () => NOW },
     )
 
     expect(h.listCandidates).toHaveBeenCalledTimes(1)
     const query = h.listCandidates.mock.calls[0]?.[0]
-    expect(query.providerApi).toBe('streaming_availability')
+    // A listagem traz as DUAS origens governadas: mostrar so uma esconderia do
+    // revisor metade das ofertas que ele pode decidir.
+    expect([...query.providerApis].sort()).toEqual(['streaming_availability', 'tmdb'])
     expect(query.countryCode).toBe('BR')
     expect(query.entityType).toBe('movie')
     expect(query.limit).toBe(20)
@@ -89,7 +96,7 @@ describe('runReview — listagem escopada', () => {
       candidate({ id: '2', displayAllowed: true }), // already-display-allowed
     ])
     const result = await runReview(
-      { kind: null, country: 'BR', entityId: null, limit: 50, providerApi: PROMOTION_PROVIDER_API },
+      { kind: null, country: 'BR', entityId: null, limit: 50, providerApis: PROMOTION_PROVIDER_APIS },
       { store: h.store, now: () => NOW },
     )
 
@@ -122,7 +129,7 @@ describe('runPromotion — --confirm muta SO os elegiveis', () => {
     const rows = [
       candidate({ id: '1' }), // elegivel
       candidate({ id: '2', displayAllowed: true }), // already-display-allowed
-      candidate({ id: '3', providerApi: 'tmdb' }), // wrong-provider
+      candidate({ id: '3', providerApi: 'omdb' }), // wrong-provider (nao e streaming)
       candidate({ id: '4' }), // elegivel
     ]
     const h = makeHarness(rows)
@@ -132,7 +139,7 @@ describe('runPromotion — --confirm muta SO os elegiveis', () => {
     )
 
     expect(h.promote).toHaveBeenCalledTimes(1)
-    expect(h.promote).toHaveBeenCalledWith(['1', '4'], 'rev') // nunca 2 (allowed) nem 3 (outro provider)
+    expect(h.promote).toHaveBeenCalledWith(['1', '4'], 'rev') // nunca 2 (allowed) nem 3 (nao governado)
     expect(h.revoke).not.toHaveBeenCalled()
     expect(result.updated).toBe(2)
     expect(result.eligibleIds).toEqual(['1', '4'])
@@ -161,7 +168,9 @@ describe('runPromotion — reversao', () => {
     const rows = [
       candidate({ id: '1', displayAllowed: true }), // revocavel
       candidate({ id: '2', displayAllowed: false }), // already-disallowed
-      candidate({ id: '3', providerApi: 'tmdb', displayAllowed: true }), // wrong-provider
+      // `omdb` NAO e fornecedor de streaming governado — continua wrong-provider.
+      // (`tmdb` deixou de servir como exemplo aqui: virou origem legitima.)
+      candidate({ id: '3', providerApi: 'omdb', displayAllowed: true }), // wrong-provider
     ]
     const h = makeHarness(rows)
     const result = await runPromotion(

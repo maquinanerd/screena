@@ -118,13 +118,30 @@ describe("plano — streaming por provedor real (nunca inventado)", () => {
     expect(streamingProviderEntries([])).toEqual([]);
   });
 
-  it("com um provedor real, gera watch_availability + watch_offer_display (source_key = slug)", () => {
+  /**
+   * UMA ENTRADA POR ORIGEM, nao uma por provedor. O credito de uma oferta
+   * pertence ao FORNECEDOR TECNICO do dado: `streaming_availability` credita
+   * Movie of the Night; `tmdb` credita JustWatch (o TMDB revende dado do
+   * JustWatch e seus termos exigem essa atribuicao). Uma entrada so por provedor
+   * obrigaria as duas origens a dividir um credito — proveniencia falsa.
+   *
+   * Detalhe de credito e proveniencia fica em
+   * `tests/governance/watch-attribution-provenance.test.ts`; aqui checa-se a
+   * FORMA (source_key = slug, content_type, use_case, territorio).
+   */
+  it("com um provedor real, gera watch_availability + watch_offer_display POR ORIGEM (source_key = slug)", () => {
     const entries = streamingProviderEntries([{ slug: "netflix", canonicalName: "Netflix" }]);
-    expect(entries).toHaveLength(1);
-    expect(entries[0]!.license.sourceKey).toBe("netflix");
-    expect(entries[0]!.license.contentType).toBe("watch_availability");
-    expect(entries[0]!.decisions[0]!.useCase).toBe("watch_offer_display");
-    expect(entries[0]!.decisions[0]!.territory).toBe("BR");
+    expect(entries).toHaveLength(2);
+    expect(entries.map((e) => e.license.providerKey).sort()).toEqual([
+      "streaming_availability",
+      "tmdb",
+    ]);
+    for (const entry of entries) {
+      expect(entry.license.sourceKey).toBe("netflix");
+      expect(entry.license.contentType).toBe("watch_availability");
+      expect(entry.decisions[0]!.useCase).toBe("watch_offer_display");
+      expect(entry.decisions[0]!.territory).toBe("BR");
+    }
   });
 });
 
