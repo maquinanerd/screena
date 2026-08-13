@@ -177,6 +177,7 @@ describe('runWatchProvidersReprocess — os cinco desfechos sao distinguiveis', 
     ]
     await runWatchProvidersReprocess({
       ...baseOptions(rows, [1]),
+      territories: ['BR', 'US'],
       store: makeStore({
         replaceSnapshot: async (input) => {
           calls.push(`${input.entityId}:${input.countryCode}:${input.offers.length}`)
@@ -332,10 +333,193 @@ describe('runWatchProvidersReprocess — relatorio de recusas e provedores', () 
     ]
     const report = await runWatchProvidersReprocess(baseOptions(rows, []))
     expect(report.providersSeen).toEqual([
-      { providerKey: '8', providerName: 'Netflix', offers: 2 },
-      { providerKey: '2', providerName: 'Apple TV', offers: 1 },
+      {
+        providerKey: '8',
+        providerName: 'Netflix',
+        offers: 2,
+        offerTypes: { subscription: 2 },
+        countries: ['BR'],
+      },
+      {
+        providerKey: '2',
+        providerName: 'Apple TV',
+        offers: 1,
+        offerTypes: { rent: 1 },
+        countries: ['BR'],
+      },
     ])
     expect(report.countriesSeen).toEqual(['BR'])
+  })
+
+  it('a colheita quebra por MODALIDADE — e o que distingue servico de loja', async () => {
+    // Sem esta quebra, "Amazon Prime Video" (assinatura) e "Amazon Video"
+    // (loja) sao indistinguiveis no relatorio, e o alias vira adivinhacao pelo
+    // nome. Com ela, a decisao sai do payload.
+    const rows: RawWatchSourceRow[] = [
+      {
+        tmdbId: 1,
+        baseLanguage: 'pt-BR',
+        payload: payloadWith({
+          flatrate: [{ provider_id: 119, provider_name: 'Amazon Prime Video' }],
+          rent: [{ provider_id: 10, provider_name: 'Amazon Video' }],
+          buy: [{ provider_id: 10, provider_name: 'Amazon Video' }],
+        }),
+      },
+    ]
+    const report = await runWatchProvidersReprocess(baseOptions(rows, []))
+    const byKey = new Map(report.providersSeen.map((p) => [p.providerKey, p]))
+    expect(byKey.get('119')?.offerTypes).toEqual({ subscription: 1 })
+    expect(byKey.get('10')?.offerTypes).toEqual({ rent: 1, buy: 1 })
+  })
+})
+
+describe('runWatchProvidersReprocess — escopo territorial (a FK de 2026-08-13)', () => {
+  /** Payload multi-pais como o real: 138 paises, um deles no escopo. */
+  function multiCountryPayload(countries: readonly string[]): unknown {
+    const results: Record<string, unknown> = {}
+    for (const code of countries) {
+      results[code] = {
+        link: COUNTRY_LINK,
+        flatrate: [{ provider_id: 8, provider_name: 'Netflix' }],
+      }
+    }
+    return { 'watch/providers': { results } }
+  }
+
+  it('CONTROLE POSITIVO: oferta BR chega ao store; pais fora do escopo nunca chega', async () => {
+    const written: string[] = []
+    const rows: RawWatchSourceRow[] = [
+      { tmdbId: 1, baseLanguage: 'pt-BR', payload: multiCountryPayload(['AD', 'AE', 'BR', 'ZW']) },
+    ]
+    const report = await runWatchProvidersReprocess({
+      ...baseOptions(rows, [1]),
+      store: makeStore({
+        replaceSnapshot: async (input) => {
+          written.push(input.countryCode)
+          return { upserted: input.offers.length, revoked: 0 }
+        },
+      }),
+    })
+
+    // A unica escrita e BR — os outros tres nunca tocam a FK.
+    expect(written).toEqual(['BR'])
+    expect(report.counts.applied).toBe(1)
+    expect(report.counts.offersUpserted).toBe(1)
+    expect(report.counts.failed).toBe(0)
+    // E o descarte NAO some: cada pais recusado aparece com sua contagem.
+    expect(report.counts.offersOutOfScope).toBe(3)
+    expect(report.countriesOutOfScope).toEqual({ AD: 1, AE: 1, ZW: 1 })
+    expect(report.territories).toEqual(['BR'])
+  })
+
+  it('titulo com oferta so fora do escopo e `out-of-scope`, NUNCA `empty`', async () => {
+    const replaceSnapshot = vi.fn(async () => ({ upserted: 0, revoked: 0 }))
+    const rows: RawWatchSourceRow[] = [
+      { tmdbId: 1, baseLanguage: 'pt-BR', payload: multiCountryPayload(['AD', 'ZW']) },
+    ]
+    const seen: Record<number, string> = {}
+    const report = await runWatchProvidersReprocess({
+      ...baseOptions(rows, [1]),
+      store: makeStore({ replaceSnapshot }),
+      onItem: (id, outcome) => {
+        seen[id] = outcome
+      },
+    })
+
+    expect(replaceSnapshot).not.toHaveBeenCalled()
+    expect(seen).toEqual({ 1: 'out-of-scope' })
+    expect(report.counts.outOfScope).toBe(1)
+    // `empty` afirmaria "o titulo nao tem onde assistir". Ele tem.
+    expect(report.counts.empty).toBe(0)
+    expect(deriveWatchReprocessStatus(report.counts)).toBe('partial')
+  })
+
+  it('a colheita continua medindo o dado INTEIRO, nao so o escopo', async () => {
+    const rows: RawWatchSourceRow[] = [
+      { tmdbId: 1, baseLanguage: 'pt-BR', payload: multiCountryPayload(['AD', 'BR']) },
+    ]
+    const report = await runWatchProvidersReprocess(baseOptions(rows, [1]))
+    // Um provedor que so aparece fora do escopo continua sendo um provedor que
+    // existe: restringir a colheita ao escopo cegaria a descoberta de aliases.
+    expect(report.countriesSeen).toEqual(['AD', 'BR'])
+    expect(report.providersSeen[0]?.offers).toBe(2)
+    expect(report.providersSeen[0]?.countries).toEqual(['AD', 'BR'])
+  })
+})
+
+describe('runWatchProvidersReprocess — o contador bate com o que foi gravado (T4)', () => {
+  function twoCountryPayload(): unknown {
+    return {
+      'watch/providers': {
+        results: {
+          BR: { link: COUNTRY_LINK, flatrate: [{ provider_id: 8, provider_name: 'Netflix' }] },
+          US: { link: COUNTRY_LINK, flatrate: [{ provider_id: 8, provider_name: 'Netflix' }] },
+        },
+      },
+    }
+  }
+
+  it('falha total nunca imprime oferta no contador de SUCESSO', async () => {
+    // Este e o relatorio de producao: `aplicados 0 (ofertas: +41)` com 100
+    // falhas em 100. O `+41` era real (o replace commita por pais), mas estava
+    // somado no numero que acompanha `aplicados` — sucesso anunciado onde nao
+    // houve nenhum.
+    const rows: RawWatchSourceRow[] = [
+      { tmdbId: 1, baseLanguage: 'pt-BR', payload: twoCountryPayload() },
+    ]
+    const report = await runWatchProvidersReprocess({
+      ...baseOptions(rows, [1]),
+      territories: ['BR', 'US'],
+      store: makeStore({
+        replaceSnapshot: async (input) => {
+          if (input.countryCode === 'US') throw new Error('FK: country_code')
+          return { upserted: input.offers.length, revoked: 0 }
+        },
+      }),
+    })
+
+    expect(report.counts.applied).toBe(0)
+    expect(report.counts.failed).toBe(1)
+    // Zero no contador de sucesso...
+    expect(report.counts.offersUpserted).toBe(0)
+    // ...mas o byte gravado NAO evapora: tem contador proprio.
+    expect(report.counts.offersUpsertedOnFailedEntities).toBe(1)
+    expect(deriveWatchReprocessStatus(report.counts)).toBe('failed')
+  })
+
+  it('a falha diz ONDE parou e o que ja tinha sido gravado', async () => {
+    const rows: RawWatchSourceRow[] = [
+      { tmdbId: 7, baseLanguage: 'pt-BR', payload: twoCountryPayload() },
+    ]
+    const report = await runWatchProvidersReprocess({
+      ...baseOptions(rows, [7]),
+      territories: ['BR', 'US'],
+      store: makeStore({
+        replaceSnapshot: async (input) => {
+          if (input.countryCode === 'US') throw new Error('FK: country_code')
+          return { upserted: input.offers.length, revoked: 0 }
+        },
+      }),
+    })
+    expect(report.failures[0]).toMatchObject({
+      tmdbId: 7,
+      countryFailed: 'US',
+      countriesWritten: ['BR'],
+    })
+  })
+
+  it('CONTROLE POSITIVO: sucesso total soma tudo no contador de sucesso', async () => {
+    const rows: RawWatchSourceRow[] = [
+      { tmdbId: 1, baseLanguage: 'pt-BR', payload: twoCountryPayload() },
+    ]
+    const report = await runWatchProvidersReprocess({
+      ...baseOptions(rows, [1]),
+      territories: ['BR', 'US'],
+    })
+    expect(report.counts.applied).toBe(1)
+    expect(report.counts.offersUpserted).toBe(2)
+    expect(report.counts.offersUpsertedOnFailedEntities).toBe(0)
+    expect(deriveWatchReprocessStatus(report.counts)).toBe('success')
   })
 })
 
@@ -345,11 +529,14 @@ describe('deriveWatchReprocessStatus — "tudo falhou" nunca vira "nada a fazer"
       scanned: 0,
       applied: 0,
       empty: 0,
+      outOfScope: 0,
       unrecognized: 0,
       unresolved: 0,
       failed: 0,
       offersUpserted: 0,
       offersRevoked: 0,
+      offersUpsertedOnFailedEntities: 0,
+      offersOutOfScope: 0,
       ...over,
     }
   }
@@ -376,6 +563,10 @@ describe('deriveWatchReprocessStatus — "tudo falhou" nunca vira "nada a fazer"
 
   it('todos reconhecidos e sem oferta e empty (o titulo nao tem oferta)', () => {
     expect(deriveWatchReprocessStatus(counts({ scanned: 5, empty: 5 }))).toBe('empty')
+  })
+
+  it('tudo fora do escopo territorial e partial, NUNCA empty', () => {
+    expect(deriveWatchReprocessStatus(counts({ scanned: 5, outOfScope: 5 }))).toBe('partial')
   })
 
   it('tudo aplicado e success', () => {

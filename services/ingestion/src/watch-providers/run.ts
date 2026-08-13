@@ -6,18 +6,24 @@
  * (entidade, pais). Sem rede, sem Prisma, sem relogio proprio — testavel com
  * fakes.
  *
- * ANTI-SILENCIO (B-H). Cinco desfechos NOMEADOS, nenhum colapsa no outro:
+ * ANTI-SILENCIO (B-H). Seis desfechos NOMEADOS, nenhum colapsa no outro:
  *  - `applied`      ofertas reconhecidas e gravadas;
  *  - `empty`        payload reconhecido, zero oferta — o titulo nao tem oferta;
+ *  - `out-of-scope` o titulo TEM oferta, mas so fora dos territorios ingeridos;
  *  - `unrecognized` payload nao utilizavel — o replace NAO roda (snapshot bom
  *                   preservado). Isto NAO e sucesso e NAO e "vazio";
  *  - `unresolved`   entidade ainda nao promovida — sem id interno, sem FK;
  *  - `failed`       erro na escrita, com classe e mensagem preservadas.
  * `deriveWatchReprocessStatus` recusa reportar `empty` quando houve falha:
  * "tudo falhou" nunca vira "nada a fazer".
+ *
+ * ESCOPO TERRITORIAL (`territories`): so os paises declarados sao gravados. O
+ * resto e contado por codigo em `countriesOutOfScope` — ver `territories.ts`
+ * para o porque (FK de `countries`, render BR-only, uma transacao por pais).
  */
 
 import { normalizeWatchProviders } from '../normalizers/watch-providers.js'
+import { DEFAULT_WATCH_TERRITORIES } from './territories.js'
 import type {
   RawWatchSource,
   RawWatchSourceRow,
@@ -45,6 +51,13 @@ export interface RunWatchReprocessOptions {
   readonly store: WatchOfferStore
   /** Teto de entidades desta execucao. */
   readonly limit: number
+  /**
+   * Territorios ingeridos (ISO 3166-1 alpha-2 MAIUSCULO). Oferta de pais fora
+   * daqui e DESCARTADA e CONTADA, nunca gravada — `countries` e o dicionario
+   * que valida a grafia, nao o lugar onde se decide escopo de produto.
+   * Omitido => `DEFAULT_WATCH_TERRITORIES`.
+   */
+  readonly territories?: readonly string[]
   /** Janela de frescor da oferta: `staleAfter = fetchedAt + staleAfterMs`. */
   readonly staleAfterMs: number
   /** Relogio injetavel (determinista em teste). */
@@ -95,8 +108,13 @@ export function deriveWatchReprocessStatus(counts: WatchReprocessCounts): WatchR
   // se NADA foi aplicado e havia payloads nao reconhecidos, o ciclo e parcial.
   if (counts.applied === 0 && counts.unrecognized > 0) return 'partial'
   if (counts.applied === 0 && counts.unresolved > 0) return 'partial'
+  // Corpus inteiro fora do escopo territorial NAO e `empty`: `empty` afirma
+  // "os titulos nao tem oferta". Aqui tem — nos e que nao ingerimos o pais.
+  if (counts.applied === 0 && counts.outOfScope > 0) return 'partial'
   if (counts.applied === 0) return 'empty'
-  return counts.unrecognized > 0 || counts.unresolved > 0 ? 'partial' : 'success'
+  return counts.unrecognized > 0 || counts.unresolved > 0 || counts.outOfScope > 0
+    ? 'partial'
+    : 'success'
 }
 
 /** Ofertas de UMA entidade, agrupadas por pais (o replace e por pais). */
@@ -118,6 +136,8 @@ export async function runWatchProvidersReprocess(
 ): Promise<WatchReprocessReport> {
   const startedAt = options.now().getTime()
   const { entityType } = options
+  const territories = [...(options.territories ?? DEFAULT_WATCH_TERRITORIES)]
+  const inScope = new Set(territories)
 
   const scannedRows: readonly RawWatchSourceRow[] = await options.source.list(
     entityType,
@@ -126,15 +146,22 @@ export async function runWatchProvidersReprocess(
 
   let applied = 0
   let empty = 0
+  let outOfScope = 0
   let unrecognized = 0
   let unresolved = 0
   let failed = 0
   let offersUpserted = 0
   let offersRevoked = 0
+  let offersUpsertedOnFailedEntities = 0
+  let offersOutOfScope = 0
   const failures: WatchReprocessFailure[] = []
   const rejectionTally: Record<string, number> = {}
   const countriesSeen = new Set<string>()
-  const providerTally = new Map<string, { providerName: string; offers: number }>()
+  const countriesOutOfScope: Record<string, number> = {}
+  const providerTally = new Map<
+    string,
+    { providerName: string; offers: number; offerTypes: Record<string, number>; countries: Set<string> }
+  >()
 
   // Reconhecimento primeiro (puro), resolucao depois (uma consulta por lote):
   // resolver id por item seria N consultas para a mesma informacao.
@@ -151,12 +178,23 @@ export async function runWatchProvidersReprocess(
       continue
     }
 
+    // A COLHEITA mede o dado INTEIRO, nao so o territorio ingerido: e dela que
+    // saem os aliases, e um provedor que so aparece fora do escopo continua
+    // sendo um provedor que existe. Restringi-la ao escopo transformaria a
+    // ferramenta de descoberta numa foto do que ja decidimos ver.
     for (const offer of result.offers) {
       const seen = providerTally.get(offer.providerKey)
       if (seen === undefined) {
-        providerTally.set(offer.providerKey, { providerName: offer.providerName, offers: 1 })
+        providerTally.set(offer.providerKey, {
+          providerName: offer.providerName,
+          offers: 1,
+          offerTypes: { [offer.offerType]: 1 },
+          countries: new Set([offer.countryCode]),
+        })
       } else {
         seen.offers += 1
+        seen.offerTypes[offer.offerType] = (seen.offerTypes[offer.offerType] ?? 0) + 1
+        seen.countries.add(offer.countryCode)
       }
     }
 
@@ -166,7 +204,25 @@ export async function runWatchProvidersReprocess(
       continue
     }
 
-    recognized.push({ row, offers: result.offers })
+    // Filtro territorial ANTES da escrita. Cada oferta descartada e contada no
+    // seu pais: o operador precisa poder ler "AD trazia 3 ofertas e nao entrou".
+    const scoped: WatchProviderOffer[] = []
+    for (const offer of result.offers) {
+      if (inScope.has(offer.countryCode)) {
+        scoped.push(offer)
+        continue
+      }
+      offersOutOfScope += 1
+      countriesOutOfScope[offer.countryCode] = (countriesOutOfScope[offer.countryCode] ?? 0) + 1
+    }
+
+    if (scoped.length === 0) {
+      outOfScope += 1
+      options.onItem?.(row.tmdbId, 'out-of-scope')
+      continue
+    }
+
+    recognized.push({ row, offers: scoped })
   }
 
   const resolvedList =
@@ -197,8 +253,18 @@ export async function runWatchProvidersReprocess(
       continue
     }
 
+    // Acumuladores POR ENTIDADE. O contador global so recebe o total quando a
+    // entidade completa: sem isto, `replaceSnapshot` (uma transacao por pais)
+    // deixava o que ja commitara somado em `offersUpserted` enquanto `applied`
+    // ficava em 0 — o relatorio de producao saiu `aplicados 0 (ofertas: +41)`.
+    let entityUpserted = 0
+    let entityRevoked = 0
+    const countriesWritten: string[] = []
+    let countryInFlight = '(nenhum)'
+
     try {
       for (const [countryCode, countryOffers] of groupByCountry(offers)) {
+        countryInFlight = countryCode
         const outcome = await options.store.replaceSnapshot({
           entityType,
           entityId,
@@ -207,18 +273,29 @@ export async function runWatchProvidersReprocess(
           fetchedAt,
           staleAfter,
         })
-        offersUpserted += outcome.upserted
-        offersRevoked += outcome.revoked
+        entityUpserted += outcome.upserted
+        entityRevoked += outcome.revoked
+        countriesWritten.push(countryCode)
       }
+      offersUpserted += entityUpserted
+      offersRevoked += entityRevoked
       applied += 1
       options.onItem?.(row.tmdbId, 'applied')
     } catch (error) {
       failed += 1
+      // O que ja foi commitado NAO evapora do relatorio: vai para o contador de
+      // snapshot parcial, separado do sucesso. A revogacao dos paises restantes
+      // nao rodou — a entidade fica com snapshot incompleto ate a proxima
+      // passada, e isso precisa estar visivel.
+      offersUpsertedOnFailedEntities += entityUpserted
+      offersRevoked += entityRevoked
       if (failures.length < MAX_FAILURE_SAMPLE) {
         failures.push({
           tmdbId: row.tmdbId,
           errorClass: classifyWatchError(error),
           message: safeWatchErrorMessage(error),
+          countriesWritten,
+          countryFailed: countryInFlight,
         })
       }
       options.onItem?.(row.tmdbId, 'failed')
@@ -230,6 +307,8 @@ export async function runWatchProvidersReprocess(
       providerKey,
       providerName: value.providerName,
       offers: value.offers,
+      offerTypes: value.offerTypes,
+      countries: [...value.countries].sort(),
     }))
     .sort((a, b) => b.offers - a.offers || a.providerKey.localeCompare(b.providerKey))
 
@@ -239,16 +318,21 @@ export async function runWatchProvidersReprocess(
       scanned: scannedRows.length,
       applied,
       empty,
+      outOfScope,
       unrecognized,
       unresolved,
       failed,
       offersUpserted,
       offersRevoked,
+      offersUpsertedOnFailedEntities,
+      offersOutOfScope,
     },
     failures,
     rejections: rejectionTally as WatchRejectionTally,
     providersSeen,
     countriesSeen: [...countriesSeen].sort(),
+    territories,
+    countriesOutOfScope,
     durationMs: options.now().getTime() - startedAt,
     dryRun: options.dryRun,
   }

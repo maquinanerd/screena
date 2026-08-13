@@ -50,17 +50,33 @@
  *   pnpm --filter @screena/ingestion reprocess-watch-providers --kind=tv --apply
  *   # em producao: acrescente --confirm-production
  *   # flags: --kind=movie|tv (default movie) · --limit=N (default 100)
- *   #        --stale-days=N (default 1) · --apply · --sample · --confirm-production
+ *   #        --stale-days=N (default 1) · --countries=BR[,US,...] (default BR)
+ *   #        --apply · --sample · --confirm-production
+ *
+ * ============ ESCOPO TERRITORIAL (--countries) ============
+ *
+ * O payload real traz 138 paises por titulo, e `watch_availability.country_code`
+ * e FK para `countries.code` — um dicionario com 13 codigos. Sem escopo, o
+ * primeiro pais ausente do dicionario derrubava a transacao daquele pais com
+ * `23503`; em producao, 100 falhas em 100 titulos.
+ *
+ * A cura nao e afrouxar a FK nem despejar 138 codigos no dicionario: e declarar
+ * o territorio. Default `BR` — o unico que o render le hoje
+ * (`apps/web/src/server/entity-watch.ts`). Ampliar exige (1) a flag e (2) o
+ * codigo existir em `countries`; o preflight abaixo recusa ANTES de escrever,
+ * nomeando o que falta. Todo pais descartado por escopo e contado no relatorio.
  */
 
 import { disconnectPrisma, getPrismaClient } from '@screena/db/server'
 
 import { normalizeWatchProviders } from '../src/normalizers/watch-providers.js'
 import {
+  createPrismaCountryRegistry,
   createPrismaRawWatchSource,
   createPrismaTmdbWatchOfferStore,
   createPrismaWatchEntityResolver,
 } from '../src/persistence/watch-providers-store.js'
+import { parseWatchTerritories } from '../src/watch-providers/territories.js'
 import { createPrismaSyncLog } from '../src/persistence/sync-log.js'
 import {
   deriveWatchReprocessStatus,
@@ -164,6 +180,7 @@ async function main(): Promise<void> {
   // `null` = imprime a lista INTEIRA de provedores vistos (default deliberado:
   // esta lista e a colheita, e omitir linha dela produz alias inventado).
   let printLimit: number | null
+  let territories: readonly string[]
   try {
     const rawKind = flagValue(argv, 'kind') ?? 'movie'
     if (rawKind !== 'movie' && rawKind !== 'tv') {
@@ -174,6 +191,11 @@ async function main(): Promise<void> {
     staleDays = positiveInt(flagValue(argv, 'stale-days'), 1, 'stale-days')
     const rawPrintLimit = flagValue(argv, 'print-limit')
     printLimit = rawPrintLimit === null ? null : positiveInt(rawPrintLimit, 20, 'print-limit')
+    const parsedTerritories = parseWatchTerritories(flagValue(argv, 'countries'))
+    if (!parsedTerritories.ok) {
+      throw new Error(`--countries invalido: ${parsedTerritories.errors.join(' · ')}`)
+    }
+    territories = parsedTerritories.territories
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error))
     process.exitCode = 2
@@ -208,12 +230,29 @@ async function main(): Promise<void> {
       return
     }
 
+    // PREFLIGHT DA FK. `watch_availability.country_code` referencia
+    // `countries.code`; um territorio pedido que nao esteja no dicionario e uma
+    // recusa NOMEADA aqui, e nao um `23503` por linha no meio do lote.
+    const missingCountries = await createPrismaCountryRegistry(prisma).missing(territories)
+    if (missingCountries.length > 0) {
+      console.error(
+        `BLOQUEADO: territorio sem linha em "countries": ${missingCountries.join(', ')}. ` +
+          'A FK watch_availability_country_code_fkey recusaria cada oferta desses paises ' +
+          '(23503) DEPOIS de ja ter gravado os anteriores. Cadastre o pais em "countries" ' +
+          '(decisao de dados, com revisao humana) ou remova-o de --countries. ' +
+          'A FK NAO deve ser afrouxada: ela e o que impede codigo de pais inventado.',
+      )
+      process.exitCode = 3
+      return
+    }
+
     const report = await runWatchProvidersReprocess({
       entityType: kind,
       source,
       resolver: createPrismaWatchEntityResolver(prisma),
       store: createPrismaTmdbWatchOfferStore(prisma),
       limit,
+      territories,
       staleAfterMs: staleDays * DAY_MS,
       now: () => new Date(),
       dryRun: !apply,
@@ -224,12 +263,26 @@ async function main(): Promise<void> {
 
     console.log(`REPROCESSAMENTO watch/providers (${kind}) — ${apply ? 'APLICADO' : 'DRY-RUN'}`)
     console.log(`  status         ${status}`)
+    console.log(`  territorios    ${report.territories.join(', ')}`)
     console.log(`  escaneados     ${c.scanned}`)
     console.log(`  aplicados      ${c.applied}   (ofertas: +${c.offersUpserted} / revogadas ${c.offersRevoked})`)
     console.log(`  sem oferta     ${c.empty}      (payload reconhecido, o titulo nao tem oferta)`)
+    console.log(`  fora do escopo ${c.outOfScope}  (tem oferta, mas nenhuma nos territorios ingeridos)`)
     console.log(`  nao reconhec.  ${c.unrecognized} (snapshot preservado — NAO e sucesso)`)
     console.log(`  nao promovido  ${c.unresolved}  (entidade ainda sem id interno)`)
     console.log(`  falhas         ${c.failed}`)
+
+    // Snapshot PARCIAL: bytes commitados por entidades que falharam depois.
+    // Somar isto em `offersUpserted` foi o defeito que imprimiu
+    // "aplicados 0 (ofertas: +41)" num ciclo 100% falho.
+    if (c.offersUpsertedOnFailedEntities > 0) {
+      console.log(
+        `  ATENCAO: +${c.offersUpsertedOnFailedEntities} oferta(s) ficaram GRAVADAS por entidades ` +
+          'que falharam depois (replace e uma transacao por pais). Esses titulos estao com ' +
+          'snapshot INCOMPLETO — a revogacao dos paises restantes nao rodou. Rode de novo ' +
+          'apos corrigir a causa das falhas.',
+      )
+    }
 
     if (Object.keys(report.rejections).length > 0) {
       console.log('  recusas por motivo:')
@@ -240,7 +293,13 @@ async function main(): Promise<void> {
     if (report.failures.length > 0) {
       console.log('  falhas (amostra, com a CAUSA):')
       for (const failure of report.failures.slice(0, 10)) {
-        console.log(`    ${kind}#${failure.tmdbId} [${failure.errorClass}] ${failure.message}`)
+        const partial =
+          failure.countriesWritten.length > 0
+            ? ` — parou em ${failure.countryFailed}; ja gravado: ${failure.countriesWritten.join(', ')}`
+            : ` — parou em ${failure.countryFailed}; nada gravado`
+        console.log(
+          `    ${kind}#${failure.tmdbId} [${failure.errorClass}] ${failure.message}${partial}`,
+        )
       }
     }
     if (report.providersSeen.length > 0) {
@@ -256,7 +315,20 @@ async function main(): Promise<void> {
           : report.providersSeen.slice(0, printLimit)
       console.log(`  provedores TMDB vistos (${report.providersSeen.length}) — insumo dos aliases:`)
       for (const provider of shown) {
-        console.log(`    ${provider.providerKey.padStart(6)} ${provider.providerName} (${provider.offers})`)
+        // A quebra por MODALIDADE e o que permite distinguir servico por
+        // assinatura de loja de compra avulsa. O TMDB registra a mesma marca sob
+        // ids diferentes conforme o papel comercial (9/119 "Amazon Prime Video"
+        // vs 10 "Amazon Video"); sem esta coluna, decidir o alias pelo NOME e
+        // adivinhacao, e mapear a loja no slug do servico afirmaria que uma
+        // compra esta inclusa na assinatura.
+        const byType = Object.entries(provider.offerTypes)
+          .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+          .map(([type, count]) => `${type}=${count}`)
+          .join(' ')
+        console.log(
+          `    ${provider.providerKey.padStart(6)} ${provider.providerName} (${provider.offers}) ` +
+            `[${byType}] em ${provider.countries.length} pais(es)`,
+        )
       }
       const omitted = report.providersSeen.length - shown.length
       if (omitted > 0) {
@@ -272,12 +344,30 @@ async function main(): Promise<void> {
     }
     console.log(`  paises         ${report.countriesSeen.join(', ') || '(nenhum)'}`)
 
+    const outOfScopeEntries = Object.entries(report.countriesOutOfScope).sort(
+      (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
+    )
+    if (outOfScopeEntries.length > 0) {
+      // Descarte por escopo e uma DECISAO. Some-lo em silencio faria "nao
+      // ingerimos AD" ficar indistinguivel de "AD nao tinha oferta".
+      console.log(
+        `  fora do escopo territorial: ${c.offersOutOfScope} oferta(s) em ` +
+          `${outOfScopeEntries.length} pais(es) NAO ingerido(s) —`,
+      )
+      console.log(`    ${outOfScopeEntries.map(([code, n]) => `${code}=${n}`).join(' · ')}`)
+      console.log(
+        '    Para ingerir um deles: cadastre o codigo em "countries" e passe --countries=BR,XX.',
+      )
+    }
+
     if (apply) {
       await createPrismaSyncLog(prisma).write({
         endpoint: 'reprocess-watch-providers',
         status,
         itemsProcessed: c.scanned,
-        itemsUpdated: c.offersUpserted,
+        // Tudo que ficou no banco, inclusive o parcial de entidades que
+        // falharam: o log de auditoria conta BYTES gravados, nao vitorias.
+        itemsUpdated: c.offersUpserted + c.offersUpsertedOnFailedEntities,
         durationMs: report.durationMs,
         // Arquivo ja em disco: nenhuma cota de API foi consumida.
         quotaCost: 0,
