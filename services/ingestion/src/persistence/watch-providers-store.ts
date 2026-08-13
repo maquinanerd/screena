@@ -50,6 +50,7 @@
 import type { PrismaClient } from '@screena/db/server'
 import { TMDB_PROVIDER_API, TMDB_WATCH_ATTRIBUTION_URL } from '@screena/tmdb-client'
 
+import type { CountryRegistry } from '../watch-providers/territories.js'
 import type {
   RawWatchSource,
   RawWatchSourceRow,
@@ -85,6 +86,29 @@ export function createPrismaRawWatchSource(prisma: PrismaClient): RawWatchSource
         baseLanguage: row.baseLanguage,
         payload: row.payload,
       }))
+    },
+  }
+}
+
+/**
+ * Preflight do dicionario `countries` — a FK que derrubou 100 de 100 titulos em
+ * producao (23503 / `watch_availability_country_code_fkey`).
+ *
+ * O ponto NAO e afrouxar a FK: ela existe para recusar codigo de pais
+ * inventado, e continua intacta. O ponto e descobrir a ausencia ANTES do
+ * primeiro INSERT, com o codigo faltante NOMEADO, em vez de como excecao de
+ * driver no meio do lote e com snapshot ja parcialmente escrito.
+ */
+export function createPrismaCountryRegistry(prisma: PrismaClient): CountryRegistry {
+  return {
+    async missing(codes): Promise<readonly string[]> {
+      if (codes.length === 0) return []
+      const rows = await prisma.country.findMany({
+        where: { code: { in: [...codes] } },
+        select: { code: true },
+      })
+      const known = new Set(rows.map((row) => row.code))
+      return codes.filter((code) => !known.has(code))
     },
   }
 }

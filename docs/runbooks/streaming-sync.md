@@ -103,9 +103,41 @@ pnpm --filter @screena/ingestion reprocess-watch-providers --kind=movie --apply
 # em produção: acrescente --confirm-production a qualquer um deles
 ```
 
-A colheita imprime a lista **inteira** de provedores vistos. Se você passar
-`--print-limit=N`, ela diz quantos ficaram de fora — truncar em silêncio é como
-alguém acaba inventando um alias.
+A colheita imprime a lista **inteira** de provedores vistos, com a quebra por
+**modalidade** (`subscription`/`rent`/`buy`/`free`/`ads`) e em quantos países
+cada um apareceu. Essa quebra é o que distingue serviço por assinatura de loja
+de compra avulsa — o TMDB registra a mesma marca sob ids diferentes conforme o
+papel comercial (`9`/`119` "Amazon Prime Video" vs `10` "Amazon Video"), e
+decidir o alias pelo nome é adivinhação. Se você passar `--print-limit=N`, ela
+diz quantos ficaram de fora — truncar em silêncio é como alguém acaba
+inventando um alias.
+
+#### Escopo territorial (`--countries`)
+
+O payload real traz **138 países** por título, e `watch_availability.country_code`
+é FK para `countries.code` — um dicionário com 13 códigos. Em 2026-08-13 o
+reprocessamento gravava tudo e falhou em **100 de 100 títulos** com `23503` /
+`watch_availability_country_code_fkey`.
+
+O comando agora ingere apenas territórios **declarados**. Default: `BR`, o único
+que o render lê (`apps/web/src/server/entity-watch.ts`). Todo país descartado
+por escopo aparece no relatório com a contagem de ofertas — descarte por escopo
+é decisão, não silêncio.
+
+```
+# ingere BR (default)
+pnpm --filter @screena/ingestion reprocess-watch-providers --kind=movie --apply
+
+# amplia o escopo (exige que os códigos existam em `countries`)
+pnpm --filter @screena/ingestion reprocess-watch-providers --kind=movie --countries=BR,US,PT --apply
+```
+
+Um território fora de `countries` é recusado no **preflight**, antes do primeiro
+INSERT, com o código nomeado — em vez de virar `23503` no meio do lote com
+snapshot já parcialmente gravado. **A FK não deve ser afrouxada**: ela é o que
+impede código de país inventado. Ampliar o conjunto de países válidos é uma
+decisão de dados (inserir em `countries`, com revisão humana), nunca remover a
+verificação.
 
 O reprocessamento hidrata o **crédito** (licença + atribuição + decisão de uso)
 junto com a oferta, derivado da licença vigente daquela origem. Ele **nunca**
@@ -173,3 +205,18 @@ Sem oferta permitida, o painel é omitido. Zero chamada externa no render
   `web_url` já foi corrigido; ver a doc de plataforma).
 - Link recusado: só HTTPS legal entra; nunca torrent/IPTV/player pirata
   (invariante 8).
+- `23503` / `watch_availability_country_code_fkey`: o território pedido não está
+  em `countries`. Hoje o preflight recusa antes de escrever, nomeando o código —
+  ver "Escopo territorial" no passo 2b. Não afrouxe a FK.
+- `aplicados 0` mas o relatório fala em ofertas gravadas: procure a linha
+  `ATENCAO: +N oferta(s) ficaram GRAVADAS por entidades que falharam depois`.
+  `replaceSnapshot` é uma transação **por país**; com mais de um território no
+  escopo, os países anteriores ao erro ficam commitados e a revogação dos
+  restantes não roda. Esses títulos estão com snapshot incompleto — rode de novo
+  depois de corrigir a causa.
+- Oferta antiga de origem `streaming_availability` presa em
+  `missing-attribution`: o reprocessamento do `tmdb` **não** a alcança (todo
+  `WHERE` dele é escopado em `provider_api='tmdb'`). Quem re-hidrata o crédito
+  dela é o passo 1 (`sync-streaming-availability --apply`), que grava
+  licença/atribuição/decisão pelo `watch-store`. Isso consome cota da RapidAPI;
+  nenhuma linha precisa ser apagada.
