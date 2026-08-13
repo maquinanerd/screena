@@ -291,6 +291,7 @@ model ApiProvider {
   createdAt   DateTime     @default(now()) @map("created_at")
 
   ratings              ExternalRating[]
+  awards               EntityAward[]
   syncLogs             ApiSyncLog[]
   cacheEntries         ApiCache[]
   sourceLicenses       SourceLicense[]
@@ -406,6 +407,7 @@ model DataUsageDecision {
   supersedes    DataUsageDecision?  @relation("DataUsageDecisionHistory", fields: [supersedesId], references: [id])
   supersededBy  DataUsageDecision[] @relation("DataUsageDecisionHistory")
   ratings       ExternalRating[]
+  awards        EntityAward[]
   watchOffers   WatchAvailability[]
 
   // Decisao VIGENTE unica por (licenca, uso, territorio) via indice unico
@@ -940,6 +942,86 @@ model ExternalRating {
   @@index([staleAfter])
   @@index([dataUsageDecisionId])
   @@map("external_ratings")
+}
+
+// EntityAward — o FATO DE PREMIACAO de um titulo ("Won 4 Oscars. 160 wins &
+// 220 nominations total"), promovido de `api_cache` para o dominio.
+//
+// POR QUE TABELA PROPRIA, E NAO COLUNA EM movies/tv_shows:
+//  1. o dado carrega GOVERNANCA (licenca, credito, decisao de uso, hash
+//     aprovado, display_allowed). Isso e meia duzia de colunas que nao
+//     pertencem a ficha da obra e teriam de ser duplicadas em movies E em
+//     tv_shows;
+//  2. `entity_type` + `entity_id` cobre as duas verticais com UMA tabela, como
+//     `external_ratings` ja faz;
+//  3. um titulo tem UMA frase de premiacao por provedor tecnico — o UNIQUE
+//     (entity_type, entity_id, provider_api) e a identidade real do objeto, e
+//     nao caberia numa coluna.
+//
+// POR QUE NAO E `external_ratings`: premio NAO e nota. Nao tem escala, nao tem
+// natureza critica/publico, nao tem valor numerico comparavel e nao passa pelo
+// gate de `score_allowed`. Enfia-lo la exigiria uma escala falsa e faria o
+// trigger de rating julgar um dado que ele nao entende.
+//
+// O BRUTO FICA JUNTO DO PARSEADO (`awards_raw`): se a OMDb mudar o formato da
+// frase, o bruto e o que permite reprocessar sem gastar uma chamada nova. O
+// parseado e o que a tela consegue escrever em pt-BR.
+//
+// Fail-closed igual ao resto: `display_allowed` nasce false e so vira true sob
+// o trigger `entity_awards_display_guard_trg` (licenca vigente + credito +
+// decisao `awards_display` + hash batendo). Ver
+// docs/legal/omdb-awards-source-provenance.md para a decisao de fonte pendente.
+model EntityAward {
+  id        BigInt     @id @default(autoincrement())
+  entityType EntityType @map("entity_type")
+  entityId   BigInt     @map("entity_id")
+
+  // --- O fato, como a fonte escreveu e como o reconhecedor o leu ---
+  // Literal integral do campo `Awards`. NUNCA vazio: titulo sem premio nao vira
+  // linha (CHECK no banco).
+  awardsRaw String  @map("awards_raw")
+  // Destaque decomposto. `award_name` e VERBATIM ("Oscars", "Primetime Emmys"):
+  // traduzir nome de premio e inventar um premio.
+  outcome        String? // 'won' | 'nominated' (CHECK); null = frase so com contagem
+  highlightCount Int?    @map("highlight_count")
+  awardName      String? @map("award_name")
+  // Contagem agregada; null quando a frase nao a declara. NUNCA 0 por inferencia.
+  wins        Int?
+  nominations Int?
+
+  // --- Proveniencia tecnica (invariante 2: nao e a fonte editorial) ---
+  providerApi         String    @map("provider_api") // FK -> api_providers.key
+  providerPayloadHash String?   @map("provider_payload_hash")
+  fetchedAt           DateTime? @map("fetched_at")
+
+  // --- Governanca de exibicao (espelha external_ratings) ---
+  // Fonte EDITORIAL do fato. `null` = ainda nao decidida => nunca exibivel.
+  // Nao ha FK: premio nao vem de `rating_sources` (aquilo e dominio de nota).
+  sourceKey           String?       @map("source_key")
+  attributionText     String?       @map("attribution_text")
+  attributionUrl      String?       @map("attribution_url")
+  requiresAttribution Boolean       @default(true) @map("requires_attribution")
+  requiresLinkback    Boolean       @default(true) @map("requires_linkback")
+  licenseStatus       LicenseStatus @default(unknown) @map("license_status")
+  displayAllowed      Boolean       @default(false) @map("display_allowed") // default seguro (inv. 6)
+  // Fingerprint APROVADO (entity_award_payload_fingerprint_v1, computado NO
+  // BANCO). Mudou a frase ou o credito, o hash deixa de bater e a exibicao cai.
+  approvedPayloadHash String?       @map("approved_payload_hash")
+  dataUsageDecisionId BigInt?       @map("data_usage_decision_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  provider          ApiProvider        @relation(fields: [providerApi], references: [key])
+  dataUsageDecision DataUsageDecision? @relation(fields: [dataUsageDecisionId], references: [id])
+
+  @@unique([entityType, entityId, providerApi])
+  @@index([entityType, entityId])
+  @@index([providerApi])
+  @@index([sourceKey])
+  @@index([displayAllowed])
+  @@index([dataUsageDecisionId])
+  @@map("entity_awards")
 }
 
 // ============================================================

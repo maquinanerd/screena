@@ -32,6 +32,23 @@ export const DATA_USAGE_CASES = [
   "watch_offer_display",
   /** Exibir o Cinerie Score — obra DERIVADA; exige derivative_allowed. */
   "cinerie_score_display",
+  /**
+   * Exibir o FATO DE PREMIACAO da obra em pagina publica
+   * (entity_awards.display_allowed).
+   *
+   * Eixo PROPRIO, e nao um apendice de `rating_display`, porque premio nao e
+   * nota: nao tem escala, nao tem natureza critica/publico e nao passa pelo
+   * gate de `score_allowed`. Enfia-lo dentro do caso de uso de rating faria uma
+   * decisao sobre notas autorizar, de carona, a exibicao de outro tipo de
+   * afirmacao — exatamente a porta dos fundos que este eixo existe para fechar.
+   *
+   * ATENCAO: existir no vocabulario NAO e existir como decisao. Nenhuma licenca
+   * ou decisao `awards_display` esta registrada hoje — a fonte editorial do
+   * campo `Awards` da OMDb nao foi determinada (ver
+   * docs/legal/omdb-awards-source-provenance.md). Enquanto nao houver, a faixa
+   * nao acende, por construcao.
+   */
+  "awards_display",
   /** Guardar/processar o dado sem exibir (auditoria, metricas, qualidade). */
   "internal_analytics",
 ] as const;

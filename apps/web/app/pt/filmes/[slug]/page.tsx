@@ -5,6 +5,7 @@ import { buildSameAs, serializeJsonLd } from '@screena/seo'
 
 import { EntityActions } from '../../../_components/entity-actions'
 import { EntityExternalIds } from '../../../_components/entity-external-ids'
+import { AwardsBand } from '../../../_components/awards-band'
 import { SectionBoundary } from '../../../_components/section-boundary'
 import { WatchAvailabilityPanel } from '../../../_components/watch-availability-panel'
 import { RatingsPanel } from '../../../_components/ratings-panel'
@@ -32,8 +33,12 @@ import { getMoviePageData } from '../../../../src/server/movie-page'
  *    (`PRODUCTION_FORMULA_REGISTRY` vazio) nem decisão `cinerie_score_display`
  *    com `derivative_allowed`. O bloco não renderiza — nunca um número
  *    inventado nem "ainda não calculado" ocupando a hierarquia do desenho.
- *  - Faixa de prêmios: sem fonte (a API da TMDB não expõe prêmios). Componente
- *    pronto em `_components/awards-band.tsx`, não importado.
+ *  - Faixa de prêmios: o dado EXISTE (`entity_awards`, promovido do campo
+ *    `Awards` da OMDb que estava em `api_cache`) e a faixa está LIGADA — mas
+ *    ela só acende com licença. Hoje não há: a fonte editorial do fato
+ *    ("quem contou os 4 Oscars?") não foi determinada, então `display_allowed`
+ *    é `false` em toda linha e o bloco não renderiza. Ver
+ *    `docs/legal/omdb-awards-source-provenance.md`.
  *  - Chips de gênero: `movies` não tem relação com `genres` (a tabela é a lista
  *    canônica por media_type, sem junção com o título).
  *  - "Mais como este": sem dataset de recomendação determinístico.
@@ -99,7 +104,7 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
   const redirectPath = canonicalRedirectPath(MOVIES_INDEX_PATH, slug, data.canonicalSlug)
   if (redirectPath !== null) permanentRedirect(redirectPath)
 
-  const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, watchAbsence, ratings, externalIds } =
+  const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, watchAbsence, awards, awardsAbsence, ratings, externalIds } =
     data
   const isUnderReview = seo.decision !== 'index'
   const externalLinks = buildExternalLinks(externalIds, 'movie')
@@ -147,6 +152,15 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
     // O `??` nunca é usado: `watchAbsence` só é null quando há painel, e aí
     // `decideSection` não lê o motivo.
     reason: watchAbsence ?? 'no_authorized_provider',
+  })
+  const awardsSection = decideSection(awards, {
+    ...entityRef,
+    section: 'premios',
+    // DERIVADO do estado do catalogo, nunca escrito a mao aqui: "a fonte do
+    // fato nao foi decidida" e passo pendente; "este titulo nao ganhou nada" e
+    // fato sobre a obra. Os dois sao identicos na tela, e so o log separa.
+    // O `??` nunca e usado: `awardsAbsence` so e null quando ha faixa.
+    reason: awardsAbsence ?? 'no_awards_source',
   })
   const critiqueSection = decideSection(critiqueBlock, {
     ...entityRef,
@@ -274,6 +288,13 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
           </div>
         </div>
       </div>
+
+      {/* ===== Faixa de premios (fato da obra, com o credito colado nele) ===== */}
+      <SectionBoundary decision={awardsSection}>
+        {(panel) => (
+          <AwardsBand credit={panel.credit} vertical="movie" view={panel.view} />
+        )}
+      </SectionBoundary>
 
       {/* ===== Mídia full-bleed (1fr/3fr/2fr, 472px) — só imagens REAIS ===== */}
       {view.media.poster !== null || view.media.backdrop !== null ? (

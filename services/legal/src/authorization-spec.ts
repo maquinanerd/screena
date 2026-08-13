@@ -387,6 +387,112 @@ export const STATIC_AUTHORIZATION: readonly AuthorizationEntry[] = [
 ];
 
 /**
+ * ============ PREMIACAO (`entity_awards`): DECISAO DE FONTE **PENDENTE** ============
+ *
+ * O campo `Awards` da OMDb ("Won 4 Oscars. 160 wins & 220 nominations total")
+ * esta em `api_cache` desde o primeiro sync e foi promovido para `entity_awards`
+ * pelo worker `pnpm --filter @screena/ratings awards:promote`. Ele NAO aparece
+ * na tela, e nao vai aparecer, porque **nao ha licenca nem decisao de uso
+ * registrada aqui**.
+ *
+ * NAO E ESQUECIMENTO. A pergunta que precede a licenca — **quem e a fonte
+ * editorial do fato "ganhou 4 Oscars"?** — nao foi respondida com evidencia:
+ *
+ *  - o PAYLOAD nao declara fonte para este campo. `Ratings[]` traz `Source` em
+ *    cada item; `Awards` e uma string de topo, sem rotulo. O mesmo fornecedor
+ *    que sabe nomear a fonte quando esta repassando uma nao nomeia nenhuma
+ *    aqui;
+ *  - a DOCUMENTACAO da OMDb afirma que "all content and images on the site are
+ *    contributed and maintained by our users" e carrega o aviso "This site is
+ *    not endorsed by or affiliated with IMDb.com";
+ *  - o FORMATO da frase e o do resumo de premios do IMDb, e terceiros descrevem
+ *    a OMDb como dado do IMDb sistematizado — indicio forte, mas indicio.
+ *
+ * Creditar o IMDb afirmaria uma proveniencia que o IMDb nunca declarou e que a
+ * OMDb desmente por escrito. Creditar a OMDb colapsaria fornecedor tecnico e
+ * fonte editorial. As duas saidas sao afirmacoes que a evidencia disponivel nao
+ * sustenta — e proveniencia falsa e exatamente o defeito que a separacao por
+ * fornecedor (ver o bloco seguinte, streaming) existe para impedir.
+ *
+ * Dossie completo, com as duas opcoes e o que cada uma implica:
+ * `docs/legal/omdb-awards-source-provenance.md`. A decisao e do proprietario.
+ *
+ * COMO A DECISAO ENTRA (uma linha): acrescentar a chamada de
+ * `awardsAuthorizationEntry(...)` ao `STATIC_AUTHORIZATION` com a fonte
+ * decidida, o texto de credito dela e a versao de politica. Nada mais no codigo
+ * precisa mudar: o worker resolve o credito CONSULTANDO a licenca vigente —
+ * ele nao conhece nenhuma fonte de premio por nome, de proposito.
+ * ======================================================================
+ */
+
+/**
+ * `content_type` da licenca de premiacao. `other` porque premio nao e nota,
+ * nao e oferta, nao e imagem e nao e texto de noticia — e nenhum valor novo do
+ * enum e necessario para dize-lo.
+ */
+export const AWARDS_LICENSE_CONTENT_TYPE = "other" as const;
+
+/** `use_case` que autoriza exibir o fato de premiacao. */
+export const AWARDS_DISPLAY_USE_CASE = "awards_display" as const;
+
+/**
+ * A entrada de autorizacao de premiacao, pronta para quando a fonte for
+ * decidida. **Nao e chamada por `STATIC_AUTHORIZATION` hoje** — ver o bloco
+ * acima.
+ *
+ * `sourceKey` e a FONTE EDITORIAL do fato (quem contou os premios), nunca o
+ * fornecedor tecnico. `providerKey` registra por onde o dado chegou (`omdb`),
+ * como em toda licenca: os dois campos coexistem e nunca colapsam.
+ */
+export function awardsAuthorizationEntry(input: {
+  readonly sourceKey: string;
+  readonly attributionText: string;
+  readonly policyVersion: string;
+  readonly requiresLinkback: boolean;
+  readonly notes: string;
+}): AuthorizationEntry {
+  return {
+    label: `Premiacao: ${input.sourceKey}`,
+    role: "editorial-rating-source",
+    license: {
+      sourceKey: input.sourceKey,
+      contentType: AWARDS_LICENSE_CONTENT_TYPE,
+      // Premio nao e nota: nao ha `rating_sources.key` a apontar, e o CHECK do
+      // banco so exige `rating_source_key` quando content_type='rating'.
+      ratingSourceKey: null,
+      providerKey: "omdb",
+      territory: CINERIE_TERRITORY,
+      licenseStatus: "third_party",
+      displayAllowed: true,
+      logoAllowed: false,
+      // Premio nao tem escala nem numero de nota. `score_allowed` governa o
+      // NUMERO DA NOTA (regra de ratings secao 5) e nao e lido pelo gate de
+      // premiacao — deixa-lo false mantem a licenca minima.
+      scoreAllowed: false,
+      reviewQuoteAllowed: false,
+      requiresAttribution: true,
+      requiresLinkback: input.requiresLinkback,
+      attributionText: input.attributionText,
+      policyVersion: input.policyVersion,
+      notes: input.notes,
+    },
+    decisions: [
+      {
+        useCase: AWARDS_DISPLAY_USE_CASE,
+        territory: CINERIE_TERRITORY,
+        stage: "approved_for_display",
+        displayAllowed: true,
+        storageAllowed: true,
+        derivativeAllowed: false,
+        attributionRequired: true,
+        linkbackRequired: input.requiresLinkback,
+        policyVersion: input.policyVersion,
+      },
+    ],
+  };
+}
+
+/**
  * ============ PROVENIENCIA DA OFERTA: UMA LICENCA POR FORNECEDOR TECNICO ============
  *
  * Uma oferta de streaming pode chegar por DOIS caminhos tecnicos, e eles NAO

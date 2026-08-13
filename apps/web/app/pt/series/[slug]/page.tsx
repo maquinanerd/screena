@@ -6,6 +6,7 @@ import { buildSameAs, serializeJsonLd } from '@screena/seo'
 
 import { EntityActions } from '../../../_components/entity-actions'
 import { EntityExternalIds } from '../../../_components/entity-external-ids'
+import { AwardsBand } from '../../../_components/awards-band'
 import { SectionBoundary } from '../../../_components/section-boundary'
 import { WatchAvailabilityPanel } from '../../../_components/watch-availability-panel'
 import { RatingsPanel } from '../../../_components/ratings-panel'
@@ -201,7 +202,7 @@ export default async function SeriesPage({
   const redirectPath = canonicalRedirectPath(SERIES_INDEX_PATH, slug, data.canonicalSlug)
   if (redirectPath !== null) permanentRedirect(redirectPath)
 
-  const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, watchAbsence, ratings, externalIds } =
+  const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, watchAbsence, awards, awardsAbsence, ratings, externalIds } =
     data
   const isUnderReview = seo.decision !== 'index'
   const metaText = [view.periodLabel, view.seasonsCountLabel, view.episodesCountLabel]
@@ -259,6 +260,15 @@ export default async function SeriesPage({
     // O `??` nunca é usado: `watchAbsence` só é null quando há painel, e aí
     // `decideSection` não lê o motivo.
     reason: watchAbsence ?? 'no_authorized_provider',
+  })
+  const awardsSection = decideSection(awards, {
+    ...entityRef,
+    section: 'premios',
+    // DERIVADO do estado do catalogo, nunca escrito a mao aqui: "a fonte do
+    // fato nao foi decidida" e passo pendente; "este titulo nao ganhou nada" e
+    // fato sobre a obra. Os dois sao identicos na tela, e so o log separa.
+    // O `??` nunca e usado: `awardsAbsence` so e null quando ha faixa.
+    reason: awardsAbsence ?? 'no_awards_source',
   })
   const critiqueSection = decideSection(critiqueBlock, {
     ...entityRef,
@@ -380,6 +390,13 @@ export default async function SeriesPage({
           </div>
         </div>
       </div>
+
+      {/* ===== Faixa de premios (fato da obra, com o credito colado nele) ===== */}
+      <SectionBoundary decision={awardsSection}>
+        {(panel) => (
+          <AwardsBand credit={panel.credit} vertical="series" view={panel.view} />
+        )}
+      </SectionBoundary>
 
       {/* ===== Mídia (pôster/backdrop reais) ===== */}
       {view.media.poster !== null || view.media.backdrop !== null ? (
