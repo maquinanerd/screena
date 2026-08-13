@@ -279,13 +279,21 @@ export function createFakeLibraryStores(db: FakeDb): LibraryStores {
     async markBulk(_s, input) {
       let created = 0;
       let updated = 0;
+      // INDICES, construidos UMA vez. Antes, cada episodio varria `db.episodes`
+      // inteiro e `db.episodeProgress` inteiro: com 21 mil episodios isso e
+      // ~441 milhoes de comparacoes DENTRO DO DUBLE, e nao no codigo sob teste.
+      // O `markBulk` real e UMA instrucao no banco; a lentidao era so do fake.
+      const episodiosExistentes = new Set(db.episodes.map((e) => e.episodeId));
+      const progressoPorEpisodio = new Map(
+        db.episodeProgress
+          .filter((p) => p.userId === input.userId)
+          .map((p) => [p.episodeId, p] as const),
+      );
       for (const episodeId of input.episodeIds) {
-        if (!db.episodes.some((e) => e.episodeId === episodeId)) continue;
-        const existente = db.episodeProgress.find(
-          (p) => p.userId === input.userId && p.episodeId === episodeId,
-        );
+        if (!episodiosExistentes.has(episodeId)) continue;
+        const existente = progressoPorEpisodio.get(episodeId);
         if (existente === undefined) {
-          db.episodeProgress.push({
+          const nova = {
             userId: input.userId,
             episodeId,
             watched: input.watched,
@@ -294,7 +302,11 @@ export function createFakeLibraryStores(db: FakeDb): LibraryStores {
             durationSeconds: null,
             version: 1,
             updatedAt: input.now,
-          });
+          };
+          db.episodeProgress.push(nova);
+          // O indice acompanha a escrita: ids repetidos na MESMA chamada nao
+          // podem virar duas linhas (o `find` anterior tambem nao deixava).
+          progressoPorEpisodio.set(episodeId, nova);
           created += 1;
           continue;
         }
@@ -309,15 +321,19 @@ export function createFakeLibraryStores(db: FakeDb): LibraryStores {
       return { created, updated };
     },
     async countWatchedForSeries(_s, input) {
+      // `Array.includes` dentro de `filter` e quadratico; o Set nao muda a
+      // semantica e tira o custo que nao pertence ao codigo sob teste.
+      const alvo = new Set(input.episodeIds);
       return {
         watched: db.episodeProgress.filter(
-          (p) => p.userId === input.userId && p.watched && input.episodeIds.includes(p.episodeId),
+          (p) => p.userId === input.userId && p.watched && alvo.has(p.episodeId),
         ).length,
       };
     },
     async listWatchedIds(_s, input) {
+      const alvo = new Set(input.episodeIds);
       return db.episodeProgress
-        .filter((p) => p.userId === input.userId && p.watched && input.episodeIds.includes(p.episodeId))
+        .filter((p) => p.userId === input.userId && p.watched && alvo.has(p.episodeId))
         .map((p) => p.episodeId);
     },
     async countWatchedTotal(_s, userId) {
@@ -736,7 +752,8 @@ export function createFakeLibraryStores(db: FakeDb): LibraryStores {
       return { totalMinutes: 0, withRuntime: 0, withoutRuntime: 0 };
     },
     async sumEpisodeRuntime(_s, episodeIds) {
-      const encontrados = db.episodes.filter((e) => episodeIds.includes(e.episodeId));
+      const pedidos = new Set(episodeIds);
+      const encontrados = db.episodes.filter((e) => pedidos.has(e.episodeId));
       const comRuntime = encontrados.filter((e) => e.runtimeMinutes !== null);
       return {
         totalMinutes: comRuntime.reduce((soma, e) => soma + (e.runtimeMinutes ?? 0), 0),
