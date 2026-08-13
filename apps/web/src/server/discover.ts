@@ -16,6 +16,7 @@ import { cache } from 'react'
 import { getPrismaClient } from '@screena/db/server'
 
 import { licensedWatchWhere } from './entity-watch'
+import { distinctWatchPlatforms } from '../lib/watch-platform-identity'
 import { buildTmdbImageUrl } from '../lib/tmdb-image-url'
 import { MOVIES_INDEX_PATH, SERIES_INDEX_PATH } from '../lib/site'
 
@@ -199,12 +200,30 @@ export const getDiscoverData = cache(async (): Promise<DiscoverData> => {
         entityId: entity.id,
         ...licensedWatchWhere(new Date()),
       },
-      select: { providerName: true },
+      select: {
+        providerName: true,
+        // `providerKey` NAO e decorativo aqui: `resolveWatchPlatform` recusa a
+        // oferta sem ele (nao ha como atribui-la a plataforma nenhuma). Omitir
+        // este campo esvaziaria a lista de provedores do destaque em silencio.
+        providerKey: true,
+        watchProvider: { select: { slug: true, canonicalName: true } },
+      },
       take: 6,
     })
-    const providerNames = [
-      ...new Set(watch.map((row) => row.providerName.trim()).filter((name) => name !== '')),
-    ].slice(0, 3)
+    // MESMA nocao de identidade do hub e do painel (modulo compartilhado):
+    // deduplicar por NOME de fornecedor nao e identidade — as duas origens
+    // escrevem o mesmo servico com strings proprias ("Prime Video" vs
+    // "Amazon Prime Video"). A identidade da plataforma e o slug canonico.
+    const providerNames = distinctWatchPlatforms(
+      watch.map((row) => ({
+        providerName: row.providerName,
+        providerKey: row.providerKey,
+        providerSlug: row.watchProvider?.slug ?? null,
+        canonicalName: row.watchProvider?.canonicalName ?? null,
+      })),
+    )
+      .map((platform) => platform.displayName)
+      .slice(0, 3)
     featured = {
       ...card,
       originalTitle:

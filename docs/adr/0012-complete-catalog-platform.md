@@ -205,3 +205,42 @@ PostgreSQL nao serviria: hoje o index scan devolve `'pt'` antes de `'pt-BR'`
   temporada vem de `seasons.poster_path`.
 - Nada aqui chama API externa no render, roda Gemini, decide licenca, indexa em
   massa ou publica — a PR e draft e a revisao/merge sao humanos.
+
+---
+
+## Emenda 2026-08-12 — postura de producao dos bins de catalogo
+
+`reprocess-watch-providers` ABORTAVA em producao de forma absoluta
+(`NODE_ENV=production` -> saida 3), enquanto `catalog.ts`,
+`register-watch-providers` e `unpublish-article` — a mesma familia — ja aceitavam
+rodar la com **dupla confirmacao** (`--confirm-production`). Dois comandos da
+mesma cadeia discordavam, e o proibido era o mais inofensivo dos dois.
+
+**A proibicao absoluta foi trocada pela mesma dupla confirmacao**, e o registro
+desta decisao existe porque ela foi tomada durante a implementacao, nao antes:
+uma busca no historico (commit de origem, ADRs, runbooks) nao encontrou razao
+registrada para o bloqueio absoluto alem do "FAIL-CLOSED" generico do cabecalho.
+Se havia uma razao, ela nunca foi escrita — e quem herdar isto merece saber
+disso em vez de descobrir de novo.
+
+As tres razoes da troca:
+
+1. O comando **nao faz chamada de rede e nao gasta cota**: a fonte e o
+   `tmdb_raw` ja arquivado. O risco que a barreira protegia nao existe aqui.
+2. Toda linha que ele escreve nasce `display_allowed = false` (invariante 6).
+   Ele **nao pode tornar nada visivel**; acender continua sendo decisao humana,
+   por outro comando e outro guard.
+3. A **colheita** de provedores (o dry-run que lista os `provider_id` reais no
+   dado) so faz sentido contra o dado de producao. Com o bloqueio absoluto,
+   descobrir a chave do Disney+ ou do Globoplay era impossivel por caminho
+   legitimo — a barreira nao protegia, empurrava para o SQL manual.
+
+**A deteccao ficou ESTRITAMENTE MAIS FORTE, nao mais fraca.** O guard antigo
+olhava so `NODE_ENV`/`VERCEL_ENV`; `looksLikeProduction()` casa tambem padroes
+na URL do banco (`_prod`, `production`, `screena-db`, `cinerie-db`, `rss_prime`).
+Isso importa neste repo: o `.env` local aponta para producao e o env do shell
+vence `--env-file`. O guard antigo deixaria passar; este recusa.
+
+O que **nao** mudou: sem `--confirm-production` a producao continua recusada, e
+`--apply` continua exigindo intencao explicita. Nenhum bin ganhou permissao de
+promover, exibir ou publicar.

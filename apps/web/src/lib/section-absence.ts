@@ -46,9 +46,16 @@ export type SectionKey =
 export type SectionAbsenceReason =
   /** Nenhuma nota sobreviveu ao gate de licenca/credito/frescor. */
   | "no_authorized_rating"
-  /** Nenhum provedor autorizado no banco — o registro nunca foi populado. */
+  /**
+   * NENHUMA oferta exibivel no catalogo inteiro — a cadeia de streaming nao foi
+   * concluida (registro de provedores vazio, licenca nao aplicada ou nada
+   * promovido). Alguem precisa agir, e nao adianta olhar este titulo.
+   */
   | "no_authorized_provider"
-  /** Ha provedor autorizado, mas nenhuma oferta para ESTE titulo. */
+  /**
+   * Existe oferta exibivel em ALGUM titulo, mas nenhuma neste. E um fato sobre
+   * a obra, nao um passo pendente — por isso `actionable: false`.
+   */
   | "no_offer_for_entity"
   /** Nao existe formula de Cinerie Score aprovada (decisao humana pendente). */
   | "no_approved_formula"

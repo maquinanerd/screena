@@ -76,7 +76,7 @@ export default async function WatchBrowsePage() {
               <div className="watch-hero__services">
                 {/* Provedores como TEXTO: logo_allowed=false (licença) */}
                 {providers.map((provider) => (
-                  <span className="watch-hero__service" key={provider.providerKey}>
+                  <span className="watch-hero__service" key={provider.providerSlug}>
                     {provider.providerName}
                   </span>
                 ))}
@@ -97,7 +97,7 @@ export default async function WatchBrowsePage() {
             </div>
             <WatchPopular
               providers={providers.map((provider) => ({
-                providerKey: provider.providerKey,
+                providerKey: provider.providerSlug,
                 providerName: provider.providerName,
                 titles: provider.titles.map((title) => ({
                   entityType: title.entityType,

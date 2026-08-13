@@ -20,6 +20,7 @@ import { cache } from 'react'
 import { getPrismaClient } from '@screena/db/server'
 
 import { licensedWatchWhere } from './entity-watch'
+import { resolveWatchPlatform } from '../lib/watch-platform-identity'
 import { buildTmdbImageUrl } from '../lib/tmdb-image-url'
 import { MOVIES_INDEX_PATH, SERIES_INDEX_PATH } from '../lib/site'
 
@@ -43,7 +44,13 @@ export interface WatchBrowseTitle {
 }
 
 export interface WatchBrowseProvider {
-  providerKey: string
+  /**
+   * Identidade CANONICA da plataforma (`watch_providers.slug`), nao a chave do
+   * fornecedor tecnico. O nome importa: `provider_key` em `watch_availability`
+   * e por FORNECEDOR ("netflix" na RapidAPI, "8" no TMDB), e foi exatamente
+   * essa ambiguidade que fez o hub listar a mesma plataforma duas vezes.
+   */
+  providerSlug: string
   providerName: string
   titles: WatchBrowseTitle[]
 }
@@ -68,6 +75,13 @@ export const getWatchBrowseData = cache(async (): Promise<WatchBrowseData> => {
       entityId: true,
       providerKey: true,
       providerName: true,
+      // Identidade da plataforma ENTRE fornecedores tecnicos, e o nome canonico
+      // dela. `provider_key` e a chave do FORNECEDOR, nao da plataforma: a
+      // RapidAPI grava "netflix", o TMDB grava "8" (o `provider_id` numerico).
+      // Agrupar por ele listaria a Netflix DUAS vezes, como se fossem dois
+      // servicos. O painel de detalhe ja resolvia isso pelo slug; o hub nao
+      // recebeu o campo quando o portao foi aberto as duas origens.
+      watchProvider: { select: { slug: true, canonicalName: true } },
       offerType: true,
       fetchedAt: true,
       requiresAttribution: true,
@@ -169,11 +183,19 @@ export const getWatchBrowseData = cache(async (): Promise<WatchBrowseData> => {
       updatedAt = row.fetchedAt
     }
 
-    const providerName = row.providerName.trim()
-    if (providerName === '') continue
-    const providerKey = (row.providerKey ?? '').trim()
-    if (providerKey === '') continue
-    const bucket = byProvider.get(providerKey) ?? {
+    // O BALDE E A PLATAFORMA, nao o fornecedor — e quem decide isso e o modulo
+    // compartilhado, o MESMO usado pelo destaque de `discover`. Regra critica
+    // reimplementada em cada consumidor foi exatamente como este defeito nasceu.
+    const platform = resolveWatchPlatform({
+      providerName: row.providerName,
+      providerKey: row.providerKey,
+      providerSlug: row.watchProvider?.slug ?? null,
+      canonicalName: row.watchProvider?.canonicalName ?? null,
+    })
+    if (platform === null) continue
+    const { bucketKey, displayName: providerName } = platform
+
+    const bucket = byProvider.get(bucketKey) ?? {
       providerName,
       titles: new Map<string, WatchBrowseTitle>(),
     }
@@ -194,12 +216,12 @@ export const getWatchBrowseData = cache(async (): Promise<WatchBrowseData> => {
     } else if (offerType !== null && !existing.offerTypes.includes(offerType)) {
       existing.offerTypes.push(offerType)
     }
-    byProvider.set(providerKey, bucket)
+    byProvider.set(bucketKey, bucket)
   }
 
   const providers: WatchBrowseProvider[] = [...byProvider.entries()]
-    .map(([providerKey, bucket]) => ({
-      providerKey,
+    .map(([providerSlug, bucket]) => ({
+      providerSlug,
       providerName: bucket.providerName,
       // "Populares agora": ordena pelo sinal tecnico de popularidade (TMDB)
       titles: [...bucket.titles.values()].sort((a, b) => b.popularity - a.popularity),

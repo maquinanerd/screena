@@ -32,7 +32,8 @@ import { movieCanonicalUrl } from "../lib/site";
 import { resolveEntityPageSeo } from "./seo/indexability-decision";
 import { getRelatedNewsForEntity } from "./related-news";
 import { getCastForEntity } from "./entity-cast";
-import { getWatchAvailabilityForEntity } from "./entity-watch";
+import { getWatchAvailabilityForEntity, watchAbsenceReason } from "./entity-watch";
+import type { SectionAbsenceReason } from "../lib/section-absence";
 import { getRatingsForEntity } from "./entity-ratings";
 import { buildRatingsView, type RatingsPanelView } from "../lib/ratings-presenter";
 import type { NewsCardView } from "../lib/news-presenter";
@@ -64,6 +65,12 @@ export interface MoviePageData {
   cast: CastMemberView[];
   /** Disponibilidade no Brasil (watch_availability licenciado); `null` omite o painel. */
   watch: WatchAvailabilityView | null;
+  /**
+   * Por que o painel de "Onde assistir" nao renderizou. Derivado do ESTADO do
+   * catalogo (ver `watchAbsenceReason`), nunca fixo na pagina. `null` quando
+   * `watch` existe: nao ha ausencia para justificar.
+   */
+  watchAbsence: SectionAbsenceReason | null;
   /** Notas externas licenciadas e creditadas; `null` omite o painel. */
   ratings: RatingsPanelView | null;
   /** IDs externos reais (imdb/tmdb/...) para montar `sameAs` no JSON-LD. */
@@ -207,6 +214,10 @@ export const getMoviePageData = cache(
       prisma,
     );
 
+    // O motivo da AUSENCIA do painel de streaming e derivado do estado, nunca
+    // fixo. So consulta quando nao ha painel — quem tem oferta nao paga a sonda.
+    const watchAbsence = watch === null ? await watchAbsenceReason(prisma) : null;
+
     return {
       view,
       // C8: id INTERNO do catalogo, serializado. A pagina o repassa ao botao de
@@ -220,6 +231,7 @@ export const getMoviePageData = cache(
       relatedNews,
       cast,
       watch,
+      watchAbsence,
       ratings,
       externalIds,
     };

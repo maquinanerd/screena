@@ -201,7 +201,8 @@ export default async function SeriesPage({
   const redirectPath = canonicalRedirectPath(SERIES_INDEX_PATH, slug, data.canonicalSlug)
   if (redirectPath !== null) permanentRedirect(redirectPath)
 
-  const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, ratings, externalIds } = data
+  const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, watchAbsence, ratings, externalIds } =
+    data
   const isUnderReview = seo.decision !== 'index'
   const metaText = [view.periodLabel, view.seasonsCountLabel, view.episodesCountLabel]
     .filter((item): item is string => item !== null)
@@ -251,7 +252,13 @@ export default async function SeriesPage({
   const watchSection = decideSection(watch, {
     ...entityRef,
     section: 'onde-assistir',
-    reason: 'no_authorized_provider',
+    // DERIVADO do estado do catálogo, nunca escrito à mão aqui (ver
+    // `watchAbsenceReason`): "ninguém está autorizado ainda" é um passo de
+    // operação pendente; "este título não está em lugar nenhum" é um fato sobre
+    // a obra. Os dois se parecem exatamente iguais na tela, e só o log separa.
+    // O `??` nunca é usado: `watchAbsence` só é null quando há painel, e aí
+    // `decideSection` não lê o motivo.
+    reason: watchAbsence ?? 'no_authorized_provider',
   })
   const critiqueSection = decideSection(critiqueBlock, {
     ...entityRef,
