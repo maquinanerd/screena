@@ -7,7 +7,7 @@ import {
   HOME_NEWS_CARD_LIMIT,
   takeSectionCards,
 } from '../../../src/lib/portal-presenter'
-import { SITE_URL, publicRobots } from '../../../src/lib/site'
+import { MOVIES_INDEX_PATH, SITE_URL, publicRobots } from '../../../src/lib/site'
 import { getHomeCatalogData } from '../../../src/server/home-catalog'
 import { getHomeEditorialHighlights } from '../../../src/server/home-editorial'
 import { getHomeHeroSlides } from '../../../src/server/home-hero'
@@ -22,6 +22,9 @@ import { getNewsIndexData } from '../../../src/server/news-pages'
  * logo vermelhos por contexto (data-vertical + header por rota). Hero mostra
  * só destaques de filme. Contratos de SEO (canonical, robots, CollectionPage,
  * BreadcrumbList, ItemList) permanecem os do índice real.
+ *
+ * "Em breve" aqui é SÓ FILME (`getHomeUpcomingMovies`): a rota de filmes não
+ * mistura vertical. A home mistura; `/pt/series/` mostra só série.
  */
 
 export const dynamic = 'force-dynamic'
@@ -101,7 +104,7 @@ export default async function MovieCategoryPage() {
         showMoviesBand
         showSeriesBand={false}
         tickerItems={[]}
-        upcomingMovies={upcoming}
+        upcoming={{ items: upcoming, vertical: 'movie', route: MOVIES_INDEX_PATH }}
       />
       <script
         type="application/ld+json"

@@ -33,7 +33,9 @@ export type SectionKey =
   | "guia-critica"
   | "mais-como-este"
   | "elenco"
-  | "noticias";
+  | "noticias"
+  /** Trilho "Em breve" — escopo de ROTA (home/filmes/series), nao de entidade. */
+  | "em-breve";
 
 /**
  * Por que o bloco nao renderizou.
@@ -68,7 +70,18 @@ export type SectionAbsenceReason =
   /** O catalogo nao tem elenco para este titulo. */
   | "no_cast"
   /** Nenhum artigo publicado vinculado a esta entidade. */
-  | "no_linked_article";
+  | "no_linked_article"
+  /**
+   * NENHUMA estreia futura no catalogo para a(s) vertical(is) desta rota.
+   *
+   * E sempre um passo pendente, nunca um fato: o mundo real tem estreias
+   * futuras o ano inteiro. Um "Em breve" vazio significa que a ingestao de
+   * upcoming nao cobriu aquela vertical (`ingest-public-catalog
+   * --include-upcoming`) ou que as entidades chegaram sem slug canonico pt-BR.
+   * Sem esta linha, `/pt/series/` sem serie futura e `/pt/series/` com a
+   * ingestao nunca rodada sao visualmente identicos: nada.
+   */
+  | "no_upcoming_title";
 
 /** Uma linha de log estruturada. Sem segredo, sem payload cru, sem PII. */
 export interface SectionAbsence {
@@ -97,6 +110,7 @@ const ACTIONABLE_REASONS: ReadonlySet<SectionAbsenceReason> = new Set([
   "no_approved_formula",
   "no_awards_source",
   "no_recommendation_dataset",
+  "no_upcoming_title",
 ]);
 
 export interface SectionAbsenceContext {
@@ -119,13 +133,59 @@ export function buildSectionAbsence(context: SectionAbsenceContext): SectionAbse
 }
 
 /**
+ * A MESMA ausencia, quando o bloco pertence a uma ROTA e nao a uma entidade.
+ *
+ * POR QUE UM SEGUNDO FORMATO, E NAO `entityId: "home"`. `SectionAbsence` promete
+ * que `entityId` acha o titulo. O trilho "Em breve" da home nao e sobre titulo
+ * nenhum: ele falta para a rota inteira. Enfiar `"home"` no campo de id seria
+ * mentir no log — e log que mente e pior que log que falta. O que o operador
+ * precisa aqui e a ROTA e a VERTICAL consultada.
+ *
+ * O consumidor continua sendo o mesmo `<SectionBoundary>`: os dois formatos
+ * compartilham `event`/`section`/`reason`/`actionable`, que e tudo que ele le.
+ */
+export interface RouteSectionAbsence {
+  readonly event: "section_absent";
+  readonly section: SectionKey;
+  readonly reason: SectionAbsenceReason;
+  /** Path publico da rota (ex.: `/pt/series/`) — o que o operador abre. */
+  readonly route: string;
+  /** Qual dataset foi consultado e voltou vazio. */
+  readonly vertical: "movie" | "series" | "mixed";
+  readonly actionable: boolean;
+}
+
+export interface RouteSectionAbsenceContext {
+  readonly section: SectionKey;
+  readonly reason: SectionAbsenceReason;
+  readonly route: string;
+  readonly vertical: "movie" | "series" | "mixed";
+}
+
+/** Monta o evento de rota. Nao escreve nada — quem escreve e o chamador. */
+export function buildRouteSectionAbsence(
+  context: RouteSectionAbsenceContext,
+): RouteSectionAbsence {
+  return {
+    event: "section_absent",
+    section: context.section,
+    reason: context.reason,
+    route: context.route,
+    vertical: context.vertical,
+    actionable: ACTIONABLE_REASONS.has(context.reason),
+  };
+}
+
+/**
  * Serializa em UMA linha JSON para o coletor de logs do container.
  *
  * JSON e nao prosa porque a linha existe para ser filtrada
  * (`event=section_absent section=onde-assistir actionable=true`), nao lida uma
  * a uma.
  */
-export function formatSectionAbsence(absence: SectionAbsence): string {
+export function formatSectionAbsence(
+  absence: SectionAbsence | RouteSectionAbsence,
+): string {
   return JSON.stringify(absence);
 }
 
@@ -137,7 +197,11 @@ export function formatSectionAbsence(absence: SectionAbsence): string {
  */
 export type SectionDecision<T> =
   | { readonly rendered: true; readonly value: T; readonly absence: null }
-  | { readonly rendered: false; readonly value: null; readonly absence: SectionAbsence };
+  | {
+      readonly rendered: false;
+      readonly value: null;
+      readonly absence: SectionAbsence | RouteSectionAbsence;
+    };
 
 /**
  * Decide um bloco a partir do dado que ele exibiria.
@@ -156,6 +220,24 @@ export function decideSection<T>(
 
   if (empty) {
     return { rendered: false, value: null, absence: buildSectionAbsence(context) };
+  }
+  return { rendered: true, value: value as T, absence: null };
+}
+
+/**
+ * `decideSection` para blocos de ROTA (home, indice de filmes, indice de
+ * series). Mesmas regras — lista vazia e ausencia de proposito —, so muda o
+ * escopo que vai para o log.
+ */
+export function decideRouteSection<T>(
+  value: T | null | undefined,
+  context: RouteSectionAbsenceContext,
+): SectionDecision<T> {
+  const empty =
+    value === null || value === undefined || (Array.isArray(value) && value.length === 0);
+
+  if (empty) {
+    return { rendered: false, value: null, absence: buildRouteSectionAbsence(context) };
   }
   return { rendered: true, value: value as T, absence: null };
 }

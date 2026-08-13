@@ -1,25 +1,33 @@
 /**
- * home-upcoming.ts — Camada de dados SERVER-ONLY da seção "Em breve" da home:
- * filmes com estreia FUTURA já ingeridos do TMDB (offline) no PostgreSQL.
+ * home-upcoming.ts — Camada de dados SERVER-ONLY da seção "Em breve":
+ * filmes e séries com estreia FUTURA já ingeridos do TMDB (offline) no
+ * PostgreSQL.
+ *
+ * TRÊS getters, um por superfície — o dataset é que muda, nunca a seção:
+ *
+ *   getHomeUpcomingMovies()  -> /pt/filmes/  (Movie.releaseDate  > hoje)
+ *   getHomeUpcomingSeries()  -> /pt/series/  (TvShow.firstAirDate > hoje)
+ *   getHomeUpcomingMixed()   -> /pt/         (os dois, cota equilibrada)
  *
  * Invariantes 3 e 4:
  *  - Lê somente PostgreSQL local via @screena/db (Prisma). Zero API externa,
  *    zero TMDB, zero Gemini no caminho de render.
- *  - Não escreve no banco; apenas monta um snapshot serializável para a home.
+ *  - Não escreve no banco; apenas monta um snapshot serializável.
  *
  * A descoberta/ingestão de upcoming acontece OFFLINE no worker
  * (services/ingestion/bin/ingest-public-catalog.ts --include-upcoming). Aqui só
- * lemos o resultado já persistido (Movie.releaseDate futura + slug pt-BR).
+ * lemos o resultado já persistido (data futura + slug pt-BR canônico).
  */
 
 import { cache } from "react";
 import { getPrismaClient } from "@screena/db/server";
 
 import {
-  buildUpcomingMovies,
+  buildUpcomingItems,
   HOME_UPCOMING_LIMIT,
-  type HomeUpcomingMovie,
-  type UpcomingMovieInput,
+  mergeUpcomingVerticals,
+  type HomeUpcomingItem,
+  type UpcomingEntityInput,
 } from "../lib/home-upcoming-presenter";
 
 const LANGUAGE_CODE = "pt-BR";
@@ -30,29 +38,61 @@ function startOfUtcDay(now: Date): Date {
 }
 
 /**
- * Filmes "Em breve" (estreia futura) para a home, em ordem de estreia asc, com
- * slug canônico pt-BR. Retorna `[]` quando não há nenhum e a home oculta a seção.
+ * Slugs canônicos pt-BR de uma vertical, indexados por id de entidade.
+ *
+ * Sem slug canônico o item não vira card (o presenter descarta) — por isso a
+ * consulta parte dos slugs e não da tabela de entidade: um filme sem slug nunca
+ * chega a ser carregado.
+ */
+async function loadCanonicalSlugs(
+  entityType: "movie" | "tv",
+): Promise<{ ids: bigint[]; slugByEntity: Map<string, string> }> {
+  const prisma = getPrismaClient();
+  const rows = await prisma.slug.findMany({
+    where: { entityType, languageCode: LANGUAGE_CODE, isCanonical: true },
+    select: { entityId: true, slug: true },
+  });
+
+  const slugByEntity = new Map<string, string>();
+  const ids: bigint[] = [];
+  for (const row of rows) {
+    slugByEntity.set(row.entityId.toString(), row.slug);
+    ids.push(row.entityId);
+  }
+  return { ids, slugByEntity };
+}
+
+/** Títulos pt-BR de uma vertical, indexados por id de entidade. */
+async function loadTranslationTitles(
+  entityType: "movie" | "tv",
+  ids: readonly bigint[],
+): Promise<Map<string, string | null>> {
+  const prisma = getPrismaClient();
+  const rows = await prisma.entityTranslation.findMany({
+    where: { entityType, entityId: { in: [...ids] }, languageCode: LANGUAGE_CODE },
+    select: { entityId: true, title: true },
+  });
+
+  const titleByEntity = new Map<string, string | null>();
+  for (const row of rows) titleByEntity.set(row.entityId.toString(), row.title);
+  return titleByEntity;
+}
+
+/**
+ * Filmes "Em breve" (estreia futura) em ordem de estreia asc, com slug canônico
+ * pt-BR. Retorna `[]` quando não há nenhum — e aí a superfície oculta a seção
+ * (com log, via `SectionBoundary`).
  */
 export const getHomeUpcomingMovies = cache(
-  async (options?: { limit?: number }): Promise<HomeUpcomingMovie[]> => {
+  async (options?: { limit?: number }): Promise<HomeUpcomingItem[]> => {
     const prisma = getPrismaClient();
     const now = new Date();
     const cutoff = startOfUtcDay(now);
 
-    const slugRows = await prisma.slug.findMany({
-      where: { entityType: "movie", languageCode: LANGUAGE_CODE, isCanonical: true },
-      select: { entityId: true, slug: true },
-    });
-    if (slugRows.length === 0) return [];
+    const { ids, slugByEntity } = await loadCanonicalSlugs("movie");
+    if (ids.length === 0) return [];
 
-    const slugByEntity = new Map<string, string>();
-    const ids: bigint[] = [];
-    for (const row of slugRows) {
-      slugByEntity.set(row.entityId.toString(), row.slug);
-      ids.push(row.entityId);
-    }
-
-    const [movies, translations] = await Promise.all([
+    const [movies, titleByEntity] = await Promise.all([
       prisma.movie.findMany({
         where: { id: { in: ids }, releaseDate: { gt: cutoff } },
         select: {
@@ -64,21 +104,14 @@ export const getHomeUpcomingMovies = cache(
         },
         orderBy: { releaseDate: "asc" },
       }),
-      prisma.entityTranslation.findMany({
-        where: { entityType: "movie", entityId: { in: ids }, languageCode: LANGUAGE_CODE },
-        select: { entityId: true, title: true },
-      }),
+      loadTranslationTitles("movie", ids),
     ]);
 
-    const titleByEntity = new Map<string, string | null>();
-    for (const row of translations) {
-      titleByEntity.set(row.entityId.toString(), row.title);
-    }
-
-    const inputs: UpcomingMovieInput[] = movies.map((movie) => {
+    const inputs: UpcomingEntityInput[] = movies.map((movie) => {
       const key = movie.id.toString();
       return {
         id: key,
+        vertical: "movie",
         titleOriginal: movie.titleOriginal,
         translationTitle: titleByEntity.get(key) ?? null,
         slug: slugByEntity.get(key) ?? null,
@@ -88,6 +121,74 @@ export const getHomeUpcomingMovies = cache(
       };
     });
 
-    return buildUpcomingMovies(inputs, now, options?.limit ?? HOME_UPCOMING_LIMIT);
+    return buildUpcomingItems(inputs, now, options?.limit ?? HOME_UPCOMING_LIMIT);
+  },
+);
+
+/**
+ * Séries "Em breve": a estreia de uma série é `TvShow.firstAirDate` — a data em
+ * que ela vai ao ar pela primeira vez. NÃO usamos `Season.airDate` nem
+ * `Episode.airDate` aqui: temporada e episódio futuros de uma série JÁ no ar são
+ * outra coisa (a agenda), e já têm superfície própria em `/pt/em-breve/`
+ * (`getAnticipatedData`). Misturar os quatro tipos neste trilho transformaria
+ * "Em breve" em "próximos episódios", que é outro produto.
+ */
+export const getHomeUpcomingSeries = cache(
+  async (options?: { limit?: number }): Promise<HomeUpcomingItem[]> => {
+    const prisma = getPrismaClient();
+    const now = new Date();
+    const cutoff = startOfUtcDay(now);
+
+    const { ids, slugByEntity } = await loadCanonicalSlugs("tv");
+    if (ids.length === 0) return [];
+
+    const [shows, titleByEntity] = await Promise.all([
+      prisma.tvShow.findMany({
+        where: { id: { in: ids }, firstAirDate: { gt: cutoff } },
+        select: {
+          id: true,
+          nameOriginal: true,
+          firstAirDate: true,
+          backdropPath: true,
+          posterPath: true,
+        },
+        orderBy: { firstAirDate: "asc" },
+      }),
+      loadTranslationTitles("tv", ids),
+    ]);
+
+    const inputs: UpcomingEntityInput[] = shows.map((show) => {
+      const key = show.id.toString();
+      return {
+        id: key,
+        vertical: "series",
+        titleOriginal: show.nameOriginal,
+        translationTitle: titleByEntity.get(key) ?? null,
+        slug: slugByEntity.get(key) ?? null,
+        releaseDate: show.firstAirDate,
+        backdropPath: show.backdropPath,
+        posterPath: show.posterPath,
+      };
+    });
+
+    return buildUpcomingItems(inputs, now, options?.limit ?? HOME_UPCOMING_LIMIT);
+  },
+);
+
+/**
+ * O trilho da HOME: filmes E séries no mesmo "Em breve".
+ *
+ * Busca as duas verticais com o cap CHEIO cada uma (não metade) porque a cota é
+ * decidida depois, no presenter: se uma vertical vier vazia, a outra herda as
+ * vagas — e para herdar precisa ter candidatos suficientes carregados.
+ */
+export const getHomeUpcomingMixed = cache(
+  async (options?: { limit?: number }): Promise<HomeUpcomingItem[]> => {
+    const limit = options?.limit ?? HOME_UPCOMING_LIMIT;
+    const [movies, series] = await Promise.all([
+      getHomeUpcomingMovies({ limit }),
+      getHomeUpcomingSeries({ limit }),
+    ]);
+    return mergeUpcomingVerticals(movies, series, limit);
   },
 );

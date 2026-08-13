@@ -7,10 +7,11 @@ import {
   HOME_NEWS_CARD_LIMIT,
   takeSectionCards,
 } from '../../../src/lib/portal-presenter'
-import { SITE_URL, publicRobots } from '../../../src/lib/site'
+import { SERIES_INDEX_PATH, SITE_URL, publicRobots } from '../../../src/lib/site'
 import { getHomeEditorialHighlights } from '../../../src/server/home-editorial'
 import { getHomeHeroSlides } from '../../../src/server/home-hero'
 import { getHomeTickerItems } from '../../../src/server/home-ticker'
+import { getHomeUpcomingSeries } from '../../../src/server/home-upcoming'
 import { getNewsIndexData } from '../../../src/server/news-pages'
 import { getSeriesIndexData } from '../../../src/server/entity-indexes'
 
@@ -19,6 +20,10 @@ import { getSeriesIndexData } from '../../../src/server/entity-indexes'
  * de SÉRIES ligada (showSeriesBand), acento/logo verdes por contexto e o
  * ticker de episódios novos (dataset de séries). Contratos de SEO do índice
  * real preservados (canonical, robots, CollectionPage, BreadcrumbList).
+ *
+ * "Em breve" aqui é SÓ SÉRIE (`getHomeUpcomingSeries` — `TvShow.firstAirDate`
+ * futura). A rota passava uma lista vazia fixa, então a seção não existia nesta
+ * página: era a única das três superfícies home-like sem o trilho.
  */
 
 export const dynamic = 'force-dynamic'
@@ -38,11 +43,12 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function SeriesCategoryPage() {
-  const [index, news, heroSlides, tickerItems, editorialHighlights] = await Promise.all([
+  const [index, news, heroSlides, tickerItems, upcoming, editorialHighlights] = await Promise.all([
     getSeriesIndexData(),
     getNewsIndexData(),
     getHomeHeroSlides(),
     getHomeTickerItems(),
+    getHomeUpcomingSeries(),
     getHomeEditorialHighlights(),
   ])
 
@@ -96,7 +102,7 @@ export default async function SeriesCategoryPage() {
         showMoviesBand={false}
         showSeriesBand
         tickerItems={tickerItems}
-        upcomingMovies={[]}
+        upcoming={{ items: upcoming, vertical: 'series', route: SERIES_INDEX_PATH }}
       />
 
       <script
