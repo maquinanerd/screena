@@ -201,5 +201,11 @@ export async function getWatchAvailabilityForEntity(
     attributionUrl: row.attributionUrl,
   }));
 
-  return buildWatchAvailabilityView(inputs);
+  // Descarte NUNCA silencioso: um `offer_type` que a tela nao sabe nomear vira
+  // linha de log com o VALOR CRU. Antes o presenter fazia `continue` mudo, e
+  // foi assim que toda oferta `ads` (Mercado Play, NetMovies, Pluto TV, Prime
+  // Video Free with Ads) sumiu da tela sem deixar rastro.
+  return buildWatchAvailabilityView(inputs, {
+    onUnsupportedOfferType: (message) => console.warn(message),
+  });
 }

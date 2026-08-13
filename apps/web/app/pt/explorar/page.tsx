@@ -6,6 +6,7 @@ import { AdSlot } from '../../_components/ad-slot'
 import { CardBookmark } from '../../_components/card-bookmark'
 import { ContinueWatching } from '../../_components/continue-watching'
 import { DiscoverFilterableRails } from '../../_components/discover-rails'
+import { WatchPlatformLine } from '../../_components/watch-platform-line'
 import { takeUpcomingWeek } from '../../../src/lib/home-upcoming-presenter'
 import {
   countPopulatedSections,
@@ -154,11 +155,19 @@ export default async function ExplorePage() {
                   {featured.watchProviders.length > 0 ? (
                     <div className="disc-feature__where">
                       <span className="disc-feature__where-label">Onde assistir</span>
-                      {/* Provedores como TEXTO (logo_allowed=false) */}
+                      {/*
+                        Provedores como TEXTO (logo_allowed=false), com a
+                        MODALIDADE ao lado do nome. Nomear so a marca num titulo
+                        que so tem compra/aluguel afirma ao leitor que ja esta
+                        incluso na assinatura dele — e compra+aluguel sao a
+                        maioria do corpus. Texto visivel, nunca atributo.
+                      */}
                       {featured.watchProviders.map((provider) => (
-                        <span className="disc-feature__provider" key={provider}>
-                          {provider}
-                        </span>
+                        <WatchPlatformLine
+                          key={provider.name}
+                          modalityLabels={provider.modalityLabels}
+                          name={provider.name}
+                        />
                       ))}
                     </div>
                   ) : null}

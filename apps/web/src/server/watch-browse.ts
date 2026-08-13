@@ -21,6 +21,12 @@ import { getPrismaClient } from '@screena/db/server'
 
 import { licensedWatchWhere } from './entity-watch'
 import { resolveWatchPlatform } from '../lib/watch-platform-identity'
+import {
+  describeUnsupportedWatchModality,
+  resolveWatchModality,
+  watchModalityLabels,
+  type WatchModality,
+} from '../lib/watch-offer-modality'
 import { buildTmdbImageUrl } from '../lib/tmdb-image-url'
 import { MOVIES_INDEX_PATH, SERIES_INDEX_PATH } from '../lib/site'
 
@@ -36,7 +42,17 @@ export interface WatchBrowseTitle {
   entityType: 'movie' | 'tv'
   title: string
   href: string
-  offerTypes: string[]
+  /**
+   * ROTULOS pt-BR das modalidades, ja na ordem canonica (incluso antes do que
+   * custa) — nunca o valor cru do enum.
+   *
+   * Antes era a string do enum (`"subscription"`, `"buy"`) e o componente
+   * cliente traduzia com um mapa PROPRIO que caia para `?? offer`: um valor
+   * novo do upstream apareceria em ingles, em jargao de API, na cara do leitor.
+   * O vocabulario passou a ser um so (`watch-offer-modality.ts`) e a traducao
+   * acontece aqui, no servidor, junto do gate que ja conhece o dado.
+   */
+  offerTypeLabels: string[]
   /** Poster via helper governado (ou null). */
   posterUrl: string | null
   /** Sinal tecnico TMDB para ordenar "Populares agora" (nunca nota editorial). */
@@ -155,9 +171,16 @@ export const getWatchBrowseData = cache(async (): Promise<WatchBrowseData> => {
   const slugByKey = new Map<string, string>()
   for (const row of slugs) slugByKey.set(`${row.entityType}:${row.entityId}`, row.slug)
 
+  /**
+   * O acumulador carrega as modalidades CRUAS (`WatchModality`) porque precisa
+   * deduplicar por valor; os ROTULOS so sao materializados no fim, uma vez, na
+   * ordem canonica. Acumular rotulo daria dedupe por string traduzida — mais
+   * fragil e sem ordem declarada.
+   */
+  type AccumulatedTitle = WatchBrowseTitle & { modalities: WatchModality[] }
   interface Accumulated {
     providerName: string
-    titles: Map<string, WatchBrowseTitle>
+    titles: Map<string, AccumulatedTitle>
   }
   const byProvider = new Map<string, Accumulated>()
   let updatedAt: Date | null = null
@@ -197,24 +220,30 @@ export const getWatchBrowseData = cache(async (): Promise<WatchBrowseData> => {
 
     const bucket = byProvider.get(bucketKey) ?? {
       providerName,
-      titles: new Map<string, WatchBrowseTitle>(),
+      titles: new Map<string, AccumulatedTitle>(),
     }
     const indexPath = row.entityType === 'movie' ? MOVIES_INDEX_PATH : SERIES_INDEX_PATH
     const existing = bucket.titles.get(key)
-    const offerType = row.offerType === null ? null : String(row.offerType)
+    const rawOfferType = row.offerType === null ? null : String(row.offerType)
+    const modality = resolveWatchModality(rawOfferType)
+    if (modality === null && rawOfferType !== null) {
+      // Descarte NUNCA silencioso, e nunca rotulo cru na tela.
+      console.warn(describeUnsupportedWatchModality(rawOfferType))
+    }
     if (existing === undefined) {
       if (bucket.titles.size < BROWSE_TITLES_PER_PROVIDER) {
         bucket.titles.set(key, {
           entityType: row.entityType as 'movie' | 'tv',
           title,
           href: `${indexPath}${slug}/`,
-          offerTypes: offerType === null ? [] : [offerType],
+          modalities: modality === null ? [] : [modality],
+          offerTypeLabels: [],
           posterUrl: posterByKey.get(key) ?? null,
           popularity: popularityByKey.get(key) ?? 0,
         })
       }
-    } else if (offerType !== null && !existing.offerTypes.includes(offerType)) {
-      existing.offerTypes.push(offerType)
+    } else if (modality !== null && !existing.modalities.includes(modality)) {
+      existing.modalities.push(modality)
     }
     byProvider.set(bucketKey, bucket)
   }
@@ -224,7 +253,15 @@ export const getWatchBrowseData = cache(async (): Promise<WatchBrowseData> => {
       providerSlug,
       providerName: bucket.providerName,
       // "Populares agora": ordena pelo sinal tecnico de popularidade (TMDB)
-      titles: [...bucket.titles.values()].sort((a, b) => b.popularity - a.popularity),
+      titles: [...bucket.titles.values()]
+        .sort((a, b) => b.popularity - a.popularity)
+        // Rotulos materializados UMA vez, na ordem canonica (incluso antes do
+        // que custa). `modalities` nao atravessa o boundary: a tela recebe
+        // rotulo pt-BR, nunca o valor do enum.
+        .map(({ modalities, ...title }) => ({
+          ...title,
+          offerTypeLabels: watchModalityLabels(modalities),
+        })),
     }))
     .filter((provider) => provider.titles.length > 0)
     .sort((a, b) => b.titles.length - a.titles.length || a.providerName.localeCompare(b.providerName))

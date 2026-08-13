@@ -118,6 +118,54 @@ em selo, kicker e meta.
 Resolução: o canônico vale **≥1024**; abaixo disso o piso de 12px é aplicado
 (bloco no fim de `globals.css`). É leitura em tela pequena — ali o contrato manda.
 
+### 2.8 A MODALIDADE aparece na fileira "Onde assistir" — o canônico desenha só wordmarks
+
+**Divergência deliberada, decidida pelo dono do projeto (2026-08-13).**
+
+O canônico desenha a fileira "Onde assistir" como uma linha de wordmarks
+(NETFLIX / prime / Max / Apple TV+): só a marca, nada sobre o que a oferta
+custa. A colheita de produção mediu o corpus real e desfez a premissa:
+
+| modalidade | ofertas no corpus |
+| --- | --- |
+| `buy` (compra) | **18.077** |
+| `rent` (aluguel) | **18.330** |
+| `subscription` (assinatura) | 10.970 |
+
+**Compra e aluguel são a maioria do dado**, não o caso de borda. E os três
+maiores provedores do corpus são lojas transacionais com **zero** oferta por
+assinatura: Apple TV Store (10.135 · `buy`+`rent`), Google Play Movies (9.043 ·
+`buy`+`rent`) e Amazon Video (5.123 · `buy`+`rent`).
+
+Nesse cenário, exibir só a marca **afirma um fato falso**: "Amazon" num título
+que custa R$ 14,90 de aluguel diz ao leitor que já está incluso no Prime que ele
+paga. É a mesma família de defeito do "Original Screen" (§2.1) e do Rotten
+Tomatoes exibido como `80/100` — com o agravante de custar dinheiro do leitor.
+
+**O que passa a valer:**
+
+1. Toda oferta exibida carrega a modalidade em **texto visível**, junto do nome
+   da plataforma. Nunca em `aria-label`, `title` ou `data-*` — mesmo critério
+   que §5.3 já fixou para o rótulo de destino.
+2. Os rótulos são **Assinatura · Grátis · Grátis com anúncios · Aluguel ·
+   Compra**, num vocabulário único
+   ([`watch-offer-modality.ts`](../../apps/web/src/lib/watch-offer-modality.ts)),
+   compartilhado pelos quatro consumidores de `licensedWatchWhere`.
+3. A **ordem** é declarada: *o que está incluso vem antes do que custa*.
+4. Nas superfícies compactas (faixa da home, destaque do explorar, hub), uma
+   linha por **plataforma** com as modalidades ao lado — "Prime Video ·
+   Assinatura · Aluguel", nunca duas entradas da mesma marca.
+5. No **painel de detalhe** o agrupamento continua por modalidade (seções
+   "Assinatura", "Aluguel", "Compra"), e isso é deliberado: ali a ordem "incluso
+   antes do que custa" é **estrutural** — quem varre a página de cima para baixo
+   encontra primeiro o que não lhe custa nada — e o preço, que é por modalidade,
+   fica sob o cabeçalho que o explica. Cada linha já vive sob um heading que
+   nomeia a modalidade, então a ambiguidade que o item 4 corrige não existe ali.
+
+**Consequência que não pode ser esquecida:** os aliases das três lojas
+(`apple-tv`, `google-play`, `amazon-video`) só são honestos **enquanto a
+modalidade estiver na tela**. Se ela sair, essas três linhas voltam a mentir.
+
 ---
 
 ## 3. Derivações (o contrato não cobre; foram derivadas de forma conservadora)

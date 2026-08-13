@@ -160,7 +160,13 @@ export async function runWatchProvidersReprocess(
   const countriesOutOfScope: Record<string, number> = {}
   const providerTally = new Map<
     string,
-    { providerName: string; offers: number; offerTypes: Record<string, number>; countries: Set<string> }
+    {
+      providerName: string
+      offers: number
+      offersInScope: number
+      offerTypes: Record<string, number>
+      countries: Set<string>
+    }
   >()
 
   // Reconhecimento primeiro (puro), resolucao depois (uma consulta por lote):
@@ -183,16 +189,21 @@ export async function runWatchProvidersReprocess(
     // sendo um provedor que existe. Restringi-la ao escopo transformaria a
     // ferramenta de descoberta numa foto do que ja decidimos ver.
     for (const offer of result.offers) {
+      // `offersInScope` conta SO o territorio ingerido: e o numero que decide
+      // registro de alias. O global mede o dado; o do escopo mede o produto.
+      const scoped = inScope.has(offer.countryCode) ? 1 : 0
       const seen = providerTally.get(offer.providerKey)
       if (seen === undefined) {
         providerTally.set(offer.providerKey, {
           providerName: offer.providerName,
           offers: 1,
+          offersInScope: scoped,
           offerTypes: { [offer.offerType]: 1 },
           countries: new Set([offer.countryCode]),
         })
       } else {
         seen.offers += 1
+        seen.offersInScope += scoped
         seen.offerTypes[offer.offerType] = (seen.offerTypes[offer.offerType] ?? 0) + 1
         seen.countries.add(offer.countryCode)
       }
@@ -307,10 +318,18 @@ export async function runWatchProvidersReprocess(
       providerKey,
       providerName: value.providerName,
       offers: value.offers,
+      offersInScope: value.offersInScope,
       offerTypes: value.offerTypes,
       countries: [...value.countries].sort(),
     }))
-    .sort((a, b) => b.offers - a.offers || a.providerKey.localeCompare(b.providerKey))
+    // Ordena pelo volume NO ESCOPO primeiro: e ele que decide registro de alias.
+    // Ordenar por volume global punha no topo provedores sem uma oferta em BR.
+    .sort(
+      (a, b) =>
+        b.offersInScope - a.offersInScope ||
+        b.offers - a.offers ||
+        a.providerKey.localeCompare(b.providerKey),
+    )
 
   return {
     entityType,

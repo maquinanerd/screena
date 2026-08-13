@@ -104,7 +104,7 @@ export default async function WatchBrowsePage() {
                   title: title.title,
                   href: title.href,
                   posterUrl: title.posterUrl,
-                  offerTypes: title.offerTypes,
+                  offerTypeLabels: title.offerTypeLabels,
                 })),
               }))}
             />

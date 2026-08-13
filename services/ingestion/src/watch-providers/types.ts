@@ -187,10 +187,28 @@ export interface WatchReprocessReport {
 export interface WatchProviderSighting {
   readonly providerKey: string
   readonly providerName: string
+  /** Ofertas no corpus INTEIRO (todos os paises do payload). */
   readonly offers: number
+  /**
+   * Ofertas DENTRO dos territorios ingeridos — o unico numero que decide se um
+   * provedor merece entrar no registro.
+   *
+   * A contagem global engana: um provedor com 324 ofertas em 7 paises pode ter
+   * mais oferta em BR que a Netflix, ou nenhuma. Propor alias por volume mundial
+   * num site que so ingere BR e decidir pelo numero errado — e cada provedor
+   * canonico novo puxa licenca e decisao de uso no `legal apply`.
+   */
+  readonly offersInScope: number
   /** Contagem por modalidade (`subscription`, `rent`, `buy`, `free`, `ads`). */
   readonly offerTypes: Readonly<Record<string, number>>
-  /** Paises em que o provedor foi visto (ordenados, deduplicados). */
+  /**
+   * Paises em que o provedor foi visto (ISO alpha-2, ordenados, deduplicados).
+   *
+   * Os CODIGOS, nao a contagem: a colheita anterior imprimia so "em N pais(es)",
+   * e foi exatamente essa lacuna que travou a decisao entre `122` "Disney+" e
+   * `337` "Disney Plus" — sem saber SE `122` esta so em IN/ID nao da para dizer
+   * se e a marca conjunta Disney+/Hotstar ou o mesmo servico.
+   */
   readonly countries: readonly string[]
 }
 

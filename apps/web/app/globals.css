@@ -1176,6 +1176,17 @@ body:has(.art-hero[data-hero-media='true']) .site-header__spacer {
   font-weight: 800;
 }
 
+/*
+  MODALIDADE da oferta no CTA da faixa ("· Aluguel"). Peso menor que a marca,
+  mas OPACIDADE alta de proposito: compra e aluguel sao a maioria do corpus, e
+  esconder o que custa dinheiro num cinza fraco reproduziria, em CSS, o mesmo
+  defeito que a informacao viver so em `aria-label`.
+*/
+.ticker__cta .home-ticker__modality {
+  font-weight: 500;
+  opacity: 0.92;
+}
+
 /* Destaques de hoje — grid 1.62fr 1fr 1fr, cards 460px */
 .feat-head {
   display: flex;
@@ -6125,6 +6136,21 @@ h4.art-body__heading {
   border: 1px solid rgba(255, 255, 255, 0.24);
   padding: 4px 10px;
   border-radius: 6px;
+}
+
+/*
+  Uma linha por PLATAFORMA, com as modalidades ao lado do nome. A modalidade
+  pesa menos que a marca, mas continua legivel: e ela que diz se o leitor paga
+  de novo, e escondê-la num cinza fraco seria o mesmo defeito de guardá-la num
+  atributo.
+*/
+.disc-feature__provider-name {
+  font-weight: 700;
+}
+
+.disc-feature__provider-modality {
+  font-weight: 500;
+  opacity: 0.88;
 }
 
 .disc-feature__actions {
