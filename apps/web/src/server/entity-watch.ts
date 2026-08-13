@@ -20,9 +20,12 @@
  *    origem TMDB/JustWatch mesmo depois de licenciada, revisada e promovida.
  */
 
+import { cache } from "react";
+
 import { getPrismaClient } from "@screena/db/server";
 import type { Prisma } from "@screena/db/server";
 
+import type { SectionAbsenceReason } from "../lib/section-absence";
 import {
   buildWatchAvailabilityView,
   type WatchAvailabilityRow,
@@ -89,6 +92,53 @@ export function licensedWatchWhere(now: Date): Prisma.WatchAvailabilityWhereInpu
       },
     },
   };
+}
+
+/**
+ * POR QUE o painel "Onde assistir" nao renderizou — derivado do ESTADO, nunca
+ * fixo no codigo da pagina.
+ *
+ * O motivo estava escrito a mao como `no_authorized_provider`, com um
+ * comentario dizendo "enquanto for assim": era verdade enquanto houvesse zero
+ * ofertas exibiveis. Deixa de ser verdade no instante em que a cadeia de
+ * streaming for concluida — e a partir dai TODO titulo sem oferta emitiria um
+ * evento `actionable: true`, exatamente o ruido que `section-absence.ts`
+ * descreve como "o que afogaria o unico evento que importa". Um motivo fixo e
+ * uma afirmacao que envelhece sozinha.
+ *
+ * A SONDA e `licensedWatchWhere` — a MESMA clausula que decide exibir. Isso
+ * importa: se a sonda usasse outra regra, ela poderia dizer "ha oferta no
+ * catalogo" sobre linhas que o painel jamais mostraria, e o log passaria a
+ * mentir na direcao oposta.
+ *
+ * CUSTO: uma consulta `findFirst` (indexada, `select id`), e SO quando o painel
+ * esta ausente — quem tem oferta nunca paga por ela. `cache()` do React
+ * deduplica dentro da mesma renderizacao, entao filme e serie na mesma passada
+ * cobram uma consulta, nao duas. Nao ha consulta extra por pagina que renderiza.
+ */
+export const watchAbsenceReason = cache(
+  async (prisma: PrismaClient): Promise<SectionAbsenceReason> => {
+    const anyDisplayableOffer = await prisma.watchAvailability.findFirst({
+      where: licensedWatchWhere(new Date()),
+      select: { id: true },
+    });
+    return watchAbsenceReasonFor(anyDisplayableOffer !== null);
+  },
+);
+
+/**
+ * A DECISAO, separada da consulta: dado se existe alguma oferta exibivel no
+ * catalogo, qual e o motivo da ausencia neste titulo.
+ *
+ * Esta em funcao propria para poder ser testada nos dois estados sem banco e
+ * sem contexto de renderizacao do React. A consulta acima e a unica coisa que
+ * ela nao cobre — e essa e coberta por assercao de fonte (`entity-watch` usa
+ * `licensedWatchWhere`, a mesma clausula que decide exibir).
+ */
+export function watchAbsenceReasonFor(
+  hasAnyDisplayableOffer: boolean,
+): SectionAbsenceReason {
+  return hasAnyDisplayableOffer ? "no_offer_for_entity" : "no_authorized_provider";
 }
 
 export async function getWatchAvailabilityForEntity(

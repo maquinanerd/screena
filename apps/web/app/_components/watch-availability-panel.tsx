@@ -76,6 +76,27 @@ export function WatchAvailabilityPanel({
                     <span className="watch-offer__provider">
                       {offer.providerName}
                     </span>
+                    {/*
+                      TEXTO VISIVEL, nao so `aria-label`. O destino do caminho
+                      TMDB/JustWatch e a pagina de disponibilidade do titulo, e
+                      nao o servico — quem clica precisa saber ANTES. O criterio
+                      e o mesmo que o credito da nota fixou: informacao que muda
+                      o que o leitor espera nao pode viver so em atributo de
+                      acessibilidade. O `aria-label` continua onde estava; ele
+                      nao estava errado, estava sozinho.
+
+                      A frase e a MESMA do `aria-label` de proposito: uma string
+                      so, entao o que se ve e o que se ouve nao podem divergir.
+                      Ela nomeia o DESTINO, nunca o fornecedor tecnico —
+                      escrever "via TMDB" colocaria o `provider_api` na cara do
+                      leitor como se fosse a fonte, e a fonte creditada e o
+                      JustWatch (invariante 2).
+                    */}
+                    {offer.destinationKind === "aggregator" ? (
+                      <span className="watch-offer__destination">
+                        página de disponibilidade
+                      </span>
+                    ) : null}
                     {offer.quality !== null || offer.priceLabel !== null ? (
                       <span className="watch-offer__meta">
                         {offer.quality !== null ? (

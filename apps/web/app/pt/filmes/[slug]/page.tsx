@@ -99,7 +99,8 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
   const redirectPath = canonicalRedirectPath(MOVIES_INDEX_PATH, slug, data.canonicalSlug)
   if (redirectPath !== null) permanentRedirect(redirectPath)
 
-  const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, ratings, externalIds } = data
+  const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, watchAbsence, ratings, externalIds } =
+    data
   const isUnderReview = seo.decision !== 'index'
   const externalLinks = buildExternalLinks(externalIds, 'movie')
   const metaText = [view.year !== null ? String(view.year) : null, view.runtimeLabel]
@@ -139,11 +140,13 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
   const watchSection = decideSection(watch, {
     ...entityRef,
     section: 'onde-assistir',
-    // Hoje NÃO há um único provedor autorizado no banco: o registro canônico
-    // nunca foi populado (Bloco 2 do runbook). Enquanto for assim, a causa é
-    // essa — e não "este filme não está em lugar nenhum", que é um fato sobre
-    // o título e se pareceria exatamente igual na tela.
-    reason: 'no_authorized_provider',
+    // DERIVADO do estado do catálogo, nunca escrito à mão aqui (ver
+    // `watchAbsenceReason`): "ninguém está autorizado ainda" é um passo de
+    // operação pendente; "este título não está em lugar nenhum" é um fato sobre
+    // a obra. Os dois se parecem exatamente iguais na tela, e só o log separa.
+    // O `??` nunca é usado: `watchAbsence` só é null quando há painel, e aí
+    // `decideSection` não lê o motivo.
+    reason: watchAbsence ?? 'no_authorized_provider',
   })
   const critiqueSection = decideSection(critiqueBlock, {
     ...entityRef,

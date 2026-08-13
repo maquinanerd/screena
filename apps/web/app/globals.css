@@ -6861,6 +6861,28 @@ h4.art-body__heading {
   padding-left: 1.25rem;
 }
 
+/*
+  Aviso de destino AGREGADOR. Pelo caminho TMDB/JustWatch nao existe deep link
+  por oferta: o destino e a pagina de disponibilidade daquele titulo, nao o
+  servico. Isso ja viajava no `aria-label` e num `data-destination-kind`, e o
+  atributo nao tinha uma unica regra de CSS — quem enxerga clicava em "Netflix"
+  e caia noutro lugar sem aviso. Mesmo criterio que o credito da nota: o que
+  muda o que o leitor espera tem de ser TEXTO VISIVEL.
+
+  Nao ha regra para `[data-destination-kind='provider']`: ali nada muda, e o
+  componente nem emite o elemento.
+*/
+.watch-offer__destination {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--c-text-secondary);
+  white-space: nowrap;
+}
+
+.watch-offer__destination::before {
+  content: ' · ';
+}
+
 .watch-offer__meta::before {
   content: ' — ';
 }

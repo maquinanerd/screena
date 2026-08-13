@@ -206,7 +206,15 @@ describe("watch-availability — integracao nas paginas de detalhe", () => {
       // linha, entao "sumiu" e "registrou" nao podem divergir.
       const clean = withoutComments(source);
       expect(clean).toMatch(/decideSection\(watch,/);
-      expect(clean).toMatch(/reason: 'no_authorized_provider'/);
+      // ATUALIZADO DE NOVO, e o motivo e o mesmo espirito da mudanca anterior.
+      // Este teste travava o motivo FIXO `no_authorized_provider`. Ele era
+      // verdadeiro so enquanto houvesse zero ofertas exibiveis — e deixaria de
+      // ser exatamente quando a cadeia de streaming fosse concluida, passando a
+      // marcar TODO titulo sem oferta como `actionable: true`. O motivo agora e
+      // DERIVADO do estado (`watchAbsence`, de `watchAbsenceReason`), e e isso
+      // que este teste trava: a pagina le o motivo, nao o escreve.
+      // Ver tests/web/watch-absence-reason.test.ts para os dois estados.
+      expect(clean).toMatch(/reason: watchAbsence \?\? 'no_authorized_provider'/);
       expect(clean).toMatch(/<SectionBoundary decision=\{watchSection\}>/);
       expect(clean).toContain("<WatchAvailabilityPanel view={view} />");
     });

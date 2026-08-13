@@ -328,7 +328,13 @@ async function runChecks(
   );
   const watchLicenseId = (
     await q<{ id: bigint }>(
-      `SELECT id FROM source_licenses WHERE source_key='netflix' AND content_type='watch_availability' ORDER BY id DESC LIMIT 1`,
+      // `provider_key` faz parte da IDENTIDADE de uma licenca de streaming:
+      // existe uma por fornecedor tecnico (Movie of the Night para
+      // `streaming_availability`, JustWatch para `tmdb`). Este cenario monta uma
+      // so, entao `ORDER BY id DESC` acertaria por acidente — e e exatamente o
+      // padrao que a proxima pessoa copia para um lugar onde as duas existem, e
+      // ai o dado de uma origem sai creditado a outra, em silencio.
+      `SELECT id FROM source_licenses WHERE source_key='netflix' AND content_type='watch_availability' AND provider_key='streaming_availability' ORDER BY id DESC LIMIT 1`,
     )
   )[0]!.id.toString();
   await x(
@@ -375,7 +381,8 @@ async function runChecks(
   );
   const usLicenseId = (
     await q<{ id: bigint }>(
-      `SELECT id FROM source_licenses WHERE source_key='netflix' AND content_type='watch_availability' AND territory_code='US' ORDER BY id DESC LIMIT 1`,
+      // Idem ao BR acima: a origem faz parte da identidade da licenca.
+      `SELECT id FROM source_licenses WHERE source_key='netflix' AND content_type='watch_availability' AND provider_key='streaming_availability' AND territory_code='US' ORDER BY id DESC LIMIT 1`,
     )
   )[0]!.id.toString();
   await x(
