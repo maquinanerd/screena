@@ -21,9 +21,96 @@
  *    NOME da fonte em texto, nunca a marca grafica.
  *  - SEM nota propria: este painel nunca agrega, calcula media ou inventa um
  *    "Cinerie Score". Ele so reexibe nota de terceiro, creditada.
+ *  - SUFIXO E PROPRIEDADE DA FONTE, nao do numero. Ver `RATING_VALUE_SUFFIX`.
  */
 
+import { RATING_SCALES, type RatingSource } from "@screena/config";
 import type { PublicExternalRating, RatingsPayload } from "@screena/public-contracts";
+
+/**
+ * Como cada FONTE escreve a propria nota. Isto NAO e formatacao: e o significado
+ * da medida, e escrever errado e afirmar um fato falso ao leitor.
+ *
+ *  - `rotten_tomatoes` -> **"%"**. O Tomatometer e a FRACAO de criticas
+ *    positivas ("84% dos criticos aprovaram"), nao uma nota numa regua de 100.
+ *    Renderiza-lo como "84/100" transforma uma proporcao em nota — o leitor le
+ *    "84 pontos de 100 possiveis", que a fonte nunca disse. O mesmo vale para o
+ *    Popcornmeter (publico), que tambem e percentual.
+ *  - `metacritic` -> **"/100"**. O Metascore E uma nota numa regua de 100
+ *    (media ponderada de criticas), nao uma porcentagem de aprovacao. Os dois
+ *    ficam em `RATING_SCALES` com o mesmo denominador 100 e AINDA ASSIM se
+ *    escrevem diferente: a escala e a mesma, a MEDIDA nao.
+ *  - `imdb` / `filmaffinity` -> "/10"; `letterboxd` -> "/5" (media de votos).
+ *
+ * O canonico (`paginas/06-movie-detail.html`) ja faz assim: `84<span>%</span>`
+ * para o Rotten Tomatoes e `7.9<span>/10</span>` para o IMDb.
+ *
+ * O mapa e TOTAL sobre `RatingSource` — uma 6a fonte nao compila sem decidir
+ * como ela escreve a propria nota.
+ */
+export const RATING_VALUE_SUFFIX: Readonly<Record<RatingSource, string>> = {
+  imdb: "/10",
+  rotten_tomatoes: "%",
+  metacritic: "/100",
+  letterboxd: "/5",
+  filmaffinity: "/10",
+};
+
+/**
+ * Sufixo de uma fonte. Fonte fora do vocabulario canonico cai no denominador
+ * CRU da propria linha (`/<best>`) — nunca em "%", que seria afirmar proporcao
+ * sobre um dado desconhecido. O valor continua acompanhado da escala, entao o
+ * numero nunca fica solto (a regra que o teste `best: 0` protege).
+ */
+export function ratingValueSuffix(sourceKey: string, best: number): string {
+  const known = (RATING_VALUE_SUFFIX as Record<string, string | undefined>)[sourceKey];
+  if (known !== undefined) return known;
+  return `/${formatRatingNumber(best)}`;
+}
+
+/**
+ * Ordem de exibicao dos chips na fileira "Avaliacoes". FIXA e declarada: duas
+ * replicas do site, ou dois titulos com o mesmo conjunto de fontes, nunca
+ * mostram a fileira em ordem diferente.
+ *
+ * Criterio (nesta ordem): (1) IMDb primeiro — e a unica fonte de PUBLICO do
+ * conjunto servido pela OMDb e a mais reconhecida em pt-BR; e a unica com
+ * linkback e com contagem de votos, entao ancora a fileira com o chip mais
+ * completo. (2) Rotten Tomatoes e (3) Metacritic sao as duas agregadoras de
+ * CRITICA, na ordem de reconhecimento de marca no Brasil. (4) Letterboxd e
+ * (5) FilmAffinity fecham — nao sao servidas pela OMDb hoje e entram por
+ * ultimo quando existirem.
+ *
+ * Coincide com a ordem do canonico (IMDb a esquerda), que e o unico ponto do
+ * mockup em que a ordem foi desenhada.
+ */
+const RATING_SOURCE_PRIORITY: readonly RatingSource[] = [
+  "imdb",
+  "rotten_tomatoes",
+  "metacritic",
+  "letterboxd",
+  "filmaffinity",
+];
+
+/** Posicao na fileira. Fonte desconhecida vai para o fim (nunca some). */
+function sourcePriority(sourceKey: string): number {
+  const index = RATING_SOURCE_PRIORITY.indexOf(sourceKey as RatingSource);
+  return index === -1 ? RATING_SOURCE_PRIORITY.length : index;
+}
+
+/**
+ * A escala declarada bate com a escala canonica da fonte?
+ *
+ * Uma linha `imdb` com `best: 100` renderizaria "8,4/10" a partir de um numero
+ * que a fonte mediu em outra regua. O sufixo vem da FONTE e o numero vem da
+ * LINHA — se os dois discordam, exibir e mentir com aparencia de precisao.
+ * Divergencia => a nota nao vai ao ar (invariante 1).
+ */
+function scaleMatchesSource(sourceKey: string, best: number): boolean {
+  const canonical = (RATING_SCALES as Record<string, number | undefined>)[sourceKey];
+  if (canonical === undefined) return true;
+  return canonical === best;
+}
 
 /** Rotulo pt-BR da natureza da nota. Critica e publico NUNCA se fundem. */
 const SCORE_TYPE_LABELS: Readonly<Record<string, string>> = {
@@ -48,12 +135,33 @@ export interface RatingsPanelItem {
   valueLabel: string;
   /** Denominador da escala da fonte (ex.: 10, 100, 5). */
   best: number;
-  /** "8,4/10" — valor e escala juntos, para nao existir numero sem escala. */
+  /**
+   * Como a FONTE escreve a propria medida: "/10", "/100" ou "%". Existe
+   * separado de `scoreLabel` porque o canonico tipografa o sufixo menor que o
+   * numero — o render precisa dos dois pedacos, nao da string colada.
+   */
+  valueSuffix: string;
+  /**
+   * "8,4/10", "88%" — valor e medida juntos, para nao existir numero solto. O
+   * sufixo vem da FONTE (ver `RATING_VALUE_SUFFIX`), nunca do `score_type`.
+   */
   scoreLabel: string;
   /** Volume de votos/criticas quando o upstream informa; senao null. */
   countLabel: string | null;
   /** Credito da FONTE (nunca do fornecedor tecnico). Obrigatorio. */
   attribution: { text: string; url: string | null };
+  /**
+   * Este chip desenha a divisoria vertical do canonico a sua ESQUERDA?
+   *
+   * A divisoria e modelada como LIDERANTE (do 2o chip em diante), nao como
+   * separador emitido depois de cada chip. E a diferenca entre uma regra que
+   * pode errar e uma que nao pode: com divisoria a direita, o ultimo chip
+   * precisa de um `if` para nao deixar um risco sobrando na ponta — e esse `if`
+   * e exatamente o que quebra quando a fileira passa de 3 para 1 ou para 4
+   * fontes. Liderante, "n chips => n-1 divisorias, nunca uma na borda" e
+   * consequencia da forma, nao de uma condicao que alguem precisa lembrar.
+   */
+  leadingDivider: boolean;
 }
 
 /** Modelo de exibicao do painel de notas. */
@@ -127,6 +235,10 @@ function toPanelItem(rating: PublicExternalRating): RatingsPanelItem | null {
     return null;
   }
 
+  // Escala da linha divergente da escala canonica da fonte: o sufixo (que vem
+  // da fonte) descreveria uma regua diferente da que produziu o numero.
+  if (!scaleMatchesSource(rating.sourceKey, rating.best)) return null;
+
   // ATRIBUICAO OBRIGATORIA (invariante 6). Sem credito, a nota nao e publicavel:
   // e a mesma licenca que autoriza exibir e que obriga a creditar a fonte.
   const attributionText = trimToNull(rating.attribution?.text ?? null);
@@ -143,6 +255,7 @@ function toPanelItem(rating: PublicExternalRating): RatingsPanelItem | null {
     rating.count === null || !Number.isFinite(rating.count) || rating.count < 0
       ? null
       : formatRatingCount(rating.count);
+  const valueSuffix = ratingValueSuffix(rating.sourceKey, rating.best);
 
   return {
     sourceKey: rating.sourceKey,
@@ -152,8 +265,13 @@ function toPanelItem(rating: PublicExternalRating): RatingsPanelItem | null {
     metricLabel,
     valueLabel,
     best: rating.best,
-    // Valor e escala SEMPRE juntos: "92/100" nunca vira "92%" nem "9,2".
-    scoreLabel: `${valueLabel}/${formatRatingNumber(rating.best)}`,
+    valueSuffix,
+    // Provisorio: so a fileira ORDENADA sabe quem e o primeiro. Definido em
+    // `buildRatingsView`, apos o sort.
+    leadingDivider: false,
+    // Valor e MEDIDA sempre juntos. A medida vem da fonte: o Metascore e
+    // "78/100", o Tomatometer e "88%" — e um nunca vira o outro.
+    scoreLabel: `${valueLabel}${valueSuffix}`,
     countLabel,
     attribution: { text: attributionText, url: attributionUrl },
   };
@@ -187,19 +305,28 @@ export function buildRatingsView(payload: RatingsPayload): RatingsPanelView | nu
 
   if (items.length === 0) return null;
 
-  // Ordem TOTAL e estavel: fonte, depois natureza, depois metrica. Duas replicas
-  // do site nunca mostram a mesma pagina em ordem diferente.
+  // Ordem TOTAL e estavel: prioridade declarada da fonte, depois natureza,
+  // depois metrica. Duas replicas do site nunca mostram a mesma pagina em ordem
+  // diferente, e a fileira nao se reorganiza quando uma fonte entra ou sai.
   items.sort((a, b) => {
-    const bySource = a.sourceKey.localeCompare(b.sourceKey);
+    const bySource = sourcePriority(a.sourceKey) - sourcePriority(b.sourceKey);
     if (bySource !== 0) return bySource;
+    // Empate so acontece entre fontes desconhecidas (mesma posicao de fim):
+    // desempata pela chave para a ordem continuar total.
+    const byKey = a.sourceKey.localeCompare(b.sourceKey);
+    if (byKey !== 0) return byKey;
     const byType = a.scoreType.localeCompare(b.scoreType);
     if (byType !== 0) return byType;
     return a.metricLabel.localeCompare(b.metricLabel);
   });
 
+  // Divisoria liderante: todos menos o primeiro. Uma unica expressao decide a
+  // fileira inteira, para 1, 2, 3 ou 4 chips.
+  const rowed = items.map((item, index) => ({ ...item, leadingDivider: index > 0 }));
+
   const updatedDate = formatRatingDate(mostRecentIso(updatedAts));
   return {
-    items,
+    items: rowed,
     updatedAtLabel: updatedDate === null ? null : `Atualizado em ${updatedDate}`,
   };
 }

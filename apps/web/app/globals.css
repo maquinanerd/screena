@@ -115,10 +115,18 @@
 [data-vertical='movies'] {
   --ctx-accent: var(--c-accent-movie-cta);
   --ctx-accent-dark: var(--c-accent-movie-dark);
+  /* Kicker de secao e kicker sobre a faixa escura da critica. Sao dois valores
+     distintos porque o contraste exigido e outro: um assenta sobre #FDFCFA, o
+     outro sobre um overlay quase preto. Ficam aqui, e nao inline no JSX, para
+     que filme e serie nao possam divergir quando so um dos dois for editado. */
+  --ctx-kicker: var(--c-state-danger);
+  --ctx-kicker-on-dark: #e7a59f;
 }
 [data-vertical='series'] {
   --ctx-accent: var(--c-accent-series);
   --ctx-accent-dark: var(--c-accent-series-dark);
+  --ctx-kicker: var(--c-accent-series-dark);
+  --ctx-kicker-on-dark: #9fc48a;
 }
 
 /* ------------------------------------------------------------------ */
@@ -2909,6 +2917,21 @@ a.tabs__tab[aria-current='page'] {
   padding-inline: 64px;
 }
 
+/* Escada de padding do contrato de responsividade: notebook 48, tablet 32,
+   mobile 20. Faltavam os dois degraus do meio — o container saltava de 64
+   direto para 20 em 767px, o que espremia 1024–768 com margem de desktop. */
+@media (max-width: 1279px) {
+  .detail-container {
+    padding-inline: 48px;
+  }
+}
+
+@media (max-width: 1023px) {
+  .detail-container {
+    padding-inline: 32px;
+  }
+}
+
 @media (max-width: 767px) {
   .detail-container {
     padding-inline: var(--pad-page-mobile);
@@ -2970,7 +2993,11 @@ a.tabs__tab[aria-current='page'] {
 
 .detail-hero__aside {
   flex: 1 1 330px;
-  min-width: 300px;
+  /* `min(300px, 100%)` e nao `300px`: a 320px de viewport sobram 280px depois
+     do padding de 20, e um minimo rigido de 300 empurrava a coluna para fora —
+     overflow horizontal na faixa que o contrato manda auditar primeiro. O
+     `min()` mantem os 300px onde eles cabem e cede onde nao cabem. */
+  min-width: min(300px, 100%);
   max-width: 410px;
   padding-top: 2px;
 }
@@ -3117,6 +3144,222 @@ a.tabs__tab[aria-current='page'] {
   margin: 0 0 14px;
 }
 
+/* O canonico abre a coluna com o Cinerie Score e so entao separa "Avaliacoes"
+   com um filete. Sem score, o primeiro bloco nao pode comecar com um filete
+   solto pendurado no topo da coluna. */
+.detail-aside-block--first {
+  margin-top: 0;
+  border-top: 0;
+  padding-top: 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* Fileira de chips de nota (canonico: marca / numero / meta)          */
+/* ------------------------------------------------------------------ */
+
+.rating-chips__row {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.rating-chip {
+  display: flex;
+  align-items: stretch;
+  /* `flex:1 1 0` com `min-width:0` divide a largura por igual entre 1, 2, 3 ou
+     4 chips sem que o mais largo empurre os outros para fora. */
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* A divisoria e LIDERANTE (do 2o chip em diante) — nunca sobra na ponta. */
+.rating-chip__divider {
+  flex: 0 0 1px;
+  align-self: stretch;
+  background: #e9e3d8;
+  margin-inline: 10px;
+}
+
+.rating-chip__body {
+  display: block;
+  min-width: 0;
+}
+
+/* Slot da marca: TEXTO, nunca logo (logo_allowed = false em toda licenca).
+   Ocupa a mesma faixa vertical que o SVG do canonico (21px) para a fileira
+   manter o ritmo. */
+.rating-chip__mark {
+  display: block;
+  min-height: 21px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #12100e;
+  overflow-wrap: anywhere;
+}
+
+.rating-chip__score {
+  display: block;
+  font-size: 22px;
+  font-weight: 800;
+  color: #12100e;
+  margin-top: 9px;
+  letter-spacing: -0.03em;
+}
+
+.rating-chip__suffix {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--c-text-muted-aa);
+}
+
+/* Tomatometer (critica) e Popcornmeter (publico) medem coisas diferentes: o
+   rotulo da metrica e a natureza andam sempre juntos do numero. */
+.rating-chip__metric {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--c-text-muted-aa);
+  margin-top: 3px;
+  line-height: 1.35;
+}
+
+/* A linha meta carrega o CREDITO. Ele nao pode sair daqui: a licenca exige
+   credito visivel JUNTO da nota (ver o cabecalho de ratings-panel.tsx). */
+.rating-chip__meta {
+  display: block;
+  margin-top: 4px;
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--c-text-muted-aa);
+}
+
+.rating-chip__count {
+  display: block;
+  font-weight: 600;
+}
+
+.rating-chip__credit {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.rating-chip__credit-link {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.rating-chips__note,
+.rating-chips__updated {
+  font-size: 11px;
+  color: var(--c-text-muted-aa);
+  margin: 12px 0 0;
+}
+
+
+/* Abaixo de 480px quatro chips lado a lado esmagariam o numero e o credito.
+   Duas colunas mantem os dois legiveis; a divisoria vertical vira o proprio
+   espacamento da grade (um filete horizontal entre linhas seria um separador
+   NOVO, nao previsto no canonico). */
+@media (max-width: 479px) {
+  .rating-chips__row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px 14px;
+  }
+  .rating-chip__divider {
+    display: none;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Ausencia de bloco: aviso de DESENVOLVIMENTO (nunca vai a producao)  */
+/* ------------------------------------------------------------------ */
+
+.section-absent-dev {
+  margin: 12px 0;
+  padding: 8px 10px;
+  border: 1px dashed var(--c-border-strong);
+  border-radius: var(--r-control);
+  background: var(--c-bg-subtle);
+  font-size: 12px;
+  color: var(--c-text-muted-aa);
+}
+
+.section-absent-dev code {
+  font-size: 12px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Faixa de premios (componente pronto; SEM fonte de dado ligada hoje) */
+/* ------------------------------------------------------------------ */
+
+.awards-band {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  max-width: 1360px;
+  margin-inline: auto;
+  padding: 26px 64px;
+  border-bottom: 1px solid #e4ded3;
+}
+
+.awards-band__icon {
+  flex-shrink: 0;
+  color: #b98a2e;
+}
+
+.awards-band__text {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 15px;
+  color: #3a362f;
+}
+
+.awards-band__label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--c-text-muted-aa);
+  margin-right: 12px;
+}
+
+.awards-band__tally {
+  font-size: 15px;
+  font-weight: 800;
+  color: #12100e;
+}
+
+.awards-band__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  min-height: 44px;
+  color: var(--ctx-accent-dark);
+}
+
+@media (max-width: 1023px) {
+  .awards-band {
+    padding-inline: 32px;
+  }
+}
+
+@media (max-width: 767px) {
+  .awards-band {
+    flex-wrap: wrap;
+    gap: 12px;
+    padding-inline: var(--pad-page-mobile);
+  }
+}
+
 /* Midia full-bleed: grid 1fr 3fr 2fr, altura 472 */
 .media-strip {
   width: 100%;
@@ -3171,20 +3414,60 @@ a.tabs__tab[aria-current='page'] {
   gap: 0;
 }
 
+/* ------------------------------------------------------------------ *
+ * DERIVACAO DA FAIXA DE MIDIA — o contrato de responsividade NAO cobre
+ * esta faixa (ele descreve grids de poster, rails, elenco, episodios e
+ * ficha, nao um full-bleed 1fr/3fr/2fr de altura fixa). O que segue e
+ * derivado dele de forma conservadora, e esta registrado em
+ * docs/frontend/DESIGN-DELTA-detalhe.md por ser derivacao e nao contrato.
+ *
+ * A regra que a derivacao respeita: **nenhuma celula desaparece**. As tres
+ * da direita sao ATALHOS DE NAVEGACAO (notícias, onde assistir, em breve);
+ * escondê-las em <1024px nao "simplifica o layout", apaga tres links em
+ * exatamente as larguras onde a navegacao lateral ja nao existe. A altura
+ * fixa e que cede — ela e a parte decorativa.
+ *
+ * Tablet (<=1023): poster + destaque continuam lado a lado em cima, e os
+ * tres atalhos EMPILHAM ABAIXO, em linha de 3 colunas.
+ * Mobile (<=767): sobra poster + destaque na primeira faixa; os atalhos
+ * viram uma faixa de 3 colunas mais baixa, com o rotulo ainda legivel.
+ * ------------------------------------------------------------------ */
 @media (max-width: 1023px) {
   .media-strip__grid {
     grid-template-columns: 1fr 2fr;
-    height: 360px;
+    /* `auto` no lugar da altura fixa: a segunda linha (os atalhos) precisa de
+       altura propria, e 472px travados cortariam uma das duas. */
+    grid-template-rows: 360px auto;
+    height: auto;
   }
   .media-strip__stack {
-    display: none;
+    /* Ocupa a largura inteira ABAIXO das duas celulas de cima. */
+    grid-column: 1 / -1;
+    grid-template-rows: none;
+    grid-template-columns: repeat(3, 1fr);
+    height: 132px;
   }
 }
 
 @media (max-width: 767px) {
   .media-strip__grid {
-    height: 240px;
+    grid-template-rows: 240px auto;
   }
+  .media-strip__stack {
+    height: 104px;
+  }
+  .media-strip__caption {
+    left: 10px;
+    bottom: 10px;
+    padding: 4px 8px;
+    /* Nunca abaixo de 12px (regra transversal do contrato). */
+    font-size: 12px;
+  }
+}
+
+/* O atalho e um link: alvo minimo de 44px em qualquer viewport. */
+a.media-strip__cell {
+  min-height: 44px;
 }
 
 /* Eyebrow com barra vermelha (16x2) das secoes de detalhe */
@@ -3328,7 +3611,9 @@ a.tabs__tab[aria-current='page'] {
   font-weight: 800;
   letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: #e7a59f;
+  /* Token da vertical: rosa sobre a faixa vermelha (filme), verde-claro sobre
+     a verde (serie). O fallback cobre o uso fora de um `[data-vertical]`. */
+  color: var(--ctx-kicker-on-dark, #e7a59f);
   margin-bottom: 24px;
   display: block;
 }
@@ -3377,15 +3662,40 @@ a.tabs__tab[aria-current='page'] {
   padding: 0;
 }
 
+/* Escada do contrato: 6 (desktop) → 5 (notebook, "grids −1 coluna") → 4
+   (tablet, "grids de 6→3–4") → scroll horizontal com card 120px (mobile). */
 @media (max-width: 1279px) {
+  .cast-strip {
+    grid-template-columns: repeat(5, 1fr);
+  }
+}
+
+@media (max-width: 1023px) {
   .cast-strip {
     grid-template-columns: repeat(4, 1fr);
   }
 }
 
 @media (max-width: 767px) {
+  /* "Elenco: grid → scroll horizontal ≤767 (card 120px)" — literal do contrato.
+     Em grade de 2 colunas o retrato 3/4 fica alto demais e empurra o resto da
+     página para baixo; o rail mantém a faixa na altura desenhada. */
   .cast-strip {
-    grid-template-columns: repeat(2, 1fr);
+    display: flex;
+    grid-template-columns: none;
+    overflow-x: auto;
+    scrollbar-width: none;
+    gap: 12px;
+    /* Sangra até a borda da viewport e devolve o padding como offset interno,
+       para o rail não parecer cortado dentro do container. */
+    margin-inline: calc(var(--pad-page-mobile) * -1);
+    padding-inline: var(--pad-page-mobile);
+  }
+  .cast-strip::-webkit-scrollbar {
+    display: none;
+  }
+  .cast-strip > li {
+    flex: 0 0 120px;
   }
 }
 
@@ -3473,12 +3783,17 @@ a.tabs__tab[aria-current='page'] {
   font-weight: 800;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--c-state-danger);
+  /* Kicker por vertical (token, nunca hex inline no JSX). */
+  color: var(--ctx-kicker, var(--c-state-danger));
   display: block;
   margin-top: 15px;
 }
 
+/* `display: block` nos dois: sao <span> dentro de um <a>, e sem isto a linha
+   meta gruda no fim do titulo ("...para medir a caixaRedação · 4 min") — as
+   margens verticais nem sequer se aplicam a um inline. */
 .mnews-card__title {
+  display: block;
   font-size: 17px;
   font-weight: 750;
   color: #12100e;
@@ -3488,6 +3803,7 @@ a.tabs__tab[aria-current='page'] {
 }
 
 .mnews-card__meta {
+  display: block;
   font-size: 12px;
   color: var(--c-text-muted-aa);
   margin: 12px 0 0;
@@ -3650,62 +3966,11 @@ a.tabs__tab[aria-current='page'] {
   }
 }
 
-/* Painel de ratings externos (fonte + escala fixas por fonte) */
-.ratings-panel {
-  border: 1px solid var(--c-border);
-  border-radius: var(--r-card);
-  background: var(--c-bg-surface);
-  padding: 16px 18px;
-}
-
-.ratings-panel__title {
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--c-text-secondary);
-  margin: 0 0 10px;
-}
-
-.ratings-panel__list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.ratings-panel__row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  font-size: 13px;
-}
-
-.ratings-panel__source {
-  font-weight: 700;
-}
-
-.ratings-panel__value {
-  font-size: 22px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  white-space: nowrap;
-}
-
-.ratings-panel__scale {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--c-text-secondary);
-}
-
-.ratings-panel__attribution {
-  font-size: 11px;
-  color: var(--c-text-secondary);
-  margin: 12px 0 0;
-}
+/* As regras `.ratings-panel*` que ficavam aqui foram REMOVIDAS: nenhuma
+   marcacao as usava (`.ratings-panel__scale` era de uma versao anterior do
+   painel). Alem de mortas, eram perigosas — `__scale` desenhava o denominador
+   como sufixo universal, que e exatamente a apresentacao que fazia o
+   Tomatometer sair como "84/100". A fileira viva e `.rating-chip*`. */
 
 /* Cinerie Score — 6 estados honestos; NUNCA numero inventado */
 .score-box {
@@ -4026,12 +4291,24 @@ a.tabs__tab[aria-current='page'] {
 
 @media (max-width: 767px) {
   .episode-row {
-    grid-template-columns: 120px 1fr;
+    /* 128px é o valor do contrato de responsividade ("thumb 16:9 fixa 128px de
+       largura no mobile"), não 120. */
+    grid-template-columns: 128px 1fr;
     gap: 14px;
   }
   .episode-row__title {
     font-size: 15px;
   }
+  /* Nunca abaixo de 12px (regra transversal). */
+  .episode-row__synopsis {
+    font-size: 13px;
+  }
+}
+
+/* Alvo mínimo de 44×44 em qualquer viewport: as abas de temporada são links. */
+.season-tabs a,
+.season-tabs span {
+  min-height: 44px;
 }
 
 /* ------------------------------------------------------------------ */
@@ -6529,8 +6806,11 @@ h4.art-body__heading {
   font-weight: 600;
 }
 
-/* Paineis governados de detalhe: mesmos nomes de classe, visual do handoff */
-.ratings,
+/* Paineis governados de detalhe: mesmos nomes de classe, visual do handoff.
+   As regras `.ratings*` que existiam aqui foram REMOVIDAS junto com a lista
+   empilhada que elas vestiam — a fileira de notas agora e `.rating-chip*`
+   (secao "Fileira de chips de nota"). CSS orfao de marcacao inexistente e o
+   tipo de coisa que ressuscita um layout antigo no primeiro reuso de nome. */
 .watch-availability {
   border: 1px solid var(--c-border);
   border-radius: var(--r-card);
@@ -6538,7 +6818,6 @@ h4.art-body__heading {
   padding: 16px 18px;
 }
 
-.ratings__title,
 .watch-availability__title {
   font-size: 11px;
   font-weight: 800;
@@ -6548,26 +6827,10 @@ h4.art-body__heading {
   margin: 0 0 8px;
 }
 
-.ratings__note,
 .watch-availability__note {
   font-size: 11px;
   color: var(--c-text-secondary);
   margin-bottom: 10px;
-}
-
-.ratings__list {
-  list-style: none;
-  padding-left: 0;
-}
-
-.ratings__item + .ratings__item {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--c-border-subtle);
-}
-
-.ratings__source {
-  font-weight: 700;
 }
 
 .watch-availability__group-title {
@@ -6607,31 +6870,9 @@ h4.art-body__heading {
 }
 
 .watch-availability__attribution,
-.ratings__attribution,
-.ratings__updated,
 .watch-availability__updated {
   font-size: 12px;
   color: var(--c-text-secondary);
-}
-
-.ratings__list {
-  margin: 0;
-  padding-left: 1.25rem;
-}
-
-.ratings__score-type::before,
-.ratings__metric::before,
-.ratings__score::before,
-.ratings__count::before {
-  content: ' · ';
-}
-
-.ratings__score {
-  font-weight: 700;
-}
-
-.ratings__attribution {
-  display: block;
 }
 
 /* ------------------------------------------------------------------ */
@@ -8561,18 +8802,29 @@ h4.art-body__heading {
     background: #f1ece3;
   }
 
-  /* Episódios: card vertical com still 16:9 em cima (canônico mobile) */
-  .episode-row {
-    grid-template-columns: 1fr;
-    gap: 10px;
-    align-items: stretch;
-    padding: 14px 0;
-  }
-
-  .episode-row__media {
-    width: 100%;
-  }
-
+  /* ---------------------------------------------------------------- *
+   * EPISÓDIOS NO MOBILE — conflito resolvido a favor do CONTRATO.
+   *
+   * Havia aqui um card vertical com o still 16:9 ocupando a largura toda,
+   * derivado da tela 08. Ele contradizia, e VENCIA em silêncio (mesma
+   * especificidade, ~4.500 linhas depois), a regra de `.episode-row` do
+   * bloco de episódios: `grid-template-columns: 128px 1fr`.
+   *
+   * O contrato de responsividade é explícito nos dois pontos: "Episódios:
+   * lista mantém; thumb 16:9 fixa 128px de largura no mobile" e "a tela
+   * 08-series-mobile é referência de LINGUAGEM mobile para páginas de
+   * detalhe, NÃO o contrato completo". Onde o contrato enuncia uma regra
+   * específica, ele governa; a tela 08 empresta vocabulário visual, não
+   * substitui a regra.
+   *
+   * Consequência prática, e o motivo de a regra existir: com o still em
+   * cima, cada episódio ocupa ~190px de altura e uma temporada de 16 vira
+   * uma rolagem de três metros. Com 128px ao lado, a lista continua uma
+   * lista — que é o que o contrato diz por "lista mantém".
+   *
+   * A divergência está registrada em docs/frontend/DESIGN-DELTA-detalhe.md. O
+   * `grid-template-columns` vive num lugar só (o bloco de episódios).
+   * ---------------------------------------------------------------- */
   .episode-row__chevron {
     display: none;
   }
@@ -8878,5 +9130,73 @@ h4.art-body__heading {
 @media (max-width: 767px) {
   .legal-body {
     padding: 20px var(--pad-page-mobile) 56px;
+  }
+}
+
+/* ==================================================================== *
+ * PISO DE LEGIBILIDADE E ALVO DE TOQUE — telas de detalhe (06/07)
+ *
+ * Este bloco fica no FIM do arquivo DE PROPOSITO. Todas as regras que ele
+ * corrige tem a mesma especificidade das originais (uma classe), entao quem
+ * vence e a ULTIMA na ordem do documento. Colocado junto dos componentes,
+ * ele era silenciosamente derrotado por `.eyebrow-bar span`,
+ * `.mnews-card__cat` e `.episode-row__num`, que aparecem centenas de linhas
+ * depois — e a auditoria continuava reprovando com o "conserto" ja no
+ * arquivo. Nao mova para cima sem subir a especificidade junto.
+ *
+ * ALVO DE TOQUE (44x44, "em qualquer viewport" no contrato). Vale em TODAS
+ * as larguras, nao so no mobile: a expansao e feita por `::after` absoluto,
+ * que aumenta a area clicavel sem alterar uma linha do layout — no desktop
+ * nada se move, e um link de credito com 44px de altura REAL destruiria a
+ * fileira de chips.
+ *
+ * PISO DE 12px. Vale abaixo de 1024. O contrato: "texto nunca abaixo de
+ * 12px; meta/kickers podem manter 11px APENAS >=1024". O canonico e
+ * pixel-fiel em 1280-1440 e usa 10-11px em selo, kicker e meta — divergencia
+ * registrada em docs/frontend/DESIGN-DELTA-detalhe.md, valida so no desktop. Abaixo de 1024 e
+ * leitura em tela pequena, e ali o contrato manda.
+ * ==================================================================== */
+
+.detail-hero__crumbs a,
+.rating-chip__credit-link,
+.season-tabs a {
+  position: relative;
+}
+
+.detail-hero__crumbs a::after,
+.rating-chip__credit-link::after,
+.season-tabs a::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 44px;
+}
+
+@media (max-width: 1023px) {
+  .rating-chip__mark,
+  .rating-chip__suffix,
+  .rating-chip__metric,
+  .rating-chip__meta,
+  .rating-chip__count,
+  .rating-chip__credit,
+  .rating-chips__note,
+  .rating-chips__updated,
+  .detail-badge,
+  .detail-hero__cert,
+  .detail-aside-block__label,
+  .mnews-card__cat,
+  .mnews-card__meta,
+  .episode-row__num,
+  .episode-row__meta,
+  .media-strip__caption,
+  .critic-band__eyebrow,
+  .critic-band__byline,
+  .eyebrow-bar span,
+  .season-info__status,
+  .cast-tile__role {
+    font-size: 12px;
   }
 }

@@ -115,6 +115,20 @@ const IGNORED_DIRS = new Set([
 ]);
 
 /**
+ * Saida GERADA das ferramentas de QA visual (`apps/web/.qa-*`, todas
+ * gitignored): HTML montado pelo proprio harness a partir do CSS e dos
+ * componentes reais.
+ *
+ * Ignorada pelo mesmo motivo que `.next` e `dist`: e artefato, nao codigo. Uma
+ * violacao ali nunca e um defeito do produto — ou o harness copiou marcacao que
+ * ja existe (e o arquivo-fonte e que seria acusado, corretamente) ou e cenario
+ * de teste. Varrer artefato produz acusacao que ninguem pode consertar no lugar
+ * certo, e depende de quem rodou o QA por ultimo: o mesmo commit passa ou falha
+ * conforme exista ou nao um diretorio local.
+ */
+const IGNORED_DIR_PREFIXES = ['.qa-'];
+
+/**
  * Padroes proibidos: 'imdb' colado/adjacente a um rotulo do Rotten Tomatoes.
  * Cobrimos separadores comuns (nada, espaco, hifen, underscore, ponto, barra)
  * e a ordem inversa. Case-insensitive.
@@ -254,6 +268,7 @@ async function collectFiles(absDir) {
   for (const entry of entries) {
     if (entry.isDirectory()) {
       if (IGNORED_DIRS.has(entry.name)) continue;
+      if (IGNORED_DIR_PREFIXES.some((prefix) => entry.name.startsWith(prefix))) continue;
       const childFiles = await collectFiles(path.join(absDir, entry.name));
       out.push(...childFiles);
     } else if (entry.isFile()) {

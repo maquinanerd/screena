@@ -196,20 +196,27 @@ describe("watch-availability — integracao nas paginas de detalhe", () => {
       expect(source).not.toContain("WatchProviders");
     });
 
-    it(`${name}: so renderiza o painel quando ha oferta (gate watch !== null)`, () => {
-      expect(source).toContain("watch !== null ?");
-      expect(source).toContain("<WatchAvailabilityPanel view={watch} />");
+    it(`${name}: so renderiza o painel quando ha oferta (fronteira de secao)`, () => {
+      // ATUALIZADO: o gate deixou de ser um ternario `watch !== null ?` e
+      // passou a ser `SectionBoundary` + `decideSection`. Nao e reescrita
+      // cosmetica — o ternario cumpria METADE da regra. A outra metade e que a
+      // ausencia REGISTRE o motivo, e um ternario nao tem onde faze-lo: hoje
+      // ha ZERO provedores autorizados no banco, e o bloco sumia de todo
+      // titulo sem deixar rastro nenhum. A fronteira decide e loga na mesma
+      // linha, entao "sumiu" e "registrou" nao podem divergir.
+      const clean = withoutComments(source);
+      expect(clean).toMatch(/decideSection\(watch,/);
+      expect(clean).toMatch(/reason: 'no_authorized_provider'/);
+      expect(clean).toMatch(/<SectionBoundary decision=\{watchSection\}>/);
+      expect(clean).toContain("<WatchAvailabilityPanel view={view} />");
     });
 
     it(`${name}: rotulo 'Onde assistir' so existe com destino/painel REAL`, () => {
-      // ATUALIZADO DELIBERADAMENTE: o canonico rotula o bloco como
-      // "Onde assistir" e /pt/onde-assistir passou a ser rota real. O que o
-      // guard trava agora: o rotulo nunca aparece sem o gate de oferta
-      // licenciada (watch !== null) na mesma pagina, e o painel em si segue
-      // com a copy "Disponibilidade no Brasil".
+      // O rotulo nunca aparece fora do gate de oferta licenciada. O gate agora
+      // e a fronteira de secao (ver o teste acima).
       const clean = withoutComments(source);
       if (/onde assistir/i.test(clean)) {
-        expect(clean).toContain("watch !== null ?");
+        expect(clean).toMatch(/<SectionBoundary decision=\{watchSection\}>/);
       }
     });
   }

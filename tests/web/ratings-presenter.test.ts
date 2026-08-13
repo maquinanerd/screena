@@ -62,7 +62,21 @@ describe("formatadores puros", () => {
 });
 
 describe("buildRatingsView — escalas por fonte (invariante 1)", () => {
-  it("IMDb 8,4/10 e Rotten Tomatoes 92/100 convivem SEM normalizacao", () => {
+  /**
+   * ATUALIZADO com a correcao do sufixo por fonte.
+   *
+   * Este teste afirmava `rotten_tomatoes:92/100` — e estava errado, no mesmo
+   * lugar em que a pagina estava errada: o Tomatometer e PROPORCAO de criticas
+   * positivas ("92% aprovaram"), nao 92 pontos numa regua de 100. A ultima
+   * assercao chegava a exigir "/" em toda `scoreLabel`, o que TRAVAVA a forma
+   * certa: com ela no lugar, escrever "92%" quebrava a suite.
+   *
+   * A REGRA que este teste defende continua identica e continua valendo: nada
+   * e reescalado entre fontes, e o 8,4 do IMDb jamais vira 84 de coisa nenhuma.
+   * O que muda e como cada fonte escreve a propria medida.
+   * Ver `tests/governance/rating-suffix-by-source.test.ts`.
+   */
+  it("IMDb 8,4/10 e Rotten Tomatoes 92% convivem SEM normalizacao", () => {
     const view = buildRatingsView(
       payload([
         rating(),
@@ -83,12 +97,16 @@ describe("buildRatingsView — escalas por fonte (invariante 1)", () => {
 
     const scores = view!.items.map((i) => `${i.sourceKey}:${i.scoreLabel}`);
     expect(scores).toContain("imdb:8,4/10");
-    expect(scores).toContain("rotten_tomatoes:92/100");
-    // O 8,4 do IMDb NUNCA vira 84/100 para "comparar" com o Tomatometer.
+    expect(scores).toContain("rotten_tomatoes:92%");
+    // O 8,4 do IMDb NUNCA vira 84/100 nem 84% para "comparar" com o Tomatometer.
     expect(scores).not.toContain("imdb:84/100");
-    // E o valor nunca aparece sem a escala ao lado.
+    expect(scores).not.toContain("imdb:84%");
+    // E o Tomatometer nunca volta a ser apresentado como nota numa regua de 100.
+    expect(scores).not.toContain("rotten_tomatoes:92/100");
+    // O valor nunca aparece sem a MEDIDA ao lado — nunca um numero solto.
     for (const item of view!.items) {
-      expect(item.scoreLabel).toContain("/");
+      expect(item.valueSuffix).not.toBe("");
+      expect(item.scoreLabel).toBe(`${item.valueLabel}${item.valueSuffix}`);
     }
   });
 

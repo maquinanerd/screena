@@ -23,6 +23,7 @@
     "qa:home-fold": "tsx scripts/qa-home-first-fold-real-postgres.ts",
     "qa:article-hero": "tsx scripts/qa-article-hero-real-postgres.ts",
     "qa:home-editorial": "tsx scripts/qa-home-editorial-ticker-real-postgres.ts",
+    "qa:detail-responsive": "tsx --tsconfig scripts/tsconfig.json scripts/qa-detail-responsive.ts",
     "seed:dev-movie": "tsx scripts/seed-dev-movie.ts",
     "gen:demo-media": "node scripts/generate-demo-media.mjs",
     "validate:person-eligibility": "tsx scripts/validate-person-eligibility-real-postgres.ts",
