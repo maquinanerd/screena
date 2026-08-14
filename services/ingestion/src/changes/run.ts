@@ -15,7 +15,7 @@
  */
 
 import { CATALOG_METRIC_NAMES, type MetricsSink } from '../metrics/index.js'
-import { buildIdempotencyKey } from '../catalog-jobs/idempotency.js'
+import { buildCoverageJob } from '../entity-coverage/entry.js'
 import type { EnqueueCatalogJobInput } from '../catalog-jobs/store-port.js'
 import type { StructuredLogger } from '../catalog-jobs/handler.js'
 import {
@@ -258,32 +258,25 @@ export async function runChangesSync(
         break
       }
 
-      const enqueueInputs: EnqueueCatalogJobInput[] = ids.map((id) => ({
-        jobType: 'sync_details',
-        entityType: kind,
-        externalId: String(id),
-        // Discriminador = janela: o mesmo id alterado em janelas diferentes e
-        // trabalho novo; na MESMA janela e noop idempotente.
-        idempotencyKey: buildIdempotencyKey({
-          jobType: 'sync_details',
-          entityType: kind,
-          externalId: String(id),
-          discriminator: cursor,
-        }),
-        // `entityType`/`externalId` acima sao COLUNAS do job (indice/consulta);
-        // o handler valida o PAYLOAD. Sem repetir entityType/tmdbId aqui, todo
-        // sync_details vindo de /changes falhava a validacao e ia direto para
-        // dead-letter — o incremental inteiro virava fila morta.
-        payload: {
-          entityType: kind,
+      // PORTA UNICA de cobertura (T0): o incremental NAO monta o job a mao. Foi
+      // exatamente aqui que os dois caminhos divergiram uma vez — o payload
+      // saiu sem `entityType`/`tmdbId`, a validacao do handler reprovou, e todo
+      // `sync_details` vindo de `/changes` virou dead-letter em silencio. Com o
+      // builder compartilhado, esse campo nao tem como faltar so de um lado.
+      //
+      // `scope: cursor` (a janela) e o que distingue duas mudancas do MESMO id:
+      // em janelas diferentes e trabalho novo; na MESMA janela e noop
+      // idempotente.
+      const enqueueInputs: EnqueueCatalogJobInput[] = ids.map((id) =>
+        buildCoverageJob({
+          kind,
           tmdbId: id,
           locale,
           reason: 'changes',
-          window: cursor,
-        },
-        priority: 50, // mudanca upstream tem prioridade sobre backfill
-        runId,
-      }))
+          scope: cursor,
+          runId,
+        }),
+      )
 
       const isLastPage = totalPages !== null && page >= totalPages
       // COMMIT ATOMICO: jobs + checkpoint. Se falhar, o checkpoint NAO avanca.
