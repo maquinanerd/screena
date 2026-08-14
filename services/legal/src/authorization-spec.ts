@@ -46,7 +46,13 @@ export type SourceRole =
   | "streaming-aggregator";
 
 /** `content_type` reconhecidos de `source_licenses` usados por este spec. */
-export type LicenseContentType = "rating" | "watch_availability" | "image" | "other";
+export type LicenseContentType =
+  | "rating"
+  | "watch_availability"
+  | "image"
+  /** Trailers/teasers do TMDB. O valor já existia no enum do banco desde a Fase 7. */
+  | "video"
+  | "other";
 
 /** Estado de licença permitido (`official` só p/ API/fonte oficial). */
 export type LicenseStatus = "official" | "licensed" | "third_party";
@@ -407,6 +413,62 @@ export const STATIC_AUTHORIZATION: readonly AuthorizationEntry[] = [
         attributionRequired: true,
         linkbackRequired: true,
         policyVersion: "cinerie-source-auth/tmdb/2026-07-v1",
+      },
+    ],
+  },
+  // TMDB — VÍDEO (trailers/teasers). Decisão de 13/08/2026, e é a PRIMEIRA vez
+  // que este content_type é decidido: até aqui `tmdb_videos` era ingerida e
+  // nascia `display_allowed=false` sem nenhuma licença que pudesse liberá-la.
+  //
+  // O QUE ESTÁ SENDO AUTORIZADO, EXATAMENTE. O metadado do vídeo vindo da API
+  // oficial do TMDB: `site`, `video_key`, `video_type`, `official`, idioma. Não
+  // é o vídeo — o arquivo nunca passa por nós, não é baixado, não é
+  // rehospedado, não é recortado. O player é do YouTube e roda sob os termos do
+  // Google; o leitor os aciona por clique explícito, e a política de
+  // privacidade publicada declara isso no item 6.1.
+  //
+  // Por isso `derivativeAllowed` continua false: exibir o player de terceiro
+  // não é derivar obra nova a partir do dado do TMDB.
+  {
+    label: "TMDB (trailers)",
+    role: "catalog-provider",
+    license: {
+      sourceKey: "tmdb",
+      contentType: "video",
+      ratingSourceKey: null,
+      providerKey: "tmdb",
+      territory: null,
+      licenseStatus: "official",
+      displayAllowed: true,
+      // Logo do TMDB e do YouTube seguem bloqueados: nenhuma marca de terceiro
+      // é desenhada por nós. O crédito é textual, no rodapé.
+      logoAllowed: false,
+      scoreAllowed: false,
+      reviewQuoteAllowed: false,
+      requiresAttribution: true,
+      requiresLinkback: true,
+      attributionText:
+        "Este produto usa a API do TMDB, mas nao e endossado ou certificado pelo TMDB.",
+      policyVersion: "cinerie-source-auth/tmdb-video/2026-08-v1",
+      notes:
+        "Metadado de VIDEO (site/key/tipo/idioma) via API oficial do TMDB, para localizar o trailer. O arquivo de video NAO e baixado, reproduzido por nos nem rehospedado: o player e do YouTube e carrega apenas apos clique explicito do leitor (politica de privacidade, item 6.1). Disclaimer do TMDB obrigatorio no rodape.",
+    },
+    decisions: [
+      // Mesmo eixo das outras duas entradas TMDB: a exibição de CATÁLOGO
+      // antecede o eixo use_case, e não existe caso de uso de vídeo em
+      // DATA_USAGE_CASES. Inventar um aqui criaria vocabulário novo numa PR de
+      // licença — a decisão registrada é a de armazenamento, e quem libera a
+      // exibição é a licença-mãe acima.
+      {
+        useCase: "internal_analytics",
+        territory: null,
+        stage: "approved_for_internal_use",
+        displayAllowed: false,
+        storageAllowed: true,
+        derivativeAllowed: false,
+        attributionRequired: true,
+        linkbackRequired: true,
+        policyVersion: "cinerie-source-auth/tmdb-video/2026-08-v1",
       },
     ],
   },

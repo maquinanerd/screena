@@ -57,10 +57,11 @@ describe("publicSourceCredits — a projecao publica do registro de licencas", (
     }
   });
 
-  it("TMDB aparece UMA vez, apesar de ter DUAS licencas (metadados e imagens)", () => {
-    // As duas licencas do TMDB compartilham o mesmo `attributionText`. Sem
+  it("TMDB aparece UMA vez, apesar de ter VARIAS licencas (metadados, imagens, video)", () => {
+    // As licencas do TMDB compartilham o mesmo `attributionText`. Sem
     // deduplicacao por texto, o rodape repetiria o disclaimer — e um credito
     // repetido nao e "mais credito", e ruido que faz o leitor parar de ler.
+    // Eram duas ate 13/08/2026; a de video entrou e o rodape nao pode mudar.
     const disclaimer = tmdbNonEndorsementDisclaimer();
     const ocorrencias = textsOf(publicSourceCredits()).filter((t) => t === disclaimer);
     expect(ocorrencias).toHaveLength(1);
