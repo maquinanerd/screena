@@ -99,6 +99,7 @@ describe("buildUpcomingItems", () => {
         weekday: "SEG",
         href: "/pt/filmes/antes/",
         imageUrl: null,
+        trailer: null,
       },
       {
         entityId: null,
@@ -111,6 +112,7 @@ describe("buildUpcomingItems", () => {
         weekday: "TER",
         href: "/pt/filmes/depois/",
         imageUrl: null,
+        trailer: null,
       },
     ]);
   });
@@ -133,6 +135,8 @@ describe("buildUpcomingItems", () => {
       weekday: "SÁB",
       href: "/pt/series/nova-serie/",
       imageUrl: null,
+      // Sem licença de vídeo do TMDB registrada, todo card nasce sem trailer.
+      trailer: null,
     });
   });
 

@@ -155,13 +155,31 @@ describe("a camada server-only pergunta a coluna certa de cada vertical", () => 
   });
 
   /**
-   * Invariante 3: página indexável lê SÓ PostgreSQL/cache local. O getter de
-   * séries é novo — é exatamente onde uma chamada externa entraria por
-   * distração.
+   * Invariante 3: página indexável lê SÓ PostgreSQL/cache local.
+   *
+   * O guard mira a REDE, não a palavra "tmdb". A versão anterior proibia a
+   * substring `tmdb` e passava só porque o módulo ainda não lia a tabela
+   * `tmdb_videos`; no instante em que passou a ler (`prisma.tmdbVideo`,
+   * `tmdbId`), o guard reprovou uma consulta ao PostgreSQL local — que é
+   * exatamente o que a invariante MANDA fazer. Guard que confunde nome de
+   * coluna com chamada externa vira ruído e acaba relaxado pelo motivo errado.
    */
-  it("NEGATIVO — zero rede no caminho de render (nem fetch, nem TMDB, nem Gemini)", () => {
-    for (const proibido of ["fetch(", "https://", "axios", "tmdb", "gemini"]) {
-      expect(server.toLowerCase()).not.toContain(proibido.toLowerCase());
+  it("NEGATIVO — zero rede no caminho de render (nem fetch, nem host externo, nem Gemini)", () => {
+    for (const proibido of [
+      "fetch(",
+      "https://",
+      "http://",
+      "axios",
+      "XMLHttpRequest",
+      "api.themoviedb.org",
+      "gemini",
+    ]) {
+      expect(server.toLowerCase(), proibido).not.toContain(proibido.toLowerCase());
     }
+  });
+
+  it("CONTROLE POSITIVO: o módulo REALMENTE lê a tabela local de vídeos", () => {
+    // Sem isto, o guard acima ficaria verde num módulo que não consulta nada.
+    expect(server).toContain("prisma.tmdbVideo.findMany");
   });
 });

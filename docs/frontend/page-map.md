@@ -191,10 +191,35 @@ superfícies home-like. O que muda é só o dataset:
   pela contagem de seções populadas da home. Se cada um aplicasse o seu próprio
   `>= 4`, a indexabilidade acabaria contando uma seção que não está na página.
 
+#### Trailer: botão gateado por licença
+
+- O card ganha um botão de play **só quando existe trailer exibível**. Hoje isso
+  é `null` para todo mundo: `tmdb_videos` nasce `display_allowed = false` e
+  `services/legal/src/authorization-spec.ts` **não tem entrada de licença para
+  vídeo** do TMDB — só para metadados e imagens. Sem trailer, o card fica
+  exatamente como está, sem botão e sem espaço reservado.
+- O gate está em `apps/web/src/lib/trailer-presenter.ts` e tem **cinco**
+  condições, não uma: `display_allowed`, licença fora de `unknown`/`blocked`,
+  `site = YouTube`, tipo em `Trailer`/`Teaser`, e chave de 11 caracteres.
+- O player é **um só no site** (`app/_components/youtube-frame.tsx`), usado pelo
+  modal de trailer e pelo bloco `embed` do corpo de matéria. A política da URL
+  (domínio `youtube-nocookie`, zero query, formato do id) vive em
+  `src/lib/youtube-embed.ts` — um lugar, não dois.
+- **Nada de terceiro carrega antes de um clique.** No trilho, o clique em
+  "Assistir ao trailer" é o disparo (o modal, e portanto o player, só existe
+  depois dele). Na matéria, o embed é um cartão de ativação. É disso que o §6 da
+  política de privacidade publicada depende — e foi por isso que a política
+  ganhou o item 6.1 nesta frente.
+
 Provado por `tests/web/upcoming-rail-by-route.test.ts` (fiação por rota),
 `tests/web/home-upcoming-presenter.test.ts` (presenter puro + mistura) e
 `apps/web/app/_components/__tests__/home-like-upcoming.test.tsx` (texto visível
-no card renderizado + ausência e log na mesma asserção).
+no card renderizado + ausência e log na mesma asserção),
+`tests/web/trailer-gate-and-embed.test.ts` (gate condição por condição + política
+da URL) e, num DOM real (`jsdom`),
+`apps/web/app/_components/__tests__/trailer-modal.test.tsx` e
+`youtube-facade.test.tsx` (foco, ESC, fundo, devolução de foco, e a asserção
+negativa de que nenhum endereço do YouTube existe antes do clique).
 
 ### QA visual da primeira dobra
 

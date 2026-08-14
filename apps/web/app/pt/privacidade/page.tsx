@@ -3,7 +3,7 @@ import type { Metadata } from 'next'
 import { TMDB_IMAGE_HOST } from '@screena/public-contracts'
 import { serializeJsonLd } from '@screena/seo'
 
-import { LegalDoc } from '../../_components/legal-doc'
+import { LEGAL_PRIVACY_VERSION, LegalDoc } from '../../_components/legal-doc'
 import {
   HOME_PATH,
   PRIVACY_PATH,
@@ -93,7 +93,12 @@ export default function PrivacidadePage() {
 
   return (
     <>
-      <LegalDoc breadcrumbLabel="Privacidade" effectiveDate="4 de agosto de 2026" title={TITLE}>
+      <LegalDoc
+        breadcrumbLabel="Privacidade"
+        effectiveDate="13 de agosto de 2026"
+        title={TITLE}
+        version={LEGAL_PRIVACY_VERSION}
+      >
         <p>
           Esta política explica como a Cinerie trata dados pessoais de quem usa o site e,
           principalmente, de quem cria uma conta. Ela descreve o funcionamento real do produto: o
@@ -564,7 +569,9 @@ export default function PrivacidadePage() {
         <p>
           A Cinerie usa <strong>dois cookies, ambos estritamente necessários</strong>. Não há cookie
           de publicidade, de análise ou de rastreamento — e é por isso que você não vê banner de
-          cookies aqui: não existe nada opcional para consentir.
+          cookies aqui: <strong>nada que dependa da sua autorização carrega sozinho</strong>. Existe
+          um único conteúdo de terceiro no site, o player de vídeo, e ele só entra na página se você
+          clicar para assistir (item 6.1). Enquanto você não clica, não há o que consentir.
         </p>
         <div className="legal-table-wrap">
           <table className="legal-table">
@@ -603,6 +610,31 @@ export default function PrivacidadePage() {
         <p>
           Os dois são criados <strong>somente no login</strong> e removidos no logout. Quem apenas
           navega sem conta não recebe cookie nenhum.
+        </p>
+
+        <h3>6.1. O player de vídeo do YouTube</h3>
+        <p>
+          Trailers e vídeos dentro das matérias são reproduzidos por um player do YouTube, que é
+          serviço do Google. <strong>Ele não carrega junto com a página.</strong> Você vê um botão
+          nosso; até você clicar nele, nada é pedido ao YouTube — nem o seu endereço IP, nem qual
+          página você está lendo. Abrir a home, a lista de filmes ou uma matéria não entrega dado
+          nenhum ao Google.
+        </p>
+        <p>
+          Quando você clica para assistir, o player é carregado de{' '}
+          <code>youtube-nocookie.com</code> — o endereço que o próprio YouTube mantém para adiar o
+          registro de atividade. Desse ponto em diante, o Google trata os seus dados como
+          controlador dele, sob as regras dele:{' '}
+          <a href="https://policies.google.com/privacy" rel="noopener noreferrer" target="_blank">
+            Política de Privacidade do Google
+          </a>
+          .
+        </p>
+        <p>
+          O que fazemos para reduzir isso ao mínimo: o endereço do player não leva nenhum parâmetro
+          de rastreamento, e o player roda isolado do resto do site, sem alcançar os nossos dois
+          cookies. Se preferir não carregá-lo, cada vídeo tem a opção de abrir no YouTube em outra
+          aba — a escolha é sua, e ela continua sendo sua a cada vídeo.
         </p>
 
         <h2>7. Por quanto tempo guardamos os dados</h2>
