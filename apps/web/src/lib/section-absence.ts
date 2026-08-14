@@ -81,7 +81,16 @@ export type SectionAbsenceReason =
    * Sem esta linha, `/pt/series/` sem serie futura e `/pt/series/` com a
    * ingestao nunca rodada sao visualmente identicos: nada.
    */
-  | "no_upcoming_title";
+  | "no_upcoming_title"
+  /**
+   * HA estreias futuras, mas MENOS que o piso do trilho (HOME_UPCOMING_MIN).
+   *
+   * Motivo separado de proposito: "zero" e "tres, precisa de quatro" pedem
+   * acoes diferentes e estao a distancias diferentes de acender. Colapsar os
+   * dois num motivo so apagaria justamente o caso em que a ingestao ja
+   * funciona e falta pouco. O campo `available` carrega quanto ja ha.
+   */
+  | "below_upcoming_floor";
 
 /** Uma linha de log estruturada. Sem segredo, sem payload cru, sem PII. */
 export interface SectionAbsence {
@@ -111,6 +120,7 @@ const ACTIONABLE_REASONS: ReadonlySet<SectionAbsenceReason> = new Set([
   "no_awards_source",
   "no_recommendation_dataset",
   "no_upcoming_title",
+  "below_upcoming_floor",
 ]);
 
 export interface SectionAbsenceContext {
@@ -150,8 +160,15 @@ export interface RouteSectionAbsence {
   readonly reason: SectionAbsenceReason;
   /** Path publico da rota (ex.: `/pt/series/`) — o que o operador abre. */
   readonly route: string;
-  /** Qual dataset foi consultado e voltou vazio. */
+  /** Qual dataset foi consultado e nao rendeu bloco. */
   readonly vertical: "movie" | "series" | "mixed";
+  /**
+   * Quantos itens EXISTIAM (0 quando nao ha nenhum). E a diferenca entre
+   * "a ingestao nao rodou" e "faltou um titulo para o piso" — sem o numero, o
+   * operador nao sabe se esta longe ou perto de acender. Omitido quando o bloco
+   * nao e contavel.
+   */
+  readonly available?: number;
   readonly actionable: boolean;
 }
 
@@ -160,6 +177,7 @@ export interface RouteSectionAbsenceContext {
   readonly reason: SectionAbsenceReason;
   readonly route: string;
   readonly vertical: "movie" | "series" | "mixed";
+  readonly available?: number;
 }
 
 /** Monta o evento de rota. Nao escreve nada — quem escreve e o chamador. */
@@ -172,6 +190,8 @@ export function buildRouteSectionAbsence(
     reason: context.reason,
     route: context.route,
     vertical: context.vertical,
+    // `undefined` some do JSON.stringify: bloco nao contavel nao ganha a chave.
+    available: context.available,
     actionable: ACTIONABLE_REASONS.has(context.reason),
   };
 }

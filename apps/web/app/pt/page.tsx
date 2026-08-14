@@ -12,6 +12,7 @@ import {
   takeSectionCards,
 } from '../../src/lib/portal-presenter'
 import { excludeEditorialHighlights } from '../../src/lib/home-editorial-presenter'
+import { hasEnoughUpcoming } from '../../src/lib/home-upcoming-presenter'
 import { RANKING_TABS, resolveActiveRankingSlug } from '../../src/lib/popular-rankings'
 import { getPopularRankings } from '../../src/server/popular-rankings'
 import { HOME_PATH, SITE_URL, canonicalPublicUrl, publicRobots } from '../../src/lib/site'
@@ -114,7 +115,11 @@ async function getHomeData() {
       heroSlides.length,
       movieCards.length,
       seriesWeekCards.length,
-      upcomingItems.length,
+      // Conta o trilho pelo que ele RENDERIZA: abaixo do piso ele não está na
+      // página, e uma seção fora da página não é seção populada. O piso vem de
+      // `hasEnoughUpcoming` — a MESMA função que o template usa para decidir,
+      // para que render e indexabilidade não possam divergir.
+      hasEnoughUpcoming(upcomingItems) ? upcomingItems.length : 0,
       newsCards.length,
     ]),
   })
