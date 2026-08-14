@@ -34,6 +34,13 @@ apps/web/.qa-home-editorial/
 apps/web/.qa-article-hero/
 apps/web/.qa-detail-responsive/
 apps/web/.qa-footer/
+# Gerado pelo globalSetup de tests/e2e (harness de estilo computado).
+apps/web/.qa-default-styles/
+
+# Saida do Playwright da RAIZ (tests/e2e). Ancorado no caminho, como o do CMS
+# logo abaixo: um `test-results/` solto casaria em qualquer profundidade.
+/test-results/
+/playwright-report/
 
 # Ambiente — chaves vivem SO em env vars, nunca versionadas
 .env

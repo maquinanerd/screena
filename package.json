@@ -25,6 +25,7 @@
     "build:cms": "corepack pnpm --filter @screena/cms build",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:styles": "playwright test --config playwright.config.ts",
     "audit:invariants": "node scripts/audit/check-invariants.mjs",
     "audit:render": "node scripts/audit/check-render-purity.mjs",
     "api:coverage": "node scripts/audit/check-api-coverage.mjs",

@@ -220,6 +220,16 @@ jobs:
       - name: Test
         run: pnpm test
 
+      # Estilo COMPUTADO da camada publica, em Chromium de verdade. Nao entra
+      # em `pnpm test` porque o vitest da raiz roda em `environment: node` e
+      # jsdom nao tem folha de estilo de UA — o defeito que este gate pega (o
+      # `buttonface` do navegador atras da aba) passaria verde la.
+      - name: Instalar Chromium para os testes de estilo
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Testes de estilo computado (vazamento de padrao do navegador)
+        run: pnpm test:styles
+
       - name: Auditoria de invariantes
         run: pnpm audit:invariants
 
