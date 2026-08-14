@@ -34,19 +34,26 @@
  *    pelo render publico (invariantes 3 e 4).
  *
  * ============================================================================
- * POR QUE A LISTA E TOTAL (e nao "so as fontes com dado no ar")
+ * O CRITERIO E "AUTORIZADA A EXIBIR", NAO "EXISTE NO SPEC"
  * ============================================================================
- * A projecao inclui TODA fonte autorizada, mesmo as que hoje nao alimentam
- * nenhuma tela (Letterboxd e FilmAffinity nao sao servidas pela OMDb). Isso e
- * deliberado, e a direcao do erro e a razao:
+ * A projecao inclui toda licenca com `displayAllowed`. Uma fonte cuja EXIBICAO
+ * foi revogada (`displayAllowed: false`) nao e creditada — creditar quem nao
+ * pode aparecer seria afirmacao publica sem lastro.
  *
- *   - Listar uma fonte autorizada que ainda nao aparece = ruido.
- *   - Omitir uma fonte que passou a aparecer = licenca violada em producao.
+ * O criterio e deliberadamente esse, e nao "tem dado no ar hoje":
  *
- * Como o objetivo desta mudanca inteira e "o credito nunca pode faltar", a
- * projecao falha para o lado de INCLUIR. Se listar Letterboxd incomoda, o
- * conserto e remover a licenca em `authorization-spec.ts` — nunca filtrar aqui,
- * porque filtrar aqui e exatamente como o credito da proxima fonte sumiria.
+ *   - Um criterio de DADO seria dinamico e o rodape nao tem acesso a ele (o
+ *     layout raiz nao le banco). Pior: uma fonte autorizada que acabou de
+ *     receber a primeira linha ficaria sem credito ate alguem perceber.
+ *   - Um criterio de LICENCA e estatico, derivavel e conservador na direcao
+ *     certa: o que pode aparecer, aparece creditado. Se a licenca autoriza e o
+ *     dado ainda nao chegou, sobra credito (ruido). Se o dado chega, o credito
+ *     ja esta la.
+ *
+ * ATENCAO ao mexer neste filtro: `movie-of-the-night` tem `displayAllowed:false`
+ * na entrada estatica (a exibicao de OFERTA e gated por provedor canonico) e so
+ * chega ao rodape por `STREAMING_ORIGIN_CREDITS`. Estreitar o filtro sem olhar
+ * as origens apagaria o credito do agregador de streaming.
  */
 
 import {
@@ -145,7 +152,13 @@ export function publicSourceCredits(
     out.push({ creditKey, text, roleLabel: ROLE_LABELS[role], role });
   };
 
-  for (const entry of entries) push(entry.license.attributionText, entry.role);
+  for (const entry of entries) {
+    // Licenca sem autorizacao de EXIBICAO nao rende credito publico: nao ha o
+    // que creditar numa fonte que nao pode aparecer. Ver o cabecalho — e por
+    // isto que `movie-of-the-night` depende de `origins` para chegar ao rodape.
+    if (!entry.license.displayAllowed) continue;
+    push(entry.license.attributionText, entry.role);
+  }
   for (const origin of origins) push(origin.attributionText, "streaming-aggregator");
 
   return out;

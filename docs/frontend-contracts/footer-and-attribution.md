@@ -61,10 +61,13 @@ parafraseada ou traduzida** — é reproduzida exatamente como acima.
   inacessível a crawler/leitor de tela).
 - **Preservar os links de atribuição** (linkback) exigidos por cada fonte.
 - **Não esconder créditos em tooltip** nem removê-los em qualquer breakpoint.
-- **O rodapé nomeia TODA fonte autorizada**, com o texto verbatim da licença —
-  incluindo as fontes de nota (IMDb, Rotten Tomatoes, Metacritic, Letterboxd,
-  FilmAffinity), o catálogo (TMDB) e as duas origens de disponibilidade
+- **O rodapé nomeia toda fonte autorizada A EXIBIR**, com o texto verbatim da
+  licença — hoje as três fontes de nota servidas pela OMDb (IMDb, Rotten
+  Tomatoes, Metacritic), o catálogo (TMDB) e as duas origens de disponibilidade
   (Movie of the Night e JustWatch).
+  Fonte com `display_allowed = false` **não** é creditada: creditar quem não pode
+  aparecer é afirmação pública sem lastro. Letterboxd e FilmAffinity estão nesse
+  caso desde 13/08/2026 — ver a matriz de licenças.
 - **Nenhuma superfície de conteúdo credita.** Ficha de título, painel de
   streaming, faixa da home e hub de "onde assistir" **não** carregam crédito:
   duplicá-lo desfaz a decisão em silêncio.

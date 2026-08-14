@@ -71,11 +71,62 @@ describe("publicSourceCredits — a projecao publica do registro de licencas", (
     expect(licencasTmdb.length).toBeGreaterThan(1);
   });
 
-  it("Movie of the Night aparece UMA vez, apesar de estar no spec E nas origens", () => {
+  it("Movie of the Night aparece UMA vez, e chega pelas ORIGENS", () => {
     const ocorrencias = textsOf(publicSourceCredits()).filter(
       (t) => t === "Disponibilidade fornecida por Movie of the Night",
     );
     expect(ocorrencias).toHaveLength(1);
+
+    // A entrada estatica dele NAO passa no filtro de exibicao (a exibicao de
+    // oferta e gated por provedor canonico). Quem o traz ao rodape sao as
+    // origens — e este assert existe para que estreitar o filtro sem olhar as
+    // origens reprove aqui, e nao em producao.
+    const estatica = STATIC_AUTHORIZATION.find(
+      (e) => e.license.sourceKey === "movie-of-the-night",
+    )!;
+    expect(estatica.license.displayAllowed).toBe(false);
+    expect(textsOf(publicSourceCredits(STATIC_AUTHORIZATION, []))).not.toContain(
+      "Disponibilidade fornecida por Movie of the Night",
+    );
+  });
+
+  it("fonte com EXIBICAO REVOGADA nao e creditada (Letterboxd e FilmAffinity)", () => {
+    // Decisao do proprietario, 2026-08-13. Creditar publicamente uma fonte que
+    // nao pode aparecer e afirmacao sem lastro.
+    const texts = textsOf(publicSourceCredits());
+    expect(texts).not.toContain("Nota fornecida por Letterboxd");
+    expect(texts).not.toContain("Nota fornecida por FilmAffinity");
+
+    // CONTROLE POSITIVO do proprio negativo: as licencas CONTINUAM no spec (nao
+    // foram apagadas — apagar deixaria a licenca orfa e vigente no banco, ver o
+    // cabecalho de DISPLAY_REVOKED_SOURCES). O que as tira do rodape e o
+    // `displayAllowed: false`, nao a ausencia.
+    for (const source of ["letterboxd", "filmaffinity"]) {
+      const entry = STATIC_AUTHORIZATION.find((e) => e.license.ratingSourceKey === source);
+      expect(entry, `licenca de ${source} sumiu do spec`).toBeDefined();
+      expect(entry!.license.displayAllowed).toBe(false);
+      expect(entry!.license.scoreAllowed).toBe(false);
+      // Sem decisao de exibicao, o trigger nao tem o que aprovar.
+      expect(entry!.decisions.some((d) => d.useCase === "rating_display")).toBe(false);
+    }
+  });
+
+  it("revogar a exibicao NAO dispensa o credito, caso ela volte", () => {
+    // `requiresAttribution` continua `true`: a obrigacao de creditar nao some
+    // porque a exibicao parou. Religar `displayAllowed` devolve o credito ao
+    // rodape sozinho — sem ninguem lembrar de reativar a atribuicao.
+    for (const source of ["letterboxd", "filmaffinity"]) {
+      const entry = STATIC_AUTHORIZATION.find((e) => e.license.ratingSourceKey === source)!;
+      expect(entry.license.requiresAttribution).toBe(true);
+
+      const religada = {
+        ...entry,
+        license: { ...entry.license, displayAllowed: true },
+      };
+      expect(textsOf(publicSourceCredits([religada], []))).toEqual([
+        entry.license.attributionText,
+      ]);
+    }
   });
 
   it("A TRAVA: fonte NOVA registrada no spec entra na projecao sem editar o rodape", () => {

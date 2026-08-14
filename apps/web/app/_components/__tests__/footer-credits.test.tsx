@@ -152,22 +152,45 @@ describe("METADE 1 — o rodape nomeia TODA fonte autorizada", () => {
     }
   });
 
-  it("A PONTE: toda fonte de nota do vocabulario canonico tem credito no rodape", () => {
-    // Esta e a garantia ESTRUTURAL que substitui a proximidade. Ela liga os dois
-    // lados sem citar nome de fonte: para cada `rating_source` que o produto
-    // reconhece, existe licenca no registro legal, e o texto DELA esta no rodape.
+  it("A PONTE: fonte que PODE aparecer e creditada; fonte revogada NAO e", () => {
+    // Esta e a garantia ESTRUTURAL que substitui a proximidade, e ela e de DOIS
+    // lados de proposito. Um teste que so verificasse o lado positivo pararia de
+    // vigiar uma fonte no instante em que alguem a revogasse — que e justamente
+    // quando vale a pena olhar. Nenhum nome de fonte e citado aqui: o vinculo e
+    // `RATING_SOURCES` -> licenca no registro legal -> texto no rodape.
     const texto = visibleText(renderToStaticMarkup(<SiteFooter />));
+    let creditadas = 0;
+    let revogadas = 0;
 
     for (const source of RATING_SOURCES) {
       const licenca = STATIC_AUTHORIZATION.find(
         (entry) => entry.license.ratingSourceKey === source,
       );
-      expect(licenca, `sem licenca registrada para a fonte "${source}"`).toBeDefined();
-      expect(
-        texto,
-        `o rodape nao credita "${source}" (esperado: "${licenca!.license.attributionText}")`,
-      ).toContain(licenca!.license.attributionText);
+      // Toda fonte do vocabulario precisa de licenca DECLARADA — inclusive as
+      // revogadas. Uma fonte sem entrada no spec deixaria uma licenca orfa e
+      // vigente no banco, porque `planAuthorization` so visita o que esta la.
+      expect(licenca, `sem licenca declarada para a fonte "${source}"`).toBeDefined();
+
+      if (licenca!.license.displayAllowed) {
+        creditadas += 1;
+        expect(
+          texto,
+          `o rodape nao credita "${source}" (esperado: "${licenca!.license.attributionText}")`,
+        ).toContain(licenca!.license.attributionText);
+      } else {
+        revogadas += 1;
+        expect(
+          texto,
+          `o rodape credita "${source}", que NAO esta autorizada a aparecer`,
+        ).not.toContain(licenca!.license.attributionText);
+      }
     }
+
+    // Anti-vacuidade nos dois sentidos: sem isto, um bug que zerasse
+    // `displayAllowed` em todas as fontes passaria por este teste sem verificar
+    // um unico credito positivo.
+    expect(creditadas).toBeGreaterThan(0);
+    expect(revogadas).toBeGreaterThan(0);
   });
 
   it("as DUAS origens de oferta sao creditadas (Movie of the Night e JustWatch)", () => {

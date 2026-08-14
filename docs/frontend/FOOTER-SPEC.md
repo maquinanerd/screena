@@ -173,15 +173,22 @@ As fontes creditadas hoje, com o papel de cada uma:
 | Nota fornecida por IMDb | Notas |
 | Nota fornecida por Rotten Tomatoes | Notas |
 | Nota fornecida por Metacritic | Notas |
-| Nota fornecida por Letterboxd | Notas |
-| Nota fornecida por FilmAffinity | Notas |
 | Disponibilidade fornecida por Movie of the Night | Disponibilidade (onde assistir) |
 | Disponibilidade fornecida por JustWatch | Disponibilidade (onde assistir) |
 
-A lista é **total sobre o que está autorizado**, não sobre o que está no ar hoje
-(Letterboxd e FilmAffinity ainda não têm dado). A direção do erro é deliberada:
-listar uma fonte autorizada que não aparece é ruído; **omitir** uma que passou a
-aparecer é licença violada em produção.
+O critério é **autorizada a exibir** (`display_allowed` na licença), não "tem
+dado no ar hoje". Um critério de dado seria dinâmico, e o rodapé não tem acesso a
+ele — o layout raiz não lê banco; pior, uma fonte autorizada que acabasse de
+receber a primeira linha ficaria sem crédito até alguém perceber. Um critério de
+licença é estático, derivável e conservador na direção certa: **o que pode
+aparecer, aparece creditado**.
+
+**Letterboxd e FilmAffinity não estão na lista** porque tiveram a exibição
+**revogada** em 13/08/2026 (decisão do proprietário) — ver
+[`docs/legal/source-authorization-matrix.md`](../legal/source-authorization-matrix.md).
+As licenças delas continuam declaradas no spec, com `display_allowed: false`:
+apagá-las deixaria uma licença órfã e vigente no banco, porque
+`planAuthorization` só visita o que está no spec.
 
 ### A prova mudou junto
 
