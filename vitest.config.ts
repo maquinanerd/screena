@@ -48,6 +48,13 @@ export default defineConfig({
       '@screena/seo': fileURLToPath(new URL('./packages/seo/src/index.ts', import.meta.url)),
       '@screena/ui': fileURLToPath(new URL('./packages/ui/src/index.ts', import.meta.url)),
       '@screena/types': fileURLToPath(new URL('./packages/types/src/index.ts', import.meta.url)),
+      // ANTES de '@screena/db': o alias de string casa por PREFIXO, e o mais
+      // curto sequestraria '@screena/db/server' para o index do pacote. Este
+      // subcaminho existe para os testes que exercitam a camada de dados com um
+      // cliente Prisma injetado — o modulo so importa o TIPO no caminho deles.
+      '@screena/db/server': fileURLToPath(
+        new URL('./packages/db/src/server.ts', import.meta.url),
+      ),
       '@screena/db': fileURLToPath(new URL('./packages/db/src/index.ts', import.meta.url)),
       '@screena/public-contracts': fileURLToPath(
         new URL('./packages/public-contracts/src/index.ts', import.meta.url),

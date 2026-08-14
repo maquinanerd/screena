@@ -30,7 +30,22 @@ type State =
   | { kind: 'anonymous' }
   | { kind: 'ready'; stats: MonthStat[] }
 
-function computeMonthStats(items: readonly HistoryItem[], truncated: boolean): MonthStat[] {
+/**
+ * Escopo da faixa. A home mostra o mês inteiro do leitor; `/pt/filmes` e
+ * `/pt/series` mostram só a parte da sua vertical.
+ *
+ * A faixa é compartilhada pelas três páginas e ignorava a vertical: `/pt/filmes`
+ * anunciava "3 episódios · 2 séries" a quem estava numa página de filmes. É dado
+ * do leitor, não catálogo — mas a página continua sendo de uma vertical, e a
+ * regra vale para toda seção compartilhada.
+ */
+export type MonthStatsVertical = 'home' | 'movies' | 'series'
+
+function computeMonthStats(
+  items: readonly HistoryItem[],
+  truncated: boolean,
+  vertical: MonthStatsVertical,
+): MonthStat[] {
   const now = new Date()
   const month = now.getUTCMonth()
   const year = now.getUTCFullYear()
@@ -39,21 +54,38 @@ function computeMonthStats(items: readonly HistoryItem[], truncated: boolean): M
     const at = new Date(item.occurredAt)
     return !Number.isNaN(at.getTime()) && at.getUTCMonth() === month && at.getUTCFullYear() === year
   })
-  const movies = inMonth.filter((item) => item.entityType === 'movie').length
-  const episodes = inMonth.filter((item) => item.entityType === 'episode').length
-  const series = inMonth.filter((item) => item.entityType === 'tv').length
+  // Registros da VERTICAL da página. O total ("registros") conta só o que a
+  // página tem direito de contar — na home, tudo; numa vertical, a sua parte.
+  const scoped =
+    vertical === 'movies'
+      ? inMonth.filter((item) => item.entityType === 'movie')
+      : vertical === 'series'
+        ? inMonth.filter((item) => item.entityType === 'tv' || item.entityType === 'episode')
+        : inMonth
+  const movies = scoped.filter((item) => item.entityType === 'movie').length
+  const episodes = scoped.filter((item) => item.entityType === 'episode').length
+  const series = scoped.filter((item) => item.entityType === 'tv').length
   // Sob teto de paginação os números são um piso, nunca um total — o sufixo
   // "+" mantém a contagem honesta (m3 adversarial).
   const plus = truncated ? '+' : ''
-  return [
-    { value: `${movies}${plus}`, label: movies === 1 ? 'filme' : 'filmes' },
-    { value: `${episodes}${plus}`, label: episodes === 1 ? 'episódio' : 'episódios' },
-    { value: `${series}${plus}`, label: series === 1 ? 'série' : 'séries' },
-    { value: `${inMonth.length}${plus}`, label: inMonth.length === 1 ? 'registro' : 'registros' },
-  ]
+  const movieStat = { value: `${movies}${plus}`, label: movies === 1 ? 'filme' : 'filmes' }
+  const episodeStat = {
+    value: `${episodes}${plus}`,
+    label: episodes === 1 ? 'episódio' : 'episódios',
+  }
+  const seriesStat = { value: `${series}${plus}`, label: series === 1 ? 'série' : 'séries' }
+  const totalStat = {
+    value: `${scoped.length}${plus}`,
+    label: scoped.length === 1 ? 'registro' : 'registros',
+  }
+  if (vertical === 'movies') return [movieStat, totalStat]
+  if (vertical === 'series') return [seriesStat, episodeStat, totalStat]
+  return [movieStat, episodeStat, seriesStat, totalStat]
 }
 
-export function MonthStats(): ReactNode {
+export function MonthStats({
+  vertical = 'home',
+}: { vertical?: MonthStatsVertical } = {}): ReactNode {
   const [state, setState] = useState<State>({ kind: 'loading' })
 
   useEffect(() => {
@@ -74,7 +106,7 @@ export function MonthStats(): ReactNode {
         const data = (await r.json()) as { items?: HistoryItem[]; total?: number }
         const items = data.items ?? []
         const truncated = typeof data.total === 'number' && data.total > items.length
-        if (alive) setState({ kind: 'ready', stats: computeMonthStats(items, truncated) })
+        if (alive) setState({ kind: 'ready', stats: computeMonthStats(items, truncated, vertical) })
       } catch {
         if (alive) setState({ kind: 'anonymous' })
       }
@@ -82,7 +114,7 @@ export function MonthStats(): ReactNode {
     return () => {
       alive = false
     }
-  }, [])
+  }, [vertical])
 
   return (
     <div className="stats-strip">

@@ -7,8 +7,10 @@ import { HomeEditorialHighlights } from './home-editorial-highlights'
 import { HomeHeroCarousel } from './home-hero-carousel'
 import { HomeTicker } from './home-ticker'
 import { MonthStats } from './month-stats'
+import { PopularThisWeek, type PopularRankingPanel } from './popular-this-week'
 import { Rail } from './rail'
 import { SectionBoundary } from './section-boundary'
+import type { RankingTabSlug } from '../../src/lib/popular-rankings'
 import type { EntityCard } from '../../src/lib/entity-index-presenter'
 import {
   hasEditorialHighlights,
@@ -64,6 +66,20 @@ export interface HomeLikeProps {
   /** Prefixo dos slotIds de anuncio (home | filmes | series). */
   adPrefix: string
   emptyMessage: string
+  /**
+   * "Popular essa semana": as abas DESTA vertical, cada uma com a sua lista ja
+   * consultada no servidor. O template nao conhece conjunto de abas nenhum — ele
+   * renderiza o que a rota declarou (ver `src/lib/popular-rankings.ts`).
+   */
+  rankingPanels: readonly PopularRankingPanel[]
+  /** Aba ativa na primeira pintura, resolvida do `?ranking=` no servidor. */
+  rankingActiveSlug: RankingTabSlug
+  /**
+   * Vertical da PAGINA. Governa as seçoes compartilhadas que nao tem dataset
+   * proprio nas props: as tabs de "Destaques de hoje" e o recorte de "Seu mês em
+   * números".
+   */
+  vertical: 'home' | 'movies' | 'series'
 }
 
 function FreshCard({ card, series = false }: { card: EntityCard; series?: boolean }): ReactNode {
@@ -192,8 +208,11 @@ export function HomeLike({
   showSeriesBand,
   adPrefix,
   emptyMessage,
+  rankingPanels,
+  rankingActiveSlug,
+  vertical,
 }: HomeLikeProps): ReactNode {
-  const popularCards = showMoviesBand ? movieCards : seriesCards
+  const hasRanking = rankingPanels.length > 0
   const newsCategories = [
     ...new Set(newsCards.map((card) => card.category).filter((c): c is string => c !== null)),
   ].slice(0, 6)
@@ -226,7 +245,10 @@ export function HomeLike({
       movieCards.length +
       seriesCards.length +
       (upcomingRendered ? upcomingCount : 0) +
-      newsCards.length >
+      newsCards.length +
+      // Uma aba com itens ja e conteudo: sem isto, uma pagina cujo unico bloco
+      // populado fosse o ranking exibiria "ainda nao ha conteudo" por cima dele.
+      rankingPanels.reduce((total, panel) => total + panel.items.length, 0) >
       0 || hasEditorial
 
   return (
@@ -257,54 +279,24 @@ export function HomeLike({
           headingId={`${adPrefix}-featured-title`}
           highlights={editorialHighlights}
           initialVertical={editorialInitialVertical}
+          // A página de uma vertical oferece SÓ a sua: `/pt/filmes` não convida
+          // o leitor à tab "Séries" (e nem carrega as matérias dela no payload).
+          verticals={vertical === 'home' ? ['movies', 'series'] : [editorialInitialVertical]}
         />
       </section>
 
-      {/* Popular essa semana — banda escura com ranking */}
-      {popularCards.length > 0 ? (
-        <div className="band band--dark">
-          <section aria-labelledby={`${adPrefix}-popular-title`} className="band__inner">
-            <div className="section-head" style={{ marginBottom: 0 }}>
-              <SectionTitle id={`${adPrefix}-popular-title`} title="Popular essa semana" />
-              <a className="see-all" href="/pt/onde-assistir/">
-                Ver tudo
-              </a>
-            </div>
-            <nav aria-label="Popular por vertical" className="pop-tabs">
-              <a
-                aria-current={showMoviesBand ? 'true' : undefined}
-                className="pop-tabs__tab"
-                href={MOVIES_INDEX_PATH}
-              >
-                Filmes
-              </a>
-              <a
-                aria-current={!showMoviesBand && showSeriesBand ? 'true' : undefined}
-                className="pop-tabs__tab"
-                href={SERIES_INDEX_PATH}
-              >
-                Séries
-              </a>
-            </nav>
-            <Rail className="pop-rail" dark label="Popular essa semana">
-              {popularCards.map((card, index) => (
-                <a className="pop-rail__item" href={card.href} key={card.href}>
-                  <span className="pop-rail__poster">
-                    {card.image !== null ? (
-                      <img alt="" loading="lazy" src={card.image.src} />
-                    ) : null}
-                  </span>
-                  <span aria-hidden="true" className="pop-rail__rank">
-                    <span>{index + 1}</span>
-                  </span>
-                  <span className="visually-hidden">
-                    {index + 1}º: {card.title}
-                  </span>
-                </a>
-              ))}
-            </Rail>
-          </section>
-        </div>
+      {/* Popular essa semana — banda escura com ranking. As abas são REAIS
+          (role=tab), cada uma com a sua consulta, e o conjunto vem da vertical
+          da rota: filmes = Em cartaz · Streaming · Clássicos; séries = No ar ·
+          Streaming · Novas temporadas; home = Filmes · Séries · Streaming ·
+          Cinema. Aba vazia mantém a seção e a altura (escondê-la tornaria o
+          recorte invisível). */}
+      {hasRanking ? (
+        <PopularThisWeek
+          headingId={`${adPrefix}-popular-title`}
+          initialSlug={rankingActiveSlug}
+          panels={rankingPanels}
+        />
       ) : null}
 
       <div className="container">
@@ -330,8 +322,10 @@ export function HomeLike({
         </div>
       ) : null}
 
-      {/* Seu mês em números — boundary autenticado; anônimo = estado honesto */}
-      <MonthStats />
+      {/* Seu mês em números — boundary autenticado; anônimo = estado honesto.
+          O recorte segue a vertical: numa página de filmes o leitor não vê a
+          própria contagem de episódios e séries. */}
+      <MonthStats vertical={vertical} />
 
       <div className="container">
         <AdSlot format="leaderboard" slotId={`${adPrefix}-filmes-alta`} />

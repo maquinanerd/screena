@@ -65,6 +65,36 @@ const LANGUAGE_CODE = "pt-BR";
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /**
+ * Escopo da faixa. A home e a UNIAO; `/pt/filmes` e `/pt/series` levam SO a sua
+ * vertical.
+ *
+ * POR QUE O ESCOPO ENTRA NA CONSULTA E NAO NUM `.filter()` DEPOIS. Porque o cap
+ * (`HOME_TICKER_MAX_ITEMS`) e a deduplicacao por entidade rodam ANTES de
+ * qualquer filtro externo: filtrar a saida devolveria uma faixa mais curta que o
+ * proprio catalogo permite — o mesmo defeito que deixou `/pt/series` sem hero.
+ *
+ * As quatro fontes se dividem por natureza: episodio e estreia de temporada sao
+ * eventos de SERIE; estreia de filme e evento de FILME; chegada ao streaming
+ * existe nas duas e e escopada pelo `entity_type` da oferta.
+ *
+ * O que NAO existe: sessao de cinema. `movies.release_date` afirma "estreia", e
+ * o sistema nao persiste sala, formato nem numero de sessoes — a faixa de
+ * `/pt/filmes` nunca diz "em cartaz" nem "4 sessoes" (ver o comentario do item
+ * `movie_release` abaixo).
+ */
+export type TickerScope = "home" | "movies" | "series";
+
+/** A faixa deste escopo mostra eventos de serie (episodio/temporada)? */
+function scopeIncludesSeries(scope: TickerScope): boolean {
+  return scope !== "movies";
+}
+
+/** A faixa deste escopo mostra eventos de filme (estreia)? */
+function scopeIncludesMovies(scope: TickerScope): boolean {
+  return scope !== "series";
+}
+
+/**
  * Teto de linhas lidas por fonte de evento (cap EXPLÍCITO e consciente).
  *
  * A faixa exibe no máximo `HOME_TICKER_MAX_ITEMS` e deduplica por ENTIDADE, ou
@@ -279,7 +309,9 @@ async function resolveIdentities(
  * ordenadas (hoje -> futuro por data -> chegada ao streaming) e deduplicadas
  * (uma novidade por entidade). Lista vazia = faixa em estado neutro.
  */
-export const getHomeTickerItems = cache(async (): Promise<HomeTickerItem[]> => {
+export const getHomeTickerItems = cache(async (
+  scope: TickerScope = "home",
+): Promise<HomeTickerItem[]> => {
   const prisma = getPrismaClient();
   const now = new Date();
   const dayStart = startOfUtcDay(now);
@@ -290,8 +322,18 @@ export const getHomeTickerItems = cache(async (): Promise<HomeTickerItem[]> => {
   // ------------------------------------------------------------ descoberta
   // Quatro queries de EVENTO, cada uma com janela e teto próprios. Nenhuma
   // depende do resultado das outras: rodam em paralelo.
+  const wantsSeries = scopeIncludesSeries(scope);
+  const wantsMovies = scopeIncludesMovies(scope);
+
+  // Escopo territorial da chegada ao streaming: a home aceita as duas, cada
+  // vertical aceita so a sua. Sem nenhum tipo aceito a query nem acontece.
+  const arrivalTypes = [
+    ...(wantsMovies ? [{ entityType: "movie" as const }] : []),
+    ...(wantsSeries ? [{ entityType: "tv" as const }] : []),
+  ];
+
   const [episodes, movies, seasons, arrivals] = await Promise.all([
-    prisma.episode.findMany({
+    !wantsSeries ? Promise.resolve([]) : prisma.episode.findMany({
       where: { airDate: { gte: dayStart, lt: futureEnd } },
       take: EVENT_FETCH_LIMIT,
       orderBy: [{ airDate: "asc" }, { tvShowId: "asc" }, { episodeNumber: "asc" }],
@@ -304,13 +346,13 @@ export const getHomeTickerItems = cache(async (): Promise<HomeTickerItem[]> => {
         season: { select: { seasonNumber: true, tvShow: { select: { nameOriginal: true } } } },
       },
     }),
-    prisma.movie.findMany({
+    !wantsMovies ? Promise.resolve([]) : prisma.movie.findMany({
       where: { releaseDate: { gte: dayStart, lt: futureEnd } },
       take: EVENT_FETCH_LIMIT,
       orderBy: [{ releaseDate: "asc" }, { id: "asc" }],
       select: { id: true, titleOriginal: true, releaseDate: true },
     }),
-    prisma.season.findMany({
+    !wantsSeries ? Promise.resolve([]) : prisma.season.findMany({
       // `season_number = 0` é "especiais" no TMDB: não é estreia de temporada.
       where: { airDate: { gte: dayStart, lt: futureEnd }, seasonNumber: { gt: 0 } },
       take: EVENT_FETCH_LIMIT,
@@ -322,10 +364,10 @@ export const getHomeTickerItems = cache(async (): Promise<HomeTickerItem[]> => {
         tvShow: { select: { nameOriginal: true } },
       },
     }),
-    prisma.watchAvailability.findMany({
+    arrivalTypes.length === 0 ? Promise.resolve([]) : prisma.watchAvailability.findMany({
       where: {
         AND: [
-          { OR: [{ entityType: "movie" as const }, { entityType: "tv" as const }] },
+          { OR: arrivalTypes },
           { availableFrom: { gte: arrivalStart, lte: now } },
           licensedWatchWhere(now),
         ],

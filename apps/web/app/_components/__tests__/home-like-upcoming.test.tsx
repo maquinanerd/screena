@@ -80,6 +80,19 @@ function renderRail(upcoming: HomeLikeUpcoming): string {
     showSeriesBand: false,
     adPrefix: "teste",
     emptyMessage: "vazio",
+    // "Popular essa semana" fica sem abas: a medida deste arquivo e so o
+    // trilho "Em breve", e uma secao a mais no markup so adicionaria ruido.
+    rankingPanels: [],
+    rankingActiveSlug: "filmes",
+    // CONSTANTE de proposito, e nao derivada de `upcoming.vertical`.
+    //
+    // `vertical` governa OUTRAS secoes compartilhadas (as tabs de "Destaques de
+    // hoje" e o recorte de "Seu mes em numeros"). Derivar dela faria o markup de
+    // `/pt/` e `/pt/filmes/` divergir fora do trilho — e o teste "a home vazia se
+    // distingue de /pt/filmes/ vazia SO pelo log" compara markup justamente para
+    // provar que a diferenca esta no LOG. A vertical do trilho ja viaja dentro de
+    // `upcoming`, que e o que este arquivo mede.
+    vertical: "home",
   };
   return renderToStaticMarkup(<HomeLike {...props} />);
 }

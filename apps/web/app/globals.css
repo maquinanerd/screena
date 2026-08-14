@@ -108,6 +108,13 @@
   /* Acento do contexto atual (neutro por padrao; rota define) */
   --ctx-accent: var(--c-text-primary);
   --ctx-accent-dark: var(--c-text-primary);
+
+  /* Acento SOBRE FAIXA ESCURA (numero do rank e sublinhado da aba ativa em
+     "Popular essa semana"). E um token proprio, e nao `--ctx-accent`, porque
+     aquele carrega a variante de CONTRASTE PARA FUNDO CLARO (`-cta`/`-dark`):
+     usa-lo aqui deixaria o numero do rank ilegivel sobre #0E0E10. A home usa o
+     vermelho (composicao canonica); so `/pt/series` troca. */
+  --pop-accent: var(--c-accent-movie);
 }
 
 /* Contexto por vertical (o acento NUNCA e o unico sinal — invariante 11) */
@@ -127,6 +134,7 @@
   --ctx-accent-dark: var(--c-accent-series-dark);
   --ctx-kicker: var(--c-accent-series-dark);
   --ctx-kicker-on-dark: #9fc48a;
+  --pop-accent: var(--c-accent-series);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1724,10 +1732,31 @@ body:has(.art-hero[data-hero-media='true']) .site-header__spacer {
   margin-bottom: -1px;
 }
 
-.pop-tabs__tab[aria-current='true'] {
-  font-weight: 800;
+/* A aba é <button role="tab">, não link: `aria-selected` é o estado real. O
+   sublinhado usa o acento da VERTICAL (vermelho em filmes e na home, verde em
+   séries) — nunca branco fixo, que apagava a diferença entre as duas páginas. */
+.pop-tabs__tab[aria-selected='true'] {
+  font-weight: 700;
   color: #fff;
-  border-bottom-color: #fff;
+  border-bottom-color: var(--pop-accent);
+}
+
+.pop-tabs__tab:hover {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.pop-tabs__tab:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+}
+
+/* Aba sem resultado: a seção FICA, com altura preservada. Escondê-la tornaria o
+   recorte vazio invisível — o leitor não saberia que aquela aba existe. */
+.pop-empty {
+  margin: 36px 0 0;
+  min-height: 228px;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.5);
 }
 
 .rail-wrap {
@@ -1781,7 +1810,9 @@ body:has(.art-hero[data-hero-media='true']) .site-header__spacer {
 .pop-rail__rank span {
   font-size: 34px;
   font-weight: 800;
-  color: var(--c-accent-movie);
+  /* Acento da VERTICAL. Estava preso ao vermelho: o ranking de /pt/series saía
+     com o número em vermelho de filme. */
+  color: var(--pop-accent);
   line-height: 1;
   letter-spacing: -0.04em;
 }
@@ -1815,6 +1846,77 @@ body:has(.art-hero[data-hero-media='true']) .site-header__spacer {
   border-color: rgba(255, 255, 255, 0.16);
   color: #fff;
   box-shadow: none;
+}
+
+/* --------------------------------------------------------------------------
+   "Popular essa semana" — matriz responsiva.
+
+   A barra de abas era `justify-content:center` com `gap:36px` e SEM regra de
+   viewport estreita. Com tres ou quatro abas ("No ar · Streaming · Novas
+   temporadas"), a 320px ela ultrapassava a largura do container e empurrava a
+   PAGINA para a rolagem horizontal. Abaixo de 768px as abas rolam sozinhas,
+   alinhadas a esquerda e sem quebrar linha — o resto da pagina fica parado.
+
+   Os valores de geometria (152/144/132/116 no poster, 54/46 no disco) sao os do
+   canonico; o disco menor abaixo de 1024px existe porque 54px sobre um poster de
+   116px cobriria um quarto da arte.
+   -------------------------------------------------------------------------- */
+@media (max-width: 1279px) {
+  .pop-tabs {
+    gap: 28px;
+  }
+  .pop-rail__item {
+    flex: 0 0 144px;
+  }
+}
+
+@media (max-width: 1023px) {
+  .pop-tabs {
+    gap: 22px;
+  }
+  .pop-rail__item {
+    flex: 0 0 132px;
+  }
+  .pop-rail__rank {
+    width: 46px;
+    height: 46px;
+  }
+  .pop-rail__rank span {
+    font-size: 28px;
+  }
+  .pop-empty {
+    min-height: 198px;
+  }
+  /* Abaixo de 1024px o controle e o swipe: a seta some do DOM (o `Rail` a
+     renderiza sempre; aqui ela deixa de ocupar espaco e de receber foco). */
+  .pop-rail ~ .rail-arrow,
+  .rail-wrap:has(.pop-rail) .rail-arrow {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .pop-tabs {
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .pop-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .pop-tabs__tab {
+    /* Sem isto o flex encolhe os rotulos ate quebrarem no meio da palavra. */
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+  .pop-rail__item {
+    flex: 0 0 116px;
+  }
+  .pop-empty {
+    min-height: 174px;
+  }
 }
 
 /* Certified-fresh cards (Filmes em alta / Séries da semana) */

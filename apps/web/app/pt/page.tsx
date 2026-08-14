@@ -13,6 +13,8 @@ import {
 } from '../../src/lib/portal-presenter'
 import { excludeEditorialHighlights } from '../../src/lib/home-editorial-presenter'
 import { hasEnoughUpcoming } from '../../src/lib/home-upcoming-presenter'
+import { RANKING_TABS, resolveActiveRankingSlug } from '../../src/lib/popular-rankings'
+import { getPopularRankings } from '../../src/server/popular-rankings'
 import { HOME_PATH, SITE_URL, canonicalPublicUrl, publicRobots } from '../../src/lib/site'
 import { getHomeCatalogData } from '../../src/server/home-catalog'
 import { getHomeEditorialHighlights } from '../../src/server/home-editorial'
@@ -66,14 +68,19 @@ async function getHomeData() {
     seriesIndex,
     tickerItems,
     editorialHighlights,
+    rankings,
   ] = await Promise.all([
     getHomeCatalogData(),
     getNewsIndexData(),
-    getHomeHeroSlides(),
+    // A home é a UNIÃO: escopo `home` mantém a composição canônica (filmes por
+    // ano desc, depois séries) e as duas bandas ligadas. Nada aqui é filtrado —
+    // e o trilho "Em breve" segue a mesma regra, com o dataset misto.
+    getHomeHeroSlides('home'),
     getHomeUpcomingMixed(),
     getSeriesIndexData(),
-    getHomeTickerItems(),
+    getHomeTickerItems('home'),
     getHomeEditorialHighlights(),
+    getPopularRankings('home'),
   ])
 
   const sourceNews = [
@@ -117,6 +124,11 @@ async function getHomeData() {
     ]),
   })
 
+  const rankingPanels = RANKING_TABS.home.map((tab, position) => ({
+    tab,
+    items: rankings[position]?.items ?? [],
+  }))
+
   return {
     heroSlides,
     movieCards,
@@ -125,6 +137,7 @@ async function getHomeData() {
     newsCards,
     tickerItems,
     editorialHighlights: dedupedHighlights,
+    rankingPanels,
     indexability,
   }
 }
@@ -147,7 +160,13 @@ export async function generateMetadata(): Promise<Metadata> {
   }
 }
 
-export default async function HomePage() {
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
+  const params = await searchParams
+  const rankingActiveSlug = resolveActiveRankingSlug('home', params.ranking)
   const {
     heroSlides,
     movieCards,
@@ -156,6 +175,7 @@ export default async function HomePage() {
     newsCards,
     tickerItems,
     editorialHighlights,
+    rankingPanels,
   } = await getHomeData()
 
   return (
@@ -169,11 +189,14 @@ export default async function HomePage() {
         heroSlides={heroSlides}
         movieCards={movieCards}
         newsCards={newsCards}
+        rankingActiveSlug={rankingActiveSlug}
+        rankingPanels={rankingPanels}
         seriesCards={seriesWeekCards}
         showMoviesBand
         showSeriesBand
         tickerItems={tickerItems}
         upcoming={{ items: upcomingItems, vertical: 'mixed', route: HOME_PATH }}
+        vertical="home"
       />
 
       <script

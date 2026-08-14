@@ -47,29 +47,73 @@ function consumers(): string[] {
   return found.sort()
 }
 
-describe('os quatro leitores da clausula de licenca de streaming', () => {
+/**
+ * Consumidores que EXIBEM a plataforma (nome, logo, link, agrupamento). Sao os
+ * que precisam da identidade canonica.
+ */
+const PLATFORM_RENDERING_CONSUMERS = [
+  'discover.ts',
+  'entity-watch.ts',
+  'home-ticker.ts',
+  'watch-browse.ts',
+]
+
+/**
+ * Consumidores que usam a clausula como PREDICADO DE PERTENCIMENTO: "esta
+ * entidade tem alguma oferta exibivel?". Nao nomeiam plataforma nenhuma, nao
+ * agrupam por plataforma e nao montam link de oferta — o card do ranking e
+ * poster + numero.
+ *
+ * Exigir `watchProvider.slug` deles seria cargo cult: nao ha o que
+ * desambiguar quando nada da plataforma chega a tela. O que ELES precisam e a
+ * garantia oposta, cobrada no teste negativo abaixo — nao podem virar
+ * consumidores de plataforma sem entrar na lista de cima.
+ */
+const MEMBERSHIP_ONLY_CONSUMERS = ['popular-rankings.ts']
+
+describe('os leitores da clausula de licenca de streaming', () => {
   const found = consumers()
 
-  it('CONTROLE POSITIVO: a varredura encontra exatamente os quatro conhecidos', () => {
-    expect(found).toEqual([
-      'discover.ts',
-      'entity-watch.ts',
-      'home-ticker.ts',
-      'watch-browse.ts',
-    ])
+  it('CONTROLE POSITIVO: a varredura encontra exatamente os conhecidos', () => {
+    expect(found).toEqual(
+      [...PLATFORM_RENDERING_CONSUMERS, ...MEMBERSHIP_ONLY_CONSUMERS].sort(),
+    )
   })
 
   /**
-   * Todo consumidor tem de saber DE QUAL PLATAFORMA a oferta e — e a plataforma
-   * e o `watch_providers.slug`, nunca `provider_key` (que e do FORNECEDOR:
-   * "netflix" na RapidAPI, "8" no TMDB). Sem o slug, a mesma plataforma aparece
-   * duas vezes.
+   * Quem EXIBE plataforma tem de saber DE QUAL PLATAFORMA a oferta e — e a
+   * plataforma e o `watch_providers.slug`, nunca `provider_key` (que e do
+   * FORNECEDOR: "netflix" na RapidAPI, "8" no TMDB). Sem o slug, a mesma
+   * plataforma aparece duas vezes.
    */
-  it('todos leem o slug canonico da plataforma', () => {
-    for (const file of found) {
+  it('quem exibe plataforma le o slug canonico', () => {
+    for (const file of PLATFORM_RENDERING_CONSUMERS) {
       expect(readServer(file), `${file} nao seleciona watchProvider.slug`).toContain(
         'watchProvider: { select: { slug: true',
       )
+    }
+  })
+
+  /**
+   * NEGATIVO que mantem a divisao honesta: um consumidor de pertencimento que
+   * comecar a ler nome/chave/link de provedor deixou de ser so um predicado —
+   * e passa a dever a regra do slug. O teste falha ANTES de a plataforma
+   * duplicada chegar a tela.
+   */
+  it('NEGATIVO: consumidor de pertencimento nao le nada de plataforma', () => {
+    for (const file of MEMBERSHIP_ONLY_CONSUMERS) {
+      const code = readServer(file)
+      for (const platformField of [
+        'providerName',
+        'providerKey',
+        'watchProvider',
+        'deepLink',
+        'webUrl',
+      ]) {
+        expect(code, `${file} le ${platformField} sem cumprir a regra do slug`).not.toContain(
+          platformField,
+        )
+      }
     }
   })
 
