@@ -195,6 +195,37 @@ textarea {
   font: inherit;
 }
 
+/*
+ * O <button> NAO nasce com a cromagem do navegador.
+ *
+ * Ate 14/08/2026 o reset acima herdava so a FONTE: `appearance`, `background`,
+ * `border` e `color` ficavam nos valores do UA, e cada componente tinha de se
+ * defender sozinho. Vinte e nove das trinta classes de botao se defendiam;
+ * `.pop-tabs__tab` nao — e as abas de "Popular essa semana" foram para
+ * producao com o retangulo `buttonface` atras do rotulo nas TRES verticais
+ * (/pt/, /pt/filmes/, /pt/series/), com o rotulo a 50% de branco ilegivel
+ * por cima.
+ *
+ * A defesa passa a ser do ELEMENTO, nao de cada componente: quem quiser fundo,
+ * borda ou cor propria declara depois — a classe (0,1,0) sempre vence este
+ * seletor de tipo (0,0,1), entao nenhum botao ja estilizado muda de aparencia.
+ *
+ * Ficam DE FORA de proposito `padding` e `text-align`: 7 e 25 classes de botao
+ * respectivamente nao os declaram e hoje dependem do valor do UA. Zera-los aqui
+ * seria redesenhar botao que ninguem reclamou — esta folha corrige vazamento de
+ * estilo padrao, nao geometria.
+ *
+ * Travado por tests/web/browser-default-styles.spec.ts (estilo COMPUTADO em
+ * Chromium real — jsdom nao tem folha de UA e aprovaria o defeito).
+ */
+button {
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: transparent;
+  border-style: none;
+  color: inherit;
+}
+
 a {
   color: inherit;
   text-decoration: none;
@@ -1062,27 +1093,50 @@ body:has(.art-hero[data-hero-media='true']) .site-header__spacer {
   font-weight: 800;
 }
 
-.dark-band .section-title,
+/*
+ * `.band--dark` e o UNICO nome de banda escura que existe no markup
+ * (`home-like.tsx` e `popular-this-week.tsx` renderizam `band band--dark`).
+ *
+ * Havia um segundo nome, `.dark-band`, em 7 seletores desta folha e em NENHUM
+ * componente. Como `.section-title` tinha sido corrigido para casar com os dois
+ * e `.see-all` nao, a pill "Ver tudo" ficava com o tema CLARO (`--c-bg-surface`,
+ * branco solido) sobre a faixa preta — nas duas bandas escuras do site,
+ * "Popular essa semana" e "Em breve". Seletor que nao casa nao falha: some em
+ * silencio e leva o componente para o valor de fundo claro.
+ *
+ * O nome morto foi retirado em 14/08/2026. Nao reintroduzir: se um bloco novo
+ * precisar de banda escura, ele usa `.band--dark`.
+ */
 .band--dark .section-title {
   color: rgba(255, 255, 255, 0.88);
 }
 
-.dark-band .section-title strong,
 .band--dark .section-title strong {
   color: #fff;
 }
 
+/*
+ * Pill "Ver tudo". Tipografia e caixa alinhadas a spec em 14/08/2026: peso 700
+ * → 600 e `min-height: 36px` + `padding: 0 16px` → `padding: 9px 18px`.
+ *
+ * O `min-height` saiu porque a altura passa a vir do padding: 12px de fonte a
+ * `line-height: 1.55` (do body) dao 18,6px, mais 18px de padding vertical e 2px
+ * de borda = 38,6px. A pill CRESCE, e isso e esperado: medido em Chromium,
+ * 88,1x36,0 antes e 91,2x38,6 depois. Eram os 36px do `min-height` que
+ * seguravam a caixa antiga; a caixa nova e a da spec.
+ *
+ * O raio continua sendo `--r-pill` (999px), token do sistema: nao normalizar.
+ */
 .see-all {
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  min-height: 36px;
-  padding: 0 16px;
+  padding: 9px 18px;
   border: 1px solid var(--c-border);
   border-radius: var(--r-pill);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--c-text-primary);
   background: var(--c-bg-surface);
 }
@@ -1091,7 +1145,7 @@ body:has(.art-hero[data-hero-media='true']) .site-header__spacer {
   border-color: var(--c-border-strong);
 }
 
-.dark-band .see-all {
+.band--dark .see-all {
   background: transparent;
   border-color: rgba(255, 255, 255, 0.28);
   color: #fff;
@@ -1723,10 +1777,12 @@ body:has(.art-hero[data-hero-media='true']) .site-header__spacer {
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
 }
 
+/* Aba INATIVA. A escala de branco da barra e 0.5 (inativa) → 0.8 (hover) →
+   1.0 (ativa): estava 0.6 e foi alinhada a spec em 14/08/2026. */
 .pop-tabs__tab {
   font-size: 14px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.6);
+  color: rgba(255, 255, 255, 0.5);
   padding: 0 2px 12px;
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
@@ -2559,11 +2615,11 @@ body:has(.art-hero[data-hero-media='true']) .site-header__spacer {
   margin: 0;
 }
 
-.dark-band .poster-card__title {
+.band--dark .poster-card__title {
   color: #fff;
 }
 
-.dark-band .poster-card__meta {
+.band--dark .poster-card__meta {
   color: rgba(255, 255, 255, 0.65);
 }
 
@@ -3116,18 +3172,14 @@ body:has(.art-hero[data-hero-media='true']) .site-header__spacer {
 
 /* ------------------------------------------------------------------ */
 /* Banda escura sancionada (Popular This Week / Em breve)              */
+/*                                                                     */
+/* A faixa em si mora em `.band` / `.band--dark` (secao "Popular essa  */
+/* semana"). Aqui existiam `.dark-band` e `.dark-band .section`, um    */
+/* SEGUNDO nome que nenhum componente jamais renderizou — removidos em */
+/* 14/08/2026 junto com os outros 5 seletores `.dark-band`. Nao        */
+/* recriar: geometria propria neste nome divergiria de `.band--dark`   */
+/* (que usa `margin-top: 6px`, nao `--section-rhythm`).                */
 /* ------------------------------------------------------------------ */
-
-.dark-band {
-  background: var(--c-bg-dark-band);
-  color: #fff;
-  padding-block: 48px;
-  margin-top: var(--section-rhythm);
-}
-
-.dark-band .section {
-  margin-top: 0;
-}
 
 /* ------------------------------------------------------------------ */
 /* Botoes                                                              */
@@ -5530,6 +5582,22 @@ h4.art-body__heading {
 .art-share__label {
   font-size: 12px;
   color: var(--c-text-secondary);
+}
+
+/*
+ * Listas da materia que NAO sao lista de leitura: "Entidades citadas nesta
+ * materia" (chips) e a galeria de imagens. As duas iam para o ar com o
+ * marcador e o recuo do navegador — bolinha antes de cada chip, numero antes
+ * de cada foto — porque nenhuma das duas classes tinha regra nesta folha.
+ *
+ * Aqui vai SO o que tira o padrao do navegador. O desenho dos dois blocos
+ * continua ausente de proposito: e outra conversa, nao este vazamento.
+ */
+.related-entities,
+.art-gallery__items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
 .art-share__row {
