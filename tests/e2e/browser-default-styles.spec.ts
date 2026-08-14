@@ -222,12 +222,28 @@ test.describe('o padrao do navegador nao chega na tela', () => {
         expect(tab.borderBottomColor).not.toBe('rgb(255, 255, 255)')
       } else {
         expect(tab.fontWeight).toBe('600')
-        // branco esmaecido: e o mesmo branco, so que translucido
-        expect(tab.color).toMatch(/^rgba\(255, 255, 255, 0\.\d+\)$/)
-        expect(alphaOf(tab.color)).toBeLessThan(1)
+        // Valor EXATO da spec, nao "algum branco translucido": era 0.6 e o
+        // teste antigo passaria com qualquer alpha.
+        expect(tab.color).toBe('rgba(255, 255, 255, 0.5)')
         expect(alphaOf(tab.borderBottomColor)).toBe(0)
       }
     }
+  })
+
+  test('(4b) a escala de branco da barra de abas e 0.5 → 0.8 → 1.0', async ({ page }) => {
+    const idle = page.locator('[role="tab"][aria-selected="false"]').first()
+    const before = await idle.evaluate((el) => getComputedStyle(el).color)
+    expect(before).toBe('rgba(255, 255, 255, 0.5)')
+
+    await idle.hover()
+    const hovered = await idle.evaluate((el) => getComputedStyle(el).color)
+    expect(hovered, 'hover na aba inativa').toBe('rgba(255, 255, 255, 0.8)')
+
+    const active = await page
+      .locator('[role="tab"][aria-selected="true"]')
+      .first()
+      .evaluate((el) => getComputedStyle(el).color)
+    expect(active).toBe('rgb(255, 255, 255)')
   })
 
   test('(5) a pill "Ver tudo" na faixa escura e vazada, nao solida', async ({ page }) => {
@@ -241,11 +257,18 @@ test.describe('o padrao do navegador nao chega na tela', () => {
         borderTopWidth: s.borderTopWidth,
         borderTopColor: s.borderTopColor,
         borderRadius: s.borderTopLeftRadius,
+        fontSize: s.fontSize,
+        fontWeight: s.fontWeight,
+        padding: s.padding,
       }
     })
     expect(pill, 'pill ausente do harness').not.toBeNull()
     expect(alphaOf(pill!.background), 'pill solida sobre faixa escura').toBe(0)
     expect(pill!.color).toBe('rgb(255, 255, 255)')
+    // Tipografia e caixa da spec: 12px/600 e padding 9px 18px.
+    expect(pill!.fontSize).toBe('12px')
+    expect(pill!.fontWeight).toBe('600')
+    expect(pill!.padding).toBe('9px 18px')
     expect(pill!.borderTopWidth).toBe('1px')
     expect(pill!.borderTopColor).toBe('rgba(255, 255, 255, 0.28)')
     // O raio da pill e do sistema (999px) e NAO se normaliza.

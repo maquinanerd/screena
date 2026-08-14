@@ -1115,17 +1115,28 @@ body:has(.art-hero[data-hero-media='true']) .site-header__spacer {
   color: #fff;
 }
 
+/*
+ * Pill "Ver tudo". Tipografia e caixa alinhadas a spec em 14/08/2026: peso 700
+ * → 600 e `min-height: 36px` + `padding: 0 16px` → `padding: 9px 18px`.
+ *
+ * O `min-height` saiu porque a altura passa a vir do padding: 12px de fonte a
+ * `line-height: 1.55` (do body) dao 18,6px, mais 18px de padding vertical e 2px
+ * de borda = 38,6px. A pill CRESCE, e isso e esperado: medido em Chromium,
+ * 88,1x36,0 antes e 91,2x38,6 depois. Eram os 36px do `min-height` que
+ * seguravam a caixa antiga; a caixa nova e a da spec.
+ *
+ * O raio continua sendo `--r-pill` (999px), token do sistema: nao normalizar.
+ */
 .see-all {
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  min-height: 36px;
-  padding: 0 16px;
+  padding: 9px 18px;
   border: 1px solid var(--c-border);
   border-radius: var(--r-pill);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--c-text-primary);
   background: var(--c-bg-surface);
 }
@@ -1766,10 +1777,12 @@ body:has(.art-hero[data-hero-media='true']) .site-header__spacer {
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
 }
 
+/* Aba INATIVA. A escala de branco da barra e 0.5 (inativa) → 0.8 (hover) →
+   1.0 (ativa): estava 0.6 e foi alinhada a spec em 14/08/2026. */
 .pop-tabs__tab {
   font-size: 14px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.6);
+  color: rgba(255, 255, 255, 0.5);
   padding: 0 2px 12px;
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
