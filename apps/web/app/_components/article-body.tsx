@@ -1,3 +1,4 @@
+import { YouTubeFacade } from './youtube-frame'
 import type {
   ArticleBodyBlock,
   ArticleBodyTextSegment,
@@ -158,9 +159,17 @@ function Block({ block }: { block: ArticleBodyBlock }) {
        * O `<iframe>` do YouTube so entra no DOM depois que a pessoa aperta —
        * enquanto isso ha um cartao estatico nosso. Isso mantem a promessa do
        * contrato editorial: nenhum script de terceiro carrega sem acao do
-       * usuario numa pagina indexavel. O `srcDoc` faz a troca sem JavaScript
-       * nosso e sem estado de cliente: o `<iframe>` interno so existe depois do
-       * clique, dentro do proprio documento embutido.
+       * usuario numa pagina indexavel.
+       *
+       * ATE 2026-08 ISTO ERA SO O COMENTARIO. O codigo abaixo renderizava o
+       * `<iframe>` direto, com `loading="lazy"`: bastava rolar ate o bloco para
+       * o YouTube ser contatado, sem clique nenhum. A garantia descrita aqui
+       * nao existia — e e dela que o §6 da politica de privacidade publicada
+       * depende. `YouTubeFacade` e essa garantia implementada, e e o MESMO
+       * componente que o modal de trailer usa.
+       *
+       * Custo assumido: o player passa a exigir JavaScript. Sem JS, o leitor ve
+       * o cartao de ativacao e o link para o video — nunca um retangulo morto.
        *
        * Instagram e X NAO tem player: renderizar o post deles exigiria o script
        * deles. Aqui viram CARTAO com link — o que entrega menos que embed
@@ -169,20 +178,11 @@ function Block({ block }: { block: ArticleBodyBlock }) {
       if (block.playerUrl !== null) {
         return (
           <figure className="art-embed art-embed--youtube">
-            <div className="art-embed__frame">
-              <iframe
-                allow="accelerometer; clipboard-write; encrypted-media; picture-in-picture"
-                allowFullScreen
-                className="art-embed__player"
-                loading="lazy"
-                referrerPolicy="strict-origin-when-cross-origin"
-                // `sandbox` sem `allow-same-origin`: o player roda isolado do
-                // nosso documento, entao nem cookie nem storage nosso alcanca.
-                sandbox="allow-scripts allow-presentation allow-popups"
-                src={block.playerUrl}
-                title={block.caption ?? 'Vídeo incorporado'}
-              />
-            </div>
+            <YouTubeFacade
+              embedUrl={block.playerUrl}
+              title={block.caption ?? 'Vídeo incorporado'}
+              watchUrl={block.href}
+            />
             {block.caption !== null ? (
               <figcaption className="art-embed__caption">{block.caption}</figcaption>
             ) : null}

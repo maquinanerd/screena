@@ -10,6 +10,7 @@ import { MonthStats } from './month-stats'
 import { PopularThisWeek, type PopularRankingPanel } from './popular-this-week'
 import { Rail } from './rail'
 import { SectionBoundary } from './section-boundary'
+import { TrailerModal } from './trailer-modal'
 import type { RankingTabSlug } from '../../src/lib/popular-rankings'
 import type { EntityCard } from '../../src/lib/entity-index-presenter'
 import {
@@ -147,6 +148,16 @@ function GlimpseCard({ item }: { item: HomeUpcomingItem }): ReactNode {
       <span className="glimpse-card__badge" data-vertical={item.vertical}>
         {item.verticalLabel}
       </span>
+      {/* Trailer: só existe com licença aprovada (`display_allowed`). Sem ela,
+          `item.trailer` é null e o card fica EXATAMENTE como está hoje — sem
+          botão, sem espaço reservado, sem promessa. A pílula "Ver ficha" da
+          linha de baixo não muda: são dois destinos, não um substituindo o
+          outro. */}
+      {item.trailer !== null ? (
+        <span className="glimpse-card__playwrap">
+          <TrailerModal title={item.title} trailer={item.trailer} />
+        </span>
+      ) : null}
       <span className="glimpse-card__bookmark">
         {item.entityId !== null ? (
           <CardBookmark

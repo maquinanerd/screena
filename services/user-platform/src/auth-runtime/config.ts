@@ -52,7 +52,10 @@ export const AUTH_EMAIL_ENV_KEYS = {
  */
 export const C7D_DEFAULTS = {
   termsPolicyVersion: "2026-08",
-  privacyPolicyVersion: "2026-08",
+  // `2026-08.2`: revisao do §6 (Cookies) declarando o player de video do
+  // YouTube. Os Termos NAO mudaram e continuam em `2026-08` — subir os dois
+  // juntos pediria a toda a base um novo aceite de um documento intacto.
+  privacyPolicyVersion: "2026-08.2",
   sessionTtlHours: 720,
   deletionGraceDays: 30,
 } as const;
