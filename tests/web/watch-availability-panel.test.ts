@@ -110,16 +110,27 @@ describe("watch-availability-panel — componente publico", () => {
     expect(code).not.toContain("fetch(");
   });
 
-  it("renderiza o credito da fonte exigido pela licenca", () => {
-    // A licenca que autoriza exibir a oferta exige creditar a fonte
-    // (docs/legal/source-authorization-matrix.md: "atribuicao junto ao painel").
-    expect(code).toContain("view.attributions");
-    expect(code).toContain("attribution.text");
-    expect(code).toContain("attribution.url");
+  /**
+   * REESCRITO em 2026-08-13. Este teste exigia o credito DENTRO do painel, e a
+   * matriz de licenca dizia "atribuicao junto ao painel".
+   *
+   * Decisao do proprietario: todo credito de fonte passou a viver no rodape
+   * global. A licenca continua exigindo credito visivel — mudou o endereco. Este
+   * teste agora impede o credito de voltar para ca (o que o duplicaria); a
+   * presenca dele na pagina e provada em `footer-credits.test.tsx`.
+   */
+  it("NAO renderiza o credito da fonte (ele vive no rodape global)", () => {
+    expect(code).not.toContain("view.attributions");
+    expect(code).not.toContain("attribution.text");
+    expect(code).not.toContain("attribution.url");
+    expect(code).not.toMatch(/fornecida por/i);
   });
 
-  it("o linkback de credito nao vaza PageRank nem abre sem noopener", () => {
-    expect(code).toMatch(/rel="nofollow noopener"/);
+  it("o unico link do painel continua sendo o DESTINO da oferta, com rel seguro", () => {
+    // O linkback de credito saiu; o link para onde a pessoa assiste ficou — sao
+    // coisas diferentes, e so o segundo pertence a este painel.
+    expect(code).toContain("offer.destinationUrl");
+    expect(code).toMatch(/rel="nofollow sponsored noopener"/);
   });
 });
 

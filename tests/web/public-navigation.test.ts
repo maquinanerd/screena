@@ -4,6 +4,11 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import {
+  DATA_CREDITS_PATH,
+  FOOTER_COLUMNS,
+  TMDB_DISCLAIMER,
+} from '../../apps/web/src/config/footer'
+import {
   HOME_HREF,
   isActiveNavigationPath,
   NAV_ITEMS,
@@ -46,11 +51,20 @@ describe('navegação pública global', () => {
 
   it('mantém Pessoas e Explorar navegáveis fora do header', () => {
     const header = read('apps/web/app/_components/site-header.tsx')
-    const footer = read('apps/web/app/_components/site-footer.tsx')
-    // Menu mobile e rodapé carregam primário + secundário: sair do header
-    // nunca pode significar sumir do site.
+    // Menu mobile carrega primário + secundário: sair do header nunca pode
+    // significar sumir do site.
     expect(header).toContain('...NAV_ITEMS, ...SECONDARY_NAV_ITEMS')
-    expect(footer).toContain('...NAV_ITEMS, ...SECONDARY_NAV_ITEMS')
+
+    // O rodapé deixou de espelhar a lista de navegação em 2026-08-13: ele passou
+    // a ter colunas próprias (FOOTER-SPEC). A REGRA não mudou — os dois destinos
+    // secundários continuam alcançáveis a partir do rodapé —, então o teste
+    // afere o destino, não o mecanismo que o produz.
+    const hrefsDoRodape = FOOTER_COLUMNS.flatMap((column) =>
+      column.links.map((link) => link.href),
+    )
+    for (const { href } of SECONDARY_NAV_ITEMS) {
+      expect(hrefsDoRodape, `destino secundário sumiu do rodapé: ${href}`).toContain(href)
+    }
   })
 
   it('não contém link morto e mantém caminhos internos pt-BR', () => {
@@ -88,15 +102,41 @@ describe('navegação pública global', () => {
     expect(header).toMatch(/alt=""/)
   })
 
-  it('rodapé contém apenas rotas reais e a atribuição do TMDB', () => {
-    const footer = read('apps/web/app/_components/site-footer.tsx')
-    expect(footer).toContain('...NAV_ITEMS, ...SECONDARY_NAV_ITEMS].map')
-    expect(footer).toContain('usa a API do TMDB')
-    // Guard ATUALIZADO DELIBERADAMENTE: a regra deste teste sempre foi "só rota
-    // real". Termos e Privacidade eram proibidos aqui porque davam 404 — agora
-    // as duas páginas existem, e o link é obrigatório (o aceite do cadastro
-    // aponta para elas). Continuam proibidos os destinos que seguem sem rota.
-    expect(footer).not.toMatch(/newsletter|social|Vagas/)
+  /**
+   * REESCRITO em 2026-08-13, e FORTALECIDO. A regra deste teste sempre foi "só
+   * rota real" — antes ela era aferida grepando o texto do componente, o que
+   * proibia palavras ("newsletter", "social", "Vagas") em vez de proibir links
+   * mortos.
+   *
+   * Agora que as colunas vivem em `config/footer.ts`, dá para verificar a regra
+   * de verdade: cada href do rodapé tem de resolver para um arquivo de rota. É
+   * isto que impede o rodapé de voltar a prometer "Top 250", "Mais premiados" e
+   * "Nascidos hoje" — os 12 rótulos que a auditoria do projeto registrou como
+   * "12 âncoras com texto distinto apontando para 3 URLs".
+   */
+  it('rodapé aponta APENAS para rotas que existem', () => {
+    const destinos = FOOTER_COLUMNS.flatMap((column) => column.links.map((l) => l.href))
+    expect(destinos.length).toBeGreaterThan(0) // controle positivo
+
+    for (const href of [...destinos, DATA_CREDITS_PATH]) {
+      expect(href).toMatch(/^\/pt\/[a-z-]*\/?$|^\/pt\/$/)
+      expect(existsSync(pageFileForPublicPath(href)), `rota ausente: ${href}`).toBe(true)
+    }
+  })
+
+  it('nenhum destino do rodapé aparece duas vezes (anti-canibalização de âncora)', () => {
+    // O defeito registrado na auditoria não era link quebrado: era o MESMO href
+    // sob rótulos diferentes, diluindo o sinal de anchor text e prometendo ao
+    // usuário superfícies que não existem.
+    const destinos = FOOTER_COLUMNS.flatMap((column) => column.links.map((l) => l.href))
+    expect(new Set(destinos).size).toBe(destinos.length)
+  })
+
+  it('a atribuição do TMDB continua no rodapé, vinda da licença', () => {
+    // O texto NÃO é escrito no componente: sai de `services/legal`. Por isso a
+    // asserção é sobre o valor projetado, não sobre o código-fonte do rodapé.
+    expect(TMDB_DISCLAIMER).toContain('usa a API do TMDB')
+    expect(TMDB_DISCLAIMER).toContain('nao e endossado ou certificado pelo TMDB')
   })
 
   it('rodapé linka os documentos legais e as duas páginas existem de fato', () => {

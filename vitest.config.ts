@@ -5,6 +5,10 @@ export default defineConfig({
   test: {
     include: [
       'tests/**/*.test.ts',
+      // `tests/**` tambem cobre .tsx: um teste de composicao (chrome + conteudo)
+      // precisa de JSX e mora em tests/, nao dentro do app. Sem esta linha o
+      // arquivo simplesmente nao e coletado — e "0 testes" parece verde.
+      'tests/**/*.test.tsx',
       'packages/**/*.test.ts',
       'api-clients/**/*.test.ts',
       'services/**/*.test.ts',
@@ -53,6 +57,13 @@ export default defineConfig({
       ),
       '@screena/editorial-contracts': fileURLToPath(
         new URL('./packages/editorial-contracts/src/index.ts', import.meta.url),
+      ),
+      // MAIS ESPECIFICO PRIMEIRO: o alias de string do Vite casa por PREFIXO,
+      // entao `@screena/legal` sozinho capturaria `@screena/legal/public-credits`
+      // e resolveria para `.../index.ts/public-credits`. A ordem aqui nao e
+      // estilo — inverter as duas linhas quebra a resolucao.
+      '@screena/legal/public-credits': fileURLToPath(
+        new URL('./services/legal/src/public-credits.ts', import.meta.url),
       ),
       '@screena/legal': fileURLToPath(new URL('./services/legal/src/index.ts', import.meta.url)),
       '@screena/news-ingestion': fileURLToPath(

@@ -256,17 +256,49 @@ describe("buildWatchAvailabilityView — atribuicao obrigatoria", () => {
     ]);
   });
 
-  it("descarta oferta que exige atribuicao e nao tem texto", () => {
-    expect(
-      buildWatchAvailabilityView([row({ attributionText: null })]),
-    ).toBeNull();
-    expect(
-      buildWatchAvailabilityView([row({ attributionText: "   " })]),
-    ).toBeNull();
+  /**
+   * REESCRITOS em 2026-08-13. Os tres testes abaixo exigiam que o presenter
+   * DESCARTASSE a oferta sem credito na linha.
+   *
+   * Decisao do proprietario: o credito passou a viver no rodape global, e o
+   * rodape o deriva das ORIGENS declaradas em `services/legal`
+   * (`STREAMING_ORIGIN_CREDITS`), nao da linha. Entao a oferta deixou de ser
+   * recusada por isso — o que ela carrega continua sendo preservado como
+   * proveniencia.
+   *
+   * O caminho de ESCRITA nao foi afrouxado: o trigger
+   * `watch_availability_display_guard` continua recusando a linha sem licenca e
+   * credito. E a presenca do credito na pagina e provada em
+   * `footer-credits.test.tsx`.
+   */
+  it("oferta sem texto de atribuicao NAO e mais descartada", () => {
+    const semTexto = buildWatchAvailabilityView([row({ attributionText: null })]);
+    expect(semTexto).not.toBeNull();
+    expect(semTexto!.groups[0]!.offers[0]!.providerName).toBe("Netflix");
+    // Ausencia nao vira credito vazio: a lista de proveniencia fica sem entrada.
+    expect(semTexto!.attributions).toEqual([]);
+
+    const soEspacos = buildWatchAvailabilityView([row({ attributionText: "   " })]);
+    expect(soEspacos).not.toBeNull();
+    expect(soEspacos!.attributions).toEqual([]);
   });
 
-  it("descarta oferta que exige linkback e nao tem url", () => {
-    expect(buildWatchAvailabilityView([row({ attributionUrl: null })])).toBeNull();
+  it("oferta sem linkback de credito NAO e mais descartada", () => {
+    const view = buildWatchAvailabilityView([row({ attributionUrl: null })]);
+    expect(view).not.toBeNull();
+    expect(view!.attributions).toEqual([
+      { text: "Disponibilidade fornecida por Movie of the Night", url: null },
+    ]);
+  });
+
+  it("O QUE NAO MUDOU: oferta sem DESTINO continua descartada", () => {
+    // A distincao que a migracao de creditos nao podia borrar: `attribution_url`
+    // e o linkback para a FONTE (mudou de lugar); `deep_link`/`web_url` sao para
+    // onde a pessoa vai ASSISTIR. Oferta sem destino nao e falta de credito — e
+    // um clique cego, e continua fora do ar.
+    expect(
+      buildWatchAvailabilityView([row({ deepLink: null, webUrl: null })]),
+    ).toBeNull();
   });
 
   it("exibe sem credito apenas quando a licenca dispensa explicitamente", () => {
@@ -291,15 +323,22 @@ describe("buildWatchAvailabilityView — atribuicao obrigatoria", () => {
     ]);
   });
 
-  it("FAIL-CLOSED: exigencia ausente conta como exigida, nao como dispensada", () => {
-    // Um campo que nao chegou (undefined) nunca pode virar "nao precisa
-    // creditar" — seria um gate desligado em silencio.
-    const incomplete = {
+  /**
+   * REESCRITO em 2026-08-13. O fail-closed original protegia o gate de credito
+   * DO PRESENTER, que deixou de existir quando o credito mudou para o rodape.
+   *
+   * O fail-closed que continua valendo e o da LICENCA (`displayAllowed`), e ele
+   * nao foi tocado: e o unico campo cuja ausencia ainda derruba a oferta.
+   */
+  it("FAIL-CLOSED que sobreviveu: licenca ausente conta como negada, nao como liberada", () => {
+    const semLicenca = {
       ...row(),
-      requiresAttribution: undefined,
-      attributionText: null,
+      displayAllowed: undefined,
     } as unknown as WatchAvailabilityRow;
-    expect(buildWatchAvailabilityView([incomplete])).toBeNull();
+    expect(buildWatchAvailabilityView([semLicenca])).toBeNull();
+
+    // Controle positivo: a MESMA fixture, com a licenca presente, vai ao ar.
+    expect(buildWatchAvailabilityView([row()])).not.toBeNull();
   });
 
   it("deduplica creditos iguais entre varias ofertas", () => {
@@ -358,9 +397,14 @@ describe("selectTickerWatchOffer", () => {
     expect(selectTickerWatchOffer([row({ displayAllowed: false })])).toBeNull();
   });
 
-  it("null quando a licenca exige atribuicao e ela nao existe (fail-closed)", () => {
-    expect(selectTickerWatchOffer([row({ attributionText: null })])).toBeNull();
-    expect(selectTickerWatchOffer([row({ attributionUrl: null })])).toBeNull();
+  /**
+   * REESCRITO em 2026-08-13: a faixa da home tambem parou de creditar. O credito
+   * ali era ainda mais fragil que nos paineis — acompanhava o slide ATIVO, entao
+   * trocar de slide trocava o credito. O rodape nao pisca.
+   */
+  it("credito ausente na linha NAO derruba mais a oferta da faixa", () => {
+    expect(selectTickerWatchOffer([row({ attributionText: null })])).not.toBeNull();
+    expect(selectTickerWatchOffer([row({ attributionUrl: null })])).not.toBeNull();
   });
 
   it("null para modalidade ilegal/desconhecida e para deep link nao http(s)", () => {

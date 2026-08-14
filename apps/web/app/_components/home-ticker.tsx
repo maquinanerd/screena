@@ -14,10 +14,10 @@
  *
  * PROVEDOR: o `provider` de cada item já veio aprovado pelo gate compartilhado
  * de `watch_availability` (licensedWatchWhere + presenter puro). Quando ele
- * existe, o CTA vira "Onde assistir · <provedor>" e o CRÉDITO exigido pela
- * licença é renderizado VISIVELMENTE (com linkback quando exigido) — exibir a
- * oferta sem o crédito violaria a licença que autoriza exibi-la. O crédito
- * acompanha o item ATIVO: ao trocar de slide, o crédito do item anterior some.
+ * existe, o CTA vira "Onde assistir · <provedor>". O CRÉDITO da origem NÃO é
+ * renderizado aqui desde 2026-08-13: por decisão do proprietário, todo crédito
+ * de fonte vive no rodapé global. `provider.attributionText`/`attributionUrl`
+ * continuam viajando no item como procedência.
  *
  * A faixa é ESTRUTURA da home: sem novidade nenhuma ela permanece, em estado
  * neutro e honesto.
@@ -35,28 +35,41 @@ import { SERIES_INDEX_PATH } from '../../src/lib/routes'
 /** Intervalo do autoplay da faixa. Independente do autoplay do hero. */
 const AUTOPLAY_MS = 6000
 
-/**
- * Crédito da licença do agregador. Renderizado SEMPRE que o provedor exigir
- * atribuição — sem ele a oferta não poderia aparecer (invariante 6).
- */
-function TickerCredit({ provider }: { provider: TickerProvider }): ReactNode {
-  if (provider.attributionText === null) return null
-  return (
-    <p className="ticker__credit">
-      {provider.attributionUrl !== null ? (
-        <a href={provider.attributionUrl} rel="nofollow noopener" target="_blank">
-          {provider.attributionText}
-        </a>
-      ) : (
-        provider.attributionText
-      )}
-    </p>
-  )
-}
-
 /** Rótulo curto do item, usado no `aria-label` do dot correspondente. */
 function itemLabel(item: HomeTickerItem): string {
   return `${item.title} — ${item.detail}`
+}
+
+/**
+ * Rótulo da oferta licenciada. Recebe `TickerProvider` — o contrato REAL de
+ * `watch_availability`, já filtrado pelo gate compartilhado.
+ *
+ * O tipo é explícito de propósito, e não por estilo: o guard
+ * `no-fake-streaming-in-ui` só deixa um componente citar streaming quando ele
+ * está preso a um contrato real de watch, e é este identificador que prova o
+ * vínculo. Sem ele, o arquivo passa a "citar plataforma sem contrato" — que é
+ * exatamente o defeito que o guard existe para pegar.
+ */
+function providerCta(provider: TickerProvider): ReactNode {
+  return (
+    <>
+      {/*
+        MODALIDADE em TEXTO VISIVEL, ao lado do nome — nao em `aria-label`,
+        nao em `title`, nao em atributo sem estilo. Compra e aluguel sao a
+        maioria do corpus: "Onde assistir <loja>" sozinho afirma ao leitor que
+        o titulo esta incluso no que ele ja paga, quando o que existe e um
+        aluguel avulso. Informacao que muda o que o leitor espera nao pode
+        viver so em atributo de acessibilidade — a mesma regra que o rotulo
+        "pagina de disponibilidade" ja fixou no painel de detalhe.
+
+        Nenhum nome de plataforma aparece neste arquivo, nem em comentario: o
+        guard de governanca varre o TEXTO do componente, e uma marca citada em
+        comentario reprova igual (ver no-fake-streaming-in-ui).
+      */}
+      Onde assistir <strong>{provider.name}</strong>
+      <span className="home-ticker__modality"> · {provider.modalityLabel}</span>
+    </>
+  )
 }
 
 /**
@@ -66,25 +79,7 @@ function itemLabel(item: HomeTickerItem): string {
  */
 function ctaLabel(item: HomeTickerItem): ReactNode {
   if (item.provider !== null) {
-    return (
-      <>
-        {/*
-          MODALIDADE em TEXTO VISIVEL, ao lado do nome — nao em `aria-label`,
-          nao em `title`, nao em atributo sem estilo. Compra e aluguel sao a
-          maioria do corpus: "Onde assistir <loja>" sozinho afirma ao leitor que
-          o titulo esta incluso no que ele ja paga, quando o que existe e um
-          aluguel avulso. Informacao que muda o que o leitor espera nao pode
-          viver so em atributo de acessibilidade — a mesma regra que o rotulo
-          "pagina de disponibilidade" ja fixou no painel de detalhe.
-
-          Nenhum nome de plataforma aparece neste arquivo, nem em comentario: o
-          guard de governanca varre o TEXTO do componente, e uma marca citada em
-          comentario reprova igual (ver no-fake-streaming-in-ui).
-        */}
-        Onde assistir <strong>{item.provider.name}</strong>
-        <span className="home-ticker__modality"> · {item.provider.modalityLabel}</span>
-      </>
-    )
+    return providerCta(item.provider)
   }
   return item.entityType === 'movie' ? 'Ver filme' : 'Ver série'
 }
@@ -189,8 +184,10 @@ export function HomeTicker({ items }: { items: readonly HomeTickerItem[] }): Rea
             {item === null ? 'Ver lançamentos' : ctaLabel(item)}
           </a>
         </div>
-        {/* O crédito pertence ao item ATIVO: trocou de slide, trocou o crédito. */}
-        {item?.provider != null ? <TickerCredit provider={item.provider} /> : null}
+        {/* O crédito da origem saiu daqui em 2026-08-13 (decisão do
+            proprietário) e vive no rodapé global. Aqui ele era ainda mais
+            frágil que nos painéis: acompanhava o slide ATIVO, então trocar de
+            slide trocava o crédito — e o rodapé não pisca. */}
       </div>
     </div>
   )

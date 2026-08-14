@@ -13,10 +13,12 @@
  *  - `provider_api` != `rating_source`: o credito exibido vem de `attribution`
  *    (a FONTE editorial). O fornecedor tecnico (RapidAPI / Film & Show Ratings)
  *    NUNCA aparece como autor da nota.
- *  - ATRIBUICAO obrigatoria: nota sem credito nao e exibida (a licenca das 5
- *    fontes exige `requires_attribution`; ver
- *    docs/legal/source-authorization-matrix.md). "Todo dado publico tem
- *    origem/licenca/atribuicao" — sem credito, nao ha dado publico.
+ *  - ATRIBUICAO: obrigatoria na PAGINA, nao mais ao lado da nota. Desde
+ *    2026-08-13 (decisao do proprietario) o credito de fonte vive no RODAPE
+ *    GLOBAL, montado no layout raiz. A licenca das 5 fontes continua exigindo
+ *    `requires_attribution` — o que mudou foi o endereco do credito, nunca a
+ *    obrigacao. Ver `toPanelItem` para as duas metades que substituiram o gate
+ *    antigo, e docs/legal/source-authorization-matrix.md para a matriz.
  *  - SEM logo: `logo_allowed = false` para todas as fontes. O painel exibe o
  *    NOME da fonte em texto, nunca a marca grafica.
  *  - SEM nota propria: este painel nunca agrega, calcula media ou inventa um
@@ -148,8 +150,26 @@ export interface RatingsPanelItem {
   scoreLabel: string;
   /** Volume de votos/criticas quando o upstream informa; senao null. */
   countLabel: string | null;
-  /** Credito da FONTE (nunca do fornecedor tecnico). Obrigatorio. */
-  attribution: { text: string; url: string | null };
+  /**
+   * Credito da FONTE (nunca do fornecedor tecnico).
+   *
+   * NAO e mais renderizado ao lado da nota — desde 2026-08-13 o credito vive no
+   * rodape global (ver o cabecalho deste arquivo). Continua VIAJANDO no item de
+   * proposito, e nao e campo morto:
+   *
+   *  - e a proveniencia da linha, usada por auditoria e pelos validadores que
+   *    rodam contra Postgres real;
+   *  - e o que permite provar, por teste, que a fonte exibida tem credito
+   *    correspondente no rodape;
+   *  - e o caminho de volta: se um dia o credito voltar para perto do dado,
+   *    a informacao ja esta aqui.
+   *
+   * `text` pode ser `null` porque o presenter deixou de RECUSAR a nota por
+   * ausencia de credito adjacente. Quem garante que o credito existe agora e o
+   * caminho de ESCRITA (o trigger `external_ratings_display_guard`) mais o
+   * rodape — nao este presenter.
+   */
+  attribution: { text: string | null; url: string | null };
   /**
    * Este chip desenha a divisoria vertical do canonico a sua ESQUERDA?
    *
@@ -239,10 +259,31 @@ function toPanelItem(rating: PublicExternalRating): RatingsPanelItem | null {
   // da fonte) descreveria uma regua diferente da que produziu o numero.
   if (!scaleMatchesSource(rating.sourceKey, rating.best)) return null;
 
-  // ATRIBUICAO OBRIGATORIA (invariante 6). Sem credito, a nota nao e publicavel:
-  // e a mesma licenca que autoriza exibir e que obriga a creditar a fonte.
+  // ATRIBUICAO: A TRAVA MUDOU DE ENDERECO, NAO FOI REMOVIDA.
+  //
+  // Ate 2026-08-12 esta funcao devolvia `null` quando faltava `attribution.text`
+  // — o credito ficava DENTRO do chip, e a proximidade era a prova de que a
+  // licenca estava cumprida.
+  //
+  // Decisao do proprietario (Pablo Eduardo, 2026-08-13): o credito saiu do corpo
+  // e passou a viver no RODAPE GLOBAL. Entao a regra deixou de ser "a nota so
+  // aparece se o credito estiver colado nela" e passou a ser "a nota so aparece
+  // se o credito estiver na PAGINA" — e o rodape esta em toda pagina, montado no
+  // layout raiz.
+  //
+  // O que substituiu este `if` (as duas metades existem; nenhuma sozinha basta):
+  //  1. `services/legal` -> `publicSourceCredits()` -> rodape: TODA fonte
+  //     autorizada e nomeada, com o texto verbatim da licenca. O rodape nao
+  //     conhece nome de fonte, entao nao pode esquecer nenhuma;
+  //  2. `tests/web/footer-credits.test.tsx`: para cada rota que exibe nota,
+  //     renderiza chrome + conteudo e prova que o credito da fonte esta no
+  //     TEXTO VISIVEL do documento.
+  //
+  // E o que NAO mudou: o caminho de ESCRITA continua exigindo credito. O trigger
+  // `external_ratings_display_guard` recusa `display_allowed = true` sem
+  // `attribution_text`, e `entity-ratings.ts` espelha essa recusa ao projetar do
+  // banco. A proveniencia continua gravada; o que mudou foi onde ela aparece.
   const attributionText = trimToNull(rating.attribution?.text ?? null);
-  if (attributionText === null) return null;
   const attributionUrl = trimToNull(rating.attribution?.url ?? null);
 
   const scoreTypeLabel = SCORE_TYPE_LABELS[rating.scoreType];

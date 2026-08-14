@@ -47,7 +47,10 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function WatchBrowsePage() {
-  const { providers, updatedAtIso, attributions } = await getWatchBrowseData()
+  // `attributions` continua sendo resolvido por `getWatchBrowseData` (é
+  // procedência das ofertas), mas a página não o desestrutura mais: desde
+  // 2026-08-13 o crédito de fonte vive só no rodapé global.
+  const { providers, updatedAtIso } = await getWatchBrowseData()
   const updatedLabel = formatUpdatedAt(updatedAtIso)
   const canonicalUrl = canonicalPublicUrl(BROWSE_PATH)
 
@@ -123,22 +126,10 @@ export default async function WatchBrowsePage() {
           </EmptyState>
         )}
 
-        {attributions.length > 0 ? (
-          <p className="watch-availability__attribution" style={{ marginTop: 32 }}>
-            {attributions.map((attribution, index) => (
-              <span key={attribution.text}>
-                {index > 0 ? ' · ' : null}
-                {attribution.url !== null ? (
-                  <a href={attribution.url} rel="nofollow noopener" target="_blank">
-                    {attribution.text}
-                  </a>
-                ) : (
-                  attribution.text
-                )}
-              </span>
-            ))}
-          </p>
-        ) : null}
+        {/* O crédito das origens de disponibilidade saiu daqui em 2026-08-13
+            (decisão do proprietário) e vive no rodapé global. `attributions`
+            continua sendo resolvido por `getWatchBrowseData` como procedência —
+            ver `watch-availability-panel.tsx`. */}
 
         <AdSlot format="leaderboard" slotId="browse-grid" />
 

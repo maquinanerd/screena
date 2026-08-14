@@ -161,12 +161,29 @@ describe("buildRatingsView — critica != publico (invariante 1)", () => {
   });
 });
 
-describe("buildRatingsView — atribuicao obrigatoria (invariante 6)", () => {
-  it("descarta nota sem credito", () => {
-    expect(buildRatingsView(payload([rating({ attribution: null })]))).toBeNull();
-    expect(
-      buildRatingsView(payload([rating({ attribution: { text: "  ", url: null } })])),
-    ).toBeNull();
+/**
+ * REESCRITO em 2026-08-13. Este bloco se chamava "atribuicao obrigatoria
+ * (invariante 6)" e exigia que o presenter DESCARTASSE a nota sem credito.
+ *
+ * A invariante 6 nao mudou: dado sem licenca nao aparece. O que mudou foi o
+ * endereco do CREDITO — por decisao do proprietario ele vive no rodape global, e
+ * o rodape o deriva da LICENCA da fonte, nao da linha. Entao o presenter deixou
+ * de recusar a linha, e passou apenas a PRESERVAR o que ela carrega.
+ *
+ * A garantia de presenca do credito: `footer-credits.test.tsx`.
+ */
+describe("buildRatingsView — atribuicao PRESERVADA (o credito mora no rodape)", () => {
+  it("nota sem credito nao e mais descartada, e a ausencia vira null explicito", () => {
+    const semObjeto = buildRatingsView(payload([rating({ attribution: null })]));
+    expect(semObjeto).not.toBeNull();
+    expect(semObjeto!.items[0]!.attribution).toEqual({ text: null, url: null });
+
+    // Espaco em branco nao vira credito de mentira: normaliza para null.
+    const soEspacos = buildRatingsView(
+      payload([rating({ attribution: { text: "  ", url: null } })]),
+    );
+    expect(soEspacos).not.toBeNull();
+    expect(soEspacos!.items[0]!.attribution.text).toBeNull();
   });
 
   it("exibe credito sem link quando a fonte nao registrou linkback", () => {

@@ -132,10 +132,25 @@ describe('credito: JustWatch acompanha a oferta TMDB, e nada vai ao ar sem credi
     ])
   })
 
-  it('oferta TMDB SEM credito de JustWatch NAO vai ao ar (segundo dos tres negativos)', () => {
-    expect(buildWatchAvailabilityView([tmdbRow({ attributionText: null })])).toBeNull()
-    expect(buildWatchAvailabilityView([tmdbRow({ attributionText: '   ' })])).toBeNull()
-    expect(buildWatchAvailabilityView([tmdbRow({ attributionUrl: null })])).toBeNull()
+  /**
+   * REESCRITO em 2026-08-13. O negativo original ("sem credito na linha, nao vai
+   * ao ar") protegia o credito quando ele morava sob o painel.
+   *
+   * O credito ao JustWatch continua OBRIGATORIO — os termos do endpoint
+   * `watch/providers` do TMDB o exigem nominalmente, sob pena de revogar o
+   * acesso a API que sustenta o catalogo inteiro. O que mudou e de onde ele vem:
+   * o rodape o deriva de `STREAMING_ORIGIN_CREDITS` em `services/legal`, entao
+   * ele esta na pagina mesmo quando a LINHA nao o carrega. Provado em
+   * `apps/web/app/_components/__tests__/footer-credits.test.tsx`.
+   */
+  it('oferta TMDB sem credito na LINHA vai ao ar; o credito vem do rodape', () => {
+    const semTexto = buildWatchAvailabilityView([tmdbRow({ attributionText: null })])
+    expect(semTexto).not.toBeNull()
+    // O que NAO pode acontecer: credito vazio/orfao entrar na proveniencia.
+    expect(semTexto!.attributions).toEqual([])
+
+    expect(buildWatchAvailabilityView([tmdbRow({ attributionText: '   ' })])).not.toBeNull()
+    expect(buildWatchAvailabilityView([tmdbRow({ attributionUrl: null })])).not.toBeNull()
   })
 
   it('credito da PERDEDORA da precedencia nao sobra na tela (credito orfao = mentira)', () => {
