@@ -13,6 +13,17 @@ export {
   largestAffordablePrefix,
 } from './cost-model.js'
 
+export {
+  assertPlannableStrategy,
+  INGESTION_STRATEGIES,
+  isIngestionStrategy,
+  isPlannableStrategy,
+  PLANNABLE_STRATEGIES,
+  UnsupportedStrategyError,
+} from './strategies.js'
+
+export type { IngestionStrategy, PlannableStrategy } from './strategies.js'
+
 export type {
   BootstrapBudget,
   BudgetDecision,

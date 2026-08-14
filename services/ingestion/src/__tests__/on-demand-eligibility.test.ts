@@ -9,6 +9,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  becomesEligibleOnDemand,
   checkEligibility,
   looksAnnouncedOnly,
   REQUIRED_FIELDS,
@@ -25,14 +26,14 @@ const completo: EligibilityInput = {
 
 describe('checkEligibility — sentido positivo', () => {
   it('titulo com poster, titulo e sinopse ENTRA', () => {
-    const v = checkEligibility(completo)
+    const v = checkEligibility(completo, 'seed')
     expect(v.eligible).toBe(true)
   })
 })
 
 describe('checkEligibility — sentido negativo', () => {
   it('sem poster e RECUSADO, e a recusa nomeia o campo', () => {
-    const v = checkEligibility({ ...completo, posterPath: null })
+    const v = checkEligibility({ ...completo, posterPath: null }, 'seed')
     expect(v.eligible).toBe(false)
     if (v.eligible) return
     expect(v.missing).toEqual(['poster'])
@@ -42,14 +43,14 @@ describe('checkEligibility — sentido negativo', () => {
   })
 
   it('sem sinopse e RECUSADO, e a recusa nomeia o campo', () => {
-    const v = checkEligibility({ ...completo, overview: '   ' })
+    const v = checkEligibility({ ...completo, overview: '   ' }, 'seed')
     expect(v.eligible).toBe(false)
     if (v.eligible) return
     expect(v.missing).toEqual(['overview'])
   })
 
   it('junta TODOS os campos faltantes, nao para no primeiro', () => {
-    const v = checkEligibility({ ...completo, posterPath: null, overview: null })
+    const v = checkEligibility({ ...completo, posterPath: null, overview: null }, 'seed')
     expect(v.eligible).toBe(false)
     if (v.eligible) return
     expect(v.missing).toEqual(['poster', 'overview'])
@@ -57,17 +58,17 @@ describe('checkEligibility — sentido negativo', () => {
 
   it('string vazia e so-espaco contam como falta', () => {
     for (const vazio of ['', '   ', '\n']) {
-      const v = checkEligibility({ ...completo, posterPath: vazio })
+      const v = checkEligibility({ ...completo, posterPath: vazio }, 'seed')
       expect(v.eligible, `"${vazio}" deveria faltar`).toBe(false)
     }
   })
 
   it('toda recusa tem missing NAO-VAZIO e detalhe legivel', () => {
     const recusas = [
-      checkEligibility({ ...completo, posterPath: null }),
-      checkEligibility({ ...completo, overview: null }),
-      checkEligibility({ ...completo, title: null }),
-      checkEligibility({ ...completo, posterPath: null, title: null, overview: null }),
+      checkEligibility({ ...completo, posterPath: null }, 'seed'),
+      checkEligibility({ ...completo, overview: null }, 'seed'),
+      checkEligibility({ ...completo, title: null }, 'seed'),
+      checkEligibility({ ...completo, posterPath: null, title: null, overview: null }, 'seed'),
     ]
     for (const v of recusas) {
       expect(v.eligible).toBe(false)
@@ -83,7 +84,7 @@ describe('checkEligibility — sentido negativo', () => {
 
 describe('falta de TRADUCAO e distinta de falta de DADO', () => {
   it('so a sinopse falta e ela existe em outro idioma: motivo proprio', () => {
-    const v = checkEligibility({ ...completo, overview: '', hasOverviewInAnyLocale: true })
+    const v = checkEligibility({ ...completo, overview: '', hasOverviewInAnyLocale: true }, 'seed')
     expect(v.eligible).toBe(false)
     if (v.eligible) return
     // Recusado hoje pela politica de locale — mas nomeado, para poder ser
@@ -92,7 +93,7 @@ describe('falta de TRADUCAO e distinta de falta de DADO', () => {
   })
 
   it('sinopse ausente em TODO idioma continua sendo falta de dado', () => {
-    const v = checkEligibility({ ...completo, overview: '', hasOverviewInAnyLocale: false })
+    const v = checkEligibility({ ...completo, overview: '', hasOverviewInAnyLocale: false }, 'seed')
     expect(v.eligible).toBe(false)
     if (v.eligible) return
     expect(v.reason).toBe('missing_required_fields')
@@ -100,16 +101,64 @@ describe('falta de TRADUCAO e distinta de falta de DADO', () => {
 
   it('sem traducao NAO absolve quem tambem nao tem poster', () => {
     // Dois campos faltando: nao e "so traducao", e ficha incompleta.
-    const v = checkEligibility({
-      ...completo,
-      posterPath: null,
-      overview: '',
-      hasOverviewInAnyLocale: true,
-    })
+    const v = checkEligibility(
+      { ...completo, posterPath: null, overview: '', hasOverviewInAnyLocale: true },
+      'seed',
+    )
     expect(v.eligible).toBe(false)
     if (v.eligible) return
     expect(v.reason).toBe('missing_required_fields')
     expect(v.missing).toEqual(['poster', 'overview'])
+  })
+})
+
+describe('POLITICA DE IDIOMA — assimetrica, provada nos dois sentidos', () => {
+  /** Mesmo titulo nos dois testes: so tem sinopse em ingles. */
+  const soIngles: EligibilityInput = {
+    ...completo,
+    tmdbId: 693134,
+    overview: '', // vazio em pt-BR
+    hasOverviewInAnyLocale: true, // existe em en-US
+  }
+
+  it('o MESMO titulo e recusado na semente e aceito sob demanda', () => {
+    const semente = checkEligibility(soIngles, 'seed')
+    expect(semente.eligible, 'a semente nao copia pagina em ingles').toBe(false)
+    if (!semente.eligible) expect(semente.reason).toBe('missing_translation_only')
+
+    const sobDemanda = checkEligibility(soIngles, 'on_demand')
+    expect(sobDemanda.eligible, 'quem digitou o nome e pediu, recebe').toBe(true)
+  })
+
+  it('sob demanda MARCA que a sinopse veio do idioma de origem', () => {
+    const v = checkEligibility(soIngles, 'on_demand')
+    expect(v.eligible).toBe(true)
+    if (!v.eligible) return
+    // Sem isto o texto em ingles entraria fingindo ser pt-BR.
+    expect(v.overviewSource).toBe('fallback')
+  })
+
+  it('quando ha sinopse no locale publicado, nao ha fallback', () => {
+    const v = checkEligibility(completo, 'on_demand')
+    expect(v.eligible).toBe(true)
+    if (!v.eligible) return
+    expect(v.overviewSource).toBe('published_locale')
+  })
+
+  it('o fallback vale SO para traducao — nao perdoa poster ausente', () => {
+    const v = checkEligibility(
+      { ...soIngles, posterPath: null },
+      'on_demand',
+    )
+    expect(v.eligible).toBe(false)
+  })
+
+  it('a marca NAO e sentenca: recusado pela semente vira elegivel ao ser buscado', () => {
+    expect(becomesEligibleOnDemand(soIngles)).toBe(true)
+    // Quem ja passa na semente nao "vira" elegivel — ele ja era.
+    expect(becomesEligibleOnDemand(completo)).toBe(false)
+    // E quem falta poster nao vira elegivel por nenhum caminho.
+    expect(becomesEligibleOnDemand({ ...soIngles, posterPath: null })).toBe(false)
   })
 })
 
