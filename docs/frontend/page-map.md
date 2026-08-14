@@ -77,7 +77,18 @@
 
 ## Componentes compartilhados atuais
 
-- `site-header.tsx` e `site-footer.tsx`: chrome textual mínimo.
+- `site-header.tsx`: chrome textual mínimo.
+- `site-footer.tsx`: **rodapé global escuro de 5 faixas** e o **único endereço do
+  crédito de fonte** desde 13/08/2026 (decisão do proprietário). Ele não conhece
+  nome de fonte: lê a projeção de `services/legal`. Antes de mexer, ler
+  [`FOOTER-SPEC.md`](./FOOTER-SPEC.md) §4 e §10 — as divergências entre a spec e
+  o implementado estão registradas lá, com o motivo de cada uma.
+- `footer-newsletter.tsx`: `<form>` real do rodapé, **atrás da flag
+  `CINERIE_NEWSLETTER_ENABLED`** (desligada por default). Sem armazenamento de
+  inscrição, a faixa não renderiza — um formulário que nunca consegue ter sucesso
+  é pior que ausência. A ausência é logada (`newsletter_storage_unavailable`,
+  `actionable: true`), e a rota `/api/newsletter` continua respondendo `503`
+  honesto. O que destrava a flag está em [`newsletter.md`](./newsletter.md).
 - `entity-index.tsx`: lista textual e schemas de coleção/breadcrumb.
 - `entity-external-ids.tsx`: identidade externa real, sem rating implícito.
 - `watch-availability-panel.tsx`: ofertas legais já filtradas pelo gate; nenhum
@@ -103,6 +114,12 @@ Fonte única: [`apps/web/src/lib/navigation.ts`](../../apps/web/src/lib/navigati
 - Tirar um destino do menu primário nunca pode transformá-lo em link morto:
   `tests/web/public-navigation.test.ts` prova que toda rota de `NAV_ITEMS` e
   `SECONDARY_NAV_ITEMS` existe e aparece no rodapé/menu mobile.
+- **O rodapé deixou de espelhar `navigation.ts` em 13/08/2026.** Ele tem colunas
+  próprias em [`apps/web/src/config/footer.ts`](../../apps/web/src/config/footer.ts)
+  (5 colunas da `FOOTER-SPEC.md`). A regra "só rota real" não afrouxou — ficou
+  mais forte: o mesmo teste exige que **todo** href do rodapé resolva para um
+  arquivo de rota e que **nenhum href se repita** (a repetição sob rótulos
+  diferentes era o defeito dos 12 rótulos removidos, registrado na auditoria).
 
 ### Acentos: dois contratos DIFERENTES
 
@@ -136,6 +153,48 @@ defeito corrigido em
 - A faixa **nunca** exibe sessão de cinema, formato (70mm), idioma, rede ou
   horário: o sistema não persiste esses fatos. "Em cartaz" não é inferido de
   `release_date`.
+
+### "Em breve": a MESMA seção, três datasets
+
+O trilho `.glimpse-rail` vive no template compartilhado
+[`HomeLike`](../../apps/web/app/_components/home-like.tsx) e aparece nas **três**
+superfícies home-like. O que muda é só o dataset:
+
+| Rota | Getter | Dataset | Log de ausência (`vertical`) |
+| --- | --- | --- | --- |
+| `/pt/` | `getHomeUpcomingMixed()` | filmes **+** séries, cota equilibrada | `mixed` |
+| `/pt/filmes/` | `getHomeUpcomingMovies()` | só `Movie.releaseDate` futura | `movie` |
+| `/pt/series/` | `getHomeUpcomingSeries()` | só `TvShow.firstAirDate` futura | `series` |
+
+- A home tem **duas ordenações diferentes** e ambas importam: **seleção** por
+  cota (3 filmes + 3 séries em 6 vagas; vertical vazia devolve as vagas para a
+  outra) e **exibição** por estreia ascendente. Ordenar só por data devolveria
+  seis filmes sempre que a fila de filmes fosse mais densa — era o estado
+  anterior da home.
+- `Season.airDate`/`Episode.airDate` **não** entram neste trilho: temporada e
+  episódio futuros de uma série já no ar são a agenda, e têm superfície própria
+  em `/pt/em-breve/` (`getAnticipatedData`).
+- O card **nunca** distingue filme de série só pela cor (invariante 11): o badge
+  carrega o texto "Filme"/"Série", a URL já diverge (`/pt/filmes/` vs
+  `/pt/series/`) e o bookmark grava `movie` vs `tv`. O acento é reforço.
+- **Piso de 4 itens** (`HOME_UPCOMING_MIN`): abaixo disso o trilho não
+  renderiza. Um carrossel com 1 ou 2 cards não é carrossel, e a sangria à
+  direita promete conteúdo que não existe. Na home o piso vale para a
+  **mistura**, não para cada vertical: 2 filmes + 2 séries acendem o trilho.
+- Trilho ausente **não some calado**: passa por `SectionBoundary` com
+  `section: 'em-breve'`, a rota/vertical consultadas e a contagem real. Os dois
+  estados têm motivos **diferentes** — `no_upcoming_title` (zero, a ingestão não
+  cobriu) e `below_upcoming_floor` (existe, mas abaixo do piso, `available`
+  diz quanto). `/pt/series/` vazia e `/pt/series/` nunca ingerida são
+  visualmente idênticas — só o log separa as duas.
+- O piso mora numa função só (`hasEnoughUpcoming`), chamada pelo template **e**
+  pela contagem de seções populadas da home. Se cada um aplicasse o seu próprio
+  `>= 4`, a indexabilidade acabaria contando uma seção que não está na página.
+
+Provado por `tests/web/upcoming-rail-by-route.test.ts` (fiação por rota),
+`tests/web/home-upcoming-presenter.test.ts` (presenter puro + mistura) e
+`apps/web/app/_components/__tests__/home-like-upcoming.test.tsx` (texto visível
+no card renderizado + ausência e log na mesma asserção).
 
 ### QA visual da primeira dobra
 

@@ -35,11 +35,16 @@ describe('home pública — design canônico (tela 02)', () => {
     for (const getter of [
       'getHomeCatalogData()',
       'getNewsIndexData()',
-      'getHomeHeroSlides()',
-      'getHomeUpcomingMovies()',
+      // A home é a UNIÃO: ela pede o escopo `home` explicitamente, e é o único
+      // lugar do app onde as duas verticais convivem numa seção só.
+      "getHomeHeroSlides('home')",
+      // A home mistura filme e serie no trilho "Em breve"; as categorias usam
+      // os getters de uma vertical so (tests/web/upcoming-rail-by-route).
+      'getHomeUpcomingMixed()',
       'getSeriesIndexData()',
-      'getHomeTickerItems()',
+      "getHomeTickerItems('home')",
       'getHomeEditorialHighlights()',
+      "getPopularRankings('home')",
     ]) {
       expect(home).toContain(getter)
     }
@@ -67,9 +72,11 @@ describe('home pública — design canônico (tela 02)', () => {
       '<HomeHeroCarousel slides={heroSlides} />',
       '<HomeTicker items={tickerItems} />',
       '<HomeEditorialHighlights',
-      'className="pop-rail__rank"',
+      // O ranking virou componente próprio (abas reais por vertical); a POSIÇÃO
+      // dele na composição continua sendo a mesma.
+      '<PopularThisWeek',
       'label="Filmes em alta"',
-      '<MonthStats />',
+      '<MonthStats vertical={vertical} />',
       'label="Séries da semana"',
       'className="glimpse-rail"',
       'className="hnews-grid"',
@@ -87,7 +94,11 @@ describe('home pública — design canônico (tela 02)', () => {
     expect(homeLike).toContain('heroSlides.length > 0 ?')
     expect(homeLike).toContain('showMoviesBand && movieCards.length > 0 ?')
     expect(homeLike).toContain('showSeriesBand && seriesCards.length > 0 ?')
-    expect(homeLike).toContain('upcomingMovies.length > 0 ?')
+    // "Em breve" nao usa ternario: a decisao de nao renderizar e o log do
+    // motivo sao a MESMA linha (SectionBoundary), senao a ausencia volta a ser
+    // muda — foi assim que /pt/series/ ficou sem a secao.
+    expect(homeLike).toContain('decision={upcomingSection}')
+    expect(homeLike).toContain("section: 'em-breve'")
     expect(homeLike).toContain('newsCards.length > 0 ?')
     expect(home).toContain('Ainda não há conteúdo publicado')
   })
@@ -220,9 +231,15 @@ describe('home pública — design canônico (tela 02)', () => {
     expect(code(ticker)).not.toMatch(/em cartaz/i)
     // Nenhum provedor hardcoded em lugar nenhum da faixa.
     expect(tickerServer).not.toMatch(/Netflix|Prime Video|Disney\+|Apple TV/)
-    // O crédito exigido pela licença é renderizado VISIVELMENTE.
-    expect(ticker).toContain('ticker__credit')
-    expect(ticker).toContain('attributionText')
+    // O crédito exigido pela licença NÃO fica mais na faixa: desde 2026-08-13
+    // (decisão do proprietário) ele vive no rodapé global, que é chrome de toda
+    // página e não muda a cada slide. Presença provada em
+    // `apps/web/app/_components/__tests__/footer-credits.test.tsx`.
+    // `code(...)` e nao `ticker`: a varredura tem de ser sobre CODIGO. O
+    // comentario que explica a mudanca cita `attributionText` de proposito, e um
+    // grep sobre o texto cru reprovaria a explicacao junto com o defeito.
+    expect(code(ticker)).not.toContain('ticker__credit')
+    expect(code(ticker)).not.toContain('attributionText')
   })
 
   it('anúncios só via AdSlot governado (nunca criativo inline)', () => {

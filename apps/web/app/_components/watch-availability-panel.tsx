@@ -124,33 +124,21 @@ export function WatchAvailabilityPanel({
       ) : null}
 
       {/*
-        Credito da fonte agregadora, exigido pela licenca que autoriza exibir as
-        ofertas (requires_attribution/requires_linkback). O presenter ja
-        descartou qualquer oferta sem o credito devido, entao esta lista nunca
-        fica vazia quando ha grupo — e o credito sempre pertence a uma oferta
-        realmente exibida acima.
+        O CREDITO DA ORIGEM NAO FICA MAIS AQUI.
+
+        Ate 2026-08-12 este painel fechava com "Disponibilidade fornecida por
+        Movie of the Night" / "por JustWatch". Decisao do proprietario (Pablo
+        Eduardo, 2026-08-13): todo credito de fonte passou a viver no RODAPE
+        GLOBAL, que e chrome de toda pagina.
+
+        `view.attributions` continua sendo montado pelo presenter — e
+        proveniencia da oferta que REALMENTE entrou, usada por auditoria e pelos
+        validadores contra Postgres real. Nao renderiza-lo aqui e a decisao;
+        deixar de calcula-lo seria perder o rastro.
+
+        Reintroduzir o credito neste ponto duplica o que o rodape ja diz.
+        Travado por `tests/web/footer-credits.test.tsx`.
       */}
-      {view.attributions.length > 0 ? (
-        <p className="watch-availability__attribution">
-          {view.attributions.map((attribution, index) => (
-            <span key={`${attribution.text}|${attribution.url ?? ""}`}>
-              {index > 0 ? " · " : null}
-              {attribution.url !== null ? (
-                <a
-                  className="watch-availability__attribution-link"
-                  href={attribution.url}
-                  rel="nofollow noopener"
-                  target="_blank"
-                >
-                  {attribution.text}
-                </a>
-              ) : (
-                attribution.text
-              )}
-            </span>
-          ))}
-        </p>
-      ) : null}
     </section>
   );
 }

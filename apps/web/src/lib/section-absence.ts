@@ -33,7 +33,11 @@ export type SectionKey =
   | "guia-critica"
   | "mais-como-este"
   | "elenco"
-  | "noticias";
+  | "noticias"
+  /** Trilho "Em breve" — escopo de ROTA (home/filmes/series), nao de entidade. */
+  | "em-breve"
+  /** Faixa de newsletter do rodape — escopo de CHROME, nao de rota nem entidade. */
+  | "newsletter";
 
 /**
  * Por que o bloco nao renderizou.
@@ -80,7 +84,40 @@ export type SectionAbsenceReason =
   /** O catalogo nao tem elenco para este titulo. */
   | "no_cast"
   /** Nenhum artigo publicado vinculado a esta entidade. */
-  | "no_linked_article";
+  | "no_linked_article"
+  /**
+   * NENHUMA estreia futura no catalogo para a(s) vertical(is) desta rota.
+   *
+   * E sempre um passo pendente, nunca um fato: o mundo real tem estreias
+   * futuras o ano inteiro. Um "Em breve" vazio significa que a ingestao de
+   * upcoming nao cobriu aquela vertical (`ingest-public-catalog
+   * --include-upcoming`) ou que as entidades chegaram sem slug canonico pt-BR.
+   * Sem esta linha, `/pt/series/` sem serie futura e `/pt/series/` com a
+   * ingestao nunca rodada sao visualmente identicos: nada.
+   */
+  | "no_upcoming_title"
+  /**
+   * HA estreias futuras, mas MENOS que o piso do trilho (HOME_UPCOMING_MIN).
+   *
+   * Motivo separado de proposito: "zero" e "tres, precisa de quatro" pedem
+   * acoes diferentes e estao a distancias diferentes de acender. Colapsar os
+   * dois num motivo so apagaria justamente o caso em que a ingestao ja
+   * funciona e falta pouco. O campo `available` carrega quanto ja ha.
+   */
+  | "below_upcoming_floor"
+  /**
+   * NAO EXISTE onde guardar uma inscricao de newsletter.
+   *
+   * Nao ha modelo de inscricao em `packages/db/prisma`. Sem ele, o formulario so
+   * poderia (a) mentir com `200 OK` ou (b) errar sempre — e um formulario que
+   * nunca consegue ter sucesso gasta o gesto do leitor a toa: ele digita o
+   * e-mail, aperta, e recebe erro. Entao a faixa nao renderiza, e este motivo diz
+   * por que.
+   *
+   * `actionable: true`: e um passo pendente (tabela + flag), nunca um fato sobre
+   * o site. O que exatamente destrava esta em `docs/frontend/newsletter.md`.
+   */
+  | "newsletter_storage_unavailable";
 
 /** Uma linha de log estruturada. Sem segredo, sem payload cru, sem PII. */
 export interface SectionAbsence {
@@ -109,6 +146,9 @@ const ACTIONABLE_REASONS: ReadonlySet<SectionAbsenceReason> = new Set([
   "no_approved_formula",
   "no_awards_source",
   "no_recommendation_dataset",
+  "no_upcoming_title",
+  "below_upcoming_floor",
+  "newsletter_storage_unavailable",
 ]);
 
 export interface SectionAbsenceContext {
@@ -131,13 +171,112 @@ export function buildSectionAbsence(context: SectionAbsenceContext): SectionAbse
 }
 
 /**
+ * A MESMA ausencia, quando o bloco pertence a uma ROTA e nao a uma entidade.
+ *
+ * POR QUE UM SEGUNDO FORMATO, E NAO `entityId: "home"`. `SectionAbsence` promete
+ * que `entityId` acha o titulo. O trilho "Em breve" da home nao e sobre titulo
+ * nenhum: ele falta para a rota inteira. Enfiar `"home"` no campo de id seria
+ * mentir no log — e log que mente e pior que log que falta. O que o operador
+ * precisa aqui e a ROTA e a VERTICAL consultada.
+ *
+ * O consumidor continua sendo o mesmo `<SectionBoundary>`: os dois formatos
+ * compartilham `event`/`section`/`reason`/`actionable`, que e tudo que ele le.
+ */
+export interface RouteSectionAbsence {
+  readonly event: "section_absent";
+  readonly section: SectionKey;
+  readonly reason: SectionAbsenceReason;
+  /** Path publico da rota (ex.: `/pt/series/`) — o que o operador abre. */
+  readonly route: string;
+  /** Qual dataset foi consultado e nao rendeu bloco. */
+  readonly vertical: "movie" | "series" | "mixed";
+  /**
+   * Quantos itens EXISTIAM (0 quando nao ha nenhum). E a diferenca entre
+   * "a ingestao nao rodou" e "faltou um titulo para o piso" — sem o numero, o
+   * operador nao sabe se esta longe ou perto de acender. Omitido quando o bloco
+   * nao e contavel.
+   */
+  readonly available?: number;
+  readonly actionable: boolean;
+}
+
+export interface RouteSectionAbsenceContext {
+  readonly section: SectionKey;
+  readonly reason: SectionAbsenceReason;
+  readonly route: string;
+  readonly vertical: "movie" | "series" | "mixed";
+  readonly available?: number;
+}
+
+/** Monta o evento de rota. Nao escreve nada — quem escreve e o chamador. */
+export function buildRouteSectionAbsence(
+  context: RouteSectionAbsenceContext,
+): RouteSectionAbsence {
+  return {
+    event: "section_absent",
+    section: context.section,
+    reason: context.reason,
+    route: context.route,
+    vertical: context.vertical,
+    // `undefined` some do JSON.stringify: bloco nao contavel nao ganha a chave.
+    available: context.available,
+    actionable: ACTIONABLE_REASONS.has(context.reason),
+  };
+}
+
+/**
+ * A MESMA ausencia, quando o bloco pertence ao CHROME e nao a uma rota.
+ *
+ * POR QUE UM TERCEIRO FORMATO. Pelo mesmo motivo que existe o segundo: os campos
+ * dos outros dois seriam MENTIRA aqui. A faixa de newsletter do rodape nao e
+ * sobre titulo nenhum (`entityId` nao acha nada) e nao e sobre rota nenhuma —
+ * ela falta em TODAS, sempre pela mesma causa. Escrever `route: "/pt/"` diria ao
+ * operador que o problema e daquela pagina, e ele iria olhar o lugar errado.
+ *
+ * O que o operador precisa aqui e a SUPERFICIE (onde o buraco esta) e a causa.
+ * Mais nada — porque nao ha mais nada de verdadeiro a dizer.
+ *
+ * O consumidor continua sendo o mesmo `<SectionBoundary>`: os tres formatos
+ * compartilham `event`/`section`/`reason`/`actionable`, que e tudo que ele le.
+ */
+export interface ChromeSectionAbsence {
+  readonly event: "section_absent";
+  readonly section: SectionKey;
+  readonly reason: SectionAbsenceReason;
+  /** Parte do chrome global onde o bloco deveria estar. */
+  readonly surface: "header" | "footer";
+  readonly actionable: boolean;
+}
+
+export interface ChromeSectionAbsenceContext {
+  readonly section: SectionKey;
+  readonly reason: SectionAbsenceReason;
+  readonly surface: "header" | "footer";
+}
+
+/** Monta o evento de chrome. Nao escreve nada — quem escreve e o chamador. */
+export function buildChromeSectionAbsence(
+  context: ChromeSectionAbsenceContext,
+): ChromeSectionAbsence {
+  return {
+    event: "section_absent",
+    section: context.section,
+    reason: context.reason,
+    surface: context.surface,
+    actionable: ACTIONABLE_REASONS.has(context.reason),
+  };
+}
+
+/**
  * Serializa em UMA linha JSON para o coletor de logs do container.
  *
  * JSON e nao prosa porque a linha existe para ser filtrada
  * (`event=section_absent section=onde-assistir actionable=true`), nao lida uma
  * a uma.
  */
-export function formatSectionAbsence(absence: SectionAbsence): string {
+export function formatSectionAbsence(
+  absence: SectionAbsence | RouteSectionAbsence | ChromeSectionAbsence,
+): string {
   return JSON.stringify(absence);
 }
 
@@ -149,7 +288,11 @@ export function formatSectionAbsence(absence: SectionAbsence): string {
  */
 export type SectionDecision<T> =
   | { readonly rendered: true; readonly value: T; readonly absence: null }
-  | { readonly rendered: false; readonly value: null; readonly absence: SectionAbsence };
+  | {
+      readonly rendered: false;
+      readonly value: null;
+      readonly absence: SectionAbsence | RouteSectionAbsence | ChromeSectionAbsence;
+    };
 
 /**
  * Decide um bloco a partir do dado que ele exibiria.
@@ -168,6 +311,24 @@ export function decideSection<T>(
 
   if (empty) {
     return { rendered: false, value: null, absence: buildSectionAbsence(context) };
+  }
+  return { rendered: true, value: value as T, absence: null };
+}
+
+/**
+ * `decideSection` para blocos de ROTA (home, indice de filmes, indice de
+ * series). Mesmas regras — lista vazia e ausencia de proposito —, so muda o
+ * escopo que vai para o log.
+ */
+export function decideRouteSection<T>(
+  value: T | null | undefined,
+  context: RouteSectionAbsenceContext,
+): SectionDecision<T> {
+  const empty =
+    value === null || value === undefined || (Array.isArray(value) && value.length === 0);
+
+  if (empty) {
+    return { rendered: false, value: null, absence: buildRouteSectionAbsence(context) };
   }
   return { rendered: true, value: value as T, absence: null };
 }

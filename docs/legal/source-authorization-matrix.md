@@ -17,9 +17,22 @@
 
 > **Autorizado ≠ visível.** Uma licença permissiva não coloca dado na tela. A
 > exibição ainda depende de decisão de uso vigente, território, frescor, crédito
-> presente e promoção humana da linha. Hoje **Letterboxd e FilmAffinity estão
-> autorizadas mas permanecem invisíveis** por não terem janela de frescor
-> declarada em `RATING_STALE_POLICY` — ver o inventário operacional.
+> presente e promoção humana da linha.
+
+> **REVOGAÇÃO — 13/08/2026 (decisão de Pablo Eduardo).** **Letterboxd e
+> FilmAffinity deixaram de ser autorizadas para exibição**: `display_allowed` e
+> `score_allowed` passaram a `não`, e a decisão `rating_display` das duas foi
+> **removida** (só o armazenamento interno permanece). Elas já eram invisíveis na
+> prática — não têm janela de frescor em `RATING_STALE_POLICY`, então
+> `evaluateRatingFreshness` devolve `unknown-policy` —, mas a licença ainda
+> autorizava o que nunca aconteceria, e isso produzia crédito público no rodapé
+> para uma fonte que não aparece em lugar nenhum.
+>
+> **As linhas continuam na matriz e no `authorization-spec.ts` de propósito.**
+> `planAuthorization` só visita o que está no spec: uma licença que some de lá
+> nunca é superseder­ida e fica órfã e **vigente** no banco. Revogar é mudar o
+> estado, não apagar o registro. A licença de julho foi superseder­ida
+> (`is_current = false`), com histórico preservado.
 
 ## Licenças
 
@@ -30,9 +43,9 @@
 | IMDb | rating | `imdb` | `rating` | third_party | global | sim | sim | sim | sim | sim | **não** | **não** | **não** | `cinerie-source-auth/imdb/2026-07-v1` | via Film & Show Ratings API (RapidAPI) |
 | Rotten Tomatoes | rating | `rotten_tomatoes` | `rating` | third_party | global | sim | sim | sim | sim | sim | **não** | **não** | **não** | `cinerie-source-auth/rotten-tomatoes/2026-07-v1` | via Film & Show Ratings API (RapidAPI) |
 | Metacritic | rating | `metacritic` | `rating` | third_party | global | sim | sim | sim | sim | sim | **não** | **não** | **não** | `cinerie-source-auth/metacritic/2026-07-v1` | via Film & Show Ratings API (RapidAPI) |
-| Letterboxd | rating | `letterboxd` | `rating` | third_party | global | sim | sim | sim | sim | sim | **não** | **não** | **não** | `cinerie-source-auth/letterboxd/2026-07-v1` | via Film & Show Ratings API (RapidAPI) |
-| FilmAffinity | rating | `filmaffinity` | `rating` | third_party | global | sim | sim | sim | sim | sim | **não** | **não** | **não** | `cinerie-source-auth/filmaffinity/2026-07-v1` | via Film & Show Ratings API (RapidAPI) |
-| Movie of the Night | streaming (agregador) | `movie-of-the-night` | `other` | third_party | BR | sim | **não** | n/a | sim | sim | **não** | **não** | **não** | `cinerie-source-auth/movie-of-the-night/2026-07-v1` | via Streaming Availability API (RapidAPI); atribuição junto ao painel |
+| Letterboxd | rating | `letterboxd` | `rating` | third_party | global | sim | **não** | **não** | sim | sim | **não** | **não** | **não** | `cinerie-source-auth/letterboxd/2026-08-v2-revogada` | **EXIBIÇÃO REVOGADA em 13/08/2026**; sem decisão `rating_display`; atribuição segue obrigatória caso volte |
+| FilmAffinity | rating | `filmaffinity` | `rating` | third_party | global | sim | **não** | **não** | sim | sim | **não** | **não** | **não** | `cinerie-source-auth/filmaffinity/2026-08-v2-revogada` | **EXIBIÇÃO REVOGADA em 13/08/2026**; sem decisão `rating_display`; atribuição segue obrigatória caso volte |
+| Movie of the Night | streaming (agregador) | `movie-of-the-night` | `other` | third_party | BR | sim | **não** | n/a | sim | sim | **não** | **não** | **não** | `cinerie-source-auth/movie-of-the-night/2026-07-v1` | via Streaming Availability API (RapidAPI); atribuição no rodapé global (13/08/2026; antes junto ao painel) |
 | Provedores de streaming | provedor canônico | *(slug real)* | `watch_availability` | third_party | BR | sim | sim | n/a | sim | sim | **não** | **não** | **não** | `cinerie-source-auth/2026-07-v1` | **dinâmico**: uma licença por provedor registrado em `watch_providers`; `source_key = slug`; zero enquanto não houver onboarding |
 
 **Território das licenças de rating:** a licença é global (a autorização não é

@@ -133,12 +133,62 @@ const RATING_POLICY: Record<string, string> = {
   imdb: "cinerie-source-auth/imdb/2026-08-v1",
   rotten_tomatoes: "cinerie-source-auth/rotten-tomatoes/2026-08-v1",
   metacritic: "cinerie-source-auth/metacritic/2026-08-v1",
-  // Letterboxd e FilmAffinity NÃO são servidas pela OMDb e não mudam nada nesta
-  // leva. Manter a versão de julho é o que faz o registry devolver `keep` para
-  // elas em vez de supersedir licenças que ninguém tocou.
-  letterboxd: "cinerie-source-auth/letterboxd/2026-07-v1",
-  filmaffinity: "cinerie-source-auth/filmaffinity/2026-07-v1",
+  // Letterboxd e FilmAffinity: EXIBIÇÃO REVOGADA em 2026-08-13 (ver
+  // DISPLAY_REVOKED_SOURCES). A versão sobe para `v2-revogada` justamente para
+  // que o registry SUPERSEDA a licença de julho em vez de devolver `keep` — sem
+  // bump de versão, a revogação não chegaria ao banco.
+  letterboxd: "cinerie-source-auth/letterboxd/2026-08-v2-revogada",
+  filmaffinity: "cinerie-source-auth/filmaffinity/2026-08-v2-revogada",
 };
+
+/**
+ * ============ REVOGAÇÃO DE EXIBIÇÃO — decisão de 2026-08-13 ============
+ *
+ * QUEM DECIDIU: Pablo Eduardo — proprietário da Cinerie.
+ *
+ * O QUE FOI DECIDIDO: **Letterboxd e FilmAffinity deixam de ser autorizadas para
+ * exibição.** A licença continua declarada aqui, mas com `displayAllowed: false`,
+ * `scoreAllowed: false` e **sem decisão `rating_display`** — só o armazenamento
+ * interno permanece.
+ *
+ * POR QUÊ: nenhuma das duas alimenta o produto. A OMDb não as serve, elas não
+ * têm janela em `RATING_STALE_POLICY` (logo `evaluateRatingFreshness` devolve
+ * `unknown-policy` e a nota é inexibível ESTRUTURALMENTE), e as linhas órfãs em
+ * produção estão pendentes de limpeza. Manter uma licença que autoriza exibir o
+ * que nunca vai ao ar produzia um crédito no rodapé para uma fonte que não
+ * aparece em lugar nenhum — afirmação pública sem lastro.
+ *
+ * POR QUE A ENTRADA NÃO FOI SIMPLESMENTE APAGADA — e isto é o ponto:
+ *
+ *   `planAuthorization` faz `entries.map(...)`. Ele **só visita o que está no
+ *   spec**. Uma licença que existe no banco e some daqui NUNCA é visitada: não
+ *   vira `supersede`, não é desativada, e permanece `is_current = true` para
+ *   sempre — autorizando exibição, sem nada no repositório declarando isso.
+ *
+ *   Apagar a entrada seria, portanto, o pior dos dois mundos: o crédito sumiria
+ *   do rodapé (que lê o spec) enquanto a autorização continuaria viva no banco.
+ *   Exatamente a combinação que a migração de créditos existe para impedir.
+ *
+ * COMO A REVOGAÇÃO CHEGA AO BANCO: pelo caminho de supersede que já existe e já
+ * é testado. `licenseMatches` reprova (display/score/versão mudaram) => o
+ * registry emite `supersede`, a licença de julho vira `is_current = false`
+ * (histórico preservado, nunca apagada) e as decisões dela são desativadas.
+ * Requer `pnpm legal sources apply ... --confirm` em produção — decisão humana,
+ * como sempre. O subcomando é `sources apply`, e `--confirm` exige `--reviewer`
+ * E `--policy-version`, esta última com o valor EXATO de `AUTHORIZATION_BATCH`
+ * (qualquer outro sai com erro de uso e não escreve nada). A linha completa está
+ * em `services/legal/README.md` — não a reescreva de memória.
+ *
+ * O QUE **NÃO** FOI DECIDIDO: remover as fontes do vocabulário canônico.
+ * `RATING_SOURCES` e `RATING_SCALES` seguem intactos — a escala do Letterboxd
+ * continua sendo 5, e `validateRating` continua reconhecendo as duas. Revogar
+ * exibição não é apagar a existência da fonte.
+ * ======================================================================
+ */
+const DISPLAY_REVOKED_SOURCES: readonly string[] = ["letterboxd", "filmaffinity"];
+
+const DISPLAY_REVOKED_NOTE =
+  " EXIBICAO REVOGADA (decisao de Pablo Eduardo, 2026-08-13): display_allowed=false, score_allowed=false e SEM decisao rating_display — so armazenamento interno. Motivo: a fonte nao alimenta o produto (nao e servida pela OMDb e nao tem janela em RATING_STALE_POLICY, logo a nota e inexibivel estruturalmente), e manter a autorizacao produzia credito publico no rodape para uma fonte que nao aparece. A entrada NAO foi apagada do spec de proposito: planAuthorization so visita o que esta no spec, entao uma licenca ausente daqui ficaria orfa e vigente no banco. Reverter exige nova decisao humana.";
 
 /**
  * Fontes que a OMDb entrega num único payload. Espelha
@@ -212,13 +262,49 @@ function ratingEntry(source: string): AuthorizationEntry {
   const policy = RATING_POLICY[source]!;
   const servedByOmdb = OMDB_SERVED_SOURCES.includes(source);
   const requiresLinkback = servedByOmdb ? ratingRequiresLinkback(source) : true;
+  const displayRevoked = DISPLAY_REVOKED_SOURCES.includes(source);
 
-  const notes = servedByOmdb
+  const baseNotes = servedByOmdb
     ? OMDB_NOTES_BASE + (requiresLinkback ? LINKBACK_REQUIRED_NOTE : LINKBACK_DISPENSED_NOTE)
     : "Fonte editorial via Film & Show Ratings API (RapidAPI), fornecedor tecnico intermediario. Logo e citacao integral de critica NAO autorizados.";
+  const notes = displayRevoked ? baseNotes + DISPLAY_REVOKED_NOTE : baseNotes;
+
+  /**
+   * Armazenamento interno: existe para TODA fonte, revogada ou não. É o que
+   * mantém a linha auditável em `external_ratings` sem autorizar exibição.
+   */
+  const internalAnalytics: DecisionTarget = {
+    useCase: "internal_analytics",
+    territory: null,
+    stage: "approved_for_internal_use",
+    displayAllowed: false,
+    storageAllowed: true,
+    derivativeAllowed: false,
+    attributionRequired: true,
+    linkbackRequired: requiresLinkback,
+    policyVersion: policy,
+  };
+
+  /**
+   * A decisão de EXIBIR. Fonte revogada não emite nenhuma: sem decisão
+   * `approved_for_display`, o trigger `external_ratings_display_guard` não tem
+   * o que aprovar e a nota nunca pode ir ao ar — a revogação é estrutural, não
+   * uma flag que alguém possa religar sozinho.
+   */
+  const ratingDisplay: DecisionTarget = {
+    useCase: "rating_display",
+    territory: CINERIE_TERRITORY,
+    stage: "approved_for_display",
+    displayAllowed: true,
+    storageAllowed: true,
+    derivativeAllowed: false,
+    attributionRequired: true,
+    linkbackRequired: requiresLinkback,
+    policyVersion: policy,
+  };
 
   return {
-    label: source,
+    label: displayRevoked ? `${source} (exibicao revogada)` : source,
     role: "editorial-rating-source",
     license: {
       sourceKey: source,
@@ -231,40 +317,21 @@ function ratingEntry(source: string): AuthorizationEntry {
       providerKey: null,
       territory: null,
       licenseStatus: "third_party",
-      displayAllowed: true,
+      displayAllowed: !displayRevoked,
       logoAllowed: false,
-      scoreAllowed: true,
+      // A nota (o número) segue a exibição: revogar a exibição e deixar
+      // `scoreAllowed: true` descreveria um estado que não existe.
+      scoreAllowed: !displayRevoked,
       reviewQuoteAllowed: false,
+      // Continua `true` mesmo revogada: a obrigação de creditar não some porque
+      // a exibição parou — ela volta junto no dia em que a exibição voltar.
       requiresAttribution: true,
       requiresLinkback,
       attributionText: RATING_ATTRIBUTION[source]!,
       policyVersion: policy,
       notes,
     },
-    decisions: [
-      {
-        useCase: "rating_display",
-        territory: CINERIE_TERRITORY,
-        stage: "approved_for_display",
-        displayAllowed: true,
-        storageAllowed: true,
-        derivativeAllowed: false,
-        attributionRequired: true,
-        linkbackRequired: requiresLinkback,
-        policyVersion: policy,
-      },
-      {
-        useCase: "internal_analytics",
-        territory: null,
-        stage: "approved_for_internal_use",
-        displayAllowed: false,
-        storageAllowed: true,
-        derivativeAllowed: false,
-        attributionRequired: true,
-        linkbackRequired: requiresLinkback,
-        policyVersion: policy,
-      },
-    ],
+    decisions: displayRevoked ? [internalAnalytics] : [ratingDisplay, internalAnalytics],
   };
 }
 
@@ -507,10 +574,15 @@ export const STATIC_AUTHORIZATION: readonly AuthorizationEntry[] = [
       "Decisao de Pablo Eduardo, 2026-08-13: docs/legal/omdb-awards-source-provenance.md.",
   }),
   // Movie of the Night — AGREGADOR de streaming (via Streaming Availability API,
-  // RapidAPI). É a fonte cuja atribuição vai perto do painel de streaming. NÃO é
-  // um provedor de streaming (Netflix, etc.) — por isso content_type='other',
-  // não 'watch_availability'. A exibição de cada OFERTA é gated por decisão
-  // watch_offer_display POR PROVEDOR CANÔNICO (gerada dinamicamente; ver plan.ts).
+  // RapidAPI). NÃO é um provedor de streaming (Netflix, etc.) — por isso
+  // content_type='other', não 'watch_availability'. A exibição de cada OFERTA é
+  // gated por decisão watch_offer_display POR PROVEDOR CANÔNICO (gerada
+  // dinamicamente; ver plan.ts).
+  //
+  // ONDE A ATRIBUIÇÃO APARECE mudou em 13/08/2026 (decisão de Pablo Eduardo):
+  // era "perto do painel de streaming", passou a ser o RODAPÉ GLOBAL, junto com
+  // todo crédito de fonte. `requiresAttribution` continua `true` — mudou o
+  // endereço, nunca a obrigação. A projeção pública vive em `public-credits.ts`.
   {
     label: "Movie of the Night (agregador de streaming)",
     role: "streaming-aggregator",
@@ -530,7 +602,7 @@ export const STATIC_AUTHORIZATION: readonly AuthorizationEntry[] = [
       attributionText: "Disponibilidade fornecida por Movie of the Night",
       policyVersion: "cinerie-source-auth/movie-of-the-night/2026-07-v1",
       notes:
-        "Agregador de disponibilidade via Streaming Availability API (RapidAPI). Atribuicao obrigatoria perto do painel de streaming. A exibicao de ofertas depende de provedores canonicos registrados e suas decisoes watch_offer_display (por provedor).",
+        "Agregador de disponibilidade via Streaming Availability API (RapidAPI). Atribuicao obrigatoria no rodape global (decisao de 2026-08-13; antes era perto do painel de streaming). A exibicao de ofertas depende de provedores canonicos registrados e suas decisoes watch_offer_display (por provedor).",
     },
     decisions: [
       {
@@ -612,6 +684,24 @@ const STREAMING_ORIGINS: readonly StreamingOrigin[] = [
     note: "via bloco watch/providers do TMDB, que REVENDE dado do JustWatch. Os termos do endpoint exigem creditar o JustWatch nominalmente, sob pena de revogacao do acesso a API do TMDB — que sustenta o catalogo inteiro. O destino da oferta e o link por PAIS do proprio payload (web_url), nunca um deep link fabricado por provedor.",
   },
 ];
+
+/**
+ * Os créditos das origens de streaming, expostos para a PROJEÇÃO PÚBLICA.
+ *
+ * `STREAMING_ORIGINS` continua privado (o `note` é auditoria interna, não vai
+ * para a tela). O que sai daqui é só o texto de atribuição — a letra da licença.
+ *
+ * Por que isto precisa existir: as licenças de streaming nascem por PROVEDOR
+ * CANÔNICO, dinamicamente, a partir do que existe em `watch_providers`. Elas não
+ * estão em `STATIC_AUTHORIZATION`. Sem esta lista, o rodapé só conheceria o
+ * JustWatch depois que alguém registrasse um provedor — e o crédito ao JustWatch
+ * é exigido NOMINALMENTE pelos termos do endpoint `watch/providers` do TMDB, sob
+ * pena de revogação do acesso à API que sustenta o catálogo inteiro.
+ *
+ * Consumido por `public-credits.ts`.
+ */
+export const STREAMING_ORIGIN_CREDITS: readonly { readonly attributionText: string }[] =
+  STREAMING_ORIGINS.map((origin) => ({ attributionText: origin.attributionText }));
 
 /**
  * Autorização de EXIBIÇÃO por provedor canônico de streaming, POR ORIGEM.

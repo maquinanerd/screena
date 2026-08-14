@@ -202,9 +202,17 @@ describe("o aviso nomeia o DESTINO, nunca o fornecedor tecnico", () => {
     expect(visibleText(render([aggregatorRow()]))).not.toMatch(/TMDB|RapidAPI|themoviedb/i);
   });
 
-  it("o credito exibido continua sendo o da origem da oferta", () => {
-    expect(visibleText(render([aggregatorRow()]))).toContain(
-      "Disponibilidade fornecida por JustWatch",
-    );
+  /**
+   * REESCRITO em 2026-08-13: o credito da origem saiu do painel e passou a viver
+   * no rodape global (decisao do proprietario). A presenca dele na PAGINA e
+   * provada em `footer-credits.test.tsx`; aqui prova-se que ele nao ficou para
+   * tras neste painel, o que duplicaria o credito.
+   */
+  it("o credito da origem NAO fica no painel: ele vive no rodape", () => {
+    const texto = visibleText(render([aggregatorRow()]));
+    // Controle positivo: a oferta realmente foi renderizada.
+    expect(texto).toContain("Disponibilidade no Brasil");
+    expect(texto).not.toContain("Disponibilidade fornecida por JustWatch");
+    expect(texto).not.toContain("Disponibilidade fornecida por");
   });
 });

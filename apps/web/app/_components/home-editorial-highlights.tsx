@@ -26,7 +26,7 @@ import type {
   HomeEditorialVertical,
 } from '../../src/lib/home-editorial-presenter'
 
-const TABS: ReadonlyArray<{ vertical: HomeEditorialVertical; label: string }> = [
+const ALL_TABS: ReadonlyArray<{ vertical: HomeEditorialVertical; label: string }> = [
   { vertical: 'movies', label: 'Filmes' },
   { vertical: 'series', label: 'Séries' },
 ]
@@ -95,6 +95,7 @@ export function HomeEditorialHighlights({
   highlights,
   headingId,
   initialVertical = 'movies',
+  verticals = ['movies', 'series'],
 }: {
   highlights: Highlights
   /** `id` do heading da seção. */
@@ -105,21 +106,35 @@ export function HomeEditorialHighlights({
    * são componentes independentes, e trocar de slide não troca a tab.
    */
   initialVertical?: HomeEditorialVertical
+  /**
+   * Verticais OFERECIDAS nesta página. A home oferece as duas (ela é a união);
+   * `/pt/filmes` e `/pt/series` oferecem só a sua — e aí não há toggle nenhum,
+   * porque uma tab sozinha não alterna coisa alguma. Sem esta prop a página de
+   * uma vertical continuaria convidando o leitor à outra.
+   */
+  verticals?: readonly HomeEditorialVertical[]
 }): ReactNode {
   const [active, setActive] = useState<HomeEditorialVertical>(initialVertical)
   const baseId = useId()
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({})
 
-  const cards = active === 'movies' ? highlights.movies : highlights.series
+  const tabs = ALL_TABS.filter((tab) => verticals.includes(tab.vertical))
+  // Vertical ativa sempre dentro do que a página oferece: um `initialVertical`
+  // incoerente com `verticals` nunca abre a lista da outra vertical.
+  const current = tabs.some((tab) => tab.vertical === active)
+    ? active
+    : (tabs[0]?.vertical ?? initialVertical)
+
+  const cards = current === 'movies' ? highlights.movies : highlights.series
   const visible = cards.slice(0, 3)
   const [lead, ...rest] = visible
 
   const onKeyDown = (event: React.KeyboardEvent): void => {
     if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return
     event.preventDefault()
-    const index = TABS.findIndex((tab) => tab.vertical === active)
+    const index = tabs.findIndex((tab) => tab.vertical === current)
     const delta = event.key === 'ArrowRight' ? 1 : -1
-    const next = TABS[(index + delta + TABS.length) % TABS.length]
+    const next = tabs[(index + delta + tabs.length) % tabs.length]
     if (next === undefined) return
     setActive(next.vertical)
     tabRefs.current[next.vertical]?.focus()
@@ -129,35 +144,37 @@ export function HomeEditorialHighlights({
     <>
       <div className="feat-head">
         <SectionTitle id={headingId} title="Destaques de hoje" />
-        <div
-          aria-label="Filtrar destaques editoriais"
-          className="seg-toggle"
-          role="tablist"
-        >
-          {TABS.map((tab) => (
-            <button
-              aria-controls={`${baseId}-panel-${tab.vertical}`}
-              aria-selected={active === tab.vertical}
-              className="seg-toggle__opt"
-              id={`${baseId}-tab-${tab.vertical}`}
-              key={tab.vertical}
-              onClick={() => setActive(tab.vertical)}
-              onKeyDown={onKeyDown}
-              ref={(node) => {
-                tabRefs.current[tab.vertical] = node
-              }}
-              role="tab"
-              tabIndex={active === tab.vertical ? 0 : -1}
-              type="button"
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
+        {tabs.length > 1 ? (
+          <div
+            aria-label="Filtrar destaques editoriais"
+            className="seg-toggle"
+            role="tablist"
+          >
+            {tabs.map((tab) => (
+              <button
+                aria-controls={`${baseId}-panel-${tab.vertical}`}
+                aria-selected={current === tab.vertical}
+                className="seg-toggle__opt"
+                id={`${baseId}-tab-${tab.vertical}`}
+                key={tab.vertical}
+                onClick={() => setActive(tab.vertical)}
+                onKeyDown={onKeyDown}
+                ref={(node) => {
+                  tabRefs.current[tab.vertical] = node
+                }}
+                role="tab"
+                tabIndex={current === tab.vertical ? 0 : -1}
+                type="button"
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
       </div>
 
-      {TABS.map((tab) =>
-        tab.vertical === active ? (
+      {tabs.map((tab) =>
+        tab.vertical === current ? (
           <div
             aria-labelledby={`${baseId}-tab-${tab.vertical}`}
             id={`${baseId}-panel-${tab.vertical}`}

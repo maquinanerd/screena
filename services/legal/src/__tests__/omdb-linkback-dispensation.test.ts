@@ -93,9 +93,34 @@ describe("rastreabilidade da mudanca", () => {
     }
   });
 
-  it("as nao servidas pela OMDb mantem a versao de julho (nao sao supersedidas)", () => {
+  /**
+   * REESCRITO em 2026-08-13. Este teste dizia "as nao servidas pela OMDb mantem
+   * a versao de julho (nao sao supersedidas)", e isso era verdade ATE aqui.
+   *
+   * O que mudou nao foi a leva da OMDb — ela continua sem tocar nessas duas. Foi
+   * uma decisao NOVA e separada (Pablo Eduardo, 2026-08-13): a exibicao de
+   * Letterboxd e FilmAffinity foi REVOGADA. O bump de versao e o mecanismo da
+   * revogacao: sem ele o registry devolveria `keep` e a revogacao nunca chegaria
+   * ao banco.
+   */
+  it("as nao servidas pela OMDb foram REVOGADAS, e a versao carrega o motivo", () => {
     for (const source of ["letterboxd", "filmaffinity"]) {
-      expect(licenseOf(source).policyVersion, source).toContain("2026-07-v1");
+      const license = licenseOf(source);
+      // NAO subiram para a versao da leva da OMDb: a mudanca delas e outra.
+      expect(license.policyVersion, source).not.toContain("2026-08-v1");
+      expect(license.policyVersion, source).toContain("2026-08-v2-revogada");
+      expect(license.displayAllowed, source).toBe(false);
+      expect(license.notes, source).toContain("EXIBICAO REVOGADA");
+      expect(license.notes, source).toContain("2026-08-13");
+      expect(license.notes, source).toContain("Pablo Eduardo");
+    }
+  });
+
+  it("a revogacao nao contaminou as tres fontes da OMDb", () => {
+    // CONTROLE NEGATIVO da revogacao: ela e NOMINAL, como a dispensa de linkback.
+    for (const source of ["imdb", "rotten_tomatoes", "metacritic"]) {
+      expect(licenseOf(source).displayAllowed, source).toBe(true);
+      expect(licenseOf(source).notes, source).not.toContain("EXIBICAO REVOGADA");
     }
   });
 

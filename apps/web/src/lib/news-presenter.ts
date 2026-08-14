@@ -166,6 +166,12 @@ export interface NewsListItemInput {
    * chegava muda ao leitor de tela.
    */
   heroMedia?: NewsHeroMediaInput | null;
+  /**
+   * Vinculos persistidos da materia (`entity_news_links`). Opcional: ausente vira
+   * `[]`, e uma materia sem vinculo simplesmente nao aparece em pagina de
+   * vertical — nunca aparece "por padrao" na vertical errada.
+   */
+  linkedEntityTypes?: readonly NewsLinkedEntityType[];
 }
 
 /** Entidade relacionada JA resolvida pelo server (titulo + slug reais). */
@@ -186,6 +192,40 @@ export interface NewsCardView {
   deck: string | null;
   readTimeLabel: string | null;
   image: NewsImageAsset | null;
+  /**
+   * Tipos das entidades que a materia cita (`entity_news_links`), PERSISTIDOS —
+   * nunca inferidos de palavra no titulo nem de `articles.category` (texto livre
+   * sem vocabulario controlado). E o unico sinal confiavel de vertical de uma
+   * materia, o MESMO que "Destaques de hoje" ja usava.
+   *
+   * A listagem `/pt/noticias/` nao filtra por isto (ela e a uniao). Quem filtra
+   * e a pagina de vertical, via `filterNewsCardsByVertical`.
+   */
+  linkedEntityTypes: readonly NewsLinkedEntityType[];
+}
+
+/** Tipos de vinculo que classificam a vertical de uma materia. */
+export type NewsLinkedEntityType = "movie" | "tv" | "person";
+
+/** Vertical de uma pagina que consome cards de noticia. */
+export type NewsVertical = "home" | "movies" | "series";
+
+/**
+ * Mantem so as materias da vertical pedida. PURO.
+ *
+ * `home` devolve tudo (a home e a uniao). `movies`/`series` exigem o vinculo
+ * `movie`/`tv` correspondente — uma materia hibrida (cita filme E serie) aparece
+ * nas duas, porque ela e das duas. Materia so com vinculo `person`, ou sem
+ * vinculo nenhum, nao entra em pagina de vertical: sem sinal persistido, dizer
+ * que ela e "de filmes" seria a heuristica de palavra-chave que a regra proibe.
+ */
+export function filterNewsCardsByVertical(
+  cards: readonly NewsCardView[],
+  vertical: NewsVertical,
+): NewsCardView[] {
+  if (vertical === "home") return [...cards];
+  const required: NewsLinkedEntityType = vertical === "movies" ? "movie" : "tv";
+  return cards.filter((card) => card.linkedEntityTypes.includes(required));
 }
 
 export interface NewsIndexView {
@@ -466,6 +506,7 @@ export function buildNewsCard(
     deck: trimToNull(input.deck),
     readTimeLabel: formatReadTime(input.readTimeMinutes),
     image: heroImageAsset(input.heroImagePath, null, input.heroMedia ?? null),
+    linkedEntityTypes: input.linkedEntityTypes ?? [],
   };
 }
 

@@ -197,9 +197,46 @@ async function runChecks(url: string): Promise<void> {
          FROM data_usage_decisions d JOIN source_licenses l ON l.id=d.source_license_id
         WHERE d.is_current=true AND d.use_case='rating_display' AND d.stage='approved_for_display'`,
     );
+    // 3. `rating_display` existe EXATAMENTE para as fontes autorizadas a exibir.
+    //
+    // Este check ficou MAIS ESTRITO, nao mais frouxo. Antes exigia a decisao para
+    // as 5 fontes, redigitadas aqui; agora compara com o que o SPEC declara — nos
+    // dois sentidos. Fonte autorizada sem decisao FALHA (era o que ele ja pegava);
+    // fonte revogada COM decisao tambem FALHA (o que ele nao pegava, e e o modo de
+    // falha real depois de uma revogacao: a licenca velha sobreviver no banco).
+    //
+    // A expectativa e DERIVADA do spec, nunca redigitada: uma lista literal aqui
+    // divergiria em silencio na proxima decisao — que e exatamente como uma
+    // autorizacao nao intencional passaria despercebida.
+    //
+    // Contexto: Letterboxd e FilmAffinity tiveram a EXIBICAO REVOGADA em
+    // 2026-08-13 (decisao de Pablo Eduardo). Elas continuam declaradas no spec,
+    // com display_allowed=false e sem decisao rating_display — apagar a entrada
+    // deixaria a licenca orfa e vigente, porque `planAuthorization` so visita o
+    // que esta no spec.
     const ratingSources = new Set(ratingDecisions.map((r) => r.source_key));
-    const fiveRatings = ["imdb", "rotten_tomatoes", "metacritic", "letterboxd", "filmaffinity"].every((s) => ratingSources.has(s));
-    record(3, "rating_display existe para as 5 fontes de rating", fiveRatings, `fontes=${[...ratingSources].join(",")}`);
+    const esperadasComDisplay = new Set(
+      STATIC_AUTHORIZATION.filter(
+        (e) => e.license.contentType === "rating" && e.license.displayAllowed,
+      ).map((e) => e.license.sourceKey),
+    );
+    const revogadas = STATIC_AUTHORIZATION.filter(
+      (e) => e.license.contentType === "rating" && !e.license.displayAllowed,
+    ).map((e) => e.license.sourceKey);
+
+    const faltando = [...esperadasComDisplay].filter((s) => !ratingSources.has(s));
+    const sobrando = revogadas.filter((s) => ratingSources.has(s));
+    // Anti-vacuidade: se o spec nao autorizasse NENHUMA fonte, os dois conjuntos
+    // ficariam vazios e o check passaria sem verificar nada.
+    const temCobertura = esperadasComDisplay.size > 0 && revogadas.length > 0;
+    record(
+      3,
+      "rating_display existe EXATAMENTE para as fontes autorizadas (revogada nao tem decisao)",
+      faltando.length === 0 && sobrando.length === 0 && temCobertura,
+      faltando.length === 0 && sobrando.length === 0
+        ? `autorizadas=${[...esperadasComDisplay].sort().join(",")} | revogadas=${revogadas.sort().join(",")}`
+        : `faltando=${faltando.join(",") || "nenhuma"} | revogadas COM decisao=${sobrando.join(",") || "nenhuma"}`,
+    );
     record(4, "rating_display: territorio=BR em todas as decisoes", ratingDecisions.every((r) => r.territory === "BR"), `n=${ratingDecisions.length} fora de BR=${ratingDecisions.filter((r) => r.territory !== "BR").length}`);
 
     // 4a. ATRIBUICAO e obrigatoria em TODAS as fontes, sem excecao. A decisao de

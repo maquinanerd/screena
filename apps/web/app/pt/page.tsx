@@ -12,19 +12,25 @@ import {
   takeSectionCards,
 } from '../../src/lib/portal-presenter'
 import { excludeEditorialHighlights } from '../../src/lib/home-editorial-presenter'
+import { hasEnoughUpcoming } from '../../src/lib/home-upcoming-presenter'
+import { RANKING_TABS, resolveActiveRankingSlug } from '../../src/lib/popular-rankings'
+import { getPopularRankings } from '../../src/server/popular-rankings'
 import { HOME_PATH, SITE_URL, canonicalPublicUrl, publicRobots } from '../../src/lib/site'
 import { getHomeCatalogData } from '../../src/server/home-catalog'
 import { getHomeEditorialHighlights } from '../../src/server/home-editorial'
 import { getHomeHeroSlides } from '../../src/server/home-hero'
 import { getHomeTickerItems } from '../../src/server/home-ticker'
-import { getHomeUpcomingMovies } from '../../src/server/home-upcoming'
+import { getHomeUpcomingMixed } from '../../src/server/home-upcoming'
 import { getNewsIndexData } from '../../src/server/news-pages'
 import { getSeriesIndexData } from '../../src/server/entity-indexes'
 
 /**
  * Home pública pt-BR — tela 02 do handoff canônico, renderizada pelo template
  * compartilhado `HomeLike` (a MESMA composição é reusada pelas categorias,
- * tela 04, EX-04-dual). Na home, as DUAS bandas (filmes e séries) aparecem.
+ * tela 04, EX-04-dual). Na home, as DUAS bandas (filmes e séries) aparecem —
+ * e o trilho "Em breve" segue a mesma regra: aqui ele é MISTO
+ * (`getHomeUpcomingMixed`), enquanto `/pt/filmes/` mostra só filmes e
+ * `/pt/series/` só séries.
  *
  * "Seu mês em números" e o bookmark dos cards são canônicos e REAIS: a faixa
  * de stats é boundary autenticado no cliente (dado pessoal nunca entra no
@@ -58,18 +64,23 @@ async function getHomeData() {
     catalog,
     news,
     heroSlides,
-    upcomingMovies,
+    upcomingItems,
     seriesIndex,
     tickerItems,
     editorialHighlights,
+    rankings,
   ] = await Promise.all([
     getHomeCatalogData(),
     getNewsIndexData(),
-    getHomeHeroSlides(),
-    getHomeUpcomingMovies(),
+    // A home é a UNIÃO: escopo `home` mantém a composição canônica (filmes por
+    // ano desc, depois séries) e as duas bandas ligadas. Nada aqui é filtrado —
+    // e o trilho "Em breve" segue a mesma regra, com o dataset misto.
+    getHomeHeroSlides('home'),
+    getHomeUpcomingMixed(),
     getSeriesIndexData(),
-    getHomeTickerItems(),
+    getHomeTickerItems('home'),
     getHomeEditorialHighlights(),
+    getPopularRankings('home'),
   ])
 
   const sourceNews = [
@@ -104,19 +115,29 @@ async function getHomeData() {
       heroSlides.length,
       movieCards.length,
       seriesWeekCards.length,
-      upcomingMovies.length,
+      // Conta o trilho pelo que ele RENDERIZA: abaixo do piso ele não está na
+      // página, e uma seção fora da página não é seção populada. O piso vem de
+      // `hasEnoughUpcoming` — a MESMA função que o template usa para decidir,
+      // para que render e indexabilidade não possam divergir.
+      hasEnoughUpcoming(upcomingItems) ? upcomingItems.length : 0,
       newsCards.length,
     ]),
   })
+
+  const rankingPanels = RANKING_TABS.home.map((tab, position) => ({
+    tab,
+    items: rankings[position]?.items ?? [],
+  }))
 
   return {
     heroSlides,
     movieCards,
     seriesWeekCards,
-    upcomingMovies,
+    upcomingItems,
     newsCards,
     tickerItems,
     editorialHighlights: dedupedHighlights,
+    rankingPanels,
     indexability,
   }
 }
@@ -139,15 +160,22 @@ export async function generateMetadata(): Promise<Metadata> {
   }
 }
 
-export default async function HomePage() {
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
+  const params = await searchParams
+  const rankingActiveSlug = resolveActiveRankingSlug('home', params.ranking)
   const {
     heroSlides,
     movieCards,
     seriesWeekCards,
-    upcomingMovies,
+    upcomingItems,
     newsCards,
     tickerItems,
     editorialHighlights,
+    rankingPanels,
   } = await getHomeData()
 
   return (
@@ -161,11 +189,14 @@ export default async function HomePage() {
         heroSlides={heroSlides}
         movieCards={movieCards}
         newsCards={newsCards}
+        rankingActiveSlug={rankingActiveSlug}
+        rankingPanels={rankingPanels}
         seriesCards={seriesWeekCards}
         showMoviesBand
         showSeriesBand
         tickerItems={tickerItems}
-        upcomingMovies={upcomingMovies}
+        upcoming={{ items: upcomingItems, vertical: 'mixed', route: HOME_PATH }}
+        vertical="home"
       />
 
       <script

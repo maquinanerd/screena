@@ -5,6 +5,10 @@ export default defineConfig({
   test: {
     include: [
       'tests/**/*.test.ts',
+      // `tests/**` tambem cobre .tsx: um teste de composicao (chrome + conteudo)
+      // precisa de JSX e mora em tests/, nao dentro do app. Sem esta linha o
+      // arquivo simplesmente nao e coletado — e "0 testes" parece verde.
+      'tests/**/*.test.tsx',
       'packages/**/*.test.ts',
       'api-clients/**/*.test.ts',
       'services/**/*.test.ts',
@@ -44,6 +48,13 @@ export default defineConfig({
       '@screena/seo': fileURLToPath(new URL('./packages/seo/src/index.ts', import.meta.url)),
       '@screena/ui': fileURLToPath(new URL('./packages/ui/src/index.ts', import.meta.url)),
       '@screena/types': fileURLToPath(new URL('./packages/types/src/index.ts', import.meta.url)),
+      // ANTES de '@screena/db': o alias de string casa por PREFIXO, e o mais
+      // curto sequestraria '@screena/db/server' para o index do pacote. Este
+      // subcaminho existe para os testes que exercitam a camada de dados com um
+      // cliente Prisma injetado — o modulo so importa o TIPO no caminho deles.
+      '@screena/db/server': fileURLToPath(
+        new URL('./packages/db/src/server.ts', import.meta.url),
+      ),
       '@screena/db': fileURLToPath(new URL('./packages/db/src/index.ts', import.meta.url)),
       '@screena/public-contracts': fileURLToPath(
         new URL('./packages/public-contracts/src/index.ts', import.meta.url),
@@ -53,6 +64,13 @@ export default defineConfig({
       ),
       '@screena/editorial-contracts': fileURLToPath(
         new URL('./packages/editorial-contracts/src/index.ts', import.meta.url),
+      ),
+      // MAIS ESPECIFICO PRIMEIRO: o alias de string do Vite casa por PREFIXO,
+      // entao `@screena/legal` sozinho capturaria `@screena/legal/public-credits`
+      // e resolveria para `.../index.ts/public-credits`. A ordem aqui nao e
+      // estilo — inverter as duas linhas quebra a resolucao.
+      '@screena/legal/public-credits': fileURLToPath(
+        new URL('./services/legal/src/public-credits.ts', import.meta.url),
       ),
       '@screena/legal': fileURLToPath(new URL('./services/legal/src/index.ts', import.meta.url)),
       '@screena/news-ingestion': fileURLToPath(

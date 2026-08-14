@@ -108,6 +108,13 @@
   /* Acento do contexto atual (neutro por padrao; rota define) */
   --ctx-accent: var(--c-text-primary);
   --ctx-accent-dark: var(--c-text-primary);
+
+  /* Acento SOBRE FAIXA ESCURA (numero do rank e sublinhado da aba ativa em
+     "Popular essa semana"). E um token proprio, e nao `--ctx-accent`, porque
+     aquele carrega a variante de CONTRASTE PARA FUNDO CLARO (`-cta`/`-dark`):
+     usa-lo aqui deixaria o numero do rank ilegivel sobre #0E0E10. A home usa o
+     vermelho (composicao canonica); so `/pt/series` troca. */
+  --pop-accent: var(--c-accent-movie);
 }
 
 /* Contexto por vertical (o acento NUNCA e o unico sinal — invariante 11) */
@@ -127,6 +134,7 @@
   --ctx-accent-dark: var(--c-accent-series-dark);
   --ctx-kicker: var(--c-accent-series-dark);
   --ctx-kicker-on-dark: #9fc48a;
+  --pop-accent: var(--c-accent-series);
 }
 
 /* ------------------------------------------------------------------ */
@@ -612,92 +620,414 @@ body:has(.art-hero[data-hero-media='true']) .site-header__spacer {
 }
 
 /* ------------------------------------------------------------------ */
-/* Footer claro editorial                                              */
+/* Footer global ESCURO — 5 faixas (FOOTER-SPEC.md)                    */
+/*                                                                     */
+/* Este rodape e o UNICO lugar onde o credito de fonte acontece         */
+/* (decisao do proprietario, 2026-08-13). Nenhuma regra daqui pode      */
+/* esconder `.footer__credits` — nem por breakpoint, nem por overflow.  */
+/* Travado por tests/web/footer-credits.test.tsx.                       */
+/*                                                                     */
+/* Nomes de classe NOVOS (`.footer__*`, nao `.site-footer__*`): os      */
+/* seletores antigos morreram junto com o rodape claro, e reaproveitar  */
+/* o nome deixaria regra orfa desta folha de 9k linhas mordendo o       */
+/* layout novo por ordem de documento.                                  */
 /* ------------------------------------------------------------------ */
 
-.site-footer {
-  background: var(--c-bg-subtle);
-  border-top: 1px solid var(--c-border);
-  padding-block: 40px 32px;
+.footer {
+  /* Tokens locais da faixa escura: o rodape e uma ilha de tema, entao as
+     opacidades vivem aqui e nao poluem o :root claro do resto do site. */
+  --footer-bg: #1c1c1c;
+  --footer-text-primary: #ffffff;
+  --footer-text-secondary: rgba(255, 255, 255, 0.68);
+  --footer-text-tertiary: rgba(255, 255, 255, 0.62);
+  --footer-text-quaternary: rgba(255, 255, 255, 0.5);
+  --footer-rule: rgba(255, 255, 255, 0.12);
+  --footer-border-control: rgba(255, 255, 255, 0.14);
+  --footer-border-icon: rgba(255, 255, 255, 0.28);
+  --footer-surface-subtle: rgba(255, 255, 255, 0.04);
+  --footer-accent-neutral: rgba(255, 255, 255, 0.32);
+
+  background: var(--footer-bg);
+  color: var(--footer-text-secondary);
   margin-top: var(--section-rhythm);
 }
 
-.site-footer__inner {
+.footer__inner {
   max-width: var(--container-editorial);
   margin-inline: auto;
   padding-inline: var(--pad-page);
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
 }
 
-.site-footer__top {
+.footer a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.footer a:hover {
+  color: var(--footer-text-primary);
+}
+
+/* Foco visivel em TODO interativo do rodape. Nao remover: sobre #1C1C1C o
+   outline branco e o unico sinal de foco que sobrevive ao fundo escuro. */
+.footer a:focus-visible,
+.footer button:focus-visible,
+.footer input:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+}
+
+/* ---- 1 · Topo: marca + redes ---- */
+.footer__top {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 16px 32px;
+  flex-wrap: wrap;
+  gap: 32px;
+  padding-top: 56px;
 }
 
-.site-footer__logo {
-  width: 116px;
-  height: 36px;
+.footer__brand {
   display: block;
 }
 
-.site-footer__links {
+.footer__wordmark {
+  display: block;
+  width: 150px;
+  height: 46px;
+}
+
+.footer__wordmark--base {
+  width: 120px;
+  height: 30px;
+  opacity: 0.55;
+}
+
+.footer__social {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px 24px;
+  align-items: center;
+  gap: 10px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.site-footer__links a {
+/* Alvo de toque de 44px vem do `padding` (margin negativa devolve o ritmo
+   visual), nunca de um circulo maior — o desenho e 36x36. */
+.footer__social-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--footer-border-icon);
+  border-radius: 50%;
+  color: rgba(255, 255, 255, 0.9);
+  padding: 4px;
+  margin: -4px;
+  box-sizing: content-box;
+}
+
+.footer__social-link:hover {
+  border-color: #ffffff;
+}
+
+/* ---- 2 · Colunas ---- */
+.footer__columns {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 32px;
+  padding-top: 44px;
+}
+
+.footer__column-title {
+  /* `inline-block` e obrigatorio: o sublinhado acompanha a largura do TEXTO,
+     nao a da coluna. Sem isto o acento vira uma regua que atravessa a coluna. */
+  display: inline-block;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--footer-text-primary);
+  padding-bottom: 10px;
+  border-bottom: 2px solid var(--footer-accent-neutral);
+}
+
+/* Acento por vertical. E APOIO visual: quem carrega a diferenciacao
+   filme/serie e label + badge + breadcrumb + schema + URL (invariante 11). */
+.footer__column-title[data-accent='movies'] {
+  border-bottom-color: var(--c-accent-movie);
+}
+
+.footer__column-title[data-accent='series'] {
+  border-bottom-color: var(--c-accent-series);
+}
+
+.footer__column-links {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
   font-size: 13px;
-  font-weight: 600;
-  color: var(--c-text-secondary);
 }
 
-.site-footer__links a:hover {
-  color: var(--c-text-primary);
+/* ---- 3 · Newsletter ---- */
+.footer-newsletter {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 28px;
+  margin-top: 44px;
+  padding: 24px 28px;
+  border: 1px solid var(--footer-border-control);
+  background: var(--footer-surface-subtle);
 }
 
-/* Linha PROPRIA dos documentos legais: sublinhados e um pouco mais escuros que
-   a navegacao de produto, porque sao obrigacao e nao atalho de conteudo. */
-.site-footer__legal {
+.footer-newsletter__pitch {
+  flex-shrink: 0;
+}
+
+.footer-newsletter__title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--footer-text-primary);
+}
+
+.footer-newsletter__subtitle {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--footer-text-tertiary);
+}
+
+.footer-newsletter__form {
+  flex: 1;
+  min-width: 280px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+/* Rotulo visualmente oculto, NUNCA `display:none` (some do leitor de tela). */
+.footer-newsletter__label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.footer-newsletter__input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.24);
+  padding: 8px 2px;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--footer-text-primary);
+}
+
+.footer-newsletter__input::placeholder {
+  color: var(--footer-text-tertiary);
+}
+
+.footer-newsletter__submit {
+  background: #ffffff;
+  color: #101010;
+  border: none;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 12px 26px;
+  cursor: pointer;
+}
+
+.footer-newsletter__submit:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.footer-newsletter__done {
+  flex: 1;
+  min-width: 280px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--footer-text-primary);
+}
+
+/* A regiao de status existe SEMPRE no DOM (por isso pode ficar vazia); ela so
+   ocupa espaco quando tem texto. */
+.footer-newsletter__status:empty {
+  display: none;
+}
+
+.footer-newsletter__status {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 12px;
+  color: var(--c-accent-movie);
+}
+
+/* ---- 4 · Legal + creditos de fonte ---- */
+.footer__legal {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 28px;
+  margin-top: 44px;
+  padding: 26px 0;
+  border-top: 1px solid var(--footer-rule);
+}
+
+.footer__legal-links {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 20px;
+  gap: 24px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+
+.footer__credits {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.footer__credits-label {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--footer-text-quaternary);
+  padding-top: 2px;
+}
+
+.footer__credits-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.site-footer__legal a {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--c-text-body);
+.footer__credit {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+}
+
+.footer__credit-text {
+  color: var(--footer-text-secondary);
+}
+
+.footer__credit-role {
+  font-size: 10px;
+  color: var(--footer-text-quaternary);
+}
+
+/* ---- 5 · Base ---- */
+.footer__base {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 28px;
+  padding: 22px 0 40px;
+  border-top: 1px solid var(--footer-rule);
+}
+
+.footer__base-text {
+  max-width: 92ch;
+}
+
+.footer__copyright {
+  margin: 0;
+  font-size: 11px;
+  color: var(--footer-text-tertiary);
+}
+
+.footer__disclaimer {
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--footer-text-quaternary);
+}
+
+.footer__disclaimer a {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
-.site-footer__legal a:hover {
-  color: var(--c-text-primary);
+/* ---- Responsivo (FOOTER-SPEC.md §7) ---- */
+@media (max-width: 1279px) {
+  .footer__inner {
+    padding-inline: 56px;
+  }
 }
 
-.site-footer__attribution {
-  margin: 0;
-  font-size: 12px;
-  color: var(--c-text-secondary);
-  border-top: 1px solid var(--c-border);
-  padding-top: 16px;
+@media (max-width: 1023px) {
+  .footer__inner {
+    padding-inline: 40px;
+  }
+
+  .footer__columns {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .footer-newsletter__pitch,
+  .footer-newsletter__form {
+    flex-basis: 100%;
+  }
+
+  .footer__legal,
+  .footer__base {
+    flex-direction: column;
+  }
 }
 
 @media (max-width: 767px) {
-  .site-footer__inner {
+  .footer__inner {
     padding-inline: var(--pad-page-mobile);
+  }
+
+  .footer__top {
+    flex-direction: column;
+    align-items: flex-start;
+    padding-top: 40px;
+  }
+
+  .footer__columns {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 28px;
+  }
+
+  .footer-newsletter__form {
+    flex-wrap: wrap;
+  }
+
+  .footer-newsletter__submit {
+    width: 100%;
+  }
+
+  /* A wordmark decorativa da base sai no mobile (spec §7). Os CREDITOS nunca
+     saem: nenhum breakpoint pode esconder `.footer__credits`. */
+  .footer__wordmark--base {
+    display: none;
   }
 }
 
@@ -1027,30 +1357,14 @@ body:has(.art-hero[data-hero-media='true']) .site-header__spacer {
   align-items: center;
   justify-content: space-between;
   gap: 20px;
-  /* O credito de licenca (quando exigido) ocupa uma 2a linha propria. */
   flex-wrap: wrap;
   row-gap: 6px;
 }
 
-/*
- * Credito da fonte agregadora. DESIGN-DELTA consciente: o canonico nao previa
- * esta linha porque e um mock sem licenca. A licenca que autoriza exibir a
- * oferta e a MESMA que obriga creditar (invariante 6) — omitir o credito para
- * copiar o mock seria uso nao licenciado. So aparece quando ha provedor.
- */
-.ticker__credit {
-  flex-basis: 100%;
-  margin: 0;
-  max-width: none;
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  color: rgba(16, 16, 16, 0.72);
-}
-
-.ticker__credit a {
-  text-decoration: underline;
-  text-underline-offset: 0.18em;
-}
+/* O credito da fonte agregadora SAIU da faixa em 13/08/2026 (decisao do
+   proprietario): todo credito de fonte vive no rodape global. As regras
+   `.ticker__credit` foram removidas junto com a marcacao — CSS orfao vira
+   armadilha para quem tentar "restaurar" o bloco. Ver `.footer__credits`. */
 
 .ticker__label {
   background: var(--c-text-primary);
@@ -1418,10 +1732,31 @@ body:has(.art-hero[data-hero-media='true']) .site-header__spacer {
   margin-bottom: -1px;
 }
 
-.pop-tabs__tab[aria-current='true'] {
-  font-weight: 800;
+/* A aba é <button role="tab">, não link: `aria-selected` é o estado real. O
+   sublinhado usa o acento da VERTICAL (vermelho em filmes e na home, verde em
+   séries) — nunca branco fixo, que apagava a diferença entre as duas páginas. */
+.pop-tabs__tab[aria-selected='true'] {
+  font-weight: 700;
   color: #fff;
-  border-bottom-color: #fff;
+  border-bottom-color: var(--pop-accent);
+}
+
+.pop-tabs__tab:hover {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.pop-tabs__tab:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+}
+
+/* Aba sem resultado: a seção FICA, com altura preservada. Escondê-la tornaria o
+   recorte vazio invisível — o leitor não saberia que aquela aba existe. */
+.pop-empty {
+  margin: 36px 0 0;
+  min-height: 228px;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.5);
 }
 
 .rail-wrap {
@@ -1475,7 +1810,9 @@ body:has(.art-hero[data-hero-media='true']) .site-header__spacer {
 .pop-rail__rank span {
   font-size: 34px;
   font-weight: 800;
-  color: var(--c-accent-movie);
+  /* Acento da VERTICAL. Estava preso ao vermelho: o ranking de /pt/series saía
+     com o número em vermelho de filme. */
+  color: var(--pop-accent);
   line-height: 1;
   letter-spacing: -0.04em;
 }
@@ -1509,6 +1846,77 @@ body:has(.art-hero[data-hero-media='true']) .site-header__spacer {
   border-color: rgba(255, 255, 255, 0.16);
   color: #fff;
   box-shadow: none;
+}
+
+/* --------------------------------------------------------------------------
+   "Popular essa semana" — matriz responsiva.
+
+   A barra de abas era `justify-content:center` com `gap:36px` e SEM regra de
+   viewport estreita. Com tres ou quatro abas ("No ar · Streaming · Novas
+   temporadas"), a 320px ela ultrapassava a largura do container e empurrava a
+   PAGINA para a rolagem horizontal. Abaixo de 768px as abas rolam sozinhas,
+   alinhadas a esquerda e sem quebrar linha — o resto da pagina fica parado.
+
+   Os valores de geometria (152/144/132/116 no poster, 54/46 no disco) sao os do
+   canonico; o disco menor abaixo de 1024px existe porque 54px sobre um poster de
+   116px cobriria um quarto da arte.
+   -------------------------------------------------------------------------- */
+@media (max-width: 1279px) {
+  .pop-tabs {
+    gap: 28px;
+  }
+  .pop-rail__item {
+    flex: 0 0 144px;
+  }
+}
+
+@media (max-width: 1023px) {
+  .pop-tabs {
+    gap: 22px;
+  }
+  .pop-rail__item {
+    flex: 0 0 132px;
+  }
+  .pop-rail__rank {
+    width: 46px;
+    height: 46px;
+  }
+  .pop-rail__rank span {
+    font-size: 28px;
+  }
+  .pop-empty {
+    min-height: 198px;
+  }
+  /* Abaixo de 1024px o controle e o swipe: a seta some do DOM (o `Rail` a
+     renderiza sempre; aqui ela deixa de ocupar espaco e de receber foco). */
+  .pop-rail ~ .rail-arrow,
+  .rail-wrap:has(.pop-rail) .rail-arrow {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .pop-tabs {
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .pop-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .pop-tabs__tab {
+    /* Sem isto o flex encolhe os rotulos ate quebrarem no meio da palavra. */
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+  .pop-rail__item {
+    flex: 0 0 116px;
+  }
+  .pop-empty {
+    min-height: 174px;
+  }
 }
 
 /* Certified-fresh cards (Filmes em alta / Séries da semana) */
@@ -1848,6 +2256,36 @@ body:has(.art-hero[data-hero-media='true']) .site-header__spacer {
   padding: 10px 18px;
   border-radius: var(--r-pill);
   flex-shrink: 0;
+}
+
+/* Vertical do card "Em breve" — invariante 11.
+   Na home o trilho é MISTO (filme + série no mesmo carrossel), então a
+   diferença precisa ser LEGÍVEL: o badge carrega o texto "Filme"/"Série" e o
+   acento é só reforço. Estas regras vêm DEPOIS das de cima de propósito —
+   globals.css resolve conflito por ordem de documento. */
+.glimpse-card__badge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  background: var(--c-accent-movie-cta);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 5px 10px;
+  border-radius: var(--r-pill);
+}
+
+/* DD-03: serie usa verde ESCURO quando ha texto branco por cima (o verde claro
+   falha AA). Mesmo par usado em `.fresh-card--series .fresh-card__cta`. */
+.glimpse-card[data-vertical='series'] .glimpse-card__badge,
+.glimpse-card[data-vertical='series'] .glimpse-card__watch,
+.glimpse-card[data-vertical='series'] .card-bookmark--circle[aria-pressed='true'] {
+  background: var(--c-accent-series-dark);
 }
 
 /* Notícias & entrevistas (home) — lead 430 + grade 2x2 de 200 */
@@ -3238,8 +3676,9 @@ a.tabs__tab[aria-current='page'] {
   line-height: 1.35;
 }
 
-/* A linha meta carrega o CREDITO. Ele nao pode sair daqui: a licenca exige
-   credito visivel JUNTO da nota (ver o cabecalho de ratings-panel.tsx). */
+/* A linha meta carrega SO a contagem de votos. O credito saiu daqui em
+   13/08/2026 (decisao do proprietario) e vive no rodape global — a licenca
+   continua exigindo credito visivel, mudou o endereco. Ver `.footer__credits`. */
 .rating-chip__meta {
   display: block;
   margin-top: 4px;
@@ -3251,17 +3690,6 @@ a.tabs__tab[aria-current='page'] {
 .rating-chip__count {
   display: block;
   font-weight: 600;
-}
-
-.rating-chip__credit {
-  display: block;
-  overflow-wrap: anywhere;
-}
-
-.rating-chip__credit-link {
-  color: inherit;
-  text-decoration: underline;
-  text-underline-offset: 2px;
 }
 
 .rating-chips__note,
@@ -6939,7 +7367,6 @@ h4.art-body__heading {
   content: ', ';
 }
 
-.watch-availability__attribution,
 .watch-availability__updated {
   font-size: 12px;
   color: var(--c-text-secondary);
@@ -9115,6 +9542,30 @@ h4.art-body__heading {
   margin-top: 10px;
 }
 
+/* Lista de creditos da pagina /pt/creditos-de-dados/. `<dl>` porque cada linha e
+   um par (credito exigido pela licenca -> o que a fonte alimenta), nao um item
+   solto de lista. */
+.data-credits {
+  margin: 18px 0 0;
+}
+
+.data-credits__row {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.data-credits__row > dt {
+  font-size: 16.5px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.data-credits__row > dd {
+  margin: 4px 0 0;
+  font-size: 14px;
+  color: var(--c-text-secondary);
+}
+
 .legal-body li > ul {
   margin: 10px 0 0;
   padding-left: 20px;
@@ -9228,13 +9679,11 @@ h4.art-body__heading {
  * ==================================================================== */
 
 .detail-hero__crumbs a,
-.rating-chip__credit-link,
 .season-tabs a {
   position: relative;
 }
 
 .detail-hero__crumbs a::after,
-.rating-chip__credit-link::after,
 .season-tabs a::after {
   content: '';
   position: absolute;
@@ -9251,7 +9700,6 @@ h4.art-body__heading {
   .rating-chip__metric,
   .rating-chip__meta,
   .rating-chip__count,
-  .rating-chip__credit,
   .rating-chips__note,
   .rating-chips__updated,
   .detail-badge,

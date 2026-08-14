@@ -27,6 +27,19 @@ const LANGUAGE_CODE = "pt-BR";
 /** Quantos slides o carousel exibe no maximo. */
 export const HOME_HERO_SLIDE_LIMIT = 5;
 
+/**
+ * Escopo do hero. A home e a UNIAO das duas verticais; `/pt/filmes` e
+ * `/pt/series` pedem SO a sua.
+ *
+ * POR QUE ISTO E UM PARAMETRO E NAO UM `.filter()` NA PAGINA. Era um filtro na
+ * pagina — e por isso `/pt/series` ficou SEM hero. O corte
+ * `[...movies, ...series].slice(0, 5)` acontecia ANTES do filtro: com cinco ou
+ * mais filmes com slug canonico (producao tem 129), nenhuma serie sobrevivia ao
+ * `slice`, e a pagina de series filtrava uma lista onde ja nao havia serie
+ * alguma. O limite so pode ser aplicado depois de o escopo ser conhecido.
+ */
+export type HeroScope = "home" | "movies" | "series";
+
 type PrismaClient = ReturnType<typeof getPrismaClient>;
 type HeroEntityType = "movie" | "tv";
 
@@ -218,20 +231,41 @@ function byYearDesc(a: HeroCandidate, b: HeroCandidate): number {
 }
 
 /**
- * Monta os slides do hero-carousel: filmes (por ano desc) primeiro, depois
- * series, ate `HOME_HERO_SLIDE_LIMIT`. Resolve crew/cast so dos candidatos que
- * entram no carousel (evita N+1 no catalogo inteiro). Sem dado real -> [] e a
- * home cai para o fallback seguro (nunca o hero antigo com poster).
+ * Escolhe os candidatos do escopo pedido, ja ordenados e limitados.
+ *
+ * `home` mantem a composicao canonica (filmes por ano desc primeiro, depois
+ * series); `movies`/`series` levam SO a sua vertical — e por isso o `slice`
+ * nunca mais pode esvaziar uma delas.
  */
-export const getHomeHeroSlides = cache(async (): Promise<HeroSlide[]> => {
-  const prisma = getPrismaClient();
-  const [movies, series] = await Promise.all([
-    movieCandidates(prisma),
-    seriesCandidates(prisma),
-  ]);
+function selectHeroCandidates(
+  movies: HeroCandidate[],
+  series: HeroCandidate[],
+  scope: HeroScope,
+): HeroCandidate[] {
   movies.sort(byYearDesc);
   series.sort(byYearDesc);
-  const selected = [...movies, ...series].slice(0, HOME_HERO_SLIDE_LIMIT);
+  const pool =
+    scope === "movies" ? movies : scope === "series" ? series : [...movies, ...series];
+  return pool.slice(0, HOME_HERO_SLIDE_LIMIT);
+}
+
+/**
+ * Monta os slides do hero-carousel do escopo pedido, ate
+ * `HOME_HERO_SLIDE_LIMIT`. Resolve crew/cast so dos candidatos que entram no
+ * carousel (evita N+1 no catalogo inteiro). Sem dado real -> [] e a pagina
+ * omite o hero (nunca cai para a outra vertical).
+ */
+export async function loadHeroSlides(
+  prisma: PrismaClient,
+  scope: HeroScope,
+): Promise<HeroSlide[]> {
+  // A vertical oposta nao e consultada: em `/pt/series` o catalogo de filmes
+  // (129 titulos em producao) nao paga nem uma query.
+  const [movies, series] = await Promise.all([
+    scope === "series" ? Promise.resolve<HeroCandidate[]>([]) : movieCandidates(prisma),
+    scope === "movies" ? Promise.resolve<HeroCandidate[]>([]) : seriesCandidates(prisma),
+  ]);
+  const selected = selectHeroCandidates(movies, series, scope);
 
   // PROCEDENCIA do Cinerie Score em LOTE (uma query por tipo, nunca N+1). Sem
   // calculo `calculated` coerente em `cinerie_score_calculations`, a nota fica
@@ -275,4 +309,13 @@ export const getHomeHeroSlides = cache(async (): Promise<HeroSlide[]> => {
   );
 
   return buildHeroSlides(inputs);
-});
+}
+
+/**
+ * Idem, com o cliente do processo e a memoizacao por request. `cache()` guarda
+ * por ESCOPO, entao home/filmes/series nao se sobrescrevem.
+ */
+export const getHomeHeroSlides = cache(
+  async (scope: HeroScope = "home"): Promise<HeroSlide[]> =>
+    loadHeroSlides(getPrismaClient(), scope),
+);

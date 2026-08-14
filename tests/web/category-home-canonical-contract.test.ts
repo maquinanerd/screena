@@ -31,17 +31,47 @@ describe('categorias (tela 04) e índice de pessoas', () => {
     expect(movies).toContain('showMoviesBand')
     expect(movies).toContain('showSeriesBand={false}')
     expect(movies).toContain('data-vertical="movie"')
-    expect(movies).toContain("slide.vertical === 'movie'")
 
     expect(series).toContain('<HomeLike')
     expect(series).toContain('adPrefix="series"')
     expect(series).toContain('showMoviesBand={false}')
     expect(series).toContain('showSeriesBand')
     expect(series).toContain('data-vertical="series"')
-    expect(series).toContain("slide.vertical === 'series'")
-    // Ticker de episódios (dataset de séries) só na categoria de séries.
-    expect(series).toContain('getHomeTickerItems()')
-    expect(movies).not.toContain('getHomeTickerItems()')
+  })
+
+  /**
+   * O ESCOPO É PEDIDO AO LOADER, não filtrado na página.
+   *
+   * As páginas filtravam a lista da home (`slide.vertical === 'series'`) — e por
+   * isso `/pt/series` ficava SEM hero: o corte de cinco slides acontece dentro do
+   * loader, filmes entram primeiro, e com 129 filmes com slug canônico em
+   * produção nenhuma série chegava à página para ser filtrada. Filtrar depois do
+   * corte é o defeito; pedir o escopo antes dele é a correção.
+   */
+  it('hero e faixa amarela vêm ESCOPADOS do loader, nunca filtrados depois do corte', () => {
+    expect(movies).toContain("getHomeHeroSlides('movies')")
+    expect(series).toContain("getHomeHeroSlides('series')")
+    expect(movies).toContain("getHomeTickerItems('movies')")
+    expect(series).toContain("getHomeTickerItems('series')")
+
+    // NEGATIVO: nenhuma das duas pode voltar a cortar a lista da home.
+    for (const page of [movies, series]) {
+      expect(page).not.toMatch(/slide\.vertical === /)
+      expect(page).not.toContain('getHomeHeroSlides()')
+      expect(page).not.toContain('getHomeTickerItems()')
+    }
+  })
+
+  /**
+   * A faixa amarela EXISTE nas duas verticais. `/pt/filmes` passava
+   * `tickerItems={[]}` — a faixa estava morta por construção, e continuaria
+   * vazia mesmo com estreia de filme confirmada hoje no catálogo.
+   */
+  it('a faixa amarela não nasce morta em nenhuma das duas', () => {
+    for (const page of [movies, series]) {
+      expect(page).toContain('tickerItems={tickerItems}')
+      expect(page).not.toContain('tickerItems={[]}')
+    }
   })
 
   it('mantém metadata, robots, canonical e JSON-LD do índice real', () => {

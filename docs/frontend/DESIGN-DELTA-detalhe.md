@@ -95,7 +95,8 @@ disclaimer no rodapé, não crédito por nota.
 
 O canônico escreve "8,1 mil" sob o IMDb e "31 críticas" sob o Rotten Tomatoes. A
 OMDb devolve `imdbVotes`; **Rotten Tomatoes e Metacritic não trazem contagem
-nenhuma**. Onde não há contagem, a linha meta carrega só o crédito.
+nenhuma**. Onde não há contagem, a linha meta **não renderiza** — nunca um número
+de críticas fabricado para preencher o desenho.
 
 ### 2.5 Linkback só onde há URL canônica
 
@@ -104,6 +105,43 @@ Metacritic **não trazem identificador**; derivar slug do título fabricaria um
 link que pode não existir. Para elas o crédito é **textual, sem link** — e é por
 isso que existe a dispensa nominal de linkback registrada em
 `authorization-spec.ts` (`LINKBACK_DISPENSED_SOURCES`).
+
+Desde **13/08/2026** essa distinção não aparece mais na ficha: o crédito (com ou
+sem link) migrou para o rodapé global — ver §2.7.
+
+### 2.7 Crédito de fonte: saiu do corpo, vive no rodapé _(13/08/2026)_
+
+**Decisão do proprietário (Pablo Eduardo), 13/08/2026:** todo crédito de fonte sai
+do corpo das páginas e passa a viver no **rodapé global**.
+
+**Motivo:** o crédito colado ao dado se espalhava por quatro superfícies com
+regras próprias — chip da nota, painel de streaming, faixa da home (onde o
+crédito trocava a cada slide) e hub de "onde assistir". Consolidá-lo num único
+lugar dá uma superfície só para auditar, e ela não pisca.
+
+**O que a decisão NÃO fez:** afrouxar a licença. `requires_attribution` continua
+`true` para todas as fontes. Mudou o **endereço** do crédito, não a obrigação.
+
+**A prova mudou junto.** Antes a prova era a proximidade — o presenter recusava a
+linha sem crédito. Agora são duas metades, e nenhuma sozinha basta:
+
+1. o rodapé nomeia **toda** fonte autorizada, com o texto verbatim da licença.
+   Ele não conhece nome de fonte: lê `publicSourceCredits()`
+   (`services/legal/src/public-credits.ts`), derivado de `authorization-spec.ts`.
+   Fonte nova registrada lá aparece no rodapé sem editar o rodapé;
+2. o rodapé está em toda página que exibe dado licenciado (é o layout raiz), e
+   isso é aferido por rota em
+   `apps/web/app/_components/__tests__/footer-credits.test.tsx`, medindo **texto
+   visível** — nunca `markup.includes(...)`, que aceitaria um `aria-label`.
+
+**O caminho de escrita não foi tocado:** `external_ratings_display_guard` e
+`watch_availability_display_guard` continuam recusando linha sem licença e sem
+crédito. A procedência segue gravada; mudou só onde ela aparece.
+
+**Sem logo, e agora por dois motivos.** `logoAllowed` é o literal `false` no tipo
+de `LicenseTarget`, e os arquivos que a `FOOTER-SPEC.md` §3.4 cita
+(`assets/data-credits/*.svg`) não existem no repositório. O bloco "Dados por" do
+rodapé carrega **nome de fonte em texto**.
 
 ### 2.6 Botão "Ver no celular" — não é portado
 
@@ -320,10 +358,14 @@ caminho TMDB o destino é o `link` por país — uma página da própria TMDB, n
 Netflix. O painel carrega `destinationKind` e diferencia no `aria-label` ("abrir
 página de disponibilidade" vs "abrir no serviço") e num `data-destination-kind`,
 mas **não há nada visível**: não existe regra de CSS para esse atributo, e o
-texto do link é o nome da plataforma nos dois casos. É a mesma distinção que a
-fileira de notas resolveu ao exigir crédito como **texto visível** — atributo de
+texto do link é o nome da plataforma nos dois casos. É a mesma distinção que o
+crédito de fonte resolveu ao exigir **texto visível** — atributo de
 acessibilidade não é divulgação para quem enxerga. Como resolver (rótulo,
 alvo do clique, ou não linkar) é decisão de produto, não de front.
+
+> Nota (13/08/2026): o crédito saiu da fileira de notas e foi para o rodapé
+> (§2.7). A regra "texto visível, nunca só atributo" **viajou junto** — é ela que
+> `footer-credits.test.tsx` afere, tirando as tags antes de medir.
 
 ---
 

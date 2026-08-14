@@ -183,9 +183,28 @@ Regras de combinacao:
   `score_allowed=true`.
 - `score_allowed=false` com `display_allowed=true`: pode-se mencionar a fonte
   e linkar, mas **nao** mostrar o numero.
-- `requires_attribution=true`: nunca exibir a nota sem o credito visivel.
-- `requires_linkback=true`: nunca exibir a nota sem o link para a fonte.
+- `requires_attribution=true`: nunca exibir a nota sem o credito visivel **na
+  pagina**. Desde 13/08/2026 esse credito vive no RODAPE GLOBAL, nao ao lado da
+  nota — ver a nota de politica abaixo.
+- `requires_linkback=true`: nunca exibir a nota sem o link para a fonte. O link
+  acompanhou o credito para o rodape.
 - `logo_allowed=false`: usar rotulo textual (`rating_label`), nunca o logo.
+
+> **ONDE O CREDITO APARECE — mudanca de politica, 13/08/2026.**
+>
+> Decisao do proprietario (Pablo Eduardo): todo credito de fonte saiu do corpo
+> das paginas e passou a viver no **rodape global**. `requires_attribution`
+> continua `true` para todas as fontes — mudou o ENDERECO do credito, nunca a
+> obrigacao.
+>
+> O rodape deriva a lista de `services/legal/src/public-credits.ts`, entao fonte
+> nova registrada em `authorization-spec.ts` aparece nele sozinha. A presenca por
+> rota e aferida em
+> `apps/web/app/_components/__tests__/footer-credits.test.tsx`, medindo texto
+> visivel.
+>
+> O caminho de ESCRITA nao mudou: `external_ratings_display_guard` continua
+> recusando `display_allowed=true` sem `attribution_text`.
 
 ---
 

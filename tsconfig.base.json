@@ -26,6 +26,11 @@
       // import de producao, o isolamento do ADR 0015 teria sido quebrado pela
       // porta dos fundos.
       "@cms-harness": ["apps/cms/src/__tests__/harness.ts"],
+      // MAIS ESPECIFICO PRIMEIRO. A projecao publica de creditos e o UNICO
+      // pedaco de `@screena/legal` que o render publico enxerga: o app nao pode
+      // alcancar `apply()`/`plan()` (escrita governada, worker-only) so porque
+      // precisa do texto de um credito.
+      "@screena/legal/public-credits": ["services/legal/src/public-credits.ts"],
       "@screena/legal": ["services/legal/src/index.ts"],
       "@screena/news-ingestion": ["services/news-ingestion/src/index.ts"],
       "@screena/tmdb-client": ["api-clients/tmdb/src/index.ts"],

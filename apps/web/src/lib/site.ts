@@ -34,6 +34,9 @@ export const PUBLIC_SITE_URL_ENV = "CINERIE_PUBLIC_SITE_URL";
 /** Flag explicita que permite indexacao somente na origem oficial. */
 export const PUBLIC_INDEXING_ENABLED_ENV = "CINERIE_PUBLIC_INDEXING_ENABLED";
 
+/** Flag que liga a faixa de newsletter do rodape (ver `SiteUrlEnv`). */
+export const NEWSLETTER_ENABLED_ENV = "CINERIE_NEWSLETTER_ENABLED";
+
 /**
  * Nomes LEGADOS das mesmas variaveis (marca anterior).
  *
@@ -65,6 +68,21 @@ export interface SiteUrlEnv {
    * `CINERIE_PUBLIC_INDEXING_ENABLED`, que abre o site INTEIRO.
    */
   readonly CINERIE_LEGAL_DOCS_INDEXING_ENABLED?: string;
+  /**
+   * Liga a faixa de NEWSLETTER do rodape.
+   *
+   * Desligada por default, e nao por cautela generica: nao existe modelo de
+   * inscricao no schema, entao com ela ligada o formulario so poderia mentir
+   * (`200 OK` sem guardar) ou errar sempre. Um formulario que nunca consegue ter
+   * sucesso e pior que ausencia — o leitor digita o e-mail, aperta, e recebe erro.
+   *
+   * NAO e um kill switch de indexacao: nao tem relacao com
+   * `CINERIE_PUBLIC_INDEXING_ENABLED` nem com origem oficial. E uma flag de
+   * capacidade — "ha onde guardar?" —, por isso vale em qualquer ambiente.
+   *
+   * O QUE PRECISA EXISTIR ANTES DE LIGAR: docs/frontend/newsletter.md.
+   */
+  readonly CINERIE_NEWSLETTER_ENABLED?: string;
   /** Legado (marca anterior) — lido so como fallback. */
   readonly THE_SCREEN_PUBLIC_SITE_URL?: string;
   readonly THE_SCREEN_PUBLIC_INDEXING_ENABLED?: string;
@@ -206,6 +224,22 @@ export function isLegalDocsIndexingEnabled(
   env: SiteUrlEnv = process.env,
 ): boolean {
   return parseBooleanEnvFlag(env.CINERIE_LEGAL_DOCS_INDEXING_ENABLED);
+}
+
+/**
+ * A faixa de newsletter do rodape pode renderizar?
+ *
+ * Mesmo parser fail-closed das demais flags: so `"true"`/`"1"` ligam; ausente,
+ * vazio ou invalido desliga. Fail-closed aqui significa "na duvida, nao promete
+ * uma inscricao que ninguem vai guardar".
+ *
+ * DELIBERADAMENTE independente das flags de indexacao: aquelas perguntam "este
+ * ambiente pode aparecer no Google?"; esta pergunta "existe onde guardar?". Sao
+ * eixos diferentes, e amarrar os dois faria a newsletter acender em producao so
+ * porque a indexacao foi ligada.
+ */
+export function isNewsletterEnabled(env: SiteUrlEnv = process.env): boolean {
+  return parseBooleanEnvFlag(env.CINERIE_NEWSLETTER_ENABLED);
 }
 
 /**

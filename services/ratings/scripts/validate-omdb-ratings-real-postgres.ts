@@ -124,7 +124,8 @@ function lit(value: string | null): string {
 /**
  * Materializa as licencas + decisoes do SPEC REAL no banco.
  *
- * Isto e o que o `pnpm legal apply --confirm` faz em producao. Reproduzi-lo
+ * Isto e o que o `pnpm legal sources apply ... --confirm` faz em producao (a
+ * linha completa esta em `services/legal/README.md`). Reproduzi-lo
  * aqui a partir de `STATIC_AUTHORIZATION` (e nao de valores digitados a mao) e
  * o que faz o cenario provar o SPEC, e nao uma copia dele: se alguem mudar a
  * licenca no spec, este validador muda de comportamento junto.

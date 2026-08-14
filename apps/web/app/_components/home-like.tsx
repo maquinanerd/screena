@@ -7,7 +7,10 @@ import { HomeEditorialHighlights } from './home-editorial-highlights'
 import { HomeHeroCarousel } from './home-hero-carousel'
 import { HomeTicker } from './home-ticker'
 import { MonthStats } from './month-stats'
+import { PopularThisWeek, type PopularRankingPanel } from './popular-this-week'
 import { Rail } from './rail'
+import { SectionBoundary } from './section-boundary'
+import type { RankingTabSlug } from '../../src/lib/popular-rankings'
 import type { EntityCard } from '../../src/lib/entity-index-presenter'
 import {
   hasEditorialHighlights,
@@ -16,8 +19,12 @@ import {
 } from '../../src/lib/home-editorial-presenter'
 import type { HeroSlide } from '../../src/lib/home-hero-presenter'
 import type { HomeTickerItem } from '../../src/lib/home-ticker-presenter'
-import type { HomeUpcomingMovie } from '../../src/lib/home-upcoming-presenter'
+import {
+  hasEnoughUpcoming,
+  type HomeUpcomingItem,
+} from '../../src/lib/home-upcoming-presenter'
 import type { NewsCardView } from '../../src/lib/news-presenter'
+import { decideRouteSection } from '../../src/lib/section-absence'
 import { MOVIES_INDEX_PATH, NEWS_INDEX_PATH, SERIES_INDEX_PATH } from '../../src/lib/site'
 
 /**
@@ -27,6 +34,20 @@ import { MOVIES_INDEX_PATH, NEWS_INDEX_PATH, SERIES_INDEX_PATH } from '../../src
  * logo por contexto (o acento vem do data-vertical da pagina; o logo, do
  * header por rota). Ordem EXATA do 02-home.html.
  */
+
+/**
+ * O trilho "Em breve" de UMA rota. As três superfícies home-like mostram a
+ * MESMA seção com datasets DIFERENTES — e o `vertical`/`route` viajam junto
+ * porque, quando o trilho não renderiza, é isso que o log precisa dizer:
+ * "`/pt/series/` consultou séries e voltou vazio", não "sumiu".
+ */
+export interface HomeLikeUpcoming {
+  items: readonly HomeUpcomingItem[]
+  /** Dataset consultado: só filmes, só séries, ou os dois (home). */
+  vertical: 'movie' | 'series' | 'mixed'
+  /** Path público da rota, para a linha de log de ausência. */
+  route: string
+}
 
 export interface HomeLikeProps {
   heroSlides: readonly HeroSlide[]
@@ -38,13 +59,27 @@ export interface HomeLikeProps {
   editorialInitialVertical?: HomeEditorialVertical
   movieCards: readonly EntityCard[]
   seriesCards: readonly EntityCard[]
-  upcomingMovies: readonly HomeUpcomingMovie[]
+  upcoming: HomeLikeUpcoming
   newsCards: readonly NewsCardView[]
   showMoviesBand: boolean
   showSeriesBand: boolean
   /** Prefixo dos slotIds de anuncio (home | filmes | series). */
   adPrefix: string
   emptyMessage: string
+  /**
+   * "Popular essa semana": as abas DESTA vertical, cada uma com a sua lista ja
+   * consultada no servidor. O template nao conhece conjunto de abas nenhum — ele
+   * renderiza o que a rota declarou (ver `src/lib/popular-rankings.ts`).
+   */
+  rankingPanels: readonly PopularRankingPanel[]
+  /** Aba ativa na primeira pintura, resolvida do `?ranking=` no servidor. */
+  rankingActiveSlug: RankingTabSlug
+  /**
+   * Vertical da PAGINA. Governa as seçoes compartilhadas que nao tem dataset
+   * proprio nas props: as tabs de "Destaques de hoje" e o recorte de "Seu mês em
+   * números".
+   */
+  vertical: 'home' | 'movies' | 'series'
 }
 
 function FreshCard({ card, series = false }: { card: EntityCard; series?: boolean }): ReactNode {
@@ -87,6 +122,79 @@ function FreshCard({ card, series = false }: { card: EntityCard; series?: boolea
   )
 }
 
+/**
+ * Card do trilho "Em breve".
+ *
+ * Na home o trilho é MISTO: filme e série lado a lado. Por isso a vertical
+ * viaja em CINCO sinais simultâneos, nunca só na cor (invariante 11):
+ *
+ *   label      -> `item.verticalLabel` ("Filme"/"Série"), texto visível no badge
+ *   badge      -> `.glimpse-card__badge`, elemento próprio sobre o thumb
+ *   URL        -> `/pt/filmes/{slug}/` vs `/pt/series/{slug}/` (vem do presenter)
+ *   breadcrumb -> a rota de destino já carrega o seu
+ *   schema     -> `Movie` vs `TVSeries` na ficha de destino
+ *
+ * O acento (`data-vertical`) é o SEXTO sinal, de reforço — se ele sumisse, o
+ * card continuaria dizendo o que é.
+ */
+function GlimpseCard({ item }: { item: HomeUpcomingItem }): ReactNode {
+  return (
+    <article className="glimpse-card" data-vertical={item.vertical}>
+      {item.imageUrl !== null ? (
+        <img alt="" className="glimpse-card__img" loading="lazy" src={item.imageUrl} />
+      ) : null}
+      <span className="glimpse-card__scrim" />
+      <span className="glimpse-card__badge" data-vertical={item.vertical}>
+        {item.verticalLabel}
+      </span>
+      <span className="glimpse-card__bookmark">
+        {item.entityId !== null ? (
+          <CardBookmark
+            entityId={item.entityId}
+            entityType={item.bookmarkType}
+            title={item.title}
+            variant="circle"
+          />
+        ) : null}
+      </span>
+      <span className="glimpse-card__body">
+        <span className="glimpse-card__row">
+          <span style={{ minWidth: 0 }}>
+            <span className="glimpse-card__title">{item.title}</span>
+            <span className="glimpse-card__date">
+              <svg aria-hidden="true" fill="none" height="13" viewBox="0 0 24 24" width="13">
+                <rect
+                  height="16"
+                  rx="2"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  width="18"
+                  x="3"
+                  y="5"
+                />
+                <path d="M3 10h18M8 3v4M16 3v4" stroke="currentColor" strokeWidth="2" />
+              </svg>
+              {item.date}
+            </span>
+          </span>
+          {/* Seis links "Ver ficha" iguais não dizem nada fora de contexto: o
+              nome acessível carrega título e vertical. */}
+          <a
+            aria-label={`Ver ficha de ${item.title} (${item.verticalLabel})`}
+            className="glimpse-card__watch glimpse-card__link"
+            href={item.href}
+          >
+            Ver ficha
+            <svg aria-hidden="true" fill="currentColor" height="13" viewBox="0 0 24 24" width="13">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+          </a>
+        </span>
+      </span>
+    </article>
+  )
+}
+
 export function HomeLike({
   heroSlides,
   tickerItems,
@@ -94,25 +202,53 @@ export function HomeLike({
   editorialInitialVertical = 'movies',
   movieCards,
   seriesCards,
-  upcomingMovies,
+  upcoming,
   newsCards,
   showMoviesBand,
   showSeriesBand,
   adPrefix,
   emptyMessage,
+  rankingPanels,
+  rankingActiveSlug,
+  vertical,
 }: HomeLikeProps): ReactNode {
-  const popularCards = showMoviesBand ? movieCards : seriesCards
+  const hasRanking = rankingPanels.length > 0
   const newsCategories = [
     ...new Set(newsCards.map((card) => card.category).filter((c): c is string => c !== null)),
   ].slice(0, 6)
   const newsLead: NewsCardView | undefined = newsCards[0]
   const hasEditorial = hasEditorialHighlights(editorialHighlights)
+
+  // Trilho "Em breve": ou ele renderiza, ou a linha de log sai — a decisão e o
+  // registro são o MESMO ponto (`SectionBoundary`). Um trilho vazio em
+  // `/pt/series/` e um trilho que nunca foi ingerido são visualmente idênticos;
+  // só o log separa os dois.
+  //
+  // O piso (`hasEnoughUpcoming`) é parte da decisão, não um `if` à parte: abaixo
+  // dele o trilho some COM motivo próprio (`below_upcoming_floor` + a contagem),
+  // nunca calado. Um `items.length < 4 && return null` acima daqui devolveria a
+  // ausência muda que este bloco existe para impedir.
+  const upcomingCount = upcoming.items.length
+  const upcomingRendered = hasEnoughUpcoming(upcoming.items)
+  const upcomingSection = decideRouteSection(upcomingRendered ? upcoming.items : null, {
+    section: 'em-breve',
+    reason: upcomingCount === 0 ? 'no_upcoming_title' : 'below_upcoming_floor',
+    route: upcoming.route,
+    vertical: upcoming.vertical,
+    available: upcomingCount,
+  })
+
+  // Estado vazio da página conta o trilho pelo que ele RENDERIZA, não pelo que
+  // ele tem. Três itens abaixo do piso não são conteúdo publicado na tela.
   const hasContent =
     heroSlides.length +
       movieCards.length +
       seriesCards.length +
-      upcomingMovies.length +
-      newsCards.length >
+      (upcomingRendered ? upcomingCount : 0) +
+      newsCards.length +
+      // Uma aba com itens ja e conteudo: sem isto, uma pagina cujo unico bloco
+      // populado fosse o ranking exibiria "ainda nao ha conteudo" por cima dele.
+      rankingPanels.reduce((total, panel) => total + panel.items.length, 0) >
       0 || hasEditorial
 
   return (
@@ -143,54 +279,24 @@ export function HomeLike({
           headingId={`${adPrefix}-featured-title`}
           highlights={editorialHighlights}
           initialVertical={editorialInitialVertical}
+          // A página de uma vertical oferece SÓ a sua: `/pt/filmes` não convida
+          // o leitor à tab "Séries" (e nem carrega as matérias dela no payload).
+          verticals={vertical === 'home' ? ['movies', 'series'] : [editorialInitialVertical]}
         />
       </section>
 
-      {/* Popular essa semana — banda escura com ranking */}
-      {popularCards.length > 0 ? (
-        <div className="band band--dark">
-          <section aria-labelledby={`${adPrefix}-popular-title`} className="band__inner">
-            <div className="section-head" style={{ marginBottom: 0 }}>
-              <SectionTitle id={`${adPrefix}-popular-title`} title="Popular essa semana" />
-              <a className="see-all" href="/pt/onde-assistir/">
-                Ver tudo
-              </a>
-            </div>
-            <nav aria-label="Popular por vertical" className="pop-tabs">
-              <a
-                aria-current={showMoviesBand ? 'true' : undefined}
-                className="pop-tabs__tab"
-                href={MOVIES_INDEX_PATH}
-              >
-                Filmes
-              </a>
-              <a
-                aria-current={!showMoviesBand && showSeriesBand ? 'true' : undefined}
-                className="pop-tabs__tab"
-                href={SERIES_INDEX_PATH}
-              >
-                Séries
-              </a>
-            </nav>
-            <Rail className="pop-rail" dark label="Popular essa semana">
-              {popularCards.map((card, index) => (
-                <a className="pop-rail__item" href={card.href} key={card.href}>
-                  <span className="pop-rail__poster">
-                    {card.image !== null ? (
-                      <img alt="" loading="lazy" src={card.image.src} />
-                    ) : null}
-                  </span>
-                  <span aria-hidden="true" className="pop-rail__rank">
-                    <span>{index + 1}</span>
-                  </span>
-                  <span className="visually-hidden">
-                    {index + 1}º: {card.title}
-                  </span>
-                </a>
-              ))}
-            </Rail>
-          </section>
-        </div>
+      {/* Popular essa semana — banda escura com ranking. As abas são REAIS
+          (role=tab), cada uma com a sua consulta, e o conjunto vem da vertical
+          da rota: filmes = Em cartaz · Streaming · Clássicos; séries = No ar ·
+          Streaming · Novas temporadas; home = Filmes · Séries · Streaming ·
+          Cinema. Aba vazia mantém a seção e a altura (escondê-la tornaria o
+          recorte invisível). */}
+      {hasRanking ? (
+        <PopularThisWeek
+          headingId={`${adPrefix}-popular-title`}
+          initialSlug={rankingActiveSlug}
+          panels={rankingPanels}
+        />
       ) : null}
 
       <div className="container">
@@ -216,8 +322,10 @@ export function HomeLike({
         </div>
       ) : null}
 
-      {/* Seu mês em números — boundary autenticado; anônimo = estado honesto */}
-      <MonthStats />
+      {/* Seu mês em números — boundary autenticado; anônimo = estado honesto.
+          O recorte segue a vertical: numa página de filmes o leitor não vê a
+          própria contagem de episódios e séries. */}
+      <MonthStats vertical={vertical} />
 
       <div className="container">
         <AdSlot format="leaderboard" slotId={`${adPrefix}-filmes-alta`} />
@@ -242,82 +350,31 @@ export function HomeLike({
         </div>
       ) : null}
 
-      {/* Em breve (Get a Glimpse) — banda escura, cards 332px 16/10 */}
-      {upcomingMovies.length > 0 ? (
-        <div className="band band--dark" style={{ marginTop: 56 }}>
-          <section aria-labelledby={`${adPrefix}-upcoming-title`} className="band__inner">
-            <div className="glimpse-head">
-              <div>
-                <SectionTitle id={`${adPrefix}-upcoming-title`} title="Em breve" />
-                <p className="glimpse-head__sub">Próximos lançamentos no catálogo</p>
+      {/* Em breve (Get a Glimpse) — banda escura, cards 332px 16/10.
+          MESMA seção nas três rotas home-like; o que muda é o dataset:
+          /pt/filmes/ = só filmes, /pt/series/ = só séries, /pt/ = os dois. */}
+      <SectionBoundary decision={upcomingSection}>
+        {(items) => (
+          <div className="band band--dark" style={{ marginTop: 56 }}>
+            <section aria-labelledby={`${adPrefix}-upcoming-title`} className="band__inner">
+              <div className="glimpse-head">
+                <div>
+                  <SectionTitle id={`${adPrefix}-upcoming-title`} title="Em breve" />
+                  <p className="glimpse-head__sub">Próximos lançamentos no catálogo</p>
+                </div>
+                <a className="see-all" href="/pt/em-breve/">
+                  Ver tudo
+                </a>
               </div>
-              <a className="see-all" href="/pt/em-breve/">
-                Ver tudo
-              </a>
-            </div>
-            <Rail className="glimpse-rail" dark label="Em breve">
-              {upcomingMovies.map((movie) => (
-                <article className="glimpse-card" key={movie.href}>
-                  {movie.imageUrl !== null ? (
-                    <img alt="" className="glimpse-card__img" loading="lazy" src={movie.imageUrl} />
-                  ) : null}
-                  <span className="glimpse-card__scrim" />
-                  <span className="glimpse-card__bookmark">
-                    {movie.entityId !== null ? (
-                      <CardBookmark
-                        entityId={movie.entityId}
-                        entityType="movie"
-                        title={movie.title}
-                        variant="circle"
-                      />
-                    ) : null}
-                  </span>
-                  <span className="glimpse-card__body">
-                    <span className="glimpse-card__row">
-                      <span style={{ minWidth: 0 }}>
-                        <span className="glimpse-card__title">{movie.title}</span>
-                        <span className="glimpse-card__date">
-                          <svg
-                            aria-hidden="true"
-                            fill="none"
-                            height="13"
-                            viewBox="0 0 24 24"
-                            width="13"
-                          >
-                            <rect
-                              height="16"
-                              rx="2"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              width="18"
-                              x="3"
-                              y="5"
-                            />
-                            <path d="M3 10h18M8 3v4M16 3v4" stroke="currentColor" strokeWidth="2" />
-                          </svg>
-                          {movie.date}
-                        </span>
-                      </span>
-                      <a className="glimpse-card__watch glimpse-card__link" href={movie.href}>
-                        Ver ficha
-                        <svg
-                          aria-hidden="true"
-                          fill="currentColor"
-                          height="13"
-                          viewBox="0 0 24 24"
-                          width="13"
-                        >
-                          <path d="M8 5v14l11-7z" />
-                        </svg>
-                      </a>
-                    </span>
-                  </span>
-                </article>
-              ))}
-            </Rail>
-          </section>
-        </div>
-      ) : null}
+              <Rail className="glimpse-rail" dark label="Em breve">
+                {items.map((item) => (
+                  <GlimpseCard item={item} key={item.href} />
+                ))}
+              </Rail>
+            </section>
+          </div>
+        )}
+      </SectionBoundary>
 
       <div className="container">
         <AdSlot format="leaderboard" slotId={`${adPrefix}-em-breve`} />
