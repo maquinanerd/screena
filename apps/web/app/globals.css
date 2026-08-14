@@ -2156,6 +2156,36 @@ body:has(.art-hero[data-hero-media='true']) .site-header__spacer {
   flex-shrink: 0;
 }
 
+/* Vertical do card "Em breve" — invariante 11.
+   Na home o trilho é MISTO (filme + série no mesmo carrossel), então a
+   diferença precisa ser LEGÍVEL: o badge carrega o texto "Filme"/"Série" e o
+   acento é só reforço. Estas regras vêm DEPOIS das de cima de propósito —
+   globals.css resolve conflito por ordem de documento. */
+.glimpse-card__badge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  background: var(--c-accent-movie-cta);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 5px 10px;
+  border-radius: var(--r-pill);
+}
+
+/* DD-03: serie usa verde ESCURO quando ha texto branco por cima (o verde claro
+   falha AA). Mesmo par usado em `.fresh-card--series .fresh-card__cta`. */
+.glimpse-card[data-vertical='series'] .glimpse-card__badge,
+.glimpse-card[data-vertical='series'] .glimpse-card__watch,
+.glimpse-card[data-vertical='series'] .card-bookmark--circle[aria-pressed='true'] {
+  background: var(--c-accent-series-dark);
+}
+
 /* Notícias & entrevistas (home) — lead 430 + grade 2x2 de 200 */
 .hnews-sub {
   font-size: 13px;

@@ -151,6 +151,48 @@ defeito corrigido em
   horário: o sistema não persiste esses fatos. "Em cartaz" não é inferido de
   `release_date`.
 
+### "Em breve": a MESMA seção, três datasets
+
+O trilho `.glimpse-rail` vive no template compartilhado
+[`HomeLike`](../../apps/web/app/_components/home-like.tsx) e aparece nas **três**
+superfícies home-like. O que muda é só o dataset:
+
+| Rota | Getter | Dataset | Log de ausência (`vertical`) |
+| --- | --- | --- | --- |
+| `/pt/` | `getHomeUpcomingMixed()` | filmes **+** séries, cota equilibrada | `mixed` |
+| `/pt/filmes/` | `getHomeUpcomingMovies()` | só `Movie.releaseDate` futura | `movie` |
+| `/pt/series/` | `getHomeUpcomingSeries()` | só `TvShow.firstAirDate` futura | `series` |
+
+- A home tem **duas ordenações diferentes** e ambas importam: **seleção** por
+  cota (3 filmes + 3 séries em 6 vagas; vertical vazia devolve as vagas para a
+  outra) e **exibição** por estreia ascendente. Ordenar só por data devolveria
+  seis filmes sempre que a fila de filmes fosse mais densa — era o estado
+  anterior da home.
+- `Season.airDate`/`Episode.airDate` **não** entram neste trilho: temporada e
+  episódio futuros de uma série já no ar são a agenda, e têm superfície própria
+  em `/pt/em-breve/` (`getAnticipatedData`).
+- O card **nunca** distingue filme de série só pela cor (invariante 11): o badge
+  carrega o texto "Filme"/"Série", a URL já diverge (`/pt/filmes/` vs
+  `/pt/series/`) e o bookmark grava `movie` vs `tv`. O acento é reforço.
+- **Piso de 4 itens** (`HOME_UPCOMING_MIN`): abaixo disso o trilho não
+  renderiza. Um carrossel com 1 ou 2 cards não é carrossel, e a sangria à
+  direita promete conteúdo que não existe. Na home o piso vale para a
+  **mistura**, não para cada vertical: 2 filmes + 2 séries acendem o trilho.
+- Trilho ausente **não some calado**: passa por `SectionBoundary` com
+  `section: 'em-breve'`, a rota/vertical consultadas e a contagem real. Os dois
+  estados têm motivos **diferentes** — `no_upcoming_title` (zero, a ingestão não
+  cobriu) e `below_upcoming_floor` (existe, mas abaixo do piso, `available`
+  diz quanto). `/pt/series/` vazia e `/pt/series/` nunca ingerida são
+  visualmente idênticas — só o log separa as duas.
+- O piso mora numa função só (`hasEnoughUpcoming`), chamada pelo template **e**
+  pela contagem de seções populadas da home. Se cada um aplicasse o seu próprio
+  `>= 4`, a indexabilidade acabaria contando uma seção que não está na página.
+
+Provado por `tests/web/upcoming-rail-by-route.test.ts` (fiação por rota),
+`tests/web/home-upcoming-presenter.test.ts` (presenter puro + mistura) e
+`apps/web/app/_components/__tests__/home-like-upcoming.test.tsx` (texto visível
+no card renderizado + ausência e log na mesma asserção).
+
 ### QA visual da primeira dobra
 
 São **dois** harnesses, com coberturas disjuntas:

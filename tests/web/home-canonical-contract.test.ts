@@ -36,7 +36,9 @@ describe('home pública — design canônico (tela 02)', () => {
       'getHomeCatalogData()',
       'getNewsIndexData()',
       'getHomeHeroSlides()',
-      'getHomeUpcomingMovies()',
+      // A home mistura filme e serie no trilho "Em breve"; as categorias usam
+      // os getters de uma vertical so (tests/web/upcoming-rail-by-route).
+      'getHomeUpcomingMixed()',
       'getSeriesIndexData()',
       'getHomeTickerItems()',
       'getHomeEditorialHighlights()',
@@ -87,7 +89,11 @@ describe('home pública — design canônico (tela 02)', () => {
     expect(homeLike).toContain('heroSlides.length > 0 ?')
     expect(homeLike).toContain('showMoviesBand && movieCards.length > 0 ?')
     expect(homeLike).toContain('showSeriesBand && seriesCards.length > 0 ?')
-    expect(homeLike).toContain('upcomingMovies.length > 0 ?')
+    // "Em breve" nao usa ternario: a decisao de nao renderizar e o log do
+    // motivo sao a MESMA linha (SectionBoundary), senao a ausencia volta a ser
+    // muda — foi assim que /pt/series/ ficou sem a secao.
+    expect(homeLike).toContain('decision={upcomingSection}')
+    expect(homeLike).toContain("section: 'em-breve'")
     expect(homeLike).toContain('newsCards.length > 0 ?')
     expect(home).toContain('Ainda não há conteúdo publicado')
   })
