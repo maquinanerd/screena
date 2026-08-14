@@ -1,6 +1,9 @@
 import type { ReactNode } from "react";
 
 import { FooterNewsletter } from "./footer-newsletter";
+import { SectionBoundary } from "./section-boundary";
+import { buildChromeSectionAbsence } from "../../src/lib/section-absence";
+import { isNewsletterEnabled } from "../../src/lib/site";
 import {
   DATA_CREDITS,
   DATA_CREDITS_PATH,
@@ -102,6 +105,35 @@ const SOCIAL_ICONS: Readonly<Record<string, ReactNode>> = {
 export function SiteFooter(): ReactNode {
   const year = new Date().getFullYear();
 
+  /**
+   * A faixa de newsletter existe? Não é decisão de layout — é de capacidade.
+   *
+   * Não há modelo de inscrição no schema, então com a faixa no ar o formulário
+   * só poderia mentir (`200 OK` sem guardar) ou errar sempre. Um formulário que
+   * nunca consegue ter sucesso é pior que ausência: o leitor digita o e-mail,
+   * aperta, e recebe erro — o gesto foi gasto à toa.
+   *
+   * O `<form>`, os três estados, o `aria-live` e os testes continuam existindo:
+   * é trabalho feito e testado, e vai ao ar ligando a flag no dia em que a
+   * tabela existir. A rota `/api/newsletter` também fica, com o 503 honesto —
+   * quem chegar nela por outro caminho continua recebendo a verdade.
+   *
+   * `decideSection` não serve aqui: ele decide por dado VAZIO, e o que decide
+   * isto é uma CAPACIDADE. Por isso a decisão é montada à mão — e o tipo
+   * continua obrigando o motivo a existir quando `rendered: false`.
+   */
+  const newsletterSection = isNewsletterEnabled()
+    ? ({ rendered: true, value: null, absence: null } as const)
+    : ({
+        rendered: false,
+        value: null,
+        absence: buildChromeSectionAbsence({
+          section: "newsletter",
+          reason: "newsletter_storage_unavailable",
+          surface: "footer",
+        }),
+      } as const);
+
   return (
     <footer className="footer" role="contentinfo">
       <div className="footer__inner">
@@ -159,8 +191,13 @@ export function SiteFooter(): ReactNode {
           ))}
         </div>
 
-        {/* ---- 3 · Newsletter --------------------------------------------- */}
-        <FooterNewsletter />
+        {/* ---- 3 · Newsletter ---------------------------------------------
+            A faixa só existe quando a inscrição PODE dar certo. Ver a decisão
+            no cabeçalho e `docs/frontend/newsletter.md`. A ausência não é muda:
+            o `SectionBoundary` decide e loga na MESMA linha. */}
+        <SectionBoundary decision={newsletterSection} once>
+          {() => <FooterNewsletter />}
+        </SectionBoundary>
 
         {/* ---- 4 · Legal + créditos de fonte ------------------------------- */}
         <div className="footer__legal">

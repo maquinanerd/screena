@@ -23,21 +23,56 @@ import {
  * vai para stdout (o coletor do container). Nada disso chega ao cliente.
  */
 
+/**
+ * Ausencias ja registradas nesta instancia do servidor, para `once`.
+ *
+ * Chave = `section|reason`, nao o evento inteiro: o que define "e a mesma
+ * ausencia" e a CAUSA, e um formato de chrome nao carrega entidade nem rota para
+ * variar. Uma segunda causa no mesmo bloco continua sendo logada.
+ */
+const loggedOnce = new Set<string>();
+
 interface SectionBoundaryProps<T> {
   decision: SectionDecision<T>;
+  /**
+   * Loga UMA vez por processo, em vez de uma por request.
+   *
+   * Para blocos de CHROME. O rodape renderiza em toda pagina, entao uma ausencia
+   * constante (uma flag desligada, uma tabela que nao existe) emitiria uma linha
+   * por pageview — e o proprio contrato de `section-absence.ts` avisa que ruido
+   * assim "afogaria o unico evento que importa". A causa aqui e uma propriedade
+   * do DEPLOY, nao do request: repetir nao acrescenta informacao.
+   *
+   * NAO usar em bloco de entidade: la a repeticao carrega informacao (QUAL
+   * titulo), e silenciar apagaria justamente o que o operador precisa.
+   *
+   * Default `false` — o comportamento de todos os blocos existentes nao muda.
+   */
+  once?: boolean;
   /** Recebe o valor JA garantido presente pelo tipo — nunca precisa checar. */
   children: (value: T) => ReactNode;
 }
 
 export function SectionBoundary<T>({
   decision,
+  once = false,
   children,
 }: SectionBoundaryProps<T>): ReactNode {
   if (decision.rendered) return children(decision.value);
 
   // A ausencia nunca e muda. Em producao isto e a UNICA evidencia de que o
   // bloco existia e nao acendeu.
-  console.warn(formatSectionAbsence(decision.absence));
+  //
+  // `once` suprime a REPETICAO do log, nunca o aviso de dev abaixo: quem esta
+  // montando a pagina precisa ver o buraco em TODA renderizacao, senao ele
+  // aparece na primeira e some nas seguintes — pior que nao existir.
+  const key = `${decision.absence.section}|${decision.absence.reason}`;
+  // So o modo `once` alimenta o cache. Se um bloco sem `once` marcasse a chave,
+  // ele silenciaria um bloco `once` que aparecesse depois — acoplamento entre
+  // dois chamadores que nao se conhecem.
+  const jaRegistrado = once && loggedOnce.has(key);
+  if (once) loggedOnce.add(key);
+  if (!jaRegistrado) console.warn(formatSectionAbsence(decision.absence));
 
   // Em desenvolvimento, alem do log, um aviso VISIVEL: quem esta montando a
   // pagina precisa ver o buraco sem ir ao terminal. Em producao nao ha nada no

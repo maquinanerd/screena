@@ -35,7 +35,9 @@ export type SectionKey =
   | "elenco"
   | "noticias"
   /** Trilho "Em breve" — escopo de ROTA (home/filmes/series), nao de entidade. */
-  | "em-breve";
+  | "em-breve"
+  /** Faixa de newsletter do rodape — escopo de CHROME, nao de rota nem entidade. */
+  | "newsletter";
 
 /**
  * Por que o bloco nao renderizou.
@@ -90,7 +92,20 @@ export type SectionAbsenceReason =
    * dois num motivo so apagaria justamente o caso em que a ingestao ja
    * funciona e falta pouco. O campo `available` carrega quanto ja ha.
    */
-  | "below_upcoming_floor";
+  | "below_upcoming_floor"
+  /**
+   * NAO EXISTE onde guardar uma inscricao de newsletter.
+   *
+   * Nao ha modelo de inscricao em `packages/db/prisma`. Sem ele, o formulario so
+   * poderia (a) mentir com `200 OK` ou (b) errar sempre — e um formulario que
+   * nunca consegue ter sucesso gasta o gesto do leitor a toa: ele digita o
+   * e-mail, aperta, e recebe erro. Entao a faixa nao renderiza, e este motivo diz
+   * por que.
+   *
+   * `actionable: true`: e um passo pendente (tabela + flag), nunca um fato sobre
+   * o site. O que exatamente destrava esta em `docs/frontend/newsletter.md`.
+   */
+  | "newsletter_storage_unavailable";
 
 /** Uma linha de log estruturada. Sem segredo, sem payload cru, sem PII. */
 export interface SectionAbsence {
@@ -121,6 +136,7 @@ const ACTIONABLE_REASONS: ReadonlySet<SectionAbsenceReason> = new Set([
   "no_recommendation_dataset",
   "no_upcoming_title",
   "below_upcoming_floor",
+  "newsletter_storage_unavailable",
 ]);
 
 export interface SectionAbsenceContext {
@@ -197,6 +213,49 @@ export function buildRouteSectionAbsence(
 }
 
 /**
+ * A MESMA ausencia, quando o bloco pertence ao CHROME e nao a uma rota.
+ *
+ * POR QUE UM TERCEIRO FORMATO. Pelo mesmo motivo que existe o segundo: os campos
+ * dos outros dois seriam MENTIRA aqui. A faixa de newsletter do rodape nao e
+ * sobre titulo nenhum (`entityId` nao acha nada) e nao e sobre rota nenhuma —
+ * ela falta em TODAS, sempre pela mesma causa. Escrever `route: "/pt/"` diria ao
+ * operador que o problema e daquela pagina, e ele iria olhar o lugar errado.
+ *
+ * O que o operador precisa aqui e a SUPERFICIE (onde o buraco esta) e a causa.
+ * Mais nada — porque nao ha mais nada de verdadeiro a dizer.
+ *
+ * O consumidor continua sendo o mesmo `<SectionBoundary>`: os tres formatos
+ * compartilham `event`/`section`/`reason`/`actionable`, que e tudo que ele le.
+ */
+export interface ChromeSectionAbsence {
+  readonly event: "section_absent";
+  readonly section: SectionKey;
+  readonly reason: SectionAbsenceReason;
+  /** Parte do chrome global onde o bloco deveria estar. */
+  readonly surface: "header" | "footer";
+  readonly actionable: boolean;
+}
+
+export interface ChromeSectionAbsenceContext {
+  readonly section: SectionKey;
+  readonly reason: SectionAbsenceReason;
+  readonly surface: "header" | "footer";
+}
+
+/** Monta o evento de chrome. Nao escreve nada — quem escreve e o chamador. */
+export function buildChromeSectionAbsence(
+  context: ChromeSectionAbsenceContext,
+): ChromeSectionAbsence {
+  return {
+    event: "section_absent",
+    section: context.section,
+    reason: context.reason,
+    surface: context.surface,
+    actionable: ACTIONABLE_REASONS.has(context.reason),
+  };
+}
+
+/**
  * Serializa em UMA linha JSON para o coletor de logs do container.
  *
  * JSON e nao prosa porque a linha existe para ser filtrada
@@ -204,7 +263,7 @@ export function buildRouteSectionAbsence(
  * a uma.
  */
 export function formatSectionAbsence(
-  absence: SectionAbsence | RouteSectionAbsence,
+  absence: SectionAbsence | RouteSectionAbsence | ChromeSectionAbsence,
 ): string {
   return JSON.stringify(absence);
 }
@@ -220,7 +279,7 @@ export type SectionDecision<T> =
   | {
       readonly rendered: false;
       readonly value: null;
-      readonly absence: SectionAbsence | RouteSectionAbsence;
+      readonly absence: SectionAbsence | RouteSectionAbsence | ChromeSectionAbsence;
     };
 
 /**
