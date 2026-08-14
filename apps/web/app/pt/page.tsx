@@ -19,14 +19,17 @@ import { getHomeCatalogData } from '../../src/server/home-catalog'
 import { getHomeEditorialHighlights } from '../../src/server/home-editorial'
 import { getHomeHeroSlides } from '../../src/server/home-hero'
 import { getHomeTickerItems } from '../../src/server/home-ticker'
-import { getHomeUpcomingMovies } from '../../src/server/home-upcoming'
+import { getHomeUpcomingMixed } from '../../src/server/home-upcoming'
 import { getNewsIndexData } from '../../src/server/news-pages'
 import { getSeriesIndexData } from '../../src/server/entity-indexes'
 
 /**
  * Home pública pt-BR — tela 02 do handoff canônico, renderizada pelo template
  * compartilhado `HomeLike` (a MESMA composição é reusada pelas categorias,
- * tela 04, EX-04-dual). Na home, as DUAS bandas (filmes e séries) aparecem.
+ * tela 04, EX-04-dual). Na home, as DUAS bandas (filmes e séries) aparecem —
+ * e o trilho "Em breve" segue a mesma regra: aqui ele é MISTO
+ * (`getHomeUpcomingMixed`), enquanto `/pt/filmes/` mostra só filmes e
+ * `/pt/series/` só séries.
  *
  * "Seu mês em números" e o bookmark dos cards são canônicos e REAIS: a faixa
  * de stats é boundary autenticado no cliente (dado pessoal nunca entra no
@@ -60,7 +63,7 @@ async function getHomeData() {
     catalog,
     news,
     heroSlides,
-    upcomingMovies,
+    upcomingItems,
     seriesIndex,
     tickerItems,
     editorialHighlights,
@@ -69,9 +72,10 @@ async function getHomeData() {
     getHomeCatalogData(),
     getNewsIndexData(),
     // A home é a UNIÃO: escopo `home` mantém a composição canônica (filmes por
-    // ano desc, depois séries) e as duas bandas ligadas. Nada aqui é filtrado.
+    // ano desc, depois séries) e as duas bandas ligadas. Nada aqui é filtrado —
+    // e o trilho "Em breve" segue a mesma regra, com o dataset misto.
     getHomeHeroSlides('home'),
-    getHomeUpcomingMovies(),
+    getHomeUpcomingMixed(),
     getSeriesIndexData(),
     getHomeTickerItems('home'),
     getHomeEditorialHighlights(),
@@ -110,7 +114,7 @@ async function getHomeData() {
       heroSlides.length,
       movieCards.length,
       seriesWeekCards.length,
-      upcomingMovies.length,
+      upcomingItems.length,
       newsCards.length,
     ]),
   })
@@ -124,7 +128,7 @@ async function getHomeData() {
     heroSlides,
     movieCards,
     seriesWeekCards,
-    upcomingMovies,
+    upcomingItems,
     newsCards,
     tickerItems,
     editorialHighlights: dedupedHighlights,
@@ -162,7 +166,7 @@ export default async function HomePage({
     heroSlides,
     movieCards,
     seriesWeekCards,
-    upcomingMovies,
+    upcomingItems,
     newsCards,
     tickerItems,
     editorialHighlights,
@@ -186,7 +190,7 @@ export default async function HomePage({
         showMoviesBand
         showSeriesBand
         tickerItems={tickerItems}
-        upcomingMovies={upcomingMovies}
+        upcoming={{ items: upcomingItems, vertical: 'mixed', route: HOME_PATH }}
         vertical="home"
       />
 

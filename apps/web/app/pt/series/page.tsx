@@ -10,10 +10,11 @@ import {
 import { restrictEditorialHighlights } from '../../../src/lib/home-editorial-presenter'
 import { filterNewsCardsByVertical } from '../../../src/lib/news-presenter'
 import { RANKING_TABS, resolveActiveRankingSlug } from '../../../src/lib/popular-rankings'
-import { SITE_URL, publicRobots } from '../../../src/lib/site'
+import { SERIES_INDEX_PATH, SITE_URL, publicRobots } from '../../../src/lib/site'
 import { getHomeEditorialHighlights } from '../../../src/server/home-editorial'
 import { getHomeHeroSlides } from '../../../src/server/home-hero'
 import { getHomeTickerItems } from '../../../src/server/home-ticker'
+import { getHomeUpcomingSeries } from '../../../src/server/home-upcoming'
 import { getPopularRankings } from '../../../src/server/popular-rankings'
 import { getNewsIndexData } from '../../../src/server/news-pages'
 import { getSeriesIndexData } from '../../../src/server/entity-indexes'
@@ -23,6 +24,10 @@ import { getSeriesIndexData } from '../../../src/server/entity-indexes'
  * de SÉRIES ligada (showSeriesBand), acento/logo verdes por contexto e o
  * ticker de episódios novos (dataset de séries). Contratos de SEO do índice
  * real preservados (canonical, robots, CollectionPage, BreadcrumbList).
+ *
+ * "Em breve" aqui é SÓ SÉRIE (`getHomeUpcomingSeries` — `TvShow.firstAirDate`
+ * futura). A rota passava uma lista vazia fixa, então a seção não existia nesta
+ * página: era a única das três superfícies home-like sem o trilho.
  */
 
 export const dynamic = 'force-dynamic'
@@ -49,17 +54,19 @@ export default async function SeriesCategoryPage({
   const params = await searchParams
   const rankingActiveSlug = resolveActiveRankingSlug('series', params.ranking)
 
-  const [index, news, seriesHero, tickerItems, editorialHighlights, rankings] = await Promise.all([
-    getSeriesIndexData(),
-    getNewsIndexData(),
-    // O hero desta rota vem do escopo `series`. Antes ele vinha da lista da home
-    // já cortada em 5 — e como filmes entram primeiro nessa lista, com 129
-    // filmes em produção a página de séries nunca recebia um slide sequer.
-    getHomeHeroSlides('series'),
-    getHomeTickerItems('series'),
-    getHomeEditorialHighlights(),
-    getPopularRankings('series'),
-  ])
+  const [index, news, seriesHero, tickerItems, upcoming, editorialHighlights, rankings] =
+    await Promise.all([
+      getSeriesIndexData(),
+      getNewsIndexData(),
+      // O hero desta rota vem do escopo `series`. Antes ele vinha da lista da home
+      // já cortada em 5 — e como filmes entram primeiro nessa lista, com 129
+      // filmes em produção a página de séries nunca recebia um slide sequer.
+      getHomeHeroSlides('series'),
+      getHomeTickerItems('series'),
+      getHomeUpcomingSeries(),
+      getHomeEditorialHighlights(),
+      getPopularRankings('series'),
+    ])
 
   // Só matérias com vínculo `tv` persistido: a página de séries não lista a
   // matéria que só fala de filme.
@@ -121,7 +128,7 @@ export default async function SeriesCategoryPage({
         showMoviesBand={false}
         showSeriesBand
         tickerItems={tickerItems}
-        upcomingMovies={[]}
+        upcoming={{ items: upcoming, vertical: 'series', route: SERIES_INDEX_PATH }}
         vertical="series"
       />
 
