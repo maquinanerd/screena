@@ -160,10 +160,19 @@ superfícies home-like. O que muda é só o dataset:
 - O card **nunca** distingue filme de série só pela cor (invariante 11): o badge
   carrega o texto "Filme"/"Série", a URL já diverge (`/pt/filmes/` vs
   `/pt/series/`) e o bookmark grava `movie` vs `tv`. O acento é reforço.
-- Trilho vazio **não some calado**: passa por `SectionBoundary` com
-  `section: 'em-breve'`, `reason: 'no_upcoming_title'` e a rota/vertical
-  consultadas. `/pt/series/` vazia e `/pt/series/` nunca ingerida são
+- **Piso de 4 itens** (`HOME_UPCOMING_MIN`): abaixo disso o trilho não
+  renderiza. Um carrossel com 1 ou 2 cards não é carrossel, e a sangria à
+  direita promete conteúdo que não existe. Na home o piso vale para a
+  **mistura**, não para cada vertical: 2 filmes + 2 séries acendem o trilho.
+- Trilho ausente **não some calado**: passa por `SectionBoundary` com
+  `section: 'em-breve'`, a rota/vertical consultadas e a contagem real. Os dois
+  estados têm motivos **diferentes** — `no_upcoming_title` (zero, a ingestão não
+  cobriu) e `below_upcoming_floor` (existe, mas abaixo do piso, `available`
+  diz quanto). `/pt/series/` vazia e `/pt/series/` nunca ingerida são
   visualmente idênticas — só o log separa as duas.
+- O piso mora numa função só (`hasEnoughUpcoming`), chamada pelo template **e**
+  pela contagem de seções populadas da home. Se cada um aplicasse o seu próprio
+  `>= 4`, a indexabilidade acabaria contando uma seção que não está na página.
 
 Provado por `tests/web/upcoming-rail-by-route.test.ts` (fiação por rota),
 `tests/web/home-upcoming-presenter.test.ts` (presenter puro + mistura) e

@@ -19,7 +19,9 @@ import {
   buildUpcomingItems,
   formatUpcomingDate,
   formatUpcomingWeekday,
+  hasEnoughUpcoming,
   HOME_UPCOMING_LIMIT,
+  HOME_UPCOMING_MIN,
   mergeUpcomingVerticals,
   resolveUpcomingImage,
   takeUpcomingWeek,
@@ -329,6 +331,74 @@ describe("mergeUpcomingVerticals — a home mistura filme e série", () => {
   it("catálogo pequeno não é preenchido com invenção: 2 + 2 = 4 itens", () => {
     const merged = mergeUpcomingVerticals(MOVIES.slice(0, 2), SERIES.slice(0, 2), 6);
     expect(merged).toHaveLength(4);
+  });
+});
+
+/**
+ * O piso do trilho. Um carrossel com 1 ou 2 cards não é carrossel — e a sangria
+ * à direita promete conteúdo que não existe.
+ */
+describe("hasEnoughUpcoming — piso de 4 itens", () => {
+  const um = buildUpcomingItems([movie({ slug: "a" })], NOW);
+  const quatro = buildUpcomingItems(
+    Array.from({ length: 4 }, (_unused, i) =>
+      movie({ slug: `m-${i}`, releaseDate: new Date(Date.UTC(2026, 7, i + 1)) }),
+    ),
+    NOW,
+  );
+
+  it("o piso é 4, e é MENOR que o teto de exibição", () => {
+    expect(HOME_UPCOMING_MIN).toBe(4);
+    // Piso >= teto tornaria o trilho impossível de acender: controle de sanidade.
+    expect(HOME_UPCOMING_MIN).toBeLessThanOrEqual(HOME_UPCOMING_LIMIT);
+  });
+
+  it("CONTROLE POSITIVO: 4 itens passam (senão nada abaixo prova um piso)", () => {
+    expect(quatro).toHaveLength(4);
+    expect(hasEnoughUpcoming(quatro)).toBe(true);
+  });
+
+  it("0, 1, 2 e 3 itens NÃO renderizam o trilho", () => {
+    for (let n = 0; n < HOME_UPCOMING_MIN; n += 1) {
+      expect(hasEnoughUpcoming(quatro.slice(0, n)), `${n} item(ns)`).toBe(false);
+    }
+    expect(hasEnoughUpcoming(um)).toBe(false);
+  });
+
+  it("acima do piso continua verdadeiro até o teto", () => {
+    const seis = buildUpcomingItems(
+      Array.from({ length: 6 }, (_unused, i) =>
+        movie({ slug: `s-${i}`, releaseDate: new Date(Date.UTC(2026, 7, i + 1)) }),
+      ),
+      NOW,
+    );
+    expect(seis).toHaveLength(HOME_UPCOMING_LIMIT);
+    expect(hasEnoughUpcoming(seis)).toBe(true);
+  });
+
+  /**
+   * A mistura da home é somada ANTES do piso: 2 filmes + 2 séries = 4 e o
+   * trilho acende, ainda que nenhuma das duas verticais sozinha alcançasse o
+   * piso. O piso é do trilho, não de cada vertical.
+   */
+  it("na home o piso vale para a MISTURA, não para cada vertical", () => {
+    const doisFilmes = buildUpcomingItems(
+      [
+        movie({ slug: "f1", releaseDate: new Date(Date.UTC(2026, 7, 1)) }),
+        movie({ slug: "f2", releaseDate: new Date(Date.UTC(2026, 7, 2)) }),
+      ],
+      NOW,
+    );
+    const duasSeries = buildUpcomingItems(
+      [
+        series({ slug: "s1", releaseDate: new Date(Date.UTC(2026, 7, 3)) }),
+        series({ slug: "s2", releaseDate: new Date(Date.UTC(2026, 7, 4)) }),
+      ],
+      NOW,
+    );
+    expect(hasEnoughUpcoming(doisFilmes)).toBe(false);
+    expect(hasEnoughUpcoming(duasSeries)).toBe(false);
+    expect(hasEnoughUpcoming(mergeUpcomingVerticals(doisFilmes, duasSeries, 6))).toBe(true);
   });
 });
 

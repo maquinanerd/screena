@@ -97,6 +97,45 @@ describe("cada rota home-like consome o seu dataset de 'Em breve'", () => {
   });
 });
 
+/**
+ * O piso do trilho tem DOIS consumidores: quem decide renderizar e quem conta
+ * seções populadas para a indexabilidade. Se cada um aplicasse o seu próprio
+ * `>= 4`, um deles ficaria para trás no primeiro refactor e a home passaria a
+ * contar como populada uma seção que não está na página.
+ */
+describe("o piso de 4 itens tem UMA fonte, usada pelos dois consumidores", () => {
+  const HOME_LIKE = "apps/web/app/_components/home-like.tsx";
+  const PRESENTER = "apps/web/src/lib/home-upcoming-presenter.ts";
+
+  it("o piso é declarado UMA vez, no presenter", () => {
+    expect(code(read(PRESENTER))).toContain("HOME_UPCOMING_MIN = 4");
+  });
+
+  it("template e home chamam a MESMA função (`hasEnoughUpcoming`)", () => {
+    expect(code(read(HOME_LIKE))).toContain("hasEnoughUpcoming(upcoming.items)");
+    expect(code(read(HOME))).toContain("hasEnoughUpcoming(upcomingItems)");
+  });
+
+  it("NEGATIVO — ninguém reescreve o número do piso à mão", () => {
+    for (const file of [HOME_LIKE, HOME]) {
+      const source = code(read(file));
+      expect(source, `${file} compara contagem com literal`).not.toMatch(
+        /items\.length\s*[<>]=?\s*\d/,
+      );
+      expect(source).not.toContain("HOME_UPCOMING_MIN =");
+    }
+  });
+
+  it("NEGATIVO — o piso não vira `return null` mudo antes da fronteira", () => {
+    // Cumprir só a metade visual ("some do DOM") devolveria a ausência muda que
+    // o SectionBoundary existe para impedir. O piso entra na DECISÃO.
+    const source = code(read(HOME_LIKE));
+    expect(source).toContain("upcomingRendered ? upcoming.items : null");
+    expect(source).toContain("'below_upcoming_floor'");
+    expect(source).toContain("available: upcomingCount");
+  });
+});
+
 describe("a camada server-only pergunta a coluna certa de cada vertical", () => {
   const server = code(read(SERVER));
 

@@ -4,10 +4,11 @@
  *
  * O QUE SÓ ESTE ARQUIVO PEGA. Os testes puros de
  * `tests/web/home-upcoming-presenter.test.ts` provam que o presenter separa
- * filme de série. Nenhum deles falharia se `HomeLike` jogasse fora o
- * `verticalLabel`, marcasse todo bookmark como `movie` ou mandasse os dois
- * verticais para a mesma rota. Aqui a medida é o que o LEITOR vê na marcação
- * renderizada.
+ * filme de série e conhecem o piso. Nenhum deles falharia se `HomeLike` jogasse
+ * fora o `verticalLabel`, marcasse todo bookmark como `movie`, mandasse os dois
+ * verticais para a mesma rota ou aplicasse o piso com um `return null` mudo.
+ * Aqui a medida é o que o LEITOR vê na marcação renderizada — e o que o
+ * OPERADOR vê no log quando não há marcação nenhuma.
  *
  * COMO A MEDIDA É FEITA. A marcação é FATIADA por card (cada card é um
  * `<article class="glimpse-card"` que não contém outro `<article>`), e essa
@@ -24,6 +25,7 @@ import { HomeLike, type HomeLikeProps, type HomeLikeUpcoming } from "../home-lik
 import { EMPTY_HOME_EDITORIAL_HIGHLIGHTS } from "../../../src/lib/home-editorial-presenter";
 import {
   buildUpcomingItems,
+  HOME_UPCOMING_MIN,
   type HomeUpcomingItem,
   type UpcomingEntityInput,
 } from "../../../src/lib/home-upcoming-presenter";
@@ -45,6 +47,23 @@ function entity(overrides: Partial<UpcomingEntityInput>): UpcomingEntityInput {
 
 function items(...inputs: UpcomingEntityInput[]): HomeUpcomingItem[] {
   return buildUpcomingItems(inputs, NOW, 12);
+}
+
+/**
+ * Enche o trilho até o piso com itens genéricos daquela vertical, para que o
+ * caso sob teste seja a DISTINÇÃO entre cards e não a contagem. Os itens de
+ * recheio estreiam depois (dia 20+) para nunca disputarem a ordem com os
+ * títulos nomeados de cada teste.
+ */
+function padding(vertical: "movie" | "series", count: number): UpcomingEntityInput[] {
+  return Array.from({ length: count }, (_unused, i) =>
+    entity({
+      vertical,
+      slug: `recheio-${vertical}-${i}`,
+      translationTitle: `Recheio ${vertical} ${i}`,
+      releaseDate: new Date(Date.UTC(2026, 7, 20 + i)),
+    }),
+  );
 }
 
 /** `HomeLike` com TUDO desligado menos o trilho — a medida é só dele. */
@@ -98,14 +117,19 @@ describe("o trilho aparece nas TRÊS rotas, com o dataset de cada uma", () => {
     const markup = renderRail({
       items: items(
         entity({ slug: "duna-3", translationTitle: "Duna 3" }),
-        entity({ slug: "avatar-4", translationTitle: "Avatar 4" }),
+        entity({
+          slug: "avatar-4",
+          translationTitle: "Avatar 4",
+          releaseDate: new Date(Date.UTC(2026, 7, 2)),
+        }),
+        ...padding("movie", 2),
       ),
       vertical: "movie",
       route: "/pt/filmes/",
     });
 
     const cards = cardSlices(markup);
-    expect(cards).toHaveLength(2);
+    expect(cards).toHaveLength(4);
     for (const card of cards) {
       expect(card).toContain(">Filme<");
       expect(card).not.toContain(">Série<");
@@ -118,16 +142,20 @@ describe("o trilho aparece nas TRÊS rotas, com o dataset de cada uma", () => {
     const markup = renderRail({
       items: items(
         entity({ vertical: "series", slug: "fallout-2", translationTitle: "Fallout 2" }),
+        ...padding("series", 3),
       ),
       vertical: "series",
       route: "/pt/series/",
     });
 
-    const [card] = cardSlices(markup);
-    expect(card).toBeDefined();
-    expect(card).toContain(">Série<");
-    expect(card).not.toContain(">Filme<");
-    expect(card).toContain('href="/pt/series/fallout-2/"');
+    const cards = cardSlices(markup);
+    expect(cards).toHaveLength(4);
+    for (const card of cards) {
+      expect(card).toContain(">Série<");
+      expect(card).not.toContain(">Filme<");
+      expect(card).toContain('href="/pt/series/');
+    }
+    expect(cards[0]).toContain('href="/pt/series/fallout-2/"');
   });
 
   it("/pt/ — MISTO: os dois verticais no mesmo trilho, cada card dizendo o que é", () => {
@@ -140,13 +168,15 @@ describe("o trilho aparece nas TRÊS rotas, com o dataset de cada uma", () => {
           translationTitle: "Fallout 2",
           releaseDate: new Date(Date.UTC(2026, 7, 2)),
         }),
+        ...padding("movie", 1),
+        ...padding("series", 1),
       ),
       vertical: "mixed",
       route: "/pt/",
     });
 
     const cards = cardSlices(markup);
-    expect(cards).toHaveLength(2);
+    expect(cards).toHaveLength(4);
 
     const filme = cards.find((c) => c.includes("Duna 3"));
     const serie = cards.find((c) => c.includes("Fallout 2"));
@@ -171,15 +201,17 @@ describe("invariante 11 — a vertical é TEXTO, não só acento", () => {
         translationTitle: "Uma série",
         releaseDate: new Date(Date.UTC(2026, 7, 3)),
       }),
+      ...padding("movie", 1),
+      ...padding("series", 1),
     ),
     vertical: "mixed",
     route: "/pt/",
   } as const;
 
-  it("CONTROLE POSITIVO: os dois cards existem e são distinguíveis", () => {
+  it("CONTROLE POSITIVO: os cards existem e são distinguíveis", () => {
     // Sem isto, um render quebrado que não produzisse card nenhum passaria nas
     // asserções negativas abaixo.
-    expect(cardSlices(renderRail(MISTO))).toHaveLength(2);
+    expect(cardSlices(renderRail(MISTO))).toHaveLength(4);
   });
 
   it("apagar o acento não apaga a informação: o rótulo textual sobrevive", () => {
@@ -197,6 +229,7 @@ describe("invariante 11 — a vertical é TEXTO, não só acento", () => {
     // para a watchlist da entidade errada.
     const comId = items(
       entity({ id: "77", vertical: "series", slug: "s", translationTitle: "Uma série" }),
+      ...padding("series", 3),
     );
     expect(comId[0]?.bookmarkType).toBe("tv");
     const [card] = cardSlices(
@@ -207,7 +240,7 @@ describe("invariante 11 — a vertical é TEXTO, não só acento", () => {
   });
 });
 
-describe("trilho vazio: fora do DOM **e** log emitido — na mesma asserção", () => {
+describe("trilho fora do DOM **e** log emitido — na mesma asserção", () => {
   beforeEach(() => {
     // O caminho de PRODUÇÃO é o que interessa: é lá que a ausência some.
     vi.stubEnv("NODE_ENV", "production");
@@ -232,6 +265,7 @@ describe("trilho vazio: fora do DOM **e** log emitido — na mesma asserção", 
         reason: "no_upcoming_title",
         route: "/pt/series/",
         vertical: "series",
+        available: 0,
         actionable: true,
       }),
     ]);
@@ -251,15 +285,104 @@ describe("trilho vazio: fora do DOM **e** log emitido — na mesma asserção", 
     expect(filmes.logs[0]).toContain('"vertical":"movie"');
   });
 
-  it("CONTROLE POSITIVO: com item, o trilho renderiza e NÃO registra nada", () => {
+  it("CONTROLE POSITIVO: no piso, o trilho renderiza e NÃO registra nada", () => {
     const observed = observe(() =>
       renderRail({
-        items: items(entity({ slug: "duna-3", translationTitle: "Duna 3" })),
+        items: items(...padding("movie", HOME_UPCOMING_MIN)),
         vertical: "movie",
         route: "/pt/filmes/",
       }),
     );
     expect(observed.markup).toContain("glimpse-rail");
     expect(observed.logs).toEqual([]);
+  });
+});
+
+/**
+ * O piso. "Menos de 4 não mostra a seção" é fácil de cumprir errado: um
+ * `if (items.length < 4) return null` cumpre a metade visual e devolve a
+ * ausência muda. Aqui as duas metades são medidas juntas — e o motivo tem de
+ * ser DIFERENTE do motivo de trilho vazio.
+ */
+describe("piso de 4 itens — abaixo dele o trilho some COM motivo", () => {
+  beforeEach(() => {
+    vi.stubEnv("NODE_ENV", "production");
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("3 itens: fora do DOM, log `below_upcoming_floor` e a contagem real", () => {
+    const observed = observe(() =>
+      renderRail({
+        items: items(...padding("movie", 3)),
+        vertical: "movie",
+        route: "/pt/filmes/",
+      }),
+    );
+
+    expect(observed.markup).not.toContain("glimpse-rail");
+    expect(observed.logs).toEqual([
+      JSON.stringify({
+        event: "section_absent",
+        section: "em-breve",
+        reason: "below_upcoming_floor",
+        route: "/pt/filmes/",
+        vertical: "movie",
+        available: 3,
+        actionable: true,
+      }),
+    ]);
+  });
+
+  it("1, 2 e 3 itens somem; 4 acende — a fronteira é exatamente o piso", () => {
+    const renderiza = (n: number): boolean =>
+      observe(() =>
+        renderRail({
+          items: items(...padding("movie", n)),
+          vertical: "movie",
+          route: "/pt/filmes/",
+        }),
+      ).markup.includes("glimpse-rail");
+
+    expect([1, 2, 3].map(renderiza)).toEqual([false, false, false]);
+    expect(renderiza(HOME_UPCOMING_MIN)).toBe(true);
+    expect(renderiza(HOME_UPCOMING_MIN + 1)).toBe(true);
+  });
+
+  it("`vazio` e `abaixo do piso` NÃO colapsam no mesmo motivo", () => {
+    // Colapsar os dois apagaria justamente o caso em que a ingestão já funciona
+    // e falta pouco para acender.
+    const vazio = observe(() =>
+      renderRail({ items: [], vertical: "movie", route: "/pt/filmes/" }),
+    );
+    const abaixo = observe(() =>
+      renderRail({
+        items: items(...padding("movie", 3)),
+        vertical: "movie",
+        route: "/pt/filmes/",
+      }),
+    );
+
+    // Visualmente idênticos…
+    expect(vazio.markup).toBe(abaixo.markup);
+    // …e o log é a ÚNICA coisa que os separa.
+    expect(vazio.logs[0]).toContain('"reason":"no_upcoming_title"');
+    expect(vazio.logs[0]).toContain('"available":0');
+    expect(abaixo.logs[0]).toContain('"reason":"below_upcoming_floor"');
+    expect(abaixo.logs[0]).toContain('"available":3');
+  });
+
+  it("abaixo do piso a página não finge conteúdo: cai no estado vazio honesto", () => {
+    // Se o trilho fosse a única coisa da página e sumisse pelo piso, contar
+    // aqueles 3 itens como conteúdo deixaria a página em branco sem explicação.
+    const markup = observe(() =>
+      renderRail({
+        items: items(...padding("movie", 3)),
+        vertical: "movie",
+        route: "/pt/filmes/",
+      }),
+    ).markup;
+    expect(markup).toContain("vazio");
   });
 });

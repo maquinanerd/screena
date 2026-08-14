@@ -17,7 +17,10 @@ import {
 } from '../../src/lib/home-editorial-presenter'
 import type { HeroSlide } from '../../src/lib/home-hero-presenter'
 import type { HomeTickerItem } from '../../src/lib/home-ticker-presenter'
-import type { HomeUpcomingItem } from '../../src/lib/home-upcoming-presenter'
+import {
+  hasEnoughUpcoming,
+  type HomeUpcomingItem,
+} from '../../src/lib/home-upcoming-presenter'
 import type { NewsCardView } from '../../src/lib/news-presenter'
 import { decideRouteSection } from '../../src/lib/section-absence'
 import { MOVIES_INDEX_PATH, NEWS_INDEX_PATH, SERIES_INDEX_PATH } from '../../src/lib/site'
@@ -196,24 +199,35 @@ export function HomeLike({
   ].slice(0, 6)
   const newsLead: NewsCardView | undefined = newsCards[0]
   const hasEditorial = hasEditorialHighlights(editorialHighlights)
-  const hasContent =
-    heroSlides.length +
-      movieCards.length +
-      seriesCards.length +
-      upcoming.items.length +
-      newsCards.length >
-      0 || hasEditorial
 
   // Trilho "Em breve": ou ele renderiza, ou a linha de log sai — a decisão e o
   // registro são o MESMO ponto (`SectionBoundary`). Um trilho vazio em
   // `/pt/series/` e um trilho que nunca foi ingerido são visualmente idênticos;
   // só o log separa os dois.
-  const upcomingSection = decideRouteSection(upcoming.items, {
+  //
+  // O piso (`hasEnoughUpcoming`) é parte da decisão, não um `if` à parte: abaixo
+  // dele o trilho some COM motivo próprio (`below_upcoming_floor` + a contagem),
+  // nunca calado. Um `items.length < 4 && return null` acima daqui devolveria a
+  // ausência muda que este bloco existe para impedir.
+  const upcomingCount = upcoming.items.length
+  const upcomingRendered = hasEnoughUpcoming(upcoming.items)
+  const upcomingSection = decideRouteSection(upcomingRendered ? upcoming.items : null, {
     section: 'em-breve',
-    reason: 'no_upcoming_title',
+    reason: upcomingCount === 0 ? 'no_upcoming_title' : 'below_upcoming_floor',
     route: upcoming.route,
     vertical: upcoming.vertical,
+    available: upcomingCount,
   })
+
+  // Estado vazio da página conta o trilho pelo que ele RENDERIZA, não pelo que
+  // ele tem. Três itens abaixo do piso não são conteúdo publicado na tela.
+  const hasContent =
+    heroSlides.length +
+      movieCards.length +
+      seriesCards.length +
+      (upcomingRendered ? upcomingCount : 0) +
+      newsCards.length >
+      0 || hasEditorial
 
   return (
     <>

@@ -31,6 +31,31 @@ import { buildTmdbImageUrl } from "./tmdb-image-url";
 /** Quantos itens "Em breve" uma superfície exibe no máximo. */
 export const HOME_UPCOMING_LIMIT = 6;
 
+/**
+ * Piso do trilho: abaixo disto a seção NÃO renderiza.
+ *
+ * Um carrossel com um ou dois cards não é um carrossel — é um card solto com
+ * setas mortas ao lado, e o trilho tem sangria à direita justamente para
+ * prometer que há mais adiante. Com 3 ou menos essa promessa é falsa.
+ *
+ * O piso não silencia nada: abaixo dele a ausência vira log com
+ * `below_upcoming_floor` e a contagem real, que é diferente de `no_upcoming_title`
+ * (zero). "Tem 3, precisa de 4" e "não tem nenhum" pedem ações diferentes.
+ */
+export const HOME_UPCOMING_MIN = 4;
+
+/**
+ * O trilho tem itens suficientes para renderizar?
+ *
+ * FONTE ÚNICA do piso. Quem decide renderizar e quem conta seções populadas
+ * para a indexabilidade chamam ESTA função — se cada um aplicasse o seu próprio
+ * `>= 4`, um dos dois acabaria esquecido num refactor e a home passaria a contar
+ * como populada uma seção que não está na página.
+ */
+export function hasEnoughUpcoming(items: readonly HomeUpcomingItem[]): boolean {
+  return items.length >= HOME_UPCOMING_MIN;
+}
+
 /** As duas verticais que a seção cobre. Pessoa/temporada/episódio não entram. */
 export type UpcomingVertical = "movie" | "series";
 
