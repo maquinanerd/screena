@@ -173,7 +173,11 @@ const RATING_POLICY: Record<string, string> = {
  * é testado. `licenseMatches` reprova (display/score/versão mudaram) => o
  * registry emite `supersede`, a licença de julho vira `is_current = false`
  * (histórico preservado, nunca apagada) e as decisões dela são desativadas.
- * Requer `pnpm legal apply --confirm` em produção — decisão humana, como sempre.
+ * Requer `pnpm legal sources apply ... --confirm` em produção — decisão humana,
+ * como sempre. O subcomando é `sources apply`, e `--confirm` exige `--reviewer`
+ * E `--policy-version`, esta última com o valor EXATO de `AUTHORIZATION_BATCH`
+ * (qualquer outro sai com erro de uso e não escreve nada). A linha completa está
+ * em `services/legal/README.md` — não a reescreva de memória.
  *
  * O QUE **NÃO** FOI DECIDIDO: remover as fontes do vocabulário canônico.
  * `RATING_SOURCES` e `RATING_SCALES` seguem intactos — a escala do Letterboxd

@@ -371,14 +371,29 @@ no projeto, e inventar URL seria fabricar. Com a lista vazia a faixa não
 renderiza — um círculo que leva a lugar nenhum é pior que a ausência dele.
 Preencher a constante liga a faixa inteira, sem tocar no componente.
 
-### 10.6 Newsletter: formulário real, sem armazenamento
+### 10.6 Newsletter: a faixa não renderiza, e diz por quê _(atualizado 13/08/2026)_
 
 Não há tabela de inscrição no schema, e criar uma é tarefa de banco aprovada
-(CLAUDE.md §10). O `<form>` é real e os três estados existem; a rota
-`/api/newsletter` responde **`503` com a verdade** ("as inscrições ainda não
-estão abertas; nenhum e-mail foi guardado") em vez de fingir sucesso. O e-mail é
-validado e descartado — nada é gravado nem logado. Ligar o armazenamento muda só
-a rota.
+(CLAUDE.md §10).
+
+A primeira versão desta mudança deixou a faixa no ar com a rota respondendo
+`503` honesto. **Decisão do proprietário: esconder a faixa.** Recusar o `200 OK`
+mentiroso estava certo, mas um formulário que nunca consegue ter sucesso é pior
+que ausência — o leitor digita o e-mail, aperta, e recebe erro. O gesto foi gasto
+à toa.
+
+Então a faixa fica **atrás da flag `CINERIE_NEWSLETTER_ENABLED`** (fail-closed,
+desligada por default). O `<form>`, os três estados, o `aria-live` e os testes
+**continuam existindo** — é trabalho feito e testado, e vai ao ar ligando a flag
+no dia em que a tabela existir. A rota também fica, com o `503`: quem chegar nela
+por outro caminho continua recebendo a verdade.
+
+A ausência não é muda. O `SectionBoundary` emite
+`{"section":"newsletter","reason":"newsletter_storage_unavailable","surface":"footer","actionable":true}`
+— **uma vez por processo**, não por request (o rodapé renderiza em toda página).
+
+O que exatamente destrava a flag — a tabela e o que ela precisa carregar — está
+em [`newsletter.md`](./newsletter.md).
 
 ### 10.7 Página de créditos sem link de site/termos por fonte
 

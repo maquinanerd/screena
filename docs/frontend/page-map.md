@@ -83,9 +83,12 @@
   nome de fonte: lê a projeção de `services/legal`. Antes de mexer, ler
   [`FOOTER-SPEC.md`](./FOOTER-SPEC.md) §4 e §10 — as divergências entre a spec e
   o implementado estão registradas lá, com o motivo de cada uma.
-- `footer-newsletter.tsx`: `<form>` real do rodapé. A rota `/api/newsletter`
-  responde `503` honesto (não há armazenamento de inscrição); ela nunca finge
-  sucesso.
+- `footer-newsletter.tsx`: `<form>` real do rodapé, **atrás da flag
+  `CINERIE_NEWSLETTER_ENABLED`** (desligada por default). Sem armazenamento de
+  inscrição, a faixa não renderiza — um formulário que nunca consegue ter sucesso
+  é pior que ausência. A ausência é logada (`newsletter_storage_unavailable`,
+  `actionable: true`), e a rota `/api/newsletter` continua respondendo `503`
+  honesto. O que destrava a flag está em [`newsletter.md`](./newsletter.md).
 - `entity-index.tsx`: lista textual e schemas de coleção/breadcrumb.
 - `entity-external-ids.tsx`: identidade externa real, sem rating implícito.
 - `watch-availability-panel.tsx`: ofertas legais já filtradas pelo gate; nenhum
