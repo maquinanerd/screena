@@ -27,6 +27,7 @@
 
 import { detailPath, MOVIES_INDEX_PATH, SERIES_INDEX_PATH } from "./site";
 import { buildTmdbImageUrl } from "./tmdb-image-url";
+import type { TrailerView } from "./trailer-presenter";
 
 /** Quantos itens "Em breve" uma superfície exibe no máximo. */
 export const HOME_UPCOMING_LIMIT = 6;
@@ -117,6 +118,13 @@ export interface UpcomingEntityInput {
   backdropPath: string | null;
   /** `file_path` CRU do TMDB do pôster (ex.: `/xyz.jpg`); fallback do backdrop. */
   posterPath: string | null;
+  /**
+   * Trailer JÁ aprovado pelo gate de licença (`pickTrailer`), ou null.
+   *
+   * Chega pronto: o presenter não decide licença. Ausente/null => o card não
+   * ganha botão "Watch" e continua exatamente como está hoje.
+   */
+  trailer?: TrailerView | null;
 }
 
 /** Card "Em breve" pronto para render — objeto PLANO e serializável. */
@@ -148,6 +156,12 @@ export interface HomeUpcomingItem {
    * gradiente de fallback. Nunca é path local nem de filesystem.
    */
   imageUrl: string | null;
+  /**
+   * Trailer exibível, ou null. `null` é o estado NORMAL hoje: vídeo do TMDB
+   * ainda não tem licença de exibição registrada (ver `trailer-presenter.ts`),
+   * e sem ele o card não mostra botão de trailer.
+   */
+  trailer: TrailerView | null;
 }
 
 function trimToNull(value: string | null | undefined): string | null {
@@ -265,6 +279,7 @@ export function buildUpcomingItems(
         weekday: formatUpcomingWeekday(release),
         href,
         imageUrl: resolveUpcomingImage(item.backdropPath, item.posterPath),
+        trailer: item.trailer ?? null,
       },
     });
   }

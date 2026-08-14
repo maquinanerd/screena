@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 
 import { serializeJsonLd } from '@screena/seo'
 
-import { LegalDoc } from '../../_components/legal-doc'
+import { LEGAL_TERMS_VERSION, LegalDoc } from '../../_components/legal-doc'
 import {
   HOME_PATH,
   PRIVACY_PATH,
@@ -69,7 +69,12 @@ export default function TermosPage() {
 
   return (
     <>
-      <LegalDoc breadcrumbLabel="Termos de Uso" effectiveDate="4 de agosto de 2026" title={TITLE}>
+      <LegalDoc
+        breadcrumbLabel="Termos de Uso"
+        effectiveDate="4 de agosto de 2026"
+        title={TITLE}
+        version={LEGAL_TERMS_VERSION}
+      >
         <p>
           Estes Termos regulam o uso da Cinerie. Ao criar uma conta, você declara que leu e aceita
           estes Termos e a <a href={PRIVACY_PATH}>Política de Privacidade</a>. Se não concordar com

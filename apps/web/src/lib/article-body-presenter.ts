@@ -30,6 +30,7 @@ import {
   type NewsEntityCard,
   type NewsEntityCardInput,
 } from "./news-presenter";
+import { buildYouTubeEmbedUrl } from "./youtube-embed";
 
 /* ------------------------------------------------------------------ */
 /* View model                                                          */
@@ -508,12 +509,12 @@ function mapBlock(
       // embed que nao carrega vira buraco na materia.
       const href = externalHref(text(block.canonicalUrl) ?? text(block.originalUrl), null);
       if (href === null) return null;
-      // O player e montado AQUI, do id — nunca vem pronto do dado.
+      // O player e montado AQUI, do id — nunca vem pronto do dado. A POLITICA
+      // do embed (dominio nocookie, zero query, id de 11 caracteres) vive num
+      // lugar so, `youtube-embed.ts`, compartilhada com o modal de trailer:
+      // dois montadores viram duas politicas no primeiro conserto.
       const externalId = text(block.externalId);
-      const playerUrl =
-        provider === "youtube" && externalId !== null && /^[A-Za-z0-9_-]{11}$/.test(externalId)
-          ? `https://www.youtube-nocookie.com/embed/${externalId}`
-          : null;
+      const playerUrl = provider === "youtube" ? buildYouTubeEmbedUrl(externalId) : null;
       return {
         kind: "embed",
         id,

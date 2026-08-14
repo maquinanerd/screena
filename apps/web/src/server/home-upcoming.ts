@@ -29,8 +29,77 @@ import {
   type HomeUpcomingItem,
   type UpcomingEntityInput,
 } from "../lib/home-upcoming-presenter";
+import { pickTrailer, type TrailerRow, type TrailerView } from "../lib/trailer-presenter";
 
 const LANGUAGE_CODE = "pt-BR";
+
+/**
+ * Trailers EXIBÍVEIS por `tmdb_id`, para uma vertical.
+ *
+ * O gate da invariante 6 é aplicado DUAS vezes de propósito: aqui, no `where`
+ * (a linha bloqueada nem sai do banco) e de novo em `isDisplayableTrailerRow`
+ * (que também checa site, tipo e formato do id). A redundância é barata e o
+ * primeiro filtro é o que garante que dado sem licença não trafega para o
+ * processo de render nem por engano.
+ *
+ * Hoje isto devolve um mapa VAZIO em produção, e está certo: as linhas nascem
+ * `display_allowed = false` e ainda não existe decisão de licença para vídeo do
+ * TMDB. Ver `apps/web/src/lib/trailer-presenter.ts`.
+ */
+async function loadDisplayableTrailers(
+  entityType: "movie" | "tv",
+  tmdbIds: readonly number[],
+): Promise<Map<number, TrailerView>> {
+  const byTmdbId = new Map<number, TrailerView>();
+  if (tmdbIds.length === 0) return byTmdbId;
+
+  const prisma = getPrismaClient();
+  const rows = await prisma.tmdbVideo.findMany({
+    where: {
+      entityType,
+      tmdbId: { in: [...tmdbIds] },
+      // Invariante 6, na própria consulta.
+      displayAllowed: true,
+      licenseStatus: { notIn: ["unknown", "blocked"] },
+    },
+    select: {
+      tmdbId: true,
+      site: true,
+      videoKey: true,
+      name: true,
+      videoType: true,
+      official: true,
+      languageCode: true,
+      publishedAt: true,
+      displayAllowed: true,
+      licenseStatus: true,
+    },
+  });
+
+  const grouped = new Map<number, TrailerRow[]>();
+  for (const row of rows) {
+    const bucket = grouped.get(row.tmdbId);
+    const candidate: TrailerRow = {
+      site: row.site,
+      videoKey: row.videoKey,
+      name: row.name,
+      videoType: row.videoType,
+      official: row.official,
+      languageCode: row.languageCode,
+      publishedAt: row.publishedAt,
+      displayAllowed: row.displayAllowed,
+      licenseStatus: row.licenseStatus,
+    };
+    if (bucket === undefined) grouped.set(row.tmdbId, [candidate]);
+    else bucket.push(candidate);
+  }
+
+  for (const [tmdbId, candidates] of grouped) {
+    const trailer = pickTrailer(candidates);
+    if (trailer !== null) byTmdbId.set(tmdbId, trailer);
+  }
+  return byTmdbId;
+}
 
 /** Início do dia UTC de `now` (cutoff de "estreia futura" para o filtro no banco). */
 function startOfUtcDay(now: Date): Date {
@@ -97,6 +166,7 @@ export const getHomeUpcomingMovies = cache(
         where: { id: { in: ids }, releaseDate: { gt: cutoff } },
         select: {
           id: true,
+          tmdbId: true,
           titleOriginal: true,
           releaseDate: true,
           backdropPath: true,
@@ -106,6 +176,11 @@ export const getHomeUpcomingMovies = cache(
       }),
       loadTranslationTitles("movie", ids),
     ]);
+
+    const trailers = await loadDisplayableTrailers(
+      "movie",
+      movies.map((movie) => movie.tmdbId),
+    );
 
     const inputs: UpcomingEntityInput[] = movies.map((movie) => {
       const key = movie.id.toString();
@@ -118,6 +193,7 @@ export const getHomeUpcomingMovies = cache(
         releaseDate: movie.releaseDate,
         backdropPath: movie.backdropPath,
         posterPath: movie.posterPath,
+        trailer: trailers.get(movie.tmdbId) ?? null,
       };
     });
 
@@ -147,6 +223,7 @@ export const getHomeUpcomingSeries = cache(
         where: { id: { in: ids }, firstAirDate: { gt: cutoff } },
         select: {
           id: true,
+          tmdbId: true,
           nameOriginal: true,
           firstAirDate: true,
           backdropPath: true,
@@ -156,6 +233,11 @@ export const getHomeUpcomingSeries = cache(
       }),
       loadTranslationTitles("tv", ids),
     ]);
+
+    const trailers = await loadDisplayableTrailers(
+      "tv",
+      shows.map((show) => show.tmdbId),
+    );
 
     const inputs: UpcomingEntityInput[] = shows.map((show) => {
       const key = show.id.toString();
@@ -168,6 +250,7 @@ export const getHomeUpcomingSeries = cache(
         releaseDate: show.firstAirDate,
         backdropPath: show.backdropPath,
         posterPath: show.posterPath,
+        trailer: trailers.get(show.tmdbId) ?? null,
       };
     });
 
