@@ -7,10 +7,14 @@ import {
   HOME_NEWS_CARD_LIMIT,
   takeSectionCards,
 } from '../../../src/lib/portal-presenter'
+import { restrictEditorialHighlights } from '../../../src/lib/home-editorial-presenter'
+import { filterNewsCardsByVertical } from '../../../src/lib/news-presenter'
+import { RANKING_TABS, resolveActiveRankingSlug } from '../../../src/lib/popular-rankings'
 import { SITE_URL, publicRobots } from '../../../src/lib/site'
 import { getHomeEditorialHighlights } from '../../../src/server/home-editorial'
 import { getHomeHeroSlides } from '../../../src/server/home-hero'
 import { getHomeTickerItems } from '../../../src/server/home-ticker'
+import { getPopularRankings } from '../../../src/server/popular-rankings'
 import { getNewsIndexData } from '../../../src/server/news-pages'
 import { getSeriesIndexData } from '../../../src/server/entity-indexes'
 
@@ -37,20 +41,39 @@ export async function generateMetadata(): Promise<Metadata> {
   }
 }
 
-export default async function SeriesCategoryPage() {
-  const [index, news, heroSlides, tickerItems, editorialHighlights] = await Promise.all([
+export default async function SeriesCategoryPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
+  const params = await searchParams
+  const rankingActiveSlug = resolveActiveRankingSlug('series', params.ranking)
+
+  const [index, news, seriesHero, tickerItems, editorialHighlights, rankings] = await Promise.all([
     getSeriesIndexData(),
     getNewsIndexData(),
-    getHomeHeroSlides(),
-    getHomeTickerItems(),
+    // O hero desta rota vem do escopo `series`. Antes ele vinha da lista da home
+    // já cortada em 5 — e como filmes entram primeiro nessa lista, com 129
+    // filmes em produção a página de séries nunca recebia um slide sequer.
+    getHomeHeroSlides('series'),
+    getHomeTickerItems('series'),
     getHomeEditorialHighlights(),
+    getPopularRankings('series'),
   ])
 
-  const seriesHero = heroSlides.filter((slide) => slide.vertical === 'series')
+  // Só matérias com vínculo `tv` persistido: a página de séries não lista a
+  // matéria que só fala de filme.
   const newsCards = takeSectionCards(
-    [...(news.view.featured !== null ? [news.view.featured] : []), ...news.view.cards],
+    filterNewsCardsByVertical(
+      [...(news.view.featured !== null ? [news.view.featured] : []), ...news.view.cards],
+      'series',
+    ),
     HOME_NEWS_CARD_LIMIT,
   )
+  const rankingPanels = RANKING_TABS.series.map((tab, position) => ({
+    tab,
+    items: rankings[position]?.items ?? [],
+  }))
 
   const breadcrumbJsonLd = {
     '@context': 'https://schema.org',
@@ -86,17 +109,20 @@ export default async function SeriesCategoryPage() {
 
       <HomeLike
         adPrefix="series"
-        editorialHighlights={editorialHighlights}
+        editorialHighlights={restrictEditorialHighlights(editorialHighlights, 'series')}
         editorialInitialVertical="series"
         emptyMessage="Ainda não há séries publicadas nesta seção."
         heroSlides={seriesHero}
         movieCards={[]}
         newsCards={newsCards}
+        rankingActiveSlug={rankingActiveSlug}
+        rankingPanels={rankingPanels}
         seriesCards={index.view.cards}
         showMoviesBand={false}
         showSeriesBand
         tickerItems={tickerItems}
         upcomingMovies={[]}
+        vertical="series"
       />
 
       <script

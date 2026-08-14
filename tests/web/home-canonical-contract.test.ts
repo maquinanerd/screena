@@ -35,11 +35,14 @@ describe('home pública — design canônico (tela 02)', () => {
     for (const getter of [
       'getHomeCatalogData()',
       'getNewsIndexData()',
-      'getHomeHeroSlides()',
+      // A home é a UNIÃO: ela pede o escopo `home` explicitamente, e é o único
+      // lugar do app onde as duas verticais convivem numa seção só.
+      "getHomeHeroSlides('home')",
       'getHomeUpcomingMovies()',
       'getSeriesIndexData()',
-      'getHomeTickerItems()',
+      "getHomeTickerItems('home')",
       'getHomeEditorialHighlights()',
+      "getPopularRankings('home')",
     ]) {
       expect(home).toContain(getter)
     }
@@ -67,9 +70,11 @@ describe('home pública — design canônico (tela 02)', () => {
       '<HomeHeroCarousel slides={heroSlides} />',
       '<HomeTicker items={tickerItems} />',
       '<HomeEditorialHighlights',
-      'className="pop-rail__rank"',
+      // O ranking virou componente próprio (abas reais por vertical); a POSIÇÃO
+      // dele na composição continua sendo a mesma.
+      '<PopularThisWeek',
       'label="Filmes em alta"',
-      '<MonthStats />',
+      '<MonthStats vertical={vertical} />',
       'label="Séries da semana"',
       'className="glimpse-rail"',
       'className="hnews-grid"',

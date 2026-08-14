@@ -305,6 +305,28 @@ export function excludeEditorialHighlights(
 }
 
 /**
+ * Restringe os destaques a UMA vertical — o que uma página de vertical recebe.
+ *
+ * POR QUE ISSO ACONTECE NO SERVIDOR, e não escondendo uma tab no cliente. A
+ * seção classificava certo (o filtro vem de `entity_news_links`, sinal
+ * persistido) mas ENTREGAVA as duas listas em toda página: `/pt/filmes` recebia
+ * as matérias de séries no payload e oferecia a tab "Séries" para abri-las. O
+ * estado vazio dizia "Ainda não há destaques de filmes publicados" e parecia
+ * filtrado — com zero matéria publicada, uma seção filtrada e uma seção que só
+ * troca o texto são indistinguíveis de fora. Restringir aqui faz a matéria da
+ * outra vertical não existir naquela página: nem na tela, nem no HTML.
+ */
+export function restrictEditorialHighlights(
+  highlights: HomeEditorialHighlights,
+  vertical: HomeEditorialVertical,
+): HomeEditorialHighlights {
+  return {
+    movies: vertical === "movies" ? highlights.movies : [],
+    series: vertical === "series" ? highlights.series : [],
+  };
+}
+
+/**
  * Há alguma matéria em qualquer vertical?
  *
  * NÃO esconde mais a seção: "Destaques de hoje" é estrutura fixa da composição

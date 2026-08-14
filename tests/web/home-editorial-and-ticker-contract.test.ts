@@ -134,7 +134,7 @@ describe('Filmes/Séries são TABS, não navegação', () => {
     expect(editorialCode).toContain('role="tab"')
     expect(editorialCode).toContain('role="tabpanel"')
     expect(editorialCode).toContain('type="button"')
-    expect(editorialCode).toContain('aria-selected={active === tab.vertical}')
+    expect(editorialCode).toContain('aria-selected={current === tab.vertical}')
     expect(editorialCode).toContain('aria-controls=')
   })
 
@@ -151,7 +151,7 @@ describe('Filmes/Séries são TABS, não navegação', () => {
 
   it('trocam CONTEÚDO de verdade (dataset por vertical), não só o estilo', () => {
     expect(editorialCode).toMatch(
-      /active === 'movies' \? highlights\.movies : highlights\.series/,
+      /current === 'movies' \? highlights\.movies : highlights\.series/,
     )
     expect(editorialCode).toContain('setActive(tab.vertical)')
   })
@@ -165,7 +165,7 @@ describe('Filmes/Séries são TABS, não navegação', () => {
     expect(editorialCode).toContain("'ArrowRight'")
     expect(editorialCode).toContain("'ArrowLeft'")
     // O foco acompanha a tab ativa (roving tabindex), como manda o padrão ARIA.
-    expect(editorialCode).toContain('tabIndex={active === tab.vertical ? 0 : -1}')
+    expect(editorialCode).toContain('tabIndex={current === tab.vertical ? 0 : -1}')
     expect(editorialCode).toContain('tabRefs.current[next.vertical]?.focus()')
   })
 

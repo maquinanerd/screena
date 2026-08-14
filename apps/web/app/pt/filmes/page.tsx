@@ -7,11 +7,16 @@ import {
   HOME_NEWS_CARD_LIMIT,
   takeSectionCards,
 } from '../../../src/lib/portal-presenter'
+import { restrictEditorialHighlights } from '../../../src/lib/home-editorial-presenter'
+import { filterNewsCardsByVertical } from '../../../src/lib/news-presenter'
+import { RANKING_TABS, resolveActiveRankingSlug } from '../../../src/lib/popular-rankings'
 import { SITE_URL, publicRobots } from '../../../src/lib/site'
 import { getHomeCatalogData } from '../../../src/server/home-catalog'
 import { getHomeEditorialHighlights } from '../../../src/server/home-editorial'
 import { getHomeHeroSlides } from '../../../src/server/home-hero'
+import { getHomeTickerItems } from '../../../src/server/home-ticker'
 import { getHomeUpcomingMovies } from '../../../src/server/home-upcoming'
+import { getPopularRankings } from '../../../src/server/popular-rankings'
 import { getMovieIndexData } from '../../../src/server/entity-indexes'
 import { getNewsIndexData } from '../../../src/server/news-pages'
 
@@ -40,22 +45,44 @@ export async function generateMetadata(): Promise<Metadata> {
   }
 }
 
-export default async function MovieCategoryPage() {
-  const [index, catalog, news, heroSlides, upcoming, editorialHighlights] = await Promise.all([
-    getMovieIndexData(),
-    getHomeCatalogData(),
-    getNewsIndexData(),
-    getHomeHeroSlides(),
-    getHomeUpcomingMovies(),
-    getHomeEditorialHighlights(),
-  ])
+export default async function MovieCategoryPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
+  const params = await searchParams
+  // `?ranking=` de OUTRA vertical (ou forjado) cai na primeira aba de filmes —
+  // um param nunca dispara a consulta de outra pagina.
+  const rankingActiveSlug = resolveActiveRankingSlug('movies', params.ranking)
 
-  const movieHero = heroSlides.filter((slide) => slide.vertical === 'movie')
+  const [index, catalog, news, movieHero, tickerItems, upcoming, editorialHighlights, rankings] =
+    await Promise.all([
+      getMovieIndexData(),
+      getHomeCatalogData(),
+      getNewsIndexData(),
+      // O hero pede o escopo: filtrar a lista da home DEPOIS do corte de 5 era
+      // o que deixava a outra vertical sem hero nenhum.
+      getHomeHeroSlides('movies'),
+      getHomeTickerItems('movies'),
+      getHomeUpcomingMovies(),
+      getHomeEditorialHighlights(),
+      getPopularRankings('movies'),
+    ])
+
   const movieCards = catalog.movies.length > 0 ? catalog.movies : index.view.cards
+  // Só matérias com vínculo `movie` persistido (`entity_news_links`): a página
+  // de filmes não lista a matéria que só fala de série.
   const newsCards = takeSectionCards(
-    [...(news.view.featured !== null ? [news.view.featured] : []), ...news.view.cards],
+    filterNewsCardsByVertical(
+      [...(news.view.featured !== null ? [news.view.featured] : []), ...news.view.cards],
+      'movies',
+    ),
     HOME_NEWS_CARD_LIMIT,
   )
+  const rankingPanels = RANKING_TABS.movies.map((tab, position) => ({
+    tab,
+    items: rankings[position]?.items ?? [],
+  }))
 
   const breadcrumbJsonLd = {
     '@context': 'https://schema.org',
@@ -91,17 +118,20 @@ export default async function MovieCategoryPage() {
 
       <HomeLike
         adPrefix="filmes"
-        editorialHighlights={editorialHighlights}
+        editorialHighlights={restrictEditorialHighlights(editorialHighlights, 'movies')}
         editorialInitialVertical="movies"
         emptyMessage="Ainda não há filmes publicados nesta seção."
         heroSlides={movieHero}
         movieCards={movieCards}
         newsCards={newsCards}
+        rankingActiveSlug={rankingActiveSlug}
+        rankingPanels={rankingPanels}
         seriesCards={[]}
         showMoviesBand
         showSeriesBand={false}
-        tickerItems={[]}
+        tickerItems={tickerItems}
         upcomingMovies={upcoming}
+        vertical="movies"
       />
       <script
         type="application/ld+json"

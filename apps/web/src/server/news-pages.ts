@@ -36,6 +36,7 @@ import {
   type NewsIndexView,
   type NewsCardView,
   type NewsEntityCardInput,
+  type NewsLinkedEntityType,
   type NewsListItemInput,
   type NewsRelatedEntityInput,
   type NewsRelatedEntityType,
@@ -44,6 +45,9 @@ import type { IndexabilityResult } from "@screena/seo";
 
 const LANGUAGE_CODE = "pt-BR";
 const NEWS_INDEX_PATH = "/pt/noticias/";
+
+/** Tipos de vinculo que classificam a vertical de uma materia (o resto e ignorado). */
+const NEWS_CLASSIFYING_LINK_TYPES = ["movie", "tv", "person"] as const;
 
 /**
  * Colunas do asset de capa (`editorial_media_assets`) que o render consome.
@@ -101,6 +105,7 @@ export const getNewsIndexData = cache(async (): Promise<NewsIndexData> => {
       reviewStatus: { in: [...NEWS_RENDERABLE_REVIEW_STATUSES] },
     },
     select: {
+      articleId: true,
       slug: true,
       title: true,
       deck: true,
@@ -125,7 +130,29 @@ export const getNewsIndexData = cache(async (): Promise<NewsIndexData> => {
     },
   });
 
+  // Vinculos de TODAS as materias lidas em UMA query (nunca uma por card). E o
+  // unico sinal persistido de vertical de uma materia — a listagem /pt/noticias/
+  // continua sendo a uniao, mas a pagina de vertical passa a poder filtrar.
+  const links =
+    rows.length === 0
+      ? []
+      : await prisma.entityNewsLink.findMany({
+          where: {
+            articleId: { in: rows.map((row) => row.articleId) },
+            entityType: { in: [...NEWS_CLASSIFYING_LINK_TYPES] },
+          },
+          select: { articleId: true, entityType: true },
+        });
+  const typesByArticle = new Map<string, Set<NewsLinkedEntityType>>();
+  for (const link of links) {
+    const key = link.articleId.toString();
+    const bucket = typesByArticle.get(key) ?? new Set<NewsLinkedEntityType>();
+    bucket.add(link.entityType as NewsLinkedEntityType);
+    typesByArticle.set(key, bucket);
+  }
+
   const items: NewsListItemInput[] = rows.map((row) => ({
+    linkedEntityTypes: [...(typesByArticle.get(row.articleId.toString()) ?? [])],
     authorName: row.article.authorName,
     category: row.article.category,
     heroImagePath: row.article.heroImagePath,
