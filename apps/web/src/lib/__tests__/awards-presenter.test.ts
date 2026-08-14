@@ -1,113 +1,117 @@
 /**
- * awards-presenter.test.ts — Os formatos que a OMDb usa no campo `Awards`.
+ * awards-presenter.test.ts — A frase que vai para a tela.
  *
- * Este parser existe antes da fonte: nenhuma pagina o consome hoje. Ele e
- * testado assim mesmo porque o dia em que a coluna existir, a interpretacao ja
- * estara provada — e porque a regra que mais importa aqui e a NEGATIVA: frase
- * que nao entendemos nao vira premio.
+ * O reconhecimento em si e provado em
+ * `packages/schemas/src/__tests__/omdb-awards.test.ts`. Aqui prova-se a UNICA
+ * regra deste modulo, e ela e literal:
+ *
+ *   **a estrutura da frase e portugues; o NOME DO PREMIO nunca e traduzido.**
+ *
+ * As assercoes de nome sao comparacoes de string exata, de proposito. Um
+ * `toContain("Oscar")` passaria com "Oscar de Melhor Filme" — e inventar nome
+ * de premio e exatamente o defeito.
  */
 
 import { describe, expect, it } from "vitest";
 
-import { parseOmdbAwards } from "../awards-presenter";
+import { buildAwardsView, buildAwardsViewFromRaw } from "../awards-presenter";
 
-describe("formatos reconhecidos", () => {
-  it("com Oscar vencido: destaque verbatim + contagem agregada", () => {
-    const parsed = parseOmdbAwards("Won 3 Oscars. 8 wins & 51 nominations total");
-    expect(parsed).toEqual({
-      recognized: true,
-      view: {
-        // VERBATIM: nao traduzimos o nome do premio.
-        headline: "Won 3 Oscars",
-        tally: { wins: 8, nominations: 51, label: "8 vitórias · 51 indicações" },
-      },
+describe("estrutura em pt-BR, nome do premio verbatim", () => {
+  it("vitoria: Won -> Venceu, com o nome intacto", () => {
+    expect(buildAwardsViewFromRaw("Won 4 Oscars. 160 wins & 220 nominations total")).toEqual({
+      headline: "Venceu 4 Oscars",
+      tally: { wins: 160, nominations: 220, label: "160 vitórias · 220 indicações" },
     });
   });
 
-  it("com indicacao ao Oscar: o mesmo, com o outro destaque", () => {
-    const parsed = parseOmdbAwards("Nominated for 3 Oscars. 8 wins & 51 nominations total");
-    expect(parsed.recognized && parsed.view.headline).toBe("Nominated for 3 Oscars");
-    expect(parsed.recognized && parsed.view.tally.wins).toBe(8);
-  });
-
-  it("o numero do DESTAQUE nao e contado como vitoria agregada", () => {
-    // "Won 3 Oscars" tem um 3 que NAO e "3 vitorias no total". Um parser que
-    // varresse a frase inteira leria 3 e reportaria o numero errado.
-    const parsed = parseOmdbAwards("Won 3 Oscars. 8 wins & 51 nominations total");
-    expect(parsed.recognized && parsed.view.tally.wins).toBe(8);
-    expect(parsed.recognized && parsed.view.tally.wins).not.toBe(3);
-  });
-
-  it("sem Oscar: so a contagem, sem destaque", () => {
-    const parsed = parseOmdbAwards("12 wins & 30 nominations");
-    expect(parsed).toEqual({
-      recognized: true,
-      view: {
-        headline: null,
-        tally: { wins: 12, nominations: 30, label: "12 vitórias · 30 indicações" },
-      },
+  it("singular real da amostra de producao (Interstellar)", () => {
+    // "Won 1 Oscar" — o nome ja vem no singular da fonte, e sai assim.
+    expect(buildAwardsViewFromRaw("Won 1 Oscar. 45 wins & 148 nominations total")).toEqual({
+      headline: "Venceu 1 Oscar",
+      tally: { wins: 45, nominations: 148, label: "45 vitórias · 148 indicações" },
     });
   });
 
-  it("singular sai no singular", () => {
-    const parsed = parseOmdbAwards("1 win & 1 nomination");
-    expect(parsed.recognized && parsed.view.tally.label).toBe("1 vitória · 1 indicação");
+  it("indicacao: Nominated for -> Concorreu a (verbo, nao adjetivo)", () => {
+    // "Indicado"/"Indicada" concordaria em genero com filme/serie e erraria
+    // metade do catalogo. "Concorreu a" nao flexiona.
+    const view = buildAwardsViewFromRaw("Nominated for 3 Oscars. 8 wins & 51 nominations total");
+    expect(view?.headline).toBe("Concorreu a 3 Oscars");
   });
 
-  it("so vitorias, ou so indicacoes", () => {
-    expect(parseOmdbAwards("2 wins").recognized && parseOmdbAwards("2 wins")).toMatchObject({
-      view: { tally: { wins: 2, nominations: null, label: "2 vitórias" } },
-    });
-    const nomOnly = parseOmdbAwards("Nominated for 1 BAFTA Film Award. 3 nominations");
-    expect(nomOnly.recognized && nomOnly.view.tally).toEqual({
-      wins: null,
-      nominations: 3,
-      label: "3 indicações",
-    });
-  });
-
-  it("premio que nao e Oscar mantem o proprio nome", () => {
-    const parsed = parseOmdbAwards(
-      "Won 2 Primetime Emmys. 15 wins & 40 nominations total",
-    );
-    expect(parsed.recognized && parsed.view.headline).toBe("Won 2 Primetime Emmys");
-  });
-
-  it("milhar em pt-BR", () => {
-    const parsed = parseOmdbAwards("1234 wins & 5678 nominations");
-    expect(parsed.recognized && parsed.view.tally.label).toBe(
-      "1.234 vitórias · 5.678 indicações",
-    );
-  });
-});
-
-describe("recusa: frase que nao entendemos NAO vira premio", () => {
-  it('"N/A" e ausencia declarada pela fonte, nao zero', () => {
-    // "0 vitórias" seria uma afirmacao sobre o MUNDO que a fonte nao fez.
-    expect(parseOmdbAwards("N/A")).toEqual({
-      recognized: false,
-      reason: "not_available",
-      raw: "N/A",
-    });
-  });
-
-  it("campo ausente, nulo ou vazio", () => {
-    for (const input of [undefined, null, "", "   ", 42]) {
-      expect(parseOmdbAwards(input)).toEqual({
-        recognized: false,
-        reason: "absent",
-        raw: null,
-      });
+  it("NOME NAO TRADUZIDO — assercao literal, premio a premio", () => {
+    const cases: readonly (readonly [string, string])[] = [
+      ["Won 2 Primetime Emmys. 15 wins & 40 nominations total", "Venceu 2 Primetime Emmys"],
+      ["Nominated for 1 BAFTA Film Award. 3 nominations", "Concorreu a 1 BAFTA Film Award"],
+      ["Won 3 Golden Globes. 5 wins & 9 nominations total", "Venceu 3 Golden Globes"],
+    ];
+    for (const [raw, expected] of cases) {
+      expect(buildAwardsViewFromRaw(raw)?.headline).toBe(expected);
     }
   });
 
-  it("formato desconhecido devolve o valor BRUTO para o chamador registrar", () => {
-    // Nada falha em silencio: quem chamar loga este `raw` e o reconhecedor
-    // pode ser estendido depois com evidencia, nunca com palpite.
-    expect(parseOmdbAwards("Muitos prêmios importantes")).toEqual({
-      recognized: false,
-      reason: "unrecognized_format",
-      raw: "Muitos prêmios importantes",
+  it("nada de traducao acidental: nenhuma palavra do nome vira portugues", () => {
+    const headline = buildAwardsViewFromRaw("Won 2 Screen Actors Guild Awards. 4 wins")?.headline;
+    expect(headline).toBe("Venceu 2 Screen Actors Guild Awards");
+    // Controle negativo explicito: se alguem introduzir uma tabela de traducao,
+    // e este e o texto que apareceria.
+    expect(headline).not.toContain("Prêmios");
+    expect(headline).not.toContain("Sindicato");
+  });
+
+  it("singular e plural da contagem agregada", () => {
+    expect(buildAwardsViewFromRaw("1 win & 1 nomination")?.tally.label).toBe(
+      "1 vitória · 1 indicação",
+    );
+    expect(buildAwardsViewFromRaw("2 wins & 2 nominations")?.tally.label).toBe(
+      "2 vitórias · 2 indicações",
+    );
+  });
+
+  it("so vitorias, ou so indicacoes", () => {
+    expect(buildAwardsViewFromRaw("2 wins")?.tally.label).toBe("2 vitórias");
+    expect(buildAwardsViewFromRaw("3 nominations")?.tally.label).toBe("3 indicações");
+  });
+
+  it("milhar em pt-BR", () => {
+    expect(buildAwardsViewFromRaw("1234 wins & 5678 nominations")?.tally.label).toBe(
+      "1.234 vitórias · 5.678 indicações",
+    );
+  });
+
+  it("sem destaque: so a contagem, sem frase inventada", () => {
+    expect(buildAwardsViewFromRaw("12 wins & 30 nominations")).toEqual({
+      headline: null,
+      tally: { wins: 12, nominations: 30, label: "12 vitórias · 30 indicações" },
+    });
+  });
+});
+
+describe("frase recusada nao vira faixa", () => {
+  it.each([["N/A"], [""], ["Muitos prêmios importantes"], ["Won several Oscars"]])(
+    "%s -> null",
+    (raw) => {
+      expect(buildAwardsViewFromRaw(raw)).toBeNull();
+    },
+  );
+
+  it("ausente / nulo / tipo errado", () => {
+    for (const raw of [undefined, null, 42]) {
+      expect(buildAwardsViewFromRaw(raw)).toBeNull();
+    }
+  });
+});
+
+describe("buildAwardsView direto da estrutura (o caminho da leitura)", () => {
+  it("compoe sem passar pelo literal", () => {
+    expect(
+      buildAwardsView({
+        highlight: { outcome: "won", count: 7, awardName: "Oscars" },
+        tally: { wins: 370, nominations: 378 },
+      }),
+    ).toEqual({
+      headline: "Venceu 7 Oscars",
+      tally: { wins: 370, nominations: 378, label: "370 vitórias · 378 indicações" },
     });
   });
 });

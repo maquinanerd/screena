@@ -3734,7 +3734,7 @@ a.tabs__tab[aria-current='page'] {
 }
 
 /* ------------------------------------------------------------------ */
-/* Faixa de premios (componente pronto; SEM fonte de dado ligada hoje) */
+/* Faixa de premios (entity_awards; credito no MESMO bloco do fato)     */
 /* ------------------------------------------------------------------ */
 
 .awards-band {
@@ -3767,6 +3767,28 @@ a.tabs__tab[aria-current='page'] {
   text-transform: uppercase;
   color: var(--c-text-muted-aa);
   margin-right: 12px;
+}
+
+.awards-band__headline {
+  font-weight: 700;
+  color: #12100e;
+}
+
+/*
+ * O credito e condicao de licenca, entao ele mora DENTRO da faixa — nunca em
+ * rodape nem tooltip. Menor e mais claro que o fato, jamais escondido:
+ * `color` sai do token AA para nao virar texto de contraste insuficiente.
+ */
+.awards-band__credit {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--c-text-muted-aa);
+}
+
+.awards-band__credit a {
+  color: inherit;
+  text-decoration: underline;
 }
 
 .awards-band__tally {

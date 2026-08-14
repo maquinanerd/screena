@@ -34,6 +34,11 @@ import { getRelatedNewsForEntity } from "./related-news";
 import { getCastForEntity } from "./entity-cast";
 import { getWatchAvailabilityForEntity, watchAbsenceReason } from "./entity-watch";
 import type { SectionAbsenceReason } from "../lib/section-absence";
+import {
+  awardsAbsenceReason,
+  getAwardsForEntity,
+  type AwardsPanelView,
+} from "./entity-awards";
 import { getRatingsForEntity } from "./entity-ratings";
 import { buildRatingsView, type RatingsPanelView } from "../lib/ratings-presenter";
 import type { NewsCardView } from "../lib/news-presenter";
@@ -71,6 +76,14 @@ export interface MoviePageData {
    * `watch` existe: nao ha ausencia para justificar.
    */
   watchAbsence: SectionAbsenceReason | null;
+  /** Faixa de premios licenciada e creditada; `null` omite a faixa. */
+  awards: AwardsPanelView | null;
+  /**
+   * Por que a faixa de premios nao renderizou. Derivado do ESTADO do catalogo
+   * (ver `awardsAbsenceReason`), nunca fixo na pagina. `null` quando `awards`
+   * existe: nao ha ausencia para justificar.
+   */
+  awardsAbsence: SectionAbsenceReason | null;
   /** Notas externas licenciadas e creditadas; `null` omite o painel. */
   ratings: RatingsPanelView | null;
   /** IDs externos reais (imdb/tmdb/...) para montar `sameAs` no JSON-LD. */
@@ -218,6 +231,12 @@ export const getMoviePageData = cache(
     // fixo. So consulta quando nao ha painel — quem tem oferta nao paga a sonda.
     const watchAbsence = watch === null ? await watchAbsenceReason(prisma) : null;
 
+    // Premiacao: o FATO ("Venceu 4 Oscars"), nunca uma nota. Mesma disciplina
+    // do painel de streaming — o motivo da ausencia e derivado do estado do
+    // catalogo, e a sonda so roda quando nao ha faixa.
+    const awards = await getAwardsForEntity(prisma, ENTITY_TYPE, entityId);
+    const awardsAbsence = awards === null ? await awardsAbsenceReason(prisma) : null;
+
     return {
       view,
       // C8: id INTERNO do catalogo, serializado. A pagina o repassa ao botao de
@@ -232,6 +251,8 @@ export const getMoviePageData = cache(
       cast,
       watch,
       watchAbsence,
+      awards,
+      awardsAbsence,
       ratings,
       externalIds,
     };

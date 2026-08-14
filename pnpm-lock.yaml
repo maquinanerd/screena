@@ -378,6 +378,9 @@ importers:
       '@screena/film-show-ratings-client':
         specifier: workspace:*
         version: link:../../api-clients/film_show_ratings
+      '@screena/legal':
+        specifier: workspace:*
+        version: link:../legal
       '@screena/omdb-client':
         specifier: workspace:*
         version: link:../../api-clients/omdb

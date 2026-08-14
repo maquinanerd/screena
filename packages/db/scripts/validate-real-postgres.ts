@@ -140,6 +140,9 @@ const EXPECTED_TABLES = [
   "editorial_projection_receipts",
   // FASE 2D — midia editorial governada, projetada do CMS para o storage publico.
   "editorial_media_assets",
+  // Premiacoes promovidas do api_cache (OMDb) para dominio proprio, com licenca,
+  // credito e decisao de uso `awards_display` checados no banco.
+  "entity_awards",
 ];
 const EXPECTED_ENUMS = [
   "EntityType", "ContentBlockType", "ContentSource", "ReviewStatus", "TranslationStatus",

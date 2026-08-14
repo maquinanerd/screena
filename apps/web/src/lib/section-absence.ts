@@ -63,8 +63,20 @@ export type SectionAbsenceReason =
   | "no_offer_for_entity"
   /** Nao existe formula de Cinerie Score aprovada (decisao humana pendente). */
   | "no_approved_formula"
-  /** Nao ha fonte de premios ingerida. */
+  /**
+   * NENHUMA faixa de premios exibivel no catalogo inteiro — passo de operacao
+   * pendente, nao fato sobre este titulo. A licenca de premiacao existe no spec
+   * desde 2026-08-13 (credito da OMDb), mas ela precisa estar aplicada NO BANCO
+   * e a promocao precisa ter rodado DEPOIS disso: o credito e gravado na escrita
+   * da linha. Ver docs/operations/awards-promotion-runbook.md secao 4.
+   */
   | "no_awards_source"
+  /**
+   * Existe faixa exibivel em ALGUM titulo, mas nao neste. E fato sobre a obra
+   * (nao ganhou nem concorreu a nada que a fonte registre), nao passo pendente
+   * — por isso `actionable: false`.
+   */
+  | "no_awards_for_entity"
   /** Nenhum `content_block` de critica publicavel para esta entidade. */
   | "no_editorial_review"
   /** Nao existe dataset de recomendacao deterministico. */

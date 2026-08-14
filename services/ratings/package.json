@@ -14,13 +14,16 @@
   "scripts": {
     "ratings": "tsx bin/ratings.ts",
     "ratings:omdb": "tsx bin/sync-omdb-ratings.ts",
+    "awards:promote": "tsx bin/promote-omdb-awards.ts",
     "validate:omdb": "tsx scripts/validate-omdb-ratings-real-postgres.ts",
+    "validate:awards": "tsx scripts/validate-omdb-awards-real-postgres.ts",
     "validate:product": "tsx scripts/validate-external-intelligence-product.ts"
   },
   "dependencies": {
     "@screena/config": "workspace:*",
     "@screena/db": "workspace:*",
     "@screena/film-show-ratings-client": "workspace:*",
+    "@screena/legal": "workspace:*",
     "@screena/omdb-client": "workspace:*",
     "@screena/rapidapi-core": "workspace:*",
     "@screena/schemas": "workspace:*"

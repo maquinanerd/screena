@@ -1,26 +1,35 @@
 import type { ReactNode } from "react";
 
-import type { AwardsView } from "../../src/lib/awards-presenter";
+import type { AwardsCredit, AwardsView } from "../../src/lib/awards-presenter";
+
+export type { AwardsCredit };
 
 /**
  * AwardsBand — a faixa do trofeu do canonico (telas 06 e 07).
  *
- * ============================================================================
- * CONSTRUIDO E NAO RENDERIZADO. Nenhuma pagina importa este componente hoje.
- * ============================================================================
+ * ESTADO: LIGADO. A faixa e importada pelo detalhe de filme e de serie, dentro
+ * de um `<SectionBoundary>`. Ela so aparece quando existe `entity_awards` com
+ * `display_allowed = true` para o titulo; sem isso o bloco sai do DOM e o
+ * motivo vai para log (`no_awards_source`).
  *
- * Nao ha fonte de premios no sistema:
- *  - a API da TMDB NAO expoe premios (o site tem `/award`, a API v3 nao — nao
- *    ha endpoint nem chave de `append_to_response`). Raspar aquela pagina esta
- *    fora de questao: custaria o acesso a TMDB, que sustenta o catalogo todo;
- *  - a unica fonte plausivel ja no caminho e o campo `Awards` da OMDb, e ele
- *    (a) precisa ser confirmado no payload real, (b) nao e nota — e fato
- *    editorial sobre a obra, com `use_case` PROPRIO, que nao cabe dentro de
- *    `rating_display` — e (c) nenhuma coluna do banco o carrega.
+ * O DADO. O literal `Awards` da OMDb, promovido de `api_cache` para
+ * `entity_awards` pelo worker offline e reconhecido por
+ * `@screena/schemas` (`parseOmdbAwards`). O render nunca chama a OMDb
+ * (invariante 3) e nunca interpreta a frase por conta propria.
  *
- * O componente existe agora para que a frente de dados saiba EXATAMENTE que
- * forma entregar (`AwardsView`, de `awards-presenter.ts`) — e nao para deixar
- * um bloco bonito e vazio no ar. Ver docs/frontend/DESIGN-DELTA-detalhe.md.
+ * A TRADUCAO. O NOME do premio sai VERBATIM da fonte ("Oscars", "Primetime
+ * Emmys"); a ESTRUTURA da frase e pt-BR ("Venceu 4 Oscars"). Quem compoe e
+ * `awards-presenter.ts` — este componente so escreve o que recebe.
+ *
+ * O CREDITO FICA AQUI DENTRO, e isso e condicao de licenca, nao decoracao:
+ * a atribuicao pertence ao MESMO bloco visual do fato, como nos chips de nota.
+ * Sem `credit.text` a faixa NAO renderiza — mesma trava, mesmo motivo que
+ * `ratings-presenter.ts`. Nunca existe faixa sem credito.
+ *
+ * O texto vem da LICENCA ("Dados de premiacao fornecidos por OMDb"), nunca
+ * daqui. Premio e fato publico, entao o credito e de quem ENTREGOU o dado, com
+ * o verbo do transporte — decisao de 2026-08-13, em
+ * docs/legal/omdb-awards-source-provenance.md.
  *
  * `href` e opcional e so vira link quando houver uma pagina de premios de
  * verdade. Sem ela, o resumo e texto — nunca um CTA que nao leva a lugar
@@ -29,17 +38,20 @@ import type { AwardsView } from "../../src/lib/awards-presenter";
 
 interface AwardsBandProps {
   view: AwardsView;
+  credit: AwardsCredit;
   /** Vertical, para o acento da seta (vermelho = filme, verde = serie). */
   vertical: "movie" | "series";
   /** Destino do detalhamento, quando existir. */
   href?: string;
 }
 
-export function AwardsBand({ view, vertical, href }: AwardsBandProps): ReactNode {
-  // Nem destaque nem contagem: nao ha faixa. (O parser ja recusa esse caso;
-  // esta guarda existe porque o componente e publico e pode ser chamado
+export function AwardsBand({ view, credit, vertical, href }: AwardsBandProps): ReactNode {
+  // Nem destaque nem contagem: nao ha faixa. (O reconhecedor ja recusa esse
+  // caso; esta guarda existe porque o componente e publico e pode ser chamado
   // diretamente.)
   if (view.headline === null && view.tally.label === null) return null;
+  // Credito ausente = nao exibe. NUNCA "exibe sem credito" (invariante 6).
+  if (credit.text.trim() === "") return null;
 
   const tally =
     view.tally.label === null ? null : (
@@ -63,11 +75,19 @@ export function AwardsBand({ view, vertical, href }: AwardsBandProps): ReactNode
         <span className="awards-band__label" id="awards-band-label">
           Prêmios
         </span>
-        {/* VERBATIM da fonte: "Won 3 Oscars" nao vira "Venceu 3 Oscars" — o nome
-            do premio e afirmacao factual dela, e traduzir e inventar. */}
         {view.headline !== null ? (
           <span className="awards-band__headline">{view.headline}</span>
         ) : null}
+        {/* Credito no MESMO bloco do fato — nunca rodape, nunca tooltip. */}
+        <span className="awards-band__credit">
+          {credit.url !== null ? (
+            <a href={credit.url} rel="noopener noreferrer nofollow" target="_blank">
+              {credit.text}
+            </a>
+          ) : (
+            credit.text
+          )}
+        </span>
       </p>
       {tally !== null ? (
         href !== undefined ? (
