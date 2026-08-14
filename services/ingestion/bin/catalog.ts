@@ -507,6 +507,20 @@ async function cmdBootstrap(registry: CatalogJobRegistry, flags: CatalogFlags, l
  * Exit code 4 (`failed`) quando o orcamento estoura: um planejador que so
  * informa e um relatorio; um que RECUSA e um gate.
  */
+/**
+ * Estrategias que `plan-bootstrap` sabe percorrer (sao listas do TMDB).
+ *
+ * `popular` e `top_rated` valem para filme e serie; `now_playing` so para
+ * filme e `on_the_air` so para serie — o comando as aceita e cada tipo usa a
+ * sua, caindo em `popular` para o tipo que nao a suporta.
+ */
+const PLANNABLE_STRATEGIES: readonly string[] = [
+  'popular',
+  'top_rated',
+  'now_playing',
+  'on_the_air',
+]
+
 async function cmdPlanBootstrap(
   catalogEndpoints: TmdbCatalogEndpoints,
   tmdb: TmdbReadPort,
@@ -523,6 +537,25 @@ async function cmdPlanBootstrap(
   const limit = flags.limit ?? 20
   const maxPages = flags.maxPages ?? 5
   const strategy = flags.strategy ?? 'popular'
+
+  // O planejador so sabe percorrer LISTAS. `daily-exports` (a estrategia do
+  // bootstrap real) nao esta entre elas: ele nao le o export.
+  //
+  // Antes desta guarda, uma estrategia desconhecida caia no `else` da cadeia e
+  // virava `popular` em silencio — e o relatorio ainda a REPORTAVA com o nome
+  // pedido. Quem dimensionasse a semente com `--strategy daily-exports`
+  // recebia um plano de `popular` rotulado como daily-exports: o numero errado,
+  // com o carimbo certo. Recusar e a unica saida honesta; adivinhar aqui e
+  // pior que falhar.
+  if (!PLANNABLE_STRATEGIES.includes(strategy)) {
+    process.stderr.write(
+      `erro: --strategy "${strategy}" nao e planejavel.\n` +
+        `  plan-bootstrap percorre listas: ${PLANNABLE_STRATEGIES.join(', ')}.\n` +
+        `  "daily-exports" e a estrategia do bootstrap real e NAO e simulavel aqui —\n` +
+        `  para dimensionar por popularidade, planeje com "popular".\n`,
+    )
+    return EXIT_CODES.usage
+  }
 
   const budget: BootstrapBudget = {
     ...(flags.maxTitles !== null ? { maxTitles: flags.maxTitles } : {}),
