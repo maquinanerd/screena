@@ -77,7 +77,15 @@
 
 ## Componentes compartilhados atuais
 
-- `site-header.tsx` e `site-footer.tsx`: chrome textual mínimo.
+- `site-header.tsx`: chrome textual mínimo.
+- `site-footer.tsx`: **rodapé global escuro de 5 faixas** e o **único endereço do
+  crédito de fonte** desde 13/08/2026 (decisão do proprietário). Ele não conhece
+  nome de fonte: lê a projeção de `services/legal`. Antes de mexer, ler
+  [`FOOTER-SPEC.md`](./FOOTER-SPEC.md) §4 e §10 — as divergências entre a spec e
+  o implementado estão registradas lá, com o motivo de cada uma.
+- `footer-newsletter.tsx`: `<form>` real do rodapé. A rota `/api/newsletter`
+  responde `503` honesto (não há armazenamento de inscrição); ela nunca finge
+  sucesso.
 - `entity-index.tsx`: lista textual e schemas de coleção/breadcrumb.
 - `entity-external-ids.tsx`: identidade externa real, sem rating implícito.
 - `watch-availability-panel.tsx`: ofertas legais já filtradas pelo gate; nenhum
@@ -103,6 +111,12 @@ Fonte única: [`apps/web/src/lib/navigation.ts`](../../apps/web/src/lib/navigati
 - Tirar um destino do menu primário nunca pode transformá-lo em link morto:
   `tests/web/public-navigation.test.ts` prova que toda rota de `NAV_ITEMS` e
   `SECONDARY_NAV_ITEMS` existe e aparece no rodapé/menu mobile.
+- **O rodapé deixou de espelhar `navigation.ts` em 13/08/2026.** Ele tem colunas
+  próprias em [`apps/web/src/config/footer.ts`](../../apps/web/src/config/footer.ts)
+  (5 colunas da `FOOTER-SPEC.md`). A regra "só rota real" não afrouxou — ficou
+  mais forte: o mesmo teste exige que **todo** href do rodapé resolva para um
+  arquivo de rota e que **nenhum href se repita** (a repetição sob rótulos
+  diferentes era o defeito dos 12 rótulos removidos, registrado na auditoria).
 
 ### Acentos: dois contratos DIFERENTES
 

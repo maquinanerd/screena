@@ -38,6 +38,22 @@ parafraseada ou traduzida** — é reproduzida exatamente como acima.
 
 ## 3. Regras de renderização (o design final deve cumprir)
 
+> **MUDANÇA DE POLÍTICA — 13/08/2026.** Decisão do proprietário (Pablo Eduardo):
+> **todo crédito de fonte sai do corpo das páginas e passa a viver no rodapé
+> global.** As duas últimas regras desta seção diziam o contrário ("fonte da nota
+> próxima ao rating", "atribuição do Movie of the Night próxima ao painel") e
+> foram substituídas abaixo.
+>
+> **Motivo:** o crédito colado ao dado se espalhava por quatro superfícies com
+> regras próprias — chip da nota, painel de streaming, faixa da home (onde
+> trocava a cada slide) e hub de "onde assistir". Um lugar só é auditável; quatro
+> não são.
+>
+> **O que NÃO mudou:** `requires_attribution` continua `true` para todas as
+> fontes. Mudou o endereço do crédito, nunca a obrigação — e o caminho de
+> escrita (`external_ratings_display_guard`,
+> `watch_availability_display_guard`) segue recusando linha sem crédito.
+
 - Exibir o disclaimer da seção 1 **no footer** de todas as páginas públicas.
 - Manter o texto **legível em desktop e mobile** (sem truncamento por
   breakpoint; sem esconder em `title`/tooltip).
@@ -45,17 +61,38 @@ parafraseada ou traduzida** — é reproduzida exatamente como acima.
   inacessível a crawler/leitor de tela).
 - **Preservar os links de atribuição** (linkback) exigidos por cada fonte.
 - **Não esconder créditos em tooltip** nem removê-los em qualquer breakpoint.
-- Exibir a **fonte da nota próxima ao rating** (ex.: "Nota fornecida por IMDb"
-  junto do número, com o linkback), coerente com o `attribution_text`/
-  `attribution_url` da nota exibida.
-- Exibir a atribuição do **Movie of the Night próxima ao painel de streaming**
-  ("Disponibilidade fornecida por Movie of the Night", com linkback), coerente
-  com a licença `movie-of-the-night`.
+- **O rodapé nomeia TODA fonte autorizada**, com o texto verbatim da licença —
+  incluindo as fontes de nota (IMDb, Rotten Tomatoes, Metacritic, Letterboxd,
+  FilmAffinity), o catálogo (TMDB) e as duas origens de disponibilidade
+  (Movie of the Night e JustWatch).
+- **Nenhuma superfície de conteúdo credita.** Ficha de título, painel de
+  streaming, faixa da home e hub de "onde assistir" **não** carregam crédito:
+  duplicá-lo desfaz a decisão em silêncio.
+- **Crédito é texto, nunca logo.** `logoAllowed` é o literal `false` no tipo de
+  `LicenseTarget`; marca gráfica de terceiro não vai ao ar em nenhuma superfície.
+
+Provado por
+[`apps/web/app/_components/__tests__/footer-credits.test.tsx`](../../apps/web/app/_components/__tests__/footer-credits.test.tsx),
+que renderiza chrome + conteúdo e mede **texto visível** (tags removidas) — nunca
+`markup.includes(...)`, que aceitaria um crédito escondido em `aria-label`.
 
 ## 4. Origem dos textos de atribuição
 
-Os textos de crédito por fonte vêm do banco (`source_licenses.attribution_text`
-/ `attribution_url` e das flags de licença) — o footer **não** inventa crédito.
+Os textos de crédito por fonte vêm do registro legal — o footer **não** inventa
+crédito e **não** carrega string literal de fonte nenhuma.
+
+Em runtime, a autorização vive em `source_licenses.attribution_text` /
+`attribution_url` (mais as flags de licença), materializada a partir de
+[`services/legal/src/authorization-spec.ts`](../../services/legal/src/authorization-spec.ts).
+É desse mesmo spec que o rodapé deriva a lista pública, via
+`publicSourceCredits()` em
+[`services/legal/src/public-credits.ts`](../../services/legal/src/public-credits.ts).
+
+**Consequência que é o contrato:** registrar uma fonte nova em
+`authorization-spec.ts` faz o crédito dela aparecer no rodapé **sem ninguém
+editar o rodapé**. Travado por `services/legal/src/__tests__/public-credits.test.ts`,
+que injeta uma fonte fictícia no spec e exige que ela apareça na projeção.
+
 A relação fonte → papel → atribuição está em
 [`docs/legal/source-authorization-matrix.md`](../legal/source-authorization-matrix.md).
 

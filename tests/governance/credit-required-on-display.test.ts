@@ -1,19 +1,37 @@
 /**
- * credit-required-on-display.test.ts — "NOTA SEM CREDITO NAO VAI AO AR."
+ * credit-required-on-display.test.ts — "DADO NO AR EXIGE CREDITO NA PAGINA."
  *
- * POR QUE ESTE TESTE EXISTE
- * -------------------------
+ * ============================================================================
+ * O QUE ESTE ARQUIVO DEFENDIA, E O QUE ELE DEFENDE AGORA
+ * ============================================================================
  * A autorizacao dos provedores (2026-08-11) liberou a COLETA de notas e
  * disponibilidade em producao. A condicao dessa autorizacao e o uso
- * JORNALISTICO com credito visivel a fonte em toda exibicao.
+ * JORNALISTICO com credito visivel a fonte em toda exibicao
+ * (`requires_attribution = true` em `source_licenses`). ISSO NAO MUDOU.
  *
- * A condicao ja estava implementada nos dois presenters quando a autorizacao foi
- * dada — mas nao estava TRAVADA. Uma "simplificacao" futura que removesse o
- * `if` do credito passaria em todos os testes existentes e violaria a licenca em
- * silencio, em producao, sem ninguem perceber. Este teste e a trava.
+ * O que mudou foi o ENDERECO do credito. Decisao do proprietario (Pablo Eduardo,
+ * 2026-08-13): todo credito de fonte sai do corpo das paginas e passa a viver no
+ * RODAPE GLOBAL.
  *
- * Ele exercita os presenters PUROS (nao o JSX): sao eles que decidem o que
- * chega a tela. Um item que o presenter descarta nunca vira DOM.
+ * A versao anterior deste arquivo travava a regra na forma "o presenter RECUSA a
+ * linha sem credito adjacente". Essa forma morreu com a decisao — e os testes
+ * dela nao foram deletados, foram REESCRITOS: os que exigiam a recusa agora
+ * exigem o contrario (a linha PASSA, porque o credito nao mora mais ali), e
+ * apontam para onde a garantia foi morar.
+ *
+ *   A trava nova vive em
+ *   `apps/web/app/_components/__tests__/footer-credits.test.tsx`:
+ *     metade 1 — o rodape nomeia TODA fonte autorizada (derivado de
+ *                `services/legal`, entao nao pode esquecer nenhuma);
+ *     metade 2 — o rodape esta em toda pagina que exibe dado licenciado.
+ *
+ * O QUE CONTINUA AQUI, INTACTO: os gates que NAO se mudaram — licenca
+ * (`display_allowed`), escala da nota, nome do provedor, destino da oferta e
+ * estado vazio honesto. Nenhum deles tem a ver com onde o credito e desenhado, e
+ * afrouxar qualquer um deles continua sendo violacao.
+ *
+ * Ele exercita os presenters PUROS (nao o JSX): sao eles que decidem o que chega
+ * a tela. Um item que o presenter descarta nunca vira DOM.
  */
 
 import { describe, expect, it } from 'vitest'
@@ -34,8 +52,8 @@ const RATING_CREDITADA = {
   attribution: { text: 'Nota fornecida por IMDb', url: 'https://www.imdb.com/title/tt0000000/' },
 } as const
 
-describe('ratings: credito e requisito BLOQUEANTE de exibicao', () => {
-  it('nota COM credito aparece, com fonte, escala e atribuicao', () => {
+describe('ratings: o credito saiu do chip, mas continua VIAJANDO no dado', () => {
+  it('CONTROLE POSITIVO: nota valida aparece, com fonte, escala e a atribuicao preservada', () => {
     const view = buildRatingsView({ ratings: [RATING_CREDITADA] } as never)
 
     expect(view).not.toBeNull()
@@ -43,42 +61,62 @@ describe('ratings: credito e requisito BLOQUEANTE de exibicao', () => {
     // "7,9 IMDb", nunca "7,9" solto.
     expect(item.sourceLabel).toBe('IMDb')
     expect(item.scoreLabel).toBe('7,9/10')
+    // A atribuicao NAO e mais desenhada ao lado da nota, mas continua no item:
+    // e proveniencia, alimenta auditoria e e o que liga a nota ao credito do
+    // rodape. Perder o campo seria perder o rastro.
     expect(item.attribution.text).toBe('Nota fornecida por IMDb')
+    expect(item.attribution.url).toBe('https://www.imdb.com/title/tt0000000/')
   })
 
-  it('nota SEM texto de atribuicao NAO vai ao ar', () => {
+  it('REESCRITO: nota SEM texto de atribuicao AGORA vai ao ar — o credito esta no rodape', () => {
+    // Antes: `expect(view).toBeNull()`. O credito ficava dentro do chip, entao
+    // sem credito nao havia o que desenhar e a nota caia junto.
+    // Agora: o credito vem do rodape, derivado da LICENCA da fonte — nao da
+    // linha. Uma linha sem `attribution_text` continua sendo anomalia de
+    // ingestao (o trigger `external_ratings_display_guard` a recusa na escrita),
+    // mas a decisao de desenhar a nota deixou de depender disso.
     const view = buildRatingsView({
       ratings: [{ ...RATING_CREDITADA, attribution: { text: null, url: null } }],
     } as never)
-    expect(view).toBeNull()
+
+    expect(view).not.toBeNull()
+    expect(view!.items[0]!.scoreLabel).toBe('7,9/10')
+    expect(view!.items[0]!.attribution.text).toBeNull()
   })
 
-  it('nota com atribuicao VAZIA (so espacos) NAO vai ao ar', () => {
+  it('REESCRITO: atribuicao VAZIA (so espacos) nao derruba a nota, e normaliza para null', () => {
     const view = buildRatingsView({
       ratings: [{ ...RATING_CREDITADA, attribution: { text: '   ', url: null } }],
     } as never)
-    expect(view).toBeNull()
+
+    expect(view).not.toBeNull()
+    // Espaco em branco NAO vira credito de mentira: normaliza para `null`, que e
+    // "nao ha credito nesta linha", nao "o credito e uma string vazia".
+    expect(view!.items[0]!.attribution.text).toBeNull()
   })
 
-  it('nota sem o objeto de atribuicao NAO vai ao ar', () => {
+  it('REESCRITO: nota sem o objeto de atribuicao nao derruba a nota', () => {
     const view = buildRatingsView({
       ratings: [{ ...RATING_CREDITADA, attribution: undefined }],
     } as never)
-    expect(view).toBeNull()
+
+    expect(view).not.toBeNull()
+    expect(view!.items[0]!.attribution.text).toBeNull()
   })
 
-  it('a escala acompanha o numero: nunca existe nota sem denominador', () => {
+  it('INTACTO: a escala acompanha o numero — nunca existe nota sem denominador', () => {
     // Sem escala confiavel o numero e ambiguo ("7,9" de quanto?), e um 92 do
     // Rotten Tomatoes viraria indistinguivel de um 9,2 do IMDb (invariante 1).
+    // Este gate nao tem nada a ver com credito e continua bloqueante.
     const view = buildRatingsView({
       ratings: [{ ...RATING_CREDITADA, best: 0 }],
     } as never)
     expect(view).toBeNull()
   })
 
-  it('ESTADO VAZIO HONESTO: sem nota exibivel, o painel some — nao escreve "sem avaliacoes"', () => {
+  it('INTACTO: ESTADO VAZIO HONESTO — sem nota exibivel, o painel some', () => {
     // "Sem avaliacoes" seria uma afirmacao sobre o MUNDO. A verdade e sobre NOS:
-    // nao ha nota creditada para exibir. O painel inteiro nao renderiza.
+    // nao ha nota para exibir. O painel inteiro nao renderiza.
     expect(buildRatingsView({ ratings: [] } as never)).toBeNull()
   })
 })
@@ -86,11 +124,11 @@ describe('ratings: credito e requisito BLOQUEANTE de exibicao', () => {
 /**
  * Oferta valida e creditada — o caso de referencia.
  *
- * Este objeto e um CONTROLE POSITIVO, nao decoracao. Sem ele, os cinco testes
- * negativos abaixo passariam pelo motivo errado: um fixture malformado faz o
- * presenter devolver `null` em TODOS os casos, e "esperava null, recebeu null"
- * nao prova nada sobre o gate de credito. Foi exatamente o que aconteceu na
- * primeira versao deste arquivo (faltava `displayAllowed`).
+ * Este objeto e um CONTROLE POSITIVO, nao decoracao. Sem ele, os negativos
+ * abaixo passariam pelo motivo errado: um fixture malformado faz o presenter
+ * devolver `null` em TODOS os casos, e "esperava null, recebeu null" nao prova
+ * nada. Foi exatamente o que aconteceu na primeira versao deste arquivo (faltava
+ * `displayAllowed`).
  */
 const OFERTA_CREDITADA = {
   providerKey: 'netflix',
@@ -111,30 +149,52 @@ const OFERTA_CREDITADA = {
   attributionUrl: 'https://www.movieofthenight.com/',
 } as const
 
-describe('streaming: nome do provedor e credito sao requisitos de exibicao', () => {
-  it('oferta COM credito aparece, com o NOME do provedor visivel', () => {
+describe('streaming: nome do provedor e DESTINO continuam bloqueantes; o credito mudou de lugar', () => {
+  it('CONTROLE POSITIVO: oferta valida aparece, com o NOME do provedor visivel', () => {
     const view = buildWatchAvailabilityView([OFERTA_CREDITADA] as never)
 
     expect(view).not.toBeNull()
     const offer = view!.groups[0]!.offers[0]!
     expect(offer.providerName).toBe('Netflix')
+    // A proveniencia continua sendo montada, mesmo sem ir para a tela deste painel.
+    expect(view!.attributions[0]?.text).toBe('Disponibilidade fornecida por Movie of the Night')
   })
 
-  it('oferta que EXIGE atribuicao e nao a tem NAO vai ao ar', () => {
+  it('REESCRITO: oferta sem texto de atribuicao AGORA vai ao ar — o credito esta no rodape', () => {
+    // Antes: `expect(view).toBeNull()`. O credito era desenhado sob o painel.
+    // Agora o rodape credita as DUAS origens possiveis de oferta a partir de
+    // `STREAMING_ORIGIN_CREDITS`, entao a origem nunca fica sem credito na
+    // pagina — independentemente do que a LINHA carregue.
     const view = buildWatchAvailabilityView([
       { ...OFERTA_CREDITADA, attributionText: null },
     ] as never)
-    expect(view).toBeNull()
+
+    expect(view).not.toBeNull()
+    expect(view!.groups[0]!.offers[0]!.providerName).toBe('Netflix')
+    // Credito ausente na linha nao vira credito vazio na lista de proveniencia.
+    expect(view!.attributions).toHaveLength(0)
   })
 
-  it('oferta que EXIGE linkback e nao o tem NAO vai ao ar', () => {
+  it('REESCRITO: oferta sem linkback de credito AGORA vai ao ar', () => {
     const view = buildWatchAvailabilityView([
       { ...OFERTA_CREDITADA, attributionUrl: null },
+    ] as never)
+
+    expect(view).not.toBeNull()
+    expect(view!.groups[0]!.offers[0]!.providerName).toBe('Netflix')
+  })
+
+  it('INTACTO: oferta sem DESTINO nao vai ao ar — e link quebrado, nao falta de credito', () => {
+    // A distincao que o enunciado da migracao exigiu preservar: `attribution_url`
+    // e o linkback para a FONTE (mudou de lugar); `deep_link`/`web_url` sao para
+    // onde o usuario vai ASSISTIR (continua bloqueante). Sao campos diferentes.
+    const view = buildWatchAvailabilityView([
+      { ...OFERTA_CREDITADA, deepLink: null, webUrl: null },
     ] as never)
     expect(view).toBeNull()
   })
 
-  it('oferta sem NOME de provedor NAO vai ao ar', () => {
+  it('INTACTO: oferta sem NOME de provedor nao vai ao ar', () => {
     // Um link "Assistir" sem dizer onde nao e disponibilidade: e um clique cego.
     const view = buildWatchAvailabilityView([
       { ...OFERTA_CREDITADA, providerName: null },
@@ -142,13 +202,14 @@ describe('streaming: nome do provedor e credito sao requisitos de exibicao', () 
     expect(view).toBeNull()
   })
 
-  it('ESTADO VAZIO HONESTO: sem oferta exibivel, o painel some', () => {
+  it('INTACTO: ESTADO VAZIO HONESTO — sem oferta exibivel, o painel some', () => {
     expect(buildWatchAvailabilityView([] as never)).toBeNull()
   })
 
-  it('oferta sem display_allowed NAO vai ao ar (invariante 6 continua valendo)', () => {
+  it('INTACTO: oferta sem display_allowed nao vai ao ar (invariante 6 continua valendo)', () => {
     // A autorizacao do provedor liberou a COLETA. Ela nao toca no gate de
-    // licenca da EXIBICAO — que continua sendo a palavra final.
+    // licenca da EXIBICAO — que continua sendo a palavra final. Mover o credito
+    // para o rodape TAMBEM nao toca nele.
     const view = buildWatchAvailabilityView([
       { ...OFERTA_CREDITADA, displayAllowed: false },
     ] as never)

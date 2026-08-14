@@ -220,9 +220,15 @@ describe('home pública — design canônico (tela 02)', () => {
     expect(code(ticker)).not.toMatch(/em cartaz/i)
     // Nenhum provedor hardcoded em lugar nenhum da faixa.
     expect(tickerServer).not.toMatch(/Netflix|Prime Video|Disney\+|Apple TV/)
-    // O crédito exigido pela licença é renderizado VISIVELMENTE.
-    expect(ticker).toContain('ticker__credit')
-    expect(ticker).toContain('attributionText')
+    // O crédito exigido pela licença NÃO fica mais na faixa: desde 2026-08-13
+    // (decisão do proprietário) ele vive no rodapé global, que é chrome de toda
+    // página e não muda a cada slide. Presença provada em
+    // `apps/web/app/_components/__tests__/footer-credits.test.tsx`.
+    // `code(...)` e nao `ticker`: a varredura tem de ser sobre CODIGO. O
+    // comentario que explica a mudanca cita `attributionText` de proposito, e um
+    // grep sobre o texto cru reprovaria a explicacao junto com o defeito.
+    expect(code(ticker)).not.toContain('ticker__credit')
+    expect(code(ticker)).not.toContain('attributionText')
   })
 
   it('anúncios só via AdSlot governado (nunca criativo inline)', () => {

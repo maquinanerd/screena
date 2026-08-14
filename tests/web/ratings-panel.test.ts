@@ -57,9 +57,16 @@ describe("ratings-panel — componente publico", () => {
     expect(code).toContain("item.valueSuffix");
   });
 
-  it("exibe o credito da fonte junto da nota", () => {
-    expect(code).toContain("item.attribution.text");
-    expect(code).toContain("item.attribution.url");
+  /**
+   * REESCRITO em 2026-08-13: o credito saiu do chip e passou a viver no rodape
+   * global (decisao do proprietario). Este teste exigia o oposto — agora ele
+   * impede que o credito volte para ca e passe a aparecer duas vezes na pagina.
+   * A presenca do credito e provada em `footer-credits.test.tsx`.
+   */
+  it("NAO exibe o credito junto da nota (ele vive no rodape)", () => {
+    expect(code).not.toContain("item.attribution.text");
+    expect(code).not.toContain("item.attribution.url");
+    expect(code).not.toMatch(/fornecida por/i);
   });
 
   it("NUNCA renderiza logo/imagem de fonte (logo_allowed=false)", () => {
@@ -84,8 +91,14 @@ describe("ratings-panel — componente publico", () => {
     expect(code).not.toContain("fetch(");
   });
 
-  it("linkback de credito sai com nofollow noopener", () => {
-    expect(code).toMatch(/rel="nofollow noopener"/);
+  /**
+   * REESCRITO em 2026-08-13. O unico `<a>` do chip era o linkback do credito.
+   * Com o credito no rodape, o painel de notas nao tem link externo nenhum — e
+   * nao pode ganhar um por outro caminho, que seria o mesmo credito de volta.
+   */
+  it("o painel de notas nao tem mais link externo (o linkback foi com o credito)", () => {
+    expect(code).not.toContain("<a");
+    expect(code).not.toMatch(/href=/);
   });
 });
 

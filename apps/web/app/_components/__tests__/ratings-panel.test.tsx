@@ -149,11 +149,29 @@ function dividerCount(markup: string): number {
   return markup.split('class="rating-chip__divider"').length - 1;
 }
 
-describe("credito: DENTRO do chip da nota, nunca solto na pagina", () => {
-  it("o credito de cada fonte esta na fatia de marcacao do SEU chip", () => {
+/**
+ * REESCRITO em 2026-08-13. Este bloco se chamava "credito: DENTRO do chip da
+ * nota, nunca solto na pagina" e exigia o oposto do que exige agora.
+ *
+ * Decisao do proprietario: todo credito de fonte saiu do corpo das paginas e
+ * passou a viver no rodape global. Os testes NAO foram deletados — foram
+ * invertidos, porque a regra que eles defendiam ("nota nao aparece sem credito
+ * visivel") continua verdadeira; o que mudou foi ONDE o credito visivel esta.
+ *
+ * A metade que prova a presenca do credito vive em `footer-credits.test.tsx`.
+ * O que sobrou aqui e a outra metade: o chip nao pode REINTRODUZIR o credito, ou
+ * a pagina passaria a creditar duas vezes e a decisao seria desfeita em silencio.
+ */
+describe("credito: FORA do chip — ele vive no rodape global (decisao de 2026-08-13)", () => {
+  it("CONTROLE POSITIVO: o chip renderiza a nota (senao os negativos abaixo nao valem nada)", () => {
+    const chips = chipSlices(markupOf([IMDB, ROTTEN_TOMATOES, METACRITIC]));
+    expect(chips).toHaveLength(3);
+    expect(chips[0]).toContain("7,9");
+  });
+
+  it("nenhum chip carrega o credito da sua fonte", () => {
     const markup = markupOf([IMDB, ROTTEN_TOMATOES, METACRITIC]);
     const chips = chipSlices(markup);
-    expect(chips).toHaveLength(3);
 
     const esperado: readonly [string, string][] = [
       ["imdb", "Nota fornecida por IMDb"],
@@ -164,43 +182,30 @@ describe("credito: DENTRO do chip da nota, nunca solto na pagina", () => {
     for (const [sourceKey, credito] of esperado) {
       const chip = chips.find((slice) => slice.includes(`data-rating-source="${sourceKey}"`));
       expect(chip, `chip de ${sourceKey} ausente`).toBeDefined();
-      // CONTENCAO: o credito esta dentro do chip...
-      expect(chip!).toContain(credito);
-      // ...e dentro do elemento de credito, nao perdido em qualquer lugar dele.
-      expect(chip!).toContain('class="rating-chip__credit"');
+      expect(chip!).not.toContain(credito);
     }
+    // Nem dentro do chip, nem solto na fileira: o painel inteiro nao credita.
+    expect(markup).not.toContain('class="rating-chip__credit"');
   });
 
-  it("nenhum credito aparece FORA de um chip (nao virou rodape nem secao Fontes)", () => {
+  it("o credito nao reaparece disfarcado de atributo (aria-label/title)", () => {
+    // O modo de falha mais provavel de uma "restauracao" apressada: devolver o
+    // credito como rotulo acessivel, que satisfaz `includes(...)` e nao e texto
+    // visivel. Proibido nos dois sentidos — aqui ele nao deve existir de forma
+    // nenhuma.
     const markup = markupOf([IMDB, ROTTEN_TOMATOES, METACRITIC]);
-    // Remove as fatias dos chips; o que sobra e "o resto da fileira".
-    let resto = markup;
-    for (const chip of chipSlices(markup)) resto = resto.replace(chip, "");
-
-    expect(resto).not.toContain("Nota fornecida por IMDb");
-    expect(resto).not.toContain("Nota fornecida por Rotten Tomatoes");
-    expect(resto).not.toContain("Nota fornecida por Metacritic");
+    expect(markup).not.toContain('aria-label="Nota fornecida');
+    expect(markup).not.toContain('title="Nota fornecida');
+    expect(markup).not.toContain("Nota fornecida por");
   });
 
-  it("o credito e TEXTO VISIVEL, nunca so aria-label ou title", () => {
-    const chip = chipSlices(markupOf([ROTTEN_TOMATOES]))[0]!;
-    // O texto aparece como conteudo do elemento (`>...<`), nao dentro de aspas
-    // de atributo.
-    expect(chip).toContain(">Nota fornecida por Rotten Tomatoes<");
-    expect(chip).not.toContain('aria-label="Nota fornecida');
-    expect(chip).not.toContain('title="Nota fornecida');
-  });
-
-  it("linkback so onde ha URL canonica: IMDb linka, Rotten Tomatoes credita em texto", () => {
-    const chips = chipSlices(markupOf([IMDB, ROTTEN_TOMATOES]));
-    const imdb = chips.find((c) => c.includes('data-rating-source="imdb"'))!;
-    const rt = chips.find((c) => c.includes('data-rating-source="rotten_tomatoes"'))!;
-
-    expect(imdb).toContain('href="https://www.imdb.com/title/tt3896198/"');
-    // A OMDb nao entrega identificador de RT/Metacritic: derivar slug do titulo
-    // fabricaria um link que pode nao existir.
-    expect(rt).not.toContain("<a");
-    expect(rt).toContain("Nota fornecida por Rotten Tomatoes");
+  it("o linkback de credito tambem saiu: o chip nao tem <a> nenhum", () => {
+    // O unico `<a>` que existia no chip era o linkback do credito do IMDb. Com o
+    // credito no rodape, o chip nao tem link — e ele NAO pode ganhar um link
+    // para a fonte por outro caminho, que seria o mesmo credito de volta.
+    const markup = markupOf([IMDB, ROTTEN_TOMATOES]);
+    expect(markup).not.toContain("<a");
+    expect(markup).not.toContain("https://www.imdb.com/title/tt3896198/");
   });
 });
 

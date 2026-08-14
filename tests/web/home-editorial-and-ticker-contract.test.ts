@@ -206,8 +206,19 @@ describe('faixa amarela — carrossel de novidades reais', () => {
     expect(tickerCode).toContain('Ver lançamentos')
   })
 
-  it('o crédito acompanha o item ATIVO (nada de crédito residual)', () => {
-    expect(tickerCode).toMatch(/item\?\.provider != null \? <TickerCredit provider=\{item\.provider\}/)
+  /**
+   * REESCRITO em 2026-08-13. A faixa creditava a origem do provedor no slide
+   * ativo — e essa era a forma mais frágil de crédito do site: trocar de slide
+   * trocava o crédito.
+   *
+   * Por decisão do proprietário, todo crédito de fonte foi para o rodapé global,
+   * que não pisca. Presença provada em `footer-credits.test.tsx`; aqui garante-se
+   * que ele não voltou para a faixa.
+   */
+  it('a faixa NÃO credita a origem (o crédito vive no rodapé, e não pisca)', () => {
+    expect(tickerCode).not.toContain('TickerCredit')
+    expect(tickerCode).not.toContain('attributionText')
+    expect(tickerCode).not.toMatch(/fornecida por/i)
   })
 
   it('o loader agrega QUATRO fontes reais e nenhuma delas é inventada', () => {

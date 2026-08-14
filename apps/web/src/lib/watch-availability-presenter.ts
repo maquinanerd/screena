@@ -345,19 +345,32 @@ export function buildWatchAvailabilityView(
     const destinationKind: WatchDestinationKind =
       providerLink !== null ? "provider" : "aggregator";
 
-    // ATRIBUICAO EXIGIDA E AUSENTE = NAO EXIBE (invariante 6). Mesma regra que
-    // `toPublicRating` ja aplica as notas: a licenca que autoriza exibir e a
-    // mesma que obriga a creditar; exibir sem credito nao e "quase certo", e
-    // uso nao licenciado. Fail-closed por OFERTA, nao pelo painel inteiro.
-    // `!== false` (nao `=== true`) e deliberado: a coluna nasce `default(true)`,
-    // entao QUALQUER coisa que nao seja um "false" explicito conta como
-    // exigencia. Com `&&` simples, um campo ausente seria falsy e desligaria o
-    // gate em silencio — exatamente o modo de falha que este gate existe para
-    // impedir. Mesmo espirito do `displayAllowed !== true` acima.
+    // ATRIBUICAO: A TRAVA MUDOU DE ENDERECO, NAO FOI REMOVIDA.
+    //
+    // Ate 2026-08-12, uma oferta sem `attribution_text` (ou sem
+    // `attribution_url`, quando a licenca exigia linkback) era DESCARTADA aqui:
+    // o credito ficava sob o painel, e a proximidade era a prova.
+    //
+    // Decisao do proprietario (Pablo Eduardo, 2026-08-13): o credito saiu do
+    // corpo e passou a viver no RODAPE GLOBAL. O que substituiu estes dois `if`:
+    //  1. o rodape nomeia as DUAS origens de oferta — "Movie of the Night" e
+    //     "JustWatch" — derivadas de `STREAMING_ORIGIN_CREDITS` em
+    //     `services/legal`, entao nenhuma origem nova fica sem credito;
+    //  2. `tests/web/footer-credits.test.tsx` prova, por rota, que o credito
+    //     esta no texto visivel da pagina que exibe a oferta.
+    //
+    // NAO CONFUNDIR ESTE CREDITO COM O DESTINO DA OFERTA. `attributionUrl` e o
+    // linkback para a FONTE; `deepLink`/`webUrl` sao para onde o usuario vai
+    // assistir. Sao campos diferentes com destinos diferentes, e so o segundo
+    // continua sendo gate: a checagem de `destinationUrl === null` acima
+    // permanece intacta, porque oferta sem destino nao e falta de credito — e um
+    // clique cego.
+    //
+    // O caminho de ESCRITA tambem continua exigindo credito: o trigger
+    // `watch_availability_display_guard` recusa a linha sem a licenca e o
+    // credito devidos. A proveniencia segue gravada; mudou onde ela aparece.
     const attributionText = trimToNull(row.attributionText);
     const attributionUrl = trimToNull(row.attributionUrl);
-    if (row.requiresAttribution !== false && attributionText === null) continue;
-    if (row.requiresLinkback !== false && attributionUrl === null) continue;
 
     const quality = trimToNull(row.quality);
     const priceLabel = buildPriceLabel(offerType, row.priceAmount, row.currency);

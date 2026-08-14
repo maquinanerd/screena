@@ -16,15 +16,25 @@ import type {
  * DUAS COISAS AQUI NAO SAO ESCOLHA DE DESIGN. Nao "simplifique" nenhuma delas.
  * ============================================================================
  *
- * 1. O CREDITO MORA DENTRO DO CHIP. Nao no rodape da pagina, nao numa secao
- *    "Fontes" no fim, nao num tooltip de hover, nao num `aria-label` sem texto
- *    visivel. A autorizacao das cinco fontes (2026-08-12) e condicionada a uso
- *    jornalistico COM CREDITO VISIVEL A FONTE EM TODA EXIBICAO
- *    (`requires_attribution = true` em `source_licenses`). Separar o credito da
- *    nota nao "perde o credito": derruba a NOTA, porque quem decide exibir e a
- *    mesma cadeia que obriga a creditar. Travado por
- *    `tests/governance/credit-required-on-display.test.ts` (presenter) e
- *    `ratings-panel.test.tsx` (contencao no DOM).
+ * 1. O CREDITO NAO MORA MAIS AQUI — MORA NO RODAPE, E ISSO E UMA DECISAO.
+ *    Ate 2026-08-12 o credito ("Nota fornecida por IMDb") era renderizado dentro
+ *    do chip, colado ao numero. Decisao do proprietario (Pablo Eduardo,
+ *    2026-08-13): todo credito de fonte sai do corpo das paginas e passa a viver
+ *    no RODAPE GLOBAL.
+ *
+ *    O que NAO mudou: a licenca continua exigindo credito visivel
+ *    (`requires_attribution = true` em `source_licenses`). Mudou o ENDERECO.
+ *    Antes a prova era a proximidade; agora sao duas coisas juntas — o rodape
+ *    nomeia toda fonte autorizada (derivado de `services/legal`, entao nao pode
+ *    esquecer nenhuma) e o rodape esta em toda pagina (layout raiz).
+ *
+ *    O QUE CONTINUA PROIBIDO: credito so em `aria-label`, so em `title`, so em
+ *    tooltip, ou escondido por breakpoint. O rodape carrega TEXTO VISIVEL, e o
+ *    teste mede texto visivel, nao markup cru.
+ *
+ *    Travado por `tests/web/footer-credits.test.tsx` (o credito esta na pagina
+ *    renderizada, por rota) e por `ratings-panel.test.tsx` (o chip NAO reintroduz
+ *    o credito ao lado da nota).
  *
  * 2. NAO HA LOGO. O canonico desenha a marca grafica de cada fonte (a caixa
  *    amarela do IMDb, o tomate do Rotten Tomatoes). Nao podemos: `logoAllowed`
@@ -67,29 +77,15 @@ function RatingSourceMark({ item }: { item: RatingsPanelItem }): ReactNode {
  *
  * A linha meta e onde o canonico poe "8,1 mil" / "31 criticas". Esse volume so
  * existe para o IMDb (a OMDb devolve `imdbVotes`; Rotten Tomatoes e Metacritic
- * nao trazem contagem nenhuma no payload). Quando nao ha contagem, a linha
- * carrega SO o credito — nunca um numero de criticas fabricado para preencher
- * o desenho.
+ * nao trazem contagem nenhuma no payload). Sem contagem, a linha meta nao
+ * renderiza — nunca um numero de criticas fabricado para preencher o desenho.
+ *
+ * O chip NAO renderiza `item.attribution`. O campo continua no item (e
+ * proveniencia e alimenta auditoria e teste), mas o credito na TELA e do rodape
+ * — ver o ponto 1 do cabecalho. Reintroduzir o credito aqui nao "reforca" a
+ * licenca: duplica o credito e desfaz a decisao de 2026-08-13.
  */
 function RatingChip({ item }: { item: RatingsPanelItem }): ReactNode {
-  const credit =
-    item.attribution.url !== null ? (
-      // Linkback quando a licenca o exige E ha URL canonica derivavel do
-      // payload (so o IMDb: a OMDb entrega `imdbID`). Rotten Tomatoes e
-      // Metacritic nao trazem identificador — derivar um slug do titulo
-      // fabricaria um link que pode nao existir, entao ali o credito e textual.
-      <a
-        className="rating-chip__credit-link"
-        href={item.attribution.url}
-        rel="nofollow noopener"
-        target="_blank"
-      >
-        {item.attribution.text}
-      </a>
-    ) : (
-      item.attribution.text
-    );
-
   return (
     <li
       className="rating-chip"
@@ -112,13 +108,11 @@ function RatingChip({ item }: { item: RatingsPanelItem }): ReactNode {
         <span className="rating-chip__metric">
           {item.metricLabel} · {item.scoreTypeLabel}
         </span>
-        <span className="rating-chip__meta">
-          {item.countLabel !== null ? (
+        {item.countLabel !== null ? (
+          <span className="rating-chip__meta">
             <span className="rating-chip__count">{item.countLabel} votos</span>
-          ) : null}
-          {/* O CREDITO. Dentro do chip, sempre. Ver cabecalho, ponto 1. */}
-          <span className="rating-chip__credit">{credit}</span>
-        </span>
+          </span>
+        ) : null}
       </span>
     </li>
   );

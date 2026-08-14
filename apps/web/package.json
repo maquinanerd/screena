@@ -24,6 +24,7 @@
     "qa:article-hero": "tsx scripts/qa-article-hero-real-postgres.ts",
     "qa:home-editorial": "tsx scripts/qa-home-editorial-ticker-real-postgres.ts",
     "qa:detail-responsive": "tsx --tsconfig scripts/tsconfig.json scripts/qa-detail-responsive.ts",
+    "qa:footer": "tsx --tsconfig scripts/tsconfig.json scripts/qa-footer-harness.tsx",
     "seed:dev-movie": "tsx scripts/seed-dev-movie.ts",
     "gen:demo-media": "node scripts/generate-demo-media.mjs",
     "validate:person-eligibility": "tsx scripts/validate-person-eligibility-real-postgres.ts",
@@ -42,7 +43,8 @@
     "@screena/types": "workspace:*",
     "@screena/db": "workspace:*",
     "@screena/public-contracts": "workspace:*",
-    "@screena/user-platform": "workspace:*"
+    "@screena/user-platform": "workspace:*",
+    "@screena/legal": "workspace:*"
   },
   "devDependencies": {
     "tailwindcss": "^3.4.0",

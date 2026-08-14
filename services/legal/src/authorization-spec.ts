@@ -345,10 +345,15 @@ export const STATIC_AUTHORIZATION: readonly AuthorizationEntry[] = [
   },
   ...["imdb", "rotten_tomatoes", "metacritic", "letterboxd", "filmaffinity"].map(ratingEntry),
   // Movie of the Night — AGREGADOR de streaming (via Streaming Availability API,
-  // RapidAPI). É a fonte cuja atribuição vai perto do painel de streaming. NÃO é
-  // um provedor de streaming (Netflix, etc.) — por isso content_type='other',
-  // não 'watch_availability'. A exibição de cada OFERTA é gated por decisão
-  // watch_offer_display POR PROVEDOR CANÔNICO (gerada dinamicamente; ver plan.ts).
+  // RapidAPI). NÃO é um provedor de streaming (Netflix, etc.) — por isso
+  // content_type='other', não 'watch_availability'. A exibição de cada OFERTA é
+  // gated por decisão watch_offer_display POR PROVEDOR CANÔNICO (gerada
+  // dinamicamente; ver plan.ts).
+  //
+  // ONDE A ATRIBUIÇÃO APARECE mudou em 13/08/2026 (decisão de Pablo Eduardo):
+  // era "perto do painel de streaming", passou a ser o RODAPÉ GLOBAL, junto com
+  // todo crédito de fonte. `requiresAttribution` continua `true` — mudou o
+  // endereço, nunca a obrigação. A projeção pública vive em `public-credits.ts`.
   {
     label: "Movie of the Night (agregador de streaming)",
     role: "streaming-aggregator",
@@ -368,7 +373,7 @@ export const STATIC_AUTHORIZATION: readonly AuthorizationEntry[] = [
       attributionText: "Disponibilidade fornecida por Movie of the Night",
       policyVersion: "cinerie-source-auth/movie-of-the-night/2026-07-v1",
       notes:
-        "Agregador de disponibilidade via Streaming Availability API (RapidAPI). Atribuicao obrigatoria perto do painel de streaming. A exibicao de ofertas depende de provedores canonicos registrados e suas decisoes watch_offer_display (por provedor).",
+        "Agregador de disponibilidade via Streaming Availability API (RapidAPI). Atribuicao obrigatoria no rodape global (decisao de 2026-08-13; antes era perto do painel de streaming). A exibicao de ofertas depende de provedores canonicos registrados e suas decisoes watch_offer_display (por provedor).",
     },
     decisions: [
       {
@@ -450,6 +455,24 @@ const STREAMING_ORIGINS: readonly StreamingOrigin[] = [
     note: "via bloco watch/providers do TMDB, que REVENDE dado do JustWatch. Os termos do endpoint exigem creditar o JustWatch nominalmente, sob pena de revogacao do acesso a API do TMDB — que sustenta o catalogo inteiro. O destino da oferta e o link por PAIS do proprio payload (web_url), nunca um deep link fabricado por provedor.",
   },
 ];
+
+/**
+ * Os créditos das origens de streaming, expostos para a PROJEÇÃO PÚBLICA.
+ *
+ * `STREAMING_ORIGINS` continua privado (o `note` é auditoria interna, não vai
+ * para a tela). O que sai daqui é só o texto de atribuição — a letra da licença.
+ *
+ * Por que isto precisa existir: as licenças de streaming nascem por PROVEDOR
+ * CANÔNICO, dinamicamente, a partir do que existe em `watch_providers`. Elas não
+ * estão em `STATIC_AUTHORIZATION`. Sem esta lista, o rodapé só conheceria o
+ * JustWatch depois que alguém registrasse um provedor — e o crédito ao JustWatch
+ * é exigido NOMINALMENTE pelos termos do endpoint `watch/providers` do TMDB, sob
+ * pena de revogação do acesso à API que sustenta o catálogo inteiro.
+ *
+ * Consumido por `public-credits.ts`.
+ */
+export const STREAMING_ORIGIN_CREDITS: readonly { readonly attributionText: string }[] =
+  STREAMING_ORIGINS.map((origin) => ({ attributionText: origin.attributionText }));
 
 /**
  * Autorização de EXIBIÇÃO por provedor canônico de streaming, POR ORIGEM.
