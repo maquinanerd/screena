@@ -14,6 +14,10 @@ import { getPrismaClient } from "@screena/db/server";
 
 import { SITE_URL } from "../lib/site";
 import {
+  isPublishedLocale,
+  publishedLocaleRank,
+} from "../lib/synopsis-language";
+import {
   buildSeriesPageView,
   evaluateSeriesIndexability,
   SERIES_RENDERABLE_REVIEW_STATUSES,
@@ -97,7 +101,7 @@ export const getSeriesPageData = cache(
 
     const entityId = slugRow.entityId;
 
-    const [series, canonicalSlugRow, translation, contentBlocks, seasons, relatedNews, cast, watch, externalIds] =
+    const [series, canonicalSlugRow, translations, contentBlocks, seasons, relatedNews, cast, watch, externalIds] =
       await Promise.all([
         prisma.tvShow.findUnique({
           where: { id: entityId },
@@ -122,13 +126,15 @@ export const getSeriesPageData = cache(
           },
           select: { slug: true },
         }),
-        prisma.entityTranslation.findFirst({
+        // TODAS as traducoes (ver a mesma nota em `movie-page.ts`): a escolha
+        // da sinopse virou codigo puro testado, nao o WHERE.
+        prisma.entityTranslation.findMany({
           where: {
             entityType: ENTITY_TYPE,
             entityId,
-            languageCode: LANGUAGE_CODE,
           },
           select: {
+            languageCode: true,
             title: true,
             metaTitle: true,
             metaDescription: true,
@@ -201,7 +207,18 @@ export const getSeriesPageData = cache(
       })),
     }));
 
+    // Locale publicado: unica fonte de titulo/metadados (ver `movie-page.ts`).
+    const translation =
+      translations
+        .filter((row) => isPublishedLocale(row.languageCode))
+        .sort(
+          (a, b) =>
+            publishedLocaleRank(a.languageCode) -
+            publishedLocaleRank(b.languageCode),
+        )[0] ?? null;
+
     const view = buildSeriesPageView({
+      translations,
       record: {
         nameOriginal: series.nameOriginal,
         firstAirYear: yearFromDate(series.firstAirDate),

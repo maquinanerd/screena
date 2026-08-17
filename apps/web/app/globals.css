@@ -3567,6 +3567,25 @@ a.tabs__tab[aria-current='page'] {
   margin: 20px 0 0;
 }
 
+/* Sinopse em idioma de origem (T2): o texto mantem o mesmo peso visual do caso
+   traduzido — nao e conteudo de segunda classe —, e o aviso vem abaixo, menor e
+   em contraste reduzido, sem virar cinza ilegivel. Ver `entity-synopsis.tsx`. */
+.detail-hero__synopsis-group {
+  margin: 20px 0 0;
+}
+
+.detail-hero__synopsis-group .detail-hero__synopsis {
+  margin-top: 0;
+}
+
+.detail-hero__synopsis-notice {
+  max-width: 58ch;
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #6b6459;
+}
+
 .detail-actions {
   display: flex;
   flex-wrap: wrap;

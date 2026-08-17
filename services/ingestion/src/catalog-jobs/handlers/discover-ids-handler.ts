@@ -8,11 +8,15 @@
  * camadas — arquivos `adult_*` nunca baixados + campo `adult` fail-closed por
  * linha). Este handler apenas CONTA o que foi rejeitado e o expoe em metrica:
  * um salto em `rejectedAdult` e sinal de mudanca upstream, nao ruido.
+ *
+ * COBERTURA: este e o chamador SEMENTE do T0. Ele nao monta o `sync_details` a
+ * mao — pede a `buildCoverageJob`, a mesma porta que o incremental `/changes` e
+ * a hidratacao sob demanda usam. Ver `entity-coverage/entry.ts`.
  */
 
 import { CATALOG_METRIC_NAMES } from '../../metrics/index.js'
+import { buildCoverageJob } from '../../entity-coverage/entry.js'
 import type { CatalogJobContext, CatalogJobHandler } from '../handler.js'
-import { buildIdempotencyKey } from '../idempotency.js'
 import type { CatalogJobStorePort } from '../store-port.js'
 import type { CatalogDiscoverIdsPort } from './ports.js'
 import { validateDiscoverIdsInput, type DiscoverIdsInput } from './schemas.js'
@@ -120,28 +124,18 @@ export class DiscoverIdsHandler implements CatalogJobHandler<DiscoverIdsInput, D
     let index = 0
     for (const tmdbId of ids) {
       throwIfAborted(context.signal)
-      const externalId = String(tmdbId)
-      const result = await this.deps.store.enqueue({
-        jobType: 'sync_details',
-        entityType: input.entityType,
-        externalId,
-        // Sem discriminador de janela: a descoberta e o backfill do universo, e
-        // o MESMO id descoberto de novo e o mesmo trabalho (noop idempotente).
-        idempotencyKey: buildIdempotencyKey({
-          jobType: 'sync_details',
-          entityType: input.entityType,
-          externalId,
-          discriminator: input.locale,
-        }),
-        payload: {
-          entityType: input.entityType,
+      // PORTA UNICA de cobertura (T0). Sem escopo: a descoberta e o backfill do
+      // universo, e o MESMO id descoberto de novo e o mesmo trabalho (noop
+      // idempotente).
+      const result = await this.deps.store.enqueue(
+        buildCoverageJob({
+          kind: input.entityType,
           tmdbId,
           locale: input.locale,
           reason: 'discovery',
-        },
-        priority: 100, // backfill cede a vez para changes (prioridade 50)
-        runId: context.requestId,
-      })
+          runId: context.requestId,
+        }),
+      )
       if (result.created) enqueued += 1
       index += 1
       if (index % 50 === 0) await context.heartbeat()

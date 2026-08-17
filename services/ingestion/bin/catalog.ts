@@ -49,6 +49,7 @@ import { createStructuredLogMetricsSink, createInMemoryMetricsSink } from '../sr
 import { reindexAll, reindexEntity } from '../src/search-projection/index.js'
 import { evaluateAuditGate, formatAuditReport, runDatabaseAudit } from '../src/audit/index.js'
 import {
+  assertPlannableStrategy,
   DEFAULT_ASSUMPTIONS,
   estimateScenarios,
   evaluateBudget,
@@ -523,6 +524,16 @@ async function cmdPlanBootstrap(
   const limit = flags.limit ?? 20
   const maxPages = flags.maxPages ?? 5
   const strategy = flags.strategy ?? 'popular'
+
+  // A guarda vive em `src/planning/strategies.ts` (puro e testado), nao aqui:
+  // `bin/` e excluido do typecheck e nao tem teste proprio, e foi exatamente
+  // por isso que a ausencia de validacao passou despercebida.
+  try {
+    assertPlannableStrategy(strategy)
+  } catch (error) {
+    process.stderr.write(`erro: ${error instanceof Error ? error.message : String(error)}\n`)
+    return EXIT_CODES.usage
+  }
 
   const budget: BootstrapBudget = {
     ...(flags.maxTitles !== null ? { maxTitles: flags.maxTitles } : {}),
