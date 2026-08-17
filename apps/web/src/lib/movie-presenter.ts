@@ -10,6 +10,11 @@
 import { isPubliclyRenderableBlock } from "./movie-indexability";
 import { buildTmdbImageUrl, type TmdbImageSize } from "./tmdb-image-url";
 import { mapEntityStatus, mapOriginalLanguage } from "./entity-status";
+import {
+  selectSynopsis,
+  type SynopsisView,
+  type TranslationCandidate,
+} from "./synopsis-language";
 
 /**
  * Ordem canonica dos tipos de content_block (espelha o enum `ContentBlockType`
@@ -113,7 +118,21 @@ export interface MoviePageView {
   /** Idioma original ja em pt-BR (ex.: "Inglês"); `null` = omite a linha. */
   originalLanguageLabel: string | null;
   metaTitle: string | null;
+  /**
+   * Descricao para `<meta>` e JSON-LD. SO do locale publicado, sempre.
+   *
+   * Nao acompanha o fallback de {@link MoviePageView.synopsis}: metadado nao
+   * tem onde carregar o aviso de idioma, e declarar descricao em ingles numa
+   * pagina `pt-BR` seria afirmar ao robo algo que a pagina nao sustenta.
+   */
   metaDescription: string | null;
+  /**
+   * Sinopse VISIVEL, com a procedencia de idioma junto.
+   *
+   * `source: 'original_language'` carrega `notice` obrigatorio — e o que
+   * impede texto estrangeiro de entrar na tela sem aviso.
+   */
+  synopsis: SynopsisView | null;
   /** Classificacao indicativa ("16", "L"...), ou null (chip omitido). */
   certification: string | null;
   blocks: RenderableMovieBlock[];
@@ -231,12 +250,28 @@ export interface PresentMovieInput {
   record: MovieRecordInput;
   translation: MovieTranslationInput | null;
   blocks: MovieContentBlockInput[];
+  /**
+   * TODAS as traducoes da entidade, em qualquer locale.
+   *
+   * Existe para a sinopse do T2 e so para ela: um titulo que entrou pelo
+   * caminho sob demanda pode ter texto apenas em `en-US`, e ate aqui o render
+   * o descartava calado. `translation` acima continua sendo a linha do locale
+   * publicado e continua governando titulo e metadados.
+   *
+   * Ausente (`undefined`) = chamador que ainda nao consultou; a sinopse entao
+   * so pode vir de `translation`, o comportamento antigo.
+   */
+  translations?: readonly TranslationCandidate[];
 }
 
 /** Monta o `MoviePageView` a partir do payload controlado do PostgreSQL. */
 export function presentMovie(input: PresentMovieInput): MoviePageView {
   const blocks = selectRenderableBlocks(input.blocks);
   return {
+    synopsis: selectSynopsis(
+      input.translations ?? [],
+      input.record.originalLanguage,
+    ),
     title: selectTitle(input.record, input.translation),
     year: input.record.year,
     runtimeMinutes: input.record.runtimeMinutes,

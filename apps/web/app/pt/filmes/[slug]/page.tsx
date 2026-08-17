@@ -4,6 +4,7 @@ import { notFound, permanentRedirect } from 'next/navigation'
 import { buildSameAs, serializeJsonLd } from '@screena/seo'
 
 import { EntityActions } from '../../../_components/entity-actions'
+import { EntitySynopsis } from '../../../_components/entity-synopsis'
 import { EntityExternalIds } from '../../../_components/entity-external-ids'
 import { AwardsBand } from '../../../_components/awards-band'
 import { SectionBoundary } from '../../../_components/section-boundary'
@@ -243,9 +244,7 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
                   <li className="detail-hero__cert">{view.certification}</li>
                 ) : null}
               </ul>
-              {view.metaDescription !== null ? (
-                <p className="detail-hero__synopsis">{view.metaDescription}</p>
-              ) : null}
+              <EntitySynopsis synopsis={view.synopsis} />
               <div className="detail-actions">
                 {/* Ações REAIS de biblioteca (C8): fetch após clique, zero
                     chamada externa no render. */}
