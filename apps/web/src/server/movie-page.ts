@@ -28,6 +28,10 @@ import {
   RENDERABLE_REVIEW_STATUSES,
   type IndexabilityResult,
 } from "../lib/movie-indexability";
+import {
+  isPublishedLocale,
+  publishedLocaleRank,
+} from "../lib/synopsis-language";
 import { movieCanonicalUrl } from "../lib/site";
 import { resolveEntityPageSeo } from "./seo/indexability-decision";
 import { getRelatedNewsForEntity } from "./related-news";
@@ -109,7 +113,7 @@ export const getMoviePageData = cache(
 
     const entityId = slugRow.entityId;
 
-    const [movie, canonicalSlugRow, translation, contentBlocks, relatedNews, cast, watch, externalIds] =
+    const [movie, canonicalSlugRow, translations, contentBlocks, relatedNews, cast, watch, externalIds] =
       await Promise.all([
       prisma.movie.findUnique({
         where: { id: entityId },
@@ -133,9 +137,15 @@ export const getMoviePageData = cache(
         },
         select: { slug: true },
       }),
-      prisma.entityTranslation.findFirst({
-        where: { entityType: ENTITY_TYPE, entityId, languageCode: LANGUAGE_CODE },
+      // TODAS as traducoes, nao so `pt-BR`. A escolha passou a ser codigo PURO
+      // (`selectSynopsis`), e nao mais o WHERE: um titulo que entrou sob demanda
+      // pode ter sinopse apenas no idioma de origem, e filtrar por `pt-BR` aqui
+      // fazia esse texto desaparecer da pagina sem uma linha dizendo por que.
+      // Titulo/metadados continuam vindo SO do locale publicado, abaixo.
+      prisma.entityTranslation.findMany({
+        where: { entityType: ENTITY_TYPE, entityId },
         select: {
+          languageCode: true,
           title: true,
           metaTitle: true,
           metaDescription: true,
@@ -170,7 +180,20 @@ export const getMoviePageData = cache(
       reviewStatus: String(block.reviewStatus),
     }));
 
+    // A linha do locale publicado: continua sendo a UNICA fonte de titulo,
+    // `meta_title` e `meta_description`. A prioridade e explicita e nao herda a
+    // ordem do `findMany` (que nao tem ordem garantida).
+    const translation =
+      translations
+        .filter((row) => isPublishedLocale(row.languageCode))
+        .sort(
+          (a, b) =>
+            publishedLocaleRank(a.languageCode) -
+            publishedLocaleRank(b.languageCode),
+        )[0] ?? null;
+
     const view = presentMovie({
+      translations,
       record: {
         titleOriginal: movie.titleOriginal,
         year:

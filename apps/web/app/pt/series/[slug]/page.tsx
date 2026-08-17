@@ -5,6 +5,7 @@ import type { ReactNode } from 'react'
 import { buildSameAs, serializeJsonLd } from '@screena/seo'
 
 import { EntityActions } from '../../../_components/entity-actions'
+import { EntitySynopsis } from '../../../_components/entity-synopsis'
 import { EntityExternalIds } from '../../../_components/entity-external-ids'
 import { AwardsBand } from '../../../_components/awards-band'
 import { SectionBoundary } from '../../../_components/section-boundary'
@@ -349,9 +350,10 @@ export default async function SeriesPage({
                   <li className="detail-hero__meta-text">{metaText}</li>
                 ) : null}
               </ul>
-              {view.metaDescription !== null ? (
-                <p className="detail-hero__synopsis">{view.metaDescription}</p>
-              ) : null}
+              {/* Sem guarda por `metaDescription`: ela e `pt-BR`-only, e usa-la
+                  como condicao mataria justamente a sinopse em idioma de
+                  origem. Quem decide omitir e o proprio componente. */}
+              <EntitySynopsis synopsis={view.synopsis} />
               <div className="detail-actions">
                 {/* Ações REAIS de biblioteca e tracker (C8). */}
                 <EntityActions entityType="tv" entityId={entityId} />

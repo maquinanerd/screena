@@ -10,6 +10,11 @@ import { evaluateIndexability, type IndexabilityResult } from "@screena/seo";
 
 import { buildTmdbImageUrl, type TmdbImageSize } from "./tmdb-image-url";
 import { mapEntityStatus, mapOriginalLanguage } from "./entity-status";
+import {
+  selectSynopsis,
+  type SynopsisView,
+  type TranslationCandidate,
+} from "./synopsis-language";
 
 const BLOCK_TYPE_ORDER = [
   "editorial_intro",
@@ -154,7 +159,16 @@ export interface SeriesPageView {
   /** Idioma original ja em pt-BR (ex.: "Inglês"); `null` = omite a linha. */
   originalLanguageLabel: string | null;
   metaTitle: string | null;
+  /**
+   * Descricao para `<meta>` e JSON-LD. SO do locale publicado — nao acompanha o
+   * fallback de {@link SeriesPageView.synopsis}. Ver `synopsis-language.ts`.
+   */
   metaDescription: string | null;
+  /**
+   * Sinopse VISIVEL, com a procedencia de idioma junto. O braco
+   * `original_language` carrega `notice` obrigatorio.
+   */
+  synopsis: SynopsisView | null;
   blocks: RenderableSeriesBlock[];
   renderableBlockCount: number;
   media: SeriesMediaView;
@@ -170,6 +184,11 @@ export interface BuildSeriesPageViewInput {
   translation: SeriesTranslationInput | null;
   blocks: SeriesContentBlockInput[];
   seasons: SeriesSeasonInput[];
+  /**
+   * TODAS as traducoes da entidade, em qualquer locale — so para a sinopse do
+   * T2. Ausente = comportamento antigo (sinopse so do locale publicado).
+   */
+  translations?: readonly TranslationCandidate[];
 }
 
 function trimToNull(value: string | null | undefined): string | null {
@@ -365,6 +384,10 @@ export function buildSeriesPageView(
     originalLanguageLabel: mapOriginalLanguage(input.record.originalLanguage),
     metaTitle: trimToNull(input.translation?.metaTitle),
     metaDescription: selectSeriesMetaDescription(input.translation),
+    synopsis: selectSynopsis(
+      input.translations ?? [],
+      input.record.originalLanguage,
+    ),
     blocks,
     renderableBlockCount: blocks.length,
     media: selectSeriesMedia(input.record),
