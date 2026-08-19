@@ -14,13 +14,40 @@
 /**
  * Modalidades LEGAIS que podem ser promovidas.
  *
- * O `enum OfferType` do schema tem `subscription`, `rent`, `buy`, `free`, `ads`
- * e `cinema`. Apenas as quatro primeiras sao promoveis aqui (as unicas
- * produzidas pela ingestao de streaming). `ads`/`cinema` — e qualquer valor
- * fora desta lista, inclusive um eventual `addon` — sao recusados com
- * `invalid-offer-type`, nunca promovidos.
+ * ============ A JUSTIFICATIVA ANTERIOR TINHA FICADO FALSA ============
+ *
+ * Ate 2026-08-19 esta lista era `['subscription','free','rent','buy']`, e a nota
+ * ao lado dizia que as quatro eram "as unicas produzidas pela ingestao de
+ * streaming". Isso era verdade quando a unica origem era a RapidAPI; **deixou de
+ * ser** quando a ingestao TMDB entrou e `WATCH_OFFER_TYPE_BY_TMDB_BUCKET`
+ * (services/ingestion) passou a mapear o bucket `ads` do proprio payload.
+ *
+ * O comentario continuou la, afirmando um fato que nao existia mais — e foi ele
+ * que impediu a regra de ser revista: quem lia encontrava uma razao tecnica
+ * plausivel e seguia em frente. Um comentario que mente e pior que nenhum.
+ *
+ * ============ `ads` ENTRA (decisao de Pablo Eduardo, 2026-08-19) ============
+ *
+ * O argumento e o do leitor: disponibilidade legal e GRATUITA e a informacao
+ * mais util que a pagina pode dar. Pluto TV, Mercado Play e NetMovies tinham o
+ * titulo de graca e ficavam de fora.
+ *
+ * `ads` != `free`, e os dois NUNCA colapsam: `free` e gratuito sem
+ * contrapartida; `ads` e gratuito COM publicidade. Sao rotulos distintos na tela
+ * ("Grátis" vs "Grátis com anúncios" — `apps/web/src/lib/watch-offer-modality.ts`)
+ * e entradas distintas em toda a cadeia. Promover os dois nao os iguala.
+ *
+ * ============ O QUE CONTINUA FORA, E POR QUE ============
+ *
+ * `cinema` — existe no `enum OfferType` do banco, mas nao e disponibilidade
+ * domestica: rotula-lo em "Onde assistir" afirmaria que o leitor assiste em
+ * casa. O `watch/providers` do TMDB nunca o emite, e o vocabulario do render
+ * tambem o recusa (`resolveWatchModality` devolve `null`).
+ *
+ * Qualquer valor fora desta lista — inclusive um eventual `addon` — e recusado
+ * com `invalid-offer-type`, nunca "aproximado" para a modalidade mais parecida.
  */
-export const PROMOTABLE_OFFER_TYPES = ['subscription', 'free', 'rent', 'buy'] as const
+export const PROMOTABLE_OFFER_TYPES = ['subscription', 'free', 'ads', 'rent', 'buy'] as const
 
 /** Modalidade promovel derivada. */
 export type PromotableOfferType = (typeof PROMOTABLE_OFFER_TYPES)[number]
@@ -100,6 +127,16 @@ export type PromotionRejectionReason =
   | 'wrong-provider'
   | 'wrong-country'
   | 'already-display-allowed'
+  /**
+   * A oferta passaria em tudo, e mesmo assim NAO deve ser promovida — ha uma
+   * decisao humana registrada retendo aquela origem. Ver `WITHHELD_OFFER_SOURCES`.
+   *
+   * Este motivo existe porque "elegivel e deliberadamente nao promovido" nao
+   * tinha como ser dito. Uma revisao daqui a tres meses mostraria as linhas como
+   * ELEGIVEL, e o operador as promoveria sem ter como saber que alguem ja tinha
+   * decidido o contrario. Ausencia de acao nao e registro.
+   */
+  | 'withheld-by-decision'
   | 'invalid-offer-type'
   | 'missing-provider'
   /**

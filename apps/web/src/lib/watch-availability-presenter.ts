@@ -33,6 +33,12 @@
  */
 
 import {
+  findWatchBrand,
+  watchRouteLabel,
+  type WatchBrandDeclaration,
+} from "@screena/public-contracts";
+
+import {
   PRICED_WATCH_MODALITIES,
   WATCH_MODALITY_ORDER,
   describeUnsupportedWatchModality,
@@ -170,11 +176,55 @@ export interface WatchAvailabilityOffer {
   attribution: WatchAvailabilityAttribution | null;
 }
 
+/**
+ * Uma ROTA para chegar a uma marca: a oferta em si mais o rotulo que diz o que
+ * o leitor precisa ter para usa-la.
+ *
+ * `label === null` significa "o nome da marca ja e a linha inteira" — o caso do
+ * provedor que aparece sozinho. Nao e "rotulo faltando": e a ausencia de
+ * qualificador a declarar.
+ */
+export interface WatchAvailabilityRoute {
+  /** "canal no Prime Video", "plano Premium", "direto"; `null` quando desnecessario. */
+  label: string | null;
+  offer: WatchAvailabilityOffer;
+}
+
+/**
+ * Uma MARCA dentro de uma modalidade, com todas as rotas para chegar nela.
+ *
+ * Agrupar e APRESENTACAO: nenhuma oferta some, e cada rota continua sendo um
+ * link proprio para o proprio destino. Fundir duas rotas num link so afirmaria
+ * que o leitor chega ao titulo por um caminho que talvez ele nao tenha.
+ */
+export interface WatchAvailabilityBrand {
+  /** Chave estavel de agrupamento (nome da marca, ou identidade da plataforma solo). */
+  key: string;
+  /** O que a tela mostra em destaque. */
+  name: string;
+  /**
+   * `true` quando a marca veio de declaracao (`@screena/public-contracts`).
+   * `false` = provedor sem marca declarada, exibido sozinho como sempre foi.
+   */
+  declared: boolean;
+  routes: WatchAvailabilityRoute[];
+}
+
 /** Um grupo de modalidade com suas ofertas ordenadas. */
 export interface WatchAvailabilityGroup {
   offerType: WatchAvailabilityOfferType;
   label: string;
+  /**
+   * As ofertas CRUAS da modalidade, na ordem canonica.
+   *
+   * Preservado de proposito: `selectTickerWatchOffer` e `distinctOfferTypesOf`
+   * — e as superficies compactas que os consomem — continuam raciocinando em
+   * ofertas. O agrupamento por marca e do PAINEL, e nao pode redefinir o que
+   * "primeira oferta" significa nas outras telas.
+   */
   offers: WatchAvailabilityOffer[];
+  /** As mesmas ofertas, agrupadas pela marca DECLARADA. E o que o painel renderiza. */
+  brands: WatchAvailabilityBrand[];
 }
 
 /** Modelo de exibicao do painel "Disponibilidade no Brasil". */
@@ -268,6 +318,8 @@ interface AcceptedOffer {
   readonly offer: WatchAvailabilityOffer;
   /** Identidade da plataforma ENTRE fornecedores (slug canonico ou fallback). */
   readonly canonicalId: string;
+  /** O slug canonico CRU (`null` sem alias) — chave da declaracao de marca. */
+  readonly providerSlug: string | null;
   readonly fetchedAtIso: string | null;
 }
 
@@ -292,6 +344,122 @@ interface AcceptedOffer {
  */
 function keyOfProvenanceRivalry(accepted: AcceptedOffer): string {
   return `${accepted.canonicalId}|${accepted.offer.offerType}`;
+}
+
+/**
+ * Ordem das ofertas dentro de uma modalidade. Extraida para que a lista crua e
+ * o agrupamento por marca partam EXATAMENTE da mesma ordem — duas ordenacoes
+ * parecidas em dois lugares e como a mesma plataforma muda de nome entre
+ * deploys.
+ */
+function compareOffers(
+  a: WatchAvailabilityOffer,
+  b: WatchAvailabilityOffer,
+): number {
+  const byName = a.providerName.localeCompare(b.providerName);
+  if (byName !== 0) return byName;
+  const byQuality = qualityRankOf(b.quality) - qualityRankOf(a.quality); // desc
+  if (byQuality !== 0) return byQuality;
+  return a.destinationUrl.localeCompare(b.destinationUrl); // desempate estavel
+}
+
+/**
+ * PRECEDENCIA DECLARADA DAS ROTAS, dentro de uma marca.
+ *
+ * Direto primeiro (o leitor que ja assina chega em um passo), depois o plano
+ * superior, depois os canais vendidos dentro de outro servico (que exigem
+ * assinar o hospedeiro tambem). E ordem de ESFORCO do leitor, nao alfabetica —
+ * uma ordem emergente mudaria conforme o nome da loja.
+ */
+function routeRank(declaration: WatchBrandDeclaration | null): number {
+  if (declaration === null || declaration.brand === null) return 0;
+  if (declaration.soldVia !== null) return 2;
+  if (declaration.variant !== null) return 1;
+  return 0;
+}
+
+/**
+ * Agrupa as ofertas de UMA modalidade pela marca DECLARADA.
+ *
+ * Regras que nao podem ser afrouxadas:
+ *  - agrupamento e OPT-IN: sem declaracao com `brand`, a oferta vira uma marca
+ *    de uma rota so, com o proprio `providerName`. Nao existe ramo que adivinhe
+ *    marca a partir do nome;
+ *  - nenhuma oferta some: toda oferta que chegou aqui vira exatamente uma rota;
+ *  - nenhuma rota perde o destino: cada uma carrega a propria oferta, com o
+ *    proprio link, preco e qualidade.
+ */
+function groupByDeclaredBrand(
+  bucket: readonly AcceptedOffer[],
+): WatchAvailabilityBrand[] {
+  interface Draft {
+    readonly key: string;
+    readonly name: string;
+    readonly declared: boolean;
+    readonly entries: Array<{
+      readonly offer: WatchAvailabilityOffer;
+      readonly declaration: WatchBrandDeclaration | null;
+    }>;
+  }
+
+  const drafts = new Map<string, Draft>();
+
+  for (const candidate of bucket) {
+    const declaration = findWatchBrand(candidate.providerSlug);
+    const brand = declaration?.brand ?? null;
+    // Prefixos disjuntos: uma marca chamada exatamente como o slug de outro
+    // provedor nunca colide com ele.
+    const key = brand === null ? `solo:${candidate.canonicalId}` : `brand:${brand}`;
+
+    const existing = drafts.get(key);
+    if (existing === undefined) {
+      drafts.set(key, {
+        key,
+        name: brand ?? candidate.offer.providerName,
+        declared: brand !== null,
+        entries: [{ offer: candidate.offer, declaration }],
+      });
+    } else {
+      existing.entries.push({ offer: candidate.offer, declaration });
+    }
+  }
+
+  const brands: WatchAvailabilityBrand[] = [];
+  for (const draft of drafts.values()) {
+    const entries = [...draft.entries].sort((a, b) => {
+      const byRank = routeRank(a.declaration) - routeRank(b.declaration);
+      if (byRank !== 0) return byRank;
+      // Empate entre canais: desempata pelo HOSPEDEIRO DECLARADO, nunca pelo
+      // nome que o upstream escreveu. Ordenar por `providerName` colocaria
+      // "...Apple TV Channel" antes de "...Amazon Channel" por acidente
+      // alfabetico do rotulo de terceiro — e a ordem mudaria no dia em que a
+      // TMDB renomeasse o provedor.
+      const bySoldVia = (a.declaration?.soldVia ?? '').localeCompare(
+        b.declaration?.soldVia ?? '',
+      );
+      if (bySoldVia !== 0) return bySoldVia;
+      return compareOffers(a.offer, b.offer);
+    });
+    // `aloneInBrand` decide se a rota DIRETA ganha rotulo: sozinha, "Netflix ·
+    // direto" e ruido; ao lado de "plano Premium", "direto" e o que distingue.
+    const aloneInBrand = entries.length === 1;
+    brands.push({
+      key: draft.key,
+      name: draft.name,
+      declared: draft.declared,
+      routes: entries.map((entry) => ({
+        label: watchRouteLabel(entry.declaration, { aloneInBrand }),
+        offer: entry.offer,
+      })),
+    });
+  }
+
+  brands.sort((a, b) => {
+    const byName = a.name.localeCompare(b.name);
+    if (byName !== 0) return byName;
+    return a.key.localeCompare(b.key); // desempate estavel
+  });
+  return brands;
 }
 
 /**
@@ -380,6 +548,7 @@ export function buildWatchAvailabilityView(
       // mapeado) a oferta so pode rivalizar consigo mesma, e o fallback pela
       // chave tecnica preserva o comportamento historico de um fornecedor so.
       canonicalId: (trimToNull(row.providerSlug) ?? providerKey).toLowerCase(),
+      providerSlug: trimToNull(row.providerSlug),
       fetchedAtIso: row.fetchedAtIso,
       offer: {
         providerName,
@@ -403,7 +572,11 @@ export function buildWatchAvailabilityView(
     }
   }
 
-  const byType = new Map<WatchAvailabilityOfferType, WatchAvailabilityOffer[]>();
+  // Guarda a candidata INTEIRA, nao so a oferta: o agrupamento por marca
+  // precisa do `providerSlug`, que e a chave da declaracao. Reconstruir o slug
+  // depois, a partir do nome exibido, seria exatamente a derivacao por string
+  // que a declaracao existe para eliminar.
+  const byType = new Map<WatchAvailabilityOfferType, AcceptedOffer[]>();
   const fetchedAts: Array<string | null> = [];
   const attributions: WatchAvailabilityAttribution[] = [];
   const seenAttributions = new Set<string>();
@@ -431,8 +604,8 @@ export function buildWatchAvailabilityView(
     seen.add(dedupeKey);
 
     const bucket = byType.get(offer.offerType);
-    if (bucket === undefined) byType.set(offer.offerType, [offer]);
-    else bucket.push(offer);
+    if (bucket === undefined) byType.set(offer.offerType, [candidate]);
+    else bucket.push(candidate);
 
     fetchedAts.push(candidate.fetchedAtIso);
 
@@ -452,16 +625,15 @@ export function buildWatchAvailabilityView(
 
   const groups: WatchAvailabilityGroup[] = [];
   for (const offerType of GROUP_ORDER) {
-    const offers = byType.get(offerType);
-    if (offers === undefined || offers.length === 0) continue;
-    offers.sort((a, b) => {
-      const byName = a.providerName.localeCompare(b.providerName);
-      if (byName !== 0) return byName;
-      const byQuality = qualityRankOf(b.quality) - qualityRankOf(a.quality); // desc
-      if (byQuality !== 0) return byQuality;
-      return a.destinationUrl.localeCompare(b.destinationUrl); // desempate estavel
+    const bucket = byType.get(offerType);
+    if (bucket === undefined || bucket.length === 0) continue;
+    bucket.sort((a, b) => compareOffers(a.offer, b.offer));
+    groups.push({
+      offerType,
+      label: watchModalityLabel(offerType),
+      offers: bucket.map((entry) => entry.offer),
+      brands: groupByDeclaredBrand(bucket),
     });
-    groups.push({ offerType, label: watchModalityLabel(offerType), offers });
   }
 
   if (groups.length === 0) return null;

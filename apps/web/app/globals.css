@@ -7425,6 +7425,50 @@ h4.art-body__heading {
 }
 
 /*
+  AGRUPAMENTO POR MARCA (decisao de 2026-08-19).
+
+  Uma marca por item; as rotas embaixo, cada uma com o proprio link. O nome da
+  marca NAO pode ser um `::marker` nem viver so no `aria-label`: ele e o titulo
+  da linha que o leitor varre.
+
+  Estas regras vem DEPOIS de `.watch-availability__list` de proposito — CSS
+  resolve por ordem de documento, e a lista de rotas precisa zerar o
+  `padding-left` que a lista externa aplica.
+*/
+.watch-brand__name {
+  font-weight: 700;
+  font-size: 13px;
+  display: block;
+}
+
+.watch-brand__routes {
+  list-style: none;
+  margin: 2px 0 0;
+  padding-left: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+}
+
+.watch-brand__route {
+  font-size: 12px;
+}
+
+/*
+  Dentro de uma rota, `watch-offer__provider` carrega o ROTULO DA ROTA
+  ("canal no Prime Video"), nao o nome do provedor — quem nomeia a plataforma e
+  `.watch-brand__name`. Peso normal: dois negritos na mesma linha disputariam a
+  leitura, e a marca e que manda.
+*/
+.watch-brand__route .watch-offer__provider {
+  font-weight: 400;
+}
+
+.watch-brand + .watch-brand {
+  margin-top: 8px;
+}
+
+/*
   Aviso de destino AGREGADOR. Pelo caminho TMDB/JustWatch nao existe deep link
   por oferta: o destino e a pagina de disponibilidade daquele titulo, nao o
   servico. Isso ja viajava no `aria-label` e num `data-destination-kind`, e o

@@ -18,6 +18,7 @@ import {
   PROMOTION_PROVIDER_APIS,
   promotionDestination,
 } from '../promotion/guardrails.js'
+import { PROMOTABLE_OFFER_TYPES } from '../promotion/types.js'
 import type { PromotionCandidate } from '../promotion/types.js'
 
 const NOW = new Date('2024-01-01T00:00:00.000Z')
@@ -95,18 +96,44 @@ describe('evaluatePromotionEligibility — recusas', () => {
     expect(reasonOf({ displayAllowed: true })).toBe('already-display-allowed')
   })
 
-  it('modalidade fora de {subscription,free,rent,buy} -> invalid-offer-type', () => {
-    expect(reasonOf({ offerType: 'ads' })).toBe('invalid-offer-type')
+  it('modalidade fora do conjunto promovel -> invalid-offer-type', () => {
+    // `ads` SAIU desta lista em 2026-08-19 (decisao de Pablo Eduardo: o site
+    // exibe oferta gratuita com anuncio). `cinema` continua fora e nao e
+    // esquecimento: nao e disponibilidade domestica, e rotula-lo em "Onde
+    // assistir" afirmaria que o leitor assiste em casa.
     expect(reasonOf({ offerType: 'cinema' })).toBe('invalid-offer-type')
     expect(reasonOf({ offerType: 'addon' })).toBe('invalid-offer-type')
     expect(reasonOf({ offerType: null })).toBe('invalid-offer-type')
     expect(reasonOf({ offerType: 'qualquer' })).toBe('invalid-offer-type')
   })
 
-  it('as quatro modalidades legais sao aceitas', () => {
-    for (const offerType of ['subscription', 'free', 'rent', 'buy'] as const) {
-      expect(evaluatePromotionEligibility(validCandidate({ offerType }), { now: NOW }).eligible).toBe(true)
+  it('as CINCO modalidades legais sao aceitas — `ads` entre elas', () => {
+    for (const offerType of ['subscription', 'free', 'ads', 'rent', 'buy'] as const) {
+      expect(
+        evaluatePromotionEligibility(validCandidate({ offerType }), { now: NOW }).eligible,
+        `${offerType} deveria ser promovivel`,
+      ).toBe(true)
     }
+  })
+
+  it('CONTROLE NEGATIVO: nada entrou de carona junto com `ads`', () => {
+    // Uma lista que cresce e o lugar classico de um valor entrar sem decisao.
+    // A assercao e sobre o CONJUNTO INTEIRO, nao sobre o item novo.
+    expect([...PROMOTABLE_OFFER_TYPES].sort()).toEqual(
+      ['ads', 'buy', 'free', 'rent', 'subscription'].sort(),
+    )
+    // E o enum do banco tem SEIS valores: o sexto (`cinema`) segue fora.
+    expect(PROMOTABLE_OFFER_TYPES).not.toContain('cinema')
+  })
+
+  it('`free` e `ads` sao promoviveis SEM virarem a mesma coisa', () => {
+    // Promover os dois nao os iguala: sao entradas distintas do conjunto, e a
+    // tela os rotula diferente ("Grátis" vs "Grátis com anúncios"). Se algum dia
+    // alguem mapear um no outro, esta assercao continua verde — por isso ela
+    // mede o CONJUNTO, e o rotulo e provado em `watch-offer-modality`.
+    expect(PROMOTABLE_OFFER_TYPES).toContain('free')
+    expect(PROMOTABLE_OFFER_TYPES).toContain('ads')
+    expect(new Set(PROMOTABLE_OFFER_TYPES).size).toBe(PROMOTABLE_OFFER_TYPES.length)
   })
 
   it('sem provider_key OU sem provider_name -> missing-provider', () => {
@@ -278,7 +305,9 @@ describe('origem tmdb: mesmas garantias, destino diferente', () => {
   })
 
   it('modalidade e pais continuam valendo igual para a origem TMDB', () => {
-    expect(evaluatePromotionEligibility(tmdbCandidate({ offerType: 'ads' }), { now: NOW }).reason).toBe(
+    // `cinema` no lugar de `ads`: o TMDB e justamente quem produz `ads` (o
+    // bucket existe no payload dele), e `ads` passou a ser promovivel.
+    expect(evaluatePromotionEligibility(tmdbCandidate({ offerType: 'cinema' }), { now: NOW }).reason).toBe(
       'invalid-offer-type',
     )
     expect(evaluatePromotionEligibility(tmdbCandidate({ countryCode: 'US' }), { now: NOW }).reason).toBe(
