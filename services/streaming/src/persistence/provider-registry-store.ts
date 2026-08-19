@@ -14,7 +14,47 @@
 
 import type { PrismaClient } from '@prisma/client'
 
-import type { ProviderRegistryPlan, ProviderRegistryState } from '../provider-registry.js'
+import type {
+  ObservedOfferProvider,
+  ProviderRegistryPlan,
+  ProviderRegistryState,
+} from '../provider-registry.js'
+
+/**
+ * Le os pares `(provider_api, provider_key, provider_name)` REALMENTE presentes
+ * em `watch_availability`, com o volume de cada um.
+ *
+ * E a evidencia MEDIDA que `checkAliasEvidenceAgainstOffers` confronta com o
+ * registro: sem ela, um `externalKey` digitado errado passaria por todas as
+ * validacoes declarativas e creditaria a plataforma errada em toda oferta
+ * daquele id.
+ *
+ * `provider_name` sai do MAX por par porque a mesma chave pode ter varias
+ * grafias ao longo do tempo (o TMDB renomeia sem trocar o `provider_id`);
+ * qualquer uma serve para o AVISO de renomeacao, e nenhuma decide nada.
+ *
+ * Sem escopo de pais aqui de proposito: o alias mapeia uma chave TECNICA a uma
+ * plataforma, e essa relacao nao muda de pais para pais. Quem restringe o
+ * territorio e a promocao (`PROMOTION_COUNTRY`) e a decisao de uso.
+ */
+export async function readObservedOfferProviders(
+  prisma: PrismaClient,
+): Promise<readonly ObservedOfferProvider[]> {
+  const rows = await prisma.$queryRawUnsafe<
+    Array<{ provider_api: string | null; provider_key: string | null; provider_name: string; offers: bigint }>
+  >(
+    `SELECT "provider_api", "provider_key", MAX("provider_name") AS provider_name, COUNT(*) AS offers
+       FROM "watch_availability"
+      WHERE "provider_api" IS NOT NULL AND "provider_key" IS NOT NULL
+      GROUP BY "provider_api", "provider_key"`,
+  )
+  return rows.map((row) => ({
+    providerApi: row.provider_api as string,
+    providerKey: row.provider_key as string,
+    providerName: row.provider_name,
+    offers: Number(row.offers),
+  }))
+}
 
 export async function readProviderRegistryState(
   prisma: PrismaClient,

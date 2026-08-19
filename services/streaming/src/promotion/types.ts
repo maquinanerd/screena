@@ -14,13 +14,40 @@
 /**
  * Modalidades LEGAIS que podem ser promovidas.
  *
- * O `enum OfferType` do schema tem `subscription`, `rent`, `buy`, `free`, `ads`
- * e `cinema`. Apenas as quatro primeiras sao promoveis aqui (as unicas
- * produzidas pela ingestao de streaming). `ads`/`cinema` — e qualquer valor
- * fora desta lista, inclusive um eventual `addon` — sao recusados com
- * `invalid-offer-type`, nunca promovidos.
+ * ============ A JUSTIFICATIVA ANTERIOR TINHA FICADO FALSA ============
+ *
+ * Ate 2026-08-19 esta lista era `['subscription','free','rent','buy']`, e a nota
+ * ao lado dizia que as quatro eram "as unicas produzidas pela ingestao de
+ * streaming". Isso era verdade quando a unica origem era a RapidAPI; **deixou de
+ * ser** quando a ingestao TMDB entrou e `WATCH_OFFER_TYPE_BY_TMDB_BUCKET`
+ * (services/ingestion) passou a mapear o bucket `ads` do proprio payload.
+ *
+ * O comentario continuou la, afirmando um fato que nao existia mais — e foi ele
+ * que impediu a regra de ser revista: quem lia encontrava uma razao tecnica
+ * plausivel e seguia em frente. Um comentario que mente e pior que nenhum.
+ *
+ * ============ `ads` ENTRA (decisao de Pablo Eduardo, 2026-08-19) ============
+ *
+ * O argumento e o do leitor: disponibilidade legal e GRATUITA e a informacao
+ * mais util que a pagina pode dar. Pluto TV, Mercado Play e NetMovies tinham o
+ * titulo de graca e ficavam de fora.
+ *
+ * `ads` != `free`, e os dois NUNCA colapsam: `free` e gratuito sem
+ * contrapartida; `ads` e gratuito COM publicidade. Sao rotulos distintos na tela
+ * ("Grátis" vs "Grátis com anúncios" — `apps/web/src/lib/watch-offer-modality.ts`)
+ * e entradas distintas em toda a cadeia. Promover os dois nao os iguala.
+ *
+ * ============ O QUE CONTINUA FORA, E POR QUE ============
+ *
+ * `cinema` — existe no `enum OfferType` do banco, mas nao e disponibilidade
+ * domestica: rotula-lo em "Onde assistir" afirmaria que o leitor assiste em
+ * casa. O `watch/providers` do TMDB nunca o emite, e o vocabulario do render
+ * tambem o recusa (`resolveWatchModality` devolve `null`).
+ *
+ * Qualquer valor fora desta lista — inclusive um eventual `addon` — e recusado
+ * com `invalid-offer-type`, nunca "aproximado" para a modalidade mais parecida.
  */
-export const PROMOTABLE_OFFER_TYPES = ['subscription', 'free', 'rent', 'buy'] as const
+export const PROMOTABLE_OFFER_TYPES = ['subscription', 'free', 'ads', 'rent', 'buy'] as const
 
 /** Modalidade promovel derivada. */
 export type PromotableOfferType = (typeof PROMOTABLE_OFFER_TYPES)[number]
@@ -49,6 +76,21 @@ export interface PromotionCandidate {
   readonly providerApi: string | null
   readonly providerKey: string | null
   readonly providerName: string | null
+  /**
+   * Slug do provedor CANONICO resolvido por `watch_provider_aliases`
+   * (`provider_api` + `provider_key`), ou `null` quando nao ha alias.
+   *
+   * POR QUE ENTROU (2026-08-19). Sem este campo, uma oferta de provedor NAO
+   * registrado era avaliada como `elegivel` pelos guardrails e so morria la no
+   * fundo, na excecao do trigger — o revisor lia "elegivel" numa linha que o
+   * banco jamais aceitaria, e a promocao devolvia uma recusa crua de Postgres
+   * em vez de uma instrucao. O elo faltante existia; faltava NOME.
+   *
+   * Nao e o mesmo que `watch_availability.watch_provider_id`: aquela coluna so
+   * e preenchida NO ATO da promocao (pelo UPDATE), entao antes de promover ela
+   * e sempre `null` e nao serve para decidir nada.
+   */
+  readonly canonicalProviderSlug: string | null
   readonly offerType: string | null
   /** Destino NO PROVEDOR. `null` em toda oferta de origem TMDB. */
   readonly deepLink: string | null
@@ -85,8 +127,30 @@ export type PromotionRejectionReason =
   | 'wrong-provider'
   | 'wrong-country'
   | 'already-display-allowed'
+  /**
+   * A oferta passaria em tudo, e mesmo assim NAO deve ser promovida — ha uma
+   * decisao humana registrada retendo aquela origem. Ver `WITHHELD_OFFER_SOURCES`.
+   *
+   * Este motivo existe porque "elegivel e deliberadamente nao promovido" nao
+   * tinha como ser dito. Uma revisao daqui a tres meses mostraria as linhas como
+   * ELEGIVEL, e o operador as promoveria sem ter como saber que alguem ja tinha
+   * decidido o contrario. Ausencia de acao nao e registro.
+   */
+  | 'withheld-by-decision'
   | 'invalid-offer-type'
   | 'missing-provider'
+  /**
+   * A oferta nomeia um provedor, mas `(provider_api, provider_key)` nao tem
+   * alias em `watch_provider_aliases` — nao ha provedor CANONICO, logo nao ha
+   * licenca nem decisao de uso para ela, e o trigger a recusaria.
+   *
+   * A acao do operador e especifica e diferente de todas as outras:
+   * acrescentar a chave a `WATCH_PROVIDER_REGISTRY` (com evidencia) e rodar
+   * `register-watch-providers` + `legal sources apply`. Antes deste motivo, essa
+   * oferta aparecia como `elegivel` na revisao e virava uma excecao crua de
+   * Postgres na promocao.
+   */
+  | 'no-canonical-provider'
   | 'missing-link'
   | 'unsafe-link'
   /**

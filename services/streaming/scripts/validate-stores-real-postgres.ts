@@ -388,6 +388,141 @@ async function main(): Promise<void> {
     const netflixStable = (await q<{ display_allowed: boolean }>(`SELECT display_allowed FROM watch_availability WHERE id=${netflixId}`))[0]!.display_allowed
     record(16, 'sync seguinte com payload identico mantem a oferta exibida (nao pisca)',
       netflixStable === true, `display=${netflixStable}`)
+
+    // ================================================================
+    // 17-19. TERRITORIALIDADE (T4 da leva BR 2026-08-19)
+    //
+    // As barreiras territoriais puras (`evaluatePromotionEligibility`,
+    // `runPromotion`) sao provadas na CI por
+    // `src/__tests__/promotion-territory.test.ts`. As DUAS de baixo so existem
+    // no banco, e sao as unicas que sobrevivem a SQL bruto:
+    //
+    //   (a) o UPDATE de `promote()` tem `AND w."country_code" = 'BR'`;
+    //   (b) o trigger `watch_availability_display_guard` recusa decisao cujo
+    //       `territory` nao cobre o `country_code` da oferta.
+    //
+    // O cenario e construido para ser o PIOR CASO: uma oferta argentina de um
+    // provedor COM alias, COM licenca vigente, COM decisao aprovada — tudo
+    // certo, menos o pais. Se ela acender, a regra territorial e decorativa.
+    // ================================================================
+    await prisma.$executeRawUnsafe(`INSERT INTO countries (code, name_pt, name_en) VALUES ('AR','Argentina','Argentina') ON CONFLICT DO NOTHING`)
+    await watchStore.replaceSnapshot({
+      entityType: 'movie', entityId: movieId, countryCode: 'AR',
+      offers: [offer({ entityId: movieId, countryCode: 'AR', deepLink: 'https://netflix/ar' })],
+      fetchedAt: fetched1, staleAfter: stale1,
+    } as never)
+    const arId = (await q<{ id: bigint }>(`SELECT id FROM watch_availability WHERE entity_id=${movieId} AND country_code='AR' AND provider_key='netflix'`))[0]!.id.toString()
+
+    // ISOLAR A VARIAVEL. A oferta argentina nasce com `license_status='unknown'`
+    // e sem credito, como toda linha de sync. Se ela fosse ao trigger assim, ele
+    // a recusaria pelo PRIMEIRO gate que falhasse — e a checagem 18 passaria com
+    // "license_status unknown nao permite exibicao", sem nunca ter exercitado a
+    // regra territorial. (Isso ACONTECEU na primeira versao desta checagem.)
+    //
+    // Entao hidratamos a linha AR exatamente como a brasileira que ACENDEU:
+    // mesma licenca, mesmo credito, mesmo linkback. Depois disso a UNICA coisa
+    // diferente entre as duas e o `country_code` — e so o que o trigger disser
+    // sobre territorio pode barra-la.
+    await prisma.$executeRawUnsafe(`
+      UPDATE watch_availability SET
+        license_status = 'official',
+        requires_attribution = true,
+        requires_linkback = true,
+        attribution_text = 'Movie of the Night',
+        attribution_url = '${STREAMING_AVAILABILITY_ATTRIBUTION_URL}'
+      WHERE id = ${arId}
+    `)
+
+    // 17. o store recusa: o WHERE do UPDATE reafirma o pais, e nenhuma linha e
+    //     tocada. `updated=0` E `refusals` VAZIO — nenhuma excecao aconteceu, o
+    //     id simplesmente nao casou o `AND country_code = 'BR'`. Se houvesse
+    //     recusa do trigger, ela apareceria em `refusals` e a distincao entre
+    //     "o WHERE filtrou" e "o banco lancou" se perderia.
+    const arPromotion = await reviewStore.promote([arId], 'ana@screen')
+    const arRow = (await q<{ display_allowed: boolean }>(`SELECT display_allowed FROM watch_availability WHERE id=${arId}`))[0]!
+    record(17, 'promote() nao acende oferta fora do BR (WHERE country_code no UPDATE)',
+      arPromotion.updated === 0 && arRow.display_allowed === false && (arPromotion.refusals ?? []).length === 0,
+      `updated=${arPromotion.updated}, display=${arRow.display_allowed}, recusas=${(arPromotion.refusals ?? []).length}`)
+
+    // 18. CONTROLE NEGATIVO REAL: contorna o store e tenta acender por SQL
+    //     bruto, montando o hash e apontando para a MESMA decisao BR que
+    //     acendeu a Netflix brasileira. So o trigger pode barrar isto.
+    let triggerBarrou = false
+    let triggerMsg = ''
+    try {
+      await prisma.$executeRawUnsafe(`
+        UPDATE watch_availability w
+           SET display_allowed = true,
+               reviewed_at = now(),
+               reviewed_by = 'ana@screen',
+               watch_provider_id = (SELECT id FROM watch_providers WHERE slug='netflix'),
+               data_usage_decision_id = (
+                 SELECT d.id FROM data_usage_decisions d
+                   JOIN source_licenses l ON l.id = d.source_license_id
+                  WHERE l.source_key='netflix' AND l.content_type='watch_availability'
+                    AND d.use_case='watch_offer_display' AND d.is_current
+                  ORDER BY d.id DESC LIMIT 1
+               ),
+               approved_payload_hash = watch_offer_payload_fingerprint_v1(
+                 w.provider_api, w.external_offer_id, w.entity_type, w.entity_id, w.country_code,
+                 w.offer_type, w.provider_key, w.provider_name, w.package, w.quality, w.price,
+                 w.currency, w.deep_link, w.web_url, w.available_from, w.available_until,
+                 w.license_status, w.requires_attribution, w.requires_linkback,
+                 w.attribution_text, w.attribution_url)
+         WHERE w.id = ${arId}
+      `)
+    } catch (e) {
+      triggerBarrou = true
+      triggerMsg = (e as Error).message.split('\n').filter((l) => l.includes('fail-closed'))[0] ?? ''
+    }
+    const arAfterRaw = (await q<{ display_allowed: boolean }>(`SELECT display_allowed FROM watch_availability WHERE id=${arId}`))[0]!
+    // A MENSAGEM E PARTE DA ASSERCAO, nao enfeite do relatorio. "Lancou" sozinho
+    // e satisfeito por qualquer um dos nove gates do trigger — foi assim que a
+    // primeira versao desta checagem passou verde com "license_status unknown",
+    // sem jamais ter chegado perto da regra territorial. O texto abaixo so pode
+    // vir do `IF decision.territory IS NOT NULL AND decision.territory <>
+    // NEW.country_code`.
+    const motivoEhTerritorial = /nao cobre a oferta em/.test(triggerMsg)
+    record(18, 'o trigger barra ate SQL BRUTO, E o motivo e o TERRITORIO (nao outro gate)',
+      triggerBarrou && arAfterRaw.display_allowed === false && motivoEhTerritorial,
+      triggerBarrou
+        ? `excecao: ${triggerMsg.slice(0, 160)}${motivoEhTerritorial ? '' : '  <-- MOTIVO ERRADO: a linha foi barrada por outro gate, a regra territorial nao chegou a ser exercitada'}`
+        : 'NAO LANCOU — a oferta argentina acendeu por SQL bruto')
+
+    // 19. CONTROLE POSITIVO do mesmo caminho: o SQL bruto identico, apontado
+    //     para a oferta BRASILEIRA, FUNCIONA. Sem este par, um trigger que
+    //     recusasse TUDO passaria como "regra territorial funcionando".
+    let brRawOk = false
+    let brRawMsg = ''
+    try {
+      await prisma.$executeRawUnsafe(`UPDATE watch_availability SET display_allowed = false WHERE id=${netflixId}`)
+      await prisma.$executeRawUnsafe(`
+        UPDATE watch_availability w
+           SET display_allowed = true,
+               reviewed_at = now(),
+               reviewed_by = 'ana@screen',
+               watch_provider_id = (SELECT id FROM watch_providers WHERE slug='netflix'),
+               data_usage_decision_id = (
+                 SELECT d.id FROM data_usage_decisions d
+                   JOIN source_licenses l ON l.id = d.source_license_id
+                  WHERE l.source_key='netflix' AND l.content_type='watch_availability'
+                    AND d.use_case='watch_offer_display' AND d.is_current
+                  ORDER BY d.id DESC LIMIT 1
+               ),
+               approved_payload_hash = watch_offer_payload_fingerprint_v1(
+                 w.provider_api, w.external_offer_id, w.entity_type, w.entity_id, w.country_code,
+                 w.offer_type, w.provider_key, w.provider_name, w.package, w.quality, w.price,
+                 w.currency, w.deep_link, w.web_url, w.available_from, w.available_until,
+                 w.license_status, w.requires_attribution, w.requires_linkback,
+                 w.attribution_text, w.attribution_url)
+         WHERE w.id = ${netflixId}
+      `)
+      brRawOk = (await q<{ display_allowed: boolean }>(`SELECT display_allowed FROM watch_availability WHERE id=${netflixId}`))[0]!.display_allowed
+    } catch (e) {
+      brRawMsg = (e as Error).message.split('\n')[0] ?? ''
+    }
+    record(19, 'CONTROLE POSITIVO: o MESMO SQL acende a oferta BR (o trigger nao recusa tudo)',
+      brRawOk === true, brRawOk ? 'display=true' : `nao acendeu: ${brRawMsg.slice(0, 120)}`)
   } catch (e) {
     record(0, 'execucao', false, (e as Error).message.split('\n')[0])
   } finally {

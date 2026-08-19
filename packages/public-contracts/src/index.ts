@@ -10,7 +10,8 @@
  *  - detalhe: Movie/Tv/Season/Episode/Person DetailPayload;
  *  - home/descoberta: EntityCard, HomePayload, DiscoveryPayload;
  *  - busca: SearchResult, SearchPayload (sempre noindex);
- *  - fila: CatalogJobView, CatalogStatusPayload.
+ *  - fila: CatalogJobView, CatalogStatusPayload;
+ *  - onde assistir: decomposicao DECLARADA marca/variante/vendido em (watch-brand).
  */
 
 export * from './validation.js'
@@ -21,3 +22,4 @@ export * from './search.js'
 export * from './catalog-job.js'
 export * from './media-url.js'
 export * from './external-intelligence.js'
+export * from './watch-brand.js'

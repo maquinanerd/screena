@@ -21,8 +21,18 @@
  * "Netflix" no fonte a violaria. O que este arquivo prova nao depende do nome.
  *
  * CONTENCAO SEM jsdom, como no teste do credito: a marcacao estatica e fatiada
- * por oferta (`<li class="watch-offer"`), e a precondicao do corte — nenhum
- * `<li>` aninhado — e VERIFICADA antes de qualquer assercao depender dela.
+ * por oferta e a precondicao do corte e VERIFICADA antes de qualquer assercao
+ * depender dela.
+ *
+ * O CORTE MUDOU DE ANCORA EM 2026-08-19, e o motivo importa. Ele fatiava por
+ * `<li class="watch-offer"`. Com o agrupamento por marca, o `<li>` passou a ser
+ * a MARCA — que pode conter varias rotas, cada uma com seu `<a>`. Ancorar no
+ * `<li>` mediria "uma marca" onde este arquivo quer medir "uma oferta", e o
+ * aviso de destino pertence a OFERTA.
+ *
+ * A ancora nova e o proprio `<a class="watch-offer__link"`, que e exatamente a
+ * unidade que este arquivo sempre quis: o link em que o leitor clica. A
+ * precondicao tambem ficou mais forte — `<a>` nao aninha, e isso e VERIFICADO.
  */
 
 import { renderToStaticMarkup } from "react-dom/server";
@@ -34,7 +44,7 @@ import {
   type WatchAvailabilityRow,
 } from "../../../src/lib/watch-availability-presenter";
 
-const OFFER_OPEN = '<li class="watch-offer"';
+const OFFER_OPEN = '<a class="watch-offer__link"';
 const NOTICE = "página de disponibilidade";
 
 /** Oferta da RapidAPI: deep link por oferta -> destino no PROVEDOR. */
@@ -101,18 +111,25 @@ function visibleText(markup: string): string {
 }
 
 /**
- * Fatia a marcacao por oferta. O corte so e valido se nenhum `<li>` contiver
- * outro — precondicao verificada, nao suposta.
+ * Fatia a marcacao por OFERTA — um `<a class="watch-offer__link">` por oferta.
+ *
+ * A precondicao (nenhuma ancora aninhada) e VERIFICADA, nao suposta: se um
+ * refactor aninhasse `<a>`, o corte silenciosamente juntaria duas ofertas numa
+ * fatia so e a assercao de contencao ("o aviso nao vaza para a vizinha")
+ * passaria sem medir nada.
  */
 function offerSlices(markup: string): string[] {
   const parts = markup.split(OFFER_OPEN).slice(1);
   for (const part of parts) {
-    const body = part.slice(0, part.indexOf("</li>"));
-    if (body.includes("<li")) {
-      throw new Error("precondicao do corte violada: ha <li> aninhado na oferta");
+    const end = part.indexOf("</a>");
+    if (end === -1) {
+      throw new Error("precondicao do corte violada: <a> de oferta sem fechamento");
+    }
+    if (part.slice(0, end).includes("<a ")) {
+      throw new Error("precondicao do corte violada: ha <a> aninhado na oferta");
     }
   }
-  return parts.map((part) => OFFER_OPEN + part.slice(0, part.indexOf("</li>")));
+  return parts.map((part) => OFFER_OPEN + part.slice(0, part.indexOf("</a>")));
 }
 
 describe("CONTROLE POSITIVO das fixtures", () => {
@@ -151,9 +168,14 @@ describe("destino no agregador: o aviso e TEXTO VISIVEL, dentro do link", () => 
   });
 
   it("CONTENCAO: o aviso esta dentro do proprio <a>, nao solto na secao", () => {
-    const slice = offerSlices(render([aggregatorRow()]))[0]!;
-    const anchor = slice.slice(slice.indexOf("<a "), slice.indexOf("</a>"));
-    expect(visibleText(anchor)).toContain(NOTICE);
+    // A fatia JA e o `<a>` (ver `offerSlices`). O que esta assercao acrescenta e
+    // o complemento: fora das ancoras nao sobra aviso nenhum. Sem isso, um
+    // aviso duplicado solto na secao passaria despercebido.
+    const markup = render([aggregatorRow()]);
+    const slice = offerSlices(markup)[0]!;
+    expect(visibleText(slice)).toContain(NOTICE);
+    const foraDasAncoras = markup.split(OFFER_OPEN)[0]!;
+    expect(visibleText(foraDasAncoras)).not.toContain(NOTICE);
   });
 
   it("o aria-label continua onde estava — ele nao estava errado, estava sozinho", () => {

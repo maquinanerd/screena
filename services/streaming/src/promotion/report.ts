@@ -10,8 +10,10 @@ import {
   deepLinkHost,
   PROMOTION_COUNTRY,
   PROMOTION_PROVIDER_APIS,
+  WITHHELD_OFFER_SOURCES,
   promotionDestination,
 } from './guardrails.js'
+import { PROMOTABLE_OFFER_TYPES } from './types.js'
 import type { EvaluatedCandidate, PromotionResult, PromotionSummary, ReviewResult } from './run.js'
 import type { PromotionCandidate } from './types.js'
 
@@ -53,13 +55,50 @@ function governanceLines(): string[] {
     '## Governanca',
     '',
     `- provider_api governados: ${PROMOTION_PROVIDER_APIS.map((p) => `\`${p}\``).join(', ')} (nunca outro fornecedor).`,
-    `- pais promovel: \`${PROMOTION_COUNTRY}\` apenas.`,
+    `- pais promovel: \`${PROMOTION_COUNTRY}\` apenas. Oferta de outro pais recusa por \`wrong-country\` (e o UPDATE do adapter + o trigger a recusam de novo).`,
     '- Promocao vira `display_allowed` de `false` para `true`; nunca cria linha.',
-    '- Modalidades promoveis: `subscription`, `free`, `rent`, `buy` (nunca `ads`/`cinema`/`addon`).',
+    `- Modalidades promoveis: ${PROMOTABLE_OFFER_TYPES.map((t) => `\`${t}\``).join(', ')}.` +
+      ' `cinema` NUNCA entra: nao e disponibilidade domestica. `free` e `ads` sao' +
+      ' modalidades DISTINTAS e nunca colapsam num rotulo so.',
+    '- Sem alias em `watch_provider_aliases` a oferta recusa por `no-canonical-provider`:' +
+      ' acrescente a chave a `WATCH_PROVIDER_REGISTRY` (com evidencia), rode' +
+      ' `register-watch-providers` e depois `legal sources apply`.',
     '- Deep link so `http(s)`; oferta vencida nao promove.',
     '- `screen_score`, `external_ratings` e outros providers NAO sao tocados.',
     '- Nenhuma chamada externa/RapidAPI: leitura e escrita so no PostgreSQL local.',
   ]
+}
+
+/**
+ * As origens RETIDAS por decisao humana, com data, autor e motivo INTEIRO.
+ *
+ * Vai para todo relatorio de revisao, mesmo quando nenhuma candidata bateu
+ * nesse motivo. E deliberado: quem le este relatorio daqui a tres meses precisa
+ * encontrar a decisao SEM ter tido a sorte de a oferta aparecer no filtro
+ * daquele dia. Uma decisao que so aparece quando ja foi acionada nao previne
+ * nada.
+ */
+function withheldLines(): string[] {
+  if (WITHHELD_OFFER_SOURCES.length === 0) return []
+  const lines = [
+    '## Origens retidas por decisao humana',
+    '',
+    'Estas passariam nos guardrails e ainda assim NAO devem ser promovidas.',
+    'Recusam com `withheld-by-decision`. Reverter e remover a linha de',
+    '`WITHHELD_OFFER_SOURCES` (services/streaming/src/promotion/guardrails.ts),',
+    'numa PR — nunca promovendo por id.',
+    '',
+    '| provider_api | provider_key | decidido em | por | motivo |',
+    '| --- | --- | --- | --- | --- |',
+  ]
+  for (const entry of WITHHELD_OFFER_SOURCES) {
+    lines.push(
+      `| \`${entry.providerApi}\` | \`${entry.providerKey}\` | ${entry.decidedOn} | ` +
+        `${cell(entry.decidedBy)} | ${cell(entry.reason)} |`,
+    )
+  }
+  lines.push('')
+  return lines
 }
 
 /** Renderiza o relatorio markdown da REVISAO. */
@@ -78,14 +117,14 @@ export function renderReviewReport(result: ReviewResult): string {
     lines.push('## Candidatas')
     lines.push('')
     lines.push(
-      '| id | tipo | entity_id | titulo | provider_key | provider_name | offer_type | quality | preco | available_until | fetched_at | host | display_allowed | decisao |',
+      '| id | tipo | entity_id | titulo | provider_key | provider_name | slug canonico | offer_type | quality | preco | available_until | fetched_at | host | display_allowed | decisao |',
     )
-    lines.push('| ---: | --- | ---: | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |')
+    lines.push('| ---: | --- | ---: | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |')
     for (const entry of result.evaluated) {
       const c = entry.candidate
       lines.push(
         `| ${c.id} | ${cell(c.entityType)} | ${c.entityId} | ${cell(c.title)} | ${cell(c.providerKey)} | ` +
-          `${cell(c.providerName)} | ${cell(c.offerType)} | ${cell(c.quality)} | ${priceLabel(c)} | ` +
+          `${cell(c.providerName)} | ${cell(c.canonicalProviderSlug)} | ${cell(c.offerType)} | ${cell(c.quality)} | ${priceLabel(c)} | ` +
           `${isoDate(c.availableUntil)} | ${isoDate(c.fetchedAt)} | ${cell(deepLinkHost(promotionDestination(c)))} | ` +
           `${c.displayAllowed ? 'sim' : 'nao'} | ${decisionLabel(entry)} |`,
       )
@@ -96,6 +135,7 @@ export function renderReviewReport(result: ReviewResult): string {
     lines.push('')
   }
 
+  lines.push(...withheldLines())
   lines.push(...governanceLines())
   return lines.join('\n')
 }
@@ -113,6 +153,8 @@ export interface ReviewJsonCandidate {
   readonly providerApi: string | null
   readonly providerKey: string | null
   readonly providerName: string | null
+  /** Slug do provedor canonico, ou `null` quando nao ha alias mapeado. */
+  readonly canonicalProviderSlug: string | null
   readonly offerType: string | null
   readonly quality: string | null
   readonly price: number | null
@@ -164,6 +206,7 @@ export function buildReviewJson(result: ReviewResult): ReviewJson {
         providerApi: c.providerApi,
         providerKey: c.providerKey,
         providerName: c.providerName,
+        canonicalProviderSlug: c.canonicalProviderSlug,
         offerType: c.offerType,
         quality: c.quality,
         price: c.price,

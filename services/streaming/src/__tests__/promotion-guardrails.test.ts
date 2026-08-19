@@ -18,6 +18,7 @@ import {
   PROMOTION_PROVIDER_APIS,
   promotionDestination,
 } from '../promotion/guardrails.js'
+import { PROMOTABLE_OFFER_TYPES } from '../promotion/types.js'
 import type { PromotionCandidate } from '../promotion/types.js'
 
 const NOW = new Date('2024-01-01T00:00:00.000Z')
@@ -33,6 +34,10 @@ function validCandidate(overrides: Partial<PromotionCandidate> = {}): PromotionC
     providerApi: PROMOTION_PROVIDER_API,
     providerKey: 'netflix',
     providerName: 'Netflix',
+    // Alias JA resolvido: sem provedor canonico nao ha licenca nem decisao de
+    // uso, e o trigger recusaria. Uma fixture sem isto descreveria uma oferta
+    // impossivel de promover — e os negativos passariam pelo motivo errado.
+    canonicalProviderSlug: 'netflix',
     offerType: 'subscription',
     deepLink: 'https://www.netflix.com/title/1',
     webUrl: null,
@@ -91,24 +96,77 @@ describe('evaluatePromotionEligibility — recusas', () => {
     expect(reasonOf({ displayAllowed: true })).toBe('already-display-allowed')
   })
 
-  it('modalidade fora de {subscription,free,rent,buy} -> invalid-offer-type', () => {
-    expect(reasonOf({ offerType: 'ads' })).toBe('invalid-offer-type')
+  it('modalidade fora do conjunto promovel -> invalid-offer-type', () => {
+    // `ads` SAIU desta lista em 2026-08-19 (decisao de Pablo Eduardo: o site
+    // exibe oferta gratuita com anuncio). `cinema` continua fora e nao e
+    // esquecimento: nao e disponibilidade domestica, e rotula-lo em "Onde
+    // assistir" afirmaria que o leitor assiste em casa.
     expect(reasonOf({ offerType: 'cinema' })).toBe('invalid-offer-type')
     expect(reasonOf({ offerType: 'addon' })).toBe('invalid-offer-type')
     expect(reasonOf({ offerType: null })).toBe('invalid-offer-type')
     expect(reasonOf({ offerType: 'qualquer' })).toBe('invalid-offer-type')
   })
 
-  it('as quatro modalidades legais sao aceitas', () => {
-    for (const offerType of ['subscription', 'free', 'rent', 'buy'] as const) {
-      expect(evaluatePromotionEligibility(validCandidate({ offerType }), { now: NOW }).eligible).toBe(true)
+  it('as CINCO modalidades legais sao aceitas — `ads` entre elas', () => {
+    for (const offerType of ['subscription', 'free', 'ads', 'rent', 'buy'] as const) {
+      expect(
+        evaluatePromotionEligibility(validCandidate({ offerType }), { now: NOW }).eligible,
+        `${offerType} deveria ser promovivel`,
+      ).toBe(true)
     }
+  })
+
+  it('CONTROLE NEGATIVO: nada entrou de carona junto com `ads`', () => {
+    // Uma lista que cresce e o lugar classico de um valor entrar sem decisao.
+    // A assercao e sobre o CONJUNTO INTEIRO, nao sobre o item novo.
+    expect([...PROMOTABLE_OFFER_TYPES].sort()).toEqual(
+      ['ads', 'buy', 'free', 'rent', 'subscription'].sort(),
+    )
+    // E o enum do banco tem SEIS valores: o sexto (`cinema`) segue fora.
+    expect(PROMOTABLE_OFFER_TYPES).not.toContain('cinema')
+  })
+
+  it('`free` e `ads` sao promoviveis SEM virarem a mesma coisa', () => {
+    // Promover os dois nao os iguala: sao entradas distintas do conjunto, e a
+    // tela os rotula diferente ("Grátis" vs "Grátis com anúncios"). Se algum dia
+    // alguem mapear um no outro, esta assercao continua verde — por isso ela
+    // mede o CONJUNTO, e o rotulo e provado em `watch-offer-modality`.
+    expect(PROMOTABLE_OFFER_TYPES).toContain('free')
+    expect(PROMOTABLE_OFFER_TYPES).toContain('ads')
+    expect(new Set(PROMOTABLE_OFFER_TYPES).size).toBe(PROMOTABLE_OFFER_TYPES.length)
   })
 
   it('sem provider_key OU sem provider_name -> missing-provider', () => {
     expect(reasonOf({ providerKey: null })).toBe('missing-provider')
     expect(reasonOf({ providerKey: '   ' })).toBe('missing-provider')
     expect(reasonOf({ providerName: '' })).toBe('missing-provider')
+  })
+
+  it('sem alias -> no-canonical-provider (o elo que so aparecia como excecao)', () => {
+    // Sem `watch_provider_aliases` nao ha `watch_providers.slug`; sem slug nao ha
+    // licenca de watch_availability nem decisao `watch_offer_display`, e o
+    // trigger recusa. Antes deste motivo a linha era reportada como ELEGIVEL e
+    // so morria como erro cru de Postgres dentro do laco de promocao.
+    expect(reasonOf({ canonicalProviderSlug: null })).toBe('no-canonical-provider')
+    expect(reasonOf({ canonicalProviderSlug: '   ' })).toBe('no-canonical-provider')
+  })
+
+  it('a falta de provider vem ANTES da falta de alias (precedencia)', () => {
+    // Uma linha sem `provider_key` tambem nao tem alias — as duas recusas se
+    // aplicam. Reportar `no-canonical-provider` mandaria o operador cadastrar um
+    // alias para uma chave que nao existe; `missing-provider` e a acao certa.
+    expect(reasonOf({ providerKey: null, canonicalProviderSlug: null })).toBe('missing-provider')
+  })
+
+  it('CONTROLE NEGATIVO: alias presente NAO dispensa os guardrails seguintes', () => {
+    // O elo canonico e necessario, nunca suficiente. Uma oferta com alias e sem
+    // destino continua sendo `missing-link`, e nao "elegivel porque tem alias".
+    expect(reasonOf({ canonicalProviderSlug: 'netflix', deepLink: null, webUrl: null })).toBe(
+      'missing-link',
+    )
+    expect(
+      reasonOf({ canonicalProviderSlug: 'netflix', attributionText: null }),
+    ).toBe('missing-attribution')
   })
 
   it('sem deep_link -> missing-link', () => {
@@ -194,6 +252,7 @@ describe('origem tmdb: mesmas garantias, destino diferente', () => {
     return validCandidate({
       providerApi: 'tmdb',
       providerKey: '8',
+      canonicalProviderSlug: 'netflix',
       deepLink: null,
       webUrl: 'https://www.themoviedb.org/movie/550/watch?locale=BR',
       attributionText: 'Disponibilidade fornecida por JustWatch',
@@ -246,7 +305,9 @@ describe('origem tmdb: mesmas garantias, destino diferente', () => {
   })
 
   it('modalidade e pais continuam valendo igual para a origem TMDB', () => {
-    expect(evaluatePromotionEligibility(tmdbCandidate({ offerType: 'ads' }), { now: NOW }).reason).toBe(
+    // `cinema` no lugar de `ads`: o TMDB e justamente quem produz `ads` (o
+    // bucket existe no payload dele), e `ads` passou a ser promovivel.
+    expect(evaluatePromotionEligibility(tmdbCandidate({ offerType: 'cinema' }), { now: NOW }).reason).toBe(
       'invalid-offer-type',
     )
     expect(evaluatePromotionEligibility(tmdbCandidate({ countryCode: 'US' }), { now: NOW }).reason).toBe(

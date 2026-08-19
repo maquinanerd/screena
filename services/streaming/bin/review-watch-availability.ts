@@ -27,6 +27,7 @@ import { parseReviewArgs } from '../src/promotion/args.js'
 import {
   deepLinkHost,
   PROMOTION_PROVIDER_APIS,
+  WITHHELD_OFFER_SOURCES,
   promotionDestination,
 } from '../src/promotion/guardrails.js'
 import { buildReviewJson, renderReviewReport, summaryLine } from '../src/promotion/report.js'
@@ -97,6 +98,23 @@ async function main(): Promise<void> {
         )
       }
       console.log(summaryLine(result.summary))
+    }
+
+    // DECISAO RETIDA NA CARA DO OPERADOR, no console, sem depender de `--report`.
+    // Quem roda a revisao daqui a tres meses ve o motivo e o "por que" na mesma
+    // tela — nao num arquivo em `.data/` que ele talvez nem gere.
+    if (result.summary.byReason.some((entry) => entry.reason === 'withheld-by-decision')) {
+      console.log('')
+      console.log('  Origens RETIDAS por decisao humana (nao promova por id):')
+      for (const held of WITHHELD_OFFER_SOURCES) {
+        console.log(
+          `    (${held.providerApi}, ${held.providerKey}) · ${held.decidedOn} · ${held.decidedBy}`,
+        )
+        console.log(`      ${held.reason}`)
+      }
+      console.log(
+        '    Reverter = remover a linha de WITHHELD_OFFER_SOURCES numa PR, nunca promover por id.',
+      )
     }
 
     if (args.report) {

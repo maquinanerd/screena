@@ -81,6 +81,29 @@ descobrir chaves que faltam, rode a colheita
 `services/ingestion/bin/reprocess-watch-providers.ts` (lista os provedores TMDB
 VISTOS no dado real) e estenda o registro numa PR.
 
+#### As duas travas contra alias inventado (2026-08-19)
+
+"Não se inventa" deixou de ser prosa e virou duas checagens **independentes**:
+
+1. **Evidência declarada.** Todo alias carrega `evidence`, de um conjunto
+   fechado (`ALIAS_EVIDENCE_SOURCES`): `rapidapi-fixture`,
+   `tmdb-harvest-2026-08-13` ou `br-offer-census-2026-08-19`. Valor ausente ou
+   fora do conjunto derruba `validateProviderRegistry` → `plan.ok = false` →
+   nada é escrito. Roda na CI, sem banco.
+2. **Evidência medida.** Antes de aplicar, o comando lê os pares
+   `(provider_api, provider_key)` **realmente presentes** em
+   `watch_availability` e confronta com os aliases a CRIAR:
+   - chave que o corpus **nunca publicou** → **RECUSA** (`plan` inválido). É a
+     única trava que pega um id digitado errado (`1852` em vez de `1853`): esse
+     passa pela trava 1 e creditaria outra plataforma;
+   - chave presente **sob outro nome** → **AVISO**, não recusa. O TMDB renomeia
+     provedor sem trocar o `provider_id`, e o nome é auditoria, nunca
+     identidade. Se a divergência for real (o id virou outra plataforma),
+     corrija o registro antes de aplicar.
+
+A saída lista, por alias novo, quantas ofertas o banco já tem para aquele par —
+é a confirmação de que o cadastro tem para quem servir.
+
 **Depois do registro, rode `pnpm legal sources apply ... --confirm`** — é ele
 que gera a licença `watch_availability` + a decisão `watch_offer_display` por
 provedor registrado. Sem esse passo, oferta continua sem display.
@@ -179,6 +202,40 @@ pnpm --filter @screena/streaming promote-watch-availability --ids=1 --revoke --c
 
 ## Exibição pública
 
+### O painel agrupa pela MARCA (2026-08-19)
+
+Com 24 provedores novos, o mesmo título passou a listar "HBO Max" e "HBO Max
+Amazon Channel" lado a lado, e três linhas de Paramount+. Decisão do dono
+(opção A): o leitor vê **"Paramount+" uma vez**, com as rotas clicáveis embaixo
+— `direto`, `plano Premium`, `canal no Prime Video`, `canal no Apple TV`.
+
+Três limites que nenhum ajuste visual pode afrouxar:
+
+1. **Nenhuma oferta some.** Toda rota é um `<a>` com o próprio destino, preço e
+   qualidade. Agrupar é apresentação.
+2. **Nenhuma linha mente.** O rótulo nomeia o hospedeiro (`canal no Prime
+   Video`) porque assinar o canal exige assinar o Prime **também**. Esconder
+   isso atrás do nome da marca omitiria um custo.
+3. **Agrupar é opt-in.** Provedor sem `brand` declarada aparece sozinho, como
+   sempre apareceu. Não existe ramo que adivinhe a marca a partir do nome.
+
+**Os três campos são DECLARADOS**, em
+[`packages/public-contracts/src/watch-brand.ts`](../../packages/public-contracts/src/watch-brand.ts):
+`brand`, `variant`, `soldVia`. Nunca derivados da string do nome — o nome vem
+verbatim do payload de terceiro e muda quando a TMDB quiser. Uma derivação por
+prefixo fundiria "Claro video" (loja) com "Claro tv+" (streaming da operadora) e
+"Amazon Video" (compra) com "Amazon Prime Video" (assinatura), e ainda assim
+**separaria** "MGM Plus Amazon Channel" de "MGM+ Apple TV Channel", que são a
+mesma marca. Nenhuma regra sobre a string acerta os dois casos.
+
+A decomposição não pôde morar no registro de provedores porque aquele arquivo
+pertence a um **worker**, e o render não depende de worker (invariante 3). Os
+dois lados são amarrados por
+[`tests/governance/watch-brand-registry-sync.test.ts`](../../tests/governance/watch-brand-registry-sync.test.ts),
+que reprova se um slug existir num e não no outro — duas listas são uma só
+quando não podem divergir.
+
+
 O painel "Disponibilidade no Brasil"
 ([`apps/web/app/_components/watch-availability-panel.tsx`](../../apps/web/app/_components/watch-availability-panel.tsx))
 lê via [`entity-watch.ts`](../../apps/web/src/server/entity-watch.ts), que filtra
@@ -197,6 +254,89 @@ Sem oferta permitida, o painel é omitido. Zero chamada externa no render
 (invariante 3).
 
 ## Diagnóstico
+
+### Por que uma oferta continua apagada — motivo por motivo
+
+Rode a revisão (`review-watch-availability --report` ou `--json`) e leia a coluna
+`decisao`. O relatório traz **contagem por motivo**, e a coluna `slug canonico`
+diz se o elo do provedor foi resolvido. Cada motivo tem uma ação diferente:
+
+| motivo | o que significa | ação |
+| --- | --- | --- |
+| `wrong-provider` | fornecedor técnico fora do conjunto governado | nenhuma: dado não governado nunca é promovido |
+| `wrong-country` | a oferta não é do Brasil | nenhuma: **só BR acende** (ver "Territorialidade") |
+| `already-display-allowed` | já está exibível | nada a fazer |
+| `withheld-by-decision` | a origem passaria em tudo, e há decisão humana registrada retendo-a | **nenhuma.** Ver "Origens retidas" abaixo. Reverter é remover a linha de `WITHHELD_OFFER_SOURCES` numa PR — nunca promover por id |
+| `invalid-offer-type` | modalidade fora de `subscription/free/ads/rent/buy` | `cinema` nunca entra (não é disponibilidade doméstica). `ads` **entrou em 2026-08-19** por decisão do dono |
+| `missing-provider` | linha sem `provider_key`/`provider_name` | dado do upstream incompleto; nada a promover |
+| `no-canonical-provider` | `(provider_api, provider_key)` sem alias | acrescente a chave a `WATCH_PROVIDER_REGISTRY` **com evidência**, rode `register-watch-providers --apply` e depois `legal sources apply` |
+| `missing-link` | sem `deep_link` **e** sem `web_url` | o país não trouxe `link` no payload; ressincronize |
+| `unsafe-link` | destino não-http(s) ou marcador de pirataria | nunca promover (invariante 8) |
+| `missing-attribution` | crédito/linkback não hidratados na linha | falta `legal sources apply` para **aquela origem**, ou ressync que re-hidrate |
+| `expired` | `available_until` no passado | oferta acabou |
+
+### Origens retidas por decisão (`withheld-by-decision`)
+
+Algumas ofertas passam em **todos** os guardrails e mesmo assim não devem
+acender. Elas estão declaradas em `WITHHELD_OFFER_SOURCES`
+(`services/streaming/src/promotion/guardrails.ts`), com data, autor e motivo — e
+a revisão as recusa com `withheld-by-decision`.
+
+**Hoje são as 5 ofertas BR que chegam pela RapidAPI** (`prime`, `apple`, `hbo`).
+Motivo, decidido por Pablo Eduardo em 2026-08-19: são as **mesmas plataformas
+que já acendem pela TMDB**. Promovê-las duplicaria a linha do leitor — "Prime
+Video" apareceria duas vezes na mesma página, com créditos de origem diferentes
+("Movie of the Night" e "JustWatch"), o que faria a página parecer afirmar duas
+disponibilidades independentes onde há uma.
+
+Por que isso virou dado e não ficou só no relatório: até esta leva, o
+vocabulário não tinha como dizer *"elegível e deliberadamente não promovido"*.
+As cinco apareciam como **ELEGÍVEL**, e a única coisa que as mantinha apagadas
+era ninguém ter rodado `promote --ids` com elas. Ausência de ação não é
+registro — bastava uma revisão de rotina daqui a três meses.
+
+Onde a decisão aparece, sem depender de sorte:
+
+- no **console** de `review-watch-availability`, sempre que alguma candidata
+  bater nesse motivo (com o texto inteiro do porquê);
+- no **relatório** `--report`, numa seção própria, **mesmo quando nenhuma
+  candidata do filtro está retida** — quem lê precisa achar a decisão sem ter
+  tido a sorte de a oferta cair no recorte daquele dia.
+
+**Reverter é remover a linha de `WITHHELD_OFFER_SOURCES` numa PR** — nunca
+promover por id. Promover por id contorna o registro e não deixa rastro.
+
+`hbo` está na lista por completude, embora hoje pare antes, em
+`no-canonical-provider`: não existe alias `streaming_availability:hbo` (a chave
+da RapidAPI para essa marca é `max`). Se o alias for criado um dia, a decisão já
+está escrita e não vira promoção acidental.
+
+### `ads` é promovível desde 2026-08-19
+
+O site **exibe oferta grátis com anúncio** (decisão de Pablo Eduardo). Pluto TV,
+Mercado Play e NetMovies tinham o título de graça e ficavam de fora.
+
+`free` e `ads` **não são a mesma coisa** e nunca colapsam num rótulo só: a tela
+escreve "Grátis" e "Grátis com anúncios", e são grupos separados no painel, na
+ordem canônica (`free` antes de `ads`). `cinema` continua fora — não é
+disponibilidade doméstica.
+
+### Territorialidade: só BR acende, e há quatro barreiras
+
+1. `evaluatePromotionEligibility` recusa com `wrong-country`;
+2. `listCandidates` filtra `country_code` no banco;
+3. o `UPDATE` de `promote()` reafirma `AND country_code = 'BR'`;
+4. o trigger `watch_availability_display_guard` recusa decisão cujo `territory`
+   não cobre o país da oferta — **é a única que sobrevive a SQL bruto**.
+
+Provado por `services/streaming/src/__tests__/promotion-territory.test.ts` (1–3,
+na CI) e por `scripts/validate-stores-real-postgres.ts`, checks 17–19 (4, com
+Postgres real; o 19 é o controle positivo — o mesmo SQL acende a oferta BR).
+
+O **único** caminho que abriria essa porta seria uma decisão
+`watch_offer_display` com `territory = NULL` (global): o trigger a aceitaria
+para qualquer país. Nada no repositório emite uma, e
+`tests/governance/watch-territory-br-only.test.ts` trava isso na origem.
 
 - Oferta não sobe e o motivo é provedor: falta o alias
   (`watch_provider_aliases`) — ver [streaming-platform](../backend/streaming-platform.md).

@@ -55,6 +55,18 @@ function hasSubscription(providerKey: string): boolean {
   return (row?.offerTypes as Record<string, number> | undefined)?.subscription !== undefined
 }
 
+/** `evidence` declarada de um alias do registro, ou `null` se ele nao existe. */
+function registryEvidenceOf(providerApi: string, externalKey: string): string | null {
+  for (const entry of WATCH_PROVIDER_REGISTRY) {
+    for (const alias of entry.aliases) {
+      if (alias.providerApi === providerApi && alias.externalKey === externalKey) {
+        return alias.evidence
+      }
+    }
+  }
+  return null
+}
+
 /** `external_key` TMDB -> slug canonico, como o registro resolve hoje. */
 function tmdbAliasIndex(): Map<string, string> {
   const index = new Map<string, string>()
@@ -150,28 +162,77 @@ describe('aliases TMDB vindos da colheita real', () => {
     expect(d337).toBeGreaterThan(d122)
   })
 
-  it('CONTROLE NEGATIVO: canal dentro de outro servico nunca vira plataforma', () => {
+  it('canal dentro de outro servico ENTRA — a decisao de exibicao chegou', () => {
     const index = tmdbAliasIndex()
-    // "…Amazon Channel" e "…Apple TV Channel" sao canais DENTRO de outro
-    // servico. Exibi-los como assinatura propria e decisao de exibicao.
-    for (const key of ['2156', '2157']) expect(index.has(key)).toBe(false)
+    // ESTE TESTE FOI INVERTIDO EM 2026-08-19, E ISSO NAO E RELAXAR A REGRA.
+    //
+    // A versao anterior afirmava "canal dentro de outro servico nunca vira
+    // plataforma" e travava 2156/2157 fora do registro. A justificativa escrita
+    // ao lado dela era explicita: "exibi-los como assinatura propria e decisao
+    // de EXIBICAO, nao de alias". Era uma pendencia DECLARADA, nao um
+    // invariante — o teste guardava a AUSENCIA de uma decisao.
+    //
+    // A decisao chegou (Pablo Eduardo, 2026-08-19): todo provedor com
+    // disponibilidade real no Brasil entra no "Onde assistir", sem distincao
+    // entre assinatura propria e canal vendido dentro da Amazon ou da Apple.
+    // Manter o teste como estava seria enshrinar a ESPERA pela decisao como se
+    // fosse a decisao.
+    //
+    // O que continua travado, e e o que de fato importa: cada canal e um slug
+    // PROPRIO. Nenhum deles foi dobrado na marca-mae.
+    expect(index.get('2156')).toBe('telecine-amazon-channel')
+    expect(index.get('2157')).toBe('reserva-imovision-amazon-channel')
+    expect(index.get('1825')).toBe('hbo-max-amazon-channel')
+    // CONTROLE NEGATIVO QUE SOBREVIVE: o canal da HBO Max dentro da Amazon NAO
+    // e o slug `max` (id 1899). Fundi-los afirmaria que quem assina o HBO Max
+    // direto alcanca esta oferta pelo mesmo caminho.
+    expect(index.get('1825')).not.toBe(index.get('1899'))
+    expect(index.get('1899')).toBe('max')
   })
 
-  it('CONTROLE NEGATIVO: plataforma BR sem numero de BR nao entra no registro', () => {
+  it('plataforma BR entra DEPOIS de medida em BR — nunca por palpite', () => {
     const index = tmdbAliasIndex()
-    // Claro video, Mercado Play, Looke, Oldflix, NetMovies... A colheita mede
-    // volume GLOBAL, e um provedor com 324 ofertas em 7 paises pode nao ter
-    // nenhuma em BR. Registrar por palpite puxa licenca e decisao de uso no
-    // `legal apply` para um provedor que talvez nunca apareca na tela.
+    // TAMBEM INVERTIDO EM 2026-08-19, e pelo motivo que a propria versao
+    // anterior nomeava: "a colheita mede volume GLOBAL, e um provedor com 324
+    // ofertas em 7 paises pode nao ter nenhuma em BR".
+    //
+    // Isso era verdade — e deixou de ser. O censo BR de 2026-08-19 conta
+    // ofertas JA GRAVADAS com `country_code = 'BR'`, por provedor. A duvida que
+    // sustentava a recusa foi MEDIDA, nao dispensada: ver
+    // `provider-registry-br-census.test.ts`, que trava a lista contra o censo.
+    //
+    // A regra de fundo continua intacta e e o que este teste guarda hoje:
+    // entra quem tem numero de BR; quem nao tem, nao entra.
     for (const key of ['167', '2302', '484', '499', '19', '47', '447', '477']) {
-      expect(index.has(key)).toBe(false)
+      expect(index.has(key)).toBe(true)
     }
+    // CONTROLE NEGATIVO: `35` (Rakuten TV) e `192` (YouTube) tem volume GLOBAL
+    // alto nesta colheita — acima de todos os provedores da leva BR — e
+    // continuam FORA, porque o censo BR nao os viu. Se o criterio fosse volume,
+    // os dois teriam entrado antes de todos; o criterio e TERRITORIO.
+    expect(index.has('35')).toBe(false)
+    expect(index.has('192')).toBe(false)
   })
 
-  it('nenhum alias inventado: todo alias TMDB do registro esta na colheita', () => {
+  it('nenhum alias que se diz DESTA colheita esta ausente dela', () => {
+    // A versao anterior exigia que TODO alias TMDB estivesse nesta colheita.
+    // Depois da leva BR isso e falso por construcao: aquela leva veio de OUTRA
+    // medicao (o censo BR), e exigir que ela aparecesse aqui obrigaria a
+    // reescrever uma transcricao historica — que e justamente o que uma
+    // transcricao nao pode sofrer.
+    //
+    // A garantia sobrevive DESLOCADA, e mais forte: o campo `evidence` de cada
+    // alias declara de qual medicao ele saiu, e `validateProviderRegistry`
+    // recusa valor fora do conjunto fechado. O equivalente do "todo alias tem
+    // medicao" vive em `provider-registry-br-census.test.ts`.
     const colhidos = new Set<string>(HARVEST_2026_08_13.map((p) => p.providerKey))
-    const doRegistro = [...tmdbAliasIndex().keys()]
-    expect(doRegistro.filter((key) => !colhidos.has(key))).toEqual([])
+    const daColheita = WATCH_PROVIDER_REGISTRY.flatMap((entry) =>
+      entry.aliases
+        .filter((a) => a.providerApi === 'tmdb' && a.evidence === 'tmdb-harvest-2026-08-13')
+        .map((a) => a.externalKey),
+    )
+    expect(daColheita.length).toBeGreaterThan(0)
+    expect(daColheita.filter((key) => !colhidos.has(key))).toEqual([])
   })
 
   it('o registro continua valido e sem alias repetido', () => {
@@ -182,8 +243,17 @@ describe('aliases TMDB vindos da colheita real', () => {
     })
     expect(plan.ok).toBe(true)
     expect(plan.conflicts).toEqual([])
+    // Filtrado por `evidence`: a leva BR nao mexeu em nenhum alias desta
+    // colheita, so acrescentou aliases de outra medicao. Sem o filtro, esta
+    // assercao literal viraria um numero que cresce a cada leva — e que
+    // ninguem revisa.
     const novos = plan.aliases
-      .filter((a) => a.providerApi === 'tmdb' && a.action === 'create')
+      .filter(
+        (a) =>
+          a.providerApi === 'tmdb' &&
+          a.action === 'create' &&
+          registryEvidenceOf('tmdb', a.externalKey) === 'tmdb-harvest-2026-08-13',
+      )
       .map((a) => a.externalKey)
       .sort()
     expect(novos).toEqual(
