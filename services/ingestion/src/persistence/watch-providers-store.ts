@@ -50,42 +50,72 @@
 import type { PrismaClient } from '@screena/db/server'
 import { TMDB_PROVIDER_API, TMDB_WATCH_ATTRIBUTION_URL } from '@screena/tmdb-client'
 
+import type { RawPayloadRead, RawPayloadReader } from '../raw-store/payload-reader.js'
 import type { CountryRegistry } from '../watch-providers/territories.js'
 import type {
-  RawWatchSource,
-  RawWatchSourceRow,
+  CatalogEntityIndex,
   ResolvedWatchEntity,
   WatchEntityResolver,
   WatchOfferStore,
-  WatchProvidersEntityType,
   WatchSnapshotOutcome,
 } from '../watch-providers/types.js'
 
-/** `entityType` do reprocessamento -> `TmdbEntityKind` de `tmdb_raw`. */
-const RAW_KIND_BY_ENTITY: Readonly<Record<WatchProvidersEntityType, 'movie' | 'tv'>> = {
-  movie: 'movie',
-  tv: 'tv',
-}
-
-/** Le o bruto ja arquivado. ZERO chamada ao TMDB. */
-export function createPrismaRawWatchSource(prisma: PrismaClient): RawWatchSource {
+/**
+ * Enumera o CATALOGO (`movies`/`tv_shows`) — o universo autoritativo do
+ * reprocessamento e o denominador do veredito de cobertura.
+ *
+ * Ordena por `tmdbId` para que o `--limit` continue sendo um prefixo estavel e
+ * retomavel, a mesma propriedade que a fonte antiga tinha sobre `tmdb_raw`.
+ */
+export function createPrismaCatalogEntityIndex(prisma: PrismaClient): CatalogEntityIndex {
   return {
     async count(entityType): Promise<number> {
-      return prisma.tmdbRaw.count({ where: { entityType: RAW_KIND_BY_ENTITY[entityType] } })
+      return entityType === 'movie' ? prisma.movie.count() : prisma.tvShow.count()
     },
-    async list(entityType, limit): Promise<readonly RawWatchSourceRow[]> {
-      const rows = await prisma.tmdbRaw.findMany({
-        where: { entityType: RAW_KIND_BY_ENTITY[entityType] },
-        // Ordem estavel para que o `--limit` seja retomavel e reproduzivel.
+    async listTmdbIds(entityType, limit): Promise<readonly number[]> {
+      const take = Math.max(0, Math.floor(limit))
+      if (take === 0) return []
+      if (entityType === 'movie') {
+        const rows = await prisma.movie.findMany({
+          orderBy: { tmdbId: 'asc' },
+          take,
+          select: { tmdbId: true },
+        })
+        return rows.map((row) => row.tmdbId)
+      }
+      const rows = await prisma.tvShow.findMany({
         orderBy: { tmdbId: 'asc' },
-        take: limit,
-        select: { tmdbId: true, baseLanguage: true, payload: true },
+        take,
+        select: { tmdbId: true },
       })
-      return rows.map((row) => ({
-        tmdbId: row.tmdbId,
-        baseLanguage: row.baseLanguage,
-        payload: row.payload,
-      }))
+      return rows.map((row) => row.tmdbId)
+    },
+  }
+}
+
+/**
+ * Leitor do bruto por IDENTIDADE, apoiado em `tmdb_raw` — o par Postgres do
+ * `createObjectRawPayloadReader`. Usado quando o driver e `postgres`.
+ *
+ * `null`/ausente e devolvido como `{ present: false }`, nunca como excecao: a
+ * ausencia de bruto e um desfecho normal do reprocessamento (a entidade existe
+ * no catalogo e ainda nao foi arquivada), e nao uma falha de infraestrutura.
+ */
+export function createPrismaRawPayloadReader(prisma: PrismaClient): RawPayloadReader {
+  return {
+    description: 'leitura=postgres (tmdb_raw via Prisma)',
+    async read(key): Promise<RawPayloadRead> {
+      const row = await prisma.tmdbRaw.findUnique({
+        where: {
+          entityType_tmdbId_baseLanguage: {
+            entityType: key.entityType,
+            tmdbId: key.tmdbId,
+            baseLanguage: key.baseLanguage,
+          },
+        },
+        select: { payload: true },
+      })
+      return row === null ? { present: false } : { present: true, payload: row.payload }
     },
   }
 }

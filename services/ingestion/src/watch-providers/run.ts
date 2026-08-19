@@ -13,6 +13,10 @@
  *  - `unrecognized` payload nao utilizavel — o replace NAO roda (snapshot bom
  *                   preservado). Isto NAO e sucesso e NAO e "vazio";
  *  - `unresolved`   entidade ainda nao promovida — sem id interno, sem FK;
+ *  - `missing-raw`  o id esta no catalogo e o bruto NAO existe no deposito
+ *                   consultado. Desfecho que a fonte antiga (que enumerava o
+ *                   proprio deposito) era incapaz de produzir: o que faltava
+ *                   nao voltava na consulta, logo nao podia ser contado;
  *  - `failed`       erro na escrita, com classe e mensagem preservadas.
  * `deriveWatchReprocessStatus` recusa reportar `empty` quando houve falha:
  * "tudo falhou" nunca vira "nada a fazer".
@@ -108,11 +112,17 @@ export function deriveWatchReprocessStatus(counts: WatchReprocessCounts): WatchR
   // se NADA foi aplicado e havia payloads nao reconhecidos, o ciclo e parcial.
   if (counts.applied === 0 && counts.unrecognized > 0) return 'partial'
   if (counts.applied === 0 && counts.unresolved > 0) return 'partial'
+  // Bruto ausente NAO e "nada a fazer": ha trabalho, e ele esta noutro deposito
+  // (ou ainda nao foi arquivado). `empty` afirmaria que os titulos nao tem oferta.
+  if (counts.applied === 0 && counts.missingRaw > 0) return 'partial'
   // Corpus inteiro fora do escopo territorial NAO e `empty`: `empty` afirma
   // "os titulos nao tem oferta". Aqui tem — nos e que nao ingerimos o pais.
   if (counts.applied === 0 && counts.outOfScope > 0) return 'partial'
   if (counts.applied === 0) return 'empty'
-  return counts.unrecognized > 0 || counts.unresolved > 0 || counts.outOfScope > 0
+  return counts.unrecognized > 0 ||
+    counts.unresolved > 0 ||
+    counts.outOfScope > 0 ||
+    counts.missingRaw > 0
     ? 'partial'
     : 'success'
 }
@@ -149,6 +159,7 @@ export async function runWatchProvidersReprocess(
   let outOfScope = 0
   let unrecognized = 0
   let unresolved = 0
+  let missingRaw = 0
   let failed = 0
   let offersUpserted = 0
   let offersRevoked = 0
@@ -174,6 +185,16 @@ export async function runWatchProvidersReprocess(
   const recognized: { row: RawWatchSourceRow; offers: readonly WatchProviderOffer[] }[] = []
 
   for (const row of scannedRows) {
+    // AUSENCIA DE BRUTO vem ANTES do reconhecimento. Passar um id sem payload
+    // por `normalizeWatchProviders` produziria `unrecognized` — e "o payload
+    // nao serve" e uma afirmacao diferente de "nao ha payload". Colapsar as
+    // duas devolveria a ambiguidade que esta cadeia veio eliminar.
+    if (!row.present) {
+      missingRaw += 1
+      options.onItem?.(row.tmdbId, 'missing-raw')
+      continue
+    }
+
     const result = normalizeWatchProviders(entityType, row.tmdbId, row.payload)
     tallyRejections(result.rejections, rejectionTally)
     for (const country of result.countries) countriesSeen.add(country)
@@ -340,6 +361,7 @@ export async function runWatchProvidersReprocess(
       outOfScope,
       unrecognized,
       unresolved,
+      missingRaw,
       failed,
       offersUpserted,
       offersRevoked,

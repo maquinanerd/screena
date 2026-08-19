@@ -25,6 +25,8 @@ import {
 import { createS3RawObjectStore, type S3ClientLike, type S3CommandFactories } from './s3-object-store.js'
 import { withObjectStoreRetry } from './retrying-object-store.js'
 import type { R2RawStoreConfig, RawStoreConfig } from './config.js'
+import { createObjectRawPayloadReader } from './payload-reader.js'
+import type { RawPayloadReader } from './payload-reader.js'
 import type { RawEntityStore } from '../raw-sync/types.js'
 
 /** Tentativas por operacao de objeto (1 original + 2 retries com backoff). */
@@ -75,6 +77,61 @@ export function composeRawEntityStore(
       baseLanguage: config.baseLanguage,
       ...(deps.onWrite === undefined ? {} : { onWrite: deps.onWrite }),
     }),
+    description: `driver=r2 bucket=${config.bucket} (objeto S3-compatible, retry x${RAW_STORE_MAX_ATTEMPTS})`,
+  }
+}
+
+/** Dependencias da composicao do LEITOR (simetrico de `ComposeRawStoreDeps`). */
+export interface ComposeRawReaderDeps {
+  /** Constroi o leitor Prisma (`tmdb_raw`) — driver `postgres` (dev/teste). */
+  readonly createPrismaReader: () => RawPayloadReader
+  /** Constroi o cliente S3 real (ou duble, em teste) a partir da config r2. */
+  readonly createS3Client: (config: R2RawStoreConfig) => {
+    readonly client: S3ClientLike
+    readonly commands: S3CommandFactories
+  }
+  /** Injetavel para teste do backoff; default: setTimeout real. */
+  readonly sleep?: (ms: number) => Promise<void>
+}
+
+/** Composicao resolvida do leitor. */
+export interface RawReaderComposition {
+  readonly reader: RawPayloadReader
+  /** Uma linha para o log do bin. NUNCA carrega credencial/endpoint. */
+  readonly description: string
+}
+
+/**
+ * Do CONFIG resolvido ao LEITOR concreto — o simetrico de
+ * {@link composeRawEntityStore}.
+ *
+ * Existe porque a escrita ganhou driver trocavel e a leitura nao: com
+ * `TMDB_RAW_STORE_DRIVER=r2`, quem le `prisma.tmdbRaw` diretamente enxerga
+ * apenas o que sobrou de antes da troca, sem erro nenhum. Ler pelo MESMO config
+ * que decidiu a escrita e o que impede os dois lados de apontarem para depositos
+ * diferentes.
+ */
+export function composeRawPayloadReader(
+  config: RawStoreConfig,
+  deps: ComposeRawReaderDeps,
+): RawReaderComposition {
+  if (config.driver === 'postgres') {
+    return {
+      reader: deps.createPrismaReader(),
+      description: 'driver=postgres (tmdb_raw via Prisma — dev/teste; recusado em producao)',
+    }
+  }
+
+  const { client, commands } = deps.createS3Client(config)
+  const objectStore = withObjectStoreRetry(
+    createS3RawObjectStore({ bucket: config.bucket, client, commands }),
+    {
+      maxAttempts: RAW_STORE_MAX_ATTEMPTS,
+      sleep: deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms))),
+    },
+  )
+  return {
+    reader: createObjectRawPayloadReader({ objectStore, baseLanguage: config.baseLanguage }),
     description: `driver=r2 bucket=${config.bucket} (objeto S3-compatible, retry x${RAW_STORE_MAX_ATTEMPTS})`,
   }
 }

@@ -41,6 +41,12 @@ function payloadWithoutLink(offers: Record<string, unknown>): unknown {
   return { 'watch/providers': { results: { BR: offers } } }
 }
 
+/**
+ * `present: true` em todas as linhas destas fixtures NAO e ruido: elas medem os
+ * desfechos de um bruto que EXISTE. A ausencia de bruto (`present: false`) tem
+ * teste proprio em `watch-providers-catalog-source.test.ts`, porque so a fonte
+ * dirigida pelo catalogo consegue produzi-la.
+ */
 function makeSource(rows: readonly RawWatchSourceRow[]): RawWatchSource {
   return {
     count: async () => rows.length,
@@ -80,14 +86,14 @@ describe('runWatchProvidersReprocess — os cinco desfechos sao distinguiveis', 
     const rows: RawWatchSourceRow[] = [
       {
         tmdbId: 1,
-        baseLanguage: 'pt-BR',
+        baseLanguage: 'pt-BR', present: true,
         payload: payloadWith({ flatrate: [{ provider_id: 8, provider_name: 'Netflix' }] }),
       },
-      { tmdbId: 2, baseLanguage: 'pt-BR', payload: { 'watch/providers': { results: {} } } },
-      { tmdbId: 3, baseLanguage: 'pt-BR', payload: { id: 3 } },
+      { tmdbId: 2, baseLanguage: 'pt-BR', present: true, payload: { 'watch/providers': { results: {} } } },
+      { tmdbId: 3, baseLanguage: 'pt-BR', present: true, payload: { id: 3 } },
       {
         tmdbId: 4,
-        baseLanguage: 'pt-BR',
+        baseLanguage: 'pt-BR', present: true,
         payload: payloadWith({ rent: [{ provider_id: 2, provider_name: 'Apple TV' }] }),
       },
     ]
@@ -113,7 +119,7 @@ describe('runWatchProvidersReprocess — os cinco desfechos sao distinguiveis', 
 
   it('payload NAO reconhecido nunca chama o store (snapshot bom preservado)', async () => {
     const replaceSnapshot = vi.fn(async () => ({ upserted: 0, revoked: 0 }))
-    const rows: RawWatchSourceRow[] = [{ tmdbId: 3, baseLanguage: 'pt-BR', payload: { id: 3 } }]
+    const rows: RawWatchSourceRow[] = [{ tmdbId: 3, baseLanguage: 'pt-BR', present: true, payload: { id: 3 } }]
     const report = await runWatchProvidersReprocess({
       ...baseOptions(rows, [3]),
       store: makeStore({ replaceSnapshot }),
@@ -127,7 +133,7 @@ describe('runWatchProvidersReprocess — os cinco desfechos sao distinguiveis', 
     const rows: RawWatchSourceRow[] = [
       {
         tmdbId: 99,
-        baseLanguage: 'pt-BR',
+        baseLanguage: 'pt-BR', present: true,
         payload: payloadWith({ flatrate: [{ provider_id: 8, provider_name: 'Netflix' }] }),
       },
     ]
@@ -144,7 +150,7 @@ describe('runWatchProvidersReprocess — os cinco desfechos sao distinguiveis', 
     const rows: RawWatchSourceRow[] = [
       {
         tmdbId: 1,
-        baseLanguage: 'pt-BR',
+        baseLanguage: 'pt-BR', present: true,
         payload: payloadWith({ flatrate: [{ provider_id: 8, provider_name: 'Netflix' }] }),
       },
     ]
@@ -164,7 +170,7 @@ describe('runWatchProvidersReprocess — os cinco desfechos sao distinguiveis', 
     const rows: RawWatchSourceRow[] = [
       {
         tmdbId: 1,
-        baseLanguage: 'pt-BR',
+        baseLanguage: 'pt-BR', present: true,
         payload: {
           'watch/providers': {
             results: {
@@ -193,7 +199,7 @@ describe('runWatchProvidersReprocess — os cinco desfechos sao distinguiveis', 
     const rows: RawWatchSourceRow[] = [
       {
         tmdbId: 1,
-        baseLanguage: 'pt-BR',
+        baseLanguage: 'pt-BR', present: true,
         payload: payloadWith({ flatrate: [{ provider_id: 8, provider_name: 'Netflix' }] }),
       },
     ]
@@ -223,7 +229,7 @@ describe('runWatchProvidersReprocess — o erro nunca evapora (B-H)', () => {
     const rows: RawWatchSourceRow[] = [
       {
         tmdbId: 1,
-        baseLanguage: 'pt-BR',
+        baseLanguage: 'pt-BR', present: true,
         payload: payloadWith({ flatrate: [{ provider_id: 8, provider_name: 'Netflix' }] }),
       },
     ]
@@ -248,7 +254,7 @@ describe('runWatchProvidersReprocess — o erro nunca evapora (B-H)', () => {
   it('uma falha nao aborta o lote: os itens seguintes continuam', async () => {
     const rows: RawWatchSourceRow[] = [1, 2, 3].map((tmdbId) => ({
       tmdbId,
-      baseLanguage: 'pt-BR',
+      baseLanguage: 'pt-BR', present: true,
       payload: payloadWith({ flatrate: [{ provider_id: 8, provider_name: 'Netflix' }] }),
     }))
     const report = await runWatchProvidersReprocess({
@@ -266,7 +272,7 @@ describe('runWatchProvidersReprocess — o erro nunca evapora (B-H)', () => {
   it('limita a amostra de falhas mas nunca o CONTADOR', async () => {
     const rows: RawWatchSourceRow[] = Array.from({ length: 60 }, (_, i) => ({
       tmdbId: i + 1,
-      baseLanguage: 'pt-BR',
+      baseLanguage: 'pt-BR', present: true,
       payload: payloadWith({ flatrate: [{ provider_id: 8, provider_name: 'Netflix' }] }),
     }))
     const report = await runWatchProvidersReprocess({
@@ -288,11 +294,11 @@ describe('runWatchProvidersReprocess — o erro nunca evapora (B-H)', () => {
 describe('runWatchProvidersReprocess — relatorio de recusas e provedores', () => {
   it('agrega recusas por motivo (nenhum descarte anonimo)', async () => {
     const rows: RawWatchSourceRow[] = [
-      { tmdbId: 1, baseLanguage: 'pt-BR', payload: payloadWith({ desconhecido: [] }) },
-      { tmdbId: 2, baseLanguage: 'pt-BR', payload: payloadWith({ outro_bucket: [] }) },
+      { tmdbId: 1, baseLanguage: 'pt-BR', present: true, payload: payloadWith({ desconhecido: [] }) },
+      { tmdbId: 2, baseLanguage: 'pt-BR', present: true, payload: payloadWith({ outro_bucket: [] }) },
       {
         tmdbId: 3,
-        baseLanguage: 'pt-BR',
+        baseLanguage: 'pt-BR', present: true,
         payload: payloadWith({ flatrate: [{ provider_name: 'Sem id' }] }),
       },
     ]
@@ -304,7 +310,7 @@ describe('runWatchProvidersReprocess — relatorio de recusas e provedores', () 
     const rows: RawWatchSourceRow[] = [
       {
         tmdbId: 1,
-        baseLanguage: 'pt-BR',
+        baseLanguage: 'pt-BR', present: true,
         payload: payloadWithoutLink({ flatrate: [{ provider_id: 8, provider_name: 'Netflix' }] }),
       },
     ]
@@ -319,7 +325,7 @@ describe('runWatchProvidersReprocess — relatorio de recusas e provedores', () 
     const rows: RawWatchSourceRow[] = [
       {
         tmdbId: 1,
-        baseLanguage: 'pt-BR',
+        baseLanguage: 'pt-BR', present: true,
         payload: payloadWith({
           flatrate: [{ provider_id: 8, provider_name: 'Netflix' }],
           rent: [{ provider_id: 2, provider_name: 'Apple TV' }],
@@ -327,7 +333,7 @@ describe('runWatchProvidersReprocess — relatorio de recusas e provedores', () 
       },
       {
         tmdbId: 2,
-        baseLanguage: 'pt-BR',
+        baseLanguage: 'pt-BR', present: true,
         payload: payloadWith({ flatrate: [{ provider_id: 8, provider_name: 'Netflix' }] }),
       },
     ]
@@ -360,7 +366,7 @@ describe('runWatchProvidersReprocess — relatorio de recusas e provedores', () 
     const rows: RawWatchSourceRow[] = [
       {
         tmdbId: 1,
-        baseLanguage: 'pt-BR',
+        baseLanguage: 'pt-BR', present: true,
         payload: payloadWith({
           flatrate: [{ provider_id: 119, provider_name: 'Amazon Prime Video' }],
           rent: [{ provider_id: 10, provider_name: 'Amazon Video' }],
@@ -391,7 +397,7 @@ describe('runWatchProvidersReprocess — escopo territorial (a FK de 2026-08-13)
   it('CONTROLE POSITIVO: oferta BR chega ao store; pais fora do escopo nunca chega', async () => {
     const written: string[] = []
     const rows: RawWatchSourceRow[] = [
-      { tmdbId: 1, baseLanguage: 'pt-BR', payload: multiCountryPayload(['AD', 'AE', 'BR', 'ZW']) },
+      { tmdbId: 1, baseLanguage: 'pt-BR', present: true, payload: multiCountryPayload(['AD', 'AE', 'BR', 'ZW']) },
     ]
     const report = await runWatchProvidersReprocess({
       ...baseOptions(rows, [1]),
@@ -417,7 +423,7 @@ describe('runWatchProvidersReprocess — escopo territorial (a FK de 2026-08-13)
   it('titulo com oferta so fora do escopo e `out-of-scope`, NUNCA `empty`', async () => {
     const replaceSnapshot = vi.fn(async () => ({ upserted: 0, revoked: 0 }))
     const rows: RawWatchSourceRow[] = [
-      { tmdbId: 1, baseLanguage: 'pt-BR', payload: multiCountryPayload(['AD', 'ZW']) },
+      { tmdbId: 1, baseLanguage: 'pt-BR', present: true, payload: multiCountryPayload(['AD', 'ZW']) },
     ]
     const seen: Record<number, string> = {}
     const report = await runWatchProvidersReprocess({
@@ -438,7 +444,7 @@ describe('runWatchProvidersReprocess — escopo territorial (a FK de 2026-08-13)
 
   it('a colheita continua medindo o dado INTEIRO, nao so o escopo', async () => {
     const rows: RawWatchSourceRow[] = [
-      { tmdbId: 1, baseLanguage: 'pt-BR', payload: multiCountryPayload(['AD', 'BR']) },
+      { tmdbId: 1, baseLanguage: 'pt-BR', present: true, payload: multiCountryPayload(['AD', 'BR']) },
     ]
     const report = await runWatchProvidersReprocess(baseOptions(rows, [1]))
     // Um provedor que so aparece fora do escopo continua sendo um provedor que
@@ -455,7 +461,7 @@ describe('runWatchProvidersReprocess — escopo territorial (a FK de 2026-08-13)
     const rows: RawWatchSourceRow[] = [
       {
         tmdbId: 1,
-        baseLanguage: 'pt-BR',
+        baseLanguage: 'pt-BR', present: true,
         payload: {
           'watch/providers': {
             results: {
@@ -497,7 +503,7 @@ describe('runWatchProvidersReprocess — o contador bate com o que foi gravado (
     // somado no numero que acompanha `aplicados` — sucesso anunciado onde nao
     // houve nenhum.
     const rows: RawWatchSourceRow[] = [
-      { tmdbId: 1, baseLanguage: 'pt-BR', payload: twoCountryPayload() },
+      { tmdbId: 1, baseLanguage: 'pt-BR', present: true, payload: twoCountryPayload() },
     ]
     const report = await runWatchProvidersReprocess({
       ...baseOptions(rows, [1]),
@@ -521,7 +527,7 @@ describe('runWatchProvidersReprocess — o contador bate com o que foi gravado (
 
   it('a falha diz ONDE parou e o que ja tinha sido gravado', async () => {
     const rows: RawWatchSourceRow[] = [
-      { tmdbId: 7, baseLanguage: 'pt-BR', payload: twoCountryPayload() },
+      { tmdbId: 7, baseLanguage: 'pt-BR', present: true, payload: twoCountryPayload() },
     ]
     const report = await runWatchProvidersReprocess({
       ...baseOptions(rows, [7]),
@@ -542,7 +548,7 @@ describe('runWatchProvidersReprocess — o contador bate com o que foi gravado (
 
   it('CONTROLE POSITIVO: sucesso total soma tudo no contador de sucesso', async () => {
     const rows: RawWatchSourceRow[] = [
-      { tmdbId: 1, baseLanguage: 'pt-BR', payload: twoCountryPayload() },
+      { tmdbId: 1, baseLanguage: 'pt-BR', present: true, payload: twoCountryPayload() },
     ]
     const report = await runWatchProvidersReprocess({
       ...baseOptions(rows, [1]),
@@ -564,6 +570,7 @@ describe('deriveWatchReprocessStatus — "tudo falhou" nunca vira "nada a fazer"
       outOfScope: 0,
       unrecognized: 0,
       unresolved: 0,
+      missingRaw: 0,
       failed: 0,
       offersUpserted: 0,
       offersRevoked: 0,
@@ -575,6 +582,19 @@ describe('deriveWatchReprocessStatus — "tudo falhou" nunca vira "nada a fazer"
 
   it('nada escaneado e empty', () => {
     expect(deriveWatchReprocessStatus(counts({}))).toBe('empty')
+  })
+
+  it('so bruto AUSENTE nunca vira empty: ha trabalho, e ele esta noutro deposito', () => {
+    // `empty` afirmaria "os titulos nao tem oferta". A verdade e que o bruto
+    // nao foi encontrado — foi este colapso que deixou o ciclo de producao
+    // parecer concluido enquanto 39 entidades seguiam invisiveis.
+    expect(deriveWatchReprocessStatus(counts({ scanned: 5, missingRaw: 5 }))).toBe('partial')
+  })
+
+  it('bruto ausente no meio de um lote bem-sucedido rebaixa success para partial', () => {
+    expect(
+      deriveWatchReprocessStatus(counts({ scanned: 5, applied: 4, missingRaw: 1 })),
+    ).toBe('partial')
   })
 
   it('tudo falhou e FAILED, nunca empty', () => {
