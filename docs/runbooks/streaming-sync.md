@@ -81,6 +81,29 @@ descobrir chaves que faltam, rode a colheita
 `services/ingestion/bin/reprocess-watch-providers.ts` (lista os provedores TMDB
 VISTOS no dado real) e estenda o registro numa PR.
 
+#### As duas travas contra alias inventado (2026-08-19)
+
+"Não se inventa" deixou de ser prosa e virou duas checagens **independentes**:
+
+1. **Evidência declarada.** Todo alias carrega `evidence`, de um conjunto
+   fechado (`ALIAS_EVIDENCE_SOURCES`): `rapidapi-fixture`,
+   `tmdb-harvest-2026-08-13` ou `br-offer-census-2026-08-19`. Valor ausente ou
+   fora do conjunto derruba `validateProviderRegistry` → `plan.ok = false` →
+   nada é escrito. Roda na CI, sem banco.
+2. **Evidência medida.** Antes de aplicar, o comando lê os pares
+   `(provider_api, provider_key)` **realmente presentes** em
+   `watch_availability` e confronta com os aliases a CRIAR:
+   - chave que o corpus **nunca publicou** → **RECUSA** (`plan` inválido). É a
+     única trava que pega um id digitado errado (`1852` em vez de `1853`): esse
+     passa pela trava 1 e creditaria outra plataforma;
+   - chave presente **sob outro nome** → **AVISO**, não recusa. O TMDB renomeia
+     provedor sem trocar o `provider_id`, e o nome é auditoria, nunca
+     identidade. Se a divergência for real (o id virou outra plataforma),
+     corrija o registro antes de aplicar.
+
+A saída lista, por alias novo, quantas ofertas o banco já tem para aquele par —
+é a confirmação de que o cadastro tem para quem servir.
+
 **Depois do registro, rode `pnpm legal sources apply ... --confirm`** — é ele
 que gera a licença `watch_availability` + a decisão `watch_offer_display` por
 provedor registrado. Sem esse passo, oferta continua sem display.
@@ -197,6 +220,42 @@ Sem oferta permitida, o painel é omitido. Zero chamada externa no render
 (invariante 3).
 
 ## Diagnóstico
+
+### Por que uma oferta continua apagada — motivo por motivo
+
+Rode a revisão (`review-watch-availability --report` ou `--json`) e leia a coluna
+`decisao`. O relatório traz **contagem por motivo**, e a coluna `slug canonico`
+diz se o elo do provedor foi resolvido. Cada motivo tem uma ação diferente:
+
+| motivo | o que significa | ação |
+| --- | --- | --- |
+| `wrong-provider` | fornecedor técnico fora do conjunto governado | nenhuma: dado não governado nunca é promovido |
+| `wrong-country` | a oferta não é do Brasil | nenhuma: **só BR acende** (ver "Territorialidade") |
+| `already-display-allowed` | já está exibível | nada a fazer |
+| `invalid-offer-type` | modalidade fora de `subscription/free/rent/buy` | **decisão de produto.** É o caso de `ads` (grátis com anúncio): Pluto TV, Mercado Play, NetMovies. O painel público **sabe** rotular `ads` ("Grátis com anúncios"), mas a promoção não a aceita. Ligar isso é decisão do dono, não conserto |
+| `missing-provider` | linha sem `provider_key`/`provider_name` | dado do upstream incompleto; nada a promover |
+| `no-canonical-provider` | `(provider_api, provider_key)` sem alias | acrescente a chave a `WATCH_PROVIDER_REGISTRY` **com evidência**, rode `register-watch-providers --apply` e depois `legal sources apply` |
+| `missing-link` | sem `deep_link` **e** sem `web_url` | o país não trouxe `link` no payload; ressincronize |
+| `unsafe-link` | destino não-http(s) ou marcador de pirataria | nunca promover (invariante 8) |
+| `missing-attribution` | crédito/linkback não hidratados na linha | falta `legal sources apply` para **aquela origem**, ou ressync que re-hidrate |
+| `expired` | `available_until` no passado | oferta acabou |
+
+### Territorialidade: só BR acende, e há quatro barreiras
+
+1. `evaluatePromotionEligibility` recusa com `wrong-country`;
+2. `listCandidates` filtra `country_code` no banco;
+3. o `UPDATE` de `promote()` reafirma `AND country_code = 'BR'`;
+4. o trigger `watch_availability_display_guard` recusa decisão cujo `territory`
+   não cobre o país da oferta — **é a única que sobrevive a SQL bruto**.
+
+Provado por `services/streaming/src/__tests__/promotion-territory.test.ts` (1–3,
+na CI) e por `scripts/validate-stores-real-postgres.ts`, checks 17–19 (4, com
+Postgres real; o 19 é o controle positivo — o mesmo SQL acende a oferta BR).
+
+O **único** caminho que abriria essa porta seria uma decisão
+`watch_offer_display` com `territory = NULL` (global): o trigger a aceitaria
+para qualquer país. Nada no repositório emite uma, e
+`tests/governance/watch-territory-br-only.test.ts` trava isso na origem.
 
 - Oferta não sobe e o motivo é provedor: falta o alias
   (`watch_provider_aliases`) — ver [streaming-platform](../backend/streaming-platform.md).

@@ -49,6 +49,21 @@ export interface PromotionCandidate {
   readonly providerApi: string | null
   readonly providerKey: string | null
   readonly providerName: string | null
+  /**
+   * Slug do provedor CANONICO resolvido por `watch_provider_aliases`
+   * (`provider_api` + `provider_key`), ou `null` quando nao ha alias.
+   *
+   * POR QUE ENTROU (2026-08-19). Sem este campo, uma oferta de provedor NAO
+   * registrado era avaliada como `elegivel` pelos guardrails e so morria la no
+   * fundo, na excecao do trigger — o revisor lia "elegivel" numa linha que o
+   * banco jamais aceitaria, e a promocao devolvia uma recusa crua de Postgres
+   * em vez de uma instrucao. O elo faltante existia; faltava NOME.
+   *
+   * Nao e o mesmo que `watch_availability.watch_provider_id`: aquela coluna so
+   * e preenchida NO ATO da promocao (pelo UPDATE), entao antes de promover ela
+   * e sempre `null` e nao serve para decidir nada.
+   */
+  readonly canonicalProviderSlug: string | null
   readonly offerType: string | null
   /** Destino NO PROVEDOR. `null` em toda oferta de origem TMDB. */
   readonly deepLink: string | null
@@ -87,6 +102,18 @@ export type PromotionRejectionReason =
   | 'already-display-allowed'
   | 'invalid-offer-type'
   | 'missing-provider'
+  /**
+   * A oferta nomeia um provedor, mas `(provider_api, provider_key)` nao tem
+   * alias em `watch_provider_aliases` — nao ha provedor CANONICO, logo nao ha
+   * licenca nem decisao de uso para ela, e o trigger a recusaria.
+   *
+   * A acao do operador e especifica e diferente de todas as outras:
+   * acrescentar a chave a `WATCH_PROVIDER_REGISTRY` (com evidencia) e rodar
+   * `register-watch-providers` + `legal sources apply`. Antes deste motivo, essa
+   * oferta aparecia como `elegivel` na revisao e virava uma excecao crua de
+   * Postgres na promocao.
+   */
+  | 'no-canonical-provider'
   | 'missing-link'
   | 'unsafe-link'
   /**

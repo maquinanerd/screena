@@ -15,10 +15,13 @@
  *   4. invalid-offer-type       — fora de {subscription,free,rent,buy}
  *                                 (inclui ads/cinema/addon);
  *   5. missing-provider         — sem provider_key OU sem provider_name;
- *   6. missing-link             — sem destino algum (nem deep_link, nem web_url);
- *   7. unsafe-link              — destino nao-http(s) / marcador de pirataria;
- *   8. missing-attribution      — exige credito/linkback e nao os tem hidratados;
- *   9. expired                  — `available_until` no passado.
+ *   6. no-canonical-provider    — `(provider_api, provider_key)` sem alias em
+ *                                 `watch_provider_aliases` (sem provedor
+ *                                 canonico nao ha licenca nem decisao de uso);
+ *   7. missing-link             — sem destino algum (nem deep_link, nem web_url);
+ *   8. unsafe-link              — destino nao-http(s) / marcador de pirataria;
+ *   9. missing-attribution      — exige credito/linkback e nao os tem hidratados;
+ *  10. expired                  — `available_until` no passado.
  */
 
 import { TMDB_PROVIDER_API } from '@screena/tmdb-client'
@@ -107,6 +110,12 @@ export function evaluatePromotionEligibility(
   if (isBlank(candidate.providerKey) || isBlank(candidate.providerName)) {
     return reject('missing-provider')
   }
+  // ELO CANONICO. Sem alias nao existe `watch_providers.slug`, e sem slug nao
+  // existe a licenca de `watch_availability` nem a decisao `watch_offer_display`
+  // que o trigger exige. Antes deste guard a oferta era reportada como
+  // ELEGIVEL e so morria como excecao crua de Postgres dentro do laco de
+  // promocao — o revisor lia "elegivel" numa linha impossivel de promover.
+  if (isBlank(candidate.canonicalProviderSlug)) return reject('no-canonical-provider')
   // DESTINO: deep link do provedor quando existe; senao a pagina do pais no
   // agregador (`web_url`). A precedencia e a MESMA do presenter — se divergisse,
   // a CLI aprovaria uma oferta que a tela depois descartaria.

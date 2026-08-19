@@ -86,7 +86,11 @@ function toNumber(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null
 }
 
-function toCandidate(row: WatchRow, title: string | null): PromotionCandidate {
+function toCandidate(
+  row: WatchRow,
+  title: string | null,
+  canonicalProviderSlug: string | null,
+): PromotionCandidate {
   return {
     id: row.id.toString(),
     entityType: row.entityType,
@@ -96,6 +100,7 @@ function toCandidate(row: WatchRow, title: string | null): PromotionCandidate {
     providerApi: row.providerApi,
     providerKey: row.providerKey,
     providerName: row.providerName,
+    canonicalProviderSlug,
     offerType: row.offerType,
     deepLink: row.deepLink,
     webUrl: row.webUrl,
@@ -157,11 +162,76 @@ async function resolveTitles(
   return byRow
 }
 
+/**
+ * Chave de alias `(provider_api, provider_key)`.
+ *
+ * Separador ESCAPADO (`\u001F`), NUNCA o byte cru: um 0x1F literal no fonte
+ * quebra a guarda `no-raw-control-bytes` (tests/governance). Mesma convencao de
+ * `watch-credit-lookup.ts`, e pelo mesmo motivo de fundo: sem separador,
+ * ("tmdb1", "8") e ("tmdb", "18") produziriam a MESMA chave.
+ */
+function aliasKeyOf(providerApi: string | null, providerKey: string | null): string {
+  return `${providerApi ?? ''}\u001F${providerKey ?? ''}`
+}
+
+/**
+ * Resolve o SLUG do provedor canonico de cada linha via `watch_provider_aliases`.
+ *
+ * E o elo que a revisao nao enxergava: sem alias nao ha `watch_providers.slug`,
+ * sem slug nao ha licenca de `watch_availability` nem decisao
+ * `watch_offer_display`, e o trigger recusa a promocao. Trazer o slug ANTES de
+ * avaliar transforma aquela recusa (uma excecao crua de Postgres, no fundo do
+ * laco) num motivo nomeado: `no-canonical-provider`.
+ *
+ * Diferente de `resolveTitles`, esta consulta NAO e best-effort: um erro aqui
+ * faria toda linha parecer sem alias e a revisao inteira reportaria
+ * `no-canonical-provider` — uma falha de leitura vestida de diagnostico. Falhar
+ * alto e o unico desfecho honesto.
+ */
+async function resolveCanonicalSlugs(
+  prisma: PrismaClient,
+  rows: readonly WatchRow[],
+): Promise<Map<string, string>> {
+  const wanted = new Map<string, { providerApi: string; providerKey: string }>()
+  for (const row of rows) {
+    if (row.providerApi === null || row.providerKey === null) continue
+    wanted.set(aliasKeyOf(row.providerApi, row.providerKey), {
+      providerApi: row.providerApi,
+      providerKey: row.providerKey,
+    })
+  }
+  const resolved = new Map<string, string>()
+  if (wanted.size === 0) return resolved
+
+  const aliases = await prisma.watchProviderAlias.findMany({
+    where: {
+      OR: [...wanted.values()].map((k) => ({
+        providerApi: k.providerApi,
+        externalKey: k.providerKey,
+      })),
+    },
+    select: { providerApi: true, externalKey: true, provider: { select: { slug: true } } },
+  })
+  for (const alias of aliases) {
+    resolved.set(aliasKeyOf(alias.providerApi, alias.externalKey), alias.provider.slug)
+  }
+  return resolved
+}
+
 /** Cria um `ReviewStorePort` sobre `watch_availability` (leitura + gate). */
 export function createPrismaReviewStore(prisma: PrismaClient): ReviewStorePort {
   async function hydrate(rows: readonly WatchRow[]): Promise<readonly PromotionCandidate[]> {
-    const titles = await resolveTitles(prisma, rows)
-    return rows.map((row) => toCandidate(row, titles.get(row.id.toString()) ?? null))
+    const [titles, slugs] = await Promise.all([
+      resolveTitles(prisma, rows),
+      resolveCanonicalSlugs(prisma, rows),
+    ])
+    return rows.map((row) =>
+      toCandidate(
+        row,
+        titles.get(row.id.toString()) ?? null,
+        slugs.get(aliasKeyOf(row.providerApi, row.providerKey)) ?? null,
+      ),
+    )
   }
 
   return {

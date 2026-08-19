@@ -28,10 +28,12 @@ import { getPrismaClient } from '@screena/db/server'
 import {
   ALIAS_PROVIDER_APIS,
   WATCH_PROVIDER_REGISTRY,
+  checkAliasEvidenceAgainstOffers,
   planProviderRegistration,
 } from '../src/provider-registry.js'
 import {
   applyProviderRegistryPlan,
+  readObservedOfferProviders,
   readProviderRegistryState,
 } from '../src/persistence/provider-registry-store.js'
 
@@ -103,13 +105,56 @@ async function main(): Promise<void> {
       )
       for (const key of plan.unknownDbAliases) console.log(`  ? ${key}`)
     }
+    // ============ EVIDENCIA MEDIDA (2a trava, independente da declarada) ======
+    //
+    // `plan.errors` ja recusou alias sem `evidence` declarada. Isso prova que
+    // alguem NOMEOU uma medicao — nao que a medicao existe. Um id digitado
+    // errado (1852 em vez de 1853) passa la e credita a plataforma errada em
+    // toda oferta daquele provedor. Aqui perguntamos ao DADO.
+    //
+    // Nunca observado => RECUSA. Observado sob outro nome => AVISO (o proprio
+    // registro declara `displayName` como "auditoria, nunca identidade", e o
+    // TMDB renomeia provedor sem trocar o `provider_id`).
+    const observed = await readObservedOfferProviders(prisma)
+    const evidence = checkAliasEvidenceAgainstOffers(plan, observed)
+
+    if (evidence.confirmed.length > 0) {
+      console.log(
+        `\nEvidencia MEDIDA em watch_availability (${evidence.confirmed.length} alias novo(s) confirmado(s)):`,
+      )
+      for (const hit of evidence.confirmed) {
+        console.log(
+          `  OK     (${hit.providerApi}, ${hit.externalKey}) -> ${hit.slug}` +
+            `  · ${hit.offers} oferta(s) no banco  · evidencia declarada: ${hit.evidence}`,
+        )
+      }
+    }
+    for (const warn of evidence.renamed) {
+      console.warn(
+        `[provider-registry] AVISO: (${warn.providerApi}, ${warn.externalKey}) esta no banco como ` +
+          `"${warn.observedName}" e o registro declara "${warn.declaredName}". O upstream renomeia ` +
+          'provedor sem trocar o id; o nome e auditoria, nunca identidade — o alias segue valido. ' +
+          'Se a divergencia for real (id apontando para OUTRA plataforma), corrija o registro antes de aplicar.',
+      )
+    }
+    for (const miss of evidence.unobserved) {
+      console.error(
+        `[provider-registry] ERRO: (${miss.providerApi}, ${miss.externalKey}) -> "${miss.slug}" ` +
+          `declara evidencia "${miss.evidence}" mas NAO existe nenhuma oferta com esse par em ` +
+          'watch_availability. Alias para chave que o corpus nunca publicou nao tem desfecho bom: ' +
+          'ou o id esta errado (e vai creditar outra plataforma quando aparecer), ou o provedor nao ' +
+          'existe no nosso dado (e a licenca + decisao de uso do `legal apply` nascem orfas). ' +
+          'Rode a colheita (`reprocess-watch-providers`) e corrija o registro.',
+      )
+    }
+
     for (const error of plan.errors) console.error(`[provider-registry] ERRO: ${error}`)
     for (const conflict of plan.conflicts) {
       console.error(
         `[provider-registry] CONFLITO: (${conflict.providerApi}, ${conflict.externalKey}) ja pertence a "${conflict.currentSlug}", o registro quer "${conflict.wantedSlug}". Retargetear e decisao humana — resolva no banco ou no registro.`,
       )
     }
-    if (!plan.ok) {
+    if (!plan.ok || !evidence.ok) {
       console.error('[provider-registry] plano INVALIDO — nada foi/sera escrito.')
       process.exitCode = 1
       return

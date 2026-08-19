@@ -32,6 +32,7 @@ function candidate(overrides: Partial<PromotionCandidate>): PromotionCandidate {
     providerApi: PROMOTION_PROVIDER_API,
     providerKey: 'netflix',
     providerName: 'Netflix',
+    canonicalProviderSlug: 'netflix',
     offerType: 'subscription',
     deepLink: 'https://n/x',
     webUrl: null,

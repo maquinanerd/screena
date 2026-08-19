@@ -85,7 +85,14 @@ describe('os caminhos de falha GRITAM', () => {
         {
           slug: 'netflix',
           canonicalName: 'Netflix',
-          aliases: [{ providerApi: 'tmdb', externalKey: '8', displayName: 'Netflix' }],
+          aliases: [
+            {
+              providerApi: 'tmdb',
+              externalKey: '8',
+              displayName: 'Netflix',
+              evidence: 'tmdb-harvest-2026-08-13',
+            },
+          ],
         },
       ],
       state({ providers: { netflix: 'Netflix' }, aliases: { 'tmdb:8': 'outro-provedor' } }),
@@ -102,8 +109,8 @@ describe('os caminhos de falha GRITAM', () => {
           slug: 'Netflix!',
           canonicalName: 'Netflix',
           aliases: [
-            { providerApi: 'tmdb', externalKey: '8', displayName: 'a' },
-            { providerApi: 'tmdb', externalKey: '8', displayName: 'b' },
+            { providerApi: 'tmdb', externalKey: '8', displayName: 'a', evidence: 'tmdb-harvest-2026-08-13' },
+            { providerApi: 'tmdb', externalKey: '8', displayName: 'b', evidence: 'tmdb-harvest-2026-08-13' },
           ],
         },
       ],

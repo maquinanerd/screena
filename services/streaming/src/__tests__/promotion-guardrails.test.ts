@@ -33,6 +33,10 @@ function validCandidate(overrides: Partial<PromotionCandidate> = {}): PromotionC
     providerApi: PROMOTION_PROVIDER_API,
     providerKey: 'netflix',
     providerName: 'Netflix',
+    // Alias JA resolvido: sem provedor canonico nao ha licenca nem decisao de
+    // uso, e o trigger recusaria. Uma fixture sem isto descreveria uma oferta
+    // impossivel de promover — e os negativos passariam pelo motivo errado.
+    canonicalProviderSlug: 'netflix',
     offerType: 'subscription',
     deepLink: 'https://www.netflix.com/title/1',
     webUrl: null,
@@ -109,6 +113,33 @@ describe('evaluatePromotionEligibility — recusas', () => {
     expect(reasonOf({ providerKey: null })).toBe('missing-provider')
     expect(reasonOf({ providerKey: '   ' })).toBe('missing-provider')
     expect(reasonOf({ providerName: '' })).toBe('missing-provider')
+  })
+
+  it('sem alias -> no-canonical-provider (o elo que so aparecia como excecao)', () => {
+    // Sem `watch_provider_aliases` nao ha `watch_providers.slug`; sem slug nao ha
+    // licenca de watch_availability nem decisao `watch_offer_display`, e o
+    // trigger recusa. Antes deste motivo a linha era reportada como ELEGIVEL e
+    // so morria como erro cru de Postgres dentro do laco de promocao.
+    expect(reasonOf({ canonicalProviderSlug: null })).toBe('no-canonical-provider')
+    expect(reasonOf({ canonicalProviderSlug: '   ' })).toBe('no-canonical-provider')
+  })
+
+  it('a falta de provider vem ANTES da falta de alias (precedencia)', () => {
+    // Uma linha sem `provider_key` tambem nao tem alias — as duas recusas se
+    // aplicam. Reportar `no-canonical-provider` mandaria o operador cadastrar um
+    // alias para uma chave que nao existe; `missing-provider` e a acao certa.
+    expect(reasonOf({ providerKey: null, canonicalProviderSlug: null })).toBe('missing-provider')
+  })
+
+  it('CONTROLE NEGATIVO: alias presente NAO dispensa os guardrails seguintes', () => {
+    // O elo canonico e necessario, nunca suficiente. Uma oferta com alias e sem
+    // destino continua sendo `missing-link`, e nao "elegivel porque tem alias".
+    expect(reasonOf({ canonicalProviderSlug: 'netflix', deepLink: null, webUrl: null })).toBe(
+      'missing-link',
+    )
+    expect(
+      reasonOf({ canonicalProviderSlug: 'netflix', attributionText: null }),
+    ).toBe('missing-attribution')
   })
 
   it('sem deep_link -> missing-link', () => {
@@ -194,6 +225,7 @@ describe('origem tmdb: mesmas garantias, destino diferente', () => {
     return validCandidate({
       providerApi: 'tmdb',
       providerKey: '8',
+      canonicalProviderSlug: 'netflix',
       deepLink: null,
       webUrl: 'https://www.themoviedb.org/movie/550/watch?locale=BR',
       attributionText: 'Disponibilidade fornecida por JustWatch',
