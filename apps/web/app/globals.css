@@ -10434,6 +10434,7 @@ h4.art-body__heading {
 [data-vertical='series'] .media-strip__play:hover,
 [data-vertical='series'] .media-strip__play:focus-visible {
   background: var(--c-accent-series-dark);
+}
 
 /* ==========================================================================
    PREFERENCIAS DE APRESENTACAO (tela 13) — tema, densidade, tamanho de poster
