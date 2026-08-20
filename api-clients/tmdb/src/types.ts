@@ -6,6 +6,23 @@
  * campos, e os normalizers tratam ausencia sem inventar dado.
  */
 
+/**
+ * Bloco paginado de `recommendations`/`similar` no detalhe.
+ *
+ * Chegava desde sempre (esta em MOVIE_APPEND e TV_APPEND) e nao tinha
+ * declaracao aqui — por isso sumia no limite do tipo, sem erro nem aviso.
+ */
+export interface TmdbRelatedTitlesBlock {
+  results?: TmdbRelatedTitle[]
+}
+
+/** Um titulo dentro de `recommendations`/`similar`. */
+export interface TmdbRelatedTitle {
+  id: number
+  /** `movie` | `tv`. Ausente quando o endpoint ja e de um tipo so. */
+  media_type?: string | null
+}
+
 /** IDs externos retornados por `append_to_response=external_ids`. */
 export interface TmdbExternalIds {
   imdb_id?: string | null
@@ -58,6 +75,8 @@ export interface TmdbMovieDetail {
   backdrop_path?: string | null
   external_ids?: TmdbExternalIds
   credits?: TmdbCredits
+  recommendations?: TmdbRelatedTitlesBlock
+  similar?: TmdbRelatedTitlesBlock
 }
 
 /** Resumo de temporada embutido no detalhe da serie (`tv.seasons[]`). */
@@ -90,6 +109,8 @@ export interface TmdbTvDetail {
   external_ids?: TmdbExternalIds
   credits?: TmdbCredits
   seasons?: TmdbSeasonSummary[]
+  recommendations?: TmdbRelatedTitlesBlock
+  similar?: TmdbRelatedTitlesBlock
 }
 
 /** Episodio dentro do detalhe de temporada (`season.episodes[]`). */

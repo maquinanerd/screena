@@ -3,7 +3,13 @@
  */
 
 import type { TmdbMovieDetail } from '@screena/tmdb-client'
-import type { CastMemberInput, CrewMemberInput, ExternalIdInput, MovieUpsert } from '../types.js'
+import type {
+  CastMemberInput,
+  CrewMemberInput,
+  ExternalIdInput,
+  MovieUpsert,
+  TitleRecommendationLink,
+} from '../types.js'
 import { NormalizationError } from '../types.js'
 import {
   normalizeDate,
@@ -14,6 +20,7 @@ import {
 } from '../utils/normalize.js'
 import { buildExternalIds } from './external-ids.js'
 import { normalizeCredits } from './credits.js'
+import { collectRecommendations } from './recommendations.js'
 
 /** Resultado da normalizacao de um filme. */
 export interface NormalizedMovie {
@@ -25,6 +32,15 @@ export interface NormalizedMovie {
   readonly castPresent: boolean
   /** A fonte trouxe a lista de equipe (array, mesmo vazio)? Ver NormalizedCredits. */
   readonly crewPresent: boolean
+  /**
+   * `recommendations` + `similar`, na ORDEM do TMDB (a ordem e o sinal).
+   *
+   * Chegavam no append desde sempre e eram descartados aqui — terceiro caso do
+   * mesmo padrao. Ver `normalizers/recommendations.ts`.
+   */
+  readonly recommendations: TitleRecommendationLink[]
+  /** A fonte trouxe ALGUM dos dois blocos? Ausencia nunca e lista vazia. */
+  readonly recommendationsPresent: boolean
 }
 
 /** Normaliza um filme; lanca NormalizationError sem id ou sem titulo. */
@@ -54,6 +70,7 @@ export function normalizeMovie(detail: TmdbMovieDetail): NormalizedMovie {
   }
 
   const credits = normalizeCredits(detail.credits)
+  const recomendacoes = collectRecommendations(detail, 'movie')
   return {
     movie,
     externalIds: buildExternalIds('movie', detail.id, imdbId),
@@ -61,5 +78,7 @@ export function normalizeMovie(detail: TmdbMovieDetail): NormalizedMovie {
     crew: credits.crew,
     castPresent: credits.castPresent,
     crewPresent: credits.crewPresent,
+    recommendations: recomendacoes.links,
+    recommendationsPresent: recomendacoes.present,
   }
 }

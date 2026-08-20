@@ -92,6 +92,8 @@ export function createMovieStrategy(store: EntityStorePort): PromoteStrategy {
         // elenco/equipe ja gravados em vez de apaga-los.
         castPresent: normalized.castPresent,
         crewPresent: normalized.crewPresent,
+        recommendations: normalized.recommendations,
+        recommendationsPresent: normalized.recommendationsPresent,
         // Frescor herdada do raw: o tipado e tao fresco quanto o payload coletado.
         timestamps: { lastSyncedAt: row.fetchedAt, staleAfter: null },
       })
@@ -119,6 +121,8 @@ export function createTvStrategy(store: EntityStorePort): PromoteStrategy {
         // Ver a estrategia de filme: raw sem `credits` preserva o ja gravado.
         castPresent: normalized.castPresent,
         crewPresent: normalized.crewPresent,
+        recommendations: normalized.recommendations,
+        recommendationsPresent: normalized.recommendationsPresent,
         timestamps: { lastSyncedAt: row.fetchedAt, staleAfter: null },
       })
       const d = readTvDisplayFields(row.payload)

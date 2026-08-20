@@ -19,7 +19,13 @@ import type {
   SyncTimestamps,
   UpsertOutcome,
 } from '../ports.js'
-import type { CastMemberInput, CrewMemberInput, ExternalIdInput, PersonStub } from '../types.js'
+import type {
+  CastMemberInput,
+  CrewMemberInput,
+  ExternalIdInput,
+  PersonStub,
+  TitleRecommendationLink,
+} from '../types.js'
 
 type Tx = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0]
 
@@ -206,6 +212,39 @@ async function replaceCredits(
   }
 }
 
+/**
+ * Substitui os vinculos de recomendacao de UM titulo.
+ *
+ * NAO APAGA quando a fonte nao falou (`present === false`) — raw antigo, sem os
+ * blocos, e o caso real. Mesma disciplina de `replaceCredits`.
+ *
+ * Escreve por TMDB_ID, sem FK: o alvo pertence ao universo do TMDB e a maioria
+ * ainda nao foi ingerida. A leitura resolve por id e ignora quem nao existe.
+ */
+async function replaceTitleRecommendations(
+  tx: Tx,
+  sourceMediaType: 'movie' | 'tv',
+  sourceTmdbId: number,
+  links: readonly TitleRecommendationLink[],
+  present: boolean,
+): Promise<number> {
+  if (!present) return 0
+  await tx.titleRecommendation.deleteMany({ where: { sourceMediaType, sourceTmdbId } })
+  if (links.length === 0) return 0
+  await tx.titleRecommendation.createMany({
+    data: links.map((l) => ({
+      sourceMediaType,
+      sourceTmdbId,
+      kind: l.kind,
+      targetMediaType: l.targetMediaType,
+      targetTmdbId: l.targetTmdbId,
+      position: l.position,
+    })),
+    skipDuplicates: true,
+  })
+  return links.length
+}
+
 /** Cria um `EntityStorePort` apoiado no Prisma. */
 export function createPrismaStore(prisma: PrismaClient): EntityStorePort {
   return {
@@ -237,6 +276,13 @@ export function createPrismaStore(prisma: PrismaClient): EntityStorePort {
           select: { id: true },
         })
         await replaceExternalIds(tx, 'movie', row.id, input.externalIds)
+        await replaceTitleRecommendations(
+          tx,
+          'movie',
+          input.movie.tmdbId,
+          input.recommendations,
+          input.recommendationsPresent,
+        )
         const credits = await replaceCredits(
           tx,
           'movie',
@@ -288,6 +334,13 @@ export function createPrismaStore(prisma: PrismaClient): EntityStorePort {
           select: { id: true },
         })
         await replaceExternalIds(tx, 'tv', row.id, input.externalIds)
+        await replaceTitleRecommendations(
+          tx,
+          'tv',
+          input.tvShow.tmdbId,
+          input.recommendations,
+          input.recommendationsPresent,
+        )
         const credits = await replaceCredits(
           tx,
           'tv',

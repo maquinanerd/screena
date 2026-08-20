@@ -1259,6 +1259,36 @@ model Genre {
   @@map("genres")
 }
 
+// --- Recomendacoes do TMDB (Fase 10) ---
+// `recommendations` e `similar` estao no append de filme E de serie desde
+// sempre (ver MOVIE_APPEND/TV_APPEND em api-clients/tmdb). Chegavam em toda
+// requisicao de detalhe e eram DESCARTADOS no normalizador — terceiro caso do
+// mesmo padrao, depois de `watch/providers` (PR #181) e da biografia de pessoa.
+//
+// POR TMDB_ID, NAO POR FK LOCAL. Uma recomendacao aponta para o universo do
+// TMDB, nao para o nosso catalogo: a maioria dos alvos ainda nao foi ingerida.
+// Guardar FK local obrigaria a descartar na ESCRITA o que ainda nao temos — e
+// perder o vinculo para sempre quando o titulo entrasse depois. A leitura
+// resolve por `tmdb_id` e ignora quem nao existe.
+//
+// `kind` separa os dois sinais em vez de mistura-los: `recommendations` e
+// comportamental (quem viu isto viu aquilo) e `similar` e por metadado. Sao
+// qualidades diferentes, e a leitura prefere o primeiro.
+model TitleRecommendation {
+  sourceMediaType String   @map("source_media_type") // 'movie' | 'tv'
+  sourceTmdbId    Int      @map("source_tmdb_id")
+  kind            String // 'recommendation' | 'similar'
+  targetMediaType String   @map("target_media_type") // 'movie' | 'tv'
+  targetTmdbId    Int      @map("target_tmdb_id")
+  position        Int
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@id([sourceMediaType, sourceTmdbId, kind, targetTmdbId])
+  @@index([sourceMediaType, sourceTmdbId, kind, position])
+  @@index([targetMediaType, targetTmdbId])
+  @@map("title_recommendations")
+}
+
 // --- Mídia TMDB (Fase 7): metadados de imagens ---
 // So METADADOS (nenhum binario baixado). Nasce display_allowed=false +
 // license_status=unknown (invariante 6): exibicao exige decisao humana. Worker-only.

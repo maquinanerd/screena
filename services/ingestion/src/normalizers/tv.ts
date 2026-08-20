@@ -6,7 +6,13 @@
  */
 
 import type { TmdbTvDetail } from '@screena/tmdb-client'
-import type { CastMemberInput, CrewMemberInput, ExternalIdInput, TvShowUpsert } from '../types.js'
+import type {
+  CastMemberInput,
+  CrewMemberInput,
+  ExternalIdInput,
+  TitleRecommendationLink,
+  TvShowUpsert,
+} from '../types.js'
 import { NormalizationError } from '../types.js'
 import {
   normalizeDate,
@@ -17,6 +23,7 @@ import {
 } from '../utils/normalize.js'
 import { buildExternalIds } from './external-ids.js'
 import { normalizeCredits } from './credits.js'
+import { collectRecommendations } from './recommendations.js'
 
 /** Resultado da normalizacao de uma serie. */
 export interface NormalizedTvShow {
@@ -28,6 +35,15 @@ export interface NormalizedTvShow {
   readonly castPresent: boolean
   /** A fonte trouxe a lista de equipe (array, mesmo vazio)? Ver NormalizedCredits. */
   readonly crewPresent: boolean
+  /**
+   * `recommendations` + `similar`, na ORDEM do TMDB (a ordem e o sinal).
+   *
+   * Chegavam no append desde sempre e eram descartados aqui — terceiro caso do
+   * mesmo padrao. Ver `normalizers/recommendations.ts`.
+   */
+  readonly recommendations: TitleRecommendationLink[]
+  /** A fonte trouxe ALGUM dos dois blocos? Ausencia nunca e lista vazia. */
+  readonly recommendationsPresent: boolean
   readonly seasonNumbers: number[]
 }
 
@@ -64,6 +80,7 @@ export function normalizeTvShow(detail: TmdbTvDetail): NormalizedTvShow {
     .filter((value): value is number => typeof value === 'number')
 
   const credits = normalizeCredits(detail.credits)
+  const recomendacoes = collectRecommendations(detail, 'tv')
   return {
     tvShow,
     externalIds: buildExternalIds('tv', detail.id, imdbId),
@@ -71,6 +88,8 @@ export function normalizeTvShow(detail: TmdbTvDetail): NormalizedTvShow {
     crew: credits.crew,
     castPresent: credits.castPresent,
     crewPresent: credits.crewPresent,
+    recommendations: recomendacoes.links,
+    recommendationsPresent: recomendacoes.present,
     seasonNumbers,
   }
 }

@@ -43,15 +43,42 @@ describe("a coluna morta saiu da faixa final da serie", () => {
   });
 
   it("a ausencia passa pelo SectionBoundary — sumir calado nao e opcao", () => {
-    expect(code).toMatch(/<SectionBoundary decision=\{similarSection\} once>/);
+    expect(code).toMatch(/<SectionBoundary decision=\{similarSection\}>/);
   });
 
-  it("o motivo e o de VERTICAL, nao o de entidade", () => {
-    // Serie nao tem dataset nenhum (so filme tem colecao). Usar o motivo de
-    // entidade aqui diria ao operador que faltou ESTA serie, e ele iria olhar o
-    // lugar errado.
+  /**
+   * O `once` SAIU em 20/08/2026, e a mudanca e de significado, nao de estilo.
+   *
+   * Ele existia porque a causa era uma propriedade do DEPLOY — "nao existe
+   * dataset de similaridade para a vertical" — identica em TODA serie; uma linha
+   * por pageview seria ruido puro. Agora a serie TEM dataset
+   * (`title_recommendations`, do append que era descartado), e a ausencia passou
+   * a ser uma propriedade DESTA serie. A repeticao voltou a carregar informacao
+   * (qual serie), e silenciar apagaria exatamente o que o operador precisa.
+   */
+  it("NEGATIVO: o log deixou de ser `once` — a repeticao agora diz QUAL serie", () => {
+    expect(code).not.toMatch(/decision=\{similarSection\}\s+once/);
+  });
+
+  it("a serie RENDERIZA o trilho quando ha recomendacao", () => {
+    // Ate 20/08/2026 o `SectionBoundary` desta pagina devolvia `() => null`:
+    // nao havia o que renderizar, so o que logar. O sinal chegou.
+    expect(code).toMatch(/<SimilarTitles[^>]*view=\{similarView\}/);
+  });
+
+  it("a decisao e sobre DADO real, nao sobre `null` literal", () => {
+    // O defeito que o enunciado nomeou: "estado vazio NAO prova filtro". Enquanto
+    // a pagina passasse `null` fixo, qualquer teste de ausencia passaria sem que
+    // houvesse filtro nenhum por tras.
+    expect(code).toMatch(/decideSection\(similar,/);
+    expect(code).not.toMatch(/decideSection\(null,\s*\{\s*\.\.\.entityRef,\s*section: 'mais-como-este'/);
+  });
+
+  it("o motivo continua sendo `no_recommendation_dataset`", () => {
+    // O motivo nao mudou porque o que falta, quando falta, continua sendo o
+    // DATASET (o TMDB nao recomendou nada, ou nenhum alvo foi ingerido) — e as
+    // duas coisas se consertam com ingestao, nao com curadoria deste titulo.
     expect(code).toContain("reason: 'no_recommendation_dataset'");
-    expect(code).not.toContain("reason: 'no_recommendation_for_entity'");
   });
 });
 

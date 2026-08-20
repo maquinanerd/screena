@@ -16,6 +16,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildSimilarTitles,
+  RECOMMENDATION_RELATION_LABEL,
+  selectRecommendationLinksForVertical,
   SIMILAR_TITLES_LIMIT,
   type SimilarTitleRow,
 } from "../../apps/web/src/lib/similar-titles-presenter";
@@ -117,5 +119,98 @@ describe("buildSimilarTitles — o trilho", () => {
     const view = buildSimilarTitles([row({ entityId: "2" })], BASE);
     expect(view?.relation).toBe("collection");
     expect(view?.relationLabel).toBe("Coleção Exemplo");
+  });
+});
+
+/**
+ * A REGRA DA VERTICAL — extraida do getter server-only para poder ser provada.
+ *
+ * Enquanto era um `.filter` dentro do `findMany`, nao havia como testa-la sem
+ * banco: o controle negativo (deixar recomendacao de outra vertical entrar no
+ * trilho) passava calado, porque nenhum teste a media.
+ *
+ * O que ela protege e a invariante 11: a diferenciacao filme/serie nunca depende
+ * so da cor — precisa de label + badge + breadcrumb + schema + URL coerentes. Um
+ * card de serie dentro do bloco de um filme mente nos cinco.
+ */
+describe("selectRecommendationLinksForVertical", () => {
+  const links = [
+    { kind: "recommendation", targetMediaType: "movie", targetTmdbId: 10, position: 0 },
+    { kind: "recommendation", targetMediaType: "tv", targetTmdbId: 20, position: 1 },
+    { kind: "similar", targetMediaType: "movie", targetTmdbId: 30, position: 0 },
+    { kind: "similar", targetMediaType: "tv", targetTmdbId: 40, position: 1 },
+  ] as const;
+
+  it("o trilho de FILME so recebe filme", () => {
+    expect(
+      selectRecommendationLinksForVertical(links, "movie").map((l) => l.targetTmdbId),
+    ).toEqual([10, 30]);
+  });
+
+  it("o trilho de SERIE so recebe serie", () => {
+    expect(
+      selectRecommendationLinksForVertical(links, "tv").map((l) => l.targetTmdbId),
+    ).toEqual([20, 40]);
+  });
+
+  it("preserva a ORDEM de entrada — ela e o sinal de forca do TMDB", () => {
+    // Reordenar destruiria a unica informacao que o bloco carrega. Ordem
+    // invertida na entrada tem de sair invertida.
+    const invertidos = [...links].reverse();
+    expect(
+      selectRecommendationLinksForVertical(invertidos, "movie").map((l) => l.targetTmdbId),
+    ).toEqual([30, 10]);
+  });
+
+  it("CONTROLE POSITIVO: a fixture tem as DUAS verticais (senao o filtro seria vacuo)", () => {
+    // Sem isto, uma fixture so de filme faria o teste de "so recebe filme"
+    // passar mesmo com o filtro removido.
+    expect(new Set(links.map((l) => l.targetMediaType))).toEqual(new Set(["movie", "tv"]));
+  });
+
+  it("lista vazia continua vazia — nao inventa card", () => {
+    expect(selectRecommendationLinksForVertical([], "movie")).toEqual([]);
+  });
+});
+
+describe("o rotulo diz a RELACAO, e as duas origens nao se disfarcam", () => {
+  const row = {
+    entityId: "9",
+    titleOriginal: "Vizinho",
+    translationTitle: null,
+    slug: "vizinho",
+    year: 2020,
+    posterPath: "/p.jpg",
+    position: 0,
+  };
+
+  it("colecao continua nomeando a colecao", () => {
+    const view = buildSimilarTitles([row], {
+      excludeEntityId: "1",
+      relationLabel: "Colecao O Poderoso Chefao",
+    });
+    expect(view?.relation).toBe("collection");
+    expect(view?.relationLabel).toBe("Colecao O Poderoso Chefao");
+  });
+
+  it("recomendacao se declara recomendacao — nao herda o rotulo de franquia", () => {
+    // Se as duas origens saissem com o mesmo rotulo, a promessa da tela valeria
+    // para uma e nao para a outra. O campo `relation` existe desde o inicio
+    // exatamente para impedir que um segundo sinal entrasse de carona.
+    const view = buildSimilarTitles([row], {
+      excludeEntityId: "1",
+      relation: "recommendation",
+      relationLabel: RECOMMENDATION_RELATION_LABEL,
+    });
+    expect(view?.relation).toBe("recommendation");
+    expect(view?.relationLabel).toBe(RECOMMENDATION_RELATION_LABEL);
+  });
+
+  it("NEGATIVO: o rotulo de recomendacao nao promete parentesco que o sinal nao tem", () => {
+    // "Do mesmo universo" ou "Da mesma franquia" afirmariam relacao declarada.
+    // O TMDB nao da nome ao agrupamento; o rotulo cita a ORIGEM.
+    expect(RECOMMENDATION_RELATION_LABEL.toLowerCase()).not.toContain("franquia");
+    expect(RECOMMENDATION_RELATION_LABEL.toLowerCase()).not.toContain("universo");
+    expect(RECOMMENDATION_RELATION_LABEL).toContain("TMDB");
   });
 });

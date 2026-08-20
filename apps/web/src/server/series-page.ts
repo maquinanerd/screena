@@ -37,6 +37,8 @@ import {
 } from "./entity-awards";
 import { getRatingsForEntity } from "./entity-ratings";
 import { buildRatingsView, type RatingsPanelView } from "../lib/ratings-presenter";
+import { getRecommendedTitlesForEntity } from "./similar-titles";
+import type { SimilarTitlesView } from "../lib/similar-titles-presenter";
 import type { NewsCardView } from "../lib/news-presenter";
 import type { CastMemberView } from "../lib/cast-presenter";
 import type { WatchAvailabilityView } from "../lib/watch-availability-presenter";
@@ -59,6 +61,15 @@ export interface SeriesPageData {
   relatedNews: NewsCardView[];
   /** Elenco principal (cast_members/people); [] quando nao houver. */
   cast: CastMemberView[];
+  /**
+   * "Mais como este" — recomendacoes do TMDB para esta serie.
+   *
+   * Ate 20/08/2026 a serie NAO tinha este campo: a grade reservava meia faixa e
+   * a coluna nao existia, porque nao havia sinal (colecao e so de filme). O
+   * sinal existia o tempo todo no append e era descartado. `null` quando o TMDB
+   * nao recomenda nada ou nenhum alvo esta no catalogo -> ausencia REGISTRADA.
+   */
+  similar: SimilarTitlesView | null;
   /** Disponibilidade no Brasil (watch_availability licenciado); `null` omite o painel. */
   watch: WatchAvailabilityView | null;
   /**
@@ -106,6 +117,8 @@ export const getSeriesPageData = cache(
         prisma.tvShow.findUnique({
           where: { id: entityId },
           select: {
+            // Necessario para o trilho de recomendacao (chaveado por tmdb_id).
+            tmdbId: true,
             nameOriginal: true,
             firstAirDate: true,
             lastAirDate: true,
@@ -278,8 +291,28 @@ export const getSeriesPageData = cache(
     const awards = await getAwardsForEntity(prisma, ENTITY_TYPE, entityId);
     const awardsAbsence = awards === null ? await awardsAbsenceReason(prisma) : null;
 
+    // "Mais como este" na SERIE — que ate agora nao tinha trilho nenhum.
+    //
+    // A recusa anterior estava certa pelo motivo dela: serie nao tem colecao, e
+    // `networks`/`production_companies` agrupam milhares de titulos sem
+    // parentesco — usar isso seria similaridade falsa, pior que coluna vazia.
+    //
+    // O que mudou nao foi o criterio, foi o DADO. `recommendations`/`similar`
+    // estavam no append de serie desde sempre e eram descartados; agora sao
+    // persistidos. A serie ganha o mesmo sinal do filme, e nao um substituto pior.
+    //
+    // Continua `null` quando o TMDB nao recomenda nada ou nenhum alvo esta no
+    // catalogo -> ausencia REGISTRADA e grade de uma coluna, como hoje.
+    const similar = await getRecommendedTitlesForEntity(
+      prisma,
+      "tv",
+      series.tmdbId,
+      entityId,
+    );
+
     return {
       view,
+      similar,
       // C8: id INTERNO do catalogo, serializado — o botao de biblioteca o usa
       // para referenciar a entidade canonica (nunca o slug).
       entityId: String(entityId),
