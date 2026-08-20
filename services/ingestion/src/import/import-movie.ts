@@ -89,6 +89,8 @@ export async function importMovie(ctx: ImportContext, tmdbId: number): Promise<I
       crew: normalized.crew,
       castPresent: normalized.castPresent,
       crewPresent: normalized.crewPresent,
+      recommendations: normalized.recommendations,
+      recommendationsPresent: normalized.recommendationsPresent,
       genres: normalized.genres,
       genresPresent: normalized.genresPresent,
       timestamps,

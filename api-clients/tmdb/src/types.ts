@@ -7,6 +7,23 @@
  */
 
 /**
+ * Bloco paginado de `recommendations`/`similar` no detalhe.
+ *
+ * Chegava desde sempre (esta em MOVIE_APPEND e TV_APPEND) e nao tinha
+ * declaracao aqui — por isso sumia no limite do tipo, sem erro nem aviso.
+ */
+export interface TmdbRelatedTitlesBlock {
+  results?: TmdbRelatedTitle[]
+}
+
+/** Um titulo dentro de `recommendations`/`similar`. */
+export interface TmdbRelatedTitle {
+  id: number
+  /** `movie` | `tv`. Ausente quando o endpoint ja e de um tipo so. */
+  media_type?: string | null
+}
+
+/**
  * Genero do TMDB, como vem no DETALHE (`/movie/{id}.genres`, `/tv/{id}.genres`).
  *
  * NAO e append: e campo de primeiro nivel do detalhe, entao chega em toda
@@ -70,6 +87,8 @@ export interface TmdbMovieDetail {
   backdrop_path?: string | null
   external_ids?: TmdbExternalIds
   credits?: TmdbCredits
+  recommendations?: TmdbRelatedTitlesBlock
+  similar?: TmdbRelatedTitlesBlock
   genres?: TmdbGenreRef[]
 }
 
@@ -103,6 +122,8 @@ export interface TmdbTvDetail {
   external_ids?: TmdbExternalIds
   credits?: TmdbCredits
   seasons?: TmdbSeasonSummary[]
+  recommendations?: TmdbRelatedTitlesBlock
+  similar?: TmdbRelatedTitlesBlock
   genres?: TmdbGenreRef[]
 }
 

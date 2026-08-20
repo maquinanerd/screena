@@ -8,6 +8,7 @@ import type {
   CrewMemberInput,
   ExternalIdInput,
   MovieUpsert,
+  TitleRecommendationLink,
   TitleGenreLink,
 } from '../types.js'
 import { NormalizationError } from '../types.js'
@@ -20,6 +21,7 @@ import {
 } from '../utils/normalize.js'
 import { buildExternalIds } from './external-ids.js'
 import { normalizeCredits } from './credits.js'
+import { collectRecommendations } from './recommendations.js'
 import { normalizeTitleGenres } from './genres.js'
 
 /** Resultado da normalizacao de um filme. */
@@ -32,6 +34,15 @@ export interface NormalizedMovie {
   readonly castPresent: boolean
   /** A fonte trouxe a lista de equipe (array, mesmo vazio)? Ver NormalizedCredits. */
   readonly crewPresent: boolean
+  /**
+   * `recommendations` + `similar`, na ORDEM do TMDB (a ordem e o sinal).
+   *
+   * Chegavam no append desde sempre e eram descartados aqui — terceiro caso do
+   * mesmo padrao. Ver `normalizers/recommendations.ts`.
+   */
+  readonly recommendations: TitleRecommendationLink[]
+  /** A fonte trouxe ALGUM dos dois blocos? Ausencia nunca e lista vazia. */
+  readonly recommendationsPresent: boolean
   /** Generos, na ORDEM do TMDB (editorial: o primeiro e o mais representativo). */
   readonly genres: TitleGenreLink[]
   /**
@@ -72,6 +83,7 @@ export function normalizeMovie(detail: TmdbMovieDetail): NormalizedMovie {
   }
 
   const credits = normalizeCredits(detail.credits)
+  const recomendacoes = collectRecommendations(detail, 'movie')
   const genres = normalizeTitleGenres(detail.genres)
   return {
     movie,
@@ -80,6 +92,8 @@ export function normalizeMovie(detail: TmdbMovieDetail): NormalizedMovie {
     crew: credits.crew,
     castPresent: credits.castPresent,
     crewPresent: credits.crewPresent,
+    recommendations: recomendacoes.links,
+    recommendationsPresent: recomendacoes.present,
     genres: genres.links,
     genresPresent: genres.present,
   }

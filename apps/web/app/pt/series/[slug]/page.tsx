@@ -13,7 +13,9 @@ import { WatchAvailabilityPanel } from '../../../_components/watch-availability-
 import { RatingsPanel } from '../../../_components/ratings-panel'
 import { canonicalRedirectPath } from '../../../../src/lib/canonical-redirect'
 import { buildExternalLinks } from '../../../../src/lib/external-links'
+import { SimilarTitles } from '../../../_components/similar-titles'
 import { TrailerModal } from '../../../_components/trailer-modal'
+
 import { decideSection } from '../../../../src/lib/section-absence'
 import type { SeriesEpisodeView, SeriesSeasonView } from '../../../../src/lib/series-presenter'
 import { NEWS_INDEX_PATH, SITE_URL, gatePublicRobots, seasonPath } from '../../../../src/lib/site'
@@ -204,7 +206,7 @@ export default async function SeriesPage({
   const redirectPath = canonicalRedirectPath(SERIES_INDEX_PATH, slug, data.canonicalSlug)
   if (redirectPath !== null) permanentRedirect(redirectPath)
 
-  const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, watchAbsence, awards, awardsAbsence, ratings, externalIds, trailer } =
+  const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, watchAbsence, awards, awardsAbsence, ratings, externalIds, similar, trailer } =
     data
   const isUnderReview = seo.decision !== 'index'
   const metaText = [view.periodLabel, view.seasonsCountLabel, view.episodesCountLabel]
@@ -293,13 +295,20 @@ export default async function SeriesPage({
   // era um `<div />` VAZIO ocupando metade da faixa em toda serie.
   //
   // O valor e `null` DE PROPOSITO, e nao por esquecimento. O unico parentesco
-  // declarado no schema e `movie_collection_memberships` -> `collections`, que
-  // so existe para FILME. Serie liga a `networks` e a `production_companies`,
-  // que agrupam milhares de titulos sem parentesco nenhum — usar isso encheria
-  // a coluna com "mais como este" falso. Entao a serie nao ganha um sinal pior
-  // para tapar buraco: a grade vira de uma coluna e a ausencia vai para o log
-  // com o motivo que ja existia esperando por este bloco.
-  const similarSection = decideSection(null, {
+  // "MAIS COMO ESTE" NA SERIE — o bloco que ate 20/08/2026 nao existia.
+  //
+  // A recusa anterior estava certa pelo motivo dela: serie nao tem colecao, e
+  // `networks`/`production_companies` agrupam milhares de titulos sem parentesco
+  // — usar isso seria similaridade falsa, pior que coluna vazia.
+  //
+  // O que mudou nao foi o criterio: foi o DADO. `recommendations`/`similar`
+  // estavam no append de serie desde sempre e eram descartados no normalizador.
+  // Agora sao persistidos, e a serie recebe o MESMO sinal do filme — nao um
+  // substituto pior para tapar buraco.
+  //
+  // Sem recomendacao, ou com nenhum alvo no catalogo, `similar` e `null`: a
+  // grade colapsa para uma coluna e a ausencia vai para o log, como antes.
+  const similarSection = decideSection(similar, {
     ...entityRef,
     section: 'mais-como-este',
     reason: 'no_recommendation_dataset',
@@ -713,13 +722,16 @@ export default async function SeriesPage({
                 ))}
               </dl>
             </div>
-            {/* `once`: a causa aqui e uma propriedade do DEPLOY (nao existe
-                dataset de similaridade para a vertical), identica em TODA
-                serie. Sem isto, o log emitiria uma linha por pageview de
-                qualquer serie e afogaria o evento que importa — que e
-                exatamente o ruido contra o qual `section-absence.ts` avisa. */}
-            <SectionBoundary decision={similarSection} once>
-              {() => null}
+            {/* SEM `once`. A causa deixou de ser uma propriedade do DEPLOY
+                ("nao existe dataset para a vertical", identica em toda serie) e
+                passou a ser uma propriedade DESTA serie: o TMDB nao recomendou
+                nada, ou nenhum alvo esta no catalogo. Agora a repeticao carrega
+                informacao — QUAL serie — e silenciar apagaria exatamente o que o
+                operador precisa. Mesma regra do filme. */}
+            <SectionBoundary decision={similarSection}>
+              {(similarView) => (
+                <SimilarTitles headingId="series-similar-title" view={similarView} />
+              )}
             </SectionBoundary>
           </div>
         </section>

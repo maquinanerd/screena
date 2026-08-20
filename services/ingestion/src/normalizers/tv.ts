@@ -10,6 +10,7 @@ import type {
   CastMemberInput,
   CrewMemberInput,
   ExternalIdInput,
+  TitleRecommendationLink,
   TitleGenreLink,
   TvShowUpsert,
 } from '../types.js'
@@ -23,6 +24,7 @@ import {
 } from '../utils/normalize.js'
 import { buildExternalIds } from './external-ids.js'
 import { normalizeCredits } from './credits.js'
+import { collectRecommendations } from './recommendations.js'
 import { normalizeTitleGenres } from './genres.js'
 
 /** Resultado da normalizacao de uma serie. */
@@ -35,6 +37,15 @@ export interface NormalizedTvShow {
   readonly castPresent: boolean
   /** A fonte trouxe a lista de equipe (array, mesmo vazio)? Ver NormalizedCredits. */
   readonly crewPresent: boolean
+  /**
+   * `recommendations` + `similar`, na ORDEM do TMDB (a ordem e o sinal).
+   *
+   * Chegavam no append desde sempre e eram descartados aqui — terceiro caso do
+   * mesmo padrao. Ver `normalizers/recommendations.ts`.
+   */
+  readonly recommendations: TitleRecommendationLink[]
+  /** A fonte trouxe ALGUM dos dois blocos? Ausencia nunca e lista vazia. */
+  readonly recommendationsPresent: boolean
   readonly seasonNumbers: number[]
   /** Generos, na ORDEM do TMDB (editorial: o primeiro e o mais representativo). */
   readonly genres: TitleGenreLink[]
@@ -75,6 +86,7 @@ export function normalizeTvShow(detail: TmdbTvDetail): NormalizedTvShow {
     .filter((value): value is number => typeof value === 'number')
 
   const credits = normalizeCredits(detail.credits)
+  const recomendacoes = collectRecommendations(detail, 'tv')
   const genres = normalizeTitleGenres(detail.genres)
   return {
     tvShow,
@@ -83,6 +95,8 @@ export function normalizeTvShow(detail: TmdbTvDetail): NormalizedTvShow {
     crew: credits.crew,
     castPresent: credits.castPresent,
     crewPresent: credits.crewPresent,
+    recommendations: recomendacoes.links,
+    recommendationsPresent: recomendacoes.present,
     seasonNumbers,
     genres: genres.links,
     genresPresent: genres.present,

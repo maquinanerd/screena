@@ -24,6 +24,7 @@ import type {
   CrewMemberInput,
   ExternalIdInput,
   PersonStub,
+  TitleRecommendationLink,
   TitleGenreLink,
 } from '../types.js'
 
@@ -213,6 +214,39 @@ async function replaceCredits(
 }
 
 /**
+ * Substitui os vinculos de recomendacao de UM titulo.
+ *
+ * NAO APAGA quando a fonte nao falou (`present === false`) — raw antigo, sem os
+ * blocos, e o caso real. Mesma disciplina de `replaceCredits`.
+ *
+ * Escreve por TMDB_ID, sem FK: o alvo pertence ao universo do TMDB e a maioria
+ * ainda nao foi ingerida. A leitura resolve por id e ignora quem nao existe.
+ */
+async function replaceTitleRecommendations(
+  tx: Tx,
+  sourceMediaType: 'movie' | 'tv',
+  sourceTmdbId: number,
+  links: readonly TitleRecommendationLink[],
+  present: boolean,
+): Promise<number> {
+  if (!present) return 0
+  await tx.titleRecommendation.deleteMany({ where: { sourceMediaType, sourceTmdbId } })
+  if (links.length === 0) return 0
+  await tx.titleRecommendation.createMany({
+    data: links.map((l) => ({
+      sourceMediaType,
+      sourceTmdbId,
+      kind: l.kind,
+      targetMediaType: l.targetMediaType,
+      targetTmdbId: l.targetTmdbId,
+      position: l.position,
+    })),
+    skipDuplicates: true,
+  })
+  return links.length
+}
+
+/**
  * Substitui os vinculos de genero de UM titulo.
  *
  * NAO APAGA quando a fonte nao falou. `present === false` significa "o payload
@@ -295,6 +329,13 @@ export function createPrismaStore(prisma: PrismaClient): EntityStorePort {
           select: { id: true },
         })
         await replaceExternalIds(tx, 'movie', row.id, input.externalIds)
+        await replaceTitleRecommendations(
+          tx,
+          'movie',
+          input.movie.tmdbId,
+          input.recommendations,
+          input.recommendationsPresent,
+        )
         await replaceTitleGenres(tx, 'movie', row.id, input.genres, input.genresPresent)
         const credits = await replaceCredits(
           tx,
@@ -347,6 +388,13 @@ export function createPrismaStore(prisma: PrismaClient): EntityStorePort {
           select: { id: true },
         })
         await replaceExternalIds(tx, 'tv', row.id, input.externalIds)
+        await replaceTitleRecommendations(
+          tx,
+          'tv',
+          input.tvShow.tmdbId,
+          input.recommendations,
+          input.recommendationsPresent,
+        )
         await replaceTitleGenres(tx, 'tv', row.id, input.genres, input.genresPresent)
         const credits = await replaceCredits(
           tx,

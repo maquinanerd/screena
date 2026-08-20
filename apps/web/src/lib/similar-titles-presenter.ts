@@ -83,15 +83,39 @@ export interface SimilarTitleCard {
 /** O bloco inteiro, ja com a relacao que o justifica. */
 export interface SimilarTitlesView {
   /**
-   * Qual dataset produziu estes cards. Existe UM hoje (`collection`); o campo
-   * esta aqui para que um segundo sinal futuro nao possa entrar de carona sem
-   * dizer o proprio nome na tela.
+   * Qual dataset produziu estes cards.
+   *
+   * Nasceu com UM valor (`collection`) e o campo existia justamente "para que um
+   * segundo sinal futuro nao possa entrar de carona sem dizer o proprio nome na
+   * tela". O segundo chegou: `recommendation`, do TMDB — que ja vinha no append
+   * e era descartado.
+   *
+   * Os dois NAO sao intercambiaveis, e por isso continuam nomeados na tela:
+   * colecao e parentesco DECLARADO (a franquia), recomendacao e sinal do TMDB.
+   * A promessa muda com a origem, e o rotulo tem de mudar junto.
    */
-  readonly relation: "collection";
-  /** Nome da colecao do TMDB (ex.: "Colecao O Poderoso Chefao"). */
+  readonly relation: SimilarTitlesRelation;
+  /**
+   * O que se diz ao leitor sobre a relacao.
+   *
+   * Em `collection`, o nome da colecao ("Colecao O Poderoso Chefao"). Em
+   * `recommendation`, o rotulo generico da origem — nao ha nome proprio a citar,
+   * e inventar um seria prometer mais que a entrega.
+   */
   readonly relationLabel: string;
   readonly items: readonly SimilarTitleCard[];
 }
+
+/** As origens possiveis do trilho. Vocabulario FECHADO. */
+export type SimilarTitlesRelation = "collection" | "recommendation";
+
+/**
+ * O rotulo da origem `recommendation`.
+ *
+ * Generico de proposito: o TMDB nao da um nome proprio ao agrupamento, e batizar
+ * ("Do mesmo universo") afirmaria um parentesco que o sinal nao sustenta.
+ */
+export const RECOMMENDATION_RELATION_LABEL = "Recomendados pelo TMDB";
 
 function trimToNull(value: string | null | undefined): string | null {
   if (value == null) return null;
@@ -135,6 +159,8 @@ export function buildSimilarTitles(
   options: {
     readonly excludeEntityId: string;
     readonly relationLabel: string | null;
+    /** Default `collection` — preserva o comportamento de quem ja chamava. */
+    readonly relation?: SimilarTitlesRelation;
     readonly limit?: number;
   },
 ): SimilarTitlesView | null {
@@ -170,5 +196,37 @@ export function buildSimilarTitles(
       };
     });
 
-  return { relation: "collection", relationLabel, items };
+  return { relation: options.relation ?? "collection", relationLabel, items };
+}
+
+/** Um vinculo cru de `title_recommendations`, como sai do banco. */
+export interface RecommendationLinkRow {
+  readonly kind: string;
+  readonly targetMediaType: string;
+  readonly targetTmdbId: number;
+  readonly position: number;
+}
+
+/**
+ * Filtra os vinculos que podem virar card NESTA vertical, na ordem do TMDB.
+ *
+ * PURO, e extraido do getter server-only de proposito: a regra abaixo e uma
+ * REGRA, nao um detalhe de consulta, e enquanto vivia dentro do `findMany` nao
+ * havia como prova-la sem banco. O controle negativo (deixar recomendacao de
+ * outra vertical entrar) passava silenciosamente.
+ *
+ * A regra: o trilho de um filme so mostra FILME; o de uma serie so mostra SERIE.
+ * Misturar quebraria a diferenciacao filme/serie, que nunca pode depender so da
+ * cor — ela precisa de label + badge + breadcrumb + schema + URL coerentes
+ * (invariante 11), e um card de serie dentro do bloco de um filme mente em
+ * todos os cinco.
+ *
+ * A ORDEM de entrada e preservada: ela e o sinal de forca do TMDB, e reordenar
+ * destruiria a unica informacao que o bloco carrega.
+ */
+export function selectRecommendationLinksForVertical<T extends RecommendationLinkRow>(
+  links: readonly T[],
+  mediaType: "movie" | "tv",
+): readonly T[] {
+  return links.filter((row) => row.targetMediaType === mediaType);
 }

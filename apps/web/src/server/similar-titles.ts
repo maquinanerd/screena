@@ -14,6 +14,8 @@ import { getPrismaClient } from "@screena/db/server";
 
 import {
   buildSimilarTitles,
+  RECOMMENDATION_RELATION_LABEL,
+  selectRecommendationLinksForVertical,
   SIMILAR_TITLES_LIMIT,
   type SimilarTitleRow,
   type SimilarTitlesView,
@@ -111,5 +113,112 @@ export async function getSimilarMoviesForEntity(
     // colecoes e raro e nao justifica dois trilhos; nomear uma e honesto,
     // nomear "varias" nao diria nada ao leitor.
     relationLabel: siblings.find((row) => row.collection.name.trim() !== "")?.collection.name ?? null,
+  });
+}
+
+/**
+ * Titulos RECOMENDADOS pelo TMDB para esta entidade.
+ *
+ * O sinal que faltava. `recommendations` e `similar` estao no append de filme e
+ * de serie desde sempre — chegavam em toda requisicao de detalhe, ja pagos em
+ * cota, e eram descartados no normalizador. Foi por isso que "Mais como este"
+ * nasceu apoiado so em COLECAO, e que a serie ficou sem trilho nenhum: a
+ * refutacao daquela decisao ("o TMDB recommendations passar a ser persistido")
+ * estava escrita na propria PR.
+ *
+ * RESOLVE POR TMDB_ID e ignora quem nao esta no catalogo. `title_recommendations`
+ * guarda o universo do TMDB, nao o nosso: a maioria dos alvos nunca foi
+ * ingerida, e isso e esperado. O que sobra depois do filtro e o trilho.
+ *
+ * Devolve `null` quando nao ha nenhum alvo ingerido com slug canonico — e quem
+ * chama transforma `null` em ausencia REGISTRADA, nunca em secao vazia.
+ */
+export async function getRecommendedTitlesForEntity(
+  prisma: PrismaClient,
+  mediaType: "movie" | "tv",
+  sourceTmdbId: number,
+  excludeEntityId: bigint,
+): Promise<SimilarTitlesView | null> {
+  const links = await prisma.titleRecommendation.findMany({
+    where: { sourceMediaType: mediaType, sourceTmdbId },
+    select: { kind: true, targetMediaType: true, targetTmdbId: true, position: true },
+    // `recommendation` antes de `similar`: o primeiro e comportamental (quem viu
+    // isto viu aquilo) e o segundo e por metadado. A ordem alfabetica do `kind`
+    // entrega isso por acidente feliz — declarada aqui para nao depender do acaso.
+    orderBy: [{ kind: "asc" }, { position: "asc" }],
+    take: ROW_FETCH_LIMIT,
+  });
+  if (links.length === 0) return null;
+
+  // A regra da vertical vive no modulo PURO e nao aqui: enquanto era um
+  // `.filter` dentro do getter, nao havia como prova-la sem banco — e o
+  // controle negativo (deixar serie entrar no trilho de filme) passava calado.
+  const alvos = selectRecommendationLinksForVertical(links, mediaType);
+  if (alvos.length === 0) return null;
+  const tmdbIds = alvos.map((row) => row.targetTmdbId);
+
+  const titulos =
+    mediaType === "movie"
+      ? await prisma.movie.findMany({
+          where: { tmdbId: { in: tmdbIds } },
+          select: { id: true, tmdbId: true, titleOriginal: true, releaseDate: true, posterPath: true },
+        })
+      : (
+          await prisma.tvShow.findMany({
+            where: { tmdbId: { in: tmdbIds } },
+            select: { id: true, tmdbId: true, nameOriginal: true, firstAirDate: true, posterPath: true },
+          })
+        ).map((row) => ({
+          id: row.id,
+          tmdbId: row.tmdbId,
+          titleOriginal: row.nameOriginal,
+          releaseDate: row.firstAirDate,
+          posterPath: row.posterPath,
+        }));
+  if (titulos.length === 0) return null;
+
+  const entityIds = titulos.map((row) => row.id);
+  const [slugs, translations] = await Promise.all([
+    prisma.slug.findMany({
+      where: {
+        entityType: mediaType,
+        entityId: { in: entityIds },
+        languageCode: LANGUAGE_CODE,
+        isCanonical: true,
+      },
+      select: { entityId: true, slug: true },
+    }),
+    prisma.entityTranslation.findMany({
+      where: { entityType: mediaType, entityId: { in: entityIds }, languageCode: LANGUAGE_CODE },
+      select: { entityId: true, title: true },
+    }),
+  ]);
+
+  const porTmdbId = new Map(titulos.map((row) => [row.tmdbId, row]));
+  const slugPorEntidade = new Map(slugs.map((row) => [row.entityId.toString(), row.slug]));
+  const tituloPorEntidade = new Map(translations.map((row) => [row.entityId.toString(), row.title]));
+
+  const rows: SimilarTitleRow[] = [];
+  // Itera pelos LINKS, nao pelos titulos: a ordem do TMDB e o proprio sinal de
+  // forca, e ordenar por id destruiria a unica informacao que o bloco carrega.
+  for (const [indice, link] of alvos.entries()) {
+    const titulo = porTmdbId.get(link.targetTmdbId);
+    if (titulo === undefined) continue;
+    const key = titulo.id.toString();
+    rows.push({
+      entityId: key,
+      titleOriginal: titulo.titleOriginal,
+      translationTitle: tituloPorEntidade.get(key) ?? null,
+      slug: slugPorEntidade.get(key) ?? null,
+      year: titulo.releaseDate === null ? null : titulo.releaseDate.getUTCFullYear(),
+      posterPath: titulo.posterPath,
+      position: indice,
+    });
+  }
+
+  return buildSimilarTitles(rows, {
+    excludeEntityId: excludeEntityId.toString(),
+    relation: "recommendation",
+    relationLabel: RECOMMENDATION_RELATION_LABEL,
   });
 }

@@ -92,6 +92,8 @@ export function createMovieStrategy(store: EntityStorePort): PromoteStrategy {
         // elenco/equipe ja gravados em vez de apaga-los.
         castPresent: normalized.castPresent,
         crewPresent: normalized.crewPresent,
+        recommendations: normalized.recommendations,
+        recommendationsPresent: normalized.recommendationsPresent,
         // Genero segue a MESMA regra do elenco, e nao por simetria estetica:
         // raw antigo sem `genres` deixa `genresPresent` false, o replace-set nao
         // roda, e os vinculos ja gravados sobrevivem. Sem isso, uma repromocao
@@ -127,6 +129,8 @@ export function createTvStrategy(store: EntityStorePort): PromoteStrategy {
         genresPresent: normalized.genresPresent,
         castPresent: normalized.castPresent,
         crewPresent: normalized.crewPresent,
+        recommendations: normalized.recommendations,
+        recommendationsPresent: normalized.recommendationsPresent,
         timestamps: { lastSyncedAt: row.fetchedAt, staleAfter: null },
       })
       const d = readTvDisplayFields(row.payload)

@@ -44,7 +44,7 @@ import {
   type AwardsPanelView,
 } from "./entity-awards";
 import { getRatingsForEntity } from "./entity-ratings";
-import { getSimilarMoviesForEntity } from "./similar-titles";
+import { getRecommendedTitlesForEntity, getSimilarMoviesForEntity } from "./similar-titles";
 import { getTrailerForEntity } from "./entity-trailer";
 import type { TrailerView } from "../lib/trailer-presenter";
 import { buildRatingsView, type RatingsPanelView } from "../lib/ratings-presenter";
@@ -140,7 +140,9 @@ export const getMoviePageData = cache(
       prisma.movie.findUnique({
         where: { id: entityId },
         select: {
-          // Necessario para o trailer: `tmdb_videos` e chaveada por tmdb_id.
+          // Necessario para DUAS coisas, ambas chaveadas por tmdb_id e nao por
+          // id local: o trilho de recomendacao (`title_recommendations`, que
+          // guarda o universo do TMDB) e o trailer (`tmdb_videos`).
           tmdbId: true,
           titleOriginal: true,
           releaseDate: true,
@@ -284,14 +286,27 @@ export const getMoviePageData = cache(
     const awards = await getAwardsForEntity(prisma, ENTITY_TYPE, entityId);
     const awardsAbsence = awards === null ? await awardsAbsenceReason(prisma) : null;
 
-    // "Mais como este": parentesco DECLARADO pela colecao do TMDB. Depois da
-    // Promise.all porque nao e caminho critico do `generateMetadata` — nenhum
-    // metadado depende dele.
-    // Trailer do bloco de midia (tela 06). Depois da Promise.all pelo mesmo
-    // motivo do trilho: nenhum metadado de `generateMetadata` depende dele.
+    // Trailer do bloco de midia (tela 06). Depois da Promise.all porque nao e
+    // caminho critico do `generateMetadata` — nenhum metadado depende dele.
     const trailer = await getTrailerForEntity(prisma, "movie", movie.tmdbId);
 
-    const similar = await getSimilarMoviesForEntity(prisma, entityId);
+    // "Mais como este", com DOIS sinais e uma ordem que nao e arbitraria.
+    //
+    // 1. COLECAO primeiro. E parentesco DECLARADO pela fonte (a franquia): dois
+    //    filmes da mesma colecao sao parentes por definicao, nao por estatistica.
+    //    Quando existe, e o vinculo mais forte que temos e continua na frente.
+    // 2. RECOMENDACAO do TMDB depois. Sinal real, mas de outra natureza — por
+    //    isso o rotulo na tela muda junto com a origem (`relation`), em vez de
+    //    as duas se disfarcarem de "mais como este" generico.
+    //
+    // Nao se somam num trilho so: misturar franquia com recomendacao faria a
+    // promessa do rotulo valer para uma parte dos cards e nao para a outra.
+    //
+    // Sem nenhum dos dois, continua `null` -> ausencia REGISTRADA, grade colapsa.
+    // Nada de encher com emissora ou produtora.
+    const similar =
+      (await getSimilarMoviesForEntity(prisma, entityId)) ??
+      (await getRecommendedTitlesForEntity(prisma, "movie", movie.tmdbId, entityId));
 
     return {
       view,

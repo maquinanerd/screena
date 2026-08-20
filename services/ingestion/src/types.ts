@@ -37,6 +37,18 @@ export interface MovieUpsert {
   readonly backdropPath: string | null
 }
 
+/** Os dois sinais de parentesco que o TMDB devolve. Vocabulario FECHADO. */
+export type RecommendationKind = 'recommendation' | 'similar'
+
+/** Um vinculo de recomendacao, com a POSICAO que o TMDB devolveu. */
+export interface TitleRecommendationLink {
+  readonly kind: RecommendationKind
+  readonly targetMediaType: 'movie' | 'tv'
+  readonly targetTmdbId: number
+  /** Ordem no array do TMDB — e o proprio sinal de forca. */
+  readonly position: number
+}
+
 /** Um genero ligado a um titulo, com a POSICAO que o TMDB devolveu. */
 export interface TitleGenreLink {
   readonly tmdbId: number

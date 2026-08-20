@@ -116,6 +116,9 @@ const EXPECTED_TABLES = [
   // Backend A — entidades de referencia do catalogo + snapshots de descoberta.
   "collections", "movie_collection_memberships",
   "production_companies", "movie_production_companies", "tv_production_companies",
+  // Fase 10 - recomendacoes do TMDB. `recommendations`/`similar` estavam no
+  // append de filme E de serie desde sempre e eram descartados no normalizador.
+  "title_recommendations",
   // Fase 10 - vinculo titulo <-> genero. `genres` era dicionario SEM ligacao:
   // o `genres[]` do detalhe do TMDB chegava e era descartado no normalizador.
   "movie_genres", "tv_show_genres",

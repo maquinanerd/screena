@@ -17,6 +17,7 @@ import type {
 import type {
   CastMemberInput,
   CrewMemberInput,
+  TitleRecommendationLink,
   TitleGenreLink,
   EpisodeUpsert,
   ExternalIdInput,
@@ -149,6 +150,14 @@ export interface StoreMovieInput {
   readonly castPresent: boolean
   /** Idem para a lista de equipe. */
   readonly crewPresent: boolean
+  /** `recommendations` + `similar`, na ORDEM do TMDB. */
+  readonly recommendations: readonly TitleRecommendationLink[]
+  /**
+   * A FONTE trouxe algum dos dois blocos? OBRIGATORIO pelo MESMO motivo de
+   * `castPresent`: raw antigo nao tem os blocos, e le-lo como "lista vazia"
+   * apagaria o que ja foi coletado.
+   */
+  readonly recommendationsPresent: boolean
   /** Generos do titulo, na ORDEM do TMDB. */
   readonly genres: readonly TitleGenreLink[]
   /**
@@ -171,6 +180,10 @@ export interface StoreTvShowInput {
   readonly castPresent: boolean
   /** Ver `StoreMovieInput.crewPresent`. */
   readonly crewPresent: boolean
+  /** Ver `StoreMovieInput.recommendations`. */
+  readonly recommendations: readonly TitleRecommendationLink[]
+  /** Ver `StoreMovieInput.recommendationsPresent`. */
+  readonly recommendationsPresent: boolean
   /** Ver `StoreMovieInput.genres`. */
   readonly genres: readonly TitleGenreLink[]
   /** Ver `StoreMovieInput.genresPresent`. */

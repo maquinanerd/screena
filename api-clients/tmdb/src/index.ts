@@ -15,6 +15,7 @@ export * from './catalog-types.js'
 export * from './config.js'
 export * from './http.js'
 export * from './append-to-response.js'
+export * from './append-consumption.js'
 export * from './endpoints.js'
 export * from './catalog.js'
 
