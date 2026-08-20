@@ -47,6 +47,15 @@ import { getRatingsForEntity } from "./entity-ratings";
 import { getRecommendedTitlesForEntity, getSimilarMoviesForEntity } from "./similar-titles";
 import { getTrailerForEntity } from "./entity-trailer";
 import { getCinerieScoreForEntity, getGenresForEntity } from "./entity-hero";
+import {
+  getCompaniesForEntity,
+  getCountriesForEntity,
+  getCrewFactsForEntity,
+} from "./entity-facts";
+import {
+  buildMovieFichaFacts,
+  type FichaFact,
+} from "../lib/entity-facts-presenter";
 import type { TrailerView } from "../lib/trailer-presenter";
 import { buildRatingsView, type RatingsPanelView } from "../lib/ratings-presenter";
 import type { CinerieScoreInputView } from "../lib/cinerie-score-presenter";
@@ -122,6 +131,11 @@ export interface MoviePageData {
    */
   score: CinerieScoreInputView;
   /**
+   * A FICHA TÉCNICA do canônico, já composta (fatos apenas — campo sem dado
+   * não vira linha). Direção/Roteiro carregam href de pessoa quando há página.
+   */
+  fichaFacts: FichaFact[];
+  /**
    * "Mais como este" — titulos da MESMA colecao do TMDB. `null` omite o bloco
    * (e a faixa final passa a UMA coluna, em vez de reservar metade para nada).
    */
@@ -164,6 +178,8 @@ export const getMoviePageData = cache(
           status: true,
           originalLanguage: true,
           certification: true,
+          budget: true,
+          releaseDateBr: true,
         },
       }),
       prisma.slug.findFirst({
@@ -321,10 +337,32 @@ export const getMoviePageData = cache(
       (await getRecommendedTitlesForEntity(prisma, "movie", movie.tmdbId, entityId));
 
     // O topo canonico: generos (chips + crumb do meio) e o estado do Score.
-    const [genres, score] = await Promise.all([
+    // A ficha tecnica: equipe (direcao/roteiro), paises e produtoras.
+    const [genres, score, crewFacts, countries, companies] = await Promise.all([
       getGenresForEntity(prisma, ENTITY_TYPE, entityId),
       getCinerieScoreForEntity(prisma, ENTITY_TYPE, entityId),
+      getCrewFactsForEntity(prisma, ENTITY_TYPE, entityId),
+      getCountriesForEntity(prisma, ENTITY_TYPE, entityId),
+      getCompaniesForEntity(prisma, ENTITY_TYPE, entityId),
     ]);
+
+    const fichaFacts = buildMovieFichaFacts({
+      titleOriginal: movie.titleOriginal,
+      displayTitle: view.title,
+      directors: crewFacts.directors,
+      writers: crewFacts.writers,
+      genres,
+      countries,
+      releaseDateBr: movie.releaseDateBr === null ? null : movie.releaseDateBr.toISOString().slice(0, 10),
+      releaseDate: movie.releaseDate === null ? null : movie.releaseDate.toISOString().slice(0, 10),
+      runtimeLabel: view.runtimeLabel,
+      statusLabel: view.statusLabel,
+      originalLanguageLabel: view.originalLanguageLabel,
+      certification: view.certification,
+      companies,
+      budget: movie.budget,
+      releaseYear: view.year,
+    });
 
     return {
       view,
@@ -347,6 +385,7 @@ export const getMoviePageData = cache(
       externalIds,
       genres,
       score,
+      fichaFacts,
       similar,
     };
   },

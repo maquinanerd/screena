@@ -41,6 +41,15 @@ import { getRecommendedTitlesForEntity } from "./similar-titles";
 import type { SimilarTitlesView } from "../lib/similar-titles-presenter";
 import { getTrailerForEntity } from "./entity-trailer";
 import { getCinerieScoreForEntity, getGenresForEntity } from "./entity-hero";
+import {
+  getCompaniesForEntity,
+  getCountriesForEntity,
+  getNetworksForEntity,
+} from "./entity-facts";
+import {
+  buildSeriesFichaFacts,
+  type FichaFact,
+} from "../lib/entity-facts-presenter";
 import type { CinerieScoreInputView } from "../lib/cinerie-score-presenter";
 import type { TrailerView } from "../lib/trailer-presenter";
 import type { NewsCardView } from "../lib/news-presenter";
@@ -113,6 +122,8 @@ export interface SeriesPageData {
    * cálculo persistido. O render nunca calcula (o worker offline calcula).
    */
   score: CinerieScoreInputView;
+  /** A FICHA (Detalhes) do canônico, já composta — fatos apenas. */
+  fichaFacts: FichaFact[];
 }
 
 function seriesCanonicalUrl(slug: string): string {
@@ -152,6 +163,7 @@ export const getSeriesPageData = cache(
             backdropPath: true,
             status: true,
             originalLanguage: true,
+            certification: true,
           },
         }),
         prisma.slug.findFirst({
@@ -338,10 +350,29 @@ export const getSeriesPageData = cache(
     );
 
     // O topo canonico: generos (chips + crumb do meio) e o estado do Score.
-    const [genres, score] = await Promise.all([
+    // A ficha (Detalhes): paises, emissoras e producao.
+    const [genres, score, countries, networks, companies] = await Promise.all([
       getGenresForEntity(prisma, ENTITY_TYPE, entityId),
       getCinerieScoreForEntity(prisma, ENTITY_TYPE, entityId),
+      getCountriesForEntity(prisma, ENTITY_TYPE, entityId),
+      getNetworksForEntity(prisma, entityId),
+      getCompaniesForEntity(prisma, ENTITY_TYPE, entityId),
     ]);
+
+    const fichaFacts = buildSeriesFichaFacts({
+      titleOriginal: series.nameOriginal,
+      displayTitle: view.title,
+      genres,
+      countries,
+      periodLabel: view.periodLabel,
+      statusLabel: view.statusLabel,
+      seasonsCountLabel: view.seasonsCountLabel,
+      episodesCountLabel: view.episodesCountLabel,
+      originalLanguageLabel: view.originalLanguageLabel,
+      certification: series.certification,
+      networks,
+      companies,
+    });
 
     return {
       view,
@@ -349,6 +380,7 @@ export const getSeriesPageData = cache(
       similar,
       genres,
       score,
+      fichaFacts,
       // C8: id INTERNO do catalogo, serializado — o botao de biblioteca o usa
       // para referenciar a entidade canonica (nunca o slug).
       entityId: String(entityId),
