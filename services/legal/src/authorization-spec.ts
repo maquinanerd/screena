@@ -291,9 +291,13 @@ export const TMDB_LOGO_ASSET: LicenseLogoAsset = {
   path: "/brand/sources/tmdb-primary.svg",
   officialSourceUrl: "https://www.themoviedb.org/about/logos-attribution",
   alt: "TMDB",
-  // Subordinado a marca do site, como os termos exigem: o wordmark da Cinerie
-  // no rodape tem 28px; 18px mantem o logo do TMDB visivelmente menor.
-  displayHeightPx: 18,
+  // Subordinado a marca do site, como os termos exigem. 13px: o wordmark do
+  // TMDB e LONGO (489x35 no viewBox), entao a altura e o unico controle — a
+  // 13px ele ocupa ~180px de largura, contra os 150px do wordmark da Cinerie
+  // no rodape, e some na linha de creditos em vez de dominar a faixa.
+  // A altura so vale porque ha CSS para `.footer__credit-logo`: o atributo
+  // `height` do <img> e anulado pelo reset global (`img { height: auto }`).
+  displayHeightPx: 13,
   // `present` desde 2026-08-20: o arquivo em `path` e o "Primary long (blue)"
   // baixado da pagina oficial de logos do TMDB (officialSourceUrl), byte a
   // byte. Trocar o arquivo exige rebaixar para pending ate o novo oficial
