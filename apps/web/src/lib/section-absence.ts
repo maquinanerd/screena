@@ -81,8 +81,23 @@ export type SectionAbsenceReason =
   | "no_awards_for_entity"
   /** Nenhum `content_block` de critica publicavel para esta entidade. */
   | "no_editorial_review"
-  /** Nao existe dataset de recomendacao deterministico. */
+  /**
+   * NAO existe dataset de recomendacao deterministico para esta VERTICAL.
+   *
+   * E o caso da serie hoje: o unico parentesco declarado no schema e
+   * `movie_collection_memberships` -> `collections`, que so existe para filme.
+   * `tv_shows` liga a `networks` e `production_companies`, que agrupam milhares
+   * de titulos sem parentesco — nao servem. Passo pendente, nao fato sobre a
+   * obra: por isso `actionable: true`.
+   */
   | "no_recommendation_dataset"
+  /**
+   * O dataset EXISTE para a vertical, mas este titulo nao esta nele — o filme
+   * nao pertence a colecao nenhuma. E fato sobre a obra, nao passo pendente
+   * (por isso `actionable: false`), pela mesma razao que separa
+   * `no_offer_for_entity` de `no_authorized_provider`.
+   */
+  | "no_recommendation_for_entity"
   /** O catalogo nao tem elenco para este titulo. */
   | "no_cast"
   /** Nenhum artigo publicado vinculado a esta entidade. */

@@ -8,6 +8,7 @@ import { EntitySynopsis } from '../../../_components/entity-synopsis'
 import { EntityExternalIds } from '../../../_components/entity-external-ids'
 import { AwardsBand } from '../../../_components/awards-band'
 import { SectionBoundary } from '../../../_components/section-boundary'
+import { SimilarTitles } from '../../../_components/similar-titles'
 import { WatchAvailabilityPanel } from '../../../_components/watch-availability-panel'
 import { RatingsPanel } from '../../../_components/ratings-panel'
 import { canonicalRedirectPath } from '../../../../src/lib/canonical-redirect'
@@ -106,7 +107,7 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
   const redirectPath = canonicalRedirectPath(MOVIES_INDEX_PATH, slug, data.canonicalSlug)
   if (redirectPath !== null) permanentRedirect(redirectPath)
 
-  const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, watchAbsence, awards, awardsAbsence, ratings, externalIds } =
+  const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, watchAbsence, awards, awardsAbsence, ratings, externalIds, similar } =
     data
   const isUnderReview = seo.decision !== 'index'
   const externalLinks = buildExternalLinks(externalIds, 'movie')
@@ -179,6 +180,16 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
     ...entityRef,
     section: 'noticias',
     reason: 'no_linked_article',
+  })
+  // "Mais como este": a segunda coluna da faixa final. Ate aqui ela era um
+  // `<div />` VAZIO — metade da faixa reservada para nada em todo titulo. Agora
+  // ou tem trilho, ou a grade vira de uma coluna e a ausência vai para o log.
+  const similarSection = decideSection(similar, {
+    ...entityRef,
+    section: 'mais-como-este',
+    // Por ENTIDADE: o dataset existe para filme (colecoes do TMDB) — este
+    // titulo e que nao esta em colecao nenhuma. Fato sobre a obra.
+    reason: 'no_recommendation_for_entity',
   })
 
   const breadcrumbJsonLd = {
@@ -512,10 +523,10 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
         )}
       </SectionBoundary>
 
-      {/* ===== Ficha técnica ===== */}
-      {facts.length > 0 ? (
+      {/* ===== Ficha técnica + Mais como este ===== */}
+      {facts.length > 0 || similarSection.rendered ? (
         <section aria-labelledby="movie-facts-title" className="detail-container" style={{ paddingTop: 64, paddingBottom: 72 }}>
-          <div className="ficha-grid">
+          <div className={similarSection.rendered ? 'ficha-grid' : 'ficha-grid ficha-grid--solo'}>
             <div>
               <div className="eyebrow-bar">
                 <span id="movie-facts-title">Ficha técnica</span>
@@ -529,7 +540,11 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
                 ))}
               </dl>
             </div>
-            <div />
+            <SectionBoundary decision={similarSection}>
+              {(similarView) => (
+                <SimilarTitles headingId="movie-similar-title" view={similarView} />
+              )}
+            </SectionBoundary>
           </div>
         </section>
       ) : null}
