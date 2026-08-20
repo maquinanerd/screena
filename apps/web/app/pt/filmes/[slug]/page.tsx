@@ -9,6 +9,7 @@ import { EntityExternalIds } from '../../../_components/entity-external-ids'
 import { AwardsBand } from '../../../_components/awards-band'
 import { SectionBoundary } from '../../../_components/section-boundary'
 import { SimilarTitles } from '../../../_components/similar-titles'
+import { TrailerModal } from '../../../_components/trailer-modal'
 import { WatchAvailabilityPanel } from '../../../_components/watch-availability-panel'
 import { RatingsPanel } from '../../../_components/ratings-panel'
 import { canonicalRedirectPath } from '../../../../src/lib/canonical-redirect'
@@ -107,7 +108,7 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
   const redirectPath = canonicalRedirectPath(MOVIES_INDEX_PATH, slug, data.canonicalSlug)
   if (redirectPath !== null) permanentRedirect(redirectPath)
 
-  const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, watchAbsence, awards, awardsAbsence, ratings, externalIds, similar } =
+  const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, watchAbsence, awards, awardsAbsence, ratings, externalIds, similar, trailer } =
     data
   const isUnderReview = seo.decision !== 'index'
   const externalLinks = buildExternalLinks(externalIds, 'movie')
@@ -323,7 +324,24 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
                 />
               ) : null}
             </div>
-            <div className="media-strip__cell">
+            {/*
+              O SLOT DO TRAILER. Até 20/08/2026 esta célula mostrava o backdrop
+              e nada mais — o bloco do canônico é pôster · TRAILER · 3 atalhos,
+              e o trailer nunca chegou aqui.
+
+              Não era permissão faltando: a licença de vídeo do TMDB existe
+              desde 13/08/2026. Era fiação — nada consultava `tmdb_videos` para
+              a entidade da página.
+
+              O backdrop CONTINUA, como pôster do player: é a imagem sobre a
+              qual o play aparece. Sem trailer, a célula fica exatamente como
+              estava — sem botão, sem espaço reservado, sem promessa.
+
+              NADA CARREGA ANTES DO CLIQUE. O `<iframe>` do YouTube só existe
+              dentro do diálogo, que só é montado quando `open` vira true. O
+              botão é um `<button>`, não um player escondido.
+            */}
+            <div className="media-strip__cell" data-trailer={trailer !== null ? 'ready' : undefined}>
               {view.media.backdrop !== null ? (
                 <img
                   alt=""
@@ -333,7 +351,18 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
                   width={view.media.backdrop.width}
                 />
               ) : null}
-              <span className="media-strip__caption">Mídia do título</span>
+              {trailer !== null ? (
+                <span className="media-strip__playwrap">
+                  <TrailerModal
+                    title={view.title}
+                    trailer={trailer}
+                    triggerClassName="media-strip__play"
+                  />
+                </span>
+              ) : null}
+              <span className="media-strip__caption">
+                {trailer !== null ? 'Trailer' : 'Mídia do título'}
+              </span>
             </div>
             <div className="media-strip__stack">
               <a className="media-strip__cell" href={NEWS_INDEX_PATH}>

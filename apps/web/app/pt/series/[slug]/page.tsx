@@ -13,6 +13,7 @@ import { WatchAvailabilityPanel } from '../../../_components/watch-availability-
 import { RatingsPanel } from '../../../_components/ratings-panel'
 import { canonicalRedirectPath } from '../../../../src/lib/canonical-redirect'
 import { buildExternalLinks } from '../../../../src/lib/external-links'
+import { TrailerModal } from '../../../_components/trailer-modal'
 import { decideSection } from '../../../../src/lib/section-absence'
 import type { SeriesEpisodeView, SeriesSeasonView } from '../../../../src/lib/series-presenter'
 import { NEWS_INDEX_PATH, SITE_URL, gatePublicRobots, seasonPath } from '../../../../src/lib/site'
@@ -203,7 +204,7 @@ export default async function SeriesPage({
   const redirectPath = canonicalRedirectPath(SERIES_INDEX_PATH, slug, data.canonicalSlug)
   if (redirectPath !== null) permanentRedirect(redirectPath)
 
-  const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, watchAbsence, awards, awardsAbsence, ratings, externalIds } =
+  const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, watchAbsence, awards, awardsAbsence, ratings, externalIds, trailer } =
     data
   const isUnderReview = seo.decision !== 'index'
   const metaText = [view.periodLabel, view.seasonsCountLabel, view.episodesCountLabel]
@@ -432,7 +433,15 @@ export default async function SeriesPage({
                 />
               ) : null}
             </div>
-            <div className="media-strip__cell">
+            {/*
+              O SLOT DO TRAILER — o mesmo da tela 06. Ver a pagina de filme para
+              o historico: a licenca de video existe desde 13/08/2026 e o
+              trailer nunca chegou ao bloco de midia por falta de fiacao.
+
+              O backdrop CONTINUA, como poster do player. Sem trailer, a celula
+              fica exatamente como estava. Nada carrega antes do clique.
+            */}
+            <div className="media-strip__cell" data-trailer={trailer !== null ? 'ready' : undefined}>
               {view.media.backdrop !== null ? (
                 <img
                   alt=""
@@ -442,7 +451,18 @@ export default async function SeriesPage({
                   width={view.media.backdrop.width}
                 />
               ) : null}
-              <span className="media-strip__caption">Mídia do título</span>
+              {trailer !== null ? (
+                <span className="media-strip__playwrap">
+                  <TrailerModal
+                    title={view.title}
+                    trailer={trailer}
+                    triggerClassName="media-strip__play"
+                  />
+                </span>
+              ) : null}
+              <span className="media-strip__caption">
+                {trailer !== null ? 'Trailer' : 'Mídia do título'}
+              </span>
             </div>
             <div className="media-strip__stack">
               <a className="media-strip__cell" href="#episodios">
