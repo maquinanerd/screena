@@ -38,6 +38,8 @@ export type SectionKey =
   | "biografia"
   /** Trilho "Em breve" — escopo de ROTA (home/filmes/series), nao de entidade. */
   | "em-breve"
+  /** "Para voce" — trilho personalizado do hub de streaming (escopo de ROTA). */
+  | "para-voce"
   /** Faixa de newsletter do rodape — escopo de CHROME, nao de rota nem entidade. */
   | "newsletter";
 
@@ -123,6 +125,19 @@ export type SectionAbsenceReason =
    */
   | "below_upcoming_floor"
   /**
+   * NAO EXISTE servico de recomendacao personalizada exposto ao app publico.
+   *
+   * "Para voce" nao e um trilho vazio a espera de dado: nao ha, em lugar nenhum,
+   * quem produza a recomendacao. Uma secao que NUNCA pode ter sucesso nao deve
+   * renderizar — e a mesma regra da faixa de newsletter, pelo mesmo motivo: um
+   * bloco que so sabe dizer "ainda nao" gasta a atencao do leitor a toa e ainda
+   * faz a pagina parecer quebrada.
+   *
+   * `actionable: true`: e passo pendente (construir o servico), nunca um fato
+   * sobre o catalogo.
+   */
+  | "no_recommendation_service"
+  /**
    * NAO EXISTE onde guardar uma inscricao de newsletter.
    *
    * Nao ha modelo de inscricao em `packages/db/prisma`. Sem ele, o formulario so
@@ -175,6 +190,7 @@ const ACTIONABLE_REASONS: ReadonlySet<SectionAbsenceReason> = new Set([
   "no_biography_source",
   "no_upcoming_title",
   "below_upcoming_floor",
+  "no_recommendation_service",
   "newsletter_storage_unavailable",
 ]);
 

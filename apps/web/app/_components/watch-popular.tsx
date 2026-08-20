@@ -28,21 +28,34 @@ export interface WatchPopularTitle {
   offerTypeLabels: string[]
 }
 
-export interface WatchPopularProvider {
-  providerKey: string
-  providerName: string
+/**
+ * Uma MARCA do hub: um nome que o leitor reconhece e as rotas que levam a ela.
+ *
+ * O hub listava PROVEDOR, e com os 24 provedores BR isso virou "Paramount
+ * Plus", "Paramount Plus Premium" e "Paramount+ Amazon Channel" como se fossem
+ * tres servicos. A marca aparece uma vez; as rotas ficam embaixo dela, como ja
+ * acontece no painel da pagina de titulo. A decomposicao e DECLARADA em
+ * `@screena/public-contracts`, nunca derivada da string do nome.
+ */
+export interface WatchPopularBrand {
+  key: string
+  name: string
+  /** Rotas da marca. `label` null = marca de rota unica (nome ja diz tudo). */
+  routes: { providerName: string; label: string | null }[]
   titles: WatchPopularTitle[]
 }
 
 const GRID_LIMIT = 12
 
-export function WatchPopular({ providers }: { providers: WatchPopularProvider[] }): ReactNode {
+export function WatchPopular({ brands }: { brands: WatchPopularBrand[] }): ReactNode {
   const [active, setActive] = useState<string>('all')
 
   const titles =
     active === 'all'
-      ? dedupe(providers.flatMap((provider) => provider.titles))
-      : (providers.find((provider) => provider.providerKey === active)?.titles ?? [])
+      ? dedupe(brands.flatMap((brand) => brand.titles))
+      : (brands.find((brand) => brand.key === active)?.titles ?? [])
+
+  const activeBrand = brands.find((brand) => brand.key === active) ?? null
 
   return (
     <>
@@ -56,19 +69,36 @@ export function WatchPopular({ providers }: { providers: WatchPopularProvider[] 
         >
           Todas
         </button>
-        {providers.map((provider) => (
+        {brands.map((brand) => (
           <button
-            aria-selected={active === provider.providerKey}
+            aria-selected={active === brand.key}
             className="watch-tab"
-            key={provider.providerKey}
-            onClick={() => setActive(provider.providerKey)}
+            key={brand.key}
+            onClick={() => setActive(brand.key)}
             role="tab"
             type="button"
           >
-            {provider.providerName}
+            {brand.name}
           </button>
         ))}
       </div>
+      {/*
+        AS ROTAS DA MARCA, quando ha mais de uma. Some-las seria esconder um
+        custo atras do nome: "canal no Prime Video" quer dizer que o leitor
+        precisa do hospedeiro MAIS o canal. Texto visivel, nunca atributo.
+      */}
+      {activeBrand !== null && activeBrand.routes.length > 1 ? (
+        <ul className="watch-brand-routes">
+          {activeBrand.routes.map((route) => (
+            <li className="watch-brand-routes__item" key={route.providerName}>
+              <span className="watch-brand-routes__name">{route.providerName}</span>
+              {route.label !== null ? (
+                <span className="watch-brand-routes__label">{route.label}</span>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
       <div className="watch-grid">
         {titles.slice(0, GRID_LIMIT).map((title) => (
           <a
