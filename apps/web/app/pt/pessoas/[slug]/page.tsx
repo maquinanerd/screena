@@ -123,6 +123,12 @@ export default async function PersonPage({ params }: { params: Promise<PersonPag
     ...view.blocks
       .filter((block) => BIOGRAPHY_BLOCK_TYPES.has(block.blockType))
       .map((block) => block.content),
+    // TERCEIRA origem, e a que faltava: a `biography` que o TMDB devolve no
+    // detalhe de pessoa. Ela vem POR ULTIMO de proposito — texto proprio
+    // (`meta_description`, `editorial_intro`) precede o de terceiro.
+    // `view.sourceBiography` ja passou pelo gate de licenca (invariante 6): a
+    // pagina nao decide isso, so ordena.
+    view.sourceBiography,
   ].filter((paragraph): paragraph is string => paragraph !== null)
   const newsContext = view.blocks.find((block) => block.blockType === 'news_context') ?? null
   // A BIOGRAFIA É UM BLOCO DO CANÔNICO, e hoje ela falta em quase toda pessoa.
@@ -131,12 +137,16 @@ export default async function PersonPage({ params }: { params: Promise<PersonPag
   // INTEIRA (não sobre a seção de continuação): com um parágrafo, o cabeçalho o
   // exibe e não há ausência nenhuma para registrar; com zero, o log diz por quê.
   //
-  // O porquê é fundo: a página monta a biografia de `meta_description` +
-  // `content_blocks` de tipo `editorial_intro`, e a terceira origem possível — a
-  // `biography` que o TMDB devolve no detalhe de pessoa — é baixada e
-  // DESCARTADA (`people` tem a coluna de governança `biography_source_status` e
-  // não tem a coluna de texto). Ver `no_biography_source` em
-  // `src/lib/section-absence.ts`.
+  // TRÊS origens, em ordem: `meta_description` (texto próprio de SEO),
+  // `content_blocks` de tipo `editorial_intro` (texto próprio editorial) e a
+  // `biography` crua do TMDB (texto de terceiro, por último).
+  //
+  // A terceira era BAIXADA E DESCARTADA até 20/08/2026 — `people` tinha a coluna
+  // de governança (`biography_source_status`) e não tinha a de texto. Agora tem.
+  // Mas ter o texto não é exibi-lo: `biography_source_status` nasce `unknown` e
+  // o gate de licença (invariante 6) continua barrando até decisão humana. Ou
+  // seja, `no_biography_source` continua sendo o motivo correto hoje — mudou a
+  // causa (era "não existe coluna", virou "não há licença registrada").
   const biographySection = decideSection(biography.length > 0 ? biography : null, {
     entityType: 'person',
     entityId,

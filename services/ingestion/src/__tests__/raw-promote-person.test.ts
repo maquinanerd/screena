@@ -45,8 +45,11 @@ function personRow(id: number, over: Record<string, unknown> = {}): RawEntityRow
       place_of_birth: 'Rio de Janeiro',
       profile_path: `/pf${id}.jpg`,
       imdb_id: `nm000${id}138`,
-      // biography presente no payload, mas a promocao NAO a persiste (fora de escopo).
-      biography: 'Uma biografia longa que NAO deve ser promovida.',
+      // A biografia SEMPRE chegou no payload. Ate 20/08/2026 esta linha dizia
+      // "a promocao NAO a persiste (fora de escopo)" e fixava o descarte como
+      // esperado — `people` tinha a coluna de governanca da bio e nao tinha a de
+      // texto. Agora tem, e a promocao grava.
+      biography: 'Uma biografia longa, escrita pela fonte.',
       ...over,
     },
   }
@@ -140,7 +143,14 @@ const personOpts = (
 })
 
 describe('readPersonDisplayFields', () => {
-  it('le so o name; overview sempre null (sem bio)', () => {
+  /**
+   * A biografia passou a ser PERSISTIDA (em `people.biography`), e mesmo assim
+   * ela continua fora de `overview`. Nao e inconsistencia: `overview` alimenta
+   * `entity_translations.summary`, que e o resumo curto da entidade. Biografia e
+   * conteudo editorial longo, com governanca propria (`biography_source_status`)
+   * e coluna propria. Misturar os dois faria a bio inteira virar meta-description.
+   */
+  it('le so o name; overview sempre null MESMO com bio no payload', () => {
     expect(readPersonDisplayFields({ name: 'Fernanda Montenegro', biography: 'x' })).toEqual({
       title: 'Fernanda Montenegro',
       overview: null,
@@ -163,7 +173,31 @@ describe('promotePeopleFromRaw', () => {
     expect(input.person.knownForDepartment).toBe('Acting')
     expect(input.person.placeOfBirth).toBe('Rio de Janeiro')
     expect(input.person.profilePath).toBe('/pf1.jpg')
+    expect(input.person.biography).toBe('Uma biografia longa, escrita pela fonte.')
     expect(input.lastSyncedAt).toEqual(FETCHED)
+  })
+
+  it('biografia AUSENTE ou vazia vira null — nunca string vazia', async () => {
+    // Um paragrafo em branco no banco seria pior que a ausencia: a pagina o
+    // renderizaria como bloco vazio em vez de registrar `no_biography_source`.
+    for (const valor of [undefined, null, '', '   ']) {
+      const { store, personCalls } = makePersonStore()
+      const { finalize } = makeFinalize()
+      await promotePeopleFromRaw(
+        personOpts(makePersonSource([personRow(1, { biography: valor })]), store, finalize),
+      )
+      expect(personCalls[0]!.person.biography, `valor: ${JSON.stringify(valor)}`).toBeNull()
+    }
+  })
+
+  it('NEGATIVO: persistir o texto NAO liga a exibicao', async () => {
+    // Sao dois passos, como em ratings e em streaming. `biographySourceStatus`
+    // (a coluna que governa a tela, invariante 6) nao e escrita pela promocao:
+    // ela nem aparece no upsert. Se um dia aparecer, este teste reprova.
+    const { store, personCalls } = makePersonStore()
+    const { finalize } = makeFinalize()
+    await promotePeopleFromRaw(personOpts(makePersonSource([personRow(1)]), store, finalize))
+    expect(Object.keys(personCalls[0]!.person)).not.toContain('biographySourceStatus')
   })
 
   it('promove external_ids (imdb + tmdb_person)', async () => {

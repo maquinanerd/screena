@@ -6,7 +6,13 @@
  */
 
 import type { TmdbTvDetail } from '@screena/tmdb-client'
-import type { CastMemberInput, CrewMemberInput, ExternalIdInput, TvShowUpsert } from '../types.js'
+import type {
+  CastMemberInput,
+  CrewMemberInput,
+  ExternalIdInput,
+  TitleGenreLink,
+  TvShowUpsert,
+} from '../types.js'
 import { NormalizationError } from '../types.js'
 import {
   normalizeDate,
@@ -17,6 +23,7 @@ import {
 } from '../utils/normalize.js'
 import { buildExternalIds } from './external-ids.js'
 import { normalizeCredits } from './credits.js'
+import { normalizeTitleGenres } from './genres.js'
 
 /** Resultado da normalizacao de uma serie. */
 export interface NormalizedTvShow {
@@ -29,6 +36,10 @@ export interface NormalizedTvShow {
   /** A fonte trouxe a lista de equipe (array, mesmo vazio)? Ver NormalizedCredits. */
   readonly crewPresent: boolean
   readonly seasonNumbers: number[]
+  /** Generos, na ORDEM do TMDB (editorial: o primeiro e o mais representativo). */
+  readonly genres: TitleGenreLink[]
+  /** A fonte trouxe o array de generos (mesmo vazio)? Ver NormalizedMovie. */
+  readonly genresPresent: boolean
 }
 
 /** Normaliza uma serie; lanca NormalizationError sem id ou sem nome. */
@@ -64,6 +75,7 @@ export function normalizeTvShow(detail: TmdbTvDetail): NormalizedTvShow {
     .filter((value): value is number => typeof value === 'number')
 
   const credits = normalizeCredits(detail.credits)
+  const genres = normalizeTitleGenres(detail.genres)
   return {
     tvShow,
     externalIds: buildExternalIds('tv', detail.id, imdbId),
@@ -72,5 +84,7 @@ export function normalizeTvShow(detail: TmdbTvDetail): NormalizedTvShow {
     castPresent: credits.castPresent,
     crewPresent: credits.crewPresent,
     seasonNumbers,
+    genres: genres.links,
+    genresPresent: genres.present,
   }
 }

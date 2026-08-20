@@ -92,6 +92,12 @@ export function createMovieStrategy(store: EntityStorePort): PromoteStrategy {
         // elenco/equipe ja gravados em vez de apaga-los.
         castPresent: normalized.castPresent,
         crewPresent: normalized.crewPresent,
+        // Genero segue a MESMA regra do elenco, e nao por simetria estetica:
+        // raw antigo sem `genres` deixa `genresPresent` false, o replace-set nao
+        // roda, e os vinculos ja gravados sobrevivem. Sem isso, uma repromocao
+        // de arquivo antigo apagaria os generos do catalogo inteiro.
+        genres: normalized.genres,
+        genresPresent: normalized.genresPresent,
         // Frescor herdada do raw: o tipado e tao fresco quanto o payload coletado.
         timestamps: { lastSyncedAt: row.fetchedAt, staleAfter: null },
       })
@@ -116,7 +122,9 @@ export function createTvStrategy(store: EntityStorePort): PromoteStrategy {
         externalIds: normalized.externalIds,
         cast: normalized.cast,
         crew: normalized.crew,
-        // Ver a estrategia de filme: raw sem `credits` preserva o ja gravado.
+        // Ver a estrategia de filme: raw sem `credits`/`genres` preserva o ja gravado.
+        genres: normalized.genres,
+        genresPresent: normalized.genresPresent,
         castPresent: normalized.castPresent,
         crewPresent: normalized.crewPresent,
         timestamps: { lastSyncedAt: row.fetchedAt, staleAfter: null },

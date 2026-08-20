@@ -531,6 +531,7 @@ model Movie {
   language              Language?                   @relation(fields: [originalLanguage], references: [code])
   collectionMemberships MovieCollectionMembership[]
   productionCompanies   MovieProductionCompany[]
+  genres                MovieGenre[]
 
   @@index([status])
   @@index([updatedAt])
@@ -572,6 +573,7 @@ model TvShow {
   seasons             Season[]
   networks            TvNetwork[]
   productionCompanies TvProductionCompany[]
+  genres              TvShowGenre[]
 
   @@index([status])
   @@index([updatedAt])
@@ -643,6 +645,12 @@ model Person {
   deathday              DateTime?     @db.Date
   placeOfBirth          String?       @map("place_of_birth")
   profilePath           String?       @map("profile_path")
+  // Biografia crua do TMDB (`/person/{id}.biography`). Chegava no payload desde
+  // a Fase 2 e era DESCARTADA por falta de coluna: `people` tinha a coluna de
+  // GOVERNANCA da bio e nao tinha a de TEXTO, entao `normalizePerson` nem
+  // tentava persistir. A pagina de pessoa exibia a ausencia com o motivo
+  // `no_biography_source` (PR #186) — motivo correto, causa consertada aqui.
+  biography             String?       @db.Text
   biographySourceStatus LicenseStatus @default(unknown) @map("biography_source_status") // governa EXIBICAO da bio (inv. 6)
   createdAt             DateTime      @default(now()) @map("created_at")
   updatedAt             DateTime      @updatedAt @map("updated_at")
@@ -1255,8 +1263,55 @@ model Genre {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  movies   MovieGenre[]
+  tvShows  TvShowGenre[]
+
   @@id([mediaType, tmdbId])
   @@map("genres")
+}
+
+// --- Vinculo titulo <-> genero (Fase 10) ---
+// `genres` existia como DICIONARIO desde a Fase 6 e NAO tinha ligacao com
+// titulo nenhum: o `genres[]` do detalhe do TMDB chegava no payload e era
+// descartado por `normalizeMovie`/`normalizeTv`, exatamente como a biografia de
+// pessoa e como `watch/providers` antes da PR #181.
+//
+// Ordem PRESERVADA (`position`): o TMDB devolve os generos em ordem de
+// relevancia editorial, e o chip do hero mostra os primeiros. Reordenar por id
+// ou por nome trocaria "Ficcao cientifica" por "Acao" na vitrine sem que
+// ninguem tivesse decidido isso.
+//
+// `mediaType` e coluna propria por causa da PK composta de `genres`. Um CHECK na
+// migration prende o valor a 'movie'/'tv' conforme a tabela, para que a FK nao
+// possa apontar um filme para um genero de serie.
+model MovieGenre {
+  movieId        BigInt   @map("movie_id")
+  genreMediaType String   @default("movie") @map("genre_media_type")
+  genreTmdbId    Int      @map("genre_tmdb_id")
+  position       Int
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  movie Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  genre Genre @relation(fields: [genreMediaType, genreTmdbId], references: [mediaType, tmdbId], onDelete: Cascade)
+
+  @@id([movieId, genreTmdbId])
+  @@index([genreMediaType, genreTmdbId])
+  @@map("movie_genres")
+}
+
+model TvShowGenre {
+  tvShowId       BigInt   @map("tv_show_id")
+  genreMediaType String   @default("tv") @map("genre_media_type")
+  genreTmdbId    Int      @map("genre_tmdb_id")
+  position       Int
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  tvShow TvShow @relation(fields: [tvShowId], references: [id], onDelete: Cascade)
+  genre  Genre  @relation(fields: [genreMediaType, genreTmdbId], references: [mediaType, tmdbId], onDelete: Cascade)
+
+  @@id([tvShowId, genreTmdbId])
+  @@index([genreMediaType, genreTmdbId])
+  @@map("tv_show_genres")
 }
 
 // --- Mídia TMDB (Fase 7): metadados de imagens ---

@@ -1,8 +1,13 @@
 /**
  * person.ts — Normaliza o detalhe de pessoa do TMDB.
  *
- * Nao persiste biografia (o schema nao tem coluna de bio); `biography_source_status`
- * permanece no default `unknown` (governanca de exibicao, fora desta fase).
+ * PERSISTE a biografia desde 20/08/2026. Ate entao este cabecalho dizia "nao
+ * persiste biografia (o schema nao tem coluna de bio)" — e era literalmente
+ * verdade: `people` tinha a coluna de GOVERNANCA (`biography_source_status`) e
+ * nao tinha a de TEXTO. O dado chegava no payload e era jogado fora.
+ *
+ * `biography_source_status` continua no default `unknown`: gravar o texto NAO
+ * autoriza exibi-lo. A licenca (invariante 6) segue sendo o gate.
  */
 
 import type { TmdbPersonDetail } from '@screena/tmdb-client'
@@ -43,6 +48,9 @@ export function normalizePerson(detail: TmdbPersonDetail): NormalizedPerson {
     deathday: normalizeDate(detail.deathday),
     placeOfBirth: nullableString(detail.place_of_birth),
     profilePath: nullableString(detail.profile_path),
+    // `nullableString` colapsa "" em null: biografia vazia e ausencia, nunca um
+    // paragrafo em branco que a pagina renderizaria como bloco vazio.
+    biography: nullableString(detail.biography),
   }
 
   return { person, externalIds: buildExternalIds('person', detail.id, imdbId) }

@@ -102,6 +102,11 @@ export const getPersonPageData = cache(
             deathday: true,
             placeOfBirth: true,
             profilePath: true,
+            // A bio crua do TMDB e a coluna que a governa. As DUAS, sempre
+            // juntas: ler o texto sem o status faria a pagina exibir dado sem
+            // licenca (invariante 6).
+            biography: true,
+            biographySourceStatus: true,
             tmdbId: true,
           },
         }),
@@ -175,6 +180,8 @@ export const getPersonPageData = cache(
         deathDateIso: isoDate(person.deathday),
         placeOfBirth: person.placeOfBirth,
         profilePath: person.profilePath,
+        biography: person.biography,
+        biographySourceStatus: person.biographySourceStatus,
       },
       translation,
       blocks,
