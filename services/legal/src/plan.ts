@@ -239,9 +239,23 @@ export function isPlanClean(plan: AuthorizationPlan): boolean {
 }
 
 /**
+ * As UNICAS fontes cujo logo pode ser autorizado, por chave.
+ *
+ * Hoje so o TMDB, e nao por escolha editorial: os termos da API do TMDB
+ * **exigem** o logo ("You must use the TMDB logo to identify Your use of TMDB,
+ * the TMDB APIs, or TMDB Content"). IMDb exige autorizacao por escrito que nao
+ * temos; Rotten Tomatoes exige aprovacao comercial E vincula o icone a faixa da
+ * nota; a OMDb nao pode sublicenciar marca de terceiro; as plataformas de
+ * streaming sao 24 titulares distintos. Os motivos por fonte estao escritos em
+ * `logoRationale`, no proprio spec.
+ */
+const LOGO_ALLOWED_SOURCE_KEYS: ReadonlySet<string> = new Set(["tmdb"]);
+
+/**
  * Guarda de segurança PURA: o plano NUNCA pode conter uma decisão que autorize
- * o Cinerie Score ou uma obra derivada. Chamada antes de qualquer apply — se
- * disparar, é bug no spec, não estado a corrigir.
+ * o Cinerie Score ou uma obra derivada, nem liberar a marca gráfica de uma fonte
+ * fora da allowlist. Chamada antes de qualquer apply — se disparar, é bug no
+ * spec, não estado a corrigir.
  */
 export function assertNoBlockedGrants(plan: AuthorizationPlan): void {
   for (const entry of plan.entries) {
@@ -253,8 +267,33 @@ export function assertNoBlockedGrants(plan: AuthorizationPlan): void {
         throw new Error(`plano invalido: derivative_allowed em "${entry.label}" (obra derivada nao autorizada)`);
       }
     }
-    if (entry.license.target.logoAllowed || entry.license.target.reviewQuoteAllowed) {
-      throw new Error(`plano invalido: logo/review_quote em "${entry.label}" (nao autorizados)`);
+    if (entry.license.target.reviewQuoteAllowed) {
+      throw new Error(`plano invalido: review_quote em "${entry.label}" (nao autorizado)`);
+    }
+    // LOGO: a guarda deixou de ser "nenhum" e virou uma ALLOWLIST NOMINAL.
+    //
+    // Ate 20/08/2026 qualquer `logoAllowed` derrubava o apply. A leitura dos
+    // termos mostrou que o TMDB EXIGE o logo dele — a guarda estava impedindo o
+    // CUMPRIMENTO. Ela nao foi removida: ficou mais estreita. Liberar o logo de
+    // qualquer fonte que nao seja o TMDB continua derrubando o apply aqui,
+    // ANTES de escrever em `source_licenses`.
+    //
+    // Deliberadamente por `sourceKey`, nao por uma flag no proprio spec: uma
+    // guarda que se auto-autoriza a partir do dado que ela guarda nao guarda
+    // nada. Ampliar a lista exige editar ESTA linha, com revisao humana.
+    if (entry.license.target.logoAllowed && !LOGO_ALLOWED_SOURCE_KEYS.has(entry.license.target.sourceKey)) {
+      throw new Error(
+        `plano invalido: logo_allowed em "${entry.label}" (fonte "${entry.license.target.sourceKey}" nao esta na allowlist de marca). ` +
+          "Autorizacao do dono nao cria direito que a fonte nao deu: so entra aqui fonte cujos termos EXIJAM ou concedam o logo por escrito.",
+      );
+    }
+    // O logo so pode ir ao ar a partir do arquivo OFICIAL do detentor. Uma
+    // licenca que autoriza a marca sem dizer QUAL arquivo deixaria a pagina
+    // livre para desenhar uma aproximacao — o defeito que este campo evita.
+    if (entry.license.target.logoAllowed && entry.license.target.logoAsset === null) {
+      throw new Error(
+        `plano invalido: logo_allowed sem logoAsset em "${entry.label}" (marca autorizada precisa declarar o arquivo oficial)`,
+      );
     }
   }
 }

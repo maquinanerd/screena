@@ -211,15 +211,53 @@ describe("METADE 1 — o rodape nomeia TODA fonte autorizada", () => {
     expect(texto).toContain(TMDB_DISCLAIMER);
   });
 
-  it("o credito e TEXTO, nunca marca grafica: nenhum <img>/<svg> no bloco de creditos", () => {
-    // `logoAllowed` e o literal `false` no TIPO de `LicenseTarget`. O bloco de
-    // creditos nao pode ganhar logo "so para ficar como o desenho".
+  /**
+   * Ate 20/08/2026 este teste dizia "nenhum <img>/<svg> no bloco de creditos",
+   * justificado por "`logoAllowed` e o literal `false` no TIPO". Deixou de ser
+   * verdade: os termos da API do TMDB EXIGEM o logo deles.
+   *
+   * A asserçao NAO virou "pode ter imagem". Ela virou uma regra de PROCEDENCIA:
+   * toda imagem dentro do bloco tem de ser um logo que a LICENÇA autorizou, e o
+   * `data-credit-logo` diz de qual credito ela e. Uma marca decorativa "so para
+   * ficar como o desenho" continua reprovando, porque nao teria o atributo.
+   *
+   * `<svg>` continua proibido sem excecao: SVG inline no componente e marca de
+   * terceiro DESENHADA por nos — exatamente o que a licenca nao permite, mesmo
+   * quando ela exige o logo. O arquivo oficial entra por `src`, nunca por path.
+   */
+  it("imagem no bloco de creditos SO como logo autorizado pela licenca", () => {
     const markup = renderToStaticMarkup(<SiteFooter />);
     const abre = markup.indexOf('class="footer__credits"');
     expect(abre).toBeGreaterThan(-1);
     const bloco = markup.slice(abre, markup.indexOf('class="footer__base"'));
-    expect(bloco).not.toContain("<img");
+
+    // Nenhum SVG desenhado a mao, nunca.
     expect(bloco).not.toContain("<svg");
+
+    // Toda <img> presente tem de se declarar logo de um credito conhecido.
+    const imgs = bloco.match(/<img[^>]*>/g) ?? [];
+    for (const img of imgs) {
+      const chave = /data-credit-logo="([^"]+)"/.exec(img)?.[1];
+      expect(chave, `<img> sem data-credit-logo no bloco de creditos: ${img}`).toBeDefined();
+      const credito = DATA_CREDITS.find((c) => c.creditKey === chave);
+      expect(credito, `data-credit-logo desconhecido: ${chave}`).toBeDefined();
+      expect(credito!.logo, `credito ${chave} nao tem logo autorizado`).not.toBeNull();
+    }
+
+    // CONTROLE POSITIVO da varredura: se o bloco fosse recortado errado, o loop
+    // acima passaria com zero imagens e zero informacao. O bloco tem de conter
+    // os creditos de verdade.
+    expect(bloco).toContain("footer__credit-text");
+  });
+
+  it("o TEXTO do credito nao depende do logo: toda fonte creditada tem texto visivel", () => {
+    // A regra que o logo nunca pode quebrar. Os termos do TMDB pedem os DOIS
+    // (marca E disclaimer); um credito que virasse so imagem sumiria para
+    // leitor de tela e para quem bloqueia imagem.
+    const texto = visibleText(renderToStaticMarkup(<SiteFooter />));
+    for (const credit of DATA_CREDITS) {
+      expect(texto, `credito sem texto visivel: ${credit.creditKey}`).toContain(credit.text);
+    }
   });
 
   it("o credito NAO vive so em atributo (o defeito da #165)", () => {
