@@ -494,11 +494,22 @@ async function runChecks(url: string): Promise<void> {
       blocked.status === 'blocked_by_decision',
       `status=${blocked.status}`,
     )
+    // O registro deixou de estar VAZIO em 20/08/2026: o proprietario fechou a
+    // formula e ela foi registrada como `cinerie-score/2026-08-v1`.
+    //
+    // A checagem NAO foi removida nem afrouxada — ela era "vazio", virou uma
+    // IGUALDADE DE CONJUNTO. Registrar uma segunda formula sem decisao humana
+    // continua reprovando aqui. E o que de fato importa continua provado pelo
+    // check 36, logo acima: mesmo COM a formula no build, o resultado e
+    // `blocked_by_decision`, porque o elo que falta e a DataUsageDecision — e
+    // ela nao existe, ja que as quatro fontes proibem obra derivada nos
+    // proprios termos (ver docs/legal/cinerie-score-derivative-authorization.md).
     record(
       37,
-      'cinerie score: registro de formulas de PRODUCAO esta vazio (nada aprovado)',
-      PRODUCTION_FORMULA_REGISTRY.versions.length === 0,
-      `versoes=${PRODUCTION_FORMULA_REGISTRY.versions.length}`,
+      'cinerie score: registro de PRODUCAO tem exatamente a formula aprovada (nem mais, nem menos)',
+      PRODUCTION_FORMULA_REGISTRY.versions.length === 1 &&
+        PRODUCTION_FORMULA_REGISTRY.versions[0] === 'cinerie-score/2026-08-v1',
+      `versoes=[${PRODUCTION_FORMULA_REGISTRY.versions.join(', ')}]`,
     )
     await expectViolation(
       38,

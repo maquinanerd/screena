@@ -83,6 +83,9 @@ export async function readProfile(
       countryCode: p.countryCode,
       timezone: p.timezone,
       visibility: p.visibility,
+      theme: p.theme,
+      density: p.density,
+      posterSize: p.posterSize,
     };
   });
 }
@@ -118,6 +121,9 @@ export async function updateProfile(
       countryCode: command.countryCode,
       timezone: command.timezone,
       visibility: command.visibility,
+      theme: command.theme,
+      density: command.density,
+      posterSize: command.posterSize,
     });
 
     if (saved.kind !== "saved") {
@@ -145,6 +151,9 @@ export async function updateProfile(
       countryCode: p.countryCode,
       timezone: p.timezone,
       visibility: p.visibility,
+      theme: p.theme,
+      density: p.density,
+      posterSize: p.posterSize,
     });
   });
 }
@@ -398,6 +407,9 @@ export async function requestDataExport(
               : {
                   displayName: p.profile.displayName,
                   handle: p.profile.handle,
+                  theme: p.profile.theme,
+                  density: p.profile.density,
+                  posterSize: p.profile.posterSize,
                   bio: p.profile.bio,
                   locale: p.profile.locale,
                   countryCode: p.profile.countryCode,
