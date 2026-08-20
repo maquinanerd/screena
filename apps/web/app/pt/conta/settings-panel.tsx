@@ -9,9 +9,14 @@
  *
  * Contratos REAIS (C7C/C7D): /api/auth/session, /api/account/profile (GET/POST),
  * /api/auth/password-change, /api/auth/logout(-all). Toda mutação usa authFetch
- * (CSRF double-submit). Sem preferência fake: seções do protótipo sem backend
- * (assinatura, notificações, comportamento, gêneros, bloqueados, tema/densidade)
- * são omitidas — nunca toggle sem efeito (DIVERGENCIAS registra).
+ * (CSRF double-submit).
+ *
+ * SEM PREFERÊNCIA FAKE — a regra não mudou, a lista de omitidos é que encolheu.
+ * Em 20/08/2026 TEMA, DENSIDADE e TAMANHO DE PÔSTER ganharam coluna, contrato,
+ * handler e efeito visível, e por isso entraram na tela. Continuam OMITIDOS, e
+ * pelo mesmo motivo de sempre (não há backend): assinatura, notificações,
+ * comportamento, gêneros e bloqueados. Nunca toggle sem efeito.
+ *
  * O switch verdadeiro é `role="switch"` + aria-checked (WCAG 2.2).
  */
 
@@ -19,6 +24,7 @@ import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 
 import { authFetch } from '../../../src/lib/csrf-client'
+import { applyPreferences } from '../../../src/lib/presentation-preferences'
 import {
   IcChat,
   IcEye,
@@ -46,6 +52,9 @@ interface Profile {
   countryCode: string | null
   timezone: string | null
   visibility: 'private' | 'public'
+  theme: string
+  density: string
+  posterSize: string
 }
 
 const SENHA_MIN = 10
@@ -202,6 +211,10 @@ export function SettingsPanel(): React.ReactElement {
         if (p.ok) {
           const dados = (await p.json()) as { profile: Profile }
           setProfile(dados.profile)
+          // O EFEITO, no carregamento: sem isto o leitor abriria a tela com a
+          // aparência padrão e veria a própria escolha só depois de salvar de
+          // novo — que é indistinguível de "não salvou".
+          applyPreferences(document.documentElement, dados.profile)
         }
       } finally {
         setCarregando(false)
@@ -221,10 +234,17 @@ export function SettingsPanel(): React.ReactElement {
         countryCode: next.countryCode,
         timezone: next.timezone,
         visibility: next.visibility,
+        theme: next.theme,
+        density: next.density,
+        posterSize: next.posterSize,
       }),
     })
     if (response.ok) {
       setProfile(next)
+      // O EFEITO, no salvamento. Depois do `response.ok`, nunca antes: aplicar
+      // otimista mostraria a mudança e a deixaria lá mesmo quando o servidor
+      // recusasse — o leitor acreditaria ter salvo o que não salvou.
+      applyPreferences(document.documentElement, next)
       setAviso('Alterações salvas.')
     } else {
       setAviso('Não foi possível salvar. Confira os campos e tente de novo.')
@@ -435,6 +455,63 @@ export function SettingsPanel(): React.ReactElement {
             <span className="set-row__label">Idioma</span>
             <span className="set-row__value">{localeLabel}</span>
           </div>
+          {/*
+            SEM PERFIL CARREGADO, NENHUM CONTROLE. `profile === null` aqui
+            significa que o GET de `/api/account/profile` falhou — e um
+            `<select>` que nao consegue salvar e exatamente o botao morto que a
+            regra desta tela proibe. A ausencia e honesta: a secao mostra o
+            idioma (que vem da sessao) e nada mais.
+          */}
+          {profile === null ? null : (
+            <>
+          {/*
+            OS TRÊS CONTROLES QUE FAZEM EFEITO.
+
+            Cada um salva no perfil E aplica o atributo no `<html>` — as duas
+            metades, sempre juntas. Um que só salvasse seria um valor no banco
+            que ninguém vê; um que só aplicasse sumiria no próximo carregamento.
+
+            `<select>` nativo de propósito: é acessível por teclado e por leitor
+            de tela sem uma linha de JS, e o valor pertence a um conjunto
+            fechado — que é exatamente o que um select descreve.
+          */}
+          <PreferenceRow
+            label="Tema"
+            onChange={(valor) => {
+              void salvarPerfil({ ...profile, theme: valor })
+            }}
+            options={[
+              ['system', 'Seguir o sistema'],
+              ['light', 'Claro'],
+              ['dark', 'Escuro'],
+            ]}
+            value={profile.theme}
+          />
+          <PreferenceRow
+            label="Densidade"
+            onChange={(valor) => {
+              void salvarPerfil({ ...profile, density: valor })
+            }}
+            options={[
+              ['comfortable', 'Confortável'],
+              ['compact', 'Compacta'],
+            ]}
+            value={profile.density}
+          />
+          <PreferenceRow
+            label="Tamanho do pôster"
+            onChange={(valor) => {
+              void salvarPerfil({ ...profile, posterSize: valor })
+            }}
+            options={[
+              ['small', 'Pequeno'],
+              ['medium', 'Médio'],
+              ['large', 'Grande'],
+            ]}
+            value={profile.posterSize}
+          />
+            </>
+          )}
         </div>
 
         <nav aria-label="Minha biblioteca" className="set-shortcuts">
@@ -447,6 +524,49 @@ export function SettingsPanel(): React.ReactElement {
 
         <div className="set-bottom-space" />
       </div>
+    </div>
+  )
+}
+
+/**
+ * Uma linha de preferência: rótulo + `<select>` de conjunto fechado.
+ *
+ * O `<label>` envolve o controle em vez de usar `htmlFor` + `id`: a tela pode
+ * ter mais de uma instância e ids gerados a mão colidiriam em silêncio,
+ * quebrando o nome acessível de todas menos uma.
+ */
+function PreferenceRow({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string
+  options: readonly (readonly [string, string])[]
+  value: string
+  onChange: (valor: string) => void
+}): ReactNode {
+  return (
+    <div className="set-row">
+      <span className="set-row__icon">
+        <IcEye size={16} />
+      </span>
+      <label className="set-row__label">
+        {label}
+        <select
+          className="set-row__select"
+          onChange={(event) => {
+            onChange(event.target.value)
+          }}
+          value={value}
+        >
+          {options.map(([valor, rotulo]) => (
+            <option key={valor} value={valor}>
+              {rotulo}
+            </option>
+          ))}
+        </select>
+      </label>
     </div>
   )
 }

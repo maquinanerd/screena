@@ -302,6 +302,9 @@ export interface ProfileRow {
     readonly countryCode: string | null;
     readonly timezone: string | null;
     readonly visibility: $Enums.ProfileVisibility;
+    readonly theme: string;
+    readonly density: string;
+    readonly posterSize: string;
   } | null;
 }
 
@@ -321,6 +324,12 @@ export function toProfileRecord(row: ProfileRow): ProfileRecord {
     timezone: row.profile?.timezone ?? null,
     visibility:
       row.profile === null ? VISIBILITY_FALLBACK : toProfileVisibility(row.profile.visibility),
+    // Mesmos defaults da COLUNA. Conta sem linha em `user_profiles` le o que o
+    // banco gravaria no primeiro upsert — nao um valor inventado aqui que
+    // divergiria do que ela veria depois de salvar pela primeira vez.
+    theme: row.profile?.theme ?? "system",
+    density: row.profile?.density ?? "comfortable",
+    posterSize: row.profile?.posterSize ?? "medium",
   };
 }
 

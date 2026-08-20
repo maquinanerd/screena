@@ -66,8 +66,30 @@ function approvedDecision(overrides: Partial<CinerieScoreDecisionInput> = {}): C
 }
 
 describe('cinerie score — o estado de producao e BLOQUEADO', () => {
-  it('o registro de formulas de PRODUCAO esta vazio (nao ha formula aprovada)', () => {
-    expect(PRODUCTION_FORMULA_REGISTRY.versions).toEqual([])
+  /**
+   * Ate 20/08/2026 esta asserçao era `toEqual([])` — o registro vazio ERA a
+   * prova de que nenhuma formula tinha sido aprovada.
+   *
+   * O proprietario fechou a formula, e o registro deixou de estar vazio. A
+   * asserçao NAO foi removida: virou uma igualdade de CONJUNTO. Registrar uma
+   * segunda formula sem decisao humana continua reprovando aqui — e, mais
+   * importante, o bloco inteiro abaixo continua provando que REGISTRAR NAO E
+   * LIGAR: com a formula registrada, o estado de producao segue BLOQUEADO,
+   * porque nao ha `DataUsageDecision` para `cinerie_score_display`.
+   */
+  it('o registro de PRODUCAO tem exatamente a formula aprovada — nem mais, nem menos', () => {
+    expect(PRODUCTION_FORMULA_REGISTRY.versions).toEqual(['cinerie-score/2026-08-v1'])
+  })
+
+  it('registrar a formula NAO acendeu o score: sem decisao, continua bloqueado', () => {
+    // A asserçao que substitui o registro vazio como guarda. A formula existe no
+    // build e mesmo assim nada e calculado, porque o elo que falta e HUMANO.
+    const outcome = computeCinerieScore(input, {
+      registry: PRODUCTION_FORMULA_REGISTRY,
+      decision: null,
+      now: NOW,
+    })
+    expect(outcome.status).toBe('blocked_by_decision')
   })
 
   it('sem decisao, bloqueia com reason=no-decision e nao produz nota', () => {
