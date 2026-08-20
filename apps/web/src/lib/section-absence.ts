@@ -67,8 +67,38 @@ export type SectionAbsenceReason =
    * a obra, nao um passo pendente — por isso `actionable: false`.
    */
   | "no_offer_for_entity"
-  /** Nao existe formula de Cinerie Score aprovada (decisao humana pendente). */
+  /**
+   * A formula do Cinerie Score existe e esta registrada, mas NENHUMA
+   * `DataUsageDecision` de `cinerie_score_display` a autoriza.
+   *
+   * Este e o estado de 20/08/2026, e a causa NAO e falta de decisao interna: e
+   * que as quatro fontes da formula proibem obra derivada nos proprios termos
+   * (OMDb — que entrega IMDb, Rotten Tomatoes e Metacritic — e TMDB). Destravar
+   * exige autorizacao POR ESCRITO das fontes, nao uma decisao nossa.
+   *
+   * Ver docs/legal/cinerie-score-derivative-authorization.md.
+   */
   | "no_approved_formula"
+  /**
+   * Ha NOTA, mas de uma fonte so — insuficiente para COMPOR.
+   *
+   * Distinto de `no_rating_at_all` de proposito, e a distincao e o assunto: com
+   * uma fonte so nao existe composicao, e exibir seria lavar o numero de um
+   * terceiro e chamar de nosso. O piso e 2 (`MINIMUM_COUNTED_SOURCES`).
+   *
+   * `actionable: false` — e um fato sobre a cobertura DESTE titulo, nao um passo
+   * pendente. Se virar acionavel um dia, sera por ingestao, nao por curadoria.
+   */
+  | "single_source_insufficient"
+  /**
+   * NAO ha nota nenhuma que possa compor o Cinerie Score neste titulo.
+   *
+   * Zero fontes contadas. Diferente de `single_source_insufficient`: la existe
+   * numero e ele nao basta; aqui nao existe numero. Para o operador as duas
+   * pedem acoes diferentes (a primeira, mais cobertura de fontes; a segunda,
+   * qualquer cobertura), e sem a distincao as duas seriam o mesmo silencio.
+   */
+  | "no_rating_at_all"
   /**
    * NENHUMA faixa de premios exibivel no catalogo inteiro — passo de operacao
    * pendente, nao fato sobre este titulo. A licenca de premiacao existe no spec

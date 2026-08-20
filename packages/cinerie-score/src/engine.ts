@@ -19,6 +19,7 @@ import { createHash } from "node:crypto";
 
 import { CINERIE_SCORE_BLOCKED_VERSION } from "@screena/config";
 
+import { cinerieScoreFormulaV1 } from "./formula-2026-08-v1.js";
 import type {
   CinerieScoreBlocked,
   CinerieScoreBlockedReason,
@@ -55,14 +56,24 @@ export function createFormulaRegistry(
 }
 
 /**
- * Registro de PRODUCAO — vazio. Nao ha formula aprovada.
+ * Registro de PRODUCAO — uma formula, desde 20/08/2026.
  *
- * Se alguem for tentado a "so colocar uma media simples aqui": essa media seria
- * uma afirmacao editorial que nenhum humano aprovou, misturando escalas e
- * publicos diferentes (invariante 1), e apareceria ao usuario como a nota da
- * casa. E exatamente o que a governanca deste repositorio existe para impedir.
+ * Este registro esteve VAZIO ate aqui, e o comentario anterior avisava: "se
+ * alguem for tentado a so colocar uma media simples aqui, essa media seria uma
+ * afirmacao editorial que nenhum humano aprovou". O aviso continua valendo em
+ * cheio — e por isso `cinerie-score/2026-08-v1` NAO e uma media simples: e a
+ * formula que o proprietario fechou, com pesos, grupos e piso de exibicao
+ * explicitos, cada um com o criterio escrito em `formula-2026-08-v1.ts`.
+ *
+ * REGISTRAR NAO E LIGAR. Uma formula neste registro so e usada se a
+ * `DataUsageDecision` vigente de `cinerie_score_display` a aprovar NOMINALMENTE
+ * (`approvedFormulaVersion`). Sem essa decisao — o estado de hoje, porque
+ * `derivative_allowed` e false em toda licenca de nota — o engine continua
+ * devolvendo `blocked_by_decision`. Sao dois passos, e este e o primeiro.
  */
-export const PRODUCTION_FORMULA_REGISTRY: CinerieScoreFormulaRegistry = createFormulaRegistry([]);
+export const PRODUCTION_FORMULA_REGISTRY: CinerieScoreFormulaRegistry = createFormulaRegistry([
+  cinerieScoreFormulaV1,
+]);
 
 /**
  * Canonicaliza a entrada antes de hashear.
