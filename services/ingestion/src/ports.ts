@@ -19,6 +19,7 @@ import type {
   CrewMemberInput,
   TitleRecommendationLink,
   TitleGenreLink,
+  TitleCountryLink,
   EpisodeUpsert,
   ExternalIdInput,
   MovieUpsert,
@@ -160,6 +161,10 @@ export interface StoreMovieInput {
   readonly recommendationsPresent: boolean
   /** Generos do titulo, na ORDEM do TMDB. */
   readonly genres: readonly TitleGenreLink[]
+  /** Paises de origem (`production_countries`), na ordem do payload. */
+  readonly countries: readonly TitleCountryLink[]
+  /** Ver `genresPresent`: ausencia do campo nunca e lista vazia. */
+  readonly countriesPresent: boolean
   /**
    * A FONTE trouxe o array de generos (mesmo vazio)? OBRIGATORIO pelo MESMO
    * motivo de `castPresent`, e o precedente e literal: creditos ja foram
@@ -188,6 +193,10 @@ export interface StoreTvShowInput {
   readonly genres: readonly TitleGenreLink[]
   /** Ver `StoreMovieInput.genresPresent`. */
   readonly genresPresent: boolean
+  /** Paises de origem (`origin_country`), na ordem do payload. */
+  readonly countries: readonly TitleCountryLink[]
+  /** Ver `StoreMovieInput.countriesPresent`. */
+  readonly countriesPresent: boolean
   readonly timestamps: SyncTimestamps
 }
 

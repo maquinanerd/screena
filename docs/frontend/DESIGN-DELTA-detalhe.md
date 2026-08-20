@@ -62,6 +62,21 @@ Kickers-título ("A obra", "Ficha técnica", "Detalhes") não têm título a rep
 Harness `qa:detail-responsive`: AUDITORIA LIMPA nas cinco larguras
 (1440/1024/768/375/320) — 0 overflow, alvos ≥ 44px, texto ≥ 12px.
 
+**Ficha técnica (20/08/2026):** deixou de ser Ano/Duração/Situação/Idioma e
+virou a do canônico — Título original (só quando difere), **Direção** e
+**Roteiro** (pessoas com LINK), **Gêneros** (a MESMA junção dos chips — uma
+fonte para o mesmo fato), **País de origem**, **Estreia** (regional BR quando
+houver, senão a global), Duração, Situação, Idioma, **Classificação** (só o
+recorte BR é persistido — a americana nunca entra com rótulo de brasileira),
+**Distribuição** e **Orçamento** ("US$ 63 milhões (1999)" — moeda por
+convenção documentada da API + ano da estreia; sem ano, sem linha). Série:
+Detalhes ganha Gêneros/País/Classificação/Emissora/Produção. QUARTA ocorrência
+do padrão "dado baixado e descartado": `budget` e `production_countries`
+nunca foram persistidos, e `release_dates`/`content_ratings` estavam nos
+appends ADIADOS do manifest (`append-consumption.ts`) — a trava da #191
+funcionou: o descarte estava DECLARADO, e movê-los para CONSUMIDOS é uma linha
+auditada, não arqueologia. Campo sem dado não vira linha nem "N/A".
+
 ---
 
 ## 1. Blocos do canônico que NÃO renderizam

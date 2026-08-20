@@ -81,11 +81,6 @@ interface MoviePageParams {
   slug: string
 }
 
-interface MovieFact {
-  label: string
-  value: string
-}
-
 export async function generateMetadata({
   params,
 }: {
@@ -124,7 +119,7 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
   const redirectPath = canonicalRedirectPath(MOVIES_INDEX_PATH, slug, data.canonicalSlug)
   if (redirectPath !== null) permanentRedirect(redirectPath)
 
-  const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, watchAbsence, awards, awardsAbsence, ratings, externalIds, genres, score, similar, trailer } =
+  const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, watchAbsence, awards, awardsAbsence, ratings, externalIds, genres, score, fichaFacts, similar, trailer } =
     data
   const isUnderReview = seo.decision !== 'index'
   const metaText = [view.year !== null ? String(view.year) : null, view.runtimeLabel]
@@ -133,17 +128,6 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
   const crumbGenre = breadcrumbGenre(genres)
   const genreChips = heroGenreChips(genres)
   const scoreDecision = decideCinerieScore(score)
-  const facts = [
-    view.year === null ? null : { label: 'Ano', value: String(view.year) },
-    view.runtimeLabel === null ? null : { label: 'Duração', value: view.runtimeLabel },
-    view.statusLabel === null ? null : { label: 'Situação', value: view.statusLabel },
-    view.originalLanguageLabel === null
-      ? null
-      : { label: 'Idioma original', value: view.originalLanguageLabel },
-    view.certification === null
-      ? null
-      : { label: 'Classificação', value: view.certification },
-  ].filter((fact): fact is MovieFact => fact !== null)
 
   const critiqueBlock = view.blocks.find((block) => block.blockType === REVIEW_BLOCK_TYPE) ?? null
   const workBlocks = view.blocks.filter((block) => WORK_BLOCK_TYPES.has(block.blockType))
@@ -628,7 +612,7 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
       </SectionBoundary>
 
       {/* ===== Ficha técnica + Mais como este ===== */}
-      {facts.length > 0 || similarSection.rendered ? (
+      {fichaFacts.length > 0 || similarSection.rendered ? (
         <section aria-labelledby="movie-facts-title" className="detail-container" style={{ paddingTop: 64, paddingBottom: 72 }}>
           <div className={similarSection.rendered ? 'ficha-grid' : 'ficha-grid ficha-grid--solo'}>
             <div>
@@ -636,10 +620,23 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
                 <span id="movie-facts-title">Ficha técnica</span>
               </div>
               <dl className="ficha-rows">
-                {facts.map((fact) => (
+                {fichaFacts.map((fact) => (
                   <div className="ficha-row" key={fact.label}>
                     <dt>{fact.label}</dt>
-                    <dd>{fact.value}</dd>
+                    <dd>
+                      {'people' in fact
+                        ? fact.people.map((person, index) => (
+                            <span key={person.name}>
+                              {index > 0 ? ', ' : null}
+                              {person.href !== null ? (
+                                <a href={person.href}>{person.name}</a>
+                              ) : (
+                                person.name
+                              )}
+                            </span>
+                          ))
+                        : fact.value}
+                    </dd>
                   </div>
                 ))}
               </dl>

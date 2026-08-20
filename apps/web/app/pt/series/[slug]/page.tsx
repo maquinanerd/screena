@@ -78,11 +78,6 @@ interface SeriesPageSearchParams {
   temporada?: string | string[]
 }
 
-interface SeriesFact {
-  label: string
-  value: string
-}
-
 function seasonNumberFromQuery(value: string | string[] | undefined): number | null {
   const candidate = Array.isArray(value) ? value[0] : value
   if (candidate === undefined || !/^\d+$/.test(candidate)) return null
@@ -220,7 +215,7 @@ export default async function SeriesPage({
   const redirectPath = canonicalRedirectPath(SERIES_INDEX_PATH, slug, data.canonicalSlug)
   if (redirectPath !== null) permanentRedirect(redirectPath)
 
-  const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, watchAbsence, awards, awardsAbsence, ratings, externalIds, genres, score, similar, trailer } =
+  const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, watchAbsence, awards, awardsAbsence, ratings, externalIds, genres, score, fichaFacts, similar, trailer } =
     data
   const isUnderReview = seo.decision !== 'index'
   const metaText = [view.periodLabel, view.seasonsCountLabel, view.episodesCountLabel]
@@ -229,17 +224,6 @@ export default async function SeriesPage({
   const crumbGenre = breadcrumbGenre(genres)
   const genreChips = heroGenreChips(genres)
   const scoreDecision = decideCinerieScore(score)
-  const facts = [
-    view.periodLabel === null ? null : { label: 'Período', value: view.periodLabel },
-    view.statusLabel === null ? null : { label: 'Situação', value: view.statusLabel },
-    view.seasonsCountLabel === null ? null : { label: 'Temporadas', value: view.seasonsCountLabel },
-    view.episodesCountLabel === null
-      ? null
-      : { label: 'Episódios', value: view.episodesCountLabel },
-    view.originalLanguageLabel === null
-      ? null
-      : { label: 'Idioma original', value: view.originalLanguageLabel },
-  ].filter((fact): fact is SeriesFact => fact !== null)
   const critiqueBlock = view.blocks.find((block) => block.blockType === REVIEW_BLOCK_TYPE) ?? null
   const editorialBlocks = view.blocks.filter((block) => WORK_BLOCK_TYPES.has(block.blockType))
   const episodeContextBlocks = view.blocks.filter((block) =>
@@ -759,7 +743,7 @@ export default async function SeriesPage({
       </SectionBoundary>
 
       {/* ===== Detalhes (ficha 320px) ===== */}
-      {facts.length > 0 ? (
+      {fichaFacts.length > 0 ? (
         <section aria-labelledby="series-details-title" className="detail-container" style={{ paddingTop: 64, paddingBottom: 72 }}>
           <div className={similarSection.rendered ? 'ficha-grid' : 'ficha-grid ficha-grid--solo'}>
             <div>
@@ -767,10 +751,23 @@ export default async function SeriesPage({
                 <span id="series-details-title">Detalhes</span>
               </div>
               <dl className="ficha-rows">
-                {facts.map((fact) => (
+                {fichaFacts.map((fact) => (
                   <div className="ficha-row" key={fact.label}>
                     <dt>{fact.label}</dt>
-                    <dd>{fact.value}</dd>
+                    <dd>
+                      {'people' in fact
+                        ? fact.people.map((person, index) => (
+                            <span key={person.name}>
+                              {index > 0 ? ', ' : null}
+                              {person.href !== null ? (
+                                <a href={person.href}>{person.name}</a>
+                              ) : (
+                                person.name
+                              )}
+                            </span>
+                          ))
+                        : fact.value}
+                    </dd>
                   </div>
                 ))}
               </dl>
