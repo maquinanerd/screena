@@ -9,21 +9,37 @@
 import { readTvDisplayFields } from '../display-fields.js'
 import { normalizeSeason } from '../normalizers/season.js'
 import { normalizeTvShow } from '../normalizers/tv.js'
+import {
+  emptyDetailWatchReport,
+  ingestWatchProvidersFromDetail,
+} from '../watch-providers/from-detail.js'
 import { describeError } from './errors.js'
 import type { ImportContext, ImportResult } from './types.js'
 
-const TV_APPEND = 'external_ids,credits'
+/**
+ * Rotulo de `params` da CHAVE de `api_cache` — NAO e o `append_to_response` da
+ * requisicao. Ver a nota equivalente em `import-movie.ts`: quem decide o append
+ * de verdade e `getTvShow`, com o `TV_APPEND` RICO de
+ * `api-clients/tmdb/src/append-to-response.ts` (16 sub-recursos, entre eles
+ * `watch/providers`).
+ */
+const TV_CACHE_KEY_APPEND = 'external_ids,credits'
 
 /** Importa uma serie + temporadas + episodios; devolve um ImportResult. */
 export async function importTvShow(ctx: ImportContext, tmdbId: number): Promise<ImportResult> {
   const endpoint = `/tv/${tmdbId}`
   const startedMs = ctx.now().getTime()
   let quotaCost = 0
+  // Declarado FORA do try: a serie pode ter ganho ofertas e so depois uma
+  // temporada estourar. Se o desfecho vivesse dentro do try, o catch reportaria
+  // `unrecognized` sobre ofertas que ja estao gravadas — uma mentira no sentido
+  // oposto ao que este campo existe para impedir.
+  let watch = emptyDetailWatchReport('unrecognized')
 
   try {
     const result = await ctx.cache.getOrFetch({
       endpoint,
-      params: { append_to_response: TV_APPEND },
+      params: { append_to_response: TV_CACHE_KEY_APPEND },
       fetcher: () => ctx.tmdb.getTvShow(tmdbId),
     })
     quotaCost += result.fromCache ? 0 : 1
@@ -49,6 +65,20 @@ export async function importTvShow(ctx: ImportContext, tmdbId: number): Promise<
     } else {
       await ctx.store.touchTvShow(tmdbId, timestamps)
     }
+
+    // Disponibilidade a partir do MESMO payload que ja esta em maos: zero
+    // chamada nova ao TMDB, zero cota. Roda TAMBEM no short-circuit de cache
+    // (`id === null`, resolvido pelo tmdbId no sink) — sem isso, re-sincronizar
+    // uma serie cujo payload nao mudou devolveria `ok` sem gravar uma oferta.
+    // Toda linha nasce `display_allowed=false` (invariante 6).
+    watch = await ingestWatchProvidersFromDetail({
+      entityType: 'tv',
+      tmdbId,
+      entityId: id,
+      payload: result.data,
+      sink: ctx.watch,
+      now: ctx.now,
+    })
 
     let seasonsUpserted = 0
     let episodesUpserted = 0
@@ -97,6 +127,7 @@ export async function importTvShow(ctx: ImportContext, tmdbId: number): Promise<
       seasons: seasonsUpserted,
       episodes: episodesUpserted,
       display: readTvDisplayFields(result.data),
+      watch,
     }
   } catch (error) {
     const info = describeError(error)
@@ -116,6 +147,10 @@ export async function importTvShow(ctx: ImportContext, tmdbId: number): Promise<
       created: false,
       id: null,
       quotaCost,
+      // O desfecho REAL da disponibilidade, nao um placeholder: se o detalhe
+      // nem chegou ele ainda e `unrecognized`; se as ofertas foram gravadas e a
+      // falha veio de uma temporada, o `applied` sobrevive ao catch.
+      watch,
       error: info.message,
     }
   }

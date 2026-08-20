@@ -92,6 +92,9 @@ import { createPrismaChangesCheckpoint } from './changes-checkpoint-store.js'
 import { createPrismaCatalogJobStore } from './catalog-job-store.js'
 import { createPrismaRawMovieSource, createPrismaRawPersonSource, createPrismaRawTvSource } from './tmdb-raw-promote-store.js'
 import { createPrismaCatalogFinalize } from './catalog-finalize.js'
+import { createPrismaTmdbWatchOfferStore, createPrismaWatchEntityResolver } from './watch-providers-store.js'
+import { DEFAULT_WATCH_TERRITORIES } from '../watch-providers/territories.js'
+import { emptyDetailWatchReport } from '../watch-providers/from-detail.js'
 import { createPersistence } from './index.js'
 
 /** Erro transitorio de um servico pipeline-safe que reportou falha. */
@@ -172,6 +175,19 @@ export interface CatalogServicesOptions {
   readonly catalogEndpoints: TmdbCatalogEndpoints
   readonly cacheTtlMs: number
   readonly staleWindowMs?: number
+  /**
+   * Territorios ingeridos para disponibilidade ("onde assistir").
+   * Omitido => `DEFAULT_WATCH_TERRITORIES` (hoje `['BR']`, o unico que o render
+   * le). Ampliar exige que os codigos existam em `countries` — ver
+   * `src/watch-providers/territories.ts`.
+   */
+  readonly watchTerritories?: readonly string[]
+  /**
+   * Frescor da oferta de disponibilidade. Omitido => 1 dia, a periodicidade-alvo
+   * de "onde assistir" em `.claude/rules/ingestion.md` (dado volatil, janela
+   * curta) — deliberadamente MENOR que `staleWindowMs`, que e do detalhe.
+   */
+  readonly watchStaleWindowMs?: number
   readonly now?: () => Date
   /** Baixa um texto por URL (Daily ID Exports). Injetado: o core nao faz rede. */
   readonly fetchText?: (url: string) => Promise<string>
@@ -188,7 +204,14 @@ export interface CatalogServices extends CatalogHandlerDependencies {
 
 /** Monta os adapters de servico do catalogo. */
 export function createCatalogServices(options: CatalogServicesOptions): CatalogServices {
-  const { tmdb, catalogEndpoints, staleWindowMs = 7 * 24 * 60 * 60 * 1000, now = () => new Date() } = options
+  const {
+    tmdb,
+    catalogEndpoints,
+    staleWindowMs = 7 * 24 * 60 * 60 * 1000,
+    watchTerritories = DEFAULT_WATCH_TERRITORIES,
+    watchStaleWindowMs = 24 * 60 * 60 * 1000,
+    now = () => new Date(),
+  } = options
   const metrics = options.metrics ?? createNoopMetricsSink()
   const persistence = createPersistence({ ttlMs: options.cacheTtlMs, now })
   const prisma = persistence.prisma
@@ -210,7 +233,29 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
     syncLog: persistence.syncLog,
     now,
     staleAfter: (at: Date) => new Date(at.getTime() + staleWindowMs),
+    /**
+     * Disponibilidade a partir do payload de detalhe que o import JA tem.
+     *
+     * Reusa, sem uma linha nova de SQL, as duas pecas que ja rodam em producao
+     * pelo caminho do bruto: o escritor (que nasce `display_allowed=false`,
+     * invariante 6, e hidrata credito pela licenca vigente) e o resolvedor
+     * tmdbId -> id interno (necessario no short-circuit de cache).
+     */
+    watch: {
+      store: createPrismaTmdbWatchOfferStore(prisma),
+      resolver: createPrismaWatchEntityResolver(prisma),
+      territories: watchTerritories,
+      staleAfterMs: watchStaleWindowMs,
+    },
   }
+
+  /**
+   * Desfecho de disponibilidade das entidades de REFERENCIA
+   * (collection/company/network/keyword): nenhuma delas tem "onde assistir" —
+   * os quatro endpoints sequer aceitam `append_to_response`. `not-applicable`
+   * mantem a distincao entre "nao se aplica" e "nao tem oferta".
+   */
+  const REFERENCE_WATCH = emptyDetailWatchReport('not-applicable')
 
   /** Detalhe de uma entidade de referencia (collection/company/network/keyword). */
   async function syncReferenceDetail(
@@ -227,24 +272,60 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
       // foram vinculados. Nao cabe em DetailSyncOutcome (que descreve a entidade,
       // nao os vinculos) — fica no log, onde e util para diagnostico.
       await entitiesStore.upsertCollectionWithParts(row, parts)
-      return { created: true, updated: false, unchanged: false, entityId: null, skipped: false, skipReason: null }
+      return {
+        created: true,
+        updated: false,
+        unchanged: false,
+        entityId: null,
+        skipped: false,
+        skipReason: null,
+        watchOutcome: REFERENCE_WATCH.outcome,
+        watchOffers: REFERENCE_WATCH.offersUpserted,
+      }
     }
     if (kind === 'company') {
       const row = normalizeCompanyDetail(await catalogEndpoints.getCompany(tmdbId))
       if (row === null) throw new PermanentJobError('invalid_upstream', `company ${tmdbId} sem id/nome`)
       await entitiesStore.upsertCompany(row)
-      return { created: true, updated: false, unchanged: false, entityId: null, skipped: false, skipReason: null }
+      return {
+        created: true,
+        updated: false,
+        unchanged: false,
+        entityId: null,
+        skipped: false,
+        skipReason: null,
+        watchOutcome: REFERENCE_WATCH.outcome,
+        watchOffers: REFERENCE_WATCH.offersUpserted,
+      }
     }
     if (kind === 'network') {
       const row = normalizeNetworkDetail(await catalogEndpoints.getNetwork(tmdbId))
       if (row === null) throw new PermanentJobError('invalid_upstream', `network ${tmdbId} sem id/nome`)
       await entitiesStore.upsertNetwork(row)
-      return { created: true, updated: false, unchanged: false, entityId: null, skipped: false, skipReason: null }
+      return {
+        created: true,
+        updated: false,
+        unchanged: false,
+        entityId: null,
+        skipped: false,
+        skipReason: null,
+        watchOutcome: REFERENCE_WATCH.outcome,
+        watchOffers: REFERENCE_WATCH.offersUpserted,
+      }
     }
     const row = normalizeKeywordDetail(await catalogEndpoints.getKeyword(tmdbId))
     if (row === null) throw new PermanentJobError('invalid_upstream', `keyword ${tmdbId} sem id/nome`)
     await entitiesStore.upsertKeyword(row)
-    return { created: true, updated: false, unchanged: false, entityId: null, skipped: false, skipReason: null }
+    return {
+        created: true,
+        updated: false,
+        unchanged: false,
+        entityId: null,
+        skipped: false,
+        skipReason: null,
+        watchOutcome: REFERENCE_WATCH.outcome,
+        watchOffers: REFERENCE_WATCH.offersUpserted,
+      }
   }
 
   /** Vincula referencias (colecao/produtoras/redes/keywords/aliases) de movie|tv. */
@@ -335,6 +416,8 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
           entityId: result.id,
           skipped: false,
           skipReason: null,
+          watchOutcome: result.watch.outcome,
+          watchOffers: result.watch.offersUpserted,
         }
       }
       if (kind === 'tv') {
@@ -347,6 +430,8 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
           entityId: result.id,
           skipped: false,
           skipReason: null,
+          watchOutcome: result.watch.outcome,
+          watchOffers: result.watch.offersUpserted,
         }
       }
       if (kind === 'person') {
@@ -359,6 +444,8 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
           entityId: result.id,
           skipped: false,
           skipReason: null,
+          watchOutcome: result.watch.outcome,
+          watchOffers: result.watch.offersUpserted,
         }
       }
       return syncReferenceDetail(kind, tmdbId, locale)

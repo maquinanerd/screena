@@ -10,10 +10,19 @@
  * sync disfarcado, com custo de cota escondido.
  *
  * CUIDADO com a outra cadeia: `bin/catalog.ts sync` NAO alimenta este comando.
- * Ela usa o append MINIMO de `src/import/import-movie.ts`
- * (`'external_ids,credits'`), grava em `api_cache` + tabelas tipadas e NUNCA
- * escreve no deposito do bruto. Rodar `catalog sync` para "preencher o bruto"
- * de um titulo nao preenche nada — quem arquiva e o raw sync.
+ * Ela grava em `api_cache` + tabelas tipadas e NUNCA escreve no deposito do
+ * bruto. Rodar `catalog sync` para "preencher o bruto" de um titulo nao
+ * preenche nada — quem arquiva e o raw sync.
+ *
+ * CORRECAO (2026-08-19): a versao anterior desta nota dizia que o `catalog sync`
+ * usava um append MINIMO (`'external_ids,credits'`). Nao usava. Aquela string e
+ * so o rotulo de `params` da CHAVE de `api_cache`; a requisicao sempre usou o
+ * append RICO, `watch/providers` incluso. O byte chegava e o normalizador de
+ * detalhe o descartava — e foi essa crenca errada, repetida em tres comentarios,
+ * que manteve o defeito de pe. Hoje aquela cadeia materializa a oferta pelo
+ * mesmo `WatchOfferStore` daqui: ver `src/watch-providers/from-detail.ts`. Os
+ * dois caminhos convivem — o `replaceSnapshot` e por (entidade, pais,
+ * provider_api) e a passada mais recente vence.
  *
  * ============ O DEPOSITO E ENDERECAVEL; A LEITURA TAMBEM (agora) ============
  *

@@ -72,6 +72,10 @@ import { createPersistence } from '../src/persistence/index.js'
 import { createPrismaCatalogJobStore } from '../src/persistence/catalog-job-store.js'
 import { createPrismaSearchStore } from '../src/persistence/search-store.js'
 import { createPrismaSearchProjectionSource } from '../src/persistence/search-projection-source.js'
+import {
+  describeDetailWatchOutcome,
+  summarizeDetailWatch,
+} from '../src/watch-providers/from-detail.js'
 
 import type { CatalogFlags, CatalogCommand, DeadLetterSubcommand } from '../src/cli/index.js'
 import type { CatalogJobRegistry, StructuredLogger, LogLevel } from '../src/catalog-jobs/handler.js'
@@ -973,12 +977,22 @@ async function cmdSync(registry: CatalogJobRegistry, flags: CatalogFlags, locale
     }
   }
 
-  emit(flags, { processed: results.length, failed, results }, [
+  // O `N ok` sozinho ja foi verdadeiro e inutil: 39 titulos sincronizados com
+  // sucesso, nenhum com uma oferta de disponibilidade. O resumo agora diz
+  // tambem o que NAO foi trazido, na mesma saida.
+  const watch = summarizeDetailWatch(
+    results.map((r) => ({ outcome: r.watchOutcome, offersUpserted: r.watchOffers })),
+  )
+
+  emit(flags, { processed: results.length, failed, results, watch }, [
     `sync ${flags.entity}: ${results.length} ok · ${failed} falhou`,
+    ...watch.lines,
     ...results.map(
       (r) =>
         `  ${r.tmdbId}: ${r.created ? 'criado' : r.updated ? 'atualizado' : 'inalterado'}` +
-        `${r.enqueued > 0 ? ` (+${r.enqueued} jobs)` : ''}`,
+        `${r.enqueued > 0 ? ` (+${r.enqueued} jobs)` : ''}` +
+        ` · onde assistir: ${describeDetailWatchOutcome(r.watchOutcome)}` +
+        `${r.watchOffers > 0 ? ` (+${r.watchOffers})` : ''}`,
     ),
   ])
   return failed > 0 ? EXIT_CODES.failed : EXIT_CODES.ok

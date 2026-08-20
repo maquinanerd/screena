@@ -7,6 +7,12 @@
  * transformar aquele bloco em linhas consultaveis de `watch_availability`, SEM
  * gastar um unico request de cota (reprocessamento do bruto).
  *
+ * DOIS CHAMADORES, uma so regra de reconhecimento: `watch-providers/run.ts` (a
+ * partir do deposito do bruto) e `watch-providers/from-detail.ts` (a partir do
+ * payload de detalhe que o import ja tem em maos). Manter um unico reconhecedor
+ * e o que impede as duas cadeias de discordarem sobre o que e "sem oferta" e o
+ * que e "nao da para saber".
+ *
  * Regras materializadas (e por que):
  *  - Toda linha nasce `display_allowed = false` / `license_status = unknown`
  *    (invariante 6). Este modulo NAO decide exibicao; ele so reconhece o dado.

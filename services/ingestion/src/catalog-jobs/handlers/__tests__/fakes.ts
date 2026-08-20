@@ -182,6 +182,8 @@ export function createHandlerFakes(): HandlerFakes {
     entityId: 'entity-1',
     skipped: false,
     skipReason: null,
+    watchOutcome: 'applied',
+    watchOffers: 2,
   }
   let discoveredIds: readonly number[] = [11, 22]
   let listPages: readonly { results: unknown[]; page: number; total_pages: number }[] = [

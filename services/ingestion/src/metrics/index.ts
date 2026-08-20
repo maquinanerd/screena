@@ -16,6 +16,16 @@ export const CATALOG_METRIC_NAMES = {
   jobsFailedTotal: 'catalog_jobs_failed_total',
   jobsDeadLetterTotal: 'catalog_jobs_dead_letter_total',
   entitiesSyncedTotal: 'catalog_entities_synced_total',
+  /**
+   * Detalhes sincronizados por desfecho de disponibilidade ("onde assistir").
+   *
+   * Existe porque a SEMENTE roda pela fila (`bootstrap -> discover_ids ->
+   * sync_details`), e la nao ha resumo de CLI para ler: o worker descarta o
+   * resultado do handler. Sem esta metrica, dez mil entidades poderiam nascer
+   * sem uma oferta e o unico sinal seria a ausencia de linhas numa tabela.
+   * Label `watch_outcome`: cardinalidade fechada (os 8 desfechos nomeados).
+   */
+  detailWatchTotal: 'catalog_detail_watch_total',
   syncDurationSeconds: 'catalog_sync_duration_seconds',
   checkpointLagSeconds: 'catalog_checkpoint_lag_seconds',
   tmdbRequestsTotal: 'tmdb_requests_total',
