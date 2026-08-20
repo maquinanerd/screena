@@ -47,6 +47,9 @@ describe("perfil", () => {
         countryCode: "BR",
         timezone: "America/Sao_Paulo",
         visibility: "public",
+        theme: "system",
+        density: "comfortable",
+        posterSize: "medium",
       },
       CTX,
     );
@@ -77,6 +80,9 @@ describe("perfil", () => {
         countryCode: null,
         timezone: null,
         visibility: "private",
+        theme: "system",
+        density: "comfortable",
+        posterSize: "medium",
       },
       CTX,
     );
@@ -142,6 +148,9 @@ describe("exportacao", () => {
         countryCode: null,
         timezone: null,
         visibility: "private",
+        theme: "system",
+        density: "comfortable",
+        posterSize: "medium",
       },
       CTX,
     );

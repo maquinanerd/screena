@@ -21,6 +21,16 @@ export interface ProfileDto {
   readonly countryCode: string | null;
   readonly timezone: string | null;
   readonly visibility: ProfileVisibility;
+  /**
+   * Preferencias de apresentacao, devolvidas ao cliente.
+   *
+   * A tela precisa delas para (a) marcar o controle certo e (b) aplicar o efeito
+   * sem esperar um segundo request. Sem devolve-las, o painel abriria sempre no
+   * default e o usuario veria a propria escolha "sumir" ao recarregar.
+   */
+  readonly theme: string;
+  readonly density: string;
+  readonly posterSize: string;
 }
 
 /**

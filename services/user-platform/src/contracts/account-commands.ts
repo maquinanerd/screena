@@ -30,6 +30,22 @@ const COUNTRY_SHAPE = /^[A-Z]{2}$/;
 /** IANA tz: `America/Sao_Paulo`, `UTC`. Forma, nao existencia. */
 const TIMEZONE_SHAPE = /^[A-Za-z][A-Za-z0-9_+-]*(\/[A-Za-z0-9_+-]+)*$/;
 
+/**
+ * Vocabularios FECHADOS das preferencias de apresentacao.
+ *
+ * Espelham os CHECK de `user_profiles` (migration
+ * `20260820140000_user_presentation_preferences`). Os dois lados precisam
+ * concordar: o CHECK protege o banco de escrita fora do app, e o parser protege
+ * o usuario de um 500 quando o CHECK dispara. Ha teste que compara os dois.
+ */
+export const PROFILE_THEMES = ["system", "light", "dark"] as const;
+export const PROFILE_DENSITIES = ["comfortable", "compact"] as const;
+export const PROFILE_POSTER_SIZES = ["small", "medium", "large"] as const;
+
+export type ProfileTheme = (typeof PROFILE_THEMES)[number];
+export type ProfileDensity = (typeof PROFILE_DENSITIES)[number];
+export type ProfilePosterSize = (typeof PROFILE_POSTER_SIZES)[number];
+
 export interface UpdateProfileCommand {
   readonly displayName: string | null;
   readonly handle: string | null;
@@ -38,6 +54,15 @@ export interface UpdateProfileCommand {
   readonly countryCode: string | null;
   readonly timezone: string | null;
   readonly visibility: ProfileVisibility;
+  /**
+   * Preferencias de APRESENTACAO. Obrigatorias na presenca da chave, como o
+   * resto do comando — este endpoint substitui o perfil INTEIRO, e um campo
+   * opcional aqui tornaria impossivel distinguir "voltar ao default" de "nao
+   * mexer".
+   */
+  readonly theme: ProfileTheme;
+  readonly density: ProfileDensity;
+  readonly posterSize: ProfilePosterSize;
 }
 
 /**
@@ -62,6 +87,9 @@ export function parseUpdateProfileCommand(input: unknown): DomainResult<UpdatePr
     "countryCode",
     "timezone",
     "visibility",
+    "theme",
+    "density",
+    "posterSize",
   ]);
   if (!strict.ok) return strict;
 
@@ -130,6 +158,29 @@ export function parseUpdateProfileCommand(input: unknown): DomainResult<UpdatePr
     ]);
   }
 
+  // Cada preferencia e um conjunto FECHADO. Valor fora dele e recusado na
+  // fronteira, com a lista no erro — em vez de virar 500 quando o CHECK do
+  // banco disparar, que e o mesmo defeito visto de mais longe.
+  const enumerado = <T extends string>(
+    chave: string,
+    permitidos: readonly T[],
+  ): DomainResult<T> => {
+    const bruto = record.value[chave];
+    if (typeof bruto !== "string" || !(permitidos as readonly string[]).includes(bruto)) {
+      return err("validation_failed", "dados invalidos.", [
+        `${chave} deve ser um de: ${permitidos.join(", ")}.`,
+      ]);
+    }
+    return ok(bruto as T);
+  };
+
+  const theme = enumerado("theme", PROFILE_THEMES);
+  if (!theme.ok) return theme;
+  const density = enumerado("density", PROFILE_DENSITIES);
+  if (!density.ok) return density;
+  const posterSize = enumerado("posterSize", PROFILE_POSTER_SIZES);
+  if (!posterSize.ok) return posterSize;
+
   const vazioParaNull = (v: string | null | undefined): string | null =>
     v === undefined || v === null || v.length === 0 ? null : v;
 
@@ -141,6 +192,9 @@ export function parseUpdateProfileCommand(input: unknown): DomainResult<UpdatePr
     countryCode: vazioParaNull(countryCode.value),
     timezone: vazioParaNull(timezone.value),
     visibility: visibilityRaw as ProfileVisibility,
+    theme: theme.value,
+    density: density.value,
+    posterSize: posterSize.value,
   });
 }
 

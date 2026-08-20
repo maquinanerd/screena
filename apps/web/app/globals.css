@@ -10434,4 +10434,147 @@ h4.art-body__heading {
 [data-vertical='series'] .media-strip__play:hover,
 [data-vertical='series'] .media-strip__play:focus-visible {
   background: var(--c-accent-series-dark);
+
+/* ==========================================================================
+   PREFERENCIAS DE APRESENTACAO (tela 13) — tema, densidade, tamanho de poster
+   ==========================================================================
+   Ate 20/08/2026 estes tres controles eram OMITIDOS da tela de configuracoes.
+   A omissao estava CERTA: nao havia coluna, nao havia contrato, nao havia
+   efeito — e "sem preferencia fake, nunca toggle sem efeito" e a regra escrita
+   no cabecalho do painel. Agora existe backend, e ESTE bloco e a metade do
+   efeito que se ve.
+
+   NO FIM DO ARQUIVO de proposito: `globals.css` resolve conflito por ORDEM DE
+   DOCUMENTO, e os tokens de `:root` estao no topo. Uma redefinicao escrita la
+   em cima seria sobrescrita por tudo que vem depois e ficaria inerte.
+
+   O tema aparece em TRES estados, como manda a boa pratica:
+     - escolha explicita  -> `[data-theme="dark"]` / `[data-theme="light"]`
+     - "sistema"          -> NENHUM atributo; a media query decide
+   `applyPreferences` REMOVE o atributo quando a escolha e "sistema", entao a
+   regra de media query volta a valer sem competir com um seletor mais forte.
+   ========================================================================== */
+
+/* --- TEMA: escuro por escolha explicita --------------------------------- */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --c-bg-page: #0b0b0d;
+  --c-bg-surface: #141416;
+  --c-bg-subtle: #1a1a1d;
+  --c-bg-muted: #212125;
+  --c-bg-skeleton: #26262b;
+
+  --c-text-primary: #f5f5f5;
+  --c-text-body: #e2e2e2;
+  --c-text-secondary: #a8a8a8;
+  --c-text-muted: #8b8b8b;
+  --c-text-muted-aa: #a8a49b;
+  --c-text-disabled: #5c5c5c;
+  --c-text-inverse: #101010;
+
+  --c-border-subtle: #26262b;
+  --c-border: #313138;
+  --c-border-strong: #3f3f47;
+
+  --c-focus: #f5f5f5;
+}
+
+/* --- TEMA: escuro por preferencia do SISTEMA ---------------------------- */
+/* So quando NAO ha escolha explicita. `:not([data-theme])` impede que o leitor
+   que escolheu "claro" receba o escuro do sistema por cima. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    color-scheme: dark;
+
+    --c-bg-page: #0b0b0d;
+    --c-bg-surface: #141416;
+    --c-bg-subtle: #1a1a1d;
+    --c-bg-muted: #212125;
+    --c-bg-skeleton: #26262b;
+
+    --c-text-primary: #f5f5f5;
+    --c-text-body: #e2e2e2;
+    --c-text-secondary: #a8a8a8;
+    --c-text-muted: #8b8b8b;
+    --c-text-muted-aa: #a8a49b;
+    --c-text-disabled: #5c5c5c;
+    --c-text-inverse: #101010;
+
+    --c-border-subtle: #26262b;
+    --c-border: #313138;
+    --c-border-strong: #3f3f47;
+
+    --c-focus: #f5f5f5;
+  }
+}
+
+/* --- DENSIDADE ---------------------------------------------------------- */
+/* Um token de escala, nao uma folha de regras por componente: densidade que
+   exige tocar cada bloco divergiria no primeiro componente novo. */
+:root {
+  --pref-density-scale: 1;
+}
+
+:root[data-density='compact'] {
+  --pref-density-scale: 0.72;
+}
+
+:root[data-density='compact'] .detail-container {
+  padding-top: calc(60px * var(--pref-density-scale));
+  padding-bottom: calc(60px * var(--pref-density-scale));
+}
+
+:root[data-density='compact'] .set-card {
+  --set-row-pad: calc(16px * var(--pref-density-scale));
+}
+
+/* --- TAMANHO DE POSTER -------------------------------------------------- */
+/* Escala relativa: os posteres ja tem largura declarada no HTML (para nao
+   causar layout shift), entao a preferencia MULTIPLICA em vez de fixar um px
+   que brigaria com a largura intrinseca. */
+:root {
+  --pref-poster-scale: 1;
+}
+
+:root[data-poster-size='small'] {
+  --pref-poster-scale: 0.82;
+}
+
+:root[data-poster-size='large'] {
+  --pref-poster-scale: 1.18;
+}
+
+:root[data-poster-size='small'] .glimpse-card,
+:root[data-poster-size='large'] .glimpse-card,
+:root[data-poster-size='small'] .similar-card,
+:root[data-poster-size='large'] .similar-card {
+  width: calc(var(--card-w, 210px) * var(--pref-poster-scale));
+}
+
+/* Controle de preferencia dentro de uma linha do painel de configuracoes. */
+.set-row__select {
+  margin-left: auto;
+  background: var(--c-bg-surface);
+  color: var(--c-text-body);
+  border: 1px solid var(--c-border);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 14px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.set-row__select:focus-visible {
+  outline: 2px solid var(--c-focus);
+  outline-offset: 2px;
+}
+
+/* O rotulo envolve o select: a linha vira o proprio flex container para que o
+   controle continue alinhado a direita como as outras linhas do painel. */
+.set-row__label:has(.set-row__select) {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
 }
