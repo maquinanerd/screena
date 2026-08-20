@@ -12,10 +12,23 @@
 import { createTmdbClient, type CreateTmdbClientOptions } from '@screena/tmdb-client'
 import { disconnectPrisma } from '@screena/db/server'
 import { createPersistence } from './persistence/index.js'
+import {
+  createPrismaTmdbWatchOfferStore,
+  createPrismaWatchEntityResolver,
+} from './persistence/watch-providers-store.js'
+import { DEFAULT_WATCH_TERRITORIES } from './watch-providers/territories.js'
 import type { ImportContext } from './import/types.js'
 
 /** Janela de frescor do catalogo geral (7 dias) — espelha @screena/sync. */
 const STALE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
+
+/**
+ * Janela de frescor da OFERTA (1 dia). Menor que a do detalhe de proposito:
+ * "onde assistir" e o dado volatil da lista de periodicidades em
+ * `.claude/rules/ingestion.md`; herdar os 7 dias do detalhe faria uma oferta
+ * revogada continuar parecendo fresca por uma semana.
+ */
+const WATCH_STALE_WINDOW_MS = 24 * 60 * 60 * 1000
 
 /** Runtime da ingestao: contexto pronto + funcao de desconexao. */
 export interface IngestionRuntime {
@@ -35,6 +48,15 @@ export function createIngestionContext(options: CreateTmdbClientOptions = {}): I
     syncLog: persistence.syncLog,
     now: () => new Date(),
     staleAfter: (now) => new Date(now.getTime() + STALE_WINDOW_MS),
+    // Mesmo sink do runtime do catalogo: sem ele, `bin/import`, `bin/sync-tmdb`
+    // e o `services/sync` continuariam baixando `watch/providers` no payload de
+    // detalhe e jogando fora. Toda linha nasce `display_allowed=false`.
+    watch: {
+      store: createPrismaTmdbWatchOfferStore(persistence.prisma),
+      resolver: createPrismaWatchEntityResolver(persistence.prisma),
+      territories: DEFAULT_WATCH_TERRITORIES,
+      staleAfterMs: WATCH_STALE_WINDOW_MS,
+    },
   }
 
   return { context, disconnect: disconnectPrisma }

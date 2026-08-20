@@ -4,8 +4,17 @@
 
 import { readPersonDisplayFields } from '../display-fields.js'
 import { normalizePerson } from '../normalizers/person.js'
+import { emptyDetailWatchReport } from '../watch-providers/from-detail.js'
 import { describeError } from './errors.js'
 import type { ImportContext, ImportResult } from './types.js'
+
+/**
+ * Pessoa nao tem "onde assistir": `PERSON_APPEND` nao pede `watch/providers`
+ * porque o endpoint nao o oferece. O desfecho e declarado (`not-applicable`) em
+ * vez de omitido — zero e um numero, "nao se aplica" e outro, e um relatorio
+ * agregado que somasse pessoas como "sem oferta" mentiria sobre a cobertura.
+ */
+const PERSON_WATCH = emptyDetailWatchReport('not-applicable')
 
 /** Importa uma pessoa; devolve um ImportResult (status success/failed/aborted). */
 export async function importPerson(ctx: ImportContext, tmdbId: number): Promise<ImportResult> {
@@ -39,6 +48,7 @@ export async function importPerson(ctx: ImportContext, tmdbId: number): Promise<
         created: false,
         id: null,
         quotaCost,
+        watch: PERSON_WATCH,
       }
     }
 
@@ -67,6 +77,7 @@ export async function importPerson(ctx: ImportContext, tmdbId: number): Promise<
       id: outcome.id,
       quotaCost,
       display: readPersonDisplayFields(result.data),
+      watch: PERSON_WATCH,
     }
   } catch (error) {
     const info = describeError(error)
@@ -86,6 +97,7 @@ export async function importPerson(ctx: ImportContext, tmdbId: number): Promise<
       created: false,
       id: null,
       quotaCost: 0,
+      watch: PERSON_WATCH,
       error: info.message,
     }
   }

@@ -7,10 +7,29 @@
 
 import { readMovieDisplayFields } from '../display-fields.js'
 import { normalizeMovie } from '../normalizers/movie.js'
+import {
+  emptyDetailWatchReport,
+  ingestWatchProvidersFromDetail,
+} from '../watch-providers/from-detail.js'
 import { describeError } from './errors.js'
 import type { ImportContext, ImportResult } from './types.js'
 
-const MOVIE_APPEND = 'external_ids,credits'
+/**
+ * Rotulo de `params` da CHAVE de `api_cache` — NAO e o `append_to_response` da
+ * requisicao.
+ *
+ * `buildCacheKey` (`src/utils/cache-key.ts`) usa `params` so para montar
+ * `requestKey`/`paramsHash`; o `fetcher` e chamado SEM argumentos. Quem decide o
+ * append de verdade e `getMovie`, que usa o `MOVIE_APPEND` RICO de
+ * `api-clients/tmdb/src/append-to-response.ts` — 13 sub-recursos, entre eles
+ * `watch/providers`, `images`, `videos` e `release_dates`.
+ *
+ * Consequencia pratica, e o motivo deste comentario existir: "acrescentar
+ * `watch/providers` aqui" NAO faz o TMDB devolver nada de novo (ja devolve) e
+ * ainda invalidaria toda linha de `api_cache` — um refetch do catalogo inteiro
+ * em troca de zero oferta.
+ */
+const MOVIE_CACHE_KEY_APPEND = 'external_ids,credits'
 
 /** Importa um filme; devolve um ImportResult (status success/failed/aborted). */
 export async function importMovie(ctx: ImportContext, tmdbId: number): Promise<ImportResult> {
@@ -20,7 +39,7 @@ export async function importMovie(ctx: ImportContext, tmdbId: number): Promise<I
   try {
     const result = await ctx.cache.getOrFetch({
       endpoint,
-      params: { append_to_response: MOVIE_APPEND },
+      params: { append_to_response: MOVIE_CACHE_KEY_APPEND },
       fetcher: () => ctx.tmdb.getMovie(tmdbId),
     })
     const now = ctx.now()
@@ -29,6 +48,19 @@ export async function importMovie(ctx: ImportContext, tmdbId: number): Promise<I
 
     if (!result.changed) {
       await ctx.store.touchMovie(tmdbId, timestamps)
+      // O payload nao mudou, mas a DISPONIBILIDADE dele pode nunca ter sido
+      // materializada (entidade promovida do bruto, ou sincronizada antes de
+      // existir esta ponte). Ingerir tambem aqui e o que faz uma passada de
+      // recuperacao funcionar com o cache quente — pular seria devolver `ok`
+      // sem gravar uma unica oferta, exatamente o silencio que se esta curando.
+      const watch = await ingestWatchProvidersFromDetail({
+        entityType: 'movie',
+        tmdbId,
+        entityId: null,
+        payload: result.data,
+        sink: ctx.watch,
+        now: ctx.now,
+      })
       await ctx.syncLog.write({
         endpoint,
         status: 'success',
@@ -45,6 +77,7 @@ export async function importMovie(ctx: ImportContext, tmdbId: number): Promise<I
         created: false,
         id: null,
         quotaCost,
+        watch,
       }
     }
 
@@ -57,6 +90,17 @@ export async function importMovie(ctx: ImportContext, tmdbId: number): Promise<I
       castPresent: normalized.castPresent,
       crewPresent: normalized.crewPresent,
       timestamps,
+    })
+    // Disponibilidade a partir do MESMO payload que ja esta em maos: zero
+    // chamada nova ao TMDB, zero cota. Toda linha nasce `display_allowed=false`
+    // (invariante 6) — quem grava e o `WatchOfferStore` do reprocessamento.
+    const watch = await ingestWatchProvidersFromDetail({
+      entityType: 'movie',
+      tmdbId,
+      entityId: outcome.id,
+      payload: result.data,
+      sink: ctx.watch,
+      now: ctx.now,
     })
     await ctx.syncLog.write({
       endpoint,
@@ -77,6 +121,7 @@ export async function importMovie(ctx: ImportContext, tmdbId: number): Promise<I
       id: outcome.id,
       quotaCost,
       display: readMovieDisplayFields(result.data),
+      watch,
     }
   } catch (error) {
     const info = describeError(error)
@@ -96,6 +141,10 @@ export async function importMovie(ctx: ImportContext, tmdbId: number): Promise<I
       created: false,
       id: null,
       quotaCost: 0,
+      // O detalhe nem chegou: nao ha payload de onde reconhecer oferta. O
+      // desfecho declarado impede que a falha do detalhe seja lida como
+      // "este titulo nao tem onde assistir".
+      watch: emptyDetailWatchReport('unrecognized'),
       error: info.message,
     }
   }

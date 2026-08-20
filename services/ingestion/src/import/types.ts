@@ -8,6 +8,7 @@
 import type { CatalogDisplayFields } from '../display-fields.js'
 import type { CachePort, EntityStorePort, SyncLogPort, SyncStatus, TmdbReadPort } from '../ports.js'
 import type { EntityType } from '../types.js'
+import type { DetailWatchReport, DetailWatchSink } from '../watch-providers/from-detail.js'
 
 /** Dependencias injetadas na orquestracao. */
 export interface ImportContext {
@@ -19,6 +20,19 @@ export interface ImportContext {
   readonly now: () => Date
   /** Politica de frescor: calcula `stale_after` a partir de agora. */
   readonly staleAfter: (now: Date) => Date | null
+  /**
+   * Sink de disponibilidade ("onde assistir").
+   *
+   * O detalhe TMDB JA traz o bloco `watch/providers` (o append real e o RICO de
+   * `api-clients/tmdb/src/append-to-response.ts`); sem este sink, o import
+   * apenas o descartava — e um `catalog sync` respondia `N ok` sem materializar
+   * uma unica oferta. Ver `src/watch-providers/from-detail.ts`.
+   *
+   * Opcional porque nem todo runtime de import escreve oferta (fakes de teste,
+   * caminhos de reparo). A ausencia NAO e silenciosa: vira o desfecho nomeado
+   * `not-configured` em `ImportResult.watch`.
+   */
+  readonly watch?: DetailWatchSink
 }
 
 /** Resultado de uma operacao de import (por entidade). */
@@ -47,6 +61,18 @@ export interface ImportResult {
   readonly display?: CatalogDisplayFields
   /** Numero de chamadas de rede TMDB consumidas (cache hit = 0). */
   readonly quotaCost: number
+  /**
+   * Desfecho da ingestao de disponibilidade, SEMPRE presente.
+   *
+   * Obrigatorio (nao opcional) de proposito: o defeito que este campo fecha e
+   * um comando que respondia `39 ok` enquanto nenhuma das 39 entidades ganhava
+   * uma oferta. Um campo opcional deixaria o silencio de volta — `undefined` e
+   * indistinguivel de "nao havia oferta". Com o desfecho nomeado, "nao tentei"
+   * (`not-configured`), "nao da para saber" (`unrecognized`), "nao tem oferta"
+   * (`empty`) e "tem, mas fora do escopo" (`out-of-scope`) sao legiveis e
+   * distintos.
+   */
+  readonly watch: DetailWatchReport
   /** Temporadas upsertadas (apenas series). */
   readonly seasons?: number
   /** Episodios upsertados (apenas series). */

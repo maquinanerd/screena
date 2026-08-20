@@ -47,6 +47,9 @@ export const ALLOWED_METRIC_LABELS = [
   'source',
   'endpoint',
   'reason',
+  // Desfecho de disponibilidade ("onde assistir") de um `sync_details`.
+  // Cardinalidade FECHADA: os 8 valores de `DetailWatchOutcome`.
+  'watch_outcome',
 ] as const
 
 /** Uma label permitida. */

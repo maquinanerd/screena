@@ -15,6 +15,7 @@
 
 import type { CreditKind, ExternalIdKind, MediaKind, SyncDetailKind } from './schemas.js'
 import type { ChangesKind } from '../../discovery/changes-plan.js'
+import type { DetailWatchOutcome } from '../../watch-providers/from-detail.js'
 
 /** Desfecho de um upsert de detalhe. Exatamente um dos tres booleanos e true. */
 export interface DetailSyncOutcome {
@@ -27,6 +28,17 @@ export interface DetailSyncOutcome {
   readonly skipped: boolean
   /** Motivo curto e seguro do skip (sem PII). */
   readonly skipReason: string | null
+  /**
+   * Desfecho NOMEADO da disponibilidade ("onde assistir") deste detalhe.
+   *
+   * Existe porque um sync que dizia `39 ok` e nao materializava uma unica oferta
+   * estava certo sobre si mesmo e inutil para quem o chamou: o operador nao
+   * tinha como distinguir "os titulos nao tem oferta" de "o dado nunca foi
+   * reconhecido". Ver `src/watch-providers/from-detail.ts`.
+   */
+  readonly watchOutcome: DetailWatchOutcome
+  /** Ofertas inseridas/atualizadas neste detalhe (0 fora de `applied`). */
+  readonly watchOffers: number
 }
 
 /** Entrada comum de um sync de detalhe. */

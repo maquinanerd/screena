@@ -27,6 +27,9 @@
  */
 
 import { normalizeWatchProviders } from '../normalizers/watch-providers.js'
+// O agrupamento por pais e o MESMO do caminho do detalhe: uma unica definicao,
+// para que os dois caminhos nao possam divergir no que e uma transacao.
+import { groupOffersByCountry as groupByCountry } from './from-detail.js'
 import { DEFAULT_WATCH_TERRITORIES } from './territories.js'
 import type {
   RawWatchSource,
@@ -125,19 +128,6 @@ export function deriveWatchReprocessStatus(counts: WatchReprocessCounts): WatchR
     counts.missingRaw > 0
     ? 'partial'
     : 'success'
-}
-
-/** Ofertas de UMA entidade, agrupadas por pais (o replace e por pais). */
-function groupByCountry(
-  offers: readonly WatchProviderOffer[],
-): Map<string, WatchProviderOffer[]> {
-  const byCountry = new Map<string, WatchProviderOffer[]>()
-  for (const offer of offers) {
-    const bucket = byCountry.get(offer.countryCode)
-    if (bucket === undefined) byCountry.set(offer.countryCode, [offer])
-    else bucket.push(offer)
-  }
-  return byCountry
 }
 
 /** Reprocessa `watch/providers` a partir do bruto arquivado. */
