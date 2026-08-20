@@ -20,6 +20,29 @@ import type { NextConfig } from "next";
  */
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  /**
+   * REDIRECTS PERMANENTES DE ROTA.
+   *
+   * `/pt/busca/` era um formulario nu — campo, botao e uma frase instrutiva,
+   * zero conteudo — enquanto `/pt/explorar/` ja carregava Em Alta, Lancamentos,
+   * Mais aguardados e Populares. Duas paginas finas na mesma intencao. A que
+   * sobrevive e `explorar`, porque e a que tem conteudo real e pode indexar;
+   * busca sem termo E navegacao.
+   *
+   * `statusCode: 301` e escolha explicita: o pedido foi 301, e `permanent: true`
+   * do Next emite 308. Os dois sao permanentes para buscador; 301 e o que os
+   * links antigos ja compartilhados esperam.
+   *
+   * A QUERY E PRESERVADA pelo proprio Next quando o destino nao declara query
+   * propria — e por isso que o destino aqui NAO tem `?`: um link antigo
+   * `/pt/busca/?q=duna` chega em `/pt/explorar/?q=duna` e continua buscando.
+   */
+  async redirects() {
+    return [
+      { source: '/pt/busca', destination: '/pt/explorar/', statusCode: 301 },
+      { source: '/pt/busca/', destination: '/pt/explorar/', statusCode: 301 },
+    ]
+  },
   // Rotas canonicas usam barra final (ex.: /pt/filmes/{slug}/). Alinhar o
   // trailing slash evita divergencia entre a URL servida e o <link rel="canonical">.
   trailingSlash: true,

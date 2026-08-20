@@ -33,6 +33,10 @@ import {
   NAV_ITEMS,
   SECONDARY_NAV_ITEMS,
 } from '../../src/lib/navigation'
+// O icone de busca aponta para a rota que SOBREVIVEU a unificacao. Constante,
+// nunca literal: `/pt/busca/` agora responde 301 e um literal esquecido aqui
+// mandaria todo clique de busca por um salto extra.
+import { EXPLORE_PATH } from '../../src/lib/routes'
 
 /** Rotas cujo topo e um hero full-bleed (header transparente ate rolar). */
 const HERO_ROUTES = ['/pt', '/pt/filmes', '/pt/series']
@@ -210,7 +214,7 @@ export function SiteHeader(): ReactNode {
           </nav>
 
           <div className="site-header__actions">
-            <a aria-label="Buscar" className="site-header__icon-link" href="/pt/busca/">
+            <a aria-label="Buscar" className="site-header__icon-link" href={EXPLORE_PATH}>
               <svg aria-hidden="true" fill="none" height="19" viewBox="0 0 24 24" width="19">
                 <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" />
                 <path d="m20 20-3.8-3.8" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
@@ -255,7 +259,7 @@ export function SiteHeader(): ReactNode {
             </li>
           ))}
           <li>
-            <a href="/pt/busca/" onClick={() => menuRef.current?.close()}>
+            <a href={EXPLORE_PATH} onClick={() => menuRef.current?.close()}>
               Buscar
             </a>
           </li>

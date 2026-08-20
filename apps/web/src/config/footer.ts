@@ -119,7 +119,12 @@ export const FOOTER_COLUMNS: readonly FooterColumn[] = [
     links: [
       { label: "Explorar", href: EXPLORE_PATH },
       { label: "Onde assistir", href: WATCH_PATH },
-      { label: "Busca", href: "/pt/busca/" },
+      // "Busca" SAIU daqui, e nao por corte editorial: `/pt/busca/` deixou de
+      // ser rota (responde 301 para Explorar, porque busca sem termo E
+      // navegacao). Apontar o rotulo "Busca" para `EXPLORE_PATH` tambem nao
+      // serve — seriam dois rotulos para o mesmo destino, que e exatamente a
+      // canibalizacao de ancora que o proprio guard de navegacao proibe. As
+      // duas travas so admitem esta saida.
     ],
   },
 ];

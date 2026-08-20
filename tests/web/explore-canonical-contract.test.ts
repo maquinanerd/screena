@@ -20,7 +20,7 @@ describe('contrato canônico da rota Explorar (tela 11)', () => {
       '<AdSlot format="leaderboard" slotId="explore-top" />',
       '<DiscoverFilterableRails',
       'className="disc-feature disc-section"',
-      '<ContinueWatching />',
+      '<ContinueWatching route=',
       'className="disc-agenda"',
       'disc-soon-title',
     ]
@@ -32,17 +32,30 @@ describe('contrato canônico da rota Explorar (tela 11)', () => {
     }
   })
 
-  it('busca é um form REAL para /pt/busca/ (nunca barra decorativa)', () => {
-    expect(pageSource).toContain('action="/pt/busca/"')
+  it('busca é um form REAL para a PRÓPRIA rota (nunca barra decorativa)', () => {
+    // A unificação trocou o destino: `/pt/busca/` era uma segunda página fina
+    // com a mesma intenção e agora responde 301 para cá. O form aponta para a
+    // constante da rota, não para um literal — literal esquecido mandaria todo
+    // clique de busca por um salto extra.
+    expect(pageSource).toContain('action={EXPLORE_PATH}')
+    expect(pageSource).not.toContain('/pt/busca/?')
     expect(pageSource).toContain('method="get"')
     expect(pageSource).toContain('name="q"')
   })
 
   it('mantém a agenda real e estados honestos', () => {
-    expect(pageSource).toContain('getHomeUpcomingMovies({ limit: UPCOMING_SOURCE_LIMIT })')
+    // A agenda passou de "só filme" para o trilho MISTO, e "Mais aguardados"
+    // passou a ler a MESMA fonte de /pt/em-breve/ — a página para onde o
+    // próprio trilho manda em "Ver todos". Antes disso o trilho prometia uma
+    // lista que ele nunca poderia mostrar.
+    expect(pageSource).toContain('getHomeUpcomingMixed({ limit: UPCOMING_SOURCE_LIMIT })')
+    expect(pageSource).toContain('getAnticipatedData()')
     expect(pageSource).toContain('takeUpcomingWeek(')
     expect(pageSource).toContain('upcomingWeek.map')
     expect(pageSource).toContain('{movie.weekday}')
+    // Vertical do PRÓPRIO item, nunca "Filme" fixo num trilho misto.
+    expect(pageSource).toContain('{movie.verticalLabel}')
+    expect(pageSource).toContain('entityType={movie.bookmarkType}')
     expect(pageSource).toContain('Nenhum lançamento publicado')
     // Destaque só com entidade real; watchlist é o CardBookmark real
     expect(pageSource).toContain('featured !== null ?')
@@ -64,8 +77,16 @@ describe('contrato canônico da rota Explorar (tela 11)', () => {
     expect(cwSource).toContain('/api/me/series-progress/')
     expect(cwSource).toContain('/api/catalog/summary')
     expect(cwSource).not.toMatch(/localStorage|sessionStorage/)
-    // Anônimo → login real, nunca estado fake
-    expect(cwSource).toContain('/pt/entrar/')
+    // ANÔNIMO: a seção inteira some — não há mais CTA de login aqui.
+    //
+    // A regra mudou de propósito: seção pessoal que não pode ter sucesso não
+    // renderiza (mesma decisão da faixa de newsletter). A prova de que ela some
+    // para deslogado E aparece para logado é de RENDER, com sessão simulada, e
+    // vive em `apps/web/app/_components/__tests__/continue-watching-anonymous.test.tsx`.
+    expect(cwSource).not.toContain('/pt/entrar/')
+    // Some CALADA seria o outro defeito: a ausência vira log estruturado.
+    expect(cwSource).toContain('formatSectionAbsence')
+    expect(cwSource).toContain('no_authenticated_visitor')
   })
 
   it('preserva metadata, indexabilidade e os dois schemas', () => {
