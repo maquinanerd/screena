@@ -251,7 +251,7 @@ async function runChecks(
   record(16, "Pessoas: totalCount=3", people.view.totalCount === 3, `totalCount=${people.view.totalCount}`);
   record(17, "Pessoas: 3 itens (suficiente) -> index", people.indexability.decision === "index", `decision=${people.indexability.decision}`);
   record(18, "Pessoas: ordem por nome asc (Ana, Bruno, Zora)", JSON.stringify(people.view.cards.map((c) => c.title)) === JSON.stringify(["Ana", "Bruno", "Zora"]), `ordem=[${people.view.cards.map((c) => c.title).join(", ")}]`);
-  record(19, "Pessoas: meta e a funcao traduzida (Ana -> Atuacao)", people.view.cards[0]?.meta === "Atuacao", `metaAna=${people.view.cards[0]?.meta ?? "null"}`);
+  record(19, "Pessoas: meta e a funcao traduzida (Ana -> Atuação)", people.view.cards[0]?.meta === "Atuação", `metaAna=${people.view.cards[0]?.meta ?? "null"}`);
   record(20, "Pessoas: perfil local (Ana) e perfil REMOTO do file_path cru (Zora)", people.view.cards[0]?.href === "/pt/pessoas/pessoa-ana/" && people.view.cards[0]?.image?.src === "/media/people/ana.webp" && (people.view.cards[2]?.image?.src?.startsWith("https://") ?? false), `hrefAna=${people.view.cards[0]?.href}`);
 }
 

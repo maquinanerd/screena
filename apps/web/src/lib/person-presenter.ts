@@ -64,32 +64,14 @@ const PERSON_RENDERABLE_REVIEW_STATUS_SET: ReadonlySet<string> = new Set(
 export const MIN_PERSON_RENDERABLE_BLOCKS = 2;
 
 /**
- * Traducao pt-BR dos departamentos conhecidos do TMDB (`known_for_department`).
- * Valor desconhecido -> `null` (nunca vaza rotulo em ingles nem inventa funcao).
- *
- * ACENTUADOS. Estes valores nao sao identificador tecnico: eles vao para a TELA
- * (o kicker "Pessoa · Atuação" do cabecalho e o `jobTitle` do JSON-LD). Sem
- * acento, o leitor via "Atuacao" ao lado de rotulos acentuados na mesma pagina,
- * como se fossem dois campos diferentes — foi assim que "Atuação principal:
- * Atuacao" passou a parecer o mesmo campo escrito de dois jeitos.
- *
- * A regra do ASCII neste repositorio vale para migration/SQL (WIN1252 quebra
- * deploy), nao para texto de interface.
+ * A traducao de `known_for_department` vive em `./known-for-department` — modulo
+ * proprio, uma copia so. Reexportada aqui porque esta pagina e a maior
+ * consumidora e porque `news-presenter` ja importava por este caminho; e um
+ * ALIAS do simbolo unico, nunca uma segunda tabela.
  */
-const KNOWN_FOR_DEPARTMENT_LABELS: Readonly<Record<string, string>> = {
-  Acting: "Atuação",
-  Directing: "Direção",
-  Writing: "Roteiro",
-  Production: "Produção",
-  Editing: "Edição",
-  Camera: "Fotografia",
-  Sound: "Som",
-  Art: "Arte",
-  "Costume & Make-Up": "Figurino e Maquiagem",
-  "Visual Effects": "Efeitos Visuais",
-  Lighting: "Iluminação",
-  Crew: "Equipe",
-};
+import { mapKnownForDepartment } from "./known-for-department";
+
+export { mapKnownForDepartment };
 
 interface LocalImageSpec {
   width: number;
@@ -263,18 +245,6 @@ export function selectPersonOriginalName(
   return original;
 }
 
-/**
- * Traduz `known_for_department` para pt-BR usando um mapa de valores conhecidos
- * do TMDB. Valor ausente ou desconhecido -> `null` (nao vaza ingles cru nem
- * inventa funcao).
- */
-export function mapKnownForDepartment(
-  department: string | null | undefined,
-): string | null {
-  const value = trimToNull(department);
-  if (value === null) return null;
-  return KNOWN_FOR_DEPARTMENT_LABELS[value] ?? null;
-}
 
 function yearFromIso(iso: string | null): number | null {
   if (iso === null) return null;

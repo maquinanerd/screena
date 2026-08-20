@@ -8,6 +8,8 @@
 
 import { describe, expect, it } from "vitest";
 
+import { mapKnownForDepartment as mapKnownForDepartmentCanonico } from "../../apps/web/src/lib/known-for-department";
+import { mapKnownForDepartment as mapKnownForDepartmentDoDetalhe } from "../../apps/web/src/lib/person-presenter";
 import {
   buildMovieCard,
   buildMovieIndexView,
@@ -98,11 +100,25 @@ describe("formatSeriesIndexPeriod", () => {
 });
 
 describe("mapKnownForDepartment", () => {
-  it("traduz conhecidos, ignora desconhecidos/ausentes", () => {
-    expect(mapKnownForDepartment("Acting")).toBe("Atuacao");
-    expect(mapKnownForDepartment("Directing")).toBe("Direcao");
+  /**
+   * Ate 20/08/2026 este bloco AFIRMAVA o defeito: esperava "Atuacao"/"Direcao"
+   * sem acento, porque `entity-index-presenter` carregava uma segunda copia da
+   * tabela que a PR #186 nao acentuou. O teste passava e a producao mostrava
+   * grafias diferentes para a mesma pessoa no indice e no detalhe.
+   */
+  it("traduz ACENTUADO — a mesma grafia do detalhe de pessoa", () => {
+    expect(mapKnownForDepartment("Acting")).toBe("Atuação");
+    expect(mapKnownForDepartment("Directing")).toBe("Direção");
     expect(mapKnownForDepartment("Nope")).toBeNull();
     expect(mapKnownForDepartment(null)).toBeNull();
+  });
+
+  it("indice e detalhe devolvem o MESMO simbolo, nao dois iguais", () => {
+    // Comparar os RESULTADOS deixaria passar duas tabelas que por acaso
+    // concordam hoje. Comparar a referencia da funcao e o que prova origem
+    // unica — e o que reprova quando alguem recriar a copia local.
+    expect(mapKnownForDepartment).toBe(mapKnownForDepartmentDoDetalhe);
+    expect(mapKnownForDepartment).toBe(mapKnownForDepartmentCanonico);
   });
 });
 
@@ -145,7 +161,7 @@ describe("cards individuais", () => {
 
   it("pessoa: meta e a funcao traduzida; sem funcao conhecida meta e null", () => {
     expect(buildPersonCard(person({ slug: "p", knownForDepartment: "Acting" }))?.meta).toBe(
-      "Atuacao",
+      "Atuação",
     );
     expect(buildPersonCard(person({ slug: "p", knownForDepartment: "Xyz" }))?.meta).toBeNull();
     expect(buildPersonCard(person({ slug: "p" }))?.href).toBe("/pt/pessoas/p/");
