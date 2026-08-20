@@ -133,14 +133,6 @@ function assertChipsHaveNoNestedListItems(markup: string): void {
 }
 
 /** As fatias de marcacao de cada chip, na ordem em que aparecem. */
-/** O que a PESSOA le: tags (e portanto atributos) fora, espaco colapsado. */
-function visibleText(markup: string): string {
-  return markup
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 function chipSlices(markup: string): string[] {
   assertChipsHaveNoNestedListItems(markup);
   return markup
@@ -207,30 +199,24 @@ describe("credito: FORA do chip — ele vive no rodape global (decisao de 2026-0
     expect(markup).not.toContain("Nota fornecida por");
   });
 
-  it("o linkback de credito tambem saiu: o chip nao tem <a>; a URL vive so no title/data-*", () => {
-    // O unico `<a>` que existia no chip era o linkback do credito do IMDb. Com
-    // o credito no rodape, o chip nao tem link. Desde 20/08/2026 (topo
-    // canonico) a URL da fonte VIAJA no `title` (tooltip) e no
-    // `data-rating-url` — proveniencia inspecionavel, nunca credito visivel
-    // nem link. Texto visivel sem URL e a metade que o leitor ve.
+  it("o linkback de credito tambem saiu: o chip nao tem <a> nenhum", () => {
+    // O unico `<a>` que existia no chip era o linkback do credito do IMDb. Com o
+    // credito no rodape, o chip nao tem link — e ele NAO pode ganhar um link
+    // para a fonte por outro caminho, que seria o mesmo credito de volta.
     const markup = markupOf([IMDB, ROTTEN_TOMATOES]);
     expect(markup).not.toContain("<a");
-    expect(visibleText(markup)).not.toContain("imdb.com");
-    const imdb = chipSlices(markup).find((c) => c.includes('data-rating-source="imdb"'))!;
-    expect(imdb).toContain('data-rating-url="https://www.imdb.com/title/tt3896198/"');
+    expect(markup).not.toContain("https://www.imdb.com/title/tt3896198/");
   });
 });
 
 describe("contagem de votos: so quando a fonte informa", () => {
-  it("IMDb mostra o volume (numero cru, como o canonico); Rotten Tomatoes nao inventa 31 criticas", () => {
+  it("IMDb mostra o volume; Rotten Tomatoes nao inventa 31 criticas", () => {
     const chips = chipSlices(markupOf([IMDB, ROTTEN_TOMATOES]));
     const imdb = chips.find((c) => c.includes('data-rating-source="imdb"'))!;
     const rt = chips.find((c) => c.includes('data-rating-source="rotten_tomatoes"'))!;
 
-    // O canonico escreve o volume cru ("8,1 mil" / "8.114") sob o valor. O
-    // sufixo "votos" saiu com o topo canonico (20/08/2026).
-    expect(imdb).toContain('rating-chip__count">8.114<');
-    expect(rt).not.toContain("rating-chip__count");
+    expect(imdb).toContain("8.114 votos");
+    expect(rt).not.toContain("votos");
     expect(rt).not.toContain("críticas");
   });
 });

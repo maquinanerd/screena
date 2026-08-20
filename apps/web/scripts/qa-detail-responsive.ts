@@ -50,13 +50,6 @@ const OUT = path.join(webDir, '.qa-detail-responsive')
 const PAGES = [
   path.join(webDir, 'app', 'pt', 'filmes', '[slug]', 'page.tsx'),
   path.join(webDir, 'app', 'pt', 'series', '[slug]', 'page.tsx'),
-  // Componentes que as paginas COMPOEM e que passaram a emitir classes do
-  // esqueleto (topo canonico, 20/08/2026): a sinopse (detail-hero__synopsis)
-  // vive em entity-synopsis e o titulo de secao (detail-section-title) em
-  // section-head. A checagem de "harness desatualizado" precisa enxergar o
-  // markup COMPOSTO, nao so o arquivo da rota.
-  path.join(webDir, 'app', '_components', 'entity-synopsis.tsx'),
-  path.join(webDir, 'app', '_components', 'section-head.tsx'),
 ] as const
 
 /** As quatro larguras pedidas na auditoria + o piso de 320px do contrato. */

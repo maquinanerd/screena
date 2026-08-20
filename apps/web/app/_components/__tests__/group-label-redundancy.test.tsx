@@ -18,7 +18,6 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { SectionHead } from "../section-head";
 import { SiteFooter } from "../site-footer";
 import { FOOTER_COLUMNS } from "../../../src/config/footer";
 import {
@@ -124,53 +123,6 @@ describe("rodapé: o título de cada coluna existe UMA vez, e o grupo não o rep
           `item "${link.label}" repete o cabeçalho "${column.title}"`,
         ).toBe(false);
       }
-    }
-  });
-
-  it("REGRA NA ORIGEM: SectionHead derruba a sobrancelha redundante — renderizado, não fonte", () => {
-    // O caso que o dono riscou: "— ELENCO" acima de "ELENCO PRINCIPAL". O
-    // componente É quem emite a sobrancelha, e ele não aceita valor
-    // redundante: o kicker some, e o traço decorativo sai junto (nenhum
-    // hífen órfão).
-    const redundante = renderToStaticMarkup(
-      <SectionHead headingId="t1" kicker="Elenco" thin="principal" title="Elenco" />,
-    );
-    expect(redundante).not.toContain("eyebrow-bar");
-    expect(visibleText(redundante)).toBe("Elenco principal");
-
-    // "— DETALHES" acima de "Detalhes do título": prefixo — também cai.
-    const prefixo = renderToStaticMarkup(
-      <SectionHead headingId="t2" kicker="— DETALHES" thin="do título" title="Detalhes" />,
-    );
-    expect(prefixo).not.toContain("eyebrow-bar");
-
-    // Sobrancelha que INFORMA fica: "Editorial" diz o que o título não diz.
-    const informativa = renderToStaticMarkup(
-      <SectionHead headingId="t3" kicker="Editorial" thin="e bastidores" title="Notícias" />,
-    );
-    expect(informativa).toContain("eyebrow-bar");
-    expect(visibleText(informativa)).toContain("Editorial");
-  });
-
-  it("nenhuma página monta sobrancelha + título À MÃO (o par passa por SectionHead)", async () => {
-    // A regra vive no componente; um par montado inline nas páginas a
-    // contornaria — e o defeito voltaria "na próxima seção que alguém criar".
-    // Sobrancelha SOZINHA (A obra, Ficha técnica, Detalhes) continua livre:
-    // ali o kicker é o próprio título da seção, sem h2 a repetir.
-    const { readFileSync } = await import("node:fs");
-    const { fileURLToPath } = await import("node:url");
-    const path = await import("node:path");
-    const here = path.dirname(fileURLToPath(import.meta.url));
-    const pages = [
-      path.resolve(here, "../../pt/filmes/[slug]/page.tsx"),
-      path.resolve(here, "../../pt/series/[slug]/page.tsx"),
-    ];
-    for (const page of pages) {
-      const source = readFileSync(page, "utf8");
-      expect(
-        /eyebrow-bar[\s\S]{0,240}detail-section-title/.test(source),
-        `${path.basename(path.dirname(page))}: par sobrancelha+título montado à mão — use SectionHead`,
-      ).toBe(false);
     }
   });
 

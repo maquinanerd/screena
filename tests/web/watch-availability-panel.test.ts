@@ -202,13 +202,8 @@ describe("watch-availability — integracao nas paginas de detalhe", () => {
     ["filme", movie],
     ["serie", series],
   ] as const) {
-    it(`${name}: importa a fileira de marcas do topo canonico, nao os paineis antigos`, () => {
-      // Desde 20/08/2026 o cartao do topo usa a fileira de MARCAS
-      // (WatchBrandsRow, canonico) — o painel completo por modalidade
-      // continua existindo para o hub /pt/onde-assistir, mas nao nas paginas
-      // de detalhe; o antigo WatchProviders segue banido.
-      expect(source).toContain("WatchBrandsRow");
-      expect(source).not.toContain("WatchAvailabilityPanel");
+    it(`${name}: importa o painel novo e nao o antigo WatchProviders`, () => {
+      expect(source).toContain("WatchAvailabilityPanel");
       expect(source).not.toContain("WatchProviders");
     });
 
@@ -232,9 +227,7 @@ describe("watch-availability — integracao nas paginas de detalhe", () => {
       // Ver tests/web/watch-absence-reason.test.ts para os dois estados.
       expect(clean).toMatch(/reason: watchAbsence \?\? 'no_authorized_provider'/);
       expect(clean).toMatch(/<SectionBoundary decision=\{watchSection\}>/);
-      // A fileira deriva da MESMA view licenciada (watchBrandsRow(view)) — a
-      // troca de painel nao abriu porta nova de dado.
-      expect(clean).toContain("<WatchBrandsRow brands={watchBrandsRow(view)} />");
+      expect(clean).toContain("<WatchAvailabilityPanel view={view} />");
     });
 
     it(`${name}: rotulo 'Onde assistir' so existe com destino/painel REAL`, () => {

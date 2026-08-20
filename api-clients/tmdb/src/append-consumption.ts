@@ -80,8 +80,6 @@ export const APPEND_CONSUMED: readonly AppendConsumer[] = [
   { value: 'recommendations', consumedBy: 'services/ingestion/src/normalizers/recommendations.ts' },
   { value: 'similar', consumedBy: 'services/ingestion/src/normalizers/recommendations.ts' },
   { value: 'combined_credits', consumedBy: 'services/ingestion/src/normalizers/credits.ts' },
-  { value: 'release_dates', consumedBy: 'services/ingestion/src/normalizers/detail-facts.ts' },
-  { value: 'content_ratings', consumedBy: 'services/ingestion/src/normalizers/detail-facts.ts' },
 ]
 
 /**
@@ -102,6 +100,19 @@ export const APPEND_DEFERRED: readonly AppendDeferred[] = [
       'Critica de terceiro. NAO pode ser exibida: `review_quote_allowed` e false em toda ' +
       'licenca, e liberar exige autorizacao especifica que nao existe. Pedir e barato; ' +
       'exibir e proibido (invariante 6).',
+  },
+  {
+    value: 'release_dates',
+    reason:
+      'Classificacao indicativa por pais. `movies.certification` e alimentada por outro ' +
+      'caminho hoje; consolidar os dois exige tarefa propria.',
+  },
+  {
+    value: 'content_ratings',
+    reason:
+      'Equivalente de `release_dates` para serie: classificacao indicativa por pais. Mesma ' +
+      'pendencia — `tv_shows.certification` e alimentada por outro caminho, e consolidar as ' +
+      'duas origens exige tarefa propria.',
   },
   {
     value: 'translations',

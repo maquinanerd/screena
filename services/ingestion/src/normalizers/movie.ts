@@ -10,7 +10,6 @@ import type {
   MovieUpsert,
   TitleRecommendationLink,
   TitleGenreLink,
-  TitleCountryLink,
 } from '../types.js'
 import { NormalizationError } from '../types.js'
 import {
@@ -24,11 +23,6 @@ import { buildExternalIds } from './external-ids.js'
 import { normalizeCredits } from './credits.js'
 import { collectRecommendations } from './recommendations.js'
 import { normalizeTitleGenres } from './genres.js'
-import {
-  normalizeBrReleaseFacts,
-  normalizeBudget,
-  normalizeMovieProductionCountries,
-} from './detail-facts.js'
 
 /** Resultado da normalizacao de um filme. */
 export interface NormalizedMovie {
@@ -49,10 +43,6 @@ export interface NormalizedMovie {
   readonly recommendations: TitleRecommendationLink[]
   /** A fonte trouxe ALGUM dos dois blocos? Ausencia nunca e lista vazia. */
   readonly recommendationsPresent: boolean
-  /** Paises de origem (`production_countries`), na ordem do payload. */
-  readonly countries: TitleCountryLink[]
-  /** A fonte trouxe o array de paises? Mesma disciplina de `genresPresent`. */
-  readonly countriesPresent: boolean
   /** Generos, na ORDEM do TMDB (editorial: o primeiro e o mais representativo). */
   readonly genres: TitleGenreLink[]
   /**
@@ -77,7 +67,6 @@ export function normalizeMovie(detail: TmdbMovieDetail): NormalizedMovie {
   }
 
   const imdbId = normalizeImdbId(detail.imdb_id ?? detail.external_ids?.imdb_id)
-  const brFacts = normalizeBrReleaseFacts((detail as { release_dates?: unknown }).release_dates)
   const movie: MovieUpsert = {
     tmdbId: detail.id,
     imdbId,
@@ -91,19 +80,11 @@ export function normalizeMovie(detail: TmdbMovieDetail): NormalizedMovie {
     voteCountTmdb: nullableNumber(detail.vote_count),
     posterPath: nullableString(detail.poster_path),
     backdropPath: nullableString(detail.backdrop_path),
-    // Fatos da ficha (20/08/2026): chegavam no detalhe e eram descartados —
-    // quarta ocorrencia do padrao. Ver normalizers/detail-facts.ts.
-    budget: normalizeBudget((detail as { budget?: unknown }).budget),
-    releaseDateBr: brFacts.releaseDateBr,
-    certification: brFacts.certification,
   }
 
   const credits = normalizeCredits(detail.credits)
   const recomendacoes = collectRecommendations(detail, 'movie')
   const genres = normalizeTitleGenres(detail.genres)
-  const countries = normalizeMovieProductionCountries(
-    (detail as { production_countries?: unknown }).production_countries,
-  )
   return {
     movie,
     externalIds: buildExternalIds('movie', detail.id, imdbId),
@@ -115,7 +96,5 @@ export function normalizeMovie(detail: TmdbMovieDetail): NormalizedMovie {
     recommendationsPresent: recomendacoes.present,
     genres: genres.links,
     genresPresent: genres.present,
-    countries: countries.links,
-    countriesPresent: countries.present,
   }
 }

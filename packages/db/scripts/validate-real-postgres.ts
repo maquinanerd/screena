@@ -122,7 +122,6 @@ const EXPECTED_TABLES = [
   // Fase 10 - vinculo titulo <-> genero. `genres` era dicionario SEM ligacao:
   // o `genres[]` do detalhe do TMDB chegava e era descartado no normalizador.
   "movie_genres", "tv_show_genres",
-  "movie_production_countries", "tv_show_origin_countries",
   "networks", "tv_networks",
   "keywords", "entity_keywords",
   "entity_alternative_titles",

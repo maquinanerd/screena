@@ -35,21 +35,6 @@ export interface MovieUpsert {
   readonly voteCountTmdb: number | null
   readonly posterPath: string | null
   readonly backdropPath: string | null
-  /**
-   * Orcamento do detalhe (inteiro; dolar por convencao documentada da API).
-   * `0` do upstream = "nao informado" e vira null na normalizacao.
-   */
-  readonly budget: bigint | null
-  /** Estreia regional BR (`release_dates`, recorte BR). */
-  readonly releaseDateBr: string | null
-  /** Classificacao indicativa BRASILEIRA (`release_dates`, recorte BR). */
-  readonly certification: string | null
-}
-
-/** Vinculo titulo->pais de origem, na ordem do payload. */
-export interface TitleCountryLink {
-  readonly countryCode: string
-  readonly position: number
 }
 
 /** Os dois sinais de parentesco que o TMDB devolve. Vocabulario FECHADO. */
@@ -87,8 +72,6 @@ export interface TvShowUpsert {
   readonly voteCountTmdb: number | null
   readonly posterPath: string | null
   readonly backdropPath: string | null
-  /** Classificacao indicativa BRASILEIRA (`content_ratings`, recorte BR). */
-  readonly certification: string | null
 }
 
 /** Upsert de `seasons` (chave: tvShowId + seasonNumber). */
