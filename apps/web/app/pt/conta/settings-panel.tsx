@@ -333,15 +333,17 @@ export function SettingsPanel(): React.ReactElement {
               onSave={() => void salvarPerfil(profile)}
               value={profile.handle != null && profile.handle !== '' ? `@${profile.handle}` : 'Adicionar'}
             />
-            <div className="set-row">
-              <span className="set-row__icon">
-                <IcMail size={16} />
-              </span>
-              <span className="set-row__label">E-mail</span>
-              <span className="set-row__value">
-                {user.emailVerified ? 'Verificado' : 'Aguardando verificação'}
-              </span>
-            </div>
+            {user.emailVerified ? (
+              <div className="set-row">
+                <span className="set-row__icon">
+                  <IcMail size={16} />
+                </span>
+                <span className="set-row__label">E-mail</span>
+                <span className="set-row__value">Verificado</span>
+              </div>
+            ) : (
+              <EmailVerificationRow />
+            )}
             <EditableRow
               editValue={profile.countryCode ?? ''}
               icon={<IcGlobe size={16} />}
@@ -512,6 +514,108 @@ function PasswordRow({ minLength }: { minLength: number }): ReactNode {
           </button>
           {aviso !== null ? (
             <p className="alert alert--error" role="alert">
+              {aviso}
+            </p>
+          ) : null}
+        </form>
+      ) : null}
+    </div>
+  )
+}
+
+/**
+ * E-mail ainda não confirmado — com uma saída, e não só o diagnóstico.
+ *
+ * O QUE FOI MEDIDO. A linha dizia "Aguardando verificação" e parava aí. Nenhum
+ * lugar do app chamava `POST /api/auth/email-verification/request`: o handler
+ * existe, é testado e responde 202, e o app inteiro só sabia consumir o link
+ * (`/confirm`, em `/pt/verificar-email`). Quem perdesse o e-mail original ficava
+ * preso, olhando o próprio problema descrito e sem botão nenhum.
+ *
+ * É o defeito da newsletter ao contrário: lá havia botão sem API; aqui havia API
+ * sem botão. Os dois terminam no mesmo lugar — o leitor não consegue o que a
+ * página diz respeito.
+ *
+ * POR QUE PEDIR O E-MAIL SE O USUÁRIO JÁ ESTÁ LOGADO. Porque a sessão não o
+ * conhece, e isso é decisão de projeto, não esquecimento: `CurrentUserDto` é uma
+ * whitelist explícita "sem email, sem PK interna". Puxar o endereço para o
+ * payload da sessão só para preencher um campo trocaria uma conveniência por
+ * mais PII trafegando em toda visita. O endpoint já é desenhado para receber o
+ * e-mail (mesma forma de "esqueci minha senha").
+ *
+ * `fetch` sem CSRF, igual ao irmão `/api/auth/password-reset/request`: é
+ * endpoint de auth PÚBLICO, fora da fronteira autenticada.
+ *
+ * A RESPOSTA É SEMPRE GENÉRICA porque o endpoint é anti-enumeração (202 fixo,
+ * mesmo corpo). Escrever "enviamos!" afirmaria que a conta existe e está
+ * pendente — exatamente o que o 202 fixo existe para não revelar.
+ */
+function EmailVerificationRow(): ReactNode {
+  const [open, setOpen] = useState(false)
+  const [email, setEmail] = useState('')
+  const [enviando, setEnviando] = useState(false)
+  const [aviso, setAviso] = useState<string | null>(null)
+
+  async function enviar(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault()
+    setAviso(null)
+    setEnviando(true)
+    try {
+      await fetch('/api/auth/email-verification/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ email }),
+      })
+    } catch {
+      // Falha de rede é a ÚNICA coisa que distingue um desfecho do outro aqui:
+      // o endpoint responde 202 para tudo, de propósito.
+      setAviso('Não foi possível falar com o servidor agora. Tente de novo.')
+      setEnviando(false)
+      return
+    }
+    setEnviando(false)
+    setAviso(
+      'Se este e-mail estiver cadastrado e ainda não confirmado, o link acabou de ser enviado.',
+    )
+  }
+
+  return (
+    <div className="set-row-group">
+      <button
+        aria-expanded={open}
+        className="set-row set-row--action"
+        onClick={() => setOpen(!open)}
+        type="button"
+      >
+        <span className="set-row__icon">
+          <IcMail size={16} />
+        </span>
+        <div className="set-row__text">
+          <div className="set-row__title">E-mail</div>
+          <div className="set-row__desc">
+            Aguardando verificação — reenvie o link de confirmação.
+          </div>
+        </div>
+        <Chevron />
+      </button>
+      {open ? (
+        <form className="set-row__editor" onSubmit={enviar}>
+          <label htmlFor="set-verify-email">Seu e-mail</label>
+          <input
+            autoComplete="email"
+            className="input"
+            id="set-verify-email"
+            onChange={(event) => setEmail(event.target.value)}
+            required
+            type="email"
+            value={email}
+          />
+          <button className="set-save" disabled={enviando} type="submit">
+            {enviando ? 'Enviando…' : 'Reenviar link'}
+          </button>
+          {aviso !== null ? (
+            <p className="alert" role="status">
               {aviso}
             </p>
           ) : null}

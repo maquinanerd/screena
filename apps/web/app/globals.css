@@ -10097,6 +10097,66 @@ h4.art-body__heading {
 }
 
 /* ------------------------------------------------------------------ */
+/* Onde assistir — AGRUPAMENTO POR MARCA (tela 10)                     */
+/*                                                                     */
+/* A marca aparece UMA vez; as rotas (assinatura direta, plano, canal   */
+/* dentro de um hospedeiro) ficam embaixo dela. A rota carrega o custo: */
+/* "canal no Prime Video" diz que o leitor precisa do hospedeiro MAIS o */
+/* canal. Somi-la esconderia isso atras do nome da marca.               */
+/*                                                                     */
+/* A pill do hero deixa de ser uma linha so; por isso `flex-direction`  */
+/* e `height:auto` aqui, DEPOIS da regra base (ordem de documento).     */
+/* ------------------------------------------------------------------ */
+
+.watch-hero__service {
+  flex-direction: column;
+  justify-content: center;
+  height: auto;
+  min-height: 52px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  gap: 2px;
+}
+
+.watch-hero__service-name {
+  display: block;
+}
+
+.watch-hero__service-routes {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.watch-brand-routes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  list-style: none;
+  margin: 0 0 18px;
+  padding: 0;
+}
+
+.watch-brand-routes__item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  font-size: 12px;
+}
+
+.watch-brand-routes__name {
+  font-weight: 700;
+  color: var(--c-text-primary, #12100e);
+}
+
+.watch-brand-routes__label {
+  font-weight: 600;
+  color: var(--c-text-secondary, #6e6a61);
+}
+
+/* ------------------------------------------------------------------ */
 /* "Mais como este" — coluna direita da faixa final (telas 06/07)      */
 /*                                                                     */
 /* Valores do canonico: cabecalho 22px/800/-0.02em, trilho com cards de */
