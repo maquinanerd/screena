@@ -303,17 +303,22 @@ async function runChecks(url: string): Promise<void> {
     // (Provedores de streaming tambem tem base owner_decision, mas nascem
     // dinamicamente por provedor registrado — este harness parte de zero
     // provedores, entao nenhum aparece aqui.)
+    // O harness REGISTRA um provedor real (netflix, check 5), e cada provedor
+    // rende UMA licenca POR ORIGEM — logo o conjunto esperado carrega as DUAS
+    // linhas netflix/watch_availability. Comparacao por MULTISET ordenado:
+    // includes() aceitaria uma duplicata a mais em silencio.
     const LOGO_ALLOWLIST = [
       "imdb/rating",
       "metacritic/rating",
+      "netflix/watch_availability",
+      "netflix/watch_availability",
       "rotten_tomatoes/rating",
       "tmdb/image",
       "tmdb/other",
       "tmdb/video",
     ];
     const logoOk =
-      logoKeys.length === LOGO_ALLOWLIST.length &&
-      LOGO_ALLOWLIST.every((k) => logoKeys.includes(k));
+      JSON.stringify([...logoKeys].sort()) === JSON.stringify([...LOGO_ALLOWLIST].sort());
     record(6, "logo liberado no conjunto exato (TMDB pelos termos + 3 fontes de nota por decisao do dono)", logoOk, `logo_allowed=true: [${logoKeys.join(", ")}]`);
 
     // 7. Review quotes bloqueados.
@@ -347,10 +352,32 @@ async function runChecks(url: string): Promise<void> {
     record(10, "nenhum rating foi promovido por efeito colateral", ratingsDisplayableBefore === 0 && ratingsDisplayableAfter === 0, `antes=${ratingsDisplayableBefore} depois=${ratingsDisplayableAfter}`);
     record(11, "nenhuma oferta foi promovida por efeito colateral", offersDisplayableBefore === 0 && offersDisplayableAfter === 0, `antes=${offersDisplayableBefore} depois=${offersDisplayableAfter}`);
 
-    // 12. screen_score_display continua barrado (Cinerie Score sem decisão).
-    await expectViolation(12, "cinerie score: screen_score_display=true continua barrado (sem decisao)",
+    // 12. Cinerie Score: a autorizacao do dono (2026-08-20) MUDOU o desfecho, e
+    // os DOIS lados sao provados. Com a decisao VIGENTE (emitida pelo apply), o
+    // gate ACEITA ligar o display — o destravamento e funcional, nao decorativo.
+    let scoreFlipOk = true;
+    let scoreFlipDetail = "aceito com decisao vigente";
+    try {
+      await exec(`UPDATE movies SET screen_score=4.0, screen_score_scale=5, screen_score_display=true WHERE id=${movieId}`);
+      await exec(`UPDATE movies SET screen_score=NULL, screen_score_scale=NULL, screen_score_display=false WHERE id=${movieId}`);
+    } catch (error) {
+      scoreFlipOk = false;
+      scoreFlipDetail = `RECUSADO com decisao vigente: ${error instanceof Error ? error.message.slice(0, 160) : String(error)}`;
+    }
+    record(12, "cinerie score: display ACEITO sob a decisao do proprietario (o destravamento e funcional)", scoreFlipOk, scoreFlipDetail);
+
+    // 12.1. E SEM a decisao vigente, continua BARRADO — o gate nao virou porta
+    // aberta: ele exige exatamente a decisao que o proprietario aplicou. A
+    // decisao e desativada, o statement proibido e provado, e ela volta ao
+    // MESMO estado (senao o check de idempotencia abaixo criaria linha nova).
+    const scoreDecisionId = String(Number((await q<{ id: bigint }>(
+      `SELECT id FROM data_usage_decisions WHERE use_case='cinerie_score_display' AND is_current=true`,
+    ))[0]!.id));
+    await exec(`UPDATE data_usage_decisions SET is_current=false WHERE id=${scoreDecisionId}`);
+    await expectViolation(12.1, "cinerie score: SEM decisao vigente, o display continua barrado",
       `UPDATE movies SET screen_score=4.0, screen_score_scale=5, screen_score_display=true WHERE id=${movieId}`,
       "BLOCKED_BY_DECISION");
+    await exec(`UPDATE data_usage_decisions SET is_current=true WHERE id=${scoreDecisionId}`);
 
     // 13. APPLY é IDEMPOTENTE: segunda vez não escreve.
     const licCountBefore = Number((await q<{ c: number }>(`SELECT count(*)::int AS c FROM source_licenses`))[0]!.c);
