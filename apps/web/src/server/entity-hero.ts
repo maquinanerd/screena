@@ -20,12 +20,13 @@ type PrismaClient = ReturnType<typeof getPrismaClient>;
 export type HeroEntityType = "movie" | "tv";
 
 /**
- * Gêneros do título, em ordem determinística (tmdb_id do gênero).
+ * Gêneros do título, na ORDEM EDITORIAL do TMDB (`position` da junção).
  *
  * A ligação título↔gênero existe desde 20/08/2026 (`movie_genres` /
- * `tv_show_genres`); a ordem POSICIONAL do payload do TMDB não foi persistida,
- * então a ordem aqui é um proxy estável — nunca a ordem de retorno do banco,
- * que não é garantida.
+ * `tv_show_genres`) e PERSISTE a ordem do payload — o TMDB devolve o gênero
+ * mais representativo primeiro, e é ele que vira o chip do hero e o crumb do
+ * meio. Ordenar por id trocaria "Ficção científica" por "Ação" na vitrine sem
+ * que ninguém tivesse decidido.
  */
 export async function getGenresForEntity(
   prisma: PrismaClient,
@@ -35,15 +36,15 @@ export async function getGenresForEntity(
   if (entityType === "movie") {
     const rows = await prisma.movieGenre.findMany({
       where: { movieId: entityId },
-      select: { genre: { select: { name: true, tmdbId: true } } },
-      orderBy: { genreTmdbId: "asc" },
+      select: { genre: { select: { name: true } } },
+      orderBy: { position: "asc" },
     });
     return rows.map((row) => row.genre.name);
   }
   const rows = await prisma.tvShowGenre.findMany({
     where: { tvShowId: entityId },
-    select: { genre: { select: { name: true, tmdbId: true } } },
-    orderBy: { genreTmdbId: "asc" },
+    select: { genre: { select: { name: true } } },
+    orderBy: { position: "asc" },
   });
   return rows.map((row) => row.genre.name);
 }
