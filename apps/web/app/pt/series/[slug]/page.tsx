@@ -288,6 +288,22 @@ export default async function SeriesPage({
     reason: 'no_linked_article',
   })
 
+  // "Mais como este" — a segunda coluna da faixa final do canonico, que aqui
+  // era um `<div />` VAZIO ocupando metade da faixa em toda serie.
+  //
+  // O valor e `null` DE PROPOSITO, e nao por esquecimento. O unico parentesco
+  // declarado no schema e `movie_collection_memberships` -> `collections`, que
+  // so existe para FILME. Serie liga a `networks` e a `production_companies`,
+  // que agrupam milhares de titulos sem parentesco nenhum — usar isso encheria
+  // a coluna com "mais como este" falso. Entao a serie nao ganha um sinal pior
+  // para tapar buraco: a grade vira de uma coluna e a ausencia vai para o log
+  // com o motivo que ja existia esperando por este bloco.
+  const similarSection = decideSection(null, {
+    ...entityRef,
+    section: 'mais-como-este',
+    reason: 'no_recommendation_dataset',
+  })
+
   const breadcrumbJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
@@ -663,7 +679,7 @@ export default async function SeriesPage({
       {/* ===== Detalhes (ficha 320px) ===== */}
       {facts.length > 0 ? (
         <section aria-labelledby="series-details-title" className="detail-container" style={{ paddingTop: 64, paddingBottom: 72 }}>
-          <div className="ficha-grid">
+          <div className={similarSection.rendered ? 'ficha-grid' : 'ficha-grid ficha-grid--solo'}>
             <div>
               <div className="eyebrow-bar">
                 <span id="series-details-title">Detalhes</span>
@@ -677,7 +693,14 @@ export default async function SeriesPage({
                 ))}
               </dl>
             </div>
-            <div />
+            {/* `once`: a causa aqui e uma propriedade do DEPLOY (nao existe
+                dataset de similaridade para a vertical), identica em TODA
+                serie. Sem isto, o log emitiria uma linha por pageview de
+                qualquer serie e afogaria o evento que importa — que e
+                exatamente o ruido contra o qual `section-absence.ts` avisa. */}
+            <SectionBoundary decision={similarSection} once>
+              {() => null}
+            </SectionBoundary>
           </div>
         </section>
       ) : null}
