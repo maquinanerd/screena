@@ -516,15 +516,7 @@ model Movie {
   backdropPath       String?   @map("backdrop_path")
   // Classificacao indicativa (advisory de conteudo: "14", "16", "L", "TV-MA").
   // NAO e rating source; nao passa pelas regras de external_ratings (inv. 1/2).
-  // Desde 20/08/2026 e o RECORTE BR de `release_dates` (so a brasileira e
-  // persistida; classificacao de outro pais NUNCA entra aqui sem rotulo).
   certification      String?   @map("certification")
-  // Orcamento do detalhe TMDB. A API publica o valor como inteiro em dolar
-  // (convencao documentada da TMDB); `0` do upstream significa "nao informado"
-  // e vira NULL na normalizacao — nunca um orcamento de zero.
-  budget             BigInt?
-  // Estreia REGIONAL (BR) de `release_dates`; a `release_date` global continua.
-  releaseDateBr      DateTime? @map("release_date_br") @db.Date
   // Nota editorial PROPRIA da Cinerie (escala 5). Nunca e AggregateRating de
   // terceiro nem se mistura com IMDb/RT. `screen_score_display` e o gate seguro
   // (nasce false): so aparece em pagina publica quando explicitamente liberado.
@@ -540,7 +532,6 @@ model Movie {
   collectionMemberships MovieCollectionMembership[]
   productionCompanies   MovieProductionCompany[]
   genres                MovieGenre[]
-  productionCountries   MovieProductionCountry[]
 
   @@index([status])
   @@index([updatedAt])
@@ -583,7 +574,6 @@ model TvShow {
   networks            TvNetwork[]
   productionCompanies TvProductionCompany[]
   genres              TvShowGenre[]
-  originCountries     TvShowOriginCountry[]
 
   @@index([status])
   @@index([updatedAt])
@@ -1352,45 +1342,6 @@ model TvShowGenre {
   @@id([tvShowId, genreTmdbId])
   @@index([genreMediaType, genreTmdbId])
   @@map("tv_show_genres")
-}
-
-// ============================================================
-// PAIS DE ORIGEM DO TITULO (ficha tecnica, 20/08/2026)
-// ============================================================
-//
-// `production_countries` (filme) e `origin_country` (serie) chegavam no DETALHE
-// do TMDB e eram descartados — mesma familia de `watch/providers` (#181),
-// biografia (#190) e `recommendations` (#191). O codigo ISO fica SEM FK para
-// `countries` DE PROPOSITO: aquela tabela e o ESCOPO de exibicao de ofertas
-// (~13 codigos) e nao um dicionario ISO — uma FK recusaria "NZ" de um titulo
-// neozelandes (a licao das 100/100 falhas do watch). A grafia e travada por
-// CHECK na migration; o render resolve o nome pt via `countries` quando o
-// codigo estiver la, senao mostra o proprio codigo (fato, nunca fabricacao).
-
-model MovieProductionCountry {
-  movieId     BigInt   @map("movie_id")
-  countryCode String   @map("country_code") // ISO 3166-1 alpha-2 (CHECK na migration)
-  position    Int
-  createdAt   DateTime @default(now()) @map("created_at")
-
-  movie Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
-
-  @@id([movieId, countryCode])
-  @@index([countryCode])
-  @@map("movie_production_countries")
-}
-
-model TvShowOriginCountry {
-  tvShowId    BigInt   @map("tv_show_id")
-  countryCode String   @map("country_code") // ISO 3166-1 alpha-2 (CHECK na migration)
-  position    Int
-  createdAt   DateTime @default(now()) @map("created_at")
-
-  tvShow TvShow @relation(fields: [tvShowId], references: [id], onDelete: Cascade)
-
-  @@id([tvShowId, countryCode])
-  @@index([countryCode])
-  @@map("tv_show_origin_countries")
 }
 
 // --- Mídia TMDB (Fase 7): metadados de imagens ---

@@ -12,7 +12,6 @@ import type {
   ExternalIdInput,
   TitleRecommendationLink,
   TitleGenreLink,
-  TitleCountryLink,
   TvShowUpsert,
 } from '../types.js'
 import { NormalizationError } from '../types.js'
@@ -27,7 +26,6 @@ import { buildExternalIds } from './external-ids.js'
 import { normalizeCredits } from './credits.js'
 import { collectRecommendations } from './recommendations.js'
 import { normalizeTitleGenres } from './genres.js'
-import { normalizeBrContentRating, normalizeTvOriginCountries } from './detail-facts.js'
 
 /** Resultado da normalizacao de uma serie. */
 export interface NormalizedTvShow {
@@ -53,10 +51,6 @@ export interface NormalizedTvShow {
   readonly genres: TitleGenreLink[]
   /** A fonte trouxe o array de generos (mesmo vazio)? Ver NormalizedMovie. */
   readonly genresPresent: boolean
-  /** Paises de origem (`origin_country`), na ordem do payload. */
-  readonly countries: TitleCountryLink[]
-  /** A fonte trouxe o array de paises? Mesma disciplina de `genresPresent`. */
-  readonly countriesPresent: boolean
 }
 
 /** Normaliza uma serie; lanca NormalizationError sem id ou sem nome. */
@@ -85,11 +79,6 @@ export function normalizeTvShow(detail: TmdbTvDetail): NormalizedTvShow {
     voteCountTmdb: nullableNumber(detail.vote_count),
     posterPath: nullableString(detail.poster_path),
     backdropPath: nullableString(detail.backdrop_path),
-    // Recorte BR de `content_ratings` (ficha, 20/08/2026): so a classificacao
-    // BRASILEIRA e persistida — a de outro pais nunca entra sem rotulo.
-    certification: normalizeBrContentRating(
-      (detail as { content_ratings?: unknown }).content_ratings,
-    ).certification,
   }
 
   const seasonNumbers = (detail.seasons ?? [])
@@ -99,9 +88,6 @@ export function normalizeTvShow(detail: TmdbTvDetail): NormalizedTvShow {
   const credits = normalizeCredits(detail.credits)
   const recomendacoes = collectRecommendations(detail, 'tv')
   const genres = normalizeTitleGenres(detail.genres)
-  const countries = normalizeTvOriginCountries(
-    (detail as { origin_country?: unknown }).origin_country,
-  )
   return {
     tvShow,
     externalIds: buildExternalIds('tv', detail.id, imdbId),
@@ -114,7 +100,5 @@ export function normalizeTvShow(detail: TmdbTvDetail): NormalizedTvShow {
     seasonNumbers,
     genres: genres.links,
     genresPresent: genres.present,
-    countries: countries.links,
-    countriesPresent: countries.present,
   }
 }

@@ -86,20 +86,13 @@ describe('shell público mínimo · detalhe de série', () => {
   it('mantém somente blocos revisados e dados reais da ficha', () => {
     expect(code).toContain('WORK_BLOCK_TYPES.has(block.blockType)')
     expect(code).toContain('EPISODE_BLOCK_TYPES.has(block.blockType)')
-    // `where_to_watch_text` SAIU do cartao com o topo canonico (20/08/2026):
-    // o cartao e "marcas em linha e mais nada". O bloco editorial segue valido
-    // no schema e sem superficie nas paginas de detalhe — registrado em
-    // docs/frontend/DESIGN-DELTA-detalhe.md; nenhum bloco desse tipo existe em
-    // producao hoje.
+    expect(code).toContain('block.blockType === "where_to_watch_text"')
     expect(code).toContain('block.blockType === "cast_intro"')
     expect(code).toContain('block.blockType === "news_context"')
     // Gate de oferta licenciada = fronteira de secao (decide E registra).
     expect(code).toMatch(/decideSection\(watch,/)
-    expect(code).toContain('<WatchBrandsRow brands={watchBrandsRow(view)} />')
-    // "Também em: IMDb" SAIU do topo (uma das sete remocoes do dono,
-    // 20/08/2026). Os IDs externos continuam alimentando o sameAs do JSON-LD.
-    expect(code).not.toContain('EntityExternalIds')
-    expect(code).toContain('buildSameAs(externalIds')
+    expect(code).toContain('<WatchAvailabilityPanel view={view} />')
+    expect(code).toContain('<EntityExternalIds links={externalLinks} />')
     expect(code).toMatch(/decideSection\(visibleCast,/)
     expect(code).toMatch(/decideSection\(visibleNews,/)
     expect(code).toContain('members.map(')

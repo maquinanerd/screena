@@ -61,8 +61,6 @@ export async function importTvShow(ctx: ImportContext, tmdbId: number): Promise<
         recommendations: normalized.recommendations,
         recommendationsPresent: normalized.recommendationsPresent,
         genres: normalized.genres,
-      countries: normalized.countries,
-      countriesPresent: normalized.countriesPresent,
         genresPresent: normalized.genresPresent,
         timestamps,
       })

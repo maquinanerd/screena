@@ -5,30 +5,16 @@ import { buildSameAs, serializeJsonLd } from '@screena/seo'
 
 import { EntityActions } from '../../../_components/entity-actions'
 import { EntitySynopsis } from '../../../_components/entity-synopsis'
+import { EntityExternalIds } from '../../../_components/entity-external-ids'
 import { AwardsBand } from '../../../_components/awards-band'
-import { CinerieScoreCard } from '../../../_components/cinerie-score-card'
 import { SectionBoundary } from '../../../_components/section-boundary'
-import { SectionHead } from '../../../_components/section-head'
 import { SimilarTitles } from '../../../_components/similar-titles'
 import { TrailerModal } from '../../../_components/trailer-modal'
-import { WatchBrandsRow } from '../../../_components/watch-brands-row'
+import { WatchAvailabilityPanel } from '../../../_components/watch-availability-panel'
 import { RatingsPanel } from '../../../_components/ratings-panel'
 import { canonicalRedirectPath } from '../../../../src/lib/canonical-redirect'
-import {
-  decideCinerieScore,
-  type CinerieScoreView,
-} from '../../../../src/lib/cinerie-score-presenter'
-import {
-  HERO_SYNOPSIS_MAX_CHARS,
-  breadcrumbGenre,
-  heroGenreChips,
-} from '../../../../src/lib/detail-hero'
-import {
-  buildSectionAbsence,
-  decideSection,
-  type SectionDecision,
-} from '../../../../src/lib/section-absence'
-import { watchBrandsRow } from '../../../../src/lib/watch-brands-row'
+import { buildExternalLinks } from '../../../../src/lib/external-links'
+import { decideSection } from '../../../../src/lib/section-absence'
 import { MOVIES_INDEX_PATH, NEWS_INDEX_PATH, SITE_URL, gatePublicRobots } from '../../../../src/lib/site'
 import { getMoviePageData } from '../../../../src/server/movie-page'
 
@@ -42,30 +28,28 @@ import { getMoviePageData } from '../../../../src/server/movie-page'
  * col, retratos 3/4) → Notícias e bastidores (1.4fr/1fr/1fr) → Ficha técnica
  * (320px).
  *
- * O TOPO É O CANÔNICO E MAIS NADA (decisão do dono, 20/08/2026): breadcrumb
- * com o gênero no meio; badge; título; chips (gêneros + meta + classificação);
- * sinopse de TRÊS linhas (texto completo em "A OBRA"); DOIS botões; cartão à
- * direita com Cinerie Score → Avaliações → Onde assistir (marcas em linha).
- * As sete remoções (linha de métrica, aviso de escala, "Atualizado em" ×2,
- * "Também em", aviso de ofertas, os quatro botões antigos, a faixa de prêmios
- * no topo) estão travadas por `detail-hero-canonical.test.tsx` — por conteúdo
- * renderizado, não por varredura de texto-fonte.
- *
  * BLOCOS DO CANÔNICO QUE NÃO RENDERIZAM, E POR QUÊ (detalhe em docs/frontend/DESIGN-DELTA-detalhe.md):
- *  - "Original Screen"/"Original Cinerie" (selo ao lado do badge): afirmação
- *    FALSA — a Cinerie não produz filme. Travado por `original-screen-absent`.
- *  - Cinerie Score abaixo do PISO de duas fontes contadas: o card não existe e
- *    "Avaliações" sobe no cartão — com uma fonte só não existe composição.
- *    Sem decisão vigente no banco (o proprietário aplica), idem, com motivo
- *    próprio no log.
- *  - Duração e contagens da banda de mídia ("02:31", "6 vídeos · 128 fotos"):
- *    a API do TMDB não entrega duração, e contagem sem galeria para abrir é
- *    promessa sem destino.
- *  - Card "Fotos e Vídeos" da banda: não existe superfície de galeria no
- *    produto; os cards restantes se redistribuem.
+ *  - "Original Screen" (rótulo ao lado do selo): resíduo do rebrand E afirmação
+ *    FALSA — "original" significa produção própria, e a Cinerie não produz
+ *    filme. Não é portado. Travado por `original-screen-absent.test.tsx`.
+ *  - Cinerie Score (o "82"): não existe fórmula aprovada
+ *    (`PRODUCTION_FORMULA_REGISTRY` vazio) nem decisão `cinerie_score_display`
+ *    com `derivative_allowed`. O bloco não renderiza — nunca um número
+ *    inventado nem "ainda não calculado" ocupando a hierarquia do desenho.
+ *  - Faixa de prêmios: LIGADA e licenciada. O dado vem de `entity_awards`
+ *    (promovido do campo `Awards` da OMDb que estava em `api_cache`) e o
+ *    crédito é da OMDb — prêmio é FATO público, não opinião, então quem recebe
+ *    o crédito é quem entregou o dado, com o verbo do transporte ("Dados de
+ *    premiação fornecidos por"). Decisão de 2026-08-13 em
+ *    `docs/legal/omdb-awards-source-provenance.md`. A faixa só aparece em
+ *    títulos cuja linha passou pelo gate; sem ela, o motivo vai para o log.
+ *  - Chips de gênero: `movies` não tem relação com `genres` (a tabela é a lista
+ *    canônica por media_type, sem junção com o título).
+ *  - "Mais como este": sem dataset de recomendação determinístico.
+ *  - Logos de fontes/provedores: `logo_allowed = false` em toda licença.
  *
- * Toda ausência de DADO passa por `SectionBoundary`, que registra o motivo em
- * log estruturado. Bloco que some sem dizer por quê é defeito, não economia.
+ * Toda ausência acima passa por `SectionBoundary`, que registra o motivo em log
+ * estruturado. Bloco que some sem dizer por quê é defeito, não economia.
  */
 
 export const revalidate = 3600
@@ -79,6 +63,11 @@ const WORK_BLOCK_TYPES: ReadonlySet<string> = new Set([
 
 interface MoviePageParams {
   slug: string
+}
+
+interface MovieFact {
+  label: string
+  value: string
 }
 
 export async function generateMetadata({
@@ -119,18 +108,29 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
   const redirectPath = canonicalRedirectPath(MOVIES_INDEX_PATH, slug, data.canonicalSlug)
   if (redirectPath !== null) permanentRedirect(redirectPath)
 
-  const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, watchAbsence, awards, awardsAbsence, ratings, externalIds, genres, score, fichaFacts, similar, trailer } =
+  const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, watchAbsence, awards, awardsAbsence, ratings, externalIds, similar, trailer } =
     data
   const isUnderReview = seo.decision !== 'index'
+  const externalLinks = buildExternalLinks(externalIds, 'movie')
   const metaText = [view.year !== null ? String(view.year) : null, view.runtimeLabel]
     .filter((item): item is string => item !== null)
     .join(' · ')
-  const crumbGenre = breadcrumbGenre(genres)
-  const genreChips = heroGenreChips(genres)
-  const scoreDecision = decideCinerieScore(score)
+  const facts = [
+    view.year === null ? null : { label: 'Ano', value: String(view.year) },
+    view.runtimeLabel === null ? null : { label: 'Duração', value: view.runtimeLabel },
+    view.statusLabel === null ? null : { label: 'Situação', value: view.statusLabel },
+    view.originalLanguageLabel === null
+      ? null
+      : { label: 'Idioma original', value: view.originalLanguageLabel },
+    view.certification === null
+      ? null
+      : { label: 'Classificação', value: view.certification },
+  ].filter((fact): fact is MovieFact => fact !== null)
 
   const critiqueBlock = view.blocks.find((block) => block.blockType === REVIEW_BLOCK_TYPE) ?? null
   const workBlocks = view.blocks.filter((block) => WORK_BLOCK_TYPES.has(block.blockType))
+  const watchContext =
+    view.blocks.find((block) => block.blockType === 'where_to_watch_text') ?? null
   const castContext = view.blocks.find((block) => block.blockType === 'cast_intro') ?? null
   const newsContext = view.blocks.find((block) => block.blockType === 'news_context') ?? null
   const primaryCast = cast.slice(0, 6)
@@ -146,20 +146,6 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
     section: 'avaliacoes',
     reason: 'no_authorized_rating',
   })
-  // O Cinerie Score do cartao: quem decide e o presenter (piso de 2 fontes +
-  // decisao vigente); aqui so se monta a SectionDecision para a ausencia falar
-  // com o motivo certo (sem decisao != uma fonte so != nenhuma nota).
-  const scoreSection: SectionDecision<CinerieScoreView> = scoreDecision.rendered
-    ? { rendered: true, value: scoreDecision.view, absence: null }
-    : {
-        rendered: false,
-        value: null,
-        absence: buildSectionAbsence({
-          ...entityRef,
-          section: 'cinerie-score',
-          reason: scoreDecision.reason,
-        }),
-      }
   const watchSection = decideSection(watch, {
     ...entityRef,
     section: 'onde-assistir',
@@ -207,36 +193,18 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
     reason: 'no_recommendation_for_entity',
   })
 
-  // Espelha a trilha VISIVEL do topo canonico: `Filmes / <genero> / titulo`
-  // (o genero entrou no lugar do "Inicio" — decisao do dono, 20/08/2026).
-  // Schema e trilha nunca divergem: sem genero, o item do meio nao existe nos
-  // dois lados.
   const breadcrumbJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
     itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Início', item: `${SITE_URL}/pt/` },
       {
         '@type': 'ListItem',
-        position: 1,
+        position: 2,
         name: 'Filmes',
         item: `${SITE_URL}${MOVIES_INDEX_PATH}`,
       },
-      ...(crumbGenre !== null
-        ? [
-            {
-              '@type': 'ListItem',
-              position: 2,
-              name: crumbGenre,
-              item: `${SITE_URL}${MOVIES_INDEX_PATH}`,
-            },
-          ]
-        : []),
-      {
-        '@type': 'ListItem',
-        position: crumbGenre !== null ? 3 : 2,
-        name: view.title,
-        item: canonicalUrl,
-      },
+      { '@type': 'ListItem', position: 3, name: view.title, item: canonicalUrl },
     ],
   }
 
@@ -257,24 +225,17 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
 
   return (
     <main data-vertical="movie">
-      {/* ===== HERO editorial claro — o TOPO CANONICO (tela 06) =====
-          Breadcrumb com o GENERO no meio; badge; titulo; chips (generos +
-          meta + classificacao); sinopse de TRES linhas (palavra inteira, texto
-          completo em "A OBRA"); DOIS botoes. Nada alem do canonico entra aqui
-          — nenhum aviso, nenhuma data, nenhum rotulo explicativo (decisao do
-          dono, 20/08/2026; travado por detail-hero-canonical.test.tsx). */}
+      {/* ===== HERO editorial claro (canônico: vermelho = filme) ===== */}
       <div className="detail-hero">
         <div className="detail-container">
           <nav aria-label="Trilha de navegação" className="detail-hero__crumbs">
             <ol>
               <li>
+                <a href="/pt/">Início</a>
+              </li>
+              <li>
                 <a href={MOVIES_INDEX_PATH}>Filmes</a>
               </li>
-              {crumbGenre !== null ? (
-                <li>
-                  <a href={MOVIES_INDEX_PATH}>{crumbGenre}</a>
-                </li>
-              ) : null}
               <li aria-current="page">{view.title}</li>
             </ol>
           </nav>
@@ -282,20 +243,12 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
           <div className="detail-hero__grid">
             <div className="detail-hero__main">
               <div className="detail-badge-row">
-                {/* So o selo da vertical. "Original Screen"/"Original Cinerie"
-                    NAO e portado: a Cinerie nao produz filme (afirmacao falsa;
-                    travado por original-screen-absent.test.ts). */}
                 <span className="detail-badge" data-entity-badge="movie">
                   Filme
                 </span>
               </div>
               <h1 className="detail-hero__title">{view.title}</h1>
               <ul className="detail-hero__chips">
-                {genreChips.map((genre) => (
-                  <li className="detail-hero__genre-chip" key={genre}>
-                    {genre}
-                  </li>
-                ))}
                 {metaText !== '' ? (
                   <li className="detail-hero__meta-text">{metaText}</li>
                 ) : null}
@@ -303,42 +256,30 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
                   <li className="detail-hero__cert">{view.certification}</li>
                 ) : null}
               </ul>
-              <EntitySynopsis maxChars={HERO_SYNOPSIS_MAX_CHARS} synopsis={view.synopsis} />
+              <EntitySynopsis synopsis={view.synopsis} />
               <div className="detail-actions">
-                {/* DOIS botoes, exatamente: Minha lista + Avaliar (C8; fetch
-                    apos clique, zero chamada externa no render). */}
+                {/* Ações REAIS de biblioteca (C8): fetch após clique, zero
+                    chamada externa no render. */}
                 <EntityActions entityType="movie" entityId={entityId} />
               </div>
+              {externalLinks.length > 0 ? (
+                <div className="entity-links" style={{ marginTop: 20 }}>
+                  <EntityExternalIds links={externalLinks} />
+                </div>
+              ) : null}
             </div>
 
             <aside aria-label="Notas e disponibilidade" className="detail-hero__aside">
-              {/* O CARTAO da coluna direita, na ordem do canonico:
-                  CINERIE SCORE -> AVALIACOES -> ONDE ASSISTIR.
-
-                  O Score so renderiza com >= 2 fontes contadas e decisao
-                  vigente (autorizacao do proprietario, 20/08/2026). Abaixo do
-                  piso, o bloco NAO existe e "Avaliacoes" sobe e ocupa o topo do
-                  cartao — os dois arranjos sao provados por teste. */}
-              <SectionBoundary decision={scoreSection}>
-                {(scoreView) => (
-                  <div className="detail-aside-block detail-aside-block--first">
-                    <CinerieScoreCard view={scoreView} />
-                  </div>
-                )}
-              </SectionBoundary>
+              {/* O canônico abre esta coluna com o Cinerie Score em 47/800 — o
+                  maior peso tipográfico da página. Não há fórmula aprovada,
+                  então o bloco não existe aqui e a coluna começa direto em
+                  "Avaliações". Ver o cabeçalho do arquivo. */}
               <SectionBoundary decision={ratingsSection}>
                 {(view) => (
-                  <div
-                    className={
-                      scoreDecision.rendered
-                        ? 'detail-aside-block'
-                        : 'detail-aside-block detail-aside-block--first'
-                    }
-                  >
+                  <div className="detail-aside-block detail-aside-block--first">
                     <p className="detail-aside-block__label">Avaliações</p>
-                    {/* Notas de terceiros na medida da propria fonte; a
-                        proveniencia (metrica, data, URL) vive no title/data-*
-                        de cada chip, e o credito no rodape global. */}
+                    {/* Notas de terceiros na medida da própria fonte, com o
+                        crédito DENTRO de cada chip (condição de licença). */}
                     <RatingsPanel view={view} />
                   </div>
                 )}
@@ -347,10 +288,12 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
                 {(view) => (
                   <div className="detail-aside-block">
                     <p className="detail-aside-block__label">Onde assistir</p>
-                    {/* Marcas em linha (canonico), com a MODALIDADE visivel ao
-                        lado de cada uma (decisao de 2026-08-13: loja so e
-                        honesta com a modalidade na tela). */}
-                    <WatchBrandsRow brands={watchBrandsRow(view)} />
+                    <WatchAvailabilityPanel view={view} />
+                    {watchContext !== null ? (
+                      <p className="watch-panel__note" data-block-type={watchContext.blockType}>
+                        {watchContext.content}
+                      </p>
+                    ) : null}
                   </div>
                 )}
               </SectionBoundary>
@@ -359,23 +302,17 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
         </div>
       </div>
 
-      {/* ===== Mídia full-bleed (pôster · TRAILER · cards empilhados) =====
-          A banda do canônico: pôster sangrando à esquerda, trailer grande no
-          centro com play redondo, e a coluna direita com os cards que TÊM
-          destino e dado. Card sem dado NÃO vira card cinza com "Em breve" —
-          ele não existe, e os que restarem se redistribuem (o "Em breve" que
-          vivia aqui era exatamente esse placeholder, e saiu).
+      {/* ===== Faixa de premios (fato da obra, com o credito colado nele) ===== */}
+      <SectionBoundary decision={awardsSection}>
+        {(panel) => (
+          <AwardsBand credit={panel.credit} vertical="movie" view={panel.view} />
+        )}
+      </SectionBoundary>
 
-          NADA CARREGA ANTES DO CLIQUE: o iframe do YouTube só é montado dentro
-          do diálogo do TrailerModal, após clique explícito. */}
+      {/* ===== Mídia full-bleed (1fr/3fr/2fr, 472px) — só imagens REAIS ===== */}
       {view.media.poster !== null || view.media.backdrop !== null ? (
         <div className="media-strip">
-          <div
-            className="media-strip__grid"
-            data-media-cards={
-              [awardsSection.rendered, editorialNews.length > 0].filter(Boolean).length
-            }
-          >
+          <div className="media-strip__grid">
             <div className="media-strip__cell">
               {view.media.poster !== null ? (
                 <img
@@ -387,6 +324,23 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
                 />
               ) : null}
             </div>
+            {/*
+              O SLOT DO TRAILER. Até 20/08/2026 esta célula mostrava o backdrop
+              e nada mais — o bloco do canônico é pôster · TRAILER · 3 atalhos,
+              e o trailer nunca chegou aqui.
+
+              Não era permissão faltando: a licença de vídeo do TMDB existe
+              desde 13/08/2026. Era fiação — nada consultava `tmdb_videos` para
+              a entidade da página.
+
+              O backdrop CONTINUA, como pôster do player: é a imagem sobre a
+              qual o play aparece. Sem trailer, a célula fica exatamente como
+              estava — sem botão, sem espaço reservado, sem promessa.
+
+              NADA CARREGA ANTES DO CLIQUE. O `<iframe>` do YouTube só existe
+              dentro do diálogo, que só é montado quando `open` vira true. O
+              botão é um `<button>`, não um player escondido.
+            */}
             <div className="media-strip__cell" data-trailer={trailer !== null ? 'ready' : undefined}>
               {view.media.backdrop !== null ? (
                 <img
@@ -406,56 +360,36 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
                   />
                 </span>
               ) : null}
-              {/* Legenda só quando há trailer de verdade. Duração e contagens
-                  ("02:31 · Trailer", "6 vídeos · 128 fotos") NÃO renderizam:
-                  a API do TMDB não entrega duração, e uma contagem de mídia
-                  sem galeria para abrir seria promessa sem destino. */}
-              {trailer !== null ? (
-                <span className="media-strip__caption">Trailer</span>
-              ) : null}
+              <span className="media-strip__caption">
+                {trailer !== null ? 'Trailer' : 'Mídia do título'}
+              </span>
             </div>
-            {awardsSection.rendered || editorialNews.length > 0 ? (
-              <div className="media-strip__stack">
-                {editorialNews.length > 0 ? (
-                  <a className="media-strip__cell" href="#movie-news-title">
-                    {view.media.backdrop !== null ? (
-                      <img alt="" loading="lazy" src={view.media.backdrop.src} />
-                    ) : null}
-                    <span className="media-strip__caption">Notícias e Eventos</span>
-                  </a>
+            <div className="media-strip__stack">
+              <a className="media-strip__cell" href={NEWS_INDEX_PATH}>
+                {view.media.backdrop !== null ? (
+                  <img alt="" loading="lazy" src={view.media.backdrop.src} />
                 ) : null}
-                {awardsSection.rendered ? (
-                  <a className="media-strip__cell" href="#movie-awards">
-                    {view.media.poster !== null ? (
-                      <img alt="" loading="lazy" src={view.media.poster.src} />
-                    ) : null}
-                    <span className="media-strip__caption">Prêmios e Indicações</span>
-                  </a>
+                <span className="media-strip__caption">Notícias e Eventos</span>
+              </a>
+              <a className="media-strip__cell" href="/pt/onde-assistir/">
+                {view.media.poster !== null ? (
+                  <img alt="" loading="lazy" src={view.media.poster.src} />
                 ) : null}
-              </div>
-            ) : null}
+                <span className="media-strip__caption">Onde assistir</span>
+              </a>
+              <a className="media-strip__cell" href="/pt/em-breve/">
+                {view.media.backdrop !== null ? (
+                  <img alt="" loading="lazy" src={view.media.backdrop.src} />
+                ) : null}
+                <span className="media-strip__caption">Em breve</span>
+              </a>
+            </div>
           </div>
         </div>
       ) : null}
 
-      {/* ===== Prêmios — a faixa desceu do topo (decisao do dono): vive abaixo
-          da banda de mídia, como o canônico desenha, e o card "Prêmios e
-          Indicações" da banda ancora aqui. ===== */}
-      <SectionBoundary decision={awardsSection}>
-        {(panel) => (
-          <div id="movie-awards">
-            <AwardsBand credit={panel.credit} vertical="movie" view={panel.view} />
-          </div>
-        )}
-      </SectionBoundary>
-
-      {/* ===== A obra =====
-          A sinopse COMPLETA vive aqui (o topo mostra três linhas). A abertura
-          em destaque só existe quando há texto editorial PRÓPRIO — nunca a
-          sinopse repetida em corpo maior. O crédito da sinopse continua o do
-          catálogo (rodapé global); colocá-la sob um título nosso não a torna
-          nossa. */}
-      {(synopsisLead !== null || synopsisRest.length > 0 || view.synopsis !== null) ? (
+      {/* ===== A obra ===== */}
+      {(synopsisLead !== null || synopsisRest.length > 0) ? (
         <section aria-labelledby="movie-work-title" className="detail-container" style={{ paddingTop: 60 }}>
           <div className="eyebrow-bar">
             <span id="movie-work-title">A obra</span>
@@ -465,9 +399,6 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
               {synopsisLead.content}
             </p>
           ) : null}
-          <div data-work-synopsis="full">
-            <EntitySynopsis synopsis={view.synopsis} variant="work" />
-          </div>
           {synopsisRest.map((block) => (
             <p className="synopsis-body" data-block-type={block.blockType} key={block.blockType}>
               {block.content}
@@ -509,9 +440,14 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
         {(members) => (
         <section aria-labelledby="movie-cast-title" className="detail-container" style={{ paddingTop: 60 }}>
           <div className="section-head" style={{ alignItems: 'flex-end', marginBottom: 26 }}>
-            {/* Sem sobrancelha: "— ELENCO" acima de "ELENCO PRINCIPAL" so
-                repetia o titulo (decisao do dono; regra em SectionHead). */}
-            <SectionHead headingId="movie-cast-title" kicker="Elenco" thin="principal" title="Elenco" />
+            <div>
+              <div className="eyebrow-bar">
+                <span>Elenco</span>
+              </div>
+              <h2 className="detail-section-title" id="movie-cast-title">
+                Elenco <span className="thin">principal</span>
+              </h2>
+            </div>
             <a className="detail-see-all" href="/pt/pessoas/">
               Ver pessoas →
             </a>
@@ -575,9 +511,14 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
         {(articles) => (
         <section aria-labelledby="movie-news-title" className="detail-container" style={{ paddingTop: 64 }}>
           <div className="section-head" style={{ alignItems: 'flex-end', marginBottom: 26 }}>
-            {/* O kicker "Editorial" FICA: diz a natureza da secao (conteudo da
-                redacao), que o titulo nao diz — a regra so barra repeticao. */}
-            <SectionHead headingId="movie-news-title" kicker="Editorial" thin="e bastidores" title="Notícias" />
+            <div>
+              <div className="eyebrow-bar">
+                <span>Editorial</span>
+              </div>
+              <h2 className="detail-section-title" id="movie-news-title">
+                Notícias <span className="thin">e bastidores</span>
+              </h2>
+            </div>
             <a className="see-all" href={NEWS_INDEX_PATH}>
               Ver tudo
             </a>
@@ -612,7 +553,7 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
       </SectionBoundary>
 
       {/* ===== Ficha técnica + Mais como este ===== */}
-      {fichaFacts.length > 0 || similarSection.rendered ? (
+      {facts.length > 0 || similarSection.rendered ? (
         <section aria-labelledby="movie-facts-title" className="detail-container" style={{ paddingTop: 64, paddingBottom: 72 }}>
           <div className={similarSection.rendered ? 'ficha-grid' : 'ficha-grid ficha-grid--solo'}>
             <div>
@@ -620,23 +561,10 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
                 <span id="movie-facts-title">Ficha técnica</span>
               </div>
               <dl className="ficha-rows">
-                {fichaFacts.map((fact) => (
+                {facts.map((fact) => (
                   <div className="ficha-row" key={fact.label}>
                     <dt>{fact.label}</dt>
-                    <dd>
-                      {'people' in fact
-                        ? fact.people.map((person, index) => (
-                            <span key={person.name}>
-                              {index > 0 ? ', ' : null}
-                              {person.href !== null ? (
-                                <a href={person.href}>{person.name}</a>
-                              ) : (
-                                person.name
-                              )}
-                            </span>
-                          ))
-                        : fact.value}
-                    </dd>
+                    <dd>{fact.value}</dd>
                   </div>
                 ))}
               </dl>

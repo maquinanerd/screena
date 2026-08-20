@@ -192,13 +192,8 @@ const FORBIDDEN_PATTERNS = [
   },
   {
     name: "UI publica com pseudo-ranking ou affordance morta",
-    // "Avaliar" SAIU da lista em 20/08/2026: deixou de ser affordance morta
-    // quando o botao do topo canonico passou a persistir de verdade
-    // (`/api/me/ratings`, nota pessoal 0,5..5,0 do C5A — entity-actions.tsx).
-    // "Marcar como assistido" continua morta: nenhum botao com esse rotulo
-    // tem backend.
     regex:
-      /\bhome-v4-rank-badge\b|\bhome-v4-compact-rank\b|#\{rank\}|\bhome-v4-muted-action\b|\bhome-v4-watch-action\b|Marcar como assistido/i,
+      /\bhome-v4-rank-badge\b|\bhome-v4-compact-rank\b|#\{rank\}|\bhome-v4-muted-action\b|\bhome-v4-watch-action\b|Avaliar|Marcar como assistido/i,
     include: /^apps\/web\//,
     codeOnly: true,
   },
