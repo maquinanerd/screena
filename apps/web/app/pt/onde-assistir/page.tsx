@@ -4,21 +4,34 @@ import { serializeJsonLd } from '@screena/seo'
 
 import { AdSlot } from '../../_components/ad-slot'
 import { EmptyState } from '../../_components/ds'
+import { SectionBoundary } from '../../_components/section-boundary'
 import { WatchPopular } from '../../_components/watch-popular'
+import { decideRouteSection } from '../../../src/lib/section-absence'
+import { groupBrowseProvidersByBrand } from '../../../src/lib/watch-browse-brands'
 import { HOME_PATH, SITE_URL, canonicalPublicUrl, publicRobots } from '../../../src/lib/site'
 import { getWatchBrowseData } from '../../../src/server/watch-browse'
 
 /**
  * Onde assistir — tela 10 do canônico, estrutura EXATA: HERO escuro centrado
  * ("O seu guia de streaming...", sub, kicker "Serviços de streaming" e fileira
- * de provedores como TEXTO — logo_allowed=false, licença) → POPULARES AGORA
- * (tabs reais de plataforma + grade de posters, ordenada pelo sinal técnico de
- * popularidade) → Ad → "PARA VOCÊ" com a composição canônica preservada em
- * ESTADO HONESTO: não há serviço de recomendação exposto ao app público ainda
- * (Prompt 11 não executado) — a seção declara isso, sem recomendação fake nem
- * heurística ad hoc (DESIGN-DELTA). Só oferta com licença vigente e crédito
- * devido (invariante 6); carimbo "Atualizado em" sempre presente quando há
- * dado.
+ * de MARCAS como TEXTO — logo_allowed=false, licença) → POPULARES AGORA (tabs
+ * reais por MARCA + grade de posters, ordenada pelo sinal técnico de
+ * popularidade) → Ad → "PARA VOCÊ", que NÃO renderiza.
+ *
+ * AGRUPAMENTO POR MARCA. A decomposição marca/variante/canal é DECLARADA em
+ * `@screena/public-contracts`, nunca derivada da string do nome. Sem ela, os 24
+ * provedores BR fazem "Paramount Plus", "Paramount Plus Premium" e "Paramount+
+ * Amazon Channel" aparecerem como três serviços diferentes — e a mesma página
+ * passa a contar duas histórias, porque o painel da página de título já agrupa
+ * desde 2026-08-19.
+ *
+ * "PARA VOCÊ" NÃO RENDERIZA. Não existe serviço de recomendação exposto ao app
+ * público: a seção não pode ter sucesso para ninguém, nem logado. Uma caixa que
+ * só sabe dizer "ainda não" gasta a atenção do leitor à toa — mesma regra da
+ * faixa de newsletter. A ausência vai para o log, nunca fica muda.
+ *
+ * Só oferta com licença vigente e crédito devido (invariante 6); carimbo
+ * "Atualizado em" sempre presente quando há dado.
  */
 
 export const dynamic = 'force-dynamic'
@@ -54,6 +67,19 @@ export default async function WatchBrowsePage() {
   const updatedLabel = formatUpdatedAt(updatedAtIso)
   const canonicalUrl = canonicalPublicUrl(BROWSE_PATH)
 
+  // AGRUPAMENTO POR MARCA — a mesma decisão que já vale na página de título.
+  const brands = groupBrowseProvidersByBrand(providers, {
+    titleKey: (title) => `${title.entityType}:${title.href}`,
+  })
+
+  // "Para você": buraco de ROTA (não de título), então o log carrega a rota.
+  const forYouSection = decideRouteSection<never>(null, {
+    section: 'para-voce',
+    reason: 'no_recommendation_service',
+    route: BROWSE_PATH,
+    vertical: 'mixed',
+  })
+
   const breadcrumbJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
@@ -77,10 +103,20 @@ export default async function WatchBrowsePage() {
             <>
               <div className="watch-hero__kicker">Serviços de streaming no Cinerie</div>
               <div className="watch-hero__services">
-                {/* Provedores como TEXTO: logo_allowed=false (licença) */}
-                {providers.map((provider) => (
-                  <span className="watch-hero__service" key={provider.providerSlug}>
-                    {provider.providerName}
+                {/* MARCAS como TEXTO: logo_allowed=false (licença). Uma entrada
+                    por marca, com as rotas embaixo — a rota diz o que o leitor
+                    precisa contratar, e somê-la esconderia um custo. */}
+                {brands.map((brand) => (
+                  <span className="watch-hero__service" key={brand.key}>
+                    <span className="watch-hero__service-name">{brand.name}</span>
+                    {brand.routes.length > 1 ? (
+                      <span className="watch-hero__service-routes">
+                        {brand.routes
+                          .map((route) => route.label)
+                          .filter((label): label is string => label !== null)
+                          .join(' · ')}
+                      </span>
+                    ) : null}
                   </span>
                 ))}
               </div>
@@ -99,10 +135,14 @@ export default async function WatchBrowsePage() {
               </h2>
             </div>
             <WatchPopular
-              providers={providers.map((provider) => ({
-                providerKey: provider.providerSlug,
-                providerName: provider.providerName,
-                titles: provider.titles.map((title) => ({
+              brands={brands.map((brand) => ({
+                key: brand.key,
+                name: brand.name,
+                routes: brand.routes.map((route) => ({
+                  providerName: route.providerName,
+                  label: route.label,
+                })),
+                titles: brand.titles.map((title) => ({
                   entityType: title.entityType,
                   title: title.title,
                   href: title.href,
@@ -133,22 +173,13 @@ export default async function WatchBrowsePage() {
 
         <AdSlot format="leaderboard" slotId="browse-grid" />
 
-        {/* PARA VOCÊ — composição canônica em estado honesto: recomendações
-            personalizadas ainda não existem como serviço (nada de rec fake). */}
-        <section aria-labelledby="watch-foryou-title" className="section">
-          <div className="eyebrow-bar">
-            <span aria-hidden="true" className="eyebrow-bar__mark" />
-            <h2 className="section-title" id="watch-foryou-title">
-              <strong>Para</strong> <span>você</span>
-            </h2>
-          </div>
-          <EmptyState title="Recomendações personalizadas ainda não estão disponíveis.">
-            <p>
-              Em breve, esta seção vai se ajustar ao seu histórico. Enquanto isso, explore os
-              títulos populares acima ou <a href="/pt/explorar/">navegue pelo Explorar</a>.
-            </p>
-          </EmptyState>
-        </section>
+        {/* PARA VOCÊ — não renderiza. A seção não pode ter sucesso para
+            ninguém (não existe serviço de recomendação), e uma caixa que só
+            sabe dizer "ainda não" gasta a atenção do leitor à toa. Mesma regra
+            da faixa de newsletter. A ausência NÃO é muda: o boundary loga. */}
+        <SectionBoundary decision={forYouSection} once>
+          {() => null}
+        </SectionBoundary>
       </div>
 
       <script
