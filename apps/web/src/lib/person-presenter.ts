@@ -66,19 +66,28 @@ export const MIN_PERSON_RENDERABLE_BLOCKS = 2;
 /**
  * Traducao pt-BR dos departamentos conhecidos do TMDB (`known_for_department`).
  * Valor desconhecido -> `null` (nunca vaza rotulo em ingles nem inventa funcao).
+ *
+ * ACENTUADOS. Estes valores nao sao identificador tecnico: eles vao para a TELA
+ * (o kicker "Pessoa · Atuação" do cabecalho e o `jobTitle` do JSON-LD). Sem
+ * acento, o leitor via "Atuacao" ao lado de rotulos acentuados na mesma pagina,
+ * como se fossem dois campos diferentes — foi assim que "Atuação principal:
+ * Atuacao" passou a parecer o mesmo campo escrito de dois jeitos.
+ *
+ * A regra do ASCII neste repositorio vale para migration/SQL (WIN1252 quebra
+ * deploy), nao para texto de interface.
  */
 const KNOWN_FOR_DEPARTMENT_LABELS: Readonly<Record<string, string>> = {
-  Acting: "Atuacao",
-  Directing: "Direcao",
+  Acting: "Atuação",
+  Directing: "Direção",
   Writing: "Roteiro",
-  Production: "Producao",
-  Editing: "Edicao",
+  Production: "Produção",
+  Editing: "Edição",
   Camera: "Fotografia",
   Sound: "Som",
   Art: "Arte",
   "Costume & Make-Up": "Figurino e Maquiagem",
   "Visual Effects": "Efeitos Visuais",
-  Lighting: "Iluminacao",
+  Lighting: "Iluminação",
   Crew: "Equipe",
 };
 

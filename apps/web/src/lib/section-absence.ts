@@ -34,6 +34,8 @@ export type SectionKey =
   | "mais-como-este"
   | "elenco"
   | "noticias"
+  /** Biografia da pessoa (tela 09) — o parágrafo de 68ch do cabeçalho. */
+  | "biografia"
   /** Trilho "Em breve" — escopo de ROTA (home/filmes/series), nao de entidade. */
   | "em-breve"
   /** "Para voce" — trilho personalizado do hub de streaming (escopo de ROTA). */
@@ -83,12 +85,42 @@ export type SectionAbsenceReason =
   | "no_awards_for_entity"
   /** Nenhum `content_block` de critica publicavel para esta entidade. */
   | "no_editorial_review"
-  /** Nao existe dataset de recomendacao deterministico. */
+  /**
+   * NAO existe dataset de recomendacao deterministico para esta VERTICAL.
+   *
+   * E o caso da serie hoje: o unico parentesco declarado no schema e
+   * `movie_collection_memberships` -> `collections`, que so existe para filme.
+   * `tv_shows` liga a `networks` e `production_companies`, que agrupam milhares
+   * de titulos sem parentesco — nao servem. Passo pendente, nao fato sobre a
+   * obra: por isso `actionable: true`.
+   */
   | "no_recommendation_dataset"
+  /**
+   * O dataset EXISTE para a vertical, mas este titulo nao esta nele — o filme
+   * nao pertence a colecao nenhuma. E fato sobre a obra, nao passo pendente
+   * (por isso `actionable: false`), pela mesma razao que separa
+   * `no_offer_for_entity` de `no_authorized_provider`.
+   */
+  | "no_recommendation_for_entity"
   /** O catalogo nao tem elenco para este titulo. */
   | "no_cast"
   /** Nenhum artigo publicado vinculado a esta entidade. */
   | "no_linked_article"
+  /**
+   * NAO HA BIOGRAFIA EXIBIVEL — e a causa e mais funda que "ninguem escreveu".
+   *
+   * A pagina monta a biografia a partir de `meta_description` + `content_blocks`
+   * de tipo `editorial_intro` publicaveis. Nenhuma das duas existe hoje para
+   * quase ninguem, e a terceira origem possivel — a `biography` que o TMDB
+   * devolve no detalhe de pessoa — E BAIXADA E DESCARTADA: `people` tem a
+   * coluna de GOVERNANCA (`biography_source_status`) e NAO tem a coluna de
+   * texto, entao `normalizePerson` nem tenta persistir (ver o cabecalho de
+   * `services/ingestion/src/normalizers/person.ts`).
+   *
+   * `actionable: true`: ha um passo pendente que resolveria o catalogo inteiro
+   * de uma vez, e ele exige tarefa aprovada para banco (coluna + migration).
+   */
+  | "no_biography_source"
   /**
    * NENHUMA estreia futura no catalogo para a(s) vertical(is) desta rota.
    *
@@ -153,7 +185,16 @@ export interface SectionAbsence {
   readonly event: "section_absent";
   readonly section: SectionKey;
   readonly reason: SectionAbsenceReason;
-  readonly entityType: "movie" | "tv";
+  /**
+   * `person` entrou junto com o bloco de biografia (tela 09).
+   *
+   * Nao e alargamento de conveniencia: a biografia que falta e de UMA pessoa, e
+   * `entityId` acha essa pessoa — exatamente o que este formato promete. As
+   * alternativas seriam mentir (`entityType: "movie"` num log de pessoa) ou
+   * usar o formato de ROTA, cujo campo `vertical` so conhece filme/serie. Log
+   * que mente e pior que log que falta.
+   */
+  readonly entityType: "movie" | "tv" | "person";
   /** Id local da entidade — e o que permite ao operador achar o titulo. */
   readonly entityId: string;
   /**
@@ -175,16 +216,17 @@ const ACTIONABLE_REASONS: ReadonlySet<SectionAbsenceReason> = new Set([
   "no_approved_formula",
   "no_awards_source",
   "no_recommendation_dataset",
-  "no_recommendation_service",
+  "no_biography_source",
   "no_upcoming_title",
   "below_upcoming_floor",
+  "no_recommendation_service",
   "newsletter_storage_unavailable",
 ]);
 
 export interface SectionAbsenceContext {
   readonly section: SectionKey;
   readonly reason: SectionAbsenceReason;
-  readonly entityType: "movie" | "tv";
+  readonly entityType: "movie" | "tv" | "person";
   readonly entityId: string;
 }
 

@@ -44,10 +44,12 @@ import {
   type AwardsPanelView,
 } from "./entity-awards";
 import { getRatingsForEntity } from "./entity-ratings";
+import { getSimilarMoviesForEntity } from "./similar-titles";
 import { buildRatingsView, type RatingsPanelView } from "../lib/ratings-presenter";
 import type { NewsCardView } from "../lib/news-presenter";
 import type { CastMemberView } from "../lib/cast-presenter";
 import type { WatchAvailabilityView } from "../lib/watch-availability-presenter";
+import type { SimilarTitlesView } from "../lib/similar-titles-presenter";
 import type { PageSeoResolution } from "@screena/seo";
 
 /** Idioma de publicacao do MVP (invariante 7): pt-BR indexa primeiro. */
@@ -92,6 +94,11 @@ export interface MoviePageData {
   ratings: RatingsPanelView | null;
   /** IDs externos reais (imdb/tmdb/...) para montar `sameAs` no JSON-LD. */
   externalIds: { source: string; externalId: string }[];
+  /**
+   * "Mais como este" — titulos da MESMA colecao do TMDB. `null` omite o bloco
+   * (e a faixa final passa a UMA coluna, em vez de reservar metade para nada).
+   */
+  similar: SimilarTitlesView | null;
 }
 
 /**
@@ -260,6 +267,11 @@ export const getMoviePageData = cache(
     const awards = await getAwardsForEntity(prisma, ENTITY_TYPE, entityId);
     const awardsAbsence = awards === null ? await awardsAbsenceReason(prisma) : null;
 
+    // "Mais como este": parentesco DECLARADO pela colecao do TMDB. Depois da
+    // Promise.all porque nao e caminho critico do `generateMetadata` — nenhum
+    // metadado depende dele.
+    const similar = await getSimilarMoviesForEntity(prisma, entityId);
+
     return {
       view,
       // C8: id INTERNO do catalogo, serializado. A pagina o repassa ao botao de
@@ -278,6 +290,7 @@ export const getMoviePageData = cache(
       awardsAbsence,
       ratings,
       externalIds,
+      similar,
     };
   },
 );

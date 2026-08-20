@@ -12,6 +12,41 @@ function withoutComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
 }
 
+/**
+ * Indice do BLOCO na fonte: a primeira ocorrencia da classe como TOKEN INTEIRO
+ * dentro de um atributo `className` — literal (`className="x"`) ou expressao
+ * (`className={cond ? "x" : "x y"}`).
+ *
+ * POR QUE NAO `indexOf('className="x"')`, QUE ERA O ORIGINAL. Porque ele media
+ * a SINTAXE, nao o bloco. No dia em que uma dessas classes virou composta
+ * condicionalmente, o literal sumiu do arquivo e a guarda acusou regressao onde
+ * nao havia: o grid renderiza certo nos DOIS estados, e isso esta provado por
+ * estilo computado em
+ * `apps/web/app/_components/__tests__/similar-titles-computed.test.tsx`.
+ *
+ * POR QUE NAO RELAXAR PARA `indexOf("ficha-grid")`. Isso mataria a guarda:
+ * passaria a casar com `ficha-grid--solo`, com caminho de import e com qualquer
+ * mencao solta. Aqui a classe precisa (a) estar DENTRO de um `className` e (b)
+ * ser um token inteiro — `ficha-grid--solo` sozinho NUNCA satisfaz
+ * `ficha-grid`, e `media-strip__cell` nunca satisfaz `media-strip`.
+ *
+ * FAIL-CLOSED: expressao com chave aninhada (template literal com `${}`) nao e
+ * capturada e devolve -1 — reprova em voz alta em vez de passar por engano.
+ *
+ * A ORDEM CONTINUA SENDO A GARANTIA: o indice devolvido e o do proprio atributo
+ * `className`, entao a caminhada estritamente crescente segue valendo.
+ */
+function blockIndex(code: string, cls: string): number {
+  const attribute = /className=(?:"([^"]*)"|\{([^{}]*)\})/g
+  const wholeToken = new RegExp(`(?:^|["\\s])${cls}(?=["\\s]|$)`)
+  let match: RegExpExecArray | null
+  while ((match = attribute.exec(code)) !== null) {
+    const value = match[1] ?? match[2] ?? ''
+    if (wholeToken.test(value)) return match.index
+  }
+  return -1
+}
+
 describe('shell público mínimo · detalhe de filme', () => {
   const code = withoutComments(page).replaceAll("'", '"')
 
@@ -62,18 +97,21 @@ describe('shell público mínimo · detalhe de filme', () => {
     // Ordem canônica: hero editorial claro → mídia full-bleed → A obra →
     // Guia crítica → Elenco (faixa 3/4) → Notícias e bastidores → Ficha.
     const order = [
-      'className="detail-hero"',
-      'className="media-strip"',
-      'className="synopsis-lead"',
-      'className="critic-band"',
-      'className="cast-strip"',
-      'className="mnews-grid"',
-      'className="ficha-grid"',
+      'detail-hero',
+      'media-strip',
+      'synopsis-lead',
+      'critic-band',
+      'cast-strip',
+      'mnews-grid',
+      'ficha-grid',
     ]
     let cursor = -1
-    for (const marker of order) {
-      const at = code.indexOf(marker)
-      expect(at, `marcador ausente/fora de ordem: ${marker}`).toBeGreaterThan(cursor)
+    for (const cls of order) {
+      const at = blockIndex(code, cls)
+      // Duas falhas diferentes, duas mensagens diferentes: "sumiu do arquivo" e
+      // "esta no arquivo, mas fora de ordem" pedem investigacoes distintas.
+      expect(at, `bloco ausente: .${cls}`).toBeGreaterThan(-1)
+      expect(at, `bloco fora de ordem: .${cls}`).toBeGreaterThan(cursor)
       cursor = at
     }
     expect(existsSync(path.join(ROOT, CSS_REL))).toBe(false)
