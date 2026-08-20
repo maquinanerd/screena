@@ -63,10 +63,30 @@ describe("a licenca de video do TMDB existe e autoriza exibir", () => {
 });
 
 describe("NEGATIVO — o que a licenca de video NAO concede", () => {
-  it("logo, nota e citacao de critica seguem bloqueados", () => {
-    expect(video!.license.logoAllowed).toBe(false);
+  it("nota e citacao de critica seguem bloqueados", () => {
     expect(video!.license.scoreAllowed).toBe(false);
     expect(video!.license.reviewQuoteAllowed).toBe(false);
+  });
+
+  /**
+   * O LOGO INVERTEU, e a inversao merece ficar escrita aqui: quando esta
+   * licenca foi registrada (13/08/2026) o comentario dela dizia "Logo do TMDB e
+   * do YouTube seguem bloqueados: nenhuma marca de terceiro e desenhada por
+   * nos". A metade sobre o YouTube continua certa. A metade sobre o TMDB estava
+   * errada — os termos da API EXIGEM o logo do TMDB, e `false` era
+   * descumprimento, nao zelo.
+   */
+  it("o logo do TMDB e AUTORIZADO (os termos o exigem), e declara o arquivo oficial", () => {
+    expect(video!.license.logoAllowed).toBe(true);
+    expect(video!.license.logoAsset).not.toBeNull();
+    expect(video!.license.logoAsset!.officialSourceUrl).toContain("themoviedb.org");
+  });
+
+  it("NEGATIVO: nenhuma marca do YOUTUBE e autorizada por esta licenca", () => {
+    // O player e do YouTube, e a licenca do TMDB nao concede marca do Google.
+    // A licenca declara UM arquivo, e ele e do TMDB.
+    expect(video!.license.logoAsset!.alt).toBe("TMDB");
+    expect(JSON.stringify(video!.license).toLowerCase()).not.toContain("youtube.com/");
   });
 
   it("nenhuma decisao autoriza obra derivada", () => {

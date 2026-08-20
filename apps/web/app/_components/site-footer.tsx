@@ -2,7 +2,11 @@ import type { ReactNode } from "react";
 
 import { FooterNewsletter } from "./footer-newsletter";
 import { SectionBoundary } from "./section-boundary";
-import { buildChromeSectionAbsence } from "../../src/lib/section-absence";
+import {
+  buildChromeSectionAbsence,
+  type SectionDecision,
+} from "../../src/lib/section-absence";
+import type { PublicCreditLogo } from "@screena/legal/public-credits";
 import { isNewsletterEnabled } from "../../src/lib/site";
 import {
   DATA_CREDITS,
@@ -41,14 +45,23 @@ import { PRIVACY_PATH, TERMS_PATH } from "../../src/lib/routes";
  * ============================================================================
  * DIVERGÊNCIAS DELIBERADAS EM RELAÇÃO À `FOOTER-SPEC.md`
  * ============================================================================
- * 1. SEM LOGO DE FONTE. A spec §3.4 pede os logos de TMDB/OMDb/JustWatch/
- *    Wikidata sobre o fundo escuro. Duas razões independentes impedem, e a
- *    segunda sozinha já bastaria:
- *      (a) os arquivos (`assets/data-credits/*.svg`) não existem no repositório;
- *      (b) `logoAllowed` é o literal `false` no TIPO de `LicenseTarget`
- *          ("Liberar logo ou citação exige decisão humana e mudança de tipo").
- *    O crédito é TEXTUAL. É também o que a licença realmente exige
- *    (`requiresAttribution`), então nada se perde além do desenho.
+ * 1. LOGO DE FONTE: agora POR FONTE, não mais "nenhum". A razão (b) desta nota
+ *    — "`logoAllowed` é o literal `false` no TIPO" — caiu em 20/08/2026, quando
+ *    a leitura dos termos mostrou que o TMDB **exige** o logo dele
+ *    ("You must use the TMDB logo to identify Your use of TMDB, the TMDB APIs,
+ *    or TMDB Content"). O `false` global não era zelo: era descumprimento de uma
+ *    fonte e zelo com cinco.
+ *
+ *    O que este componente faz mudou pouco, e de propósito: ele continua sem
+ *    conhecer nome de fonte nenhum. Ele desenha `credit.logo` quando a PROJEÇÃO
+ *    traz um — e a projeção só traz quando a licença autoriza E o arquivo
+ *    oficial existe. Nenhum SVG de terceiro é escrito aqui dentro.
+ *
+ *    A razão (a) continua de pé e é hoje o único bloqueio: o arquivo oficial do
+ *    TMDB não está no repositório. Enquanto não estiver, a licença fica em
+ *    `pending_official_file`, o crédito sai textual, e a ausência é REGISTRADA
+ *    (`SectionBoundary`, motivo `source_logo_asset_missing`) em vez de muda.
+ *    Desenhar uma aproximação de marca registrada seria pior que a ausência.
  * 2. WORDMARK. A spec pede `uploads/5f-logo-branca-sublinhado-branco.svg`, que
  *    não existe aqui. Usamos `/brand/cinerie-wordmark-white.svg`, a variante
  *    branca aprovada do repositório para fundo escuro. Ela não tem o sublinhado
@@ -57,6 +70,27 @@ import { PRIVACY_PATH, TERMS_PATH } from "../../src/lib/routes";
  *    Creditar uma fonte que o registro legal não conhece seria inventar
  *    procedência. Registre a licença e o crédito aparece sozinho.
  */
+
+/**
+ * A decisao de renderizar (ou nao) a marca grafica de UM credito.
+ *
+ * So e chamada quando a licenca autoriza o logo. O `null` que chega aqui nunca
+ * significa "esta fonte nao tem logo" — significa "tem, e o arquivo oficial
+ * falta". Por isso o caminho `rendered: false` carrega motivo acionavel em vez
+ * de sumir calado.
+ */
+function decisaoDeLogo(logo: PublicCreditLogo | null): SectionDecision<PublicCreditLogo> {
+  if (logo !== null) return { rendered: true, value: logo, absence: null };
+  return {
+    rendered: false,
+    value: null,
+    absence: buildChromeSectionAbsence({
+      section: "creditos-de-dados",
+      reason: "source_logo_asset_missing",
+      surface: "footer",
+    }),
+  };
+}
 
 /** Ícones oficiais das redes. Decorativos: o nome vem do `aria-label` do link. */
 const SOCIAL_ICONS: Readonly<Record<string, ReactNode>> = {
@@ -231,9 +265,37 @@ export function SiteFooter(): ReactNode {
               {DATA_CREDITS.map((credit) => (
                 <li
                   className="footer__credit"
+                  data-credit-logo-pending={credit.logoPending ? "true" : undefined}
                   data-credit-role={credit.role}
                   key={credit.creditKey}
                 >
+                  {/*
+                    O LOGO VEM ANTES DO TEXTO, e NUNCA no lugar dele.
+
+                    Os termos do TMDB exigem as DUAS coisas (a marca e o
+                    disclaimer de nao-endosso); um credito que virasse so imagem
+                    tambem sumiria para leitor de tela e para quem bloqueia
+                    imagem. `credit.text` nao e condicional em lugar nenhum
+                    deste bloco — e o teste reprova se alguem o tornar.
+
+                    `alt=""` + `aria-hidden`: a marca ja esta escrita ao lado,
+                    em texto real. Um `alt="TMDB"` aqui faria o leitor de tela
+                    anunciar a fonte duas vezes seguidas.
+                  */}
+                  {credit.logo === null && !credit.logoPending ? null : (
+                    <SectionBoundary decision={decisaoDeLogo(credit.logo)} once>
+                      {(logo) => (
+                        <img
+                          alt=""
+                          aria-hidden="true"
+                          className="footer__credit-logo"
+                          data-credit-logo={credit.creditKey}
+                          height={logo.heightPx}
+                          src={logo.src}
+                        />
+                      )}
+                    </SectionBoundary>
+                  )}
                   <span className="footer__credit-text">{credit.text}</span>
                   <span className="footer__credit-role">{credit.roleLabel}</span>
                 </li>
