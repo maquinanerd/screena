@@ -336,7 +336,7 @@ describe("entityCard: hidratado pelo catalogo, nunca inventado", () => {
         title: "Cillian Murphy",
         kicker: "Pessoa · citada nesta matéria",
         // known_for_department traduzido pelo MESMO mapa da pagina de pessoa.
-        metaLine: "Atuacao",
+        metaLine: "Atuação",
       },
     });
   });

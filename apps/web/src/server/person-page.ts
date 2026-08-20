@@ -36,6 +36,8 @@ const PERSON_INDEX_PATH = "/pt/pessoas/";
 
 export interface PersonPageData {
   view: PersonPageView;
+  /** Id INTERNO do catalogo, serializado — e o que acha a pessoa no log. */
+  entityId: string;
   indexability: IndexabilityResult;
   /** Resolucao FINAL de SEO (Fase 3): fatos vivos + decisao vigente persistida. */
   seo: PageSeoResolution;
@@ -200,6 +202,9 @@ export const getPersonPageData = cache(
 
     return {
       view,
+      // Id INTERNO, serializado: e o que o log de ausencia usa para achar a
+      // pessoa. Nunca o slug, que muda com recanonizacao.
+      entityId: String(entityId),
       indexability,
       seo,
       canonicalSlug,

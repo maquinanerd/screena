@@ -86,8 +86,11 @@ describe("nome exibido e original", () => {
 
 describe("mapKnownForDepartment", () => {
   it("traduz departamentos conhecidos e ignora desconhecidos/ausentes", () => {
-    expect(mapKnownForDepartment("Acting")).toBe("Atuacao");
-    expect(mapKnownForDepartment("Directing")).toBe("Direcao");
+    // ACENTUADO: estes valores vao para a TELA (kicker "Pessoa · Atuação" e
+    // `jobTitle` do JSON-LD), nao sao identificador tecnico. Sem acento, o
+    // leitor via "Atuacao" ao lado de rotulos acentuados na mesma pagina.
+    expect(mapKnownForDepartment("Acting")).toBe("Atuação");
+    expect(mapKnownForDepartment("Directing")).toBe("Direção");
     expect(mapKnownForDepartment("Departamento Inexistente")).toBeNull();
     expect(mapKnownForDepartment(null)).toBeNull();
     expect(mapKnownForDepartment("  ")).toBeNull();
@@ -260,7 +263,7 @@ describe("buildPersonPageView", () => {
 
     expect(view.name).toBe("Pessoa PT");
     expect(view.originalName).toBe("Original Person");
-    expect(view.roleLabel).toBe("Atuacao");
+    expect(view.roleLabel).toBe("Atuação");
     expect(view.lifeLabel).toBe("Nascimento: 1970");
     expect(view.birthDateIso).toBe("1970-05-25");
     expect(view.placeOfBirth).toBe("Sao Paulo, Brasil");
