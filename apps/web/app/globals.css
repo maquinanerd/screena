@@ -962,6 +962,20 @@ body:has(.art-hero[data-hero-media='true']) .site-header__spacer {
   font-size: 12px;
 }
 
+/* A MARCA DA FONTE, quando a licenca a autoriza e o arquivo oficial existe.
+   O atributo `height` do <img> NAO basta: o reset global tem `img { height:
+   auto }`, que o anula por ser regra de CSS — e o SVG passa a sair no tamanho
+   INTRINSECO dele (o wordmark do TMDB tem viewBox de 489px, e foi assim que
+   ele apareceu gigante no rodape). A altura precisa ser CSS, com `width: auto`
+   para preservar a proporcao da marca (distorcer marca de terceiro e violacao,
+   nao ajuste de layout). */
+.footer__credit-logo {
+  display: block;
+  height: 13px;
+  width: auto;
+  max-width: 100%;
+}
+
 .footer__credit-text {
   color: var(--footer-text-secondary);
 }
