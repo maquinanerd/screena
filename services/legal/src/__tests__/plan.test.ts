@@ -146,11 +146,44 @@ describe("plano — streaming por provedor real (nunca inventado)", () => {
 });
 
 describe("travas do spec — o que NUNCA pode ser autorizado", () => {
-  it("nenhuma entrada estática libera logo, review_quote ou obra derivada", () => {
+  it("nenhuma entrada estática libera review_quote ou obra derivada", () => {
     for (const e of STATIC_AUTHORIZATION) {
-      expect(e.license.logoAllowed, e.label).toBe(false);
       expect(e.license.reviewQuoteAllowed, e.label).toBe(false);
       for (const d of e.decisions) expect(d.derivativeAllowed, e.label).toBe(false);
+    }
+  });
+
+  /**
+   * LOGO: a asserçao deixou de ser "nenhuma entrada libera" e virou uma
+   * IGUALDADE DE CONJUNTO. Ate 20/08/2026 esta suite exigia `false` em todas —
+   * e com isso afirmava, como se fosse invariante, uma politica que estava em
+   * DESCUMPRIMENTO com os termos da API do TMDB, que EXIGEM o logo.
+   *
+   * A troca por `toEqual` de conjunto e o ponto: "nenhuma" e frouxo na direcao
+   * errada (bloqueia o cumprimento) e frouxo na direcao certa (uma sexta fonte
+   * liberada passaria despercebida se alguem trocasse o loop por um `some`).
+   * Igualdade nomeia exatamente quem pode — nem mais, nem menos.
+   */
+  it("logo liberado APENAS para o TMDB, que o exige — conjunto exato", () => {
+    const comLogo = STATIC_AUTHORIZATION.filter((e) => e.license.logoAllowed).map(
+      (e) => `${e.license.sourceKey}/${e.license.contentType}`,
+    );
+    expect(comLogo.sort()).toEqual(["tmdb/image", "tmdb/other", "tmdb/video"]);
+  });
+
+  it("toda entrada explica POR QUE tem ou nao tem logo — inclusive as que nao tem", () => {
+    // Logo bloqueado sem motivo escrito e indistinguivel de "ninguem olhou".
+    for (const e of STATIC_AUTHORIZATION) {
+      expect(e.license.logoRationale.trim().length, e.label).toBeGreaterThan(40);
+    }
+  });
+
+  it("marca autorizada declara o ARQUIVO oficial; marca bloqueada nao declara nada", () => {
+    // As duas direçoes: `logoAllowed` sem arquivo deixaria a pagina livre para
+    // desenhar uma aproximaçao; arquivo sem `logoAllowed` seria marca declarada
+    // que ninguem pode usar.
+    for (const e of STATIC_AUTHORIZATION) {
+      expect(e.license.logoAsset !== null, e.label).toBe(e.license.logoAllowed);
     }
   });
 
@@ -234,6 +267,8 @@ describe("chave de agrupamento — codificacao injetiva (nao por separador)", ()
       licenseStatus: "third_party",
       displayAllowed: false,
       logoAllowed: false,
+      logoRationale: "fixture de teste: sem marca declarada",
+      logoAsset: null,
       scoreAllowed: false,
       reviewQuoteAllowed: false,
       requiresAttribution: true,

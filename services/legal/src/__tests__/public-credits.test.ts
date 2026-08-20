@@ -146,6 +146,8 @@ describe("publicSourceCredits — a projecao publica do registro de licencas", (
         licenseStatus: "third_party",
         displayAllowed: true,
         logoAllowed: false,
+        logoRationale: "fixture de teste: sem marca declarada",
+        logoAsset: null,
         scoreAllowed: true,
         reviewQuoteAllowed: false,
         requiresAttribution: true,
@@ -184,13 +186,91 @@ describe("publicSourceCredits — a projecao publica do registro de licencas", (
     expect(credits).toHaveLength(0);
   });
 
-  it("nenhum credito carrega logo: a projecao nao tem sequer o campo", () => {
-    // `logoAllowed` e o literal `false` no TIPO de LicenseTarget. Se um dia
-    // alguem quiser logo, a mudanca tem que passar pela licenca — nao por um
-    // campo opcional que apareceu no rodape.
+  /**
+   * Ate 20/08/2026 este teste dizia "a projecao nao tem sequer o campo de logo".
+   * Ele agora tem — porque os termos do TMDB EXIGEM a marca. O que NAO mudou, e
+   * o que este bloco protege, e que a projecao nao DECIDE nada: ela so repassa o
+   * que a licenca declarou.
+   */
+  it("a forma do credito e fechada: nada alem dos campos declarados", () => {
     for (const credit of publicSourceCredits()) {
-      expect(Object.keys(credit).sort()).toEqual(["creditKey", "role", "roleLabel", "text"]);
+      expect(Object.keys(credit).sort()).toEqual([
+        "creditKey",
+        "logo",
+        "logoPending",
+        "role",
+        "roleLabel",
+        "text",
+      ]);
     }
+  });
+
+  it("NEGATIVO: licenca sem logo autorizado nao projeta logo NEM pendencia", () => {
+    // A fonte que nao deve marca nenhuma nao pode gerar evento de ausencia:
+    // seria ruido de log afirmando uma obrigacao que nao existe.
+    const semLogo: AuthorizationEntry = {
+      label: "sem-logo",
+      role: "editorial-rating-source",
+      license: {
+        sourceKey: "sem_logo",
+        contentType: "rating",
+        ratingSourceKey: "sem_logo",
+        providerKey: null,
+        territory: null,
+        licenseStatus: "third_party",
+        displayAllowed: true,
+        logoAllowed: false,
+        logoRationale: "fixture: fonte que nao concede marca",
+        logoAsset: null,
+        scoreAllowed: true,
+        reviewQuoteAllowed: false,
+        requiresAttribution: true,
+        requiresLinkback: false,
+        attributionText: "Nota fornecida por Sem Logo",
+        policyVersion: "teste/sem-logo/v1",
+        notes: "fixture",
+      },
+      decisions: [],
+    };
+    const [credito] = publicSourceCredits([semLogo], []);
+    expect(credito!.logo).toBeNull();
+    expect(credito!.logoPending).toBe(false);
+  });
+
+  it("licenca COM logo autorizado mas arquivo ausente: textual + pendencia declarada", () => {
+    // O estado real do TMDB hoje. O credito textual sai; o logo nao; e
+    // `logoPending` e a unica coisa que separa isto de "nada e devido".
+    const tmdb = publicSourceCredits().find((c) => c.text.includes("TMDB"));
+    expect(tmdb, "o credito do TMDB tem de existir").toBeDefined();
+    expect(tmdb!.text.length).toBeGreaterThan(0);
+    expect(tmdb!.logo).toBeNull();
+    expect(tmdb!.logoPending).toBe(true);
+  });
+
+  it("com o arquivo OFICIAL presente, o logo sobe — e o texto CONTINUA", () => {
+    // Prova a outra direçao sem esperar o arquivo real: o dia em que o status
+    // virar `present`, isto e o que acontece. Se o texto sumisse junto, reprova.
+    const comArquivo: AuthorizationEntry = {
+      ...STATIC_AUTHORIZATION.find((e) => e.license.sourceKey === "tmdb")!,
+      license: {
+        ...STATIC_AUTHORIZATION.find((e) => e.license.sourceKey === "tmdb")!.license,
+        logoAsset: {
+          path: "/brand/sources/tmdb-primary.svg",
+          officialSourceUrl: "https://www.themoviedb.org/about/logos-attribution",
+          alt: "TMDB",
+          displayHeightPx: 18,
+          status: "present",
+        },
+      },
+    };
+    const [credito] = publicSourceCredits([comArquivo], []);
+    expect(credito!.logo).toEqual({
+      src: "/brand/sources/tmdb-primary.svg",
+      alt: "TMDB",
+      heightPx: 18,
+    });
+    expect(credito!.logoPending).toBe(false);
+    expect(credito!.text).toContain("TMDB");
   });
 });
 

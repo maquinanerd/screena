@@ -119,6 +119,9 @@ const EXPECTED_TABLES = [
   // Fase 10 - recomendacoes do TMDB. `recommendations`/`similar` estavam no
   // append de filme E de serie desde sempre e eram descartados no normalizador.
   "title_recommendations",
+  // Fase 10 - vinculo titulo <-> genero. `genres` era dicionario SEM ligacao:
+  // o `genres[]` do detalhe do TMDB chegava e era descartado no normalizador.
+  "movie_genres", "tv_show_genres",
   "networks", "tv_networks",
   "keywords", "entity_keywords",
   "entity_alternative_titles",

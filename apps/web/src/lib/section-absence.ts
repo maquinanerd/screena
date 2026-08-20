@@ -43,7 +43,14 @@ export type SectionKey =
   /** "Continuar assistindo" — trilho PESSOAL de /pt/explorar (escopo de ROTA). */
   | "continuar-assistindo"
   /** Faixa de newsletter do rodape — escopo de CHROME, nao de rota nem entidade. */
-  | "newsletter";
+  | "newsletter"
+  /**
+   * Creditos de fonte no rodape — escopo de CHROME.
+   *
+   * O bloco em si NUNCA some (o credito textual e obrigatorio). O que pode
+   * faltar e a MARCA GRAFICA de uma fonte que a exige.
+   */
+  | "creditos-de-dados";
 
 /**
  * Por que o bloco nao renderizou.
@@ -178,7 +185,25 @@ export type SectionAbsenceReason =
    * `actionable: true`: e um passo pendente (tabela + flag), nunca um fato sobre
    * o site. O que exatamente destrava esta em `docs/frontend/newsletter.md`.
    */
-  | "newsletter_storage_unavailable";
+  | "newsletter_storage_unavailable"
+  /**
+   * A licenca de uma fonte EXIGE (ou autoriza) a marca grafica, e o arquivo
+   * oficial dela nao esta no repositorio.
+   *
+   * Nao e "esta fonte nao tem logo" — esse caso nao gera evento nenhum, porque
+   * nada e devido. Este motivo significa uma OBRIGACAO DESCUMPRIDA: os termos da
+   * API do TMDB pedem o logo ("You must use the TMDB logo to identify Your use
+   * of TMDB, the TMDB APIs, or TMDB Content") e hoje so o credito textual vai ao
+   * ar.
+   *
+   * A unica origem legitima do arquivo e a pagina de logos do proprio detentor;
+   * desenhar uma aproximacao de marca registrada seria pior que a ausencia. Ate
+   * o arquivo chegar, esta linha e a evidencia de que a pendencia existe — em
+   * vez de um `logo_allowed=false` silencioso fingindo que nada e devido.
+   *
+   * `actionable: true`: o conserto e colocar um arquivo, e a licenca diz qual.
+   */
+  | "source_logo_asset_missing";
 
 /** Uma linha de log estruturada. Sem segredo, sem payload cru, sem PII. */
 export interface SectionAbsence {
@@ -212,6 +237,9 @@ export interface SectionAbsence {
 
 /** Causas que dependem de alguem agir (operacao ou decisao), nao do titulo. */
 const ACTIONABLE_REASONS: ReadonlySet<SectionAbsenceReason> = new Set([
+  // Acionavel: o conserto e colocar UM arquivo no repositorio, e a linha de log
+  // nomeia qual. Nao e um fato sobre o catalogo — e uma pendencia de operacao.
+  "source_logo_asset_missing",
   "no_authorized_provider",
   "no_approved_formula",
   "no_awards_source",

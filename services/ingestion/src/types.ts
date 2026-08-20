@@ -49,6 +49,13 @@ export interface TitleRecommendationLink {
   readonly position: number
 }
 
+/** Um genero ligado a um titulo, com a POSICAO que o TMDB devolveu. */
+export interface TitleGenreLink {
+  readonly tmdbId: number
+  /** Ordem no array do TMDB. Editorial: o primeiro e o mais representativo. */
+  readonly position: number
+}
+
 /** Upsert de `tv_shows` (chave: tmdbId). */
 export interface TvShowUpsert {
   readonly tmdbId: number
@@ -100,6 +107,14 @@ export interface PersonUpsert {
   readonly deathday: string | null
   readonly placeOfBirth: string | null
   readonly profilePath: string | null
+  /**
+   * Biografia crua do TMDB. `null` quando a fonte nao trouxe.
+   *
+   * ATENCAO: presenca aqui NAO e autorizacao de exibicao. Quem governa a tela e
+   * `people.biography_source_status` (invariante 6), que continua no default
+   * `unknown` — persistir o texto e condicao necessaria, nunca suficiente.
+   */
+  readonly biography: string | null
 }
 
 /** Pessoa minima derivada de um credito (para upsert antes de ligar credito). */

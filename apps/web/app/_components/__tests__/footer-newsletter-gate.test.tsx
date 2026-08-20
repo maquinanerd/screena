@@ -32,7 +32,20 @@ import { isNewsletterEnabled } from "../../../src/lib/site";
 function renderFooter(): { markup: string; logs: string[] } {
   const logs: string[] = [];
   const spy = vi.spyOn(console, "warn").mockImplementation((line: unknown) => {
-    logs.push(String(line));
+    const texto = String(line);
+    // FILTRA PELA SECAO, e o motivo importa: este arquivo afirma "a faixa some
+    // E diz por que" comparando a lista INTEIRA de logs com `[ABSENCE_LOG]`. O
+    // rodape passou a poder emitir uma segunda ausencia legitima e sem relacao
+    // (`creditos-de-dados`/`source_logo_asset_missing`, quando a licenca exige
+    // a marca de uma fonte e o arquivo oficial ainda nao esta no repositorio), e
+    // a igualdade de lista quebrava por causa dela.
+    //
+    // Estreitar o ESCOPO, nunca afrouxar a asserçao: continua sendo igualdade
+    // exata, e continua reprovando se a faixa sumir calada. So deixou de
+    // afirmar, de lado, que o rodape inteiro nunca loga mais nada — o que nunca
+    // foi o assunto deste arquivo.
+    if (!texto.includes('"section":"newsletter"')) return;
+    logs.push(texto);
   });
   try {
     return { markup: renderToStaticMarkup(<SiteFooter />), logs };

@@ -27,9 +27,15 @@
  *    licenca; e a letra da licenca, nao copy editorial. Um `.trim()` e o unico
  *    toque permitido.
  *  - NAO decide licenca, nao promove dado, nao liga `display_allowed`.
- *  - NAO libera logo. `logoAllowed` e o literal `false` no TIPO de
- *    `LicenseTarget` — o credito publico e SEMPRE textual, nunca marca grafica.
- *    Por isso `PublicSourceCredit` nao tem campo de logo: nao ha o que renderizar.
+ *  - NAO decide logo. Ate 20/08/2026 esta linha dizia "nao libera logo, porque
+ *    `logoAllowed` e o literal `false` no TIPO" — deixou de ser verdade quando a
+ *    leitura dos termos mostrou que o TMDB EXIGE o logo dele. A projecao agora
+ *    CARREGA o logo quando a licenca o declara, e so entao. Ela continua sem
+ *    decidir nada: quem autoriza e `authorization-spec.ts`.
+ *  - O logo NUNCA substitui o texto. `PublicSourceCredit.text` continua
+ *    obrigatorio e `logo` e opcional ao lado dele — os termos do TMDB pedem os
+ *    DOIS (marca E disclaimer de nao-endosso), e um credito que virasse so
+ *    imagem sumiria para leitor de tela e para quem bloqueia imagem.
  *  - NAO faz IO. Puro, deterministico, sem `Date`/rede/DB — pode ser importado
  *    pelo render publico (invariantes 3 e 4).
  *
@@ -60,6 +66,7 @@ import {
   STATIC_AUTHORIZATION,
   STREAMING_ORIGIN_CREDITS,
   type AuthorizationEntry,
+  type LicenseLogoAsset,
   type SourceRole,
 } from "./authorization-spec.js";
 
@@ -91,6 +98,31 @@ export interface PublicSourceCredit {
   readonly roleLabel: string;
   /** Papel cru, para teste e `data-attr`. */
   readonly role: SourceRole;
+  /**
+   * A marca grafica, quando a licenca a autoriza E o arquivo oficial existe.
+   *
+   * `null` cobre DOIS estados que o consumidor precisa distinguir, e por isso
+   * `logoPending` existe ao lado:
+   *   - a fonte nao autoriza logo (o normal — cinco das seis);
+   *   - a fonte EXIGE o logo mas o arquivo oficial ainda nao esta no
+   *     repositorio. Nesse caso o credito sai textual e a ausencia e LOGADA.
+   */
+  readonly logo: PublicCreditLogo | null;
+  /**
+   * `true` quando a licenca autoriza/exige o logo mas o arquivo oficial falta.
+   *
+   * E a diferenca entre "nao ha o que renderizar" e "ha uma obrigacao pendente".
+   * Sem este campo as duas seriam o mesmo `null` — ausencia muda, que e
+   * exatamente o defeito que `section-absence.ts` existe para impedir.
+   */
+  readonly logoPending: boolean;
+}
+
+/** O arquivo de marca pronto para a superficie publica. */
+export interface PublicCreditLogo {
+  readonly src: string;
+  readonly alt: string;
+  readonly heightPx: number;
 }
 
 function trimToNull(value: string | null | undefined): string | null {
@@ -139,7 +171,12 @@ export function publicSourceCredits(
   const out: PublicSourceCredit[] = [];
   const seen = new Set<string>();
 
-  const push = (rawText: string, role: SourceRole): void => {
+  const push = (
+    rawText: string,
+    role: SourceRole,
+    logoAllowed: boolean,
+    asset: LicenseLogoAsset | null,
+  ): void => {
     const text = trimToNull(rawText);
     // Licenca sem texto de atribuicao nao rende credito silencioso: ela
     // simplesmente nao tem o que creditar. `requiresAttribution` e `true` no
@@ -149,7 +186,22 @@ export function publicSourceCredits(
     const creditKey = creditKeyOf(text);
     if (seen.has(creditKey)) return;
     seen.add(creditKey);
-    out.push({ creditKey, text, roleLabel: ROLE_LABELS[role], role });
+
+    // O logo so existe quando a licenca autoriza E o arquivo oficial esta
+    // presente. As duas condicoes, sempre: `logoAllowed` sem arquivo e
+    // obrigacao pendente (`logoPending`), nao permissao para desenhar algo.
+    const autorizado = logoAllowed && asset !== null;
+    const presente = autorizado && asset.status === "present";
+    out.push({
+      creditKey,
+      text,
+      roleLabel: ROLE_LABELS[role],
+      role,
+      logo: presente
+        ? { src: asset.path, alt: asset.alt, heightPx: asset.displayHeightPx }
+        : null,
+      logoPending: autorizado && !presente,
+    });
   };
 
   for (const entry of entries) {
@@ -157,9 +209,16 @@ export function publicSourceCredits(
     // que creditar numa fonte que nao pode aparecer. Ver o cabecalho — e por
     // isto que `movie-of-the-night` depende de `origins` para chegar ao rodape.
     if (!entry.license.displayAllowed) continue;
-    push(entry.license.attributionText, entry.role);
+    push(
+      entry.license.attributionText,
+      entry.role,
+      entry.license.logoAllowed,
+      entry.license.logoAsset,
+    );
   }
-  for (const origin of origins) push(origin.attributionText, "streaming-aggregator");
+  // Origens de streaming nao tem licenca estatica (nascem por provedor
+  // canonico) e portanto nao declaram marca: credito textual, sempre.
+  for (const origin of origins) push(origin.attributionText, "streaming-aggregator", false, null);
 
   return out;
 }

@@ -23,6 +23,18 @@ export interface TmdbRelatedTitle {
   media_type?: string | null
 }
 
+/**
+ * Genero do TMDB, como vem no DETALHE (`/movie/{id}.genres`, `/tv/{id}.genres`).
+ *
+ * NAO e append: e campo de primeiro nivel do detalhe, entao chega em toda
+ * requisicao que ja fazemos. Ficava sem declaracao aqui e por isso era
+ * descartado silenciosamente no normalizador.
+ */
+export interface TmdbGenreRef {
+  id: number
+  name?: string | null
+}
+
 /** IDs externos retornados por `append_to_response=external_ids`. */
 export interface TmdbExternalIds {
   imdb_id?: string | null
@@ -77,6 +89,7 @@ export interface TmdbMovieDetail {
   credits?: TmdbCredits
   recommendations?: TmdbRelatedTitlesBlock
   similar?: TmdbRelatedTitlesBlock
+  genres?: TmdbGenreRef[]
 }
 
 /** Resumo de temporada embutido no detalhe da serie (`tv.seasons[]`). */
@@ -111,6 +124,7 @@ export interface TmdbTvDetail {
   seasons?: TmdbSeasonSummary[]
   recommendations?: TmdbRelatedTitlesBlock
   similar?: TmdbRelatedTitlesBlock
+  genres?: TmdbGenreRef[]
 }
 
 /** Episodio dentro do detalhe de temporada (`season.episodes[]`). */
@@ -160,6 +174,11 @@ export interface TmdbPersonDetail {
   deathday?: string | null
   place_of_birth?: string | null
   profile_path?: string | null
+  /**
+   * Biografia crua. Campo de primeiro nivel do detalhe de pessoa — sempre
+   * chegou; faltava a coluna do outro lado, nao o dado.
+   */
+  biography?: string | null
   external_ids?: TmdbExternalIds
 }
 

@@ -9,6 +9,7 @@ import type {
   ExternalIdInput,
   MovieUpsert,
   TitleRecommendationLink,
+  TitleGenreLink,
 } from '../types.js'
 import { NormalizationError } from '../types.js'
 import {
@@ -21,6 +22,7 @@ import {
 import { buildExternalIds } from './external-ids.js'
 import { normalizeCredits } from './credits.js'
 import { collectRecommendations } from './recommendations.js'
+import { normalizeTitleGenres } from './genres.js'
 
 /** Resultado da normalizacao de um filme. */
 export interface NormalizedMovie {
@@ -41,6 +43,17 @@ export interface NormalizedMovie {
   readonly recommendations: TitleRecommendationLink[]
   /** A fonte trouxe ALGUM dos dois blocos? Ausencia nunca e lista vazia. */
   readonly recommendationsPresent: boolean
+  /** Generos, na ORDEM do TMDB (editorial: o primeiro e o mais representativo). */
+  readonly genres: TitleGenreLink[]
+  /**
+   * A fonte trouxe o array de generos (mesmo vazio)?
+   *
+   * Mesma disciplina de `castPresent`: ausencia do campo NAO e o mesmo que lista
+   * vazia. Sem esta distincao, um payload truncado apagaria os generos de um
+   * titulo que os tem — foi exatamente o defeito de creditos apagados por
+   * payload sem `credits`.
+   */
+  readonly genresPresent: boolean
 }
 
 /** Normaliza um filme; lanca NormalizationError sem id ou sem titulo. */
@@ -71,6 +84,7 @@ export function normalizeMovie(detail: TmdbMovieDetail): NormalizedMovie {
 
   const credits = normalizeCredits(detail.credits)
   const recomendacoes = collectRecommendations(detail, 'movie')
+  const genres = normalizeTitleGenres(detail.genres)
   return {
     movie,
     externalIds: buildExternalIds('movie', detail.id, imdbId),
@@ -80,5 +94,7 @@ export function normalizeMovie(detail: TmdbMovieDetail): NormalizedMovie {
     crewPresent: credits.crewPresent,
     recommendations: recomendacoes.links,
     recommendationsPresent: recomendacoes.present,
+    genres: genres.links,
+    genresPresent: genres.present,
   }
 }

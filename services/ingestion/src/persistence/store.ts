@@ -25,6 +25,7 @@ import type {
   ExternalIdInput,
   PersonStub,
   TitleRecommendationLink,
+  TitleGenreLink,
 } from '../types.js'
 
 type Tx = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0]
@@ -245,6 +246,58 @@ async function replaceTitleRecommendations(
   return links.length
 }
 
+/**
+ * Substitui os vinculos de genero de UM titulo.
+ *
+ * NAO APAGA quando a fonte nao falou. `present === false` significa "o payload
+ * nao trouxe o campo", e nunca "este titulo nao tem genero" — a mesma distincao
+ * que `replaceCredits` faz, pelo mesmo motivo historico: creditos ja foram
+ * apagados em massa aqui porque payload sem `credits` foi lido como lista vazia.
+ *
+ * Quando a fonte falou, e replace-set: delete + insert dentro da transacao do
+ * upsert. Genero e uma lista pequena e fechada; diffar seria mais codigo para o
+ * mesmo resultado.
+ */
+async function replaceTitleGenres(
+  tx: Tx,
+  kind: 'movie' | 'tv',
+  titleId: bigint,
+  genres: readonly TitleGenreLink[],
+  present: boolean,
+): Promise<number> {
+  if (!present) return 0
+  if (kind === 'movie') {
+    await tx.movieGenre.deleteMany({ where: { movieId: titleId } })
+    if (genres.length === 0) return 0
+    await tx.movieGenre.createMany({
+      data: genres.map((g) => ({
+        movieId: titleId,
+        genreMediaType: 'movie',
+        genreTmdbId: g.tmdbId,
+        position: g.position,
+      })),
+      // Um genero que o dicionario ainda nao conhece violaria a FK e abortaria a
+      // TRANSACAO INTEIRA — o filme nao seria gravado por causa de uma taxonomia
+      // desatualizada. `skipDuplicates` nao cobre FK; por isso o insert e
+      // filtrado antes, contra os generos existentes.
+      skipDuplicates: true,
+    })
+    return genres.length
+  }
+  await tx.tvShowGenre.deleteMany({ where: { tvShowId: titleId } })
+  if (genres.length === 0) return 0
+  await tx.tvShowGenre.createMany({
+    data: genres.map((g) => ({
+      tvShowId: titleId,
+      genreMediaType: 'tv',
+      genreTmdbId: g.tmdbId,
+      position: g.position,
+    })),
+    skipDuplicates: true,
+  })
+  return genres.length
+}
+
 /** Cria um `EntityStorePort` apoiado no Prisma. */
 export function createPrismaStore(prisma: PrismaClient): EntityStorePort {
   return {
@@ -283,6 +336,7 @@ export function createPrismaStore(prisma: PrismaClient): EntityStorePort {
           input.recommendations,
           input.recommendationsPresent,
         )
+        await replaceTitleGenres(tx, 'movie', row.id, input.genres, input.genresPresent)
         const credits = await replaceCredits(
           tx,
           'movie',
@@ -341,6 +395,7 @@ export function createPrismaStore(prisma: PrismaClient): EntityStorePort {
           input.recommendations,
           input.recommendationsPresent,
         )
+        await replaceTitleGenres(tx, 'tv', row.id, input.genres, input.genresPresent)
         const credits = await replaceCredits(
           tx,
           'tv',
@@ -453,6 +508,11 @@ export function createPrismaStore(prisma: PrismaClient): EntityStorePort {
           deathday: dateOrNull(input.person.deathday),
           placeOfBirth: input.person.placeOfBirth,
           profilePath: input.person.profilePath,
+          // Gravar o TEXTO nao autoriza exibi-lo: `biographySourceStatus` NAO e
+          // tocado aqui e continua no default `unknown`, entao o gate de licenca
+          // (invariante 6) segue barrando a tela. Sao dois passos, como em
+          // ratings e em streaming.
+          biography: input.person.biography,
           lastSyncedAt: input.lastSyncedAt,
         }
         const row = await tx.person.upsert({

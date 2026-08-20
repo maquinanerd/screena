@@ -11,6 +11,7 @@ import type {
   CrewMemberInput,
   ExternalIdInput,
   TitleRecommendationLink,
+  TitleGenreLink,
   TvShowUpsert,
 } from '../types.js'
 import { NormalizationError } from '../types.js'
@@ -24,6 +25,7 @@ import {
 import { buildExternalIds } from './external-ids.js'
 import { normalizeCredits } from './credits.js'
 import { collectRecommendations } from './recommendations.js'
+import { normalizeTitleGenres } from './genres.js'
 
 /** Resultado da normalizacao de uma serie. */
 export interface NormalizedTvShow {
@@ -45,6 +47,10 @@ export interface NormalizedTvShow {
   /** A fonte trouxe ALGUM dos dois blocos? Ausencia nunca e lista vazia. */
   readonly recommendationsPresent: boolean
   readonly seasonNumbers: number[]
+  /** Generos, na ORDEM do TMDB (editorial: o primeiro e o mais representativo). */
+  readonly genres: TitleGenreLink[]
+  /** A fonte trouxe o array de generos (mesmo vazio)? Ver NormalizedMovie. */
+  readonly genresPresent: boolean
 }
 
 /** Normaliza uma serie; lanca NormalizationError sem id ou sem nome. */
@@ -81,6 +87,7 @@ export function normalizeTvShow(detail: TmdbTvDetail): NormalizedTvShow {
 
   const credits = normalizeCredits(detail.credits)
   const recomendacoes = collectRecommendations(detail, 'tv')
+  const genres = normalizeTitleGenres(detail.genres)
   return {
     tvShow,
     externalIds: buildExternalIds('tv', detail.id, imdbId),
@@ -91,5 +98,7 @@ export function normalizeTvShow(detail: TmdbTvDetail): NormalizedTvShow {
     recommendations: recomendacoes.links,
     recommendationsPresent: recomendacoes.present,
     seasonNumbers,
+    genres: genres.links,
+    genresPresent: genres.present,
   }
 }

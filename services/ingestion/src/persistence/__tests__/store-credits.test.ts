@@ -140,6 +140,8 @@ function movieInput(detail: TmdbMovieDetail): StoreMovieInput {
     crewPresent: n.crewPresent,
     recommendations: n.recommendations,
     recommendationsPresent: n.recommendationsPresent,
+    genres: n.genres,
+    genresPresent: n.genresPresent,
     timestamps: { lastSyncedAt: SYNCED_AT, staleAfter: null },
   }
 }
@@ -155,6 +157,8 @@ function tvInput(detail: TmdbTvDetail): StoreTvShowInput {
     crewPresent: n.crewPresent,
     recommendations: n.recommendations,
     recommendationsPresent: n.recommendationsPresent,
+    genres: n.genres,
+    genresPresent: n.genresPresent,
     timestamps: { lastSyncedAt: SYNCED_AT, staleAfter: null },
   }
 }

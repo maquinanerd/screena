@@ -283,9 +283,27 @@ async function runChecks(url: string): Promise<void> {
       `n=${watchDecisions.length} origens=${watchOrigins.join(",")}`,
     );
 
-    // 6. Logos continuam bloqueados em TODA licença.
-    const anyLogo = Number((await q<{ c: number }>(`SELECT count(*)::int AS c FROM source_licenses WHERE is_current=true AND logo_allowed=true`))[0]!.c);
-    record(6, "logos continuam bloqueados (logo_allowed=false em toda licenca vigente)", anyLogo === 0, `logo_allowed=true: ${anyLogo}`);
+    // 6. Logos: liberados APENAS onde a fonte exige, e para mais ninguem.
+    //
+    // Esta checagem dizia `logo_allowed=true: 0` ate 20/08/2026. Ela codificava
+    // uma politica global que se revelou ERRADA para uma fonte: os termos da API
+    // do TMDB EXIGEM o logo deles. Manter o zero faria o validador reprovar o
+    // cumprimento — que e o pior tipo de validador.
+    //
+    // A checagem nao afrouxou, ela ficou mais ESTREITA: em vez de "nenhum", agora
+    // e uma ALLOWLIST EXATA. Liberar o logo de qualquer outra fonte reprova aqui.
+    const logoRows = await q<{ source_key: string; content_type: string }>(
+      `SELECT source_key, content_type FROM source_licenses WHERE is_current=true AND logo_allowed=true ORDER BY source_key, content_type`,
+    );
+    const logoKeys = logoRows.map((r) => `${r.source_key}/${r.content_type}`);
+    // As tres licencas do TMDB (metadados, imagem, video) sao a MESMA fonte e
+    // colapsam num unico credito no rodape. Sao tres linhas porque o
+    // `content_type` e parte da chave, nao porque sao tres permissoes.
+    const LOGO_ALLOWLIST = ["tmdb/image", "tmdb/other", "tmdb/video"];
+    const logoOk =
+      logoKeys.length === LOGO_ALLOWLIST.length &&
+      LOGO_ALLOWLIST.every((k) => logoKeys.includes(k));
+    record(6, "logo liberado SO onde a fonte exige (allowlist exata: as 3 licencas do TMDB)", logoOk, `logo_allowed=true: [${logoKeys.join(", ")}]`);
 
     // 7. Review quotes bloqueados.
     const anyRq = Number((await q<{ c: number }>(`SELECT count(*)::int AS c FROM source_licenses WHERE is_current=true AND review_quote_allowed=true`))[0]!.c);

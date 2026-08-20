@@ -8,8 +8,18 @@
  * idempotente e auditável.
  *
  * Regras que atravessam o arquivo inteiro (nenhuma é negociável aqui):
- *  - `logoAllowed` e `reviewQuoteAllowed` são SEMPRE false. Liberar logo ou
- *    citação integral de crítica exige autorização específica que não existe.
+ *  - `reviewQuoteAllowed` é SEMPRE false. Liberar citação integral de crítica
+ *    exige autorização específica que não existe.
+ *  - `logoAllowed` NÃO é mais uniforme, e a mudança é de FATO, não de política
+ *    (20/08/2026). A leitura dos termos fonte por fonte mostrou que o TMDB
+ *    **exige** o logo dele ("You must use the TMDB logo to identify Your use of
+ *    TMDB, the TMDB APIs, or TMDB Content" — termos da API, seção 3), enquanto
+ *    IMDb, Rotten Tomatoes, Metacritic, OMDb e o agregador de streaming não
+ *    concedem nada. Ou seja: o `false` global estava **descumprindo** uma fonte
+ *    e sendo zeloso com cinco. Cada entrada agora carrega `logoRationale`
+ *    obrigatório — inclusive, e principalmente, as que continuam `false`.
+ *  - O crédito TEXTUAL nunca sai. Os termos do TMDB pedem os DOIS (logo **e**
+ *    disclaimer); logo jamais substitui atribuição.
  *  - `derivativeAllowed` das decisões é SEMPRE false. O Cinerie Score é obra
  *    derivada e permanece BLOCKED_BY_DECISION — este spec NUNCA emite uma
  *    decisão `cinerie_score_display`.
@@ -57,6 +67,35 @@ export type LicenseContentType =
 /** Estado de licença permitido (`official` só p/ API/fonte oficial). */
 export type LicenseStatus = "official" | "licensed" | "third_party";
 
+/**
+ * O arquivo oficial da marca de uma fonte, declarado pela LICENCA.
+ *
+ * `status` e o ponto do contrato. Uma marca de terceiro so pode ir ao ar a
+ * partir do arquivo que o proprio detentor publica para atribuicao. Enquanto
+ * esse arquivo nao estiver no repositorio, `pending_official_file` mantem o
+ * render em texto puro e faz a ausencia FALAR (`SectionBoundary`) — nunca
+ * desenha uma aproximacao.
+ *
+ * Trocar para `present` e um ato deliberado: significa "o arquivo em `path` e o
+ * oficial, baixado de `officialSourceUrl`".
+ */
+export interface LicenseLogoAsset {
+  /** Caminho publico servido por `apps/web/public` (ex.: `/brand/sources/x.svg`). */
+  readonly path: string;
+  /** Onde o DETENTOR publica o arquivo oficial. Nunca um espelho de terceiro. */
+  readonly officialSourceUrl: string;
+  /** Texto alternativo. Nomeia a marca; nunca "logo" solto. */
+  readonly alt: string;
+  /** Altura de exibicao em px. O logo e SUBORDINADO a marca do site (termos TMDB). */
+  readonly displayHeightPx: number;
+  /**
+   * `present` = o arquivo oficial esta no repositorio e pode ir ao ar.
+   * `pending_official_file` = a licenca EXIGE/permite o logo, mas o arquivo
+   * ainda nao foi colocado. Render fica textual e registra a ausencia.
+   */
+  readonly status: "present" | "pending_official_file";
+}
+
 /** Alvo de uma licença (`source_licenses`). */
 export interface LicenseTarget {
   readonly sourceKey: string;
@@ -69,8 +108,44 @@ export interface LicenseTarget {
   readonly territory: string | null;
   readonly licenseStatus: LicenseStatus;
   readonly displayAllowed: boolean;
-  /** SEMPRE false neste spec (logos bloqueados). */
-  readonly logoAllowed: false;
+  /**
+   * Exibir a MARCA GRAFICA da fonte.
+   *
+   * Era `false` LITERAL no tipo ate 20/08/2026, com a justificativa "liberar
+   * logo exige autorizacao especifica que nao existe". A leitura dos termos
+   * fonte por fonte mostrou que a frase estava certa para cinco fontes e
+   * ERRADA para uma: o TMDB nao PERMITE o logo, ele o EXIGE.
+   *
+   *   "You must use the TMDB logo to identify Your use of TMDB, the TMDB APIs,
+   *    or TMDB Content." (Termos de uso da API, secao 3 — Attribution)
+   *
+   * Com `false` literal no tipo, o repositorio estava em DESCUMPRIMENTO e nao
+   * tinha como sair sem mudar o tipo. Por isso ele virou `boolean` — nao para
+   * relaxar a regra, mas porque a regra nao era a mesma para todas as fontes.
+   *
+   * Continua valendo, e agora e afirmado por entrada (ver `logoRationale`):
+   * autorizacao do dono NAO cria direito que a fonte nao deu. Cinco das seis
+   * fontes seguem `false`, cada uma com o motivo escrito.
+   */
+  readonly logoAllowed: boolean;
+  /**
+   * POR QUE esta fonte pode ou nao exibir logo. Obrigatorio, sempre — inclusive
+   * (principalmente) quando a resposta e `false`.
+   *
+   * Existe porque "logo bloqueado" sem motivo escrito e indistinguivel de
+   * "ninguem olhou". Foi assim que o credito de "Movie of the Night" acabou em
+   * dado da TMDB: uma regra global aplicada a fontes de regime diferente.
+   */
+  readonly logoRationale: string;
+  /**
+   * O ARQUIVO oficial da marca, quando `logoAllowed`. `null` quando nao.
+   *
+   * A pagina NUNCA desenha um logo: ela le o que a licenca declara. Um SVG
+   * escrito a mao dentro do componente seria uma marca de terceiro reproduzida
+   * por aproximacao — pior que ausencia, porque uma marca distorcida e
+   * violacao, nao cortesia.
+   */
+  readonly logoAsset: LicenseLogoAsset | null;
   readonly scoreAllowed: boolean;
   /** SEMPRE false neste spec (citações integrais bloqueadas). */
   readonly reviewQuoteAllowed: false;
@@ -122,6 +197,69 @@ export interface AuthorizationEntry {
   readonly license: LicenseTarget;
   readonly decisions: readonly DecisionTarget[];
 }
+
+/**
+ * O arquivo oficial da marca do TMDB.
+ *
+ * `pending_official_file` de proposito, e a distincao importa: a LICENCA ja diz
+ * `logoAllowed: true` (os termos EXIGEM o logo). O que falta e o ARQUIVO — e a
+ * unica origem legitima dele e a pagina de logos do proprio TMDB. Desenhar uma
+ * aproximacao de marca registrada dentro de um componente seria pior que a
+ * ausencia: marca distorcida e violacao, nao cortesia. Enquanto o status for
+ * este, o rodape credita em TEXTO e registra a ausencia com `SectionBoundary`
+ * (nada falha em silencio); no dia em que o arquivo entrar e o status virar
+ * `present`, o logo sobe sem tocar em componente nenhum.
+ */
+export const TMDB_LOGO_ASSET: LicenseLogoAsset = {
+  path: "/brand/sources/tmdb-primary.svg",
+  officialSourceUrl: "https://www.themoviedb.org/about/logos-attribution",
+  alt: "TMDB",
+  // Subordinado a marca do site, como os termos exigem: o wordmark da Cinerie
+  // no rodape tem 28px; 18px mantem o logo do TMDB visivelmente menor.
+  displayHeightPx: 18,
+  status: "pending_official_file",
+};
+
+/**
+ * Por que o logo de CADA fonte de nota continua bloqueado.
+ *
+ * Uma entrada por fonte, porque os regimes sao diferentes. Um texto unico
+ * ("logos bloqueados") esconderia que o IMDb exige autorizacao POR ESCRITO
+ * enquanto o Rotten Tomatoes exige aprovacao comercial E vincula o logo a FAIXA
+ * DA NOTA — duas barreiras que nao se destravam do mesmo jeito.
+ */
+const LOGO_RATIONALE_BY_RATING_SOURCE: Readonly<Record<string, string>> = {
+  imdb:
+    "Sem base. As diretrizes de marca do IMDb exigem autorizacao POR ESCRITO antes de " +
+    "qualquer uso do logo (pedido via trademarks@amazon.com, com mockup do uso pretendido). " +
+    "Nao temos essa autorizacao. Alem disso o dado chega pela OMDb, que nao pode " +
+    "sublicenciar marca de terceiro. Credito textual: \"Nota fornecida por IMDb\".",
+  rotten_tomatoes:
+    "Sem base, e por DUAS barreiras independentes. (1) O uso de marca/logo exige aprovacao " +
+    "previa pelo Business Proposal Form, que libera os assets — nao temos. (2) Mesmo com " +
+    "aprovacao, o logo do Rotten Tomatoes e VINCULADO A FAIXA DA NOTA: Fresh/Hot Popcorn so " +
+    "com score >= 60%, Rotten Splat/Stale Popcorn so com <= 59%, sempre a esquerda do numero " +
+    "e sem alteracao. Exibir o icone errado para a faixa e pior que nao exibir. " +
+    "Tomatometer e Popcornmeter pertencem SO ao Rotten Tomatoes (invariante 1).",
+  metacritic:
+    "Sem base HOJE. O Metacritic e a unica das cinco cujas diretrizes preveem exibir o " +
+    "Metascore com o logo e o wordmark em site de terceiro — mas as diretrizes citadas nao " +
+    "sao publicas o bastante para derivar o regime completo (quais arquivos, que autorizacao " +
+    "previa, que placement), e nao ha arquivo oficial obtido. Fica `false` ate a diretriz " +
+    "escrita estar em maos. E a fonte com maior chance de virar `true` numa proxima revisao.",
+  letterboxd:
+    "Sem base, e sem dado: o Letterboxd nao esta ativo como fonte no produto. Nao ha " +
+    "avaliacao de marca porque nao ha exibicao. Logo bloqueado por ausencia de licenca, " +
+    "nao por analise concluida.",
+  filmaffinity:
+    "Sem base, e sem dado: o FilmAffinity nao esta ativo como fonte no produto. Mesma " +
+    "situacao do Letterboxd — bloqueado por ausencia de licenca, nao por analise concluida.",
+};
+
+/** Fallback FAIL-CLOSED: fonte de nota nova nasce sem logo e com o motivo dito. */
+const LOGO_RATIONALE_RATING_DEFAULT =
+  "Sem base: fonte de nota sem regime de marca avaliado. Bloqueado por padrao (fail-closed) " +
+  "ate alguem ler os termos dela e escrever o motivo aqui.";
 
 const RATING_ATTRIBUTION: Record<string, string> = {
   imdb: "Nota fornecida por IMDb",
@@ -325,6 +463,11 @@ function ratingEntry(source: string): AuthorizationEntry {
       licenseStatus: "third_party",
       displayAllowed: !displayRevoked,
       logoAllowed: false,
+      // Cada uma das cinco fontes foi lida separadamente. NENHUMA autoriza, e os
+      // motivos NAO sao o mesmo — tratar as cinco como um bloco unico e a mesma
+      // classe de erro que creditou "Movie of the Night" em dado do TMDB.
+      logoRationale: LOGO_RATIONALE_BY_RATING_SOURCE[source] ?? LOGO_RATIONALE_RATING_DEFAULT,
+      logoAsset: null,
       // A nota (o número) segue a exibição: revogar a exibição e deixar
       // `scoreAllowed: true` descreveria um estado que não existe.
       scoreAllowed: !displayRevoked,
@@ -445,6 +588,17 @@ export function awardsAuthorizationEntry(input: {
       licenseStatus: "third_party",
       displayAllowed: true,
       logoAllowed: false,
+      // A OMDb e o FORNECEDOR do dado de premiacao, e os termos dela nao
+      // concedem marca — nem a propria, nem (sobretudo) a de terceiro. Secao 11
+      // e explicita: "THIS AGREEMENT DOES NOT APPLY TO THIRD PARTY SITES".
+      // Ou seja: a OMDb nao pode licenciar o logo do IMDb, do Rotten Tomatoes
+      // nem do Metacritic — nenhum intermediario pode sublicenciar marca alheia.
+      // O credito de premiacao continua TEXTUAL.
+      logoRationale:
+        "Sem base. A OMDb transporta o dado; os termos dela nao concedem uso de marca, " +
+        "e a secao 11 exclui expressamente sites de terceiros do acordo — logo, ela nao " +
+        "pode sublicenciar a marca de IMDb, Rotten Tomatoes ou Metacritic. Credito textual.",
+      logoAsset: null,
       // Premio nao tem escala nem numero de nota. `score_allowed` governa o
       // NUMERO DA NOTA (regra de ratings secao 5) e nao e lido pelo gate de
       // premiacao — deixa-lo false mantem a licenca minima.
@@ -486,14 +640,23 @@ export const STATIC_AUTHORIZATION: readonly AuthorizationEntry[] = [
       territory: null,
       licenseStatus: "official",
       displayAllowed: true,
-      logoAllowed: false,
+      logoAllowed: true,
+      logoRationale:
+        "EXIGIDO, nao apenas permitido. Termos da API do TMDB, secao 3 (Attribution): " +
+        "\"You must use the TMDB logo to identify Your use of TMDB, the TMDB APIs, or TMDB Content.\" " +
+        "Ate 20/08/2026 esta entrada dizia false — o repositorio estava em DESCUMPRIMENTO, nao " +
+        "em excesso de zelo. Os mesmos termos impoem o limite: o logo do TMDB deve ser MENOS " +
+        "proeminente que a marca que identifica o proprio produto, e nao pode sugerir endosso. " +
+        "Por isso o disclaimer textual CONTINUA obrigatorio ao lado dele: os termos pedem os DOIS, " +
+        "e o logo nunca substitui o credito.",
+      logoAsset: TMDB_LOGO_ASSET,
       scoreAllowed: false,
       reviewQuoteAllowed: false,
       requiresAttribution: true,
       requiresLinkback: true,
       attributionText:
         "Este produto usa a API do TMDB, mas nao e endossado ou certificado pelo TMDB.",
-      policyVersion: "cinerie-source-auth/tmdb/2026-07-v1",
+      policyVersion: "cinerie-source-auth/tmdb/2026-08-v2",
       notes:
         "Metadados de catalogo via API oficial do TMDB. Exibicao de catalogo antecede o eixo use_case; a decisao registrada e internal_analytics (armazenamento). Disclaimer do TMDB obrigatorio no footer.",
     },
@@ -523,14 +686,23 @@ export const STATIC_AUTHORIZATION: readonly AuthorizationEntry[] = [
       territory: null,
       licenseStatus: "official",
       displayAllowed: false,
-      logoAllowed: false,
+      logoAllowed: true,
+      logoRationale:
+        "EXIGIDO, nao apenas permitido. Termos da API do TMDB, secao 3 (Attribution): " +
+        "\"You must use the TMDB logo to identify Your use of TMDB, the TMDB APIs, or TMDB Content.\" " +
+        "Ate 20/08/2026 esta entrada dizia false — o repositorio estava em DESCUMPRIMENTO, nao " +
+        "em excesso de zelo. Os mesmos termos impoem o limite: o logo do TMDB deve ser MENOS " +
+        "proeminente que a marca que identifica o proprio produto, e nao pode sugerir endosso. " +
+        "Por isso o disclaimer textual CONTINUA obrigatorio ao lado dele: os termos pedem os DOIS, " +
+        "e o logo nunca substitui o credito.",
+      logoAsset: TMDB_LOGO_ASSET,
       scoreAllowed: false,
       reviewQuoteAllowed: false,
       requiresAttribution: true,
       requiresLinkback: true,
       attributionText:
         "Este produto usa a API do TMDB, mas nao e endossado ou certificado pelo TMDB.",
-      policyVersion: "cinerie-source-auth/tmdb/2026-07-v1",
+      policyVersion: "cinerie-source-auth/tmdb/2026-08-v2",
       notes: "Imagens do TMDB permanecem NAO exibiveis (display_allowed=false) ate decisao especifica.",
     },
     decisions: [
@@ -573,14 +745,23 @@ export const STATIC_AUTHORIZATION: readonly AuthorizationEntry[] = [
       displayAllowed: true,
       // Logo do TMDB e do YouTube seguem bloqueados: nenhuma marca de terceiro
       // é desenhada por nós. O crédito é textual, no rodapé.
-      logoAllowed: false,
+      logoAllowed: true,
+      logoRationale:
+        "EXIGIDO, nao apenas permitido. Termos da API do TMDB, secao 3 (Attribution): " +
+        "\"You must use the TMDB logo to identify Your use of TMDB, the TMDB APIs, or TMDB Content.\" " +
+        "Ate 20/08/2026 esta entrada dizia false — o repositorio estava em DESCUMPRIMENTO, nao " +
+        "em excesso de zelo. Os mesmos termos impoem o limite: o logo do TMDB deve ser MENOS " +
+        "proeminente que a marca que identifica o proprio produto, e nao pode sugerir endosso. " +
+        "Por isso o disclaimer textual CONTINUA obrigatorio ao lado dele: os termos pedem os DOIS, " +
+        "e o logo nunca substitui o credito.",
+      logoAsset: TMDB_LOGO_ASSET,
       scoreAllowed: false,
       reviewQuoteAllowed: false,
       requiresAttribution: true,
       requiresLinkback: true,
       attributionText:
         "Este produto usa a API do TMDB, mas nao e endossado ou certificado pelo TMDB.",
-      policyVersion: "cinerie-source-auth/tmdb-video/2026-08-v1",
+      policyVersion: "cinerie-source-auth/tmdb-video/2026-08-v2",
       notes:
         "Metadado de VIDEO (site/key/tipo/idioma) via API oficial do TMDB, para localizar o trailer. O arquivo de video NAO e baixado, reproduzido por nos nem rehospedado: o player e do YouTube e carrega apenas apos clique explicito do leitor (politica de privacidade, item 6.1). Disclaimer do TMDB obrigatorio no rodape.",
     },
@@ -657,6 +838,25 @@ export const STATIC_AUTHORIZATION: readonly AuthorizationEntry[] = [
       licenseStatus: "third_party",
       displayAllowed: false,
       logoAllowed: false,
+      // O agregador nao concede marca, e o caso do JustWatch (a outra origem de
+      // oferta, via TMDB) e diferente e vale registrar aqui porque as duas
+      // aparecem lado a lado no rodape: os termos do endpoint
+      // `watch/providers` exigem NOMEAR o JustWatch como fonte — "In order to
+      // use this data you must attribute the source of the data as JustWatch" —
+      // e a exigencia e de ATRIBUICAO, nao de logo. Credito textual cumpre.
+      //
+      // Os LOGOS DAS PLATAFORMAS (Netflix, Globoplay, Paramount+ e os outros 24
+      // provedores registrados) sao caso a parte e seguem fora: cada um e marca
+      // de um titular diferente, com programa de marca proprio, e o `logo_path`
+      // que o TMDB serve nao carrega licenca de uso. O painel de "onde assistir"
+      // continua nomeando a plataforma em TEXTO. Autorizacao do dono nao cria
+      // direito que 24 titulares distintos nao deram.
+      logoRationale:
+        "Sem base. O agregador nao concede uso de marca. JustWatch exige ATRIBUICAO nominal " +
+        "(termos do watch/providers), nao logo — credito textual cumpre. Os logos das " +
+        "plataformas sao marca de terceiros titulares, cada um com programa proprio; o " +
+        "logo_path servido pelo TMDB nao carrega licenca de uso.",
+      logoAsset: null,
       scoreAllowed: false,
       reviewQuoteAllowed: false,
       requiresAttribution: true,
@@ -792,7 +992,19 @@ export function streamingProviderEntries(
         territory: CINERIE_TERRITORY,
         licenseStatus: "third_party" as const,
         displayAllowed: true,
+        // FALSE POR PROVEDOR, e nao por politica global: cada um dos 24
+        // provedores registrados (Netflix, Globoplay, Paramount+, Claro, MGM+,
+        // ...) e marca de um TITULAR DIFERENTE, com programa de marca proprio.
+        // Uma unica regra que os liberasse todos seria exatamente a classe de
+        // erro que pos o credito de "Movie of the Night" em dado do TMDB.
+        // O `logo_path` que o TMDB serve identifica o arquivo; nao concede uso.
         logoAllowed: false as const,
+        logoRationale:
+          `Sem base. ${provider.canonicalName} e marca de titular proprio; nem o TMDB nem ` +
+          `${origin.providerApi} podem sublicenciar marca de terceiro. O painel de "onde ` +
+          `assistir" nomeia a plataforma em TEXTO. Liberar exige o programa de marca deste ` +
+          `titular especifico, um de cada vez.`,
+        logoAsset: null,
         scoreAllowed: false,
         reviewQuoteAllowed: false as const,
         requiresAttribution: true as const,

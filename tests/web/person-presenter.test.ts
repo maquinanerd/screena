@@ -18,6 +18,7 @@ import {
   selectPersonName,
   selectPersonOriginalName,
   selectRenderablePersonBlocks,
+  selectSourceBiography,
   type PersonContentBlockInput,
   type PersonCreditInput,
   type PersonRecordInput,
@@ -32,6 +33,8 @@ function record(overrides: Partial<PersonRecordInput> = {}): PersonRecordInput {
     deathDateIso: null,
     placeOfBirth: null,
     profilePath: null,
+    biography: null,
+    biographySourceStatus: null,
     ...overrides,
   };
 }
@@ -276,5 +279,62 @@ describe("buildPersonPageView", () => {
       "/pt/series/serie-nova/",
       "/pt/filmes/filme-antigo/",
     ]);
+  });
+});
+
+/**
+ * O GATE DA BIOGRAFIA — duas condicoes, e nenhuma basta sozinha.
+ *
+ * A coluna `people.biography` passou a existir em 20/08/2026 (antes o texto
+ * chegava do TMDB e era descartado). Ter o texto NAO e ter permissao: quem
+ * governa a tela e `biography_source_status`, que nasce `unknown`.
+ */
+describe("selectSourceBiography — texto de terceiro so com licenca", () => {
+  const TEXTO = "Nasceu em Belo Horizonte e estreou no teatro aos dezoito anos.";
+
+  it("NEGATIVO: texto presente com status `unknown` (o default) NAO exibe", () => {
+    // Este e o estado de TODA pessoa hoje. A ingestao grava o texto e nao toca
+    // no status; so decisao humana registrada o move.
+    expect(
+      selectSourceBiography(record({ biography: TEXTO, biographySourceStatus: "unknown" })),
+    ).toBeNull();
+  });
+
+  it("NEGATIVO: `blocked` nao exibe, mesmo com texto", () => {
+    expect(
+      selectSourceBiography(record({ biography: TEXTO, biographySourceStatus: "blocked" })),
+    ).toBeNull();
+  });
+
+  it("NEGATIVO: status ausente equivale a `unknown` (fail-closed)", () => {
+    expect(
+      selectSourceBiography(record({ biography: TEXTO, biographySourceStatus: null })),
+    ).toBeNull();
+  });
+
+  it("NEGATIVO: licenca boa sem texto nao inventa paragrafo", () => {
+    for (const vazio of [null, "", "   "]) {
+      expect(
+        selectSourceBiography(record({ biography: vazio, biographySourceStatus: "licensed" })),
+        `texto: ${JSON.stringify(vazio)}`,
+      ).toBeNull();
+    }
+  });
+
+  it("POSITIVO: os TRES estados que autorizam exibem o texto", () => {
+    // Sem este bloco, todas as assercoes acima passariam por vacuidade — um
+    // `selectSourceBiography` que sempre devolvesse null seria "aprovado".
+    for (const status of ["official", "licensed", "third_party"]) {
+      expect(
+        selectSourceBiography(record({ biography: TEXTO, biographySourceStatus: status })),
+        `status: ${status}`,
+      ).toBe(TEXTO);
+    }
+  });
+
+  it("a lista de estados que autorizam e FECHADA: valor novo nao passa por omissao", () => {
+    expect(
+      selectSourceBiography(record({ biography: TEXTO, biographySourceStatus: "pending_review" })),
+    ).toBeNull();
   });
 });
