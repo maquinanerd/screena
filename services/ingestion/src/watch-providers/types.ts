@@ -15,11 +15,21 @@ import type {
   WatchProvidersEntityType,
 } from '../normalizers/watch-providers.js'
 
-/** Uma linha bruta lida de `tmdb_raw`. */
+/** Uma linha bruta lida do deposito do bruto (Postgres `tmdb_raw` ou objeto). */
 export interface RawWatchSourceRow {
   readonly tmdbId: number
   readonly baseLanguage: string
   readonly payload: unknown
+  /**
+   * `false` = o id existe no CATALOGO e o bruto NAO existe no deposito.
+   *
+   * Campo obrigatorio, e nao um `payload` opcional, porque `payload` pode ser
+   * `null` legitimamente: ausencia jamais pode ser representada por um valor do
+   * dominio do payload. Enquanto a fonte enumerava o proprio deposito, esta
+   * distincao nao existia — o que faltava nao voltava na consulta, e por isso
+   * nao podia ser contado. Ver `catalog-source.ts`.
+   */
+  readonly present: boolean
 }
 
 /** Porta de leitura do bruto arquivado, por tipo de entidade. */
@@ -29,6 +39,22 @@ export interface RawWatchSource {
     entityType: WatchProvidersEntityType,
     limit: number,
   ): Promise<readonly RawWatchSourceRow[]>
+}
+
+/**
+ * Porta de enumeracao do CATALOGO (`movies`/`tv_shows`) — o universo real.
+ *
+ * Separada de `RawWatchSource` de proposito: e ela que fornece o denominador do
+ * veredito de cobertura. Um denominador tirado do deposito faz o comando medir a
+ * si mesmo, que foi exatamente como "corpus INTEIRO" acabou impresso sobre um
+ * universo com 39 entidades invisiveis.
+ */
+export interface CatalogEntityIndex {
+  count(entityType: WatchProvidersEntityType): Promise<number>
+  listTmdbIds(
+    entityType: WatchProvidersEntityType,
+    limit: number,
+  ): Promise<readonly number[]>
 }
 
 /** Uma entidade local ja resolvida (tmdbId -> id interno). */
@@ -96,6 +122,14 @@ export type WatchReprocessOutcome =
   | 'unrecognized'
   /** Entidade ainda nao promovida para a tabela tipada: sem id interno. */
   | 'unresolved'
+  /**
+   * O id esta no catalogo e o bruto NAO existe no deposito consultado.
+   *
+   * Nao e `unrecognized` (la existe payload, e ele que nao serve) e nao e
+   * `unresolved` (la o bruto existe e a entidade e que nao foi promovida). E o
+   * desfecho que a fonte antiga era estruturalmente incapaz de produzir.
+   */
+  | 'missing-raw'
   /** Erro na escrita. Sempre acompanhado da causa em `failures`. */
   | 'failed'
 
@@ -108,6 +142,8 @@ export interface WatchReprocessCounts {
   readonly outOfScope: number
   readonly unrecognized: number
   readonly unresolved: number
+  /** Ids do catalogo sem bruto no deposito. Ver o desfecho `missing-raw`. */
+  readonly missingRaw: number
   readonly failed: number
   /**
    * Ofertas gravadas por entidades que COMPLETARAM (`applied`).

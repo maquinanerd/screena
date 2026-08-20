@@ -110,11 +110,49 @@ provedor registrado. Sem esse passo, oferta continua sem display.
 
 ### 2b. Reprocessar o `watch/providers` já arquivado (origem `tmdb`)
 
-Materializa ofertas a partir de `tmdb_raw`. **Não faz uma única chamada de rede e
-não gasta cota** — o bloco já foi baixado a cada sync de detalhe.
+Materializa ofertas a partir do **depósito do bruto**. **Não faz uma única
+chamada ao TMDB e não gasta cota.**
+
+#### Onde o bruto mora, e quem o escreve (leia antes de rodar)
+
+Duas coisas que já custaram um ciclo inteiro de produção:
+
+1. **`catalog sync` NÃO alimenta este comando.** Ele usa o `append_to_response`
+   mínimo (`'external_ids,credits'`, `services/ingestion/src/import/import-movie.ts`),
+   grava em `api_cache` + tabelas tipadas e **nunca escreve no depósito do
+   bruto**. Rodar `catalog sync --ids-file ... --force` para "preencher o bruto"
+   de um título não preenche nada — e o comando responde `sync: N ok`, porque do
+   ponto de vista dele deu certo.
+   Quem arquiva o bruto é **`bin/sync-tmdb-raw.ts`**, que consome a fila NDJSON
+   da descoberta e usa o append rico
+   (`api-clients/tmdb/src/append-to-response.ts`, onde `watch/providers` está).
+   Ele é um **piloto com teto padrão de 100 por tipo**
+   (`DEFAULT_PILOT_LIMITS`, `src/raw-sync/queue.ts`) — é daí que vem um
+   `tmdb_raw` parado em exatamente 100/100/100.
+
+2. **O depósito é endereçável por `TMDB_RAW_STORE_DRIVER`**: `postgres`
+   (`tmdb_raw`; recusado em produção) ou `r2` (objetos num bucket). O
+   reprocessamento agora **lê pelo mesmo config que decide a escrita**. Até
+   2026-08-19 ele lia `prisma.tmdbRaw` literalmente: com o driver em `r2` isso o
+   deixava cego, sem erro nenhum, e o relatório afirmava cobertura total sobre um
+   universo que ele não enxergava.
+
+#### Cobertura: o denominador é o CATÁLOGO
+
+O universo do reprocessamento são `movies`/`tv_shows`, e o bruto é buscado por
+identidade (`tmdb/{tipo}/{id}.json`). Consequências práticas:
+
+- entidade do catálogo **sem bruto** é o desfecho nomeado `sem bruto`
+  (`missingRaw`) — antes ela simplesmente não voltava na consulta e não podia
+  ser contada;
+- a linha `cobertura N/M do catalogo` só diz **`(corpus INTEIRO)`** quando as
+  duas lacunas são zero (nada cortado pelo `--limit`, nada faltando no
+  depósito). Qualquer lacuna vira `(INCOMPLETA: ...)` **e exit code 4** — para
+  que "falhas 0" nunca seja lido como "nada a fazer";
+- no driver `r2` cada id é um GET. Use `--read-concurrency=N` (default 8).
 
 ```
-# forma do dado real (quantas linhas NÃO têm o bloco arquivado)
+# forma do dado real + cobertura contra o catálogo
 pnpm --filter @screena/ingestion reprocess-watch-providers --sample --kind=movie
 
 # COLHEITA: lista os provider_id REAIS vistos no dado (insumo dos aliases)

@@ -1,13 +1,36 @@
 #!/usr/bin/env node
 /**
  * bin/reprocess-watch-providers.ts — Materializa `watch_availability` a partir
- * do bloco `watch/providers` JA ARQUIVADO em `tmdb_raw`.
+ * do bloco `watch/providers` JA ARQUIVADO no deposito do bruto.
  *
- * ZERO chamada ao TMDB, ZERO cota consumida. O dado de "onde assistir" ja foi
- * baixado a cada sync de detalhe (o sub-recurso esta em `MOVIE_APPEND`,
- * `TV_APPEND` e `TV_SEASON_APPEND`); faltava so transforma-lo em linhas
- * consultaveis. Um "reprocessamento" que refizesse fetch seria um sync
- * disfarcado, com custo de cota escondido.
+ * ZERO chamada ao TMDB, ZERO cota consumida. O dado de "onde assistir" chega no
+ * `append_to_response` rico de `api-clients/tmdb/src/append-to-response.ts`
+ * (`MOVIE_APPEND`/`TV_APPEND` incluem `watch/providers`), consumido por
+ * `bin/sync-tmdb-raw.ts`. Um "reprocessamento" que refizesse fetch seria um
+ * sync disfarcado, com custo de cota escondido.
+ *
+ * CUIDADO com a outra cadeia: `bin/catalog.ts sync` NAO alimenta este comando.
+ * Ela usa o append MINIMO de `src/import/import-movie.ts`
+ * (`'external_ids,credits'`), grava em `api_cache` + tabelas tipadas e NUNCA
+ * escreve no deposito do bruto. Rodar `catalog sync` para "preencher o bruto"
+ * de um titulo nao preenche nada — quem arquiva e o raw sync.
+ *
+ * ============ O DEPOSITO E ENDERECAVEL; A LEITURA TAMBEM (agora) ============
+ *
+ * `TMDB_RAW_STORE_DRIVER` decide onde o bruto e ESCRITO: `postgres`
+ * (`tmdb_raw`, dev/teste) ou `r2` (objetos num bucket, producao). Ate esta
+ * mudanca este comando lia `prisma.tmdbRaw` LITERALMENTE, qualquer que fosse o
+ * driver. Com o driver em `r2` isso o deixava cego: a consulta devolvia o
+ * residuo anterior a troca, sem erro nenhum, e o relatorio afirmava cobertura
+ * total sobre um universo que ele nao enxergava.
+ *
+ * Duas correcoes, uma para cada metade do defeito:
+ *  1. o LEITOR e composto pelo mesmo `resolveRawStoreConfig` que decide a
+ *     escrita — os dois lados nao podem mais apontar para depositos diferentes;
+ *  2. o UNIVERSO passou a ser o CATALOGO (`movies`/`tv_shows`), nao o deposito.
+ *     O bruto e buscado por identidade (`tmdb/{tipo}/{id}.json`), e id de
+ *     catalogo sem bruto vira o desfecho NOMEADO `missing-raw`. Um leitor nao
+ *     pode declarar cobertura sobre um universo que ele mesmo define.
  *
  * TRES MODOS:
  *   (sem flag)  DRY-RUN: le, reconhece e conta. NADA e escrito.
@@ -51,7 +74,11 @@
  *   # em producao: acrescente --confirm-production
  *   # flags: --kind=movie|tv (default movie) · --limit=N (default 100)
  *   #        --stale-days=N (default 1) · --countries=BR[,US,...] (default BR)
+ *   #        --read-concurrency=N (default 8; leituras simultaneas do bruto)
  *   #        --apply · --sample · --confirm-production
+ *
+ * EXIT CODES: 0 ok · 2 flag invalida · 3 bloqueado (env/producao/FK/deposito) ·
+ * 4 ciclo executado mas SEM cobertura total do catalogo (acionavel).
  *
  * ============ ESCOPO TERRITORIAL (--countries) ============
  *
@@ -67,15 +94,31 @@
  * nomeando o que falta. Todo pais descartado por escopo e contado no relatorio.
  */
 
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3'
 import { disconnectPrisma, getPrismaClient } from '@screena/db/server'
 
 import { normalizeWatchProviders } from '../src/normalizers/watch-providers.js'
 import {
+  createPrismaCatalogEntityIndex,
   createPrismaCountryRegistry,
-  createPrismaRawWatchSource,
+  createPrismaRawPayloadReader,
   createPrismaTmdbWatchOfferStore,
   createPrismaWatchEntityResolver,
 } from '../src/persistence/watch-providers-store.js'
+import { composeRawPayloadReader } from '../src/raw-store/compose.js'
+import { resolveRawStoreConfig } from '../src/raw-store/config.js'
+import { createCatalogRawWatchSource } from '../src/watch-providers/catalog-source.js'
+import {
+  coverageDemandsAttention,
+  describeCorpusCoverage,
+  renderCorpusCoverage,
+} from '../src/watch-providers/coverage.js'
 import { parseWatchTerritories } from '../src/watch-providers/territories.js'
 import { createPrismaSyncLog } from '../src/persistence/sync-log.js'
 import {
@@ -134,15 +177,20 @@ function positiveInt(raw: string | null, fallback: number, name: string): number
  */
 function renderSample(
   entityType: WatchProvidersEntityType,
-  rows: readonly { tmdbId: number; payload: unknown }[],
-  total: number,
+  rows: readonly { tmdbId: number; payload: unknown; present: boolean }[],
+  catalogTotal: number,
 ): string {
   const lines = [`AMOSTRA DA FORMA REAL DE watch/providers (${entityType}) — nada foi escrito`]
   let withBlock = 0
+  let missingRaw = 0
   const bucketTally = new Map<string, number>()
   const countryTally = new Map<string, number>()
 
   for (const row of rows) {
+    if (!row.present) {
+      missingRaw += 1
+      continue
+    }
     const result = normalizeWatchProviders(entityType, row.tmdbId, row.payload)
     if (!result.recognized) continue
     withBlock += 1
@@ -154,14 +202,23 @@ function renderSample(
     }
   }
 
-  const withoutBlock = rows.length - withBlock
-  const pct = rows.length === 0 ? 0 : Math.round((withoutBlock / rows.length) * 100)
-  lines.push(`  total em tmdb_raw (${entityType})       ${total}`)
-  lines.push(`  linhas lidas nesta amostra     ${rows.length}${
-    rows.length < total ? `  (de ${total} — suba --limit para medir tudo)` : '  (corpus INTEIRO)'
-  }`)
+  const present = rows.length - missingRaw
+  const withoutBlock = present - withBlock
+  const pct = present === 0 ? 0 : Math.round((withoutBlock / present) * 100)
+  // A COBERTURA e derivada do CATALOGO, nunca da propria amostra. Era aqui que
+  // o comando afirmava "corpus INTEIRO" comparando `rows.length` com
+  // `source.count()` — a mesma fonte cega que produziu as linhas.
+  const coverage = describeCorpusCoverage({
+    catalogTotal,
+    scanned: rows.length,
+    missingFromDepot: missingRaw,
+  })
+  lines.push(`  entidades no catalogo (${entityType})   ${catalogTotal}`)
+  lines.push(`  ids lidos nesta amostra        ${rows.length}`)
+  lines.push(`  ${renderCorpusCoverage(coverage)}`)
+  lines.push(`  SEM bruto no deposito          ${missingRaw}`)
   lines.push(`  com bloco watch/providers      ${withBlock}`)
-  lines.push(`  SEM bloco (arquivado antes)    ${withoutBlock}  (${pct}% da amostra)`)
+  lines.push(`  SEM bloco (arquivado antes)    ${withoutBlock}  (${pct}% dos que tem bruto)`)
   lines.push(
     `  modalidades vistas             ${
       [...bucketTally.entries()].map(([k, v]) => `${k}=${v}`).join(' · ') || '(nenhuma)'
@@ -187,6 +244,11 @@ async function main(): Promise<void> {
   // `null` = imprime a lista INTEIRA de provedores vistos (default deliberado:
   // esta lista e a colheita, e omitir linha dela produz alias inventado).
   let printLimit: number | null
+  /**
+   * Leituras simultaneas do bruto. So importa no driver `r2`, onde cada id e um
+   * GET de rede: em serie, 10 mil ids seriam 10 mil idas e voltas.
+   */
+  let readConcurrency: number
   let territories: readonly string[]
   try {
     const rawKind = flagValue(argv, 'kind') ?? 'movie'
@@ -198,6 +260,7 @@ async function main(): Promise<void> {
     staleDays = positiveInt(flagValue(argv, 'stale-days'), 1, 'stale-days')
     const rawPrintLimit = flagValue(argv, 'print-limit')
     printLimit = rawPrintLimit === null ? null : positiveInt(rawPrintLimit, 20, 'print-limit')
+    readConcurrency = positiveInt(flagValue(argv, 'read-concurrency'), 8, 'read-concurrency')
     const parsedTerritories = parseWatchTerritories(flagValue(argv, 'countries'))
     if (!parsedTerritories.ok) {
       throw new Error(`--countries invalido: ${parsedTerritories.errors.join(' · ')}`)
@@ -227,13 +290,54 @@ async function main(): Promise<void> {
     return
   }
 
+  // O DEPOSITO do bruto e escolhido pelo MESMO `TMDB_RAW_STORE_DRIVER` que
+  // decide a ESCRITA no raw sync. Ler por um caminho fixo (`prisma.tmdbRaw`)
+  // enquanto a escrita e enderecavel foi o que deixou este comando cego: com o
+  // driver em `r2`, a consulta respondia com o residuo anterior a troca e o
+  // relatorio nao tinha como notar.
+  const storeConfig = resolveRawStoreConfig(process.env)
+  if (!storeConfig.ok) {
+    for (const error of storeConfig.errors) console.error(`Deposito do bruto: ${error}`)
+    process.exitCode = 3
+    return
+  }
+
   const prisma = getPrismaClient()
   try {
-    const source = createPrismaRawWatchSource(prisma)
+    const composedReader = composeRawPayloadReader(storeConfig.config, {
+      createPrismaReader: () => createPrismaRawPayloadReader(prisma),
+      createS3Client: (config) => ({
+        client: new S3Client({
+          endpoint: config.endpoint,
+          region: config.region,
+          forcePathStyle: config.forcePathStyle,
+          credentials: {
+            accessKeyId: config.accessKeyId,
+            secretAccessKey: config.secretAccessKey,
+          },
+        }),
+        commands: {
+          headObject: (input) => new HeadObjectCommand(input),
+          putObject: (input) => new PutObjectCommand(input),
+          getObject: (input) => new GetObjectCommand(input),
+          deleteObject: (input) => new DeleteObjectCommand(input),
+        },
+      }),
+    })
+    console.log(`Deposito do bruto: ${composedReader.description}`)
+
+    // UNIVERSO = catalogo, nao deposito. Ver `src/watch-providers/catalog-source.ts`.
+    const catalog = createPrismaCatalogEntityIndex(prisma)
+    const source = createCatalogRawWatchSource({
+      catalog,
+      reader: composedReader.reader,
+      baseLanguage: storeConfig.config.baseLanguage,
+      concurrency: readConcurrency,
+    })
 
     if (sample) {
-      const [rows, total] = await Promise.all([source.list(kind, limit), source.count(kind)])
-      console.log(renderSample(kind, rows, total))
+      const [rows, catalogTotal] = await Promise.all([source.list(kind, limit), catalog.count(kind)])
+      console.log(renderSample(kind, rows, catalogTotal))
       return
     }
 
@@ -253,6 +357,8 @@ async function main(): Promise<void> {
       return
     }
 
+    const catalogTotal = await catalog.count(kind)
+
     const report = await runWatchProvidersReprocess({
       entityType: kind,
       source,
@@ -268,16 +374,41 @@ async function main(): Promise<void> {
     const status = deriveWatchReprocessStatus(report.counts)
     const c = report.counts
 
+    // O VEREDITO DE COBERTURA sai do catalogo, nao do proprio lote. Enquanto o
+    // denominador vinha da fonte, "escaneados 100 / falhas 0" era lido como
+    // trabalho concluido mesmo com 39 entidades invisiveis ao comando.
+    const coverage = describeCorpusCoverage({
+      catalogTotal,
+      scanned: c.scanned,
+      missingFromDepot: c.missingRaw,
+    })
+
     console.log(`REPROCESSAMENTO watch/providers (${kind}) — ${apply ? 'APLICADO' : 'DRY-RUN'}`)
     console.log(`  status         ${status}`)
     console.log(`  territorios    ${report.territories.join(', ')}`)
+    console.log(`  ${renderCorpusCoverage(coverage)}`)
     console.log(`  escaneados     ${c.scanned}`)
     console.log(`  aplicados      ${c.applied}   (ofertas: +${c.offersUpserted} / revogadas ${c.offersRevoked})`)
     console.log(`  sem oferta     ${c.empty}      (payload reconhecido, o titulo nao tem oferta)`)
     console.log(`  fora do escopo ${c.outOfScope}  (tem oferta, mas nenhuma nos territorios ingeridos)`)
     console.log(`  nao reconhec.  ${c.unrecognized} (snapshot preservado — NAO e sucesso)`)
     console.log(`  nao promovido  ${c.unresolved}  (entidade ainda sem id interno)`)
+    console.log(`  sem bruto      ${c.missingRaw}  (id no catalogo, bruto ausente NO DEPOSITO ACIMA)`)
     console.log(`  falhas         ${c.failed}`)
+
+    // Divergencia deposito/catalogo e motivo ACIONAVEL, nao rodape: sem isto,
+    // um agendador leria "falhas 0" e concluiria que nao ha nada a fazer.
+    if (coverageDemandsAttention(coverage)) {
+      console.error(
+        'ATENCAO: este ciclo NAO cobriu o catalogo inteiro. ' +
+          `Catalogo=${coverage.catalogTotal} · escaneados=${coverage.scanned}` +
+          (coverage.complete
+            ? ''
+            : ` · nao escaneados=${coverage.notScanned} · sem bruto=${coverage.missingFromDepot}`) +
+          '. Nenhuma afirmacao de cobertura total pode ser feita a partir desta execucao.',
+      )
+      process.exitCode = 4
+    }
 
     // Snapshot PARCIAL: bytes commitados por entidades que falharam depois.
     // Somar isto em `offersUpserted` foi o defeito que imprimiu
