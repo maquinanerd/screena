@@ -64,8 +64,12 @@ describe("ratings-panel — componente publico", () => {
    * A presenca do credito e provada em `footer-credits.test.tsx`.
    */
   it("NAO exibe o credito junto da nota (ele vive no rodape)", () => {
+    // O TEXTO do credito nunca volta ao chip. A URL da fonte, desde o topo
+    // canonico (20/08/2026), viaja no `title`/`data-rating-url` do chip —
+    // proveniencia inspecionavel, nao credito. A prova de que ela NAO vira
+    // texto visivel nem <a> e render-level, em
+    // apps/web/app/_components/__tests__/ratings-panel.test.tsx.
     expect(code).not.toContain("item.attribution.text");
-    expect(code).not.toContain("item.attribution.url");
     expect(code).not.toMatch(/fornecida por/i);
   });
 

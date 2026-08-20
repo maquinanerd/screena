@@ -3674,6 +3674,179 @@ a.tabs__tab[aria-current='page'] {
 }
 
 /* ------------------------------------------------------------------ */
+/* Topo canonico (20/08/2026): chips de genero, score card, botoes,   */
+/* fileira de marcas de onde assistir e sinopse de tres linhas.       */
+/* ------------------------------------------------------------------ */
+
+/* Chip de genero do hero. A cor segue a vertical (vermelho filme / verde
+   serie) como APOIO — a diferenciacao continua em label+badge+breadcrumb+
+   schema+URL (invariante 11). */
+.detail-hero__genre-chip {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 11px;
+  border-radius: 6px;
+}
+
+main[data-vertical='movie'] .detail-hero__genre-chip {
+  color: #a32b23;
+  background: #fbe9e7;
+}
+
+main[data-vertical='series'] .detail-hero__genre-chip {
+  color: #395c42;
+  background: #e9f0e3;
+}
+
+/* Sinopse do topo: tres linhas na largura do canonico. O corte DE TEXTO e por
+   palavra inteira (truncateAtWord); o clamp e o cinto de seguranca visual para
+   larguras menores. */
+.detail-hero__synopsis[data-synopsis-truncated],
+.detail-hero__synopsis {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Cinerie Score — o cartao do canonico (47/800 + rotulo + escala + composicao) */
+.score-card__row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 13px;
+}
+
+.score-card__value {
+  font-size: 47px;
+  font-weight: 800;
+  color: #12100e;
+  letter-spacing: -0.045em;
+  line-height: 0.82;
+}
+
+.score-card__label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+main[data-vertical='movie'] .score-card__label {
+  color: var(--c-accent-movie);
+}
+
+main[data-vertical='series'] .score-card__label {
+  color: var(--c-accent-series);
+}
+
+.score-card__scale {
+  font-size: 11.5px;
+  color: var(--c-text-muted-aa);
+}
+
+/* Como o numero foi composto, NOMEANDO as fontes — sem esta linha o numero
+   seria afirmacao sem lastro. */
+.score-card__composition {
+  margin: 10px 0 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--c-text-muted-aa);
+}
+
+/* Os DOIS botoes do topo (Minha lista / Avaliar) + seletor de nota. */
+.hero-actions__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 11px;
+}
+
+.hero-action__icon {
+  width: 16px;
+  height: 16px;
+  color: #6e6a61;
+}
+
+.hero-action__icon--star {
+  color: #e8a31e;
+}
+
+.hero-actions__picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.hero-actions__picker .hero-actions__step {
+  min-height: 36px;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.hero-actions__notice {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: #6b6459;
+}
+
+/* "Onde assistir" do cartao: marcas em LINHA (canonico), com a modalidade
+   visivel ao lado de cada uma (decisao de 2026-08-13). A caixa da marca e a
+   ancora do futuro logo — mesma altura com palavra-marca ou arquivo. */
+.watch-brands {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 14px 26px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.watch-brands__item {
+  display: block;
+}
+
+.watch-brands__link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  min-height: 44px;
+}
+
+.watch-brands__link:hover .watch-brands__mark {
+  opacity: 0.6;
+}
+
+.watch-brands__mark {
+  display: flex;
+  align-items: center;
+  min-height: 20px;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: #12100e;
+}
+
+.watch-brands__modalities {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--c-text-muted-aa);
+}
+
+/* Corpo da sinopse completa em "A OBRA" (variant work do EntitySynopsis). */
+.synopsis-body__notice {
+  max-width: 60ch;
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #6b6459;
+}
+
+/* ------------------------------------------------------------------ */
 /* Fileira de chips de nota (canonico: marca / numero / meta)          */
 /* ------------------------------------------------------------------ */
 
@@ -3946,6 +4119,22 @@ a.tabs__tab[aria-current='page'] {
   gap: 0;
 }
 
+/* Card sem dado NAO vira card cinza: ele nao existe, e os que restarem se
+   REDISTRIBUEM na coluna (decisao do dono, 20/08/2026). A contagem vem do
+   `data-media-cards` da grade. Sem card nenhum, a coluna da direita some e o
+   trailer ganha a largura dela. */
+.media-strip__grid[data-media-cards='2'] .media-strip__stack {
+  grid-template-rows: 1fr 1fr;
+}
+
+.media-strip__grid[data-media-cards='1'] .media-strip__stack {
+  grid-template-rows: 1fr;
+}
+
+.media-strip__grid[data-media-cards='0'] {
+  grid-template-columns: 1fr 5fr;
+}
+
 /* ------------------------------------------------------------------ *
  * DERIVACAO DA FAIXA DE MIDIA — o contrato de responsividade NAO cobre
  * esta faixa (ele descreve grids de poster, rails, elenco, episodios e
@@ -3978,6 +4167,15 @@ a.tabs__tab[aria-current='page'] {
     grid-template-rows: none;
     grid-template-columns: repeat(3, 1fr);
     height: 132px;
+  }
+  /* A redistribuicao vale aqui tambem: cards ausentes nao deixam trilha vazia. */
+  .media-strip__grid[data-media-cards='2'] .media-strip__stack {
+    grid-template-rows: none;
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .media-strip__grid[data-media-cards='1'] .media-strip__stack {
+    grid-template-rows: none;
+    grid-template-columns: 1fr;
   }
 }
 
