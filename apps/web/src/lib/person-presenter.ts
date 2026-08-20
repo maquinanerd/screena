@@ -114,6 +114,16 @@ export interface PersonRecordInput {
   placeOfBirth: string | null;
   /** `people.profile_path` salvo offline; nunca uma URL livre do banco. */
   profilePath: string | null;
+  /** `people.biography` — o texto cru do TMDB. Persistido desde 20/08/2026. */
+  biography: string | null;
+  /**
+   * `people.biography_source_status` — quem GOVERNA a exibicao da bio.
+   *
+   * Vem separado do texto de proposito. Ter o paragrafo no banco nao autoriza
+   * mostra-lo: `unknown`/`blocked` barram (invariante 6). Nasce `unknown`, e so
+   * uma decisao humana o move — a ingestao nao toca nesta coluna.
+   */
+  biographySourceStatus: string | null;
 }
 
 /** Subconjunto de `entity_translations` (pt-BR) usado pela pagina. */
@@ -180,6 +190,15 @@ export interface PersonPageView {
   placeOfBirth: string | null;
   metaTitle: string | null;
   metaDescription: string | null;
+  /**
+   * A biografia crua do TMDB, JA passada pelo gate de licenca.
+   *
+   * `null` cobre tres estados que a pagina nao precisa distinguir (sem texto,
+   * texto sem licenca, ou coluna nunca preenchida) — todos significam "nao
+   * exibir". A distincao que importa (ha bio de alguma origem?) e feita na
+   * pagina, com `SectionBoundary`.
+   */
+  sourceBiography: string | null;
   profile: PersonImageAsset | null;
   hasRealImage: boolean;
   blocks: RenderablePersonBlock[];
@@ -275,6 +294,38 @@ export function mapKnownForDepartment(
   if (value === null) return null;
   return KNOWN_FOR_DEPARTMENT_LABELS[value] ?? null;
 }
+
+/**
+ * A biografia CRUA do TMDB, quando a licenca permite exibi-la.
+ *
+ * DUAS condicoes, e nenhuma basta sozinha:
+ *  1. o texto existe (`people.biography` — antes nem coluna havia);
+ *  2. `biography_source_status` esta num estado que autoriza exibir.
+ *
+ * Os estados permitidos sao os mesmos de qualquer dado de terceiro
+ * (invariante 6): `official`, `licensed` e `third_party`. `unknown` e `blocked`
+ * barram — e `unknown` e o DEFAULT, entao hoje esta funcao devolve `null` para
+ * todo mundo. Isso e o comportamento correto: o texto entra no banco por
+ * ingestao, mas a exibicao continua sendo decisao humana registrada, como em
+ * ratings e em streaming.
+ */
+export function selectSourceBiography(record: PersonRecordInput): string | null {
+  const texto = trimToNull(record.biography);
+  if (texto === null) return null;
+  if (!BIOGRAPHY_DISPLAYABLE_STATUSES.has(record.biographySourceStatus ?? "unknown")) return null;
+  return texto;
+}
+
+/**
+ * Estados de licenca que autorizam EXIBIR dado de terceiro (invariante 6).
+ *
+ * Fechado de proposito: um estado novo no enum nao passa a exibir por omissao.
+ */
+const BIOGRAPHY_DISPLAYABLE_STATUSES: ReadonlySet<string> = new Set([
+  "official",
+  "licensed",
+  "third_party",
+]);
 
 function yearFromIso(iso: string | null): number | null {
   if (iso === null) return null;
@@ -408,6 +459,7 @@ export function buildPersonPageView(
     // `summary`, que poderia ser bio de terceiro governada por
     // `biography_source_status` (invariante 6). Ausencia -> null.
     metaDescription: trimToNull(input.translation?.metaDescription),
+    sourceBiography: selectSourceBiography(input.record),
     profile,
     hasRealImage: profile !== null,
     blocks,

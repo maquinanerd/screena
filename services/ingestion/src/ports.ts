@@ -17,6 +17,7 @@ import type {
 import type {
   CastMemberInput,
   CrewMemberInput,
+  TitleGenreLink,
   EpisodeUpsert,
   ExternalIdInput,
   MovieUpsert,
@@ -148,6 +149,15 @@ export interface StoreMovieInput {
   readonly castPresent: boolean
   /** Idem para a lista de equipe. */
   readonly crewPresent: boolean
+  /** Generos do titulo, na ORDEM do TMDB. */
+  readonly genres: readonly TitleGenreLink[]
+  /**
+   * A FONTE trouxe o array de generos (mesmo vazio)? OBRIGATORIO pelo MESMO
+   * motivo de `castPresent`, e o precedente e literal: creditos ja foram
+   * apagados em massa neste repositorio porque um payload sem `credits` foi
+   * lido como "lista vazia". Genero tem a mesma forma e o mesmo risco.
+   */
+  readonly genresPresent: boolean
   readonly timestamps: SyncTimestamps
 }
 
@@ -161,6 +171,10 @@ export interface StoreTvShowInput {
   readonly castPresent: boolean
   /** Ver `StoreMovieInput.crewPresent`. */
   readonly crewPresent: boolean
+  /** Ver `StoreMovieInput.genres`. */
+  readonly genres: readonly TitleGenreLink[]
+  /** Ver `StoreMovieInput.genresPresent`. */
+  readonly genresPresent: boolean
   readonly timestamps: SyncTimestamps
 }
 

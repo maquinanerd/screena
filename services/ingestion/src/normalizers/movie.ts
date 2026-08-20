@@ -3,7 +3,13 @@
  */
 
 import type { TmdbMovieDetail } from '@screena/tmdb-client'
-import type { CastMemberInput, CrewMemberInput, ExternalIdInput, MovieUpsert } from '../types.js'
+import type {
+  CastMemberInput,
+  CrewMemberInput,
+  ExternalIdInput,
+  MovieUpsert,
+  TitleGenreLink,
+} from '../types.js'
 import { NormalizationError } from '../types.js'
 import {
   normalizeDate,
@@ -14,6 +20,7 @@ import {
 } from '../utils/normalize.js'
 import { buildExternalIds } from './external-ids.js'
 import { normalizeCredits } from './credits.js'
+import { normalizeTitleGenres } from './genres.js'
 
 /** Resultado da normalizacao de um filme. */
 export interface NormalizedMovie {
@@ -25,6 +32,17 @@ export interface NormalizedMovie {
   readonly castPresent: boolean
   /** A fonte trouxe a lista de equipe (array, mesmo vazio)? Ver NormalizedCredits. */
   readonly crewPresent: boolean
+  /** Generos, na ORDEM do TMDB (editorial: o primeiro e o mais representativo). */
+  readonly genres: TitleGenreLink[]
+  /**
+   * A fonte trouxe o array de generos (mesmo vazio)?
+   *
+   * Mesma disciplina de `castPresent`: ausencia do campo NAO e o mesmo que lista
+   * vazia. Sem esta distincao, um payload truncado apagaria os generos de um
+   * titulo que os tem — foi exatamente o defeito de creditos apagados por
+   * payload sem `credits`.
+   */
+  readonly genresPresent: boolean
 }
 
 /** Normaliza um filme; lanca NormalizationError sem id ou sem titulo. */
@@ -54,6 +72,7 @@ export function normalizeMovie(detail: TmdbMovieDetail): NormalizedMovie {
   }
 
   const credits = normalizeCredits(detail.credits)
+  const genres = normalizeTitleGenres(detail.genres)
   return {
     movie,
     externalIds: buildExternalIds('movie', detail.id, imdbId),
@@ -61,5 +80,7 @@ export function normalizeMovie(detail: TmdbMovieDetail): NormalizedMovie {
     crew: credits.crew,
     castPresent: credits.castPresent,
     crewPresent: credits.crewPresent,
+    genres: genres.links,
+    genresPresent: genres.present,
   }
 }

@@ -498,6 +498,8 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
           crew: normalized.crew,
           castPresent: normalized.castPresent,
           crewPresent: normalized.crewPresent,
+          genres: normalized.genres,
+          genresPresent: normalized.genresPresent,
           timestamps: { lastSyncedAt: now(), staleAfter: new Date(now().getTime() + staleWindowMs) },
         })
         await syncEntityReferences('movie', tmdbId, detail)
@@ -513,6 +515,8 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
           crew: normalized.crew,
           castPresent: normalized.castPresent,
           crewPresent: normalized.crewPresent,
+          genres: normalized.genres,
+          genresPresent: normalized.genresPresent,
           timestamps: { lastSyncedAt: now(), staleAfter: new Date(now().getTime() + staleWindowMs) },
         })
         await syncEntityReferences('tv', tmdbId, detail)
@@ -558,6 +562,8 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
           // sync de IDs nunca pode ter efeito colateral sobre creditos.
           castPresent: normalized.castPresent,
           crewPresent: normalized.crewPresent,
+          genres: normalized.genres,
+          genresPresent: normalized.genresPresent,
           timestamps: { lastSyncedAt: now(), staleAfter: new Date(now().getTime() + staleWindowMs) },
         })
         return { upserted: normalized.externalIds.length, changed: 0, skipped: false, skipReason: null }
@@ -572,6 +578,8 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
           // Ver o ramo de filme: sync de IDs nao mexe em creditos.
           castPresent: normalized.castPresent,
           crewPresent: normalized.crewPresent,
+          genres: normalized.genres,
+          genresPresent: normalized.genresPresent,
           timestamps: { lastSyncedAt: now(), staleAfter: new Date(now().getTime() + staleWindowMs) },
         })
         return { upserted: normalized.externalIds.length, changed: 0, skipped: false, skipReason: null }
