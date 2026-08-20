@@ -101,9 +101,9 @@ function ratingsView(): RatingsPanelView {
 function watchBrands(): readonly WatchBrandRowItem[] {
   const view = buildWatchAvailabilityView([
     {
-      providerName: "Netflix",
-      providerKey: "8",
-      providerSlug: "netflix",
+      providerName: "Fluxo Play",
+      providerKey: "999",
+      providerSlug: "fluxo-play",
       offerType: "subscription",
       deepLink: null,
       webUrl: "https://www.themoviedb.org/movie/1/watch?locale=BR",
@@ -215,7 +215,7 @@ describe("as sete remoções do topo — nenhuma volta ao conteúdo renderizado"
     // e a modalidade continua texto visível (decisão de 2026-08-13).
     expect(card).toContain('href="https://www.themoviedb.org/movie/1/watch?locale=BR"');
     expect(card).toContain('rel="nofollow sponsored noopener"');
-    expect(texto).toContain("Netflix");
+    expect(texto).toContain("Fluxo Play");
     expect(texto).toContain("Assinatura");
   });
 });
