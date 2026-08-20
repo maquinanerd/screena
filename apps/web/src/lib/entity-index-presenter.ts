@@ -40,25 +40,6 @@ const MOVIE_PATH_PREFIX = "/pt/filmes/";
 const SERIES_PATH_PREFIX = "/pt/series/";
 const PERSON_PATH_PREFIX = "/pt/pessoas/";
 
-/**
- * Traducao pt-BR dos departamentos conhecidos do TMDB (`known_for_department`).
- * Espelha o mapa de `person-presenter`; valor desconhecido -> `null` (nunca vaza
- * rotulo em ingles nem inventa funcao).
- */
-const KNOWN_FOR_DEPARTMENT_LABELS: Readonly<Record<string, string>> = {
-  Acting: "Atuacao",
-  Directing: "Direcao",
-  Writing: "Roteiro",
-  Production: "Producao",
-  Editing: "Edicao",
-  Camera: "Fotografia",
-  Sound: "Som",
-  Art: "Arte",
-  "Costume & Make-Up": "Figurino e Maquiagem",
-  "Visual Effects": "Efeitos Visuais",
-  Lighting: "Iluminacao",
-  Crew: "Equipe",
-};
 
 interface LocalImageSpec {
   width: number;
@@ -203,13 +184,15 @@ function imageAsset(
   return { src, width: spec.width, height: spec.height };
 }
 
-export function mapKnownForDepartment(
-  department: string | null | undefined,
-): string | null {
-  const value = trimToNull(department);
-  if (value === null) return null;
-  return KNOWN_FOR_DEPARTMENT_LABELS[value] ?? null;
-}
+/**
+ * Reexporta a traducao unica de `known_for_department` (ver
+ * `./known-for-department`). Ate 20/08/2026 este arquivo tinha uma SEGUNDA
+ * copia da tabela, ainda sem acento — e o indice `/pt/pessoas/` mostrava
+ * "Atuacao" enquanto o detalhe mostrava "Atuação", para a mesma pessoa.
+ */
+import { mapKnownForDepartment } from "./known-for-department";
+
+export { mapKnownForDepartment };
 
 /**
  * Resolve a nota editorial PROPRIA da Cinerie de um card para exibicao, seguindo
