@@ -45,9 +45,22 @@ export interface TrailerModalProps {
   title: string
   /** Trailer JÁ aprovado pelo gate de licença. */
   trailer: TrailerView
+  /**
+   * Classe do BOTÃO que abre o diálogo. Default: o play do card da home.
+   *
+   * O bloco de mídia do detalhe (telas 06/07) tem geometria própria — o play
+   * fica sobre uma imagem de 472px, não sobre um card de trilho. O DIÁLOGO em
+   * si não muda: é o mesmo componente, com o mesmo laço de foco, a mesma trava
+   * de scroll e o mesmo gate de clique. Só o gatilho se veste diferente.
+   */
+  triggerClassName?: string
 }
 
-export function TrailerModal({ title, trailer }: TrailerModalProps): ReactNode {
+export function TrailerModal({
+  title,
+  trailer,
+  triggerClassName = 'glimpse-card__play',
+}: TrailerModalProps): ReactNode {
   const [open, setOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -172,7 +185,7 @@ export function TrailerModal({ title, trailer }: TrailerModalProps): ReactNode {
     <>
       <button
         aria-label={`Assistir ao trailer de ${title}`}
-        className="glimpse-card__play"
+        className={triggerClassName}
         onClick={() => {
           setOpen(true)
         }}

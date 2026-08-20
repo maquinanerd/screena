@@ -11,15 +11,22 @@
  *   videoType ∈ {Trailer, Teaser}      — clipe/bastidor/entrevista não é trailer
  *   videoKey passa em YOUTUBE_VIDEO_ID_PATTERN
  *
- * HOJE ISSO DEVOLVE `null` PARA TODO MUNDO, E ESTÁ CERTO. As linhas de
- * `tmdb_videos` nascem `display_allowed = false`
- * (`services/ingestion/src/catalog-sync/media-sync.ts`) e
- * `services/legal/src/authorization-spec.ts` não tem entrada de licença para
- * VÍDEO do TMDB — só para metadados e imagens. Enquanto essa decisão humana não
- * for registrada, nenhum trailer é exibível, o botão "Watch" não existe e o card
- * não muda de forma. No dia em que a entrada for aprovada e o `legal sources
- * apply` rodar, o botão acende sem deploy. É o mesmo padrão de ratings e
- * streaming.
+ * A LICENÇA DE VÍDEO JÁ EXISTE — ESTE PARÁGRAFO ESTAVA DESATUALIZADO.
+ *
+ * Até 20/08/2026 aqui se lia que `authorization-spec.ts` "não tem entrada de
+ * licença para VÍDEO do TMDB, só para metadados e imagens". Deixou de ser
+ * verdade em 13/08/2026: existe a entrada "TMDB (trailers)", `official`,
+ * `displayAllowed: true`, policy `cinerie-source-auth/tmdb-video/2026-08-v1`.
+ *
+ * O QUE AINDA FALTA É OUTRA COISA, e a distinção é o assunto: `source_licenses`
+ * diz o que a FONTE permite; quem decide se uma LINHA de `tmdb_videos` é
+ * exibível é a coluna `display_allowed` daquela linha — e ela nasce `false`
+ * (`services/ingestion/src/catalog-sync/media-sync.ts`). São DOIS passos, como
+ * em ratings e em streaming, e o segundo é a promoção governada.
+ *
+ * Ou seja: hoje isto ainda devolve `null` para todo mundo, mas a causa mudou de
+ * "não há permissão" para "as linhas não foram promovidas". O trailer é fiação
+ * e promoção, nunca mais uma pendência legal.
  *
  * Nada aqui monta URL à mão: a política do embed (domínio, ausência de query,
  * formato do id) vive em `youtube-embed.ts`.
