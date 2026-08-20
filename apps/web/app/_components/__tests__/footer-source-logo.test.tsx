@@ -67,15 +67,6 @@ vi.mock("../../../src/config/footer", async (importOriginal) => {
 
 const { SiteFooter } = await import("../site-footer");
 
-/** So o que a pessoa LE. Atributo nao conta — foi o defeito da PR #165. */
-function visibleText(markup: string): string {
-  return markup
-    .replace(/<[^>]*>/g, " ")
-    .replace(/&[a-z]+;/gi, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 function creditsBlock(markup: string): string {
   const abre = markup.indexOf('class="footer__credits"');
   expect(abre, "bloco de creditos nao encontrado").toBeGreaterThan(-1);
