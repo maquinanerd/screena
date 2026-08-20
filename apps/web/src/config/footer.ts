@@ -62,6 +62,16 @@ export interface FooterLink {
 }
 
 export interface FooterColumn {
+  /**
+   * Slug estável para o `id` do título visível — é ele que o `<nav>` referencia
+   * via `aria-labelledby`. A string do título passa a existir UMA vez no DOM:
+   * antes o `<nav>` carregava `aria-label={title}` E o `<p>` imprimia o mesmo
+   * texto, e a árvore de acessibilidade (e toda vista derivada dela — reader
+   * mode, ferramentas de inspeção/tradução) mostrava "Filmes" em cima de
+   * "Filmes". Uma fonte só para a string, por construção. Travado por
+   * `group-label-redundancy.test.tsx`.
+   */
+  readonly id: string;
   readonly title: string;
   readonly accent: FooterAccent;
   readonly links: readonly FooterLink[];
@@ -88,6 +98,7 @@ export const SITE_INDEX_PATH = "/sitemap.xml";
  */
 export const FOOTER_COLUMNS: readonly FooterColumn[] = [
   {
+    id: "filmes",
     title: "Filmes",
     accent: "movies",
     links: [
@@ -99,21 +110,25 @@ export const FOOTER_COLUMNS: readonly FooterColumn[] = [
     ],
   },
   {
+    id: "series-e-tv",
     title: "Séries e TV",
     accent: "series",
     links: [{ label: "Todas as séries", href: SERIES_INDEX_PATH }],
   },
   {
+    id: "celebridades",
     title: "Celebridades",
     accent: "neutral",
     links: [{ label: "Todas as pessoas", href: PEOPLE_INDEX_PATH }],
   },
   {
+    id: "noticias",
     title: "Notícias",
     accent: "neutral",
     links: [{ label: "Últimas notícias", href: NEWS_INDEX_PATH }],
   },
   {
+    id: "cinerie",
     title: "Cinerie",
     accent: "neutral",
     links: [
