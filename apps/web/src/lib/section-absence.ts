@@ -36,6 +36,8 @@ export type SectionKey =
   | "noticias"
   /** Trilho "Em breve" — escopo de ROTA (home/filmes/series), nao de entidade. */
   | "em-breve"
+  /** "Para voce" — trilho personalizado do hub de streaming (escopo de ROTA). */
+  | "para-voce"
   /** "Continuar assistindo" — trilho PESSOAL de /pt/explorar (escopo de ROTA). */
   | "continuar-assistindo"
   /** Faixa de newsletter do rodape — escopo de CHROME, nao de rota nem entidade. */
@@ -108,6 +110,19 @@ export type SectionAbsenceReason =
    */
   | "below_upcoming_floor"
   /**
+   * NAO EXISTE servico de recomendacao personalizada exposto ao app publico.
+   *
+   * "Para voce" nao e um trilho vazio a espera de dado: nao ha, em lugar nenhum,
+   * quem produza a recomendacao. Uma secao que NUNCA pode ter sucesso nao deve
+   * renderizar — e a mesma regra da faixa de newsletter, pelo mesmo motivo: um
+   * bloco que so sabe dizer "ainda nao" gasta a atencao do leitor a toa e ainda
+   * faz a pagina parecer quebrada.
+   *
+   * `actionable: true`: e passo pendente (construir o servico), nunca um fato
+   * sobre o catalogo.
+   */
+  | "no_recommendation_service"
+  /**
    * NAO HA VISITANTE AUTENTICADO — e a secao so existe para uma pessoa.
    *
    * "Continuar assistindo" nao tem o que mostrar a quem nao entrou, e nao ha o
@@ -160,6 +175,7 @@ const ACTIONABLE_REASONS: ReadonlySet<SectionAbsenceReason> = new Set([
   "no_approved_formula",
   "no_awards_source",
   "no_recommendation_dataset",
+  "no_recommendation_service",
   "no_upcoming_title",
   "below_upcoming_floor",
   "newsletter_storage_unavailable",
