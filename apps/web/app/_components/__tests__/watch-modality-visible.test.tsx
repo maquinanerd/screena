@@ -208,10 +208,13 @@ describe('3/4 — destaque do explorar', () => {
 })
 
 describe('4/4 — hub onde assistir', () => {
-  const provider = (labels: string[]): Parameters<typeof WatchPopular>[0]['providers'] => [
+  // O hub passou a agrupar por MARCA (uma entrada por marca, rotas embaixo).
+  // O que este bloco prova nao muda: o ROTULO de modalidade chega ao card.
+  const brand = (labels: string[]): Parameters<typeof WatchPopular>[0]['brands'] => [
     {
-      providerKey: 'fictiloja',
-      providerName: 'Fictiloja',
+      key: 'solo:fictiloja',
+      name: 'Fictiloja',
+      routes: [{ providerName: 'Fictiloja', label: null }],
       titles: [
         {
           entityType: 'movie',
@@ -226,7 +229,7 @@ describe('4/4 — hub onde assistir', () => {
 
   it('CONTROLE POSITIVO: os rotulos chegam ao texto visivel do card', () => {
     const text = visibleText(
-      renderToStaticMarkup(<WatchPopular providers={provider(['Assinatura', 'Compra'])} />),
+      renderToStaticMarkup(<WatchPopular brands={brand(['Assinatura', 'Compra'])} />),
     )
     expect(text).toContain('Assinatura')
     expect(text).toContain('Compra')
@@ -235,7 +238,7 @@ describe('4/4 — hub onde assistir', () => {
   it('CONTROLE NEGATIVO: valor cru do enum nunca chega a tela', () => {
     // O componente tinha um mapa proprio com `?? offer`: um valor novo do
     // upstream ia para a tela em jargao de API. Agora ele so recebe ROTULO.
-    const text = visibleText(renderToStaticMarkup(<WatchPopular providers={provider([])} />))
+    const text = visibleText(renderToStaticMarkup(<WatchPopular brands={brand([])} />))
     for (const cru of ['subscription', 'rent', 'buy', 'ads', 'addon']) {
       expect(text).not.toContain(cru)
     }
