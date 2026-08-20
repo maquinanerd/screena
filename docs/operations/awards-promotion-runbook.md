@@ -125,7 +125,7 @@ corepack pnpm legal sources review
 comando mostra o plano e não muta:
 
 ```bash
-corepack pnpm legal sources apply --reviewer="Pablo Eduardo — proprietario da Cinerie" --policy-version="cinerie-source-auth/2026-07-v1" --confirm
+corepack pnpm legal sources apply --reviewer="Pablo Eduardo — proprietario da Cinerie" --policy-version="cinerie-source-auth/2026-08-v2" --confirm
 ```
 
 `--policy-version` é a **leva** (`AUTHORIZATION_BATCH`), e a CLI **recusa

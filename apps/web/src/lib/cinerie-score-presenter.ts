@@ -24,26 +24,15 @@
  *   `no_rating_at_all`            — nao ha nota nenhuma.
  *
  * ============================================================================
- * POR QUE HOJE NADA APARECE — E A CAUSA NAO SOMOS NOS
+ * A AUTORIZACAO PARA DERIVAR — decisao do proprietario, 20/08/2026
  * ============================================================================
  * A formula esta implementada, versionada, testada e REGISTRADA
- * (`cinerie-score/2026-08-v1`). O que falta e a autorizacao para DERIVAR, e a
- * leitura dos termos, fonte por fonte, mostrou que nenhuma das quatro a concede:
- *
- *   OMDb (entrega IMDb, Rotten Tomatoes e Metacritic):
- *     "You are strictly prohibited from creating derivative works or materials
- *      that otherwise are derived from or based on Contributions in any way
- *      [...] unless it is expressly permitted by us in writing."
- *
- *   TMDB: proibe derivar da API e do conteudo, e reserva expressamente esse
- *     direito.
- *
- * O Cinerie Score e, por definicao, obra derivada das notas. Com as quatro
- * fontes fora, nao sobra nenhuma — e o piso de duas nunca e alcancado.
- *
- * Autorizacao do dono nao cria direito que a fonte nao deu. Destravar exige
- * permissao POR ESCRITO das fontes; ver
- * `docs/legal/cinerie-score-derivative-authorization.md`.
+ * (`cinerie-score/2026-08-v1`). A autorizacao para DERIVAR e a decisao
+ * `cinerie_score_display` emitida pelo registro legal (base `owner_decision` —
+ * Pablo Eduardo, 20/08/2026, docs/legal/owner-authorization-2026-08-20.md), que
+ * revogou a recusa anterior. `authorized` reflete a existencia dessa decisao
+ * VIGENTE no banco: ate o proprietario rodar o `legal sources apply` em
+ * producao, o estado la continua `no_approved_formula` — e esta ausencia fala.
  *
  * ============================================================================
  * O QUE O SCORE NAO FAZ COM O PAINEL DE NOTAS
@@ -106,7 +95,8 @@ export type CinerieScoreDecision =
 export interface CinerieScoreInputView {
   /**
    * `false` quando nao ha `DataUsageDecision` vigente autorizando derivar.
-   * Hoje e sempre `false` — ver o cabecalho.
+   * Vira `true` quando a decisao da autorizacao do proprietario (20/08/2026)
+   * estiver aplicada e vigente no banco — ver o cabecalho.
    */
   readonly authorized: boolean;
   readonly value: number | null;

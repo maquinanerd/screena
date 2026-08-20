@@ -83,7 +83,7 @@ describe("a decisao: uma licenca de premiacao, creditando quem entregou", () => 
     expect(entry.license.policyVersion).toBe(AWARDS_POLICY_VERSION);
     expect(AWARDS_POLICY_VERSION).toBe("cinerie-source-auth/omdb/2026-08-v1");
     // A leva (o `--policy-version` da CLI) continua sendo a de julho.
-    expect(AUTHORIZATION_BATCH).toBe("cinerie-source-auth/2026-07-v1");
+    expect(AUTHORIZATION_BATCH).toBe("cinerie-source-auth/2026-08-v2");
     expect(entry.license.policyVersion).not.toBe(AUTHORIZATION_BATCH);
   });
 
