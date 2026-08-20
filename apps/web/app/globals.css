@@ -10274,3 +10274,110 @@ h4.art-body__heading {
 .similar-card:hover .similar-card__poster {
   opacity: 0.9;
 }
+
+/* ------------------------------------------------------------------ */
+/* Explorar — o estado COM TERMO (resultados de busca)                 */
+/*                                                                     */
+/* BROWSE e DISCOVER do canonico sao dois ESTADOS da mesma superficie,  */
+/* nao duas paginas: sem termo a rota e navegacao (indexavel), com      */
+/* termo ela mostra este bloco no topo e vira `noindex`.                */
+/*                                                                     */
+/* Tipo NUNCA so por formatacao (invariante 11): o rotulo textual da    */
+/* vertical vive no card, junto do atributo de tipo e da URL.           */
+/* ------------------------------------------------------------------ */
+
+.explore-results__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 18px;
+}
+
+.explore-result {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
+.explore-result__thumb {
+  position: relative;
+  display: block;
+  aspect-ratio: 2 / 3;
+  background: #eae4d9;
+  overflow: hidden;
+  border-radius: 12px;
+}
+
+.explore-result__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Pessoa nao tem poster 2:3; o retrato fica melhor em 3:4. */
+.explore-result[data-entity-type='person'] .explore-result__thumb {
+  aspect-ratio: 3 / 4;
+}
+
+.explore-result__kind {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 4px 7px;
+  color: #fff;
+  background: #3a362f;
+}
+
+.explore-result[data-entity-type='movie'] .explore-result__kind {
+  background: var(--screena-movie-red, #f0443e);
+}
+
+.explore-result[data-entity-type='tv'] .explore-result__kind {
+  background: var(--screena-series-green, #7aa66d);
+}
+
+.explore-result__title {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  margin-top: 10px;
+}
+
+.explore-result__meta {
+  display: block;
+  font-size: 11px;
+  color: #9a958c;
+  margin-top: 2px;
+}
+
+.explore-results__news {
+  margin-top: 28px;
+}
+
+.explore-results__news-title {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #9a958c;
+  margin: 0 0 10px;
+}
+
+.explore-results__news ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.explore-results__news-sub {
+  display: block;
+  font-size: 12px;
+  color: #9a958c;
+}

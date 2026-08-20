@@ -40,6 +40,8 @@ export type SectionKey =
   | "em-breve"
   /** "Para voce" — trilho personalizado do hub de streaming (escopo de ROTA). */
   | "para-voce"
+  /** "Continuar assistindo" — trilho PESSOAL de /pt/explorar (escopo de ROTA). */
+  | "continuar-assistindo"
   /** Faixa de newsletter do rodape — escopo de CHROME, nao de rota nem entidade. */
   | "newsletter";
 
@@ -152,6 +154,18 @@ export type SectionAbsenceReason =
    * sobre o catalogo.
    */
   | "no_recommendation_service"
+  /**
+   * NAO HA VISITANTE AUTENTICADO — e a secao so existe para uma pessoa.
+   *
+   * "Continuar assistindo" nao tem o que mostrar a quem nao entrou, e nao ha o
+   * que consertar: e um fato sobre o REQUEST, nao sobre o deploy nem sobre o
+   * catalogo. Por isso `actionable: false` — a maioria dos pageviews e anonima,
+   * e marcar isso como acionavel afogaria o log.
+   *
+   * NAO confundir com "logado e sem historico": ali a secao PODE ter sucesso, e
+   * o estado vazio honesto e a resposta certa.
+   */
+  | "no_authenticated_visitor"
   /**
    * NAO EXISTE onde guardar uma inscricao de newsletter.
    *

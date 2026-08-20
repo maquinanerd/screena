@@ -5,12 +5,31 @@
  * dados pessoais só via /api/me/** no cliente, depois do mount (nada entra em
  * cache compartilhado de render). Fluxo real: sessão → biblioteca `watching`
  * → progresso por série (percent + próximo episódio, Backend C8) → cartões
- * públicos do catálogo em UM lote (/api/catalog/summary). Anônimo → estado
- * honesto com login real. Nenhum estado fake, nada persistido no navegador.
+ * públicos do catálogo em UM lote (/api/catalog/summary).
+ *
+ * DESLOGADO: A SEÇÃO INTEIRA NÃO APARECE. Não vira caixa vazia nem esqueleto
+ * mudo — e é por isso que o componente carrega o próprio `<section>` (título
+ * incluído) em vez de receber só o corpo. A maioria dos visitantes é anônima;
+ * um bloco pessoal com cabeçalho e uma linha cinza é a promessa que a página
+ * não pode cumprir para eles.
+ *
+ * LOGADO E SEM HISTÓRICO é outra coisa: ali a seção PODE ter sucesso, então ela
+ * existe com estado vazio honesto.
+ *
+ * A AUSÊNCIA NÃO É MUDA — mas o log dela é do CLIENTE, não do servidor. A
+ * condição ("não há sessão") só é conhecida depois do mount, atrás da fronteira
+ * autenticada: `SectionBoundary` é Server Component e não alcança este ponto.
+ * A linha sai no MESMO formato (`section_absent`, JSON filtrável) e UMA vez por
+ * carregamento, porque repetir não acrescenta informação nenhuma.
  */
 
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
+
+import {
+  buildRouteSectionAbsence,
+  formatSectionAbsence,
+} from '../../src/lib/section-absence'
 
 interface CardData {
   entityType: 'movie' | 'tv'
@@ -116,7 +135,31 @@ async function load(): Promise<State> {
   }
 }
 
-export function ContinueWatching(): ReactNode {
+/** O cabeçalho canônico da seção. Só existe quando o corpo pode existir. */
+function Head(): ReactNode {
+  return (
+    <div className="disc-section-head">
+      <div className="eyebrow-bar">
+        <span aria-hidden="true" className="eyebrow-bar__mark" />
+        <h2 className="section-title section-title--sm" id="disc-cw-title">
+          <strong>Continuar</strong> <span>assistindo</span>
+        </h2>
+      </div>
+      <span className="disc-note">De onde você parou</span>
+    </div>
+  )
+}
+
+function Section({ children }: { children: ReactNode }): ReactNode {
+  return (
+    <section aria-labelledby="disc-cw-title" className="disc-section" data-vertical="series">
+      <Head />
+      {children}
+    </section>
+  )
+}
+
+export function ContinueWatching({ route }: { route: string }): ReactNode {
   const [state, setState] = useState<State>({ kind: 'loading' })
 
   useEffect(() => {
@@ -129,32 +172,48 @@ export function ContinueWatching(): ReactNode {
     }
   }, [])
 
-  if (state.kind === 'loading') {
-    return <p className="muted" role="status">Carregando…</p>
-  }
-  if (state.kind === 'anonymous') {
-    return (
-      <p className="muted" role="status">
-        <a href="/pt/entrar/">Entre na sua conta</a> para continuar de onde você parou.
-      </p>
+  useEffect(() => {
+    if (state.kind !== 'anonymous') return
+    // Mesmo formato do log do servidor, para o mesmo filtro
+    // (`event=section_absent section=continuar-assistindo`).
+    console.warn(
+      formatSectionAbsence(
+        buildRouteSectionAbsence({
+          section: 'continuar-assistindo',
+          reason: 'no_authenticated_visitor',
+          route,
+          vertical: 'mixed',
+        }),
+      ),
     )
-  }
+  }, [state.kind, route])
+
+  // Sem sessão a seção INTEIRA some — cabeçalho incluído. Durante o load
+  // também: um título que aparece e some seria pior que não aparecer.
+  if (state.kind === 'loading' || state.kind === 'anonymous') return null
+
   if (state.kind === 'empty') {
+    // LOGADO sem histórico: aqui a seção PODE ter sucesso, então ela existe.
     return (
-      <p className="muted" role="status">
-        Nada em andamento ainda — marque episódios assistidos para retomar daqui.
-      </p>
+      <Section>
+        <p className="muted" role="status">
+          Nada em andamento ainda — marque episódios assistidos para retomar daqui.
+        </p>
+      </Section>
     )
   }
   if (state.kind === 'error') {
     return (
-      <p className="muted" role="alert">
-        Não foi possível carregar seu progresso agora.
-      </p>
+      <Section>
+        <p className="muted" role="alert">
+          Não foi possível carregar seu progresso agora.
+        </p>
+      </Section>
     )
   }
 
   return (
+    <Section>
     <div className="cw-grid">
       {state.cards.map((card) => (
         <a className="cw-card" data-entity-type={card.entityType} href={card.href} key={`${card.entityType}:${card.entityId}`}>
@@ -189,5 +248,6 @@ export function ContinueWatching(): ReactNode {
         </a>
       ))}
     </div>
+    </Section>
   )
 }
