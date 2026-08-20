@@ -84,10 +84,13 @@ Dois relógios distintos — passar do primeiro **não** tira a nota do ar:
 
 ## 4. Obra derivada (Cinerie Score)
 
-**Bloqueado.** Não existe decisão `cinerie_score_display` e `derivative_allowed`
-é `false` em toda decisão registrada. O motor devolve `BLOCKED_BY_DECISION`.
-Nenhuma fonte deste inventário participa de score derivado. Desbloquear é
-decisão humana separada (fora do escopo desta etapa).
+**Autorizado pelo proprietário em 20/08/2026**
+([`owner-authorization-2026-08-20.md`](./owner-authorization-2026-08-20.md)):
+o spec emite a decisão `cinerie_score_display` (sob a licença do IMDb, base
+`owner_decision`, fórmula aprovada `cinerie-score/2026-08-v1`). Em produção o
+motor devolve `BLOCKED_BY_DECISION` **até o proprietário rodar o
+`legal sources apply`** — registrar no spec não é ligar no banco. O piso de
+duas fontes contadas continua regendo a exibição do número.
 
 ## 5. Onde cada gate mora
 

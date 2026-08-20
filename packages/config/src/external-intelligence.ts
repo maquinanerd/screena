@@ -135,3 +135,27 @@ export const CINERIE_SCORE_BLOCKED_VERSION = "cinerie-score/v0-blocked";
  * usuario.
  */
 export const CINERIE_SCORE_PUBLIC_NAME = "Cinerie Score";
+
+/**
+ * `policy_version` da DECISAO `cinerie_score_display` emitida pelo registro
+ * legal (autorizacao do proprietario, 2026-08-20).
+ *
+ * E o id JURIDICO da decisao — nao seleciona algoritmo (achado A7 da revisao
+ * adversarial da PR #74). O elo decisao->formula e o mapa FECHADO abaixo.
+ */
+export const CINERIE_SCORE_DECISION_POLICY = "cinerie-score-decisao/2026-08-v1";
+
+/**
+ * Que FORMULA cada decisao aprovou, por `policy_version` da decisao.
+ *
+ * Mapa FECHADO e revisado: e ele que faz `approvedFormulaVersion` derivar da
+ * DECISAO (a linha do banco), nunca de um default de codigo. Trocar a formula
+ * exige nova decisao (novo policy_version) + nova linha aqui — os dois
+ * explicitos, nenhum silencioso. Uma renovacao juridica sem mudanca de formula
+ * ganha novo policy_version apontando para a MESMA formula.
+ */
+export const CINERIE_SCORE_APPROVED_FORMULA_BY_DECISION_POLICY: Readonly<
+  Record<string, string>
+> = {
+  [CINERIE_SCORE_DECISION_POLICY]: "cinerie-score/2026-08-v1",
+};

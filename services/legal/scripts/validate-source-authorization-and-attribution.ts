@@ -296,26 +296,55 @@ async function runChecks(url: string): Promise<void> {
       `SELECT source_key, content_type FROM source_licenses WHERE is_current=true AND logo_allowed=true ORDER BY source_key, content_type`,
     );
     const logoKeys = logoRows.map((r) => `${r.source_key}/${r.content_type}`);
-    // As tres licencas do TMDB (metadados, imagem, video) sao a MESMA fonte e
-    // colapsam num unico credito no rodape. Sao tres linhas porque o
-    // `content_type` e parte da chave, nao porque sao tres permissoes.
-    const LOGO_ALLOWLIST = ["tmdb/image", "tmdb/other", "tmdb/video"];
+    // Desde 2026-08-20 a allowlist tem DUAS bases (e continua exata): as tres
+    // licencas do TMDB entram pelos TERMOS da fonte (que exigem o logo); as
+    // tres fontes de nota exibiveis entram pela DECISAO DO PROPRIETARIO
+    // (docs/legal/owner-authorization-2026-08-20.md). Uma setima linha reprova.
+    // (Provedores de streaming tambem tem base owner_decision, mas nascem
+    // dinamicamente por provedor registrado — este harness parte de zero
+    // provedores, entao nenhum aparece aqui.)
+    // O harness REGISTRA um provedor real (netflix, check 5), e cada provedor
+    // rende UMA licenca POR ORIGEM — logo o conjunto esperado carrega as DUAS
+    // linhas netflix/watch_availability. Comparacao por MULTISET ordenado:
+    // includes() aceitaria uma duplicata a mais em silencio.
+    const LOGO_ALLOWLIST = [
+      "imdb/rating",
+      "metacritic/rating",
+      "netflix/watch_availability",
+      "netflix/watch_availability",
+      "rotten_tomatoes/rating",
+      "tmdb/image",
+      "tmdb/other",
+      "tmdb/video",
+    ];
     const logoOk =
-      logoKeys.length === LOGO_ALLOWLIST.length &&
-      LOGO_ALLOWLIST.every((k) => logoKeys.includes(k));
-    record(6, "logo liberado SO onde a fonte exige (allowlist exata: as 3 licencas do TMDB)", logoOk, `logo_allowed=true: [${logoKeys.join(", ")}]`);
+      JSON.stringify([...logoKeys].sort()) === JSON.stringify([...LOGO_ALLOWLIST].sort());
+    record(6, "logo liberado no conjunto exato (TMDB pelos termos + 3 fontes de nota por decisao do dono)", logoOk, `logo_allowed=true: [${logoKeys.join(", ")}]`);
 
     // 7. Review quotes bloqueados.
     const anyRq = Number((await q<{ c: number }>(`SELECT count(*)::int AS c FROM source_licenses WHERE is_current=true AND review_quote_allowed=true`))[0]!.c);
     record(7, "citacao integral de critica bloqueada (review_quote_allowed=false)", anyRq === 0, `review_quote_allowed=true: ${anyRq}`);
 
-    // 8. Derivative bloqueado em TODA decisão.
-    const anyDerivative = Number((await q<{ c: number }>(`SELECT count(*)::int AS c FROM data_usage_decisions WHERE is_current=true AND derivative_allowed=true`))[0]!.c);
-    record(8, "obra derivada bloqueada (derivative_allowed=false em toda decisao)", anyDerivative === 0, `derivative_allowed=true: ${anyDerivative}`);
+    // 8. Derivada: SO a decisao do Cinerie Score (autorizacao do proprietario,
+    // 2026-08-20) — qualquer outra linha com derivative_allowed reprova.
+    const derivativeRows = await q<{ use_case: string }>(
+      `SELECT use_case FROM data_usage_decisions WHERE is_current=true AND derivative_allowed=true`,
+    );
+    const derivativeOk =
+      derivativeRows.length === 1 && derivativeRows[0]!.use_case === "cinerie_score_display";
+    record(8, "derivada SO na decisao do Cinerie Score (decisao do proprietario, 2026-08-20)", derivativeOk, `derivative_allowed=true: [${derivativeRows.map((r) => r.use_case).join(", ")}]`);
 
-    // 9. Cinerie Score continua bloqueado: nenhuma decisão cinerie_score_display.
-    const cinerieDecisions = Number((await q<{ c: number }>(`SELECT count(*)::int AS c FROM data_usage_decisions WHERE use_case='cinerie_score_display'`))[0]!.c);
-    record(9, "Cinerie Score continua BLOCKED_BY_DECISION (nenhuma decisao cinerie_score_display)", cinerieDecisions === 0, `decisoes=${cinerieDecisions}`);
+    // 9. A decisao do Cinerie Score existe, e UMA, vigente, sob a licenca do IMDb.
+    const cinerieDecisions = await q<{ source_key: string; is_current: boolean }>(
+      `SELECT l.source_key, d.is_current
+         FROM data_usage_decisions d JOIN source_licenses l ON l.id = d.source_license_id
+        WHERE d.use_case='cinerie_score_display'`,
+    );
+    const cinerieOk =
+      cinerieDecisions.length === 1 &&
+      cinerieDecisions[0]!.source_key === "imdb" &&
+      cinerieDecisions[0]!.is_current === true;
+    record(9, "Cinerie Score: UMA decisao cinerie_score_display vigente, sob a licenca do IMDb", cinerieOk, `decisoes=${cinerieDecisions.length} [${cinerieDecisions.map((d) => d.source_key).join(", ")}]`);
 
     // 10. NENHUMA promoção: ratings e ofertas continuam não-exibíveis.
     const ratingsDisplayableAfter = Number((await q<{ c: number }>(`SELECT count(*)::int AS c FROM external_ratings WHERE display_allowed=true`))[0]!.c);
@@ -323,10 +352,32 @@ async function runChecks(url: string): Promise<void> {
     record(10, "nenhum rating foi promovido por efeito colateral", ratingsDisplayableBefore === 0 && ratingsDisplayableAfter === 0, `antes=${ratingsDisplayableBefore} depois=${ratingsDisplayableAfter}`);
     record(11, "nenhuma oferta foi promovida por efeito colateral", offersDisplayableBefore === 0 && offersDisplayableAfter === 0, `antes=${offersDisplayableBefore} depois=${offersDisplayableAfter}`);
 
-    // 12. screen_score_display continua barrado (Cinerie Score sem decisão).
-    await expectViolation(12, "cinerie score: screen_score_display=true continua barrado (sem decisao)",
+    // 12. Cinerie Score: a autorizacao do dono (2026-08-20) MUDOU o desfecho, e
+    // os DOIS lados sao provados. Com a decisao VIGENTE (emitida pelo apply), o
+    // gate ACEITA ligar o display — o destravamento e funcional, nao decorativo.
+    let scoreFlipOk = true;
+    let scoreFlipDetail = "aceito com decisao vigente";
+    try {
+      await exec(`UPDATE movies SET screen_score=4.0, screen_score_scale=5, screen_score_display=true WHERE id=${movieId}`);
+      await exec(`UPDATE movies SET screen_score=NULL, screen_score_scale=NULL, screen_score_display=false WHERE id=${movieId}`);
+    } catch (error) {
+      scoreFlipOk = false;
+      scoreFlipDetail = `RECUSADO com decisao vigente: ${error instanceof Error ? error.message.slice(0, 160) : String(error)}`;
+    }
+    record(12, "cinerie score: display ACEITO sob a decisao do proprietario (o destravamento e funcional)", scoreFlipOk, scoreFlipDetail);
+
+    // 12.1. E SEM a decisao vigente, continua BARRADO — o gate nao virou porta
+    // aberta: ele exige exatamente a decisao que o proprietario aplicou. A
+    // decisao e desativada, o statement proibido e provado, e ela volta ao
+    // MESMO estado (senao o check de idempotencia abaixo criaria linha nova).
+    const scoreDecisionId = String(Number((await q<{ id: bigint }>(
+      `SELECT id FROM data_usage_decisions WHERE use_case='cinerie_score_display' AND is_current=true`,
+    ))[0]!.id));
+    await exec(`UPDATE data_usage_decisions SET is_current=false WHERE id=${scoreDecisionId}`);
+    await expectViolation(12.1, "cinerie score: SEM decisao vigente, o display continua barrado",
       `UPDATE movies SET screen_score=4.0, screen_score_scale=5, screen_score_display=true WHERE id=${movieId}`,
       "BLOCKED_BY_DECISION");
+    await exec(`UPDATE data_usage_decisions SET is_current=true WHERE id=${scoreDecisionId}`);
 
     // 13. APPLY é IDEMPOTENTE: segunda vez não escreve.
     const licCountBefore = Number((await q<{ c: number }>(`SELECT count(*)::int AS c FROM source_licenses`))[0]!.c);

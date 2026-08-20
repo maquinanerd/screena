@@ -146,6 +146,7 @@ describe("publicSourceCredits — a projecao publica do registro de licencas", (
         licenseStatus: "third_party",
         displayAllowed: true,
         logoAllowed: false,
+        logoBasis: null,
         logoRationale: "fixture de teste: sem marca declarada",
         logoAsset: null,
         scoreAllowed: true,
@@ -220,6 +221,7 @@ describe("publicSourceCredits — a projecao publica do registro de licencas", (
         licenseStatus: "third_party",
         displayAllowed: true,
         logoAllowed: false,
+        logoBasis: null,
         logoRationale: "fixture: fonte que nao concede marca",
         logoAsset: null,
         scoreAllowed: true,
@@ -237,14 +239,29 @@ describe("publicSourceCredits — a projecao publica do registro de licencas", (
     expect(credito!.logoPending).toBe(false);
   });
 
-  it("licenca COM logo autorizado mas arquivo ausente: textual + pendencia declarada", () => {
-    // O estado real do TMDB hoje. O credito textual sai; o logo nao; e
-    // `logoPending` e a unica coisa que separa isto de "nada e devido".
+  it("TMDB com o arquivo oficial PRESENTE: logo sobe e o texto continua", () => {
+    // Desde 2026-08-20 o arquivo oficial (Primary long, baixado da pagina de
+    // logos do TMDB) esta no repositorio e a licenca declara `present`. O
+    // credito TEXTUAL continua — os termos pedem os DOIS.
     const tmdb = publicSourceCredits().find((c) => c.text.includes("TMDB"));
     expect(tmdb, "o credito do TMDB tem de existir").toBeDefined();
     expect(tmdb!.text.length).toBeGreaterThan(0);
-    expect(tmdb!.logo).toBeNull();
-    expect(tmdb!.logoPending).toBe(true);
+    expect(tmdb!.logo).toEqual({
+      src: "/brand/sources/tmdb-primary.svg",
+      alt: "TMDB",
+      heightPx: 18,
+    });
+    expect(tmdb!.logoPending).toBe(false);
+  });
+
+  it("fonte de nota com logo autorizado e arquivo AUSENTE: textual + pendencia declarada", () => {
+    // O estado real do IMDb hoje (decisao do dono, arquivo ainda fora do
+    // repositorio). O credito textual sai; o logo nao; e `logoPending` e a
+    // unica coisa que separa isto de "nada e devido".
+    const imdb = publicSourceCredits().find((c) => c.text.includes("IMDb"));
+    expect(imdb, "o credito do IMDb tem de existir").toBeDefined();
+    expect(imdb!.logo).toBeNull();
+    expect(imdb!.logoPending).toBe(true);
   });
 
   it("com o arquivo OFICIAL presente, o logo sobe — e o texto CONTINUA", () => {

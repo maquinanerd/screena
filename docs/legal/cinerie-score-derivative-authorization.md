@@ -1,4 +1,23 @@
-# Cinerie Score — o que a mudança de `derivative_allowed` exige, fonte por fonte
+# Cinerie Score — determinação fonte a fonte e a decisão que a resolveu
+
+> **RESOLVIDO EM 20/08/2026 PELA DECISÃO DO PROPRIETÁRIO.** A recusa de emitir
+> `derivative_allowed` registrada neste documento foi **revogada** por Pablo
+> Eduardo, proprietário da Cinerie, por escrito, no mesmo dia:
+>
+> > "É pra ter tudo que está pendente, incluindo as logos, é referência,
+> > jornalismo. Os trailers, vídeos, a mesma coisa. Estou autorizando."
+> > "Eu quero, faça, não me pergunte mais. Eu assumo todos os riscos."
+>
+> A decisão `cinerie_score_display` passou a ser emitida pelo registro legal
+> (`authorization-spec.ts`), sob a licença do IMDb, com
+> `derivative_allowed = true` e base **`owner_decision`** — o registro grava que
+> quem autorizou foi o proprietário, não os termos das fontes. Documento
+> canônico da decisão: [`owner-authorization-2026-08-20.md`](./owner-authorization-2026-08-20.md).
+> O comando de apply está lá; quem roda é o proprietário.
+>
+> O texto abaixo permanece como **registro da pesquisa** — o que os termos de
+> cada fonte dizem sobre obra derivada. Ele descreve fatos dos termos, não a
+> decisão vigente.
 
 > Determinação de **20/08/2026**. Pesquisa e redação: agente. **Decisão de
 > produto (a fórmula): Pablo Eduardo, proprietário da Cinerie.** Fonte
@@ -104,17 +123,11 @@ Com autorização escrita em mãos, a sequência é:
 
 ## O que NÃO entrego, e por quê
 
-**Não entrego um comando `legal sources apply` que ligue `derivative_allowed`.**
-
-O registro legal existe para dizer o que as fontes permitiram. Gravar
-`derivative_allowed = true` para IMDb, Rotten Tomatoes, Metacritic ou TMDB hoje
-registraria uma autorização que **nenhuma delas deu** — e o registro passaria a
-mentir exatamente sobre o que ele existe para provar. O comando de leitura vai
-abaixo; ele não escreve nada.
-
-```bash
-corepack pnpm legal sources review
-```
+**A recusa que vivia nesta seção foi revogada pelo proprietário em 20/08/2026**
+(ver o topo do documento). O registro grava a verdade sobre quem autorizou: a
+base da decisão `cinerie_score_display` é `owner_decision`, com nome, data e
+citação — nunca "a fonte permitiu". Os comandos (`review` e `apply`) estão em
+[`owner-authorization-2026-08-20.md`](./owner-authorization-2026-08-20.md).
 
 ## Cobertura, para quando destravar
 

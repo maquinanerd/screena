@@ -375,6 +375,9 @@ importers:
 
   services/ratings:
     dependencies:
+      '@screena/cinerie-score':
+        specifier: workspace:*
+        version: link:../../packages/cinerie-score
       '@screena/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -400,9 +403,6 @@ importers:
       '@prisma/client':
         specifier: ^6.1.0
         version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
-      '@screena/cinerie-score':
-        specifier: workspace:*
-        version: link:../../packages/cinerie-score
       embedded-postgres:
         specifier: 16.14.0-beta.17
         version: 16.14.0-beta.17

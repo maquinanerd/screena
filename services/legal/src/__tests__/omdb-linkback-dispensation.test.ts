@@ -53,18 +53,34 @@ describe("o que a dispensa NAO tocou", () => {
     }
   });
 
-  it("logo e citacao integral continuam proibidos", () => {
+  it("citacao integral continua proibida; a marca entra por decisao do dono, com base gravada", () => {
     for (const entry of RATING_ENTRIES) {
-      expect(entry.license.logoAllowed, entry.label).toBe(false);
       expect(entry.license.reviewQuoteAllowed, entry.label).toBe(false);
+      if (!entry.license.displayAllowed) {
+        // Exibicao revogada (letterboxd/filmaffinity): sem marca — logo de
+        // fonte invisivel seria afirmacao sem lastro.
+        expect(entry.license.logoAllowed, entry.label).toBe(false);
+        continue;
+      }
+      // Desde 2026-08-20 (docs/legal/owner-authorization-2026-08-20.md) as tres
+      // fontes exibiveis carregam a marca com base owner_decision e arquivo
+      // declarado (pendente ate entrar no repositorio).
+      expect(entry.license.logoAllowed, entry.label).toBe(true);
+      expect(entry.license.logoBasis, entry.label).toBe("owner_decision");
+      expect(entry.license.logoAsset?.status, entry.label).toBe("pending_official_file");
     }
   });
 
-  it("nenhuma decisao autoriza obra derivada nem o Cinerie Score", () => {
+  it("derivada SO na decisao do Cinerie Score, sob o IMDb, com base do proprietario", () => {
     for (const entry of RATING_ENTRIES) {
       for (const decision of entry.decisions) {
-        expect(decision.derivativeAllowed, entry.label).toBe(false);
-        expect(decision.useCase as string, entry.label).not.toBe("cinerie_score_display");
+        if (decision.useCase === "cinerie_score_display") {
+          expect(entry.license.sourceKey, entry.label).toBe("imdb");
+          expect(decision.derivativeAllowed, entry.label).toBe(true);
+          expect(decision.derivativeBasis, entry.label).toBe("owner_decision");
+        } else {
+          expect(decision.derivativeAllowed, `${entry.label}/${decision.useCase}`).toBe(false);
+        }
       }
     }
   });
@@ -88,8 +104,10 @@ describe("coerencia entre licenca e decisao", () => {
 
 describe("rastreabilidade da mudanca", () => {
   it("as tres fontes da OMDb subiram de versao de politica", () => {
+    // v2 = a autorizacao de marca do proprietario (2026-08-20); a v1 registrou
+    // a troca de fornecedor e a dispensa de linkback.
     for (const source of ["imdb", "rotten_tomatoes", "metacritic"]) {
-      expect(licenseOf(source).policyVersion, source).toContain("2026-08-v1");
+      expect(licenseOf(source).policyVersion, source).toContain("2026-08-v2");
     }
   });
 

@@ -16,7 +16,7 @@
  *
  * Uso (a partir da raiz):
  *   pnpm legal sources review
- *   pnpm legal sources apply --reviewer="Pablo Eduardo — proprietario da Cinerie" --policy-version="cinerie-source-auth/2026-07-v1" --confirm
+ *   pnpm legal sources apply --reviewer="Pablo Eduardo — proprietario da Cinerie" --policy-version="cinerie-source-auth/2026-08-v2" --confirm
  */
 
 import { disconnectPrisma, getPrismaClient, type PrismaClient } from "@screena/db/server";

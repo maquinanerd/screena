@@ -68,6 +68,7 @@ import {
   type AuthorizationEntry,
   type LicenseLogoAsset,
   type SourceRole,
+  type StreamingOriginCredit,
 } from "./authorization-spec.js";
 
 /**
@@ -166,7 +167,7 @@ function creditKeyOf(text: string): string {
  */
 export function publicSourceCredits(
   entries: readonly AuthorizationEntry[] = STATIC_AUTHORIZATION,
-  origins: readonly { readonly attributionText: string }[] = STREAMING_ORIGIN_CREDITS,
+  origins: readonly StreamingOriginCredit[] = STREAMING_ORIGIN_CREDITS,
 ): readonly PublicSourceCredit[] {
   const out: PublicSourceCredit[] = [];
   const seen = new Set<string>();
@@ -217,8 +218,12 @@ export function publicSourceCredits(
     );
   }
   // Origens de streaming nao tem licenca estatica (nascem por provedor
-  // canonico) e portanto nao declaram marca: credito textual, sempre.
-  for (const origin of origins) push(origin.attributionText, "streaming-aggregator", false, null);
+  // canonico); a declaracao de marca delas vive na propria projecao de origem
+  // (desde 2026-08-20 o JustWatch carrega logo por decisao do proprietario — a
+  // atribuicao continua NOMINAL: o logo entra ao lado do texto, nunca no lugar).
+  for (const origin of origins) {
+    push(origin.attributionText, "streaming-aggregator", origin.logoAllowed, origin.logoAsset);
+  }
 
   return out;
 }

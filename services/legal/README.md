@@ -15,8 +15,11 @@ render.
 ## Garantias (provadas por `validate:source-authorization-and-attribution`, 18/18)
 
 - **Nunca promove dado**: não liga `display_allowed` de rating ou oferta.
-- **Nunca libera** logo, citação integral de crítica ou obra derivada.
-- **Nunca cria** decisão de Cinerie Score (permanece `BLOCKED_BY_DECISION`).
+- **Nunca libera** citação integral de crítica. Logo e a derivada do Cinerie
+  Score entram **somente** pela decisão registrada do proprietário (20/08/2026,
+  [`docs/legal/owner-authorization-2026-08-20.md`](../../docs/legal/owner-authorization-2026-08-20.md)),
+  com a base gravada (`owner_decision`) e allowlist nominal em `plan.ts` — fora
+  dela, o apply recusa antes de escrever.
 - **Idempotente**: rodar de novo sem mudança no spec não escreve nada.
 - **Histórico preservado**: supersede a licença-semente conservadora, não apaga.
 
@@ -33,7 +36,7 @@ pnpm legal sources apply
 # Aplica de verdade (exige revisor humano + leva):
 pnpm legal sources apply \
   --reviewer="Pablo Eduardo — proprietario da Cinerie" \
-  --policy-version="cinerie-source-auth/2026-07-v1" \
+  --policy-version="cinerie-source-auth/2026-08-v2" \
   --confirm
 ```
 

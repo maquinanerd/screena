@@ -145,54 +145,84 @@ describe("plano — streaming por provedor real (nunca inventado)", () => {
   });
 });
 
-describe("travas do spec — o que NUNCA pode ser autorizado", () => {
-  it("nenhuma entrada estática libera review_quote ou obra derivada", () => {
+describe("travas do spec — o que a decisao do proprietario (2026-08-20) autorizou, e SO ele", () => {
+  it("review_quote continua proibido em toda entrada; derivada SO na decisao do score", () => {
     for (const e of STATIC_AUTHORIZATION) {
       expect(e.license.reviewQuoteAllowed, e.label).toBe(false);
-      for (const d of e.decisions) expect(d.derivativeAllowed, e.label).toBe(false);
+      for (const d of e.decisions) {
+        if (d.useCase === "cinerie_score_display") {
+          expect(d.derivativeAllowed, e.label).toBe(true);
+          expect(d.derivativeBasis, e.label).toBe("owner_decision");
+        } else {
+          expect(d.derivativeAllowed, `${e.label}/${d.useCase}`).toBe(false);
+          expect(d.derivativeBasis, `${e.label}/${d.useCase}`).toBe(null);
+        }
+      }
     }
   });
 
   /**
-   * LOGO: a asserçao deixou de ser "nenhuma entrada libera" e virou uma
-   * IGUALDADE DE CONJUNTO. Ate 20/08/2026 esta suite exigia `false` em todas —
-   * e com isso afirmava, como se fosse invariante, uma politica que estava em
-   * DESCUMPRIMENTO com os termos da API do TMDB, que EXIGEM o logo.
-   *
-   * A troca por `toEqual` de conjunto e o ponto: "nenhuma" e frouxo na direcao
-   * errada (bloqueia o cumprimento) e frouxo na direcao certa (uma sexta fonte
-   * liberada passaria despercebida se alguem trocasse o loop por um `some`).
-   * Igualdade nomeia exatamente quem pode — nem mais, nem menos.
+   * LOGO: IGUALDADE DE CONJUNTO, nunca "some". A lista nomeia exatamente quem
+   * pode — nem mais, nem menos. Desde 20/08/2026 ela tem DUAS bases: o TMDB
+   * entra pelos proprios termos (que EXIGEM o logo) e as tres fontes de nota
+   * exibiveis entram pela decisao do proprietario
+   * (docs/legal/owner-authorization-2026-08-20.md). Uma setima entrada liberada
+   * por engano reprova aqui.
    */
-  it("logo liberado APENAS para o TMDB, que o exige — conjunto exato", () => {
+  it("logo liberado no conjunto exato: TMDB (termos) + 3 fontes de nota (decisao do dono)", () => {
     const comLogo = STATIC_AUTHORIZATION.filter((e) => e.license.logoAllowed).map(
-      (e) => `${e.license.sourceKey}/${e.license.contentType}`,
+      (e) => `${e.license.sourceKey}/${e.license.contentType}:${e.license.logoBasis}`,
     );
-    expect(comLogo.sort()).toEqual(["tmdb/image", "tmdb/other", "tmdb/video"]);
+    expect(comLogo.sort()).toEqual([
+      "imdb/rating:owner_decision",
+      "metacritic/rating:owner_decision",
+      "rotten_tomatoes/rating:owner_decision",
+      "tmdb/image:source_terms",
+      "tmdb/other:source_terms",
+      "tmdb/video:source_terms",
+    ]);
   });
 
-  it("toda entrada explica POR QUE tem ou nao tem logo — inclusive as que nao tem", () => {
-    // Logo bloqueado sem motivo escrito e indistinguivel de "ninguem olhou".
+  it("fonte com exibicao REVOGADA nao ganha marca (logo de fonte invisivel e afirmacao sem lastro)", () => {
+    for (const source of ["letterboxd", "filmaffinity"]) {
+      const e = STATIC_AUTHORIZATION.find((x) => x.license.sourceKey === source)!;
+      expect(e.license.logoAllowed, source).toBe(false);
+      expect(e.license.logoBasis, source).toBe(null);
+      expect(e.license.logoAsset, source).toBe(null);
+    }
+  });
+
+  it("toda entrada explica o REGIME de marca — inclusive as que nao tem logo", () => {
+    // Regime sem registro escrito e indistinguivel de "ninguem olhou".
     for (const e of STATIC_AUTHORIZATION) {
       expect(e.license.logoRationale.trim().length, e.label).toBeGreaterThan(40);
     }
   });
 
-  it("marca autorizada declara o ARQUIVO oficial; marca bloqueada nao declara nada", () => {
-    // As duas direçoes: `logoAllowed` sem arquivo deixaria a pagina livre para
+  it("marca autorizada declara o ARQUIVO oficial e a BASE; bloqueada nao declara nada", () => {
+    // As tres direçoes: `logoAllowed` sem arquivo deixaria a pagina livre para
     // desenhar uma aproximaçao; arquivo sem `logoAllowed` seria marca declarada
-    // que ninguem pode usar.
+    // que ninguem pode usar; base sem marca (ou marca sem base) faria o
+    // registro afirmar procedencia que nao existe.
     for (const e of STATIC_AUTHORIZATION) {
       expect(e.license.logoAsset !== null, e.label).toBe(e.license.logoAllowed);
+      expect(e.license.logoBasis !== null, e.label).toBe(e.license.logoAllowed);
     }
   });
 
-  it("nenhuma decisão é cinerie_score_display (o score permanece bloqueado)", () => {
-    for (const e of STATIC_AUTHORIZATION) {
-      for (const d of e.decisions) {
-        expect(d.useCase).not.toBe("cinerie_score_display");
-      }
-    }
+  it("ha EXATAMENTE UMA decisao cinerie_score_display, sob a licenca do IMDb (fonte-ancora)", () => {
+    const portadores = STATIC_AUTHORIZATION.filter((e) =>
+      e.decisions.some((d) => d.useCase === "cinerie_score_display"),
+    );
+    expect(portadores.map((e) => e.license.sourceKey)).toEqual(["imdb"]);
+    const decisao = portadores[0]!.decisions.filter(
+      (d) => d.useCase === "cinerie_score_display",
+    );
+    expect(decisao).toHaveLength(1);
+    expect(decisao[0]!.stage).toBe("approved_for_display");
+    expect(decisao[0]!.displayAllowed).toBe(true);
+    expect(decisao[0]!.derivativeAllowed).toBe(true);
+    expect(decisao[0]!.derivativeBasis).toBe("owner_decision");
   });
 
   it("assertNoBlockedGrants passa no plano estático", () => {
@@ -200,7 +230,7 @@ describe("travas do spec — o que NUNCA pode ser autorizado", () => {
     expect(() => assertNoBlockedGrants(plan)).not.toThrow();
   });
 
-  it("assertNoBlockedGrants REJEITA um plano com derivative_allowed", () => {
+  it("assertNoBlockedGrants REJEITA derivative_allowed fora da decisao do score", () => {
     const poisoned: AuthorizationEntry = {
       label: "veneno",
       role: "editorial-rating-source",
@@ -212,8 +242,8 @@ describe("travas do spec — o que NUNCA pode ser autorizado", () => {
           stage: "approved_for_internal_use",
           displayAllowed: false,
           storageAllowed: true,
-          // @ts-expect-error — forçando o estado proibido para provar a trava
           derivativeAllowed: true,
+          derivativeBasis: null,
           attributionRequired: true,
           linkbackRequired: true,
           policyVersion: "x",
@@ -222,6 +252,43 @@ describe("travas do spec — o que NUNCA pode ser autorizado", () => {
     };
     const plan = planAuthorization([poisoned], [], []);
     expect(() => assertNoBlockedGrants(plan)).toThrow(/derivative/);
+  });
+
+  it("assertNoBlockedGrants REJEITA decisao de score SEM a base do proprietario", () => {
+    const imdb = STATIC_AUTHORIZATION.find((e) => e.license.sourceKey === "imdb")!;
+    const semBase: AuthorizationEntry = {
+      ...imdb,
+      label: "score sem base",
+      decisions: imdb.decisions.map((d) =>
+        d.useCase === "cinerie_score_display" ? { ...d, derivativeBasis: null } : d,
+      ),
+    };
+    const plan = planAuthorization([semBase], [], []);
+    expect(() => assertNoBlockedGrants(plan)).toThrow(/owner_decision/);
+  });
+
+  it("assertNoBlockedGrants REJEITA logo fora das allowlists nominais", () => {
+    const imdb = STATIC_AUTHORIZATION.find((e) => e.license.sourceKey === "imdb")!;
+    const foraDaLista: AuthorizationEntry = {
+      ...imdb,
+      label: "fonte fora da lista",
+      license: { ...imdb.license, sourceKey: "fonte-nova-sem-decisao" },
+      decisions: [],
+    };
+    const plan = planAuthorization([foraDaLista], [], []);
+    expect(() => assertNoBlockedGrants(plan)).toThrow(/allowlists nominais/);
+  });
+
+  it("assertNoBlockedGrants REJEITA base que nao bate com a allowlist (mentira de procedencia)", () => {
+    const imdb = STATIC_AUTHORIZATION.find((e) => e.license.sourceKey === "imdb")!;
+    const baseErrada: AuthorizationEntry = {
+      ...imdb,
+      label: "imdb com base de termos",
+      license: { ...imdb.license, logoBasis: "source_terms" },
+      decisions: [],
+    };
+    const plan = planAuthorization([baseErrada], [], []);
+    expect(() => assertNoBlockedGrants(plan)).toThrow(/a base gravada tem que dizer a verdade/);
   });
 });
 
@@ -267,6 +334,7 @@ describe("chave de agrupamento — codificacao injetiva (nao por separador)", ()
       licenseStatus: "third_party",
       displayAllowed: false,
       logoAllowed: false,
+      logoBasis: null,
       logoRationale: "fixture de teste: sem marca declarada",
       logoAsset: null,
       scoreAllowed: false,

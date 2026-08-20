@@ -239,60 +239,141 @@ export function isPlanClean(plan: AuthorizationPlan): boolean {
 }
 
 /**
- * As UNICAS fontes cujo logo pode ser autorizado, por chave.
+ * Fontes cujo logo entra pelos TERMOS DA PROPRIA FONTE.
  *
- * Hoje so o TMDB, e nao por escolha editorial: os termos da API do TMDB
- * **exigem** o logo ("You must use the TMDB logo to identify Your use of TMDB,
- * the TMDB APIs, or TMDB Content"). IMDb exige autorizacao por escrito que nao
- * temos; Rotten Tomatoes exige aprovacao comercial E vincula o icone a faixa da
- * nota; a OMDb nao pode sublicenciar marca de terceiro; as plataformas de
- * streaming sao 24 titulares distintos. Os motivos por fonte estao escritos em
- * `logoRationale`, no proprio spec.
+ * So o TMDB: os termos da API **exigem** o logo ("You must use the TMDB logo to
+ * identify Your use of TMDB, the TMDB APIs, or TMDB Content").
  */
-const LOGO_ALLOWED_SOURCE_KEYS: ReadonlySet<string> = new Set(["tmdb"]);
+const LOGO_BY_SOURCE_TERMS: ReadonlySet<string> = new Set(["tmdb"]);
 
 /**
- * Guarda de segurança PURA: o plano NUNCA pode conter uma decisão que autorize
- * o Cinerie Score ou uma obra derivada, nem liberar a marca gráfica de uma fonte
- * fora da allowlist. Chamada antes de qualquer apply — se disparar, é bug no
- * spec, não estado a corrigir.
+ * Fontes cujo logo entra por DECISAO DO PROPRIETARIO (2026-08-20).
+ *
+ * Nominal, chave a chave — NUNCA derivada do spec: uma guarda que se
+ * auto-autoriza a partir do dado que ela guarda nao guarda nada. A lista e a
+ * transcricao literal da decisao (docs/legal/owner-authorization-2026-08-20.md):
+ * as tres fontes de nota exibiveis + os provedores de streaming registrados
+ * (services/streaming/src/provider-registry.ts, leva BR 2026-08-19 inclusa).
+ * Provedor novo registrado depois da decisao exige ampliar ESTA lista, com
+ * revisao humana — o carimbo em bloco e exatamente o que esta guarda impede.
+ */
+const LOGO_BY_OWNER_DECISION: ReadonlySet<string> = new Set([
+  // Fontes de nota exibiveis
+  "imdb",
+  "rotten_tomatoes",
+  "metacritic",
+  // Provedores de streaming registrados (registro canonico, 2026-08-20)
+  "netflix",
+  "prime-video",
+  "amazon-video",
+  "max",
+  "apple-tv",
+  "pluto-tv",
+  "google-play",
+  "disney-plus",
+  "globoplay",
+  "hbo-max-amazon-channel",
+  "claro-video",
+  "telecine-amazon-channel",
+  "paramount-plus-amazon-channel",
+  "claro-tv-plus",
+  "paramount-plus",
+  "paramount-plus-premium",
+  "universal-plus-amazon-channel",
+  "oldflix",
+  "mercado-play",
+  "sony-one-amazon-channel",
+  "paramount-plus-apple-tv-channel",
+  "looke",
+  "netmovies",
+  "lionsgate-plus-amazon-channels",
+  "plex",
+  "belas-artes-a-la-carte",
+  "looke-amazon-channel",
+  "mgm-plus-apple-tv-channel",
+  "filmelier-plus-amazon-channel",
+  "gospel-play",
+  "mgm-plus-amazon-channel",
+  "arte-amazon-channel",
+  "reserva-imovision-amazon-channel",
+]);
+
+/**
+ * Guarda de segurança PURA, chamada antes de qualquer apply — se disparar, é
+ * bug no spec, não estado a corrigir. O que ela garante desde 2026-08-20:
+ *
+ *  - `cinerie_score_display` SO passa na forma exata que a decisão do
+ *    proprietário autorizou (derivada com base `owner_decision`, display
+ *    aprovado). Qualquer outra decisão com `derivative_allowed` continua
+ *    derrubando o apply — a autorização é do Score, não de "derivadas".
+ *  - Logo SO passa para fonte nas duas allowlists NOMINAIS (termos da fonte,
+ *    ou decisão do proprietário), com a base coerente com a lista e com o
+ *    arquivo oficial declarado.
+ *  - Citação integral de crítica continua nunca passando.
  */
 export function assertNoBlockedGrants(plan: AuthorizationPlan): void {
   for (const entry of plan.entries) {
     for (const d of entry.decisions) {
-      if ((d.target.useCase as string) === "cinerie_score_display") {
-        throw new Error(`plano invalido: decisao cinerie_score_display em "${entry.label}" (o score e bloqueado)`);
-      }
-      if (d.target.derivativeAllowed) {
-        throw new Error(`plano invalido: derivative_allowed em "${entry.label}" (obra derivada nao autorizada)`);
+      const isScoreDecision = (d.target.useCase as string) === "cinerie_score_display";
+      if (isScoreDecision) {
+        // A forma autorizada pelo proprietario (2026-08-20), e SO ela: derivada
+        // com base owner_decision, aprovada para exibicao. Uma decisao de score
+        // sem base registrada afirmaria que "a fonte permitiu" — mentira que o
+        // registro existe para impedir.
+        if (!d.target.derivativeAllowed || d.target.derivativeBasis !== "owner_decision") {
+          throw new Error(
+            `plano invalido: decisao cinerie_score_display em "${entry.label}" sem base registrada ` +
+              "(exige derivative_allowed com derivativeBasis owner_decision — decisao do proprietario, 2026-08-20)",
+          );
+        }
+        if (d.target.stage !== "approved_for_display" || !d.target.displayAllowed) {
+          throw new Error(
+            `plano invalido: decisao cinerie_score_display em "${entry.label}" fora do estagio aprovado`,
+          );
+        }
+      } else if (d.target.derivativeAllowed) {
+        throw new Error(
+          `plano invalido: derivative_allowed em "${entry.label}" (a decisao do proprietario de ` +
+            "2026-08-20 autoriza a derivada do Cinerie Score, nao derivadas em geral)",
+        );
       }
     }
     if (entry.license.target.reviewQuoteAllowed) {
       throw new Error(`plano invalido: review_quote em "${entry.label}" (nao autorizado)`);
     }
-    // LOGO: a guarda deixou de ser "nenhum" e virou uma ALLOWLIST NOMINAL.
-    //
-    // Ate 20/08/2026 qualquer `logoAllowed` derrubava o apply. A leitura dos
-    // termos mostrou que o TMDB EXIGE o logo dele — a guarda estava impedindo o
-    // CUMPRIMENTO. Ela nao foi removida: ficou mais estreita. Liberar o logo de
-    // qualquer fonte que nao seja o TMDB continua derrubando o apply aqui,
-    // ANTES de escrever em `source_licenses`.
-    //
-    // Deliberadamente por `sourceKey`, nao por uma flag no proprio spec: uma
-    // guarda que se auto-autoriza a partir do dado que ela guarda nao guarda
-    // nada. Ampliar a lista exige editar ESTA linha, com revisao humana.
-    if (entry.license.target.logoAllowed && !LOGO_ALLOWED_SOURCE_KEYS.has(entry.license.target.sourceKey)) {
+    // LOGO: duas allowlists NOMINAIS, uma por base. Fora delas, o apply cai
+    // ANTES de escrever em `source_licenses`. Ampliar exige editar ESTA lista,
+    // com revisao humana — nunca uma flag no proprio spec.
+    const license = entry.license.target;
+    if (license.logoAllowed) {
+      const expectedBasis = LOGO_BY_SOURCE_TERMS.has(license.sourceKey)
+        ? "source_terms"
+        : LOGO_BY_OWNER_DECISION.has(license.sourceKey)
+          ? "owner_decision"
+          : null;
+      if (expectedBasis === null) {
+        throw new Error(
+          `plano invalido: logo_allowed em "${entry.label}" (fonte "${license.sourceKey}" fora ` +
+            "das allowlists nominais de marca — termos da fonte ou decisao do proprietario)",
+        );
+      }
+      if (license.logoBasis !== expectedBasis) {
+        throw new Error(
+          `plano invalido: logo_allowed em "${entry.label}" com base "${String(license.logoBasis)}" ` +
+            `(a allowlist nominal registra "${expectedBasis}" para "${license.sourceKey}" — a base gravada tem que dizer a verdade)`,
+        );
+      }
+      // O logo so pode ir ao ar a partir do arquivo declarado pela licenca. Uma
+      // licenca que autoriza a marca sem dizer QUAL arquivo deixaria a pagina
+      // livre para desenhar uma aproximacao — o defeito que este campo evita.
+      if (license.logoAsset === null) {
+        throw new Error(
+          `plano invalido: logo_allowed sem logoAsset em "${entry.label}" (marca autorizada precisa declarar o arquivo oficial)`,
+        );
+      }
+    } else if (license.logoBasis !== null) {
       throw new Error(
-        `plano invalido: logo_allowed em "${entry.label}" (fonte "${entry.license.target.sourceKey}" nao esta na allowlist de marca). ` +
-          "Autorizacao do dono nao cria direito que a fonte nao deu: so entra aqui fonte cujos termos EXIJAM ou concedam o logo por escrito.",
-      );
-    }
-    // O logo so pode ir ao ar a partir do arquivo OFICIAL do detentor. Uma
-    // licenca que autoriza a marca sem dizer QUAL arquivo deixaria a pagina
-    // livre para desenhar uma aproximacao — o defeito que este campo evita.
-    if (entry.license.target.logoAllowed && entry.license.target.logoAsset === null) {
-      throw new Error(
-        `plano invalido: logo_allowed sem logoAsset em "${entry.label}" (marca autorizada precisa declarar o arquivo oficial)`,
+        `plano invalido: logoBasis sem logo_allowed em "${entry.label}" (base declarada para marca nao autorizada)`,
       );
     }
   }

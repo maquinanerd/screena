@@ -172,8 +172,11 @@ FLAGS
 
 GOVERNANCA
   - Nunca promove dado (nao liga display_allowed de rating/oferta).
-  - Nunca libera logo, citacao integral de critica ou obra derivada.
-  - Nunca cria decisao de Cinerie Score (permanece BLOCKED_BY_DECISION).
+  - Nunca libera citacao integral de critica.
+  - Logo e a derivada do Cinerie Score entram SOMENTE pela decisao registrada
+    do proprietario (2026-08-20, docs/legal/owner-authorization-2026-08-20.md),
+    com a base gravada (owner_decision) e allowlist nominal em plan.ts — fora
+    dela o apply recusa antes de escrever.
   - Idempotente: rodar de novo sem mudanca no spec nao escreve nada.
   - Historico preservado (supersedes_id); nenhuma linha antiga e apagada.
 `;

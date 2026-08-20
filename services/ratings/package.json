@@ -15,11 +15,13 @@
     "ratings": "tsx bin/ratings.ts",
     "ratings:omdb": "tsx bin/sync-omdb-ratings.ts",
     "awards:promote": "tsx bin/promote-omdb-awards.ts",
+    "score:compute": "tsx bin/compute-cinerie-score.ts",
     "validate:omdb": "tsx scripts/validate-omdb-ratings-real-postgres.ts",
     "validate:awards": "tsx scripts/validate-omdb-awards-real-postgres.ts",
     "validate:product": "tsx scripts/validate-external-intelligence-product.ts"
   },
   "dependencies": {
+    "@screena/cinerie-score": "workspace:*",
     "@screena/config": "workspace:*",
     "@screena/db": "workspace:*",
     "@screena/film-show-ratings-client": "workspace:*",
@@ -30,7 +32,6 @@
   },
   "devDependencies": {
     "@prisma/client": "^6.1.0",
-    "@screena/cinerie-score": "workspace:*",
     "embedded-postgres": "16.14.0-beta.17",
     "prisma": "^6.1.0",
     "tsx": "^4.19.0"

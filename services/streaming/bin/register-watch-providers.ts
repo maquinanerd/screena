@@ -180,7 +180,7 @@ async function main(): Promise<void> {
       `\n[provider-registry] aplicado: ${outcome.providersCreated} provedor(es) criado(s), ${outcome.providersRenamed} renomeado(s), ${outcome.aliasesCreated} alias(es) criado(s).`,
     )
     console.log(
-      '[provider-registry] PROXIMO PASSO: rode `pnpm legal sources apply --reviewer=... --policy-version="cinerie-source-auth/2026-07-v1" --confirm` — e ele que gera a licenca + decisao watch_offer_display por provedor registrado. Sem esse passo, oferta continua sem display.',
+      '[provider-registry] PROXIMO PASSO: rode `pnpm legal sources apply --reviewer=... --policy-version="cinerie-source-auth/2026-08-v2" --confirm` — e ele que gera a licenca + decisao watch_offer_display por provedor registrado. Sem esse passo, oferta continua sem display.',
     )
     console.log(
       '[provider-registry] Para descobrir chaves que faltam (Disney+, Globoplay...): rode a colheita `bin/reprocess-watch-providers.ts` da ingestao e estenda o registro numa PR com a saida real.',

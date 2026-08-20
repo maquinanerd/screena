@@ -10,19 +10,24 @@
  * Regras que atravessam o arquivo inteiro (nenhuma é negociável aqui):
  *  - `reviewQuoteAllowed` é SEMPRE false. Liberar citação integral de crítica
  *    exige autorização específica que não existe.
- *  - `logoAllowed` NÃO é mais uniforme, e a mudança é de FATO, não de política
- *    (20/08/2026). A leitura dos termos fonte por fonte mostrou que o TMDB
- *    **exige** o logo dele ("You must use the TMDB logo to identify Your use of
- *    TMDB, the TMDB APIs, or TMDB Content" — termos da API, seção 3), enquanto
- *    IMDb, Rotten Tomatoes, Metacritic, OMDb e o agregador de streaming não
- *    concedem nada. Ou seja: o `false` global estava **descumprindo** uma fonte
- *    e sendo zeloso com cinco. Cada entrada agora carrega `logoRationale`
- *    obrigatório — inclusive, e principalmente, as que continuam `false`.
+ *  - `logoAllowed` carrega BASE por entrada (`logoBasis`), porque existem duas
+ *    origens de permissão e o registro não pode confundi-las:
+ *      `source_terms`   — os termos da própria fonte exigem/concedem a marca
+ *                         (caso TMDB: "You must use the TMDB logo to identify
+ *                         Your use of TMDB, the TMDB APIs, or TMDB Content").
+ *      `owner_decision` — decisão do PROPRIETÁRIO (Pablo Eduardo, 20/08/2026,
+ *                         ver `OWNER_DECISION_2026_08_20`), que assumiu o risco
+ *                         por escrito. O registro grava a base como decisão do
+ *                         dono — nunca como "a fonte permitiu".
+ *    Cada entrada carrega `logoRationale` obrigatório — o que se SABE do regime
+ *    de marca daquele titular (pesquisa de 20/08/2026), que decide QUAL arquivo
+ *    usar e em que placement, nunca mais SE exibe.
  *  - O crédito TEXTUAL nunca sai. Os termos do TMDB pedem os DOIS (logo **e**
- *    disclaimer); logo jamais substitui atribuição.
- *  - `derivativeAllowed` das decisões é SEMPRE false. O Cinerie Score é obra
- *    derivada e permanece BLOCKED_BY_DECISION — este spec NUNCA emite uma
- *    decisão `cinerie_score_display`.
+ *    disclaimer); logo jamais substitui atribuição — em nenhuma fonte.
+ *  - `derivativeAllowed` só é true na decisão `cinerie_score_display`, com
+ *    `derivativeBasis: "owner_decision"` — a autorização é do proprietário
+ *    (20/08/2026), registrada como tal. Qualquer outra decisão com derivada é
+ *    inválida e derruba o apply (`assertNoBlockedGrants`).
  *  - Nada aqui promove dado: o registry mexe só em licenças e decisões, nunca
  *    liga `display_allowed` de um rating ou de uma oferta.
  *  - `license_status` reflete a origem REAL: `official` só para a API/fonte
@@ -31,7 +36,7 @@
  *    `official`.
  */
 
-import type { DataUsageCase } from "@screena/config";
+import { CINERIE_SCORE_DECISION_POLICY, type DataUsageCase } from "@screena/config";
 
 /** Território de publicação do produto (pt-BR/Brasil). */
 export const CINERIE_TERRITORY = "BR";
@@ -44,7 +49,62 @@ export const AUTHORIZATION_REASON =
   "Autorizacao de reproducao, armazenamento e exibicao para finalidade informativa, editorial e jornalistica, condicionada a creditos, linkback e disclaimers publicos.";
 
 /** Rótulo da leva de autorização (o `--policy-version` do apply). */
-export const AUTHORIZATION_BATCH = "cinerie-source-auth/2026-07-v1";
+export const AUTHORIZATION_BATCH = "cinerie-source-auth/2026-08-v2";
+
+/**
+ * ============ A DECISÃO DO PROPRIETÁRIO — 20/08/2026 ============
+ *
+ * QUEM DECIDIU: Pablo Eduardo, proprietário da Cinerie, por escrito, em
+ * 20/08/2026:
+ *
+ *   "É pra ter tudo que está pendente, incluindo as logos, é referência,
+ *    jornalismo. Os trailers, vídeos, a mesma coisa. Estou autorizando."
+ *
+ *   "Eu quero, faça, não me pergunte mais. Eu assumo todos os riscos. Acabou
+ *    suas consultas. O que eu pedir, faça."
+ *
+ * O QUE FOI DECIDIDO:
+ *  1. `derivative_allowed = true` para o Cinerie Score (fontes imdb, tmdb,
+ *     rotten_tomatoes, metacritic) — a decisão `cinerie_score_display` passa a
+ *     ser emitida por este spec, sob a licença do IMDb (a fonte de maior
+ *     cobertura), com `derivativeBasis: "owner_decision"`.
+ *  2. `logo_allowed = true` em todas as fontes de nota exibíveis (imdb,
+ *     rotten_tomatoes, metacritic), nos provedores de streaming registrados e
+ *     no JustWatch — com `logoBasis: "owner_decision"`.
+ *
+ * DUAS RECUSAS ANTERIORES FORAM REVOGADAS por esta decisão: a recusa de emitir
+ * `derivative_allowed` (registrada em
+ * docs/legal/cinerie-score-derivative-authorization.md) e o carimbo em bloco de
+ * `logo_allowed = false` nos provedores de streaming. O registro diz a VERDADE
+ * sobre quem autorizou: a base é a decisão do proprietário, não os termos das
+ * fontes — e é exatamente por isso que `logoBasis`/`derivativeBasis` existem.
+ *
+ * O QUE NÃO MUDOU (técnica, não ressalva): imdb != rotten_tomatoes; crédito
+ * textual permanece ao lado do logo; nenhum logo hardcoded em página (só via
+ * licença + arquivo declarado); zero API externa no render.
+ *
+ * Documento canônico: docs/legal/owner-authorization-2026-08-20.md.
+ * ================================================================
+ */
+export const OWNER_DECISION_2026_08_20 = {
+  decidedBy: DECIDED_BY,
+  decidedOn: "2026-08-20",
+  quote:
+    "E pra ter tudo que esta pendente, incluindo as logos, e referencia, jornalismo. " +
+    "Os trailers, videos, a mesma coisa. Estou autorizando. [...] Eu quero, faca, nao " +
+    "me pergunte mais. Eu assumo todos os riscos.",
+} as const;
+
+/** Base de uma permissão de marca/derivada: termos da fonte, ou decisão do dono. */
+export type AuthorizationBasis = "source_terms" | "owner_decision";
+
+/**
+ * Nota curta gravada em `notes`/`reason` de toda linha cuja permissão nasce da
+ * decisão do proprietário. É o registro dizendo DE ONDE veio a permissão.
+ */
+export const OWNER_DECISION_NOTE =
+  "BASE DA PERMISSAO: decisao do proprietario (Pablo Eduardo, 2026-08-20) — nao os termos " +
+  "da fonte. Registro canonico em docs/legal/owner-authorization-2026-08-20.md.";
 
 /** Papéis possíveis de uma fonte (nunca colapsam — invariante 2). */
 export type SourceRole =
@@ -129,12 +189,23 @@ export interface LicenseTarget {
    */
   readonly logoAllowed: boolean;
   /**
-   * POR QUE esta fonte pode ou nao exibir logo. Obrigatorio, sempre — inclusive
-   * (principalmente) quando a resposta e `false`.
+   * DE ONDE vem a permissao de marca, quando `logoAllowed`. `null` quando nao.
    *
-   * Existe porque "logo bloqueado" sem motivo escrito e indistinguivel de
-   * "ninguem olhou". Foi assim que o credito de "Movie of the Night" acabou em
-   * dado da TMDB: uma regra global aplicada a fontes de regime diferente.
+   * `source_terms` = os termos da fonte exigem/concedem (caso TMDB).
+   * `owner_decision` = decisao do proprietario (2026-08-20), registrada como
+   * tal — o registro nunca afirma "a fonte permitiu" quando quem permitiu foi
+   * o dono. Ver `OWNER_DECISION_2026_08_20`.
+   */
+  readonly logoBasis: AuthorizationBasis | null;
+  /**
+   * O QUE SE SABE do regime de marca deste titular. Obrigatorio, sempre.
+   *
+   * Desde 20/08/2026 este campo nao decide mais SE o logo entra (isso e
+   * `logoAllowed` + `logoBasis`): ele registra a pesquisa por titular — pagina
+   * oficial de marca, condicoes de placement, qual arquivo usar. Existe porque
+   * regime sem registro escrito e indistinguivel de "ninguem olhou". Foi assim
+   * que o credito de "Movie of the Night" acabou em dado da TMDB: uma regra
+   * global aplicada a fontes de regime diferente.
    */
   readonly logoRationale: string;
   /**
@@ -172,14 +243,20 @@ export interface LicenseTarget {
 
 /** Alvo de uma decisão de uso (`data_usage_decisions`). */
 export interface DecisionTarget {
-  /** NUNCA 'cinerie_score_display' (o score é obra derivada bloqueada). */
-  readonly useCase: Exclude<DataUsageCase, "cinerie_score_display">;
+  readonly useCase: DataUsageCase;
   readonly territory: string | null;
   readonly stage: "approved_for_display" | "approved_for_internal_use";
   readonly displayAllowed: boolean;
   readonly storageAllowed: boolean;
-  /** SEMPRE false (obra derivada não autorizada). */
-  readonly derivativeAllowed: false;
+  /**
+   * `true` SOMENTE na decisão `cinerie_score_display`, e sempre acompanhado de
+   * `derivativeBasis: "owner_decision"` — o Cinerie Score é obra derivada e a
+   * autorização é do proprietário (2026-08-20). Qualquer outra combinação
+   * derruba o apply em `assertNoBlockedGrants`.
+   */
+  readonly derivativeAllowed: boolean;
+  /** Base da derivada quando `derivativeAllowed`; `null` quando não. */
+  readonly derivativeBasis: AuthorizationBasis | null;
   readonly attributionRequired: true;
   /**
    * Espelha `LicenseTarget.requiresLinkback` da licenca-mae. O gate de exibicao
@@ -217,49 +294,93 @@ export const TMDB_LOGO_ASSET: LicenseLogoAsset = {
   // Subordinado a marca do site, como os termos exigem: o wordmark da Cinerie
   // no rodape tem 28px; 18px mantem o logo do TMDB visivelmente menor.
   displayHeightPx: 18,
-  status: "pending_official_file",
+  // `present` desde 2026-08-20: o arquivo em `path` e o "Primary long (blue)"
+  // baixado da pagina oficial de logos do TMDB (officialSourceUrl), byte a
+  // byte. Trocar o arquivo exige rebaixar para pending ate o novo oficial
+  // entrar.
+  status: "present",
 };
 
 /**
- * Por que o logo de CADA fonte de nota continua bloqueado.
+ * O REGIME DE MARCA de cada fonte de nota (pesquisa de 20/08/2026).
  *
- * Uma entrada por fonte, porque os regimes sao diferentes. Um texto unico
- * ("logos bloqueados") esconderia que o IMDb exige autorizacao POR ESCRITO
- * enquanto o Rotten Tomatoes exige aprovacao comercial E vincula o logo a FAIXA
- * DA NOTA — duas barreiras que nao se destravam do mesmo jeito.
+ * Uma entrada por fonte, porque os regimes sao diferentes. Desde 20/08/2026 o
+ * texto nao decide mais SE o logo entra — a decisao e do proprietario
+ * (`OWNER_DECISION_2026_08_20`). O texto registra o que cada titular publica:
+ * qual arquivo oficial existe, onde, e com que regras de placement — e o que
+ * ainda falta para o arquivo entrar no repositorio.
  */
 const LOGO_RATIONALE_BY_RATING_SOURCE: Readonly<Record<string, string>> = {
   imdb:
-    "Sem base. As diretrizes de marca do IMDb exigem autorizacao POR ESCRITO antes de " +
-    "qualquer uso do logo (pedido via trademarks@amazon.com, com mockup do uso pretendido). " +
-    "Nao temos essa autorizacao. Alem disso o dado chega pela OMDb, que nao pode " +
-    "sublicenciar marca de terceiro. Credito textual: \"Nota fornecida por IMDb\".",
+    "Logo por decisao do proprietario (2026-08-20). Regime do titular: o IMDb publica um " +
+    "Design Toolkit em brand.imdb.com/imdb (logos, tipografia, cores) e as diretrizes pedem " +
+    "o statement \"IMDb, IMDb.COM, and the IMDb logo are trademarks of IMDb.com, Inc. or its " +
+    "affiliates\" junto ao uso, logo isolado e com clear space; usos fora das guidelines " +
+    "passam por trademarks@amazon.com. Arquivo pendente no repositorio " +
+    "(pending_official_file); ate ele entrar, a coluna usa a palavra-marca na mesma caixa. " +
+    "Credito textual permanece: \"Nota fornecida por IMDb\".",
   rotten_tomatoes:
-    "Sem base, e por DUAS barreiras independentes. (1) O uso de marca/logo exige aprovacao " +
-    "previa pelo Business Proposal Form, que libera os assets — nao temos. (2) Mesmo com " +
-    "aprovacao, o logo do Rotten Tomatoes e VINCULADO A FAIXA DA NOTA: Fresh/Hot Popcorn so " +
-    "com score >= 60%, Rotten Splat/Stale Popcorn so com <= 59%, sempre a esquerda do numero " +
-    "e sem alteracao. Exibir o icone errado para a faixa e pior que nao exibir. " +
-    "Tomatometer e Popcornmeter pertencem SO ao Rotten Tomatoes (invariante 1).",
+    "Logo por decisao do proprietario (2026-08-20). Regime do titular: os assets oficiais " +
+    "so sao entregues apos aprovacao pelo Business Proposal Form " +
+    "(rottentomatoes.com/help_desk/licensing), e o ICONE E VINCULADO A FAIXA DA NOTA — " +
+    "Fresh/Hot Popcorn >= 60%, Rotten Splat/Stale Popcorn <= 59%, Certified Fresh >= 75%, " +
+    "sempre a esquerda do numero e sem alteracao. PLACEMENT OBRIGATORIO quando o arquivo " +
+    "entrar: o asset escolhido tem que respeitar a faixa da nota exibida; icone errado para " +
+    "a faixa e pior que nenhum. Ate o arquivo entrar (pending_official_file), palavra-marca " +
+    "na mesma caixa. Tomatometer e Popcornmeter pertencem SO ao Rotten Tomatoes (inv. 1).",
   metacritic:
-    "Sem base HOJE. O Metacritic e a unica das cinco cujas diretrizes preveem exibir o " +
-    "Metascore com o logo e o wordmark em site de terceiro — mas as diretrizes citadas nao " +
-    "sao publicas o bastante para derivar o regime completo (quais arquivos, que autorizacao " +
-    "previa, que placement), e nao ha arquivo oficial obtido. Fica `false` ate a diretriz " +
-    "escrita estar em maos. E a fonte com maior chance de virar `true` numa proxima revisao.",
+    "Logo por decisao do proprietario (2026-08-20). Regime do titular: nao ha brand kit " +
+    "publico; as diretrizes de dados (Fabric/Origin, distribuidor oficial) preveem " +
+    "\"Metascore with the Metacritic logo, wordmark and review count\" em site de terceiro, " +
+    "com assets entregues na parceria licenciada. Grafia: so o M maiusculo. Arquivo pendente " +
+    "(pending_official_file); ate entrar, palavra-marca na mesma caixa.",
   letterboxd:
-    "Sem base, e sem dado: o Letterboxd nao esta ativo como fonte no produto. Nao ha " +
-    "avaliacao de marca porque nao ha exibicao. Logo bloqueado por ausencia de licenca, " +
-    "nao por analise concluida.",
+    "Sem exibicao, logo sem marca: a EXIBICAO da fonte foi revogada em 2026-08-13 " +
+    "(DISPLAY_REVOKED_SOURCES) e um logo para uma fonte que nao aparece seria afirmacao " +
+    "sem lastro. A decisao do proprietario de 2026-08-20 cobre as fontes EXIBIVEIS; esta " +
+    "nao e uma delas ate nova decisao de exibicao.",
   filmaffinity:
-    "Sem base, e sem dado: o FilmAffinity nao esta ativo como fonte no produto. Mesma " +
-    "situacao do Letterboxd — bloqueado por ausencia de licenca, nao por analise concluida.",
+    "Sem exibicao, logo sem marca: mesma situacao do Letterboxd — exibicao revogada em " +
+    "2026-08-13; logo de fonte invisivel seria afirmacao sem lastro. Fora do escopo da " +
+    "decisao de 2026-08-20 ate nova decisao de exibicao.",
 };
 
 /** Fallback FAIL-CLOSED: fonte de nota nova nasce sem logo e com o motivo dito. */
 const LOGO_RATIONALE_RATING_DEFAULT =
   "Sem base: fonte de nota sem regime de marca avaliado. Bloqueado por padrao (fail-closed) " +
   "ate alguem ler os termos dela e escrever o motivo aqui.";
+
+/**
+ * O arquivo oficial da marca de cada fonte de nota EXIBIVEL, por fonte.
+ *
+ * Todos `pending_official_file`: a licenca ja autoriza (decisao do dono), o
+ * ARQUIVO ainda nao esta no repositorio. `officialSourceUrl` e onde o titular
+ * publica/entrega o oficial (pesquisa de 2026-08-20). Quando o arquivo entrar
+ * em `path` e o status virar `present`, o logo sobe sem tocar em componente.
+ */
+const RATING_LOGO_ASSETS: Readonly<Record<string, LicenseLogoAsset>> = {
+  imdb: {
+    path: "/brand/sources/imdb.svg",
+    officialSourceUrl: "https://brand.imdb.com/imdb",
+    alt: "IMDb",
+    displayHeightPx: 18,
+    status: "pending_official_file",
+  },
+  rotten_tomatoes: {
+    path: "/brand/sources/rotten-tomatoes.svg",
+    officialSourceUrl: "https://www.rottentomatoes.com/help_desk/licensing",
+    alt: "Rotten Tomatoes",
+    displayHeightPx: 18,
+    status: "pending_official_file",
+  },
+  metacritic: {
+    path: "/brand/sources/metacritic.svg",
+    officialSourceUrl: "https://knowledgebase.fabricdata.com/origin/apis-all/metacritic-api-docs",
+    alt: "Metacritic",
+    displayHeightPx: 18,
+    status: "pending_official_file",
+  },
+};
 
 const RATING_ATTRIBUTION: Record<string, string> = {
   imdb: "Nota fornecida por IMDb",
@@ -270,13 +391,13 @@ const RATING_ATTRIBUTION: Record<string, string> = {
 };
 
 const RATING_POLICY: Record<string, string> = {
-  // As três fontes servidas pela OMDb sobem para `2026-08-v1`: a mudança de
-  // fornecedor (e, para RT/Metacritic, a dispensa de linkback) é material e
-  // precisa gerar uma versão nova de licença, com histórico — nunca um UPDATE
-  // silencioso sobre a versão de julho.
-  imdb: "cinerie-source-auth/imdb/2026-08-v1",
-  rotten_tomatoes: "cinerie-source-auth/rotten-tomatoes/2026-08-v1",
-  metacritic: "cinerie-source-auth/metacritic/2026-08-v1",
+  // As três fontes servidas pela OMDb sobem para `2026-08-v2`: a autorização de
+  // marca por decisão do proprietário (20/08/2026) é mudança material e gera
+  // versão nova de licença, com histórico — nunca um UPDATE silencioso sobre a
+  // v1 de agosto (que registrou a troca de fornecedor e a dispensa de linkback).
+  imdb: "cinerie-source-auth/imdb/2026-08-v2",
+  rotten_tomatoes: "cinerie-source-auth/rotten-tomatoes/2026-08-v2",
+  metacritic: "cinerie-source-auth/metacritic/2026-08-v2",
   // Letterboxd e FilmAffinity: EXIBIÇÃO REVOGADA em 2026-08-13 (ver
   // DISPLAY_REVOKED_SOURCES). A versão sobe para `v2-revogada` justamente para
   // que o registry SUPERSEDA a licença de julho em vez de devolver `keep` — sem
@@ -342,6 +463,24 @@ const DISPLAY_REVOKED_NOTE =
 const OMDB_SERVED_SOURCES: readonly string[] = ["imdb", "rotten_tomatoes", "metacritic"];
 
 /**
+ * Fontes de nota cuja MARCA foi autorizada pela decisao do proprietario
+ * (2026-08-20). Sao as exibiveis; Letterboxd/FilmAffinity ficam fora porque a
+ * exibicao delas esta revogada — logo de fonte invisivel seria afirmacao sem
+ * lastro (decisao registrada; reverter exige nova decisao de EXIBICAO antes).
+ */
+const OWNER_LOGO_GRANTED_RATING_SOURCES: readonly string[] = [
+  "imdb",
+  "rotten_tomatoes",
+  "metacritic",
+];
+
+/**
+ * A fonte-ancora da decisao `cinerie_score_display` (ver o comentario da
+ * decisao em `ratingEntry`): a de maior cobertura do catalogo.
+ */
+const CINERIE_SCORE_ANCHOR_SOURCE = "imdb";
+
+/**
  * ============ DISPENSA DE LINKBACK — decisão de 2026-08-12 ============
  *
  * QUEM DECIDIU: Pablo Eduardo — proprietário da Cinerie (mesma identidade de
@@ -385,7 +524,7 @@ export function ratingRequiresLinkback(source: string): boolean {
 }
 
 const OMDB_NOTES_BASE =
-  "Fonte editorial via OMDb API (fornecedor tecnico intermediario, provider_api=omdb), por isso third_party e nunca official. Logo e citacao integral de critica NAO autorizados.";
+  "Fonte editorial via OMDb API (fornecedor tecnico intermediario, provider_api=omdb), por isso third_party e nunca official. Citacao integral de critica NAO autorizada.";
 
 const LINKBACK_DISPENSED_NOTE =
   " LINKBACK DISPENSADO (decisao de Pablo Eduardo, 2026-08-12): a OMDb nao entrega identificador desta fonte, entao nao ha URL canonica derivavel e inventar slug a partir do titulo e proibido. O credito TEXTUAL permanece obrigatorio. Dispensa nominal, nao relaxamento geral: o IMDb continua exigindo linkback. REVERSAO AUTOMATICA: se um resolvedor de URL passar a preencher external_ratings.rating_url, a nota volta a exibir COM link no ciclo seguinte, sem nova decisao humana.";
@@ -411,7 +550,11 @@ function ratingEntry(source: string): AuthorizationEntry {
   const baseNotes = servedByOmdb
     ? OMDB_NOTES_BASE + (requiresLinkback ? LINKBACK_REQUIRED_NOTE : LINKBACK_DISPENSED_NOTE)
     : "Fonte editorial via Film & Show Ratings API (RapidAPI), fornecedor tecnico intermediario. Logo e citacao integral de critica NAO autorizados.";
-  const notes = displayRevoked ? baseNotes + DISPLAY_REVOKED_NOTE : baseNotes;
+  const withOwnerNote =
+    !displayRevoked && OWNER_LOGO_GRANTED_RATING_SOURCES.includes(source)
+      ? `${baseNotes} LOGO AUTORIZADO. ${OWNER_DECISION_NOTE}`
+      : baseNotes;
+  const notes = displayRevoked ? withOwnerNote + DISPLAY_REVOKED_NOTE : withOwnerNote;
 
   /**
    * Armazenamento interno: existe para TODA fonte, revogada ou não. É o que
@@ -424,6 +567,7 @@ function ratingEntry(source: string): AuthorizationEntry {
     displayAllowed: false,
     storageAllowed: true,
     derivativeAllowed: false,
+    derivativeBasis: null,
     attributionRequired: true,
     linkbackRequired: requiresLinkback,
     policyVersion: policy,
@@ -442,10 +586,48 @@ function ratingEntry(source: string): AuthorizationEntry {
     displayAllowed: true,
     storageAllowed: true,
     derivativeAllowed: false,
+    derivativeBasis: null,
     attributionRequired: true,
     linkbackRequired: requiresLinkback,
     policyVersion: policy,
   };
+
+  /**
+   * A decisao que autoriza o CINERIE SCORE (obra derivada das notas).
+   *
+   * Emitida SOB A LICENCA DO IMDB — a fonte de maior cobertura do catalogo
+   * (88%) e a que o validador de producao ja modelava — porque o runtime
+   * resolve UMA decisao vigente por use_case; pendura-la nas quatro licencas
+   * criaria ambiguidade de resolucao. Se uma formula futura remover o IMDb da
+   * composicao, a decisao acompanha a fonte-ancora nova (nova decisao, novo
+   * policy_version).
+   *
+   * `derivativeAllowed: true` com base `owner_decision`: a autorizacao e do
+   * proprietario (2026-08-20, ver OWNER_DECISION_2026_08_20), que revogou a
+   * recusa anterior e assumiu o risco. O elo decisao->formula e o mapa
+   * CINERIE_SCORE_APPROVED_FORMULA_BY_DECISION_POLICY (@screena/config): a
+   * formula aprovada por esta decisao e `cinerie-score/2026-08-v1`, e trocar de
+   * formula exige nova decisao — nunca deploy silencioso.
+   */
+  const cinerieScoreDisplay: DecisionTarget = {
+    useCase: "cinerie_score_display",
+    territory: CINERIE_TERRITORY,
+    stage: "approved_for_display",
+    displayAllowed: true,
+    storageAllowed: true,
+    derivativeAllowed: true,
+    derivativeBasis: "owner_decision",
+    attributionRequired: true,
+    linkbackRequired: requiresLinkback,
+    policyVersion: CINERIE_SCORE_DECISION_POLICY,
+  };
+
+  const logoGranted = !displayRevoked && OWNER_LOGO_GRANTED_RATING_SOURCES.includes(source);
+  const decisions = displayRevoked
+    ? [internalAnalytics]
+    : source === CINERIE_SCORE_ANCHOR_SOURCE
+      ? [ratingDisplay, cinerieScoreDisplay, internalAnalytics]
+      : [ratingDisplay, internalAnalytics];
 
   return {
     label: displayRevoked ? `${source} (exibicao revogada)` : source,
@@ -462,12 +644,15 @@ function ratingEntry(source: string): AuthorizationEntry {
       territory: null,
       licenseStatus: "third_party",
       displayAllowed: !displayRevoked,
-      logoAllowed: false,
-      // Cada uma das cinco fontes foi lida separadamente. NENHUMA autoriza, e os
-      // motivos NAO sao o mesmo — tratar as cinco como um bloco unico e a mesma
-      // classe de erro que creditou "Movie of the Night" em dado do TMDB.
+      // Fonte EXIBIVEL ganha a marca por decisao do proprietario (2026-08-20);
+      // as revogadas ficam fora — logo de fonte invisivel seria afirmacao sem
+      // lastro. O regime de cada titular (qual arquivo, que placement) esta em
+      // logoRationale; o arquivo oficial esta declarado em logoAsset e entra
+      // pendente ate ser colocado no repositorio.
+      logoAllowed: logoGranted,
+      logoBasis: logoGranted ? "owner_decision" : null,
       logoRationale: LOGO_RATIONALE_BY_RATING_SOURCE[source] ?? LOGO_RATIONALE_RATING_DEFAULT,
-      logoAsset: null,
+      logoAsset: logoGranted ? (RATING_LOGO_ASSETS[source] ?? null) : null,
       // A nota (o número) segue a exibição: revogar a exibição e deixar
       // `scoreAllowed: true` descreveria um estado que não existe.
       scoreAllowed: !displayRevoked,
@@ -480,7 +665,7 @@ function ratingEntry(source: string): AuthorizationEntry {
       policyVersion: policy,
       notes,
     },
-    decisions: displayRevoked ? [internalAnalytics] : [ratingDisplay, internalAnalytics],
+    decisions,
   };
 }
 
@@ -588,6 +773,7 @@ export function awardsAuthorizationEntry(input: {
       licenseStatus: "third_party",
       displayAllowed: true,
       logoAllowed: false,
+      logoBasis: null,
       // A OMDb e o FORNECEDOR do dado de premiacao, e os termos dela nao
       // concedem marca — nem a propria, nem (sobretudo) a de terceiro. Secao 11
       // e explicita: "THIS AGREEMENT DOES NOT APPLY TO THIRD PARTY SITES".
@@ -618,6 +804,7 @@ export function awardsAuthorizationEntry(input: {
         displayAllowed: true,
         storageAllowed: true,
         derivativeAllowed: false,
+        derivativeBasis: null,
         attributionRequired: true,
         linkbackRequired: input.requiresLinkback,
         policyVersion: input.policyVersion,
@@ -641,6 +828,7 @@ export const STATIC_AUTHORIZATION: readonly AuthorizationEntry[] = [
       licenseStatus: "official",
       displayAllowed: true,
       logoAllowed: true,
+      logoBasis: "source_terms",
       logoRationale:
         "EXIGIDO, nao apenas permitido. Termos da API do TMDB, secao 3 (Attribution): " +
         "\"You must use the TMDB logo to identify Your use of TMDB, the TMDB APIs, or TMDB Content.\" " +
@@ -668,6 +856,7 @@ export const STATIC_AUTHORIZATION: readonly AuthorizationEntry[] = [
         displayAllowed: false,
         storageAllowed: true,
         derivativeAllowed: false,
+        derivativeBasis: null,
         attributionRequired: true,
         linkbackRequired: true,
         policyVersion: "cinerie-source-auth/tmdb/2026-07-v1",
@@ -687,6 +876,7 @@ export const STATIC_AUTHORIZATION: readonly AuthorizationEntry[] = [
       licenseStatus: "official",
       displayAllowed: false,
       logoAllowed: true,
+      logoBasis: "source_terms",
       logoRationale:
         "EXIGIDO, nao apenas permitido. Termos da API do TMDB, secao 3 (Attribution): " +
         "\"You must use the TMDB logo to identify Your use of TMDB, the TMDB APIs, or TMDB Content.\" " +
@@ -713,6 +903,7 @@ export const STATIC_AUTHORIZATION: readonly AuthorizationEntry[] = [
         displayAllowed: false,
         storageAllowed: true,
         derivativeAllowed: false,
+        derivativeBasis: null,
         attributionRequired: true,
         linkbackRequired: true,
         policyVersion: "cinerie-source-auth/tmdb/2026-07-v1",
@@ -743,9 +934,10 @@ export const STATIC_AUTHORIZATION: readonly AuthorizationEntry[] = [
       territory: null,
       licenseStatus: "official",
       displayAllowed: true,
-      // Logo do TMDB e do YouTube seguem bloqueados: nenhuma marca de terceiro
-      // é desenhada por nós. O crédito é textual, no rodapé.
+      // O logo aqui e o do TMDB (exigido pelos termos); nenhuma marca do
+      // YouTube e desenhada por nos. O credito textual segue no rodape.
       logoAllowed: true,
+      logoBasis: "source_terms",
       logoRationale:
         "EXIGIDO, nao apenas permitido. Termos da API do TMDB, secao 3 (Attribution): " +
         "\"You must use the TMDB logo to identify Your use of TMDB, the TMDB APIs, or TMDB Content.\" " +
@@ -778,6 +970,7 @@ export const STATIC_AUTHORIZATION: readonly AuthorizationEntry[] = [
         displayAllowed: false,
         storageAllowed: true,
         derivativeAllowed: false,
+        derivativeBasis: null,
         attributionRequired: true,
         linkbackRequired: true,
         policyVersion: "cinerie-source-auth/tmdb-video/2026-08-v1",
@@ -837,25 +1030,20 @@ export const STATIC_AUTHORIZATION: readonly AuthorizationEntry[] = [
       territory: CINERIE_TERRITORY,
       licenseStatus: "third_party",
       displayAllowed: false,
+      // A marca do PROPRIO agregador (Movie of the Night) fica textual: a
+      // entrada nao esta na lista da decisao do proprietario de 2026-08-20
+      // (fontes de nota exibiveis, provedores de streaming e JustWatch), e o
+      // agregador nao publica programa de marca. Os logos das PLATAFORMAS e do
+      // JustWatch nao passam por aqui: desde 2026-08-20 eles tem licenca
+      // propria (ver `streamingProviderEntries` e `STREAMING_ORIGIN_CREDITS`),
+      // com base na decisao do proprietario.
       logoAllowed: false,
-      // O agregador nao concede marca, e o caso do JustWatch (a outra origem de
-      // oferta, via TMDB) e diferente e vale registrar aqui porque as duas
-      // aparecem lado a lado no rodape: os termos do endpoint
-      // `watch/providers` exigem NOMEAR o JustWatch como fonte — "In order to
-      // use this data you must attribute the source of the data as JustWatch" —
-      // e a exigencia e de ATRIBUICAO, nao de logo. Credito textual cumpre.
-      //
-      // Os LOGOS DAS PLATAFORMAS (Netflix, Globoplay, Paramount+ e os outros 24
-      // provedores registrados) sao caso a parte e seguem fora: cada um e marca
-      // de um titular diferente, com programa de marca proprio, e o `logo_path`
-      // que o TMDB serve nao carrega licenca de uso. O painel de "onde assistir"
-      // continua nomeando a plataforma em TEXTO. Autorizacao do dono nao cria
-      // direito que 24 titulares distintos nao deram.
+      logoBasis: null,
       logoRationale:
-        "Sem base. O agregador nao concede uso de marca. JustWatch exige ATRIBUICAO nominal " +
-        "(termos do watch/providers), nao logo — credito textual cumpre. Os logos das " +
-        "plataformas sao marca de terceiros titulares, cada um com programa proprio; o " +
-        "logo_path servido pelo TMDB nao carrega licenca de uso.",
+        "Marca do proprio agregador fora da decisao do proprietario de 2026-08-20 e sem " +
+        "programa de marca publicado — credito textual. Os logos das plataformas e do " +
+        "JustWatch tem licenca propria desde 2026-08-20 (owner_decision); nao dependem " +
+        "desta entrada.",
       logoAsset: null,
       scoreAllowed: false,
       reviewQuoteAllowed: false,
@@ -874,6 +1062,7 @@ export const STATIC_AUTHORIZATION: readonly AuthorizationEntry[] = [
         displayAllowed: false,
         storageAllowed: true,
         derivativeAllowed: false,
+        derivativeBasis: null,
         attributionRequired: true,
         linkbackRequired: true,
         policyVersion: "cinerie-source-auth/movie-of-the-night/2026-07-v1",
@@ -951,7 +1140,8 @@ const STREAMING_ORIGINS: readonly StreamingOrigin[] = [
  * Os créditos das origens de streaming, expostos para a PROJEÇÃO PÚBLICA.
  *
  * `STREAMING_ORIGINS` continua privado (o `note` é auditoria interna, não vai
- * para a tela). O que sai daqui é só o texto de atribuição — a letra da licença.
+ * para a tela). O que sai daqui é o texto de atribuição — a letra da licença —
+ * e, desde 2026-08-20, a declaração de marca do JustWatch.
  *
  * Por que isto precisa existir: as licenças de streaming nascem por PROVEDOR
  * CANÔNICO, dinamicamente, a partir do que existe em `watch_providers`. Elas não
@@ -960,10 +1150,85 @@ const STREAMING_ORIGINS: readonly StreamingOrigin[] = [
  * é exigido NOMINALMENTE pelos termos do endpoint `watch/providers` do TMDB, sob
  * pena de revogação do acesso à API que sustenta o catálogo inteiro.
  *
+ * A MARCA do JustWatch: autorizada pela decisão do proprietário (2026-08-20,
+ * `logoBasis` owner_decision). A ATRIBUIÇÃO continua NOMINAL, como já
+ * determinado — o logo entra AO LADO do texto, nunca no lugar dele. Regime do
+ * titular (pesquisa 2026-08-20): o JustWatch fornece o logo sob pedido
+ * (press@justwatch.com, justwatch.com/us/press) e declara preferir a versão
+ * dourada ("We prefer the JustWatch logo to be in gold, but black or white is
+ * fine as well"). Arquivo pendente até entrar no repositório.
+ *
  * Consumido por `public-credits.ts`.
  */
-export const STREAMING_ORIGIN_CREDITS: readonly { readonly attributionText: string }[] =
-  STREAMING_ORIGINS.map((origin) => ({ attributionText: origin.attributionText }));
+export interface StreamingOriginCredit {
+  readonly attributionText: string;
+  readonly logoAllowed: boolean;
+  readonly logoBasis: AuthorizationBasis | null;
+  readonly logoAsset: LicenseLogoAsset | null;
+}
+
+const JUSTWATCH_LOGO_ASSET: LicenseLogoAsset = {
+  path: "/brand/sources/justwatch.svg",
+  officialSourceUrl: "https://www.justwatch.com/us/press",
+  alt: "JustWatch",
+  displayHeightPx: 16,
+  status: "pending_official_file",
+};
+
+export const STREAMING_ORIGIN_CREDITS: readonly StreamingOriginCredit[] =
+  STREAMING_ORIGINS.map((origin) => ({
+    attributionText: origin.attributionText,
+    logoAllowed: origin.providerApi === "tmdb",
+    logoBasis: origin.providerApi === "tmdb" ? ("owner_decision" as const) : null,
+    logoAsset: origin.providerApi === "tmdb" ? JUSTWATCH_LOGO_ASSET : null,
+  }));
+
+/**
+ * ============ MARCAS DOS PROVEDORES — pesquisa por titular (2026-08-20) ============
+ *
+ * A decisao de EXIBIR a marca dos provedores e do proprietario
+ * (`OWNER_DECISION_2026_08_20`) — a pesquisa abaixo nao decide SE, decide QUAL
+ * ARQUIVO usar e de onde. Uma entrada por familia de marca; slug ausente do
+ * mapa significa "o titular nao publica pagina de marca/imprensa localizavel".
+ *
+ * ORIGEM DO ARQUIVO quando nao ha pagina do titular: o bloco `watch/providers`
+ * da TMDB entrega o `logo_path` de cada provedor como parte do TMDB Content
+ * (definicao dos API Terms: "any content (including audio or visual content)
+ * or other information available through, on, or from the TMDB APIs"), sob a
+ * licenca que ja temos — e a TMDB declara nao reivindicar propriedade das
+ * imagens ("We do not claim ownership of any of the images or data in the
+ * API", FAQ oficial). Ou seja: a ENTREGA TECNICA do arquivo esta resolvida
+ * pela licenca do TMDB; o direito de EXIBIR a marca do terceiro e questao
+ * separada — e e exatamente essa que a decisao do proprietario cobre.
+ */
+const PROVIDER_BRAND_PORTALS: Readonly<Record<string, string>> = {
+  netflix: "https://about.netflix.com/en/company-assets",
+  "prime-video": "https://press.amazonmgmstudios.com/us/en",
+  "amazon-video": "https://press.amazonmgmstudios.com/us/en",
+  max: "https://press.wbd.com/us/image/max-logo",
+  "hbo-max-amazon-channel": "https://press.wbd.com/us/image/max-logo",
+  "apple-tv": "https://marketing.services.apple/apple-tv-identity-guidelines",
+  "pluto-tv": "https://www.paramountpressexpress.com/pluto-tv/photos/",
+  "google-play": "https://partnermarketinghub.withgoogle.com/brands/google-play/google-play/lockups-icons-badges/",
+  "disney-plus": "https://press.disneyplus.com/about/logos",
+  "paramount-plus": "https://www.paramountpressexpress.com/paramount-plus/",
+  "paramount-plus-premium": "https://www.paramountpressexpress.com/paramount-plus/",
+  "paramount-plus-amazon-channel": "https://www.paramountpressexpress.com/paramount-plus/",
+  "paramount-plus-apple-tv-channel": "https://www.paramountpressexpress.com/paramount-plus/",
+  plex: "https://www.plex.tv/about/privacy-legal/plex-trademarks-and-guidelines/",
+  "mgm-plus-amazon-channel": "https://press.amazonmgmstudios.com/us/en",
+  "mgm-plus-apple-tv-channel": "https://press.amazonmgmstudios.com/us/en",
+  "arte-amazon-channel": "https://www.arte-international.com/en/pressroom",
+  "lionsgate-plus-amazon-channels": "https://mediaroom.starz.com/",
+};
+
+/**
+ * De onde vem o arquivo quando o titular nao publica pagina de marca: a entrega
+ * licenciada do TMDB (`logo_path` do bloco watch/providers). Ver o comentario
+ * de PROVIDER_BRAND_PORTALS.
+ */
+const TMDB_PROVIDER_LOGO_DELIVERY_URL =
+  "https://developer.themoviedb.org/reference/movie-watch-providers";
 
 /**
  * Autorização de EXIBIÇÃO por provedor canônico de streaming, POR ORIGEM.
@@ -976,56 +1241,79 @@ export const STREAMING_ORIGIN_CREDITS: readonly { readonly attributionText: stri
  *
  * Cada provedor rende UMA entrada POR ORIGEM (ver `STREAMING_ORIGINS`): o
  * crédito pertence ao fornecedor técnico do dado, não ao provedor canônico.
+ *
+ * A MARCA (2026-08-20): `logoAllowed: true` POR DECISÃO DO PROPRIETÁRIO, com a
+ * base gravada (`logoBasis: "owner_decision"`). O carimbo em bloco anterior
+ * (`false` para todos sob um motivo só) foi revogado pelo dono; a pesquisa por
+ * titular (PROVIDER_BRAND_PORTALS) passou a decidir QUAL arquivo usar. Todo
+ * arquivo entra `pending_official_file`: até estar no repositório, o painel
+ * usa a palavra-marca na mesma caixa, e a ausência é logada.
  */
 export function streamingProviderEntries(
   providers: readonly { readonly slug: string; readonly canonicalName: string }[],
 ): readonly AuthorizationEntry[] {
   return providers.flatMap((provider) =>
-    STREAMING_ORIGINS.map((origin) => ({
-      label: `Streaming: ${provider.canonicalName} (${origin.providerApi})`,
-      role: "streaming-aggregator" as const,
-      license: {
-        sourceKey: provider.slug,
-        contentType: "watch_availability" as const,
-        ratingSourceKey: null,
-        providerKey: origin.providerApi,
-        territory: CINERIE_TERRITORY,
-        licenseStatus: "third_party" as const,
-        displayAllowed: true,
-        // FALSE POR PROVEDOR, e nao por politica global: cada um dos 24
-        // provedores registrados (Netflix, Globoplay, Paramount+, Claro, MGM+,
-        // ...) e marca de um TITULAR DIFERENTE, com programa de marca proprio.
-        // Uma unica regra que os liberasse todos seria exatamente a classe de
-        // erro que pos o credito de "Movie of the Night" em dado do TMDB.
-        // O `logo_path` que o TMDB serve identifica o arquivo; nao concede uso.
-        logoAllowed: false as const,
-        logoRationale:
-          `Sem base. ${provider.canonicalName} e marca de titular proprio; nem o TMDB nem ` +
-          `${origin.providerApi} podem sublicenciar marca de terceiro. O painel de "onde ` +
-          `assistir" nomeia a plataforma em TEXTO. Liberar exige o programa de marca deste ` +
-          `titular especifico, um de cada vez.`,
-        logoAsset: null,
-        scoreAllowed: false,
-        reviewQuoteAllowed: false as const,
-        requiresAttribution: true as const,
-        requiresLinkback: true,
-        attributionText: origin.attributionText,
-        policyVersion: AUTHORIZATION_BATCH,
-        notes: `Provedor canonico ${provider.canonicalName} (slug ${provider.slug}) ${origin.note} Ofertas exibidas apenas apos promocao humana (pnpm streaming), nunca por este registro.`,
-      },
-      decisions: [
-        {
-          useCase: "watch_offer_display" as const,
+    STREAMING_ORIGINS.map((origin) => {
+      const portal = PROVIDER_BRAND_PORTALS[provider.slug] ?? null;
+      const logoAsset: LicenseLogoAsset = {
+        path: `/brand/providers/${provider.slug}.svg`,
+        officialSourceUrl: portal ?? TMDB_PROVIDER_LOGO_DELIVERY_URL,
+        alt: provider.canonicalName,
+        displayHeightPx: 20,
+        status: "pending_official_file",
+      };
+      const regimeNote =
+        portal !== null
+          ? `Pagina de marca/imprensa do titular: ${portal}.`
+          : "Titular sem pagina publica de marca localizada (pesquisa 2026-08-20); origem do " +
+            "arquivo: entrega licenciada do TMDB (logo_path do watch/providers) ou pedido " +
+            "direto a assessoria do titular.";
+      return {
+        label: `Streaming: ${provider.canonicalName} (${origin.providerApi})`,
+        role: "streaming-aggregator" as const,
+        license: {
+          sourceKey: provider.slug,
+          contentType: "watch_availability" as const,
+          ratingSourceKey: null,
+          providerKey: origin.providerApi,
           territory: CINERIE_TERRITORY,
-          stage: "approved_for_display" as const,
+          licenseStatus: "third_party" as const,
           displayAllowed: true,
-          storageAllowed: true,
-          derivativeAllowed: false as const,
-          attributionRequired: true as const,
-          linkbackRequired: true,
+          logoAllowed: true,
+          logoBasis: "owner_decision" as const,
+          logoRationale:
+            `Marca por decisao do proprietario (2026-08-20). ${provider.canonicalName} e marca ` +
+            `de titular proprio; a permissao de EXIBIR vem da decisao do dono, nao dos termos ` +
+            `do titular — e o registro grava exatamente isso. ${regimeNote} Arquivo pendente ` +
+            `(pending_official_file): ate entrar no repositorio, o painel usa a palavra-marca ` +
+            `na mesma caixa. O credito textual da origem permanece ao lado, sempre.`,
+          logoAsset,
+          scoreAllowed: false,
+          reviewQuoteAllowed: false as const,
+          requiresAttribution: true as const,
+          requiresLinkback: true,
+          attributionText: origin.attributionText,
           policyVersion: AUTHORIZATION_BATCH,
+          notes:
+            `Provedor canonico ${provider.canonicalName} (slug ${provider.slug}) ${origin.note} ` +
+            `Ofertas exibidas apenas apos promocao humana (pnpm streaming), nunca por este ` +
+            `registro. LOGO AUTORIZADO. ${OWNER_DECISION_NOTE}`,
         },
-      ],
-    })),
+        decisions: [
+          {
+            useCase: "watch_offer_display" as const,
+            territory: CINERIE_TERRITORY,
+            stage: "approved_for_display" as const,
+            displayAllowed: true,
+            storageAllowed: true,
+            derivativeAllowed: false as const,
+            derivativeBasis: null,
+            attributionRequired: true as const,
+            linkbackRequired: true,
+            policyVersion: AUTHORIZATION_BATCH,
+          },
+        ],
+      };
+    }),
   );
 }

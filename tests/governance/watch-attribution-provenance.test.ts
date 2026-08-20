@@ -75,11 +75,19 @@ describe('proveniencia: uma licenca de streaming POR FORNECEDOR TECNICO', () => 
     }
   })
 
-  it('toda entrada exige atribuicao e mantem logo/citacao bloqueados', () => {
+  it('toda entrada exige atribuicao; marca por decisao do dono, com base e arquivo declarados', () => {
     for (const entry of streamingProviderEntries(PROVIDERS)) {
       expect(entry.license.requiresAttribution).toBe(true)
       expect(entry.license.attributionText.trim()).not.toBe('')
-      expect(entry.license.logoAllowed).toBe(false)
+      // Desde 2026-08-20 a marca do provedor e autorizada POR DECISAO DO
+      // PROPRIETARIO (docs/legal/owner-authorization-2026-08-20.md), e o
+      // registro grava exatamente essa base — nunca "a fonte permitiu". O
+      // arquivo entra pendente: sem ele no repositorio, o painel usa a
+      // palavra-marca e nada de grafico vai ao ar.
+      expect(entry.license.logoAllowed).toBe(true)
+      expect(entry.license.logoBasis).toBe('owner_decision')
+      expect(entry.license.logoAsset?.status).toBe('pending_official_file')
+      expect(entry.license.logoAsset?.path).toBe(`/brand/providers/${entry.license.sourceKey}.svg`)
       expect(entry.license.reviewQuoteAllowed).toBe(false)
       // Nenhuma leva nova foi inventada: as duas origens pertencem ao lote vigente.
       expect(entry.license.policyVersion).toBe(AUTHORIZATION_BATCH)
