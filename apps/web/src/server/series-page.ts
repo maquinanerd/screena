@@ -39,6 +39,8 @@ import { getRatingsForEntity } from "./entity-ratings";
 import { buildRatingsView, type RatingsPanelView } from "../lib/ratings-presenter";
 import { getRecommendedTitlesForEntity } from "./similar-titles";
 import type { SimilarTitlesView } from "../lib/similar-titles-presenter";
+import { getTrailerForEntity } from "./entity-trailer";
+import type { TrailerView } from "../lib/trailer-presenter";
 import type { NewsCardView } from "../lib/news-presenter";
 import type { CastMemberView } from "../lib/cast-presenter";
 import type { WatchAvailabilityView } from "../lib/watch-availability-presenter";
@@ -50,6 +52,15 @@ const SERIES_INDEX_PATH = "/pt/series/";
 
 export interface SeriesPageData {
   view: SeriesPageView;
+  /**
+   * Trailer do bloco de midia (telas 06/07). `null` quando nao ha.
+   *
+   * Ate 20/08/2026 este campo NAO existia e o bloco mostrava o backdrop no
+   * lugar do trailer. Nao era permissao faltando — a licenca de video do TMDB
+   * existe desde 13/08/2026 —, era fiacao: nada consultava `tmdb_videos` para a
+   * entidade da pagina.
+   */
+  trailer: TrailerView | null;
   /** C8: id INTERNO do catalogo, serializado, para o botao de biblioteca. */
   entityId: string;
   indexability: IndexabilityResult;
@@ -117,7 +128,8 @@ export const getSeriesPageData = cache(
         prisma.tvShow.findUnique({
           where: { id: entityId },
           select: {
-            // Necessario para o trilho de recomendacao (chaveado por tmdb_id).
+            // Necessario para DUAS coisas, ambas chaveadas por tmdb_id: o
+            // trilho de recomendacao e o trailer (`tmdb_videos`).
             tmdbId: true,
             nameOriginal: true,
             firstAirDate: true,
@@ -291,6 +303,9 @@ export const getSeriesPageData = cache(
     const awards = await getAwardsForEntity(prisma, ENTITY_TYPE, entityId);
     const awardsAbsence = awards === null ? await awardsAbsenceReason(prisma) : null;
 
+    // Trailer do bloco de midia (tela 07). Mesmo helper do filme.
+    const trailer = await getTrailerForEntity(prisma, "tv", series.tmdbId);
+
     // "Mais como este" na SERIE — que ate agora nao tinha trilho nenhum.
     //
     // A recusa anterior estava certa pelo motivo dela: serie nao tem colecao, e
@@ -312,6 +327,7 @@ export const getSeriesPageData = cache(
 
     return {
       view,
+      trailer,
       similar,
       // C8: id INTERNO do catalogo, serializado — o botao de biblioteca o usa
       // para referenciar a entidade canonica (nunca o slug).
