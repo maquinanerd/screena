@@ -42,9 +42,10 @@ const LANGUAGE_CODE = "pt-BR";
  * primeiro filtro é o que garante que dado sem licença não trafega para o
  * processo de render nem por engano.
  *
- * Hoje isto devolve um mapa VAZIO em produção, e está certo: as linhas nascem
- * `display_allowed = false` e ainda não existe decisão de licença para vídeo do
- * TMDB. Ver `apps/web/src/lib/trailer-presenter.ts`.
+ * Hoje isto devolve um mapa VAZIO em produção, e está certo — mas a causa não é
+ * mais a que este comentário dizia. A licença de vídeo do TMDB EXISTE desde
+ * 13/08/2026; o que falta é a PROMOÇÃO das linhas (`display_allowed` nasce
+ * `false` por linha). Ver `apps/web/src/lib/trailer-presenter.ts`.
  */
 async function loadDisplayableTrailers(
   entityType: "movie" | "tv",

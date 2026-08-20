@@ -10383,6 +10383,59 @@ h4.art-body__heading {
 }
 
 /* ==========================================================================
+   TRAILER NO BLOCO DE MIDIA DO DETALHE (telas 06/07)
+   ==========================================================================
+   Ate 20/08/2026 a celula do meio mostrava so o backdrop. O canonico pede
+   poster - TRAILER - 3 atalhos, e o trailer nunca chegou la (fiacao, nao
+   permissao: a licenca de video existe desde 13/08/2026).
+
+   NO FIM DO ARQUIVO de proposito. `globals.css` tem mais de 10 mil linhas e
+   resolve conflito por ORDEM DE DOCUMENTO, nao por especificidade: uma regra
+   escrita perto das outras de `.media-strip__*` correria o risco de ser
+   sobrescrita mais abaixo e ficar inerte, que e um defeito ja visto aqui.
+   ========================================================================== */
+
+.media-strip__playwrap {
+  /* Centro geometrico da celula. `pointer-events: none` no wrapper para que a
+     area morta ao redor do botao nao intercepte clique de nada. */
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.media-strip__play {
+  /* 64px: a celula do detalhe tem 472px de altura, contra ~200px do card do
+     trilho. O play de 48px da home sumiria aqui. */
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 0;
+  background: rgba(0, 0, 0, 0.62);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  pointer-events: auto;
+  padding-left: 4px; /* o triangulo do play e opticamente descentrado */
+}
+
+.media-strip__play:hover,
+.media-strip__play:focus-visible {
+  background: var(--c-accent-movie-cta);
+}
+
+/* Serie usa o acento verde. A diferenciacao NUNCA depende so da cor — label,
+   badge, breadcrumb, schema e URL ja a carregam; isto e apoio visual. */
+[data-vertical='series'] .media-strip__play:hover,
+[data-vertical='series'] .media-strip__play:focus-visible {
+  background: var(--c-accent-series-dark);
+
+/* ==========================================================================
    PREFERENCIAS DE APRESENTACAO (tela 13) — tema, densidade, tamanho de poster
    ==========================================================================
    Ate 20/08/2026 estes tres controles eram OMITIDOS da tela de configuracoes.

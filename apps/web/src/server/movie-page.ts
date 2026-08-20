@@ -45,6 +45,8 @@ import {
 } from "./entity-awards";
 import { getRatingsForEntity } from "./entity-ratings";
 import { getSimilarMoviesForEntity } from "./similar-titles";
+import { getTrailerForEntity } from "./entity-trailer";
+import type { TrailerView } from "../lib/trailer-presenter";
 import { buildRatingsView, type RatingsPanelView } from "../lib/ratings-presenter";
 import type { NewsCardView } from "../lib/news-presenter";
 import type { CastMemberView } from "../lib/cast-presenter";
@@ -60,6 +62,19 @@ const ENTITY_TYPE = "movie";
 /** Tudo que a pagina e o `generateMetadata` precisam, ja resolvido do banco. */
 export interface MoviePageData {
   view: MoviePageView;
+  /**
+   * Trailer do bloco de midia (telas 06/07). `null` quando nao ha.
+   *
+   * Ate 20/08/2026 este campo NAO existia e o bloco mostrava o backdrop no
+   * lugar do trailer. Nao era permissao faltando — a licenca de video do TMDB
+   * existe desde 13/08/2026 —, era fiacao: nada consultava `tmdb_videos` para a
+   * entidade da pagina.
+   *
+   * `null` cobre "nao ha video", "ha e nao tem licenca" e "ha, tem licenca, e a
+   * linha nao foi promovida" (o estado de hoje). Para a TELA os tres significam
+   * o mesmo: cai para o backdrop, e a ausencia e registrada.
+   */
+  trailer: TrailerView | null;
   /** C8: id INTERNO do catalogo, serializado, para o botao de biblioteca. */
   entityId: string;
   indexability: IndexabilityResult;
@@ -125,6 +140,8 @@ export const getMoviePageData = cache(
       prisma.movie.findUnique({
         where: { id: entityId },
         select: {
+          // Necessario para o trailer: `tmdb_videos` e chaveada por tmdb_id.
+          tmdbId: true,
           titleOriginal: true,
           releaseDate: true,
           runtimeMinutes: true,
@@ -270,10 +287,15 @@ export const getMoviePageData = cache(
     // "Mais como este": parentesco DECLARADO pela colecao do TMDB. Depois da
     // Promise.all porque nao e caminho critico do `generateMetadata` — nenhum
     // metadado depende dele.
+    // Trailer do bloco de midia (tela 06). Depois da Promise.all pelo mesmo
+    // motivo do trilho: nenhum metadado de `generateMetadata` depende dele.
+    const trailer = await getTrailerForEntity(prisma, "movie", movie.tmdbId);
+
     const similar = await getSimilarMoviesForEntity(prisma, entityId);
 
     return {
       view,
+      trailer,
       // C8: id INTERNO do catalogo, serializado. A pagina o repassa ao botao de
       // biblioteca (client component); a biblioteca referencia a entidade
       // canonica, nunca o slug (que muda com traducao/recanonizacao).
