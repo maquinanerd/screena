@@ -11,6 +11,59 @@
 
 ---
 
+## 0. O TOPO CANÔNICO — 20/08/2026 _(leia antes do resto)_
+
+O dono autorizou tudo que estava pendente e mandou portar o topo **literalmente**
+das telas 06/07 ("Vale dos Corvos" / "O Último Inverno"). O que mudou:
+
+**Entrou (na ordem do canônico):** breadcrumb com o GÊNERO no meio (`Filmes /
+Drama / Título` — o "Início" saiu); chips de gênero (junção do T3, agora lida);
+sinopse de TRÊS linhas com corte em palavra inteira (`truncateAtWord`; o texto
+completo desceu para "A OBRA"); DOIS botões (`Minha lista` + `Avaliar`, com
+persistência real — watch-state e `/api/me/ratings`); cartão à direita com
+**CINERIE SCORE → AVALIAÇÕES → ONDE ASSISTIR (marcas em linha)**; banda de
+mídia pôster · trailer · cards empilhados; faixa de prêmios ABAIXO da banda
+(desceu do topo), ancorada pelo card `Prêmios e Indicações`.
+
+**As SETE remoções (travadas por `detail-hero-canonical.test.tsx`, por
+conteúdo renderizado):** a linha de métrica (`IMDb · Público`); o aviso "Cada
+nota está na escala da própria fonte"; os dois "Atualizado em"; "Também em:
+IMDb"; "As ofertas podem mudar conforme região e assinatura"; os quatro botões
+antigos (viram dois); a faixa de prêmios no topo (desceu).
+
+**Para onde a atribuição foi (não sumiu do produto):** o crédito textual segue
+no rodapé global (§2.7); a métrica, a natureza, a data de coleta e a URL da
+fonte vivem no `title`/`data-*` de cada chip; a marca da fonte é a atribuição
+visual — licenciada por decisão do dono (PR #197), palavra-marca na mesma caixa
+até o arquivo oficial entrar. Nenhuma licença vigente exige data visível no
+corpo (a exigência de frescor "Atualizado em" era do painel de ofertas, cuja
+superfície completa é o hub).
+
+**Cartão de onde assistir:** marcas em linha com a MODALIDADE visível (decisão
+de 2026-08-13 — loja só é honesta com a modalidade na tela) e o destino REAL da
+melhor oferta por marca (não-regressão das ofertas verificadas). O painel
+completo por modalidade/preço continua no hub `/pt/onde-assistir`. O bloco
+`where_to_watch_text` ficou SEM superfície nas páginas de detalhe (nenhum
+existe em produção; quando a redação produzir um, decidir a superfície).
+
+**Banda de mídia:** card sem dado NÃO vira card cinza — "Em breve" saiu (era o
+placeholder que o T11 apontou) e os cards restantes se redistribuem
+(`data-media-cards` + CSS). Duração do trailer e contagens ("6 vídeos · 128
+fotos") não renderizam: a API do TMDB não entrega duração, e contagem sem
+galeria para abrir é promessa sem destino — o card "Fotos e Vídeos" não existe
+pelo mesmo motivo (não há superfície de galeria no produto).
+
+**Sobrancelhas (TB):** o par sobrancelha+título passa por `SectionHead`, que
+NÃO aceita rótulo igual/prefixo do título (`isRedundantGroupLabel`, a mesma
+régua do rodapé). "— ELENCO" sobre "ELENCO PRINCIPAL" caiu nas duas páginas;
+ficaram as que informam: "Editorial" (Notícias) e "Catálogo" (Episódios).
+Kickers-título ("A obra", "Ficha técnica", "Detalhes") não têm título a repetir.
+
+Harness `qa:detail-responsive`: AUDITORIA LIMPA nas cinco larguras
+(1440/1024/768/375/320) — 0 overflow, alvos ≥ 44px, texto ≥ 12px.
+
+---
+
 ## 1. Blocos do canônico que NÃO renderizam
 
 Cada ausência abaixo passa por `SectionBoundary`

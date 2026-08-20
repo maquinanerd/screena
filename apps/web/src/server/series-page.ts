@@ -40,6 +40,8 @@ import { buildRatingsView, type RatingsPanelView } from "../lib/ratings-presente
 import { getRecommendedTitlesForEntity } from "./similar-titles";
 import type { SimilarTitlesView } from "../lib/similar-titles-presenter";
 import { getTrailerForEntity } from "./entity-trailer";
+import { getCinerieScoreForEntity, getGenresForEntity } from "./entity-hero";
+import type { CinerieScoreInputView } from "../lib/cinerie-score-presenter";
 import type { TrailerView } from "../lib/trailer-presenter";
 import type { NewsCardView } from "../lib/news-presenter";
 import type { CastMemberView } from "../lib/cast-presenter";
@@ -101,6 +103,16 @@ export interface SeriesPageData {
   ratings: RatingsPanelView | null;
   /** IDs externos reais (imdb/tmdb/...) para montar `sameAs` no JSON-LD. */
   externalIds: { source: string; externalId: string }[];
+  /**
+   * Gêneros do título (junção `tv_show_genres`, 20/08/2026). `[]` quando a
+   * ingestão ainda não populou — os chips e o crumb do meio não renderizam.
+   */
+  genres: string[];
+  /**
+   * Estado do Cinerie Score para o card do topo: decisão vigente + último
+   * cálculo persistido. O render nunca calcula (o worker offline calcula).
+   */
+  score: CinerieScoreInputView;
 }
 
 function seriesCanonicalUrl(slug: string): string {
@@ -325,10 +337,18 @@ export const getSeriesPageData = cache(
       entityId,
     );
 
+    // O topo canonico: generos (chips + crumb do meio) e o estado do Score.
+    const [genres, score] = await Promise.all([
+      getGenresForEntity(prisma, ENTITY_TYPE, entityId),
+      getCinerieScoreForEntity(prisma, ENTITY_TYPE, entityId),
+    ]);
+
     return {
       view,
       trailer,
       similar,
+      genres,
+      score,
       // C8: id INTERNO do catalogo, serializado — o botao de biblioteca o usa
       // para referenciar a entidade canonica (nunca o slug).
       entityId: String(entityId),

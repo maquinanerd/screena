@@ -46,8 +46,10 @@ import {
 import { getRatingsForEntity } from "./entity-ratings";
 import { getRecommendedTitlesForEntity, getSimilarMoviesForEntity } from "./similar-titles";
 import { getTrailerForEntity } from "./entity-trailer";
+import { getCinerieScoreForEntity, getGenresForEntity } from "./entity-hero";
 import type { TrailerView } from "../lib/trailer-presenter";
 import { buildRatingsView, type RatingsPanelView } from "../lib/ratings-presenter";
+import type { CinerieScoreInputView } from "../lib/cinerie-score-presenter";
 import type { NewsCardView } from "../lib/news-presenter";
 import type { CastMemberView } from "../lib/cast-presenter";
 import type { WatchAvailabilityView } from "../lib/watch-availability-presenter";
@@ -109,6 +111,16 @@ export interface MoviePageData {
   ratings: RatingsPanelView | null;
   /** IDs externos reais (imdb/tmdb/...) para montar `sameAs` no JSON-LD. */
   externalIds: { source: string; externalId: string }[];
+  /**
+   * Gêneros do título (junção `movie_genres`, 20/08/2026). `[]` quando a
+   * ingestão ainda não populou — os chips e o crumb do meio não renderizam.
+   */
+  genres: string[];
+  /**
+   * Estado do Cinerie Score para o card do topo: decisão vigente + último
+   * cálculo persistido. O render nunca calcula (o worker offline calcula).
+   */
+  score: CinerieScoreInputView;
   /**
    * "Mais como este" — titulos da MESMA colecao do TMDB. `null` omite o bloco
    * (e a faixa final passa a UMA coluna, em vez de reservar metade para nada).
@@ -308,6 +320,12 @@ export const getMoviePageData = cache(
       (await getSimilarMoviesForEntity(prisma, entityId)) ??
       (await getRecommendedTitlesForEntity(prisma, "movie", movie.tmdbId, entityId));
 
+    // O topo canonico: generos (chips + crumb do meio) e o estado do Score.
+    const [genres, score] = await Promise.all([
+      getGenresForEntity(prisma, ENTITY_TYPE, entityId),
+      getCinerieScoreForEntity(prisma, ENTITY_TYPE, entityId),
+    ]);
+
     return {
       view,
       trailer,
@@ -327,6 +345,8 @@ export const getMoviePageData = cache(
       awardsAbsence,
       ratings,
       externalIds,
+      genres,
+      score,
       similar,
     };
   },

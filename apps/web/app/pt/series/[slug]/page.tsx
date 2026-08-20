@@ -6,17 +6,31 @@ import { buildSameAs, serializeJsonLd } from '@screena/seo'
 
 import { EntityActions } from '../../../_components/entity-actions'
 import { EntitySynopsis } from '../../../_components/entity-synopsis'
-import { EntityExternalIds } from '../../../_components/entity-external-ids'
+import { CinerieScoreCard } from '../../../_components/cinerie-score-card'
+import { SectionHead } from '../../../_components/section-head'
+import { WatchBrandsRow } from '../../../_components/watch-brands-row'
 import { AwardsBand } from '../../../_components/awards-band'
 import { SectionBoundary } from '../../../_components/section-boundary'
-import { WatchAvailabilityPanel } from '../../../_components/watch-availability-panel'
 import { RatingsPanel } from '../../../_components/ratings-panel'
 import { canonicalRedirectPath } from '../../../../src/lib/canonical-redirect'
-import { buildExternalLinks } from '../../../../src/lib/external-links'
+import {
+  decideCinerieScore,
+  type CinerieScoreView,
+} from '../../../../src/lib/cinerie-score-presenter'
+import {
+  HERO_SYNOPSIS_MAX_CHARS,
+  breadcrumbGenre,
+  heroGenreChips,
+} from '../../../../src/lib/detail-hero'
+import { watchBrandsRow } from '../../../../src/lib/watch-brands-row'
 import { SimilarTitles } from '../../../_components/similar-titles'
 import { TrailerModal } from '../../../_components/trailer-modal'
 
-import { decideSection } from '../../../../src/lib/section-absence'
+import {
+  buildSectionAbsence,
+  decideSection,
+  type SectionDecision,
+} from '../../../../src/lib/section-absence'
 import type { SeriesEpisodeView, SeriesSeasonView } from '../../../../src/lib/series-presenter'
 import { NEWS_INDEX_PATH, SITE_URL, gatePublicRobots, seasonPath } from '../../../../src/lib/site'
 import { getSeriesPageData } from '../../../../src/server/series-page'
@@ -206,12 +220,15 @@ export default async function SeriesPage({
   const redirectPath = canonicalRedirectPath(SERIES_INDEX_PATH, slug, data.canonicalSlug)
   if (redirectPath !== null) permanentRedirect(redirectPath)
 
-  const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, watchAbsence, awards, awardsAbsence, ratings, externalIds, similar, trailer } =
+  const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, watchAbsence, awards, awardsAbsence, ratings, externalIds, genres, score, similar, trailer } =
     data
   const isUnderReview = seo.decision !== 'index'
   const metaText = [view.periodLabel, view.seasonsCountLabel, view.episodesCountLabel]
     .filter((item): item is string => item !== null)
     .join(' · ')
+  const crumbGenre = breadcrumbGenre(genres)
+  const genreChips = heroGenreChips(genres)
+  const scoreDecision = decideCinerieScore(score)
   const facts = [
     view.periodLabel === null ? null : { label: 'Período', value: view.periodLabel },
     view.statusLabel === null ? null : { label: 'Situação', value: view.statusLabel },
@@ -223,14 +240,11 @@ export default async function SeriesPage({
       ? null
       : { label: 'Idioma original', value: view.originalLanguageLabel },
   ].filter((fact): fact is SeriesFact => fact !== null)
-  const externalLinks = buildExternalLinks(externalIds, 'tv')
   const critiqueBlock = view.blocks.find((block) => block.blockType === REVIEW_BLOCK_TYPE) ?? null
   const editorialBlocks = view.blocks.filter((block) => WORK_BLOCK_TYPES.has(block.blockType))
   const episodeContextBlocks = view.blocks.filter((block) =>
     EPISODE_BLOCK_TYPES.has(block.blockType),
   )
-  const watchContext =
-    view.blocks.find((block) => block.blockType === 'where_to_watch_text') ?? null
   const castContext = view.blocks.find((block) => block.blockType === 'cast_intro') ?? null
   const newsContext = view.blocks.find((block) => block.blockType === 'news_context') ?? null
   const requestedSeasonNumber = seasonNumberFromQuery(query.temporada)
@@ -254,6 +268,20 @@ export default async function SeriesPage({
     section: 'avaliacoes',
     reason: 'no_authorized_rating',
   })
+  // O Cinerie Score do cartao: quem decide e o presenter (piso de 2 fontes +
+  // decisao vigente); aqui so se monta a SectionDecision para a ausencia falar
+  // com o motivo certo.
+  const scoreSection: SectionDecision<CinerieScoreView> = scoreDecision.rendered
+    ? { rendered: true, value: scoreDecision.view, absence: null }
+    : {
+        rendered: false,
+        value: null,
+        absence: buildSectionAbsence({
+          ...entityRef,
+          section: 'cinerie-score',
+          reason: scoreDecision.reason,
+        }),
+      }
   const watchSection = decideSection(watch, {
     ...entityRef,
     section: 'onde-assistir',
@@ -314,18 +342,33 @@ export default async function SeriesPage({
     reason: 'no_recommendation_dataset',
   })
 
+  // Espelha a trilha VISIVEL do topo canonico: `Séries / <genero> / titulo`.
   const breadcrumbJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
     itemListElement: [
-      { '@type': 'ListItem', position: 1, name: 'Início', item: `${SITE_URL}/pt/` },
       {
         '@type': 'ListItem',
-        position: 2,
+        position: 1,
         name: 'Séries',
         item: `${SITE_URL}${SERIES_INDEX_PATH}`,
       },
-      { '@type': 'ListItem', position: 3, name: view.title, item: canonicalUrl },
+      ...(crumbGenre !== null
+        ? [
+            {
+              '@type': 'ListItem',
+              position: 2,
+              name: crumbGenre,
+              item: `${SITE_URL}${SERIES_INDEX_PATH}`,
+            },
+          ]
+        : []),
+      {
+        '@type': 'ListItem',
+        position: crumbGenre !== null ? 3 : 2,
+        name: view.title,
+        item: canonicalUrl,
+      },
     ],
   }
 
@@ -351,11 +394,13 @@ export default async function SeriesPage({
           <nav aria-label="Trilha de navegação" className="detail-hero__crumbs">
             <ol>
               <li>
-                <a href="/pt/">Início</a>
-              </li>
-              <li>
                 <a href={SERIES_INDEX_PATH}>Séries</a>
               </li>
+              {crumbGenre !== null ? (
+                <li>
+                  <a href={SERIES_INDEX_PATH}>{crumbGenre}</a>
+                </li>
+              ) : null}
               <li aria-current="page">{view.title}</li>
             </ol>
           </nav>
@@ -372,31 +417,47 @@ export default async function SeriesPage({
               </div>
               <h1 className="detail-hero__title">{view.title}</h1>
               <ul className="detail-hero__chips">
+                {genreChips.map((genre) => (
+                  <li className="detail-hero__genre-chip" key={genre}>
+                    {genre}
+                  </li>
+                ))}
                 {metaText !== '' ? (
                   <li className="detail-hero__meta-text">{metaText}</li>
                 ) : null}
               </ul>
               {/* Sem guarda por `metaDescription`: ela e `pt-BR`-only, e usa-la
                   como condicao mataria justamente a sinopse em idioma de
-                  origem. Quem decide omitir e o proprio componente. */}
-              <EntitySynopsis synopsis={view.synopsis} />
+                  origem. Quem decide omitir e o proprio componente. Tres
+                  linhas: o texto completo vive em "A OBRA". */}
+              <EntitySynopsis maxChars={HERO_SYNOPSIS_MAX_CHARS} synopsis={view.synopsis} />
               <div className="detail-actions">
-                {/* Ações REAIS de biblioteca e tracker (C8). */}
+                {/* DOIS botoes, exatamente: Minha lista + Avaliar (C8). */}
                 <EntityActions entityType="tv" entityId={entityId} />
-                <a href="/pt/tracker/">Acompanhar no tracker</a>
               </div>
-              {externalLinks.length > 0 ? (
-                <div className="entity-links" style={{ marginTop: 20 }}>
-                  <EntityExternalIds links={externalLinks} />
-                </div>
-              ) : null}
             </div>
 
             <aside aria-label="Notas e disponibilidade" className="detail-hero__aside">
-              {/* Sem Cinerie Score: não há fórmula aprovada. Ver o cabeçalho. */}
+              {/* O CARTAO da coluna direita, na ordem do canonico:
+                  CINERIE SCORE -> AVALIACOES -> ONDE ASSISTIR. O Score so
+                  renderiza com >= 2 fontes contadas e decisao vigente; abaixo
+                  do piso, "Avaliacoes" sobe e ocupa o topo do cartao. */}
+              <SectionBoundary decision={scoreSection}>
+                {(scoreView) => (
+                  <div className="detail-aside-block detail-aside-block--first">
+                    <CinerieScoreCard view={scoreView} />
+                  </div>
+                )}
+              </SectionBoundary>
               <SectionBoundary decision={ratingsSection}>
                 {(view) => (
-                  <div className="detail-aside-block detail-aside-block--first">
+                  <div
+                    className={
+                      scoreDecision.rendered
+                        ? 'detail-aside-block'
+                        : 'detail-aside-block detail-aside-block--first'
+                    }
+                  >
                     <p className="detail-aside-block__label">Avaliações</p>
                     <RatingsPanel view={view} />
                   </div>
@@ -406,12 +467,9 @@ export default async function SeriesPage({
                 {(view) => (
                   <div className="detail-aside-block">
                     <p className="detail-aside-block__label">Onde assistir</p>
-                    <WatchAvailabilityPanel view={view} />
-                    {watchContext !== null ? (
-                      <p className="watch-panel__note" data-block-type={watchContext.blockType}>
-                        {watchContext.content}
-                      </p>
-                    ) : null}
+                    {/* Marcas em linha (canonico), com a MODALIDADE visivel
+                        (decisao de 2026-08-13). */}
+                    <WatchBrandsRow brands={watchBrandsRow(view)} />
                   </div>
                 )}
               </SectionBoundary>
@@ -420,17 +478,18 @@ export default async function SeriesPage({
         </div>
       </div>
 
-      {/* ===== Faixa de premios (fato da obra, com o credito colado nele) ===== */}
-      <SectionBoundary decision={awardsSection}>
-        {(panel) => (
-          <AwardsBand credit={panel.credit} vertical="series" view={panel.view} />
-        )}
-      </SectionBoundary>
-
-      {/* ===== Mídia (pôster/backdrop reais) ===== */}
+      {/* ===== Mídia full-bleed (pôster · TRAILER · cards empilhados) =====
+          A banda do canônico. Card sem dado NÃO vira card cinza — ele não
+          existe, e os que restarem se redistribuem. Nada carrega antes do
+          clique (iframe só dentro do diálogo do TrailerModal). */}
       {view.media.poster !== null || view.media.backdrop !== null ? (
         <div className="media-strip">
-          <div className="media-strip__grid">
+          <div
+            className="media-strip__grid"
+            data-media-cards={
+              [awardsSection.rendered, visibleNews.length > 0].filter(Boolean).length
+            }
+          >
             <div className="media-strip__cell">
               {view.media.poster !== null ? (
                 <img
@@ -442,14 +501,6 @@ export default async function SeriesPage({
                 />
               ) : null}
             </div>
-            {/*
-              O SLOT DO TRAILER — o mesmo da tela 06. Ver a pagina de filme para
-              o historico: a licenca de video existe desde 13/08/2026 e o
-              trailer nunca chegou ao bloco de midia por falta de fiacao.
-
-              O backdrop CONTINUA, como poster do player. Sem trailer, a celula
-              fica exatamente como estava. Nada carrega antes do clique.
-            */}
             <div className="media-strip__cell" data-trailer={trailer !== null ? 'ready' : undefined}>
               {view.media.backdrop !== null ? (
                 <img
@@ -469,36 +520,52 @@ export default async function SeriesPage({
                   />
                 </span>
               ) : null}
-              <span className="media-strip__caption">
-                {trailer !== null ? 'Trailer' : 'Mídia do título'}
-              </span>
+              {/* Legenda só com trailer real; duração/contagens não renderizam
+                  (sem dado de duração; contagem sem galeria é promessa vazia). */}
+              {trailer !== null ? (
+                <span className="media-strip__caption">Trailer</span>
+              ) : null}
             </div>
-            <div className="media-strip__stack">
-              <a className="media-strip__cell" href="#episodios">
-                {view.media.backdrop !== null ? (
-                  <img alt="" loading="lazy" src={view.media.backdrop.src} />
+            {awardsSection.rendered || visibleNews.length > 0 ? (
+              <div className="media-strip__stack">
+                {visibleNews.length > 0 ? (
+                  <a className="media-strip__cell" href="#series-news-title">
+                    {view.media.backdrop !== null ? (
+                      <img alt="" loading="lazy" src={view.media.backdrop.src} />
+                    ) : null}
+                    <span className="media-strip__caption">Notícias e Eventos</span>
+                  </a>
                 ) : null}
-                <span className="media-strip__caption">Episódios</span>
-              </a>
-              <a className="media-strip__cell" href={NEWS_INDEX_PATH}>
-                {view.media.poster !== null ? (
-                  <img alt="" loading="lazy" src={view.media.poster.src} />
+                {awardsSection.rendered ? (
+                  <a className="media-strip__cell" href="#series-awards">
+                    {view.media.poster !== null ? (
+                      <img alt="" loading="lazy" src={view.media.poster.src} />
+                    ) : null}
+                    <span className="media-strip__caption">Prêmios e Indicações</span>
+                  </a>
                 ) : null}
-                <span className="media-strip__caption">Notícias e Eventos</span>
-              </a>
-              <a className="media-strip__cell" href="/pt/onde-assistir/">
-                {view.media.backdrop !== null ? (
-                  <img alt="" loading="lazy" src={view.media.backdrop.src} />
-                ) : null}
-                <span className="media-strip__caption">Onde assistir</span>
-              </a>
-            </div>
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}
 
-      {/* ===== A obra ===== */}
-      {(synopsisLead !== null || synopsisRest.length > 0) ? (
+      {/* ===== Prêmios — a faixa desceu do topo (decisao do dono): vive abaixo
+          da banda de mídia, e o card "Prêmios e Indicações" ancora aqui. ===== */}
+      <SectionBoundary decision={awardsSection}>
+        {(panel) => (
+          <div id="series-awards">
+            <AwardsBand credit={panel.credit} vertical="series" view={panel.view} />
+          </div>
+        )}
+      </SectionBoundary>
+
+      {/* ===== A obra =====
+          A sinopse COMPLETA vive aqui (o topo mostra três linhas). A abertura
+          em destaque só existe quando há texto editorial PRÓPRIO — nunca a
+          sinopse repetida em corpo maior. O crédito da sinopse continua o do
+          catálogo (rodapé global). */}
+      {(synopsisLead !== null || synopsisRest.length > 0 || view.synopsis !== null) ? (
         <section aria-labelledby="series-work-title" className="detail-container" style={{ paddingTop: 60 }}>
           <div className="eyebrow-bar">
             <span id="series-work-title">A obra</span>
@@ -508,6 +575,9 @@ export default async function SeriesPage({
               {synopsisLead.content}
             </p>
           ) : null}
+          <div data-work-synopsis="full">
+            <EntitySynopsis synopsis={view.synopsis} variant="work" />
+          </div>
           {synopsisRest.map((block) => (
             <p className="synopsis-body" data-block-type={block.blockType} key={block.blockType}>
               {block.content}
@@ -546,14 +616,9 @@ export default async function SeriesPage({
       {view.seasons.length > 0 ? (
         <section aria-labelledby="series-episodes-title" className="detail-container" id="episodios" style={{ paddingTop: 60 }}>
           <div className="section-head" style={{ alignItems: 'flex-end', flexWrap: 'wrap' }}>
-            <div>
-              <div className="eyebrow-bar">
-                <span>Catálogo</span>
-              </div>
-              <h2 className="detail-section-title" id="series-episodes-title">
-                Episódios
-              </h2>
-            </div>
+            {/* O kicker "Catálogo" FICA: diz a natureza da secao, que o
+                titulo nao diz — a regra so barra repeticao. */}
+            <SectionHead headingId="series-episodes-title" kicker="Catálogo" title="Episódios" />
             {/* Tabs de temporada: links REAIS (rotas dedicadas de temporada,
                 com fallback por query) — overflow horizontal no mobile. */}
             {view.seasons.length > 1 ? (
@@ -592,14 +657,9 @@ export default async function SeriesPage({
         {(members) => (
         <section aria-labelledby="series-cast-title" className="detail-container" style={{ paddingTop: 60 }}>
           <div className="section-head" style={{ alignItems: 'flex-end', marginBottom: 26 }}>
-            <div>
-              <div className="eyebrow-bar">
-                <span>Elenco</span>
-              </div>
-              <h2 className="detail-section-title" id="series-cast-title">
-                Elenco <span className="thin">principal</span>
-              </h2>
-            </div>
+            {/* Sem sobrancelha: "— ELENCO" acima de "ELENCO PRINCIPAL" so
+                repetia o titulo (decisao do dono; regra em SectionHead). */}
+            <SectionHead headingId="series-cast-title" kicker="Elenco" thin="principal" title="Elenco" />
             <a className="detail-see-all" href="/pt/pessoas/">
               Ver pessoas →
             </a>
@@ -663,14 +723,7 @@ export default async function SeriesPage({
         {(articles) => (
         <section aria-labelledby="series-news-title" className="detail-container" style={{ paddingTop: 64 }}>
           <div className="section-head" style={{ alignItems: 'flex-end', marginBottom: 26 }}>
-            <div>
-              <div className="eyebrow-bar">
-                <span>Editorial</span>
-              </div>
-              <h2 className="detail-section-title" id="series-news-title">
-                Notícias <span className="thin">relacionadas</span>
-              </h2>
-            </div>
+            <SectionHead headingId="series-news-title" kicker="Editorial" thin="relacionadas" title="Notícias" />
             <a className="see-all" href={NEWS_INDEX_PATH}>
               Ver tudo
             </a>
