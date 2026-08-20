@@ -7,8 +7,10 @@ import { AdSlot } from '../../../_components/ad-slot'
 import { SectionTitle } from '../../../_components/ds'
 import { EntityExternalIds } from '../../../_components/entity-external-ids'
 import { Filmography } from '../../../_components/filmography'
+import { SectionBoundary } from '../../../_components/section-boundary'
 import { canonicalRedirectPath } from '../../../../src/lib/canonical-redirect'
 import { buildExternalLinks } from '../../../../src/lib/external-links'
+import { decideSection } from '../../../../src/lib/section-absence'
 import { SITE_URL, gatePublicRobots } from '../../../../src/lib/site'
 import { getPersonPageData } from '../../../../src/server/person-page'
 
@@ -66,7 +68,14 @@ function collectPersonalDetails(view: {
     birthDate === null ? null : { label: 'Nascimento', value: birthDate },
     deathDate === null ? null : { label: 'Falecimento', value: deathDate },
     view.placeOfBirth === null ? null : { label: 'Local', value: view.placeOfBirth },
-    view.roleLabel === null ? null : { label: 'Atuação principal', value: view.roleLabel },
+    // A FUNÇÃO NÃO ENTRA AQUI, e a razão não é espaço.
+    //
+    // Ela já é dita no kicker do cabeçalho ("Pessoa · Atuação"), que é o slot do
+    // canônico para isso. Repeti-la em "Detalhes pessoais" produzia a linha
+    // `Atuação principal | Atuação` — rótulo e valor dizendo a mesma palavra.
+    // Não eram dois campos mal rotulados nem bug de renderização: era UM campo
+    // impresso duas vezes, e o valor tinha perdido o acento na tabela de
+    // tradução, o que fazia as duas impressões parecerem campos distintos.
   ]
 
   return details.filter((detail): detail is PersonalDetail => detail !== null)
@@ -106,7 +115,7 @@ export default async function PersonPage({ params }: { params: Promise<PersonPag
   const redirectPath = canonicalRedirectPath(PESSOAS_INDEX_PATH, slug, data.canonicalSlug)
   if (redirectPath !== null) permanentRedirect(redirectPath)
 
-  const { view, seo, canonicalUrl, relatedNews, externalIds, gallery } = data
+  const { view, entityId, seo, canonicalUrl, relatedNews, externalIds, gallery } = data
   const isUnderReview = seo.decision !== 'index'
   const personalDetails = collectPersonalDetails(view)
   const biography = [
@@ -116,6 +125,24 @@ export default async function PersonPage({ params }: { params: Promise<PersonPag
       .map((block) => block.content),
   ].filter((paragraph): paragraph is string => paragraph !== null)
   const newsContext = view.blocks.find((block) => block.blockType === 'news_context') ?? null
+  // A BIOGRAFIA É UM BLOCO DO CANÔNICO, e hoje ela falta em quase toda pessoa.
+  //
+  // Faltar é aceitável; faltar CALADA não é. A decisão é sobre a biografia
+  // INTEIRA (não sobre a seção de continuação): com um parágrafo, o cabeçalho o
+  // exibe e não há ausência nenhuma para registrar; com zero, o log diz por quê.
+  //
+  // O porquê é fundo: a página monta a biografia de `meta_description` +
+  // `content_blocks` de tipo `editorial_intro`, e a terceira origem possível — a
+  // `biography` que o TMDB devolve no detalhe de pessoa — é baixada e
+  // DESCARTADA (`people` tem a coluna de governança `biography_source_status` e
+  // não tem a coluna de texto). Ver `no_biography_source` em
+  // `src/lib/section-absence.ts`.
+  const biographySection = decideSection(biography.length > 0 ? biography : null, {
+    entityType: 'person',
+    entityId,
+    section: 'biografia',
+    reason: 'no_biography_source',
+  })
   const externalLinks = buildExternalLinks(externalIds, 'person')
   const initials = view.name
     .split(' ')
@@ -224,16 +251,20 @@ export default async function PersonPage({ params }: { params: Promise<PersonPag
           (DESIGN-DELTA; nada de conteúdo inventado). */}
 
       <div className="container">
-        {biography.length > 1 ? (
-          <section aria-labelledby="person-bio-title" className="section">
-            <SectionTitle id="person-bio-title" title="Biografia" />
-            <div className="art-body" style={{ margin: 0, padding: 0, textAlign: 'left' }}>
-              {biography.slice(1).map((paragraph, index) => (
-                <p key={`${index}-${paragraph.slice(0, 24)}`}>{paragraph}</p>
-              ))}
-            </div>
-          </section>
-        ) : null}
+        <SectionBoundary decision={biographySection}>
+          {(paragraphs) =>
+            paragraphs.length > 1 ? (
+              <section aria-labelledby="person-bio-title" className="section">
+                <SectionTitle id="person-bio-title" title="Biografia" />
+                <div className="art-body" style={{ margin: 0, padding: 0, textAlign: 'left' }}>
+                  {paragraphs.slice(1).map((paragraph, index) => (
+                    <p key={`${index}-${paragraph.slice(0, 24)}`}>{paragraph}</p>
+                  ))}
+                </div>
+              </section>
+            ) : null
+          }
+        </SectionBoundary>
 
         {knownFor.length > 0 ? (
           <section aria-labelledby="person-known-for-title" className="section">

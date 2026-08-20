@@ -432,7 +432,7 @@ async function runChecks(
   record(16, "D. canonicalSlug vem do slug canonico", richByAlias?.canonicalSlug === "pessoa-rica", `canonicalSlug=${richByAlias?.canonicalSlug}`);
   record(17, "D. canonicalUrl usa /pt/pessoas/", richByAlias?.canonicalUrl === "https://cinerie.com/pt/pessoas/pessoa-rica/", `canonicalUrl=${richByAlias?.canonicalUrl}`);
   record(18, "D. nome vem da traducao pt-BR (original preservado)", richByAlias?.view.name === "Pessoa Rica" && richByAlias?.view.originalName === "Original Person", `name=${richByAlias?.view.name} / original=${richByAlias?.view.originalName}`);
-  record(19, "D. funcao traduzida e vida/local reais", richByAlias?.view.roleLabel === "Atuacao" && richByAlias?.view.lifeLabel === "Nascimento: 1970" && richByAlias?.view.placeOfBirth === "Sao Paulo, Brasil", `role=${richByAlias?.view.roleLabel} / vida=${richByAlias?.view.lifeLabel}`);
+  record(19, "D. funcao traduzida e vida/local reais", richByAlias?.view.roleLabel === "Atuação" && richByAlias?.view.lifeLabel === "Nascimento: 1970" && richByAlias?.view.placeOfBirth === "Sao Paulo, Brasil", `role=${richByAlias?.view.roleLabel} / vida=${richByAlias?.view.lifeLabel}`);
   record(20, "D. imagem local segura aparece", richByAlias?.view.profile?.src === "/media/people/rich-person.webp" && richByAlias?.view.hasRealImage === true, `profile=${richByAlias?.view.profile?.src ?? "null"}`);
 
   const visibleTypes = (richByAlias?.view.blocks ?? []).map((b) => b.blockType).sort();
