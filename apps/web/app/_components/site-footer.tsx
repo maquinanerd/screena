@@ -208,10 +208,25 @@ export function SiteFooter(): ReactNode {
         {/* ---- 2 · Colunas de navegação ------------------------------------ */}
         <div className="footer__columns">
           {FOOTER_COLUMNS.map((column) => (
-            <nav aria-label={column.title} className="footer__column" key={column.title}>
+            <nav
+              aria-labelledby={`footer-column-${column.id}`}
+              className="footer__column"
+              key={column.id}
+            >
               {/* `<p>`, não `<h2>`: o rodapé vive fora do `<main>` e não pode
-                  competir com a hierarquia de títulos da página (spec §8). */}
-              <p className="footer__column-title" data-accent={column.accent}>
+                  competir com a hierarquia de títulos da página (spec §8).
+
+                  `aria-labelledby` apontando para ESTE elemento, e não um
+                  `aria-label` com o mesmo texto: a string do título existe UMA
+                  vez no DOM. Com as duas, a árvore de acessibilidade (e toda
+                  vista derivada — reader mode, inspeção, tradução) mostrava o
+                  título de cada coluna duas vezes, empilhado: "Filmes" em cima
+                  de "Filmes". Travado por group-label-redundancy.test.tsx. */}
+              <p
+                className="footer__column-title"
+                data-accent={column.accent}
+                id={`footer-column-${column.id}`}
+              >
                 {column.title}
               </p>
               <ul className="footer__column-links">
