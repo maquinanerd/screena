@@ -84,9 +84,12 @@ describe("NOTICIAS VINCULADAS: a fiacao existe, o artigo e que nao", () => {
   });
 
   it("a ausencia de noticia e fato sobre a obra, nao pendencia de operacao", () => {
+    // `no_linked_article`, e o nome importa: o que falta nao e "noticia
+    // existir" — e o VINCULO. Um artigo publicado sem `entity_news_links`
+    // aparece em /pt/noticias/ e some do detalhe do titulo.
     const absence = buildSectionAbsence({
       section: "noticias",
-      reason: "no_related_news",
+      reason: "no_linked_article",
       entityType: "movie",
       entityId: "1",
     });

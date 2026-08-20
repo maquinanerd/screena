@@ -63,7 +63,7 @@ artigos publicados com vínculo**.
 | **Onde entra** | `/pt/filmes/{slug}/` e `/pt/series/{slug}/` — seção "Notícias" |
 | **Tabelas** | `articles` + `article_translations` + `entity_news_links` |
 | **Gate de exibição** | `review_status` ∈ `human_reviewed`, `published` |
-| **Motivo da ausência hoje** | `no_related_news` (`actionable: false`) |
+| **Motivo da ausência hoje** | `no_linked_article` (`actionable: false`) — o que falta é o **vínculo**, não a notícia |
 | **Limite na tela** | 3 por título |
 
 ### O que precisa ser escrito
