@@ -299,6 +299,9 @@ export interface FakeProfileRow {
   countryCode: string | null;
   timezone: string | null;
   visibility: ProfileVisibility;
+  theme: string;
+  density: string;
+  posterSize: string;
 }
 
 export function createFakeDb(): FakeDb {
@@ -638,6 +641,9 @@ export function createFakeStores(db: FakeDb): AuthStores {
           locale: "pt-BR",
           countryCode: null,
           timezone: null,
+          theme: "system",
+          density: "comfortable",
+          posterSize: "medium",
           visibility: "private",
         },
       };
@@ -690,6 +696,9 @@ export function createFakeStores(db: FakeDb): AuthStores {
         countryCode: input.countryCode,
         timezone: input.timezone,
         visibility: input.visibility,
+        theme: input.theme,
+        density: input.density,
+        posterSize: input.posterSize,
       };
       db.profiles.set(String(input.userId), next);
       return { kind: "saved", profile: next };
