@@ -8,7 +8,11 @@
  */
 
 import { isPubliclyRenderableBlock } from "./movie-indexability";
-import { buildTmdbImageUrl, type TmdbImageSize } from "./tmdb-image-url";
+import {
+  tmdbImageUrlIfAllowed,
+  type ImageDisplayAuthorization,
+  type TmdbImageSize,
+} from "@screena/public-contracts";
 import { mapEntityStatus, mapOriginalLanguage } from "./entity-status";
 import {
   selectSynopsis,
@@ -170,12 +174,30 @@ export function normalizeLocalImagePath(
   return LOCAL_IMAGE_EXTENSION_PATTERN.test(value) ? value : null;
 }
 
+/**
+ * O asset de imagem, SE a licenca permitir.
+ *
+ * ============================================================================
+ * O GATE ENTROU AQUI EM 21/08/2026, E ANTES NAO HAVIA NENHUM
+ * ============================================================================
+ * Ate esta data o caminho era `movie-presenter -> imageAsset -> buildTmdbImageUrl`
+ * e NENHUM dos tres mencionava licenca. Cinco modulos do render consultavam
+ * `source_licenses` (premiacao, trailer, notas, onde-assistir, hero); imagem nao
+ * era um deles, e por isso o valor de `display_allowed` para `tmdb`/`image` era
+ * decoracao: `true` ou `false`, o poster renderizava igual.
+ *
+ * O asset LOCAL (`/media/...`, commitado no repositorio) NAO passa pelo gate, e
+ * isso e deliberado: ele nao e arte do TMDB. Gatear arte propria por licenca de
+ * terceiro seria pedir permissao a quem nao e dono.
+ */
 function imageAsset(
   path: string | null,
   spec: LocalImageSpec,
+  authorization: ImageDisplayAuthorization,
 ): MovieImageAsset | null {
   // Local (demo/committed) primeiro; senão a URL remota do TMDB do `file_path` cru.
-  const src = normalizeLocalImagePath(path) ?? buildTmdbImageUrl(path, spec.tmdbSize);
+  const src =
+    normalizeLocalImagePath(path) ?? tmdbImageUrlIfAllowed(path, spec.tmdbSize, authorization);
   if (src === null) return null;
   return { src, width: spec.width, height: spec.height };
 }
@@ -183,9 +205,10 @@ function imageAsset(
 /** Seleciona poster/backdrop renderizaveis sem chamar rede nem inventar asset. */
 export function selectMovieMedia(
   record: Pick<MovieRecordInput, "posterPath" | "backdropPath">,
+  authorization: ImageDisplayAuthorization,
 ): MovieMediaView {
-  const poster = imageAsset(record.posterPath, POSTER_IMAGE_SPEC);
-  const backdrop = imageAsset(record.backdropPath, BACKDROP_IMAGE_SPEC);
+  const poster = imageAsset(record.posterPath, POSTER_IMAGE_SPEC, authorization);
+  const backdrop = imageAsset(record.backdropPath, BACKDROP_IMAGE_SPEC, authorization);
   return { poster, backdrop, hasRealImage: poster !== null || backdrop !== null };
 }
 
@@ -262,6 +285,15 @@ export interface PresentMovieInput {
    * so pode vir de `translation`, o comportamento antigo.
    */
   translations?: readonly TranslationCandidate[];
+  /**
+   * A autorizacao de exibir imagem do TMDB (`source_licenses`, tmdb/image).
+   *
+   * OBRIGATORIA. Nasceu opcional e voltou a obrigatoria antes do commit: um
+   * campo opcional aqui significaria que um chamador novo herda a exibicao SEM
+   * gate, que e exatamente o estado que este campo existe para encerrar.
+   * Resolvida em `apps/web/src/server/image-license.ts`.
+   */
+  imageAuthorization: ImageDisplayAuthorization;
 }
 
 /** Monta o `MoviePageView` a partir do payload controlado do PostgreSQL. */
@@ -283,6 +315,6 @@ export function presentMovie(input: PresentMovieInput): MoviePageView {
     metaDescription: selectMetaDescription(input.translation),
     blocks,
     renderableBlockCount: blocks.length,
-    media: selectMovieMedia(input.record),
+    media: selectMovieMedia(input.record, input.imageAuthorization),
   };
 }

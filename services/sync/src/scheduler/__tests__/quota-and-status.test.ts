@@ -17,6 +17,7 @@ import { evaluateSchedule } from '../due.js'
 import { backgroundOmdbSlots } from '../quota.js'
 import type { Rhythm } from '../rhythms.js'
 import { detectStalledQueues } from '../stalled.js'
+import { evaluateBacklog } from '../backlog.js'
 import { buildStatusReport, renderStatusHtml, renderStatusText } from '../status.js'
 
 describe('o teto da fila de fundo', () => {
@@ -136,6 +137,11 @@ describe('o painel', () => {
           basis: 'assumed_floor',
         },
       ],
+      // Fila de trabalho VAZIA de proposito: esta suite mede o painel de COTA e
+      // de fila do agendador. Passar uma fila represada aqui deixaria o semaforo
+      // degradado por outro motivo e os casos "tudo em dia" mediriam a si
+      // mesmos. A fila represada tem suite propria (`backlog.test.ts`).
+      backlog: evaluateBacklog([], BASE),
       workerId: 'teste',
     })
   }

@@ -24,11 +24,12 @@ import { ON_DEMAND_RESERVE, resolveProviderQuota } from '@screena/config'
 import {
   buildStatusReport,
   detectStalledQueues,
+  evaluateBacklog,
   evaluateSchedule,
   renderStatusText,
   type QuotaSnapshot,
 } from '../src/scheduler/index.js'
-import { readLastRuns, readSpentToday } from '../src/scheduler/runtime/facts.js'
+import { readJobBacklog, readLastRuns, readSpentToday } from '../src/scheduler/runtime/facts.js'
 
 function loadRepoEnv(): void {
   const dir = path.dirname(fileURLToPath(import.meta.url))
@@ -61,6 +62,11 @@ async function main(): Promise<number> {
     // alerta de processo. Alerta de fila PARADA continua saindo normalmente.
     const alerts = detectStalledQueues(schedules, { now, startedAt: now })
 
+    // A fila de trabalho de verdade. Sem esta leitura o painel media so a metade
+    // PRODUTORA da ingestao e podia dizer OK com a fila cheia — foi o que fez
+    // por 534 jobs. Ver `src/scheduler/backlog.ts`.
+    const backlog = evaluateBacklog(await readJobBacklog(prisma), now)
+
     const quotas: QuotaSnapshot[] = []
     for (const providerApi of QUOTA_PROVIDERS) {
       const quota = resolveProviderQuota(providerApi)
@@ -80,6 +86,7 @@ async function main(): Promise<number> {
       schedules,
       alerts,
       quotas,
+      backlog,
       workerId: 'cli',
     })
 

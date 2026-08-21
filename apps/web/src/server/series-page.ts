@@ -56,6 +56,7 @@ import type { NewsCardView } from "../lib/news-presenter";
 import type { CastMemberView } from "../lib/cast-presenter";
 import type { WatchAvailabilityView } from "../lib/watch-availability-presenter";
 import type { IndexabilityResult, PageSeoResolution } from "@screena/seo";
+import { getImageDisplayAuthorization } from "./image-license";
 
 const LANGUAGE_CODE = "pt-BR";
 const ENTITY_TYPE = "tv";
@@ -266,8 +267,12 @@ export const getSeriesPageData = cache(
             publishedLocaleRank(b.languageCode),
         )[0] ?? null;
 
+    // O SEXTO gate. Ver `server/image-license.ts` e o gemeo em movie-page.ts.
+    const imageAuthorization = await getImageDisplayAuthorization(prisma);
+
     const view = buildSeriesPageView({
       translations,
+      imageAuthorization,
       record: {
         nameOriginal: series.nameOriginal,
         firstAirYear: yearFromDate(series.firstAirDate),

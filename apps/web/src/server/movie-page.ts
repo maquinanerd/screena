@@ -64,6 +64,7 @@ import type { CastMemberView } from "../lib/cast-presenter";
 import type { WatchAvailabilityView } from "../lib/watch-availability-presenter";
 import type { SimilarTitlesView } from "../lib/similar-titles-presenter";
 import type { PageSeoResolution } from "@screena/seo";
+import { getImageDisplayAuthorization } from "./image-license";
 
 /** Idioma de publicacao do MVP (invariante 7): pt-BR indexa primeiro. */
 const LANGUAGE_CODE = "pt-BR";
@@ -246,8 +247,13 @@ export const getMoviePageData = cache(
             publishedLocaleRank(b.languageCode),
         )[0] ?? null;
 
+    // O SEXTO gate. Ate 21/08/2026 imagem era o unico dado de terceiro exibido
+    // sem consultar `source_licenses` — ver `server/image-license.ts`.
+    const imageAuthorization = await getImageDisplayAuthorization(prisma);
+
     const view = presentMovie({
       translations,
+      imageAuthorization,
       record: {
         titleOriginal: movie.titleOriginal,
         year:

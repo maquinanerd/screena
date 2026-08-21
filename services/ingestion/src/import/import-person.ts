@@ -30,8 +30,12 @@ export async function importPerson(ctx: ImportContext, tmdbId: number): Promise<
     const now = ctx.now()
     const quotaCost = result.fromCache ? 0 : 1
 
-    if (!result.changed) {
-      await ctx.store.touchPerson(tmdbId, now)
+    // Ver o cabecalho do mesmo ramo em `import-movie.ts`: "payload inalterado"
+    // NAO significa "entidade existe". Com o cache quente de uma tentativa que
+    // falhou DEPOIS da escrita em `api_cache`, este ramo tocava zero linhas e
+    // reportava sucesso para uma entidade ausente — para sempre, porque o hash
+    // nunca mais muda. O booleano de `touch*` agora DECIDE.
+    if (!result.changed && (await ctx.store.touchPerson(tmdbId, now))) {
       await ctx.syncLog.write({
         endpoint,
         status: 'success',
