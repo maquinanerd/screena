@@ -5486,7 +5486,7 @@ h4.art-body__heading {
   display: inline-block;
   font-weight: 600;
   color: var(--c-text-primary);
-  border-bottom: 2px solid var(--screena-movie-red, #ff3b30);
+  border-bottom: 2px solid var(--c-accent-movie);
 }
 
 .art-video__meta {
@@ -10289,7 +10289,7 @@ h4.art-body__heading {
   font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  background: var(--screena-movie-red, #f0443e);
+  background: var(--c-accent-movie);
   color: #fff;
   padding: 4px 7px;
 }
@@ -10371,11 +10371,11 @@ h4.art-body__heading {
 }
 
 .explore-result[data-entity-type='movie'] .explore-result__kind {
-  background: var(--screena-movie-red, #f0443e);
+  background: var(--c-accent-movie);
 }
 
 .explore-result[data-entity-type='tv'] .explore-result__kind {
-  background: var(--screena-series-green, #7aa66d);
+  background: var(--c-accent-series);
 }
 
 .explore-result__title {

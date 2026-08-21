@@ -250,16 +250,32 @@ export const REVIEW_STATUS = [
 export type ReviewStatus = (typeof REVIEW_STATUS)[number];
 
 /**
- * Tokens de cor canonicos da Screena (chaves camelCase, valores hex).
+ * Tokens de cor canonicos da Cinerie (chaves camelCase, valores hex).
+ *
+ * FONTE DA VERDADE: o CANONICO (`Screen Screens v4.dc.html`, revisao fixada em
+ * `MANIFESTO-CANONICO.json`), nunca esta constante. Ate 2026-08-21 os dois
+ * acentos aqui eram `#FF3B30` e `#7AA66D` — valores que NAO APARECEM em lugar
+ * nenhum do canonico e que divergiam do que `apps/web/app/globals.css` sempre
+ * renderizou (`--c-accent-movie` / `--c-accent-series`). Ninguem viu porque
+ * nada consome esta constante: era documentacao-como-codigo com valor errado,
+ * que e pior que documentacao errada — parece autoridade executavel.
+ *
+ * Se divergir de `globals.css` de novo, o errado e ESTE arquivo.
  *
  * Regra de uso: filme=vermelho, serie=verde, home/busca/misto/institucional
  * =neutro. Nunca diferenciar filme/serie so pela cor (ver invariante 11).
+ *
+ * O produto e CLARO SEMPRE (dono, 2026-08-21): nao ha tema escuro, e por isso
+ * `bgDark` nao e um "fundo de tema" — e a cor de faixa/overlay escura usada
+ * dentro de uma pagina clara.
  */
 export const COLOR_TOKENS = {
   black: "#000000",
   white: "#F5F5F5",
-  movieRed: "#FF3B30",
-  seriesGreen: "#7AA66D",
+  /** `--c-accent-movie` em globals.css. */
+  movieRed: "#F0443E",
+  /** `--c-accent-series` em globals.css. */
+  seriesGreen: "#7FA56F",
   bgDark: "#050505",
   bgLight: "#F4F4F4",
 } as const;
