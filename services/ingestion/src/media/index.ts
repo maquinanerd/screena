@@ -3,7 +3,7 @@
  *
  * Barrel dos modulos PUROS: construtores do MediaPayload (URLs, tipos de video,
  * ordenacao, cobertura) e a porta de leitura. O adapter Prisma vive em
- * services/ingestion/src/persistence/media-reader.ts (excluido do typecheck).
+ * services/ingestion/src/persistence/media-reader.ts.
  *
  * Invariante 6: o builder descarta toda linha com `displayAllowed === false`.
  */

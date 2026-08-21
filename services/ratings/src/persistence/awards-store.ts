@@ -1,6 +1,6 @@
 /**
  * awards-store.ts — Adapter de `entity_awards` (Prisma).
- * EXCLUIDO do typecheck (toca Prisma).
+ * COBERTO pelo typecheck da raiz E por `tsconfig.runtime.json`.
  *
  * DOIS PASSOS, SEMPRE NESSA ORDEM — o mesmo desenho de
  * `external-ratings-store.ts`:

@@ -1,6 +1,6 @@
 /**
  * catalog-job-store.ts — Adapter Prisma da fila de jobs do catalogo (Backend A).
- * EXCLUIDO do typecheck (adapters Prisma em persistence/), como job-claim.ts.
+ * COBERTO por `tsconfig.runtime.json` (`pnpm typecheck` encadeia os dois).
  *
  * Implementa `CatalogJobStorePort`. O claim e concorrente-seguro via
  * `FOR UPDATE SKIP LOCKED` (dois workers nunca pegam o mesmo job) — mesmo padrao

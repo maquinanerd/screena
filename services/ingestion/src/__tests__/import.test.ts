@@ -248,8 +248,9 @@ describe('contrato TmdbReadPort', () => {
   it('o client TMDB real (TmdbEndpoints) satisfaz o TmdbReadPort da ingestao', () => {
     // Asserção em tempo de COMPILAÇÃO: se o client deixar de cobrir um método do
     // port (ex.: getUpcomingMovies), o typecheck falha AQUI. composition.ts faz
-    // esse assign (tmdb: client.endpoints) em runtime, mas é excluído do
-    // typecheck — este teste tranca o contrato tipo <-> runtime.
+    // esse assign (tmdb: client.endpoints) em runtime, e so entra pelo
+    // `tsconfig.runtime.json` — este teste tranca o mesmo contrato dentro da
+    // suite, sem depender do Prisma Client gerado.
     const asPort = (client: TmdbEndpoints): TmdbReadPort => client
     expect(typeof asPort).toBe('function')
   })

@@ -1,6 +1,6 @@
 /**
  * search-store.ts — Adapter Prisma da busca PostgreSQL (Backend A).
- * EXCLUIDO do typecheck (adapters Prisma em persistence/).
+ * COBERTO por `tsconfig.runtime.json` (`pnpm typecheck` encadeia os dois).
  *
  * Implementa `SearchStorePort`: upsert idempotente de search_documents (chave
  * natural entity_type+entity_id+locale) e a leitura ranqueada via a consulta

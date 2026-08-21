@@ -530,8 +530,9 @@ async function cmdPlanBootstrap(
   const strategy = flags.strategy ?? 'popular'
 
   // A guarda vive em `src/planning/strategies.ts` (puro e testado), nao aqui:
-  // `bin/` e excluido do typecheck e nao tem teste proprio, e foi exatamente
-  // por isso que a ausencia de validacao passou despercebida.
+  // este arquivo nao tem teste proprio, e foi exatamente por isso que a
+  // ausencia de validacao passou despercebida. (Os TIPOS daqui sao conferidos:
+  // o arquivo esta listado em `tsconfig.runtime.json`. Tipo nao e teste.)
   try {
     assertPlannableStrategy(strategy)
   } catch (error) {

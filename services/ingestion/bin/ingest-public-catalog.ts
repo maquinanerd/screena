@@ -71,7 +71,7 @@ const UPCOMING_PAGES = 1
 const UPCOMING_IMPORT_CAP = 20
 const UPCOMING_REGION = 'BR'
 
-/** Subconjunto do detalhe TMDB que este backfill lê (bin não é typechecked). */
+/** Subconjunto do detalhe TMDB que este backfill lê. */
 interface TmdbCreditLite {
   readonly id?: number
   readonly name?: string | null

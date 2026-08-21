@@ -1,5 +1,6 @@
 /**
- * job-enqueue.ts — Adapters Prisma de leitura + criacao de jobs. EXCLUIDO do typecheck.
+ * job-enqueue.ts — Adapters Prisma de leitura + criacao de jobs. COBERTO pelo typecheck
+ * da raiz (`pnpm typecheck`).
  *
  * Implementa as portas do enqueue (Fase 3B.4):
  *  - `EnqueueReadPort`: le blocos nao-arquivados do alvo e detecta job ativo

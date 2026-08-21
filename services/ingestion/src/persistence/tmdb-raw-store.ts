@@ -1,5 +1,6 @@
 /**
- * tmdb-raw-store.ts — Adapter de `tmdb_raw` (Prisma). EXCLUIDO do typecheck.
+ * tmdb-raw-store.ts — Adapter de `tmdb_raw` (Prisma). COBERTO por
+ * `tsconfig.runtime.json` (`pnpm typecheck` encadeia os dois).
  *
  * Implementa a porta PURA `RawEntityStore` (do core `raw-sync`) sobre o Prisma
  * Client server-only. Idempotencia por hash:

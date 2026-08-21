@@ -1,5 +1,6 @@
 /**
- * cache.ts — Adapter de `api_cache` (Prisma). EXCLUIDO do typecheck (toca Prisma).
+ * cache.ts — Adapter de `api_cache` (Prisma). COBERTO pelo typecheck da raiz E por
+ * `tsconfig.runtime.json`.
  *
  * Grava o payload BRUTO por (provider_api, request_key, params_hash). O render
  * NUNCA le daqui — quem le e o worker.
