@@ -19,6 +19,7 @@ import {
   type MovieContentBlockInput,
   type MovieTranslationInput,
 } from "../../apps/web/src/lib/movie-presenter";
+import { authorizeImageDisplay } from "@screena/public-contracts";
 
 const baseRecord = {
   titleOriginal: "Original Title",
@@ -39,6 +40,25 @@ function translation(
     ...overrides,
   };
 }
+
+
+/**
+ * Licenca de imagem AUTORIZADA, para as asserçoes que medem OUTRA coisa.
+ *
+ * As suites abaixo medem forma de URL, fallback local e presenca de campo — nao
+ * licenca. Passar `IMAGE_DISPLAY_DENIED` aqui faria toda imagem sumir e os
+ * casos passariam pelo motivo errado. O gate em si tem suite propria, com
+ * controle negativo: `tests/web/image-license-gate.test.ts`.
+ */
+const IMAGEM_AUTORIZADA = authorizeImageDisplay([
+  {
+    sourceKey: "tmdb",
+    contentType: "image",
+    licenseStatus: "official",
+    displayAllowed: true,
+    isCurrent: true,
+  },
+]);
 
 describe("formatRuntime", () => {
   it("retorna null quando ausente ou invalido", () => {
@@ -139,6 +159,7 @@ describe("movie media presenter", () => {
         posterPath: "/media/movies/poster.webp",
         backdropPath: "/uploads/movies/backdrop.jpg",
       },
+      IMAGEM_AUTORIZADA,
     );
     expect(media.hasRealImage).toBe(true);
     expect(media.poster?.src).toBe("/media/movies/poster.webp");
@@ -148,6 +169,7 @@ describe("movie media presenter", () => {
   it("monta URL remota do TMDB para file_path cru (poster w500 / backdrop w1280)", () => {
     const media = selectMovieMedia(
       { posterPath: "/poster.jpg", backdropPath: "/backdrop.jpg" },
+      IMAGEM_AUTORIZADA,
     );
     expect(media.hasRealImage).toBe(true);
     expect(media.poster?.src).toBe("https://image.tmdb.org/t/p/w500/poster.jpg");
@@ -157,6 +179,7 @@ describe("movie media presenter", () => {
   it("mantem placeholders quando o path e externo/invalido (nao local nem cru valido)", () => {
     const media = selectMovieMedia(
       { posterPath: "https://x.com/p.jpg", backdropPath: "/media/../secret.jpg" },
+      IMAGEM_AUTORIZADA,
     );
     expect(media).toEqual({ poster: null, backdrop: null, hasRealImage: false });
   });
@@ -165,6 +188,7 @@ describe("movie media presenter", () => {
 describe("presentMovie", () => {
   it("fallback seguro quando ano/duracao ausentes; nao inventa descricao", () => {
     const view = presentMovie({
+      imageAuthorization: IMAGEM_AUTORIZADA,
       record: {
         titleOriginal: "Sem Dados",
         year: null,
@@ -187,6 +211,7 @@ describe("presentMovie", () => {
 
   it("conta blocos renderizaveis distintos e usa dados existentes", () => {
     const view = presentMovie({
+      imageAuthorization: IMAGEM_AUTORIZADA,
       record: baseRecord,
       translation: translation({ metaDescription: "d" }),
       blocks: [
@@ -203,6 +228,7 @@ describe("presentMovie", () => {
 
   it("mapeia situacao/idioma reais para a ficha tecnica (pt-BR, masculino)", () => {
     const view = presentMovie({
+      imageAuthorization: IMAGEM_AUTORIZADA,
       record: { ...baseRecord, status: "Released", originalLanguage: "en" },
       translation: null,
       blocks: [],
@@ -212,11 +238,12 @@ describe("presentMovie", () => {
   });
 
   it("omite situacao/idioma quando ausentes ou desconhecidos (nunca cru)", () => {
-    const absent = presentMovie({ record: baseRecord, translation: null, blocks: [] });
+    const absent = presentMovie({ imageAuthorization: IMAGEM_AUTORIZADA, record: baseRecord, translation: null, blocks: [] });
     expect(absent.statusLabel).toBeNull();
     expect(absent.originalLanguageLabel).toBeNull();
 
     const unknown = presentMovie({
+      imageAuthorization: IMAGEM_AUTORIZADA,
       record: { ...baseRecord, status: "Rumored", originalLanguage: "xx" },
       translation: null,
       blocks: [],

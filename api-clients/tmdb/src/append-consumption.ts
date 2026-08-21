@@ -48,12 +48,42 @@
 
 import { TMDB_APPEND_BY_TYPE, type TmdbAppendableType } from './append-to-response.js'
 
+/**
+ * DE QUAL COPIA o consumidor le. A distincao nao e academica.
+ *
+ * Um valor no `append_to_response` chega DENTRO do payload de detalhe. O mesmo
+ * sub-recurso tambem existe como ENDPOINT proprio (`/movie/{id}/images`). Ler o
+ * endpoint proprio nao consome a copia que veio no append — e a copia do append
+ * continua sendo pedida, arquivada e nunca lida.
+ *
+ * Ate 21/08/2026 o registro nao sabia distinguir os dois, e por isso classificou
+ * `images` e `videos` como CONSUMIDOS: `media-normalize.ts` de fato os
+ * normaliza, mas normaliza a resposta de `/movie/{id}/images` e
+ * `/movie/{id}/videos` — chamadas SEPARADAS feitas por `runMediaSync`. Os
+ * normalizadores do detalhe (`normalizers/movie.ts`, `normalizers/tv.ts`) nao
+ * mencionam `images` nem `videos` em linha nenhuma.
+ */
+export type AppendConsumptionSource =
+  /** Lido do payload de DETALHE, onde o append o entregou. */
+  | 'detail-append'
+  /** Lido de um ENDPOINT proprio. A copia do append segue sem leitor. */
+  | 'dedicated-endpoint'
+
 /** Onde um valor de append e efetivamente lido. */
 export interface AppendConsumer {
   /** O valor, exatamente como vai no `append_to_response`. */
   readonly value: string
   /** Modulo que le. Caminho de repositorio, para o leitor poder conferir. */
   readonly consumedBy: string
+  /** De qual copia. Ver {@link AppendConsumptionSource}. */
+  readonly source: AppendConsumptionSource
+  /**
+   * Obrigatorio quando `source` e `dedicated-endpoint`: POR QUE o valor continua
+   * no append se quem o le nao le essa copia. Sem esta linha, um append pago e
+   * nunca lido volta a ser invisivel — que e o defeito que este arquivo existe
+   * para fechar.
+   */
+  readonly appendCopyRationale?: string
 }
 
 /** Um valor pedido de proposito e ainda nao consumido. */
@@ -71,18 +101,51 @@ export interface AppendDeferred {
  * garante COBERTURA, nao veracidade. Manter honesto e trabalho humano.
  */
 export const APPEND_CONSUMED: readonly AppendConsumer[] = [
-  { value: 'credits', consumedBy: 'services/ingestion/src/normalizers/credits.ts' },
-  { value: 'aggregate_credits', consumedBy: 'services/ingestion/src/normalizers/credits.ts' },
-  { value: 'external_ids', consumedBy: 'services/ingestion/src/normalizers/external-ids.ts' },
-  { value: 'images', consumedBy: 'services/ingestion/src/catalog-sync/media-normalize.ts' },
-  { value: 'videos', consumedBy: 'services/ingestion/src/catalog-sync/media-normalize.ts' },
-  { value: 'watch/providers', consumedBy: 'services/ingestion/src/normalizers/watch-providers.ts' },
-  { value: 'recommendations', consumedBy: 'services/ingestion/src/normalizers/recommendations.ts' },
-  { value: 'similar', consumedBy: 'services/ingestion/src/normalizers/recommendations.ts' },
-  { value: 'combined_credits', consumedBy: 'services/ingestion/src/normalizers/credits.ts' },
-  { value: 'release_dates', consumedBy: 'services/ingestion/src/normalizers/detail-facts.ts' },
-  { value: 'content_ratings', consumedBy: 'services/ingestion/src/normalizers/detail-facts.ts' },
+  { value: 'credits', consumedBy: 'services/ingestion/src/normalizers/credits.ts', source: 'detail-append' },
+  { value: 'aggregate_credits', consumedBy: 'services/ingestion/src/normalizers/credits.ts', source: 'detail-append' },
+  { value: 'external_ids', consumedBy: 'services/ingestion/src/normalizers/external-ids.ts', source: 'detail-append' },
+  {
+    value: 'images',
+    consumedBy: 'services/ingestion/src/catalog-sync/media-normalize.ts',
+    // NAO le a copia do append: `runMediaSync` chama `/movie|tv/{id}/images`.
+    source: 'dedicated-endpoint',
+    appendCopyRationale:
+      'A copia do append e pedida com `language` (o detalhe vai com pt-BR), e o TMDB ' +
+      'FILTRA `/images` por esse idioma: viriam so as poucas artes com `iso_639_1=pt`. ' +
+      'A galeria precisa do conjunto INTEIRO, entao `sync_media` chama o endpoint ' +
+      'proprio, que vai SEM `language` e devolve todos os idiomas. ' +
+      'Tirar `images` do append trocaria bytes por invalidacao de TODO o `api_cache` ' +
+      '(o valor do append entra na chave de cache — ver PR #181), por zero ganho ' +
+      'de dado. Fica, declarado, ate haver motivo melhor que economia de bytes.',
+  },
+  {
+    value: 'videos',
+    consumedBy: 'services/ingestion/src/catalog-sync/media-normalize.ts',
+    // Mesma historia de `images`, e com a mesma consequencia: trailer em `en`
+    // nao apareceria num detalhe pedido com `language=pt-BR`.
+    source: 'dedicated-endpoint',
+    appendCopyRationale:
+      'Identico a `images`: o detalhe vai com `language=pt-BR` e o TMDB filtra `/videos` ' +
+      'por idioma, o que descartaria o trailer oficial em `en` da maioria dos titulos. ' +
+      '`sync_media` chama `/movie|tv/{id}/videos` sem `language`.',
+  },
+  { value: 'watch/providers', consumedBy: 'services/ingestion/src/normalizers/watch-providers.ts', source: 'detail-append' },
+  { value: 'recommendations', consumedBy: 'services/ingestion/src/normalizers/recommendations.ts', source: 'detail-append' },
+  { value: 'similar', consumedBy: 'services/ingestion/src/normalizers/recommendations.ts', source: 'detail-append' },
+  { value: 'combined_credits', consumedBy: 'services/ingestion/src/normalizers/credits.ts', source: 'detail-append' },
+  { value: 'release_dates', consumedBy: 'services/ingestion/src/normalizers/detail-facts.ts', source: 'detail-append' },
+  { value: 'content_ratings', consumedBy: 'services/ingestion/src/normalizers/detail-facts.ts', source: 'detail-append' },
 ]
+
+/**
+ * Valores cuja copia do APPEND nao tem leitor (o consumidor le endpoint proprio).
+ *
+ * Existe como funcao para ter teste: sem ela, a distincao viveria so no campo e
+ * nada reprovaria uma entrada `dedicated-endpoint` sem justificativa.
+ */
+export function appendValuesReadFromDedicatedEndpoint(): readonly AppendConsumer[] {
+  return APPEND_CONSUMED.filter((entry) => entry.source === 'dedicated-endpoint')
+}
 
 /**
  * Valores pedidos de proposito e ainda NAO consumidos, com o motivo.

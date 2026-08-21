@@ -14,6 +14,10 @@ export {
   EPISODES_SEGMENT,
   EXPLORE_PATH,
   HOME_PATH,
+  // As galerias entram no MESMO barril das demais rotas: quem monta URL
+  // publica importa de um lugar so.
+  IMAGES_SEGMENT,
+  imagesGalleryPath,
   MOVIES_INDEX_PATH,
   NEWS_INDEX_PATH,
   parseRouteNumber,
@@ -23,6 +27,8 @@ export {
   SEASONS_SEGMENT,
   SERIES_INDEX_PATH,
   TERMS_PATH,
+  VIDEOS_SEGMENT,
+  videosGalleryPath,
   moviePath,
   seasonPath,
   seriesPath,

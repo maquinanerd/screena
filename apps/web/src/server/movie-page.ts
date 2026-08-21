@@ -45,6 +45,7 @@ import {
 } from "./entity-awards";
 import { getRatingsForEntity } from "./entity-ratings";
 import { getRecommendedTitlesForEntity, getSimilarMoviesForEntity } from "./similar-titles";
+import { countGalleryMedia } from "./entity-gallery";
 import { getTrailerForEntity } from "./entity-trailer";
 import { getCinerieScoreForEntity, getGenresForEntity } from "./entity-hero";
 import {
@@ -64,6 +65,7 @@ import type { CastMemberView } from "../lib/cast-presenter";
 import type { WatchAvailabilityView } from "../lib/watch-availability-presenter";
 import type { SimilarTitlesView } from "../lib/similar-titles-presenter";
 import type { PageSeoResolution } from "@screena/seo";
+import { getImageDisplayAuthorization } from "./image-license";
 
 /** Idioma de publicacao do MVP (invariante 7): pt-BR indexa primeiro. */
 const LANGUAGE_CODE = "pt-BR";
@@ -86,6 +88,13 @@ export interface MoviePageData {
    * o mesmo: cai para o backdrop, e a ausencia e registrada.
    */
   trailer: TrailerView | null;
+  /**
+   * Contagem REAL de imagens e videos da entidade, para a banda de midia.
+   *
+   * Vem de `countGalleryMedia`, que usa os MESMOS filtros dos leitores da
+   * galeria. Um segundo criterio aqui faria a ficha e a galeria discordarem.
+   */
+  mediaCounts: { images: number; videos: number };
   /** C8: id INTERNO do catalogo, serializado, para o botao de biblioteca. */
   entityId: string;
   indexability: IndexabilityResult;
@@ -246,8 +255,13 @@ export const getMoviePageData = cache(
             publishedLocaleRank(b.languageCode),
         )[0] ?? null;
 
+    // O SEXTO gate. Ate 21/08/2026 imagem era o unico dado de terceiro exibido
+    // sem consultar `source_licenses` — ver `server/image-license.ts`.
+    const imageAuthorization = await getImageDisplayAuthorization(prisma);
+
     const view = presentMovie({
       translations,
+      imageAuthorization,
       record: {
         titleOriginal: movie.titleOriginal,
         year:
@@ -318,6 +332,11 @@ export const getMoviePageData = cache(
     // caminho critico do `generateMetadata` — nenhum metadado depende dele.
     const trailer = await getTrailerForEntity(prisma, "movie", movie.tmdbId);
 
+    // As CONTAGENS da banda de midia ("9 videos - 184 fotos"). `COUNT(*)` nas
+    // MESMAS condicoes que a galeria usa para listar: se divergissem, a ficha
+    // prometeria um numero que a galeria nao entrega.
+    const mediaCounts = await countGalleryMedia(prisma, "movie", movie.tmdbId);
+
     // "Mais como este", com DOIS sinais e uma ordem que nao e arbitraria.
     //
     // 1. COLECAO primeiro. E parentesco DECLARADO pela fonte (a franquia): dois
@@ -367,6 +386,7 @@ export const getMoviePageData = cache(
     return {
       view,
       trailer,
+      mediaCounts,
       // C8: id INTERNO do catalogo, serializado. A pagina o repassa ao botao de
       // biblioteca (client component); a biblioteca referencia a entidade
       // canonica, nunca o slug (que muda com traducao/recanonizacao).

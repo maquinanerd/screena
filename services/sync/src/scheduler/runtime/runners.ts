@@ -91,6 +91,8 @@ export interface RunnerDeps {
   readonly locale: string
   /** Teto de itens por ciclo de cada fila. */
   readonly batchLimit: number
+  /** Teto de ids por tipo na descoberta. `null` = sem teto. Ver `config.ts`. */
+  readonly discoveryLimit: number | null
   /** Raiz do repositorio (para spawnar as CLIs de outros servicos). */
   readonly repoRoot: string
   /** `--apply` real. `false` = tudo em dry-run (o default de desenvolvimento). */
@@ -240,7 +242,13 @@ const runDiscovery: QueueRunner = async (deps) => {
           entityType: kind,
           locale: deps.locale,
           country: null,
-          limit: null,
+          // ANTES: `null` HARDCODED, e `null` e o export INTEIRO (1,23 M filmes,
+          // 228 k series, 4,86 M pessoas). Com `enqueueDetails: true`, o
+          // primeiro ciclo drenado enfileiraria ~6,3 MILHOES de `sync_details`.
+          // O servico de catalogo sempre teve o teto equivalente e o runbook
+          // manda desliga-lo quando o agendador sobe — entao o produtor COM
+          // teto saia de cena e o SEM teto ficava. Ver `config.ts`.
+          limit: deps.discoveryLimit,
           maxPages: null,
           ids: null,
           // Sem isto a descoberta acharia ids e nao sincronizaria nada.

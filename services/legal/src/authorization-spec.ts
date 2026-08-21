@@ -139,6 +139,53 @@ export type LicenseStatus = "official" | "licensed" | "third_party";
  * Trocar para `present` e um ato deliberado: significa "o arquivo em `path` e o
  * oficial, baixado de `officialSourceUrl`".
  */
+/**
+ * O FORMATO REAL do arquivo de marca.
+ *
+ * ============================================================================
+ * POR QUE UM CAMPO, E NAO A EXTENSAO
+ * ============================================================================
+ * Extensao e um palpite do sistema de arquivos, nao um fato sobre os bytes. Tres
+ * arquivos de marca baixados em 21/08/2026 tinham extensao `.svg` e cabecalho
+ * `RIFF....WEBPVP8L`: eram WEBP raster renomeados. Um `<img>` os renderiza
+ * assim mesmo, entao nada quebra — o defeito e SILENCIOSO, e o registro passa a
+ * afirmar "vetor" sobre um raster que pixeliza a 2x.
+ *
+ * E a mesma familia do `COLOR_TOKENS`: campo que mente porque nada o confere.
+ * Por isso `tests/governance/brand-asset-format.test.ts` LE O CABECALHO do
+ * arquivo e compara com este campo.
+ */
+export type BrandAssetFormat = "svg" | "webp" | "png";
+
+/**
+ * O que a marca AFIRMA.
+ *
+ * ============================================================================
+ * ICONE DE ESTADO NUNCA E MARCA — a regra entrou em 21/08/2026
+ * ============================================================================
+ * O arquivo baixado como "rottentomatoes.svg" era o **icone do tomate fresco**:
+ * o indicador de estado *Fresh* do Tomatometer, nao a palavra-marca.
+ *
+ * Isso VIOLA a invariante 1. O tomate fresco nao e marca neutra — ele AFIRMA
+ * que o titulo e Fresh. Ao lado de um Tomatometer de 40%, diz ao leitor o
+ * contrario do numero que esta do lado. E a mesma familia de "nota IMDb virar
+ * tomates": a marca carregando um juizo que o dado nao sustenta.
+ *
+ * Fresh, Rotten, Certified Fresh e Popcornmeter sao INDICADORES DE RESULTADO.
+ * Se um dia forem exibidos, e DERIVADO do valor real da nota — nunca fixo,
+ * nunca como logotipo.
+ */
+export type BrandAssetKind =
+  /** A palavra-marca ou o simbolo institucional da fonte. */
+  | "wordmark"
+  /**
+   * Indicador de RESULTADO (Fresh, Rotten, Certified Fresh, Popcornmeter).
+   *
+   * NUNCA pode ocupar o slot de logotipo. O tipo existe para que a recusa seja
+   * expressavel e testavel, nao para que o valor seja usado.
+   */
+  | "state_icon";
+
 export interface LicenseLogoAsset {
   /** Caminho publico servido por `apps/web/public` (ex.: `/brand/sources/x.svg`). */
   readonly path: string;
@@ -148,6 +195,30 @@ export interface LicenseLogoAsset {
   readonly alt: string;
   /** Altura de exibicao em px. O logo e SUBORDINADO a marca do site (termos TMDB). */
   readonly displayHeightPx: number;
+  /**
+   * O formato REAL dos bytes. Conferido contra o cabecalho do arquivo por
+   * `tests/governance/brand-asset-format.test.ts`. Ver {@link BrandAssetFormat}.
+   */
+  readonly format: BrandAssetFormat;
+  /**
+   * O que a imagem E. Ver {@link BrandAssetKind}.
+   *
+   * `state_icon` no slot de logotipo e recusado por teste: um indicador de
+   * resultado afirma um juizo sobre o titulo, e logotipo nao afirma nada.
+   */
+  readonly kind: BrandAssetKind;
+  /**
+   * Condicoes que a FONTE impoe para exibir a marca, alem da licenca.
+   *
+   * Condicao nao satisfeita = logo NAO acende. O IMDb, por exemplo, exige a
+   * declaracao de marca registrada em qualquer material que exiba a marca:
+   * "IMDb, IMDb.COM, and the IMDb logo are trademarks of IMDb.com, Inc. or its
+   * affiliates." Usos fora das diretrizes publicadas exigem permissao por
+   * escrito.
+   *
+   * Vazio = nenhuma condicao alem da licenca.
+   */
+  readonly displayConditions: readonly string[];
   /**
    * `present` = o arquivo oficial esta no repositorio e pode ir ao ar.
    * `pending_official_file` = a licenca EXIGE/permite o logo, mas o arquivo
@@ -291,6 +362,13 @@ export const TMDB_LOGO_ASSET: LicenseLogoAsset = {
   path: "/brand/sources/tmdb-primary.svg",
   officialSourceUrl: "https://www.themoviedb.org/about/logos-attribution",
   alt: "TMDB",
+  // Vetor de verdade: o arquivo comeca com `<svg xmlns="http`. Conferido por
+  // `tests/governance/brand-asset-format.test.ts`, que le o cabecalho.
+  format: "svg",
+  kind: "wordmark",
+  // O disclaimer de nao-endosso ja e `attributionText` da licenca e sai no
+  // rodape ao lado do logo; os termos do TMDB pedem os DOIS.
+  displayConditions: [],
   // Subordinado a marca do site, como os termos exigem. 13px: o wordmark do
   // TMDB e LONGO (489x35 no viewBox), entao a altura e o unico controle — a
   // 13px ele ocupa ~180px de largura, contra os 150px do wordmark da Cinerie
@@ -364,24 +442,59 @@ const LOGO_RATIONALE_RATING_DEFAULT =
  */
 const RATING_LOGO_ASSETS: Readonly<Record<string, LicenseLogoAsset>> = {
   imdb: {
-    path: "/brand/sources/imdb.svg",
+    // O arquivo que o dono baixou como `imdb.svg` e WEBP (cabecalho
+    // `RIFF....WEBPVP8L`, 960x484), nao SVG. Quando ele entrar no repositorio,
+    // entra como `.webp` e com `format: "webp"` — raster declarado como vetor e
+    // a mesma familia de defeito do `COLOR_TOKENS`, e
+    // `tests/governance/brand-asset-format.test.ts` le o cabecalho para impedir.
+    path: "/brand/sources/imdb.webp",
     officialSourceUrl: "https://brand.imdb.com/imdb",
     alt: "IMDb",
     displayHeightPx: 18,
+    format: "webp",
+    kind: "wordmark",
+    // CONDICAO DA FONTE, nao cortesia: o IMDb exige a declaracao de marca
+    // registrada em QUALQUER material que exiba a marca. Condicao nao
+    // satisfeita = logo nao acende. Usos fora das diretrizes publicadas exigem
+    // permissao por escrito.
+    displayConditions: [
+      "IMDb, IMDb.COM, and the IMDb logo are trademarks of IMDb.com, Inc. or its affiliates.",
+    ],
     status: "pending_official_file",
   },
   rotten_tomatoes: {
+    // ========================================================================
+    // O ARQUIVO BAIXADO NAO E A MARCA DO ROTTEN TOMATOES
+    // ========================================================================
+    // O que veio como `rottentomatoes.svg` (WEBP, 250x255) e o **icone do
+    // tomate fresco**: o indicador de estado *Fresh* do Tomatometer.
+    //
+    // Ele nao pode entrar. O tomate fresco AFIRMA que o titulo e Fresh — ao
+    // lado de um Tomatometer de 40%, diz ao leitor o contrario do numero que
+    // esta do lado. E a invariante 1 na mesma familia de "nota IMDb virar
+    // tomates": a marca carregando um juizo que o dado nao sustenta.
+    //
+    // O logotipo do Rotten Tomatoes e a PALAVRA-MARCA. Ate ela existir, a fonte
+    // e creditada em texto — que e o estado atual e continua valido.
     path: "/brand/sources/rotten-tomatoes.svg",
     officialSourceUrl: "https://www.rottentomatoes.com/help_desk/licensing",
     alt: "Rotten Tomatoes",
     displayHeightPx: 18,
+    format: "svg",
+    kind: "wordmark",
+    displayConditions: [],
     status: "pending_official_file",
   },
   metacritic: {
-    path: "/brand/sources/metacritic.svg",
+    // Idem IMDb: o arquivo baixado e WEBP (250x57), nao SVG. Resolucao JUSTA —
+    // a 18px de altura ele serve, mas conferir se aguenta 2x antes de promover.
+    path: "/brand/sources/metacritic.webp",
     officialSourceUrl: "https://knowledgebase.fabricdata.com/origin/apis-all/metacritic-api-docs",
     alt: "Metacritic",
     displayHeightPx: 18,
+    format: "webp",
+    kind: "wordmark",
+    displayConditions: [],
     status: "pending_official_file",
   },
 };
@@ -867,7 +980,41 @@ export const STATIC_AUTHORIZATION: readonly AuthorizationEntry[] = [
       },
     ],
   },
-  // TMDB — imagens: registradas como BLOQUEADAS (display=false, logo=false).
+  // ==========================================================================
+  // TMDB — IMAGENS. Decisão do proprietário (Pablo Eduardo, 2026-08-21):
+  // `display_allowed` passa a `true`.
+  // ==========================================================================
+  //
+  // O QUE ESTÁ SENDO AUTORIZADO. Pôster, backdrop, still de episódio e foto de
+  // perfil, consumidos **pela API do TMDB, sob os termos da API do TMDB**, com
+  // atribuição no rodapé e o logo do TMDB aceso. É o uso para o qual a API
+  // existe e o uso que os termos cobrem.
+  //
+  // POR QUE A ENTRADA ESTAVA ERRADA. `false` aqui não descrevia o produto: as
+  // imagens do TMDB já iam ao ar em toda página de detalhe, home, busca e
+  // elenco — porque **o caminho de imagem não lia licença nenhuma**. O registro
+  // estava desalinhado com o comportamento real e com a própria autorização de
+  // agosto que ligou `logo_allowed` (mesma leitura de termos, mesma sessão).
+  //
+  // A ORDEM IMPORTOU, E ELA FOI CUMPRIDA. Este flag só virou `true` DEPOIS de
+  // o gate existir (`packages/public-contracts/src/image-authorization.ts` +
+  // `apps/web/src/server/image-license.ts`), com controle negativo provando que
+  // `false` faz o pôster sumir. Ligar o flag primeiro produziria a tela certa
+  // pelo motivo errado, e no dia em que alguém pusesse `false` de volta nada
+  // mudaria na tela.
+  //
+  // AS CONDIÇÕES FICAM AQUI, NÃO NO CÓDIGO:
+  //   1. atribuição obrigatória presente (`requiresAttribution`, rodapé);
+  //   2. a arte é material de TERCEIRO (estúdio/distribuidora) servido sob os
+  //      termos da API — a autorização é de EXIBIR pelo canal do TMDB, nunca de
+  //      redistribuir o arquivo;
+  //   3. sem alteração que descaracterize a arte (recorte de enquadramento e
+  //      escolha de `size` do CDN são permitidos; filtro, montagem, remoção de
+  //      marca ou sobreposição que altere a obra, não);
+  //   4. sem reivindicação de propriedade sobre a arte.
+  //
+  // `derivativeAllowed` continua `false` na decisão de uso: exibir a arte de
+  // terceiro não é derivar obra nova a partir dela.
   {
     label: "TMDB (imagens)",
     role: "catalog-provider",
@@ -878,7 +1025,7 @@ export const STATIC_AUTHORIZATION: readonly AuthorizationEntry[] = [
       providerKey: "tmdb",
       territory: null,
       licenseStatus: "official",
-      displayAllowed: false,
+      displayAllowed: true,
       logoAllowed: true,
       logoBasis: "source_terms",
       logoRationale:
@@ -896,8 +1043,15 @@ export const STATIC_AUTHORIZATION: readonly AuthorizationEntry[] = [
       requiresLinkback: true,
       attributionText:
         "Este produto usa a API do TMDB, mas nao e endossado ou certificado pelo TMDB.",
-      policyVersion: "cinerie-source-auth/tmdb/2026-08-v2",
-      notes: "Imagens do TMDB permanecem NAO exibiveis (display_allowed=false) ate decisao especifica.",
+      // v3: a decisao especifica que a `notes` da v2 dizia estar faltando.
+      policyVersion: "cinerie-source-auth/tmdb-image/2026-08-v3",
+      notes:
+        "Imagens do TMDB (poster, backdrop, still, perfil) EXIBIVEIS sob os termos da API do TMDB, " +
+        "decisao do proprietario em 21/08/2026. Condicoes: atribuicao no rodape; a arte e material de " +
+        "terceiro servido pelo canal do TMDB (autoriza EXIBIR, nunca redistribuir o arquivo); sem " +
+        "alteracao que descaracterize a arte (escolha de `size` do CDN e enquadramento sao permitidos); " +
+        "sem reivindicacao de propriedade. O gate de exibicao vive em " +
+        "packages/public-contracts/src/image-authorization.ts e le ESTA linha.",
     },
     decisions: [
       {
@@ -1176,6 +1330,9 @@ const JUSTWATCH_LOGO_ASSET: LicenseLogoAsset = {
   officialSourceUrl: "https://www.justwatch.com/us/press",
   alt: "JustWatch",
   displayHeightPx: 16,
+  format: "svg",
+  kind: "wordmark",
+  displayConditions: [],
   status: "pending_official_file",
 };
 
@@ -1264,6 +1421,15 @@ export function streamingProviderEntries(
         officialSourceUrl: portal ?? TMDB_PROVIDER_LOGO_DELIVERY_URL,
         alt: provider.canonicalName,
         displayHeightPx: 20,
+        // `svg` porque e o que a decisao anterior registrou e o que o teste de
+        // proveniencia ja afirma. NAO foi medido nesta leva de que formato o
+        // TMDB entrega `logo_path` — trocar sem medir seria substituir uma
+        // decisao registrada por um palpite. Quando os 24 arquivos forem
+        // baixados, `brand-asset-format.test.ts` compara o cabecalho com este
+        // campo e o desvio aparece na hora.
+        format: "svg",
+        kind: "wordmark",
+        displayConditions: [],
         status: "pending_official_file",
       };
       const regimeNote =

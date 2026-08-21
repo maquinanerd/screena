@@ -280,23 +280,97 @@ vermelho ensina o dono a ignorar vermelho.
 | `CINERIE_SCHEDULER_TICK_MS` | `300000` (5 min) | Intervalo entre avaliacoes do relogio. |
 | `CINERIE_SCHEDULER_BATCH_LIMIT` | `200` | Teto de itens por ciclo de cada fila. |
 | `CINERIE_SCHEDULER_DISABLED_QUEUES` | vazio | Lista separada por virgula. |
+| `CINERIE_SCHEDULER_DISCOVERY_LIMIT` | `2000` | **Teto de ids por TIPO em cada descoberta.** `0` = SEM TETO (o universo inteiro: 1,23 M filmes + 228 k series + 4,86 M pessoas) — e nao "nenhum id". Mesma semantica de `CATALOG_WORKER_DISCOVERY_LIMIT`, de proposito. |
 | `CINERIE_SCHEDULER_LOCALE` | `pt-BR` | Locale dos jobs enfileirados. |
 | `CINERIE_SCHEDULER_WORKER_ID` | `scheduler-<pid>` | Aparece no painel e no log. |
 
-> **Ao subir o `screen-cron`, desligue os enfileiradores internos do
-> `screen-catalog-worker`:**
->
-> ```
-> CATALOG_WORKER_ENQUEUE_DISCOVERY=false
-> CATALOG_WORKER_ENQUEUE_CHANGES=false
-> ```
->
-> Os dois usam a MESMA chave de idempotencia, entao a duplicacao e inofensiva
-> hoje — mas dois relogios para o mesmo trabalho e uma divergencia esperando para
-> acontecer, e no dia em que a chave mudar de um lado sao dois lotes por dia sem
-> ninguem notar. Desligados, o catalog-worker continua sendo o WORKER da fila,
-> que e o papel que mais ninguem faz. O default das duas e `true`: desligar por
-> omissao quebraria uma instalacao que ainda nao subiu o agendador.
+> **ATENCAO ao teto de descoberta.** Ate 21/08/2026 `runDiscovery` mandava
+> `limit: null` HARDCODED, e `null` e o export INTEIRO. Com
+> `enqueueDetails: true`, o primeiro ciclo drenado enfileiraria da ordem de
+> **6,3 milhoes** de `sync_details`. O servico de catalogo sempre teve o botao
+> equivalente (default 2000) e este runbook manda DESLIGA-LO quando o agendador
+> sobe — entao o produtor COM teto saía de cena e o SEM teto ficava. Agora os
+> dois tem o mesmo default.
+
+> **Estas duas variaveis pertencem ao `screen-catalog-worker`, nao a este
+> servico** — e o servico dele tem passo proprio na secao 7. Ate 21/08/2026
+> elas eram a UNICA mencao a ele neste documento, dentro de uma citacao na
+> secao de variaveis do `screen-cron`, sem passo, sem titulo e sem destaque.
+> O `screen-cron` foi criado; o `screen-catalog-worker` nao. Resultado medido:
+> 534 jobs `pending` em `catalog_jobs`, nenhum jamais processado, com este
+> painel exibindo nove filas verdes.
+
+---
+
+## 6.1. O CONSUMIDOR DA FILA — o outro servico, e ele nao e opcional
+
+O agendador **ENFILEIRA**. Ele nunca processa job nenhum. Quem tira o job de
+`pending` e o transforma em linha de catalogo e um **segundo servico**, com
+imagem, comando e ciclo de vida proprios:
+
+| | Produtor | Consumidor |
+| --- | --- | --- |
+| Servico | `screen-cron` | **`screen-catalog-worker`** |
+| Comando | `corepack pnpm --filter @screena/sync scheduler:start` | `corepack pnpm --filter @screena/ingestion catalog-worker:start` |
+| Escreve | `catalog_jobs` (`store.enqueue`) | `movies`, `tv_shows`, `people`, `tmdb_images`, `tmdb_videos`, ... |
+| Arquivo | [`services/sync/bin/cinerie-scheduler.ts`](../../services/sync/bin/cinerie-scheduler.ts) | [`services/ingestion/bin/catalog-worker-service.ts`](../../services/ingestion/bin/catalog-worker-service.ts) |
+| Dockerfile | `Dockerfile` (mesmo do app) | **`Dockerfile.catalog-worker`** |
+
+**Subir so o `screen-cron` produz exatamente o estado de 21/08/2026:** a fila
+cresce todo dia, o painel fica verde, e o catalogo nao ganha uma linha.
+
+O roteiro completo de criacao do servico (variaveis uma a uma, File Mount dos
+segredos, healthcheck, replicas, diagnostico de `503`) esta em
+[`docs/runbooks/EASYPANEL_CATALOG_WORKER.md`](../runbooks/EASYPANEL_CATALOG_WORKER.md).
+**Aquele documento chama o servico de `cinerie-catalog-worker` e este o chamava
+de `screen-catalog-worker`** — dois nomes para o mesmo servico ausente, o que
+ajudou a lacuna a passar batida. O nome canonico e o do painel; o que importa e
+que exista UM, e um so.
+
+### Configuracao do `screen-catalog-worker`
+
+| Campo | Valor |
+| --- | --- |
+| Dockerfile | `Dockerfile.catalog-worker` (contexto = raiz do repositorio) |
+| Comando | vem do `CMD` da imagem (`catalog-worker:start`) |
+| Porta | `3004`, **so health — nao exponha dominio publico** |
+| Liveness | `GET /healthz` -> 200 |
+| Readiness | `GET /readyz` -> 200/503 (o campo `detail` diz qual check barrou) |
+| Restart | `always` |
+| Replicas | **1** (o `claim` usa `SKIP LOCKED`, entao 2 nao corrompe — so duplica cota) |
+| Volumes | **nenhum** (a imagem fica no TMDB; nada de midia entra no storage) |
+
+| Variavel | Tipo | Valor | Obrigatoria |
+| --- | --- | --- | --- |
+| `DATABASE_URL` | **File Mount** | connection string do `screen-db` | **sim** |
+| `TMDB_READ_ACCESS_TOKEN` | **File Mount** | token v4 do TMDB | **sim** |
+| `NODE_ENV` | env var | `production` | sim (ja vem na imagem) |
+| `CINERIE_CATALOG_WORKER_PRODUCTION_CONFIRMED` | env var | `true` | **sim — sem ela o servico RECUSA subir** |
+| `CATALOG_WORKER_ENQUEUE_DISCOVERY` | env var | `false` | **sim, com o `screen-cron` de pe** |
+| `CATALOG_WORKER_ENQUEUE_CHANGES` | env var | `false` | **sim, com o `screen-cron` de pe** |
+| `CATALOG_WORKER_HEALTH_PORT` | env var | `3004` | nao (default) |
+| `CATALOG_WORKER_ID` | env var | `cinerie-catalog-worker-1` | nao |
+| `CATALOG_WORKER_CONCURRENCY` | env var | comece em `2` | nao (default `4`) |
+| `CATALOG_WORKER_JOB_TIMEOUT_MS` | env var | `120000` | nao (default) |
+| `CATALOG_WORKER_POLL_INTERVAL_MS` | env var | `1000` | nao (default) |
+| `CATALOG_WORKER_LOCALE` | env var | `pt-BR` | nao (default) |
+| `CATALOG_WORKER_DISCOVERY_LIMIT` | env var | `2000` | so importa com o enfileirador LIGADO |
+| `CATALOG_WORKER_DISCOVERY_KINDS` | env var | `movie,tv,person` | so importa com o enfileirador LIGADO |
+| `CATALOG_WORKER_DISCOVERY_INTERVAL_MS` | env var | `86400000` (24 h) | so importa com o enfileirador LIGADO |
+| `CATALOG_WORKER_CHANGES_INTERVAL_MS` | env var | `21600000` (6 h) | so importa com o enfileirador LIGADO |
+
+**Por que `ENQUEUE_DISCOVERY`/`ENQUEUE_CHANGES` vao para `false`:** o
+`screen-cron` passou a ser o relogio da plataforma e enfileira a MESMA
+descoberta, com a MESMA chave de idempotencia. A duplicacao e inofensiva hoje,
+mas dois relogios para o mesmo trabalho e uma divergencia esperando acontecer —
+no dia em que a chave mudar de um lado, sao dois lotes por dia sem ninguem
+notar. Desligadas, o worker continua fazendo o papel que so ele faz: **drenar**.
+O default das duas e `true` de proposito: desligar por omissao quebraria uma
+instalacao que ainda nao subiu o agendador.
+
+**Fail-loud:** valor invalido em qualquer variavel numerica ou booleana faz o
+servico **recusar subir** com a mensagem do campo — nao cai em default
+silencioso. `"1"`, `"yes"` e `"sim"` **nao** valem como `true`.
 
 ---
 

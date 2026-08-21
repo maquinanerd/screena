@@ -46,8 +46,28 @@ export async function importMovie(ctx: ImportContext, tmdbId: number): Promise<I
     const timestamps = { lastSyncedAt: now, staleAfter: ctx.staleAfter(now) }
     const quotaCost = result.fromCache ? 0 : 1
 
-    if (!result.changed) {
-      await ctx.store.touchMovie(tmdbId, timestamps)
+    // ========================================================================
+    // "PAYLOAD INALTERADO" NAO SIGNIFICA "ENTIDADE EXISTE"
+    // ========================================================================
+    // `touchMovie` sempre DEVOLVEU se tocou alguma linha, e este ramo sempre
+    // DESCARTOU esse booleano. A consequencia, medida em 21/08/2026 com o
+    // harness de `prove:queue-drains`:
+    //
+    //   1. a primeira tentativa busca o payload; `getOrFetch` grava em
+    //      `api_cache` ANTES de o upsert rodar;
+    //   2. o upsert falha (qualquer motivo) e o job vai para retry;
+    //   3. a segunda tentativa acha o cache quente com o MESMO hash, cai aqui,
+    //      "toca" ZERO linhas, e reporta `status: 'success'` — para uma
+    //      entidade que nao existe em `movies`.
+    //
+    // O sync log ganha uma linha `success`, o job sai da fila, a metrica conta
+    // `unchanged`, e o catalogo nao tem o filme. Todo sinal disponivel diz que
+    // deu certo. E a mesma familia do painel verde com a fila cheia: o cache
+    // quente transformava uma falha em sucesso permanente e silencioso.
+    //
+    // Agora o booleano DECIDE: sem linha para tocar, cai no caminho completo
+    // (normaliza e faz upsert) em vez de certificar ausencia como sucesso.
+    if (!result.changed && (await ctx.store.touchMovie(tmdbId, timestamps))) {
       // O payload nao mudou, mas a DISPONIBILIDADE dele pode nunca ter sido
       // materializada (entidade promovida do bruto, ou sincronizada antes de
       // existir esta ponte). Ingerir tambem aqui e o que faz uma passada de

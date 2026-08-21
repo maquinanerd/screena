@@ -128,6 +128,80 @@ export interface CountedSource {
   readonly weight: number;
 }
 
+/**
+ * O GRUPO de uma fonte, derivado da propria fonte.
+ *
+ * ============================================================================
+ * POR QUE ISTO EXISTE (e por que nao existia)
+ * ============================================================================
+ * `group` nunca foi propriedade do CALCULO: e propriedade da FONTE. Rotten
+ * Tomatoes e Metacritic sao critica; IMDb e TMDB sao publico. O mapa esta
+ * declarado logo acima, e sempre esteve.
+ *
+ * Mas `CinerieScoreExplanationEntry` — a forma persistida em
+ * `cinerie_score_calculations.explanation` — nao carrega `group`. Quem lesse a
+ * explicacao para remontar `CountedSource[]` ficava sem o campo, e o consumidor
+ * era obrigado a inventar um. Foi o que aconteceu em
+ * `apps/web/src/server/entity-hero.ts`, com o comentario admitindo a invencao:
+ * "`audience` e um valor valido do tipo para satisfazer a forma".
+ *
+ * Um valor inventado para satisfazer um tipo e uma mentira que compila. Hoje ela
+ * e inofensiva (o presenter so conta fontes NOMEADAS e nao le `group`); no dia
+ * em que alguem exibir "criticos x publico" a partir dessa reconstrucao, o
+ * Rotten Tomatoes apareceria como publico.
+ *
+ * A cura nao e persistir o grupo — e nunca precisar dele persistido. Quem sabe o
+ * grupo e ESTE modulo, que e dono do mapa; o consumidor pergunta em vez de
+ * decidir.
+ *
+ * Devolve `null` para fonte fora da formula. `null` NAO e "publico por
+ * omissao": uma fonte desconhecida nao tem grupo, e chutar um seria repetir o
+ * defeito num lugar novo.
+ */
+export function resolveSourceGroup(source: string): "critics" | "audience" | null {
+  if (CRITICS_SOURCES[source] !== undefined) return "critics";
+  if (AUDIENCE_SOURCES[source] !== undefined) return "audience";
+  return null;
+}
+
+/**
+ * Remonta `CountedSource[]` a partir da EXPLICACAO persistida.
+ *
+ * ============================================================================
+ * POR QUE ISTO E UMA FUNCAO, E NAO TRES LINHAS NO CONSUMIDOR
+ * ============================================================================
+ * Porque tres linhas no consumidor nao tem teste. A primeira versao deste
+ * conserto deixou a remontagem inline em `entity-hero.ts` e "protegeu" o
+ * comportamento com um guard TEXTUAL, procurando a linha exata que existia
+ * antes. Ao verificar o guard por mutacao, ele PASSOU com o defeito de volta:
+ * a mutacao usou `const group = "audience"` e o guard procurava
+ * `group: "audience"` — outra grafia, mesmo defeito, guard cego.
+ *
+ * Guard de FORMA so pega a grafia que ja se conhece. Guard de COMPORTAMENTO
+ * pega o defeito. Entao a remontagem virou funcao pura, e o teste chama a
+ * funcao em vez de ler o arquivo.
+ *
+ * Entrada sem grupo conhecido e DESCARTADA (nao "vira publico"): uma fonte fora
+ * da formula nao compoe o numero, e dar a ela um grupo por omissao seria
+ * reintroduzir a invencao num lugar novo.
+ */
+export function rebuildCountedSources(
+  entries: readonly { readonly source: string; readonly normalized: number; readonly weight: number }[],
+): readonly CountedSource[] {
+  const out: CountedSource[] = [];
+  for (const entry of entries) {
+    const group = resolveSourceGroup(entry.source);
+    if (group === null) continue;
+    out.push({
+      source: entry.source,
+      normalized: entry.normalized,
+      group,
+      weight: entry.weight,
+    });
+  }
+  return out;
+}
+
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }

@@ -63,6 +63,17 @@ export const SEASONS_SEGMENT = "temporadas";
 /** Segmento de episodios nas rotas de temporada (pt-BR). */
 export const EPISODES_SEGMENT = "episodios";
 
+/**
+ * Segmento da GALERIA DE IMAGENS nas rotas de titulo (pt-BR).
+ *
+ * Um segmento SO, usado por filme e por serie. Dois valores ("imagens" e
+ * "fotos", por exemplo) criariam duas URLs para a mesma pagina, e o canonical
+ * teria de escolher uma — que e como se ganha um par de duplicatas de graca.
+ */
+export const IMAGES_SEGMENT = "imagens";
+/** Segmento da GALERIA DE VIDEOS nas rotas de titulo (pt-BR). */
+export const VIDEOS_SEGMENT = "videos";
+
 /** Slug seguro para path (sem caracteres que quebrariam URL). */
 function isSafeSlug(slug: string): boolean {
   const value = slug.trim();
@@ -104,6 +115,30 @@ export function episodePath(
     return null;
   }
   return `/${PT_LOCALE_SEGMENT}/series/${seriesSlug.trim()}/${SEASONS_SEGMENT}/${seasonNumber}/${EPISODES_SEGMENT}/${episodeNumber}/`;
+}
+
+/**
+ * Caminho da galeria de IMAGENS de um titulo, com barra final.
+ *
+ * `vertical` e o segmento da rota (`filmes` | `series`) e nao um rotulo: a
+ * diferenciacao filme/serie nunca depende so de cor, e a URL e um dos cinco
+ * sinais obrigatorios (invariante 11).
+ */
+export function imagesGalleryPath(
+  vertical: "filmes" | "series",
+  slug: string,
+): string | null {
+  if (!isSafeSlug(slug)) return null;
+  return `/${PT_LOCALE_SEGMENT}/${vertical}/${slug.trim()}/${IMAGES_SEGMENT}/`;
+}
+
+/** Caminho da galeria de VIDEOS de um titulo, com barra final. */
+export function videosGalleryPath(
+  vertical: "filmes" | "series",
+  slug: string,
+): string | null {
+  if (!isSafeSlug(slug)) return null;
+  return `/${PT_LOCALE_SEGMENT}/${vertical}/${slug.trim()}/${VIDEOS_SEGMENT}/`;
 }
 
 /**

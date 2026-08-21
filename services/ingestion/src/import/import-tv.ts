@@ -50,7 +50,13 @@ export async function importTvShow(ctx: ImportContext, tmdbId: number): Promise<
 
     let created = false
     let id: string | null = null
-    if (result.changed) {
+    // Ver o cabecalho do mesmo ramo em `import-movie.ts`: "payload inalterado"
+    // NAO significa "entidade existe". Com o cache quente de uma tentativa que
+    // falhou DEPOIS da escrita em `api_cache`, este ramo tocava zero linhas e
+    // reportava sucesso para uma entidade ausente — para sempre, porque o hash
+    // nunca mais muda. O booleano de `touch*` agora DECIDE.
+    const tocou = result.changed ? false : await ctx.store.touchTvShow(tmdbId, timestamps)
+    if (result.changed || !tocou) {
       const outcome = await ctx.store.upsertTvShow({
         tvShow: normalized.tvShow,
         externalIds: normalized.externalIds,
@@ -68,8 +74,6 @@ export async function importTvShow(ctx: ImportContext, tmdbId: number): Promise<
       })
       created = outcome.created
       id = outcome.id
-    } else {
-      await ctx.store.touchTvShow(tmdbId, timestamps)
     }
 
     // Disponibilidade a partir do MESMO payload que ja esta em maos: zero

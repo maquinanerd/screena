@@ -8,6 +8,7 @@
  */
 
 export * from './rhythms.js'
+export * from './backlog.js'
 export * from './config.js'
 export * from './awards-window.js'
 export * from './due.js'

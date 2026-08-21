@@ -17,6 +17,7 @@ import {
   type SeriesContentBlockInput,
   type SeriesTranslationInput,
 } from "../../apps/web/src/lib/series-presenter";
+import { authorizeImageDisplay } from "@screena/public-contracts";
 
 const baseRecord = {
   nameOriginal: "Original Series",
@@ -39,6 +40,25 @@ function translation(
     ...overrides,
   };
 }
+
+
+/**
+ * Licenca de imagem AUTORIZADA, para as asserçoes que medem OUTRA coisa.
+ *
+ * As suites abaixo medem forma de URL, fallback local e presenca de campo — nao
+ * licenca. Passar `IMAGE_DISPLAY_DENIED` aqui faria toda imagem sumir e os
+ * casos passariam pelo motivo errado. O gate em si tem suite propria, com
+ * controle negativo: `tests/web/image-license-gate.test.ts`.
+ */
+const IMAGEM_AUTORIZADA = authorizeImageDisplay([
+  {
+    sourceKey: "tmdb",
+    contentType: "image",
+    licenseStatus: "official",
+    displayAllowed: true,
+    isCurrent: true,
+  },
+]);
 
 describe("formatSeriesPeriod", () => {
   it("retorna null quando nao ha anos validos", () => {
@@ -121,7 +141,7 @@ describe("series media presenter", () => {
     const media = selectSeriesMedia({
       posterPath: "/media/series/poster.webp",
       backdropPath: "/uploads/series/backdrop.jpg",
-    });
+    }, IMAGEM_AUTORIZADA);
     expect(media.hasRealImage).toBe(true);
     expect(media.poster?.src).toBe("/media/series/poster.webp");
     expect(media.backdrop?.src).toBe("/uploads/series/backdrop.jpg");
@@ -131,7 +151,7 @@ describe("series media presenter", () => {
     const media = selectSeriesMedia({
       posterPath: "/poster.jpg",
       backdropPath: "/backdrop.jpg",
-    });
+    }, IMAGEM_AUTORIZADA);
     expect(media.hasRealImage).toBe(true);
     expect(media.poster?.src).toBe("https://image.tmdb.org/t/p/w500/poster.jpg");
     expect(media.backdrop?.src).toBe("https://image.tmdb.org/t/p/w1280/backdrop.jpg");
@@ -141,7 +161,7 @@ describe("series media presenter", () => {
     const media = selectSeriesMedia({
       posterPath: "https://x.com/p.jpg",
       backdropPath: "/media/../secret.jpg",
-    });
+    }, IMAGEM_AUTORIZADA);
     expect(media).toEqual({ poster: null, backdrop: null, hasRealImage: false });
   });
 });
@@ -149,6 +169,7 @@ describe("series media presenter", () => {
 describe("buildSeriesPageView", () => {
   it("usa dados minimos sem inventar descricao, temporadas ou episodios", () => {
     const view = buildSeriesPageView({
+      imageAuthorization: IMAGEM_AUTORIZADA,
       record: {
         nameOriginal: "Sem Dados",
         firstAirYear: null,
@@ -176,6 +197,7 @@ describe("buildSeriesPageView", () => {
 
   it("trata campos vazios como ausentes", () => {
     const view = buildSeriesPageView({
+      imageAuthorization: IMAGEM_AUTORIZADA,
       record: {
         ...baseRecord,
         firstAirYear: 0,
@@ -218,6 +240,7 @@ describe("buildSeriesPageView", () => {
 
   it("monta view com campos reais, blocos publicos e episodios existentes", () => {
     const view = buildSeriesPageView({
+      imageAuthorization: IMAGEM_AUTORIZADA,
       record: {
         ...baseRecord,
         posterPath: "/media/series/show.webp",
@@ -284,6 +307,7 @@ describe("buildSeriesPageView", () => {
 
   it("mapeia situacao/idioma reais para a ficha tecnica (pt-BR, feminino)", () => {
     const view = buildSeriesPageView({
+      imageAuthorization: IMAGEM_AUTORIZADA,
       record: { ...baseRecord, status: "Returning Series", originalLanguage: "en" },
       translation: null,
       blocks: [],
@@ -298,6 +322,7 @@ describe("buildSeriesPageView", () => {
 
   it("omite situacao/idioma quando ausentes ou desconhecidos (nunca cru)", () => {
     const view = buildSeriesPageView({
+      imageAuthorization: IMAGEM_AUTORIZADA,
       record: { ...baseRecord, status: "Whatever", originalLanguage: "zz" },
       translation: null,
       blocks: [],

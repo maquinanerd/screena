@@ -11,6 +11,7 @@
  */
 
 import { getPrismaClient } from "@screena/db/server";
+import { rebuildCountedSources } from "@screena/cinerie-score";
 
 import type { CinerieScoreInputView } from "../lib/cinerie-score-presenter";
 
@@ -116,15 +117,22 @@ export async function getCinerieScoreForEntity(
     return { authorized: true, value: null, counted: [] };
   }
 
-  const counted = parseExplanation(calculation.explanation).map((entry) => ({
-    source: entry.source,
-    normalized: entry.normalized,
-    // O grupo nao e persistido na explicacao e o presenter nao o usa para
-    // decidir exibicao (só o COUNT de fontes nomeadas conta). `audience` e um
-    // valor valido do tipo para satisfazer a forma.
-    group: "audience" as const,
-    weight: entry.weight,
-  }));
+  // O GRUPO agora e DERIVADO, nao inventado.
+  //
+  // Ate 21/08/2026 esta linha dizia `group: "audience" as const`, com o
+  // comentario admitindo o motivo: "`audience` e um valor valido do tipo para
+  // satisfazer a forma". `CinerieScoreExplanationEntry` nao persiste `group`, e
+  // o consumidor era obrigado a inventar um.
+  //
+  // Era inofensivo enquanto ninguem lia o campo — e seria um erro de FATO no dia
+  // em que alguem exibisse "criticos x publico": o Rotten Tomatoes apareceria
+  // como publico. `resolveSourceGroup` mora no pacote dono do mapa
+  // (@screena/cinerie-score); aqui so se pergunta.
+  //
+  // Fonte fora da formula devolve `null` e a entrada e DESCARTADA: sem grupo,
+  // ela nao compoe. O presenter ja descartaria por falta de rotulo — descartar
+  // aqui tambem evita que uma fonte sem grupo chegue com um chute embutido.
+  const counted = rebuildCountedSources(parseExplanation(calculation.explanation));
 
   return {
     authorized: true,

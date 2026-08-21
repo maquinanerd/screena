@@ -5,8 +5,13 @@
  * "Onde assistir" do destaque usa a MESMA cláusula licenciada do painel por
  * entidade (licensedWatchWhere). Sinais de ordenação são TÉCNICOS e locais,
  * já persistidos pela ingestão TMDB (nunca chamados no render):
- *  - `popularity`  → "Em Alta" (proxy local de tração; NÃO há métrica de
- *    crescimento 24h persistida — delta registrado, rótulo honesto).
+ *  - `trending/day` → "Em Alta". Até 2026-08-21 este trilho usava `popularity`,
+ *    e o cabeçalho deste arquivo declarava a lacuna com todas as letras: "proxy
+ *    local de tração; NÃO há métrica de crescimento 24h persistida". A métrica
+ *    passou a existir — a fila `trending` do agendador captura a lista do TMDB a
+ *    cada 6 h em `discovery_snapshots`. A lacuna FECHOU; o rótulo agora tem
+ *    lastro. SEM fallback para popularidade quando o snapshot vem vazio: título
+ *    não-trending sob rótulo de trending é a mesma mentira em letra miúda.
  *  - `voteCountTmdb` → "Populares" (volume de avaliações; usado APENAS para
  *    ordenar — o número nunca é exibido: ratings externos seguem inativos).
  * Só entra entidade com título público + slug canônico pt-BR.
@@ -16,6 +21,12 @@ import { cache } from 'react'
 import { getPrismaClient } from '@screena/db/server'
 
 import { licensedWatchWhere } from './entity-watch'
+import {
+  getTrendingSnapshot,
+  orderByTrending,
+  trendingAbsenceFor,
+  type TrendingAbsenceReason,
+} from './trending-snapshot'
 import { distinctWatchPlatforms, resolveWatchPlatform } from '../lib/watch-platform-identity'
 import {
   describeUnsupportedWatchModality,
@@ -67,6 +78,14 @@ export interface DiscoverData {
   featured: DiscoverFeatured | null
   emAlta: DiscoverCard[]
   populares: DiscoverCard[]
+  /**
+   * `null` quando "Em Alta" veio cheio; senão o motivo.
+   *
+   * O trilho sumir calado seria trocar uma mentira por um silêncio. Este arquivo
+   * não tinha registro de ausência nenhum — passou a ter porque a mudança que
+   * torna o rótulo honesto é a mesma que pode esvaziar o trilho.
+   */
+  emAltaAbsence: TrendingAbsenceReason | null
 }
 
 interface RawEntity {
@@ -88,6 +107,20 @@ function toNumber(value: { toString(): string } | number | null): number {
 
 export const getDiscoverData = cache(async (): Promise<DiscoverData> => {
   const prisma = getPrismaClient()
+
+  // O TRENDING DO DIA precisa ser buscado por ID, e não sair do corte por
+  // popularidade: um título que estreou ontem e explodiu tem popularity
+  // ACUMULADA baixa e jamais entraria no `take: FETCH_PER_TYPE` abaixo — ou
+  // seja, o trilho "Em Alta" nunca veria justamente o que está em alta.
+  const [movieTrending, showTrending] = await Promise.all([
+    getTrendingSnapshot('movie', 'day'),
+    getTrendingSnapshot('tv', 'day'),
+  ])
+  const trendingIds = [...movieTrending.entityIds, ...showTrending.entityIds]
+  const emAltaSnapshotAbsence =
+    trendingIds.length === 0
+      ? (movieTrending.absence ?? showTrending.absence ?? 'no_trending_overlap')
+      : null
 
   const [movies, shows] = await Promise.all([
     prisma.movie.findMany({
@@ -118,8 +151,56 @@ export const getDiscoverData = cache(async (): Promise<DiscoverData> => {
     }),
   ])
 
+  /**
+   * Os títulos do trending que o corte por popularidade NÃO trouxe.
+   *
+   * Consulta separada, e é ela que faz o trilho funcionar: um `take` ordenado
+   * por popularidade acumulada é exatamente o filtro que descarta o título que
+   * explodiu ontem. Buscar por ID é a única forma de ele chegar aqui.
+   *
+   * O conjunto é pequeno por construção (o snapshot é um topo de 20 por tipo),
+   * e a consulta só roda quando há id faltando.
+   */
+  const faltantes = (ids: readonly bigint[], presentes: readonly { id: bigint }[]): bigint[] => {
+    const tem = new Set(presentes.map((row) => row.id.toString()))
+    return ids.filter((id) => !tem.has(id.toString()))
+  }
+  const movieMissing = faltantes(movieTrending.entityIds, movies)
+  const showMissing = faltantes(showTrending.entityIds, shows)
+
+  const [movieExtra, showExtra] = await Promise.all([
+    movieMissing.length === 0
+      ? Promise.resolve([])
+      : prisma.movie.findMany({
+          where: { id: { in: movieMissing } },
+          select: {
+            id: true,
+            titleOriginal: true,
+            releaseDate: true,
+            posterPath: true,
+            backdropPath: true,
+            popularity: true,
+            voteCountTmdb: true,
+          },
+        }),
+    showMissing.length === 0
+      ? Promise.resolve([])
+      : prisma.tvShow.findMany({
+          where: { id: { in: showMissing } },
+          select: {
+            id: true,
+            nameOriginal: true,
+            firstAirDate: true,
+            posterPath: true,
+            backdropPath: true,
+            popularity: true,
+            voteCountTmdb: true,
+          },
+        }),
+  ])
+
   const raw: RawEntity[] = [
-    ...movies.map(
+    ...[...movies, ...movieExtra].map(
       (movie): RawEntity => ({
         entityType: 'movie',
         id: movie.id,
@@ -131,7 +212,7 @@ export const getDiscoverData = cache(async (): Promise<DiscoverData> => {
         voteCount: movie.voteCountTmdb ?? 0,
       }),
     ),
-    ...shows.map(
+    ...[...shows, ...showExtra].map(
       (show): RawEntity => ({
         entityType: 'tv',
         id: show.id,
@@ -144,7 +225,8 @@ export const getDiscoverData = cache(async (): Promise<DiscoverData> => {
       }),
     ),
   ]
-  if (raw.length === 0) return { featured: null, emAlta: [], populares: [] }
+  if (raw.length === 0)
+    return { featured: null, emAlta: [], populares: [], emAltaAbsence: emAltaSnapshotAbsence }
 
   const allIds = raw.map((entity) => entity.id)
   const [translations, slugs] = await Promise.all([
@@ -196,8 +278,11 @@ export const getDiscoverData = cache(async (): Promise<DiscoverData> => {
   const byPopularity = [...raw].sort((a, b) => b.popularity - a.popularity)
   const byVotes = [...raw].sort((a, b) => b.voteCount - a.voteCount)
 
+  // "Em Alta" sai do TRENDING, na ordem da lista. `orderByTrending` DESCARTA
+  // quem não está nela — completar o trilho com popularidade colocaria título
+  // não-trending sob um rótulo que afirma trending.
   const emAlta: DiscoverCard[] = []
-  for (const entity of byPopularity) {
+  for (const entity of orderByTrending(raw, (entity) => entity.id, trendingIds)) {
     if (emAlta.length >= RAIL_LIMIT) break
     const card = toCard(entity)
     if (card !== null) emAlta.push(card)
@@ -287,5 +372,16 @@ export const getDiscoverData = cache(async (): Promise<DiscoverData> => {
     break
   }
 
-  return { featured, emAlta, populares }
+  return {
+    featured,
+    emAlta,
+    populares,
+    // Se o snapshot veio cheio e mesmo assim o trilho ficou vazio, a causa é a
+    // identidade pública (slug/tradução), não a captura — `trendingAbsenceFor`
+    // faz essa distinção para o operador não reiniciar um agendador saudável.
+    emAltaAbsence: trendingAbsenceFor(
+      { entityIds: trendingIds, absence: emAltaSnapshotAbsence, capturedAt: null },
+      emAlta.length,
+    ),
+  }
 })

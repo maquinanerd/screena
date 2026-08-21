@@ -8,7 +8,11 @@
 
 import { evaluateIndexability, type IndexabilityResult } from "@screena/seo";
 
-import { buildTmdbImageUrl, type TmdbImageSize } from "./tmdb-image-url";
+import {
+  tmdbImageUrlIfAllowed,
+  type ImageDisplayAuthorization,
+  type TmdbImageSize,
+} from "@screena/public-contracts";
 import { mapEntityStatus, mapOriginalLanguage } from "./entity-status";
 import {
   selectSynopsis,
@@ -189,6 +193,11 @@ export interface BuildSeriesPageViewInput {
    * T2. Ausente = comportamento antigo (sinopse so do locale publicado).
    */
   translations?: readonly TranslationCandidate[];
+  /**
+   * A autorizacao de exibir imagem do TMDB. OBRIGATORIA — ver o gemeo em
+   * `movie-presenter.ts` (`PresentMovieInput.imageAuthorization`).
+   */
+  imageAuthorization: ImageDisplayAuthorization;
 }
 
 function trimToNull(value: string | null | undefined): string | null {
@@ -223,21 +232,32 @@ export function normalizeSeriesLocalImagePath(
   return LOCAL_IMAGE_EXTENSION_PATTERN.test(value) ? value : null;
 }
 
+/**
+ * O asset de imagem, SE a licenca permitir. Ver o gemeo em `movie-presenter.ts`
+ * para o porque de o gate so ter entrado em 21/08/2026 — o caminho de imagem era
+ * o unico dos seis que nao consultava `source_licenses`.
+ *
+ * Asset LOCAL nao passa pelo gate: nao e arte do TMDB.
+ */
 function imageAsset(
   path: string | null,
   spec: LocalImageSpec,
+  authorization: ImageDisplayAuthorization,
 ): SeriesImageAsset | null {
   // Local (demo/committed) primeiro; senão a URL remota do TMDB do `file_path` cru.
-  const src = normalizeSeriesLocalImagePath(path) ?? buildTmdbImageUrl(path, spec.tmdbSize);
+  const src =
+    normalizeSeriesLocalImagePath(path) ??
+    tmdbImageUrlIfAllowed(path, spec.tmdbSize, authorization);
   if (src === null) return null;
   return { src, width: spec.width, height: spec.height };
 }
 
 export function selectSeriesMedia(
   record: Pick<SeriesRecordInput, "posterPath" | "backdropPath">,
+  authorization: ImageDisplayAuthorization,
 ): SeriesMediaView {
-  const poster = imageAsset(record.posterPath, POSTER_IMAGE_SPEC);
-  const backdrop = imageAsset(record.backdropPath, BACKDROP_IMAGE_SPEC);
+  const poster = imageAsset(record.posterPath, POSTER_IMAGE_SPEC, authorization);
+  const backdrop = imageAsset(record.backdropPath, BACKDROP_IMAGE_SPEC, authorization);
   return { poster, backdrop, hasRealImage: poster !== null || backdrop !== null };
 }
 
@@ -332,18 +352,32 @@ export function evaluateSeriesIndexability(
   });
 }
 
-function buildEpisodeView(input: SeriesEpisodeInput): SeriesEpisodeView {
+/**
+ * O STILL do episodio tambem e arte do TMDB, e tambem passa pelo gate.
+ *
+ * Ficou de fora da primeira escrita deste gate e quem pegou foi o teste de
+ * `buildSeriesPageView`, nao a revisao: gatear so poster e backdrop da SERIE
+ * deixaria o still de cada episodio e o poster de cada TEMPORADA indo ao ar sem
+ * licenca — dezenas de imagens por pagina, exatamente onde ninguem olharia.
+ */
+function buildEpisodeView(
+  input: SeriesEpisodeInput,
+  authorization: ImageDisplayAuthorization,
+): SeriesEpisodeView {
   return {
     episodeNumber: input.episodeNumber,
     title: trimToNull(input.name),
     overview: trimToNull(input.overview),
     airYear: validYearOrNull(input.airYear),
     runtimeLabel: formatRuntime(input.runtimeMinutes),
-    still: imageAsset(input.stillPath, STILL_IMAGE_SPEC),
+    still: imageAsset(input.stillPath, STILL_IMAGE_SPEC, authorization),
   };
 }
 
-function buildSeasonView(input: SeriesSeasonInput): SeriesSeasonView {
+function buildSeasonView(
+  input: SeriesSeasonInput,
+  authorization: ImageDisplayAuthorization,
+): SeriesSeasonView {
   const episodeCount = positiveIntegerOrNull(input.episodeCount);
   return {
     seasonNumber: input.seasonNumber,
@@ -352,9 +386,9 @@ function buildSeasonView(input: SeriesSeasonInput): SeriesSeasonView {
     airYear: validYearOrNull(input.airYear),
     episodeCount,
     episodeCountLabel: formatCountLabel(episodeCount, "episodio", "episodios"),
-    poster: imageAsset(input.posterPath, POSTER_IMAGE_SPEC),
+    poster: imageAsset(input.posterPath, POSTER_IMAGE_SPEC, authorization),
     episodes: input.episodes
-      .map(buildEpisodeView)
+      .map((episode) => buildEpisodeView(episode, authorization))
       .sort((a, b) => a.episodeNumber - b.episodeNumber),
   };
 }
@@ -368,7 +402,7 @@ export function buildSeriesPageView(
   const episodesCount = positiveIntegerOrNull(input.record.numberOfEpisodes);
   const blocks = selectRenderableSeriesBlocks(input.blocks);
   const seasons = input.seasons
-    .map(buildSeasonView)
+    .map((season) => buildSeasonView(season, input.imageAuthorization))
     .sort((a, b) => a.seasonNumber - b.seasonNumber);
 
   return {
@@ -390,7 +424,7 @@ export function buildSeriesPageView(
     ),
     blocks,
     renderableBlockCount: blocks.length,
-    media: selectSeriesMedia(input.record),
+    media: selectSeriesMedia(input.record, input.imageAuthorization),
     seasons,
   };
 }

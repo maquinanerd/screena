@@ -30,6 +30,7 @@
 
 import type { PrismaClient } from '@screena/db/server'
 
+import type { JobBacklogCounts } from '../backlog.js'
 import type { QueueLastRun } from '../due.js'
 import { RHYTHMS, type SchedulerQueue } from '../rhythms.js'
 import type { RunOutcome } from '../run-outcome.js'
@@ -89,6 +90,79 @@ export async function readLastRuns(prisma: PrismaClient): Promise<readonly Queue
   }
 
   return out
+}
+
+/**
+ * O estado de `catalog_jobs`, por tipo de job.
+ *
+ * ============================================================================
+ * POR QUE ESTA LEITURA NAO EXISTIA
+ * ============================================================================
+ * `readLastRuns` responde "o agendador rodou?". Ninguem respondia "o trabalho
+ * saiu?". Sao tabelas diferentes e perguntas diferentes, e o painel so fazia a
+ * primeira — por isso 534 jobs `pending` conviveram com nove filas verdes.
+ *
+ * UMA consulta, com agregacao no banco: trazer as linhas para contar em memoria
+ * funcionaria com 534 jobs e cairia com 500 mil, que e a escala projetada do
+ * espelho. `FILTER` faz o Postgres varrer a tabela uma vez so.
+ *
+ * `MIN(created_at) FILTER (WHERE status = 'pending')` e a idade do represamento.
+ * Nao usamos `available_at`: um job com backoff tem `available_at` no futuro e
+ * pareceria novo, escondendo justamente o job que mais tempo esta preso.
+ *
+ * Tipo SEM NENHUM job nao aparece no `GROUP BY` — e nao deve mesmo. Inventar
+ * uma linha zerada para os onze tipos do enum encheria o painel de ruido e
+ * pintaria de verde tipos que ninguem usa.
+ */
+export async function readJobBacklog(prisma: PrismaClient): Promise<readonly JobBacklogCounts[]> {
+  const rows = await prisma.$queryRawUnsafe<
+    Array<{
+      job_type: string
+      pending: bigint | number
+      claimed: bigint | number
+      running: bigint | number
+      retry_wait: bigint | number
+      succeeded: bigint | number
+      failed: bigint | number
+      dead_letter: bigint | number
+      cancelled: bigint | number
+      oldest_pending_at: Date | null
+    }>
+  >(
+    `SELECT job_type::text                                        AS job_type,
+            COUNT(*) FILTER (WHERE status = 'pending')            AS pending,
+            COUNT(*) FILTER (WHERE status = 'claimed')            AS claimed,
+            COUNT(*) FILTER (WHERE status = 'running')            AS running,
+            COUNT(*) FILTER (WHERE status = 'retry_wait')         AS retry_wait,
+            COUNT(*) FILTER (WHERE status = 'succeeded')          AS succeeded,
+            COUNT(*) FILTER (WHERE status = 'failed')             AS failed,
+            COUNT(*) FILTER (WHERE status = 'dead_letter')        AS dead_letter,
+            COUNT(*) FILTER (WHERE status = 'cancelled')          AS cancelled,
+            MIN(created_at) FILTER (WHERE status = 'pending')     AS oldest_pending_at
+       FROM catalog_jobs
+      GROUP BY job_type
+      ORDER BY COUNT(*) FILTER (WHERE status = 'pending') DESC, job_type ASC`,
+  )
+
+  // `COUNT(*)` do Postgres volta como BIGINT, e o driver o entrega como
+  // `bigint`. `JSON.stringify` LANCA em bigint ("Do not know how to serialize"),
+  // e o painel serve JSON — converter aqui, na fronteira, evita um /status que
+  // responde 500 justamente quando ha fila para mostrar.
+  const toNumber = (value: bigint | number): number =>
+    typeof value === 'bigint' ? Number(value) : value
+
+  return rows.map((row) => ({
+    jobType: row.job_type,
+    pending: toNumber(row.pending),
+    claimed: toNumber(row.claimed),
+    running: toNumber(row.running),
+    retryWait: toNumber(row.retry_wait),
+    succeeded: toNumber(row.succeeded),
+    failed: toNumber(row.failed),
+    deadLetter: toNumber(row.dead_letter),
+    cancelled: toNumber(row.cancelled),
+    oldestPendingAt: row.oldest_pending_at,
+  }))
 }
 
 /** Gasto de hoje de um fornecedor, somado de `api_sync_logs.quota_cost`. */

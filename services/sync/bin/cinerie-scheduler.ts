@@ -52,7 +52,9 @@ import {
   classifyRun,
   describeRun,
   detectStalledQueues,
+  emitBacklogAlerts,
   emitStallAlerts,
+  evaluateBacklog,
   evaluateSchedule,
   evaluateSchedulerReadiness,
   findRhythm,
@@ -66,7 +68,12 @@ import {
   type SchedulerQueue,
 } from '../src/scheduler/index.js'
 import { createAdvisoryLockPort, createLockClient } from '../src/scheduler/runtime/advisory-lock.js'
-import { readLastRuns, readSpentToday, recordRun } from '../src/scheduler/runtime/facts.js'
+import {
+  readJobBacklog,
+  readLastRuns,
+  readSpentToday,
+  recordRun,
+} from '../src/scheduler/runtime/facts.js'
 import { startSchedulerHttp } from '../src/scheduler/runtime/http.js'
 import { QUEUE_RUNNERS, resolveRepoRoot, type RunnerDeps } from '../src/scheduler/runtime/runners.js'
 
@@ -182,6 +189,7 @@ async function main(): Promise<number> {
     log,
     locale: config.locale,
     batchLimit: config.batchLimit,
+    discoveryLimit: config.discoveryLimit,
     repoRoot,
     apply: config.apply,
     shutdownSignal: shutdown.signal,
@@ -193,7 +201,10 @@ async function main(): Promise<number> {
     const schedules = evaluateSchedule({ now, lastRuns })
     const alerts = detectStalledQueues(schedules, { now, startedAt })
     const quotas = await collectQuotas(prisma, now)
-    return { now, schedules, alerts, quotas }
+    // O estado de `catalog_jobs`. E a unica das quatro leituras do painel que
+    // fala do TRABALHO; as outras tres falam do agendador. Ver `backlog.ts`.
+    const backlog = evaluateBacklog(await readJobBacklog(prisma), now)
+    return { now, schedules, alerts, quotas, backlog }
   }
 
   const http = await startSchedulerHttp({
@@ -218,13 +229,14 @@ async function main(): Promise<number> {
       })
     },
     buildStatus: async () => {
-      const { now, schedules, alerts, quotas } = await gatherStatus()
+      const { now, schedules, alerts, quotas, backlog } = await gatherStatus()
       return buildStatusReport({
         now,
         startedAt,
         schedules,
         alerts,
         quotas,
+        backlog,
         workerId: config.workerId,
       })
     },
@@ -234,6 +246,9 @@ async function main(): Promise<number> {
     healthPort: http.port,
     tickMs: config.tickMs,
     batchLimit: config.batchLimit,
+    // No log de subida: um teto errado tem de aparecer ANTES do primeiro ciclo,
+    // nao depois de 6,3 milhoes de jobs.
+    discoveryLimit: config.discoveryLimit,
     apply: config.apply,
     production: config.isProduction,
     queues: RHYTHMS.length,
@@ -247,12 +262,22 @@ async function main(): Promise<number> {
 
   /** UM ciclo: avalia, roda o que venceu, alerta. */
   const tick = async (): Promise<void> => {
-    const { now, schedules, alerts } = await gatherStatus()
-    lastAlertCount = alerts.length
+    const { now, schedules, alerts, backlog } = await gatherStatus()
 
     // O ALERTA SAI SEMPRE, mesmo que nada esteja vencido. Emiti-lo so dentro do
     // laco de execucao faria uma fila parada por falta de trabalho nunca acusar.
     emitStallAlerts(alerts, log)
+
+    // O MESMO vale para a fila represada, e com mais forca: o agendador nao a
+    // conserta ciclo nenhum. Enfileirar de novo nao drena o que ja esta la — so
+    // quem tem consumidor drena. Se este alerta nao sair, o agendador segue
+    // empilhando trabalho sobre trabalho parado, exatamente como fez ate aqui.
+    const backlogAlertas = emitBacklogAlerts(backlog, log)
+
+    // Os DOIS contam para a readiness. Contar so `alerts` faria `/readyz`
+    // reportar zero problemas com a fila represada — a mesma cegueira do painel,
+    // um andar abaixo.
+    lastAlertCount = alerts.length + backlogAlertas
 
     const due = selectDueQueues({ now, lastRuns: schedules.map((s) => ({
       queue: s.queue,

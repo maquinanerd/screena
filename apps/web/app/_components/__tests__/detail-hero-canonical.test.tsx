@@ -377,25 +377,41 @@ describe("banda de mídia: cards guardados por dado; prêmios abaixo da banda", 
       expect(banda).not.toContain("Prêmios e Indicações");
     });
 
-    it(`${name}: a coluna de cards existe só quando há notícia — sem card vazio`, () => {
-      // "Imagens e Pôsteres" e "Trailers e Teasers" (os outros dois cards do
-      // canônico) não têm DESTINO neste produto: não existe rota de galeria de
-      // imagens nem de vídeos. Card sem destino não vira card cinza com "Em
-      // breve"; ele não existe, e `data-media-cards` redistribui os que restam.
+    it(`${name}: a coluna de cards é DIRIGIDA POR DADO, não por markup fixo`, () => {
+      // ============================================================
+      // ESTE CASO MUDOU EM 21/08/2026, E A MUDANÇA É O REGISTRO
+      // ============================================================
+      // Ele exigia `data-media-cards={xNews.length > 0 ? 1 : 0}` e PROIBIA os
+      // textos "Imagens e Pôsteres" e "Trailers e Teasers" — porque naquele dia
+      // os dois cartões não tinham DESTINO: não existia rota de galeria.
       //
-      // MEDE CÓDIGO, NÃO COMENTÁRIO. O comentário da página EXPLICA por que os
-      // dois não renderizam, e para explicar precisa nomeá-los — uma varredura
-      // de texto cru acusaria a própria documentação da decisão, e o "conserto"
-      // óbvio seria apagar a explicação. Já aconteceu três vezes neste repo.
+      // As quatro rotas passaram a existir, e a proibição virou o contrário do
+      // que ela protegia: manter os textos fora seria manter fora dois cartões
+      // que agora levam a algum lugar.
+      //
+      // O que NÃO mudou é a REGRA: cartão só existe com destino E com conteúdo.
+      // Ela deixou de morar no markup e passou a morar em
+      // `src/lib/media-band-presenter.ts`, com controle negativo próprio em
+      // `tests/web/media-band-presenter.test.ts` — um guard de FORMA aqui só
+      // travaria a grafia, e a grafia não é a regra.
       const codigo = source.replace(/\{\/\*[\s\S]*?\*\/\}/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
-      expect(codigo).toMatch(/data-media-cards=\{\w+News\.length > 0 \? 1 : 0\}/);
-      expect(codigo).not.toContain("Imagens e Pôsteres");
-      expect(codigo).not.toContain("Trailers e Teasers");
+      // A contagem REAL alimenta o atributo: é ela que o CSS usa para colapsar
+      // a grade. Com `0 : 1` a terceira coluna ficava declarada e VAZIA.
+      expect(codigo).toMatch(/data-media-cards=\{mediaBand\.cards\.length\}/);
+      // Os cartões vêm do presenter, nunca escritos à mão na página.
+      expect(codigo).toMatch(/mediaBand\.cards\.map/);
+      expect(codigo).not.toMatch(/media-strip__caption">Imagens e Pôsteres/);
+      expect(codigo).not.toMatch(/media-strip__caption">Trailers e Teasers/);
     });
 
-    it(`${name}: a legenda do trailer só existe com trailer real (nada de placeholder)`, () => {
-      expect(source).toMatch(/\{trailer !== null \? \(\s*<span className="media-strip__caption">Trailer<\/span>\s*\) : null\}/);
-      expect(source).not.toContain("Mídia do título");
+    it(`${name}: a legenda do trailer vem do presenter e NUNCA carrega duração`, () => {
+      const codigo = source.replace(/\{\/\*[\s\S]*?\*\/\}/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
+      expect(codigo).toMatch(/mediaBand\.trailerCaption/);
+      expect(codigo).not.toContain("Mídia do título");
+      // O canônico pede `02:14 · Trailer`. O TMDB NÃO entrega duração (`size`
+      // de `/videos` é RESOLUÇÃO), e inventá-la faria um vídeo em 1080p
+      // aparecer como "18:00". Nenhum literal de duração na página.
+      expect(codigo).not.toMatch(/\d{2}:\d{2}\s*·\s*Trailer/);
     });
 
     it(`${name}: a faixa de prêmios vive ABAIXO da banda de mídia (desceu do topo)`, () => {
