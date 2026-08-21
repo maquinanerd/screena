@@ -45,7 +45,6 @@ const ACCOUNT_SELECT = {
       timezone: true,
       // As preferencias sao dado PESSOAL e entram na exportacao LGPD. Deixa-las
       // de fora daria ao titular uma copia incompleta dos proprios dados.
-      theme: true,
       density: true,
       posterSize: true,
       visibility: true,

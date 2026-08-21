@@ -350,7 +350,8 @@ Cinerie usa cor como **acento**, nunca como única forma de diferenciação.
 /pt/filmes/{slug}/avaliacoes/
 /pt/series/
 /pt/series/{slug}/
-/pt/series/{slug}/temporada-{number}/
+/pt/series/{slug}/temporadas/{number}/
+/pt/series/{slug}/temporadas/{number}/episodios/{number}/
 /pt/series/{slug}/onde-assistir/
 /pt/pessoas/{slug}/
 /pt/streaming/netflix/melhores-filmes/

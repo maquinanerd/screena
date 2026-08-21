@@ -157,7 +157,7 @@ export default async function SeasonPage({ params }: { params: Promise<SeasonRou
               {/* Fica DENTRO do hero, que e uma superficie clara fixa: usa a
                   classe do hero (cor presa ao claro), nao `.detail-see-all`,
                   cujo token vira com o tema e sairia claro sobre claro. */}
-              <p style={{ margin: '18px 0 0' }}>
+              <p className="season-page__back">
                 <a className="detail-hero__back" href={seriesHref}>
                   ← Voltar para {view.seriesTitle}
                 </a>
@@ -179,7 +179,7 @@ export default async function SeasonPage({ params }: { params: Promise<SeasonRou
         </div>
       </div>
 
-      <div className="detail-container" style={{ paddingTop: 40, paddingBottom: 72 }}>
+      <div className="detail-container season-page__body">
         {/* Navegacao entre temporadas. `PrevNextNav` e compartilhado APENAS com
             a pagina de episodio (as duas nesta rodada); o estilo entra por
             `[data-nav='prev-next']`, sem tocar uma linha do componente. */}
@@ -191,7 +191,7 @@ export default async function SeasonPage({ params }: { params: Promise<SeasonRou
           next={view.nextSeason}
         />
 
-        <section aria-labelledby="temporada-episodios-titulo" style={{ paddingTop: 34 }}>
+        <section aria-labelledby="temporada-episodios-titulo" className="season-page__episodes">
           <div className="eyebrow-bar">
             <span>Temporada {view.seasonNumber}</span>
           </div>
@@ -199,7 +199,7 @@ export default async function SeasonPage({ params }: { params: Promise<SeasonRou
             Episódios
           </h2>
           {view.episodes.length > 0 ? (
-            <ol className="episode-list" style={{ marginTop: 22 }}>
+            <ol className="episode-list">
               {view.episodes.map((episode) => {
                 const meta = [episode.dateLabel, episode.runtimeLabel].filter(
                   (item): item is string => item !== null,
@@ -223,8 +223,7 @@ export default async function SeasonPage({ params }: { params: Promise<SeasonRou
                       </div>
                       <div>
                         <h3
-                          className="episode-row__title"
-                          style={{ letterSpacing: '-0.01em', textTransform: 'none' }}
+                          className="episode-row__title episode-row__title--name"
                         >
                           <a href={episode.href}>
                             {episode.title !== null

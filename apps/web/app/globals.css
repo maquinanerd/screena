@@ -26,6 +26,27 @@
   src: url('/fonts/montserrat-latin-variable.woff2') format('woff2-variations');
 }
 
+/* ==================================================================== *
+ * TEMA UNICO — O PRODUTO E CLARO, SEMPRE.
+ *
+ * Decisao do dono, 21/08/2026, e ela e final. O canonico e o White Cinematic
+ * Editorial System: NAO existe uma unica tela escura nele. O tema escuro que
+ * viveu aqui nunca foi desenhado e nunca foi pedido — e foi ele que apagou os
+ * blocos das PRs #199-#201 (a ficha saia #12100e sobre #0b0b0d, 1,04:1).
+ *
+ * Por isso `color-scheme: light` e declarado e NAO ha `@media
+ * (prefers-color-scheme: dark)` nem `[data-theme='dark']` neste arquivo. O
+ * site nao muda com a configuracao do sistema de quem visita.
+ *
+ * CONSEQUENCIA PRATICA, e ela e libertadora: com uma superficie so, literal
+ * quente sobre fundo claro esta CERTO e e o que o canonico manda. Nao
+ * tokenize cor para "sobreviver ao tema" — nao ha tema para sobreviver. Use o
+ * valor do canonico.
+ *
+ * Travado por `tests/web/tema-unico.test.ts`, que reprova se qualquer regra de
+ * `prefers-color-scheme: dark` ou `data-theme='dark'` voltar.
+ * ==================================================================== */
+
 /* ------------------------------------------------------------------ */
 /* Tokens                                                              */
 /* ------------------------------------------------------------------ */
@@ -54,17 +75,6 @@
   --c-text-muted-aa: #6e6a61; /* rotulo pequeno sobre superficie clara (>=4.5) */
   --c-text-disabled: #b7b0a5;
   --c-text-inverse: #ffffff;
-
-  /* Tinta QUENTE das telas de detalhe (filme/serie/temporada).
-     Estes tres tokens carregam o valor exato do canonico no tema claro. Eles
-     existem porque o texto que fica sobre `--c-bg-page` PRECISA virar com o
-     tema: literal hexadecimal aqui sai #12100e sobre #0b0b0d (1,04:1) quando
-     o sistema do leitor esta em escuro — foi o que derrubou as PRs #199-#201.
-     A tinta neutra (`--c-text-primary`) nao serve: o canonico e quente. */
-  --c-detail-ink: #12100e;
-  --c-detail-body: #4a463e;
-  --c-detail-link: #b23a31;
-  --c-detail-link-series: #395c42;
 
   /* Accent (marca por contexto) */
   --c-accent-movie: #f0443e;
@@ -4058,7 +4068,7 @@ a.media-strip__cell {
   font-size: 30px;
   font-weight: 800;
   letter-spacing: -0.03em;
-  color: var(--c-detail-ink);
+  color: #12100e;
   margin: 10px 0 0;
 }
 
@@ -4072,7 +4082,7 @@ a.media-strip__cell {
   gap: 7px;
   font-size: 13px;
   font-weight: 700;
-  color: var(--c-detail-link);
+  color: #b23a31;
   white-space: nowrap;
 }
 
@@ -4080,7 +4090,7 @@ a.media-strip__cell {
   /* `--c-accent-series-dark` (#395c42) e AA sobre superficie CLARA, e o
      "Ver elenco completo" fica sobre `--c-bg-page` — que vira no tema escuro
      (2,61:1, medido). O token de link vira junto; o acento cru nao. */
-  color: var(--c-detail-link-series);
+  color: #395c42;
 }
 
 .synopsis-lead {
@@ -4088,7 +4098,7 @@ a.media-strip__cell {
   line-height: 1.5;
   font-weight: 500;
   letter-spacing: -0.01em;
-  color: var(--c-detail-ink);
+  color: #12100e;
   margin: 18px 0 0;
   max-width: 34ch;
 }
@@ -4096,7 +4106,7 @@ a.media-strip__cell {
 .synopsis-body {
   font-size: 16px;
   line-height: 1.75;
-  color: var(--c-detail-body);
+  color: #4a463e;
   margin: 22px 0 0;
   max-width: 60ch;
 }
@@ -4407,7 +4417,7 @@ a.media-strip__cell {
 .ficha-row dd {
   font-size: 13.5px;
   font-weight: 600;
-  color: var(--c-detail-ink);
+  color: #12100e;
   text-align: right;
   margin: 0;
 }
@@ -4772,7 +4782,7 @@ a.media-strip__cell {
 }
 
 .season-tabs a[aria-current='true'] {
-  color: var(--c-detail-ink);
+  color: #12100e;
   border-bottom-color: var(--c-accent-series);
 }
 
@@ -4785,7 +4795,7 @@ a.media-strip__cell {
   padding-bottom: 6px;
   font-size: 13px;
   font-weight: 600;
-  color: var(--c-detail-body);
+  color: #4a463e;
 }
 
 .season-info__status {
@@ -4816,7 +4826,7 @@ a.media-strip__cell {
   font-size: 19px;
   font-weight: 750;
   letter-spacing: -0.01em;
-  color: var(--c-detail-ink);
+  color: #12100e;
   margin: 0;
 }
 
@@ -10465,88 +10475,16 @@ h4.art-body__heading {
 }
 
 /* ==========================================================================
-   PREFERENCIAS DE APRESENTACAO (tela 13) — tema, densidade, tamanho de poster
+   PREFERENCIAS DE APRESENTACAO (tela 13) — densidade e tamanho de poster
    ==========================================================================
-   Ate 20/08/2026 estes tres controles eram OMITIDOS da tela de configuracoes.
-   A omissao estava CERTA: nao havia coluna, nao havia contrato, nao havia
-   efeito — e "sem preferencia fake, nunca toggle sem efeito" e a regra escrita
-   no cabecalho do painel. Agora existe backend, e ESTE bloco e a metade do
-   efeito que se ve.
+   NAO HA TEMA AQUI, E ISSO E DELIBERADO. O produto e claro sempre — ver o
+   bloco TEMA UNICO no topo do arquivo. Densidade e tamanho de poster ficam,
+   porque sao preferencia de LEITURA, nao de paleta.
 
-   NO FIM DO ARQUIVO de proposito: `globals.css` resolve conflito por ORDEM DE
-   DOCUMENTO, e os tokens de `:root` estao no topo. Uma redefinicao escrita la
+   NO FIM DO ARQUIVO de proposito: globals.css resolve conflito por ORDEM DE
+   DOCUMENTO, e os tokens de :root estao no topo. Uma redefinicao escrita la
    em cima seria sobrescrita por tudo que vem depois e ficaria inerte.
-
-   O tema aparece em TRES estados, como manda a boa pratica:
-     - escolha explicita  -> `[data-theme="dark"]` / `[data-theme="light"]`
-     - "sistema"          -> NENHUM atributo; a media query decide
-   `applyPreferences` REMOVE o atributo quando a escolha e "sistema", entao a
-   regra de media query volta a valer sem competir com um seletor mais forte.
    ========================================================================== */
-
-/* --- TEMA: escuro por escolha explicita --------------------------------- */
-:root[data-theme='dark'] {
-  color-scheme: dark;
-
-  --c-bg-page: #0b0b0d;
-  --c-bg-surface: #141416;
-  --c-bg-subtle: #1a1a1d;
-  --c-bg-muted: #212125;
-  --c-bg-skeleton: #26262b;
-
-  --c-text-primary: #f5f5f5;
-  --c-text-body: #e2e2e2;
-  --c-text-secondary: #a8a8a8;
-  --c-text-muted: #8b8b8b;
-  --c-text-muted-aa: #a8a49b;
-  --c-text-disabled: #5c5c5c;
-  --c-text-inverse: #101010;
-
-  --c-detail-ink: #f4f2ee;
-  --c-detail-body: #d2ccc0;
-  --c-detail-link: #ff8a7d;
-  --c-detail-link-series: #8fbd9c;
-
-  --c-border-subtle: #26262b;
-  --c-border: #313138;
-  --c-border-strong: #3f3f47;
-
-  --c-focus: #f5f5f5;
-}
-
-/* --- TEMA: escuro por preferencia do SISTEMA ---------------------------- */
-/* So quando NAO ha escolha explicita. `:not([data-theme])` impede que o leitor
-   que escolheu "claro" receba o escuro do sistema por cima. */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme]) {
-    color-scheme: dark;
-
-    --c-bg-page: #0b0b0d;
-    --c-bg-surface: #141416;
-    --c-bg-subtle: #1a1a1d;
-    --c-bg-muted: #212125;
-    --c-bg-skeleton: #26262b;
-
-    --c-text-primary: #f5f5f5;
-    --c-text-body: #e2e2e2;
-    --c-text-secondary: #a8a8a8;
-    --c-text-muted: #8b8b8b;
-    --c-text-muted-aa: #a8a49b;
-    --c-text-disabled: #5c5c5c;
-    --c-text-inverse: #101010;
-
-    --c-detail-ink: #f4f2ee;
-    --c-detail-body: #d2ccc0;
-    --c-detail-link: #ff8a7d;
-    --c-detail-link-series: #8fbd9c;
-
-    --c-border-subtle: #26262b;
-    --c-border: #313138;
-    --c-border-strong: #3f3f47;
-
-    --c-focus: #f5f5f5;
-  }
-}
 
 /* --- DENSIDADE ---------------------------------------------------------- */
 /* Um token de escala, nao uma folha de regras por componente: densidade que
@@ -10650,7 +10588,7 @@ h4.art-body__heading {
   min-height: 44px;
   font-size: 13.5px;
   font-weight: 700;
-  color: var(--c-detail-link-series);
+  color: #395c42;
   text-decoration: none;
 }
 
@@ -10677,37 +10615,18 @@ h4.art-body__heading {
 }
 
 /* ------------------------------------------------------------------ *
- * O HERO E UMA ILHA CLARA — e o texto dele tem que saber disso.
+ * O que o hero da temporada precisa, e SO isso.
  *
- * `.detail-hero` pinta `background: #fdfcfa` FIXO: ele nao acompanha o tema.
- * O corpo da pagina acompanha (`--c-bg-page` vira para #0b0b0d). Sao duas
- * superficies com comportamentos OPOSTOS, e a cor do texto tem que seguir a
- * superficie em que ele esta, nao a pagina:
- *
- *   - texto sobre `--c-bg-page`  -> token que VIRA  (ver --c-detail-*)
- *   - texto sobre o hero claro   -> valor que FICA
- *
- * Trocar os dois de lugar quebra nos dois sentidos. A ficha quebrou com
- * literal sobre fundo que vira (#12100e sobre #0b0b0d = 1,04:1, PRs #199-201).
- * A trilha quebra com token sobre fundo que fica: no escuro
- * `--c-text-muted-aa` sobe para #a8a49b e sai 2,42:1 sobre #fdfcfa. Este
- * segundo defeito e ANTERIOR as PRs revertidas e esta no ar hoje, nas tres
- * telas de detalhe.
- *
- * Enquanto o hero nao acompanhar o tema, o texto dele fica presto ao claro.
+ * O commit 934ccfe tinha aqui um conserto da trilha do hero: `.detail-hero`
+ * pinta um fundo claro FIXO, e a trilha usava `--c-text-muted-aa`, que no
+ * tema escuro subia para #a8a49b e saia 2,42:1 sobre um fundo que continuou
+ * claro. Com o tema escuro FORA (21/08/2026), `--c-text-muted-aa` vale
+ * #6e6a61 sempre e a regra original ja traz #3a362f no item atual — o
+ * conserto virou no-op e foi removido em vez de virar decoracao. Medido:
+ * trilha 5,30:1 e item atual 10,60:1, sem override nenhum.
  * ------------------------------------------------------------------ */
 
-.detail-hero .detail-hero__crumbs,
-.detail-hero .detail-hero__crumbs a {
-  color: #6e6a61;
-}
-
-.detail-hero .detail-hero__crumbs [aria-current='page'] {
-  color: #3a362f;
-}
-
-/* Link de volta para a serie, no topo da tela de temporada. Fica no hero, logo
-   usa o verde escuro FIXO (AA sobre claro) — nao o token de link, que vira. */
+/* Link de volta para a serie, no topo da tela de temporada. */
 .detail-hero__back {
   display: inline-flex;
   align-items: center;
@@ -10720,4 +10639,37 @@ h4.art-body__heading {
 
 .detail-hero__back:hover {
   text-decoration: underline;
+}
+
+/* ------------------------------------------------------------------ *
+ * TELA DE TEMPORADA — espacamento em CLASSE, nao em `style` inline.
+ *
+ * O primeiro corte desta pagina levou cinco `style={{ ... }}`. Espacamento
+ * inline nao passa por token, nao responde a `--pref-density-scale` e nao e
+ * alcancavel por nenhuma regra do desenho: para mudar a respiracao da tela
+ * seria preciso editar JSX. Aqui e onde o desenho chega.
+ * ------------------------------------------------------------------ */
+
+.season-page__body {
+  padding-top: 40px;
+  padding-bottom: 72px;
+}
+
+.season-page__back {
+  margin: 18px 0 0;
+}
+
+.season-page__episodes {
+  padding-top: 34px;
+}
+
+.season-page__episodes .episode-list {
+  margin-top: 22px;
+}
+
+/* O titulo do episodio e um nome proprio, nao um rotulo: nao vai em caixa
+   alta, e o espacamento negativo do `.detail-section-title` nao serve. */
+.episode-row__title--name {
+  letter-spacing: -0.01em;
+  text-transform: none;
 }

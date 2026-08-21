@@ -223,7 +223,7 @@ Cada pagina emite **JSON-LD** com o tipo correto. Nunca o tipo errado, nunca
 |--------|------------------|
 | Filme (`/pt/filmes/{slug}/`) | `Movie` |
 | Serie (`/pt/series/{slug}/`) | `TVSeries` |
-| Temporada (`/pt/series/{slug}/temporada-{n}/`) | `TVSeason` |
+| Temporada (`/pt/series/{slug}/temporadas/{n}/`) | `TVSeason` |
 | Episodio | `TVEpisode` |
 | Pessoa (`/pt/pessoas/{slug}/`) | `Person` |
 | Noticia (`/pt/noticias/{slug}/`) | `NewsArticle` |

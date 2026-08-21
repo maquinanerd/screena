@@ -2145,15 +2145,20 @@ model UserProfile {
   timezone    String?
   visibility  ProfileVisibility @default(private) // default seguro: perfil privado
   // --- Preferencias de APRESENTACAO (Fase 10) ---
-  // Sao tres controles que a tela 13 do canonico pede e que ate 20/08/2026 eram
+  // Sao controles que a tela 13 do canonico pede e que ate 20/08/2026 eram
   // OMITIDOS da interface por nao terem backend. A escolha anterior estava
   // certa (o cabecalho de `settings-panel.tsx` diz: "sem preferencia fake —
   // nunca toggle sem efeito"); o que faltava era a coluna.
   //
+  // NAO HA COLUNA DE TEMA, e a ausencia e decisao: o produto e claro SEMPRE
+  // (dono, 21/08/2026). O canonico nao tem uma unica tela escura e
+  // `globals.css` nao tem mais regra de tema escuro — uma coluna `theme` aqui
+  // guardaria escolha que nenhuma regra le. Removida pela migration
+  // `20260821120000_drop_user_theme_preference`.
+  //
   // TEXTO com CHECK, nao enum do Prisma: um enum novo obriga migration para
   // acrescentar valor e acopla o vocabulario de UI ao schema. Aqui o conjunto
   // fechado vive no CHECK e no parser do contrato, que e onde ele e lido.
-  theme       String            @default("system") // system | light | dark
   density     String            @default("comfortable") // comfortable | compact
   posterSize  String            @default("medium") @map("poster_size") // small | medium | large
   createdAt   DateTime          @default(now()) @map("created_at")

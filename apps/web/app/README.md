@@ -34,7 +34,7 @@ indexavel deve respeitar as invariantes do CANON, em especial:
 
 /pt/series/                                  -> lista de series
 /pt/series/{slug}/                           -> ficha da serie (TVSeries)
-/pt/series/{slug}/temporada-{number}/        -> temporada (TVSeason)
+/pt/series/{slug}/temporadas/{number}/        -> temporada (TVSeason)
 /pt/series/{slug}/onde-assistir/             -> onde assistir por pais
 
 /pt/pessoas/{slug}/                          -> ficha de pessoa (Person)

@@ -38,11 +38,9 @@ const TIMEZONE_SHAPE = /^[A-Za-z][A-Za-z0-9_+-]*(\/[A-Za-z0-9_+-]+)*$/;
  * concordar: o CHECK protege o banco de escrita fora do app, e o parser protege
  * o usuario de um 500 quando o CHECK dispara. Ha teste que compara os dois.
  */
-export const PROFILE_THEMES = ["system", "light", "dark"] as const;
 export const PROFILE_DENSITIES = ["comfortable", "compact"] as const;
 export const PROFILE_POSTER_SIZES = ["small", "medium", "large"] as const;
 
-export type ProfileTheme = (typeof PROFILE_THEMES)[number];
 export type ProfileDensity = (typeof PROFILE_DENSITIES)[number];
 export type ProfilePosterSize = (typeof PROFILE_POSTER_SIZES)[number];
 
@@ -60,7 +58,6 @@ export interface UpdateProfileCommand {
    * opcional aqui tornaria impossivel distinguir "voltar ao default" de "nao
    * mexer".
    */
-  readonly theme: ProfileTheme;
   readonly density: ProfileDensity;
   readonly posterSize: ProfilePosterSize;
 }
@@ -87,7 +84,6 @@ export function parseUpdateProfileCommand(input: unknown): DomainResult<UpdatePr
     "countryCode",
     "timezone",
     "visibility",
-    "theme",
     "density",
     "posterSize",
   ]);
@@ -174,8 +170,6 @@ export function parseUpdateProfileCommand(input: unknown): DomainResult<UpdatePr
     return ok(bruto as T);
   };
 
-  const theme = enumerado("theme", PROFILE_THEMES);
-  if (!theme.ok) return theme;
   const density = enumerado("density", PROFILE_DENSITIES);
   if (!density.ok) return density;
   const posterSize = enumerado("posterSize", PROFILE_POSTER_SIZES);
@@ -192,7 +186,6 @@ export function parseUpdateProfileCommand(input: unknown): DomainResult<UpdatePr
     countryCode: vazioParaNull(countryCode.value),
     timezone: vazioParaNull(timezone.value),
     visibility: visibilityRaw as ProfileVisibility,
-    theme: theme.value,
     density: density.value,
     posterSize: posterSize.value,
   });
