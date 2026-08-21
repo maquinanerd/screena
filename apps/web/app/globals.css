@@ -55,6 +55,16 @@
   --c-text-disabled: #b7b0a5;
   --c-text-inverse: #ffffff;
 
+  /* Tinta QUENTE das telas de detalhe (filme/serie/temporada).
+     Estes tres tokens carregam o valor exato do canonico no tema claro. Eles
+     existem porque o texto que fica sobre `--c-bg-page` PRECISA virar com o
+     tema: literal hexadecimal aqui sai #12100e sobre #0b0b0d (1,04:1) quando
+     o sistema do leitor esta em escuro — foi o que derrubou as PRs #199-#201.
+     A tinta neutra (`--c-text-primary`) nao serve: o canonico e quente. */
+  --c-detail-ink: #12100e;
+  --c-detail-body: #4a463e;
+  --c-detail-link: #b23a31;
+
   /* Accent (marca por contexto) */
   --c-accent-movie: #f0443e;
   --c-accent-movie-cta: #d42a2e;
@@ -4047,7 +4057,7 @@ a.media-strip__cell {
   font-size: 30px;
   font-weight: 800;
   letter-spacing: -0.03em;
-  color: #12100e;
+  color: var(--c-detail-ink);
   margin: 10px 0 0;
 }
 
@@ -4061,7 +4071,7 @@ a.media-strip__cell {
   gap: 7px;
   font-size: 13px;
   font-weight: 700;
-  color: #b23a31;
+  color: var(--c-detail-link);
   white-space: nowrap;
 }
 
@@ -4074,7 +4084,7 @@ a.media-strip__cell {
   line-height: 1.5;
   font-weight: 500;
   letter-spacing: -0.01em;
-  color: #12100e;
+  color: var(--c-detail-ink);
   margin: 18px 0 0;
   max-width: 34ch;
 }
@@ -4082,7 +4092,7 @@ a.media-strip__cell {
 .synopsis-body {
   font-size: 16px;
   line-height: 1.75;
-  color: #4a463e;
+  color: var(--c-detail-body);
   margin: 22px 0 0;
   max-width: 60ch;
 }
@@ -4393,7 +4403,7 @@ a.media-strip__cell {
 .ficha-row dd {
   font-size: 13.5px;
   font-weight: 600;
-  color: #12100e;
+  color: var(--c-detail-ink);
   text-align: right;
   margin: 0;
 }
@@ -10488,6 +10498,10 @@ h4.art-body__heading {
   --c-text-disabled: #5c5c5c;
   --c-text-inverse: #101010;
 
+  --c-detail-ink: #f4f2ee;
+  --c-detail-body: #d2ccc0;
+  --c-detail-link: #ff8a7d;
+
   --c-border-subtle: #26262b;
   --c-border: #313138;
   --c-border-strong: #3f3f47;
@@ -10515,6 +10529,10 @@ h4.art-body__heading {
     --c-text-muted-aa: #a8a49b;
     --c-text-disabled: #5c5c5c;
     --c-text-inverse: #101010;
+
+    --c-detail-ink: #f4f2ee;
+    --c-detail-body: #d2ccc0;
+    --c-detail-link: #ff8a7d;
 
     --c-border-subtle: #26262b;
     --c-border: #313138;
