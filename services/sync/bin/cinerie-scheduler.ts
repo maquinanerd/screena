@@ -62,6 +62,7 @@ import {
   RHYTHMS,
   SchedulerConfigError,
   selectDueQueues,
+  withLostRecord,
   withQueueLock,
   type QuotaSnapshot,
   type SchedulerConfig,
@@ -325,8 +326,48 @@ async function main(): Promise<number> {
         continue
       }
 
-      const outcome = result.value
-      log.log(outcome.status === 'success' ? 'info' : 'warn', 'scheduler_queue_finished', {
+      // O REGISTRO VEM ANTES DA LINHA DE DESFECHO, e a ordem e a regra.
+      //
+      // Ate aqui era o contrario: o ciclo anunciava `success` e SO DEPOIS tentava
+      // gravar `api_sync_logs`; quando o INSERT morria, saia um `warn` ao lado de
+      // um sucesso ja publicado. Sucesso reportado sobre registro perdido — e, no
+      // caso da `discovery`, sobre uma FK que quebrava em TODA execucao.
+      //
+      // Para fila que consome fornecedor, essa linha e a unica evidencia duravel
+      // do ciclo: dela saem o ultimo sucesso e o gasto de cota. Sem ela, para
+      // todo consumidor do sistema a execucao nao aconteceu. Por isso o registro
+      // perdido nao vira observacao ao lado do desfecho: vira o desfecho.
+      //
+      // Filas derivadas (`providerApi === null`) nao gravam aqui — elas medem o
+      // proprio artefato (ver `runtime/facts.ts`) — e em dry-run nada e gravado.
+      let outcome = result.value
+      if (rhythm?.providerApi !== null && rhythm?.providerApi !== undefined && config.apply) {
+        try {
+          await recordRun(prisma, outcome, rhythm.providerApi)
+        } catch (error) {
+          // `error`, nao `warn`: o painel de logs do dono mostra `error`, e esta
+          // e a unica linha que nomeia a CAUSA. O alerta de fila parada tambem
+          // acusa, mas acusa como "NUNCA rodou" — que manda o operador procurar
+          // uma fila que nao roda, quando ela roda e nao consegue se registrar.
+          log.log('error', 'scheduler_run_log_failed', {
+            queue,
+            providerApi: rhythm.providerApi,
+            error: String(error),
+          })
+          outcome = withLostRecord(
+            outcome,
+            `o registro em api_sync_logs NAO foi gravado para provider_api=${rhythm.providerApi}: ${String(error)}`,
+          )
+        }
+      }
+
+      // Tres niveis, nao dois. `partial` continua em `warn`: lote incompleto e
+      // desfecho legitimo e frequente, e promove-lo a `error` diluiria o nivel
+      // que o painel do dono usa para "fila parada". `failure` — inclusive o
+      // registro perdido — sobe para `error`, porque e a linha que precisa ser
+      // vista no mesmo tick em que acontece.
+      const level = outcome.status === 'success' ? 'info' : outcome.status === 'partial' ? 'warn' : 'error'
+      log.log(level, 'scheduler_queue_finished', {
         queue,
         status: outcome.status,
         planned: outcome.planned,
@@ -336,16 +377,6 @@ async function main(): Promise<number> {
         durationMs: outcome.durationMs,
         summary: describeRun(outcome),
       })
-
-      // So fila com fornecedor grava em `api_sync_logs` — as derivadas medem o
-      // proprio artefato (ver `runtime/facts.ts`).
-      if (rhythm?.providerApi !== null && rhythm?.providerApi !== undefined && config.apply) {
-        try {
-          await recordRun(prisma, outcome, rhythm.providerApi)
-        } catch (error) {
-          log.log('warn', 'scheduler_run_log_failed', { queue, error: String(error) })
-        }
-      }
     }
   }
 

@@ -138,6 +138,49 @@ export function classifyRun(tally: RunTally): RunOutcome {
   }
 }
 
+/** O motivo de uma execucao cujo registro em `api_sync_logs` nao foi gravado. */
+export const RUN_RECORD_LOST_CODE = 'run_record_lost'
+
+/**
+ * O desfecho de uma execucao cujo REGISTRO se perdeu. Vira `failure`.
+ *
+ * ============================================================================
+ * POR QUE `failure`, E NAO UM AVISO AO LADO DE UM SUCESSO
+ * ============================================================================
+ * Para uma fila que consome fornecedor, a linha de `api_sync_logs` nao e um
+ * efeito colateral da execucao: e a UNICA evidencia duravel dela. Dessa linha
+ * saem o ultimo sucesso (`readLastRuns`) e o gasto de cota do dia
+ * (`readSpentToday`). Se o INSERT falha, entao para TODO consumidor do sistema
+ * a execucao nao aconteceu — nenhum deles consegue observar a parte que deu
+ * certo. Um status em que so o proprio processo acredita, pelo tempo de um
+ * tick, nao e um status.
+ *
+ * O caso que originou a regra: a fila `discovery` gravava com `provider_api`
+ * 'tmdb-exports', chave ausente de `api_providers`. Todo INSERT morria na FK,
+ * e o ciclo reportava `success` no mesmo tick em que perdia o registro. O
+ * painel, coerente com o banco, dizia NUNCA RODOU. Duas afirmacoes opostas
+ * sobre o mesmo ciclo, e a errada era a que o operador lia primeiro.
+ *
+ * O comportamento nao piora com esta promocao: sem a linha, o carimbo de ultimo
+ * sucesso ja nao avancava e a fila ja voltava a vencer em todo tick. A unica
+ * coisa que o aviso comprava era o operador nao ficar sabendo.
+ *
+ * As CONTAGENS nao sao mexidas — `processed` continua dizendo o que o lote
+ * tocou. Mentir para o outro lado (fingir zero) esconderia a cota queimada.
+ */
+export function withLostRecord(outcome: RunOutcome, detail: string): RunOutcome {
+  return {
+    ...outcome,
+    status: 'failure',
+    advancesLastSuccess: false,
+    reasons: [
+      { code: RUN_RECORD_LOST_CODE, detail, count: 1 },
+      // O motivo sintetico de "nao reportou motivo" sai: agora ha um motivo real.
+      ...outcome.reasons.filter((reason) => reason.code !== MISSING_REASON.code),
+    ],
+  }
+}
+
 /**
  * Uma linha para o log/painel. NUNCA colapsa parcial em concluido.
  *
@@ -152,7 +195,7 @@ export function describeRun(outcome: RunOutcome): string {
         : `concluido ${outcome.processed}/${outcome.planned}`
       : outcome.status === 'partial'
         ? `INCOMPLETO ${outcome.processed}/${outcome.planned} (falhas ${outcome.failed}, pulados ${outcome.skipped})`
-        : `FALHOU (0 de ${outcome.planned})`
+        : `FALHOU (${outcome.processed} de ${outcome.planned})`
   const spend =
     outcome.spend.length === 0
       ? 'cota: nenhuma'
