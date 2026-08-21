@@ -31,18 +31,18 @@
  * com producao continuando quebrada.
  */
 
-import { readFileSync, readdirSync } from 'node:fs'
+import { readdirSync } from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
 import { API_PROVIDER_SEED } from '@screena/db'
 
+import { readSourceWithoutComments, REPO_ROOT } from '../support/source-text.js'
+
 import { RHYTHMS } from '../../services/sync/src/scheduler/rhythms.js'
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
-const migrationsDir = path.join(repoRoot, 'packages', 'db', 'prisma', 'migrations')
+const migrationsDir = path.join(REPO_ROOT, 'packages', 'db', 'prisma', 'migrations')
 
 /**
  * Os fornecedores que ja estavam na semente ANTES de esta regra existir, e que
@@ -76,20 +76,22 @@ const SCHEDULER_PROVIDER_KEYS: readonly string[] = [
  * proprio comentario da migration cita a chave em prosa. Um guard que casa com
  * a EXPLICACAO do conserto em vez do conserto certifica o defeito.
  *
- * Por isso: remove os comentarios `--` primeiro e so entao le o interior dos
- * comandos `INSERT INTO "api_providers" ... ;`.
+ * A remocao de comentario vem da PORTA UNICA (`tests/support/source-text.ts`),
+ * nao de um `replace` local. A versao artesanal que morava aqui apagava todo
+ * `--` da linha — inclusive um `--` DENTRO de string SQL, que nao e comentario.
+ * Nenhuma migration tem esse caso hoje; a primeira que tivesse perderia o valor
+ * em silencio, e o guard passaria a nao casar com nada (que tambem fica verde).
  */
 function providerKeysInsertedByMigrations(): ReadonlySet<string> {
   const keys = new Set<string>()
   for (const entry of readdirSync(migrationsDir, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue
-    let sql: string
+    let code: string
     try {
-      sql = readFileSync(path.join(migrationsDir, entry.name, 'migration.sql'), 'utf8')
+      code = readSourceWithoutComments(path.join(migrationsDir, entry.name, 'migration.sql'))
     } catch {
       continue
     }
-    const code = sql.replace(/--[^\n]*/g, '')
     for (const statement of code.matchAll(/INSERT\s+INTO\s+"?api_providers"?[\s\S]*?;/gi)) {
       for (const literal of statement[0].matchAll(/'([^']*)'/g)) {
         const value = literal[1]
