@@ -39,6 +39,7 @@ import { getRatingsForEntity } from "./entity-ratings";
 import { buildRatingsView, type RatingsPanelView } from "../lib/ratings-presenter";
 import { getRecommendedTitlesForEntity } from "./similar-titles";
 import type { SimilarTitlesView } from "../lib/similar-titles-presenter";
+import { countGalleryMedia } from "./entity-gallery";
 import { getTrailerForEntity } from "./entity-trailer";
 import { getCinerieScoreForEntity, getGenresForEntity } from "./entity-hero";
 import {
@@ -73,6 +74,13 @@ export interface SeriesPageData {
    * entidade da pagina.
    */
   trailer: TrailerView | null;
+  /**
+   * Contagem REAL de imagens e videos da entidade, para a banda de midia.
+   *
+   * Vem de `countGalleryMedia`, que usa os MESMOS filtros dos leitores da
+   * galeria. Um segundo criterio aqui faria a ficha e a galeria discordarem.
+   */
+  mediaCounts: { images: number; videos: number };
   /** C8: id INTERNO do catalogo, serializado, para o botao de biblioteca. */
   entityId: string;
   indexability: IndexabilityResult;
@@ -335,6 +343,11 @@ export const getSeriesPageData = cache(
     // Trailer do bloco de midia (tela 07). Mesmo helper do filme.
     const trailer = await getTrailerForEntity(prisma, "tv", series.tmdbId);
 
+    // As CONTAGENS da banda de midia ("9 videos - 184 fotos"). `COUNT(*)` nas
+    // MESMAS condicoes que a galeria usa para listar: se divergissem, a ficha
+    // prometeria um numero que a galeria nao entrega.
+    const mediaCounts = await countGalleryMedia(prisma, "tv", series.tmdbId);
+
     // "Mais como este" na SERIE — que ate agora nao tinha trilho nenhum.
     //
     // A recusa anterior estava certa pelo motivo dela: serie nao tem colecao, e
@@ -382,6 +395,7 @@ export const getSeriesPageData = cache(
     return {
       view,
       trailer,
+      mediaCounts,
       similar,
       genres,
       score,

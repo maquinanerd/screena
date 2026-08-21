@@ -105,8 +105,27 @@ export interface GalleryVideoView {
   readonly player: { readonly embedUrl: string; readonly watchUrl: string; readonly name: string | null } | null;
   /** `Trailer` | `Teaser` | `Bastidores` | … já em pt-BR. */
   readonly typeLabel: string;
-  /** `02:14`, ou `null` quando a duração não veio. */
-  readonly durationLabel: string | null;
+  /**
+   * `1080p`, `720p`… ou `null` quando o TMDB não informou.
+   *
+   * ============================================================================
+   * ISTO NÃO É DURAÇÃO, E A PRIMEIRA ESCRITA DIZIA QUE ERA
+   * ============================================================================
+   * O campo `size` de `/videos` do TMDB é a **RESOLUÇÃO** (360, 480, 720, 1080,
+   * 2160) — não segundos. A primeira versão deste módulo o formatava como
+   * `MM:SS`, e um vídeo em 1080p sairia na tela como "18:00".
+   *
+   * O comentário do bloco de mídia do detalhe já dizia a verdade em voz alta
+   * ("a API do TMDB não entrega duração") e mesmo assim o defeito passou. Duas
+   * coisas o esconderam: o nome do campo (`size` não sugere resolução) e a
+   * fixture do harness de QA, que semeou 134, 151, 62 — números que passam por
+   * segundos e renderizaram "02:14", "02:31", "01:02". A tela parecia certa.
+   *
+   * O canônico pede `02:14 · Trailer` na banda de mídia. Esse número **não
+   * existe no dado**, e inventá-lo a partir da resolução seria afirmar um fato
+   * que a fonte não dá.
+   */
+  readonly resolutionLabel: string | null;
   readonly languageLabel: string;
   readonly official: boolean;
   /**
@@ -317,13 +336,16 @@ export function buildImagesGallery(
   };
 }
 
-/** Duração `MM:SS` a partir de segundos. `null` quando ausente ou inválida. */
-function durationLabel(seconds: number | null): string | null {
-  if (seconds === null || !Number.isFinite(seconds) || seconds <= 0) return null;
-  const total = Math.round(seconds);
-  const minutos = Math.floor(total / 60);
-  const resto = total % 60;
-  return `${String(minutos).padStart(2, "0")}:${String(resto).padStart(2, "0")}`;
+/**
+ * Rótulo de RESOLUÇÃO (`1080p`) a partir do campo `size` do TMDB.
+ *
+ * Ver `GalleryVideoView.resolutionLabel`: `size` é resolução, nunca duração.
+ * Valor fora da faixa plausível de altura de vídeo devolve `null` — melhor
+ * omitir que afirmar "3p".
+ */
+function resolutionLabel(size: number | null): string | null {
+  if (size === null || !Number.isInteger(size) || size < 100 || size > 8000) return null;
+  return `${String(size)}p`;
 }
 
 /**
@@ -366,7 +388,7 @@ export function buildVideosGallery(
       // Sem nome, o rótulo do tipo vira o título. Nunca "Sem título".
       title: row.name?.trim() ?? (VIDEO_TYPE_LABELS[tipo] ?? tipo) ?? "Vídeo",
       typeLabel: tipo === "" ? "Vídeo" : (VIDEO_TYPE_LABELS[tipo] ?? tipo),
-      durationLabel: durationLabel(row.size),
+      resolutionLabel: resolutionLabel(row.size),
       languageLabel: languageLabel(row.languageCode),
       official: row.official === true,
       backdropUrl,

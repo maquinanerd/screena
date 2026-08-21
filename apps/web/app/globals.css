@@ -11105,3 +11105,63 @@ main[data-vertical='series'] .score-card__label {
     grid-template-columns: 1fr;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Banda de mídia — COLAPSO REAL da grade                              */
+/*                                                                    */
+/* O DEFEITO: `.media-strip__grid` declara `1fr 3fr 2fr` fixo. Com     */
+/* ZERO cartões o `.media-strip__stack` não renderiza, e a terceira    */
+/* coluna (2fr) ficava DECLARADA e VAZIA — a banda ocupava ~2/3 da     */
+/* largura e sobrava branco à direita. Não era margem: era uma coluna  */
+/* reservada para um filho que não existe.                            */
+/*                                                                    */
+/* `data-media-cards` carrega a CONTAGEM REAL (0..3) e o template      */
+/* acompanha. Sem cartão, a grade tem DUAS colunas e o destaque cresce.*/
+/*                                                                    */
+/* No fim do arquivo pelo mesmo motivo das galerias: conflito de mesma */
+/* especificidade resolve por ORDEM DE DOCUMENTO.                      */
+/* ------------------------------------------------------------------ */
+
+.media-strip__grid[data-media-cards='0'] {
+  grid-template-columns: 1fr 4fr;
+}
+
+/* Um cartão só: a coluna da direita não precisa dos 2fr de três. */
+.media-strip__grid[data-media-cards='1'] {
+  grid-template-columns: 1fr 3.4fr 1.6fr;
+}
+
+.media-strip__grid[data-media-cards='2'],
+.media-strip__grid[data-media-cards='3'] {
+  grid-template-columns: 1fr 3fr 2fr;
+}
+
+/* A pilha divide a altura pelo NÚMERO de cartões, não por três fixos:
+   com um cartão, `1fr 1fr 1fr` deixava dois terços vazios dentro da
+   própria coluna — o mesmo defeito da grade, um nível abaixo. */
+.media-strip__stack {
+  grid-template-rows: repeat(auto-fit, minmax(0, 1fr));
+}
+
+/* As CONTAGENS, no canto inferior DIREITO (o canônico). A legenda do
+   trailer fica na esquerda; as duas nunca colidem. */
+.media-strip__counts {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  background: var(--c-bg-surface);
+  color: #12100e;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 11px;
+  pointer-events: none;
+}
+
+@media (max-width: 767px) {
+  /* Em mobile a legenda e a contagem competem pela mesma linha de 375px.
+     A contagem cede: ela é informação secundária, e o rótulo do trailer
+     é o que diz ao leitor o que aquele play abre. */
+  .media-strip__counts {
+    display: none;
+  }
+}

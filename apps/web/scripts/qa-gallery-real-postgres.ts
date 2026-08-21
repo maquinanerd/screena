@@ -122,27 +122,35 @@ interface PlanoVideo {
   readonly nome: string;
   readonly pt: boolean;
   readonly oficial: boolean;
-  readonly seg: number;
+  /**
+   * O campo `size` do TMDB: RESOLUÇÃO (altura), nunca duração.
+   *
+   * A primeira versão desta fixture semeava 134, 151, 62 — números que passam
+   * por segundos e renderizavam "02:14" numa tela que parecia certa. Foi a
+   * fixture que escondeu o defeito de o presenter formatar `size` como `MM:SS`.
+   * Agora ela usa as alturas REAIS que o TMDB devolve.
+   */
+  readonly size: number;
   readonly site: string;
 }
 
 function planoDeVideos(rico: boolean): readonly PlanoVideo[] {
   if (!rico) {
     // UM: abaixo do piso de 2.
-    return [{ tipo: "Trailer", nome: "Trailer", pt: true, oficial: true, seg: 100, site: "YouTube" }];
+    return [{ tipo: "Trailer", nome: "Trailer", pt: true, oficial: true, size: 1080, site: "YouTube" }];
   }
   return [
-    { tipo: "Trailer", nome: "Trailer oficial", pt: true, oficial: true, seg: 134, site: "YouTube" },
-    { tipo: "Trailer", nome: "Trailer legendado", pt: false, oficial: true, seg: 151, site: "YouTube" },
-    { tipo: "Teaser", nome: "Teaser", pt: false, oficial: true, seg: 62, site: "YouTube" },
-    { tipo: "Behind the Scenes", nome: "Bastidores", pt: false, oficial: false, seg: 305, site: "YouTube" },
-    { tipo: "Clip", nome: "Cena do duelo", pt: true, oficial: false, seg: 88, site: "YouTube" },
-    { tipo: "Featurette", nome: "Featurette", pt: false, oficial: false, seg: 240, site: "YouTube" },
-    { tipo: "Bloopers", nome: "Erros de gravacao", pt: false, oficial: false, seg: 120, site: "YouTube" },
+    { tipo: "Trailer", nome: "Trailer oficial", pt: true, oficial: true, size: 1080, site: "YouTube" },
+    { tipo: "Trailer", nome: "Trailer legendado", pt: false, oficial: true, size: 1080, site: "YouTube" },
+    { tipo: "Teaser", nome: "Teaser", pt: false, oficial: true, size: 720, site: "YouTube" },
+    { tipo: "Behind the Scenes", nome: "Bastidores", pt: false, oficial: false, size: 480, site: "YouTube" },
+    { tipo: "Clip", nome: "Cena do duelo", pt: true, oficial: false, size: 1080, site: "YouTube" },
+    { tipo: "Featurette", nome: "Featurette", pt: false, oficial: false, size: 720, site: "YouTube" },
+    { tipo: "Bloopers", nome: "Erros de gravacao", pt: false, oficial: false, size: 360, site: "YouTube" },
     // Tipo FORA do dicionário: prova que ele aparece com o próprio nome.
-    { tipo: "Interview", nome: "Entrevista com o elenco", pt: false, oficial: false, seg: 400, site: "YouTube" },
+    { tipo: "Interview", nome: "Entrevista com o elenco", pt: false, oficial: false, size: 480, site: "YouTube" },
     // Vimeo de propósito: prova a linha SEM player.
-    { tipo: "Trailer", nome: "Trailer (Vimeo)", pt: false, oficial: false, seg: 90, site: "Vimeo" },
+    { tipo: "Trailer", nome: "Trailer (Vimeo)", pt: false, oficial: false, size: 720, site: "Vimeo" },
   ];
 }
 
@@ -225,7 +233,7 @@ async function seed(sql: Sql): Promise<void> {
           // player); o dado do harness é que estava errado. Só apareceu ao
           // ABRIR a página: nenhum teste de unidade usaria este id.
           `'qaVideo${String(index).padStart(4, "0")}', '${item.nome}', '${item.tipo}', ` +
-          `${String(item.oficial)}, '${item.pt ? "pt" : "en"}', ${String(item.seg)}, ` +
+          `${String(item.oficial)}, '${item.pt ? "pt" : "en"}', ${String(item.size)}, ` +
           `'qa-v-${String(titulo.tmdbId)}-${String(index)}', 'official', true, now(), now(), now())`,
       )
       .join(",");

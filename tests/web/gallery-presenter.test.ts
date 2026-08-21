@@ -220,10 +220,27 @@ describe('galeria de videos', () => {
     expect(galeria.videos[0]?.player).toBeNull()
   })
 
-  it('(7) a duracao sai formatada; ausente vira null, nunca "00:00"', () => {
-    expect(buildVideosGallery([video({ size: 134 })], null, AUTORIZADA).videos[0]?.durationLabel).toBe('02:14')
-    expect(buildVideosGallery([video({ size: null })], null, AUTORIZADA).videos[0]?.durationLabel).toBeNull()
-    expect(buildVideosGallery([video({ size: 0 })], null, AUTORIZADA).videos[0]?.durationLabel).toBeNull()
+  it('(7) `size` do TMDB e RESOLUCAO, e NUNCA vira duracao', () => {
+    // O DEFEITO QUE ESTE CASO FECHA: a primeira escrita formatava `size` como
+    // `MM:SS`, e um video em 1080p saia na tela como "18:00". `size` em
+    // `/videos` do TMDB e a ALTURA (360, 480, 720, 1080, 2160) — o comentario
+    // do bloco de midia do detalhe ja dizia "a API do TMDB nao entrega
+    // duracao", e mesmo assim passou: o nome do campo nao sugere resolucao, e
+    // a fixture do harness semeou 134/151/62, numeros que passam por segundos.
+    const mil = buildVideosGallery([video({ size: 1080 })], null, AUTORIZADA)
+    expect(mil.videos[0]?.resolutionLabel).toBe('1080p')
+
+    // CONTROLE NEGATIVO: nenhum rotulo pode ter a FORMA de duracao.
+    for (const size of [360, 480, 720, 1080, 2160]) {
+      const rotulo = buildVideosGallery([video({ size })], null, AUTORIZADA).videos[0]
+        ?.resolutionLabel
+      expect(rotulo).not.toMatch(/^\d{2}:\d{2}$/)
+    }
+
+    // Ausente ou implausivel omite, nunca inventa.
+    expect(buildVideosGallery([video({ size: null })], null, AUTORIZADA).videos[0]?.resolutionLabel).toBeNull()
+    expect(buildVideosGallery([video({ size: 0 })], null, AUTORIZADA).videos[0]?.resolutionLabel).toBeNull()
+    expect(buildVideosGallery([video({ size: 3 })], null, AUTORIZADA).videos[0]?.resolutionLabel).toBeNull()
   })
 
   it('(8) tipo desconhecido do TMDB aparece com o proprio nome', () => {

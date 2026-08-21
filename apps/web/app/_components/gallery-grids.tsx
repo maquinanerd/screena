@@ -92,8 +92,10 @@ export function GalleryVideoList({
             <p className="gallery-video__title">{video.title}</p>
             <p className="gallery-video__meta">
               <span className="gallery-video__type">{video.typeLabel}</span>
-              {video.durationLabel !== null ? (
-                <span className="gallery-video__duration">{video.durationLabel}</span>
+              {/* RESOLUCAO, nao duracao: `size` do TMDB e 360/480/720/1080.
+                  Ver `gallery-presenter.ts`. */}
+              {video.resolutionLabel !== null ? (
+                <span className="gallery-video__resolution">{video.resolutionLabel}</span>
               ) : null}
               <span className="gallery-video__lang">{video.languageLabel}</span>
               {video.official ? (

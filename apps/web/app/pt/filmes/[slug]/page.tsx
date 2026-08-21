@@ -31,6 +31,8 @@ import {
 import { watchBrandsRow } from '../../../../src/lib/watch-brands-row'
 import { MOVIES_INDEX_PATH, NEWS_INDEX_PATH, SITE_URL, gatePublicRobots } from '../../../../src/lib/site'
 import { getMoviePageData } from '../../../../src/server/movie-page'
+import { buildMediaBand } from '../../../../src/lib/media-band-presenter'
+import { imagesGalleryPath, videosGalleryPath } from '../../../../src/lib/routes'
 
 /**
  * Detalhe de filme — tela 06 do canônico, na ESTRUTURA EXATA do HTML:
@@ -119,7 +121,7 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
   const redirectPath = canonicalRedirectPath(MOVIES_INDEX_PATH, slug, data.canonicalSlug)
   if (redirectPath !== null) permanentRedirect(redirectPath)
 
-  const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, watchAbsence, awards, awardsAbsence, ratings, externalIds, genres, score, fichaFacts, similar, trailer } =
+  const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, watchAbsence, awards, awardsAbsence, ratings, externalIds, genres, score, fichaFacts, similar, trailer, mediaCounts } =
     data
   const isUnderReview = seo.decision !== 'index'
   const metaText = [view.year !== null ? String(view.year) : null, view.runtimeLabel]
@@ -129,12 +131,30 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
   const genreChips = heroGenreChips(genres)
   const scoreDecision = decideCinerieScore(score)
 
+
   const critiqueBlock = view.blocks.find((block) => block.blockType === REVIEW_BLOCK_TYPE) ?? null
   const workBlocks = view.blocks.filter((block) => WORK_BLOCK_TYPES.has(block.blockType))
   const castContext = view.blocks.find((block) => block.blockType === 'cast_intro') ?? null
   const newsContext = view.blocks.find((block) => block.blockType === 'news_context') ?? null
   const primaryCast = cast.slice(0, 6)
   const editorialNews = relatedNews.slice(0, 3)
+
+  // A BANDA DE MIDIA. Os tres cartoes do canonico voltam porque as rotas de
+  // galeria passaram a existir; cada um so entra com destino E com conteudo.
+  // Ver `src/lib/media-band-presenter.ts` — inclusive para por que a legenda
+  // NAO carrega duracao (o TMDB nao a entrega; `size` e resolucao).
+  // `slug` JA e o canonico neste ponto: a rota fez `permanentRedirect`
+  // acima quando o pedido veio por um slug antigo.
+  const mediaBand = buildMediaBand({
+    imagesPath: imagesGalleryPath('filmes', slug),
+    videosPath: videosGalleryPath('filmes', slug),
+    newsAnchor: '#movie-news-title',
+    newsCount: editorialNews.length,
+    imageCount: mediaCounts.images,
+    videoCount: mediaCounts.videos,
+    backdropUrl: view.media.backdrop?.src ?? null,
+    hasTrailer: trailer !== null,
+  })
   const synopsisLead = workBlocks[0] ?? null
   const synopsisRest = workBlocks.slice(1)
 
@@ -372,7 +392,10 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
         <div className="media-strip">
           <div
             className="media-strip__grid"
-            data-media-cards={editorialNews.length > 0 ? 1 : 0}
+            // A CONTAGEM REAL, e nao 0/1: e ela que o CSS usa para colapsar a
+            // grade. Com 0 cartoes a terceira coluna (2fr) ficava declarada e
+            // VAZIA — a banda ocupava 2/3 da largura e sobrava branco a direita.
+            data-media-cards={mediaBand.cards.length}
           >
             <div className="media-strip__cell">
               {view.media.poster !== null ? (
@@ -408,28 +431,38 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
                   ("02:31 · Trailer", "6 vídeos · 128 fotos") NÃO renderizam:
                   a API do TMDB não entrega duração, e uma contagem de mídia
                   sem galeria para abrir seria promessa sem destino. */}
-              {trailer !== null ? (
-                <span className="media-strip__caption">Trailer</span>
+              {mediaBand.trailerCaption !== null ? (
+                <span className="media-strip__caption">{mediaBand.trailerCaption}</span>
+              ) : null}
+              {/* As CONTAGENS, no canto inferior direito. Reais: vem de
+                  `COUNT(*)` nas mesmas condicoes que a galeria usa para listar. */}
+              {mediaBand.countsLabel !== null ? (
+                <span className="media-strip__counts">{mediaBand.countsLabel}</span>
               ) : null}
             </div>
-            {/* A COLUNA DE CARDS. O canonico desenha tres — "Imagens e Posteres",
-                "Notícias e Eventos" e "Trailers e Teasers" — e so o do meio tem
-                DESTINO neste produto: nao existe rota de galeria de imagens nem
-                de videos. Card sem destino nao vira card cinza com "Em breve";
-                ele nao existe, e os que restam se redistribuem por
-                `data-media-cards`.
+                        {/* A COLUNA DE CARDS. O canonico desenha TRES — "Imagens e Posteres",
+                "Noticias e Eventos" e "Trailers e Teasers" — e ate 21/08/2026 so o
+                do meio existia. O comentario antigo dizia a verdade sobre o porque:
+                "nao existe rota de galeria de imagens nem de videos". A regra estava
+                certa; o que faltava era o DESTINO. As quatro rotas de galeria agora
+                existem, e os cartoes voltam porque levam a algum lugar — nao porque o
+                canonico os desenha.
+
+                Cada cartao so entra com destino E com conteudo: um cartao de galeria
+                vazia gastaria um clique para dizer "ainda nao ha imagens".
 
                 PREMIOS SAIU DAQUI (decisao do dono): a faixa desce para a secao
-                propria logo abaixo, e um card que so ancorava nela duplicava o
-                que a pagina ja mostra por inteiro. */}
-            {editorialNews.length > 0 ? (
+                propria logo abaixo. */}
+            {mediaBand.cards.length > 0 ? (
               <div className="media-strip__stack">
-                <a className="media-strip__cell" href="#movie-news-title">
-                  {view.media.backdrop !== null ? (
-                    <img alt="" loading="lazy" src={view.media.backdrop.src} />
-                  ) : null}
-                  <span className="media-strip__caption">Notícias e Eventos</span>
-                </a>
+                {mediaBand.cards.map((card) => (
+                  <a className="media-strip__cell" href={card.href} key={card.key}>
+                    {card.backgroundUrl !== null ? (
+                      <img alt="" loading="lazy" src={card.backgroundUrl} />
+                    ) : null}
+                    <span className="media-strip__caption">{card.label}</span>
+                  </a>
+                ))}
               </div>
             ) : null}
           </div>
