@@ -42,6 +42,30 @@
 - **Contrato preservado:** slug canônico, redirects, metadata, canonical,
   robots, badges/labels por vertical e schemas `Movie`/`TVSeries`/`Person`.
 
+### Title Media Galleries
+
+- **Rotas:** `/pt/filmes/[slug]/imagens/`, `/pt/filmes/[slug]/videos/`,
+  `/pt/series/[slug]/imagens/`, `/pt/series/[slug]/videos/`.
+- **Estado atual:** grade de pôsteres/cenas/stills/logotipos e lista de
+  trailers/teasers/bastidores, com **contagem real** no topo e composição por
+  tipo e por idioma. Tudo de `tmdb_images`/`tmdb_videos`; nenhuma imagem ou
+  vídeo é inventado.
+- **PISO DE PÁGINA FINA:** **4 imagens** e **2 vídeos**. Abaixo disso a página
+  RESPONDE (o conteúdo existe) mas recebe `noindex` e **não entra no sitemap**.
+  É o caso técnico da invariante 5 — a entidade dona continua indexando.
+  Os dois pisos vivem em `apps/web/src/lib/gallery-presenter.ts` e são os
+  MESMOS que o sitemap usa no `HAVING`.
+- **Licença:** imagem passa pelo gate de `source_licenses` (`tmdb`/`image`);
+  vídeo é gated por LINHA (`tmdb_videos.display_allowed`).
+- **Nada de terceiro carrega antes do clique:** a lista de vídeos não usa
+  miniatura do YouTube (seria uma requisição ao Google no render) — o fundo do
+  cartão é um backdrop do TMDB, e o player é o `TrailerModal` da PR #174.
+- **Contrato preservado:** slug canônico com redirect 301, canonical
+  autorreferente, `BreadcrumbList` + `mainEntity` (`Movie`/`TVSeries`), e a
+  diferenciação filme/série por label + badge + breadcrumb + schema + URL.
+- **Escopo:** são páginas de MÍDIA de um título. Não são índice de catálogo,
+  não listam outros títulos e não substituem a banda de mídia da ficha.
+
 ### News Pages
 
 - **Rotas:** `/pt/noticias/`, `/pt/noticias/[slug]`.

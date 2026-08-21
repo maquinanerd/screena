@@ -51,7 +51,9 @@ import {
   MOVIES_INDEX_PATH,
   NEWS_INDEX_PATH,
   PEOPLE_INDEX_PATH,
+  imagesGalleryPath,
   seasonPath,
+  videosGalleryPath,
   SERIES_INDEX_PATH,
   SITE_URL,
 } from "../../lib/site";
@@ -61,6 +63,10 @@ import {
   countPopulatedSections,
   evaluatePortalIndexability,
 } from "../../lib/portal-presenter";
+import {
+  IMAGES_INDEX_FLOOR,
+  VIDEOS_INDEX_FLOOR,
+} from "../../lib/gallery-presenter";
 
 type PrismaClient = ReturnType<typeof getPrismaClient>;
 
@@ -70,7 +76,25 @@ export const SITEMAP_LANGUAGE = "pt-BR";
 /** Tipos cuja URL e INDEX + slug canonico proprio. */
 export type SimpleSitemapType = "movies" | "series" | "people" | "news";
 /** Tipos de entidade paginados (com rota publica real). `static` e a parte fixa. */
-export type EntitySitemapType = SimpleSitemapType | "seasons" | "episodes";
+export type EntitySitemapType =
+  | SimpleSitemapType
+  | "seasons"
+  | "episodes"
+  /**
+   * As GALERIAS de imagem e de video, de filme E de serie no mesmo shard.
+   *
+   * O nome do tipo e o SEGMENTO da rota (`imagens`/`videos`) de proposito: um
+   * terceiro vocabulario ("galleries", "media") criaria mais um lugar em que a
+   * mesma coisa tem outro nome.
+   *
+   * O PISO ENTRA NO `WHERE`, e nao em codigo depois da consulta. Uma galeria
+   * abaixo do piso recebe `noindex` na propria pagina, e a regra de SEO e clara:
+   * pagina `noindex` NUNCA entra no sitemap. Filtrar fora do SQL faria a
+   * CONTAGEM do index divergir das URLs do shard — o index prometeria N e o
+   * shard entregaria menos, que e a forma mais cara de sitemap errado.
+   */
+  | "imagens"
+  | "videos";
 const ENTITY_TYPES: readonly EntitySitemapType[] = [
   "movies",
   "series",
@@ -78,6 +102,8 @@ const ENTITY_TYPES: readonly EntitySitemapType[] = [
   "news",
   "seasons",
   "episodes",
+  "imagens",
+  "videos",
 ];
 const ALL_TYPES: readonly string[] = [...ENTITY_TYPES, "static"];
 
@@ -95,6 +121,10 @@ const ENTITY_CHANGEFREQ: Readonly<Record<EntitySitemapType, string>> = {
   news: "weekly",
   seasons: "monthly",
   episodes: "monthly",
+  // A galeria muda quando a midia do titulo muda, que e o ritmo do `sync_media`
+  // (7 dias). "monthly" seria otimista; "weekly" e o que o dado faz.
+  imagens: "weekly",
+  videos: "weekly",
 };
 const ENTITY_PRIORITY: Readonly<Record<EntitySitemapType, number>> = {
   movies: 0.5,
@@ -103,6 +133,9 @@ const ENTITY_PRIORITY: Readonly<Record<EntitySitemapType, number>> = {
   news: 0.6,
   seasons: 0.4,
   episodes: 0.3,
+  // Abaixo de temporada: sao sub-paginas de midia, nao a obra.
+  imagens: 0.3,
+  videos: 0.3,
 };
 
 export interface SitemapXmlResponse {
@@ -208,6 +241,8 @@ async function aggregateEntity(
         AND LENGTH(BTRIM(COALESCE(at.body, ''))) >= ${MIN_ARTICLE_BODY_CHARS}
         AND (a.requires_attribution = false OR BTRIM(COALESCE(a.source_name, '')) <> '')
         AND (a.requires_linkback = false OR BTRIM(COALESCE(a.source_url, '')) <> '')`;
+  } else if (type === "imagens" || type === "videos") {
+    rows = await aggregateGallery(prisma, type, language);
   } else if (type === "seasons") {
     rows = await prisma.$queryRaw<{ n: number; maxmod: Date | null }[]>`
       SELECT COUNT(*)::int AS n, MAX(se.updated_at) AS maxmod
@@ -233,6 +268,137 @@ async function aggregateEntity(
             AND d.language_code = ${language} AND d.is_current = true AND d.decision <> 'index')`;
   }
   return { count: rows[0]?.n ?? 0, maxLastmod: rows[0]?.maxmod ?? null };
+}
+
+// ---------------------------------------------------------------------------
+// GALERIAS (/{filmes,series}/{slug}/{imagens,videos}/)
+//
+// O PISO ENTRA NO `WHERE` (`HAVING COUNT(*) >= piso`), e nao em codigo depois
+// da consulta. A pagina abaixo do piso recebe `noindex`, e pagina `noindex`
+// nunca entra no sitemap; filtrar fora do SQL faria a CONTAGEM do index
+// divergir das URLs do shard.
+//
+// Os dois pisos vem de `gallery-presenter.ts` — os MESMOS que a pagina usa para
+// decidir `robots`. Dois numeros para a mesma decisao divergiriam no primeiro
+// ajuste.
+// ---------------------------------------------------------------------------
+
+/** Uma galeria elegivel: a vertical, o slug do titulo e o carimbo mais novo. */
+interface GalleryRow {
+  vertical: string;
+  slug: string;
+  lastmod: Date | null;
+}
+
+/**
+ * As galerias elegiveis, de filme E de serie, no MESMO conjunto.
+ *
+ * `UNION ALL` em vez de duas consultas: a paginacao do shard e sobre o conjunto
+ * inteiro, e paginar duas listas separadas exigiria um segundo esquema de
+ * offset que divergiria da contagem.
+ *
+ * A ORDEM e TOTAL (`vertical, slug`): sem ela, `LIMIT/OFFSET` sobre um `UNION`
+ * pode devolver a mesma URL em duas paginas e omitir outra — um sitemap com
+ * duplicata e buraco, sem nenhum erro visivel.
+ */
+function gallerySql(type: "imagens" | "videos", language: string, floor: number) {
+  const tabela = type === "imagens" ? "tmdb_images" : "tmdb_videos";
+  // Video tem gate POR LINHA; imagem e gated pela FONTE (ver `entity-gallery.ts`).
+  const gateVideo =
+    type === "videos"
+      ? "AND mi.display_allowed = true AND mi.license_status NOT IN ('unknown','blocked')"
+      : "AND mi.image_type IN ('poster','backdrop','logo','still')";
+  return { tabela, gateVideo, language, floor };
+}
+
+async function aggregateGallery(
+  prisma: PrismaClient,
+  type: "imagens" | "videos",
+  language: string,
+): Promise<{ n: number; maxmod: Date | null }[]> {
+  const { tabela, gateVideo, floor } = gallerySql(type, language, galleryFloor(type));
+  return prisma.$queryRawUnsafe<{ n: number; maxmod: Date | null }[]>(
+    `SELECT COUNT(*)::int AS n, MAX(lastmod) AS maxmod FROM (
+       SELECT MAX(mi.updated_at) AS lastmod
+         FROM ${tabela} mi
+         JOIN movies m ON m.tmdb_id = mi.tmdb_id
+         JOIN slugs s ON s.entity_type = 'movie' AND s.entity_id = m.id
+           AND s.language_code = $1 AND s.is_canonical = true
+        WHERE mi.entity_type = 'movie' ${gateVideo}
+        GROUP BY s.slug HAVING COUNT(*) >= $2
+       UNION ALL
+       SELECT MAX(mi.updated_at) AS lastmod
+         FROM ${tabela} mi
+         JOIN tv_shows t ON t.tmdb_id = mi.tmdb_id
+         JOIN slugs s ON s.entity_type = 'tv' AND s.entity_id = t.id
+           AND s.language_code = $1 AND s.is_canonical = true
+        WHERE mi.entity_type = 'tv' ${gateVideo}
+        GROUP BY s.slug HAVING COUNT(*) >= $2
+     ) AS galerias`,
+    language,
+    floor,
+  );
+}
+
+async function pageGallery(
+  prisma: PrismaClient,
+  type: "imagens" | "videos",
+  language: string,
+  limit: number,
+  offset: number,
+): Promise<SitemapXmlUrl[]> {
+  const { tabela, gateVideo, floor } = gallerySql(type, language, galleryFloor(type));
+  const rows = await prisma.$queryRawUnsafe<GalleryRow[]>(
+    `SELECT vertical, slug, lastmod FROM (
+       SELECT 'filmes' AS vertical, s.slug AS slug, MAX(mi.updated_at) AS lastmod
+         FROM ${tabela} mi
+         JOIN movies m ON m.tmdb_id = mi.tmdb_id
+         JOIN slugs s ON s.entity_type = 'movie' AND s.entity_id = m.id
+           AND s.language_code = $1 AND s.is_canonical = true
+        WHERE mi.entity_type = 'movie' ${gateVideo}
+        GROUP BY s.slug HAVING COUNT(*) >= $2
+       UNION ALL
+       SELECT 'series' AS vertical, s.slug AS slug, MAX(mi.updated_at) AS lastmod
+         FROM ${tabela} mi
+         JOIN tv_shows t ON t.tmdb_id = mi.tmdb_id
+         JOIN slugs s ON s.entity_type = 'tv' AND s.entity_id = t.id
+           AND s.language_code = $1 AND s.is_canonical = true
+        WHERE mi.entity_type = 'tv' ${gateVideo}
+        GROUP BY s.slug HAVING COUNT(*) >= $2
+     ) AS galerias
+     ORDER BY vertical ASC, slug ASC LIMIT $3 OFFSET $4`,
+    language,
+    floor,
+    limit,
+    offset,
+  );
+
+  return rows
+    .map((row) => galleryUrl(type, row))
+    .filter((url): url is SitemapXmlUrl => url !== null);
+}
+
+/** A URL de UMA galeria, ou `null` quando o slug nao produz caminho valido. */
+function galleryUrl(type: "imagens" | "videos", row: GalleryRow): SitemapXmlUrl | null {
+  const vertical = row.vertical === "filmes" ? ("filmes" as const) : ("series" as const);
+  const caminho =
+    type === "imagens"
+      ? imagesGalleryPath(vertical, row.slug)
+      : videosGalleryPath(vertical, row.slug);
+  if (caminho === null) return null;
+  const loc = canonicalPublicUrl(caminho);
+  if (loc === null) return null;
+  return {
+    loc,
+    lastmod: isoOrNull(row.lastmod),
+    changefreq: ENTITY_CHANGEFREQ[type],
+    priority: ENTITY_PRIORITY[type],
+  };
+}
+
+/** O piso do tipo. Vem de `gallery-presenter.ts`; nunca reescrito aqui. */
+function galleryFloor(type: "imagens" | "videos"): number {
+  return type === "imagens" ? IMAGES_INDEX_FLOOR : VIDEOS_INDEX_FLOOR;
 }
 
 async function pageEntity(
@@ -525,7 +691,9 @@ export function parseShardId(
   if (!raw.endsWith(".xml")) return null;
   const id = raw.slice(0, -".xml".length);
   const match =
-    /^sitemap-(pt-BR)-(movies|series|people|news|seasons|episodes|static)-(\d+)$/.exec(id);
+    /^sitemap-(pt-BR)-(movies|series|people|news|seasons|episodes|imagens|videos|static)-(\d+)$/.exec(
+      id,
+    );
   if (match === null) return null;
   const language = match[1];
   const type = match[2];
@@ -572,10 +740,12 @@ export async function getSitemapShardXml(
     const urls =
       entityType === "seasons" || entityType === "episodes"
         ? await pageSeasonEpisode(prisma, entityType, language, limit, offset)
-        : pageRowsToUrls(
-            entityType,
-            await pageEntity(prisma, entityType, language, limit, offset),
-          );
+        : entityType === "imagens" || entityType === "videos"
+          ? await pageGallery(prisma, entityType, language, limit, offset)
+          : pageRowsToUrls(
+              entityType,
+              await pageEntity(prisma, entityType, language, limit, offset),
+            );
     return { xml: renderUrlset(urls), contentType: SITEMAP_CONTENT_TYPE };
   } catch (error) {
     // FAIL-CLOSED: erro de banco -> nao publica URLs incertas (404).
