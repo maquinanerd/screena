@@ -35,6 +35,9 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { execFileSync } from 'node:child_process'
 
+import { authorizeImageDisplay, type ImageLicenseRow } from '@screena/public-contracts'
+import { STATIC_AUTHORIZATION } from '@screena/legal'
+
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 
 /**
@@ -125,7 +128,34 @@ describe('gate de licenca de imagem: nenhuma superficie NOVA nasce sem ele', () 
     ).toEqual([])
   })
 
-  it('(5) o gate NAO vive em apps/web — ele e do contrato publico', () => {
+  it('(5) A DECLARACAO E O GATE CONCORDAM: o spec de licenca autoriza a imagem', () => {
+    // Os dois sistemas so servem para alguma coisa se falarem da MESMA linha.
+    // Este caso liga a declaracao (`authorization-spec.ts`, o que o dono
+    // decidiu) ao gate (`authorizeImageDisplay`, o que o render pergunta). Sem
+    // ele, o spec poderia dizer `true` e o gate ler outra chave para sempre.
+    const declarada = STATIC_AUTHORIZATION.find(
+      (entrada) =>
+        entrada.license.sourceKey === 'tmdb' && entrada.license.contentType === 'image',
+    )
+    expect(declarada, 'nao ha entrada tmdb/image em STATIC_AUTHORIZATION').toBeDefined()
+
+    const linha: ImageLicenseRow = {
+      sourceKey: declarada!.license.sourceKey,
+      contentType: declarada!.license.contentType,
+      licenseStatus: declarada!.license.licenseStatus,
+      displayAllowed: declarada!.license.displayAllowed,
+      // `apply.ts` sempre escreve a linha nova como vigente.
+      isCurrent: true,
+    }
+    expect(authorizeImageDisplay([linha]).authorized).toBe(true)
+
+    // A atribuicao e CONDICAO da decisao de 21/08/2026, nao cortesia: os termos
+    // da API do TMDB pedem credito, e o credito sai do rodape lendo esta linha.
+    expect(declarada!.license.requiresAttribution).toBe(true)
+    expect(declarada!.license.attributionText ?? '').not.toBe('')
+  })
+
+  it('(6) o gate NAO vive em apps/web — ele e do contrato publico', () => {
     // Se o gate pudesse ser reimplementado em `apps/web`, existiriam duas
     // decisoes de licenca e elas divergiriam. A decisao mora num lugar so.
     const contrato = readFileSync(

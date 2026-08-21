@@ -867,7 +867,41 @@ export const STATIC_AUTHORIZATION: readonly AuthorizationEntry[] = [
       },
     ],
   },
-  // TMDB — imagens: registradas como BLOQUEADAS (display=false, logo=false).
+  // ==========================================================================
+  // TMDB — IMAGENS. Decisão do proprietário (Pablo Eduardo, 2026-08-21):
+  // `display_allowed` passa a `true`.
+  // ==========================================================================
+  //
+  // O QUE ESTÁ SENDO AUTORIZADO. Pôster, backdrop, still de episódio e foto de
+  // perfil, consumidos **pela API do TMDB, sob os termos da API do TMDB**, com
+  // atribuição no rodapé e o logo do TMDB aceso. É o uso para o qual a API
+  // existe e o uso que os termos cobrem.
+  //
+  // POR QUE A ENTRADA ESTAVA ERRADA. `false` aqui não descrevia o produto: as
+  // imagens do TMDB já iam ao ar em toda página de detalhe, home, busca e
+  // elenco — porque **o caminho de imagem não lia licença nenhuma**. O registro
+  // estava desalinhado com o comportamento real e com a própria autorização de
+  // agosto que ligou `logo_allowed` (mesma leitura de termos, mesma sessão).
+  //
+  // A ORDEM IMPORTOU, E ELA FOI CUMPRIDA. Este flag só virou `true` DEPOIS de
+  // o gate existir (`packages/public-contracts/src/image-authorization.ts` +
+  // `apps/web/src/server/image-license.ts`), com controle negativo provando que
+  // `false` faz o pôster sumir. Ligar o flag primeiro produziria a tela certa
+  // pelo motivo errado, e no dia em que alguém pusesse `false` de volta nada
+  // mudaria na tela.
+  //
+  // AS CONDIÇÕES FICAM AQUI, NÃO NO CÓDIGO:
+  //   1. atribuição obrigatória presente (`requiresAttribution`, rodapé);
+  //   2. a arte é material de TERCEIRO (estúdio/distribuidora) servido sob os
+  //      termos da API — a autorização é de EXIBIR pelo canal do TMDB, nunca de
+  //      redistribuir o arquivo;
+  //   3. sem alteração que descaracterize a arte (recorte de enquadramento e
+  //      escolha de `size` do CDN são permitidos; filtro, montagem, remoção de
+  //      marca ou sobreposição que altere a obra, não);
+  //   4. sem reivindicação de propriedade sobre a arte.
+  //
+  // `derivativeAllowed` continua `false` na decisão de uso: exibir a arte de
+  // terceiro não é derivar obra nova a partir dela.
   {
     label: "TMDB (imagens)",
     role: "catalog-provider",
@@ -878,7 +912,7 @@ export const STATIC_AUTHORIZATION: readonly AuthorizationEntry[] = [
       providerKey: "tmdb",
       territory: null,
       licenseStatus: "official",
-      displayAllowed: false,
+      displayAllowed: true,
       logoAllowed: true,
       logoBasis: "source_terms",
       logoRationale:
@@ -896,8 +930,15 @@ export const STATIC_AUTHORIZATION: readonly AuthorizationEntry[] = [
       requiresLinkback: true,
       attributionText:
         "Este produto usa a API do TMDB, mas nao e endossado ou certificado pelo TMDB.",
-      policyVersion: "cinerie-source-auth/tmdb/2026-08-v2",
-      notes: "Imagens do TMDB permanecem NAO exibiveis (display_allowed=false) ate decisao especifica.",
+      // v3: a decisao especifica que a `notes` da v2 dizia estar faltando.
+      policyVersion: "cinerie-source-auth/tmdb-image/2026-08-v3",
+      notes:
+        "Imagens do TMDB (poster, backdrop, still, perfil) EXIBIVEIS sob os termos da API do TMDB, " +
+        "decisao do proprietario em 21/08/2026. Condicoes: atribuicao no rodape; a arte e material de " +
+        "terceiro servido pelo canal do TMDB (autoriza EXIBIR, nunca redistribuir o arquivo); sem " +
+        "alteracao que descaracterize a arte (escolha de `size` do CDN e enquadramento sao permitidos); " +
+        "sem reivindicacao de propriedade. O gate de exibicao vive em " +
+        "packages/public-contracts/src/image-authorization.ts e le ESTA linha.",
     },
     decisions: [
       {
