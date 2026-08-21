@@ -57,7 +57,7 @@ cria esses blocos por inferencia.
 | ---------------------------------------------- | ----------------- |
 | `/pt/filmes/{slug}/`                           | `Movie`           |
 | `/pt/series/{slug}/`                           | `TVSeries`        |
-| `/pt/series/{slug}/temporada-{n}/`             | `TVSeason`        |
+| `/pt/series/{slug}/temporadas/{n}/`             | `TVSeason`        |
 | Episodio                                       | `TVEpisode`       |
 | `/pt/pessoas/{slug}/`                          | `Person`          |
 | `/pt/noticias/{slug}/`                         | `NewsArticle`     |

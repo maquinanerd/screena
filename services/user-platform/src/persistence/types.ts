@@ -586,7 +586,6 @@ export interface ProfileRecord {
   readonly timezone: string | null;
   readonly visibility: ProfileVisibility;
   /** Preferencias de apresentacao. Vocabulario fechado (ver account-commands). */
-  readonly theme: string;
   readonly density: string;
   readonly posterSize: string;
 }
@@ -608,7 +607,6 @@ export interface ProfileUpsertInput {
   readonly timezone: string | null;
   readonly visibility: ProfileVisibility;
   /** Preferencias de apresentacao. Vocabulario fechado (ver account-commands). */
-  readonly theme: string;
   readonly density: string;
   readonly posterSize: string;
 }

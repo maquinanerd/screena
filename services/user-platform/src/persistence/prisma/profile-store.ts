@@ -41,7 +41,6 @@ const PROFILE_SELECT = {
   countryCode: true,
   timezone: true,
   visibility: true,
-  theme: true,
   density: true,
   posterSize: true,
 } as const;
@@ -155,7 +154,6 @@ export function createPrismaUserProfileStore(executor: PrismaExecutor): UserProf
           countryCode: input.countryCode,
           timezone: input.timezone,
           visibility: input.visibility,
-          theme: input.theme,
           density: input.density,
           posterSize: input.posterSize,
         },
@@ -166,7 +164,6 @@ export function createPrismaUserProfileStore(executor: PrismaExecutor): UserProf
           countryCode: input.countryCode,
           timezone: input.timezone,
           visibility: input.visibility,
-          theme: input.theme,
           density: input.density,
           posterSize: input.posterSize,
         },

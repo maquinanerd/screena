@@ -61,7 +61,7 @@ Use preferencialmente `corepack pnpm ...` para garantir a versão fixada de pnpm
 
 - **Render puro:** páginas/componentes do servidor leem apenas PostgreSQL/cache local — nunca TMDB, provedor de rating ou Gemini no caminho de renderização.
 - **Chaves de API** apenas em variáveis de ambiente, **nunca** no frontend. Todo sync externo gera log.
-- **Tokens de cor:** `--screena-movie-red` (`#FF3B30`) para filmes, `--screena-series-green` (`#7AA66D`) para séries; home/busca/misto/institucional usam neutro. A diferenciação filme/série **nunca** depende só da cor — sempre **label + badge + breadcrumb + schema + URL**.
+- **Tokens de cor:** `--c-accent-movie` (`#f0443e`) para filmes, `--c-accent-series` (`#7fa56f`) para séries _(fonte da verdade: o CANONICO; os valores `#FF3B30`/`#7AA66D` que viveram aqui ate 2026-08-21 estavam errados e nao aparecem no canonico)_; home/busca/misto/institucional usam neutro. A diferenciação filme/série **nunca** depende só da cor — sempre **label + badge + breadcrumb + schema + URL**.
 - **Testes:** acompanham a mudança (Vitest). Toda nova função pura precisa de teste; toda invariante tocada precisa de cobertura.
 
 ---

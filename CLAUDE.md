@@ -164,13 +164,13 @@ Referencias de produto/dominio: `docs/SPEC.md`, `docs/API_SOURCES.md`, `docs/RAT
 - **TypeScript strict, puro e testavel**: utilitarios sem rede/DB/IO externo; funcoes puras; `export` **nomeado** (evite `default`).
 - **Docs, READMEs, regras e prompts em pt-BR**. Codigo e identificadores em **ingles**; comentarios podem ser pt-BR.
 - **Sem chaves no front**: nenhuma API key, secret ou token em codigo de cliente. So `env` no servidor/worker.
+- **Tema unico: o produto e CLARO, sempre.** O canonico e o White Cinematic Editorial System e nao tem uma unica tela escura. Nao ha `@media (prefers-color-scheme: dark)` nem `[data-theme='dark']` em `apps/web/app/globals.css`, e nao deve haver — travado por `tests/web/tema-unico.test.ts`. Consequencia pratica: com uma superficie so, **hexadecimal literal quente sobre fundo claro esta certo**; nao tokenize cor para "sobreviver ao tema". _(decisao do dono, 2026-08-21)_
 - **Tokens de cor** (use as variaveis, nunca hardcode hex em componente):
-  - `--screena-black = #000000`
-  - `--screena-white = #F5F5F5`
-  - `--screena-movie-red = #FF3B30`
-  - `--screena-series-green = #7AA66D`
-  - `--screena-bg-dark = #050505`
-  - `--screena-bg-light = #F4F4F4`
+  - **A fonte da verdade dos acentos e o CANONICO** (`Screen Screens v4.dc.html`, revisao fixada em `MANIFESTO-CANONICO.json`), nao esta lista. Os dois acentos vivos, como declarados em `globals.css`:
+  - `--c-accent-movie = #f0443e` (filme)
+  - `--c-accent-series = #7fa56f` (serie)
+  - Os nomes `--screena-*` sao legado tecnico. Os valores `#FF3B30` / `#7AA66D` que este documento trazia ate 2026-08-21 estavam **errados**: nao aparecem em lugar nenhum do canonico. Onde ainda restarem (`packages/config` `COLOR_TOKENS`, `AGENTS.md`, `docs/SPEC.md`, `CINERIE.md`, READMEs), sao residuo — corrija pelo canonico, nunca o contrario.
+  - **Valor do canonico que reprova em contraste NAO entra.** Legibilidade ganha de fidelidade de pixel; a divergencia fica registrada. Caso vivo: a sobrancelha do canonico e `#9A958C` (2,93:1 sobre `#fdfdfd`) e a producao usa `--c-text-muted-aa` (`#6e6a61`, 5,30:1). Travado por `tests/web/detalhe-contraste.test.ts`. _(decisao do dono, 2026-08-21)_
   - Regra: **filme = vermelho, serie = verde, home/busca/misto/institucional = neutro**. Nunca so cor: sempre **label + badge + breadcrumb + schema + URL**.
 - **Escalas de rating fixas por fonte**: `imdb=10`, `rotten_tomatoes=100`, `metacritic=100`, `letterboxd=5`, `filmaffinity=10`. Nao converta entre escalas para fingir equivalencia.
 - **Aliases**: importe via `@screena/*`; mantenha `tsconfig.base.json` e `vitest.config.ts` em sincronia.

@@ -12,10 +12,16 @@
  * (CSRF double-submit).
  *
  * SEM PREFERÊNCIA FAKE — a regra não mudou, a lista de omitidos é que encolheu.
- * Em 20/08/2026 TEMA, DENSIDADE e TAMANHO DE PÔSTER ganharam coluna, contrato,
+ * Em 20/08/2026 DENSIDADE e TAMANHO DE PÔSTER ganharam coluna, contrato,
  * handler e efeito visível, e por isso entraram na tela. Continuam OMITIDOS, e
  * pelo mesmo motivo de sempre (não há backend): assinatura, notificações,
  * comportamento, gêneros e bloqueados. Nunca toggle sem efeito.
+ *
+ * TEMA entrou junto e SAIU em 21/08/2026, pela mesma regra que rege esta tela.
+ * O produto é claro sempre (decisão do dono): o canônico não tem uma única
+ * tela escura, e `globals.css` não tem mais regra de tema escuro. Um seletor
+ * de tema aqui seria preferência fake na definição literal — o leitor
+ * escolheria "Escuro" e nada aconteceria.
  *
  * O switch verdadeiro é `role="switch"` + aria-checked (WCAG 2.2).
  */
@@ -52,7 +58,6 @@ interface Profile {
   countryCode: string | null
   timezone: string | null
   visibility: 'private' | 'public'
-  theme: string
   density: string
   posterSize: string
 }
@@ -234,7 +239,6 @@ export function SettingsPanel(): React.ReactElement {
         countryCode: next.countryCode,
         timezone: next.timezone,
         visibility: next.visibility,
-        theme: next.theme,
         density: next.density,
         posterSize: next.posterSize,
       }),
@@ -465,28 +469,23 @@ export function SettingsPanel(): React.ReactElement {
           {profile === null ? null : (
             <>
           {/*
-            OS TRÊS CONTROLES QUE FAZEM EFEITO.
+            OS DOIS CONTROLES QUE FAZEM EFEITO.
 
             Cada um salva no perfil E aplica o atributo no `<html>` — as duas
             metades, sempre juntas. Um que só salvasse seria um valor no banco
             que ninguém vê; um que só aplicasse sumiria no próximo carregamento.
 
+            NÃO HÁ CONTROLE DE TEMA, e a ausência é a mesma regra desta tela.
+            O produto é claro sempre (decisão do dono, 21/08/2026): o canônico
+            não tem uma única tela escura. Um seletor de tema aqui seria
+            "preferência fake" na definição literal do cabeçalho — o leitor
+            escolheria "Escuro" e nada mudaria, porque `globals.css` não tem
+            mais regra de tema escuro para reagir.
+
             `<select>` nativo de propósito: é acessível por teclado e por leitor
             de tela sem uma linha de JS, e o valor pertence a um conjunto
             fechado — que é exatamente o que um select descreve.
           */}
-          <PreferenceRow
-            label="Tema"
-            onChange={(valor) => {
-              void salvarPerfil({ ...profile, theme: valor })
-            }}
-            options={[
-              ['system', 'Seguir o sistema'],
-              ['light', 'Claro'],
-              ['dark', 'Escuro'],
-            ]}
-            value={profile.theme}
-          />
           <PreferenceRow
             label="Densidade"
             onChange={(valor) => {

@@ -17,9 +17,9 @@ indexavel deve respeitar as invariantes do CANON, em especial:
 
 ## Acento de cor por contexto
 
-- **Filmes** → acento **vermelho** (`--screena-movie-red`, `#FF3B30`),
+- **Filmes** → acento **vermelho** (`--c-accent-movie`, `#f0443e`),
   schema `Movie`.
-- **Series** → acento **verde** (`--screena-series-green`, `#7AA66D`),
+- **Series** → acento **verde** (`--c-accent-series`, `#7fa56f`),
   schema `TVSeries`.
 - **Home / busca / misto / institucional** → neutro.
 
@@ -34,7 +34,7 @@ indexavel deve respeitar as invariantes do CANON, em especial:
 
 /pt/series/                                  -> lista de series
 /pt/series/{slug}/                           -> ficha da serie (TVSeries)
-/pt/series/{slug}/temporada-{number}/        -> temporada (TVSeason)
+/pt/series/{slug}/temporadas/{number}/        -> temporada (TVSeason)
 /pt/series/{slug}/onde-assistir/             -> onde assistir por pais
 
 /pt/pessoas/{slug}/                          -> ficha de pessoa (Person)

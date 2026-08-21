@@ -55,7 +55,7 @@ Slugs são **por idioma**. O prefixo de idioma é sempre explícito.
 /pt/filmes/{slug}/avaliacoes/
 /pt/series/
 /pt/series/{slug}/
-/pt/series/{slug}/temporada-{number}/
+/pt/series/{slug}/temporadas/{number}/
 /pt/series/{slug}/onde-assistir/
 /pt/pessoas/{slug}/
 /pt/streaming/netflix/melhores-filmes/

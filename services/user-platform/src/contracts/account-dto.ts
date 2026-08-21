@@ -28,7 +28,6 @@ export interface ProfileDto {
    * sem esperar um segundo request. Sem devolve-las, o painel abriria sempre no
    * default e o usuario veria a propria escolha "sumir" ao recarregar.
    */
-  readonly theme: string;
   readonly density: string;
   readonly posterSize: string;
 }

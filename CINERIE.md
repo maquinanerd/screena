@@ -421,8 +421,8 @@ Tokens compartilhados identificados em `packages/config`, `packages/ui` e CSS gl
 ```css
 --screena-black: #000000;
 --screena-white: #f5f5f5;
---screena-movie-red: #ff3b30;
---screena-series-green: #7aa66d;
+--c-accent-movie: #f0443e;
+--c-accent-series: #7fa56f;
 --screena-bg-dark: #050505;
 --screena-bg-light: #f4f4f4;
 ```

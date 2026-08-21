@@ -26,6 +26,27 @@
   src: url('/fonts/montserrat-latin-variable.woff2') format('woff2-variations');
 }
 
+/* ==================================================================== *
+ * TEMA UNICO — O PRODUTO E CLARO, SEMPRE.
+ *
+ * Decisao do dono, 21/08/2026, e ela e final. O canonico e o White Cinematic
+ * Editorial System: NAO existe uma unica tela escura nele. O tema escuro que
+ * viveu aqui nunca foi desenhado e nunca foi pedido — e foi ele que apagou os
+ * blocos das PRs #199-#201 (a ficha saia #12100e sobre #0b0b0d, 1,04:1).
+ *
+ * Por isso `color-scheme: light` e declarado e NAO ha `@media
+ * (prefers-color-scheme: dark)` nem `[data-theme='dark']` neste arquivo. O
+ * site nao muda com a configuracao do sistema de quem visita.
+ *
+ * CONSEQUENCIA PRATICA, e ela e libertadora: com uma superficie so, literal
+ * quente sobre fundo claro esta CERTO e e o que o canonico manda. Nao
+ * tokenize cor para "sobreviver ao tema" — nao ha tema para sobreviver. Use o
+ * valor do canonico.
+ *
+ * Travado por `tests/web/tema-unico.test.ts`, que reprova se qualquer regra de
+ * `prefers-color-scheme: dark` ou `data-theme='dark'` voltar.
+ * ==================================================================== */
+
 /* ------------------------------------------------------------------ */
 /* Tokens                                                              */
 /* ------------------------------------------------------------------ */
@@ -4066,7 +4087,10 @@ a.media-strip__cell {
 }
 
 [data-vertical='series'] .detail-see-all {
-  color: var(--c-accent-series-dark);
+  /* `--c-accent-series-dark` (#395c42) e AA sobre superficie CLARA, e o
+     "Ver elenco completo" fica sobre `--c-bg-page` — que vira no tema escuro
+     (2,61:1, medido). O token de link vira junto; o acento cru nao. */
+  color: #395c42;
 }
 
 .synopsis-lead {
@@ -4771,7 +4795,7 @@ a.media-strip__cell {
   padding-bottom: 6px;
   font-size: 13px;
   font-weight: 600;
-  color: #3a362f;
+  color: #4a463e;
 }
 
 .season-info__status {
@@ -4809,7 +4833,7 @@ a.media-strip__cell {
 .episode-row__synopsis {
   font-size: 14.5px;
   line-height: 1.55;
-  color: #6e6a61;
+  color: var(--c-text-muted-aa);
   margin: 8px 0 0;
   max-width: 66ch;
 }
@@ -5462,7 +5486,7 @@ h4.art-body__heading {
   display: inline-block;
   font-weight: 600;
   color: var(--c-text-primary);
-  border-bottom: 2px solid var(--screena-movie-red, #ff3b30);
+  border-bottom: 2px solid var(--c-accent-movie);
 }
 
 .art-video__meta {
@@ -10265,7 +10289,7 @@ h4.art-body__heading {
   font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  background: var(--screena-movie-red, #f0443e);
+  background: var(--c-accent-movie);
   color: #fff;
   padding: 4px 7px;
 }
@@ -10347,11 +10371,11 @@ h4.art-body__heading {
 }
 
 .explore-result[data-entity-type='movie'] .explore-result__kind {
-  background: var(--screena-movie-red, #f0443e);
+  background: var(--c-accent-movie);
 }
 
 .explore-result[data-entity-type='tv'] .explore-result__kind {
-  background: var(--screena-series-green, #7aa66d);
+  background: var(--c-accent-series);
 }
 
 .explore-result__title {
@@ -10451,78 +10475,16 @@ h4.art-body__heading {
 }
 
 /* ==========================================================================
-   PREFERENCIAS DE APRESENTACAO (tela 13) — tema, densidade, tamanho de poster
+   PREFERENCIAS DE APRESENTACAO (tela 13) — densidade e tamanho de poster
    ==========================================================================
-   Ate 20/08/2026 estes tres controles eram OMITIDOS da tela de configuracoes.
-   A omissao estava CERTA: nao havia coluna, nao havia contrato, nao havia
-   efeito — e "sem preferencia fake, nunca toggle sem efeito" e a regra escrita
-   no cabecalho do painel. Agora existe backend, e ESTE bloco e a metade do
-   efeito que se ve.
+   NAO HA TEMA AQUI, E ISSO E DELIBERADO. O produto e claro sempre — ver o
+   bloco TEMA UNICO no topo do arquivo. Densidade e tamanho de poster ficam,
+   porque sao preferencia de LEITURA, nao de paleta.
 
-   NO FIM DO ARQUIVO de proposito: `globals.css` resolve conflito por ORDEM DE
-   DOCUMENTO, e os tokens de `:root` estao no topo. Uma redefinicao escrita la
+   NO FIM DO ARQUIVO de proposito: globals.css resolve conflito por ORDEM DE
+   DOCUMENTO, e os tokens de :root estao no topo. Uma redefinicao escrita la
    em cima seria sobrescrita por tudo que vem depois e ficaria inerte.
-
-   O tema aparece em TRES estados, como manda a boa pratica:
-     - escolha explicita  -> `[data-theme="dark"]` / `[data-theme="light"]`
-     - "sistema"          -> NENHUM atributo; a media query decide
-   `applyPreferences` REMOVE o atributo quando a escolha e "sistema", entao a
-   regra de media query volta a valer sem competir com um seletor mais forte.
    ========================================================================== */
-
-/* --- TEMA: escuro por escolha explicita --------------------------------- */
-:root[data-theme='dark'] {
-  color-scheme: dark;
-
-  --c-bg-page: #0b0b0d;
-  --c-bg-surface: #141416;
-  --c-bg-subtle: #1a1a1d;
-  --c-bg-muted: #212125;
-  --c-bg-skeleton: #26262b;
-
-  --c-text-primary: #f5f5f5;
-  --c-text-body: #e2e2e2;
-  --c-text-secondary: #a8a8a8;
-  --c-text-muted: #8b8b8b;
-  --c-text-muted-aa: #a8a49b;
-  --c-text-disabled: #5c5c5c;
-  --c-text-inverse: #101010;
-
-  --c-border-subtle: #26262b;
-  --c-border: #313138;
-  --c-border-strong: #3f3f47;
-
-  --c-focus: #f5f5f5;
-}
-
-/* --- TEMA: escuro por preferencia do SISTEMA ---------------------------- */
-/* So quando NAO ha escolha explicita. `:not([data-theme])` impede que o leitor
-   que escolheu "claro" receba o escuro do sistema por cima. */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme]) {
-    color-scheme: dark;
-
-    --c-bg-page: #0b0b0d;
-    --c-bg-surface: #141416;
-    --c-bg-subtle: #1a1a1d;
-    --c-bg-muted: #212125;
-    --c-bg-skeleton: #26262b;
-
-    --c-text-primary: #f5f5f5;
-    --c-text-body: #e2e2e2;
-    --c-text-secondary: #a8a8a8;
-    --c-text-muted: #8b8b8b;
-    --c-text-muted-aa: #a8a49b;
-    --c-text-disabled: #5c5c5c;
-    --c-text-inverse: #101010;
-
-    --c-border-subtle: #26262b;
-    --c-border: #313138;
-    --c-border-strong: #3f3f47;
-
-    --c-focus: #f5f5f5;
-  }
-}
 
 /* --- DENSIDADE ---------------------------------------------------------- */
 /* Um token de escala, nao uma folha de regras por componente: densidade que
@@ -10592,4 +10554,309 @@ h4.art-body__heading {
   align-items: center;
   gap: 12px;
   flex: 1;
+}
+
+/* ==================================================================== *
+ * PAGINA DE TEMPORADA (21/08/2026)
+ *
+ * Ate esta data a rota `/pt/series/{slug}/temporadas/{n}/` ia ao ar sem
+ * desenho. A folha SEMPRE chegou ali (layout raiz, um so); o que faltava era
+ * a pagina usar classe. Ela agora reusa o vocabulario que ja existia —
+ * `.detail-hero`, `.episode-row`, `.episode-list`, `.eyebrow-bar` — e so as
+ * duas pecas abaixo eram realmente novas.
+ *
+ * NO FIM DO ARQUIVO de proposito: globals.css resolve conflito por ORDEM DE
+ * DOCUMENTO, e classe nova nao pode depender de sorte.
+ * ==================================================================== */
+
+/* Navegacao anterior/proxima. O gancho e o `data-nav` que o componente
+   compartilhado JA emitia — assim o estilo entra sem tocar `prev-next-nav.tsx`,
+   que a pagina de episodio tambem usa. */
+[data-nav='prev-next'] ul {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 28px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+[data-nav='prev-next'] a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #395c42;
+  text-decoration: none;
+}
+
+[data-nav='prev-next'] a:hover {
+  text-decoration: underline;
+}
+
+/* Poster da temporada na coluna direita do topo. */
+.season-poster {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 268px;
+  margin-left: auto;
+  border-radius: var(--r-card);
+  box-shadow: var(--sh-card);
+}
+
+@media (max-width: 1023px) {
+  .season-poster {
+    max-width: 190px;
+    margin-left: 0;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * O que o hero da temporada precisa, e SO isso.
+ *
+ * O commit 934ccfe tinha aqui um conserto da trilha do hero: `.detail-hero`
+ * pinta um fundo claro FIXO, e a trilha usava `--c-text-muted-aa`, que no
+ * tema escuro subia para #a8a49b e saia 2,42:1 sobre um fundo que continuou
+ * claro. Com o tema escuro FORA (21/08/2026), `--c-text-muted-aa` vale
+ * #6e6a61 sempre e a regra original ja traz #3a362f no item atual — o
+ * conserto virou no-op e foi removido em vez de virar decoracao. Medido:
+ * trilha 5,30:1 e item atual 10,60:1, sem override nenhum.
+ * ------------------------------------------------------------------ */
+
+/* Link de volta para a serie, no topo da tela de temporada. */
+.detail-hero__back {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--c-accent-series-dark);
+  text-decoration: none;
+}
+
+.detail-hero__back:hover {
+  text-decoration: underline;
+}
+
+/* ------------------------------------------------------------------ *
+ * TELA DE TEMPORADA — espacamento em CLASSE, nao em `style` inline.
+ *
+ * O primeiro corte desta pagina levou cinco `style={{ ... }}`. Espacamento
+ * inline nao passa por token, nao responde a `--pref-density-scale` e nao e
+ * alcancavel por nenhuma regra do desenho: para mudar a respiracao da tela
+ * seria preciso editar JSX. Aqui e onde o desenho chega.
+ * ------------------------------------------------------------------ */
+
+.season-page__body {
+  padding-top: 40px;
+  padding-bottom: 72px;
+}
+
+.season-page__back {
+  margin: 18px 0 0;
+}
+
+.season-page__episodes {
+  padding-top: 34px;
+}
+
+.season-page__episodes .episode-list {
+  margin-top: 22px;
+}
+
+/* O titulo do episodio e um nome proprio, nao um rotulo: nao vai em caixa
+   alta, e o espacamento negativo do `.detail-section-title` nao serve. */
+.episode-row__title--name {
+  letter-spacing: -0.01em;
+  text-transform: none;
+}
+
+/* ------------------------------------------------------------------ *
+ * TOPO CANONICO — reaplicado em 21/08/2026 (chips de genero, Cinerie Score,
+ * dois botoes, marcas de onde assistir em linha, sinopse de tres linhas).
+ *
+ * Este bloco foi ao ar nas PRs #199-#201 e voltou com o revert da #202. O que
+ * o derrubou NAO foi ele: foi o tema escuro, que agora nao existe (ver TEMA
+ * UNICO no topo do arquivo). Volta como estava, com UMA correcao:
+ *
+ * D3 (dono, 21/08/2026) — valor que reprova em contraste nao entra. O rotulo
+ * "CINERIE SCORE" usava `--c-accent-movie` (#f0443e): sobre o cartao claro
+ * mede 3,66:1 e reprova AA. Passa a usar as variantes `-dark`, que o proprio
+ * :root documenta como 9,2 e 7,5 AA e que existem exatamente para texto. O
+ * acento cru continua valendo para SUPERFICIE (badge, chip, barra).
+ * ------------------------------------------------------------------ */
+
+/* Topo canonico (20/08/2026): chips de genero, score card, botoes,   */
+/* fileira de marcas de onde assistir e sinopse de tres linhas.       */
+/* ------------------------------------------------------------------ */
+
+/* Chip de genero do hero. A cor segue a vertical (vermelho filme / verde
+   serie) como APOIO — a diferenciacao continua em label+badge+breadcrumb+
+   schema+URL (invariante 11). */
+.detail-hero__genre-chip {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 11px;
+  border-radius: 6px;
+}
+
+main[data-vertical='movie'] .detail-hero__genre-chip {
+  color: #a32b23;
+  background: #fbe9e7;
+}
+
+main[data-vertical='series'] .detail-hero__genre-chip {
+  color: #395c42;
+  background: #e9f0e3;
+}
+
+/* Sinopse do topo: tres linhas na largura do canonico. O corte DE TEXTO e por
+   palavra inteira (truncateAtWord); o clamp e o cinto de seguranca visual para
+   larguras menores. */
+.detail-hero__synopsis[data-synopsis-truncated],
+.detail-hero__synopsis {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Cinerie Score — o cartao do canonico (47/800 + rotulo + escala + composicao) */
+.score-card__row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 13px;
+}
+
+.score-card__value {
+  font-size: 47px;
+  font-weight: 800;
+  color: #12100e;
+  letter-spacing: -0.045em;
+  line-height: 0.82;
+}
+
+.score-card__label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+main[data-vertical='movie'] .score-card__label {
+  color: var(--c-accent-movie-dark);
+}
+
+main[data-vertical='series'] .score-card__label {
+  color: var(--c-accent-series-dark);
+}
+
+.score-card__scale {
+  font-size: 11.5px;
+  color: var(--c-text-muted-aa);
+}
+
+/* Como o numero foi composto, NOMEANDO as fontes — sem esta linha o numero
+   seria afirmacao sem lastro. */
+.score-card__composition {
+  margin: 10px 0 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--c-text-muted-aa);
+}
+
+/* Os DOIS botoes do topo (Minha lista / Avaliar) + seletor de nota. */
+.hero-actions__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 11px;
+}
+
+.hero-action__icon {
+  width: 16px;
+  height: 16px;
+  color: #6e6a61;
+}
+
+.hero-action__icon--star {
+  color: #e8a31e;
+}
+
+.hero-actions__picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.hero-actions__picker .hero-actions__step {
+  min-height: 36px;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.hero-actions__notice {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: #6b6459;
+}
+
+/* "Onde assistir" do cartao: marcas em LINHA (canonico), com a modalidade
+   visivel ao lado de cada uma (decisao de 2026-08-13). A caixa da marca e a
+   ancora do futuro logo — mesma altura com palavra-marca ou arquivo. */
+.watch-brands {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 14px 26px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.watch-brands__item {
+  display: block;
+}
+
+.watch-brands__link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  min-height: 44px;
+}
+
+.watch-brands__link:hover .watch-brands__mark {
+  opacity: 0.6;
+}
+
+.watch-brands__mark {
+  display: flex;
+  align-items: center;
+  min-height: 20px;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: #12100e;
+}
+
+.watch-brands__modalities {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--c-text-muted-aa);
+}
+
+/* Corpo da sinopse completa em "A OBRA" (variant work do EntitySynopsis). */
+.synopsis-body__notice {
+  max-width: 60ch;
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #6b6459;
 }

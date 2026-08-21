@@ -313,8 +313,8 @@ Cinerie usa cor como **acento**, nunca como única forma de diferenciação.
 | ------------------------ | --------- | -------------------------------------------- |
 | `--screena-black`        | `#000000` | Preto base.                                  |
 | `--screena-white`        | `#F5F5F5` | Branco da marca.                             |
-| `--screena-movie-red`    | `#FF3B30` | Acento de **filme**.                         |
-| `--screena-series-green` | `#7AA66D` | Acento de **série**.                         |
+| `--c-accent-movie`       | `#f0443e` | Acento de **filme** (fonte: o canonico).     |
+| `--c-accent-series`      | `#7fa56f` | Acento de **série** (fonte: o canonico).     |
 | `--screena-bg-dark`      | `#050505` | Fundo escuro.                                |
 | `--screena-bg-light`     | `#F4F4F4` | Fundo claro.                                 |
 
@@ -350,7 +350,8 @@ Cinerie usa cor como **acento**, nunca como única forma de diferenciação.
 /pt/filmes/{slug}/avaliacoes/
 /pt/series/
 /pt/series/{slug}/
-/pt/series/{slug}/temporada-{number}/
+/pt/series/{slug}/temporadas/{number}/
+/pt/series/{slug}/temporadas/{number}/episodios/{number}/
 /pt/series/{slug}/onde-assistir/
 /pt/pessoas/{slug}/
 /pt/streaming/netflix/melhores-filmes/

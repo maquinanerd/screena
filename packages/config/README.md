@@ -56,7 +56,7 @@ import {
 const source: RatingSource = "imdb";
 const scale = RATING_SCALES[source]; // 10
 
-const accent = COLOR_TOKENS.movieRed; // "#FF3B30"
+const accent = COLOR_TOKENS.movieRed; // "#F0443E"
 
 // Segredos: somente via env var, nunca no frontend.
 const dbUrl = requireEnv("DATABASE_URL");

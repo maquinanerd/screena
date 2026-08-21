@@ -502,6 +502,8 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
           recommendationsPresent: normalized.recommendationsPresent,
           genres: normalized.genres,
           genresPresent: normalized.genresPresent,
+          countries: normalized.countries,
+          countriesPresent: normalized.countriesPresent,
           timestamps: { lastSyncedAt: now(), staleAfter: new Date(now().getTime() + staleWindowMs) },
         })
         await syncEntityReferences('movie', tmdbId, detail)
@@ -521,6 +523,8 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
           recommendationsPresent: normalized.recommendationsPresent,
           genres: normalized.genres,
           genresPresent: normalized.genresPresent,
+          countries: normalized.countries,
+          countriesPresent: normalized.countriesPresent,
           timestamps: { lastSyncedAt: now(), staleAfter: new Date(now().getTime() + staleWindowMs) },
         })
         await syncEntityReferences('tv', tmdbId, detail)
@@ -570,6 +574,8 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
           recommendationsPresent: normalized.recommendationsPresent,
           genres: normalized.genres,
           genresPresent: normalized.genresPresent,
+          countries: normalized.countries,
+          countriesPresent: normalized.countriesPresent,
           timestamps: { lastSyncedAt: now(), staleAfter: new Date(now().getTime() + staleWindowMs) },
         })
         return { upserted: normalized.externalIds.length, changed: 0, skipped: false, skipReason: null }
@@ -588,6 +594,8 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
           recommendationsPresent: normalized.recommendationsPresent,
           genres: normalized.genres,
           genresPresent: normalized.genresPresent,
+          countries: normalized.countries,
+          countriesPresent: normalized.countriesPresent,
           timestamps: { lastSyncedAt: now(), staleAfter: new Date(now().getTime() + staleWindowMs) },
         })
         return { upserted: normalized.externalIds.length, changed: 0, skipped: false, skipReason: null }

@@ -26,6 +26,7 @@ import type {
   PersonStub,
   TitleRecommendationLink,
   TitleGenreLink,
+  TitleCountryLink,
 } from '../types.js'
 
 type Tx = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0]
@@ -258,6 +259,43 @@ async function replaceTitleRecommendations(
  * upsert. Genero e uma lista pequena e fechada; diffar seria mais codigo para o
  * mesmo resultado.
  */
+/**
+ * Substitui os PAISES DE ORIGEM do titulo (replace-set), com a mesma
+ * disciplina de presenca dos generos: `present === false` significa "o payload
+ * nao falou de pais" e NAO apaga o que existe (a licao do apagao de creditos).
+ * Sem dicionario a filtrar: o codigo ISO e travado por CHECK na tabela.
+ */
+async function replaceTitleCountries(
+  tx: Tx,
+  kind: 'movie' | 'tv',
+  titleId: bigint,
+  countries: readonly TitleCountryLink[],
+  present: boolean,
+): Promise<void> {
+  if (!present) return
+  if (kind === 'movie') {
+    await tx.movieProductionCountry.deleteMany({ where: { movieId: titleId } })
+    if (countries.length === 0) return
+    await tx.movieProductionCountry.createMany({
+      data: countries.map((c) => ({
+        movieId: titleId,
+        countryCode: c.countryCode,
+        position: c.position,
+      })),
+    })
+    return
+  }
+  await tx.tvShowOriginCountry.deleteMany({ where: { tvShowId: titleId } })
+  if (countries.length === 0) return
+  await tx.tvShowOriginCountry.createMany({
+    data: countries.map((c) => ({
+      tvShowId: titleId,
+      countryCode: c.countryCode,
+      position: c.position,
+    })),
+  })
+}
+
 async function replaceTitleGenres(
   tx: Tx,
   kind: 'movie' | 'tv',
@@ -319,6 +357,14 @@ export function createPrismaStore(prisma: PrismaClient): EntityStorePort {
           voteCountTmdb: input.movie.voteCountTmdb,
           posterPath: input.movie.posterPath,
           backdropPath: input.movie.backdropPath,
+          budget: input.movie.budget,
+          releaseDateBr: dateOrNull(input.movie.releaseDateBr),
+          // Classificacao BR: so sobrescreve quando o recorte TROUXE valor —
+          // um payload sem release_dates nao pode apagar a classificacao que
+          // um sync anterior gravou (mesma familia do apagao de creditos).
+          ...(input.movie.certification === null
+            ? {}
+            : { certification: input.movie.certification }),
           lastSyncedAt: input.timestamps.lastSyncedAt,
           staleAfter: input.timestamps.staleAfter,
         }
@@ -337,6 +383,7 @@ export function createPrismaStore(prisma: PrismaClient): EntityStorePort {
           input.recommendationsPresent,
         )
         await replaceTitleGenres(tx, 'movie', row.id, input.genres, input.genresPresent)
+        await replaceTitleCountries(tx, 'movie', row.id, input.countries, input.countriesPresent)
         const credits = await replaceCredits(
           tx,
           'movie',
@@ -378,6 +425,9 @@ export function createPrismaStore(prisma: PrismaClient): EntityStorePort {
           voteCountTmdb: input.tvShow.voteCountTmdb,
           posterPath: input.tvShow.posterPath,
           backdropPath: input.tvShow.backdropPath,
+          ...(input.tvShow.certification === null
+            ? {}
+            : { certification: input.tvShow.certification }),
           lastSyncedAt: input.timestamps.lastSyncedAt,
           staleAfter: input.timestamps.staleAfter,
         }
@@ -396,6 +446,7 @@ export function createPrismaStore(prisma: PrismaClient): EntityStorePort {
           input.recommendationsPresent,
         )
         await replaceTitleGenres(tx, 'tv', row.id, input.genres, input.genresPresent)
+        await replaceTitleCountries(tx, 'tv', row.id, input.countries, input.countriesPresent)
         const credits = await replaceCredits(
           tx,
           'tv',

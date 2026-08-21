@@ -1,6 +1,11 @@
 /**
- * preferencias-de-apresentacao.test.ts — Tema, densidade e tamanho de pôster,
+ * preferencias-de-apresentacao.test.ts — Densidade e tamanho de pôster,
  * do contrato até o efeito.
+ *
+ * NÃO HÁ TEMA AQUI. O produto é claro sempre (decisão do dono, 21/08/2026): a
+ * coluna, o contrato, o efeito e o controle saíram juntos. O que impede o tema
+ * escuro de voltar ao CSS é `tema-unico.test.ts`; o que este arquivo garante é
+ * que `data-theme` nunca volte a ser ESCRITO no `<html>`.
  *
  * ============================================================================
  * O QUE ESTAVA ERRADO — E O QUE NÃO ESTAVA
@@ -33,7 +38,6 @@ import {
   parseUpdateProfileCommand,
   PROFILE_DENSITIES,
   PROFILE_POSTER_SIZES,
-  PROFILE_THEMES,
 } from "../../services/user-platform/src/contracts/account-commands";
 import {
   applyPreferences,
@@ -41,13 +45,23 @@ import {
   DENSITIES,
   POSTER_SIZES,
   preferenceAttributes,
-  THEMES,
 } from "../../apps/web/src/lib/presentation-preferences";
+
+/** Comentário CSS. Guarda mede REGRA, nunca prosa. */
+const COMENTARIO_CSS = /\/\*[\s\S]*?\*\//g;
 
 const MIGRATION = readFileSync(
   path.join(
     process.cwd(),
     "packages/db/prisma/migrations/20260820140000_user_presentation_preferences/migration.sql",
+  ),
+  "utf8",
+);
+
+const DROP_TEMA = readFileSync(
+  path.join(
+    process.cwd(),
+    "packages/db/prisma/migrations/20260821120000_drop_user_theme_preference/migration.sql",
   ),
   "utf8",
 );
@@ -62,7 +76,6 @@ function comando(over: Record<string, unknown> = {}): Record<string, unknown> {
     countryCode: "BR",
     timezone: "America/Sao_Paulo",
     visibility: "private",
-    theme: "system",
     density: "comfortable",
     posterSize: "medium",
     ...over,
@@ -71,7 +84,6 @@ function comando(over: Record<string, unknown> = {}): Record<string, unknown> {
 
 describe("o vocabulario e o MESMO nos tres lugares", () => {
   it("contrato e modulo de efeito declaram os mesmos valores", () => {
-    expect([...PROFILE_THEMES]).toEqual([...THEMES]);
     expect([...PROFILE_DENSITIES]).toEqual([...DENSITIES]);
     expect([...PROFILE_POSTER_SIZES]).toEqual([...POSTER_SIZES]);
   });
@@ -80,7 +92,6 @@ describe("o vocabulario e o MESMO nos tres lugares", () => {
     // Sem isto, o parser aceitaria um valor que o banco recusa — e o usuario
     // veria 500 em vez de "dados invalidos".
     for (const [coluna, valores] of [
-      ["theme", PROFILE_THEMES],
       ["density", PROFILE_DENSITIES],
       ["poster_size", PROFILE_POSTER_SIZES],
     ] as const) {
@@ -95,7 +106,6 @@ describe("o vocabulario e o MESMO nos tres lugares", () => {
 
   it("os DEFAULTS do modulo sao os mesmos da coluna", () => {
     // Divergencia aqui faria a tela abrir num estado que o banco nunca grava.
-    expect(MIGRATION).toContain(`"theme" TEXT NOT NULL DEFAULT '${DEFAULT_PREFERENCES.theme}'`);
     expect(MIGRATION).toContain(`"density" TEXT NOT NULL DEFAULT '${DEFAULT_PREFERENCES.density}'`);
     expect(MIGRATION).toContain(
       `"poster_size" TEXT NOT NULL DEFAULT '${DEFAULT_PREFERENCES.posterSize}'`,
@@ -103,14 +113,48 @@ describe("o vocabulario e o MESMO nos tres lugares", () => {
   });
 });
 
+/**
+ * A COLUNA DE TEMA FOI DERRUBADA NO BANCO.
+ *
+ * Tirar `theme` do TypeScript nao tira a coluna do PostgreSQL. Sem esta
+ * migration, a coluna sobreviveria guardando escolha que nenhum seletor le —
+ * exatamente a "preferencia fake" que a regra desta tela proibe, so que
+ * invisivel porque nao ha mais controle mostrando ela.
+ */
+describe("a coluna de tema foi DERRUBADA no banco", () => {
+  it("a migration derruba o CHECK e a coluna, NESSA ordem", () => {
+    // Ordem importa: o CHECK referencia a coluna. Invertido, o DROP falha em
+    // cluster que resolva a dependencia de forma estrita.
+    const iCheck = DROP_TEMA.indexOf('DROP CONSTRAINT IF EXISTS "user_profiles_theme_check"');
+    const iColuna = DROP_TEMA.indexOf('DROP COLUMN IF EXISTS "theme"');
+    expect(iCheck, "DROP CONSTRAINT ausente").toBeGreaterThan(-1);
+    expect(iColuna, "DROP COLUMN ausente").toBeGreaterThan(-1);
+    expect(iCheck).toBeLessThan(iColuna);
+  });
+
+  it("a migration e 100% ASCII — WIN1252 ja quebrou deploy aqui", () => {
+    // `codePointAt` em vez de regex com escape hexadecimal: escrever a classe
+    // classe de caracteres por escape hexadecimal, escrita por gerador, ja
+    // gravou os bytes CRUS num arquivo deste repositorio, e ele virou
+    // "binary" para o git.
+    const foraDeAscii = [...DROP_TEMA].filter((ch) => (ch.codePointAt(0) ?? 0) > 127);
+    expect(foraDeAscii, "byte fora de ASCII na migration").toEqual([]);
+  });
+
+  it("CONTROLE POSITIVO: a migration ANTERIOR continua criando o que FICOU", () => {
+    // Se o caminho do arquivo acima mudar, os dois testes de cima passariam
+    // medindo string vazia. Este ancora o par.
+    expect(MIGRATION).toContain('ADD COLUMN "density"');
+    expect(MIGRATION).toContain('ADD COLUMN "poster_size"');
+  });
+});
+
 describe("o contrato ACEITA os valores validos e RECUSA o resto", () => {
   it("POSITIVO: todo valor do vocabulario passa", () => {
-    for (const theme of PROFILE_THEMES) {
-      for (const density of PROFILE_DENSITIES) {
-        for (const posterSize of PROFILE_POSTER_SIZES) {
-          const r = parseUpdateProfileCommand(comando({ theme, density, posterSize }));
-          expect(r.ok, `${theme}/${density}/${posterSize}`).toBe(true);
-        }
+    for (const density of PROFILE_DENSITIES) {
+      for (const posterSize of PROFILE_POSTER_SIZES) {
+        const r = parseUpdateProfileCommand(comando({ density, posterSize }));
+        expect(r.ok, `${density}/${posterSize}`).toBe(true);
       }
     }
   });
@@ -119,7 +163,6 @@ describe("o contrato ACEITA os valores validos e RECUSA o resto", () => {
     // Na fronteira, com a lista no erro — nunca virando 500 quando o CHECK
     // dispara, que e o mesmo defeito visto de mais longe.
     for (const [campo, ruim] of [
-      ["theme", "solarizado"],
       ["density", "apertadissima"],
       ["posterSize", "gigante"],
     ] as const) {
@@ -131,7 +174,7 @@ describe("o contrato ACEITA os valores validos e RECUSA o resto", () => {
   it("NEGATIVO: campo AUSENTE e recusado — o perfil e substituido inteiro", () => {
     // Aceitar ausencia tornaria impossivel distinguir "voltar ao default" de
     // "nao mexer" — a mesma razao pela qual o resto do comando nao e parcial.
-    for (const campo of ["theme", "density", "posterSize"]) {
+    for (const campo of ["density", "posterSize"]) {
       const corpo = comando();
       delete corpo[campo];
       expect(parseUpdateProfileCommand(corpo).ok, campo).toBe(false);
@@ -140,21 +183,16 @@ describe("o contrato ACEITA os valores validos e RECUSA o resto", () => {
 });
 
 describe("o EFEITO: a preferencia vira atributo no <html>", () => {
-  it("tema explicito escreve `data-theme`", () => {
-    const attrs = preferenceAttributes({ ...DEFAULT_PREFERENCES, theme: "dark" });
-    expect(attrs).toContainEqual({ name: "data-theme", value: "dark" });
-  });
-
-  it('NEGATIVO: tema "sistema" REMOVE o atributo — a media query volta a mandar', () => {
-    // Escrever `data-theme="system"` obrigaria toda regra a listar tres casos, e
-    // um seletor de atributo venceria a media query. O `null` e o desenho.
-    const attrs = preferenceAttributes({ ...DEFAULT_PREFERENCES, theme: "system" });
-    expect(attrs).toContainEqual({ name: "data-theme", value: null });
+  it("NEGATIVO: `data-theme` NUNCA e escrito — nao ha tema", () => {
+    // O produto e claro sempre. Um `data-theme` no <html> seria atributo que
+    // nenhum seletor le: preferencia fake pela definicao literal da regra da
+    // tela 13. Se um dia houver tema, ele volta pelo CSS primeiro.
+    const attrs = preferenceAttributes(DEFAULT_PREFERENCES);
+    expect(attrs.map((a) => a.name)).not.toContain("data-theme");
   });
 
   it("densidade e tamanho de poster escrevem os proprios atributos", () => {
     const attrs = preferenceAttributes({
-      theme: "light",
       density: "compact",
       posterSize: "large",
     });
@@ -165,8 +203,7 @@ describe("o EFEITO: a preferencia vira atributo no <html>", () => {
   it("FAIL-SAFE: valor corrompido cai no default, nao derruba a pagina", () => {
     // Pior caso aceitavel: o leitor ve a aparencia padrao. Lancar aqui deixaria
     // uma preferencia estragada quebrar a renderizacao inteira.
-    const attrs = preferenceAttributes({ theme: "?", density: "?", posterSize: "?" });
-    expect(attrs).toContainEqual({ name: "data-theme", value: null });
+    const attrs = preferenceAttributes({ density: "?", posterSize: "?" });
     expect(attrs).toContainEqual({ name: "data-density", value: "comfortable" });
     expect(attrs).toContainEqual({ name: "data-poster-size", value: "medium" });
   });
@@ -187,51 +224,45 @@ describe("applyPreferences escreve e APAGA de verdade", () => {
     } as unknown as Element & { readonly attrs: Map<string, string> };
   }
 
-  it("aplica os tres atributos", () => {
+  it("aplica os dois atributos, e SO os dois", () => {
     const root = fakeRoot();
-    applyPreferences(root, { theme: "dark", density: "compact", posterSize: "small" });
+    applyPreferences(root, { density: "compact", posterSize: "small" });
     expect([...root.attrs.entries()].sort()).toEqual([
       ["data-density", "compact"],
       ["data-poster-size", "small"],
-      ["data-theme", "dark"],
     ]);
-  });
-
-  it("NEGATIVO: voltar para `system` APAGA o `data-theme` que estava la", () => {
-    // O caso que um `setAttribute` ingenuo erraria: o leitor troca de escuro
-    // para "sistema" e o atributo velho fica, prendendo-o no escuro para sempre.
-    const root = fakeRoot();
-    applyPreferences(root, { ...DEFAULT_PREFERENCES, theme: "dark" });
-    expect(root.attrs.has("data-theme")).toBe(true);
-    applyPreferences(root, { ...DEFAULT_PREFERENCES, theme: "system" });
-    expect(root.attrs.has("data-theme")).toBe(false);
   });
 });
 
 describe("o CSS existe para os atributos que a funcao escreve", () => {
-  const CSS = readFileSync(path.join(process.cwd(), "apps/web/app/globals.css"), "utf8");
+  // SEM COMENTARIOS. O bloco "TEMA UNICO" no topo do globals.css EXPLICA por
+  // que nao ha tema, e cita `data-theme` na prosa — uma varredura de texto cru
+  // acusaria justamente a documentacao da decisao. Guarda mede REGRA.
+  const CSS = readFileSync(path.join(process.cwd(), "apps/web/app/globals.css"), "utf8").replace(
+    COMENTARIO_CSS,
+    "",
+  );
 
-  it("cada valor de tema/densidade/poster tem regra correspondente", () => {
+  it("cada valor de densidade/poster tem regra correspondente", () => {
     // Atributo sem regra e preferencia salva que nao faz nada — o meio-caminho
     // entre o controle real e o botao morto.
-    expect(CSS).toContain("[data-theme='dark']");
     expect(CSS).toContain("[data-density='compact']");
     expect(CSS).toContain("[data-poster-size='small']");
     expect(CSS).toContain("[data-poster-size='large']");
   });
 
-  it('a regra de sistema NAO se aplica quando ha escolha explicita', () => {
-    // `:root:not([data-theme])` dentro da media query. Sem o `:not`, quem
-    // escolheu CLARO receberia o escuro do sistema por cima.
-    expect(CSS).toContain(":root:not([data-theme])");
+  it("NEGATIVO: nao ha regra de tema — nenhum seletor le `data-theme`", () => {
+    // O par do teste acima. Atributo sem regra e preferencia morta; REGRA sem
+    // atributo e o tema escuro voltando pela porta dos fundos.
+    expect(CSS).not.toContain("data-theme");
   });
 });
 
 /**
- * O ADAPTER REAL grava as tres colunas — e este bloco existe porque a ausencia
+ * O ADAPTER REAL grava as colunas de apresentacao — e este bloco existe porque a ausencia
  * dele deixou um controle negativo passar.
  *
- * Reaplicado o defeito (tirar `theme`/`density`/`posterSize` do `upsert` do
+ * Reaplicado o defeito (tirar `density`/`posterSize` do `upsert` do
  * `profile-store.ts`), a suite inteira do `user-platform` continuou VERDE: os
  * testes de servico usam o duble em memoria, e o duble eu tinha atualizado. O
  * adapter Prisma — o unico que fala com o banco de verdade — nao era coberto
@@ -244,13 +275,13 @@ describe("o CSS existe para os atributos que a funcao escreve", () => {
  * qualquer um dos tres o valor se perde em silencio — no primeiro caso para
  * contas novas, no segundo para as existentes, no terceiro na leitura de volta.
  */
-describe("o adapter Prisma escreve E le as tres colunas", () => {
+describe("o adapter Prisma escreve E le as colunas de apresentacao", () => {
   const STORE = readFileSync(
     path.join(process.cwd(), "services/user-platform/src/persistence/prisma/profile-store.ts"),
     "utf8",
   );
 
-  const CAMPOS = ["theme", "density", "posterSize"] as const;
+  const CAMPOS = ["density", "posterSize"] as const;
 
   it("CONTROLE POSITIVO: o arquivo tem um upsert com create e update", () => {
     // Sem isto, um caminho de arquivo errado faria as contagens abaixo darem
@@ -267,7 +298,7 @@ describe("o adapter Prisma escreve E le as tres colunas", () => {
     }
   });
 
-  it("o PROFILE_SELECT le os tres — senao a tela nunca receberia de volta", () => {
+  it("o PROFILE_SELECT le todas — senao a tela nunca receberia de volta", () => {
     const select = /const PROFILE_SELECT = \{([\s\S]*?)\} as const;/.exec(STORE);
     expect(select, "PROFILE_SELECT nao encontrado").not.toBeNull();
     for (const campo of CAMPOS) {
@@ -308,8 +339,8 @@ describe("o painel salva E aplica — as duas metades", () => {
     "utf8",
   );
 
-  it("as tres preferencias vao no corpo do POST", () => {
-    for (const campo of ["theme", "density", "posterSize"] as const) {
+  it("as preferencias vao no corpo do POST", () => {
+    for (const campo of ["density", "posterSize"] as const) {
       expect(PANEL, campo).toContain(`${campo}: next.${campo},`);
     }
   });

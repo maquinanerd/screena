@@ -215,7 +215,7 @@ Hierarquia série → temporada → episódio, com identidade visual de série.
 
 ### Entregáveis
 
-- Templates `/pt/series/{slug}/`, `/pt/series/{slug}/temporada-{number}/` e contexto de
+- Templates `/pt/series/{slug}/`, `/pt/series/{slug}/temporadas/{number}/` e contexto de
   episódio.
 - Schema.org **`TVSeries`**, **`TVSeason`**, **`TVEpisode`** + `BreadcrumbList`.
 - Identidade visual de série: **acento verde** (`--screena-series-green`) + label + badge +
