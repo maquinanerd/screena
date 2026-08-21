@@ -1,6 +1,19 @@
 /**
  * runtime/advisory-lock.ts — A trava contra execucao dupla, sobre Postgres.
- * EXCLUIDO do typecheck principal (toca Prisma).
+ *
+ * COBERTO pelo typecheck principal. O cabecalho dizia "EXCLUIDO do typecheck
+ * principal (toca Prisma)" e isso era FALSO: `tsconfig.json` inclui
+ * `services/**\/*.ts` e exclui apenas `persistence/**`, `scripts/**` e `bin/**`
+ * por servico — nada que alcance este arquivo. A prova e o proprio compilador:
+ * quando `@prisma/client` nao esta instalado, o `tsc` da raiz emite o
+ * diagnostico APONTANDO para esta linha, o que so acontece com arquivo dentro
+ * do programa.
+ *
+ * A correcao importa porque este modulo e load-bearing: e ele que impede duas
+ * replicas do `screen-cron` de rodarem a mesma fila. Um cabecalho dizendo que
+ * os tipos nao sao conferidos aqui autoriza justamente o erro que o resto do
+ * repositorio documenta ter derrubado container — import de tipo usado como
+ * VALOR, que so aparece em producao, no import, antes de qualquer log.
  *
  * ============================================================================
  * A ARMADILHA DO POOL, E ELA E FATAL SE IGNORADA
