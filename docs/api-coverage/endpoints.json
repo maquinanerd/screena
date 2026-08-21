@@ -435,7 +435,7 @@
     "http": "GET /trending/{movie,tv,person,all}/{day,week}",
     "worker_only": true,
     "implemented": true,
-    "coverage_state": "raw_captured",
+    "coverage_state": "normalized",
     "plan_area": "TMDB tendencias (Fase 8)",
     "anchor": {
       "file": "api-clients/tmdb/src/catalog.ts",
@@ -444,7 +444,7 @@
         "/trending/"
       ]
     },
-    "notes": "Client valida media_type/time_window. Executavel via list-sync (mesmo mecanismo paginado das listas)."
+    "notes": "AGENDADO desde 2026-08-21: a fila `trending` do screen-cron enfileira 4 jobs sync_lists por ciclo de 6 h (movie|tv x day|week, maxPages=1), e o handler normaliza em discovery_snapshots + discovery_snapshot_items com dedupe por hash. Subiu de raw_captured para normalized porque agora HA normalizacao para tabela tipada: item de entidade nao promovida e descartado pelo store, e a posicao e reindexada densamente. Consumo: a POSICAO do trending/day substitui o rank de popularidade acumulada na prioridade de catalog_jobs (services/sync/src/scheduler/trending.ts). Endpoint de LISTA: nao aceita append_to_response, custo O(1) por ciclo e nao por titulo."
   },
   {
     "id": "tmdb.lists",
