@@ -281,6 +281,8 @@ async function main(): Promise<number> {
     discoveryLimit: config.discoveryLimit,
     discoveryIntervalMs: config.discoveryIntervalMs,
     changesIntervalMs: config.changesIntervalMs,
+    enqueueDiscovery: config.enqueueDiscovery,
+    enqueueChanges: config.enqueueChanges,
     production: config.isProduction,
   })
 
@@ -307,14 +309,26 @@ async function main(): Promise<number> {
   // ---- Enfileiradores periodicos ------------------------------------------
   // Enfileiram na subida e depois no intervalo. Enfileirar e barato e
   // idempotente (a chave inclui o dia/hora), entao repetir nao duplica trabalho.
-  await enqueueDiscovery(services, config, log)
-  await enqueueChanges(services, config, log)
+  // ENFILEIRAR E OPCIONAL desde 2026-08-21: quando o `screen-cron`
+  // (`@screena/sync`) esta no ar, ele e o relogio e estes dois papeis saem
+  // daqui. Desligados, o servico continua sendo o WORKER da fila — que e o
+  // papel que ninguem mais faz.
+  if (config.enqueueDiscovery) await enqueueDiscovery(services, config, log)
+  if (config.enqueueChanges) await enqueueChanges(services, config, log)
 
   const timers: NodeJS.Timeout[] = [
     setInterval(() => void reclaimOnce(), Math.max(orphanTimeoutMs / 2, 30_000)),
-    setInterval(() => void enqueueDiscovery(services, config, log), config.discoveryIntervalMs),
-    setInterval(() => void enqueueChanges(services, config, log), config.changesIntervalMs),
   ]
+  if (config.enqueueDiscovery) {
+    timers.push(
+      setInterval(() => void enqueueDiscovery(services, config, log), config.discoveryIntervalMs),
+    )
+  }
+  if (config.enqueueChanges) {
+    timers.push(
+      setInterval(() => void enqueueChanges(services, config, log), config.changesIntervalMs),
+    )
+  }
   for (const timer of timers) timer.unref()
 
   // ---- Loop da fila --------------------------------------------------------

@@ -25,6 +25,7 @@
 
 import { buildOmdbByImdbIdRequest, OMDB_ENDPOINT } from '@screena/omdb-client'
 import { hashPayload } from '@screena/rapidapi-core'
+import { checkOmdbBudget, shouldRequeue, type OmdbConsumer } from '@screena/config'
 import { computeRatingStaleAfter } from '@screena/schemas'
 
 import {
@@ -61,6 +62,25 @@ export interface OmdbRunDeps {
   readonly now: () => Date
   /** Requisicoes gastas (para `quota_cost`). */
   readonly requestCount: () => number
+  /**
+   * O SALDO DE COTA do dia. `undefined` desliga a checagem.
+   *
+   * ATE 2026-08-21 ESTE PORTO NAO EXISTIA, e o efeito era exatamente o que o
+   * dono descreveu: `checkOmdbBudget` estava escrito, testado e NUNCA CHAMADO
+   * por nada em producao. A fila de fundo gastava a cota inteira sem pedir
+   * licenca, e quando ela acabava era o LEITOR — quem esta esperando na tela —
+   * que ficava sem resposta.
+   *
+   * `undefined` continua permitido para os testes e para `--id` avulso, onde o
+   * operador pediu UM id nominalmente; producao injeta o porto real.
+   */
+  readonly budget?: OmdbBudgetPort
+}
+
+/** De onde sai o saldo de cota do dia. Uma leitura por ciclo, nunca por item. */
+export interface OmdbBudgetPort {
+  /** Requisicoes ja gastas hoje, por QUALQUER consumidor. */
+  spentToday(): Promise<number>
 }
 
 /** Opcoes do run. */
@@ -80,6 +100,12 @@ export interface OmdbRunOptions {
    * default, porque queima cota.
    */
   readonly ignoreFreshness: boolean
+  /**
+   * Quem esta pedindo cota. `seed` (fila de fundo) cede a vez quando o saldo
+   * entra na reserva do leitor; `on_demand` so e barrado quando o teto INTEIRO
+   * acabou. Ver `checkOmdbBudget` em @screena/config.
+   */
+  readonly consumer?: OmdbConsumer
 }
 
 /** Contagem de resultados. */
@@ -124,6 +150,13 @@ export interface OmdbRunResult {
   readonly idsFailed: number
   /** Ids sem consulta por interrupcao antecipada (protecao de cota). */
   readonly idsSkipped: number
+  /**
+   * Ids barrados pelo TETO DIARIO da OMDb. Distinto de `idsSkipped`: aquele e
+   * "o lote parou"; este e "havia trabalho e a cota acabou". Os dois pedem acoes
+   * diferentes, e colapsa-los esconderia o unico numero que diz ao dono que
+   * precisa de plano pago ou de fila menor.
+   */
+  readonly idsDeniedByQuota: number
   /** Entidades puladas por coleta recente (frescor) — nao e falha. */
   readonly idsSkippedFresh: number
   readonly idsWithoutEntity: number
@@ -177,6 +210,7 @@ export async function runOmdbRatingsSync(
       idsQueried: 0,
       idsFailed: 0,
       idsSkipped: 0,
+      idsDeniedByQuota: 0,
       idsSkippedFresh: 0,
       idsWithoutEntity: 0,
       items: [],
@@ -228,12 +262,51 @@ export async function runOmdbRatingsSync(
   let ratingsUpdated = 0
   let ratingsUnchanged = 0
   let consecutiveFailures = 0
+  let idsDeniedByQuota = 0
+
+  /**
+   * O SALDO DO DIA, lido UMA vez e decrementado localmente.
+   *
+   * Uma leitura por item multiplicaria consultas ao banco por nada: dentro do
+   * lote, o unico consumidor que gasta e este. O decremento local mantem o
+   * veredito correto item a item sem reler.
+   *
+   * `null` = sem porto injetado (teste/`--id` avulso): a checagem nao roda. Isso
+   * NAO e um bypass de politica — e a ausencia deliberada dela onde nao ha o que
+   * proteger.
+   */
+  const consumer: OmdbConsumer = options.consumer ?? 'seed'
+  let spentToday: number | null = deps.budget === undefined ? null : await deps.budget.spentToday()
 
   for (const [index, entry] of entries.entries()) {
+    if (spentToday !== null) {
+      const verdict = checkOmdbBudget(consumer, { spentToday })
+      if (!verdict.granted) {
+        // O lote PARA aqui. Os ids restantes NAO viram linha nenhuma: eles
+        // continuam stale e voltam a ser candidatos no proximo ciclo — e por
+        // isso `shouldRequeue` e sempre true para uma negacao de cota.
+        const remaining = entries.length - index
+        idsDeniedByQuota += remaining
+        rejections.push({
+          reason: 'quota-denied',
+          detail:
+            `${verdict.detail}; ${remaining} id(s) devolvido(s) a fila ` +
+            `(requeue=${String(shouldRequeue(verdict))}, consumidor=${consumer}). ` +
+            'Nenhuma nota foi marcada como ausente: cota e fato sobre o DIA, nao sobre o titulo.',
+        })
+        break
+      }
+    }
+
     const request = buildOmdbByImdbIdRequest(entry.id)
 
     let payload: unknown
     try {
+      // O saldo cai ANTES da chamada, e nao depois do sucesso: uma requisicao
+      // que falha tambem foi emitida e tambem conta na cota do fornecedor.
+      // Debitar so no sucesso deixaria um lote com muitas falhas estourar o teto
+      // achando que ainda tinha saldo.
+      if (spentToday !== null) spentToday += 1
       payload = await deps.fetchTitle(entry.id)
     } catch (error) {
       // Uma falha isolada NAO aborta o lote. O detalhe expoe o STATUS HTTP,
@@ -386,7 +459,11 @@ export async function runOmdbRatingsSync(
   // consultados falharam; `partial` quando houve alguma recusa/falha;
   // `success` caso contrario.
   let status: SyncStatus
-  if (idsQueried === 0) status = 'empty'
+  if (idsQueried === 0 && idsDeniedByQuota > 0) {
+    // Cota estourada com trabalho pendente NAO e "vazio": e um ciclo abortado.
+    // `empty` diria ao operador que nao havia nada a fazer, que e o oposto.
+    status = 'aborted'
+  } else if (idsQueried === 0) status = 'empty'
   else if (idsFailed === idsQueried) status = 'failed'
   else if (rejections.length > 0) status = 'partial'
   else status = 'success'
@@ -411,6 +488,7 @@ export async function runOmdbRatingsSync(
     idsQueried,
     idsFailed,
     idsSkipped,
+    idsDeniedByQuota,
     idsSkippedFresh,
     idsWithoutEntity,
     items: itemResults,

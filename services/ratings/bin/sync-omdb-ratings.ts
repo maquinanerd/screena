@@ -165,6 +165,10 @@ async function main(): Promise<void> {
         providerApi: OMDB_PROVIDER_API,
         cacheTtlMs: 0,
         ignoreFreshness: args.ignoreFreshness,
+        // FILA DE FUNDO. O leitor esperando na tela entra como `on_demand` pela
+        // cobertura sob demanda, com reserva propria — aqui e sempre a semente,
+        // que cede a vez quando o saldo entra na reserva do leitor.
+        consumer: 'seed',
       },
       {
         fetchTitle: () => Promise.reject(new Error('dry-run nao busca payload')),
@@ -215,6 +219,8 @@ async function main(): Promise<void> {
     '../src/persistence/rating-credit-lookup.js'
   )
 
+  const { createPrismaOmdbBudget } = await import('../src/persistence/omdb-budget-source.js')
+
   const syncLog = createPrismaSyncLog(prisma, OMDB_PROVIDER_API)
 
   // O core ja grava a linha AUTORITATIVA de `api_sync_logs` quando toca a rede.
@@ -255,6 +261,12 @@ async function main(): Promise<void> {
           : NOOP_RATINGS,
         now: () => new Date(),
         requestCount: () => client.getRequestCount(),
+        // A COTA, finalmente ligada. `checkOmdbBudget` existia, estava testado e
+        // NUNCA era chamado por nada em producao: a fila de fundo gastava o teto
+        // inteiro sem pedir licenca. Com `--id` explicito o porto NAO entra — o
+        // operador pediu UM id nominalmente, e barrar um pedido nominal por
+        // causa da fila de fundo seria o inverso da politica.
+        budget: args.id === null ? createPrismaOmdbBudget(prisma, () => new Date()) : undefined,
       },
     )
 

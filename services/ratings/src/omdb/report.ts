@@ -92,6 +92,14 @@ export interface OmdbReportJson {
     readonly failed: number
     /** Nao consultados por interrupcao do lote (protecao de cota). */
     readonly skipped_batch_abort: number
+    /**
+     * Barrados pelo TETO DIARIO da OMDb, e devolvidos a fila.
+     *
+     * Separado de `skipped_batch_abort` porque as acoes divergem: lote
+     * interrompido pede investigar o upstream; cota estourada pede plano pago ou
+     * fila menor. Um numero so mandaria o operador para o lado errado.
+     */
+    readonly denied_by_quota: number
     /** Pulados por coleta recente (frescor) — NAO e falha. */
     readonly skipped_fresh: number
     readonly without_entity: number
@@ -142,6 +150,7 @@ export function buildOmdbReport(
       queried: result.idsQueried,
       failed: result.idsFailed,
       skipped_batch_abort: result.idsSkipped,
+      denied_by_quota: result.idsDeniedByQuota,
       skipped_fresh: result.idsSkippedFresh,
       without_entity: result.idsWithoutEntity,
     },
@@ -203,6 +212,12 @@ export function renderOmdbReport(report: OmdbReportJson): string {
   lines.push(`- consultados: ${report.ids.queried}`)
   lines.push(`- com falha de rede/HTTP: ${report.ids.failed}`)
   lines.push(`- pulados por lote interrompido (protecao de cota): ${report.ids.skipped_batch_abort}`)
+  lines.push(
+    `- barrados pelo teto diario e DEVOLVIDOS a fila: ${report.ids.denied_by_quota}` +
+      (report.ids.denied_by_quota > 0
+        ? ' (nenhum deles foi marcado como "sem nota": cota e fato sobre o DIA)'
+        : ''),
+  )
   lines.push(
     `- pulados por coleta recente (frescor${
       report.refresh_window_hours === null ? ' desligado' : `: ${report.refresh_window_hours}h`

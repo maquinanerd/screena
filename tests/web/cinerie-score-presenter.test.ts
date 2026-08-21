@@ -29,9 +29,14 @@ function entrada(over: Partial<CinerieScoreInputView> = {}): CinerieScoreInputVi
 
 describe("a licenca vem ANTES de tudo", () => {
   it("NEGATIVO: sem autorizacao para derivar, nao renderiza — nem com 4 fontes", () => {
-    // O estado de HOJE. A formula existe, esta registrada e testada; o que falta
-    // e permissao das FONTES para derivar (OMDb e TMDB proibem nos termos).
-    // Autorizacao do dono nao cria direito que a fonte nao deu.
+    // `authorized` reflete a existencia de uma `DataUsageDecision` VIGENTE de
+    // `cinerie_score_display` no banco. A decisao passou a ser EMITIDA pelo spec
+    // em 2026-08-20 (autorizacao do proprietario), entao esta ausencia deixou de
+    // ser permanente e passou a significar "o `legal sources apply` da leva ainda
+    // nao rodou neste banco". A regra testada e a mesma: sem decisao vigente, nao
+    // renderiza — nem com 4 fontes.
+    // A cadeia completa (spec -> decisao -> formula -> tela) e medida em
+    // tests/governance/cinerie-score-lights-up.test.ts.
     const d = decideCinerieScore(entrada({ authorized: false, counted: [IMDB, TMDB, RT, MC] }));
     expect(d.rendered).toBe(false);
     if (d.rendered) throw new Error("nao deveria renderizar");
