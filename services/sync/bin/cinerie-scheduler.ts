@@ -189,6 +189,7 @@ async function main(): Promise<number> {
     log,
     locale: config.locale,
     batchLimit: config.batchLimit,
+    discoveryLimit: config.discoveryLimit,
     repoRoot,
     apply: config.apply,
     shutdownSignal: shutdown.signal,
@@ -245,6 +246,9 @@ async function main(): Promise<number> {
     healthPort: http.port,
     tickMs: config.tickMs,
     batchLimit: config.batchLimit,
+    // No log de subida: um teto errado tem de aparecer ANTES do primeiro ciclo,
+    // nao depois de 6,3 milhoes de jobs.
+    discoveryLimit: config.discoveryLimit,
     apply: config.apply,
     production: config.isProduction,
     queues: RHYTHMS.length,

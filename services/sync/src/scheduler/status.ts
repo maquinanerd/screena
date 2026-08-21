@@ -79,6 +79,35 @@ export interface StatusInput {
   readonly workerId: string
 }
 
+/**
+ * O QUE a linha esta medindo. Duas filas medem coisa diferente das outras.
+ *
+ * ============================================================================
+ * A CONFUSAO QUE ESTE CAMPO DESFAZ
+ * ============================================================================
+ * Fila que consome FORNECEDOR tem o ultimo sucesso lido de `api_sync_logs` — um
+ * registro de que o CICLO rodou. Fila DERIVADA (`cinerie_score`,
+ * `search_projection`, as de `providerApi: null`) nao consome fornecedor nenhum,
+ * e gravar linha de sync para ela afirmaria um sync externo que nao houve. Para
+ * essas duas o ultimo sucesso vem do ARTEFATO que elas produzem
+ * (`MAX(cinerie_score_calculations.calculated_at)`,
+ * `MAX(search_documents.updated_at)`).
+ *
+ * A escolha e melhor para detectar artefato velho — mas ela COLAPSA dois
+ * estados que pedem acoes opostas:
+ *
+ *   "o agendador nunca tentou"        -> conserto de deploy/config
+ *   "tentou e produziu ZERO"          -> conserto de dado (falta insumo)
+ *
+ * Os dois apareciam identicos, como `NUNCA RODOU`. Sem este campo, o operador
+ * lia "nunca rodou" e ia procurar um agendador parado que estava funcionando.
+ */
+export type StatusMeasuredBy =
+  /** `api_sync_logs`: afirma que o CICLO rodou. */
+  | 'ciclo'
+  /** O artefato produzido: afirma que o TRABALHO saiu, nao que foi tentado. */
+  | 'artefato'
+
 /** Uma linha do painel, ja formatada. */
 export interface StatusRow {
   readonly queue: string
@@ -88,6 +117,8 @@ export interface StatusRow {
   readonly state: 'em dia' | 'vencida' | 'PARADA' | 'NUNCA RODOU'
   readonly overdue: string
   readonly note: string
+  /** Ver {@link StatusMeasuredBy}. */
+  readonly measuredBy: StatusMeasuredBy
 }
 
 /** O painel inteiro, pronto para virar JSON ou HTML. */
@@ -136,6 +167,9 @@ export function buildStatusReport(input: StatusInput): StatusReport {
       ? `${(entry.overdueRatio * 100).toFixed(0)}%`
       : '—',
     note: entry.seasonNote,
+    // `providerApi: null` E a definicao de fila derivada na tabela de ritmos.
+    // Derivar daqui evita uma segunda lista de nomes que divergiria da primeira.
+    measuredBy: entry.rhythm.providerApi === null ? 'artefato' : 'ciclo',
   }))
 
   const quotas = input.quotas.map((quota) => {
@@ -262,6 +296,11 @@ export function renderStatusHtml(report: StatusReport): string {
       <td>${escapeHtml(row.lastSuccessAt)}</td>
       <td style="color:${stateColor(row.state)};font-weight:600">${escapeHtml(row.state)}</td>
       <td>${escapeHtml(row.overdue)}</td>
+      <td>${
+        row.measuredBy === 'artefato'
+          ? 'artefato produzido<br><small>"nunca" = artefato vazio, nao "nao tentou"</small>'
+          : 'ciclo do agendador'
+      }</td>
       <td>${escapeHtml(row.note)}</td>
     </tr>`,
     )
@@ -310,7 +349,7 @@ ${alertBlock}
   )} pendente(s)</h2>
 ${backlogBlock}
 <h2>Filas do agendador</h2>
-<table><thead><tr><th>Fila</th><th>Intervalo</th><th>Ultimo sucesso</th><th>Estado</th><th>Atraso</th><th>Nota</th></tr></thead><tbody>${rows}</tbody></table>
+<table><thead><tr><th>Fila</th><th>Intervalo</th><th>Ultimo sucesso</th><th>Estado</th><th>Atraso</th><th>Mede o que</th><th>Nota</th></tr></thead><tbody>${rows}</tbody></table>
 <h2>Cota de hoje</h2>
 <table><thead><tr><th>Fornecedor</th><th>Teto/dia</th><th>Gasto</th><th>Saldo</th><th>Saldo p/ fila de fundo</th><th>Base do teto</th></tr></thead><tbody>${quotas}</tbody></table>
 </body></html>`
@@ -355,7 +394,9 @@ export function renderStatusText(report: StatusReport): string {
   for (const row of report.rows) {
     lines.push(
       `  ${row.state.padEnd(12)} ${row.queue.padEnd(20)} intervalo ${String(row.intervalHours).padStart(4)}h · ` +
-        `ultimo sucesso ${row.lastSuccessAt} · atraso ${row.overdue}${row.note === '' ? '' : ` · ${row.note}`}`,
+        `ultimo ${row.measuredBy} ${row.lastSuccessAt} · atraso ${row.overdue}` +
+        `${row.measuredBy === 'artefato' ? ' · "nunca" = artefato vazio, nao "nao tentou"' : ''}` +
+        `${row.note === '' ? '' : ` · ${row.note}`}`,
     )
   }
   lines.push('')

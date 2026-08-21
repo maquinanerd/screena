@@ -194,3 +194,67 @@ Consequência prática para você: **se houver entidades que "sincronizaram com
 sucesso" e não existem no banco**, elas estavam presas nesse laço. Depois do
 deploy desta leva, um novo `sync` delas passa a criar a linha, porque o ramo
 agora só reporta sucesso quando encontrou o que tocar.
+
+---
+
+## 8. De 239 até ~15 mil — o caminho, e por que a diária sozinha não chega
+
+**Antes de drenar, leia isto.** Os 3 jobs `discover_ids` que estão em
+`catalog_jobs` carregam `enqueueDetails: true`. Quando o worker os processar,
+cada id descoberto vira um `sync_details`. Quantos ids é o que
+`CINERIE_SCHEDULER_DISCOVERY_LIMIT` decide — e até esta leva ele era
+**`null` hardcoded**, ou seja, o universo inteiro do TMDB.
+
+### Por que a descoberta diária, sozinha, não faz o catálogo crescer até 15 k
+
+`services/ingestion/src/discovery/export-discovery.ts` ordena o export **por
+popularidade** e só então corta pelo `limit`. O corte é um **prefixo**, e o
+prefixo é praticamente o mesmo todo dia. O ganho diário não é "mais 2000
+títulos" — é só o que **entrou** no topo do export desde ontem. Ordem de
+grandeza: dezenas por dia. Chegar a 15 k assim levaria **meses**.
+
+### O que realmente move o número
+
+O teto **é** a alavanca. Com o worker de pé, o primeiro ciclo drenado já leva o
+catálogo ao tamanho do teto:
+
+| `CINERIE_SCHEDULER_DISCOVERY_LIMIT` | Títulos após o 1º ciclo | Jobs | Requisições TMDB | Tempo (`--concurrency 2`) |
+| --- | --- | --- | --- | --- |
+| `2000` (default novo) | ~4.000 | 6.000 | ~17 k | ~2,8 h |
+| `7500` | **~15.000** | 22.500 | ~63 k | ~10,5 h |
+| `10000` | ~20.000 | 30.000 | ~84 k | ~14 h |
+
+> **Base dos números:** 1 `sync_details` por id descoberto (movie + tv + person),
+> mais o cascateamento de dependentes que `sync-details-handler.ts` enfileira, a
+> ~1,2 s por requisição imposto pelo rate limit do próprio cliente. São
+> **projeções a partir do código**, não medição de produção.
+
+### O comando da leva inicial
+
+Suba o `screen-catalog-worker` (§3) com o teto que você quer e deixe o ciclo
+diário fazer o trabalho — **não há comando separado de semente necessário**:
+
+```
+CINERIE_SCHEDULER_DISCOVERY_LIMIT=7500
+```
+
+no `screen-cron`, e o próximo ciclo de descoberta enfileira os 22.500 jobs. O
+worker drena no ritmo dele; a fila é durável e retomável, então nada se perde
+se o container reiniciar no meio.
+
+Se preferir uma passada única sem mexer no agendador:
+
+```bash
+corepack pnpm --filter @screena/ingestion catalog bootstrap --strategy daily-exports --limit 7500 --apply
+```
+
+Rode antes com `--dry-run` — a CLI recusa mutar sem um dos dois.
+
+### Não semear lixo
+
+O critério **já existe e não é novo**: o export vem ordenado por popularidade, o
+filtro anti-adulto é **fail-closed em duas camadas** (arquivos `adult_*` nunca
+são baixados; campo `adult` malformado ou ausente onde deveria existir é
+descartado como *unsafe*, nunca presumido seguro), e id duplicado é removido
+antes do corte. Aumentar o teto **não** relaxa nenhum desses filtros — só move o
+ponto do prefixo.

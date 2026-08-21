@@ -280,8 +280,17 @@ vermelho ensina o dono a ignorar vermelho.
 | `CINERIE_SCHEDULER_TICK_MS` | `300000` (5 min) | Intervalo entre avaliacoes do relogio. |
 | `CINERIE_SCHEDULER_BATCH_LIMIT` | `200` | Teto de itens por ciclo de cada fila. |
 | `CINERIE_SCHEDULER_DISABLED_QUEUES` | vazio | Lista separada por virgula. |
+| `CINERIE_SCHEDULER_DISCOVERY_LIMIT` | `2000` | **Teto de ids por TIPO em cada descoberta.** `0` = SEM TETO (o universo inteiro: 1,23 M filmes + 228 k series + 4,86 M pessoas) — e nao "nenhum id". Mesma semantica de `CATALOG_WORKER_DISCOVERY_LIMIT`, de proposito. |
 | `CINERIE_SCHEDULER_LOCALE` | `pt-BR` | Locale dos jobs enfileirados. |
 | `CINERIE_SCHEDULER_WORKER_ID` | `scheduler-<pid>` | Aparece no painel e no log. |
+
+> **ATENCAO ao teto de descoberta.** Ate 21/08/2026 `runDiscovery` mandava
+> `limit: null` HARDCODED, e `null` e o export INTEIRO. Com
+> `enqueueDetails: true`, o primeiro ciclo drenado enfileiraria da ordem de
+> **6,3 milhoes** de `sync_details`. O servico de catalogo sempre teve o botao
+> equivalente (default 2000) e este runbook manda DESLIGA-LO quando o agendador
+> sobe — entao o produtor COM teto saía de cena e o SEM teto ficava. Agora os
+> dois tem o mesmo default.
 
 > **Estas duas variaveis pertencem ao `screen-catalog-worker`, nao a este
 > servico** — e o servico dele tem passo proprio na secao 7. Ate 21/08/2026

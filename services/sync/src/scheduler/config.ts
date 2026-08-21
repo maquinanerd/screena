@@ -18,6 +18,26 @@ export interface SchedulerConfig {
   readonly tickMs: number
   /** Teto de itens por ciclo de cada fila. */
   readonly batchLimit: number
+  /**
+   * Teto de ids por TIPO em cada ciclo de descoberta. `null` = SEM TETO.
+   *
+   * ============================================================================
+   * POR QUE ISTO PRECISOU DE UM BOTAO
+   * ============================================================================
+   * `runDiscovery` mandava `limit: null` HARDCODED, e `null` significa o export
+   * INTEIRO: 1,23 M filmes + 228 k series + 4,86 M pessoas. Com
+   * `enqueueDetails: true`, o primeiro ciclo drenado enfileiraria da ordem de
+   * 6,3 MILHOES de `sync_details`.
+   *
+   * O servico de catalogo sempre teve o botao equivalente
+   * (`CATALOG_WORKER_DISCOVERY_LIMIT`, default 2000) — e o runbook manda
+   * DESLIGAR o enfileirador dele quando o agendador sobe. O resultado era que o
+   * produtor com teto saia de cena e o sem teto ficava.
+   *
+   * Default 2000, igual ao do servico: os dois produtores do MESMO job passam a
+   * ter o MESMO teto por omissao. `0` = sem teto, e e opt-in explicito.
+   */
+  readonly discoveryLimit: number | null
   readonly locale: string
   readonly workerId: string
   readonly isProduction: boolean
@@ -88,6 +108,13 @@ export function resolveSchedulerConfig(env: Env): SchedulerConfig {
     // depois de uma subida.
     tickMs: readInt(env, 'CINERIE_SCHEDULER_TICK_MS', 5 * 60_000, 10_000, 60 * 60_000),
     batchLimit: readInt(env, 'CINERIE_SCHEDULER_BATCH_LIMIT', 200, 1, 10_000),
+    // `0` = SEM TETO (o universo inteiro daquele tipo), nao "nenhum id" — a
+    // mesma semantica de `CATALOG_WORKER_DISCOVERY_LIMIT`, de proposito: dois
+    // botoes para o mesmo teto com significados opostos seria uma armadilha.
+    discoveryLimit: ((): number | null => {
+      const bruto = readInt(env, 'CINERIE_SCHEDULER_DISCOVERY_LIMIT', 2000, 0, 10_000_000)
+      return bruto === 0 ? null : bruto
+    })(),
     locale: env.CINERIE_SCHEDULER_LOCALE?.trim() || 'pt-BR',
     workerId: env.CINERIE_SCHEDULER_WORKER_ID?.trim() || `scheduler-${process.pid}`,
     isProduction: (env.NODE_ENV ?? '').trim() === 'production',

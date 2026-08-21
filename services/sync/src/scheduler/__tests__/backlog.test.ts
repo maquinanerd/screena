@@ -211,6 +211,38 @@ describe('backlog de catalog_jobs', () => {
     )).toContain('#999999')
   })
 
+  it('(9) o painel diz O QUE mede: ciclo do agendador vs artefato produzido', () => {
+    // `cinerie_score` e `search_projection` nao consomem fornecedor e tem o
+    // ultimo sucesso lido do ARTEFATO (`MAX(...calculated_at)`,
+    // `MAX(...updated_at)`), nunca de `api_sync_logs`. Isso colapsava dois
+    // estados que pedem acoes opostas: "o agendador nunca tentou" (deploy) e
+    // "tentou e produziu zero" (falta insumo). Os dois liam `NUNCA RODOU`.
+    const relatorio = buildStatusReport({
+      now: AGORA,
+      startedAt: AGORA,
+      schedules: evaluateSchedule({ now: AGORA, lastRuns: [] }),
+      alerts: [],
+      quotas: [],
+      backlog: evaluateBacklog([], AGORA),
+      workerId: 'teste',
+    })
+
+    const porFila = new Map(relatorio.rows.map((row) => [row.queue, row.measuredBy]))
+    expect(porFila.get('cinerie_score')).toBe('artefato')
+    expect(porFila.get('search_projection')).toBe('artefato')
+
+    // CONTROLE NEGATIVO: as demais NAO podem virar 'artefato'. Sem isto, um
+    // `measuredBy` que devolvesse 'artefato' sempre passaria nas duas linhas
+    // acima e apagaria a distincao que o campo existe para fazer.
+    expect(porFila.get('discovery')).toBe('ciclo')
+    expect(porFila.get('trending')).toBe('ciclo')
+    expect(porFila.get('ratings_omdb')).toBe('ciclo')
+    expect(new Set(porFila.values())).toEqual(new Set(['ciclo', 'artefato']))
+
+    // E a ressalva aparece na tela, nao so no JSON.
+    expect(renderStatusText(relatorio)).toContain('artefato vazio')
+  })
+
   it('(8) CONTROLE NEGATIVO: nove filas do agendador VERDES nao salvam o painel', () => {
     // Reproduz o estado exato de 2026-08-21 dos DOIS lados: agendador em dia
     // (ultimo sucesso ha 5 minutos em toda fila) e `catalog_jobs` intacta.
