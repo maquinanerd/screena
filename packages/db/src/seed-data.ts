@@ -123,6 +123,22 @@ export const RATING_SOURCE_SEED: readonly RatingSourceSeed[] = RATING_SOURCES.ma
  */
 export const API_PROVIDER_SEED: readonly ApiProviderSeed[] = [
   { key: "tmdb", name: "The Movie Database", kind: "data", homepageUrl: "https://www.themoviedb.org" },
+  // tmdb-exports — os Daily ID Exports sao um fornecedor SEPARADO de `tmdb`, e a
+  // separacao nao e cosmetica: arquivos publicos em files.tmdb.org, sem token e
+  // FORA da cota da API (ver TMDB_EXPORTS_QUOTA em @screena/config). Colapsar os
+  // dois faria a descoberta debitar de um teto que ela nao consome.
+  //
+  // A linha existe aqui porque `api_sync_logs.provider_api` e `api_cache.provider_api`
+  // tem FK para `api_providers.key`: a fila `discovery` do agendador grava com
+  // este literal (services/sync/src/scheduler/rhythms.ts) e sem esta linha o
+  // INSERT morre em violacao de chave estrangeira. Travado por
+  // tests/governance/scheduler-provider-registry.test.ts.
+  {
+    key: "tmdb-exports",
+    name: "TMDB Daily ID Exports",
+    kind: "data",
+    homepageUrl: "https://files.tmdb.org/p/exports",
+  },
   { key: "gemini", name: "Google Gemini", kind: "ai", homepageUrl: "https://ai.google.dev" },
   { key: "imdb236", name: "IMDb (RapidAPI imdb236)", kind: "ratings", homepageUrl: "https://rapidapi.com" },
   { key: "rapidapi_film_show_ratings", name: "Film/Show Ratings (RapidAPI)", kind: "ratings", homepageUrl: "https://rapidapi.com" },
