@@ -36,7 +36,17 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const CSS_PATH = fileURLToPath(new URL("../../apps/web/app/globals.css", import.meta.url));
-const CSS = readFileSync(CSS_PATH, "utf8");
+
+/**
+ * Comentario dentro da regra separa o `{` do `color:` e faz o analisador dizer
+ * "regra sem color" numa regra que TEM color. Some com eles antes de analisar —
+ * um comentario explicando a cor nao pode derrubar a medicao da cor.
+ */
+function stripComments(css: string): string {
+  return css.replace(/\/\*[\s\S]*?\*\//g, "");
+}
+
+const CSS = stripComments(readFileSync(CSS_PATH, "utf8"));
 
 /** Piso de contraste para texto (WCAG 2.1 AA, texto normal). */
 const AA_NORMAL = 4.5;
@@ -54,6 +64,15 @@ const TEXT_ON_PAGE_BACKGROUND = [
   ".ficha-row dt",
   ".ficha-row dd",
   ".eyebrow-bar span",
+  // Pagina de temporada (21/08/2026). Estas quatro tinham o MESMO defeito
+  // latente e so nao apareciam porque a rota ia ao ar sem desenho nenhum —
+  // aplicar o desenho sem tokenizar teria repetido a #199 na temporada.
+  ".episode-row__title",
+  ".episode-row__synopsis",
+  ".episode-row__meta",
+  ".season-info",
+  "[data-nav='prev-next'] a",
+  "[data-vertical='series'] .detail-see-all",
 ] as const;
 
 // --------------------------------------------------------------------------
@@ -104,16 +123,24 @@ export function parseThemeTokens(css: string): ThemeTokens {
   return { light, darkExplicit, darkSystem };
 }
 
-/** Valor de `color:` do PRIMEIRO bloco cujo seletor casa exatamente. */
+/**
+ * Valor de `color:` da PRIMEIRA regra cujo grupo de seletores contem o alvo.
+ * Reconhece grupo separado por virgula (`.a,\n.b { }`) — casar so o seletor
+ * inteiro antes da chave faria o teste dizer "seletor nao encontrado" para uma
+ * regra que existe, e um guarda que nao acha o que mede nao guarda nada.
+ */
 export function declaredColor(css: string, selector: string): string {
-  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const rule = new RegExp(`(^|\\})\\s*${escaped}\\s*\\{([^}]*)\\}`, "m");
-  const match = rule.exec(css);
-  if (match === null) throw new Error(`seletor nao encontrado no CSS: ${selector}`);
-  const body = match[2] ?? "";
-  const color = /(?:^|[;{])\s*color\s*:\s*([^;}]+)/.exec(body);
-  if (color === null) throw new Error(`regra sem 'color': ${selector}`);
-  return (color[1] ?? "").trim();
+  const target = selector.replace(/\s+/g, " ").trim();
+  for (const rule of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const head = rule[1] ?? "";
+    const body = rule[2] ?? "";
+    const names = head.split(",").map((name) => name.replace(/\s+/g, " ").trim());
+    if (!names.includes(target)) continue;
+    const color = /(?:^|[;{])\s*color\s*:\s*([^;}]+)/.exec(body);
+    if (color === null) throw new Error(`regra sem 'color': ${selector}`);
+    return (color[1] ?? "").trim();
+  }
+  throw new Error(`seletor nao encontrado no CSS: ${selector}`);
 }
 
 function hexToRgb(hex: string): { r: number; g: number; b: number } {
@@ -216,6 +243,70 @@ describe("contraste das telas de detalhe nos dois temas", () => {
       },
     );
   }
+});
+
+/**
+ * A OUTRA METADE DA MESMA REGRA.
+ *
+ * `.detail-hero` pinta `background: #fdfcfa` FIXO — ele NAO acompanha o tema.
+ * Entao dentro do hero a regra se INVERTE: quem usa token que vira sai claro
+ * sobre claro. Medido antes do conserto, no tema escuro:
+ *
+ *   .detail-hero__crumbs  --c-text-muted-aa -> #a8a49b sobre #fdfcfa = 2,42:1
+ *
+ * Este defeito e ANTERIOR as PRs revertidas — esta no ar hoje, nas tres telas.
+ * O par de testes junto diz a regra inteira: a cor segue a SUPERFICIE em que
+ * o texto esta, nao a pagina.
+ */
+describe("contraste dentro do hero (superficie clara FIXA)", () => {
+  const HERO_BACKGROUND = "#fdfcfa";
+
+  const TEXT_ON_HERO = [
+    ".detail-hero .detail-hero__crumbs",
+    ".detail-hero .detail-hero__crumbs [aria-current='page']",
+    ".detail-hero__back",
+  ] as const;
+
+  it("o fundo do hero continua sendo o literal claro que estas regras assumem", () => {
+    // Se alguem fizer o hero acompanhar o tema, este teste cai — e ai as
+    // regras abaixo tem que virar token. O acoplamento fica explicito em vez
+    // de virar surpresa na producao.
+    const declared = /\.detail-hero\s*\{([^}]*)\}/.exec(CSS);
+    expect(declared, "regra .detail-hero nao encontrada").not.toBeNull();
+    expect(declared?.[1]).toContain(HERO_BACKGROUND);
+  });
+
+  it.each(TEXT_ON_HERO)("%s alcanca 4.5:1 sobre o hero claro", (selector) => {
+    const declared = declaredColor(CSS, selector);
+    const token = tokenReference(declared);
+    const ink =
+      token === null
+        ? declared
+        : // Token permitido AQUI so se ele nao virar com o tema: se virar, a
+          // cor clara do escuro cai sobre um fundo que continuou claro.
+          (() => {
+            const tokens = parseThemeTokens(CSS);
+            const light = tokens.light.get(token);
+            const dark = tokens.darkSystem.get(token) ?? light;
+            expect(
+              dark,
+              `${selector} usa ${token}, que MUDA no tema escuro (${light} -> ${dark}). ` +
+                `O hero nao muda: isso sai claro sobre claro.`,
+            ).toBe(light);
+            return light ?? "";
+          })();
+    const ratio = contrastRatio(ink, HERO_BACKGROUND);
+    expect(ratio, `${selector}: ${ink} sobre ${HERO_BACKGROUND} = ${ratio.toFixed(2)}:1`)
+      .toBeGreaterThanOrEqual(AA_NORMAL);
+  });
+
+  it("controle negativo: o token que causou o defeito REPROVA aqui", () => {
+    const tokens = parseThemeTokens(CSS);
+    const mutedDark = tokens.darkSystem.get("--c-text-muted-aa");
+    expect(mutedDark).toBeDefined();
+    // #a8a49b sobre #fdfcfa — o 2,42:1 medido no navegador.
+    expect(contrastRatio(mutedDark ?? "", HERO_BACKGROUND)).toBeLessThan(AA_NORMAL);
+  });
 });
 
 describe("controle negativo — o analisador REPROVA o CSS que quebrou as #199-#201", () => {

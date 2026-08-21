@@ -9,10 +9,30 @@ import { SERIES_INDEX_PATH, SITE_URL, gatePublicRobots } from '../../../../../..
 import { getSeasonPageData } from '../../../../../../src/server/season-page'
 
 /**
- * Pagina publica de temporada (/pt/series/[slug]/temporadas/[season]/). Shell
- * textual atual: mantem dados reais, navegacao e contratos de SEO da Fase 3 sem
- * introduzir a camada visual do design (imagens ficam resolvidas na view,
- * prontas para o design futuro, como nas paginas de filme/serie).
+ * Pagina publica de temporada (/pt/series/[slug]/temporadas/[season]/).
+ *
+ * ATE 21/08/2026 esta pagina foi ao ar SEM DESENHO. Nao era folha de estilo
+ * faltando: `globals.css` e importado pelo layout raiz (o UNICO layout do app)
+ * e chega aqui normalmente — o `.container` do arquivo antigo era prova disso,
+ * porque a coluna JA vinha centrada. O que faltava era a pagina usar as classes:
+ * ela tinha UMA (`container`) contra 95 da pagina de serie. Sem
+ * `.detail-hero__crumbs` a trilha caia no `<ol>` padrao do navegador e saia
+ * numerada ("1. Series 2. The Last of Us 3. Temporada 2"), e os episodios
+ * saiam com marcador.
+ *
+ * O vocabulario visual de temporada/episodio JA EXISTIA em `globals.css`
+ * (`.episode-row`, `.episode-list`, `.season-info`, `.season-tabs`,
+ * `.detail-hero`) — e o mesmo que a pagina de serie usa no guia de temporadas.
+ * Esta pagina passa a usa-lo, entao filme, serie e temporada falam a mesma
+ * lingua e nao existe um segundo componente de episodio.
+ *
+ * A ROTA CANONICA e `/pt/series/{slug}/temporadas/{n}/` — e e a unica que
+ * existe. `SEASONS_SEGMENT` em `src/lib/routes.ts` alimenta o diretorio, a URL
+ * canonica e o sitemap pelo mesmo valor. A linha `temporada-{number}` em
+ * `docs/SPEC.md` e documentacao desatualizada, nao uma segunda rota.
+ *
+ * Invariantes 3/4: zero API externa e zero IA no render — tudo vem do
+ * PostgreSQL via `getSeasonPageData`.
  */
 
 export const revalidate = 3600
@@ -99,33 +119,70 @@ export default async function SeasonPage({ params }: { params: Promise<SeasonRou
 
   return (
     <main data-vertical="series">
-      <div className="container">
-        <nav aria-label="Trilha de navegação">
-          <ol>
-            <li>
-              <a href={SERIES_INDEX_PATH}>Séries</a>
-            </li>
-            <li>
-              <a href={seriesHref}>{view.seriesTitle}</a>
-            </li>
-            <li aria-current="page">{view.seasonTitle}</li>
-          </ol>
-        </nav>
+      {/* ===== Topo: mesmo vocabulario do hero de filme/serie ===== */}
+      <div className="detail-hero">
+        <div className="detail-container">
+          <nav aria-label="Trilha de navegação" className="detail-hero__crumbs">
+            <ol>
+              <li>
+                <a href={SERIES_INDEX_PATH}>Séries</a>
+              </li>
+              <li>
+                <a href={seriesHref}>{view.seriesTitle}</a>
+              </li>
+              <li aria-current="page">{view.seasonTitle}</li>
+            </ol>
+          </nav>
 
-        <header>
-          <p>
-            <strong data-entity-badge="series">Temporada</strong>
-          </p>
-          <h1>
-            {view.seriesTitle} — {view.seasonTitle}
-          </h1>
-          {headerMeta.length > 0 ? <p>{headerMeta.join(' · ')}</p> : null}
-          {view.overview !== null ? <p>{view.overview}</p> : null}
-          <p>
-            <a href={seriesHref}>Voltar para {view.seriesTitle}</a>
-          </p>
-        </header>
+          <div className="detail-hero__grid">
+            <div className="detail-hero__main">
+              <div className="detail-badge-row">
+                {/* A vertical se diz por rotulo + badge + breadcrumb + URL +
+                    schema (TVSeason), nunca so pela cor (invariante 11). */}
+                <span className="detail-badge" data-entity-badge="series">
+                  Temporada
+                </span>
+              </div>
+              <h1 className="detail-hero__title">
+                {view.seriesTitle} — {view.seasonTitle}
+              </h1>
+              {headerMeta.length > 0 ? (
+                <ul className="detail-hero__chips">
+                  <li className="detail-hero__meta-text">{headerMeta.join(' · ')}</li>
+                </ul>
+              ) : null}
+              {view.overview !== null ? (
+                <p className="detail-hero__synopsis">{view.overview}</p>
+              ) : null}
+              {/* Fica DENTRO do hero, que e uma superficie clara fixa: usa a
+                  classe do hero (cor presa ao claro), nao `.detail-see-all`,
+                  cujo token vira com o tema e sairia claro sobre claro. */}
+              <p style={{ margin: '18px 0 0' }}>
+                <a className="detail-hero__back" href={seriesHref}>
+                  ← Voltar para {view.seriesTitle}
+                </a>
+              </p>
+            </div>
 
+            {view.poster !== null ? (
+              <aside aria-label="Pôster da temporada" className="detail-hero__aside">
+                <img
+                  alt=""
+                  className="season-poster"
+                  height={view.poster.height}
+                  src={view.poster.src}
+                  width={view.poster.width}
+                />
+              </aside>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
+      <div className="detail-container" style={{ paddingTop: 40, paddingBottom: 72 }}>
+        {/* Navegacao entre temporadas. `PrevNextNav` e compartilhado APENAS com
+            a pagina de episodio (as duas nesta rodada); o estilo entra por
+            `[data-nav='prev-next']`, sem tocar uma linha do componente. */}
         <PrevNextNav
           ariaLabel="Navegação entre temporadas"
           previousItemLabel="Temporada anterior"
@@ -134,37 +191,78 @@ export default async function SeasonPage({ params }: { params: Promise<SeasonRou
           next={view.nextSeason}
         />
 
-        <section aria-labelledby="temporada-episodios-titulo">
-          <h2 id="temporada-episodios-titulo">Episódios</h2>
+        <section aria-labelledby="temporada-episodios-titulo" style={{ paddingTop: 34 }}>
+          <div className="eyebrow-bar">
+            <span>Temporada {view.seasonNumber}</span>
+          </div>
+          <h2 className="detail-section-title" id="temporada-episodios-titulo">
+            Episódios
+          </h2>
           {view.episodes.length > 0 ? (
-            <ol>
+            <ol className="episode-list" style={{ marginTop: 22 }}>
               {view.episodes.map((episode) => {
                 const meta = [episode.dateLabel, episode.runtimeLabel].filter(
                   (item): item is string => item !== null,
                 )
                 return (
                   <li key={episode.episodeNumber}>
-                    <article>
-                      <h3>
-                        <a href={episode.href}>
-                          E{episode.episodeNumber}
-                          {episode.title !== null ? ` · ${episode.title}` : ''}
-                        </a>
-                      </h3>
-                      {meta.length > 0 ? <p>{meta.join(' · ')}</p> : null}
-                      {episode.summary !== null ? <p>{episode.summary}</p> : null}
+                    <article className="episode-row">
+                      <div className="episode-row__media">
+                        <span className="episode-row__num">
+                          T{view.seasonNumber} · E{episode.episodeNumber}
+                        </span>
+                        {episode.still !== null ? (
+                          <img
+                            alt=""
+                            height={episode.still.height}
+                            loading="lazy"
+                            src={episode.still.src}
+                            width={episode.still.width}
+                          />
+                        ) : null}
+                      </div>
+                      <div>
+                        <h3
+                          className="episode-row__title"
+                          style={{ letterSpacing: '-0.01em', textTransform: 'none' }}
+                        >
+                          <a href={episode.href}>
+                            {episode.title !== null
+                              ? episode.title
+                              : `Episódio ${episode.episodeNumber}`}
+                          </a>
+                        </h3>
+                        {episode.summary !== null ? (
+                          <p className="episode-row__synopsis">{episode.summary}</p>
+                        ) : null}
+                        {meta.length > 0 ? (
+                          <p className="episode-row__meta">{meta.join(' · ')}</p>
+                        ) : null}
+                      </div>
+                      <span aria-hidden="true" className="episode-row__chevron">
+                        <svg fill="none" height="22" viewBox="0 0 24 24" width="22">
+                          <path
+                            d="m10 6 6 6-6 6"
+                            stroke="currentColor"
+                            strokeLinecap="round"
+                            strokeWidth="2"
+                          />
+                        </svg>
+                      </span>
                     </article>
                   </li>
                 )
               })}
             </ol>
           ) : (
-            <p>Nenhum episódio publicado nesta temporada.</p>
+            <p className="muted">Nenhum episódio publicado nesta temporada.</p>
           )}
         </section>
 
         {isUnderReview ? (
-          <p data-editorial-state="in-review">Esta página ainda está em revisão editorial.</p>
+          <p className="muted" data-editorial-state="in-review">
+            Esta página ainda está em revisão editorial.
+          </p>
         ) : null}
       </div>
 

@@ -64,6 +64,7 @@
   --c-detail-ink: #12100e;
   --c-detail-body: #4a463e;
   --c-detail-link: #b23a31;
+  --c-detail-link-series: #395c42;
 
   /* Accent (marca por contexto) */
   --c-accent-movie: #f0443e;
@@ -4076,7 +4077,10 @@ a.media-strip__cell {
 }
 
 [data-vertical='series'] .detail-see-all {
-  color: var(--c-accent-series-dark);
+  /* `--c-accent-series-dark` (#395c42) e AA sobre superficie CLARA, e o
+     "Ver elenco completo" fica sobre `--c-bg-page` — que vira no tema escuro
+     (2,61:1, medido). O token de link vira junto; o acento cru nao. */
+  color: var(--c-detail-link-series);
 }
 
 .synopsis-lead {
@@ -4768,7 +4772,7 @@ a.media-strip__cell {
 }
 
 .season-tabs a[aria-current='true'] {
-  color: #12100e;
+  color: var(--c-detail-ink);
   border-bottom-color: var(--c-accent-series);
 }
 
@@ -4781,7 +4785,7 @@ a.media-strip__cell {
   padding-bottom: 6px;
   font-size: 13px;
   font-weight: 600;
-  color: #3a362f;
+  color: var(--c-detail-body);
 }
 
 .season-info__status {
@@ -4812,14 +4816,14 @@ a.media-strip__cell {
   font-size: 19px;
   font-weight: 750;
   letter-spacing: -0.01em;
-  color: #12100e;
+  color: var(--c-detail-ink);
   margin: 0;
 }
 
 .episode-row__synopsis {
   font-size: 14.5px;
   line-height: 1.55;
-  color: #6e6a61;
+  color: var(--c-text-muted-aa);
   margin: 8px 0 0;
   max-width: 66ch;
 }
@@ -10501,6 +10505,7 @@ h4.art-body__heading {
   --c-detail-ink: #f4f2ee;
   --c-detail-body: #d2ccc0;
   --c-detail-link: #ff8a7d;
+  --c-detail-link-series: #8fbd9c;
 
   --c-border-subtle: #26262b;
   --c-border: #313138;
@@ -10533,6 +10538,7 @@ h4.art-body__heading {
     --c-detail-ink: #f4f2ee;
     --c-detail-body: #d2ccc0;
     --c-detail-link: #ff8a7d;
+    --c-detail-link-series: #8fbd9c;
 
     --c-border-subtle: #26262b;
     --c-border: #313138;
@@ -10610,4 +10616,108 @@ h4.art-body__heading {
   align-items: center;
   gap: 12px;
   flex: 1;
+}
+
+/* ==================================================================== *
+ * PAGINA DE TEMPORADA (21/08/2026)
+ *
+ * Ate esta data a rota `/pt/series/{slug}/temporadas/{n}/` ia ao ar sem
+ * desenho. A folha SEMPRE chegou ali (layout raiz, um so); o que faltava era
+ * a pagina usar classe. Ela agora reusa o vocabulario que ja existia —
+ * `.detail-hero`, `.episode-row`, `.episode-list`, `.eyebrow-bar` — e so as
+ * duas pecas abaixo eram realmente novas.
+ *
+ * NO FIM DO ARQUIVO de proposito: globals.css resolve conflito por ORDEM DE
+ * DOCUMENTO, e classe nova nao pode depender de sorte.
+ * ==================================================================== */
+
+/* Navegacao anterior/proxima. O gancho e o `data-nav` que o componente
+   compartilhado JA emitia — assim o estilo entra sem tocar `prev-next-nav.tsx`,
+   que a pagina de episodio tambem usa. */
+[data-nav='prev-next'] ul {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 28px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+[data-nav='prev-next'] a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--c-detail-link-series);
+  text-decoration: none;
+}
+
+[data-nav='prev-next'] a:hover {
+  text-decoration: underline;
+}
+
+/* Poster da temporada na coluna direita do topo. */
+.season-poster {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 268px;
+  margin-left: auto;
+  border-radius: var(--r-card);
+  box-shadow: var(--sh-card);
+}
+
+@media (max-width: 1023px) {
+  .season-poster {
+    max-width: 190px;
+    margin-left: 0;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * O HERO E UMA ILHA CLARA — e o texto dele tem que saber disso.
+ *
+ * `.detail-hero` pinta `background: #fdfcfa` FIXO: ele nao acompanha o tema.
+ * O corpo da pagina acompanha (`--c-bg-page` vira para #0b0b0d). Sao duas
+ * superficies com comportamentos OPOSTOS, e a cor do texto tem que seguir a
+ * superficie em que ele esta, nao a pagina:
+ *
+ *   - texto sobre `--c-bg-page`  -> token que VIRA  (ver --c-detail-*)
+ *   - texto sobre o hero claro   -> valor que FICA
+ *
+ * Trocar os dois de lugar quebra nos dois sentidos. A ficha quebrou com
+ * literal sobre fundo que vira (#12100e sobre #0b0b0d = 1,04:1, PRs #199-201).
+ * A trilha quebra com token sobre fundo que fica: no escuro
+ * `--c-text-muted-aa` sobe para #a8a49b e sai 2,42:1 sobre #fdfcfa. Este
+ * segundo defeito e ANTERIOR as PRs revertidas e esta no ar hoje, nas tres
+ * telas de detalhe.
+ *
+ * Enquanto o hero nao acompanhar o tema, o texto dele fica presto ao claro.
+ * ------------------------------------------------------------------ */
+
+.detail-hero .detail-hero__crumbs,
+.detail-hero .detail-hero__crumbs a {
+  color: #6e6a61;
+}
+
+.detail-hero .detail-hero__crumbs [aria-current='page'] {
+  color: #3a362f;
+}
+
+/* Link de volta para a serie, no topo da tela de temporada. Fica no hero, logo
+   usa o verde escuro FIXO (AA sobre claro) — nao o token de link, que vira. */
+.detail-hero__back {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--c-accent-series-dark);
+  text-decoration: none;
+}
+
+.detail-hero__back:hover {
+  text-decoration: underline;
 }
