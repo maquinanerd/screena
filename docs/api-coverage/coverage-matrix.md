@@ -51,7 +51,8 @@ Exatamente **1 por endpoint e 1 por campo**:
 | `tmdb.tv.episode.details` — GET .../episode/{e} | ✅ | `not_applicable` (método definido, não chamado) |
 | `tmdb.discovery.daily_id_exports` — files.tmdb.org | ✅ | `raw_captured` |
 | `tmdb.discovery.changes` — /{kind}/changes | ✅ (contrato) | `not_applicable` (planner, não executado) |
-| `tmdb.search` / `tmdb.discover` / `tmdb.trending` / `tmdb.lists` | ❌ | `not_applicable` (roadmap F8) |
+| `tmdb.trending` — /trending/{movie,tv}/{day,week} | ✅ | `normalized` (fila `trending` a 6 h → `discovery_snapshots`; posição alimenta a prioridade da fila) |
+| `tmdb.search` / `tmdb.discover` / `tmdb.lists` | ❌ | `not_applicable` (roadmap F8) |
 | `tmdb.recommendations.standalone` / `tmdb.similar.standalone` | ❌ | `not_applicable` (roadmap F8) |
 | `tmdb.watch_providers.standalone` | ❌ | `not_applicable` (onde-assistir vem do streaming_availability) |
 | `tmdb.configuration` | ❌ | `not_applicable` (CDN hardcoded; roadmap F7) |
@@ -107,7 +108,7 @@ Exatamente **1 por endpoint e 1 por campo**:
 Nada é descartado silenciosamente. Áreas exigidas pela cobertura total, ainda não
 implementadas, ficam registradas com `not_applicable` + `justification` citando a fase:
 
-- **TMDB** (F7/F8): trending, listas de usuário (v3 `/list`), recomendações/similares standalone, watch providers standalone, coleções, network/company/keyword detalhe. Busca/discover/listas curadas/changes têm **client tipado + testado** (F6) mas ainda sem worker de execução (F8).
+- **TMDB** (F7/F8): listas de usuário (v3 `/list`), recomendações/similares standalone, coleções, network/company/keyword detalhe. Busca/discover/listas curadas/changes têm **client tipado + testado** (F6) mas ainda sem worker de execução (F8). **Trending e watch providers standalone saíram desta lista** — os dois passaram a ser agendados (2026-08-21).
 - **Gemini** (F11): streaming, structured output, generationConfig, batch, caching, Files, countTokens ativo, embeddings, safety, models list, deprecações.
 - **Streaming** (F9): disponibilidade de pessoa/temporada/episódio; modelagem platforms/providers; fallback KASO.
 - **Notícias** (F13): pipeline RSSPRIME/MN26 completo.

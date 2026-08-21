@@ -73,6 +73,7 @@ reprova entrada sem motivo escrito.
 | Fila | Ritmo | Fornecedor | Por que |
 | --- | --- | --- | --- |
 | `watch_offers` | **diario** | tmdb | O dado que mais estraga. Endpoint DEDICADO (`/movie/{id}/watch/providers`), ~2 kB, contra 130,6 kB (filme) / 648,3 kB (serie) do detalhe. |
+| `trending` | **6 h** | tmdb | O sinal de AGORA. 4 requisicoes por ciclo (movie\|tv x day\|week, 1 pagina). O intervalo NAO e numero novo: `discovery-snapshots/index.ts:32` ja declarava TTL de 6 h para trending. |
 | `airing_series` | **diario** | tmdb | Episodio que foi ao ar hoje tem que estar na pagina hoje. So `status` em exibicao/producao. |
 | `discovery` | **diario** | tmdb-exports | Os Daily ID Exports saem uma vez por dia (~08:00 UTC). Arquivo publico: sem token, sem cota. |
 | `changes` | **6 h** | tmdb | A janela do `/changes` e ~24 h (max. 14 dias). 6 h da quatro tentativas dentro de uma janela — tres ciclos podem falhar sem que nada se perca. |
@@ -98,6 +99,9 @@ reprova entrada sem motivo escrito.
 4. **`changes` a cada 6 h** — nao estava na proposta. Entrou porque a janela do
    `/changes` e finita: sem redundancia dentro dela, tres falhas seguidas perdem
    mudancas para sempre.
+5. **`trending` a cada 6 h** (2026-08-21). O client existia e estava testado
+   desde a Fase 6, o job `sync_lists` existia, a tabela existia — e ninguem
+   enfileirava. Ver a secao "O sinal de AGORA" abaixo.
 
 ### A ordem DENTRO de cada fila
 
@@ -120,6 +124,41 @@ nas duas tabelas e e atualizado por nos em todo sync de detalhe.
 
 O que mudou no codigo: `services/ratings/src/persistence/stale-entity-candidates.ts`
 ordenava por `e."id" ASC` — ordem de INSERCAO.
+
+### O sinal de AGORA: trending na prioridade
+
+`popularity` e ACUMULADA. Um titulo que estreou ontem e explodiu tem popularity
+acumulada baixa: cai na faixa de CAUDA (`+16`) e espera atras de milhares de
+titulos antigos e mornos, no exato dia em que a pagina dele mais e procurada.
+
+**O peso: a posicao do `trending/day` SUBSTITUI o rank de popularidade.** Nao
+soma, nao pondera. Somar exigiria uma constante inventada — `popularity` e um
+float sem teto publicado e a posicao do trending e um ordinal de 1 a 20, e nao
+existe taxa de conversao entre os dois (nem o TMDB publica, nem medimos).
+Substituir nao precisa de constante nenhuma, porque os dois ja sao a MESMA
+grandeza (ordem de atencao) em janelas diferentes.
+
+**Efeito medido:** rank 40.000 por popularidade (offset `+16`) que aparece na
+posicao 3 do trending vira rank 3 (offset `0`). Sao **16 pontos** de prioridade,
+do fundo da faixa `scheduled` para a frente dela. O teto continua valendo: o
+deslocamento fica em `[0, 16]`, entao trending **nunca** promove um pedido para a
+faixa de outro motivo — `changes` e `on_demand` seguem na frente.
+
+**Duas ressalvas que precisam estar escritas:**
+
+1. **`day` e `week` nao colapsam.** `day` alimenta a prioridade da fila; `week`
+   existe para a superficie "Popular essa semana". Sao janelas diferentes e
+   respondem perguntas diferentes.
+2. **O snapshot so guarda entidade JA PROMOVIDA** (o store descarta o resto). Ou
+   seja: este sinal acelera titulo que ja existe no catalogo; ele **nao** acelera
+   a primeira ingestao de um titulo que o catalogo ainda nao tem — quem descobre
+   esse continua sendo o Daily ID Export, pela fila `discovery`.
+
+**Degradacao segura:** a leitura filtra por `expires_at > now`, nao por "o mais
+recente". Se a fila `trending` parar, o snapshot vence, o mapa fica vazio e a
+fila volta a ordenar por popularidade acumulada — o comportamento anterior, que
+continua correto. E a parada e VISIVEL: a fila cruza 2x o intervalo e o alerta
+dispara.
 
 ---
 

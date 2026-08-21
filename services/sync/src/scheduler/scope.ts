@@ -44,3 +44,21 @@ export function dailyScope(queue: string, now: Date): string {
 export function hourlySlot(now: Date): string {
   return now.toISOString().slice(0, 13)
 }
+
+/**
+ * O escopo de uma fila cujo ciclo e de N HORAS (o trending, a 6 h).
+ *
+ * Nem o dia (colapsaria os quatro ciclos de 6 h num so, e a lista congelaria no
+ * primeiro do dia) nem a hora cheia (criaria seis chaves onde ha quatro
+ * trabalhos, e o hash-noop do snapshot pagaria a diferenca em requisicao).
+ *
+ * O balde e ancorado na MEIA-NOITE UTC: `floor(hora / N)`. Ancorar no "agora"
+ * faria o balde deslizar a cada reinicio do container, e duas replicas que
+ * subissem em minutos diferentes veriam baldes diferentes para o mesmo ciclo.
+ */
+export function windowSlot(queue: string, now: Date, hours: number): string {
+  const size = Math.max(1, Math.trunc(hours))
+  const bucket = Math.floor(now.getUTCHours() / size) * size
+  const day = now.toISOString().slice(0, 10)
+  return `${queue}:${day}T${String(bucket).padStart(2, '0')}`
+}

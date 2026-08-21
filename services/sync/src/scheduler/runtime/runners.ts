@@ -52,7 +52,8 @@ import {
 
 import type { SchedulerQueue } from '../rhythms.js'
 import { backgroundOmdbSlots } from '../quota.js'
-import { dailyScope, hourlySlot } from '../scope.js'
+import { dailyScope, hourlySlot, windowSlot } from '../scope.js'
+import { effectiveRank, NO_TRENDING, type TrendingRanks } from '../trending.js'
 import type { RunReason, RunTally } from '../run-outcome.js'
 import { readSpentToday } from './facts.js'
 import {
@@ -60,6 +61,7 @@ import {
   selectStalePeople,
   selectStaleWatchOffers,
   selectTitlesByActivity,
+  selectTrendingRanks,
   type TitleCandidate,
 } from './selection.js'
 
@@ -151,6 +153,7 @@ async function enqueueTitleDetails(
   queue: SchedulerQueue,
   candidates: readonly TitleCandidate[],
   startedAt: Date,
+  trending: TrendingRanks = NO_TRENDING,
 ): Promise<RunTally> {
   const reasons = new Map<string, RunReason>()
   let processed = 0
@@ -158,6 +161,9 @@ async function enqueueTitleDetails(
   let failed = 0
 
   for (const candidate of candidates) {
+    // A POSICAO DO TRENDING SUBSTITUI o rank de popularidade quando existe (ver
+    // `../trending.ts` para por que substitui em vez de somar).
+    const { rank, signal } = effectiveRank(candidate.tmdbId, candidate.rank, trending)
     try {
       // A PORTA UNICA de cobertura (`buildCoverageJob`). O agendador NAO monta o
       // job a mao: um segundo caminho de ingestao nao falha no dia em que e
@@ -175,12 +181,22 @@ async function enqueueTitleDetails(
           // e trabalho novo. Sem ele o segundo ciclo colidiria na mesma chave e a
           // fila congelaria no primeiro lote, em silencio.
           scope: dailyScope(queue, deps.now()),
-          rank: candidate.rank,
+          rank,
           runId: `scheduler:${queue}`,
         }) as unknown as Record<string, unknown>,
       )
-      if (result.created) processed += 1
-      else {
+      if (result.created) {
+        processed += 1
+        // Quantos subiram na fila POR TRENDING. Sem esta contagem, o sinal
+        // ligado e o sinal quebrado produzem o mesmo relatorio.
+        if (signal === 'trending') {
+          countReason(
+            reasons,
+            'trending_boost',
+            'rank do trending do dia substituiu o de popularidade acumulada',
+          )
+        }
+      } else {
         skipped += 1
         countReason(reasons, 'already_queued', 'job identico ja estava na fila deste dia')
       }
@@ -297,22 +313,120 @@ const runChanges: QueueRunner = async (deps) => {
   ])
 }
 
+/**
+ * O trending do DIA, para a prioridade.
+ *
+ * `day` e nao `week`: a fila quer saber o que o leitor procura HOJE. `week`
+ * existe para as superficies (o rotulo "Popular essa semana"), nao para a fila.
+ *
+ * Snapshot vencido devolve mapa vazio e a fila volta a ordenar por popularidade
+ * acumulada — degradacao para o estado anterior, que continua correto.
+ */
+async function trendingOfTheDay(deps: RunnerDeps): Promise<TrendingRanks> {
+  try {
+    return await selectTrendingRanks(deps.prisma, deps.now(), 'day', deps.locale)
+  } catch (error) {
+    // Falha ao LER o sinal de prioridade nao pode derrubar a fila: sem ele o
+    // lote ainda e util, so ordenado pelo sinal antigo. Mas nao e silencioso.
+    deps.log.log('warn', 'scheduler_trending_read_failed', { error: String(error) })
+    return NO_TRENDING
+  }
+}
+
 const runAiringSeries: QueueRunner = async (deps) => {
   const startedAt = deps.now()
+  const trending = await trendingOfTheDay(deps)
   const candidates = await selectAiringSeries(deps.prisma, startedAt, deps.batchLimit)
-  return enqueueTitleDetails(deps, 'airing_series', candidates, startedAt)
+  return enqueueTitleDetails(deps, 'airing_series', candidates, startedAt, trending)
 }
 
 const runTitleDetailActive: QueueRunner = async (deps) => {
   const startedAt = deps.now()
+  const trending = await trendingOfTheDay(deps)
   const candidates = await selectTitlesByActivity(deps.prisma, startedAt, 'active', deps.batchLimit)
-  return enqueueTitleDetails(deps, 'title_detail_active', candidates, startedAt)
+  return enqueueTitleDetails(deps, 'title_detail_active', candidates, startedAt, trending)
 }
 
 const runTitleDetailEnded: QueueRunner = async (deps) => {
   const startedAt = deps.now()
+  const trending = await trendingOfTheDay(deps)
   const candidates = await selectTitlesByActivity(deps.prisma, startedAt, 'ended', deps.batchLimit)
-  return enqueueTitleDetails(deps, 'title_detail_ended', candidates, startedAt)
+  return enqueueTitleDetails(deps, 'title_detail_ended', candidates, startedAt, trending)
+}
+
+/**
+ * A fila `trending`: quatro `sync_lists` por ciclo.
+ *
+ * QUATRO E O NUMERO INTEIRO DO CUSTO: movie|tv x day|week, uma pagina cada (20
+ * itens cobrem trilhos de 6-7 cards com folga). Nao ha custo por titulo — e um
+ * endpoint de LISTA, e por isso ele nao aceita `append_to_response` e nao pode
+ * pegar carona no detalhe.
+ *
+ * As DUAS janelas entram porque sao dois sinais que nao colapsam: `day` alimenta
+ * a prioridade da fila e o trilho "Em Alta"; `week` alimenta o rotulo "Popular
+ * essa semana", que hoje afirma uma janela que a consulta nao tem.
+ */
+const runTrending: QueueRunner = async (deps) => {
+  const startedAt = deps.now()
+  const reasons = new Map<string, RunReason>()
+  let processed = 0
+  let skipped = 0
+  let failed = 0
+
+  const combos = [
+    { entityType: 'movie' as const, window: 'day' as const },
+    { entityType: 'movie' as const, window: 'week' as const },
+    { entityType: 'tv' as const, window: 'day' as const },
+    { entityType: 'tv' as const, window: 'week' as const },
+  ]
+
+  for (const combo of combos) {
+    try {
+      const result = await deps.services.store.enqueue({
+        jobType: 'sync_lists',
+        entityType: combo.entityType,
+        externalId: null,
+        idempotencyKey: buildIdempotencyKey({
+          jobType: 'sync_lists',
+          entityType: combo.entityType,
+          externalId: null,
+          // Balde de 6 h ancorado na meia-noite UTC: reenfileirar dentro do
+          // ciclo e noop; o ciclo seguinte e trabalho novo.
+          discriminator: `${windowSlot('trending', startedAt, 6)}:${combo.window}:${deps.locale}`,
+        }),
+        payload: {
+          listType: 'trending',
+          entityType: combo.entityType,
+          locale: deps.locale,
+          country: null,
+          window: combo.window,
+          // UMA pagina. `sync_lists` faria ate 5 por default, e as quatro
+          // seguintes so trariam cauda que nenhum trilho exibe — 16 requisicoes
+          // por ciclo em vez de 4, para o mesmo resultado na tela.
+          maxPages: 1,
+        },
+        runId: 'scheduler:trending',
+      })
+      if (result.created) processed += 1
+      else {
+        skipped += 1
+        countReason(reasons, 'already_queued', 'ciclo de 6 h ja enfileirado')
+      }
+    } catch (error) {
+      failed += 1
+      countReason(reasons, 'enqueue_failed', String(error))
+    }
+  }
+
+  return tally(
+    'trending',
+    startedAt,
+    deps.now(),
+    { planned: combos.length, processed, failed, skipped },
+    [...reasons.values()],
+    // 1 requisicao por combo, executada pelo handler quando o job rodar.
+    { providerApi: 'tmdb', requests: processed },
+  )
 }
 
 const runPeople: QueueRunner = async (deps) => {
@@ -654,6 +768,7 @@ const runSearchProjection: QueueRunner = async (deps) => {
 export const QUEUE_RUNNERS: Readonly<Record<SchedulerQueue, QueueRunner>> = {
   discovery: runDiscovery,
   changes: runChanges,
+  trending: runTrending,
   watch_offers: runWatchOffers,
   airing_series: runAiringSeries,
   title_detail_active: runTitleDetailActive,

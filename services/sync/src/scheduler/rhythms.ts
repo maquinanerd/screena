@@ -33,6 +33,7 @@ export const SCHEDULER_QUEUES = [
   'discovery',
   'changes',
   'watch_offers',
+  'trending',
   'airing_series',
   'title_detail_active',
   'title_detail_ended',
@@ -98,6 +99,20 @@ export const RHYTHMS: readonly Rhythm[] = [
       'Custa 1 requisicao por titulo no endpoint DEDICADO (/movie/{id}/watch/providers), ' +
       'nao o detalhe inteiro: ~2 kB contra os 130,6 kB (filme) e 648,3 kB (serie) medidos ' +
       'do payload de detalhe.',
+  },
+  {
+    queue: 'trending',
+    cadence: 'fixed',
+    intervalHours: 6 * HOUR,
+    seasonalIntervalHours: null,
+    providerApi: 'tmdb',
+    label: 'Em alta (trending day + week)',
+    rationale:
+      'O intervalo NAO e numero novo: discovery-snapshots/index.ts ja declara ' +
+      'trending com TTL de 6 h ("sinal volatil"), e .claude/rules/ingestion.md diz ' +
+      '6-12 h. 6 h alinha com a fila `changes`. O custo e O(1) por ciclo, nao por ' +
+      'titulo: 4 requisicoes (movie|tv x day|week), 20 itens por pagina, uma pagina ' +
+      'basta. O hash-noop do snapshot faz lista inalterada nao gerar linha.',
   },
   {
     queue: 'airing_series',
