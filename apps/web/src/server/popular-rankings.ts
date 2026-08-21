@@ -25,6 +25,11 @@ import { getPrismaClient } from "@screena/db/server";
 
 import { licensedWatchWhere } from "./entity-watch";
 import {
+  readTrendingSnapshot,
+  trendingAbsenceFor,
+  type TrendingAbsenceReason,
+} from "./trending-snapshot";
+import {
   POPULAR_RANKING_LIMIT,
   RANKING_TABS,
   rankTitles,
@@ -88,7 +93,15 @@ export type RankingAbsenceReason =
   /** Nenhum titulo antigo com volume minimo de votos. */
   | "no_qualified_classic"
   /** O catalogo nao tem titulo com slug canonico pt-BR deste tipo. */
-  | "no_catalog_entity";
+  | "no_catalog_entity"
+  /**
+   * As tres causas de nao haver TRENDING vigente. Elas chegam prontas de
+   * `trending-snapshot.ts` e nao colapsam entre si: "nunca capturou" pede que
+   * alguem LIGUE a fila; "venceu" pede que alguem descubra por que ela PAROU; e
+   * "sem sobreposicao" nao pede nada da ingestao — o que esta em alta no mundo
+   * ainda nao esta no nosso catalogo.
+   */
+  | TrendingAbsenceReason;
 
 /** Causas que dependem de alguem AGIR (ingestao, licenca, decisao). */
 const ACTIONABLE_RANKING_REASONS: ReadonlySet<RankingAbsenceReason> = new Set([
@@ -97,6 +110,12 @@ const ACTIONABLE_RANKING_REASONS: ReadonlySet<RankingAbsenceReason> = new Set([
   "no_recent_episode",
   "no_season_premiere",
   "no_catalog_entity",
+  // Os dois primeiros do trending SAO acionaveis (ligar a fila; descobrir por
+  // que ela parou). O terceiro NAO e: `no_trending_overlap` e fato sobre a
+  // cobertura do catalogo, e some sozinho conforme a semente cresce — marca-lo
+  // como acionavel mandaria o operador procurar um defeito que nao existe.
+  "no_trending_snapshot",
+  "trending_snapshot_expired",
 ]);
 
 export interface RankingAbsence {
@@ -234,32 +253,31 @@ async function streamingCandidates(
   }));
 }
 
-/** Candidatos por popularidade ja ingerida (nunca ordenacao arbitraria). */
-async function popularCandidates(
+/**
+ * Candidatos do TRENDING DA SEMANA, na ordem da lista.
+ *
+ * Substituiu `popularCandidates` (que ordenava por `popularity desc`) nas abas
+ * "Filmes" e "Séries". O motivo nao e preferencia: a secao se chama "Popular
+ * essa semana" e `popularity` e ACUMULADA — o rotulo afirmava uma janela que a
+ * consulta nao tinha.
+ *
+ * SEM FALLBACK. Trending vazio devolve lista vazia com o motivo nomeado, nunca
+ * um complemento por popularidade: titulo nao-trending sob rotulo de trending e
+ * a mesma mentira em letra miuda. `CANDIDATE_FETCH_LIMIT` nao se aplica — o
+ * snapshot ja e um topo (20 itens), e cortar de novo so descartaria candidato
+ * que a etapa de identidade publica ainda pode precisar.
+ */
+async function trendingCandidates(
   prisma: PrismaClient,
   entityType: RankingEntityType,
-): Promise<Candidate[]> {
-  if (entityType === "movie") {
-    const rows = await prisma.movie.findMany({
-      where: { popularity: { not: null } },
-      orderBy: [{ popularity: "desc" }, { id: "asc" }],
-      take: CANDIDATE_FETCH_LIMIT,
-      select: { id: true },
-    });
-    return rows.map((row) => ({ entityType: "movie" as const, entityId: row.id }));
-  }
-  const rows = await prisma.tvShow.findMany({
-    where: { popularity: { not: null } },
-    orderBy: [{ popularity: "desc" }, { id: "asc" }],
-    take: CANDIDATE_FETCH_LIMIT,
-    select: { id: true },
-  });
-  return rows.map((row) => ({ entityType: "tv" as const, entityId: row.id }));
-}
-
-/** Motivo padrao quando um recorte por popularidade volta vazio. */
-function popularityAbsence(): RankingAbsenceReason {
-  return "no_catalog_entity";
+  now: Date,
+): Promise<{ candidates: Candidate[]; reason: RankingAbsenceReason }> {
+  const snapshot = await readTrendingSnapshot(prisma, entityType, "week", now);
+  const candidates = snapshot.entityIds.map((entityId) => ({ entityType, entityId }));
+  return {
+    candidates,
+    reason: trendingAbsenceFor(snapshot, candidates.length) ?? "no_trending_overlap",
+  };
 }
 
 /**
@@ -273,8 +291,12 @@ async function rankingCandidates(
 ): Promise<{ candidates: Candidate[]; reason: RankingAbsenceReason }> {
   switch (slug) {
     // ---------------------------------------------------------------- filmes
+    // "Popular essa semana" AFIRMA UMA JANELA, e ate 2026-08-21 a consulta nao
+    // tinha nenhuma: era `popularity desc`, um acumulado sem recorte de tempo.
+    // Rotulo que afirma janela tem de ter janela — agora le o `trending/week`
+    // capturado pela fila `trending` do agendador.
     case "filmes":
-      return { candidates: await popularCandidates(prisma, "movie"), reason: popularityAbsence() };
+      return trendingCandidates(prisma, "movie", now);
 
     case "classicos": {
       const rows = await prisma.movie.findMany({
@@ -306,7 +328,7 @@ async function rankingCandidates(
 
     // ---------------------------------------------------------------- series
     case "series":
-      return { candidates: await popularCandidates(prisma, "tv"), reason: popularityAbsence() };
+      return trendingCandidates(prisma, "tv", now);
 
     case "no-ar": {
       const since = new Date(now.getTime() - ON_THE_AIR_WINDOW_DAYS * MS_PER_DAY);

@@ -221,6 +221,48 @@ da URL) e, num DOM real (`jsdom`),
 `youtube-facade.test.tsx` (foco, ESC, fundo, devolução de foco, e a asserção
 negativa de que nenhum endereço do YouTube existe antes do clique).
 
+### "Em alta" e "Popular essa semana": rótulo que afirma janela TEM janela
+
+Três superfícies afirmavam um recorte de tempo e ordenavam por
+`movies.popularity`, que é **acumulada** — um número sem janela nenhuma. Desde
+2026-08-21 as três leem `discovery_snapshots`, capturado offline pela fila
+`trending` do agendador (6 h, 4 requisições por ciclo).
+
+| Superfície | Rótulo visível | Janela | Getter |
+| --- | --- | --- | --- |
+| Faixa da home | **"Filmes em alta"** | `trending/day` | `getHomeCatalogData()` |
+| Banda escura (home, filmes, séries) | **"Popular essa semana"** — abas *Filmes* e *Séries* | `trending/week` | `loadPopularRanking()` |
+| `/pt/explorar/` | **"Em Alta"** | `trending/day` | `getDiscoverData()` |
+
+- **As abas que NÃO mudaram** continuam com o critério próprio: *Clássicos*
+  (estreia até 1999 + volume mínimo de votos), *No ar* (episódio na janela de 7
+  dias), *Novas temporadas* (estreia de temporada na janela), *Streaming* (oferta
+  licenciada), *Em cartaz*/*Cinema* (vazias — o fato "sessão numa sala" não
+  existe no modelo de dados). Elas nunca afirmaram a janela que não tinham.
+- **`day` e `week` não colapsam.** São duas capturas distintas e respondem
+  perguntas distintas: "o que explodiu hoje" e "o que sustentou a semana". Reusar
+  uma pela outra reintroduz a mentira com outro nome.
+- **NUNCA há fallback para popularidade.** Snapshot vazio ⇒ a seção declara a
+  ausência; ela não é completada com títulos não-trending. Um título fora da
+  lista sob um rótulo que afirma a lista é a mesma mentira em letra miúda.
+- **A ausência tem TRÊS causas e elas não colapsam**, porque pedem ações
+  diferentes: `no_trending_snapshot` (a fila nunca rodou — ligue),
+  `trending_snapshot_expired` (a fila parou — descubra por quê; o alerta de fila
+  parada do agendador já deve estar gritando) e `no_trending_overlap` (a captura
+  veio cheia, mas o que está em alta no mundo ainda não está no nosso catálogo —
+  não há o que fazer na ingestão, some conforme a semente cresce).
+- **O snapshot lido é o VIGENTE** (`expires_at > now`), nunca "o mais recente".
+  Sem esse filtro, uma fila parada faria a tela exibir o que estava em alta na
+  semana passada sob o rótulo "essa semana", para sempre.
+- **`buildTrendingMovieCards` passou a fazer o que o nome diz.** Ele se chamava
+  assim desde sempre e recebia ordem por popularidade acumulada.
+
+Travado por `apps/web/src/server/__tests__/popular-rankings-queries.test.ts`
+(prova sobre a CONSULTA, não sobre o markup) e por
+`tests/governance/projection-has-consumer.test.ts`, que reprova quando uma tabela
+de projeção não tem leitor onde ela foi feita para ser lida — o guard que teria
+pegado `discovery_snapshots` escrita por meses sem nenhuma superfície.
+
 ### QA visual da primeira dobra
 
 São **dois** harnesses, com coberturas disjuntas:

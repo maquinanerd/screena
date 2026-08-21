@@ -2,15 +2,37 @@
  * Snapshot de catálogo para a faixa “Filmes em alta” da home canônica.
  *
  * Somente PostgreSQL local: a consulta não chama TMDB nem qualquer serviço no
- * render. `popularity` é o valor já ingerido offline; registros sem esse sinal
- * são omitidos para que a UI nunca rotule uma ordenação arbitrária como “em
- * alta”. O presenter puro preserva a ordem e nunca repete cards.
+ * render. O presenter puro preserva a ordem e nunca repete cards.
+ *
+ * ============================================================================
+ * A FAIXA SE CHAMA "EM ALTA", E ATÉ 2026-08-21 ELA NÃO ERA
+ * ============================================================================
+ * A ordenação era `popularity desc` — um número **acumulado**, sem janela
+ * nenhuma. O comentário anterior deste arquivo dizia que registros sem
+ * `popularity` eram omitidos "para que a UI nunca rotule uma ordenação
+ * arbitrária como 'em alta'", e o cuidado era real: só que `popularity` também
+ * não é "em alta". Um título que estreou ontem e explodiu tem popularity
+ * acumulada baixa e nunca aparecia; um título morno de dez anos atrás aparecia
+ * todo dia.
+ *
+ * Agora a faixa lê o `trending/day` capturado pela fila `trending` do agendador
+ * (`services/sync/src/scheduler/rhythms.ts`, 6 h). `buildTrendingMovieCards`
+ * passou a fazer o que o nome dele diz.
+ *
+ * SEM FALLBACK para popularidade quando o trending vem vazio — ver
+ * `trending-snapshot.ts`. Vazio => faixa ausente com o motivo nomeado.
  */
 
 import { cache } from "react";
 import { getPrismaClient } from "@screena/db/server";
 
 import { resolveEditorialScoreSources } from "./editorial-score";
+import {
+  getTrendingSnapshot,
+  orderByTrending,
+  trendingAbsenceFor,
+  type TrendingAbsenceReason,
+} from "./trending-snapshot";
 
 import {
   buildTrendingMovieCards,
@@ -65,21 +87,31 @@ async function canonicalIdentity(
 
 export interface HomeCatalogData {
   movies: EntityCard[];
+  /**
+   * `null` quando a faixa veio cheia; senão o motivo, para o log da superfície.
+   *
+   * A faixa sumir calada seria o defeito que esta mudança combate com outra
+   * roupa: antes ela mentia, agora ela poderia desaparecer sem dizer por quê.
+   */
+  trendingAbsence: TrendingAbsenceReason | null;
 }
 
 export const getHomeCatalogData = cache(async (): Promise<HomeCatalogData> => {
   const prisma = getPrismaClient();
   const movieIdentity = await canonicalIdentity("movie");
-  const movies =
-    movieIdentity.ids.length === 0
+  const snapshot = await getTrendingSnapshot("movie", "day");
+
+  // A interseção é feita EM MEMÓRIA e não no `orderBy` do banco: a ordem é a do
+  // trending, e SQL não sabe ordenar por uma lista de ids sem um `CASE` gerado.
+  // O conjunto é pequeno por construção (o snapshot é um topo de 20).
+  const trendingIds = snapshot.entityIds.filter((id) =>
+    movieIdentity.ids.some((candidate) => candidate === id),
+  );
+  const rows =
+    trendingIds.length === 0
       ? []
       : await prisma.movie.findMany({
-          where: {
-            id: { in: movieIdentity.ids },
-            popularity: { not: null },
-          },
-          orderBy: [{ popularity: "desc" }, { id: "asc" }],
-          take: HOME_TRENDING_CARD_LIMIT,
+          where: { id: { in: trendingIds } },
           select: {
             id: true,
             titleOriginal: true,
@@ -90,6 +122,10 @@ export const getHomeCatalogData = cache(async (): Promise<HomeCatalogData> => {
             screenScoreDisplay: true,
           },
         });
+  const movies = orderByTrending(rows, (row) => row.id, snapshot.entityIds).slice(
+    0,
+    HOME_TRENDING_CARD_LIMIT,
+  );
 
   // Procedencia do Cinerie Score em LOTE (ver `editorial-score`): sem calculo
   // `calculated` coerente, a nota fica sem origem editorial e o card a oculta.
@@ -118,7 +154,9 @@ export const getHomeCatalogData = cache(async (): Promise<HomeCatalogData> => {
       screenScoreSource: scoreSources.get(key) ?? null,
     };
   });
+  const cards = buildTrendingMovieCards(movieInputs);
   return {
-    movies: buildTrendingMovieCards(movieInputs),
+    movies: cards,
+    trendingAbsence: trendingAbsenceFor(snapshot, cards.length),
   };
 });
