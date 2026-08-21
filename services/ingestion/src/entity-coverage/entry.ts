@@ -48,12 +48,12 @@ export const COVERABLE_KINDS = ['movie', 'tv', 'person'] as const
 export type CoverableKind = (typeof COVERABLE_KINDS)[number]
 
 /**
- * QUEM pediu a cobertura. Os tres chamadores do T0, e so eles.
+ * QUEM pediu a cobertura. Os chamadores autorizados, e so eles.
  *
  * Nao e rotulo decorativo: o motivo determina a PRIORIDADE na fila e entra no
  * payload, onde vira a resposta legivel de "por que este titulo foi buscado?".
  */
-export const COVERAGE_REASONS = ['discovery', 'changes', 'on_demand'] as const
+export const COVERAGE_REASONS = ['discovery', 'changes', 'on_demand', 'scheduled'] as const
 
 /** Um motivo de cobertura. */
 export type CoverageReason = (typeof COVERAGE_REASONS)[number]
@@ -68,14 +68,83 @@ export type CoverageReason = (typeof COVERAGE_REASONS)[number]
  *    unico que fura a fila;
  *  - `changes` (50): o upstream mudou. O dado publicado esta DESATUALIZADO —
  *    errado, nao ausente — e corrigir mentira vem antes de preencher lacuna;
+ *  - `scheduled` (80): o AGENDADOR pediu porque o dado venceu a janela de
+ *    frescor. Ninguem esta bloqueado e ninguem afirmou que mudou — mas o dado
+ *    publicado esta VELHO, o que e pior que um id que ainda nao existe. Fica
+ *    entre corrigir mentira e preencher lacuna;
  *  - `discovery` (100): backfill do universo. Nada quebra se este id entrar uma
- *    hora depois, entao ele cede a vez para os outros dois.
+ *    hora depois, entao ele cede a vez para todos os outros.
  */
 export const COVERAGE_PRIORITY: Readonly<Record<CoverageReason, number>> = Object.freeze({
   on_demand: 10,
   changes: 50,
+  scheduled: 80,
   discovery: 100,
 })
+
+/**
+ * O AJUSTE FINO por popularidade, DENTRO de um motivo.
+ *
+ * Existe porque uma fila de manutencao com 10 mil titulos e um teto diario de
+ * cota nao pode ser servida em ordem de insercao: o titulo mais aberto do site
+ * esperaria dias atras de milhares que ninguem abriu. O sinal e `popularity` do
+ * TMDB — medido, ja preenchido e ja indexado (ver
+ * `services/sync/src/scheduler/priority.ts` para por que "pagina aberta pelo
+ * leitor" NAO foi usado: essa medicao nao existe no banco).
+ *
+ * OS DESLOCAMENTOS SAO MENORES QUE A DISTANCIA ENTRE MOTIVOS, e isso e o
+ * contrato: o maior ajuste (`+16`) e ESTRITAMENTE menor que o menor intervalo
+ * entre dois motivos (`80 -> 100`, isto e 20). Popularidade NUNCA promove um
+ * pedido para a faixa de outro motivo — ela so ordena dentro da propria faixa.
+ *
+ * O teto de 16 (e nao 20, o valor obvio) tem motivo: com 20, um `scheduled` de
+ * cauda (80+20) EMPATARIA com um `discovery` sem rank (100+0), e empate no
+ * `ORDER BY priority ASC` do claim faz o desempate cair em `available_at` — isto
+ * e, em ordem de insercao, exatamente o criterio que este ajuste existe para
+ * substituir. O teste `coverage-priority-by-popularity.test.ts` mede a distancia
+ * real em vez de confiar no numero escrito aqui.
+ *
+ * Faixas (e nao um valor por titulo) porque o indice de claim e
+ * `(status, priority, available_at)`: prioridade continua faria cada job virar
+ * um valor distinto e a segunda coluna perderia poder de agrupamento.
+ */
+export const POPULARITY_PRIORITY_OFFSETS: readonly { readonly maxRank: number; readonly offset: number }[] =
+  Object.freeze([
+    { maxRank: 10, offset: 0 },
+    { maxRank: 100, offset: 4 },
+    { maxRank: 1_000, offset: 8 },
+    { maxRank: 10_000, offset: 12 },
+    { maxRank: Number.POSITIVE_INFINITY, offset: 16 },
+  ])
+
+/**
+ * O deslocamento de um rank.
+ *
+ * `undefined` E `null` NAO SAO A MESMA COISA aqui, e a distincao e o ponto:
+ *
+ *   `undefined` — o chamador NAO ranqueia. E o caso dos tres chamadores
+ *                 originais (discovery, changes, on_demand): eles nao tem
+ *                 ranking e nunca tiveram. Deslocamento ZERO, para que a
+ *                 prioridade deles continue sendo exatamente
+ *                 `COVERAGE_PRIORITY[reason]` — acrescentar um offset uniforme
+ *                 nao mudaria a ordem, mas faria a tabela de constantes mentir.
+ *   `null`      — o chamador RANQUEIA, e ESTE item nao tem posicao medida (ex.:
+ *                 `people`, que nao tem `popularity` no schema). Cai na faixa
+ *                 mais baixa: fail-safe na direcao que so custa tempo, porque um
+ *                 titulo sem posicao medida nao pode herdar a prioridade do topo.
+ *
+ * Colapsar os dois faria uma dessas duas coisas erradas: ou o chamador que nao
+ * ranqueia perderia prioridade sem motivo, ou o item sem medicao furaria fila.
+ */
+export function popularityPriorityOffset(rank: number | null | undefined): number {
+  if (rank === undefined) return 0
+  const last = POPULARITY_PRIORITY_OFFSETS[POPULARITY_PRIORITY_OFFSETS.length - 1]!.offset
+  if (rank === null || !Number.isFinite(rank) || rank <= 0) return last
+  for (const band of POPULARITY_PRIORITY_OFFSETS) {
+    if (rank <= band.maxRank) return band.offset
+  }
+  return last
+}
 
 /** Um pedido de cobertura de UMA entidade. */
 export interface CoverageRequest {
@@ -97,6 +166,14 @@ export interface CoverageRequest {
   readonly scope?: string | null
   /** Corrida a que este job pertence (observabilidade). */
   readonly runId?: string | null
+  /**
+   * Posicao 1-based no ranking de popularidade da SELECAO que gerou este pedido.
+   *
+   * Ajusta a prioridade DENTRO do motivo (ver `POPULARITY_PRIORITY_OFFSETS`).
+   * OMITIDO = o chamador nao ranqueia (deslocamento zero). `null` = ranqueia, mas
+   * este item nao tem posicao medida (faixa mais baixa). Os dois NAO colapsam.
+   */
+  readonly rank?: number | null
 }
 
 /** Erro de pedido malformado. Recusa cedo, com o campo culpado nomeado. */
@@ -166,7 +243,7 @@ export function buildCoverageJob(request: CoverageRequest): EnqueueCatalogJobInp
       enqueueDependencies: true,
       ...(scope === null ? {} : { window: scope }),
     },
-    priority: COVERAGE_PRIORITY[request.reason],
+    priority: COVERAGE_PRIORITY[request.reason] + popularityPriorityOffset(request.rank),
     runId: request.runId ?? null,
   }
 }

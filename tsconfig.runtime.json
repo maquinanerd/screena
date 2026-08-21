@@ -30,6 +30,13 @@
     "services/streaming/src/persistence/**/*.ts",
     "services/streaming/bin/register-watch-providers.ts",
     "services/legal/bin/legal.ts",
+    // O AGENDADOR e o painel. Sao entrypoints de PRODUCAO (`screen-cron`) e
+    // entram aqui pelo mesmo motivo dos demais bins listados: `services/sync/bin/**`
+    // esta fora do typecheck da raiz, e um import de tipo usado como VALOR
+    // derrubaria o container no import, antes de qualquer log — que num
+    // AGENDADOR significa nenhuma fila rodando e nenhuma pista do porque.
+    "services/sync/bin/cinerie-scheduler.ts",
+    "services/sync/bin/ingestion-status.ts",
     "services/news-ingestion/src/persistence/**/*.ts",
     "services/news-ingestion/bin/editorial.ts",
     // Entrypoint da despublicacao de emergencia: mesmo motivo dos demais bins

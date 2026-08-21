@@ -1,6 +1,12 @@
 /**
  * omdb-budget.ts — Quem cede quando a cota da OMDb acaba (PURO).
  *
+ * MUDOU DE CASA (nao de regra): morava em `services/ingestion/src/on-demand/`,
+ * onde so o crescimento sob demanda o enxergava — e por isso a fila de FUNDO
+ * (o worker de ratings) nunca o consultou, gastando cota sem pedir licenca. A
+ * politica e de POLITICA, nao de servico: mora em `@screena/config`, ao lado de
+ * `PROVIDER_QUOTAS`, e os dois consumidores a importam do mesmo lugar.
+ *
  * O PROBLEMA. A OMDb tem **1.000 requisicoes por dia** no plano gratuito, e
  * dois consumidores disputam esse mesmo teto:
  *
@@ -25,14 +31,26 @@
  * motivo; ver `shouldRequeue`.
  */
 
+import { OMDB_QUOTA } from "./provider-quotas.js";
+
 /** Quem esta pedindo cota. */
 export const OMDB_CONSUMERS = ['on_demand', 'seed'] as const
 
 /** Um consumidor de cota. */
 export type OmdbConsumer = (typeof OMDB_CONSUMERS)[number]
 
-/** Teto diario do plano gratuito. Propriedade do fornecedor. */
-export const OMDB_DAILY_LIMIT = 1_000
+/**
+ * Teto diario do plano gratuito. Propriedade do fornecedor.
+ *
+ * Deriva de `OMDB_QUOTA.perDay` (`provider-quotas.ts`), onde a CITACAO do numero
+ * vive. Repetir o literal aqui criaria dois tetos que podem divergir — e o que
+ * diverge silenciosamente e sempre o que ninguem esta olhando.
+ *
+ * `?? 0` e fail-closed de proposito: se um dia a OMDb deixar de declarar teto
+ * diario, ninguem passa ate alguem decidir o que fazer. Zero e recusa explicita;
+ * `Infinity` seria "gaste a vontade" escrito por acidente.
+ */
+export const OMDB_DAILY_LIMIT: number = OMDB_QUOTA.perDay ?? 0
 
 /**
  * Fatia do teto reservada ao leitor (sob demanda).

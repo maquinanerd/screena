@@ -487,12 +487,19 @@
     "provider": "tmdb",
     "provider_api": "tmdb",
     "role": "catalog",
-    "http": "GET /{movie,tv}/{id}/watch/providers, /watch/providers/{type}",
+    "http": "GET /{movie,tv}/{id}/watch/providers",
     "worker_only": true,
-    "implemented": false,
-    "coverage_state": "not_applicable",
-    "justification": "Sem endpoint standalone. TMDB watch/providers e REFERENCIA apenas (raw); onde-assistir e servido pelo provider streaming_availability, nao pelo TMDB (invariante: fonte editorial correta).",
-    "plan_area": "TMDB watch providers (Fase 8)"
+    "implemented": true,
+    "coverage_state": "normalized",
+    "anchor": {
+      "file": "api-clients/tmdb/src/catalog.ts",
+      "must_contain": [
+        "getMovieWatchProviders",
+        "getTvWatchProviders"
+      ]
+    },
+    "plan_area": "TMDB watch providers (Fase 8)",
+    "notes": "Implementado em 2026-08-21 para a fila DIARIA de ofertas do agendador (services/sync). A justificativa anterior ('onde-assistir e servido pelo streaming_availability, nao pelo TMDB') ficou DESATUALIZADA: desde a PR #179 a oferta BR vem do bloco watch/providers do TMDB, materializada por watch-providers/from-detail.ts. O endpoint standalone existe para que a oferta (que estraga em dias) tenha ritmo proprio sem arrastar o payload de detalhe inteiro todo dia: ~2 kB contra 130,6 kB (filme) e 648,3 kB (serie) medidos. A resposta e normalizada pelo MESMO normalizeWatchProviders e escrita pelo MESMO WatchOfferStore do caminho de detalhe — sem segundo parser. A fonte editorial NAO e o TMDB: o bloco e revenda de JustWatch (ver api-clients/tmdb/src/provider.ts); toda linha nasce display_allowed=false (invariante 6)."
   },
   {
     "id": "tmdb.configuration",

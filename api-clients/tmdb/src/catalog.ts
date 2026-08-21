@@ -254,6 +254,26 @@ export interface TmdbCatalogEndpoints {
   getSeasonImages(tvTmdbId: number, seasonNumber: number): Promise<TmdbImagesResponse>
   getEpisodeImages(tvTmdbId: number, seasonNumber: number, episodeNumber: number): Promise<TmdbImagesResponse>
   getPersonImages(tmdbId: number): Promise<TmdbImagesResponse>
+  /**
+   * Ofertas de "onde assistir" de UM titulo, no endpoint DEDICADO.
+   *
+   * POR QUE ELE EXISTE, SE O DETALHE JA TRAZ O MESMO BLOCO. Porque a OFERTA
+   * estraga em dias e o resto do detalhe (elenco, duracao, ano) nao estraga
+   * nunca. Sem endpoint proprio, "atualizar a oferta diariamente" significaria
+   * rebaixar o detalhe INTEIRO todo dia: ~130 kB por filme e ~648 kB por serie
+   * (bytes medidos do payload de detalhe) contra os ~2 kB deste bloco. Em 10 mil
+   * titulos e a diferenca entre ~20 MB e ~1,3 GB por dia — e entre reescrever a
+   * ficha toda ou so a oferta.
+   *
+   * A resposta e devolvida CRUA, no mesmo formato do sub-recurso `watch/providers`
+   * do detalhe (`{ id, results: { BR: {...} } }`), para que o MESMO normalizador
+   * reconheca as duas origens sem um segundo parser.
+   *
+   * Fonte editorial: o bloco NAO e dado do TMDB — ele revende JustWatch. Ver
+   * `provider.ts`; o credito nunca vira "TMDB".
+   */
+  getMovieWatchProviders(tmdbId: number): Promise<unknown>
+  getTvWatchProviders(tmdbId: number): Promise<unknown>
   getMovieVideos(tmdbId: number): Promise<TmdbVideosResponse>
   getTvVideos(tmdbId: number): Promise<TmdbVideosResponse>
   getSeasonVideos(tvTmdbId: number, seasonNumber: number): Promise<TmdbVideosResponse>
@@ -379,6 +399,14 @@ export function createTmdbCatalogEndpoints(
     },
     async getPersonImages(tmdbId) {
       return (await client.request(`/person/${tmdbId}/images`)) as TmdbImagesResponse
+    },
+    async getMovieWatchProviders(tmdbId) {
+      // Sem `language`: o bloco e por PAIS (`results.BR`), nao por idioma, e
+      // mandar `language` so acrescentaria variacao a chave de cache.
+      return await client.request(`/movie/${tmdbId}/watch/providers`)
+    },
+    async getTvWatchProviders(tmdbId) {
+      return await client.request(`/tv/${tmdbId}/watch/providers`)
     },
     async getMovieVideos(tmdbId) {
       return (await client.request(`/movie/${tmdbId}/videos`)) as TmdbVideosResponse

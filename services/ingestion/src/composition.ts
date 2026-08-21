@@ -64,3 +64,32 @@ export function createIngestionContext(options: CreateTmdbClientOptions = {}): I
 
 export { importMovie, importPerson, importTvShow } from './import/index.js'
 export { DEV_SEED_IDS } from './seed-ids.js'
+
+/**
+ * Reexports para o AGENDADOR (`@screena/sync`).
+ *
+ * `buildIdempotencyKey` e `ingestWatchProvidersFromDetail` sao as duas pecas que
+ * o agendador precisa para enfileirar sem duplicar e para gravar a oferta pelo
+ * MESMO escritor das outras cadeias. Reexporta-las aqui (e nao deixar o
+ * agendador alcancar `src/**` por caminho profundo) mantem a fronteira do
+ * pacote: `@screena/ingestion/runtime` continua sendo a UNICA porta de entrada
+ * do runtime worker-only.
+ */
+export { buildIdempotencyKey } from './catalog-jobs/idempotency.js'
+export {
+  buildCoverageJob,
+  buildCoverageJobs,
+  COVERAGE_PRIORITY,
+  COVERAGE_REASONS,
+  popularityPriorityOffset,
+  type CoverableKind,
+  type CoverageReason,
+  type CoverageRequest,
+} from './entity-coverage/entry.js'
+export { createCatalogServices, type CatalogServices } from './persistence/catalog-services.js'
+export {
+  ingestWatchProvidersFromDetail,
+  type DetailWatchOutcome,
+  type DetailWatchReport,
+  type DetailWatchSink,
+} from './watch-providers/from-detail.js'

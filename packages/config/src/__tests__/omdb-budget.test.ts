@@ -14,7 +14,7 @@ import {
   OMDB_DAILY_LIMIT,
   ON_DEMAND_RESERVE,
   shouldRequeue,
-} from '../on-demand/omdb-budget.js'
+} from '../omdb-budget.js'
 
 describe('quem cede', () => {
   it('com cota folgada, os dois passam', () => {
