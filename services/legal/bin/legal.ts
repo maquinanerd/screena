@@ -21,7 +21,12 @@
 
 import { disconnectPrisma, getPrismaClient, type PrismaClient } from "@screena/db/server";
 
-import { applyAuthorizationWithin, readCurrentState } from "../src/apply.js";
+import {
+  applyAuthorizationWithin,
+  readCurrentState,
+  readDecisionBindings,
+  readStaleApprovals,
+} from "../src/apply.js";
 import {
   STATIC_AUTHORIZATION,
   streamingProviderEntries,
@@ -42,8 +47,21 @@ import {
   renderRemediationPlan,
   renderRemediationRecord,
 } from "../src/remediation.js";
+import { planAuthorizationImpact } from "../src/impact.js";
+import {
+  applyRebindWithin,
+  isRebindClean,
+  readRebindPlan,
+  renderRebindPlan,
+} from "../src/rebind.js";
 import { renderPlan } from "../src/report.js";
-import { parseLegalArgs, renderLegalHelp, type ApplyArgs, type RemediateArgs } from "../src/cli/args.js";
+import {
+  parseLegalArgs,
+  renderLegalHelp,
+  type ApplyArgs,
+  type RebindArgs,
+  type RemediateArgs,
+} from "../src/cli/args.js";
 
 const EXIT = { ok: 0, unexpected: 1, usage: 2, environment: 3 } as const;
 
@@ -134,6 +152,46 @@ async function runRemediation(prisma: PrismaClient, args: RemediateArgs): Promis
   console.log("display_allowed/storage_allowed/derivative_allowed ZERADOS — registro nominal em docs/legal/.");
 }
 
+/**
+ * `sources rebind` — CONSERTO DE PONTEIRO, nunca uma leva.
+ *
+ * Dry-run por default. Reponta so as linhas exibiveis cuja decisao de uso
+ * deixou de resolver (o rastro que todo `supersede` anterior a esta correcao
+ * deixou), e so quando existe decisao vigente que as assuma. `display_allowed`
+ * nao e tocado em nenhuma hipotese.
+ */
+async function runRebind(prisma: PrismaClient, args: RebindArgs): Promise<void> {
+  const plan = await readRebindPlan(prisma);
+  console.log(
+    args.json
+      ? JSON.stringify(plan, null, 2)
+      : renderRebindPlan(plan, args.confirm ? "apply" : "dry-run"),
+  );
+
+  if (!args.confirm) {
+    process.exitCode = EXIT.ok;
+    return;
+  }
+
+  if (isRebindClean(plan)) {
+    console.log("\nnada a repontuar: todas as linhas exibiveis resolvem a licenca vigente (idempotente).");
+    process.exitCode = EXIT.ok;
+    return;
+  }
+
+  const done = await prisma.$transaction(async (tx) => applyRebindWithin(tx));
+  console.log(`\n${done.ratings} nota(s) e ${done.offers} oferta(s) repontuadas por ${args.reviewer}.`);
+  console.log("display_allowed, reviewed_by e approved_payload_hash NAO foram tocados.");
+
+  // Conferencia na mesma execucao: o numero prometido tem de ter acontecido.
+  const after = await readRebindPlan(prisma);
+  console.log(
+    `verificacao: notas na tela=${after.ratings.healthy} (orfas=${after.ratings.orphaned}) · ` +
+      `ofertas na tela=${after.offers.healthy} (orfas=${after.offers.orphaned})`,
+  );
+  process.exitCode = EXIT.ok;
+}
+
 async function main(): Promise<void> {
   const parsed = parseLegalArgs(process.argv.slice(2));
   if (!parsed.ok) {
@@ -154,12 +212,27 @@ async function main(): Promise<void> {
       return;
     }
 
+    if (args.sub === "rebind") {
+      await runRebind(prisma, args);
+      return;
+    }
+
     const { entries, licenses, decisions } = await loadState(prisma);
     const plan = planAuthorization(entries, licenses, decisions);
     assertNoBlockedGrants(plan);
 
+    // O QUE ESTA LEVA FAZ COM O DADO QUE JA ESTA NA TELA — lido ANTES de
+    // qualquer escrita, e impresso tanto no `review` quanto no dry-run do
+    // `apply`. Um plano que nao diz quantas linhas vai ocultar nao e um plano.
+    const impact = planAuthorizationImpact(plan, await readDecisionBindings(prisma));
+    const staleApprovals = await readStaleApprovals(prisma);
+
     const applying = args.sub === "apply" && args.confirm;
-    console.log(args.json ? JSON.stringify(plan, null, 2) : renderPlan(plan, applying ? "apply" : "dry-run"));
+    console.log(
+      args.json
+        ? JSON.stringify({ plan, impact, staleApprovals }, null, 2)
+        : renderPlan(plan, applying ? "apply" : "dry-run", { impact, staleApprovals }),
+    );
 
     if (args.sub === "review" || !args.confirm) {
       process.exitCode = EXIT.ok;

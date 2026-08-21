@@ -7,6 +7,7 @@
  */
 
 import { AUTHORIZATION_BATCH, DECIDED_BY } from "./authorization-spec.js";
+import type { AuthorizationImpact, ImpactedDecision } from "./impact.js";
 import type { AuthorizationPlan, EntryPlan } from "./plan.js";
 
 function permsLine(e: EntryPlan): string {
@@ -23,8 +24,67 @@ function permsLine(e: EntryPlan): string {
   ].join(" ");
 }
 
+/** Contagem de linhas de dado de uma decisão impactada, em uma linha. */
+function impactLine(row: ImpactedDecision): string {
+  const what = [
+    row.ratings > 0 ? `${row.ratings} nota(s)` : null,
+    row.offers > 0 ? `${row.offers} oferta(s)` : null,
+  ]
+    .filter((x): x is string => x !== null)
+    .join(" + ");
+  const where = `${row.label} · ${row.useCase}/${row.territory ?? "global"} · decisao #${row.fromDecisionId}`;
+  return row.reason === "" ? `${what} — ${where}` : `${what} — ${where} — MOTIVO: ${row.reason}`;
+}
+
+/**
+ * O QUE ESTA LEVA FAZ COM O DADO QUE JA ESTA NA TELA.
+ *
+ * Este bloco não existia até 2026-08-20 — e a falta dele custou a coluna
+ * direita do site. O `review` daquele dia imprimiu `supersede=72` e mais nada;
+ * o número que importava (453 notas e 874 ofertas prestes a sumir) não estava
+ * escrito em lugar nenhum. Agora está, e antes de qualquer escrita.
+ */
+export function renderImpact(
+  impact: AuthorizationImpact,
+  staleApprovals: { ratings: number; offers: number },
+): string {
+  const s = impact.summary;
+  const lines: string[] = [];
+  lines.push("## Impacto nas linhas ja exibiveis");
+  lines.push(
+    `  CARREGADAS para a licenca nova (continuam na tela): ${s.carriedRatings} nota(s) · ${s.carriedOffers} oferta(s)`,
+  );
+  lines.push(
+    `  OCULTADAS por esta mudanca (saem da tela):          ${s.hiddenRatings} nota(s) · ${s.hiddenOffers} oferta(s)`,
+  );
+
+  if (impact.hidden.length > 0) {
+    lines.push("");
+    lines.push("  ATENCAO — esta leva vai OCULTAR dado que hoje esta publicado:");
+    for (const row of impact.hidden) lines.push(`    - ${impactLine(row)}`);
+  }
+
+  if (staleApprovals.ratings > 0 || staleApprovals.offers > 0) {
+    lines.push("");
+    lines.push(
+      `  RISCO DE ABORTO: ${staleApprovals.ratings} nota(s) e ${staleApprovals.offers} oferta(s) exibiveis` +
+        " estao com approved_payload_hash divergente do payload atual.",
+    );
+    lines.push(
+      "  O guard de escrita reconfere o fingerprint a cada UPDATE — carregar essas linhas derruba",
+    );
+    lines.push("  a transacao inteira (nada e escrito). Reaprove-as antes de rodar com --confirm.");
+  }
+
+  return lines.join("\n");
+}
+
 /** Relatório em texto para leitura humana. */
-export function renderPlan(plan: AuthorizationPlan, mode: "dry-run" | "apply"): string {
+export function renderPlan(
+  plan: AuthorizationPlan,
+  mode: "dry-run" | "apply",
+  impact?: { readonly impact: AuthorizationImpact; readonly staleApprovals: { ratings: number; offers: number } },
+): string {
   const lines: string[] = [];
   lines.push(`# legal sources — modo: ${mode}`);
   lines.push(`# leva: ${AUTHORIZATION_BATCH} · responsavel: ${DECIDED_BY}`);
@@ -57,6 +117,11 @@ export function renderPlan(plan: AuthorizationPlan, mode: "dry-run" | "apply"): 
   lines.push(
     `  decisoes: create=${s.decisionsCreate} supersede=${s.decisionsSupersede} keep=${s.decisionsKeep}`,
   );
+  if (impact !== undefined) {
+    lines.push("");
+    lines.push(renderImpact(impact.impact, impact.staleApprovals));
+  }
+
   lines.push("");
   lines.push("## Usos BLOQUEADOS (esta ferramenta nunca libera)");
   lines.push("  logos · citacao integral de critica · sublicenciamento · revenda de datasets");

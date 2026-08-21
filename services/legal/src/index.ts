@@ -15,7 +15,9 @@
 
 export * from "./apply.js";
 export * from "./authorization-spec.js";
+export * from "./impact.js";
 export * from "./plan.js";
+export * from "./rebind.js";
 export * from "./public-credits.js";
 export * from "./remediation.js";
 export * from "./report.js";

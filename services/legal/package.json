@@ -16,7 +16,8 @@
     "legal": "tsx bin/legal.ts",
     "validate:source-authorization": "tsx scripts/validate-source-authorization-and-attribution.ts",
     "validate:source-authorization-supersede": "tsx scripts/validate-source-authorization-supersede.ts",
-    "validate:source-authorization-legacy-grants": "tsx scripts/validate-source-authorization-legacy-grants.ts"
+    "validate:source-authorization-legacy-grants": "tsx scripts/validate-source-authorization-legacy-grants.ts",
+    "validate:supersede-carries-rows": "tsx scripts/validate-supersede-carries-rows.ts"
   },
   "dependencies": {
     "@screena/config": "workspace:*",

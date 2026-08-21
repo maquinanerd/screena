@@ -11,7 +11,7 @@ import { AUTHORIZATION_BATCH } from "../authorization-spec.js";
 export const LEGAL_COMMANDS = ["sources", "help"] as const;
 export type LegalCommand = (typeof LEGAL_COMMANDS)[number];
 
-export const LEGAL_SUBCOMMANDS = ["review", "apply", "remediate"] as const;
+export const LEGAL_SUBCOMMANDS = ["review", "apply", "remediate", "rebind"] as const;
 export type LegalSubcommand = (typeof LEGAL_SUBCOMMANDS)[number];
 
 /** `legal sources review` — mostra o plano, nunca escreve. */
@@ -47,11 +47,27 @@ export interface RemediateArgs {
   readonly json: boolean;
 }
 
+/**
+ * `legal sources rebind` — RE-RESOLVE a licenca das linhas ja existentes.
+ *
+ * NAO e uma leva (nao aceita `--policy-version`) e NAO promove nada: so
+ * conserta o PONTEIRO (`data_usage_decision_id`) das notas e ofertas que
+ * ficaram apontando para uma decisao que saiu de cena num `supersede`.
+ * `display_allowed` nao e tocado. Dry-run por default; `--confirm` escreve.
+ */
+export interface RebindArgs {
+  readonly command: "sources";
+  readonly sub: "rebind";
+  readonly reviewer: string | null;
+  readonly confirm: boolean;
+  readonly json: boolean;
+}
+
 export interface HelpArgs {
   readonly command: "help";
 }
 
-export type LegalArgs = ReviewArgs | ApplyArgs | RemediateArgs | HelpArgs;
+export type LegalArgs = ReviewArgs | ApplyArgs | RemediateArgs | RebindArgs | HelpArgs;
 
 export type ParseResult =
   | { readonly ok: true; readonly args: LegalArgs }
@@ -90,7 +106,10 @@ export function parseLegalArgs(argv: readonly string[]): ParseResult {
     return { ok: false, error: `comando desconhecido: "${command}" (use: sources)` };
   }
   if (sub === undefined || !(LEGAL_SUBCOMMANDS as readonly string[]).includes(sub)) {
-    return { ok: false, error: `subcomando invalido: "${sub ?? ""}" (use: review | apply | remediate)` };
+    return {
+      ok: false,
+      error: `subcomando invalido: "${sub ?? ""}" (use: review | apply | remediate | rebind)`,
+    };
   }
 
   const { flags, error } = readFlags(rest);
@@ -104,6 +123,20 @@ export function parseLegalArgs(argv: readonly string[]): ParseResult {
   const rawReviewer = flags.get("reviewer");
   if (rawReviewer === true) return { ok: false, error: "--reviewer exige uma identidade humana" };
   const reviewer = typeof rawReviewer === "string" ? rawReviewer.trim() : null;
+
+  if (sub === "rebind") {
+    const confirmRebind = isTrue(flags.get("confirm"));
+    if (confirmRebind && (reviewer === null || reviewer === "")) {
+      return { ok: false, error: "--confirm exige --reviewer=<identidade humana>" };
+    }
+    if (flags.has("policy-version")) {
+      return {
+        ok: false,
+        error: "rebind nao aceita --policy-version: nao e uma leva de autorizacao, e re-resolucao de ponteiro",
+      };
+    }
+    return { ok: true, args: { command: "sources", sub: "rebind", reviewer, confirm: confirmRebind, json } };
+  }
 
   if (sub === "remediate") {
     const confirmRemediate = isTrue(flags.get("confirm"));
@@ -150,6 +183,7 @@ export function renderLegalHelp(): string {
 USO
   pnpm legal sources review
   pnpm legal sources apply --reviewer="Pablo Eduardo — proprietario da Cinerie" --policy-version="${AUTHORIZATION_BATCH}" --confirm
+  pnpm legal sources rebind
 
 COMANDOS
   sources review   Mostra o plano (fontes, registro vigente, nova versao,
@@ -157,6 +191,10 @@ COMANDOS
                    bloqueados). Read-only, so banco.
   sources apply    Prepara/aplica novas versoes de source_licenses e
                    data_usage_decisions. DRY-RUN por default; --confirm escreve.
+  sources rebind   RE-RESOLVE a licenca das linhas ja existentes: reponta
+                   external_ratings/watch_availability que ficaram apontando
+                   para uma decisao supersedida. NAO toca display_allowed, NAO
+                   recoleta API, so mexe no que quebrou. DRY-RUN por default.
   sources remediate
                    REPARO DE DADO (nao e leva): aposenta decisoes legadas que
                    concedem sob licenca nao-exibivel, zerando os grants e
