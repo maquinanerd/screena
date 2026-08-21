@@ -53,6 +53,17 @@ function fakePrisma(calls: RecordedCall[]) {
         return Promise.resolve(TV_IDS.map((id) => ({ tvShowId: id })));
       case "season.findMany":
         return Promise.resolve(TV_IDS.map((id) => ({ tvShowId: id })));
+      // "Filmes"/"Séries" deixaram de consultar `popularity` e passaram a ler o
+      // TRENDING DA SEMANA capturado em `discovery_snapshots` — a seção se chama
+      // "Popular essa semana" e `popularity` é acumulada, sem janela nenhuma.
+      case "discoverySnapshot.findFirst": {
+        const where = args.where as { entityType?: string };
+        const ids = where?.entityType === "movie" ? MOVIE_IDS : TV_IDS;
+        return Promise.resolve({
+          capturedAt: NOW,
+          items: ids.map((entityId) => ({ entityId })),
+        });
+      }
       case "watchAvailability.findMany":
         return Promise.resolve([
           { entityType: "movie", entityId: MOVIE_IDS[0] },
@@ -78,6 +89,7 @@ function fakePrisma(calls: RecordedCall[]) {
     episode: { findMany: record("episode", "findMany") },
     season: { findMany: record("season", "findMany") },
     watchAvailability: { findMany: record("watchAvailability", "findMany") },
+    discoverySnapshot: { findFirst: record("discoverySnapshot", "findFirst") },
     slug: { findMany: record("slug", "findMany") },
     entityTranslation: { findMany: record("entityTranslation", "findMany") },
   } as unknown as Parameters<typeof loadPopularRanking>[0];
@@ -156,6 +168,67 @@ describe("cada aba tem a SUA consulta (não um slice da mesma lista)", () => {
     expect(windowOf(noAr.discovery[0]).lte).toEqual(NOW);
     expect(windowOf(temporadas.discovery[0]).gte.getTime()).toBeLessThan(NOW.getTime());
     expect(windowOf(temporadas.discovery[0]).lte.getTime()).toBeGreaterThan(NOW.getTime());
+  });
+});
+
+describe("\"Popular essa semana\" tem JANELA", () => {
+  /**
+   * O rótulo da seção afirma uma semana. Até 2026-08-21 as abas "Filmes" e
+   * "Séries" ordenavam por `movies.popularity` — um acumulado SEM janela
+   * nenhuma. O rótulo prometia um recorte de tempo que a consulta não tinha.
+   *
+   * A prova é sobre a CONSULTA, não sobre o markup: um trilho renderizado com
+   * seis cards fica idêntico nos dois casos.
+   */
+  it("(A) as abas 'Filmes' e 'Séries' consultam o SNAPSHOT de trending, não popularity", async () => {
+    for (const [vertical, tab] of [
+      ["home", "filmes"],
+      ["home", "series"],
+    ] as const) {
+      const { discovery } = await discoveryFor(vertical, tab);
+      const models = discovery.map((call) => call.model);
+      expect(models, `${vertical}/${tab}`).toContain("discoverySnapshot");
+      // E NÃO ordena por popularidade acumulada em lugar nenhum do recorte.
+      const ordenacoes = JSON.stringify(discovery.map((call) => call.args.orderBy ?? null));
+      expect(ordenacoes, `${vertical}/${tab} ainda ordena por popularity`).not.toContain(
+        "popularity",
+      );
+    }
+  });
+
+  it("(B) a janela pedida é a SEMANA — não o dia", async () => {
+    const { discovery } = await discoveryFor("home", "filmes");
+    const call = discovery.find((entry) => entry.model === "discoverySnapshot");
+    const where = call?.args.where as { window?: string; listType?: string };
+    expect(where?.listType).toBe("trending");
+    // `day` alimenta a prioridade da fila e o trilho "Em Alta"; "essa semana"
+    // é outra janela e não pode reusar a do dia.
+    expect(where?.window).toBe("week");
+  });
+
+  it("(C) o snapshot pedido é o VIGENTE, não o mais recente", async () => {
+    const { discovery } = await discoveryFor("home", "filmes");
+    const call = discovery.find((entry) => entry.model === "discoverySnapshot");
+    const where = call?.args.where as { expiresAt?: { gt?: Date } };
+    // Sem este filtro, uma fila parada faria a tela exibir o que estava em alta
+    // na semana passada sob o rótulo "essa semana", para sempre.
+    expect(where?.expiresAt?.gt).toBeInstanceOf(Date);
+    expect(where?.expiresAt?.gt).toEqual(NOW);
+  });
+
+  it("(D) NEGATIVO: sem snapshot vigente, a aba NÃO cai para popularidade", async () => {
+    const calls: RecordedCall[] = [];
+    const prisma = fakePrisma(calls);
+    // Banco sem captura nenhuma: `findFirst` devolve null nas duas consultas.
+    (prisma as unknown as { discoverySnapshot: { findFirst: () => Promise<null> } }).discoverySnapshot =
+      { findFirst: () => Promise.resolve(null) };
+
+    const result = await loadPopularRanking(prisma, "home", "filmes", NOW);
+
+    // Vazio COM MOTIVO, nunca um trilho completado por popularidade.
+    expect(result.items).toHaveLength(0);
+    expect(result.absence?.reason).toBe("no_trending_snapshot");
+    expect(calls.some((call) => call.model === "movie")).toBe(false);
   });
 });
 
