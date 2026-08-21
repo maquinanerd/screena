@@ -19,6 +19,7 @@ import { describe, expect, it } from "vitest";
 import {
   STATIC_AUTHORIZATION,
   STREAMING_ORIGIN_CREDITS,
+  TMDB_LOGO_ASSET,
   type AuthorizationEntry,
 } from "../authorization-spec.js";
 import { publicSourceCredits, tmdbNonEndorsementDisclaimer } from "../public-credits.js";
@@ -243,14 +244,25 @@ describe("publicSourceCredits — a projecao publica do registro de licencas", (
     // Desde 2026-08-20 o arquivo oficial (Primary long, baixado da pagina de
     // logos do TMDB) esta no repositorio e a licenca declara `present`. O
     // credito TEXTUAL continua — os termos pedem os DOIS.
+    //
+    // A ALTURA VEM DA LICENCA, e nao de um literal aqui. Este assert ja ficou
+    // desatualizado uma vez: a PR #203 baixou o logo do TMDB de 18 para 13 px
+    // (o wordmark e LONGO — 489x35 no viewBox — e a altura e o unico controle de
+    // largura), o spec mudou e o teste continuou exigindo 18, deixando a suite
+    // vermelha por uma discordancia que nao era defeito de codigo. Lendo de
+    // `TMDB_LOGO_ASSET`, o teste passa a provar o que importa (o logo sobe com o
+    // arquivo e a medida DECLARADOS) e nunca mais discorda da decisao.
     const tmdb = publicSourceCredits().find((c) => c.text.includes("TMDB"));
     expect(tmdb, "o credito do TMDB tem de existir").toBeDefined();
     expect(tmdb!.text.length).toBeGreaterThan(0);
     expect(tmdb!.logo).toEqual({
-      src: "/brand/sources/tmdb-primary.svg",
-      alt: "TMDB",
-      heightPx: 18,
+      src: TMDB_LOGO_ASSET.path,
+      alt: TMDB_LOGO_ASSET.alt,
+      heightPx: TMDB_LOGO_ASSET.displayHeightPx,
     });
+    // O controle que impede o assert de virar tautologia: se alguem rebaixar o
+    // arquivo para pendente, este teste tem de reprovar em vez de se adaptar.
+    expect(TMDB_LOGO_ASSET.status).toBe("present");
     expect(tmdb!.logoPending).toBe(false);
   });
 

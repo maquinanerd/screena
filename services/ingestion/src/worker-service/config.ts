@@ -25,6 +25,22 @@ export interface CatalogWorkerServiceConfig {
   readonly discoveryLimit: number | null
   /** Tipos descobertos a cada ciclo. */
   readonly discoveryKinds: readonly ('movie' | 'tv' | 'person')[]
+  /**
+   * Este servico ENFILEIRA a descoberta periodica?
+   *
+   * Existe porque o AGENDADOR (`@screena/sync`, servico `screen-cron`) passou a
+   * ser o relogio da plataforma e enfileira a mesma descoberta. Os dois usam a
+   * MESMA chave de idempotencia, entao a duplicacao e inofensiva — mas dois
+   * relogios para o mesmo trabalho e uma divergencia esperando para acontecer,
+   * e o dia em que a chave mudar num lado sao dois lotes por dia sem ninguem
+   * notar.
+   *
+   * Default `true`: desligar por omissao quebraria uma instalacao que ainda nao
+   * subiu o agendador. Quem sobe o `screen-cron` desliga aqui, explicitamente.
+   */
+  readonly enqueueDiscovery: boolean
+  /** Idem, para o ciclo de `/changes`. */
+  readonly enqueueChanges: boolean
   readonly locale: string
   readonly isProduction: boolean
   readonly productionWriteAuthorized: boolean
@@ -128,6 +144,8 @@ export function resolveCatalogWorkerServiceConfig(env: Env): CatalogWorkerServic
     ),
     discoveryLimit: discoveryLimitRaw === 0 ? null : discoveryLimitRaw,
     discoveryKinds: readKinds(env),
+    enqueueDiscovery: readBool(env, 'CATALOG_WORKER_ENQUEUE_DISCOVERY', true),
+    enqueueChanges: readBool(env, 'CATALOG_WORKER_ENQUEUE_CHANGES', true),
     locale: present(env.CATALOG_WORKER_LOCALE) ? env.CATALOG_WORKER_LOCALE!.trim() : 'pt-BR',
     isProduction: env.NODE_ENV === 'production',
     productionWriteAuthorized: readBool(

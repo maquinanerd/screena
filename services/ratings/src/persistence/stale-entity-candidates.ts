@@ -7,9 +7,29 @@
  * coletadas. Notas mudam devagar e o plano gratuito da OMDb tem teto DIARIO;
  * reconsultar quem foi visto ha dois dias e cota jogada fora.
  *
- * NUNCA casa por titulo/ano. Ordem ESTAVEL por `id asc` (determinista), pelo
- * mesmo motivo de `entity-candidates.ts`: dois ciclos com o mesmo `limit` veem o
- * mesmo prefixo, e o relatorio nao "pula" candidatos entre execucoes.
+ * NUNCA casa por titulo/ano.
+ *
+ * ============================================================================
+ * A ORDEM MUDOU: `popularity DESC NULLS LAST, id ASC` (2026-08-21)
+ * ============================================================================
+ * Era `id ASC`, e o comentario dava o motivo certo pela razao errada. O motivo —
+ * ordem ESTAVEL, para o relatorio nao "pular" candidatos entre execucoes —
+ * continua valendo e continua garantido: o desempate por `id` mantem a ordem
+ * TOTAL e deterministica.
+ *
+ * O que estava errado era o CAMPO. `id` e ordem de INSERCAO. Com 239 titulos
+ * isso e invisivel; com 10 mil e uma volta de dez dias (1.000 requisicoes/dia,
+ * teto do plano gratuito da OMDb), `id ASC` deixa o titulo mais aberto do site
+ * esperando nove dias atras de novecentos que ninguem abriu — deterministicamente
+ * errado.
+ *
+ * `popularity` e o sinal MEDIDO que existe: o TMDB o calcula a partir de
+ * visualizacoes de pagina, votos e watchlist do dia anterior, ele ja vem
+ * preenchido para todo o catalogo, ja tem indice (`@@index([popularity])`) e e
+ * atualizado por nos em todo sync de detalhe. Ver `priority.ts` em
+ * `@screena/sync` para por que "titulo que o leitor abriu recentemente" NAO foi
+ * usado: a Cinerie nao registra visualizacao de pagina, e ordenar por um sinal
+ * que nao se mede seria fabricar prioridade.
  *
  * `skippedFresh` NAO e um detalhe cosmetico. Sem ele, um ciclo saudavel em que
  * tudo ja esta fresco reportaria "0 consultados" — indistinguivel de "a selecao
@@ -83,7 +103,7 @@ const STALE_SQL = (table: string, withCutoff: boolean): string => `
      )`
          : ''
      }
-   ORDER BY e."id" ASC
+   ORDER BY e."popularity" DESC NULLS LAST, e."id" ASC
    LIMIT ${withCutoff ? '$4' : '$3'}
 `
 

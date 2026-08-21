@@ -62,6 +62,16 @@ export type OmdbRejectionReason =
    * queimar cota em loop; os ids restantes ficam sem consulta.
    */
   | 'batch-aborted'
+  /**
+   * A COTA DIARIA da OMDb barrou este id.
+   *
+   * NAO e um fato sobre o TITULO — e um fato sobre o DIA. Colapsar os dois
+   * gravaria "sem nota" num titulo que TEM nota, e ele nunca mais seria
+   * consultado: a pagina nasceria muda e permaneceria muda. Por isso o id barrado
+   * nao vira linha nenhuma em `external_ratings`: ele CONTINUA stale e volta a
+   * ser candidato no proximo ciclo, sozinho.
+   */
+  | 'quota-denied'
 
 /** Uma recusa, com detalhe legivel (sem segredo, sem payload cru). */
 export interface OmdbRejection {

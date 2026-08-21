@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Orquestracao de sincronizacao (Fase 2): politica de frescor (stale) pura e runner de refresh que reusa a ingestao. Worker-only, offline; NUNCA no render.",
+  "description": "Orquestracao de sincronizacao: politica de frescor (stale) e o AGENDADOR de ingestao (tabela de ritmos, trava contra execucao dupla, cota, alerta de fila parada, painel de estado). Worker-only, offline; NUNCA no render.",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
@@ -12,10 +12,21 @@
   "sideEffects": false,
   "license": "UNLICENSED",
   "dependencies": {
+    "@screena/config": "workspace:*",
     "@screena/db": "workspace:*",
-    "@screena/ingestion": "workspace:*"
+    "@screena/ingestion": "workspace:*",
+    "@screena/tmdb-client": "workspace:*"
   },
   "devDependencies": {
+    "@prisma/client": "^6.1.0",
+    "embedded-postgres": "16.14.0-beta.17",
+    "prisma": "^6.1.0",
     "tsx": "^4.19.0"
+  },
+  "scripts": {
+    "scheduler:start": "tsx bin/cinerie-scheduler.ts",
+    "ingestion:status": "tsx bin/ingestion-status.ts",
+    "prove:scheduler-lock": "tsx scripts/prove-scheduler-lock.ts",
+    "prove:scheduler-service": "tsx scripts/prove-scheduler-service.ts"
   }
 }
