@@ -192,11 +192,14 @@ describe('(2) cota folgada: tudo passa — o controle que separa gate de recusa 
     expect(upserts.length).toBeGreaterThan(0)
   })
 
-  it('CONTROLE NEGATIVO: sem o porto de cota, o gate nao roda — e e assim que o defeito era', async () => {
-    // Reproduz o estado ANTERIOR (porto ausente) com a cota estourada. As cinco
-    // requisicoes saem. Este teste passa DE PROPOSITO: ele documenta que a
-    // ausencia do porto e o que desliga a politica, e por isso a producao
-    // (bin/sync-omdb-ratings.ts) injeta o porto sempre que nao ha `--id`.
+  it('sem o porto de cota, o gate NAO roda — a ausencia e o que desliga a politica', async () => {
+    // Reproduz o estado ANTERIOR (porto ausente) com a cota estourada: as cinco
+    // requisicoes saem.
+    //
+    // ISTO NAO E UM CONTROLE NEGATIVO, e chama-lo assim seria o erro que o dono
+    // apontou: um "controle negativo" que passa nao guarda nada. Este teste
+    // DOCUMENTA que a politica mora no porto — e quem GUARDA a producao e o
+    // teste seguinte, que le o wiring real do bin.
     const h = harness()
     let fetched = 0
     const result = await runOmdbRatingsSync(
@@ -218,5 +221,28 @@ describe('(2) cota folgada: tudo passa — o controle que separa gate de recusa 
     )
     expect(fetched).toBe(5)
     expect(result.idsDeniedByQuota).toBe(0)
+  })
+})
+
+describe('a producao injeta o porto — o guarda de verdade', () => {
+  it('bin/sync-omdb-ratings.ts injeta `budget` no modo candidatos', async () => {
+    // O teste acima mostra que SEM o porto a politica nao roda. Este garante que
+    // a producao nunca fica sem ele. Le a FONTE porque o wiring vive num
+    // entrypoint com `main()` — importa-lo executaria o worker.
+    const { readFile } = await import('node:fs/promises')
+    const { fileURLToPath } = await import('node:url')
+    const path = await import('node:path')
+    const here = path.dirname(fileURLToPath(import.meta.url))
+    const bin = path.resolve(here, '..', '..', '..', 'bin', 'sync-omdb-ratings.ts')
+    const fonte = await readFile(bin, 'utf8')
+
+    // A linha exata do wiring. Se alguem remover o porto, apagar a condicao de
+    // `--id`, ou trocar o adapter, este assert cai.
+    expect(fonte).toMatch(
+      /budget:\s*args\.id === null \? createPrismaOmdbBudget\(prisma, \(\) => new Date\(\)\) : undefined/,
+    )
+    // E o consumidor da fila de fundo tem de ser `seed`: `on_demand` aqui daria
+    // a fila de fundo a reserva do leitor.
+    expect(fonte).toMatch(/consumer:\s*'seed'/)
   })
 })
