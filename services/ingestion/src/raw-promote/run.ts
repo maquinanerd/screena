@@ -100,6 +100,8 @@ export function createMovieStrategy(store: EntityStorePort): PromoteStrategy {
         // de arquivo antigo apagaria os generos do catalogo inteiro.
         genres: normalized.genres,
         genresPresent: normalized.genresPresent,
+        countries: normalized.countries,
+        countriesPresent: normalized.countriesPresent,
         // Frescor herdada do raw: o tipado e tao fresco quanto o payload coletado.
         timestamps: { lastSyncedAt: row.fetchedAt, staleAfter: null },
       })
@@ -127,6 +129,8 @@ export function createTvStrategy(store: EntityStorePort): PromoteStrategy {
         // Ver a estrategia de filme: raw sem `credits`/`genres` preserva o ja gravado.
         genres: normalized.genres,
         genresPresent: normalized.genresPresent,
+        countries: normalized.countries,
+        countriesPresent: normalized.countriesPresent,
         castPresent: normalized.castPresent,
         crewPresent: normalized.crewPresent,
         recommendations: normalized.recommendations,
