@@ -120,7 +120,17 @@ beforeAll(async () => {
     }
   }
   offenders = found
-})
+  // TIMEOUT EXPLICITO. Esta varredura le `services/` + `apps/` + `workers/`
+  // inteiros: sozinha leva ~0,5 s, mas na suite completa ela disputa I/O com
+  // dezenas de workers do Vitest e passa dos 10 s do default — e o desfecho e um
+  // `Hook timed out`, que aparece como "1 arquivo falhou, 0 testes falharam" e
+  // NAO como uma violacao de governanca. O guard passaria a gritar por motivo
+  // errado, que e o jeito mais rapido de ensinar alguem a ignora-lo.
+  //
+  // A fragilidade e da varredura, nao da regra: qualquer teste novo que leia
+  // disco em paralelo e a gota. Foi o que aconteceu quando
+  // `projection-has-consumer.test.ts` entrou.
+}, 60_000)
 
 describe('um caminho so de cobertura (T0)', () => {
   it('a varredura realmente olhou para o codigo', () => {

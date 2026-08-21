@@ -1,9 +1,15 @@
 /**
  * Presenter puro das faixas de catálogo da home canônica.
  *
- * A camada server entrega os itens já ordenados pelo snapshot persistido de
- * `popularity`. Este módulo apenas transforma os registros em cards e preserva
- * essa ordem. Não completa a grade, não repete títulos e não cria ranking.
+ * A camada server entrega os itens já ordenados pelo **trending do dia**
+ * (`discovery_snapshots`, capturado offline pela fila `trending` do agendador).
+ * Este módulo apenas transforma os registros em cards e preserva essa ordem.
+ * Não completa a grade, não repete títulos e não cria ranking.
+ *
+ * `buildTrendingMovieCards` se chama assim desde sempre; até 2026-08-21 a ordem
+ * que chegava aqui era `popularity desc` — um acumulado sem janela. O nome dizia
+ * uma coisa e o dado fazia outra, e a próxima pessoa a ler o nome teria
+ * acreditado nele. Agora o nome está correto.
  */
 
 import {
