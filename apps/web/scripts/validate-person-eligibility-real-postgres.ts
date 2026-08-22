@@ -303,7 +303,18 @@ async function main(): Promise<void> {
   }
 
   console.log(`\nRESUMO: ${passed}/${total} checks OK`);
-  process.exitCode = passed === total ? 0 : 1;
+  // `process.exit`, nao `process.exitCode`. Medido em 21/08/2026: com uma falha
+  // no `initdb` este script imprimia `[FAIL] 1.` / `RESUMO: 0/1` e mesmo assim
+  // encerrava com codigo 0 — o `exitCode` atribuido aqui nao sobrevivia ao
+  // encerramento, e `validate:all` exibia o validador morto como PASSOU. Os
+  // outros validadores desta pasta ja saem com `process.exit(1)` explicito;
+  // este era o unico fora do padrao. A agregacao tambem passou a recusar
+  // placar parcial (ver `validate-all-real-postgres.ts`) — as duas travas
+  // existem porque uma sozinha ja falhou.
+  if (passed !== total) {
+    console.error("Resultado: FALHOU. Pelo menos uma assercao nao passou.");
+    process.exit(1);
+  }
 }
 
 void main();
