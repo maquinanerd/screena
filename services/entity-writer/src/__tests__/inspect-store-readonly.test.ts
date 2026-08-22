@@ -1,8 +1,8 @@
 /**
  * inspect-store-readonly.test.ts — Teste ESTRUTURAL de read-only.
  *
- * `inspect-store.ts` (adapter Prisma) e `bin/inspect.ts` ficam fora do typecheck
- * e nao tem integration test com Postgres aqui. Travamos a propriedade critica:
+ * `inspect-store.ts` (adapter Prisma) e `bin/inspect.ts` nao tem integration test
+ * com Postgres aqui. Travamos a propriedade critica, que nenhum tipo alcanca:
  * a inspecao e SOMENTE LEITURA — nenhum metodo de escrita do Prisma
  * (create/update/delete/upsert), nenhum raw (executeRaw/queryRaw) e nenhuma
  * chamada/criacao de job, runner ou Gemini. So leitura via groupBy/findMany.

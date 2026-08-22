@@ -1,5 +1,6 @@
 /**
- * job-store.ts — Adapter Prisma de `entity_writer_jobs`. EXCLUIDO do typecheck.
+ * job-store.ts — Adapter Prisma de `entity_writer_jobs`. COBERTO pelo typecheck da raiz
+ * (`pnpm typecheck`).
  *
  * Marca o estado terminal de um job (`completed`/`failed`/`blocked`) usando os
  * campos reais do schema: `status`, `completed_at`, `result_block_id`,

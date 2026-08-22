@@ -1,6 +1,6 @@
 /**
  * editorial-store.ts — Adapters Prisma da plataforma editorial.
- * Coberto por `tsconfig.runtime.json` (fora do typecheck puro).
+ * COBERTO por `tsconfig.runtime.json` (`pnpm typecheck` encadeia os dois).
  *
  * Worker-only: nada aqui e importavel pelo render (invariantes 3 e 4).
  *

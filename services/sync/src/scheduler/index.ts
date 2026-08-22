@@ -3,7 +3,7 @@
  *
  * Tudo que este barril exporta e livre de rede, banco e relogio proprio. Os
  * adapters (advisory lock, leitura de `api_sync_logs`, execucao das filas) vivem
- * em `runtime/`, fora do typecheck principal, e nunca sao reexportados daqui —
+ * em `runtime/`, e nunca sao reexportados daqui —
  * importar o barril NAO pode arrastar Prisma para dentro de um teste puro.
  */
 

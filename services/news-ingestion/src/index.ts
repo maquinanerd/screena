@@ -6,8 +6,8 @@
  * metricas e sentinela. Tudo aqui e determinista: sem rede, sem banco, sem IO,
  * sem `Date.now()` e sem `Math.random()` — o instante e sempre injetado.
  *
- * Os adapters Prisma vivem em `src/persistence/` (fora do typecheck puro,
- * dentro de `tsconfig.runtime.json`), e as CLIs em `bin/`.
+ * Os adapters Prisma vivem em `src/persistence/` (cobertos por
+ * `tsconfig.runtime.json`), e as CLIs em `bin/`.
  *
  * Governanca:
  *  - Worker-only. Invariantes 3 e 4: nada disto entra no caminho de render.

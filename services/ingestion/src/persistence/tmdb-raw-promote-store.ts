@@ -1,6 +1,6 @@
 /**
  * tmdb-raw-promote-store.ts — Adapter de LEITURA de `tmdb_raw` para promocao
- * (Prisma). EXCLUIDO do typecheck.
+ * (Prisma). COBERTO por `tsconfig.runtime.json` (`pnpm typecheck` encadeia os dois).
  *
  * Implementa a porta pura `RawMovieSource` (do core `raw-promote`): conta e lista
  * os filmes ja gravados em `tmdb_raw`. SO leitura — a promocao nunca escreve em

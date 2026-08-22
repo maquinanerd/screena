@@ -1,5 +1,6 @@
 /**
- * runtime/runners.ts — O QUE cada fila faz. EXCLUIDO do typecheck principal.
+ * runtime/runners.ts — O QUE cada fila faz. COBERTO pelo typecheck da raiz (`pnpm
+ * typecheck`).
  *
  * ============================================================================
  * DUAS FORMAS DE EXECUTAR, E A ESCOLHA NAO E DE ESTILO

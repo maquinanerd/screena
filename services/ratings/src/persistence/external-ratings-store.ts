@@ -1,6 +1,6 @@
 /**
  * external-ratings-store.ts — Adapter de `external_ratings` (Prisma).
- * EXCLUIDO do typecheck (toca Prisma).
+ * COBERTO pelo typecheck da raiz E por `tsconfig.runtime.json`.
  *
  * INVARIANTE 6 (fail-closed, estrutural): `displayAllowed` e `licenseStatus` NAO
  * sao parametros. Toda linha escrita por este worker nasce

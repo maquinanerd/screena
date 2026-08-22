@@ -3,11 +3,10 @@
  *
  * Os handlers vivem no lado TIPADO da fronteira: eles nao conhecem Prisma nem
  * fetch. Falam por estas portas, e o wiring real (adapters Prisma + client TMDB)
- * acontece em `bin/catalog.ts` / `composition.ts`, fora do typecheck.
+ * acontece em `bin/catalog.ts` / `composition.ts`.
  *
  * Consequencia pratica: todo handler e testavel com fakes em memoria, e um erro
- * de assinatura aqui QUEBRA o typecheck — diferente de persistence/, que o
- * typecheck nao cobre.
+ * de assinatura aqui QUEBRA o typecheck.
  *
  * Nomenclatura: `skipped` significa "a entidade dona nao esta promovida ainda";
  * nunca e sucesso silencioso. O handler propaga isso no resultado.

@@ -1,6 +1,6 @@
 /**
  * entity-candidates.ts — Selecao de candidatos locais por tipo (Prisma).
- * EXCLUIDO do typecheck (toca Prisma).
+ * COBERTO pelo typecheck da raiz E por `tsconfig.runtime.json`.
  *
  * Lista ate `limit` entidades locais que TEM `imdb_id` (o `/item/` foi validado
  * com IMDb id), para o modo sem `--id`. NUNCA casa por titulo/ano.

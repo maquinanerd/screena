@@ -1,5 +1,6 @@
 /**
- * cache.ts — Adapter de `api_cache` (Prisma). EXCLUIDO do typecheck (toca Prisma).
+ * cache.ts — Adapter de `api_cache` (Prisma). COBERTO por `tsconfig.runtime.json`
+ * (`pnpm typecheck` encadeia os dois).
  *
  * `getOrFetch`: dentro do TTL devolve o bruto do cache (sem ir a rede); fora do
  * TTL busca via `fetcher`, grava o bruto e compara o `payload_hash` com o

@@ -3,7 +3,7 @@
  *
  * Estes tipos sao PLANOS e independentes do Prisma Client (para que os
  * normalizers sejam puros e typecheckaveis sem o client gerado). Os adapters de
- * persistencia (excluidos do typecheck) traduzem estes objetos para chamadas
+ * persistencia traduzem estes objetos para chamadas
  * Prisma. Espelham as colunas das tabelas da Fase 1.
  *
  * REGRA: nenhum campo de rating editorial aqui. `vote_average_tmdb`/

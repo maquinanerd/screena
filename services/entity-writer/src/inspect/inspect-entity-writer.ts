@@ -6,8 +6,8 @@
  * entidades tem blocos, falhas/logs recentes e se ha fila acumulada.
  *
  * Esta camada NAO toca o banco: depende apenas de um `InspectStorePort` (o
- * adapter Prisma read-only vive em ../persistence/inspect-store, fora do
- * typecheck). Assim ela e 100% testavel com fakes em memoria. NUNCA escreve,
+ * adapter Prisma read-only vive em ../persistence/inspect-store). Assim ela e
+ * 100% testavel com fakes em memoria. NUNCA escreve,
  * NUNCA chama Gemini, NUNCA chama API externa.
  *
  * A saida (`InspectionReport`) e estrutural e JSON-safe (so string/number/

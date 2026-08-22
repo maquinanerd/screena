@@ -1,8 +1,7 @@
 /**
  * types.ts — Contratos PUROS da promocao de `tmdb_raw` -> tabelas tipadas
  * (P0-00f). Sem rede, sem DB, sem Prisma: so tipos/portas. A orquestracao pura
- * vive em `run.ts`; os adapters concretos (Prisma) vivem em `persistence/*`,
- * FORA do typecheck.
+ * vive em `run.ts`; os adapters concretos (Prisma) vivem em `persistence/*`.
  *
  * O worker le o payload BRUTO ja gravado em `tmdb_raw` (sem TMDB, sem rede) e o
  * promove para as tabelas tipadas EXISTENTES via o normalizer da entidade + o
@@ -38,7 +37,7 @@ export type RawMovieRow = RawEntityRow
 
 /**
  * Porta GENERICA de leitura de `tmdb_raw` para promocao (implementada pelo
- * adapter Prisma, fora do typecheck). So leitura — a promocao nunca escreve em
+ * adapter Prisma). So leitura — a promocao nunca escreve em
  * `tmdb_raw`. O core opera sobre esta porta; os wrappers por tipo adaptam a sua.
  */
 export interface RawEntitySource {

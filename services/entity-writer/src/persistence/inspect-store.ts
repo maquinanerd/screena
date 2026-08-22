@@ -1,5 +1,6 @@
 /**
- * inspect-store.ts — Adapter Prisma READ-ONLY de inspecao. EXCLUIDO do typecheck.
+ * inspect-store.ts — Adapter Prisma READ-ONLY de inspecao. COBERTO pelo typecheck da
+ * raiz (`pnpm typecheck`).
  *
  * Implementa `InspectStorePort` usando SOMENTE leitura: `groupBy` (contagens) e
  * `findMany` (listas recentes). NUNCA escreve nem usa SQL bruto (travado por
