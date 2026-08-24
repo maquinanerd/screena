@@ -66,6 +66,10 @@ function prismaBin(): string {
 
 type PrismaLike = {
   tvShow: { create: (args: unknown) => Promise<{ id: bigint }> };
+  sourceLicense: {
+    create: (args: unknown) => Promise<unknown>;
+    updateMany: (args: unknown) => Promise<{ count: number }>;
+  };
   season: { create: (args: unknown) => Promise<{ id: bigint }> };
   episode: { create: (args: unknown) => Promise<unknown> };
   slug: { create: (args: unknown) => Promise<unknown> };
@@ -75,6 +79,56 @@ type PrismaLike = {
   articleTranslation: { create: (args: unknown) => Promise<unknown> };
   entityNewsLink: { create: (args: unknown) => Promise<unknown> };
 };
+
+/**
+ * A LICENCA DE IMAGEM, semeada porque o render passou a EXIGI-LA.
+ *
+ * Desde a PR #209 poster, backdrop e still de episodio passam pelo gate de
+ * `source_licenses` (tmdb/image) — FAIL-CLOSED: banco sem a linha nega toda
+ * arte do TMDB. `migrate deploy` + `db:seed` NAO materializam licenca de fonte
+ * (quem faz isso e `pnpm legal sources apply`, ato de governanca que nao roda
+ * aqui), entao sem este seed o validador mediria um ambiente que nao existe.
+ *
+ * Os valores espelham a entrada "TMDB (imagens)" de
+ * `services/legal/src/authorization-spec.ts` (decisao do proprietario,
+ * 21/08/2026). Ver o gemeo em `validate-movie-page-real-postgres.ts`.
+ */
+const TMDB_IMAGE_ATTRIBUTION =
+  "Este produto usa a API do TMDB, mas nao e endossado ou certificado pelo TMDB.";
+
+async function seedTmdbImageLicense(prisma: PrismaLike): Promise<void> {
+  await prisma.sourceLicense.create({
+    data: {
+      sourceKey: "tmdb",
+      contentType: "image",
+      providerKey: "tmdb",
+      territoryCode: null,
+      licenseStatus: "official",
+      displayAllowed: true,
+      logoAllowed: true,
+      scoreAllowed: false,
+      reviewQuoteAllowed: false,
+      requiresAttribution: true,
+      requiresLinkback: true,
+      attributionText: TMDB_IMAGE_ATTRIBUTION,
+      isCurrent: true,
+      decisionOrigin: "validator-harness",
+      policyVersion: "cinerie-source-auth/tmdb-image/2026-08-v3",
+    },
+  });
+}
+
+/**
+ * Liga/desliga a exibicao na licenca VIGENTE — o interruptor do controle
+ * negativo. Sem `data_usage_decisions` penduradas, o trigger
+ * `source_licenses_no_downgrade_guard` nao dispara.
+ */
+async function setTmdbImageDisplay(prisma: PrismaLike, allowed: boolean): Promise<void> {
+  await prisma.sourceLicense.updateMany({
+    where: { sourceKey: "tmdb", contentType: "image", isCurrent: true },
+    data: { displayAllowed: allowed },
+  });
+}
 
 /** Cria um Article publicavel|rascunho + traducao pt-BR + link para uma entidade. */
 async function seedRelatedArticle(
@@ -294,6 +348,10 @@ async function runChecks(
   prisma: PrismaLike,
   getSeriesPageData: GetSeriesPageData,
 ): Promise<void> {
+  // A LICENCA DE IMAGEM VEM ANTES DE TUDO: poster, backdrop e still passam pelo
+  // gate de `source_licenses` (tmdb/image) desde 21/08/2026.
+  await seedTmdbImageLicense(prisma);
+
   const missing = await getSeriesPageData("serie-que-nao-existe-1234");
   record(3, "A. slug inexistente retorna null", missing === null, `retorno=${missing === null ? "null" : "objeto"}`);
 
@@ -416,6 +474,81 @@ async function runChecks(
   record(23, "D. temporada real aparece", richByAlias?.view.seasons[0]?.title === "Temporada 1", `season=${richByAlias?.view.seasons[0]?.title}`);
   record(24, "D. episodios reais aparecem ordenados", JSON.stringify(richByAlias?.view.seasons[0]?.episodes.map((episode) => episode.episodeNumber)) === JSON.stringify([1, 2]), `episodes=[${richByAlias?.view.seasons[0]?.episodes.map((episode) => episode.episodeNumber).join(", ")}]`);
   record(25, "D. still local seguro aparece; still de file_path cru vira URL REMOTA", richByAlias?.view.seasons[0]?.episodes[0]?.still?.src === "/uploads/series/episode-1.webp" && (richByAlias?.view.seasons[0]?.episodes[1]?.still?.src?.startsWith("https://") ?? false), `still1=${richByAlias?.view.seasons[0]?.episodes[0]?.still?.src ?? "null"}`);
+
+  // --- E. O GATE DE LICENCA DA IMAGEM, contra o banco REAL. ----------------
+  //
+  // Os checks 9 e 25 provam que a arte do TMDB APARECE — e passariam igual se o
+  // gate nao existisse, que era o estado de antes da PR #209. Falta o outro
+  // lado: que `display_allowed` MANDA, e que o still de episodio (nao so o
+  // poster) obedece ao mesmo interruptor.
+  //
+  // Cada caso usa um slug NOVO: `getSeriesPageData` e envolvido por `cache()`
+  // do React, e reconsultar o mesmo slug depois de virar o flag poderia
+  // devolver memoria em vez de banco.
+  await seedSeries(prisma, {
+    tmdbId: 95000005,
+    nameOriginal: "Gated Series Off",
+    firstAirDate: new Date("2021-01-01"),
+    lastAirDate: null,
+    numberOfSeasons: 1,
+    numberOfEpisodes: 1,
+    posterPath: "/gated-off-poster.jpg",
+    backdropPath: "/gated-off-backdrop.jpg",
+    canonicalSlug: "serie-licenca-negada",
+    blocks: [],
+    seasons: [
+      {
+        seasonNumber: 1,
+        name: "Temporada 1",
+        episodeCount: 1,
+        episodes: [{ episodeNumber: 1, name: "Piloto", stillPath: "/gated-off-still.jpg" }],
+      },
+    ],
+  });
+  await seedSeries(prisma, {
+    tmdbId: 95000006,
+    nameOriginal: "Gated Series On",
+    firstAirDate: new Date("2021-02-02"),
+    lastAirDate: null,
+    numberOfSeasons: 1,
+    numberOfEpisodes: 1,
+    posterPath: "/gated-on-poster.jpg",
+    backdropPath: "/gated-on-backdrop.jpg",
+    canonicalSlug: "serie-licenca-restaurada",
+    blocks: [],
+    seasons: [
+      {
+        seasonNumber: 1,
+        name: "Temporada 1",
+        episodeCount: 1,
+        episodes: [{ episodeNumber: 1, name: "Piloto", stillPath: "/gated-on-still.jpg" }],
+      },
+    ],
+  });
+
+  await setTmdbImageDisplay(prisma, false);
+  const licenseOff = await getSeriesPageData("serie-licenca-negada");
+  record(
+    27,
+    "E. CONTROLE NEGATIVO: display_allowed=false APAGA poster, backdrop e still",
+    licenseOff !== null &&
+      licenseOff.view.media.poster === null &&
+      licenseOff.view.media.backdrop === null &&
+      licenseOff.view.media.hasRealImage === false &&
+      (licenseOff.view.seasons[0]?.episodes[0]?.still ?? null) === null,
+    `poster=${licenseOff?.view.media.poster?.src ?? "null"}, still=${licenseOff?.view.seasons[0]?.episodes[0]?.still?.src ?? "null"}`,
+  );
+
+  await setTmdbImageDisplay(prisma, true);
+  const licenseOn = await getSeriesPageData("serie-licenca-restaurada");
+  record(
+    28,
+    "E. a arte VOLTA quando a licenca vigente volta a permitir (o flag manda)",
+    (licenseOn?.view.media.poster?.src?.startsWith("https://") ?? false) &&
+      (licenseOn?.view.media.backdrop?.src?.startsWith("https://") ?? false) &&
+      (licenseOn?.view.seasons[0]?.episodes[0]?.still?.src?.startsWith("https://") ?? false),
+    `poster=${licenseOn?.view.media.poster?.src ?? "null"}, still=${licenseOn?.view.seasons[0]?.episodes[0]?.still?.src ?? "null"}`,
+  );
 }
 
 async function main(): Promise<void> {
