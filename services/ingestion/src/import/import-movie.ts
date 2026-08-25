@@ -172,6 +172,10 @@ export async function importMovie(ctx: ImportContext, tmdbId: number): Promise<I
       // "este titulo nao tem onde assistir".
       watch: emptyDetailWatchReport('unrecognized'),
       error: info.message,
+      // Codigo e status viajam junto com a mensagem: quem embrulha este
+      // resultado em excecao nao tem outro jeito de saber o que falhou.
+      errorCode: info.code,
+      ...(info.status === null ? {} : { errorStatus: info.status }),
     }
   }
 }
