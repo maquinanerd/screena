@@ -109,9 +109,14 @@ describe('governanca: meta description passa pelo helper unico', () => {
       linhas.forEach((linha, i) => {
         const m = CONSTANTE_LITERAL.exec(linha)
         if (m === null) return
-        if (m[3].length <= META_DESCRIPTION_MAX) return
+        // `noUncheckedIndexedAccess`: grupo de captura e `string | undefined`
+        // mesmo quando o padrao garante que casou. Nomear os dois deixa o
+        // contrato explicito em vez de confiar na leitura da regex.
+        const nome = m[1] ?? '(sem nome)'
+        const valor = m[3] ?? ''
+        if (valor.length <= META_DESCRIPTION_MAX) return
         const rel = path.relative(REPO_ROOT, arquivo).split(path.sep).join('/')
-        estouradas.push(`${rel}:${i + 1} -> ${m[1]} tem ${m[3].length} caracteres`)
+        estouradas.push(`${rel}:${i + 1} -> ${nome} tem ${valor.length} caracteres`)
       })
     }
     expect(
