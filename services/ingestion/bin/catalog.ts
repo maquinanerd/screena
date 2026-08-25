@@ -64,6 +64,7 @@ import {
   DECIDABLE_ENTITY_TYPES,
   produceIndexabilityDecisions,
 } from '../src/persistence/indexability-writer.js'
+import type { CatalogDecisionEntityType } from '@screena/seo'
 import {
   BACKFILLABLE_TYPES,
   backfillFinalization,
@@ -776,7 +777,7 @@ async function cmdIndexDecisions(
   const types =
     requested === null
       ? DECIDABLE_ENTITY_TYPES
-      : requested.filter((t): t is 'movie' | 'tv' | 'person' =>
+      : requested.filter((t): t is CatalogDecisionEntityType =>
           (DECIDABLE_ENTITY_TYPES as readonly string[]).includes(t),
         )
   if (types.length === 0) {

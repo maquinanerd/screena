@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { notFound, permanentRedirect } from 'next/navigation'
 import type { ReactNode } from 'react'
 
-import { buildSameAs, serializeJsonLd } from '@screena/seo'
+import { buildSameAs, serializeJsonLd, buildMetaDescription } from '@screena/seo'
 
 import { EntityActions } from '../../../_components/entity-actions'
 import { EntitySynopsis } from '../../../_components/entity-synopsis'
@@ -199,7 +199,9 @@ export async function generateMetadata({
     robots: gatePublicRobots(seo.robots),
     alternates: { canonical: canonicalUrl },
   }
-  if (view.metaDescription !== null) metadata.description = view.metaDescription
+  if (view.metaDescription !== null) {
+    metadata.description = buildMetaDescription(view.metaDescription) ?? view.metaDescription
+  }
   return metadata
 }
 
