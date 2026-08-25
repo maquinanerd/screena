@@ -23,6 +23,7 @@ import {
   importPerson,
   importTvShow,
 } from '../import/index.js'
+import { CatalogServiceError, assertImportOk } from '../import/assert-ok.js'
 import { normalizeMovie } from '../normalizers/movie.js'
 import { normalizeTvShow } from '../normalizers/tv.js'
 import { normalizePerson } from '../normalizers/person.js'
@@ -75,7 +76,6 @@ import type {
 } from '../catalog-jobs/handlers/ports.js'
 import type { SyncDetailKind } from '../catalog-jobs/handlers/schemas.js'
 import type { ReferenceOwnerType } from '../catalog-entities/store-port.js'
-import type { ImportResult } from '../import/types.js'
 import type { CatalogDisplayFields } from '../display-fields.js'
 import { desiredCatalogSlug } from '../public-catalog-slug.js'
 import type { CreditsWriteOutcome, TmdbReadPort } from '../ports.js'
@@ -96,31 +96,6 @@ import { createPrismaTmdbWatchOfferStore, createPrismaWatchEntityResolver } from
 import { DEFAULT_WATCH_TERRITORIES } from '../watch-providers/territories.js'
 import { emptyDetailWatchReport } from '../watch-providers/from-detail.js'
 import { createPersistence } from './index.js'
-
-/** Erro transitorio de um servico pipeline-safe que reportou falha. */
-class CatalogServiceError extends Error {
-  readonly code: string
-  constructor(operation: string, code: string, detail?: string) {
-    super(`${operation} falhou (${code})${detail ? `: ${detail}` : ''}`)
-    this.name = 'CatalogServiceError'
-    this.code = code
-  }
-}
-
-/**
- * Converte o `ImportResult` pipeline-safe em excecao quando falhou.
- *
- * `aborted` e `failed` viram throw: o worker decide retry/dead-letter. Um 404
- * (entidade nao existe upstream) e PERMANENTE — repetir devolve o mesmo 404.
- */
-function assertImportOk(result: ImportResult, operation: string): ImportResult {
-  if (result.status === 'success') return result
-  const code = result.error ?? 'unknown'
-  if (/\b404\b|not[_ ]?found/i.test(String(result.error ?? ''))) {
-    throw new PermanentJobError('upstream_not_found', `${operation}: ${code}`)
-  }
-  throw new CatalogServiceError(operation, result.status, result.error)
-}
 
 /**
  * Exige um numero onde o tipo da porta permite null.
