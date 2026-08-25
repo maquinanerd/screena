@@ -80,7 +80,7 @@ scripts/catalog/catalog-cycle-with-alert.sh
 ```
 
 Executa, em ordem: snapshot -> `worker` -> `search-reindex` ->
-`index-decisions --apply` -> snapshot -> sentinela -> alerta.
+`index-decisions --dry-run` -> snapshot -> sentinela -> alerta.
 
 Agendado por [`cinerie-catalog-cycle.timer`](../../services/ingestion/systemd/cinerie-catalog-cycle.timer)
 (de hora em hora, `Persistent=true`, jitter de 300 s).
@@ -162,6 +162,19 @@ BACKUP_ALERT_PROVIDER=slack                              # ou generic
 Sem webhook: log local e retorno seguro. **O alerta nunca mascara o exit code do
 trabalho.**
 
+Se o webhook ESTAVA configurado e a entrega falhou, o ciclo imprime em stderr
+(journal da unit):
+
+```
+catalog-cycle: ALERTA NAO ENTREGUE (<outcome>): <detail>
+catalog-cycle: ALERTA NAO ENTREGUE — o canal de alerta falhou; ninguem foi notificado sobre este ciclo.
+```
+
+Ate 2026-08 essa falha era engolida (`(ignorada)`): o canal caia e o operador
+nao descobria. O exit code continua sendo o do CICLO, nunca o do alerta — o que
+mudou e que a falha do alerta passou a deixar rastro. Contrato completo em
+[`OBSERVABILITY.md`](../runbooks/OBSERVABILITY.md) §4.2.
+
 ---
 
 ## 5. Decisoes de indexabilidade
@@ -176,17 +189,58 @@ resolver de SEO — e ate esta entrega **nunca foi escrita por processo nenhum**
 As clausulas `NOT EXISTS (... decision <> 'index')` nunca excluiram uma linha.
 
 A politica geral (licenca -> idioma -> caso tecnico -> index) continua vindo de
-`resolvePageSeo`. O motor de catalogo acrescenta os gates por tipo:
+`resolvePageSeo`. O motor de catalogo acrescenta os gates por tipo — todos
+**dirigidos a dado**, nunca "tipo X nao indexa"
+(`catalog-indexability-v2`):
 
 | Tipo | Gate |
 | --- | --- |
-| filme / serie | slug canonico + titulo + traducao |
-| temporada / episodio | herda a serie (fail-closed quando o pai e desconhecido) |
-| pessoa | credito em obra publicavel |
+| filme / serie | slug canonico + titulo + traducao + **sinopse** + **poster** |
+| temporada | herda a serie + **sinopse OU pelo menos um episodio listado** |
+| episodio | herda a serie + **sinopse propria** |
+| pessoa | credito em obra publicavel + **biografia EXIBIVEL** + **foto** |
+
+Herdar a serie e fail-closed: pai desconhecido -> `parent_not_publishable`.
+"Biografia exibivel" = texto em `people.biography` **e**
+`people.biography_source_status` em `official`/`licensed`/`third_party` — o
+default da coluna e `unknown`, e bio ingerida sem liberacao nao aparece na tela.
+
+**Reversivel sem deploy.** Preencheu a sinopse/biografia que faltava? A proxima
+execucao do produtor devolve a pagina ao indice sozinha. E por isso que o gate
+pergunta pelo DADO e nao pelo tipo.
+
+**As razoes do censo** (`--json` agrega por elas): `eligible`, `missing_slug`,
+`missing_title`, `missing_translation`, `no_synopsis`, `no_biography`,
+`no_image`, `no_eligible_credit`, `parent_not_publishable`,
+`insufficient_data`, `language_not_published`, `blocked_license`.
+
+> **O ciclo horario NAO aplica: ele roda `index-decisions --dry-run --json`.**
+>
+> Ate 2026-08 a linha era `--apply`. Com a politica v2 a primeira aplicacao
+> tira ~51 mil URLs do sitemap (22.385 pessoas, ~28 mil episodios, ~40 series),
+> e a governanca exige **revisao humana para indexacao em massa**. Um timer
+> horario decidindo isso sozinho e a decisao mais cara do sistema tomada por
+> um cron.
+>
+> Havia ainda um acoplamento invisivel: o ciclo nunca rodou (626 jobs
+> `pending`, zero `succeeded`). Quem o liga e a criacao do catalog worker —
+> entao subir o worker dispararia a desindexacao em massa como EFEITO
+> COLATERAL de uma tarefa de ingestao.
+>
+> O dry-run mantem o censo por razao no log a cada hora. Aplicar continua
+> possivel e passa a ser um ATO DELIBERADO:
+>
+> ```bash
+> pnpm catalog index-decisions --apply --force
+> ```
+>
+> Travado por `tests/governance/catalog-scheduler-units.test.ts` (14b).
 
 **Sem churn:** decisao igual a persistida nao grava. Uma execucao sobre catalogo
 estavel grava zero. Quando muda, a anterior e despromovida e a nova aponta para
-ela via `supersedes_id`, na mesma transacao.
+ela via `supersedes_id`, na mesma transacao. Subir `CATALOG_POLICY_VERSION`
+reemite TODAS as decisoes, mesmo as de veredito inalterado — e assim que a
+auditoria distingue "a entidade mudou" de "a regra mudou".
 
 **Nao liga indexacao.** Gravar `decision='index'` registra o que a politica diz;
 `CINERIE_PUBLIC_INDEXING_ENABLED` continua `0` e e decisao humana separada.

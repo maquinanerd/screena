@@ -35,13 +35,30 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Validate backup shell scripts
+      # TODOS os .sh versionados. Estes scripts so executam em producao (cron e
+      # systemd timer), entao um erro de sintaxe nao aparece em nenhum teste --
+      # aparece no host, com o job nunca rodando. `catalog-cycle-with-alert.sh`
+      # ficou de fora deste gate ate 2026-08 mesmo sendo o ExecStart= de
+      # `cinerie-catalog-cycle.service`. Ao adicionar um .sh, adicione aqui.
+      - name: Validate operational shell scripts
         shell: bash
         run: |
+          expected=6
+          found="$(git ls-files '*.sh' | wc -l)"
+          if [[ "$found" -ne "$expected" ]]; then
+            echo "::error::ha $found script(s) .sh versionado(s), mas este gate cobre $expected. Adicione o novo script ao 'bash -n' abaixo e atualize 'expected'." >&2
+            git ls-files '*.sh' >&2
+            exit 1
+          fi
           bash -n scripts/backup/backup.sh
           bash -n scripts/backup/restore-test.sh
           bash -n scripts/backup/backup-with-alert.sh
           bash -n scripts/backup/verify-backup-restore.sh
+          bash -n scripts/catalog/catalog-cycle-with-alert.sh
+          bash -n scripts/backup/restore-test-selftest.sh
+          awk -v tables_out=/dev/null -v rows_out=/dev/null \
+            -v indexes_out=/dev/null -v constraints_out=/dev/null \
+            -f scripts/backup/lib/dump-manifest.awk </dev/null
 
       - name: Generate Prisma Client
         env:
@@ -395,6 +412,15 @@ jobs:
 
       - name: Verificar backup + restore com fidelidade de dados
         run: bash scripts/backup/verify-backup-restore.sh
+
+      # CONTROLE NEGATIVO do passo acima. Um teste de restore que nunca fica
+      # vermelho nao prova restore nenhum: aqui o `restore-test.sh` roda cinco
+      # vezes contra o mesmo dump — uma limpa (precisa sair 0) e quatro com uma
+      # divergencia injetada na base restaurada (linha, tabela, indice, FK), cada
+      # uma precisando sair != 0 COM o diagnostico correspondente. Se a
+      # comparacao virar decoracao de novo, este passo reprova.
+      - name: Controle negativo — restore-test.sh precisa REPROVAR com divergencia
+        run: bash scripts/backup/restore-test-selftest.sh
 
   # Prova REAL da imagem Docker (Prompt 02): constroi pelo digest declarado,
   # injeta SHA/versao/horario, sobe PostgreSQL 16, roda o container como NAO-root,
