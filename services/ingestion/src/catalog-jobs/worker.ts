@@ -24,6 +24,7 @@ import {
   type CatalogJobRegistry,
   type StructuredLogger,
 } from './handler.js'
+import { clampSafeText, errorMessageWithCauses, flattenErrorText } from '../utils/error-text.js'
 import { planFailure } from './transitions.js'
 import type { JobBackoffConfig } from './backoff.js'
 import type { CatalogJobStorePort, ClaimedCatalogJob } from './store-port.js'
@@ -84,17 +85,25 @@ class JobTimeoutError extends Error {
   }
 }
 
-/** Extrai um codigo/mensagem SEGUROS (sem PII/segredo) de um erro. */
+/**
+ * Extrai um codigo/mensagem SEGUROS (sem PII/segredo) de um erro.
+ *
+ * Este e o ULTIMO gate antes de `last_error_code`/`last_error_safe`: o que ele
+ * cortar ninguem le depois. Ate 25/08/2026 ele cortava na primeira quebra de
+ * linha, e a mensagem do Prisma COMECA com `\n` — 7.076 jobs gravaram o prefixo
+ * do embrulho e nada mais, ou string vazia. Ver `utils/error-text.ts`, que
+ * concentra o achatamento, a cadeia de `cause` e o truncamento pelas duas
+ * pontas; a stack continua fora (`message` nunca a contem).
+ */
 export function toSafeError(error: unknown): { code: string; safe: string } {
   if (error instanceof Error) {
     // `code` e uma propriedade opcional de erros de driver/HTTP; nao esta em Error.
     const maybeCode: unknown = (error as unknown as { code?: unknown }).code
     const code = typeof maybeCode === 'string' && maybeCode.length > 0 ? maybeCode : error.name
-    // Primeira linha, truncada: nunca despeja stack/payload no banco.
-    const safe = error.message.split('\n')[0]?.slice(0, 200) ?? ''
+    const safe = clampSafeText(errorMessageWithCauses(error))
     return { code: code.slice(0, 80), safe }
   }
-  return { code: 'unknown_error', safe: String(error).slice(0, 200) }
+  return { code: 'unknown_error', safe: clampSafeText(flattenErrorText(String(error))) }
 }
 
 /**
