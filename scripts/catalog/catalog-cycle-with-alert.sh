@@ -140,10 +140,37 @@ run_cycle() {
     return "$code"
   fi
 
-  # Projeção de busca e decisões de indexabilidade fazem parte do ciclo: sem
-  # elas, entidade nova não entra na busca nem tem decisão registrada.
+  # Projeção de busca faz parte do ciclo: sem ela, entidade nova não entra na
+  # busca. É escrita, mas de baixo risco — projeta o que já existe.
   catalog_write search-reindex --apply || echo "catalog-cycle: search-reindex falhou (seguindo)." >&2
-  catalog_write index-decisions --apply || echo "catalog-cycle: index-decisions falhou (seguindo)." >&2
+
+  # DECISÕES DE INDEXABILIDADE: DRY-RUN, NUNCA `--apply` AQUI.
+  #
+  # Até esta mudança a linha era `catalog_write index-decisions --apply`. Com a
+  # política v2 (gates de sinopse/biografia/imagem), a primeira execução tira
+  # ~51 mil URLs do sitemap — 22.385 pessoas (nenhuma tem biografia), ~28 mil
+  # episódios (só 1.257 de 30.803 têm sinopse) e ~40 séries.
+  #
+  # Isso é INDEXAÇÃO EM MASSA, e o CLAUDE.md §6 exige revisão humana para ela.
+  # Um timer horário aplicando sozinho é exatamente o contrário: a decisão mais
+  # cara do sistema tomada por um cron, sem ninguém ler o censo.
+  #
+  # Havia ainda um acoplamento invisível: este ciclo nunca rodou (a fila tem 626
+  # jobs `pending` e zero `succeeded` na história). Quem o liga é a criação do
+  # catalog worker. Ou seja, subir o worker dispararia a desindexação em massa
+  # como EFEITO COLATERAL de uma tarefa que não tem nada a ver com SEO.
+  #
+  # O dry-run mantém o valor do ciclo — o censo por razão fica no log a cada
+  # hora, e uma divergência nova aparece — sem que nada mude no índice. Aplicar
+  # continua possível e passa a ser um ATO DELIBERADO:
+  #
+  #     catalog index-decisions --apply --force
+  #
+  # Se um dia a aplicação automática for desejada, ela precisa de decisão
+  # registrada e de uma trava própria de mudança em massa — não de descomentar
+  # uma linha.
+  catalog_read index-decisions --dry-run --json \
+    || echo "catalog-cycle: index-decisions (dry-run) falhou (seguindo)." >&2
 
   after="$(snapshot)"
 

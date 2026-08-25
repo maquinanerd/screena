@@ -80,7 +80,7 @@ scripts/catalog/catalog-cycle-with-alert.sh
 ```
 
 Executa, em ordem: snapshot -> `worker` -> `search-reindex` ->
-`index-decisions --apply` -> snapshot -> sentinela -> alerta.
+`index-decisions --dry-run` -> snapshot -> sentinela -> alerta.
 
 Agendado por [`cinerie-catalog-cycle.timer`](../../services/ingestion/systemd/cinerie-catalog-cycle.timer)
 (de hora em hora, `Persistent=true`, jitter de 300 s).
@@ -201,13 +201,27 @@ pergunta pelo DADO e nao pelo tipo.
 `no_image`, `no_eligible_credit`, `parent_not_publishable`,
 `insufficient_data`, `language_not_published`, `blocked_license`.
 
-> **ATENCAO — o ciclo horario roda `index-decisions --apply` sozinho**
-> (secao 3). Uma mudanca de politica, depois de implantada, aplica-se em massa
-> na proxima hora, sem ninguem digitar nada. Antes de implantar uma versao nova
-> da politica, rode `--dry-run --json` contra o banco alvo e leia o censo: a
-> invariante de governanca exige **revisao humana para indexacao em massa**, e
-> nessa hora o `--dry-run` e a unica coisa entre a revisao e 50 mil URLs
-> mudando de estado.
+> **O ciclo horario NAO aplica: ele roda `index-decisions --dry-run --json`.**
+>
+> Ate 2026-08 a linha era `--apply`. Com a politica v2 a primeira aplicacao
+> tira ~51 mil URLs do sitemap (22.385 pessoas, ~28 mil episodios, ~40 series),
+> e a governanca exige **revisao humana para indexacao em massa**. Um timer
+> horario decidindo isso sozinho e a decisao mais cara do sistema tomada por
+> um cron.
+>
+> Havia ainda um acoplamento invisivel: o ciclo nunca rodou (626 jobs
+> `pending`, zero `succeeded`). Quem o liga e a criacao do catalog worker —
+> entao subir o worker dispararia a desindexacao em massa como EFEITO
+> COLATERAL de uma tarefa de ingestao.
+>
+> O dry-run mantem o censo por razao no log a cada hora. Aplicar continua
+> possivel e passa a ser um ATO DELIBERADO:
+>
+> ```bash
+> pnpm catalog index-decisions --apply --force
+> ```
+>
+> Travado por `tests/governance/catalog-scheduler-units.test.ts` (14b).
 
 **Sem churn:** decisao igual a persistida nao grava. Uma execucao sobre catalogo
 estavel grava zero. Quando muda, a anterior e despromovida e a nova aponta para

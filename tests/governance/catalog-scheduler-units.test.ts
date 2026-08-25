@@ -30,6 +30,21 @@ const serviceDirectives = service
   .join("\n");
 const timer = read("services/ingestion/systemd/cinerie-catalog-cycle.timer");
 const wrapper = read("scripts/catalog/catalog-cycle-with-alert.sh");
+
+/**
+ * Apenas os COMANDOS do wrapper, sem comentarios — mesma razao de
+ * `serviceDirectives` acima.
+ *
+ * O cabecalho da secao de indexabilidade cita a forma manual
+ * (`index-decisions` com aplicacao forcada) para dizer como aplicar
+ * deliberadamente. Assertar sobre o arquivo inteiro confundiria essa mencao em
+ * prosa com o ciclo realmente aplicando sozinho — de novo, a diferenca entre
+ * documentar e agendar.
+ */
+const wrapperCommands = wrapper
+  .split("\n")
+  .filter((line) => !line.trimStart().startsWith("#"))
+  .join("\n");
 const legacyService = read("services/sync/systemd/screena-tmdb-catalog.service");
 
 describe("cinerie-catalog-cycle.service", () => {
@@ -107,8 +122,42 @@ describe("catalog-cycle-with-alert.sh", () => {
   });
 
   it("(14) o ciclo inclui busca e indexabilidade, nao so o worker", () => {
-    expect(wrapper).toContain("search-reindex");
-    expect(wrapper).toContain("index-decisions");
+    expect(wrapperCommands).toContain("search-reindex");
+    expect(wrapperCommands).toContain("index-decisions");
+  });
+
+  it("(14b) o ciclo NAO aplica decisoes de indexabilidade sozinho", () => {
+    // Indexacao em massa exige revisao humana (CLAUDE.md secao 6). Com a
+    // politica v2, a primeira aplicacao tira ~51 mil URLs do sitemap: 22.385
+    // pessoas (nenhuma tem biografia), ~28 mil episodios (1.257 de 30.803 tem
+    // sinopse) e ~40 series. Um timer horario decidindo isso sozinho e a
+    // decisao mais cara do sistema tomada por um cron.
+    //
+    // Pior: o ciclo nunca rodou (626 jobs `pending`, zero `succeeded`). Quem o
+    // liga e a criacao do catalog worker — entao subir o worker dispararia a
+    // desindexacao como EFEITO COLATERAL de uma tarefa de ingestao.
+    //
+    // O dry-run mantem o censo por razao no log de hora em hora sem mexer no
+    // indice. Aplicar continua possivel, e passa a ser um ato deliberado.
+    const linhasIndexDecisions = wrapperCommands
+      .split("\n")
+      .filter((l) => l.includes("index-decisions"));
+    expect(linhasIndexDecisions.length).toBeGreaterThan(0);
+
+    // A propriedade de seguranca: NENHUMA linha que cite `index-decisions`
+    // pode carregar `--apply`. Vale linha a linha porque e a invocacao que
+    // importa, e ela cabe numa linha.
+    for (const linha of linhasIndexDecisions) {
+      expect(linha, `o ciclo aplicaria indexabilidade sozinho: ${linha.trim()}`).not.toContain(
+        "--apply",
+      );
+    }
+
+    // E o ciclo continua CHAMANDO o comando, em dry-run — senao o censo por
+    // razao desapareceria do log e ninguem veria a divergencia crescer.
+    // Asserta sobre o texto, nao sobre a linha: a invocacao usa continuacao
+    // com `\` e a mensagem de erro do `||` tambem cita `index-decisions`.
+    expect(wrapperCommands).toContain("index-decisions --dry-run");
   });
 });
 
