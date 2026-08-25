@@ -21,9 +21,10 @@
  * contra producao, e e onde ele tem serventia (o catalogo de verdade). Nao roda
  * em render nem em build; zero rede, zero TMDB, zero Gemini.
  *
- * Uso:
+ * Uso (a flag vai DIRETO: o pnpm 9.15.4 nao consome o separador `--`, ele chega
+ * como argumento literal e o parser o recusa):
  *   pnpm --filter @screena/web report:hero-gate
- *   pnpm --filter @screena/web report:hero-gate -- --limit 20   # amostra dos aprovados
+ *   pnpm --filter @screena/web report:hero-gate --limit 20   # amostra dos aprovados
  */
 
 import { getPrismaClient } from "@screena/db/server";
