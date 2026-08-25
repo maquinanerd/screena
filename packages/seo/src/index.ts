@@ -26,3 +26,4 @@ export * from "./sitemap-xml.js";
 
 export * from './article-technical-seo.js'
 export * from './news-sitemap.js'
+export * from './meta-description.js'

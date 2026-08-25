@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { notFound, permanentRedirect } from 'next/navigation'
 
-import { serializeJsonLd } from '@screena/seo'
+import { serializeJsonLd, buildMetaDescription } from '@screena/seo'
 
 import { PrevNextNav } from '../../../../../_components/prev-next-nav'
 import { parseRouteNumber, seasonPath } from '../../../../../../src/lib/routes'
@@ -66,7 +66,7 @@ export async function generateMetadata({
     openGraph: { title, url: canonicalUrl, type: 'website' },
   }
   if (view.overview !== null) {
-    metadata.description = view.overview
+    metadata.description = buildMetaDescription(view.overview) ?? view.overview
     metadata.openGraph = { ...metadata.openGraph, description: view.overview }
   }
   return metadata
