@@ -1,5 +1,6 @@
 /**
- * runtime/http.ts — As tres rotas do agendador. EXCLUIDO do typecheck principal.
+ * runtime/http.ts — As tres rotas do agendador. COBERTO pelo typecheck da raiz (`pnpm
+ * typecheck`).
  *
  *   GET /healthz  LIVENESS. Nao toca banco. Se tocasse, uma queda do PostgreSQL
  *                 faria o orquestrador reiniciar em loop um processo saudavel —

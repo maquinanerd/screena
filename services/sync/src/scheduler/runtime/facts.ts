@@ -1,5 +1,6 @@
 /**
- * runtime/facts.ts — De onde saem os FATOS do painel. EXCLUIDO do typecheck.
+ * runtime/facts.ts — De onde saem os FATOS do painel. COBERTO pelo typecheck da raiz
+ * (`pnpm typecheck`).
  *
  * Tres leituras, todas read-only e todas sobre tabelas que ja existem — este
  * agendador NAO precisa de migration nenhuma:

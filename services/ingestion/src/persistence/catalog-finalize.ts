@@ -1,6 +1,6 @@
 /**
- * catalog-finalize.ts — Finalizacao editorial de catalogo (Prisma). EXCLUIDO do
- * typecheck.
+ * catalog-finalize.ts — Finalizacao editorial de catalogo (Prisma). COBERTO por
+ * `tsconfig.runtime.json` (`pnpm typecheck` encadeia os dois).
  *
  * Concentra a logica IDEMPOTENTE de slug canonico pt-BR (+ Redirect 301 em troca
  * de canonico) e de traducao pt-BR (title/summary) — a MESMA que o backfill

@@ -4,8 +4,7 @@
  * A orquestracao futura dependera SO destas interfaces — nunca de Prisma, de
  * rede ou de um SDK Gemini concreto. Isso mantem o core puro e testavel com
  * fakes em memoria; os adapters reais (Gemini worker-only, persistencia
- * Prisma, fila) vivem fora do typecheck e fora do render, em fases
- * posteriores.
+ * Prisma, fila) vivem fora do render, em fases posteriores.
  *
  * Nenhuma implementacao aqui — apenas contratos.
  */

@@ -5,7 +5,7 @@
  * servicos), support (classificacao de erro / labels seguras), os 11 handlers e
  * a composicao de producao (`createCatalogHandlerRegistry`).
  *
- * O wiring com Prisma/TMDB real vive em `bin/catalog.ts` (fora do typecheck).
+ * O wiring com Prisma/TMDB real vive em `bin/catalog.ts`.
  */
 
 export * from './schemas.js'

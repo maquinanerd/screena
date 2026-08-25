@@ -1,6 +1,6 @@
 /**
  * media-reader.ts — Adapter Prisma de LEITURA de midia (Backend A, secao 8).
- * EXCLUIDO do typecheck (adapters Prisma vivem em persistence/).
+ * COBERTO por `tsconfig.runtime.json` (`pnpm typecheck` encadeia os dois).
  *
  * Implementa `MediaReaderPort`: le tmdb_images/tmdb_videos de uma entidade e
  * apura as contagens de cobertura. NAO aplica governanca: devolve as linhas como

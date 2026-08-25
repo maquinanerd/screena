@@ -2,7 +2,7 @@
  * store-port.ts — Porta de persistencia das referencias de episodio (PURO).
  *
  * O adapter Prisma (`createPrismaEpisodeStore`) implementa isto em
- * services/ingestion/src/persistence/episode-store.ts (excluido do typecheck).
+ * services/ingestion/src/persistence/episode-store.ts.
  * A porta fala na chave natural do payload (id TMDB da serie + numero da
  * temporada + numero do episodio); o adapter resolve para os ids internos.
  */

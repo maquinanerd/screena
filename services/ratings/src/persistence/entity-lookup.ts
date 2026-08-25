@@ -1,6 +1,6 @@
 /**
  * entity-lookup.ts — Resolucao de entidade local por id externo (Prisma).
- * EXCLUIDO do typecheck (toca Prisma).
+ * COBERTO pelo typecheck da raiz E por `tsconfig.runtime.json`.
  *
  * SO por identificador inequivoco (`imdb_id` unico ou `tmdb_id` unico). NUNCA
  * casa por titulo/ano: atribuir a nota de um filme a outro e pior do que nao

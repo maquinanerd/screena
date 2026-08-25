@@ -1,7 +1,7 @@
 /**
  * Teste estrutural do adapter Prisma de claim da fila de catalogo.
  *
- * `catalog-job-store.ts` fica FORA do typecheck e usa SQL raw. Sem um Postgres
+ * `catalog-job-store.ts` usa SQL raw, que nenhum tipo confere. Sem um Postgres
  * de integracao nos testes unitarios, travamos aqui as propriedades criticas do
  * SQL de claim: usa `FOR UPDATE SKIP LOCKED` (concorrencia-segura), so
  * reivindica estados claimaveis (pending/retry_wait) que ja passaram de

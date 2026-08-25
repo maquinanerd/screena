@@ -3,7 +3,7 @@
  *
  * A orquestracao (import/*) depende SO destas interfaces — nunca do Prisma nem
  * do client TMDB concretos. Isso mantem a orquestracao pura e testavel com
- * fakes em memoria; os adapters reais (persistence/*) vivem fora do typecheck.
+ * fakes em memoria; os adapters reais vivem em `persistence/*`.
  */
 
 import type {

@@ -1,5 +1,6 @@
 /**
- * entity-writer-log-store.ts — Adapter Prisma de `entity_writer_logs`. EXCLUIDO do typecheck.
+ * entity-writer-log-store.ts — Adapter Prisma de `entity_writer_logs`. COBERTO pelo
+ * typecheck da raiz (`pnpm typecheck`).
  *
  * Grava UMA linha por tentativa de geracao/validacao, usando somente as colunas
  * reais do schema (sem step/status/latency_ms/block_type). O mapeamento mora no

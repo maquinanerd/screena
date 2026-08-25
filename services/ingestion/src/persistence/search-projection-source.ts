@@ -1,7 +1,7 @@
 /**
  * search-projection-source.ts — Adapter Prisma da leitura de entidades para a
- * projecao de busca (Backend A, secao 9). EXCLUIDO do typecheck (adapters Prisma
- * em persistence/).
+ * projecao de busca (Backend A, secao 9). COBERTO por `tsconfig.runtime.json` (`pnpm
+ * typecheck` encadeia os dois).
  *
  * Implementa `SearchProjectionSourcePort`. A paginacao roda sobre a tabela
  * `slugs` (canonico do locale), NAO sobre movies/tv_shows/people: o conjunto
