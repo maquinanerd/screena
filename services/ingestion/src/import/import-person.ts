@@ -103,6 +103,10 @@ export async function importPerson(ctx: ImportContext, tmdbId: number): Promise<
       quotaCost: 0,
       watch: PERSON_WATCH,
       error: info.message,
+      // Codigo e status viajam junto com a mensagem: quem embrulha este
+      // resultado em excecao nao tem outro jeito de saber o que falhou.
+      errorCode: info.code,
+      ...(info.status === null ? {} : { errorStatus: info.status }),
     }
   }
 }
