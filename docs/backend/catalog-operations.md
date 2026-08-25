@@ -176,17 +176,44 @@ resolver de SEO — e ate esta entrega **nunca foi escrita por processo nenhum**
 As clausulas `NOT EXISTS (... decision <> 'index')` nunca excluiram uma linha.
 
 A politica geral (licenca -> idioma -> caso tecnico -> index) continua vindo de
-`resolvePageSeo`. O motor de catalogo acrescenta os gates por tipo:
+`resolvePageSeo`. O motor de catalogo acrescenta os gates por tipo — todos
+**dirigidos a dado**, nunca "tipo X nao indexa"
+(`catalog-indexability-v2`):
 
 | Tipo | Gate |
 | --- | --- |
-| filme / serie | slug canonico + titulo + traducao |
-| temporada / episodio | herda a serie (fail-closed quando o pai e desconhecido) |
-| pessoa | credito em obra publicavel |
+| filme / serie | slug canonico + titulo + traducao + **sinopse** + **poster** |
+| temporada | herda a serie + **sinopse OU pelo menos um episodio listado** |
+| episodio | herda a serie + **sinopse propria** |
+| pessoa | credito em obra publicavel + **biografia EXIBIVEL** + **foto** |
+
+Herdar a serie e fail-closed: pai desconhecido -> `parent_not_publishable`.
+"Biografia exibivel" = texto em `people.biography` **e**
+`people.biography_source_status` em `official`/`licensed`/`third_party` — o
+default da coluna e `unknown`, e bio ingerida sem liberacao nao aparece na tela.
+
+**Reversivel sem deploy.** Preencheu a sinopse/biografia que faltava? A proxima
+execucao do produtor devolve a pagina ao indice sozinha. E por isso que o gate
+pergunta pelo DADO e nao pelo tipo.
+
+**As razoes do censo** (`--json` agrega por elas): `eligible`, `missing_slug`,
+`missing_title`, `missing_translation`, `no_synopsis`, `no_biography`,
+`no_image`, `no_eligible_credit`, `parent_not_publishable`,
+`insufficient_data`, `language_not_published`, `blocked_license`.
+
+> **ATENCAO — o ciclo horario roda `index-decisions --apply` sozinho**
+> (secao 3). Uma mudanca de politica, depois de implantada, aplica-se em massa
+> na proxima hora, sem ninguem digitar nada. Antes de implantar uma versao nova
+> da politica, rode `--dry-run --json` contra o banco alvo e leia o censo: a
+> invariante de governanca exige **revisao humana para indexacao em massa**, e
+> nessa hora o `--dry-run` e a unica coisa entre a revisao e 50 mil URLs
+> mudando de estado.
 
 **Sem churn:** decisao igual a persistida nao grava. Uma execucao sobre catalogo
 estavel grava zero. Quando muda, a anterior e despromovida e a nova aponta para
-ela via `supersedes_id`, na mesma transacao.
+ela via `supersedes_id`, na mesma transacao. Subir `CATALOG_POLICY_VERSION`
+reemite TODAS as decisoes, mesmo as de veredito inalterado — e assim que a
+auditoria distingue "a entidade mudou" de "a regra mudou".
 
 **Nao liga indexacao.** Gravar `decision='index'` registra o que a politica diz;
 `CINERIE_PUBLIC_INDEXING_ENABLED` continua `0` e e decisao humana separada.
