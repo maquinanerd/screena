@@ -103,6 +103,11 @@ emit_alert() {
   local exit_code="$1" summary="$2" status="$3"
   local ts
   ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  # O alerta NAO mascara o exit code do ciclo: esta chamada roda num SUBPROCESSO
+  # e quem decide a saida e o `return "$code"` de `run_cycle`. Mas a falha do
+  # ALERTA tambem nao pode sumir: `dispatchAlert` lanca quando havia canal
+  # configurado e a entrega falhou, e o `catch` abaixo vira diagnostico em
+  # stderr (journal da unit) em vez de silencio.
   ALERT_LIB="$ALERT_LIB" A_EXIT="$exit_code" A_MSG="$summary" A_TS="$ts" A_STATUS="$status" \
     node --input-type=module -e '
       const { pathToFileURL } = await import("node:url");
@@ -116,12 +121,23 @@ emit_alert() {
         host: process.env.HOSTNAME || "",
       });
       console.error(m.formatAlertText(alert));
-      await m.dispatchAlert(alert, {
-        webhookUrl: process.env.CATALOG_ALERT_WEBHOOK_URL || process.env.BACKUP_ALERT_WEBHOOK_URL,
-        provider: process.env.BACKUP_ALERT_PROVIDER,
-        log: () => {},
-      });
-    ' 2>&1 || echo "catalog-cycle: falha ao emitir alerta (ignorada)." >&2
+      try {
+        await m.dispatchAlert(alert, {
+          webhookUrl: process.env.CATALOG_ALERT_WEBHOOK_URL || process.env.BACKUP_ALERT_WEBHOOK_URL,
+          provider: process.env.BACKUP_ALERT_PROVIDER,
+          log: () => {},
+        });
+      } catch (err) {
+        // `err.detail` ja vem redigido pela lib; nunca imprimir a URL/segredo.
+        console.error(
+          `catalog-cycle: ALERTA NAO ENTREGUE (${err.outcome ?? "erro"}): ${err.detail ?? "falha ao despachar"}`,
+        );
+        process.exit(1);
+      }
+    ' 2>&1 || {
+      echo "catalog-cycle: ALERTA NAO ENTREGUE — o canal de alerta falhou; ninguem foi notificado sobre este ciclo." >&2
+      echo "catalog-cycle: confira CATALOG_ALERT_WEBHOOK_URL / BACKUP_ALERT_PROVIDER (docs/runbooks/OBSERVABILITY.md)." >&2
+    }
 }
 
 run_cycle() {
