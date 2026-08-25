@@ -408,3 +408,153 @@ describe('a implementacao antiga REALMENTE falha nas assercoes novas', () => {
     }
   })
 })
+
+describe('video do YouTube -> embed', () => {
+  /*
+   * O contrato de ENTRADA nao tem `embed`; o site so monta player a partir dele.
+   * Sem esta traducao, todo trailer que a automacao manda vira o link
+   * "Assistir no YouTube" — que e o que estava publicado ate esta mudanca.
+   */
+  it('URL de watch vira embed, com a canonica limpa e a original preservada', () => {
+    const { blocks, warnings } = toPayloadBlocks(
+      [
+        {
+          id: 'vid1',
+          type: 'video',
+          provider: 'youtube',
+          url: 'https://www.youtube.com/watch?v=6t7C4qaHihE&si=rastreador',
+          externalId: '6t7C4qaHihE',
+          title: 'Trailer oficial',
+        },
+      ],
+      resolveNone,
+    )
+    expect(blocks).toEqual([
+      {
+        blockType: 'embed',
+        blockId: 'vid1',
+        provider: 'youtube',
+        externalId: '6t7C4qaHihE',
+        canonicalUrl: 'https://www.youtube.com/watch?v=6t7C4qaHihE',
+        originalUrl: 'https://www.youtube.com/watch?v=6t7C4qaHihE&si=rastreador',
+        caption: 'Trailer oficial',
+      },
+    ])
+    expect(warnings).toEqual([])
+  })
+
+  it('youtu.be tambem converte — a allowlist e a mesma do editor', () => {
+    const { blocks } = toPayloadBlocks(
+      [{ id: 'vid1', type: 'video', provider: 'youtube', url: 'https://youtu.be/6t7C4qaHihE' }],
+      resolveNone,
+    )
+    expect(blocks[0]).toMatchObject({ blockType: 'embed', externalId: '6t7C4qaHihE' })
+  })
+
+  it('so o id, sem URL: a canonica montada e a unica origem que existe', () => {
+    // O MNScr OMITE `externalId` quando o id comeca por `-` ou `_`, e omite a
+    // URL em nenhum caso conhecido — mas o contrato deixa os dois opcionais, e
+    // um emissor que mande so o id ainda descreve o video inteiro.
+    const { blocks } = toPayloadBlocks(
+      [{ id: 'vid1', type: 'video', provider: 'youtube', externalId: '6t7C4qaHihE' }],
+      resolveNone,
+    )
+    expect(blocks[0]).toEqual({
+      blockType: 'embed',
+      blockId: 'vid1',
+      provider: 'youtube',
+      externalId: '6t7C4qaHihE',
+      canonicalUrl: 'https://www.youtube.com/watch?v=6t7C4qaHihE',
+      originalUrl: 'https://www.youtube.com/watch?v=6t7C4qaHihE',
+    })
+  })
+
+  it('vimeo e internal continuam `video`: nao ha player para eles', () => {
+    const { blocks, warnings } = toPayloadBlocks(
+      [
+        { id: 'v1', type: 'video', provider: 'vimeo', url: 'https://vimeo.com/123456789' },
+        { id: 'v2', type: 'video', provider: 'internal', externalId: 'asset-1' },
+      ],
+      resolveNone,
+    )
+    expect(blocks.map((block) => block.blockType)).toEqual(['video', 'video'])
+    // Nao houve perda: nao ha aviso.
+    expect(warnings).toEqual([])
+  })
+
+  it('URL que o editor recusaria continua `video` — link que funciona vence player quebrado', () => {
+    const { blocks } = toPayloadBlocks(
+      [
+        {
+          id: 'v1',
+          type: 'video',
+          provider: 'youtube',
+          url: 'https://www.youtube.com/watch?v=id-curto',
+        },
+      ],
+      resolveNone,
+    )
+    expect(blocks[0]).toMatchObject({ blockType: 'video', provider: 'youtube' })
+  })
+
+  it('URL presente e ilegivel NAO cai para o externalId', () => {
+    // Trocar o endereco declarado pelo id seria publicar OUTRO video em silencio.
+    const { blocks } = toPayloadBlocks(
+      [
+        {
+          id: 'v1',
+          type: 'video',
+          provider: 'youtube',
+          url: 'https://exemplo.invalido/nao-e-youtube',
+          externalId: '6t7C4qaHihE',
+        },
+      ],
+      resolveNone,
+    )
+    expect(blocks[0]?.blockType).toBe('video')
+  })
+
+  it('o credito do video nao tem par em embed, e a perda sai NOMEADA', () => {
+    const { blocks, details } = toPayloadBlocks(
+      [
+        {
+          id: 'vid1',
+          type: 'video',
+          provider: 'youtube',
+          url: 'https://www.youtube.com/watch?v=6t7C4qaHihE',
+          credit: 'Divulgacao/Amazon MGM',
+        },
+      ],
+      resolveNone,
+    )
+    expect(blocks[0]?.blockType).toBe('embed')
+    expect(details.map((warning) => warning.code)).toContain('BLOCK_VIDEO_CREDIT_DROPPED')
+  })
+})
+
+describe('marks do paragrafo', () => {
+  it('atravessam sem traducao — a coluna e json e o Zod ja validou', () => {
+    const marks = [
+      { start: 2, end: 12, type: 'bold' },
+      { start: 35, end: 40, type: 'link', href: 'https://exemplo.com/materia' },
+    ]
+    const { blocks } = toPayloadBlocks(
+      [{ id: 'b1', type: 'paragraph', text: 'A Amazon MGM divulgou o trailer de Ali G.', marks }],
+      resolveNone,
+    )
+    expect(blocks[0]).toEqual({
+      blockType: 'paragraph',
+      blockId: 'b1',
+      text: 'A Amazon MGM divulgou o trailer de Ali G.',
+      marks,
+    })
+  })
+
+  it('lista vazia nao vira coluna — ausencia e diferente de enfase apagada', () => {
+    const { blocks } = toPayloadBlocks(
+      [{ id: 'b1', type: 'paragraph', text: 'Sem enfase.', marks: [] }],
+      resolveNone,
+    )
+    expect(blocks[0]).not.toHaveProperty('marks')
+  })
+})

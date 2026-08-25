@@ -16,19 +16,25 @@
  * criado com `body: []` e o endpoint responde 201. Um corpo inteiro some e
  * todo mundo ve sucesso.
  *
- * POR QUE EXPLICITO POR TIPO, e nao `{ ...block, blockType: type }`. Duas
- * razoes concretas, ambas verificadas no schema real:
+ * POR QUE EXPLICITO POR TIPO, e nao `{ ...block, blockType: type }`. Tres
+ * razoes concretas, todas verificadas no schema real:
  *  - `heading.level` e NUMERO no contrato e a coluna e
  *    `enum_articles_blocks_heading_level AS ENUM('2','3','4')` — texto;
  *  - `image.mediaRef` e uma referencia de CONTRATO, e a coluna e `media_id`,
  *    uma relacao de verdade. Spread deixaria `mediaRef` passar e `media`
  *    vazio, e o gate de midia do corpo (que le `block.media`) nunca veria a
- *    imagem.
+ *    imagem;
+ *  - `video` do YouTube MUDA DE TIPO: entra como `video` e e persistido como
+ *    `embed`, que e o unico bloco que o site sabe transformar em player. Um
+ *    spread nao teria como fazer isso, porque a traducao aqui nao e de campo —
+ *    e do bloco inteiro.
  * Um spread tambem faria qualquer campo novo do contrato atravessar para a
  * persistencia sem ninguem decidir que ele atravessa.
  */
 
 import { EDITORIAL_BLOCK_TYPES } from '@screena/editorial-contracts'
+
+import { parseEmbedUrl, type ParsedEmbed } from './embed-url.js'
 
 /** Id de uma linha de `media` no CMS, ou `null` quando nao ha o que apontar. */
 export type ResolvedMediaId = string | number | null
@@ -120,6 +126,37 @@ function stringList(value: unknown): string[] {
  * ha uma assimetria real — e ela e reportada em `warnings` em vez de sumir,
  * porque corrigi-la exigiria migration, que esta fora do escopo desta correcao.
  */
+/**
+ * O `embed` equivalente a um bloco `video` do YouTube, ou `null`.
+ *
+ * A URL manda; `externalId` e o plano B, e a ordem nao e arbitraria. O contrato
+ * deixa os dois opcionais e o MNScr OMITE `externalId` quando o id comeca por
+ * `-` ou `_`: `stableId` exige primeiro caractere alfanumerico, e mandar um
+ * desses reprovaria o pedido INTEIRO por causa de um campo opcional. Quando so
+ * o id chega, a URL canonica que ele determina e a unica origem que existe — e
+ * e ela que vai em `originalUrl`, porque nao houve endereco colado por ninguem.
+ *
+ * `parseEmbedUrl` e a MESMA funcao que o admin usa na colagem: id de 11
+ * caracteres, allowlist fechada de host, sem rastreador na canonica. Reusa-la
+ * aqui e o que impede a ingestao de aceitar uma URL que o editor recusaria.
+ */
+function youtubeEmbedOf(block: ContractBlock): (ParsedEmbed & { originalUrl: string }) | null {
+  const url = text(block.url)
+  if (url !== undefined) {
+    const parsed = parseEmbedUrl(url)
+    // URL presente e ilegivel NAO cai para o id: o emissor declarou um endereco,
+    // e converter para outro video seria trocar o conteudo dele em silencio.
+    return parsed !== null && parsed.provider === 'youtube' ? { ...parsed, originalUrl: url } : null
+  }
+
+  const externalId = text(block.externalId)
+  if (externalId === undefined) return null
+  const parsed = parseEmbedUrl(`https://www.youtube.com/watch?v=${externalId}`)
+  return parsed !== null && parsed.provider === 'youtube'
+    ? { ...parsed, originalUrl: parsed.canonicalUrl }
+    : null
+}
+
 function provenanceOf(block: ContractBlock): Record<string, unknown> {
   if (!Array.isArray(block.provenance) || block.provenance.length === 0) return {}
   const entries = block.provenance.flatMap((raw) => {
@@ -210,7 +247,19 @@ export function toPayloadBlocks(
 
     switch (type) {
       case 'paragraph':
-        mapped.push({ ...base, text: String(block.text ?? ''), ...provenanceOf(block) })
+        mapped.push({
+          ...base,
+          text: String(block.text ?? ''),
+          // `marks` chega ja validado contra o texto pelo Zod do contrato
+          // (limites dentro do paragrafo, sem cortar caractere ao meio, sem
+          // sobreposicao do mesmo tipo) e a coluna e `json`: nao ha traducao a
+          // fazer, so repassar. Lista vazia NAO e gravada — gravar `[]` faria um
+          // paragrafo sem enfase parecer um paragrafo cuja enfase foi apagada.
+          ...(Array.isArray(block.marks) && block.marks.length > 0
+            ? { marks: block.marks }
+            : {}),
+          ...provenanceOf(block),
+        })
         break
 
       case 'heading':
@@ -248,7 +297,52 @@ export function toPayloadBlocks(
         break
       }
 
-      case 'video':
+      case 'video': {
+        /*
+         * VIDEO DO YOUTUBE VIRA `embed`, E A TRADUCAO MORA AQUI.
+         *
+         * O contrato de ENTRADA nao tem `embed` — ele e de saida, pela mesma
+         * regra que segurava `marks` e `list` (`blocks.ts`). O emissor so pode
+         * pedir `video`, e o site desenha `video` como LINK, de proposito:
+         * `<iframe>` carrega script de terceiro em pagina indexavel. O player
+         * existe em `embed`, e ele NAO e um iframe solto — e `YouTubeFacade`,
+         * cartao estatico que so contata o YouTube depois do clique.
+         *
+         * Por que no mapper e nao no render: o mapper E a fronteira onde o
+         * vocabulario do contrato vira o vocabulario da collection. Traduzido no
+         * render, o admin mostraria `video` e a pagina mostraria player — duas
+         * verdades para o mesmo bloco, e a segunda invisivel para quem edita.
+         *
+         * So o YouTube converte. `vimeo` e `internal` nao estao na allowlist de
+         * `embed`, e um endereco que `parseEmbedUrl` recusa renderia player
+         * quebrado no lugar de um link que funciona. Nos dois casos o bloco
+         * continua `video` e nao ha aviso: nada se perdeu.
+         */
+        const embed = block.provider === 'youtube' ? youtubeEmbedOf(block) : null
+        if (embed !== null) {
+          mapped.push({
+            blockType: 'embed',
+            blockId,
+            provider: 'youtube',
+            externalId: embed.externalId,
+            canonicalUrl: embed.canonicalUrl,
+            originalUrl: embed.originalUrl,
+            // `title` do video e a legenda do embed: as duas sao a frase que
+            // acompanha o player.
+            ...optional('caption', block.title),
+          })
+          // `credit` nao tem par em `embed`. Sai NOMEADO em vez de sumir — a
+          // regra da casa vale tambem quando a perda e de um campo so.
+          if (text(block.credit) !== undefined) {
+            lose({
+              code: 'BLOCK_VIDEO_CREDIT_DROPPED',
+              field: `blocks[${String(index)}].credit`,
+              blockId,
+              detail: `credito do video "${blockId}" nao persistido: o bloco de incorporacao do YouTube nao tem campo de credito`,
+            })
+          }
+          break
+        }
         mapped.push({
           ...base,
           provider: block.provider,
@@ -258,6 +352,7 @@ export function toPayloadBlocks(
           ...optional('credit', block.credit),
         })
         break
+      }
 
       case 'quote':
         mapped.push({
