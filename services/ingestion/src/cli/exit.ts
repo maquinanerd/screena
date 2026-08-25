@@ -98,11 +98,41 @@ export function evaluateCatalogGate(input: {
 }
 
 /**
- * Remove segredo de um texto antes de imprimir.
+ * Padroes que nunca podem sair num texto redigido.
  *
- * Cobre a `DATABASE_URL` inteira e a senha embutida numa URL de conexao. Motivo:
- * mensagem de erro de driver costuma ecoar a connection string — e log de CI e
- * publico.
+ * Deliberadamente largos: falso positivo custa uma palavra mascarada num
+ * diagnostico; falso negativo custa um segredo em log — ou, desde que
+ * `toSafeError` passou a redigir, uma coluna do banco.
+ *
+ * IRMAO: `services/sync/src/scheduler/runtime/child-failure.ts` tem a mesma
+ * lista, criada na #218 para o `stderr` de processo filho. Nao foram unificadas
+ * porque sao workspaces distintos e a dependencia cruzada custaria mais que a
+ * repeticao; mexer numa pede conferir a outra.
+ */
+const SEGREDOS: readonly RegExp[] = [
+  // atribuicao de chave/segredo/token/senha em qualquer formato comum
+  /\b([A-Za-z_][A-Za-z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|SALT|CREDENTIAL)[A-Za-z0-9_]*)\s*[=:]\s*("[^"]*"|'[^']*'|\S+)/gi,
+  // cabecalho Authorization / Bearer.
+  //
+  // O `(?:bearer\s+)?` no meio nao e decoracao: sem ele,
+  // `authorization: Bearer abc.def` casa so ate a palavra "Bearer" e o TOKEN
+  // sobra no texto — foi assim que o teste equivalente reprovou na #218.
+  /\b(authorization|proxy-authorization|bearer)\b\s*[:=]?\s*(?:bearer\s+)?\S+/gi,
+]
+
+/**
+ * Remove segredo de um texto antes de imprimir OU de gravar no banco.
+ *
+ * Cobre a `DATABASE_URL` inteira, a senha embutida numa URL de conexao,
+ * atribuicoes nomeadas (`*_KEY=`, `*_TOKEN=`, `*_SECRET=`...) e cabecalho
+ * `Authorization`/`Bearer`. Motivo: mensagem de erro de driver costuma ecoar a
+ * connection string — e log de CI e publico.
+ *
+ * As duas ultimas regras entraram quando `toSafeError` passou a redigir o texto
+ * que vai para `last_error_safe`: a partir dali a cadeia de `cause` inteira
+ * chega ao banco, e nela cabe token de API alem da URL do Prisma.
+ *
+ * Idempotente: aplicar duas vezes nao muda nada alem do que a primeira mascarou.
  */
 export function redactSecrets(text: string, env: CatalogEnv = process.env): string {
   let out = text
@@ -112,5 +142,9 @@ export function redactSecrets(text: string, env: CatalogEnv = process.env): stri
   }
   // postgres://user:senha@host -> postgres://user:<redacted>@host
   out = out.replace(/(\b[a-z+]+:\/\/[^:/\s]+:)([^@\s]+)(@)/gi, '$1<redacted>$3')
+  // atribuicoes nomeadas: preserva o NOME da variavel, mascara o valor.
+  out = out.replace(SEGREDOS[0]!, (_m, nome: string) => `${nome}=<redacted>`)
+  // Authorization / Bearer.
+  out = out.replace(SEGREDOS[1]!, (_m, rotulo: string) => `${rotulo} <redacted>`)
   return out
 }
