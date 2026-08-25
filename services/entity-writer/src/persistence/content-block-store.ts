@@ -1,5 +1,6 @@
 /**
- * content-block-store.ts — Adapter Prisma de `content_blocks`. EXCLUIDO do typecheck.
+ * content-block-store.ts — Adapter Prisma de `content_blocks`. COBERTO pelo typecheck
+ * da raiz (`pnpm typecheck`).
  *
  * Persiste um `ContentBlockRecord` com estrategia archive + insert (D3.6): numa
  * transacao, arquiva as versoes ATIVAS de IA do mesmo alvo (decisao do planner

@@ -3,8 +3,8 @@
  *
  * O worker consome a fila NDJSON do P0-00c (descoberta de ids) e grava o payload
  * BRUTO do TMDB em `tmdb_raw`. Aqui vivem apenas os tipos/portas; a orquestracao
- * pura esta em `run.ts` e os adapters concretos (Prisma/rede) vivem FORA do
- * typecheck (`persistence/*`, `bin/*`).
+ * pura esta em `run.ts` e os adapters concretos (Prisma/rede) vivem em
+ * `persistence/*` e `bin/*`.
  *
  * INVARIANTES honradas por estes contratos:
  *  - baseLanguage e sempre a lingua da requisicao base (pt-BR no piloto); os
@@ -52,8 +52,8 @@ export interface RawEntityRecord extends RawEntityKey {
 }
 
 /**
- * Porta de persistencia do raw (implementada pelo adapter Prisma, fora do
- * typecheck). `readHash` habilita o short-circuit por hash SEM reescrever nada.
+ * Porta de persistencia do raw (implementada pelo adapter Prisma). `readHash`
+ * habilita o short-circuit por hash SEM reescrever nada.
  */
 export interface RawEntityStore {
   /** Hash atual do registro (ou null se nao existe). */

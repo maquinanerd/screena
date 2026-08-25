@@ -1,7 +1,8 @@
 /**
  * persistence/index.ts — Adapters Prisma do worker de ratings.
  *
- * EXCLUIDOS do typecheck e do bundle de render. Montados apenas pelo `bin/`.
+ * COBERTOS pelo typecheck da raiz E por `tsconfig.runtime.json`; fora do bundle de
+ * render. Montados apenas pelo `bin/`.
  */
 
 export * from './cache.js'

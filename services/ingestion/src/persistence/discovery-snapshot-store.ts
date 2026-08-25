@@ -1,6 +1,6 @@
 /**
  * discovery-snapshot-store.ts — Adapter Prisma dos snapshots de descoberta.
- * EXCLUIDO do typecheck (adapters Prisma em persistence/).
+ * COBERTO por `tsconfig.runtime.json` (`pnpm typecheck` encadeia os dois).
  *
  * Grava snapshots imutaveis das listas. Regras:
  *  - itens sao resolvidos de tmdb_id -> id interno; o que nao esta PROMOVIDO e

@@ -5,7 +5,7 @@
  * FERRAMENTA DE DESENVOLVIMENTO (dev tool) DESCARTAVEL. NAO faz parte do produto:
  * nunca roda no render, no build de app, nem em producao. Prova, ponta a ponta e
  * com banco real, o fluxo offline do Entity Writer usando os adapters REAIS de
- * `services/entity-writer/src/persistence/*` (que ficam fora do typecheck):
+ * `services/entity-writer/src/persistence/*`:
  *
  *   enqueue -> job `queued` -> claim -> payload source -> runner (Gemini FAKE)
  *   -> content_block -> entity_writer_log -> job `completed` com `result_block_id`.

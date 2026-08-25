@@ -1,5 +1,6 @@
 /**
- * enqueue-candidates.ts — Adapter Prisma de DESCOBERTA de candidatos. EXCLUIDO do typecheck.
+ * enqueue-candidates.ts — Adapter Prisma de DESCOBERTA de candidatos. COBERTO pelo
+ * typecheck da raiz (`pnpm typecheck`).
  *
  * Implementa `EnqueueCandidateSourcePort` (Fase 3B.5): lista ids de entidades-raiz
  * (`movies`/`tv_shows`) por tipo, ordenados por `id ASC`, paginando por cursor

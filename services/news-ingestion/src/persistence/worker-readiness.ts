@@ -1,7 +1,8 @@
 /**
  * worker-readiness.ts — Coleta os fatos de readiness do worker de projecao.
  *
- * Fora do typecheck puro (mesma disciplina de `editorial-store.ts`). Aqui so se
+ * COBERTO por `tsconfig.runtime.json` (mesma disciplina de `editorial-store.ts`).
+ * Aqui so se
  * COLETA; quem decide e `../media/worker-readiness-types.js`, que e puro.
  *
  * Toda coleta e defensiva: falha vira fato negativo, nunca excecao. Um readiness

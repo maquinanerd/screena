@@ -1,6 +1,6 @@
 /**
  * rating-credit-lookup.ts — Resolve o CREDITO vigente de uma fonte editorial.
- * EXCLUIDO do typecheck (toca Prisma).
+ * COBERTO pelo typecheck da raiz E por `tsconfig.runtime.json`.
  *
  * Le `source_licenses` (a licenca que o proprietario autorizou em
  * `services/legal/src/authorization-spec.ts`) e anexa a decisao de uso vigente

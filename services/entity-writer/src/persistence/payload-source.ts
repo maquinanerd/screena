@@ -1,5 +1,6 @@
 /**
- * payload-source.ts — Adapter Prisma que monta `EntityPayload`. EXCLUIDO do typecheck.
+ * payload-source.ts — Adapter Prisma que monta `EntityPayload`. COBERTO pelo typecheck
+ * da raiz (`pnpm typecheck`).
  *
  * Monta o payload controlado a partir SO de dados estruturados ja existentes
  * (movies/tv_shows + cast_members/crew_members + people). Fase 3A: suporta

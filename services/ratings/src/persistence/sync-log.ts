@@ -1,5 +1,6 @@
 /**
- * sync-log.ts — Adapter de `api_sync_logs` (Prisma). EXCLUIDO do typecheck.
+ * sync-log.ts — Adapter de `api_sync_logs` (Prisma). COBERTO pelo typecheck da raiz E
+ * por `tsconfig.runtime.json`.
  *
  * Grava 1 linha por ciclo de sync (sucesso/vazio/parcial/falha/abortado).
  * Todo sync externo gera log — sem excecao (regra de ingestao).

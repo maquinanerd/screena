@@ -8,7 +8,9 @@
  * do P0-00b). Idempotencia por `payloadHash`: igual = skip (sem bump de
  * updatedAt); diferente = update; ausente = create.
  *
- * Fica em services/ingestion/bin: EXCLUIDO do typecheck e do bundle de render.
+ * Fica em services/ingestion/bin: fora do bundle de render, mas COBERTO pelo
+ * typecheck — esta LISTADO em `tsconfig.runtime.json`, que `pnpm typecheck`
+ * encadeia. (A lista la e por ARQUIVO, nao por diretorio: nem todo bin entra.)
  * Usa o core PURO em ../src/raw-sync/* (typechecked + testado) e adiciona so o IO:
  * streaming da fila, client TMDB, upsert Prisma, log em api_sync_logs, relatorio.
  *

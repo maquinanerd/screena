@@ -1,6 +1,6 @@
 /**
  * watch-credit-lookup.ts — Resolve o CREDITO vigente de uma oferta de streaming.
- * EXCLUIDO do typecheck (toca Prisma).
+ * COBERTO pelo typecheck da raiz E por `tsconfig.runtime.json`.
  *
  * Espelha `services/ratings/src/persistence/rating-credit-lookup.ts`, com UMA
  * diferenca estrutural que nao existe em ratings: a licenca de streaming nao e

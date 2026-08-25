@@ -1,6 +1,6 @@
 /**
  * editorial-projection-store.ts — Adapter Prisma da projecao CMS -> publico.
- * Fora do typecheck puro (mesma disciplina de `editorial-store.ts`).
+ * COBERTO por `tsconfig.runtime.json` (mesma disciplina de `editorial-store.ts`).
  *
  * Worker-only: nada aqui e importavel pelo render (invariantes 3 e 4).
  *
@@ -86,9 +86,8 @@ export async function findProjectionReceipt(
 /**
  * O recorte do cliente de transacao que a reconciliacao usa.
  *
- * Estrutural em vez do tipo gerado do Prisma porque este arquivo ja vive fora
- * do typecheck puro; declarar o que se usa e mais honesto que um `as never`
- * que esconde a superficie real.
+ * Estrutural em vez do tipo gerado do Prisma: declarar o que se usa e mais
+ * honesto que um `as never` que esconde a superficie real.
  */
 interface EntityLinkTx {
   readonly entity: {

@@ -3,8 +3,8 @@
  *
  * Barrel dos contratos + planejadores puros. Os adapters Prisma (claim FOR
  * UPDATE SKIP LOCKED, heartbeat, reclaim, dead-letter) ficam em
- * services/ingestion/src/persistence/catalog-job-store.ts (excluido do
- * typecheck), consumindo estes planejadores.
+ * services/ingestion/src/persistence/catalog-job-store.ts, consumindo estes
+ * planejadores.
  */
 
 export * from './types.js'

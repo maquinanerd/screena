@@ -904,7 +904,8 @@ function buildMediaTarget(endpoints: TmdbCatalogEndpoints, kind: string, tmdbId:
  * `upcoming` sai do `TmdbReadPort` (`tmdb`), NAO do `TmdbCatalogEndpoints`:
  * `getUpcomingMovies` so existe em endpoints.ts. Chamar `catalogEndpoints
  * .getUpcomingMovies` lancava TypeError e mandava todo sync_lists de "upcoming"
- * para dead-letter — o typecheck nao pega, porque este arquivo esta fora dele.
+ * para dead-letter. Um erro assim NAO passa mais em silencio: este arquivo entra
+ * em `tsconfig.runtime.json`, encadeado por `pnpm typecheck`.
  */
 async function fetchDiscoveryPage(
   endpoints: TmdbCatalogEndpoints,

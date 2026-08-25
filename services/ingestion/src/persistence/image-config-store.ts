@@ -1,6 +1,7 @@
 /**
  * image-config-store.ts — Adapter Prisma da linha singleton `tmdb_image_config`
- * (normalizacao de `/configuration`). EXCLUIDO do typecheck (toca Prisma).
+ * (normalizacao de `/configuration`). COBERTO por `tsconfig.runtime.json` (`pnpm
+ * typecheck` encadeia os dois).
  *
  * Idempotente: se o conteudo normalizado nao mudou, NAO reescreve (nao bumpa
  * `updated_at`) — so retorna `{ created:false, changed:false }`. Worker-only; o
