@@ -165,7 +165,6 @@ const JA_LIAM_CRU: readonly string[] = [
   'tests/governance/no-fake-streaming-in-ui.test.ts',
   'tests/governance/no-raw-control-bytes.test.ts',
   'tests/governance/no-raw-robots-metadata.test.ts',
-  'tests/governance/no-render-external-api.test.ts',
   'tests/governance/original-screen-absent.test.ts',
   'tests/governance/projection-has-consumer.test.ts',
   'tests/governance/rapidapi-offline-only.test.ts',

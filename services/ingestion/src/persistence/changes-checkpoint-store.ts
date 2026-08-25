@@ -1,6 +1,6 @@
 /**
  * changes-checkpoint-store.ts — Adapter Prisma do checkpoint de `/changes`.
- * EXCLUIDO do typecheck (adapters Prisma em persistence/).
+ * COBERTO por `tsconfig.runtime.json` (`pnpm typecheck` encadeia os dois).
  *
  * Implementa o COMMIT ATOMICO exigido pelo §4: os jobs de re-sync da pagina e o
  * avanco do checkpoint acontecem na MESMA transacao. Se a transacao falha, o
@@ -28,8 +28,8 @@ import type {
  * Client dentro de uma transacao.
  *
  * NAO e um `PrismaClient` completo: `$transaction`/`$connect`/`$disconnect` sao
- * removidos pelo tipo. Anotar `tx` como PrismaClient compilava por acidente
- * enquanto o arquivo estava fora do typecheck.
+ * removidos pelo tipo. Anotar `tx` como PrismaClient ja compilou por acidente
+ * aqui, num tempo em que nenhum programa de `tsc` alcancava este arquivo.
  */
 type Tx = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0]
 

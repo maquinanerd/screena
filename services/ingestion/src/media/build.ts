@@ -3,7 +3,7 @@
  *
  * Transforma linhas cruas de tmdb_images/tmdb_videos no `MediaPayload` do
  * contrato publico. Sem rede, sem Prisma, sem IO — o adapter de leitura vive em
- * persistence/media-reader.ts (excluido do typecheck).
+ * persistence/media-reader.ts.
  *
  * Governanca:
  *  - Invariante 6: TODA linha com `displayAllowed === false` e descartada aqui.

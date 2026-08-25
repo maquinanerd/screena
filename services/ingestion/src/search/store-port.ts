@@ -2,7 +2,7 @@
  * store-port.ts — Porta da persistencia da busca (PURO).
  *
  * O adapter Prisma real (`createPrismaSearchStore`) implementa isto em
- * services/ingestion/src/persistence/search-store.ts (excluido do typecheck).
+ * services/ingestion/src/persistence/search-store.ts.
  * A leitura (`search`) roda a consulta parametrizada de query.ts; a escrita
  * (`upsertDocument`) mantem uma linha por (entityType, entityId, locale).
  */

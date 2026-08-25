@@ -96,9 +96,21 @@ describe("catalog-cycle-with-alert.sh", () => {
   });
 
   it("(12) o alerta NUNCA mascara o exit code do trabalho", () => {
-    // A falha do proprio alerta e engolida explicitamente.
-    expect(wrapper).toContain("(ignorada)");
+    // Quem decide a saida do script e o resultado do CICLO, nunca o do alerta.
     expect(wrapper).toMatch(/exit \$\?|return "\$code"/);
+  });
+
+  it("(12b) falha do proprio alerta e REPORTADA, nunca engolida", () => {
+    // Ate 2026-08 este teste exigia a string "(ignorada)" — ou seja, ele
+    // TRAVAVA o defeito: o wrapper engolia a falha do alerta e seguia. Um canal
+    // de notificacao fora do ar ficava invisivel e o operador seguia achando
+    // que estava coberto. A propriedade correta e a oposta: nao mascarar o exit
+    // code do trabalho E, ainda assim, deixar rastro quando o alerta nao sai.
+    expect(wrapper).not.toContain("(ignorada)");
+    expect(wrapper).toContain("ALERTA NAO ENTREGUE");
+    // O `catch` do subprocesso Node existe para transformar o throw de
+    // `dispatchAlert` em diagnostico legivel no journal da unit.
+    expect(wrapper).toMatch(/catch\s*\(err\)/);
   });
 
   it("(13) roda o sentinela de saude entre os dois snapshots", () => {

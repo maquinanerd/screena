@@ -1,6 +1,6 @@
 /**
  * catalog-entities-store.ts — Adapter Prisma das entidades de referencia.
- * EXCLUIDO do typecheck (adapters Prisma em persistence/).
+ * COBERTO por `tsconfig.runtime.json` (`pnpm typecheck` encadeia os dois).
  *
  * Implementa `CatalogEntitiesStorePort`: upsert idempotente de colecoes,
  * produtoras, redes e keywords (chave natural tmdb_id) + link com a entidade dona

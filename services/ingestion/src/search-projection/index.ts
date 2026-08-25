@@ -3,7 +3,7 @@
  * (Backend A, secao 9). PURO: sem DB, sem rede.
  *
  * A leitura das entidades entra pela porta `SearchProjectionSourcePort` (o
- * adapter Prisma vive em persistence/, fora do typecheck) e a escrita sai pela
+ * adapter Prisma vive em persistence/) e a escrita sai pela
  * `SearchStorePort`. Este modulo so orquestra: pagina, projeta e conta.
  *
  * Duas entradas:

@@ -1,6 +1,6 @@
 /**
  * awards-credit-lookup.ts — Resolve o CREDITO vigente da premiacao.
- * EXCLUIDO do typecheck (toca Prisma).
+ * COBERTO pelo typecheck da raiz E por `tsconfig.runtime.json`.
  *
  * A DIFERENCA QUE IMPORTA em relacao a `rating-credit-lookup.ts`: aquele recebe
  * a fonte editorial como argumento (`imdb`, `metacritic`...), porque no dominio

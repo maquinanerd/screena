@@ -115,7 +115,16 @@ WantedBy=timers.target
 2. **redige segredos** (connection string, `*_KEY`, `password=`) — provado em
    `tests/operations/backup-alert.test.ts`;
 3. dispara para `BACKUP_ALERT_WEBHOOK_URL` (Slack/webhook), se definido;
-4. **preserva o código de saída** do backup — o alerta nunca mascara o erro.
+4. **preserva o código de saída** do backup — o alerta nunca mascara o erro;
+5. se o canal estava configurado e a entrega **falhou**, imprime em stderr
+   `backup-with-alert: ALERTA NAO ENTREGUE (<outcome>): <detail>` seguido de
+   "o backup falhou e o canal de alerta tambem; ninguem foi notificado".
+
+O item 5 existe porque, até 2026-08, a falha de entrega era engolida: o webhook
+podia estar fora do ar e nada aparecia no log do cron. O `<outcome>` é
+`http-error`, `timeout`, `network-error` ou `invalid-usage`, e o `<detail>` já
+vem **redigido** (a URL do webhook é ela mesma um segredo). Contrato completo em
+[`OBSERVABILITY.md`](./OBSERVABILITY.md) §4.2.
 
 Verificado localmente: sem `DATABASE_URL`, o envelope emite
 `[ALERTA][critical] backup exit=1 ...` e sai `1`.

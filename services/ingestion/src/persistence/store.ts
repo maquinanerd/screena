@@ -1,5 +1,6 @@
 /**
- * store.ts — Adapter de persistencia de entidades (Prisma). EXCLUIDO do typecheck.
+ * store.ts — Adapter de persistencia de entidades (Prisma). COBERTO por
+ * `tsconfig.runtime.json` (`pnpm typecheck` encadeia os dois).
  *
  * Upserts idempotentes por chave natural; creditos por "replace-set" em
  * transacao (remove os antigos da entidade e reinsere); `touch*` via SQL bruto

@@ -1,8 +1,9 @@
 /**
  * Teste estrutural do adapter Prisma de content_blocks.
  *
- * `content-block-store.ts` fica fora do typecheck e nao tem integration test com
- * Postgres nesta fase. Travamos aqui as propriedades criticas do contrato novo:
+ * `content-block-store.ts` nao tem integration test com Postgres nesta fase (os
+ * TIPOS dele sao conferidos: o arquivo entra no `tsc` da raiz). Travamos aqui as
+ * propriedades criticas do contrato novo, que o tipo nao alcanca:
  * `save` retorna o id do bloco RECEM-CRIADO (via `create` com `select: { id }`),
  * convertido para string — nunca o id de um bloco arquivado/existente.
  */

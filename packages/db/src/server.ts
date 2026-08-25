@@ -35,8 +35,8 @@ export function getPrismaClient(): PrismaClient {
  *
  * Tambem fecha um buraco de forma: `PrismaClient` so era reexportado como
  * TIPO daqui. Um chamador que fizesse `import { PrismaClient }` para dar
- * `new PrismaClient(...)` compilava — `services/**\/bin/**` esta fora do
- * typecheck — e explodia em runtime com "does not provide an export named
+ * `new PrismaClient(...)` compilava — o `bin/` que fazia isso estava fora de
+ * todo programa de `tsc` — e explodia em runtime com "does not provide an export named
  * 'PrismaClient'", no import, antes de qualquer log. Uma fabrica de VALOR
  * elimina a tentacao de importar o tipo como se fosse construtor.
  *

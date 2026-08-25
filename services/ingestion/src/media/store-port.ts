@@ -2,7 +2,7 @@
  * store-port.ts — Porta de LEITURA de midia (PURO).
  *
  * O adapter Prisma real (`createPrismaMediaReader`) implementa isto em
- * services/ingestion/src/persistence/media-reader.ts (excluido do typecheck).
+ * services/ingestion/src/persistence/media-reader.ts.
  * A escrita/upsert de tmdb_images/tmdb_videos NAO passa por aqui — vive em
  * MediaStorePort (catalog-sync/media-sync.ts). Esta porta so le.
  *
