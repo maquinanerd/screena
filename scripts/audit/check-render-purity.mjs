@@ -99,6 +99,132 @@ const FETCH_PATTERNS = EXTERNAL_HOSTS.map((host) => ({
 }));
 
 /**
+ * POR QUE A LISTA DE HOSTS ACIMA NAO BASTA.
+ *
+ * `FETCH_PATTERNS` exige que o NOME DO HOST apareca na MESMA LINHA do `fetch(`.
+ * Medido em 2026-08-24: com
+ *
+ *     const TMDB_BASE = "https://api.themoviedb.org/3"
+ *     const alvo = `${TMDB_BASE}/movie/${id}`
+ *     const r = await fetch(alvo)
+ *
+ * dentro de `apps/web/src/server/`, este script varreu os 309 arquivos e
+ * reportou "PASSOU. Render puro de IO externo." — porque na linha do `fetch(`
+ * so existe a variavel. A lista de hosts tambem so pega host CONHECIDO: um
+ * fornecedor novo nao esta nela.
+ *
+ * Entao existe uma segunda regra, que nao procura o que parece errado: ela exige
+ * PROVA de que o destino e mesma-origem. O que este script nao consegue ler,
+ * reprova — nao porque seja necessariamente externo, mas porque e
+ * INDETERMINAVEL, e um render puro nao pode depender de destino que ninguem
+ * audita lendo o arquivo.
+ *
+ * @param {string} afterParen texto que segue `fetch(` ate o fim da linha
+ * @returns {{ kind: 'same-origin' } | { kind: 'external' | 'unverifiable', why: string }}
+ */
+function classifyFetchTarget(afterParen) {
+  const arg = afterParen.replace(/^\s+/, '');
+  if (arg.length === 0) {
+    return { kind: 'unverifiable', why: 'destino em outra linha' };
+  }
+  const quote = arg.charAt(0);
+  if (quote !== "'" && quote !== '"' && quote !== '`') {
+    return {
+      kind: 'unverifiable',
+      why: `destino nao-literal (${arg.slice(0, 40)}): variavel, concatenacao ou new URL()`,
+    };
+  }
+  const body = arg.slice(1);
+  if (quote === '`' && body.startsWith('${')) {
+    return { kind: 'unverifiable', why: 'template comecando por interpolacao: host indeterminavel' };
+  }
+  if (/^https?:/i.test(body)) {
+    return { kind: 'external', why: `URL absoluta: ${body.slice(0, 60)}` };
+  }
+  if (body.startsWith('//')) {
+    return { kind: 'external', why: `URL protocolo-relativa: ${body.slice(0, 60)}` };
+  }
+  return { kind: 'same-origin' };
+}
+
+/**
+ * A UNICA forma nao-literal que este script aceita como prova de mesma-origem:
+ *
+ *     new URL("/caminho/relativo", <expressao>.origin)
+ *
+ * O que isso PROVA: o caminho e relativo (comeca com `/`) e a base e a
+ * propriedade `.origin` de alguma coisa — no render, a origem da propria
+ * requisicao. E o idioma que o `middleware.ts` precisa usar, porque middleware
+ * roda sem base implicita e `fetch('/x')` nao resolve la.
+ *
+ * O que isso NAO prova: que `<expressao>` e mesmo a requisicao. Se alguem
+ * escrever `new URL('/x', outroSite.origin)`, passa. E uma fronteira consciente:
+ * o alvo desta regra e a URL externa que se esconde atras de uma variavel, nao
+ * um adversario dentro do repositorio.
+ * @param {string} text
+ * @returns {boolean}
+ */
+function isProvenSameOriginUrlExpression(text) {
+  const m = /^new\s+URL\s*\(\s*(['"`])([^'"`]*)\1\s*,([^)]*)\)/.exec(text.replace(/^\s+/, ''));
+  if (m === null) return false;
+  const caminho = m[2];
+  const base = m[3];
+  if (!caminho.startsWith('/') || caminho.startsWith('//')) return false;
+  return /\.origin\b/.test(base);
+}
+
+/**
+ * Identificadores que, DENTRO DESTE ARQUIVO, foram declarados com um destino
+ * comprovadamente de mesma-origem. Existe para que o guard aceite a PROVA que
+ * de fato esta no arquivo (o caso do `middleware.ts`) em vez de abrir excecao
+ * por caminho — excecao por caminho nunca mais e revisada; prova, sim.
+ *
+ * Deliberadamente raso: so `const/let/var X = <literal mesma-origem>` e
+ * `const/let/var X = new URL(<literal>, <...>.origin)`. Nao segue reatribuicao,
+ * parametro nem import. Se o destino vier de fora do arquivo, continua
+ * reprovando.
+ * @param {string} content
+ * @returns {Set<string>}
+ */
+function collectSameOriginIdentifiers(content) {
+  const provados = new Set();
+  const decl = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([^\n;]+)/g;
+  let m;
+  while ((m = decl.exec(content)) !== null) {
+    const nome = m[1];
+    const init = m[2].trim();
+    if (isProvenSameOriginUrlExpression(init)) {
+      provados.add(nome);
+      continue;
+    }
+    if (/^['"`]/.test(init) && classifyFetchTarget(init).kind === 'same-origin') {
+      provados.add(nome);
+    }
+  }
+  return provados;
+}
+
+/** Captura o que vem depois de `fetch(` na linha. */
+const FETCH_CALL_RE = /\bfetch\s*(?:<[^>]*>)?\s*\(\s*(.*)$/i;
+
+/**
+ * UNICO arquivo de apps/web autorizado a chamar `fetch` com destino vindo do
+ * chamador. E o wrapper de CSRF (`authFetch`), que so repassa o `input` que
+ * recebeu e fixa `credentials: 'same-origin'`.
+ *
+ * LIMITE CONHECIDO E NAO COBERTO — declarado aqui para ninguem acreditar numa
+ * cobertura que nao existe: esta regra classifica `fetch(`, nao `authFetch(`.
+ * Hoje 17 dos 19 usos de `authFetch(` passam caminho literal `/api/...`; dois
+ * nao passam (`entity-actions.tsx` guarda o caminho num `const` uma linha antes,
+ * e `settings-panel.tsx` usa ternario de dois literais). Verificar esses dois
+ * exige seguir dado dentro do arquivo, que uma regra de linha nao faz. Quem for
+ * fechar isso: o caminho e classificar tambem `authFetch(` e resolver `const`
+ * local de literal.
+ * @type {string}
+ */
+const FETCH_WRAPPER_EXCEPTION = 'apps/web/src/lib/csrf-client.ts';
+
+/**
  * Literais proibidos em apps/web mesmo quando nao aparecem em fetch. Cobre o CDN
  * remoto de imagens do TMDB (host de `image.tmdb.org`).
  *
@@ -388,6 +514,12 @@ async function scanWeb() {
     const isPageFile = PAGE_FILE_NAMES.has(baseName);
     const isClientComponent = hasUseClientDirective(content);
 
+    // Para a regra (1b): destinos comprovadamente de mesma-origem declarados
+    // NESTE arquivo, e se o arquivo e render ou apenas harness/validador.
+    const relFileForScan = rel(absFile).split('\\').join('/');
+    const isRenderFile = !isTestFile(relFileForScan);
+    const sameOriginIds = isRenderFile ? collectSameOriginIdentifiers(content) : new Set();
+
     const lines = content.split(/\r?\n/);
     for (let i = 0; i < lines.length; i += 1) {
       const raw = lines[i];
@@ -402,6 +534,42 @@ async function scanWeb() {
         if (regex.test(line)) {
           violations.push(`${name} em ${rel(absFile)}:${i + 1} -> ${raw.trim()}`);
         }
+      }
+
+      // (1b) fetch cujo DESTINO nao se consegue provar mesma-origem. Fecha o
+      //      buraco que (1) tem por construcao: host escrito numa variavel, ou
+      //      host que nao esta na lista. Ver classifyFetchTarget.
+      //      `apps/web/scripts/**`, `__tests__/` e `*.test.*` ficam de fora:
+      //      sao validadores/canarios que sobem um servidor de dev e batem nele
+      //      de proposito (`fetch(`${base}/pt/`)`). Nao entram no bundle de
+      //      render. E a MESMA fronteira que este script ja usa para o literal
+      //      do host de imagem (isTestFile) — nao uma excecao nova.
+      const relFile = relFileForScan;
+      const isFetchWrapper = relFile === FETCH_WRAPPER_EXCEPTION;
+      const fetchCall = FETCH_CALL_RE.exec(line);
+      if (fetchCall && isRenderFile && !isFetchWrapper) {
+        const argumento = (fetchCall[1] ?? '').replace(/^\s+/, '');
+        const identificador = /^([A-Za-z_$][\w$]*)\s*[,)]/.exec(argumento);
+        const provadoPorDeclaracao =
+          (identificador !== null && sameOriginIds.has(identificador[1])) ||
+          isProvenSameOriginUrlExpression(argumento);
+
+        if (!provadoPorDeclaracao) {
+          const verdict = classifyFetchTarget(argumento);
+          if (verdict.kind !== 'same-origin') {
+            violations.push(
+              `fetch com destino ${verdict.kind === 'external' ? 'EXTERNO' : 'nao-verificavel'} ` +
+                `(${verdict.why}) em ${relFile}:${i + 1} -> ${raw.trim()}`,
+            );
+          }
+        }
+      }
+      // A excecao do wrapper so vale enquanto ele nao tiver URL absoluta propria.
+      if (isFetchWrapper && /['"`]https?:\/\//i.test(line)) {
+        violations.push(
+          `URL absoluta dentro do wrapper de fetch (a excecao de ${FETCH_WRAPPER_EXCEPTION} ` +
+            `pressupoe que ele so repassa o destino do chamador) em ${relFile}:${i + 1} -> ${raw.trim()}`,
+        );
       }
 
       // (2) imports worker-only (Entity Writer / Gemini) — proibidos em
