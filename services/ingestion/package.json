@@ -18,6 +18,7 @@
     "validate:catalog-platform-complete": "tsx scripts/validate-catalog-platform-real-postgres.ts",
     "catalog": "tsx bin/catalog.ts",
     "reprocess-watch-providers": "tsx bin/reprocess-watch-providers.ts",
+    "promote:media": "tsx bin/promote-media.ts",
     "catalog-worker:start": "tsx bin/catalog-worker-service.ts",
     "prove:catalog-worker": "tsx scripts/prove-catalog-worker-service.ts",
     "validate:indexability-producer": "tsx scripts/validate-indexability-producer-real-postgres.ts",

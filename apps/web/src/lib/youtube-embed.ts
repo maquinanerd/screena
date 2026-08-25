@@ -29,6 +29,8 @@
  * `app/_components/youtube-frame.tsx`.
  */
 
+import { isYouTubeVideoId } from "@screena/public-contracts";
+
 /** Domínio do player. Único lugar do `apps/web` que o escreve. */
 const YOUTUBE_NOCOOKIE_ORIGIN = "https://www.youtube-nocookie.com";
 
@@ -36,18 +38,15 @@ const YOUTUBE_NOCOOKIE_ORIGIN = "https://www.youtube-nocookie.com";
 const YOUTUBE_WATCH_ORIGIN = "https://www.youtube.com";
 
 /**
- * Id de vídeo do YouTube: 11 caracteres do alfabeto seguro, exatos.
+ * A FORMA do id mora em `@screena/public-contracts` desde que a promoção de
+ * mídia (`services/ingestion`) passou a precisar da mesma checagem antes de
+ * acender uma linha de `tmdb_videos`. Um worker não importa de `apps/web`, e
+ * duas regexes divergiriam no primeiro aperto aplicado a uma só.
  *
- * Sem os âncoras `^`/`$` (ou com quantificador frouxo) um id com barra passaria
- * e viraria caminho na URL do embed.
+ * Reexportado aqui para não quebrar quem já importa deste módulo — e porque a
+ * pergunta "este id é válido?" continua fazendo parte da política de embed.
  */
-export const YOUTUBE_VIDEO_ID_PATTERN = /^[A-Za-z0-9_-]{11}$/;
-
-/** O id é um id de YouTube válido? */
-export function isYouTubeVideoId(value: string | null | undefined): boolean {
-  if (typeof value !== "string") return false;
-  return YOUTUBE_VIDEO_ID_PATTERN.test(value);
-}
+export { YOUTUBE_VIDEO_ID_PATTERN, isYouTubeVideoId } from "@screena/public-contracts";
 
 /**
  * URL do PLAYER incorporável, ou `null` quando o id não é válido.

@@ -17,6 +17,13 @@
     "services/ingestion/bin/plan-seed.ts",
     "services/ingestion/bin/reprocess-watch-providers.ts",
     "services/ingestion/bin/sync-tmdb-raw.ts",
+    // A PROMOCAO DE MIDIA. Entra aqui por um motivo mais forte que os demais:
+    // ela e o UNICO caminho do repositorio que torna publica uma linha de
+    // `tmdb_videos`/`tmdb_images`, e aquelas tabelas NAO TEM TRIGGER. Onde
+    // `watch_availability` tem o banco como ultima palavra, aqui a ultima
+    // palavra e este bin — deixa-lo fora do typecheck seria tirar o gate do
+    // gate.
+    "services/ingestion/bin/promote-media.ts",
     "services/ratings/src/persistence/**/*.ts",
     "services/ratings/bin/ratings.ts",
     // Os DOIS workers de ratings. Sao os entrypoints que o operador roda de
