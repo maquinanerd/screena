@@ -11,8 +11,12 @@ import { describe, expect, it } from "vitest";
 import {
   buildPersonCredits,
   buildPersonPageView,
+  countHiddenCredits,
+  countLinkableCreditRows,
   evaluatePersonIndexability,
+  formatHiddenCreditsNotice,
   formatLifeLabel,
+  isPersonCreditEntityType,
   mapKnownForDepartment,
   normalizePersonLocalImagePath,
   selectPersonName,
@@ -183,6 +187,7 @@ describe("buildPersonPageView", () => {
       translation: null,
       blocks: [],
       credits: [],
+      rawCreditCount: 0,
     });
 
     expect(view.name).toBe("Jane Doe");
@@ -214,6 +219,7 @@ describe("buildPersonPageView", () => {
       credits: [
         { entityType: "movie", title: "Sem Slug", slug: "  ", year: 2019, roleLabel: null },
       ],
+      rawCreditCount: 1,
     });
 
     expect(view.name).toBe("Original Person");
@@ -225,6 +231,8 @@ describe("buildPersonPageView", () => {
     expect(view.hasRealImage).toBe(false);
     expect(view.blocks).toEqual([]);
     expect(view.credits).toEqual([]);
+    // Recusar o credito nao e o mesmo que nao ter credito: partiu de 1.
+    expect(view.hiddenCreditCount).toBe(1);
   });
 
   it("monta perfil REMOTO do TMDB a partir do file_path cru (original)", () => {
@@ -233,6 +241,7 @@ describe("buildPersonPageView", () => {
       translation: null,
       blocks: [],
       credits: [],
+      rawCreditCount: 0,
     });
     expect(view.profile?.src).toBe("https://image.tmdb.org/t/p/original/abc.jpg");
     expect(view.hasRealImage).toBe(true);
@@ -262,6 +271,7 @@ describe("buildPersonPageView", () => {
         { entityType: "movie", title: "Filme Antigo", slug: "filme-antigo", year: 2005, roleLabel: "Protagonista" },
         { entityType: "tv", title: "Serie Nova", slug: "serie-nova", year: 2021, roleLabel: "Direcao" },
       ],
+      rawCreditCount: 2,
     });
 
     expect(view.name).toBe("Pessoa PT");
@@ -279,6 +289,171 @@ describe("buildPersonPageView", () => {
       "/pt/series/serie-nova/",
       "/pt/filmes/filme-antigo/",
     ]);
+    // CONTROLE NEGATIVO: partiu de 2, listou 2 — nada escondido.
+    expect(view.hiddenCreditCount).toBe(0);
+  });
+});
+
+/**
+ * A FILMOGRAFIA PARCIAL QUE SE APRESENTAVA COMO COMPLETA.
+ *
+ * Entre a linha de `cast_members`/`crew_members` e a tela ha DOIS pontos de
+ * descarte, em modulos diferentes:
+ *
+ *  1. no server (`person-page.ts`): o alvo do credito nao esta na tabela base
+ *     (`movies`/`tv_shows`). O credito nem chega ao presenter. Hoje o banco
+ *     impede esse estado (FK para `entities`), mas o ramo existe e, se um dia
+ *     disparar, precisa aparecer na conta — daqui o presenter so ve o efeito:
+ *     `rawCreditCount` maior que a lista que recebeu.
+ *  2. aqui (`buildPersonCredits`): o alvo ESTA no catalogo, mas sem slug
+ *     canonico pt-BR — sem link, sem linha. Este e o que trunca de verdade
+ *     hoje, e e temporario: morre quando o slug for gerado.
+ *
+ * Nenhum dos dois contava, e a secao FILMOGRAFIA nao dizia nada: a lista saia
+ * truncada com a mesma cara de uma lista inteira. Os testes abaixo cobrem os
+ * dois SEPARADAMENTE, mais o controle negativo (completa -> nenhuma linha).
+ */
+describe("hiddenCreditCount — a filmografia diz quanto descartou", () => {
+  it("descarte 1 (alvo fora do catalogo): o credito nem chega ao presenter e ainda assim e contado", () => {
+    // O server resolveu 3 linhas cruas e so 2 viraram `PersonCreditInput`: a
+    // terceira apontava para um titulo que nao existe em `movies`/`tv_shows`.
+    const view = buildPersonPageView({
+      record: record({ name: "Pessoa Prolifica" }),
+      translation: null,
+      blocks: [],
+      credits: [
+        { entityType: "movie", title: "Filme A", slug: "filme-a", year: 2020, roleLabel: null },
+        { entityType: "tv", title: "Serie B", slug: "serie-b", year: 2021, roleLabel: null },
+      ],
+      rawCreditCount: 3,
+    });
+
+    expect(view.credits).toHaveLength(2);
+    expect(view.hiddenCreditCount).toBe(1);
+  });
+
+  it("descarte 2 (alvo no catalogo, sem slug pt-BR): chega ao presenter e morre aqui", () => {
+    const view = buildPersonPageView({
+      record: record({ name: "Pessoa Prolifica" }),
+      translation: null,
+      blocks: [],
+      credits: [
+        { entityType: "movie", title: "Filme A", slug: "filme-a", year: 2020, roleLabel: null },
+        // Existe em `movies` (tem titulo), mas nao tem slug canonico pt-BR.
+        { entityType: "movie", title: "Filme Sem Slug", slug: null, year: 2019, roleLabel: null },
+      ],
+      rawCreditCount: 2,
+    });
+
+    expect(view.credits).toHaveLength(1);
+    expect(view.hiddenCreditCount).toBe(1);
+  });
+
+  it("os dois descartes somam num numero so", () => {
+    const view = buildPersonPageView({
+      record: record({ name: "Pessoa Prolifica" }),
+      translation: null,
+      blocks: [],
+      credits: [
+        { entityType: "movie", title: "Filme A", slug: "filme-a", year: 2020, roleLabel: null },
+        { entityType: "movie", title: "Filme Sem Slug", slug: null, year: 2019, roleLabel: null },
+      ],
+      // 5 linhas cruas: 3 sumiram no server, 1 aqui, 1 sobreviveu.
+      rawCreditCount: 5,
+    });
+
+    expect(view.credits).toHaveLength(1);
+    expect(view.hiddenCreditCount).toBe(4);
+  });
+
+  it("CONTROLE NEGATIVO: filmografia completa nao produz linha nenhuma", () => {
+    const view = buildPersonPageView({
+      record: record({ name: "Pessoa Completa" }),
+      translation: null,
+      blocks: [],
+      credits: [
+        { entityType: "movie", title: "Filme A", slug: "filme-a", year: 2020, roleLabel: null },
+        { entityType: "tv", title: "Serie B", slug: "serie-b", year: 2021, roleLabel: null },
+      ],
+      rawCreditCount: 2,
+    });
+
+    expect(view.hiddenCreditCount).toBe(0);
+    expect(formatHiddenCreditsNotice(view.hiddenCreditCount)).toBeNull();
+  });
+
+  it("CONTROLE NEGATIVO: pessoa sem credito nenhum tambem nao produz linha", () => {
+    const view = buildPersonPageView({
+      record: record({ name: "Pessoa Sem Credito" }),
+      translation: null,
+      blocks: [],
+      credits: [],
+      rawCreditCount: 0,
+    });
+
+    expect(view.hiddenCreditCount).toBe(0);
+    expect(formatHiddenCreditsNotice(view.hiddenCreditCount)).toBeNull();
+  });
+});
+
+describe("countLinkableCreditRows — o denominador sai da linha crua", () => {
+  it("conta so alvo movie|tv; episodio/temporada/pessoa ficam de fora", () => {
+    // `cast_members` e polimorfico sobre o enum inteiro e a ingestao de episodio
+    // grava guest star com entity_type='episode'. Contar episodio aqui faria a
+    // linha dizer "N titulos sem pagina" para creditos que nunca foram titulo.
+    const rows = [
+      { entityType: "movie" },
+      { entityType: "tv" },
+      { entityType: "episode" },
+      { entityType: "season" },
+      { entityType: "person" },
+    ];
+    expect(countLinkableCreditRows(rows)).toBe(2);
+  });
+
+  it("usa a MESMA porta que o resolvedor de creditos", () => {
+    // Se o predicado e o contador divergirem, o numero mente: sobra no
+    // denominador o que a lista nunca teve chance de exibir (ou vice-versa).
+    for (const entityType of ["movie", "tv", "season", "episode", "person", "franchise"]) {
+      expect(countLinkableCreditRows([{ entityType }])).toBe(
+        isPersonCreditEntityType(entityType) ? 1 : 0,
+      );
+    }
+  });
+
+  it("lista vazia conta zero", () => {
+    expect(countLinkableCreditRows([])).toBe(0);
+  });
+});
+
+describe("countHiddenCredits / formatHiddenCreditsNotice", () => {
+  it("clampa em zero: uma tela nunca anuncia credito negativo", () => {
+    expect(countHiddenCredits(2, 5)).toBe(0);
+    expect(countHiddenCredits(0, 0)).toBe(0);
+    expect(countHiddenCredits(Number.NaN, 3)).toBe(0);
+  });
+
+  it("subtrai o que sobreviveu do que existia", () => {
+    expect(countHiddenCredits(10, 4)).toBe(6);
+    expect(countHiddenCredits(1, 0)).toBe(1);
+  });
+
+  it("concorda em numero e plural com o que a tela exibe", () => {
+    expect(formatHiddenCreditsNotice(0)).toBeNull();
+    expect(formatHiddenCreditsNotice(1)).toBe(
+      "1 crédito não listado — ainda sem página no catálogo.",
+    );
+    expect(formatHiddenCreditsNotice(12)).toBe(
+      "12 créditos não listados — ainda sem página no catálogo.",
+    );
+  });
+
+  it("a linha nao afirma 'fora do catalogo': isso so vale para UMA das duas causas", () => {
+    // Descarte 2 e um titulo que ESTA no catalogo e so nao tem slug pt-BR.
+    // Um texto que dissesse "fora do catalogo" seria falso para ele.
+    const notice = formatHiddenCreditsNotice(3);
+    expect(notice).not.toBeNull();
+    expect(notice?.toLowerCase()).not.toContain("fora do catálogo");
   });
 });
 
