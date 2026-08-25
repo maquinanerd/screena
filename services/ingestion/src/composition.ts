@@ -1,5 +1,6 @@
 /**
- * composition.ts — Wiring runtime da ingestao. EXCLUIDO do typecheck (toca Prisma).
+ * composition.ts — Wiring runtime da ingestao. COBERTO por `tsconfig.runtime.json`
+ * (`pnpm typecheck` encadeia os dois).
  *
  * Monta um `ImportContext` real: client TMDB (fetch + env) + adapters Prisma
  * (cache/sync-log/store) + relogio + politica de stale. Usado pelo CLI e pelo

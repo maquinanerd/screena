@@ -204,5 +204,28 @@ export function describeRun(outcome: RunOutcome): string {
     outcome.reasons.length === 0
       ? ''
       : ` · motivos: ${outcome.reasons.map((r) => `${r.code}x${r.count}`).join(' ')}`
-  return `${outcome.queue}: ${head} · ${outcome.durationMs}ms · ${spend}${reasons}`
+
+  // A CAUSA, e nao so o rotulo dela.
+  //
+  // Ate 2026-08 esta linha imprimia apenas `codigox1`. O campo `detail` era
+  // preenchido pelos runners e nunca aparecia em lugar nenhum — o diagnostico
+  // era calculado e descartado. Em producao, uma fila que falhava havia dias
+  // dizia exatamente isto, todo tique:
+  //
+  //     cinerie_score: FALHOU (0 de 1) · 917ms · cota: nenhuma · motivos: score_child_failedx1
+  //
+  // Sem uma palavra sobre o porque. Um alarme sem mensagem nao e observabilidade.
+  //
+  // So em desfecho NAO-`success`: no caminho feliz os detalhes sao ruido
+  // (`sem fatia de cota hoje`, `already_queued`) e ja estao no contador.
+  const causas =
+    outcome.status === 'success'
+      ? ''
+      : outcome.reasons
+          .filter((r) => r.detail.length > 0 && r.detail !== r.code)
+          .map((r) => r.detail)
+          .join(' ; ')
+  const causa = causas.length === 0 ? '' : ` · causa: ${causas}`
+
+  return `${outcome.queue}: ${head} · ${outcome.durationMs}ms · ${spend}${reasons}${causa}`
 }

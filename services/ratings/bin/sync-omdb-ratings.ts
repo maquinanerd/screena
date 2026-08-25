@@ -3,7 +3,9 @@
  * bin/sync-omdb-ratings.ts — Worker OFFLINE de ratings via OMDb.
  * Worker-only — NUNCA no render.
  *
- * Fica em `services/ratings/bin`: EXCLUIDO do typecheck e do bundle de render.
+ * Fica em `services/ratings/bin`: fora do bundle de render, mas COBERTO pelo
+ * typecheck — esta LISTADO em `tsconfig.runtime.json`, que `pnpm typecheck`
+ * encadeia. (A lista la e por ARQUIVO, nao por diretorio: nem todo bin entra.)
  * Usa o core PURO em `../src/omdb/**` (typechecked + testado) e adiciona so o
  * IO: client HTTP, Prisma (api_cache / api_sync_logs / external_ratings), sample
  * e relatorio em `.data/` (gitignored).

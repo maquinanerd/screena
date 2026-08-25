@@ -1,6 +1,6 @@
 /**
  * stale-entity-candidates.ts — Selecao de candidatos que PRECISAM de
- * re-consulta (Prisma). EXCLUIDO do typecheck (toca Prisma).
+ * re-consulta (Prisma). COBERTO pelo typecheck da raiz E por `tsconfig.runtime.json`.
  *
  * Lista ate `limit` entidades locais com `imdb_id` cuja nota mais recente
  * daquele `provider_api` foi coletada ANTES do `cutoff` — ou que nunca foram

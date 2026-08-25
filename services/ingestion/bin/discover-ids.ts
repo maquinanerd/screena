@@ -3,8 +3,10 @@
  * bin/discover-ids.ts — Descoberta de IDs em massa via TMDB Daily ID Exports
  * (P0-00c). Worker-only/offline — NUNCA no render.
  *
- * Fica em services/ingestion/bin (como os demais bins): EXCLUIDO do typecheck e
- * do bundle de render. Usa o core PURO em ../src/discovery/* (typechecked e
+ * Fica em services/ingestion/bin: fora do bundle de render, mas COBERTO pelo
+ * typecheck — esta LISTADO em `tsconfig.runtime.json`, que `pnpm typecheck`
+ * encadeia. (A lista la e por ARQUIVO, nao por diretorio: nem todo bin entra.)
+ * Usa o core PURO em ../src/discovery/* (typechecked e
  * testado) e adiciona apenas o IO: download (fetch), gunzip streaming, escrita
  * do artefato e log em api_sync_logs.
  *

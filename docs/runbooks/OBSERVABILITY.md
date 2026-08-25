@@ -107,8 +107,14 @@ Description=Cinerie — alerta de falha de restore-test
 Type=oneshot
 Environment=BACKUP_ALERT_WEBHOOK_URL=https://hooks.slack.com/services/XXX
 Environment=BACKUP_ALERT_PROVIDER=slack
-ExecStart=/usr/bin/node --input-type=module -e "const m=await import('file:///home/screen/app/current/scripts/backup/lib/alert.mjs'); const a=m.buildAlert({source:'restore-test',status:'failure',timestamp:new Date().toISOString()}); console.error(m.formatAlertText(a)); await m.dispatchAlert(a,{webhookUrl:process.env.BACKUP_ALERT_WEBHOOK_URL,provider:process.env.BACKUP_ALERT_PROVIDER});"
+ExecStart=/usr/bin/node --input-type=module -e "const m=await import('file:///home/screen/app/current/scripts/backup/lib/alert.mjs'); const a=m.buildAlert({source:'restore-test',status:'failure',timestamp:new Date().toISOString()}); console.error(m.formatAlertText(a)); const r=await m.tryDispatchAlert(a,{webhookUrl:process.env.BACKUP_ALERT_WEBHOOK_URL,provider:process.env.BACKUP_ALERT_PROVIDER}); if(!r.delivered&&r.outcome!=='not-configured'){console.error('ALERTA NAO ENTREGUE ('+r.outcome+'): '+r.detail); process.exit(1);}"
 ```
+
+> Este serviço usa **`tryDispatchAlert`** (não `dispatchAlert`) porque ele
+> mesmo *é* o alerta: precisa inspecionar o desfecho para decidir se sai `1`.
+> Saindo `1`, a unit aparece em `systemctl --failed` — que é o comportamento
+> desejado para um serviço de alerta que não conseguiu alertar. Uma unit de
+> alerta sempre verde é exatamente a cobertura falsa que este runbook combate.
 
 ### 4.2 Contrato de webhook (provider EXPLÍCITO)
 
@@ -121,11 +127,34 @@ escolhe o formato pelo **provider explícito** — nunca por inferência frágil
 | `slack` | `{ "text": "[ALERTA][critical] backup exit=1 … " }` (Slack Incoming Webhook) |
 | *(sem `BACKUP_ALERT_WEBHOOK_URL`)* | apenas log local; retorna `false` com segurança |
 
-`dispatchAlert` **nunca lança e sempre resolve boolean**: resposta não-2xx,
-timeout (`DEFAULT_ALERT_TIMEOUT_MS`) e falha de rede retornam `false` sem
-propagar — o exit code do backup permanece a fonte de verdade. A mensagem é
-**redigida** antes de sair (connection string / `*_KEY` / `password=`).
-Todos esses casos são travados em `tests/operations/backup-alert.test.ts`.
+#### Desfecho da entrega (mudou em 2026-08)
+
+Até 2026-08 `dispatchAlert` **nunca lançava**: devolvia `false` para qualquer
+falha. Na prática, "o canal caiu" ficava indistinguível de "não havia canal", e
+os dois envelopes de shell descartavam o boolean — o backup falhava, o webhook
+estava fora do ar e o operador seguia achando que estava coberto. Alerta que
+falha em silêncio não é alerta. O contrato agora separa os dois estados:
+
+| Situação | `dispatchAlert` |
+| --- | --- |
+| Webhook respondeu 2xx | resolve `true` |
+| **Sem** `BACKUP_ALERT_WEBHOOK_URL` | resolve `false` (log local é o canal; não é falha) |
+| Havia canal e a entrega falhou (não-2xx, timeout `DEFAULT_ALERT_TIMEOUT_MS`, rede caída, uso inválido) | **lança `AlertDispatchError`** |
+
+`AlertDispatchError` carrega `outcome` (`http-error`, `timeout`,
+`network-error`, `invalid-usage`) e `detail` já **redigido**. Quem não pode ser
+interrompido usa **`tryDispatchAlert`**, que devolve
+`{ delivered, outcome, detail }` e nunca lança — o nome declara, no ponto da
+chamada, que o autor assumiu a obrigação de inspecionar o desfecho.
+
+**O exit code do trabalho continua sendo a fonte de verdade**: os envelopes
+chamam o Node num subprocesso isolado e saem com o código do backup/ciclo. O que
+mudou é que a falha do alerta passou a deixar rastro em stderr
+(`ALERTA NAO ENTREGUE (<outcome>): <detail>`) em vez de sumir.
+
+A mensagem é **redigida** antes de sair (connection string / `*_KEY` /
+`password=`). Todos esses casos são travados em
+`tests/operations/backup-alert.test.ts`.
 
 > Os alertas `http-5xx`, `sync`, `queue` e `disk` têm o **mecanismo** (a fonte no
 > catálogo + os adapters de payload redigidos); o **fio** até o monitor

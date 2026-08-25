@@ -1,6 +1,6 @@
 /**
  * episode-store.ts — Adapter Prisma das referencias de episodio (Backend A §7).
- * EXCLUIDO do typecheck (toca Prisma).
+ * COBERTO por `tsconfig.runtime.json` (`pnpm typecheck` encadeia os dois).
  *
  * Resolve serie -> temporada -> episodio pela chave natural do TMDB. Se qualquer
  * elo faltar, retorna zeros: a ingestao NUNCA cria a entidade dona aqui.

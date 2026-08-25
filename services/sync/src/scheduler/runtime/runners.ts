@@ -1,5 +1,6 @@
 /**
- * runtime/runners.ts — O QUE cada fila faz. EXCLUIDO do typecheck principal.
+ * runtime/runners.ts — O QUE cada fila faz. COBERTO pelo typecheck da raiz (`pnpm
+ * typecheck`).
  *
  * ============================================================================
  * DUAS FORMAS DE EXECUTAR, E A ESCOLHA NAO E DE ESTILO
@@ -54,6 +55,7 @@ import type { SchedulerQueue } from '../rhythms.js'
 import { backgroundOmdbSlots } from '../quota.js'
 import { dailyScope, hourlySlot, windowSlot } from '../scope.js'
 import { effectiveRank, NO_TRENDING, type TrendingRanks } from '../trending.js'
+import { describeChildFailure } from './child-failure.js'
 import type { RunReason, RunTally } from '../run-outcome.js'
 import { readSpentToday } from './facts.js'
 import {
@@ -667,7 +669,7 @@ const runRatingsOmdb: QueueRunner = async (deps) => {
       failed += perType
       reasons.push({
         code: 'omdb_child_failed',
-        detail: `sync-omdb-ratings --type ${type} saiu com codigo ${String(result.code)}`,
+        detail: describeChildFailure(`sync-omdb-ratings --type ${type}`, result.code, result.stderr),
         count: 1,
       })
     }
@@ -704,7 +706,7 @@ const runAwards: QueueRunner = async (deps) => {
       : [
           {
             code: 'awards_child_failed',
-            detail: `promote-omdb-awards saiu com codigo ${String(result.code)}`,
+            detail: describeChildFailure('promote-omdb-awards', result.code, result.stderr),
             count: 1,
           },
         ],
@@ -735,7 +737,7 @@ const runCinerieScore: QueueRunner = async (deps) => {
       : [
           {
             code: 'score_child_failed',
-            detail: `compute-cinerie-score saiu com codigo ${String(result.code)}`,
+            detail: describeChildFailure('compute-cinerie-score', result.code, result.stderr),
             count: 1,
           },
         ],
@@ -765,7 +767,7 @@ const runSearchProjection: QueueRunner = async (deps) => {
       : [
           {
             code: 'search_projection_failed',
-            detail: `catalog search-reindex saiu com codigo ${String(result.code)}`,
+            detail: describeChildFailure('catalog search-reindex', result.code, result.stderr),
             count: 1,
           },
         ],

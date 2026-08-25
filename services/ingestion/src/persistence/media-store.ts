@@ -1,6 +1,7 @@
 /**
- * media-store.ts — Adapter Prisma de tmdb_images/tmdb_videos (Fase 7). EXCLUIDO
- * do typecheck (toca Prisma). Upsert IDEMPOTENTE por identidade natural:
+ * media-store.ts — Adapter Prisma de tmdb_images/tmdb_videos (Fase 7). COBERTO por
+ * `tsconfig.runtime.json` (`pnpm typecheck` encadeia os dois). Upsert IDEMPOTENTE por
+ * identidade natural:
  * so reescreve quando o payload_hash muda (nao bumpa updated_at a toa). Linhas
  * nascem display_allowed=false + license_status=unknown (default do schema).
  */

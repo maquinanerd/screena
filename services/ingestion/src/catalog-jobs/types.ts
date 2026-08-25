@@ -5,8 +5,7 @@
  * PostgreSQL (packages/db), mas sem depender do Prisma: os planejadores deste
  * dominio sao funcoes puras (sem rede/DB/IO), testaveis isoladamente. Os
  * adapters Prisma (claim FOR UPDATE SKIP LOCKED, heartbeat, reclaim) vivem em
- * services/ingestion/src/persistence/ (excluidos do typecheck), como o padrao
- * provado do EntityWriterJob.
+ * services/ingestion/src/persistence/, como o padrao provado do EntityWriterJob.
  */
 
 /** Tipo do trabalho de catalogo (espelha o enum CatalogJobType do banco). */

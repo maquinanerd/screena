@@ -1,7 +1,7 @@
 /**
  * locale-priority.ts — Prioridade de locale, PURA e testavel.
  *
- * Vive fora do reader (que e excluido do typecheck principal) porque esta e a
+ * Vive fora do reader (que toca Prisma) porque esta e a
  * regra que garante determinismo: `pt-BR` vence `pt`, INDEPENDENTE da ordem em
  * que o banco devolver as linhas.
  *

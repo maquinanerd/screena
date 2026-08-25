@@ -1,5 +1,6 @@
 /**
- * job-claim.ts — Adapter Prisma de claim de `entity_writer_jobs`. EXCLUIDO do typecheck.
+ * job-claim.ts — Adapter Prisma de claim de `entity_writer_jobs`. COBERTO pelo
+ * typecheck da raiz (`pnpm typecheck`).
  *
  * Reivindica o proximo job `queued` de forma concorrente-segura com
  * `FOR UPDATE SKIP LOCKED` (dois workers nunca pegam o mesmo job), marcando-o
