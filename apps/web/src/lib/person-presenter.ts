@@ -82,6 +82,49 @@ interface LocalImageSpec {
 
 export type PersonCreditEntityType = "movie" | "tv";
 
+/**
+ * Tipos de alvo que a filmografia sabe transformar em linha.
+ *
+ * Fechado de proposito. `cast_members`/`crew_members` sao polimorficos sobre o
+ * enum inteiro (`movie|tv|season|episode|person`) e a ingestao de episodio
+ * grava credito com `entity_type='episode'` (guest star). Esta secao lista obra,
+ * nao episodio: um credito de episodio nao e um titulo "faltando", e outra
+ * granularidade.
+ */
+const PERSON_CREDIT_ENTITY_TYPES: ReadonlySet<string> = new Set<PersonCreditEntityType>([
+  "movie",
+  "tv",
+]);
+
+export function isPersonCreditEntityType(
+  value: string,
+): value is PersonCreditEntityType {
+  return PERSON_CREDIT_ENTITY_TYPES.has(value);
+}
+
+/**
+ * Quantas linhas de credito PODERIAM virar filmografia — o denominador de
+ * `hiddenCreditCount`.
+ *
+ * Conta na ORIGEM (a linha crua de `cast_members`/`crew_members`), nao no fim de
+ * cada camada. E de proposito: o descarte acontece em modulo diferente do que
+ * monta a lista, e um descarte novo no meio do caminho ja entra nesta conta sem
+ * ninguem lembrar de soma-lo. Hoje quem trunca de fato e a ausencia de slug
+ * canonico pt-BR (ver `buildPersonCredits`).
+ *
+ * Usa a MESMA porta (`isPersonCreditEntityType`) que o resolvedor de creditos:
+ * contar por um criterio e descartar por outro faria o numero mentir.
+ */
+export function countLinkableCreditRows(
+  rows: readonly { readonly entityType: string }[],
+): number {
+  let total = 0;
+  for (const row of rows) {
+    if (isPersonCreditEntityType(row.entityType)) total += 1;
+  }
+  return total;
+}
+
 /** Subconjunto de `people` necessario para a pagina. */
 export interface PersonRecordInput {
   /** `people.name` - nome canonico (fallback do nome exibido). */
@@ -186,6 +229,13 @@ export interface PersonPageView {
   blocks: RenderablePersonBlock[];
   renderableBlockCount: number;
   credits: PersonCredit[];
+  /**
+   * Creditos de filme/serie que existem no banco e nao entraram em `credits`.
+   *
+   * `0` significa filmografia COMPLETA — e por isso este campo existe: sem ele a
+   * tela mostrava a lista parcial com a mesma cara da lista inteira.
+   */
+  hiddenCreditCount: number;
 }
 
 export interface PersonIndexabilityInput {
@@ -197,6 +247,15 @@ export interface BuildPersonPageViewInput {
   translation: PersonTranslationInput | null;
   blocks: PersonContentBlockInput[];
   credits: PersonCreditInput[];
+  /**
+   * Quantos creditos de filme/serie a pessoa tem no banco, ANTES de qualquer
+   * descarte (`countLinkableCreditRows` sobre as linhas cruas).
+   *
+   * OBRIGATORIO, e nao opcional com default. Um default seria sempre "nada
+   * escondido" — o proprio silencio que este campo existe para acabar. Quem
+   * monta a view tem que dizer de quantos partiu.
+   */
+  rawCreditCount: number;
 }
 
 /** Normaliza string opcional para `null` quando vazia/ausente (apos trim). */
@@ -361,6 +420,14 @@ function creditHref(entityType: PersonCreditEntityType, slug: string): string {
  * server. Descarta creditos sem titulo ou sem slug (nao vira link -> nao aparece)
  * e ordena por ano decrescente (nulos ao fim), depois titulo. Nunca inventa
  * creditos: o que entra e exatamente o que o payload trouxe.
+ *
+ * O descarte por slug e o unico que hoje trunca a filmografia de verdade: o
+ * titulo ESTA no catalogo e mesmo assim nao vira linha, porque nao existe pagina
+ * pt-BR para onde linkar. (O outro candidato — alvo ausente de
+ * `movies`/`tv_shows` — o banco nao deixa acontecer: ha FK para `entities`. Ver
+ * o cabecalho de `server/person-page.ts`.) E temporario: nasce e morre com a
+ * geracao de slug. Enquanto durar, quantos sairam vira `hiddenCreditCount` e a
+ * secao FILMOGRAFIA exibe o numero em vez de calar.
  */
 export function buildPersonCredits(
   credits: PersonCreditInput[],
@@ -389,6 +456,49 @@ export function buildPersonCredits(
 }
 
 /**
+ * Quantos creditos existem no banco e NAO chegaram a lista.
+ *
+ * Uma subtracao, e nao um contador por camada, porque o defeito que ela fecha e
+ * justamente o descarte que ninguem lembrou de contar: qualquer filtro entre a
+ * linha crua e a view aparece aqui sem precisar se declarar.
+ *
+ * Clampa em zero — negativo aqui so pode ser bug de chamador (denominador menor
+ * que a lista), e uma tela nunca deve anunciar "-3 creditos".
+ */
+export function countHiddenCredits(
+  rawCreditCount: number,
+  listedCount: number,
+): number {
+  if (!Number.isFinite(rawCreditCount) || !Number.isFinite(listedCount)) return 0;
+  const hidden = Math.trunc(rawCreditCount) - Math.trunc(listedCount);
+  return hidden > 0 ? hidden : 0;
+}
+
+/**
+ * A linha que a secao FILMOGRAFIA exibe quando a lista esta incompleta.
+ * `null` quando esta completa — e o unico ponto que decide se a linha existe.
+ *
+ * COPY (decisao de 25/08/2026, sujeita a revisao do dono). Um numero so, e um
+ * motivo que continua verdadeiro se a causa mudar.
+ *
+ * "Fora do catalogo" seria FALSO para a causa real de hoje: o titulo esta no
+ * catalogo, so nao tem slug canonico pt-BR. O que vale para ela — e valeria
+ * tambem para um alvo que faltasse na tabela base — e que nao ha pagina para
+ * onde mandar o leitor. Por isso "sem pagina no catalogo", e nao "fora dele".
+ *
+ * A distincao entre causas e operacional, nao editorial: quem le a pagina nao
+ * sabe o que e um slug. Ela pertence ao diagnostico, nao a tela.
+ */
+export function formatHiddenCreditsNotice(
+  hiddenCreditCount: number,
+): string | null {
+  const hidden = countHiddenCredits(hiddenCreditCount, 0);
+  if (hidden === 0) return null;
+  const noun = hidden === 1 ? "crédito não listado" : "créditos não listados";
+  return `${hidden} ${noun} — ainda sem página no catálogo.`;
+}
+
+/**
  * Indexabilidade da pagina de pessoa (politica 2026-07 — indexacao total). Uma
  * pessoa sincronizada tem sua ficha canonica (schema.org Person) e indexa
  * sempre; a contagem de blocos so alimenta `hasUniqueValue`. O caso "sem
@@ -412,6 +522,7 @@ export function buildPersonPageView(
   input: BuildPersonPageViewInput,
 ): PersonPageView {
   const blocks = selectRenderablePersonBlocks(input.blocks);
+  const credits = buildPersonCredits(input.credits);
   const profile = profileAsset(input.record.profilePath);
   const birthDateIso = trimToNull(input.record.birthDateIso);
   const deathDateIso = trimToNull(input.record.deathDateIso);
@@ -434,6 +545,10 @@ export function buildPersonPageView(
     hasRealImage: profile !== null,
     blocks,
     renderableBlockCount: blocks.length,
-    credits: buildPersonCredits(input.credits),
+    credits,
+    // A conta e feita AQUI, no unico ponto que ve os dois lados: quantos
+    // creditos existiam (`rawCreditCount`, vindo da origem) e quantos
+    // sobreviveram a todos os descartes (`credits.length`).
+    hiddenCreditCount: countHiddenCredits(input.rawCreditCount, credits.length),
   };
 }
