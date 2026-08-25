@@ -3,21 +3,33 @@
  *
  * Cobre "falha de backup gera alerta testado", os adapters de webhook
  * (generic/slack/none), a regra de nunca registrar segredos, respostas HTTP
- * não-2xx, timeout, falha de rede e que o dispatch NUNCA propaga erro (o exit
- * code do backup é preservado pelo envelope). O módulo vive em
- * scripts/backup/lib (tooling); o teste mora em tests/ (coletado pelo vitest).
+ * não-2xx, timeout e falha de rede.
+ *
+ * MUDANÇA DE CONTRATO (2026-08): `dispatchAlert` deixou de engolir a falha de
+ * entrega. Antes, um `catch {}` devolvia `false` para tudo, então "o canal caiu"
+ * era indistinguível de "não havia canal" — e os dois envelopes de shell
+ * descartavam o boolean. Agora: `true` = entregue, `false` = SEM canal
+ * configurado, e LANÇA `AlertDispatchError` quando havia canal e a entrega
+ * falhou. Quem não pode ser interrompido usa `tryDispatchAlert`, que devolve
+ * `{ delivered, outcome, detail }`.
+ *
+ * O módulo vive em scripts/backup/lib (tooling); o teste mora em tests/
+ * (coletado pelo vitest).
  */
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  ALERT_DISPATCH_OUTCOMES,
   ALERT_PROVIDERS,
   ALERT_SOURCES,
+  AlertDispatchError,
   buildAlert,
   dispatchAlert,
   formatAlertText,
   formatGenericPayload,
   formatSlackPayload,
   redactSecrets,
+  tryDispatchAlert,
   // @ts-expect-error — módulo .mjs de tooling operacional, sem tipos gerados.
 } from "../../scripts/backup/lib/alert.mjs";
 
@@ -130,24 +142,121 @@ describe("dispatchAlert", () => {
     expect(body).not.toContain("s3cr3t");
   });
 
-  it("resposta HTTP não-2xx retorna false", async () => {
+  it("resposta HTTP não-2xx LANÇA — canal caído não pode virar silêncio", async () => {
     const fetchImpl = vi.fn().mockResolvedValue({ ok: false, status: 500 });
     await expect(
       dispatchAlert(alertFor(), { webhookUrl: "https://hook/x", provider: "generic", fetchImpl }),
-    ).resolves.toBe(false);
+    ).rejects.toThrow(AlertDispatchError);
   });
 
-  it("timeout retorna false sem pendurar", async () => {
+  it("timeout LANÇA sem pendurar", async () => {
     const fetchImpl = vi.fn().mockImplementation(() => new Promise(() => {})); // nunca resolve
     await expect(
       dispatchAlert(alertFor(), { webhookUrl: "https://hook/x", provider: "generic", fetchImpl, timeoutMs: 30 }),
-    ).resolves.toBe(false);
+    ).rejects.toThrow(AlertDispatchError);
   });
 
-  it("falha de rede retorna false (nunca propaga)", async () => {
+  it("falha de rede LANÇA", async () => {
     const fetchImpl = vi.fn().mockRejectedValue(new Error("network down"));
     await expect(
       dispatchAlert(alertFor(), { webhookUrl: "https://hook/x", provider: "generic", fetchImpl }),
-    ).resolves.toBe(false);
+    ).rejects.toThrow(AlertDispatchError);
+  });
+
+  it("o erro carrega `outcome` classificado — os envelopes de shell leem esse campo", async () => {
+    // Os dois `*-with-alert.sh` imprimem `err.outcome` no diagnóstico. Se o
+    // campo sumir, a linha do journal degrada para "erro" genérico.
+    const cases: Array<[string, Record<string, unknown>]> = [
+      ["http-error", { fetchImpl: vi.fn().mockResolvedValue({ ok: false, status: 503 }) }],
+      ["network-error", { fetchImpl: vi.fn().mockRejectedValue(new Error("ECONNREFUSED")) }],
+      ["timeout", { fetchImpl: vi.fn().mockImplementation(() => new Promise(() => {})), timeoutMs: 20 }],
+      ["invalid-usage", { fetchImpl: "nao sou funcao" }],
+    ];
+    for (const [expected, extra] of cases) {
+      const err = await dispatchAlert(alertFor(), { webhookUrl: "https://hook/x", ...extra }).then(
+        () => null,
+        (e: unknown) => e as { outcome?: string; detail?: string },
+      );
+      expect(err, `esperava throw no caso ${expected}`).not.toBeNull();
+      expect(err?.outcome).toBe(expected);
+      expect(typeof err?.detail).toBe("string");
+      expect(ALERT_DISPATCH_OUTCOMES).toContain(err?.outcome);
+    }
+  });
+
+  it("queda de canal é DISTINGUÍVEL de ausência de canal", async () => {
+    // Esta é a distinção que o `catch {}` antigo destruía: os dois viravam
+    // `false`. Sem canal configurado nada foi prometido (não é falha); com
+    // canal configurado e entrega falha, alguém precisa saber.
+    await expect(dispatchAlert(alertFor(), { log: vi.fn() })).resolves.toBe(false);
+    await expect(
+      dispatchAlert(alertFor(), {
+        webhookUrl: "https://hook/x",
+        fetchImpl: vi.fn().mockResolvedValue({ ok: false, status: 500 }),
+      }),
+    ).rejects.toThrow(/nao entregue/i);
+  });
+
+  it("nenhum desfecho de falha resolve silenciosamente", async () => {
+    // Trava anti-regressão do defeito exato: se alguém reintroduzir o
+    // `catch { return false }`, TODOS estes voltam a resolver e o teste cai.
+    const falhas = [
+      { fetchImpl: vi.fn().mockResolvedValue({ ok: false, status: 500 }) },
+      { fetchImpl: vi.fn().mockResolvedValue(undefined) },
+      { fetchImpl: vi.fn().mockRejectedValue(new Error("network down")) },
+      { fetchImpl: vi.fn().mockImplementation(() => new Promise(() => {})), timeoutMs: 20 },
+    ];
+    for (const extra of falhas) {
+      const resolveu = await dispatchAlert(alertFor(), { webhookUrl: "https://hook/x", ...extra }).then(
+        () => true,
+        () => false,
+      );
+      expect(resolveu, "falha de entrega resolveu em vez de lançar").toBe(false);
+    }
+  });
+
+  it("o detalhe do erro nunca vaza segredo vindo da camada de rede", async () => {
+    const fetchImpl = vi.fn().mockRejectedValue(new Error("falha em postgresql://u:s3cr3t@h/db"));
+    const err = await dispatchAlert(alertFor(), { webhookUrl: "https://hook/x", fetchImpl }).then(
+      () => null,
+      (e: unknown) => e as Error & { detail?: string },
+    );
+    expect(err?.detail).not.toContain("s3cr3t");
+    expect(err?.message).not.toContain("s3cr3t");
+  });
+});
+
+describe("tryDispatchAlert (variante que não interrompe)", () => {
+  it("devolve resultado estruturado em vez de lançar", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({ ok: false, status: 500 });
+    const result = await tryDispatchAlert(alertFor(), { webhookUrl: "https://hook/x", fetchImpl });
+    expect(result).toMatchObject({ delivered: false, outcome: "http-error" });
+    expect(result.detail).toContain("500");
+  });
+
+  it("entrega bem-sucedida marca delivered", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({ ok: true });
+    const result = await tryDispatchAlert(alertFor(), { webhookUrl: "https://hook/x", fetchImpl });
+    expect(result).toMatchObject({ delivered: true, outcome: "delivered" });
+  });
+
+  it("sem canal configurado: `not-configured`, e o log local vira o canal", async () => {
+    const log = vi.fn();
+    const result = await tryDispatchAlert(alertFor(), { log });
+    expect(result).toMatchObject({ delivered: false, outcome: "not-configured" });
+    expect(log).toHaveBeenCalledOnce();
+  });
+
+  it("nunca lança, para qualquer modo de falha", async () => {
+    const falhas = [
+      { fetchImpl: vi.fn().mockRejectedValue(new Error("boom")) },
+      { fetchImpl: "nao sou funcao" },
+      { fetchImpl: vi.fn().mockImplementation(() => new Promise(() => {})), timeoutMs: 20 },
+    ];
+    for (const extra of falhas) {
+      const result = await tryDispatchAlert(alertFor(), { webhookUrl: "https://hook/x", ...extra });
+      expect(result.delivered).toBe(false);
+      expect(ALERT_DISPATCH_OUTCOMES).toContain(result.outcome);
+    }
   });
 });

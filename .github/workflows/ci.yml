@@ -35,13 +35,26 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Validate backup shell scripts
+      # TODOS os .sh versionados. Estes scripts so executam em producao (cron e
+      # systemd timer), entao um erro de sintaxe nao aparece em nenhum teste --
+      # aparece no host, com o job nunca rodando. `catalog-cycle-with-alert.sh`
+      # ficou de fora deste gate ate 2026-08 mesmo sendo o ExecStart= de
+      # `cinerie-catalog-cycle.service`. Ao adicionar um .sh, adicione aqui.
+      - name: Validate operational shell scripts
         shell: bash
         run: |
+          expected=5
+          found="$(git ls-files '*.sh' | wc -l)"
+          if [[ "$found" -ne "$expected" ]]; then
+            echo "::error::ha $found script(s) .sh versionado(s), mas este gate cobre $expected. Adicione o novo script ao 'bash -n' abaixo e atualize 'expected'." >&2
+            git ls-files '*.sh' >&2
+            exit 1
+          fi
           bash -n scripts/backup/backup.sh
           bash -n scripts/backup/restore-test.sh
           bash -n scripts/backup/backup-with-alert.sh
           bash -n scripts/backup/verify-backup-restore.sh
+          bash -n scripts/catalog/catalog-cycle-with-alert.sh
 
       - name: Generate Prisma Client
         env:

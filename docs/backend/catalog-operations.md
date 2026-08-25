@@ -162,6 +162,19 @@ BACKUP_ALERT_PROVIDER=slack                              # ou generic
 Sem webhook: log local e retorno seguro. **O alerta nunca mascara o exit code do
 trabalho.**
 
+Se o webhook ESTAVA configurado e a entrega falhou, o ciclo imprime em stderr
+(journal da unit):
+
+```
+catalog-cycle: ALERTA NAO ENTREGUE (<outcome>): <detail>
+catalog-cycle: ALERTA NAO ENTREGUE — o canal de alerta falhou; ninguem foi notificado sobre este ciclo.
+```
+
+Ate 2026-08 essa falha era engolida (`(ignorada)`): o canal caia e o operador
+nao descobria. O exit code continua sendo o do CICLO, nunca o do alerta — o que
+mudou e que a falha do alerta passou a deixar rastro. Contrato completo em
+[`OBSERVABILITY.md`](../runbooks/OBSERVABILITY.md) §4.2.
+
 ---
 
 ## 5. Decisoes de indexabilidade
