@@ -20,8 +20,13 @@ emit_alert() {
   local exit_code="$1" message="$2"
   local ts
   ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  # Node constrói+redige+dispara (dynamic import de caminho absoluto). A falha
-  # do proprio alerta nunca aborta — o backup e a fonte de verdade.
+  # Node constroi+redige+dispara (dynamic import de caminho absoluto).
+  #
+  # O alerta NAO mascara o exit code do backup: esta chamada roda num
+  # SUBPROCESSO, e quem sai deste script e o `exit "$code"` la embaixo. Mas
+  # falha de alerta tambem nao pode ser engolida: o backup ja falhou e, se o
+  # canal caiu, NINGUEM foi avisado. `dispatchAlert` lanca nesse caso; o `catch`
+  # abaixo transforma isso numa linha de diagnostico explicita em stderr.
   ALERT_LIB="$ALERT_LIB" A_EXIT="$exit_code" A_MSG="$message" A_TS="$ts" \
     node --input-type=module -e '
       const { pathToFileURL } = await import("node:url");
@@ -35,12 +40,23 @@ emit_alert() {
         host: process.env.HOSTNAME || "",
       });
       console.error(m.formatAlertText(alert));
-      await m.dispatchAlert(alert, {
-        webhookUrl: process.env.BACKUP_ALERT_WEBHOOK_URL,
-        provider: process.env.BACKUP_ALERT_PROVIDER,
-        log: () => {},
-      });
-    ' 2>&1 || echo "backup-with-alert: falha ao emitir alerta (ignorada)." >&2
+      try {
+        await m.dispatchAlert(alert, {
+          webhookUrl: process.env.BACKUP_ALERT_WEBHOOK_URL,
+          provider: process.env.BACKUP_ALERT_PROVIDER,
+          log: () => {},
+        });
+      } catch (err) {
+        // `err.detail` ja vem redigido pela lib; nunca imprimir a URL/segredo.
+        console.error(
+          `backup-with-alert: ALERTA NAO ENTREGUE (${err.outcome ?? "erro"}): ${err.detail ?? "falha ao despachar"}`,
+        );
+        process.exit(1);
+      }
+    ' 2>&1 || {
+      echo "backup-with-alert: ALERTA NAO ENTREGUE — o backup falhou e o canal de alerta tambem; ninguem foi notificado." >&2
+      echo "backup-with-alert: confira BACKUP_ALERT_WEBHOOK_URL / BACKUP_ALERT_PROVIDER (docs/runbooks/OBSERVABILITY.md)." >&2
+    }
 }
 
 if output="$("${SCRIPT_DIR}/backup.sh" 2>&1)"; then

@@ -8,7 +8,10 @@ Cinerie. Eles rodam fora do caminho de render, com credenciais vindas de env var
 | Script | Responsabilidade |
 | --- | --- |
 | `backup.sh` | Roda `pg_dump -Fc`, grava dump com timestamp UTC, gera checksum SHA-256 e opcionalmente copia off-site via `rclone`. |
-| `restore-test.sh` | Restaura um dump (o ultimo, ou o caminho passado como argumento) em base efemera, valida contagens e derruba a base. |
+| `restore-test.sh` | Restaura um dump (o ultimo, ou o caminho passado como argumento) em base efemera, **compara** o restaurado com o que o dump declara (tabelas, linhas por tabela, indices, constraints) e derruba a base. Divergiu, sai != 0. |
+| `restore-test-selftest.sh` | **Controle negativo** do anterior: roda o `restore-test.sh` uma vez limpo e quatro vezes com uma divergencia injetada, e exige que ele reprove nas quatro. |
+| `verify-backup-restore.sh` | Prova de ponta a ponta na CI: `backup.sh` + `restore-test.sh` + um restore proprio comparado por **hash de conteudo** contra a origem viva. |
+| `lib/dump-manifest.awk` | Parser que extrai do dump o manifesto esperado (CREATE TABLE / blocos COPY / CREATE INDEX / ADD CONSTRAINT). Usado pelo `restore-test.sh`. |
 
 > **Aviso: sem backup validado, sem sync/promote em producao.** Nenhuma carga
 > TMDB (`sync`, `promote`, `seed`) roda em producao antes de um `backup.sh`
@@ -35,6 +38,8 @@ verde-falso.
 | `RESTORE_TEST_ADMIN_URL` | Sim, para restore-test | Connection string administrativa para criar/dropar a base efemera. |
 | `RESTORE_TEST_DB_NAME` | Nao | Nome da base efemera. Default inclui timestamp. |
 | `RESTORE_TEST_DATABASE_URL` | Nao | URL alvo explicita; por default deriva de `RESTORE_TEST_ADMIN_URL` + `RESTORE_TEST_DB_NAME`. |
+| `RESTORE_TEST_INJECT_DIVERGENCE` | Nao | **So para controle negativo.** `none` (default), `row`, `table`, `index` ou `constraint`: estraga a base efemera de proposito depois do restore, para provar que a comparacao reprova. Nunca use em rotina — o desfecho esperado e vermelho. |
+| `RESTORE_TEST_KEEP_MANIFEST` | Nao | `1` preserva o diretorio temporario com os manifestos esperado/real, para diagnosticar uma divergencia. Default: apaga. |
 
 ## Backup diario
 
@@ -87,27 +92,69 @@ O teste:
 
 1. Localiza o ultimo `*.dump` (ou usa o caminho passado como argumento).
 2. Valida o `.sha256`.
-3. Cria uma base efemera (nome sempre prefixado por `screen_restore_test_`).
-4. Restaura com `pg_restore --exit-on-error`.
-5. Roda as validacoes:
-   - `SELECT count(*) FROM information_schema.tables;` — sinal amplo de que o
-     catalogo respondeu. **Nao prova sozinho** que as tabelas da Cinerie voltaram:
-     essa contagem inclui as views de `information_schema`/`pg_catalog` e e quase
-     sempre `> 0`.
-   - `SELECT count(*) FROM "_prisma_migrations";` — este e o sinal que vale: se as
-     tabelas de usuario nao vieram, a query falha e o script aborta.
-   - `SELECT count(*) FROM content_blocks;` — **somente se a tabela existir**; um
-     dump anterior a essa migration continua sendo um restore valido.
-6. Derruba a base efemera no `trap` de saida, mesmo em caso de erro.
+3. **Deriva do proprio dump o manifesto esperado**, antes de restaurar: le
+   `pg_restore --file=-` e extrai o conjunto de tabelas (`CREATE TABLE`), a
+   contagem de linhas por tabela (blocos `COPY`), os indices (`CREATE INDEX`) e
+   as constraints PK/FK/UNIQUE/EXCLUDE (`ADD CONSTRAINT`). Dump que nao declara
+   nenhuma tabela e recusado na hora — arquivo vazio nao pode "casar" com uma
+   base vazia.
+4. Cria uma base efemera (nome sempre prefixado por `screen_restore_test_`).
+5. Restaura com `pg_restore --exit-on-error`.
+6. **Compara** o manifesto do dump com o que o banco restaurado realmente tem
+   (`pg_class`, `pg_index`, `pg_constraint` e `count(*)` por tabela). Qualquer
+   divergencia imprime o objeto e os DOIS numeros e o script **sai != 0**:
+
+   ```text
+   restore-test: [FALHA] linhas divergem em public.movies — dump=2500 restaurado=2499
+   restore-test: [FALHA] tabela ausente no restaurado: public.api_cache (declarado no dump)
+   restore-test: DIVERGENCIA — 1 tabela(s), 1 contagem(ns) de linhas, 2 indice(s), 2 constraint(s), 0 assertiva(s) de aplicacao.
+   ```
+
+7. Confere as assertivas de aplicacao: `_prisma_migrations` precisa existir e ter
+   pelo menos uma migration; `content_blocks` e contada **somente se a tabela
+   existir** (um dump anterior a essa migration continua sendo um restore valido).
+8. Derruba a base efemera no `trap` de saida, mesmo em caso de erro.
 
 **Pre-condicao do modo por argumento:** o dump informado precisa ter o `.sha256`
 irmao no mesmo diretorio. Sem ele o teste falha de proposito — um dump que nao da
 para verificar nao pode produzir um "verde". Ao baixar um dump do off-site, baixe
 os dois arquivos.
 
-**Leia os numeros, nao so o exit code.** O script imprime as tres contagens. Um
-restore estruturalmente valido com `content_blocks=0` sai com exit 0: prova que o
-schema voltou, nao que o dado editorial voltou.
+**O que o exit 0 prova e o que nao prova.** Prova que o banco restaurado reproduz
+o dump objeto por objeto e linha por linha. **Nao** prova que o dump reproduz a
+origem no momento em que foi tirado — para isso existe o
+`verify-backup-restore.sh`, que compara hash de conteudo contra a base viva e
+roda na CI. E continua valendo ler os numeros: `content_blocks=0` com exit 0
+significa que o dump nao tinha bloco editorial nenhum, nao que o teste falhou.
+
+**Custo:** o dump e lido duas vezes (uma para o manifesto, uma para o restore).
+E o preco de ter um "esperado" que nao vem do banco que acabou de ser escrito.
+
+### Controle negativo (o teste sabe ficar vermelho?)
+
+Um teste de restore que nunca reprova nao e prova de restore. O
+`restore-test-selftest.sh` verifica isso mecanicamente: roda o `restore-test.sh`
+contra o mesmo dump uma vez limpo (precisa sair 0) e quatro vezes com uma
+divergencia injetada **na base efemera restaurada** — uma linha apagada, uma
+tabela dropada, um indice dropado e uma FK dropada —, exigindo exit != 0 **e** o
+diagnostico correspondente em cada caso.
+
+```bash
+export RESTORE_TEST_ADMIN_URL="postgresql://user:senha@localhost:5432/postgres"
+export DATABASE_URL="postgresql://..."     # so para gerar o dump de trabalho
+scripts/backup/restore-test-selftest.sh
+```
+
+Para reproduzir um caso isolado, o `restore-test.sh` aceita a injecao direta —
+lembrando que **o desfecho esperado e vermelho**:
+
+```bash
+RESTORE_TEST_INJECT_DIVERGENCE=table scripts/backup/restore-test.sh   # sai != 0
+```
+
+A injecao so alcanca a base efemera (o nome dela e travado pelo regex
+`^screen_restore_test_[A-Za-z0-9_]+$`) e nunca a origem. Este controle roda na CI
+no job **Backup + restore real (fidelidade de dados, PostgreSQL 16)**.
 
 O script nunca escreve na base de origem: ele so toca `RESTORE_TEST_ADMIN_URL` e a
 base efemera, e recusa qualquer `RESTORE_TEST_DB_NAME` fora do prefixo
@@ -162,9 +209,11 @@ producao. Se algum item falhar, **pare**: nao ha carga sem backup validado.
 - [ ] `BACKUP_DIR` e um volume **persistente fora do repositorio**.
 - [ ] `scripts/backup/backup.sh` rodou e terminou com exit 0.
 - [ ] O `.dump` e o `.sha256` existem e o dump tem tamanho plausivel (nao 0 byte).
-- [ ] `scripts/backup/restore-test.sh` rodou verde, com `_prisma_migrations > 0`
-      e `content_blocks` batendo com o esperado da base de origem (exit 0 sozinho
-      nao prova que o dado editorial voltou).
+- [ ] `scripts/backup/restore-test.sh` rodou verde — ou seja, tabelas, contagem
+      de linhas, indices e constraints do restaurado batem com o que o dump
+      declara. Confira ainda assim se `content_blocks` bate com o esperado da
+      origem: exit 0 diz que o dump foi reproduzido fielmente, nao que o dump
+      levou o dado editorial que voce esperava.
 - [ ] A base efemera do teste foi derrubada (nenhum `screen_restore_test_*` sobrou).
 - [ ] Copia off-site confirmada no destino remoto.
 - [ ] Cron diario ativo e com log endereçado a arquivo.
