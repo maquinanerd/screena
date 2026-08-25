@@ -9,6 +9,7 @@ import {
   resolveCanonical,
   serializeJsonLd,
   type ArticleSeoFacts,
+  buildMetaDescription,
 } from '@screena/seo'
 
 import { AdSlot } from '../../../_components/ad-slot'
@@ -88,7 +89,7 @@ export async function generateMetadata({
     twitter: buildTwitter(facts),
   }
   const description = view.metaDescription ?? view.deck
-  if (description !== null) metadata.description = description
+  if (description !== null) metadata.description = buildMetaDescription(description) ?? description
   return metadata
 }
 

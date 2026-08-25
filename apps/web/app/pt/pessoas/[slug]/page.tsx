@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { notFound, permanentRedirect } from 'next/navigation'
 
-import { buildSameAs, serializeJsonLd } from '@screena/seo'
+import { buildSameAs, serializeJsonLd, buildMetaDescription } from '@screena/seo'
 
 import { AdSlot } from '../../../_components/ad-slot'
 import { SectionTitle } from '../../../_components/ds'
@@ -103,7 +103,9 @@ export async function generateMetadata({
     alternates: { canonical: canonicalUrl },
   }
 
-  if (view.metaDescription !== null) metadata.description = view.metaDescription
+  if (view.metaDescription !== null) {
+    metadata.description = buildMetaDescription(view.metaDescription) ?? view.metaDescription
+  }
   return metadata
 }
 

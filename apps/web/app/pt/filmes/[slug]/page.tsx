@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { notFound, permanentRedirect } from 'next/navigation'
 
-import { buildSameAs, serializeJsonLd } from '@screena/seo'
+import { buildSameAs, serializeJsonLd, buildMetaDescription } from '@screena/seo'
 
 import { EntityActions } from '../../../_components/entity-actions'
 import { EntitySynopsis } from '../../../_components/entity-synopsis'
@@ -108,7 +108,7 @@ export async function generateMetadata({
     alternates: { canonical: canonicalUrl },
   }
   if (view.metaDescription !== null) {
-    metadata.description = view.metaDescription
+    metadata.description = buildMetaDescription(view.metaDescription) ?? view.metaDescription
   }
   return metadata
 }
