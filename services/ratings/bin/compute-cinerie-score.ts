@@ -46,42 +46,14 @@ import {
   type EntityTmdbRow,
   type ScoreDecisionRow,
 } from '../src/score/compute-run.js'
+import { parseScoreArgs } from '../src/score/args.js'
 
-interface Args {
-  readonly apply: boolean
-  readonly type: 'movie' | 'tv' | 'all'
-  readonly limit: number | null
-}
-
-function parseArgs(argv: readonly string[]): { ok: true; args: Args } | { ok: false; error: string } {
-  let apply = false
-  let type: Args['type'] = 'all'
-  let limit: number | null = null
-  for (const token of argv) {
-    if (token === '--apply') {
-      apply = true
-      continue
-    }
-    if (token.startsWith('--type=')) {
-      const value = token.slice('--type='.length)
-      if (value !== 'movie' && value !== 'tv' && value !== 'all') {
-        return { ok: false, error: `--type invalido: "${value}" (use movie | tv | all)` }
-      }
-      type = value
-      continue
-    }
-    if (token.startsWith('--limit=')) {
-      const value = Number(token.slice('--limit='.length))
-      if (!Number.isInteger(value) || value <= 0) {
-        return { ok: false, error: `--limit invalido: "${token}" (inteiro positivo)` }
-      }
-      limit = value
-      continue
-    }
-    return { ok: false, error: `argumento desconhecido: "${token}"` }
-  }
-  return { ok: true, args: { apply, type, limit } }
-}
+/**
+ * O parser mudou-se para `src/score/args.ts` — ver o cabecalho de la para o
+ * defeito que isso fecha. Ele vivia aqui, e como este arquivo chama `main()`
+ * no topo do modulo, testa-lo exigiria conectar o Prisma. Por isso nunca teve
+ * teste, e por isso o defeito sobreviveu quatro dias em producao.
+ */
 
 function loadRepoEnv(): void {
   const dir = path.dirname(fileURLToPath(import.meta.url))
@@ -110,7 +82,7 @@ const TMDB_INTERNAL_DECISION_SQL = `
 async function main(): Promise<void> {
   loadRepoEnv()
 
-  const parsed = parseArgs(process.argv.slice(2))
+  const parsed = parseScoreArgs(process.argv.slice(2))
   if (!parsed.ok) {
     console.error(`Argumentos invalidos: ${parsed.error}`)
     process.exitCode = 1

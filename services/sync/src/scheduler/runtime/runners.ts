@@ -55,6 +55,7 @@ import type { SchedulerQueue } from '../rhythms.js'
 import { backgroundOmdbSlots } from '../quota.js'
 import { dailyScope, hourlySlot, windowSlot } from '../scope.js'
 import { effectiveRank, NO_TRENDING, type TrendingRanks } from '../trending.js'
+import { buildCinerieScoreArgs, buildSearchReindexArgs } from './child-args.js'
 import { describeChildFailure } from './child-failure.js'
 import type { RunReason, RunTally } from '../run-outcome.js'
 import { readSpentToday } from './facts.js'
@@ -718,8 +719,7 @@ const runAwards: QueueRunner = async (deps) => {
 
 const runCinerieScore: QueueRunner = async (deps) => {
   const startedAt = deps.now()
-  const args = ['--type', 'all']
-  if (deps.apply) args.push('--apply')
+  const args = buildCinerieScoreArgs(deps.apply)
   const result = await runScript(
     deps.repoRoot,
     path.join('services', 'ratings', 'bin', 'compute-cinerie-score.ts'),
@@ -746,10 +746,7 @@ const runCinerieScore: QueueRunner = async (deps) => {
 
 const runSearchProjection: QueueRunner = async (deps) => {
   const startedAt = deps.now()
-  // `search-reindex` MUTA a projecao que o sitemap le, entao a CLI exige
-  // `--dry-run` OU `--apply` explicito. Passar nenhum dos dois faria o comando
-  // recusar com erro de uso, e a fila reportaria falha sem nunca ter tentado.
-  const args = ['search-reindex', deps.apply ? '--apply' : '--dry-run']
+  const args = buildSearchReindexArgs(deps.apply)
   const result = await runScript(
     deps.repoRoot,
     path.join('services', 'ingestion', 'bin', 'catalog.ts'),
