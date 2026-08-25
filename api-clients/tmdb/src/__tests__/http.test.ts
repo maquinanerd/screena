@@ -134,3 +134,50 @@ describe('TmdbHttpClient', () => {
     expect(slept).toContain(500)
   })
 })
+
+/**
+ * A MENSAGEM do erro tem de dizer POR QUE, nao so o codigo.
+ *
+ * Ate 2026-08-25 o corpo da resposta ficava so na propriedade `body`, que
+ * ninguem lia: `error.message` era "TMDB HTTP 401" e nada mais, entao o job
+ * gravava o codigo em `last_error_safe` e perdia a frase que distingue chave
+ * invalida de id inexistente de cota estourada. Controles negativos: reprovam
+ * com a mensagem antiga.
+ */
+describe('TmdbHttpError — a causa entra na mensagem', () => {
+  it('usa o `status_message` do TMDB quando o corpo e o JSON de erro dele', () => {
+    const error = new TmdbHttpError(
+      401,
+      '{"success":false,"status_code":7,"status_message":"Invalid API key: You must be granted a valid key."}',
+      true,
+    )
+    expect(error.message).toContain('TMDB HTTP 401')
+    expect(error.message).toContain('Invalid API key')
+  })
+
+  it('cai para um trecho do corpo quando ele nao e o JSON do TMDB', () => {
+    const error = new TmdbHttpError(502, '<html>\n  <body>Bad Gateway</body>\n</html>', false)
+    expect(error.message).toContain('TMDB HTTP 502')
+    expect(error.message).toContain('Bad Gateway')
+    // Colapsado numa linha: quem consome grava em UMA coluna de log.
+    expect(error.message).not.toContain('\n')
+  })
+
+  it('corpo vazio nao produz mensagem terminando em dois-pontos', () => {
+    const error = new TmdbHttpError(500, '   ', false)
+    expect(error.message).toBe('TMDB HTTP 500')
+    expect(error.message.endsWith(':')).toBe(false)
+  })
+
+  it('trunca corpo gigante e preserva `body` intacto para quem quiser tudo', () => {
+    const corpo = 'x'.repeat(5_000)
+    const error = new TmdbHttpError(500, corpo, false)
+    expect(error.message.length).toBeLessThan(250)
+    expect(error.body).toHaveLength(5_000)
+  })
+
+  it('mantem `permanent` e `status` — o fato que decide retry x dead-letter', () => {
+    expect(new TmdbHttpError(404, '{}', true)).toMatchObject({ status: 404, permanent: true })
+    expect(new TmdbHttpError(429, '{}', false)).toMatchObject({ status: 429, permanent: false })
+  })
+})

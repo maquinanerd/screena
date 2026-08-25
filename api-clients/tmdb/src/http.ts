@@ -35,14 +35,53 @@ export type HttpTransport = (request: HttpRequest) => Promise<HttpResponse>
 /** Parametros de query (valores nulos/undefined sao omitidos). */
 export type TmdbQueryParams = Record<string, string | number | undefined>
 
-/** Erro de resposta TMDB. `permanent=true` para 4xx (exceto 429) — nao retenta. */
+/** Teto do trecho de corpo que entra na MENSAGEM do erro. */
+const BODY_IN_MESSAGE_MAX = 160
+
+/**
+ * O que o TMDB disse, em uma linha curta.
+ *
+ * O corpo de erro do TMDB e JSON com `status_message` (`{"success":false,
+ * "status_code":34,"status_message":"The resource you requested could not be
+ * found."}`) — e essa frase que diz se o job morreu por id inexistente, por
+ * chave invalida ou por cota. Quando o corpo nao e esse JSON (HTML de gateway,
+ * texto de proxy), cai para um trecho colapsado do proprio corpo.
+ */
+function describeBody(body: string): string {
+  const texto = body.trim()
+  if (texto === '') return ''
+  try {
+    const parsed: unknown = JSON.parse(texto)
+    if (typeof parsed === 'object' && parsed !== null) {
+      const message: unknown = (parsed as { status_message?: unknown }).status_message
+      if (typeof message === 'string' && message.trim() !== '') {
+        return message.trim().slice(0, BODY_IN_MESSAGE_MAX)
+      }
+    }
+  } catch {
+    // Corpo nao-JSON: segue para o trecho cru abaixo.
+  }
+  return texto.replace(/\s+/g, ' ').slice(0, BODY_IN_MESSAGE_MAX)
+}
+
+/**
+ * Erro de resposta TMDB. `permanent=true` para 4xx (exceto 429) — nao retenta.
+ *
+ * A MENSAGEM CARREGA O MOTIVO. Ate 2026-08-25 o corpo da resposta ficava so na
+ * propriedade `body`, que ninguem lia: a mensagem era `TMDB HTTP 401` e nada
+ * mais, entao `last_error_safe` guardava o codigo e perdia a frase que
+ * distingue "chave invalida" de "id inexistente" de "cota estourada". Mesmo
+ * defeito da #218 — a causa existia na memoria do processo e morria na
+ * formatacao. `body` continua intacto para quem quiser o corpo inteiro.
+ */
 export class TmdbHttpError extends Error {
   readonly status: number
   readonly body: string
   readonly permanent: boolean
 
   constructor(status: number, body: string, permanent: boolean) {
-    super(`TMDB HTTP ${status}${permanent ? ' (permanente)' : ''}`)
+    const motivo = describeBody(body)
+    super(`TMDB HTTP ${status}${permanent ? ' (permanente)' : ''}${motivo === '' ? '' : `: ${motivo}`}`)
     this.name = 'TmdbHttpError'
     this.status = status
     this.body = body
