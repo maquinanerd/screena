@@ -1,10 +1,27 @@
 /**
- * persistence/index.ts — Montagem dos adapters Prisma. EXCLUIDO do typecheck.
+ * persistence/index.ts — Montagem dos adapters Prisma. COBERTO pelo typecheck da raiz
+ * (`pnpm typecheck`).
  *
  * Une `content_blocks` (archive + insert), `entity_writer_logs` (1 tentativa) e
  * `entity_writer_jobs` (estado terminal) sobre um unico Prisma Client
  * server-only. Worker-only: o render NUNCA importa este modulo (guarda
  * `audit:render`). Exposto via o export "./runtime" do pacote.
+ *
+ * ============================================================================
+ * POR QUE `persistence/` AQUI E CONFERIDO, E O DA INGESTAO NAO
+ * ============================================================================
+ * A exclusao em `tsconfig.json` e NOMINAL, nao por convencao de nome de pasta:
+ * ela lista `services/ingestion/**\/persistence/**` e
+ * `services/news-ingestion/**\/persistence/**`, e mais nada. Entao este
+ * diretorio — como o de ratings e o de streaming — sempre esteve DENTRO do
+ * programa da raiz, tocando Prisma e compilando.
+ *
+ * Ate 2026-08-21 os nove arquivos daqui abriam dizendo "EXCLUIDO do typecheck".
+ * Era falso, e falso na direcao perigosa: um cabecalho que afirma que os tipos
+ * nao sao conferidos autoriza o import de TIPO usado como VALOR — o erro que
+ * derruba o container no import, antes de qualquer log. A rede existia; o
+ * comentario mandava nao contar com ela. Travado por
+ * `tests/governance/typecheck-exclusion-claims.test.ts`.
  */
 
 import { getPrismaClient, type PrismaClient } from "@screena/db/server";

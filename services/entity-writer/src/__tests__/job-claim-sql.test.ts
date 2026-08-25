@@ -1,7 +1,7 @@
 /**
  * Teste estrutural do adapter Prisma de claim.
  *
- * `job-claim.ts` fica fora do typecheck e depende de SQL raw com Prisma; sem um
+ * `job-claim.ts` depende de SQL raw com Prisma, que nenhum tipo confere; sem um
  * Postgres de integracao nesta fase, travamos aqui as propriedades criticas do
  * SQL: `--job-id` tambem filtra por idioma e os caminhos seguem usando
  * `FOR UPDATE SKIP LOCKED`.

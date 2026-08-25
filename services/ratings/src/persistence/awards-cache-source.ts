@@ -1,6 +1,6 @@
 /**
  * awards-cache-source.ts — Le os payloads OMDb ja guardados em `api_cache`.
- * EXCLUIDO do typecheck (toca Prisma).
+ * COBERTO pelo typecheck da raiz E por `tsconfig.runtime.json`.
  *
  * ESTA E A UNICA ORIGEM DO DADO DE PREMIACAO. Nao ha chamada de rede em lugar
  * nenhum deste caminho: o literal `Awards` chegou no primeiro sync de ratings e

@@ -2,7 +2,7 @@
  * ports.ts — Portas (interfaces) do worker de disponibilidade. Modulo PURO.
  *
  * A orquestracao depende SO destas interfaces. Os adapters Prisma vivem em
- * `persistence/*` (fora do typecheck).
+ * `persistence/*`.
  */
 
 import type { SelectedEntity, StreamingEntityType, WatchOfferRow } from './streaming-availability/types.js'

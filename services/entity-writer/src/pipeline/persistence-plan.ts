@@ -5,7 +5,7 @@
  * JobCompletionInput) para as formas de escrita das tabelas reais, e decide a
  * estrategia de regeneracao (archive + insert). NAO toca Prisma, banco, rede,
  * relogio nem BigInt — so dados puros (strings/numeros/flags). Os adapters em
- * `../persistence/*` (excluidos do typecheck) executam estes planos contra o
+ * `../persistence/*` executam estes planos contra o
  * PostgreSQL, convertendo para BigInt/Json/Date.
  *
  * Aqui mora a regra testavel; o IO fica fino e isolado.

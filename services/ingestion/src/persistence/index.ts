@@ -1,5 +1,6 @@
 /**
- * persistence/index.ts — Montagem dos adapters Prisma. EXCLUIDO do typecheck.
+ * persistence/index.ts — Montagem dos adapters Prisma. COBERTO por
+ * `tsconfig.runtime.json` (`pnpm typecheck` encadeia os dois).
  *
  * Une cache (`api_cache`), sync-log (`api_sync_logs`) e store (entidades) sobre
  * um unico Prisma Client server-only. Usado apenas pelo `bin/` em runtime; o

@@ -3,8 +3,8 @@
  *
  * A orquestracao (`film-show-ratings/run.ts`) depende SO destas interfaces —
  * nunca do Prisma nem do client HTTP concreto. Isso mantem o core testavel com
- * fakes em memoria; os adapters reais vivem em `persistence/*` (fora do
- * typecheck, pois tocam o Prisma Client gerado).
+ * fakes em memoria; os adapters reais vivem em `persistence/*` (tocam o Prisma
+ * Client gerado).
  */
 
 import type { ExternalRatingRow, RatingsEntityType } from './film-show-ratings/types.js'

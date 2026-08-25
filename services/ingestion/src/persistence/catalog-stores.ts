@@ -1,6 +1,7 @@
 /**
  * catalog-stores.ts — Adapters Prisma de `genres` (Fase 6) e
- * `tmdb_sync_checkpoint` (Fase 8). EXCLUIDO do typecheck (toca Prisma).
+ * `tmdb_sync_checkpoint` (Fase 8). COBERTO por `tsconfig.runtime.json` (`pnpm
+ * typecheck` encadeia os dois).
  * Upserts idempotentes por identidade natural.
  */
 

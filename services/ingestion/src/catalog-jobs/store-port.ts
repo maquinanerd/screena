@@ -2,8 +2,8 @@
  * store-port.ts — Porta (contrato) da persistencia da fila de jobs (PURO).
  *
  * O adapter Prisma real (`createPrismaCatalogJobStore`) implementa esta porta em
- * services/ingestion/src/persistence/catalog-job-store.ts (excluido do
- * typecheck, como job-claim.ts). Testes podem usar um fake em memoria contra a
+ * services/ingestion/src/persistence/catalog-job-store.ts. Testes podem usar um
+ * fake em memoria contra a
  * mesma porta. O claim concorrente-seguro (FOR UPDATE SKIP LOCKED) e a unica
  * garantia que exige o Postgres real — coberta pelo validador dedicado.
  */

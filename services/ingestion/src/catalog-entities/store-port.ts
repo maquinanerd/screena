@@ -2,8 +2,8 @@
  * store-port.ts — Porta de persistencia das entidades de referencia (PURO).
  *
  * O adapter Prisma (`createPrismaCatalogEntitiesStore`) implementa isto em
- * services/ingestion/src/persistence/catalog-entities-store.ts (excluido do
- * typecheck). A porta fala em IDs TMDB (a chave natural do payload); o adapter
+ * services/ingestion/src/persistence/catalog-entities-store.ts. A porta fala em
+ * IDs TMDB (a chave natural do payload); o adapter
  * resolve para os ids internos e faz o link.
  */
 

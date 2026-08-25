@@ -1,6 +1,6 @@
 /**
  * omdb-budget-source.ts — O SALDO DE COTA do dia, medido no banco.
- * EXCLUIDO do typecheck principal (toca Prisma).
+ * COBERTO pelo typecheck da raiz E por `tsconfig.runtime.json`.
  *
  * ============================================================================
  * DE ONDE SAI O NUMERO

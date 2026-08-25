@@ -1,6 +1,6 @@
 /**
  * runtime/selection.ts — QUEM entra em cada fila, e em que ORDEM.
- * EXCLUIDO do typecheck principal (toca Prisma).
+ * COBERTO pelo typecheck da raiz (`pnpm typecheck`).
  *
  * ============================================================================
  * A ORDEM E `popularity DESC`, E ISSO NAO E DETALHE

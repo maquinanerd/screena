@@ -2,8 +2,8 @@
  * watch-providers-store.ts — Adapters Prisma do reprocessamento de
  * `watch/providers` (leitura do bruto, resolucao de entidade, escrita da oferta).
  *
- * EXCLUIDO DO TYPECHECK padrao (toca Prisma); coberto por
- * `tsconfig.runtime.json`, que inclui `services/ingestion/src/persistence/**`.
+ * COBERTO por `tsconfig.runtime.json` (`pnpm typecheck` encadeia os dois), que
+ * inclui `services/ingestion/src/persistence/**`.
  *
  * A escrita ESPELHA `services/streaming/src/persistence/watch-store.ts`, e a
  * semelhanca e proposital: aquele adapter ja resolveu, com custo, o problema de
