@@ -8,7 +8,7 @@ set -uo pipefail
 #   1. snapshot ANTES  (catalog audit-database --json)
 #   2. catalog worker  (drena a fila)
 #   3. catalog search-reindex
-#   4. catalog index-decisions --apply
+#   4. catalog index-decisions --apply  (com FREIO de mudança em massa)
 #   5. snapshot DEPOIS
 #   6. sentinela de saúde (scripts/catalog/lib/queue-health.mjs)
 #   7. alerta via a infra do Prompt 02 (scripts/backup/lib/alert.mjs)
@@ -54,6 +54,32 @@ set -uo pipefail
 # quatro comandos que falhariam um a um e emitir um alerta confuso. Fora de
 # produção nada muda: as flags não são passadas e o gate já libera.
 #
+# ========== FREIO DE MUDANÇA EM MASSA: por que o exit 5 é especial ==========
+# `index-decisions --apply` roda aqui de hora em hora, sem humano nenhum. Uma
+# alteração na política pura de `@screena/seo` se aplicaria ao catálogo INTEIRO
+# no primeiro ciclo depois do deploy — a "indexação em massa" que a seção 6 do
+# CLAUDE.md manda submeter a revisão humana.
+#
+# A CLI agora conta quantas entidades ENTRAM ou SAEM do sitemap e, passando do
+# teto, grava ZERO linhas e sai com o code 5. Este script trata esse code de
+# forma DIFERENTE de uma falha:
+#
+#   exit 0  -> gravou (ou não havia o que gravar). Segue.
+#   exit 5  -> FREIO ARMADO: nada gravado, aguardando humano. Emite alerta e
+#              SEGUE o ciclo. NÃO derruba o ciclo, e não vira vermelho de hora
+#              em hora — um ciclo que falha toda hora deixa de ser lido, e a
+#              próxima falha REAL do worker passa despercebida no meio do ruído.
+#   outro   -> falha de verdade do produtor. Loga e segue (como antes).
+#
+# O alerta sai com severidade `warning`: `buildAlert` só aceita success/failure,
+# e para a source `queue` um `failure` já mapeia para severity `warning` (as
+# críticas são backup/migration/availability). O texto diz explicitamente que
+# nada foi gravado, para não ser lido como quebra.
+#
+# Destravar é ato humano deliberado, fora do timer:
+#   pnpm catalog index-decisions --dry-run --json          # lê o censo
+#   pnpm catalog index-decisions --apply --confirm-mass-change --force
+#
 # Uso (tipicamente via systemd timer):
 #   DATABASE_URL=... TMDB_READ_ACCESS_TOKEN=... \
 #   CINERIE_CATALOG_CYCLE_PRODUCTION_CONFIRMED=true \
@@ -70,6 +96,12 @@ LOCK_FILE="${CATALOG_LOCK_FILE:-/tmp/cinerie-catalog-cycle.lock}"
 WORKER_MAX_JOBS="${CATALOG_WORKER_MAX_JOBS:-5000}"
 WORKER_CONCURRENCY="${CATALOG_WORKER_CONCURRENCY:-4}"
 WORKER_TIMEOUT_MS="${CATALOG_WORKER_TIMEOUT_MS:-300000}"
+
+# Contrato com src/cli/exit.ts (EXIT_CODES.massChangeBlocked). O número mágico
+# aqui é inevitável — shell não importa TypeScript —, então
+# tests/governance/catalog-mass-change-brake.test.ts trava os dois lados juntos
+# para o valor não divergir em silêncio.
+INDEX_DECISIONS_BRAKE_EXIT=5
 
 # Flags do gate de produção, resolvidas UMA vez na subida (ver o bloco acima).
 # Arrays vazios fora de produção: `"${GATE_READ[@]}"` some da linha de comando.
@@ -160,33 +192,48 @@ run_cycle() {
   # busca. É escrita, mas de baixo risco — projeta o que já existe.
   catalog_write search-reindex --apply || echo "catalog-cycle: search-reindex falhou (seguindo)." >&2
 
-  # DECISÕES DE INDEXABILIDADE: DRY-RUN, NUNCA `--apply` AQUI.
+  # DECISÕES DE INDEXABILIDADE: `--apply` DE VOLTA, agora com a trava.
   #
-  # Até esta mudança a linha era `catalog_write index-decisions --apply`. Com a
-  # política v2 (gates de sinopse/biografia/imagem), a primeira execução tira
-  # ~51 mil URLs do sitemap — 22.385 pessoas (nenhuma tem biografia), ~28 mil
-  # episódios (só 1.257 de 30.803 têm sinopse) e ~40 séries.
+  # HISTÓRICO, porque a linha já mudou duas vezes e o motivo importa:
   #
-  # Isso é INDEXAÇÃO EM MASSA, e o CLAUDE.md §6 exige revisão humana para ela.
-  # Um timer horário aplicando sozinho é exatamente o contrário: a decisão mais
-  # cara do sistema tomada por um cron, sem ninguém ler o censo.
+  # 1. Era `catalog_write index-decisions --apply`, sem trava nenhuma.
+  # 2. A política v2 (gates de sinopse/biografia/imagem) mostrou o tamanho do
+  #    problema: a primeira execução tiraria ~51 mil URLs do sitemap — 22.385
+  #    pessoas (nenhuma tem biografia), ~28 mil episódios (só 1.257 de 30.803
+  #    têm sinopse) e ~40 séries. Isso é INDEXAÇÃO EM MASSA, e o CLAUDE.md §6
+  #    exige revisão humana. A linha virou `--dry-run` — mitigação correta na
+  #    ausência de trava, e o comentário de lá dizia, com todas as letras, o que
+  #    faltava: "aplicação automática precisa de uma trava PRÓPRIA de mudança em
+  #    massa — não de descomentar uma linha".
+  # 3. Essa trava agora existe (o freio deste arquivo + `catalog-mass-change.ts`),
+  #    então `--apply` volta — mas incapaz de fazer o estrago do item 2.
   #
-  # Havia ainda um acoplamento invisível: este ciclo nunca rodou (a fila tem 626
-  # jobs `pending` e zero `succeeded` na história). Quem o liga é a criação do
-  # catalog worker. Ou seja, subir o worker dispararia a desindexação em massa
-  # como EFEITO COLATERAL de uma tarefa que não tem nada a ver com SEO.
+  # O acoplamento invisível continua registrado: este ciclo nunca rodou (a fila
+  # tinha 626 jobs `pending` e zero `succeeded`). Quem o liga é a criação do
+  # catalog worker. Sem o freio, subir o worker dispararia a desindexação em
+  # massa como EFEITO COLATERAL de uma tarefa que não tem nada a ver com SEO.
+  # COM o freio, subir o worker produz um alerta e ZERO linhas gravadas.
   #
-  # O dry-run mantém o valor do ciclo — o censo por razão fica no log a cada
-  # hora, e uma divergência nova aparece — sem que nada mude no índice. Aplicar
-  # continua possível e passa a ser um ATO DELIBERADO:
+  # O que `--apply` faz agora: aplica a DERIVA (punhado de entidades por hora,
+  # que é o trabalho real do ciclo) e RECUSA a mudança em massa, com censo no
+  # log e alerta. Os ~51 mil do item 2 continuam exigindo ato humano deliberado:
   #
-  #     catalog index-decisions --apply --force
+  #     catalog index-decisions --dry-run --json            # ler o censo
+  #     catalog index-decisions --apply --confirm-mass-change --force
   #
-  # Se um dia a aplicação automática for desejada, ela precisa de decisão
-  # registrada e de uma trava própria de mudança em massa — não de descomentar
-  # uma linha.
-  catalog_read index-decisions --dry-run --json \
-    || echo "catalog-cycle: index-decisions (dry-run) falhou (seguindo)." >&2
+  # Sem `|| echo`: aqui o code EXATO importa — é ele que separa "o produtor
+  # quebrou" de "o produtor se recusou de propósito e está esperando um humano".
+  local idx_code=0
+  catalog_write index-decisions --apply || idx_code=$?
+  if [[ "$idx_code" -eq "$INDEX_DECISIONS_BRAKE_EXIT" ]]; then
+    echo "catalog-cycle: index-decisions RECUSOU gravar — freio de mudança em massa." >&2
+    echo "catalog-cycle: nenhuma decisão foi alterada; o ciclo segue normalmente." >&2
+    emit_alert "$idx_code" \
+      "index-decisions: FREIO DE MUDANCA EM MASSA armado - ZERO linhas gravadas, indexabilidade inalterada. Revise com 'catalog index-decisions --dry-run --json' e, se a mudanca for intencional, rode com --confirm-mass-change." \
+      "failure"
+  elif [[ "$idx_code" -ne 0 ]]; then
+    echo "catalog-cycle: index-decisions falhou (exit $idx_code; seguindo)." >&2
+  fi
 
   after="$(snapshot)"
 

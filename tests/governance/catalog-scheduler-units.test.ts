@@ -138,38 +138,55 @@ describe("catalog-cycle-with-alert.sh", () => {
     expect(wrapperCommands).toContain("index-decisions");
   });
 
-  it("(14b) o ciclo NAO aplica decisoes de indexabilidade sozinho", () => {
+  it("(14b) o ciclo aplica a DERIVA, e nunca assina a mudanca em massa", () => {
+    // ESTE TESTE JA FOI O CONTRARIO, e o porque importa mais que o veredito.
+    //
     // Indexacao em massa exige revisao humana (CLAUDE.md secao 6). Com a
     // politica v2, a primeira aplicacao tira ~51 mil URLs do sitemap: 22.385
     // pessoas (nenhuma tem biografia), ~28 mil episodios (1.257 de 30.803 tem
     // sinopse) e ~40 series. Um timer horario decidindo isso sozinho e a
-    // decisao mais cara do sistema tomada por um cron.
+    // decisao mais cara do sistema tomada por um cron. Pior: o ciclo nunca
+    // rodou (626 jobs `pending`, zero `succeeded`), e quem o liga e a criacao
+    // do catalog worker — entao subir o worker dispararia a desindexacao como
+    // EFEITO COLATERAL de uma tarefa de ingestao.
     //
-    // Pior: o ciclo nunca rodou (626 jobs `pending`, zero `succeeded`). Quem o
-    // liga e a criacao do catalog worker — entao subir o worker dispararia a
-    // desindexacao como EFEITO COLATERAL de uma tarefa de ingestao.
+    // Na ausencia de trava, a mitigacao foi rebaixar a linha para `--dry-run`,
+    // e este teste travava "nenhuma linha com --apply". O comentario de la
+    // dizia o que faltava: "aplicacao automatica precisa de uma trava PROPRIA
+    // de mudanca em massa". Essa trava existe agora (`catalog-mass-change.ts`
+    // + exit 5 tratado no wrapper), entao `--apply` volta — e a propriedade
+    // de seguranca MUDA DE LUGAR, em vez de sumir:
     //
-    // O dry-run mantem o censo por razao no log de hora em hora sem mexer no
-    // indice. Aplicar continua possivel, e passa a ser um ato deliberado.
+    //   antes: o ciclo nao pode APLICAR nada.
+    //   agora: o ciclo pode aplicar a DERIVA; o que ele nao pode e ASSINAR
+    //          pelo humano, e o freio e quem separa uma coisa da outra.
+    //
+    // Decisao do dono, 2026-08-25, ciente de que isto inverte a #219.
     const linhasIndexDecisions = wrapperCommands
       .split("\n")
       .filter((l) => l.includes("index-decisions"));
     expect(linhasIndexDecisions.length).toBeGreaterThan(0);
 
-    // A propriedade de seguranca: NENHUMA linha que cite `index-decisions`
-    // pode carregar `--apply`. Vale linha a linha porque e a invocacao que
-    // importa, e ela cabe numa linha.
-    for (const linha of linhasIndexDecisions) {
-      expect(linha, `o ciclo aplicaria indexabilidade sozinho: ${linha.trim()}`).not.toContain(
-        "--apply",
-      );
+    // (a) o ciclo APLICA — senao entidade nova nunca ganha decisao registrada.
+    expect(wrapperCommands).toContain("index-decisions --apply");
+
+    // (b) a propriedade de seguranca: NENHUMA linha que invoque a CLI pode
+    // carregar `--confirm-mass-change`. Linha a linha porque e a invocacao que
+    // importa. A mensagem do alerta cita a flag de proposito (ensina o operador
+    // a destravar), entao filtramos so as linhas de invocacao.
+    const invocacoes = linhasIndexDecisions.filter((l) => /catalog_(read|write)\b/.test(l));
+    expect(invocacoes.length).toBeGreaterThan(0);
+    for (const linha of invocacoes) {
+      expect(
+        linha,
+        `o ciclo assinaria a mudanca em massa sozinho: ${linha.trim()}`,
+      ).not.toContain("--confirm-mass-change");
     }
 
-    // E o ciclo continua CHAMANDO o comando, em dry-run — senao o censo por
-    // razao desapareceria do log e ninguem veria a divergencia crescer.
-    // Asserta sobre o texto, nao sobre a linha: a invocacao usa continuacao
-    // com `\` e a mensagem de erro do `||` tambem cita `index-decisions`.
-    expect(wrapperCommands).toContain("index-decisions --dry-run");
+    // (c) e o wrapper TRATA o exit do freio — sem isso o freio dispararia e o
+    // ciclo registraria "index-decisions falhou", escondendo a recusa atras de
+    // uma falha generica.
+    expect(wrapperCommands).toContain("INDEX_DECISIONS_BRAKE_EXIT");
   });
 });
 

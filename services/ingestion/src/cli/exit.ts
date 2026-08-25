@@ -15,6 +15,16 @@ export const EXIT_CODES = {
   blocked: 3,
   /** O trabalho rodou mas terminou com falha (job em dead-letter, sync failed). */
   failed: 4,
+  /**
+   * FREIO DE MUDANCA EM MASSA: a execucao calculou tudo, viu que mudaria index
+   * <-> noindex em mais paginas que o teto e gravou ZERO linhas.
+   *
+   * Code PROPRIO, e nao `failed`/`blocked`, porque o ciclo horario precisa saber
+   * distinguir "o produtor quebrou" (falha, alerta vermelho) de "o produtor se
+   * recusou de proposito e esta esperando um humano" (aviso). Ver o tratamento
+   * em `scripts/catalog/catalog-cycle-with-alert.sh`.
+   */
+  massChangeBlocked: 5,
   /** Erro inesperado. */
   error: 1,
 } as const

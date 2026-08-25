@@ -79,6 +79,11 @@ const INT_FLAGS: ReadonlySet<string> = new Set([
   'max-api-calls',
   'max-duration-minutes',
   'max-media-items',
+  // Tetos do FREIO de mudanca em massa do `index-decisions`. Existem para o
+  // caso em que o default (500 / 5%) nao serve: catalogo pequeno onde 5% e um
+  // punhado de paginas, ou migracao autorizada com teto folgado.
+  'max-flips',
+  'max-flip-percent',
 ])
 
 /** Flags de valor data (YYYY-MM-DD). */
@@ -91,6 +96,10 @@ const BOOLEAN_FLAGS: ReadonlySet<string> = new Set([
   'apply',
   'force',
   'confirm-production-read',
+  // Opt-in HUMANO para indexacao em massa (CLAUDE.md secao 6). O ciclo horario
+  // nao-atendido NUNCA passa esta flag — e por isso que ele nao consegue
+  // reindexar o catalogo sozinho.
+  'confirm-mass-change',
   'json',
   'human',
   'help',
@@ -126,6 +135,9 @@ export interface CatalogFlags {
   readonly maxApiCalls: number | null
   readonly maxDurationMinutes: number | null
   readonly maxMediaItems: number | null
+  /** Tetos do freio de mudanca em massa (`index-decisions`). */
+  readonly maxFlips: number | null
+  readonly maxFlipPercent: number | null
   readonly from: string | null
   readonly to: string | null
   readonly resume: boolean
@@ -133,6 +145,7 @@ export interface CatalogFlags {
   readonly apply: boolean
   readonly force: boolean
   readonly confirmProductionRead: boolean
+  readonly confirmMassChange: boolean
   readonly json: boolean
   readonly human: boolean
   readonly help: boolean
@@ -339,6 +352,8 @@ export function parseCatalogArgs(argv: readonly string[]): CatalogArgsResult {
     maxApiCalls: ints['max-api-calls'] ?? null,
     maxDurationMinutes: ints['max-duration-minutes'] ?? null,
     maxMediaItems: ints['max-media-items'] ?? null,
+    maxFlips: ints['max-flips'] ?? null,
+    maxFlipPercent: ints['max-flip-percent'] ?? null,
     from: dates.from ?? null,
     to: dates.to ?? null,
     resume: booleans.has('resume'),
@@ -346,6 +361,7 @@ export function parseCatalogArgs(argv: readonly string[]): CatalogArgsResult {
     apply: booleans.has('apply'),
     force: booleans.has('force'),
     confirmProductionRead: booleans.has('confirm-production-read'),
+    confirmMassChange: booleans.has('confirm-mass-change'),
     json: booleans.has('json'),
     human: booleans.has('human'),
     help: false,
@@ -415,6 +431,21 @@ export function validateInvocation(
   }
   if (command === 'enqueue' && flags.positionals.length === 0) {
     return '"enqueue" exige o tipo de job como argumento (ex.: catalog enqueue sync_details --entity movie --id 603 --apply).'
+  }
+
+  // Freio de mudanca em massa: so existe no produtor de indexabilidade. Aceitar
+  // as flags calado em outro comando faria um operador acreditar que aplicou um
+  // teto onde nao ha freio nenhum.
+  if (command !== 'index-decisions') {
+    if (flags.confirmMassChange) {
+      return `--confirm-mass-change so vale em "index-decisions" (recebeu em "${command}").`
+    }
+    if (flags.maxFlips !== null || flags.maxFlipPercent !== null) {
+      return `--max-flips/--max-flip-percent so valem em "index-decisions" (recebeu em "${command}").`
+    }
+  }
+  if (flags.maxFlipPercent !== null && flags.maxFlipPercent > 100) {
+    return `--max-flip-percent e uma porcentagem de 0 a 100, recebeu ${flags.maxFlipPercent}.`
   }
 
   if (command === 'worker' && flags.concurrency !== null && flags.concurrency === 0) {

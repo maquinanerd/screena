@@ -63,6 +63,12 @@ const SYNTAX_BY_EXTENSION: Readonly<Record<string, CommentSyntax>> = {
   '.sql': 'sql',
   '.yml': 'hash',
   '.yaml': 'hash',
+  // Shell. Entrou quando um guard passou a medir o ciclo horario de catalogo:
+  // o script EXPLICA no cabecalho a flag que o guard existe para provar ausente
+  // (`--confirm-mass-change`), entao ler o arquivo cru certificaria o contrario
+  // do que se quer — o quinto caso do defeito descrito no topo deste modulo.
+  '.sh': 'hash',
+  '.bash': 'hash',
   '.md': 'none',
   '.mdx': 'none',
   '.json': 'none',

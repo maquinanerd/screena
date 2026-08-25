@@ -13,7 +13,10 @@
  *   5. (v2) que os fatos de CONTEUDO saem das colunas certas — a sinopse de
  *      filme/serie de `entity_translations.summary`, a de temporada/episodio da
  *      PROPRIA linha, e a biografia so quando `biography_source_status` libera.
- *      So um banco real prova que a coluna existe e que o SQL a le.
+ *      So um banco real prova que a coluna existe e que o SQL a le;
+ *   6. o FREIO de mudanca em massa realmente impede a escrita — a tabela nao
+ *      muda de tamanho E a decisao vigente continua a ANTIGA. `written === 0`
+ *      sozinho seria um contador falando de si mesmo; so o banco prova.
  *
  * FERRAMENTA DE DESENVOLVIMENTO DESCARTAVEL: nunca roda em render/build/prod.
  * ZERO rede, ZERO TMDB, ZERO Gemini.
@@ -130,6 +133,17 @@ async function seed(prisma: PrismaClient): Promise<void> {
 /** Quantas entidades o produtor avalia com estas fixtures. */
 const SEEDED = 11
 
+/**
+ * Tetos frouxos para os checks do PRODUTOR.
+ *
+ * O freio de mudanca em massa mede flips sobre o total AVALIADO. Este fixture
+ * tem 11 entidades e boa parte nasce fora do sitemap — muito acima dos 5%
+ * default. Sem afrouxar, os checks de gravacao mediriam o freio em vez do
+ * produtor. O freio tem checks PROPRIOS no fim do arquivo, com teto apertado de
+ * proposito.
+ */
+const LOOSE_BRAKE = { maxFlipRatio: 1, maxFlips: 1_000_000 } as const
+
 async function runChecks(url: string): Promise<void> {
   const prisma = new PrismaClient({ datasourceUrl: url })
   const q = <T>(sql: string) => prisma.$queryRawUnsafe<T[]>(sql)
@@ -143,6 +157,7 @@ async function runChecks(url: string): Promise<void> {
       language: 'pt-BR',
       dryRun: true,
       now,
+      massChangeThresholds: LOOSE_BRAKE,
     })
     const afterDry = await q<{ n: number }>(
       'SELECT COUNT(*)::int AS n FROM page_indexability_decisions',
@@ -158,6 +173,7 @@ async function runChecks(url: string): Promise<void> {
       language: 'pt-BR',
       dryRun: false,
       now,
+      massChangeThresholds: LOOSE_BRAKE,
     })
     record(
       `apply grava ${SEEDED} decisoes`,
@@ -229,6 +245,7 @@ async function runChecks(url: string): Promise<void> {
       language: 'pt-BR',
       dryRun: false,
       now,
+      massChangeThresholds: LOOSE_BRAKE,
     })
     const afterRerun = await q<{ n: number }>(
       'SELECT COUNT(*)::int AS n FROM page_indexability_decisions',
@@ -252,6 +269,7 @@ async function runChecks(url: string): Promise<void> {
       language: 'pt-BR',
       dryRun: false,
       now,
+      massChangeThresholds: LOOSE_BRAKE,
     })
     record('mudanca de estado gera 1 gravacao', changed.written === 1, `gravadas=${changed.written}`)
 
@@ -312,12 +330,126 @@ async function runChecks(url: string): Promise<void> {
       reversal.written === 1 && ep502[0]?.decision === 'index',
       `gravadas=${reversal.written} decisao=${ep502[0]?.decision} (${ep502[0]?.reason})`,
     )
+
+    // ---- (7) FREIO de mudanca em massa: CONTROLE NEGATIVO -------------
+    // Tirar o slug do filme 101 tira a pagina do sitemap (index -> noindex) e,
+    // de quebra, derruba o unico credito publicavel da pessoa 201. Sao flips de
+    // SAIDA reais, nao decisao fabricada.
+    await prisma.$executeRawUnsafe(
+      `DELETE FROM slugs WHERE entity_type='movie' AND entity_id=101 AND language_code='pt-BR'`,
+    )
+    const before = await q<{ n: number }>(
+      'SELECT COUNT(*)::int AS n FROM page_indexability_decisions',
+    )
+    const braked = await produceIndexabilityDecisions(prisma, {
+      language: 'pt-BR',
+      dryRun: false,
+      now,
+      // Teto de zero flip: qualquer saida do sitemap ja e mudanca em massa.
+      massChangeThresholds: { maxFlips: 0, maxFlipRatio: 1 },
+    })
+    const afterBrake = await q<{ n: number }>(
+      'SELECT COUNT(*)::int AS n FROM page_indexability_decisions',
+    )
+    const movie101 = await q<{ decision: string }>(
+      `SELECT decision::text AS decision FROM page_indexability_decisions
+        WHERE entity_type='movie' AND entity_id=101 AND is_current`,
+    )
+    record(
+      'freio armado: apply grava ZERO e a tabela NAO muda',
+      braked.massChange.blocked === true &&
+        braked.written === 0 &&
+        braked.massChange.flips > 0 &&
+        Number(afterBrake[0]?.n) === Number(before[0]?.n),
+      `blocked=${braked.massChange.blocked} flips=${braked.massChange.flips} gravadas=${braked.written} linhas ${before[0]?.n}->${afterBrake[0]?.n}`,
+    )
+    record(
+      'freio armado: a decisao vigente continua a ANTIGA (filme 101 ainda index)',
+      movie101[0]?.decision === 'index',
+      `${movie101[0]?.decision}`,
+    )
+
+    // ---- (8) o opt-in humano destrava a MESMA execucao ----------------
+    const confirmed = await produceIndexabilityDecisions(prisma, {
+      language: 'pt-BR',
+      dryRun: false,
+      now,
+      massChangeThresholds: { maxFlips: 0, maxFlipRatio: 1 },
+      confirmMassChange: true,
+    })
+    const movie101After = await q<{ decision: string; reason: string }>(
+      `SELECT decision::text AS decision, reason FROM page_indexability_decisions
+        WHERE entity_type='movie' AND entity_id=101 AND is_current`,
+    )
+    record(
+      'confirm-mass-change grava — e continua REGISTRADO como mudanca em massa',
+      confirmed.written > 0 &&
+        confirmed.massChange.blocked === false &&
+        confirmed.massChange.exceeded === true,
+      `gravadas=${confirmed.written} blocked=${confirmed.massChange.blocked} exceeded=${confirmed.massChange.exceeded}`,
+    )
+    record(
+      'apos confirmar, o filme 101 sai do sitemap (noindex/missing_slug)',
+      movie101After[0]?.decision === 'noindex' && movie101After[0]?.reason === 'missing_slug',
+      `${movie101After[0]?.decision} (${movie101After[0]?.reason})`,
+    )
   } finally {
     await prisma.$disconnect()
   }
 }
 
+/**
+ * Banco JA EXISTENTE, informado pelo operador — escape hatch para Windows.
+ *
+ * `initdb --encoding=UTF8` MORRE quando os binarios do `embedded-postgres` vivem
+ * sob caminho acentuado (`E:\Area de Trabalho 2\...`): o bootstrap le o proprio
+ * caminho e estoura com `invalid byte sequence for encoding "UTF8": 0xc1 0x72`
+ * ("Ar" em WIN1252). O `databaseDir` sem acento nao salva — quem vaza e o
+ * caminho dos binarios. Nesse checkout, sem esta porta, o validador nao roda de
+ * jeito nenhum.
+ *
+ * Variavel PROPRIA, nunca `DATABASE_URL`: este script faz DELETE e INSERT, e
+ * `.env` local deste repo ja apontou para PRODUCAO. Alem do nome dedicado, o
+ * host precisa ser loopback — um validador descartavel nao fala com banco remoto.
+ */
+function externalDatabaseUrl(): string | null {
+  const raw = process.env.CINERIE_VALIDATOR_DATABASE_URL
+  if (raw === undefined || raw.trim().length === 0) return null
+  const host = new URL(raw).hostname
+  if (host !== '127.0.0.1' && host !== 'localhost' && host !== '::1') {
+    throw new Error(
+      `CINERIE_VALIDATOR_DATABASE_URL precisa apontar para loopback (recebeu host "${host}"). ` +
+        'Este validador APAGA e INSERE dados; ele nunca fala com banco remoto.',
+    )
+  }
+  return raw
+}
+
 async function main(): Promise<void> {
+  const external = externalDatabaseUrl()
+  if (external !== null) {
+    console.log('[info] usando CINERIE_VALIDATOR_DATABASE_URL (cluster externo, loopback).')
+    try {
+      execFileSync('node', [prismaBin(), 'migrate', 'deploy', '--schema', schemaPath], {
+        env: { ...process.env, DATABASE_URL: external },
+        stdio: 'inherit',
+        cwd: dbDir,
+      })
+      record('migrate deploy aplica do zero', true, 'ok')
+      await runChecks(external)
+    } catch (error) {
+      record(
+        'execucao sem excecao',
+        false,
+        error instanceof Error ? error.message.split('\n').join(' ').slice(0, 300) : String(error),
+      )
+      if (error instanceof Error && error.stack) console.error(error.stack)
+    }
+    console.log(`\nRESUMO: ${passed}/${total} checks OK`)
+    process.exitCode = passed === total ? 0 : 1
+    return
+  }
+
   const port = await freePort()
   const dataDir = mkdtempSync(path.join(tmpdir(), 'cinerie-idx-producer-pg-'))
   const pg = new EmbeddedPostgres({

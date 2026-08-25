@@ -264,6 +264,66 @@ describe('renderHelp', () => {
 
 describe('EXIT_CODES', () => {
   it('sao estaveis (script de operacao decide por eles)', () => {
-    expect(EXIT_CODES).toEqual({ ok: 0, usage: 2, blocked: 3, failed: 4, error: 1 })
+    expect(EXIT_CODES).toEqual({
+      ok: 0,
+      usage: 2,
+      blocked: 3,
+      failed: 4,
+      // O freio de mudanca em massa do `index-decisions`. Code PROPRIO porque o
+      // ciclo horario precisa distinguir "o produtor quebrou" de "o produtor se
+      // recusou de proposito"; ver tests/governance/catalog-mass-change-brake.
+      massChangeBlocked: 5,
+      error: 1,
+    })
+  })
+})
+
+describe('parseCatalogArgs — freio de mudanca em massa (index-decisions)', () => {
+  it('--confirm-mass-change e booleana e vem desligada por default', () => {
+    expect(ok(['index-decisions', '--apply']).flags.confirmMassChange).toBe(false)
+    expect(ok(['index-decisions', '--apply', '--confirm-mass-change']).flags.confirmMassChange).toBe(
+      true,
+    )
+  })
+
+  it('--confirm-mass-change=false nao existe (booleana nao aceita valor)', () => {
+    // Aceitar `=false` como presenca seria a pior armadilha possivel numa flag
+    // cujo unico proposito e autorizar.
+    expect(err(['index-decisions', '--apply', '--confirm-mass-change=false'])).toContain(
+      'nao aceita valor',
+    )
+  })
+
+  it('os tetos entram como inteiros', () => {
+    const flags = ok([
+      'index-decisions',
+      '--dry-run',
+      '--max-flips',
+      '25',
+      '--max-flip-percent=2',
+    ]).flags
+    expect(flags.maxFlips).toBe(25)
+    expect(flags.maxFlipPercent).toBe(2)
+  })
+
+  it('--max-flip-percent acima de 100 e erro (e porcentagem, nao fracao)', () => {
+    // Sem isto, `--max-flip-percent 0.05` viraria erro de inteiro e
+    // `--max-flip-percent 500` viraria um teto que nunca dispara.
+    expect(err(['index-decisions', '--dry-run', '--max-flip-percent=101'])).toContain(
+      'porcentagem de 0 a 100',
+    )
+  })
+
+  it('as flags do freio sao RECUSADAS em outro comando', () => {
+    // Aceitar calado faria o operador acreditar que aplicou um teto onde nao ha
+    // freio nenhum.
+    expect(err(['search-reindex', '--apply', '--confirm-mass-change'])).toContain(
+      'so vale em "index-decisions"',
+    )
+    expect(err(['worker', '--max-flips=10'])).toContain('so valem em "index-decisions"')
+  })
+
+  it('index-decisions continua exigindo --dry-run ou --apply', () => {
+    expect(err(['index-decisions', '--confirm-mass-change'])).toContain('muta estado')
   })
 })
