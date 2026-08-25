@@ -143,16 +143,37 @@ politica) NAO grava. Uma execucao sobre catalogo estavel deve gravar zero.
 NAO LIGA INDEXACAO: gravar \`index\` registra o que a politica diz. A chave
 global \`CINERIE_PUBLIC_INDEXING_ENABLED\` continua desligada.
 
+FREIO DE MUDANCA EM MASSA: este comando roda de hora em hora sem humano nenhum.
+Antes de gravar, ele conta quantas entidades ENTRAM ou SAEM do sitemap. Passando
+do teto (default 500 flips OU 5% das avaliadas), a execucao grava ZERO linhas,
+imprime o censo por razao e sai com o code 5 — em dry-run tambem, porque o
+dry-run e a pre-checagem do apply. A secao 6 do CLAUDE.md exige revisao HUMANA
+para indexacao em massa; \`--confirm-mass-change\` e essa assinatura.
+
+O que conta como FLIP: o sitemap trata AUSENCIA de decisao como "dentro". Logo
+\`null -> index\` NAO e flip (crescimento normal do catalogo passa livre) e
+\`null -> noindex\` E flip (a pagina sai). Trocar so a razao entre dois vereditos
+nao-index tambem nao e flip.
+
 Flags:
-  --entity <lista>   movie,tv,person (default: todos)
-  --locale <l>       default pt-BR
-  --limit <n>        teto de entidades por tipo
-  --dry-run          calcula e mostra o diff, sem gravar
-  --apply            grava
+  --entity <lista>          movie,tv,person (default: todos)
+  --locale <l>              default pt-BR
+  --limit <n>               teto de entidades por tipo
+  --dry-run                 calcula e mostra o diff, sem gravar
+  --apply                   grava
+  --confirm-mass-change     assinatura humana: autoriza passar do teto do freio
+  --max-flips <n>           teto absoluto de flips (default 500)
+  --max-flip-percent <n>    teto proporcional, 0..100 (default 5)
+
+Exit codes:
+  0  ok
+  5  freio de mudanca em massa — nada gravado, aguardando humano
 
 Exemplos:
   pnpm catalog index-decisions --dry-run --json
-  pnpm catalog index-decisions --entity person --apply`,
+  pnpm catalog index-decisions --entity person --apply
+  pnpm catalog index-decisions --apply --confirm-mass-change
+  pnpm catalog index-decisions --dry-run --max-flip-percent 100 --max-flips 50`,
 
   bootstrap: `catalog bootstrap — orquestra o catalogo do zero.
 

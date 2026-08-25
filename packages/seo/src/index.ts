@@ -16,6 +16,7 @@ export * from "./indexability.js";
 export * from "./language-index-guard.js";
 export * from "./person-eligibility.js";
 export * from "./catalog-indexability.js";
+export * from "./catalog-mass-change.js";
 export * from "./entity-schema.js";
 export * from "./json-ld.js";
 export * from "./article-publication.js";

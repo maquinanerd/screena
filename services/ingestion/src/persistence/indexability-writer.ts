@@ -5,6 +5,25 @@
  * Le os fatos de cada entidade de catalogo, aplica a politica pura
  * (`@screena/seo` -> `decideCatalogIndexability`) e persiste a decisao VIGENTE.
  *
+ * DUAS FASES, NAO UMA. Ate a introducao do freio, este produtor lia e gravava no
+ * MESMO laco. Agora ele PLANEJA tudo primeiro (fase 1, sem escrita nenhuma),
+ * mede o tamanho da mudanca e so entao grava (fase 2). Isso e o que permite
+ * recusar a execucao INTEIRA — e nao "as ultimas 40 mil, depois que as
+ * primeiras 10 mil ja sairam do sitemap".
+ *
+ * FREIO DE MUDANCA EM MASSA. `catalog index-decisions --apply` roda de hora em
+ * hora sem humano nenhum. Sem freio, mudar a politica pura em `@screena/seo` (ou
+ * subir `CATALOG_POLICY_VERSION` junto com regra nova) reindexaria o catalogo
+ * inteiro no primeiro ciclo depois do deploy — exatamente a "indexacao em massa"
+ * que a secao 6 do CLAUDE.md manda submeter a revisao humana. O produtor conta
+ * quantas entidades ENTRAM ou SAEM do sitemap (`@screena/seo` ->
+ * `evaluateMassChangeBrake`) e, passando do teto sem `confirmMassChange`,
+ * grava ZERO linhas e devolve o censo.
+ *
+ * O freio mede EFEITO, nao rotulo: o sitemap trata ausencia de decisao como
+ * "dentro", entao `null -> index` nao e flip e o crescimento normal do catalogo
+ * passa livre. Ver o cabecalho de `packages/seo/src/catalog-mass-change.ts`.
+ *
  * SEM CHURN: quando a decisao nova e igual a persistida (mesmo veredito, mesma
  * razao, mesma versao de politica), NADA e gravado. Uma execucao diaria sobre um
  * catalogo estavel deve produzir zero escritas — se produzir uma linha por
@@ -15,12 +34,13 @@
  * e a nova aponta para ela via `supersedes_id`, na MESMA transacao — o historico
  * fica encadeado e nunca ha janela com duas vigentes.
  *
- * LIMITACAO CONHECIDA: nao existe unique parcial em `(entity_type, entity_id,
- * language_code) WHERE is_current` no banco — o comentario do schema afirma que
- * existe, mas a migration nao cria. Portanto DOIS produtores concorrentes
- * poderiam criar duas linhas vigentes. O produtor e um job offline unico; nao
- * rode duas instancias. Criar o indice exigiria migration, fora do escopo desta
- * entrega.
+ * DUAS VIGENTES: o BANCO recusa. `page_indexability_decisions_current_unique`
+ * (unique parcial em `(entity_type, entity_id, language_code) WHERE is_current`)
+ * e criado por `20260715120000_data_governance_hardening`. Este cabecalho ja
+ * afirmou o contrario — a busca de origem procurou `UNIQUE` e `is_current` na
+ * MESMA linha do SQL, e o `WHERE is_current = true` esta na linha seguinte. Ver
+ * `docs/backend/catalog-operations.md` secao 3. O `flock` do ciclo evita
+ * desperdicio de cota; quem garante uma unica vigente e o PostgreSQL.
  *
  * NAO LIGA INDEXACAO: escrever `decision='index'` registra o que a politica diz.
  * A chave global (`CINERIE_PUBLIC_INDEXING_ENABLED`) continua desligada.
@@ -28,10 +48,17 @@
 
 import type { PrismaClient } from '@screena/db/server'
 import {
+  censusMassChange,
+  classifyIndexFlip,
   decideCatalogIndexability,
   decisionChanged,
+  evaluateMassChangeBrake,
   type CatalogDecisionEntityType,
   type CatalogIndexabilityDecision,
+  type IndexFlip,
+  type MassChangeThresholds,
+  type MassChangeVerdict,
+  type PlannedTransition,
 } from '@screena/seo'
 
 /** Tipos processados por padrao (os que tem slug proprio). */
@@ -41,6 +68,14 @@ export const DECIDABLE_ENTITY_TYPES: readonly CatalogDecisionEntityType[] = [
   'person',
 ]
 
+/** Uma mudanca planejada, com o que a fase 2 precisa para gravar. */
+interface PlannedWrite extends PlannedTransition {
+  readonly entityType: CatalogDecisionEntityType
+  readonly entityId: bigint
+  readonly url: string
+  readonly decision: CatalogIndexabilityDecision
+}
+
 /** Resumo por decisao e por razao. */
 export interface IndexabilityRunSummary {
   readonly language: string
@@ -48,8 +83,19 @@ export interface IndexabilityRunSummary {
   readonly evaluated: number
   readonly written: number
   readonly unchanged: number
+  /** Mudancas PLANEJADAS (gravadas ou nao — o freio pode ter recusado todas). */
+  readonly planned: number
   readonly byDecision: Readonly<Record<string, number>>
   readonly byReason: Readonly<Record<string, number>>
+  /**
+   * Veredito do freio de mudanca em massa. `blocked=true` implica
+   * `written === 0`: a execucao inteira e recusada, nunca metade dela.
+   */
+  readonly massChange: MassChangeVerdict
+  /** Censo dos FLIPS por razao (por que a entidade entrou/saiu do sitemap). */
+  readonly flipsByReason: Readonly<Record<string, number>>
+  /** Censo dos FLIPS por tipo de entidade. */
+  readonly flipsByEntityType: Readonly<Record<string, number>>
   /** Amostra das mudancas, para revisao antes de aplicar. */
   readonly changes: readonly {
     readonly entityType: string
@@ -57,6 +103,8 @@ export interface IndexabilityRunSummary {
     readonly from: string | null
     readonly to: string
     readonly reason: string
+    /** A entidade entra/sai do sitemap com esta mudanca? */
+    readonly flip: IndexFlip
   }[]
 }
 
@@ -146,10 +194,19 @@ async function readFacts(
 }
 
 /**
- * Roda o produtor para um tipo de entidade.
+ * Roda o produtor sobre TODOS os tipos pedidos, numa unica execucao.
+ *
+ * "Todos numa execucao" nao e detalhe de implementacao: o censo do freio e
+ * GLOBAL. 300 filmes e 300 series saindo do sitemap sao 600 flips, nao dois
+ * lotes de 300 — contar por tipo deixaria a mudanca inteira passar.
  *
  * `dryRun` calcula tudo e nao grava — e o modo que permite revisar quantas
  * entidades mudariam de estado ANTES de mexer numa tabela que o sitemap le.
+ *
+ * `confirmMassChange` e o opt-in HUMANO do freio: sem ele, uma execucao cujos
+ * flips passem do teto grava zero linhas (ver `massChange.blocked` no resumo).
+ * O ciclo horario nao-atendido nunca passa essa flag — e por isso que ele nao
+ * consegue reindexar o catalogo sozinho.
  */
 export async function produceIndexabilityDecisions(
   prisma: PrismaClient,
@@ -159,17 +216,21 @@ export async function produceIndexabilityDecisions(
     readonly limit?: number
     readonly dryRun: boolean
     readonly now: () => Date
+    /** Opt-in explicito para mudanca em massa. Default: false. */
+    readonly confirmMassChange?: boolean
+    /** Tetos do freio. Omitidos = `DEFAULT_MASS_CHANGE_THRESHOLDS`. */
+    readonly massChangeThresholds?: Partial<MassChangeThresholds>
   },
 ): Promise<IndexabilityRunSummary> {
   const types = options.entityTypes ?? DECIDABLE_ENTITY_TYPES
   const limit = options.limit ?? 100_000
   const byDecision: Record<string, number> = {}
   const byReason: Record<string, number> = {}
-  const changes: IndexabilityRunSummary['changes'] = []
+  const plan: PlannedWrite[] = []
   let evaluated = 0
-  let written = 0
   let unchanged = 0
 
+  // ---- FASE 1: planeja. Nenhuma escrita acontece neste laco. ----
   for (const entityType of types) {
     const { rows, slugs } = await readFacts(prisma, entityType, options.language, limit)
 
@@ -201,66 +262,96 @@ export async function produceIndexabilityDecisions(
         continue
       }
 
-      ;(changes as { entityType: string; entityId: string; from: string | null; to: string; reason: string }[]).push({
-        entityType,
-        entityId: String(row.entity_id),
-        from: row.cur_decision,
-        to: decision.decision,
-        reason: decision.reason,
-      })
-
-      if (options.dryRun) continue
-
       const slug = slugs.get(String(row.entity_id)) ?? String(row.entity_id)
-      const url = routeFor(entityType, slug)
-      const decidedAt = options.now()
-
-      // Despromove a anterior e insere a nova apontando para ela, na MESMA
-      // transacao: nunca ha janela com duas vigentes nem historico orfao.
-      await prisma.$transaction(async (tx) => {
-        const current = await tx.pageIndexabilityDecision.findFirst({
-          where: {
-            entityType: entityType as never,
-            entityId: row.entity_id,
-            languageCode: options.language,
-            isCurrent: true,
-          },
-          select: { id: true },
-        })
-        if (current !== null) {
-          await tx.pageIndexabilityDecision.update({
-            where: { id: current.id },
-            data: { isCurrent: false },
-          })
-        }
-        await tx.pageIndexabilityDecision.create({
-          data: {
-            entityType: entityType as never,
-            entityId: row.entity_id,
-            languageCode: options.language,
-            url,
-            decision: decision.decision as never,
-            reason: decision.reason,
-            isCurrent: true,
-            supersedesId: current?.id ?? null,
-            policyVersion: decision.policyVersion,
-            decisionOrigin: decision.origin,
-            decidedAt,
-          },
-        })
+      plan.push({
+        entityType,
+        entityId: row.entity_id,
+        url: routeFor(entityType, slug),
+        decision,
+        previousDecision: row.cur_decision,
+        nextDecision: decision.decision,
+        nextReason: decision.reason,
       })
-      written += 1
     }
   }
 
-  return {
+  // ---- Mede o tamanho da mudanca ANTES de gravar qualquer coisa. ----
+  const census = censusMassChange(plan, evaluated)
+  const massChange = evaluateMassChangeBrake({
+    census,
+    ...(options.massChangeThresholds !== undefined
+      ? { thresholds: options.massChangeThresholds }
+      : {}),
+    confirmed: options.confirmMassChange === true,
+  })
+
+  const summary = (written: number): IndexabilityRunSummary => ({
     language: options.language,
     dryRun: options.dryRun,
     evaluated,
     written,
     unchanged,
+    planned: plan.length,
     byDecision: Object.freeze(byDecision),
     byReason: Object.freeze(byReason),
-    changes: changes.slice(0, 50),
+    massChange,
+    flipsByReason: census.byReason,
+    flipsByEntityType: census.byEntityType,
+    changes: plan.slice(0, 50).map((p) => ({
+      entityType: p.entityType,
+      entityId: String(p.entityId),
+      from: p.previousDecision,
+      to: p.nextDecision,
+      reason: p.nextReason,
+      flip: classifyIndexFlip(p.previousDecision, p.nextDecision),
+    })),
+  })
+
+  // ---- FASE 2: grava, se o freio deixar. ----
+  // `blocked` recusa a execucao INTEIRA: zero linhas. Aplicar "a parte segura"
+  // deixaria o catalogo num estado que nenhuma politica descreve.
+  if (massChange.blocked || options.dryRun) return summary(0)
+
+  let written = 0
+  for (const item of plan) {
+    const decidedAt = options.now()
+
+    // Despromove a anterior e insere a nova apontando para ela, na MESMA
+    // transacao: nunca ha janela com duas vigentes nem historico orfao.
+    await prisma.$transaction(async (tx) => {
+      const current = await tx.pageIndexabilityDecision.findFirst({
+        where: {
+          entityType: item.entityType as never,
+          entityId: item.entityId,
+          languageCode: options.language,
+          isCurrent: true,
+        },
+        select: { id: true },
+      })
+      if (current !== null) {
+        await tx.pageIndexabilityDecision.update({
+          where: { id: current.id },
+          data: { isCurrent: false },
+        })
+      }
+      await tx.pageIndexabilityDecision.create({
+        data: {
+          entityType: item.entityType as never,
+          entityId: item.entityId,
+          languageCode: options.language,
+          url: item.url,
+          decision: item.decision.decision as never,
+          reason: item.decision.reason,
+          isCurrent: true,
+          supersedesId: current?.id ?? null,
+          policyVersion: item.decision.policyVersion,
+          decisionOrigin: item.decision.origin,
+          decidedAt,
+        },
+      })
+    })
+    written += 1
   }
+
+  return summary(written)
 }

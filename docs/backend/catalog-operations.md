@@ -180,8 +180,8 @@ mudou e que a falha do alerta passou a deixar rastro. Contrato completo em
 ## 5. Decisoes de indexabilidade
 
 ```bash
-pnpm catalog index-decisions --dry-run --json    # mostra o diff
-pnpm catalog index-decisions --apply             # grava
+pnpm catalog index-decisions --dry-run --json    # mostra o diff e o censo de flips
+pnpm catalog index-decisions --apply             # grava (sujeito ao freio abaixo)
 ```
 
 `page_indexability_decisions` e lida pelo sitemap, pelos loaders publicos e pelo
@@ -204,6 +204,71 @@ ela via `supersedes_id`, na mesma transacao.
 **Nao liga indexacao.** Gravar `decision='index'` registra o que a politica diz;
 `CINERIE_PUBLIC_INDEXING_ENABLED` continua `0` e e decisao humana separada.
 
+### Freio de mudanca em massa
+
+Este comando roda **de hora em hora, sem humano nenhum**. Sem freio, alterar a
+politica pura em [`packages/seo/src/catalog-indexability.ts`](../../packages/seo/src/catalog-indexability.ts)
+aplicaria a mudanca ao catalogo **inteiro** no primeiro ciclo depois do deploy —
+a "indexacao em massa" que a **secao 6 do `CLAUDE.md`** manda submeter a revisao
+humana.
+
+Antes de gravar, o produtor conta quantas entidades **entram ou saem do
+sitemap**. Passando do teto, ele grava **zero linhas**, imprime o censo por razao
+e sai com **exit 5**.
+
+**O que conta como flip.** O sitemap exclui com
+`NOT EXISTS (... decision <> 'index')` — ou seja, **ausencia de decisao significa
+dentro**. Dai:
+
+| Transicao | Flip? | Por que |
+| --- | --- | --- |
+| `null` -> `index` | nao | ja estava dentro; e o crescimento normal do catalogo |
+| `null` -> `noindex`/`draft`/`blocked` | **sim** | a pagina sai do sitemap |
+| `index` -> `noindex` | **sim** | sai |
+| `noindex` -> `index` | **sim** | entra |
+| `noindex` -> `draft` | nao | continua fora; so mudou a razao |
+| `index` -> `index` (bump de `policy_version`) | nao | reemissao sem efeito no sitemap |
+
+Consequencia pratica: subir `CATALOG_POLICY_VERSION` **sozinho** passa livre
+(reemite tudo com o mesmo veredito); o que o freio pega e o bump **acompanhado de
+regra nova**.
+
+**Tetos** (em OU — passar de qualquer um trava): `500` flips absolutos **ou**
+`5%` das entidades avaliadas. O absoluto protege catalogo grande, onde 5% ainda
+sao milhares de paginas; o proporcional protege catalogo pequeno, onde 500 flips
+seriam o acervo inteiro. Ajustaveis por execucao:
+
+```bash
+pnpm catalog index-decisions --dry-run --max-flips 50 --max-flip-percent 100
+```
+
+**Destravar** e ato humano, fora do timer — leia o censo antes:
+
+```bash
+pnpm catalog index-decisions --dry-run --json
+pnpm catalog index-decisions --apply --confirm-mass-change
+```
+
+Em producao os dois gates valem juntos: `--force` (gate de escrita, secao 3 do
+`exit.ts`) **e** `--confirm-mass-change` (freio). Um nao substitui o outro —
+`--force` diz "sei que este banco e producao", o freio diz "sei que estou
+mudando muitas paginas de lado".
+
+```bash
+pnpm catalog index-decisions --apply --confirm-mass-change --force
+```
+
+O `--dry-run` tambem sai com **5** quando o freio bloquearia: ele e a
+pre-checagem do `--apply`, e sair `0` ali diria "pode aplicar" para a unica
+execucao que nao pode.
+
+**No ciclo horario** ([`catalog-cycle-with-alert.sh`](../../scripts/catalog/catalog-cycle-with-alert.sh)),
+o exit 5 e tratado **separado de falha**: emite alerta (`severity: warning`,
+source `queue`) e o ciclo **segue**. Nao vira vermelho de hora em hora — um ciclo
+que falha sempre deixa de ser lido, e a proxima falha real do worker passaria
+despercebida. O script **nunca** passa `--confirm-mass-change`; isso e travado
+por [`tests/governance/catalog-mass-change-brake.test.ts`](../../tests/governance/catalog-mass-change-brake.test.ts).
+
 ---
 
 ## 6. Diagnostico rapido
@@ -215,6 +280,8 @@ ela via `supersedes_id`, na mesma transacao.
 | bootstrap "pequeno" leva horas | serie longa na lista; rode `plan-bootstrap` antes |
 | entidades sem rota publica | slug ausente; ver limite do short-circuit de cache no runbook |
 | sitemap nao exclui nada | `page_indexability_decisions` vazia; rode `index-decisions --apply` |
+| `index-decisions` sai com 5 e nao grava | freio de mudanca em massa armado; leia o censo com `--dry-run --json` antes de `--confirm-mass-change` |
+| ciclo alerta toda hora sobre indexabilidade | idem: o freio segue armado ate um humano confirmar ou a politica voltar atras |
 
 ---
 

@@ -786,17 +786,55 @@ async function cmdIndexDecisions(
     return EXIT_CODES.usage
   }
 
+  // Tetos do freio: so sao repassados quando o operador os informou — omitidos,
+  // valem os defaults do modulo puro (500 flips / 5%).
+  const thresholds = {
+    ...(flags.maxFlips !== null ? { maxFlips: flags.maxFlips } : {}),
+    ...(flags.maxFlipPercent !== null ? { maxFlipRatio: flags.maxFlipPercent / 100 } : {}),
+  }
+
   const summary = await produceIndexabilityDecisions(services.prisma, {
     language: locale,
     entityTypes: types,
     ...(flags.limit !== null ? { limit: flags.limit } : {}),
     dryRun: !flags.apply,
     now: services.now,
+    confirmMassChange: flags.confirmMassChange,
+    ...(Object.keys(thresholds).length > 0 ? { massChangeThresholds: thresholds } : {}),
   })
+
+  const brake = summary.massChange
+  const flipCensus =
+    brake.flips === 0
+      ? ['  flips: nenhum (nada entra nem sai do sitemap).']
+      : [
+          `  flips: ${brake.flips} de ${brake.evaluated} avaliadas · entram ${brake.entersIndex} · saem ${brake.leavesIndex}`,
+          '  flips por razao:',
+          ...Object.entries(summary.flipsByReason).map(([k, v]) => `    ${k.padEnd(24)} ${v}`),
+          '  flips por tipo:',
+          ...Object.entries(summary.flipsByEntityType).map(([k, v]) => `    ${k.padEnd(24)} ${v}`),
+        ]
+
+  const closing = brake.blocked
+    ? [
+        '',
+        'FREIO DE MUDANCA EM MASSA: NADA foi gravado.',
+        `  ${brake.explanation}`,
+        '',
+        '  Reveja o censo acima. Se a mudanca for intencional, repita com:',
+        '    pnpm catalog index-decisions --apply --confirm-mass-change',
+      ]
+    : [
+        '',
+        summary.dryRun
+          ? 'Nada foi gravado. Use --apply para persistir.'
+          : 'Decisoes persistidas. A indexacao publica CONTINUA desligada.',
+        ...(brake.exceeded ? [`  ${brake.explanation}`] : []),
+      ]
 
   emit(flags, summary, [
     `decisoes de indexabilidade · ${summary.language} · ${summary.dryRun ? 'DRY-RUN' : 'APLICADO'}`,
-    `  avaliadas: ${summary.evaluated} · gravadas: ${summary.written} · inalteradas: ${summary.unchanged}`,
+    `  avaliadas: ${summary.evaluated} · planejadas: ${summary.planned} · gravadas: ${summary.written} · inalteradas: ${summary.unchanged}`,
     '',
     '  por decisao:',
     ...Object.entries(summary.byDecision).map(([k, v]) => `    ${k.padEnd(10)} ${v}`),
@@ -804,16 +842,19 @@ async function cmdIndexDecisions(
     '  por razao:',
     ...Object.entries(summary.byReason).map(([k, v]) => `    ${k.padEnd(24)} ${v}`),
     '',
+    ...flipCensus,
+    '',
     summary.changes.length > 0 ? '  mudancas (amostra):' : '  nenhuma mudanca.',
     ...summary.changes
       .slice(0, 15)
       .map((c) => `    ${c.entityType}#${c.entityId}: ${c.from ?? '(nova)'} -> ${c.to} (${c.reason})`),
-    '',
-    summary.dryRun
-      ? 'Nada foi gravado. Use --apply para persistir.'
-      : 'Decisoes persistidas. A indexacao publica CONTINUA desligada.',
+    ...closing,
   ])
-  return EXIT_CODES.ok
+
+  // Code proprio TAMBEM em dry-run: `--dry-run` e a pre-checagem que o operador
+  // roda antes do `--apply`; sair 0 ali diria "pode aplicar" para a unica
+  // execucao que NAO pode aplicar.
+  return brake.blocked ? EXIT_CODES.massChangeBlocked : EXIT_CODES.ok
 }
 
 /** enqueue. */
