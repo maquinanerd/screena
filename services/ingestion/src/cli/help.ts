@@ -116,7 +116,7 @@ GARANTIAS:
   - reexecutar nao gera churn nem redirect.
 
 Flags:
-  --entity <lista>   movie,tv,person (default: todos)
+  --entity <lista>   movie,tv,season,episode,person (default: todos)
   --locale <l>       default pt-BR
   --limit <n>        candidatos por tipo (default 1000)
   --dry-run          conta e classifica, sem gravar
@@ -134,8 +134,15 @@ decoracao. Este comando e o produtor.
 
 A politica nao e reimplementada aqui: licenca -> idioma -> caso tecnico -> index
 continua vindo de \`resolvePageSeo\` (fonte unica). O que se acrescenta sao os
-gates por TIPO: filme/serie exigem slug + titulo; pessoa exige credito em obra
-publicavel; temporada/episodio herdam a serie.
+gates por TIPO, todos DIRIGIDOS A DADO (nunca "tipo X nao indexa"):
+
+  filme/serie  slug + titulo + traducao + sinopse + poster
+  temporada    serie publicavel + sinopse OU pelo menos um episodio listado
+  episodio     serie publicavel + sinopse propria
+  pessoa       credito em obra publicavel + biografia EXIBIVEL + foto
+
+Preencheu a sinopse/biografia que faltava? A pagina volta a indexar na proxima
+execucao, sem deploy — e por isso que o gate pergunta pelo dado, e nao pelo tipo.
 
 SEM CHURN: decisao igual a persistida (mesmo veredito, razao e versao de
 politica) NAO grava. Uma execucao sobre catalogo estavel deve gravar zero.
@@ -156,7 +163,7 @@ O que conta como FLIP: o sitemap trata AUSENCIA de decisao como "dentro". Logo
 nao-index tambem nao e flip.
 
 Flags:
-  --entity <lista>          movie,tv,person (default: todos)
+  --entity <lista>          movie,tv,season,episode,person (default: todos)
   --locale <l>              default pt-BR
   --limit <n>               teto de entidades por tipo
   --dry-run                 calcula e mostra o diff, sem gravar

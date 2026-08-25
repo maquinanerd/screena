@@ -25,20 +25,43 @@
 
 import { describe, expect, it } from 'vitest'
 
+import { CATALOG_POLICY_VERSION } from '@screena/seo'
+
 import { produceIndexabilityDecisions } from '../indexability-writer.js'
 
 type WriterPrisma = Parameters<typeof produceIndexabilityDecisions>[0]
 
 const LANGUAGE = 'pt-BR'
-const POLICY = 'catalog-indexability-v1'
+/**
+ * A versao VIGENTE, nao um literal.
+ *
+ * `decisionChanged` compara tambem `policy_version`: com um literal defasado,
+ * TODA linha do fixture conta como mudada e o teste de "deriva normal" mede um
+ * bump de politica em vez da deriva. Foi o que aconteceu quando a v2 subiu a
+ * versao e este arquivo ainda dizia `catalog-indexability-v1`.
+ */
+const POLICY = CATALOG_POLICY_VERSION
 
-/** Uma linha crua como `readFacts` a devolve. */
+/**
+ * Uma linha crua como `readFacts` a devolve.
+ *
+ * Espelha a forma UNICA da politica v2: os campos de conteudo (sinopse, imagem,
+ * biografia) sao gates de verdade, entao um fixture que os omitisse produziria
+ * `noindex` em toda entidade e o teste mediria o proprio descuido.
+ */
 interface FactRow {
   entity_id: bigint
   has_slug: boolean
   has_title: boolean
   has_translation: boolean
   credits: number
+  has_synopsis: boolean
+  has_image: boolean
+  has_biography: boolean
+  listed_episodes: number
+  parent_id: bigint | null
+  season_number: number | null
+  episode_number: number | null
   url: string | null
   cur_decision: string | null
   cur_reason: string | null
@@ -57,6 +80,14 @@ function indexedRow(id: number, overrides: Partial<FactRow> = {}): FactRow {
     has_title: true,
     has_translation: true,
     credits: 3,
+    // Gates de CONTEUDO da politica v2: sem eles, filme completo vira noindex.
+    has_synopsis: true,
+    has_image: true,
+    has_biography: true,
+    listed_episodes: 10,
+    parent_id: null,
+    season_number: null,
+    episode_number: null,
     url: `slug-${id}`,
     cur_decision: 'index',
     cur_reason: 'eligible',

@@ -30,6 +30,21 @@ const serviceDirectives = service
   .join("\n");
 const timer = read("services/ingestion/systemd/cinerie-catalog-cycle.timer");
 const wrapper = read("scripts/catalog/catalog-cycle-with-alert.sh");
+
+/**
+ * Apenas os COMANDOS do wrapper, sem comentarios — mesma razao de
+ * `serviceDirectives` acima.
+ *
+ * O cabecalho da secao de indexabilidade cita a forma manual
+ * (`index-decisions` com aplicacao forcada) para dizer como aplicar
+ * deliberadamente. Assertar sobre o arquivo inteiro confundiria essa mencao em
+ * prosa com o ciclo realmente aplicando sozinho — de novo, a diferenca entre
+ * documentar e agendar.
+ */
+const wrapperCommands = wrapper
+  .split("\n")
+  .filter((line) => !line.trimStart().startsWith("#"))
+  .join("\n");
 const legacyService = read("services/sync/systemd/screena-tmdb-catalog.service");
 
 describe("cinerie-catalog-cycle.service", () => {
@@ -119,8 +134,59 @@ describe("catalog-cycle-with-alert.sh", () => {
   });
 
   it("(14) o ciclo inclui busca e indexabilidade, nao so o worker", () => {
-    expect(wrapper).toContain("search-reindex");
-    expect(wrapper).toContain("index-decisions");
+    expect(wrapperCommands).toContain("search-reindex");
+    expect(wrapperCommands).toContain("index-decisions");
+  });
+
+  it("(14b) o ciclo aplica a DERIVA, e nunca assina a mudanca em massa", () => {
+    // ESTE TESTE JA FOI O CONTRARIO, e o porque importa mais que o veredito.
+    //
+    // Indexacao em massa exige revisao humana (CLAUDE.md secao 6). Com a
+    // politica v2, a primeira aplicacao tira ~51 mil URLs do sitemap: 22.385
+    // pessoas (nenhuma tem biografia), ~28 mil episodios (1.257 de 30.803 tem
+    // sinopse) e ~40 series. Um timer horario decidindo isso sozinho e a
+    // decisao mais cara do sistema tomada por um cron. Pior: o ciclo nunca
+    // rodou (626 jobs `pending`, zero `succeeded`), e quem o liga e a criacao
+    // do catalog worker — entao subir o worker dispararia a desindexacao como
+    // EFEITO COLATERAL de uma tarefa de ingestao.
+    //
+    // Na ausencia de trava, a mitigacao foi rebaixar a linha para `--dry-run`,
+    // e este teste travava "nenhuma linha com --apply". O comentario de la
+    // dizia o que faltava: "aplicacao automatica precisa de uma trava PROPRIA
+    // de mudanca em massa". Essa trava existe agora (`catalog-mass-change.ts`
+    // + exit 5 tratado no wrapper), entao `--apply` volta — e a propriedade
+    // de seguranca MUDA DE LUGAR, em vez de sumir:
+    //
+    //   antes: o ciclo nao pode APLICAR nada.
+    //   agora: o ciclo pode aplicar a DERIVA; o que ele nao pode e ASSINAR
+    //          pelo humano, e o freio e quem separa uma coisa da outra.
+    //
+    // Decisao do dono, 2026-08-25, ciente de que isto inverte a #219.
+    const linhasIndexDecisions = wrapperCommands
+      .split("\n")
+      .filter((l) => l.includes("index-decisions"));
+    expect(linhasIndexDecisions.length).toBeGreaterThan(0);
+
+    // (a) o ciclo APLICA — senao entidade nova nunca ganha decisao registrada.
+    expect(wrapperCommands).toContain("index-decisions --apply");
+
+    // (b) a propriedade de seguranca: NENHUMA linha que invoque a CLI pode
+    // carregar `--confirm-mass-change`. Linha a linha porque e a invocacao que
+    // importa. A mensagem do alerta cita a flag de proposito (ensina o operador
+    // a destravar), entao filtramos so as linhas de invocacao.
+    const invocacoes = linhasIndexDecisions.filter((l) => /catalog_(read|write)\b/.test(l));
+    expect(invocacoes.length).toBeGreaterThan(0);
+    for (const linha of invocacoes) {
+      expect(
+        linha,
+        `o ciclo assinaria a mudanca em massa sozinho: ${linha.trim()}`,
+      ).not.toContain("--confirm-mass-change");
+    }
+
+    // (c) e o wrapper TRATA o exit do freio — sem isso o freio dispararia e o
+    // ciclo registraria "index-decisions falhou", escondendo a recusa atras de
+    // uma falha generica.
+    expect(wrapperCommands).toContain("INDEX_DECISIONS_BRAKE_EXIT");
   });
 });
 

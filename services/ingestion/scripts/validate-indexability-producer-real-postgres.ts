@@ -10,7 +10,11 @@
  *   3. quando a decisao MUDA, a anterior e despromovida e a nova aponta para ela
  *      (`supersedes_id`), sem janela com duas vigentes;
  *   4. `--dry-run` nao escreve nada;
- *   5. o FREIO de mudanca em massa realmente impede a escrita — a tabela nao
+ *   5. (v2) que os fatos de CONTEUDO saem das colunas certas — a sinopse de
+ *      filme/serie de `entity_translations.summary`, a de temporada/episodio da
+ *      PROPRIA linha, e a biografia so quando `biography_source_status` libera.
+ *      So um banco real prova que a coluna existe e que o SQL a le;
+ *   6. o FREIO de mudanca em massa realmente impede a escrita — a tabela nao
  *      muda de tamanho E a decisao vigente continua a ANTIGA. `written === 0`
  *      sozinho seria um contador falando de si mesmo; so o banco prova.
  *
@@ -66,41 +70,77 @@ function prismaBin(): string {
 }
 
 /**
- * Fixtures: 2 filmes (um publicavel, um sem slug) e 2 pessoas (uma com credito
- * em obra publicavel, outra sem credito nenhum). So o que a decisao depende.
+ * Fixtures: so o que a decisao depende, um caso por gate.
+ *
+ *   movie 101   completo (slug + titulo + traducao com summary + poster) -> index
+ *   movie 102   sem slug                                                 -> noindex
+ *   movie 103   completo MENOS a sinopse                                 -> noindex
+ *   tv 301      serie completa                                           -> index
+ *   season 401  da serie 301, com sinopse e episodios                    -> index
+ *   season 402  da serie 301, sem sinopse e SEM episodio (casca)         -> noindex
+ *   episode 501 da season 401, COM sinopse                               -> index
+ *   episode 502 da season 401, SEM sinopse                               -> noindex
+ *   person 201  credito + bio LIBERADA + foto                            -> index
+ *   person 202  sem credito nenhum                                       -> noindex
+ *   person 203  credito + foto, bio com TEXTO mas status `unknown`       -> noindex
  */
 async function seed(prisma: PrismaClient): Promise<void> {
   const run = (sql: string) => prisma.$executeRawUnsafe(sql)
   await run(`INSERT INTO languages (code, name_pt, name_en, is_published, index_default)
              VALUES ('pt-BR','Portugues (Brasil)','Portuguese (Brazil)', true, true)
              ON CONFLICT (code) DO NOTHING`)
-  await run(`INSERT INTO movies (id, tmdb_id, title_original, updated_at) VALUES
-             (101, 70101, 'Filme Publicavel', now()),
-             (102, 70102, 'Filme Sem Slug', now())`)
-  await run(`INSERT INTO people (id, tmdb_id, name, updated_at) VALUES
-             (201, 70201, 'Pessoa Com Credito', now()),
-             (202, 70202, 'Pessoa Sem Credito', now())`)
+  await run(`INSERT INTO movies (id, tmdb_id, title_original, poster_path, updated_at) VALUES
+             (101, 70101, 'Filme Publicavel', '/p101.jpg', now()),
+             (102, 70102, 'Filme Sem Slug', '/p102.jpg', now()),
+             (103, 70103, 'Filme Sem Sinopse', '/p103.jpg', now())`)
+  await run(`INSERT INTO tv_shows (id, tmdb_id, name_original, poster_path, updated_at) VALUES
+             (301, 70301, 'Serie Publicavel', '/p301.jpg', now())`)
+  await run(`INSERT INTO seasons (id, tv_show_id, season_number, name, overview, poster_path, updated_at) VALUES
+             (401, 301, 1, 'Temporada 1', 'Sinopse da temporada.', '/s401.jpg', now()),
+             (402, 301, 2, 'Temporada 2', NULL, NULL, now())`)
+  await run(`INSERT INTO episodes (id, season_id, tv_show_id, episode_number, name, overview, updated_at) VALUES
+             (501, 401, 301, 1, 'Episodio Com Sinopse', 'Sinopse do episodio.', now()),
+             (502, 401, 301, 2, 'Episodio Sem Sinopse', NULL, now())`)
+  // A bio da 201/202 esta LIBERADA; a da 203 tem texto e continua no default
+  // 'unknown' — texto sem liberacao nao aparece na tela e nao conta.
+  await run(`INSERT INTO people (id, tmdb_id, name, profile_path, biography, biography_source_status, updated_at) VALUES
+             (201, 70201, 'Pessoa Com Credito', '/f201.jpg', 'Biografia liberada.', 'third_party', now()),
+             (202, 70202, 'Pessoa Sem Credito', '/f202.jpg', 'Biografia liberada.', 'third_party', now()),
+             (203, 70203, 'Pessoa Bio Nao Liberada', '/f203.jpg', 'Biografia ingerida.', 'unknown', now())`)
   await run(`INSERT INTO slugs (entity_type, entity_id, language_code, slug, is_canonical, updated_at) VALUES
              ('movie', 101, 'pt-BR', 'filme-publicavel', true, now()),
+             ('movie', 103, 'pt-BR', 'filme-sem-sinopse', true, now()),
+             ('tv', 301, 'pt-BR', 'serie-publicavel', true, now()),
              ('person', 201, 'pt-BR', 'pessoa-com-credito', true, now()),
-             ('person', 202, 'pt-BR', 'pessoa-sem-credito', true, now())`)
-  await run(`INSERT INTO entity_translations (entity_type, entity_id, language_code, title, updated_at) VALUES
-             ('movie', 101, 'pt-BR', 'Filme Publicavel', now()),
-             ('movie', 102, 'pt-BR', 'Filme Sem Slug', now()),
-             ('person', 201, 'pt-BR', 'Pessoa Com Credito', now()),
-             ('person', 202, 'pt-BR', 'Pessoa Sem Credito', now())`)
-  // So a pessoa 201 tem credito numa obra COM slug canonico.
+             ('person', 202, 'pt-BR', 'pessoa-sem-credito', true, now()),
+             ('person', 203, 'pt-BR', 'pessoa-bio-nao-liberada', true, now())`)
+  // `summary` e a sinopse. O filme 103 TEM traducao e NAO tem summary: e o
+  // controle que separa `missing_translation` de `no_synopsis`.
+  await run(`INSERT INTO entity_translations (entity_type, entity_id, language_code, title, summary, updated_at) VALUES
+             ('movie', 101, 'pt-BR', 'Filme Publicavel', 'Sinopse do filme.', now()),
+             ('movie', 102, 'pt-BR', 'Filme Sem Slug', 'Sinopse do filme.', now()),
+             ('movie', 103, 'pt-BR', 'Filme Sem Sinopse', NULL, now()),
+             ('tv', 301, 'pt-BR', 'Serie Publicavel', 'Sinopse da serie.', now()),
+             ('person', 201, 'pt-BR', 'Pessoa Com Credito', NULL, now()),
+             ('person', 202, 'pt-BR', 'Pessoa Sem Credito', NULL, now()),
+             ('person', 203, 'pt-BR', 'Pessoa Bio Nao Liberada', NULL, now())`)
+  // So as pessoas 201 e 203 tem credito numa obra COM slug canonico.
   await run(`INSERT INTO cast_members (person_id, entity_type, entity_id, updated_at) VALUES
-             (201, 'movie', 101, now())`)
+             (201, 'movie', 101, now()),
+             (203, 'movie', 101, now())`)
 }
 
+/** Quantas entidades o produtor avalia com estas fixtures. */
+const SEEDED = 11
+
 /**
- * Tetos frouxos para os checks 1-6.
+ * Tetos frouxos para os checks do PRODUTOR.
  *
  * O freio de mudanca em massa mede flips sobre o total AVALIADO. Este fixture
- * tem 4 entidades e 2 delas nascem fora do sitemap — 50%, muito acima dos 5%
+ * tem 11 entidades e boa parte nasce fora do sitemap — muito acima dos 5%
  * default. Sem afrouxar, os checks de gravacao mediriam o freio em vez do
- * produtor. O freio tem checks PROPRIOS (7 e 8), com teto apertado de proposito.
+ * produtor. O freio tem checks PROPRIOS no fim do arquivo, com teto apertado de
+ * proposito.
  */
 const LOOSE_BRAKE = { maxFlipRatio: 1, maxFlips: 1_000_000 } as const
 
@@ -124,7 +164,7 @@ async function runChecks(url: string): Promise<void> {
     )
     record(
       'dry-run avalia mas NAO grava',
-      dry.evaluated === 4 && dry.written === 0 && Number(afterDry[0]?.n) === 0,
+      dry.evaluated === SEEDED && dry.written === 0 && Number(afterDry[0]?.n) === 0,
       `avaliadas=${dry.evaluated} gravadas=${dry.written} linhas=${afterDry[0]?.n}`,
     )
 
@@ -135,7 +175,11 @@ async function runChecks(url: string): Promise<void> {
       now,
       massChangeThresholds: LOOSE_BRAKE,
     })
-    record('apply grava 4 decisoes', applied.written === 4, `gravadas=${applied.written}`)
+    record(
+      `apply grava ${SEEDED} decisoes`,
+      applied.written === SEEDED,
+      `gravadas=${applied.written}`,
+    )
 
     const rows = await q<{ entity_type: string; entity_id: bigint; decision: string; reason: string }>(
       `SELECT entity_type::text AS entity_type, entity_id, decision::text AS decision, reason
@@ -144,26 +188,56 @@ async function runChecks(url: string): Promise<void> {
     const find = (t: string, id: number) =>
       rows.find((r) => r.entity_type === t && Number(r.entity_id) === id)
 
-    record(
-      'filme completo -> index',
-      find('movie', 101)?.decision === 'index',
-      `${find('movie', 101)?.decision} (${find('movie', 101)?.reason})`,
+    const expectDecision = (
+      label: string,
+      type: string,
+      id: number,
+      decision: string,
+      reason: string,
+    ) => {
+      const row = find(type, id)
+      record(
+        label,
+        row?.decision === decision && row?.reason === reason,
+        `${type}#${id} -> ${row?.decision} (${row?.reason}); esperado ${decision} (${reason})`,
+      )
+    }
+
+    expectDecision('filme completo -> index', 'movie', 101, 'index', 'eligible')
+    expectDecision('filme SEM slug -> noindex', 'movie', 102, 'noindex', 'missing_slug')
+    // O 103 tem traducao: prova que `no_synopsis` e a causa lida da COLUNA
+    // `summary`, e nao um efeito colateral de traducao ausente.
+    expectDecision('filme com traducao e SEM sinopse -> noindex', 'movie', 103, 'noindex', 'no_synopsis')
+    expectDecision('serie completa -> index', 'tv', 301, 'index', 'eligible')
+    expectDecision('temporada com sinopse -> index', 'season', 401, 'index', 'eligible')
+    expectDecision(
+      'temporada sem sinopse e sem episodio -> noindex',
+      'season',
+      402,
+      'noindex',
+      'insufficient_data',
     )
-    record(
-      'filme SEM slug -> noindex/missing_slug',
-      find('movie', 102)?.decision === 'noindex' && find('movie', 102)?.reason === 'missing_slug',
-      `${find('movie', 102)?.decision} (${find('movie', 102)?.reason})`,
+    expectDecision('episodio COM sinopse -> index', 'episode', 501, 'index', 'eligible')
+    expectDecision('episodio SEM sinopse -> noindex', 'episode', 502, 'noindex', 'no_synopsis')
+    expectDecision('pessoa com credito, bio liberada e foto -> index', 'person', 201, 'index', 'eligible')
+    expectDecision('pessoa SEM credito -> noindex', 'person', 202, 'noindex', 'no_eligible_credit')
+    // O texto da bio existe; falta a LIBERACAO. A tela nao mostraria nada.
+    expectDecision('pessoa com bio NAO liberada -> noindex', 'person', 203, 'noindex', 'no_biography')
+
+    // A URL registrada de temporada/episodio deriva do slug da SERIE mais os
+    // numeros — a coluna e NOT NULL e serve de pista em auditoria.
+    const urls = await q<{ entity_type: string; entity_id: bigint; url: string }>(
+      `SELECT entity_type::text AS entity_type, entity_id, url
+         FROM page_indexability_decisions
+        WHERE is_current AND entity_type IN ('season','episode') ORDER BY entity_id`,
     )
+    const urlOf = (t: string, id: number) =>
+      urls.find((r) => r.entity_type === t && Number(r.entity_id) === id)?.url
     record(
-      'pessoa COM credito publicavel -> index',
-      find('person', 201)?.decision === 'index',
-      `${find('person', 201)?.decision} (${find('person', 201)?.reason})`,
-    )
-    record(
-      'pessoa SEM credito -> noindex/no_eligible_credit',
-      find('person', 202)?.decision === 'noindex' &&
-        find('person', 202)?.reason === 'no_eligible_credit',
-      `${find('person', 202)?.decision} (${find('person', 202)?.reason})`,
+      'URL de temporada/episodio deriva do slug da serie',
+      urlOf('season', 401) === '/pt/series/serie-publicavel/temporadas/1/' &&
+        urlOf('episode', 501) === '/pt/series/serie-publicavel/temporadas/1/episodios/1/',
+      `${urlOf('season', 401)} | ${urlOf('episode', 501)}`,
     )
 
     // ---- (3) SEM CHURN: reexecutar nao grava --------------------------
@@ -178,12 +252,15 @@ async function runChecks(url: string): Promise<void> {
     )
     record(
       'reexecucao NAO grava nada (sem churn)',
-      rerun.written === 0 && rerun.unchanged === 4 && Number(afterRerun[0]?.n) === 4,
+      rerun.written === 0 &&
+        rerun.unchanged === SEEDED &&
+        Number(afterRerun[0]?.n) === SEEDED,
       `gravadas=${rerun.written} inalteradas=${rerun.unchanged} linhas=${afterRerun[0]?.n}`,
     )
 
     // ---- (4) decisao que MUDA supersede a anterior --------------------
-    // Dar um credito publicavel a pessoa 202: ela passa a ser elegivel.
+    // REVERSIBILIDADE contra o banco: dar um credito publicavel a pessoa 202
+    // (ela ja tem bio liberada e foto) a torna elegivel sem nenhum deploy.
     await prisma.$executeRawUnsafe(
       `INSERT INTO cast_members (person_id, entity_type, entity_id, updated_at)
        VALUES (202, 'movie', 101, now())`,
@@ -229,8 +306,29 @@ async function runChecks(url: string): Promise<void> {
     )
     record(
       'toda decisao vigente tem policy_version e origem',
-      Number(meta[0]?.n) === 4,
-      `${meta[0]?.n}/4`,
+      Number(meta[0]?.n) === SEEDED,
+      `${meta[0]?.n}/${SEEDED}`,
+    )
+
+    // ---- (7) o dado que faltava volta -> a pagina volta a indexar -----
+    // O episodio 502 nao indexava por falta de sinopse. Preencher a COLUNA e o
+    // unico passo: nenhuma mudanca de codigo, nenhum deploy.
+    await prisma.$executeRawUnsafe(
+      `UPDATE episodes SET overview = 'Sinopse chegou na Fase 5.' WHERE id = 502`,
+    )
+    const reversal = await produceIndexabilityDecisions(prisma, {
+      language: 'pt-BR',
+      dryRun: false,
+      now,
+    })
+    const ep502 = await q<{ decision: string; reason: string }>(
+      `SELECT decision::text AS decision, reason FROM page_indexability_decisions
+        WHERE entity_type='episode' AND entity_id=502 AND is_current`,
+    )
+    record(
+      'preencher a sinopse devolve o episodio ao indice (dirigido a dado)',
+      reversal.written === 1 && ep502[0]?.decision === 'index',
+      `gravadas=${reversal.written} decisao=${ep502[0]?.decision} (${ep502[0]?.reason})`,
     )
 
     // ---- (7) FREIO de mudanca em massa: CONTROLE NEGATIVO -------------
