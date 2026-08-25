@@ -39,8 +39,10 @@
 | --- | --- |
 | `scripts/backup/backup.sh` | `pg_dump -Fc` + checksum SHA-256 (+ off-site opcional). |
 | `scripts/backup/backup-with-alert.sh` | Envelope: roda `backup.sh` e, em falha, dispara alerta redigido (§5). |
-| `scripts/backup/restore-test.sh` | Restaura o dump em base **efêmera isolada**, valida e a derruba. Nunca toca a origem; sem `--clean`/`--create`. |
+| `scripts/backup/restore-test.sh` | Restaura o dump em base **efêmera isolada**, **compara** o restaurado com o manifesto do próprio dump (tabelas, linhas por tabela, índices, constraints) e a derruba. Divergiu → exit != 0 nomeando o objeto e os dois números. Nunca toca a origem; sem `--clean`/`--create`. |
+| `scripts/backup/restore-test-selftest.sh` | **Controle negativo**: prova que o `restore-test.sh` sabe ficar vermelho (linha/tabela/índice/FK injetados na base restaurada). Roda na CI. |
 | `scripts/backup/verify-backup-restore.sh` | Prova ponta-a-ponta com **fidelidade de dados** (origem == restaurado). Roda na CI. |
+| `scripts/backup/lib/dump-manifest.awk` | Parser do dump → manifesto esperado, consumido pelo `restore-test.sh`. |
 | `scripts/backup/lib/alert.mjs` | Construção pura do alerta (redige segredos). Testado em `tests/operations/backup-alert.test.ts`. |
 
 ---
@@ -168,11 +170,21 @@ O job **`backup-restore`** (`.github/workflows/ci.yml`) sobe um PostgreSQL 16
 real, aplica migrations + seed, e roda `verify-backup-restore.sh`:
 
 1. `backup.sh` gera dump + checksum;
-2. `restore-test.sh` (script enviado) restaura e sai 0;
+2. `restore-test.sh` (script enviado) restaura e **compara** o banco restaurado
+   com o manifesto derivado do próprio dump — conjunto de tabelas, contagem de
+   linhas por tabela, índices e constraints PK/FK/UNIQUE/EXCLUDE — e só sai 0 se
+   tudo bater;
 3. um restore próprio numa base efêmera compara contagens de aplicação
    (`_prisma_migrations`, `languages`, `countries`, `source_licenses`):
    **origem == restaurado**;
 4. a base efêmera é derrubada.
+
+Logo depois, o passo **“Controle negativo — restore-test.sh precisa REPROVAR com
+divergência”** roda `restore-test-selftest.sh`: o mesmo dump é restaurado cinco
+vezes — uma limpa (exit 0) e quatro com uma divergência injetada na base
+restaurada (linha apagada, tabela dropada, índice dropado, FK dropada), cada uma
+exigindo exit != 0 **com** o diagnóstico correspondente. Sem esse passo, nada
+impediria a comparação de voltar a ser um `echo` de contagens.
 
 Isto é execução **real** de backup+restore — não checagem de sintaxe. Na
 máquina de dev Windows o `pg_dump`/`pg_restore`/`psql` não estão disponíveis
