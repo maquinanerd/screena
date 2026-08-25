@@ -46,6 +46,25 @@ releia antes de seguir.
 As migrations do banco **não mudaram nesta leva**. O que mudou é declaração de
 licença, que entra pela CLI do `legal`.
 
+> ### Este passo NÃO é opcional, e pular ele apaga arte do site
+>
+> Medido em produção em **21/08/2026, depois do deploy da PR #209 e antes do
+> `apply`**: nenhuma página de detalhe de filme ou série tinha pôster, backdrop,
+> banda de mídia ou faixa de crítica. Os mesmos títulos mostravam pôster
+> normalmente no índice `/pt/filmes/` — porque o índice
+> (`entity-index-presenter`) ainda **não** passa pelo gate, e o detalhe
+> (`movie-presenter` / `series-presenter`) passa.
+>
+> A causa não é bug: é o gate funcionando **fail-closed** contra um banco onde a
+> decisão ainda não foi aplicada. O código diz `displayAllowed: true` (declarado
+> em `authorization-spec.ts`); o banco de produção ainda dizia o contrário. O
+> rodapé, que lê a **declaração** e não o banco, continuava creditando as
+> imagens que a página não estava exibindo — a divergência fica visível aí.
+>
+> **Como conferir em 10 segundos, sem banco:** abra uma ficha de filme e procure
+> `image.tmdb.org/t/p/w500` (pôster) e `w1280` (backdrop) no HTML. Se só
+> aparecer `original` (que é o elenco, ainda sem gate), o `apply` não rodou.
+
 ```bash
 corepack pnpm legal sources review
 ```

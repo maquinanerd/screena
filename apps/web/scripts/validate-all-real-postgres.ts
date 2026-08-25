@@ -122,19 +122,34 @@ function main(): void {
   let totalPassed = 0;
   let totalChecks = 0;
   for (const outcome of outcomes) {
-    const ok = outcome.exitCode === 0;
+    // O VEREDITO NAO E SO O EXIT CODE. Medido em 21/08/2026: um validador que
+    // morreu no `initdb` imprimiu `[FAIL] 1.` e `RESUMO: 0/1`, saiu com codigo 0
+    // (o `process.exitCode = 1` dele nao sobreviveu ao encerramento) e esta
+    // agregacao o exibiu como `[PASS] ... 0/1`, fechando com "PASSOU" e exit 0.
+    //
+    // Duas regras a mais, as duas na direcao de recusar:
+    //  1. contagem PARCIAL reprova, mesmo com exit 0 — o placar impresso manda;
+    //  2. AUSENCIA de `RESUMO` reprova. Um validador que nao diz quantas
+    //     assercoes rodou nao provou nada; ausencia de evidencia nunca e
+    //     sucesso (a mesma licao do painel verde que media o relogio).
+    const emitiuPlacar = outcome.passed !== null && outcome.total !== null;
+    const placarIntegro = emitiuPlacar && outcome.passed === outcome.total && outcome.total > 0;
+    const ok = outcome.exitCode === 0 && placarIntegro;
     if (!ok) anyFailed = true;
-    const countLabel =
-      outcome.passed !== null && outcome.total !== null
-        ? `${outcome.passed}/${outcome.total}`
-        : ok
-          ? "ok"
-          : "falhou";
-    if (outcome.passed !== null && outcome.total !== null) {
-      totalPassed += outcome.passed;
-      totalChecks += outcome.total;
+    const countLabel = emitiuPlacar
+      ? `${outcome.passed}/${outcome.total}`
+      : "sem RESUMO (nao provou nada)";
+    if (emitiuPlacar) {
+      totalPassed += outcome.passed as number;
+      totalChecks += outcome.total as number;
     }
-    console.log(`[${ok ? "PASS" : "FAIL"}] ${outcome.spec.key.padEnd(24)} ${countLabel}`);
+    const motivo =
+      ok || outcome.exitCode !== 0
+        ? ""
+        : emitiuPlacar
+          ? "  <- exit 0 CONTRADIZ o placar impresso"
+          : "  <- exit 0 sem placar nenhum";
+    console.log(`[${ok ? "PASS" : "FAIL"}] ${outcome.spec.key.padEnd(24)} ${countLabel}${motivo}`);
   }
 
   console.log(`\nTotal agregado: ${totalPassed}/${totalChecks} assercoes OK em ${outcomes.length} validadores.`);

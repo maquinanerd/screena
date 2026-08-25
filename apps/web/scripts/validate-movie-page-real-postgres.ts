@@ -87,6 +87,10 @@ function prismaBin(): string {
 // script ao Prisma Client gerado em tempo de typecheck.
 type PrismaLike = {
   movie: { create: (args: unknown) => Promise<{ id: bigint }> };
+  sourceLicense: {
+    create: (args: unknown) => Promise<unknown>;
+    updateMany: (args: unknown) => Promise<{ count: number }>;
+  };
   slug: { create: (args: unknown) => Promise<unknown> };
   entityTranslation: { create: (args: unknown) => Promise<unknown> };
   contentBlock: { create: (args: unknown) => Promise<unknown> };
@@ -94,6 +98,70 @@ type PrismaLike = {
   articleTranslation: { create: (args: unknown) => Promise<unknown> };
   entityNewsLink: { create: (args: unknown) => Promise<unknown> };
 };
+
+/**
+ * A LICENCA DE IMAGEM, semeada porque o render passou a EXIGI-LA.
+ *
+ * ============================================================================
+ * POR QUE ESTE SEED EXISTE (21/08/2026)
+ * ============================================================================
+ * Ate a PR #209 o caminho `movie-presenter -> imageAsset -> buildTmdbImageUrl`
+ * nao consultava licenca nenhuma: o poster ia ao ar sem que nada perguntasse se
+ * podia. O gate entrou (`packages/public-contracts/src/image-authorization.ts`
+ * + `apps/web/src/server/image-license.ts`) e passou a ler `source_licenses`
+ * para `tmdb`/`image` — FAIL-CLOSED: banco sem a linha nega.
+ *
+ * O banco EFEMERO deste validador nasce de `migrate deploy` + `db:seed`, e
+ * NENHUM dos dois materializa licenca de fonte: quem faz isso e
+ * `pnpm legal sources apply`, que e um ato de governanca deliberado e nao roda
+ * aqui. Sem este seed, o validador media um ambiente que nao existe em lugar
+ * nenhum — nem em producao, nem no desenvolvimento — e reprovava o gate por
+ * ausencia de dado de governanca, nao por defeito de codigo.
+ *
+ * Os valores abaixo espelham a entrada "TMDB (imagens)" de
+ * `services/legal/src/authorization-spec.ts` (decisao do proprietario,
+ * 21/08/2026). Divergir deles faria este validador provar uma licenca que
+ * ninguem decidiu.
+ */
+const TMDB_IMAGE_ATTRIBUTION =
+  "Este produto usa a API do TMDB, mas nao e endossado ou certificado pelo TMDB.";
+
+async function seedTmdbImageLicense(prisma: PrismaLike): Promise<void> {
+  await prisma.sourceLicense.create({
+    data: {
+      sourceKey: "tmdb",
+      contentType: "image",
+      providerKey: "tmdb",
+      territoryCode: null,
+      licenseStatus: "official",
+      displayAllowed: true,
+      logoAllowed: true,
+      scoreAllowed: false,
+      reviewQuoteAllowed: false,
+      requiresAttribution: true,
+      requiresLinkback: true,
+      attributionText: TMDB_IMAGE_ATTRIBUTION,
+      isCurrent: true,
+      decisionOrigin: "validator-harness",
+      policyVersion: "cinerie-source-auth/tmdb-image/2026-08-v3",
+    },
+  });
+}
+
+/**
+ * Liga/desliga a exibicao na licenca VIGENTE — o interruptor do controle
+ * negativo.
+ *
+ * Nao ha `data_usage_decisions` penduradas nesta licenca no harness, entao o
+ * trigger `source_licenses_no_downgrade_guard` (migration 20260812120000) nao
+ * dispara: ele so recusa rebaixar licenca que sustenta decisao viva.
+ */
+async function setTmdbImageDisplay(prisma: PrismaLike, allowed: boolean): Promise<void> {
+  await prisma.sourceLicense.updateMany({
+    where: { sourceKey: "tmdb", contentType: "image", isCurrent: true },
+    data: { displayAllowed: allowed },
+  });
+}
 
 /** Cria um Article publicavel|rascunho + traducao pt-BR + link para uma entidade. */
 async function seedRelatedArticle(
@@ -224,6 +292,11 @@ type MoviePageData = {
 type GetMoviePageData = (slug: string) => Promise<MoviePageData | null>;
 
 async function runChecks(prisma: PrismaLike, getMoviePageData: GetMoviePageData): Promise<void> {
+  // A LICENCA DE IMAGEM VEM ANTES DE TUDO: desde 21/08/2026 o poster e o
+  // backdrop passam pelo gate de `source_licenses` (tmdb/image). Sem esta linha
+  // o banco efemero nega toda arte do TMDB — ver `seedTmdbImageLicense`.
+  await seedTmdbImageLicense(prisma);
+
   // --- A. Filme inexistente -> null. ---------------------------------------
   const missing = await getMoviePageData("slug-que-nao-existe-1234");
   record(3, "A. slug inexistente retorna null", missing === null, `retorno=${missing === null ? "null" : "objeto"}`);
@@ -385,6 +458,64 @@ async function runChecks(prisma: PrismaLike, getMoviePageData: GetMoviePageData)
   const noTranslation = await getMoviePageData("filme-sem-traducao");
   record(22, "G. sem traducao, titulo cai para titleOriginal", noTranslation?.view.title === "Original Title Only", `title=${noTranslation?.view.title}`);
   record(23, "G. sem release_date/runtime, ano e runtimeLabel sao null", noTranslation?.view.year === null && noTranslation?.view.runtimeLabel === null, `year=${noTranslation?.view.year}, runtimeLabel=${noTranslation?.view.runtimeLabel}`);
+
+  // --- I. O GATE DE LICENCA DA IMAGEM, contra o banco REAL. ----------------
+  //
+  // O check 24 acima prova que a arte do TMDB APARECE. Sozinho, ele passaria
+  // igual se o gate nao existisse — que e exatamente o estado de antes da PR
+  // #209. O que falta provar e o outro lado: que `display_allowed` MANDA.
+  //
+  // E aqui, e nao no teste puro, porque so aqui existe a consulta real:
+  // `getImageDisplayAuthorization` -> Prisma -> `source_licenses`. Um teste
+  // puro alimenta a autorizacao a mao e nunca descobre que o adapter le a
+  // coluna errada, a chave errada ou a linha nao vigente.
+  //
+  // CADA CASO USA UM SLUG NOVO, nunca consultado antes. `getMoviePageData` e
+  // envolvido por `cache()` do React; reconsultar o MESMO slug depois de virar
+  // o flag poderia devolver memoria em vez de banco e o controle negativo
+  // passaria pelo motivo errado.
+  await seedMovie(prisma, {
+    tmdbId: 94000005,
+    titleOriginal: "Gated Movie Off",
+    releaseDate: new Date("2021-03-03"),
+    runtimeMinutes: 100,
+    posterPath: "/gated-off-poster.jpg",
+    backdropPath: "/gated-off-backdrop.jpg",
+    canonicalSlug: "filme-licenca-negada",
+    blocks: [],
+  });
+  await seedMovie(prisma, {
+    tmdbId: 94000006,
+    titleOriginal: "Gated Movie On",
+    releaseDate: new Date("2021-04-04"),
+    runtimeMinutes: 100,
+    posterPath: "/gated-on-poster.jpg",
+    backdropPath: "/gated-on-backdrop.jpg",
+    canonicalSlug: "filme-licenca-restaurada",
+    blocks: [],
+  });
+
+  await setTmdbImageDisplay(prisma, false);
+  const licenseOff = await getMoviePageData("filme-licenca-negada");
+  record(
+    28,
+    "I. CONTROLE NEGATIVO: display_allowed=false em source_licenses APAGA poster e backdrop",
+    licenseOff !== null &&
+      licenseOff.view.media.poster === null &&
+      licenseOff.view.media.backdrop === null &&
+      licenseOff.view.media.hasRealImage === false,
+    `poster=${licenseOff?.view.media.poster?.src ?? "null"}, backdrop=${licenseOff?.view.media.backdrop?.src ?? "null"}`,
+  );
+
+  await setTmdbImageDisplay(prisma, true);
+  const licenseOn = await getMoviePageData("filme-licenca-restaurada");
+  record(
+    29,
+    "I. a arte VOLTA quando a licenca vigente volta a permitir (o flag manda)",
+    (licenseOn?.view.media.poster?.src?.startsWith("https://") ?? false) &&
+      (licenseOn?.view.media.backdrop?.src?.startsWith("https://") ?? false),
+    `poster=${licenseOn?.view.media.poster?.src ?? "null"}`,
+  );
 }
 
 async function main(): Promise<void> {
