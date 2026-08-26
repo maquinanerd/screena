@@ -150,6 +150,9 @@ const EXPECTED_TABLES = [
   // Premiacoes promovidas do api_cache (OMDb) para dominio proprio, com licenca,
   // credito e decisao de uso `awards_display` checados no banco.
   "entity_awards",
+  // Fixacao MANUAL do destaque da home. Decisao governada (quem/quando/por que),
+  // escrita so por humano; o hero automatico e portao de qualidade em codigo.
+  "hero_curation_decisions",
 ];
 const EXPECTED_ENUMS = [
   "EntityType", "ContentBlockType", "ContentSource", "ReviewStatus", "TranslationStatus",
