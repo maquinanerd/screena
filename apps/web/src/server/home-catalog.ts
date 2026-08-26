@@ -59,16 +59,38 @@ function decimalToNumber(
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+/**
+ * Slug canônico + título pt-BR das entidades pedidas.
+ *
+ * `scope` NÃO é otimização prematura: sem ele a consulta traz TODOS os slugs
+ * canônicos do catálogo e todas as traduções, em toda requisição, numa página
+ * `force-dynamic`. O trilho usa no máximo 20 ids (o snapshot é um topo), então
+ * o custo era O(catálogo) para responder uma pergunta O(20).
+ *
+ * Isso era tolerável com 129 filmes. Em 2026-08-26 o catálogo passou de 1.485
+ * para 6.985 filmes em uma hora, e continua crescendo — a consulta cresce
+ * junto, e o único lugar onde isso aparece é a latência da home.
+ *
+ * O resultado é o MESMO: quem não tem slug canônico simplesmente não volta, e
+ * `buildMovieCard`/`buildSeriesCard` já devolvem `null` para item sem slug.
+ */
 async function canonicalIdentity(
   entityType: "movie" | "tv",
+  scope: readonly bigint[],
 ): Promise<{
   ids: bigint[];
   slugById: Map<string, string>;
   titleById: Map<string, string | null>;
 }> {
   const prisma = getPrismaClient();
+  if (scope.length === 0) return { ids: [], slugById: new Map(), titleById: new Map() };
   const slugs = await prisma.slug.findMany({
-    where: { entityType, languageCode: LANGUAGE_CODE, isCanonical: true },
+    where: {
+      entityType,
+      languageCode: LANGUAGE_CODE,
+      isCanonical: true,
+      entityId: { in: [...scope] },
+    },
     select: { entityId: true, slug: true },
   });
   const ids = slugs.map((row) => row.entityId);
@@ -111,15 +133,13 @@ export interface HomeCatalogData {
 
 export const getHomeCatalogData = cache(async (): Promise<HomeCatalogData> => {
   const prisma = getPrismaClient();
-  const movieIdentity = await canonicalIdentity("movie");
   const snapshot = await getTrendingSnapshot("movie", "day");
+  // A identidade é pedida SÓ para os ids do trending — ver `canonicalIdentity`.
+  const movieIdentity = await canonicalIdentity("movie", snapshot.entityIds);
 
-  // A interseção é feita EM MEMÓRIA e não no `orderBy` do banco: a ordem é a do
-  // trending, e SQL não sabe ordenar por uma lista de ids sem um `CASE` gerado.
-  // O conjunto é pequeno por construção (o snapshot é um topo de 20).
-  const trendingIds = snapshot.entityIds.filter((id) =>
-    movieIdentity.ids.some((candidate) => candidate === id),
-  );
+  // A ordem é a do trending, resolvida EM MEMÓRIA: SQL não sabe ordenar por uma
+  // lista de ids sem um `CASE` gerado, e o conjunto é um topo de 20.
+  const trendingIds = movieIdentity.ids;
   const rows =
     trendingIds.length === 0
       ? []
@@ -195,12 +215,9 @@ export const getHomeCatalogData = cache(async (): Promise<HomeCatalogData> => {
 async function trendingSeriesCards(
   prisma: ReturnType<typeof getPrismaClient>,
 ): Promise<{ cards: EntityCard[]; absence: TrendingAbsenceReason | null }> {
-  const identity = await canonicalIdentity("tv");
   const snapshot = await getTrendingSnapshot("tv", "week");
-
-  const trendingIds = snapshot.entityIds.filter((id) =>
-    identity.ids.some((candidate) => candidate === id),
-  );
+  const identity = await canonicalIdentity("tv", snapshot.entityIds);
+  const trendingIds = identity.ids;
   const rows =
     trendingIds.length === 0
       ? []
