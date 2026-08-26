@@ -11,6 +11,7 @@ import { restrictEditorialHighlights } from '../../../src/lib/home-editorial-pre
 import { filterNewsCardsByVertical } from '../../../src/lib/news-presenter'
 import { RANKING_TABS, resolveActiveRankingSlug } from '../../../src/lib/popular-rankings'
 import { SERIES_INDEX_PATH, SITE_URL, publicRobots } from '../../../src/lib/site'
+import { getHomeCatalogData } from '../../../src/server/home-catalog'
 import { getHomeEditorialHighlights } from '../../../src/server/home-editorial'
 import { getHomeHeroSlides } from '../../../src/server/home-hero'
 import { getHomeTickerItems } from '../../../src/server/home-ticker'
@@ -54,9 +55,11 @@ export default async function SeriesCategoryPage({
   const params = await searchParams
   const rankingActiveSlug = resolveActiveRankingSlug('series', params.ranking)
 
-  const [index, news, seriesHero, tickerItems, upcoming, editorialHighlights, rankings] =
+  const [index, catalog, news, seriesHero, tickerItems, upcoming, editorialHighlights, rankings] =
     await Promise.all([
       getSeriesIndexData(),
+      // "Séries da semana" lê o TRENDING (mesma fonte da home), não `index`.
+      getHomeCatalogData(),
       getNewsIndexData(),
       // O hero desta rota vem do escopo `series`. Antes ele vinha da lista da home
       // já cortada em 5 — e como filmes entram primeiro nessa lista, com 129
@@ -124,7 +127,7 @@ export default async function SeriesCategoryPage({
         newsCards={newsCards}
         rankingActiveSlug={rankingActiveSlug}
         rankingPanels={rankingPanels}
-        seriesCards={index.view.cards}
+        seriesCards={catalog.series}
         showMoviesBand={false}
         showSeriesBand
         tickerItems={tickerItems}

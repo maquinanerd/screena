@@ -36,11 +36,13 @@ import {
 
 import {
   buildTrendingMovieCards,
+  buildTrendingSeriesCards,
   HOME_TRENDING_CARD_LIMIT,
 } from "../lib/home-catalog-presenter";
 import type {
   EntityCard,
   MovieListItemInput,
+  SeriesListItemInput,
 } from "../lib/entity-index-presenter";
 
 const LANGUAGE_CODE = "pt-BR";
@@ -58,7 +60,7 @@ function decimalToNumber(
 }
 
 async function canonicalIdentity(
-  entityType: "movie",
+  entityType: "movie" | "tv",
 ): Promise<{
   ids: bigint[];
   slugById: Map<string, string>;
@@ -94,6 +96,17 @@ export interface HomeCatalogData {
    * roupa: antes ela mentia, agora ela poderia desaparecer sem dizer por quê.
    */
   trendingAbsence: TrendingAbsenceReason | null;
+
+  /**
+   * Trilho "Séries da semana" — o irmão de `movies`, que NÃO existia.
+   *
+   * Até 2026-08-26 a home montava esse trilho com `seriesIndex.view.cards` (a
+   * listagem genérica de séries). Ver `buildTrendingSeriesCards`.
+   */
+  series: EntityCard[];
+
+  /** `null` quando o trilho de séries veio cheio; senão o motivo. */
+  seriesTrendingAbsence: TrendingAbsenceReason | null;
 }
 
 export const getHomeCatalogData = cache(async (): Promise<HomeCatalogData> => {
@@ -155,8 +168,87 @@ export const getHomeCatalogData = cache(async (): Promise<HomeCatalogData> => {
     };
   });
   const cards = buildTrendingMovieCards(movieInputs);
+
+  const series = await trendingSeriesCards(prisma);
+
   return {
     movies: cards,
     trendingAbsence: trendingAbsenceFor(snapshot, cards.length),
+    series: series.cards,
+    seriesTrendingAbsence: series.absence,
   };
 });
+
+/**
+ * O trilho "Séries da semana", lido do MESMO lugar que o de filmes.
+ *
+ * Espelha `getHomeCatalogData` para `tv`, com uma diferença deliberada de
+ * janela: filmes usam `trending/day` (a faixa se chama "em alta"), séries usam
+ * `trending/week` — porque o rótulo do trilho diz "da semana", e uma série
+ * semanal não tem sinal diário que signifique alguma coisa.
+ *
+ * SEM FALLBACK para a listagem de séries. Era exatamente esse fallback que
+ * colocava o começo do alfabeto sob o rótulo "Séries da semana"; trocá-lo por
+ * outro seria repetir o defeito com roupa nova. Vazio => o trilho some, com o
+ * motivo nomeado em `seriesTrendingAbsence`.
+ */
+async function trendingSeriesCards(
+  prisma: ReturnType<typeof getPrismaClient>,
+): Promise<{ cards: EntityCard[]; absence: TrendingAbsenceReason | null }> {
+  const identity = await canonicalIdentity("tv");
+  const snapshot = await getTrendingSnapshot("tv", "week");
+
+  const trendingIds = snapshot.entityIds.filter((id) =>
+    identity.ids.some((candidate) => candidate === id),
+  );
+  const rows =
+    trendingIds.length === 0
+      ? []
+      : await prisma.tvShow.findMany({
+          where: { id: { in: trendingIds } },
+          select: {
+            id: true,
+            nameOriginal: true,
+            firstAirDate: true,
+            lastAirDate: true,
+            posterPath: true,
+            screenScore: true,
+            screenScoreScale: true,
+            screenScoreDisplay: true,
+          },
+        });
+  const ordered = orderByTrending(rows, (row) => row.id, snapshot.entityIds).slice(
+    0,
+    HOME_TRENDING_CARD_LIMIT,
+  );
+
+  const scoreSources = await resolveEditorialScoreSources(
+    prisma,
+    "tv",
+    ordered.map((show) => ({
+      entityId: show.id,
+      screenScore: decimalToNumber(show.screenScore),
+      screenScoreScale: show.screenScoreScale,
+    })),
+  );
+
+  const inputs: SeriesListItemInput[] = ordered.map((show) => {
+    const key = show.id.toString();
+    return {
+      id: key,
+      nameOriginal: show.nameOriginal,
+      translationTitle: identity.titleById.get(key) ?? null,
+      slug: identity.slugById.get(key) ?? null,
+      firstAirYear: yearFromDate(show.firstAirDate),
+      lastAirYear: yearFromDate(show.lastAirDate),
+      posterPath: show.posterPath,
+      screenScore: decimalToNumber(show.screenScore),
+      screenScoreScale: show.screenScoreScale,
+      screenScoreDisplay: show.screenScoreDisplay,
+      screenScoreSource: scoreSources.get(key) ?? null,
+    };
+  });
+
+  const cards = buildTrendingSeriesCards(inputs);
+  return { cards, absence: trendingAbsenceFor(snapshot, cards.length) };
+}

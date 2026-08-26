@@ -22,7 +22,6 @@ import { getHomeHeroSlides } from '../../src/server/home-hero'
 import { getHomeTickerItems } from '../../src/server/home-ticker'
 import { getHomeUpcomingMixed } from '../../src/server/home-upcoming'
 import { getNewsIndexData } from '../../src/server/news-pages'
-import { getSeriesIndexData } from '../../src/server/entity-indexes'
 
 /**
  * Home pública pt-BR — tela 02 do handoff canônico, renderizada pelo template
@@ -65,7 +64,6 @@ async function getHomeData() {
     news,
     heroSlides,
     upcomingItems,
-    seriesIndex,
     tickerItems,
     editorialHighlights,
     rankings,
@@ -77,7 +75,6 @@ async function getHomeData() {
     // e o trilho "Em breve" segue a mesma regra, com o dataset misto.
     getHomeHeroSlides('home'),
     getHomeUpcomingMixed(),
-    getSeriesIndexData(),
     getHomeTickerItems('home'),
     getHomeEditorialHighlights(),
     getPopularRankings('home'),
@@ -106,8 +103,12 @@ async function getHomeData() {
   )
 
   const movieCards = catalog.movies
+  // "Séries da semana" lê o TRENDING, como "Filmes em alta" — e não mais
+  // `seriesIndex.view.cards`, a listagem genérica de séries. Sob aquele rótulo
+  // a home exibia o começo do alfabeto (`ربع قرن`, `3RACHA Session`, ...),
+  // medido em produção em 2026-08-26. Ver `home-catalog.ts`.
   const seriesWeekCards: EntityCard[] = takeSectionCards(
-    seriesIndex.view.cards,
+    catalog.series,
     HOME_ENTITY_CARD_LIMIT,
   )
   const indexability = evaluatePortalIndexability({

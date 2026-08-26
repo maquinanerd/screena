@@ -72,7 +72,16 @@ export default async function MovieCategoryPage({
       getPopularRankings('movies'),
     ])
 
-  const movieCards = catalog.movies.length > 0 ? catalog.movies : index.view.cards
+  // SEM FALLBACK para a listagem. `home-catalog.ts` e `trending-snapshot.ts`
+  // recusam completar "Filmes em alta" com `popularity`/ano desc, e este
+  // ternário reintroduzia exatamente isso um andar acima — o guard do loader
+  // ficava intacto e a PÁGINA o contornava. Era por aqui que "Der Liebesbrief"
+  // (curta de 1938 com `release_date` em 2057) chegava ao trilho "em alta".
+  //
+  // O snapshot de trending vale 6 h. Com o ternário, toda vez que a captura
+  // atrasasse a página trocaria de fonte em SILÊNCIO, sob o mesmo rótulo.
+  // Vazio => o trilho some, e `catalog.trendingAbsence` diz por quê.
+  const movieCards = catalog.movies
   // Só matérias com vínculo `movie` persistido (`entity_news_links`): a página
   // de filmes não lista a matéria que só fala de série.
   const newsCards = takeSectionCards(

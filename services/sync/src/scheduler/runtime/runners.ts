@@ -55,6 +55,7 @@ import type { SchedulerQueue } from '../rhythms.js'
 import { backgroundOmdbSlots } from '../quota.js'
 import { dailyScope, hourlySlot, windowSlot } from '../scope.js'
 import { effectiveRank, NO_TRENDING, type TrendingRanks } from '../trending.js'
+import { buildTrendingListJob, TRENDING_COMBOS } from '../trending-jobs.js'
 import { buildCinerieScoreArgs, buildSearchReindexArgs } from './child-args.js'
 import { describeChildFailure } from './child-failure.js'
 import type { RunReason, RunTally } from '../run-outcome.js'
@@ -384,40 +385,28 @@ const runTrending: QueueRunner = async (deps) => {
   let skipped = 0
   let failed = 0
 
-  const combos = [
-    { entityType: 'movie' as const, window: 'day' as const },
-    { entityType: 'movie' as const, window: 'week' as const },
-    { entityType: 'tv' as const, window: 'day' as const },
-    { entityType: 'tv' as const, window: 'week' as const },
-  ]
-
-  for (const combo of combos) {
+  for (const combo of TRENDING_COMBOS) {
     try {
-      const result = await deps.services.store.enqueue({
-        jobType: 'sync_lists',
-        entityType: combo.entityType,
-        externalId: null,
-        idempotencyKey: buildIdempotencyKey({
-          jobType: 'sync_lists',
+      // O payload inteiro (inclusive a `priority`, que faltava) vive em
+      // `../trending-jobs.ts`, que e puro e TEM teste. Ver o cabecalho de la:
+      // este arquivo nao e importavel por teste nenhum, entao um campo faltando
+      // aqui nao teria como ficar vermelho em lugar algum.
+      const result = await deps.services.store.enqueue(
+        buildTrendingListJob({
           entityType: combo.entityType,
-          externalId: null,
-          // Balde de 6 h ancorado na meia-noite UTC: reenfileirar dentro do
-          // ciclo e noop; o ciclo seguinte e trabalho novo.
-          discriminator: `${windowSlot('trending', startedAt, 6)}:${combo.window}:${deps.locale}`,
-        }),
-        payload: {
-          listType: 'trending',
-          entityType: combo.entityType,
-          locale: deps.locale,
-          country: null,
           window: combo.window,
-          // UMA pagina. `sync_lists` faria ate 5 por default, e as quatro
-          // seguintes so trariam cauda que nenhum trilho exibe — 16 requisicoes
-          // por ciclo em vez de 4, para o mesmo resultado na tela.
-          maxPages: 1,
-        },
-        runId: 'scheduler:trending',
-      })
+          locale: deps.locale,
+          idempotencyKey: buildIdempotencyKey({
+            jobType: 'sync_lists',
+            entityType: combo.entityType,
+            externalId: null,
+            // Balde de 6 h ancorado na meia-noite UTC: reenfileirar dentro do
+            // ciclo e noop; o ciclo seguinte e trabalho novo.
+            discriminator: `${windowSlot('trending', startedAt, 6)}:${combo.window}:${deps.locale}`,
+          }),
+          runId: 'scheduler:trending',
+        }),
+      )
       if (result.created) processed += 1
       else {
         skipped += 1
@@ -433,7 +422,7 @@ const runTrending: QueueRunner = async (deps) => {
     'trending',
     startedAt,
     deps.now(),
-    { planned: combos.length, processed, failed, skipped },
+    { planned: TRENDING_COMBOS.length, processed, failed, skipped },
     [...reasons.values()],
     // 1 requisicao por combo, executada pelo handler quando o job rodar.
     { providerApi: 'tmdb', requests: processed },

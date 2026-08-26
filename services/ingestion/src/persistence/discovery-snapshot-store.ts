@@ -19,6 +19,7 @@ import type {
   SaveSnapshotResult,
   StoredDiscoverySnapshot,
 } from '../discovery-snapshots/index.js'
+import { resolveSnapshotItems } from '../discovery-snapshots/index.js'
 
 /** Client dentro de uma transacao (sem `$transaction`/`$connect`/`$disconnect`). */
 type Tx = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0]
@@ -82,20 +83,10 @@ export function createPrismaDiscoverySnapshotStore(
         plan.entityType,
         plan.items.map((i) => i.entityTmdbId),
       )
-      // So entidades promovidas entram; reindexa posicoes para ficarem densas.
-      const items = plan.items
-        .map((item) => ({
-          entityId: resolved.get(item.entityTmdbId),
-          providerScore: item.providerScore,
-        }))
-        .filter(
-          (i): i is { entityId: bigint; providerScore: number | null } => i.entityId !== undefined,
-        )
-        .map((i, index) => ({
-          entityId: i.entityId,
-          position: index,
-          providerScore: i.providerScore,
-        }))
+      // So entidades promovidas entram; repetidas saem; posicoes ficam densas.
+      // A deduplicacao mora em `resolveSnapshotItems` (puro, testado): sem ela
+      // uma lista paginada que repete um titulo derruba a transacao inteira.
+      const items = resolveSnapshotItems(plan.items, resolved)
 
       const snapshot = await prisma.$transaction(async (tx: Tx) => {
         const created = await tx.discoverySnapshot.create({
