@@ -32,7 +32,8 @@
     "canary:manual-editorial": "tsx scripts/canary-manual-editorial-real-postgres.ts",
     "canary:editorial-entity-links": "tsx scripts/canary-editorial-entity-links-real-postgres.ts",
     "canary:entity-link-auto-verification": "tsx scripts/canary-entity-link-auto-verification-real-postgres.ts",
-    "qa:gallery": "tsx scripts/qa-gallery-real-postgres.ts"
+    "qa:gallery": "tsx scripts/qa-gallery-real-postgres.ts",
+    "report:hero-gate": "tsx scripts/report-hero-gate.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1097.0",
