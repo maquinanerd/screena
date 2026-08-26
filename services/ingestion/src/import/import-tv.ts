@@ -162,6 +162,10 @@ export async function importTvShow(ctx: ImportContext, tmdbId: number): Promise<
       // falha veio de uma temporada, o `applied` sobrevive ao catch.
       watch,
       error: info.message,
+      // Codigo e status viajam junto com a mensagem: quem embrulha este
+      // resultado em excecao nao tem outro jeito de saber o que falhou.
+      errorCode: info.code,
+      ...(info.status === null ? {} : { errorStatus: info.status }),
     }
   }
 }

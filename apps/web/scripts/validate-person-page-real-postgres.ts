@@ -22,6 +22,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import EmbeddedPostgres from "embedded-postgres";
 
+// PURO (sem DB): pode entrar no topo. `person-page.ts` continua em import
+// dinamico porque so pode carregar depois de `DATABASE_URL` existir.
+import { formatHiddenCreditsNotice } from "../src/lib/person-presenter.ts";
+
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..", "..", "..");
 const dbDir = path.join(repoRoot, "packages", "db");
@@ -443,6 +447,54 @@ async function runChecks(
   record(23, "D. creditos ordenados por ano desc com hrefs corretos", credits[0]?.href === "/pt/series/serie-nova/" && credits[1]?.href === "/pt/filmes/filme-antigo/", `hrefs=[${credits.map((c) => c.href).join(", ")}]`);
   record(24, "D. papel do credito (character/job) preservado", credits[0]?.roleLabel === "Director" && credits[1]?.roleLabel === "Protagonista", `roles=[${credits.map((c) => c.roleLabel).join(", ")}]`);
   record(25, "D. credito sem slug canonico e omitido (nao inventa link)", !credits.some((c) => c.title === "Movie Without Slug"), `titulos=[${credits.map((c) => c.title).join(", ")}]`);
+
+  // 27/28: OMITIR nao pode ser OCULTAR. A pessoa tem 3 linhas de credito
+  // (2 cast + 1 crew) e so 2 viram lista — a terceira perdeu o slug canonico
+  // pt-BR. Ate 25/08/2026 ela sumia calada e a filmografia parcial tinha a mesma
+  // cara da completa.
+  record(
+    27,
+    "D. o credito sem slug e OMITIDO da lista mas CONTADO (hiddenCreditCount=1)",
+    richByAlias?.view.hiddenCreditCount === 1,
+    `hidden=${richByAlias?.view.hiddenCreditCount} / listados=${credits.length}`,
+  );
+  record(
+    28,
+    "D. a linha da tela sai do numero real, no singular certo",
+    formatHiddenCreditsNotice(richByAlias?.view.hiddenCreditCount ?? 0) ===
+      "1 crédito não listado — ainda sem página no catálogo.",
+    `linha=${formatHiddenCreditsNotice(richByAlias?.view.hiddenCreditCount ?? 0) ?? "null"}`,
+  );
+
+  // 29: POR QUE a lista nao tem um terceiro descarte "titulo fora do catalogo".
+  //
+  // O relato que originou este conserto supunha que credito para titulo nao
+  // ingerido evaporava aqui. O BANCO nao deixa a linha existir: `cast_members`
+  // tem FK `(entity_type, entity_id) -> entities`, e `entities` e mantida 1:1
+  // com `movies`/`tv_shows` por trigger de INSERT/DELETE (ON DELETE RESTRICT).
+  // Este check prova a premissa em vez de confiar nela — se um dia a FK cair, e
+  // ele que avisa, e ai o descarte passa a ser real (e ja entra na conta, porque
+  // o denominador sai da linha crua).
+  let orfaoRecusado = false;
+  try {
+    await prisma.castMember.create({
+      data: {
+        personId: richId,
+        entityType: "movie",
+        entityId: 9_999_999n,
+        character: "Papel Perdido",
+        creditId: "credit-cast-orfao",
+      },
+    });
+  } catch {
+    orfaoRecusado = true;
+  }
+  record(
+    29,
+    "D. o banco RECUSA credito para titulo fora do catalogo (FK -> entities)",
+    orfaoRecusado,
+    orfaoRecusado ? "insert rejeitado pela FK" : "INSERT PASSOU — a FK caiu",
+  );
 }
 
 async function main(): Promise<void> {

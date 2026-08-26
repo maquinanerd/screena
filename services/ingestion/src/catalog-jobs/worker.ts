@@ -24,6 +24,8 @@ import {
   type CatalogJobRegistry,
   type StructuredLogger,
 } from './handler.js'
+import { redactSecrets } from '../cli/exit.js'
+import { clampSafeText, errorMessageWithCauses, flattenErrorText } from '../utils/error-text.js'
 import { planFailure } from './transitions.js'
 import type { JobBackoffConfig } from './backoff.js'
 import type { CatalogJobStorePort, ClaimedCatalogJob } from './store-port.js'
@@ -84,17 +86,38 @@ class JobTimeoutError extends Error {
   }
 }
 
-/** Extrai um codigo/mensagem SEGUROS (sem PII/segredo) de um erro. */
+/**
+ * Extrai um codigo/mensagem SEGUROS (sem PII/segredo) de um erro.
+ *
+ * Este e o ULTIMO gate antes de `last_error_code`/`last_error_safe`: o que ele
+ * cortar ninguem le depois. Ate 25/08/2026 ele cortava na primeira quebra de
+ * linha, e a mensagem do Prisma COMECA com `\n` — 7.076 jobs gravaram o prefixo
+ * do embrulho e nada mais, ou string vazia. Ver `utils/error-text.ts`, que
+ * concentra o achatamento, a cadeia de `cause` e o truncamento pelas duas
+ * pontas; a stack continua fora (`message` nunca a contem).
+ *
+ * A REDACAO E A CONTRAPARTIDA DE TER CONSERTADO A DECAPITACAO.
+ * Enquanto a mensagem morria na primeira linha, quase nada chegava ao banco.
+ * Agora a cadeia de `cause` inteira chega — e o Prisma ecoa a connection string
+ * em varios erros (a #218 documentou isso ao redigir o `stderr` de processo
+ * filho pelo mesmo motivo). Gravar isso cru numa coluna chamada `_safe` seria
+ * trocar um silencio por um vazamento.
+ *
+ * A ordem importa: `redactSecrets` roda ANTES de `clampSafeText`. Mascarar
+ * depois de truncar deixaria escapar um segredo partido ao meio pelo corte.
+ */
 export function toSafeError(error: unknown): { code: string; safe: string } {
   if (error instanceof Error) {
     // `code` e uma propriedade opcional de erros de driver/HTTP; nao esta em Error.
     const maybeCode: unknown = (error as unknown as { code?: unknown }).code
     const code = typeof maybeCode === 'string' && maybeCode.length > 0 ? maybeCode : error.name
-    // Primeira linha, truncada: nunca despeja stack/payload no banco.
-    const safe = error.message.split('\n')[0]?.slice(0, 200) ?? ''
+    const safe = clampSafeText(redactSecrets(errorMessageWithCauses(error)))
     return { code: code.slice(0, 80), safe }
   }
-  return { code: 'unknown_error', safe: String(error).slice(0, 200) }
+  return {
+    code: 'unknown_error',
+    safe: clampSafeText(redactSecrets(flattenErrorText(String(error)))),
+  }
 }
 
 /**

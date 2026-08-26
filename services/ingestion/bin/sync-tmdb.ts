@@ -9,13 +9,23 @@
  * Args: --id --series-id --season --episode --language --region --page --limit
  *       --max-pages --concurrency --dry-run --apply --resume --checkpoint --from --to
  *
- * Fail-closed: dry-run por padrao; --apply exige token TMDB (env) + DATABASE_URL e
- * aborta em producao. O antigo `sync-tmdb-config` segue como wrapper compativel.
+ * Fail-closed: dry-run por padrao; --apply exige token TMDB (env) + DATABASE_URL.
+ * O antigo `sync-tmdb-config` segue como wrapper compativel.
+ *
+ * EM PRODUCAO, `--apply` continua proibido — com UMA excecao estreita: os
+ * subcomandos de DICIONARIO (`configuration`, `taxonomies`, `genres`) rodam se
+ * `CINERIE_SYNC_TMDB_PRODUCTION_CONFIRMED=true`. O motivo esta em
+ * `src/config-sync/production-authorization.ts`: `genres` nao tinha nenhum
+ * portador que chegasse em producao, e a FK de `movie_genres`/`tv_show_genres`
+ * derruba o titulo INTEIRO quando o dicionario esta vazio. `lists`, `discover` e
+ * `trending` (catalogo em massa) mantem o veto duro.
  *
  * Uso:
  *   corepack pnpm --filter @screena/ingestion exec tsx bin/sync-tmdb.ts taxonomies --apply
  *   corepack pnpm --filter @screena/ingestion exec tsx bin/sync-tmdb.ts media --id 27205 --apply
  *   corepack pnpm --filter @screena/ingestion exec tsx bin/sync-tmdb.ts lists --max-pages 3 --resume --apply
+ *   CINERIE_SYNC_TMDB_PRODUCTION_CONFIRMED=true \
+ *     corepack pnpm --filter @screena/ingestion exec tsx bin/sync-tmdb.ts genres --apply   # producao
  */
 
 import process from 'node:process'
@@ -28,6 +38,7 @@ import { createPrismaImageConfigStore } from '../src/persistence/image-config-st
 import { createPrismaMediaStore } from '../src/persistence/media-store.js'
 import { createPrismaGenresStore, createPrismaCheckpointStore } from '../src/persistence/catalog-stores.js'
 import { runTaxonomySync, type TaxonomyReadPort } from '../src/config-sync/run.js'
+import { authorizeTaxonomyWrite } from '../src/config-sync/production-authorization.js'
 import { runMediaSync, type MediaTarget } from '../src/catalog-sync/media-sync.js'
 import { runListSync } from '../src/catalog-sync/list-sync.js'
 
@@ -46,10 +57,6 @@ function intArg(name: string, fallback: number): number {
   const n = raw ? Number.parseInt(raw, 10) : NaN
   return Number.isFinite(n) && n > 0 ? n : fallback
 }
-function isProductionLike(): boolean {
-  const env = `${process.env.NODE_ENV ?? ''} ${process.env.VERCEL_ENV ?? ''}`.toLowerCase()
-  return env.includes('production')
-}
 
 async function main(): Promise<void> {
   const sub = process.argv[2] as Sub | undefined
@@ -63,9 +70,17 @@ async function main(): Promise<void> {
     console.log(`[dry-run] sync-tmdb ${sub}: nenhuma chamada externa/escrita. Use --apply para aplicar.`)
     return
   }
-  if (isProductionLike()) {
-    console.error('ABORTADO: --apply proibido em producao (NODE_ENV/VERCEL_ENV).')
+  // O gate de producao decide ANTES de qualquer conexao ou chamada externa.
+  // A decisao e NOMEADA (nao um booleano) para que o operador leia por que foi
+  // recusado: falta de autorizacao pede uma env var; subcomando de catalogo em
+  // massa nao tem autorizacao nenhuma que o libere.
+  const authorization = authorizeTaxonomyWrite(sub, process.env)
+  if (!authorization.allowed) {
+    console.error(authorization.message)
     process.exit(1)
+  }
+  if (authorization.reason === 'authorized') {
+    console.warn(`[producao] escrita de taxonomia AUTORIZADA explicitamente para "${sub}".`)
   }
   if (!process.env.DATABASE_URL) {
     console.error('ABORTADO: DATABASE_URL ausente.')

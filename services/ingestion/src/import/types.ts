@@ -79,4 +79,15 @@ export interface ImportResult {
   readonly episodes?: number
   /** Mensagem de erro quando status != success. */
   readonly error?: string
+  /**
+   * Codigo do erro (driver/HTTP quando existe; senao o `name`).
+   *
+   * Existe porque o unico consumidor de `error` e um embrulho que vira excecao
+   * do worker, e o worker CLASSIFICA por `code`. Sem carregar o codigo aqui, o
+   * embrulho so tinha o STATUS do import (`failed`) para oferecer — e toda
+   * falha de banco ou de rede chegava a metrica como `error_class: "unknown"`.
+   */
+  readonly errorCode?: string
+  /** Status HTTP quando o erro carrega um (classifica 404/429/5xx corretamente). */
+  readonly errorStatus?: number
 }
