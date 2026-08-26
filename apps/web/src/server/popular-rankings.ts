@@ -38,11 +38,19 @@ import {
   type RankingTabSlug,
   type RankingVertical,
 } from "../lib/popular-rankings";
+import { sortByBayesianRating } from "../lib/bayesian-rating";
 import { MOVIES_INDEX_PATH, SERIES_INDEX_PATH } from "../lib/site";
 import { buildTmdbImageUrl } from "../lib/tmdb-image-url";
 
 const LANGUAGE_CODE = "pt-BR";
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+/** `Decimal` do Prisma -> number. Fora da fronteira, `Decimal` nao faz conta. */
+function decimalToNumber(value: { toString(): string } | number | null): number | null {
+  if (value == null) return null;
+  const parsed = typeof value === "number" ? value : Number(value.toString());
+  return Number.isFinite(parsed) ? parsed : null;
+}
 
 /**
  * Poster 2:3 do card (152px no desktop). `w300` e o menor tamanho do catalogo
@@ -330,16 +338,43 @@ async function rankingCandidates(
     case "series":
       return trendingCandidates(prisma, "tv", now);
 
+    // "No ar" ordenava por `airDate desc` — RECENCIA PURA, sem nenhum sinal de
+    // qualidade. Medido em producao em 2026-08-26, a aba abria com The
+    // Challenge, Coronation Street, UFC: novela diaria e esporte exibem
+    // episodio TODO DIA, entao venciam por FREQUENCIA DE EXIBICAO, que nao e o
+    // que a secao promete. O recorte de tempo continua sendo o filtro (episodio
+    // nos ultimos 7 dias); o que mudou e a ORDEM dentro dele.
+    //
+    // Por que ponderar em vez de cortar, como faz "Classicos": um piso de votos
+    // aqui apagaria a estreia legitima que ainda nao juntou votos. A media
+    // bayesiana deixa ela na lista e so lhe nega o topo de graca.
     case "no-ar": {
       const since = new Date(now.getTime() - ON_THE_AIR_WINDOW_DAYS * MS_PER_DAY);
-      const rows = await prisma.episode.findMany({
+      // `distinct` no episodio: sem ele uma serie diaria enche o teto sozinha
+      // com sete linhas e expulsa as outras ANTES de qualquer ordenacao.
+      const aired = await prisma.episode.findMany({
         where: { airDate: { gte: since, lte: now } },
-        orderBy: [{ airDate: "desc" }, { tvShowId: "asc" }],
-        take: CANDIDATE_FETCH_LIMIT,
+        distinct: ["tvShowId"],
+        orderBy: [{ tvShowId: "asc" }],
         select: { tvShowId: true },
       });
+      if (aired.length === 0) {
+        return { candidates: [], reason: "no_recent_episode" };
+      }
+      const shows = await prisma.tvShow.findMany({
+        where: { id: { in: aired.map((row) => row.tvShowId) } },
+        select: { id: true, voteAverageTmdb: true, voteCountTmdb: true },
+      });
+      const ranked = sortByBayesianRating(
+        shows,
+        (show) => ({
+          voteAverage: decimalToNumber(show.voteAverageTmdb),
+          voteCount: show.voteCountTmdb,
+        }),
+        (show) => show.id.toString(),
+      ).slice(0, CANDIDATE_FETCH_LIMIT);
       return {
-        candidates: rows.map((row) => ({ entityType: "tv" as const, entityId: row.tvShowId })),
+        candidates: ranked.map((show) => ({ entityType: "tv" as const, entityId: show.id })),
         reason: "no_recent_episode",
       };
     }

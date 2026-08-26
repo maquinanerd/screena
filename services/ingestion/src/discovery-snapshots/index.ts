@@ -177,3 +177,48 @@ export function planDiscoverySnapshot(input: {
 export function isSnapshotValid(snapshot: { expiresAt: Date }, now: Date): boolean {
   return snapshot.expiresAt.getTime() > now.getTime()
 }
+
+/** Um item de snapshot ja resolvido para a entidade interna, pronto para gravar. */
+export interface ResolvedDiscoveryItem {
+  readonly entityId: bigint
+  readonly position: number
+  readonly providerScore: number | null
+}
+
+/**
+ * Resolve os itens do plano para ids internos, descartando o que nao existe e
+ * o que REPETE.
+ *
+ * A DEDUPLICACAO NAO E ZELO — e o unico motivo de a captura nao morrer inteira.
+ *
+ * Uma lista de descoberta do TMDB e paginada e REORDENA entre as requisicoes:
+ * com `maxPages > 1`, o mesmo titulo cai na pagina 2 e de novo na 3. Dois
+ * `tmdb_id` distintos tambem podem resolver para a MESMA entidade interna
+ * (merge de duplicata no catalogo). Nos dois casos o `createMany` do store
+ * violaria o unique `(snapshot_id, entity_id)` e derrubaria a TRANSACAO: a
+ * captura inteira vira zero por causa de uma linha repetida, e o operador ve
+ * "snapshot nao criado" sem nenhuma pista de que a culpa foi de um duplicado.
+ *
+ * Medido em producao em 2026-08-26: `trending/movie --max-pages=5` abortou com
+ * `Unique constraint failed on the fields: (snapshot_id, entity_id)`. Com uma
+ * pagina so o defeito nao aparece — por isso passou despercebido ate agora.
+ *
+ * Fica a PRIMEIRA ocorrencia: em lista de descoberta, posicao menor e o sinal
+ * mais forte, e e a posicao que o render usa para ordenar. As posicoes saem
+ * densas e 0-based porque ha um segundo unique, `(snapshot_id, position)`.
+ */
+export function resolveSnapshotItems(
+  items: readonly DiscoveryItemPlan[],
+  resolved: ReadonlyMap<number, bigint>,
+): ResolvedDiscoveryItem[] {
+  const seen = new Set<bigint>()
+  const out: ResolvedDiscoveryItem[] = []
+  for (const item of items) {
+    const entityId = resolved.get(item.entityTmdbId)
+    if (entityId === undefined) continue
+    if (seen.has(entityId)) continue
+    seen.add(entityId)
+    out.push({ entityId, position: out.length, providerScore: item.providerScore })
+  }
+  return out
+}
