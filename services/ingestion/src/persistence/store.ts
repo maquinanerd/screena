@@ -297,6 +297,46 @@ async function replaceTitleCountries(
   })
 }
 
+/**
+ * Mantem apenas os generos que o DICIONARIO (`genres`) ja conhece.
+ *
+ * ============ POR QUE ESTA FUNCAO PRECISOU EXISTIR ============
+ *
+ * `movie_genres`/`tv_show_genres` tem FK COMPOSTA para
+ * `genres(media_type, tmdb_id)` (migration `20260820120000`). Um genero ausente
+ * do dicionario nao "pula a linha": ele estoura `P2003` e aborta a TRANSACAO
+ * INTEIRA do upsert — o filme nao e gravado, os creditos nao sao gravados, os
+ * ids externos nao sao gravados. Uma taxonomia desatualizada derruba o titulo.
+ *
+ * O comentario que morava aqui AFIRMAVA que "o insert e filtrado antes, contra
+ * os generos existentes". Nao era. Nao havia filtro em lugar nenhum do
+ * repositorio — o contrato estava escrito e nao implementado, que e a forma de
+ * defeito mais dificil de ver: quem le o codigo le a promessa.
+ *
+ * `skipDuplicates` NAO cobre isto. Ele resolve conflito de PK, nunca FK.
+ *
+ * O dicionario e populado SO por `bin/sync-tmdb.ts genres --apply`, que aborta
+ * em ambiente production-like e nao tem fila no agendador. Ou seja: em producao
+ * ele pode estar vazio, e nesse estado TODO titulo com genero falha. Esta funcao
+ * degrada isso para "o titulo entra sem vinculo de genero" em vez de "o titulo
+ * nao entra".
+ */
+async function keepKnownGenres(
+  tx: Tx,
+  mediaType: 'movie' | 'tv',
+  genres: readonly TitleGenreLink[],
+): Promise<TitleGenreLink[]> {
+  const known = await tx.genre.findMany({
+    where: { mediaType, tmdbId: { in: genres.map((g) => g.tmdbId) } },
+    select: { tmdbId: true },
+  })
+  const knownIds = new Set(known.map((row) => row.tmdbId))
+  // `position` NAO e recalculado: ele carrega a ordem editorial do TMDB (o
+  // genero mais representativo primeiro). Reindexar depois do descarte moveria
+  // o chip do hero por causa de uma lacuna do dicionario.
+  return genres.filter((g) => knownIds.has(g.tmdbId))
+}
+
 async function replaceTitleGenres(
   tx: Tx,
   kind: 'movie' | 'tv',
@@ -308,25 +348,25 @@ async function replaceTitleGenres(
   if (kind === 'movie') {
     await tx.movieGenre.deleteMany({ where: { movieId: titleId } })
     if (genres.length === 0) return 0
+    const linkable = await keepKnownGenres(tx, 'movie', genres)
+    if (linkable.length === 0) return 0
     await tx.movieGenre.createMany({
-      data: genres.map((g) => ({
+      data: linkable.map((g) => ({
         movieId: titleId,
         genreMediaType: 'movie',
         genreTmdbId: g.tmdbId,
         position: g.position,
       })),
-      // Um genero que o dicionario ainda nao conhece violaria a FK e abortaria a
-      // TRANSACAO INTEIRA — o filme nao seria gravado por causa de uma taxonomia
-      // desatualizada. `skipDuplicates` nao cobre FK; por isso o insert e
-      // filtrado antes, contra os generos existentes.
       skipDuplicates: true,
     })
-    return genres.length
+    return linkable.length
   }
   await tx.tvShowGenre.deleteMany({ where: { tvShowId: titleId } })
   if (genres.length === 0) return 0
+  const linkable = await keepKnownGenres(tx, 'tv', genres)
+  if (linkable.length === 0) return 0
   await tx.tvShowGenre.createMany({
-    data: genres.map((g) => ({
+    data: linkable.map((g) => ({
       tvShowId: titleId,
       genreMediaType: 'tv',
       genreTmdbId: g.tmdbId,
@@ -334,7 +374,7 @@ async function replaceTitleGenres(
     })),
     skipDuplicates: true,
   })
-  return genres.length
+  return linkable.length
 }
 
 /** Cria um `EntityStorePort` apoiado no Prisma. */
