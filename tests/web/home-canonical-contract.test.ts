@@ -41,7 +41,12 @@ describe('home pública — design canônico (tela 02)', () => {
       // A home mistura filme e serie no trilho "Em breve"; as categorias usam
       // os getters de uma vertical so (tests/web/upcoming-rail-by-route).
       'getHomeUpcomingMixed()',
-      'getSeriesIndexData()',
+      // `getSeriesIndexData()` SAIU desta lista em 2026-08-26, e a ausencia e o
+      // conserto. O trilho "Series da semana" era alimentado pela LISTAGEM
+      // generica de series — sob um rotulo que afirma recorte de tempo, a home
+      // exibia o comeco do alfabeto. Agora ele le o trending, que ja vem de
+      // `getHomeCatalogData()` (primeiro item desta lista). Reintroduzir o
+      // getter aqui e o sinal de que o fallback voltou.
       "getHomeTickerItems('home')",
       'getHomeEditorialHighlights()',
       "getPopularRankings('home')",

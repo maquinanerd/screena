@@ -140,7 +140,13 @@ describe("cada aba tem a SUA consulta (não um slice da mesma lista)", () => {
     const streaming = await discoveryFor("series", "streaming");
     const temporadas = await discoveryFor("series", "novas-temporadas");
 
-    expect(noAr.discovery.map((call) => call.model)).toEqual(["episode"]);
+    // DUAS consultas desde 2026-08-26, e a segunda e o portao de qualidade.
+    // `episode` continua sendo o RECORTE (quem foi ao ar nos ultimos 7 dias);
+    // `tvShow` traz (voteAverage, voteCount) para a ORDEM. Antes a ordem era
+    // `airDate desc` — recencia pura — e a aba abria com The Challenge,
+    // Coronation Street e UFC: novela diaria e esporte vencem por frequencia
+    // de exibicao, nao por serem o que alguem quer ver.
+    expect(noAr.discovery.map((call) => call.model)).toEqual(["episode", "tvShow"]);
     expect(streaming.discovery.map((call) => call.model)).toEqual(["watchAvailability"]);
     expect(temporadas.discovery.map((call) => call.model)).toEqual(["season"]);
   });
