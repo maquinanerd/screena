@@ -13,6 +13,15 @@
  *
  * A fixture abaixo reproduz exatamente essa condição: MAIS filmes que o limite
  * de slides, e séries perfeitamente publicáveis atrás deles.
+ *
+ * ============ POR QUE A FIXTURE GANHOU ARTE, VOTOS E SINOPSE ============
+ *
+ * Ela nasceu com `backdropPath: null`, `posterPath: null`, sem votos e sem
+ * sinopse — e passava, porque naquele momento o hero não tinha portão nenhum.
+ * Desde 25/08/2026 tem (`lib/home-hero-eligibility.ts`), e um título assim é
+ * exatamente o que ele existe para barrar. Encher a fixture não afrouxa este
+ * arquivo: ele mede ESCOPO, e para medir escopo os candidatos precisam ser
+ * publicáveis. Quem mede o portão é `home-hero-selection.test.ts`.
  */
 
 import { describe, expect, it } from "vitest";
@@ -45,12 +54,14 @@ function fakePrisma(): Parameters<typeof loadHeroSlides>[0] {
             id,
             titleOriginal: `Filme ${id}`,
             releaseDate: new Date(Date.UTC(2020, 0, 1)),
+            voteCountTmdb: 5_000,
+            status: "Released",
             certification: null,
             screenScore: null,
             screenScoreScale: null,
             screenScoreDisplay: false,
-            backdropPath: null,
-            posterPath: null,
+            backdropPath: `/backdrop-${id}.jpg`,
+            posterPath: `/poster-${id}.jpg`,
           })),
         ),
     },
@@ -61,21 +72,39 @@ function fakePrisma(): Parameters<typeof loadHeroSlides>[0] {
             id,
             nameOriginal: `Série ${id}`,
             firstAirDate: new Date(Date.UTC(2019, 0, 1)),
+            voteCountTmdb: 5_000,
+            status: "Returning Series",
             numberOfSeasons: 2,
             numberOfEpisodes: 19,
             certification: "TV-MA",
             screenScore: null,
             screenScoreScale: null,
             screenScoreDisplay: false,
-            backdropPath: null,
-            posterPath: null,
+            backdropPath: `/backdrop-${id}.jpg`,
+            posterPath: `/poster-${id}.jpg`,
           })),
         ),
     },
-    entityTranslation: { findMany: () => Promise.resolve([]) },
+    // O portão exige sinopse pt-BR; sem tradução nenhum candidato passaria e
+    // este arquivo mediria a ausência de tradução em vez do escopo.
+    entityTranslation: {
+      findMany: ({ where }: { where: { entityId: { in: bigint[] } } }) =>
+        Promise.resolve(
+          where.entityId.in.map((id) => ({
+            entityId: id,
+            title: null,
+            summary: `Sinopse pt-BR do título ${id}.`,
+          })),
+        ),
+    },
     crewMember: { findFirst: () => Promise.resolve(null) },
     castMember: { findMany: () => Promise.resolve([]) },
     cinerieScoreCalculation: { findMany: () => Promise.resolve([]) },
+    // Sem trending capturado e sem curadoria: a ordem cai para vote_count desc,
+    // que é o caminho (b) da decisão. Aqui todos têm o mesmo volume, então a
+    // ordem estável por título mantém a composição canônica.
+    discoverySnapshot: { findFirst: () => Promise.resolve(null) },
+    heroCurationDecision: { findMany: () => Promise.resolve([]) },
   } as unknown as Parameters<typeof loadHeroSlides>[0];
 }
 

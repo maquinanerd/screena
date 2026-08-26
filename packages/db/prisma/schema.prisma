@@ -253,8 +253,50 @@ model Language {
   writerJobs          EntityWriterJob[]
   indexDecisions      PageIndexabilityDecision[]
   articleTranslations ArticleTranslation[]
+  heroCurations       HeroCurationDecision[]
 
   @@map("languages")
+}
+
+/// Fixacao MANUAL do destaque da home (hero), por idioma.
+///
+/// POR QUE EXISTE. O hero e vitrine, nao sorteio: a escolha automatica (portao
+/// de qualidade + trending, ver `apps/web/src/lib/home-hero-eligibility.ts`)
+/// cobre o dia a dia, mas estreia, efemeride e campanha editorial pedem que um
+/// humano diga QUAL titulo abre a home. Sem esta tabela a unica forma de trocar
+/// o destaque seria mexer em codigo.
+///
+/// E UMA DECISAO GOVERNADA, no mesmo molde de `page_indexability_decisions`:
+/// carrega QUEM decidiu (`decided_by`), QUANDO (`decided_at`) e POR QUE
+/// (`reason`), e nao ha caminho automatico que escreva aqui — nenhum worker,
+/// nenhum job, nenhuma IA. So INSERT humano.
+model HeroCurationDecision {
+  id           BigInt     @id @default(autoincrement())
+  entityType   EntityType @map("entity_type")
+  entityId     BigInt     @map("entity_id")
+  /// `language_code` (e nao `locale`) para casar com o resto do schema e poder
+  /// ter FK real para `languages`.
+  languageCode String     @map("language_code")
+  /// Ordem no carousel, 1 = primeiro slide. Duas linhas vigentes com a mesma
+  /// posicao desempatam por `decided_at` mais recente (ver o loader).
+  position     Int
+  validFrom    DateTime   @map("valid_from")
+  /// `null` = sem prazo. A curadoria vale ate alguem a substituir.
+  validUntil   DateTime?  @map("valid_until")
+  /// Motivo editorial. Texto livre, para o proximo humano entender a escolha.
+  reason       String?
+  /// Identidade humana de quem decidiu. Obrigatorio: decisao sem dono nao e
+  /// decisao governada.
+  decidedBy    String     @map("decided_by")
+  decidedAt    DateTime   @default(now()) @map("decided_at")
+  createdAt    DateTime   @default(now()) @map("created_at")
+
+  language Language @relation(fields: [languageCode], references: [code])
+
+  /// A consulta do hero: idioma + janela de validade.
+  @@index([languageCode, validFrom, validUntil])
+  @@index([entityType, entityId])
+  @@map("hero_curation_decisions")
 }
 
 model Country {

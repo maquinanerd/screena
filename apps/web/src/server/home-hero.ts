@@ -9,6 +9,30 @@
  * Fronteira de serializacao: converte `Decimal`/`BigInt`/Date do Prisma em
  * primitivos e delega a montagem/validacao ao presenter PURO
  * `home-hero-presenter`. O client component so recebe `HeroSlide[]` plano.
+ *
+ * ============================================================================
+ * O HERO ORDENAVA POR DATA DE LANCAMENTO, E ISSO O ENTREGAVA AO LIXO DO TMDB
+ * ============================================================================
+ * Ate 25/08/2026 a escolha era `sort(byYearDesc)` + `slice(0, 5)`, e o unico
+ * requisito para entrar no pool era ter slug canonico pt-BR. Nenhum filtro de
+ * arte, de votos, de status ou de sanidade de data.
+ *
+ * O TMDB e comunitario: ele tem lixo, e o lixo se concentra exatamente nas datas
+ * futuras (placeholders de filmes nao anunciados, datas digitadas errado). Uma
+ * ordenacao por data decrescente nao e "quase certa" — ela premia, por
+ * construcao, o registro mais implausivel do catalogo. Resultado medido em
+ * producao: o destaque da home era "Der Liebesbrief", curta alemao de 1938
+ * cadastrado com `release_date` em 2057, sem poster.
+ *
+ * A ORDEM AGORA (decisao do dono, 25/08/2026):
+ *  1. CURADORIA MANUAL vigente (`hero_curation_decisions`) — vence sempre;
+ *  2. TRENDING da semana (`discovery_snapshots`), na ordem da lista;
+ *  3. VOTE_COUNT desc entre os que passam no portao;
+ *  4. nada passa => `[]`, e a superficie omite a faixa (com log `hero_empty`).
+ *
+ * A data de lancamento deixou de ser criterio de ordem. Ela permanece como
+ * CORTE no portao (`estreia_futura`, `ano_implausivel`), que e o papel que ela
+ * sabe cumprir. O portao vive em `../lib/home-hero-eligibility.ts` (puro).
  */
 
 import { cache } from "react";
@@ -16,6 +40,11 @@ import { getPrismaClient } from "@screena/db/server";
 
 import { getCastForEntity } from "./entity-cast";
 import { resolveEditorialScoreSources, type ScoredEntityType } from "./editorial-score";
+import { orderByTrending, readTrendingSnapshot } from "./trending-snapshot";
+import {
+  heroRejectionReason,
+  type HeroRejectionReason,
+} from "../lib/home-hero-eligibility";
 import {
   buildHeroSlides,
   type HeroSlide,
@@ -118,8 +147,12 @@ interface HeroCandidate {
   entityType: HeroEntityType;
   entityId: bigint;
   input: Omit<HeroSlideInput, "director" | "cast">;
-  /** Chave de ordenacao (ano desc; sem ano vai ao fim). */
-  year: number | null;
+  /** `vote_count_tmdb`: criterio de CORTE e de ORDEM, jamais exibido (inv. 1/2). */
+  voteCount: number | null;
+  /** `status` do TMDB (so decide para filme). */
+  status: string | null;
+  /** Data de estreia crua, para o portao decidir "ja estreou". */
+  releaseDate: Date | null;
 }
 
 /** Monta os candidatos de FILME (sem crew/cast ainda). */
@@ -133,6 +166,8 @@ async function movieCandidates(prisma: PrismaClient): Promise<HeroCandidate[]> {
         id: true,
         titleOriginal: true,
         releaseDate: true,
+        voteCountTmdb: true,
+        status: true,
         certification: true,
         screenScore: true,
         screenScoreScale: true,
@@ -151,7 +186,9 @@ async function movieCandidates(prisma: PrismaClient): Promise<HeroCandidate[]> {
       kind: "movie" as const,
       entityType: "movie" as const,
       entityId: movie.id,
-      year,
+      voteCount: movie.voteCountTmdb,
+      status: movie.status,
+      releaseDate: movie.releaseDate,
       input: {
         kind: "movie",
         title: translation.title ?? movie.titleOriginal,
@@ -182,6 +219,8 @@ async function seriesCandidates(prisma: PrismaClient): Promise<HeroCandidate[]> 
         id: true,
         nameOriginal: true,
         firstAirDate: true,
+        voteCountTmdb: true,
+        status: true,
         numberOfSeasons: true,
         numberOfEpisodes: true,
         certification: true,
@@ -202,7 +241,9 @@ async function seriesCandidates(prisma: PrismaClient): Promise<HeroCandidate[]> 
       kind: "series" as const,
       entityType: "tv" as const,
       entityId: show.id,
-      year,
+      voteCount: show.voteCountTmdb,
+      status: show.status,
+      releaseDate: show.firstAirDate,
       input: {
         kind: "series",
         title: translation.title ?? show.nameOriginal,
@@ -222,31 +263,163 @@ async function seriesCandidates(prisma: PrismaClient): Promise<HeroCandidate[]> 
   });
 }
 
-/** Ordena por ano desc (sem ano ao fim), desempate estavel por titulo. */
-function byYearDesc(a: HeroCandidate, b: HeroCandidate): number {
-  const ay = a.year ?? Number.NEGATIVE_INFINITY;
-  const by = b.year ?? Number.NEGATIVE_INFINITY;
-  if (ay !== by) return by - ay;
+/**
+ * Ordem de DESEMPATE do hero automatico: mais votados primeiro.
+ *
+ * `vote_count_tmdb` NAO e nota — e volume de avaliacoes, o sinal mais barato de
+ * "muita gente conhece este titulo". Entra como criterio de ORDEM e nunca chega
+ * a tela (invariantes 1 e 2). Desempate estavel por titulo para a lista nao
+ * dancar entre dois renders com o mesmo numero de votos.
+ */
+function byVoteCountDesc(a: HeroCandidate, b: HeroCandidate): number {
+  const av = a.voteCount ?? 0;
+  const bv = b.voteCount ?? 0;
+  if (av !== bv) return bv - av;
   return (a.input.title ?? "").localeCompare(b.input.title ?? "");
 }
 
+/** Uma recusa do portao, para o log da superficie. */
+export interface HeroRejection {
+  readonly entityType: HeroEntityType;
+  readonly entityId: string;
+  readonly title: string | null;
+  readonly reason: HeroRejectionReason;
+}
+
 /**
- * Escolhe os candidatos do escopo pedido, ja ordenados e limitados.
+ * Aplica o PORTAO DE QUALIDADE e devolve quem passou + por que cada um caiu.
  *
- * `home` mantem a composicao canonica (filmes por ano desc primeiro, depois
- * series); `movies`/`series` levam SO a sua vertical — e por isso o `slice`
- * nunca mais pode esvaziar uma delas.
+ * A lista de recusados nao e decoracao: sem ela, "o hero sumiu" e indistinguivel
+ * de "o hero nunca foi construido", e a operacao nao teria como saber se falta
+ * ingestao de arte, de traducao ou de votos.
  */
-function selectHeroCandidates(
-  movies: HeroCandidate[],
-  series: HeroCandidate[],
-  scope: HeroScope,
+function applyHeroGate(
+  candidates: readonly HeroCandidate[],
+  now: Date,
+): { eligible: HeroCandidate[]; rejected: HeroRejection[] } {
+  const eligible: HeroCandidate[] = [];
+  const rejected: HeroRejection[] = [];
+  for (const candidate of candidates) {
+    const reason = heroRejectionReason(
+      {
+        kind: candidate.kind,
+        backdropPath: candidate.input.backdropPath,
+        posterPath: candidate.input.posterPath,
+        voteCount: candidate.voteCount,
+        summary: candidate.input.summary,
+        releaseDate: candidate.releaseDate,
+        status: candidate.status,
+      },
+      now,
+    );
+    if (reason === null) eligible.push(candidate);
+    else {
+      rejected.push({
+        entityType: candidate.entityType,
+        entityId: candidate.entityId.toString(),
+        title: candidate.input.title,
+        reason,
+      });
+    }
+  }
+  return { eligible, rejected };
+}
+
+/**
+ * Ordena os ELEGIVEIS de um tipo: trending da semana primeiro, na ordem da
+ * lista; quem nao esta no trending vem depois, por volume de votos.
+ *
+ * POR QUE NAO E "TRENDING OU NADA", como em "Popular essa semana". Aquela faixa
+ * AFIRMA um recorte ("em alta"), entao titulo fora do trending sob aquele rotulo
+ * seria mentira, e `orderByTrending` descarta com razao. O hero nao afirma
+ * recorte nenhum — ele afirma "vale a pena ver isto" — entao o trending e a
+ * melhor evidencia disponivel, e a ausencia dele degrada para a segunda melhor
+ * em vez de apagar a faixa. E o que a decisao do dono pede em letra: (a)
+ * snapshot quando houver, (b) senao vote_count, (c) so entao vazio.
+ */
+async function orderEligible(
+  prisma: PrismaClient,
+  entityType: HeroEntityType,
+  eligible: readonly HeroCandidate[],
+  now: Date,
+): Promise<HeroCandidate[]> {
+  if (eligible.length === 0) return [];
+  const snapshot = await readTrendingSnapshot(prisma, entityType, "week", now);
+  const emAlta = orderByTrending(eligible, (c) => c.entityId, snapshot.entityIds);
+  const naLista = new Set(emAlta.map((c) => c.entityId.toString()));
+  const resto = eligible
+    .filter((c) => !naLista.has(c.entityId.toString()))
+    .sort(byVoteCountDesc);
+  return [...emAlta, ...resto];
+}
+
+/**
+ * A curadoria MANUAL vigente, na ordem declarada (`position`).
+ *
+ * Vigente = `valid_from <= agora` e (`valid_until` nulo ou futuro). Quando duas
+ * linhas disputam a mesma posicao, ganha a decidida mais recentemente — trocar
+ * o destaque e escrever uma linha nova, nunca editar a antiga, e assim o
+ * historico de quem decidiu o que fica intacto.
+ */
+async function curatedEntityKeys(
+  prisma: PrismaClient,
+  now: Date,
+): Promise<{ entityType: HeroEntityType; entityId: bigint }[]> {
+  const rows = await prisma.heroCurationDecision.findMany({
+    where: {
+      languageCode: LANGUAGE_CODE,
+      validFrom: { lte: now },
+      OR: [{ validUntil: null }, { validUntil: { gt: now } }],
+      // O hero so tem estas duas verticais; `season`/`episode`/`person` numa
+      // linha de curadoria seria dado invalido, e ignora-lo aqui evita que ele
+      // vire um slide sem rota.
+      entityType: { in: ["movie", "tv"] },
+    },
+    orderBy: [{ position: "asc" }, { decidedAt: "desc" }],
+    select: { entityType: true, entityId: true },
+  });
+  return rows.map((row) => ({
+    entityType: row.entityType as HeroEntityType,
+    entityId: row.entityId,
+  }));
+}
+
+/**
+ * Monta a lista final: curadoria humana primeiro, automatico preenchendo o resto.
+ *
+ * "A curadoria VENCE" significa que o titulo fixado ocupa a frente do carousel
+ * mesmo que o automatico o ordenasse depois — nao que ela apague os outros
+ * slides. Fixar um titulo e deixar o hero com um card so seria punir o dono por
+ * usar o recurso.
+ *
+ * A curadoria NAO passa pelo portao de qualidade, de proposito: o portao existe
+ * para conter a escolha AUTOMATICA, e um humano que fixa um titulo ja decidiu.
+ * O presenter continua descartando quem nao tem slug/titulo — ali o que se
+ * protege nao e gosto, e link quebrado.
+ */
+function composeHero(
+  curated: readonly { entityType: HeroEntityType; entityId: bigint }[],
+  automatic: readonly HeroCandidate[],
+  byKey: ReadonlyMap<string, HeroCandidate>,
 ): HeroCandidate[] {
-  movies.sort(byYearDesc);
-  series.sort(byYearDesc);
-  const pool =
-    scope === "movies" ? movies : scope === "series" ? series : [...movies, ...series];
-  return pool.slice(0, HOME_HERO_SLIDE_LIMIT);
+  const escolhidos: HeroCandidate[] = [];
+  const jaEscolhido = new Set<string>();
+  const push = (candidate: HeroCandidate | undefined): void => {
+    if (candidate === undefined) return;
+    const key = `${candidate.entityType}:${candidate.entityId.toString()}`;
+    if (jaEscolhido.has(key)) return;
+    jaEscolhido.add(key);
+    escolhidos.push(candidate);
+  };
+  for (const pick of curated) {
+    if (escolhidos.length >= HOME_HERO_SLIDE_LIMIT) break;
+    push(byKey.get(`${pick.entityType}:${pick.entityId.toString()}`));
+  }
+  for (const candidate of automatic) {
+    if (escolhidos.length >= HOME_HERO_SLIDE_LIMIT) break;
+    push(candidate);
+  }
+  return escolhidos;
 }
 
 /**
@@ -258,6 +431,7 @@ function selectHeroCandidates(
 export async function loadHeroSlides(
   prisma: PrismaClient,
   scope: HeroScope,
+  now: Date = new Date(),
 ): Promise<HeroSlide[]> {
   // A vertical oposta nao e consultada: em `/pt/series` o catalogo de filmes
   // (129 titulos em producao) nao paga nem uma query.
@@ -265,7 +439,59 @@ export async function loadHeroSlides(
     scope === "series" ? Promise.resolve<HeroCandidate[]>([]) : movieCandidates(prisma),
     scope === "movies" ? Promise.resolve<HeroCandidate[]>([]) : seriesCandidates(prisma),
   ]);
-  const selected = selectHeroCandidates(movies, series, scope);
+
+  // PORTAO DE QUALIDADE, por vertical. Ate 25/08/2026 nao havia portao nenhum:
+  // a lista era ordenada por ano desc e cortada em 5, e foi assim que um curta
+  // de 1938 cadastrado com `release_date` em 2057 e sem poster virou o destaque
+  // da home.
+  const filmes = applyHeroGate(movies, now);
+  const seriados = applyHeroGate(series, now);
+  const recusados = [...filmes.rejected, ...seriados.rejected];
+
+  const [filmesOrdenados, seriesOrdenadas] = await Promise.all([
+    orderEligible(prisma, "movie", filmes.eligible, now),
+    orderEligible(prisma, "tv", seriados.eligible, now),
+  ]);
+  const automatic =
+    scope === "movies"
+      ? filmesOrdenados
+      : scope === "series"
+        ? seriesOrdenadas
+        : [...filmesOrdenados, ...seriesOrdenadas];
+
+  // A curadoria manual VENCE: entra na frente, e o automatico preenche o resto.
+  const curated = await curatedEntityKeys(prisma, now);
+  const byKey = new Map<string, HeroCandidate>();
+  for (const candidate of [...movies, ...series]) {
+    byKey.set(`${candidate.entityType}:${candidate.entityId.toString()}`, candidate);
+  }
+  const permitidos = new Set<HeroEntityType>(
+    scope === "movies" ? ["movie"] : scope === "series" ? ["tv"] : ["movie", "tv"],
+  );
+  const selected = composeHero(
+    curated.filter((pick) => permitidos.has(pick.entityType)),
+    automatic,
+    byKey,
+  );
+
+  // AUSENCIA NUNCA E MUDA. Nenhum elegivel significa uma faixa a menos na home,
+  // e o motivo mais frequente das recusas diz o que falta (arte? traducao?
+  // votos?). Sem esta linha, "o hero sumiu" seria indistinguivel de "o hero
+  // quebrou".
+  if (selected.length === 0 && recusados.length > 0) {
+    const porMotivo: Record<string, number> = {};
+    for (const recusa of recusados) {
+      porMotivo[recusa.reason] = (porMotivo[recusa.reason] ?? 0) + 1;
+    }
+    console.warn(
+      JSON.stringify({
+        event: "hero_empty",
+        scope,
+        candidates: recusados.length,
+        byReason: porMotivo,
+      }),
+    );
+  }
 
   // PROCEDENCIA do Cinerie Score em LOTE (uma query por tipo, nunca N+1). Sem
   // calculo `calculated` coerente em `cinerie_score_calculations`, a nota fica
