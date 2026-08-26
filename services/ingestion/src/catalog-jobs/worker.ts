@@ -24,6 +24,7 @@ import {
   type CatalogJobRegistry,
   type StructuredLogger,
 } from './handler.js'
+import { redactSecrets } from '../cli/exit.js'
 import { clampSafeText, errorMessageWithCauses, flattenErrorText } from '../utils/error-text.js'
 import { planFailure } from './transitions.js'
 import type { JobBackoffConfig } from './backoff.js'
@@ -94,16 +95,29 @@ class JobTimeoutError extends Error {
  * do embrulho e nada mais, ou string vazia. Ver `utils/error-text.ts`, que
  * concentra o achatamento, a cadeia de `cause` e o truncamento pelas duas
  * pontas; a stack continua fora (`message` nunca a contem).
+ *
+ * A REDACAO E A CONTRAPARTIDA DE TER CONSERTADO A DECAPITACAO.
+ * Enquanto a mensagem morria na primeira linha, quase nada chegava ao banco.
+ * Agora a cadeia de `cause` inteira chega — e o Prisma ecoa a connection string
+ * em varios erros (a #218 documentou isso ao redigir o `stderr` de processo
+ * filho pelo mesmo motivo). Gravar isso cru numa coluna chamada `_safe` seria
+ * trocar um silencio por um vazamento.
+ *
+ * A ordem importa: `redactSecrets` roda ANTES de `clampSafeText`. Mascarar
+ * depois de truncar deixaria escapar um segredo partido ao meio pelo corte.
  */
 export function toSafeError(error: unknown): { code: string; safe: string } {
   if (error instanceof Error) {
     // `code` e uma propriedade opcional de erros de driver/HTTP; nao esta em Error.
     const maybeCode: unknown = (error as unknown as { code?: unknown }).code
     const code = typeof maybeCode === 'string' && maybeCode.length > 0 ? maybeCode : error.name
-    const safe = clampSafeText(errorMessageWithCauses(error))
+    const safe = clampSafeText(redactSecrets(errorMessageWithCauses(error)))
     return { code: code.slice(0, 80), safe }
   }
-  return { code: 'unknown_error', safe: clampSafeText(flattenErrorText(String(error))) }
+  return {
+    code: 'unknown_error',
+    safe: clampSafeText(redactSecrets(flattenErrorText(String(error)))),
+  }
 }
 
 /**
