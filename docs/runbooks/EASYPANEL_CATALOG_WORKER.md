@@ -34,6 +34,8 @@ A Parte 2 **não depende** do disco: ela não escreve volume relevante.
 | 2 | `TMDB_READ_ACCESS_TOKEN` | **File Mount** | token v4 do TMDB | **sim** |
 | 3 | `NODE_ENV` | env var | `production` | sim (já vem na imagem) |
 | 4 | `CINERIE_CATALOG_WORKER_PRODUCTION_CONFIRMED` | env var | `true` | **sim** — sem ela o serviço recusa subir |
+| 4a | `CATALOG_WORKER_ENQUEUE_DISCOVERY` | env var | `false` | **sim, com o `screen-cron` de pé** — ver nota abaixo |
+| 4b | `CATALOG_WORKER_ENQUEUE_CHANGES` | env var | `false` | **sim, com o `screen-cron` de pé** — ver nota abaixo |
 | 5 | `CATALOG_WORKER_HEALTH_PORT` | env var | `3004` | não (default) |
 | 6 | `CATALOG_WORKER_ID` | env var | `cinerie-catalog-worker-1` | não |
 | 7 | `CATALOG_WORKER_CONCURRENCY` | env var | **comece em `2`** (ver §6) | não (default 4) |
@@ -42,6 +44,21 @@ A Parte 2 **não depende** do disco: ela não escreve volume relevante.
 | 10 | `CATALOG_WORKER_DISCOVERY_INTERVAL_MS` | env var | `86400000` (24 h) | não |
 | 11 | `CATALOG_WORKER_CHANGES_INTERVAL_MS` | env var | `21600000` (6 h) | não |
 | 12 | `CATALOG_WORKER_JOB_TIMEOUT_MS` | env var | `120000` | não |
+
+> **As linhas 4a e 4b não existiam quando este roteiro foi escrito (2026-08-11).**
+> O `screen-cron` (agendador) só virou o relógio da plataforma em 21/08, e é ele
+> quem passou a enfileirar a MESMA descoberta diária. Quem criou o serviço
+> seguindo a lista original de 12 variáveis subiu o worker com os dois
+> enfileiradores no default `true` — e ficou com **dois relógios para o mesmo
+> trabalho**. Hoje a duplicação é inofensiva (a chave de idempotência é a mesma:
+> `discover_ids:<kind>:daily-exports:<dia>`), mas no dia em que a chave mudar de
+> um lado são dois lotes por dia sem ninguém notar. **Desligadas, o worker
+> continua fazendo o papel que só ele faz: drenar.** O default das duas é `true`
+> de propósito — desligar por omissão quebraria uma instalação que ainda não
+> subiu o agendador.
+>
+> Fonte canônica das duas:
+> [`docs/operations/ingestion-scheduler.md` §6.1](../operations/ingestion-scheduler.md).
 
 > **Por que File Mount para os dois segredos.** Segredo passado como
 > `--build-arg` vaza **duas vezes**: no log de build (que o painel mostra) e nas
@@ -362,6 +379,8 @@ decisão de credencial é sua.
 - [ ] **[1]** migration aprovada por você; duas pré-condições rodadas; backup feito
 - [ ] `screen-db` migrado
 - [ ] variáveis 1–12 no `cinerie-catalog-worker` (1 e 2 como **File Mount**)
+- [ ] **4a e 4b** coladas — é o passo que ficou de fora em 2026-08 e deixou
+      dois relógios enfileirando a mesma descoberta
 - [ ] serviço criado, 1 réplica, sem domínio público
 - [ ] `/healthz` 200 e `/readyz` 200 com os 6 checks `ok`
 - [ ] **[3]** `plan-bootstrap` rodado e o número de **episódios** conferido

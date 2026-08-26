@@ -10,6 +10,7 @@ import { Filmography } from '../../../_components/filmography'
 import { SectionBoundary } from '../../../_components/section-boundary'
 import { canonicalRedirectPath } from '../../../../src/lib/canonical-redirect'
 import { buildExternalLinks } from '../../../../src/lib/external-links'
+import { formatHiddenCreditsNotice } from '../../../../src/lib/person-presenter'
 import { decideSection } from '../../../../src/lib/section-absence'
 import { SITE_URL, gatePublicRobots } from '../../../../src/lib/site'
 import { getPersonPageData } from '../../../../src/server/person-page'
@@ -178,6 +179,10 @@ export default async function PersonPage({ params }: { params: Promise<PersonPag
     birthChip.length > 0 ? birthChip.join(' · ') : null,
   ].filter((item): item is string => item !== null)
 
+  // A filmografia trunca quando o título do crédito não tem slug canônico pt-BR
+  // (está no catálogo, mas não tem página) — e até agora saía calada. Quem
+  // decide se a linha existe é o formatador: `null` = lista completa.
+  const hiddenCreditsNotice = formatHiddenCreditsNotice(view.hiddenCreditCount)
   const knownFor = view.credits.filter((credit) => credit.posterUrl !== null).slice(0, KNOWN_FOR_LIMIT)
   const galleryPhotos = gallery.urls
   const galleryRest = gallery.total - galleryPhotos.length
@@ -351,6 +356,16 @@ export default async function PersonPage({ params }: { params: Promise<PersonPag
           ) : (
             <p className="muted">Filmografia ainda não disponível.</p>
           )}
+          {/*
+            FORA do ternário de propósito. O caso que mais importa é justamente
+            aquele em que a lista está VAZIA e mesmo assim há créditos no banco:
+            ali "Filmografia ainda não disponível" sozinha se lê como "esta
+            pessoa não tem créditos", que é a afirmação falsa. A linha precisa
+            aparecer nos dois ramos.
+          */}
+          {hiddenCreditsNotice !== null ? (
+            <p className="muted">{hiddenCreditsNotice}</p>
+          ) : null}
         </section>
 
         {personalDetails.length > 0 ? (

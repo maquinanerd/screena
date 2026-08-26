@@ -9,6 +9,26 @@
  * A filmografia e resolvida a partir de cast_members/crew_members: cada credito
  * (polimorfico -> movie|tv) so vira link quando o alvo tem titulo publico e slug
  * canonico pt-BR. Creditos sem alvo resolvivel sao omitidos (nunca inventados).
+ *
+ * Omitidos, mas CONTADOS (desde 25/08/2026). Antes disso a lista parcial tinha
+ * exatamente a mesma cara da lista inteira. O denominador (`rawCreditCount`) sai
+ * daqui, da linha crua, e a subtracao vive no presenter, que e quem ve quantos
+ * sobreviveram — entao um descarte novo no meio do caminho entra na conta
+ * sozinho, sem ninguem lembrar de soma-lo.
+ *
+ * QUAL DESCARTE E REAL, MEDIDO EM 25/08/2026:
+ *  - `buildPersonCredits` (presenter) descartando alvo SEM slug canonico pt-BR:
+ *    REAL. O titulo esta no catalogo e mesmo assim nao vira linha, porque nao ha
+ *    pagina para onde linkar. E o unico que hoje faz a filmografia truncar.
+ *  - `toCredit` devolvendo `null` por alvo ausente de `movies`/`tv_shows`:
+ *    NAO alcancavel. `cast_members`/`crew_members` tem FK
+ *    `(entity_type, entity_id) -> entities`, e `entities` e mantida 1:1 com as
+ *    tabelas-raiz por trigger de INSERT/DELETE (ON DELETE RESTRICT). O banco
+ *    recusa a linha orfa — provado no check 29 de
+ *    `scripts/validate-person-page-real-postgres.ts`. O ramo fica como defesa:
+ *    se a FK cair, o descarte passa a ser real e ja esta contado.
+ *  - Alvo `season`/`episode` (guest star de episodio): fora do denominador de
+ *    proposito — ver `countLinkableCreditRows`.
  */
 
 import { cache } from "react";
@@ -18,7 +38,9 @@ import { SITE_URL } from "../lib/site";
 import { buildTmdbImageUrl } from "../lib/tmdb-image-url";
 import {
   buildPersonPageView,
+  countLinkableCreditRows,
   evaluatePersonIndexability,
+  isPersonCreditEntityType,
   PERSON_RENDERABLE_REVIEW_STATUSES,
   type PersonContentBlockInput,
   type PersonCreditEntityType,
@@ -186,6 +208,10 @@ export const getPersonPageData = cache(
       translation,
       blocks,
       credits,
+      // O denominador sai da ORIGEM (as linhas cruas), nao do fim de alguma
+      // camada. Os dois numeros ja estao neste escopo — nao ha query nova.
+      rawCreditCount:
+        countLinkableCreditRows(castRows) + countLinkableCreditRows(crewRows),
     });
 
     const indexability = evaluatePersonIndexability({
@@ -280,11 +306,14 @@ function toCredit(
   roleLabel: string | null,
   targets: Map<string, ResolvedTarget>,
 ): PersonCreditInput | null {
-  if (entityType !== "movie" && entityType !== "tv") return null;
+  // MESMA porta que `countLinkableCreditRows` usa para montar o denominador de
+  // `hiddenCreditCount`. Duplicar o criterio aqui faria a linha "N nao listados"
+  // divergir do que a lista realmente descartou.
+  if (!isPersonCreditEntityType(entityType)) return null;
   const target = targets.get(targetKey(entityType, entityId));
   if (target === undefined) return null;
   return {
-    entityType: entityType as PersonCreditEntityType,
+    entityType,
     title: target.title,
     slug: target.slug,
     year: target.year,
