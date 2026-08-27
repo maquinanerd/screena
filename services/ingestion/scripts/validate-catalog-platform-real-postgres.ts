@@ -103,7 +103,7 @@ class Clock {
   }
 }
 
-async function runChecks(url: string): Promise<void> {
+async function runChecks(url: string, readServerLog: () => string | null): Promise<void> {
   const prisma = new PrismaClient({ datasourceUrl: url })
   const q = <T = Record<string, unknown>>(sql: string) => prisma.$queryRawUnsafe<T[]>(sql)
 
@@ -164,6 +164,167 @@ async function runChecks(url: string): Promise<void> {
       'enqueue idempotente: mesma chave = noop (1 linha, created=false)',
       first.created === true && dup.created === false && dup.id === first.id && count1 === 1,
       `created1=${first.created}, created2=${dup.created}, linhas=${count1}`,
+    )
+
+    // -------------------------------------------------------------------
+    // CONTROLE NEGATIVO do enqueue: o noop nao pode CUSTAR um erro.
+    //
+    // A idempotencia e rede de seguranca, e ate 2026-08-27 ela era paga com uma
+    // EXCECAO: `create` + catch de P2002. O Postgres so conseguia contar que a
+    // chave existia ABORTANDO a transacao implicita — e toda transacao abortada
+    // escreve `ERROR: duplicate key value violates unique constraint
+    // "catalog_jobs_idempotency_key_key"` no log do servidor. Como reenfileirar
+    // a mesma dependencia e o caminho NORMAL (todo `sync_details` recoberto
+    // reenfileira o seu `sync_media`), o log de producao enchia de ERROR para
+    // descrever sucesso.
+    //
+    // Estes tres checks medem os dois lados do contrato:
+    //  (a) chave NOVA continua criando a linha, com TODAS as colunas — o INSERT
+    //      cru substituiu um `create` do Prisma, e SQL cru pode calar uma coluna
+    //      sem que nada reclame;
+    //  (b) chave EXISTENTE devolve noop;
+    //  (c) o noop de (b) nao escreveu NADA no log do servidor. Este e o check
+    //      que REPROVA se alguem voltar ao catch.
+    // -------------------------------------------------------------------
+    const controlKey = 'k-control-negativo-enqueue'
+    const controlAvailableAt = new Date('2026-07-20T09:30:00.000Z')
+
+    // FAIL-LOUD: sem log capturado nao ha o que medir. Um controle que se
+    // degrada em silencio PASSA com o defeito de volta — que e exatamente o que
+    // ele existe para impedir.
+    const logAvailable = readServerLog() !== null
+    record(
+      'controle negativo: log do servidor disponivel para medicao',
+      logAvailable,
+      logAvailable
+        ? 'stderr do processo do Postgres capturado'
+        : 'stderr do Postgres NAO capturado — nada a medir',
+    )
+    const logBefore = readServerLog() ?? ''
+    const rollbackBefore = Number(
+      (
+        await q<{ n: bigint }>(
+          'SELECT xact_rollback AS n FROM pg_stat_database WHERE datname = current_database()',
+        )
+      )[0].n,
+    )
+
+    // (a) chave NOVA cria a linha — e a linha carrega tudo o que a porta pediu.
+    const controlNew = await jobs.enqueue({
+      jobType: 'sync_media',
+      entityType: 'tv',
+      externalId: '1399',
+      idempotencyKey: controlKey,
+      payload: { tmdbId: 1399, locale: 'pt-BR', entityType: 'tv' },
+      priority: 70,
+      maxAttempts: 3,
+      availableAt: controlAvailableAt,
+      runId: 'controle-negativo',
+    })
+    const controlRow = (
+      await q<{
+        id: bigint
+        job_type: string
+        status: string
+        entity_type: string | null
+        external_id: string | null
+        payload: Record<string, unknown>
+        attempts: number
+        max_attempts: number
+        priority: number
+        available_at: Date
+        run_id: string | null
+        created_at: Date
+        updated_at: Date
+      }>(`SELECT * FROM catalog_jobs WHERE idempotency_key = '${controlKey}'`)
+    )[0]
+    record(
+      'controle negativo (a): chave NOVA cria a linha com TODAS as colunas',
+      controlNew.created === true &&
+        controlRow !== undefined &&
+        controlRow.id.toString() === controlNew.id &&
+        controlRow.job_type === 'sync_media' &&
+        controlRow.status === 'pending' &&
+        controlRow.entity_type === 'tv' &&
+        controlRow.external_id === '1399' &&
+        controlRow.payload.tmdbId === 1399 &&
+        controlRow.payload.locale === 'pt-BR' &&
+        controlRow.attempts === 0 &&
+        controlRow.max_attempts === 3 &&
+        controlRow.priority === 70 &&
+        controlRow.available_at.toISOString() === controlAvailableAt.toISOString() &&
+        controlRow.run_id === 'controle-negativo' &&
+        controlRow.updated_at instanceof Date &&
+        controlRow.created_at instanceof Date,
+      `created=${controlNew.created}, id=${controlNew.id}, status=${controlRow?.status}, ` +
+        `entity=${controlRow?.entity_type}/${controlRow?.external_id}, prio=${controlRow?.priority}, ` +
+        `maxAtt=${controlRow?.max_attempts}, availableAt=${controlRow?.available_at?.toISOString()}, ` +
+        `runId=${controlRow?.run_id}, payload=${JSON.stringify(controlRow?.payload)}`,
+    )
+
+    // (b) chave EXISTENTE: noop, mesmo id, nenhuma linha nova, nada sobrescrito.
+    const controlDup = await jobs.enqueue({
+      jobType: 'sync_media',
+      entityType: 'tv',
+      externalId: '1399',
+      idempotencyKey: controlKey,
+      payload: { tmdbId: 1399, locale: 'pt-BR', entityType: 'tv' },
+      priority: 70,
+      maxAttempts: 3,
+      availableAt: controlAvailableAt,
+      runId: 'controle-negativo-2',
+    })
+    const controlCount = Number(
+      (
+        await q<{ c: number }>(
+          `SELECT count(*)::int AS c FROM catalog_jobs WHERE idempotency_key = '${controlKey}'`,
+        )
+      )[0].c,
+    )
+    const controlAfterRow = (
+      await q<{ run_id: string | null }>(
+        `SELECT run_id FROM catalog_jobs WHERE idempotency_key = '${controlKey}'`,
+      )
+    )[0]
+    record(
+      'controle negativo (b): chave EXISTENTE = noop (mesmo id, 1 linha, nada sobrescrito)',
+      controlDup.created === false &&
+        controlDup.id === controlNew.id &&
+        controlCount === 1 &&
+        // DO NOTHING, nao DO UPDATE: o segundo enqueue nao pode reescrever o
+        // primeiro — senao a colisao voltaria a custar escrita, so que silenciosa.
+        controlAfterRow.run_id === 'controle-negativo',
+      `created=${controlDup.created}, id=${controlDup.id}, linhas=${controlCount}, runId=${controlAfterRow?.run_id}`,
+    )
+
+    // (c) O DESFECHO QUE INTERESSA: o noop nao escreveu erro no log. Com o
+    // `create` + catch antigo este check REPROVA — a colisao gera uma linha
+    // `ERROR: duplicate key value violates unique constraint
+    // "catalog_jobs_idempotency_key_key"`, identica a de producao.
+    //
+    // `xact_rollback` viaja junto como INFORMACAO, nunca como asserta. Medido em
+    // 2026-08-27: com o codigo antigo o delta foi ZERO enquanto a linha de ERROR
+    // apareceu. Ou seja, o contador nao acompanha este evento na janela em que se
+    // le — quem o usasse como proxy mediria "zero duplicatas" com o defeito de
+    // pe. Fica no relatorio so para que ninguem refaca a mesma aposta.
+    const logAfter = readServerLog() ?? ''
+    const logDelta = logAfter.slice(logBefore.length)
+    const duplicateLines = logDelta
+      .split(/\r?\n/)
+      .filter((line) => /duplicate key value violates unique constraint/i.test(line))
+    const rollbackAfter = Number(
+      (
+        await q<{ n: bigint }>(
+          'SELECT xact_rollback AS n FROM pg_stat_database WHERE datname = current_database()',
+        )
+      )[0].n,
+    )
+    record(
+      'controle negativo (c): o noop NAO escreveu ERROR no log do servidor',
+      logAvailable && duplicateLines.length === 0,
+      `linhas "duplicate key" no delta do log=${duplicateLines.length}, ` +
+        `xact_rollback ${rollbackBefore}->${rollbackAfter} (informativo, NAO e o criterio)` +
+        (duplicateLines.length > 0 ? ` | primeira: ${duplicateLines[0]!.slice(0, 160)}` : ''),
     )
 
     // prioridade: menor priority reivindicado primeiro
@@ -1272,11 +1433,35 @@ async function main(): Promise<void> {
     `\n=== Backend A — Postgres efemero (embedded) :${port} | postgresql://postgres:****@127.0.0.1:${port} ===\n`,
   )
 
+  // O LOG DO SERVIDOR e o artefato que o controle negativo do enqueue mede: um
+  // `ERROR: duplicate key ...` so pode ser provado AUSENTE se houver onde ele
+  // apareceria.
+  //
+  // NAO se liga `logging_collector` para isso. Tentamos: com o coletor ligado, a
+  // linha `database system is ready to accept connections` passa a ir para o
+  // ARQUIVO — e `EmbeddedPostgres.start()` resolve justamente esperando essa
+  // linha no STDERR do processo. O validador ficava pendurado para sempre, sem
+  // erro. O log fica onde ja estava (stderr) e nos e que passamos a escutar.
+  let serverLog = ''
+  let serverLogAttached = false
+
   let started = false
   try {
     await pg.initialise()
     await pg.start()
     started = true
+
+    // O `stderr` do processo do Postgres E o log do servidor. `EmbeddedPostgres`
+    // nao expoe o filho na API publica, entao a leitura e declaradamente por
+    // dentro — e se a forma mudar, `serverLogAttached` continua false e o
+    // controle negativo REPROVA em vez de passar sem medir.
+    const child = (pg as unknown as { process?: { stderr?: NodeJS.ReadableStream | null } }).process
+    if (child?.stderr) {
+      child.stderr.on('data', (chunk: Buffer | string) => {
+        serverLog += chunk.toString()
+      })
+      serverLogAttached = true
+    }
     await pg.createDatabase('screena_catalog')
 
     const env = { ...process.env, DATABASE_URL: url }
@@ -1289,7 +1474,7 @@ async function main(): Promise<void> {
     record('migrate deploy aplica do zero sem erro', true, 'ok')
 
     console.log('\n--- checks no banco real ---')
-    await runChecks(url)
+    await runChecks(url, () => (serverLogAttached ? serverLog : null))
   } catch (e) {
     // Erros do Prisma comecam com '\n': a primeira linha e vazia e some do
     // relatorio. Compacta para uma linha util e loga o stack completo.

@@ -92,7 +92,7 @@ export function createCatalogHandlerRegistry(
     eraseHandlerTypes(new SyncExternalIdsHandler({ externalIdsSync: deps.externalIdsSync })),
     eraseHandlerTypes(new SyncMediaHandler({ mediaSync: deps.mediaSync })),
     eraseHandlerTypes(new SyncSeasonsHandler({ seasonsSync: deps.seasonsSync, store: deps.store })),
-    eraseHandlerTypes(new SyncEpisodesHandler({ episodesSync: deps.episodesSync })),
+    eraseHandlerTypes(new SyncEpisodesHandler({ episodesSync: deps.episodesSync, store: deps.store })),
     eraseHandlerTypes(
       new SyncListsHandler({ listFetch: deps.listFetch, snapshots: deps.snapshots, now: deps.now }),
     ),

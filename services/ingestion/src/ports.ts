@@ -7,6 +7,7 @@
  */
 
 import type {
+  TmdbEpisodeDetail,
   TmdbMovieDetail,
   TmdbMoviePage,
   TmdbPersonDetail,
@@ -86,6 +87,26 @@ export interface TmdbReadPort {
   getMovie(tmdbId: number): Promise<TmdbMovieDetail>
   getTvShow(tmdbId: number): Promise<TmdbTvDetail>
   getTvSeason(tvTmdbId: number, seasonNumber: number): Promise<TmdbSeasonDetail>
+  /**
+   * Detalhe de UM episodio (`/tv/{id}/season/{n}/episode/{e}`), com os appends
+   * de `TV_EPISODE_APPEND` (credits, external_ids, images, videos, translations).
+   *
+   * ENTROU NO CONTRATO EM 2026-08-27, e o motivo importa. `syncEpisodes` lia os
+   * episodios do payload de TEMPORADA, cujo `episodes[]` traz so um resumo: sem
+   * `credits`, sem `external_ids`, sem `images`. Os normalizadores de episodio
+   * — que sempre souberam ler esses blocos — recebiam um objeto que nunca os
+   * teve e devolviam listas vazias, contadas como sucesso. A pagina de episodio
+   * ficou sem elenco convidado, sem direcao e sem roteiro por falta desta
+   * chamada, nao por falta de dado.
+   *
+   * Custo: UMA requisicao por episodio (os cinco appends cabem no mesmo pedido,
+   * bem abaixo do teto de 20 sub-requests).
+   */
+  getTvEpisode(
+    tvTmdbId: number,
+    seasonNumber: number,
+    episodeNumber: number,
+  ): Promise<TmdbEpisodeDetail>
   getPerson(tmdbId: number): Promise<TmdbPersonDetail>
   /**
    * Lista de filmes com estreia futura (`/movie/upcoming`) — endpoint de
