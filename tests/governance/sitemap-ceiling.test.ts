@@ -210,7 +210,10 @@ class FakeDb {
 
   private answer(q: Query): unknown[] {
     const sql = q.sql;
-    if (sql.includes("GROUP BY entity_type")) return this.coverage();
+    // A consulta de cobertura: lista fixa de tipos via VALUES, com a contagem
+    // SATURADA no piso (ver `readDecisionCoverage`). O fake devolve a contagem
+    // real do conjunto — saturar ou nao nao muda o veredito do `>=`.
+    if (sql.includes("AS t(entity_type)")) return this.coverage();
 
     const isCount = sql.includes("COUNT(*)::int AS n");
     const slice = (rows: Entity[]) => {

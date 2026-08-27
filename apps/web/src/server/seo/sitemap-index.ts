@@ -328,10 +328,26 @@ function absentDecisionFor(
 }
 
 /**
- * Conta as decisoes vigentes por tipo — UMA consulta agrupada para todos.
+ * Conta as decisoes vigentes por tipo — UMA consulta para os cinco.
  *
- * `entity_type IS NOT NULL` exclui as linhas de ARTIGO, que dividem a tabela
- * (`doc_kind`) e tem o proprio gate em `article_translations.index_status`.
+ * A CONTAGEM E LIMITADA AO PISO, DE PROPOSITO. Um `GROUP BY entity_type` sobre a
+ * tabela inteira leria TODAS as linhas vigentes so para descobrir um booleano
+ * ("passou de 1.000?"). Isso escala com o catalogo: ha uma decisao por episodio,
+ * e episodio ja foi 3,79 milhoes de URLs. Numa rota `force-dynamic`, chamada a
+ * cada requisicao de sitemap, isso vira um scan de milhoes de tuplas por
+ * requisicao — o tipo de custo que so aparece meses depois, quando ninguem mais
+ * associa a causa.
+ *
+ * O `LIMIT` dentro do subselect corta em `SITEMAP_DECISION_GATE_MIN_ROWS` por
+ * tipo: no maximo ~5.000 tuplas lidas, sempre, independentemente do tamanho da
+ * tabela. `n` NAO e a contagem real — e a contagem SATURADA no piso, que e a
+ * unica coisa que a decisao precisa. O indice usado e o unique parcial
+ * `page_indexability_decisions_current_unique` (entity_type, entity_id,
+ * language_code) WHERE is_current, que ja e exatamente o conjunto varrido.
+ *
+ * `entity_type IS NOT NULL` esta implicito: a lista de tipos vem de `VALUES`, e
+ * linha de ARTIGO (que divide a tabela via `doc_kind`) tem `entity_type` nulo e
+ * nunca casa. Artigo tem o proprio gate em `article_translations.index_status`.
  *
  * Falha de banco NAO e tratada aqui: ela sobe e cai no fail-closed de quem
  * chamou (index vazio / shard 404), do mesmo jeito que qualquer outra consulta
@@ -343,11 +359,17 @@ async function readDecisionCoverage(
   prisma: PrismaClient,
   language: string,
 ): Promise<DecisionCoverage> {
+  const teto = SITEMAP_DECISION_GATE_MIN_ROWS;
   const rows = await prisma.$queryRaw<{ entity_type: string; n: number }[]>`
-    SELECT entity_type::text AS entity_type, COUNT(*)::int AS n
-    FROM page_indexability_decisions
-    WHERE language_code = ${language} AND is_current = true AND entity_type IS NOT NULL
-    GROUP BY entity_type`;
+    SELECT t.entity_type AS entity_type,
+           (SELECT COUNT(*)::int FROM (
+              SELECT 1 FROM page_indexability_decisions d
+               WHERE d.entity_type = t.entity_type::"EntityType"
+                 AND d.language_code = ${language}
+                 AND d.is_current = true
+               LIMIT ${teto}
+            ) AS amostra) AS n
+    FROM (VALUES ('movie'),('tv'),('person'),('season'),('episode')) AS t(entity_type)`;
   const coverage: Record<DecisionEntity, number> = { ...EMPTY_COVERAGE };
   for (const row of rows) {
     const key = row.entity_type as DecisionEntity;
