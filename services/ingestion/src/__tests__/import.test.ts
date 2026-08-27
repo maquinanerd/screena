@@ -145,6 +145,15 @@ function makeTmdb(overrides: Partial<TmdbReadPort> = {}): TmdbReadPort {
       season_number: seasonNumber,
       episodes: [{ episode_number: 1 }, { episode_number: 2 }],
     }),
+    // O DETALHE do episodio. O resumo acima (`episodes[]` da temporada) NAO tem
+    // `credits`, `external_ids` nem `images` — e essa era a diferenca que
+    // `syncEpisodes` ignorava ate 2026-08-27.
+    getTvEpisode: async (_id, seasonNumber, episodeNumber) => ({
+      episode_number: episodeNumber,
+      season_number: seasonNumber,
+      credits: { cast: [], crew: [], guest_stars: [] },
+      external_ids: {},
+    }),
     getPerson: async (id) => ({ id, name: 'Pessoa', external_ids: { imdb_id: 'nm1' } }),
     getUpcomingMovies: async () => ({ page: 1, results: [], total_pages: 1, total_results: 0 }),
   }

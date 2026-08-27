@@ -4,6 +4,10 @@ import { notFound, permanentRedirect } from 'next/navigation'
 import { serializeJsonLd, buildMetaDescription } from '@screena/seo'
 
 import { PrevNextNav } from '../../../../../_components/prev-next-nav'
+import { SectionBoundary } from '../../../../../_components/section-boundary'
+import { SectionHead } from '../../../../../_components/section-head'
+import { TrailerModal } from '../../../../../_components/trailer-modal'
+import { decideSection } from '../../../../../../src/lib/section-absence'
 import { parseRouteNumber, seasonPath } from '../../../../../../src/lib/routes'
 import { SERIES_INDEX_PATH, SITE_URL, gatePublicRobots } from '../../../../../../src/lib/site'
 import { getSeasonPageData } from '../../../../../../src/server/season-page'
@@ -85,12 +89,27 @@ export default async function SeasonPage({ params }: { params: Promise<SeasonRou
     if (target !== null) permanentRedirect(target)
   }
 
-  const { view, seo, canonicalUrl, seriesUrl } = data
+  const { view, trailer, seo, canonicalUrl, seriesUrl } = data
   const isUnderReview = seo.decision !== 'index'
   const seriesHref = `${SERIES_INDEX_PATH}${view.seriesSlug}/`
   const headerMeta = [view.dateLabel, view.episodeCountLabel].filter(
     (item): item is string => item !== null,
   )
+
+  /**
+   * O TRAILER DA TEMPORADA.
+   *
+   * `SectionBoundary` e nao um ternario: a regra tem duas metades ("o bloco sai
+   * do DOM" e "o motivo vai para o log"), e escritas em lugares diferentes elas
+   * divergem no primeiro refactor. `entityType: 'season'` porque o buraco e
+   * desta temporada — registrar `tv` mandaria o operador olhar a serie inteira.
+   */
+  const trailerSection = decideSection(trailer, {
+    entityType: 'season',
+    entityId: String(view.seasonNumber),
+    section: 'trailer-da-temporada',
+    reason: 'no_season_trailer',
+  })
 
   const breadcrumbJsonLd = {
     '@context': 'https://schema.org',
@@ -190,6 +209,51 @@ export default async function SeasonPage({ params }: { params: Promise<SeasonRou
           previous={view.prevSeason}
           next={view.nextSeason}
         />
+
+        {/* ===== Trailer da temporada =====
+            NADA carrega antes do clique: enquanto o diálogo está fechado não
+            existe `<iframe>`, nem `<script>`, nem requisição a domínio do
+            YouTube. É o mesmo `TrailerModal` da ficha de filme e de série — não
+            há um segundo player, e não pode haver: dois divergiriam no primeiro
+            conserto, e o §6 da política de privacidade depende deste. */}
+        <SectionBoundary decision={trailerSection}>
+          {(video) => (
+            <section aria-labelledby="temporada-trailer-titulo" style={{ paddingTop: 40 }}>
+              <SectionHead
+                headingId="temporada-trailer-titulo"
+                kicker="Mídia"
+                thin="da temporada"
+                title="Trailer"
+              />
+              {/* Geometria PROPRIA. `.media-strip__cell` tira altura do
+                  `.media-strip__grid` da banda de midia do detalhe; fora dele a
+                  celula fica com ALTURA ZERO e o play de 64px cai por cima da
+                  lista de episodios — foi o que aconteceu na primeira escrita,
+                  e so apareceu ao ABRIR a pagina. */}
+              <div className="season-trailer" data-trailer="ready">
+                {view.backdrop !== null ? (
+                  <img
+                    alt=""
+                    height={view.backdrop.height}
+                    loading="lazy"
+                    src={view.backdrop.src}
+                    width={view.backdrop.width}
+                  />
+                ) : null}
+                <span className="media-strip__playwrap">
+                  <TrailerModal
+                    title={`${view.seriesTitle} — ${view.seasonTitle}`}
+                    trailer={video}
+                    triggerClassName="media-strip__play"
+                  />
+                </span>
+                {video.name !== null ? (
+                  <span className="media-strip__caption">{video.name}</span>
+                ) : null}
+              </div>
+            </section>
+          )}
+        </SectionBoundary>
 
         <section aria-labelledby="temporada-episodios-titulo" className="season-page__episodes">
           <div className="eyebrow-bar">

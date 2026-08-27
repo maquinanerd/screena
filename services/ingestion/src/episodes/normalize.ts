@@ -2,8 +2,36 @@
  * normalize.ts — Normalizadores PUROS do caminho de episodio (Backend A §7):
  * elenco, guest stars, equipe, ids externos e stills.
  *
- * Consomem tanto o item de `/tv/{id}/season/{n}` (episodes[]) quanto o detalhe
- * `/tv/{id}/season/{n}/episode/{e}` — a forma dos blocos e a mesma.
+ * ============================================================================
+ * AS DUAS FORMAS DE PAYLOAD NAO SAO A MESMA — E ESTE CABECALHO DIZIA QUE ERAM
+ * ============================================================================
+ * Ate 2026-08-27 aqui se lia que estes extratores consomem "tanto o item de
+ * `/tv/{id}/season/{n}` (episodes[]) quanto o detalhe `.../episode/{e}` — a
+ * forma dos blocos e a mesma". Nao e, e a diferenca custou a pagina inteira:
+ *
+ *   | bloco          | item de `episodes[]` da TEMPORADA | detalhe do EPISODIO      |
+ *   |----------------|-----------------------------------|--------------------------|
+ *   | elenco regular | ausente                           | `credits.cast`           |
+ *   | guest stars    | `guest_stars` no TOPO             | topo + `credits.guest_stars` |
+ *   | equipe         | `crew` no TOPO                    | topo + `credits.crew`    |
+ *   | ids externos   | ausente                           | `external_ids` (append)  |
+ *   | stills         | ausente (so `still_path`, uma)    | `images.stills` (append) |
+ *
+ * O unico chamador de producao (`episodesSync`) passava o item da TEMPORADA.
+ * Quatro dos cinco extratores liam campos que aquele objeto nunca teve e
+ * devolviam `[]` em TODA execucao — contadas como `cast: 0, crew: 0,
+ * externalIds: 0, stills: 0` e reportadas como sucesso. `extractEpisodeCrew`
+ * era o caso mais caro: o TMDB MANDA `crew` no topo do item da temporada
+ * (direcao e roteiro incluidos), e ele lia so `credits.crew`. O dado chegava e
+ * era jogado fora na mesma linha.
+ *
+ * O teste de unidade nao pegou porque toda fixture alimentava a forma do
+ * DETALHE (`credits: {...}`) — a que o chamador de producao nunca fornecia.
+ *
+ * Desde entao: `episodesSync` chama `getTvEpisode` (o detalhe), e estes
+ * extratores leem as DUAS formas onde as duas existem. Ler o topo alem de
+ * `credits` nao e redundancia — e o que mantem o item da temporada utilizavel
+ * como fonte degradada quando so ele estiver disponivel.
  *
  * Defensivos: o payload cru e `unknown`; qualquer entrada sem id de pessoa
  * inteiro positivo ou sem nome util e DESCARTADA (a ingestao nunca inventa
@@ -188,12 +216,25 @@ export function extractEpisodeGuestStars(payload: unknown): EpisodeCreditRow[] {
   return dedupeByPerson(rows)
 }
 
-/** Equipe do episodio (`credits.crew`). */
+/**
+ * Equipe do episodio — DIRECAO e ROTEIRO saem daqui.
+ *
+ * Le as DUAS posicoes: `crew` no TOPO (o item de `episodes[]` da temporada usa
+ * so essa, e o detalhe tambem a traz) e `credits.crew` (so o detalhe, via
+ * append). Ate 2026-08-27 lia apenas a segunda: com o chamador de producao
+ * passando o item da temporada, `crew` chegava no topo e era descartado — e a
+ * pagina de episodio nunca teve diretor nem roteirista.
+ *
+ * A deduplicacao por `credit_id` (ou pessoa+departamento+funcao) resolve a
+ * sobreposicao entre as duas listas sem colapsar uma pessoa que acumula
+ * funcoes (ex.: Director E Writer no mesmo episodio).
+ */
 export function extractEpisodeCrew(payload: unknown): EpisodeCrewRow[] {
-  const credits = creditsBlock(payload)
-  if (credits === null) return []
+  const raw = asRecord(payload)
+  if (raw === null) return []
+  const credits = asRecord(raw.credits)
   const rows: EpisodeCrewRow[] = []
-  for (const item of asArray(credits.crew)) {
+  for (const item of [...asArray(raw.crew), ...asArray(credits?.crew)]) {
     const row = toCrewRow(item)
     if (row !== null) rows.push(row)
   }

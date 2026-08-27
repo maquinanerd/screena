@@ -2,7 +2,7 @@
  * sync-seasons-handler.ts — `sync_seasons` (Backend A §11).
  *
  * Detalhe das temporadas de UMA serie e, quando pedido, enfileira um
- * `sync_episodes` por temporada existente.
+ * `sync_episodes` e um `sync_media` de temporada por temporada existente.
  *
  * As temporadas enfileiradas sao as que o provider REPORTOU (`seasonNumbers`),
  * nunca um intervalo 1..N adivinhado: series tem temporada 0 (especiais) e
@@ -106,6 +106,49 @@ export class SyncSeasonsHandler implements CatalogJobHandler<SyncSeasonsInput, S
           }),
           payload: { tmdbId: input.tmdbId, seasonNumber, locale: input.locale },
           priority: 70,
+          runId: context.requestId,
+        })
+        if (result.created) enqueued += 1
+        await context.heartbeat()
+      }
+    }
+
+    /**
+     * A MIDIA DA TEMPORADA — o trilho que nao existia.
+     *
+     * `sync_media` recusava `season` ate 2026-08-27, entao nada jamais
+     * enfileirou este job e `tmdb_videos` nunca teve uma linha de temporada. A
+     * pagina de temporada nao tinha trailer por falta deste laco, nao por
+     * falta de dado no TMDB nem de licenca (a entrada "TMDB (trailers)" existe
+     * desde 13/08/2026).
+     *
+     * Custo: 1 job e 2 requisicoes (`/images` + `/videos`) por temporada.
+     * Prioridade 75 — atras de `sync_episodes` (70), porque o trailer enriquece
+     * uma pagina que os episodios primeiro precisam POVOAR.
+     */
+    if (input.enqueueSeasonMedia) {
+      throwIfAborted(context.signal)
+      for (const seasonNumber of outcome.seasonNumbers) {
+        const result = await this.deps.store.enqueue({
+          jobType: 'sync_media',
+          entityType: 'season',
+          externalId: String(input.tmdbId),
+          idempotencyKey: buildIdempotencyKey({
+            jobType: 'sync_media',
+            entityType: 'season',
+            externalId: String(input.tmdbId),
+            discriminator: `s${seasonNumber}:${input.locale}`,
+          }),
+          // `tmdbId` e o da SERIE (e assim que o TMDB endereca a URL); o id
+          // proprio da temporada — a CHAVE de gravacao — o adapter resolve no
+          // banco. Ver `buildMediaTarget`.
+          payload: {
+            entityType: 'season',
+            tmdbId: input.tmdbId,
+            seasonNumber,
+            locale: input.locale,
+          },
+          priority: 75,
           runId: context.requestId,
         })
         if (result.created) enqueued += 1

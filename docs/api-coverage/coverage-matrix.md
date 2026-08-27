@@ -48,7 +48,7 @@ Exatamente **1 por endpoint e 1 por campo**:
 | `tmdb.tv.season.details` — GET /tv/{id}/season/{n} | ✅ | `public_ready` |
 | `tmdb.person.details` — GET /person/{id} | ✅ | `public_ready` |
 | `tmdb.movie.upcoming` — GET /movie/upcoming | ✅ | `public_ready` |
-| `tmdb.tv.episode.details` — GET .../episode/{e} | ✅ | `not_applicable` (método definido, não chamado) |
+| `tmdb.tv.episode.details` — GET .../episode/{e} | ✅ | `normalized` (chamado por `sync_episodes` desde 27/08/2026 — 1 requisição por episódio) |
 | `tmdb.discovery.daily_id_exports` — files.tmdb.org | ✅ | `raw_captured` |
 | `tmdb.discovery.changes` — /{kind}/changes | ✅ (contrato) | `not_applicable` (planner, não executado) |
 | `tmdb.trending` — /trending/{movie,tv}/{day,week} | ✅ | `normalized` (fila `trending` a 6 h → `discovery_snapshots`; posição alimenta a prioridade da fila) |

@@ -158,6 +158,27 @@ export interface EpisodesSyncOutcome {
    * existe episodio para sincronizar, e inventar id seria criar fato.
    */
   readonly skippedNoTmdbId: number
+  /**
+   * Episodios cujo DETALHE (`/tv/{id}/season/{n}/episode/{e}`) falhou e que
+   * cairam para o resumo da temporada.
+   *
+   * Nao e "pulado": o episodio foi gravado, mas SO com guest stars e equipe (os
+   * dois blocos que o resumo traz no topo). Elenco regular, ids externos e
+   * stills ficaram de fora. Precisa ser visivel e separado de `skippedNoTmdbId`
+   * porque as duas ausencias tem causas diferentes: uma e buraco upstream de
+   * identidade, esta e falha de rede numa chamada especifica.
+   */
+  readonly failedDetail: number
+  /**
+   * Numeros de episodio efetivamente PROCESSADOS, na ordem do provider.
+   *
+   * Existe pelo mesmo motivo de `seasonNumbers` em `SeasonsSyncOutcome`: quem
+   * enfileira trabalho por episodio nao pode adivinhar `1..N`. Series tem
+   * episodio 0, numeracao com lacuna e episodios especiais — um intervalo
+   * inventado geraria job para episodio inexistente (recusado la na frente,
+   * depois de gastar uma vaga na fila) e PULARIA os que estao fora dele.
+   */
+  readonly episodeNumbers: readonly number[]
   readonly skipped: boolean
   readonly skipReason: string | null
 }

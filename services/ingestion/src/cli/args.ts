@@ -68,6 +68,10 @@ const INT_FLAGS: ReadonlySet<string> = new Set([
   'max-jobs',
   'max-pages',
   'season',
+  // `--episode` existe para `catalog media --entity episode`: a midia de um
+  // episodio e enderecada por serie + temporada + episodio, e sem o terceiro
+  // numero a URL nao fecha.
+  'episode',
   'timeout-ms',
   // Orcamento operacional do `plan-bootstrap`. Existem porque `--limit` mede
   // TITULO, e titulo nao e a unidade de custo: 3 series populares ja
@@ -126,6 +130,7 @@ export interface CatalogFlags {
   readonly maxJobs: number | null
   readonly maxPages: number | null
   readonly season: number | null
+  readonly episode: number | null
   readonly timeoutMs: number | null
   /** Tetos do orcamento (`plan-bootstrap`). null = sem teto naquela dimensao. */
   readonly maxTitles: number | null
@@ -344,6 +349,7 @@ export function parseCatalogArgs(argv: readonly string[]): CatalogArgsResult {
     maxJobs: ints['max-jobs'] ?? null,
     maxPages: ints['max-pages'] ?? null,
     season: ints.season ?? null,
+    episode: ints.episode ?? null,
     timeoutMs: ints['timeout-ms'] ?? null,
     maxTitles: ints['max-titles'] ?? null,
     maxSeries: ints['max-series'] ?? null,
@@ -422,6 +428,14 @@ export function validateInvocation(
   }
   if (command === 'media' && flags.entity === null) {
     return '"media" exige --entity (movie|tv|season|episode|person).'
+  }
+  // Ate 2026-08-27 a mensagem acima ja anunciava `season|episode` e o schema do
+  // job os rejeitava. Agora aceita — e exige os numeros que fecham a URL.
+  if (command === 'media' && (flags.entity === 'season' || flags.entity === 'episode') && flags.season === null) {
+    return `"media --entity ${flags.entity}" exige --season (numero da temporada; --id e o da SERIE).`
+  }
+  if (command === 'media' && flags.entity === 'episode' && flags.episode === null) {
+    return '"media --entity episode" exige --episode (numero do episodio).'
   }
   if (command === 'sync' && flags.id === null && flags.idsFile === null) {
     return '"sync" exige --id <tmdbId> ou --ids-file <arquivo>.'

@@ -369,3 +369,102 @@ describe('extractEpisodeStills', () => {
     expect(extractEpisodeStills({ images: { stills: 'nao e array' } })).toEqual([])
   })
 })
+
+/**
+ * AS DUAS FORMAS DE PAYLOAD, LADO A LADO.
+ *
+ * Todo teste acima alimenta a forma do DETALHE do episodio (`credits: {...}`).
+ * Era exatamente a forma que o unico chamador de producao NAO fornecia: ate
+ * 2026-08-27 `episodesSync` passava o item de `episodes[]` da TEMPORADA, e por
+ * isso quatro dos cinco extratores devolviam [] em toda execucao, com a suite
+ * inteira verde.
+ *
+ * Este bloco fixa a forma da TEMPORADA — a que o TMDB realmente devolve em
+ * `/tv/{id}/season/{n}` — para que a diferenca entre as duas pare de ser
+ * invisivel ao teste.
+ */
+describe('a forma do item de episodes[] da TEMPORADA (nao a do detalhe)', () => {
+  /**
+   * Um item de `episodes[]` como o TMDB o devolve: `crew` e `guest_stars` no
+   * TOPO, sem bloco `credits`, sem `external_ids`, sem `images`.
+   */
+  const ITEM_DA_TEMPORADA = {
+    air_date: '2021-07-23',
+    episode_number: 1,
+    id: 2960053,
+    name: 'Adeus, Earl',
+    overview: 'AFC Richmond contrata uma psicologa esportiva.',
+    runtime: 39,
+    still_path: '/still-t2e1.jpg',
+    crew: [
+      { id: 1213786, name: 'Declan Lowney', department: 'Directing', job: 'Director', credit_id: 'c-dir' },
+      { id: 1245003, name: 'Brendan Hunt', department: 'Writing', job: 'Writer', credit_id: 'c-wri' },
+    ],
+    guest_stars: [
+      { id: 1657018, name: 'Toheeb Jimoh', character: 'Sam Obisanya', order: 0, credit_id: 'c-gs1' },
+      { id: 1215166, name: 'Cristo Fernandez', character: 'Dani Rojas', order: 1, credit_id: 'c-gs2' },
+    ],
+  }
+
+  it('DIRECAO e ROTEIRO chegam no TOPO e agora sao lidos', () => {
+    // O defeito de 2026-08-27: `extractEpisodeCrew` lia so `credits.crew`, e o
+    // item da temporada nao tem esse bloco. O dado chegava e sumia na linha.
+    const rows = extractEpisodeCrew(ITEM_DA_TEMPORADA)
+
+    expect(rows).toHaveLength(2)
+    expect(rows.find((r) => r.job === 'Director')?.name).toBe('Declan Lowney')
+    expect(rows.find((r) => r.job === 'Writer')?.name).toBe('Brendan Hunt')
+  })
+
+  it('guest stars do TOPO ja eram lidas — este era o unico dos cinco que funcionava', () => {
+    const rows = extractEpisodeGuestStars(ITEM_DA_TEMPORADA)
+
+    expect(rows).toHaveLength(2)
+    expect(rows.every((r) => r.isGuest)).toBe(true)
+  })
+
+  it('elenco regular, ids externos e stills NAO existem nesta forma: [] e a resposta HONESTA', () => {
+    // Nao e defeito destes tres extratores devolverem vazio aqui — e a forma
+    // que nao tem os blocos. O defeito era o CHAMADOR usar esta forma e
+    // reportar `cast: 0, externalIds: 0, stills: 0` como sucesso. Quem consome
+    // esses tres precisa do DETALHE (`getTvEpisode`).
+    expect(extractEpisodeCast(ITEM_DA_TEMPORADA)).toEqual([])
+    expect(extractEpisodeExternalIds(ITEM_DA_TEMPORADA)).toEqual([])
+    expect(extractEpisodeStills(ITEM_DA_TEMPORADA)).toEqual([])
+  })
+
+  it('o DETALHE traz os cinco, e a equipe nao duplica entre topo e credits', () => {
+    // O detalhe do episodio manda `crew`/`guest_stars` nas DUAS posicoes. Ler as
+    // duas nao pode dobrar a equipe: a deduplicacao por `credit_id` resolve.
+    const detalhe = {
+      ...ITEM_DA_TEMPORADA,
+      external_ids: { imdb_id: 'tt11189248', tvdb_id: 8225281 },
+      images: { stills: [{ file_path: '/s1.jpg' }, { file_path: '/s2.jpg' }] },
+      credits: {
+        cast: [{ id: 1245003, name: 'Jason Sudeikis', character: 'Ted Lasso', order: 0, credit_id: 'c-cast1' }],
+        crew: ITEM_DA_TEMPORADA.crew,
+        guest_stars: ITEM_DA_TEMPORADA.guest_stars,
+      },
+    }
+
+    expect(extractEpisodeCrew(detalhe)).toHaveLength(2)
+    expect(extractEpisodeGuestStars(detalhe)).toHaveLength(2)
+    expect(extractEpisodeCast(detalhe)).toHaveLength(1)
+    expect(extractEpisodeExternalIds(detalhe)).toHaveLength(2)
+    expect(extractEpisodeStills(detalhe)).toHaveLength(2)
+  })
+
+  it('uma pessoa que ACUMULA funcoes continua com uma linha por funcao', () => {
+    // Brendan Hunt e roteirista e ator na serie; num episodio pode dirigir e
+    // escrever. Colapsar por pessoa apagaria uma das duas funcoes da ficha.
+    const rows = extractEpisodeCrew({
+      crew: [{ id: 1245003, name: 'Brendan Hunt', department: 'Writing', job: 'Writer' }],
+      credits: {
+        crew: [{ id: 1245003, name: 'Brendan Hunt', department: 'Directing', job: 'Director' }],
+      },
+    })
+
+    expect(rows).toHaveLength(2)
+    expect(rows.map((r) => r.job).sort()).toEqual(['Director', 'Writer'])
+  })
+})
