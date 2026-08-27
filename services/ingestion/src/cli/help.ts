@@ -157,10 +157,15 @@ imprime o censo por razao e sai com o code 5 — em dry-run tambem, porque o
 dry-run e a pre-checagem do apply. A secao 6 do CLAUDE.md exige revisao HUMANA
 para indexacao em massa; \`--confirm-mass-change\` e essa assinatura.
 
-O que conta como FLIP: o sitemap trata AUSENCIA de decisao como "dentro". Logo
-\`null -> index\` NAO e flip (crescimento normal do catalogo passa livre) e
-\`null -> noindex\` E flip (a pagina sai). Trocar so a razao entre dois vereditos
-nao-index tambem nao e flip.
+O que conta como FLIP: \`null -> index\` NAO e flip (crescimento normal do
+catalogo passa livre) e \`null -> noindex\` E flip (a pagina sai). Trocar so a
+razao entre dois vereditos nao-index tambem nao e flip.
+
+ATENCAO: essa polaridade vale enquanto o gate do sitemap estiver DESARMADO — que
+e o estado de um banco sem decisoes, ou seja, exatamente a PRIMEIRA execucao.
+Desde 2026-08-27 o sitemap entra so com decisao vigente \`index\`, e arma por tipo
+quando a cobertura cruza o piso; a partir dai AUSENCIA passa a significar "fora".
+Ver \`packages/seo/src/catalog-mass-change.ts\` -> \`isEffectivelyIndexed\`.
 
 Flags:
   --entity <lista>          movie,tv,season,episode,person (default: todos)

@@ -12,13 +12,20 @@
  *
  * Todas as EXCLUSOES acontecem no WHERE (nunca "carregar tudo e filtrar com um
  * Set em memoria"): idioma nao publicado, entidade sem slug canonico/sem titulo,
- * decisao vigente `!= index`, e para noticia licenca/publicacao/atribuicao/
- * linkback ausentes. SQL sempre PARAMETRIZADO (`$queryRaw` tagged template) — a
- * entrada do shard NUNCA e concatenada em SQL.
+ * decisao vigente que nao seja `index`, e para noticia licenca/publicacao/
+ * atribuicao/linkback ausentes. SQL sempre PARAMETRIZADO (`$queryRaw` tagged
+ * template) — a entrada do shard NUNCA e concatenada em SQL.
+ *
+ * A REGRA DA DECISAO SE INVERTEU (2026-08-27). Antes era `NOT EXISTS (...
+ * decision <> 'index')`: linha AUSENTE fazia a URL ENTRAR, e como
+ * `page_indexability_decisions` nunca foi escrita, o site indexava por OMISSAO.
+ * Agora entra quem TEM decisao vigente `index` — desde que o gate daquele tipo
+ * esteja ARMADO. Ver {@link SITEMAP_DECISION_GATE_MIN_ROWS} para o porque do
+ * armar e para o que acontece enquanto a tabela nao tiver linhas suficientes.
  *
  * PESSOA tem um gate EXTRA: alem de slug canonico e nome, precisa ter ao menos
  * um credito (elenco ou equipe) em um FILME ou SERIE que ela propria seja
- * publicavel (slug canonico no idioma + sem decisao vigente `!= index`). Sem
+ * publicavel (slug canonico no idioma + decisao coerente com o gate). Sem
  * isso, cada titulo ingerido despejava o elenco inteiro no sitemap — o catalogo
  * observado tinha ~22.400 URLs de pessoa contra ~129 filmes e ~110 series. A
  * regra canonica (e o porque) vive em `@screena/seo` -> `person-eligibility.ts`;
@@ -182,8 +189,19 @@ const ALL_TYPES: readonly string[] = [...ENTITY_TYPES, "static"];
  * mais caro do que publicar nenhuma por um ciclo. Subir este numero e uma
  * mudanca de codigo revisada — que e exatamente o controle que faltava.
  *
- * Calibragem (2026-08-27, depois da valvula): ~105.000 URLs publicadas. O teto
- * a 300.000 tolera quase 3x e ainda pega um evento de ordem de grandeza.
+ * Calibragem MEDIDA em producao (2026-08-27, depois do deploy da valvula, shard
+ * a shard, so respostas 200):
+ *
+ *   imagens 43.155 · movies 34.799 · series 32.392 · videos 140 · news 7 ·
+ *   static 5 · people 0 (shard 404: o gate de bio+foto nao deixa passar ninguem)
+ *   ------------------------------------------------------------------------
+ *   TOTAL 110.498 URLs em 6 shards, contra 4.069.444 em 88 shards antes.
+ *
+ * O teto a 300.000 tolera 2,7x sobre esse total e ainda pega um evento de ordem
+ * de grandeza. Ele NAO foi recalibrado para 2x nesta leva de proposito: o total
+ * legitimo DEPOIS do gate por decisao so existe quando o produtor tiver rodado
+ * contra producao, e apertar o teto contra um numero que ainda vai cair
+ * transformaria o detector de fumaca em alarme falso.
  *
  * ESTE TETO E UM PRAZO, NAO UMA FOLGA. Medido no mesmo dia, em quatro leituras
  * do shard de filmes ao longo de 84 minutos: 30.948 -> 32.050 -> 33.720 ->
@@ -216,6 +234,146 @@ export class SitemapCeilingExceededError extends Error {
     );
     this.name = "SitemapCeilingExceededError";
   }
+}
+
+/**
+ * OS TIPOS DE `page_indexability_decisions` (nomes SINGULARES do enum
+ * `EntityType`), que sao os nomes de decisao — nao os nomes de shard.
+ */
+export type DecisionEntity = "movie" | "tv" | "person" | "season" | "episode";
+
+const DECISION_ENTITIES: readonly DecisionEntity[] = [
+  "movie",
+  "tv",
+  "person",
+  "season",
+  "episode",
+];
+
+/** Quantas decisoes VIGENTES existem por tipo de entidade, naquele idioma. */
+export type DecisionCoverage = Readonly<Record<DecisionEntity, number>>;
+
+const EMPTY_COVERAGE: DecisionCoverage = Object.freeze({
+  movie: 0,
+  tv: 0,
+  person: 0,
+  season: 0,
+  episode: 0,
+});
+
+/**
+ * PISO DE LINHAS QUE ARMA O GATE ESTRITO, POR TIPO DE ENTIDADE.
+ *
+ * O QUE MUDOU. Ate aqui a regra do sitemap era `NOT EXISTS (... decision <>
+ * 'index')`: **linha ausente fazia a URL ENTRAR**. Como
+ * `page_indexability_decisions` nunca foi escrita, a clausula nunca excluiu uma
+ * linha sequer e o site indexava por OMISSAO. A regra agora e a inversa —
+ * entra quem TEM linha vigente dizendo `index`.
+ *
+ * POR QUE A INVERSAO NAO PODE SER INCONDICIONAL. Inverter a regra e povoar a
+ * tabela sao duas coisas, e a segunda mora no banco de PRODUCAO: quem escreve e
+ * `catalog index-decisions --apply` (services/ingestion), rodando no ciclo
+ * horario. Se o codigo invertido chegar ao ar ANTES de o produtor ter rodado, a
+ * tabela esta vazia, todo COALESCE cai no default e o sitemap inteiro vai a
+ * zero. Nao e uma desindexacao — sitemap nao desindexa, so a meta tag faz isso
+ * —, mas e a descoberta do dominio inteiro parando de um deploy para o outro,
+ * sem ninguem pedir.
+ *
+ * Esta e a licao que o projeto ja pagou duas vezes: uma correcao que so esta
+ * certa se um humano lembrar de rodar um comando ANTES, na ordem certa, e uma
+ * correcao que vai falhar (ver `docs/operations/legal-supersede-carries-rows.md`
+ * e a precondicao de licenca de imagem, que tambem mora no banco e nao viaja no
+ * deploy). Entao o codigo detecta a precondicao SOZINHO.
+ *
+ * COMO FUNCIONA. Uma consulta agrupada conta as decisoes vigentes por tipo. Um
+ * tipo com pelo menos este numero de linhas tem o gate ARMADO: decisao ausente
+ * vale `noindex`. Abaixo disso o gate fica DESARMADO e a decisao ausente segue
+ * valendo `index` — exatamente o comportamento antigo —, e o motivo vai para o
+ * log a cada requisicao. Nao ha flag, nao ha env e nao ha segundo deploy: no
+ * ciclo seguinte ao primeiro `--apply`, o gate se arma sozinho.
+ *
+ * POR QUE POR TIPO, E NAO GLOBAL. A CLI aceita `--entity person` (esta no
+ * proprio help). Um numero global armaria o gate do catalogo inteiro a partir de
+ * uma execucao que so decidiu pessoas, e filme e serie sairiam do sitemap sem
+ * nunca terem sido avaliados. Por tipo, cada gate espera a sua propria prova.
+ *
+ * POR QUE 1.000. E a linha que o dono declarou como limite de sanidade para
+ * esta mudanca ("abaixo de 1.000 URLs, pare e relate"). Fica bem acima de
+ * qualquer execucao parcial acidental e MUITO abaixo de uma execucao completa
+ * (o catalogo publicado em 2026-08-27 tinha 34.799 filmes e 32.392 series).
+ */
+export const SITEMAP_DECISION_GATE_MIN_ROWS = 1_000;
+
+/** `true` quando aquele tipo ja tem decisoes suficientes para o gate valer. */
+export function isDecisionGateArmed(
+  coverage: DecisionCoverage,
+  entity: DecisionEntity,
+): boolean {
+  return coverage[entity] >= SITEMAP_DECISION_GATE_MIN_ROWS;
+}
+
+/**
+ * O valor que uma decisao AUSENTE assume no SQL.
+ *
+ * Armado -> `noindex` (a entidade sem linha nao entra). Desarmado -> `index`
+ * (comportamento antigo, ate o produtor rodar). E este par de strings que
+ * atravessa como PARAMETRO para dentro do `COALESCE` de cada consulta — o SQL
+ * tem UMA forma so, e o que muda e o dado.
+ */
+function absentDecisionFor(
+  coverage: DecisionCoverage,
+  entity: DecisionEntity,
+): "index" | "noindex" {
+  return isDecisionGateArmed(coverage, entity) ? "noindex" : "index";
+}
+
+/**
+ * Conta as decisoes vigentes por tipo — UMA consulta agrupada para todos.
+ *
+ * `entity_type IS NOT NULL` exclui as linhas de ARTIGO, que dividem a tabela
+ * (`doc_kind`) e tem o proprio gate em `article_translations.index_status`.
+ *
+ * Falha de banco NAO e tratada aqui: ela sobe e cai no fail-closed de quem
+ * chamou (index vazio / shard 404), do mesmo jeito que qualquer outra consulta
+ * do sitemap. Devolver "cobertura zero" em cima de um erro seria o pior dos
+ * mundos: publicaria o catalogo inteiro com o gate desarmado por causa de um
+ * timeout.
+ */
+async function readDecisionCoverage(
+  prisma: PrismaClient,
+  language: string,
+): Promise<DecisionCoverage> {
+  const rows = await prisma.$queryRaw<{ entity_type: string; n: number }[]>`
+    SELECT entity_type::text AS entity_type, COUNT(*)::int AS n
+    FROM page_indexability_decisions
+    WHERE language_code = ${language} AND is_current = true AND entity_type IS NOT NULL
+    GROUP BY entity_type`;
+  const coverage: Record<DecisionEntity, number> = { ...EMPTY_COVERAGE };
+  for (const row of rows) {
+    const key = row.entity_type as DecisionEntity;
+    if (DECISION_ENTITIES.includes(key)) coverage[key] = Number(row.n) || 0;
+  }
+  return coverage;
+}
+
+/**
+ * Registra, uma vez por requisicao, quais gates ainda estao DESARMADOS.
+ *
+ * Sem isto o estado de transicao seria invisivel: o sitemap continuaria
+ * publicando por omissao e nada no log diria que a regra nova esta inerte. Foi
+ * exatamente assim que 78 shards nasceram sem uma linha de log.
+ */
+function warnUnarmedGates(coverage: DecisionCoverage): void {
+  const unarmed = DECISION_ENTITIES.filter((e) => !isDecisionGateArmed(coverage, e));
+  if (unarmed.length === 0) return;
+  console.error(
+    "[sitemap] gate de decisao DESARMADO para: " +
+      unarmed.map((e) => `${e}=${coverage[e]}`).join(" ") +
+      `. Piso: ${SITEMAP_DECISION_GATE_MIN_ROWS} linhas vigentes por tipo. ` +
+      "Enquanto desarmado, entidade SEM decisao continua entrando no sitemap " +
+      "(comportamento antigo). Arma sozinho quando 'catalog index-decisions " +
+      "--apply' rodar contra este banco.",
+  );
 }
 
 const INDEX_PATH: Readonly<Record<SimpleSitemapType, string>> = {
@@ -292,7 +450,13 @@ async function aggregateEntity(
   prisma: PrismaClient,
   type: EntitySitemapType,
   language: string,
+  coverage: DecisionCoverage,
 ): Promise<Aggregate> {
+  const absentMovie = absentDecisionFor(coverage, "movie");
+  const absentTv = absentDecisionFor(coverage, "tv");
+  const absentPerson = absentDecisionFor(coverage, "person");
+  const absentSeason = absentDecisionFor(coverage, "season");
+  const absentEpisode = absentDecisionFor(coverage, "episode");
   let rows: { n: number; maxmod: Date | null }[];
   if (type === "movies") {
     rows = await prisma.$queryRaw<{ n: number; maxmod: Date | null }[]>`
@@ -300,18 +464,20 @@ async function aggregateEntity(
       FROM slugs s JOIN movies m ON m.id = s.entity_id
       WHERE s.entity_type = 'movie' AND s.language_code = ${language} AND s.is_canonical = true
         AND BTRIM(m.title_original) <> ''
-        AND NOT EXISTS (SELECT 1 FROM page_indexability_decisions d
+        AND COALESCE((SELECT d.decision::text FROM page_indexability_decisions d
           WHERE d.entity_type = 'movie' AND d.entity_id = s.entity_id
-            AND d.language_code = ${language} AND d.is_current = true AND d.decision <> 'index')`;
+            AND d.language_code = ${language} AND d.is_current = true
+          LIMIT 1), ${absentMovie}) = 'index'`;
   } else if (type === "series") {
     rows = await prisma.$queryRaw<{ n: number; maxmod: Date | null }[]>`
       SELECT COUNT(*)::int AS n, MAX(t.updated_at) AS maxmod
       FROM slugs s JOIN tv_shows t ON t.id = s.entity_id
       WHERE s.entity_type = 'tv' AND s.language_code = ${language} AND s.is_canonical = true
         AND BTRIM(t.name_original) <> ''
-        AND NOT EXISTS (SELECT 1 FROM page_indexability_decisions d
+        AND COALESCE((SELECT d.decision::text FROM page_indexability_decisions d
           WHERE d.entity_type = 'tv' AND d.entity_id = s.entity_id
-            AND d.language_code = ${language} AND d.is_current = true AND d.decision <> 'index')`;
+            AND d.language_code = ${language} AND d.is_current = true
+          LIMIT 1), ${absentTv}) = 'index'`;
   } else if (type === "people") {
     rows = await prisma.$queryRaw<{ n: number; maxmod: Date | null }[]>`
       SELECT COUNT(*)::int AS n, MAX(p.updated_at) AS maxmod
@@ -336,21 +502,24 @@ async function aggregateEntity(
           JOIN slugs ws ON ws.entity_type = cm.entity_type AND ws.entity_id = cm.entity_id
             AND ws.language_code = ${language} AND ws.is_canonical = true
           WHERE cm.person_id = p.id AND cm.entity_type IN ('movie','tv')
-            AND NOT EXISTS (SELECT 1 FROM page_indexability_decisions wd
+            AND COALESCE((SELECT wd.decision::text FROM page_indexability_decisions wd
               WHERE wd.entity_type = cm.entity_type AND wd.entity_id = cm.entity_id
-                AND wd.language_code = ${language} AND wd.is_current = true AND wd.decision <> 'index')
+                AND wd.language_code = ${language} AND wd.is_current = true
+              LIMIT 1), CASE cm.entity_type::text WHEN 'movie' THEN ${absentMovie} ELSE ${absentTv} END) = 'index'
           UNION ALL
           SELECT 1 FROM crew_members rm
           JOIN slugs ws ON ws.entity_type = rm.entity_type AND ws.entity_id = rm.entity_id
             AND ws.language_code = ${language} AND ws.is_canonical = true
           WHERE rm.person_id = p.id AND rm.entity_type IN ('movie','tv')
-            AND NOT EXISTS (SELECT 1 FROM page_indexability_decisions wd
+            AND COALESCE((SELECT wd.decision::text FROM page_indexability_decisions wd
               WHERE wd.entity_type = rm.entity_type AND wd.entity_id = rm.entity_id
-                AND wd.language_code = ${language} AND wd.is_current = true AND wd.decision <> 'index')
+                AND wd.language_code = ${language} AND wd.is_current = true
+              LIMIT 1), CASE rm.entity_type::text WHEN 'movie' THEN ${absentMovie} ELSE ${absentTv} END) = 'index'
         )
-        AND NOT EXISTS (SELECT 1 FROM page_indexability_decisions d
+        AND COALESCE((SELECT d.decision::text FROM page_indexability_decisions d
           WHERE d.entity_type = 'person' AND d.entity_id = s.entity_id
-            AND d.language_code = ${language} AND d.is_current = true AND d.decision <> 'index')`;
+            AND d.language_code = ${language} AND d.is_current = true
+          LIMIT 1), ${absentPerson}) = 'index'`;
   } else if (type === "news") {
     rows = await prisma.$queryRaw<{ n: number; maxmod: Date | null }[]>`
       SELECT COUNT(*)::int AS n, MAX(at.updated_at) AS maxmod
@@ -366,7 +535,7 @@ async function aggregateEntity(
         AND (a.requires_attribution = false OR BTRIM(COALESCE(a.source_name, '')) <> '')
         AND (a.requires_linkback = false OR BTRIM(COALESCE(a.source_url, '')) <> '')`;
   } else if (type === "imagens" || type === "videos") {
-    rows = await aggregateGallery(prisma, type, language);
+    rows = await aggregateGallery(prisma, type, language, coverage);
   } else if (type === "seasons") {
     rows = await prisma.$queryRaw<{ n: number; maxmod: Date | null }[]>`
       SELECT COUNT(*)::int AS n, MAX(se.updated_at) AS maxmod
@@ -375,9 +544,10 @@ async function aggregateEntity(
       JOIN slugs s ON s.entity_type = 'tv' AND s.entity_id = t.id
         AND s.language_code = ${language} AND s.is_canonical = true
       WHERE BTRIM(t.name_original) <> ''
-        AND NOT EXISTS (SELECT 1 FROM page_indexability_decisions d
+        AND COALESCE((SELECT d.decision::text FROM page_indexability_decisions d
           WHERE d.entity_type = 'season' AND d.entity_id = se.id
-            AND d.language_code = ${language} AND d.is_current = true AND d.decision <> 'index')`;
+            AND d.language_code = ${language} AND d.is_current = true
+          LIMIT 1), ${absentSeason}) = 'index'`;
   } else {
     rows = await prisma.$queryRaw<{ n: number; maxmod: Date | null }[]>`
       SELECT COUNT(*)::int AS n, MAX(e.updated_at) AS maxmod
@@ -387,9 +557,10 @@ async function aggregateEntity(
       JOIN slugs s ON s.entity_type = 'tv' AND s.entity_id = t.id
         AND s.language_code = ${language} AND s.is_canonical = true
       WHERE BTRIM(t.name_original) <> ''
-        AND NOT EXISTS (SELECT 1 FROM page_indexability_decisions d
+        AND COALESCE((SELECT d.decision::text FROM page_indexability_decisions d
           WHERE d.entity_type = 'episode' AND d.entity_id = e.id
-            AND d.language_code = ${language} AND d.is_current = true AND d.decision <> 'index')`;
+            AND d.language_code = ${language} AND d.is_current = true
+          LIMIT 1), ${absentEpisode}) = 'index'`;
   }
   return { count: rows[0]?.n ?? 0, maxLastmod: rows[0]?.maxmod ?? null };
 }
@@ -435,10 +606,35 @@ function gallerySql(type: "imagens" | "videos", language: string, floor: number)
   return { tabela, gateVideo, language, floor };
 }
 
+/**
+ * O GATE DE DECISAO DO DONO DA GALERIA.
+ *
+ * A galeria nao tem decisao propria em `page_indexability_decisions` — ela e uma
+ * SUB-PAGINA do filme ou da serie e herda a decisao dele. Ate aqui nao herdava
+ * NADA: as duas consultas de galeria eram as unicas do sitemap sem clausula de
+ * decisao, e por isso a galeria de um filme `noindex` continuaria anunciada.
+ * Com a regra invertida isso ficaria gritante — galeria era o MAIOR tipo do
+ * sitemap medido em 2026-08-27 (43.155 URLs, mais que filme ou serie), e ela
+ * sobreviveria inteira a um corte que derrubasse os donos.
+ *
+ * `$1` e sempre o idioma; `$3`/`$4` sao o default de decisao ausente de filme e
+ * de serie. As duas consultas de galeria usam a MESMA numeracao de proposito,
+ * para o fragmento poder ser um so.
+ */
+function galleryOwnerGate(vertical: "movie" | "tv"): string {
+  const idExpr = vertical === "movie" ? "m.id" : "t.id";
+  const param = vertical === "movie" ? "$3" : "$4";
+  return `AND COALESCE((SELECT d.decision::text FROM page_indexability_decisions d
+          WHERE d.entity_type = '${vertical}' AND d.entity_id = ${idExpr}
+            AND d.language_code = $1 AND d.is_current = true
+          LIMIT 1), ${param}) = 'index'`;
+}
+
 async function aggregateGallery(
   prisma: PrismaClient,
   type: "imagens" | "videos",
   language: string,
+  coverage: DecisionCoverage,
 ): Promise<{ n: number; maxmod: Date | null }[]> {
   const { tabela, gateVideo, floor } = gallerySql(type, language, galleryFloor(type));
   return prisma.$queryRawUnsafe<{ n: number; maxmod: Date | null }[]>(
@@ -449,6 +645,7 @@ async function aggregateGallery(
          JOIN slugs s ON s.entity_type = 'movie' AND s.entity_id = m.id
            AND s.language_code = $1 AND s.is_canonical = true
         WHERE mi.entity_type = 'movie' ${gateVideo}
+        ${galleryOwnerGate("movie")}
         GROUP BY s.slug HAVING COUNT(*) >= $2
        UNION ALL
        SELECT MAX(mi.updated_at) AS lastmod
@@ -457,10 +654,13 @@ async function aggregateGallery(
          JOIN slugs s ON s.entity_type = 'tv' AND s.entity_id = t.id
            AND s.language_code = $1 AND s.is_canonical = true
         WHERE mi.entity_type = 'tv' ${gateVideo}
+        ${galleryOwnerGate("tv")}
         GROUP BY s.slug HAVING COUNT(*) >= $2
      ) AS galerias`,
     language,
     floor,
+    absentDecisionFor(coverage, "movie"),
+    absentDecisionFor(coverage, "tv"),
   );
 }
 
@@ -470,6 +670,7 @@ async function pageGallery(
   language: string,
   limit: number,
   offset: number,
+  coverage: DecisionCoverage,
 ): Promise<SitemapXmlUrl[]> {
   const { tabela, gateVideo, floor } = gallerySql(type, language, galleryFloor(type));
   const rows = await prisma.$queryRawUnsafe<GalleryRow[]>(
@@ -480,6 +681,7 @@ async function pageGallery(
          JOIN slugs s ON s.entity_type = 'movie' AND s.entity_id = m.id
            AND s.language_code = $1 AND s.is_canonical = true
         WHERE mi.entity_type = 'movie' ${gateVideo}
+        ${galleryOwnerGate("movie")}
         GROUP BY s.slug HAVING COUNT(*) >= $2
        UNION ALL
        SELECT 'series' AS vertical, s.slug AS slug, MAX(mi.updated_at) AS lastmod
@@ -488,11 +690,14 @@ async function pageGallery(
          JOIN slugs s ON s.entity_type = 'tv' AND s.entity_id = t.id
            AND s.language_code = $1 AND s.is_canonical = true
         WHERE mi.entity_type = 'tv' ${gateVideo}
+        ${galleryOwnerGate("tv")}
         GROUP BY s.slug HAVING COUNT(*) >= $2
      ) AS galerias
-     ORDER BY vertical ASC, slug ASC LIMIT $3 OFFSET $4`,
+     ORDER BY vertical ASC, slug ASC LIMIT $5 OFFSET $6`,
     language,
     floor,
+    absentDecisionFor(coverage, "movie"),
+    absentDecisionFor(coverage, "tv"),
     limit,
     offset,
   );
@@ -531,16 +736,21 @@ async function pageEntity(
   language: string,
   limit: number,
   offset: number,
+  coverage: DecisionCoverage,
 ): Promise<PageRow[]> {
+  const absentMovie = absentDecisionFor(coverage, "movie");
+  const absentTv = absentDecisionFor(coverage, "tv");
+  const absentPerson = absentDecisionFor(coverage, "person");
   if (type === "movies") {
     return prisma.$queryRaw<PageRow[]>`
       SELECT s.slug AS slug, m.updated_at AS lastmod
       FROM slugs s JOIN movies m ON m.id = s.entity_id
       WHERE s.entity_type = 'movie' AND s.language_code = ${language} AND s.is_canonical = true
         AND BTRIM(m.title_original) <> ''
-        AND NOT EXISTS (SELECT 1 FROM page_indexability_decisions d
+        AND COALESCE((SELECT d.decision::text FROM page_indexability_decisions d
           WHERE d.entity_type = 'movie' AND d.entity_id = s.entity_id
-            AND d.language_code = ${language} AND d.is_current = true AND d.decision <> 'index')
+            AND d.language_code = ${language} AND d.is_current = true
+          LIMIT 1), ${absentMovie}) = 'index'
       ORDER BY s.entity_id ASC LIMIT ${limit} OFFSET ${offset}`;
   }
   if (type === "series") {
@@ -549,9 +759,10 @@ async function pageEntity(
       FROM slugs s JOIN tv_shows t ON t.id = s.entity_id
       WHERE s.entity_type = 'tv' AND s.language_code = ${language} AND s.is_canonical = true
         AND BTRIM(t.name_original) <> ''
-        AND NOT EXISTS (SELECT 1 FROM page_indexability_decisions d
+        AND COALESCE((SELECT d.decision::text FROM page_indexability_decisions d
           WHERE d.entity_type = 'tv' AND d.entity_id = s.entity_id
-            AND d.language_code = ${language} AND d.is_current = true AND d.decision <> 'index')
+            AND d.language_code = ${language} AND d.is_current = true
+          LIMIT 1), ${absentTv}) = 'index'
       ORDER BY s.entity_id ASC LIMIT ${limit} OFFSET ${offset}`;
   }
   if (type === "people") {
@@ -578,21 +789,24 @@ async function pageEntity(
           JOIN slugs ws ON ws.entity_type = cm.entity_type AND ws.entity_id = cm.entity_id
             AND ws.language_code = ${language} AND ws.is_canonical = true
           WHERE cm.person_id = p.id AND cm.entity_type IN ('movie','tv')
-            AND NOT EXISTS (SELECT 1 FROM page_indexability_decisions wd
+            AND COALESCE((SELECT wd.decision::text FROM page_indexability_decisions wd
               WHERE wd.entity_type = cm.entity_type AND wd.entity_id = cm.entity_id
-                AND wd.language_code = ${language} AND wd.is_current = true AND wd.decision <> 'index')
+                AND wd.language_code = ${language} AND wd.is_current = true
+              LIMIT 1), CASE cm.entity_type::text WHEN 'movie' THEN ${absentMovie} ELSE ${absentTv} END) = 'index'
           UNION ALL
           SELECT 1 FROM crew_members rm
           JOIN slugs ws ON ws.entity_type = rm.entity_type AND ws.entity_id = rm.entity_id
             AND ws.language_code = ${language} AND ws.is_canonical = true
           WHERE rm.person_id = p.id AND rm.entity_type IN ('movie','tv')
-            AND NOT EXISTS (SELECT 1 FROM page_indexability_decisions wd
+            AND COALESCE((SELECT wd.decision::text FROM page_indexability_decisions wd
               WHERE wd.entity_type = rm.entity_type AND wd.entity_id = rm.entity_id
-                AND wd.language_code = ${language} AND wd.is_current = true AND wd.decision <> 'index')
+                AND wd.language_code = ${language} AND wd.is_current = true
+              LIMIT 1), CASE rm.entity_type::text WHEN 'movie' THEN ${absentMovie} ELSE ${absentTv} END) = 'index'
         )
-        AND NOT EXISTS (SELECT 1 FROM page_indexability_decisions d
+        AND COALESCE((SELECT d.decision::text FROM page_indexability_decisions d
           WHERE d.entity_type = 'person' AND d.entity_id = s.entity_id
-            AND d.language_code = ${language} AND d.is_current = true AND d.decision <> 'index')
+            AND d.language_code = ${language} AND d.is_current = true
+          LIMIT 1), ${absentPerson}) = 'index'
       ORDER BY s.entity_id ASC LIMIT ${limit} OFFSET ${offset}`;
   }
   return prisma.$queryRaw<PageRow[]>`
@@ -656,7 +870,10 @@ async function pageSeasonEpisode(
   language: string,
   limit: number,
   offset: number,
+  coverage: DecisionCoverage,
 ): Promise<SitemapXmlUrl[]> {
+  const absentSeason = absentDecisionFor(coverage, "season");
+  const absentEpisode = absentDecisionFor(coverage, "episode");
   if (type === "seasons") {
     const rows = await prisma.$queryRaw<
       { series_slug: string; season_number: number; lastmod: Date | null }[]
@@ -667,9 +884,10 @@ async function pageSeasonEpisode(
       JOIN slugs s ON s.entity_type = 'tv' AND s.entity_id = t.id
         AND s.language_code = ${language} AND s.is_canonical = true
       WHERE BTRIM(t.name_original) <> ''
-        AND NOT EXISTS (SELECT 1 FROM page_indexability_decisions d
+        AND COALESCE((SELECT d.decision::text FROM page_indexability_decisions d
           WHERE d.entity_type = 'season' AND d.entity_id = se.id
-            AND d.language_code = ${language} AND d.is_current = true AND d.decision <> 'index')
+            AND d.language_code = ${language} AND d.is_current = true
+          LIMIT 1), ${absentSeason}) = 'index'
       ORDER BY se.id ASC LIMIT ${limit} OFFSET ${offset}`;
     return rows
       .map((row) =>
@@ -693,9 +911,10 @@ async function pageSeasonEpisode(
     JOIN slugs s ON s.entity_type = 'tv' AND s.entity_id = t.id
       AND s.language_code = ${language} AND s.is_canonical = true
     WHERE BTRIM(t.name_original) <> ''
-      AND NOT EXISTS (SELECT 1 FROM page_indexability_decisions d
+      AND COALESCE((SELECT d.decision::text FROM page_indexability_decisions d
         WHERE d.entity_type = 'episode' AND d.entity_id = e.id
-          AND d.language_code = ${language} AND d.is_current = true AND d.decision <> 'index')
+          AND d.language_code = ${language} AND d.is_current = true
+        LIMIT 1), ${absentEpisode}) = 'index'
     ORDER BY e.id ASC LIMIT ${limit} OFFSET ${offset}`;
   return rows
     .map((row) =>
@@ -756,6 +975,7 @@ function eligibleStaticRoutes(counts: Record<EntitySitemapType, number>): Sitema
 async function allEntityCounts(
   prisma: PrismaClient,
   language: string,
+  coverage: DecisionCoverage,
 ): Promise<{ counts: Record<EntitySitemapType, number>; maxLastmod: Record<EntitySitemapType, Date | null> }> {
   const counts = {} as Record<EntitySitemapType, number>;
   const maxLastmod = {} as Record<EntitySitemapType, Date | null>;
@@ -769,7 +989,7 @@ async function allEntityCounts(
   // Uma consulta de CONTAGEM (+max) por tipo PUBLICADO — nunca busca URLs, e
   // nunca conta o que nao vai ao sitemap.
   for (const type of ENTITY_TYPES) {
-    const agg = await aggregateEntity(prisma, type, language);
+    const agg = await aggregateEntity(prisma, type, language, coverage);
     counts[type] = agg.count;
     maxLastmod[type] = agg.maxLastmod;
   }
@@ -796,7 +1016,11 @@ export async function getSitemapIndexXml(
   const language = SITEMAP_LANGUAGE;
   try {
     const prisma = client ?? getPrismaClient();
-    const { counts, maxLastmod } = await allEntityCounts(prisma, language);
+    // A COBERTURA vem ANTES de qualquer contagem: e ela que decide o que uma
+    // decisao ausente significa em todas as consultas seguintes.
+    const coverage = await readDecisionCoverage(prisma, language);
+    warnUnarmedGates(coverage);
+    const { counts, maxLastmod } = await allEntityCounts(prisma, language, coverage);
 
     // TETO: antes de anunciar um shard sequer. Ver SITEMAP_TOTAL_URL_CEILING.
     const total = ENTITY_TYPES.reduce((sum, type) => sum + counts[type], 0);
@@ -871,10 +1095,14 @@ export async function getSitemapShardXml(
 
   try {
     const prisma = client ?? getPrismaClient();
+    // A MESMA cobertura que o index usa. Se o shard decidisse por conta propria
+    // (ou nao decidisse), o index anunciaria N shards que a pagina nao consegue
+    // preencher — a forma mais cara de sitemap errado.
+    const coverage = await readDecisionCoverage(prisma, language);
 
     if (type === "static") {
       if (page !== 1) return null; // so existe 1 shard estatico
-      const { counts } = await allEntityCounts(prisma, language);
+      const { counts } = await allEntityCounts(prisma, language, coverage);
       const routes = eligibleStaticRoutes(counts);
       if (routes.length === 0) return null;
       return { xml: renderUrlset(routes), contentType: SITEMAP_CONTENT_TYPE };
@@ -882,7 +1110,7 @@ export async function getSitemapShardXml(
 
     const entityType = type as EntitySitemapType;
     // Uma contagem (deste tipo) para saber quantos shards existem.
-    const { count } = await aggregateEntity(prisma, entityType, language);
+    const { count } = await aggregateEntity(prisma, entityType, language, coverage);
     const shards = shardCountFor(count, limit);
     if (page > shards) return null; // pagina acima do total -> 404
 
@@ -890,12 +1118,12 @@ export async function getSitemapShardXml(
     const offset = (page - 1) * limit;
     const urls =
       entityType === "seasons" || entityType === "episodes"
-        ? await pageSeasonEpisode(prisma, entityType, language, limit, offset)
+        ? await pageSeasonEpisode(prisma, entityType, language, limit, offset, coverage)
         : entityType === "imagens" || entityType === "videos"
-          ? await pageGallery(prisma, entityType, language, limit, offset)
+          ? await pageGallery(prisma, entityType, language, limit, offset, coverage)
           : pageRowsToUrls(
               entityType,
-              await pageEntity(prisma, entityType, language, limit, offset),
+              await pageEntity(prisma, entityType, language, limit, offset, coverage),
             );
     return { xml: renderUrlset(urls), contentType: SITEMAP_CONTENT_TYPE };
   } catch (error) {
