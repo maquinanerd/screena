@@ -97,8 +97,48 @@ interface PlannedWrite extends PlannedTransition {
   readonly decision: CatalogIndexabilityDecision
 }
 
+/**
+ * O que a FASE 2 faria (ou fez) com as linhas da tabela.
+ *
+ * `planned` sozinho ("mudariam N") nao respondia a pergunta que o operador faz
+ * antes de assinar: quantas linhas NASCEM e quantas linhas TROCAM de veredito.
+ * Sao efeitos diferentes — `created` e cobertura nova (a entidade nunca teve
+ * decisao), `updated` e uma entidade que JA tinha veredito e passa a ter outro,
+ * e so o segundo pode tirar do indice uma pagina que o Google ja conhece.
+ */
+export interface DecisionWriteCensus {
+  /** Sem decisao vigente: a fase 2 INSERE uma linha nova. */
+  readonly created: number
+  /** Ja havia decisao vigente: despromove a antiga e insere a nova. */
+  readonly updated: number
+  /** Decisao identica a vigente (veredito + razao + versao): nada e gravado. */
+  readonly unchanged: number
+}
+
+/** Censo de UM tipo de entidade. */
+export interface EntityTypeCensus {
+  readonly evaluated: number
+  /** Quantas avaliadas caem em cada veredito (`index`/`noindex`/...). */
+  readonly byDecision: Readonly<Record<string, number>>
+  /** O motivo agregado — por que aquele veredito, e em quantas entidades. */
+  readonly byReason: Readonly<Record<string, number>>
+  readonly writes: DecisionWriteCensus
+}
+
+/**
+ * Versao da FORMA do resumo em JSON.
+ *
+ * O `--json` deste comando e lido por script de operacao. Um consumidor precisa
+ * poder afirmar "eu entendo esta forma" sem inspecionar campo a campo; subir
+ * este numero e o sinal de que a forma mudou de maneira incompativel. Campos
+ * ADICIONADOS nao sobem a versao (adicionar nao quebra leitor).
+ */
+export const INDEXABILITY_SUMMARY_SCHEMA_VERSION = 1
+
 /** Resumo por decisao e por razao. */
 export interface IndexabilityRunSummary {
+  /** Ver `INDEXABILITY_SUMMARY_SCHEMA_VERSION`. */
+  readonly schemaVersion: number
   readonly language: string
   readonly dryRun: boolean
   readonly evaluated: number
@@ -106,6 +146,10 @@ export interface IndexabilityRunSummary {
   readonly unchanged: number
   /** Mudancas PLANEJADAS (gravadas ou nao — o freio pode ter recusado todas). */
   readonly planned: number
+  /** Criadas/alteradas/inalteradas — o que a fase 2 faria com a tabela. */
+  readonly writes: DecisionWriteCensus
+  /** Censo COMPLETO por tipo de entidade (nao so os flips). */
+  readonly byEntityType: Readonly<Record<string, EntityTypeCensus>>
   readonly byDecision: Readonly<Record<string, number>>
   readonly byReason: Readonly<Record<string, number>>
   /**
@@ -457,6 +501,30 @@ export async function produceIndexabilityDecisions(
   let evaluated = 0
   let unchanged = 0
 
+  // Censo por TIPO, acumulado no mesmo laco que ja visita cada linha. Uma
+  // segunda passada sobre `plan` daria created/updated, mas nao daria
+  // `byDecision`/`byReason` por tipo: o plano so contem o que MUDA, e a pergunta
+  // "quantos filmes ficam noindex" inclui os que ja estavam.
+  const perType = new Map<
+    string,
+    {
+      evaluated: number
+      byDecision: Record<string, number>
+      byReason: Record<string, number>
+      created: number
+      updated: number
+      unchanged: number
+    }
+  >()
+  const bucket = (entityType: string) => {
+    let found = perType.get(entityType)
+    if (found === undefined) {
+      found = { evaluated: 0, byDecision: {}, byReason: {}, created: 0, updated: 0, unchanged: 0 }
+      perType.set(entityType, found)
+    }
+    return found
+  }
+
   // O gate herdado precisa das series MESMO quando `--entity season` nao pede
   // `tv`: sem isso toda temporada cairia em `parent_not_publishable` e o censo
   // mentiria sobre a causa.
@@ -478,6 +546,11 @@ export async function produceIndexabilityDecisions(
       byDecision[decision.decision] = (byDecision[decision.decision] ?? 0) + 1
       byReason[decision.reason] = (byReason[decision.reason] ?? 0) + 1
 
+      const slot = bucket(entityType)
+      slot.evaluated += 1
+      slot.byDecision[decision.decision] = (slot.byDecision[decision.decision] ?? 0) + 1
+      slot.byReason[decision.reason] = (slot.byReason[decision.reason] ?? 0) + 1
+
       const previous =
         row.cur_decision === null
           ? null
@@ -489,8 +562,14 @@ export async function produceIndexabilityDecisions(
 
       if (!decisionChanged(decision, previous)) {
         unchanged += 1
+        slot.unchanged += 1
         continue
       }
+
+      // NASCE (nunca teve linha vigente) vs TROCA (ja tinha veredito). So o
+      // segundo pode tirar do indice uma pagina que o buscador ja conhece.
+      if (row.cur_decision === null) slot.created += 1
+      else slot.updated += 1
 
       plan.push({
         entityType,
@@ -517,13 +596,36 @@ export async function produceIndexabilityDecisions(
     confirmed: options.confirmMassChange === true,
   })
 
+  // Congela o censo por tipo uma vez so — `summary()` e chamado em dois pontos.
+  const byEntityType: Record<string, EntityTypeCensus> = {}
+  let created = 0
+  let updated = 0
+  for (const [entityType, slot] of perType) {
+    created += slot.created
+    updated += slot.updated
+    byEntityType[entityType] = Object.freeze({
+      evaluated: slot.evaluated,
+      byDecision: Object.freeze({ ...slot.byDecision }),
+      byReason: Object.freeze({ ...slot.byReason }),
+      writes: Object.freeze({
+        created: slot.created,
+        updated: slot.updated,
+        unchanged: slot.unchanged,
+      }),
+    })
+  }
+  Object.freeze(byEntityType)
+
   const summary = (written: number): IndexabilityRunSummary => ({
+    schemaVersion: INDEXABILITY_SUMMARY_SCHEMA_VERSION,
     language: options.language,
     dryRun: options.dryRun,
     evaluated,
     written,
     unchanged,
     planned: plan.length,
+    writes: Object.freeze({ created, updated, unchanged }),
+    byEntityType,
     byDecision: Object.freeze(byDecision),
     byReason: Object.freeze(byReason),
     massChange,
