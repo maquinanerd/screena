@@ -47,6 +47,38 @@ function blockIndex(code: string, cls: string): number {
   return -1
 }
 
+/**
+ * Bloco que deixou de ser escrito inline na pagina e virou COMPONENTE.
+ *
+ * A faixa de elenco era escrita aqui dentro — e DUAS vezes, porque o membro
+ * com slug virava `<a>` e o sem slug virava `<div>`, cada um carregando sua
+ * copia do retrato, das iniciais, do nome e do personagem. Ela agora mora em
+ * `apps/web/app/_components/cast-strip.tsx`.
+ *
+ * O QUE ISSO MUDA PARA ESTA GUARDA. Nada do que ela mede: a ordem canonica
+ * continua sendo medida NA PAGINA, e `<CastStrip />` ocupa exatamente a
+ * posicao que a `<ul className="cast-strip">` ocupava. So a ancora muda — a
+ * classe deixou de existir neste arquivo, entao o elemento e que a marca.
+ *
+ * As classes em si (`cast-strip`, `cast-tile`, ...) passaram a ser cobertas
+ * por `apps/web/app/_components/__tests__/cast-strip.test.tsx`, que renderiza
+ * o componente — prova mais forte que casar texto, nao mais fraca.
+ */
+const BLOCO_EXTRAIDO: Record<string, string | undefined> = {
+  'cast-strip': 'CastStrip',
+}
+
+/**
+ * Indice da ancora do bloco: a CLASSE enquanto ele e inline, o ELEMENTO depois
+ * de extraido. FAIL-CLOSED: sem nenhum dos dois, -1 — reprova em voz alta.
+ */
+function anchorIndex(code: string, cls: string): number {
+  const inline = blockIndex(code, cls)
+  if (inline !== -1) return inline
+  const element = BLOCO_EXTRAIDO[cls]
+  return element === undefined ? -1 : code.indexOf(`<${element}`)
+}
+
 describe('shell público mínimo · detalhe de série', () => {
   const code = withoutComments(page).replaceAll("'", '"')
 
@@ -102,7 +134,7 @@ describe('shell público mínimo · detalhe de série', () => {
     expect(code).toContain('buildSameAs(externalIds')
     expect(code).toMatch(/decideSection\(visibleCast,/)
     expect(code).toMatch(/decideSection\(visibleNews,/)
-    expect(code).toContain('members.map(')
+    expect(code).toContain('<CastStrip members={members} />')
     expect(code).toContain('articles.map(')
     expect(code).toContain('data-editorial-state="in-review"')
   })
@@ -122,7 +154,7 @@ describe('shell público mínimo · detalhe de série', () => {
     ]
     let cursor = -1
     for (const cls of order) {
-      const at = blockIndex(code, cls)
+      const at = anchorIndex(code, cls)
       // Duas falhas diferentes, duas mensagens diferentes: "sumiu do arquivo" e
       // "esta no arquivo, mas fora de ordem" pedem investigacoes distintas.
       expect(at, `bloco ausente: .${cls}`).toBeGreaterThan(-1)

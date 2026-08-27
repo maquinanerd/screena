@@ -6,6 +6,7 @@ import { buildSameAs, serializeJsonLd, buildMetaDescription } from '@screena/seo
 
 import { EntityActions } from '../../../_components/entity-actions'
 import { EntitySynopsis } from '../../../_components/entity-synopsis'
+import { CastStrip } from '../../../_components/cast-strip'
 import { CinerieScoreCard } from '../../../_components/cinerie-score-card'
 import { SectionHead } from '../../../_components/section-head'
 import { WatchBrandsRow } from '../../../_components/watch-brands-row'
@@ -686,53 +687,7 @@ export default async function SeriesPage({
           {castContext !== null ? (
             <p data-block-type={castContext.blockType}>{castContext.content}</p>
           ) : null}
-          <ul className="cast-strip">
-            {members.map((member, index) => (
-              <li key={`${member.name}-${index}`}>
-                {member.href !== null ? (
-                  <a className="cast-tile" href={member.href}>
-                    <span className="cast-tile__photo">
-                      {member.profile !== null ? (
-                        <img alt="" loading="lazy" src={member.profile.src} />
-                      ) : (
-                        <span aria-hidden="true">
-                          {member.name
-                            .split(' ')
-                            .slice(0, 2)
-                            .map((part) => part.slice(0, 1))
-                            .join('')}
-                        </span>
-                      )}
-                    </span>
-                    <p className="cast-tile__name">{member.name}</p>
-                    {member.character !== null ? (
-                      <p className="cast-tile__role">{member.character}</p>
-                    ) : null}
-                  </a>
-                ) : (
-                  <div className="cast-tile">
-                    <span className="cast-tile__photo">
-                      {member.profile !== null ? (
-                        <img alt="" loading="lazy" src={member.profile.src} />
-                      ) : (
-                        <span aria-hidden="true">
-                          {member.name
-                            .split(' ')
-                            .slice(0, 2)
-                            .map((part) => part.slice(0, 1))
-                            .join('')}
-                        </span>
-                      )}
-                    </span>
-                    <p className="cast-tile__name">{member.name}</p>
-                    {member.character !== null ? (
-                      <p className="cast-tile__role">{member.character}</p>
-                    ) : null}
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
+          <CastStrip members={members} />
         </section>
         )}
       </SectionBoundary>
