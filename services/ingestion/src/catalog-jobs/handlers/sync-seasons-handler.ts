@@ -15,7 +15,7 @@ import { buildIdempotencyKey } from '../idempotency.js'
 import type { CatalogJobStorePort } from '../store-port.js'
 import type { CatalogSeasonsSyncPort } from './ports.js'
 import { validateSyncSeasonsInput, type SyncSeasonsInput } from './schemas.js'
-import { classifySafeError, throwIfAborted } from './support.js'
+import { classifySafeError, createEnqueueTally, throwIfAborted } from './support.js'
 
 /** Resultado serializavel do `sync_seasons`. */
 export interface SyncSeasonsResult {
@@ -91,6 +91,7 @@ export class SyncSeasonsHandler implements CatalogJobHandler<SyncSeasonsInput, S
     }
 
     let enqueued = 0
+    const tally = createEnqueueTally()
     if (input.enqueueEpisodes) {
       throwIfAborted(context.signal)
       for (const seasonNumber of outcome.seasonNumbers) {
@@ -108,9 +109,11 @@ export class SyncSeasonsHandler implements CatalogJobHandler<SyncSeasonsInput, S
           priority: 70,
           runId: context.requestId,
         })
+        tally.add('sync_episodes', result.created)
         if (result.created) enqueued += 1
         await context.heartbeat()
       }
+      tally.flush(context.metrics)
     }
 
     /**

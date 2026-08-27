@@ -18,7 +18,7 @@ import type { CatalogJobStorePort, EnqueueCatalogJobInput } from '../store-port.
 import type { CatalogDetailSyncPort, SearchReindexPort } from './ports.js'
 import type { DetailWatchOutcome } from '../../watch-providers/from-detail.js'
 import { validateSyncDetailsInput, type SyncDetailsInput } from './schemas.js'
-import { classifySafeError, throwIfAborted } from './support.js'
+import { classifySafeError, createEnqueueTally, throwIfAborted } from './support.js'
 
 /** Resultado serializavel do `sync_details`. */
 export interface SyncDetailsResult {
@@ -227,16 +227,26 @@ export class SyncDetailsHandler implements CatalogJobHandler<SyncDetailsInput, S
       push('sync_seasons', { ...base, enqueueEpisodes: true }, 65)
     }
 
+    // A CHAVE DO FILHO NAO TEM ESCOPO, a do pai tem (dia, no agendador; janela,
+    // no incremental). Logo todo `sync_details` de um titulo JA COBERTO cai aqui
+    // e recebe `created=false` — o noop e o caminho normal, nao a excecao. Ate
+    // 2026-08-27 isso aparecia como `ERROR: duplicate key` no log do PostgreSQL;
+    // com `ON CONFLICT DO NOTHING` o erro sumiu, e sem esta contagem a TAXA
+    // sumiria junto.
+    const tally = createEnqueueTally()
     let created = 0
     for (const job of jobs) {
       const result = await this.deps.store.enqueue(job)
+      tally.add(job.jobType, result.created)
       if (result.created) created += 1
     }
+    tally.flush(context.metrics)
     context.log.log('debug', 'catalog_sync_details_enqueued', {
       jobId: context.jobId,
       entityType: input.entityType,
       planned: jobs.length,
       created,
+      duplicated: tally.duplicates(),
     })
     return created
   }
