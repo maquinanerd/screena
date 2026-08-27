@@ -282,7 +282,12 @@ async function runChecks(prisma: PrismaLike, seams: Seams): Promise<void> {
   // nao 200 com 50.000 URLs para quem o guardou. Quando a Fase 3 devolver a
   // decisao por dado, esta secao volta a provar paginacao.
   const index = await seams.getSitemapIndexXml({ limit: LIMIT });
-  record(24, "index NAO anuncia nenhum shard de temporada/episodio (suspensos)", !index.xml.includes("sitemap-pt-BR-seasons-") && !index.xml.includes("sitemap-pt-BR-episodes-") && index.contentType.includes("application/xml"), "ok");
+  // Le os enderecos ANUNCIADOS, em vez de procurar substring no XML inteiro:
+  // substring casaria com um comentario ou com um texto solto, e o que esta sob
+  // prova e a LISTA de shards que o index publica.
+  const anunciados = locsInXml(index.xml);
+  const suspensosAnunciados = anunciados.filter((u) => /sitemap-pt-BR-(seasons|episodes)-\d+\.xml$/.test(u));
+  record(24, "index NAO anuncia nenhum shard de temporada/episodio (suspensos)", suspensosAnunciados.length === 0 && anunciados.length > 0 && index.contentType.includes("application/xml"), `anunciados=${anunciados.length}, suspensos=${suspensosAnunciados.length}`);
 
   const suspensos = await Promise.all(
     ["seasons-1", "seasons-2", "episodes-1", "episodes-2", "episodes-3"].map((id) =>
