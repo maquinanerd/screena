@@ -117,10 +117,16 @@ describe("valvula — a meta tag, que e o que de fato desindexa", () => {
     }
   });
 
-  it("(8) nunca AFROUXA: `blocked` (licenca) e `draft` (idioma) continuam valendo", () => {
-    for (const decision of ["blocked", "draft"] as const) {
-      const out = applyPageSuspension("episode", resolution({ decision }));
+  it("(8) so DEMOVE de `index`: blocked, draft e noindex voltam intactos, com o MOTIVO preservado", () => {
+    // O caso que quase passou foi `noindex`: a valvula reescrevia o motivo de
+    // uma decisao persistida, apagando a auditoria de por que a pagina saiu do
+    // indice — e fazendo `noindex` deixar de discriminar quem decidiu.
+    for (const decision of ["blocked", "draft", "noindex"] as const) {
+      const antes = resolution({ decision, reason: "motivo de quem decidiu antes" });
+      const out = applyPageSuspension("episode", antes);
       expect(out.decision).toBe(decision);
+      expect(out.reason).toBe("motivo de quem decidiu antes");
+      expect(out).toBe(antes);
     }
   });
 });

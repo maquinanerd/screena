@@ -65,18 +65,25 @@ export function isSuspendedPageType(entityType: DecisionEntityType): boolean {
  * em filme, serie ou pessoa. Tipo suspenso vira `noindex, follow`, fora do
  * sitemap, com o motivo acima.
  *
- * Nao rebaixa `blocked` nem `draft`: quando a resolucao ja e mais restritiva
- * que `noindex` por licenca (invariante 6) ou idioma (invariante 7), essa
- * decisao continua valendo — a valvula nunca AFROUXA um gate.
+ * So DEMOVE de `index`. Resolucao que ja nao e `index` — `blocked` por licenca
+ * (invariante 6), `draft` por idioma (invariante 7), ou `noindex` ja decidido —
+ * volta INTACTA, decisao e motivo. A valvula nunca afrouxa um gate e nunca
+ * apaga a razao de outro.
  */
 export function applyPageSuspension(
   entityType: DecisionEntityType,
   resolution: PageSeoResolution,
 ): PageSeoResolution {
   if (!isSuspendedPageType(entityType)) return resolution;
-  if (resolution.decision === "blocked" || resolution.decision === "draft") {
-    return resolution;
-  }
+  // So DEMOVE de `index`. Qualquer decisao ja restritiva fica INTACTA — e nao
+  // so a decisao: o MOTIVO tambem. `blocked` (licenca, invariante 6) e `draft`
+  // (idioma, invariante 7) sao obvios; o caso que quase passou foi `noindex`.
+  //
+  // Reescrever o motivo de um `noindex` ja decidido apagaria a auditoria de POR
+  // QUE aquela pagina saiu do indice, e faria `decision === "noindex"` deixar de
+  // discriminar quem decidiu — a valvula ou a decisao persistida. O validador
+  // real (check 22) so volta a significar alguma coisa por causa desta linha.
+  if (resolution.decision !== "index") return resolution;
   return {
     ...resolution,
     decision: "noindex",
