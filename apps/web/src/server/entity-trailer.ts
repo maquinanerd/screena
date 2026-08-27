@@ -46,9 +46,25 @@ type PrismaClient = ReturnType<typeof getPrismaClient>;
  * há vídeo sem licença, há vídeo não promovido) — todos significam "não
  * exibir". Quem chama transforma em ausência REGISTRADA, nunca em bloco vazio.
  */
+/**
+ * As entidades que podem ter trailer próprio.
+ *
+ * `season` entrou em 2026-08-27. Uma temporada TEM trailer próprio no TMDB — a
+ * 2ª de Ted Lasso tem dois — e a página de temporada não mostrava nenhum porque
+ * `sync_media` recusava `kind='season'`, então `tmdb_videos` nunca teve uma
+ * linha com esse `entity_type`. Não era licença nem desenho: era coleta.
+ *
+ * `episode` fica de fora deste helper de propósito: vídeo de episódio é raro e,
+ * quando existe, é bastidor ou cena — abrir um "Assistir ao trailer" que toca
+ * um clipe de trinta segundos mentiria para o leitor, que é exatamente o que
+ * `TRAILER_TYPE_RANK` já impede por tipo. Os vídeos de episódio, quando houver,
+ * entram pela galeria, que lista o que existe sem prometer o que é.
+ */
+export type TrailerOwnerType = "movie" | "tv" | "season";
+
 export async function getTrailerForEntity(
   prisma: PrismaClient,
-  entityType: "movie" | "tv",
+  entityType: TrailerOwnerType,
   tmdbId: number,
 ): Promise<TrailerView | null> {
   const rows = await prisma.tmdbVideo.findMany({

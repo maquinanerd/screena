@@ -54,7 +54,7 @@
       ]
     },
     "plan_area": "TMDB catalogo/relacoes (Fase 6)",
-    "notes": "Detalhe de temporada (episodios inline). Normalizado em seasons/episodes; exibido nas rotas de temporada (Fase 4)."
+    "notes": "Detalhe de temporada (episodios inline). Normalizado em seasons/episodes; exibido nas rotas de temporada (Fase 4). Os SETE valores de append (credits, aggregate_credits, external_ids, images, videos, translations, watch/providers) tem classificacao INDIVIDUAL em api-clients/tmdb/src/append-consumption.ts desde 2026-08-27 — antes disso o registro era chaveado so pelo valor do append e os sete herdavam a classificacao de movie/tv, o que os tornava invisiveis. images e videos sao lidos pelo endpoint proprio (sync_media de temporada); os outros cinco estao adiados com motivo escrito."
   },
   {
     "id": "tmdb.tv.episode.details",
@@ -64,7 +64,7 @@
     "http": "GET /tv/{id}/season/{n}/episode/{e}",
     "worker_only": true,
     "implemented": true,
-    "coverage_state": "not_applicable",
+    "coverage_state": "normalized",
     "anchor": {
       "file": "api-clients/tmdb/src/endpoints.ts",
       "must_contain": [
@@ -72,9 +72,8 @@
         "/episode/"
       ]
     },
-    "justification": "Metodo definido (getTvEpisode) porem NAO chamado por nenhum worker: episodios sao ingeridos inline via getTvSeason. Sem dado proprio fluindo por este endpoint hoje.",
     "plan_area": "TMDB catalogo/relacoes (Fase 6)",
-    "notes": "Se um worker passar a busca-lo diretamente, mudar coverage_state para normalized/public_ready."
+    "notes": "Detalhe de episodio com append_to_response (credits, external_ids, images, videos, translations). CHAMADO por sync_episodes desde 2026-08-27 — uma requisicao por episodio. Ate entao o registro dizia not_applicable com a justificativa \"episodios sao ingeridos inline via getTvSeason\", e a frase escondia o defeito: o item de episodes[] da temporada NAO traz credits, external_ids nem images, entao elenco regular, ids externos e stills saiam vazios em toda execucao e a pagina de episodio ficava sem elenco convidado, direcao e roteiro. Normalizado em cast_members/crew_members (entity_type=episode), entity_external_ids e tmdb_images; exibido em /pt/series/{slug}/temporadas/{n}/episodios/{e}/."
   },
   {
     "id": "tmdb.person.details",
@@ -147,7 +146,7 @@
       ]
     },
     "plan_area": "TMDB midia (Fase 7)",
-    "notes": "Normalizado em tmdb_images/tmdb_videos pelo worker de midia (catalog-sync/media-sync.ts): so metadados, idempotente. Nasce display_allowed=false + license_status=unknown (invariante 6) — NUNCA public_ready sem revisao humana de licenca. Validado em validate:tmdb-platform."
+    "notes": "Normalizado em tmdb_images/tmdb_videos pelo worker de midia (catalog-sync/media-sync.ts): so metadados, idempotente. Nasce display_allowed=false + license_status=unknown (invariante 6) - NUNCA public_ready sem revisao humana de licenca. CHAMADO DE VERDADE desde 2026-08-27: ate entao o estado normalized estava declarado e nenhum worker chamava o metodo, porque sync_media recusava os kinds season/episode (MEDIA_KINDS so tinha movie/tv/person). A chave de gravacao e o tmdb_id PROPRIO da temporada/episodio, resolvido no banco; o tmdbId do job e o da SERIE, que so endereca a URL."
   },
   {
     "id": "tmdb.episode.images",
@@ -165,7 +164,7 @@
       ]
     },
     "plan_area": "TMDB midia (Fase 7)",
-    "notes": "Normalizado em tmdb_images/tmdb_videos pelo worker de midia (catalog-sync/media-sync.ts): so metadados, idempotente. Nasce display_allowed=false + license_status=unknown (invariante 6) — NUNCA public_ready sem revisao humana de licenca. Validado em validate:tmdb-platform."
+    "notes": "Normalizado em tmdb_images/tmdb_videos pelo worker de midia (catalog-sync/media-sync.ts): so metadados, idempotente. Nasce display_allowed=false + license_status=unknown (invariante 6) - NUNCA public_ready sem revisao humana de licenca. CHAMADO DE VERDADE desde 2026-08-27: ate entao o estado normalized estava declarado e nenhum worker chamava o metodo, porque sync_media recusava os kinds season/episode (MEDIA_KINDS so tinha movie/tv/person). A chave de gravacao e o tmdb_id PROPRIO da temporada/episodio, resolvido no banco; o tmdbId do job e o da SERIE, que so endereca a URL."
   },
   {
     "id": "tmdb.person.images",
@@ -237,7 +236,7 @@
       ]
     },
     "plan_area": "TMDB midia (Fase 7)",
-    "notes": "Normalizado em tmdb_images/tmdb_videos pelo worker de midia (catalog-sync/media-sync.ts): so metadados, idempotente. Nasce display_allowed=false + license_status=unknown (invariante 6) — NUNCA public_ready sem revisao humana de licenca. Validado em validate:tmdb-platform."
+    "notes": "Normalizado em tmdb_images/tmdb_videos pelo worker de midia (catalog-sync/media-sync.ts): so metadados, idempotente. Nasce display_allowed=false + license_status=unknown (invariante 6) - NUNCA public_ready sem revisao humana de licenca. CHAMADO DE VERDADE desde 2026-08-27: ate entao o estado normalized estava declarado e nenhum worker chamava o metodo, porque sync_media recusava os kinds season/episode (MEDIA_KINDS so tinha movie/tv/person). A chave de gravacao e o tmdb_id PROPRIO da temporada/episodio, resolvido no banco; o tmdbId do job e o da SERIE, que so endereca a URL."
   },
   {
     "id": "tmdb.episode.videos",
@@ -255,7 +254,7 @@
       ]
     },
     "plan_area": "TMDB midia (Fase 7)",
-    "notes": "Normalizado em tmdb_images/tmdb_videos pelo worker de midia (catalog-sync/media-sync.ts): so metadados, idempotente. Nasce display_allowed=false + license_status=unknown (invariante 6) — NUNCA public_ready sem revisao humana de licenca. Validado em validate:tmdb-platform."
+    "notes": "Normalizado em tmdb_images/tmdb_videos pelo worker de midia (catalog-sync/media-sync.ts): so metadados, idempotente. Nasce display_allowed=false + license_status=unknown (invariante 6) - NUNCA public_ready sem revisao humana de licenca. CHAMADO DE VERDADE desde 2026-08-27: ate entao o estado normalized estava declarado e nenhum worker chamava o metodo, porque sync_media recusava os kinds season/episode (MEDIA_KINDS so tinha movie/tv/person). A chave de gravacao e o tmdb_id PROPRIO da temporada/episodio, resolvido no banco; o tmdbId do job e o da SERIE, que so endereca a URL."
   },
   {
     "id": "tmdb.movie.upcoming",
@@ -1123,7 +1122,13 @@
     "worker_only": true,
     "implemented": true,
     "coverage_state": "raw_captured",
-    "anchor": { "file": "api-clients/streaming_availability/src/client.ts", "must_contain": ["getChanges", "SHOWS_CHANGES_ENDPOINT"] },
+    "anchor": {
+      "file": "api-clients/streaming_availability/src/client.ts",
+      "must_contain": [
+        "getChanges",
+        "SHOWS_CHANGES_ENDPOINT"
+      ]
+    },
     "plan_area": "Streaming Availability (Fase 9)",
     "notes": "Cursor incremental e opaco; o client somente captura DTO bruto. Nenhum change promove oferta ou altera dados publicos."
   },
@@ -1136,7 +1141,13 @@
     "worker_only": true,
     "implemented": true,
     "coverage_state": "raw_captured",
-    "anchor": { "file": "api-clients/streaming_availability/src/client.ts", "must_contain": ["getCountries", "getCountry"] },
+    "anchor": {
+      "file": "api-clients/streaming_availability/src/client.ts",
+      "must_contain": [
+        "getCountries",
+        "getCountry"
+      ]
+    },
     "plan_area": "Streaming Availability (Fase 9)",
     "notes": "Catalogo de paises/servicos capturado raw; nao substitui a tabela canonica countries e nao e publico sem licenca."
   },
@@ -1149,7 +1160,13 @@
     "worker_only": true,
     "implemented": true,
     "coverage_state": "raw_captured",
-    "anchor": { "file": "api-clients/streaming_availability/src/client.ts", "must_contain": ["getGenres", "GENRES_ENDPOINT"] },
+    "anchor": {
+      "file": "api-clients/streaming_availability/src/client.ts",
+      "must_contain": [
+        "getGenres",
+        "GENRES_ENDPOINT"
+      ]
+    },
     "plan_area": "Streaming Availability (Fase 9)",
     "notes": "Taxonomia do provider preservada raw; nao se assume equivalencia com TMDB genres."
   },

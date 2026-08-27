@@ -33,6 +33,7 @@
     "canary:editorial-entity-links": "tsx scripts/canary-editorial-entity-links-real-postgres.ts",
     "canary:entity-link-auto-verification": "tsx scripts/canary-entity-link-auto-verification-real-postgres.ts",
     "qa:gallery": "tsx scripts/qa-gallery-real-postgres.ts",
+    "qa:episode-season": "tsx scripts/qa-episode-season-real-postgres.ts",
     "report:hero-gate": "tsx scripts/report-hero-gate.ts"
   },
   "dependencies": {

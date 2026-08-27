@@ -212,7 +212,7 @@ describe('SyncDetailsHandler', () => {
 })
 
 describe('SyncSeasonsHandler', () => {
-  it('enfileira um sync_episodes por temporada REPORTADA (inclui a 0)', async () => {
+  it('enfileira sync_episodes E sync_media por temporada REPORTADA (inclui a 0)', async () => {
     const fakes = createHandlerFakes()
     fakes.setSeasonNumbers([0, 1, 2])
     const handler = new SyncSeasonsHandler({ seasonsSync: fakes.deps.seasonsSync, store: fakes.store })
@@ -222,19 +222,70 @@ describe('SyncSeasonsHandler', () => {
       handler.validateInput({ tmdbId: 1399, locale: 'pt-BR' }),
     )
 
-    expect(result.enqueued).toBe(3)
-    const seasons = fakes.store.enqueued.map((j) => (j.payload as { seasonNumber: number }).seasonNumber)
+    // TRES temporadas x DOIS jobs. O `sync_media` de temporada entrou em
+    // 2026-08-27: e ele que acende o trailer da pagina de temporada, que ate
+    // entao nao tinha onde buscar um (`tmdb_videos` nunca teve linha com
+    // entity_type de temporada).
+    expect(result.enqueued).toBe(6)
+
+    const episodios = fakes.store.enqueued.filter((j) => j.jobType === 'sync_episodes')
+    const midia = fakes.store.enqueued.filter((j) => j.jobType === 'sync_media')
+    expect(episodios).toHaveLength(3)
+    expect(midia).toHaveLength(3)
+
     // Temporada 0 (especiais) e real: nunca inferir intervalo 1..N.
-    expect(seasons.sort()).toEqual([0, 1, 2])
+    const numeros = (jobs: typeof episodios) =>
+      jobs.map((j) => (j.payload as { seasonNumber: number }).seasonNumber).sort()
+    expect(numeros(episodios)).toEqual([0, 1, 2])
+    expect(numeros(midia)).toEqual([0, 1, 2])
+
+    // O `sync_media` carrega o id da SERIE (e assim que o TMDB endereca a URL);
+    // o id proprio da temporada, que e a CHAVE de gravacao, o adapter resolve
+    // no banco. Confundir os dois faria todas as temporadas colidirem numa
+    // linha so — a colisao real que manteve este job recusado por meses.
+    for (const job of midia) {
+      const payload = job.payload as { entityType: string; tmdbId: number }
+      expect(payload.entityType).toBe('season')
+      expect(payload.tmdbId).toBe(1399)
+    }
   })
 
-  it('nao enfileira episodios quando enqueueEpisodes=false', async () => {
+  it('as duas dimensoes do leque desligam INDEPENDENTEMENTE', async () => {
+    // Desligar episodios nao pode desligar a midia da temporada junto: sao
+    // custos diferentes (N requisicoes por temporada contra 2) e o operador
+    // precisa poder frear so o caro.
+    const semEpisodios = createHandlerFakes()
+    const h1 = new SyncSeasonsHandler({
+      seasonsSync: semEpisodios.deps.seasonsSync,
+      store: semEpisodios.store,
+    })
+    const r1 = await h1.execute(
+      createFakeContext().context,
+      h1.validateInput({ tmdbId: 1399, enqueueEpisodes: false }),
+    )
+    expect(r1.enqueued).toBe(2)
+    expect(semEpisodios.store.enqueued.every((j) => j.jobType === 'sync_media')).toBe(true)
+
+    const semMidia = createHandlerFakes()
+    const h2 = new SyncSeasonsHandler({
+      seasonsSync: semMidia.deps.seasonsSync,
+      store: semMidia.store,
+    })
+    const r2 = await h2.execute(
+      createFakeContext().context,
+      h2.validateInput({ tmdbId: 1399, enqueueSeasonMedia: false }),
+    )
+    expect(r2.enqueued).toBe(2)
+    expect(semMidia.store.enqueued.every((j) => j.jobType === 'sync_episodes')).toBe(true)
+  })
+
+  it('as DUAS desligadas nao enfileiram nada', async () => {
     const fakes = createHandlerFakes()
     const handler = new SyncSeasonsHandler({ seasonsSync: fakes.deps.seasonsSync, store: fakes.store })
 
     const result = await handler.execute(
       createFakeContext().context,
-      handler.validateInput({ tmdbId: 1399, enqueueEpisodes: false }),
+      handler.validateInput({ tmdbId: 1399, enqueueEpisodes: false, enqueueSeasonMedia: false }),
     )
 
     expect(result.enqueued).toBe(0)
@@ -245,7 +296,7 @@ describe('SyncSeasonsHandler', () => {
 describe('SyncEpisodesHandler', () => {
   it('conta episodio sem tmdbId como skip, sem derrubar a temporada', async () => {
     const fakes = createHandlerFakes()
-    const handler = new SyncEpisodesHandler({ episodesSync: fakes.deps.episodesSync })
+    const handler = new SyncEpisodesHandler({ episodesSync: fakes.deps.episodesSync, store: fakes.store })
     const fake = createFakeContext()
 
     const result = await handler.execute(
@@ -266,7 +317,7 @@ describe('SyncEpisodesHandler', () => {
 
   it('aceita temporada 0 e recusa seasonNumber ausente', () => {
     const fakes = createHandlerFakes()
-    const handler = new SyncEpisodesHandler({ episodesSync: fakes.deps.episodesSync })
+    const handler = new SyncEpisodesHandler({ episodesSync: fakes.deps.episodesSync, store: fakes.store })
 
     expect(handler.validateInput({ tmdbId: 1, seasonNumber: 0 }).seasonNumber).toBe(0)
     expect(() => handler.validateInput({ tmdbId: 1 })).toThrow(CatalogJobInputError)
@@ -315,23 +366,51 @@ describe('SyncExternalIdsHandler', () => {
 })
 
 describe('SyncMediaHandler', () => {
-  // REGRESSAO: season/episode eram aceitos, mas MediaTarget so carrega
-  // (entityType, tmdbId) e para temporada o tmdbId e o da SERIE. A chave de
-  // cache virava `/season/1399/images` para TODAS as temporadas — a 2 recebia as
-  // imagens da 1 — e as linhas ficavam todas rotuladas com o id da serie.
-  // Stills de episodio vem por sync_episodes, com a chave natural correta.
-  it('recusa season/episode (a chave de midia colidiria entre temporadas)', () => {
+  // A RECUSA CAIU EM 2026-08-27, e a colisao que ela temia continua real.
+  //
+  // O texto anterior dizia: MediaTarget so carrega (entityType, tmdbId) e para
+  // temporada o tmdbId e o da SERIE, entao a chave de cache virava
+  // /season/1399/images para TODAS as temporadas. Verdade — com UM numero para
+  // dois papeis. O conserto foi separar os papeis: `tmdbId` endereca a URL, e a
+  // chave de gravacao vem de `seasons.tmdb_id`/`episodes.tmdb_id`, resolvidos
+  // no banco pelo adapter.
+  //
+  // A outra metade da recusa (stills de episodio vem por sync_episodes, com a
+  // chave natural correta) era FALSA: `extractEpisodeStills` lia
+  // `images.stills` do item de `episodes[]` da temporada, que nao tem esse
+  // bloco, e devolvia lista vazia em toda execucao.
+  it('ACEITA season/episode e EXIGE as coordenadas que fecham a URL', () => {
     const fakes = createHandlerFakes()
     const handler = new SyncMediaHandler({ mediaSync: fakes.deps.mediaSync })
 
-    expect(() => handler.validateInput({ entityType: 'season', tmdbId: 1399, seasonNumber: 1 })).toThrow(
+    expect(
+      handler.validateInput({ entityType: 'season', tmdbId: 1399, seasonNumber: 1 }).entityType,
+    ).toBe('season')
+    expect(
+      handler.validateInput({ entityType: 'episode', tmdbId: 1399, seasonNumber: 1, episodeNumber: 2 })
+        .episodeNumber,
+    ).toBe(2)
+
+    // Temporada 0 (especiais) e valida: o gate e >= 0, nunca >= 1.
+    expect(
+      handler.validateInput({ entityType: 'season', tmdbId: 1399, seasonNumber: 0 }).seasonNumber,
+    ).toBe(0)
+
+    // Sem as coordenadas a URL nao fecha e a chamada gastaria cota para receber
+    // 404. Falha PERMANENTE, e por isso reprova na validacao e nao na rede.
+    expect(() => handler.validateInput({ entityType: 'season', tmdbId: 1399 })).toThrow(
       CatalogJobInputError,
     )
     expect(() =>
-      handler.validateInput({ entityType: 'episode', tmdbId: 1399, seasonNumber: 1, episodeNumber: 2 }),
+      handler.validateInput({ entityType: 'episode', tmdbId: 1399, seasonNumber: 1 }),
     ).toThrow(CatalogJobInputError)
+
     expect(handler.validateInput({ entityType: 'movie', tmdbId: 603 }).entityType).toBe('movie')
     expect(handler.validateInput({ entityType: 'person', tmdbId: 1 }).entityType).toBe('person')
+    // Kind inexistente continua recusado: a lista nao virou aberta.
+    expect(() => handler.validateInput({ entityType: 'collection', tmdbId: 1 })).toThrow(
+      CatalogJobInputError,
+    )
   })
 
   it('delega ao mediaSync e observa duracao', async () => {

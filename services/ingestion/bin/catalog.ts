@@ -459,11 +459,22 @@ function describePlan(
         `gravaria snapshot (hash-noop se a lista nao mudou)`,
       ]
     case 'media':
-      return [`entidade: ${flags.entity} ${flags.id}`, 'sincronizaria imagens/videos (display_allowed=false)']
+      return [
+        flags.entity === 'season'
+          ? `temporada ${flags.season} da serie ${flags.id} — /tv/${flags.id}/season/${flags.season}/{images,videos}`
+          : flags.entity === 'episode'
+            ? `T${flags.season}E${flags.episode} da serie ${flags.id} — /tv/${flags.id}/season/${flags.season}/episode/${flags.episode}/{images,videos}`
+            : `entidade: ${flags.entity} ${flags.id}`,
+        'sincronizaria imagens/videos (display_allowed=false)',
+        flags.entity === 'season' || flags.entity === 'episode'
+          ? '  chave de gravacao: o tmdb_id PROPRIO da entidade (nao o da serie) — resolvido no banco'
+          : '',
+      ].filter((linha) => linha !== '')
     case 'episodes':
       return [
         `serie: ${flags.id}${flags.season !== null ? ` · temporada ${flags.season}` : ' · todas as temporadas'}`,
-        'sincronizaria creditos, guest stars, ids externos e stills',
+        'sincronizaria creditos, guest stars, equipe (direcao/roteiro), ids externos e stills',
+        '  custo: 1 chamada da temporada + 1 do DETALHE por episodio (getTvEpisode)',
       ]
     case 'search-reindex':
       return [`tipos: ${(entity ?? ['movie', 'tv', 'person']).join(', ')}`, `locale: ${locale}`]
@@ -1095,7 +1106,13 @@ async function cmdMedia(registry: CatalogJobRegistry, flags: CatalogFlags, local
   const report = await runHandlerInline<SyncMediaResult>(
     registry,
     'sync_media',
-    { entityType: flags.entity, tmdbId: flags.id, seasonNumber: flags.season, locale },
+    {
+      entityType: flags.entity,
+      tmdbId: flags.id,
+      seasonNumber: flags.season,
+      episodeNumber: flags.episode,
+      locale,
+    },
     deps,
   )
   emit(flags, report, [
@@ -1128,10 +1145,39 @@ async function cmdEpisodes(registry: CatalogJobRegistry, flags: CatalogFlags, lo
 
   const total = reports.reduce((sum, r) => sum + r.episodes, 0)
   const skipped = reports.reduce((sum, r) => sum + r.skippedNoTmdbId, 0)
-  emit(flags, { seasons: seasons.length, episodes: total, skippedNoTmdbId: skipped, reports }, [
-    `episodes serie ${flags.id}: ${seasons.length} temporadas · ${total} episodios`,
-    skipped > 0 ? `  ${skipped} episodio(s) sem tmdb id: pulados (sem chave natural)` : '',
-  ])
+  const degraded = reports.reduce((sum, r) => sum + r.failedDetail, 0)
+  const enqueued = reports.reduce((sum, r) => sum + r.enqueued, 0)
+  // As CONTAGENS que provam que o conserto de 27/08 pegou. Ate entao
+  // `cast`/`crew`/`externalIds`/`stills` saiam ZERO em toda execucao — e o
+  // relatorio nao os mostrava, entao ninguem via o zero.
+  const cast = reports.reduce((sum, r) => sum + r.cast, 0)
+  const guest = reports.reduce((sum, r) => sum + r.guestStars, 0)
+  const crew = reports.reduce((sum, r) => sum + r.crew, 0)
+  const stills = reports.reduce((sum, r) => sum + r.stills, 0)
+  emit(
+    flags,
+    {
+      seasons: seasons.length,
+      episodes: total,
+      skippedNoTmdbId: skipped,
+      failedDetail: degraded,
+      enqueued,
+      cast,
+      guestStars: guest,
+      crew,
+      stills,
+      reports,
+    },
+    [
+      `episodes serie ${flags.id}: ${seasons.length} temporadas · ${total} episodios`,
+      `  elenco ${cast} · convidados ${guest} · equipe ${crew} · stills ${stills}`,
+      enqueued > 0 ? `  ${enqueued} sync_media de episodio enfileirados` : '',
+      degraded > 0
+        ? `  ${degraded} episodio(s) sem DETALHE: gravados so com convidados e equipe (o resumo da temporada nao traz elenco regular, ids externos nem stills)`
+        : '',
+      skipped > 0 ? `  ${skipped} episodio(s) sem tmdb id: pulados (sem chave natural)` : '',
+    ],
+  )
   return EXIT_CODES.ok
 }
 

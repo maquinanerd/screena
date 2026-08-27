@@ -27,7 +27,29 @@ export interface MediaStorePort {
 /** Alvo de sync: uma entidade + fetchers do payload de midia. */
 export interface MediaTarget {
   readonly entityType: string
+  /**
+   * Id que vai na CHAVE de `tmdb_images`/`tmdb_videos` — o id PROPRIO da
+   * entidade dona da midia.
+   *
+   * Para filme/serie/pessoa e o mesmo id que aparece na URL. Para temporada e
+   * episodio NAO e: a URL do TMDB endereca pela serie + numero
+   * (`/tv/97546/season/2/images`), enquanto a chave usa `seasons.tmdb_id` /
+   * `episodes.tmdb_id`. Confundir os dois faria todas as temporadas de uma
+   * serie colidirem numa linha so — foi exatamente por prever essa colisao (e
+   * nao separar os dois papeis) que `sync_media` recusou temporada e episodio
+   * ate 2026-08-27.
+   */
   readonly tmdbId: number
+  /**
+   * Caminho REAL do recurso no TMDB, SEM o sufixo `/images` ou `/videos`.
+   *
+   * E a chave de `api_cache` e o `endpoint` de `api_sync_logs`. Ate 2026-08-27
+   * era derivado como `/${entityType}/${tmdbId}`, o que so por coincidencia
+   * batia com a URL chamada — para temporada produziria `/season/119051/images`,
+   * um caminho que nao existe no TMDB, e o log passaria a mentir sobre o que
+   * foi requisitado.
+   */
+  readonly endpointBase: string
   readonly fetchImages: () => Promise<unknown>
   /** Ausente para pessoas (sem endpoint de videos). */
   readonly fetchVideos?: () => Promise<unknown>
@@ -72,7 +94,7 @@ function errorCode(err: unknown): string {
 /** Executa o sync de midia de UMA entidade. Nao lanca: falhas viram log `failed`. */
 export async function runMediaSync(target: MediaTarget, deps: MediaSyncDeps): Promise<MediaSyncResult> {
   const images = await syncKind(
-    `/${target.entityType}/${target.tmdbId}/images`,
+    `${target.endpointBase}/images`,
     target.fetchImages,
     (data) => normalizeImages(target.entityType, target.tmdbId, data as never),
     (rows) => deps.store.upsertImages(rows as ImageRow[]),
@@ -82,7 +104,7 @@ export async function runMediaSync(target: MediaTarget, deps: MediaSyncDeps): Pr
   let videos: MediaKindResult | null = null
   if (target.fetchVideos) {
     videos = await syncKind(
-      `/${target.entityType}/${target.tmdbId}/videos`,
+      `${target.endpointBase}/videos`,
       target.fetchVideos,
       (data) => normalizeVideos(target.entityType, target.tmdbId, data as never),
       (rows) => deps.store.upsertVideos(rows as VideoRow[]),

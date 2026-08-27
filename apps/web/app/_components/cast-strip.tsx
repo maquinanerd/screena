@@ -1,53 +1,68 @@
+/**
+ * cast-strip.tsx — A faixa de retratos de elenco, com e sem link.
+ *
+ * ============================================================================
+ * POR QUE ISTO É UM COMPONENTE
+ * ============================================================================
+ * A ficha de série e a de filme desenhavam esta faixa INLINE, e cada uma
+ * escrevia o bloco DUAS vezes: uma para o membro com slug (vira `<a>`) e outra
+ * para o membro sem slug (vira `<div>`). Eram quatro cópias do mesmo retrato,
+ * das mesmas iniciais de fallback e do mesmo par nome/personagem.
+ *
+ * A página de episódio precisa da MESMA faixa em dois lugares (elenco
+ * convidado e elenco regular). Copiá-la de novo levaria a seis cópias — e a
+ * primeira correção aplicada a uma e esquecida nas outras é o defeito que este
+ * repositório já pagou em `buildCoverageJob` e em `youtube-embed.ts`.
+ *
+ * As TRÊS telas consomem este componente. A #235 trouxe o episódio; as duas
+ * fichas migraram na #236 — escopo próprio, como estava previsto aqui —, com o
+ * HTML conferido byte a byte contra o bloco inline que saiu: mesmas classes,
+ * `globals.css` intocado.
+ *
+ * PRESENTACIONAL e SERVER: sem estado, sem `use client`, sem fetch. Recebe a
+ * view já decidida pelo presenter.
+ */
+
 import type { ReactNode } from 'react'
 
 import type { CastMemberView } from '../../src/lib/cast-presenter'
 
-/**
- * CastStrip — faixa de retratos do ELENCO das fichas de titulo (filme e serie).
- *
- * PRESENTACIONAL e PURO: recebe os `CastMemberView` ja montados, ordenados e
- * limitados pelo presenter (`cast-presenter.ts`) e so produz JSX. Nao importa
- * @screena/db e nao faz IO (invariantes 3 e 4). Elenco e dado factual de
- * catalogo (nome + personagem) — nota, licenca de rating e disponibilidade
- * nunca chegam aqui.
- *
- * POR QUE ELE EXISTE, EM VEZ DO BLOCO INLINE NAS PAGINAS.
- * A faixa vivia inline nas duas fichas, e cada uma a escrevia DUAS vezes: uma
- * para o membro COM slug (envolvido em `<a>`) e outra — identica em tudo menos
- * na tag — para o membro SEM slug (`<div>`). Eram quatro copias do mesmo
- * cartao; mexer no fallback de iniciais exigia acertar as quatro, e a primeira
- * que alguem esquecesse passaria despercebida, porque as duas metades so
- * aparecem juntas em titulos que misturam elenco com e sem pagina propria.
- *
- * Aqui o corpo do cartao existe UMA vez e so o involucro varia com o slug.
- *
- * As classes (`cast-strip`, `cast-tile`, `cast-tile__photo`, `cast-tile__name`,
- * `cast-tile__role`) e a ordem dos atributos do `<img>` sao as mesmas de antes:
- * o CSS de `globals.css` resolve por ordem de documento e nao foi tocado.
- */
-
-/** Ate duas iniciais, exibidas quando o membro nao tem retrato. */
-function castInitials(name: string): string {
-  return name
-    .split(' ')
-    .slice(0, 2)
-    .map((part) => part.slice(0, 1))
-    .join('')
+export interface CastStripProps {
+  readonly members: readonly CastMemberView[]
+  /**
+   * Classe da `<ul>`. Default `cast-strip` — a mesma da ficha de filme/série,
+   * que já existe em `globals.css`. Inventar um vocabulário visual novo aqui
+   * criaria uma segunda grade de retratos para a mesma coisa.
+   */
+  readonly className?: string
 }
 
 /**
- * Conteudo do cartao — identico com ou sem link. So a tag que o envolve muda,
- * e e por isso que ele mora aqui: era exatamente esta metade que estava
- * duplicada em cada ficha.
+ * As iniciais do nome, quando não há retrato.
+ *
+ * Duas letras, das duas primeiras palavras. Nunca o nome inteiro (estouraria o
+ * círculo) e nunca uma silhueta genérica (que some com a identidade de quem
+ * não tem foto no TMDB — em geral figurantes e técnicos).
  */
-function CastTileBody({ member }: { member: CastMemberView }): ReactNode {
+function iniciais(nome: string): string {
+  return nome
+    .split(' ')
+    .slice(0, 2)
+    .map((parte) => parte.slice(0, 1))
+    .join('')
+}
+
+/** O conteúdo do retrato — idêntico com e sem link. */
+function Retrato({ member }: { member: CastMemberView }): ReactNode {
   return (
     <>
       <span className="cast-tile__photo">
         {member.profile !== null ? (
+          // `alt=""` de propósito: o nome vem logo abaixo, em texto. Repetir o
+          // nome no alt faria o leitor de tela anunciá-lo duas vezes.
           <img alt="" loading="lazy" src={member.profile.src} />
         ) : (
-          <span aria-hidden="true">{castInitials(member.name)}</span>
+          <span aria-hidden="true">{iniciais(member.name)}</span>
         )}
       </span>
       <p className="cast-tile__name">{member.name}</p>
@@ -56,26 +71,20 @@ function CastTileBody({ member }: { member: CastMemberView }): ReactNode {
   )
 }
 
-/**
- * Membro sem slug canonico vira `<div>`, nunca link quebrado — a decisao ja
- * veio resolvida do presenter em `member.href`.
- *
- * Nao ha guarda de lista vazia: quem chama passa por `SectionBoundary`, e
- * `decideSection` ja trata array vazio como ausencia (a secao inteira sai do
- * DOM e a causa vai para o log). Uma guarda aqui seria codigo morto.
- */
-export function CastStrip({ members }: { members: CastMemberView[] }): ReactNode {
+export function CastStrip({ members, className = 'cast-strip' }: CastStripProps): ReactNode {
   return (
-    <ul className="cast-strip">
+    <ul className={className}>
       {members.map((member, index) => (
-        <li key={`${member.name}-${index}`}>
+        <li key={`${member.name}-${String(index)}`}>
           {member.href !== null ? (
             <a className="cast-tile" href={member.href}>
-              <CastTileBody member={member} />
+              <Retrato member={member} />
             </a>
           ) : (
+            // Sem slug canônico a pessoa não tem página: texto, nunca um link
+            // que leva a 404.
             <div className="cast-tile">
-              <CastTileBody member={member} />
+              <Retrato member={member} />
             </div>
           )}
         </li>

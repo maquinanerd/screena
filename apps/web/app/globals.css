@@ -11165,3 +11165,120 @@ main[data-vertical='series'] .score-card__label {
     display: none;
   }
 }
+
+/* ------------------------------------------------------------------ *
+ * PAGINA DE EPISODIO — equipe tecnica e still (27/08/2026)
+ *
+ * Ate esta data a pagina de episodio tinha titulo, data, duracao e um
+ * paragrafo. Nao era falta de desenho: era falta de DADO. `cast_members` e
+ * `crew_members` aceitam `entity_type='episode'` desde a Fase 1 e nunca
+ * receberam uma linha, porque `syncEpisodes` lia o resumo da temporada — que
+ * nao traz o bloco `credits`. Com o detalhe do episodio sendo buscado, os
+ * blocos existem e precisam de vocabulario visual.
+ *
+ * O elenco (convidado e regular) NAO ganha classe nova: usa `.cast-strip` e
+ * `.cast-tile`, as mesmas da ficha de filme e de serie. Uma segunda grade de
+ * retratos para a mesma coisa divergiria no primeiro conserto.
+ * ------------------------------------------------------------------ */
+
+/* A equipe e uma <dl>: funcao (dt) -> pessoas (dd). Duas colunas em desktop,
+   empilhadas em telefone. Nao vira grade de retratos: quem dirige um episodio
+   raramente tem foto no TMDB, e uma fileira de iniciais nao informa nada. */
+.episode-crew {
+  margin: 22px 0 0;
+  display: grid;
+  gap: 0;
+}
+
+.episode-crew__row {
+  display: grid;
+  grid-template-columns: minmax(140px, 200px) 1fr;
+  gap: 16px;
+  padding: 13px 0;
+  border-top: 1px solid var(--c-border);
+}
+
+.episode-crew__row:last-child {
+  border-bottom: 1px solid var(--c-border);
+}
+
+.episode-crew__label {
+  margin: 0;
+  color: var(--c-text-muted-aa);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.episode-crew__people {
+  margin: 0;
+  color: var(--c-text-body);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.episode-crew__people a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--c-border-strong);
+  text-underline-offset: 3px;
+}
+
+.episode-crew__people a:hover {
+  text-decoration-color: currentColor;
+}
+
+/* O still do episodio no topo. 16:9, ao contrario do poster 2:3 da temporada —
+   um still E um frame do episodio, e forcar proporcao de poster o cortaria. */
+.episode-still {
+  width: 100%;
+  height: auto;
+  border-radius: var(--r-card);
+  display: block;
+}
+
+@media (max-width: 767px) {
+  .episode-crew__row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * TRAILER DA TEMPORADA (27/08/2026)
+ *
+ * O play, a legenda e o laco de foco sao os MESMOS da banda de midia do
+ * detalhe (`.media-strip__playwrap`, `.media-strip__play`,
+ * `.media-strip__caption`) — nao ha um segundo player, e nao pode haver: o
+ * §6 da politica de privacidade depende de UM caminho em que nada de
+ * terceiro carrega antes do clique.
+ *
+ * O que NAO da para reusar e a GEOMETRIA. `.media-strip__cell` nao declara
+ * altura: ela vem do `.media-strip__grid` que a contem. Fora daquele grid a
+ * celula fica com altura ZERO, e o play de 64px — que e absoluto — cai sobre
+ * a lista de episodios. A primeira escrita desta secao fez exatamente isso, e
+ * o teste de unidade nao teria como ver: so apareceu ao abrir a pagina.
+ * ------------------------------------------------------------------ */
+
+.season-trailer {
+  position: relative; /* o ancestral posicionado que o playwrap procura */
+  aspect-ratio: 16 / 9;
+  /* Teto de largura: um cartao de trailer com 1200px de base viraria o assunto
+     da pagina, e o assunto e a lista de episodios. */
+  max-width: 720px;
+  margin-top: 22px;
+  background: var(--c-bg-skeleton);
+  border-radius: var(--r-media);
+  overflow: hidden;
+}
+
+/* Absoluta pelo mesmo motivo da banda: a imagem nunca dita o layout do bloco. */
+.season-trailer img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
