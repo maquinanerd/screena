@@ -322,9 +322,14 @@ async function runChecks(prisma: PrismaLike, seams: Seams): Promise<void> {
   record(28, "shard acima do total -> null (movies-99)", (await seams.getSitemapShardXml("sitemap-pt-BR-movies-99.xml", { limit: LIMIT })) === null, "null");
   record(29, "shard invalido (pagina 0 / tipo desconhecido) -> null", (await seams.getSitemapShardXml("sitemap-pt-BR-seasons-0.xml", { limit: LIMIT })) === null && (await seams.getSitemapShardXml("sitemap-pt-BR-temporada-1.xml", { limit: LIMIT })) === null, "null");
 
-  // Prova de LIMIT no banco. Migrou de `seasons` para `movies` porque o shard
-  // suspenso responde 404 sem tocar o banco: `captured` viria VAZIO e o check
-  // passaria a medir a suspensao, nao a paginacao.
+  // Prova de LIMIT no banco. Migrou de `seasons` para `series` por DOIS motivos,
+  // e os dois ja reprovaram uma versao deste check:
+  //  1. shard de tipo SUSPENSO responde 404 sem tocar o banco — `captured`
+  //     vinha vazio e o check mediria a suspensao, nao a paginacao;
+  //  2. `movies` nao serve nesta fixture: ela nao tem nenhum filme com slug
+  //     canonico, entao a contagem da 0, o shard 404 antes da consulta
+  //     paginada, e so a consulta de CONTAGEM aparece (sem LIMIT).
+  // `series` tem serie-a e serie-b com slug canonico — a pagina roda de fato.
   const prismaClientPath = dbRequire.resolve("@prisma/client");
   const prismaMod = (await import(pathToFileURL(prismaClientPath).href)) as {
     PrismaClient: new (opts: unknown) => unknown;
@@ -335,11 +340,17 @@ async function runChecks(prisma: PrismaLike, seams: Seams): Promise<void> {
   };
   const captured: string[] = [];
   logged.$on("query", (e) => captured.push(e.query));
-  await seams.getSitemapShardXml("sitemap-pt-BR-movies-1.xml", { limit: LIMIT }, logged);
+  const shardLimitado = await seams.getSitemapShardXml("sitemap-pt-BR-series-1.xml", { limit: LIMIT }, logged);
   await logged.$disconnect();
   const hasLimit = captured.some((q) => /limit/i.test(q));
-  const noOtherTypes = !captured.some((q) => /\bmovies\b|\bpeople\b|\barticle_translations\b/i.test(q));
-  record(30, "prova LIMIT no banco: shard de filmes aplica LIMIT e nao carrega outros tipos", captured.length > 0 && hasLimit && noOtherTypes, `queries=${captured.length}, limit=${hasLimit}, single=${noOtherTypes}`);
+  // As tabelas de TODO tipo que nao e este. `tv_shows` e `slugs` sao esperadas.
+  const noOtherTypes = !captured.some((q) =>
+    /\bmovies\b|\bpeople\b|\bseasons\b|\bepisodes\b|\barticle_translations\b|\btmdb_images\b|\btmdb_videos\b/i.test(q),
+  );
+  // O SQL capturado entra no detalhe: sem ele, uma falha aqui vira adivinhacao
+  // — foi exatamente o que aconteceu duas vezes antes de este check fechar.
+  const sqlResumo = captured.map((q) => q.replace(/\s+/g, " ").slice(0, 90)).join(" | ");
+  record(30, "prova LIMIT no banco: shard de series aplica LIMIT e nao carrega outros tipos", shardLimitado !== null && captured.length > 0 && hasLimit && noOtherTypes, `queries=${captured.length}, limit=${hasLimit}, single=${noOtherTypes} :: ${sqlResumo}`);
 
   // ---- Seguranca JSON-LD --------------------------------------------------
   const js1 = seams.serializeJsonLd({ name: "</script><script>alert(1)</script>" });
