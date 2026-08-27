@@ -95,7 +95,11 @@ export type EntitySitemapType =
    */
   | "imagens"
   | "videos";
-const ENTITY_TYPES: readonly EntitySitemapType[] = [
+/**
+ * Todos os tipos que o codigo SABE montar. Nao e o que o sitemap PUBLICA — ver
+ * {@link SUSPENDED_SITEMAP_TYPES} e {@link ENTITY_TYPES}.
+ */
+const SUPPORTED_ENTITY_TYPES: readonly EntitySitemapType[] = [
   "movies",
   "series",
   "people",
@@ -105,7 +109,114 @@ const ENTITY_TYPES: readonly EntitySitemapType[] = [
   "imagens",
   "videos",
 ];
+
+/**
+ * VALVULA DE EMERGENCIA — 2026-08-27, por decisao do dono.
+ *
+ * O QUE FOI MEDIDO (sitemap de producao, shard a shard, 2026-08-27):
+ *
+ *   episodes  3.793.672 URLs  (78 shards)  93,22%
+ *   seasons     127.870 URLs  ( 3 shards)   3,14%
+ *   people       43.975 URLs                1,08%
+ *   imagens      41.230 URLs                1,01%
+ *   series       31.596 URLs                0,78%
+ *   movies       30.948 URLs                0,76%
+ *   videos          140 · news 7 · static 6
+ *   ------------------------------------------------
+ *   TOTAL     4.069.444 URLs   contra 53.054 em 2026-08-22 (77x em cinco dias)
+ *
+ * Temporada e episodio somam 96,36% do volume. A pagina de episodio rende ~108
+ * palavras dentro de `<main>` — numero, data e a sinopse quando existe. Nao ha
+ * elenco, direcao nem imagem propria. Declarar 3,9 milhoes dessas como validas
+ * gasta orcamento de rastreio do dominio inteiro para publicar casca.
+ *
+ * POR QUE UMA LISTA, E NAO UM GATE POR DADO: o gate por dado e a Fase 3
+ * (`page_indexability_decisions`, com "sem linha = nao indexa"), e ele depende
+ * de um produtor rodar contra o banco de producao. Esta valvula nao depende de
+ * nada alem do deploy — e por isso ela existe: para parar a sangria HOJE.
+ *
+ * COMO ELA MORRE: quando a Fase 3 estiver aplicada, o gate volta a perguntar
+ * pelo DADO (episodio COM sinopse indexa; sem sinopse nao) e esta lista volta a
+ * ser vazia. `sitemap-emergency-valve.test.ts` documenta a saida.
+ *
+ * O par obrigatorio: sair do sitemap NAO desindexa o que o Google ja pegou.
+ * Estes mesmos tipos passam a emitir `noindex, follow` na propria pagina — ver
+ * `apps/web/src/server/seo/suspended-pages.ts`. As duas coisas, ou nenhuma
+ * resolve.
+ */
+export const SUSPENDED_SITEMAP_TYPES: readonly EntitySitemapType[] = [
+  "seasons",
+  "episodes",
+];
+
+/** O que o sitemap PUBLICA hoje: o suportado menos o suspenso. */
+const ENTITY_TYPES: readonly EntitySitemapType[] = SUPPORTED_ENTITY_TYPES.filter(
+  (type) => !SUSPENDED_SITEMAP_TYPES.includes(type),
+);
+
+/**
+ * Tipos aceitos por `parseShardId`. Tipo suspenso NAO entra: o shard antigo
+ * (`sitemap-pt-BR-episodes-42.xml`) precisa responder 404, e nao continuar
+ * servindo 50.000 URLs para quem guardou o endereco.
+ */
 const ALL_TYPES: readonly string[] = [...ENTITY_TYPES, "static"];
+
+/**
+ * TETO DECLARADO DE URLs DO SITEMAP INTEIRO.
+ *
+ * POR QUE ISTO EXISTE. Em 2026-08-22 o sitemap tinha 53.054 URLs. Em 2026-08-27
+ * tinha 4.069.444 — 77x em cinco dias — e NENHUM alarme disparou. Nao disparou
+ * porque nada nunca comparou o total a coisa nenhuma: `SITEMAP_URL_LIMIT`
+ * pagina o shard (50.000 por arquivo) e nao conhece o total, e as duas rotas do
+ * sitemap sao `force-dynamic` — elas nao sao geradas no build, sao montadas a
+ * cada requisicao direto do PostgreSQL. Nao houve deploy, nao houve mudanca de
+ * codigo e nao houve linha de log: o catalogo cresceu e o sitemap cresceu junto,
+ * calado. Sem um teto, a proxima vez tambem passaria em silencio.
+ *
+ * O teto e sobre o TOTAL PUBLICADO (a soma das contagens de `ENTITY_TYPES`),
+ * nao sobre o shard. Ele nao substitui a politica por dado da Fase 3 — e o
+ * detector de fumaca que avisa quando a politica falhou.
+ *
+ * ESTOURAR O TETO E FAIL-CLOSED: o index sai VAZIO e o erro vai para o log, do
+ * mesmo jeito que uma falha de banco. Publicar milhoes de URLs por engano e
+ * mais caro do que publicar nenhuma por um ciclo. Subir este numero e uma
+ * mudanca de codigo revisada — que e exatamente o controle que faltava.
+ *
+ * Calibragem (2026-08-27, depois da valvula): ~105.000 URLs publicadas. O teto
+ * a 300.000 tolera quase 3x e ainda pega um evento de ordem de grandeza.
+ *
+ * ESTE TETO E UM PRAZO, NAO UMA FOLGA. Medido no mesmo dia, em quatro leituras
+ * do shard de filmes ao longo de 84 minutos: 30.948 -> 32.050 -> 33.720 ->
+ * 34.735. Sao ~2.700 filmes por hora, ~65.000 por dia — a ingestao cria slug
+ * para todo titulo descoberto, e o sitemap publica todo slug. Nesse ritmo o
+ * teto e cruzado em cerca de tres dias, e ai o index sai vazio.
+ *
+ * Isso e o teto FUNCIONANDO: o problema nao e o numero aqui, e um catalogo que
+ * cresce 65.000 fichas por dia sem que nenhuma delas precise ter sinopse ou
+ * poster para entrar. Quem segura essa linha e a Fase 3 (gate por DADO), nao um
+ * numero maior escrito aqui. Subir este valor sem ligar o gate por dado so
+ * troca a data do estouro.
+ */
+export const SITEMAP_TOTAL_URL_CEILING = 300_000;
+
+/** Erro do teto — separado para o teste apontar para a causa, nao para a forma. */
+export class SitemapCeilingExceededError extends Error {
+  constructor(
+    readonly total: number,
+    readonly ceiling: number,
+    readonly byType: Readonly<Record<string, number>>,
+  ) {
+    super(
+      `sitemap: ${total} URLs excedem o teto declarado de ${ceiling}. ` +
+        `Por tipo: ${Object.entries(byType)
+          .map(([k, v]) => `${k}=${v}`)
+          .join(" ")}. ` +
+        "Ou a politica de indexabilidade parou de filtrar, ou o catalogo mudou de " +
+        "ordem de grandeza. Ate alguem olhar, o sitemap sai vazio.",
+    );
+    this.name = "SitemapCeilingExceededError";
+  }
+}
 
 const INDEX_PATH: Readonly<Record<SimpleSitemapType, string>> = {
   movies: MOVIES_INDEX_PATH,
@@ -207,6 +318,19 @@ async function aggregateEntity(
       FROM slugs s JOIN people p ON p.id = s.entity_id
       WHERE s.entity_type = 'person' AND s.language_code = ${language} AND s.is_canonical = true
         AND BTRIM(p.name) <> ''
+        -- VALVULA 2026-08-27 (ver SUSPENDED_SITEMAP_TYPES): pessoa sem
+        -- biografia EXIBIVEL ou sem foto rende uma ficha de ~52 palavras dentro
+        -- de <main> — nome, papel e uma lista de links. Medido em 2026-08-27:
+        -- 0 de 300 pessoas do sitemap exibiam biografia. Sao os MESMOS
+        -- predicados que o produtor da Fase 3 usa para decidir no_biography /
+        -- no_image (services/ingestion/src/persistence/indexability-writer.ts),
+        -- escritos aqui para nao dependerem de o produtor ja ter rodado.
+        -- Texto E licenca: a coluna de governanca nasce unknown, e bio ingerida
+        -- sem liberacao nao aparece na tela (invariante 6).
+        -- NUNCA use crase neste comentario: ela fecha o template literal.
+        AND BTRIM(COALESCE(p.biography, '')) <> ''
+        AND p.biography_source_status::text IN ('official','licensed','third_party')
+        AND BTRIM(COALESCE(p.profile_path, '')) <> ''
         AND EXISTS (
           SELECT 1 FROM cast_members cm
           JOIN slugs ws ON ws.entity_type = cm.entity_type AND ws.entity_id = cm.entity_id
@@ -436,6 +560,19 @@ async function pageEntity(
       FROM slugs s JOIN people p ON p.id = s.entity_id
       WHERE s.entity_type = 'person' AND s.language_code = ${language} AND s.is_canonical = true
         AND BTRIM(p.name) <> ''
+        -- VALVULA 2026-08-27 (ver SUSPENDED_SITEMAP_TYPES): pessoa sem
+        -- biografia EXIBIVEL ou sem foto rende uma ficha de ~52 palavras dentro
+        -- de <main> — nome, papel e uma lista de links. Medido em 2026-08-27:
+        -- 0 de 300 pessoas do sitemap exibiam biografia. Sao os MESMOS
+        -- predicados que o produtor da Fase 3 usa para decidir no_biography /
+        -- no_image (services/ingestion/src/persistence/indexability-writer.ts),
+        -- escritos aqui para nao dependerem de o produtor ja ter rodado.
+        -- Texto E licenca: a coluna de governanca nasce unknown, e bio ingerida
+        -- sem liberacao nao aparece na tela (invariante 6).
+        -- NUNCA use crase neste comentario: ela fecha o template literal.
+        AND BTRIM(COALESCE(p.biography, '')) <> ''
+        AND p.biography_source_status::text IN ('official','licensed','third_party')
+        AND BTRIM(COALESCE(p.profile_path, '')) <> ''
         AND EXISTS (
           SELECT 1 FROM cast_members cm
           JOIN slugs ws ON ws.entity_type = cm.entity_type AND ws.entity_id = cm.entity_id
@@ -622,7 +759,15 @@ async function allEntityCounts(
 ): Promise<{ counts: Record<EntitySitemapType, number>; maxLastmod: Record<EntitySitemapType, Date | null> }> {
   const counts = {} as Record<EntitySitemapType, number>;
   const maxLastmod = {} as Record<EntitySitemapType, Date | null>;
-  // Uma consulta de CONTAGEM (+max) por tipo — nunca busca URLs.
+  // Tipo suspenso fica em ZERO, e nao `undefined`: `eligibleStaticRoutes` le
+  // este mapa por chave, e um `undefined` tipado como `number` atravessaria o
+  // typecheck para explodir so no render.
+  for (const type of SUPPORTED_ENTITY_TYPES) {
+    counts[type] = 0;
+    maxLastmod[type] = null;
+  }
+  // Uma consulta de CONTAGEM (+max) por tipo PUBLICADO — nunca busca URLs, e
+  // nunca conta o que nao vai ao sitemap.
   for (const type of ENTITY_TYPES) {
     const agg = await aggregateEntity(prisma, type, language);
     counts[type] = agg.count;
@@ -652,6 +797,12 @@ export async function getSitemapIndexXml(
   try {
     const prisma = client ?? getPrismaClient();
     const { counts, maxLastmod } = await allEntityCounts(prisma, language);
+
+    // TETO: antes de anunciar um shard sequer. Ver SITEMAP_TOTAL_URL_CEILING.
+    const total = ENTITY_TYPES.reduce((sum, type) => sum + counts[type], 0);
+    if (total > SITEMAP_TOTAL_URL_CEILING) {
+      throw new SitemapCeilingExceededError(total, SITEMAP_TOTAL_URL_CEILING, counts);
+    }
 
     const entries: SitemapIndexXmlEntry[] = [];
     for (const type of ENTITY_TYPES) {

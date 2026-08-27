@@ -27,6 +27,8 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import EmbeddedPostgres from "embedded-postgres";
 
+import { SUSPENSION_REASON } from "../src/server/seo/suspended-pages";
+
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..", "..", "..");
 const dbDir = path.join(repoRoot, "packages", "db");
@@ -232,7 +234,10 @@ async function runChecks(prisma: PrismaLike, seams: Seams): Promise<void> {
 
   // ---- Temporada ----------------------------------------------------------
   const seasonA1 = await seams.getSeasonPageData("serie-a", 1);
-  record(3, "temporada valida -> dados + seo index", seasonA1 !== null && seasonA1.seo.decision === "index" && seasonA1.view.seasonNumber === 1, `seo=${seasonA1?.seo.decision}`);
+  // Ate 2026-08-27 esta linha exigia `index`. A valvula suspendeu o tipo: a
+  // temporada carrega dados e recebe `noindex`. O que continua sob prova e que a
+  // ROTA responde com dados — o `noindex` e afirmado com o motivo em (26)/(27).
+  record(3, "temporada valida -> dados; seo noindex pela valvula", seasonA1 !== null && seasonA1.seo.decision === "noindex" && seasonA1.view.seasonNumber === 1, `seo=${seasonA1?.seo.decision}`);
   record(4, "episodios ordenados com href correto", JSON.stringify(seasonA1?.view.episodes.map((e) => e.episodeNumber)) === "[1,2,3]" && seasonA1?.view.episodes[0]?.href === "/pt/series/serie-a/temporadas/1/episodios/1/", `eps=${seasonA1?.view.episodes.map((e) => e.episodeNumber).join(",")}`);
   record(5, "canonical da temporada correto", seasonA1?.canonicalUrl === `${SITE}/pt/series/serie-a/temporadas/1/`, `canonical=${seasonA1?.canonicalUrl}`);
 
@@ -255,7 +260,7 @@ async function runChecks(prisma: PrismaLike, seams: Seams): Promise<void> {
 
   // ---- Episodio -----------------------------------------------------------
   const epA1E2 = await seams.getEpisodePageData("serie-a", 1, 2);
-  record(15, "episodio valido -> dados + seo index", epA1E2 !== null && epA1E2.seo.decision === "index" && epA1E2.view.episodeNumber === 2, `seo=${epA1E2?.seo.decision}`);
+  record(15, "episodio valido -> dados; seo noindex pela valvula", epA1E2 !== null && epA1E2.seo.decision === "noindex" && epA1E2.view.episodeNumber === 2, `seo=${epA1E2?.seo.decision}`);
   record(16, "episodio 2 -> anterior=1, proximo=3", epA1E2?.view.prevEpisode?.episodeNumber === 1 && epA1E2?.view.nextEpisode?.episodeNumber === 3, `prev=${epA1E2?.view.prevEpisode?.episodeNumber}, next=${epA1E2?.view.nextEpisode?.episodeNumber}`);
 
   const epA1E1 = await seams.getEpisodePageData("serie-a", 1, 1);
@@ -267,31 +272,64 @@ async function runChecks(prisma: PrismaLike, seams: Seams): Promise<void> {
   record(21, "episodio de outra temporada (S2 nao tem E3) -> null", (await seams.getEpisodePageData("serie-a", 2, 3)) === null, "null");
 
   const epA1E3 = await seams.getEpisodePageData("serie-a", 1, 3);
-  record(22, "decisao persistida noindex chega ao episodio; ultimo nao tem proximo", epA1E3?.seo.decision === "noindex" && epA1E3?.view.nextEpisode === null, `seo=${epA1E3?.seo.decision}, next=${epA1E3?.view.nextEpisode}`);
+  // ATENCAO: enquanto a valvula estiver ligada, `decision === "noindex"` NAO
+  // prova mais que a decisao PERSISTIDA chegou — a valvula poe noindex em todo
+  // episodio. Um check que so olhasse `decision` passaria pelo motivo errado.
+  // O que discrimina e o MOTIVO: a decisao persistida vence a valvula porque
+  // `applyPageSuspension` roda depois e so reescreve o motivo quando ela propria
+  // decide. Aqui exigimos que o motivo NAO seja o da valvula.
+  record(22, "decisao persistida noindex chega ao episodio (motivo != valvula); ultimo nao tem proximo", epA1E3?.seo.decision === "noindex" && epA1E3?.seo.reason !== SUSPENSION_REASON && epA1E3?.view.nextEpisode === null, `seo=${epA1E3?.seo.decision}, motivoValvula=${epA1E3?.seo.reason === SUSPENSION_REASON}, next=${epA1E3?.view.nextEpisode}`);
   record(23, "canonical do episodio correto", epA1E1?.canonicalUrl === `${SITE}/pt/series/serie-a/temporadas/1/episodios/1/`, `canonical=${epA1E1?.canonicalUrl}`);
 
-  // ---- Sitemap paginado NO BANCO (LIMIT=2) --------------------------------
+  // ---- Sitemap: temporada e episodio SUSPENSOS (valvula de 2026-08-27) -----
+  //
+  // Ate 2026-08-27 esta secao provava a PAGINACAO de temporada/episodio no
+  // banco (multiplos shards com LIMIT=2). Os dois tipos sairam do sitemap: eram
+  // 3.921.542 das 4.069.444 URLs declaradas em producao (96,36%), a 24 palavras
+  // por pagina de episodio. Ver SUSPENDED_SITEMAP_TYPES em `sitemap-index.ts`.
+  //
+  // O contrato agora e o INVERSO, e e ele que precisa de prova: o index nao
+  // anuncia nenhum shard dos dois tipos, e o endereco antigo responde 404 —
+  // nao 200 com 50.000 URLs para quem o guardou. Quando a Fase 3 devolver a
+  // decisao por dado, esta secao volta a provar paginacao.
   const index = await seams.getSitemapIndexXml({ limit: LIMIT });
-  record(24, "index inclui seasons-2 e episodes-2/3 (multiplos shards)", index.xml.includes("sitemap-pt-BR-seasons-2.xml") && index.xml.includes("sitemap-pt-BR-episodes-2.xml") && index.xml.includes("sitemap-pt-BR-episodes-3.xml") && index.contentType.includes("application/xml"), "ok");
+  // Le os enderecos ANUNCIADOS, em vez de procurar substring no XML inteiro:
+  // substring casaria com um comentario ou com um texto solto, e o que esta sob
+  // prova e a LISTA de shards que o index publica.
+  const anunciados = locsInXml(index.xml);
+  const suspensosAnunciados = anunciados.filter((u) => /sitemap-pt-BR-(seasons|episodes)-\d+\.xml$/.test(u));
+  record(24, "index NAO anuncia nenhum shard de temporada/episodio (suspensos)", suspensosAnunciados.length === 0 && anunciados.length > 0 && index.contentType.includes("application/xml"), `anunciados=${anunciados.length}, suspensos=${suspensosAnunciados.length}`);
 
-  const se1 = await seams.getSitemapShardXml("sitemap-pt-BR-seasons-1.xml", { limit: LIMIT });
-  const se2 = await seams.getSitemapShardXml("sitemap-pt-BR-seasons-2.xml", { limit: LIMIT });
-  const se1locs = se1 === null ? [] : locsInXml(se1.xml);
-  const se2locs = se2 === null ? [] : locsInXml(se2.xml);
-  record(25, "seasons shard 1 = 2 e shard 2 = 2 (4 elegiveis; S4 noindex fora)", se1locs.length === 2 && se2locs.length === 2, `s1=${se1locs.length}, s2=${se2locs.length}`);
-  const seasonUnion = new Set([...se1locs, ...se2locs]);
-  record(26, "seasons: URLs absolutas, sem repeticao, S4 (noindex) excluida antes da paginacao", seasonUnion.size === 4 && [...seasonUnion].every((u) => u.startsWith("https://")) && ![...seasonUnion].some((u) => u.includes("/temporadas/4/")), `n=${seasonUnion.size}`);
+  const suspensos = await Promise.all(
+    ["seasons-1", "seasons-2", "episodes-1", "episodes-2", "episodes-3"].map((id) =>
+      seams.getSitemapShardXml(`sitemap-pt-BR-${id}.xml`, { limit: LIMIT }),
+    ),
+  );
+  record(25, "todo shard de tipo suspenso -> null (404), inclusive o que existia antes", suspensos.every((s) => s === null), `nulls=${suspensos.filter((s) => s === null).length}/5`);
 
-  const ep1 = await seams.getSitemapShardXml("sitemap-pt-BR-episodes-1.xml", { limit: LIMIT });
-  const ep2 = await seams.getSitemapShardXml("sitemap-pt-BR-episodes-2.xml", { limit: LIMIT });
-  const ep3 = await seams.getSitemapShardXml("sitemap-pt-BR-episodes-3.xml", { limit: LIMIT });
-  const epLocs = [ep1, ep2, ep3].flatMap((s) => (s === null ? [] : locsInXml(s.xml)));
-  record(27, "episodes paginados em 3 shards (6 elegiveis; S1E3 e S4E1 noindex fora)", epLocs.length === 6 && new Set(epLocs).size === 6 && !epLocs.some((u) => u.includes("/temporadas/1/episodios/3/")), `n=${epLocs.length}`);
+  // O par da valvula: sair do sitemap nao desindexa. A pagina precisa dizer
+  // noindex, e com follow — senao o Google para de seguir os links que
+  // sustentam serie e temporada, que SEGUEM indexaveis.
+  const epValv = await seams.getEpisodePageData("serie-a", 1, 1);
+  record(26, "pagina de episodio emite noindex COM follow (a meta tag e o que desindexa)", epValv?.seo.decision === "noindex" && epValv?.seo.robots.index === false && epValv?.seo.robots.follow === true, `decision=${epValv?.seo.decision}, robots=${JSON.stringify(epValv?.seo.robots)}`);
 
-  record(28, "shard acima do total -> null (seasons-3, episodes-4)", (await seams.getSitemapShardXml("sitemap-pt-BR-seasons-3.xml", { limit: LIMIT })) === null && (await seams.getSitemapShardXml("sitemap-pt-BR-episodes-4.xml", { limit: LIMIT })) === null, "null");
+  const seValv = await seams.getSeasonPageData("serie-a", 1);
+  record(27, "pagina de temporada idem, e fora do sitemap", seValv?.seo.decision === "noindex" && seValv?.seo.includeInSitemap === false, `decision=${seValv?.seo.decision}, sitemap=${seValv?.seo.includeInSitemap}`);
+
+  // Shard acima do total continua 404 — provado agora num tipo PUBLICADO
+  // (`movies`), porque em tipo suspenso o 404 vem da suspensao e o teste
+  // passaria sem provar nada sobre paginacao.
+  record(28, "shard acima do total -> null (movies-99)", (await seams.getSitemapShardXml("sitemap-pt-BR-movies-99.xml", { limit: LIMIT })) === null, "null");
   record(29, "shard invalido (pagina 0 / tipo desconhecido) -> null", (await seams.getSitemapShardXml("sitemap-pt-BR-seasons-0.xml", { limit: LIMIT })) === null && (await seams.getSitemapShardXml("sitemap-pt-BR-temporada-1.xml", { limit: LIMIT })) === null, "null");
 
-  // Prova de LIMIT no banco para o shard de temporadas.
+  // Prova de LIMIT no banco. Migrou de `seasons` para `series` por DOIS motivos,
+  // e os dois ja reprovaram uma versao deste check:
+  //  1. shard de tipo SUSPENSO responde 404 sem tocar o banco — `captured`
+  //     vinha vazio e o check mediria a suspensao, nao a paginacao;
+  //  2. `movies` nao serve nesta fixture: ela nao tem nenhum filme com slug
+  //     canonico, entao a contagem da 0, o shard 404 antes da consulta
+  //     paginada, e so a consulta de CONTAGEM aparece (sem LIMIT).
+  // `series` tem serie-a e serie-b com slug canonico — a pagina roda de fato.
   const prismaClientPath = dbRequire.resolve("@prisma/client");
   const prismaMod = (await import(pathToFileURL(prismaClientPath).href)) as {
     PrismaClient: new (opts: unknown) => unknown;
@@ -302,11 +340,17 @@ async function runChecks(prisma: PrismaLike, seams: Seams): Promise<void> {
   };
   const captured: string[] = [];
   logged.$on("query", (e) => captured.push(e.query));
-  await seams.getSitemapShardXml("sitemap-pt-BR-seasons-1.xml", { limit: LIMIT }, logged);
+  const shardLimitado = await seams.getSitemapShardXml("sitemap-pt-BR-series-1.xml", { limit: LIMIT }, logged);
   await logged.$disconnect();
   const hasLimit = captured.some((q) => /limit/i.test(q));
-  const noOtherTypes = !captured.some((q) => /\bmovies\b|\bpeople\b|\barticle_translations\b/i.test(q));
-  record(30, "prova LIMIT no banco: shard de temporadas aplica LIMIT e nao carrega outros tipos", captured.length > 0 && hasLimit && noOtherTypes, `queries=${captured.length}, limit=${hasLimit}, single=${noOtherTypes}`);
+  // As tabelas de TODO tipo que nao e este. `tv_shows` e `slugs` sao esperadas.
+  const noOtherTypes = !captured.some((q) =>
+    /\bmovies\b|\bpeople\b|\bseasons\b|\bepisodes\b|\barticle_translations\b|\btmdb_images\b|\btmdb_videos\b/i.test(q),
+  );
+  // O SQL capturado entra no detalhe: sem ele, uma falha aqui vira adivinhacao
+  // — foi exatamente o que aconteceu duas vezes antes de este check fechar.
+  const sqlResumo = captured.map((q) => q.replace(/\s+/g, " ").slice(0, 90)).join(" | ");
+  record(30, "prova LIMIT no banco: shard de series aplica LIMIT e nao carrega outros tipos", shardLimitado !== null && captured.length > 0 && hasLimit && noOtherTypes, `queries=${captured.length}, limit=${hasLimit}, single=${noOtherTypes} :: ${sqlResumo}`);
 
   // ---- Seguranca JSON-LD --------------------------------------------------
   const js1 = seams.serializeJsonLd({ name: "</script><script>alert(1)</script>" });
