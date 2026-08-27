@@ -18,6 +18,21 @@
  * dois lados.
  *
  * ============================================================================
+ * PESSOA (27/08/2026): TRÊS, E NÃO DOIS
+ * ============================================================================
+ * A foto de pessoa tem um gate a mais que a imagem de título: ela é promovida
+ * por LINHA (`display_allowed` + `license_status`), e não só governada pela
+ * licença da fonte. Provar isso exige um terceiro caso — a pessoa cujas fotos
+ * EXISTEM na tabela e não foram promovidas. Sem ele, "não tem foto" e "tem foto
+ * e ninguém acendeu" ficariam idênticas na tela, que é exatamente o defeito que
+ * a tira passou a registrar em log.
+ *
+ * É esse terceiro caso que também prova o motivo DERIVADO: com a primeira
+ * pessoa acesa, o catálogo tem foto exibível, então a ausência da terceira sai
+ * como `no_photo_for_person` (fato) e não como `no_licensed_person_photo`
+ * (pendência de operação).
+ *
+ * ============================================================================
  * SEGURANÇA
  * ============================================================================
  *  - ZERO produção: `DATABASE_URL` aponta SEMPRE para 127.0.0.1, num banco
@@ -55,6 +70,20 @@ const LANGUAGE = "pt-BR";
 const RICO = { tmdbId: 99990101, slug: "gladiador-qa", title: "Gladiador (QA)" };
 /** O título POBRE: abaixo dos dois pisos. Prova o `noindex`. */
 const POBRE = { tmdbId: 99990102, slug: "curta-qa", title: "Curta (QA)" };
+
+/** Pessoa com fotos PROMOVIDAS acima do piso: tira com `+N` e galeria indexavel. */
+const RETRATADA = { tmdbId: 99990201, slug: "atriz-qa", name: "Atriz QA", fotos: 9, promovida: true };
+/** Pessoa promovida, porem ABAIXO do piso: tira sem `+N`, galeria `noindex`. */
+const POUCAS = { tmdbId: 99990202, slug: "ator-qa", name: "Ator QA", fotos: 3, promovida: true };
+/** Pessoa com fotos NAO promovidas: a tira some, e o log diz o motivo. */
+const NAO_PROMOVIDA = {
+  tmdbId: 99990203,
+  slug: "figurante-qa",
+  name: "Figurante QA",
+  fotos: 6,
+  promovida: false,
+};
+const PESSOAS = [RETRATADA, POUCAS, NAO_PROMOVIDA] as const;
 
 /**
  * Acesso ao banco pelo MESMO acessor server-only que o app usa
@@ -246,6 +275,68 @@ async function seed(sql: Sql): Promise<void> {
        VALUES ${valoresVideo}`,
     );
   }
+
+  await seedPessoas(sql);
+}
+
+/**
+ * As TRES pessoas. Ver o cabecalho para por que sao tres e nao duas.
+ *
+ * O `profile_path` da coluna de `people` (o retrato do cabecalho) e semeado em
+ * TODAS, inclusive na nao promovida: ele NAO passa pelo gate por linha — vem da
+ * coluna da entidade, como o poster do filme. A distincao e o ponto: numa
+ * pessoa sem promocao a pagina mostra o retrato do cabecalho e NAO mostra a
+ * tira, e e assim que tem de ser.
+ */
+async function seedPessoas(sql: Sql): Promise<void> {
+  for (const pessoa of PESSOAS) {
+    const linhas = await sql.q<{ id: string }>(
+      `INSERT INTO people (tmdb_id, name, known_for_department, gender, birthday,
+                           place_of_birth, profile_path, created_at, updated_at)
+       VALUES (${String(pessoa.tmdbId)}, '${pessoa.name}', 'Acting', 1, '1980-03-14',
+               'Sao Paulo, Brasil', '${art("profile", 1)}', now(), now())
+       RETURNING id::text AS id`,
+    );
+    const personId = linhas[0]?.id ?? "0";
+
+    await sql.x(
+      `INSERT INTO slugs (entity_type, entity_id, language_code, slug, is_canonical,
+                          created_at, updated_at)
+       VALUES ('person', ${personId}, '${LANGUAGE}', '${pessoa.slug}', true, now(), now())`,
+    );
+    await sql.x(
+      `INSERT INTO entity_translations (entity_type, entity_id, language_code, title,
+                                        summary, created_at, updated_at)
+       VALUES ('person', ${personId}, '${LANGUAGE}', '${pessoa.name}',
+               'Fixture local de QA. Nao e biografia real.', now(), now())`,
+    );
+
+    // As colunas de licenca sao o ASSUNTO desta fixture, nao detalhe: quem esta
+    // promovida nasce como a CLI de promocao a deixaria (`official` + `true`);
+    // quem nao esta, como o sync a escreve (`unknown` + `false`).
+    const status = pessoa.promovida ? "official" : "unknown";
+    const exibivel = pessoa.promovida ? "true" : "false";
+    const valores = Array.from({ length: pessoa.fotos }, (_, index) => {
+      // Idiomas variados so na pessoa rica: e o que faz a faixa de facetas ter
+      // mais de uma opcao (com uma so, o presenter a omite de proposito).
+      const idioma = index % 3 === 0 ? "'pt'" : index % 3 === 1 ? "NULL" : "'en'";
+      const caminho = art(`${String(pessoa.tmdbId)}-profile`, index);
+      return (
+        `('tmdb', 'person', ${String(pessoa.tmdbId)}, 'profile', '${caminho}', ` +
+        `${idioma}, 1000, 1500, ${String(5 + (index % 5))}, ` +
+        `'qa-p-${String(pessoa.tmdbId)}-${String(index)}', '${status}', ${exibivel}, ` +
+        `now(), now(), now())`
+      );
+    }).join(",");
+
+    await sql.x(
+      `INSERT INTO tmdb_images (provider_api, entity_type, tmdb_id, image_type, file_path,
+                                language_code, width, height, vote_average, payload_hash,
+                                license_status, display_allowed,
+                                fetched_at, created_at, updated_at)
+       VALUES ${valores}`,
+    );
+  }
 }
 
 async function main(): Promise<number> {
@@ -293,7 +384,7 @@ async function main(): Promise<number> {
       { env: { ...process.env, DATABASE_URL: url }, stdio: "pipe", cwd: dbDir },
     );
 
-    log("== semeando os dois titulos (rico e pobre) ==");
+    log("== semeando os dois titulos e as tres pessoas ==");
     // `DATABASE_URL` entra no processo ANTES do import: o acessor server-only
     // le a variavel na primeira chamada.
     process.env.DATABASE_URL = url;
@@ -312,12 +403,19 @@ async function main(): Promise<number> {
     };
     await seed(sql);
 
-    const contagem = await sql.q<{ imagens: number; videos: number }>(
-      `SELECT (SELECT COUNT(*)::int FROM tmdb_images) AS imagens,
-              (SELECT COUNT(*)::int FROM tmdb_videos) AS videos`,
+    const contagem = await sql.q<{ imagens: number; videos: number; fotos: number; acesas: number }>(
+      `SELECT (SELECT COUNT(*)::int FROM tmdb_images WHERE entity_type <> 'person') AS imagens,
+              (SELECT COUNT(*)::int FROM tmdb_videos) AS videos,
+              (SELECT COUNT(*)::int FROM tmdb_images WHERE entity_type = 'person') AS fotos,
+              (SELECT COUNT(*)::int FROM tmdb_images
+                WHERE entity_type = 'person' AND display_allowed
+                  AND license_status IN ('official','licensed')) AS acesas`,
     );
     log(
-      `   ${String(contagem[0]?.imagens)} imagens e ${String(contagem[0]?.videos)} videos semeados`,
+      `   ${String(contagem[0]?.imagens)} imagens de titulo e ${String(contagem[0]?.videos)} videos semeados`,
+    );
+    log(
+      `   ${String(contagem[0]?.fotos)} fotos de pessoa, das quais ${String(contagem[0]?.acesas)} promovidas`,
     );
 
     log("== subindo o Next (dev) ==");
@@ -339,12 +437,21 @@ async function main(): Promise<number> {
 
     log("");
     log("=".repeat(72));
-    log("AS QUATRO PAGINAS (abra no navegador):");
-    log(`  RICO  imagens: http://127.0.0.1:${String(webPort)}/pt/filmes/${RICO.slug}/imagens/`);
-    log(`  RICO  videos : http://127.0.0.1:${String(webPort)}/pt/filmes/${RICO.slug}/videos/`);
-    log(`  POBRE imagens: http://127.0.0.1:${String(webPort)}/pt/filmes/${POBRE.slug}/imagens/`);
-    log(`  POBRE videos : http://127.0.0.1:${String(webPort)}/pt/filmes/${POBRE.slug}/videos/`);
-    log(`  A ficha      : http://127.0.0.1:${String(webPort)}/pt/filmes/${RICO.slug}/`);
+    const base = `http://127.0.0.1:${String(webPort)}`;
+    log("TITULO — as quatro paginas de galeria:");
+    log(`  RICO  imagens: ${base}/pt/filmes/${RICO.slug}/imagens/`);
+    log(`  RICO  videos : ${base}/pt/filmes/${RICO.slug}/videos/`);
+    log(`  POBRE imagens: ${base}/pt/filmes/${POBRE.slug}/imagens/`);
+    log(`  POBRE videos : ${base}/pt/filmes/${POBRE.slug}/videos/`);
+    log(`  A ficha      : ${base}/pt/filmes/${RICO.slug}/`);
+    log("");
+    log("PESSOA — a tira (na ficha) e a galeria de fotos:");
+    log(`  ${String(RETRATADA.fotos)} fotos, PROMOVIDAS  ficha : ${base}/pt/pessoas/${RETRATADA.slug}/`);
+    log(`                              galeria: ${base}/pt/pessoas/${RETRATADA.slug}/fotos/`);
+    log(`  ${String(POUCAS.fotos)} fotos, abaixo do piso ficha : ${base}/pt/pessoas/${POUCAS.slug}/`);
+    log(`                              galeria: ${base}/pt/pessoas/${POUCAS.slug}/fotos/  (noindex)`);
+    log(`  ${String(NAO_PROMOVIDA.fotos)} fotos, NAO promovidas ficha : ${base}/pt/pessoas/${NAO_PROMOVIDA.slug}/`);
+    log("                              (a tira NAO renderiza; o motivo sai no log do Next)");
     log("=".repeat(72));
     log("Ctrl+C para derrubar tudo.");
 

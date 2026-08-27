@@ -36,6 +36,8 @@ export type SectionKey =
   | "noticias"
   /** Biografia da pessoa (tela 09) — o parágrafo de 68ch do cabeçalho. */
   | "biografia"
+  /** Tira de FOTOS da pessoa (tela 09) — a galeria licenciada de `profile`. */
+  | "fotos"
   /** Trilho "Em breve" — escopo de ROTA (home/filmes/series), nao de entidade. */
   | "em-breve"
   /** "Para voce" — trilho personalizado do hub de streaming (escopo de ROTA). */
@@ -159,6 +161,30 @@ export type SectionAbsenceReason =
    */
   | "no_biography_source"
   /**
+   * NENHUMA foto de pessoa exibivel no catalogo inteiro.
+   *
+   * A tira da tela 09 le `tmdb_images` de `entity_type='person'` /
+   * `image_type='profile'` que tenham sido PROMOVIDAS (`display_allowed` +
+   * `license_status` em official/licensed) e ainda passem pela licenca da FONTE
+   * (`source_licenses` para tmdb/image). Zero linhas em todo o catalogo
+   * significa uma destas duas coisas, e as duas sao passo de operacao: a
+   * promocao (`promote:media --target=person-photo`) nunca rodou, ou a licenca
+   * de imagem deixou de autorizar e apagou a superficie inteira de uma vez.
+   *
+   * `actionable: true`: um comando/decisao pendente acende o catalogo todo.
+   */
+  | "no_licensed_person_photo"
+  /**
+   * HA foto exibivel em ALGUMA pessoa, mas nenhuma NESTA.
+   *
+   * Fato sobre a pessoa (o TMDB nao publicou retrato dela, ou o lote promovido
+   * nao a alcancou), nao passo pendente — por isso `actionable: false`, pela
+   * MESMA razao que separa `no_offer_for_entity` de `no_authorized_provider`.
+   * Sem esta separacao, um catalogo inteiro de figurantes sem retrato afogaria
+   * o unico evento que importa.
+   */
+  | "no_photo_for_person"
+  /**
    * NENHUMA estreia futura no catalogo para a(s) vertical(is) desta rota.
    *
    * E sempre um passo pendente, nunca um fato: o mundo real tem estreias
@@ -275,6 +301,7 @@ const ACTIONABLE_REASONS: ReadonlySet<SectionAbsenceReason> = new Set([
   "no_awards_source",
   "no_recommendation_dataset",
   "no_biography_source",
+  "no_licensed_person_photo",
   "no_upcoming_title",
   "below_upcoming_floor",
   "no_recommendation_service",
