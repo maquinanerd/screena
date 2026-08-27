@@ -66,9 +66,36 @@ export const SITEMAP_INDEXED_DECISION = "index";
 /**
  * A entidade esta (ou ficara) dentro do sitemap?
  *
- * `null` = sem linha vigente = DENTRO, porque o sitemap so exclui quando existe
- * uma linha vigente com `decision <> 'index'`. Inverter esta polaridade inverte
- * o freio inteiro — por isso ela tem teste proprio.
+ * `null` = sem linha vigente = DENTRO. Inverter esta polaridade inverte o freio
+ * inteiro — por isso ela tem teste proprio.
+ *
+ * ATENCAO — ESTA POLARIDADE DEIXOU DE SER UNIVERSAL EM 2026-08-27.
+ * -----------------------------------------------------------------
+ * Ela era uma consequencia direta do SQL do sitemap, que excluia so quando havia
+ * linha vigente `decision <> 'index'`. Esse SQL foi INVERTIDO
+ * (`apps/web/src/server/seo/sitemap-index.ts`): passa a entrar quem TEM linha
+ * vigente `index`, e a inversao ARMA por tipo quando a cobertura de decisoes
+ * cruza `SITEMAP_DECISION_GATE_MIN_ROWS`. Ou seja, o significado de `null`
+ * depende de quantas linhas existem:
+ *
+ *   gate DESARMADO (tabela vazia/rasa)  ->  null = DENTRO   (o que esta aqui)
+ *   gate ARMADO    (cobertura acima do piso) ->  null = FORA
+ *
+ * POR QUE NAO FOI MUDADO JUNTO. Na PRIMEIRA execucao do produtor contra um banco
+ * sem decisoes — que e o unico cenario em que ha `null` em massa — o gate ainda
+ * esta desarmado, e esta polaridade e a CORRETA: `null -> noindex` de fato tira a
+ * pagina do sitemap, e e isso que o freio precisa contar para exigir assinatura
+ * humana (CLAUDE.md secao 6). Mudar a polaridade aqui agora faria o freio contar
+ * ZERO na execucao em que ele mais importa.
+ *
+ * O QUE FICA PENDENTE. Depois que o gate armar, `null -> index` passa a ser uma
+ * ENTRADA real no sitemap e este classificador continuara chamando de `no_flip`.
+ * Isso e deliberado hoje (o freio existe para pegar mudanca de POLITICA, e o
+ * proprio cabecalho deste modulo diz que crescimento normal de catalogo passa
+ * livre), mas deixa de ser obviamente certo quando entrada em massa vier de uma
+ * mudanca de politica. Corrigir exige o produtor LER a cobertura antes de
+ * classificar — mudanca de comportamento do freio, e portanto decisao humana,
+ * nao efeito colateral desta leva.
  */
 export function isEffectivelyIndexed(decision: string | null): boolean {
   return decision === null || decision === SITEMAP_INDEXED_DECISION;

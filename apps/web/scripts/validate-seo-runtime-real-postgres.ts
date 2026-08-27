@@ -88,11 +88,16 @@ function locsInXml(xml: string): string[] {
 }
 
 type PrismaLike = {
-  movie: { create: (args: unknown) => Promise<{ id: bigint }> };
-  slug: { create: (args: unknown) => Promise<unknown> };
+  movie: {
+    create: (args: unknown) => Promise<{ id: bigint }>;
+    createMany: (args: unknown) => Promise<unknown>;
+    findMany: (args: unknown) => Promise<{ id: bigint; tmdbId: number }[]>;
+  };
+  slug: { create: (args: unknown) => Promise<unknown>; createMany: (args: unknown) => Promise<unknown> };
   entityTranslation: { create: (args: unknown) => Promise<unknown> };
   pageIndexabilityDecision: {
     create: (args: unknown) => Promise<unknown>;
+    createMany: (args: unknown) => Promise<unknown>;
     count: (args: unknown) => Promise<number>;
   };
   redirect: { create: (args: unknown) => Promise<unknown> };
@@ -377,6 +382,92 @@ async function runChecks(prisma: PrismaLike, seams: Seams): Promise<void> {
   const sep = `linha1${String.fromCharCode(0x2028)}linha2${String.fromCharCode(0x2029)}fim`;
   const js3 = seams.serializeJsonLd({ t: sep });
   record(36, "JSON-LD escapa U+2028/U+2029", js3.includes("\\u2028") && js3.includes("\\u2029") && !js3.includes(String.fromCharCode(0x2028)), "ok");
+
+  // ---- Gate de decisao ARMADO (SQL real, PostgreSQL real) ----------------
+  //
+  // Tudo acima roda com o gate DESARMADO (3 decisoes vigentes de filme, abaixo
+  // do piso) — que e o estado de producao HOJE e o comportamento antigo. Os
+  // checks abaixo levam a cobertura ACIMA do piso e provam a regra NOVA contra o
+  // SQL de verdade: sem linha vigente `index`, a URL nao entra.
+  //
+  // Isto existe porque o teste de unidade (tests/governance/sitemap-ceiling)
+  // roda contra um banco falso: por mais honesto que o fake seja, quem executa
+  // `COALESCE((SELECT ...), $n) = 'index'` e o PostgreSQL. Se o predicado
+  // estivesse sintaticamente valido e semanticamente errado, so aqui apareceria.
+  const INDEXAVEIS = 600;
+  const NOINDEX = 400;
+  const SEM_LINHA = 200;
+  const TMDB_BASE = 96_100_000;
+  const totalArmado = INDEXAVEIS + NOINDEX + SEM_LINHA;
+  await prisma.movie.createMany({
+    data: Array.from({ length: totalArmado }, (_, i) => ({
+      tmdbId: TMDB_BASE + i,
+      titleOriginal: `Armado ${i}`,
+    })),
+  });
+  const armados = await prisma.movie.findMany({
+    where: { tmdbId: { gte: TMDB_BASE } },
+    select: { id: true, tmdbId: true },
+    orderBy: { tmdbId: "asc" },
+  });
+  const rotulo = (i: number): string =>
+    i < INDEXAVEIS ? "idx" : i < INDEXAVEIS + NOINDEX ? "no" : "sem";
+  await prisma.slug.createMany({
+    data: armados.map((m, i) => ({
+      entityType: "movie",
+      entityId: m.id,
+      languageCode: LANGUAGE,
+      slug: `armado-${rotulo(i)}-${i}`,
+      isCanonical: true,
+    })),
+  });
+  // So os 1.000 primeiros ganham decisao; os 200 ultimos ficam SEM LINHA — que e
+  // exatamente a populacao que a regra antiga deixava entrar por omissao.
+  await prisma.pageIndexabilityDecision.createMany({
+    data: armados.slice(0, INDEXAVEIS + NOINDEX).map((m, i) => ({
+      entityType: "movie",
+      entityId: m.id,
+      languageCode: LANGUAGE,
+      url: `${SITE}/pt/filmes/armado-${rotulo(i)}-${i}/`,
+      decision: i < INDEXAVEIS ? "index" : "noindex",
+      isCurrent: true,
+      decisionOrigin: "catalog_policy_engine",
+      reason: "seed do validador",
+    })),
+  });
+
+  const vigentes = await prisma.pageIndexabilityDecision.count({
+    where: { entityType: "movie", languageCode: LANGUAGE, isCurrent: true },
+  });
+  record(37, "cobertura de decisao de filme ultrapassa o piso que arma o gate",
+    vigentes >= 1_000, `vigentes=${vigentes}`);
+
+  const BIG = 5_000; // um shard so, para nao paginar 600 URLs de dois em dois
+  const armadoShard = await seams.getSitemapShardXml("sitemap-pt-BR-movies-1.xml", { limit: BIG });
+  const armadoLocs = armadoShard === null ? [] : locsInXml(armadoShard.xml);
+  record(38, "ARMADO: o shard de filmes traz SO os que tem decisao vigente `index`",
+    armadoLocs.length === INDEXAVEIS, `n=${armadoLocs.length} (esperado ${INDEXAVEIS})`);
+
+  // O caso central. `filme-indexado`, `filme-2` e `filme-3` NAO tem decisao
+  // nenhuma — com a regra antiga eles entravam (checks 17-19 acima provam que
+  // entravam, com o gate desarmado). Armado, saem.
+  const semLinhaEntrou =
+    armadoLocs.some((u) => u.endsWith("/pt/filmes/filme-indexado/")) ||
+    armadoLocs.some((u) => u.includes("/pt/filmes/armado-sem-"));
+  record(39, "ARMADO: filme SEM linha em page_indexability_decisions NAO entra",
+    !semLinhaEntrou, `sem_linha_entrou=${semLinhaEntrou}`);
+
+  record(40, "ARMADO: decisao `index` entra e decisao `noindex` fica fora",
+    armadoLocs.some((u) => u.endsWith("/pt/filmes/armado-idx-0/")) &&
+      !armadoLocs.some((u) => u.includes("/pt/filmes/armado-no-")),
+    `idx_presente=${armadoLocs.some((u) => u.endsWith("/pt/filmes/armado-idx-0/"))}`);
+
+  // A CONTAGEM do index e a PAGINA do shard tem de concordar: se divergirem, o
+  // index anuncia N shards que a pagina nao consegue preencher.
+  const armadoIndex = await seams.getSitemapIndexXml({ limit: BIG });
+  const shardsDeFilme = (armadoIndex.xml.match(/sitemap-pt-BR-movies-\d+\.xml/g) ?? []).length;
+  record(41, "ARMADO: contagem do index e pagina do shard concordam (1 shard para 600 URLs)",
+    shardsDeFilme === 1, `shards_de_filme=${shardsDeFilme}`);
 }
 
 async function main(): Promise<void> {
