@@ -34,6 +34,7 @@ import {
   SCREEN_SCORE_EDITORIAL_SOURCE,
   type ScreenScoreSource,
 } from "../lib/home-hero-presenter";
+import { findManyInChunks } from "../lib/prisma-in-chunks";
 
 type PrismaClient = ReturnType<typeof getPrismaClient>;
 
@@ -76,15 +77,24 @@ export async function resolveEditorialScoreSources(
   );
   if (candidates.length === 0) return out;
 
-  const rows = await prisma.cinerieScoreCalculation.findMany({
-    where: {
-      entityType,
-      entityId: { in: candidates.map((row) => row.entityId) },
-      status: "calculated",
-    },
-    orderBy: { calculatedAt: "desc" },
-    select: { entityId: true, value: true, scale: true },
-  });
+  // Em LOTES de ids: as listagens chamam este modulo com o catalogo inteiro, e
+  // acima de ~32.7 mil ids a consulta nao cabe no protocolo do PostgreSQL (ver
+  // `../lib/prisma-in-chunks`). O `orderBy` sobrevive ao fatiamento porque cada
+  // entidade cai em UM unico lote: as linhas de uma mesma entidade continuam
+  // juntas e em ordem decrescente, que e o que o "ultimo calculo" abaixo pede.
+  const rows = await findManyInChunks(
+    candidates.map((row) => row.entityId),
+    (chunk) =>
+      prisma.cinerieScoreCalculation.findMany({
+        where: {
+          entityType,
+          entityId: { in: chunk },
+          status: "calculated",
+        },
+        orderBy: { calculatedAt: "desc" },
+        select: { entityId: true, value: true, scale: true },
+      }),
+  );
 
   // Ultimo calculo por entidade (a lista ja vem em ordem decrescente).
   const latestByEntity = new Map<string, { value: number | null; scale: number | null }>();

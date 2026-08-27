@@ -50,6 +50,7 @@ import {
   type HeroSlide,
   type HeroSlideInput,
 } from "../lib/home-hero-presenter";
+import { findManyInChunks } from "../lib/prisma-in-chunks";
 
 const LANGUAGE_CODE = "pt-BR";
 
@@ -113,10 +114,15 @@ async function translationsByEntity(
 ): Promise<Map<string, { title: string | null; summary: string | null }>> {
   const out = new Map<string, { title: string | null; summary: string | null }>();
   if (ids.length === 0) return out;
-  const rows = await prisma.entityTranslation.findMany({
-    where: { entityType, entityId: { in: ids }, languageCode: LANGUAGE_CODE },
-    select: { entityId: true, title: true, summary: true },
-  });
+  // `ids` e o catalogo INTEIRO daquele tipo. Sem o fatiamento, um catalogo
+  // acima de ~32.7 mil titulos derruba a home com P2035 — ver
+  // `../lib/prisma-in-chunks`.
+  const rows = await findManyInChunks(ids, (chunk) =>
+    prisma.entityTranslation.findMany({
+      where: { entityType, entityId: { in: chunk }, languageCode: LANGUAGE_CODE },
+      select: { entityId: true, title: true, summary: true },
+    }),
+  );
   for (const row of rows) {
     out.set(row.entityId.toString(), { title: row.title, summary: row.summary });
   }
@@ -160,22 +166,24 @@ async function movieCandidates(prisma: PrismaClient): Promise<HeroCandidate[]> {
   const { ids, slugByEntity } = await canonicalSlugsByEntity(prisma, "movie");
   if (ids.length === 0) return [];
   const [movies, translations] = await Promise.all([
-    prisma.movie.findMany({
-      where: { id: { in: ids } },
-      select: {
-        id: true,
-        titleOriginal: true,
-        releaseDate: true,
-        voteCountTmdb: true,
-        status: true,
-        certification: true,
-        screenScore: true,
-        screenScoreScale: true,
-        screenScoreDisplay: true,
-        backdropPath: true,
-        posterPath: true,
-      },
-    }),
+    findManyInChunks(ids, (chunk) =>
+      prisma.movie.findMany({
+        where: { id: { in: chunk } },
+        select: {
+          id: true,
+          titleOriginal: true,
+          releaseDate: true,
+          voteCountTmdb: true,
+          status: true,
+          certification: true,
+          screenScore: true,
+          screenScoreScale: true,
+          screenScoreDisplay: true,
+          backdropPath: true,
+          posterPath: true,
+        },
+      }),
+    ),
     translationsByEntity(prisma, "movie", ids),
   ]);
   return movies.map((movie) => {
@@ -213,24 +221,26 @@ async function seriesCandidates(prisma: PrismaClient): Promise<HeroCandidate[]> 
   const { ids, slugByEntity } = await canonicalSlugsByEntity(prisma, "tv");
   if (ids.length === 0) return [];
   const [shows, translations] = await Promise.all([
-    prisma.tvShow.findMany({
-      where: { id: { in: ids } },
-      select: {
-        id: true,
-        nameOriginal: true,
-        firstAirDate: true,
-        voteCountTmdb: true,
-        status: true,
-        numberOfSeasons: true,
-        numberOfEpisodes: true,
-        certification: true,
-        screenScore: true,
-        screenScoreScale: true,
-        screenScoreDisplay: true,
-        backdropPath: true,
-        posterPath: true,
-      },
-    }),
+    findManyInChunks(ids, (chunk) =>
+      prisma.tvShow.findMany({
+        where: { id: { in: chunk } },
+        select: {
+          id: true,
+          nameOriginal: true,
+          firstAirDate: true,
+          voteCountTmdb: true,
+          status: true,
+          numberOfSeasons: true,
+          numberOfEpisodes: true,
+          certification: true,
+          screenScore: true,
+          screenScoreScale: true,
+          screenScoreDisplay: true,
+          backdropPath: true,
+          posterPath: true,
+        },
+      }),
+    ),
     translationsByEntity(prisma, "tv", ids),
   ]);
   return shows.map((show) => {
