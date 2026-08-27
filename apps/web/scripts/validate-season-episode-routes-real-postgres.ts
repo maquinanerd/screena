@@ -270,25 +270,40 @@ async function runChecks(prisma: PrismaLike, seams: Seams): Promise<void> {
   record(22, "decisao persistida noindex chega ao episodio; ultimo nao tem proximo", epA1E3?.seo.decision === "noindex" && epA1E3?.view.nextEpisode === null, `seo=${epA1E3?.seo.decision}, next=${epA1E3?.view.nextEpisode}`);
   record(23, "canonical do episodio correto", epA1E1?.canonicalUrl === `${SITE}/pt/series/serie-a/temporadas/1/episodios/1/`, `canonical=${epA1E1?.canonicalUrl}`);
 
-  // ---- Sitemap paginado NO BANCO (LIMIT=2) --------------------------------
+  // ---- Sitemap: temporada e episodio SUSPENSOS (valvula de 2026-08-27) -----
+  //
+  // Ate 2026-08-27 esta secao provava a PAGINACAO de temporada/episodio no
+  // banco (multiplos shards com LIMIT=2). Os dois tipos sairam do sitemap: eram
+  // 3.921.542 das 4.069.444 URLs declaradas em producao (96,36%), a 24 palavras
+  // por pagina de episodio. Ver SUSPENDED_SITEMAP_TYPES em `sitemap-index.ts`.
+  //
+  // O contrato agora e o INVERSO, e e ele que precisa de prova: o index nao
+  // anuncia nenhum shard dos dois tipos, e o endereco antigo responde 404 —
+  // nao 200 com 50.000 URLs para quem o guardou. Quando a Fase 3 devolver a
+  // decisao por dado, esta secao volta a provar paginacao.
   const index = await seams.getSitemapIndexXml({ limit: LIMIT });
-  record(24, "index inclui seasons-2 e episodes-2/3 (multiplos shards)", index.xml.includes("sitemap-pt-BR-seasons-2.xml") && index.xml.includes("sitemap-pt-BR-episodes-2.xml") && index.xml.includes("sitemap-pt-BR-episodes-3.xml") && index.contentType.includes("application/xml"), "ok");
+  record(24, "index NAO anuncia nenhum shard de temporada/episodio (suspensos)", !index.xml.includes("sitemap-pt-BR-seasons-") && !index.xml.includes("sitemap-pt-BR-episodes-") && index.contentType.includes("application/xml"), "ok");
 
-  const se1 = await seams.getSitemapShardXml("sitemap-pt-BR-seasons-1.xml", { limit: LIMIT });
-  const se2 = await seams.getSitemapShardXml("sitemap-pt-BR-seasons-2.xml", { limit: LIMIT });
-  const se1locs = se1 === null ? [] : locsInXml(se1.xml);
-  const se2locs = se2 === null ? [] : locsInXml(se2.xml);
-  record(25, "seasons shard 1 = 2 e shard 2 = 2 (4 elegiveis; S4 noindex fora)", se1locs.length === 2 && se2locs.length === 2, `s1=${se1locs.length}, s2=${se2locs.length}`);
-  const seasonUnion = new Set([...se1locs, ...se2locs]);
-  record(26, "seasons: URLs absolutas, sem repeticao, S4 (noindex) excluida antes da paginacao", seasonUnion.size === 4 && [...seasonUnion].every((u) => u.startsWith("https://")) && ![...seasonUnion].some((u) => u.includes("/temporadas/4/")), `n=${seasonUnion.size}`);
+  const suspensos = await Promise.all(
+    ["seasons-1", "seasons-2", "episodes-1", "episodes-2", "episodes-3"].map((id) =>
+      seams.getSitemapShardXml(`sitemap-pt-BR-${id}.xml`, { limit: LIMIT }),
+    ),
+  );
+  record(25, "todo shard de tipo suspenso -> null (404), inclusive o que existia antes", suspensos.every((s) => s === null), `nulls=${suspensos.filter((s) => s === null).length}/5`);
 
-  const ep1 = await seams.getSitemapShardXml("sitemap-pt-BR-episodes-1.xml", { limit: LIMIT });
-  const ep2 = await seams.getSitemapShardXml("sitemap-pt-BR-episodes-2.xml", { limit: LIMIT });
-  const ep3 = await seams.getSitemapShardXml("sitemap-pt-BR-episodes-3.xml", { limit: LIMIT });
-  const epLocs = [ep1, ep2, ep3].flatMap((s) => (s === null ? [] : locsInXml(s.xml)));
-  record(27, "episodes paginados em 3 shards (6 elegiveis; S1E3 e S4E1 noindex fora)", epLocs.length === 6 && new Set(epLocs).size === 6 && !epLocs.some((u) => u.includes("/temporadas/1/episodios/3/")), `n=${epLocs.length}`);
+  // O par da valvula: sair do sitemap nao desindexa. A pagina precisa dizer
+  // noindex, e com follow — senao o Google para de seguir os links que
+  // sustentam serie e temporada, que SEGUEM indexaveis.
+  const epValv = await seams.getEpisodePageData("serie-a", 1, 1);
+  record(26, "pagina de episodio emite noindex COM follow (a meta tag e o que desindexa)", epValv?.seo.decision === "noindex" && epValv?.seo.robots.index === false && epValv?.seo.robots.follow === true, `decision=${epValv?.seo.decision}, robots=${JSON.stringify(epValv?.seo.robots)}`);
 
-  record(28, "shard acima do total -> null (seasons-3, episodes-4)", (await seams.getSitemapShardXml("sitemap-pt-BR-seasons-3.xml", { limit: LIMIT })) === null && (await seams.getSitemapShardXml("sitemap-pt-BR-episodes-4.xml", { limit: LIMIT })) === null, "null");
+  const seValv = await seams.getSeasonPageData("serie-a", 1);
+  record(27, "pagina de temporada idem, e fora do sitemap", seValv?.seo.decision === "noindex" && seValv?.seo.includeInSitemap === false, `decision=${seValv?.seo.decision}, sitemap=${seValv?.seo.includeInSitemap}`);
+
+  // Shard acima do total continua 404 — provado agora num tipo PUBLICADO
+  // (`movies`), porque em tipo suspenso o 404 vem da suspensao e o teste
+  // passaria sem provar nada sobre paginacao.
+  record(28, "shard acima do total -> null (movies-99)", (await seams.getSitemapShardXml("sitemap-pt-BR-movies-99.xml", { limit: LIMIT })) === null, "null");
   record(29, "shard invalido (pagina 0 / tipo desconhecido) -> null", (await seams.getSitemapShardXml("sitemap-pt-BR-seasons-0.xml", { limit: LIMIT })) === null && (await seams.getSitemapShardXml("sitemap-pt-BR-temporada-1.xml", { limit: LIMIT })) === null, "null");
 
   // Prova de LIMIT no banco para o shard de temporadas.
