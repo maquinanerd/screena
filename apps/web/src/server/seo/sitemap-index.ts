@@ -183,8 +183,19 @@ const ALL_TYPES: readonly string[] = [...ENTITY_TYPES, "static"];
  * mudanca de codigo revisada — que e exatamente o controle que faltava.
  *
  * Calibragem (2026-08-27, depois da valvula): ~105.000 URLs publicadas. O teto
- * a 300.000 tolera quase 3x de crescimento organico e ainda pega um evento de
- * ordem de grandeza.
+ * a 300.000 tolera quase 3x e ainda pega um evento de ordem de grandeza.
+ *
+ * ESTE TETO E UM PRAZO, NAO UMA FOLGA. Medido no mesmo dia, em quatro leituras
+ * do shard de filmes ao longo de 84 minutos: 30.948 -> 32.050 -> 33.720 ->
+ * 34.735. Sao ~2.700 filmes por hora, ~65.000 por dia — a ingestao cria slug
+ * para todo titulo descoberto, e o sitemap publica todo slug. Nesse ritmo o
+ * teto e cruzado em cerca de tres dias, e ai o index sai vazio.
+ *
+ * Isso e o teto FUNCIONANDO: o problema nao e o numero aqui, e um catalogo que
+ * cresce 65.000 fichas por dia sem que nenhuma delas precise ter sinopse ou
+ * poster para entrar. Quem segura essa linha e a Fase 3 (gate por DADO), nao um
+ * numero maior escrito aqui. Subir este valor sem ligar o gate por dado so
+ * troca a data do estouro.
  */
 export const SITEMAP_TOTAL_URL_CEILING = 300_000;
 
