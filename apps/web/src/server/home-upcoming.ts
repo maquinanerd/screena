@@ -30,6 +30,7 @@ import {
   type UpcomingEntityInput,
 } from "../lib/home-upcoming-presenter";
 import { pickTrailer, type TrailerRow, type TrailerView } from "../lib/trailer-presenter";
+import { findManyInChunks } from "../lib/prisma-in-chunks";
 
 const LANGUAGE_CODE = "pt-BR";
 
@@ -55,27 +56,29 @@ async function loadDisplayableTrailers(
   if (tmdbIds.length === 0) return byTmdbId;
 
   const prisma = getPrismaClient();
-  const rows = await prisma.tmdbVideo.findMany({
-    where: {
-      entityType,
-      tmdbId: { in: [...tmdbIds] },
-      // Invariante 6, na própria consulta.
-      displayAllowed: true,
-      licenseStatus: { notIn: ["unknown", "blocked"] },
-    },
-    select: {
-      tmdbId: true,
-      site: true,
-      videoKey: true,
-      name: true,
-      videoType: true,
-      official: true,
-      languageCode: true,
-      publishedAt: true,
-      displayAllowed: true,
-      licenseStatus: true,
-    },
-  });
+  const rows = await findManyInChunks([...tmdbIds], (chunk) =>
+    prisma.tmdbVideo.findMany({
+      where: {
+        entityType,
+        tmdbId: { in: chunk },
+        // Invariante 6, na própria consulta.
+        displayAllowed: true,
+        licenseStatus: { notIn: ["unknown", "blocked"] },
+      },
+      select: {
+        tmdbId: true,
+        site: true,
+        videoKey: true,
+        name: true,
+        videoType: true,
+        official: true,
+        languageCode: true,
+        publishedAt: true,
+        displayAllowed: true,
+        licenseStatus: true,
+      },
+    }),
+  );
 
   const grouped = new Map<number, TrailerRow[]>();
   for (const row of rows) {
@@ -138,10 +141,14 @@ async function loadTranslationTitles(
   ids: readonly bigint[],
 ): Promise<Map<string, string | null>> {
   const prisma = getPrismaClient();
-  const rows = await prisma.entityTranslation.findMany({
-    where: { entityType, entityId: { in: [...ids] }, languageCode: LANGUAGE_CODE },
-    select: { entityId: true, title: true },
-  });
+  // `ids` e o catalogo INTEIRO da vertical — acima de ~32.7 mil ids a consulta
+  // nao cabe no protocolo do PostgreSQL. Ver `../lib/prisma-in-chunks`.
+  const rows = await findManyInChunks([...ids], (chunk) =>
+    prisma.entityTranslation.findMany({
+      where: { entityType, entityId: { in: chunk }, languageCode: LANGUAGE_CODE },
+      select: { entityId: true, title: true },
+    }),
+  );
 
   const titleByEntity = new Map<string, string | null>();
   for (const row of rows) titleByEntity.set(row.entityId.toString(), row.title);
@@ -162,19 +169,23 @@ export const getHomeUpcomingMovies = cache(
     const { ids, slugByEntity } = await loadCanonicalSlugs("movie");
     if (ids.length === 0) return [];
 
+    // Em lotes: a ordem final NAO vem daqui — `buildUpcomingItems` reordena por
+    // estreia e so entao corta. Ver `../lib/prisma-in-chunks`.
     const [movies, titleByEntity] = await Promise.all([
-      prisma.movie.findMany({
-        where: { id: { in: ids }, releaseDate: { gt: cutoff } },
-        select: {
-          id: true,
-          tmdbId: true,
-          titleOriginal: true,
-          releaseDate: true,
-          backdropPath: true,
-          posterPath: true,
-        },
-        orderBy: { releaseDate: "asc" },
-      }),
+      findManyInChunks(ids, (chunk) =>
+        prisma.movie.findMany({
+          where: { id: { in: chunk }, releaseDate: { gt: cutoff } },
+          select: {
+            id: true,
+            tmdbId: true,
+            titleOriginal: true,
+            releaseDate: true,
+            backdropPath: true,
+            posterPath: true,
+          },
+          orderBy: { releaseDate: "asc" },
+        }),
+      ),
       loadTranslationTitles("movie", ids),
     ]);
 
@@ -219,19 +230,22 @@ export const getHomeUpcomingSeries = cache(
     const { ids, slugByEntity } = await loadCanonicalSlugs("tv");
     if (ids.length === 0) return [];
 
+    // Em lotes; a ordem final e do presenter, nao do `orderBy`. Ver acima.
     const [shows, titleByEntity] = await Promise.all([
-      prisma.tvShow.findMany({
-        where: { id: { in: ids }, firstAirDate: { gt: cutoff } },
-        select: {
-          id: true,
-          tmdbId: true,
-          nameOriginal: true,
-          firstAirDate: true,
-          backdropPath: true,
-          posterPath: true,
-        },
-        orderBy: { firstAirDate: "asc" },
-      }),
+      findManyInChunks(ids, (chunk) =>
+        prisma.tvShow.findMany({
+          where: { id: { in: chunk }, firstAirDate: { gt: cutoff } },
+          select: {
+            id: true,
+            tmdbId: true,
+            nameOriginal: true,
+            firstAirDate: true,
+            backdropPath: true,
+            posterPath: true,
+          },
+          orderBy: { firstAirDate: "asc" },
+        }),
+      ),
       loadTranslationTitles("tv", ids),
     ]);
 

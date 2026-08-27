@@ -26,6 +26,7 @@ import {
   type PersonListItemInput,
   type SeriesListItemInput,
 } from "../lib/entity-index-presenter";
+import { findManyInChunks } from "../lib/prisma-in-chunks";
 import type { IndexabilityResult } from "@screena/seo";
 
 const LANGUAGE_CODE = "pt-BR";
@@ -83,10 +84,14 @@ async function translationTitlesByEntity(
   ids: bigint[],
 ): Promise<Map<string, string | null>> {
   if (ids.length === 0) return new Map();
-  const rows = await prisma.entityTranslation.findMany({
-    where: { entityType, entityId: { in: ids }, languageCode: LANGUAGE_CODE },
-    select: { entityId: true, title: true },
-  });
+  // `ids` e a listagem INTEIRA daquele tipo. Acima de ~32.7 mil ids a consulta
+  // nao cabe no protocolo do PostgreSQL. Ver `../lib/prisma-in-chunks`.
+  const rows = await findManyInChunks(ids, (chunk) =>
+    prisma.entityTranslation.findMany({
+      where: { entityType, entityId: { in: chunk }, languageCode: LANGUAGE_CODE },
+      select: { entityId: true, title: true },
+    }),
+  );
   const out = new Map<string, string | null>();
   for (const row of rows) out.set(row.entityId.toString(), row.title);
   return out;
@@ -99,18 +104,20 @@ export const getMovieIndexData = cache(async (): Promise<EntityIndexData> => {
   let items: MovieListItemInput[] = [];
   if (ids.length > 0) {
     const [movies, titleByEntity] = await Promise.all([
-      prisma.movie.findMany({
-        where: { id: { in: ids } },
-        select: {
-          id: true,
-          titleOriginal: true,
-          releaseDate: true,
-          posterPath: true,
-          screenScore: true,
-          screenScoreScale: true,
-          screenScoreDisplay: true,
-        },
-      }),
+      findManyInChunks(ids, (chunk) =>
+        prisma.movie.findMany({
+          where: { id: { in: chunk } },
+          select: {
+            id: true,
+            titleOriginal: true,
+            releaseDate: true,
+            posterPath: true,
+            screenScore: true,
+            screenScoreScale: true,
+            screenScoreDisplay: true,
+          },
+        }),
+      ),
       translationTitlesByEntity(prisma, "movie", ids),
     ]);
     // Procedencia do Cinerie Score em LOTE (ver `editorial-score`).
@@ -155,19 +162,21 @@ export const getSeriesIndexData = cache(async (): Promise<EntityIndexData> => {
   let items: SeriesListItemInput[] = [];
   if (ids.length > 0) {
     const [shows, titleByEntity] = await Promise.all([
-      prisma.tvShow.findMany({
-        where: { id: { in: ids } },
-        select: {
-          id: true,
-          nameOriginal: true,
-          firstAirDate: true,
-          lastAirDate: true,
-          posterPath: true,
-          screenScore: true,
-          screenScoreScale: true,
-          screenScoreDisplay: true,
-        },
-      }),
+      findManyInChunks(ids, (chunk) =>
+        prisma.tvShow.findMany({
+          where: { id: { in: chunk } },
+          select: {
+            id: true,
+            nameOriginal: true,
+            firstAirDate: true,
+            lastAirDate: true,
+            posterPath: true,
+            screenScore: true,
+            screenScoreScale: true,
+            screenScoreDisplay: true,
+          },
+        }),
+      ),
       translationTitlesByEntity(prisma, "tv", ids),
     ]);
     // Procedencia do Cinerie Score em LOTE (ver `editorial-score`).
@@ -213,10 +222,12 @@ export const getPersonIndexData = cache(async (): Promise<EntityIndexData> => {
   let items: PersonListItemInput[] = [];
   if (ids.length > 0) {
     const [people, titleByEntity] = await Promise.all([
-      prisma.person.findMany({
-        where: { id: { in: ids } },
-        select: { id: true, name: true, knownForDepartment: true, profilePath: true },
-      }),
+      findManyInChunks(ids, (chunk) =>
+        prisma.person.findMany({
+          where: { id: { in: chunk } },
+          select: { id: true, name: true, knownForDepartment: true, profilePath: true },
+        }),
+      ),
       translationTitlesByEntity(prisma, "person", ids),
     ]);
     items = people.map((person) => {
