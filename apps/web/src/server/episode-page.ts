@@ -18,11 +18,15 @@ import {
   buildEpisodePageView,
   type EpisodePageView,
 } from "../lib/season-episode-presenter";
+import { buildImagesGallery, type ImagesGalleryView } from "../lib/gallery-presenter";
 import {
   episodeCanonicalUrl,
   seasonCanonicalUrl,
   seriesCanonicalUrl,
 } from "../lib/site";
+import { getEpisodeCredits, type EpisodeCredits } from "./episode-credits";
+import { getImagesForEntity } from "./entity-gallery";
+import { getImageDisplayAuthorization } from "./image-license";
 import { resolveEntityPageSeo } from "./seo/indexability-decision";
 
 const LANGUAGE_CODE = "pt-BR";
@@ -30,6 +34,17 @@ const SERIES_ENTITY_TYPE = "tv";
 
 export interface EpisodePageData {
   view: EpisodePageView;
+  /** Elenco convidado, elenco regular e equipe. Vazio quando não há crédito. */
+  credits: EpisodeCredits;
+  /**
+   * As imagens do episódio (`tmdb_images` com `entity_type='episode'`), já
+   * gateadas pela licença de imagem e ordenadas pelo presenter da galeria.
+   *
+   * É a MESMA view da galeria de título: a página de episódio mostra as
+   * primeiras e a sub-página `/imagens/` mostra todas. Duas montagens da mesma
+   * lista divergiriam no primeiro conserto aplicado a uma só.
+   */
+  images: ImagesGalleryView;
   /** Resolucao FINAL de SEO do episodio (fatos vivos + decisao vigente). */
   seo: PageSeoResolution;
   canonicalSlug: string;
@@ -109,6 +124,9 @@ export const getEpisodePageData = cache(
         where: { seasonId: season.id, episodeNumber },
         select: {
           id: true,
+          // A CHAVE da mídia. `tmdb_images` guarda o still pelo id PRÓPRIO do
+          // episódio, nunca pelo da série — ver `buildMediaTarget`.
+          tmdbId: true,
           episodeNumber: true,
           name: true,
           overview: true,
@@ -153,6 +171,22 @@ export const getEpisodePageData = cache(
       nextEpisodeNumber: next,
     });
 
+    /**
+     * Créditos e imagens em PARALELO com o SEO: são três leituras
+     * independentes do mesmo PostgreSQL, e encadeá-las somaria três idas ao
+     * banco no tempo de resposta de uma página que já é servida com ISR.
+     */
+    const [credits, imageRows, authorization] = await Promise.all([
+      getEpisodeCredits(prisma, episode.id),
+      // Sem `tmdb_id` próprio não há chave de mídia: a lista sai vazia e a
+      // página omite o bloco. Nunca cai para o id da série — isso mostraria as
+      // imagens de OUTRO episódio.
+      episode.tmdbId === null
+        ? Promise.resolve([] as const)
+        : getImagesForEntity(prisma, "episode", episode.tmdbId),
+      getImageDisplayAuthorization(prisma),
+    ]);
+
     const seo = await resolveEntityPageSeo(
       { entityType: "episode", entityId: episode.id, languageCode: LANGUAGE_CODE },
       {
@@ -164,6 +198,15 @@ export const getEpisodePageData = cache(
       prisma,
     );
 
-    return { view, seo, canonicalSlug, canonicalUrl, seasonUrl, seriesUrl };
+    return {
+      view,
+      credits,
+      images: buildImagesGallery(imageRows, view.episodeTitle, authorization),
+      seo,
+      canonicalSlug,
+      canonicalUrl,
+      seasonUrl,
+      seriesUrl,
+    };
   },
 );

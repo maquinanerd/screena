@@ -3,19 +3,55 @@ import { notFound, permanentRedirect } from 'next/navigation'
 
 import { serializeJsonLd, buildMetaDescription } from '@screena/seo'
 
+import { CastStrip } from '../../../../../../../_components/cast-strip'
+import { GalleryImageGrid } from '../../../../../../../_components/gallery-grids'
 import { PrevNextNav } from '../../../../../../../_components/prev-next-nav'
-import { episodePath, parseRouteNumber } from '../../../../../../../../src/lib/routes'
+import { SectionBoundary } from '../../../../../../../_components/section-boundary'
+import { SectionHead } from '../../../../../../../_components/section-head'
+import { decideSection } from '../../../../../../../../src/lib/section-absence'
+import {
+  episodeImagesGalleryPath,
+  episodePath,
+  parseRouteNumber,
+} from '../../../../../../../../src/lib/routes'
 import { SERIES_INDEX_PATH, SITE_URL, gatePublicRobots } from '../../../../../../../../src/lib/site'
 import { getEpisodePageData } from '../../../../../../../../src/server/episode-page'
 
 /**
  * Pagina publica de episodio
- * (/pt/series/[slug]/temporadas/[season]/episodios/[episode]/). Shell textual
- * atual: dados reais + navegacao + contratos de SEO da Fase 3, sem introduzir a
- * camada visual do design (still resolvido na view, pronto para o design).
+ * (/pt/series/[slug]/temporadas/[season]/episodios/[episode]/).
+ *
+ * ============================================================================
+ * O QUE ESTA PAGINA MOSTRAVA ATE 2026-08-27, E POR QUE
+ * ============================================================================
+ * Titulo, data, duracao e um paragrafo. Mais nada. A mesma pagina no TMDB
+ * mostrava 31 artistas convidados, 13 pessoas na equipe (com Direcao e Roteiro
+ * nomeados) e 15 imagens com galeria propria.
+ *
+ * A causa NAO era licenca nem desenho: era coleta. `syncEpisodes` passava aos
+ * normalizadores o item de `episodes[]` da temporada, que nao tem bloco
+ * `credits`, nem `external_ids`, nem `images` — e os extratores devolviam listas
+ * vazias em toda execucao, contadas como sucesso. `cast_members` e
+ * `crew_members` aceitam `entity_type='episode'` desde a Fase 1 e nunca
+ * receberam uma linha.
+ *
+ * Agora o `sync_episodes` busca o DETALHE de cada episodio (`getTvEpisode`) e
+ * esta pagina le o que ele grava.
+ *
+ * Invariantes 3 e 4: le SOMENTE PostgreSQL local; zero API externa, zero IA no
+ * render. Nada de terceiro carrega antes de um clique.
  */
 
 export const revalidate = 3600
+
+/**
+ * Quantas imagens aparecem na FICHA antes do "ver todas".
+ *
+ * Seis: duas linhas de tres na grade de episodio. O suficiente para a faixa
+ * ter forma propria sem empurrar a navegacao entre episodios para fora da
+ * tela — a galeria completa e uma pagina, esta faixa e um bloco.
+ */
+const IMAGENS_NA_FICHA = 6
 
 interface EpisodeRouteParams {
   slug: string
@@ -68,11 +104,46 @@ export default async function EpisodePage({ params }: { params: Promise<EpisodeR
     if (target !== null) permanentRedirect(target)
   }
 
-  const { view, seo, canonicalUrl, seasonUrl, seriesUrl } = data
+  const { view, credits, images, seo, canonicalUrl, seasonUrl, seriesUrl } = data
   const isUnderReview = seo.decision !== 'index'
   const seriesHref = `${SERIES_INDEX_PATH}${view.seriesSlug}/`
   const headerMeta = [view.dateLabel, view.runtimeLabel].filter(
     (item): item is string => item !== null,
+  )
+
+  /**
+   * As quatro decisoes de bloco.
+   *
+   * `SectionBoundary` existe porque a regra tem DUAS metades ("a secao sai do
+   * DOM" e "o motivo vai para o log"), e um ternario so cumpre a primeira. O
+   * `entityType` e `episode`: mandar `tv` mandaria o operador olhar a serie
+   * inteira quando o buraco e de UM episodio.
+   */
+  const escopo = { entityType: 'episode' as const, entityId: String(view.episodeNumber) }
+  const guestSection = decideSection(credits.guestStars, {
+    ...escopo,
+    section: 'elenco-convidado',
+    reason: 'no_episode_credits',
+  })
+  const regularSection = decideSection(credits.regularCast, {
+    ...escopo,
+    section: 'elenco',
+    reason: 'no_episode_credits',
+  })
+  const crewSection = decideSection(credits.crew, {
+    ...escopo,
+    section: 'equipe-tecnica',
+    reason: 'no_episode_credits',
+  })
+  const imagesSection = decideSection(images.images.slice(0, IMAGENS_NA_FICHA), {
+    ...escopo,
+    section: 'imagens-do-episodio',
+    reason: 'no_episode_images',
+  })
+  const galeriaHref = episodeImagesGalleryPath(
+    view.seriesSlug,
+    view.seasonNumber,
+    view.episodeNumber,
   )
 
   const breadcrumbJsonLd = {
@@ -104,41 +175,104 @@ export default async function EpisodePage({ params }: { params: Promise<EpisodeR
   }
   if (view.overview !== null) episodeJsonLd.description = view.overview
   if (view.airYear !== null) episodeJsonLd.datePublished = String(view.airYear)
+  if (view.still !== null) episodeJsonLd.image = view.still.src
+
+  /**
+   * `director` e `actor` no schema saem dos MESMOS dados da tela.
+   *
+   * So entram quando ha crédito de verdade: um `TVEpisode` com `director: []`
+   * afirmaria ao buscador que o episodio nao tem diretor, o que e diferente de
+   * nao afirmar nada. Nunca inventa `Person` sem nome vindo do banco.
+   */
+  const diretores = credits.crew.find((group) => group.job === 'Director')?.people ?? []
+  if (diretores.length > 0) {
+    episodeJsonLd.director = diretores.map((pessoa) => ({ '@type': 'Person', name: pessoa.name }))
+  }
+  const roteiristas = credits.crew
+    .filter((group) => group.job === 'Writer' || group.job === 'Screenplay')
+    .flatMap((group) => group.people)
+  if (roteiristas.length > 0) {
+    episodeJsonLd.author = roteiristas.map((pessoa) => ({ '@type': 'Person', name: pessoa.name }))
+  }
+  if (credits.guestStars.length > 0) {
+    episodeJsonLd.actor = credits.guestStars.map((membro) => ({
+      '@type': 'Person',
+      name: membro.name,
+    }))
+  }
 
   return (
     <main data-vertical="series">
-      <div className="container">
-        <nav aria-label="Trilha de navegação">
-          <ol>
-            <li>
-              <a href={SERIES_INDEX_PATH}>Séries</a>
-            </li>
-            <li>
-              <a href={seriesHref}>{view.seriesTitle}</a>
-            </li>
-            <li>
-              {view.seasonHref !== null ? (
-                <a href={view.seasonHref}>{view.seasonTitle}</a>
-              ) : (
-                <span>{view.seasonTitle}</span>
-              )}
-            </li>
-            <li aria-current="page">{view.episodeTitle}</li>
-          </ol>
-        </nav>
+      <div className="detail-hero">
+        <div className="detail-container">
+          <nav aria-label="Trilha de navegação" className="detail-hero__crumbs">
+            <ol>
+              <li>
+                <a href={SERIES_INDEX_PATH}>Séries</a>
+              </li>
+              <li>
+                <a href={seriesHref}>{view.seriesTitle}</a>
+              </li>
+              <li>
+                {view.seasonHref !== null ? (
+                  <a href={view.seasonHref}>{view.seasonTitle}</a>
+                ) : (
+                  <span>{view.seasonTitle}</span>
+                )}
+              </li>
+              <li aria-current="page">{view.episodeTitle}</li>
+            </ol>
+          </nav>
 
-        <header>
-          <p>
-            <strong data-entity-badge="series">Episódio</strong>
-          </p>
-          <h1>{view.episodeTitle}</h1>
-          <p>
-            {view.seriesTitle} · T{view.seasonNumber} E{view.episodeNumber}
-          </p>
-          {headerMeta.length > 0 ? <p>{headerMeta.join(' · ')}</p> : null}
-          {view.overview !== null ? <p>{view.overview}</p> : null}
-        </header>
+          <div className="detail-hero__grid">
+            <div className="detail-hero__main">
+              <div className="detail-badge-row">
+                {/* Os cinco sinais da invariante 11: label + badge + breadcrumb
+                    + schema (TVEpisode) + URL. A cor e o apoio, nunca o sinal. */}
+                <span className="detail-badge" data-entity-badge="series">
+                  Episódio
+                </span>
+              </div>
+              <h1 className="detail-hero__title">{view.episodeTitle}</h1>
+              <p className="detail-hero__meta-text">
+                {view.seriesTitle} · T{view.seasonNumber} E{view.episodeNumber}
+              </p>
+              {headerMeta.length > 0 ? (
+                <ul className="detail-hero__chips">
+                  <li className="detail-hero__meta-text">{headerMeta.join(' · ')}</li>
+                </ul>
+              ) : null}
+              {view.overview !== null ? (
+                <p className="detail-hero__synopsis">{view.overview}</p>
+              ) : null}
+              <p className="season-page__back">
+                <a
+                  className="detail-hero__back"
+                  href={view.seasonHref ?? seriesHref}
+                >
+                  ← Voltar para {view.seasonTitle}
+                </a>
+              </p>
+            </div>
 
+            {view.still !== null ? (
+              // O still do episodio (`episodes.still_path`), que a view sempre
+              // resolveu e a pagina nunca desenhou.
+              <aside aria-label={`Cena de ${view.episodeTitle}`} className="detail-hero__aside">
+                <img
+                  alt=""
+                  className="episode-still"
+                  height={view.still.height}
+                  src={view.still.src}
+                  width={view.still.width}
+                />
+              </aside>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
+      <div className="detail-container season-page__body">
         <PrevNextNav
           ariaLabel="Navegação entre episódios"
           previousItemLabel="Episódio anterior"
@@ -147,7 +281,101 @@ export default async function EpisodePage({ params }: { params: Promise<EpisodeR
           next={view.nextEpisode}
         />
 
-        <nav aria-label="Voltar">
+        {/* ===== Equipe técnica: direção e roteiro ===== */}
+        <SectionBoundary decision={crewSection}>
+          {(groups) => (
+            <section aria-labelledby="episodio-equipe-titulo" style={{ paddingTop: 48 }}>
+              <SectionHead
+                headingId="episodio-equipe-titulo"
+                kicker="Ficha"
+                thin="técnica"
+                title="Equipe"
+              />
+              <dl className="episode-crew">
+                {groups.map((group) => (
+                  <div className="episode-crew__row" data-crew-job={group.job} key={group.job}>
+                    <dt className="episode-crew__label">{group.label}</dt>
+                    <dd className="episode-crew__people">
+                      {group.people.map((pessoa, index) => (
+                        <span key={`${pessoa.name}-${String(index)}`}>
+                          {index > 0 ? ', ' : ''}
+                          {pessoa.href !== null ? (
+                            <a href={pessoa.href}>{pessoa.name}</a>
+                          ) : (
+                            pessoa.name
+                          )}
+                        </span>
+                      ))}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+          )}
+        </SectionBoundary>
+
+        {/* ===== Elenco convidado ===== */}
+        <SectionBoundary decision={guestSection}>
+          {(members) => (
+            <section aria-labelledby="episodio-convidados-titulo" style={{ paddingTop: 48 }}>
+              <div className="section-head" style={{ alignItems: 'flex-end', marginBottom: 26 }}>
+                <SectionHead
+                  headingId="episodio-convidados-titulo"
+                  kicker="Elenco"
+                  thin="convidado"
+                  title="Elenco"
+                />
+                {/* A contagem REAL, nunca a exibida: mostrar 18 e dizer 18
+                    esconderia 13 pessoas sem avisar que escondeu. */}
+                {credits.guestStarsTotal > members.length ? (
+                  <p className="detail-hero__meta-text">
+                    {members.length} de {credits.guestStarsTotal}
+                  </p>
+                ) : null}
+              </div>
+              <CastStrip members={members} />
+            </section>
+          )}
+        </SectionBoundary>
+
+        {/* ===== Elenco regular creditado neste episódio ===== */}
+        <SectionBoundary decision={regularSection}>
+          {(members) => (
+            <section aria-labelledby="episodio-elenco-titulo" style={{ paddingTop: 48 }}>
+              <SectionHead
+                headingId="episodio-elenco-titulo"
+                kicker="Elenco"
+                thin="regular"
+                title="Elenco"
+              />
+              <CastStrip members={members} />
+            </section>
+          )}
+        </SectionBoundary>
+
+        {/* ===== Imagens do episódio ===== */}
+        <SectionBoundary decision={imagesSection}>
+          {(destaques) => (
+            <section aria-labelledby="episodio-imagens-titulo" style={{ paddingTop: 48 }}>
+              <div className="section-head" style={{ alignItems: 'flex-end', marginBottom: 26 }}>
+                <SectionHead
+                  headingId="episodio-imagens-titulo"
+                  kicker="Mídia"
+                  thin="do episódio"
+                  title="Imagens"
+                />
+                {galeriaHref !== null && images.total > destaques.length ? (
+                  <a className="detail-see-all" href={galeriaHref}>
+                    Ver as {images.total} imagens →
+                  </a>
+                ) : null}
+              </div>
+              <GalleryImageGrid images={destaques} />
+            </section>
+          )}
+        </SectionBoundary>
+
+        <nav aria-label="Voltar" style={{ paddingTop: 48 }}>
           <ul>
             {view.seasonHref !== null ? (
               <li>

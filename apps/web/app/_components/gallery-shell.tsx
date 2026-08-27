@@ -21,6 +21,12 @@
 import { MOVIES_INDEX_PATH, SERIES_INDEX_PATH } from '../../src/lib/site'
 import type { GalleryFacet } from '../../src/lib/gallery-presenter'
 
+/** Um degrau da trilha. `href` nulo = degrau atual (nao vira link). */
+export interface GalleryCrumb {
+  readonly label: string
+  readonly href: string | null
+}
+
 /** O que o casco precisa saber para se desenhar. */
 export interface GalleryShellProps {
   readonly vertical: 'filmes' | 'series'
@@ -39,6 +45,18 @@ export interface GalleryShellProps {
   readonly facetsLabel: string
   /** `true` quando a página está abaixo do piso e recebeu `noindex`. */
   readonly belowFloor: boolean
+  /**
+   * Trilha COMPLETA, quando a de três degraus não serve.
+   *
+   * A galeria de título tem sempre a mesma profundidade (índice → título →
+   * galeria), e por isso o casco a monta sozinho. A de EPISÓDIO tem cinco
+   * degraus (Séries → série → temporada → episódio → Imagens), e achatá-la em
+   * três esconderia a temporada — que é a página de onde o leitor veio.
+   *
+   * Quando presente, substitui a trilha padrão por inteiro. O último degrau
+   * recebe `aria-current="page"` independentemente do `href`.
+   */
+  readonly crumbs?: readonly GalleryCrumb[]
   readonly children: React.ReactNode
 }
 
@@ -50,18 +68,30 @@ function contagem(total: number, unit: readonly [string, string]): string {
 export function GalleryShell(props: GalleryShellProps) {
   const indexPath = props.vertical === 'filmes' ? MOVIES_INDEX_PATH : SERIES_INDEX_PATH
   const indexLabel = props.vertical === 'filmes' ? 'Filmes' : 'Séries'
+  // A trilha padrão de TÍTULO continua sendo montada aqui; `crumbs` só existe
+  // para quem tem profundidade diferente (episódio).
+  const trilha: readonly GalleryCrumb[] = props.crumbs ?? [
+    { label: indexLabel, href: indexPath },
+    { label: props.entityTitle, href: props.entityPath },
+    { label: props.heading, href: null },
+  ]
 
   return (
     <div className="container">
       <nav aria-label="Trilha de navegação" className="detail-hero__crumbs">
         <ol>
-          <li>
-            <a href={indexPath}>{indexLabel}</a>
-          </li>
-          <li>
-            <a href={props.entityPath}>{props.entityTitle}</a>
-          </li>
-          <li aria-current="page">{props.heading}</li>
+          {trilha.map((degrau, index) => (
+            <li
+              aria-current={index === trilha.length - 1 ? 'page' : undefined}
+              key={`${degrau.label}-${String(index)}`}
+            >
+              {degrau.href !== null && index !== trilha.length - 1 ? (
+                <a href={degrau.href}>{degrau.label}</a>
+              ) : (
+                degrau.label
+              )}
+            </li>
+          ))}
         </ol>
       </nav>
 

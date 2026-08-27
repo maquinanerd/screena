@@ -103,6 +103,7 @@ describe('runMediaSync', () => {
     const { store } = fakeMediaStore()
     const target: MediaTarget = {
       entityType: 'movie', tmdbId: 1,
+      endpointBase: '/movie/1',
       fetchImages: async () => IMAGES_PAYLOAD,
       fetchVideos: async () => VIDEOS_PAYLOAD,
     }
@@ -126,6 +127,7 @@ describe('runMediaSync', () => {
     const { store } = fakeMediaStore()
     const target: MediaTarget = {
       entityType: 'person', tmdbId: 5,
+      endpointBase: '/person/5',
       fetchImages: async () => ({ id: 5, profiles: [{ file_path: '/x.jpg' }] }),
     }
     const r = await runMediaSync(target, { cache, log, store, now: () => new Date(0) })
