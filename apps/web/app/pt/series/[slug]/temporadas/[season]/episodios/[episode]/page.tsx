@@ -1,4 +1,6 @@
 import type { Metadata } from 'next'
+
+import { SUSPENSION_REASON } from '../../../../../../../../src/server/seo/suspended-pages'
 import { notFound, permanentRedirect } from 'next/navigation'
 
 import { serializeJsonLd, buildMetaDescription } from '@screena/seo'
@@ -69,7 +71,10 @@ export default async function EpisodePage({ params }: { params: Promise<EpisodeR
   }
 
   const { view, seo, canonicalUrl, seasonUrl, seriesUrl } = data
-  const isUnderReview = seo.decision !== 'index'
+  // A valvula de 2026-08-27 poe estas paginas em `noindex`, e isso NAO e
+  // revisao editorial pendente: a pagina esta pronta, so nao se sustenta no
+  // indice. Sem esta distincao o aviso apareceria em 3,9 milhoes de telas.
+  const isUnderReview = seo.decision !== 'index' && seo.reason !== SUSPENSION_REASON
   const seriesHref = `${SERIES_INDEX_PATH}${view.seriesSlug}/`
   const headerMeta = [view.dateLabel, view.runtimeLabel].filter(
     (item): item is string => item !== null,

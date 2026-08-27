@@ -24,6 +24,7 @@ import {
   seriesCanonicalUrl,
 } from "../lib/site";
 import { resolveEntityPageSeo } from "./seo/indexability-decision";
+import { applyPageSuspension } from "./seo/suspended-pages";
 
 const LANGUAGE_CODE = "pt-BR";
 const SERIES_ENTITY_TYPE = "tv";
@@ -153,7 +154,7 @@ export const getEpisodePageData = cache(
       nextEpisodeNumber: next,
     });
 
-    const seo = await resolveEntityPageSeo(
+    const resolved = await resolveEntityPageSeo(
       { entityType: "episode", entityId: episode.id, languageCode: LANGUAGE_CODE },
       {
         language: LANGUAGE_CODE,
@@ -163,6 +164,9 @@ export const getEpisodePageData = cache(
       },
       prisma,
     );
+    // VALVULA 2026-08-27: o par obrigatorio da saida do sitemap.
+    // Sair do sitemap nao desindexa; a meta tag desindexa.
+    const seo = applyPageSuspension("episode", resolved);
 
     return { view, seo, canonicalSlug, canonicalUrl, seasonUrl, seriesUrl };
   },
