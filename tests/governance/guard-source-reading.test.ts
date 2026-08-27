@@ -107,7 +107,6 @@ const JA_LIAM_CRU: readonly string[] = [
   'services/entity-writer/src/__tests__/inspect-store-readonly.test.ts',
   'services/entity-writer/src/__tests__/job-claim-sql.test.ts',
   'services/ingestion/src/__tests__/detail-finalize-guards.test.ts',
-  'services/ingestion/src/catalog-jobs/__tests__/catalog-job-claim-sql.test.ts',
   'services/legal/src/__tests__/tmdb-video-license.test.ts',
   'services/news-ingestion/src/__tests__/worker-readiness.test.ts',
   'services/streaming/src/__tests__/promotion-no-network.test.ts',
