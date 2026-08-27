@@ -12,6 +12,7 @@
  * o erro para um conjunto FECHADO de classes — nunca a mensagem crua.
  */
 
+import { CATALOG_METRIC_NAMES, type MetricsSink } from '../../metrics/index.js'
 import { PermanentJobError } from '../handler.js'
 
 /** Conjunto FECHADO de classes de erro (label `error_class`). */
@@ -155,5 +156,47 @@ export function assertAllowedLabels(labels: Readonly<Record<string, string>>): v
     if (!(ALLOWED_METRIC_LABELS as readonly string[]).includes(key)) {
       throw new Error(`label de metrica proibida (alta cardinalidade): "${key}"`)
     }
+  }
+}
+
+
+/**
+ * Acumulador de desfechos de enfileiramento.
+ *
+ * PORTA UNICA para os tres handlers que enfileiram em lote. Existe por dois
+ * motivos, e o segundo e o que importa:
+ *
+ *  - agrega. `discover_ids` enfileira ate 2000 ids por ciclo; uma amostra por id
+ *    viraria 2000 linhas de log para dizer uma coisa so. Uma amostra por
+ *    (tipo, desfecho) diz o mesmo com duas linhas;
+ *  - impede divergencia. Tres blocos parecidos e um conserto aplicado a um e
+ *    esquecido nos outros — o padrao que `entity-coverage/entry.ts` ja documenta
+ *    para o proprio job de cobertura.
+ */
+export function createEnqueueTally(): {
+  add(jobType: string, created: boolean): void
+  flush(metrics: MetricsSink): void
+  duplicates(): number
+} {
+  const counts = new Map<string, number>()
+  let duplicated = 0
+  return {
+    add(jobType: string, created: boolean): void {
+      if (!created) duplicated += 1
+      const key = `${jobType}|${created ? 'created' : 'duplicate'}`
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    },
+    flush(metrics: MetricsSink): void {
+      for (const [key, value] of counts) {
+        const [jobType, result] = key.split('|')
+        metrics.increment(CATALOG_METRIC_NAMES.jobsEnqueuedTotal, value, {
+          job_type: jobType!,
+          result: result!,
+        })
+      }
+    },
+    duplicates(): number {
+      return duplicated
+    },
   }
 }
