@@ -177,14 +177,46 @@ describe('blocos editoriais', () => {
    * `hash_mismatch` — em producao, sem nada aqui ficar vermelho. Estes dois
    * testes sao o alarme.
    */
-  it('o corpo de ENTRADA continua sem formatacao inline', () => {
+  it('o corpo de ENTRADA PRESERVA a formatacao inline (contrato 1.1.0)', () => {
+    // Ate a 1.0.0 este teste afirmava o contrario, e a razao era o hash: campo
+    // novo na entrada derrubava emissor em voo. `SUPERSEDED_CONTRACTS` resolveu
+    // aquilo, e negrito/italico/link passaram a poder nascer no pipeline.
+    const marks = [{ start: 0, end: 3, type: 'bold' as const }]
     const result = editorialBody.safeParse([
-      { id: 'x', type: 'paragraph', text: 'negrito', marks: [{ start: 0, end: 3, type: 'bold' }] },
+      { id: 'x', type: 'paragraph', text: 'negrito', marks },
     ])
     expect(result.success).toBe(true)
-    // `z.object` REMOVE chave desconhecida; nao recusa. E por isso que um campo
-    // irmao "so no CMS" sumiria em silencio no meio do caminho.
-    if (result.success) expect(result.data[0]).not.toHaveProperty('marks')
+    if (result.success) {
+      const block = result.data[0]
+      expect(block?.type === 'paragraph' ? block.marks : null).toEqual(marks)
+    }
+  })
+
+  it('o corpo de ENTRADA recusa marcacao que o render nao saberia desenhar', () => {
+    // A validacao de intervalo vale nas DUAS pontas, com a mesma funcao: um
+    // emissor automatico erra offset com muito mais facilidade que um humano.
+    const foraDoTexto = editorialBody.safeParse([
+      { id: 'x', type: 'paragraph', text: 'curto', marks: [{ start: 0, end: 99, type: 'bold' }] },
+    ])
+    expect(foraDoTexto.success).toBe(false)
+
+    const linkSemDestino = editorialBody.safeParse([
+      { id: 'x', type: 'paragraph', text: 'texto', marks: [{ start: 0, end: 3, type: 'link' }] },
+    ])
+    expect(linkSemDestino.success).toBe(false)
+
+    const sobrepostas = editorialBody.safeParse([
+      {
+        id: 'x',
+        type: 'paragraph',
+        text: 'um texto qualquer',
+        marks: [
+          { start: 0, end: 8, type: 'bold' },
+          { start: 4, end: 12, type: 'bold' },
+        ],
+      },
+    ])
+    expect(sobrepostas.success).toBe(false)
   })
 
   it('o corpo PUBLICADO preserva a formatacao inline', () => {

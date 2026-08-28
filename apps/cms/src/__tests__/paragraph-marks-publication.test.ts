@@ -44,14 +44,17 @@ describe('marcacoes sobrevivem ate o contrato de saida', () => {
     expect(block!.marks).toEqual(BOLD)
   })
 
-  it('o corpo de ENTRADA continua descartando `marks` — e por isso ele nao muda', () => {
-    // Prova do desenho: `z.object` REMOVE chave desconhecida em vez de recusar.
-    // E o motivo de a formatacao viver so no contrato de saida: acrescenta-la ao
-    // de entrada mudaria o hash pregado que o MNScr declara a cada pedido.
+  it('o corpo de ENTRADA tambem PRESERVA `marks` desde a 1.1.0', () => {
+    // Ate a 1.0.0 este teste afirmava o contrario, e a razao era o hash pregado
+    // que o MNScr declara a cada pedido: campo novo na entrada derrubaria todo
+    // emissor em voo. `SUPERSEDED_CONTRACTS` passou a aceitar tambem o par
+    // (versao, hash) anterior, e com isso a entrada pode receber negrito,
+    // italico e link vindos do pipeline — que era o objetivo o tempo todo.
     const result = parseContract(editorialBody, toContractBlocks([paragraphRow({ marks: BOLD })]))
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.value[0]).not.toHaveProperty('marks')
+    const block = result.value[0]
+    expect(block?.type === 'paragraph' ? block.marks : null).toEqual(BOLD)
   })
 })
 
