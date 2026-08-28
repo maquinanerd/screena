@@ -288,9 +288,19 @@ export const ROUTE_CACHE_POLICY: Readonly<Record<string, RouteCachePolicy>> = {
     CATALOG_SURFACE_REVALIDATE_SECONDS,
     "galeria de videos do filme: midia de catalogo, sem dado pessoal",
   ),
-  "/pt/series/[slug]": publicStatic(
-    CATALOG_SURFACE_REVALIDATE_SECONDS,
-    "ficha de serie: a janela de 3600 s que a rota ja declarava desde 2026-07",
+  // A UNICA ficha que NAO e cacheavel — e a unica que le `searchParams`.
+  //
+  // A #245 a classificou como `public-static` junto das outras nove. Em
+  // 2026-08-28 isso derrubou TODA `/pt/series/{slug}/` em producao com 500:
+  // `generateStaticParams` faz o Next tentar gerar HTML estatico na primeira
+  // visita, o `?temporada=` e leitura dinamica, e no runtime (diferente do
+  // build) o Next nao pode mais rebaixar a rota — lanca
+  // `DYNAMIC_SERVER_USAGE` / "Page changed from static to dynamic at runtime".
+  //
+  // Mesmo sem o 500 a classe estaria errada: cache de rota e por PATHNAME, e
+  // `?temporada=2` e `?temporada=5` compartilhariam o mesmo HTML guardado.
+  "/pt/series/[slug]": publicDynamic(
+    "ficha de serie: a aba de temporada depende de `?temporada=` — a mesma razao de `/pt/explorar`. Ver o cabecalho de `app/pt/series/[slug]/page.tsx`.",
   ),
   "/pt/series/[slug]/imagens": publicStatic(
     CATALOG_SURFACE_REVALIDATE_SECONDS,
