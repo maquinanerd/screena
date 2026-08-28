@@ -379,8 +379,15 @@ Exemplos:
 
   media: `catalog media — sincroniza imagens/videos.
 
-Toda linha nasce display_allowed=false e este comando NUNCA liga a flag:
-promover midia a exibivel e decisao humana registrada (invariante 6).
+A linha NASCE no estado que a licenca vigente de source_licenses autoriza
+(services/ingestion/src/media-promotion/birth.ts, decisao do proprietario de
+2026-08-28). Sem licenca vigente, ou com licenca bloqueante, nasce APAGADA —
+a invariante 6 continua valendo, o que mudou e o MOMENTO da pergunta.
+
+Este comando NUNCA liga a flag por conta propria e o caminho de ATUALIZACAO
+jamais reacende: so a criacao aplica a politica, para que a reversao
+(promote:media --revoke) continue sendo desfeita apenas por outro ato
+deliberado.
 
 Flags:
   --entity <e>         movie | tv | season | episode | person
