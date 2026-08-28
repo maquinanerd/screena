@@ -35,6 +35,7 @@ import { createTmdbCatalogEndpoints } from '@screena/tmdb-client'
 import { disconnectPrisma } from '@screena/db/server'
 import {
   EXIT_CODES,
+  dryRunExecutesCommand,
   evaluateCatalogGate,
   parseCatalogArgs,
   redactSecrets,
@@ -344,7 +345,14 @@ async function main() {
   // Dry-run NAO monta o runtime: nao abre Prisma, nao cria client TMDB, nao
   // gasta cota. "Dry-run nao toca nada" e garantido por construcao, nao por
   // disciplina espalhada em cada comando.
-  if (flags.dryRun) {
+  //
+  // EXCECAO, e ela e o ponto: para os comandos de `dryRunExecutesCommand` a
+  // pre-checagem e SO-LEITURA de PostgreSQL, e desviar aqui trocava um censo
+  // real por uma frase. `index-decisions --dry-run` imprimia
+  // `"index-decisions: sem efeito colateral"` com exit 0 — uma string que
+  // descreve a INTENCAO do comando, nunca o efeito da execucao. Ver
+  // `dryRunExecutesCommand` em ../src/cli/args.ts.
+  if (flags.dryRun && !dryRunExecutesCommand(command)) {
     const plan = describePlan(command, subcommand, flags, locale)
     emit(flags, { dryRun: true, command, subcommand, plan }, [
       `[dry-run] ${command}${subcommand ? ` ${subcommand}` : ''}`,
@@ -483,7 +491,16 @@ function describePlan(
     case 'dead-letter':
       return [`${subcommand} de dead-letters${flags.limit !== null ? ` (limite ${flags.limit})` : ''}`]
     default:
-      return [`${command}: sem efeito colateral`]
+      // NAO diga "sem efeito colateral". Esta frase e o que fez
+      // `index-decisions --dry-run` sair 0 com ar de pre-checagem aprovada: ela
+      // descreve a INTENCAO de nao tocar em nada durante o dry-run, e foi lida
+      // como "a mudanca seria inofensiva". Comando sem `case` aqui nao calculou
+      // NADA, e a saida tem que dizer isso.
+      return [
+        `${command}: esta CLI nao tem pre-checagem para este comando`,
+        'NENHUM numero foi calculado — o --dry-run apenas confirmou que nada seria tocado',
+        'nao trate esta saida como aprovacao de um --apply',
+      ]
   }
 }
 
@@ -816,10 +833,20 @@ async function cmdIndexDecisions(
   })
 
   const brake = summary.massChange
+  // Os TETOS entram sempre, inclusive quando nada estourou. Ate aqui, uma
+  // execucao com poucos flips imprimia so "flips: nenhum" e o operador nao
+  // tinha como saber contra que numero estava sendo medido — nem que havia um
+  // veredito de freio. O teto so aparecia quando ja era tarde.
+  const brakeLine =
+    `  freio: ${brake.flips} flip(s) de ${brake.evaluated} avaliadas` +
+    ` (${(brake.flipRatio * 100).toFixed(2)}%) · tetos ${brake.limits.maxFlips} absoluto` +
+    ` / ${(brake.limits.maxFlipRatio * 100).toFixed(2)}% proporcional` +
+    ` · ${brake.blocked ? 'BLOQUEARIA' : brake.exceeded ? 'estourou, mas confirmado' : 'nao bloqueia'}`
   const flipCensus =
     brake.flips === 0
-      ? ['  flips: nenhum (nada entra nem sai do sitemap).']
+      ? [brakeLine, '  flips: nenhum (nada entra nem sai do sitemap).']
       : [
+          brakeLine,
           `  flips: ${brake.flips} de ${brake.evaluated} avaliadas · entram ${brake.entersIndex} · saem ${brake.leavesIndex}`,
           '  flips por razao:',
           ...Object.entries(summary.flipsByReason).map(([k, v]) => `    ${k.padEnd(24)} ${v}`),
@@ -844,9 +871,27 @@ async function cmdIndexDecisions(
         ...(brake.exceeded ? [`  ${brake.explanation}`] : []),
       ]
 
+  // Censo POR TIPO. A pergunta que o operador faz antes de assinar nao e
+  // "quantas paginas mudam" e sim "quantas de CADA tipo, por que, e quantas
+  // dessas ja tinham veredito" — `updated` e o unico numero que pode tirar do
+  // indice uma pagina que o buscador ja conhece.
+  const typeCensus = Object.entries(summary.byEntityType).flatMap(([tipo, censo]) => [
+    `    ${tipo} — avaliadas ${censo.evaluated} · criaria ${censo.writes.created} · alteraria ${censo.writes.updated} · iguais ${censo.writes.unchanged}`,
+    `      vereditos: ${
+      Object.entries(censo.byDecision)
+        .map(([d, n]) => `${d}=${n}`)
+        .join(' · ') || '(nenhum)'
+    }`,
+    ...Object.entries(censo.byReason).map(([r, n]) => `        ${r.padEnd(28)} ${n}`),
+  ])
+
   emit(flags, summary, [
     `decisoes de indexabilidade · ${summary.language} · ${summary.dryRun ? 'DRY-RUN' : 'APLICADO'}`,
     `  avaliadas: ${summary.evaluated} · planejadas: ${summary.planned} · gravadas: ${summary.written} · inalteradas: ${summary.unchanged}`,
+    `  a escrita faria: ${summary.writes.created} criadas · ${summary.writes.updated} alteradas · ${summary.writes.unchanged} iguais`,
+    '',
+    '  por tipo de entidade:',
+    ...typeCensus,
     '',
     '  por decisao:',
     ...Object.entries(summary.byDecision).map(([k, v]) => `    ${k.padEnd(10)} ${v}`),
