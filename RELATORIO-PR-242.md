@@ -1,8 +1,34 @@
 # Relatório — PR #242 · O censo de verdade e o que o interruptor realmente faz
 
-**Branch:** `claude/censo-verdade-interruptor-6d02f1` · **PR:** https://github.com/maquinanerd/screena/pull/242
-**Base:** `24530fb` (#241) · **Commit:** `67a9d06` · **Data:** 2026-08-27
-**Diff:** 14 arquivos · +2.084 / −7
+> **Versão definitiva**, escrita depois do merge. O que segue é o desfecho medido,
+> não a intenção da leva.
+
+**PR:** https://github.com/maquinanerd/screena/pull/242 · **MERGEADA**
+**Em `main`:** `90981ff` (squash) · **Base:** `24530fb` (#241)
+**Mergeada em:** 2026-08-28T00:27:16Z · **Branch:** removida
+**Diff que entrou em `main`:** 15 arquivos · +2.655 / −7
+**Commits da branch:** `67a9d06` (código e provas) · `1028023` (este relatório)
+
+### CI — duas execuções, ambas verdes
+
+| execução | commit | jobs |
+| --- | --- | --- |
+| `33126314583` | `67a9d06` | 3/3 success |
+| `33127909285` | `1028023` | 3/3 success |
+
+Jobs: *Typecheck, lint, test, auditorias e build público* · *Imagem Docker real
+(digest, não-root, healthcheck)* · *Backup + restore real (PostgreSQL 16)*.
+
+A CI remota concordou com os dez portões medidos localmente (§9).
+
+### O estado depois desta leva, em três linhas
+
+1. `catalog index-decisions --dry-run` **pré-checa de verdade** e imprime o censo.
+   Antes saía `0` sem abrir conexão com o banco.
+2. Está **provado por renderização** que popular `page_indexability_decisions`
+   remove páginas do índice do Google, não só do sitemap.
+3. **Nenhuma decisão foi escrita.** A tabela continua como estava; o procedimento
+   de aplicação está pronto e a assinatura é do dono.
 
 ---
 
@@ -569,3 +595,50 @@ O delta de +14 testes fecha exatamente: 5 (`dry-run-precheck`) + 5
   massa: **intactos**.
 - Fila, scheduler, home, listagens, galeria, `CastStrip`: **não tocados**.
 - A sinopse **não foi consertada** — Item D era medição.
+
+---
+
+## 11. O que fica em aberto — e de quem é cada decisão
+
+Mergeado **não é implantado**. `90981ff` está em `main`; o `screen-catalog-worker`
+só passa a ter o `--dry-run` consertado depois do deploy. Até lá, rodar o comando
+em produção continua devolvendo a frase antiga.
+
+### 11.1 Decisões que são do dono
+
+| decisão | o que já está pronto | o que falta |
+| --- | --- | --- |
+| **Aplicar `index-decisions`** | procedimento em etapas por `--entity`, com reversão e a armadilha da reversão parcial (`docs/operations/index-decisions-staged-application.md`) | rodar o `--dry-run` consertado em produção para fechar o número exato, e assinar |
+| **Temporada e episódio** | medido que a decisão troca `follow` por `nofollow`, desfazendo a escolha da válvula da #234 | decidir se isso é desejado. Se não for, **não aplicar** nesses dois tipos — a válvula já faz o trabalho |
+| **A sinopse de 38.613 títulos** | causa localizada e caracterizada por teste: o bloco `translations` já é baixado e nunca lido | decidir se vira a próxima leva. Se virar, a ordem das etapas de indexação provavelmente muda |
+| **`--confirm-mass-change`** | o freio vai bloquear a primeira execução (~57,9% de flips) e sair 5 | é a assinatura humana da secção 6 do `CLAUDE.md`. Não incluir por reflexo |
+
+### 11.2 Dívida técnica registrada, não consertada
+
+- **`--dry-run` decorativo em três comandos** — `backfill-finalization` (o gêmeo
+  exato do defeito consertado), `enqueue` e `dead-letter replay`. Os três são
+  só-de-banco e poderiam pré-checar de verdade. Lista completa com o motivo de
+  cada um em `docs/operations/index-decisions-what-noindex-causes.md` §7.
+- **Comentários desatualizados** — o produtor e a saída da CLI ainda dizem *"A
+  indexacao publica CONTINUA desligada"*. O `robots.txt` de produção prova o
+  contrário. Não corrigi nesta leva para não misturar mudança de texto com o
+  conserto; fica anotado.
+- **Os validadores `scripts/**` estão fora de todo `tsconfig`** — descobri isso ao
+  encontrar erros de tipo reais nos dois validadores que escrevi (corrigidos
+  antes do merge). Nenhum validador do repositório é type-checado. Não ampliei o
+  escopo para consertar isso.
+- **D.1 e D.3 não foram medidos** — exigem o banco de produção. A boa notícia é
+  que ficaram mais baratos do que a pergunta supunha: o bloco `translations` já
+  está em `api_cache`/`tmdb_raw`, então a resposta sai por SQL, com **zero
+  chamadas novas ao TMDB**.
+
+### 11.3 O primeiro comando a rodar depois do deploy
+
+```
+pnpm catalog index-decisions --dry-run --json --confirm-production-read
+```
+
+Espere `massChange.blocked: true` e **exit 5**. É o freio funcionando. Leia
+`byEntityType[*].byReason` antes de qualquer outra coisa: **se
+`missing_translation` ou `missing_title` aparecerem com peso, o censo por SQL
+subestimou o `noindex`** e os números da §4.4 sobem.
