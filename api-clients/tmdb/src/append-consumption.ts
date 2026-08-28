@@ -271,6 +271,16 @@ export const APPEND_CONSUMED: readonly AppendConsumer[] = [
     consumedBy: 'services/ingestion/src/catalog-entities/normalize.ts',
     source: 'detail-append',
   },
+  {
+    // NOVO em 2026-08-28. `pickLocalizedText` le a entrada `pt-BR` de
+    // `translations.translations[]` quando o campo de topo volta vazio — que e o
+    // que o TMDB faz para todo titulo sem traducao no idioma pedido.
+    // Alimenta `entity_translations.summary` (filme/serie) e `people.biography`.
+    value: 'translations',
+    types: ['movie', 'tv', 'person'],
+    consumedBy: 'services/ingestion/src/localized-text.ts',
+    source: 'detail-append',
+  },
 ]
 
 /**
@@ -298,12 +308,26 @@ export const APPEND_DEFERRED: readonly AppendDeferred[] = [
       'exibir e proibido (invariante 6).',
   },
   {
+    // CORRIGIDO em 2026-08-28 para movie/tv/person (movidos para APPEND_CONSUMED).
+    // A razao antiga — "consumir este bloco e a porta de en/es" — confundia DUAS
+    // coisas: ler o `pt-BR` que esta DENTRO de `translations` nao publica idioma
+    // nenhum; e o mesmo idioma que ja se persiste, lido do lugar onde o TMDB o
+    // guardou quando o campo de topo volta vazio. Enquanto a confusao durou,
+    // 81.529 titulos ficaram `no_synopsis` e 32.087 pessoas `no_biography` com o
+    // texto pago, baixado e arquivado no banco.
+    //
+    // TEMPORADA e EPISODIO continuam adiados: os normalizadores de
+    // `seasons.overview`/`episodes.overview` ainda leem so o campo de topo. E a
+    // MESMA divida, medida (42.914 episodios em `no_synopsis` no censo de
+    // 2026-08-28) e declarada aqui em vez de escondida atras da classificacao de
+    // movie/tv.
     value: 'translations',
-    types: ['movie', 'tv', 'tv_season', 'tv_episode', 'person'],
+    types: ['tv_season', 'tv_episode'],
     reason:
-      'Traducoes de titulo/sinopse por idioma. `entity_translations` e alimentada pelo ' +
-      'detalhe em pt-BR; consumir este bloco e a porta de en/es, que dependem de ' +
-      'PUBLISHED_LOCALES e de revisao humana (invariante 7).',
+      'Traducoes de titulo/sinopse da temporada/episodio. `normalizers/season.ts` e ' +
+      '`normalizers/episode.ts` leem SO o `overview` de topo — mesma divida que movie/tv ' +
+      'tinham ate 2026-08-28, ainda nao paga: exige o backfill de temporada/episodio, ' +
+      'que le outra tabela e outra chave de `api_cache`.',
   },
   {
     value: 'changes',
@@ -410,7 +434,9 @@ export function appendPairKey(pair: AppendPair): string {
 }
 
 /** Expande as entradas do registro em pares `(tipo, valor)`. */
-function pairsOf(entries: readonly { value: string; types: readonly TmdbAppendableType[] }[]): Set<string> {
+function pairsOf(
+  entries: readonly { value: string; types: readonly TmdbAppendableType[] }[],
+): Set<string> {
   const chaves = new Set<string>()
   for (const entry of entries) {
     for (const type of entry.types) chaves.add(appendPairKey({ type, value: entry.value }))

@@ -55,7 +55,12 @@ const webDir = path.resolve(scriptDir, "..");
 const repoRoot = path.resolve(webDir, "..", "..");
 const dbDir = path.join(repoRoot, "packages", "db");
 const schemaPath = path.join(dbDir, "prisma", "schema.prisma");
-const require = createRequire(import.meta.url);
+// Resolve a partir de `packages/db`, NAO de `apps/web/scripts`: `prisma` e
+// dependencia do pacote de banco, e o app nao a declara. Era latente — no
+// caminho do `embedded-postgres` a execucao morria antes de chegar aqui —, e
+// aparece assim que o cluster ja esta de pe (ver `externalDatabaseUrl`). Mesmo
+// padrao de `validate-decision-robots-render-real-postgres.ts`.
+const require = createRequire(path.join(dbDir, "package.json"));
 
 let passed = 0;
 let total = 0;
@@ -272,7 +277,59 @@ async function runChecks(url: string): Promise<void> {
   await dbServer.disconnectPrisma();
 }
 
+/**
+ * Escape hatch para um cluster JA de pe em loopback.
+ *
+ * Copiado de `services/ingestion/scripts/validate-indexability-producer-real-postgres.ts`
+ * pelo motivo que aquele arquivo registra: neste checkout, cujo caminho tem
+ * acento, `initdb --encoding=UTF8` morre com
+ * `invalid byte sequence for encoding "UTF8"` — o caminho dos BINARIOS vaza para
+ * o bootstrap, e um `dataDir` sem acento nao salva. Sem esta valvula, o unico
+ * validador de `validate:all` que nao roda ali e justamente o do gate de pessoa,
+ * e ele falha ANTES de qualquer check — o que faz `validate:all` reportar
+ * `FALHOU` por motivo de ambiente, indistinguivel de uma regressao real.
+ *
+ * Variavel PROPRIA, nunca `DATABASE_URL`: o `.env` deste checkout aponta para
+ * PRODUCAO, e este validador INSERE e APAGA.
+ */
+function externalDatabaseUrl(): string | null {
+  const raw = process.env.CINERIE_VALIDATOR_DATABASE_URL;
+  if (raw === undefined || raw.trim().length === 0) return null;
+  const host = new URL(raw).hostname;
+  if (host !== "127.0.0.1" && host !== "localhost" && host !== "::1") {
+    throw new Error(
+      `CINERIE_VALIDATOR_DATABASE_URL precisa apontar para loopback (recebeu host "${host}"). ` +
+        "Este validador APAGA e INSERE dados; ele nunca fala com banco remoto.",
+    );
+  }
+  return raw;
+}
+
 async function main(): Promise<void> {
+  const external = externalDatabaseUrl();
+  if (external !== null) {
+    console.log("[info] usando CINERIE_VALIDATOR_DATABASE_URL (cluster externo, loopback).");
+    try {
+      execFileSync("node", [prismaBin(), "migrate", "deploy", "--schema", schemaPath], {
+        env: { ...process.env, DATABASE_URL: external },
+        stdio: "inherit",
+        cwd: dbDir,
+      });
+      record("migrate deploy aplica do zero", true, "ok");
+      await runChecks(external);
+    } catch (error) {
+      record(
+        "execucao sem excecao",
+        false,
+        error instanceof Error ? error.message.split("\n").join(" ").slice(0, 300) : String(error),
+      );
+      if (error instanceof Error && error.stack) console.error(error.stack);
+    }
+    console.log(`\nRESUMO: ${passed}/${total} checks OK.`);
+    process.exitCode = passed === total ? 0 : 1;
+    return;
+  }
+
   const port = await freePort();
   const dataDir = mkdtempSync(path.join(tmpdir(), "cinerie-person-gate-pg-"));
   const pg = new EmbeddedPostgres({

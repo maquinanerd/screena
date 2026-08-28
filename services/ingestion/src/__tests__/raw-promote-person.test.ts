@@ -151,12 +151,19 @@ describe('readPersonDisplayFields', () => {
    * e coluna propria. Misturar os dois faria a bio inteira virar meta-description.
    */
   it('le so o name; overview sempre null MESMO com bio no payload', () => {
+    // A bio de pessoa tem leitor PROPRIO (`readPersonBiography`), com a mesma
+    // cadeia topo -> `translations` pt-BR. Ela continua fora de `overview`.
     expect(readPersonDisplayFields({ name: 'Fernanda Montenegro', biography: 'x' })).toEqual({
       title: 'Fernanda Montenegro',
       overview: null,
+      overviewSource: null,
     })
-    expect(readPersonDisplayFields({})).toEqual({ title: '', overview: null })
-    expect(readPersonDisplayFields(null)).toEqual({ title: '', overview: null })
+    expect(readPersonDisplayFields({})).toEqual({ title: '', overview: null, overviewSource: null })
+    expect(readPersonDisplayFields(null)).toEqual({
+      title: '',
+      overview: null,
+      overviewSource: null,
+    })
   })
 })
 
