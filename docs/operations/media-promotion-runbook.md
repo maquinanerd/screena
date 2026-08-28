@@ -7,9 +7,31 @@
 
 ## 0. Estado, em uma linha
 
-As duas tabelas nascem `display_allowed = false` **e** `license_status = 'unknown'`
-por linha, e até 2026-08-25 **nada no repositório as promovia**. A licença da
-FONTE já existe para as duas; o que faltava é o segundo passo.
+**Desde 28/08/2026 a linha NASCE no estado que a licença autoriza.** A pergunta
+que era feita depois ("quem promove?") passou a ser feita na escrita, em
+`services/ingestion/src/media-promotion/birth.ts`.
+
+Até lá as duas tabelas nasciam `display_allowed = false` **e**
+`license_status = 'unknown'` por DEFAULT do DDL, sem ninguém consultar licença
+nenhuma — e só uma operação em massa posterior as acendia, ciclo após ciclo,
+para sempre.
+
+**Este comando virou ferramenta de ACERVO**: ele existe para o que já estava no
+banco antes de 28/08 — e para reverter. Deixou de ser rotina.
+
+### O comando único
+
+```bash
+corepack pnpm --filter @screena/ingestion media:liberar-tudo --reviewer="Pablo Eduardo"
+```
+
+Uma execução, os dois alvos, o acervo inteiro. Não há teto por execução a ser
+contornado com repetição: o lote de 200 do `updateMany` é **interno** e o comando
+itera sozinho até acabar. Para reverter:
+
+```bash
+corepack pnpm --filter @screena/ingestion media:reverter-tudo --reviewer="Pablo Eduardo"
+```
 
 ---
 
@@ -80,7 +102,7 @@ comando. Por isso as três barreiras são código, e por isso o gate de licença
 
 ### O que o freio faz na PRIMEIRA execução
 
-Promover 1.119 de 1.119 é **100% do acervo** — estoura os dois tetos e **exige
+Promover o acervo INTEIRO é 100% dele — estoura os dois tetos e **exige
 `--confirm-mass-change`**. Isso não é o freio atrapalhando; é o freio
 funcionando. A seção 6 do `CLAUDE.md` exige revisão humana para publicação, e
 acender o acervo inteiro de uma vez é exatamente o ato que precisa de
@@ -141,7 +163,8 @@ corepack pnpm --filter @screena/ingestion promote:media --target=video \
 | `--max-changes=N` | teto absoluto (default 500). `0` congela o comando. |
 | `--max-change-percent=N` | teto proporcional (default 5). |
 | `--only-official` | **opt-in**. Por decisão do dono (2026-08-25) `official` NÃO filtra por padrão. |
-| `--entity-type=movie\|tv` | estreita (só no alvo `video`). |
+| `--target=all` | os DOIS alvos na mesma execução. NÃO funde os censos: cada alvo roda com denominador e freio próprios. |
+| `--entity-type=movie\|tv` | estreita (só no alvo `video`; não se combina com `--target=all`). |
 | `--tmdb-id=N` / `--limit=N` | estreitam o escopo. |
 | `--json` | saída estruturada. |
 
@@ -162,10 +185,15 @@ quebrou" de "o comando se recusou de propósito e espera um humano".
 
 ## 6. O que ficou de fora do filtro, e por quê
 
-**`video_type` NÃO filtra** (decisão do dono, 2026-08-25). A promoção cobre os
-1.119, não só os de tipo `Trailer`/`Teaser`. A licença vigente
-(`tmdb-video/2026-08-v2`) cobre metadado de vídeo do YouTube sem distinção de
+**`video_type` NÃO filtra** (decisão do dono, 2026-08-25). A promoção cobre
+TODOS os vídeos do alvo, não só os de tipo `Trailer`/`Teaser`. A licença vigente
+(`tmdb-video/2026-08-v3`) cobre metadado de vídeo do YouTube sem distinção de
 tipo, e o arquivo não é rehospedado em caso nenhum.
+
+> NÃO há contagem fixa neste documento de propósito. A versão anterior dizia
+> "os 1.119", e o número envelheceu com a ingestação — um runbook que afirma um
+> total desatualizado ensina a desconfiar do resto dele. Quem quer o número roda
+> o dry-run, que o mede.
 
 Consequência que vale dizer em voz alta: **`pickTrailer` continua escolhendo só
 `Trailer`/`Teaser`** para o botão da ficha, e isso está certo — um botão que

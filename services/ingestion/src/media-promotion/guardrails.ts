@@ -11,15 +11,15 @@
  * ============================================================================
  * Cada checagem daqui espelha uma condicao que o render ja aplica. Promover uma
  * linha que o presenter depois joga fora produz o pior desfecho possivel para
- * quem opera: o banco diz "1.119 acesas", a pagina mostra nada, e nenhuma das
+ * quem opera: o banco diz "N acesas", a pagina mostra nada, e nenhuma das
  * duas leituras esta errada. Ver o mesmo raciocinio em
  * `services/streaming/src/promotion/guardrails.ts` (`promotionDestination`).
  *
  * ============================================================================
  * O QUE **NAO** E GUARDRAIL AQUI, POR DECISAO DO DONO (2026-08-25)
  * ============================================================================
- * `video_type` NAO filtra. A promocao cobre os 1.119 videos, nao so os de tipo
- * `Trailer`/`Teaser`. A licenca vigente (`tmdb-video/2026-08-v2`) cobre metadado
+ * `video_type` NAO filtra. A promocao cobre TODOS os videos do alvo, nao so os de tipo
+ * `Trailer`/`Teaser`. A licenca vigente (`tmdb-video/2026-08-v3`) cobre metadado
  * de video do YouTube sem distincao de tipo, e o arquivo nao e rehospedado em
  * caso nenhum.
  *
@@ -55,6 +55,28 @@ export interface GuardrailOptions {
 
 /** Default explicito: sem estreitamento por `official`. */
 export const DEFAULT_GUARDRAIL_OPTIONS: GuardrailOptions = { onlyOfficial: false }
+
+/**
+ * A FORMA de um video pode virar player?
+ *
+ * Exportada porque a politica de NASCIMENTO (`birth.ts`) precisa exatamente
+ * desta pergunta, e uma segunda copia dela divergiria no primeiro site novo.
+ * Comparacao EXATA de site, nunca `includes`: "YouTube Kids" e "MyYouTube" nao
+ * sao o player que o produto carrega.
+ */
+export function isRenderableVideoShape(site: string, videoKey: string): boolean {
+  return site === ALLOWED_VIDEO_SITE && isYouTubeVideoId(videoKey)
+}
+
+/**
+ * O `file_path` vira URL?
+ *
+ * A MESMA funcao que o render usa para montar a URL. Se ela recusa o path, a
+ * imagem acesa seria um buraco na grade. Exportada pelo mesmo motivo acima.
+ */
+export function isRenderableImagePath(filePath: string): boolean {
+  return buildTmdbImageUrl(filePath, 'w500') !== null
+}
 
 function reject(reason: PromotionRejectionReason): PromotionEvaluation {
   return { eligible: false, reason }
@@ -120,7 +142,7 @@ export function evaluatePromotion(
   if (candidate.imageType !== PERSON_PHOTO_IMAGE_TYPE) return reject('wrong-image-scope')
   // A MESMA funcao que o render usa para montar a URL. Se ela recusa o path, a
   // foto promovida seria um buraco na grade.
-  if (buildTmdbImageUrl(candidate.filePath, 'w500') === null) return reject('invalid-file-path')
+  if (!isRenderableImagePath(candidate.filePath)) return reject('invalid-file-path')
   return ELIGIBLE
 }
 

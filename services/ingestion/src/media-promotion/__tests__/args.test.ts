@@ -8,7 +8,8 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { parsePromoteMediaArgs } from '../args.js'
+import { parsePromoteMediaArgs, resolveTargets } from '../args.js'
+import { PROMOTION_TARGETS } from '../types.js'
 
 function ok(argv: string[]) {
   const parsed = parsePromoteMediaArgs(argv)
@@ -21,15 +22,35 @@ function err(argv: string[]): string {
   return parsed.error
 }
 
-describe('--target e obrigatorio e nao tem "todos"', () => {
-  it('sem --target: erro', () => {
+/**
+ * ATUALIZADO em 2026-08-28. Havia aqui um teste afirmando que "--target=all nao
+ * existe: um comando, um alvo por execucao". O argumento original era correto
+ * (dois alvos fundidos num censo so tornariam o freio sem sentido), mas a
+ * conclusao virou obstaculo: promover o acervo inteiro exigia decorar a lista de
+ * alvos e rodar o comando uma vez por alvo — o operador virava o laco `for`.
+ *
+ * `--target=all` NAO funde os censos: ele executa a promocao inteira alvo por
+ * alvo, cada um com denominador e freio proprios. O teste passou a afirmar isso.
+ */
+describe('--target e obrigatorio; "all" existe mas tem de ser pedido', () => {
+  it('sem --target: erro (nao ha default, e omitir nunca significa "tudo")', () => {
     expect(err([])).toContain('--target e obrigatorio')
   })
-  it('--target=all nao existe: um comando, um alvo por execucao', () => {
-    expect(err(['--target=all'])).toContain('--target invalido')
-  })
-  it.each(['video', 'person-photo'])('--target=%s e valido', (t) => {
+  it.each(['video', 'person-photo', 'all'])('--target=%s e valido', (t) => {
     expect(ok([`--target=${t}`]).target).toBe(t)
+  })
+  it('--target invalido continua sendo erro explicito', () => {
+    expect(err(['--target=tudo'])).toContain('--target invalido')
+  })
+  it('resolveTargets expande "all" nos alvos declarados, e so neles', () => {
+    expect(resolveTargets('all')).toEqual([...PROMOTION_TARGETS])
+    expect(resolveTargets('video')).toEqual(['video'])
+    expect(resolveTargets('person-photo')).toEqual(['person-photo'])
+  })
+  it('--entity-type nao se combina com --target=all', () => {
+    // Com dois alvos, a mesma string seria valida num e invalida no outro.
+    // Escolher em silencio a leitura mais permissiva e como um filtro vira nada.
+    expect(err(['--target=all', '--entity-type=movie'])).toContain('nao se combina')
   })
 })
 

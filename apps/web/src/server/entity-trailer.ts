@@ -24,13 +24,21 @@
  * processo de render nem por engano.
  *
  * ============================================================================
- * HOJE DEVOLVE `null` PARA TODO MUNDO, E A CAUSA É A SEGUNDA
+ * O QUE ESTA SEÇÃO DIZIA, E POR QUE ERA FALSO (corrigido em 2026-08-28)
  * ============================================================================
- * As linhas de `tmdb_videos` nascem `display_allowed = false` por linha, e
- * NADA no repositório as promove. `source_licenses` diz o que a fonte permite;
- * a coluna da linha diz se aquele vídeo específico pode ir ao ar. São dois
- * passos — o mesmo desenho de ratings e streaming — e o segundo é operação
- * governada, não deploy.
+ * Até aqui ela afirmava, em caixa alta, que esta função "HOJE DEVOLVE `null`
+ * PARA TODO MUNDO" porque "NADA no repositório" promove as linhas de
+ * `tmdb_videos`. As duas metades ficaram falsas: `promote:media`
+ * (`services/ingestion/src/media-promotion/`) existe desde 25/08/2026, e havia
+ * 2.395 linhas acesas enquanto este comentário ainda dizia que não havia
+ * nenhuma. Comentário mentiroso é pior que comentário ausente: ele encerra a
+ * investigação na porta errada, e este repositório já pagou por isso.
+ *
+ * ESTADO REAL: a linha de `tmdb_videos` criada a partir de 28/08/2026 NASCE no
+ * estado que a licença autoriza
+ * (`services/ingestion/src/media-promotion/birth.ts`); as anteriores dependem de
+ * uma passagem de `promote:media --target=all`. Esta função devolve `null` para
+ * o título cujas linhas ainda não foram acesas — e para o que não tem vídeo.
  */
 
 import { getPrismaClient } from "@screena/db/server";

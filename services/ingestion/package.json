@@ -19,6 +19,8 @@
     "catalog": "tsx bin/catalog.ts",
     "reprocess-watch-providers": "tsx bin/reprocess-watch-providers.ts",
     "promote:media": "tsx bin/promote-media.ts",
+    "media:liberar-tudo": "tsx bin/promote-media.ts --target=all --confirm --confirm-mass-change",
+    "media:reverter-tudo": "tsx bin/promote-media.ts --target=all --revoke --confirm --confirm-mass-change",
     "catalog-worker:start": "tsx bin/catalog-worker-service.ts",
     "prove:catalog-worker": "tsx scripts/prove-catalog-worker-service.ts",
     "validate:indexability-producer": "tsx scripts/validate-indexability-producer-real-postgres.ts",

@@ -42,6 +42,7 @@ import EmbeddedPostgres from 'embedded-postgres'
 import { PrismaClient } from '@prisma/client'
 import { backfillFinalization } from '../src/persistence/finalization-backfill.js'
 import { createPrismaMediaStore } from '../src/persistence/media-store.js'
+import { DARK_MEDIA_BIRTH_POLICY } from '../src/media-promotion/birth.js'
 import { createPrismaAuditReader } from '../src/persistence/audit-reader.js'
 import { runDatabaseAudit } from '../src/audit/index.js'
 
@@ -222,9 +223,9 @@ async function runChecks(url: string): Promise<void> {
         payloadHash: 'h2',
       },
     ]
-    const first = await media.upsertImages(rows as never)
+    const first = await media.upsertImages(rows as never, DARK_MEDIA_BIRTH_POLICY)
     const afterFirst = await count('SELECT COUNT(*)::int AS n FROM tmdb_images')
-    const second = await media.upsertImages(rows as never)
+    const second = await media.upsertImages(rows as never, DARK_MEDIA_BIRTH_POLICY)
     const afterSecond = await count('SELECT COUNT(*)::int AS n FROM tmdb_images')
     record(
       'sync_media IDEMPOTENTE: 2a execucao adiciona ZERO linhas',
@@ -234,7 +235,7 @@ async function runChecks(url: string): Promise<void> {
 
     // Campo MUTAVEL (voto) nao cria identidade nova: atualiza a linha existente.
     const mutated = rows.map((r) => ({ ...r, voteCount: r.voteCount + 99, payloadHash: `${r.payloadHash}x` }))
-    const third = await media.upsertImages(mutated as never)
+    const third = await media.upsertImages(mutated as never, DARK_MEDIA_BIRTH_POLICY)
     record(
       'metadado mutavel ATUALIZA a linha, nao cria outra',
       (await count('SELECT COUNT(*)::int AS n FROM tmdb_images')) === 2 && third.updated === 2,

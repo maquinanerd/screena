@@ -35,6 +35,7 @@ export const SCHEDULER_QUEUES = [
   'watch_offers',
   'trending',
   'airing_series',
+  'title_media',
   'title_detail_active',
   'title_detail_ended',
   'people',
@@ -125,6 +126,26 @@ export const RHYTHMS: readonly Rhythm[] = [
       'Episodio que foi ao ar hoje tem que estar na pagina hoje. So entram as series com ' +
       'status em exibicao/producao; o resto cai nas filas de detalhe, que sao mais lentas ' +
       'e muito maiores.',
+  },
+  {
+    queue: 'title_media',
+    cadence: 'fixed',
+    intervalHours: 1 * DAY,
+    seasonalIntervalHours: null,
+    providerApi: 'tmdb',
+    label: 'Midia de titulo (trailer, poster, imagens)',
+    rationale:
+      'Trailer, poster e galeria sao o que o leitor VE primeiro, e sao o unico dado do ' +
+      'catalogo que muda sem o titulo mudar: um trailer novo entra no TMDB semanas depois ' +
+      'do detalhe estar estavel. O gatilho principal continua sendo o /changes (a midia ' +
+      'entra pela cascata de sync_details, agora com a chave de idempotencia ESCOPADA), e ' +
+      'esta fila e a REDE: um lote diario, limitado por batchLimit e ordenado por ' +
+      'popularidade, para o titulo cuja midia nunca foi coletada ou passou de 7 dias — a ' +
+      'janela de midia declarada em .claude/rules/ingestion.md. Custa 2 requisicoes por ' +
+      'titulo nos endpoints DEDICADOS (/images + /videos), nao o detalhe inteiro (130,6 kB ' +
+      'em filme, 648,3 kB em serie), e os endpoints proprios vao SEM language, entao ' +
+      'devolvem todos os idiomas — o que o append do detalhe nao faz. Nao e varredura: o ' +
+      'teto por ciclo e o mesmo das demais filas.',
   },
   {
     queue: 'discovery',

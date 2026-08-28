@@ -75,6 +75,7 @@ reprova entrada sem motivo escrito.
 | `watch_offers` | **diario** | tmdb | O dado que mais estraga. Endpoint DEDICADO (`/movie/{id}/watch/providers`), ~2 kB, contra 130,6 kB (filme) / 648,3 kB (serie) do detalhe. |
 | `trending` | **6 h** | tmdb | O sinal de AGORA. 4 requisicoes por ciclo (movie\|tv x day\|week, 1 pagina). O intervalo NAO e numero novo: `discovery-snapshots/index.ts:32` ja declarava TTL de 6 h para trending. |
 | `airing_series` | **diario** | tmdb | Episodio que foi ao ar hoje tem que estar na pagina hoje. So `status` em exibicao/producao. |
+| `title_media` | **diario** (janela de 7 dias) | tmdb | Trailer, poster e galeria: o que o leitor ve primeiro, e o unico dado do catalogo que muda sem o titulo mudar. Enfileira `sync_media` nos endpoints DEDICADOS (`/images` + `/videos`, 2 requisicoes, SEM `language` — todos os idiomas), nunca o detalhe inteiro. E a REDE do gatilho: a midia entra pela cascata do `/changes`; esta fila pega quem nunca teve midia ou passou de 7 dias. |
 | `discovery` | **diario** | tmdb-exports | Os Daily ID Exports saem uma vez por dia (~08:00 UTC). Arquivo publico: sem token, sem cota. |
 | `changes` | **6 h** | tmdb | A janela do `/changes` e ~24 h (max. 14 dias). 6 h da quatro tentativas dentro de uma janela — tres ciclos podem falhar sem que nada se perca. |
 | `cinerie_score` | **por evento** (teto 24 h) | — | Derivado nao tem ritmo, tem gatilho. O teto existe para que um gatilho perdido nao congele o numero para sempre. |
@@ -87,8 +88,12 @@ reprova entrada sem motivo escrito.
 
 ### Mudancas em relacao a proposta inicial
 
-1. **"Trailers e videos junto com o detalhe"** — mantido, e agora explicito: eles
-   chegam no mesmo `append_to_response`, custo zero adicional.
+1. **"Trailers e videos junto com o detalhe"** — **REVISTO em 2026-08-28.** Eles
+   chegam no `append_to_response`, sim, mas o bloco do append herda o `language`
+   da requisicao de detalhe e vem FILTRADO por idioma; os endpoints proprios vao
+   sem `language` e devolvem tudo. Alem disso, o detalhe so volta a rodar no
+   ritmo do detalhe (semanal/mensal) — entao "custo zero adicional" tambem
+   significava "frescor zero adicional". Dai a fila `title_media`.
 2. **"Nota e votos do TMDB junto com o detalhe"** — mantido pelo mesmo motivo.
 3. **Ofertas separadas do detalhe** — mudanca de IMPLEMENTACAO, nao de ritmo. Ate
    aqui a oferta so chegava dentro do payload de detalhe, entao "oferta diaria"
@@ -230,6 +235,64 @@ todos os dias para que ela nao seja tomada por acidente.
 | `GET /readyz` | Pode trabalhar? Banco alcancavel, credencial presente, autorizacao de escrita. Carrega a contagem de filas paradas no payload. |
 | `GET /healthz` | Liveness. Nao toca banco. **E este que o healthcheck do container deve apontar.** |
 | Log do servico | Uma linha `error` por fila parada, evento `scheduler_queue_stalled`. |
+
+### A CONSULTA que prova que o ritmo rodou ontem, e o que ele tocou
+
+Agendado nao e rodado. Painel verde mede o RELOGIO. Estas duas consultas medem o
+TRABALHO, e sao read-only.
+
+**1. A fila rodou?** Uma linha por ciclo, com o que ela processou:
+
+```sql
+SELECT endpoint,
+       status,
+       items_processed,
+       items_updated,
+       duration_ms,
+       created_at
+  FROM api_sync_logs
+ WHERE endpoint LIKE 'scheduler/%'
+   AND created_at >= now() - interval '48 hours'
+ ORDER BY created_at DESC;
+```
+
+Esperado para `scheduler/title_media`: pelo menos uma linha por dia civil.
+Nenhuma linha em 48 h = a fila nao rodou (e `/status` deve estar `DEGRADADO`).
+
+**2. O que ela TOCOU?** O enfileiramento e o meio; a midia gravada e o fim. Esta
+consulta pergunta pelo ARTEFATO, que e a medida que nao mente:
+
+```sql
+SELECT 'video' AS tipo,
+       count(*)                                    AS linhas,
+       count(*) FILTER (WHERE display_allowed)     AS acesas,
+       max(fetched_at)                             AS ultima_coleta
+  FROM tmdb_videos
+ WHERE fetched_at >= now() - interval '48 hours'
+UNION ALL
+SELECT 'imagem',
+       count(*),
+       count(*) FILTER (WHERE display_allowed),
+       max(fetched_at)
+  FROM tmdb_images
+ WHERE fetched_at >= now() - interval '48 hours';
+```
+
+`linhas > 0` com `acesas = linhas` significa: a midia foi coletada nas ultimas
+48 h **e nasceu liberada** (a politica de
+`services/ingestion/src/media-promotion/birth.ts` esta valendo na escrita). Se
+`acesas` for 0 com `linhas > 0`, a licenca esta negando — rode
+`pnpm legal sources review` antes de qualquer outra coisa.
+
+**3. Quantas fichas TEM trailer**, que e a pergunta do produto:
+
+```sql
+SELECT count(DISTINCT (entity_type, tmdb_id)) AS fichas_com_video
+  FROM tmdb_videos
+ WHERE display_allowed = true
+   AND license_status NOT IN ('unknown','blocked')
+   AND site = 'YouTube';
+```
 
 ### O alerta de fila parada
 

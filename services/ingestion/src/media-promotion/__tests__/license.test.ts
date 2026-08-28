@@ -29,7 +29,7 @@ function licencaVideo(overrides: Partial<MediaLicenseRow> = {}): MediaLicenseRow
     licenseStatus: 'official',
     displayAllowed: true,
     isCurrent: true,
-    policyVersion: 'cinerie-source-auth/tmdb-video/2026-08-v2',
+    policyVersion: 'cinerie-source-auth/tmdb-video/2026-08-v3',
     ...overrides,
   }
 }
@@ -41,7 +41,7 @@ function licencaImagem(overrides: Partial<MediaLicenseRow> = {}): MediaLicenseRo
     licenseStatus: 'official',
     displayAllowed: true,
     isCurrent: true,
-    policyVersion: 'cinerie-source-auth/tmdb-image/2026-08-v3',
+    policyVersion: 'cinerie-source-auth/tmdb-image/2026-08-v4',
     ...overrides,
   }
 }
@@ -51,7 +51,7 @@ describe('CONTROLE POSITIVO — sem ele, toda negativa abaixo passaria por vacui
     const auth = authorizeMediaPromotion('video', [licencaVideo()])
     expect(auth.authorized).toBe(true)
     expect(auth.licenseStatus).toBe('official')
-    expect(auth.policyVersion).toBe('cinerie-source-auth/tmdb-video/2026-08-v2')
+    expect(auth.policyVersion).toBe('cinerie-source-auth/tmdb-video/2026-08-v3')
   })
 
   it('licenca vigente de tmdb/image autoriza o alvo person-photo', () => {

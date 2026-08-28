@@ -36,6 +36,7 @@ import { createPrismaCache } from '../src/persistence/cache.js'
 import { createPrismaSyncLog } from '../src/persistence/sync-log.js'
 import { createPrismaImageConfigStore } from '../src/persistence/image-config-store.js'
 import { createPrismaMediaStore } from '../src/persistence/media-store.js'
+import { createPrismaMediaBirthPolicyReader } from '../src/persistence/media-birth-reader.js'
 import { createPrismaGenresStore, createPrismaCheckpointStore } from '../src/persistence/catalog-stores.js'
 import { runTaxonomySync, type TaxonomyReadPort } from '../src/config-sync/run.js'
 import { authorizeTaxonomyWrite } from '../src/config-sync/production-authorization.js'
@@ -119,7 +120,15 @@ async function main(): Promise<void> {
         fetchImages: () => catalog.getMovieImages(id),
         fetchVideos: () => catalog.getMovieVideos(id),
       }
-      const r = await runMediaSync(target, { cache, log, store: createPrismaMediaStore(prisma), now })
+      const r = await runMediaSync(target, {
+        cache,
+        log,
+        store: createPrismaMediaStore(prisma),
+        now,
+        // A MESMA politica de nascimento do worker: uma CLI que gravasse com
+        // outra regra produziria linhas que o worker nao produz.
+        birth: await createPrismaMediaBirthPolicyReader(prisma)(),
+      })
       console.log(JSON.stringify({ sub, result: r }, null, 2))
     } else {
       // lists | discover | trending: execucao paginada via list-sync.
