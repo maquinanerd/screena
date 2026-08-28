@@ -31,8 +31,8 @@ const movieInput: HeroSlideInput = {
   seasonsCount: null,
   episodesCount: null,
   certification: "14",
-  screenScore: 4.5,
-  screenScoreScale: 5,
+  screenScore: 90,
+  screenScoreScale: 100,
   screenScoreDisplay: true,
   screenScoreSource: SCREEN_SCORE_EDITORIAL_SOURCE,
   director: "Rui Andrade",
@@ -50,8 +50,8 @@ const seriesInput: HeroSlideInput = {
   seasonsCount: 3,
   episodesCount: 24,
   certification: "16",
-  screenScore: 4.5,
-  screenScoreScale: 5,
+  screenScore: 90,
+  screenScoreScale: 100,
   screenScoreDisplay: true,
   screenScoreSource: SCREEN_SCORE_EDITORIAL_SOURCE,
   director: null,
@@ -71,7 +71,7 @@ describe("buildHeroSlide — filme", () => {
     expect(slide?.primaryMeta).toEqual(["2023"]);
     expect(slide?.certification).toBe("14");
     expect(slide?.director).toBe("Rui Andrade");
-    expect(slide?.rating).toEqual({ value: 4.5, scale: 5 });
+    expect(slide?.rating).toEqual({ value: 90, scale: 100 });
     // Arte principal = backdrop remoto w1280 (nunca path local/CDN embutido).
     expect(slide?.imageUrl).toBe(
       "https://image.tmdb.org/t/p/w1280/backdrop-movie.jpg",
@@ -83,7 +83,7 @@ describe("buildHeroSlide — filme", () => {
     // Round-trip JSON nao pode lancar nem perder dados.
     expect(() => JSON.stringify(slide)).not.toThrow();
     const roundTripped = JSON.parse(JSON.stringify(slide));
-    expect(roundTripped.rating.value).toBe(4.5);
+    expect(roundTripped.rating.value).toBe(90);
   });
 });
 
@@ -110,9 +110,17 @@ describe("buildHeroSlide — descarte de invalidos", () => {
 });
 
 describe("resolveHeroRating — nota editorial propria (gate seguro)", () => {
-  it("exibe quando origem editorial, display=true, escala 5 e valor valido", () => {
-    expect(resolveHeroRating(movieInput)).toEqual({ value: 4.5, scale: 5 });
-    expect(SCREEN_SCORE_SCALE).toBe(5);
+  /**
+   * ESCALA 100, e ela mudou de 5 em 2026-08-28.
+   *
+   * O worker do Cinerie Score sempre gravou em 100; este gate exigia 5. Uma nota
+   * de 82 nunca passava — e o teste que estava aqui afirmava, com fixture em
+   * 4,5/5, que o gate estava certo. Ele media a copia (a fixture), nao o
+   * original (o que o banco guarda). Ver `tests/web/cinerie-score-escala-unica.test.ts`.
+   */
+  it("exibe quando origem editorial, display=true, escala 100 e valor valido", () => {
+    expect(resolveHeroRating(movieInput)).toEqual({ value: 90, scale: 100 });
+    expect(SCREEN_SCORE_SCALE).toBe(100);
   });
   it("oculta quando falta origem editorial, mesmo com display=true (seed/demo)", () => {
     expect(resolveHeroRating({ ...movieInput, screenScoreSource: null })).toBeNull();
@@ -121,14 +129,17 @@ describe("resolveHeroRating — nota editorial propria (gate seguro)", () => {
   it("oculta quando display=false", () => {
     expect(resolveHeroRating({ ...movieInput, screenScoreDisplay: false })).toBeNull();
   });
-  it("oculta quando escala != 5 (fallback seguro)", () => {
+  it("oculta quando escala != 100 (fallback seguro)", () => {
+    // 5 entra na lista de proposito: e a escala ANTIGA, e uma nota gravada nela
+    // nao pode voltar a ser aceita por engano.
+    expect(resolveHeroRating({ ...movieInput, screenScoreScale: 5 })).toBeNull();
     expect(resolveHeroRating({ ...movieInput, screenScoreScale: 10 })).toBeNull();
     expect(resolveHeroRating({ ...movieInput, screenScoreScale: null })).toBeNull();
   });
   it("oculta quando valor <= 0 ou > escala", () => {
     expect(resolveHeroRating({ ...movieInput, screenScore: 0 })).toBeNull();
     expect(resolveHeroRating({ ...movieInput, screenScore: -1 })).toBeNull();
-    expect(resolveHeroRating({ ...movieInput, screenScore: 6 })).toBeNull();
+    expect(resolveHeroRating({ ...movieInput, screenScore: 101 })).toBeNull();
   });
   it("oculta quando valor nulo/NaN", () => {
     expect(resolveHeroRating({ ...movieInput, screenScore: null })).toBeNull();

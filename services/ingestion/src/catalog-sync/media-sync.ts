@@ -4,10 +4,16 @@
  *
  * Para cada alvo: captura o payload BRUTO de /images (e /videos, quando aplicavel)
  * em api_cache, loga o ciclo, normaliza os metadados e faz upsert IDEMPOTENTE em
- * tmdb_images/tmdb_videos (nascem display_allowed=false). So metadados; nenhum
- * binario baixado; nenhuma publicacao automatica.
+ * tmdb_images/tmdb_videos. So metadados; nenhum binario baixado.
+ *
+ * O ESTADO DE NASCIMENTO da linha nova vem de `deps.birth`
+ * (`../media-promotion/birth.ts`), que le `source_licenses`. Ate 2026-08-28 a
+ * linha nascia `display_allowed=false` por DEFAULT do DDL, sem ninguem consultar
+ * a licenca — e so uma operacao em massa posterior a acendia, ciclo apos ciclo,
+ * para sempre. Ver o cabecalho de `birth.ts`.
  */
 
+import type { MediaBirthPolicy } from '../media-promotion/birth.js'
 import type { CachePort, SyncLogPort, SyncStatus } from '../ports.js'
 import { normalizeImages, normalizeVideos, type ImageRow, type VideoRow } from './media-normalize.js'
 
@@ -18,10 +24,17 @@ export interface MediaUpsertOutcome {
   readonly unchanged: number
 }
 
-/** Porta de persistencia de midia (tmdb_images / tmdb_videos). */
+/**
+ * Porta de persistencia de midia (tmdb_images / tmdb_videos).
+ *
+ * `birth` NAO tem default. A ausencia de default e o ponto: um `?? DARK` aqui
+ * transformaria "esqueci de fiar a politica" em "nasce apagado para sempre",
+ * silenciosamente — que e o estado que esta leva existe para acabar. Sem
+ * politica, o codigo nao compila.
+ */
 export interface MediaStorePort {
-  upsertImages(rows: ImageRow[]): Promise<MediaUpsertOutcome>
-  upsertVideos(rows: VideoRow[]): Promise<MediaUpsertOutcome>
+  upsertImages(rows: ImageRow[], birth: MediaBirthPolicy): Promise<MediaUpsertOutcome>
+  upsertVideos(rows: VideoRow[], birth: MediaBirthPolicy): Promise<MediaUpsertOutcome>
 }
 
 /** Alvo de sync: uma entidade + fetchers do payload de midia. */
@@ -61,6 +74,13 @@ export interface MediaSyncDeps {
   readonly log: SyncLogPort
   readonly store: MediaStorePort
   readonly now: () => Date
+  /**
+   * A politica de NASCIMENTO das linhas novas (`../media-promotion/birth.ts`).
+   *
+   * Resolvida pelo adapter a partir de `source_licenses` — a MESMA fonte que a
+   * promocao consulta. Obrigatoria: ver o comentario de `MediaStorePort`.
+   */
+  readonly birth: MediaBirthPolicy
 }
 
 /** Resultado por tipo de midia. */
@@ -97,7 +117,7 @@ export async function runMediaSync(target: MediaTarget, deps: MediaSyncDeps): Pr
     `${target.endpointBase}/images`,
     target.fetchImages,
     (data) => normalizeImages(target.entityType, target.tmdbId, data as never),
-    (rows) => deps.store.upsertImages(rows as ImageRow[]),
+    (rows) => deps.store.upsertImages(rows as ImageRow[], deps.birth),
     deps,
   )
 
@@ -107,7 +127,7 @@ export async function runMediaSync(target: MediaTarget, deps: MediaSyncDeps): Pr
       `${target.endpointBase}/videos`,
       target.fetchVideos,
       (data) => normalizeVideos(target.entityType, target.tmdbId, data as never),
-      (rows) => deps.store.upsertVideos(rows as VideoRow[]),
+      (rows) => deps.store.upsertVideos(rows as VideoRow[], deps.birth),
       deps,
     )
   }

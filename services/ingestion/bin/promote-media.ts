@@ -32,9 +32,33 @@
  *                  nao a pula e `--confirm` nao a substitui.
  *   2. GUARDRAIL — por linha, espelhando o que o render aceitaria.
  *   3. FREIO     — teto de volume (500 / 5%), como o freio da #221. Exit 5.
+ *                  NAO e teto por execucao: e o ponto em que o comando exige
+ *                  `--confirm-mass-change`. Com o opt-in, UMA execucao promove
+ *                  o acervo inteiro.
  *
  * ============================================================================
- * USO (a partir da raiz do repo)
+ * O COMANDO UNICO — UMA EXECUCAO, ACERVO INTEIRO
+ * ============================================================================
+ *   corepack pnpm --filter @screena/ingestion media:liberar-tudo  *     --reviewer="Pablo Eduardo"
+ *
+ * E ISSO. Uma vez. Nao ha teto por execucao a ser contornado com repeticao: o
+ * lote de 200 do `updateMany` e interno, o comando itera sozinho ate acabar, e
+ * `--target=all` cobre os dois alvos na MESMA execucao (cada um com censo e
+ * freio proprios). O `--reviewer` continua obrigatorio: identidade humana no
+ * relatorio e no log e barata e insubstituivel.
+ *
+ * Para reverter tudo:
+ *   corepack pnpm --filter @screena/ingestion media:reverter-tudo  *     --reviewer="Pablo Eduardo"
+ *
+ * ============================================================================
+ * DEPOIS DESTA LEVA, ESTE COMANDO E FERRAMENTA DE ACERVO
+ * ============================================================================
+ * A linha de midia passou a NASCER no estado que a licenca autoriza (ver
+ * `src/media-promotion/birth.ts`). Logo este comando existe para o que ja estava
+ * no banco antes de 2026-08-28 e para reverter. Ele deixou de ser rotina.
+ *
+ * ============================================================================
+ * USO GRANULAR (ensaio, alvo unico, reversao pontual)
  * ============================================================================
  *   # DRY-RUN (default): mostra o censo, nada muda
  *   corepack pnpm --filter @screena/ingestion promote:media --target=video
@@ -63,9 +87,9 @@ import { fileURLToPath } from 'node:url'
 
 import { disconnectPrisma, getPrismaClient } from '@screena/db/server'
 
-import { parsePromoteMediaArgs } from '../src/media-promotion/args.js'
+import { parsePromoteMediaArgs, resolveTargets } from '../src/media-promotion/args.js'
 import { renderPromotionReport, summaryLine } from '../src/media-promotion/report.js'
-import { runMediaPromotion } from '../src/media-promotion/run.js'
+import { combinedExitCode, runMediaPromotion, type PromotionResult } from '../src/media-promotion/run.js'
 import { createPrismaMediaPromotionStore } from '../src/persistence/media-promotion-store.js'
 import { createPrismaSyncLog } from '../src/persistence/sync-log.js'
 import { EXIT_CODES, evaluateCatalogGate, redactSecrets } from '../src/cli/exit.js'
@@ -108,61 +132,57 @@ async function main(): Promise<void> {
   }
 
   const prisma = getPrismaClient()
+  const alvos = resolveTargets(args.target)
   try {
-    const result = await runMediaPromotion(
-      {
-        scope: {
-          target: args.target,
-          entityType: args.entityType,
-          tmdbId: args.tmdbId,
-          limit: args.limit,
+    const store = createPrismaMediaPromotionStore(prisma)
+    // O provider tecnico do log e o TMDB: a midia promovida e dele, ainda que
+    // nenhuma requisicao tenha sido feita nesta execucao.
+    const syncLog = createPrismaSyncLog(prisma, 'tmdb')
+    const resultados: PromotionResult[] = []
+
+    // UM ALVO POR VEZ, na MESMA execucao. Cada iteracao roda a promocao inteira
+    // (licenca, guardrails, freio, censo) com o denominador do seu proprio
+    // alvo — os censos nao se misturam, e por isso `--target=all` nao afrouxa o
+    // freio: ele o aplica N vezes. Ver `ALL_TARGETS` em `src/media-promotion/args.ts`.
+    for (const target of alvos) {
+      const result = await runMediaPromotion(
+        {
+          scope: {
+            target,
+            entityType: args.entityType,
+            tmdbId: args.tmdbId,
+            limit: args.limit,
+          },
+          confirm: args.confirm,
+          revoke: args.revoke,
+          confirmMassChange: args.confirmMassChange,
+          guardrails: { onlyOfficial: args.onlyOfficial },
+          thresholds: {
+            ...(args.maxChanges !== null ? { maxChanges: args.maxChanges } : {}),
+            ...(args.maxChangePercent !== null
+              ? { maxChangeRatio: args.maxChangePercent / 100 }
+              : {}),
+          },
         },
-        confirm: args.confirm,
-        revoke: args.revoke,
-        confirmMassChange: args.confirmMassChange,
-        guardrails: { onlyOfficial: args.onlyOfficial },
-        thresholds: {
-          ...(args.maxChanges !== null ? { maxChanges: args.maxChanges } : {}),
-          ...(args.maxChangePercent !== null
-            ? { maxChangeRatio: args.maxChangePercent / 100 }
-            : {}),
-        },
-      },
-      {
-        store: createPrismaMediaPromotionStore(prisma),
-        // O provider tecnico do log e o TMDB: a midia promovida e dele, ainda
-        // que nenhuma requisicao tenha sido feita nesta execucao.
-        syncLog: createPrismaSyncLog(prisma, 'tmdb'),
-        now: () => new Date(),
-      },
-    )
+        { store, syncLog, now: () => new Date() },
+      )
+      resultados.push(result)
+    }
 
     if (args.json) {
       // BigInt ja virou string no store; nenhum `id` cru vaza aqui.
-      console.log(JSON.stringify(result, null, 2))
+      console.log(JSON.stringify(alvos.length === 1 ? resultados[0] : resultados, null, 2))
     } else {
-      console.log(renderPromotionReport(result))
+      for (const result of resultados) console.log(renderPromotionReport(result))
     }
     if (args.reviewer !== null) console.log(`revisor: ${args.reviewer}`)
-    console.log(summaryLine(result))
-
-    // ---- Exit codes: contrato para o script de operacao. -------------------
-    switch (result.outcome) {
-      case 'license-denied':
-        process.exitCode = EXIT_CODES.blocked
-        break
-      case 'mass-change-blocked':
-        // Code PROPRIO (5), nunca `failed`: quem chama precisa distinguir "o
-        // comando quebrou" de "o comando se recusou de proposito e espera um
-        // humano".
-        process.exitCode = EXIT_CODES.massChangeBlocked
-        break
-      case 'applied':
-        process.exitCode = result.refusals.length > 0 ? EXIT_CODES.failed : EXIT_CODES.ok
-        break
-      default:
-        process.exitCode = EXIT_CODES.ok
+    for (const result of resultados) console.log(summaryLine(result))
+    if (resultados.length > 1) {
+      const mutadas = resultados.reduce((soma, r) => soma + r.updated, 0)
+      console.log(`TOTAL (${resultados.length} alvos) · linhas mutadas=${mutadas}`)
     }
+
+    process.exitCode = combinedExitCode(resultados)
   } catch (error) {
     console.error(redactSecrets(error instanceof Error ? error.stack ?? error.message : String(error)))
     process.exitCode = EXIT_CODES.error

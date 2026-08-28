@@ -8,7 +8,7 @@
  *
  * Regras duras (espelham os demais presenters):
  *  - NAO inventa fatos: sem titulo ou sem slug canonico, o slide e descartado.
- *  - A NOTA e a nota editorial PROPRIA da Cinerie (`screenScore`, escala 5), nunca
+ *  - A NOTA e a nota editorial PROPRIA da Cinerie (`screenScore`, escala 100), nunca
  *    AggregateRating de terceiro nem mistura com IMDb/RT (invariantes 1/2/6). So
  *    aparece quando ha origem editorial explicita, `screenScoreDisplay` esta
  *    liberado e o valor e valido.
@@ -16,11 +16,32 @@
  *  - A sinopse e o resumo editorial pt-BR (nunca copia sinopse externa), aparada.
  */
 
+import { CINERIE_SCORE_DISPLAY_SCALE } from "./cinerie-score-presenter";
 import { MOVIES_INDEX_PATH, SERIES_INDEX_PATH, detailPath } from "./site";
 import { buildTmdbImageUrl } from "./tmdb-image-url";
 
-/** Escala canonica da nota editorial propria da Cinerie. */
-export const SCREEN_SCORE_SCALE = 5;
+/**
+ * Escala canonica da nota editorial propria da Cinerie.
+ *
+ * ============================================================================
+ * ELA VALIA 5, E ESSE 5 ERA UM ERRO DE FATOR 20
+ * ============================================================================
+ * O worker (`services/ratings score:compute`) SEMPRE gravou o Cinerie Score em
+ * escala 100, e a ficha sempre o exibiu em 100
+ * (`CINERIE_SCORE_DISPLAY_SCALE`). Este arquivo declarava 5, e o gate dos
+ * cards/hero exigia `scale === 5` — entao TODO calculo real era descartado em
+ * silencio. Nao era arredondamento: uma nota de 82 lida como 4,1 (ou como nada,
+ * que foi o que aconteceu).
+ *
+ * Agora ha UMA escala, e ela e importada do presenter que ja a possuia. Nao e
+ * um segundo `100` escrito aqui: um segundo literal e como o primeiro desvio
+ * nasceu.
+ *
+ * O hero NORMALIZA para cinco estrelas na hora de desenhar
+ * (`Math.round((value / scale) * 5)` em `home-hero-carousel.tsx`), entao a
+ * mudanca de escala nao altera o desenho — so faz a nota, enfim, chegar la.
+ */
+export const SCREEN_SCORE_SCALE = CINERIE_SCORE_DISPLAY_SCALE;
 
 /** Unica origem aceita para exibir nota propria da Cinerie. */
 export const SCREEN_SCORE_EDITORIAL_SOURCE = "editorial" as const;

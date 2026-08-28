@@ -11,10 +11,10 @@
 
 import { CATALOG_METRIC_NAMES } from '../../metrics/index.js'
 import type { CatalogJobContext, CatalogJobHandler } from '../handler.js'
-import { buildIdempotencyKey } from '../idempotency.js'
+import { buildIdempotencyKey, scopedChildDiscriminator } from '../idempotency.js'
 import type { CatalogJobStorePort } from '../store-port.js'
 import type { CatalogSeasonsSyncPort } from './ports.js'
-import { validateSyncSeasonsInput, type SyncSeasonsInput } from './schemas.js'
+import { JOB_SCOPE_FIELD, validateSyncSeasonsInput, type SyncSeasonsInput } from './schemas.js'
 import { classifySafeError, createEnqueueTally, throwIfAborted } from './support.js'
 
 /** Resultado serializavel do `sync_seasons`. */
@@ -103,9 +103,14 @@ export class SyncSeasonsHandler implements CatalogJobHandler<SyncSeasonsInput, S
             jobType: 'sync_episodes',
             entityType: 'season',
             externalId: String(input.tmdbId),
-            discriminator: `s${seasonNumber}:${input.locale}`,
+            discriminator: scopedChildDiscriminator(input.locale, input.scope, `s${seasonNumber}`),
           }),
-          payload: { tmdbId: input.tmdbId, seasonNumber, locale: input.locale },
+          payload: {
+            tmdbId: input.tmdbId,
+            seasonNumber,
+            locale: input.locale,
+            ...(input.scope === null ? {} : { [JOB_SCOPE_FIELD]: input.scope }),
+          },
           priority: 70,
           runId: context.requestId,
         })
@@ -140,7 +145,7 @@ export class SyncSeasonsHandler implements CatalogJobHandler<SyncSeasonsInput, S
             jobType: 'sync_media',
             entityType: 'season',
             externalId: String(input.tmdbId),
-            discriminator: `s${seasonNumber}:${input.locale}`,
+            discriminator: scopedChildDiscriminator(input.locale, input.scope, `s${seasonNumber}`),
           }),
           // `tmdbId` e o da SERIE (e assim que o TMDB endereca a URL); o id
           // proprio da temporada — a CHAVE de gravacao — o adapter resolve no
@@ -150,6 +155,7 @@ export class SyncSeasonsHandler implements CatalogJobHandler<SyncSeasonsInput, S
             tmdbId: input.tmdbId,
             seasonNumber,
             locale: input.locale,
+            ...(input.scope === null ? {} : { [JOB_SCOPE_FIELD]: input.scope }),
           },
           priority: 75,
           runId: context.requestId,
