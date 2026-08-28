@@ -26,10 +26,55 @@ const blockBase = {
   provenance: z.array(provenanceRef).max(10).optional(),
 }
 
+/**
+ * Marcacao inline sobre o texto de um paragrafo.
+ *
+ * O corpo continua SEM HTML: o texto e string limpa e a formatacao viaja ao
+ * lado, como intervalo (`start`/`end`) sobre esse texto. Quem renderiza
+ * CONSTROI `<strong>`, `<em>` e `<a>` a partir daqui — nunca interpreta markup
+ * vindo do dado. A recusa de markup em `common.ts` continua valendo intacta,
+ * porque nada aqui e concatenado no texto.
+ *
+ * Offsets sao indices de string JavaScript (unidades UTF-16), a mesma unidade
+ * que `String.prototype.slice` usa no render. Casar as duas unidades e o que
+ * dispensa qualquer conversao — e converter era onde um emoji desalinhava a
+ * marcacao inteira do paragrafo.
+ */
+export const TEXT_MARK_TYPES = ['bold', 'italic', 'link'] as const
+export type TextMarkType = (typeof TEXT_MARK_TYPES)[number]
+
+export const textMark = z.object({
+  /** Inicio inclusivo, em unidades UTF-16. */
+  start: z.int().min(0),
+  /** Fim EXCLUSIVO, em unidades UTF-16. */
+  end: z.int().min(1),
+  type: z.enum(TEXT_MARK_TYPES),
+  /** Obrigatorio em `link`, proibido nos demais. Somente http(s). */
+  href: httpUrl.optional(),
+})
+
+export type TextMark = z.infer<typeof textMark>
+
+/**
+ * Paragrafo do corpo. `marks` e OPCIONAL e vale na ENTRADA desde a versao
+ * 1.1.0 do contrato de publicacao.
+ *
+ * Ele ficava so na saida, e o motivo declarado era real: os contratos de
+ * entrada sao comparados por hash com igualdade ESTRITA, entao acrescentar
+ * campo faria todo pedido em voo virar `hash_mismatch`. O que mudou nao foi a
+ * avaliacao do risco — foi o conserto dele. `checkContractCompatibility` passa
+ * a aceitar tambem o par (versao, hash) ANTERIOR, declarado explicitamente em
+ * `SUPERSEDED_CONTRACTS`, e com isso "campo opcional novo" volta a ser o que
+ * `compatibility: 'additive'` sempre prometeu: aditivo de verdade.
+ *
+ * O que NAO mudou: o texto continua limpo e a marcacao continua sendo DADO. O
+ * emissor descreve intervalos; o site constroi as tags. Nenhum HTML atravessa.
+ */
 export const paragraphBlock = z.object({
   ...blockBase,
   type: z.literal('paragraph'),
   text: plainText(LIMITS.blockText),
+  marks: z.array(textMark).max(LIMITS.marks).optional(),
 })
 
 export const headingBlock = z.object({
@@ -166,58 +211,30 @@ export const editorialBody = z
         })
       }
       seen.add(block.id)
+      if (block.type === 'paragraph') checkMarks(block, ctx, index)
     }
   })
 
-export type EditorialBody = z.infer<typeof editorialBody>
-
 /* ------------------------------------------------------------------ */
-/* Formatacao inline (SOMENTE no corpo PUBLICADO)                      */
+/* Formatacao inline                                                   */
 /* ------------------------------------------------------------------ */
 
 /**
- * Marcacao inline sobre o texto de um paragrafo.
+ * O paragrafo PUBLICADO e o mesmo da entrada desde a 1.1.0.
  *
- * O corpo continua SEM HTML: o texto e string limpa e a formatacao viaja ao
- * lado, como intervalo (`start`/`end`) sobre esse texto. Quem renderiza
- * CONSTROI `<strong>`, `<em>` e `<a>` a partir daqui — nunca interpreta markup
- * vindo do dado. A recusa de markup em `common.ts` continua valendo intacta,
- * porque nada aqui e concatenado no texto.
- *
- * Offsets sao indices de string JavaScript (unidades UTF-16), a mesma unidade
- * que `String.prototype.slice` usa no render. Casar as duas unidades e o que
- * dispensa qualquer conversao — e converter era onde um emoji desalinhava a
- * marcacao inteira do paragrafo.
+ * Este alias existia porque `marks` so valia na saida; ele fica para nao quebrar
+ * quem o importa, e aponta para o mesmo schema.
  */
-export const TEXT_MARK_TYPES = ['bold', 'italic', 'link'] as const
-export type TextMarkType = (typeof TEXT_MARK_TYPES)[number]
-
-export const textMark = z.object({
-  /** Inicio inclusivo, em unidades UTF-16. */
-  start: z.int().min(0),
-  /** Fim EXCLUSIVO, em unidades UTF-16. */
-  end: z.int().min(1),
-  type: z.enum(TEXT_MARK_TYPES),
-  /** Obrigatorio em `link`, proibido nos demais. Somente http(s). */
-  href: httpUrl.optional(),
-})
-
-export type TextMark = z.infer<typeof textMark>
-
-/** Paragrafo do corpo PUBLICADO: mesmo texto limpo, mais marcacoes opcionais. */
-export const publishedParagraphBlock = paragraphBlock.extend({
-  marks: z.array(textMark).max(LIMITS.marks).optional(),
-})
+export const publishedParagraphBlock = paragraphBlock
 
 /**
  * Lista com marcador ou numerada. SO NA SAIDA.
  *
- * Segue a mesma regra do `marks`, e pelo mesmo motivo: os contratos de ENTRADA
- * sao comparados por hash com igualdade ESTRITA, e o MNScr declara esse hash a
- * cada pedido. Acrescentar `list` em `editorialBody` — mesmo como membro novo de
- * uniao — mudaria o JSON Schema de entrada e faria todo pedido em voo virar
- * `hash_mismatch`. Lista nasce na redacao humana, nao no pipeline; ela so
- * precisa existir depois que a materia e publicada.
+ * O motivo NAO e mais o hash — `SUPERSEDED_CONTRACTS` resolveu isso e foi por
+ * ele que `marks` entrou na entrada na 1.1.0. O que segura `list` aqui e
+ * editorial: lista nasce na redacao humana, nao no pipeline. O dia em que o
+ * MNScr precisar emitir lista, o caminho ja existe — nova versao aditiva, a
+ * anterior declarada como superada.
  *
  * `items` guarda TEXTO LIMPO, um por item — sem markup, como o paragrafo. O
  * `ordered` decide `<ol>` ou `<ul>` no site; nao ha "estilo" livre.
