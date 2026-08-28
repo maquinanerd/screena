@@ -44,11 +44,27 @@ const LOAD_TIMEOUT_MS = 8000
 const IFRAME_ALLOW = 'encrypted-media; picture-in-picture; fullscreen'
 
 /**
- * `sandbox` SEM `allow-same-origin` — o player roda isolado do nosso documento,
- * então nem cookie nem storage nosso alcança. Mesmo conjunto que o embed de
- * matéria já usava; unificar não é ocasião para afrouxar.
+ * `sandbox` COM `allow-same-origin` — e essa palavra não afrouxa nada nosso.
+ *
+ * O comentário anterior dizia que, sem ela, "o player roda isolado do nosso
+ * documento, então nem cookie nem storage nosso alcança". A primeira metade é
+ * verdadeira; a segunda é redundante: o iframe aponta para
+ * `youtube-nocookie.com`, que já é OUTRA origem — a política de mesma origem do
+ * navegador sozinha impede o player de tocar em cookie ou storage de
+ * `cinerie.com`, com sandbox ou sem.
+ *
+ * O que a ausência de `allow-same-origin` realmente fazia era dar ao iframe uma
+ * origem OPACA, isolando o player do YouTube dele MESMO. Sem acesso ao próprio
+ * storage o player não inicializa: o leitor clica em "Carregar vídeo", o
+ * retângulo fica preto, e oito segundos depois o relógio cai no aviso de falha.
+ * Medido em 28/08/2026, na matéria do trailer em LEGO.
+ *
+ * `allow-scripts` + `allow-same-origin` juntos só são perigosos para conteúdo
+ * servido pela NOSSA origem, que poderia se desfazer do próprio sandbox. Aqui o
+ * conteúdo é de terceiro e a origem dele não é a nossa: o par devolve ao player
+ * o acesso ao que é dele, e nada do que é nosso.
  */
-const IFRAME_SANDBOX = 'allow-scripts allow-presentation allow-popups'
+const IFRAME_SANDBOX = 'allow-scripts allow-same-origin allow-presentation allow-popups'
 
 export interface YouTubeFrameProps {
   /** URL do player, montada por `buildYouTubeEmbedUrl`. */
