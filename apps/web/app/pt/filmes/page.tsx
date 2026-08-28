@@ -9,7 +9,7 @@ import {
 } from '../../../src/lib/portal-presenter'
 import { restrictEditorialHighlights } from '../../../src/lib/home-editorial-presenter'
 import { filterNewsCardsByVertical } from '../../../src/lib/news-presenter'
-import { RANKING_TABS, resolveActiveRankingSlug } from '../../../src/lib/popular-rankings'
+import { RANKING_TABS } from '../../../src/lib/popular-rankings'
 import { MOVIES_INDEX_PATH, SITE_URL, publicRobots } from '../../../src/lib/site'
 import { getHomeCatalogData } from '../../../src/server/home-catalog'
 import { getHomeEditorialHighlights } from '../../../src/server/home-editorial'
@@ -32,6 +32,37 @@ import { getNewsIndexData } from '../../../src/server/news-pages'
  * mistura vertical. A home mistura; `/pt/series/` mostra só série.
  */
 
+/**
+ * `force-dynamic` — E DELIBERADO, e o motivo NAO e mais "ninguem pensou nisso".
+ *
+ * ============================================================================
+ * POR QUE ESTA ROTA NAO PODE TER CACHE DE ROTA (ISR), MEDIDO
+ * ============================================================================
+ * Trocar isto por `export const revalidate = N` torna a rota elegivel a
+ * prerender — e o Next prerenderiza caminho FIXO no `next build`. O release
+ * (`Dockerfile`, linha do `pnpm --filter @screena/web build`) roda o build SEM
+ * `DATABASE_URL` e sem env publica, de proposito (ver o bloco de comentario la:
+ * env assada no build ja causou dois furos de fail-open). Tentado nesta leva:
+ *
+ *   Error occurred prerendering page "/pt/filmes"
+ *   PrismaClientInitializationError: Environment variable not found: DATABASE_URL
+ *   Export encountered an error on /pt/filmes/page, exiting the build.
+ *
+ * As rotas de FICHA (`/pt/filmes/[slug]` e irmas) nao tem esse problema: elas
+ * declaram `generateStaticParams` devolvendo `[]`, entao nada e prerenderizado
+ * no build e cada URL e gerada na primeira visita — la o ISR esta ligado de
+ * verdade nesta leva.
+ *
+ * O QUE SUBSTITUI O CACHE DE ROTA AQUI: (1) as consultas deixaram de varrer o
+ * catalogo inteiro (ver `src/server/entity-indexes.ts` e `src/server/home-hero.ts`)
+ * e (2) o snapshot desta superficie e memoizado entre requisicoes por
+ * `src/server/surface-cache.ts`. O cabecalho continua `no-store` — e ele e
+ * CONSEQUENCIA da rota ser dinamica, nao uma linha nossa.
+ *
+ * PARA O DONO: dar cache de rota a esta pagina exige um build com banco
+ * alcancavel (ou um passo de prerender pos-deploy). E decisao de deploy, nao de
+ * codigo — esta registrada em `src/lib/route-cache-policy.ts`.
+ */
 export const dynamic = 'force-dynamic'
 
 const TITLE = 'Filmes'
@@ -48,15 +79,7 @@ export async function generateMetadata(): Promise<Metadata> {
   }
 }
 
-export default async function MovieCategoryPage({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>
-}) {
-  const params = await searchParams
-  // `?ranking=` de OUTRA vertical (ou forjado) cai na primeira aba de filmes —
-  // um param nunca dispara a consulta de outra pagina.
-  const rankingActiveSlug = resolveActiveRankingSlug('movies', params.ranking)
+export default async function MovieCategoryPage() {
 
   const [index, catalog, news, movieHero, tickerItems, upcoming, editorialHighlights, rankings] =
     await Promise.all([
@@ -136,7 +159,6 @@ export default async function MovieCategoryPage({
         heroSlides={movieHero}
         movieCards={movieCards}
         newsCards={newsCards}
-        rankingActiveSlug={rankingActiveSlug}
         rankingPanels={rankingPanels}
         seriesCards={[]}
         showMoviesBand

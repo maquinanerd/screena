@@ -11,7 +11,6 @@ import { PopularThisWeek, type PopularRankingPanel } from './popular-this-week'
 import { Rail } from './rail'
 import { SectionBoundary } from './section-boundary'
 import { TrailerModal } from './trailer-modal'
-import type { RankingTabSlug } from '../../src/lib/popular-rankings'
 import type { EntityCard } from '../../src/lib/entity-index-presenter'
 import {
   hasEditorialHighlights,
@@ -73,8 +72,6 @@ export interface HomeLikeProps {
    * renderiza o que a rota declarou (ver `src/lib/popular-rankings.ts`).
    */
   rankingPanels: readonly PopularRankingPanel[]
-  /** Aba ativa na primeira pintura, resolvida do `?ranking=` no servidor. */
-  rankingActiveSlug: RankingTabSlug
   /**
    * Vertical da PAGINA. Governa as seçoes compartilhadas que nao tem dataset
    * proprio nas props: as tabs de "Destaques de hoje" e o recorte de "Seu mês em
@@ -220,7 +217,6 @@ export function HomeLike({
   adPrefix,
   emptyMessage,
   rankingPanels,
-  rankingActiveSlug,
   vertical,
 }: HomeLikeProps): ReactNode {
   const hasRanking = rankingPanels.length > 0
@@ -305,8 +301,8 @@ export function HomeLike({
       {hasRanking ? (
         <PopularThisWeek
           headingId={`${adPrefix}-popular-title`}
-          initialSlug={rankingActiveSlug}
           panels={rankingPanels}
+          vertical={vertical}
         />
       ) : null}
 

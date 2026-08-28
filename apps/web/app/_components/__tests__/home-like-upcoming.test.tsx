@@ -83,7 +83,6 @@ function renderRail(upcoming: HomeLikeUpcoming): string {
     // "Popular essa semana" fica sem abas: a medida deste arquivo e so o
     // trilho "Em breve", e uma secao a mais no markup so adicionaria ruido.
     rankingPanels: [],
-    rankingActiveSlug: "filmes",
     // CONSTANTE de proposito, e nao derivada de `upcoming.vertical`.
     //
     // `vertical` governa OUTRAS secoes compartilhadas (as tabs de "Destaques de

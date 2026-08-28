@@ -52,10 +52,25 @@ function titles(count: number): RankedTitle[] {
  * poe `.pop-empty` — "Nada por aqui esta semana.", texto nao-interativo sobre a
  * faixa escura — ao alcance do medidor. Sem a segunda instancia a asercao de
  * cor desse texto passaria por ausencia, nao por acerto.
+ *
+ * COMO OS DOIS ESTADOS SAO ESCOLHIDOS MUDOU EM 2026-08-28, e a razao importa.
+ * Antes, cada instancia recebia um `initialSlug` diferente — a aba ativa vinha
+ * do SERVIDOR. Isso deixou de existir: ler `?ranking=` no servidor tornava a
+ * rota inteira dinamica, e a aba passou a ser controle de cliente. O componente
+ * agora abre SEMPRE na primeira aba da vertical.
+ *
+ * Entao o que muda entre as duas instancias e o DATASET, nao a aba: a primeira
+ * tem a aba inicial cheia, a segunda tem TODAS vazias. Os mesmos dois estados
+ * chegam ao medidor, e nenhum deles depende de prop que nao existe mais.
  */
-const panels: PopularRankingPanel[] = RANKING_TABS.home.map((tab, index) => ({
+const panelsCheia: PopularRankingPanel[] = RANKING_TABS.home.map((tab, index) => ({
   tab,
   items: index === 0 ? titles(6) : [],
+}))
+
+const panelsVazia: PopularRankingPanel[] = RANKING_TABS.home.map((tab) => ({
+  tab,
+  items: [],
 }))
 
 const markup = renderToStaticMarkup(
@@ -64,13 +79,13 @@ const markup = renderToStaticMarkup(
     null,
     React.createElement(PopularThisWeek, {
       headingId: 'qa-popular-cheia',
-      initialSlug: RANKING_TABS.home[0]!.slug,
-      panels,
+      panels: panelsCheia,
+      vertical: 'home',
     }),
     React.createElement(PopularThisWeek, {
       headingId: 'qa-popular-vazia',
-      initialSlug: RANKING_TABS.home[1]!.slug,
-      panels,
+      panels: panelsVazia,
+      vertical: 'home',
     }),
     React.createElement(SiteFooter),
   ),

@@ -122,6 +122,50 @@ const fakePrisma = new Proxy(
   {
     get(_target, model: string | symbol) {
       if (typeof model === 'symbol') return undefined
+      /**
+       * O SQL BRUTO tambem passa por aqui.
+       *
+       * Desde 2026-08-28 os loaders de listagem, hero e "Em breve" fazem a
+       * SELECAO no banco com `LIMIT` em vez de carregar o catalogo (ver
+       * `entity-indexes.ts`, `home-hero.ts`, `home-upcoming.ts`). Consulta em
+       * SQL bruto nao tem `IN (...)` para estourar — o que este arquivo mede
+       * segue valendo para as consultas Prisma que sobraram, e a linha abaixo
+       * so impede que o fake morra ao encontrar a nova forma.
+       *
+       * O fake devolve `LIMIT` linhas: menos que isso e o teste passaria por
+       * lista vazia, que e o defeito que ele existe para nao ter.
+       */
+      if (model === '$queryRawUnsafe') {
+        return (sql: string, ...params: unknown[]) => {
+          calls.push({ model, method: 'raw', args: { sql, params } })
+          if (/count\(\*\)/.test(sql)) return Promise.resolve([{ total: BigInt(CATALOG_SIZE) }])
+          const limit = params.reduce<number>(
+            (acc, value) => (typeof value === 'number' && value > 0 ? value : acc),
+            50,
+          )
+          return Promise.resolve(
+            CATALOG_IDS.slice(0, limit).map((id) => ({
+              id,
+              tmdb_id: Number(id),
+              title_original: `Filme ${id}`,
+              name_original: `Serie ${id}`,
+              name: `Pessoa ${id}`,
+              release_date: new Date(Date.UTC(2030, 0, 1)),
+              first_air_date: new Date(Date.UTC(2030, 0, 1)),
+              last_air_date: null,
+              known_for_department: 'Acting',
+              poster_path: '/p.jpg',
+              backdrop_path: '/b.jpg',
+              profile_path: null,
+              screen_score: null,
+              screen_score_scale: null,
+              screen_score_display: false,
+              slug: `s-${id}`,
+              translation_title: `T${id}`,
+            })),
+          )
+        }
+      }
       return new Proxy(
         {},
         {
@@ -213,11 +257,36 @@ describe(`catalogo de ${CATALOG_SIZE} titulos nao estoura o IN (...)`, () => {
     assertEveryQueryFits()
   })
 
+  /**
+   * O CONTROLE POSITIVO DAS LISTAGENS MUDOU DE FORMA — e o motivo importa.
+   *
+   * Ate 2026-08-28 elas montavam `IN (...)` com o catalogo inteiro, e o
+   * controle era "houve lote maior que zero". Desde entao a selecao acontece no
+   * banco com `LIMIT`, e nao ha `IN (...)` nenhum: `largestBatch()` devolve 0
+   * porque o defeito sumiu, nao porque o caminho deixou de ser exercido.
+   *
+   * Trocar o controle por nada seria transformar este teste em verde
+   * permanente. O controle novo pergunta a mesma coisa na forma nova: houve
+   * consulta, e ela chegou ao driver com um teto de linhas.
+   */
+  const assertListagemLimitada = (): void => {
+    const raws = calls.filter((call) => call.model === '$queryRawUnsafe')
+    expect(raws.length, 'a listagem nao consultou o banco').toBeGreaterThan(0)
+    const paginada = raws.filter((call) => /\bLIMIT\b/.test(String(call.args.sql)))
+    expect(paginada.length, 'nenhuma consulta de pagina trouxe LIMIT').toBeGreaterThan(0)
+    for (const call of paginada) {
+      const params = (call.args.params ?? []) as unknown[]
+      const limite = params.filter((value): value is number => typeof value === 'number').at(-1)
+      expect(limite, 'consulta com LIMIT sem parametro numerico').toBeTypeOf('number')
+      expect(limite ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(PRISMA_IN_CHUNK_SIZE)
+    }
+  }
+
   it('(3) listagem /pt/filmes: idem', async () => {
     const { getMovieIndexData } = await import('../entity-indexes')
     await getMovieIndexData()
 
-    expect(largestBatch()).toBeGreaterThan(0)
+    assertListagemLimitada()
     assertEveryQueryFits()
   })
 
@@ -225,7 +294,7 @@ describe(`catalogo de ${CATALOG_SIZE} titulos nao estoura o IN (...)`, () => {
     const { getPersonIndexData } = await import('../entity-indexes')
     await getPersonIndexData()
 
-    expect(largestBatch()).toBeGreaterThan(0)
+    assertListagemLimitada()
     assertEveryQueryFits()
   })
 })

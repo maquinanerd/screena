@@ -47,6 +47,32 @@ import { getEpisodePageData } from '../../../../../../../../src/server/episode-p
 export const revalidate = 3600
 
 /**
+ * `generateStaticParams` VAZIO — e ele que liga o `revalidate` acima.
+ *
+ * MEDIDO (2026-08-28): esta rota declarava `revalidate = 3600` desde 2026-07 e
+ * mesmo assim respondia em producao com
+ * `cache-control: private, no-cache, no-store, max-age=0, must-revalidate`.
+ * A causa nao era leitura de sessao nem `force-dynamic`: era a AUSENCIA desta
+ * funcao. Sem `generateStaticParams`, o Next nao considera a rota dinamica
+ * elegivel a prerender, ela nao entra em `dynamicRoutes` do
+ * `prerender-manifest.json`, `isSSG` fica falso e o render sai com
+ * `revalidate = 0` — que e exatamente o `no-store` observado.
+ *
+ * PROVA POR EXPERIMENTO CONTROLADO (`next build` na mesma arvore): sem esta
+ * funcao a tabela do build mostra `f (Dynamic)` e `dynamicRoutes` vem `[]`;
+ * com ela (devolvendo `[]`) a mesma rota vira `. (SSG)` e aparece em
+ * `dynamicRoutes`. Nenhuma outra linha mudou.
+ *
+ * Devolve `[]` DE PROPOSITO: nao ha nada para prerenderizar no build (sao ~67
+ * mil URLs e o banco nao esta disponivel la). Cada URL e gerada na primeira
+ * visita e entao guardada pela janela do `revalidate` — que e o comportamento
+ * que a rota sempre quis ter.
+ */
+export async function generateStaticParams(): Promise<Record<string, string>[]> {
+  return []
+}
+
+/**
  * Quantas imagens aparecem na FICHA antes do "ver todas".
  *
  * Seis: duas linhas de tres na grade de episodio. O suficiente para a faixa

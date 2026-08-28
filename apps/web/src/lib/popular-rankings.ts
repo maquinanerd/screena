@@ -105,6 +105,19 @@ export const RANKING_EMPTY_MESSAGE = "Nada por aqui esta semana.";
  * Aba ativa a partir do `?ranking=`. Valor ausente, desconhecido ou de OUTRA
  * vertical (ex.: `?ranking=novas-temporadas` em `/pt/filmes`) cai na primeira
  * aba da vertical — um param forjado nunca dispara a consulta de outra pagina.
+ *
+ * ONDE ISTO E CHAMADO MUDOU EM 2026-08-28, e a funcao NAO mudou. Antes o
+ * SERVIDOR lia `searchParams.ranking` na home, em `/pt/filmes` e em
+ * `/pt/series`. Uma unica leitura de `searchParams` num server component torna
+ * a rota inteira dinamica: as tres paginas nao podiam ser guardadas, e a home
+ * respondia em 3,7 s de TTFB, toda vez, para todo mundo.
+ *
+ * A aba nunca dependeu do servidor para funcionar: `PopularThisWeek` ja
+ * consulta TODOS os recortes de uma vez e troca de painel com `useState`, sem
+ * ida ao servidor (e escreve o `?ranking=` de volta com `history.replaceState`).
+ * O que o servidor fazia era so escolher o painel da PRIMEIRA pintura. Isso
+ * agora acontece no cliente, na montagem — o HTML guardado e o mesmo para
+ * qualquer `?ranking=`, e o link compartilhado continua abrindo na aba certa.
  */
 export function resolveActiveRankingSlug(
   vertical: RankingVertical,

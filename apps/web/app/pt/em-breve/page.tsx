@@ -15,6 +15,37 @@ import { getAnticipatedData } from '../../../src/server/anticipated'
  * ela vira o estado âmbar canônico "Data não confirmada".
  */
 
+/**
+ * `force-dynamic` — E DELIBERADO, e o motivo NAO e mais "ninguem pensou nisso".
+ *
+ * ============================================================================
+ * POR QUE ESTA ROTA NAO PODE TER CACHE DE ROTA (ISR), MEDIDO
+ * ============================================================================
+ * Trocar isto por `export const revalidate = N` torna a rota elegivel a
+ * prerender — e o Next prerenderiza caminho FIXO no `next build`. O release
+ * (`Dockerfile`, linha do `pnpm --filter @screena/web build`) roda o build SEM
+ * `DATABASE_URL` e sem env publica, de proposito (ver o bloco de comentario la:
+ * env assada no build ja causou dois furos de fail-open). Tentado nesta leva:
+ *
+ *   Error occurred prerendering page "/pt/filmes"
+ *   PrismaClientInitializationError: Environment variable not found: DATABASE_URL
+ *   Export encountered an error on /pt/filmes/page, exiting the build.
+ *
+ * As rotas de FICHA (`/pt/filmes/[slug]` e irmas) nao tem esse problema: elas
+ * declaram `generateStaticParams` devolvendo `[]`, entao nada e prerenderizado
+ * no build e cada URL e gerada na primeira visita — la o ISR esta ligado de
+ * verdade nesta leva.
+ *
+ * O QUE SUBSTITUI O CACHE DE ROTA AQUI: (1) as consultas deixaram de varrer o
+ * catalogo inteiro (ver `src/server/entity-indexes.ts` e `src/server/home-hero.ts`)
+ * e (2) o snapshot desta superficie e memoizado entre requisicoes por
+ * `src/server/surface-cache.ts`. O cabecalho continua `no-store` — e ele e
+ * CONSEQUENCIA da rota ser dinamica, nao uma linha nossa.
+ *
+ * PARA O DONO: dar cache de rota a esta pagina exige um build com banco
+ * alcancavel (ou um passo de prerender pos-deploy). E decisao de deploy, nao de
+ * codigo — esta registrada em `src/lib/route-cache-policy.ts`.
+ */
 export const dynamic = 'force-dynamic'
 
 const TITLE = 'Mais Aguardados'

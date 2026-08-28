@@ -262,6 +262,13 @@ jobs:
       - name: Validadores descartaveis (PostgreSQL efemero, sem banco remoto)
         run: pnpm --filter @screena/web validate:all
 
+      # Cache de rota e VOLUME de consulta, com Next REAL sobre o build acima.
+      # Precisa vir DEPOIS do `pnpm build`: o script sobe `next start`, mede o
+      # `Cache-Control` que o Next emite por classe de rota e conta as linhas
+      # lidas por requisicao com `pg_stat_statements`.
+      - name: Cache de rota + orcamento de linhas (Next real, PostgreSQL 16 efemero)
+        run: pnpm --filter @screena/web validate:route-cache
+
       - name: Migration Fase 2 — Cenario A (do zero, PostgreSQL 16 efemero)
         run: pnpm --filter @screena/db db:validate:real
 
