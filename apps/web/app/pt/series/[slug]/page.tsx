@@ -62,48 +62,47 @@ import { imagesGalleryPath, videosGalleryPath } from '../../../../src/lib/routes
  */
 
 /**
- * Janela de cache: 5 minutos.
+ * ESTA ROTA E DINAMICA DE PROPOSITO — nao ponha `generateStaticParams` aqui.
  *
- * Era uma hora, e a ficha e uma pagina de CATALOGO — que muda pouco. O que
- * mudou de dono foi a secao "Noticias e Bastidores": desde que o MNScr passou a
- * vincular a materia a obra, esta pagina tem conteudo editorial, e editorial
- * envelhece em minutos, nao em horas. Medido em 28/08/2026: a materia do
- * trailer em LEGO ja estava vinculada no banco e a ficha do filme continuou
- * mostrando a lista antiga, porque a copia em cache era anterior a publicacao.
+ * A #245 deu `generateStaticParams` (devolvendo `[]`) a 10 fichas para ligar o
+ * `revalidate`. Nas outras 9 isso foi ganho puro. Aqui NAO: esta e a UNICA
+ * ficha que le `searchParams` (o `?temporada=`, logo abaixo em
+ * `seasonNumberFromQuery`), e as duas coisas juntas quebram a pagina.
  *
- * 5 minutos e o meio-termo declarado: 12x mais renderizacao que antes num
- * conjunto de paginas que quase nunca e visitado duas vezes na mesma janela, em
- * troca de a materia aparecer na ficha enquanto ela ainda e noticia. O certo de
- * verdade e revalidacao SOB DEMANDA — o worker de projecao avisando o site
- * quando cria o vinculo —, e ela continua valendo a pena depois disto.
+ * MEDIDO (2026-08-28, producao): `/pt/series/{slug}/` respondia 500 em toda
+ * serie, enquanto `/pt/filmes/{slug}/`, `/pt/series/{slug}/imagens` e
+ * `/pt/series/{slug}/temporadas/{n}/` respondiam 200. Log do Next 15.5.19:
+ *
+ *   Dynamic server usage: Route /pt/series/[slug] couldn't be rendered
+ *   statically because it used `await searchParams`, `searchParams.then`, or
+ *   similar. digest: DYNAMIC_SERVER_USAGE
+ *   Error: Page changed from static to dynamic at runtime /pt/series/{slug},
+ *   reason: `await searchParams`, `searchParams.then`, or similar
+ *   https://nextjs.org/docs/messages/app-static-to-dynamic-error
+ *
+ * O `generateStaticParams` classifica a rota como SSG no build (a tabela do
+ * `next build` mostra `●`). Como ele devolve `[]`, nada e renderizado la e o
+ * Next nao tem como descobrir que a pagina le a query. Na PRIMEIRA visita em
+ * producao o Next tenta gerar o HTML estatico, esbarra no `searchParams` e —
+ * diferente do build, onde ele apenas rebaixaria a rota para dinamica — nao
+ * pode mais reclassificar: lanca e devolve 500.
+ *
+ * E o 500 e so o sintoma. Cache de ROTA e por PATHNAME: `?temporada=2` e
+ * `?temporada=5` compartilhariam o mesmo HTML guardado. Uma rota cujo conteudo
+ * depende da query nao pode ser cacheada por rota nem que o Next deixasse.
+ *
+ * `force-dynamic` (mesma declaracao que `/pt/explorar/` usa, pelo mesmo
+ * motivo) torna a leitura da query legal e impede qualquer reclassificacao
+ * futura. O `revalidate` foi removido junto: sem `generateStaticParams` ele ja
+ * era inerte, e deixa-lo ali so convidaria alguem a "consertar" o cache
+ * readicionando a funcao que derrubou o site.
+ *
+ * PARA RECUPERAR O CACHE DESTA FICHA (fora do escopo desta correcao): dar a
+ * "Especiais" (temporada 0) uma rota propria — hoje `seasonPath` recusa
+ * `seasonNumber < 1` e o `?temporada=` e o unico caminho ate ela. Sem query na
+ * rota, `generateStaticParams` volta a ser seguro aqui.
  */
-export const revalidate = 300
-
-/**
- * `generateStaticParams` VAZIO — e ele que liga o `revalidate` acima.
- *
- * MEDIDO (2026-08-28): esta rota declarava `revalidate = 3600` desde 2026-07 e
- * mesmo assim respondia em producao com
- * `cache-control: private, no-cache, no-store, max-age=0, must-revalidate`.
- * A causa nao era leitura de sessao nem `force-dynamic`: era a AUSENCIA desta
- * funcao. Sem `generateStaticParams`, o Next nao considera a rota dinamica
- * elegivel a prerender, ela nao entra em `dynamicRoutes` do
- * `prerender-manifest.json`, `isSSG` fica falso e o render sai com
- * `revalidate = 0` — que e exatamente o `no-store` observado.
- *
- * PROVA POR EXPERIMENTO CONTROLADO (`next build` na mesma arvore): sem esta
- * funcao a tabela do build mostra `f (Dynamic)` e `dynamicRoutes` vem `[]`;
- * com ela (devolvendo `[]`) a mesma rota vira `. (SSG)` e aparece em
- * `dynamicRoutes`. Nenhuma outra linha mudou.
- *
- * Devolve `[]` DE PROPOSITO: nao ha nada para prerenderizar no build (sao ~67
- * mil URLs e o banco nao esta disponivel la). Cada URL e gerada na primeira
- * visita e entao guardada pela janela do `revalidate` — que e o comportamento
- * que a rota sempre quis ter.
- */
-export async function generateStaticParams(): Promise<Record<string, string>[]> {
-  return []
-}
+export const dynamic = 'force-dynamic'
 
 const SERIES_INDEX_PATH = '/pt/series/'
 const REVIEW_BLOCK_TYPE = 'review_summary'

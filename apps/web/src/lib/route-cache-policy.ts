@@ -123,6 +123,31 @@ export interface RouteCachePolicy {
 export const CATALOG_SURFACE_REVALIDATE_SECONDS = 3600;
 
 /**
+ * Janela das fichas que carregam EDITORIAL: 5 minutos.
+ *
+ * A ficha e catalogo, e catalogo se move em ciclos de horas — a janela de uma
+ * hora acima esta certa para o que ela cobre. O que mudou de dono foi a secao
+ * "Noticias e Bastidores": desde que o MNScr passou a vincular a materia a
+ * obra, a ficha de filme e a de pessoa tem conteudo editorial, e editorial
+ * envelhece em minutos.
+ *
+ * MEDIDO em 28/08/2026: a materia do trailer em LEGO ja estava vinculada no
+ * banco e `/pt/filmes/vingadores-doutor-destino/` continuava mostrando a lista
+ * antiga, porque a copia guardada era anterior a publicacao. A ficha de
+ * `doutor-estranho-no-multiverso-da-loucura`, que ninguem tinha aberto e
+ * portanto renderizou na hora, ja mostrava a materia — mesma consulta, mesmo
+ * banco, cache diferente.
+ *
+ * Nao vale para as GALERIAS (imagens, videos) nem para a ficha de temporada:
+ * elas nao listam noticia e continuam na janela do catalogo.
+ *
+ * Isto e meio-termo declarado, nao solucao: o certo e revalidacao SOB DEMANDA,
+ * com o worker de projecao avisando o site quando cria o vinculo. Enquanto ela
+ * nao existe, 5 minutos e o preco que a redacao aceita pagar em renderizacao.
+ */
+export const EDITORIAL_SURFACE_REVALIDATE_SECONDS = 300;
+
+/**
  * Paginas SEM banco: o documento legal e os dois aliases de entrada.
  *
  * Elas ja eram prerenderizadas no build antes desta leva e continuam sendo — nao
@@ -277,8 +302,8 @@ export const ROUTE_CACHE_POLICY: Readonly<Record<string, RouteCachePolicy>> = {
 
   // ------------------------------------------------------ publica cacheavel
   "/pt/filmes/[slug]": publicStatic(
-    CATALOG_SURFACE_REVALIDATE_SECONDS,
-    "ficha de filme: a janela de 3600 s que a rota ja declarava desde 2026-07",
+    EDITORIAL_SURFACE_REVALIDATE_SECONDS,
+    "ficha de filme: carrega `Noticias e Bastidores`, entao segue o relogio do editorial",
   ),
   "/pt/filmes/[slug]/imagens": publicStatic(
     CATALOG_SURFACE_REVALIDATE_SECONDS,
@@ -288,9 +313,19 @@ export const ROUTE_CACHE_POLICY: Readonly<Record<string, RouteCachePolicy>> = {
     CATALOG_SURFACE_REVALIDATE_SECONDS,
     "galeria de videos do filme: midia de catalogo, sem dado pessoal",
   ),
-  "/pt/series/[slug]": publicStatic(
-    CATALOG_SURFACE_REVALIDATE_SECONDS,
-    "ficha de serie: a janela de 3600 s que a rota ja declarava desde 2026-07",
+  // A UNICA ficha que NAO e cacheavel — e a unica que le `searchParams`.
+  //
+  // A #245 a classificou como `public-static` junto das outras nove. Em
+  // 2026-08-28 isso derrubou TODA `/pt/series/{slug}/` em producao com 500:
+  // `generateStaticParams` faz o Next tentar gerar HTML estatico na primeira
+  // visita, o `?temporada=` e leitura dinamica, e no runtime (diferente do
+  // build) o Next nao pode mais rebaixar a rota — lanca
+  // `DYNAMIC_SERVER_USAGE` / "Page changed from static to dynamic at runtime".
+  //
+  // Mesmo sem o 500 a classe estaria errada: cache de rota e por PATHNAME, e
+  // `?temporada=2` e `?temporada=5` compartilhariam o mesmo HTML guardado.
+  "/pt/series/[slug]": publicDynamic(
+    "ficha de serie: a aba de temporada depende de `?temporada=` — a mesma razao de `/pt/explorar`. Ver o cabecalho de `app/pt/series/[slug]/page.tsx`.",
   ),
   "/pt/series/[slug]/imagens": publicStatic(
     CATALOG_SURFACE_REVALIDATE_SECONDS,
@@ -313,8 +348,8 @@ export const ROUTE_CACHE_POLICY: Readonly<Record<string, RouteCachePolicy>> = {
     "galeria de imagens do episodio: midia de catalogo, sem dado pessoal",
   ),
   "/pt/pessoas/[slug]": publicStatic(
-    CATALOG_SURFACE_REVALIDATE_SECONDS,
-    "ficha de pessoa: a janela de 3600 s que a rota ja declarava desde 2026-07",
+    EDITORIAL_SURFACE_REVALIDATE_SECONDS,
+    "ficha de pessoa: carrega `Noticias e Bastidores`, entao segue o relogio do editorial",
   ),
   "/pt/creditos-de-dados": publicStatic(BUILD_PRERENDERED, "documento legal, sem banco"),
   "/pt/privacidade": publicStatic(BUILD_PRERENDERED, "documento legal, sem banco"),
