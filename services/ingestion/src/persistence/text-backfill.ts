@@ -435,7 +435,13 @@ export async function backfillMissingText(
         const texto = pickLocalizedText(escolhido.payload, field)
         if (texto.text === null || texto.source === null) {
           // MEDICAO do Item E: sem pt-BR, mas com pt-PT? Nao recupera — mede.
-          const europeu = textoPtPt(escolhido.payload, field)
+          //
+          // Consulta os DOIS payloads, nao so o escolhido: `escolherPayload`
+          // prioriza quem tem pt-BR e, quando nenhum tem, devolve o primeiro que
+          // EXISTE. Medir so nele subestimaria o Item E na entidade que tem
+          // `api_cache` sem pt-PT e `tmdb_raw` com — e o numero de E.1 e
+          // justamente o que decide se vale a pena discutir portugues europeu.
+          const europeu = textoPtPt(row.cache_payload, field) ?? textoPtPt(row.raw_payload, field)
           if (europeu !== null) {
             recoverableOnlyWithPtPt += 1
             if (ptPtSamples.length < 20) {
