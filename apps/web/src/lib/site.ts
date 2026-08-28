@@ -22,6 +22,8 @@ export {
   NEWS_INDEX_PATH,
   parseRouteNumber,
   PEOPLE_INDEX_PATH,
+  personPhotosPath,
+  PHOTOS_SEGMENT,
   PRIVACY_PATH,
   PT_LOCALE_SEGMENT,
   SEASONS_SEGMENT,

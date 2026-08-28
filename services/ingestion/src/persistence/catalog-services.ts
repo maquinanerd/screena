@@ -84,6 +84,7 @@ import type { TmdbCatalogEndpoints } from '@screena/tmdb-client'
 import { promoteMoviesFromRaw, promotePeopleFromRaw, promoteTvShowsFromRaw } from '../raw-promote/run.js'
 import { createPrismaCatalogEntitiesStore } from './catalog-entities-store.js'
 import { createPrismaEpisodeStore } from './episode-store.js'
+import { createPrismaMediaBirthPolicyReader } from './media-birth-reader.js'
 import { createPrismaMediaStore } from './media-store.js'
 import { createPrismaSearchStore } from './search-store.js'
 import { createPrismaSearchProjectionSource } from './search-projection-source.js'
@@ -191,8 +192,27 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
   const persistence = createPersistence({ ttlMs: options.cacheTtlMs, now })
   const prisma = persistence.prisma
 
+  /**
+   * A POLITICA DE NASCIMENTO da midia, lida de `source_licenses`.
+   *
+   * Resolvida por CICLO (nao uma vez por processo): duas linhas de licenca por
+   * job de midia sao ruido perto das duas requisicoes HTTP do mesmo job, e o
+   * frescor que isso compra e real — uma licenca revogada passa a valer no job
+   * seguinte, sem reiniciar container.
+   */
+  const readBirthPolicy = createPrismaMediaBirthPolicyReader(prisma, (error) => {
+    // Falha ao LER licenca nao pode ser muda: sem esta linha, "nasceu apagado
+    // porque a licenca nega" e "nasceu apagado porque a consulta caiu" seriam o
+    // mesmo silencio.
+    console.error(
+      'catalog: falha ao ler source_licenses para a politica de nascimento de midia; ' +
+        'as linhas desta execucao nascem APAGADAS (fail-closed).',
+      error instanceof Error ? error.message : String(error),
+    )
+  })
+
   const entitiesStore = createPrismaCatalogEntitiesStore(prisma)
-  const episodeStore = createPrismaEpisodeStore(prisma)
+  const episodeStore = createPrismaEpisodeStore(prisma, readBirthPolicy)
   const mediaStore = createPrismaMediaStore(prisma)
   const searchStore = createPrismaSearchStore(prisma)
   const searchSource = createPrismaSearchProjectionSource(prisma)
@@ -633,6 +653,7 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
         log: persistence.syncLog,
         store: mediaStore,
         now,
+        birth: await readBirthPolicy(),
       })
       // runMediaSync tambem e pipeline-safe: falha vira status, nao excecao.
       if (result.images.status === 'failed' || result.videos?.status === 'failed') {

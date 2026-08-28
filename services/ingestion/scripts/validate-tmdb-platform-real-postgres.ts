@@ -6,7 +6,7 @@
  * Nao chama o TMDB real: CLIENT REAL (TmdbHttpClient + createTmdbCatalogEndpoints)
  * com TRANSPORTE FALSO local + adapters/workers REAIS. Prova: configuracao +
  * taxonomias (raw) + generos (normalizados) + midia imagens/videos (normalizados,
- * display_allowed=false) + execucao paginada com checkpoint/resume + idempotencia +
+ * nascendo no estado que a LICENCA autoriza) + execucao paginada com checkpoint/resume + idempotencia +
  * determinismo de mudanca + logs (nenhuma ingestao silenciosa). Ferramenta
  * DESCARTAVEL; instancia derrubada no finally.
  *
@@ -34,6 +34,8 @@ import { createPrismaCache } from '../src/persistence/cache.js'
 import { createPrismaSyncLog } from '../src/persistence/sync-log.js'
 import { createPrismaImageConfigStore } from '../src/persistence/image-config-store.js'
 import { createPrismaMediaStore } from '../src/persistence/media-store.js'
+import { createPrismaMediaBirthPolicyReader } from '../src/persistence/media-birth-reader.js'
+import { createMediaBirthPolicy } from '../src/media-promotion/birth.js'
 import { createPrismaGenresStore, createPrismaCheckpointStore } from '../src/persistence/catalog-stores.js'
 import { TAXONOMY_ENDPOINTS, runTaxonomySync, type TaxonomyReadPort } from '../src/config-sync/run.js'
 import { runMediaSync, type MediaTarget } from '../src/catalog-sync/media-sync.js'
@@ -215,14 +217,67 @@ async function main(): Promise<void> {
       fetchImages: () => catalog.getMovieImages(MOVIE_ID),
       fetchVideos: () => catalog.getMovieVideos(MOVIE_ID),
     }
-    const media1 = await runMediaSync(target, { cache, log, store: mediaStore, now: () => new Date() })
+    // ========================================================================
+    // O ESTADO DE NASCIMENTO DA MIDIA — DOIS LADOS, E O CONTROLE NEGATIVO VEM
+    // PRIMEIRO
+    // ========================================================================
+    // Ate 2026-08-28 a checagem (7) afirmava que a midia nasce
+    // `display_allowed=false` SEMPRE. Aquilo nunca foi a invariante 6: a
+    // invariante diz "dado SEM LICENCA CLARA nao aparece", nao "dado licenciado
+    // tambem nao". O teste guardava o DEFEITO — cada ciclo de ingestao criava
+    // linhas invisiveis sob uma licenca `official` que ja dizia sim desde
+    // 21/08, e so uma operacao manual em massa as acendia, para sempre.
+    //
+    // A checagem agora tem os dois lados, e o negativo roda ANTES: sem licenca
+    // no banco, nasce apagada. Se so o lado positivo existisse, uma politica
+    // que sempre acendesse passaria.
+    const semLicenca = await createPrismaMediaBirthPolicyReader(prisma as never)()
+    const nascimentoSemLicenca = semLicenca.forImage({ filePath: '/abc123.jpg' })
+    record(
+      5,
+      'CONTROLE NEGATIVO: sem licenca vigente em source_licenses, a midia nasce APAGADA',
+      nascimentoSemLicenca.displayAllowed === false &&
+        nascimentoSemLicenca.licenseStatus === 'unknown',
+      `display=${nascimentoSemLicenca.displayAllowed}, status=${nascimentoSemLicenca.licenseStatus}`,
+    )
+
+    // Agora a licenca. E a MESMA forma que `legal sources apply` grava.
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO source_licenses
+         (source_key, content_type, license_status, display_allowed, logo_allowed, score_allowed,
+          review_quote_allowed, requires_attribution, requires_linkback, is_current, decided_by,
+          decided_at, decision_origin, policy_version, updated_at)
+       VALUES ('tmdb', 'image'::"SourceLicenseContentType", 'official'::"LicenseStatus", true, true,
+               false, false, true, true, true, 'validador', now(), 'owner_authorization',
+               'validador/tmdb-image', now()),
+              ('tmdb', 'video'::"SourceLicenseContentType", 'official'::"LicenseStatus", true, true,
+               false, false, true, true, true, 'validador', now(), 'owner_authorization',
+               'validador/tmdb-video', now())`,
+    )
+
+    const birth = await createPrismaMediaBirthPolicyReader(prisma as never)()
+    const media1 = await runMediaSync(target, { cache, log, store: mediaStore, now: () => new Date(), birth })
     const imgCount = (await q<{ c: number }>(`SELECT count(*)::int AS c FROM tmdb_images WHERE entity_type='movie' AND tmdb_id=${MOVIE_ID}`))[0]!.c
     const vidCount = (await q<{ c: number }>(`SELECT count(*)::int AS c FROM tmdb_videos WHERE entity_type='movie' AND tmdb_id=${MOVIE_ID}`))[0]!.c
-    record(5, 'midia: imagens normalizadas em tmdb_images', imgCount === 2 && media1.images.created === 2, `imagens=${imgCount}`)
-    record(6, 'midia: videos normalizados em tmdb_videos', vidCount === 1 && media1.videos?.created === 1, `videos=${vidCount}`)
-    const blocked = (await q<{ c: number }>(`SELECT count(*)::int AS c FROM tmdb_images WHERE display_allowed=false AND license_status='unknown'`))[0]!.c
-    record(7, 'midia nasce display_allowed=false + license_status=unknown (invariante 6)', blocked === imgCount, `bloqueadas=${blocked}/${imgCount}`)
-    const media2 = await runMediaSync(target, { cache, log, store: mediaStore, now: () => new Date() })
+    record(6, 'midia: imagens normalizadas em tmdb_images', imgCount === 2 && media1.images.created === 2, `imagens=${imgCount}`)
+    record(6.1, 'midia: videos normalizados em tmdb_videos', vidCount === 1 && media1.videos?.created === 1, `videos=${vidCount}`)
+    const acesas = (await q<{ c: number }>(`SELECT count(*)::int AS c FROM tmdb_images WHERE entity_type='movie' AND tmdb_id=${MOVIE_ID} AND display_allowed=true AND license_status='official'`))[0]!.c
+    record(
+      7,
+      'midia NASCE no estado que a licenca autoriza (display=true + license_status da licenca)',
+      acesas === imgCount && imgCount > 0,
+      `acesas=${acesas}/${imgCount}`,
+    )
+    // A politica NUNCA acende o que o render descartaria: `file_path` invalido
+    // continua nascendo apagado mesmo com a licenca vigente.
+    const forma = createMediaBirthPolicy({ image: [], video: [] })
+    record(
+      7.1,
+      'guardrail por linha sobrevive a licenca: file_path invalido nasce apagado',
+      forma.forImage({ filePath: 'nao-e-caminho' }).displayAllowed === false,
+      'forma invalida recusada',
+    )
+    const media2 = await runMediaSync(target, { cache, log, store: mediaStore, now: () => new Date(), birth })
     record(8, 'midia idempotente: 2o ciclo nao duplica (unchanged)', media2.images.created === 0 && media2.images.unchanged === 2, `created=${media2.images.created}, unchanged=${media2.images.unchanged}`)
 
     // ===== EXECUCAO PAGINADA + CHECKPOINT/RESUME =====

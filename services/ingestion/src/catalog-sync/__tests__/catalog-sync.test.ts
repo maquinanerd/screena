@@ -10,6 +10,7 @@ import type { CacheFetchInput, CacheResult, SyncLogInput } from '../../ports.js'
 import { normalizeGenres } from '../genres-normalize.js'
 import { normalizeImages, normalizeVideos } from '../media-normalize.js'
 import { runMediaSync, type MediaStorePort, type MediaTarget } from '../media-sync.js'
+import { DARK_MEDIA_BIRTH_POLICY } from '../../media-promotion/birth.js'
 import { runListSync, type CheckpointState, type CheckpointStorePort } from '../list-sync.js'
 
 function fakeCache() {
@@ -107,7 +108,7 @@ describe('runMediaSync', () => {
       fetchImages: async () => IMAGES_PAYLOAD,
       fetchVideos: async () => VIDEOS_PAYLOAD,
     }
-    const r = await runMediaSync(target, { cache, log, store, now: () => new Date(0) })
+    const r = await runMediaSync(target, { cache, log, store, now: () => new Date(0), birth: DARK_MEDIA_BIRTH_POLICY })
     expect(r.images.captured).toBe(true)
     expect(r.images.rows).toBe(2)
     expect(r.images.created).toBe(2)
@@ -115,7 +116,7 @@ describe('runMediaSync', () => {
     expect(writes).toHaveLength(2) // 1 log imagens + 1 log videos
 
     // Segundo ciclo: mesmos payloads -> tudo unchanged (idempotente).
-    const r2 = await runMediaSync(target, { cache, log, store, now: () => new Date(0) })
+    const r2 = await runMediaSync(target, { cache, log, store, now: () => new Date(0), birth: DARK_MEDIA_BIRTH_POLICY })
     expect(r2.images.created).toBe(0)
     expect(r2.images.unchanged).toBe(2)
     expect(r2.videos?.unchanged).toBe(1)
@@ -130,7 +131,7 @@ describe('runMediaSync', () => {
       endpointBase: '/person/5',
       fetchImages: async () => ({ id: 5, profiles: [{ file_path: '/x.jpg' }] }),
     }
-    const r = await runMediaSync(target, { cache, log, store, now: () => new Date(0) })
+    const r = await runMediaSync(target, { cache, log, store, now: () => new Date(0), birth: DARK_MEDIA_BIRTH_POLICY })
     expect(r.videos).toBeNull()
     expect(r.images.rows).toBe(1)
   })

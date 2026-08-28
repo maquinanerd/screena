@@ -351,6 +351,10 @@ export const ROUTE_CACHE_POLICY: Readonly<Record<string, RouteCachePolicy>> = {
     EDITORIAL_SURFACE_REVALIDATE_SECONDS,
     "ficha de pessoa: carrega `Noticias e Bastidores`, entao segue o relogio do editorial",
   ),
+  "/pt/pessoas/[slug]/fotos": publicStatic(
+    CATALOG_SURFACE_REVALIDATE_SECONDS,
+    "galeria de fotos da pessoa: midia de catalogo, sem dado pessoal — a mesma classe das galerias de filme, serie e episodio",
+  ),
   "/pt/creditos-de-dados": publicStatic(BUILD_PRERENDERED, "documento legal, sem banco"),
   "/pt/privacidade": publicStatic(BUILD_PRERENDERED, "documento legal, sem banco"),
   "/pt/termos": publicStatic(BUILD_PRERENDERED, "documento legal, sem banco"),

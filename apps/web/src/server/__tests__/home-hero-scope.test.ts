@@ -113,6 +113,16 @@ function fakePrisma(): Parameters<typeof loadHeroSlides>[0] {
     },
     crewMember: { findFirst: () => Promise.resolve(null) },
     castMember: { findMany: () => Promise.resolve([]) },
+    /**
+     * A DECISAO DE LICENCA do Cinerie Score, consultada por
+     * `server/editorial-score.ts` antes de ler qualquer calculo.
+     *
+     * Devolve VAZIO: sem decisao vigente, o Score nao vai a tela. E o estado
+     * correto para este arquivo, que mede SELECAO de slide, nao exibicao de
+     * nota — e e fail-closed, entao um erro de fiacao aqui nunca produziria uma
+     * nota fantasma passando no teste.
+     */
+    $queryRaw: () => Promise.resolve([]),
     cinerieScoreCalculation: { findMany: () => Promise.resolve([]) },
     // Sem trending capturado e sem curadoria: a ordem cai para vote_count desc,
     // que é o caminho (b) da decisão. Aqui todos têm o mesmo volume, então a

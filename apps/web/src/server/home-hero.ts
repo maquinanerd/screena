@@ -39,7 +39,7 @@ import { cache } from "react";
 import { getPrismaClient } from "@screena/db/server";
 
 import { getCastForEntity } from "./entity-cast";
-import { resolveEditorialScoreSources, type ScoredEntityType } from "./editorial-score";
+import { resolveEditorialScores, scoreFields, type ScoredEntityType } from "./editorial-score";
 import { orderByTrending, readTrendingSnapshot } from "./trending-snapshot";
 import {
   HERO_MAX_YEARS_AHEAD,
@@ -80,16 +80,6 @@ type HeroEntityType = "movie" | "tv";
 /** Ano UTC de uma data (ou null). */
 function yearFromDate(date: Date | null): number | null {
   return date === null ? null : date.getUTCFullYear();
-}
-
-/**
- * Converte um `Decimal` do Prisma (ou number) em `number` seguro. Qualquer valor
- * nao finito vira null (fallback seguro — nunca NaN cruza para o presenter).
- */
-function decimalToNumber(value: { toString(): string } | number | null): number | null {
-  if (value == null) return null;
-  const num = typeof value === "number" ? value : Number(value.toString());
-  return Number.isFinite(num) ? num : null;
 }
 
 /**
@@ -281,9 +271,6 @@ async function movieCandidates(
           voteCountTmdb: true,
           status: true,
           certification: true,
-          screenScore: true,
-          screenScoreScale: true,
-          screenScoreDisplay: true,
           backdropPath: true,
           posterPath: true,
         },
@@ -310,9 +297,13 @@ async function movieCandidates(
         seasonsCount: null,
         episodesCount: null,
         certification: movie.certification,
-        screenScore: decimalToNumber(movie.screenScore),
-        screenScoreScale: movie.screenScoreScale,
-        screenScoreDisplay: movie.screenScoreDisplay,
+        // Placeholders: `scoreFields` sobrescreve os quatro campos com a nota
+        // resolvida de `cinerie_score_calculations`. Nascer vazio aqui e o
+        // fail-closed — se a resolucao falhasse, o slide sairia SEM nota, nunca
+        // com uma nota nao governada.
+        screenScore: null,
+        screenScoreScale: null,
+        screenScoreDisplay: false,
         summary: translation.summary,
         backdropPath: movie.backdropPath,
         posterPath: movie.posterPath,
@@ -341,9 +332,6 @@ async function seriesCandidates(
           numberOfSeasons: true,
           numberOfEpisodes: true,
           certification: true,
-          screenScore: true,
-          screenScoreScale: true,
-          screenScoreDisplay: true,
           backdropPath: true,
           posterPath: true,
         },
@@ -370,9 +358,9 @@ async function seriesCandidates(
         seasonsCount: show.numberOfSeasons,
         episodesCount: show.numberOfEpisodes,
         certification: show.certification,
-        screenScore: decimalToNumber(show.screenScore),
-        screenScoreScale: show.screenScoreScale,
-        screenScoreDisplay: show.screenScoreDisplay,
+        screenScore: null,
+        screenScoreScale: null,
+        screenScoreDisplay: false,
         summary: translation.summary,
         backdropPath: show.backdropPath,
         posterPath: show.posterPath,
@@ -710,30 +698,26 @@ export async function loadHeroSlides(
     );
   }
 
-  // PROCEDENCIA do Cinerie Score em LOTE (uma query por tipo, nunca N+1). Sem
-  // calculo `calculated` coerente em `cinerie_score_calculations`, a nota fica
-  // sem origem editorial e o presenter oculta a estrela — fail-closed.
+  // O Cinerie Score em LOTE (uma query por tipo, nunca N+1). A NOTA vem de
+  // `cinerie_score_calculations` — as colunas `screen_score*` das entidades nao
+  // sao mais lidas por tela nenhuma (ver `./editorial-score`). Sem calculo
+  // exibivel, os quatro campos saem vazios e o presenter oculta a estrela —
+  // fail-closed.
   // A chave inclui o TIPO: `movies.id` e `tv_shows.id` sao sequencias
   // independentes, entao um id 5 de filme e um id 5 de serie coexistem.
-  const scoreSources = await Promise.all(
+  const scoresPorTipo = await Promise.all(
     (["movie", "tv"] as const).map(async (entityType: ScoredEntityType) => {
-      const resolved = await resolveEditorialScoreSources(
+      const resolved = await resolveEditorialScores(
         prisma,
         entityType,
         selected
           .filter((candidate) => candidate.entityType === entityType)
-          .map((candidate) => ({
-            entityId: candidate.entityId,
-            screenScore: candidate.input.screenScore,
-            screenScoreScale: candidate.input.screenScoreScale,
-          })),
+          .map((candidate) => candidate.entityId),
       );
-      return [...resolved].map(
-        ([id, source]) => [`${entityType}:${id}`, source] as const,
-      );
+      return [...resolved].map(([id, view]) => [`${entityType}:${id}`, view] as const);
     }),
   );
-  const sourceByKey = new Map(scoreSources.flat());
+  const scoreByKey = new Map(scoresPorTipo.flat());
 
   const inputs: HeroSlideInput[] = await Promise.all(
     selected.map(async (candidate): Promise<HeroSlideInput> => {
@@ -743,8 +727,9 @@ export async function loadHeroSlides(
       ]);
       return {
         ...candidate.input,
-        screenScoreSource:
-          sourceByKey.get(`${candidate.entityType}:${candidate.entityId.toString()}`) ?? null,
+        ...scoreFields(
+          scoreByKey.get(`${candidate.entityType}:${candidate.entityId.toString()}`),
+        ),
         director,
         cast: cast.map((member) => member.name),
       };

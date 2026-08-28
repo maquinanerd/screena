@@ -169,15 +169,38 @@ describe('home pública — design canônico (tela 02)', () => {
     expect(qa).toContain('C2 slide de SERIE: underline de Início continua VERMELHO e dot fica VERDE')
   })
 
-  it('Cinerie Score: procedência vem do banco, nunca de nota de terceiro', () => {
+  /**
+   * ATUALIZADO em 2026-08-28. Este teste afirmava o desenho ANTIGO: que a
+   * listagem lia a NOTA das colunas `movies.screen_score*` e usava
+   * `cinerie_score_calculations` só como PROCEDÊNCIA, conferindo se as duas
+   * batiam (`latest.scale !== candidate.screenScoreScale`).
+   *
+   * Aquele desenho estava morto em três pontos — nada escrevia
+   * `movies.screen_score`, a migration `20260717120000` zerou
+   * `screen_score_display` e nunca religou, e o gate exigia escala 5 enquanto o
+   * worker grava 100. O teste passava e RATIFICAVA os três: ele conferia a
+   * coerência entre duas fontes das quais uma estava sempre vazia, e vazio bate
+   * com vazio.
+   *
+   * O contrato agora é: a listagem lê a nota de onde ela vive
+   * (`cinerie_score_calculations`), sob o MESMO portão de licença e o MESMO
+   * piso de duas fontes da ficha.
+   */
+  it('Cinerie Score: a nota da listagem vem do cálculo persistido, nunca de nota de terceiro', () => {
     const provenance = read('apps/web/src/server/editorial-score.ts')
     const heroLoader = read('apps/web/src/server/home-hero.ts')
 
-    // A origem editorial NÃO é inventada nem inferida da coluna: vem de
-    // `cinerie_score_calculations` com status `calculated` e valor coerente.
+    // A nota NÃO é inventada nem lida de coluna denormalizada: vem de
+    // `cinerie_score_calculations` com status `calculated`.
     expect(provenance).toContain("status: \"calculated\"")
     expect(provenance).toContain('SCREEN_SCORE_EDITORIAL_SOURCE')
-    expect(provenance).toMatch(/latest\.scale !== candidate\.screenScoreScale/)
+    // O PORTÃO é a decisão de licença — o mesmo da ficha, campo a campo.
+    expect(provenance).toContain("use_case = 'cinerie_score_display'")
+    expect(provenance).toContain('derivative_allowed = true')
+    // O PISO de duas fontes é do presenter puro, e é ele que decide.
+    expect(provenance).toContain('decideCinerieScore')
+    // A coluna morta saiu do caminho de render.
+    expect(provenance).not.toMatch(/screenScoreScale:\s*candidate/)
     // Nenhuma nota externa pode alimentar a estrela. (Varre o CÓDIGO: o
     // cabeçalho do módulo cita essas fontes justamente para proibi-las.)
     const provenanceCode = provenance.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*/g, '')
@@ -185,10 +208,11 @@ describe('home pública — design canônico (tela 02)', () => {
       /voteAverage|imdb|rotten|metacritic|letterboxd|filmaffinity/i,
     )
 
-    // O loader do hero passa a procedência adiante (a cadeia estava quebrada
-    // aqui: `screenScoreSource` nunca era populado por nenhum loader).
-    expect(heroLoader).toContain('resolveEditorialScoreSources')
-    expect(heroLoader).toContain('screenScoreSource:')
+    // O loader do hero passa a nota adiante pelos QUATRO campos juntos.
+    expect(heroLoader).toContain('resolveEditorialScores')
+    expect(heroLoader).toContain('scoreFields(')
+    // E não lê mais as colunas mortas da entidade.
+    expect(heroLoader).not.toContain('screenScoreDisplay: movie.screenScoreDisplay')
     // Chave composta: `movies.id` e `tv_shows.id` são sequências independentes.
     expect(heroLoader).toMatch(/`\$\{entityType\}:\$\{id\}`/)
   })

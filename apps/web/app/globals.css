@@ -6000,6 +6000,12 @@ h4.art-body__heading {
   display: block;
 }
 
+/*
+ * O `+N` e uma ANCORA, nao um rotulo. Ate 27/08/2026 era um `<span>`: dizia ao
+ * leitor que havia mais N fotos e nao oferecia como ve-las. As regras de cor e
+ * `text-decoration` existem porque um `<a>` herda o estilo de link do documento
+ * e o sublinhado sobre a foto ficaria ilegivel.
+ */
 .person-photos__more {
   position: absolute;
   inset: 0;
@@ -6010,6 +6016,23 @@ h4.art-body__heading {
   color: #fff;
   font-size: 20px;
   font-weight: 800;
+  text-decoration: none;
+}
+
+.person-photos__more:hover,
+.person-photos__more:focus-visible {
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+}
+
+/* "Ver todas as N fotos" — o par do `+N` no cabecalho da secao. */
+.person-photos__all {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--c-text-muted-aa);
+  white-space: nowrap;
 }
 
 /* Conhecido por — 5 cards com poster 2/3 */
@@ -10984,7 +11007,13 @@ main[data-vertical='series'] .score-card__label {
  * a grade pula durante a carga (CLS). Fixar a proporção por tipo garante a
  * reserva mesmo quando o dado veio incompleto.
  */
-.gallery-tile[data-kind='poster'] .gallery-tile__img {
+.gallery-tile[data-kind='poster'] .gallery-tile__img,
+/*
+ * Retrato de pessoa usa a MESMA proporcao do poster (2/3). Nao e coincidencia:
+ * o TMDB publica `profile` no mesmo formato retrato, e sem a reserva de espaco
+ * a grade pula durante a carga (CLS) quando o dado vem sem `width`/`height`.
+ */
+.gallery-tile[data-kind='profile'] .gallery-tile__img {
   aspect-ratio: 2 / 3;
   object-fit: cover;
 }

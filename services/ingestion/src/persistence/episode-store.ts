@@ -6,9 +6,16 @@
  * elo faltar, retorna zeros: a ingestao NUNCA cria a entidade dona aqui.
  *
  * Creditos usam REPLACE-SET (deleteMany + createMany numa transacao), o que torna
- * o sync idempotente. Stills nascem display_allowed=false + license_status=unknown
- * e o update JAMAIS reescreve essas flags (invariante 6 — quem libera exibicao e
- * decisao humana, nao o worker).
+ * o sync idempotente.
+ *
+ * O STILL nasce no estado que a licenca vigente autoriza (`MediaBirthPolicy`,
+ * `../media-promotion/birth.ts`) — a mesma politica de `media-store.ts`. Ate
+ * 2026-08-28 este `create` carimbava `false`/`unknown` LITERAIS, sem consultar
+ * licenca nenhuma: um still de episodio nascia invisivel mesmo com a licenca de
+ * imagem do TMDB `official` e `display_allowed = true` desde 21/08.
+ *
+ * O `update` continua JAMAIS reescrevendo essas duas colunas: reacender no ciclo
+ * seguinte desfaria, em silencio, uma revogacao deliberada.
  */
 
 import type { PrismaClient } from '@screena/db/server'
@@ -17,6 +24,7 @@ import type {
   EpisodeReferencesResult,
   EpisodeStorePort,
 } from '../episodes/index.js'
+import type { MediaBirthPolicyReader } from './media-birth-reader.js'
 
 /** Resultado neutro: entidade dona ausente ou nada a persistir. */
 const ZERO_RESULT: EpisodeReferencesResult = {
@@ -32,8 +40,16 @@ function stillPayloadHash(filePath: string): string {
   return `still:${filePath}`
 }
 
-/** Cria um `EpisodeStorePort` apoiado no Prisma. */
-export function createPrismaEpisodeStore(prisma: PrismaClient): EpisodeStorePort {
+/**
+ * Cria um `EpisodeStorePort` apoiado no Prisma.
+ *
+ * `readBirthPolicy` e obrigatorio pelo mesmo motivo de `MediaStorePort`: um
+ * default aqui transformaria "esqueci de fiar" em "nasce apagado", em silencio.
+ */
+export function createPrismaEpisodeStore(
+  prisma: PrismaClient,
+  readBirthPolicy: MediaBirthPolicyReader,
+): EpisodeStorePort {
   return {
     async syncEpisodeReferences(input: EpisodeReferencesInput): Promise<EpisodeReferencesResult> {
       // 1. Resolucao da entidade dona (serie -> temporada -> episodio).
@@ -163,6 +179,8 @@ export function createPrismaEpisodeStore(prisma: PrismaClient): EpisodeStorePort
       let stills = 0
       const episodeTmdbId = episode.tmdbId
       if (episodeTmdbId !== null) {
+        // Uma leitura de licenca por lote de stills, nao por still.
+        const birth = await readBirthPolicy()
         for (const still of input.stills) {
           const metadata = {
             languageCode: still.languageCode,
@@ -173,6 +191,7 @@ export function createPrismaEpisodeStore(prisma: PrismaClient): EpisodeStorePort
             voteCount: still.voteCount,
             payloadHash: stillPayloadHash(still.filePath),
           }
+          const nascimento = birth.forImage({ filePath: still.filePath })
           await prisma.tmdbImage.upsert({
             where: {
               entityType_tmdbId_imageType_filePath: {
@@ -189,11 +208,13 @@ export function createPrismaEpisodeStore(prisma: PrismaClient): EpisodeStorePort
               imageType: 'still',
               filePath: still.filePath,
               ...metadata,
-              // Invariante 6: nasce sem licenca e sem permissao de exibicao.
-              licenseStatus: 'unknown',
-              displayAllowed: false,
+              // Invariante 6 continua valendo — o que mudou e QUEM responde:
+              // a licenca vigente, e nao um literal.
+              licenseStatus: nascimento.licenseStatus as never,
+              displayAllowed: nascimento.displayAllowed,
             },
-            // NUNCA toca displayAllowed/licenseStatus: promocao e decisao humana.
+            // NUNCA toca displayAllowed/licenseStatus: reacender no update
+            // desfaria uma revogacao deliberada.
             update: { ...metadata, fetchedAt: new Date() },
           })
           stills += 1
