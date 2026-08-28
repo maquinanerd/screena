@@ -36,6 +36,7 @@ Comandos:
   audit-database    Relatorio somente-leitura do banco
   index-decisions   Produz page_indexability_decisions (nao liga indexacao)
   backfill-finalization  Cria slug/traducao de entidades presas pelo cache
+  backfill-text          Preenche sinopse/biografia a partir do payload guardado
   dead-letter       list | replay dos jobs esgotados
 
 Flags globais:
@@ -126,6 +127,60 @@ Exemplos:
   pnpm catalog backfill-finalization --dry-run --json
   pnpm catalog backfill-finalization --entity movie,tv --limit 500 --apply`,
 
+  'backfill-text': `catalog backfill-text — preenche SINOPSE e BIOGRAFIA a partir do payload JA guardado.
+
+ZERO CHAMADAS AO TMDB. O texto ja foi baixado e pago: \`translations\` vai em todo
+\`append_to_response\` de detalhe, e a resposta inteira esta em \`api_cache.payload\`
+e \`tmdb_raw.payload\`. O que faltava era LEITURA — o extrator olhava so o campo
+de topo, que o TMDB devolve VAZIO quando o titulo nao tem traducao no idioma
+pedido. Medido em producao em 2026-08-28: 81.529 titulos em \`no_synopsis\` e
+32.087 pessoas em \`no_biography\`.
+
+PRECEDENCIA (a mesma de \`localized-text.ts\`, unica fonte da regra):
+  1. campo de topo (\`overview\` / \`biography\`), quando nao vazio
+  2. entrada \`pt-BR\` dentro de \`translations\`, quando nao vazia
+  3. nada — deixa como esta, sem inventar
+
+\`pt-PT\` NAO e usado. O relatorio MEDE quantos titulos so ele recuperaria
+(\`recoverableOnlyWithPtPt\`) e traz amostras — aceitar portugues europeu em
+pagina pt-BR e decisao editorial do dono, nao conserto de bug.
+
+GARANTIAS:
+  - so preenche NULL/vazio — \`ON CONFLICT ... DO UPDATE ... WHERE\`, avaliado
+    pelo PostgreSQL na mesma instrucao; texto existente nunca e sobrescrito;
+  - idempotente: a segunda execucao grava zero (veja \`refusedExistingText\`);
+  - em lotes, com progresso e \`checkpoint\` por tipo — morrer no meio nao obriga
+    a recomecar do zero;
+  - grava log em \`api_sync_logs\` (invariante 10).
+
+O QUE ELE NAO CONSEGUE FAZER SOZINHO: preencher \`people.biography\` NAO tira a
+pessoa de \`no_biography\`. A politica exige texto E licenca, e
+\`biography_source_status\` nasce \`unknown\` — liberar e decisao HUMANA de licenca.
+Por isso o relatorio separa "biografia preenchida" de "biografia exibivel".
+
+COMO CONFERIR SEM SE ENGANAR: desde 28/08 as fichas sao cacheadas (1 h no edge
+da Cloudflare, 4 h no navegador). Recarregar a pagina logo apos o backfill mostra
+a versao ANTIGA. "A pagina ainda nao mudou" NAO e prova de que a extracao falhou.
+Confira pelo banco:
+
+  SELECT summary FROM entity_translations
+   WHERE entity_type = 'movie' AND entity_id = <id> AND language_code = 'pt-BR';
+
+ou purgue o cache da Cloudflare para a URL e abra em janela anonima.
+
+Flags:
+  --entity <lista>   movie,tv,person (default: todos)
+  --locale <l>       default pt-BR
+  --limit <n>        teto de candidatos por tipo (default: sem teto)
+  --batch-size <n>   tamanho do lote de leitura (default 500)
+  --dry-run          conta e classifica, sem gravar (roda de verdade)
+  --apply            grava
+
+Exemplos:
+  pnpm catalog backfill-text --dry-run --json
+  pnpm catalog backfill-text --entity movie --limit 1000 --dry-run
+  pnpm catalog backfill-text --entity movie,tv --apply`,
+
   'index-decisions': `catalog index-decisions — PRODUZ page_indexability_decisions.
 
 Essa tabela e LIDA pelo sitemap, pelos loaders publicos e pelo resolver de SEO —
@@ -157,10 +212,15 @@ imprime o censo por razao e sai com o code 5 — em dry-run tambem, porque o
 dry-run e a pre-checagem do apply. A secao 6 do CLAUDE.md exige revisao HUMANA
 para indexacao em massa; \`--confirm-mass-change\` e essa assinatura.
 
-O que conta como FLIP: o sitemap trata AUSENCIA de decisao como "dentro". Logo
-\`null -> index\` NAO e flip (crescimento normal do catalogo passa livre) e
-\`null -> noindex\` E flip (a pagina sai). Trocar so a razao entre dois vereditos
-nao-index tambem nao e flip.
+O que conta como FLIP: \`null -> index\` NAO e flip (crescimento normal do
+catalogo passa livre) e \`null -> noindex\` E flip (a pagina sai). Trocar so a
+razao entre dois vereditos nao-index tambem nao e flip.
+
+ATENCAO: essa polaridade vale enquanto o gate do sitemap estiver DESARMADO — que
+e o estado de um banco sem decisoes, ou seja, exatamente a PRIMEIRA execucao.
+Desde 2026-08-27 o sitemap entra so com decisao vigente \`index\`, e arma por tipo
+quando a cobertura cruza o piso; a partir dai AUSENCIA passa a significar "fora".
+Ver \`packages/seo/src/catalog-mass-change.ts\` -> \`isEffectivelyIndexed\`.
 
 Flags:
   --entity <lista>          movie,tv,season,episode,person (default: todos)
@@ -172,9 +232,32 @@ Flags:
   --max-flips <n>           teto absoluto de flips (default 500)
   --max-flip-percent <n>    teto proporcional, 0..100 (default 5)
 
-Exit codes:
-  0  ok
-  5  freio de mudanca em massa — nada gravado, aguardando humano
+O QUE O --dry-run FAZ (desde 2026-08-27). Ele RODA a politica contra o banco,
+em modo so-leitura, e imprime o censo: avaliadas por tipo, veredito de cada uma,
+motivo agregado, quantas linhas nasceriam (\`created\`), quantas trocariam de
+veredito (\`updated\`), quantas ficariam iguais, e o veredito do freio com os
+tetos. Nada e gravado. Ate essa data ele curto-circuitava ANTES do banco e
+imprimia \`"index-decisions: sem efeito colateral"\` com exit 0 — uma frase sobre
+a intencao do comando, lida como aprovacao de um \`--apply\` de ~67 mil decisoes.
+
+Forma do \`--json\` (contrato para script de operacao):
+  schemaVersion   inteiro; sobe quando a forma muda de modo incompativel
+  evaluated       entidades varridas
+  planned         quantas MUDARIAM de decisao
+  written         quantas foram gravadas (0 em dry-run e 0 sob freio)
+  writes          { created, updated, unchanged }
+  byEntityType    { <tipo>: { evaluated, byDecision, byReason, writes } }
+  byDecision      { <veredito>: n }   byReason { <razao>: n }   (globais)
+  massChange      { flips, entersIndex, leavesIndex, flipRatio, limits,
+                    exceeded, exceededBy, confirmed, blocked, explanation }
+  changes         amostra (ate 50) das transicoes, com o flip de cada uma
+
+Exit codes (valem em --dry-run E em --apply — o dry-run e a pre-checagem do
+apply, entao os dois tem que concordar):
+  0  ok — em dry-run: o censo foi calculado e o freio nao bloquearia
+  2  uso invalido (flag/combinacao)
+  3  gate: producao sem --confirm-production-read (leitura) ou sem --force (escrita)
+  5  freio de mudanca em massa — nada gravado/gravaria, aguardando humano
 
 Exemplos:
   pnpm catalog index-decisions --dry-run --json
@@ -296,8 +379,15 @@ Exemplos:
 
   media: `catalog media — sincroniza imagens/videos.
 
-Toda linha nasce display_allowed=false e este comando NUNCA liga a flag:
-promover midia a exibivel e decisao humana registrada (invariante 6).
+A linha NASCE no estado que a licenca vigente de source_licenses autoriza
+(services/ingestion/src/media-promotion/birth.ts, decisao do proprietario de
+2026-08-28). Sem licenca vigente, ou com licenca bloqueante, nasce APAGADA —
+a invariante 6 continua valendo, o que mudou e o MOMENTO da pergunta.
+
+Este comando NUNCA liga a flag por conta propria e o caminho de ATUALIZACAO
+jamais reacende: so a criacao aplica a politica, para que a reversao
+(promote:media --revoke) continue sendo desfeita apenas por outro ato
+deliberado.
 
 Flags:
   --entity <e>         movie | tv | season | episode | person

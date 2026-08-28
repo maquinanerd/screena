@@ -201,7 +201,7 @@ export { mapKnownForDepartment };
  * a escala e SCREEN_SCORE_SCALE e o valor <= escala. Qualquer desvio -> `null`
  * (sem estrela, sem fallback fake, nunca nota por posicao). NUNCA e rating
  * externo (IMDb/RT/TMDB) nem AggregateRating: e a mesma nota governada do hero,
- * formatada como texto (uma casa decimal) para o card.
+ * formatada como INTEIRO na escala 100 para o card.
  */
 export function resolveCardScreenScore(input: ScreenScoreInput): string | null {
   if (input.screenScoreSource !== SCREEN_SCORE_EDITORIAL_SOURCE) return null;
@@ -211,7 +211,11 @@ export function resolveCardScreenScore(input: ScreenScoreInput): string | null {
   if (value == null || !Number.isFinite(value) || value <= 0) return null;
   if (scale !== SCREEN_SCORE_SCALE) return null;
   if (value > scale) return null;
-  return value.toFixed(1);
+  // INTEIRO, nao uma casa decimal. Com a escala unica em 100 (ver
+  // `SCREEN_SCORE_SCALE`), `toFixed(1)` escreveria "82.0" — um decimal que a
+  // fonte nao tem e que a ficha nao mostra. O Score ja chega arredondado de
+  // `decideCinerieScore`; aqui so se formata.
+  return String(Math.round(value));
 }
 
 /** Periodo curto de uma serie: "2011" (ano unico) ou "2011-2019". */
@@ -233,22 +237,59 @@ interface SortableEntry {
   sortKey: string;
 }
 
+/**
+ * Opcoes de montagem da view.
+ *
+ * Existem porque a listagem deixou de carregar o catalogo inteiro (ver
+ * `src/server/entity-indexes.ts`): quando a SELECAO e a ORDENACAO ja aconteceram
+ * no banco, reordenar aqui seria reordenar uma AMOSTRA — e o total de itens nao
+ * pode mais ser deduzido do tamanho da lista recebida.
+ *
+ * Ambas sao OPCIONAIS e os defaults preservam o comportamento antigo: quem
+ * chama com a lista completa (os testes puros, e qualquer chamador futuro que
+ * ainda tenha o conjunto todo em maos) continua obtendo ordenacao em memoria e
+ * `totalCount` derivado.
+ */
+export interface BuildIndexViewOptions {
+  /**
+   * `true` quando a lista JA vem ordenada pela mesma regra (ano desc, depois
+   * titulo) — o presenter preserva a ordem recebida em vez de reordenar.
+   */
+  readonly preordered?: boolean;
+  /**
+   * Total REAL de itens validos na listagem inteira, vindo de um `COUNT` no
+   * banco. Sem ele o total seria o tamanho da pagina, e `hasMore` diria
+   * `false` numa listagem com 21 mil filmes.
+   */
+  readonly totalCount?: number;
+}
+
 function buildIndexView(
   kind: EntityIndexKind,
   entries: SortableEntry[],
+  options?: BuildIndexViewOptions,
 ): EntityIndexView {
   const valid = entries.filter(
     (entry): entry is { card: EntityCard; year: number | null; sortKey: string } =>
       entry.card !== null,
   );
-  valid.sort((a, b) => {
-    const ay = a.year ?? Number.NEGATIVE_INFINITY;
-    const by = b.year ?? Number.NEGATIVE_INFINITY;
-    if (ay !== by) return by - ay;
-    return a.sortKey.localeCompare(b.sortKey);
-  });
-  const totalCount = valid.length;
+  if (options?.preordered !== true) {
+    valid.sort((a, b) => {
+      const ay = a.year ?? Number.NEGATIVE_INFINITY;
+      const by = b.year ?? Number.NEGATIVE_INFINITY;
+      if (ay !== by) return by - ay;
+      return a.sortKey.localeCompare(b.sortKey);
+    });
+  }
   const cards = valid.slice(0, INDEX_ITEM_LIMIT).map((entry) => entry.card);
+  // O total declarado nunca pode ser MENOR que o que a pagina mostra: um
+  // `COUNT` que chegasse defasado (ou negativo) faria `hasMore` mentir para
+  // baixo e esconderia a paginacao. Fail-safe explicito, nao coincidencia.
+  const declared = options?.totalCount;
+  const totalCount =
+    declared === undefined || !Number.isFinite(declared)
+      ? valid.length
+      : Math.max(Math.trunc(declared), cards.length);
   return { kind, cards, totalCount, hasMore: totalCount > cards.length };
 }
 
@@ -302,6 +343,7 @@ export function buildPersonCard(input: PersonListItemInput): EntityCard | null {
 /** Listagem de filmes: releaseDate (ano) desc, depois titleOriginal asc. */
 export function buildMovieIndexView(
   items: MovieListItemInput[],
+  options?: BuildIndexViewOptions,
 ): EntityIndexView {
   return buildIndexView(
     "movie",
@@ -310,12 +352,14 @@ export function buildMovieIndexView(
       year: validYearOrNull(item.year),
       sortKey: trimToNull(item.titleOriginal) ?? "",
     })),
+    options,
   );
 }
 
 /** Listagem de series: firstAirDate (ano) desc, depois nameOriginal asc. */
 export function buildSeriesIndexView(
   items: SeriesListItemInput[],
+  options?: BuildIndexViewOptions,
 ): EntityIndexView {
   return buildIndexView(
     "series",
@@ -324,12 +368,14 @@ export function buildSeriesIndexView(
       year: validYearOrNull(item.firstAirYear),
       sortKey: trimToNull(item.nameOriginal) ?? "",
     })),
+    options,
   );
 }
 
 /** Listagem de pessoas: nome asc (deterministico, sem depender de timestamp). */
 export function buildPersonIndexView(
   items: PersonListItemInput[],
+  options?: BuildIndexViewOptions,
 ): EntityIndexView {
   return buildIndexView(
     "person",
@@ -338,6 +384,7 @@ export function buildPersonIndexView(
       year: null,
       sortKey: trimToNull(item.translationTitle) ?? trimToNull(item.name) ?? "",
     })),
+    options,
   );
 }
 

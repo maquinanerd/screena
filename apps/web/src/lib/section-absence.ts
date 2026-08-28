@@ -33,6 +33,20 @@ export type SectionKey =
   | "guia-critica"
   | "mais-como-este"
   | "elenco"
+  /**
+   * Elenco CONVIDADO de um episódio (`guest_stars` do TMDB).
+   *
+   * Separado de `elenco` de propósito: são dois blocos diferentes na MESMA
+   * página de episódio, e um log que os confundisse não diria qual dos dois
+   * ficou vazio.
+   */
+  | "elenco-convidado"
+  /** Equipe técnica de um episódio — direção e roteiro. */
+  | "equipe-tecnica"
+  /** Imagens de um episódio (`tmdb_images` com `entity_type='episode'`). */
+  | "imagens-do-episodio"
+  /** Trailer de uma TEMPORADA — `tmdb_videos` com `entity_type='season'`. */
+  | "trailer-da-temporada"
   | "noticias"
   /** Biografia da pessoa (tela 09) — o parágrafo de 68ch do cabeçalho. */
   | "biografia"
@@ -63,6 +77,37 @@ export type SectionKey =
  * a diferenca entre um comando de operacao pendente e um fato sobre o filme.
  */
 export type SectionAbsenceReason =
+  /**
+   * O episódio não tem nenhuma linha de crédito no banco.
+   *
+   * ACIONÁVEL. Até 2026-08-27 esta era a causa de TODOS os episódios do
+   * catálogo: `syncEpisodes` lia o resumo da temporada, que não traz
+   * `credits`, e gravava zero. O conserto é rodar `catalog episodes` de novo
+   * — o dado sempre esteve no TMDB.
+   */
+  | "no_episode_credits"
+  /**
+   * O episódio não tem `tmdb_id` próprio, então não há chave de mídia.
+   *
+   * ACIONÁVEL, e distinto de "não há imagem": significa que a entidade foi
+   * promovida sem identidade externa e que `sync_media` vai RECUSAR o job.
+   */
+  | "no_episode_tmdb_id"
+  /**
+   * Há chave, e `tmdb_images` não tem nenhuma linha para este episódio.
+   *
+   * ACIONÁVEL enquanto `sync_media` de episódio não tiver rodado — que é o
+   * estado do dia em que este motivo nasceu.
+   */
+  | "no_episode_images"
+  /**
+   * Nenhum vídeo de TEMPORADA sobreviveu ao gate (`display_allowed` +
+   * `license_status`) ou nenhum foi coletado.
+   *
+   * ACIONÁVEL: são dois passos, e os dois são operação — `sync_media` de
+   * temporada coleta, `catalog promote:media` acende. Nenhum é deploy.
+   */
+  | "no_season_trailer"
   /** Nenhuma nota sobreviveu ao gate de licenca/credito/frescor. */
   | "no_authorized_rating"
   /**
@@ -274,8 +319,14 @@ export interface SectionAbsence {
    * alternativas seriam mentir (`entityType: "movie"` num log de pessoa) ou
    * usar o formato de ROTA, cujo campo `vertical` so conhece filme/serie. Log
    * que mente e pior que log que falta.
+   *
+   * `season` e `episode` entraram em 2026-08-27 pelo MESMO argumento: os
+   * blocos que faltam na pagina de episodio (elenco convidado, equipe,
+   * imagens) sao de UM episodio, e `entityId` acha esse episodio. Registrar
+   * `entityType: "tv"` mandaria o operador para a serie inteira — o log
+   * mentiria sobre onde olhar.
    */
-  readonly entityType: "movie" | "tv" | "person";
+  readonly entityType: "movie" | "tv" | "person" | "season" | "episode";
   /** Id local da entidade — e o que permite ao operador achar o titulo. */
   readonly entityId: string;
   /**
@@ -306,12 +357,20 @@ const ACTIONABLE_REASONS: ReadonlySet<SectionAbsenceReason> = new Set([
   "below_upcoming_floor",
   "no_recommendation_service",
   "newsletter_storage_unavailable",
+  // As quatro de temporada/episódio: TODAS são passo de operação pendente
+  // (rodar `catalog episodes`, rodar `sync_media`, promover a mídia), nunca um
+  // fato sobre a obra. Um episódio SEMPRE tem direção; se o bloco está vazio,
+  // alguém precisa agir.
+  "no_episode_credits",
+  "no_episode_tmdb_id",
+  "no_episode_images",
+  "no_season_trailer",
 ]);
 
 export interface SectionAbsenceContext {
   readonly section: SectionKey;
   readonly reason: SectionAbsenceReason;
-  readonly entityType: "movie" | "tv" | "person";
+  readonly entityType: "movie" | "tv" | "person" | "season" | "episode";
   readonly entityId: string;
 }
 

@@ -39,9 +39,13 @@ import { cache } from "react";
 import { getPrismaClient } from "@screena/db/server";
 
 import { getCastForEntity } from "./entity-cast";
-import { resolveEditorialScoreSources, type ScoredEntityType } from "./editorial-score";
+import { resolveEditorialScores, scoreFields, type ScoredEntityType } from "./editorial-score";
 import { orderByTrending, readTrendingSnapshot } from "./trending-snapshot";
 import {
+  HERO_MAX_YEARS_AHEAD,
+  HERO_MIN_VOTE_COUNT,
+  HERO_MIN_YEAR,
+  HERO_MOVIE_RELEASED_STATUS,
   heroRejectionReason,
   type HeroRejectionReason,
 } from "../lib/home-hero-eligibility";
@@ -50,6 +54,7 @@ import {
   type HeroSlide,
   type HeroSlideInput,
 } from "../lib/home-hero-presenter";
+import { findManyInChunks } from "../lib/prisma-in-chunks";
 
 const LANGUAGE_CODE = "pt-BR";
 
@@ -78,22 +83,110 @@ function yearFromDate(date: Date | null): number | null {
 }
 
 /**
- * Converte um `Decimal` do Prisma (ou number) em `number` seguro. Qualquer valor
- * nao finito vira null (fallback seguro — nunca NaN cruza para o presenter).
+ * ============================================================================
+ * O HERO CARREGAVA O CATALOGO INTEIRO PARA ESCOLHER 5 SLIDES (corrigido 2026-08-28)
+ * ============================================================================
+ * `canonicalSlugsByEntity` nao tinha escopo: toda requisicao trazia TODOS os
+ * slugs canonicos da vertical, depois TODAS as entidades e TODAS as traducoes
+ * daqueles ids, e so entao o portao de qualidade rodava em memoria. Com ~21 mil
+ * filmes com slug isso e ~63 mil linhas por render — na home, em `/pt/filmes` e
+ * em `/pt/series`, porque as tres chamam este loader.
+ *
+ * O portao agora roda NO BANCO, e o que volta e uma lista curta de ids. O
+ * portao em memoria (`applyHeroGate`) continua existindo e continua sendo a
+ * autoridade: o SQL e um PRE-FILTRO que reproduz as mesmas clausulas de
+ * `lib/home-hero-eligibility.ts`. Se as duas discordarem, quem manda e a
+ * funcao pura — o SQL so pode ser MAIS restritivo, nunca menos, e
+ * `home-hero-selection.test.ts` continua medindo o portao de verdade.
+ *
+ * TRES FONTES DE ID, e as duas ultimas nao sao opcionais:
+ *  1. o topo por `vote_count_tmdb` que passa no portao (o automatico);
+ *  2. os ids do TRENDING da semana — eles vem antes do vote_count na ordem
+ *     final, e um titulo em alta com poucos votos ficaria fora do topo;
+ *  3. os ids da CURADORIA MANUAL — que NAO passa pelo portao de proposito.
+ *     Sem esta terceira fonte, fixar um titulo sem sinopse pt-BR deixaria de
+ *     funcionar em silencio, que e o pior desfecho possivel para um recurso
+ *     cujo ponto e o dono mandar.
  */
-function decimalToNumber(value: { toString(): string } | number | null): number | null {
-  if (value == null) return null;
-  const num = typeof value === "number" ? value : Number(value.toString());
-  return Number.isFinite(num) ? num : null;
+const HERO_CANDIDATE_LIMIT = 60;
+
+/**
+ * `$1` language_code, `$2` vote minimo, `$3` agora, `$4` ano minimo,
+ * `$5` ano maximo, `$6` limite. Filme acrescenta `$7` = status exigido.
+ */
+function heroCandidateSql(entityType: HeroEntityType): string {
+  const table = entityType === "movie" ? "movies" : "tv_shows";
+  const dateColumn = entityType === "movie" ? "release_date" : "first_air_date";
+  // `status` so decide para FILME — em serie "Returning Series"/"Ended" sao
+  // ambos legitimos, e exigir "Released" reprovaria o catalogo inteiro de
+  // series. Mesma regra, e mesma justificativa, de `heroRejectionReason`.
+  const statusClause = entityType === "movie" ? "AND e.status = $7" : "";
+  return `
+    SELECT e.id
+    FROM slugs s
+    JOIN ${table} e ON e.id = s.entity_id
+    JOIN entity_translations t
+      ON t.entity_type = '${entityType}'::"EntityType"
+     AND t.entity_id = e.id
+     AND t.language_code = $1
+    WHERE s.entity_type = '${entityType}'::"EntityType"
+      AND s.language_code = $1
+      AND s.is_canonical
+      AND NULLIF(btrim(e.backdrop_path), '') IS NOT NULL
+      AND NULLIF(btrim(e.poster_path), '') IS NOT NULL
+      AND e.vote_count_tmdb >= $2
+      AND NULLIF(btrim(t.summary), '') IS NOT NULL
+      AND e.${dateColumn} IS NOT NULL
+      AND e.${dateColumn} <= $3
+      AND EXTRACT(YEAR FROM e.${dateColumn}) >= $4
+      AND EXTRACT(YEAR FROM e.${dateColumn}) <= $5
+      ${statusClause}
+    ORDER BY e.vote_count_tmdb DESC, e.id ASC
+    LIMIT $6
+  `;
 }
 
-/** Slugs canonicos pt-BR de um tipo, indexados por entityId (string). */
+const HERO_CANDIDATE_SQL: Readonly<Record<HeroEntityType, string>> = {
+  movie: heroCandidateSql("movie"),
+  tv: heroCandidateSql("tv"),
+};
+
+/** Ids que o portao aprova, do mais votado para o menos, ate o teto. */
+async function gatedTopIds(
+  prisma: PrismaClient,
+  entityType: HeroEntityType,
+  now: Date,
+): Promise<bigint[]> {
+  const params: unknown[] = [
+    LANGUAGE_CODE,
+    HERO_MIN_VOTE_COUNT,
+    now,
+    HERO_MIN_YEAR,
+    now.getUTCFullYear() + HERO_MAX_YEARS_AHEAD,
+    HERO_CANDIDATE_LIMIT,
+  ];
+  if (entityType === "movie") params.push(HERO_MOVIE_RELEASED_STATUS);
+  const rows = await prisma.$queryRawUnsafe<{ id: bigint }[]>(
+    HERO_CANDIDATE_SQL[entityType],
+    ...params,
+  );
+  return rows.map((row) => row.id);
+}
+
+/** Slugs canonicos pt-BR de um tipo, DENTRO do escopo de ids pedido. */
 async function canonicalSlugsByEntity(
   prisma: PrismaClient,
   entityType: HeroEntityType,
+  scope: readonly bigint[],
 ): Promise<{ ids: bigint[]; slugByEntity: Map<string, string> }> {
+  if (scope.length === 0) return { ids: [], slugByEntity: new Map() };
   const rows = await prisma.slug.findMany({
-    where: { entityType, languageCode: LANGUAGE_CODE, isCanonical: true },
+    where: {
+      entityType,
+      languageCode: LANGUAGE_CODE,
+      isCanonical: true,
+      entityId: { in: [...scope] },
+    },
     select: { entityId: true, slug: true },
   });
   const slugByEntity = new Map<string, string>();
@@ -113,10 +206,15 @@ async function translationsByEntity(
 ): Promise<Map<string, { title: string | null; summary: string | null }>> {
   const out = new Map<string, { title: string | null; summary: string | null }>();
   if (ids.length === 0) return out;
-  const rows = await prisma.entityTranslation.findMany({
-    where: { entityType, entityId: { in: ids }, languageCode: LANGUAGE_CODE },
-    select: { entityId: true, title: true, summary: true },
-  });
+  // `ids` agora e o ESCOPO curto (topo + trending + curadoria). O fatiamento
+  // continua: ele e a rede de seguranca do teto de 32.767 bind variables e nao
+  // sai porque a lista encolheu — ver `../lib/prisma-in-chunks`.
+  const rows = await findManyInChunks(ids, (chunk) =>
+    prisma.entityTranslation.findMany({
+      where: { entityType, entityId: { in: chunk }, languageCode: LANGUAGE_CODE },
+      select: { entityId: true, title: true, summary: true },
+    }),
+  );
   for (const row of rows) {
     out.set(row.entityId.toString(), { title: row.title, summary: row.summary });
   }
@@ -156,26 +254,28 @@ interface HeroCandidate {
 }
 
 /** Monta os candidatos de FILME (sem crew/cast ainda). */
-async function movieCandidates(prisma: PrismaClient): Promise<HeroCandidate[]> {
-  const { ids, slugByEntity } = await canonicalSlugsByEntity(prisma, "movie");
+async function movieCandidates(
+  prisma: PrismaClient,
+  scope: readonly bigint[],
+): Promise<HeroCandidate[]> {
+  const { ids, slugByEntity } = await canonicalSlugsByEntity(prisma, "movie", scope);
   if (ids.length === 0) return [];
   const [movies, translations] = await Promise.all([
-    prisma.movie.findMany({
-      where: { id: { in: ids } },
-      select: {
-        id: true,
-        titleOriginal: true,
-        releaseDate: true,
-        voteCountTmdb: true,
-        status: true,
-        certification: true,
-        screenScore: true,
-        screenScoreScale: true,
-        screenScoreDisplay: true,
-        backdropPath: true,
-        posterPath: true,
-      },
-    }),
+    findManyInChunks(ids, (chunk) =>
+      prisma.movie.findMany({
+        where: { id: { in: chunk } },
+        select: {
+          id: true,
+          titleOriginal: true,
+          releaseDate: true,
+          voteCountTmdb: true,
+          status: true,
+          certification: true,
+          backdropPath: true,
+          posterPath: true,
+        },
+      }),
+    ),
     translationsByEntity(prisma, "movie", ids),
   ]);
   return movies.map((movie) => {
@@ -197,9 +297,13 @@ async function movieCandidates(prisma: PrismaClient): Promise<HeroCandidate[]> {
         seasonsCount: null,
         episodesCount: null,
         certification: movie.certification,
-        screenScore: decimalToNumber(movie.screenScore),
-        screenScoreScale: movie.screenScoreScale,
-        screenScoreDisplay: movie.screenScoreDisplay,
+        // Placeholders: `scoreFields` sobrescreve os quatro campos com a nota
+        // resolvida de `cinerie_score_calculations`. Nascer vazio aqui e o
+        // fail-closed — se a resolucao falhasse, o slide sairia SEM nota, nunca
+        // com uma nota nao governada.
+        screenScore: null,
+        screenScoreScale: null,
+        screenScoreDisplay: false,
         summary: translation.summary,
         backdropPath: movie.backdropPath,
         posterPath: movie.posterPath,
@@ -209,28 +313,30 @@ async function movieCandidates(prisma: PrismaClient): Promise<HeroCandidate[]> {
 }
 
 /** Monta os candidatos de SERIE (sem crew/cast ainda). */
-async function seriesCandidates(prisma: PrismaClient): Promise<HeroCandidate[]> {
-  const { ids, slugByEntity } = await canonicalSlugsByEntity(prisma, "tv");
+async function seriesCandidates(
+  prisma: PrismaClient,
+  scope: readonly bigint[],
+): Promise<HeroCandidate[]> {
+  const { ids, slugByEntity } = await canonicalSlugsByEntity(prisma, "tv", scope);
   if (ids.length === 0) return [];
   const [shows, translations] = await Promise.all([
-    prisma.tvShow.findMany({
-      where: { id: { in: ids } },
-      select: {
-        id: true,
-        nameOriginal: true,
-        firstAirDate: true,
-        voteCountTmdb: true,
-        status: true,
-        numberOfSeasons: true,
-        numberOfEpisodes: true,
-        certification: true,
-        screenScore: true,
-        screenScoreScale: true,
-        screenScoreDisplay: true,
-        backdropPath: true,
-        posterPath: true,
-      },
-    }),
+    findManyInChunks(ids, (chunk) =>
+      prisma.tvShow.findMany({
+        where: { id: { in: chunk } },
+        select: {
+          id: true,
+          nameOriginal: true,
+          firstAirDate: true,
+          voteCountTmdb: true,
+          status: true,
+          numberOfSeasons: true,
+          numberOfEpisodes: true,
+          certification: true,
+          backdropPath: true,
+          posterPath: true,
+        },
+      }),
+    ),
     translationsByEntity(prisma, "tv", ids),
   ]);
   return shows.map((show) => {
@@ -252,9 +358,9 @@ async function seriesCandidates(prisma: PrismaClient): Promise<HeroCandidate[]> 
         seasonsCount: show.numberOfSeasons,
         episodesCount: show.numberOfEpisodes,
         certification: show.certification,
-        screenScore: decimalToNumber(show.screenScore),
-        screenScoreScale: show.screenScoreScale,
-        screenScoreDisplay: show.screenScoreDisplay,
+        screenScore: null,
+        screenScoreScale: null,
+        screenScoreDisplay: false,
         summary: translation.summary,
         backdropPath: show.backdropPath,
         posterPath: show.posterPath,
@@ -423,6 +529,71 @@ function composeHero(
 }
 
 /**
+ * DIAGNOSTICO DE HERO VAZIO, CONTADO NO BANCO.
+ *
+ * Antes, o motivo das recusas saia do portao em memoria — o que so funcionava
+ * porque o catalogo INTEIRO era carregado. Com o pre-filtro em SQL, um catalogo
+ * onde nada passa devolve ZERO linhas, `rejected` fica vazio, e o log
+ * `hero_empty` deixaria de sair exatamente na hora em que ele importa. Ausencia
+ * silenciosa e defeito, nao economia.
+ *
+ * Esta consulta roda SO quando nada foi selecionado, e conta sobre o catalogo
+ * inteiro daquela vertical (entidades COM slug canonico pt-BR). Os contadores
+ * NAO sao mutuamente exclusivos — um titulo sem arte e sem sinopse conta nos
+ * dois. Isso e deliberado: a pergunta operacional e "o que falta ingerir?", e
+ * para essa pergunta o primeiro motivo que o portao encontrou esconde os
+ * outros.
+ */
+async function heroGateCensus(
+  prisma: PrismaClient,
+  entityType: HeroEntityType,
+  now: Date,
+): Promise<Record<string, number>> {
+  const table = entityType === "movie" ? "movies" : "tv_shows";
+  const dateColumn = entityType === "movie" ? "release_date" : "first_air_date";
+  const statusSelect =
+    entityType === "movie"
+      ? `, count(*) FILTER (WHERE e.status IS DISTINCT FROM $6) AS nao_lancado`
+      : "";
+  const sql = `
+    SELECT count(*) AS com_slug,
+           count(*) FILTER (WHERE NULLIF(btrim(e.backdrop_path), '') IS NULL) AS sem_backdrop,
+           count(*) FILTER (WHERE NULLIF(btrim(e.poster_path), '') IS NULL) AS sem_poster,
+           count(*) FILTER (WHERE e.vote_count_tmdb IS NULL OR e.vote_count_tmdb < $2) AS votos_insuficientes,
+           count(*) FILTER (WHERE NULLIF(btrim(t.summary), '') IS NULL) AS sem_sinopse_pt_br,
+           count(*) FILTER (WHERE e.${dateColumn} IS NULL OR e.${dateColumn} > $3) AS estreia_futura,
+           count(*) FILTER (
+             WHERE e.${dateColumn} IS NOT NULL
+               AND (EXTRACT(YEAR FROM e.${dateColumn}) < $4
+                 OR EXTRACT(YEAR FROM e.${dateColumn}) > $5)
+           ) AS ano_implausivel${statusSelect}
+    FROM slugs s
+    JOIN ${table} e ON e.id = s.entity_id
+    LEFT JOIN entity_translations t
+      ON t.entity_type = '${entityType}'::"EntityType"
+     AND t.entity_id = e.id
+     AND t.language_code = $1
+    WHERE s.entity_type = '${entityType}'::"EntityType"
+      AND s.language_code = $1
+      AND s.is_canonical
+  `;
+  const params: unknown[] = [
+    LANGUAGE_CODE,
+    HERO_MIN_VOTE_COUNT,
+    now,
+    HERO_MIN_YEAR,
+    now.getUTCFullYear() + HERO_MAX_YEARS_AHEAD,
+  ];
+  if (entityType === "movie") params.push(HERO_MOVIE_RELEASED_STATUS);
+  const rows = await prisma.$queryRawUnsafe<Record<string, bigint>[]>(sql, ...params);
+  const row = rows[0];
+  if (row === undefined) return {};
+  const out: Record<string, number> = {};
+  for (const [key, value] of Object.entries(row)) out[key] = Number(value);
+  return out;
+}
+
+/**
  * Monta os slides do hero-carousel do escopo pedido, ate
  * `HOME_HERO_SLIDE_LIMIT`. Resolve crew/cast so dos candidatos que entram no
  * carousel (evita N+1 no catalogo inteiro). Sem dado real -> [] e a pagina
@@ -433,11 +604,43 @@ export async function loadHeroSlides(
   scope: HeroScope,
   now: Date = new Date(),
 ): Promise<HeroSlide[]> {
+  const permitidos = new Set<HeroEntityType>(
+    scope === "movies" ? ["movie"] : scope === "series" ? ["tv"] : ["movie", "tv"],
+  );
+
+  // A CURADORIA e lida ANTES dos candidatos, e nao depois: os ids dela entram
+  // no escopo da consulta. Ela nao passa pelo portao (decisao do dono), entao
+  // um titulo fixado precisa ser carregado por id — se dependesse do topo por
+  // vote_count, fixar um titulo pouco votado deixaria de funcionar em silencio.
+  const curated = (await curatedEntityKeys(prisma, now)).filter((pick) =>
+    permitidos.has(pick.entityType),
+  );
+  const curatedIds = (entityType: HeroEntityType): bigint[] =>
+    curated.filter((pick) => pick.entityType === entityType).map((pick) => pick.entityId);
+
+  // O TRENDING tambem entra no escopo: ele vem ANTES do vote_count na ordem
+  // final (`orderEligible`), e um titulo em alta com poucos votos ficaria fora
+  // do topo por construcao.
+  const escopo = async (entityType: HeroEntityType): Promise<bigint[]> => {
+    if (!permitidos.has(entityType)) return [];
+    const [top, trending] = await Promise.all([
+      gatedTopIds(prisma, entityType, now),
+      readTrendingSnapshot(prisma, entityType, "week", now),
+    ]);
+    const unicos = new Map<string, bigint>();
+    for (const id of [...top, ...trending.entityIds, ...curatedIds(entityType)]) {
+      unicos.set(id.toString(), id);
+    }
+    return [...unicos.values()];
+  };
+
+  const [escopoFilmes, escopoSeries] = await Promise.all([escopo("movie"), escopo("tv")]);
+
   // A vertical oposta nao e consultada: em `/pt/series` o catalogo de filmes
-  // (129 titulos em producao) nao paga nem uma query.
+  // nao paga nem uma query.
   const [movies, series] = await Promise.all([
-    scope === "series" ? Promise.resolve<HeroCandidate[]>([]) : movieCandidates(prisma),
-    scope === "movies" ? Promise.resolve<HeroCandidate[]>([]) : seriesCandidates(prisma),
+    movieCandidates(prisma, escopoFilmes),
+    seriesCandidates(prisma, escopoSeries),
   ]);
 
   // PORTAO DE QUALIDADE, por vertical. Ate 25/08/2026 nao havia portao nenhum:
@@ -460,63 +663,61 @@ export async function loadHeroSlides(
         : [...filmesOrdenados, ...seriesOrdenadas];
 
   // A curadoria manual VENCE: entra na frente, e o automatico preenche o resto.
-  const curated = await curatedEntityKeys(prisma, now);
   const byKey = new Map<string, HeroCandidate>();
   for (const candidate of [...movies, ...series]) {
     byKey.set(`${candidate.entityType}:${candidate.entityId.toString()}`, candidate);
   }
-  const permitidos = new Set<HeroEntityType>(
-    scope === "movies" ? ["movie"] : scope === "series" ? ["tv"] : ["movie", "tv"],
-  );
-  const selected = composeHero(
-    curated.filter((pick) => permitidos.has(pick.entityType)),
-    automatic,
-    byKey,
-  );
+  const selected = composeHero(curated, automatic, byKey);
 
   // AUSENCIA NUNCA E MUDA. Nenhum elegivel significa uma faixa a menos na home,
   // e o motivo mais frequente das recusas diz o que falta (arte? traducao?
   // votos?). Sem esta linha, "o hero sumiu" seria indistinguivel de "o hero
   // quebrou".
-  if (selected.length === 0 && recusados.length > 0) {
+  if (selected.length === 0) {
+    // O censo vem do BANCO e cobre o catalogo inteiro; `rejected` cobre so o
+    // escopo carregado (trending + curadoria que nao passaram). Os dois saem,
+    // porque respondem a perguntas diferentes: "o que falta ingerir?" e "o que
+    // foi pedido e nao pode entrar?".
     const porMotivo: Record<string, number> = {};
     for (const recusa of recusados) {
       porMotivo[recusa.reason] = (porMotivo[recusa.reason] ?? 0) + 1;
     }
+    const censo = await Promise.all(
+      [...permitidos].map(
+        async (entityType) => [entityType, await heroGateCensus(prisma, entityType, now)] as const,
+      ),
+    );
     console.warn(
       JSON.stringify({
         event: "hero_empty",
         scope,
-        candidates: recusados.length,
-        byReason: porMotivo,
+        scopedCandidates: movies.length + series.length,
+        scopedRejections: porMotivo,
+        catalogCensus: Object.fromEntries(censo),
       }),
     );
   }
 
-  // PROCEDENCIA do Cinerie Score em LOTE (uma query por tipo, nunca N+1). Sem
-  // calculo `calculated` coerente em `cinerie_score_calculations`, a nota fica
-  // sem origem editorial e o presenter oculta a estrela — fail-closed.
+  // O Cinerie Score em LOTE (uma query por tipo, nunca N+1). A NOTA vem de
+  // `cinerie_score_calculations` — as colunas `screen_score*` das entidades nao
+  // sao mais lidas por tela nenhuma (ver `./editorial-score`). Sem calculo
+  // exibivel, os quatro campos saem vazios e o presenter oculta a estrela —
+  // fail-closed.
   // A chave inclui o TIPO: `movies.id` e `tv_shows.id` sao sequencias
   // independentes, entao um id 5 de filme e um id 5 de serie coexistem.
-  const scoreSources = await Promise.all(
+  const scoresPorTipo = await Promise.all(
     (["movie", "tv"] as const).map(async (entityType: ScoredEntityType) => {
-      const resolved = await resolveEditorialScoreSources(
+      const resolved = await resolveEditorialScores(
         prisma,
         entityType,
         selected
           .filter((candidate) => candidate.entityType === entityType)
-          .map((candidate) => ({
-            entityId: candidate.entityId,
-            screenScore: candidate.input.screenScore,
-            screenScoreScale: candidate.input.screenScoreScale,
-          })),
+          .map((candidate) => candidate.entityId),
       );
-      return [...resolved].map(
-        ([id, source]) => [`${entityType}:${id}`, source] as const,
-      );
+      return [...resolved].map(([id, view]) => [`${entityType}:${id}`, view] as const);
     }),
   );
-  const sourceByKey = new Map(scoreSources.flat());
+  const scoreByKey = new Map(scoresPorTipo.flat());
 
   const inputs: HeroSlideInput[] = await Promise.all(
     selected.map(async (candidate): Promise<HeroSlideInput> => {
@@ -526,8 +727,9 @@ export async function loadHeroSlides(
       ]);
       return {
         ...candidate.input,
-        screenScoreSource:
-          sourceByKey.get(`${candidate.entityType}:${candidate.entityId.toString()}`) ?? null,
+        ...scoreFields(
+          scoreByKey.get(`${candidate.entityType}:${candidate.entityId.toString()}`),
+        ),
         director,
         cast: cast.map((member) => member.name),
       };

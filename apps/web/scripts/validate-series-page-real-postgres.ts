@@ -113,7 +113,7 @@ async function seedTmdbImageLicense(prisma: PrismaLike): Promise<void> {
       attributionText: TMDB_IMAGE_ATTRIBUTION,
       isCurrent: true,
       decisionOrigin: "validator-harness",
-      policyVersion: "cinerie-source-auth/tmdb-image/2026-08-v3",
+      policyVersion: "cinerie-source-auth/tmdb-image/2026-08-v4",
     },
   });
 }

@@ -33,6 +33,12 @@ import type { GalleryFacet } from '../../src/lib/gallery-presenter'
  */
 export type GalleryShellVertical = 'filmes' | 'series' | 'pessoas'
 
+/** Um degrau da trilha. `href` nulo = degrau atual (nao vira link). */
+export interface GalleryCrumb {
+  readonly label: string
+  readonly href: string | null
+}
+
 /** O que o casco precisa saber para se desenhar. */
 export interface GalleryShellProps {
   readonly vertical: GalleryShellVertical
@@ -52,6 +58,18 @@ export interface GalleryShellProps {
   readonly facetsLabel: string
   /** `true` quando a página está abaixo do piso e recebeu `noindex`. */
   readonly belowFloor: boolean
+  /**
+   * Trilha COMPLETA, quando a de três degraus não serve.
+   *
+   * A galeria de título tem sempre a mesma profundidade (índice → título →
+   * galeria), e por isso o casco a monta sozinho. A de EPISÓDIO tem cinco
+   * degraus (Séries → série → temporada → episódio → Imagens), e achatá-la em
+   * três esconderia a temporada — que é a página de onde o leitor veio.
+   *
+   * Quando presente, substitui a trilha padrão por inteiro. O último degrau
+   * recebe `aria-current="page"` independentemente do `href`.
+   */
+  readonly crumbs?: readonly GalleryCrumb[]
   readonly children: React.ReactNode
 }
 
@@ -85,19 +103,41 @@ function badgeClass(vertical: GalleryShellVertical): string {
 }
 
 export function GalleryShell(props: GalleryShellProps) {
+  // RESOLUÇÃO DE CONFLITO (28/08/2026), e ela não é mecânica.
+  //
+  // A `main` tinha o ternário `filmes ? MOVIES : SERIES`, escrito quando só
+  // havia duas verticais. Com `pessoas` (#233), esse ternário mandaria a trilha
+  // de uma PESSOA para `/pt/series/` — um degrau que aponta para a vertical
+  // errada, silenciosamente. O mapa da #233 é exaustivo por tipo e o compilador
+  // reprova a vertical que faltar, então ele substitui o ternário.
+  //
+  // A trilha com `crumbs` (da `main`) é ortogonal e FICA: ela existe para o
+  // episódio, que tem cinco degraus em vez de três.
   const { path: indexPath, label: indexLabel } = INDEX_BY_VERTICAL[props.vertical]
+  // A trilha padrão de TÍTULO continua sendo montada aqui; `crumbs` só existe
+  // para quem tem profundidade diferente (episódio).
+  const trilha: readonly GalleryCrumb[] = props.crumbs ?? [
+    { label: indexLabel, href: indexPath },
+    { label: props.entityTitle, href: props.entityPath },
+    { label: props.heading, href: null },
+  ]
 
   return (
     <div className="container">
       <nav aria-label="Trilha de navegação" className="detail-hero__crumbs">
         <ol>
-          <li>
-            <a href={indexPath}>{indexLabel}</a>
-          </li>
-          <li>
-            <a href={props.entityPath}>{props.entityTitle}</a>
-          </li>
-          <li aria-current="page">{props.heading}</li>
+          {trilha.map((degrau, index) => (
+            <li
+              aria-current={index === trilha.length - 1 ? 'page' : undefined}
+              key={`${degrau.label}-${String(index)}`}
+            >
+              {degrau.href !== null && index !== trilha.length - 1 ? (
+                <a href={degrau.href}>{degrau.label}</a>
+              ) : (
+                degrau.label
+              )}
+            </li>
+          ))}
         </ol>
       </nav>
 

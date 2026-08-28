@@ -31,6 +31,7 @@ export const CATALOG_COMMANDS = [
   'audit-database',
   'index-decisions',
   'backfill-finalization',
+  'backfill-text',
   'dead-letter',
 ] as const
 
@@ -68,6 +69,10 @@ const INT_FLAGS: ReadonlySet<string> = new Set([
   'max-jobs',
   'max-pages',
   'season',
+  // `--episode` existe para `catalog media --entity episode`: a midia de um
+  // episodio e enderecada por serie + temporada + episodio, e sem o terceiro
+  // numero a URL nao fecha.
+  'episode',
   'timeout-ms',
   // Orcamento operacional do `plan-bootstrap`. Existem porque `--limit` mede
   // TITULO, e titulo nao e a unidade de custo: 3 series populares ja
@@ -126,6 +131,7 @@ export interface CatalogFlags {
   readonly maxJobs: number | null
   readonly maxPages: number | null
   readonly season: number | null
+  readonly episode: number | null
   readonly timeoutMs: number | null
   /** Tetos do orcamento (`plan-bootstrap`). null = sem teto naquela dimensao. */
   readonly maxTitles: number | null
@@ -193,6 +199,9 @@ const MUTATING_COMMANDS: ReadonlySet<CatalogCommand> = new Set([
   'index-decisions',
   // Cria slug e traducao de entidades presas pelo short-circuit de cache.
   'backfill-finalization',
+  // Preenche sinopse/biografia a partir de payload JA guardado. Escreve em
+  // `entity_translations`/`people`, que a politica de indexabilidade le.
+  'backfill-text',
 ])
 
 /** Comandos somente-leitura. */
@@ -210,6 +219,57 @@ const READ_ONLY_COMMANDS: ReadonlySet<CatalogCommand> = new Set([
 export function requiresDryRunOrApply(command: CatalogCommand, subcommand: string | null): boolean {
   if (command === 'dead-letter') return subcommand === 'replay'
   return MUTATING_COMMANDS.has(command)
+}
+
+/**
+ * Comandos cujo `--dry-run` RODA A POLITICA DE VERDADE em vez de imprimir um
+ * plano escrito a mao.
+ *
+ * POR QUE ESTA LISTA EXISTE. Ate 2026-08-27 o `bin/catalog.ts` tratava
+ * `--dry-run` num unico ponto, ANTES do dispatch: montava uma lista de frases
+ * (`describePlan`) e saia com code 0, sem abrir Prisma. Para `bootstrap`/`sync`/
+ * `media` — que gastariam cota TMDB — isso e correto e continua valendo. Para
+ * `index-decisions` era pior que nao ter pre-checagem: o comando nao tem `case`
+ * em `describePlan`, caia no `default:` e imprimia
+ *
+ *     {"dryRun":true,"plan":["index-decisions: sem efeito colateral"]}
+ *
+ * Zero contagens, zero vereditos, zero freio — e exit 0, que le como "pode
+ * aplicar". O operador assinaria uma mudanca de dezenas de milhares de decisoes
+ * com base numa frase que so descreve a INTENCAO do comando. A ajuda ja
+ * prometia o contrario ("--dry-run calcula e mostra o diff", "code 5 em dry-run
+ * tambem"): a promessa estava certa e o roteamento e que a contradizia.
+ *
+ * O CRITERIO para entrar aqui: a pre-checagem do comando e SO-LEITURA de
+ * PostgreSQL local — sem rede, sem cota, sem TMDB. Nesse caso "nao tocar em
+ * nada" nao exige desviar antes do dispatch; exige que o handler receba
+ * `dryRun: true`, que e o que `cmdIndexDecisions` ja fazia e nunca era chamado.
+ *
+ * NAO ENTRAM aqui os comandos que consomem TMDB no caminho de planejamento
+ * (`bootstrap`, `sync`, `changes`, `discovery`, `media`, `episodes`,
+ * `search-reindex`): para eles, "dry-run nao monta o runtime" continua sendo a
+ * garantia por construcao. `backfill-finalization`, `enqueue` e
+ * `dead-letter replay` sao so-de-banco e PODERIAM entrar — ficam de fora nesta
+ * leva por escopo; ver `docs/operations/index-decisions-pre-check.md`.
+ */
+const DRY_RUN_RUNS_REAL_POLICY: ReadonlySet<CatalogCommand> = new Set([
+  'index-decisions',
+  // `backfill-text` e so-de-banco e nao gasta cota. O `--dry-run` dele E a
+  // medicao — "quantas entidades a extracao recupera" — e ela nao existe fora
+  // da execucao. Curto-circuitar em `describePlan` devolveria uma frase que
+  // descreve a INTENCAO do comando, que e o defeito consertado na PR #242.
+  'backfill-text',
+])
+
+/**
+ * True quando `--dry-run` deve EXECUTAR o comando (em modo so-leitura) em vez de
+ * curto-circuitar em `describePlan`.
+ *
+ * Consumido por `bin/catalog.ts`. Mora aqui, no nucleo puro, porque e uma regra
+ * — nao um detalhe de IO — e porque no `bin/` nenhum teste a alcancava.
+ */
+export function dryRunExecutesCommand(command: CatalogCommand): boolean {
+  return DRY_RUN_RUNS_REAL_POLICY.has(command)
 }
 
 /** True quando o comando e somente-leitura. */
@@ -344,6 +404,7 @@ export function parseCatalogArgs(argv: readonly string[]): CatalogArgsResult {
     maxJobs: ints['max-jobs'] ?? null,
     maxPages: ints['max-pages'] ?? null,
     season: ints.season ?? null,
+    episode: ints.episode ?? null,
     timeoutMs: ints['timeout-ms'] ?? null,
     maxTitles: ints['max-titles'] ?? null,
     maxSeries: ints['max-series'] ?? null,
@@ -422,6 +483,18 @@ export function validateInvocation(
   }
   if (command === 'media' && flags.entity === null) {
     return '"media" exige --entity (movie|tv|season|episode|person).'
+  }
+  // Ate 2026-08-27 a mensagem acima ja anunciava `season|episode` e o schema do
+  // job os rejeitava. Agora aceita — e exige os numeros que fecham a URL.
+  if (
+    command === 'media' &&
+    (flags.entity === 'season' || flags.entity === 'episode') &&
+    flags.season === null
+  ) {
+    return `"media --entity ${flags.entity}" exige --season (numero da temporada; --id e o da SERIE).`
+  }
+  if (command === 'media' && flags.entity === 'episode' && flags.episode === null) {
+    return '"media --entity episode" exige --episode (numero do episodio).'
   }
   if (command === 'sync' && flags.id === null && flags.idsFile === null) {
     return '"sync" exige --id <tmdbId> ou --ids-file <arquivo>.'

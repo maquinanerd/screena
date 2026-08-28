@@ -21,9 +21,71 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 const ROOT = process.cwd();
+
+/**
+ * ============================================================================
+ * O INSTRUMENTO NOVO: OBSERVAR A CONSULTA, NAO O TEXTO DO MODULO
+ * ============================================================================
+ * As duas provas da camada server-only liam o FONTE (`toContain(
+ * "prisma.movie.findMany")`). Em 2026-08-28 o loader parou de carregar o
+ * catalogo inteiro para exibir seis cards e passou a fazer a selecao no banco,
+ * com `JOIN` e `LIMIT`. O texto mudou; a PROPRIEDADE ("filme pergunta pela
+ * coluna de filme, serie pela de serie") nao.
+ *
+ * Um guard textual nao sabe a diferenca entre esses dois casos — ele reprova a
+ * reescrita e aprova a troca de coluna desde que a grafia bata. Por isso o fake
+ * abaixo: ele captura o SQL que o modulo REALMENTE entrega ao driver, com os
+ * parametros. A prova sobrevive a reescrita e continua reprovando o defeito.
+ */
+const sqlCapturado: Array<{ sql: string; params: unknown[] }> = [];
+
+const fakePrisma = new Proxy(
+  {},
+  {
+    get(_target, model: string | symbol) {
+      if (typeof model === "symbol") return undefined;
+      if (model === "$queryRawUnsafe") {
+        return (sql: string, ...params: unknown[]) => {
+          sqlCapturado.push({ sql, params });
+          return Promise.resolve([]);
+        };
+      }
+      return new Proxy(
+        {},
+        { get: () => () => Promise.resolve([]) },
+      );
+    },
+  },
+);
+
+vi.mock("@screena/db/server", () => ({ getPrismaClient: () => fakePrisma }));
+
+/** O cutoff (2o parametro) que a ultima consulta capturada entregou ao banco. */
+let cutoffEntregue: Date | null = null;
+
+/**
+ * Roda o getter da vertical e devolve o SQL de PAGINA que ele emitiu.
+ *
+ * Os getters sao memoizados por `cache()` do React; chamar os dois na mesma
+ * execucao e seguro porque sao funcoes diferentes, e o que se le e a captura
+ * daquela chamada.
+ */
+async function sqlEmitidoPor(vertical: "movie" | "tv"): Promise<string> {
+  sqlCapturado.length = 0;
+  const modulo = await import("../../apps/web/src/server/home-upcoming");
+  if (vertical === "movie") await modulo.getHomeUpcomingMovies();
+  else await modulo.getHomeUpcomingSeries();
+  const pagina = sqlCapturado.find((call) => /\bLIMIT\b/.test(call.sql));
+  // Sem consulta nao ha prova: um loader que nao perguntasse nada faria todas
+  // as asercoes abaixo passarem sobre uma string vazia.
+  expect(pagina, `o getter de ${vertical} nao emitiu consulta de pagina`).toBeDefined();
+  const cutoff = pagina?.params[1];
+  cutoffEntregue = cutoff instanceof Date ? cutoff : null;
+  return pagina?.sql ?? "";
+}
 
 const HOME = "apps/web/app/pt/page.tsx";
 const MOVIES = "apps/web/app/pt/filmes/page.tsx";
@@ -139,19 +201,61 @@ describe("o piso de 4 itens tem UMA fonte, usada pelos dois consumidores", () =>
 describe("a camada server-only pergunta a coluna certa de cada vertical", () => {
   const server = code(read(SERVER));
 
-  it("filme = Movie.releaseDate futura; série = TvShow.firstAirDate futura", () => {
-    expect(server).toContain("prisma.movie.findMany");
-    expect(server).toMatch(/releaseDate:\s*\{\s*gt:\s*cutoff\s*\}/);
-    expect(server).toContain("prisma.tvShow.findMany");
-    expect(server).toMatch(/firstAirDate:\s*\{\s*gt:\s*cutoff\s*\}/);
+  /**
+   * ESTA PROVA MUDOU DE INSTRUMENTO EM 2026-08-28, e ficou mais forte.
+   *
+   * Ela lia o TEXTO do modulo (`toContain("prisma.movie.findMany")`). Quando o
+   * loader passou a fazer a selecao no banco com `JOIN` e `LIMIT` — porque
+   * antes ele carregava o catalogo inteiro para exibir seis cards — o texto
+   * mudou e a prova reprovou, sem que a PROPRIEDADE tivesse mudado.
+   *
+   * Agora ela observa a CONSULTA QUE O CODIGO REALMENTE EMITE. Um fake registra
+   * o SQL entregue ao driver: filme tem de perguntar por `movies.release_date`,
+   * serie por `tv_shows.first_air_date`, e cada um so pela SUA coluna. Isso
+   * sobrevive a reescrita da consulta e continua reprovando a troca de coluna,
+   * que e o defeito real.
+   */
+  it("filme = movies.release_date futura; série = tv_shows.first_air_date futura", async () => {
+    // A tabela da entidade entra por `JOIN` (a consulta PARTE de `slugs`, para
+    // que quem nao tem slug canonico nunca seja carregado).
+    const emitido = await sqlEmitidoPor("movie");
+    expect(emitido).toMatch(/\bjoin\s+movies\b/i);
+    expect(emitido).toMatch(/e\.release_date\s*>\s*\$\d/i);
+    expect(emitido).not.toMatch(/\btv_shows\b/i);
+    // A negativa mira a COLUNA DA ENTIDADE (`e.`), nao a palavra solta: a
+    // consulta de serie APELIDA `e.first_air_date AS release_date`, e proibir a
+    // palavra reprovaria o apelido — o guard passaria a medir a grafia.
+    expect(emitido).not.toMatch(/e\.first_air_date/i);
+
+    const emitidoSerie = await sqlEmitidoPor("tv");
+    expect(emitidoSerie).toMatch(/\bjoin\s+tv_shows\b/i);
+    expect(emitidoSerie).toMatch(/e\.first_air_date\s*>\s*\$\d/i);
+    expect(emitidoSerie).not.toMatch(/\bmovies\b/i);
+    expect(emitidoSerie).not.toMatch(/e\.release_date/i);
+  });
+
+  it("o CUTOFF entregue ao banco é o inicio do dia UTC — nao 'agora'", () => {
+    // Uma estreia marcada para HOJE continua sendo "em breve" ate o fim do dia.
+    // Passar `now` em vez do inicio do dia faria o card sumir no meio da manha.
+    const cutoff = cutoffEntregue;
+    expect(cutoff).toBeInstanceOf(Date);
+    expect(cutoff?.getUTCHours()).toBe(0);
+    expect(cutoff?.getUTCMinutes()).toBe(0);
+    expect(cutoff?.getUTCSeconds()).toBe(0);
   });
 
   it("o trilho da home é a MISTURA dos dois getters, não uma terceira consulta", () => {
     expect(server).toContain("mergeUpcomingVerticals(movies, series, limit)");
   });
 
-  it("só slug canônico pt-BR entra (sem slug a entidade nunca vira card)", () => {
-    expect(server).toContain('languageCode: LANGUAGE_CODE, isCanonical: true');
+  it("só slug canônico pt-BR entra (sem slug a entidade nunca vira card)", async () => {
+    // Tambem por observacao da consulta emitida: o `JOIN` parte de `slugs` e
+    // exige `is_canonical` no idioma publicado. Uma entidade sem slug nunca
+    // chega a ser carregada — e por isso nunca vira card com link quebrado.
+    const emitido = await sqlEmitidoPor("movie");
+    expect(emitido).toMatch(/\bfrom\s+slugs\b/i);
+    expect(emitido).toMatch(/s\.is_canonical/i);
+    expect(emitido).toMatch(/s\.language_code\s*=\s*\$1/i);
   });
 
   /**

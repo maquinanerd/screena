@@ -24,13 +24,21 @@
  * processo de render nem por engano.
  *
  * ============================================================================
- * HOJE DEVOLVE `null` PARA TODO MUNDO, E A CAUSA É A SEGUNDA
+ * O QUE ESTA SEÇÃO DIZIA, E POR QUE ERA FALSO (corrigido em 2026-08-28)
  * ============================================================================
- * As linhas de `tmdb_videos` nascem `display_allowed = false` por linha, e
- * NADA no repositório as promove. `source_licenses` diz o que a fonte permite;
- * a coluna da linha diz se aquele vídeo específico pode ir ao ar. São dois
- * passos — o mesmo desenho de ratings e streaming — e o segundo é operação
- * governada, não deploy.
+ * Até aqui ela afirmava, em caixa alta, que esta função "HOJE DEVOLVE `null`
+ * PARA TODO MUNDO" porque "NADA no repositório" promove as linhas de
+ * `tmdb_videos`. As duas metades ficaram falsas: `promote:media`
+ * (`services/ingestion/src/media-promotion/`) existe desde 25/08/2026, e havia
+ * 2.395 linhas acesas enquanto este comentário ainda dizia que não havia
+ * nenhuma. Comentário mentiroso é pior que comentário ausente: ele encerra a
+ * investigação na porta errada, e este repositório já pagou por isso.
+ *
+ * ESTADO REAL: a linha de `tmdb_videos` criada a partir de 28/08/2026 NASCE no
+ * estado que a licença autoriza
+ * (`services/ingestion/src/media-promotion/birth.ts`); as anteriores dependem de
+ * uma passagem de `promote:media --target=all`. Esta função devolve `null` para
+ * o título cujas linhas ainda não foram acesas — e para o que não tem vídeo.
  */
 
 import { getPrismaClient } from "@screena/db/server";
@@ -46,9 +54,25 @@ type PrismaClient = ReturnType<typeof getPrismaClient>;
  * há vídeo sem licença, há vídeo não promovido) — todos significam "não
  * exibir". Quem chama transforma em ausência REGISTRADA, nunca em bloco vazio.
  */
+/**
+ * As entidades que podem ter trailer próprio.
+ *
+ * `season` entrou em 2026-08-27. Uma temporada TEM trailer próprio no TMDB — a
+ * 2ª de Ted Lasso tem dois — e a página de temporada não mostrava nenhum porque
+ * `sync_media` recusava `kind='season'`, então `tmdb_videos` nunca teve uma
+ * linha com esse `entity_type`. Não era licença nem desenho: era coleta.
+ *
+ * `episode` fica de fora deste helper de propósito: vídeo de episódio é raro e,
+ * quando existe, é bastidor ou cena — abrir um "Assistir ao trailer" que toca
+ * um clipe de trinta segundos mentiria para o leitor, que é exatamente o que
+ * `TRAILER_TYPE_RANK` já impede por tipo. Os vídeos de episódio, quando houver,
+ * entram pela galeria, que lista o que existe sem prometer o que é.
+ */
+export type TrailerOwnerType = "movie" | "tv" | "season";
+
 export async function getTrailerForEntity(
   prisma: PrismaClient,
-  entityType: "movie" | "tv",
+  entityType: TrailerOwnerType,
   tmdbId: number,
 ): Promise<TrailerView | null> {
   const rows = await prisma.tmdbVideo.findMany({

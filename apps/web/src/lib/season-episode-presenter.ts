@@ -150,6 +150,18 @@ export interface SeasonPageView {
   episodeCount: number | null;
   episodeCountLabel: string | null;
   poster: SeriesImageAsset | null;
+  /**
+   * O backdrop 16:9 da SÉRIE, para o cartão de trailer da temporada.
+   *
+   * Vem da série de propósito: o TMDB não publica backdrop POR TEMPORADA, e
+   * escolher um still de episódio e apresentá-lo como "o frame deste trailer"
+   * afirmaria algo que o dado não diz — a mesma decisão que
+   * `gallery-presenter.ts` tomou para a lista de vídeos.
+   *
+   * `null` quando a série não tem backdrop: o cartão continua existindo (o
+   * trailer é real), só sem imagem de fundo.
+   */
+  backdrop: SeriesImageAsset | null;
   episodes: SeasonEpisodeCardView[];
   prevSeason: SeasonNavLink | null;
   nextSeason: SeasonNavLink | null;
@@ -201,6 +213,7 @@ export function buildSeasonPageView(input: SeasonPresenterInput): SeasonPageView
       input.seriesPosterPath,
       input.seriesBackdropPath,
     ),
+    backdrop: imageAsset(input.seriesBackdropPath, BACKDROP_SPEC),
     episodes: episodeCardsFor(input),
     prevSeason: seasonLink(input.seriesSlug, input.prevSeasonNumber),
     nextSeason: seasonLink(input.seriesSlug, input.nextSeasonNumber),

@@ -67,7 +67,15 @@ describe("sitemap — gate de elegibilidade de pessoa", () => {
     const page = blocks[1] ?? "";
     const extract = (block: string): string => {
       const start = block.indexOf("AND EXISTS (");
-      const end = block.indexOf("AND NOT EXISTS (SELECT 1 FROM page_indexability_decisions d");
+      // A ancora do FIM e a clausula de decisao DA PROPRIA PESSOA, logo depois
+      // do gate de credito. Ela mudou de forma quando o sitemap inverteu a regra
+      // (`NOT EXISTS ... <> 'index'` -> `COALESCE(...) = 'index'`, 2026-08-27):
+      // a ancora foi REAPONTADA, nao a mudanca revertida. Se ela deixar de casar,
+      // `start`/`end` viram -1 e as duas asercoes abaixo reprovam — o teste nunca
+      // compara strings vazias e conclui "iguais".
+      const end = block.indexOf(
+        "AND COALESCE((SELECT d.decision::text FROM page_indexability_decisions d",
+      );
       expect(start).toBeGreaterThan(-1);
       expect(end).toBeGreaterThan(start);
       return block.slice(start, end).trim();

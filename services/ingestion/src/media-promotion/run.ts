@@ -28,6 +28,7 @@ import {
   type MediaLicenseRow,
   type MediaPromotionAuthorization,
 } from './license.js'
+import { EXIT_CODES } from '../cli/exit.js'
 import type { PromotionCandidate, PromotionTarget } from './types.js'
 
 /** Endpoint logico das linhas de auditoria em `api_sync_logs`. */
@@ -318,4 +319,49 @@ export async function runMediaPromotion(
   })
 
   return { ...base, outcome: 'applied', updated: outcome.updated, refusals }
+}
+
+/**
+ * O exit code de uma execucao com N alvos.
+ *
+ * PURO, e mora aqui e nao no `bin`, pelo motivo que o `compute-cinerie-score`
+ * ja pagou: um `bin` que chama `main()` no topo do modulo nao pode ser
+ * importado por teste sem abrir o Prisma — e por isso o parser dele passou
+ * quatro dias com um defeito em producao sem nenhum teste possivel.
+ *
+ * O PIOR desfecho vence, e a ordem nao e arbitraria: um `--target=all` em que o
+ * video acendeu e a foto de pessoa foi barrada pela licenca NAO pode sair 0 —
+ * quem chama leria "acabou" para um servico feito pela metade. A prioridade e
+ * ok < failed < mass-change < blocked, do menos ao mais "precisa de humano".
+ */
+export function combinedExitCode(resultados: readonly PromotionResult[]): number {
+  const ORDEM: readonly number[] = [
+    EXIT_CODES.ok,
+    EXIT_CODES.failed,
+    EXIT_CODES.massChangeBlocked,
+    EXIT_CODES.blocked,
+  ]
+  let code: number = EXIT_CODES.ok
+  const pior = (candidato: number): void => {
+    if (ORDEM.indexOf(candidato) > ORDEM.indexOf(code)) code = candidato
+  }
+  for (const result of resultados) {
+    switch (result.outcome) {
+      case 'license-denied':
+        pior(EXIT_CODES.blocked)
+        break
+      case 'mass-change-blocked':
+        // Code PROPRIO (5), nunca `failed`: quem chama precisa distinguir "o
+        // comando quebrou" de "o comando se recusou de proposito e espera um
+        // humano".
+        pior(EXIT_CODES.massChangeBlocked)
+        break
+      case 'applied':
+        if (result.refusals.length > 0) pior(EXIT_CODES.failed)
+        break
+      default:
+        break
+    }
+  }
+  return code
 }

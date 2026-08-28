@@ -79,6 +79,25 @@ interface FakeOptions {
 function fakePrisma(options: FakeOptions = {}): Parameters<typeof loadHeroSlides>[0] {
   const movies = options.movies ?? [DER_LIEBESBRIEF, BLOCKBUSTER, MEDIANO];
   return {
+    /**
+     * O PRE-FILTRO EM SQL, no fake: devolve TODOS os ids da fixture.
+     *
+     * Desde 2026-08-28 o loader pede ao banco uma lista curta de candidatos em
+     * vez de carregar o catalogo (ver `home-hero.ts`). O fake e PERMISSIVO de
+     * proposito: quem este arquivo mede e o PORTAO em memoria
+     * (`lib/home-hero-eligibility.ts`), que continua sendo a autoridade. Um fake
+     * que reimplementasse as clausulas do SQL mediria a copia, nao o original —
+     * e um portao afrouxado passaria despercebido enquanto a copia continuasse
+     * rigorosa.
+     */
+    $queryRawUnsafe: (sql: string) =>
+      Promise.resolve(
+        /count\(\*\)/.test(sql)
+          ? [{ com_slug: 0n }]
+          : sql.includes("tv_shows")
+            ? []
+            : movies.map((m) => ({ id: m.id })),
+      ),
     slug: {
       findMany: ({ where }: { where: { entityType: "movie" | "tv" } }) =>
         Promise.resolve(
@@ -101,6 +120,16 @@ function fakePrisma(options: FakeOptions = {}): Parameters<typeof loadHeroSlides
     },
     crewMember: { findFirst: () => Promise.resolve(null) },
     castMember: { findMany: () => Promise.resolve([]) },
+    /**
+     * A DECISAO DE LICENCA do Cinerie Score, consultada por
+     * `server/editorial-score.ts` antes de ler qualquer calculo.
+     *
+     * Devolve VAZIO: sem decisao vigente, o Score nao vai a tela. E o estado
+     * correto para este arquivo, que mede SELECAO de slide, nao exibicao de
+     * nota — e e fail-closed, entao um erro de fiacao aqui nunca produziria uma
+     * nota fantasma passando no teste.
+     */
+    $queryRaw: () => Promise.resolve([]),
     cinerieScoreCalculation: { findMany: () => Promise.resolve([]) },
     discoverySnapshot: {
       findFirst: () =>

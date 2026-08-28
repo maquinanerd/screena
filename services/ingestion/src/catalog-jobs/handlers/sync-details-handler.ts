@@ -13,12 +13,12 @@
 
 import { CATALOG_METRIC_NAMES } from '../../metrics/index.js'
 import type { CatalogJobContext, CatalogJobHandler } from '../handler.js'
-import { buildIdempotencyKey } from '../idempotency.js'
+import { buildIdempotencyKey, scopedChildDiscriminator } from '../idempotency.js'
 import type { CatalogJobStorePort, EnqueueCatalogJobInput } from '../store-port.js'
 import type { CatalogDetailSyncPort, SearchReindexPort } from './ports.js'
 import type { DetailWatchOutcome } from '../../watch-providers/from-detail.js'
-import { validateSyncDetailsInput, type SyncDetailsInput } from './schemas.js'
-import { classifySafeError, throwIfAborted } from './support.js'
+import { JOB_SCOPE_FIELD, validateSyncDetailsInput, type SyncDetailsInput } from './schemas.js'
+import { classifySafeError, createEnqueueTally, throwIfAborted } from './support.js'
 
 /** Resultado serializavel do `sync_details`. */
 export interface SyncDetailsResult {
@@ -214,7 +214,10 @@ export class SyncDetailsHandler implements CatalogJobHandler<SyncDetailsInput, S
           jobType,
           entityType: input.entityType,
           externalId,
-          discriminator: input.locale,
+          // O ESCOPO DO PAI vai junto. Ver `scopedChildDiscriminator`: sem ele
+          // a chave do filho era a mesma em toda execucao e a midia era escrita
+          // uma vez e nunca mais.
+          discriminator: scopedChildDiscriminator(input.locale, input.scope),
         }),
         payload,
         priority,
@@ -222,21 +225,38 @@ export class SyncDetailsHandler implements CatalogJobHandler<SyncDetailsInput, S
       })
     }
 
-    push('sync_media', { ...base, entityType: input.entityType }, 70)
+    // O `window` do payload e o escopo que o FILHO herda (`readJobScope`): sem
+    // ele, o neto (`sync_episodes`, a midia de temporada) voltaria a congelar um
+    // nivel abaixo.
+    const scoped = input.scope === null ? {} : { [JOB_SCOPE_FIELD]: input.scope }
+
+    push('sync_media', { ...base, ...scoped, entityType: input.entityType }, 70)
     if (input.entityType === 'tv') {
-      push('sync_seasons', { ...base, enqueueEpisodes: true }, 65)
+      push('sync_seasons', { ...base, ...scoped, enqueueEpisodes: true }, 65)
     }
 
+    // A CHAVE DO FILHO PASSOU A TER O ESCOPO DO PAI (2026-08-28). Antes disso
+    // ela so tinha o locale — a MESMA chave em toda execucao — e o noop era o
+    // caminho normal: midia e temporada eram escritas uma vez e nunca mais.
+    // Agora o noop e o que ele sempre deveria ter sido: a segunda tentativa
+    // DENTRO do mesmo ciclo. Ciclo novo (janela nova do `/changes`, dia novo do
+    // agendador) e trabalho novo. A contagem continua aqui porque e ela que
+    // torna a TAXA visivel — sem ela, "tudo noop" e "tudo novo" produzem o mesmo
+    // relatorio.
+    const tally = createEnqueueTally()
     let created = 0
     for (const job of jobs) {
       const result = await this.deps.store.enqueue(job)
+      tally.add(job.jobType, result.created)
       if (result.created) created += 1
     }
+    tally.flush(context.metrics)
     context.log.log('debug', 'catalog_sync_details_enqueued', {
       jobId: context.jobId,
       entityType: input.entityType,
       planned: jobs.length,
       created,
+      duplicated: tally.duplicates(),
     })
     return created
   }

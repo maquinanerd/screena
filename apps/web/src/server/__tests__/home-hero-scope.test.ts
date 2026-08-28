@@ -43,6 +43,20 @@ function fakePrisma(): Parameters<typeof loadHeroSlides>[0] {
     }));
 
   return {
+    /**
+     * O PRE-FILTRO EM SQL, no fake — devolve todos os ids da vertical pedida.
+     *
+     * Desde 2026-08-28 o loader pede ao banco uma lista curta de candidatos em
+     * vez de carregar o catalogo. Aqui ele e permissivo de proposito: este
+     * arquivo mede ESCOPO (a vertical certa recebe hero), nao o portao de
+     * qualidade — quem mede o portao e `home-hero-selection.test.ts`.
+     */
+    $queryRawUnsafe: (sql: string) =>
+      Promise.resolve(
+        /count\(\*\)/.test(sql)
+          ? [{ com_slug: 0n }]
+          : (sql.includes("tv_shows") ? seriesIds : movieIds).map((id) => ({ id })),
+      ),
     slug: {
       findMany: ({ where }: { where: { entityType: "movie" | "tv" } }) =>
         Promise.resolve(slugRows(where.entityType)),
@@ -99,6 +113,16 @@ function fakePrisma(): Parameters<typeof loadHeroSlides>[0] {
     },
     crewMember: { findFirst: () => Promise.resolve(null) },
     castMember: { findMany: () => Promise.resolve([]) },
+    /**
+     * A DECISAO DE LICENCA do Cinerie Score, consultada por
+     * `server/editorial-score.ts` antes de ler qualquer calculo.
+     *
+     * Devolve VAZIO: sem decisao vigente, o Score nao vai a tela. E o estado
+     * correto para este arquivo, que mede SELECAO de slide, nao exibicao de
+     * nota — e e fail-closed, entao um erro de fiacao aqui nunca produziria uma
+     * nota fantasma passando no teste.
+     */
+    $queryRaw: () => Promise.resolve([]),
     cinerieScoreCalculation: { findMany: () => Promise.resolve([]) },
     // Sem trending capturado e sem curadoria: a ordem cai para vote_count desc,
     // que é o caminho (b) da decisão. Aqui todos têm o mesmo volume, então a

@@ -1,9 +1,15 @@
 import type { Metadata } from 'next'
+
+import { SUSPENSION_REASON } from '../../../../../../src/server/seo/suspended-pages'
 import { notFound, permanentRedirect } from 'next/navigation'
 
 import { serializeJsonLd, buildMetaDescription } from '@screena/seo'
 
 import { PrevNextNav } from '../../../../../_components/prev-next-nav'
+import { SectionBoundary } from '../../../../../_components/section-boundary'
+import { SectionHead } from '../../../../../_components/section-head'
+import { TrailerModal } from '../../../../../_components/trailer-modal'
+import { decideSection } from '../../../../../../src/lib/section-absence'
 import { parseRouteNumber, seasonPath } from '../../../../../../src/lib/routes'
 import { SERIES_INDEX_PATH, SITE_URL, gatePublicRobots } from '../../../../../../src/lib/site'
 import { getSeasonPageData } from '../../../../../../src/server/season-page'
@@ -36,6 +42,32 @@ import { getSeasonPageData } from '../../../../../../src/server/season-page'
  */
 
 export const revalidate = 3600
+
+/**
+ * `generateStaticParams` VAZIO — e ele que liga o `revalidate` acima.
+ *
+ * MEDIDO (2026-08-28): esta rota declarava `revalidate = 3600` desde 2026-07 e
+ * mesmo assim respondia em producao com
+ * `cache-control: private, no-cache, no-store, max-age=0, must-revalidate`.
+ * A causa nao era leitura de sessao nem `force-dynamic`: era a AUSENCIA desta
+ * funcao. Sem `generateStaticParams`, o Next nao considera a rota dinamica
+ * elegivel a prerender, ela nao entra em `dynamicRoutes` do
+ * `prerender-manifest.json`, `isSSG` fica falso e o render sai com
+ * `revalidate = 0` — que e exatamente o `no-store` observado.
+ *
+ * PROVA POR EXPERIMENTO CONTROLADO (`next build` na mesma arvore): sem esta
+ * funcao a tabela do build mostra `f (Dynamic)` e `dynamicRoutes` vem `[]`;
+ * com ela (devolvendo `[]`) a mesma rota vira `. (SSG)` e aparece em
+ * `dynamicRoutes`. Nenhuma outra linha mudou.
+ *
+ * Devolve `[]` DE PROPOSITO: nao ha nada para prerenderizar no build (sao ~67
+ * mil URLs e o banco nao esta disponivel la). Cada URL e gerada na primeira
+ * visita e entao guardada pela janela do `revalidate` — que e o comportamento
+ * que a rota sempre quis ter.
+ */
+export async function generateStaticParams(): Promise<Record<string, string>[]> {
+  return []
+}
 
 interface SeasonRouteParams {
   slug: string
@@ -85,12 +117,30 @@ export default async function SeasonPage({ params }: { params: Promise<SeasonRou
     if (target !== null) permanentRedirect(target)
   }
 
-  const { view, seo, canonicalUrl, seriesUrl } = data
-  const isUnderReview = seo.decision !== 'index'
+  const { view, trailer, seo, canonicalUrl, seriesUrl } = data
+  // A valvula de 2026-08-27 poe estas paginas em `noindex`, e isso NAO e
+  // revisao editorial pendente: a pagina esta pronta, so nao se sustenta no
+  // indice. Sem esta distincao o aviso apareceria em 3,9 milhoes de telas.
+  const isUnderReview = seo.decision !== 'index' && seo.reason !== SUSPENSION_REASON
   const seriesHref = `${SERIES_INDEX_PATH}${view.seriesSlug}/`
   const headerMeta = [view.dateLabel, view.episodeCountLabel].filter(
     (item): item is string => item !== null,
   )
+
+  /**
+   * O TRAILER DA TEMPORADA.
+   *
+   * `SectionBoundary` e nao um ternario: a regra tem duas metades ("o bloco sai
+   * do DOM" e "o motivo vai para o log"), e escritas em lugares diferentes elas
+   * divergem no primeiro refactor. `entityType: 'season'` porque o buraco e
+   * desta temporada — registrar `tv` mandaria o operador olhar a serie inteira.
+   */
+  const trailerSection = decideSection(trailer, {
+    entityType: 'season',
+    entityId: String(view.seasonNumber),
+    section: 'trailer-da-temporada',
+    reason: 'no_season_trailer',
+  })
 
   const breadcrumbJsonLd = {
     '@context': 'https://schema.org',
@@ -190,6 +240,51 @@ export default async function SeasonPage({ params }: { params: Promise<SeasonRou
           previous={view.prevSeason}
           next={view.nextSeason}
         />
+
+        {/* ===== Trailer da temporada =====
+            NADA carrega antes do clique: enquanto o diálogo está fechado não
+            existe `<iframe>`, nem `<script>`, nem requisição a domínio do
+            YouTube. É o mesmo `TrailerModal` da ficha de filme e de série — não
+            há um segundo player, e não pode haver: dois divergiriam no primeiro
+            conserto, e o §6 da política de privacidade depende deste. */}
+        <SectionBoundary decision={trailerSection}>
+          {(video) => (
+            <section aria-labelledby="temporada-trailer-titulo" style={{ paddingTop: 40 }}>
+              <SectionHead
+                headingId="temporada-trailer-titulo"
+                kicker="Mídia"
+                thin="da temporada"
+                title="Trailer"
+              />
+              {/* Geometria PROPRIA. `.media-strip__cell` tira altura do
+                  `.media-strip__grid` da banda de midia do detalhe; fora dele a
+                  celula fica com ALTURA ZERO e o play de 64px cai por cima da
+                  lista de episodios — foi o que aconteceu na primeira escrita,
+                  e so apareceu ao ABRIR a pagina. */}
+              <div className="season-trailer" data-trailer="ready">
+                {view.backdrop !== null ? (
+                  <img
+                    alt=""
+                    height={view.backdrop.height}
+                    loading="lazy"
+                    src={view.backdrop.src}
+                    width={view.backdrop.width}
+                  />
+                ) : null}
+                <span className="media-strip__playwrap">
+                  <TrailerModal
+                    title={`${view.seriesTitle} — ${view.seasonTitle}`}
+                    trailer={video}
+                    triggerClassName="media-strip__play"
+                  />
+                </span>
+                {video.name !== null ? (
+                  <span className="media-strip__caption">{video.name}</span>
+                ) : null}
+              </div>
+            </section>
+          )}
+        </SectionBoundary>
 
         <section aria-labelledby="temporada-episodios-titulo" className="season-page__episodes">
           <div className="eyebrow-bar">

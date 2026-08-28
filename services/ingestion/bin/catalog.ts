@@ -35,13 +35,17 @@ import { createTmdbCatalogEndpoints } from '@screena/tmdb-client'
 import { disconnectPrisma } from '@screena/db/server'
 import {
   EXIT_CODES,
+  dryRunExecutesCommand,
   evaluateCatalogGate,
   parseCatalogArgs,
   redactSecrets,
   renderHelp,
   isReadOnlyCommand,
 } from '../src/cli/index.js'
-import { createCatalogHandlerRegistry, validateJobPayload } from '../src/catalog-jobs/handlers/index.js'
+import {
+  createCatalogHandlerRegistry,
+  validateJobPayload,
+} from '../src/catalog-jobs/handlers/index.js'
 import { buildIdempotencyKey } from '../src/catalog-jobs/idempotency.js'
 import { runCatalogWorker } from '../src/catalog-jobs/worker.js'
 import { CATALOG_JOB_TYPES } from '../src/catalog-jobs/types.js'
@@ -64,6 +68,12 @@ import {
   DECIDABLE_ENTITY_TYPES,
   produceIndexabilityDecisions,
 } from '../src/persistence/indexability-writer.js'
+import {
+  backfillMissingText,
+  TEXT_BACKFILLABLE_TYPES,
+  type TextBackfillEntityType,
+} from '../src/persistence/text-backfill.js'
+import { createPrismaSyncLog } from '../src/persistence/sync-log.js'
 import type { CatalogDecisionEntityType } from '@screena/seo'
 import {
   BACKFILLABLE_TYPES,
@@ -262,7 +272,16 @@ async function runHandlerInline<TResult>(
  * de banco morrer por falta de uma credencial que ele nunca usaria — e num host
  * de operacao (onde se audita) o token TMDB muitas vezes nem existe.
  */
-const DB_ONLY_COMMANDS = new Set(['status', 'search-status', 'audit-database', 'dead-letter', 'enqueue', 'index-decisions', 'backfill-finalization'])
+const DB_ONLY_COMMANDS = new Set([
+  'status',
+  'search-status',
+  'audit-database',
+  'dead-letter',
+  'enqueue',
+  'index-decisions',
+  'backfill-finalization',
+  'backfill-text',
+])
 
 /** Monta so a camada de banco (sem TMDB). */
 function createDbOnlyRuntime() {
@@ -329,9 +348,13 @@ async function main() {
   }
 
   const log = createCliLogger(false)
-  const metrics = flags.json ? createInMemoryMetricsSink() : createStructuredLogMetricsSink((line) => {
-    process.stderr.write(`${JSON.stringify({ metric: line.metric, value: line.value, labels: line.labels })}\n`)
-  })
+  const metrics = flags.json
+    ? createInMemoryMetricsSink()
+    : createStructuredLogMetricsSink((line) => {
+        process.stderr.write(
+          `${JSON.stringify({ metric: line.metric, value: line.value, labels: line.labels })}\n`,
+        )
+      })
   // O bootstrap poe o requestId na chave de idempotencia dos filhos. Um default
   // CONSTANTE (`cli-bootstrap`) faria o 1o run enfileirar e TODOS os seguintes
   // colidirem na mesma chave => noop silencioso, para sempre. Por isso o
@@ -344,7 +367,14 @@ async function main() {
   // Dry-run NAO monta o runtime: nao abre Prisma, nao cria client TMDB, nao
   // gasta cota. "Dry-run nao toca nada" e garantido por construcao, nao por
   // disciplina espalhada em cada comando.
-  if (flags.dryRun) {
+  //
+  // EXCECAO, e ela e o ponto: para os comandos de `dryRunExecutesCommand` a
+  // pre-checagem e SO-LEITURA de PostgreSQL, e desviar aqui trocava um censo
+  // real por uma frase. `index-decisions --dry-run` imprimia
+  // `"index-decisions: sem efeito colateral"` com exit 0 — uma string que
+  // descreve a INTENCAO do comando, nunca o efeito da execucao. Ver
+  // `dryRunExecutesCommand` em ../src/cli/args.ts.
+  if (flags.dryRun && !dryRunExecutesCommand(command)) {
     const plan = describePlan(command, subcommand, flags, locale)
     emit(flags, { dryRun: true, command, subcommand, plan }, [
       `[dry-run] ${command}${subcommand ? ` ${subcommand}` : ''}`,
@@ -372,6 +402,8 @@ async function main() {
           return await cmdIndexDecisions(db, flags, locale)
         case 'backfill-finalization':
           return await cmdBackfillFinalization(db, flags, locale)
+        case 'backfill-text':
+          return await cmdBackfillText(db, flags, locale)
         case 'dead-letter':
           return await cmdDeadLetter(db, subcommand, flags)
         default:
@@ -459,25 +491,52 @@ function describePlan(
         `gravaria snapshot (hash-noop se a lista nao mudou)`,
       ]
     case 'media':
-      return [`entidade: ${flags.entity} ${flags.id}`, 'sincronizaria imagens/videos (display_allowed=false)']
+      return [
+        flags.entity === 'season'
+          ? `temporada ${flags.season} da serie ${flags.id} — /tv/${flags.id}/season/${flags.season}/{images,videos}`
+          : flags.entity === 'episode'
+            ? `T${flags.season}E${flags.episode} da serie ${flags.id} — /tv/${flags.id}/season/${flags.season}/episode/${flags.episode}/{images,videos}`
+            : `entidade: ${flags.entity} ${flags.id}`,
+        'sincronizaria imagens/videos (display_allowed=false)',
+        flags.entity === 'season' || flags.entity === 'episode'
+          ? '  chave de gravacao: o tmdb_id PROPRIO da entidade (nao o da serie) — resolvido no banco'
+          : '',
+      ].filter((linha) => linha !== '')
     case 'episodes':
       return [
         `serie: ${flags.id}${flags.season !== null ? ` · temporada ${flags.season}` : ' · todas as temporadas'}`,
-        'sincronizaria creditos, guest stars, ids externos e stills',
+        'sincronizaria creditos, guest stars, equipe (direcao/roteiro), ids externos e stills',
+        '  custo: 1 chamada da temporada + 1 do DETALHE por episodio (getTvEpisode)',
       ]
     case 'search-reindex':
       return [`tipos: ${(entity ?? ['movie', 'tv', 'person']).join(', ')}`, `locale: ${locale}`]
     case 'enqueue':
       return [`enfileiraria o job "${flags.positionals[0]}"`]
     case 'dead-letter':
-      return [`${subcommand} de dead-letters${flags.limit !== null ? ` (limite ${flags.limit})` : ''}`]
+      return [
+        `${subcommand} de dead-letters${flags.limit !== null ? ` (limite ${flags.limit})` : ''}`,
+      ]
     default:
-      return [`${command}: sem efeito colateral`]
+      // NAO diga "sem efeito colateral". Esta frase e o que fez
+      // `index-decisions --dry-run` sair 0 com ar de pre-checagem aprovada: ela
+      // descreve a INTENCAO de nao tocar em nada durante o dry-run, e foi lida
+      // como "a mudanca seria inofensiva". Comando sem `case` aqui nao calculou
+      // NADA, e a saida tem que dizer isso.
+      return [
+        `${command}: esta CLI nao tem pre-checagem para este comando`,
+        'NENHUM numero foi calculado — o --dry-run apenas confirmou que nada seria tocado',
+        'nao trate esta saida como aprovacao de um --apply',
+      ]
   }
 }
 
 /** bootstrap. */
-async function cmdBootstrap(registry: CatalogJobRegistry, flags: CatalogFlags, locale: string, deps: InlineDeps): Promise<number> {
+async function cmdBootstrap(
+  registry: CatalogJobRegistry,
+  flags: CatalogFlags,
+  locale: string,
+  deps: InlineDeps,
+): Promise<number> {
   const report = await runHandlerInline<CatalogBootstrapReport>(
     registry,
     'bootstrap',
@@ -494,7 +553,9 @@ async function cmdBootstrap(registry: CatalogJobRegistry, flags: CatalogFlags, l
   emit(flags, report, [
     `bootstrap ${report.requestId} · estrategia ${report.strategy}`,
     `  planejado: ${report.planned} · enfileirado: ${report.enqueued} · ja existia: ${report.alreadyQueued}`,
-    ...report.stages.map((s) => `  etapa ${s.stage}: +${s.enqueued} (${s.alreadyQueued} ja existiam)`),
+    ...report.stages.map(
+      (s) => `  etapa ${s.stage}: +${s.enqueued} (${s.alreadyQueued} ja existiam)`,
+    ),
     '',
     'Jobs enfileirados != catalogo preenchido. Rode "pnpm catalog worker" para processar.',
   ])
@@ -548,9 +609,7 @@ async function cmdPlanBootstrap(
     ...(flags.maxEpisodes !== null ? { maxEpisodes: flags.maxEpisodes } : {}),
     ...(flags.maxJobs !== null ? { maxJobs: flags.maxJobs } : {}),
     ...(flags.maxApiCalls !== null ? { maxApiCalls: flags.maxApiCalls } : {}),
-    ...(flags.maxDurationMinutes !== null
-      ? { maxDurationMinutes: flags.maxDurationMinutes }
-      : {}),
+    ...(flags.maxDurationMinutes !== null ? { maxDurationMinutes: flags.maxDurationMinutes } : {}),
     ...(flags.maxMediaItems !== null ? { maxMediaItems: flags.maxMediaItems } : {}),
   }
 
@@ -763,6 +822,176 @@ async function cmdBackfillFinalization(
 }
 
 /**
+ * backfill-text — preenche sinopse/biografia a partir do payload JA guardado.
+ *
+ * ZERO chamadas ao TMDB: o texto foi baixado com o detalhe (`translations` esta
+ * em todo `append_to_response`) e vive em `api_cache.payload`/`tmdb_raw.payload`.
+ * O que faltava era leitura. Ver `src/persistence/text-backfill.ts`.
+ */
+async function cmdBackfillText(
+  services: DbOnlyRuntime,
+  flags: CatalogFlags,
+  locale: string,
+): Promise<number> {
+  const requested = splitList(flags.entity)
+  const types =
+    requested === null
+      ? TEXT_BACKFILLABLE_TYPES
+      : requested.filter((t): t is TextBackfillEntityType =>
+          (TEXT_BACKFILLABLE_TYPES as readonly string[]).includes(t),
+        )
+  if (types.length === 0) {
+    process.stderr.write(
+      `erro: --entity precisa conter um de: ${TEXT_BACKFILLABLE_TYPES.join(', ')}\n`,
+    )
+    return EXIT_CODES.usage
+  }
+
+  // O EXTRATOR SO ACEITA pt-BR, e a coluna gravada usa `locale`. Sem esta
+  // recusa, `--locale en-US` escreveria o texto pt-BR do bloco numa linha
+  // `en-US` de `entity_translations` — traducao cega, que a invariante 7 proibe
+  // exatamente por isso. Aceitar outro idioma exige mudar a REGRA de extracao
+  // (`ACCEPTED_TRANSLATION_LANGUAGE`), nao so passar uma flag.
+  if (locale !== 'pt-BR' && locale !== 'pt') {
+    process.stderr.write(
+      [
+        `erro: backfill-text so opera em pt-BR (recebeu "${locale}").`,
+        '  A extracao le a entrada `pt-BR` de `translations`; gravar esse texto sob',
+        '  outro idioma seria traducao cega (invariante 7). Omita --locale.',
+        '',
+      ].join('\n'),
+    )
+    return EXIT_CODES.usage
+  }
+
+  const iniciadoMs = services.now().getTime()
+  const dryRun = !flags.apply
+  const report = await backfillMissingText(services.prisma, {
+    language: locale,
+    entityTypes: types,
+    ...(flags.limit !== null ? { limit: flags.limit } : {}),
+    dryRun,
+    // Progresso em execucao longa: sem isto, um backfill de centenas de milhares
+    // de linhas fica minutos mudo e parece travado.
+    onBatch: ({ entityType, seen, recovered, lastId }) => {
+      if (flags.json) return
+      process.stderr.write(
+        `  [${entityType}] vistos ${seen} · recuperados ${recovered} · ultimo id ${lastId}\n`,
+      )
+    },
+  })
+
+  // LOG DE SYNC (invariante 10): todo sync gera log. Este comando nao fala com
+  // o provider, e por isso `quotaCost: 0` — mas percorre e ESCREVE no catalogo,
+  // entao a execucao precisa deixar rastro auditavel igual a qualquer outra.
+  // `--dry-run` tambem loga: uma medicao que ninguem consegue datar depois vale
+  // menos que uma que se pode.
+  //
+  // O `catch` NAO e complacencia com a invariante — e o contrario. O log e
+  // escrito DEPOIS do trabalho, e `api_sync_logs.provider_api` tem FK para
+  // `api_providers`: num banco sem a linha `tmdb`, a excecao subia e derrubava o
+  // comando INTEIRO **depois** de ele ter gravado sinopses, sem imprimir uma
+  // linha do relatorio. O operador ficava com um stack trace e nenhuma ideia do
+  // que foi escrito — pior que a ausencia do log, que era o problema original.
+  //
+  // Entao: a falha e REGISTRADA em voz alta, o relatorio sai assim mesmo, e o
+  // comando termina com `failed`. Rastro incompleto continua sendo defeito; o
+  // que ele deixa de ser e um apagador do que aconteceu.
+  let falhaDeLog: string | null = null
+  try {
+    await createPrismaSyncLog(services.prisma).write({
+      endpoint: `backfill-text/${types.join('+')}${dryRun ? '?dry-run=1' : ''}`,
+      status: 'success',
+      itemsProcessed: report.candidates,
+      itemsUpdated: report.written,
+      durationMs: services.now().getTime() - iniciadoMs,
+      quotaCost: 0,
+    })
+  } catch (error) {
+    // PRIMEIRA linha NAO VAZIA: a mensagem do Prisma comeca com quebra de
+    // linha, e `split('\n')[0]` devolvia string vazia — um aviso que nao diz a
+    // causa e quase tao ruim quanto nenhum aviso.
+    falhaDeLog =
+      redactSecrets(errorMessage(error))
+        .split('\n')
+        .map((linha) => linha.trim())
+        .find((linha) => linha !== '') ?? 'erro desconhecido'
+    process.stderr.write(
+      [
+        'AVISO: a execucao rodou, mas o log em `api_sync_logs` NAO foi gravado.',
+        `  causa: ${falhaDeLog}`,
+        '  O relatorio abaixo e valido; o que falta e o rastro auditavel',
+        '  (invariante 10). Exit code 4.',
+        '',
+      ].join('\n'),
+    )
+  }
+
+  emit(flags, report, [
+    `backfill de texto · ${report.language} · ${report.dryRun ? 'DRY-RUN' : 'APLICADO'}`,
+    `  candidatos (sem texto): ${report.candidates} · recuperados: ${report.recovered} · gravados: ${report.written}`,
+    `  escritas recusadas por ja haver texto: ${report.refusedExistingText}`,
+    `  chamadas TMDB executadas: ${report.externalCallsMade}`,
+    '',
+    '  proveniencia do texto recuperado:',
+    `    campo de topo (detail)      ${report.bySource.detail}`,
+    `    bloco de traducoes pt-BR    ${report.bySource.translations}`,
+    '',
+    '  payload lido de:',
+    `    api_cache                   ${report.byPayloadSource.api_cache}`,
+    `    tmdb_raw                    ${report.byPayloadSource.tmdb_raw}`,
+    '',
+    Object.keys(report.byType).length > 0 ? '  recuperados por tipo:' : '  nada recuperado.',
+    ...Object.entries(report.byType).map(([k, v]) => `    ${k.padEnd(10)} ${v}`),
+    '',
+    Object.keys(report.skipped).length > 0 ? '  nao recuperados:' : '',
+    ...Object.entries(report.skipped).map(([k, v]) => `    ${k.padEnd(24)} ${v}`),
+    '',
+    // ITEM E: medicao, nao implementacao.
+    `  so recuperaveis com pt-PT (NAO recuperados): ${report.recoverableOnlyWithPtPt}`,
+    ...(report.ptPtSamples.length > 0
+      ? [
+          '    amostras de pt-PT (decisao editorial do dono — nao implementado):',
+          ...report.ptPtSamples
+            .slice(0, 5)
+            .map((s) => `      ${s.entityType}#${s.entityId}: ${s.text.slice(0, 90)}`),
+        ]
+      : []),
+    '',
+    report.samples.length > 0 ? '  amostra do recuperado:' : '',
+    ...report.samples
+      .slice(0, 10)
+      .map((s) => `    ${s.entityType}#${s.entityId} [${s.source}] ${s.excerpt}`),
+    '',
+    `  checkpoint (passe em --resume-from para retomar): ${JSON.stringify(report.checkpoint)}`,
+    '',
+    ...(report.dryRun
+      ? ['Nada foi gravado. Use --apply para preencher.']
+      : [
+          'Texto preenchido. A indexacao publica CONTINUA desligada.',
+          '',
+          'COMO CONFERIR SEM SE ENGANAR (leia antes de abrir a pagina):',
+          '  As fichas sao cacheadas desde 28/08 — 1 h no edge da Cloudflare, 4 h no',
+          '  navegador. A pagina NAO vai mostrar o texto novo na hora, e recarregar',
+          '  nao adianta. "A pagina ainda nao mudou" NAO e prova de que a extracao',
+          '  falhou: e o cache respondendo, que e exatamente o que ele existe para fazer.',
+          '',
+          '  Confira pelo BANCO:',
+          "    SELECT summary FROM entity_translations WHERE entity_type='movie'",
+          "      AND entity_id=<id> AND language_code='pt-BR';",
+          '  ou purgue o cache da Cloudflare para a URL e abra em janela anonima.',
+          '',
+          '  E o veredito de indexabilidade so muda depois de rodar:',
+          '    pnpm catalog index-decisions --dry-run',
+          '  Preencher o texto nao reescreve `page_indexability_decisions` sozinho.',
+        ]),
+  ])
+  // `failed` = "o trabalho rodou mas terminou com falha", que e exatamente o
+  // caso: as linhas foram escritas e o rastro auditavel nao.
+  return falhaDeLog === null ? EXIT_CODES.ok : EXIT_CODES.failed
+}
+
+/**
  * index-decisions — produz `page_indexability_decisions`.
  *
  * A tabela e lida pelo sitemap e pelos loaders publicos, e nunca teve produtor.
@@ -805,10 +1034,20 @@ async function cmdIndexDecisions(
   })
 
   const brake = summary.massChange
+  // Os TETOS entram sempre, inclusive quando nada estourou. Ate aqui, uma
+  // execucao com poucos flips imprimia so "flips: nenhum" e o operador nao
+  // tinha como saber contra que numero estava sendo medido — nem que havia um
+  // veredito de freio. O teto so aparecia quando ja era tarde.
+  const brakeLine =
+    `  freio: ${brake.flips} flip(s) de ${brake.evaluated} avaliadas` +
+    ` (${(brake.flipRatio * 100).toFixed(2)}%) · tetos ${brake.limits.maxFlips} absoluto` +
+    ` / ${(brake.limits.maxFlipRatio * 100).toFixed(2)}% proporcional` +
+    ` · ${brake.blocked ? 'BLOQUEARIA' : brake.exceeded ? 'estourou, mas confirmado' : 'nao bloqueia'}`
   const flipCensus =
     brake.flips === 0
-      ? ['  flips: nenhum (nada entra nem sai do sitemap).']
+      ? [brakeLine, '  flips: nenhum (nada entra nem sai do sitemap).']
       : [
+          brakeLine,
           `  flips: ${brake.flips} de ${brake.evaluated} avaliadas · entram ${brake.entersIndex} · saem ${brake.leavesIndex}`,
           '  flips por razao:',
           ...Object.entries(summary.flipsByReason).map(([k, v]) => `    ${k.padEnd(24)} ${v}`),
@@ -833,9 +1072,44 @@ async function cmdIndexDecisions(
         ...(brake.exceeded ? [`  ${brake.explanation}`] : []),
       ]
 
+  // Censo POR TIPO. A pergunta que o operador faz antes de assinar nao e
+  // "quantas paginas mudam" e sim "quantas de CADA tipo, por que, e quantas
+  // dessas ja tinham veredito" — `updated` e o unico numero que pode tirar do
+  // indice uma pagina que o buscador ja conhece.
+  const typeCensus = Object.entries(summary.byEntityType).flatMap(([tipo, censo]) => [
+    `    ${tipo} — avaliadas ${censo.evaluated}${censo.truncated ? ' (TRUNCADO — nao e o total)' : ''} · criaria ${censo.writes.created} · alteraria ${censo.writes.updated} · iguais ${censo.writes.unchanged}`,
+    `      vereditos: ${
+      Object.entries(censo.byDecision)
+        .map(([d, n]) => `${d}=${n}`)
+        .join(' · ') || '(nenhum)'
+    }`,
+    ...Object.entries(censo.byReason).map(([r, n]) => `        ${r.padEnd(28)} ${n}`),
+  ])
+
+  // AVISO DE TRUNCAMENTO, em texto e no topo. Um censo que parou num teto tem o
+  // DENOMINADOR errado: `evaluated` vira piso, e com ele o `flipRatio` que o
+  // freio usa para decidir. Ate 2026-08-28 isso passava em silencio — tres tipos
+  // reportavam exatamente 100.000 avaliadas e nada dizia que era o teto falando.
+  const avisoTruncado =
+    summary.truncatedTypes.length === 0
+      ? []
+      : [
+          '',
+          `AVISO: avaliacao TRUNCADA em ${summary.truncatedTypes.join(', ')} (--limit=${flags.limit ?? '?'}).`,
+          '  Os numeros abaixo sao PISO, nao total: `avaliadas`, `por decisao`, `por razao`',
+          '  e a proporcao do freio estao todos medidos contra um universo incompleto.',
+          '  Omita --limit para o censo somar o total real.',
+          '',
+        ]
+
   emit(flags, summary, [
     `decisoes de indexabilidade · ${summary.language} · ${summary.dryRun ? 'DRY-RUN' : 'APLICADO'}`,
-    `  avaliadas: ${summary.evaluated} · planejadas: ${summary.planned} · gravadas: ${summary.written} · inalteradas: ${summary.unchanged}`,
+    ...avisoTruncado,
+    `  avaliadas: ${summary.evaluated}${summary.truncatedTypes.length > 0 ? ' (PISO — ha tipo truncado)' : ''} · planejadas: ${summary.planned} · gravadas: ${summary.written} · inalteradas: ${summary.unchanged}`,
+    `  a escrita faria: ${summary.writes.created} criadas · ${summary.writes.updated} alteradas · ${summary.writes.unchanged} iguais`,
+    '',
+    '  por tipo de entidade:',
+    ...typeCensus,
     '',
     '  por decisao:',
     ...Object.entries(summary.byDecision).map(([k, v]) => `    ${k.padEnd(10)} ${v}`),
@@ -848,7 +1122,9 @@ async function cmdIndexDecisions(
     summary.changes.length > 0 ? '  mudancas (amostra):' : '  nenhuma mudanca.',
     ...summary.changes
       .slice(0, 15)
-      .map((c) => `    ${c.entityType}#${c.entityId}: ${c.from ?? '(nova)'} -> ${c.to} (${c.reason})`),
+      .map(
+        (c) => `    ${c.entityType}#${c.entityId}: ${c.from ?? '(nova)'} -> ${c.to} (${c.reason})`,
+      ),
     ...closing,
   ])
 
@@ -859,12 +1135,18 @@ async function cmdIndexDecisions(
 }
 
 /** enqueue. */
-async function cmdEnqueue(services: DbOnlyRuntime, flags: CatalogFlags, locale: string): Promise<number> {
+async function cmdEnqueue(
+  services: DbOnlyRuntime,
+  flags: CatalogFlags,
+  locale: string,
+): Promise<number> {
   const requested = flags.positionals[0]
   // `includes` num readonly array nao estreita o tipo: sem o predicado, `jobType`
   // seguiria `string | undefined` ate o enqueue.
   if (requested === undefined || !isCatalogJobType(requested)) {
-    process.stderr.write(`erro: job desconhecido "${requested ?? ''}". Use um de: ${CATALOG_JOB_TYPES.join(', ')}.\n`)
+    process.stderr.write(
+      `erro: job desconhecido "${requested ?? ''}". Use um de: ${CATALOG_JOB_TYPES.join(', ')}.\n`,
+    )
     return EXIT_CODES.usage
   }
   const jobType: CatalogJobType = requested
@@ -883,7 +1165,9 @@ async function cmdEnqueue(services: DbOnlyRuntime, flags: CatalogFlags, locale: 
   try {
     validateJobPayload(jobType, payload)
   } catch (error) {
-    process.stderr.write(`erro: payload invalido para "${jobType}": ${redactSecrets(errorMessage(error))}\n`)
+    process.stderr.write(
+      `erro: payload invalido para "${jobType}": ${redactSecrets(errorMessage(error))}\n`,
+    )
     return EXIT_CODES.usage
   }
 
@@ -992,14 +1276,15 @@ async function cmdWorker(
 }
 
 /** sync. */
-async function cmdSync(registry: CatalogJobRegistry, flags: CatalogFlags, locale: string, deps: InlineDeps): Promise<number> {
+async function cmdSync(
+  registry: CatalogJobRegistry,
+  flags: CatalogFlags,
+  locale: string,
+  deps: InlineDeps,
+): Promise<number> {
   // O parser ja exige --id OU --ids-file para ; a guarda torna isso prova.
   const ids =
-    flags.id !== null
-      ? [flags.id]
-      : flags.idsFile !== null
-        ? await readIdsFile(flags.idsFile)
-        : []
+    flags.id !== null ? [flags.id] : flags.idsFile !== null ? await readIdsFile(flags.idsFile) : []
   const results: SyncDetailsResult[] = []
   let failed = 0
 
@@ -1042,7 +1327,11 @@ async function cmdSync(registry: CatalogJobRegistry, flags: CatalogFlags, locale
 }
 
 /** changes. */
-async function cmdChanges(registry: CatalogJobRegistry, flags: CatalogFlags, deps: InlineDeps): Promise<number> {
+async function cmdChanges(
+  registry: CatalogJobRegistry,
+  flags: CatalogFlags,
+  deps: InlineDeps,
+): Promise<number> {
   const report = await runHandlerInline<SyncChangesResult>(
     registry,
     'sync_changes',
@@ -1067,7 +1356,12 @@ async function cmdChanges(registry: CatalogJobRegistry, flags: CatalogFlags, dep
 }
 
 /** discovery. */
-async function cmdDiscovery(registry: CatalogJobRegistry, flags: CatalogFlags, locale: string, deps: InlineDeps): Promise<number> {
+async function cmdDiscovery(
+  registry: CatalogJobRegistry,
+  flags: CatalogFlags,
+  locale: string,
+  deps: InlineDeps,
+): Promise<number> {
   const report = await runHandlerInline<SyncListsResult>(
     registry,
     'sync_lists',
@@ -1091,11 +1385,22 @@ async function cmdDiscovery(registry: CatalogJobRegistry, flags: CatalogFlags, l
 }
 
 /** media. */
-async function cmdMedia(registry: CatalogJobRegistry, flags: CatalogFlags, locale: string, deps: InlineDeps): Promise<number> {
+async function cmdMedia(
+  registry: CatalogJobRegistry,
+  flags: CatalogFlags,
+  locale: string,
+  deps: InlineDeps,
+): Promise<number> {
   const report = await runHandlerInline<SyncMediaResult>(
     registry,
     'sync_media',
-    { entityType: flags.entity, tmdbId: flags.id, seasonNumber: flags.season, locale },
+    {
+      entityType: flags.entity,
+      tmdbId: flags.id,
+      seasonNumber: flags.season,
+      episodeNumber: flags.episode,
+      locale,
+    },
     deps,
   )
   emit(flags, report, [
@@ -1106,32 +1411,71 @@ async function cmdMedia(registry: CatalogJobRegistry, flags: CatalogFlags, local
 }
 
 /** episodes. */
-async function cmdEpisodes(registry: CatalogJobRegistry, flags: CatalogFlags, locale: string, deps: InlineDeps): Promise<number> {
+async function cmdEpisodes(
+  registry: CatalogJobRegistry,
+  flags: CatalogFlags,
+  locale: string,
+  deps: InlineDeps,
+): Promise<number> {
   const seasons =
     flags.season !== null
       ? [flags.season]
-      : (
+      : ((
           await runHandlerInline<SyncSeasonsResult>(
             registry,
             'sync_seasons',
             { tmdbId: flags.id, locale, enqueueEpisodes: false },
             deps,
           )
-        ).seasonNumbers ?? []
+        ).seasonNumbers ?? [])
 
   const reports: SyncEpisodesResult[] = []
   for (const seasonNumber of seasons) {
     reports.push(
-      await runHandlerInline<SyncEpisodesResult>(registry, 'sync_episodes', { tmdbId: flags.id, seasonNumber, locale }, deps),
+      await runHandlerInline<SyncEpisodesResult>(
+        registry,
+        'sync_episodes',
+        { tmdbId: flags.id, seasonNumber, locale },
+        deps,
+      ),
     )
   }
 
   const total = reports.reduce((sum, r) => sum + r.episodes, 0)
   const skipped = reports.reduce((sum, r) => sum + r.skippedNoTmdbId, 0)
-  emit(flags, { seasons: seasons.length, episodes: total, skippedNoTmdbId: skipped, reports }, [
-    `episodes serie ${flags.id}: ${seasons.length} temporadas · ${total} episodios`,
-    skipped > 0 ? `  ${skipped} episodio(s) sem tmdb id: pulados (sem chave natural)` : '',
-  ])
+  const degraded = reports.reduce((sum, r) => sum + r.failedDetail, 0)
+  const enqueued = reports.reduce((sum, r) => sum + r.enqueued, 0)
+  // As CONTAGENS que provam que o conserto de 27/08 pegou. Ate entao
+  // `cast`/`crew`/`externalIds`/`stills` saiam ZERO em toda execucao — e o
+  // relatorio nao os mostrava, entao ninguem via o zero.
+  const cast = reports.reduce((sum, r) => sum + r.cast, 0)
+  const guest = reports.reduce((sum, r) => sum + r.guestStars, 0)
+  const crew = reports.reduce((sum, r) => sum + r.crew, 0)
+  const stills = reports.reduce((sum, r) => sum + r.stills, 0)
+  emit(
+    flags,
+    {
+      seasons: seasons.length,
+      episodes: total,
+      skippedNoTmdbId: skipped,
+      failedDetail: degraded,
+      enqueued,
+      cast,
+      guestStars: guest,
+      crew,
+      stills,
+      reports,
+    },
+    [
+      `episodes serie ${flags.id}: ${seasons.length} temporadas · ${total} episodios`,
+      `  elenco ${cast} · convidados ${guest} · equipe ${crew} · stills ${stills}`,
+      enqueued > 0 ? `  ${enqueued} sync_media de episodio enfileirados` : '',
+      degraded > 0
+        ? `  ${degraded} episodio(s) sem DETALHE: gravados so com convidados e equipe (o resumo da temporada nao traz elenco regular, ids externos nem stills)`
+        : '',
+      skipped > 0 ? `  ${skipped} episodio(s) sem tmdb id: pulados (sem chave natural)` : '',
+    ],
+  )
   return EXIT_CODES.ok
 }
 
@@ -1167,7 +1511,11 @@ async function cmdSearchReindex(
 
   const report = await reindexAll(
     { source: services.searchSource, store: services.searchStore, metrics, log },
-    { locale, entityTypes: narrowSearchEntityTypes(splitList(flags.entity)), limit: flags.limit ?? undefined },
+    {
+      locale,
+      entityTypes: narrowSearchEntityTypes(splitList(flags.entity)),
+      limit: flags.limit ?? undefined,
+    },
   )
   emit(flags, report, [
     `search-reindex: ${report.scanned} varridos · ${report.upserted} gravados · ${report.deleted} removidos · ${report.skipped} pulados`,
@@ -1176,7 +1524,11 @@ async function cmdSearchReindex(
 }
 
 /** search-status. */
-async function cmdSearchStatus(services: DbOnlyRuntime, flags: CatalogFlags, locale: string): Promise<number> {
+async function cmdSearchStatus(
+  services: DbOnlyRuntime,
+  flags: CatalogFlags,
+  locale: string,
+): Promise<number> {
   const counts = await services.prisma.searchDocument.groupBy({
     by: ['entityType'],
     _count: { _all: true },
@@ -1200,7 +1552,11 @@ async function cmdStatus(services: DbOnlyRuntime, flags: CatalogFlags): Promise<
   const prisma = services.prisma
   const [byStatus, byType, checkpoints, snapshots, documents, lastSyncs] = await Promise.all([
     prisma.catalogJob.groupBy({ by: ['status'], _count: { _all: true } }),
-    prisma.catalogJob.groupBy({ by: ['jobType'], _count: { _all: true }, where: { status: 'pending' } }),
+    prisma.catalogJob.groupBy({
+      by: ['jobType'],
+      _count: { _all: true },
+      where: { status: 'pending' },
+    }),
     prisma.tmdbSyncCheckpoint.findMany({ take: 20, orderBy: { updatedAt: 'desc' } }),
     prisma.discoverySnapshot.findMany({
       take: 10,
@@ -1243,10 +1599,13 @@ async function cmdStatus(services: DbOnlyRuntime, flags: CatalogFlags): Promise<
     `documentos de busca: ${documents}`,
     'snapshots recentes:',
     ...payload.snapshots.map(
-      (s) => `  ${s.listType}/${s.entityType} (${s.locale}): ${s.ageSeconds}s${s.expired ? ' [expirado]' : ''}`,
+      (s) =>
+        `  ${s.listType}/${s.entityType} (${s.locale}): ${s.ageSeconds}s${s.expired ? ' [expirado]' : ''}`,
     ),
     'checkpoints:',
-    ...payload.checkpoints.map((c) => `  ${c.job}: pagina ${c.lastPage}/${c.totalPages ?? '?'}${c.done ? ' [done]' : ''}`),
+    ...payload.checkpoints.map(
+      (c) => `  ${c.job}: pagina ${c.lastPage}/${c.totalPages ?? '?'}${c.done ? ' [done]' : ''}`,
+    ),
   ])
   return EXIT_CODES.ok
 }
@@ -1274,12 +1633,19 @@ async function cmdAuditDatabase(services: DbOnlyRuntime, flags: CatalogFlags): P
 }
 
 /** dead-letter. */
-async function cmdDeadLetter(services: DbOnlyRuntime, subcommand: DeadLetterSubcommand | null, flags: CatalogFlags): Promise<number> {
+async function cmdDeadLetter(
+  services: DbOnlyRuntime,
+  subcommand: DeadLetterSubcommand | null,
+  flags: CatalogFlags,
+): Promise<number> {
   if (subcommand === 'list') {
     const rows = await services.store.listDeadLetter(flags.limit ?? 50)
     emit(flags, rows, [
       `dead-letters: ${rows.length}`,
-      ...rows.map((r) => `  ${r.id} ${r.jobType} ${r.entityType ?? '-'}/${r.externalId ?? '-'} · ${r.attempts} tentativas · ${r.lastErrorCode ?? '-'}`),
+      ...rows.map(
+        (r) =>
+          `  ${r.id} ${r.jobType} ${r.entityType ?? '-'}/${r.externalId ?? '-'} · ${r.attempts} tentativas · ${r.lastErrorCode ?? '-'}`,
+      ),
     ])
     return EXIT_CODES.ok
   }
@@ -1302,7 +1668,9 @@ main()
     process.exitCode = code
   })
   .catch(async (error) => {
-    process.stderr.write(`erro: ${redactSecrets(error instanceof Error ? (error.stack ?? error.message) : String(error))}\n`)
+    process.stderr.write(
+      `erro: ${redactSecrets(error instanceof Error ? (error.stack ?? error.message) : String(error))}\n`,
+    )
     process.exitCode = EXIT_CODES.error
     await disconnectPrisma().catch(() => {})
   })

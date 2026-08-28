@@ -47,6 +47,20 @@ type PrismaClient = ReturnType<typeof getPrismaClient>;
 const TITLE_IMAGE_TYPES = ["poster", "backdrop", "logo", "still"] as const;
 
 /**
+ * As entidades que têm galeria própria.
+ *
+ * `season` e `episode` entraram em 2026-08-27, junto com o `sync_media` que
+ * passou a coletá-las. A lista de tipos de imagem NÃO muda com eles: uma
+ * temporada só tem `poster` e um episódio só tem `still`, e ambos já estavam
+ * em `TITLE_IMAGE_TYPES`. Filtrar por tipo aqui seria uma segunda política de
+ * "o que é imagem de quê", divergindo da que o presenter já aplica.
+ *
+ * O `tmdbId` destas duas é o id PRÓPRIO (`seasons.tmdb_id`/`episodes.tmdb_id`),
+ * nunca o da série — é assim que `sync_media` grava.
+ */
+export type GalleryOwnerType = "movie" | "tv" | "season" | "episode";
+
+/**
  * As imagens de um título, em TODOS os idiomas.
  *
  * Sem filtro de idioma de propósito: a galeria mostra o conjunto, e o
@@ -57,7 +71,7 @@ const TITLE_IMAGE_TYPES = ["poster", "backdrop", "logo", "still"] as const;
  */
 export async function getImagesForEntity(
   prisma: PrismaClient,
-  entityType: "movie" | "tv",
+  entityType: GalleryOwnerType,
   tmdbId: number,
 ): Promise<readonly GalleryImageRow[]> {
   const rows = await prisma.tmdbImage.findMany({
@@ -87,7 +101,7 @@ export async function getImagesForEntity(
  */
 export async function getVideosForEntity(
   prisma: PrismaClient,
-  entityType: "movie" | "tv",
+  entityType: GalleryOwnerType,
   tmdbId: number,
 ): Promise<readonly GalleryVideoRow[]> {
   const rows = await prisma.tmdbVideo.findMany({
@@ -125,7 +139,7 @@ export async function getVideosForEntity(
  */
 export async function countGalleryMedia(
   prisma: PrismaClient,
-  entityType: "movie" | "tv",
+  entityType: GalleryOwnerType,
   tmdbId: number,
 ): Promise<{ images: number; videos: number }> {
   const [images, videos] = await Promise.all([

@@ -249,6 +249,10 @@ export function createHandlerFakes(): HandlerFakes {
           externalIds: 10,
           stills: 8,
           skippedNoTmdbId: 1,
+          failedDetail: 0,
+          // Os numeros REAIS, nunca `1..N`: e o contrato que impede quem
+          // enfileira trabalho por episodio de adivinhar a numeracao.
+          episodeNumbers: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
           skipped: false,
           skipReason: null,
         }

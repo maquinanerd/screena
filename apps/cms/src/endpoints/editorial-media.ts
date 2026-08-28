@@ -96,14 +96,27 @@ async function findArticle(req: PayloadRequest, articleId: string): Promise<numb
   }
 }
 
-/** A entrada anterior deste par (artigo, sourceUrl), se houver. */
+/**
+ * A entrada anterior deste par (artigo, sourceUrl), se houver.
+ *
+ * `articleId` nulo = foto que ainda nao tem materia. A idempotencia continua
+ * existindo, so muda de chave: em vez de (artigo, url), ela vira (SEM artigo,
+ * url). Procurar por url apenas juntaria a foto sem dono com a foto de uma
+ * materia qualquer que usou a mesma URL — e devolveria ao emissor um `mediaId`
+ * que pertence a outra materia.
+ */
 async function findExistingMedia(
   req: PayloadRequest,
-  articleId: number,
+  articleId: number | null,
   sourceUrl: string,
 ): Promise<ExistingIngestedMedia | null> {
   const where: Where = {
-    and: [{ ingestedForArticle: { equals: articleId } }, { sourceUrl: { equals: sourceUrl } }],
+    and: [
+      articleId === null
+        ? { ingestedForArticle: { exists: false } }
+        : { ingestedForArticle: { equals: articleId } },
+      { sourceUrl: { equals: sourceUrl } },
+    ],
   }
   const found = await req.payload.find({
     collection: 'media',
@@ -161,9 +174,20 @@ export const editorialMediaEndpoint: Endpoint = {
 
     const command = decision.command
 
-    const articleId = await findArticle(req, command.articleId)
-    if (articleId === null) {
-      return json({ error: 'article_not_found', issues: ['articleId nao existe'] }, 404)
+    // SEM `articleId` a foto entra sem dono, e isso e um caminho declarado, nao
+    // um descuido: o bloco `image` do contrato referencia `media[].mediaId` do
+    // MESMO pedido, entao a foto precisa existir ANTES da primeira publicacao.
+    // Ver `MediaIngestCommand.articleId`.
+    //
+    // O preco: foto ingerida e nunca referenciada fica orfa no acervo. E o mesmo
+    // preco de qualquer upload que o redator faz e depois nao usa, e o acervo ja
+    // sabe conviver com ele.
+    let articleId: number | null = null
+    if (command.articleId !== null) {
+      articleId = await findArticle(req, command.articleId)
+      if (articleId === null) {
+        return json({ error: 'article_not_found', issues: ['articleId nao existe'] }, 404)
+      }
     }
 
     const contentHash = contentHashOf(command.bytes)
@@ -214,7 +238,9 @@ export const editorialMediaEndpoint: Endpoint = {
           allowedForSocial: false,
           provenanceType: 'external_source',
           contentHash,
-          ingestedForArticle: articleId,
+          // `undefined` deixa a relacao vazia; `null` seria uma escrita
+          // explicita de "sem artigo", que o Payload trata diferente em update.
+          ingestedForArticle: articleId ?? undefined,
         },
         file: {
           data: Buffer.from(command.bytes),

@@ -262,6 +262,13 @@ jobs:
       - name: Validadores descartaveis (PostgreSQL efemero, sem banco remoto)
         run: pnpm --filter @screena/web validate:all
 
+      # Cache de rota e VOLUME de consulta, com Next REAL sobre o build acima.
+      # Precisa vir DEPOIS do `pnpm build`: o script sobe `next start`, mede o
+      # `Cache-Control` que o Next emite por classe de rota e conta as linhas
+      # lidas por requisicao com `pg_stat_statements`.
+      - name: Cache de rota + orcamento de linhas (Next real, PostgreSQL 16 efemero)
+        run: pnpm --filter @screena/web validate:route-cache
+
       - name: Migration Fase 2 — Cenario A (do zero, PostgreSQL 16 efemero)
         run: pnpm --filter @screena/db db:validate:real
 
@@ -292,6 +299,19 @@ jobs:
 
       - name: Produtor de page_indexability_decisions (PostgreSQL 16 efemero)
         run: pnpm --filter @screena/ingestion validate:indexability-producer
+
+      # Recuperacao de sinopse/biografia do bloco `translations` + o teto do
+      # censo. Semeia 100.001 filmes (um a mais que o antigo default de
+      # `100_000`) para provar que o censo soma o total real e que um `--limit`
+      # se declara truncado. Roda depois do produtor porque exercita o mesmo.
+      - name: Recuperacao de texto e teto do censo (PostgreSQL 16 efemero)
+        run: pnpm --filter @screena/ingestion validate:text-recovery
+
+      # O elo que o validador acima NAO cobre: entre a coluna e o HTML ainda ha
+      # loader, presenter e componente. Renderiza a rota real e procura o texto
+      # no corpo da pagina (fora do JSON-LD).
+      - name: Sinopse recuperada aparece no HTML da ficha (PostgreSQL 16 efemero)
+        run: pnpm --filter @screena/web validate:synopsis-render
 
       - name: Integridade do catalogo — backfill, midia, unicidade (PostgreSQL 16 efemero)
         run: pnpm --filter @screena/ingestion validate:catalog-integrity

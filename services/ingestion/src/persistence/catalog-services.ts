@@ -84,6 +84,7 @@ import type { TmdbCatalogEndpoints } from '@screena/tmdb-client'
 import { promoteMoviesFromRaw, promotePeopleFromRaw, promoteTvShowsFromRaw } from '../raw-promote/run.js'
 import { createPrismaCatalogEntitiesStore } from './catalog-entities-store.js'
 import { createPrismaEpisodeStore } from './episode-store.js'
+import { createPrismaMediaBirthPolicyReader } from './media-birth-reader.js'
 import { createPrismaMediaStore } from './media-store.js'
 import { createPrismaSearchStore } from './search-store.js'
 import { createPrismaSearchProjectionSource } from './search-projection-source.js'
@@ -191,8 +192,27 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
   const persistence = createPersistence({ ttlMs: options.cacheTtlMs, now })
   const prisma = persistence.prisma
 
+  /**
+   * A POLITICA DE NASCIMENTO da midia, lida de `source_licenses`.
+   *
+   * Resolvida por CICLO (nao uma vez por processo): duas linhas de licenca por
+   * job de midia sao ruido perto das duas requisicoes HTTP do mesmo job, e o
+   * frescor que isso compra e real — uma licenca revogada passa a valer no job
+   * seguinte, sem reiniciar container.
+   */
+  const readBirthPolicy = createPrismaMediaBirthPolicyReader(prisma, (error) => {
+    // Falha ao LER licenca nao pode ser muda: sem esta linha, "nasceu apagado
+    // porque a licenca nega" e "nasceu apagado porque a consulta caiu" seriam o
+    // mesmo silencio.
+    console.error(
+      'catalog: falha ao ler source_licenses para a politica de nascimento de midia; ' +
+        'as linhas desta execucao nascem APAGADAS (fail-closed).',
+      error instanceof Error ? error.message : String(error),
+    )
+  })
+
   const entitiesStore = createPrismaCatalogEntitiesStore(prisma)
-  const episodeStore = createPrismaEpisodeStore(prisma)
+  const episodeStore = createPrismaEpisodeStore(prisma, readBirthPolicy)
   const mediaStore = createPrismaMediaStore(prisma)
   const searchStore = createPrismaSearchStore(prisma)
   const searchSource = createPrismaSearchProjectionSource(prisma)
@@ -585,14 +605,55 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
     },
   }
 
+  /**
+   * Resolve o id TMDB PROPRIO da temporada/episodio a partir da chave natural.
+   *
+   * O job carrega o id da SERIE (e assim que o TMDB endereca a URL); a chave de
+   * `tmdb_images`/`tmdb_videos` precisa do id da entidade dona. Os dois vivem no
+   * banco desde a Fase 2 (`seasons.tmdb_id`, `episodes.tmdb_id`) — o que faltava
+   * era alguem perguntar.
+   *
+   * Devolve `null` quando a linha nao existe ou nao tem id: quem chama RECUSA o
+   * job (ver `buildMediaTarget`), nunca cai para o id da serie.
+   */
+  async function resolveOwnMediaTmdbId(
+    kind: string,
+    seriesTmdbId: number,
+    seasonNumber: number | null,
+    episodeNumber: number | null,
+  ): Promise<number | null> {
+    if (kind !== 'season' && kind !== 'episode') return null
+    if (seasonNumber === null) return null
+
+    const season = await prisma.season.findFirst({
+      where: { seasonNumber, tvShow: { tmdbId: seriesTmdbId } },
+      select: { id: true, tmdbId: true },
+    })
+    if (season === null) return null
+    if (kind === 'season') return season.tmdbId
+
+    if (episodeNumber === null) return null
+    const episode = await prisma.episode.findFirst({
+      where: { seasonId: season.id, episodeNumber },
+      select: { tmdbId: true },
+    })
+    return episode?.tmdbId ?? null
+  }
+
   const mediaSync: CatalogMediaSyncPort = {
-    async syncMedia({ kind, tmdbId }) {
-      const target = buildMediaTarget(catalogEndpoints, kind, tmdbId)
+    async syncMedia({ kind, tmdbId, seasonNumber, episodeNumber }) {
+      const ownTmdbId = await resolveOwnMediaTmdbId(kind, tmdbId, seasonNumber, episodeNumber)
+      const target = buildMediaTarget(catalogEndpoints, kind, tmdbId, {
+        seasonNumber,
+        episodeNumber,
+        ownTmdbId,
+      })
       const result = await runMediaSync(target, {
         cache: persistence.cache,
         log: persistence.syncLog,
         store: mediaStore,
         now,
+        birth: await readBirthPolicy(),
       })
       // runMediaSync tambem e pipeline-safe: falha vira status, nao excecao.
       if (result.images.status === 'failed' || result.videos?.status === 'failed') {
@@ -629,8 +690,41 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
     },
   }
 
+  /**
+   * Sync das referencias dos episodios de UMA temporada.
+   *
+   * ============================================================================
+   * POR QUE ISTO BUSCA O DETALHE DE CADA EPISODIO
+   * ============================================================================
+   * Ate 2026-08-27 esta funcao lia UM payload — `/tv/{id}/season/{n}` — e
+   * passava cada item de `episodes[]` para os cinco extratores de
+   * `episodes/normalize.ts`. Parecia economia de requisicao. Era descarte:
+   *
+   *   - `extractEpisodeCast` le `credits.cast` — o item da temporada nao tem
+   *     bloco `credits`. Sempre `[]`.
+   *   - `extractEpisodeExternalIds` le `external_ids` — ausente. Sempre `[]`.
+   *   - `extractEpisodeStills` le `images.stills` — ausente (o item traz um
+   *     unico `still_path`, que e outra coisa). Sempre `[]`.
+   *   - `extractEpisodeCrew` lia `credits.crew` enquanto o TMDB mandava `crew`
+   *     no TOPO: o dado CHEGAVA e era descartado na leitura.
+   *
+   * Quatro dos cinco contadores eram zero por construcao, e o job reportava
+   * `success`. A pagina de episodio ficou sem elenco convidado, sem direcao e
+   * sem roteiro — nao por falta de dado nem de licenca, por falta desta
+   * chamada.
+   *
+   * CUSTO: a temporada continua sendo buscada uma vez (e dela sai a lista de
+   * numeros de episodio, que e a chave natural), e agora ha UMA requisicao por
+   * episodio. Para uma temporada de 12 episodios: 13 requisicoes, contra 1
+   * antes. Os cinco appends do episodio cabem num unico pedido (teto de 20
+   * sub-requests), entao nao ha multiplicacao alem dessa.
+   *
+   * Um episodio cujo detalhe FALHA nao derruba a temporada: e contado em
+   * `failedDetail` e o lote segue. Falhar 12 episodios porque o 7o deu 404
+   * transformaria um buraco upstream num incidente de fila.
+   */
   const episodesSync: CatalogEpisodesSyncPort = {
-    async syncEpisodes({ tvTmdbId, seasonNumber }) {
+    async syncEpisodes({ tvTmdbId, seasonNumber, signal }) {
       const payload = await tmdb.getTvSeason(tvTmdbId, seasonNumber)
       const episodes = Array.isArray(payload?.episodes) ? payload.episodes : []
       let cast = 0
@@ -640,23 +734,41 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
       let stills = 0
       let processed = 0
       let skippedNoTmdbId = 0
+      let failedDetail = 0
+      const episodeNumbers: number[] = []
 
       for (const episode of episodes) {
+        if (signal.aborted) break
         const number = episode?.episode_number
         if (typeof number !== 'number' || !Number.isInteger(number)) {
           // Sem numero nao existe chave natural: pular e contar, nunca inventar.
           skippedNoTmdbId += 1
           continue
         }
+
+        // O DETALHE, nao o resumo. Ver o cabecalho: e a diferenca entre a
+        // pagina ter elenco/direcao/roteiro e nao ter.
+        let detail: unknown
+        try {
+          detail = await tmdb.getTvEpisode(tvTmdbId, seasonNumber, number)
+        } catch {
+          // O resumo da temporada AINDA serve para guest stars e equipe (os
+          // dois vem no topo). Degradar para ele e melhor que perder o
+          // episodio inteiro — e a contagem em `failedDetail` diz quantos
+          // ficaram sem elenco regular, ids externos e stills.
+          failedDetail += 1
+          detail = episode
+        }
+
         const outcome = await episodeStore.syncEpisodeReferences({
           tvShowTmdbId: tvTmdbId,
           seasonNumber,
           episodeNumber: number,
-          cast: extractEpisodeCast(episode),
-          guestStars: extractEpisodeGuestStars(episode),
-          crew: extractEpisodeCrew(episode),
-          externalIds: extractEpisodeExternalIds(episode),
-          stills: extractEpisodeStills(episode),
+          cast: extractEpisodeCast(detail),
+          guestStars: extractEpisodeGuestStars(detail),
+          crew: extractEpisodeCrew(detail),
+          externalIds: extractEpisodeExternalIds(detail),
+          stills: extractEpisodeStills(detail),
         })
         cast += outcome.cast
         guestStars += outcome.guestStars
@@ -664,6 +776,7 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
         externalIds += outcome.externalIds
         stills += outcome.stills
         processed += 1
+        episodeNumbers.push(number)
       }
 
       return {
@@ -674,6 +787,8 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
         externalIds,
         stills,
         skippedNoTmdbId,
+        failedDetail,
+        episodeNumbers,
         skipped: false,
         skipReason: null,
       }
@@ -832,21 +947,39 @@ function findEpisode(seasonPayload: unknown, episodeNumber: number): Record<stri
 /**
  * Monta o alvo de midia com os fetchers certos por tipo.
  *
- * SO movie|tv|person. `season`/`episode` NAO sao suportados aqui, e isso e
- * deliberado: `MediaTarget` so carrega (entityType, tmdbId), e para temporada o
- * tmdbId e o da SERIE. Logo a chave de cache viraria `/season/1399/images` para
- * TODAS as temporadas — a temporada 2 receberia as imagens da 1 — e as linhas
- * gravadas ficariam todas rotuladas com o id da serie, indistinguiveis entre si.
- * Escrever dado corrompido e pior que recusar.
+ * ============================================================================
+ * A RECUSA DE TEMPORADA/EPISODIO CAIU EM 2026-08-27 — E ELA TINHA METADE RAZAO
+ * ============================================================================
+ * O texto anterior recusava os dois assim: "`MediaTarget` so carrega
+ * (entityType, tmdbId), e para temporada o tmdbId e o da SERIE. Logo a chave de
+ * cache viraria `/season/1399/images` para TODAS as temporadas".
  *
- * Nada se perde: os stills de episodio ja entram por `sync_episodes`, com a
- * chave natural correta (serie + temporada + episodio) via `episodeStore`.
+ * A colisao era real — com UM id para dois papeis. O conserto nao era recusar,
+ * era separar os papeis: `ownTmdbId` (a CHAVE, vinda de `seasons.tmdb_id` /
+ * `episodes.tmdb_id`) e `endpointBase` (a URL, que precisa da serie + numero).
+ * Sao dois numeros diferentes porque sao duas perguntas diferentes.
+ *
+ * A outra metade da recusa — "nada se perde: os stills de episodio ja entram
+ * por `sync_episodes`" — era falsa. `extractEpisodeStills` lia `images.stills`
+ * de um objeto que nunca teve esse bloco e devolvia [] em toda execucao. O
+ * comentario descrevia um caminho que nao existia, e foi ele que manteve a
+ * ausencia parecendo intencional por meses.
+ *
+ * FAIL-CLOSED: sem id proprio no banco, RECUSA. Gravar a midia da temporada sob
+ * o id da serie e exatamente a corrupcao que a recusa antiga temia — e ela
+ * continua sendo pior que recusar.
  */
-function buildMediaTarget(endpoints: TmdbCatalogEndpoints, kind: string, tmdbId: number): MediaTarget {
+function buildMediaTarget(
+  endpoints: TmdbCatalogEndpoints,
+  kind: string,
+  tmdbId: number,
+  input: { seasonNumber: number | null; episodeNumber: number | null; ownTmdbId: number | null },
+): MediaTarget {
   if (kind === 'movie') {
     return {
       entityType: 'movie',
       tmdbId,
+      endpointBase: `/movie/${String(tmdbId)}`,
       fetchImages: () => endpoints.getMovieImages(tmdbId),
       fetchVideos: () => endpoints.getMovieVideos(tmdbId),
     }
@@ -855,6 +988,7 @@ function buildMediaTarget(endpoints: TmdbCatalogEndpoints, kind: string, tmdbId:
     return {
       entityType: 'tv',
       tmdbId,
+      endpointBase: `/tv/${String(tmdbId)}`,
       fetchImages: () => endpoints.getTvImages(tmdbId),
       fetchVideos: () => endpoints.getTvVideos(tmdbId),
     }
@@ -864,12 +998,46 @@ function buildMediaTarget(endpoints: TmdbCatalogEndpoints, kind: string, tmdbId:
     return {
       entityType: 'person',
       tmdbId,
+      endpointBase: `/person/${String(tmdbId)}`,
       fetchImages: () => endpoints.getPersonImages(tmdbId),
     }
   }
+
+  if (kind === 'season' || kind === 'episode') {
+    const seasonNumber = requireNumber(input.seasonNumber, 'seasonNumber', `sync_media de ${kind}`)
+    if (input.ownTmdbId === null) {
+      // Sem id proprio nao ha chave. Recusar e o unico desfecho honesto: o id
+      // da serie rotularia a midia de TODAS as temporadas igual.
+      throw new PermanentJobError(
+        'missing_own_tmdb_id',
+        `sync_media de ${kind}: a ${kind === 'season' ? 'temporada' : 'episodio'} nao tem tmdb_id proprio no banco (serie ${String(tmdbId)}, temporada ${String(seasonNumber)}). Rode sync_seasons/sync_episodes antes: sem id proprio a midia seria gravada sob o id da serie e as linhas ficariam indistinguiveis.`,
+      )
+    }
+    const ownTmdbId = input.ownTmdbId
+
+    if (kind === 'season') {
+      return {
+        entityType: 'season',
+        tmdbId: ownTmdbId,
+        endpointBase: `/tv/${String(tmdbId)}/season/${String(seasonNumber)}`,
+        fetchImages: () => endpoints.getSeasonImages(tmdbId, seasonNumber),
+        fetchVideos: () => endpoints.getSeasonVideos(tmdbId, seasonNumber),
+      }
+    }
+
+    const episodeNumber = requireNumber(input.episodeNumber, 'episodeNumber', 'sync_media de episode')
+    return {
+      entityType: 'episode',
+      tmdbId: ownTmdbId,
+      endpointBase: `/tv/${String(tmdbId)}/season/${String(seasonNumber)}/episode/${String(episodeNumber)}`,
+      fetchImages: () => endpoints.getEpisodeImages(tmdbId, seasonNumber, episodeNumber),
+      fetchVideos: () => endpoints.getEpisodeVideos(tmdbId, seasonNumber, episodeNumber),
+    }
+  }
+
   throw new PermanentJobError(
     'unsupported_media_kind',
-    `sync_media nao suporta "${kind}": a chave de midia e (entityType, tmdbId) e para temporada/episodio o tmdbId e o da serie — colidiria entre temporadas. Stills de episodio vem por sync_episodes.`,
+    `sync_media nao suporta "${kind}": os kinds validos sao movie, tv, person, season e episode.`,
   )
 }
 

@@ -158,6 +158,28 @@ export function videosGalleryPath(
 }
 
 /**
+ * Caminho da galeria de IMAGENS de um EPISODIO, com barra final.
+ *
+ * `/pt/series/{slug}/temporadas/{n}/episodios/{e}/imagens/`.
+ *
+ * Reusa `IMAGES_SEGMENT` — o MESMO segmento das galerias de titulo. Um segundo
+ * vocabulario aqui ("stills", "fotos") criaria duas gramaticas de URL para a
+ * mesma coisa dentro do mesmo site.
+ *
+ * O episodio NAO tem slug proprio: a URL e a do episodio + o segmento, como
+ * manda o resto do trilho de serie.
+ */
+export function episodeImagesGalleryPath(
+  seriesSlug: string,
+  seasonNumber: number,
+  episodeNumber: number,
+): string | null {
+  const base = episodePath(seriesSlug, seasonNumber, episodeNumber);
+  if (base === null) return null;
+  return `${base}${IMAGES_SEGMENT}/`;
+}
+
+/**
  * Parseia um parametro numerico de rota (temporada/episodio) na FORMA CANONICA:
  * inteiro positivo SEM zero a esquerda. `01`, `003`, `0`, `-1`, `abc`, `1a` ->
  * `null`. A politica vigente e responder 404 para forma nao-canonica (o projeto

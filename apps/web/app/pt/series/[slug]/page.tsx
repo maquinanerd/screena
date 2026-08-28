@@ -61,7 +61,48 @@ import { imagesGalleryPath, videosGalleryPath } from '../../../../src/lib/routes
  * docs/frontend/DESIGN-DELTA-detalhe.md.
  */
 
-export const revalidate = 3600
+/**
+ * ESTA ROTA E DINAMICA DE PROPOSITO — nao ponha `generateStaticParams` aqui.
+ *
+ * A #245 deu `generateStaticParams` (devolvendo `[]`) a 10 fichas para ligar o
+ * `revalidate`. Nas outras 9 isso foi ganho puro. Aqui NAO: esta e a UNICA
+ * ficha que le `searchParams` (o `?temporada=`, logo abaixo em
+ * `seasonNumberFromQuery`), e as duas coisas juntas quebram a pagina.
+ *
+ * MEDIDO (2026-08-28, producao): `/pt/series/{slug}/` respondia 500 em toda
+ * serie, enquanto `/pt/filmes/{slug}/`, `/pt/series/{slug}/imagens` e
+ * `/pt/series/{slug}/temporadas/{n}/` respondiam 200. Log do Next 15.5.19:
+ *
+ *   Dynamic server usage: Route /pt/series/[slug] couldn't be rendered
+ *   statically because it used `await searchParams`, `searchParams.then`, or
+ *   similar. digest: DYNAMIC_SERVER_USAGE
+ *   Error: Page changed from static to dynamic at runtime /pt/series/{slug},
+ *   reason: `await searchParams`, `searchParams.then`, or similar
+ *   https://nextjs.org/docs/messages/app-static-to-dynamic-error
+ *
+ * O `generateStaticParams` classifica a rota como SSG no build (a tabela do
+ * `next build` mostra `●`). Como ele devolve `[]`, nada e renderizado la e o
+ * Next nao tem como descobrir que a pagina le a query. Na PRIMEIRA visita em
+ * producao o Next tenta gerar o HTML estatico, esbarra no `searchParams` e —
+ * diferente do build, onde ele apenas rebaixaria a rota para dinamica — nao
+ * pode mais reclassificar: lanca e devolve 500.
+ *
+ * E o 500 e so o sintoma. Cache de ROTA e por PATHNAME: `?temporada=2` e
+ * `?temporada=5` compartilhariam o mesmo HTML guardado. Uma rota cujo conteudo
+ * depende da query nao pode ser cacheada por rota nem que o Next deixasse.
+ *
+ * `force-dynamic` (mesma declaracao que `/pt/explorar/` usa, pelo mesmo
+ * motivo) torna a leitura da query legal e impede qualquer reclassificacao
+ * futura. O `revalidate` foi removido junto: sem `generateStaticParams` ele ja
+ * era inerte, e deixa-lo ali so convidaria alguem a "consertar" o cache
+ * readicionando a funcao que derrubou o site.
+ *
+ * PARA RECUPERAR O CACHE DESTA FICHA (fora do escopo desta correcao): dar a
+ * "Especiais" (temporada 0) uma rota propria — hoje `seasonPath` recusa
+ * `seasonNumber < 1` e o `?temporada=` e o unico caminho ate ela. Sem query na
+ * rota, `generateStaticParams` volta a ser seguro aqui.
+ */
+export const dynamic = 'force-dynamic'
 
 const SERIES_INDEX_PATH = '/pt/series/'
 const REVIEW_BLOCK_TYPE = 'review_summary'

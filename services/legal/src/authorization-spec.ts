@@ -95,6 +95,79 @@ export const OWNER_DECISION_2026_08_20 = {
     "me pergunte mais. Eu assumo todos os riscos.",
 } as const;
 
+/**
+ * ============ A DECISÃO DO PROPRIETÁRIO — 28/08/2026 ============
+ *
+ * QUEM DECIDIU: Pablo Eduardo, proprietário da Cinerie, por escrito, em
+ * 28/08/2026:
+ *
+ *   "Parou com essa porra de licença, tá tudo liberado, crie um comando pra
+ *    liberar tudo, para de ficar segurando as coisas."
+ *
+ *   "VIDEOS, NOTAS, IMAGENS, POSTER, TRAILER, TUDO É PRA TER EM TODOS OS FILMES
+ *    SÉRIES, EPISÓDIOS, TEMPORADAS E ETC. ISSO É PRA FICAR ATUALIZADO,
+ *    DIARIAMENTE."
+ *
+ * O QUE FOI DECIDIDO — quatro itens, e três deles já estavam registrados:
+ *
+ *  1. VÍDEO do TMDB **nasce e permanece** exibível. NOVO. A licença
+ *     `tmdb`/`video` já dizia `display_allowed = true` desde 13/08; o que não
+ *     existia era a linha de `tmdb_videos` nascer no estado que a licença
+ *     autoriza. Ela nascia `false`/`unknown` por DEFAULT do DDL, e só uma
+ *     operação em massa posterior a acendia — ciclo após ciclo, para sempre.
+ *  2. IMAGEM e PÔSTER do TMDB, idem. NOVO pelo mesmo motivo (a licença
+ *     `tmdb`/`image` é `official` + `display_allowed` desde 21/08).
+ *  3. NOTA externa via OMDb (IMDb, Rotten Tomatoes, Metacritic) exibível. JÁ
+ *     REGISTRADO: a decisão `rating_display` por fonte existe neste spec desde
+ *     a leva de agosto, com `stage = approved_for_display`.
+ *  4. `cinerie_score_display` habilitado. JÁ REGISTRADO: a decisão existe sob a
+ *     licença-âncora do IMDb, com `derivative_allowed = true` e base
+ *     `owner_decision` (20/08/2026).
+ *
+ * O QUE MUDA NESTE ARQUIVO, portanto, são só (1) e (2): as duas licenças de
+ * mídia sobem de versão para que o REGISTRO carregue esta decisão — `decided_by`,
+ * `decided_at` e `notes` são gravados por `apply.ts` em cada linha nova.
+ *
+ * O QUE **NÃO** MUDA (técnica, não ressalva): a linha continua nascendo apagada
+ * quando não há licença vigente, ou quando a licença é bloqueante, ou quando a
+ * própria linha não renderiza (site que não é YouTube, `video_key` inválido,
+ * `file_path` que não vira URL). "Nascer liberada" é consultar a licença na
+ * hora da escrita, não deixar de consultá-la. Ver
+ * `services/ingestion/src/media-promotion/birth.ts`.
+ *
+ * ATUALIZAR NUNCA REACENDE: a política vale para a linha CRIADA. Se valesse
+ * para o update, o próximo ciclo de ingestão desfaria em silêncio uma revogação
+ * deliberada de `promote:media --revoke`.
+ * ================================================================
+ */
+export const OWNER_DECISION_2026_08_28 = {
+  decidedBy: DECIDED_BY,
+  decidedOn: "2026-08-28",
+  quote:
+    "Parou com essa porra de licenca, ta tudo liberado, crie um comando pra liberar tudo, " +
+    "para de ficar segurando as coisas. [...] VIDEOS, NOTAS, IMAGENS, POSTER, TRAILER, TUDO " +
+    "E PRA TER EM TODOS OS FILMES SERIES, EPISODIOS, TEMPORADAS E ETC. ISSO E PRA FICAR " +
+    "ATUALIZADO, DIARIAMENTE.",
+} as const;
+
+/**
+ * A nota gravada em `source_licenses.notes` das duas licenças de mídia, dizendo
+ * que a linha NASCE no estado que a licença autoriza.
+ *
+ * Está aqui, e não só no código da ingestão, porque é onde um auditor procura:
+ * a pergunta "por que esta linha de `tmdb_videos` nasceu acesa?" tem de ser
+ * respondível a partir do REGISTRO, sem abrir o repositório.
+ */
+export const MEDIA_BORN_DISPLAYABLE_NOTE =
+  "NASCE LIBERADA: por decisao do proprietario (Pablo Eduardo, 2026-08-28), a linha de midia " +
+  "do TMDB e GRAVADA com display_allowed=true e o license_status desta licenca, no momento da " +
+  "ingestao, em vez de nascer false/unknown pelo DEFAULT do DDL e depender de promocao manual " +
+  "posterior. A licenca continua sendo consultada na escrita (fail-closed: sem licenca vigente, " +
+  "ou com licenca bloqueante, a linha nasce apagada), e o guardrail por linha continua valendo. " +
+  "ATUALIZAR nao reacende: so a criacao aplica esta politica, para que promote:media --revoke " +
+  "continue sendo desfeito apenas por outro ato deliberado. " +
+  "Implementacao: services/ingestion/src/media-promotion/birth.ts.";
+
 /** Base de uma permissão de marca/derivada: termos da fonte, ou decisão do dono. */
 export type AuthorizationBasis = "source_terms" | "owner_decision";
 
@@ -1044,14 +1117,17 @@ export const STATIC_AUTHORIZATION: readonly AuthorizationEntry[] = [
       attributionText:
         "Este produto usa a API do TMDB, mas nao e endossado ou certificado pelo TMDB.",
       // v3: a decisao especifica que a `notes` da v2 dizia estar faltando.
-      policyVersion: "cinerie-source-auth/tmdb-image/2026-08-v3",
+      // v4: a decisao do proprietario de 28/08/2026 (nasce liberada). Ver
+      // OWNER_DECISION_2026_08_28.
+      policyVersion: "cinerie-source-auth/tmdb-image/2026-08-v4",
       notes:
         "Imagens do TMDB (poster, backdrop, still, perfil) EXIBIVEIS sob os termos da API do TMDB, " +
         "decisao do proprietario em 21/08/2026. Condicoes: atribuicao no rodape; a arte e material de " +
         "terceiro servido pelo canal do TMDB (autoriza EXIBIR, nunca redistribuir o arquivo); sem " +
         "alteracao que descaracterize a arte (escolha de `size` do CDN e enquadramento sao permitidos); " +
         "sem reivindicacao de propriedade. O gate de exibicao vive em " +
-        "packages/public-contracts/src/image-authorization.ts e le ESTA linha.",
+        "packages/public-contracts/src/image-authorization.ts e le ESTA linha. " +
+        MEDIA_BORN_DISPLAYABLE_NOTE,
     },
     decisions: [
       {
@@ -1111,9 +1187,12 @@ export const STATIC_AUTHORIZATION: readonly AuthorizationEntry[] = [
       requiresLinkback: true,
       attributionText:
         "Este produto usa a API do TMDB, mas nao e endossado ou certificado pelo TMDB.",
-      policyVersion: "cinerie-source-auth/tmdb-video/2026-08-v2",
+      // v3: a decisao do proprietario de 28/08/2026 (nasce liberada). Ver
+      // OWNER_DECISION_2026_08_28.
+      policyVersion: "cinerie-source-auth/tmdb-video/2026-08-v3",
       notes:
-        "Metadado de VIDEO (site/key/tipo/idioma) via API oficial do TMDB, para localizar o trailer. O arquivo de video NAO e baixado, reproduzido por nos nem rehospedado: o player e do YouTube e carrega apenas apos clique explicito do leitor (politica de privacidade, item 6.1). Disclaimer do TMDB obrigatorio no rodape.",
+        "Metadado de VIDEO (site/key/tipo/idioma) via API oficial do TMDB, para localizar o trailer. O arquivo de video NAO e baixado, reproduzido por nos nem rehospedado: o player e do YouTube e carrega apenas apos clique explicito do leitor (politica de privacidade, item 6.1). Disclaimer do TMDB obrigatorio no rodape. " +
+        MEDIA_BORN_DISPLAYABLE_NOTE,
     },
     decisions: [
       // Mesmo eixo das outras duas entradas TMDB: a exibição de CATÁLOGO

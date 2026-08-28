@@ -23,6 +23,13 @@
  *   D. nenhum credito                             -> FICA DE FORA
  *   E. credito em filme SEM slug canonico         -> FICA DE FORA
  *   F. credito em filme com decisao != index      -> FICA DE FORA
+ *   G. credito bom, bio SEM licenca liberada      -> FICA DE FORA
+ *   H. credito bom, bio liberada, SEM foto        -> FICA DE FORA
+ *
+ * G e H sao a valvula de 2026-08-27: credito deixou de bastar. Em producao,
+ * 0 de 300 pessoas do sitemap exibiam biografia, e a pagina rendia 52 palavras.
+ * G prova que TEXTO nao basta sem licenca (invariante 6) — a coluna de
+ * governanca nasce `unknown` e bio ingerida sem liberacao nao vai a tela.
  *
  * C e o caso sutil: episodio pertence a uma serie, e quem sustenta a relevancia
  * editorial da pessoa e a SERIE. E e o caso que prova que a obra tambem precisa
@@ -48,7 +55,12 @@ const webDir = path.resolve(scriptDir, "..");
 const repoRoot = path.resolve(webDir, "..", "..");
 const dbDir = path.join(repoRoot, "packages", "db");
 const schemaPath = path.join(dbDir, "prisma", "schema.prisma");
-const require = createRequire(import.meta.url);
+// Resolve a partir de `packages/db`, NAO de `apps/web/scripts`: `prisma` e
+// dependencia do pacote de banco, e o app nao a declara. Era latente — no
+// caminho do `embedded-postgres` a execucao morria antes de chegar aqui —, e
+// aparece assim que o cluster ja esta de pe (ver `externalDatabaseUrl`). Mesmo
+// padrao de `validate-decision-robots-render-real-postgres.ts`.
+const require = createRequire(path.join(dbDir, "package.json"));
 
 let passed = 0;
 let total = 0;
@@ -120,26 +132,34 @@ async function seedFixtures(prisma: RawClient): Promise<void> {
              VALUES ('movie', 103, 'pt-BR', '/pt/filmes/filme-bloqueado/', 'noindex', true)`);
 
   // Pessoas: TODAS com nome e slug canonico. So o credito varia.
-  await run(`INSERT INTO people (id, tmdb_id, name, updated_at) VALUES
-             (501, 95501, 'A Elenco Em Filme', now()),
-             (502, 95502, 'B Equipe Em Serie', now()),
-             (503, 95503, 'C So Episodio', now()),
-             (504, 95504, 'D Sem Credito', now()),
-             (505, 95505, 'E Filme Sem Slug', now()),
-             (506, 95506, 'F Filme Bloqueado', now())`);
+  // A e B tem a ficha COMPLETA (bio liberada + foto); G e H isolam cada metade
+  // do gate novo. Sem bio/foto, nem A nem B entrariam — que e o ponto.
+  await run(`INSERT INTO people (id, tmdb_id, name, biography, biography_source_status, profile_path, updated_at) VALUES
+             (501, 95501, 'A Elenco Em Filme', 'Bio liberada de A.',  'licensed', '/a.jpg', now()),
+             (502, 95502, 'B Equipe Em Serie', 'Bio liberada de B.',  'official', '/b.jpg', now()),
+             (503, 95503, 'C So Episodio',     'Bio liberada de C.',  'licensed', '/c.jpg', now()),
+             (504, 95504, 'D Sem Credito',     'Bio liberada de D.',  'licensed', '/d.jpg', now()),
+             (505, 95505, 'E Filme Sem Slug',  'Bio liberada de E.',  'licensed', '/e.jpg', now()),
+             (506, 95506, 'F Filme Bloqueado', 'Bio liberada de F.',  'licensed', '/f.jpg', now()),
+             (507, 95507, 'G Bio Sem Licenca', 'Texto existe, licenca nao.', 'unknown', '/g.jpg', now()),
+             (508, 95508, 'H Sem Foto',        'Bio liberada de H.',  'licensed', NULL,     now())`);
   await run(`INSERT INTO slugs (entity_type, entity_id, language_code, slug, is_canonical, updated_at) VALUES
              ('person', 501, 'pt-BR', 'a-elenco-em-filme', true, now()),
              ('person', 502, 'pt-BR', 'b-equipe-em-serie', true, now()),
              ('person', 503, 'pt-BR', 'c-so-episodio',     true, now()),
              ('person', 504, 'pt-BR', 'd-sem-credito',     true, now()),
              ('person', 505, 'pt-BR', 'e-filme-sem-slug',  true, now()),
-             ('person', 506, 'pt-BR', 'f-filme-bloqueado', true, now())`);
+             ('person', 506, 'pt-BR', 'f-filme-bloqueado', true, now()),
+             ('person', 507, 'pt-BR', 'g-bio-sem-licenca', true, now()),
+             ('person', 508, 'pt-BR', 'h-sem-foto',        true, now())`);
 
   await run(`INSERT INTO cast_members (person_id, entity_type, entity_id, updated_at) VALUES
              (501, 'movie', 101, now()),
              (503, 'episode', 401, now()),
              (505, 'movie', 102, now()),
-             (506, 'movie', 103, now())`);
+             (506, 'movie', 103, now()),
+             (507, 'movie', 101, now()),
+             (508, 'movie', 101, now())`);
   await run(`INSERT INTO crew_members (person_id, entity_type, entity_id, job, updated_at) VALUES
              (502, 'tv', 201, 'Director', now())`);
 }
@@ -150,6 +170,9 @@ const INELIGIBLE = [
   "d-sem-credito",
   "e-filme-sem-slug",
   "f-filme-bloqueado",
+  // Valvula 2026-08-27: credito bom nao basta mais.
+  "g-bio-sem-licenca",
+  "h-sem-foto",
 ];
 
 async function runChecks(url: string): Promise<void> {
@@ -177,6 +200,9 @@ async function runChecks(url: string): Promise<void> {
     `SELECT COUNT(*)::int AS n FROM slugs s JOIN people p ON p.id = s.entity_id
      WHERE s.entity_type = 'person' AND s.language_code = 'pt-BR' AND s.is_canonical = true
        AND BTRIM(p.name) <> ''
+       AND BTRIM(COALESCE(p.biography, '')) <> ''
+       AND p.biography_source_status::text IN ('official','licensed','third_party')
+       AND BTRIM(COALESCE(p.profile_path, '')) <> ''
        AND EXISTS (
          SELECT 1 FROM cast_members cm
          JOIN slugs ws ON ws.entity_type = cm.entity_type AND ws.entity_id = cm.entity_id
@@ -199,8 +225,8 @@ async function runChecks(url: string): Promise<void> {
     `[diag] pessoas com slug=${rawPeople[0]?.n ?? "?"} | aprovadas pelo gate=${gatedPeople[0]?.n ?? "?"}`,
   );
   record(
-    "gate SQL discrimina: 6 pessoas com slug, 2 aprovadas",
-    (rawPeople[0]?.n ?? 0) === 6 && (gatedPeople[0]?.n ?? 0) === 2,
+    "gate SQL discrimina: 8 pessoas com slug, 2 aprovadas",
+    (rawPeople[0]?.n ?? 0) === 8 && (gatedPeople[0]?.n ?? 0) === 2,
     `com slug=${rawPeople[0]?.n}, aprovadas=${gatedPeople[0]?.n}`,
   );
 
@@ -226,7 +252,7 @@ async function runChecks(url: string): Promise<void> {
     record(
       `FICA DE FORA do sitemap: ${slug}`,
       !xml.includes(`/${slug}/`),
-      "sem credito em obra publicavel",
+      "sem credito em obra publicavel, ou sem biografia exibivel/foto",
     );
   }
 
@@ -251,7 +277,59 @@ async function runChecks(url: string): Promise<void> {
   await dbServer.disconnectPrisma();
 }
 
+/**
+ * Escape hatch para um cluster JA de pe em loopback.
+ *
+ * Copiado de `services/ingestion/scripts/validate-indexability-producer-real-postgres.ts`
+ * pelo motivo que aquele arquivo registra: neste checkout, cujo caminho tem
+ * acento, `initdb --encoding=UTF8` morre com
+ * `invalid byte sequence for encoding "UTF8"` — o caminho dos BINARIOS vaza para
+ * o bootstrap, e um `dataDir` sem acento nao salva. Sem esta valvula, o unico
+ * validador de `validate:all` que nao roda ali e justamente o do gate de pessoa,
+ * e ele falha ANTES de qualquer check — o que faz `validate:all` reportar
+ * `FALHOU` por motivo de ambiente, indistinguivel de uma regressao real.
+ *
+ * Variavel PROPRIA, nunca `DATABASE_URL`: o `.env` deste checkout aponta para
+ * PRODUCAO, e este validador INSERE e APAGA.
+ */
+function externalDatabaseUrl(): string | null {
+  const raw = process.env.CINERIE_VALIDATOR_DATABASE_URL;
+  if (raw === undefined || raw.trim().length === 0) return null;
+  const host = new URL(raw).hostname;
+  if (host !== "127.0.0.1" && host !== "localhost" && host !== "::1") {
+    throw new Error(
+      `CINERIE_VALIDATOR_DATABASE_URL precisa apontar para loopback (recebeu host "${host}"). ` +
+        "Este validador APAGA e INSERE dados; ele nunca fala com banco remoto.",
+    );
+  }
+  return raw;
+}
+
 async function main(): Promise<void> {
+  const external = externalDatabaseUrl();
+  if (external !== null) {
+    console.log("[info] usando CINERIE_VALIDATOR_DATABASE_URL (cluster externo, loopback).");
+    try {
+      execFileSync("node", [prismaBin(), "migrate", "deploy", "--schema", schemaPath], {
+        env: { ...process.env, DATABASE_URL: external },
+        stdio: "inherit",
+        cwd: dbDir,
+      });
+      record("migrate deploy aplica do zero", true, "ok");
+      await runChecks(external);
+    } catch (error) {
+      record(
+        "execucao sem excecao",
+        false,
+        error instanceof Error ? error.message.split("\n").join(" ").slice(0, 300) : String(error),
+      );
+      if (error instanceof Error && error.stack) console.error(error.stack);
+    }
+    console.log(`\nRESUMO: ${passed}/${total} checks OK.`);
+    process.exitCode = passed === total ? 0 : 1;
+    return;
+  }
+
   const port = await freePort();
   const dataDir = mkdtempSync(path.join(tmpdir(), "cinerie-person-gate-pg-"));
   const pg = new EmbeddedPostgres({

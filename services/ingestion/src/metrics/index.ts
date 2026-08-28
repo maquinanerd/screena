@@ -13,6 +13,21 @@
 /** Nomes canonicos das metricas do catalogo (§12). */
 export const CATALOG_METRIC_NAMES = {
   jobsTotal: 'catalog_jobs_total',
+  /**
+   * Enfileiramentos por desfecho. Label `result`: `created` | `duplicate`.
+   *
+   * EXISTE PORQUE O CONSERTO DE 2026-08-27 CALOU UM SINAL. Ate entao, cada
+   * enfileiramento repetido aparecia — como `ERROR: duplicate key ...` no log do
+   * PostgreSQL, porque a idempotencia era obtida abortando a transacao. Trocar
+   * por `ON CONFLICT DO NOTHING` tirou o erro do banco e, junto, tirou a unica
+   * medida que existia da TAXA de repeticao. Um defeito barulhento viraria um
+   * defeito mudo.
+   *
+   * `duplicate` nao e erro: e trabalho pedido de novo. Mas a idempotencia e rede
+   * de seguranca, e uma rede acionada milhares de vezes por minuto e um sinal —
+   * so nao e mais um sinal que grita. Esta metrica e onde ele passa a ser lido.
+   */
+  jobsEnqueuedTotal: 'catalog_jobs_enqueued_total',
   jobsFailedTotal: 'catalog_jobs_failed_total',
   jobsDeadLetterTotal: 'catalog_jobs_dead_letter_total',
   entitiesSyncedTotal: 'catalog_entities_synced_total',

@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   buildContractManifest,
+  EDITORIAL_PUBLICATION_REQUEST_SUPERSEDED,
   canonicalJson,
   checkContractCompatibility,
   contractHashOf,
@@ -91,10 +92,24 @@ describe('manifesto de contratos', () => {
     const entry = buildContractManifest().find(
       (candidate) => candidate.contractName === 'editorial-publication-request-v1',
     )
-    expect(entry?.contractVersion).toBe('1.0.0')
+    expect(entry?.contractVersion).toBe('1.1.0')
     expect(entry?.schemaHash).toBe(
-      'sha256:930243294465802778f73151d53ee510a2313d44673de9e6e7866032bfe6c6f8',
+      'sha256:6a512cfcaed0635aed660dde9fba3589073917c6cb6c7945fbcd394684df6aae',
     )
+  })
+
+  it('a versao SUPERADA continua pregada, e com o hash antigo', () => {
+    // O `1.0.0` nao e historia: enquanto esta linha existir, o CMS PROMETE
+    // aceitar pedidos naquele formato. Recalcular este hash a partir do schema
+    // atual seria carimbar o schema novo com o rotulo do velho — a confusao
+    // exata que a checagem existe para pegar.
+    expect(EDITORIAL_PUBLICATION_REQUEST_SUPERSEDED).toEqual([
+      {
+        version: '1.0.0',
+        schemaHash:
+          'sha256:930243294465802778f73151d53ee510a2313d44673de9e6e7866032bfe6c6f8',
+      },
+    ])
   })
 
   it('o VOCABULARIO DE DESFECHO nao pertence a nenhum contrato publicado', () => {
@@ -117,7 +132,8 @@ describe('manifesto de contratos', () => {
 
 describe('compatibilidade de contrato', () => {
   const name = 'editorial-publication-request-v1'
-  const version = '1.0.0'
+  const version = '1.1.0'
+  const superada = EDITORIAL_PUBLICATION_REQUEST_SUPERSEDED[0]!
 
   it('aceita nome, versao e hash corretos', () => {
     // NOME e VERSAO sao conceitos separados desde esta revisao: o nome carrega
@@ -129,6 +145,41 @@ describe('compatibilidade de contrato', () => {
         declaredHash: contractSchemaHash(name) ?? '',
       }),
     ).toEqual({ compatible: true })
+  })
+
+  it('aceita a versao SUPERADA com o hash dela — emissor em voo nao cai', () => {
+    // O ponto inteiro do `SUPERSEDED_CONTRACTS`: subir a versao do contrato nao
+    // pode derrubar quem ainda emite a anterior. Foi esse risco, e so ele, que
+    // manteve `marks` fora da entrada ate a 1.1.0.
+    expect(
+      checkContractCompatibility({
+        contractName: name,
+        declaredVersion: superada.version,
+        declaredHash: superada.schemaHash,
+      }),
+    ).toEqual({ compatible: true })
+  })
+
+  it('recusa a versao superada com hash de OUTRO schema', () => {
+    // Aceitar a versao e relaxar o hash devolveria a ambiguidade que a checagem
+    // existe para matar: dois schemas diferentes sob o mesmo rotulo.
+    expect(
+      checkContractCompatibility({
+        contractName: name,
+        declaredVersion: superada.version,
+        declaredHash: contractSchemaHash(name) ?? '',
+      }),
+    ).toEqual({ compatible: false, reason: 'hash_mismatch' })
+  })
+
+  it('recusa versao que nunca existiu', () => {
+    expect(
+      checkContractCompatibility({
+        contractName: name,
+        declaredVersion: '0.9.0',
+        declaredHash: contractSchemaHash(name) ?? '',
+      }),
+    ).toEqual({ compatible: false, reason: 'version_mismatch' })
   })
 
   it('recusa hash divergente — schema diferente com o mesmo nome', () => {

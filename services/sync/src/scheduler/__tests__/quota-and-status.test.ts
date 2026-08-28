@@ -104,6 +104,7 @@ describe('o painel', () => {
     providerApi: 'tmdb',
     label: 'Ofertas de streaming',
     rationale: 'x',
+    batchLimit: null,
   }
 
   function painel(lastSuccessAt: Date | null) {

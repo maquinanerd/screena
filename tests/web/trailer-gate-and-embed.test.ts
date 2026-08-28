@@ -120,12 +120,27 @@ describe("gate de exibição do trailer — cada condição sozinha", () => {
     expect(isDisplayableTrailerRow(row({ videoKey: "dQw4w9WgXc/" }))).toBe(false);
   });
 
-  it("ESTADO DE HOJE: a linha como a ingestão a cria não passa", () => {
-    // `tmdb_videos` nasce display_allowed=false + license unknown. Enquanto a
-    // decisão de licença de VÍDEO não existir, isto é o que produção devolve.
-    const comoNasce = row({ displayAllowed: false, licenseStatus: "unknown" });
-    expect(isDisplayableTrailerRow(comoNasce)).toBe(false);
-    expect(pickTrailer([comoNasce])).toBeNull();
+  /**
+   * ATUALIZADO em 2026-08-28. O nome deste teste era "ESTADO DE HOJE: a linha
+   * como a ingestão a cria não passa", e o comentário afirmava que
+   * `tmdb_videos` nasce `display_allowed=false` porque "a decisão de licença de
+   * VÍDEO não existir". As duas metades ficaram falsas: a licença existe desde
+   * 13/08/2026, e desde 28/08 a linha nasce no estado que ela autoriza
+   * (`services/ingestion/src/media-promotion/birth.ts`).
+   *
+   * O que o teste MEDE continua exatamente o mesmo e continua valendo: uma linha
+   * apagada não passa no gate. Ele deixou de descrever "o estado de hoje" e
+   * passou a ser o que sempre foi de fato — o CONTROLE NEGATIVO do gate.
+   */
+  it("CONTROLE NEGATIVO: linha apagada/sem licença não passa, seja qual for a origem", () => {
+    const apagada = row({ displayAllowed: false, licenseStatus: "unknown" });
+    expect(isDisplayableTrailerRow(apagada)).toBe(false);
+    expect(pickTrailer([apagada])).toBeNull();
+
+    // Acesa por engano com status bloqueante também não passa: o gate é o PAR.
+    const meioAcesa = row({ displayAllowed: true, licenseStatus: "unknown" });
+    expect(isDisplayableTrailerRow(meioAcesa)).toBe(false);
+    expect(pickTrailer([meioAcesa])).toBeNull();
   });
 });
 

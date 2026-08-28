@@ -18,14 +18,31 @@ import {
   buildSeasonPageView,
   type SeasonPageView,
 } from "../lib/season-episode-presenter";
+import type { TrailerView } from "../lib/trailer-presenter";
 import { seasonCanonicalUrl, seriesCanonicalUrl } from "../lib/site";
+import { getTrailerForEntity } from "./entity-trailer";
 import { resolveEntityPageSeo } from "./seo/indexability-decision";
+import { applyPageSuspension } from "./seo/suspended-pages";
 
 const LANGUAGE_CODE = "pt-BR";
 const SERIES_ENTITY_TYPE = "tv";
 
 export interface SeasonPageData {
   view: SeasonPageView;
+  /**
+   * O trailer DA TEMPORADA, já aprovado pelo gate de licença, ou `null`.
+   *
+   * `null` cobre quatro estados que a página não precisa distinguir (a
+   * temporada não tem `tmdb_id` próprio, não há vídeo coletado, há vídeo sem
+   * licença, há vídeo não promovido) — todos significam "não exibir". Quem
+   * chama transforma em ausência REGISTRADA, nunca em bloco vazio.
+   *
+   * Até 2026-08-27 era `null` para TODAS as temporadas do catálogo, e a causa
+   * era a primeira da lista: `sync_media` recusava `kind='season'`, então
+   * `tmdb_videos` nunca teve uma linha com esse `entity_type`. A 2ª temporada
+   * de Ted Lasso tem dois trailers oficiais no TMDB desde 2021.
+   */
+  trailer: TrailerView | null;
   /** Resolucao FINAL de SEO da temporada (fatos vivos + decisao vigente). */
   seo: PageSeoResolution;
   /** Slug canonico pt-BR da serie. */
@@ -88,6 +105,10 @@ export const getSeasonPageData = cache(
           where: { tvShowId: seriesId, seasonNumber },
           select: {
             id: true,
+            // A CHAVE da mídia da temporada. `tmdb_videos` guarda o trailer pelo
+            // id PRÓPRIO da temporada, nunca pelo da série — se fosse o da
+            // série, todas as temporadas mostrariam o mesmo vídeo.
+            tmdbId: true,
             seasonNumber: true,
             name: true,
             overview: true,
@@ -150,7 +171,12 @@ export const getSeasonPageData = cache(
       nextSeasonNumber: next,
     });
 
-    const seo = await resolveEntityPageSeo(
+    // Sem `tmdb_id` próprio não há chave: `null` direto, sem consultar. Cair
+    // para o id da série mostraria o trailer de OUTRA temporada.
+    const trailer =
+      season.tmdbId === null ? null : await getTrailerForEntity(prisma, "season", season.tmdbId);
+
+    const resolved = await resolveEntityPageSeo(
       { entityType: "season", entityId: season.id, languageCode: LANGUAGE_CODE },
       {
         language: LANGUAGE_CODE,
@@ -160,7 +186,10 @@ export const getSeasonPageData = cache(
       },
       prisma,
     );
+    // VALVULA 2026-08-27: o par obrigatorio da saida do sitemap.
+    // Sair do sitemap nao desindexa; a meta tag desindexa.
+    const seo = applyPageSuspension("season", resolved);
 
-    return { view, seo, canonicalSlug, canonicalUrl, seriesUrl };
+    return { view, trailer, seo, canonicalSlug, canonicalUrl, seriesUrl };
   },
 );

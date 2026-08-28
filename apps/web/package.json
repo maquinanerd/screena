@@ -17,6 +17,8 @@
     "validate:news-pages": "tsx scripts/validate-news-pages-real-postgres.ts",
     "validate:entity-resolve": "tsx scripts/validate-entity-resolve-real-postgres.ts",
     "validate:seo-runtime": "tsx scripts/validate-seo-runtime-real-postgres.ts",
+    "validate:route-cache": "tsx scripts/validate-route-cache-real-postgres.ts",
+    "validate:decision-robots": "tsx scripts/validate-decision-robots-render-real-postgres.ts",
     "validate:licensed-intelligence": "tsx scripts/validate-licensed-intelligence-real-postgres.ts",
     "validate:season-episode-routes": "tsx scripts/validate-season-episode-routes-real-postgres.ts",
     "validate:all": "tsx scripts/validate-all-real-postgres.ts",
@@ -33,7 +35,9 @@
     "canary:editorial-entity-links": "tsx scripts/canary-editorial-entity-links-real-postgres.ts",
     "canary:entity-link-auto-verification": "tsx scripts/canary-entity-link-auto-verification-real-postgres.ts",
     "qa:gallery": "tsx scripts/qa-gallery-real-postgres.ts",
-    "report:hero-gate": "tsx scripts/report-hero-gate.ts"
+    "qa:episode-season": "tsx scripts/qa-episode-season-real-postgres.ts",
+    "report:hero-gate": "tsx scripts/report-hero-gate.ts",
+    "validate:synopsis-render": "tsx --tsconfig scripts/tsconfig.json scripts/validate-synopsis-render-real-postgres.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1097.0",

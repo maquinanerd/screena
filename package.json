@@ -36,6 +36,7 @@
     "validate:editorial-platform": "corepack pnpm --filter @screena/news-ingestion validate:editorial-platform",
     "validate:news-pages": "corepack pnpm --filter @screena/web validate:news-pages",
     "validate:entity-indexes": "corepack pnpm --filter @screena/web validate:entity-indexes",
+    "validate:route-cache": "corepack pnpm --filter @screena/web validate:route-cache",
     "validate:movie-page": "corepack pnpm --filter @screena/web validate:movie-page",
     "validate:series-page": "corepack pnpm --filter @screena/web validate:series-page",
     "validate:person-page": "corepack pnpm --filter @screena/web validate:person-page",

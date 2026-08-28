@@ -48,14 +48,27 @@ export type ExternalIdKind = (typeof EXTERNAL_ID_KINDS)[number]
 /**
  * Kinds que possuem midia sincronizavel por `sync_media`.
  *
- * `season`/`episode` ficam DE FORA de proposito: a chave de midia e
+ * ============================================================================
+ * `season`/`episode` ENTRARAM EM 2026-08-27, E A RECUSA ANTERIOR ERA REAL
+ * ============================================================================
+ * Ate entao aqui se lia que os dois ficavam de fora porque "a chave de midia e
  * (entityType, tmdbId) e, para temporada, o tmdbId e o da SERIE — todas as
- * temporadas colidiriam na mesma chave de cache (`/season/1399/images`) e as
- * linhas ficariam indistinguiveis. Stills de episodio entram por
- * `sync_episodes`, que usa a chave natural correta (serie + temporada +
- * episodio).
+ * temporadas colidiriam na mesma chave". A COLISAO era verdadeira; a conclusao
+ * e que estava errada. Temporada e episodio tem id TMDB PROPRIO (`seasons
+ * .tmdb_id`, `episodes.tmdb_id`), e e ele que vai na chave. O que precisa da
+ * serie + numero e a URL da CHAMADA, nao a chave de armazenamento — e as duas
+ * nunca precisaram ser o mesmo numero.
+ *
+ * A segunda metade da recusa ("stills de episodio entram por `sync_episodes`,
+ * que usa a chave natural correta") era falsa na pratica: `extractEpisodeStills`
+ * lia `images.stills` do item de `episodes[]` da temporada, que nao tem esse
+ * bloco. Devolvia [] em toda execucao. Nada entrava por la.
+ *
+ * Por isso: `season` e `episode` sao kinds validos, e o adapter resolve o id
+ * proprio no banco antes de gravar. Sem id proprio a linha e RECUSADA — nunca
+ * gravada sob o id da serie.
  */
-export const MEDIA_KINDS = ['movie', 'tv', 'person'] as const
+export const MEDIA_KINDS = ['movie', 'tv', 'person', 'season', 'episode'] as const
 
 /** Um kind valido de `sync_media`. */
 export type MediaKind = (typeof MEDIA_KINDS)[number]
@@ -264,6 +277,21 @@ export interface SyncDetailsInput {
   readonly tmdbId: number
   readonly locale: string
   readonly enqueueDependencies: boolean
+  /**
+   * O ESCOPO desta execucao — a janela/dia que a distingue das anteriores.
+   *
+   * `buildCoverageJob` ja gravava isto no payload (campo `window`) desde o
+   * incremental `/changes`, e este validador o DESCARTAVA. A consequencia nao
+   * era cosmetica: sem o escopo aqui, os filhos (`sync_media`, `sync_seasons`)
+   * derivavam a chave de idempotencia so de (tipo, entidade, id, locale) — a
+   * MESMA chave em toda execucao. O primeiro ciclo criava; todos os seguintes
+   * batiam no unique e viravam noop. Midia e temporada eram escritas UMA vez e
+   * nunca mais, e era por isso que o catalogo congelava.
+   *
+   * `null` quando o pai nasceu sem escopo (a descoberta e backfill do universo:
+   * o mesmo id descoberto de novo e o mesmo trabalho).
+   */
+  readonly scope: string | null
 }
 
 /** Input de `sync_credits`. */
@@ -292,11 +320,37 @@ export interface SyncMediaInput {
   readonly locale: string
 }
 
+/**
+ * O nome do campo de ESCOPO no payload de um job de catalogo.
+ *
+ * `window` e o nome historico (veio do incremental `/changes`, onde o escopo E
+ * uma janela de tempo). O agendador grava um escopo de DIA no mesmo campo. Um
+ * lugar so para o nome evita que produtor e consumidor divirjam em silencio —
+ * que foi exatamente o que aconteceu enquanto o validador nao o lia.
+ */
+export const JOB_SCOPE_FIELD = 'window'
+
+/** Le o escopo do payload de um job. Ausente => `null` (sem escopo). */
+export function readJobScope(raw: Record<string, unknown>): string | null {
+  return readOptionalString(raw, JOB_SCOPE_FIELD)
+}
+
 /** Input de `sync_seasons`. */
 export interface SyncSeasonsInput {
   readonly tmdbId: number
   readonly locale: string
   readonly enqueueEpisodes: boolean
+  /**
+   * Enfileira um `sync_media` de TEMPORADA por temporada existente.
+   *
+   * CUSTO: 1 job e 2 requisicoes (`/images` + `/videos`) por temporada. E o que
+   * acende o TRAILER da pagina de temporada: ate 2026-08-27 `sync_media`
+   * recusava `season`, entao `tmdb_videos` nunca teve uma linha de temporada e
+   * a pagina nao tinha onde buscar trailer.
+   */
+  readonly enqueueSeasonMedia: boolean
+  /** Escopo HERDADO do pai. Ver `SyncDetailsInput.scope`. */
+  readonly scope: string | null
 }
 
 /** Input de `sync_episodes`. */
@@ -304,6 +358,24 @@ export interface SyncEpisodesInput {
   readonly tmdbId: number
   readonly seasonNumber: number
   readonly locale: string
+  /**
+   * Enfileira um `sync_media` de EPISODIO por episodio processado.
+   *
+   * CUSTO: 1 job e 2 requisicoes por EPISODIO — a dimensao mais cara desta
+   * leva. Uma temporada de 12 episodios gera 12 jobs e 24 requisicoes so aqui.
+   *
+   * Vale porque e a UNICA fonte do conjunto completo de stills: o detalhe do
+   * episodio (`getTvEpisode`) traz `images` no append, mas o append vai com
+   * `language=pt-BR` e o TMDB filtra por idioma — sobrariam as poucas artes com
+   * `iso_639_1=pt`. O endpoint proprio vai sem `language`. Os dois escrevem na
+   * mesma chave unica de `tmdb_images`, entao rodar os dois nao duplica linha.
+   *
+   * Desligue quando a fila estiver represada: os stills do append continuam
+   * entrando por `sync_episodes`, so que em subconjunto.
+   */
+  readonly enqueueEpisodeMedia: boolean
+  /** Escopo HERDADO do pai. Ver `SyncDetailsInput.scope`. */
+  readonly scope: string | null
 }
 
 /** Input de `sync_lists`. */
@@ -402,6 +474,7 @@ export function validateSyncDetailsInput(value: unknown): SyncDetailsInput {
     tmdbId: readPositiveInt(raw, 'tmdbId'),
     locale: readOptionalString(raw, 'locale', 'pt-BR') as string,
     enqueueDependencies: readOptionalBoolean(raw, 'enqueueDependencies', true),
+    scope: readJobScope(raw),
   }
 }
 
@@ -447,19 +520,34 @@ export function validateSyncExternalIdsInput(value: unknown): SyncExternalIdsInp
 /**
  * Valida o payload de `sync_media`.
  *
- * `season`/`episode` sao rejeitados por `MEDIA_KINDS` (ver a nota la): a chave
- * de midia e (entityType, tmdbId) e colidiria entre temporadas. `seasonNumber`/
- * `episodeNumber` seguem no tipo por compatibilidade do payload, mas nao tem uso
- * aqui — nenhum kind aceito os consome.
+ * `tmdbId` e SEMPRE o id da entidade que se busca na URL: para `movie`/`tv`/
+ * `person` e a propria entidade; para `season`/`episode` e o da SERIE, porque e
+ * assim que o TMDB enderecca (`/tv/{serie}/season/{n}/images`). O id PROPRIO da
+ * temporada/episodio — o que vai na chave de `tmdb_images`/`tmdb_videos` — e
+ * resolvido no banco pelo adapter, nunca vem do payload do job.
+ *
+ * `seasonNumber` e obrigatorio para `season` e `episode`; `episodeNumber` so
+ * para `episode`. Aceitar um sem o outro montaria uma URL invalida e gastaria
+ * cota para receber 404 — falha permanente, nao transitoria, entao reprova aqui.
  */
 export function validateSyncMediaInput(value: unknown): SyncMediaInput {
   const raw = asRecord(value)
   const entityType = readEnum(raw, 'entityType', MEDIA_KINDS)
+  const seasonNumber = readOptionalNonNegativeInt(raw, 'seasonNumber')
+  const episodeNumber = readOptionalNonNegativeInt(raw, 'episodeNumber')
+
+  if ((entityType === 'season' || entityType === 'episode') && seasonNumber === null) {
+    throw new CatalogJobInputError(`entityType "${entityType}" exige "seasonNumber"`)
+  }
+  if (entityType === 'episode' && episodeNumber === null) {
+    throw new CatalogJobInputError('entityType "episode" exige "episodeNumber"')
+  }
+
   return {
     entityType,
     tmdbId: readPositiveInt(raw, 'tmdbId'),
-    seasonNumber: readOptionalNonNegativeInt(raw, 'seasonNumber'),
-    episodeNumber: readOptionalNonNegativeInt(raw, 'episodeNumber'),
+    seasonNumber,
+    episodeNumber,
     locale: readOptionalString(raw, 'locale', 'pt-BR') as string,
   }
 }
@@ -471,6 +559,8 @@ export function validateSyncSeasonsInput(value: unknown): SyncSeasonsInput {
     tmdbId: readPositiveInt(raw, 'tmdbId'),
     locale: readOptionalString(raw, 'locale', 'pt-BR') as string,
     enqueueEpisodes: readOptionalBoolean(raw, 'enqueueEpisodes', true),
+    enqueueSeasonMedia: readOptionalBoolean(raw, 'enqueueSeasonMedia', true),
+    scope: readJobScope(raw),
   }
 }
 
@@ -485,6 +575,8 @@ export function validateSyncEpisodesInput(value: unknown): SyncEpisodesInput {
     tmdbId: readPositiveInt(raw, 'tmdbId'),
     seasonNumber,
     locale: readOptionalString(raw, 'locale', 'pt-BR') as string,
+    enqueueEpisodeMedia: readOptionalBoolean(raw, 'enqueueEpisodeMedia', true),
+    scope: readJobScope(raw),
   }
 }
 

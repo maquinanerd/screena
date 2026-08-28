@@ -70,7 +70,49 @@ import { imagesGalleryPath, videosGalleryPath } from '../../../../src/lib/routes
  * log estruturado. Bloco que some sem dizer por quê é defeito, não economia.
  */
 
-export const revalidate = 3600
+/**
+ * Janela de cache: 5 minutos.
+ *
+ * Era uma hora, e a ficha e uma pagina de CATALOGO — que muda pouco. O que
+ * mudou de dono foi a secao "Noticias e Bastidores": desde que o MNScr passou a
+ * vincular a materia a obra, esta pagina tem conteudo editorial, e editorial
+ * envelhece em minutos, nao em horas. Medido em 28/08/2026: a materia do
+ * trailer em LEGO ja estava vinculada no banco e a ficha do filme continuou
+ * mostrando a lista antiga, porque a copia em cache era anterior a publicacao.
+ *
+ * 5 minutos e o meio-termo declarado: 12x mais renderizacao que antes num
+ * conjunto de paginas que quase nunca e visitado duas vezes na mesma janela, em
+ * troca de a materia aparecer na ficha enquanto ela ainda e noticia. O certo de
+ * verdade e revalidacao SOB DEMANDA — o worker de projecao avisando o site
+ * quando cria o vinculo —, e ela continua valendo a pena depois disto.
+ */
+export const revalidate = 300
+
+/**
+ * `generateStaticParams` VAZIO — e ele que liga o `revalidate` acima.
+ *
+ * MEDIDO (2026-08-28): esta rota declarava `revalidate = 3600` desde 2026-07 e
+ * mesmo assim respondia em producao com
+ * `cache-control: private, no-cache, no-store, max-age=0, must-revalidate`.
+ * A causa nao era leitura de sessao nem `force-dynamic`: era a AUSENCIA desta
+ * funcao. Sem `generateStaticParams`, o Next nao considera a rota dinamica
+ * elegivel a prerender, ela nao entra em `dynamicRoutes` do
+ * `prerender-manifest.json`, `isSSG` fica falso e o render sai com
+ * `revalidate = 0` — que e exatamente o `no-store` observado.
+ *
+ * PROVA POR EXPERIMENTO CONTROLADO (`next build` na mesma arvore): sem esta
+ * funcao a tabela do build mostra `f (Dynamic)` e `dynamicRoutes` vem `[]`;
+ * com ela (devolvendo `[]`) a mesma rota vira `. (SSG)` e aparece em
+ * `dynamicRoutes`. Nenhuma outra linha mudou.
+ *
+ * Devolve `[]` DE PROPOSITO: nao ha nada para prerenderizar no build (sao ~67
+ * mil URLs e o banco nao esta disponivel la). Cada URL e gerada na primeira
+ * visita e entao guardada pela janela do `revalidate` — que e o comportamento
+ * que a rota sempre quis ter.
+ */
+export async function generateStaticParams(): Promise<Record<string, string>[]> {
+  return []
+}
 
 const REVIEW_BLOCK_TYPE = 'review_summary'
 const WORK_BLOCK_TYPES: ReadonlySet<string> = new Set([

@@ -8,7 +8,6 @@
  * ficam nos planejadores PUROS de ../catalog-jobs; aqui so ha IO + conversao.
  */
 
-import type { Prisma } from '@prisma/client'
 import type { PrismaClient } from '@screena/db/server'
 import { planReclaim, planReplay } from '../catalog-jobs/transitions.js'
 import type { JobBackoffConfig } from '../catalog-jobs/backoff.js'
@@ -25,15 +24,6 @@ import type {
 import type { CatalogEntityKind, CatalogJobType } from '../catalog-jobs/types.js'
 
 type Tx = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0]
-
-/** true se o erro do Prisma e violacao de unique (idempotency_key). */
-function isUniqueViolation(error: unknown): boolean {
-  if (error == null || typeof error !== 'object') return false
-  const code = (error as { code?: unknown }).code
-  if (code === 'P2002') return true
-  const message = (error as { message?: unknown }).message
-  return typeof message === 'string' && /idempotency_key|23505|duplicate key/i.test(message)
-}
 
 function asPayload(value: unknown): Record<string, unknown> {
   return value != null && typeof value === 'object' ? (value as Record<string, unknown>) : {}
@@ -80,37 +70,66 @@ export function createPrismaCatalogJobStore(
 
   return {
     async enqueue(input: EnqueueCatalogJobInput): Promise<EnqueueResult> {
-      try {
-        const job = await prisma.catalogJob.create({
-          data: {
-            jobType: input.jobType,
-            status: 'pending',
-            entityType: input.entityType ?? null,
-            externalId: input.externalId ?? null,
-            // `Record<string, unknown>` nao casa com `InputJsonValue` (que exige
-            // valores JSON-serializaveis). O payload E JSON por contrato da
-            // porta; o cast marca essa fronteira em vez de afrouxar o tipo.
-            payload: (input.payload ?? {}) as Prisma.InputJsonValue,
-            idempotencyKey: input.idempotencyKey,
-            priority: input.priority ?? 100,
-            maxAttempts: input.maxAttempts ?? 5,
-            availableAt: input.availableAt ?? now(),
-            runId: input.runId ?? null,
-          },
-          select: { id: true },
-        })
-        return { id: job.id.toString(), created: true }
-      } catch (error) {
-        if (isUniqueViolation(error)) {
-          // Outro enfileiramento com a mesma chave ja existe: noop idempotente.
-          const existing = await prisma.catalogJob.findUnique({
-            where: { idempotencyKey: input.idempotencyKey },
-            select: { id: true },
-          })
-          return { id: existing ? existing.id.toString() : '0', created: false }
-        }
-        throw error
-      }
+      // INSERT ... ON CONFLICT DO NOTHING em vez de create + catch de P2002.
+      //
+      // O comportamento observavel e o MESMO (chave nova cria, chave repetida e
+      // noop) — o que muda e o custo da colisao. Com `create`, o Postgres tinha
+      // de ABORTAR a transacao implicita para nos contar que a chave existia:
+      // cada noop escrevia `ERROR: duplicate key value violates unique
+      // constraint "catalog_jobs_idempotency_key_key"` no log do servidor e
+      // somava um `xact_rollback`. Como enfileirar a MESMA dependencia de novo e
+      // o caminho NORMAL (todo `sync_details` recoberto reenfileira o seu
+      // `sync_media`, cuja chave nao tem escopo — ver
+      // `catalog-jobs/handlers/sync-details-handler.ts`), isso enchia o disco de
+      // erro para descrever sucesso. O `ON CONFLICT` responde "zero linhas" sem
+      // abortar nada.
+      //
+      // Precedente no mesmo repositorio: `changes-checkpoint-store.ts` ja
+      // enfileira com `createMany({ skipDuplicates: true })` — a MESMA clausula.
+      // Este adapter era o unico caminho que ainda pagava a colisao com excecao.
+      //
+      // Por que SQL cru e nao `createMany({ skipDuplicates: true })`: aquele nao
+      // devolve id, e a porta promete o id nos DOIS desfechos. Com `RETURNING id`
+      // o caminho criado resolve em UMA ida ao banco.
+      const at = now()
+      const availableAt = (input.availableAt ?? at).toISOString()
+      const updatedAt = at.toISOString()
+      // `available_at`/`updated_at` sao `timestamp` (sem tz): o mesmo idioma do
+      // claim (ISO -> `::timestamptz AT TIME ZONE 'UTC'`) mantem o frame
+      // wall-clock-UTC que o Prisma grava, independente da timezone da sessao.
+      // `updated_at` e NOT NULL SEM default no banco (o `@updatedAt` do Prisma e
+      // do lado da aplicacao), entao o INSERT cru precisa preenche-lo.
+      const rows = await prisma.$queryRaw<{ id: bigint }[]>`
+        INSERT INTO catalog_jobs (
+          job_type, status, entity_type, external_id, payload, idempotency_key,
+          max_attempts, priority, available_at, run_id, updated_at
+        ) VALUES (
+          CAST(${input.jobType}::text AS "public"."CatalogJobType"),
+          CAST('pending'::text AS "public"."CatalogJobStatus"),
+          CAST(${input.entityType ?? null}::text AS "public"."TmdbEntityKind"),
+          ${input.externalId ?? null},
+          ${JSON.stringify(input.payload ?? {})}::jsonb,
+          ${input.idempotencyKey},
+          ${input.maxAttempts ?? 5}::int,
+          ${input.priority ?? 100}::int,
+          ${availableAt}::timestamptz AT TIME ZONE 'UTC',
+          ${input.runId ?? null},
+          ${updatedAt}::timestamptz AT TIME ZONE 'UTC'
+        )
+        ON CONFLICT (idempotency_key) DO NOTHING
+        RETURNING id`
+      const inserted = rows[0]
+      if (inserted !== undefined) return { id: inserted.id.toString(), created: true }
+
+      // Zero linhas = a chave JA existia. Nao e erro: e o noop idempotente.
+      // A porta promete o id do job vencedor, entao ele e lido aqui — um SELECT
+      // barato, e o mesmo que o caminho antigo ja fazia depois de capturar a
+      // excecao.
+      const existing = await prisma.catalogJob.findUnique({
+        where: { idempotencyKey: input.idempotencyKey },
+        select: { id: true },
+      })
+      return { id: existing ? existing.id.toString() : '0', created: false }
     },
 
     async claimNext(options: ClaimCatalogOptions = {}): Promise<ClaimedCatalogJob | null> {
