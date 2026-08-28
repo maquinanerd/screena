@@ -471,18 +471,31 @@ export const FACTS_PAGE_SIZE = 20_000
  * `truncated`, e nao uma inferencia de "veio numero redondo".
  *
  * Sem `cap`, varre ate a pagina voltar vazia: o censo soma o TOTAL REAL.
+ *
+ * `outcome.truncated` e escrito por REFERENCIA porque um `for await` descarta o
+ * valor de retorno do gerador. E a distincao importa: um tipo com exatamente
+ * `cap` linhas foi lido INTEIRO, e reporta-lo como truncado faria o operador
+ * desconfiar de um censo completo. Por isso a varredura confirma o fim
+ * consultando UMA pagina a mais em vez de deduzir do numero.
  */
 async function* readFactsPages(
   prisma: PrismaClient,
   entityType: CatalogDecisionEntityType,
   language: string,
   cap: number | null,
+  outcome: { truncated: boolean } = { truncated: false },
 ): AsyncGenerator<readonly EntityFactRow[], void, void> {
   let after = 0n
   let lidas = 0
   for (;;) {
     const restante = cap === null ? FACTS_PAGE_SIZE : Math.min(FACTS_PAGE_SIZE, cap - lidas)
-    if (restante <= 0) return
+    if (restante <= 0) {
+      // Bateu no teto. So e TRUNCADO se ainda houver linha depois — uma sonda de
+      // 1 linha responde isso sem varrer o resto do tipo.
+      const sobra = await readFactsPage(prisma, entityType, language, 1, after)
+      outcome.truncated = sobra.length > 0
+      return
+    }
     const page = await readFactsPage(prisma, entityType, language, restante, after)
     if (page.length === 0) return
     lidas += page.length
@@ -650,7 +663,8 @@ export async function produceIndexabilityDecisions(
   // ---- FASE 1: planeja. Nenhuma escrita acontece neste laco. ----
   for (const entityType of types) {
     const slotTipo = bucket(entityType)
-    for await (const rows of readFactsPages(prisma, entityType, options.language, cap)) {
+    const varredura = { truncated: false }
+    for await (const rows of readFactsPages(prisma, entityType, options.language, cap, varredura)) {
       for (const row of rows) {
         evaluated += 1
         const decision: CatalogIndexabilityDecision = decideCatalogIndexability(
@@ -699,10 +713,10 @@ export async function produceIndexabilityDecisions(
         })
       }
     }
-    // TRUNCADO = o operador declarou um teto E a varredura o atingiu. Nao e
-    // inferido de "o numero veio redondo": e o proprio produtor dizendo que
-    // parou antes do fim do tipo.
-    if (cap !== null && slotTipo.evaluated >= cap) slotTipo.truncated = true
+    // TRUNCADO = a varredura parou no teto E AINDA HAVIA LINHA depois. Nao e
+    // inferido de "o numero veio redondo", nem de "bateu no teto": e o proprio
+    // produtor dizendo que deixou entidade para tras.
+    slotTipo.truncated = varredura.truncated
   }
 
   // ---- Mede o tamanho da mudanca ANTES de gravar qualquer coisa. ----

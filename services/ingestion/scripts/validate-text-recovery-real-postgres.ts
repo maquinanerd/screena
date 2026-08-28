@@ -583,6 +583,21 @@ async function runChecks(url: string): Promise<void> {
         censoTruncado.byEntityType.movie?.truncated === true,
       `truncatedTypes=${JSON.stringify(censoTruncado.truncatedTypes)}`,
     )
+    // O CASO DE FRONTEIRA. `--limit` IGUAL ao numero de linhas leu o tipo
+    // INTEIRO — reportar isso como truncado faria o operador desconfiar de um
+    // censo completo. E a diferenca entre "bateu no teto" e "deixou linha para
+    // tras", que so uma sonda de uma linha a mais consegue distinguir.
+    const censoNoLimite = await produzir(prisma, {
+      dryRun: true,
+      types: ['movie'],
+      limit: FILMES_EM_MASSA,
+    })
+    record(
+      '--limit IGUAL ao total NAO e truncamento (o tipo foi lido inteiro)',
+      censoNoLimite.byEntityType.movie?.evaluated === FILMES_EM_MASSA &&
+        censoNoLimite.truncatedTypes.length === 0,
+      `evaluated=${String(censoNoLimite.byEntityType.movie?.evaluated)} · truncatedTypes=${JSON.stringify(censoNoLimite.truncatedTypes)}`,
+    )
     record(
       'o DENOMINADOR do freio muda junto (era o efeito invisivel do teto)',
       censoTruncado.massChange.evaluated === 100_000 &&
