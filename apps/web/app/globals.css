@@ -10294,6 +10294,14 @@ h4.art-body__heading {
   padding: 4px 7px;
 }
 
+/* Serie usa o acento verde (invariantes 9 e 10). A regra vem DEPOIS da de cima
+   porque o CSS resolve por ordem de documento com a mesma especificidade — e
+   aqui a especificidade nem empata: o seletor de atributo ganha. Ate 2026-08-28
+   o badge era sempre vermelho porque o card so sabia dizer "movie". */
+.similar-card[data-entity-type='tv'] .similar-card__type {
+  background: var(--c-accent-series);
+}
+
 .similar-card__title {
   display: block;
   font-size: 13px;

@@ -24,6 +24,7 @@ import {
 
 function row(overrides: Partial<SimilarTitleRow> & { entityId: string }): SimilarTitleRow {
   return {
+    entityType: "movie",
     titleOriginal: `Original ${overrides.entityId}`,
     translationTitle: null,
     slug: `slug-${overrides.entityId}`,
@@ -110,6 +111,61 @@ describe("buildSimilarTitles — o trilho", () => {
     expect(view?.items[0]?.href).toBe("/pt/filmes/duna-parte-dois/");
   });
 
+  /**
+   * ESTE ERA O BURACO. A prova acima existia desde o inicio e PASSAVA com o
+   * defeito de pe, porque o `href` era `` `/pt/filmes/${slug}/` `` cravado no
+   * template: ela media a vertical certa (filme) e por isso travou a
+   * implementacao errada como se fosse a especificacao. So faltava a linha
+   * abaixo, que a mesma funcao nao conseguia satisfazer.
+   */
+  it("monta href de SERIE — o mesmo bloco, a outra vertical", () => {
+    const view = buildSimilarTitles(
+      [row({ entityId: "2", entityType: "tv", slug: "fear-the-walking-dead" })],
+      BASE,
+    );
+    expect(view?.items[0]?.href).toBe("/pt/series/fear-the-walking-dead/");
+    expect(view?.items[0]?.entityType).toBe("tv");
+  });
+
+  /**
+   * A COLISAO DE SLUG. Existe o filme `the-passage` E a serie `the-passage`, os
+   * dois com slug canonico pt-BR em producao. Uma implementacao que adivinhe a
+   * vertical pelo formato do slug passa em tudo que esta acima e erra AQUI — e
+   * erra do jeito pior: 200 com a obra errada, sem 404 que denuncie.
+   */
+  it("o MESMO slug em verticais diferentes produz URLs diferentes (o caso the-passage)", () => {
+    const view = buildSimilarTitles(
+      [
+        row({ entityId: "2", entityType: "movie", slug: "the-passage", position: 1 }),
+        row({ entityId: "3", entityType: "tv", slug: "the-passage", position: 2 }),
+      ],
+      BASE,
+    );
+    expect(view?.items.map((item) => item.href)).toEqual([
+      "/pt/filmes/the-passage/",
+      "/pt/series/the-passage/",
+    ]);
+  });
+
+  /**
+   * C.2: sem destino determinavel, o card NAO aparece. Um slug que quebraria a
+   * rota nao pode virar link — e um `href` vazio levaria a pagina errada.
+   */
+  it("omite o card cujo slug nao produz rota valida, em vez de emitir link torto", () => {
+    const view = buildSimilarTitles(
+      [
+        row({ entityId: "2", slug: "com/barra", position: 1 }),
+        row({ entityId: "3", slug: "valido", position: 2 }),
+      ],
+      BASE,
+    );
+    expect(view?.items.map((item) => item.href)).toEqual(["/pt/filmes/valido/"]);
+  });
+
+  it("devolve null quando NENHUMA linha produz rota valida", () => {
+    expect(buildSimilarTitles([row({ entityId: "2", slug: ".." })], BASE)).toBeNull();
+  });
+
   it("sem poster no banco, o card vem sem imagem — nunca com placeholder remoto", () => {
     const view = buildSimilarTitles([row({ entityId: "2", posterPath: null })], BASE);
     expect(view?.items[0]?.poster).toBeNull();
@@ -119,6 +175,24 @@ describe("buildSimilarTitles — o trilho", () => {
     const view = buildSimilarTitles([row({ entityId: "2" })], BASE);
     expect(view?.relation).toBe("collection");
     expect(view?.relationLabel).toBe("Coleção Exemplo");
+  });
+
+  /**
+   * O rotulo tem de MUDAR com a origem. Em producao a tela empilhava
+   * "MESMA COLEÇÃO" sobre "Recomendados pelo TMDB" — porque o kicker estava
+   * cravado no componente e so o `relationLabel` variava.
+   */
+  it("o kicker nomeia a relacao REAL, e nao diz colecao quando e recomendacao", () => {
+    const colecao = buildSimilarTitles([row({ entityId: "2" })], BASE);
+    expect(colecao?.relationKicker).toBe("Mesma coleção");
+
+    const recomendacao = buildSimilarTitles([row({ entityId: "2", entityType: "tv" })], {
+      ...BASE,
+      relation: "recommendation",
+      relationLabel: RECOMMENDATION_RELATION_LABEL,
+    });
+    expect(recomendacao?.relationKicker).not.toBe("Mesma coleção");
+    expect(recomendacao?.relationLabel).toBe(RECOMMENDATION_RELATION_LABEL);
   });
 });
 
@@ -174,8 +248,9 @@ describe("selectRecommendationLinksForVertical", () => {
 });
 
 describe("o rotulo diz a RELACAO, e as duas origens nao se disfarcam", () => {
-  const row = {
+  const row: SimilarTitleRow = {
     entityId: "9",
+    entityType: "movie",
     titleOriginal: "Vizinho",
     translationTitle: null,
     slug: "vizinho",
