@@ -32,10 +32,16 @@
  */
 
 import { cache } from "react";
-import { getPrismaClient, type Prisma } from "@screena/db/server";
+import { getPrismaClient } from "@screena/db/server";
 
+import {
+  buildPersonPhotosGallery,
+  type PersonPhotosGalleryView,
+} from "../lib/gallery-presenter";
+import type { SectionAbsenceReason } from "../lib/section-absence";
 import { SITE_URL } from "../lib/site";
-import { buildTmdbImageUrl } from "../lib/tmdb-image-url";
+import { getPhotosForPerson, personPhotoAbsenceReason } from "./entity-gallery";
+import { getImageDisplayAuthorization } from "./image-license";
 import {
   buildPersonPageView,
   countLinkableCreditRows,
@@ -71,10 +77,18 @@ export interface PersonPageData {
   externalIds: { source: string; externalId: string }[];
   /**
    * Galeria de fotos LICENCIADA (tela 09): so tmdb_images de pessoa com
-   * display_allowed=true e licenca clara (invariante 6). [] enquanto nenhuma
-   * imagem for promovida por decisao humana.
+   * display_allowed=true e licenca clara (invariante 6), e ainda gateada pela
+   * licenca da FONTE. Vazia enquanto nada for promovido por decisao humana.
+   *
+   * A MESMA view que `/pt/pessoas/{slug}/fotos/` renderiza: a tira e o PREFIXO
+   * da galeria (`strip`), nao uma segunda consulta com outra ordem.
    */
-  gallery: { urls: string[]; total: number };
+  gallery: PersonPhotosGalleryView;
+  /**
+   * POR QUE a tira nao renderizou, quando ela nao renderiza. `null` quando ha
+   * foto — ausencia so precisa de motivo quando existe ausencia.
+   */
+  photosAbsenceReason: SectionAbsenceReason | null;
 }
 
 function personCanonicalUrl(slug: string): string {
@@ -192,7 +206,6 @@ export const getPersonPageData = cache(
     }));
 
     const credits = await resolveCredits(prisma, castRows, crewRows);
-    const gallery = await resolveLicensedGallery(prisma, person.tmdbId);
 
     const view = buildPersonPageView({
       record: {
@@ -213,6 +226,18 @@ export const getPersonPageData = cache(
       rawCreditCount:
         countLinkableCreditRows(castRows) + countLinkableCreditRows(crewRows),
     });
+
+    // DEPOIS do `view` porque o `alt` de cada foto cita o nome ja resolvido
+    // (traducao pt-BR quando existe), e nao o nome cru de `people`.
+    const [photoRows, imageAuthorization] = await Promise.all([
+      getPhotosForPerson(prisma, person.tmdbId),
+      getImageDisplayAuthorization(prisma),
+    ]);
+    const gallery = buildPersonPhotosGallery(photoRows, view.name, imageAuthorization);
+    // A sonda de catalogo so roda quando a tira esta vazia. Quem tem foto nao
+    // paga por ela.
+    const photosAbsenceReason =
+      gallery.total === 0 ? await personPhotoAbsenceReason(prisma) : null;
 
     const indexability = evaluatePersonIndexability({
       renderableBlockCount: view.renderableBlockCount,
@@ -245,6 +270,7 @@ export const getPersonPageData = cache(
       relatedNews,
       externalIds,
       gallery,
+      photosAbsenceReason,
     };
   },
 );
@@ -392,33 +418,25 @@ async function resolveTargets(
   }
 }
 
-/**
- * Fotos licenciadas da pessoa (invariante 6: display_allowed + licenca clara;
- * tudo nasce bloqueado ate decisao humana — sem promocao, a galeria fica vazia
- * e a secao e omitida no render).
+/*
+ * A CONSULTA DE FOTOS SAIU DAQUI — 27/08/2026.
+ *
+ * Ela vivia neste arquivo como `resolveLicensedGallery`, montava a URL com
+ * `buildTmdbImageUrl` (o helper CRU) e ordenava no banco (`orderBy voteAverage`,
+ * `take: 4`). Tres consequencias, todas medidas:
+ *
+ * 1. FALTAVA O GATE DA FONTE. A tira checava o gate por LINHA e nao a licenca
+ *    de `source_licenses` para `tmdb`/`image` — o "sexto gate" que
+ *    `image-license.ts` aplica ao poster desde 21/08/2026. Revogada a fonte, o
+ *    poster da ficha apagaria e a tira de pessoa continuaria acesa.
+ * 2. A ORDEM ERA OUTRA. O banco ordenava so por voto; a galeria ordena por
+ *    idioma (pt-BR primeiro), depois voto, depois `file_path`. As "4 primeiras"
+ *    da tira nao seriam as 4 primeiras da galeria, e o `+N` levaria a uma pagina
+ *    que comeca com outras fotos.
+ * 3. O `total` VINHA DE UM `count()` SEPARADO — outra origem que a lista
+ *    exibida, e portanto livre para prometer um numero que a galeria nao
+ *    entrega.
+ *
+ * Agora ha UMA porta (`getPhotosForPerson`) e UM presenter
+ * (`buildPersonPhotosGallery`), compartilhados com `/pt/pessoas/{slug}/fotos/`.
  */
-async function resolveLicensedGallery(
-  prisma: PrismaClient,
-  tmdbId: number,
-): Promise<{ urls: string[]; total: number }> {
-  const where = {
-    entityType: "person",
-    tmdbId,
-    imageType: "profile",
-    displayAllowed: true,
-    licenseStatus: { in: ["official", "licensed"] },
-  } satisfies Prisma.TmdbImageWhereInput;
-  const [rows, total] = await Promise.all([
-    prisma.tmdbImage.findMany({
-      where,
-      orderBy: { voteAverage: "desc" },
-      take: 4,
-      select: { filePath: true },
-    }),
-    prisma.tmdbImage.count({ where }),
-  ]);
-  const urls = rows
-    .map((row) => buildTmdbImageUrl(row.filePath, "w500"))
-    .filter((url): url is string => url !== null);
-  return { urls, total };
-}

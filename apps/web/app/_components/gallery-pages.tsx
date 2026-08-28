@@ -29,15 +29,16 @@ import { notFound, permanentRedirect } from 'next/navigation'
 
 import { serializeJsonLd } from '@screena/seo'
 
-import { GalleryImageGrid, GalleryVideoList } from './gallery-grids'
+import { GalleryImageGrid, GalleryVideoList, PersonPhotoGrid } from './gallery-grids'
 import { GalleryShell } from './gallery-shell'
-import { imagesGalleryPath, videosGalleryPath } from '../../src/lib/routes'
-import { SITE_URL, gatePublicRobots } from '../../src/lib/site'
+import { imagesGalleryPath, personPhotosPath, videosGalleryPath } from '../../src/lib/routes'
+import { PEOPLE_INDEX_PATH, SITE_URL, gatePublicRobots } from '../../src/lib/site'
 import {
   getImagesGalleryPageData,
   getVideosGalleryPageData,
   type GalleryVertical,
 } from '../../src/server/gallery-page'
+import { getPersonPhotosPageData } from '../../src/server/person-photos-page'
 
 export interface GalleryRouteParams {
   slug: string
@@ -234,6 +235,92 @@ export async function VideosGalleryPage({
           </p>
         ) : (
           <GalleryVideoList entityTitle={data.entityTitle} videos={data.gallery.videos} />
+        )}
+      </GalleryShell>
+    </>
+  )
+}
+
+/** Metadata da galeria de FOTOS de uma pessoa. */
+export async function personPhotosGalleryMetadata(slug: string): Promise<Metadata> {
+  const data = await getPersonPhotosPageData(slug)
+  if (data === null) {
+    return { title: 'Galeria não encontrada', robots: { index: false, follow: false } }
+  }
+  const title = `Fotos de ${data.personName}`
+  return {
+    title,
+    description: `${data.gallery.total} fotos de ${data.personName}, fornecidas pelo TMDB.`,
+    robots: gatePublicRobots({ index: data.gallery.indexable, follow: true }),
+    alternates: { canonical: data.canonicalUrl },
+    openGraph: { title, url: data.canonicalUrl, type: 'website' },
+  }
+}
+
+/**
+ * A página de FOTOS de uma pessoa — `/pt/pessoas/{slug}/fotos/`.
+ *
+ * O JSON-LD segue a mesma decisão das galerias de título: NÃO se declara
+ * `ImageGallery` (isso afirmaria uma coleção editorial própria, e o que existe
+ * é retrato de terceiro exibido sob licença). O `mainEntity` aponta para a
+ * `Person`, que é a entidade de verdade e a que o buscador deve associar às
+ * fotos.
+ */
+export async function PersonPhotosGalleryPage({ slug }: { slug: string }) {
+  const data = await getPersonPhotosPageData(slug)
+  if (data === null) notFound()
+
+  // Slug não-canônico redireciona 301, igual à ficha e às galerias de título.
+  if (data.canonicalSlug !== slug) {
+    const destino = personPhotosPath(data.canonicalSlug)
+    if (destino !== null) permanentRedirect(destino)
+  }
+
+  const heading = 'Fotos'
+  const jsonLd = serializeJsonLd({
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Pessoas', item: `${SITE_URL}${PEOPLE_INDEX_PATH}` },
+      {
+        '@type': 'ListItem',
+        position: 2,
+        name: data.personName,
+        item: `${SITE_URL}${data.personPath}`,
+      },
+      { '@type': 'ListItem', position: 3, name: heading, item: data.canonicalUrl },
+    ],
+    mainEntity: {
+      '@type': 'Person',
+      name: data.personName,
+      url: `${SITE_URL}${data.personPath}`,
+    },
+  })
+
+  return (
+    <>
+      <script dangerouslySetInnerHTML={{ __html: jsonLd }} type="application/ld+json" />
+      <GalleryShell
+        belowFloor={!data.gallery.indexable}
+        entityPath={data.personPath}
+        entityTitle={data.personName}
+        facets={data.gallery.languageFacets}
+        facetsLabel="Idioma das fotos"
+        heading={heading}
+        total={data.gallery.total}
+        unit={['foto', 'fotos']}
+        vertical="pessoas"
+        verticalLabel="Pessoa"
+      >
+        {data.gallery.total === 0 ? (
+          // A ausência FALA. Aqui ela não pode nomear a causa como a tira faz
+          // (o leitor não é o operador), mas também não finge que a pessoa é
+          // que não tem foto: diz que não há foto LIBERADA — que é o fato.
+          <p className="gallery-empty">
+            Ainda não há fotos liberadas para {data.personName}.
+          </p>
+        ) : (
+          <PersonPhotoGrid photos={data.gallery.photos} />
         )}
       </GalleryShell>
     </>

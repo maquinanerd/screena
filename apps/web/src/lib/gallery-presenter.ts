@@ -44,6 +44,29 @@ export const IMAGES_INDEX_FLOOR = 4;
 /** Piso de vídeos para a galeria de vídeos indexar. Ver o cabeçalho. */
 export const VIDEOS_INDEX_FLOOR = 2;
 
+/**
+ * Quantas fotos a TIRA da tela 09 mostra na ficha da pessoa.
+ *
+ * É o mesmo número que a grade de 4 colunas do CSS (`.person-photos`) desenha
+ * em uma linha. A tira não é um resumo arbitrário: é uma linha cheia.
+ */
+export const PERSON_PHOTOS_STRIP_LIMIT = 4;
+
+/**
+ * Piso da galeria de fotos de PESSOA — derivado da tira, nunca escrito à mão.
+ *
+ * O argumento do cabeçalho ("uma galeria que já cabia no detalhe não é página")
+ * tem, aqui, um número exato: a ficha já mostra {@link PERSON_PHOTOS_STRIP_LIMIT}.
+ * Com 4 fotos a galeria não entrega NADA que o leitor não tenha visto — logo o
+ * primeiro total que justifica uma URL própria é o primeiro que a tira não
+ * consegue exibir inteiro.
+ *
+ * Derivado de propósito: escrever `5` como literal deixaria os dois números
+ * livres para divergir, e no dia em que a tira virasse 6 o piso continuaria
+ * prometendo uma página que não acrescenta nada.
+ */
+export const PERSON_PHOTOS_INDEX_FLOOR = PERSON_PHOTOS_STRIP_LIMIT + 1;
+
 /** Uma linha de `tmdb_images`, no subconjunto que a galeria usa. */
 export interface GalleryImageRow {
   readonly imageType: string;
@@ -52,6 +75,57 @@ export interface GalleryImageRow {
   readonly width: number | null;
   readonly height: number | null;
   readonly voteAverage: number | null;
+}
+
+/**
+ * Uma linha de `tmdb_images` de PESSOA (`image_type = 'profile'`).
+ *
+ * Sem `imageType`: a consulta já fixou `profile`, e carregar o campo aqui
+ * convidaria a um segundo filtro nesta camada — o tipo de duplicação que fez a
+ * tira e a galeria discordarem sobre QUAIS 4 fotos são as 4 primeiras.
+ */
+export interface PersonPhotoRow {
+  readonly filePath: string;
+  readonly languageCode: string | null;
+  readonly width: number | null;
+  readonly height: number | null;
+  readonly voteAverage: number | null;
+}
+
+/** Uma foto de pessoa pronta para a grade. */
+export interface PersonPhotoView {
+  /** URL da miniatura (grade e tira). */
+  readonly thumbUrl: string;
+  /** URL do tamanho grande (clique). */
+  readonly fullUrl: string;
+  readonly width: number | null;
+  readonly height: number | null;
+  readonly languageCode: string | null;
+  readonly languageLabel: string;
+  /** Texto alternativo. Descreve o PAPEL, nunca a arte. */
+  readonly alt: string;
+}
+
+/** A galeria de fotos de uma pessoa. */
+export interface PersonPhotosGalleryView {
+  /** TODAS as fotos exibíveis, já ordenadas. A tira usa o prefixo. */
+  readonly photos: readonly PersonPhotoView[];
+  /** As {@link PERSON_PHOTOS_STRIP_LIMIT} primeiras — o que a ficha mostra. */
+  readonly strip: readonly PersonPhotoView[];
+  /**
+   * Quantas fotos a tira NÃO mostrou. É o `+N` do último quadro.
+   *
+   * Sai da MESMA lista que a galeria renderiza, e não de um `count()` separado:
+   * duas origens divergiriam no dia em que o gate de licença derrubasse uma
+   * linha, e a ficha prometeria um número que a galeria não entrega — o defeito
+   * que `countGalleryMedia` já documenta em `entity-gallery.ts`.
+   */
+  readonly stripRest: number;
+  readonly total: number;
+  /** Filtros por IDIOMA, com contagem. Vazio quando há um idioma só. */
+  readonly languageFacets: readonly GalleryFacet[];
+  /** `false` quando abaixo de {@link PERSON_PHOTOS_INDEX_FLOOR}. */
+  readonly indexable: boolean;
 }
 
 /** Uma linha de `tmdb_videos`, no subconjunto que a galeria usa. */
@@ -333,6 +407,85 @@ export function buildImagesGallery(
             .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
             .map(([label, count]) => ({ value: label, label, count })),
     indexable: images.length >= IMAGES_INDEX_FLOOR,
+  };
+}
+
+/**
+ * Monta a galeria de FOTOS de uma pessoa (`image_type = 'profile'`).
+ *
+ * ============================================================================
+ * OS DOIS GATES, E POR QUE OS DOIS
+ * ============================================================================
+ * As linhas chegam aqui JÁ filtradas pelo gate de LINHA (`display_allowed` +
+ * `license_status`), aplicado na consulta — é o desenho de vídeo/nota, e faz
+ * sentido porque cada foto de pessoa É promovida individualmente
+ * (`promote:media --target=person-photo`).
+ *
+ * Aqui aplica-se o SEGUNDO: o gate da FONTE (`source_licenses` para
+ * `tmdb`/`image`), o mesmo `tmdbImageUrlIfAllowed` da galeria de título — o
+ * "sexto gate" de `image-license.ts`. Não é redundância: a promoção acende uma
+ * LINHA, e a licença da fonte governa se o produto pode exibir arte do TMDB
+ * **de todo**. Revogada a fonte, o pôster da ficha apaga; sem este gate a tira
+ * de pessoa continuaria acesa, exibindo a mesma arte do mesmo CDN sob uma
+ * licença que acabou de dizer não.
+ *
+ * O `alt` descreve o PAPEL ("Foto de X"), nunca a arte: descrevê-la exigiria
+ * olhar para ela, e nada aqui olha.
+ */
+export function buildPersonPhotosGallery(
+  rows: readonly PersonPhotoRow[],
+  personName: string,
+  authorization: ImageDisplayAuthorization,
+): PersonPhotosGalleryView {
+  const usable: Array<{ row: PersonPhotoRow; thumb: string; full: string }> = [];
+
+  for (const row of rows) {
+    // O gate de licença, no MESMO lugar em que a URL nasce.
+    const thumb = tmdbImageUrlIfAllowed(row.filePath, "w300", authorization);
+    const full = tmdbImageUrlIfAllowed(row.filePath, "original", authorization);
+    if (thumb === null || full === null) continue;
+    usable.push({ row, thumb, full });
+  }
+
+  // Sem `IMAGE_KIND_ORDER` aqui: há UM tipo só (`profile`). A ordem é idioma,
+  // depois voto, depois `file_path` — ordem TOTAL, sem resultado que muda entre
+  // dois renders da mesma entrada (o que faria a tira e a galeria discordarem
+  // sobre quais são as 4 primeiras).
+  usable.sort((a, b) => {
+    const porIdioma = languageRank(a.row.languageCode) - languageRank(b.row.languageCode);
+    if (porIdioma !== 0) return porIdioma;
+    const porVoto = (b.row.voteAverage ?? 0) - (a.row.voteAverage ?? 0);
+    if (porVoto !== 0) return porVoto;
+    return a.row.filePath.localeCompare(b.row.filePath);
+  });
+
+  const photos: PersonPhotoView[] = usable.map((item) => ({
+    thumbUrl: item.thumb,
+    fullUrl: item.full,
+    width: item.row.width,
+    height: item.row.height,
+    languageCode: item.row.languageCode,
+    languageLabel: languageLabel(item.row.languageCode),
+    alt: `Foto de ${personName}`,
+  }));
+
+  const porIdioma = countBy(photos, (photo) => photo.languageLabel);
+  const strip = photos.slice(0, PERSON_PHOTOS_STRIP_LIMIT);
+
+  return {
+    photos,
+    strip,
+    stripRest: photos.length - strip.length,
+    total: photos.length,
+    // Um filtro com uma opção só não é filtro — é ruído que sugere escolha onde
+    // não há. Mesma regra das facetas de título.
+    languageFacets:
+      porIdioma.size < 2
+        ? []
+        : [...porIdioma.entries()]
+            .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+            .map(([label, count]) => ({ value: label, label, count })),
+    indexable: photos.length >= PERSON_PHOTOS_INDEX_FLOOR,
   };
 }
 
