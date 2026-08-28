@@ -75,7 +75,7 @@ reprova entrada sem motivo escrito.
 | `watch_offers` | **diario** | tmdb | O dado que mais estraga. Endpoint DEDICADO (`/movie/{id}/watch/providers`), ~2 kB, contra 130,6 kB (filme) / 648,3 kB (serie) do detalhe. |
 | `trending` | **6 h** | tmdb | O sinal de AGORA. 4 requisicoes por ciclo (movie\|tv x day\|week, 1 pagina). O intervalo NAO e numero novo: `discovery-snapshots/index.ts:32` ja declarava TTL de 6 h para trending. |
 | `airing_series` | **diario** | tmdb | Episodio que foi ao ar hoje tem que estar na pagina hoje. So `status` em exibicao/producao. |
-| `title_media` | **diario** (janela de 7 dias) | tmdb | Trailer, poster e galeria: o que o leitor ve primeiro, e o unico dado do catalogo que muda sem o titulo mudar. Enfileira `sync_media` nos endpoints DEDICADOS (`/images` + `/videos`, 2 requisicoes, SEM `language` — todos os idiomas), nunca o detalhe inteiro. E a REDE do gatilho: a midia entra pela cascata do `/changes`; esta fila pega quem nunca teve midia ou passou de 7 dias. |
+| `title_media` | **diario** (janela de 7 dias, teto proprio de 10.000/ciclo) | tmdb | Trailer, poster e galeria: o que o leitor ve primeiro, e o unico dado do catalogo que muda sem o titulo mudar. Enfileira `sync_media` nos endpoints DEDICADOS (`/images` + `/videos`, 2 requisicoes, SEM `language` — todos os idiomas), nunca o detalhe inteiro. E a REDE do gatilho: a midia entra pela cascata do `/changes`; esta fila pega quem nunca teve midia ou passou de 7 dias. |
 | `discovery` | **diario** | tmdb-exports | Os Daily ID Exports saem uma vez por dia (~08:00 UTC). Arquivo publico: sem token, sem cota. |
 | `changes` | **6 h** | tmdb | A janela do `/changes` e ~24 h (max. 14 dias). 6 h da quatro tentativas dentro de uma janela — tres ciclos podem falhar sem que nada se perca. |
 | `cinerie_score` | **por evento** (teto 24 h) | — | Derivado nao tem ritmo, tem gatilho. O teto existe para que um gatilho perdido nao congele o numero para sempre. |
@@ -85,6 +85,52 @@ reprova entrada sem motivo escrito.
 | `people` | **mensal** | tmdb | Biografia quase nao muda. Quem entra num titulo novo chega pelos CREDITOS, no mesmo request do titulo — nao espera este ciclo. |
 | `title_detail_ended` | **mensal** | tmdb | Filme lancado e serie finalizada nao mudam mais. O que muda neles (a OFERTA) tem fila propria, diaria. |
 | `awards` | **mensal**, **diario na janela** | omdb | Fora da temporada nao acontece nada; dentro dela muda em horas. Janelas em `awards-window.ts`. |
+
+### O TETO POR CICLO — e por que ele nao e um numero so
+
+`CINERIE_SCHEDULER_BATCH_LIMIT` (default **200**) e compartilhado por sete filas, e
+elas nao tem o mesmo limitante:
+
+| fila | limitante real | teto |
+| --- | --- | ---: |
+| `ratings_omdb` | **cota** (1.000/dia, reserva de 150 para o leitor) | 200 (global) |
+| `watch_offers`, `people`, `airing_series`, `title_detail_*` | relogio + custo do detalhe | 200 (global) |
+| `title_media` | **educacao com o TMDB**, que nao tem cota diaria | **10.000** (proprio) |
+
+Um numero so para todas obriga a escolher qual delas fica errada. Por isso o teto
+entra na TABELA DE RITMOS, ao lado do intervalo (`Rhythm.batchLimit`, resolvido por
+`effectiveBatchLimit`): e a mesma classe de decisao — quanto de trabalho esta fila faz
+por unidade de tempo.
+
+**A conta que decidiu o 10.000.** Com o teto global, `title_media` daria a volta no
+catalogo em **336 dias** — para uma fila que declara janela de 7. Uma fila diaria com
+volta anual nao e diaria: e anual com rotulo diario, e o painel fica verde enquanto o
+acervo nao anda. E o mesmo defeito da OMDb a 200/semana, com outro nome.
+
+| teto/ciclo | volta | req/dia | req/s amortizado |
+| ---: | ---: | ---: | ---: |
+| 200 (global) | **336,4 dias** | 400 | 0,00 |
+| 1.000 | 67,3 dias | 2.000 | 0,02 |
+| 5.000 | 13,5 dias | 10.000 | 0,12 |
+| **10.000** | **6,7 dias** | **20.000** | **0,23** |
+
+Universo: **67.288 titulos** (34.802 filmes + 32.486 series, medidos na auditoria da
+#254). 67.288 / 7 = 9.613/dia fecham a janela declarada; 10.000 e o proximo numero
+redondo e tambem o teto que `resolveSchedulerConfig` aceita.
+
+Custo: 2 requisicoes por titulo (`/images` + `/videos`) — **15%** do orcamento diario
+do desenho recomendado pela #254 (135.373 req/dia) e **2,3%** da varredura por forca
+bruta (874.379).
+
+> **O denominador e TITULO, nao episodio.** `selectStaleTitleMedia` le `movies` e
+> `tv_shows`, e so. Temporada (32.483) e episodio (135.926) nao passam por aqui: a
+> midia deles entra pela cascata `sync_details` -> `sync_seasons` -> `sync_episodes`,
+> que voltou a rodar quando a chave do filho ganhou escopo. Dimensionar esta fila pelo
+> numero de episodios pediria um teto que ela nao precisa e duplicaria trabalho que
+> outro caminho ja faz.
+
+Travado por `services/sync/src/scheduler/__tests__/batch-limit.test.ts`, que mede a
+VOLTA, nao a constante.
 
 ### Mudancas em relacao a proposta inicial
 

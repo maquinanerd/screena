@@ -12,11 +12,11 @@
 | **PR** | [#256](https://github.com/maquinanerd/screena/pull/256) |
 | **Branch** | `claude/liberar-midia-todos-conteudos-737f83` |
 | **Base** | `main` @ `577cc8e` (mergeada duas vezes durante a sessão: `0493283`, depois `a49876c`) |
-| **Commits** | `866d908` (a leva), `593cd24` e `b8101d5` (correções de comentário mentiroso) |
+| **Commits** | `866d908` (a leva), `593cd24`/`b8101d5` (comentários mentirosos), `90384ed` (este relatório), `+1` (teto por fila) |
 | **Arquivos no commit principal** | 52 (1.978 inserções, 428 remoções) |
 | **Arquivos novos** | 6 — 3 de código, 3 de teste |
 | **CI** | **verde** em `593cd24` (os três jobs) |
-| **Testes** | 7.447 passando / 572 arquivos |
+| **Testes** | **7.457 passando / 573 arquivos** |
 
 ---
 
@@ -27,7 +27,11 @@ o número manda. As correções estão nas seções 2.2, 4.1 e 6.2, e não são 
 duas delas mudariam a decisão de o que consertar.
 
 O que este documento **não** é: prova de que a página mudou. Ela não mudou ainda, e
-a seção 8 explica exatamente por quê e o que falta.
+a seção 9 explica exatamente por quê e o que falta.
+
+A §9.4 foi acrescentada **depois** da primeira versão, respondendo a uma pergunta do
+dono sobre o teto por ciclo do `title_media`. A resposta era um defeito, e ele está
+corrigido nesta mesma PR.
 
 ---
 
@@ -594,6 +598,8 @@ Todos rodados numa cópia em `C:` (o worktree em `E:` é inviável para `pnpm in
 | `validate:entity-indexes` | ✅ 20/20 |
 | **CI (GitHub Actions)** | ✅ **verde em `593cd24`**, os três jobs |
 
+*(Após o teto por fila: 7.457 testes / 573 arquivos, tudo verde.)*
+
 ---
 
 ## 9. O que ainda tem que ser feito — e não é código
@@ -633,7 +639,50 @@ nascimento nos dois sentidos.
 Depois das duas execuções da 9.1 e do deploy, a consulta 3 do §4 do runbook do
 agendador devolve o novo número de fichas com vídeo, contra as **140** de hoje.
 
-### 9.4 Um achado que não é desta leva
+### 9.4 O teto do `title_media` — perguntado e corrigido
+
+A pergunta que veio depois do relatório: *"o `title_media` tem `batchLimit` por ciclo.
+Qual é o tempo de volta? Se o teto for baixo, 'diário' é nominal."*
+
+**Estava baixo, e por um fator de 48.** Medido:
+
+| teto/ciclo | volta | req/dia |
+| ---: | ---: | ---: |
+| **200** (o global, que a fila herdava) | **336,4 dias** | 400 |
+| 1.000 | 67,3 dias | 2.000 |
+| 5.000 | 13,5 dias | 10.000 |
+| **10.000** (o novo, próprio) | **6,7 dias** | 20.000 |
+
+Universo: **67.288 títulos** — 34.802 filmes + 32.486 séries, medidos na auditoria da
+#254. Uma fila diária com volta anual não é diária: é anual com rótulo diário, e o
+painel fica verde enquanto o acervo não anda. **É o mesmo defeito da OMDb a 200/semana,
+com outro nome** — e esta tabela de ritmos existe justamente para não ter um número
+único para tudo.
+
+**Uma correção à premissa da pergunta:** os 3,9 milhões de episódios **não são o
+denominador desta fila**. `selectStaleTitleMedia` lê `movies` e `tv_shows`, e só.
+Temporada (32.483) e episódio (135.926, medidos na #254) entram pela cascata
+`sync_details` → `sync_seasons` → `sync_episodes`, que voltou a rodar com o conserto de
+C.1. Dimensionar o `title_media` por episódio pediria um teto que ele não precisa e
+duplicaria trabalho que outro caminho já faz.
+
+**A correção: teto POR FILA, na tabela de ritmos.** `batchLimit` global é compartilhado
+por sete filas e elas não têm o mesmo limitante — `ratings_omdb` é limitada por **cota**
+(1.000/dia, reserva de 150) e 200 está certo para ela; `title_media` é limitada por
+educação com o TMDB, que não tem cota diária. Um número só obriga a escolher qual das
+duas fica errada.
+
+`Rhythm.batchLimit: number | null` + `effectiveBatchLimit()`. O número sai da janela
+declarada: 67.288 / 7 = 9.613/dia; 10.000 é o próximo redondo e o teto que
+`resolveSchedulerConfig` aceita. Custo: **15%** do orçamento diário do desenho
+recomendado pela #254 (135.373 req/dia), **2,3%** da varredura por força bruta.
+
+Travado por `services/sync/src/scheduler/__tests__/batch-limit.test.ts` (10 casos), que
+mede a **volta**, não a constante — `expect(batchLimit).toBe(10_000)` passaria com um
+catálogo de um milhão e a volta continuaria sendo de anos. O controle negativo afirma
+que com o teto global a volta passa de 300 dias.
+
+### 9.5 Um achado que não é desta leva
 
 `compute-cinerie-score` roda com `--type=all` e **sem `--limit`** (o agendador não
 passa um), então uma execução completa deveria cobrir o catálogo inteiro. Mesmo assim

@@ -25,6 +25,7 @@ const DIARIA: Rhythm = {
   providerApi: 'tmdb',
   label: 'diaria',
   rationale: 'x',
+    batchLimit: null,
 }
 
 function schedules(lastSuccessAt: Date | null, now = BASE) {
