@@ -43,6 +43,20 @@ function fakePrisma(): Parameters<typeof loadHeroSlides>[0] {
     }));
 
   return {
+    /**
+     * O PRE-FILTRO EM SQL, no fake — devolve todos os ids da vertical pedida.
+     *
+     * Desde 2026-08-28 o loader pede ao banco uma lista curta de candidatos em
+     * vez de carregar o catalogo. Aqui ele e permissivo de proposito: este
+     * arquivo mede ESCOPO (a vertical certa recebe hero), nao o portao de
+     * qualidade — quem mede o portao e `home-hero-selection.test.ts`.
+     */
+    $queryRawUnsafe: (sql: string) =>
+      Promise.resolve(
+        /count\(\*\)/.test(sql)
+          ? [{ com_slug: 0n }]
+          : (sql.includes("tv_shows") ? seriesIds : movieIds).map((id) => ({ id })),
+      ),
     slug: {
       findMany: ({ where }: { where: { entityType: "movie" | "tv" } }) =>
         Promise.resolve(slugRows(where.entityType)),

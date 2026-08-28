@@ -30,6 +30,8 @@ import {
   type UpcomingEntityInput,
 } from "../lib/home-upcoming-presenter";
 import { pickTrailer, type TrailerRow, type TrailerView } from "../lib/trailer-presenter";
+// Continua sendo a rede de seguranca do teto de 32.767 bind variables: a lista
+// de `tmdb_id` agora e curta, mas o guarda-corpo nao sai por isso.
 import { findManyInChunks } from "../lib/prisma-in-chunks";
 
 const LANGUAGE_CODE = "pt-BR";
@@ -111,48 +113,80 @@ function startOfUtcDay(now: Date): Date {
 }
 
 /**
- * Slugs canônicos pt-BR de uma vertical, indexados por id de entidade.
+ * ============================================================================
+ * ESTE TRILHO LIA O CATALOGO INTEIRO PARA MOSTRAR 6 CARDS (corrigido 2026-08-28)
+ * ============================================================================
+ * Antes, cada requisicao fazia `slugs.findMany` SEM limite (todos os slugs
+ * canonicos da vertical), depois `entity_translations` em lotes para TODOS
+ * esses ids, e so entao filtrava por estreia futura. O `where` da estreia ja
+ * estava certo; o que era ilimitado eram os DOIS acompanhantes.
  *
- * Sem slug canônico o item não vira card (o presenter descarta) — por isso a
- * consulta parte dos slugs e não da tabela de entidade: um filme sem slug nunca
- * chega a ser carregado.
+ * Agora e UMA consulta com `JOIN` e `LIMIT`: o slug e o titulo vem na mesma
+ * linha do filme/serie, o filtro de estreia futura acontece no banco, a ordem
+ * (estreia asc) tambem, e so as linhas que podem virar card cruzam o driver.
+ *
+ * A FOLGA (`UPCOMING_FETCH_MULTIPLIER`) existe porque `buildUpcomingItems`
+ * ainda descarta item cujo `href` nao se forma. Sem folga, uma linha descartada
+ * encolheria o trilho em silencio.
  */
-async function loadCanonicalSlugs(
-  entityType: "movie" | "tv",
-): Promise<{ ids: bigint[]; slugByEntity: Map<string, string> }> {
-  const prisma = getPrismaClient();
-  const rows = await prisma.slug.findMany({
-    where: { entityType, languageCode: LANGUAGE_CODE, isCanonical: true },
-    select: { entityId: true, slug: true },
-  });
+const UPCOMING_FETCH_MULTIPLIER = 4;
 
-  const slugByEntity = new Map<string, string>();
-  const ids: bigint[] = [];
-  for (const row of rows) {
-    slugByEntity.set(row.entityId.toString(), row.slug);
-    ids.push(row.entityId);
-  }
-  return { ids, slugByEntity };
+interface UpcomingRow {
+  id: bigint;
+  tmdb_id: number;
+  title_original: string;
+  release_date: Date;
+  backdrop_path: string | null;
+  poster_path: string | null;
+  slug: string;
+  translation_title: string | null;
 }
 
-/** Títulos pt-BR de uma vertical, indexados por id de entidade. */
-async function loadTranslationTitles(
+/**
+ * `$1` = language_code, `$2` = cutoff (inicio do dia UTC), `$3` = limite.
+ * Nenhum literal interpolado; `%s` so troca as colunas da vertical.
+ */
+function upcomingSql(
   entityType: "movie" | "tv",
-  ids: readonly bigint[],
-): Promise<Map<string, string | null>> {
-  const prisma = getPrismaClient();
-  // `ids` e o catalogo INTEIRO da vertical — acima de ~32.7 mil ids a consulta
-  // nao cabe no protocolo do PostgreSQL. Ver `../lib/prisma-in-chunks`.
-  const rows = await findManyInChunks([...ids], (chunk) =>
-    prisma.entityTranslation.findMany({
-      where: { entityType, entityId: { in: chunk }, languageCode: LANGUAGE_CODE },
-      select: { entityId: true, title: true },
-    }),
-  );
+  table: string,
+  titleColumn: string,
+  dateColumn: string,
+): string {
+  return `
+    SELECT e.id,
+           e.tmdb_id,
+           e.${titleColumn} AS title_original,
+           e.${dateColumn} AS release_date,
+           e.backdrop_path,
+           e.poster_path,
+           s.slug,
+           t.title AS translation_title
+    FROM slugs s
+    JOIN ${table} e ON e.id = s.entity_id
+    LEFT JOIN entity_translations t
+      ON t.entity_type = '${entityType}'::"EntityType"
+     AND t.entity_id = e.id
+     AND t.language_code = $1
+    WHERE s.entity_type = '${entityType}'::"EntityType"
+      AND s.language_code = $1
+      AND s.is_canonical
+      AND e.${dateColumn} > $2
+      AND COALESCE(NULLIF(btrim(t.title), ''), NULLIF(btrim(e.${titleColumn}), '')) IS NOT NULL
+    ORDER BY e.${dateColumn} ASC, e.id ASC
+    LIMIT $3
+  `;
+}
 
-  const titleByEntity = new Map<string, string | null>();
-  for (const row of rows) titleByEntity.set(row.entityId.toString(), row.title);
-  return titleByEntity;
+const UPCOMING_MOVIE_SQL = upcomingSql("movie", "movies", "title_original", "release_date");
+const UPCOMING_SERIES_SQL = upcomingSql("tv", "tv_shows", "name_original", "first_air_date");
+
+async function loadUpcomingRows(
+  sql: string,
+  cutoff: Date,
+  limit: number,
+): Promise<UpcomingRow[]> {
+  const prisma = getPrismaClient();
+  return prisma.$queryRawUnsafe<UpcomingRow[]>(sql, LANGUAGE_CODE, cutoff, limit);
 }
 
 /**
@@ -162,54 +196,33 @@ async function loadTranslationTitles(
  */
 export const getHomeUpcomingMovies = cache(
   async (options?: { limit?: number }): Promise<HomeUpcomingItem[]> => {
-    const prisma = getPrismaClient();
     const now = new Date();
-    const cutoff = startOfUtcDay(now);
-
-    const { ids, slugByEntity } = await loadCanonicalSlugs("movie");
-    if (ids.length === 0) return [];
-
-    // Em lotes: a ordem final NAO vem daqui — `buildUpcomingItems` reordena por
-    // estreia e so entao corta. Ver `../lib/prisma-in-chunks`.
-    const [movies, titleByEntity] = await Promise.all([
-      findManyInChunks(ids, (chunk) =>
-        prisma.movie.findMany({
-          where: { id: { in: chunk }, releaseDate: { gt: cutoff } },
-          select: {
-            id: true,
-            tmdbId: true,
-            titleOriginal: true,
-            releaseDate: true,
-            backdropPath: true,
-            posterPath: true,
-          },
-          orderBy: { releaseDate: "asc" },
-        }),
-      ),
-      loadTranslationTitles("movie", ids),
-    ]);
+    const limit = options?.limit ?? HOME_UPCOMING_LIMIT;
+    const rows = await loadUpcomingRows(
+      UPCOMING_MOVIE_SQL,
+      startOfUtcDay(now),
+      limit * UPCOMING_FETCH_MULTIPLIER,
+    );
+    if (rows.length === 0) return [];
 
     const trailers = await loadDisplayableTrailers(
       "movie",
-      movies.map((movie) => movie.tmdbId),
+      rows.map((row) => row.tmdb_id),
     );
 
-    const inputs: UpcomingEntityInput[] = movies.map((movie) => {
-      const key = movie.id.toString();
-      return {
-        id: key,
-        vertical: "movie",
-        titleOriginal: movie.titleOriginal,
-        translationTitle: titleByEntity.get(key) ?? null,
-        slug: slugByEntity.get(key) ?? null,
-        releaseDate: movie.releaseDate,
-        backdropPath: movie.backdropPath,
-        posterPath: movie.posterPath,
-        trailer: trailers.get(movie.tmdbId) ?? null,
-      };
-    });
+    const inputs: UpcomingEntityInput[] = rows.map((row) => ({
+      id: row.id.toString(),
+      vertical: "movie",
+      titleOriginal: row.title_original,
+      translationTitle: row.translation_title,
+      slug: row.slug,
+      releaseDate: row.release_date,
+      backdropPath: row.backdrop_path,
+      posterPath: row.poster_path,
+      trailer: trailers.get(row.tmdb_id) ?? null,
+    }));
 
-    return buildUpcomingItems(inputs, now, options?.limit ?? HOME_UPCOMING_LIMIT);
+    return buildUpcomingItems(inputs, now, limit);
   },
 );
 
@@ -223,53 +236,33 @@ export const getHomeUpcomingMovies = cache(
  */
 export const getHomeUpcomingSeries = cache(
   async (options?: { limit?: number }): Promise<HomeUpcomingItem[]> => {
-    const prisma = getPrismaClient();
     const now = new Date();
-    const cutoff = startOfUtcDay(now);
-
-    const { ids, slugByEntity } = await loadCanonicalSlugs("tv");
-    if (ids.length === 0) return [];
-
-    // Em lotes; a ordem final e do presenter, nao do `orderBy`. Ver acima.
-    const [shows, titleByEntity] = await Promise.all([
-      findManyInChunks(ids, (chunk) =>
-        prisma.tvShow.findMany({
-          where: { id: { in: chunk }, firstAirDate: { gt: cutoff } },
-          select: {
-            id: true,
-            tmdbId: true,
-            nameOriginal: true,
-            firstAirDate: true,
-            backdropPath: true,
-            posterPath: true,
-          },
-          orderBy: { firstAirDate: "asc" },
-        }),
-      ),
-      loadTranslationTitles("tv", ids),
-    ]);
+    const limit = options?.limit ?? HOME_UPCOMING_LIMIT;
+    const rows = await loadUpcomingRows(
+      UPCOMING_SERIES_SQL,
+      startOfUtcDay(now),
+      limit * UPCOMING_FETCH_MULTIPLIER,
+    );
+    if (rows.length === 0) return [];
 
     const trailers = await loadDisplayableTrailers(
       "tv",
-      shows.map((show) => show.tmdbId),
+      rows.map((row) => row.tmdb_id),
     );
 
-    const inputs: UpcomingEntityInput[] = shows.map((show) => {
-      const key = show.id.toString();
-      return {
-        id: key,
-        vertical: "series",
-        titleOriginal: show.nameOriginal,
-        translationTitle: titleByEntity.get(key) ?? null,
-        slug: slugByEntity.get(key) ?? null,
-        releaseDate: show.firstAirDate,
-        backdropPath: show.backdropPath,
-        posterPath: show.posterPath,
-        trailer: trailers.get(show.tmdbId) ?? null,
-      };
-    });
+    const inputs: UpcomingEntityInput[] = rows.map((row) => ({
+      id: row.id.toString(),
+      vertical: "series",
+      titleOriginal: row.title_original,
+      translationTitle: row.translation_title,
+      slug: row.slug,
+      releaseDate: row.release_date,
+      backdropPath: row.backdrop_path,
+      posterPath: row.poster_path,
+      trailer: trailers.get(row.tmdb_id) ?? null,
+    }));
 
-    return buildUpcomingItems(inputs, now, options?.limit ?? HOME_UPCOMING_LIMIT);
+    return buildUpcomingItems(inputs, now, limit);
   },
 );
 

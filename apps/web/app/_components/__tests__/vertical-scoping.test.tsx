@@ -200,24 +200,30 @@ function panelsFor(vertical: 'home' | 'movies' | 'series'): PopularRankingPanel[
   }))
 }
 
-function renderRanking(
-  vertical: 'home' | 'movies' | 'series',
-  activeSlug: string,
-): string {
+/**
+ * O QUE O SERVIDOR MANDA — sempre a aba DEFAULT da vertical.
+ *
+ * Ate 2026-08-28 a aba inicial vinha de `?ranking=` lido no SERVIDOR. Uma
+ * unica leitura de `searchParams` num server component torna a rota inteira
+ * dinamica, e era por isso que a home nao podia ser guardada. A aba deixou de
+ * chegar por prop: quem le o deep link agora e o CLIENTE, na montagem.
+ *
+ * Este arquivo continua medindo o que o markup do servidor EXPOE (o conjunto
+ * de abas por vertical). Quem mede a TROCA e o deep link e
+ * `popular-ranking-tabs.test.tsx`, com DOM e clique de verdade — porque
+ * "a aba muda a lista" deixou de ser uma propriedade do markup estatico.
+ */
+function renderRanking(vertical: 'home' | 'movies' | 'series'): string {
   return visibleText(
     renderToStaticMarkup(
-      <PopularThisWeek
-        headingId="pop"
-        initialSlug={activeSlug as PopularRankingPanel['tab']['slug']}
-        panels={panelsFor(vertical)}
-      />,
+      <PopularThisWeek headingId="pop" panels={panelsFor(vertical)} vertical={vertical} />,
     ),
   )
 }
 
 describe('Popular essa semana — a aba ativa manda na lista', () => {
   it('(6) /pt/filmes expõe EXATAMENTE Em cartaz · Streaming · Clássicos', () => {
-    const text = renderRanking('movies', 'em-cartaz')
+    const text = renderRanking('movies')
     for (const label of ['Em cartaz', 'Streaming', 'Clássicos']) {
       expect(text).toContain(label)
     }
@@ -227,7 +233,7 @@ describe('Popular essa semana — a aba ativa manda na lista', () => {
   })
 
   it('(7) /pt/series expõe EXATAMENTE No ar · Streaming · Novas temporadas', () => {
-    const text = renderRanking('series', 'no-ar')
+    const text = renderRanking('series')
     for (const label of ['No ar', 'Streaming', 'Novas temporadas']) {
       expect(text).toContain(label)
     }
@@ -236,22 +242,15 @@ describe('Popular essa semana — a aba ativa manda na lista', () => {
   })
 
   /**
-   * A TROCA. `?ranking=` é resolvido no servidor, então renderizar a mesma seção
-   * com dois `initialSlug` é o mesmo caminho que um refresh com o link
-   * compartilhado percorre — e a lista tem de mudar de verdade.
+   * (8) e (10) MUDARAM DE ARQUIVO, nao sumiram. A troca de aba e o "Ver tudo"
+   * que a segue viraram comportamento de CLIENTE quando o `?ranking=` deixou de
+   * ser lido no servidor; medir isso com markup estatico so poderia medir a
+   * primeira pintura. As duas provas vivem em `popular-ranking-tabs.test.tsx`,
+   * agora com DOM, clique e URL de verdade.
    */
-  it('(8) trocar a aba ativa troca a LISTA, não só o estilo', () => {
-    const streaming = renderRanking('movies', 'streaming')
-    const classicos = renderRanking('movies', 'classicos')
-
-    expect(streaming).toContain('Título de Streaming')
-    expect(streaming).not.toContain('Título de Clássicos')
-    expect(classicos).toContain('Título de Clássicos')
-    expect(classicos).not.toContain('Título de Streaming')
-  })
 
   it('(9) aba vazia mantém a seção, as abas e a mensagem — nunca some', () => {
-    const text = renderRanking('movies', 'em-cartaz')
+    const text = renderRanking('movies')
     expect(text).toContain('Nada por aqui esta semana.')
     // A seção e o resto das abas continuam na tela.
     expect(text).toContain('Popular essa semana')
@@ -259,34 +258,20 @@ describe('Popular essa semana — a aba ativa manda na lista', () => {
     expect(text).toContain('Clássicos')
   })
 
-  it('(10) "Ver tudo" segue a aba ativa (não é link fixo)', () => {
-    const html = (slug: string) =>
-      renderToStaticMarkup(
-        <PopularThisWeek
-          headingId="pop"
-          initialSlug={slug as PopularRankingPanel['tab']['slug']}
-          panels={panelsFor('movies')}
-        />,
-      )
-    const seeAll = (markup: string) =>
-      /<a class="see-all" href="([^"]+)"/.exec(markup)?.[1] ?? null
-
-    expect(seeAll(html('streaming'))).toBe('/pt/onde-assistir/')
-    expect(seeAll(html('classicos'))).toBe('/pt/filmes/')
-  })
-
   it('(11) o número do rank entra no nome acessível (o card não tem texto)', () => {
-    const text = renderRanking('movies', 'streaming')
-    expect(text).toContain('1. Título de Streaming')
+    // A primeira pintura e a aba DEFAULT da vertical. Em `/pt/filmes` a
+    // default e "Em cartaz", que a fixture deixa VAZIA de proposito (e o que o
+    // teste (9) mede); a home tem "Filmes" com item, entao e la que o nome
+    // acessivel do card pode ser observado.
+    const text = renderRanking('home')
+    expect(text).toContain('1. Título de Filmes')
   })
 
   it('(12) NEGATIVO: "Bilheteria" e "Clássicas" não aparecem em vertical nenhuma', () => {
     for (const vertical of ['home', 'movies', 'series'] as const) {
-      for (const tab of RANKING_TABS[vertical]) {
-        const text = renderRanking(vertical, tab.slug)
-        expect(text).not.toContain('Bilheteria')
-        expect(text).not.toContain('Clássicas')
-      }
+      const text = renderRanking(vertical)
+      expect(text).not.toContain('Bilheteria')
+      expect(text).not.toContain('Clássicas')
     }
   })
 })

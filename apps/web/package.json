@@ -17,6 +17,7 @@
     "validate:news-pages": "tsx scripts/validate-news-pages-real-postgres.ts",
     "validate:entity-resolve": "tsx scripts/validate-entity-resolve-real-postgres.ts",
     "validate:seo-runtime": "tsx scripts/validate-seo-runtime-real-postgres.ts",
+    "validate:route-cache": "tsx scripts/validate-route-cache-real-postgres.ts",
     "validate:decision-robots": "tsx scripts/validate-decision-robots-render-real-postgres.ts",
     "validate:licensed-intelligence": "tsx scripts/validate-licensed-intelligence-real-postgres.ts",
     "validate:season-episode-routes": "tsx scripts/validate-season-episode-routes-real-postgres.ts",

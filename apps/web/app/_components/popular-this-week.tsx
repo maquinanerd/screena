@@ -38,9 +38,11 @@ import {
   RANKING_EMPTY_MESSAGE,
   RANKING_QUERY_PARAM,
   rankedTitleAccessibleName,
+  resolveActiveRankingSlug,
   type RankedTitle,
   type RankingTab,
   type RankingTabSlug,
+  type RankingVertical,
 } from '../../src/lib/popular-rankings'
 
 /** Uma aba ja com a sua lista resolvida no servidor. */
@@ -52,8 +54,13 @@ export interface PopularRankingPanel {
 export interface PopularThisWeekProps {
   readonly headingId: string
   readonly panels: readonly PopularRankingPanel[]
-  /** Aba ativa na primeira pintura (vem do `?ranking=` lido no servidor). */
-  readonly initialSlug: RankingTabSlug
+  /**
+   * Vertical da rota — decide QUAL conjunto de abas o `?ranking=` pode
+   * selecionar. Um `?ranking=` de outra vertical continua caindo na primeira
+   * aba desta, como antes; a diferenca e que quem aplica a regra agora e o
+   * cliente, e nao o servidor.
+   */
+  readonly vertical: RankingVertical
 }
 
 function RankedPosterCard({ item }: { item: RankedTitle }): ReactNode {
@@ -73,17 +80,36 @@ function RankedPosterCard({ item }: { item: RankedTitle }): ReactNode {
 export function PopularThisWeek({
   headingId,
   panels,
-  initialSlug,
+  vertical,
 }: PopularThisWeekProps): ReactNode {
-  const [active, setActive] = useState<RankingTabSlug>(initialSlug)
+  // A primeira pintura e SEMPRE a aba default da vertical — e por isso o HTML
+  // do servidor nao depende de `?ranking=` e a rota pode ser guardada.
+  const [active, setActive] = useState<RankingTabSlug>(() =>
+    resolveActiveRankingSlug(vertical, null),
+  )
+  // Marca se o leitor ja escolheu uma aba nesta sessao. Sem isso, o efeito que
+  // le a URL brigaria com o clique: `replaceState` escreve `?ranking=` e a
+  // leitura seguinte reafirmaria o mesmo valor a cada render.
+  const escolhaDoLeitor = useRef(false)
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({})
   const panelRef = useRef<HTMLDivElement>(null)
 
   const activePanel = panels.find((panel) => panel.tab.slug === active) ?? panels[0]
 
+  // DEEP LINK: `?ranking=` e aplicado na MONTAGEM, no cliente. Antes quem lia
+  // era o servidor (`searchParams`), e essa unica leitura tornava a rota inteira
+  // dinamica — a home nunca podia ser guardada. Ler aqui custa uma pintura da
+  // aba default numa secao que fica abaixo da dobra, e devolve o cache.
+  useEffect(() => {
+    if (escolhaDoLeitor.current) return
+    const pedida = new URL(window.location.href).searchParams.get(RANKING_QUERY_PARAM)
+    if (pedida === null) return
+    setActive(resolveActiveRankingSlug(vertical, pedida))
+  }, [vertical])
+
   // A URL acompanha a aba SEM re-render do servidor: `router.replace` faria a
-  // rota inteira (force-dynamic) ser refeita a cada clique, o que reintroduziria
-  // exatamente o salto de layout que esta secao nao pode ter.
+  // rota inteira ser refeita a cada clique, o que reintroduziria exatamente o
+  // salto de layout que esta secao nao pode ter — e invalidaria o cache.
   useEffect(() => {
     if (activePanel === undefined) return
     const url = new URL(window.location.href)
@@ -93,6 +119,7 @@ export function PopularThisWeek({
   }, [activePanel])
 
   const select = useCallback((slug: RankingTabSlug) => {
+    escolhaDoLeitor.current = true
     setActive(slug)
     // Trocar de aba reseta o scroll do carrossel: a posicao 1 do novo recorte
     // tem de estar visivel, e nao a posicao 7 do recorte anterior.
