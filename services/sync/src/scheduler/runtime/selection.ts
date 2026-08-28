@@ -235,10 +235,25 @@ export async function selectTitlesByActivity(
     now.toISOString(),
     limit,
   )
-  return rank([
-    ...movies.map((row) => ({ entityType: 'movie' as const, tmdbId: row.tmdb_id })),
-    ...shows.map((row) => ({ entityType: 'tv' as const, tmdbId: row.tmdb_id })),
-  ])
+  // INTERCALA e FATIA, como `selectStaleWatchOffers` e `selectStaleTitleMedia`.
+  //
+  // Ate 2026-08-28 esta funcao CONCATENAVA sem fatiar: com `limit = 200` ela
+  // devolvia ate 400 candidatos (200 filmes + 200 series). O mesmo
+  // `batchLimit` significava 200 em duas filas e 400 em outras duas — e um teto
+  // que significa dois numeros nao e teto, e um palpite.
+  //
+  // Intercalar (em vez de concatenar e cortar) tambem conserta a segunda
+  // metade do defeito: cortar a lista concatenada em 200 devolveria SO filmes,
+  // e nenhuma serie entraria no ciclo.
+  const out: TitleCandidate[] = []
+  const max = Math.max(movies.length, shows.length)
+  for (let i = 0; i < max; i += 1) {
+    const movie = movies[i]
+    const show = shows[i]
+    if (movie !== undefined) out.push({ entityType: 'movie', tmdbId: movie.tmdb_id, rank: out.length + 1 })
+    if (show !== undefined) out.push({ entityType: 'tv', tmdbId: show.tmdb_id, rank: out.length + 1 })
+  }
+  return out.slice(0, limit)
 }
 
 /**

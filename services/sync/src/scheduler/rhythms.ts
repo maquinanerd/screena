@@ -177,8 +177,9 @@ export const RHYTHMS: readonly Rhythm[] = [
      * ========================================================================
      * O QUE O TETO GLOBAL FAZIA COM ESTA FILA
      * ========================================================================
-     * Com 200/ciclo e 67.288 titulos no catalogo (34.802 filmes + 32.486
-     * series, medidos na auditoria #254), a volta completa levava **336 dias**.
+     * Com 200/ciclo e 70.537 titulos no catalogo (37.554 filmes + 32.983
+     * series, CONTADOS em producao em 28/08 — a auditoria #254 dizia 67.288 e
+     * errava, ver a nota de correcao abaixo), a volta levava **353 dias**.
      * A fila declara janela de 7 dias. Um intervalo diario com volta anual nao
      * e uma fila diaria — e o MESMO defeito da OMDb a 200/semana, com outro
      * nome, e este arquivo existe justamente para nao ter um numero unico para
@@ -187,26 +188,43 @@ export const RHYTHMS: readonly Rhythm[] = [
      * ========================================================================
      * DE ONDE SAI O 10.000
      * ========================================================================
-     * 67.288 / 7 = 9.613 titulos/dia fecham a janela DECLARADA. 10.000 e o
-     * proximo numero redondo e tambem o teto que `resolveSchedulerConfig`
-     * aceita; a volta cai para 6,7 dias.
+     * 70.537 / 7 = 10.077 titulos/dia apenas EMPATAM com a janela declarada, e
+     * um teto que empata hoje quebra amanha: a descoberta acrescenta titulo
+     * todo dia. 12.000 da volta em 5,88 dias e tolera o catalogo crescer ate
+     * 84.000 antes de a janela voltar a mentir.
      *
-     * CUSTO: 2 requisicoes por titulo (`/images` + `/videos`) = 20.000 req/dia,
-     * ou 0,23 req/s amortizado. O TMDB nao tem cota diaria e a auditoria #254
+     * CUSTO: 2 requisicoes por titulo (`/images` + `/videos`) = 24.000 req/dia,
+     * ou 0,28 req/s amortizado. O TMDB nao tem cota diaria e a auditoria #254
      * dimensiona o desenho recomendado em 135.373 req/dia — isto e 15% daquele
      * orcamento, e 4% da varredura por forca bruta (874.379).
      *
      * ========================================================================
-     * O DENOMINADOR E TITULO, NAO EPISODIO — E ISSO MUDA A CONTA POR 3x
+     * O DENOMINADOR E TITULO, NAO EPISODIO — E ISSO MUDA A CONTA POR 56x
      * ========================================================================
      * `selectStaleTitleMedia` le `movies` e `tv_shows`, e so. Temporada
-     * (32.483) e episodio (135.926) NAO passam por aqui: a midia deles entra
-     * pela cascata de `sync_details` -> `sync_seasons` -> `sync_episodes`, que
-     * voltou a rodar quando a chave do filho ganhou escopo. Dimensionar esta
-     * fila pelo numero de episodios pediria um teto que ela nao precisa e
-     * duplicaria trabalho que outro caminho ja faz.
+     * (136.650) e episodio (3.921.368) NAO passam por aqui: a midia deles entra
+     * pela cascata `sync_details` -> `sync_seasons` -> `sync_episodes`, que
+     * voltou a rodar quando a chave do filho ganhou escopo, e cujo teto e o
+     * balde de 7 dias de `coarsenScopeToDays` (@screena/ingestion).
+     * Dimensionar ESTA fila pelo numero de episodios pediria um teto 56 vezes
+     * maior do que ela precisa e duplicaria trabalho que outro caminho ja faz.
+     *
+     * ========================================================================
+     * CORRECAO DE NUMERO — a auditoria #254 deslocou uma coluna
+     * ========================================================================
+     * Ela reporta "32.483 temporadas, 135.926 episodios". Contado em producao
+     * em 28/08/2026:
+     *
+     *   movies    37.554   (#254: 34.802)
+     *   tv_shows  32.983   (#254: 32.486)
+     *   seasons  136.650   (#254 usou 32.483 — que e a contagem de SERIES)
+     *   episodes  3.921.368 (#254 usou 135.926 — que e a de TEMPORADAS)
+     *
+     * O #254 nunca contou episodio: cada numero dele e o da linha de cima. O
+     * erro no episodio e de 28,8x, e e por isso que este bloco cita os numeros
+     * CONTADOS e nao os da auditoria.
      */
-    batchLimit: 10_000,
+    batchLimit: 12_000,
   },
   {
     queue: 'discovery',

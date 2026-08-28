@@ -89,3 +89,94 @@ export function scopedChildDiscriminator(
   const trimmed = (scope ?? '').trim()
   return trimmed.length === 0 ? `${prefix}${locale}` : `${prefix}${locale}:${trimmed}`
 }
+
+
+/**
+ * Quantos DIAS de escopo a MIDIA DE FOLHA compartilha.
+ *
+ * 7 = a janela de "trailers / imagens (midia de catalogo)" declarada em
+ * `.claude/rules/ingestion.md`. Nao e numero novo: e a mesma janela que o ritmo
+ * `title_media` usa.
+ */
+export const LEAF_MEDIA_SCOPE_DAYS = 7
+
+/** Data ISO (`YYYY-MM-DD`) em qualquer posicao do escopo. */
+const ISO_DATE = /(\d{4})-(\d{2})-(\d{2})/
+
+/**
+ * ENGROSSA o escopo de um job de FOLHA para um balde de N dias.
+ *
+ * ============================================================================
+ * POR QUE A FOLHA NAO PODE HERDAR O ESCOPO DO PAI CRU
+ * ============================================================================
+ * Dar escopo ao filho consertou o congelamento — mas trocou um extremo pelo
+ * outro na ponta mais cara da arvore. Medido com o catalogo real (32.983
+ * series, 136.650 temporadas, 3.921.368 episodios):
+ *
+ *   uma serie = 4,14 temporadas e 118,9 episodios
+ *   uma passagem completa da cascata = 128,2 jobs e 254,2 requisicoes
+ *   a midia de TEMPORADA + EPISODIO e **96,8%** desse custo
+ *
+ * `airing_series` roda DIARIO. Com o escopo cru do pai, ela reabria a cascata
+ * inteira todo dia: 200 series/ciclo viravam **25.635 jobs e 50.842
+ * requisicoes por dia** — um multiplicador de 128x sobre o volume anterior,
+ * para buscar de novo o still de um episodio que foi ao ar em 2011.
+ *
+ * ============================================================================
+ * A GRANULARIDADE DO ESCOPO ACOMPANHA A VOLATILIDADE DO DADO
+ * ============================================================================
+ * E o mesmo principio da tabela de ritmos, aplicado dentro de uma arvore de
+ * jobs em vez de entre filas:
+ *
+ *   ENUMERAR (`sync_seasons`, `sync_episodes`) herda o escopo CRU do pai. E o
+ *   que faz o episodio que estreou hoje aparecer hoje, e custa 1,6% do total.
+ *
+ *   A MIDIA DE FOLHA (temporada, episodio) usa o balde de 7 dias. Still de
+ *   episodio nao muda todo dia; a janela de midia do projeto sempre disse 7.
+ *
+ * A midia de TITULO (o trailer, o poster) NAO passa por aqui: ela mantem o
+ * escopo cru, porque e ela que responde ao sinal de `videos`/`images` do
+ * `/changes` — engrossa-la atrasaria um trailer novo em ate uma semana.
+ *
+ * Resultado medido: 8.659 req/dia contra 50.842, **5,9x mais barato**, com a
+ * promessa diaria intacta.
+ *
+ * ============================================================================
+ * O BALDE E ANCORADO NA EPOCA, NAO NO "AGORA"
+ * ============================================================================
+ * `floor(diasDesdeEpoca / N)`. Ancorar no agora faria o balde deslizar a cada
+ * reinicio do container, e duas replicas que subissem em dias diferentes veriam
+ * baldes diferentes para o mesmo trabalho — ou seja, trabalho duplicado. E o
+ * mesmo motivo pelo qual `windowSlot` ancora na meia-noite UTC.
+ *
+ * Escopo sem data reconhecivel volta INALTERADO: engrossar o que nao se sabe
+ * ler produziria uma chave que colide com outra coisa. Sem data, o escopo ja e
+ * um rotulo estavel (o backfill nao tem escopo nenhum), e mante-lo preserva o
+ * contrato anterior.
+ */
+export function coarsenScopeToDays(
+  scope: string | null,
+  days: number = LEAF_MEDIA_SCOPE_DAYS,
+): string | null {
+  if (scope === null) return null
+  const trimmed = scope.trim()
+  if (trimmed.length === 0) return null
+  const tamanho = Math.max(1, Math.trunc(days))
+
+  const encontrado = ISO_DATE.exec(trimmed)
+  if (encontrado === null) return trimmed
+
+  const [iso, ano, mes, dia] = encontrado
+  const epocaDias = Math.floor(
+    Date.UTC(Number(ano), Number(mes) - 1, Number(dia)) / 86_400_000,
+  )
+  if (!Number.isFinite(epocaDias)) return trimmed
+  const balde = Math.floor(epocaDias / tamanho) * tamanho
+
+  // A data volta ao lugar em que estava: o resto do escopo (nome da fila,
+  // janela do /changes) continua separando o que ele separava.
+  const inicio = new Date(balde * 86_400_000).toISOString().slice(0, 10)
+  return `${trimmed.slice(0, encontrado.index)}${inicio}~${tamanho}d${trimmed.slice(
+    encontrado.index + (iso as string).length,
+  )}`
+}
