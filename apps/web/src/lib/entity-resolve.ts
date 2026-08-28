@@ -16,17 +16,31 @@
  * e a regra que o organiza e a segunda linha acima: **um `null` e inofensivo; um
  * id errado e uma mentira publicada.** Nada aqui devolve palpite.
  *
- * TRES CASAMENTOS, E SO TRES:
+ * QUATRO CASAMENTOS, E SO QUATRO:
  *
  *  1. `tmdb_id` — identificador, exato, caminho preferencial;
  *  2. `exact_title_year` — titulo dobrado + ANO + `kind`, todos batendo;
- *  3. `exact_name` — nome dobrado + `kind`, UNICO no catalogo. So para `person`.
+ *  3. `exact_title_unique` — titulo dobrado + `kind`, UNICO no catalogo, sem ano;
+ *  4. `exact_name` — nome dobrado + `kind`, UNICO no catalogo. So para `person`.
  *
- * O terceiro e uma extensao deliberada ao contrato esbocado, e o motivo esta em
- * `MATCHED_BY`: pessoa nao tem ano. Sem ele, o tradutor so traduziria pessoa
- * quando o emissor ja tivesse o id do TMDB — que e justamente o caso em que ele
- * nao precisa de tradutor. A trava que o mantem honesto e a UNICIDADE: dois
- * homonimos derrubam o casamento para `null`, e nao para "o mais popular".
+ * O terceiro e o quarto sao extensoes deliberadas ao contrato esbocado, e ambos
+ * se apoiam na MESMA trava: UNICIDADE conferida deste lado, que e o lado com o
+ * banco. Dois homonimos derrubam o casamento para `null`, e nao para "o mais
+ * popular".
+ *
+ * O terceiro entrou depois, e o motivo foi medido. Exigir ano de toda obra
+ * parecia so conservador e era uma porta fechada:
+ *
+ *  - a materia em portugues quase nunca escreve `Titulo (2026)` ao lado do
+ *    titulo — em cinco materias publicadas pelo MNScr em 27/08/2026, ZERO obras
+ *    chegaram a ser perguntadas a esta rota, contra 93 pessoas;
+ *  - obra ANUNCIADA entra no catalogo com `year` vazio (`The Brave and the Bold`
+ *    e produzido pelo James Gunn e nao tem data), e `c.year === query.year` nao
+ *    alcanca `null` com ano nenhum. O filme de que a noticia mais fala era o
+ *    unico que este modulo nao tinha como resolver.
+ *
+ * A recusa continua onde precisa estar: titulo repetido no catalogo devolve
+ * `ambiguous_title`, e nao "o mais popular".
  *
  * NAO HA FUZZY, NAO HA PREFIXO, NAO HA "MELHOR APROXIMACAO". A busca do site tem
  * os tres — e esta certa, porque la existe uma pessoa lendo a lista e escolhendo.
@@ -59,15 +73,32 @@ export type ResolvableKind = (typeof RESOLVABLE_KINDS)[number];
  *    porque titulo nao e identificador: duas obras podem compartilhar os tres
  *    campos, e quando compartilham este modulo devolve `null` (`ambiguous_*`) —
  *    mas a existencia do caso e o que justifica o desconto;
+ *  - `exact_title_unique` (0.85) — titulo exato e UNICO no catalogo, sem ano.
+ *    Mesmo patamar de `exact_name` porque e a mesma garantia: exatidao mais
+ *    unicidade, sem campo que discrimine homonimos. O que o separa do anterior
+ *    nao e a exatidao, e sim o que sustenta a unicidade — la, o ano; aqui, o
+ *    catalogo inteiro nao ter um segundo titulo igual. Um homonimo ainda NAO
+ *    ingerido derrubaria essa premissa, e e esse risco que o desconto declara;
  *  - `exact_name` (0.85) — nome exato e UNICO, so para pessoa, que nao tem ano.
- *    O sinal mais fraco dos tres, e por isso o mais barato de recusar.
+ *
+ * O nome `exact_title_unique` NAO e novo: e o mesmo de
+ * `services/ingestion/src/on-demand/match.ts`, que ja casava termo -> `tmdbId`
+ * por titulo unico. La ele vale 0.8 porque a unicidade e apenas dentro da
+ * PAGINA que o TMDB devolveu; aqui ela e sobre o catalogo inteiro, em consulta
+ * indexada — garantia estritamente mais forte, e o numero acompanha.
  */
-export const MATCHED_BY = ["tmdb_id", "exact_title_year", "exact_name"] as const;
+export const MATCHED_BY = [
+  "tmdb_id",
+  "exact_title_year",
+  "exact_title_unique",
+  "exact_name",
+] as const;
 export type MatchedBy = (typeof MATCHED_BY)[number];
 
 export const CONFIDENCE_BY_MATCH: Readonly<Record<MatchedBy, number>> = {
   tmdb_id: 1,
   exact_title_year: 0.9,
+  exact_title_unique: 0.85,
   exact_name: 0.85,
 };
 
@@ -85,7 +116,12 @@ export type ResolveFailureReason =
   | "unsupported_kind"
   /** O `tmdbId` nao existe no catalogo — o item ainda nao foi ingerido. */
   | "tmdb_id_not_in_catalog"
-  /** Titulo sem ano, para `movie`/`tv`. O ano nao e opcional no casamento. */
+  /**
+   * LEGADO. Era a recusa de titulo sem ano, quando o ano era obrigatorio para
+   * `movie`/`tv`. Hoje titulo sem ano tem caminho proprio
+   * (`exact_title_unique`), e este valor nao e mais emitido — permanece no tipo
+   * porque cliente antigo pode te-lo persistido em log e em teste.
+   */
   | "title_requires_year"
   /** Pessoa sem `tmdbId`: o nome bateu, mas em mais de uma pessoa. */
   | "ambiguous_name"
@@ -421,10 +457,19 @@ export function resolveOne(
     return succeed(query.index, byText[0] as ResolveCandidate, "exact_name");
   }
 
-  // O ANO E OBRIGATORIO para obra, e a recusa e antes da consulta valer de algo:
-  // "Superman" sem ano casa com meia duzia de filmes, e escolher entre eles e
-  // precisamente o palpite que este modulo existe para nao dar.
-  if (query.year === null) return fail(query.index, kind, "title_requires_year");
+  if (query.year === null) {
+    // SEM ANO, A UNICIDADE DECIDE — a mesma regra da pessoa, logo acima.
+    //
+    // "Superman" sem ano casa com meia duzia de filmes e continua sendo recusa:
+    // dois candidatos derrubam para `ambiguous_title`, e escolher entre eles
+    // segue sendo o palpite que este modulo existe para nao dar. O que mudou e
+    // o caso oposto, que a regra antiga tratava igual: quando o catalogo tem UM
+    // unico titulo assim, nao ha entre o que escolher, e recusar so garantia
+    // que obra nenhuma fosse ligada a materia nenhuma.
+    if (byText.length === 0) return fail(query.index, kind, "not_found");
+    if (byText.length > 1) return fail(query.index, kind, "ambiguous_title");
+    return succeed(query.index, byText[0] as ResolveCandidate, "exact_title_unique");
+  }
 
   const byYear = byText.filter((c) => c.year === query.year);
   if (byYear.length === 0) return fail(query.index, kind, "not_found");

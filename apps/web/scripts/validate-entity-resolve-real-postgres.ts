@@ -476,9 +476,18 @@ async function runHttpChecks(base: string, ids: SeededIds): Promise<void> {
 
   const noYear = await callResolve(base, [{ kind: "movie", title: "Clube da Luta" }]);
   record(
-    "titulo SEM ano nao casa, mesmo com candidato unico",
-    rows(noYear)[0]?.entityId === null && rows(noYear)[0]?.reason === "title_requires_year",
-    `reason=${rows(noYear)[0]?.reason ?? "null"}`,
+    "titulo SEM ano casa quando e UNICO no catalogo",
+    rows(noYear)[0]?.entityId === ids.fightClub.toString() &&
+      rows(noYear)[0]?.matchedBy === "exact_title_unique",
+    `entityId=${rows(noYear)[0]?.entityId ?? "null"} matchedBy=${rows(noYear)[0]?.matchedBy ?? "null"}`,
+  );
+
+  const noYearAmbiguous = await callResolve(base, [{ kind: "movie", title: "Gemeas" }]);
+  record(
+    "titulo SEM ano batendo em DUAS obras: null, nunca a mais popular",
+    rows(noYearAmbiguous)[0]?.entityId === null &&
+      rows(noYearAmbiguous)[0]?.reason === "ambiguous_title",
+    `reason=${rows(noYearAmbiguous)[0]?.reason ?? "null"}`,
   );
 
   const ambiguous = await callResolve(base, [{ kind: "movie", title: "Gemeas", year: 1998 }]);
