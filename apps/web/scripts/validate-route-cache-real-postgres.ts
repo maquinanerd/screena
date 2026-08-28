@@ -585,6 +585,65 @@ async function main(): Promise<void> {
         `sem query: ${abaSem} | com ?ranking=classicos: ${abaCom ?? "(nenhuma)"}`,
       );
     }
+
+    // ------------------------------------------------------------------ (6)
+    // TODA FICHA RENDERIZA — a prova que faltava.
+    //
+    // POR QUE ESTE BLOCO EXISTE. Em 2026-08-28 TODA `/pt/series/{slug}/`
+    // respondia 500 em producao. Este mesmo script ja subia Next real e
+    // PostgreSQL real, ja semeava 3.000 series — e passava 14/14, porque
+    // NUNCA PEDIA UMA SERIE. As provas 6 e 7 pediam `/pt/filmes/filme-1/` e
+    // concluiam sobre "a ficha" a partir de uma unica das dez.
+    //
+    // A causa era `generateStaticParams` (que a #245 deu as 10 fichas) na
+    // UNICA ficha que tambem le `searchParams`: o Next classifica a rota como
+    // SSG no build, tenta gerar o HTML estatico na primeira visita, esbarra na
+    // query e devolve 500 (`DYNAMIC_SERVER_USAGE` / "Page changed from static
+    // to dynamic at runtime"). Nada disso aparece em `typecheck`, `lint`,
+    // `build` ou em teste que importe o modulo da rota: so aparece quando
+    // ALGUEM PEDE A URL do servidor Next de producao.
+    //
+    // Por isso a prova aqui e por REQUISICAO e olha o CORPO. Status 200 sozinho
+    // nao basta: o teto e a pagina ter renderizado o titulo daquela entidade.
+    const fichas: ReadonlyArray<readonly [string, string, string]> = [
+      ["/pt/filmes/filme-1/", "Titulo filme 1", "ficha de filme"],
+      ["/pt/series/serie-1/", "Titulo serie 1", "ficha de serie"],
+      // A FORMA EXATA QUE QUEBROU: ficha de serie COM a query que o
+      // `?temporada=` produz. Se alguem readicionar `generateStaticParams`
+      // aqui, esta linha fica vermelha.
+      [
+        "/pt/series/serie-1/?temporada=1",
+        "Titulo serie 1",
+        "ficha de serie COM ?temporada= (a forma que caiu em producao)",
+      ],
+      ["/pt/pessoas/pessoa-1/", "Titulo pessoa 1", "ficha de pessoa"],
+    ];
+    for (const [route, marcador, label] of fichas) {
+      const res = await fetch(`${base}${route}`);
+      const html = await res.text();
+      // A pagina de erro do Next responde 500 com este texto; se o corpo
+      // trouxer isso, "renderizou" e mentira mesmo com outro status.
+      const paginaDeErro = html.includes("server-side exception");
+      const ok = res.status === 200 && html.includes(marcador) && !paginaDeErro;
+      record(
+        `${label} RENDERIZA (requisicao real ao Next, corpo conferido)`,
+        ok,
+        `status=${res.status} ` +
+          `titulo "${marcador}" ${html.includes(marcador) ? "presente" : "AUSENTE"}` +
+          (paginaDeErro ? " | corpo e a pagina de erro do Next" : ""),
+      );
+    }
+
+    // CONTROLE do bloco acima: o marcador precisa ser capaz de FALTAR. Se
+    // `includes` casasse com qualquer coisa, as quatro provas passariam sem
+    // medir nada. Uma ficha que nao existe tem que reprovar o mesmo criterio.
+    const inexistente = await fetch(`${base}/pt/series/serie-nao-semeada-999999/`);
+    const htmlInexistente = await inexistente.text();
+    record(
+      "CONTROLE: o criterio acima REPROVA uma ficha inexistente (404, sem titulo)",
+      !(inexistente.status === 200 && htmlInexistente.includes("Titulo serie 1")),
+      `status=${inexistente.status} — se isto passasse como 200+titulo, as 4 provas acima nao mediriam nada`,
+    );
   } finally {
     server?.kill();
     if (disconnect) await disconnect().catch(() => undefined);
