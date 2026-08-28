@@ -27,7 +27,10 @@ import { describe, expect, it } from 'vitest'
 
 import { CATALOG_POLICY_VERSION } from '@screena/seo'
 
-import { produceIndexabilityDecisions } from '../indexability-writer.js'
+import {
+  INDEXABILITY_SUMMARY_SCHEMA_VERSION,
+  produceIndexabilityDecisions,
+} from '../indexability-writer.js'
 
 type WriterPrisma = Parameters<typeof produceIndexabilityDecisions>[0]
 
@@ -353,5 +356,121 @@ describe('freio de mudanca em massa — escopo e modos', () => {
     // Sair "verde" no dry-run diria "pode aplicar" para a unica execucao que
     // NAO pode aplicar.
     expect(summary.massChange.blocked).toBe(true)
+  })
+})
+
+/**
+ * O CENSO que o `--dry-run` imprime.
+ *
+ * Ate 2026-08-27 o resumo respondia "quantas mudam" e nada alem disso. As
+ * perguntas que o dono faz antes de assinar sao outras: quantas de CADA tipo,
+ * com que veredito, por que, e — a mais importante — quantas dessas ja tinham
+ * decisao vigente. Uma linha que NASCE `noindex` amplia a cobertura da tabela;
+ * uma linha que TROCA de `index` para `noindex` tira do indice uma pagina que o
+ * buscador ja conhece. Os dois somavam no mesmo numero.
+ *
+ * Os fixtures passam pela politica REAL: os vereditos abaixo sao o que
+ * `decideCatalogIndexability` decide a partir dos fatos, nunca valores fixados.
+ */
+describe('censo por tipo de entidade (o que o dry-run mostra)', () => {
+  it('separa criadas de alteradas, e nao confunde nenhuma das duas com inalteradas', async () => {
+    const fake = makeFakePrisma({
+      movie: [
+        // ja `index` e continua `index`: nao entra em nenhum dos dois baldes.
+        indexedRow(1),
+        // ja tinha veredito e TROCA (index -> noindex): `updated`.
+        leavingRow(2),
+        // nunca teve linha e nasce decidida: `created`.
+        undecidedRow(3),
+      ],
+    })
+
+    const summary = await run(fake, {
+      dryRun: true,
+      massChangeThresholds: { maxFlips: 100, maxFlipRatio: 1 },
+    })
+
+    expect(summary.evaluated).toBe(3)
+    expect(summary.writes).toEqual({ created: 1, updated: 1, unchanged: 1 })
+    // A soma tem de fechar com o total varrido: qualquer entidade cai em
+    // exatamente um dos tres baldes.
+    const { created, updated, unchanged } = summary.writes
+    expect(created + updated + unchanged).toBe(summary.evaluated)
+    // `planned` e o que a fase 2 gravaria — created + updated, nunca unchanged.
+    expect(summary.planned).toBe(created + updated)
+  })
+
+  it('conta veredito e motivo POR TIPO, nao so no total', async () => {
+    const fake = makeFakePrisma({
+      movie: [indexedRow(1), leavingRow(2)],
+      person: [indexedRow(10), indexedRow(11, { credits: 0 })],
+    })
+
+    const summary = await run(fake, {
+      entityTypes: ['movie', 'person'],
+      dryRun: true,
+      massChangeThresholds: { maxFlips: 100, maxFlipRatio: 1 },
+    })
+
+    const filme = summary.byEntityType.movie
+    const pessoa = summary.byEntityType.person
+    expect(filme).toBeDefined()
+    expect(pessoa).toBeDefined()
+
+    expect(filme?.evaluated).toBe(2)
+    expect(pessoa?.evaluated).toBe(2)
+
+    // Um `index` e um `noindex` de cada lado — mas por motivos DIFERENTES, e e
+    // essa a informacao que o total global apagava: `sem_traducao` do filme e
+    // `sem credito publicavel` da pessoa viravam duas linhas soltas sem dono.
+    expect(filme?.byDecision.index).toBe(1)
+    expect(filme?.byDecision.noindex).toBe(1)
+    expect(pessoa?.byDecision.index).toBe(1)
+    expect(pessoa?.byDecision.noindex).toBe(1)
+
+    // A razao ESPECIFICA de um tipo nunca vaza para o balde do outro. (A razao
+    // de aprovacao, `eligible`, e a mesma para todo tipo — por isso a afirmacao
+    // e sobre as razoes de RECUSA, que sao dirigidas ao gate daquele tipo.)
+    expect(filme?.byReason.missing_translation).toBe(1)
+    expect(filme?.byReason.no_eligible_credit).toBeUndefined()
+    expect(pessoa?.byReason.no_eligible_credit).toBe(1)
+    expect(pessoa?.byReason.missing_translation).toBeUndefined()
+
+    // E cada balde soma exatamente as entidades daquele tipo.
+    for (const censo of [filme, pessoa]) {
+      const porVeredito = Object.values(censo?.byDecision ?? {}).reduce((a, b) => a + b, 0)
+      const porRazao = Object.values(censo?.byReason ?? {}).reduce((a, b) => a + b, 0)
+      expect(porVeredito).toBe(censo?.evaluated)
+      expect(porRazao).toBe(censo?.evaluated)
+    }
+  })
+
+  it('o censo por tipo sobrevive ao freio: bloquear NAO apaga a informacao', async () => {
+    // O censo e justamente o que o operador precisa ler para decidir se assina.
+    // Se o caminho bloqueado devolvesse um resumo vazio, o freio pararia a
+    // escrita e a pre-checagem junto.
+    const rows = Array.from({ length: 30 }, (_, i) => leavingRow(i + 1))
+    const fake = makeFakePrisma({ movie: rows })
+
+    const summary = await run(fake, {
+      dryRun: true,
+      massChangeThresholds: { maxFlips: 5, maxFlipRatio: 1 },
+    })
+
+    expect(summary.massChange.blocked).toBe(true)
+    expect(summary.writes.updated).toBe(30)
+    expect(summary.byEntityType.movie?.evaluated).toBe(30)
+    expect(summary.byEntityType.movie?.byDecision.noindex).toBe(30)
+    // O teto que barrou tem de vir no mesmo objeto: sem ele o consumidor sabe
+    // que bloqueou e nao sabe contra o que.
+    expect(summary.massChange.limits.maxFlips).toBe(5)
+  })
+
+  it('o JSON carrega a versao da forma (contrato de leitor de maquina)', async () => {
+    const fake = makeFakePrisma({ movie: [indexedRow(1)] })
+    const summary = await run(fake, { dryRun: true })
+
+    expect(summary.schemaVersion).toBe(INDEXABILITY_SUMMARY_SCHEMA_VERSION)
+    expect(Number.isInteger(summary.schemaVersion)).toBe(true)
   })
 })

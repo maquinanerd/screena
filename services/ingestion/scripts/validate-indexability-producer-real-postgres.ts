@@ -320,6 +320,15 @@ async function runChecks(url: string): Promise<void> {
       language: 'pt-BR',
       dryRun: false,
       now,
+      // LOOSE_BRAKE como nos demais checks. Sem ele, este era o UNICO ponto do
+      // arquivo a usar o teto default, e 1 flip num fixture de 11 entidades e
+      // 9,09% — acima dos 5% proporcionais. O freio bloqueava, `written` vinha 0
+      // e o check reprovava o PRODUTOR por um efeito do proprio fixture. E o
+      // caso que `catalog-mass-change.ts` documenta: "num banco pequeno o teto
+      // proporcional dispara com pouquissimos flips". Aqui se mede a politica
+      // dirigida a dado, nao o freio (que tem controle negativo proprio logo
+      // abaixo, com teto 0).
+      massChangeThresholds: LOOSE_BRAKE,
     })
     const ep502 = await q<{ decision: string; reason: string }>(
       `SELECT decision::text AS decision, reason FROM page_indexability_decisions

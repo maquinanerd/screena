@@ -177,9 +177,32 @@ Flags:
   --max-flips <n>           teto absoluto de flips (default 500)
   --max-flip-percent <n>    teto proporcional, 0..100 (default 5)
 
-Exit codes:
-  0  ok
-  5  freio de mudanca em massa — nada gravado, aguardando humano
+O QUE O --dry-run FAZ (desde 2026-08-27). Ele RODA a politica contra o banco,
+em modo so-leitura, e imprime o censo: avaliadas por tipo, veredito de cada uma,
+motivo agregado, quantas linhas nasceriam (\`created\`), quantas trocariam de
+veredito (\`updated\`), quantas ficariam iguais, e o veredito do freio com os
+tetos. Nada e gravado. Ate essa data ele curto-circuitava ANTES do banco e
+imprimia \`"index-decisions: sem efeito colateral"\` com exit 0 — uma frase sobre
+a intencao do comando, lida como aprovacao de um \`--apply\` de ~67 mil decisoes.
+
+Forma do \`--json\` (contrato para script de operacao):
+  schemaVersion   inteiro; sobe quando a forma muda de modo incompativel
+  evaluated       entidades varridas
+  planned         quantas MUDARIAM de decisao
+  written         quantas foram gravadas (0 em dry-run e 0 sob freio)
+  writes          { created, updated, unchanged }
+  byEntityType    { <tipo>: { evaluated, byDecision, byReason, writes } }
+  byDecision      { <veredito>: n }   byReason { <razao>: n }   (globais)
+  massChange      { flips, entersIndex, leavesIndex, flipRatio, limits,
+                    exceeded, exceededBy, confirmed, blocked, explanation }
+  changes         amostra (ate 50) das transicoes, com o flip de cada uma
+
+Exit codes (valem em --dry-run E em --apply — o dry-run e a pre-checagem do
+apply, entao os dois tem que concordar):
+  0  ok — em dry-run: o censo foi calculado e o freio nao bloquearia
+  2  uso invalido (flag/combinacao)
+  3  gate: producao sem --confirm-production-read (leitura) ou sem --force (escrita)
+  5  freio de mudanca em massa — nada gravado/gravaria, aguardando humano
 
 Exemplos:
   pnpm catalog index-decisions --dry-run --json
