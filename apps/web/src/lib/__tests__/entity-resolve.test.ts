@@ -202,13 +202,41 @@ describe("titulo + ano + kind: os tres, ou nada", () => {
     expect(result.entityId).toBe("4210");
   });
 
-  it("titulo SEM ano nao casa, mesmo quando so ha um candidato", () => {
-    // "Superman" sem ano casa com meia duzia de filmes. Aceitar quando por acaso
-    // ha um so ensinaria o emissor a omitir o ano — e a regra quebraria no dia
-    // em que o catalogo ganhasse o segundo.
+  it("titulo SEM ano casa quando e UNICO no catalogo", () => {
+    // A recusa antiga (`title_requires_year`) fechava a porta para a materia
+    // inteira: prosa em portugues nao escreve `Titulo (2026)`, e obra anunciada
+    // entra no catalogo sem ano. Com um so candidato nao ha entre o que
+    // escolher — e escolher e a unica coisa que este modulo nao pode fazer.
     const result = resolveOne(query({ folded: "clube da luta" }), [candidate()]);
+    expect(result.matchedBy).toBe("exact_title_unique");
+    expect(result.confidence).toBe(CONFIDENCE_BY_MATCH.exact_title_unique);
+    expect(result.entityId).toBe("4210");
+  });
+
+  it("titulo SEM ano batendo em DUAS obras vira null, nunca a mais popular", () => {
+    const result = resolveOne(query({ folded: "gemeas" }), [
+      candidate({ entityId: "1", folded: "gemeas", foldedAliases: [], year: 1998, tmdbId: 1 }),
+      candidate({ entityId: "2", folded: "gemeas", foldedAliases: [], year: 2024, tmdbId: 2 }),
+    ]);
     expect(result.entityId).toBeNull();
-    expect(result.reason).toBe("title_requires_year");
+    expect(result.reason).toBe("ambiguous_title");
+  });
+
+  it("titulo SEM ano casa com obra ANUNCIADA, que entra no catalogo sem data", () => {
+    // O caso que motivou a regra: `The Brave and the Bold` existe, e produzido
+    // pelo James Gunn e nao tem estreia. `c.year === query.year` nunca alcanca
+    // um `year` nulo, entao ele era inalcancavel por construcao.
+    const result = resolveOne(query({ folded: "the brave and the bold" }), [
+      candidate({
+        entityId: "9001",
+        folded: "the brave and the bold",
+        foldedAliases: [],
+        year: null,
+        tmdbId: 9001,
+      }),
+    ]);
+    expect(result.matchedBy).toBe("exact_title_unique");
+    expect(result.entityId).toBe("9001");
   });
 
   it("ano DIFERENTE nao casa — remake nao e o original", () => {

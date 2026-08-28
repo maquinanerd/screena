@@ -476,9 +476,18 @@ async function runHttpChecks(base: string, ids: SeededIds): Promise<void> {
 
   const noYear = await callResolve(base, [{ kind: "movie", title: "Clube da Luta" }]);
   record(
-    "titulo SEM ano nao casa, mesmo com candidato unico",
-    rows(noYear)[0]?.entityId === null && rows(noYear)[0]?.reason === "title_requires_year",
-    `reason=${rows(noYear)[0]?.reason ?? "null"}`,
+    "titulo SEM ano casa quando e UNICO no catalogo",
+    rows(noYear)[0]?.entityId === ids.fightClub.toString() &&
+      rows(noYear)[0]?.matchedBy === "exact_title_unique",
+    `entityId=${rows(noYear)[0]?.entityId ?? "null"} matchedBy=${rows(noYear)[0]?.matchedBy ?? "null"}`,
+  );
+
+  const noYearAmbiguous = await callResolve(base, [{ kind: "movie", title: "Gemeas" }]);
+  record(
+    "titulo SEM ano batendo em DUAS obras: null, nunca a mais popular",
+    rows(noYearAmbiguous)[0]?.entityId === null &&
+      rows(noYearAmbiguous)[0]?.reason === "ambiguous_title",
+    `reason=${rows(noYearAmbiguous)[0]?.reason ?? "null"}`,
   );
 
   const ambiguous = await callResolve(base, [{ kind: "movie", title: "Gemeas", year: 1998 }]);
@@ -558,8 +567,11 @@ async function runHttpChecks(base: string, ids: SeededIds): Promise<void> {
 
   /* --- teto de chamadas ------------------------------------------- */
 
+  // O laco precisa poder gastar MAIS que o teto do ambiente, sozinho: se ele
+  // parar antes, a checagem falha dizendo que o teto nao existe quando o que
+  // faltou foi chamada.
   let limited: ResolveResponse | null = null;
-  for (let i = 0; i < 40; i += 1) {
+  for (let i = 0; i < 80; i += 1) {
     const response = await callResolve(base, [{ kind: "movie", tmdbId: 550 }]);
     if (response.status === 429) {
       limited = response;
@@ -570,7 +582,7 @@ async function runHttpChecks(base: string, ids: SeededIds): Promise<void> {
     "o teto por credencial dispara 429 com Retry-After",
     limited !== null && Number(limited.headers.get("retry-after") ?? 0) > 0,
     limited === null
-      ? "nao disparou em 40 chamadas (teto do ambiente = 5?)"
+      ? "nao disparou em 80 chamadas (teto do ambiente acima disso?)"
       : `retry-after=${limited.headers.get("retry-after") ?? "ausente"}`,
   );
 }
@@ -921,7 +933,15 @@ async function main(): Promise<void> {
       CINERIE_PUBLIC_INDEXING_ENABLED: "true",
       CINERIE_CATALOG_RESOLVE_API_KEYS: API_KEY,
       // Teto BAIXO de proposito: o caso do 429 precisa disparar sem 60 chamadas.
-      CINERIE_CATALOG_RESOLVE_RATE_LIMIT_PER_MINUTE: "20",
+      //
+      // Ele tambem e um ORCAMENTO, e essa metade nao estava dita: cada checagem
+      // HTTP daqui gasta uma unidade, e o caso do `422 too_many_items` precisa
+      // acontecer ANTES do teto estourar. Com 20, as duas checagens novas de
+      // titulo sem ano empurraram aquele caso para o outro lado da linha e ele
+      // recebeu `429` — uma falha que nao dizia nada sobre o que ela testa.
+      // O numero fica com folga; quem passar de ~30 checagens HTTP antes do
+      // bloco do 429 precisa subi-lo de novo.
+      CINERIE_CATALOG_RESOLVE_RATE_LIMIT_PER_MINUTE: "40",
     };
 
     console.log("--- next build ---");
