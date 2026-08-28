@@ -18,7 +18,11 @@
  */
 
 import { TrailerModal } from './trailer-modal'
-import type { GalleryImageView, GalleryVideoView } from '../../src/lib/gallery-presenter'
+import type {
+  GalleryImageView,
+  GalleryVideoView,
+  PersonPhotoView,
+} from '../../src/lib/gallery-presenter'
 
 /** A grade de imagens. Clique abre o tamanho grande. */
 export function GalleryImageGrid({ images }: { images: readonly GalleryImageView[] }) {
@@ -45,6 +49,40 @@ export function GalleryImageGrid({ images }: { images: readonly GalleryImageView
           <p className="gallery-tile__meta">
             <span className="gallery-tile__kind">{image.kindLabel}</span>
             <span className="gallery-tile__lang">{image.languageLabel}</span>
+          </p>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/**
+ * A grade de FOTOS de uma pessoa. Mesmo casco da grade de título.
+ *
+ * `data-kind="profile"` e não um tipo por foto: `tmdb_images` guarda retrato de
+ * pessoa com um `image_type` só, e a proporção 2/3 do CSS vale para todas. Não
+ * há rótulo de tipo no rodapé de cada quadro pelo mesmo motivo — "Perfil" em
+ * todos os quadros seria uma coluna de uma constante, que não informa nada.
+ * O idioma FICA: uma arte com texto em português e outra sem texto são coisas
+ * diferentes, e é a única faceta real deste conjunto.
+ */
+export function PersonPhotoGrid({ photos }: { photos: readonly PersonPhotoView[] }) {
+  return (
+    <ul className="gallery-grid poster-grid poster-grid--4">
+      {photos.map((photo) => (
+        <li className="gallery-tile" data-kind="profile" key={photo.fullUrl}>
+          <a className="gallery-tile__link" href={photo.fullUrl}>
+            <img
+              alt={photo.alt}
+              className="gallery-tile__img"
+              height={photo.height ?? undefined}
+              loading="lazy"
+              src={photo.thumbUrl}
+              width={photo.width ?? undefined}
+            />
+          </a>
+          <p className="gallery-tile__meta">
+            <span className="gallery-tile__lang">{photo.languageLabel}</span>
           </p>
         </li>
       ))}

@@ -60,7 +60,6 @@ const AINDA_SEM_GATE: readonly string[] = [
   'apps/web/src/lib/similar-titles-presenter.ts',
   'apps/web/src/server/catalog-summary.ts',
   'apps/web/src/server/discover.ts',
-  'apps/web/src/server/person-page.ts',
   'apps/web/src/server/popular-rankings.ts',
   'apps/web/src/server/watch-browse.ts',
 ]
@@ -69,6 +68,18 @@ const AINDA_SEM_GATE: readonly string[] = [
 const COM_GATE: readonly string[] = [
   'apps/web/src/lib/movie-presenter.ts',
   'apps/web/src/lib/series-presenter.ts',
+  // Quitado em 27/08/2026, junto com a galeria de fotos de pessoa. A tira da
+  // tela 09 checava o gate por LINHA (`tmdb_images.display_allowed`) e NAO a
+  // licenca da fonte: revogado o `tmdb`/`image`, o poster da ficha apagaria e a
+  // tira continuaria acesa, servindo a mesma arte do mesmo CDN. Agora a
+  // consulta vive em `entity-gallery.ts` e a URL nasce em
+  // `buildPersonPhotosGallery`, sob `tmdbImageUrlIfAllowed`.
+  //
+  // A DIVIDA DE `person-presenter.ts` CONTINUA ABERTA e e outra: o retrato do
+  // cabecalho (`people.profile_path`) e os posteres de "Conhecido por" ainda
+  // montam URL crua. Sao colunas de entidade, sem linha para promover — o mesmo
+  // desenho do poster de filme, que foi gateado pela FONTE. Fica na lista.
+  'apps/web/src/server/person-page.ts',
 ]
 
 /**

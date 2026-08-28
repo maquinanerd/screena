@@ -63,6 +63,33 @@
 - **Contrato preservado:** slug canônico com redirect 301, canonical
   autorreferente, `BreadcrumbList` + `mainEntity` (`Movie`/`TVSeries`), e a
   diferenciação filme/série por label + badge + breadcrumb + schema + URL.
+
+### Person Photo Gallery
+
+- **Rota:** `/pt/pessoas/[slug]/fotos/`. (A **tira** de 4 fotos vive na ficha,
+  em `Entity Detail`; esta é a página inteira.)
+- **Estado atual:** grade de retratos (`tmdb_images` com
+  `entity_type='person'`, `image_type='profile'`), com contagem real no topo e
+  composição por idioma. Nenhuma foto é inventada.
+- **DOIS GATES, e é a diferença para a galeria de título:** a foto de pessoa é
+  promovida por **LINHA** (`display_allowed` + `license_status` em
+  `official`/`licensed`, escritos por `promote:media --target=person-photo`)
+  **e** passa pela licença da **FONTE** (`source_licenses` `tmdb`/`image`).
+  A imagem de título só tem o segundo, porque não há linha para promover.
+- **PISO DE PÁGINA FINA:** **5 fotos** — e ele é DERIVADO da tira
+  (`PERSON_PHOTOS_STRIP_LIMIT + 1`), não escrito à mão. Com 4 ou menos, a
+  galeria mostraria exatamente o que a ficha já mostra: `noindex`, e a ficha
+  nem oferece o link. A entidade dona continua indexando.
+- **A ausência FALA:** sem foto exibível, a tira da ficha não renderiza **e**
+  emite `section_absent` com `section: "fotos"`. O motivo é derivado do estado
+  do catálogo — `no_licensed_person_photo` (nada promovido em lugar nenhum;
+  `actionable: true`) vs `no_photo_for_person` (há foto em outras pessoas, não
+  nesta; `actionable: false`).
+- **Badge NEUTRO:** pessoa não participa da distinção filme/série da invariante
+  11, então não recebe acento vermelho nem verde.
+- **Contrato preservado:** slug canônico com redirect 301, canonical
+  autorreferente, `BreadcrumbList` + `mainEntity` (`Person`). Fora do sitemap,
+  como as galerias de título.
 - **Escopo:** são páginas de MÍDIA de um título. Não são índice de catálogo,
   não listam outros títulos e não substituem a banda de mídia da ficha.
 
