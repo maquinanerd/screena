@@ -45,7 +45,24 @@ import { editorialSeoProposal, findForbiddenSeoKey } from './seo-proposal.js'
  * os dois — como estava — impediria dizer "mesmo contrato, versao mais nova".
  */
 export const EDITORIAL_PUBLICATION_REQUEST_NAME = 'editorial-publication-request-v1' as const
-export const EDITORIAL_PUBLICATION_REQUEST_VERSION = '1.0.0' as const
+export const EDITORIAL_PUBLICATION_REQUEST_VERSION = '1.1.0' as const
+
+/**
+ * Versao anterior, aceita durante a virada.
+ *
+ * O hash e o do JSON Schema de `1.0.0` — o que o MNScr declarou em toda
+ * publicacao ate 28/08/2026. Ele fica ESCRITO, e nao recalculado, porque o
+ * schema que o produziu nao existe mais neste repositorio: recalcular daria o
+ * hash do schema NOVO com o rotulo do antigo, que e exatamente a confusao que a
+ * checagem existe para pegar.
+ */
+export const EDITORIAL_PUBLICATION_REQUEST_SUPERSEDED = [
+  {
+    version: '1.0.0',
+    schemaHash:
+      'sha256:930243294465802778f73151d53ee510a2313d44673de9e6e7866032bfe6c6f8',
+  },
+] as const
 
 /* ------------------------------------------------------------------ */
 /* Intencao                                                            */
@@ -292,7 +309,18 @@ export const publicationProvenance = z.object({
 export const editorialPublicationRequestV1 = z
   .object({
     contractName: z.literal(EDITORIAL_PUBLICATION_REQUEST_NAME),
-    contractVersion: z.literal(EDITORIAL_PUBLICATION_REQUEST_VERSION),
+    /**
+     * A versao CORRENTE ou uma das superadas.
+     *
+     * Um `literal` aqui recusaria o emissor antigo antes de
+     * `checkContractCompatibility` sequer rodar — e com a mensagem errada, de
+     * campo invalido em vez de versao vencida. Quem decide compatibilidade e
+     * aquela funcao; este campo so precisa deixar o pedido chegar ate la.
+     */
+    contractVersion: z.enum([
+      EDITORIAL_PUBLICATION_REQUEST_VERSION,
+      ...EDITORIAL_PUBLICATION_REQUEST_SUPERSEDED.map((anterior) => anterior.version),
+    ]),
     /**
      * Hash do JSON SCHEMA que o produtor usou (`sha256:<hex>`).
      *

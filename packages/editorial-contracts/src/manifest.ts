@@ -20,6 +20,7 @@ import { editorialDraftV1 } from './editorial-draft-v1.js'
 import {
   editorialPublicationRequestV1,
   EDITORIAL_PUBLICATION_REQUEST_NAME,
+  EDITORIAL_PUBLICATION_REQUEST_SUPERSEDED,
   EDITORIAL_PUBLICATION_REQUEST_VERSION,
 } from './editorial-publication-request-v1.js'
 import { publicationEventV1 } from './publication-event-v1.js'
@@ -168,6 +169,26 @@ export function contractSchemaHash(contractName: string): string | null {
 /* Compatibilidade                                                     */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Versoes ANTERIORES que continuam aceitas, por contrato.
+ *
+ * Existe para que "campo opcional novo" seja de fato aditivo. Sem isto, subir a
+ * versao derruba todo emissor em voo no instante do deploy — e foi esse medo,
+ * dito em `blocks.ts`, que manteve `marks` fora da entrada por meses.
+ *
+ * O hash e ESCRITO, nunca recalculado: o schema antigo nao existe mais aqui, e
+ * recalcular produziria o hash do schema novo com o rotulo do velho.
+ *
+ * Uma entrada aqui e um COMPROMISSO: enquanto ela existir, o CMS precisa saber
+ * ler pedidos daquele formato. Tirar uma linha e uma quebra deliberada, e deve
+ * vir depois de conferir que ninguem mais emite naquela versao.
+ */
+export const SUPERSEDED_CONTRACTS: Readonly<
+  Record<string, readonly { readonly version: string; readonly schemaHash: string }[]>
+> = {
+  [EDITORIAL_PUBLICATION_REQUEST_NAME]: EDITORIAL_PUBLICATION_REQUEST_SUPERSEDED,
+}
+
 export type CompatibilityVerdict =
   | { readonly compatible: true }
   | { readonly compatible: false; readonly reason: 'unknown_contract' | 'version_mismatch' | 'hash_mismatch' }
@@ -186,10 +207,22 @@ export function checkContractCompatibility(input: {
 }): CompatibilityVerdict {
   const contract = findContract(input.contractName)
   if (contract === null) return { compatible: false, reason: 'unknown_contract' }
-  if (contract.contractVersion !== input.declaredVersion) {
-    return { compatible: false, reason: 'version_mismatch' }
+
+  if (contract.contractVersion === input.declaredVersion) {
+    const expected = contractHashOf(jsonSchemaOf(contract.schema))
+    if (expected !== input.declaredHash) return { compatible: false, reason: 'hash_mismatch' }
+    return { compatible: true }
   }
-  const expected = contractHashOf(jsonSchemaOf(contract.schema))
-  if (expected !== input.declaredHash) return { compatible: false, reason: 'hash_mismatch' }
+
+  // VERSAO SUPERADA. O par (versao, hash) precisa bater INTEIRO com um dos
+  // declarados: aceitar a versao e ignorar o hash devolveria a ambiguidade que
+  // a checagem existe para matar — dois schemas diferentes sob o mesmo rotulo.
+  const superada = (SUPERSEDED_CONTRACTS[input.contractName] ?? []).find(
+    (anterior) => anterior.version === input.declaredVersion,
+  )
+  if (superada === undefined) return { compatible: false, reason: 'version_mismatch' }
+  if (superada.schemaHash !== input.declaredHash) {
+    return { compatible: false, reason: 'hash_mismatch' }
+  }
   return { compatible: true }
 }

@@ -26,7 +26,23 @@ import { getPersonPageData } from '../../../../src/server/person-page'
  * (2 cards horizontais). Dados 100% do PostgreSQL.
  */
 
-export const revalidate = 3600
+/**
+ * Janela de cache: 5 minutos.
+ *
+ * Era uma hora, e a ficha e uma pagina de CATALOGO — que muda pouco. O que
+ * mudou de dono foi a secao "Noticias e Bastidores": desde que o MNScr passou a
+ * vincular a materia a obra, esta pagina tem conteudo editorial, e editorial
+ * envelhece em minutos, nao em horas. Medido em 28/08/2026: a materia do
+ * trailer em LEGO ja estava vinculada no banco e a ficha do filme continuou
+ * mostrando a lista antiga, porque a copia em cache era anterior a publicacao.
+ *
+ * 5 minutos e o meio-termo declarado: 12x mais renderizacao que antes num
+ * conjunto de paginas que quase nunca e visitado duas vezes na mesma janela, em
+ * troca de a materia aparecer na ficha enquanto ela ainda e noticia. O certo de
+ * verdade e revalidacao SOB DEMANDA — o worker de projecao avisando o site
+ * quando cria o vinculo —, e ela continua valendo a pena depois disto.
+ */
+export const revalidate = 300
 
 /**
  * `generateStaticParams` VAZIO — e ele que liga o `revalidate` acima.
