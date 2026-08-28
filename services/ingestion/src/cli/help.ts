@@ -36,6 +36,7 @@ Comandos:
   audit-database    Relatorio somente-leitura do banco
   index-decisions   Produz page_indexability_decisions (nao liga indexacao)
   backfill-finalization  Cria slug/traducao de entidades presas pelo cache
+  backfill-text          Preenche sinopse/biografia a partir do payload guardado
   dead-letter       list | replay dos jobs esgotados
 
 Flags globais:
@@ -125,6 +126,60 @@ Flags:
 Exemplos:
   pnpm catalog backfill-finalization --dry-run --json
   pnpm catalog backfill-finalization --entity movie,tv --limit 500 --apply`,
+
+  'backfill-text': `catalog backfill-text — preenche SINOPSE e BIOGRAFIA a partir do payload JA guardado.
+
+ZERO CHAMADAS AO TMDB. O texto ja foi baixado e pago: \`translations\` vai em todo
+\`append_to_response\` de detalhe, e a resposta inteira esta em \`api_cache.payload\`
+e \`tmdb_raw.payload\`. O que faltava era LEITURA — o extrator olhava so o campo
+de topo, que o TMDB devolve VAZIO quando o titulo nao tem traducao no idioma
+pedido. Medido em producao em 2026-08-28: 81.529 titulos em \`no_synopsis\` e
+32.087 pessoas em \`no_biography\`.
+
+PRECEDENCIA (a mesma de \`localized-text.ts\`, unica fonte da regra):
+  1. campo de topo (\`overview\` / \`biography\`), quando nao vazio
+  2. entrada \`pt-BR\` dentro de \`translations\`, quando nao vazia
+  3. nada — deixa como esta, sem inventar
+
+\`pt-PT\` NAO e usado. O relatorio MEDE quantos titulos so ele recuperaria
+(\`recoverableOnlyWithPtPt\`) e traz amostras — aceitar portugues europeu em
+pagina pt-BR e decisao editorial do dono, nao conserto de bug.
+
+GARANTIAS:
+  - so preenche NULL/vazio — \`ON CONFLICT ... DO UPDATE ... WHERE\`, avaliado
+    pelo PostgreSQL na mesma instrucao; texto existente nunca e sobrescrito;
+  - idempotente: a segunda execucao grava zero (veja \`refusedExistingText\`);
+  - em lotes, com progresso e \`checkpoint\` por tipo — morrer no meio nao obriga
+    a recomecar do zero;
+  - grava log em \`api_sync_logs\` (invariante 10).
+
+O QUE ELE NAO CONSEGUE FAZER SOZINHO: preencher \`people.biography\` NAO tira a
+pessoa de \`no_biography\`. A politica exige texto E licenca, e
+\`biography_source_status\` nasce \`unknown\` — liberar e decisao HUMANA de licenca.
+Por isso o relatorio separa "biografia preenchida" de "biografia exibivel".
+
+COMO CONFERIR SEM SE ENGANAR: desde 28/08 as fichas sao cacheadas (1 h no edge
+da Cloudflare, 4 h no navegador). Recarregar a pagina logo apos o backfill mostra
+a versao ANTIGA. "A pagina ainda nao mudou" NAO e prova de que a extracao falhou.
+Confira pelo banco:
+
+  SELECT summary FROM entity_translations
+   WHERE entity_type = 'movie' AND entity_id = <id> AND language_code = 'pt-BR';
+
+ou purgue o cache da Cloudflare para a URL e abra em janela anonima.
+
+Flags:
+  --entity <lista>   movie,tv,person (default: todos)
+  --locale <l>       default pt-BR
+  --limit <n>        teto de candidatos por tipo (default: sem teto)
+  --batch-size <n>   tamanho do lote de leitura (default 500)
+  --dry-run          conta e classifica, sem gravar (roda de verdade)
+  --apply            grava
+
+Exemplos:
+  pnpm catalog backfill-text --dry-run --json
+  pnpm catalog backfill-text --entity movie --limit 1000 --dry-run
+  pnpm catalog backfill-text --entity movie,tv --apply`,
 
   'index-decisions': `catalog index-decisions — PRODUZ page_indexability_decisions.
 
@@ -324,8 +379,15 @@ Exemplos:
 
   media: `catalog media — sincroniza imagens/videos.
 
-Toda linha nasce display_allowed=false e este comando NUNCA liga a flag:
-promover midia a exibivel e decisao humana registrada (invariante 6).
+A linha NASCE no estado que a licenca vigente de source_licenses autoriza
+(services/ingestion/src/media-promotion/birth.ts, decisao do proprietario de
+2026-08-28). Sem licenca vigente, ou com licenca bloqueante, nasce APAGADA —
+a invariante 6 continua valendo, o que mudou e o MOMENTO da pergunta.
+
+Este comando NUNCA liga a flag por conta propria e o caminho de ATUALIZACAO
+jamais reacende: so a criacao aplica a politica, para que a reversao
+(promote:media --revoke) continue sendo desfeita apenas por outro ato
+deliberado.
 
 Flags:
   --entity <e>         movie | tv | season | episode | person

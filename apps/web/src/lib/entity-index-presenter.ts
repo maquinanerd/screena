@@ -201,7 +201,7 @@ export { mapKnownForDepartment };
  * a escala e SCREEN_SCORE_SCALE e o valor <= escala. Qualquer desvio -> `null`
  * (sem estrela, sem fallback fake, nunca nota por posicao). NUNCA e rating
  * externo (IMDb/RT/TMDB) nem AggregateRating: e a mesma nota governada do hero,
- * formatada como texto (uma casa decimal) para o card.
+ * formatada como INTEIRO na escala 100 para o card.
  */
 export function resolveCardScreenScore(input: ScreenScoreInput): string | null {
   if (input.screenScoreSource !== SCREEN_SCORE_EDITORIAL_SOURCE) return null;
@@ -211,7 +211,11 @@ export function resolveCardScreenScore(input: ScreenScoreInput): string | null {
   if (value == null || !Number.isFinite(value) || value <= 0) return null;
   if (scale !== SCREEN_SCORE_SCALE) return null;
   if (value > scale) return null;
-  return value.toFixed(1);
+  // INTEIRO, nao uma casa decimal. Com a escala unica em 100 (ver
+  // `SCREEN_SCORE_SCALE`), `toFixed(1)` escreveria "82.0" — um decimal que a
+  // fonte nao tem e que a ficha nao mostra. O Score ja chega arredondado de
+  // `decideCinerieScore`; aqui so se formata.
+  return String(Math.round(value));
 }
 
 /** Periodo curto de uma serie: "2011" (ano unico) ou "2011-2019". */

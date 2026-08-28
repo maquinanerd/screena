@@ -57,6 +57,7 @@ import {
   evaluateBacklog,
   evaluateSchedule,
   evaluateSchedulerReadiness,
+  effectiveBatchLimit,
   findRhythm,
   resolveSchedulerConfig,
   RHYTHMS,
@@ -300,7 +301,19 @@ async function main(): Promise<number> {
       const result = await withQueueLock(lock, queue, async () => {
         const started = new Date()
         try {
-          return classifyRun(await runner(runnerDeps))
+          // O TETO E POR FILA. `runnerDeps` carrega o global; a fila que declara
+          // um teto proprio na tabela de ritmos o recebe aqui, e so ela. Ver
+          // `effectiveBatchLimit`: sem isto, `title_media` levaria 336 dias para
+          // dar a volta num teto dimensionado para a cota da OMDb.
+          return classifyRun(
+            await runner({
+              ...runnerDeps,
+              batchLimit:
+                rhythm === null
+                  ? runnerDeps.batchLimit
+                  : effectiveBatchLimit(rhythm, config.batchLimit),
+            }),
+          )
         } catch (error) {
           // Excecao NAO vira silencio: vira desfecho `failure` com motivo, e o
           // carimbo de ultimo sucesso NAO avanca.

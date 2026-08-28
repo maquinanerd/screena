@@ -55,6 +55,22 @@
  *
  * NAO LIGA INDEXACAO: escrever `decision='index'` registra o que a politica diz.
  * A chave global (`CINERIE_PUBLIC_INDEXING_ENABLED`) continua desligada.
+ *
+ * O TETO DE 100.000 (removido em 2026-08-28). O `limit` deste produtor nascia
+ * `100_000` e virava um `LIMIT` de SQL POR TIPO. O censo de producao de
+ * 2026-08-28 reportou `season`, `episode` e `person` com EXATAMENTE 100.000
+ * avaliadas cada — tres numeros redondos iguais, lidos como medicao por todo
+ * mundo que abriu o relatorio. Nao eram medicao: eram o teto se apresentando
+ * como total. Consequencias, em ordem de gravidade:
+ *
+ *   1. `evaluated` era piso, entao `byDecision`/`byReason` tambem eram piso;
+ *   2. `flipRatio` = flips / evaluated tinha o DENOMINADOR errado, e o freio de
+ *      mudanca em massa media contra um universo que nao existe;
+ *   3. e o relatorio somava "306.800 noindex" como se fosse o corte inteiro.
+ *
+ * Agora a leitura e PAGINADA por chave (`e.id > ultimo`, ver `readFactsPages`),
+ * o padrao e varrer o tipo INTEIRO, e um teto — quando o operador declara um —
+ * sai no JSON como `EntityTypeCensus.truncated` e num aviso em texto.
  */
 
 import type { PrismaClient } from '@screena/db/server'
@@ -118,6 +134,17 @@ export interface DecisionWriteCensus {
 /** Censo de UM tipo de entidade. */
 export interface EntityTypeCensus {
   readonly evaluated: number
+  /**
+   * A avaliacao deste tipo foi COMPLETA (`false`) ou parou num teto (`true`)?
+   *
+   * Existe como BOOLEANO, e nao como algo a inferir do numero, porque foi
+   * exatamente a inferencia que falhou: com o teto antigo de 100.000 por tipo,
+   * `season`, `episode` e `person` reportavam `evaluated: 100000` cada um, e
+   * nada no JSON dizia que aqueles tres numeros eram o teto e nao o total. Um
+   * censo truncado nao e um censo menor — e um censo cujo denominador esta
+   * errado, e portanto cujo `flipRatio` tambem esta.
+   */
+  readonly truncated: boolean
   /** Quantas avaliadas caem em cada veredito (`index`/`noindex`/...). */
   readonly byDecision: Readonly<Record<string, number>>
   /** O motivo agregado — por que aquele veredito, e em quantas entidades. */
@@ -144,6 +171,14 @@ export interface IndexabilityRunSummary {
   readonly evaluated: number
   readonly written: number
   readonly unchanged: number
+  /**
+   * Tipos cuja avaliacao parou num teto. VAZIO = `evaluated` e o total real.
+   *
+   * Nao-vazio significa que `evaluated`, `byDecision`, `byReason` e o
+   * `flipRatio` do freio sao PISO, nunca total — e o comando avisa em texto,
+   * alem de dizer aqui.
+   */
+  readonly truncatedTypes: readonly string[]
   /** Mudancas PLANEJADAS (gravadas ou nao — o freio pode ter recusado todas). */
   readonly planned: number
   /** Criadas/alteradas/inalteradas — o que a fase 2 faria com a tabela. */
@@ -241,13 +276,19 @@ function routeFor(entityType: CatalogDecisionEntityType, row: EntityFactRow): st
 const BIOGRAPHY_DISPLAYABLE_STATUSES = "('official','licensed','third_party')"
 
 /** SQL dos fatos de um tipo de entidade. `$1` e sempre o `language_code`. */
-function factsSql(entityType: CatalogDecisionEntityType, limit: number): string {
+function factsSql(entityType: CatalogDecisionEntityType, limit: number, afterId: bigint): string {
   // `LIMIT ALL` para teto ausente/infinito: `LIMIT 9007199254740991` funciona,
   // mas polui o plano e mente sobre a intencao.
   const cap =
     Number.isFinite(limit) && limit < Number.MAX_SAFE_INTEGER
       ? `LIMIT ${Math.max(1, Math.floor(limit))}`
       : 'LIMIT ALL'
+  // Paginacao por CHAVE (keyset), nao por OFFSET: `ORDER BY e.id` ja existe em
+  // todas as consultas, entao `e.id > <ultimo visto>` continua de onde parou em
+  // tempo constante. `afterId` vem SEMPRE de uma linha lida do proprio banco
+  // (bigint), nunca de entrada de usuario — por isso vai interpolado, como ja
+  // faz `finalization-backfill.ts`.
+  const after = `e.id > ${afterId.toString()}`
   const currentDecision = (type: string, idExpr: string) => `
       LEFT JOIN page_indexability_decisions d
         ON d.entity_type = '${type}' AND d.entity_id = ${idExpr}
@@ -286,6 +327,7 @@ function factsSql(entityType: CatalogDecisionEntityType, limit: number): string 
         LEFT JOIN entity_translations t
           ON t.entity_type = '${entityType}' AND t.entity_id = e.id AND t.language_code = $1
         ${currentDecision(entityType, 'e.id')}
+       WHERE ${after}
        ORDER BY e.id
        ${cap}`
   }
@@ -325,6 +367,7 @@ function factsSql(entityType: CatalogDecisionEntityType, limit: number): string 
         LEFT JOIN entity_translations t
           ON t.entity_type = 'person' AND t.entity_id = e.id AND t.language_code = $1
         ${currentDecision('person', 'e.id')}
+       WHERE ${after}
        ORDER BY e.id
        ${cap}`
   }
@@ -356,6 +399,7 @@ function factsSql(entityType: CatalogDecisionEntityType, limit: number): string 
           ON s.entity_type = 'tv' AND s.entity_id = e.tv_show_id
          AND s.language_code = $1 AND s.is_canonical
         ${currentDecision('season', 'e.id')}
+       WHERE ${after}
        ORDER BY e.id
        ${cap}`
   }
@@ -385,23 +429,82 @@ function factsSql(entityType: CatalogDecisionEntityType, limit: number): string 
         ON s.entity_type = 'tv' AND s.entity_id = e.tv_show_id
        AND s.language_code = $1 AND s.is_canonical
       ${currentDecision('episode', 'e.id')}
+     WHERE ${after}
      ORDER BY e.id
      ${cap}`
 }
 
 /**
- * Le os fatos de indexabilidade de um tipo de entidade.
+ * Le UMA PAGINA dos fatos de indexabilidade de um tipo de entidade.
  *
- * Uma consulta por tipo, com LEFT JOIN na decisao vigente — evita N+1 e permite
- * decidir "mudou?" sem uma segunda ida ao banco por entidade.
+ * Uma consulta por pagina, com LEFT JOIN na decisao vigente — evita N+1 e
+ * permite decidir "mudou?" sem uma segunda ida ao banco por entidade.
  */
-async function readFacts(
+async function readFactsPage(
   prisma: PrismaClient,
   entityType: CatalogDecisionEntityType,
   language: string,
-  limit: number,
+  pageSize: number,
+  afterId: bigint,
 ): Promise<EntityFactRow[]> {
-  return await prisma.$queryRawUnsafe<EntityFactRow[]>(factsSql(entityType, limit), language)
+  return await prisma.$queryRawUnsafe<EntityFactRow[]>(
+    factsSql(entityType, pageSize, afterId),
+    language,
+  )
+}
+
+/**
+ * Tamanho de uma pagina de leitura. NAO e teto de avaliacao — e quantas linhas
+ * ficam na memoria de cada vez.
+ *
+ * Confundir os dois foi exatamente o defeito: o antigo `limit ?? 100_000` era um
+ * `LIMIT` de SQL que parava a leitura, e o censo reportava o que tinha lido como
+ * se fosse o total. Ver `EntityTypeCensus.truncated`.
+ */
+export const FACTS_PAGE_SIZE = 20_000
+
+/**
+ * Varre TODAS as linhas de um tipo, em paginas por chave (`e.id > ultimo`).
+ *
+ * `cap` (o `--limit` do operador) e um teto DECLARADO de quantas entidades
+ * avaliar. Quando ele existe e e atingido, o chamador precisa saber — daqui sai
+ * `truncated`, e nao uma inferencia de "veio numero redondo".
+ *
+ * Sem `cap`, varre ate a pagina voltar vazia: o censo soma o TOTAL REAL.
+ *
+ * `outcome.truncated` e escrito por REFERENCIA porque um `for await` descarta o
+ * valor de retorno do gerador. E a distincao importa: um tipo com exatamente
+ * `cap` linhas foi lido INTEIRO, e reporta-lo como truncado faria o operador
+ * desconfiar de um censo completo. Por isso a varredura confirma o fim
+ * consultando UMA pagina a mais em vez de deduzir do numero.
+ */
+async function* readFactsPages(
+  prisma: PrismaClient,
+  entityType: CatalogDecisionEntityType,
+  language: string,
+  cap: number | null,
+  outcome: { truncated: boolean } = { truncated: false },
+): AsyncGenerator<readonly EntityFactRow[], void, void> {
+  let after = 0n
+  let lidas = 0
+  for (;;) {
+    const restante = cap === null ? FACTS_PAGE_SIZE : Math.min(FACTS_PAGE_SIZE, cap - lidas)
+    if (restante <= 0) {
+      // Bateu no teto. So e TRUNCADO se ainda houver linha depois — uma sonda de
+      // 1 linha responde isso sem varrer o resto do tipo.
+      const sobra = await readFactsPage(prisma, entityType, language, 1, after)
+      outcome.truncated = sobra.length > 0
+      return
+    }
+    const page = await readFactsPage(prisma, entityType, language, restante, after)
+    if (page.length === 0) return
+    lidas += page.length
+    // `ORDER BY e.id` garante que o ultimo da pagina e o maior id visto.
+    after = page[page.length - 1]?.entity_id ?? after
+    yield page
+    // Pagina incompleta = fim do conjunto (nao ha mais linha depois de `after`).
+    if (page.length < restante) return
+  }
 }
 
 /** Monta os fatos puros a partir da linha crua, por tipo. */
@@ -429,8 +532,7 @@ function toFacts(
   if (entityType === 'season' || entityType === 'episode') {
     return {
       ...base,
-      parentPublishable:
-        row.parent_id !== null && publishableSeries.has(String(row.parent_id)),
+      parentPublishable: row.parent_id !== null && publishableSeries.has(String(row.parent_id)),
       hasSynopsis: row.has_synopsis,
       hasImage: row.has_image,
       listedEpisodeCount: Number(row.listed_episodes),
@@ -446,20 +548,22 @@ function toFacts(
  * amanha a serie ganhar uma condicao nova, temporada e episodio a herdam sem
  * que ninguem se lembre de editar uma segunda consulta.
  *
- * SEM `limit`: o teto do comando corta quantas temporadas/episodios sao
+ * SEM `cap`: o teto do comando corta quantas temporadas/episodios sao
  * avaliados, nunca quantas series sustentam o gate. Cortar aqui faria
  * temporadas legitimas cairem em `parent_not_publishable` so porque a serie
- * dona ficou fora da pagina de leitura.
+ * dona ficou fora da pagina de leitura — e o censo apontaria uma cascata que
+ * nao existe.
  */
 async function readPublishableSeriesIds(
   prisma: PrismaClient,
   language: string,
 ): Promise<ReadonlySet<string>> {
-  const rows = await readFacts(prisma, 'tv', language, Number.MAX_SAFE_INTEGER)
   const ids = new Set<string>()
-  for (const row of rows) {
-    const decision = decideCatalogIndexability(toFacts('tv', language, row, new Set()))
-    if (decision.decision === 'index') ids.add(String(row.entity_id))
+  for await (const page of readFactsPages(prisma, 'tv', language, null)) {
+    for (const row of page) {
+      const decision = decideCatalogIndexability(toFacts('tv', language, row, new Set()))
+      if (decision.decision === 'index') ids.add(String(row.entity_id))
+    }
   }
   return ids
 }
@@ -484,6 +588,14 @@ export async function produceIndexabilityDecisions(
   options: {
     readonly language: string
     readonly entityTypes?: readonly CatalogDecisionEntityType[]
+    /**
+     * Teto EXPLICITO de entidades avaliadas POR TIPO. Omitido = sem teto (varre
+     * o tipo inteiro, em paginas de {@link FACTS_PAGE_SIZE}).
+     *
+     * Quando informado e atingido, o tipo sai marcado `truncated` no censo e o
+     * comando avisa em texto. Um teto silencioso e o defeito que esta opcao
+     * deixou de ter.
+     */
     readonly limit?: number
     readonly dryRun: boolean
     readonly now: () => Date
@@ -494,7 +606,13 @@ export async function produceIndexabilityDecisions(
   },
 ): Promise<IndexabilityRunSummary> {
   const types = options.entityTypes ?? DECIDABLE_ENTITY_TYPES
-  const limit = options.limit ?? 100_000
+  // SEM TETO POR PADRAO. Ate 2026-08-28 este default era `100_000`, aplicado
+  // como `LIMIT` de SQL POR TIPO. `season`, `episode` e `person` batiam nele e o
+  // censo reportava exatamente 100.000 avaliadas para cada um — tres numeros
+  // redondos identicos que qualquer leitor tomava por medicao. Nao era: era o
+  // teto se declarando como resultado. O `--limit` continua existindo como teto
+  // EXPLICITO do operador, e agora quem o usa e avisado (ver `truncated`).
+  const cap = options.limit ?? null
   const byDecision: Record<string, number> = {}
   const byReason: Record<string, number> = {}
   const plan: PlannedWrite[] = []
@@ -514,12 +632,21 @@ export async function produceIndexabilityDecisions(
       created: number
       updated: number
       unchanged: number
+      truncated: boolean
     }
   >()
   const bucket = (entityType: string) => {
     let found = perType.get(entityType)
     if (found === undefined) {
-      found = { evaluated: 0, byDecision: {}, byReason: {}, created: 0, updated: 0, unchanged: 0 }
+      found = {
+        evaluated: 0,
+        byDecision: {},
+        byReason: {},
+        created: 0,
+        updated: 0,
+        unchanged: 0,
+        truncated: false,
+      }
       perType.set(entityType, found)
     }
     return found
@@ -535,55 +662,61 @@ export async function produceIndexabilityDecisions(
 
   // ---- FASE 1: planeja. Nenhuma escrita acontece neste laco. ----
   for (const entityType of types) {
-    const rows = await readFacts(prisma, entityType, options.language, limit)
+    const slotTipo = bucket(entityType)
+    const varredura = { truncated: false }
+    for await (const rows of readFactsPages(prisma, entityType, options.language, cap, varredura)) {
+      for (const row of rows) {
+        evaluated += 1
+        const decision: CatalogIndexabilityDecision = decideCatalogIndexability(
+          toFacts(entityType, options.language, row, publishableSeries),
+        )
 
-    for (const row of rows) {
-      evaluated += 1
-      const decision: CatalogIndexabilityDecision = decideCatalogIndexability(
-        toFacts(entityType, options.language, row, publishableSeries),
-      )
+        byDecision[decision.decision] = (byDecision[decision.decision] ?? 0) + 1
+        byReason[decision.reason] = (byReason[decision.reason] ?? 0) + 1
 
-      byDecision[decision.decision] = (byDecision[decision.decision] ?? 0) + 1
-      byReason[decision.reason] = (byReason[decision.reason] ?? 0) + 1
+        const slot = bucket(entityType)
+        slot.evaluated += 1
+        slot.byDecision[decision.decision] = (slot.byDecision[decision.decision] ?? 0) + 1
+        slot.byReason[decision.reason] = (slot.byReason[decision.reason] ?? 0) + 1
 
-      const slot = bucket(entityType)
-      slot.evaluated += 1
-      slot.byDecision[decision.decision] = (slot.byDecision[decision.decision] ?? 0) + 1
-      slot.byReason[decision.reason] = (slot.byReason[decision.reason] ?? 0) + 1
+        const previous =
+          row.cur_decision === null
+            ? null
+            : {
+                decision: row.cur_decision,
+                reason: row.cur_reason,
+                policyVersion: row.cur_policy,
+              }
 
-      const previous =
-        row.cur_decision === null
-          ? null
-          : {
-              decision: row.cur_decision,
-              reason: row.cur_reason,
-              policyVersion: row.cur_policy,
-            }
+        if (!decisionChanged(decision, previous)) {
+          unchanged += 1
+          slot.unchanged += 1
+          continue
+        }
 
-      if (!decisionChanged(decision, previous)) {
-        unchanged += 1
-        slot.unchanged += 1
-        continue
+        // NASCE (nunca teve linha vigente) vs TROCA (ja tinha veredito). So o
+        // segundo pode tirar do indice uma pagina que o buscador ja conhece.
+        if (row.cur_decision === null) slot.created += 1
+        else slot.updated += 1
+
+        plan.push({
+          entityType,
+          entityId: row.entity_id,
+          // `routeFor` precisa da LINHA (temporada/episodio montam a URL com os
+          // numeros), entao a rota e resolvida ja no plano — a fase 2 nao guarda
+          // as linhas cruas so para isso.
+          url: routeFor(entityType, row),
+          decision,
+          previousDecision: row.cur_decision,
+          nextDecision: decision.decision,
+          nextReason: decision.reason,
+        })
       }
-
-      // NASCE (nunca teve linha vigente) vs TROCA (ja tinha veredito). So o
-      // segundo pode tirar do indice uma pagina que o buscador ja conhece.
-      if (row.cur_decision === null) slot.created += 1
-      else slot.updated += 1
-
-      plan.push({
-        entityType,
-        entityId: row.entity_id,
-        // `routeFor` precisa da LINHA (temporada/episodio montam a URL com os
-        // numeros), entao a rota e resolvida ja no plano — a fase 2 nao guarda
-        // as linhas cruas so para isso.
-        url: routeFor(entityType, row),
-        decision,
-        previousDecision: row.cur_decision,
-        nextDecision: decision.decision,
-        nextReason: decision.reason,
-      })
     }
+    // TRUNCADO = a varredura parou no teto E AINDA HAVIA LINHA depois. Nao e
+    // inferido de "o numero veio redondo", nem de "bateu no teto": e o proprio
+    // produtor dizendo que deixou entidade para tras.
+    slotTipo.truncated = varredura.truncated
   }
 
   // ---- Mede o tamanho da mudanca ANTES de gravar qualquer coisa. ----
@@ -605,6 +738,7 @@ export async function produceIndexabilityDecisions(
     updated += slot.updated
     byEntityType[entityType] = Object.freeze({
       evaluated: slot.evaluated,
+      truncated: slot.truncated,
       byDecision: Object.freeze({ ...slot.byDecision }),
       byReason: Object.freeze({ ...slot.byReason }),
       writes: Object.freeze({
@@ -616,6 +750,10 @@ export async function produceIndexabilityDecisions(
   }
   Object.freeze(byEntityType)
 
+  const truncatedTypes = Object.freeze(
+    [...perType.entries()].filter(([, slot]) => slot.truncated).map(([tipo]) => tipo),
+  )
+
   const summary = (written: number): IndexabilityRunSummary => ({
     schemaVersion: INDEXABILITY_SUMMARY_SCHEMA_VERSION,
     language: options.language,
@@ -623,6 +761,7 @@ export async function produceIndexabilityDecisions(
     evaluated,
     written,
     unchanged,
+    truncatedTypes,
     planned: plan.length,
     writes: Object.freeze({ created, updated, unchanged }),
     byEntityType,

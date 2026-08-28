@@ -74,6 +74,22 @@ export const IMAGES_SEGMENT = "imagens";
 /** Segmento da GALERIA DE VIDEOS nas rotas de titulo (pt-BR). */
 export const VIDEOS_SEGMENT = "videos";
 
+/**
+ * Segmento da GALERIA DE FOTOS nas rotas de PESSOA (pt-BR).
+ *
+ * POR QUE UM SEGUNDO SEGMENTO, E POR QUE ISSO NAO CONTRADIZ `IMAGES_SEGMENT`.
+ * A regra de `IMAGES_SEGMENT` proibe DUAS URLs para a MESMA pagina — e o dano
+ * dela e um par de duplicatas que o canonical tem de desempatar. Aqui nao ha
+ * duplicata: a galeria de pessoa exibe `image_type = 'profile'`, que a galeria
+ * de titulo NAO exibe (`TITLE_IMAGE_TYPES` a exclui, e `GalleryImageKind` nem
+ * a tem no tipo). Sao dois conjuntos disjuntos em duas entidades diferentes.
+ *
+ * O segmento e `fotos` e nao `imagens` porque e a palavra que a propria tela 09
+ * ja usa no titulo da secao ("Fotos"). URL e rotulo dizendo a mesma palavra e o
+ * caso facil; faze-los divergir seria o caso caro.
+ */
+export const PHOTOS_SEGMENT = "fotos";
+
 /** Slug seguro para path (sem caracteres que quebrariam URL). */
 function isSafeSlug(slug: string): boolean {
   const value = slug.trim();
@@ -173,4 +189,16 @@ export function parseRouteNumber(value: string): number | null {
   if (!/^[1-9]\d*$/.test(value)) return null;
   const parsed = Number(value);
   return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+/**
+ * Caminho da galeria de FOTOS de uma pessoa, com barra final.
+ *
+ * Devolve `null` para slug que quebraria o path — a MESMA porta
+ * (`isSafeSlug`) das galerias de titulo. Um caminho montado por concatenacao
+ * crua aqui seria o unico do modulo sem validacao.
+ */
+export function personPhotosPath(slug: string): string | null {
+  if (!isSafeSlug(slug)) return null;
+  return `${PEOPLE_INDEX_PATH}${slug.trim()}/${PHOTOS_SEGMENT}/`;
 }

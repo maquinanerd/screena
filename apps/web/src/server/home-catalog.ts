@@ -26,7 +26,7 @@
 import { cache } from "react";
 import { getPrismaClient } from "@screena/db/server";
 
-import { resolveEditorialScoreSources } from "./editorial-score";
+import { resolveEditorialScores, scoreFields } from "./editorial-score";
 import {
   getTrendingSnapshot,
   orderByTrending,
@@ -49,14 +49,6 @@ const LANGUAGE_CODE = "pt-BR";
 
 function yearFromDate(date: Date | null): number | null {
   return date === null ? null : date.getUTCFullYear();
-}
-
-function decimalToNumber(
-  value: { toString(): string } | number | null,
-): number | null {
-  if (value == null) return null;
-  const parsed = typeof value === "number" ? value : Number(value.toString());
-  return Number.isFinite(parsed) ? parsed : null;
 }
 
 /**
@@ -150,9 +142,6 @@ export const getHomeCatalogData = cache(async (): Promise<HomeCatalogData> => {
             titleOriginal: true,
             releaseDate: true,
             posterPath: true,
-            screenScore: true,
-            screenScoreScale: true,
-            screenScoreDisplay: true,
           },
         });
   const movies = orderByTrending(rows, (row) => row.id, snapshot.entityIds).slice(
@@ -160,16 +149,13 @@ export const getHomeCatalogData = cache(async (): Promise<HomeCatalogData> => {
     HOME_TRENDING_CARD_LIMIT,
   );
 
-  // Procedencia do Cinerie Score em LOTE (ver `editorial-score`): sem calculo
-  // `calculated` coerente, a nota fica sem origem editorial e o card a oculta.
-  const scoreSources = await resolveEditorialScoreSources(
+  // O Cinerie Score em LOTE (ver `editorial-score`): a NOTA vem de
+  // `cinerie_score_calculations`, sob a decisao de licenca e o piso de duas
+  // fontes. Sem calculo exibivel, os quatro campos saem vazios e o card oculta.
+  const scores = await resolveEditorialScores(
     prisma,
     "movie",
-    movies.map((movie) => ({
-      entityId: movie.id,
-      screenScore: decimalToNumber(movie.screenScore),
-      screenScoreScale: movie.screenScoreScale,
-    })),
+    movies.map((movie) => movie.id),
   );
 
   const movieInputs: MovieListItemInput[] = movies.map((movie) => {
@@ -181,10 +167,7 @@ export const getHomeCatalogData = cache(async (): Promise<HomeCatalogData> => {
       slug: movieIdentity.slugById.get(key) ?? null,
       year: yearFromDate(movie.releaseDate),
       posterPath: movie.posterPath,
-      screenScore: decimalToNumber(movie.screenScore),
-      screenScoreScale: movie.screenScoreScale,
-      screenScoreDisplay: movie.screenScoreDisplay,
-      screenScoreSource: scoreSources.get(key) ?? null,
+      ...scoreFields(scores.get(key)),
     };
   });
   const cards = buildTrendingMovieCards(movieInputs);
@@ -229,9 +212,6 @@ async function trendingSeriesCards(
             firstAirDate: true,
             lastAirDate: true,
             posterPath: true,
-            screenScore: true,
-            screenScoreScale: true,
-            screenScoreDisplay: true,
           },
         });
   const ordered = orderByTrending(rows, (row) => row.id, snapshot.entityIds).slice(
@@ -239,14 +219,10 @@ async function trendingSeriesCards(
     HOME_TRENDING_CARD_LIMIT,
   );
 
-  const scoreSources = await resolveEditorialScoreSources(
+  const scores = await resolveEditorialScores(
     prisma,
     "tv",
-    ordered.map((show) => ({
-      entityId: show.id,
-      screenScore: decimalToNumber(show.screenScore),
-      screenScoreScale: show.screenScoreScale,
-    })),
+    ordered.map((show) => show.id),
   );
 
   const inputs: SeriesListItemInput[] = ordered.map((show) => {
@@ -259,10 +235,7 @@ async function trendingSeriesCards(
       firstAirYear: yearFromDate(show.firstAirDate),
       lastAirYear: yearFromDate(show.lastAirDate),
       posterPath: show.posterPath,
-      screenScore: decimalToNumber(show.screenScore),
-      screenScoreScale: show.screenScoreScale,
-      screenScoreDisplay: show.screenScoreDisplay,
-      screenScoreSource: scoreSources.get(key) ?? null,
+      ...scoreFields(scores.get(key)),
     };
   });
 

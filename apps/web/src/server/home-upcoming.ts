@@ -45,10 +45,13 @@ const LANGUAGE_CODE = "pt-BR";
  * primeiro filtro é o que garante que dado sem licença não trafega para o
  * processo de render nem por engano.
  *
- * Hoje isto devolve um mapa VAZIO em produção, e está certo — mas a causa não é
- * mais a que este comentário dizia. A licença de vídeo do TMDB EXISTE desde
- * 13/08/2026; o que falta é a PROMOÇÃO das linhas (`display_allowed` nasce
- * `false` por linha). Ver `apps/web/src/lib/trailer-presenter.ts`.
+ * A afirmação "hoje isto devolve um mapa VAZIO em produção" que estava aqui
+ * FICOU FALSA: `promote:media` existe desde 25/08/2026 e já havia 2.395 linhas
+ * acesas quando ela ainda era lida como estado atual. Desde 28/08/2026 a linha
+ * nova nasce no estado que a licença autoriza
+ * (`services/ingestion/src/media-promotion/birth.ts`) e o acervo anterior é
+ * aceso por `promote:media --target=all`. O mapa devolve o que estiver aceso.
+ * Ver `apps/web/src/lib/trailer-presenter.ts`.
  */
 async function loadDisplayableTrailers(
   entityType: "movie" | "tv",

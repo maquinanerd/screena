@@ -11,6 +11,7 @@ import { SectionBoundary } from '../../../_components/section-boundary'
 import { canonicalRedirectPath } from '../../../../src/lib/canonical-redirect'
 import { buildExternalLinks } from '../../../../src/lib/external-links'
 import { formatHiddenCreditsNotice } from '../../../../src/lib/person-presenter'
+import { personPhotosPath } from '../../../../src/lib/routes'
 import { decideSection } from '../../../../src/lib/section-absence'
 import { SITE_URL, gatePublicRobots } from '../../../../src/lib/site'
 import { getPersonPageData } from '../../../../src/server/person-page'
@@ -226,8 +227,29 @@ export default async function PersonPage({ params }: { params: Promise<PersonPag
   // decide se a linha existe é o formatador: `null` = lista completa.
   const hiddenCreditsNotice = formatHiddenCreditsNotice(view.hiddenCreditCount)
   const knownFor = view.credits.filter((credit) => credit.posterUrl !== null).slice(0, KNOWN_FOR_LIMIT)
-  const galleryPhotos = gallery.urls
-  const galleryRest = gallery.total - galleryPhotos.length
+
+  // A TIRA DE FOTOS SUMIA CALADA ATE 27/08/2026.
+  //
+  // Ela e o unico bloco da tela 09 que le dado PROMOVIDO por comando humano
+  // (`promote:media --target=person-photo`), e era exatamente o bloco sem
+  // registro de ausencia: uma pessoa sem foto e um catalogo em que a promocao
+  // nunca rodou produziam o mesmo nada. O motivo vem do ESTADO (a sonda de
+  // catalogo em `entity-gallery.ts`), nunca fixo — um motivo escrito a mao
+  // envelheceria no dia seguinte a promocao.
+  //
+  // O `?? 'no_licensed_person_photo'` nunca e alcancado quando ha foto (o
+  // loader so devolve `null` nesse caso); ele existe porque `decideSection`
+  // exige um motivo no tipo, e e a MESMA forma que a ficha de filme usa para
+  // `watchAbsence`.
+  const photosSection = decideSection(gallery.strip.length > 0 ? gallery : null, {
+    entityType: 'person',
+    entityId,
+    section: 'fotos',
+    reason: data.photosAbsenceReason ?? 'no_licensed_person_photo',
+  })
+  // O `+N` do ultimo quadro era um BECO: dizia que havia mais N fotos e nao
+  // oferecia como ve-las. Agora e a porta para a galeria.
+  const photosHref = personPhotosPath(data.canonicalSlug)
 
   const breadcrumbJsonLd = {
     '@context': 'https://schema.org',
@@ -362,22 +384,43 @@ export default async function PersonPage({ params }: { params: Promise<PersonPag
           </section>
         ) : null}
 
-        {/* Fotos: SÓ galeria licenciada (invariante 6) — vazia até decisão humana */}
-        {galleryPhotos.length > 0 ? (
-          <section aria-labelledby="person-photos-title" className="section">
-            <SectionTitle id="person-photos-title" title="Fotos" />
-            <div className="person-photos">
-              {galleryPhotos.map((url, index) => (
-                <div key={url}>
-                  <img alt={`Foto de ${view.name}`} loading="lazy" src={url} />
-                  {index === galleryPhotos.length - 1 && galleryRest > 0 ? (
-                    <span className="person-photos__more">+{galleryRest}</span>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          </section>
-        ) : null}
+        {/* Fotos: SÓ galeria licenciada (invariantes 6 + gate da fonte). */}
+        <SectionBoundary decision={photosSection}>
+          {(photos) => (
+            <section aria-labelledby="person-photos-title" className="section">
+              <div className="section-head">
+                <SectionTitle id="person-photos-title" title="Fotos" />
+                {/*
+                  O link só aparece quando há MAIS que a tira mostra. Com 4 ou
+                  menos, a galeria exibiria exatamente estes quadros — e é por
+                  isso que ela também não indexa abaixo do piso. Oferecer "ver
+                  todas" para ver as mesmas quatro seria um clique gasto à toa.
+                */}
+                {photosHref !== null && photos.stripRest > 0 ? (
+                  <a className="person-photos__all" href={photosHref}>
+                    Ver todas as {photos.total} fotos
+                  </a>
+                ) : null}
+              </div>
+              <div className="person-photos">
+                {photos.strip.map((photo, index) => {
+                  // O `+N` cobre o ULTIMO quadro, e so quando ha resto.
+                  const ultimo = index === photos.strip.length - 1
+                  return (
+                    <div key={photo.fullUrl}>
+                      <img alt={photo.alt} loading="lazy" src={photo.thumbUrl} />
+                      {ultimo && photos.stripRest > 0 && photosHref !== null ? (
+                        <a className="person-photos__more" href={photosHref}>
+                          +{photos.stripRest}
+                        </a>
+                      ) : null}
+                    </div>
+                  )
+                })}
+              </div>
+            </section>
+          )}
+        </SectionBoundary>
 
         <AdSlot format="leaderboard" slotId="person-credits" />
 

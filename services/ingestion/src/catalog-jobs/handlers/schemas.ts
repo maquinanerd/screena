@@ -277,6 +277,21 @@ export interface SyncDetailsInput {
   readonly tmdbId: number
   readonly locale: string
   readonly enqueueDependencies: boolean
+  /**
+   * O ESCOPO desta execucao — a janela/dia que a distingue das anteriores.
+   *
+   * `buildCoverageJob` ja gravava isto no payload (campo `window`) desde o
+   * incremental `/changes`, e este validador o DESCARTAVA. A consequencia nao
+   * era cosmetica: sem o escopo aqui, os filhos (`sync_media`, `sync_seasons`)
+   * derivavam a chave de idempotencia so de (tipo, entidade, id, locale) — a
+   * MESMA chave em toda execucao. O primeiro ciclo criava; todos os seguintes
+   * batiam no unique e viravam noop. Midia e temporada eram escritas UMA vez e
+   * nunca mais, e era por isso que o catalogo congelava.
+   *
+   * `null` quando o pai nasceu sem escopo (a descoberta e backfill do universo:
+   * o mesmo id descoberto de novo e o mesmo trabalho).
+   */
+  readonly scope: string | null
 }
 
 /** Input de `sync_credits`. */
@@ -305,6 +320,21 @@ export interface SyncMediaInput {
   readonly locale: string
 }
 
+/**
+ * O nome do campo de ESCOPO no payload de um job de catalogo.
+ *
+ * `window` e o nome historico (veio do incremental `/changes`, onde o escopo E
+ * uma janela de tempo). O agendador grava um escopo de DIA no mesmo campo. Um
+ * lugar so para o nome evita que produtor e consumidor divirjam em silencio —
+ * que foi exatamente o que aconteceu enquanto o validador nao o lia.
+ */
+export const JOB_SCOPE_FIELD = 'window'
+
+/** Le o escopo do payload de um job. Ausente => `null` (sem escopo). */
+export function readJobScope(raw: Record<string, unknown>): string | null {
+  return readOptionalString(raw, JOB_SCOPE_FIELD)
+}
+
 /** Input de `sync_seasons`. */
 export interface SyncSeasonsInput {
   readonly tmdbId: number
@@ -319,6 +349,8 @@ export interface SyncSeasonsInput {
    * a pagina nao tinha onde buscar trailer.
    */
   readonly enqueueSeasonMedia: boolean
+  /** Escopo HERDADO do pai. Ver `SyncDetailsInput.scope`. */
+  readonly scope: string | null
 }
 
 /** Input de `sync_episodes`. */
@@ -342,6 +374,8 @@ export interface SyncEpisodesInput {
    * entrando por `sync_episodes`, so que em subconjunto.
    */
   readonly enqueueEpisodeMedia: boolean
+  /** Escopo HERDADO do pai. Ver `SyncDetailsInput.scope`. */
+  readonly scope: string | null
 }
 
 /** Input de `sync_lists`. */
@@ -440,6 +474,7 @@ export function validateSyncDetailsInput(value: unknown): SyncDetailsInput {
     tmdbId: readPositiveInt(raw, 'tmdbId'),
     locale: readOptionalString(raw, 'locale', 'pt-BR') as string,
     enqueueDependencies: readOptionalBoolean(raw, 'enqueueDependencies', true),
+    scope: readJobScope(raw),
   }
 }
 
@@ -525,6 +560,7 @@ export function validateSyncSeasonsInput(value: unknown): SyncSeasonsInput {
     locale: readOptionalString(raw, 'locale', 'pt-BR') as string,
     enqueueEpisodes: readOptionalBoolean(raw, 'enqueueEpisodes', true),
     enqueueSeasonMedia: readOptionalBoolean(raw, 'enqueueSeasonMedia', true),
+    scope: readJobScope(raw),
   }
 }
 
@@ -540,6 +576,7 @@ export function validateSyncEpisodesInput(value: unknown): SyncEpisodesInput {
     seasonNumber,
     locale: readOptionalString(raw, 'locale', 'pt-BR') as string,
     enqueueEpisodeMedia: readOptionalBoolean(raw, 'enqueueEpisodeMedia', true),
+    scope: readJobScope(raw),
   }
 }
 

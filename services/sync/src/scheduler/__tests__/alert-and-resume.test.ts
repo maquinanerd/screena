@@ -30,6 +30,7 @@ const DIARIA: Rhythm = {
   providerApi: 'tmdb',
   label: 'diaria',
   rationale: 'x',
+    batchLimit: null,
 }
 
 interface Linha {

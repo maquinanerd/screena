@@ -22,6 +22,7 @@ const DIARIA: Rhythm = {
   providerApi: 'tmdb',
   label: 'diaria',
   rationale: 'x',
+    batchLimit: null,
 }
 const MENSAL: Rhythm = {
   queue: 'people',
@@ -31,6 +32,7 @@ const MENSAL: Rhythm = {
   providerApi: 'tmdb',
   label: 'mensal',
   rationale: 'x',
+    batchLimit: null,
 }
 const RITMOS = [DIARIA, MENSAL] as const
 

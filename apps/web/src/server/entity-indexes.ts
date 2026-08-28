@@ -47,7 +47,7 @@
 import { cache } from "react";
 import { getPrismaClient } from "@screena/db/server";
 
-import { resolveEditorialScoreSources } from "./editorial-score";
+import { resolveEditorialScores, scoreFields } from "./editorial-score";
 import { SITE_URL } from "../lib/site";
 import {
   buildMovieIndexView,
@@ -89,19 +89,6 @@ function yearFromDate(date: Date | null): number | null {
 }
 
 /**
- * Converte um `Decimal` do Prisma (ou number/string do SQL bruto) em `number`
- * seguro. Qualquer valor nao finito vira `null` (fallback seguro — nunca NaN
- * cruza para o presenter). Mesma normalizacao usada no loader do hero.
- */
-function decimalToNumber(
-  value: { toString(): string } | number | null,
-): number | null {
-  if (value == null) return null;
-  const num = typeof value === "number" ? value : Number(value.toString());
-  return Number.isFinite(num) ? num : null;
-}
-
-/**
  * O TITULO EXIBIVEL, em SQL, com a MESMA regra do presenter: traducao pt-BR
  * quando houver, senao o titulo original; branco conta como ausente
  * (`trimToNull`). Aparece tres vezes (filtro, ordem do person, projecao) e por
@@ -126,9 +113,6 @@ interface MovieRow {
   title_original: string;
   release_date: Date | null;
   poster_path: string | null;
-  screen_score: unknown;
-  screen_score_scale: number | null;
-  screen_score_display: boolean;
   slug: string;
   translation_title: string | null;
 }
@@ -139,9 +123,6 @@ interface SeriesRow {
   first_air_date: Date | null;
   last_air_date: Date | null;
   poster_path: string | null;
-  screen_score: unknown;
-  screen_score_scale: number | null;
-  screen_score_display: boolean;
   slug: string;
   translation_title: string | null;
 }
@@ -164,9 +145,6 @@ const MOVIE_PAGE_SQL = `
          m.title_original,
          m.release_date,
          m.poster_path,
-         m.screen_score,
-         m.screen_score_scale,
-         m.screen_score_display,
          s.slug,
          t.title AS translation_title
   FROM slugs s
@@ -205,9 +183,6 @@ const SERIES_PAGE_SQL = `
          v.first_air_date,
          v.last_air_date,
          v.poster_path,
-         v.screen_score,
-         v.screen_score_scale,
-         v.screen_score_display,
          s.slug,
          t.title AS translation_title
   FROM slugs s
@@ -292,16 +267,13 @@ export const getMovieIndexData = cache(async (): Promise<EntityIndexData> => {
     prisma.$queryRawUnsafe<CountRow[]>(MOVIE_COUNT_SQL, LANGUAGE_CODE),
   ]);
 
-  // Procedencia do Cinerie Score em LOTE (ver `editorial-score`): agora sobre as
-  // 48 linhas da pagina, nao sobre o catalogo.
-  const scoreSources = await resolveEditorialScoreSources(
+  // O Cinerie Score em LOTE (ver `editorial-score`): agora sobre as 48 linhas da
+  // pagina, nao sobre o catalogo. A NOTA vem de `cinerie_score_calculations` —
+  // as colunas `movies.screen_score*` nao sao mais lidas por tela nenhuma.
+  const scores = await resolveEditorialScores(
     prisma,
     "movie",
-    rows.map((row) => ({
-      entityId: row.id,
-      screenScore: decimalToNumber(row.screen_score as never),
-      screenScoreScale: row.screen_score_scale,
-    })),
+    rows.map((row) => row.id),
   );
 
   const items: MovieListItemInput[] = rows.map((row) => {
@@ -313,10 +285,7 @@ export const getMovieIndexData = cache(async (): Promise<EntityIndexData> => {
       slug: row.slug,
       year: yearFromDate(row.release_date),
       posterPath: row.poster_path,
-      screenScore: decimalToNumber(row.screen_score as never),
-      screenScoreScale: row.screen_score_scale,
-      screenScoreDisplay: row.screen_score_display,
-      screenScoreSource: scoreSources.get(key) ?? null,
+      ...scoreFields(scores.get(key)),
     };
   });
 
@@ -338,14 +307,10 @@ export const getSeriesIndexData = cache(async (): Promise<EntityIndexData> => {
     prisma.$queryRawUnsafe<CountRow[]>(SERIES_COUNT_SQL, LANGUAGE_CODE),
   ]);
 
-  const scoreSources = await resolveEditorialScoreSources(
+  const scores = await resolveEditorialScores(
     prisma,
     "tv",
-    rows.map((row) => ({
-      entityId: row.id,
-      screenScore: decimalToNumber(row.screen_score as never),
-      screenScoreScale: row.screen_score_scale,
-    })),
+    rows.map((row) => row.id),
   );
 
   const items: SeriesListItemInput[] = rows.map((row) => {
@@ -358,10 +323,7 @@ export const getSeriesIndexData = cache(async (): Promise<EntityIndexData> => {
       firstAirYear: yearFromDate(row.first_air_date),
       lastAirYear: yearFromDate(row.last_air_date),
       posterPath: row.poster_path,
-      screenScore: decimalToNumber(row.screen_score as never),
-      screenScoreScale: row.screen_score_scale,
-      screenScoreDisplay: row.screen_score_display,
-      screenScoreSource: scoreSources.get(key) ?? null,
+      ...scoreFields(scores.get(key)),
     };
   });
 

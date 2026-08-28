@@ -13,6 +13,8 @@
 import { getPrismaClient } from "@screena/db/server";
 import { rebuildCountedSources } from "@screena/cinerie-score";
 
+import { parseScoreExplanation } from "../lib/score-explanation";
+
 import type { CinerieScoreInputView } from "../lib/cinerie-score-presenter";
 
 type PrismaClient = ReturnType<typeof getPrismaClient>;
@@ -48,29 +50,6 @@ export async function getGenresForEntity(
     orderBy: { position: "asc" },
   });
   return rows.map((row) => row.genre.name);
-}
-
-/** Uma linha da explicação persistida do cálculo (`explanation` JSONB). */
-interface ExplanationEntry {
-  readonly source: string;
-  readonly normalized: number;
-  readonly weight: number;
-}
-
-function parseExplanation(raw: unknown): ExplanationEntry[] {
-  if (!Array.isArray(raw)) return [];
-  const out: ExplanationEntry[] = [];
-  for (const item of raw) {
-    if (typeof item !== "object" || item === null) continue;
-    const source = (item as Record<string, unknown>).source;
-    const normalized = (item as Record<string, unknown>).normalized;
-    const weight = (item as Record<string, unknown>).weight;
-    if (typeof source !== "string") continue;
-    if (typeof normalized !== "number" || !Number.isFinite(normalized)) continue;
-    if (typeof weight !== "number" || !Number.isFinite(weight)) continue;
-    out.push({ source, normalized, weight });
-  }
-  return out;
 }
 
 /**
@@ -132,7 +111,7 @@ export async function getCinerieScoreForEntity(
   // Fonte fora da formula devolve `null` e a entrada e DESCARTADA: sem grupo,
   // ela nao compoe. O presenter ja descartaria por falta de rotulo — descartar
   // aqui tambem evita que uma fonte sem grupo chegue com um chute embutido.
-  const counted = rebuildCountedSources(parseExplanation(calculation.explanation));
+  const counted = rebuildCountedSources(parseScoreExplanation(calculation.explanation));
 
   return {
     authorized: true,
