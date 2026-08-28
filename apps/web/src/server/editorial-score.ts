@@ -105,8 +105,9 @@ function toNumber(value: { toString(): string } | number | null): number | null 
  * distinguir e a ficha, que usa `decideCinerieScore` diretamente e recebe o
  * motivo (`SectionAbsenceReason`).
  *
- * Duas consultas no total, independentemente de quantas entidades: a decisao e
- * uma, e os calculos vem em lotes de ids.
+ * UMA consulta de decisao por chamada, mais os lotes de calculo — nunca N+1. O
+ * numero de lotes so cresce acima de ~32,7 mil ids (o teto do protocolo do
+ * PostgreSQL); uma pagina de listagem cabe num lote so.
  */
 export async function resolveEditorialScores(
   prisma: PrismaClient,
