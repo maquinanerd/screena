@@ -25,7 +25,8 @@
     "prove:catalog-worker": "tsx scripts/prove-catalog-worker-service.ts",
     "validate:indexability-producer": "tsx scripts/validate-indexability-producer-real-postgres.ts",
     "validate:index-decisions-cli": "tsx scripts/validate-index-decisions-cli-real-postgres.ts",
-    "validate:catalog-integrity": "tsx scripts/validate-catalog-integrity-real-postgres.ts"
+    "validate:catalog-integrity": "tsx scripts/validate-catalog-integrity-real-postgres.ts",
+    "validate:text-recovery": "tsx scripts/validate-text-recovery-real-postgres.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1097.0",

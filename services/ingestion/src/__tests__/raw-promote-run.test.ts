@@ -110,16 +110,20 @@ function opts(
 
 describe('readMovieDisplayFields', () => {
   it('le title (com fallback a original_title) e overview; NAO le release_date', () => {
+    // `overviewSource` entrou em 2026-08-28: a sinopse passou a ter cadeia
+    // (topo -> `translations` pt-BR) e a proveniencia viaja junto do valor.
     expect(readMovieDisplayFields({ title: 'Ola', overview: 'x', release_date: '2019-01-02' })).toEqual({
       title: 'Ola',
       overview: 'x',
+      overviewSource: 'detail',
     })
     expect(readMovieDisplayFields({ original_title: 'Only Original' })).toEqual({
       title: 'Only Original',
       overview: null,
+      overviewSource: null,
     })
     expect(readMovieDisplayFields({ title: '   ', original_title: 'Fallback' }).title).toBe('Fallback')
-    expect(readMovieDisplayFields(null)).toEqual({ title: '', overview: null })
+    expect(readMovieDisplayFields(null)).toEqual({ title: '', overview: null, overviewSource: null })
   })
 })
 
