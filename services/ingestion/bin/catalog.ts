@@ -847,6 +847,23 @@ async function cmdBackfillText(
     return EXIT_CODES.usage
   }
 
+  // O EXTRATOR SO ACEITA pt-BR, e a coluna gravada usa `locale`. Sem esta
+  // recusa, `--locale en-US` escreveria o texto pt-BR do bloco numa linha
+  // `en-US` de `entity_translations` — traducao cega, que a invariante 7 proibe
+  // exatamente por isso. Aceitar outro idioma exige mudar a REGRA de extracao
+  // (`ACCEPTED_TRANSLATION_LANGUAGE`), nao so passar uma flag.
+  if (locale !== 'pt-BR' && locale !== 'pt') {
+    process.stderr.write(
+      [
+        `erro: backfill-text so opera em pt-BR (recebeu "${locale}").`,
+        '  A extracao le a entrada `pt-BR` de `translations`; gravar esse texto sob',
+        '  outro idioma seria traducao cega (invariante 7). Omita --locale.',
+        '',
+      ].join('\n'),
+    )
+    return EXIT_CODES.usage
+  }
+
   const iniciadoMs = services.now().getTime()
   const dryRun = !flags.apply
   const report = await backfillMissingText(services.prisma, {
@@ -869,14 +886,46 @@ async function cmdBackfillText(
   // entao a execucao precisa deixar rastro auditavel igual a qualquer outra.
   // `--dry-run` tambem loga: uma medicao que ninguem consegue datar depois vale
   // menos que uma que se pode.
-  await createPrismaSyncLog(services.prisma).write({
-    endpoint: `backfill-text/${types.join('+')}${dryRun ? '?dry-run=1' : ''}`,
-    status: 'success',
-    itemsProcessed: report.candidates,
-    itemsUpdated: report.written,
-    durationMs: services.now().getTime() - iniciadoMs,
-    quotaCost: 0,
-  })
+  //
+  // O `catch` NAO e complacencia com a invariante — e o contrario. O log e
+  // escrito DEPOIS do trabalho, e `api_sync_logs.provider_api` tem FK para
+  // `api_providers`: num banco sem a linha `tmdb`, a excecao subia e derrubava o
+  // comando INTEIRO **depois** de ele ter gravado sinopses, sem imprimir uma
+  // linha do relatorio. O operador ficava com um stack trace e nenhuma ideia do
+  // que foi escrito — pior que a ausencia do log, que era o problema original.
+  //
+  // Entao: a falha e REGISTRADA em voz alta, o relatorio sai assim mesmo, e o
+  // comando termina com `failed`. Rastro incompleto continua sendo defeito; o
+  // que ele deixa de ser e um apagador do que aconteceu.
+  let falhaDeLog: string | null = null
+  try {
+    await createPrismaSyncLog(services.prisma).write({
+      endpoint: `backfill-text/${types.join('+')}${dryRun ? '?dry-run=1' : ''}`,
+      status: 'success',
+      itemsProcessed: report.candidates,
+      itemsUpdated: report.written,
+      durationMs: services.now().getTime() - iniciadoMs,
+      quotaCost: 0,
+    })
+  } catch (error) {
+    // PRIMEIRA linha NAO VAZIA: a mensagem do Prisma comeca com quebra de
+    // linha, e `split('\n')[0]` devolvia string vazia — um aviso que nao diz a
+    // causa e quase tao ruim quanto nenhum aviso.
+    falhaDeLog =
+      redactSecrets(errorMessage(error))
+        .split('\n')
+        .map((linha) => linha.trim())
+        .find((linha) => linha !== '') ?? 'erro desconhecido'
+    process.stderr.write(
+      [
+        'AVISO: a execucao rodou, mas o log em `api_sync_logs` NAO foi gravado.',
+        `  causa: ${falhaDeLog}`,
+        '  O relatorio abaixo e valido; o que falta e o rastro auditavel',
+        '  (invariante 10). Exit code 4.',
+        '',
+      ].join('\n'),
+    )
+  }
 
   emit(flags, report, [
     `backfill de texto · ${report.language} · ${report.dryRun ? 'DRY-RUN' : 'APLICADO'}`,
@@ -937,7 +986,9 @@ async function cmdBackfillText(
           '  Preencher o texto nao reescreve `page_indexability_decisions` sozinho.',
         ]),
   ])
-  return EXIT_CODES.ok
+  // `failed` = "o trabalho rodou mas terminou com falha", que e exatamente o
+  // caso: as linhas foram escritas e o rastro auditavel nao.
+  return falhaDeLog === null ? EXIT_CODES.ok : EXIT_CODES.failed
 }
 
 /**
