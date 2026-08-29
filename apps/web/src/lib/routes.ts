@@ -134,6 +134,47 @@ export function episodePath(
 }
 
 /**
+ * Vertical de um titulo, no vocabulario do BANCO (`EntityType`), nao no da URL.
+ *
+ * `movie`/`tv` sao os valores que `slugs.entity_type`, `entity_translations` e
+ * `title_recommendations.target_media_type` ja usam. Traduzir para o segmento de
+ * rota (`filmes`/`series`) e trabalho de `titleDetailPath`, e de mais ninguem.
+ */
+export type TitleEntityType = "movie" | "tv";
+
+/**
+ * Caminho canonico de um TITULO, com o tipo como parametro OBRIGATORIO.
+ *
+ * ============ POR QUE ESTA FUNCAO EXISTE ============
+ *
+ * MEDIDO em 2026-08-28: o bloco "Mais como este" montava
+ * `` `/pt/filmes/${slug}/` `` a mao, com o segmento cravado no template. Na
+ * ficha de filme ninguem via, porque os recomendados de um filme sao filmes. Na
+ * ficha de serie — 32.889 paginas indexaveis — TODO card saia apontando para
+ * `/pt/filmes/`, e os alvos eram series.
+ *
+ * O tipo NUNCA pode ser inferido do slug. Slugs colidem entre as verticais:
+ * existe o filme `the-passage` E a serie `the-passage`, os dois com slug
+ * canonico pt-BR. Adivinhar pelo slug nao da 404 nesse caso — da **200 com a
+ * obra errada**, que e pior, porque nada denuncia.
+ *
+ * Por isso `entityType` e parametro posicional e obrigatorio: quem monta a URL
+ * de um titulo tem de PROVAR que sabe a vertical. Nao ha default, e nao ha
+ * sobrecarga de um argumento so.
+ *
+ * Devolve `null` quando o slug e vazio ou perigoso (`detailPath` valida) — e
+ * quem chama omite o card. Card omitido e melhor que card que leva para a obra
+ * errada.
+ */
+export function titleDetailPath(
+  entityType: TitleEntityType,
+  slug: string | null,
+): string | null {
+  const indexPath = entityType === "movie" ? MOVIES_INDEX_PATH : SERIES_INDEX_PATH;
+  return detailPath(indexPath, slug);
+}
+
+/**
  * Caminho da galeria de IMAGENS de um titulo, com barra final.
  *
  * `vertical` e o segmento da rota (`filmes` | `series`) e nao um rotulo: a

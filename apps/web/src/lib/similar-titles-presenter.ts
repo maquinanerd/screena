@@ -36,6 +36,7 @@
  * Sem rede, sem DB, sem `Date`, sem IO: o modulo recebe linhas e devolve cards.
  */
 
+import { titleDetailPath, type TitleEntityType } from "./routes";
 import { buildTmdbImageUrl } from "./tmdb-image-url";
 
 /** Tamanho TMDB do poster do card (mesma medida do trilho de recomendacao). */
@@ -50,6 +51,18 @@ export const SIMILAR_TITLES_LIMIT = 8;
 export interface SimilarTitleRow {
   /** Id local da entidade, serializado. */
   readonly entityId: string;
+  /**
+   * A vertical DESTE alvo — `movie` ou `tv`.
+   *
+   * OBRIGATORIO, e por isso e um campo e nao uma opcao do bloco: o card monta
+   * URL e rotulo a partir dele, e ate 2026-08-28 os dois estavam CRAVADOS em
+   * `movie`. Na ficha de serie isso mandava 8 cards por pagina para
+   * `/pt/filmes/`, em 32.889 paginas indexaveis.
+   *
+   * Nao tente derivar do slug: existe o filme `the-passage` E a serie
+   * `the-passage`. Adivinhar ali nao da 404 — da 200 com a obra errada.
+   */
+  readonly entityType: TitleEntityType;
   /** `movies.title_original` — fallback de titulo, nunca inventado. */
   readonly titleOriginal: string;
   /** Titulo pt-BR (`entity_translations`) quando existir. */
@@ -74,6 +87,12 @@ export interface SimilarTitlePoster {
 /** Um card do trilho. */
 export interface SimilarTitleCard {
   readonly entityId: string;
+  /**
+   * A vertical deste card. O componente usa para TRES dos cinco sinais da
+   * invariante 11 — o rotulo ("Filme"/"Serie"), o `data-entity-type` (que a cor
+   * do badge segue) e a propria URL. Nenhum deles pode ser cravado.
+   */
+  readonly entityType: TitleEntityType;
   readonly href: string;
   readonly title: string;
   readonly year: number | null;
@@ -103,6 +122,18 @@ export interface SimilarTitlesView {
    * e inventar um seria prometer mais que a entrega.
    */
   readonly relationLabel: string;
+  /**
+   * A palavra que NOMEIA a relacao na tela, acima do `relationLabel`.
+   *
+   * Ate 2026-08-28 o componente cravava "Mesma coleção" e so o `relationLabel`
+   * variava. Resultado visivel em producao, em toda ficha de serie e em todo
+   * filme fora de colecao: **"MESMA COLEÇÃO / Recomendados pelo TMDB"** — duas
+   * afirmacoes diferentes empilhadas, e a de cima falsa. Colecao e parentesco
+   * declarado (a franquia); recomendacao e sinal do TMDB. O cabecalho deste
+   * arquivo ja dizia que os dois "continuam nomeados na tela" — o campo que
+   * faltava para isso ser verdade e este.
+   */
+  readonly relationKicker: string;
   readonly items: readonly SimilarTitleCard[];
 }
 
@@ -116,6 +147,19 @@ export type SimilarTitlesRelation = "collection" | "recommendation";
  * ("Do mesmo universo") afirmaria um parentesco que o sinal nao sustenta.
  */
 export const RECOMMENDATION_RELATION_LABEL = "Recomendados pelo TMDB";
+
+/**
+ * A palavra que nomeia cada relacao na tela. Vocabulario FECHADO, casado com
+ * `SimilarTitlesRelation`.
+ *
+ * `collection` promete franquia e entrega franquia. `recommendation` NAO pode
+ * usar a mesma palavra: prometeria parentesco declarado e entregaria sinal
+ * estatistico do TMDB. "Sugestões" e o que o dado sustenta.
+ */
+const RELATION_KICKER: Readonly<Record<SimilarTitlesRelation, string>> = {
+  collection: "Mesma coleção",
+  recommendation: "Sugestões",
+};
 
 function trimToNull(value: string | null | undefined): string | null {
   if (value == null) return null;
@@ -180,23 +224,30 @@ export function buildSimilarTitles(
   }
   if (usable.length === 0) return null;
 
-  const items = usable
-    .slice()
-    .sort(compareRows)
-    .slice(0, limit)
-    .map((row): SimilarTitleCard => {
-      const src = buildTmdbImageUrl(row.posterPath, POSTER_TMDB_SIZE);
-      return {
-        entityId: row.entityId,
-        href: `/pt/filmes/${trimToNull(row.slug) as string}/`,
-        title: trimToNull(row.translationTitle) ?? row.titleOriginal,
-        year: row.year,
-        poster:
-          src === null ? null : { src, width: POSTER_WIDTH, height: POSTER_HEIGHT },
-      };
+  const items: SimilarTitleCard[] = [];
+  for (const row of usable.slice().sort(compareRows)) {
+    if (items.length >= limit) break;
+    // A URL vem do TIPO DA LINHA, nunca de um segmento cravado nem do formato do
+    // slug. `titleDetailPath` tambem valida o slug e devolve `null` no que
+    // quebraria a rota — e ai o card e OMITIDO. Card a menos e melhor que card
+    // que leva para a obra errada, e `the-passage` (filme e serie com o mesmo
+    // slug canonico) e a prova de que "errada" e um desfecho possivel.
+    const href = titleDetailPath(row.entityType, row.slug);
+    if (href === null) continue;
+    const src = buildTmdbImageUrl(row.posterPath, POSTER_TMDB_SIZE);
+    items.push({
+      entityId: row.entityId,
+      entityType: row.entityType,
+      href,
+      title: trimToNull(row.translationTitle) ?? row.titleOriginal,
+      year: row.year,
+      poster: src === null ? null : { src, width: POSTER_WIDTH, height: POSTER_HEIGHT },
     });
+  }
+  if (items.length === 0) return null;
 
-  return { relation: options.relation ?? "collection", relationLabel, items };
+  const relation = options.relation ?? "collection";
+  return { relation, relationLabel, relationKicker: RELATION_KICKER[relation], items };
 }
 
 /** Um vinculo cru de `title_recommendations`, como sai do banco. */
