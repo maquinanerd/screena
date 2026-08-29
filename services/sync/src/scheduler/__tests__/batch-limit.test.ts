@@ -34,14 +34,22 @@ import {
 } from '../rhythms.js'
 
 /**
- * O tamanho do catalogo, medido na auditoria #254 (2026-08-28):
- * 34.802 filmes + 32.486 series.
+ * O tamanho do catalogo, CONTADO em producao em 2026-08-28.
  *
- * NAO inclui temporada (32.483) nem episodio (135.926): a midia deles entra
- * pela cascata de `sync_details`, nao por esta fila. Dimensionar `title_media`
- * pelo numero de episodios pediria um teto que ela nao precisa.
+ * NAO sao os numeros da auditoria #254: ela deslocou uma coluna e reportou
+ * 34.802 filmes / 32.486 series / 32.483 temporadas / 135.926 episodios. Cada
+ * valor dela e o da linha de cima — o "32.483 temporadas" e a contagem de
+ * SERIES, o "135.926 episodios" e a de TEMPORADAS, e episodio nunca foi
+ * contado. O erro no episodio e de 28,8x.
+ *
+ *   movies    37.554      tv_shows  32.983
+ *   seasons  136.650      episodes  3.921.368
+ *
+ * `title_media` le SO `movies` e `tv_shows`: temporada e episodio entram pela
+ * cascata, cujo teto e o balde de 7 dias de `coarsenScopeToDays`. Dimensionar
+ * esta fila por episodio pediria um teto 56x maior do que ela precisa.
  */
-const TITULOS_NO_CATALOGO = 34_802 + 32_486
+const TITULOS_NO_CATALOGO = 37_554 + 32_983
 
 /** O teto global default (`CINERIE_SCHEDULER_BATCH_LIMIT`). */
 const TETO_GLOBAL = 200
@@ -66,9 +74,17 @@ describe('o teto por ciclo respeita a janela que a fila declara', () => {
     const teto = effectiveBatchLimit(rhythm, TETO_GLOBAL)
     const volta = diasParaUmaVolta(TITULOS_NO_CATALOGO, teto, rhythm.intervalHours)
     expect(volta).toBeLessThanOrEqual(7)
-    // E o teto declarado nao passa do que a config aceita (`readInt` 1..10_000):
-    // um numero fora da faixa faria o servico morrer na subida.
-    expect(teto).toBeLessThanOrEqual(10_000)
+  })
+
+  it('e fecha COM FOLGA: um teto que empata hoje quebra amanha', () => {
+    // A descoberta acrescenta titulo todo dia. Um teto dimensionado no empate
+    // (70.537 / 7 = 10.077) passaria hoje e mentiria na semana que vem, sem
+    // ninguem notar — o painel continuaria verde. 15% de folga cobre o
+    // crescimento entre uma revisao e outra.
+    const rhythm = findRhythm('title_media')!
+    const teto = effectiveBatchLimit(rhythm, TETO_GLOBAL)
+    const volta = diasParaUmaVolta(TITULOS_NO_CATALOGO * 1.15, teto, rhythm.intervalHours)
+    expect(volta).toBeLessThanOrEqual(7)
   })
 
   it('o custo do teto cabe no orcamento medido da auditoria #254', () => {
