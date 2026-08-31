@@ -23,6 +23,12 @@
 
 ## 0. Como ler este relatório
 
+> **ADENDO 2026-08-31, depois do merge.** O dono rodou as consultas da §10.2 no
+> banco. A distribuição bateu exatamente. **Os números de `imdb_id` não bateram**,
+> e a correção mudou a resposta da Parte F de "não dá para dividir sem o banco"
+> para um número definitivo. Está na **§14**, e ela corrige a §3.4, a §7.4 e a
+> §10.3 deste documento. PR de correção: #259.
+
 O enunciado trazia números medidos em produção e a regra da casa é que **o número
 manda**. Os números de distribuição bateram. **Três afirmações estruturais do
 enunciado não se sustentaram**, e estão nas seções 3.1, 7.1 e 7.2 — duas delas
@@ -175,17 +181,21 @@ em vez de ser descoberto meses depois. Sem medição ele devolve `null` — nunc
 "sim" por omissão. A divisão é configurável (`OMDB_COVERAGE_RATIO`), não literal
 enterrado, como o enunciado pediu.
 
-### 3.4 A divisão filme/série — 59/41, revista com número
+### 3.4 A divisão filme/série — 58/42, revista com número _(corrigido; ver §14)_
 
 `perType = Math.floor(slots / 2)` parecia neutro e não era.
 
 ```
                     catálogo   sem imdb_id   CONSULTÁVEL   fatia
-filmes ..........    48.611        8.114        40.497      58,9%
-séries ..........    34.700        6.461        28.239      41,1%
+filmes ..........    48.611       10.660        37.951      58,0%
+séries ..........    34.700        7.229        27.471      42,0%
                                                 ------
-                                                68.736
+                                                65.422
 ```
+
+> Os valores acima são os **medidos** (§14). A PR #258 foi mergeada com
+> 8.114/6.461, vindos do enunciado; a PR #259 corrigiu para os reais.
+
 
 Os conjuntos têm tamanhos diferentes, então fatias iguais terminam a volta em
 **dias diferentes** — e quem termina primeiro **não libera a fatia**, porque a
@@ -195,8 +205,8 @@ enquanto o maior ainda tem dezenas de milhares na fila.
 Proporcional ao consultável, as duas voltas fecham **no mesmo dia**:
 
 ```
-cobertura filme .. 350/dia → 40.497 títulos → 116 dias
-cobertura série .. 245/dia → 28.239 títulos → 116 dias
+cobertura filme .. 345/dia → 37.951 títulos → 111 dias
+cobertura série .. 250/dia → 27.471 títulos → 110 dias
 ```
 
 > **Sobre a cobertura de score 94,5% × 7,6% citada no enunciado:** aquilo mede
@@ -355,10 +365,17 @@ const calculation = await prisma.cinerieScoreCalculation.findFirst({
 
 Sempre a linha mais recente calculada. A preocupação de E.2 não se aplica.
 
-### 7.4 Um número menor
+### 7.4 Um número menor — e eu errei o lado
 
 O enunciado diz "~65.800 títulos consultáveis" na seção PROVA, mas seus próprios
-números dão **68.736** (83.311 − 14.575). Usei 68.736 e sinalizo a divergência.
+números por tipo (8.114 + 6.461) dão **68.736**. Sinalizei a divergência e usei
+68.736.
+
+**Escolhi o lado errado.** A medição no banco (§14) devolveu **65.422**
+consultáveis — praticamente o "~65.800" da seção PROVA. Era o *detalhamento por
+tipo* que estava velho, não o total. A regra da casa aplicada corretamente teria
+sido: dois números do mesmo enunciado discordam, então **nenhum dos dois é
+confiável** e a saída é medir — não escolher o que tem aritmética visível.
 
 ---
 
@@ -486,8 +503,8 @@ não vou apresentar como se fosse.
 | pergunta | resposta |
 |---|---|
 | slots/dia reais | **700** (era 28,6) |
-| volta completa, 68.736 consultáveis | **116 dias** (era 6,6 anos) |
-| filme / série | 350 / 245 por dia — as duas voltas fecham juntas |
+| volta completa, 65.422 consultáveis | **111 dias** (era 6,6 anos) |
+| filme / série | 345 / 250 por dia — as duas voltas fecham com 1 dia de diferença |
 | atualização cabe na janela? | sim, 735 de capacidade contra 424 cobertos |
 
 ---
@@ -527,7 +544,10 @@ A consulta 6.6 divide os 14.575 em dois grupos com ações opostas:
   **só** por IMDb id — não há busca por TMDB id, e a doc confirma que não há
   change feed nem lote. Nenhuma cadência conserta esses.
 
-Não dá para dividir os dois sem o banco. É a última medição que falta.
+~~Não dá para dividir os dois sem o banco. É a última medição que falta.~~
+
+**MEDIDO — ver §14.** `nunca_sincronizado = 0` nos dois tipos: o balde recuperável
+está **vazio**. Os 17.889 são o piso inteiro.
 
 ### 10.4 Retenção de `cinerie_score_calculations` — Parte E.3, não implementada
 
@@ -611,6 +631,90 @@ pergunte se ela está sendo aplicada à **ausência**. Se o predicado de seleç�
 mistura "nunca coletado" com "coletado há tempo" numa condição só, ele quase
 certamente está errado — e o conserto é **separar em modos disjuntos**, nunca
 afrouxar a janela.
+
+---
+
+## 14. Adendo — a medição no banco, depois do merge (PR #259)
+
+O dono rodou o Passo 1 no console do painel. Duas coisas.
+
+### 14.1 A distribuição bateu exatamente
+
+```
+ n_notas | filmes            total_external_ratings
+---------+--------           ----------------------
+       0 |  48187                              1446
+       1 |     43
+       2 |     56
+       3 |    320
+       6 |      5
+```
+
+Idêntica ao enunciado. `external_ratings` cresceu de ~1.441 para 1.446 — cinco
+linhas, coerente com a fila semanal ter rodado uma vez no intervalo. **Baseline
+capturado**: é contra isto que o "depois" será comparado.
+
+### 14.2 Os `imdb_id` não bateram — e a natureza deles é o achado
+
+```
+ tipo  | nunca_sincronizado | tmdb_nao_tem | total_sem_imdb
+-------+--------------------+--------------+----------------
+ tv    |                  0 |         7229 |           7229
+ movie |                  0 |        10660 |          10660
+```
+
+**Duas leituras, e a segunda é a que importa.**
+
+**Primeira: o tamanho.** 17.889, não 14.575 — **3.314 a mais** que o enunciado
+dizia. Corrigi `TITLES_WITHOUT_IMDB_ID` e `OMDB_MOVIE_SHARE` (0,589 → 0,58) na
+PR #259. O efeito prático é pequeno mas na direção certa: as duas voltas passam
+de 4 dias de diferença para 1.
+
+**Segunda: `nunca_sincronizado = 0` nos DOIS tipos.** Eu tinha desenhado a
+consulta para separar "recuperável" de "piso real". **O balde recuperável está
+vazio.** Todos os 17.889 já passaram pelo sync de detalhe.
+
+Antes de aceitar isso, testei a hipótese óbvia — o extrator perde o campo, como
+já aconteceu neste repositório com `translations`:
+
+| verificação | resultado |
+|---|---|
+| `external_ids` está no append de filme? | **sim**, `MOVIE_APPEND` |
+| `external_ids` está no append de série? | **sim**, `TV_APPEND` |
+| normalizador de filme lê? | `detail.imdb_id ?? detail.external_ids?.imdb_id` |
+| normalizador de série lê? | `detail.external_ids?.imdb_id` (série não tem no topo) |
+| `normalizeImdbId` descarta string vazia? | sim, `nullableString` |
+
+**Pedimos, recebemos e lemos.** O TMDB não tem o id para eles — plausível para
+uma base montada a partir dos Daily ID Exports, que trazem uma cauda longa de
+títulos obscuros sem vínculo com o IMDb.
+
+### 14.3 A resposta da Parte F.2, agora definitiva
+
+> **17.889 títulos — 21,5% do catálogo — nunca poderão ter nota externa via
+> OMDb, com qualquer cadência.**
+
+Este é o piso real. Ele não melhora com mais cota, nem com mais frequência, nem
+com backfill de detalhe. Só muda com **uma fonte que resolva por TMDB id** — e a
+OMDb não é essa fonte (só `?i=tt...`, sem busca por id do TMDB).
+
+Consequência para a meta "a nota no catálogo inteiro": o teto alcançável é
+**65.422 títulos (78,5%)**, não 83.311. A volta completa sobre esse conjunto é de
+**111 dias**.
+
+### 14.4 O que eu errei, e a regra que teria evitado
+
+Na §7.4 eu registrei que o enunciado se contradizia — "~65.800 consultáveis" na
+seção PROVA contra 68.736 pelos seus próprios números por tipo — e **escolhi
+68.736**, porque tinha aritmética visível.
+
+O medido foi **65.422**. O número que eu descartei era o certo.
+
+A regra da casa é "meça, não escolha". Aplicada corretamente: dois números do
+mesmo documento discordam ⇒ **nenhum dos dois é confiável** ⇒ a saída é medir, e
+enquanto não medir, dizer que não se sabe. Preferir o que tem a conta explícita
+foi trocar uma medição por uma preferência — que é exatamente o padrão que este
+projeto já pagou caro para não repetir.
 
 ---
 

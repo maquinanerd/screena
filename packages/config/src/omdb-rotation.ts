@@ -31,7 +31,7 @@
  * Medido em producao em 2026-08-31: 424 titulos de ~83.300 tem alguma nota
  * externa. O conjunto a REATUALIZAR tem 424 elementos; o conjunto a COBRIR tem
  * dezenas de milhares. Um rateio meio a meio daria a 424 titulos o mesmo
- * orcamento que a 68 mil.
+ * orcamento que a 65 mil.
  *
  * A conta que fixa os 15%, com o envelope de fundo de 700/dia:
  *
@@ -50,7 +50,7 @@
  * vez de ser descoberto meses depois.
  *
  * ============================================================================
- * POR QUE 59 / 41 ENTRE FILME E SERIE, E NAO METADE A METADE
+ * POR QUE 58 / 42 ENTRE FILME E SERIE, E NAO METADE A METADE
  * ============================================================================
  * `perType = Math.floor(slots / 2)` dava a mesma fatia aos dois tipos. Parece
  * neutro e nao e: os dois conjuntos tem TAMANHOS diferentes, entao fatias iguais
@@ -59,11 +59,12 @@
  * vira slot ocioso enquanto o tipo maior ainda tem dezenas de milhares na fila.
  *
  * Consultavel = tem `imdb_id` (a OMDb resolve por IMDb id; sem ele o titulo e
- * inalcancavel — ver `TITLES_WITHOUT_IMDB_ID` abaixo). Medido em 2026-08-31:
+ * inalcancavel — ver `TITLES_WITHOUT_IMDB_ID` abaixo). Medido no banco de
+ * PRODUCAO em 2026-08-31:
  *
- *   filmes  48.611 - 8.114 sem imdb_id = 40.497  (58,9%)
- *   series  34.700 - 6.461 sem imdb_id = 28.239  (41,1%)
- *   total                                68.736
+ *   filmes  48.611 - 10.660 sem imdb_id = 37.951  (58,0%)
+ *   series  34.700 -  7.229 sem imdb_id = 27.471  (42,0%)
+ *   total                                 65.422
  *
  * Proporcional ao conjunto CONSULTAVEL, os dois tipos terminam a volta no MESMO
  * dia e nenhum slot fica ocioso. E o unico rateio que nao desperdica.
@@ -99,17 +100,40 @@ export const OMDB_COVERAGE_RATIO = 0.85
  *
  * Ver o cabecalho: proporcional ao consultavel, nao meio a meio.
  */
-export const OMDB_MOVIE_SHARE = 0.589
+export const OMDB_MOVIE_SHARE = 0.58
 
 /**
- * Titulos que a OMDb NAO alcanca, por tipo — medido em 2026-08-31.
+ * Titulos que a OMDb NAO alcanca, por tipo.
  *
  * A OMDb consulta por IMDb id (`?i=tt...`); nao ha busca por TMDB id. Um titulo
  * sem `imdb_id` local e estruturalmente inalcancavel, e nenhuma cadencia
  * conserta isso. Registrado aqui porque e o PISO do problema: o denominador
  * honesto da cobertura nao e o catalogo, e o catalogo menos estes.
+ *
+ * ============================================================================
+ * MEDIDO NO BANCO EM 2026-08-31 — e o PISO E REAL, nao um backlog
+ * ============================================================================
+ * A PR #258 trouxe estes numeros de um enunciado (8.114 / 6.461). A medicao
+ * direta devolveu **10.660 filmes e 7.229 series** — 3.314 a mais.
+ *
+ * E, mais importante que o tamanho, a NATUREZA deles:
+ *
+ *   SELECT COUNT(*) FILTER (WHERE imdb_id IS NULL AND last_synced_at IS NULL)
+ *   -> 0, nos DOIS tipos.
+ *
+ * Ou seja: **todos ja passaram pelo sync de detalhe**. Nao ha bucket
+ * "recuperavel rodando o detalhe de novo" — ele e vazio. E o extrator nao e o
+ * culpado: `external_ids` esta no append rico dos DOIS tipos
+ * (`MOVIE_APPEND`/`TV_APPEND` em `api-clients/tmdb`), o normalizador de filme le
+ * `detail.imdb_id ?? detail.external_ids?.imdb_id` e o de serie le
+ * `detail.external_ids?.imdb_id` (serie nao tem o campo no topo). Pedimos,
+ * recebemos, lemos — e o TMDB simplesmente nao tem o id para eles.
+ *
+ * Consequencia: **17.889 titulos (21,5% do catalogo) nunca poderao ter nota
+ * externa via OMDb**, com qualquer cadencia. Este e o piso do problema, e ele
+ * so muda com uma fonte que resolva por TMDB id.
  */
-export const TITLES_WITHOUT_IMDB_ID = { movie: 8_114, tv: 6_461 } as const
+export const TITLES_WITHOUT_IMDB_ID = { movie: 10_660, tv: 7_229 } as const
 
 /** Os dois trabalhos que disputam o envelope diario. */
 export const OMDB_ROTATION_MODES = ['coverage', 'refresh'] as const
