@@ -14,7 +14,7 @@
  * exigem `/tv/{id}/season/{n}` — outro bloco).
  */
 
-import type { UpsertOutcome } from '../ports.js'
+import type { MaybeRefusedUpsert } from '../ports.js'
 import type { CatalogEntityType } from '../public-catalog-slug.js'
 
 /**
@@ -103,9 +103,15 @@ export interface PromoteDisplayFields {
   readonly overview: string | null
 }
 
-/** Resultado da promocao de UM registro: outcome do store + campos de exibicao. */
+/**
+ * Resultado da promocao de UM registro: outcome do store + campos de exibicao.
+ *
+ * `outcome` pode ser uma RECUSA (recorte de idioma, Parte C): promover um raw
+ * de idioma fora do recorte recriaria exatamente o titulo que a Parte D acabou
+ * de apagar. Pessoa nunca e recusada — nao tem idioma —, dai o tipo largo.
+ */
 export interface PromotedRecord {
-  readonly outcome: UpsertOutcome
+  readonly outcome: MaybeRefusedUpsert
   readonly display: PromoteDisplayFields
 }
 
@@ -122,13 +128,20 @@ export interface PromoteStrategy {
 }
 
 /** Desfecho por item promovido. */
-export type PromoteOutcome = 'created' | 'updated' | 'failed' | 'planned'
+export type PromoteOutcome = 'created' | 'updated' | 'failed' | 'planned' | 'refused'
 
 /** Contagens de desfecho (validas no modo apply). */
 export interface PromoteCounts {
   created: number
   updated: number
   failed: number
+  /**
+   * Recusados pelo recorte de idioma. SEPARADO de `failed` porque nao e falha:
+   * o item foi lido, normalizado e conscientemente nao admitido. Somar os dois
+   * faria um relatorio verde parecer vermelho — e um vermelho de verdade
+   * desaparecer no meio.
+   */
+  refused: number
 }
 
 /** Relatorio de uma execucao de promocao (dry-run ou apply). */

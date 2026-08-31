@@ -8,10 +8,12 @@
  */
 
 import type { PrismaClient } from '@screena/db/server'
+
+import { createCatalogAdmissionPolicy, type CatalogAdmissionPolicy } from './admission.js'
 import type {
   CreditsWriteOutcome,
   EntityStorePort,
-  EntityUpsertOutcome,
+  EntityUpsertResult,
   SeasonUpsertOutcome,
   StoreMovieInput,
   StorePersonInput,
@@ -378,14 +380,32 @@ async function replaceTitleGenres(
 }
 
 /** Cria um `EntityStorePort` apoiado no Prisma. */
-export function createPrismaStore(prisma: PrismaClient): EntityStorePort {
+/**
+ * Adapter Prisma da porta de persistencia.
+ *
+ * `admission` e o recorte de idioma (Parte C da leva de 2026-08-31). Injetavel
+ * para teste; por default vem de `CINERIE_CATALOG_LANGUAGES` ou do recorte
+ * canonico de cinco idiomas. Ver `./admission.ts`.
+ */
+export function createPrismaStore(
+  prisma: PrismaClient,
+  admission: CatalogAdmissionPolicy = createCatalogAdmissionPolicy(),
+): EntityStorePort {
   return {
-    async upsertMovie(input: StoreMovieInput): Promise<EntityUpsertOutcome> {
+    async upsertMovie(input: StoreMovieInput): Promise<EntityUpsertResult> {
       return prisma.$transaction(async (tx) => {
         const existing = await tx.movie.findUnique({
           where: { tmdbId: input.movie.tmdbId },
           select: { id: true },
         })
+        // PORTA DO CATALOGO (ver `./admission.ts`): so barra CRIACAO. Titulo
+        // que ja existe segue sendo atualizado — o recorte ataca o
+        // crescimento, e congelar linhas que a Parte D vai apagar so geraria
+        // falha em massa nos jobs de reparo.
+        if (existing === null) {
+          const refusal = admission.admit(input.movie.originalLanguage)
+          if (refusal !== null) return { refused: refusal }
+        }
         const data = {
           imdbId: input.movie.imdbId,
           titleOriginal: input.movie.titleOriginal,
@@ -446,12 +466,17 @@ export function createPrismaStore(prisma: PrismaClient): EntityStorePort {
       return count > 0
     },
 
-    async upsertTvShow(input: StoreTvShowInput): Promise<EntityUpsertOutcome> {
+    async upsertTvShow(input: StoreTvShowInput): Promise<EntityUpsertResult> {
       return prisma.$transaction(async (tx) => {
         const existing = await tx.tvShow.findUnique({
           where: { tmdbId: input.tvShow.tmdbId },
           select: { id: true },
         })
+        // Ver `upsertMovie`: gate de CRIACAO, nao de atualizacao.
+        if (existing === null) {
+          const refusal = admission.admit(input.tvShow.originalLanguage)
+          if (refusal !== null) return { refused: refusal }
+        }
         const data = {
           imdbId: input.tvShow.imdbId,
           nameOriginal: input.tvShow.nameOriginal,

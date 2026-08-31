@@ -32,6 +32,8 @@ export const CATALOG_COMMANDS = [
   'index-decisions',
   'backfill-finalization',
   'backfill-text',
+  'backfill-language',
+  'language-cutdown',
   'dead-letter',
 ] as const
 
@@ -202,6 +204,13 @@ const MUTATING_COMMANDS: ReadonlySet<CatalogCommand> = new Set([
   // Preenche sinopse/biografia a partir de payload JA guardado. Escreve em
   // `entity_translations`/`people`, que a politica de indexabilidade le.
   'backfill-text',
+  // Escreve `original_language` em `movies`/`tv_shows` a partir de payload JA
+  // guardado. E a coluna que o RECORTE DE IDIOMA usa para decidir o que fica e
+  // o que sai — errar aqui apaga catalogo por engano.
+  'backfill-language',
+  // APAGA catalogo em massa. Sem `--dry-run`/`--apply` explicito nao roda —
+  // e o `--apply` ainda exige `--confirm-mass-change` (ver `bin/catalog.ts`).
+  'language-cutdown',
 ])
 
 /** Comandos somente-leitura. */
@@ -259,6 +268,15 @@ const DRY_RUN_RUNS_REAL_POLICY: ReadonlySet<CatalogCommand> = new Set([
   // da execucao. Curto-circuitar em `describePlan` devolveria uma frase que
   // descreve a INTENCAO do comando, que e o defeito consertado na PR #242.
   'backfill-text',
+  // Mesma razao do `backfill-text`: e so-de-banco, nao gasta cota, e o
+  // `--dry-run` dele E a medicao (quantas linhas a leitura recupera, e em que
+  // idiomas). Sem executar, a resposta seria uma frase sobre a intencao.
+  'backfill-language',
+  // O `--dry-run` DELE E O ENTREGAVEL da Parte B: a tabela por idioma, o que
+  // sai com a cascata e os titulos com oferta no Brasil. Curto-circuitar em
+  // `describePlan` devolveria uma frase sobre a intencao do comando, e o dono
+  // precisa dos NUMEROS para autorizar o apagamento.
+  'language-cutdown',
 ])
 
 /**

@@ -25,6 +25,7 @@ import { normalizeMovie } from '../normalizers/movie.js'
 import { normalizePerson } from '../normalizers/person.js'
 import { normalizeTvShow } from '../normalizers/tv.js'
 import type { EntityStorePort } from '../ports.js'
+import { isUpsertRefused } from '../ports.js'
 import { desiredCatalogSlug } from '../public-catalog-slug.js'
 import type {
   CatalogFinalizePort,
@@ -168,7 +169,7 @@ export function createPersonStrategy(store: EntityStorePort): PromoteStrategy {
 }
 
 function emptyCounts(): PromoteCounts {
-  return { created: 0, updated: 0, failed: 0 }
+  return { created: 0, updated: 0, failed: 0, refused: 0 }
 }
 
 /** Promove UM registro (apply): strategy.promote -> slug + traducao. */
@@ -181,6 +182,14 @@ async function promoteOne(
 ): Promise<void> {
   try {
     const { outcome, display } = await strategy.promote(row)
+    // RECUSA NA PORTA (recorte de idioma, Parte C). Sai ANTES do slug: um raw
+    // de idioma fora do recorte, promovido, recriaria o titulo que a Parte D
+    // acabou de apagar — e com slug, entraria de novo no sitemap.
+    if (isUpsertRefused(outcome)) {
+      counts.refused += 1
+      options.onItem?.(row.tmdbId, 'refused')
+      return
+    }
     const desiredSlug = desiredCatalogSlug(display.title, row.tmdbId)
     await options.finalize.upsertCanonicalSlug(strategy.entityType, outcome.id, desiredSlug, row.tmdbId)
     await options.finalize.upsertTranslation(strategy.entityType, outcome.id, display.title, display.overview)

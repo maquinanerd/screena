@@ -15,6 +15,8 @@
 
 import { RATING_SCALES, RATING_SOURCES, type ProviderKind } from "@screena/config";
 
+import { LANGUAGE_VOCABULARY } from "./language-vocabulary.js";
+
 /** Linha de seed de `languages`. */
 export interface LanguageSeed {
   readonly code: string;
@@ -70,9 +72,25 @@ export interface SourceLicenseSeed {
  * quando completos (dado + i18n de UI + hreflang) e revisados por humano.
  */
 export const LANGUAGE_SEED: readonly LanguageSeed[] = [
+  // Locales de AUTORIA (espelho de CONTENT_AUTHORING_LOCALES). `pt-BR` e o
+  // unico publicado/indexavel; en/es existem para receber conteudo revisado.
   { code: "pt-BR", namePt: "Portugues (Brasil)", nameEn: "Portuguese (Brazil)", isPublished: true, indexDefault: true },
   { code: "en", namePt: "Ingles", nameEn: "English", isPublished: false, indexDefault: false },
   { code: "es", namePt: "Espanhol", nameEn: "Spanish", isPublished: false, indexDefault: false },
+  // DICIONARIO ISO 639-1 (ver `language-vocabulary.ts`). Alvo da FK
+  // `movies.original_language` / `tv_shows.original_language`. NAO sao locales
+  // de publicacao: nascem `isPublished: false` e `indexDefault: false`, sem
+  // excecao. `en` e `es` ja subiram acima com os mesmos flags; o filtro evita a
+  // linha duplicada sem que o vocabulario precise conhecer a lista de autoria.
+  ...LANGUAGE_VOCABULARY.filter((entry) => entry.code !== "en" && entry.code !== "es").map(
+    (entry): LanguageSeed => ({
+      code: entry.code,
+      namePt: entry.namePt,
+      nameEn: entry.nameEn,
+      isPublished: false,
+      indexDefault: false,
+    }),
+  ),
 ];
 
 /** Conjunto inicial de paises (ISO 3166-1 alpha-2). */

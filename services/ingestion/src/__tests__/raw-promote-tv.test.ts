@@ -159,7 +159,7 @@ describe('promoteTvShowsFromRaw', () => {
     const report = await promoteTvShowsFromRaw(tvOpts(makeTvSource([tvRow(1)]), store, finalize))
 
     expect(report.entityType).toBe('tv')
-    expect(report.counts).toEqual({ created: 1, updated: 0, failed: 0 })
+    expect(report.counts).toEqual({ created: 1, updated: 0, failed: 0, refused: 0 })
     const input = tvCalls[0]!
     expect(input.tvShow.nameOriginal).toBe('Show 1') // original_name
     expect(input.tvShow.posterPath).toBe('/p1.jpg')
@@ -201,9 +201,9 @@ describe('promoteTvShowsFromRaw', () => {
     const { store, tvCalls } = makeTvStore()
     const { finalize } = makeFinalize()
     const r1 = await promoteTvShowsFromRaw(tvOpts(makeTvSource(rows), store, finalize))
-    expect(r1.counts).toEqual({ created: 2, updated: 0, failed: 0 })
+    expect(r1.counts).toEqual({ created: 2, updated: 0, failed: 0, refused: 0 })
     const r2 = await promoteTvShowsFromRaw(tvOpts(makeTvSource(rows), store, finalize))
-    expect(r2.counts).toEqual({ created: 0, updated: 2, failed: 0 })
+    expect(r2.counts).toEqual({ created: 0, updated: 2, failed: 0, refused: 0 })
     expect(tvCalls).toHaveLength(4)
   })
 

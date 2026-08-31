@@ -135,7 +135,7 @@ describe('promoteMoviesFromRaw', () => {
 
     const report = await promoteMoviesFromRaw(opts({ source, store, finalize }))
 
-    expect(report.counts).toEqual({ created: 2, updated: 0, failed: 0 })
+    expect(report.counts).toEqual({ created: 2, updated: 0, failed: 0, refused: 0 })
     expect(report.available).toBe(2)
     expect(report.selected).toBe(2)
     expect(calls.map((c) => c.tmdbId)).toEqual([1, 2])
@@ -152,10 +152,10 @@ describe('promoteMoviesFromRaw', () => {
     const { finalize } = makeFinalize()
 
     const r1 = await promoteMoviesFromRaw(opts({ source: makeSource(rows), store, finalize }))
-    expect(r1.counts).toEqual({ created: 2, updated: 0, failed: 0 })
+    expect(r1.counts).toEqual({ created: 2, updated: 0, failed: 0, refused: 0 })
 
     const r2 = await promoteMoviesFromRaw(opts({ source: makeSource(rows), store, finalize }))
-    expect(r2.counts).toEqual({ created: 0, updated: 2, failed: 0 })
+    expect(r2.counts).toEqual({ created: 0, updated: 2, failed: 0, refused: 0 })
     // upsert foi chamado nas duas execucoes (idempotente); nada aborta.
     expect(calls).toHaveLength(4)
   })
@@ -168,7 +168,7 @@ describe('promoteMoviesFromRaw', () => {
 
     const report = await promoteMoviesFromRaw(opts({ source, store, finalize }))
 
-    expect(report.counts).toEqual({ created: 2, updated: 0, failed: 1 })
+    expect(report.counts).toEqual({ created: 2, updated: 0, failed: 1, refused: 0 })
     expect(report.failedIds).toEqual([2])
     // so os validos chegaram ao store.
     expect(calls.map((c) => c.tmdbId)).toEqual([1, 3])
@@ -194,7 +194,7 @@ describe('promoteMoviesFromRaw', () => {
     expect(report.mode).toBe('dry-run')
     expect(report.available).toBe(5)
     expect(report.selected).toBe(3) // min(available, limit)
-    expect(report.counts).toEqual({ created: 0, updated: 0, failed: 0 })
+    expect(report.counts).toEqual({ created: 0, updated: 0, failed: 0, refused: 0 })
     // nem listMoviePayloads, nem store, nem finalize foram chamados.
     expect(source.listed).toEqual([])
     expect(calls).toHaveLength(0)

@@ -13,7 +13,7 @@ import {
 import type { PromoteCounts, PromoteReport } from '../raw-promote/types.js'
 
 function report(over: Partial<PromoteReport> = {}): PromoteReport {
-  const zero: PromoteCounts = { created: 0, updated: 0, failed: 0 }
+  const zero: PromoteCounts = { created: 0, updated: 0, failed: 0, refused: 0 }
   return {
     mode: 'apply',
     entityType: 'movie',
@@ -30,7 +30,7 @@ function report(over: Partial<PromoteReport> = {}): PromoteReport {
 
 describe('promoteProcessed', () => {
   it('soma created+updated+failed', () => {
-    expect(promoteProcessed({ created: 2, updated: 1, failed: 1 })).toBe(4)
+    expect(promoteProcessed({ created: 2, updated: 1, failed: 1, refused: 0 })).toBe(4)
   })
 })
 
@@ -40,17 +40,17 @@ describe('derivePromoteStatus', () => {
   })
   it('tudo ok => success', () => {
     expect(
-      derivePromoteStatus(report({ selected: 2, counts: { created: 2, updated: 0, failed: 0 } })),
+      derivePromoteStatus(report({ selected: 2, counts: { created: 2, updated: 0, failed: 0, refused: 0 } })),
     ).toBe('success')
   })
   it('alguma falha (parcial) => partial', () => {
     expect(
-      derivePromoteStatus(report({ selected: 3, counts: { created: 2, updated: 0, failed: 1 } })),
+      derivePromoteStatus(report({ selected: 3, counts: { created: 2, updated: 0, failed: 1, refused: 0 } })),
     ).toBe('partial')
   })
   it('tudo falhou => failed', () => {
     expect(
-      derivePromoteStatus(report({ selected: 2, counts: { created: 0, updated: 0, failed: 2 } })),
+      derivePromoteStatus(report({ selected: 2, counts: { created: 0, updated: 0, failed: 2, refused: 0 } })),
     ).toBe('failed')
   })
 })
@@ -62,7 +62,7 @@ describe('renderPromoteReport', () => {
         mode: 'apply',
         available: 10,
         selected: 3,
-        counts: { created: 2, updated: 0, failed: 1 },
+        counts: { created: 2, updated: 0, failed: 1, refused: 0 },
         failedIds: [42],
       }),
     )
@@ -89,7 +89,7 @@ describe('renderPromoteReport', () => {
   it('JSON serializado inclui status e processed no apply', () => {
     const json = JSON.parse(
       serializePromoteReportJson(
-        report({ selected: 1, counts: { created: 1, updated: 0, failed: 0 } }),
+        report({ selected: 1, counts: { created: 1, updated: 0, failed: 0, refused: 0 } }),
       ),
     )
     expect(json.status).toBe('success')

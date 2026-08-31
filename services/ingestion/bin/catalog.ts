@@ -73,6 +73,18 @@ import {
   TEXT_BACKFILLABLE_TYPES,
   type TextBackfillEntityType,
 } from '../src/persistence/text-backfill.js'
+import {
+  backfillOriginalLanguage,
+  LANGUAGE_BACKFILLABLE_TYPES,
+  type LanguageBackfillEntityType,
+} from '../src/persistence/language-backfill.js'
+import {
+  describeDeleteCascade,
+  measureCatalogByLanguage,
+  planLanguageCutdown,
+  runLanguageCutdown,
+} from '../src/persistence/language-cutdown.js'
+import { resolveCatalogLanguageAllowlist } from '@screena/config'
 import { createPrismaSyncLog } from '../src/persistence/sync-log.js'
 import type { CatalogDecisionEntityType } from '@screena/seo'
 import {
@@ -281,6 +293,8 @@ const DB_ONLY_COMMANDS = new Set([
   'index-decisions',
   'backfill-finalization',
   'backfill-text',
+  'backfill-language',
+  'language-cutdown',
 ])
 
 /** Monta so a camada de banco (sem TMDB). */
@@ -404,6 +418,10 @@ async function main() {
           return await cmdBackfillFinalization(db, flags, locale)
         case 'backfill-text':
           return await cmdBackfillText(db, flags, locale)
+        case 'backfill-language':
+          return await cmdBackfillLanguage(db, flags)
+        case 'language-cutdown':
+          return await cmdLanguageCutdown(db, flags)
         case 'dead-letter':
           return await cmdDeadLetter(db, subcommand, flags)
         default:
@@ -819,6 +837,304 @@ async function cmdBackfillFinalization(
       : 'Finalizacao aplicada. A indexacao publica CONTINUA desligada.',
   ])
   return EXIT_CODES.ok
+}
+
+/**
+ * language-cutdown — MEDE (Parte B) e APAGA (Parte D) o catalogo fora do recorte.
+ *
+ * `--dry-run` e o ENTREGAVEL DA PARTE B: a tabela por idioma com fica/sai, o
+ * total que sai ja com a cascata, e os titulos que saem tendo oferta de
+ * streaming no Brasil ou sinopse em pt-BR. E o material que o dono precisa ver
+ * ANTES de autorizar. Ele nao apaga nada.
+ *
+ * `--apply` exige, alem de si mesmo, `--confirm-mass-change` — e ainda assim
+ * RECUSA rodar enquanto houver titulo com `original_language` nulo. Ver o
+ * intertravamento em `src/persistence/language-cutdown.ts`.
+ */
+async function cmdLanguageCutdown(services: DbOnlyRuntime, flags: CatalogFlags): Promise<number> {
+  const allowlist = resolveCatalogLanguageAllowlist()
+  const dryRun = !flags.apply
+  const iniciadoMs = services.now().getTime()
+
+  // O SEGUNDO FREIO VEM ANTES DO TRABALHO. Recusar depois de varrer o catalogo
+  // inteiro duas vezes desperdicaria minutos num banco de 10 GB para dizer algo
+  // que ja se sabia na linha de comando.
+  if (!dryRun && !flags.confirmMassChange) {
+    process.stderr.write(
+      [
+        'erro: --apply exige tambem --confirm-mass-change.',
+        '  Este comando APAGA catalogo em massa e a operacao NAO tem volta.',
+        '  Antes de rodar: (1) pg_dump feito e conferido; (2) a Parte B reportada',
+        '  e aprovada pelo dono; (3) `catalog backfill-language --apply` executado.',
+        '',
+      ].join('\n'),
+    )
+    return EXIT_CODES.usage
+  }
+
+  const censo = await measureCatalogByLanguage(services.prisma, allowlist)
+  const cascata = await describeDeleteCascade(services.prisma)
+
+  if (dryRun) {
+    const plano = await planLanguageCutdown(services.prisma, allowlist)
+    const semCascata = cascata.filter((e) => e.onDelete !== 'cascade')
+    emit(flags, { censo, plano, cascata }, [
+      `RECORTE DE IDIOMA — MEDICAO (Parte B). Recorte: ${allowlist.join(', ')}`,
+      '',
+      'B.1 — CATALOGO POR IDIOMA',
+      '  idioma  fica  filmes   series  temporadas  episodios  ofertaBR  sinopsePT  popMediana',
+      ...censo.rows.map((r) =>
+        [
+          `  ${(r.language ?? '(nulo)').padEnd(7)}`,
+          `${(r.kept ? 'FICA' : r.language === null ? '  ? ' : 'SAI ').padEnd(5)}`,
+          `${String(r.movies).padStart(7)}`,
+          `${String(r.tvShows).padStart(8)}`,
+          `${String(r.seasons).padStart(11)}`,
+          `${String(r.episodes).padStart(10)}`,
+          `${String(r.withBrOffer).padStart(9)}`,
+          `${String(r.withPtSynopsis).padStart(10)}`,
+          `${(r.medianPopularity === null ? '-' : r.medianPopularity.toFixed(2)).padStart(11)}`,
+        ].join(' '),
+      ),
+      '',
+      'B.2 — O QUE SAI, COM A CASCATA',
+      `  filmes ${censo.leaving.movies} · series ${censo.leaving.tvShows} · temporadas ${censo.leaving.seasons} · episodios ${censo.leaving.episodes}`,
+      `  pessoas que ficariam orfas: ${plano.orphanPeople}`,
+      `  api_cache: ${plano.apiCacheRows} linhas · tmdb_raw: ${plano.tmdbRawRows} linhas`,
+      '',
+      '  O QUE FICA',
+      `  filmes ${censo.staying.movies} · series ${censo.staying.tvShows} · temporadas ${censo.staying.seasons} · episodios ${censo.staying.episodes}`,
+      '',
+      censo.nullLanguageTitles > 0
+        ? `  ATENCAO: ${censo.nullLanguageTitles} titulo(s) com idioma NULO. NAO estao em "sai" nem em "fica".
+    Rode \`catalog backfill-language --apply\` — \`pt\`, \`ja\` e \`ko\` sao gravados como NULL
+    pelo defeito antigo, e apagar agora removeria titulo que FICA. O --apply recusa.`
+        : '  Nenhum titulo com idioma nulo — o intertravamento esta satisfeito.',
+      '',
+      'B.3 — TITULOS QUE SAEM E TEM OFERTA NO BRASIL OU SINOPSE pt-BR',
+      `  total: ${censo.collateral.total} (oferta BR: ${censo.collateral.withBrOffer} · sinopse pt-BR: ${censo.collateral.withPtSynopsis})`,
+      ...(censo.collateral.topByPopularity.length > 0
+        ? [
+            '  os 30 mais populares:',
+            ...censo.collateral.topByPopularity.map(
+              (t, i) =>
+                `    ${String(i + 1).padStart(2)}. [${t.language}] ${t.entityType} ${t.title}` +
+                ` (pop ${t.popularity?.toFixed(1) ?? '-'})` +
+                (t.brProviders.length > 0 ? ` · BR: ${t.brProviders.join(', ')}` : '') +
+                (t.hasPtSynopsis ? ' · sinopse pt-BR' : ''),
+            ),
+            '',
+            '  ESTA DECISAO E DO DONO. Se o numero acima for grande, abrir excecao',
+            '  para um idioma e uma variavel de ambiente (CINERIE_CATALOG_LANGUAGES),',
+            '  nao um PR.',
+          ]
+        : ['  nenhum — nada do que sai tem oferta BR nem sinopse pt-BR.']),
+      '',
+      'D.2 — CASCATA REAL (lida de pg_constraint, nao suposta)',
+      ...cascata.map(
+        (e) => `  ${e.childTable.padEnd(34)} -> ${e.parentTable.padEnd(10)} ON DELETE ${e.onDelete}`,
+      ),
+      semCascata.length > 0
+        ? `  ATENCAO: ${semCascata.length} FK(s) sem CASCADE acima — ver "bloqueiam" abaixo.`
+        : '',
+      '',
+      'D.3 — LINHAS QUE CADA TABELA PERDERIA',
+      ...Object.entries(plano.rowsByTable)
+        .filter(([, n]) => n > 0)
+        .sort((a, b) => b[1] - a[1])
+        .map(([t, n]) => `  ${t.padEnd(34)} ${String(n).padStart(12)}`),
+      `  ${'TOTAL'.padEnd(34)} ${String(plano.totalRows).padStart(12)}`,
+      '',
+      ...(Object.entries(plano.blockingRows).filter(([, n]) => n > 0).length > 0
+        ? [
+            'BLOQUEIAM O DELETE (ON DELETE RESTRICT) — resolver antes do --apply:',
+            ...Object.entries(plano.blockingRows)
+              .filter(([, n]) => n > 0)
+              .map(([t, n]) => `  ${t}: ${n} linha(s)`),
+            '',
+          ]
+        : ['Nenhuma linha bloqueando por ON DELETE RESTRICT.', '']),
+      'NADA FOI APAGADO. Este comando so mede.',
+      'Para apagar (depois do OK do dono e do pg_dump):',
+      '  pnpm catalog language-cutdown --apply --confirm-mass-change',
+    ])
+    return EXIT_CODES.ok
+  }
+
+  // ------------------------------------------------------------------ APPLY
+  const report = await runLanguageCutdown(services.prisma, {
+    allowlist,
+    ...(flags.limit !== null ? { batchSize: flags.limit } : {}),
+    dryRun: false,
+    onBatch: ({ entityType, deleted, rowsRemoved, remaining }) => {
+      if (flags.json) return
+      process.stderr.write(
+        `  [${entityType}] apagados ${deleted} · linhas ${rowsRemoved} · restam ${remaining}\n`,
+      )
+    },
+  })
+
+  if (report.refused !== null) {
+    process.stderr.write(`${report.refused}\n`)
+    emit(flags, report, [report.refused])
+    return EXIT_CODES.failed
+  }
+
+  try {
+    await createPrismaSyncLog(services.prisma).write({
+      endpoint: `language-cutdown/${allowlist.join('+')}`,
+      status: 'success',
+      itemsProcessed: report.totalRows,
+      itemsUpdated: 0,
+      durationMs: services.now().getTime() - iniciadoMs,
+      quotaCost: 0,
+    })
+  } catch {
+    process.stderr.write('AVISO: log em `api_sync_logs` NAO gravado (o apagamento ocorreu).\n')
+  }
+
+  emit(flags, report, [
+    `RECORTE DE IDIOMA — APLICADO. Recorte: ${allowlist.join(', ')}`,
+    `  filmes apagados: ${report.deletedTitles.movie ?? 0}`,
+    `  series apagadas: ${report.deletedTitles.tv ?? 0}`,
+    `  lotes: ${report.batches}`,
+    '',
+    '  linhas apagadas por tabela:',
+    ...Object.entries(report.rowsByTable)
+      .sort((a, b) => b[1] - a[1])
+      .map(([t, n]) => `    ${t.padEnd(34)} ${String(n).padStart(12)}`),
+    `    ${'TOTAL'.padEnd(34)} ${String(report.totalRows).padStart(12)}`,
+    '',
+    `  pessoas orfas apagadas: ${report.orphanPeopleDeleted}`,
+    `  api_cache: ${report.apiCacheDeleted} linhas · tmdb_raw: ${report.tmdbRawDeleted} linhas`,
+    '',
+    'O espaco em disco NAO volta sozinho: o PostgreSQL marca as linhas mortas e',
+    'reusa as paginas. Para devolver disco ao sistema e preciso VACUUM FULL (que',
+    'trava a tabela) ou pg_repack. Rodar isso e decisao de operacao, nao deste comando.',
+  ])
+  return EXIT_CODES.ok
+}
+
+/**
+ * backfill-language — recupera `original_language` do payload JA guardado.
+ *
+ * ZERO chamadas ao TMDB: `original_language` e campo de topo de `/movie/{id}` e
+ * `/tv/{id}`, e o payload inteiro vive em `api_cache`/`tmdb_raw`. O que faltava
+ * era leitura — o normalizador validava contra uma tabela `languages` de tres
+ * linhas e descartava todo o resto. Ver `src/persistence/language-backfill.ts`.
+ *
+ * PRE-REQUISITO DO RECORTE: este comando roda ANTES de qualquer apagamento por
+ * idioma. Apagar com a coluna nula em 43% dos filmes e 60% das series destruiria
+ * conteudo brasileiro, japones e coreano por engano — os tres idiomas que o dono
+ * mandou MANTER e que hoje estao gravados como NULL.
+ */
+async function cmdBackfillLanguage(services: DbOnlyRuntime, flags: CatalogFlags): Promise<number> {
+  const requested = splitList(flags.entity)
+  const types =
+    requested === null
+      ? LANGUAGE_BACKFILLABLE_TYPES
+      : requested.filter((t): t is LanguageBackfillEntityType =>
+          (LANGUAGE_BACKFILLABLE_TYPES as readonly string[]).includes(t),
+        )
+  if (types.length === 0) {
+    process.stderr.write(
+      `erro: --entity precisa conter um de: ${LANGUAGE_BACKFILLABLE_TYPES.join(', ')}\n`,
+    )
+    return EXIT_CODES.usage
+  }
+
+  const iniciadoMs = services.now().getTime()
+  const dryRun = !flags.apply
+  const report = await backfillOriginalLanguage(services.prisma, {
+    entityTypes: types,
+    ...(flags.limit !== null ? { limit: flags.limit } : {}),
+    dryRun,
+    onBatch: ({ entityType, seen, recovered, lastId }) => {
+      if (flags.json) return
+      process.stderr.write(
+        `  [${entityType}] vistos ${seen} · recuperados ${recovered} · ultimo id ${lastId}\n`,
+      )
+    },
+  })
+
+  // LOG DE SYNC (invariante 10). Ver o mesmo bloco em `cmdBackfillText`: o log
+  // e escrito DEPOIS do trabalho e a falha dele NAO pode apagar o relatorio.
+  let falhaDeLog: string | null = null
+  try {
+    await createPrismaSyncLog(services.prisma).write({
+      endpoint: `backfill-language/${types.join('+')}${dryRun ? '?dry-run=1' : ''}`,
+      status: report.recovered === 0 ? 'empty' : 'success',
+      itemsProcessed: report.candidates,
+      itemsUpdated: report.written,
+      durationMs: services.now().getTime() - iniciadoMs,
+      quotaCost: 0,
+    })
+  } catch (error) {
+    falhaDeLog =
+      redactSecrets(errorMessage(error))
+        .split('\n')
+        .map((linha) => linha.trim())
+        .find((linha) => linha !== '') ?? 'erro desconhecido'
+    process.stderr.write(
+      [
+        'AVISO: a execucao rodou, mas o log em `api_sync_logs` NAO foi gravado.',
+        `  causa: ${falhaDeLog}`,
+        '  O relatorio abaixo e valido; o que falta e o rastro auditavel.',
+        '',
+      ].join('\n'),
+    )
+  }
+
+  emit(flags, report, [
+    `backfill de idioma original · ${report.dryRun ? 'DRY-RUN' : 'APLICADO'}`,
+    `  candidatos (original_language NULL): ${report.candidates}`,
+    `  recuperados: ${report.recovered} · gravados: ${report.written}`,
+    `  escritas recusadas por ja haver idioma: ${report.refusedAlreadyFilled}`,
+    `  chamadas TMDB executadas: ${report.externalCallsMade}`,
+    '',
+    '  payload lido de:',
+    `    api_cache                   ${report.byPayloadSource.api_cache}`,
+    `    tmdb_raw                    ${report.byPayloadSource.tmdb_raw}`,
+    '',
+    Object.keys(report.byType).length > 0 ? '  recuperados por tipo:' : '  nada recuperado.',
+    ...Object.entries(report.byType).map(([k, v]) => `    ${k.padEnd(10)} ${v}`),
+    '',
+    Object.keys(report.byLanguage).length > 0 ? '  idiomas recuperados (top 30):' : '',
+    ...Object.entries(report.byLanguage)
+      .slice(0, 30)
+      .map(([k, v]) => `    ${k.padEnd(6)} ${v}`),
+    '',
+    Object.keys(report.skipped).length > 0 ? '  nao recuperados:' : '',
+    ...Object.entries(report.skipped).map(([k, v]) => `    ${k.padEnd(28)} ${v}`),
+    ...(Object.keys(report.unknownCodes).length > 0
+      ? [
+          '',
+          '  CODIGOS FORA DO DICIONARIO (cada um e uma linha que falta em',
+          '  `LANGUAGE_VOCABULARY`, @screena/db — nao um titulo sem idioma):',
+          ...Object.entries(report.unknownCodes).map(([k, v]) => `    ${k.padEnd(6)} ${v}`),
+        ]
+      : []),
+    '',
+    report.samples.length > 0 ? '  amostra do recuperado:' : '',
+    ...report.samples
+      .slice(0, 10)
+      .map((s) => `    ${s.entityType}#${s.entityId} [${s.from}] ${s.language} · ${s.title}`),
+    '',
+    // O conjunto de candidatos e "original_language IS NULL". Preencher uma
+    // linha a RETIRA do conjunto — entao reexecutar retoma por construcao, sem
+    // arquivo de estado. Prometer uma flag de retomada que nao existe seria
+    // pior que nao prometer nada.
+    `  ultimo id visitado: ${JSON.stringify(report.checkpoint)}`,
+    '  (para continuar, basta rodar de novo: linha preenchida sai do conjunto)',
+    '',
+    ...(report.dryRun
+      ? ['Nada foi gravado. Use --apply para preencher.']
+      : [
+          'Idioma preenchido. NENHUM titulo foi apagado por este comando.',
+          'O recorte de cinco idiomas e decisao separada — ver a Parte B/D da leva.',
+        ]),
+  ])
+  return falhaDeLog === null ? EXIT_CODES.ok : EXIT_CODES.failed
 }
 
 /**
