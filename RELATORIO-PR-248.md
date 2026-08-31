@@ -8,6 +8,36 @@
 > PR: <https://github.com/maquinanerd/screena/pull/248>
 > Documento entregue: [`docs/operations/midia-notas-e-atualizacao-diaria.md`](docs/operations/midia-notas-e-atualizacao-diaria.md)
 
+> ## ERRATA — 2026-08-31, antes do merge
+>
+> **A tabela de proxies do catálogo estava mecanicamente errada: a coluna foi deslocada.**
+> A contagem de séries virou a de temporadas, a de temporadas virou a de episódios, e
+> **episódio nunca foi contado**. Erro de 4,2× em temporada e de **28,8× em episódio**.
+>
+> | | valor que circulou | valor medido (psql, 28/08) | erro |
+> | --- | ---: | ---: | --- |
+> | Filmes | 34.802 | **37.554** | −7,3% |
+> | Séries | 32.486 | **32.983** | −1,5% |
+> | Temporadas | 32.483 | **136.650** | **4,2× menor** |
+> | Episódios | 135.926 | **3.921.368** | **28,8× menor** |
+> | Pessoas | 100.000 | **1.200.796** | era o **teto do censo** |
+>
+> **O que muda na conclusão.** O custo de mídia não é 471.394 — é **8.257.110**. Uma
+> passagem completa não é 874.379 req em 6,07 h — é **13.656.998 req em ~3,95 dias** a
+> 40 req/s. Ou seja: **a varredura completa diária não é cara, é impossível.**
+>
+> **Onde o número errado foi citado.** O documento [`gatilho-ou-varredura.md`](docs/operations/gatilho-ou-varredura.md)
+> (#254, já em `main`) usa esses valores como base declarada — *"proxies declarados de
+> #248"* — para montar a conta dos três desenhos. Ele recebeu a correção correspondente no
+> mesmo PR, em commit próprio.
+>
+> **A correção FORTALECE o #254.** A recomendação de lá (Desenho 3 — gatilho + exports +
+> reconciliação mensal) era defendida por economia de 84,5%; agora é defendida por
+> **viabilidade**: o Desenho 1 não é a opção cara, é a opção que não existe.
+>
+> As seções corrigidas são a §7.2, a §7.3 e a §7.4. As demais medições deste relatório
+> (vídeos, notas, licença, código) **não dependiam** desses proxies e permanecem válidas.
+
 ---
 
 ## Índice
@@ -80,8 +110,8 @@ consumidor).
 | `cinerie_score_calculations` | **32.762** linhas, todas `status='calculated'`, nenhuma bloqueada. `deadpool-2`: `value=75.000`, `scale=100`, `blocked_reason` vazio — e a página não exibe nota |
 | `external_ratings` | **469** linhas: imdb 226 · metacritic 115 · rotten_tomatoes 113+5 · letterboxd 5 · filmaffinity 5 |
 | Procedência das notas | `omdb` → imdb/metacritic/rotten_tomatoes (19–21/08); `rapidapi_film_show_ratings` → letterboxd/rotten_tomatoes/filmaffinity (10/07, nunca mais) |
-| Catálogo | 34.802 filmes + 32.486 séries = **67.288** títulos |
-| Temporada, episódio, pessoa | **truncados em 100.000** no censo — totais reais desconhecidos |
+| Catálogo | **37.554** filmes + **32.983** séries = **70.537** títulos *(corrigido em 31/08; circulou como 34.802 + 32.486 = 67.288)* |
+| Temporada, episódio, pessoa | **136.650** · **3.921.368** · **1.200.796** *(medidos em 28/08; o relatório original os declarava truncados em 100.000 e usava proxies deslocados — ver ERRATA)* |
 | Fila | 406.301 `succeeded`, 2.122 `dead_letter`, **nada pendente** |
 | `api_providers` | 7 linhas (colunas `key, name, kind, homepage_url, created_at` — sem credencial) |
 | `rating_sources` | 5 linhas |
@@ -602,7 +632,7 @@ topo). **Os dois exigem que o sync de DETALHE tenha rodado.** Título que só pa
 descoberta de ids **não tem** e nunca será consultado.
 
 Consulta 2 do §11. **Esse número é o teto da cobertura possível** — sem ele, a conta do
-§7.3 usa 67.288, que é o limite superior otimista.
+§7.3 usa 70.537, que é o limite superior otimista.
 
 ---
 
@@ -631,49 +661,70 @@ roda o handler **inline**, fora da fila. A janela de 7 dias para mídia declarad
 **Quantos títulos congelados:** todos que já tiveram `sync_media` bem sucedido — o censo
 anterior registrou 97.898. Confirmação na consulta 4 do §11.
 
-### 7.2 Os números reais (D.2) — parcialmente medidos
+### 7.2 Os números reais (D.2) — **medidos** *(corrigido em 2026-08-31)*
 
-Filmes e séries vieram do censo. **Temporada, episódio e pessoa continuam desconhecidos**
-(truncados em 100.000). Consulta 5 do §11.
+Os cinco números são contagem direta em produção (`psql` no `screen-db`, 2026-08-28).
+Não há mais proxy nesta tabela.
 
-Para não travar a conta, usei **proxies declarados** — as contagens de jobs concluídos do
-censo de 27/08, que são um piso razoável:
+| Entidade | Valor | Origem | Proxy errado que circulou |
+| --- | ---: | --- | ---: |
+| Filmes | **37.554** | `count(*) from movies` | 34.802 |
+| Séries | **32.983** | `count(*) from tv_shows` | 32.486 |
+| Temporadas | **136.650** | `count(*) from seasons` | 32.483 (**4,2× menor**) |
+| Episódios | **3.921.368** | `count(*) from episodes` | 135.926 (**28,8× menor**) |
+| Pessoas | **1.200.796** | `count(*) from people` | 100.000 (teto do censo) |
+| **Total** | **5.329.351** | | 335.697 |
 
-| Entidade | Valor usado | Origem |
-| --- | --- | --- |
-| Filmes | 34.802 | **medido** |
-| Séries | 32.486 | **medido** |
-| Temporadas | 32.483 | *proxy* — `sync_seasons` succeeded |
-| Episódios | 135.926 | *proxy* — `sync_episodes` succeeded |
-| Pessoas | 100.000 | *piso* — censo truncado; o real é maior |
+**Títulos = 70.537.** A causa do erro foi mecânica: a coluna de proxies foi deslocada uma
+linha para baixo — série virou temporada, temporada virou episódio, e episódio nunca foi
+contado. O 100.000 de pessoas não era estimativa: era **o teto do censo reportado como
+total**, o mesmo defeito que a #249 corrigiu.
 
 ### 7.3 A conta de viabilidade (D.3)
 
-#### TMDB — cabe, com folga
+#### TMDB — a varredura completa NÃO cabe num dia. Erra por 4×
 
 | Trabalho | Requisições | Base |
-| --- | --- | --- |
-| Detalhe (1 req/entidade, appends inclusos) | 335.697 | 67.288 títulos + 32.483 temporadas + 135.926 episódios + 100.000 pessoas |
-| Mídia (`/images` + `/videos` dedicados, 2 req) | 471.394 | títulos + temporadas + episódios |
-| Ofertas (`/watch/providers` dedicado) | 67.288 | títulos |
-| **Total de uma passagem completa** | **874.379** | |
+| --- | ---: | --- |
+| Detalhe (1 req/entidade, appends inclusos) | **5.329.351** | 70.537 títulos + 136.650 temporadas + 3.921.368 episódios + 1.200.796 pessoas |
+| Mídia (`/images` + `/videos` dedicados, 2 req) | **8.257.110** | (70.537 + 136.650 + 3.921.368) × 2 |
+| Ofertas (`/watch/providers` dedicado) | 70.537 | títulos |
+| **Total de uma passagem completa** | **13.656.998** | |
 
-| Ritmo | Duração | Teto diário |
-| --- | --- | --- |
-| **40 req/s** (nosso teto) | **6,07 h** | 3.456.000 |
-| 20 req/s (metade, margem) | 12,14 h | 1.728.000 |
-| 10 req/s (um quarto) | 24,29 h | 864.000 |
+| Ritmo | Duração de UMA passagem | Teto diário |
+| --- | --- | ---: |
+| **40 req/s** (nosso teto) | **3,95 dias** (94,8 h) | 3.456.000 |
+| 20 req/s (metade, margem) | 7,90 dias (189,7 h) | 1.728.000 |
+| 10 req/s (um quarto) | 15,81 dias (379,4 h) | 864.000 |
 
-> **A diária completa do TMDB cabe em ~6 horas**, e cabe mesmo a 20 req/s. Com pessoas
-> subestimadas em 3×, ainda cabe. **O TMDB nunca foi o obstáculo, e nunca foi custo.**
+> **A varredura completa diária não é cara — é impossível.** Ela leva **quase 4 dias** no
+> nosso próprio teto de ritmo; um dia não cabe em quatro. Nem 40 req/s contínuos, 24 h por
+> dia, fecham uma volta diária.
+>
+> A mídia sozinha é **8.257.110 req — 60,5% do custo** — e **95% dessa mídia é episódio**
+> (3.921.368 × 2 = 7.842.736). Episódio é exatamente a entidade que o proxy deslocado
+> contava por 135.926: era ela que escondia a impossibilidade.
+
+**O que sobrevive da conclusão anterior, e o que inverte:**
+
+- **Sobrevive:** o TMDB não tem cota diária, e o impedimento **imediato** da mídia continua
+  sendo a chave de idempotência sem escopo (§7.1) — pré-requisito de qualquer desenho.
+- **Inverte:** o volume passa a ser obstáculo **estrutural**. Varrer tudo todo dia deixou
+  de ser opção cara e virou opção inexistente. O gatilho `/changes` deixa de ser
+  otimização e passa a ser **a única forma**.
+
+**Efeito sobre o #254:** a recomendação de lá (Desenho 3) era defendida por *economia de
+84,5%*; passa a ser defendida por **viabilidade**. E a ressalva de lá **agrava**: com os
+proxies, episódio era 58% da mídia; com o número real, é **95% da mídia e 57% do custo
+total** — e é a fatia que o `/changes` não nomeia.
 
 #### OMDb — não cabe, e a distância é grande
 
-| Cenário | Req/dia | Volta completa (67.288 títulos) |
-| --- | --- | --- |
-| Cota utilizável (1.000 − 150 de reserva) | 850 | **79 dias** |
-| **Ritmo real do agendador hoje** (200 a cada 7 d) | 28,6 | **2.355 dias ≈ 6,5 anos** |
-| Para fechar a janela de 7 dias declarada | 9.613 | **9,6× a cota gratuita** |
+| Cenário | Req/dia | Volta completa (70.537 títulos) |
+| --- | ---: | --- |
+| Cota utilizável (1.000 − 150 de reserva) | 850 | **83 dias** |
+| **Ritmo real do agendador hoje** (200 a cada 7 d) | 28,6 | **2.469 dias ≈ 6,8 anos** |
+| Para fechar a janela de 7 dias declarada | 10.077 | **10,1× a cota gratuita** |
 
 ### 7.4 Proposta de ritmo escalonado (D.4)
 
@@ -682,11 +733,15 @@ Como a diária completa da OMDb é impossível no plano gratuito, o critério te
 seleção **já usa** para ordenar. **Nenhum agendador novo; só números.**
 
 | Faixa | Critério | Volume | Cadência | Req/dia |
-| --- | --- | --- | --- | --- |
+| --- | --- | ---: | --- | ---: |
 | **A — cabeça** | 2.000 mais populares | 2.000 | semanal | 286 |
 | **B — corpo** | próximos 10.000 | 10.000 | mensal | 333 |
-| **C — cauda longa** | os 55.288 restantes | 55.288 | a cada 240 dias | 230 |
-| | | | **Total** | **849/dia** ✓ |
+| **C — cauda longa** | os **58.537** restantes | 58.537 | a cada **260 dias** | 225 |
+| | | | **Total** | **844/dia** ✓ |
+
+> **Recalculado em 31/08.** Circulou como *"55.288 restantes, a cada 240 dias, 849/dia"*,
+> derivado de 67.288 títulos. Com 70.537 a cauda vira 58.537 e a cadência de 240 dias
+> **estouraria a cota** (863 contra 850); a 260 dias volta a caber, em 844/dia.
 
 Cabe exatamente na cota utilizável (850). Título recém-ingerido não espera a faixa: o
 caminho sob demanda tem 150 reservados só para ele.
@@ -963,12 +1018,12 @@ caro para aprender.
 
 | Categoria | O que é | Exemplos nesta leva |
 | --- | --- | --- |
-| **RECEBIDO PRONTO** | Veio do censo do dono, não medi | 98.096 vídeos · 32.762 cálculos · 469 notas · 67.288 títulos · 2.122 dead-letter |
+| **RECEBIDO PRONTO** | Veio do censo do dono, não medi | 98.096 vídeos · 32.762 cálculos · 469 notas · ~~67.288 títulos~~ **70.537 títulos** (corrigido 31/08) · 2.122 dead-letter |
 | **LI no código** | Grep/leitura de arquivo, verificável a mão | `SCREEN_SCORE_SCALE = 5` · `CINERIE_SCORE_DISPLAY_SCALE = 100` · `batchLimit` default 200 · intervalo de 7 dias · os 47 pares de append · `discriminator: input.locale` |
 | **VERIFIQUEI** | Fiz a asserção e provei que ela vale | As 27 entradas do registro (módulo existe + string aparece + função é chamada) · o lado negativo (4 valores com zero ocorrências) · **zero escritores de `movies.screen_score`** em 4 diretórios · zero `aggregate_rating` no JSON-LD |
 | **CONFIRMEI NA DOC** | Fonte externa, citada, não de memória | TMDB: ~40 req/s, sem cota diária, 20 appends max |
 | **EXECUTEI** | Rodei e li a saída | O teste de governança (13 verdes) |
-| **CALCULEI** | Aritmética sobre os anteriores | 874.379 req = 6,07 h · 79 dias · 6,5 anos · 9,6× a cota · as faixas A/B/C |
+| **CALCULEI** | Aritmética sobre os anteriores | **13.656.998 req = 3,95 dias** · 83 dias · 6,8 anos · 10,1× a cota · as faixas A/B/C. *(A versão que circulou dizia 874.379 req = 6,07 h · 79 dias · 6,5 anos · 9,6×; a entrada estava errada, não a aritmética — ver ERRATA.)* |
 | **INFERI** | Plausível, **não provado** — marcado como tal | 2.395 ÷ 500 ≈ 5 execuções do promotor |
 | **NÃO DETERMINEI** | Declarado como desconhecido | O plano da chave OMDb em produção |
 

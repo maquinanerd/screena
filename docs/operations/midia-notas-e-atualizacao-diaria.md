@@ -12,17 +12,24 @@
 
 ## 0. O resumo em sete linhas
 
-1. **O TMDB cabe na diária.** Ele não tem cota diária; o limite é ritmo (~40 req/s). Uma
-   passagem completa pelo acervo inteiro custa **~874 mil requisições ≈ 6 h/dia**. Sobra
-   dia. O que impede a atualização diária de mídia **não é custo — é uma chave de
-   idempotência sem escopo**, que torna `sync_media`/`sync_seasons`/`sync_episodes`
-   *write-once*.
-2. **A OMDb não cabe, e não é por pouco.** Uma volta completa custa 67.288 requisições
-   contra 850 utilizáveis por dia: **79 dias por volta**. Para a janela de 7 dias que a
-   própria tabela de ritmos declara, seriam **9,6× a cota gratuita**.
+1. **A varredura completa DIÁRIA do TMDB é impossível — e é a mídia que a torna
+   impossível.** O TMDB não tem cota diária; o limite é ritmo (~40 req/s). Mas uma
+   passagem completa pelo acervo inteiro custa **~13,66 milhões de requisições ≈ 4 dias a
+   40 req/s** — só a mídia são **8,26 milhões**. Um dia não cabe em quatro dias: a
+   varredura diária por força bruta **não é cara, é aritmeticamente impossível**. Logo, o
+   gatilho (`/changes`) deixa de ser economia e passa a ser **a única forma**. O
+   impedimento imediato continua sendo a chave de idempotência sem escopo, que torna
+   `sync_media`/`sync_seasons`/`sync_episodes` *write-once* — agora com um segundo,
+   estrutural, atrás dele.
+   > **ERRATA (2026-08-31).** A versão que circulou desta linha dizia *"~874 mil
+   > requisições ≈ 6 h/dia. Sobra dia"* e concluía *"não é custo"*. Estava errada por
+   > **15,6×**. Ver §5.2.
+2. **A OMDb não cabe, e não é por pouco.** Uma volta completa custa 70.537 requisições
+   contra 850 utilizáveis por dia: **83 dias por volta**. Para a janela de 7 dias que a
+   própria tabela de ritmos declara, seriam **10,1× a cota gratuita**.
 3. **A OMDb parou por ritmo, não por cota.** A fila existe, está agendada e tem executor —
    mas a cadência é de **200 títulos a cada 7 dias**, não 850/dia. No ritmo atual, uma
-   volta pelo catálogo leva **6,5 anos**.
+   volta pelo catálogo leva **6,8 anos**.
 4. **Os 95.701 vídeos bloqueados são assinatura, não defeito.** A licença-mãe existe desde
    13/08. O que falta é a promoção linha a linha, e o freio de 500/execução explica os
    2.395 acesos.
@@ -469,8 +476,8 @@ por IMDb id.
 topo). **Os dois exigem que o sync de DETALHE tenha rodado** para aquele título; um título
 que só passou pela descoberta de ids não tem `imdb_id`.
 
-Quantos dos 67.288 têm — SQL na seção 8. **Esse número é o teto da cobertura possível, e
-sem ele a conta da seção 6 usa 67.288, que é o limite superior otimista.**
+Quantos dos 70.537 têm — SQL na seção 8. **Esse número é o teto da cobertura possível, e
+sem ele a conta da seção 6 usa 70.537, que é o limite superior otimista.**
 
 ---
 
@@ -499,49 +506,97 @@ roda o handler **inline**, fora da fila. A janela de 7 dias para mídia que
 sucedido — o censo anterior registrou 97.898 `sync_media` `succeeded`. Confirmação no SQL
 da seção 8.
 
-### 5.2 Os números reais do catálogo — **parcialmente medidos**
+### 5.2 Os números reais do catálogo — **medidos** *(corrigido em 2026-08-31)*
 
-Filmes (34.802) e séries (32.486) vieram do censo. **Temporada, episódio e pessoa foram
-truncados em 100.000 e continuam desconhecidos.** SQL na seção 8.
+> ### ERRATA — a versão anterior desta seção circulou com a coluna deslocada
+>
+> A tabela original usava **proxies** e estava **mecanicamente errada**: a contagem de
+> séries foi escrita na linha de temporadas, a de temporadas na linha de episódios, e
+> **episódio nunca foi contado**. Resultado: temporadas erradas por 4,2× e episódios
+> errados por **28,8×**.
+>
+> Os valores errados que circularam — 34.802 / 32.486 / 32.483 / 135.926 / 100.000, e as
+> contas derivadas 335.697 · **471.394** · **874.379** · **6,07 h** — **foram citados como
+> verdade em outro documento**: [`gatilho-ou-varredura.md`](./gatilho-ou-varredura.md)
+> (#254), que os declara explicitamente como *"proxies declarados de #248"*. Aquele
+> documento recebeu a correção correspondente no mesmo PR desta errata.
+>
+> **A correção FORTALECE a conclusão do #254 em vez de enfraquecê-la** — ver §5.3.
 
-Para não travar a conta, usei **proxies declarados** — as contagens de jobs concluídos do
-censo anterior (2026-08-27), que são um piso razoável:
+Medido em produção por `psql` no `screen-db` em **2026-08-28**. Não há mais proxy nesta
+tabela: os cinco números são contagem direta.
 
-| Entidade | Valor usado | Origem |
-| --- | --- | --- |
-| Filmes | 34.802 | medido |
-| Séries | 32.486 | medido |
-| Temporadas | 32.483 | **proxy** — `sync_seasons` succeeded |
-| Episódios | 135.926 | **proxy** — `sync_episodes` succeeded |
-| Pessoas | 100.000 | **piso** — censo truncado; o real é maior |
+| Entidade | Valor | Origem | Valor errado que circulou |
+| --- | ---: | --- | ---: |
+| Filmes | **37.554** | `count(*) from movies` | 34.802 |
+| Séries | **32.983** | `count(*) from tv_shows` | 32.486 |
+| Temporadas | **136.650** | `count(*) from seasons` | 32.483 (**4,2× menor**) |
+| Episódios | **3.921.368** | `count(*) from episodes` | 135.926 (**28,8× menor**) |
+| Pessoas | **1.200.796** | `count(*) from people` | 100.000 (era o teto do censo) |
+| **Total de entidades** | **5.329.351** | | 335.697 |
 
-### 5.3 A conta de viabilidade
+**Títulos = 37.554 + 32.983 = 70.537.**
 
-**TMDB — cabe, com folga.**
+O valor de 100.000 para pessoas não era estimativa: era **o próprio teto do censo**
+reportado como total — o mesmo defeito que a #249 corrigiu. Número redondo é teto, não
+medição.
+
+### 5.3 A conta de viabilidade *(recalculada em 2026-08-31)*
+
+**TMDB — a varredura completa NÃO cabe num dia. Erra por 4×.**
 
 | Trabalho | Requisições | Base |
-| --- | --- | --- |
-| Detalhe (1 req/entidade, appends inclusos) | 335.697 | 67.288 títulos + 32.483 temporadas + 135.926 episódios + 100.000 pessoas |
-| Mídia (`/images` + `/videos` dedicados, 2 req/entidade) | 471.394 | títulos + temporadas + episódios |
-| Ofertas (`/watch/providers` dedicado) | 67.288 | títulos |
-| **Total de uma passagem completa** | **874.379** | |
+| --- | ---: | --- |
+| Detalhe (1 req/entidade, appends inclusos) | **5.329.351** | 70.537 títulos + 136.650 temporadas + 3.921.368 episódios + 1.200.796 pessoas |
+| Mídia (`/images` + `/videos` dedicados, 2 req/entidade) | **8.257.110** | (70.537 + 136.650 + 3.921.368) × 2 |
+| Ofertas (`/watch/providers` dedicado) | 70.537 | títulos |
+| **Total de uma passagem completa** | **13.656.998** | |
 
-| Ritmo | Duração | Teto diário daquele ritmo |
-| --- | --- | --- |
-| 40 req/s (nosso teto) | **6,07 h** | 3.456.000 |
-| 20 req/s (metade, margem) | 12,14 h | 1.728.000 |
-| 10 req/s (um quarto) | 24,29 h | 864.000 |
+| Ritmo | Duração de UMA passagem | Teto diário daquele ritmo |
+| --- | --- | ---: |
+| 40 req/s (nosso teto) | **3,95 dias** (94,8 h) | 3.456.000 |
+| 20 req/s (metade, margem) | 7,90 dias (189,7 h) | 1.728.000 |
+| 10 req/s (um quarto) | 15,81 dias (379,4 h) | 864.000 |
 
-**A diária completa do TMDB cabe em ~6 horas**, e cabe mesmo a 20 req/s. Com pessoas
-subestimadas em, digamos, 3×, ainda cabe. **O TMDB não é o obstáculo. Nunca foi custo.**
+> **A varredura completa diária não é cara — é impossível.** No nosso próprio teto de
+> ritmo ela leva **quase 4 dias**; um dia não cabe em quatro. Não existe folga a comprar:
+> mesmo a 40 req/s **contínuos, 24 h por dia**, o acervo só fecha uma volta a cada quatro
+> dias.
+>
+> A mídia sozinha é **8.257.110 requisições — 60,5% do custo** — e **95% dessa mídia é
+> episódio** (3.921.368 × 2 = 7.842.736). Episódio é exatamente a entidade que a versão
+> errada contava por 135.926 em vez de 3,92 milhões: era ela que escondia a
+> impossibilidade.
+
+**O que isso faz com a conclusão anterior.** A versão errada dizia *"o TMDB não é o
+obstáculo, nunca foi custo"*. Metade continua verdadeira e metade inverte:
+
+- **Continua verdadeiro:** o TMDB não tem cota diária, e o impedimento IMEDIATO da mídia
+  continua sendo a chave de idempotência sem escopo (§5.1) — consertá-la é pré-requisito
+  de qualquer desenho.
+- **Inverte:** o volume **passa a ser um obstáculo estrutural**. Varrer tudo todo dia
+  deixou de ser uma opção cara para virar uma opção inexistente.
+
+**Consequência direta para o #254 — a recomendação de lá fica MAIS forte, não menos.**
+[`gatilho-ou-varredura.md`](./gatilho-ou-varredura.md) recomendou o Desenho 3 (gatilho
+`/changes` + exports + reconciliação mensal) argumentando **economia de 84,5%**. Com o
+número correto, o argumento deixa de ser economia e vira **viabilidade**: o Desenho 1
+(varredura completa) não é o caro, é o **impossível**, e o gatilho passa a ser o único
+desenho que executa. As 195 requisições/dia que enumeram o `/changes` inteiro agora valem
+**0,0014%** da varredura, não 0,02%.
+
+**A ressalva que a correção AGRAVA.** O #254 mediu que `/changes` **não nomeia episódio**.
+Com os proxies errados, episódio era 58% do custo de mídia; com o número real, **episódio
+é 95% da mídia e 57% do custo total da varredura**. A lacuna que o #254 classificou como
+"vale medir antes de desenhar" passa a ser **a questão central do desenho**.
 
 **OMDb — não cabe, e a distância é grande.**
 
-| Cenário | Req/dia | Volta completa (67.288 títulos) |
-| --- | --- | --- |
-| Cota utilizável (1.000 − 150 de reserva) | 850 | **79 dias** |
-| **Ritmo real do agendador hoje** (200 a cada 7 d) | 28,6 | **2.355 dias ≈ 6,5 anos** |
-| Para fechar a janela de 7 dias declarada | 9.613 | **9,6× a cota gratuita** |
+| Cenário | Req/dia | Volta completa (70.537 títulos) |
+| --- | ---: | --- |
+| Cota utilizável (1.000 − 150 de reserva) | 850 | **83 dias** |
+| **Ritmo real do agendador hoje** (200 a cada 7 d) | 28,6 | **2.469 dias ≈ 6,8 anos** |
+| Para fechar a janela de 7 dias declarada | 10.077 | **10,1× a cota gratuita** |
 
 ### 5.4 Proposta de ritmo escalonado
 
@@ -550,14 +605,19 @@ Como a diária completa da OMDb é impossível no plano gratuito, o critério te
 que a seleção **já usa** para ordenar. Nenhum agendador novo; só números.
 
 | Faixa | Critério | Volume | Cadência | Req/dia |
-| --- | --- | --- | --- | --- |
+| --- | --- | ---: | --- | ---: |
 | **A — cabeça** | 2.000 mais populares | 2.000 | semanal | 286 |
 | **B — corpo** | próximos 10.000 | 10.000 | mensal | 333 |
-| **C — cauda longa** | os 55.288 restantes | 55.288 | a cada 240 dias | 230 |
-| | | | **Total** | **849/dia** ✓ |
+| **C — cauda longa** | os **58.537** restantes | 58.537 | a cada **260 dias** | 225 |
+| | | | **Total** | **844/dia** ✓ |
 
-Cabe exatamente na cota utilizável (850). Um título recém-ingerido não espera a faixa: o
-caminho sob demanda tem 150 reservados só para ele.
+Cabe na cota utilizável (850). Um título recém-ingerido não espera a faixa: o caminho sob
+demanda tem 150 reservados só para ele.
+
+> **Recalculado em 2026-08-31.** A versão anterior dizia *"os 55.288 restantes, a cada 240
+> dias, 849/dia"* — derivava de 67.288 títulos. Com 70.537 títulos a cauda cresce para
+> 58.537, e a cadência de 240 dias **estouraria a cota** (863/dia contra 850). Alongando a
+> cauda para 260 dias o total volta a caber: **844/dia**. As faixas A e B não mudam.
 
 **Se a chave for de plano pago, tudo isso encolhe proporcionalmente** — daí a seção 4.3 ser
 pré-requisito desta decisão, e não um detalhe.
