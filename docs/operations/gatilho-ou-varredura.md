@@ -23,6 +23,37 @@
 
 ## 1. Resumo executivo
 
+> ## ERRATA — 2026-08-31: a base de catálogo deste documento estava errada
+>
+> Este documento declara, na §4 e na §11, usar *"proxies declarados de #248"* para o
+> tamanho do acervo. **Aqueles proxies estavam mecanicamente errados: a coluna tinha sido
+> deslocada uma linha.** A contagem de séries virou a de temporadas, a de temporadas virou
+> a de episódios, e **episódio nunca foi contado**. Medido em produção por `psql` em
+> 2026-08-28:
+>
+> | | proxy usado aqui | medido | erro |
+> | --- | ---: | ---: | --- |
+> | títulos | 67.288 | **70.537** | −4,6% |
+> | temporadas | 32.483 | **136.650** | **4,2× menor** |
+> | episódios | 135.926 | **3.921.368** | **28,8× menor** |
+> | pessoas | 100.000 | **1.200.796** | era o **teto** do censo |
+>
+> **Todas as contas deste documento foram refeitas** (§4, §5, §11, §17, §18). Os valores
+> antigos aparecem tachados ou nomeados ao lado dos novos — nada foi apagado em silêncio.
+>
+> **A CONCLUSÃO NÃO MUDA — FICA MAIS FORTE.** O Desenho 3 era recomendado por *economia de
+> 84,5%*; passa a ser recomendado por **viabilidade**. Com o número correto, a varredura
+> completa custa **13.656.998 req = 3,95 DIAS a 40 req/s**: o Desenho 1 não é a opção cara,
+> é a opção que **não existe**. Um dia não cabe em quatro dias.
+>
+> **E a ressalva deste documento agrava.** Com os proxies, episódio era 58% da mídia; com o
+> número real é **95% da mídia e 57% do custo total da varredura** — e é exatamente a fatia
+> que o `/changes` **não nomeia**. A frase *"vale medir antes de desenhar"* deixa de ser
+> observação e vira **a medição de maior alavanca do plano inteiro**: ver §11, "O que a
+> correção move para o topo da lista".
+>
+> Origem da correção: [`midia-notas-e-atualizacao-diaria.md`](./midia-notas-e-atualizacao-diaria.md) §5.2 (#248).
+
 **Existe gatilho no TMDB, ele já está implementado, chamado, agendado — e cobre mídia.**
 
 | Pergunta | Resposta |
@@ -34,8 +65,9 @@
 | Exports têm utilidade? | **Sim, duas** — e a segunda está desperdiçada: o arquivo diário traz `popularity` de graça, e **nada a persiste**. |
 | OMDb tem gatilho? | **Não.** Confirmado na documentação oficial: só `i`, `t`, `s`. Nenhum feed, nenhum `updated-since`, nenhum export. |
 | Desenho recomendado | **Desenho 3** — gatilho diário + exports + preenchimento + reconciliação mensal. |
-| Custo do recomendado | **~135.373 req/dia** amortizados, contra 874.379. |
-| Economia | **84,5%** — 739.006 requisições por dia. |
+| Custo do recomendado | **~564.709 req/dia** amortizados, contra **13.656.998**. *(circulou como 135.373 contra 874.379 — ver ERRATA)* |
+| Economia | **95,9%** — 13.092.289 requisições por dia. |
+| A varredura completa é opção? | **Não.** 13.656.998 req = **3,95 dias** a 40 req/s. Não é cara — é impossível. |
 
 ### O achado que muda o desenho
 
@@ -47,16 +79,16 @@
 > vez, o filho é `created=false`: noop.
 >
 > **Consequência:** mesmo agora que está provado que `/changes` sinaliza `images` e
-> `videos`, **o pipeline atual não consegue agir sobre esse sinal.** Os 471.394
-> requests de mídia — 54% do custo — não têm como ser substituídos por gatilho
-> enquanto a chave do filho não tiver escopo.
+> `videos`, **o pipeline atual não consegue agir sobre esse sinal.** Os **8.257.110**
+> requests de mídia — **60,5% do custo** — não têm como ser substituídos por gatilho
+> enquanto a chave do filho não tiver escopo. *(circulou como 471.394 e 54% — ERRATA)*
 >
 > A.3 destravou a economia; A.2 mostra que a porta está fechada por dentro.
 
 ### O segundo achado
 
 > **Com o gatilho ligado, a OFERTA vira o maior custo.** No Desenho 2, ofertas são
-> **67.288 de 106.227 requisições — 63% do total.** Mas `watch/providers` **já vem no
+> **70.537 de 109.476 requisições — 64% do total.** Mas `watch/providers` **já vem no
 > append do detalhe**: todo título que o gatilho tocar traz a oferta de graça. Só os
 > títulos **não alterados** precisam da chamada dedicada.
 
@@ -138,7 +170,7 @@ só entra por `sync_media` — e `sync_media` é write-once.
 `runChangesSync` **não filtra pelo nosso catálogo.** `ids.map((id) => buildCoverageJob(...))`
 enfileira **todo** id alterado no TMDB — inclusive entidades que não temos. Isso não é
 manutenção; é descoberta acidental, e é o que faz o Desenho 2 custar 19.372 detalhes/dia em
-vez de ~703.
+vez de ~731.
 
 ---
 
@@ -204,23 +236,33 @@ Inspecionei a estrutura do item de mudança — e isso vale tanto quanto o vered
 aparentemente se manifesta como `season` (a temporada que o contém) — o que é coerente com
 o `season_id`/`season_number` observados, mas **não foi provado** nesta amostra.
 
-### Qual fatia dos 471.394 fica coberta
+### Qual fatia dos 8.257.110 fica coberta *(recalculado em 2026-08-31)*
 
-O custo de mídia se divide (proxies declarados de #248: 67.288 títulos, 32.483 temporadas,
-135.926 episódios, 2 requisições cada):
+O custo de mídia se divide (contagens **medidas** em 2026-08-28: 37.554 filmes, 32.983
+séries, 136.650 temporadas, 3.921.368 episódios; 2 requisições cada):
 
 | Fatia | Requisições | Gatilho | Situação |
 | --- | ---: | --- | --- |
-| Filme | 69.604 | `images` + `videos` **demonstrados** | **coberta** |
-| Série | 64.972 | `images` demonstrado; `videos` não | **coberta para imagem** |
-| Temporada | 64.966 | `season` com `season_id` — **acionável** | **coberta indiretamente** |
-| Episódio | 271.852 | nenhuma chave de episódio observada | **descoberta** |
-| **Total** | **471.394** | | **~58% coberta, ~42% descoberta** |
+| Filme | 75.108 | `images` + `videos` **demonstrados** | **coberta** |
+| Série | 65.966 | `images` demonstrado; `videos` não | **coberta para imagem** |
+| Temporada | 273.300 | `season` com `season_id` — **acionável** | **coberta indiretamente** |
+| Episódio | **7.842.736** | nenhuma chave de episódio observada | **descoberta** |
+| **Total** | **8.257.110** | | **~5% coberta, ~95% descoberta** |
 
-> **A maior fatia descoberta é episódio (271.852 req = 58% da mídia).** E é justamente a
-> que o gatilho não nomeia. Se a hipótese "episódio se manifesta como `season`" se
-> confirmar, ela passa a coberta — e o desenho muda de novo. **Vale medir antes de
-> desenhar.**
+> ### A correção inverte esta seção
+>
+> Com os proxies errados, a leitura era *"~58% coberta, ~42% descoberta"*. Com o número
+> medido é **~5% coberta, ~95% descoberta**. Episódio salta de 271.852 para **7.842.736
+> requisições** — de 58% para **95% da mídia**, e para **57% do custo total da varredura
+> completa**.
+>
+> **O que era uma ressalva vira a pergunta central.** Se a hipótese *"episódio se manifesta
+> como `season`"* se confirmar, 95% da mídia passa a coberta e o Desenho 3 cai de 564.709
+> para **~303.285 req/dia** (§11). Se não se confirmar, episódio fica na reconciliação e
+> **sozinho responde por 46% do custo do desenho recomendado**.
+>
+> **Uma única medição decide quase metade do orçamento permanente.** É a de maior alavanca
+> deste plano — e custa 9 chamadas de API, como as desta seção.
 
 ---
 
@@ -253,18 +295,22 @@ a primeira página já devolve `total_results`. **9 chamadas.**
 | | requisições/dia |
 | --- | ---: |
 | Enumerar o gatilho inteiro (3 tipos, todas as páginas) | **195** |
-| Passagem completa por força bruta | **874.379** |
+| Passagem completa por força bruta | **13.656.998** *(circulou como 874.379)* |
 
 > **195 requisições dizem quais 19.372 entidades mudaram em todo o TMDB.**
-> É 0,02% do custo da varredura. **O gatilho não é uma otimização — é outra ordem de
-> grandeza.**
+> É **0,0014%** do custo da varredura. **O gatilho não é uma otimização — e, corrigido o
+> número, não é sequer uma escolha:** a varredura completa leva 3,95 dias a 40 req/s, então
+> a alternativa ao gatilho não é "gastar mais", é **não conseguir fechar o dia**.
 
 ### A ressalva que o número exige
 
-Esses 19.372 são **de todo o TMDB**, não do nosso catálogo. Nosso catálogo cobre 2,83% dos
-filmes (34.802 de ~1,23 M) e 14,25% das séries (32.486 de ~228 k).
+Esses 19.372 são **de todo o TMDB**, não do nosso catálogo. Nosso catálogo cobre **3,05%**
+dos filmes (**37.554** de ~1,23 M) e **14,47%** das séries (**32.983** de ~228 k).
+*(circulou como 2,83% / 14,25%, sobre 34.802 / 32.486 — ver ERRATA)*
 
-- **Piso** (se a mudança fosse uniforme): **~703 ids/dia** são nossos.
+- **Piso** (se a mudança fosse uniforme): **~731 ids/dia** são nossos — 292 filmes + 439
+  séries. Pessoa continua **fora do piso**: nosso `count` é agora conhecido (1.200.796),
+  mas o universo de pessoas do TMDB não foi medido, então não há denominador.
 - **Real: maior.** Mudança concentra em título popular, e nosso catálogo **é** o topo por
   popularidade. Só o banco fecha o número (SQL na §17).
 
@@ -394,7 +440,7 @@ buscado.** O export quebra essa circularidade de graça.
 | Alguma parte do código consome? | **Não.** `changes` não existe em `TmdbMovieDetail`/`TmdbTvDetail` (`api-clients/tmdb/src/types.ts`), e nenhum normalizador lê `detail.changes`. Desaparece no limite do tipo, sem erro e sem aviso. |
 | Traz informação que o `/changes` global não dá? | **Sim, e é justamente a que falta.** O global dá **quais ids** mudaram; o append por entidade dá **o quê** mudou (`key`, `action`, `value`, `iso_639_1`, `original_value`) — provado em A.3. |
 | Ajuda a descobrir o que mudou depois do gatilho? | **Sim — e é o único caminho para isso.** Sem ele, saber que o id 1142683 mudou não diz se foi `videos` ou `cast`. |
-| Seria usado numa decisão real? | **Sim.** É exatamente o sinal que decidiria *"vale rebuscar a mídia deste título?"* — a pergunta de 471.394 requisições/dia. |
+| Seria usado numa decisão real? | **Sim.** É exatamente o sinal que decidiria *"vale rebuscar a mídia deste título?"* — a pergunta de **8.257.110** requisições/dia. |
 
 ### Classificação: **potencialmente útil — e mal posicionado**
 
@@ -509,16 +555,18 @@ Os sinais disponíveis no schema, e o que cada um vale:
 
 Cota **1.000/dia**, **150** reservadas ao caminho sob demanda.
 
-| Envelope | Uso máx. | **Folga** | Títulos/mês | Volta completa (67.288) |
+| Envelope | Uso máx. | **Folga** | Títulos/mês | Volta completa (**70.537**) |
 | ---: | ---: | ---: | ---: | ---: |
-| 600/dia | 750/1.000 | **250** | 18.000 | 112 dias (3,7 meses) |
-| **700/dia** | **850/1.000** | **150** | **21.000** | **96 dias (3,2 meses)** |
-| 800/dia | 950/1.000 | **50** | 24.000 | 84 dias (2,8 meses) |
-| 849/dia *(proposta anterior)* | 999/1.000 | **1** | 25.470 | 79 dias (2,6 meses) |
+| 600/dia | 750/1.000 | **250** | 18.000 | 118 dias (3,9 meses) |
+| **700/dia** | **850/1.000** | **150** | **21.000** | **101 dias (3,4 meses)** |
+| 800/dia | 950/1.000 | **50** | 24.000 | 88 dias (2,9 meses) |
+| 849/dia *(proposta anterior)* | 999/1.000 | **1** | 25.470 | 83 dias (2,8 meses) |
+
+*(a volta completa circulou sobre 67.288 títulos: 112 / 96 / 84 / 79 dias — ERRATA)*
 
 #### Recomendado: **700/dia**
 
-O que se ganha subindo de 700 para 800: 12 dias a menos por volta (96 → 84). O que se
+O que se ganha subindo de 700 para 800: 13 dias a menos por volta (101 → 88). O que se
 perde: a folga cai de 150 para 50 — **um terço de um dia de retry**. Com 700, a folga de
 150 é igual à própria reserva do leitor: cabe uma reexecução completa de um ciclo que tenha
 falhado, sem tocar na reserva.
@@ -599,11 +647,11 @@ E o payload carrega, além das notas: `Rated` (classificação), `Awards`, `BoxO
 | **Imagem e pôster** (tv) | TMDB | `/tv/{id}/images` | **alta** | **medido API** (`images` em 4 de 9) | **SIM** | `/changes` → key `images` | diário, por gatilho | 1 req/alterado |
 | **Vídeo e trailer** (movie) | TMDB | `/movie/{id}/videos` | média | **medido API** (`videos` em 1 de 5) | **SIM** | `/changes` → key `videos` | diário, por gatilho | 1 req/alterado |
 | **Vídeo e trailer** (tv) | TMDB | `/tv/{id}/videos` | não determinado | medido API — **`videos` não observado em 9** | **NÃO DEMONSTRADO** | — | reconciliação | 1 req/título na reconciliação |
-| **Oferta de streaming** | TMDB | append `watch/providers` **+** `/{id}/watch/providers` | **muito alta** | doc oficial + `rhythms.ts` | **NÃO** — nenhuma key observada | varredura, **menos** os que o gatilho já trouxe no append | diário | **67.288** menos os alterados |
+| **Oferta de streaming** | TMDB | append `watch/providers` **+** `/{id}/watch/providers` | **muito alta** | doc oficial + `rhythms.ts` | **NÃO** — nenhuma key observada | varredura, **menos** os que o gatilho já trouxe no append | diário | **70.537** menos os alterados |
 | **Classificação indicativa** (movie) | TMDB | append `release_dates` | baixa | **medido API** (`release_dates` em 2 de 5) | **SIM** | `/changes` | diário, por gatilho | incluso no detalhe |
 | **Classificação indicativa** (tv) | TMDB | append `content_ratings` | baixa | **medido API** (`certifications` observado) | **SIM** | `/changes` | diário, por gatilho | incluso no detalhe |
 | **Temporada** | TMDB | `/tv/{id}/season/{n}` | média | **medido API** — key `season` com **`season_id` + `season_number`** | **SIM, acionável** | `/tv/changes` → key `season` | diário, dirigido | 1 req/temporada alterada |
-| **Episódio** | TMDB | `/tv/{id}/season/{n}/episode/{e}` | média | medido API — **nenhuma key de episódio em 9** | **NÃO DEMONSTRADO** | (hipótese: via `season`) | reconciliação até provar | **271.852** na varredura |
+| **Episódio** | TMDB | `/tv/{id}/season/{n}/episode/{e}` | média | medido API — **nenhuma key de episódio em 9** | **NÃO DEMONSTRADO** | (hipótese: via `season`) | reconciliação até provar | **7.842.736** na varredura *(circulou como 271.852)* |
 | **Pessoa** | TMDB | `/person/{id}` | baixa | **medido API** (6.774 ids/dia) | **SIM** | `/person/changes` | diário, por gatilho | 1 req/alterado |
 | **Nota externa** | **OMDb** | `/?i={imdbID}` | não determinado | **doc oficial: sem gatilho** | **NÃO** | rodízio escalonado | ver §11 | **700** |
 | **Popularidade** | **TMDB exports** | `files.tmdb.org/p/exports` | diária | **medido** (`popularity` no JSONL) | **n/a — o arquivo É o feed** | download diário | diário | **0 req de API** (30 MB) |
@@ -615,15 +663,19 @@ E o payload carrega, além das notas: `Rated` (classificação), `Awards`, `BoxO
 
 ### Desenho 1 — varredura completa diária
 
-| componente | req/dia |
-| --- | ---: |
-| detalhe (título + temporada + episódio + pessoa) | 335.697 |
-| **mídia** (`/images` + `/videos` dedicados) | **471.394 (54%)** |
-| ofertas | 67.288 |
-| **total** | **874.379** |
+| componente | req/dia | circulou como |
+| --- | ---: | ---: |
+| detalhe (título + temporada + episódio + pessoa) | **5.329.351** | 335.697 |
+| **mídia** (`/images` + `/videos` dedicados) | **8.257.110 (60,5%)** | 471.394 (54%) |
+| ofertas | 70.537 | 67.288 |
+| **total** | **13.656.998** | 874.379 |
 
-**6,07 h a 40 req/s · 26.231.370 req/mês.** Função: garante cobertura por força bruta,
-sem depender de o gatilho estar certo.
+**3,95 DIAS a 40 req/s · 409.709.940 req/mês.**
+
+> **Este desenho deixou de existir.** Ele se chama "varredura completa **diária**", e a
+> passagem leva quase quatro dias no nosso próprio teto de ritmo. Não é o desenho caro — é
+> o desenho impossível. Ele permanece na tabela apenas como **denominador**: é contra ele
+> que a economia dos outros dois é medida.
 
 ### Desenho 2 — gatilho diário + preenchimento
 
@@ -635,21 +687,26 @@ filtra pelo catálogo, então enfileira todos os 19.372:
 | enumerar o gatilho (195 páginas) | 195 |
 | detalhe dos ids alterados | 19.372 |
 | mídia dos alterados com key de mídia (~50%, 2 req cada) | 19.372 |
-| ofertas | 67.288 |
+| ofertas | **70.537** |
 | exports (download, **fora da cota da API**) | 0 |
-| **total** | **106.227** |
+| **total** | **109.476** *(circulou como 106.227)* |
 
-**44,3 min/dia · economia de 87,9% (768.152 req/dia).**
+**45,6 min/dia · economia de 99,2% (13.547.522 req/dia).**
 
-**Se o gatilho filtrasse pelo nosso catálogo** (piso de 703 ids/dia):
+**Se o gatilho filtrasse pelo nosso catálogo** (piso de **731** ids/dia):
 
 | componente | req/dia |
 | --- | ---: |
-| enumerar + detalhe + mídia | 1.600 |
-| ofertas | 67.288 |
-| **total** | **68.888** |
+| enumerar + detalhe + mídia | 1.657 |
+| ofertas | 70.537 |
+| **total** | **72.194** |
 
-**28,7 min/dia · economia de 92,1%.** Note que aqui **a oferta é 98% do custo.**
+**30,1 min/dia · economia de 99,5%.** Note que aqui **a oferta é 97,7% do custo.**
+
+> **Atenção ao que este número NÃO diz.** A economia de 99,2% supõe que o gatilho substitui
+> a mídia. Ele **não substitui a de episódio** — 95% da mídia — porque o `/changes` não a
+> nomeia. Este Desenho 2 é o cenário em que essa mídia simplesmente **não é buscada**. É
+> exatamente a lacuna que o Desenho 3 compra de volta, e por isso ele custa 5× mais.
 
 **Custo TEMPORÁRIO de preenchimento** — contabilizado **separadamente**, como o prompt
 exige: uma passagem única de cobertura sobre a lacuna conhecida. O tamanho depende de
@@ -658,26 +715,46 @@ entidades custa **~42 minutos**, uma vez. **Não entra no custo permanente.**
 
 ### Desenho 3 — gatilho diário + reconciliação periódica
 
-| cadência da reconciliação | amortizado/dia | total/dia | economia |
-| --- | ---: | ---: | ---: |
-| **quinzenal** | +58.292 | 164.519 | 81,2% |
-| **mensal** | +29.146 | **135.373** | **84,5%** |
+| cadência da reconciliação | amortizado/dia | total/dia | economia | janela a 40 req/s |
+| --- | ---: | ---: | ---: | ---: |
+| **quinzenal** | +910.467 | 1.019.943 | 92,5% | 7,08 h/dia |
+| **mensal** | +455.233 | **564.709** | **95,9%** | **3,92 h/dia** |
 
-A quinzenal não se justifica: dobra o custo amortizado da reconciliação (58.292 vs 29.146)
-para reduzir a janela de inconsistência de 30 para 15 dias — numa base cujo dado mais
-volátil (a oferta) **já é varrido diariamente por caminho próprio**. **Mensal.**
+*(circulou como +58.292 / 164.519 / 81,2% e +29.146 / **135.373** / 84,5% — ERRATA)*
 
-### C.3 — Quanto o gatilho elimina, nos dois cenários
+A quinzenal não se justifica: dobra o custo amortizado da reconciliação (910.467 vs
+455.233) para reduzir a janela de inconsistência de 30 para 15 dias — numa base cujo dado
+mais volátil (a oferta) **já é varrido diariamente por caminho próprio**. **Mensal.** E a
+correção **reforça** a escolha: a quinzenal agora consumiria 7 h de janela por dia, contra
+3,9 h da mensal.
 
-**Cenário A — mídia entra no gatilho** *(demonstrado para filme e para imagem de série)*
+### O que a correção move para o topo da lista
+
+A reconciliação passou a **dominar** o desenho recomendado: 455.233 de 564.709 req/dia —
+**80,6% do custo permanente**. E dentro dela, a mídia de episódio amortizada
+(7.842.736 ÷ 30 = **261.425/dia**) é **57,4% da reconciliação e 46,3% do desenho inteiro**.
+
+| se a hipótese *"episódio se manifesta como `season`"* … | Desenho 3 | economia |
+| --- | ---: | ---: |
+| **não for medida** (estado atual) | **564.709/dia** | 95,9% |
+| **se confirmar** — episódio sai da reconciliação | **~303.285/dia** | **97,8%** |
+
+**Uma medição de 9 chamadas de API decide 46% do orçamento permanente.** Com os proxies
+errados esse mesmo item valia 3,3% e era razoável deixá-lo para depois. Corrigido o número,
+ele é **o primeiro item de medição do plano** — antes de qualquer decisão de cadência.
+
+### C.3 — Quanto o gatilho elimina *(recalculado; agora são TRÊS cenários, não dois)*
+
+**Cenário A — mídia INTEIRA entra no gatilho** *(hipotético — a medição o refuta para 95%
+da mídia; mantido como limite superior)*
 
 | | req/dia | |
 | --- | ---: | --- |
-| Varredura completa | 874.379 | |
-| Desenho 2 | 106.227 | |
-| **Economizado** | **768.152** | **87,9%** |
+| Varredura completa | 13.656.998 | |
+| Desenho 2 | 109.476 | |
+| **Economizado** | **13.547.522** | **99,2%** |
 
-A mídia cai de **471.394 para ~19.372** — **96% de redução na maior fatia do custo.**
+A mídia cairia de **8.257.110 para ~19.372** — 99,8% de redução na maior fatia do custo.
 
 **Cenário B — mídia NÃO entra no gatilho**
 
@@ -685,19 +762,40 @@ A mídia cai de **471.394 para ~19.372** — **96% de redução na maior fatia d
 | --- | ---: |
 | enumerar | 195 |
 | detalhe | 19.372 |
-| **mídia varrida** | **471.394** |
-| ofertas | 67.288 |
-| **total** | **558.249** |
+| **mídia varrida** | **8.257.110** |
+| ofertas | 70.537 |
+| **total** | **8.347.214** |
 
-**Economia de apenas 36,2%** — e a mídia passa a ser **84% do custo restante**.
+**Economia de apenas 38,9%** — e a mídia passa a ser **98,9% do custo restante**.
 
-> **A consequência, sem esconder:** se a mídia não tivesse gatilho confiável, os 471.394
-> requests continuariam sendo o maior problema do desenho, e nenhuma esperteza no detalhe
-> mudaria isso. **A.3 é o item que separa 88% de economia de 36%.**
+**Cenário C — o que a medição realmente sustenta** *(gatilho cobre filme, série e
+temporada; episódio é varrido)*
+
+| componente | req/dia |
+| --- | ---: |
+| enumerar | 195 |
+| detalhe | 19.372 |
+| mídia dirigida pelo gatilho (filme + série + temporada) | 19.372 |
+| **mídia de EPISÓDIO, varrida** | **7.842.736** |
+| ofertas | 70.537 |
+| **total** | **7.952.212** |
+
+**Economia de 41,8%** — e a mídia de episódio sozinha é **98,6% do custo restante**.
+
+> **A consequência, sem esconder — e ela mudou de tamanho.** Com os proxies errados, o
+> Cenário A parecia o realista e o B o pessimista: *"A.3 separa 88% de economia de 36%"*.
+> Corrigido o número, **o Cenário A é hipotético**: ele exige que o gatilho cubra a mídia
+> de episódio, que é 95% da mídia e que a medição deste documento mostra **não nomeada**
+> pelo `/changes`. O cenário que a evidência sustenta é o C, com **41,8%**.
+>
+> Por isso o Desenho 3 não é luxo: a reconciliação mensal é o que transforma esses 7,8
+> milhões de requisições/dia de episódio em **261.425/dia amortizados**. **A reconciliação
+> deixou de ser seguro contra falha silenciosa e passou a ser o mecanismo principal de
+> cobertura da maior fatia do acervo.**
 
 **A ressalva que o Cenário A carrega:** ele vale para filme e para imagem de série. A fatia
-de **episódio (271.852 req = 58% da mídia)** não teve gatilho demonstrado. Enquanto isso não
-for medido, a parte de episódio da mídia fica na reconciliação — o que o Desenho 3 já
+de **episódio (7.842.736 req = 95% da mídia)** não teve gatilho demonstrado. Enquanto isso
+não for medido, a parte de episódio da mídia fica na reconciliação — o que o Desenho 3 já
 absorve.
 
 **Estratégia periódica de mídia é justificável?** Sim, e é exatamente o que a reconciliação
@@ -717,9 +815,9 @@ escapou entram uma vez por mês. **Não implementado nesta leva.**
 | **Mídia** | key `images`/`videos` do `/changes` → `/images` + `/videos` dirigidos | diária | ~19.372 |
 | **Temporada** | key `season` → busca dirigida pelo `season_number` do payload | diária | 1 req/temporada alterada |
 | **Episódio** | **sem gatilho demonstrado** → reconciliação | mensal | amortizado |
-| **Ofertas** | append do detalhe para os alterados + varredura dedicada para o resto | diária | ≤ 67.288 |
+| **Ofertas** | append do detalhe para os alterados + varredura dedicada para o resto | diária | ≤ 70.537 |
 | **Popularidade** | export diário → `UPDATE` em lote | diária | **0 req de API** |
-| **Reconciliação** | varredura completa | mensal | +29.146 amortizado |
+| **Reconciliação** | varredura completa | mensal | **+455.233** amortizado |
 | **Preenchimento** | backfill controlado até fechar a lacuna | **temporário** | fora do permanente |
 | **OMDb** | rodízio escalonado por recência + ausência de nota + idade da coleta | diária | **700** |
 
@@ -727,13 +825,22 @@ escapou entram uma vez por mês. **Não implementado nesta leva.**
 
 | desenho | custo/dia | economia | risco residual |
 | --- | ---: | ---: | --- |
-| 1 — varredura completa | 874.379 | — | nenhum de cobertura; 6 h/dia de janela |
-| 2 — só gatilho | 106.227 | 87,9% | **entidade que nunca muda nunca é revisitada**; falha silenciosa é permanente |
-| **3 — gatilho + reconciliação mensal** | **135.373** | **84,5%** | janela máxima de inconsistência: **30 dias** |
+| 1 — varredura completa | **13.656.998** | — | **não executa**: 3,95 dias por passagem |
+| 2 — só gatilho | **109.476** | 99,2% | **entidade que nunca muda nunca é revisitada**; falha silenciosa é permanente; **95% da mídia (episódio) nunca é buscada** |
+| **3 — gatilho + reconciliação mensal** | **564.709** | **95,9%** | janela máxima de inconsistência: **30 dias** |
 
-O Desenho 3 custa **29.146 req/dia a mais** que o Desenho 2 — **3,3% do orçamento da
-varredura completa** — e compra a única coisa que o gatilho não dá: a garantia de que uma
-entidade que nunca mudou, ou um job que morreu em silêncio, é revisitado dentro de um mês.
+*(circulou como 874.379 / 106.227 / 135.373, com economias de 87,9% e 84,5% — ERRATA)*
+
+O Desenho 3 custa **455.233 req/dia a mais** que o Desenho 2 — **3,3% do orçamento da
+varredura completa**, a mesma proporção de antes — e compra **duas** coisas que o gatilho
+não dá: a garantia de que uma entidade que nunca mudou é revisitada dentro de um mês, **e a
+única cobertura existente para a mídia de episódio**, que é 95% da mídia e que o `/changes`
+não nomeia.
+
+> **O que a correção muda aqui.** Antes, a reconciliação era um **seguro** contra falha
+> silenciosa — bom, mas dispensável se você confiasse no gatilho. Agora ela é também o
+> **único mecanismo de cobertura** da maior fatia do acervo. O Desenho 2 deixou de ser
+> "arriscado" e passou a ser **incompleto por construção**.
 
 **O Desenho 2 sozinho é uma aposta em que o gatilho nunca erra.** Este repositório já
 registrou `/changes` inteiro virando dead-letter em silêncio por um campo faltando no
@@ -803,7 +910,7 @@ SELECT job_type, count(*) AS total,
 SELECT 'movies' AS t, count(*) AS no_catalogo FROM movies
 UNION ALL SELECT 'tv_shows', count(*) FROM tv_shows;
 -- Compare com o universo TMDB (~1,23 M filmes, ~228 k series).
--- A intersecao REAL exige cruzar os ids do /changes; o piso uniforme e ~703/dia.
+-- A intersecao REAL exige cruzar os ids do /changes; o piso uniforme e ~731/dia.
 
 \echo '=== 4. B.2 — A NOTA JA MUDOU ALGUMA VEZ? (o schema nao guarda historico) ==='
 SELECT rating_source, metric,
@@ -887,9 +994,9 @@ build/teste era aplicável; ainda assim, o único teste tocado pela investigaç�
 | 5 | Produziu efeito? | **Parcialmente, por construção:** SIM no detalhe; **NÃO na mídia/temporada/episódio** (chave do filho sem escopo) |
 | 6 | Movie `/changes` sinaliza mídia? | **SIM** — `images` e `videos` |
 | 6b | TV `/changes` sinaliza mídia? | **SIM para `images`**; `videos` **não demonstrado** em 9 |
-| 6c | Seguro como gatilho de mídia? | **PARCIAL** — ~58% da mídia coberta; episódio (42%) descoberto |
-| 7 | Quantos ids mudam por dia? | **19.372** em todo o TMDB; **~703** nossos (piso) |
-| 8 | Substitui a varredura de detalhe? | **SIM** — 335.697 → 19.372 |
+| 6c | Seguro como gatilho de mídia? | **NÃO, para o volume** — **~5%** da mídia coberta; **episódio (95%)** descoberto *(circulou como 58%/42% — ERRATA)* |
+| 7 | Quantos ids mudam por dia? | **19.372** em todo o TMDB; **~731** nossos (piso) |
+| 8 | Substitui a varredura de detalhe? | **SIM** — **5.329.351** → 19.372 |
 | 9 | Substitui a de mídia? | **Filme: sim. Série: para imagem. Episódio: não demonstrado.** |
 | 10 | O que exige preenchimento? | Entidades que nunca mudaram, incompletas ou anteriores à nossa sincronização |
 | 11 | O que exige reconciliação? | Falha silenciosa, job morto, mídia de episódio, e o que o gatilho não nomeia |
@@ -905,21 +1012,28 @@ build/teste era aplicável; ainda assim, o único teste tocado pela investigaç�
 | 21 | Envelope de cota recomendado? | **700/dia** — folga de 150, volta em 96 dias |
 | 22 | O que ocorre no estouro? | **HTTP 200 + `Response:"False"`; a string não é reconhecida; o breaker não abre; o lote continua queimando cota.** O título não é envenenado — volta no próximo ciclo |
 | 23 | `Plot` serve para pt-BR? | **NÃO** — vem em inglês |
-| 24 | Quanto custa cada desenho? | 874.379 · 106.227 · **135.373** req/dia |
-| 25 | Qual adotar? | **Desenho 3** — 84,5% de economia, janela de inconsistência de 30 dias |
+| 24 | Quanto custa cada desenho? | **13.656.998** · **109.476** · **564.709** req/dia *(circulou como 874.379 · 106.227 · 135.373)* |
+| 25 | Qual adotar? | **Desenho 3** — 95,9% de economia, janela de inconsistência de 30 dias. E agora **por viabilidade**, não só por economia: o Desenho 1 leva 3,95 dias por passagem |
 
 ---
 
 ## 18. Critério de aceitação — a resposta em uma frase
 
-> Com o Desenho 3, gastaríamos **~106.227 chamadas/dia em manutenção**,
-> **~29.146/dia amortizadas em reconciliação** (uma varredura completa por mês) e
+> Com o Desenho 3, gastaríamos **~109.476 chamadas/dia em manutenção**,
+> **~455.233/dia amortizadas em reconciliação** (uma varredura completa por mês) e
 > **0 em descoberta e popularidade** (os exports estão fora da cota da API) —
 > mais um **custo temporário de preenchimento**, contabilizado à parte e que termina —
-> em vez de **874.379 chamadas diárias por força bruta**.
+> em vez de **13.656.998 chamadas diárias por força bruta**, que **não cabem num dia**.
 >
-> **Total permanente: 135.373 req/dia. Economia: 84,5%.**
+> **Total permanente: 564.709 req/dia (3,92 h a 40 req/s). Economia: 95,9%.**
+
+*(esta frase circulou com 106.227 · 29.146 · 874.379 · **135.373 req/dia · 84,5%** — todos
+derivados dos proxies deslocados; ver ERRATA no topo)*
 
 E o pré-requisito, dito uma vez mais porque o número inteiro depende dele: **enquanto a
 chave de idempotência de `sync_media` não tiver escopo, a parte de mídia deste desenho é
-noop, e a economia real cai de 87,9% para 36,2% — com a aparência de estar funcionando.**
+noop, e a economia real cai de 99,2% para 38,9% — com a aparência de estar funcionando.**
+
+**E o segundo pré-requisito, que a correção promoveu a primeiro:** medir se a chave
+`season` do `/changes` acompanha alteração de episódio. Ela decide **46% do orçamento
+permanente** (564.709 contra ~303.285 req/dia) e custa 9 chamadas de API.
