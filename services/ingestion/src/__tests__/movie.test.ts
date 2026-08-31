@@ -92,8 +92,23 @@ describe('normalizeMovie', () => {
     expect(externalIds.some((entry) => entry.source === 'imdb')).toBe(false)
   })
 
-  it('idioma fora do seed -> null (R1)', () => {
+  // ESTE TESTE AFIRMAVA O DEFEITO, e passava verde por isso.
+  //
+  // Ate 2026-08-31 ele exigia que `original_language: 'ja'` virasse NULL — e
+  // japones e um dos CINCO idiomas que o dono manda manter. A tabela `languages`
+  // tinha tres linhas, o normalizador filtrava por ela, e o teste travava esse
+  // comportamento como se fosse a regra. Um teste verde pelo motivo errado.
+  it('idioma REAL do TMDB e gravado como vem (era `-> null` ate 2026-08-31)', () => {
     const { movie } = normalizeMovie({ ...FIXTURE, original_language: 'ja' })
+    expect(movie.originalLanguage).toBe('ja')
+  })
+
+  it('codigo que NAO existe em `languages` continua virando null (guarda de FK)', () => {
+    // O que sobrou de fechado: gravar um codigo ausente do dicionario estouraria
+    // `movies.original_language -> languages.code` e derrubaria o lote inteiro.
+    // A diferenca e que o dicionario agora e o ISO 639-1 completo, e a recusa
+    // e contavel (`readOriginalLanguage`), nao silenciosa.
+    const { movie } = normalizeMovie({ ...FIXTURE, original_language: 'zzz' })
     expect(movie.originalLanguage).toBeNull()
   })
 

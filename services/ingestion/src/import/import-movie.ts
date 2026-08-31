@@ -11,6 +11,8 @@ import {
   emptyDetailWatchReport,
   ingestWatchProvidersFromDetail,
 } from '../watch-providers/from-detail.js'
+import { isUpsertRefused } from '../ports.js'
+import { refusalErrorCode } from '../persistence/admission.js'
 import { describeError } from './errors.js'
 import type { ImportContext, ImportResult } from './types.js'
 
@@ -102,7 +104,7 @@ export async function importMovie(ctx: ImportContext, tmdbId: number): Promise<I
     }
 
     const normalized = normalizeMovie(result.data)
-    const outcome = await ctx.store.upsertMovie({
+    const upsert = await ctx.store.upsertMovie({
       movie: normalized.movie,
       externalIds: normalized.externalIds,
       cast: normalized.cast,
@@ -117,6 +119,35 @@ export async function importMovie(ctx: ImportContext, tmdbId: number): Promise<I
       genresPresent: normalized.genresPresent,
       timestamps,
     })
+    // RECUSA NA PORTA (recorte de idioma, Parte C). Sai ANTES de tudo que
+    // pressupoe uma entidade: nada de oferta de streaming, nada de referencias,
+    // nada de slug. E o log NAO some — `empty` + `error_code` tornam a recusa
+    // contavel por dia e por idioma, que e o que a C.4 pede.
+    if (isUpsertRefused(upsert)) {
+      await ctx.syncLog.write({
+        endpoint,
+        status: 'empty',
+        errorCode: refusalErrorCode(upsert.refused),
+        itemsProcessed: 1,
+        itemsCreated: 0,
+        itemsUpdated: 0,
+        durationMs: ctx.now().getTime() - startedMs,
+        quotaCost,
+        payloadHash: result.payloadHash,
+      })
+      return {
+        entityType: 'movie',
+        tmdbId,
+        status: 'empty',
+        changed: false,
+        created: false,
+        id: null,
+        refused: upsert.refused,
+        quotaCost,
+        watch: emptyDetailWatchReport('unresolved'),
+      }
+    }
+    const outcome = upsert
     // Disponibilidade a partir do MESMO payload que ja esta em maos: zero
     // chamada nova ao TMDB, zero cota. Toda linha nasce `display_allowed=false`
     // (invariante 6) — quem grava e o `WatchOfferStore` do reprocessamento.

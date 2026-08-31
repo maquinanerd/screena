@@ -6,7 +6,14 @@
  */
 
 import type { CatalogDisplayFields } from '../display-fields.js'
-import type { CachePort, EntityStorePort, SyncLogPort, SyncStatus, TmdbReadPort } from '../ports.js'
+import type {
+  CachePort,
+  CatalogAdmissionRefusal,
+  EntityStorePort,
+  SyncLogPort,
+  SyncStatus,
+  TmdbReadPort,
+} from '../ports.js'
 import type { EntityType } from '../types.js'
 import type { DetailWatchReport, DetailWatchSink } from '../watch-providers/from-detail.js'
 
@@ -59,6 +66,15 @@ export interface ImportResult {
    * houve upsert, entao nao ha id para finalizar.
    */
   readonly display?: CatalogDisplayFields
+  /**
+   * O titulo foi RECUSADO na porta do catalogo (recorte de idioma).
+   *
+   * `status` fica `empty`, nao `failed`: o ciclo rodou inteiro e nao
+   * materializou nada, que e a definicao de `empty`. Chamar de sucesso apagaria
+   * a distincao entre "entrou" e "foi barrado", que e justamente o numero que a
+   * Parte C.4 exige poder contar por dia e por idioma.
+   */
+  readonly refused?: CatalogAdmissionRefusal
   /** Numero de chamadas de rede TMDB consumidas (cache hit = 0). */
   readonly quotaCost: number
   /**

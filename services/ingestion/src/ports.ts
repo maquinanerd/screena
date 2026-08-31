@@ -80,6 +80,52 @@ export interface CreditsWriteOutcome {
 /** Resultado do upsert de filme/serie (upsert + resumo do replace-set de creditos). */
 export interface EntityUpsertOutcome extends UpsertOutcome {
   readonly credits: CreditsWriteOutcome
+  /** Discriminante da uniao com `EntityUpsertRefused`. Sempre ausente aqui. */
+  readonly refused?: undefined
+}
+
+/**
+ * Por que um titulo NAO foi admitido no catalogo.
+ *
+ * `language_not_allowed` e a DECISAO do dono (o recorte de cinco idiomas);
+ * `language_unknown` e um fato sobre o payload — pode ser obra sem dialogo,
+ * pode ser extrator quebrado. Juntar os dois num numero so esconderia um
+ * defeito nosso dentro de uma decisao editorial, que e como este projeto ja
+ * perdeu o idioma de 41.505 titulos.
+ */
+export type CatalogAdmissionRefusal =
+  | { readonly reason: 'language_not_allowed'; readonly language: string }
+  | { readonly reason: 'language_unknown'; readonly language: null }
+
+/** O titulo foi RECUSADO na porta: nada foi escrito, e nao ha id. */
+export interface EntityUpsertRefused {
+  readonly refused: CatalogAdmissionRefusal
+}
+
+/**
+ * Resultado de `upsertMovie`/`upsertTvShow`: escreveu, ou recusou.
+ *
+ * E UMA UNIAO DE PROPOSITO. Um campo opcional `refused` num objeto que sempre
+ * traz `id` deixaria todo chamador existente compilando sem olhar para a
+ * recusa — que e descarte silencioso com outro nome. Sendo uniao, o
+ * TypeScript OBRIGA cada um dos oito pontos de chamada a dizer o que faz
+ * quando um titulo nao entra.
+ */
+export type EntityUpsertResult = EntityUpsertOutcome | EntityUpsertRefused
+
+/**
+ * Um upsert que PODE ter sido recusado.
+ *
+ * Mais largo que `EntityUpsertResult` de proposito: a promocao de `tmdb_raw` e
+ * generica sobre filme/serie/PESSOA, e pessoa nao tem idioma nem recusa. O tipo
+ * largo deixa o mesmo laco cobrir os tres sem que pessoa precise fingir um
+ * campo que nao existe.
+ */
+export type MaybeRefusedUpsert = UpsertOutcome | EntityUpsertRefused
+
+/** Narrowing: `true` quando o titulo foi recusado na porta. */
+export function isUpsertRefused(result: MaybeRefusedUpsert): result is EntityUpsertRefused {
+  return 'refused' in result && result.refused !== undefined
 }
 
 /** Porta de leitura TMDB (client real ou fake de teste). */
@@ -238,9 +284,9 @@ export interface StorePersonInput {
 
 /** Porta de persistencia de entidades (upserts idempotentes + touch de frescor). */
 export interface EntityStorePort {
-  upsertMovie(input: StoreMovieInput): Promise<EntityUpsertOutcome>
+  upsertMovie(input: StoreMovieInput): Promise<EntityUpsertResult>
   touchMovie(tmdbId: number, timestamps: SyncTimestamps): Promise<boolean>
-  upsertTvShow(input: StoreTvShowInput): Promise<EntityUpsertOutcome>
+  upsertTvShow(input: StoreTvShowInput): Promise<EntityUpsertResult>
   touchTvShow(tmdbId: number, timestamps: SyncTimestamps): Promise<boolean>
   upsertSeasonWithEpisodes(input: StoreSeasonInput): Promise<SeasonUpsertOutcome>
   touchSeason(tvShowTmdbId: number, seasonNumber: number, lastSyncedAt: Date): Promise<boolean>

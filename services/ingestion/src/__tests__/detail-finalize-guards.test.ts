@@ -54,8 +54,12 @@ describe('finalizeDetail — guardas da finalizacao de detalhe', () => {
     // da guarda tambem cita `isRegisteredLanguage`, entao um `indexOf` do nome
     // continuaria verde mesmo com o `if` deletado — teste que nao falha nao
     // protege nada. Exigimos o early-return de verdade.
+    //
+    // A GUARDA DEIXOU DE SER `await` em 2026-08-31 e o motivo esta em (4): ela
+    // parou de consultar o banco. O que o teste protege — o early-return ANTES
+    // das duas escritas — nao mudou.
     const body = finalizeDetailBody()
-    const guardPattern = /if \(!\(await isRegisteredLanguage\([A-Za-z]+\)\)\) return/
+    const guardPattern = /if \(!isRegisteredLanguage\([A-Za-z]+\)\) return/
     expect(body).toMatch(guardPattern)
 
     const guard = body.search(guardPattern)
@@ -68,10 +72,26 @@ describe('finalizeDetail — guardas da finalizacao de detalhe', () => {
     expect(guard).toBeLessThan(translationWrite)
   })
 
-  it('(4) a checagem de idioma consulta `languages` e memoiza', () => {
-    expect(source).toContain('async function isRegisteredLanguage(')
-    expect(source).toMatch(/prisma\.language\.findUnique/)
-    expect(source).toContain('knownLanguages')
+  it('(4) a checagem de idioma vem da CONFIG, e NAO de `languages`', () => {
+    // ESTE TESTE INVERTEU DE POLARIDADE EM 2026-08-31, e a inversao e o ponto.
+    //
+    // Antes ele exigia `prisma.language.findUnique`: o gate de autoria perguntava
+    // "existe linha na tabela?". Isso funcionava por acidente — `languages` tinha
+    // exatamente os tres locales em que a Cinerie escreve (pt-BR, en, es).
+    //
+    // A mesma tabela e alvo da FK `movies.original_language`, e por causa desse
+    // acoplamento o normalizador jogava fora o idioma real de 41.505 titulos.
+    // Consertar aquilo exigiu encher `languages` com o ISO 639-1 inteiro — e com
+    // isso a pergunta "existe linha?" passou a responder SIM para `pt`, `fr`,
+    // `de`... Um `CATALOG_WORKER_LOCALE=pt` (variavel de ambiente, sem PR)
+    // criaria um SEGUNDO slug `pt` ao lado do `pt-BR` de todo titulo publicado.
+    //
+    // Entao a politica saiu da tabela e foi para `CONTENT_AUTHORING_LOCALES`
+    // (@screena/config), com exatamente o mesmo conteudo de antes. O teste passa
+    // a travar a AUSENCIA da consulta: ela voltar e a regressao.
+    expect(source).toContain('function isRegisteredLanguage(')
+    expect(source).toContain('isContentAuthoringLocale')
+    expect(source).not.toMatch(/prisma\.language\.findUnique/)
   })
 
   it('(5) as tres entidades publicaveis finalizam (movie, tv, person)', () => {

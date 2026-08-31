@@ -6,23 +6,37 @@
 import type { SyncStatus } from '../ports.js'
 import type { PromoteCounts, PromoteReport } from './types.js'
 
-/** Total processado (desfechos que consumiram uma tentativa de promocao). */
+/**
+ * Total processado (desfechos que consumiram uma tentativa de promocao).
+ *
+ * `refused` ENTRA na conta: o raw foi lido, normalizado e avaliado — custou
+ * trabalho. O que ele nao pode e entrar em `failed` (ver `PromoteCounts`).
+ */
 export function promoteProcessed(counts: PromoteCounts): number {
-  return counts.created + counts.updated + counts.failed
+  return counts.created + counts.updated + counts.failed + counts.refused
 }
 
 /**
  * Status do ciclo para `api_sync_logs` (apply):
- *  - nada selecionado         -> `empty`
- *  - tudo falhou              -> `failed`
- *  - alguma falha (parcial)   -> `partial`
- *  - caso contrario           -> `success`
+ *  - nada selecionado             -> `empty`
+ *  - tudo falhou                  -> `failed`
+ *  - alguma falha (parcial)       -> `partial`
+ *  - tudo recusado pelo recorte   -> `empty` (rodou, nada materializou)
+ *  - caso contrario               -> `success`
+ *
+ * Recusa NAO vira `failed` nem `partial`: nao e defeito, e a decisao de idioma
+ * sendo aplicada. Mas tambem nao vira `success` quando e o ciclo INTEIRO — um
+ * lote em que nada entrou e `empty`, e chamar isso de sucesso e exatamente o
+ * proxy que este projeto ja pagou vinte vezes.
  */
 export function derivePromoteStatus(report: PromoteReport): SyncStatus {
   const processed = promoteProcessed(report.counts)
   if (report.selected === 0) return 'empty'
   if (report.counts.failed > 0) {
     return report.counts.failed >= processed ? 'failed' : 'partial'
+  }
+  if (report.counts.refused > 0 && report.counts.created + report.counts.updated === 0) {
+    return 'empty'
   }
   return 'success'
 }
@@ -48,9 +62,9 @@ export function renderPromoteReport(report: PromoteReport): string {
     const c = report.counts
     lines.push('## Desfechos (apply)')
     lines.push('')
-    lines.push('| created | updated | failed |')
-    lines.push('| ---: | ---: | ---: |')
-    lines.push(`| ${c.created} | ${c.updated} | ${c.failed} |`)
+    lines.push('| created | updated | failed | recusados (idioma) |')
+    lines.push('| ---: | ---: | ---: | ---: |')
+    lines.push(`| ${c.created} | ${c.updated} | ${c.failed} | ${c.refused} |`)
     if (report.failedIds.length > 0) {
       lines.push('')
       lines.push(`- ids que falharam (amostra): ${report.failedIds.join(', ')}`)

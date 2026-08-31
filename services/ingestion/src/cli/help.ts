@@ -37,6 +37,8 @@ Comandos:
   index-decisions   Produz page_indexability_decisions (nao liga indexacao)
   backfill-finalization  Cria slug/traducao de entidades presas pelo cache
   backfill-text          Preenche sinopse/biografia a partir do payload guardado
+  backfill-language      Recupera original_language do payload guardado
+  language-cutdown       Mede e apaga o catalogo fora do recorte de idioma
   dead-letter       list | replay dos jobs esgotados
 
 Flags globais:
@@ -180,6 +182,113 @@ Exemplos:
   pnpm catalog backfill-text --dry-run --json
   pnpm catalog backfill-text --entity movie --limit 1000 --dry-run
   pnpm catalog backfill-text --entity movie,tv --apply`,
+
+  'language-cutdown': `catalog language-cutdown — MEDE (Parte B) e APAGA (Parte D) o catalogo fora do recorte de idioma.
+
+A DECISAO: "pt, en, es, ja, ko — o resto exclua!" (Pablo Eduardo, 2026-08-31).
+O recorte efetivo vem de CINERIE_CATALOG_LANGUAGES quando definida; o default
+sao os cinco. Acrescentar um idioma e uma variavel de ambiente, nao um PR.
+
+--dry-run E O ENTREGAVEL DA PARTE B. Ele nao apaga nada e imprime:
+  B.1  a tabela por idioma (filmes, series, temporadas, episodios, oferta BR,
+       sinopse pt-BR, popularidade mediana), com FICA/SAI marcado;
+  B.2  o total que sai JA COM A CASCATA, mais as pessoas que ficariam orfas e o
+       peso em \`api_cache\`/\`tmdb_raw\`;
+  B.3  os titulos que SAEM e mesmo assim tem oferta de streaming no Brasil ou
+       sinopse em pt-BR — com os 30 mais populares listados. E o item que o dono
+       precisa ver antes de autorizar;
+  D.2  a cascata REAL, lida de \`pg_constraint\` (nao suposta), com a acao de
+       ON DELETE de cada FK;
+  D.3  quantas linhas cada tabela perderia.
+
+O INTERTRAVAMENTO. --apply RECUSA rodar enquanto houver titulo com
+\`original_language\` nulo. O motivo nao e cautela generica: ate 2026-08-31 a
+coluna estava NULA em 20.825 filmes (43%) e 20.680 series (60%), e \`pt\`, \`ja\` e
+\`ko\` — TRES dos CINCO idiomas que FICAM — eram gravados como NULL pelo defeito
+do normalizador. Apagar naquele estado removeria o cinema brasileiro, o japones
+e o coreano inteiros. Rode \`catalog backfill-language --apply\` antes.
+
+O QUE E APAGADO, E EM QUE ORDEM (por lote, uma transacao cada):
+  1. as 24 tabelas POLIMORFICAS (slugs, entity_translations, cast_members,
+     external_ratings, watch_availability, search_documents,
+     page_indexability_decisions...). Nenhuma tem FK para movies/tv_shows,
+     entao a cascata do PostgreSQL nao as leva. E elas nao sao sem FK: 21
+     apontam para \`entities\` com ON DELETE RESTRICT, o que significa que sem
+     este passo o DELETE do titulo nao deixa orfa — ele ABORTA;
+  2. as chaveadas por TMDB ID (tmdb_images, tmdb_videos, title_recommendations)
+     — atencao: por \`tmdb_id\`, nao pelo id interno;
+  3. api_cache e tmdb_raw do titulo (D.6 — e onde moram os ~5 GB);
+  4. o TITULO por ultimo, que e o que dispara DUAS coisas: a cascata do
+     PostgreSQL para seasons -> episodes e para os vinculos de
+     genero/produtora/pais, e o TRIGGER que limpa \`entities\`. \`entities\` NAO e
+     apagada a mao: o trigger e o dono dela, e apaga-la antes das filhas viola
+     o mesmo RESTRICT ao contrario;
+  5. pessoas orfas, em passo SEPARADO e no fim (D.5): a orfandade so e conhecida
+     depois do ultimo lote.
+
+DISCO. Apagar nao devolve espaco ao sistema operacional: o PostgreSQL marca as
+linhas mortas e reusa as paginas. Devolver disco exige VACUUM FULL (que trava a
+tabela) ou pg_repack — decisao de operacao, fora deste comando.
+
+Flags:
+  --dry-run              mede e planeja, sem apagar (roda de verdade)
+  --apply                apaga — exige tambem --confirm-mass-change
+  --confirm-mass-change  o segundo freio, obrigatorio no --apply
+  --limit <n>            titulos por lote/transacao (default 500)
+  --json                 relatorio estruturado
+
+Exemplos:
+  pnpm catalog language-cutdown --dry-run
+  pnpm catalog language-cutdown --dry-run --json
+  pnpm catalog language-cutdown --apply --confirm-mass-change`,
+
+  'backfill-language': `catalog backfill-language — recupera ORIGINAL_LANGUAGE do payload JA guardado.
+
+ZERO CHAMADAS AO TMDB. \`original_language\` e campo de TOPO de \`/movie/{id}\` e
+\`/tv/{id}\`, e a resposta inteira esta em \`api_cache.payload\` e \`tmdb_raw.payload\`.
+O que faltava era LEITURA.
+
+O DEFEITO QUE ELE CONSERTA. A tabela \`languages\` tinha TRES linhas (pt-BR, en, es),
+e \`movies.original_language\` tem FK para ela. O normalizador, para nao violar a
+FK, descartava em silencio todo codigo fora dessas tres — virando, na pratica,
+uma allowlist de dois idiomas. Medido em producao em 2026-08-31: a coluna estava
+NULA em 20.825 filmes (43%) e 20.680 series (60%), e tinha exatamente TRES
+valores possiveis (\`en\`, \`es\` e nulo). O portugues era o pior caso: o TMDB emite
+\`pt\`, a tabela tinha \`pt-BR\`, e todo titulo brasileiro caia para NULL.
+
+PRE-REQUISITO DO RECORTE DE IDIOMA. Rode este comando ANTES de qualquer
+apagamento por idioma. Apagar com a coluna nula em 43%/60% destruiria conteudo
+brasileiro, japones e coreano por engano — justamente tres dos cinco idiomas que
+o dono mandou MANTER.
+
+ELE NAO APLICA O RECORTE. Grava o idioma REAL, seja qual for (\`te\`, \`ru\`, \`ml\`...).
+Aplicar o recorte na leitura impossibilitaria medir o que sai (Parte B) e
+apagaria o proprio criterio do apagamento (Parte D).
+
+GARANTIAS:
+  - so preenche NULL — \`UPDATE ... WHERE original_language IS NULL\`, avaliado
+    pelo PostgreSQL na MESMA instrucao; idioma existente nunca e sobrescrito;
+  - idempotente: a segunda execucao grava zero (veja \`refusedAlreadyFilled\`);
+  - NAO bumpa \`updated_at\` — recuperar campo que sempre esteve no payload nao e
+    mudanca de conteudo, e bumpar adiaria o sync real de 41 mil titulos;
+  - em lotes, com progresso; retomar e so rodar de novo (linha preenchida sai do
+    conjunto de candidatos, que e \`original_language IS NULL\`);
+  - grava log em \`api_sync_logs\` (invariante 10).
+
+O relatorio separa "sem payload guardado", "payload sem o campo" e "codigo fora
+do dicionario". O terceiro balde NAO e um titulo sem idioma: e uma linha que
+falta em \`LANGUAGE_VOCABULARY\` (@screena/db), e o relatorio diz qual codigo.
+
+Flags:
+  --entity <lista>   movie,tv (default: ambos)
+  --limit <n>        teto de candidatos por tipo (default: sem teto)
+  --dry-run          conta e classifica, sem gravar (roda de verdade)
+  --apply            grava
+
+Exemplos:
+  pnpm catalog backfill-language --dry-run --json
+  pnpm catalog backfill-language --entity movie --limit 5000 --dry-run
+  pnpm catalog backfill-language --apply`,
 
   'index-decisions': `catalog index-decisions — PRODUZ page_indexability_decisions.
 
