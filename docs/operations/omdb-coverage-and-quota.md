@@ -79,14 +79,17 @@ conjunto coberto couber em **735 títulos**.
 relatório em vez de ser descoberto meses depois. A divisão é configurável
 (`OMDB_COVERAGE_RATIO`), não literal enterrado.
 
-### Filme × série — 59 / 41, não metade a metade
+### Filme × série — 58 / 42, não metade a metade
+
+**Medido no banco em 2026-08-31** (o enunciado dizia 8.114 / 6.461; a medição
+direta devolveu 3.314 títulos a mais sem `imdb_id`):
 
 ```
                     catálogo   sem imdb_id   CONSULTÁVEL   fatia
-filmes ..........    48.611        8.114        40.497      58,9%
-séries ..........    34.700        6.461        28.239      41,1%
+filmes ..........    48.611       10.660        37.951      58,0%
+séries ..........    34.700        7.229        27.471      42,0%
                                                 ------
-                                                68.736
+                                                65.422
 ```
 
 `perType = Math.floor(slots / 2)` parecia neutro e não era. Os conjuntos têm
@@ -98,8 +101,8 @@ ainda tem dezenas de milhares na fila.
 Proporcional ao consultável, as duas voltas fecham no mesmo dia:
 
 ```
-cobertura filme .. 350/dia → 40.497 títulos → 116 dias
-cobertura série .. 245/dia → 28.239 títulos → 116 dias
+cobertura filme .. 345/dia → 37.951 títulos → 111 dias
+cobertura série .. 250/dia → 27.471 títulos → 110 dias
 ```
 
 > **Nota sobre a cobertura de score 94,5% × 7,6%** citada no enunciado: aquilo
@@ -282,6 +285,35 @@ SELECT 'tv',
 - `tmdb_nao_tem` → **piso real**: o TMDB não conhece o IMDb id, e a OMDb
   consulta **só** por IMDb id (não há busca por TMDB id). Nenhuma cadência
   conserta esses.
+
+#### O resultado medido em 2026-08-31 — o balde recuperável está VAZIO
+
+```
+ tipo  | nunca_sincronizado | tmdb_nao_tem | total_sem_imdb
+-------+--------------------+--------------+----------------
+ tv    |                  0 |         7229 |           7229
+ movie |                  0 |        10660 |          10660
+```
+
+**`nunca_sincronizado = 0` nos dois tipos.** Todos já passaram pelo sync de
+detalhe, então não há nada a recuperar rodando o detalhe de novo.
+
+E o extrator não é o culpado — foi a primeira hipótese e ela não se sustenta:
+
+| verificação | resultado |
+| --- | --- |
+| `external_ids` está no append de filme? | sim, `MOVIE_APPEND` |
+| `external_ids` está no append de série? | sim, `TV_APPEND` |
+| o normalizador de filme lê? | `detail.imdb_id ?? detail.external_ids?.imdb_id` |
+| o normalizador de série lê? | `detail.external_ids?.imdb_id` (série não tem no topo) |
+
+Pedimos, recebemos e lemos. **O TMDB simplesmente não tem o id para eles** — o
+que é plausível para uma base montada a partir dos Daily ID Exports, que incluem
+uma cauda longa de títulos obscuros sem vínculo com o IMDb.
+
+**Portanto: 17.889 títulos (21,5% do catálogo) nunca poderão ter nota externa via
+OMDb, com qualquer cadência.** Este é o piso real do problema, e ele só muda com
+uma fonte que resolva por TMDB id — não com mais cota nem com mais frequência.
 
 ---
 
