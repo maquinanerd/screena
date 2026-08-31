@@ -83,6 +83,18 @@ export class OmdbClient {
   isCircuitOpen(): boolean {
     return this.http.isCircuitOpen()
   }
+
+  /**
+   * Abre o circuito por decisao de quem LEU o corpo.
+   *
+   * A OMDb sinaliza estouro de cota com HTTP 200 (ver cabecalho deste arquivo),
+   * entao o breaker nunca abre sozinho para esse caso. Quem reconhece a recusa e
+   * `services/ratings/src/omdb/error-response.ts`; este metodo e como ele pede a
+   * parada. O client continua sem interpretar o payload — ele so expoe o botao.
+   */
+  tripCircuit(): void {
+    this.http.tripCircuit()
+  }
 }
 
 /** Cria o client com o transporte `fetch` real (timeout da config). */

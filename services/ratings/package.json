@@ -17,6 +17,7 @@
     "awards:promote": "tsx bin/promote-omdb-awards.ts",
     "score:compute": "tsx bin/compute-cinerie-score.ts",
     "validate:omdb": "tsx scripts/validate-omdb-ratings-real-postgres.ts",
+    "validate:omdb-order": "tsx scripts/validate-omdb-candidate-order-real-postgres.ts",
     "validate:awards": "tsx scripts/validate-omdb-awards-real-postgres.ts",
     "validate:product": "tsx scripts/validate-external-intelligence-product.ts"
   },

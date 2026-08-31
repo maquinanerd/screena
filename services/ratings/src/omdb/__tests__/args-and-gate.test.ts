@@ -25,6 +25,10 @@ describe('parseOmdbArgs', () => {
       limit: null,
       report: null,
       ignoreFreshness: false,
+      // `null` = nao informado. O CLI aplica `refresh` (o comportamento
+      // historico); o parser NAO escolhe por conta propria, para que "o
+      // agendador nao passou o modo" continue distinguivel de "pediram refresh".
+      mode: null,
     })
   })
 

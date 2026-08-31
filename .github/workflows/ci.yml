@@ -325,6 +325,12 @@ jobs:
       - name: Autorizacao de fontes e atribuicao (registro governado; PostgreSQL 16 efemero)
         run: pnpm validate:source-authorization-and-attribution
 
+      # A ORDEM em que os titulos entram na fila da OMDb, medida pelo que o
+      # Postgres devolve — nao pelo texto do SQL. Um `expect(sql).toContain(...)`
+      # passaria com a clausula presente e os indices de parametro trocados.
+      - name: Ordem e particao dos candidatos OMDb (PostgreSQL 16 efemero)
+        run: pnpm --filter @screena/ratings validate:omdb-order
+
       # Backend D - cadeia editorial: fonte -> item recebido -> proveniencia ->
       # artigo -> publicacao -> projecao publica. Prova, entre outras coisas,
       # que rascunho, materia AGENDADA e materia retratada nunca entram na

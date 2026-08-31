@@ -25,7 +25,12 @@
 
 import { buildOmdbByImdbIdRequest, OMDB_ENDPOINT } from '@screena/omdb-client'
 import { hashPayload } from '@screena/rapidapi-core'
-import { checkOmdbBudget, shouldRequeue, type OmdbConsumer } from '@screena/config'
+import {
+  checkOmdbBudget,
+  shouldRequeue,
+  type OmdbConsumer,
+  type OmdbRotationMode,
+} from '@screena/config'
 import { computeRatingStaleAfter } from '@screena/schemas'
 
 import {
@@ -75,6 +80,17 @@ export interface OmdbRunDeps {
    * operador pediu UM id nominalmente; producao injeta o porto real.
    */
   readonly budget?: OmdbBudgetPort
+  /**
+   * Abre o circuito do provider. Chamado quando a OMDb declara teto de
+   * requisicoes ou recusa a credencial — os dois com HTTP 200, que o breaker
+   * sozinho NUNCA veria como falha (ver `error-response.ts`).
+   *
+   * Opcional para os testes e para `--id` avulso; producao injeta
+   * `() => client.tripCircuit()`. Ausente, o lote ainda PARA (a interrupcao e
+   * decidida aqui, nao pelo breaker) — o que se perde e a protecao do proximo
+   * processo que reusar o mesmo client.
+   */
+  readonly tripProviderCircuit?: () => void
 }
 
 /** De onde sai o saldo de cota do dia. Uma leitura por ciclo, nunca por item. */
@@ -106,6 +122,15 @@ export interface OmdbRunOptions {
    * acabou. Ver `checkOmdbBudget` em @screena/config.
    */
   readonly consumer?: OmdbConsumer
+  /**
+   * QUAL trabalho este lote faz (ver `OmdbRotationMode` em @screena/config):
+   * `coverage` (titulo sem nenhuma nota) ou `refresh` (titulo com nota vencida).
+   *
+   * Default `refresh` para preservar o comportamento de quem ainda nao passa o
+   * modo — inclusive `--id` avulso, onde o modo nem se aplica porque o operador
+   * nomeou o id.
+   */
+  readonly mode?: OmdbRotationMode
 }
 
 /** Contagem de resultados. */
@@ -157,6 +182,16 @@ export interface OmdbRunResult {
    * precisa de plano pago ou de fila menor.
    */
   readonly idsDeniedByQuota: number
+  /**
+   * Ids nao consultados porque o FORNECEDOR declarou teto atingido no meio do
+   * lote (HTTP 200 + "Request limit reached!").
+   *
+   * Separado de `idsDeniedByQuota`, que e a recusa do NOSSO contador antes de
+   * perguntar. Quando este numero e maior que zero, o nosso contador achava que
+   * havia saldo e nao havia — e o unico sinal de que `quota_cost` subconta o
+   * consumo real, porque a OMDb nao publica cabecalho de cota.
+   */
+  readonly idsAbortedByProviderQuota: number
   /** Entidades puladas por coleta recente (frescor) — nao e falha. */
   readonly idsSkippedFresh: number
   readonly idsWithoutEntity: number
@@ -211,6 +246,7 @@ export async function runOmdbRatingsSync(
       idsFailed: 0,
       idsSkipped: 0,
       idsDeniedByQuota: 0,
+      idsAbortedByProviderQuota: 0,
       idsSkippedFresh: 0,
       idsWithoutEntity: 0,
       items: [],
@@ -237,7 +273,11 @@ export async function runOmdbRatingsSync(
       entityType: options.entityType,
       limit,
       providerApi: options.providerApi,
+      // No modo `coverage` o cutoff e ignorado pela porta (nao ha coleta para
+      // estar fresca); passa-lo assim mesmo mantem UMA forma de chamada.
       cutoff,
+      mode: options.mode,
+      now: deps.now(),
     })
     idsSkippedFresh = selection.skippedFresh
     entries = selection.candidates.map((candidate) => ({
@@ -263,6 +303,9 @@ export async function runOmdbRatingsSync(
   let ratingsUnchanged = 0
   let consecutiveFailures = 0
   let idsDeniedByQuota = 0
+  let idsAbortedByProviderQuota = 0
+  /** Motivo da recusa do fornecedor, quando houve — vai para `api_sync_logs`. */
+  let providerRefusalCode: string | null = null
 
   /**
    * O SALDO DO DIA, lido UMA vez e decrementado localmente.
@@ -370,6 +413,67 @@ export async function runOmdbRatingsSync(
 
     const mapping = mapOmdbPayload(payload, options.providerApi)
     const itemRejections: OmdbRejection[] = [...mapping.rejections]
+
+    // ========================================================================
+    // O FORNECEDOR DISSE QUE ACABOU. O LOTE PARA AQUI.
+    // ========================================================================
+    // Cota e credencial sao fatos sobre o AMBIENTE, nao sobre este titulo: o
+    // proximo id encontraria a mesma parede, e cada tentativa e contada pelo
+    // fornecedor mesmo sem trazer nota. Ate 2026-08-31 o lote seguia ate o fim
+    // — um lote que cruzasse o teto no item 50 fazia as 150 chamadas restantes,
+    // todas recusadas, todas cobradas.
+    //
+    // Nao confundir com `MAX_CONSECUTIVE_ITEM_FAILURES`: aquele conta falhas de
+    // REDE/HTTP e precisa de tres para agir, porque uma falha isolada de rede
+    // nao diz nada sobre a proxima. Esta recusa e afirmativa e basta UMA — o
+    // fornecedor nao vai mudar de ideia no id seguinte.
+    //
+    // O breaker tambem e aberto: sem isso, o proximo processo que reusasse este
+    // client comecaria do zero e gastaria de novo.
+    const providerRefusal = itemRejections.find(
+      (rejection) =>
+        rejection.reason === 'omdb-quota-exhausted' || rejection.reason === 'omdb-auth-rejected',
+    )
+    if (providerRefusal !== undefined) {
+      deps.tripProviderCircuit?.()
+      const remaining = entries.length - (index + 1)
+      idsAbortedByProviderQuota += remaining
+      providerRefusalCode = providerRefusal.reason
+      rejections.push(...itemRejections)
+      itemResults.push({
+        id: entry.id,
+        entityType: entry.entityType,
+        // A REDE foi bem: HTTP 200. O que falhou foi o pedido, no corpo.
+        // Marcar `ok: false` aqui misturaria falha de transporte com recusa
+        // declarada, e `idsFailed` deixaria de significar "nao conseguimos
+        // falar com a OMDb".
+        ok: true,
+        httpStatus: 200,
+        recognized: false,
+        payloadHash,
+        rawPayload: payload,
+        sources: [],
+        ratingsRecognized: 0,
+        ratingsWritten: 0,
+        ratingsCreated: 0,
+        ratingsUpdated: 0,
+        ratingsUnchanged: 0,
+        entityResolved: false,
+        rejections: itemRejections,
+        errorCode: providerRefusal.reason,
+      })
+      if (remaining > 0) {
+        rejections.push({
+          reason: 'batch-aborted',
+          detail:
+            `a OMDb recusou por "${providerRefusal.reason}" (HTTP 200); ` +
+            `${remaining} id(s) nao consultado(s) e circuito aberto. ` +
+            'Nenhum deles foi marcado como sem nota: todos voltam como candidatos.',
+        })
+      }
+      break
+    }
+
     const drafts = mapping.ratings
     ratingsRecognized += drafts.length
 
@@ -459,7 +563,12 @@ export async function runOmdbRatingsSync(
   // consultados falharam; `partial` quando houve alguma recusa/falha;
   // `success` caso contrario.
   let status: SyncStatus
-  if (idsQueried === 0 && idsDeniedByQuota > 0) {
+  if (providerRefusalCode !== null) {
+    // O FORNECEDOR interrompeu. Domina qualquer outro desfecho do ciclo: houve
+    // trabalho, ele foi cortado, e `partial` (que e o que `rejections.length > 0`
+    // produziria) leria como "quase tudo deu certo".
+    status = 'aborted'
+  } else if (idsQueried === 0 && idsDeniedByQuota > 0) {
     // Cota estourada com trabalho pendente NAO e "vazio": e um ciclo abortado.
     // `empty` diria ao operador que nao havia nada a fazer, que e o oposto.
     status = 'aborted'
@@ -473,6 +582,10 @@ export async function runOmdbRatingsSync(
   await deps.syncLog.write({
     endpoint,
     status,
+    // O UNICO handle consultavel de "a OMDb recusou por cota". Ela nao publica
+    // cabecalho de cota nenhum, entao sem esta coluna o estouro so existiria no
+    // stdout de um processo que ja terminou. Ver PARTE D.4 do relatorio.
+    errorCode: providerRefusalCode,
     itemsProcessed: idsQueried,
     itemsCreated: ratingsCreated,
     itemsUpdated: ratingsUpdated,
@@ -489,6 +602,7 @@ export async function runOmdbRatingsSync(
     idsFailed,
     idsSkipped,
     idsDeniedByQuota,
+    idsAbortedByProviderQuota,
     idsSkippedFresh,
     idsWithoutEntity,
     items: itemResults,
@@ -504,6 +618,6 @@ export async function runOmdbRatingsSync(
     durationMs,
     quotaCost,
     refreshWindowHours,
-    errorCode: null,
+    errorCode: providerRefusalCode,
   }
 }

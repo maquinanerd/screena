@@ -7,6 +7,8 @@
  * Client gerado).
  */
 
+import type { OmdbRotationMode } from '@screena/config'
+
 import type { ExternalRatingRow, RatingsEntityType } from './film-show-ratings/types.js'
 
 /** Status de um ciclo de sync (espelha o enum `SyncStatus` do schema). */
@@ -114,15 +116,29 @@ export interface StaleCandidateSelection {
  */
 export interface StaleEntityCandidateSelectPort {
   /**
-   * Ate `limit` entidades do tipo, com IMDb id, cuja nota mais recente daquele
-   * `providerApi` foi coletada ANTES de `cutoff` (ou que nunca foram coletadas).
-   * `cutoff = null` desliga o filtro de frescor (sem politica declarada).
+   * Ate `limit` entidades do tipo, com IMDb id, que precisam de consulta.
+   *
+   * `mode` escolhe QUAL trabalho (ver `OmdbRotationMode` em @screena/config):
+   *
+   *   `coverage` — entidades com ZERO linhas em `external_ratings` (de qualquer
+   *                provider). `cutoff` e IGNORADO: um titulo que nunca foi
+   *                perguntado nao tem coleta para estar fresca, e filtrar por
+   *                frescor aqui foi o defeito que manteve 99% do catalogo mudo.
+   *   `refresh`  — entidades que JA tem nota e cuja coleta daquele `providerApi`
+   *                e anterior a `cutoff`. Aqui `RATING_STALE_POLICY` manda.
+   *
+   * `cutoff = null` desliga o filtro de frescor no modo `refresh` (sem politica
+   * declarada); no modo `coverage` nao muda nada, porque ja nao era usado.
    */
   selectStaleByType(input: {
     readonly entityType: RatingsEntityType
     readonly limit: number
     readonly providerApi: string
     readonly cutoff: Date | null
+    /** Default `refresh` — preserva o contrato de quem ainda nao passa o modo. */
+    readonly mode?: OmdbRotationMode
+    /** "Agora", injetado: a ordem editorial compara datas contra ele. */
+    readonly now?: Date
   }): Promise<StaleCandidateSelection>
 }
 

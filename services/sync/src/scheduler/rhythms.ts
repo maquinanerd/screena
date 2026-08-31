@@ -28,6 +28,8 @@
  * quem loga sao os adapters — e todos recebem `now` injetado.
  */
 
+import { OMDB_BACKGROUND_DAILY_ENVELOPE } from '@screena/config'
+
 /** Um trabalho recorrente com ritmo proprio. */
 export const SCHEDULER_QUEUES = [
   'discovery',
@@ -280,16 +282,19 @@ export const RHYTHMS: readonly Rhythm[] = [
   {
     queue: 'ratings_omdb',
     cadence: 'fixed',
-    intervalHours: 7 * DAY,
+    intervalHours: 1 * DAY,
     seasonalIntervalHours: null,
     providerApi: 'omdb',
     label: 'Notas (IMDb, Rotten Tomatoes, Metacritic via OMDb)',
     rationale:
-      'A janela sai de RATING_STALE_POLICY (@screena/config), nao de gosto: o MENOR ' +
-      'refreshAfterHours das tres fontes que a OMDb entrega e 168h. Um payload traz as ' +
-      'tres, entao a requisicao precisa acontecer quando a fonte mais impaciente pedir. O ' +
-      'limite real e a COTA (1.000/dia), nao o relogio — por isso e rodizio, nunca varredura.',
-    batchLimit: null,
+      'DIARIA porque a fila faz DOIS trabalhos e so um deles tem janela. As 168h de ' +
+      'RATING_STALE_POLICY governam REATUALIZAR um titulo que ja tem nota; elas nao dizem ' +
+      'nada sobre um titulo com ZERO notas, que nunca foi perguntado — ausencia nao e ' +
+      'defasagem. Ate 2026-08-31 esta entrada aplicava a janela de refresh aos dois, e o ' +
+      'efeito medido foi 99,13% dos filmes sem nota com o worker rodando verde. O limite ' +
+      'agora e mesmo a COTA: `batchLimit` abaixo e o envelope de fundo, e `planOmdbRotation` ' +
+      'reparte o dia entre cobertura e atualizacao. Ver packages/config/src/omdb-rotation.ts.',
+    batchLimit: OMDB_BACKGROUND_DAILY_ENVELOPE,
   },
   {
     queue: 'title_detail_active',

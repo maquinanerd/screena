@@ -194,7 +194,10 @@ async function main(): Promise<void> {
       args.id !== null
         ? `id=${args.id}`
         : args.type !== null
-          ? `ate ${args.limit ?? DEFAULT_OMDB_CANDIDATE_LIMIT} candidato(s) ${args.type} local(is) fora da janela de frescor`
+          ? `ate ${args.limit ?? DEFAULT_OMDB_CANDIDATE_LIMIT} candidato(s) ${args.type} local(is) ` +
+            ((args.mode ?? 'refresh') === 'coverage'
+              ? 'SEM nenhuma nota externa (modo cobertura; a janela de frescor nao se aplica)'
+              : 'com nota fora da janela de frescor (modo atualizacao)')
           : '(informe --id=tt... ou --type=movie|tv)'
     console.log(
       `[dry-run] plano: GET ${result.endpoint}?i=<IMDb> · alvo: ${target} · ` +
@@ -241,6 +244,9 @@ async function main(): Promise<void> {
         providerApi: OMDB_PROVIDER_API,
         cacheTtlMs: config.cacheTtlMs,
         ignoreFreshness: args.ignoreFreshness,
+        // `refresh` e o default historico. `coverage` e o modo novo, e o
+        // agendador o passa explicitamente — nunca por inferencia.
+        mode: args.mode ?? 'refresh',
       },
       {
         fetchTitle: (imdbId) => client.getByImdbId(imdbId),
@@ -269,6 +275,11 @@ async function main(): Promise<void> {
         // operador pediu UM id nominalmente, e barrar um pedido nominal por
         // causa da fila de fundo seria o inverso da politica.
         budget: args.id === null ? createPrismaOmdbBudget(prisma, () => new Date()) : undefined,
+        // A OMDb declara estouro de cota com HTTP 200 — o breaker nunca veria
+        // isso sozinho. Quem le o corpo e reconhece a recusa pede a parada aqui.
+        tripProviderCircuit: () => {
+          client.tripCircuit()
+        },
       },
     )
 

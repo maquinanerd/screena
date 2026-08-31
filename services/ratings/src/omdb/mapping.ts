@@ -46,6 +46,7 @@ import { buildImdbTitleUrl, isImdbId } from '@screena/omdb-client'
 import { validateRating } from '@screena/schemas'
 
 import { classifyRatingScoreType } from '../score-type.js'
+import { classifyOmdbError, type OmdbErrorKind } from './error-response.js'
 import { recognizeOmdbSource, type RecognizedOmdbSource } from './sources.js'
 import type { OmdbRejection, OmdbRejectionReason, RatingDraft } from './types.js'
 import { parseOmdbRatingValue } from './value.js'
@@ -273,18 +274,41 @@ export function mapOmdbPayload(payload: unknown, providerApi: string): OmdbMappi
   }
 
   // TRAVA 1: erro da OMDb chega com HTTP 200. Isto NUNCA e sucesso.
+  //
+  // E NAO E UM ERRO SO. O `Error` diz se o fato e sobre o TITULO (segue o lote)
+  // ou sobre o DIA/CREDENCIAL (para o lote). Ate 2026-08-31 os tres viravam a
+  // mesma rejeicao generica, e o efeito era o lote inteiro seguindo depois do
+  // teto — cada chamada contada pelo fornecedor, nenhuma trazendo nota.
   if (isFailureResponse(payload)) {
     const rawError = payload['Error']
     const detail = typeof rawError === 'string' && rawError.trim() !== '' ? rawError.trim() : null
+    const kind = classifyOmdbError(rawError)
+    const shown = detail !== null ? ` — Error: "${detail}"` : ' (sem campo Error)'
+
+    const REASON_BY_KIND: Readonly<Record<OmdbErrorKind, OmdbRejectionReason>> = {
+      quota: 'omdb-quota-exhausted',
+      auth: 'omdb-auth-rejected',
+      'not-found': 'omdb-error-response',
+    }
+    const EXPLANATION_BY_KIND: Readonly<Record<OmdbErrorKind, string>> = {
+      quota:
+        'o FORNECEDOR declarou teto de requisicoes atingido — fato sobre o DIA, nao sobre o ' +
+        'titulo. O titulo NAO e marcado como sem nota e volta como candidato no proximo ciclo.',
+      auth: 'a OMDb recusou a CREDENCIAL — fato sobre a chave; nenhum id seguinte passaria.',
+      'not-found':
+        'fato sobre o TITULO (id inexistente/malformado); o lote continua, os proximos ids ' +
+        'nao tem relacao com este.',
+    }
+
     return {
       recognized: false,
       imdbId: null,
       ratings: [],
       rejections: [
         reject(
-          'omdb-error-response',
-          `OMDb respondeu Response=False com HTTP 200${detail !== null ? ` — Error: "${detail}"` : ' (sem campo Error)'}; ` +
-            'nenhuma nota ingerida',
+          REASON_BY_KIND[kind],
+          `OMDb respondeu Response=False com HTTP 200${shown}; nenhuma nota ingerida. ` +
+            EXPLANATION_BY_KIND[kind],
         ),
       ],
     }
