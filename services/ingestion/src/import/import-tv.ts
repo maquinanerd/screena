@@ -13,6 +13,8 @@ import {
   emptyDetailWatchReport,
   ingestWatchProvidersFromDetail,
 } from '../watch-providers/from-detail.js'
+import { isUpsertRefused } from '../ports.js'
+import { refusalErrorCode } from '../persistence/admission.js'
 import { describeError } from './errors.js'
 import type { ImportContext, ImportResult } from './types.js'
 
@@ -57,7 +59,7 @@ export async function importTvShow(ctx: ImportContext, tmdbId: number): Promise<
     // nunca mais muda. O booleano de `touch*` agora DECIDE.
     const tocou = result.changed ? false : await ctx.store.touchTvShow(tmdbId, timestamps)
     if (result.changed || !tocou) {
-      const outcome = await ctx.store.upsertTvShow({
+      const upsert = await ctx.store.upsertTvShow({
         tvShow: normalized.tvShow,
         externalIds: normalized.externalIds,
         cast: normalized.cast,
@@ -72,8 +74,38 @@ export async function importTvShow(ctx: ImportContext, tmdbId: number): Promise<
         genresPresent: normalized.genresPresent,
         timestamps,
       })
-      created = outcome.created
-      id = outcome.id
+      // RECUSA NA PORTA (recorte de idioma, Parte C). Ver `import-movie.ts`:
+      // sai antes de oferta, temporada e episodio — sem entidade nao ha nada a
+      // pendurar, e uma serie recusada aqui NAO dispara a cascata de temporadas
+      // e episodios, que e onde o recorte economiza requisicao de verdade.
+      if (isUpsertRefused(upsert)) {
+        await ctx.syncLog.write({
+          endpoint,
+          status: 'empty',
+          errorCode: refusalErrorCode(upsert.refused),
+          itemsProcessed: 1,
+          itemsCreated: 0,
+          itemsUpdated: 0,
+          durationMs: ctx.now().getTime() - startedMs,
+          quotaCost,
+          payloadHash: result.payloadHash,
+        })
+        return {
+          entityType: 'tv',
+          tmdbId,
+          status: 'empty',
+          changed: false,
+          created: false,
+          id: null,
+          refused: upsert.refused,
+          quotaCost,
+          watch: emptyDetailWatchReport('unresolved'),
+          seasons: 0,
+          episodes: 0,
+        }
+      }
+      created = upsert.created
+      id = upsert.id
     }
 
     // Disponibilidade a partir do MESMO payload que ja esta em maos: zero

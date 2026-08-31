@@ -23,6 +23,11 @@ import {
   importPerson,
   importTvShow,
 } from '../import/index.js'
+import { isContentAuthoringLocale } from '@screena/config'
+
+import { isUpsertRefused } from '../ports.js'
+import type { CatalogAdmissionRefusal } from '../ports.js'
+import { refusalErrorCode } from './admission.js'
 import { CatalogServiceError, assertImportOk } from '../import/assert-ok.js'
 import { normalizeMovie } from '../normalizers/movie.js'
 import { normalizeTvShow } from '../normalizers/tv.js'
@@ -119,6 +124,17 @@ function requireNumber(value: number | null, field: string, kind: string): numbe
  * job precisa dizer isso. Antes esse caso devolvia `{ cast: 0, skipped: false }`,
  * ou seja, "sucesso, zero creditos", enquanto o store apagava o elenco existente.
  */
+/** Desfecho de creditos quando a porta do catalogo recusou o titulo. */
+function refusedCreditsOutcome(refusal: CatalogAdmissionRefusal): CreditsSyncOutcome {
+  return {
+    cast: 0,
+    crew: 0,
+    guestStars: 0,
+    skipped: true,
+    skipReason: `titulo recusado pelo recorte de idioma (${refusalErrorCode(refusal)})`,
+  }
+}
+
 function creditsSyncOutcome(credits: CreditsWriteOutcome): CreditsSyncOutcome {
   if (!credits.castReplaced && !credits.crewReplaced) {
     return {
@@ -356,26 +372,29 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
    * da execucao que a criou.
    */
   /**
-   * Cache de idiomas REGISTRADOS em `languages`.
+   * Locale em que a ingestao pode CRIAR slug e traducao.
    *
    * `slugs.language_code` e `entity_translations.language_code` tem FK para
-   * `languages`, e a tabela so tem os idiomas do seed (hoje pt-BR, en, es). O
-   * `--locale` do TMDB, porem, e um BCP-47 completo: `en-US`, `es-ES`, `fr-FR`.
+   * `languages`. O `--locale` do TMDB, porem, e um BCP-47 completo: `en-US`,
+   * `es-ES`, `fr-FR`. Sem esta checagem, `catalog sync --locale en-US`
+   * estouraria FK violation e derrubaria o job inteiro — um comando que antes
+   * funcionava (so nao criava slug).
    *
-   * Sem esta checagem, `catalog sync --locale en-US` passaria a estourar FK
-   * violation e derrubar o job inteiro — um comando que ANTES desta mudanca
-   * funcionava (so nao criava slug). Manter o comportamento antigo para idioma
-   * desconhecido (nao finaliza) e o unico caminho que nao regride.
+   * ESTA CHECAGEM ERA UM `findUnique` EM `languages`, e mudou de fonte em
+   * 2026-08-31. O motivo: `languages` deixou de ser a lista de idiomas em que
+   * escrevemos e voltou a ser o dicionario ISO 639-1 do mundo (186 linhas), para
+   * que `movies.original_language` pudesse guardar o idioma real do titulo. Se
+   * o gate continuasse sendo "existe linha na tabela?", acrescentar `pt` ao
+   * dicionario — obrigatorio, e o codigo que o TMDB emite para o portugues —
+   * passaria a criar um SEGUNDO slug `pt` ao lado do `pt-BR` de todo titulo
+   * ja publicado, so porque `CATALOG_WORKER_LOCALE` e configuravel.
+   *
+   * A politica agora mora em `CONTENT_AUTHORING_LOCALES` (@screena/config), com
+   * exatamente o conteudo que a tabela tinha: `pt-BR`, `en`, `es`. Comportamento
+   * identico ao anterior, e sem ida ao banco.
    */
-  const knownLanguages = new Map<string, boolean>()
-
-  async function isRegisteredLanguage(code: string): Promise<boolean> {
-    const cached = knownLanguages.get(code)
-    if (cached !== undefined) return cached
-    const row = await prisma.language.findUnique({ where: { code }, select: { code: true } })
-    const exists = row !== null
-    knownLanguages.set(code, exists)
-    return exists
+  function isRegisteredLanguage(code: string): boolean {
+    return isContentAuthoringLocale(code)
   }
 
   async function finalizeDetail(
@@ -392,7 +411,7 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
     if (display.title.trim() === '') return
     // Idioma nao registrado: nao finaliza (ver `isRegisteredLanguage`). O
     // detalhe continua sincronizado; so nao ganha slug/traducao naquele idioma.
-    if (!(await isRegisteredLanguage(locale))) return
+    if (!isRegisteredLanguage(locale)) return
     const finalize = createPrismaCatalogFinalize(prisma, locale)
     const desiredSlug = desiredCatalogSlug(display.title, tmdbId)
     await finalize.upsertCanonicalSlug(entityType, entityId, desiredSlug, tmdbId)
@@ -501,6 +520,10 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
           countriesPresent: normalized.countriesPresent,
           timestamps: { lastSyncedAt: now(), staleAfter: new Date(now().getTime() + staleWindowMs) },
         })
+        // Recusa na porta (recorte de idioma): so acontece para titulo que NAO
+        // existe — o gate e de criacao. Reportar `skipped` com o motivo e o
+        // unico desfecho honesto: nao houve falha, e tambem nao houve credito.
+        if (isUpsertRefused(outcome)) return refusedCreditsOutcome(outcome.refused)
         await syncEntityReferences('movie', tmdbId, detail)
         return creditsSyncOutcome(outcome.credits)
       }
@@ -522,6 +545,7 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
           countriesPresent: normalized.countriesPresent,
           timestamps: { lastSyncedAt: now(), staleAfter: new Date(now().getTime() + staleWindowMs) },
         })
+        if (isUpsertRefused(outcome)) return refusedCreditsOutcome(outcome.refused)
         await syncEntityReferences('tv', tmdbId, detail)
         return creditsSyncOutcome(outcome.credits)
       }
@@ -555,7 +579,7 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
       }
       if (kind === 'movie') {
         const normalized = normalizeMovie(await tmdb.getMovie(tmdbId))
-        await persistence.store.upsertMovie({
+        const upserted = await persistence.store.upsertMovie({
           movie: normalized.movie,
           externalIds: normalized.externalIds,
           cast: normalized.cast,
@@ -573,11 +597,23 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
           countriesPresent: normalized.countriesPresent,
           timestamps: { lastSyncedAt: now(), staleAfter: new Date(now().getTime() + staleWindowMs) },
         })
+        // O upsert pode ter sido RECUSADO na porta (recorte de idioma). Sem
+        // esta checagem o job responderia "N ids sincronizados" sobre uma
+        // entidade que nao existe — sucesso medido em proxy, que e o defeito
+        // que esta leva veio fechar.
+        if (isUpsertRefused(upserted)) {
+          return {
+            upserted: 0,
+            changed: 0,
+            skipped: true,
+            skipReason: `titulo recusado pelo recorte de idioma (${refusalErrorCode(upserted.refused)})`,
+          }
+        }
         return { upserted: normalized.externalIds.length, changed: 0, skipped: false, skipReason: null }
       }
       if (kind === 'tv') {
         const normalized = normalizeTvShow(await tmdb.getTvShow(tmdbId))
-        await persistence.store.upsertTvShow({
+        const upserted = await persistence.store.upsertTvShow({
           tvShow: normalized.tvShow,
           externalIds: normalized.externalIds,
           cast: normalized.cast,
@@ -593,6 +629,18 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
           countriesPresent: normalized.countriesPresent,
           timestamps: { lastSyncedAt: now(), staleAfter: new Date(now().getTime() + staleWindowMs) },
         })
+        // O upsert pode ter sido RECUSADO na porta (recorte de idioma). Sem
+        // esta checagem o job responderia "N ids sincronizados" sobre uma
+        // entidade que nao existe — sucesso medido em proxy, que e o defeito
+        // que esta leva veio fechar.
+        if (isUpsertRefused(upserted)) {
+          return {
+            upserted: 0,
+            changed: 0,
+            skipped: true,
+            skipReason: `titulo recusado pelo recorte de idioma (${refusalErrorCode(upserted.refused)})`,
+          }
+        }
         return { upserted: normalized.externalIds.length, changed: 0, skipped: false, skipReason: null }
       }
       const normalized = normalizePerson(await tmdb.getPerson(tmdbId))

@@ -174,7 +174,7 @@ describe('promotePeopleFromRaw', () => {
     const report = await promotePeopleFromRaw(personOpts(makePersonSource([personRow(1)]), store, finalize))
 
     expect(report.entityType).toBe('person')
-    expect(report.counts).toEqual({ created: 1, updated: 0, failed: 0 })
+    expect(report.counts).toEqual({ created: 1, updated: 0, failed: 0, refused: 0 })
     const input = personCalls[0]!
     expect(input.person.name).toBe('Pessoa 1')
     expect(input.person.knownForDepartment).toBe('Acting')
@@ -245,9 +245,9 @@ describe('promotePeopleFromRaw', () => {
     const { store, personCalls } = makePersonStore()
     const { finalize } = makeFinalize()
     const r1 = await promotePeopleFromRaw(personOpts(makePersonSource(rows), store, finalize))
-    expect(r1.counts).toEqual({ created: 2, updated: 0, failed: 0 })
+    expect(r1.counts).toEqual({ created: 2, updated: 0, failed: 0, refused: 0 })
     const r2 = await promotePeopleFromRaw(personOpts(makePersonSource(rows), store, finalize))
-    expect(r2.counts).toEqual({ created: 0, updated: 2, failed: 0 })
+    expect(r2.counts).toEqual({ created: 0, updated: 2, failed: 0, refused: 0 })
     expect(personCalls).toHaveLength(4)
   })
 

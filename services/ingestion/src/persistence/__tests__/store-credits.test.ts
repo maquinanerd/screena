@@ -26,6 +26,8 @@
 import { describe, expect, it } from 'vitest'
 
 import { createPrismaStore } from '../store.js'
+import { isUpsertRefused } from '../../ports.js'
+import type { EntityUpsertOutcome, EntityUpsertResult } from '../../ports.js'
 import { createMovieStrategy } from '../../raw-promote/run.js'
 import { normalizeMovie } from '../../normalizers/movie.js'
 import { normalizeTvShow } from '../../normalizers/tv.js'
@@ -33,6 +35,21 @@ import type { StoreMovieInput, StoreTvShowInput } from '../../ports.js'
 import type { TmdbCredits, TmdbMovieDetail, TmdbTvDetail } from '@screena/tmdb-client'
 
 type StoreArg = Parameters<typeof createPrismaStore>[0]
+
+/**
+ * Narrowing para os testes: o resultado do upsert virou UNIAO (pode ser recusa
+ * pelo recorte de idioma, ver `../admission.ts`). Nestes testes o Prisma falso
+ * devolve entidade EXISTENTE em `findUnique`, e o gate so barra CRIACAO — entao
+ * a recusa nunca acontece aqui. Se um dia acontecer, este helper falha alto em
+ * vez de deixar o teste seguir com um objeto sem `id`.
+ */
+function admitido(result: EntityUpsertResult): EntityUpsertOutcome {
+  if (isUpsertRefused(result)) {
+    throw new Error(`upsert recusado inesperadamente: ${JSON.stringify(result.refused)}`)
+  }
+  return result
+}
+
 
 const MOVIE_ROW_ID = 42n
 const TV_ROW_ID = 77n
@@ -177,7 +194,7 @@ describe('replaceCredits — payload sem `credits` NAO apaga elenco/equipe', () 
     const fake = makeFakePrisma()
     const store = createPrismaStore(fake.prisma)
 
-    const outcome = await store.upsertMovie(movieInput(movieDetail()))
+    const outcome = admitido(await store.upsertMovie(movieInput(movieDetail())))
 
     // O CORACAO DA REGRESSAO: sem delete, o elenco ja gravado sobrevive.
     expect(fake.calls).not.toContain('castMember.deleteMany')
@@ -204,7 +221,7 @@ describe('replaceCredits — payload sem `credits` NAO apaga elenco/equipe', () 
     const fake = makeFakePrisma()
     const store = createPrismaStore(fake.prisma)
 
-    const outcome = await store.upsertTvShow(tvInput({ id: 1396, original_name: 'Breaking Bad' }))
+    const outcome = admitido(await store.upsertTvShow(tvInput({ id: 1396, original_name: 'Breaking Bad' })))
 
     expect(fake.calls).not.toContain('castMember.deleteMany')
     expect(fake.calls).not.toContain('crewMember.deleteMany')
@@ -219,12 +236,13 @@ describe('replaceCredits — payload sem `credits` NAO apaga elenco/equipe', () 
     const fake = makeFakePrisma()
     const store = createPrismaStore(fake.prisma)
 
-    const { outcome } = await createMovieStrategy(store).promote({
+    const promoted = await createMovieStrategy(store).promote({
       tmdbId: 550,
       baseLanguage: 'en',
       payload: movieDetail(),
       fetchedAt: SYNCED_AT,
     })
+    const outcome = admitido(promoted.outcome as EntityUpsertResult)
 
     // A prova aqui sao as chamadas: `PromoteStrategy` declara `UpsertOutcome`
     // (o core generico so le `id`/`created`, e a estrategia de pessoa nem tem
@@ -252,7 +270,7 @@ describe('replaceCredits — lista presente porem VAZIA limpa (afirmacao da font
     const fake = makeFakePrisma()
     const store = createPrismaStore(fake.prisma)
 
-    const outcome = await store.upsertMovie(movieInput(movieDetail({ cast: [], crew: [] })))
+    const outcome = admitido(await store.upsertMovie(movieInput(movieDetail({ cast: [], crew: [] }))))
 
     // Aqui a fonte AFIRMOU que nao ha creditos — limpar e o comportamento certo.
     expect(fake.calls).toContain('castMember.deleteMany')
@@ -270,7 +288,7 @@ describe('replaceCredits — presenca por lista e independente', () => {
     const fake = makeFakePrisma()
     const store = createPrismaStore(fake.prisma)
 
-    const outcome = await store.upsertMovie(movieInput(movieDetail({ cast: FULL_CREDITS.cast })))
+    const outcome = admitido(await store.upsertMovie(movieInput(movieDetail({ cast: FULL_CREDITS.cast }))))
 
     expect(fake.calls).toContain('castMember.deleteMany')
     expect(fake.calls).toContain('castMember.createMany')
@@ -288,7 +306,7 @@ describe('replaceCredits — presenca por lista e independente', () => {
     const fake = makeFakePrisma()
     const store = createPrismaStore(fake.prisma)
 
-    const outcome = await store.upsertMovie(movieInput(movieDetail(FULL_CREDITS)))
+    const outcome = admitido(await store.upsertMovie(movieInput(movieDetail(FULL_CREDITS))))
 
     expect(fake.calls).toContain('castMember.deleteMany')
     expect(fake.calls).toContain('crewMember.deleteMany')
@@ -309,7 +327,7 @@ describe('replaceCredits — credito sem pessoa resolvida entra num contador', (
     const fake = makeFakePrisma({ unresolvablePeople: [819] })
     const store = createPrismaStore(fake.prisma)
 
-    const outcome = await store.upsertMovie(movieInput(movieDetail(FULL_CREDITS)))
+    const outcome = admitido(await store.upsertMovie(movieInput(movieDetail(FULL_CREDITS))))
 
     expect(outcome.credits.castDropped).toBe(1)
     expect(outcome.credits.castLinked).toBe(0)

@@ -146,6 +146,35 @@ export type IndexStatus = (typeof INDEX_STATUS)[number];
 export const SUPPORTED_LOCALES = ["pt-BR", "pt", "en", "es"] as const;
 
 /**
+ * Locales em que a INGESTAO pode criar slug e traducao de entidade.
+ *
+ * ESTA LISTA EXISTIA, mas escondida no formato errado: era o CONTEUDO da tabela
+ * `languages` (pt-BR, en, es). `catalog sync --locale X` chamava
+ * `prisma.language.findUnique` e so finalizava quando a linha existia — ou
+ * seja, uma tabela-DICIONARIO estava sendo usada como POLITICA de autoria.
+ *
+ * A confusao custou caro. `movies.original_language` tem FK para essa mesma
+ * tabela, entao o dicionario de idiomas do MUNDO estava limitado aos idiomas em
+ * que a Cinerie ESCREVE — e o normalizador, para nao violar a FK, jogou fora o
+ * idioma real de 41.505 titulos. Ver `CATALOG_LANGUAGE_ALLOWLIST_DEFAULT` em
+ * `catalog-languages.ts` e `normalizeOriginalLanguage` em @screena/ingestion.
+ *
+ * Agora `languages` volta a ser dicionario (recebe o vocabulario ISO 639-1
+ * inteiro) e a POLITICA mora aqui. O conjunto e IDENTICO ao que a tabela tinha
+ * em 2026-08-31, de proposito: separar os dois conceitos nao pode, no mesmo
+ * movimento, ligar autoria em idioma nenhum. `pt` esta FORA — ele e locale
+ * publicado (`PUBLISHED_LOCALES`) mas nunca teve linha em `languages`, e
+ * inclui-lo aqui criaria um segundo slug ao lado do `pt-BR` existente.
+ * Acrescentar um locale a esta lista e decisao editorial humana.
+ */
+export const CONTENT_AUTHORING_LOCALES: readonly string[] = ["pt-BR", "en", "es"];
+
+/** True se a ingestao pode criar slug/traducao neste locale. */
+export function isContentAuthoringLocale(locale: string): boolean {
+  return CONTENT_AUTHORING_LOCALES.includes(locale);
+}
+
+/**
  * Tipo derivado de um locale suportado valido.
  */
 export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];

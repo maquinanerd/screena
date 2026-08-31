@@ -29,10 +29,28 @@
 import { describe, expect, it } from 'vitest'
 
 import { createPrismaStore } from '../store.js'
+import { isUpsertRefused } from '../../ports.js'
+import type { EntityUpsertOutcome, EntityUpsertResult } from '../../ports.js'
 import { normalizeMovie } from '../../normalizers/movie.js'
 import { normalizeTvShow } from '../../normalizers/tv.js'
 import type { StoreMovieInput, StoreTvShowInput } from '../../ports.js'
 import type { TmdbMovieDetail, TmdbTvDetail } from '@screena/tmdb-client'
+
+/**
+ * Narrowing para os testes: o resultado do upsert virou UNIAO (pode ser recusa
+ * pelo recorte de idioma, ver `../admission.ts`). Nestes testes o Prisma falso
+ * devolve entidade EXISTENTE em `findUnique`, e o gate so barra CRIACAO — entao
+ * a recusa nunca acontece aqui. Se um dia acontecer, este helper falha alto em
+ * vez de deixar o teste seguir com um objeto sem `id`.
+ */
+function admitido(result: EntityUpsertResult): EntityUpsertOutcome {
+  if (isUpsertRefused(result)) {
+    throw new Error(`upsert recusado inesperadamente: ${JSON.stringify(result.refused)}`)
+  }
+  return result
+}
+
+
 
 type StoreArg = Parameters<typeof createPrismaStore>[0]
 
@@ -177,8 +195,10 @@ describe('replaceTitleGenres — genero fora do dicionario nao derruba o titulo'
     const fake = makeFakePrisma({ movie: [] })
     const store = createPrismaStore(fake.prisma)
 
-    const outcome = await store.upsertMovie(
-      movieInput({ id: 550, original_title: 'Fight Club', genres: genreBlock(18, 53) }),
+    const outcome = admitido(
+      await store.upsertMovie(
+        movieInput({ id: 550, original_title: 'Fight Club', genres: genreBlock(18, 53) }),
+      ),
     )
 
     // O CORACAO DA REGRESSAO: com o dicionario vazio, a versao anterior

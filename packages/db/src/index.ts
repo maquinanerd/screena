@@ -11,3 +11,4 @@
  */
 
 export * from "./seed-data.js";
+export * from "./language-vocabulary.js";

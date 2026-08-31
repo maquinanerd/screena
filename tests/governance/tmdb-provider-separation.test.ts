@@ -27,6 +27,36 @@ const SCAN_ROOTS = [
 const FORBIDDEN: RegExp[] = [/external_ratings/i, /externalRating/, /rating_source/i, /ratingSource/]
 
 /**
+ * Excecao ESTREITA: arquivos que podem citar o NOME DA TABELA `external_ratings`,
+ * e SO ele.
+ *
+ * O que a invariante 2 proibe e o importador TMDB tratar metadado tecnico como
+ * nota editorial — escrever em `external_ratings`, ou confundir `provider_api`
+ * com `rating_source`. Ela nao proibe que o catalogo SAIBA que a tabela existe.
+ *
+ * O recorte de idioma (2026-08-31) apaga titulos em massa. `external_ratings` e
+ * uma das 24 tabelas POLIMORFICAS que nao cascateiam do titulo: se o apagamento
+ * nao a nomear, a nota de um filme apagado fica orfa — e pior, a FK dela para
+ * `entities` (ON DELETE RESTRICT) faz o `DELETE` do filme ABORTAR. Omitir o nome
+ * para agradar um guard textual seria trocar uma invariante por um teste verde.
+ *
+ * A excecao e minima em duas direcoes:
+ *  - vale SO para `/external_ratings/`. Os outros tres tokens
+ *    (`externalRating`, `rating_source`, `ratingSource`) continuam PROIBIDOS
+ *    nestes arquivos — e sao eles que carregam a semantica de nota editorial;
+ *  - vale SO para estes dois caminhos, listados um a um.
+ */
+const TABLE_NAME_ONLY_EXCEPTIONS: readonly string[] = [
+  join('services', 'ingestion', 'src', 'persistence', 'language-cutdown.ts'),
+  join('services', 'ingestion', 'src', 'cli', 'help.ts'),
+]
+
+/** True quando o arquivo pode citar o nome da tabela (e nada alem disso). */
+function podeCitarNomeDaTabela(relativePath: string): boolean {
+  return TABLE_NAME_ONLY_EXCEPTIONS.some((allowed) => relativePath.endsWith(allowed))
+}
+
+/**
  * Remove comentarios (bloco e linha) para que a varredura mire CODIGO, nao a
  * prosa que justamente explica "nunca tratar TMDB como rating_source".
  */
@@ -76,11 +106,16 @@ describe('governanca: TMDB provider_api != rating_source (invariantes 1, 2)', ()
       const offenders: string[] = []
       for (const root of SCAN_ROOTS) {
         for (const file of await collectTs(root)) {
+          const relativePath = relative(process.cwd(), file)
+          const tabelaLiberada = podeCitarNomeDaTabela(relativePath)
           const content = stripComments(await readFile(file, 'utf8'))
           content.split(/\r?\n/).forEach((line, index) => {
             for (const pattern of FORBIDDEN) {
+              // A excecao cobre APENAS o nome da tabela; os tokens de semantica
+              // editorial seguem proibidos ate nos arquivos liberados.
+              if (tabelaLiberada && pattern.source === 'external_ratings') continue
               if (pattern.test(line)) {
-                offenders.push(`${relative(process.cwd(), file)}:${index + 1} -> ${line.trim()}`)
+                offenders.push(`${relativePath}:${index + 1} -> ${line.trim()}`)
               }
             }
           })
