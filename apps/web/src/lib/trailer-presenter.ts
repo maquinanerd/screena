@@ -18,15 +18,20 @@
  * verdade em 13/08/2026: existe a entrada "TMDB (trailers)", `official`,
  * `displayAllowed: true`, policy `cinerie-source-auth/tmdb-video/2026-08-v1`.
  *
- * O QUE AINDA FALTA É OUTRA COISA, e a distinção é o assunto: `source_licenses`
- * diz o que a FONTE permite; quem decide se uma LINHA de `tmdb_videos` é
- * exibível é a coluna `display_allowed` daquela linha — e ela nasce `false`
- * (`services/ingestion/src/catalog-sync/media-sync.ts`). São DOIS passos, como
- * em ratings e em streaming, e o segundo é a promoção governada.
+ * SÃO DOIS PASSOS, e a distinção é o assunto: `source_licenses` diz o que a
+ * FONTE permite; quem decide se uma LINHA de `tmdb_videos` é exibível é a
+ * coluna `display_allowed` daquela linha.
  *
- * Ou seja: hoje isto ainda devolve `null` para todo mundo, mas a causa mudou de
- * "não há permissão" para "as linhas não foram promovidas". O trailer é fiação
- * e promoção, nunca mais uma pendência legal.
+ * O SEGUNDO PASSO DEIXOU DE SER MANUAL em 28/08/2026: a linha nova nasce no
+ * estado que a licença autoriza
+ * (`services/ingestion/src/media-promotion/birth.ts`), e o acervo anterior é
+ * aceso de uma vez por `promote:media --target=all`.
+ *
+ * A FRASE QUE ESTAVA AQUI — "hoje isto ainda devolve `null` para todo mundo" —
+ * ERA FALSA quando foi lida em 28/08: `promote:media` existia desde 25/08 e
+ * já havia 2.395 linhas acesas. Comentário mentiroso encerra a investigação na
+ * porta errada; ficou corrigido em vez de apagado, para que a próxima leitura
+ * saiba que a afirmação existiu.
  *
  * Nada aqui monta URL à mão: a política do embed (domínio, ausência de query,
  * formato do id) vive em `youtube-embed.ts`.

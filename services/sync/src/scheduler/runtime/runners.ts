@@ -63,6 +63,7 @@ import { readSpentToday } from './facts.js'
 import {
   selectAiringSeries,
   selectStalePeople,
+  selectStaleTitleMedia,
   selectStaleWatchOffers,
   selectTitlesByActivity,
   selectTrendingRanks,
@@ -350,6 +351,93 @@ const runAiringSeries: QueueRunner = async (deps) => {
   const trending = await trendingOfTheDay(deps)
   const candidates = await selectAiringSeries(deps.prisma, startedAt, deps.batchLimit)
   return enqueueTitleDetails(deps, 'airing_series', candidates, startedAt, trending)
+}
+
+/**
+ * A fila `title_media`: um `sync_media` por titulo com midia vencida.
+ *
+ * ============================================================================
+ * ELA ENFILEIRA `sync_media`, NAO `sync_details` — E ISSO E O PONTO
+ * ============================================================================
+ * `sync_details` traz o payload INTEIRO do titulo (130,6 kB em filme, 648,3 kB
+ * em serie) so para que a cascata enfileire a midia no fim. Para refrescar
+ * trailer e poster isso e pagar o catalogo para receber a capa.
+ *
+ * `sync_media` chama os endpoints DEDICADOS (`/images` + `/videos`): 2
+ * requisicoes por titulo, e — detalhe que importa — eles vao SEM `language`,
+ * entao devolvem TODAS as artes e todos os idiomas, enquanto o bloco de midia
+ * do append herda o `language` da requisicao de detalhe e vem filtrado.
+ *
+ * ============================================================================
+ * O DIA NO ESCOPO, PELO MESMO MOTIVO DE SEMPRE
+ * ============================================================================
+ * Dentro do dia, reenfileirar e noop; no dia seguinte e trabalho novo. E a
+ * MESMA licao que a chave dos filhos de `sync_details` acabou de aprender (ver
+ * `scopedChildDiscriminator` em @screena/ingestion): chave sem escopo congela a
+ * fila no primeiro lote, em silencio, para sempre.
+ */
+const runTitleMedia: QueueRunner = async (deps) => {
+  const startedAt = deps.now()
+  // 7 dias: a janela de "trailers / imagens (midia de catalogo)" declarada em
+  // .claude/rules/ingestion.md. O ciclo e DIARIO; a janela e de 7 dias. Um nao
+  // e o outro: a fila acorda todo dia e leva o lote de quem passou dos 7.
+  const olderThan = new Date(startedAt.getTime() - 7 * DAY_MS)
+  const candidates = await selectStaleTitleMedia(deps.prisma, olderThan, deps.batchLimit)
+  const reasons = new Map<string, RunReason>()
+  let processed = 0
+  let skipped = 0
+  let failed = 0
+
+  for (const candidate of candidates) {
+    if (!deps.apply) {
+      skipped += 1
+      countReason(reasons, 'dry_run', 'sem --apply: nada foi enfileirado')
+      continue
+    }
+    const externalId = String(candidate.tmdbId)
+    try {
+      const result = await deps.services.store.enqueue({
+        jobType: 'sync_media',
+        entityType: candidate.entityType,
+        externalId,
+        idempotencyKey: buildIdempotencyKey({
+          jobType: 'sync_media',
+          entityType: candidate.entityType,
+          externalId,
+          discriminator: `${deps.locale}:${dailyScope('title_media', startedAt)}`,
+        }),
+        payload: {
+          entityType: candidate.entityType,
+          tmdbId: candidate.tmdbId,
+          locale: deps.locale,
+        },
+        // 70: a mesma prioridade que a cascata de `sync_details` da a midia de
+        // filme/serie. Duas origens do MESMO job com prioridades diferentes
+        // fariam a fila reordenar por quem pediu, nao por quem precisa.
+        priority: 70,
+        runId: 'scheduler:title_media',
+      })
+      if (result.created) processed += 1
+      else {
+        skipped += 1
+        countReason(reasons, 'already_queued', 'midia deste titulo ja enfileirada neste dia')
+      }
+    } catch (error) {
+      failed += 1
+      countReason(reasons, 'enqueue_failed', String(error))
+    }
+  }
+
+  return tally(
+    'title_media',
+    startedAt,
+    deps.now(),
+    { planned: candidates.length, processed, failed, skipped },
+    [...reasons.values()],
+    // 2 requisicoes por titulo (/images + /videos), executadas pelo handler
+    // quando o job rodar.
+    { providerApi: 'tmdb', requests: processed * 2 },
+  )
 }
 
 const runTitleDetailActive: QueueRunner = async (deps) => {
@@ -767,6 +855,7 @@ export const QUEUE_RUNNERS: Readonly<Record<SchedulerQueue, QueueRunner>> = {
   trending: runTrending,
   watch_offers: runWatchOffers,
   airing_series: runAiringSeries,
+  title_media: runTitleMedia,
   title_detail_active: runTitleDetailActive,
   title_detail_ended: runTitleDetailEnded,
   people: runPeople,

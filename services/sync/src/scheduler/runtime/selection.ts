@@ -109,6 +109,74 @@ export async function selectStaleWatchOffers(
   return out.slice(0, limit)
 }
 
+/**
+ * Titulos cuja MIDIA precisa de refresh.
+ *
+ * ============================================================================
+ * O CRITERIO E A IDADE DA MIDIA, NAO A DO DETALHE
+ * ============================================================================
+ * Mesma licao de `selectStaleWatchOffers`: `movies.stale_after` e do DETALHE. Um
+ * filme lancado ha dez anos tem detalhe fresco por 30 dias (`title_detail_ended`)
+ * e pode ganhar um trailer novo amanha. Misturar as duas janelas e o que fazia a
+ * midia envelhecer sem ninguem notar.
+ *
+ * A idade vem de `tmdb_videos.fetched_at`/`tmdb_images.fetched_at` — as duas,
+ * porque um titulo com imagem fresca e video de um mes ainda precisa de video, e
+ * o job `sync_media` traz os dois na mesma execucao.
+ *
+ * Titulo que NUNCA teve midia coletada entra tambem (e o `NOT EXISTS` que o
+ * garante): sem isso a fila so cuidaria de quem ja tem midia, e um titulo novo
+ * nunca ganharia a primeira.
+ */
+export async function selectStaleTitleMedia(
+  prisma: PrismaClient,
+  olderThan: Date,
+  limit: number,
+): Promise<readonly TitleCandidate[]> {
+  const query = (table: string, entityType: 'movie' | 'tv'): string => `
+    SELECT e."tmdb_id" AS tmdb_id
+      FROM "${table}" e
+     WHERE NOT EXISTS (
+             SELECT 1 FROM "tmdb_videos" v
+              WHERE v."entity_type" = '${entityType}'::"TmdbEntityKind"
+                AND v."tmdb_id" = e."tmdb_id"
+                AND v."fetched_at" >= $1::timestamptz AT TIME ZONE 'UTC'
+           )
+       AND NOT EXISTS (
+             SELECT 1 FROM "tmdb_images" i
+              WHERE i."entity_type" = '${entityType}'::"TmdbEntityKind"
+                AND i."tmdb_id" = e."tmdb_id"
+                AND i."fetched_at" >= $1::timestamptz AT TIME ZONE 'UTC'
+           )
+     ORDER BY e."popularity" DESC NULLS LAST, e."id" ASC
+     LIMIT $2`
+
+  const movies = await prisma.$queryRawUnsafe<Array<{ tmdb_id: number }>>(
+    query('movies', 'movie'),
+    olderThan.toISOString(),
+    limit,
+  )
+  const shows = await prisma.$queryRawUnsafe<Array<{ tmdb_id: number }>>(
+    query('tv_shows', 'tv'),
+    olderThan.toISOString(),
+    limit,
+  )
+
+  // INTERCALA filme e serie, pelo mesmo motivo de `selectStaleWatchOffers`:
+  // concatenar faria a fatia diaria consumir a lista de filmes inteira antes de
+  // tocar uma serie, e as series ficariam sem trailer por dias enquanto o
+  // relatorio dizia "ok".
+  const out: TitleCandidate[] = []
+  const max = Math.max(movies.length, shows.length)
+  for (let i = 0; i < max; i += 1) {
+    const movie = movies[i]
+    const show = shows[i]
+    if (movie !== undefined) out.push({ entityType: 'movie', tmdbId: movie.tmdb_id, rank: out.length + 1 })
+    if (show !== undefined) out.push({ entityType: 'tv', tmdbId: show.tmdb_id, rank: out.length + 1 })
+  }
+  return out.slice(0, limit)
+}
+
 /** Series em exibicao/producao com detalhe vencido. */
 export async function selectAiringSeries(
   prisma: PrismaClient,
@@ -167,10 +235,25 @@ export async function selectTitlesByActivity(
     now.toISOString(),
     limit,
   )
-  return rank([
-    ...movies.map((row) => ({ entityType: 'movie' as const, tmdbId: row.tmdb_id })),
-    ...shows.map((row) => ({ entityType: 'tv' as const, tmdbId: row.tmdb_id })),
-  ])
+  // INTERCALA e FATIA, como `selectStaleWatchOffers` e `selectStaleTitleMedia`.
+  //
+  // Ate 2026-08-28 esta funcao CONCATENAVA sem fatiar: com `limit = 200` ela
+  // devolvia ate 400 candidatos (200 filmes + 200 series). O mesmo
+  // `batchLimit` significava 200 em duas filas e 400 em outras duas — e um teto
+  // que significa dois numeros nao e teto, e um palpite.
+  //
+  // Intercalar (em vez de concatenar e cortar) tambem conserta a segunda
+  // metade do defeito: cortar a lista concatenada em 200 devolveria SO filmes,
+  // e nenhuma serie entraria no ciclo.
+  const out: TitleCandidate[] = []
+  const max = Math.max(movies.length, shows.length)
+  for (let i = 0; i < max; i += 1) {
+    const movie = movies[i]
+    const show = shows[i]
+    if (movie !== undefined) out.push({ entityType: 'movie', tmdbId: movie.tmdb_id, rank: out.length + 1 })
+    if (show !== undefined) out.push({ entityType: 'tv', tmdbId: show.tmdb_id, rank: out.length + 1 })
+  }
+  return out.slice(0, limit)
 }
 
 /**

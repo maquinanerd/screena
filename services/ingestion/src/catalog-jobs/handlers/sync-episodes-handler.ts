@@ -12,10 +12,14 @@
 
 import { CATALOG_METRIC_NAMES } from '../../metrics/index.js'
 import type { CatalogJobContext, CatalogJobHandler } from '../handler.js'
-import { buildIdempotencyKey } from '../idempotency.js'
+import {
+  buildIdempotencyKey,
+  coarsenScopeToDays,
+  scopedChildDiscriminator,
+} from '../idempotency.js'
 import type { CatalogJobStorePort } from '../store-port.js'
 import type { CatalogEpisodesSyncPort } from './ports.js'
-import { validateSyncEpisodesInput, type SyncEpisodesInput } from './schemas.js'
+import { JOB_SCOPE_FIELD, validateSyncEpisodesInput, type SyncEpisodesInput } from './schemas.js'
 import { classifySafeError, throwIfAborted } from './support.js'
 
 /** Resultado serializavel do `sync_episodes`. */
@@ -144,7 +148,15 @@ export class SyncEpisodesHandler
               jobType: 'sync_media',
               entityType: 'episode',
               externalId: String(input.tmdbId),
-              discriminator: `s${input.seasonNumber}e${episodeNumber}:${input.locale}`,
+              // BALDE DE 7 DIAS. A midia de episodio sozinha e 93,5% do custo
+              // da cascata (118,9 jobs por serie, medidos sobre 3.921.368
+              // episodios). Com o escopo cru do pai, `airing_series` a
+              // reabriria TODO DIA. Ver `coarsenScopeToDays`.
+              discriminator: scopedChildDiscriminator(
+                input.locale,
+                coarsenScopeToDays(input.scope),
+                `s${input.seasonNumber}e${episodeNumber}`,
+              ),
             }),
             payload: {
               entityType: 'episode',
@@ -152,6 +164,7 @@ export class SyncEpisodesHandler
               seasonNumber: input.seasonNumber,
               episodeNumber,
               locale: input.locale,
+              ...(input.scope === null ? {} : { [JOB_SCOPE_FIELD]: input.scope }),
             },
             priority: 80,
             runId: context.requestId,

@@ -1,5 +1,9 @@
 /**
- * entity-gallery.ts — As duas galerias de um título, lidas do PostgreSQL.
+ * entity-gallery.ts — As galerias de mídia, lidas do PostgreSQL.
+ *
+ * Três leitores: imagens e vídeos de um TÍTULO, e fotos de uma PESSOA. Vivem
+ * juntos porque compartilham a tabela (`tmdb_images`) e o vocabulário de gate —
+ * separá-los deixaria dois lugares que sabem o que é uma imagem exibível.
  *
  * Invariantes 3 e 4: lê SOMENTE PostgreSQL local via @screena/db (Prisma). Zero
  * TMDB, zero rede, zero IA no caminho de render. Read-only.
@@ -26,9 +30,16 @@
  * emite `robots` é a página) e não baixa byte nenhum.
  */
 
-import { getPrismaClient } from "@screena/db/server";
+import { cache } from "react";
 
-import type { GalleryImageRow, GalleryVideoRow } from "../lib/gallery-presenter";
+import { getPrismaClient, type Prisma } from "@screena/db/server";
+
+import type {
+  GalleryImageRow,
+  GalleryVideoRow,
+  PersonPhotoRow,
+} from "../lib/gallery-presenter";
+import type { SectionAbsenceReason } from "../lib/section-absence";
 
 type PrismaClient = ReturnType<typeof getPrismaClient>;
 
@@ -145,4 +156,104 @@ export async function countGalleryMedia(
     }),
   ]);
   return { images, videos };
+}
+
+/**
+ * Teto de fotos que uma pessoa traz para o processo de render.
+ *
+ * ALTO, não ausente — mesma razão do teto de 240 das imagens de título. O TMDB
+ * publica dezenas de retratos para gente muito fotografada, e uma página com
+ * centenas de fotos não é galeria, é negação de serviço contra o leitor.
+ *
+ * O teto é o MESMO para a tira e para a galeria de propósito: as duas leem por
+ * esta porta, ordenam pelo mesmo presenter e a tira é o PREFIXO da galeria. Um
+ * teto menor na ficha faria as 4 da tira serem as 4 primeiras de um conjunto
+ * diferente — e o `+N` apontaria para uma página que começa com outras fotos.
+ */
+const PERSON_PHOTO_FETCH_CAP = 120;
+
+/**
+ * A cláusula que decide se uma foto de pessoa é exibível. UMA só.
+ *
+ * É o gate por LINHA (invariante 6, na própria consulta), e o mesmo par de
+ * condições que `promote:media --target=person-photo` escreve. `in`, e não
+ * `notIn`: `third_party` passaria na invariante 6 e mesmo assim não entra —
+ * `PERSON_GALLERY_ACCEPTED_STATUS` no serviço de promoção existe justamente
+ * para não acender linha que esta consulta descarta.
+ *
+ * Extraída em função porque a SONDA de ausência precisa fazer a MESMA pergunta.
+ * Se a sonda usasse outra regra, ela diria "há foto no catálogo" sobre linhas
+ * que a tela jamais mostraria, e o log passaria a mentir.
+ */
+function licensedPersonPhotoWhere(): Prisma.TmdbImageWhereInput {
+  return {
+    entityType: "person",
+    imageType: "profile",
+    displayAllowed: true,
+    // Sem `as const`: `Prisma.EnumLicenseStatusFilter.in` e um array MUTAVEL, e
+    // um literal `readonly` nao lhe e atribuivel.
+    licenseStatus: { in: ["official", "licensed"] },
+  };
+}
+
+/**
+ * As fotos EXIBÍVEIS de uma pessoa. Alimenta a tira da ficha E a galeria.
+ *
+ * A ordenação NÃO acontece aqui: quem ordena é `buildPersonPhotosGallery`, que
+ * é puro e testável. A consulta só limita — ordenar nos dois lugares faria a
+ * ficha e a galeria discordarem sobre quais são as 4 primeiras.
+ */
+export async function getPhotosForPerson(
+  prisma: PrismaClient,
+  tmdbId: number,
+): Promise<readonly PersonPhotoRow[]> {
+  const rows = await prisma.tmdbImage.findMany({
+    where: { ...licensedPersonPhotoWhere(), tmdbId },
+    select: {
+      filePath: true,
+      languageCode: true,
+      width: true,
+      height: true,
+      voteAverage: true,
+    },
+    take: PERSON_PHOTO_FETCH_CAP,
+  });
+  return rows;
+}
+
+/**
+ * POR QUE a tira de fotos não renderizou — derivado do ESTADO, nunca fixo.
+ *
+ * Mesmo desenho (e mesma justificativa) de `watchAbsenceReason`: um motivo
+ * escrito à mão é uma afirmação que envelhece sozinha. Hoje 290 linhas de
+ * pessoa estão promovidas; escrever `no_licensed_person_photo` fixo faria TODA
+ * pessoa sem retrato emitir um evento `actionable: true` — exatamente o ruído
+ * que `section-absence.ts` descreve como "o que afogaria o único evento que
+ * importa".
+ *
+ * CUSTO: um `findFirst` indexado (`select id`), e SÓ quando a tira está
+ * ausente — quem tem foto nunca paga por ele. `cache()` do React deduplica
+ * dentro da mesma renderização.
+ */
+export const personPhotoAbsenceReason = cache(
+  async (prisma: PrismaClient): Promise<SectionAbsenceReason> => {
+    const anyDisplayablePhoto = await prisma.tmdbImage.findFirst({
+      where: licensedPersonPhotoWhere(),
+      select: { id: true },
+    });
+    return personPhotoAbsenceReasonFor(anyDisplayablePhoto !== null);
+  },
+);
+
+/**
+ * A DECISÃO, separada da consulta: dado se existe alguma foto exibível no
+ * catálogo, qual é o motivo da ausência NESTA pessoa.
+ *
+ * Em função própria para poder ser testada nos dois estados sem banco e sem
+ * contexto de renderização do React.
+ */
+export function personPhotoAbsenceReasonFor(
+  hasAnyDisplayablePhoto: boolean,
+): SectionAbsenceReason {
+  return hasAnyDisplayablePhoto ? "no_photo_for_person" : "no_licensed_person_photo";
 }

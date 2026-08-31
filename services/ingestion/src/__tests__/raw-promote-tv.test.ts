@@ -145,9 +145,10 @@ describe('readTvDisplayFields', () => {
     expect(readTvDisplayFields({ name: 'Lost', overview: 'x', first_air_date: '2004-09-22' })).toEqual({
       title: 'Lost',
       overview: 'x',
+      overviewSource: 'detail',
     })
     expect(readTvDisplayFields({ original_name: 'Only Original' }).title).toBe('Only Original')
-    expect(readTvDisplayFields(null)).toEqual({ title: '', overview: null })
+    expect(readTvDisplayFields(null)).toEqual({ title: '', overview: null, overviewSource: null })
   })
 })
 

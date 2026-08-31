@@ -98,6 +98,9 @@ export async function getSimilarMoviesForEntity(
     if (movie === undefined) continue;
     rows.push({
       entityId: key,
+      // Colecao do TMDB e conceito de FILME (`movie_collection_memberships`);
+      // nao existe equivalente para serie. Este getter so produz filme.
+      entityType: "movie",
       titleOriginal: movie.titleOriginal,
       translationTitle: titleByEntity.get(key) ?? null,
       slug: slugByEntity.get(key) ?? null,
@@ -207,6 +210,11 @@ export async function getRecommendedTitlesForEntity(
     const key = titulo.id.toString();
     rows.push({
       entityId: key,
+      // `selectRecommendationLinksForVertical` ja garantiu que todo link
+      // sobrevivente tem `targetMediaType === mediaType`, e os titulos foram
+      // buscados na tabela dessa vertical. O tipo do card e o `mediaType` — e
+      // era exatamente ele que nao chegava ao card antes de 2026-08-28.
+      entityType: mediaType,
       titleOriginal: titulo.titleOriginal,
       translationTitle: tituloPorEntidade.get(key) ?? null,
       slug: slugPorEntidade.get(key) ?? null,

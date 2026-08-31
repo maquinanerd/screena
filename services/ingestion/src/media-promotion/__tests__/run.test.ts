@@ -27,7 +27,7 @@ const LICENCA_VIGENTE: MediaLicenseRow = {
   licenseStatus: 'official',
   displayAllowed: true,
   isCurrent: true,
-  policyVersion: 'cinerie-source-auth/tmdb-video/2026-08-v2',
+  policyVersion: 'cinerie-source-auth/tmdb-video/2026-08-v3',
 }
 
 function candidatas(n: number): PromotionCandidate[] {
@@ -223,7 +223,7 @@ describe('DRY-RUN nao escreve, e le exatamente o que o apply leria', () => {
     expect(result.eligibleIds).toHaveLength(50)
     // A licenca FOI consultada no dry-run — nao ha caminho curto.
     expect(result.authorization.authorized).toBe(true)
-    expect(result.authorization.policyVersion).toBe('cinerie-source-auth/tmdb-video/2026-08-v2')
+    expect(result.authorization.policyVersion).toBe('cinerie-source-auth/tmdb-video/2026-08-v3')
   })
 })
 

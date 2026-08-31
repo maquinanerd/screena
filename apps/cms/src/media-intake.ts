@@ -134,7 +134,21 @@ export interface MediaIngestAuth {
 
 /** Campos aceitos no corpo. Qualquer outro e ignorado (nao e erro). */
 export interface MediaIngestCommand {
-  readonly articleId: string
+  /**
+   * Materia a que a foto pertence, ou `null` quando ela ainda NAO existe.
+   *
+   * Era obrigatorio, e a obrigacao criava um ovo-e-galinha inteiro: o bloco
+   * `image` do contrato referencia `media[].mediaId` do MESMO pedido, mas o
+   * `mediaId` so podia nascer DEPOIS de a materia existir. Resultado medido: em
+   * toda primeira publicacao o `media[]` saia vazio, nenhum bloco de imagem era
+   * emitido, e as fotos entravam no acervo tarde demais para o corpo — a
+   * materia publicava so com a capa.
+   *
+   * Com `null`, a foto entra sem dono e a publicacao que referencia aquele
+   * `mediaId` a adota. O preco esta declarado no endpoint: foto ingerida e nunca
+   * referenciada fica orfa no acervo.
+   */
+  readonly articleId: string | null
   readonly sourceUrl: string
   readonly sourceName: string
   readonly rightsHolder: string
@@ -246,9 +260,19 @@ export function intakeEditorialMedia(input: {
   const raw = input.body as Record<string, unknown>
   const issues: string[] = []
 
+  // AUSENTE e legitimo (foto que precede a materia); INVALIDO nao e. A
+  // diferenca importa: um `articleId` mal formado vindo de um emissor que acha
+  // que o mandou seria silenciosamente tratado como "sem dono", e a foto ficaria
+  // orfa sem ninguem saber.
   const articleId = text(raw.articleId)
-  if (articleId === null) issues.push('articleId ausente')
-  else if (!/^\d+$/.test(articleId)) issues.push('articleId precisa ser numerico')
+  if (raw.articleId !== undefined && articleId === null) {
+    // CHAVE PRESENTE E VAZIA nao e "sem materia": e emissor que TENTOU mandar o
+    // id e falhou. Aceitar como ausente esconderia o defeito e deixaria a foto
+    // orfa no acervo, sem ninguem saber por que.
+    issues.push('articleId vazio: omita a chave para ingerir sem materia')
+  } else if (articleId !== null && !/^\d+$/.test(articleId)) {
+    issues.push('articleId precisa ser numerico')
+  }
 
   // PROVENIENCIA OBRIGATORIA. Ver o cabecalho: como a licenca nao bloqueia a
   // saida, ela precisa ser exigida aqui, onde ha alguem para ouvir a recusa.
@@ -321,7 +345,7 @@ export function intakeEditorialMedia(input: {
   return {
     ok: true,
     command: {
-      articleId: articleId as string,
+      articleId,
       sourceUrl: sourceUrl as string,
       sourceName: text(raw.sourceName) as string,
       rightsHolder: text(raw.rightsHolder) as string,

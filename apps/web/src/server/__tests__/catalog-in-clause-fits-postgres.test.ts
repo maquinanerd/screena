@@ -135,6 +135,21 @@ const fakePrisma = new Proxy(
        * O fake devolve `LIMIT` linhas: menos que isso e o teste passaria por
        * lista vazia, que e o defeito que ele existe para nao ter.
        */
+      /**
+       * O SQL TAGGED-TEMPLATE (`$queryRaw`) tambem passa por aqui.
+       *
+       * `server/editorial-score.ts` consulta a decisao de licenca do Cinerie
+       * Score por template literal antes de ler qualquer calculo. Devolve VAZIO:
+       * sem decisao vigente o Score nao vai a tela, que e o estado correto para
+       * este arquivo (ele mede TAMANHO DE `IN (...)`, nao exibicao de nota) e e
+       * fail-closed.
+       */
+      if (model === '$queryRaw') {
+        return (sql: TemplateStringsArray, ...params: unknown[]) => {
+          calls.push({ model, method: 'raw', args: { sql: sql.join('?'), params } })
+          return Promise.resolve([])
+        }
+      }
       if (model === '$queryRawUnsafe') {
         return (sql: string, ...params: unknown[]) => {
           calls.push({ model, method: 'raw', args: { sql, params } })

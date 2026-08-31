@@ -100,6 +100,7 @@ function withCss(html: string): HTMLElement {
 function row(entityId: string, over: Partial<SimilarTitleRow> = {}): SimilarTitleRow {
   return {
     entityId,
+    entityType: 'movie',
     titleOriginal: `Obra ${entityId}`,
     translationTitle: null,
     slug: `obra-${entityId}`,

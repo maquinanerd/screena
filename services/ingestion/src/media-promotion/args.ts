@@ -5,10 +5,10 @@
  * invalido geram ERRO explicito — nunca default silencioso.
  *
  * NENHUM DEFAULT PERIGOSO:
- *  - `--target` e OBRIGATORIO. Nao ha alvo default e nao ha "todos": promover
- *    video e foto de pessoa na mesma execucao juntaria dois censos e dois
- *    denominadores num relatorio so, e o freio perderia o sentido. Um comando,
- *    um alvo por execucao.
+ *  - `--target` e OBRIGATORIO — inclusive `all`. Nao ha alvo default: rodar sem
+ *    dizer o alvo nunca pode significar "tudo" por omissao. `--target=all` NAO
+ *    funde os censos: cada alvo roda com denominador e freio proprios (ver
+ *    `ALL_TARGETS`).
  *  - sem `--confirm` e sempre dry-run;
  *  - `--reviewer` e obrigatorio para mutar (identidade humana no log);
  *  - `--only-official` e OPT-IN: por decisao do dono (2026-08-25) `official` nao
@@ -20,9 +20,41 @@
 
 import { PROMOTION_TARGETS, type PromotionTarget } from './types.js'
 
+/**
+ * O valor de `--target` que significa TODOS os alvos, em UMA execucao.
+ *
+ * ============================================================================
+ * POR QUE ELE EXISTE AGORA, DEPOIS DE O PARSER O TER RECUSADO DE PROPOSITO
+ * ============================================================================
+ * A recusa original tinha um argumento correto: dois alvos numa execucao so
+ * juntariam DOIS censos e DOIS denominadores num relatorio, e o freio perderia o
+ * sentido — "5% de que acervo?".
+ *
+ * O que muda nao e o argumento, e a implementacao: `--target=all` NAO funde os
+ * alvos. Ele executa a MESMA promocao, alvo por alvo, cada um com seu proprio
+ * censo, seu proprio denominador, seu proprio freio e seu proprio desfecho; o
+ * relatorio empilha as execucoes em vez de somar. O freio continua respondendo
+ * "que fracao DESTE acervo vai ao ar", que e a pergunta que ele sempre fez.
+ *
+ * O que isso resolve e operacional, e o dono pediu por escrito: promover o
+ * acervo inteiro exigia saber a lista de alvos de cor e rodar o comando uma vez
+ * por alvo. Um servico que precisa do operador como laco `for` nao esta pronto.
+ */
+export const ALL_TARGETS = 'all'
+
+/** O alvo pedido: um especifico, ou todos. */
+export type PromoteMediaTargetSelection = PromotionTarget | typeof ALL_TARGETS
+
+/** Expande a selecao na lista de alvos a executar, na ordem declarada. */
+export function resolveTargets(
+  selection: PromoteMediaTargetSelection,
+): readonly PromotionTarget[] {
+  return selection === ALL_TARGETS ? PROMOTION_TARGETS : [selection]
+}
+
 /** Argumentos ja validados. */
 export interface PromoteMediaArgs {
-  readonly target: PromotionTarget
+  readonly target: PromoteMediaTargetSelection
   /** `movie` | `tv` | `person` | `null` (todos do alvo). */
   readonly entityType: string | null
   readonly tmdbId: number | null
@@ -69,6 +101,9 @@ const ENTITY_TYPES_BY_TARGET: Readonly<Record<PromotionTarget, readonly string[]
   video: ['movie', 'tv'],
   'person-photo': ['person'],
 }
+
+/** Todos os valores aceitos por `--target`. */
+const TARGET_VALUES: readonly string[] = [...PROMOTION_TARGETS, ALL_TARGETS]
 
 function tokenize(
   argv: readonly string[],
@@ -117,7 +152,7 @@ export function parsePromoteMediaArgs(argv: readonly string[]): PromoteMediaArgs
   const tokenized = tokenize(argv)
   if (!tokenized.ok) return { ok: false, error: tokenized.error }
 
-  let target: PromotionTarget | null = null
+  let target: PromoteMediaTargetSelection | null = null
   let entityType: string | null = null
   let tmdbId: number | null = null
   let limit: number | null = null
@@ -150,13 +185,13 @@ export function parsePromoteMediaArgs(argv: readonly string[]): PromoteMediaArgs
     switch (name) {
       case 'target': {
         const candidate = value.trim().toLowerCase()
-        if (!(PROMOTION_TARGETS as readonly string[]).includes(candidate)) {
+        if (!TARGET_VALUES.includes(candidate)) {
           return {
             ok: false,
-            error: `--target invalido: "${value}". Use ${PROMOTION_TARGETS.join(' ou ')}.`,
+            error: `--target invalido: "${value}". Use ${TARGET_VALUES.join(', ')}.`,
           }
         }
-        target = candidate as PromotionTarget
+        target = candidate as PromoteMediaTargetSelection
         break
       }
       case 'entity-type': {
@@ -204,15 +239,28 @@ export function parsePromoteMediaArgs(argv: readonly string[]): PromoteMediaArgs
   if (target === null) {
     return {
       ok: false,
-      error: `--target e obrigatorio: use ${PROMOTION_TARGETS.join(' ou ')}. Nao ha alvo default nem "todos".`,
+      error:
+        `--target e obrigatorio: use ${TARGET_VALUES.join(', ')}. Nao ha alvo DEFAULT — ` +
+        `"todos" existe, mas tem de ser pedido.`,
     }
   }
 
-  const permitidos = ENTITY_TYPES_BY_TARGET[target]
-  if (entityType !== null && !permitidos.includes(entityType)) {
+  // `--entity-type` estreita UM alvo. Com `all` ele nao tem significado: a mesma
+  // string seria valida num alvo e invalida no outro, e escolher em silencio a
+  // interpretacao mais permissiva e como um filtro vira nada.
+  if (target === ALL_TARGETS && entityType !== null) {
     return {
       ok: false,
-      error: `--entity-type "${entityType}" nao existe no alvo "${target}" (validos: ${permitidos.join(', ')}).`,
+      error: `--entity-type nao se combina com --target=${ALL_TARGETS} (cada alvo tem entidades proprias). Rode um alvo por vez para estreitar.`,
+    }
+  }
+  if (target !== ALL_TARGETS) {
+    const permitidos = ENTITY_TYPES_BY_TARGET[target]
+    if (entityType !== null && !permitidos.includes(entityType)) {
+      return {
+        ok: false,
+        error: `--entity-type "${entityType}" nao existe no alvo "${target}" (validos: ${permitidos.join(', ')}).`,
+      }
     }
   }
 

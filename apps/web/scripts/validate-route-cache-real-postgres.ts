@@ -56,6 +56,23 @@ const LANGUAGE = "pt-BR";
 /** Slug da ficha usada nas provas de ISR (semeado por `seedCatalog`). */
 const SLUG = "filme-1";
 
+/** Slug da ficha de SERIE usada nas provas de render (semeado por `seedCatalog`). */
+const SERIES_SLUG = "serie-1";
+
+/**
+ * A colisao de slug entre as verticais, reproduzida do caso real `the-passage`:
+ * existe o filme E a serie com esse slug canonico pt-BR em producao.
+ *
+ * E o unico cenario em que adivinhar a vertical pelo slug NAO da 404 — da 200
+ * com a obra errada. Sem estas linhas, um bloco que chutasse "filme" passaria
+ * em todas as outras provas.
+ */
+const COLLISION_SLUG = "the-passage";
+const COLLISION_MOVIE_TMDB_ID = 990001;
+const COLLISION_TV_TMDB_ID = 990002;
+const COLLISION_MOVIE_TITLE = "A Passagem (filme)";
+const COLLISION_TV_TITLE = "A Passagem (serie)";
+
 /**
  * Tamanho do catalogo semeado.
  *
@@ -187,6 +204,92 @@ async function seedCatalog(sql: Sql): Promise<void> {
       FROM ${table} e
     `);
   }
+
+  await seedRecommendationsAndSlugCollision(sql);
+}
+
+/**
+ * Semeia o dataset do bloco "Mais como este" NA VERTICAL SERIE, mais a colisao
+ * de slug entre filme e serie.
+ *
+ * POR QUE ISTO PRECISA EXISTIR. Ate 2026-08-28 o bloco montava
+ * `` `/pt/filmes/${slug}/` `` com o segmento cravado. Na ficha de filme ninguem
+ * via (recomendado de filme e filme); na ficha de serie TODO card apontava para
+ * `/pt/filmes/`, em 32.889 paginas indexaveis, e os alvos eram series.
+ *
+ * A COLISAO e a parte que um teste ingenuo perde. Em producao existem o filme
+ * `the-passage` E a serie `the-passage`, os dois com slug canonico pt-BR. Uma
+ * implementacao que adivinhe a vertical pelo slug nao da 404 ali: da **200 com
+ * a obra errada**. Por isso o cenario semeia os dois lados e a prova exige que
+ * o card da serie va para `/pt/series/` COM o `/pt/filmes/` existindo.
+ */
+async function seedRecommendationsAndSlugCollision(sql: Sql): Promise<void> {
+  // Os dois lados da colisao, fora da faixa do catalogo semeado.
+  await sql.x(`
+    INSERT INTO movies (tmdb_id, title_original, release_date, status, vote_count_tmdb,
+                        poster_path, backdrop_path, popularity, created_at, updated_at)
+    VALUES (${COLLISION_MOVIE_TMDB_ID}, 'The Passage (filme)', DATE '2019-01-10', 'Released',
+            1200, '/poster-passage-movie.jpg', '/backdrop-passage-movie.jpg', 10, now(), now())
+  `);
+  await sql.x(`
+    INSERT INTO tv_shows (tmdb_id, name_original, first_air_date, status, vote_count_tmdb,
+                          poster_path, backdrop_path, popularity, created_at, updated_at)
+    VALUES (${COLLISION_TV_TMDB_ID}, 'The Passage (serie)', DATE '2019-01-14', 'Ended',
+            1300, '/poster-passage-tv.jpg', '/backdrop-passage-tv.jpg', 11, now(), now())
+  `);
+
+  // MESMO slug, verticais diferentes — e os dois canonicos. O schema permite,
+  // porque a unicidade e por (entity_type, language_code, slug).
+  await sql.x(`
+    INSERT INTO slugs (entity_type, entity_id, language_code, slug, is_canonical, created_at, updated_at)
+    SELECT 'movie'::"EntityType", m.id, ${lit(LANGUAGE)}, ${lit(COLLISION_SLUG)}, true, now(), now()
+    FROM movies m WHERE m.tmdb_id = ${COLLISION_MOVIE_TMDB_ID}
+  `);
+  await sql.x(`
+    INSERT INTO slugs (entity_type, entity_id, language_code, slug, is_canonical, created_at, updated_at)
+    SELECT 'tv'::"EntityType", t.id, ${lit(LANGUAGE)}, ${lit(COLLISION_SLUG)}, true, now(), now()
+    FROM tv_shows t WHERE t.tmdb_id = ${COLLISION_TV_TMDB_ID}
+  `);
+  await sql.x(`
+    INSERT INTO entity_translations (entity_type, entity_id, language_code, title, summary, created_at, updated_at)
+    SELECT 'movie'::"EntityType", m.id, ${lit(LANGUAGE)}, ${lit(COLLISION_MOVIE_TITLE)},
+           'Sinopse do filme homonimo.', now(), now()
+    FROM movies m WHERE m.tmdb_id = ${COLLISION_MOVIE_TMDB_ID}
+  `);
+  await sql.x(`
+    INSERT INTO entity_translations (entity_type, entity_id, language_code, title, summary, created_at, updated_at)
+    SELECT 'tv'::"EntityType", t.id, ${lit(LANGUAGE)}, ${lit(COLLISION_TV_TITLE)},
+           'Sinopse da serie homonima.', now(), now()
+    FROM tv_shows t WHERE t.tmdb_id = ${COLLISION_TV_TMDB_ID}
+  `);
+
+  // As recomendacoes da ficha sob teste: series de verdade, mais a serie
+  // homonima. `serie-1` e o slug semeado para o tv_show de id 1.
+  await sql.x(`
+    INSERT INTO title_recommendations
+      (source_media_type, source_tmdb_id, kind, target_media_type, target_tmdb_id, position, created_at)
+    SELECT 'tv', origem.tmdb_id, 'recommendation', 'tv', alvo.tmdb_id,
+           row_number() OVER (ORDER BY alvo.id), now()
+    FROM (
+      SELECT t.id, t.tmdb_id FROM tv_shows t
+      JOIN slugs s ON s.entity_id = t.id AND s.entity_type = 'tv'::"EntityType"
+      WHERE s.slug = ${lit(SERIES_SLUG)} AND s.language_code = ${lit(LANGUAGE)}
+    ) origem
+    CROSS JOIN LATERAL (
+      SELECT t2.id, t2.tmdb_id FROM tv_shows t2
+      WHERE t2.id <> origem.id AND t2.tmdb_id <> ${COLLISION_TV_TMDB_ID}
+      ORDER BY t2.id
+      LIMIT 4
+    ) alvo
+  `);
+  await sql.x(`
+    INSERT INTO title_recommendations
+      (source_media_type, source_tmdb_id, kind, target_media_type, target_tmdb_id, position, created_at)
+    SELECT 'tv', t.tmdb_id, 'recommendation', 'tv', ${COLLISION_TV_TMDB_ID}, 99, now()
+    FROM tv_shows t
+    JOIN slugs s ON s.entity_id = t.id AND s.entity_type = 'tv'::"EntityType"
+    WHERE s.slug = ${lit(SERIES_SLUG)} AND s.language_code = ${lit(LANGUAGE)}
+  `);
 }
 
 /**
@@ -585,6 +688,160 @@ async function main(): Promise<void> {
         `sem query: ${abaSem} | com ?ranking=classicos: ${abaCom ?? "(nenhuma)"}`,
       );
     }
+
+    // ------------------------------------------------------------------ (6)
+    // TODA FICHA RENDERIZA — a prova que faltava.
+    //
+    // POR QUE ESTE BLOCO EXISTE. Em 2026-08-28 TODA `/pt/series/{slug}/`
+    // respondia 500 em producao. Este mesmo script ja subia Next real e
+    // PostgreSQL real, ja semeava 3.000 series — e passava 14/14, porque
+    // NUNCA PEDIA UMA SERIE. As provas 6 e 7 pediam `/pt/filmes/filme-1/` e
+    // concluiam sobre "a ficha" a partir de uma unica das dez.
+    //
+    // A causa era `generateStaticParams` (que a #245 deu as 10 fichas) na
+    // UNICA ficha que tambem le `searchParams`: o Next classifica a rota como
+    // SSG no build, tenta gerar o HTML estatico na primeira visita, esbarra na
+    // query e devolve 500 (`DYNAMIC_SERVER_USAGE` / "Page changed from static
+    // to dynamic at runtime"). Nada disso aparece em `typecheck`, `lint`,
+    // `build` ou em teste que importe o modulo da rota: so aparece quando
+    // ALGUEM PEDE A URL do servidor Next de producao.
+    //
+    // Por isso a prova aqui e por REQUISICAO e olha o CORPO. Status 200 sozinho
+    // nao basta: o teto e a pagina ter renderizado o titulo daquela entidade.
+    const fichas: ReadonlyArray<readonly [string, string, string]> = [
+      ["/pt/filmes/filme-1/", "Titulo filme 1", "ficha de filme"],
+      ["/pt/series/serie-1/", "Titulo serie 1", "ficha de serie"],
+      // A FORMA EXATA QUE QUEBROU: ficha de serie COM a query que o
+      // `?temporada=` produz. Se alguem readicionar `generateStaticParams`
+      // aqui, esta linha fica vermelha.
+      [
+        "/pt/series/serie-1/?temporada=1",
+        "Titulo serie 1",
+        "ficha de serie COM ?temporada= (a forma que caiu em producao)",
+      ],
+      ["/pt/pessoas/pessoa-1/", "Titulo pessoa 1", "ficha de pessoa"],
+    ];
+    for (const [route, marcador, label] of fichas) {
+      const res = await fetch(`${base}${route}`);
+      const html = await res.text();
+      // A pagina de erro do Next responde 500 com este texto; se o corpo
+      // trouxer isso, "renderizou" e mentira mesmo com outro status.
+      const paginaDeErro = html.includes("server-side exception");
+      const ok = res.status === 200 && html.includes(marcador) && !paginaDeErro;
+      record(
+        `${label} RENDERIZA (requisicao real ao Next, corpo conferido)`,
+        ok,
+        `status=${res.status} ` +
+          `titulo "${marcador}" ${html.includes(marcador) ? "presente" : "AUSENTE"}` +
+          (paginaDeErro ? " | corpo e a pagina de erro do Next" : ""),
+      );
+    }
+
+    // CONTROLE do bloco acima: o marcador precisa ser capaz de FALTAR. Se
+    // `includes` casasse com qualquer coisa, as quatro provas passariam sem
+    // medir nada. Uma ficha que nao existe tem que reprovar o mesmo criterio.
+    const inexistente = await fetch(`${base}/pt/series/serie-nao-semeada-999999/`);
+    const htmlInexistente = await inexistente.text();
+    record(
+      "CONTROLE: o criterio acima REPROVA uma ficha inexistente (404, sem titulo)",
+      !(inexistente.status === 200 && htmlInexistente.includes("Titulo serie 1")),
+      `status=${inexistente.status} — se isto passasse como 200+titulo, as 4 provas acima nao mediriam nada`,
+    );
+
+    // ------------------------------------------------------------------ (7)
+    // "MAIS COMO ESTE": A VERTICAL DO CARD SAI NO HTML.
+    //
+    // MEDIDO em producao (2026-08-28): na ficha de serie os 8 cards saiam com
+    // `data-entity-type="movie"`, rotulo "Filme" e `href` para `/pt/filmes/` —
+    // e os alvos eram series. 32.889 paginas indexaveis publicando link morto.
+    //
+    // A prova le os `href` que REALMENTE sairam no HTML do servidor. Nao ha
+    // como faze-la sem pedir a URL: o defeito vivia no componente e no
+    // presenter, e o teste puro que existia (`similar-titles-presenter.test.ts`)
+    // ate afirmava sobre `href` — so que apenas no caso FILME, travando o
+    // segmento cravado como se fosse a especificacao.
+    const cardsDe = (html: string): readonly string[] =>
+      [...html.matchAll(/<a[^>]*class="similar-card"[^>]*href="([^"]+)"/g)].map((m) => m[1]);
+
+    const htmlSerie = await (await fetch(`${base}/pt/series/${SERIES_SLUG}/`)).text();
+    const cardsSerie = cardsDe(htmlSerie);
+
+    // CONTROLE PRIMEIRO: sem cards, tudo abaixo passaria por vacuidade
+    // (`[].every(...)` e `true`). Esta e a prova que impede isso.
+    record(
+      "CONTROLE: a ficha de serie REALMENTE publica cards de 'Mais como este'",
+      cardsSerie.length > 0,
+      `${cardsSerie.length} card(s) — se fosse 0, as provas seguintes passariam sem medir nada`,
+    );
+
+    if (cardsSerie.length > 0) {
+      const paraFilmes = cardsSerie.filter((href) => href.startsWith("/pt/filmes/"));
+      record(
+        "card de SERIE aponta para /pt/series/ (nenhum card da ficha de serie vai para /pt/filmes/)",
+        paraFilmes.length === 0,
+        paraFilmes.length === 0
+          ? `${cardsSerie.length} card(s), todos em /pt/series/`
+          : `${paraFilmes.length} de ${cardsSerie.length} apontam para /pt/filmes/: ${paraFilmes.join(" ")}`,
+      );
+
+      // Todo destino tem de EXISTIR. E o dano que o usuario sente.
+      const status = await Promise.all(
+        cardsSerie.map(async (href) => [href, (await fetch(`${base}${href}`)).status] as const),
+      );
+      const mortos = status.filter(([, code]) => code !== 200);
+      record(
+        "todo destino de card da ficha de serie responde 200 (zero link morto publicado)",
+        mortos.length === 0,
+        mortos.length === 0
+          ? `${status.length} destino(s) conferido(s), todos 200`
+          : `${mortos.length} morto(s): ${mortos.map(([h, c]) => `${h}=${c}`).join(" ")}`,
+      );
+
+      record(
+        "o card de serie e rotulado 'Série', nao 'Filme' (label + atributo, invariante 11)",
+        htmlSerie.includes('data-entity-type="tv"') &&
+          /<span class="similar-card__type">Série<\/span>/.test(htmlSerie),
+        `data-entity-type="tv" ${htmlSerie.includes('data-entity-type="tv"') ? "presente" : "AUSENTE"}; ` +
+          `rotulo Série ${/similar-card__type">Série</.test(htmlSerie) ? "presente" : "AUSENTE"}`,
+      );
+
+      // A COLISAO. O card da serie homonima tem de ir para `/pt/series/`, E o
+      // `/pt/filmes/` do MESMO slug tem de existir — senao a prova nao mediu a
+      // colisao, mediu um 404 comum.
+      const colisaoFilme = await fetch(`${base}/pt/filmes/${COLLISION_SLUG}/`);
+      record(
+        `CONTROLE da colisao: /pt/filmes/${COLLISION_SLUG}/ existe e e OUTRA obra`,
+        colisaoFilme.status === 200,
+        `status=${colisaoFilme.status} — se fosse 404, a prova seguinte viraria um teste de link morto comum`,
+      );
+      record(
+        "colisao de slug: o card da SERIE homonima vai para /pt/series/, nao para o filme de mesmo slug",
+        cardsSerie.includes(`/pt/series/${COLLISION_SLUG}/`) &&
+          !cardsSerie.includes(`/pt/filmes/${COLLISION_SLUG}/`),
+        `cards com "${COLLISION_SLUG}": ${cardsSerie.filter((h) => h.includes(COLLISION_SLUG)).join(" ") || "(nenhum)"}`,
+      );
+    }
+
+    // A ficha de FILME nao pode ter regredido: o bloco dela continua em filme.
+    const htmlFilme = await (await fetch(`${base}/pt/filmes/${SLUG}/`)).text();
+    const cardsFilme = cardsDe(htmlFilme);
+    record(
+      "a ficha de FILME segue apontando para /pt/filmes/ (a correcao nao inverteu a vertical)",
+      cardsFilme.every((href) => href.startsWith("/pt/filmes/")),
+      cardsFilme.length === 0
+        ? "sem bloco nesta ficha — nada a inverter"
+        : `${cardsFilme.length} card(s): ${[...new Set(cardsFilme.map((h) => h.split("/")[2]))].join(",")}`,
+    );
+
+    // O rotulo da relacao tem de dizer a relacao REAL. Em producao a serie
+    // exibia "Mesma coleção" sobre "Recomendados pelo TMDB" — o kicker estava
+    // cravado no componente e so o nome variava.
+    const kickerSerie = /similar-titles__relation-kicker">([^<]*)</.exec(htmlSerie)?.[1] ?? null;
+    record(
+      "o kicker da serie NAO diz 'Mesma coleção' quando o dataset e recomendacao",
+      kickerSerie !== null && kickerSerie !== "Mesma coleção",
+      `kicker exibido: ${kickerSerie === null ? "(nao encontrado)" : `"${kickerSerie}"`}`,
+    );
   } finally {
     server?.kill();
     if (disconnect) await disconnect().catch(() => undefined);

@@ -168,18 +168,30 @@ describe("cards individuais", () => {
   });
 });
 
+/**
+ * ATUALIZADO em 2026-08-28: escala 100, formato INTEIRO.
+ *
+ * A fixture daqui era 4,5/5 e afirmava um formato de "uma casa decimal". Nenhum
+ * dos dois descrevia o produto: o worker do Cinerie Score grava em escala 100, e
+ * um calculo em 100 nunca passava num gate que exigia 5 — a nota nao aparecia em
+ * card nenhum. `toFixed(1)` em escala 100 tambem escreveria "82.0", um decimal
+ * que a fonte nao tem e que a ficha nao mostra.
+ */
 describe("resolveCardScreenScore", () => {
   const governed = {
-    screenScore: 4.5,
-    screenScoreScale: 5,
+    screenScore: 82,
+    screenScoreScale: 100,
     screenScoreDisplay: true,
     screenScoreSource: SCREEN_SCORE_EDITORIAL_SOURCE,
   };
 
-  it("formata a nota governada (uma casa decimal) quando tem origem editorial e e valida", () => {
-    expect(resolveCardScreenScore(governed)).toBe("4.5");
-    expect(resolveCardScreenScore({ ...governed, screenScore: 4 })).toBe("4.0");
-    expect(resolveCardScreenScore({ ...governed, screenScore: 5 })).toBe("5.0");
+  it("formata a nota governada como INTEIRO na escala 100", () => {
+    expect(resolveCardScreenScore(governed)).toBe("82");
+    expect(resolveCardScreenScore({ ...governed, screenScore: 4 })).toBe("4");
+    expect(resolveCardScreenScore({ ...governed, screenScore: 100 })).toBe("100");
+    // Fracao vinda do calculo e arredondada, nunca truncada nem exibida.
+    expect(resolveCardScreenScore({ ...governed, screenScore: 82.4 })).toBe("82");
+    expect(resolveCardScreenScore({ ...governed, screenScore: 82.6 })).toBe("83");
   });
 
   it("null quando o display/origem nao estao liberados ou o gate esta ausente", () => {
@@ -187,22 +199,25 @@ describe("resolveCardScreenScore", () => {
     expect(resolveCardScreenScore({ ...governed, screenScoreSource: undefined })).toBeNull();
     expect(resolveCardScreenScore({ ...governed, screenScoreDisplay: false })).toBeNull();
     expect(resolveCardScreenScore({})).toBeNull();
-    expect(resolveCardScreenScore({ screenScore: 4.5, screenScoreScale: 5 })).toBeNull();
+    expect(resolveCardScreenScore({ screenScore: 82, screenScoreScale: 100 })).toBeNull();
   });
 
-  it("null para escala != 5, valor fora de faixa ou nao finito (mesmo gate do hero)", () => {
+  it("null para escala != 100, valor fora de faixa ou nao finito (mesmo gate do hero)", () => {
+    // 5 entra de proposito: e a escala ANTIGA, e uma nota gravada nela nao pode
+    // voltar a ser aceita por engano.
+    expect(resolveCardScreenScore({ ...governed, screenScoreScale: 5 })).toBeNull();
     expect(resolveCardScreenScore({ ...governed, screenScoreScale: 10 })).toBeNull();
     expect(resolveCardScreenScore({ ...governed, screenScoreScale: null })).toBeNull();
     expect(resolveCardScreenScore({ ...governed, screenScore: 0 })).toBeNull();
     expect(resolveCardScreenScore({ ...governed, screenScore: -1 })).toBeNull();
-    expect(resolveCardScreenScore({ ...governed, screenScore: 6 })).toBeNull();
+    expect(resolveCardScreenScore({ ...governed, screenScore: 101 })).toBeNull();
     expect(resolveCardScreenScore({ ...governed, screenScore: null })).toBeNull();
     expect(resolveCardScreenScore({ ...governed, screenScore: Number.NaN })).toBeNull();
   });
 
   it("filme/serie expoem a nota governada apenas com origem editorial; pessoa nunca tem nota", () => {
-    expect(buildMovieCard(movie(governed))?.screenScore).toBe("4.5");
-    expect(buildSeriesCard(series(governed))?.screenScore).toBe("4.5");
+    expect(buildMovieCard(movie(governed))?.screenScore).toBe("82");
+    expect(buildSeriesCard(series(governed))?.screenScore).toBe("82");
     expect(buildMovieCard(movie({ ...governed, screenScoreSource: null }))?.screenScore).toBeNull();
     expect(buildMovieCard(movie())?.screenScore).toBeNull();
     expect(buildPersonCard(person({ slug: "p" }))?.screenScore).toBeNull();

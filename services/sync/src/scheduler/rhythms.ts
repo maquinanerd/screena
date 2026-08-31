@@ -35,6 +35,7 @@ export const SCHEDULER_QUEUES = [
   'watch_offers',
   'trending',
   'airing_series',
+  'title_media',
   'title_detail_active',
   'title_detail_ended',
   'people',
@@ -79,6 +80,28 @@ export interface Rhythm {
   readonly label: string
   /** O DADO que justifica o intervalo. Obrigatorio, sempre. */
   readonly rationale: string
+  /**
+   * TETO DE ITENS POR CICLO desta fila. `null` = usa o teto global
+   * (`CINERIE_SCHEDULER_BATCH_LIMIT`, default 200).
+   *
+   * ==========================================================================
+   * POR QUE UM TETO POR FILA, E NAO UM NUMERO GLOBAL
+   * ==========================================================================
+   * O teto global e compartilhado por SETE filas, e elas nao tem o mesmo
+   * limitante:
+   *
+   *   `ratings_omdb`  e limitada por COTA (1.000/dia, com reserva de 150 para o
+   *                   leitor). 200 esta certo: subir o global envenenaria a cota.
+   *   `title_media`   e limitada por EDUCACAO com o TMDB, que nao tem cota
+   *                   diaria. 200 esta errado por um fator de 48.
+   *
+   * Um numero so para as duas obriga a escolher qual das duas fica errada. O
+   * teto entra na TABELA, ao lado do intervalo, porque e a mesma classe de
+   * decisao: quanto de trabalho esta fila pode fazer por unidade de tempo. Um
+   * intervalo diario com teto que leva 336 dias para dar a volta nao e uma fila
+   * diaria — e uma fila anual com rotulo diario, e o rotulo mente.
+   */
+  readonly batchLimit: number | null
 }
 
 /**
@@ -99,6 +122,7 @@ export const RHYTHMS: readonly Rhythm[] = [
       'Custa 1 requisicao por titulo no endpoint DEDICADO (/movie/{id}/watch/providers), ' +
       'nao o detalhe inteiro: ~2 kB contra os 130,6 kB (filme) e 648,3 kB (serie) medidos ' +
       'do payload de detalhe.',
+    batchLimit: null,
   },
   {
     queue: 'trending',
@@ -113,6 +137,7 @@ export const RHYTHMS: readonly Rhythm[] = [
       '6-12 h. 6 h alinha com a fila `changes`. O custo e O(1) por ciclo, nao por ' +
       'titulo: 4 requisicoes (movie|tv x day|week), 20 itens por pagina, uma pagina ' +
       'basta. O hash-noop do snapshot faz lista inalterada nao gerar linha.',
+    batchLimit: null,
   },
   {
     queue: 'airing_series',
@@ -125,6 +150,81 @@ export const RHYTHMS: readonly Rhythm[] = [
       'Episodio que foi ao ar hoje tem que estar na pagina hoje. So entram as series com ' +
       'status em exibicao/producao; o resto cai nas filas de detalhe, que sao mais lentas ' +
       'e muito maiores.',
+    batchLimit: null,
+  },
+  {
+    queue: 'title_media',
+    cadence: 'fixed',
+    intervalHours: 1 * DAY,
+    seasonalIntervalHours: null,
+    providerApi: 'tmdb',
+    label: 'Midia de titulo (trailer, poster, imagens)',
+    rationale:
+      'Trailer, poster e galeria sao o que o leitor VE primeiro, e sao o unico dado do ' +
+      'catalogo que muda sem o titulo mudar: um trailer novo entra no TMDB semanas depois ' +
+      'do detalhe estar estavel. O gatilho principal continua sendo o /changes (a midia ' +
+      'entra pela cascata de sync_details, agora com a chave de idempotencia ESCOPADA), e ' +
+      'esta fila e a REDE: um lote diario, limitado por batchLimit e ordenado por ' +
+      'popularidade, para o titulo cuja midia nunca foi coletada ou passou de 7 dias — a ' +
+      'janela de midia declarada em .claude/rules/ingestion.md. Custa 2 requisicoes por ' +
+      'titulo nos endpoints DEDICADOS (/images + /videos), nao o detalhe inteiro (130,6 kB ' +
+      'em filme, 648,3 kB em serie), e os endpoints proprios vao SEM language, entao ' +
+      'devolvem todos os idiomas — o que o append do detalhe nao faz. Nao e varredura: o ' +
+      'teto por ciclo e declarado abaixo, e ele NAO e o global.',
+    /*
+     * 10.000 POR CICLO, e o numero sai da janela declarada, nao de gosto.
+     *
+     * ========================================================================
+     * O QUE O TETO GLOBAL FAZIA COM ESTA FILA
+     * ========================================================================
+     * Com 200/ciclo e 70.537 titulos no catalogo (37.554 filmes + 32.983
+     * series, CONTADOS em producao em 28/08 — a auditoria #254 dizia 67.288 e
+     * errava, ver a nota de correcao abaixo), a volta levava **353 dias**.
+     * A fila declara janela de 7 dias. Um intervalo diario com volta anual nao
+     * e uma fila diaria — e o MESMO defeito da OMDb a 200/semana, com outro
+     * nome, e este arquivo existe justamente para nao ter um numero unico para
+     * tudo.
+     *
+     * ========================================================================
+     * DE ONDE SAI O 10.000
+     * ========================================================================
+     * 70.537 / 7 = 10.077 titulos/dia apenas EMPATAM com a janela declarada, e
+     * um teto que empata hoje quebra amanha: a descoberta acrescenta titulo
+     * todo dia. 12.000 da volta em 5,88 dias e tolera o catalogo crescer ate
+     * 84.000 antes de a janela voltar a mentir.
+     *
+     * CUSTO: 2 requisicoes por titulo (`/images` + `/videos`) = 24.000 req/dia,
+     * ou 0,28 req/s amortizado. O TMDB nao tem cota diaria e a auditoria #254
+     * dimensiona o desenho recomendado em 135.373 req/dia — isto e 15% daquele
+     * orcamento, e 4% da varredura por forca bruta (874.379).
+     *
+     * ========================================================================
+     * O DENOMINADOR E TITULO, NAO EPISODIO — E ISSO MUDA A CONTA POR 56x
+     * ========================================================================
+     * `selectStaleTitleMedia` le `movies` e `tv_shows`, e so. Temporada
+     * (136.650) e episodio (3.921.368) NAO passam por aqui: a midia deles entra
+     * pela cascata `sync_details` -> `sync_seasons` -> `sync_episodes`, que
+     * voltou a rodar quando a chave do filho ganhou escopo, e cujo teto e o
+     * balde de 7 dias de `coarsenScopeToDays` (@screena/ingestion).
+     * Dimensionar ESTA fila pelo numero de episodios pediria um teto 56 vezes
+     * maior do que ela precisa e duplicaria trabalho que outro caminho ja faz.
+     *
+     * ========================================================================
+     * CORRECAO DE NUMERO — a auditoria #254 deslocou uma coluna
+     * ========================================================================
+     * Ela reporta "32.483 temporadas, 135.926 episodios". Contado em producao
+     * em 28/08/2026:
+     *
+     *   movies    37.554   (#254: 34.802)
+     *   tv_shows  32.983   (#254: 32.486)
+     *   seasons  136.650   (#254 usou 32.483 — que e a contagem de SERIES)
+     *   episodes  3.921.368 (#254 usou 135.926 — que e a de TEMPORADAS)
+     *
+     * O #254 nunca contou episodio: cada numero dele e o da linha de cima. O
+     * erro no episodio e de 28,8x, e e por isso que este bloco cita os numeros
+     * CONTADOS e nao os da auditoria.
+     */
+    batchLimit: 12_000,
   },
   {
     queue: 'discovery',
@@ -137,6 +237,7 @@ export const RHYTHMS: readonly Rhythm[] = [
       'Os exports sao publicados UMA vez por dia (job ~07:00 UTC, disponiveis ~08:00 UTC). ' +
       'Descobrir com mais frequencia baixaria o mesmo arquivo de novo; com menos, titulo ' +
       'novo faltaria.',
+    batchLimit: null,
   },
   {
     queue: 'changes',
@@ -149,6 +250,7 @@ export const RHYTHMS: readonly Rhythm[] = [
       'A janela default do /changes do TMDB e ~24h e o maximo e 14 dias. 6h da quatro ' +
       'tentativas dentro de uma janela de 24h: tres ciclos podem falhar seguidos sem que ' +
       'nada saia da janela e se perca.',
+    batchLimit: null,
   },
   {
     queue: 'cinerie_score',
@@ -161,6 +263,7 @@ export const RHYTHMS: readonly Rhythm[] = [
       'Derivado nao tem ritmo proprio: recalcula quando uma nota de entrada muda. O ' +
       'intervalo de 24h e teto de seguranca, nao cadencia — existe para que um gatilho ' +
       'perdido nao congele o numero para sempre.',
+    batchLimit: null,
   },
   {
     queue: 'search_projection',
@@ -172,6 +275,7 @@ export const RHYTHMS: readonly Rhythm[] = [
     rationale:
       'Roda ao fim de qualquer lote que mudou alguma coisa. Sem isso a pagina nova existe ' +
       'e ninguem a acha — nem o leitor, nem o buscador.',
+    batchLimit: null,
   },
   {
     queue: 'ratings_omdb',
@@ -185,6 +289,7 @@ export const RHYTHMS: readonly Rhythm[] = [
       'refreshAfterHours das tres fontes que a OMDb entrega e 168h. Um payload traz as ' +
       'tres, entao a requisicao precisa acontecer quando a fonte mais impaciente pedir. O ' +
       'limite real e a COTA (1.000/dia), nao o relogio — por isso e rodizio, nunca varredura.',
+    batchLimit: null,
   },
   {
     queue: 'title_detail_active',
@@ -197,6 +302,7 @@ export const RHYTHMS: readonly Rhythm[] = [
       'Data de estreia, elenco e sinopse ainda mudam antes do lancamento. Semanal e o lado ' +
       'CURTO da janela de catalogo geral declarada em .claude/rules/ingestion.md (7-14 dias), ' +
       'e o lado curto e de quem ainda muda.',
+    batchLimit: null,
   },
   {
     queue: 'people',
@@ -209,6 +315,7 @@ export const RHYTHMS: readonly Rhythm[] = [
       'Biografia e data de nascimento praticamente nao mudam. A pessoa que entra num titulo ' +
       'novo NAO espera este ciclo: ela chega pelos creditos, no MESMO request do titulo, ' +
       'imediatamente.',
+    batchLimit: null,
   },
   {
     queue: 'title_detail_ended',
@@ -221,6 +328,7 @@ export const RHYTHMS: readonly Rhythm[] = [
       'Filme lancado e serie finalizada nao mudam mais de elenco, duracao nem ano. ' +
       'Sincronizar diario seria pagar requisicao para reconfirmar bytes identicos — e o que ' +
       'muda nesses titulos (a OFERTA) tem fila propria, diaria.',
+    batchLimit: null,
   },
   {
     queue: 'awards',
@@ -234,12 +342,30 @@ export const RHYTHMS: readonly Rhythm[] = [
       'estavel por meses. Dentro das janelas de indicacao/cerimonia ele muda em horas, e um ' +
       'premio anunciado ontem aparecendo depois de amanha e a falha mais visivel que existe. ' +
       'Janelas em awards-window.ts.',
+    batchLimit: null,
   },
 ]
 
 /** Indice por nome. Fila desconhecida devolve `null` — nunca um default. */
 export function findRhythm(queue: string): Rhythm | null {
   return RHYTHMS.find((r) => r.queue === queue) ?? null
+}
+
+/**
+ * O TETO DE ITENS por ciclo vigente de uma fila.
+ *
+ * O teto da TABELA vence o global quando existe. Esta funcao e o unico lugar
+ * que sabe disso — quem agenda nao repete a regra, pelo mesmo motivo de
+ * `effectiveIntervalHours`.
+ *
+ * Fila sem teto proprio cai no global: acrescentar um numero por fila so tem
+ * sentido quando o limitante daquela fila e diferente do das outras, e obrigar
+ * todas a declarar um transformaria a tabela num arquivo de configuracao.
+ */
+export function effectiveBatchLimit(rhythm: Rhythm, globalLimit: number): number {
+  const proprio = rhythm.batchLimit
+  if (proprio === null || !Number.isFinite(proprio) || proprio <= 0) return globalLimit
+  return Math.trunc(proprio)
 }
 
 /**

@@ -36,7 +36,8 @@
     "canary:entity-link-auto-verification": "tsx scripts/canary-entity-link-auto-verification-real-postgres.ts",
     "qa:gallery": "tsx scripts/qa-gallery-real-postgres.ts",
     "qa:episode-season": "tsx scripts/qa-episode-season-real-postgres.ts",
-    "report:hero-gate": "tsx scripts/report-hero-gate.ts"
+    "report:hero-gate": "tsx scripts/report-hero-gate.ts",
+    "validate:synopsis-render": "tsx --tsconfig scripts/tsconfig.json scripts/validate-synopsis-render-real-postgres.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1097.0",

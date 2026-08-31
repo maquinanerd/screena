@@ -15,9 +15,9 @@
  * ============================================================================
  * `tmdb_videos` NAO TEM TRIGGER. Diferente de `watch_availability`, aqui um
  * `UPDATE` mal escopado nao encontra nenhuma barreira no banco. E o modo de
- * selecao desta ferramenta e por CRITERIO, nao por `--ids` explicito: com 1.119
- * linhas, exigir ids seria inutilizavel, entao a rede de seguranca tem de estar
- * no volume.
+ * selecao desta ferramenta e por CRITERIO, nao por `--ids` explicito: com dezenas
+ * de milhares de linhas, exigir ids seria inutilizavel, entao a rede de seguranca
+ * tem de estar no volume.
  *
  * A secao 6 do CLAUDE.md exige revisao HUMANA para publicacao. Uma execucao que
  * torna publicas mil linhas de dado de terceiro E publicacao, mesmo que cada
@@ -34,8 +34,8 @@
  * ou todas as de pessoa/profile em `tmdb_images`. Assim a razao responde a
  * pergunta certa: *que fracao do acervo esta indo ao ar nesta execucao?*
  *
- * Consequencia ASSUMIDA: a primeira promocao — 1.119 de 1.119 — e 100%, estoura
- * os dois tetos e exige `--confirm-mass-change`. Isso nao e o freio atrapalhando;
+ * Consequencia ASSUMIDA: a promocao do ACERVO e 100% dele, estoura os dois tetos
+ * e exige `--confirm-mass-change`. Isso nao e o freio atrapalhando;
  * e o freio funcionando. Acender o acervo inteiro de uma vez e exatamente o ato
  * que precisa de assinatura humana. Depois dela, o regime normal (o punhado de
  * videos que a ingestao traz por dia) passa livre.

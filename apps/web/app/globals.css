@@ -5246,14 +5246,19 @@ a.media-strip__cell {
    antes, o primeiro paragrafo encostava na borda inferior do hero e a passagem
    de uma secao para a outra lia como corte de template, nao como virada de
    bloco editorial.
-   `text-align: justify` SAIU. Em coluna de 720px com palavra longa de pt-BR ele
-   abre rios de espaco entre as palavras e cada linha ganha um espacamento
-   diferente — alinhado a esquerda a mancha fica regular.
-   `hyphens: auto` SAIU tambem. Sem `text-align: justify` ele nao tinha mais o
-   que resolver, e cobrava um preco real: quebrava palavra no fim da linha e o
-   leitor lia o pedaco como palavra inteira ("confli-" virou "confli"), gerando
-   falso alarme de texto truncado. Coluna estreita de celular sobrevive bem com
-   `overflow-wrap` do proprio navegador. */
+   `text-align: justify` VOLTOU, por decisao editorial, e desta vez acompanhado.
+   Ele saiu em 11/08 com um motivo correto: em coluna de 720px com palavra longa
+   de pt-BR, justificar sozinho abre rios de espaco e cada linha ganha um
+   espacamento diferente. O que resolve isso e hifenizar — e foi justamente o
+   `hyphens: auto` que saiu no mesmo commit, por tabela.
+   Os dois so funcionam JUNTOS: justificado sem hifenizacao tem rios;
+   hifenizacao sem justificado corta palavra sem ter o que resolver. Voltam em
+   par, escopados na materia (`[data-vertical='news']`) e desligados abaixo de
+   640px, onde a coluna e estreita demais para qualquer um dos dois ajudar.
+   O preco conhecido continua de pe e nao e defeito: o navegador desenha
+   "confli-" no fim da linha e alguem pode ler como texto truncado. O dado
+   permanece inteiro no DOM, na busca e no copiar — ja houve um alarme falso
+   assim em 11/08, e ele foi investigado ate o fim. */
 .art-body {
   max-width: var(--container-reading);
   margin: 0 auto;
@@ -5281,6 +5286,26 @@ a.media-strip__cell {
   font-size: 18px;
   line-height: 1.75;
   color: var(--c-text-body);
+  /* JUSTIFICADO — e hifenizacao junto, que nao e enfeite: sem hifenizar, o
+     justificado abre "rios" de espaco branco entre as palavras numa coluna
+     estreita, e fica pior de ler do que alinhado a esquerda. Os dois andam
+     juntos ou nenhum dos dois vale.
+
+     `hyphens: auto` depende do idioma declarado para saber onde cortar, e o
+     `lang` da pagina ja o fornece. O corte e VISUAL: "confli-" na tela continua
+     "conflito" no DOM, na busca do navegador e no texto copiado. */
+  text-align: justify;
+  hyphens: auto;
+  -webkit-hyphens: auto;
+}
+
+/* No celular a coluna e estreita demais para justificar: mesmo com hifenizacao
+   sobra espaco irregular em quase toda linha. Abaixo de 640px volta ao alinhado
+   a esquerda — o mesmo que jornal impresso faz em coluna curta. */
+@media (max-width: 640px) {
+  [data-vertical='news'] .art-body > p {
+    text-align: left;
+  }
 }
 
 .art-body > p:first-child {
@@ -5975,6 +6000,12 @@ h4.art-body__heading {
   display: block;
 }
 
+/*
+ * O `+N` e uma ANCORA, nao um rotulo. Ate 27/08/2026 era um `<span>`: dizia ao
+ * leitor que havia mais N fotos e nao oferecia como ve-las. As regras de cor e
+ * `text-decoration` existem porque um `<a>` herda o estilo de link do documento
+ * e o sublinhado sobre a foto ficaria ilegivel.
+ */
 .person-photos__more {
   position: absolute;
   inset: 0;
@@ -5985,6 +6016,23 @@ h4.art-body__heading {
   color: #fff;
   font-size: 20px;
   font-weight: 800;
+  text-decoration: none;
+}
+
+.person-photos__more:hover,
+.person-photos__more:focus-visible {
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+}
+
+/* "Ver todas as N fotos" — o par do `+N` no cabecalho da secao. */
+.person-photos__all {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--c-text-muted-aa);
+  white-space: nowrap;
 }
 
 /* Conhecido por — 5 cards com poster 2/3 */
@@ -10294,6 +10342,14 @@ h4.art-body__heading {
   padding: 4px 7px;
 }
 
+/* Serie usa o acento verde (invariantes 9 e 10). A regra vem DEPOIS da de cima
+   porque o CSS resolve por ordem de documento com a mesma especificidade — e
+   aqui a especificidade nem empata: o seletor de atributo ganha. Ate 2026-08-28
+   o badge era sempre vermelho porque o card so sabia dizer "movie". */
+.similar-card[data-entity-type='tv'] .similar-card__type {
+  background: var(--c-accent-series);
+}
+
 .similar-card__title {
   display: block;
   font-size: 13px;
@@ -10951,7 +11007,13 @@ main[data-vertical='series'] .score-card__label {
  * a grade pula durante a carga (CLS). Fixar a proporção por tipo garante a
  * reserva mesmo quando o dado veio incompleto.
  */
-.gallery-tile[data-kind='poster'] .gallery-tile__img {
+.gallery-tile[data-kind='poster'] .gallery-tile__img,
+/*
+ * Retrato de pessoa usa a MESMA proporcao do poster (2/3). Nao e coincidencia:
+ * o TMDB publica `profile` no mesmo formato retrato, e sem a reserva de espaco
+ * a grade pula durante a carga (CLS) quando o dado vem sem `width`/`height`.
+ */
+.gallery-tile[data-kind='profile'] .gallery-tile__img {
   aspect-ratio: 2 / 3;
   object-fit: cover;
 }

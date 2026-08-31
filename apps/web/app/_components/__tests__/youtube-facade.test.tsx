@@ -84,11 +84,28 @@ describe('depois do clique: o player entra, e só então', () => {
     expect(iframe?.getAttribute('src')).toBe(EMBED)
   })
 
-  it('o player roda isolado: sandbox SEM allow-same-origin', () => {
+  it('o player recebe a PROPRIA origem: sandbox COM allow-same-origin', () => {
+    // Este teste afirmava o contrario, e a afirmacao custava o player inteiro:
+    // sem `allow-same-origin` o iframe recebe origem OPACA e o YouTube fica
+    // isolado DELE MESMO — retangulo preto, e o relogio de 8s caindo no aviso
+    // de falha. Medido em 28/08/2026 na materia do trailer em LEGO.
+    //
+    // Nada nosso e afrouxado: o player esta em `youtube-nocookie.com`, outra
+    // origem, e a politica de mesma origem ja o mantem longe do nosso cookie e
+    // do nosso storage — com sandbox ou sem.
     activate()
     const sandbox = container.querySelector('iframe')?.getAttribute('sandbox') ?? ''
     expect(sandbox).toContain('allow-scripts')
-    expect(sandbox).not.toContain('allow-same-origin')
+    expect(sandbox).toContain('allow-same-origin')
+  })
+
+  it('o player continua sem poder navegar a pagina que o hospeda', () => {
+    // O que o sandbox precisa continuar segurando: `allow-top-navigation` fora
+    // da lista impede que o conteudo de terceiro troque a pagina do leitor.
+    activate()
+    const sandbox = container.querySelector('iframe')?.getAttribute('sandbox') ?? ''
+    expect(sandbox).not.toContain('allow-top-navigation')
+    expect(sandbox).not.toContain('allow-forms')
   })
 
   it('o cartão de ativação sai quando o player entra', () => {

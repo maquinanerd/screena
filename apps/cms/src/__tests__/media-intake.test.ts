@@ -337,10 +337,22 @@ describe('idempotencia por (materia, sourceUrl)', () => {
 })
 
 describe('articleId', () => {
-  it('ausente e recusado', () => {
+  it('AUSENTE e aceito: a foto pode preceder a materia', () => {
+    // Este teste afirmava o contrario, e a obrigacao criava um ovo-e-galinha: o
+    // bloco `image` referencia `media[].mediaId` do MESMO pedido, mas o
+    // `mediaId` so podia nascer depois de a materia existir. Medido: em toda
+    // primeira publicacao o `media[]` saia vazio e nenhuma imagem entrava no
+    // corpo.
     const result = intake({ articleId: undefined })
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.command.articleId).toBeNull()
+  })
+
+  it('vazio e recusado — string em branco nao e "sem materia"', () => {
+    // `''` e o sintoma classico de emissor que TENTOU mandar o id e falhou.
+    // Trata-lo como ausente esconderia o defeito e deixaria a foto orfa.
+    const result = intake({ articleId: '   ' })
     expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.rejection.issues.join(' ')).toContain('articleId ausente')
   })
 
   it('nao-numerico e recusado ANTES de virar consulta', () => {
