@@ -365,12 +365,18 @@ uma pergunta que não é a que está aberta.
 | --- | --- | --- |
 | Cliente HTTP | `api-clients/omdb/` | real |
 | Worker | `services/ratings/src/omdb/` + `bin/sync-omdb-ratings.ts` | real |
-| Fila do agendador | `rhythms.ts:177` — fila `ratings_omdb`, `providerApi: 'omdb'`, **7 dias** | declarada |
+| Fila do agendador | fila `ratings_omdb`, `providerApi: 'omdb'`, **1 dia** (era 7 ate a PR #258) | declarada |
 | Executor | `scheduler/runtime/runners.ts:610` — `runRatingsOmdb` | **existe e chama o worker** |
 | Cota | `packages/config/src/omdb-budget.ts` + `provider-quotas.ts` | 1.000/dia, 150 reservados ao leitor |
 
 Ou seja: **está agendado, não é manual.** Isso responde a pergunta central do item A.1 —
 e refuta a hipótese natural de "alguém rodou na mão uma vez".
+
+> **Atualizado em 2026-08-31 (PR #258).** Estar agendado nunca foi suficiente: a
+> fila só conhecia o trabalho de *reatualizar*, e aplicava a janela de 168 h a
+> quem **nunca havia sido consultado** — 99,13% dos filmes. Hoje são dois modos
+> disjuntos (cobertura/atualização), cadência diária e teto próprio de 700/dia.
+> Ver [`omdb-coverage-and-quota.md`](./omdb-coverage-and-quota.md).
 
 ### 4.2 Por que parou em 226 — a explicação do enunciado está **incompleta**
 

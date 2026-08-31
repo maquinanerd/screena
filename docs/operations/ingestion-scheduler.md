@@ -80,7 +80,7 @@ reprova entrada sem motivo escrito.
 | `changes` | **6 h** | tmdb | A janela do `/changes` e ~24 h (max. 14 dias). 6 h da quatro tentativas dentro de uma janela — tres ciclos podem falhar sem que nada se perca. |
 | `cinerie_score` | **por evento** (teto 24 h) | — | Derivado nao tem ritmo, tem gatilho. O teto existe para que um gatilho perdido nao congele o numero para sempre. |
 | `search_projection` | **por evento** (teto 24 h) | — | Ao fim de qualquer lote que mudou algo. Sem isso a pagina nova existe e ninguem a acha. |
-| `ratings_omdb` | **semanal**, em rodizio | omdb | 168 h e o MENOR `refreshAfterHours` das tres fontes da OMDb (`RATING_STALE_POLICY`). O limite real e a COTA, nao o relogio. |
+| `ratings_omdb` | **diaria**, em rodizio | omdb | Faz DOIS trabalhos e so um tem janela: as 168 h de `RATING_STALE_POLICY` governam REATUALIZAR, e nao dizem nada sobre um titulo com ZERO notas, que nunca foi perguntado. Era semanal ate 2026-08-31 (PR #258) — ver [`omdb-coverage-and-quota.md`](./omdb-coverage-and-quota.md). |
 | `title_detail_active` | **semanal** | tmdb | Data, elenco e sinopse ainda mudam antes do lancamento. Lado curto da janela de 7–14 dias. |
 | `people` | **mensal** | tmdb | Biografia quase nao muda. Quem entra num titulo novo chega pelos CREDITOS, no mesmo request do titulo — nao espera este ciclo. |
 | `title_detail_ended` | **mensal** | tmdb | Filme lancado e serie finalizada nao mudam mais. O que muda neles (a OFERTA) tem fila propria, diaria. |
@@ -93,9 +93,19 @@ elas nao tem o mesmo limitante:
 
 | fila | limitante real | teto |
 | --- | --- | ---: |
-| `ratings_omdb` | **cota** (1.000/dia, reserva de 150 para o leitor) | 200 (global) |
+| `ratings_omdb` | **cota** (1.000/dia, reserva de 150 para o leitor) | **700** (proprio) |
 | `watch_offers`, `people`, `airing_series`, `title_detail_*` | relogio + custo do detalhe | 200 (global) |
 | `title_media` | **educacao com o TMDB**, que nao tem cota diaria | **10.000** (proprio) |
+
+> **Ate 2026-08-31 a linha da `ratings_omdb` dizia teto "200 (global)" e a coluna
+> ao lado dizia que o limitante era a COTA. As duas nao podiam estar certas ao
+> mesmo tempo:** `backgroundOmdbSlots` devolve `min(batchLimit, cota - gasto -
+> reserva)` = `min(200, 850)`, e o `min` mostra que quem limitava era o teto
+> global — 650 requisicoes/dia sobre a mesa. Havia ate um teste verde afirmando
+> que a fila "NAO ganha teto proprio porque e limitada por cota". Corrigido na
+> PR #258: teto proprio de 700 (`OMDB_BACKGROUND_DAILY_ENVELOPE`), que e MAIOR
+> que o global e continua abaixo dos 850 da cota — a folga de 150 existe porque
+> a OMDb nao publica cabecalho de cota nenhum.
 
 Um numero so para todas obriga a escolher qual delas fica errada. Por isso o teto
 entra na TABELA DE RITMOS, ao lado do intervalo (`Rhythm.batchLimit`, resolvido por
