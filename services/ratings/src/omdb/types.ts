@@ -27,8 +27,33 @@ export type OmdbRejectionReason =
   /**
    * `Response: "False"` — a OMDb sinalizou ERRO com HTTP 200 e um campo
    * `Error`. Nunca e sucesso, nunca e "0 notas".
+   *
+   * Este motivo e o fato sobre o TITULO (id inexistente, id malformado). O fato
+   * sobre o DIA tem motivo PROPRIO (`omdb-quota-exhausted`) — ver
+   * `error-response.ts` para por que colapsa-los custou cota em silencio.
    */
   | 'omdb-error-response'
+  /**
+   * A OMDb recusou por TETO DE REQUISICOES ("Request limit reached!"), com HTTP
+   * 200 como todo erro dela.
+   *
+   * Distinto de `omdb-error-response` e de `quota-denied`, e os tres pedem acoes
+   * diferentes: aquele e "este titulo nao existe"; `quota-denied` e "NOSSO
+   * contador disse que nao havia saldo, entao nem perguntamos"; este e "o
+   * FORNECEDOR disse que acabou" — a unica evidencia externa de cota que a OMDb
+   * nos da, porque ela nao publica cabecalho de cota nenhum.
+   *
+   * Quando os dois divergem (nosso contador achava que havia saldo e o
+   * fornecedor recusou), este motivo e o unico sinal de que `quota_cost` esta
+   * subcontando o consumo real.
+   */
+  | 'omdb-quota-exhausted'
+  /**
+   * A OMDb recusou por CREDENCIAL ("Invalid API key!"). Fato sobre a chave, nao
+   * sobre o titulo nem sobre o dia. Interrompe o lote pelo mesmo motivo que a
+   * cota: o proximo id encontraria a mesma parede.
+   */
+  | 'omdb-auth-rejected'
   /** O payload nao trouxe `imdbID` valido (`tt<digitos>`). */
   | 'no-entity-id'
   /** `Ratings` ausente ou nao e array. */

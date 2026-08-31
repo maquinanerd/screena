@@ -199,6 +199,29 @@ export class RapidApiHttpClient {
     return this.requestCount
   }
 
+  /**
+   * Abre o circuito POR DECISAO DE QUEM LE O CORPO, nao pelo status HTTP.
+   *
+   * Existe porque nem todo fornecedor sinaliza degradacao no status. A OMDb
+   * responde **HTTP 200** com `{"Response":"False","Error":"Request limit
+   * reached!"}` — para `request()` isso e sucesso, `onSuccess()` roda e o
+   * breaker literalmente nao pode saber. Sem esta porta, a unica alternativa
+   * seria ensinar este executor generico a interpretar o corpo de um provider
+   * especifico, e ai o modulo que existe para NAO conhecer providers passaria a
+   * conhecer um.
+   *
+   * A separacao de responsabilidades fica: o executor sabe ABRIR o circuito;
+   * quem entende o vocabulario do fornecedor (`services/ratings/src/omdb/
+   * error-response.ts`) sabe QUANDO pedir. O cooldown e o mesmo de qualquer
+   * abertura — nao ha politica nova aqui.
+   *
+   * Idempotente: chamar duas vezes so estende o cooldown a partir de agora.
+   */
+  tripCircuit(): void {
+    this.consecutiveFailures = this.config.breakerThreshold
+    this.openUntil = this.now() + this.config.breakerCooldownMs
+  }
+
   /** GET em `path` com `params`; devolve o JSON parseado como `unknown`. */
   async request(path: string, params: QueryParams = {}): Promise<unknown> {
     this.assertCircuitClosed()

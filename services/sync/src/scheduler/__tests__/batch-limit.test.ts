@@ -26,6 +26,14 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  OMDB_BACKGROUND_DAILY_ENVELOPE,
+  OMDB_DAILY_LIMIT,
+  ON_DEMAND_RESERVE,
+} from '@screena/config'
+
+import { backgroundOmdbSlots } from '../quota.js'
+
+import {
   effectiveBatchLimit,
   effectiveIntervalHours,
   findRhythm,
@@ -100,12 +108,38 @@ describe('o teto por ciclo respeita a janela que a fila declara', () => {
 })
 
 describe('o teto proprio so existe onde o limitante e diferente', () => {
-  it('a fila da OMDb NAO ganha teto proprio: ela e limitada por COTA, nao por relogio', () => {
-    // 200 esta CERTO para ela. `backgroundOmdbSlots` usa este numero contra o
-    // saldo de 1.000/dia com reserva de 150 — subir aqui envenenaria a cota.
+  it('a fila da OMDb GANHA teto proprio: o global de 200 era 3,5x menor que a cota', () => {
+    // ========================================================================
+    // ESTE TESTE AFIRMAVA O CONTRARIO ATE 2026-08-31, E ELE ESTAVA ERRADO
+    // ========================================================================
+    // O texto anterior era "a fila da OMDb NAO ganha teto proprio: ela e
+    // limitada por COTA, nao por relogio", e o comentario dizia que 200 estava
+    // "CERTO para ela" porque `backgroundOmdbSlots` o compara com o saldo.
+    //
+    // A premissa e verdadeira e a conclusao nao segue. `backgroundOmdbSlots`
+    // devolve `min(batchLimit, dailyLimit - gasto - reserva)` = `min(200, 850)`.
+    // O `min` significa que quem LIMITAVA era o teto global de 200, nao a cota:
+    // 650 requisicoes por dia ficavam sobre a mesa, e a fila afirmava, num teste
+    // verde, que isso era a cota mandando.
+    //
+    // O teto proprio existe justamente porque o limitante desta fila E diferente
+    // do das outras — que e a regra declarada em `effectiveBatchLimit`.
     const omdb = findRhythm('ratings_omdb')!
-    expect(omdb.batchLimit).toBeNull()
-    expect(effectiveBatchLimit(omdb, TETO_GLOBAL)).toBe(TETO_GLOBAL)
+    expect(omdb.batchLimit).toBe(OMDB_BACKGROUND_DAILY_ENVELOPE)
+    expect(effectiveBatchLimit(omdb, TETO_GLOBAL)).toBe(OMDB_BACKGROUND_DAILY_ENVELOPE)
+
+    // O teto proprio e MAIOR que o global — se nao fosse, nao haveria motivo
+    // para declara-lo, e este teste passaria por acidente.
+    expect(effectiveBatchLimit(omdb, TETO_GLOBAL)).toBeGreaterThan(TETO_GLOBAL)
+
+    // ...e continua ABAIXO do que a cota permite gastar num dia. A folga entre
+    // os dois e deliberada: a OMDb nao publica cabecalho de cota, entao nao ha
+    // como conferir o consumo real contra o do fornecedor.
+    const tetoDaCota = OMDB_DAILY_LIMIT - ON_DEMAND_RESERVE
+    expect(effectiveBatchLimit(omdb, TETO_GLOBAL)).toBeLessThan(tetoDaCota)
+    expect(backgroundOmdbSlots(0, effectiveBatchLimit(omdb, TETO_GLOBAL))).toBe(
+      OMDB_BACKGROUND_DAILY_ENVELOPE,
+    )
   })
 
   it('toda fila declara o teto explicitamente — nunca por omissao', () => {

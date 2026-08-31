@@ -10,6 +10,7 @@
  * de um vocabulario de provedor para outro so acrescentaria uma chance de erro.
  */
 
+import { OMDB_ROTATION_MODES, type OmdbRotationMode } from '@screena/config'
 import { isImdbId } from '@screena/omdb-client'
 
 import type { RatingsEntityType } from './types.js'
@@ -27,6 +28,15 @@ export interface OmdbArgs {
   readonly report: string | null
   /** `--ignore-freshness`: reconsulta mesmo quem foi visto ha pouco. */
   readonly ignoreFreshness: boolean
+  /**
+   * `--mode=coverage|refresh`: QUAL trabalho o lote faz. `null` = nao informado,
+   * e o CLI aplica `refresh` (o comportamento historico).
+   *
+   * `coverage` seleciona titulos com ZERO notas e ignora a janela de frescor;
+   * `refresh` seleciona quem ja tem nota vencida. Ver
+   * packages/config/src/omdb-rotation.ts.
+   */
+  readonly mode: OmdbRotationMode | null
 }
 
 /** Resultado do parse: sucesso com args, ou falha com mensagem clara. */
@@ -40,7 +50,7 @@ const BOOLEAN_FLAGS: ReadonlySet<string> = new Set([
   'dry-run',
   'ignore-freshness',
 ])
-const STRING_FLAGS: ReadonlySet<string> = new Set(['type', 'id', 'report'])
+const STRING_FLAGS: ReadonlySet<string> = new Set(['type', 'id', 'report', 'mode'])
 const INT_FLAGS: ReadonlySet<string> = new Set(['limit'])
 
 const ENTITY_TYPES: ReadonlySet<string> = new Set(['movie', 'tv'])
@@ -58,6 +68,7 @@ export function parseOmdbArgs(argv: readonly string[]): OmdbArgsResult {
   let limit: number | null = null
   let report: string | null = null
   let ignoreFreshness = false
+  let mode: OmdbRotationMode | null = null
 
   for (let i = 0; i < argv.length; i += 1) {
     const token = argv[i]
@@ -117,6 +128,15 @@ export function parseOmdbArgs(argv: readonly string[]): OmdbArgsResult {
       continue
     }
 
+    if (name === 'mode') {
+      const candidate = value.trim()
+      if (!(OMDB_ROTATION_MODES as readonly string[]).includes(candidate)) {
+        return fail(`--mode invalido: "${candidate}". Use "coverage" ou "refresh".`)
+      }
+      mode = candidate as OmdbRotationMode
+      continue
+    }
+
     if (name === 'report') {
       report = value
       continue
@@ -142,11 +162,25 @@ export function parseOmdbArgs(argv: readonly string[]): OmdbArgsResult {
     )
   }
 
+  if (mode !== null && id !== null) {
+    // `--id` nomeia UM titulo; nao ha selecao a fazer, entao "qual conjunto
+    // selecionar" nao se aplica. Aceitar a flag junto sugeriria que ela filtra
+    // alguma coisa aqui — e nao filtra.
+    return fail('--mode nao se aplica com --id (um id explicito ja e sempre consultado).')
+  }
+
+  if (mode === 'coverage' && ignoreFreshness) {
+    // No modo cobertura nada foi coletado, entao nao ha frescor para ignorar.
+    // Aceitar as duas juntas deixaria o operador achando que --ignore-freshness
+    // ampliou a selecao — nao ampliou.
+    return fail('--ignore-freshness nao se aplica a --mode=coverage (nada foi coletado ainda).')
+  }
+
   if (ignoreFreshness && id !== null) {
     // `--id` ja ignora frescor por construcao. Aceitar a flag junto sugeriria
     // que ela faz algo aqui — e nao faz.
     return fail('--ignore-freshness nao se aplica com --id (um id explicito ja e sempre consultado).')
   }
 
-  return { ok: true, args: { apply, sample, type, id, limit, report, ignoreFreshness } }
+  return { ok: true, args: { apply, sample, type, id, limit, report, ignoreFreshness, mode } }
 }

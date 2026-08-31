@@ -44,7 +44,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import type { PrismaClient } from '@screena/db/server'
-import { checkOmdbBudget } from '@screena/config'
+import { checkOmdbBudget, planOmdbRotation } from '@screena/config'
 import {
   buildCoverageJob,
   buildIdempotencyKey,
@@ -52,6 +52,7 @@ import {
 } from '@screena/ingestion/runtime'
 
 import type { SchedulerQueue } from '../rhythms.js'
+
 import { backgroundOmdbSlots } from '../quota.js'
 import { dailyScope, hourlySlot, windowSlot } from '../scope.js'
 import { effectiveRank, NO_TRENDING, type TrendingRanks } from '../trending.js'
@@ -718,16 +719,42 @@ const runRatingsOmdb: QueueRunner = async (deps) => {
     )
   }
 
-  // Dois tipos, fatia dividida: a OMDb cobra por titulo, e uma fatia so para
-  // filmes deixaria as series sem nota por dias.
-  const perType = Math.max(1, Math.floor(slots / 2))
+  // ==========================================================================
+  // QUATRO LOTES, NAO DOIS — E NENHUM DELES E METADE
+  // ==========================================================================
+  // Era `perType = Math.floor(slots / 2)`: um lote por TIPO, e so o trabalho de
+  // reatualizar. Duas coisas erradas de uma vez.
+  //
+  // 1. Faltava o eixo do TRABALHO. Cobrir um titulo que nunca foi perguntado e
+  //    reatualizar um que ja tem nota sao conjuntos disjuntos com orcamentos
+  //    diferentes; ate 2026-08-31 so o segundo existia, e o primeiro — 99% do
+  //    catalogo — nunca era selecionado.
+  // 2. Metade a metade parece neutro e nao e: os conjuntos tem tamanhos
+  //    diferentes, entao fatias iguais terminam a volta em dias diferentes, e a
+  //    fatia do tipo menor vira slot ocioso (a janela de frescor barra a
+  //    reconsulta) enquanto o maior ainda tem dezenas de milhares na fila.
+  //
+  // `planOmdbRotation` (@screena/config) e quem reparte, e ele e PURO e testado
+  // la — este runner nao redecide a politica, so a executa.
+  const plan = planOmdbRotation(slots)
   const reasons: RunReason[] = []
   let processed = 0
   let failed = 0
-  let requests = 0
 
-  for (const type of ['movie', 'tv'] as const) {
-    const args = ['--type', type, '--limit', String(perType)]
+  for (const slice of plan.slices) {
+    // Um lote de zero slots nao spawna: subir um processo para ele descobrir que
+    // nao tem nada a fazer enche o log de execucoes vazias, e "rodou e nao fez
+    // nada" e indistinguivel de "quebrou" no painel.
+    if (slice.slots <= 0) continue
+
+    const args = [
+      '--type',
+      slice.entityType,
+      '--mode',
+      slice.mode,
+      '--limit',
+      String(slice.slots),
+    ]
     if (deps.apply) args.push('--apply')
     const result = await runScript(
       deps.repoRoot,
@@ -736,18 +763,22 @@ const runRatingsOmdb: QueueRunner = async (deps) => {
       deps.shutdownSignal,
     )
     deps.log.log('info', 'scheduler_ratings_omdb_child', {
-      type,
+      type: slice.entityType,
+      mode: slice.mode,
       code: result.code,
-      slots: perType,
+      slots: slice.slots,
     })
     if (result.code === 0) {
-      processed += perType
-      requests += perType
+      processed += slice.slots
     } else {
-      failed += perType
+      failed += slice.slots
       reasons.push({
         code: 'omdb_child_failed',
-        detail: describeChildFailure(`sync-omdb-ratings --type ${type}`, result.code, result.stderr),
+        detail: describeChildFailure(
+          `sync-omdb-ratings --type ${slice.entityType} --mode ${slice.mode}`,
+          result.code,
+          result.stderr,
+        ),
         count: 1,
       })
     }
@@ -757,9 +788,30 @@ const runRatingsOmdb: QueueRunner = async (deps) => {
     'ratings_omdb',
     startedAt,
     deps.now(),
-    { planned: perType * 2, processed, failed, skipped: 0 },
+    { planned: plan.total, processed, failed, skipped: 0 },
     reasons,
-    { providerApi: 'omdb', requests },
+    // ==========================================================================
+    // `requests: 0` AQUI E CORRECAO, NAO OMISSAO
+    // ==========================================================================
+    // Ate 2026-08-31 esta linha reportava `requests = <slots planejados>`, e o
+    // efeito era COTA CONTADA DUAS VEZES: `recordRun` grava uma linha de
+    // `api_sync_logs` com `provider_api='omdb'` e este `quota_cost`, e cada filho
+    // `sync-omdb-ratings` ja grava a SUA linha com o custo REAL
+    // (`client.getRequestCount()`). `readSpentToday` soma as duas.
+    //
+    // A 200 requisicoes por SEMANA isso nunca encostava em nada. A 700 por DIA
+    // encosta todo dia: `spentToday` leria ~1.400 depois de um ciclo de 700, e o
+    // LEITOR — que so e barrado quando o teto inteiro acaba — ficaria sem
+    // resposta pelo resto do dia por causa de cota que ninguem gastou. A cadencia
+    // nova transformaria um erro dormente num incidente diario.
+    //
+    // O numero planejado tambem seria errado por construcao: ele conta slots, e
+    // um lote pode parar no meio (recusa de cota do fornecedor) ou nem tocar a
+    // rede (ciclo sem `--apply`).
+    //
+    // `runAwards` logo abaixo ja fazia isto, com esta mesma justificativa. O
+    // filho e a UNICA autoridade sobre quanto se gastou.
+    { providerApi: 'omdb', requests: 0 },
   )
 }
 
