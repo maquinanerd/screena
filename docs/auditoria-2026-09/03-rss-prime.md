@@ -238,26 +238,48 @@ return hmac.compare_digest(provided, expected)
 Aceita `Authorization: Bearer <ADMIN_KEY>` ou `X-Admin-Key`. `ADMIN_KEY` está
 definida no serviço `feed` — confirmei no painel (só a presença; não li o valor).
 
-### O que preocupa
+### O que preocupa — e o que eu fechei
 
-1. **`/debug/superfeed/<topic>` não aparece na lista de rotas com
-   `@require_admin`** que extraí. **NÃO DETERMINADO** se está protegida — a
-   verificação exata é `sed -n` na linha da rota. Uma rota `/debug/` pública num
-   host exposto (`rss.thepeg.site`) expõe estado interno de clustering.
-2. **`/admin/refresh` com alvo fixo no código** — o achado 5:
-   ```python
-   # Fixed source URL for security
-   source_url = 'https://www.lance.com.br/mais-noticias'
-   ```
-   O comentário diz que a URL é fixa "por segurança", e nisso ele está certo: é
-   melhor que aceitar URL do usuário. Mas o alvo é o **portal de esportes de
-   onde o repositório nasceu**, num sistema que hoje serve entretenimento para o
-   Cinerie. O endpoint administrativo "atualizar" atualiza a coisa errada.
-3. **Sanitização por lista negra** em `parse_query_filter`
-   ([`app/utils.py:226`](app/utils.py)): `re.sub(r'[^\w\s\-\|\(\)]+', '', ...)`.
-   É lista de permissão, na verdade — está correto —, mas mantém `(`, `)` e `|`,
-   que são metacaracteres de regex. Se esse filtro alimentar um `re.compile`
-   adiante, é ReDoS. **NÃO DETERMINADO** onde o valor é consumido.
+**1. `/debug/superfeed/<topic>`: FECHADO, está protegido.** Deixei isso como
+NÃO DETERMINADO na primeira passagem e voltei para verificar. A rota tem
+`@require_admin` ([`app/server.py:1486`](app/server.py)), e o docstring registra
+que já foi diferente:
+
+> *"Always requires a valid ADMIN_KEY header […]. It used to be open whenever
+> ADMIN_KEY was unset, which exposed event keys, URLs and titles to anyone who
+> could reach the port."*
+
+Ou seja: era um buraco real, foi fechado, e o motivo ficou escrito. Bom.
+
+**2. ReDoS em `parse_query_filter`: FECHADO, não existe.** Também levantei como
+suspeita e fui ao consumidor. Os termos são usados em
+[`app/store.py:368`](app/store.py):
+
+```python
+like_conditions = ["(title LIKE ? OR description LIKE ?)" for _ in search_terms]
+where_conditions.append(f"({' OR '.join(like_conditions)})")
+for term in search_terms:
+    params.extend([f'%{term}%', f'%{term}%'])
+...
+cursor.execute(query, params)
+```
+
+O `f-string` monta só o **esqueleto** de `OR`, a partir da *contagem* de termos —
+nunca do conteúdo. Os valores vão como **parâmetro ligado** (`?`). Não há
+`re.compile` sobre entrada do usuário e não há concatenação de dado em SQL.
+**Sem ReDoS e sem injeção.**
+
+**3. O que continua sendo achado: `/admin/refresh` com alvo fixo no código.**
+
+```python
+# Fixed source URL for security
+source_url = 'https://www.lance.com.br/mais-noticias'
+```
+
+O comentário está certo sobre a segurança — é melhor que aceitar URL do usuário.
+Mas o alvo é o **portal de esportes de onde o repositório nasceu**, num sistema
+que hoje serve entretenimento para o Cinerie. O endpoint administrativo
+"atualizar" atualiza a coisa errada.
 
 ### Segredos
 
@@ -388,7 +410,7 @@ propósito** — a URL é fixa, mas fixa no alvo errado para o sistema atual.
 | R-06 | **MÉDIO** | `app/server.py:1402` | `/admin/refresh` com URL do LANCE! fixa | código | Endpoint administrativo atualiza a fonte errada |
 | R-07 | **MÉDIO** | 55 `.pyc` + 181 `.ndjson` + 36 `.local/` | Artefatos de build, log e IDE versionados | `git ls-files` | Bytecode de 2 versões de Python pode divergir do fonte |
 | R-08 | **MÉDIO** | `Dockerfile:17` | `pip install -r requirements.txt` sem lockfile e com `>=` em tudo | código | Builds não reprodutíveis |
-| R-09 | **MÉDIO** | `app/server.py` rota `/debug/superfeed/<topic>` | Proteção não confirmada em host público | inspeção parcial | **NÃO DETERMINADO**; se aberta, expõe estado interno |
+| ~~R-09~~ | — | `app/server.py:1486` | **FECHADO na verificação:** a rota TEM `@require_admin`, e o docstring registra que já foi aberta e foi corrigida | código | Sem achado |
 | R-10 | **BAIXO** | `pyproject.toml:2` | `name = "repl-nix-workspace"`; `psycopg2-binary` num sistema SQLite | leitura | Identidade e dependência erradas |
 | R-11 | **BAIXO** | raiz | 53 Markdown, três deles "DEFINITIVO/COMPLETO/COMPLETA" | `ls` | Sem fonte única de documentação |
 | R-12 | **BAIXO** | `app/scheduler.py:868` | MN26 montado no mesmo ciclo do superfeed do Cinerie | código | Compartilha cota e tempo de ciclo com o Cinerie |
@@ -417,8 +439,6 @@ propósito** — a URL é fixa, mas fixa no alvo errado para o sistema atual.
 | Item | Comando |
 | --- | --- |
 | Volume/linhas do banco de produção e se ele persiste entre deploys | Console do `feed`: `sqlite3 /app/data/articles.db ".tables"`, `SELECT count(*) FROM sf_clusters;` e conferir `mounts` |
-| Se `/debug/superfeed/<topic>` é autenticada | `grep -n "debug/superfeed" -B3 app/server.py` |
-| Onde `parse_query_filter` é consumido (risco de ReDoS) | `git grep -n "parse_query_filter" -- '*.py'` |
 | Provedor de embeddings | `sed -n '1,60p' superfeed/embedding_client.py` |
 | Cadência real do agendador em produção | `TOPIC_DEFINITIONS` em `app/scheduler.py` + logs do serviço |
 | Vulnerabilidades de dependência | `pip-audit -r requirements.txt` |
