@@ -45,6 +45,37 @@ aconteceu **sete** vezes nesta auditoria, e as sete estão marcadas no texto:
 Cada uma dessas correções tornou o achado **mais** útil, não menos. É por isso
 que a regra existe.
 
+### A cobertura consolidada, sem maquiagem
+
+**Abri 80 de 3.546 arquivos versionados — 2,3%.**
+
+| Repositório | Abertos | Versionados | % |
+| --- | ---: | ---: | ---: |
+| screena | 33 | 2.174 | 1,5% |
+| MNScr | 20 | 297 | 6,7% |
+| RSS Prime | 13 | 543 | 2,4% |
+| kal-el | 14 | 532 | 2,6% |
+| **Total** | **80** | **3.546** | **2,3%** |
+
+Esse número sozinho não sustentaria nada, então declaro o método inteiro:
+
+| Instrumento | Alcance |
+| --- | --- |
+| Varredura por padrão (`git grep`) | **100% dos 3.546**, em 48 varreduras temáticas |
+| Suítes executadas de verdade | **11.896 testes** — screena 7.567 · MNScr 3.521 · RSS Prime 564 · kal-el 244 |
+| Portões de qualidade | `typecheck`, `lint`, `audit:invariants`, `audit:render` — rodados |
+| Auditoria de dependências | `pnpm audit` nos dois de TypeScript; `pip-audit` **bloqueado pela máquina** nos dois de Python |
+| Medição no PostgreSQL de produção | **28 consultas**, somente leitura |
+| Medição HTTP no site em produção | ~30 requisições, com cabeçalhos, desktop e celular |
+
+Fixture, snapshot, imagem, log, bytecode e os 500+ arquivos Markdown de
+documentação entram no denominador e **não** foram lidos linha a linha — está
+declarado no anexo de cada relatório, por diretório, com o motivo.
+
+A escolha dos 80 foi por **risco**, nesta ordem: caminho que grava em banco, que
+chama API externa, que renderiza página pública, que decide licença,
+indexabilidade ou permissão.
+
 ---
 
 # 1. Sumário executivo
