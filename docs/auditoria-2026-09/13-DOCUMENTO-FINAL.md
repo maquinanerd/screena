@@ -394,6 +394,7 @@ Ordenada por gravidade. Prefixos: **S** = screena, **M** = MNScr,
 | K-01 | **ALTO** | kal-el | `apps/cms/Dockerfile:28` | Comentário afirma que `public/` não existe; existe e não é copiado | código + `git log` |
 | K-02 | **ALTO** | kal-el | `apps/api/src/routes/site.ts:85` | Nenhuma leitura pública de artigo publicado | código |
 | K-03 | **ALTO** | kal-el | painel (ausência) | Nunca implantado | painel |
+| S-31 | **ALTO** | screena | `apps/admin` (46 arquivos, 11 páginas) | Aplicação inteira nunca construída: nenhum Dockerfile, nenhum `build:admin`, nenhum serviço — e é ela que tem `review-queue` e `content-blocks/[id]` | código + painel |
 | S-25 | **ALTO** | screena | `services/streaming/src/promotion/args.ts:246` | A CLI de promoção exige `--ids` explícito e **não tem modo em lote** — são 70.036 ofertas | código |
 | S-27 | **ALTO** | screena | fila `airing_series` | Intervalo **diário**, último enfileiramento em 2026-08-25 — 7 dias de silêncio | banco (`catalog_jobs.run_id`) |
 | S-28 | **ALTO** | screena | `watch_offers` × promoção | Fila **saudável** ingere 5.782 ofertas/dia para uma tabela onde 98,8% nunca são promovidas | banco |
@@ -513,7 +514,7 @@ E o que passou com folga: **a diferenciação filme/série cumpre os cinco sinai
 | 7 | Estado vazio escrito para trailer, nota e onde assistir | 83 mil páginas deixam de esconder a ausência |
 | 8 | Seletor em lote na CLI de promoção **+** decisão humana de licença | 0,18% → dezenas de milhares |
 | 9 | Destravar `biography_source_status` *(decisão humana de licença)* | 2.152 biografias que já existem |
-| 10 | Rodar o Entity Writer em escopo pequeno (`enqueue` + `run --limit 3`) + revisão humana | Sai de `content_blocks = 0`. **Nada precisa ser construído** |
+| 10 | Rodar o Entity Writer em escopo pequeno (`enqueue` + `run --limit 3`) + revisão humana | Sai de `content_blocks = 0`. Nada precisa ser construído — **mas a tela de revisão (`apps/admin`) precisa ser implantada antes**, ver S-31 |
 | 11 | Popular `entity_alternative_titles` e regerar slugs | 17.937 URLs + títulos em cirílico |
 | 12 | Shard de pessoas no sitemap — **consequência automática** de destravar `biography_source_status` (item 9) | 62.647 páginas na descoberta |
 

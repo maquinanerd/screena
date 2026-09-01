@@ -971,6 +971,40 @@ Presentes em `/pt/filmes/`: `x-content-type-options: nosniff`,
 
 Vazam versão/infra: `x-powered-by: Next.js` e `x-screena-locale: pt`.
 
+
+### `apps/admin` — uma aplicação inteira que nunca é construída
+
+Fui caracterizar o terceiro app do monorepo e ele é um caso próprio.
+
+`apps/admin` tem **46 arquivos versionados** e **11 páginas**: `articles`,
+`articles/[id]`, **`content-blocks`**, **`content-blocks/[id]`**,
+**`review-queue`**, `workflow`, `security`, `qa`, `staging`, `health` e a raiz.
+É o painel interno de revisão editorial.
+
+Ele tem política de escrita própria e cuidadosa
+([`apps/admin/src/lib/editorial-action-policy.ts:76`](../../apps/admin/src/lib/editorial-action-policy.ts)):
+a escrita só acontece com `ADMIN_EDITORIAL_ACTIONS_ENABLED === "true"`, uma
+feature flag que nasce desligada.
+
+**E ele nunca é construído.** Medi:
+
+| Verificação | Resultado |
+| --- | --- |
+| Dockerfile que constrói `@screena/admin` | **nenhum** — os quatro constroem `web`, `cms`, `ingestion` e `news-ingestion` |
+| Script `build:admin` no `package.json` | **não existe** (só `typecheck:admin`) |
+| Serviço no painel EasyPanel | **nenhum**, nos 12 projetos |
+
+Ou seja: **o painel é verificado por tipo no CI e nunca vira imagem, nunca sobe,
+nunca é alcançável.** A flag de escrita que nasce desligada protege algo que não
+está no ar.
+
+E isso fecha um círculo com o achado nº 1. A invariante 12 exige **revisão
+humana** antes de um bloco de IA sair de `ai_generated`. A tela que faria essa
+revisão — `content-blocks/[id]` e `review-queue` — é justamente esta, que não
+está implantada. `content_blocks = 0` e o revisor não existe em produção: os
+dois fatos são consistentes, e o segundo é o que impediria o primeiro de mudar
+com segurança.
+
 ### Auditoria de dependências — o número, que eu tinha deixado em aberto
 
 `corepack pnpm audit --audit-level=moderate`, rodado no clone limpo:
@@ -1210,6 +1244,7 @@ universos que vão de dezenas a 1,29 milhão de linhas.
 | S-28 | **ALTO** | `watch_offers` × promoção | A fila ingere **5.782 ofertas/dia** para uma tabela onde 98,8% nunca são promovidas | banco | Requisição de TMDB gasta todo dia para dado que não chega à tela |
 | S-29 | **ALTO** | `apps/web` → `next@15.5.19` | **8 advisories abertas**, todas corrigidas em `>=15.5.21`: 2 SSRF e 1 DoS de severidade alta, mais divulgação não autenticada de Server Function interna. 7 citam `apps/web` | `pnpm audit` | O app público roda com SSRF conhecido; a correção não muda código |
 | S-30 | **MÉDIO** | ficha de série (`/pt/series/{slug}/`) | **Zero links** para `/temporadas/` ou `/episodios/`; somadas ao `noindex` e ao 404 do sitemap, as rotas de 3.960.233 episódios e 139.977 temporadas ficam **inalcançáveis por qualquer caminho** | requisição + banco | A saída da válvula de emergência não basta: reativar o sitemap sem criar links anuncia páginas sem navegação |
+| S-31 | **ALTO** | `apps/admin` (46 arquivos, 11 páginas) | Aplicação inteira **nunca construída**: nenhum Dockerfile, nenhum `build:admin`, nenhum serviço. Contém `review-queue` e `content-blocks/[id]` | código + painel | A tela que faria a revisão humana exigida pela invariante 12 não está no ar |
 | S-16 | **BAIXO** | `.env` / painel | `TMDB_API_KEY` = `SCREENA_TMDB_API_KEY`; três variáveis de site URL; dois formatos de flag de indexação | hash + painel | Rotação parcial e configuração ambígua |
 | S-17 | **BAIXO** | idempotência por exceção | `duplicate key` aborta transação no servidor | log do Postgres | Ruído permanente no log de erro do banco |
 | S-18 | **BAIXO** | `scripts/typecheck/ensure-prisma-client.mjs` | Só avisa; não gera | execução | Clone limpo dá 10 suítes vermelhas com mensagem confusa |
@@ -1299,6 +1334,7 @@ enunciado errado com medição direta (`8.114/6.461` viraram `10.660/7.229`) e e
 
 ## O que está morto
 
+- **`apps/admin/`** (46 arquivos, 11 páginas) — type-checado no CI, nunca construído, nunca implantado.
 - **`workers/`** (9 arquivos Python) — esqueletos de roadmap, não executados por
   nenhum serviço. O `CLAUDE.md` já os declara assim.
 - **`database/`** (4 arquivos) — legado; a fonte executável é `packages/db/prisma`.
