@@ -233,6 +233,71 @@ Isso é uma boa notícia e um agravante ao mesmo tempo:
   sozinhos** enquanto as filas correspondentes não acompanham o ritmo da
   ingestão. Cada hora de catálogo novo dilui as três.
 
+### Por que as 70.036 ofertas continuam invisíveis — não é (só) licença
+
+Fui atrás da ferramenta que promove oferta, porque "decidir a licença" só resolve
+se houver como aplicar a decisão. O que encontrei muda a recomendação.
+
+**A ferramenta existe e é séria.**
+[`services/streaming/bin/promote-watch-availability.ts`](../../services/streaming/bin/promote-watch-availability.ts)
+vira `display_allowed` com oito guardrails por oferta, dry-run por padrão,
+`--confirm` para valer, `--revoke` para desfazer, e relatório.
+
+**E ela cobre o fornecedor certo.** Meu primeiro palpite foi que a ferramenta
+estivesse presa ao provedor descontinuado — o cabeçalho do arquivo diz
+*"ofertas já gravadas do fornecedor `streaming_availability` (país BR)"*, e eu
+medi que **70.863 das 70.869 ofertas vêm do `tmdb`**. Fui verificar antes de
+escrever e **estava errado**:
+
+```typescript
+export const PROMOTION_PROVIDER_APIS: readonly string[] = [
+  STREAMING_AVAILABILITY_PROVIDER_API,
+  TMDB_PROVIDER_API,
+]
+```
+
+([`guardrails.ts:52`](../../services/streaming/src/promotion/guardrails.ts))
+O conjunto foi **ampliado** para o TMDB, com o comentário explicando que o rigor
+não mudou, só o formato do dado. **O cabeçalho do `bin/` é que ficou para trás**
+— e isso é um comentário mentiroso de verdade, do tipo que esta auditoria
+procura: quem ler o `bin/` conclui que a ferramenta não serve para 99,99% das
+ofertas do banco.
+
+**O bloqueio real é outro: não existe modo em lote.**
+
+[`services/streaming/src/promotion/args.ts:246`](../../services/streaming/src/promotion/args.ts):
+
+```typescript
+if (ids === null) {
+  return { ok: false, error: '--ids e obrigatorio (selecao explicita): use --ids=1,2,3.' }
+}
+```
+
+`--ids` é **obrigatório**, e o comentário do arquivo diz por quê: *"default
+perigoso: a promocao exige `--ids` explicito e `--confirm`"*. Existe um
+subcomando `review` que **lista candidatos**, com `--limit` default 50.
+
+O fluxo desenhado é: revisar dezenas → promover por id. Ele é correto para o
+volume para o qual foi feito, e **não tem caminho para 70.863 ofertas**.
+Promovê-las hoje exigiria montar uma linha de comando com 70.863 ids.
+
+**A recomendação, corrigida.** "Promover as ofertas" não é uma tarefa de decisão
+de licença com execução trivial. São **duas** coisas:
+
+1. **A decisão humana de licença** — de quem é, e continua sendo do dono.
+2. **Um seletor em lote na ferramenta** (`--target=all-eligible`,
+   `--entity-type`, `--limit`, com o mesmo dry-run e os mesmos oito guardrails
+   por linha). Isso é trabalho de engenharia, pequeno, e **hoje é ele que
+   bloqueia**, não a decisão.
+
+Sem o item 2, a decisão do item 1 não tem como virar produto.
+
+Nota de método: todas as outras escritas de `display_allowed = true` que
+encontrei no repositório estão em **script de QA/validação**
+(`apps/web/scripts/qa-*`, `validate-*-real-postgres.ts`), nunca em caminho de
+produção — o que é o comportamento certo, e confirma que a CLI é o único
+caminho autorizado.
+
 ### Índices
 
 **330 índices; 143 nunca foram usados** (`idx_scan = 0`) — 43,3%, ocupando
@@ -896,6 +961,8 @@ universos que vão de dezenas a 1,29 milhão de linhas.
 | S-22 | **ALTO** | `people.biography_source_status` | 2.152 biografias preenchidas; **100% das 1,3 M** em `unknown`, que bloqueia exibição | banco | Trabalho feito e invisível; encher `biography` não destrava nada |
 | S-23 | **ALTO** | `movies.original_language`, `tv_shows.original_language` | Nula em 43,2% dos filmes e 59,6% das séries; `languages` tem 3 linhas | banco | O recorte de cinco idiomas não chegou ao dado |
 | S-24 | **MÉDIO** | ritmo de ingestão × filas de enriquecimento | +3.084 filmes/h enquanto nota (0,91%), oferta (0,18%) e sinopse (37,5%) não acompanham | banco | As três coberturas **pioram sozinhas** a cada hora |
+| S-25 | **ALTO** | `services/streaming/src/promotion/args.ts:246` | A CLI de promoção exige `--ids` explícito e **não tem modo em lote**; são 70.036 ofertas | código | A decisão de licença não tem como virar produto sem um seletor em lote |
+| S-26 | **MÉDIO** | `services/streaming/bin/promote-watch-availability.ts:5` | Cabeçalho diz que a ferramenta cobre só `streaming_availability`; `guardrails.ts:52` inclui `tmdb` desde então | código | Quem lê o `bin/` conclui que a ferramenta não serve para 99,99% das ofertas |
 | S-16 | **BAIXO** | `.env` / painel | `TMDB_API_KEY` = `SCREENA_TMDB_API_KEY`; três variáveis de site URL; dois formatos de flag de indexação | hash + painel | Rotação parcial e configuração ambígua |
 | S-17 | **BAIXO** | idempotência por exceção | `duplicate key` aborta transação no servidor | log do Postgres | Ruído permanente no log de erro do banco |
 | S-18 | **BAIXO** | `scripts/typecheck/ensure-prisma-client.mjs` | Só avisa; não gera | execução | Clone limpo dá 10 suítes vermelhas com mensagem confusa |

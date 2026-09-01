@@ -112,7 +112,7 @@ Ordenadas por (impacto ÷ esforço), com o que cada uma destrava:
 | **1** | **Descobrir por que `screen-cron` está amarelo e religar o relógio** | baixo | É o relógio de **13 filas**. Sem ele, a OMDb roda 2 dias em 7, as ofertas não giram, o frescor não é mantido. **É a causa provável de metade dos achados desta lista.** |
 | **2** | **Pôster acima da dobra na ficha** | baixo | 91,3% dos filmes já têm `poster_path`. É ordem de blocos, não dado. Maior ganho visual do documento |
 | **3** | **Fechar o `_fetch_html` do MNScr no `safe_get`** | baixo | Fecha um SSRF real, alcançável por URL de feed, contra a LAN do dono |
-| **4** | **Promover as 70.036 ofertas de `watch_availability`** | médio (+ decisão humana de licença) | "Onde assistir" sai de 147 para dezenas de milhares. É a intenção de busca mais valiosa do mercado brasileiro segundo a FASE 5 |
+| **4** | **Dar modo em lote à CLI de promoção, e então decidir a licença** | baixo (engenharia) + decisão humana | "Onde assistir" sai de 147 para dezenas de milhares. **Atenção:** a CLI exige `--ids` explícito e não tem modo em massa — sem o seletor, a decisão de licença não tem como virar produto |
 | **5** | **Expurgo do `api_cache` vencido** | baixo | Devolve **3,6 GB** — 36% do banco — e reduz a pressão de I/O que hoje mantém o `screen-db` acima de 100% de CPU |
 
 > **Por que o `screen-cron` é o nº 1.** Ele não aparece na lista dos dez achados
@@ -427,7 +427,7 @@ E o que passou com folga: **a diferenciação filme/série cumpre os cinco sinai
 | --- | --- | --- |
 | 6 | Pôster acima da dobra | O maior ganho visual, com dado que já existe |
 | 7 | Estado vazio escrito para trailer, nota e onde assistir | 83 mil páginas deixam de esconder a ausência |
-| 8 | Promover as ofertas de `watch_availability` *(decisão humana de licença)* | 0,18% → dezenas de milhares |
+| 8 | Seletor em lote na CLI de promoção **+** decisão humana de licença | 0,18% → dezenas de milhares |
 | 9 | Destravar `biography_source_status` *(decisão humana de licença)* | 2.152 biografias que já existem |
 | 10 | Rodar o Entity Writer, ainda que em escopo pequeno | Sai de `content_blocks = 0` |
 | 11 | Popular `entity_alternative_titles` e regerar slugs | 17.937 URLs + títulos em cirílico |
