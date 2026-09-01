@@ -1,13 +1,13 @@
 # FASE 1 — Auditoria do repositório `screena` (produto público: **Cinerie**)
 
-**Cobertura: abri e li 28 de 2.174 arquivos versionados (1,3%).**
+**Cobertura: abri e li 33 de 2.174 arquivos versionados (1,5%).**
 
 Esse número sozinho seria vergonhoso, então declaro o método inteiro — porque é
 ele, e não a contagem de arquivos, que sustenta os achados:
 
 | Instrumento | Alcance |
 | --- | --- |
-| Leitura integral ou substancial | **28 arquivos**, escolhidos por RISCO (ver lista no anexo) |
+| Leitura integral ou substancial | **33 arquivos**, escolhidos por RISCO (ver lista no anexo) |
 | Varredura por padrão (`git grep`) | **100% dos 2.174** arquivos, em 21 varreduras temáticas |
 | Execução da suíte | **7.567 testes em 582 arquivos**, rodados de verdade |
 | Portões de qualidade | `typecheck`, `lint`, `audit:invariants`, `audit:render` — rodados |
@@ -624,7 +624,7 @@ o worker editorial tem barreira anti-produção travada por
 
 ### Comentários mentirosos
 
-**Verifiquei os comentários que afirmam comportamento nos 28 arquivos lidos e
+**Verifiquei os comentários que afirmam comportamento nos 33 arquivos lidos e
 não encontrei nenhum falso.** Ao contrário: o padrão de comentário aqui é
 registrar a medição e o erro anterior — `omdb-rotation.ts` documenta que a PR
 #258 trouxe 8.114/6.461 "de um enunciado" e a medição direta devolveu
@@ -655,6 +655,67 @@ arquivo vence**"). Hoje ele proíbe, por escrito e com prioridade declarada, o
 que o sistema faz em produção. Ou a linha 201 ganha a ressalva do ADR 0017, ou a
 autopublicação está operando contra a lei do projeto. **É uma decisão do dono, e
 não minha** — por isso não toquei.
+
+#### E o que a autopublicação é de fato — porque a contradição não é descuido
+
+Li o gate para poder descrever o que a linha 201 estaria proibindo, e ele é uma
+das melhores peças do repositório. Registro em detalhe porque a FASE 4 depende
+disto para julgar o kal-el:
+
+**A máquina de estados** ([`apps/cms/src/workflow.ts:83`](../../apps/cms/src/workflow.ts))
+tem 12 estados e a aresta que importa é explícita:
+
+```typescript
+automation_draft: ['draft', 'needs_review', 'ready_to_publish', 'blocked', 'archived'],
+ready_to_publish: ['published', 'changes_requested', 'human_reviewed', 'blocked', 'archived'],
+```
+
+E o comentário declara a razão: *"`automation_draft` alcanca `ready_to_publish` —
+e SO por ali chega a `published`, porque o gate de publicacao roda nessa aresta.
+O caminho e exclusivo do `automation_publisher`"*. `published` **nunca** vem
+direto; sempre passa pela aresta onde o gate roda.
+
+**O gate** ([`apps/cms/src/auto-publication.ts`](../../apps/cms/src/auto-publication.ts),
+555 linhas, **puro** — não escreve, não consulta banco, não chama rede) devolve
+**cinco** desfechos distintos, e o cabeçalho explica por que não são três:
+
+| Desfecho | Significa | Persistiu algo? |
+| --- | --- | --- |
+| `PUBLISHED` | publicou | sim |
+| `ROUTED_TO_REVIEW` | conteúdo bom, decisão humana necessária | **sim**, em `needs_review` |
+| `DEFERRED` | conteúdo bom, teto do dia esgotado | **não** — a reserva falha dentro da transação e o rollback leva o artigo junto |
+| `BLOCKED` | erro permanente; reenviar igual não adianta | — |
+| `CONFLICT` | revisão antiga, idempotência divergente, contrato incompatível | — |
+
+O comentário conta o defeito que motivou separar `DEFERRED` de
+`ROUTED_TO_REVIEW`: os dois nasceram com o mesmo rótulo, então teto esgotado
+respondia "encaminhado para revisão" — *"mandar o produtor esperar por uma
+revisao que nunca apareceria numa fila vazia […] O conteudo evaporava em
+silencio, com 202 na resposta."*
+
+**Os quatro tetos** ([`apps/cms/src/env-auto-publish.ts:54`](../../apps/cms/src/env-auto-publish.ts)),
+com defaults conservadores que só valem em produção:
+
+```typescript
+export const CONSERVATIVE_DAILY_LIMIT = 50
+export const CONSERVATIVE_PER_AUTHOR_LIMIT = 20
+export const CONSERVATIVE_PER_SECTION_LIMIT = 30
+export const CONSERVATIVE_PER_CONTENT_TYPE_LIMIT = 40
+```
+
+**O dia civil da redação** é por fuso IANA, e a validação **recusa offset fixo e
+abreviação** (`env-auto-publish.ts:148`) — porque só um identificador IANA sabe
+quando o dia vira sob horário de verão.
+
+Ou seja: a autopublicação tem ator próprio derivado de escopo, aresta única com
+gate, cinco desfechos que não colapsam causas, quatro tetos com reserva
+transacional e dia civil por fuso real. **Não é "a IA publica sozinha" no
+sentido que a linha 201 proíbe** — é publicação automática com contenção
+desenhada.
+
+O achado, então, é preciso: **não há defeito no mecanismo; há defeito no
+documento que se declara a lei e diz o contrário do que o sistema faz.** Quem
+ler o `CLAUDE.md` para decidir algo vai decidir errado.
 
 ### TODO / FIXME / HACK
 
@@ -746,7 +807,7 @@ Nenhum comentário de código, entre os que li, mente.
 
 ---
 
-## Anexo — os 28 arquivos que abri
+## Anexo — os 33 arquivos que abri
 
 **Integrais (12):** `package.json` · `pnpm-workspace.yaml` ·
 `apps/web/middleware.ts` · `apps/web/app/api/seo/redirect/route.ts` ·
@@ -765,10 +826,13 @@ Nenhum comentário de código, entre os que li, mente.
 `services/sync/src/scheduler/runtime/selection.ts` ·
 `packages/db/prisma/schema.prisma` (3.015 linhas, lido por estrutura) ·
 `docs/adr/0017-automation-publisher-actor.md` · `.env` (só nomes) ·
-`CLAUDE.md` · `.claude/rules/{ratings,seo,ingestion,i18n,entity-writer}.md`
+`CLAUDE.md` · `.claude/rules/{ratings,seo,ingestion,i18n,entity-writer}.md` ·
+`apps/cms/src/workflow.ts` · `apps/cms/src/auto-publication.ts` ·
+`apps/cms/src/env-auto-publish.ts` · `apps/cms/src/collections.ts` (por padrão) ·
+`services/news-ingestion/bin/project-editorial.ts` (trechos da outbox)
 
-**Diretórios que NÃO abri, e por quê:** `apps/cms/**` (369 arquivos — só
-inspecionei a autopublicação, por ser a pista do Codex), `apps/admin/**`,
+**Diretórios que NÃO abri, e por quê:** `apps/cms/**` (369 arquivos — li 4:
+`workflow.ts`, `auto-publication.ts`, `env-auto-publish.ts` e `collections.ts`), `apps/admin/**`,
 `services/user-platform/**` (a plataforma tem 2 usuários; risco de produto
 baixo), `packages/ui/**`, `docs/**` além dos 2 citados, todos os `__tests__/**`
 individualmente (rodei os 7.567 em vez de lê-los), os 93 JSON e os 19 PNG.
