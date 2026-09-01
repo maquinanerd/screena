@@ -30,7 +30,7 @@ Os 122 arquivos de `tests/` entram no denominador e **não** foram lidos um a um
 | 1 | **A defesa contra SSRF existe, está documentada, e o caminho que o pipeline realmente usa não passa por ela.** `extractor.py:909` usa `requests` cru com `allow_redirects=True`; `extractor.py:482`, no mesmo arquivo, usa o `safe_get` endurecido. Três chamadores de produção usam o primeiro. | **CRÍTICO** |
 | 2 | **O motor editorial do Cinerie não tem serviço implantado.** Roda de um `.bat` na máquina do dono. Todo o fluxo de matéria depende de alguém executar um arquivo à mão — e `docs/operations/mnscr-easypanel.md` descreve uma implantação que não existe. | **CRÍTICO** (operacional) |
 | 3 | **O `.env` descreve um sistema que não existe mais.** ~40 variáveis de WordPress, Yoast, IndexNow, Google Indexing, sitemap-ping e recrawl — exatamente as funções que o `README.md` lista em "O que NÃO faz". Amostrei 10: **9 têm zero referências no Python versionado**. | **ALTO** |
-| 4 | **A chave do Gemini é a mesma do `screena`** (provado por SHA-256). O código suporta rotação de múltiplas chaves (`GEMINI_KEY*`), e só uma está configurada — compartilhada com o Entity Writer. Cota diária disputada por dois sistemas que não se conhecem. | **ALTO** |
+| 4 | **A chave do Gemini é a mesma do `.env` local do `screena`** (provado por SHA-256) — **não** a de produção, que é outra. Como o MNScr roda *da máquina do dono*, a disputa de cota diária é real entre ele e qualquer CLI do screena rodada à mão ali. O código suporta rotação (`GEMINI_KEY*`) e usa uma chave só. | **MÉDIO** |
 | 5 | **`MNSCR_DB_PATH` não está no `.env`.** O código lê `os.getenv('MNSCR_DB_PATH', 'data/app.db')`; a configuração define `TMDB_DB_PATH` e `INDEXER_DB_PATH`, que são outros bancos. O banco principal roda no default. | **MÉDIO** |
 
 O contraponto: **3.521 testes, zero falhas**, CI offline por construção, 25
@@ -160,6 +160,12 @@ Provei por SHA-256 (comparando digests, sem imprimir valores) que
 `MNScr.GEMINI_KEY_1` e `screena.GEMINI_API_KEY` são **a mesma chave**
 (digest `3a7f26253643f0a9`). O mesmo vale para o token TMDB v4
 (`ed701bd3651ed317`), presente em **duas** variáveis do MNScr e uma do screena.
+
+> **Correção.** A primeira versão deste relatório dizia que a disputa era com a
+> **produção** do screena. Medi os digests dos serviços no painel e ela usa
+> chaves diferentes (Gemini `3e5867…`, TMDB `344a0b…`). A coincidência é com o
+> **`.env` do disco** do screena — que é o que um humano usa ao rodar CLI local.
+> Ver [`00-INVENTARIO.md`](00-INVENTARIO.md) § chaves.
 
 A diferença entre os dois casos importa:
 
@@ -472,7 +478,7 @@ enganar quem investiga. Idem os 12 worktrees em `.claude/worktrees/`.
 | M-01 | **CRÍTICO** | `app/extractor.py:909` + `pipeline.py:1326`, `cluster_extractor.py:72`, `multi_source_builder.py:200` | `_fetch_html` usa `requests` cru com `allow_redirects=True`, ignorando `safe_http` | código | SSRF a partir de URL de feed; sem teto de corpo; alcança a LAN do dono |
 | M-02 | **CRÍTICO** | painel EasyPanel (ausência) | Motor editorial sem serviço; roda de `.bat` na máquina do dono | painel + repositório | O fluxo de matéria do Cinerie depende de execução manual |
 | M-03 | **ALTO** | `.env` (~40 variáveis) | Configuração de WordPress/Yoast/IndexNow/Google que o código não lê | 9 de 10 amostradas com 0 referências | Quem lê a config entende errado o sistema |
-| M-04 | **ALTO** | `GEMINI_KEY_1` | Mesma chave Gemini do `screena` (SHA-256 idêntico) | hash | Cota diária disputada; rotação suportada e não usada |
+| M-04 | **MÉDIO** | `GEMINI_KEY_1` | Mesma chave Gemini do **`.env` local** do `screena` (SHA-256 idêntico); a de produção é outra | hash | Cota diária disputada com CLI local do screena; rotação suportada e não usada |
 | M-05 | **MÉDIO** | `app/config.py:90` | `MNSCR_DB_PATH` não definido; banco principal no default relativo | código + config | Rodar de outra pasta cria banco vazio |
 | M-06 | **MÉDIO** | `docs/operations/mnscr-easypanel.md` | Runbook de implantação inexistente | painel | Documentação afirma estado que não existe |
 | M-07 | **MÉDIO** | testes que fazem monkeypatch de `_fetch_html` | Nenhum teste exercita o caminho real de rede | suíte | O defeito M-01 é invisível para 3.521 testes verdes |
