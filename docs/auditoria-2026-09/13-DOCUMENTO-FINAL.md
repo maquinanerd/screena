@@ -501,38 +501,39 @@ E o que passou com folga: **a diferenciação filme/série cumpre os cinco sinai
 
 | Ordem | Ação | Destrava |
 | --- | --- | --- |
-| 1 | Descobrir por que `ratings_omdb` decide `no_slots` em 8 de 10 dias; e por que `airing_series` está 7 dias muda | Cobertura de nota (0,91%) e frescor da série em exibição |
-| 2 | Expurgo do `api_cache` vencido (`DELETE WHERE expires_at < now()`, em lotes) | 3,6 GB e pressão de I/O |
-| 3 | Fechar `_fetch_html` no `safe_get` (MNScr) | SSRF real |
-| 4 | Implantar o MNScr como serviço no painel | Tira o fluxo editorial da máquina do dono |
-| 5 | Confirmar volume do SQLite do RSS Prime | Durabilidade do histórico de dedupe |
+| 1 | Rodar `sync-omdb-ratings --mode coverage --limit 5` **sem `--apply`** (não gasta cota) e ver quantos candidatos ele seleciona; e descobrir por que `airing_series` está 7 dias muda | Cobertura de nota (0,91%) e frescor da série em exibição |
+| 2 | **Subir `next` para `>=15.5.21`** — o intervalo declarado já é `^15.0.0` | Fecha 8 advisories do app público (2 SSRF + 1 DoS altas) **sem mudar código** |
+| 3 | Expurgo do `api_cache` vencido (`DELETE WHERE expires_at < now()`, em lotes) | 3,6 GB e pressão de I/O |
+| 4 | Fechar `_fetch_html` no `safe_get` (MNScr) | SSRF real, alcançável por URL de feed |
+| 5 | Implantar o MNScr como serviço no painel | Tira o fluxo editorial da máquina do dono |
+| 6 | Confirmar volume do SQLite do RSS Prime | Durabilidade do histórico de dedupe |
 
 ### Onda 2 — conteúdo (semanas, é onde o produto ganha)
 
 | Ordem | Ação | Destrava |
 | --- | --- | --- |
-| 6 | Pôster acima da dobra | O maior ganho visual, com dado que já existe |
-| 7 | Estado vazio escrito para trailer, nota e onde assistir | 83 mil páginas deixam de esconder a ausência |
-| 8 | Seletor em lote na CLI de promoção **+** decisão humana de licença | 0,18% → dezenas de milhares |
-| 9 | Destravar `biography_source_status` *(decisão humana de licença)* | 2.152 biografias que já existem |
-| 10 | Rodar o Entity Writer em escopo pequeno (`enqueue` + `run --limit 3`) + revisão humana | Sai de `content_blocks = 0`. Nada precisa ser construído — **mas a tela de revisão (`apps/admin`) precisa ser implantada antes**, ver S-31 |
-| 11 | Popular `entity_alternative_titles` e regerar slugs | 17.937 URLs + títulos em cirílico |
-| 12 | Shard de pessoas no sitemap — **consequência automática** de destravar `biography_source_status` (item 9) | 62.647 páginas na descoberta |
+| 7 | Pôster acima da dobra | O maior ganho visual, com dado que já existe |
+| 8 | Estado vazio escrito para trailer, nota e onde assistir | 83 mil páginas deixam de esconder a ausência |
+| 9 | Seletor em lote na CLI de promoção **+** decisão humana de licença | 0,18% → dezenas de milhares |
+| 10 | Destravar `biography_source_status` *(decisão humana de licença)* | 2.152 biografias que já existem |
+| 11 | Rodar o Entity Writer em escopo pequeno (`enqueue` + `run --limit 3`) + revisão humana | Sai de `content_blocks = 0`. Nada precisa ser construído — **mas a tela de revisão (`apps/admin`) precisa ser implantada antes**, ver S-31 |
+| 12 | Popular `entity_alternative_titles` e regerar slugs | 17.937 URLs + títulos em cirílico |
+| 13 | Shard de pessoas no sitemap — **consequência automática** de destravar `biography_source_status` (item 9) | 62.647 páginas na descoberta |
 
 ### Onda 3 — higiene e dívida (contínuo)
 
 | Ordem | Ação |
 | --- | --- |
-| 13 | Reconciliar `CLAUDE.md:201` com o ADR 0017 *(decisão do dono)* |
-| 14 | Reconciliar os dois manifestos do RSS Prime e tornar os dois testes herméticos; adicionar CI |
-| 15 | Limpar do RSS Prime os `.pyc`, os logs e o `.local/` |
-| 16 | Limpar do MNScr as ~40 variáveis de configuração morta |
-| 17 | Renomear `@screena/rapidapi-core` para o que ele é (infra HTTP compartilhada) |
-| 18 | Remover `film_show_ratings`, `streaming_availability` e as chaves `RAPIDAPI_*` do `screen-app` |
-| 19 | Tirar do `screen-app` toda credencial que o render não usa |
-| 20 | CSP e HSTS |
-| 21 | Contraste e alvos de toque |
-| 22 | Limite de CPU/memória nos 8 serviços |
+| 15 | Reconciliar `CLAUDE.md:201` com o ADR 0017 *(decisão do dono)* |
+| 16 | Reconciliar os dois manifestos do RSS Prime e tornar os dois testes herméticos; adicionar CI |
+| 17 | Limpar do RSS Prime os `.pyc`, os logs e o `.local/` |
+| 18 | Limpar do MNScr as ~40 variáveis de configuração morta |
+| 19 | Renomear `@screena/rapidapi-core` para o que ele é (infra HTTP compartilhada) |
+| 20 | Remover `film_show_ratings`, `streaming_availability` e as chaves `RAPIDAPI_*` do `screen-app` |
+| 21 | Tirar do `screen-app` toda credencial que o render não usa |
+| 22 | CSP e HSTS |
+| 23 | Contraste e alvos de toque |
+| 24 | Limite de CPU/memória nos 8 serviços |
 
 ### Onda 4 — a decisão do kal-el
 
