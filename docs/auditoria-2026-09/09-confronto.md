@@ -24,9 +24,23 @@ O que garantiu a cegueira, verificável:
 | Sem rede | `--sandbox read-only` |
 | Ordem invertida | Os relatórios do Codex chegaram ao disco **depois** de `01-` a `04-` estarem escritos e commitados — o histórico do git prova a ordem |
 
-Os quatro relatórios estão em `05-codex-screena.md`, `06-codex-mnscr.md`,
-`07-codex-rss-prime.md` e `08-codex-kal-el.md`, como o Codex os escreveu, sem
-edição minha de conteúdo.
+Os quatro relatórios estão em [`05-codex-screena.md`](05-codex-screena.md),
+[`06-codex-mnscr.md`](06-codex-mnscr.md),
+[`07-codex-rss-prime.md`](07-codex-rss-prime.md) e
+[`08-codex-kal-el.md`](08-codex-kal-el.md), como o Codex os escreveu — **com uma
+única edição minha, declarada no próprio arquivo**.
+
+**A exceção, e por que ela é interessante.** No `08-codex-kal-el.md:125` o Codex
+sugeriu um comando com o separador `--` antes das flags. Este repositório tem um
+teste de governança que **proíbe ensinar esse separador**
+(`tests/governance/no-double-dash-in-docs.test.ts`), porque o `pnpm 9.15.4` daqui
+não o consome. **O teste reprovou o CI da PR**, apontando a linha do Codex.
+
+Removi só o separador e marquei a edição com nota de rodapé no arquivo. O
+episódio vale registro porque prova duas coisas de uma vez: o guard está vivo, e
+**um relatório vindo de fora não fica isento da governança de quem o hospeda** —
+"verbatim" e "governado" podem conflitar, e quando conflitam a governança ganha,
+com a edição declarada.
 
 **Uma correção de método, registrada.** A primeira tentativa das quatro revisões
 **queimou 799.324 tokens explorando e não escreveu uma linha de relatório**. A

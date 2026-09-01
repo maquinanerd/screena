@@ -122,7 +122,16 @@ A funcionalidade efetiva de importação WordPress/Payload é **NÃO DETERMINADA
 
 ## O que não determinei + comando que fecha
 
-- Cobertura de testes e aprovação real: bloqueado por `spawn EPERM`. Fechar em ambiente que permita subprocessos com `pnpm test -- --coverage && pnpm lint && pnpm typecheck && pnpm build`.
+- Cobertura de testes e aprovação real: bloqueado por `spawn EPERM`. Fechar em ambiente que permita subprocessos com `pnpm test --coverage && pnpm lint && pnpm typecheck && pnpm build`. <sup>[†]</sup>
+
+> <sup>[†]</sup> **Única edição minha no texto do Codex, declarada.** Ele escreveu
+> o comando com o separador `--` antes das flags. O `pnpm 9.15.4` deste
+> repositório **não consome** esse separador (ele chega como argumento literal e o
+> parser recusa), e existe um teste de governança que proíbe ensiná-lo —
+> `tests/governance/no-double-dash-in-docs.test.ts`, cujo regex é
+> `/pnpm[^\n]*?\s--\s+--/`. **Ele reprovou este arquivo no CI**, o que é o guard
+> funcionando: um relatório vindo de fora não fica isento da governança de quem o
+> hospeda. Removi só o separador; o resto da linha é dele.
 - UX/a11y visual: `pnpm --filter @kal-el/cms test:e2e`.
 - Se há segredos reais no histórico Git: `git log -p --all` mais scanner autorizado; a CI possui gitleaks, mas eu não o executei.
 - Integridade do plano de migrations contra banco vazio e upgrade existente: `pnpm --filter @kal-el/db test:integration`.
