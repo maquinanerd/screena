@@ -339,11 +339,12 @@ de fornecedor externo**. Ele não entra em nenhuma disputa de cota.
 | Falta | Gravidade | Por quê |
 | --- | --- | --- |
 | **Nunca foi implantado** | **bloqueante** | Nenhum serviço no painel. Zero exercício com dado real, zero medição de desempenho, zero incidente aprendido |
-| **Tetos de autopublicação** | **bloqueante** | O Payload tem 5 dimensões de teto + fuso da redação + reserva transacional. Não achei equivalente no kal-el |
+| **Tetos de autopublicação** | **bloqueante** | O Payload tem 4 dimensões de teto + fuso IANA da redação + reserva transacional e 5 desfechos. Não há equivalente no kal-el — **e antes disso falta onde colocá-los**: `published` é alcançável de 3 estados, sem aresta única de gate (K-09) |
 | **Os dois atores técnicos por escopo** | **alto** | O kal-el tem RBAC e `service_tokens` — a **base** existe —, mas a distinção `draft_ingest` × `editorial_auto_publish` do ADR 0017 precisa ser modelada como papel |
 | **Contrato com hash de schema** | **alto** | O MNScr faz preflight contra `/contracts` e recusa divergência. Sem isso, a integração perde a trava que hoje impede envio incompatível |
 | **Vínculo de entidade com confiança** | **alto** | ADR 0018/0019: `confidence ≥ 0.9` nasce verificado, via `/api/internal/entity-resolve`. O kal-el tem tabela `entities` e `article_entities`, mas a política de verificação é do Payload hoje |
 | **Leitura pública** | **médio** | K-02: nenhuma rota anônima. Não bloqueia (a projeção usa credencial), mas muda o desenho se algum dia um portal quiser ler direto |
+| **Estado `retracted` e recuperação de `archived`** | **médio** | K-10 e K-11: o Cinerie tem caminho de despublicação de emergência que distingue retratação de arquivamento; o kal-el colapsa os dois em `draft` e torna `archived` terminal |
 | **`apps/cms/public/` fora da imagem** | **médio** | K-01 — trivial de corrigir, mas hoje o painel sobe sem logo |
 | **Cobertura de teste do núcleo** | **médio** | 38 unitários; permissão/publicação/outbox só com Postgres embarcado |
 

@@ -1,10 +1,10 @@
 # FASE 1 — Auditoria do repositório `kal-el`
 
-**Cobertura: abri e li 12 de 532 arquivos versionados (2,3%).**
+**Cobertura: abri e li 14 de 532 arquivos versionados (2,6%).**
 
 | Instrumento | Alcance |
 | --- | --- |
-| Leitura integral ou substancial | **12 arquivos** |
+| Leitura integral ou substancial | **14 arquivos** |
 | Varredura por padrão | **100% dos 532**, em 10 varreduras |
 | Execução | **244 testes, 100% verde** — 38 unitários + 206 de integração |
 | Inspeção de esquema | as **6 migrations Drizzle**, das quais extraí as 27 tabelas |
@@ -241,6 +241,83 @@ Ou seja: `POST /articles` com `status: "published"` **não** publica com permiss
 de criação. Exige `articles.publish`. É a mesma classe de defeito que o ADR 0017
 do `screena` resolveu com atores distintos.
 
+
+### A máquina de estados — a comparação que a decisão de produto precisa
+
+Li `apps/api/src/services/articles.ts` (1.055 linhas) porque é o ponto onde o
+kal-el e o Payload fazem a mesma coisa, e é ali que a troca dói ou não dói.
+
+**O mapa do kal-el** ([`articles.ts:42`](apps/api/src/services/articles.ts)):
+
+```typescript
+const WORKFLOW_TRANSITIONS: Record<ArticleStatus, ArticleStatus[]> = {
+  draft:     ["in_review", "scheduled", "published", "archived"],
+  in_review: ["draft", "blocked", "scheduled", "published", "archived"],
+  scheduled: ["published", "scheduled", "draft", "archived"],
+  published: ["draft"],
+  blocked:   ["in_review", "draft", "archived"],
+  archived:  [],
+};
+```
+
+**O mapa do `screena`/Payload** ([`apps/cms/src/workflow.ts:83`](../../apps/cms/src/workflow.ts)),
+12 estados, com a aresta decisiva:
+
+```typescript
+ready_to_publish: ['published', 'changes_requested', 'human_reviewed', 'blocked', 'archived'],
+published:        ['needs_update', 'blocked', 'retracted', 'archived'],
+retracted:        ['needs_review', 'archived'],
+archived:         ['needs_review'],
+```
+
+Quatro diferenças materiais, e nenhuma é cosmética:
+
+**1. O kal-el não tem um ponto de estrangulamento para o gate.**
+Em `screena`, `published` **só** vem de `ready_to_publish` — e o comentário diz
+por quê: *"o gate de publicacao roda nessa aresta"*. Uma aresta, um lugar para
+checar teto, autoria, SEO e licença.
+
+No kal-el, `published` é alcançável de **três** estados: `draft`, `in_review` e
+`scheduled`. A proteção é por permissão (`articles.publish`), que é *quem pode*,
+não *sob que condições*. Implementar os quatro tetos de autopublicação exigiria
+ou repetir a checagem em três arestas, ou introduzir o estado intermediário.
+**Isso é trabalho de modelagem, não de código.**
+
+**2. Não existe `retracted`.** No `screena`, retratar é diferente de arquivar:
+`retracted` é a retirada editorial de uma matéria publicada — evento com peso
+jurídico — e volta para `needs_review`. No kal-el, uma matéria publicada só pode
+ir para `draft`. O efeito público é o mesmo (sai do ar), mas **o registro do
+motivo se perde**: `draft` não distingue "estava errada e foi retirada" de
+"voltou para edição".
+
+**3. `archived` é terminal.** `archived: []` — nada sai de lá. No `screena`,
+`archived: ['needs_review']` permite recuperar. Arquivar por engano no kal-el é
+definitivo pela API.
+
+**4. Arquivar uma matéria publicada exige dois passos.** `archiveArticle`
+([`articles.ts:1053`](apps/api/src/services/articles.ts)) chama
+`applyStatusTransition(..., "archived", ...)`, e `assertTransition("published",
+"archived")` encontra `allowed = ["draft"]` — **lança `invalidTransition`**. É
+preciso despublicar antes. Pode ser deliberado (tirar do índice antes de
+arquivar), mas não está escrito em lugar nenhum, e a API responde com um erro de
+transição que não explica a ordem.
+
+#### O que está bem feito, e merece registro
+
+O arquivo carrega dois comentários que documentam defeitos reais já corrigidos —
+o mesmo padrão de honestidade do `screena`:
+
+- **`scheduled` sem `scheduledAt`** ([`articles.ts:413`](apps/api/src/services/articles.ts)):
+  *"The scheduler's due query is `status = 'scheduled' AND scheduled_at <= now()`
+  […] invisible to the worker forever. It sat in the queue state, never
+  published"*. Agora é recusado na criação.
+- **A nota editorial do estado atual** ([`articles.ts:231`](apps/api/src/services/articles.ts)):
+  filtrar por `to = row.status` e pegar a mais recente alcançava uma transição
+  **antiga** — uma matéria rejeitada com "Rever a introdução", corrigida e
+  republicada mostrava a rejeição antiga como se fosse atual. A correção pega a
+  transição mais nova e **depois** confere contra o estado.
+
+
 ---
 
 ## D6 — Segurança
@@ -387,6 +464,9 @@ fosse o produto é um risco que declaro em vez de esconder.
 | K-03 | **ALTO** | painel (ausência) | Nunca implantado | painel | Decisão de substituir o Payload é sobre sistema não exercitado |
 | K-04 | **MÉDIO** | `apps/api/tests/**` | Os 164 testes do núcleo são TODOS de integração; zero unitário em `apps/api` | execução (244 testes verdes) | Falha do Postgres embarcado zera a cobertura do núcleo |
 | K-05 | **MÉDIO** | `apps/api/src/app.ts:63` | `helmet` com `contentSecurityPolicy: false` | código | CSP desligada explicitamente |
+| K-09 | **ALTO** | `apps/api/src/services/articles.ts:42` | `published` é alcançável de **três** estados (`draft`, `in_review`, `scheduled`); não há aresta única onde um gate de publicação possa rodar | código | Replicar os tetos do Payload exige modelagem, não só código |
+| K-10 | **MÉDIO** | `articles.ts:46` | Não existe estado `retracted`; publicada só volta para `draft` | código | Retratação e volta-para-edição ficam indistinguíveis no registro |
+| K-11 | **MÉDIO** | `articles.ts:48` | `archived: []` é terminal; e `published → archived` lança `invalidTransition` (exige despublicar antes) | código | Arquivamento por engano é definitivo; a ordem obrigatória não está documentada |
 | K-06 | **BAIXO** | `apps/api/src/app.ts:88` | Swagger UI condicional — condição não verificada | código | **NÃO DETERMINADO** se `/docs` fica exposto em produção |
 | K-07 | **BAIXO** | raiz | `kal-el-repository-v2.zip`, `RECOVERY-DIFF.patch` versionados | `git ls-files` | Artefatos de recuperação no controle de versão |
 | K-08 | **BAIXO** | disco | Branch `feat/login-comic-caption`, não `main` | `git branch` | O que auditei pode não ser o que será implantado |
@@ -404,7 +484,10 @@ fosse o produto é um risco que declaro em vez de esconder.
 | Autenticação | **Sim** | Argon2id + sessão em tabela |
 | Permissões (RBAC) | **Sim, completo** | `roles`, `permissions`, `role_permissions`, `user_roles` + `guard()` por rota |
 | Multi-site | **Sim, de origem** | `sites` + `requireSiteScope` |
-| Versionamento / rascunho | **Sim** | `article_revisions`; máquina de estados com `submit`/`approve`/`reject`/`schedule`/`publish`/`unpublish`/`archive` |
+| Versionamento / rascunho | **Sim** | `article_revisions`; máquina de 6 estados |
+| **Aresta única para o gate de publicação** | **NÃO** | `published` vem de 3 estados (K-09) |
+| **Estado `retracted`** | **NÃO** | só `published → draft` (K-10) |
+| **Recuperar de `archived`** | **NÃO** | `archived: []` é terminal (K-11) |
 | API de leitura | **Sim, autenticada** | `siteRoutes` — **sem caminho anônimo** (K-02) |
 | Webhooks | **Sim, assinados** | HMAC-SHA256 + `timingSafeEqual`; `webhooks`, `webhook_deliveries` |
 | Outbox / entrega confiável | **Sim** | `outbox_events` |
@@ -432,14 +515,16 @@ fosse o produto é um risco que declaro em vez de esconder.
 
 ---
 
-## Anexo — os 12 arquivos que abri
+## Anexo — os 14 arquivos que abri
 
 `README.md` · `pnpm-workspace.yaml` · `package.json` · `docker-compose.prod.yml`
 (trechos) · `apps/cms/Dockerfile` · `apps/api/src/app.ts` (trechos de registro) ·
 `apps/api/src/routes/site.ts` (120 linhas) · `packages/events/src/index.ts` ·
 `apps/cms/app/login/page.tsx` (linha do asset) ·
 `apps/cms/components/BrandLogo.tsx` (linhas dos assets) ·
-`packages/db/drizzle/*.sql` (as 6, lidas por `CREATE TABLE`) · `.env` (só nomes)
+`packages/db/drizzle/*.sql` (as 6, lidas por `CREATE TABLE`) · `.env` (só nomes) ·
+`apps/api/src/services/articles.ts` (1.055 linhas — máquina de estados, criação,
+transições) · `apps/api/src/services/taxonomy.ts` (por referência de import)
 
 **Não abri:** os 63 de `apps/api` além de `site.ts` e `app.ts` — em especial
 `services/articles.ts`, `services/webhooks.ts` e `plugins/auth.ts`, que são o

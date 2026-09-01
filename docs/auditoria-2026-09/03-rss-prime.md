@@ -1,10 +1,10 @@
 # FASE 1 — Auditoria do repositório `RSSPRIME`
 
-**Cobertura: abri e li 11 de 543 arquivos versionados (2,0%).**
+**Cobertura: abri e li 13 de 543 arquivos versionados (2,4%).**
 
 | Instrumento | Alcance |
 | --- | --- |
-| Leitura integral ou substancial | **11 arquivos** |
+| Leitura integral ou substancial | **13 arquivos** |
 | Varredura por padrão | **100% dos 543**, em 8 varreduras |
 | Execução da suíte | **564 testes** rodados — depois de contornar dois bloqueios (ver D7) |
 | Inspeção de configuração | `Dockerfile`, `requirements.txt`, `pyproject.toml`, env do serviço `feed` no painel |
@@ -446,7 +446,7 @@ propósito** — a URL é fixa, mas fixa no alvo errado para o sistema atual.
 
 ---
 
-## Anexo — os 11 arquivos que abri
+## Anexo — os 13 arquivos que abri
 
 `README.md` · `PROJECT_OVERVIEW.md` (trechos) · `Dockerfile` ·
 `requirements.txt` · `pyproject.toml` · `app/server.py` (trechos: rotas,
