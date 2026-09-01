@@ -158,8 +158,8 @@ Nunca imprime o segredo.
 
 Provei por SHA-256 (comparando digests, sem imprimir valores) que
 `MNScr.GEMINI_KEY_1` e `screena.GEMINI_API_KEY` são **a mesma chave**
-(digest `3a7f26253643f0a9`). O mesmo vale para o token TMDB v4
-(`ed701bd3651ed317`), presente em **duas** variáveis do MNScr e uma do screena.
+(digest **G-1**). O mesmo vale para o token TMDB v4
+(**T-1**), presente em **duas** variáveis do MNScr e uma do screena.
 
 > **Correção.** A primeira versão deste relatório dizia que a disputa era com a
 > **produção** do screena. Medi os digests dos serviços no painel e ela usa

@@ -131,11 +131,11 @@ cálculo conferidos contra `sha256('abc') = ba7816bf8f01cfea`.
 
 | Consumidor | Gemini | TMDB v4 | OMDb |
 | --- | --- | --- | --- |
-| `screen-app` (produção) | `3e5867225cfb55cc` | `344a0b0cf5d7c2ed` | `4765bc2696aae380` |
-| `screen-cron` (produção) | `3e5867225cfb55cc` | `344a0b0cf5d7c2ed` | `4765bc2696aae380` |
-| `screen-catalog-worker` (produção) | — | `344a0b0cf5d7c2ed` | — |
-| `feed` / RSSPRIME (produção) | **`8f5f2c5f300c0ad6`** | — | — |
-| `.env` do disco (screena e MNScr) | `3a7f26253643f0a9` | `ed701bd3651ed317` | — |
+| `screen-app` (produção) | **G-2** | **T-2** | **O-1** |
+| `screen-cron` (produção) | **G-2** | **T-2** | **O-1** |
+| `screen-catalog-worker` (produção) | — | **T-2** | — |
+| `feed` / RSSPRIME (produção) | **G-3** | — | — |
+| `.env` do disco (screena e MNScr) | **G-1** | **T-1** | — |
 
 ### Quem estoura primeiro
 
@@ -234,7 +234,7 @@ o que é consistente com "o agendador está fora e o worker ficou".
 | kal-el | própria (RBAC completo) | não implantado |
 
 O único segredo **deliberadamente compartilhado** é
-`CINERIE_CATALOG_RESOLVE_API_KEYS` (`b299372f640b8f08`), idêntico no `screen-app`,
+`CINERIE_CATALOG_RESOLVE_API_KEYS` (**R-1**), idêntico no `screen-app`,
 no `screen-cron` e nos dois `.env` — correto, é o segredo que autentica chamador
 e chamado.
 

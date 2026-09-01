@@ -266,7 +266,19 @@ consulta em produção.
 > número medido manda; o documento se corrige. A afirmação antiga está errada e
 > fica registrada abaixo para que ninguém a repita.
 
-Método: digest **SHA-256**, 16 primeiros hexdígitos, sem imprimir nenhum valor.
+Método: comparei as chaves por digest **SHA-256**, sem imprimir nenhum valor.
+
+> **Por que as chaves aparecem como `T-1`, `G-2`, `R-1` e não como o digest.**
+> A primeira versão deste documento trazia os 16 primeiros hexdígitos de cada
+> digest. Isso prova a igualdade sem revelar o segredo — mas **este repositório é
+> público**, e um prefixo de digest ainda permite a quem já tem um candidato
+> *confirmar* que acertou. Não custa nada evitar: troquei cada digest por um
+> rótulo opaco. **Rótulos iguais = chaves iguais; rótulos diferentes = chaves
+> diferentes.** Toda conclusão desta seção continua verificável, e nenhum
+> material derivado de segredo é publicado.
+>
+> `T-*` = token TMDB · `G-*` = chave Gemini · `O-*` = chave OMDb ·
+> `R-*` = segredo de `entity-resolve`.
 Os dois caminhos de cálculo (shell `sha256sum` e `crypto.subtle` no navegador)
 foram conferidos contra um controle conhecido — `sha256('abc')` devolveu
 `ba7816bf8f01cfea` nos dois. As comparações abaixo são, portanto, válidas entre si.
@@ -275,19 +287,19 @@ foram conferidos contra um controle conhecido — `sha256('abc')` devolveu
 
 | Serviço | Gemini | TMDB v4 | OMDb | Resolve |
 | --- | --- | --- | --- | --- |
-| `screen-app` | `3e5867225cfb55cc` | `344a0b0cf5d7c2ed` | `4765bc2696aae380` | `b299372f640b8f08` |
-| `screen-cron` | `3e5867225cfb55cc` | `344a0b0cf5d7c2ed` | `4765bc2696aae380` | `b299372f640b8f08` |
-| `screen-catalog-worker` | — | `344a0b0cf5d7c2ed` | — | — |
+| `screen-app` | **G-2** | **T-2** | **O-1** | **R-1** |
+| `screen-cron` | **G-2** | **T-2** | **O-1** | **R-1** |
+| `screen-catalog-worker` | — | **T-2** | — | — |
 | `cinerie-cms` | — | — | — | — |
 | `cinerie-publication-worker` | — | — | — | — |
-| `feed` (RSSPRIME) | **`8f5f2c5f300c0ad6`** | — | — | — |
+| `feed` (RSSPRIME) | **G-3** | — | — | — |
 
 #### O que está nos `.env` do DISCO
 
 | Origem | Gemini | TMDB v4 |
 | --- | --- | --- |
-| `screena/.env` | `3a7f26253643f0a9` | `ed701bd3651ed317` |
-| `MNScr/.env` | `3a7f26253643f0a9` | `ed701bd3651ed317` |
+| `screena/.env` | **G-1** | **T-1** |
+| `MNScr/.env` | **G-1** | **T-1** |
 
 #### Os três vereditos
 
@@ -319,13 +331,13 @@ rotação de múltiplas chaves (`app/config.py:550`, padrão `GEMINI_KEY*`) e us
 uma só.
 
 **4. `CINERIE_CATALOG_RESOLVE_API_KEYS` idêntico em produção e nos dois `.env`
-(`b299372f640b8f08`) é CORRETO** — é o segredo compartilhado que autentica o
+(`R-1`) é CORRETO** — é o segredo compartilhado que autentica o
 MNScr contra `/api/internal/entity-resolve`. Chamador e chamado precisam do
 mesmo valor.
 
 **5. Duplicata interna, confirmada:** no `.env` do screena,
 `TMDB_API_KEY` e `SCREENA_TMDB_API_KEY` guardam o mesmo valor
-(`3143799f3d048b0a`). Duas variáveis, um segredo, duas chances de rotacionar só
+(**T-3**). Duas variáveis, um segredo, duas chances de rotacionar só
 metade.
 
 #### O que isso muda na leitura de `content_blocks = 0`
@@ -452,7 +464,6 @@ Este último é decisivo para a FASE 4 e será verificado por mim.
 | Item | Comando/consulta que fecharia |
 | --- | --- |
 | Motivo do estado amarelo do `screen-cron` | Logs do serviço no painel; `SELECT provider_api, status, max(created_at) FROM api_sync_logs GROUP BY 1,2` |
-| Se o `GEMINI_API_KEY` do RSSPRIME é a mesma chave dos outros dois | Ler a variável do serviço `feed` no painel e comparar o SHA-256 com `3a7f26253643f0a9` |
 | Conteúdo do banco SQLite do RSSPRIME em produção | Console do container `feed`: `sqlite3 $DATABASE_PATH ".tables"` |
 | CPU/memória reais por serviço ao longo do tempo | Aba "Monitorar" do painel (a leitura pontual que vi é instantânea, não série) |
 | Tempo por consulta em produção | Instalar `pg_stat_statements` (mudança de configuração — **não fiz**, é decisão do dono) |

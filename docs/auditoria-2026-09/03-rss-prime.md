@@ -152,9 +152,9 @@ nos dois lados):
 
 | Origem | Gemini |
 | --- | --- |
-| `feed` (RSSPRIME, produção) | **`8f5f2c5f300c0ad6`** |
-| `screen-app` / `screen-cron` (produção) | `3e5867225cfb55cc` |
-| `.env` local do screena e do MNScr | `3a7f26253643f0a9` |
+| `feed` (RSSPRIME, produção) | **G-3** |
+| `screen-app` / `screen-cron` (produção) | **G-2** |
+| `.env` local do screena e do MNScr | **G-1** |
 
 **O RSSPRIME tem chave própria.** Não divide cota do Gemini com ninguém. Este é
 o comportamento correto, e é o único dos três consumidores que o pratica.
