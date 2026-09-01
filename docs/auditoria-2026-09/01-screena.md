@@ -536,24 +536,85 @@ observações:
 - **Canônica**: presente e autorreferente (`<link rel="canonical" href="https://cinerie.com/pt/filmes/">`).
 - **Robots**: `<meta name="robots" content="index, follow">` na página. O
   `robots.txt` servido é o boilerplate de *content signals* da Cloudflare.
-- **Sitemap**: índice com **7 shards**, todos `pt-BR`:
+### O sitemap — e a correção do meu próprio achado S-07
 
-| Shard | URLs | Tamanho |
+**Sitemap completo, medido shard a shard:**
+
+| Shard | HTTP | URLs |
 | --- | ---: | ---: |
-| `movies-1` | **48.611** | 9,5 MB |
-| `series-1` | 34.600 | 6,4 MB |
-| `news-1` | 131 | — |
-| `static-1` | 5 | — |
-| `imagens-1`, `imagens-2`, `videos-1` | não medidos | — |
+| `movies-1` | 200 | 48.611 |
+| `series-1` | 200 | 34.600 |
+| `imagens-1` | 200 | **50.000** (no teto do protocolo) |
+| `imagens-2` | 200 | 1.355 |
+| `videos-1` | 200 | 13.972 |
+| `news-1` | 200 | 131 |
+| `static-1` | 200 | 5 |
+| **`people-1`** | **404** | **0** |
+| `seasons-1` | 404 | 0 |
+| `episodes-1` | 404 | 0 |
+| **TOTAL** | | **148.674** |
 
-Dois achados aqui:
+> **Correção de um achado meu.** Escrevi antes que "não existe shard de
+> `pessoas`" e tratei isso como esquecimento. **Estava errado nas duas
+> pontas.** Fui ler `sitemap-index.ts` e `suspended-pages.ts` e a realidade é
+> outra — e mais interessante.
 
-1. **Não existe shard de `pessoas`.** Há **62.647 pessoas com slug pt-BR** no
-   banco e a rota `/pt/pessoas/{slug}/` está no ar — e nenhuma delas é
-   anunciada. É a maior classe de entidade com slug fora da descoberta.
-2. **`movies-1` está a 1.389 URLs do teto.** O limite do protocolo é 50.000 URLs
-   por shard; o arquivo tem 48.611. Com 100% dos filmes já no sitemap, os
-   próximos ~1.400 filmes ingeridos estouram o shard.
+**`seasons` e `episodes` estão fora por decisão deliberada e documentada.**
+Existe uma **válvula de emergência de 2026-08-27, por decisão do dono**
+([`suspended-pages.ts:48`](../../apps/web/src/server/seo/suspended-pages.ts)),
+motivada por uma medição que o comentário registra: o sitemap tinha
+**4.069.444 URLs contra 53.054 cinco dias antes — 77× em cinco dias**, e
+temporada + episódio eram **96,36%** disso, com a página de episódio rendendo
+64 palavras dentro de `<main>` (mediana de 200 amostradas: **24**).
+
+A válvula é um **par**, e o código sabe disso: o tipo sai do sitemap
+(`SUSPENDED_SITEMAP_TYPES`) **e** a página emite `noindex, follow`
+(`SUSPENDED_PAGE_TYPES`), porque *"tirar uma URL do sitemap NAO desindexa o que
+o Google ja rastreou: o sitemap e um convite, nao um comando"*. O `follow` é
+deliberado, para não cortar os links internos que sustentam as páginas que ficam.
+Um teste trava a correspondência entre as duas listas.
+
+**`people` NÃO está suspenso.** A lista é exatamente `["season", "episode"]`, e o
+comentário é explícito: *"a valvula nunca toca em filme, serie ou pessoa"*.
+Confirmei por requisição: `/pt/pessoas/tmdb-112013/` emite `index, follow`.
+
+**Então por que o shard de pessoas dá 404?** A resposta está no próprio arquivo,
+linha 196 — e é a consequência mais cara do achado S-22:
+
+```
+static 5 · people 0 (shard 404: o gate de bio+foto nao deixa passar ninguem)
+```
+
+E na consulta que monta o shard ([`sitemap-index.ts:512`](../../apps/web/src/server/seo/sitemap-index.ts)):
+
+```sql
+FROM slugs s JOIN people p ON p.id = s.entity_id
+  -- 0 de 300 pessoas do sitemap exibiam biografia. Sao os MESMOS ...
+```
+
+**A cadeia inteira, medida por mim ponta a ponta:**
+
+1. `people.biography_source_status` nasce `unknown` e **nada no sistema o
+   altera** → medi **`unknown` em 1.315.149 de 1.315.205 pessoas: 100%**.
+2. `unknown` é o estado que a invariante 6 usa para **bloquear exibição** →
+   nenhuma biografia pode aparecer, nem as **2.152 que já estão preenchidas**.
+3. O gate do shard de pessoas exige **biografia + foto** → não passa ninguém.
+4. `sitemap-pt-BR-people-1.xml` responde **404**.
+5. **62.647 pessoas com slug ficam fora da descoberta** — e as páginas seguem
+   `index, follow`, ou seja, indexáveis e não anunciadas.
+
+**Um default de coluna, cinco consequências.** E o sistema não esconde nada
+disso: o número "0 de 300" está escrito ao lado da consulta. O que falta não é
+diagnóstico — é alguém alterar `biography_source_status`.
+
+O achado, corrigido, é este: **não é "esqueceram o sitemap de pessoas"; é "o
+gate de biografia bloqueia 100% do catálogo de pessoas, e o sitemap é apenas
+onde isso fica visível"**.
+
+**E `imagens-1` está com exatamente 50.000 URLs** — no teto do protocolo. O
+sharding funcionou (transbordou para `imagens-2` com 1.355), então isso é o
+mecanismo certo operando, não defeito. Vale como aviso: `movies-1`, com 48.611,
+é o próximo a transbordar.
 
 ### A decisão de indexabilidade não cobre entidade nenhuma
 
@@ -822,7 +883,7 @@ universos que vão de dezenas a 1,29 milhão de linhas.
 | S-04 | **ALTO** | `CLAUDE.md:201` × `docs/adr/0017` × painel | Governança autoritativa proíbe o que a produção faz | código + painel | Regra sem valor, ou operação fora da regra |
 | S-05 | **ALTO** | `api_cache` | 500.140 linhas vencidas (89%), 3,6 GB, sem job de expurgo | banco | Metade do banco de 10 GB é lixo |
 | S-06 | **ALTO** | `page_indexability_decisions` | 164 linhas, **todas** de artigo; zero para entidade | banco | 83.347 URLs no sitemap sem decisão registrada |
-| S-07 | **ALTO** | sitemap: sem shard `pessoas` | 62.647 pessoas com slug fora da descoberta | HTTP + banco | Maior classe de entidade indexável invisível ao buscador |
+| S-07 | **ALTO** | `sitemap-index.ts:512` + `people.biography_source_status` | O shard de pessoas responde **404** porque o gate exige biografia, e 100% das pessoas estão em `unknown` | HTTP + banco + código | 62.647 páginas `index, follow` fora da descoberta — consequência direta de S-22 |
 | S-08 | **ALTO** | painel, serviço `screen-app` | Render público carrega Gemini, OMDb, TMDB×3, RapidAPI×4, Brevo, S3, R2 | painel | Menor privilégio violado no processo mais exposto |
 | S-09 | **MÉDIO** | `apps/web/middleware.ts:38` | Subrequest HTTP por requisição, **sem timeout** | código | Handler pendurado pendura a requisição do usuário |
 | S-10 | **MÉDIO** | `services/sync/src/scheduler/config.ts:110` | Teto global 200 governa 6 filas; volta de `people` = 529 anos | código + banco | Frescor não é mantido; item sincronizado nunca é reconferido |

@@ -211,8 +211,8 @@ que os expôs.
 **O que está quebrado:** a camada editorial (0 blocos), a fila de notas (2 dias
 em 7), a promoção de ofertas (0,18%), a sinopse (37,5%), a biografia (bloqueada
 em 100%), o `api_cache` (3,6 GB de lixo), a decisão de indexabilidade (164
-linhas, todas de artigo, nenhuma de entidade) e o sitemap (sem shard de pessoas,
-e o de filmes a 1.389 URLs do teto).
+linhas, todas de artigo, nenhuma de entidade) e o sitemap (o shard de pessoas responde 404 porque
+o gate de biografia não deixa passar ninguém).
 
 ## 3.2. MNScr — [relatório completo](02-mnscr.md)
 
@@ -314,7 +314,7 @@ Ordenada por gravidade. Prefixos: **S** = screena, **M** = MNScr,
 | S-04 | **ALTO** | screena | `CLAUDE.md:201` × ADR 0017 × painel | Governança autoritativa proíbe o que a produção faz | código + painel |
 | S-05 | **ALTO** | screena | `api_cache` | 500.140 linhas vencidas (89%), 3,6 GB, sem expurgo | banco |
 | S-06 | **ALTO** | screena | `page_indexability_decisions` | 164 linhas, todas de artigo; zero para entidade | banco |
-| S-07 | **ALTO** | screena | sitemap | Sem shard de pessoas: 62.647 com slug fora da descoberta | HTTP + banco |
+| S-07 | **ALTO** | screena | `sitemap-index.ts:512` + `people.biography_source_status` | Shard de pessoas responde **404**: o gate exige biografia e 100% das pessoas estão em `unknown`. 62.647 páginas `index, follow` fora da descoberta | HTTP + banco + código |
 | S-08 | **ALTO** | screena | painel, `screen-app` | Render público carrega Gemini, OMDb, TMDB×3, RapidAPI×4, Brevo, S3, R2 | painel |
 | M-03 | **ALTO** | MNScr | `.env` (~40 variáveis) | Config de WordPress/Yoast/IndexNow que o código não lê (9 de 10 com 0 referências) | grep |
 | R-01 | **ALTO** | RSS Prime | `README.md:1` | Descreve o "LANCE! Feed Generator, puramente educativo, não comercial" | leitura |
@@ -431,7 +431,7 @@ E o que passou com folga: **a diferenciação filme/série cumpre os cinco sinai
 | 9 | Destravar `biography_source_status` *(decisão humana de licença)* | 2.152 biografias que já existem |
 | 10 | Rodar o Entity Writer, ainda que em escopo pequeno | Sai de `content_blocks = 0` |
 | 11 | Popular `entity_alternative_titles` e regerar slugs | 17.937 URLs + títulos em cirílico |
-| 12 | Shard de pessoas no sitemap | 62.647 páginas na descoberta |
+| 12 | Shard de pessoas no sitemap — **consequência automática** de destravar `biography_source_status` (item 9) | 62.647 páginas na descoberta |
 
 ### Onda 3 — higiene e dívida (contínuo)
 

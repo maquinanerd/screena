@@ -268,7 +268,7 @@ faixa de mídia, que reserva altura antes de as imagens chegarem.
 | **9** | **"Notícias relacionadas" também no filme** | médio | **baixo** | O bloco já existe e funciona na série. É o único bloco editorial vivo | Omelete, Screen Rant |
 | **10** | **Navegação por temporada fixa na ficha de série** | médio | médio | 3.389 px de episódios sem âncora; numa série longa é intransitável | TV Guide, Trakt |
 | **11** | **Destravar `biography_source_status`** | alto | médio | Medi: **2.152 biografias já estão no banco e 100% das 1,3 M de pessoas estão em `unknown`**, que bloqueia exibição. O texto existe; o gate nunca é alterado por nada. É decisão de licença, não de código | IMDb, AdoroCinema |
-| **12** | **Sitemap de pessoas** | alto (SEO) | **baixo** | 62.647 pessoas com slug e nenhuma anunciada. É um shard novo | todos |
+| **12** | **Sitemap de pessoas** | alto (SEO) | **nenhum** | Não é shard novo: o shard existe e responde **404** porque o gate exige biografia e 100% das pessoas estão em `unknown`. **Sai de graça junto com a sugestão nº 11** | todos |
 | **13** | **Score também na ficha de série** | médio | baixo | O filme mostra, a série não. Contrato visual inconsistente | Metacritic |
 | **14** | **Cache de rota nas fichas** | médio | alto | Tudo é `no-store`; 83.347 URLs no sitemap significam 83 mil renderizações por varredura do Googlebot | — |
 | **14b** | **Sinopse em português nas fichas** | alto | médio | **62,5% dos filmes e 62,4% das séries não têm `summary` em pt-BR.** A ficha abre com um parágrafo truncado ou com nada. É o texto que descreve a obra | todos |
