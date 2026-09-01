@@ -6,7 +6,7 @@
 | --- | --- |
 | Leitura integral ou substancial | **12 arquivos** |
 | Varredura por padrão | **100% dos 532**, em 10 varreduras |
-| Execução | `pnpm test:unit` (**38 testes**) + `pnpm test:integration` (ver D7) |
+| Execução | **244 testes, 100% verde** — 38 unitários + 206 de integração |
 | Inspeção de esquema | as **6 migrations Drizzle**, das quais extraí as 27 tabelas |
 
 Dos 532 arquivos, **106 são imagem** (PNG/WEBP) e **121 são Markdown** — 43% do
@@ -27,7 +27,7 @@ material de referência.
 | 1 | **A imagem de produção do CMS não copia `apps/cms/public/`.** O `Dockerfile` diz, em comentário, "no `public/` directory exists yet" — e o diretório existe, com o hero da tela de login e as duas marcas, todos referenciados pelo código. O próprio comentário previu o desfecho: "the assets in it will simply 404 with nothing saying why". | **ALTO** |
 | 2 | **Não existe leitura pública de conteúdo.** Todas as rotas de `/sites/:siteId/**` passam por `requireSiteScope` + `guard(permissão)`. Não há endpoint anônimo que devolva artigo publicado. Para a arquitetura declarada ("frontends nunca acessam o banco"), isso obriga todo portal a carregar credencial. | **ALTO** (decisão de arquitetura, não bug) |
 | 3 | **O sistema nunca foi implantado.** Nenhum serviço no painel EasyPanel, nos 12 projetos, tem origem `kal-el`. Todo julgamento sobre "pronto para substituir o Payload" é sobre um sistema que nunca subiu. | **ALTO** (operacional) |
-| 4 | **A cobertura de teste unitário é rasa onde mais importa.** 38 testes unitários no total, e **zero** em `apps/api` (que tem 22 arquivos de teste, todos de integração) — o núcleo de permissão, publicação e outbox só é exercitado com Postgres embarcado. | **MÉDIO** |
+| 4 | **Toda a cobertura do núcleo depende de o Postgres embarcado subir.** Os 38 testes unitários não tocam `apps/api`; os **164 testes de `apps/api` são todos de integração**. A cobertura existe e é boa — mas é frágil a ambiente. | **MÉDIO** |
 | 5 | **`packages/design-system` tem 47 arquivos e `artifacts/` tem 79** — 24% do repositório é material de referência versionado junto com o código. | **BAIXO** |
 
 Contraponto forte: **o modelo de dados é o de um CMS maduro** — 27 tabelas com
@@ -77,7 +77,7 @@ primeiro dia. Em capacidade de plataforma, não é um protótipo.
 | Comando | Resultado |
 | --- | --- |
 | `pnpm test:unit` | **38 testes, 100% verde** (contracts 15, editor 11, sdk 7, auth 5) |
-| `pnpm test:integration` | ver D7 |
+| `pnpm test:integration` | **206 testes, 100% verde** (api 164, importer 21, worker 13, db 8) |
 | `pnpm build`, `typecheck`, `lint` | **NÃO RODEI** — priorizei os testes; fecha com `corepack pnpm run typecheck && corepack pnpm run build` |
 
 O `pnpm-workspace.yaml` merece nota positiva: o comentário nele registra um
@@ -283,11 +283,11 @@ Essa é, das quatro bases, a que tem o modelo de autorização mais completo.
 
 | Escopo | Arquivos | Resultado |
 | --- | ---: | --- |
-| `apps/api/tests` | **22** | integração (Postgres embarcado) |
+| `apps/api/tests` | **22** | integração — **164 testes, 100% verde** |
 | `apps/cms/e2e` | 10 | Playwright |
-| `packages/importer/tests` | 5 | — |
-| `apps/worker/tests` | 3 | — |
-| `packages/db/tests` | 2 | inclui `migration.test.ts` |
+| `packages/importer/tests` | 5 | integração — **21 testes** |
+| `apps/worker/tests` | 3 | integração — **13 testes** |
+| `packages/db/tests` | 2 | integração — **8 testes**, inclui `migration.test.ts` |
 | `apps/fixture/tests` | 2 | — |
 | `packages/{sdk,editor,contracts,auth}/tests` | 4 | **unitário: 38 testes, 100% verde** |
 
@@ -295,16 +295,29 @@ Os nomes dos testes de `apps/api` são um bom sinal do que foi levado a sério:
 `admin-isolation.test.ts`, `hardening.test.ts`, `privilege-trail.test.ts`,
 `security.test.ts`, `articles.test.ts`.
 
-### O achado 4
+### O achado 4 — corrigido por medição
 
-**`pnpm test:unit` executa 38 testes, e nenhum deles é de `apps/api`.** Todo o
-núcleo — permissão, publicação, outbox, idempotência — depende de um Postgres
-embarcado subir. Isso não é errado (é o teste mais fiel), mas cria uma
-dependência frágil: qualquer problema de ambiente derruba a cobertura inteira do
-que mais importa, e sobram 38 testes de contrato, editor, SDK e auth.
+> **Escrevi primeiro que a cobertura era "rasa onde mais importa". Estava
+> errado.** Eu tinha só o `test:unit` (38 testes) quando redigi. Ao terminar,
+> `test:integration` devolveu **206 testes, todos verdes**, dos quais **164 são
+> de `apps/api`** — exatamente o núcleo que eu disse estar descoberto. A
+> afirmação antiga fica registrada para não ser repetida.
 
-Comparação honesta com os vizinhos: `screena` tem 7.567 testes, MNScr 3.521,
-RSSPRIME 564. kal-el tem 38 unitários + o que a integração rodar.
+O que permanece verdadeiro, e é o achado de fato:
+
+**100% da cobertura do núcleo depende de o Postgres embarcado subir.** Não há
+um único teste unitário em `apps/api`: permissão, publicação, outbox e
+idempotência só são exercitados por integração. Isso é o teste mais **fiel** que
+existe — e o mais frágil a ambiente. Qualquer problema com `embedded-postgres`
+(e ele está no `allowBuilds` justamente porque precisa compilar) leva a cobertura
+do núcleo de 164 a zero, sobrando 38 testes de contrato, editor, SDK e auth.
+
+O total honesto: **244 testes, 100% verde** (38 unitários + 206 de integração).
+Os nomes dos arquivos de `apps/api` dizem o que foi levado a sério:
+`admin-isolation`, `hardening`, `privilege-trail`, `security`, `articles`.
+
+Comparação entre os quatro repositórios, agora com o número certo:
+`screena` 7.567 · MNScr 3.521 · RSSPRIME 564 · **kal-el 244**.
 
 Cobertura de linhas: **não há ferramenta configurada**.
 
@@ -372,7 +385,7 @@ fosse o produto é um risco que declaro em vez de esconder.
 | K-01 | **ALTO** | `apps/cms/Dockerfile:28` | Comentário afirma que `public/` não existe; existe desde 2026-08-20 e não é copiado | código + `git log` | Login sem arte e logo ausente no painel, com 404 silencioso |
 | K-02 | **ALTO** | `apps/api/src/routes/site.ts:85` | Nenhuma leitura pública de artigo publicado | código | Todo portal consumidor precisa de credencial |
 | K-03 | **ALTO** | painel (ausência) | Nunca implantado | painel | Decisão de substituir o Payload é sobre sistema não exercitado |
-| K-04 | **MÉDIO** | `apps/api/tests/**` | Zero teste unitário no núcleo; tudo depende de Postgres embarcado | execução | 38 testes unitários cobrem periferia, não permissão/publicação |
+| K-04 | **MÉDIO** | `apps/api/tests/**` | Os 164 testes do núcleo são TODOS de integração; zero unitário em `apps/api` | execução (244 testes verdes) | Falha do Postgres embarcado zera a cobertura do núcleo |
 | K-05 | **MÉDIO** | `apps/api/src/app.ts:63` | `helmet` com `contentSecurityPolicy: false` | código | CSP desligada explicitamente |
 | K-06 | **BAIXO** | `apps/api/src/app.ts:88` | Swagger UI condicional — condição não verificada | código | **NÃO DETERMINADO** se `/docs` fica exposto em produção |
 | K-07 | **BAIXO** | raiz | `kal-el-repository-v2.zip`, `RECOVERY-DIFF.patch` versionados | `git ls-files` | Artefatos de recuperação no controle de versão |
@@ -410,7 +423,6 @@ fosse o produto é um risco que declaro em vez de esconder.
 
 | Item | Comando |
 | --- | --- |
-| Resultado de `test:integration` | `corepack pnpm run test:integration` (rodando; Postgres embarcado leva minutos) |
 | `build`, `typecheck`, `lint` | `corepack pnpm run typecheck && corepack pnpm run lint && corepack pnpm run build` |
 | Condição de exposição do Swagger UI | `sed -n '84,90p' apps/api/src/app.ts` |
 | Cadência, retry e dead-letter do worker | `sed -n '1,80p' apps/worker/src/index.ts` |
