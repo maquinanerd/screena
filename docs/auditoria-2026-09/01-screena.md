@@ -690,7 +690,7 @@ sem depender de log nem de cor de bolinha.
 | `title_detail_active` | 7 dias | 2026-08-25 17:16:31 (6,5 d) | ✅ prestes a vencer |
 | `title_detail_ended` | 30 dias | 2026-08-25 17:27:42 (7 d) | ✅ em dia |
 | `people` | 30 dias | 2026-08-25 17:29:12 (7 d) | ✅ em dia |
-| **`airing_series`** | **1 dia** | **2026-08-25 15:58:50 (7 dias)** | ❌ **7 dias em silêncio numa fila diária** |
+| `airing_series` | 1 dia | 2026-08-25 15:58:50 | ✅ **correto — não há o que fazer** (ver abaixo) |
 | **`ratings_omdb`** | **1 dia** | invocada **todo dia**; emite requisição em **2 de 10** (`api_sync_logs`) | ❌ **quebrada** |
 
 **O agendador está vivo e trabalhando.** Cinco filas rodaram nas últimas horas;
@@ -699,14 +699,30 @@ recente é de 04:37 e 5.277 filmes foram ressincronizados em 24 h. O ponto
 amarelo no painel **não significa processo morto** — significa alguma coisa que
 não determinei, e que agora importa muito menos.
 
-**Duas filas estão de fato quebradas, e são exatamente as duas que sustentam os
-achados de cobertura:**
+**Uma fila está de fato quebrada** — e é a que sustenta o número de cobertura:
 
 - **`ratings_omdb`** — invocada todo dia, emite em 2 de 10, e nos dois estourando o envelope. É a causa
   direta de **0,91% de cobertura de nota**.
-- **`airing_series`** — intervalo diário, **7 dias sem enfileirar**. É a fila que
-  mantém fresca a série em exibição, ou seja, exatamente o conteúdo mais
-  perecível do catálogo.
+> **Retratação do meu achado S-27.** Escrevi que `airing_series` estava
+> "7 dias em silêncio numa fila diária" e classifiquei como ALTO. **Fui medir e
+> está errado.** A fila seleciona por `STALE_CLAUSE`
+> (`stale_after IS NULL OR stale_after <= now()`), e no banco:
+>
+> | `tv_shows.stale_after` | Séries |
+> | --- | ---: |
+> | nulo | **0** |
+> | vencido | **0** |
+> | no futuro | **35.235** |
+>
+> **Candidatos de `airing_series` agora: ZERO.** Nenhuma série está defasada,
+> porque o `screen-catalog-worker` mantém o catálogo fresco continuamente
+> (medi: 5.277 filmes ressincronizados em 24 h, `last_synced_at` mais recente às
+> 04:37). A fila roda, não encontra nada vencido e não enfileira — que é
+> exatamente o comportamento correto.
+>
+> **O achado S-27 está RETIRADO.** E o quadro que sobra é mais coerente do que o
+> que eu tinha desenhado: o worker faz a carga contínua, e as filas de refresh do
+> agendador ficam corretamente ociosas porque não há o que refrescar.
 
 **E o achado que essa medição revela, que eu não teria encontrado de outro jeito:**
 
@@ -1299,7 +1315,6 @@ universos que vão de dezenas a 1,29 milhão de linhas.
 | S-24 | **MÉDIO** | ritmo de ingestão × filas de enriquecimento | +3.084 filmes/h enquanto nota (0,91%), oferta (0,18%) e sinopse (37,5%) não acompanham | banco | As três coberturas **pioram sozinhas** a cada hora |
 | S-25 | **ALTO** | `services/streaming/src/promotion/args.ts:246` | A CLI de promoção exige `--ids` explícito e **não tem modo em lote**; são 70.036 ofertas | código | A decisão de licença não tem como virar produto sem um seletor em lote |
 | S-26 | **MÉDIO** | `services/streaming/bin/promote-watch-availability.ts:5` | Cabeçalho diz que a ferramenta cobre só `streaming_availability`; `guardrails.ts:52` inclui `tmdb` desde então | código | Quem lê o `bin/` conclui que a ferramenta não serve para 99,99% das ofertas |
-| S-27 | **ALTO** | fila `airing_series` | Intervalo **diário**, último enfileiramento em **2026-08-25** — 7 dias de silêncio | banco (`catalog_jobs.run_id`) | A série em exibição, o conteúdo mais perecível, não é atualizada |
 | S-28 | **ALTO** | `watch_offers` × promoção | A fila ingere **5.782 ofertas/dia** para uma tabela onde 98,8% nunca são promovidas | banco | Requisição de TMDB gasta todo dia para dado que não chega à tela |
 | S-29 | **ALTO** | `apps/web` → `next@15.5.19` | **8 advisories abertas**, todas corrigidas em `>=15.5.21`: 2 SSRF e 1 DoS de severidade alta, mais divulgação não autenticada de Server Function interna. 7 citam `apps/web` | `pnpm audit` | O app público roda com SSRF conhecido; a correção não muda código |
 | S-30 | **MÉDIO** | ficha de série (`/pt/series/{slug}/`) | **Zero links** para `/temporadas/` ou `/episodios/`; somadas ao `noindex` e ao 404 do sitemap, as rotas de 3.960.233 episódios e 139.977 temporadas ficam **inalcançáveis por qualquer caminho** | requisição + banco | A saída da válvula de emergência não basta: reativar o sitemap sem criar links anuncia páginas sem navegação |

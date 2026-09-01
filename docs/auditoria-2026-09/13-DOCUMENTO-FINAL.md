@@ -32,7 +32,7 @@ carrega como foi obtida: **medido no banco**, **medido em execução**, **medido
 por requisição**, **lido no código**, **inferido** ou **não determinado**.
 
 **Onde a medição contrariou o que eu já tinha escrito, eu reescrevi.** Isso
-aconteceu **oito** vezes nesta auditoria, e as oito estão marcadas no texto:
+aconteceu **nove** vezes nesta auditoria, e as nove estão marcadas no texto:
 
 1. **As chaves compartilhadas** (FASE 0) — valia para os `.env` do disco, não para produção.
 2. **A volta da fila `people`** (FASE 1) — inferi catálogo vazio; 72% estava sincronizado.
@@ -41,7 +41,8 @@ aconteceu **oito** vezes nesta auditoria, e as oito estão marcadas no texto:
 5. **A CLI de promoção de ofertas** (FASE 1) — achei que não cobria TMDB; cobre. O bloqueio é a falta de modo em lote.
 6. **O `screen-cron`** (FASE 1) — tratei o ponto amarelo como agendador morto; ele está vivo, e só duas filas quebraram.
 7. **A fila da OMDb** (FASE 1) — disse que rodava 2 de 7 dias, somando cota. Ela roda **todos** os dias; o que ela não faz é gastar cota. Usei um proxy para afirmar um fato, que é exatamente o erro que esta auditoria persegue.
-8. **O alcance do shard de pessoas** (FASE 1) — escrevi que 62.647 pessoas ficavam "fora da descoberta". Fui verificar os links: a ficha de série **linka o elenco**, e as páginas emitem `index, follow`. Elas são descobríveis; o que falta é o convite do sitemap. Baixei a gravidade de ALTO para MÉDIO.
+8. **O `airing_series`** (FASE 1) — classifiquei 7 dias de silêncio como defeito ALTO. Medi: **as 35.235 séries têm `stale_after` no futuro**, nenhuma está defasada, e a fila corretamente não tem o que fazer. **Achado retirado.**
+9. **O alcance do shard de pessoas** (FASE 1) — escrevi que 62.647 pessoas ficavam "fora da descoberta". Fui verificar os links: a ficha de série **linka o elenco**, e as páginas emitem `index, follow`. Elas são descobríveis; o que falta é o convite do sitemap. Baixei a gravidade de ALTO para MÉDIO.
 
 Cada uma dessas correções tornou o achado **mais** útil, não menos. É por isso
 que a regra existe.
@@ -167,7 +168,7 @@ Ordenadas por (impacto ÷ esforço), com o que cada uma destrava:
 
 | # | Fazer | Esforço | Destrava |
 | --- | --- | --- | --- |
-| **1** | **Consertar `ratings_omdb` e `airing_series`** — as duas únicas filas de fato quebradas | baixo | **Medi fila a fila: o agendador está VIVO.** `changes` enfileirou 2 min antes da medição; `watch_offers` buscou 5.782 ofertas em 24 h. Só `ratings_omdb` (roda todo dia e sai com `no_slots` em 8 de 10) e `airing_series` (diária, 7 dias muda) estão quebradas — e a primeira é a causa direta de 0,91% de cobertura de nota |
+| **1** | **Consertar `ratings_omdb`** — a única fila de fato quebrada | baixo | **Medi fila a fila: o agendador está VIVO.** `changes` enfileirou 2 min antes da medição; `watch_offers` buscou 5.782 ofertas em 24 h; e as filas de refresh estão ociosas **porque nada está defasado** (35.235 séries com `stale_after` no futuro). Só `ratings_omdb` falha — e é a causa direta de 0,91% de cobertura de nota |
 | **2** | **Pôster acima da dobra na ficha** | baixo | 91,3% dos filmes já têm `poster_path`. É ordem de blocos, não dado. Maior ganho visual do documento |
 | **3** | **Fechar o `_fetch_html` do MNScr no `safe_get`** | baixo | Fecha um SSRF real, alcançável por URL de feed, contra a LAN do dono |
 | **4** | **Dar modo em lote à CLI de promoção, e então decidir a licença** | baixo (engenharia) + decisão humana | "Onde assistir" sai de 147 para dezenas de milhares. **Atenção:** a CLI exige `--ids` explícito e não tem modo em massa — sem o seletor, a decisão de licença não tem como virar produto |
@@ -397,7 +398,6 @@ Ordenada por gravidade. Prefixos: **S** = screena, **M** = MNScr,
 | K-03 | **ALTO** | kal-el | painel (ausência) | Nunca implantado | painel |
 | S-31 | **ALTO** | screena | `apps/admin` (46 arquivos, 11 páginas) | Aplicação inteira nunca construída: nenhum Dockerfile, nenhum `build:admin`, nenhum serviço — e é ela que tem `review-queue` e `content-blocks/[id]` | código + painel |
 | S-25 | **ALTO** | screena | `services/streaming/src/promotion/args.ts:246` | A CLI de promoção exige `--ids` explícito e **não tem modo em lote** — são 70.036 ofertas | código |
-| S-27 | **ALTO** | screena | fila `airing_series` | Intervalo **diário**, último enfileiramento em 2026-08-25 — 7 dias de silêncio | banco (`catalog_jobs.run_id`) |
 | S-28 | **ALTO** | screena | `watch_offers` × promoção | Fila **saudável** ingere 5.782 ofertas/dia para uma tabela onde 98,8% nunca são promovidas | banco |
 | K-09 | **ALTO** | kal-el | `apps/api/src/services/articles.ts:42` | `published` alcançável de **três** estados; não há aresta única onde um gate de publicação possa rodar | código |
 | M-11 | **MÉDIO** | MNScr | `app/cinerie/outcomes.py:266` × `cinerie_service.py:507` | `should_resend()` exportada, documentada e testada — **chamada só por teste**; o `if` que ela existia para eliminar está no orquestrador | `git grep` |
@@ -440,7 +440,7 @@ Ordenada por gravidade. Prefixos: **S** = screena, **M** = MNScr,
 | K-07 | BAIXO | kal-el | raiz | `.zip` e `.patch` de recuperação versionados | `git ls-files` |
 | K-08 | BAIXO | kal-el | disco | Branch `feat/login-comic-caption`, não `main` | `git branch` |
 
-**Total: 65 achados — 4 críticos, 23 altos, 24 médios, 14 baixos.** (Contado da
+**Total: 64 achados — 4 críticos, 22 altos, 24 médios, 14 baixos.** (Contado da
 própria tabela, não estimado. Um achado adicional, o `R-09` do RSS Prime, foi
 **retirado** na verificação: a rota `/debug/superfeed` está protegida, e o
 docstring dela registra que já esteve aberta e foi corrigida.)
@@ -501,7 +501,7 @@ E o que passou com folga: **a diferenciação filme/série cumpre os cinco sinai
 
 | Ordem | Ação | Destrava |
 | --- | --- | --- |
-| 1 | Rodar `sync-omdb-ratings --mode coverage --limit 5` **sem `--apply`** (não gasta cota) e ver quantos candidatos ele seleciona; e descobrir por que `airing_series` está 7 dias muda | Cobertura de nota (0,91%) e frescor da série em exibição |
+| 1 | Rodar `sync-omdb-ratings --mode coverage --limit 5` **sem `--apply`** (não gasta cota) e ver quantos candidatos ele seleciona | Cobertura de nota (0,91%) |
 | 2 | **Subir `next` para `>=15.5.21`** — o intervalo declarado já é `^15.0.0` | Fecha 8 advisories do app público (2 SSRF + 1 DoS altas) **sem mudar código** |
 | 3 | Expurgo do `api_cache` vencido (`DELETE WHERE expires_at < now()`, em lotes) | 3,6 GB e pressão de I/O |
 | 4 | Fechar `_fetch_html` no `safe_get` (MNScr) | SSRF real, alcançável por URL de feed |
@@ -553,7 +553,6 @@ desta auditoria.
 | --- | --- | --- |
 | 1 | **Por que `ratings_omdb` não produz em 8 de 10 dias.** Eliminei **três** hipóteses por medição: não é `no_slots` (a aritmética exige `spentToday>=850` e o gasto foi 0); não é a fronteira do dia (servidor em `Etc/UTC`); e **não é falta de candidatos** (66.997 disponíveis). O que sobra é o comportamento dos quatro processos filhos, invisível de fora porque `error_code` é NULL em 75 de 77 falhas | `pnpm --filter @screena/ratings exec tsx bin/sync-omdb-ratings.ts --type movie --mode coverage --limit 5` **sem `--apply`** — não gasta cota e mostra o que seria selecionado. Selecionou 5? o defeito está entre seleção e rede. Selecionou 0 com 39.525 candidatos? está na seleção |
 | 1b | Por que o `screen-cron` aparece amarelo, se as filas rodam | Logs do serviço — é o estado do PROCESSO, não das filas |
-| 1c | Por que `airing_series` está 7 dias em silêncio numa fila diária | Log do `screen-cron`; `catalog_jobs` não registra a tentativa que não enfileirou |
 | 2 | Se o SQLite do RSS Prime sobrevive a redeploy | Console do `feed`: `ls -la /app/data/` e conferir o volume do container |
 | 3 | Qual commit cada um dos 5 serviços está rodando | `CINERIE_BUILD_SHA` é inconfiável; medir por hash do fonte dentro do container |
 | 4 | Custo servidor-a-servidor do subrequest do middleware | Instrumentar `/api/seo/redirect` com `Server-Timing` |
