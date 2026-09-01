@@ -439,7 +439,7 @@ Ordenada por gravidade. Prefixos: **S** = screena, **M** = MNScr,
 | K-07 | BAIXO | kal-el | raiz | `.zip` e `.patch` de recuperação versionados | `git ls-files` |
 | K-08 | BAIXO | kal-el | disco | Branch `feat/login-comic-caption`, não `main` | `git branch` |
 
-**Total: 63 achados — 4 críticos, 23 altos, 22 médios, 14 baixos.** (Contado da
+**Total: 65 achados — 4 críticos, 24 altos, 23 médios, 14 baixos.** (Contado da
 própria tabela, não estimado. Um achado adicional, o `R-09` do RSS Prime, foi
 **retirado** na verificação: a rota `/debug/superfeed` está protegida, e o
 docstring dela registra que já esteve aberta e foi corrigida.)
