@@ -351,6 +351,7 @@ Ordenada por gravidade. Prefixos: **S** = screena, **M** = MNScr,
 | S-28 | **ALTO** | screena | `watch_offers` × promoção | Fila **saudável** ingere 5.782 ofertas/dia para uma tabela onde 98,8% nunca são promovidas | banco |
 | K-09 | **ALTO** | kal-el | `apps/api/src/services/articles.ts:42` | `published` alcançável de **três** estados; não há aresta única onde um gate de publicação possa rodar | código |
 | M-11 | **MÉDIO** | MNScr | `app/cinerie/outcomes.py:266` × `cinerie_service.py:507` | `should_resend()` exportada, documentada e testada — **chamada só por teste**; o `if` que ela existia para eliminar está no orquestrador | `git grep` |
+| S-30 | **MÉDIO** | screena | ficha de série | **Zero links** para temporada/episódio; com o `noindex` e o 404 do sitemap, 3,96 M de rotas de episódio ficam inalcançáveis por qualquer caminho | requisição + banco |
 | S-26 | **MÉDIO** | screena | `services/streaming/bin/promote-watch-availability.ts:5` | Cabeçalho diz que a ferramenta cobre só `streaming_availability`; `guardrails.ts:52` inclui `tmdb` | código |
 | K-10 | **MÉDIO** | kal-el | `articles.ts:46` | Não existe estado `retracted`; publicada só volta para `draft` | código |
 | K-11 | **MÉDIO** | kal-el | `articles.ts:48` | `archived: []` é terminal; `published → archived` lança `invalidTransition` | código |
@@ -515,7 +516,7 @@ desta auditoria.
 | 12 | Condição de exposição do Swagger UI do kal-el | `sed -n '84,90p' apps/api/src/app.ts` |
 | 13 | Se os 143 índices sem uso são removíveis | Cruzar `pg_stat_user_indexes` com as consultas de cada rota |
 | 14 | Tempo por consulta em produção | Instalar `pg_stat_statements` — **mudança de configuração; não fiz** |
-| 15 | Aparência das fichas de temporada e episódio | Não abri `/pt/series/{slug}/temporadas/{n}/` |
+| 15 
 
 ---
 

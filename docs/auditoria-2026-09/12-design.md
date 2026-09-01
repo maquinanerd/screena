@@ -96,8 +96,51 @@ precisa dizer quantas estão visíveis.
 editorial que está vivo em alguma ficha, e ele está só em um dos dois verticais.
 
 E os episódios ocupam **3.389 px** para uma série de 8 episódios — mais da metade
-da página. Para uma série longa isso vira rolagem infinita sem navegação por
-temporada acima da dobra.
+da página. Fui medir o que há dentro, e o resultado é mais interessante do que
+"é comprido":
+
+| Métrica da seção `Episódios` | Valor |
+| --- | ---: |
+| Altura | 1.765 px (+1.624 px de continuação) |
+| **Links** | **0** |
+| **Botões** | **0** |
+| `<details>` (acordeão) | **0** |
+| Imagens | 3 |
+
+É **texto corrido**: `T1 · E1 · Piloto` + sinopse + `2026 · 57 min`, repetido. O
+conteúdo está lá — o usuário lê a sinopse de cada episódio sem sair da página, o
+que é bom — mas **não há nada clicável**, nem acordeão, nem âncora por temporada.
+Para uma série de 8 episódios é longo; para uma de 200, é intransitável.
+
+### E as rotas de temporada e episódio estão órfãs
+
+Isto fecha um item que eu tinha deixado em aberto. Existem rotas
+`/pt/series/{slug}/temporadas/{n}/` e `.../episodios/{m}/`, e há **3.960.233
+episódios e 139.977 temporadas** no banco (72% da tabela `entities`). Medi os
+links da ficha de série:
+
+```
+temTemporadas: false
+```
+
+**Zero links para `/temporadas/` ou `/episodios/`** em toda a página. Somando com
+o que já estava medido:
+
+1. `noindex, follow` na própria página (válvula de emergência de 2026-08-27) ✔ deliberado
+2. Fora do sitemap (`seasons-1` e `episodes-1` respondem **404**) ✔ deliberado
+3. **Nenhum link interno apontando para elas** ← isto não estava previsto
+
+As duas primeiras são a válvula funcionando. A terceira torna as rotas
+**inalcançáveis por qualquer caminho**: nem buscador, nem usuário. E há uma
+consequência fina: o `follow` da válvula foi escolhido de propósito para
+*"manter o rastreio dos links internos"* — mas se nada linka para a página, o
+rastreador nunca chega nela para ver o `follow`. A metade de dentro do par não
+tem como agir.
+
+Não é urgente — é exatamente o que a válvula queria. Mas é preciso saber que a
+saída da válvula (*"quando a Fase 3 estiver aplicada […] esta lista volta a ser
+vazia"*) **não basta**: reativar o sitemap sem criar os links deixa as páginas
+anunciadas e sem navegação interna.
 
 A série também **não mostra o Cinerie Score** (só IMDb 8,4), enquanto o filme
 mostra. Duas fichas do mesmo produto com contratos visuais diferentes.
