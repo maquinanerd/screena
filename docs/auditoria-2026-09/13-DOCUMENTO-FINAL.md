@@ -72,7 +72,7 @@ não de engenharia.
 
 | # | Achado | Repo | Gravidade | Evidência |
 | --- | --- | --- | --- | --- |
-| **1** | **A camada editorial de IA não existe.** `content_blocks = 0`, `entity_writer_jobs = 0`, `entity_writer_logs = 0`. O diferencial competitivo declarado nunca produziu uma linha | screena | **CRÍTICO** | banco |
+| **1** | **A camada editorial de IA nunca foi invocada.** `content_blocks = 0`, `entity_writer_jobs = 0`, `entity_writer_logs = 0` — e o Entity Writer está construído, testado, com credencial em produção e **a dois comandos** de sair do zero. Não está quebrado; nunca foi chamado | screena | **CRÍTICO** | banco + código |
 | **2** | **A defesa contra SSRF existe, está documentada, e o caminho que o pipeline usa não passa por ela.** `extractor.py:909` usa `requests` cru com `allow_redirects=True`; três chamadores de produção o usam | MNScr | **CRÍTICO** | código |
 | **3** | **A fila "diária" da OMDb rodou 2 de 7 dias** — e nos dois estourou o envelope (923 e 850 contra 700). Resultado: 760 de 83.314 títulos com nota (**0,91%**) | screena | **CRÍTICO** | banco |
 | **4** | **O motor editorial não tem serviço implantado.** Todo o fluxo de matéria do Cinerie depende de alguém executar um `.bat` | MNScr | **CRÍTICO** | painel |
@@ -429,7 +429,7 @@ E o que passou com folga: **a diferenciação filme/série cumpre os cinco sinai
 | 7 | Estado vazio escrito para trailer, nota e onde assistir | 83 mil páginas deixam de esconder a ausência |
 | 8 | Seletor em lote na CLI de promoção **+** decisão humana de licença | 0,18% → dezenas de milhares |
 | 9 | Destravar `biography_source_status` *(decisão humana de licença)* | 2.152 biografias que já existem |
-| 10 | Rodar o Entity Writer, ainda que em escopo pequeno | Sai de `content_blocks = 0` |
+| 10 | Rodar o Entity Writer em escopo pequeno (`enqueue` + `run --limit 3`) + revisão humana | Sai de `content_blocks = 0`. **Nada precisa ser construído** |
 | 11 | Popular `entity_alternative_titles` e regerar slugs | 17.937 URLs + títulos em cirílico |
 | 12 | Shard de pessoas no sitemap — **consequência automática** de destravar `biography_source_status` (item 9) | 62.647 páginas na descoberta |
 

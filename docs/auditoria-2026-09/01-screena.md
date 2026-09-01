@@ -29,7 +29,7 @@ indexabilidade**.
 
 | # | Achado | Gravidade | Evidência |
 | --- | --- | --- | --- |
-| 1 | **A camada editorial de IA não existe em produção.** `content_blocks = 0`, `entity_writer_jobs = 0`, `entity_writer_logs = 0`. O "diferencial competitivo" declarado no `CLAUDE.md` (invariantes 12 e 13, seção 9) nunca produziu uma linha. | **CRÍTICO** | medido no banco |
+| 1 | **A camada editorial de IA nunca foi invocada.** `content_blocks = 0`, `entity_writer_jobs = 0`, `entity_writer_logs = 0` — e o Entity Writer está **construído, testado e executável hoje**, com credencial em produção. Não está quebrado: nunca foi chamado. | **CRÍTICO** | banco + código |
 | 2 | **A fila "diária" da OMDb rodou em 2 dos últimos 7 dias** — e nos dois dias gastou 923 e 850 unidades de cota, acima do envelope declarado de 700. Resultado: **760 títulos de 83.314 (0,91%) têm nota externa.** | **CRÍTICO** | medido no banco |
 | 3 | **"Onde assistir" renderiza em 147 de 83.314 títulos (0,18%).** Há 70.869 linhas em `watch_availability`, mas 70.036 têm `display_allowed = false`. | **ALTO** | medido no banco, com a cláusula real do gate |
 | 4 | **`CLAUDE.md:201` proíbe o que a produção faz.** "NUNCA publicar conteudo automaticamente" versus o ADR 0017 (aceito) e `EDITORIAL_AUTO_PUBLISH_ENABLED=true` no serviço `cinerie-cms`. O documento que se declara autoritativo está desatualizado. | **ALTO** | medido no código e no painel |
@@ -156,6 +156,66 @@ Uma **coluna lida pela tela e escrita por ninguém** é o padrão que este
 ecossistema já pagou duas vezes. Aqui o equivalente em escala de tabela é
 `content_blocks`: `packages/seo` conta blocos de valor, `evaluateIndexability`
 recebe `valueBlocksCount`, e o valor real é sempre `0`.
+
+### `content_blocks = 0` — o que exatamente isso significa
+
+Este é o achado nº 1 da auditoria, então fui verificar se o Entity Writer está
+**quebrado** ou apenas **nunca chamado**. É a segunda coisa, e a diferença muda
+o que fazer a respeito.
+
+**Ele está construído e é executável hoje.** Existem cinco CLIs em
+`services/entity-writer/bin/`: `enqueue.ts`, `run.ts`, `run-offline.ts`,
+`inspect.ts`, `smoke-gemini.ts`. O cabeçalho de
+[`bin/run.ts`](../../services/entity-writer/bin/run.ts) documenta o uso real:
+
+```
+tsx services/entity-writer/bin/run.ts --dry-run         # peek, sem mutar, sempre fake
+tsx services/entity-writer/bin/run.ts --fake --limit 5  # fake, persiste
+tsx services/entity-writer/bin/run.ts --limit 3         # Gemini REAL
+```
+
+O ciclo é `claim -> payload -> runGeneration -> persiste content_blocks/log ->
+finaliza job`, e o cabeçalho declara: *"NUNCA publica automaticamente"*.
+
+**A credencial está no lugar.** `GEMINI_API_KEY` e `GEMINI_MODEL` estão nos
+serviços `screen-app` e `screen-cron` em produção (confirmei no painel), e a
+chave do screena **não é compartilhada com ninguém** (§ chaves).
+
+**E ele não está em nenhuma fila — de propósito.** Varri `services/sync/src`
+inteiro procurando `entity_writer` / `entityWriter` / `entity-writer`: **zero
+ocorrências**. As 13 filas do agendador não o incluem. E isso não é esquecimento
+— está escrito na segunda linha do arquivo:
+
+> *"Worker-only/offline — NUNCA no render, **NUNCA daemon/systemd/cron nesta
+> fase**."*
+
+**Então a leitura correta dos três zeros é esta:**
+
+| Tabela | Linhas | O que prova |
+| --- | ---: | --- |
+| `entity_writer_jobs` | **0** | `bin/enqueue.ts` nunca foi executado em produção |
+| `entity_writer_logs` | **0** | `bin/run.ts` nunca processou um job em produção |
+| `content_blocks` | **0** | consequência dos dois acima |
+
+Não é uma feature quebrada, nem uma fila travada, nem cota faltando. É uma
+**feature completa que nunca foi invocada uma única vez** — e cuja ausência de
+agendamento é decisão declarada da fase, não descuido.
+
+**O que isso muda na recomendação.** Sair de zero não exige construir nada:
+exige duas execuções, nesta ordem, num escopo pequeno e revisável —
+
+```bash
+pnpm --filter @screena/entity-writer exec tsx bin/enqueue.ts   # criar jobs
+pnpm --filter @screena/entity-writer exec tsx bin/run.ts --limit 3
+```
+
+— e depois a revisão humana que a invariante 12 exige antes de qualquer bloco
+sair de `ai_generated`. O `--dry-run` e o `--fake` existem justamente para que a
+primeira execução não gaste Gemini nem persista nada.
+
+Esse é, provavelmente, o melhor retorno por esforço de todo este relatório: o
+"diferencial competitivo" declarado no `CLAUDE.md` está a **dois comandos** de
+deixar de ser zero.
 
 ### `DEFAULT`s que escondem dado — e por que aqui estão CERTOS
 
@@ -942,7 +1002,7 @@ universos que vão de dezenas a 1,29 milhão de linhas.
 
 | # | Grav. | Arquivo:linha / local | Achado | Evidência | Consequência |
 | --- | --- | --- | --- | --- | --- |
-| S-01 | **CRÍTICO** | tabela `content_blocks` | 0 linhas; `entity_writer_jobs`/`logs` = 0 | banco | O diferencial editorial declarado não existe no produto |
+| S-01 | **CRÍTICO** | `entity_writer_jobs`/`logs`/`content_blocks` = 0 | O Entity Writer está **completo e executável** (5 CLIs, adapter Gemini real, credencial em produção) e **nunca foi invocado**; a ausência de agendamento é decisão declarada da fase | banco + código | O diferencial editorial está a **dois comandos** de deixar de ser zero |
 | S-02 | **CRÍTICO** | `api_sync_logs` (fila `ratings_omdb`) | Fila "diária" rodou 2 de 7 dias; 923 e 850 de cota, acima do envelope de 700 | banco | 760 de 83.314 títulos (0,91%) com nota; volta real de 304 dias |
 | S-03 | **ALTO** | `watch_availability` | 70.036 de 70.869 linhas com `display_allowed=false` | banco, com a cláusula real do gate | "Onde assistir" em 147 títulos (0,18%) |
 | S-04 | **ALTO** | `CLAUDE.md:201` × `docs/adr/0017` × painel | Governança autoritativa proíbe o que a produção faz | código + painel | Regra sem valor, ou operação fora da regra |
