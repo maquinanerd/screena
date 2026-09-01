@@ -30,7 +30,7 @@ indexabilidade**.
 | # | Achado | Gravidade | Evidência |
 | --- | --- | --- | --- |
 | 1 | **A camada editorial de IA nunca foi invocada.** `content_blocks = 0`, `entity_writer_jobs = 0`, `entity_writer_logs = 0` — e o Entity Writer está **construído, testado e executável hoje**, com credencial em produção. Não está quebrado: nunca foi chamado. | **CRÍTICO** | banco + código |
-| 2 | **A fila "diária" da OMDb rodou em 2 dos últimos 7 dias** — e nos dois dias gastou 923 e 850 unidades de cota, acima do envelope declarado de 700. Resultado: **760 títulos de 83.314 (0,91%) têm nota externa.** | **CRÍTICO** | medido no banco |
+| 2 | **A fila da OMDb roda todo dia e não gasta cota em 8 de 10** — ela decide `no_slots`. Nos dois dias em que trabalhou, estourou o envelope (923 e 850 contra 700) e **75 de 127 execuções falharam sem `error_code`**. Resultado: **760 de 83.314 títulos (0,91%) têm nota.** | **CRÍTICO** | medido no banco |
 | 3 | **"Onde assistir" renderiza em 147 de 83.314 títulos (0,18%).** Há 70.869 linhas em `watch_availability`, mas 70.036 têm `display_allowed = false`. | **ALTO** | medido no banco, com a cláusula real do gate |
 | 4 | **`CLAUDE.md:201` proíbe o que a produção faz.** "NUNCA publicar conteudo automaticamente" versus o ADR 0017 (aceito) e `EDITORIAL_AUTO_PUBLISH_ENABLED=true` no serviço `cinerie-cms`. O documento que se declara autoritativo está desatualizado. | **ALTO** | medido no código e no painel |
 | 5 | **3,6 GB de cache expirado nunca apagado.** `api_cache` tem 500.140 linhas vencidas de 561.970 (89%) — metade do banco de 10 GB é lixo com `expires_at` no passado. | **ALTO** | medido no banco |
@@ -431,35 +431,78 @@ slots de cobertura   = 700 × 0,85 = 595/dia
 volta NOMINAL        = 65.423 ÷ 595 = 110 dias
 ```
 
-**Mas a fila não roda todo dia.** `quota_cost` da OMDb, por dia, nos últimos 7:
+### A fila `ratings_omdb` — correção do meu próprio achado S-02
 
-| Dia | Cota gasta |
-| --- | ---: |
-| 2026-08-25 | 0 |
-| 2026-08-26 | 0 |
-| 2026-08-27 | 0 |
-| 2026-08-28 | **923** |
-| 2026-08-29 | 0 |
-| 2026-08-30 | 0 |
-| 2026-08-31 | **850** |
+Escrevi primeiro que "a fila diária da OMDb rodou 2 dos últimos 7 dias". Isso
+veio de somar `quota_cost` por dia e ver zero em cinco deles. **A conclusão
+estava errada, e o erro é exatamente o que esta auditoria persegue: eu usei um
+proxy (cota gasta) para afirmar um fato (a fila rodou).**
 
+Fui ao `api_sync_logs` contar **execuções**, não cota:
+
+| Dia | Registros | Cota gasta |
+| --- | ---: | ---: |
+| 2026-08-22 | 2 | **0** |
+| 2026-08-23 | 4 | **0** |
+| 2026-08-24 | 2 | **0** |
+| 2026-08-25 | 2 | **0** |
+| 2026-08-26 | 4 | **0** |
+| 2026-08-27 | 2 | **0** |
+| 2026-08-28 | 13 | **923** |
+| 2026-08-29 | 4 | **0** |
+| 2026-08-30 | 4 | **0** |
+| 2026-08-31 | 127 | **850** |
+
+**A fila é invocada TODOS os dias.** O que ela não faz, em **8 dos 10 dias**, é
+gastar cota: roda, registra 2 a 4 linhas e sai com zero requisição emitida.
+
+O código explica o mecanismo
+([`runners.ts:703`](../../services/sync/src/scheduler/runtime/runners.ts)):
+
+```typescript
+const spentToday = await readSpentToday(deps.prisma, 'omdb', startedAt)
+const slots = backgroundOmdbSlots(spentToday, deps.batchLimit)
+if (slots === 0) { ... 'no_slots', 'sem fatia de cota hoje' ... }
 ```
-gasto real em 7 dias = 1.773  →  253/dia de média
-cobertura real       = 253 × 0,85 = 215/dia
-volta REAL           = 65.423 ÷ 215 = 304 dias
-```
 
-E o efeito confirma a conta: **760 títulos distintos têm nota externa**, de
-83.314 — **0,91%**; de 65.423 consultáveis, **1,16%**.
+Ou seja: a fila decide que **não tem fatia de cota hoje** e encerra. Em 8 dias de
+10. E o registro que ela deixa é honesto — `no_slots` — mas nenhum painel
+distingue "rodou e não fez nada" de "rodou e trabalhou", e é por isso que o
+sintoma passou um mês invisível.
 
-Dois problemas separados no mesmo número:
+**E o dia em que ela trabalhou expõe o segundo problema.** Detalhe de 2026-08-31:
 
-1. **A fila "diária" roda 2 dias em 7.** Não determinei a causa; ela mora no
-   `screen-cron`, que está **amarelo** no painel.
-2. **Quando roda, estoura o próprio envelope.** 923 e 850 são maiores que os 700
-   declarados, e 923 é maior até que o limite útil de 850 (cota 1.000 menos a
-   reserva de 150 do leitor). O módulo que declara os 700 é exemplar em rigor;
-   o que executa não o respeita.
+| Desfecho | Registros | Cota |
+| --- | ---: | ---: |
+| `failed` (sem `error_code`) | **75** | 220 |
+| `partial` (sem `error_code`) | 25 | **630** |
+| `partial` / `omdb_child_failed` | 22 | 0 |
+| `failed` / `omdb_child_failed` | 2 | 0 |
+| `success` | 2 | 0 |
+| `empty` | 1 | 0 |
+
+**75 de 127 execuções falharam**, e as falhas consumiram 220 unidades de cota
+sem produzir nota. Somando, o dia gastou **850** — exatamente o limite útil
+(1.000 da cota menos 150 de reserva do leitor) e **acima do envelope declarado
+de 700**.
+
+Em todo o histórico, `error_code` só tem dois valores: **`NULL` em 159 registros**
+e **`omdb_child_failed` em 24**. Ou seja: **as 75 falhas do dia 31 não têm código
+de erro registrado.** O log diz que falhou e não diz por quê — e o campo
+`error_code` existe na tabela para isso.
+
+**O achado, corrigido e em três partes:**
+
+1. **A fila roda todos os dias e não gasta cota em 8 de 10.** O motivo declarado
+   é `no_slots` — ela acredita não ter fatia de cota. Por que, num dia em que
+   nada foi gasto, a conta de `spentToday` devolve algo que zera os slots, é o
+   que fecha este achado — e é a pergunta a fazer primeiro.
+2. **Quando roda, estoura o envelope** (850 e 923 contra 700 declarados).
+3. **Quando falha, não registra a causa** — `error_code` NULL em 75 de 77
+   falhas.
+
+E o efeito, medido: **760 títulos de 83.314 têm nota externa — 0,91%.**
+
 
 O piso, que nenhuma cadência conserta: **17.891 títulos (21,5%) não têm
 `imdb_id`** (10.661 filmes + 7.230 séries — confirmei no banco, batendo com os
@@ -1058,7 +1101,7 @@ universos que vão de dezenas a 1,29 milhão de linhas.
 | # | Grav. | Arquivo:linha / local | Achado | Evidência | Consequência |
 | --- | --- | --- | --- | --- | --- |
 | S-01 | **CRÍTICO** | `entity_writer_jobs`/`logs`/`content_blocks` = 0 | O Entity Writer está **completo e executável** (5 CLIs, adapter Gemini real, credencial em produção) e **nunca foi invocado**; a ausência de agendamento é decisão declarada da fase | banco + código | O diferencial editorial está a **dois comandos** de deixar de ser zero |
-| S-02 | **CRÍTICO** | `api_sync_logs` (fila `ratings_omdb`) | Fila "diária" rodou 2 de 7 dias; 923 e 850 de cota, acima do envelope de 700 | banco | 760 de 83.314 títulos (0,91%) com nota; volta real de 304 dias |
+| S-02 | **CRÍTICO** | `api_sync_logs`, `runners.ts:703` | Fila roda **todo dia** e sai com `no_slots` em **8 de 10**; quando gasta, estoura o envelope; **75 de 77 falhas sem `error_code`** | banco + código | 760 de 83.314 títulos (0,91%) com nota |
 | S-03 | **ALTO** | `watch_availability` | 70.036 de 70.869 linhas com `display_allowed=false` | banco, com a cláusula real do gate | "Onde assistir" em 147 títulos (0,18%) |
 | S-04 | **ALTO** | `CLAUDE.md:201` × `docs/adr/0017` × painel | Governança autoritativa proíbe o que a produção faz | código + painel | Regra sem valor, ou operação fora da regra |
 | S-05 | **ALTO** | `api_cache` | 500.140 linhas vencidas (89%), 3,6 GB, sem job de expurgo | banco | Metade do banco de 10 GB é lixo |
