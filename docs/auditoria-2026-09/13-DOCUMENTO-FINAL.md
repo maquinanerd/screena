@@ -346,6 +346,14 @@ Ordenada por gravidade. Prefixos: **S** = screena, **M** = MNScr,
 | K-01 | **ALTO** | kal-el | `apps/cms/Dockerfile:28` | Comentário afirma que `public/` não existe; existe e não é copiado | código + `git log` |
 | K-02 | **ALTO** | kal-el | `apps/api/src/routes/site.ts:85` | Nenhuma leitura pública de artigo publicado | código |
 | K-03 | **ALTO** | kal-el | painel (ausência) | Nunca implantado | painel |
+| S-25 | **ALTO** | screena | `services/streaming/src/promotion/args.ts:246` | A CLI de promoção exige `--ids` explícito e **não tem modo em lote** — são 70.036 ofertas | código |
+| S-27 | **ALTO** | screena | fila `airing_series` | Intervalo **diário**, último enfileiramento em 2026-08-25 — 7 dias de silêncio | banco (`catalog_jobs.run_id`) |
+| S-28 | **ALTO** | screena | `watch_offers` × promoção | Fila **saudável** ingere 5.782 ofertas/dia para uma tabela onde 98,8% nunca são promovidas | banco |
+| K-09 | **ALTO** | kal-el | `apps/api/src/services/articles.ts:42` | `published` alcançável de **três** estados; não há aresta única onde um gate de publicação possa rodar | código |
+| M-11 | **MÉDIO** | MNScr | `app/cinerie/outcomes.py:266` × `cinerie_service.py:507` | `should_resend()` exportada, documentada e testada — **chamada só por teste**; o `if` que ela existia para eliminar está no orquestrador | `git grep` |
+| S-26 | **MÉDIO** | screena | `services/streaming/bin/promote-watch-availability.ts:5` | Cabeçalho diz que a ferramenta cobre só `streaming_availability`; `guardrails.ts:52` inclui `tmdb` | código |
+| K-10 | **MÉDIO** | kal-el | `articles.ts:46` | Não existe estado `retracted`; publicada só volta para `draft` | código |
+| K-11 | **MÉDIO** | kal-el | `articles.ts:48` | `archived: []` é terminal; `published → archived` lança `invalidTransition` | código |
 | S-09 | **MÉDIO** | screena | `apps/web/middleware.ts:38` | Subrequest HTTP por requisição, **sem timeout** | código |
 | S-10 | **MÉDIO** | screena | `services/sync/src/scheduler/config.ts:110` | Teto global 200 governa 6 filas; volta de `people` = 529 anos | código + banco |
 | S-11 | **MÉDIO** | screena | sitemap `movies-1` | 48.611 URLs de um teto de 50.000 | HTTP |
@@ -381,7 +389,10 @@ Ordenada por gravidade. Prefixos: **S** = screena, **M** = MNScr,
 | K-07 | BAIXO | kal-el | raiz | `.zip` e `.patch` de recuperação versionados | `git ls-files` |
 | K-08 | BAIXO | kal-el | disco | Branch `feat/login-comic-caption`, não `main` | `git branch` |
 
-**Total: 51 achados** — 4 críticos, 17 altos, 18 médios, 12 baixos.
+**Total: 63 achados — 4 críticos, 23 altos, 22 médios, 14 baixos.** (Contado da
+própria tabela, não estimado. Um achado adicional, o `R-09` do RSS Prime, foi
+**retirado** na verificação: a rota `/debug/superfeed` está protegida, e o
+docstring dela registra que já esteve aberta e foi corrigida.)
 
 E os de design, quantificados em [`12-design.md`](12-design.md): 0 px de imagem
 na primeira tela de celular, 17 reprovações de contraste, 18 alvos de toque
