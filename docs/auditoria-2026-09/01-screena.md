@@ -1218,6 +1218,85 @@ universos que vão de dezenas a 1,29 milhão de linhas.
 
 ---
 
+---
+
+## O que está exemplar — verificado, não elogiado
+
+Um relatório que só lista defeito engana tanto quanto um que só elogia. Estes
+pontos eu **medi**, do mesmo jeito que medi os achados, e eles são incomuns o
+bastante para merecer nome.
+
+### 1. `AggregateRating` — a invariante mais violada deste tipo de produto, honrada
+
+A ficha de `A Odisseia` exibe, na tela: **Cinerie Score 86**, **IMDb 8,5/10** e
+**Metacritic 88/100**. Li o JSON-LD da mesma página:
+
+```json
+{ "@type": "Movie",
+  "chaves": ["@context","@type","@id","name","url","mainEntityOfPage",
+             "datePublished","description","sameAs"] }
+```
+
+**`aggregateRating`: ausente. `review`: ausente.**
+
+É a escolha mais conservadora possível, e é a certa. Emitir um
+`AggregateRating` com a nota de terceiro seria a violação clássica — o Google
+mostraria estrelas atribuídas ao Cinerie por um número que é do IMDb. O sistema
+mostra a nota **na tela, com a fonte ao lado**, e **não** a declara como sua no
+dado estruturado.
+
+### 2. Schema correto em todos os tipos
+
+| Rota | JSON-LD emitido | Canonical |
+| --- | --- | --- |
+| `/pt/filmes/a-odisseia/` | `Movie` + `BreadcrumbList` | autorreferente ✔ |
+| `/pt/series/lanternas/` | `TVSeries` + `BreadcrumbList` | autorreferente ✔ |
+| `/pt/pessoas/tmdb-112013/` | `Person` + `BreadcrumbList` | autorreferente ✔ |
+| `/pt/noticias/{slug}/` | `NewsArticle` + `BreadcrumbList` | autorreferente ✔ |
+| `/pt/` | `Organization` + `WebSite` | autorreferente ✔ |
+
+Cinco de cinco, batendo com a tabela da governança, com `BreadcrumbList` em
+todas as fichas.
+
+### 3. `provider_api ≠ rating_source`, medido no dado
+
+A separação não é só de código. No banco:
+
+| `provider_api` | `rating_source` | Linhas |
+| --- | --- | ---: |
+| `omdb` | `imdb` | 750 |
+| `omdb` | `metacritic` | 399 |
+| `omdb` | `rotten_tomatoes` | 343 |
+
+**Um fornecedor técnico, três fontes editoriais distintas.** O fornecedor nunca
+aparece como autor da nota. É exatamente o que a invariante 2 pede, e está
+cumprido no dado, não só na intenção.
+
+### 4. A diferenciação filme/série pelos cinco sinais
+
+Label + badge + breadcrumb + schema + URL, verificados nos dois verticais. **É o
+item de governança mais bem cumprido de toda a auditoria.**
+
+### 5. O gate de licença é reavaliado na LEITURA, não só na escrita
+
+`entity-ratings.ts` e `entity-watch.ts` refazem a cadeia inteira a cada
+renderização, e o comentário explica por quê:
+
+> *"o trigger dispara em ESCRITA. Uma nota aprovada em janeiro continua
+> `display_allowed = true` para sempre, porque o tempo passar nao e um UPDATE.
+> […] O trigger e a trava de escrita; este modulo e o relogio."*
+
+Uma decisão de uso que expira sozinha, ou uma licença-mãe que foi superada,
+**tira a nota do ar sem que ninguém escreva nada**. Poucos sistemas fazem isso.
+
+### 6. Os comentários registram a medição que motivou a decisão
+
+Não achei um único comentário falso nos 33 arquivos que li — e achei vários que
+contam o defeito anterior com o número. O de `omdb-rotation.ts` corrige um
+enunciado errado com medição direta (`8.114/6.461` viraram `10.660/7.229`) e eu
+**reconferi no banco hoje: 10.661 e 7.230**. O comentário estava certo.
+
+
 ## O que está morto
 
 - **`workers/`** (9 arquivos Python) — esqueletos de roadmap, não executados por

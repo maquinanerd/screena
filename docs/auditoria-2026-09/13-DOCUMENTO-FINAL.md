@@ -77,6 +77,23 @@ Quase todos os achados graves são da mesma família: **coisas construídas com
 rigor que não estão sendo executadas**. É um problema de operação e de escopo,
 não de engenharia.
 
+E seis coisas que eu **medi** e que são incomunmente boas — detalhadas em
+[`01-screena.md`](01-screena.md) § "O que está exemplar":
+
+1. **`AggregateRating` não é falsificado.** A ficha mostra Score 86, IMDb 8,5 e
+   Metacritic 88 na tela, e o JSON-LD **não tem `aggregateRating` nem `review`**.
+   É a violação clássica deste tipo de produto, e aqui ela não acontece.
+2. **Schema correto nos cinco tipos** (`Movie`, `TVSeries`, `Person`,
+   `NewsArticle`, `Organization`+`WebSite`), com `BreadcrumbList` e canonical
+   autorreferente em todos.
+3. **`provider_api ≠ rating_source` cumprido no dado**: um `omdb` produzindo
+   `imdb` (750), `metacritic` (399) e `rotten_tomatoes` (343).
+4. **A diferenciação filme/série pelos cinco sinais**, nos dois verticais.
+5. **O gate de licença é reavaliado na leitura**, não só na escrita — uma
+   decisão que expira sozinha tira a nota do ar sem ninguém escrever nada.
+6. **Nenhum comentário falso** nos 33 arquivos que li do `screena`; e vários
+   registram a medição que motivou a decisão, incluindo os erros anteriores.
+
 ## 1.3. Os dez achados mais graves de todos os repositórios
 
 | # | Achado | Repo | Gravidade | Evidência |
