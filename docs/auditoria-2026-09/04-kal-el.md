@@ -145,7 +145,7 @@ consequência direta, kal-el **não participa de nenhuma disputa de cota** — o
 é uma vantagem real dele na FASE 4.
 
 A saída externa é o **webhook**, com assinatura HMAC-SHA256 e verificação em
-tempo constante ([`packages/events/src/index.ts`](packages/events/src/index.ts)):
+tempo constante (`packages/events/src/index.ts`):
 
 ```typescript
 export function verifyWebhookSignature(secret, body, signature): boolean {
@@ -186,7 +186,7 @@ Cinco grupos de rota, registrados em `apps/api/src/app.ts:91-95`:
 ### O achado 2, em detalhe
 
 Todo o conteúdo vive sob `siteRoutes`, e o grupo inteiro tem este `preHandler`
-([`apps/api/src/routes/site.ts:85`](apps/api/src/routes/site.ts)):
+(`apps/api/src/routes/site.ts:85`):
 
 ```typescript
 siteApp.addHook("preHandler", async (req) => {
@@ -227,7 +227,7 @@ Dois pontos a marcar:
 
 ### Permissão: a transição privilegiada é barrada na criação
 
-Este trecho ([`site.ts:107-112`](apps/api/src/routes/site.ts)) é bem pensado e
+Este trecho (`site.ts:107-112`) é bem pensado e
 merece registro, porque é o erro que quase todo CMS comete:
 
 ```typescript
@@ -247,7 +247,7 @@ do `screena` resolveu com atores distintos.
 Li `apps/api/src/services/articles.ts` (1.055 linhas) porque é o ponto onde o
 kal-el e o Payload fazem a mesma coisa, e é ali que a troca dói ou não dói.
 
-**O mapa do kal-el** ([`articles.ts:42`](apps/api/src/services/articles.ts)):
+**O mapa do kal-el** (`articles.ts:42`):
 
 ```typescript
 const WORKFLOW_TRANSITIONS: Record<ArticleStatus, ArticleStatus[]> = {
@@ -295,7 +295,7 @@ motivo se perde**: `draft` não distingue "estava errada e foi retirada" de
 definitivo pela API.
 
 **4. Arquivar uma matéria publicada exige dois passos.** `archiveArticle`
-([`articles.ts:1053`](apps/api/src/services/articles.ts)) chama
+(`articles.ts:1053`) chama
 `applyStatusTransition(..., "archived", ...)`, e `assertTransition("published",
 "archived")` encontra `allowed = ["draft"]` — **lança `invalidTransition`**. É
 preciso despublicar antes. Pode ser deliberado (tirar do índice antes de
@@ -307,11 +307,11 @@ transição que não explica a ordem.
 O arquivo carrega dois comentários que documentam defeitos reais já corrigidos —
 o mesmo padrão de honestidade do `screena`:
 
-- **`scheduled` sem `scheduledAt`** ([`articles.ts:413`](apps/api/src/services/articles.ts)):
+- **`scheduled` sem `scheduledAt`** (`articles.ts:413`):
   *"The scheduler's due query is `status = 'scheduled' AND scheduled_at <= now()`
   […] invisible to the worker forever. It sat in the queue state, never
   published"*. Agora é recusado na criação.
-- **A nota editorial do estado atual** ([`articles.ts:231`](apps/api/src/services/articles.ts)):
+- **A nota editorial do estado atual** (`articles.ts:231`):
   filtrar por `to = row.status` e pegar a mais recente alcançava uma transição
   **antiga** — uma matéria rejeitada com "Rever a introdução", corrigida e
   republicada mostrava a rejeição antiga como se fosse atual. A correção pega a
@@ -421,7 +421,7 @@ Cobertura de linhas: **não há ferramenta configurada**.
 
 ### O achado 1 — o comentário que envelheceu em um dia
 
-[`apps/cms/Dockerfile:28`](apps/cms/Dockerfile):
+`apps/cms/Dockerfile:28`:
 
 ```dockerfile
 COPY --from=build /app/apps/cms/.next/standalone ./
@@ -561,7 +561,7 @@ e em **dois** eu corrigi o enunciado. Verificação completa em
 
 O Codex disse *"`StorageProvider.delete()` existe, mas tem zero chamadas"*.
 Confirmei, e a forma exata é pior —
-[`apps/api/src/services/media.ts:222`](../../../../../Users/pablo/Documents/OpenCode/Kal%20El/apps/api/src/services/media.ts):
+`apps/api/src/services/media.ts:222`:
 
 ```ts
 export async function deleteMedia(db: Db, storage: StorageProvider, siteId: string,
@@ -583,7 +583,7 @@ e **não é chamado em nenhum lugar de `apps/` ou `packages/`**. Conteúdo remov
 
 ### C-13 · O teste de "reversibilidade" é uma demolição — MÉDIO
 
-[`packages/db/tests/migration.test.ts:36-65`](../../../../../Users/pablo/Documents/OpenCode/Kal%20El/packages/db/tests/migration.test.ts):
+`packages/db/tests/migration.test.ts:36-65`:
 
 ```ts
 // Reverse of every applied migration: reversibility is a stated engineering rule.
@@ -606,9 +606,9 @@ mente".
 ### C-11 · Segredo de webhook em repouso — MÉDIO *(enunciado do Codex corrigido)*
 
 O fato é verdadeiro:
-[`webhooks.ts:120-123`](../../../../../Users/pablo/Documents/OpenCode/Kal%20El/apps/api/src/services/webhooks.ts)
+`webhooks.ts:120-123`
 grava o segredo direto na coluna, enquanto
-[`tokens.ts:22`](../../../../../Users/pablo/Documents/OpenCode/Kal%20El/apps/api/src/services/tokens.ts)
+`tokens.ts:22`
 grava `tokenHash: hashToken(token)`.
 
 **Mas o Codex enquadrou como contradição, e não é.** A assimetria é *necessária*:

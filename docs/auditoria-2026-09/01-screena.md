@@ -419,8 +419,8 @@ encontrei migration que zere dado sem reabilitar.
 | --- | --- |
 | Variável | `OMDB_API_KEY` |
 | Cota | **1.000/dia**, e a OMDb **não publica cabeçalho de cota** |
-| Como sabe que estourou | Ela responde erro com **HTTP 200** e campo `Error`; quem reconhece é `services/ratings/src/omdb/error-response.ts`, que chama `tripCircuit()` — o client expõe o botão e não interpreta ([`api-clients/omdb/src/client.ts:96`](api-clients/omdb/src/client.ts)) |
-| Envelope declarado | **700/dia** ([`packages/config/src/omdb-rotation.ts:93`](packages/config/src/omdb-rotation.ts)), com 150 de folga sobre o limite útil de 850 |
+| Como sabe que estourou | Ela responde erro com **HTTP 200** e campo `Error`; quem reconhece é `services/ratings/src/omdb/error-response.ts`, que chama `tripCircuit()` — o client expõe o botão e não interpreta ([`api-clients/omdb/src/client.ts:96`](../../api-clients/omdb/src/client.ts)) |
+| Envelope declarado | **700/dia** ([`packages/config/src/omdb-rotation.ts:93`](../../packages/config/src/omdb-rotation.ts)), com 150 de folga sobre o limite útil de 850 |
 | Divisão | 85% cobertura / 15% atualização; 58% filme / 42% série |
 
 **A conta da volta, com os números que medi hoje:**
@@ -590,7 +590,7 @@ o que é dependência do que é menção:
 
 **1. `@screena/rapidapi-core` NÃO é removível — e o nome mente.**
 `api-clients/omdb/package.json` declara `"@screena/rapidapi-core": "workspace:*"`,
-e [`api-clients/omdb/src/client.ts:20`](api-clients/omdb/src/client.ts) importa
+e [`api-clients/omdb/src/client.ts:20`](../../api-clients/omdb/src/client.ts) importa
 dele `RapidApiHttpClient`, `buildCacheKey` e `createRapidApiFetchTransport`. O
 pacote é a infraestrutura HTTP compartilhada (retry, breaker, cache-key,
 sanitização) do **único fornecedor de notas em uso**. Não é código morto: é
@@ -630,9 +630,9 @@ apresentado como fonte.
 ## D4 — Filas, jobs, agendamento
 
 O relógio é o `screen-cron`, rodando `@screena/sync scheduler:start`. A tabela
-de ritmos ([`services/sync/src/scheduler/rhythms.ts`](services/sync/src/scheduler/rhythms.ts))
+de ritmos ([`services/sync/src/scheduler/rhythms.ts`](../../services/sync/src/scheduler/rhythms.ts))
 tem **13 filas**. O teto global é `CINERIE_SCHEDULER_BATCH_LIMIT`, default
-**200** ([`services/sync/src/scheduler/config.ts:110`](services/sync/src/scheduler/config.ts)) —
+**200** ([`services/sync/src/scheduler/config.ts:110`](../../services/sync/src/scheduler/config.ts)) —
 e **confirmei no painel que essa variável NÃO está definida**, logo 200 é o valor
 vigente. `CINERIE_SCHEDULER_APPLY=true`: o agendador escreve de verdade.
 
@@ -664,7 +664,7 @@ dizer não é "o catálogo está vazio" — é **"o catálogo é carregado, e nu
 reconferido"**.
 
 `people` também é a única seleção com `ORDER BY e."id" ASC` puro
-([`selection.ts:283`](services/sync/src/scheduler/runtime/selection.ts)); as
+([`selection.ts:283`](../../services/sync/src/scheduler/runtime/selection.ts)); as
 outras usam `popularity DESC NULLS LAST, id ASC`. O comentário admite a razão
 ("`people` nao tem `popularity` no schema"). Ordenar por id em fila de refresh
 significa que quem tem id alto é servido por último, sempre.
@@ -822,12 +822,12 @@ Tempos medidos com `Cache-Control: no-cache`:
 
 ### O subrequest do middleware
 
-[`apps/web/middleware.ts:38`](apps/web/middleware.ts) faz, em **toda** requisição
+[`apps/web/middleware.ts:38`](../../apps/web/middleware.ts) faz, em **toda** requisição
 que não seja asset, um `fetch` para `/api/seo/redirect` da própria origem. Duas
 observações:
 
 - O índice de redirects é cacheado 30 s em memória
-  ([`redirect-lookup.ts:40`](apps/web/src/server/seo/redirect-lookup.ts)), então
+  ([`redirect-lookup.ts:40`](../../apps/web/src/server/seo/redirect-lookup.ts)), então
   o banco **não** é consultado por requisição. Bom.
 - Mas o **round-trip HTTP acontece sempre**, para consultar uma tabela de
   **479 linhas**. O próprio comentário do arquivo (linha 22) reconhece: "com
@@ -971,7 +971,7 @@ padrão `implementado ≠ executado` em estado puro.
 O código trata isso com cuidado incomum: existe `src/lib/section-absence.ts` e a
 função `watchAbsenceReason` deriva o motivo da ausência **do estado**, com um
 comentário longo explicando por que um motivo fixo "envelhece sozinho"
-([`entity-watch.ts:104`](apps/web/src/server/entity-watch.ts)). E o descarte de
+([`entity-watch.ts:104`](../../apps/web/src/server/entity-watch.ts)). E o descarte de
 `offer_type` desconhecido virou `console.warn` com o valor cru, depois que um
 `continue` mudo fez sumir toda oferta `ads`.
 
@@ -1016,7 +1016,7 @@ existem e são reais.
 A rota interna `/api/internal/entity-resolve` é o exemplo bom do repositório:
 nasce desligada (`503` quando não há chave, distinguido de `401` de propósito),
 recusa chave com menos de 24 caracteres, faz **comparação em tempo constante**
-com `timingSafeEqual` ([`entity-resolve-auth.ts:103`](apps/web/src/lib/entity-resolve-auth.ts)),
+com `timingSafeEqual` ([`entity-resolve-auth.ts:103`](../../apps/web/src/lib/entity-resolve-auth.ts)),
 tem rate limit, `X-Robots-Tag: noindex`, `no-store`, ausência deliberada de CORS
 e `405` explícito para outros métodos. Não devolve palpite: "um `null` é
 inofensivo; um id errado é uma mentira publicada".
@@ -1027,7 +1027,7 @@ Limitação declarada pelo próprio código: o rate limit é **por processo**
 ### Entrada não confiável
 
 Achei **um** `$queryRawUnsafe` no caminho do agendador
-([`selection.ts:278`](services/sync/src/scheduler/runtime/selection.ts)) — mas
+([`selection.ts:278`](../../services/sync/src/scheduler/runtime/selection.ts)) — mas
 ele é parametrizado (`$1`, `$2`), sem concatenação de entrada. Não é injeção.
 Não encontrei `eval` em código de produção.
 
@@ -1146,7 +1146,7 @@ no `package.json`). Digo isso em vez de inventar um número.
 **Procurei ativamente e não encontrei nenhum.** O que encontrei foi o oposto, e
 merece registro: os testes deste repositório carregam **controles positivos e
 negativos explícitos**, com o motivo escrito. Exemplo literal em
-[`dry-run-precheck.test.ts:105`](services/ingestion/src/cli/__tests__/dry-run-precheck.test.ts):
+[`dry-run-precheck.test.ts:105`](../../services/ingestion/src/cli/__tests__/dry-run-precheck.test.ts):
 
 ```
 // Sem isto, (2) e (3) passariam por vacuidade se o `spawnSync` falhar ao

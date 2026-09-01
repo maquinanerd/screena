@@ -234,7 +234,7 @@ que **passa ao largo** de toda a validação de destino e de redirect que
 
 #### C-05 · O "orçamento por artigo" não limita o escritor principal — **CONFIRMADO** · ALTO
 
-[`app/policy_engine.py:405-415`](../../../Portal%20The%20News/Nerd/MNScr/app/policy_engine.py):
+`app/policy_engine.py:405-415`:
 
 ```python
 def consume(self, tokens: int, stage: str) -> None:
@@ -263,7 +263,7 @@ mais amplo do que o que existe**. É a categoria "o que mente".
 
 O Codex nomeou o feed exato. Confirmei a aritmética inteira:
 
-[`app/config.py:26-32`](../../../Portal%20The%20News/Nerd/MNScr/app/config.py) — ordem **fixa**, cinco feeds:
+`app/config.py:26-32` — ordem **fixa**, cinco feeds:
 
 ```python
 PIPELINE_ORDER: List[str] = [
@@ -272,7 +272,7 @@ PIPELINE_ORDER: List[str] = [
 ]
 ```
 
-[`app/pipeline.py:126-127,3125,3143`](../../../Portal%20The%20News/Nerd/MNScr/app/pipeline.py):
+`app/pipeline.py:126-127,3125,3143`:
 
 ```python
 MAX_PER_FEED_CYCLE = int(os.getenv('MAX_PER_FEED_CYCLE', 3))
@@ -330,7 +330,7 @@ aparece: **os três achados do balde "só Codex" são melhores que os meus doze.
 
 Este é o melhor achado técnico da auditoria inteira, e eu não cheguei perto dele.
 
-[`superfeed/v2/gemini_resolver.py:272-274`](../../../Portal%20The%20News/RSSPRIME-main/superfeed/v2/gemini_resolver.py):
+`superfeed/v2/gemini_resolver.py:272-274`:
 
 ```python
 try:
@@ -351,7 +351,7 @@ O timeout não limita tempo de parede. Ele só decide quando a variável de resu
 300 s — e só então registra "timeout".
 
 **O controle negativo está no próprio repositório**, e é o que torna este achado
-indiscutível. [`superfeed/embedding_client.py:318-322`](../../../Portal%20The%20News/RSSPRIME-main/superfeed/embedding_client.py)
+indiscutível. `superfeed/embedding_client.py:318-322`
 faz a **mesma coisa, do jeito certo**:
 
 ```python
@@ -378,7 +378,7 @@ Dois de três lugares com o defeito, e a correção já escrita no terceiro.
 
 #### C-08 · A fila marca `PUBLISHED` sem que ninguém tenha publicado — **CONFIRMADO, e pior do que o enunciado** · CRÍTICO
 
-[`app/scheduler.py:869-875`](../../../Portal%20The%20News/RSSPRIME-main/app/scheduler.py):
+`app/scheduler.py:869-875`:
 
 ```python
 with open(filepath, "w", encoding="utf-8") as fh:
@@ -394,13 +394,13 @@ Fui atrás das consequências, e são três — cada uma verificada:
 **1. Ninguém distingue o "marcado" do publicado de verdade.** Varri `app/` e
 `superfeed/` inteiros por qualquer comparação de `wp_post_id` contra `0`/NULL. Os
 únicos resultados são as duas linhas que *atribuem* o valor e um comentário que
-admite o problema — [`superfeed/cluster_store.py:605`](../../../Portal%20The%20News/RSSPRIME-main/superfeed/cluster_store.py):
+admite o problema — `superfeed/cluster_store.py:605`:
 
 > *"…so a published row keeps `wp_post_id=0` forever."*
 
 O discriminador existe no dado e **não é lido por nenhuma consulta do sistema**.
 
-**2. A retenção apaga.** [`app/retention.py:50`](../../../Portal%20The%20News/RSSPRIME-main/app/retention.py):
+**2. A retenção apaga.** `app/retention.py:50`:
 `TERMINAL_CLUSTER_STATUSES = ("PUBLISHED", "EXPIRED", "MERGED")`, com
 `DEFAULT_RETENTION_HOURS = 72.0`. O cluster marcado é tratado como *"já cumpriu
 seu papel"* e sai do banco quente em 72 h — tenha sido consumido ou não.
@@ -425,7 +425,7 @@ acima, que ele não enumerou.**
 
 #### C-09 · Migração em runtime derruba e reconstrói uma tabela — **CONFIRMADO, com atenuantes** · BAIXO
 
-[`superfeed/schema.py:206-233`](../../../Portal%20The%20News/RSSPRIME-main/superfeed/schema.py) executa,
+`superfeed/schema.py:206-233` executa,
 com `PRAGMA foreign_keys=OFF`: cria `sf_raw_items_new`, copia tudo,
 `DROP TABLE sf_raw_items`, renomeia.
 
@@ -473,7 +473,7 @@ afirmava que o diretório não existia, e ele existia desde 2026-08-20.
 O Codex disse *"`StorageProvider.delete()` existe, mas tem zero chamadas"*.
 Confirmei — e a forma exata é pior:
 
-[`apps/api/src/services/media.ts:222`](../../../../../Users/pablo/Documents/OpenCode/Kal%20El/apps/api/src/services/media.ts):
+`apps/api/src/services/media.ts:222`:
 
 ```ts
 export async function deleteMedia(db: Db, storage: StorageProvider, siteId: string,
@@ -505,7 +505,7 @@ próprio comentário do arquivo diz sobre a grade).
 
 #### C-11 · Segredo de webhook em texto recuperável — **CONFIRMADO no fato, CORRIJO o enquadramento** · MÉDIO
 
-O fato: [`apps/api/src/services/webhooks.ts:120-123`](../../../../../Users/pablo/Documents/OpenCode/Kal%20El/apps/api/src/services/webhooks.ts)
+O fato: `apps/api/src/services/webhooks.ts:120-123`
 grava o segredo direto na coluna:
 
 ```ts
@@ -514,7 +514,7 @@ const secret = body.secret ?? randomBytes(32).toString("hex");
 ```
 
 E o contraste com os service tokens é real —
-[`apps/api/src/services/tokens.ts:22`](../../../../../Users/pablo/Documents/OpenCode/Kal%20El/apps/api/src/services/tokens.ts)
+`apps/api/src/services/tokens.ts:22`
 grava `tokenHash: hashToken(token)`.
 
 **Mas o Codex enquadrou como contradição, e não é.** A assimetria é *necessária*:
@@ -540,7 +540,7 @@ está deliberadamente ausente do DTO (`linha 12`).
 
 O que o produto promete:
 
-- [`README.md:3`](../../../../../Users/pablo/Documents/OpenCode/Kal%20El/README.md): *"Kal El is an **API-first** editorial CMS designed to power multiple independent portals"*
+- `README.md:3`: *"Kal El is an **API-first** editorial CMS designed to power multiple independent portals"*
 - `README.md:7`: *"A Next.js portal, a Lovable application, or another HTTP-capable client should consume the same stable Editorial API."*
 - `docs/01-ARCHITECTURE.md:23-27`: um diagrama com uma caixa chamada **`Delivery API`** alimentando "Next portal / Lovable app / other clients"
 
@@ -561,7 +561,7 @@ uma impossibilidade.
 
 #### C-13 · O teste de reversibilidade não testa reversibilidade — **CONFIRMADO** · MÉDIO
 
-[`packages/db/tests/migration.test.ts:36-65`](../../../../../Users/pablo/Documents/OpenCode/Kal%20El/packages/db/tests/migration.test.ts):
+`packages/db/tests/migration.test.ts:36-65`:
 
 ```ts
 // Reverse of every applied migration: reversibility is a stated engineering rule.

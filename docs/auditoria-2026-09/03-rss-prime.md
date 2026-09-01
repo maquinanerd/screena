@@ -221,7 +221,7 @@ SEO não se aplica: a saída é feed XML, não página indexável.
 
 ### O que está certo
 
-`require_admin` ([`app/server.py:180`](app/server.py)) é **fechado por padrão**:
+`require_admin` (`app/server.py:180`) é **fechado por padrão**:
 
 ```python
 if not ADMIN_KEY:
@@ -229,7 +229,7 @@ if not ADMIN_KEY:
 ```
 
 Sem chave configurada, o endpoint **nega** — não libera. E a comparação é em
-tempo constante ([`app/utils.py:217`](app/utils.py)):
+tempo constante (`app/utils.py:217`):
 
 ```python
 return hmac.compare_digest(provided, expected)
@@ -242,7 +242,7 @@ definida no serviço `feed` — confirmei no painel (só a presença; não li o 
 
 **1. `/debug/superfeed/<topic>`: FECHADO, está protegido.** Deixei isso como
 NÃO DETERMINADO na primeira passagem e voltei para verificar. A rota tem
-`@require_admin` ([`app/server.py:1486`](app/server.py)), e o docstring registra
+`@require_admin` (`app/server.py:1486`), e o docstring registra
 que já foi diferente:
 
 > *"Always requires a valid ADMIN_KEY header […]. It used to be open whenever
@@ -253,7 +253,7 @@ Ou seja: era um buraco real, foi fechado, e o motivo ficou escrito. Bom.
 
 **2. ReDoS em `parse_query_filter`: FECHADO, não existe.** Também levantei como
 suspeita e fui ao consumidor. Os termos são usados em
-[`app/store.py:368`](app/store.py):
+`app/store.py:368`:
 
 ```python
 like_conditions = ["(title LIKE ? OR description LIKE ?)" for _ in search_terms]
@@ -471,7 +471,7 @@ Verificação completa em [`09-confronto.md`](09-confronto.md) §6.3.
 
 ### C-08 · A fila marca `PUBLISHED` sem que ninguém tenha publicado — CRÍTICO
 
-[`app/scheduler.py:869-875`](../../../Portal%20The%20News/RSSPRIME-main/app/scheduler.py):
+`app/scheduler.py:869-875`:
 
 ```python
 with open(filepath, "w", encoding="utf-8") as fh:
@@ -488,12 +488,12 @@ verificação**, e são o que torna isto crítico:
 **1. Ninguém distingue o marcado do publicado.** Varri `app/` e `superfeed/`
 inteiros por qualquer comparação de `wp_post_id` contra `0`/NULL. Só existem as
 duas linhas que *atribuem* o valor — e um comentário que admite o problema
-([`superfeed/cluster_store.py:605`](../../../Portal%20The%20News/RSSPRIME-main/superfeed/cluster_store.py)):
+(`superfeed/cluster_store.py:605`):
 *"…so a published row keeps `wp_post_id=0` forever."* O discriminador existe no
 dado e **nenhuma consulta o lê**.
 
 **2. A retenção apaga.**
-[`app/retention.py:50`](../../../Portal%20The%20News/RSSPRIME-main/app/retention.py):
+`app/retention.py:50`:
 `TERMINAL_CLUSTER_STATUSES = ("PUBLISHED", "EXPIRED", "MERGED")`, com
 `DEFAULT_RETENTION_HOURS = 72.0`. O cluster sai do banco quente em 72 h, tenha
 sido consumido ou não. O arquivo da fila também.
@@ -515,7 +515,7 @@ Cinerie.
 
 ### C-07 · O timeout do resolver Gemini não limita tempo de parede — ALTO
 
-[`superfeed/v2/gemini_resolver.py:272-274`](../../../Portal%20The%20News/RSSPRIME-main/superfeed/v2/gemini_resolver.py):
+`superfeed/v2/gemini_resolver.py:272-274`:
 
 ```python
 try:
@@ -531,7 +531,7 @@ a thread terminar antes de o `except` executar. Se a chamada travar por 300 s, o
 ciclo espera 300 s e só então registra "timeout".
 
 **O controle negativo está neste mesmo repositório**, e é o que torna o achado
-indiscutível — [`superfeed/embedding_client.py:318-322`](../../../Portal%20The%20News/RSSPRIME-main/superfeed/embedding_client.py)
+indiscutível — `superfeed/embedding_client.py:318-322`
 faz a mesma coisa do jeito certo:
 
 ```python
@@ -555,7 +555,7 @@ propósito num arquivo. Nos outros dois, o `with` reintroduz a espera em silênc
 
 ### C-09 · Migração de runtime derruba e reconstrói uma tabela — BAIXO
 
-[`superfeed/schema.py:206-233`](../../../Portal%20The%20News/RSSPRIME-main/superfeed/schema.py)
+`superfeed/schema.py:206-233`
 executa, com `PRAGMA foreign_keys=OFF`: cria tabela nova, copia tudo,
 `DROP TABLE sf_raw_items`, renomeia.
 

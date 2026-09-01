@@ -100,7 +100,7 @@ ambos apontando para `.venv\Scripts\python.exe` na pasta do repositório.
 
 O modo contínuo é `BlockingScheduler(timezone="America/Sao_Paulo")` com
 `add_job(run_pipeline_cycle_guarded, "interval", minutes=CHECK_INTERVAL_MINUTES)`
-([`app/entrypoint.py:162`](app/entrypoint.py)).
+(`app/entrypoint.py:162`).
 
 E existe `docs/operations/mnscr-easypanel.md` — um runbook de implantação para
 um serviço que não foi criado. O comentário de `app/config.py:89` também aponta
@@ -111,7 +111,7 @@ para ele. **A documentação descreve um estado que não existe.**
 ## D2 — Persistência
 
 **SQLite**, não PostgreSQL. `DB_PATH = os.getenv('MNSCR_DB_PATH', 'data/app.db')`
-([`app/config.py:90`](app/config.py)).
+(`app/config.py:90`).
 
 **25 tabelas** criadas por `CREATE TABLE` no código:
 
@@ -124,7 +124,7 @@ para ele. **A documentação descreve um estado que não existe.**
 `rssprime_events` · `seen_articles` · `superfeed_covered_urls`
 
 O desenho é bom: há **event store com revisão** (`UNIQUE(event_key, revision)`,
-[`app/event_store.py:115`](app/event_store.py)) e replay por revisão
+`app/event_store.py:115`) e replay por revisão
 (`entrypoint.py:531`), o que permite reprocessar um acontecimento exatamente
 como ele chegou.
 
@@ -146,7 +146,7 @@ dono, fora do que esta auditoria mediu. Fecha com:
 
 | Provedor | Variável | Cota | Como sabe que estourou |
 | --- | --- | --- | --- |
-| **Gemini** | `GEMINI_KEY_1` (o código aceita `GEMINI_KEY*`, `GEMINI_API*`) | **diária por chave (RPD)** | Trata `google_exceptions.ResourceExhausted` e HTTP 429 explicitamente ([`app/ai_client_gemini.py:380`](app/ai_client_gemini.py)) |
+| **Gemini** | `GEMINI_KEY_1` (o código aceita `GEMINI_KEY*`, `GEMINI_API*`) | **diária por chave (RPD)** | Trata `google_exceptions.ResourceExhausted` e HTTP 429 explicitamente (`app/ai_client_gemini.py:380`) |
 | **DeepSeek** | `DEEPSEEK_API_KEY` | não determinada | — |
 | **TMDB** | `TMDB_API_KEY` / `TMDB_ACCESS_TOKEN` (ambos com o token v4) | de ritmo | — |
 | **Cinerie** (interno) | `CINERIE_CATALOG_RESOLVE_API_KEYS`, `MNSCR_CINERIE_MEDIA_API_KEY`, `MNSCR_PAYLOAD_API_KEY` | — | contrato versionado com preflight |
@@ -312,7 +312,7 @@ exatamente o que falta no log hoje.
 
 ### O achado 1 — SSRF, em detalhe
 
-O repositório tem [`app/safe_http.py`](app/safe_http.py), e o cabeçalho dele é
+O repositório tem `app/safe_http.py`, e o cabeçalho dele é
 uma das melhores peças de documentação de segurança que li neste ecossistema.
 Ele nomeia o alvo clássico (`169.254.169.254`), lista **três defesas**
 (destino resolvido, verificação a **cada salto** de redirect, teto de bytes
@@ -321,7 +321,7 @@ DNS rebinding) em vez de escondê-la.
 
 O `extractor.py` tem **duas** funções de busca:
 
-**A que respeita a defesa** — [`app/extractor.py:469`](app/extractor.py):
+**A que respeita a defesa** — `app/extractor.py:469`:
 
 ```python
 def _get(url, timeout=25, tries=2):
@@ -332,7 +332,7 @@ def _get(url, timeout=25, tries=2):
                          max_bytes=ARTICLE_MAX_BYTES)
 ```
 
-**A que a burla** — [`app/extractor.py:906`](app/extractor.py):
+**A que a burla** — `app/extractor.py:906`:
 
 ```python
 self.session = requests.Session()
@@ -549,7 +549,7 @@ Dois achados **altos** deste repositório não são meus. Verificação completa
 
 ### C-05 · O "orçamento por artigo" não limita o escritor principal — ALTO
 
-[`app/policy_engine.py:405-415`](../../../Portal%20The%20News/Nerd/MNScr/app/policy_engine.py):
+`app/policy_engine.py:405-415`:
 
 ```python
 def consume(self, tokens: int, stage: str) -> None:
@@ -575,9 +575,9 @@ do que o que existe**. `budget` limita as fases pós-escrita, e se chama
 ### C-06 · Inanição determinística do quinto feed — ALTO
 
 Ordem **fixa**, cinco feeds
-([`app/config.py:26-32`](../../../Portal%20The%20News/Nerd/MNScr/app/config.py)),
+(`app/config.py:26-32`),
 tetos de 3 por feed e 10 por ciclo
-([`app/pipeline.py:126-127,3143`](../../../Portal%20The%20News/Nerd/MNScr/app/pipeline.py)).
+(`app/pipeline.py:126-127,3143`).
 Com todos os feeds tendo pelo menos 3 pendentes:
 
 | Ordem | Feed | Recebe | Acumulado |
