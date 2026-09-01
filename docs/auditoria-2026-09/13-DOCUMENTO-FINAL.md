@@ -479,8 +479,9 @@ desta auditoria.
 
 | # | Item | Comando / consulta |
 | --- | --- | --- |
-| 1 | Por que o `screen-cron` aparece **amarelo** no painel, se as filas estão rodando | Logs do serviço no painel — o estado do processo, não das filas (as filas eu já medi) |
-| 1b | Por que `airing_series` está 7 dias em silêncio numa fila diária | `SELECT * FROM api_sync_logs WHERE run_id='scheduler:airing_series' ORDER BY created_at DESC LIMIT 20` |
+| 1 | **Por que `ratings_omdb` não emite requisição em 8 de 10 dias.** Eliminei duas hipóteses por medição: não é `no_slots` (a aritmética exige `spentToday>=850` e o gasto foi 0) e não é a fronteira do dia (servidor em `Etc/UTC`, sem deslocamento). Restam "zero candidatos" e "filho morre antes de emitir", indistinguíveis de fora porque `error_code` é NULL em 75 de 77 falhas | `SELECT status, error_code, items_processed, quota_cost, created_at FROM api_sync_logs WHERE provider_api='omdb' ORDER BY created_at DESC LIMIT 40;` + log do `screen-cron` num dia de custo zero |
+| 1b | Por que o `screen-cron` aparece amarelo, se as filas rodam | Logs do serviço — é o estado do PROCESSO, não das filas |
+| 1c | Por que `airing_series` está 7 dias em silêncio numa fila diária | Log do `screen-cron`; `catalog_jobs` não registra a tentativa que não enfileirou |
 | 2 | Se o SQLite do RSS Prime sobrevive a redeploy | Console do `feed`: `ls -la /app/data/` e conferir o volume do container |
 | 3 | Qual commit cada um dos 5 serviços está rodando | `CINERIE_BUILD_SHA` é inconfiável; medir por hash do fonte dentro do container |
 | 4 | Custo servidor-a-servidor do subrequest do middleware | Instrumentar `/api/seo/redirect` com `Server-Timing` |

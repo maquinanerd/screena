@@ -491,12 +491,53 @@ e **`omdb_child_failed` em 24**. Ou seja: **as 75 falhas do dia 31 não têm có
 de erro registrado.** O log diz que falhou e não diz por quê — e o campo
 `error_code` existe na tabela para isso.
 
+#### E a hipótese que eu descartei, com evidência
+
+Escrevi primeiro que a explicação era `no_slots` — a fila acreditando não ter
+fatia de cota. **Fui verificar a aritmética e ela não fecha.**
+
+[`quota.ts:49`](../../services/sync/src/scheduler/quota.ts):
+
+```typescript
+const usable = Math.max(0, dailyLimit - Math.max(0, spentToday) - reserve)
+return Math.max(0, Math.min(Math.trunc(batchLimit), usable))
+```
+
+Com `dailyLimit = 1.000`, `reserve = 150` e `batchLimit = 700`, o resultado só é
+**0** se `spentToday >= 850`. Nos 8 dias em questão o gasto registrado foi
+**zero**. Logo, `slots` valia **700**, não 0 — e o caminho `no_slots` **não pode**
+ser a explicação.
+
+Descartei também o suspeito seguinte, a fronteira do dia. `readSpentToday`
+([`facts.ts:181`](../../services/sync/src/scheduler/runtime/facts.ts)) monta o
+recorte com `created_at >= $2::timestamptz AT TIME ZONE 'UTC'`, uma construção
+que desloca a janela quando a sessão não é UTC. Medi no servidor:
+`current_setting('TimeZone') = Etc/UTC` e
+`api_sync_logs.created_at` é `timestamp without time zone`. **Sem deslocamento.**
+E rodei a própria consulta do `readSpentToday` contra hoje: devolve `0`,
+coerente com o log.
+
+**Então: NÃO DETERMINEI por que a fila não emite requisição em 8 de 10 dias.**
+O que consegui foi eliminar as duas explicações mais prováveis. As que sobram —
+zero candidatos selecionados, ou o processo filho morrendo antes de emitir — não
+podem ser distinguidas de fora, **porque `error_code` é NULL em 75 das 77
+falhas**. O campo existe na tabela e não é preenchido.
+
+Fecha com, em ordem:
+
+```sql
+SELECT status, error_code, items_processed, items_created, quota_cost, created_at
+  FROM api_sync_logs WHERE provider_api='omdb' ORDER BY created_at DESC LIMIT 40;
+```
+
+e o log do container `screen-cron` no dia de um ciclo de custo zero, procurando
+a linha `no_slots` (que provaria a primeira hipótese apesar da aritmética) ou
+`omdb_child_failed`.
+
 **O achado, corrigido e em três partes:**
 
-1. **A fila roda todos os dias e não gasta cota em 8 de 10.** O motivo declarado
-   é `no_slots` — ela acredita não ter fatia de cota. Por que, num dia em que
-   nada foi gasto, a conta de `spentToday` devolve algo que zera os slots, é o
-   que fecha este achado — e é a pergunta a fazer primeiro.
+1. **A fila roda todos os dias e não gasta cota em 8 de 10** — e a causa **não
+   está determinada**, com duas hipóteses eliminadas por medição.
 2. **Quando roda, estoura o envelope** (850 e 923 contra 700 declarados).
 3. **Quando falha, não registra a causa** — `error_code` NULL em 75 de 77
    falhas.
