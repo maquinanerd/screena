@@ -32,9 +32,17 @@ carrega como foi obtida: **medido no banco**, **medido em execução**, **medido
 por requisição**, **lido no código**, **inferido** ou **não determinado**.
 
 **Onde a medição contrariou o que eu já tinha escrito, eu reescrevi.** Isso
-aconteceu três vezes nesta auditoria, e as três estão marcadas no texto:
-as chaves compartilhadas (FASE 0), a cobertura de teste do kal-el (FASE 1) e a
-volta da fila `people` (FASE 1).
+aconteceu **seis** vezes nesta auditoria, e as seis estão marcadas no texto:
+
+1. **As chaves compartilhadas** (FASE 0) — valia para os `.env` do disco, não para produção.
+2. **A volta da fila `people`** (FASE 1) — inferi catálogo vazio; 72% estava sincronizado.
+3. **A cobertura de teste do kal-el** (FASE 1) — chamei de rasa; são 244 testes verdes.
+4. **O shard de pessoas** (FASE 1) — não foi esquecido; responde 404 porque o gate de biografia não passa ninguém.
+5. **A CLI de promoção de ofertas** (FASE 1) — achei que não cobria TMDB; cobre. O bloqueio é a falta de modo em lote.
+6. **O `screen-cron`** (FASE 1) — tratei o ponto amarelo como agendador morto; ele está vivo, e só duas filas quebraram.
+
+Cada uma dessas correções tornou o achado **mais** útil, não menos. É por isso
+que a regra existe.
 
 ---
 
@@ -109,18 +117,24 @@ Ordenadas por (impacto ÷ esforço), com o que cada uma destrava:
 
 | # | Fazer | Esforço | Destrava |
 | --- | --- | --- | --- |
-| **1** | **Descobrir por que `screen-cron` está amarelo e religar o relógio** | baixo | É o relógio de **13 filas**. Sem ele, a OMDb roda 2 dias em 7, as ofertas não giram, o frescor não é mantido. **É a causa provável de metade dos achados desta lista.** |
+| **1** | **Consertar `ratings_omdb` e `airing_series`** — as duas únicas filas de fato quebradas | baixo | **Medi fila a fila: o agendador está VIVO.** `changes` enfileirou 2 min antes da medição; `watch_offers` buscou 5.782 ofertas em 24 h. Só `ratings_omdb` (2 de 7 dias) e `airing_series` (diária, 7 dias muda) estão quebradas — e a primeira é a causa direta de 0,91% de cobertura de nota |
 | **2** | **Pôster acima da dobra na ficha** | baixo | 91,3% dos filmes já têm `poster_path`. É ordem de blocos, não dado. Maior ganho visual do documento |
 | **3** | **Fechar o `_fetch_html` do MNScr no `safe_get`** | baixo | Fecha um SSRF real, alcançável por URL de feed, contra a LAN do dono |
 | **4** | **Dar modo em lote à CLI de promoção, e então decidir a licença** | baixo (engenharia) + decisão humana | "Onde assistir" sai de 147 para dezenas de milhares. **Atenção:** a CLI exige `--ids` explícito e não tem modo em massa — sem o seletor, a decisão de licença não tem como virar produto |
 | **5** | **Expurgo do `api_cache` vencido** | baixo | Devolve **3,6 GB** — 36% do banco — e reduz a pressão de I/O que hoje mantém o `screen-db` acima de 100% de CPU |
 
-> **Por que o `screen-cron` é o nº 1.** Ele não aparece na lista dos dez achados
-> mais graves, e mesmo assim é a primeira coisa a fazer. A razão é que ele é
-> **causa**, não sintoma: os achados 3 e 5 e boa parte do 6 são consequências
-> plausíveis de o agendador estar fora do ar. Consertar o efeito antes da causa é
-> como preencher `people.biography` sem mexer em `biography_source_status` — e
-> esse erro exato já foi cometido 2.152 vezes neste sistema.
+> **Uma correção que a medição me impôs.** A primeira versão desta lista dizia
+> "religar o `screen-cron`", tratando o ponto amarelo do painel como prova de
+> agendador morto. Fui medir fila a fila, pelo `run_id` que o agendador carimba
+> em cada job, e **o agendador está vivo**: cinco das dez filas rodaram nas
+> últimas horas. Só duas estão quebradas, e são exatamente as duas que sustentam
+> os números de cobertura.
+>
+> A medição também revelou o que nenhum painel mostraria: **`watch_offers` está
+> saudável e ingere 5.782 ofertas por dia para dentro de uma tabela onde 98,8%
+> nunca são promovidas.** Não é fila parada; é fila boa despejando num balde sem
+> saída — e é por isso que o item 4 desta lista mudou de "decidir a licença" para
+> "dar modo em lote à CLI **e** decidir a licença".
 
 ---
 
@@ -415,7 +429,7 @@ E o que passou com folga: **a diferenciação filme/série cumpre os cinco sinai
 
 | Ordem | Ação | Destrava |
 | --- | --- | --- |
-| 1 | Diagnosticar e religar o `screen-cron` | 13 filas; provável causa de S-02, S-03 e parte de S-21 |
+| 1 | Consertar `ratings_omdb` (2 de 7 dias) e `airing_series` (diária, 7 dias muda) | Cobertura de nota (0,91%) e frescor da série em exibição |
 | 2 | Expurgo do `api_cache` vencido (`DELETE WHERE expires_at < now()`, em lotes) | 3,6 GB e pressão de I/O |
 | 3 | Fechar `_fetch_html` no `safe_get` (MNScr) | SSRF real |
 | 4 | Implantar o MNScr como serviço no painel | Tira o fluxo editorial da máquina do dono |
@@ -464,7 +478,8 @@ desta auditoria.
 
 | # | Item | Comando / consulta |
 | --- | --- | --- |
-| 1 | **Por que o `screen-cron` está amarelo** — o item mais importante desta lista | Logs do serviço no painel; `SELECT status, count(*), max(created_at) FROM api_sync_logs WHERE provider_api='omdb' GROUP BY 1` |
+| 1 | Por que o `screen-cron` aparece **amarelo** no painel, se as filas estão rodando | Logs do serviço no painel — o estado do processo, não das filas (as filas eu já medi) |
+| 1b | Por que `airing_series` está 7 dias em silêncio numa fila diária | `SELECT * FROM api_sync_logs WHERE run_id='scheduler:airing_series' ORDER BY created_at DESC LIMIT 20` |
 | 2 | Se o SQLite do RSS Prime sobrevive a redeploy | Console do `feed`: `ls -la /app/data/` e conferir o volume do container |
 | 3 | Qual commit cada um dos 5 serviços está rodando | `CINERIE_BUILD_SHA` é inconfiável; medir por hash do fonte dentro do container |
 | 4 | Custo servidor-a-servidor do subrequest do middleware | Instrumentar `/api/seo/redirect` com `Server-Timing` |

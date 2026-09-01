@@ -145,7 +145,15 @@ estão verdes. Isso é **anterior** à minha intervenção — o primeiro screen
 sessão, antes de qualquer clique meu, já o mostrava assim. `screen-cron` é quem roda
 `@screena/sync scheduler:start`, ou seja, **o relógio de todas as filas**.
 
-**NÃO DETERMINADO:** o motivo exato do estado amarelo. Fecha com: abrir
+> **Atualização da FASE 1.** Medi as filas uma a uma pelo `run_id` que o
+> agendador carimba em cada job: **o agendador está VIVO** — `changes` enfileirou
+> às 04:52 UTC, `watch_offers` buscou 5.782 ofertas em 24 h, `discovery` e
+> `trending` rodaram nas últimas horas. O ponto amarelo **não é processo morto**.
+> Só `ratings_omdb` e `airing_series` estão de fato quebradas. Ver
+> [`01-screena.md`](01-screena.md), "O estado REAL do agendador".
+
+**NÃO DETERMINADO:** o motivo exato do estado amarelo (do PROCESSO, não das
+filas). Fecha com: abrir
 `https://161.97.181.82/projects/rss_prime/app/screen-cron`, aba Logs, e ler o
 último ciclo; ou consultar `SELECT max(created_at) FROM api_sync_logs WHERE ...`.
 

@@ -552,6 +552,61 @@ outras usam `popularity DESC NULLS LAST, id ASC`. O comentário admite a razão
 ("`people` nao tem `popularity` no schema"). Ordenar por id em fila de refresh
 significa que quem tem id alto é servido por último, sempre.
 
+### O estado REAL do agendador — e a correção da minha recomendação nº 1
+
+Eu tinha escrito que a primeira coisa a fazer era "descobrir por que o
+`screen-cron` está amarelo e religar o relógio", tratando o ponto amarelo do
+painel como prova de que o agendador estava fora. **Fui medir e estava errado.**
+
+O agendador carimba `run_id = 'scheduler:<fila>'` em cada job que enfileira, e as
+filas que não enfileiram job deixam rastro em `fetched_at` / `last_synced_at`.
+Isso permite provar, fila a fila, quando cada uma rodou pela última vez —
+sem depender de log nem de cor de bolinha.
+
+| Fila | Intervalo | Última execução comprovada | Veredito |
+| --- | --- | --- | --- |
+| `changes` | 6 h | **2026-09-01 04:52:34** (2 min antes da medição) | ✅ vivo |
+| `watch_offers` | 1 dia | **2026-09-01 04:48:25** (`fetched_at`; 5.782 ofertas em 24 h) | ✅ vivo |
+| `discovery` | 1 dia | **2026-09-01 01:32:38** | ✅ vivo |
+| `trending` | 6 h | **2026-09-01 00:31:25** | ✅ vivo |
+| `title_media` | 1 dia | 2026-08-31 13:13:06 (~15 h) | ✅ dentro da janela |
+| `title_detail_active` | 7 dias | 2026-08-25 17:16:31 (6,5 d) | ✅ prestes a vencer |
+| `title_detail_ended` | 30 dias | 2026-08-25 17:27:42 (7 d) | ✅ em dia |
+| `people` | 30 dias | 2026-08-25 17:29:12 (7 d) | ✅ em dia |
+| **`airing_series`** | **1 dia** | **2026-08-25 15:58:50 (7 dias)** | ❌ **7 dias em silêncio numa fila diária** |
+| **`ratings_omdb`** | **1 dia** | rodou **2 dos últimos 7 dias** (`api_sync_logs`) | ❌ **quebrada** |
+
+**O agendador está vivo e trabalhando.** Cinco filas rodaram nas últimas horas;
+`changes` enfileirou minutos antes da medição; `movies.last_synced_at` mais
+recente é de 04:37 e 5.277 filmes foram ressincronizados em 24 h. O ponto
+amarelo no painel **não significa processo morto** — significa alguma coisa que
+não determinei, e que agora importa muito menos.
+
+**Duas filas estão de fato quebradas, e são exatamente as duas que sustentam os
+achados de cobertura:**
+
+- **`ratings_omdb`** — 2 de 7 dias, e nos dois estourando o envelope. É a causa
+  direta de **0,91% de cobertura de nota**.
+- **`airing_series`** — intervalo diário, **7 dias sem enfileirar**. É a fila que
+  mantém fresca a série em exibição, ou seja, exatamente o conteúdo mais
+  perecível do catálogo.
+
+**E o achado que essa medição revela, que eu não teria encontrado de outro jeito:**
+
+A fila `watch_offers` **está rodando bem** — 5.782 ofertas buscadas nas últimas
+24 h, 71.474 nos últimos 7 dias. Ela ingere corretamente, todos os dias, para
+dentro de uma tabela onde **98,8% das linhas estão com `display_allowed = false`**
+e onde a única ferramenta de promoção **não tem modo em lote**.
+
+Ou seja: o sistema gasta requisição de TMDB todo dia para trazer oferta que
+nunca chega à tela. Não é uma fila parada — é uma fila **saudável despejando num
+balde sem saída**. Isso é pior de diagnosticar e mais barato de consertar do que
+uma fila morta, e nenhum painel mostraria.
+
+**A recomendação nº 1, corrigida:** não é "religar o relógio". É
+**(a)** consertar `ratings_omdb`, **(b)** entender por que `airing_series` está
+7 dias em silêncio, e **(c)** dar vazão ao que `watch_offers` já traz todo dia.
+
 ### Idempotência
 
 A chave é `idempotency_key` com escopo diário (`dailyScope(queue, now)` em
@@ -1023,6 +1078,8 @@ universos que vão de dezenas a 1,29 milhão de linhas.
 | S-24 | **MÉDIO** | ritmo de ingestão × filas de enriquecimento | +3.084 filmes/h enquanto nota (0,91%), oferta (0,18%) e sinopse (37,5%) não acompanham | banco | As três coberturas **pioram sozinhas** a cada hora |
 | S-25 | **ALTO** | `services/streaming/src/promotion/args.ts:246` | A CLI de promoção exige `--ids` explícito e **não tem modo em lote**; são 70.036 ofertas | código | A decisão de licença não tem como virar produto sem um seletor em lote |
 | S-26 | **MÉDIO** | `services/streaming/bin/promote-watch-availability.ts:5` | Cabeçalho diz que a ferramenta cobre só `streaming_availability`; `guardrails.ts:52` inclui `tmdb` desde então | código | Quem lê o `bin/` conclui que a ferramenta não serve para 99,99% das ofertas |
+| S-27 | **ALTO** | fila `airing_series` | Intervalo **diário**, último enfileiramento em **2026-08-25** — 7 dias de silêncio | banco (`catalog_jobs.run_id`) | A série em exibição, o conteúdo mais perecível, não é atualizada |
+| S-28 | **ALTO** | `watch_offers` × promoção | A fila ingere **5.782 ofertas/dia** para uma tabela onde 98,8% nunca são promovidas | banco | Requisição de TMDB gasta todo dia para dado que não chega à tela |
 | S-16 | **BAIXO** | `.env` / painel | `TMDB_API_KEY` = `SCREENA_TMDB_API_KEY`; três variáveis de site URL; dois formatos de flag de indexação | hash + painel | Rotação parcial e configuração ambígua |
 | S-17 | **BAIXO** | idempotência por exceção | `duplicate key` aborta transação no servidor | log do Postgres | Ruído permanente no log de erro do banco |
 | S-18 | **BAIXO** | `scripts/typecheck/ensure-prisma-client.mjs` | Só avisa; não gera | execução | Clone limpo dá 10 suítes vermelhas com mensagem confusa |
