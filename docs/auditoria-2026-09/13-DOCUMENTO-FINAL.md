@@ -132,7 +132,7 @@ E seis coisas que eu **medi** e que são incomunmente boas — detalhadas em
 | --- | --- | --- | --- | --- |
 | **1** | **A camada editorial de IA nunca foi invocada.** `content_blocks = 0`, `entity_writer_jobs = 0`, `entity_writer_logs = 0` — e o Entity Writer está construído, testado, com credencial em produção e **a dois comandos** de sair do zero. Não está quebrado; nunca foi chamado | screena | **CRÍTICO** | banco + código |
 | **2** | **A defesa contra SSRF existe, está documentada, e o caminho que o pipeline usa não passa por ela.** `extractor.py:909` usa `requests` cru com `allow_redirects=True`; três chamadores de produção o usam | MNScr | **CRÍTICO** | código |
-| **3** | **A fila da OMDb roda todo dia e não gasta cota em 8 de 10** (decide `no_slots`); quando gasta, estoura o envelope (923 e 850 contra 700) e **75 de 127 execuções falham sem `error_code` registrado**. Resultado: 760 de 83.314 títulos com nota (**0,91%**) | screena | **CRÍTICO** | banco + código |
+| **3** | **A fila da OMDb é invocada todo dia e produz em 2 de 10**, com **66.997 candidatos** esperando. Em 31/08 gastou **850 de cota para cobrir 39 títulos** (~22 requisições/título), com **75 de 127 execuções falhando sem `error_code`**. Resultado: 760 de 83.314 títulos com nota (**0,91%**) | screena | **CRÍTICO** | banco + código |
 | **4** | **O motor editorial não tem serviço implantado.** Todo o fluxo de matéria do Cinerie depende de alguém executar um `.bat` | MNScr | **CRÍTICO** | painel |
 | **5** | **"Onde assistir" em 147 de 83.314 títulos (0,18%)** — 70.036 das 70.869 ofertas estão com `display_allowed = false` | screena | **ALTO** | banco |
 | **6** | **62,5% das fichas de filme não têm sinopse em pt-BR**; 0 de 62.514 pessoas têm resumo | screena | **ALTO** | banco |
@@ -375,7 +375,7 @@ Ordenada por gravidade. Prefixos: **S** = screena, **M** = MNScr,
 | # | Grav. | Repo | Arquivo / local | Achado | Evidência |
 | --- | --- | --- | --- | --- | --- |
 | S-01 | **CRÍTICO** | screena | tabela `content_blocks` | 0 linhas; `entity_writer_jobs`/`logs` = 0 | banco |
-| S-02 | **CRÍTICO** | screena | `api_sync_logs`, `runners.ts:703` | Invocada **todo dia**, emite requisição em **2 de 10**; quando emite estoura o envelope (923 e 850 contra 700); **75 de 77 falhas sem `error_code`** | banco + código |
+| S-02 | **CRÍTICO** | screena | `api_sync_logs` × `external_ratings` | Invocada **todo dia**, produz em **2 de 10**, com 66.997 candidatos. Em 31/08: **850 de cota para 39 títulos**, 75 de 127 execuções falhando sem `error_code` | banco + código |
 | M-01 | **CRÍTICO** | MNScr | `app/extractor.py:909` + `pipeline.py:1326`, `cluster_extractor.py:72`, `multi_source_builder.py:200` | `requests` cru com `allow_redirects=True`, ignorando `safe_http` | código |
 | M-02 | **CRÍTICO** | MNScr | painel (ausência) | Motor editorial sem serviço; roda de `.bat` | painel |
 | S-03 | **ALTO** | screena | `watch_availability` | 70.036 de 70.869 com `display_allowed=false`; painel em 147 títulos | banco |
@@ -550,7 +550,7 @@ desta auditoria.
 
 | # | Item | Comando / consulta |
 | --- | --- | --- |
-| 1 | **Por que `ratings_omdb` não emite requisição em 8 de 10 dias.** Eliminei duas hipóteses por medição: não é `no_slots` (a aritmética exige `spentToday>=850` e o gasto foi 0) e não é a fronteira do dia (servidor em `Etc/UTC`, sem deslocamento). Restam "zero candidatos" e "filho morre antes de emitir", indistinguíveis de fora porque `error_code` é NULL em 75 de 77 falhas | `SELECT status, error_code, items_processed, quota_cost, created_at FROM api_sync_logs WHERE provider_api='omdb' ORDER BY created_at DESC LIMIT 40;` + log do `screen-cron` num dia de custo zero |
+| 1 | **Por que `ratings_omdb` não produz em 8 de 10 dias.** Eliminei **três** hipóteses por medição: não é `no_slots` (a aritmética exige `spentToday>=850` e o gasto foi 0); não é a fronteira do dia (servidor em `Etc/UTC`); e **não é falta de candidatos** (66.997 disponíveis). O que sobra é o comportamento dos quatro processos filhos, invisível de fora porque `error_code` é NULL em 75 de 77 falhas | `pnpm --filter @screena/ratings exec tsx bin/sync-omdb-ratings.ts --type movie --mode coverage --limit 5` **sem `--apply`** — não gasta cota e mostra o que seria selecionado. Selecionou 5? o defeito está entre seleção e rede. Selecionou 0 com 39.525 candidatos? está na seleção |
 | 1b | Por que o `screen-cron` aparece amarelo, se as filas rodam | Logs do serviço — é o estado do PROCESSO, não das filas |
 | 1c | Por que `airing_series` está 7 dias em silêncio numa fila diária | Log do `screen-cron`; `catalog_jobs` não registra a tentativa que não enfileirou |
 | 2 | Se o SQLite do RSS Prime sobrevive a redeploy | Console do `feed`: `ls -la /app/data/` e conferir o volume do container |

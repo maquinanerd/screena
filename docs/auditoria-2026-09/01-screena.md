@@ -30,7 +30,7 @@ indexabilidade**.
 | # | Achado | Gravidade | Evidência |
 | --- | --- | --- | --- |
 | 1 | **A camada editorial de IA nunca foi invocada.** `content_blocks = 0`, `entity_writer_jobs = 0`, `entity_writer_logs = 0` — e o Entity Writer está **construído, testado e executável hoje**, com credencial em produção. Não está quebrado: nunca foi chamado. | **CRÍTICO** | banco + código |
-| 2 | **A fila da OMDb roda todo dia e não gasta cota em 8 de 10** — ela decide `no_slots`. Nos dois dias em que trabalhou, estourou o envelope (923 e 850 contra 700) e **75 de 127 execuções falharam sem `error_code`**. Resultado: **760 de 83.314 títulos (0,91%) têm nota.** | **CRÍTICO** | medido no banco |
+| 2 | **A fila da OMDb é invocada todo dia e produz em 2 de 10** — com **66.997 candidatos** esperando. E no dia 31/08 gastou **850 de cota para cobrir 39 títulos** (~22 requisições por título), com 75 de 127 execuções falhando **sem `error_code` registrado**. Resultado: **760 de 83.314 títulos (0,91%) têm nota.** | **CRÍTICO** | medido no banco |
 | 3 | **"Onde assistir" renderiza em 147 de 83.314 títulos (0,18%).** Há 70.869 linhas em `watch_availability`, mas 70.036 têm `display_allowed = false`. | **ALTO** | medido no banco, com a cláusula real do gate |
 | 4 | **`CLAUDE.md:201` proíbe o que a produção faz.** "NUNCA publicar conteudo automaticamente" versus o ADR 0017 (aceito) e `EDITORIAL_AUTO_PUBLISH_ENABLED=true` no serviço `cinerie-cms`. O documento que se declara autoritativo está desatualizado. | **ALTO** | medido no código e no painel |
 | 5 | **3,6 GB de cache expirado nunca apagado.** `api_cache` tem 500.140 linhas vencidas de 561.970 (89%) — metade do banco de 10 GB é lixo com `expires_at` no passado. | **ALTO** | medido no banco |
@@ -491,53 +491,86 @@ e **`omdb_child_failed` em 24**. Ou seja: **as 75 falhas do dia 31 não têm có
 de erro registrado.** O log diz que falhou e não diz por quê — e o campo
 `error_code` existe na tabela para isso.
 
-#### E a hipótese que eu descartei, com evidência
+#### A medição definitiva: cota gasta × notas produzidas, dia a dia
 
-Escrevi primeiro que a explicação era `no_slots` — a fila acreditando não ter
-fatia de cota. **Fui verificar a aritmética e ela não fecha.**
+Depois de duas idas e voltas, cruzei as duas séries que importam — o que a fila
+**gastou** e o que ela **produziu**:
 
-[`quota.ts:49`](../../services/sync/src/scheduler/quota.ts):
+| Dia | Notas criadas | Títulos cobertos | Cota registrada | Registros de log |
+| --- | ---: | ---: | ---: | ---: |
+| 2026-08-22 | 0 | 0 | 0 | 2 |
+| 2026-08-23 | 0 | 0 | 0 | 4 |
+| 2026-08-24 | 0 | 0 | 0 | 2 |
+| 2026-08-25 | 0 | 0 | 0 | 2 |
+| 2026-08-26 | 0 | 0 | 0 | 4 |
+| 2026-08-27 | 0 | 0 | 0 | 2 |
+| **2026-08-28** | **977** | **493** | **923** | 13 |
+| 2026-08-29 | 0 | 0 | 0 | 4 |
+| 2026-08-30 | 0 | 0 | 0 | 4 |
+| **2026-08-31** | **61** | **39** | **850** | **127** |
 
-```typescript
-const usable = Math.max(0, dailyLimit - Math.max(0, spentToday) - reserve)
-return Math.max(0, Math.min(Math.trunc(batchLimit), usable))
+As duas séries **coincidem exatamente**: nos oito dias de cota zero, zero notas.
+A fila é invocada todo dia (2 a 4 registros), e **produz em 2 de 10**.
+
+E o dia 31 é o mais revelador dos dois:
+
+| | 2026-08-28 | 2026-08-31 |
+| --- | ---: | ---: |
+| Cota gasta | 923 | 850 |
+| Títulos cobertos | **493** | **39** |
+| Requisições por título | ~1,9 | **~21,8** |
+| Execuções que falharam | — | **75 de 127** |
+
+**Em 28/08 a fila foi eficiente: 923 requisições viraram 493 títulos com nota.**
+Em 31/08, **850 requisições viraram 39 títulos** — a cota do dia inteiro foi
+queimada e ~95% dela não virou nota. As 75 falhas sem `error_code` são o destino
+dessa cota.
+
+#### O que isso elimina, e o que sobra
+
+Com os candidatos medidos, elimino também a hipótese "não há o que fazer":
+
+| Conjunto | Tamanho medido |
+| --- | ---: |
+| Candidatos de cobertura — filme (`imdb_id` presente, zero notas) | **39.525** |
+| Candidatos de cobertura — série | **27.472** |
+| **Total disponível todo dia** | **66.997** |
+
+A consulta de cobertura
+([`stale-entity-candidates.ts:184`](../../services/ratings/src/persistence/stale-entity-candidates.ts))
+é apenas `WHERE imdb_id IS NOT NULL AND NOT EXISTS (qualquer nota)` — sem janela
+de frescor, por decisão declarada ("nada aqui foi coletado ainda"). **Há 66.997
+candidatos esperando, todo dia.**
+
+Também elimino a leitura ingênua dos registros de custo zero: desde 2026-08-31 o
+processo **pai** grava `requests: 0` **de propósito** — é a correção da cota
+contada duas vezes, e o comentário diz que *"o filho e a UNICA autoridade sobre
+quanto se gastou"*. Portanto "linha do pai com custo zero" não prova nada; quem
+prova são as notas criadas, e elas também são zero.
+
+**A pergunta que sobra, agora estreita o bastante para uma sessão de depuração:**
+a fila roda, tem 66.997 candidatos, gera quatro processos filhos — e em oito de
+dez dias esses filhos saem com código 0 sem emitir requisição nem gravar nota.
+**NÃO DETERMINEI por quê.** Fecha com:
+
+```bash
+# 1. o que o pai registrou em cada ciclo (procure a linha do filho)
+#    log do screen-cron, evento scheduler_ratings_omdb_child
+# 2. rodar um filho a seco e ver quantos candidatos ele seleciona
+pnpm --filter @screena/ratings exec tsx bin/sync-omdb-ratings.ts \
+  --type movie --mode coverage --limit 5
 ```
 
-Com `dailyLimit = 1.000`, `reserve = 150` e `batchLimit = 700`, o resultado só é
-**0** se `spentToday >= 850`. Nos 8 dias em questão o gasto registrado foi
-**zero**. Logo, `slots` valia **700**, não 0 — e o caminho `no_slots` **não pode**
-ser a explicação.
+O segundo comando é o mais direto: sem `--apply` ele não gasta cota e imprime o
+que **selecionaria**. Se selecionar cinco títulos, o defeito está entre a seleção
+e a rede; se selecionar zero com 39.525 candidatos no banco, está na seleção.
 
-Descartei também o suspeito seguinte, a fronteira do dia. `readSpentToday`
-([`facts.ts:181`](../../services/sync/src/scheduler/runtime/facts.ts)) monta o
-recorte com `created_at >= $2::timestamptz AT TIME ZONE 'UTC'`, uma construção
-que desloca a janela quando a sessão não é UTC. Medi no servidor:
-`current_setting('TimeZone') = Etc/UTC` e
-`api_sync_logs.created_at` é `timestamp without time zone`. **Sem deslocamento.**
-E rodei a própria consulta do `readSpentToday` contra hoje: devolve `0`,
-coerente com o log.
 
-**Então: NÃO DETERMINEI por que a fila não emite requisição em 8 de 10 dias.**
-O que consegui foi eliminar as duas explicações mais prováveis. As que sobram —
-zero candidatos selecionados, ou o processo filho morrendo antes de emitir — não
-podem ser distinguidas de fora, **porque `error_code` é NULL em 75 das 77
-falhas**. O campo existe na tabela e não é preenchido.
+**O achado, na forma final e em três partes:**
 
-Fecha com, em ordem:
-
-```sql
-SELECT status, error_code, items_processed, items_created, quota_cost, created_at
-  FROM api_sync_logs WHERE provider_api='omdb' ORDER BY created_at DESC LIMIT 40;
-```
-
-e o log do container `screen-cron` no dia de um ciclo de custo zero, procurando
-a linha `no_slots` (que provaria a primeira hipótese apesar da aritmética) ou
-`omdb_child_failed`.
-
-**O achado, corrigido e em três partes:**
-
-1. **A fila roda todos os dias e não gasta cota em 8 de 10** — e a causa **não
-   está determinada**, com duas hipóteses eliminadas por medição.
+1. **A fila é invocada todos os dias e só produz em 2 de 10** — com 66.997
+   candidatos disponíveis. Causa **não determinada**; três hipóteses eliminadas
+   por medição (`no_slots`, fronteira do dia, falta de candidatos).
 2. **Quando roda, estoura o envelope** (850 e 923 contra 700 declarados).
 3. **Quando falha, não registra a causa** — `error_code` NULL em 75 de 77
    falhas.
@@ -1246,7 +1279,7 @@ universos que vão de dezenas a 1,29 milhão de linhas.
 | # | Grav. | Arquivo:linha / local | Achado | Evidência | Consequência |
 | --- | --- | --- | --- | --- | --- |
 | S-01 | **CRÍTICO** | `entity_writer_jobs`/`logs`/`content_blocks` = 0 | O Entity Writer está **completo e executável** (5 CLIs, adapter Gemini real, credencial em produção) e **nunca foi invocado**; a ausência de agendamento é decisão declarada da fase | banco + código | O diferencial editorial está a **dois comandos** de deixar de ser zero |
-| S-02 | **CRÍTICO** | `api_sync_logs`, `runners.ts:703` | Fila roda **todo dia** e sai com `no_slots` em **8 de 10**; quando gasta, estoura o envelope; **75 de 77 falhas sem `error_code`** | banco + código | 760 de 83.314 títulos (0,91%) com nota |
+| S-02 | **CRÍTICO** | `api_sync_logs` × `external_ratings`, `runners.ts:700` | Fila invocada **todo dia**, produz em **2 de 10**, com **66.997 candidatos** disponíveis. E em 31/08 gastou **850 de cota para cobrir 39 títulos** (~22 requisições/título) com **75 de 127 execuções falhando sem `error_code`** | banco + código | 760 de 83.314 títulos (0,91%) com nota |
 | S-03 | **ALTO** | `watch_availability` | 70.036 de 70.869 linhas com `display_allowed=false` | banco, com a cláusula real do gate | "Onde assistir" em 147 títulos (0,18%) |
 | S-04 | **ALTO** | `CLAUDE.md:201` × `docs/adr/0017` × painel | Governança autoritativa proíbe o que a produção faz | código + painel | Regra sem valor, ou operação fora da regra |
 | S-05 | **ALTO** | `api_cache` | 500.140 linhas vencidas (89%), 3,6 GB, sem job de expurgo | banco | Metade do banco de 10 GB é lixo |
