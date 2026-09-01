@@ -250,32 +250,81 @@ consulta em produção.
 
 ### Existe chave COMPARTILHADA entre repositórios?
 
-**Sim.** Provei por **hash SHA-256** dos valores, comparando os dois primeiros bytes
-do digest — sem imprimir nenhum segredo:
+> **ESTA SEÇÃO FOI CORRIGIDA POR MEDIÇÃO POSTERIOR.** A primeira versão deste
+> documento afirmava, com base apenas nos arquivos `.env` do **disco local**, que
+> "screena e MNScr compartilham a mesma chave Gemini e o mesmo token TMDB". Ao
+> ler os valores que rodam **em produção** (API do painel), o veredito mudou. O
+> número medido manda; o documento se corrige. A afirmação antiga está errada e
+> fica registrada abaixo para que ninguém a repita.
 
-| Chave | screena | MNScr | Veredito |
-| --- | --- | --- | --- |
-| Token TMDB v4 | `ed701bd3651ed317` | `ed701bd3651ed317` (em **duas** variáveis) | **MESMA CHAVE** |
-| Gemini | `3a7f26253643f0a9` | `3a7f26253643f0a9` | **MESMA CHAVE** |
-| `CINERIE_CATALOG_RESOLVE_API_KEYS` | `b299372f640b8f08` | `b299372f640b8f08` | **MESMA CHAVE** (correto: é segredo compartilhado de autenticação) |
-| TMDB v3 (`TMDB_API_KEY` vs `SCREENA_TMDB_API_KEY`) | `3143799f3d048b0a` | — | duplicata interna do mesmo valor |
+Método: digest **SHA-256**, 16 primeiros hexdígitos, sem imprimir nenhum valor.
+Os dois caminhos de cálculo (shell `sha256sum` e `crypto.subtle` no navegador)
+foram conferidos contra um controle conhecido — `sha256('abc')` devolveu
+`ba7816bf8f01cfea` nos dois. As comparações abaixo são, portanto, válidas entre si.
 
-E o RSSPRIME (serviço `feed`) também declara `GEMINI_API_KEY` no painel — é
-**o terceiro consumidor** de Gemini. **NÃO DETERMINADO:** se é a mesma chave dos
-outros dois; não tenho o `.env` do RSSPRIME no disco (ele só existe no container).
-Fecha com: ler o valor de `GEMINI_API_KEY` do serviço `feed` no painel e comparar
-o hash com `3a7f26253643f0a9`.
+#### O que roda em PRODUÇÃO (painel EasyPanel)
 
-**Por que isso importa, exatamente como o dono formulou:** a cota do TMDB é de
-**ritmo** (requisições por segundo, sem teto diário) — dois sistemas na mesma chave
-disputam vazão, e o efeito é lentidão e `429`, não bloqueio. Já a cota do **Gemini
-é diária por chave (RPD)** — e aí o segundo a chegar simplesmente não escreve.
-Como o MNScr é quem redige as matérias e o Entity Writer do screena é quem
-geraria os `content_blocks`, **os dois disputam o mesmo orçamento diário de
-Gemini, e nenhum dos dois sabe da existência do outro.**
+| Serviço | Gemini | TMDB v4 | OMDb | Resolve |
+| --- | --- | --- | --- | --- |
+| `screen-app` | `3e5867225cfb55cc` | `344a0b0cf5d7c2ed` | `4765bc2696aae380` | `b299372f640b8f08` |
+| `screen-cron` | `3e5867225cfb55cc` | `344a0b0cf5d7c2ed` | `4765bc2696aae380` | `b299372f640b8f08` |
+| `screen-catalog-worker` | — | `344a0b0cf5d7c2ed` | — | — |
+| `cinerie-cms` | — | — | — | — |
+| `cinerie-publication-worker` | — | — | — | — |
+| `feed` (RSSPRIME) | **`8f5f2c5f300c0ad6`** | — | — | — |
 
-Isso conversa direto com o número da seção 3: `content_blocks = 0`.
-Não é prova de causa — é uma hipótese que a FASE 4 vai testar.
+#### O que está nos `.env` do DISCO
+
+| Origem | Gemini | TMDB v4 |
+| --- | --- | --- |
+| `screena/.env` | `3a7f26253643f0a9` | `ed701bd3651ed317` |
+| `MNScr/.env` | `3a7f26253643f0a9` | `ed701bd3651ed317` |
+
+#### Os três vereditos
+
+**1. O RSSPRIME tem chave própria de Gemini.** `8f5f2c…` não é igual a nada.
+Ele é o único dos três consumidores de Gemini que não empresta chave — e é
+também o único que mantém contabilidade de cota em tabela
+(`superfeed/gemini_usage.py`, com `status_429_count`). Comportamento correto.
+
+**2. Em produção, três processos do screena dividem o MESMO token TMDB.**
+`screen-app`, `screen-cron` e `screen-catalog-worker` usam `344a0b…`. A cota do
+TMDB é de **ritmo** (requisições por segundo), não diária: o efeito de dividir é
+disputa de vazão e `429`, não bloqueio. O peso é desigual — medi 19.124 unidades
+de `quota_cost` do TMDB em 24 h, e o `screen-catalog-worker` é quem gasta.
+`screen-app` e `screen-cron` também compartilham a mesma chave de Gemini
+(`3e5867…`) e a mesma da OMDb (`4765bc…`).
+
+**3. O compartilhamento real entre repositórios é MNScr × screena LOCAL, não
+MNScr × produção.** As chaves do `.env` do MNScr são idênticas às do `.env` do
+screena no disco (`3a7f26…` e `ed701b…`), e **diferentes** das de produção. Como
+o MNScr **roda da máquina do dono** (não tem serviço no painel — ver seção 2), a
+chave do `.env` dele é a que ele usa de verdade. O `.env` do screena no disco é
+o que um humano usa ao rodar CLI local (`pnpm catalog`, `pnpm ratings`).
+
+Ou seja: **a disputa de cota de Gemini existe entre o MNScr em operação e o
+screena rodado à mão na mesma máquina** — não entre o MNScr e a produção. É um
+risco menor do que eu afirmei antes, e continua sendo risco: a cota do Gemini é
+**diária por chave**, e quem chegar depois não escreve. O MNScr já suporta
+rotação de múltiplas chaves (`app/config.py:550`, padrão `GEMINI_KEY*`) e usa
+uma só.
+
+**4. `CINERIE_CATALOG_RESOLVE_API_KEYS` idêntico em produção e nos dois `.env`
+(`b299372f640b8f08`) é CORRETO** — é o segredo compartilhado que autentica o
+MNScr contra `/api/internal/entity-resolve`. Chamador e chamado precisam do
+mesmo valor.
+
+**5. Duplicata interna, confirmada:** no `.env` do screena,
+`TMDB_API_KEY` e `SCREENA_TMDB_API_KEY` guardam o mesmo valor
+(`3143799f3d048b0a`). Duas variáveis, um segredo, duas chances de rotacionar só
+metade.
+
+#### O que isso muda na leitura de `content_blocks = 0`
+
+A primeira versão sugeria que a disputa de cota do Gemini com o MNScr poderia
+explicar a camada editorial vazia. **Essa hipótese está descartada:** a produção
+do screena usa uma chave de Gemini que ninguém mais toca. Se o Entity Writer não
+produziu nada, não foi por cota emprestada. A FASE 4 investiga a causa real.
 
 ### RapidAPI: dependência remanescente (regra 6 do escopo)
 
