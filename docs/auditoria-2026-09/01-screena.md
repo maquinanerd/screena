@@ -856,24 +856,50 @@ FROM slugs s JOIN people p ON p.id = s.entity_id
   -- 0 de 300 pessoas do sitemap exibiam biografia. Sao os MESMOS ...
 ```
 
-**A cadeia inteira, medida por mim ponta a ponta:**
+**A cadeia inteira, com a linha exata.** Fui ler a consulta que monta o shard
+([`sitemap-index.ts:503`](../../apps/web/src/server/seo/sitemap-index.ts)) e ela
+carrega três predicados que **não** estão no módulo puro de elegibilidade
+(`packages/seo/src/person-eligibility.ts`, que exige apenas nome, slug e ≥1
+crédito em obra publicável):
 
-1. `people.biography_source_status` nasce `unknown` e **nada no sistema o
-   altera** → medi **`unknown` em 1.315.149 de 1.315.205 pessoas: 100%**.
-2. `unknown` é o estado que a invariante 6 usa para **bloquear exibição** →
-   nenhuma biografia pode aparecer, nem as **2.152 que já estão preenchidas**.
-3. O gate do shard de pessoas exige **biografia + foto** → não passa ninguém.
-4. `sitemap-pt-BR-people-1.xml` responde **404**.
-5. **62.647 pessoas com slug ficam fora da descoberta** — e as páginas seguem
-   `index, follow`, ou seja, indexáveis e não anunciadas.
+```sql
+AND BTRIM(COALESCE(p.biography, '')) <> ''
+AND p.biography_source_status::text IN ('official','licensed','third_party')
+AND BTRIM(COALESCE(p.profile_path, '')) <> ''
+```
 
-**Um default de coluna, cinco consequências.** E o sistema não esconde nada
-disso: o número "0 de 300" está escrito ao lado da consulta. O que falta não é
-diagnóstico — é alguém alterar `biography_source_status`.
+O comentário ao lado diz que isso é **parte da válvula de 2026-08-27**, com a
+medição que a motivou: *"pessoa sem biografia EXIBIVEL ou sem foto rende uma
+ficha de ~52 palavras dentro de `<main>` […] 0 de 300 pessoas do sitemap exibiam
+biografia"*. E declara a causa: *"a coluna de governanca nasce unknown, e bio
+ingerida sem liberacao nao aparece na tela (invariante 6)"*.
 
-O achado, corrigido, é este: **não é "esqueceram o sitemap de pessoas"; é "o
-gate de biografia bloqueia 100% do catálogo de pessoas, e o sitemap é apenas
-onde isso fica visível"**.
+Casando com o que medi no banco:
+
+1. `biography_source_status = unknown` em **1.315.149 de 1.315.205 pessoas — 100%**.
+2. `unknown` **não está** em `('official','licensed','third_party')`.
+3. Logo o segundo predicado **exclui todo mundo**, e o shard responde **404**.
+
+**Um default de coluna, e o shard inteiro cai.**
+
+> **Correção do meu próprio achado, de novo.** Eu tinha escrito que isso deixava
+> "62.647 pessoas fora da descoberta", implicando que ninguém as alcança. **Não
+> é verdade, e eu verifiquei:** a ficha de série linka para as pessoas do elenco
+> (`/pt/pessoas/kyle-chandler`, `/pt/pessoas/aaron-pierre`… — cinco na página que
+> medi), e as páginas de pessoa emitem `index, follow`. Elas são **descobríveis
+> por link interno**; o que falta é o convite do sitemap.
+>
+> A postura, então, é **defensável**: manter indexável e linkada a pessoa que já
+> aparece no elenco, e só *anunciar* no sitemap quem tem ficha com substância.
+> O defeito não é a regra — é que a regra depende de uma coluna que **nada no
+> sistema preenche**, então ela nunca deixará ninguém passar.
+
+E há uma assimetria que vale registrar: para `season`/`episode` a válvula é um
+**par** (fora do sitemap **e** `noindex`), e `suspended-pages.ts` insiste que
+*"uma sozinha nao resolve"*. Para `person`, só a metade do sitemap é aplicada —
+e aqui isso está **certo**, porque o predicado de pessoa é por LINHA (esta pessoa
+tem bio?) e o `noindex` da válvula é por TIPO. Não dá para ser simétrico sem
+desindexar também quem tem ficha boa.
 
 **E `imagens-1` está com exatamente 50.000 URLs** — no teto do protocolo. O
 sharding funcionou (transbordou para `imagens-2` com 1.355), então isso é o
@@ -1225,7 +1251,7 @@ universos que vão de dezenas a 1,29 milhão de linhas.
 | S-04 | **ALTO** | `CLAUDE.md:201` × `docs/adr/0017` × painel | Governança autoritativa proíbe o que a produção faz | código + painel | Regra sem valor, ou operação fora da regra |
 | S-05 | **ALTO** | `api_cache` | 500.140 linhas vencidas (89%), 3,6 GB, sem job de expurgo | banco | Metade do banco de 10 GB é lixo |
 | S-06 | **ALTO** | `page_indexability_decisions` | 164 linhas, **todas** de artigo; zero para entidade | banco | 83.347 URLs no sitemap sem decisão registrada |
-| S-07 | **ALTO** | `sitemap-index.ts:512` + `people.biography_source_status` | O shard de pessoas responde **404** porque o gate exige biografia, e 100% das pessoas estão em `unknown` | HTTP + banco + código | 62.647 páginas `index, follow` fora da descoberta — consequência direta de S-22 |
+| S-07 | **MÉDIO** | `sitemap-index.ts:517` + `people.biography_source_status` | O shard de pessoas responde **404**: o predicado exige `biography_source_status IN ('official','licensed','third_party')` e **100%** das 1,3 M estão em `unknown` | HTTP + banco + código | 62.647 páginas ficam fora do sitemap. **Continuam indexáveis e linkadas do elenco** — o custo é o convite, não a invisibilidade |
 | S-08 | **ALTO** | painel, serviço `screen-app` | Render público carrega Gemini, OMDb, TMDB×3, RapidAPI×4, Brevo, S3, R2 | painel | Menor privilégio violado no processo mais exposto |
 | S-09 | **MÉDIO** | `apps/web/middleware.ts:38` | Subrequest HTTP por requisição, **sem timeout** | código | Handler pendurado pendura a requisição do usuário |
 | S-10 | **MÉDIO** | `services/sync/src/scheduler/config.ts:110` | Teto global 200 governa 6 filas; volta de `people` = 529 anos | código + banco | Frescor não é mantido; item sincronizado nunca é reconferido |

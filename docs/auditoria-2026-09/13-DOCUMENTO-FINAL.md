@@ -32,7 +32,7 @@ carrega como foi obtida: **medido no banco**, **medido em execução**, **medido
 por requisição**, **lido no código**, **inferido** ou **não determinado**.
 
 **Onde a medição contrariou o que eu já tinha escrito, eu reescrevi.** Isso
-aconteceu **sete** vezes nesta auditoria, e as sete estão marcadas no texto:
+aconteceu **oito** vezes nesta auditoria, e as oito estão marcadas no texto:
 
 1. **As chaves compartilhadas** (FASE 0) — valia para os `.env` do disco, não para produção.
 2. **A volta da fila `people`** (FASE 1) — inferi catálogo vazio; 72% estava sincronizado.
@@ -41,6 +41,7 @@ aconteceu **sete** vezes nesta auditoria, e as sete estão marcadas no texto:
 5. **A CLI de promoção de ofertas** (FASE 1) — achei que não cobria TMDB; cobre. O bloqueio é a falta de modo em lote.
 6. **O `screen-cron`** (FASE 1) — tratei o ponto amarelo como agendador morto; ele está vivo, e só duas filas quebraram.
 7. **A fila da OMDb** (FASE 1) — disse que rodava 2 de 7 dias, somando cota. Ela roda **todos** os dias; o que ela não faz é gastar cota. Usei um proxy para afirmar um fato, que é exatamente o erro que esta auditoria persegue.
+8. **O alcance do shard de pessoas** (FASE 1) — escrevi que 62.647 pessoas ficavam "fora da descoberta". Fui verificar os links: a ficha de série **linka o elenco**, e as páginas emitem `index, follow`. Elas são descobríveis; o que falta é o convite do sitemap. Baixei a gravidade de ALTO para MÉDIO.
 
 Cada uma dessas correções tornou o achado **mais** útil, não menos. É por isso
 que a regra existe.
@@ -281,8 +282,8 @@ que os expôs.
 **O que está quebrado:** a camada editorial (0 blocos), a fila de notas (2 dias
 em 7), a promoção de ofertas (0,18%), a sinopse (37,5%), a biografia (bloqueada
 em 100%), o `api_cache` (3,6 GB de lixo), a decisão de indexabilidade (164
-linhas, todas de artigo, nenhuma de entidade) e o sitemap (o shard de pessoas responde 404 porque
-o gate de biografia não deixa passar ninguém).
+linhas, todas de artigo, nenhuma de entidade) e o sitemap de pessoas (404: o predicado de
+biografia não deixa passar ninguém).
 
 ## 3.2. MNScr — [relatório completo](02-mnscr.md)
 
@@ -384,7 +385,7 @@ Ordenada por gravidade. Prefixos: **S** = screena, **M** = MNScr,
 | S-04 | **ALTO** | screena | `CLAUDE.md:201` × ADR 0017 × painel | Governança autoritativa proíbe o que a produção faz | código + painel |
 | S-05 | **ALTO** | screena | `api_cache` | 500.140 linhas vencidas (89%), 3,6 GB, sem expurgo | banco |
 | S-06 | **ALTO** | screena | `page_indexability_decisions` | 164 linhas, todas de artigo; zero para entidade | banco |
-| S-07 | **ALTO** | screena | `sitemap-index.ts:512` + `people.biography_source_status` | Shard de pessoas responde **404**: o gate exige biografia e 100% das pessoas estão em `unknown`. 62.647 páginas `index, follow` fora da descoberta | HTTP + banco + código |
+| S-07 | **MÉDIO** | screena | `sitemap-index.ts:517` + `people.biography_source_status` | Shard de pessoas responde **404**: o predicado exige `biography_source_status IN ('official','licensed','third_party')` e **100%** estão em `unknown`. As páginas seguem indexáveis e linkadas do elenco — falta o convite do sitemap | HTTP + banco + código |
 | S-08 | **ALTO** | screena | painel, `screen-app` | Render público carrega Gemini, OMDb, TMDB×3, RapidAPI×4, Brevo, S3, R2 | painel |
 | M-03 | **ALTO** | MNScr | `.env` (~40 variáveis) | Config de WordPress/Yoast/IndexNow que o código não lê (9 de 10 com 0 referências) | grep |
 | R-01 | **ALTO** | RSS Prime | `README.md:1` | Descreve o "LANCE! Feed Generator, puramente educativo, não comercial" | leitura |
@@ -439,7 +440,7 @@ Ordenada por gravidade. Prefixos: **S** = screena, **M** = MNScr,
 | K-07 | BAIXO | kal-el | raiz | `.zip` e `.patch` de recuperação versionados | `git ls-files` |
 | K-08 | BAIXO | kal-el | disco | Branch `feat/login-comic-caption`, não `main` | `git branch` |
 
-**Total: 65 achados — 4 críticos, 24 altos, 23 médios, 14 baixos.** (Contado da
+**Total: 65 achados — 4 críticos, 23 altos, 24 médios, 14 baixos.** (Contado da
 própria tabela, não estimado. Um achado adicional, o `R-09` do RSS Prime, foi
 **retirado** na verificação: a rota `/debug/superfeed` está protegida, e o
 docstring dela registra que já esteve aberta e foi corrigida.)
