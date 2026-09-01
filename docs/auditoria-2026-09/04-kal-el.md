@@ -547,3 +547,101 @@ transições) · `apps/api/src/services/taxonomy.ts` (por referência de import)
 `services/articles.ts`, `services/webhooks.ts` e `plugins/auth.ts`, que são o
 núcleo e merecem uma segunda passagem; os 72 de `apps/cms`; os 18 do worker; os
 47 do design system; os 79 de `artifacts/`; os 89 de `docs/`; as 106 imagens.
+
+---
+
+## Acréscimo da FASE 3 — o que a revisão cega do Codex achou aqui
+
+**Maior diferença de cobertura da auditoria inteira: eu abri 14 arquivos (2,6%),
+o Codex abriu 50 (9,4%).** Quatro achados abaixo são dele, verificados por mim —
+e em **dois** eu corrigi o enunciado. Verificação completa em
+[`09-confronto.md`](09-confronto.md) §7.3.
+
+### C-10 · Apagar mídia não apaga o binário — ALTO
+
+O Codex disse *"`StorageProvider.delete()` existe, mas tem zero chamadas"*.
+Confirmei, e a forma exata é pior —
+[`apps/api/src/services/media.ts:222`](../../../../../Users/pablo/Documents/OpenCode/Kal%20El/apps/api/src/services/media.ts):
+
+```ts
+export async function deleteMedia(db: Db, storage: StorageProvider, siteId: string,
+                                  mediaId: string, actor: ActorRef) {
+```
+
+**A função recebe `storage` como parâmetro e o corpo inteiro nunca o usa.** Ela
+confere referências, apaga a linha, escreve auditoria e devolve
+`{ deleted: true }`.
+
+E o detalhe que fecha: a auditoria **registra a `storageKey`** —
+`details: { storageKey: existing.storageKey }` — ou seja, o sistema anota
+exatamente o identificador necessário para apagar o binário, e não o apaga.
+
+Verificação de ausência: `delete` está declarado na interface
+(`apps/api/src/storage/provider.ts:5`), implementado (`apps/api/src/storage/local.ts:42`)
+e **não é chamado em nenhum lugar de `apps/` ou `packages/`**. Conteúdo removido
+— inclusive por pedido de privacidade — permanece no volume.
+
+### C-13 · O teste de "reversibilidade" é uma demolição — MÉDIO
+
+[`packages/db/tests/migration.test.ts:36-65`](../../../../../Users/pablo/Documents/OpenCode/Kal%20El/packages/db/tests/migration.test.ts):
+
+```ts
+// Reverse of every applied migration: reversibility is a stated engineering rule.
+DROP TABLE IF EXISTS "article_entities" CASCADE;
+...                                     // 27 tabelas
+DROP SCHEMA IF EXISTS drizzle CASCADE;
+```
+
+| Afirmação | Provado? |
+| --- | :---: |
+| As migrações rodam a partir do vazio | **sim** |
+| A 0005 pode ser desfeita deixando o estado da 0004 | não |
+| Dado sobrevive a um downgrade | **não** — tudo é destruído |
+
+Confirmei que **não existem arquivos de `down`** nas migrações. A "regra de
+engenharia declarada" não tem implementação em lugar nenhum, e o único artefato
+que diz prová-la é um script de demolição. É a categoria "nome de teste que
+mente".
+
+### C-11 · Segredo de webhook em repouso — MÉDIO *(enunciado do Codex corrigido)*
+
+O fato é verdadeiro:
+[`webhooks.ts:120-123`](../../../../../Users/pablo/Documents/OpenCode/Kal%20El/apps/api/src/services/webhooks.ts)
+grava o segredo direto na coluna, enquanto
+[`tokens.ts:22`](../../../../../Users/pablo/Documents/OpenCode/Kal%20El/apps/api/src/services/tokens.ts)
+grava `tokenHash: hashToken(token)`.
+
+**Mas o Codex enquadrou como contradição, e não é.** A assimetria é *necessária*:
+
+| | Service token | Segredo de webhook |
+| --- | --- | --- |
+| Como é usado | **verificado** (compara hash) | **assina** (HMAC) |
+| Pode ser hasheado? | sim | **não** — o emissor precisa do valor cru |
+
+Segredo de HMAC é simétrico por construção; Stripe e GitHub têm a mesma
+propriedade. **O achado legítimo, reformulado:** falta **cifragem de envelope em
+repouso** — quem lê o banco forja callbacks. A mitigação não é hash, é cifrar a
+coluna com chave que não vive no banco.
+
+O código já faz a parte difícil certa: o segredo é devolvido **uma única vez**, na
+criação, e está deliberadamente ausente do DTO.
+
+### C-12 · A `Delivery API` do diagrama não existe — MÉDIO *(conclusão moderada)*
+
+O que o produto promete:
+
+- `README.md:3` — *"Kal El is an **API-first** editorial CMS designed to power multiple independent portals"*
+- `README.md:7` — *"A Next.js portal, a Lovable application, or another HTTP-capable client should consume the same stable Editorial API."*
+- `docs/01-ARCHITECTURE.md:23-27` — um diagrama com a caixa **`Delivery API`** alimentando "Next portal / Lovable app / other clients"
+
+Enumerei as rotas `GET` registradas: **toda rota de conteúdo está atrás de
+`guard(...)`** (`articles.read`, `media.read`, `taxonomy.*.manage`, `seo.manage`).
+As únicas sem autenticação são `/health`, `/v1/health`, `/ready`, `/v1/ready` e
+`/v1/preview/:token`.
+
+**Onde eu moderei:** o Codex escreveu que um portal externo *"não consegue ler
+artigo publicado pelo contrato REST"* — forte demais. Um portal que porte um
+service token com escopo `articles.read` **consegue**, pelas rotas de site. O
+enunciado exato é: **não há superfície de entrega não autenticada, otimizada para
+leitura e cacheável; a leitura passa pela API editorial autenticada.** É lacuna
+de arquitetura em relação ao que os documentos desenham, não impossibilidade.

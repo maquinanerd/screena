@@ -379,10 +379,11 @@ ele está **corretamente fora do índice** — confirmei com `git ls-files`.
 
 ### Cabeçalhos / superfície exposta
 
-Não há superfície HTTP: o MNScr é cliente, não servidor. `DASHBOARD_TOKEN`
-existe na configuração, mas não encontrei servidor HTTP no código versionado —
-**NÃO DETERMINADO** se há um painel; fecha com
-`git grep -n "Flask\|FastAPI\|http.server" -- '*.py'`.
+**Não há superfície HTTP.** O MNScr é cliente, não servidor — confirmei: os
+únicos `Flask`/`http.server` do repositório estão em `tests/fake_cinerie_server.py`
+e `tests/fake_payload_server.py`, dublês usados pela suíte. E `DASHBOARD_TOKEN`,
+que está preenchido na configuração, **não é lido por nenhum `.py` versionado** —
+é mais uma das ~40 variáveis mortas do achado M-03.
 
 ---
 
@@ -516,7 +517,7 @@ Nenhum comentário de código mente.
 | Conteúdo real dos bancos SQLite (volume processado, fila, falhas) | `sqlite3 data/app.db ".tables"` e `SELECT count(*) FROM posts, article_queue, failures;` |
 | Se `_fetch_html` já foi explorado | Não há log de destino recusado nesse caminho — por definição, ele não recusa nada |
 | Volume real do fluxo e se o ciclo dá conta | `SELECT count(*) FROM article_queue WHERE status='queued';` ao longo de um dia |
-| Existência de painel HTTP (`DASHBOARD_TOKEN`) | `git grep -n "Flask\|FastAPI\|http.server" -- '*.py'` |
+| ~~Existência de painel HTTP (`DASHBOARD_TOKEN`)~~ | **FECHADO:** não existe servidor HTTP no código versionado — os únicos `Flask`/`http.server` estão em `tests/fake_cinerie_server.py` e `tests/fake_payload_server.py`, que são dublês de teste. E `DASHBOARD_TOKEN` **não é lido por nenhum `.py` versionado**: é mais uma das ~40 variáveis mortas do achado M-03 |
 | Cota real consumida do Gemini por dia | `SELECT * FROM api_usage;` no banco local |
 | Vulnerabilidades de dependência | **TENTEI E FUI BLOQUEADO**: `uv run --with pip-audit pip-audit` falha com `Uma política de Controle de Aplicativo bloqueou este arquivo (os error 4551)` — restrição da máquina, não do repositório. Fecha rodando `uv run --with pip-audit pip-audit` num ambiente sem AppLocker, ou pelo Dependabot do GitHub |
 
@@ -538,3 +539,60 @@ Nenhum comentário de código mente.
 `docs/`, os 5 de `config/`, e os subpacotes `factual/`, `delivery/`,
 `editorial_gate/`, `editorial/`, `submitters/` — 36 arquivos de `app/` que
 merecem uma segunda passagem se o dono quiser profundidade na camada factual.
+
+---
+
+## Acréscimo da FASE 3 — o que a revisão cega do Codex achou aqui
+
+Dois achados **altos** deste repositório não são meus. Verificação completa em
+[`09-confronto.md`](09-confronto.md) §5.3.
+
+### C-05 · O "orçamento por artigo" não limita o escritor principal — ALTO
+
+[`app/policy_engine.py:405-415`](../../../Portal%20The%20News/Nerd/MNScr/app/policy_engine.py):
+
+```python
+def consume(self, tokens: int, stage: str) -> None:
+    if stage == "main_writer":
+        self.writer_tokens += token_count        # acumula aqui...
+    else:
+        self.post_writer_tokens += token_count
+
+def has_budget(self, stage: str, estimated_tokens: int = 1000) -> bool:
+    remaining = self.budget - self.post_writer_tokens    # ...e nunca é subtraído aqui
+```
+
+O escritor principal consome, é contabilizado, é logado, entra no relatório — e
+fica **fora do único portão que decide se ainda se pode gastar**. Se ele queimar
+três vezes o orçamento inteiro, `has_budget()` continua devolvendo `True` para
+todas as etapas seguintes.
+
+A separação é **deliberada** (o `if stage == "main_writer"` é explícito). O
+defeito não é a lógica: é o **nome e o relatório afirmarem um controle mais amplo
+do que o que existe**. `budget` limita as fases pós-escrita, e se chama
+"orçamento por artigo".
+
+### C-06 · Inanição determinística do quinto feed — ALTO
+
+Ordem **fixa**, cinco feeds
+([`app/config.py:26-32`](../../../Portal%20The%20News/Nerd/MNScr/app/config.py)),
+tetos de 3 por feed e 10 por ciclo
+([`app/pipeline.py:126-127,3143`](../../../Portal%20The%20News/Nerd/MNScr/app/pipeline.py)).
+Com todos os feeds tendo pelo menos 3 pendentes:
+
+| Ordem | Feed | Recebe | Acumulado |
+| ---: | --- | ---: | ---: |
+| 1 | `rssprime_movies` | 3 | 3 |
+| 2 | `rssprime_tv` | 3 | 6 |
+| 3 | `screenrant_movie_lists` | 3 | 9 |
+| 4 | `screenrant_movie_news` | **1** | 10 |
+| 5 | **`screenrant_tv`** | **0** | 10 |
+
+Confirmei que **não há rotação nem cursor entre ciclos** — varri
+`rotate|cursor|round_robin|last_source|shuffle` em `pipeline.py` e só existe um
+cursor de SQLite, sem relação. A ordem é a mesma toda vez.
+
+`screenrant_tv` recebe capacidade **estruturalmente zero** em todo ciclo saturado
+— e, por ser `break` e não `continue`, nem chega a ser avaliado. Os valores batem
+com a documentação do próprio repositório, então não é desvio de configuração: é
+o projeto.

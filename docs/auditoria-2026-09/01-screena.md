@@ -1471,3 +1471,63 @@ Nenhum comentário de código, entre os que li, mente.
 `services/user-platform/**` (a plataforma tem 2 usuários; risco de produto
 baixo), `packages/ui/**`, `docs/**` além dos 2 citados, todos os `__tests__/**`
 individualmente (rodei os 7.567 em vez de lê-los), os 93 JSON e os 19 PNG.
+
+---
+
+## Acréscimo da FASE 3 — o que a revisão cega do Codex achou aqui
+
+Três achados deste repositório **não são meus**. Vieram das sessões cegas do
+Codex (`05-codex-screena.md`), e eu os verifiquei no código antes de aceitá-los.
+A verificação item a item está em [`09-confronto.md`](09-confronto.md) §4.3.
+
+| Id | Grav. | O quê |
+| --- | --- | --- |
+| **C-01** | MÉDIO | `pnpm audit:invariants` confere **presença de frases em documentos** + um padrão `imdb`/`tomatometer`. Nada mais |
+| **C-02** | BAIXO | `apps/admin/package.json:6` afirma que o admin "nao publica, nao edita, nao escreve" — o `CLAUDE.md` diz o contrário |
+| **C-03** | BAIXO | `SCREENA_REDIS_URL` declarada, **sem nenhum leitor** em `*.ts` de produção |
+
+### Correção ao que eu escrevi acima: o `audit:invariants` verde não garante o que eu supus
+
+Neste relatório eu registrei `audit:invariants` **passou** e usei isso como sinal
+positivo de governança. Fui ler o que ele faz
+([`scripts/audit/check-invariants.mjs`](../../scripts/audit/check-invariants.mjs)),
+e o alcance é muito mais estreito:
+
+1. confere se **frases-chave continuam escritas** no `CLAUDE.md` e em 5 arquivos
+   `.claude/rules/*.md` (linhas 9–17 e 43–80);
+2. varre o código atrás de `imdb` **adjacente a** `tomatometer`.
+
+Ele não avalia pureza de render, licença de exibição, escala por fonte nem
+revisão humana antes de publicar.
+
+**A prova de que o alcance é estreito está neste mesmo relatório:** o achado
+**S-04** — autopublicação chegando a `published` contra o "NUNCA publicar
+automaticamente" — **passa** por esse validador, porque a frase proibitiva
+continua presente no `CLAUDE.md`. O validador confere que a lei está escrita, não
+que ela é cumprida.
+
+### E o S-04 é pior do que eu o enunciei
+
+Eu descrevi o conflito como *`CLAUDE.md` contra o ADR 0017*. O Codex mostrou que
+a contradição está **dentro do mesmo arquivo**:
+
+| Linha | Texto |
+| --- | --- |
+| [`CLAUDE.md:157`](../../CLAUDE.md) | *"`editorial_auto_publish` **sobe até `published`** sem atravessar estados que afirmam revisão humana"* |
+| [`CLAUDE.md:201`](../../CLAUDE.md) | *"**NUNCA** publicar conteúdo automaticamente — publicação passa por humano"* |
+
+O documento autoritativo **afirma e proíbe a mesma coisa**, 44 linhas depois.
+Isso muda a recomendação: não basta alinhar o `CLAUDE.md` ao ADR — é preciso
+resolver a contradição interna primeiro, porque hoje qualquer decisão consegue
+citar o `CLAUDE.md` a seu favor.
+
+### Onde eu discordei do Codex
+
+Ele classificou como achado alto que *"os testes ratificam explicitamente a
+violação"* (`apps/cms/src/__tests__/auto-publication.test.ts:79`). Abri o teste:
+chama-se **`CONTROLE POSITIVO: pedido completo PUBLICA`** e espera `PUBLISHED`/201.
+
+**Ele não ratifica um defeito — codifica uma decisão aprovada** (o ADR 0017, com
+revisão humana registrada). Um teste que trava decisão aceita é o comportamento
+correto de uma suíte. **Rejeitado como achado autônomo**; reclassificado como
+reforço do S-04, onde o defeito de fato mora: no documento.

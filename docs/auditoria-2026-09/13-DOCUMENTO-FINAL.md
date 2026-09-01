@@ -14,8 +14,8 @@ evidência detalhada:
 | --- | --- | --- |
 | 0 | [`00-INVENTARIO.md`](00-INVENTARIO.md) | O denominador: 4 repositórios, 8 serviços, o banco, as chaves |
 | 1 | [`01-screena.md`](01-screena.md) · [`02-mnscr.md`](02-mnscr.md) · [`03-rss-prime.md`](03-rss-prime.md) · [`04-kal-el.md`](04-kal-el.md) | Auditoria de cada repositório nas 8 dimensões |
-| 2 | `05-codex-screena.md` · `06-codex-mnscr.md` · `07-codex-rss-prime.md` · `08-codex-kal-el.md` | Revisão cega do Codex — **ver o estado em §10.2** |
-| 3 | `09-confronto.md` | Os três baldes: os dois acharam / só eu / só o Codex — **depende da FASE 2** |
+| 2 | [`05-codex-screena.md`](05-codex-screena.md) · [`06-codex-mnscr.md`](06-codex-mnscr.md) · [`07-codex-rss-prime.md`](07-codex-rss-prime.md) · [`08-codex-kal-el.md`](08-codex-kal-el.md) | Revisão cega do Codex, como ele a escreveu |
+| 3 | [`09-confronto.md`](09-confronto.md) | Os três baldes: os dois acharam / só eu / só o Codex — **12 achados exclusivos dele, 1 crítico** |
 | 4 | [`10-integracao.md`](10-integracao.md) | Os quatro operando juntos; kal-el × Payload |
 | 5 | [`11-concorrencia.md`](11-concorrencia.md) | 24 concorrentes, mercado brasileiro |
 | 6 | [`12-design.md`](12-design.md) | Design e produto, com medição |
@@ -135,12 +135,22 @@ E seis coisas que eu **medi** e que são incomunmente boas — detalhadas em
 | **2** | **A defesa contra SSRF existe, está documentada, e o caminho que o pipeline usa não passa por ela.** `extractor.py:909` usa `requests` cru com `allow_redirects=True`; três chamadores de produção o usam | MNScr | **CRÍTICO** | código |
 | **3** | **A fila da OMDb é invocada todo dia e produz em 2 de 10**, com **66.997 candidatos** esperando. Em 31/08 gastou **850 de cota para cobrir 39 títulos** (~22 requisições/título), com **75 de 127 execuções falhando sem `error_code`**. Resultado: 760 de 83.314 títulos com nota (**0,91%**) | screena | **CRÍTICO** | banco + código |
 | **4** | **O motor editorial não tem serviço implantado.** Todo o fluxo de matéria do Cinerie depende de alguém executar um `.bat` | MNScr | **CRÍTICO** | painel |
-| **5** | **"Onde assistir" em 147 de 83.314 títulos (0,18%)** — 70.036 das 70.869 ofertas estão com `display_allowed = false` | screena | **ALTO** | banco |
-| **6** | **62,5% das fichas de filme não têm sinopse em pt-BR**; 0 de 62.514 pessoas têm resumo | screena | **ALTO** | banco |
-| **7** | **2.152 biografias existem e 100% das 1,3 M de pessoas estão em `biography_source_status = unknown`**, que bloqueia exibição. O texto existe e é invisível | screena | **ALTO** | banco |
-| **8** | **O `CLAUDE.md:201` proíbe o que a produção faz** — "NUNCA publicar conteudo automaticamente" contra o ADR 0017 aceito e `EDITORIAL_AUTO_PUBLISH_ENABLED=true` | screena | **ALTO** | código + painel |
-| **9** | **3,6 GB de cache vencido nunca apagado** — 500.140 de 561.970 linhas de `api_cache` (89%) estão expiradas, em um banco de 10 GB | screena | **ALTO** | banco |
-| **10** | **O README descreve outro sistema** — "LANCE! RSS Feed Generator, puramente educativo, não comercial", há 12 meses. E instruía autenticar com `?key=` na URL, que o código removeu de propósito | RSS Prime | **ALTO** | código |
+| **5** | **Escrever um arquivo JSON local marca o artigo como `PUBLISHED`** — e ninguém no sistema distingue esse marcador do publicado de verdade (`wp_post_id=0`, lido por nenhuma consulta). A retenção apaga a linha **e** o arquivo em 72 h, e a deduplicação bloqueia nova tentativa do mesmo fato na janela. Se o consumidor externo não rodar, **a perda é silenciosa e irrecuperável** | RSS Prime | **CRÍTICO** | código *(achado do Codex, verificado por mim)* |
+| **6** | **"Onde assistir" em 147 de 83.314 títulos (0,18%)** — 70.036 das 70.869 ofertas estão com `display_allowed = false` | screena | **ALTO** | banco |
+| **7** | **62,5% das fichas de filme não têm sinopse em pt-BR**; 0 de 62.514 pessoas têm resumo | screena | **ALTO** | banco |
+| **8** | **2.152 biografias existem e 100% das 1,3 M de pessoas estão em `biography_source_status = unknown`**, que bloqueia exibição. O texto existe e é invisível | screena | **ALTO** | banco |
+| **9** | **O `CLAUDE.md` se contradiz sozinho**: a linha 157 diz que `editorial_auto_publish` "sobe até `published`" e a linha 201 diz "**NUNCA** publicar conteúdo automaticamente". O documento que se declara a lei **afirma e proíbe a mesma coisa**, 44 linhas depois | screena | **ALTO** | código + painel |
+| **10** | **Apagar mídia não apaga o binário.** `deleteMedia()` **recebe** o `StorageProvider` como parâmetro e nunca o usa; a auditoria chega a registrar a `storageKey`. Conteúdo removido por pedido de privacidade permanece no volume | kal-el | **ALTO** | código *(achado do Codex, verificado por mim)* |
+
+> Dois altos saíram desta lista e continuam na tabela mestra: os **3,6 GB de
+> `api_cache` vencido** (operacional, sem dano ao usuário) e o **README do RSS
+> Prime**, que descrevia outro sistema — este último porque **já foi corrigido**
+> nesta auditoria, por PR.
+>
+> Dois dos dez acima **não são meus**: vieram da revisão cega do Codex e eu os
+> verifiquei um a um. O caso #5 eu confirmei **e agravei** — o Codex apontou a
+> marcação prematura; as três consequências (ninguém discrimina, a retenção apaga,
+> a dedup bloqueia) são da minha verificação. Ver [`09-confronto.md`](09-confronto.md).
 
 ## 1.4. A decisão sobre o kal-el
 
@@ -251,14 +261,18 @@ com teste que percorre o fecho de imports para provar.
 
 # 3. Capítulo por repositório
 
-> **Estado da FASE 3.** O confronto com a revisão cega do Codex depende da FASE 2,
-> que está bloqueada por cota até as 04:54 (ver §10.2). Enquanto ela não roda,
-> as sínteses abaixo refletem **apenas a minha auditoria** — e as pistas parciais
-> que o Codex chegou a emitir antes de ser cortado já foram **verificadas por
-> mim** e estão incorporadas: o SSRF do MNScr (confirmado), o `public/` do kal-el
-> (confirmado e **corrigido por PR**), o RapidAPI remanescente do `screena`
-> (confirmado e quantificado) e a autopublicação contra o `CLAUDE.md`
-> (confirmada, com o mecanismo lido em detalhe).
+> **A FASE 3 rodou, e mudou este capítulo.** A revisão cega do Codex — quatro
+> sessões separadas, sem acesso aos meus relatórios — produziu **12 achados que eu
+> não tinha**, entre eles **1 crítico e 4 altos**. Verifiquei os doze um a um, no
+> código, e **corrigi o enunciado do Codex em três deles**. As sínteses abaixo já
+> incorporam o resultado; o confronto completo, com evidência item a item, está em
+> [`09-confronto.md`](09-confronto.md).
+>
+> A correlação que o confronto expôs é desconfortável e fica registrada: **os dois
+> repositórios onde minha cobertura foi mais rasa — RSS Prime (13 arquivos) e
+> kal-el (14) — concentram 7 dos 12 achados exclusivos dele.** Onde eu fiquei no
+> perímetro (README, CI, manifesto), ele entrou no motor, e era lá que estavam os
+> defeitos.
 
 Cada relatório completo está no seu documento. Aqui fica a síntese.
 
@@ -440,10 +454,42 @@ Ordenada por gravidade. Prefixos: **S** = screena, **M** = MNScr,
 | K-07 | BAIXO | kal-el | raiz | `.zip` e `.patch` de recuperação versionados | `git ls-files` |
 | K-08 | BAIXO | kal-el | disco | Branch `feat/login-comic-caption`, não `main` | `git branch` |
 
-**Total: 64 achados — 4 críticos, 22 altos, 24 médios, 14 baixos.** (Contado da
-própria tabela, não estimado. Um achado adicional, o `R-09` do RSS Prime, foi
-**retirado** na verificação: a rota `/debug/superfeed` está protegida, e o
-docstring dela registra que já esteve aberta e foi corrigida.)
+### Os 12 da revisão cega do Codex, verificados por mim
+
+Estes não são meus. Vieram das quatro sessões cegas do Codex e **cada um foi
+verificado no código antes de entrar aqui** — em três deles corrigi o enunciado
+dele. Evidência item a item em [`09-confronto.md`](09-confronto.md).
+
+| Id | Grav. | Repo | Local | O quê | Prova |
+| --- | --- | --- | --- | --- | --- |
+| **C-08** | **CRÍTICO** | RSS Prime | `app/scheduler.py:869-875` | JSON local escrito ⇒ `PUBLISHED`; ninguém lê `wp_post_id=0`, retenção apaga em 72 h, dedup bloqueia nova tentativa | código |
+| C-05 | ALTO | MNScr | `app/policy_engine.py:414-415` | `has_budget()` subtrai só `post_writer_tokens` — o escritor principal fica fora do orçamento que leva o seu nome | código |
+| C-06 | ALTO | MNScr | `app/pipeline.py:3125,3143` + `config.py:26` | `screenrant_tv` é o 5º de 5 em ordem fixa: 3+3+3+1=10 e ele recebe **zero** em todo ciclo saturado | código + aritmética |
+| C-07 | ALTO | RSS Prime | `superfeed/v2/gemini_resolver.py:273` | `FutureTimeout` escapa do `with`, e `__exit__` chama `shutdown(wait=True)` — o timeout não limita tempo de parede. **Controle negativo no mesmo repo**: `embedding_client.py:318` faz certo | código |
+| C-10 | ALTO | kal-el | `apps/api/src/services/media.ts:222` | `deleteMedia()` recebe `StorageProvider` e nunca o usa; `delete()` tem **zero chamadas** em todo o repo | código + varredura |
+| C-01 | MÉDIO | screena | `scripts/audit/check-invariants.mjs:9-17,43-80` | `audit:invariants` confere **presença de frases em documentos** + um padrão `imdb`/`tomatometer`. Passar nele é compatível com as 13 invariantes violadas — e o S-04 passa | código |
+| C-11 | MÉDIO | kal-el | `apps/api/src/services/webhooks.ts:120-123` | Segredo de webhook **sem cifragem de envelope em repouso**. *(Enunciado do Codex corrigido: hash é impossível — HMAC é simétrico)* | código |
+| C-12 | MÉDIO | kal-el | `README.md:3,7` + `docs/01-ARCHITECTURE.md:23` | O diagrama desenha uma caixa `Delivery API` que não existe; toda `GET` de conteúdo está atrás de `guard()`. *(Conclusão moderada: um portal com service token consegue ler)* | rotas enumeradas |
+| C-13 | MÉDIO | kal-el | `packages/db/tests/migration.test.ts:36-65` | O bloco chamado de "inverso de cada migração" é `DROP TABLE ... CASCADE` em 27 tabelas. Não há arquivos de `down` | código |
+| C-02 | BAIXO | screena | `apps/admin/package.json:6` | Descreve o admin como "SOMENTE LEITURA... nao escreve"; o `CLAUDE.md` diz que a escrita "existe e é real" | código |
+| C-03 | BAIXO | screena | env | `SCREENA_REDIS_URL` declarada e **sem nenhum leitor** em `*.ts` de produção | varredura |
+| C-09 | BAIXO | RSS Prime | `superfeed/schema.py:225` | `DROP TABLE sf_raw_items` numa migração de **runtime**, com FKs desligadas. *(Atenuado: é o padrão obrigatório do SQLite, e é guardado)* | código |
+
+**Total: 76 achados — 5 críticos, 26 altos, 28 médios, 17 baixos.**
+
+Contado das duas tabelas, não estimado: **64 meus + 12 do Codex**. Dois achados
+foram **retirados** na verificação, e os dois estão declarados porque uma
+auditoria que só acrescenta não está medindo:
+
+- **`R-09`** (RSS Prime) — a rota `/debug/superfeed` está protegida, e o docstring
+  dela registra que já esteve aberta e foi corrigida.
+- **`S-27`** (screena) — a fila `airing_series` parecia parada havia 7 dias; medi
+  `stale_after` e não há um único candidato vencido (nulo=0, vencido=0,
+  **futuro=35.235**). A fila está correta; o silêncio era o comportamento certo.
+
+E um terceiro, o `C-04`, foi **absorvido** em vez de contado: a contradição
+interna do `CLAUDE.md` afia o achado que já existia sobre autopublicação, não
+constitui achado novo.
 
 E os de design, quantificados em [`12-design.md`](12-design.md): 0 px de imagem
 na primeira tela de celular, 17 reprovações de contraste, 18 alvos de toque
@@ -566,7 +612,6 @@ desta auditoria.
 | 12 | Condição de exposição do Swagger UI do kal-el | `sed -n '84,90p' apps/api/src/app.ts` |
 | 13 | Se os 143 índices sem uso são removíveis | Cruzar `pg_stat_user_indexes` com as consultas de cada rota |
 | 14 | Tempo por consulta em produção | Instalar `pg_stat_statements` — **mudança de configuração; não fiz** |
-| 15 
 
 ---
 
@@ -609,9 +654,28 @@ com marcação honesta de evidência.
 
 **FASE 2, primeira tentativa: falhou.** As quatro revisões cegas estouraram o
 limite de uso da conta depois de **799.324 tokens** de exploração, sem escrever
-relatório. A culpa foi do meu enunciado: pedi 8 dimensões sem teto de
-exploração. A segunda tentativa foi com prompt limitado ("no máximo ~35 chamadas,
-depois ESCREVA").
+relatório. A culpa foi do meu enunciado: pedi 8 dimensões sem teto de exploração.
+
+**FASE 2, segunda tentativa: êxito**, com o prompt reescrito para *"no máximo ~35
+chamadas de ferramenta; depois disso, PARE de explorar e ESCREVA"*. Os quatro
+relatórios saíram em 25–32 chamadas cada.
+
+> **O teto de exploração foi a diferença entre zero relatórios e quatro.** Registro
+> porque é a lição transferível: numa revisão adversarial com orçamento finito, o
+> limite de exploração não é uma restrição sobre a qualidade — é o que permite que
+> exista saída.
+
+**O que a FASE 2 rendeu, em números:** o Codex abriu **150 arquivos contra os meus
+80**, e entregou **12 achados que eu não tinha** — 1 crítico, 4 altos, 4 médios,
+3 baixos. Verifiquei os doze no código e **corrigi o enunciado dele em três**.
+Nenhum dependia de banco, site ou painel: **os doze estavam em código que eu tinha
+ao alcance.**
+
+E a assimetria inversa, para não inverter o exagero: o Codex rodou read-only, sem
+rede, sem banco e sem navegador. **Nenhum dos meus achados de produção era
+alcançável por ele** — nem os 0,91% de cobertura de nota, nem o `content_blocks =
+0`, nem o `apps/admin` que nunca foi construído. Nenhum dos dois, sozinho, teria
+produzido este documento.
 
 ## 10.3. Ajustes leves aplicados
 

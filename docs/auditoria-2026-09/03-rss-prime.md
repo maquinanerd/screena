@@ -458,3 +458,111 @@ propósito** — a URL é fixa, mas fixa no alvo errado para o sistema atual.
 **Não abri:** os ~30 scrapers por veículo em `app/`, os 27 módulos de
 `superfeed/` (só os dois de Gemini), os 34 de `tests/` (rodei os 564), os 23 de
 `EXPLICACAO/`, os 53 Markdown da raiz, os 181 `.ndjson` e os 55 `.pyc`.
+
+---
+
+## Acréscimo da FASE 3 — o que a revisão cega do Codex achou aqui
+
+**Este é o repositório onde minha auditoria foi mais fraca, e o número diz por
+quê: eu abri 13 arquivos (2,4%), o Codex abriu 29 (5,3%).** Eu fiquei no
+perímetro — README, CI, dependências, artefatos versionados. Ele entrou no motor.
+Os três achados abaixo são dele, verificados por mim; um é **crítico**.
+Verificação completa em [`09-confronto.md`](09-confronto.md) §6.3.
+
+### C-08 · A fila marca `PUBLISHED` sem que ninguém tenha publicado — CRÍTICO
+
+[`app/scheduler.py:869-875`](../../../Portal%20The%20News/RSSPRIME-main/app/scheduler.py):
+
+```python
+with open(filepath, "w", encoding="utf-8") as fh:
+    json.dump(article, fh, ensure_ascii=False, indent=2)
+# Mark as PROCESSING (status=PUBLISHED with wp_post_id=0 acts
+# as a "claimed" marker until the real publisher picks it up)
+mark_published(cluster_id, wp_post_id=0, db_path=self._db_path)
+```
+
+Escrever um arquivo JSON num diretório local marca o cluster como publicado. O
+Codex apontou a marcação prematura; **as três consequências abaixo são da minha
+verificação**, e são o que torna isto crítico:
+
+**1. Ninguém distingue o marcado do publicado.** Varri `app/` e `superfeed/`
+inteiros por qualquer comparação de `wp_post_id` contra `0`/NULL. Só existem as
+duas linhas que *atribuem* o valor — e um comentário que admite o problema
+([`superfeed/cluster_store.py:605`](../../../Portal%20The%20News/RSSPRIME-main/superfeed/cluster_store.py)):
+*"…so a published row keeps `wp_post_id=0` forever."* O discriminador existe no
+dado e **nenhuma consulta o lê**.
+
+**2. A retenção apaga.**
+[`app/retention.py:50`](../../../Portal%20The%20News/RSSPRIME-main/app/retention.py):
+`TERMINAL_CLUSTER_STATUSES = ("PUBLISHED", "EXPIRED", "MERGED")`, com
+`DEFAULT_RETENTION_HOURS = 72.0`. O cluster sai do banco quente em 72 h, tenha
+sido consumido ou não. O arquivo da fila também.
+
+**3. A dedup bloqueia a segunda tentativa.** `find_published_by_fact_sig` casa em
+`status='PUBLISHED'` na janela de 72 h — um fato "publicado" que nunca chegou a
+lugar nenhum **suprime** a próxima tentativa do mesmo fato.
+
+E o fecho: **procurei o consumidor da fila neste repositório e ele não existe.**
+As únicas coisas que tocam `superfeed_queue/` depois da escrita são
+`queue_dir_usage()` (mede) e o podador da retenção (apaga). O consumidor é o
+MN26, externo — e o MN26 está, por decisão do dono, fora da arquitetura da
+Cinerie.
+
+> Se o consumidor externo não rodar: o artigo é escrito, marcado como publicado,
+> apagado do banco em 72 h, o arquivo é apagado em 72 h, e o fato fica bloqueado
+> para nova tentativa. **Perda silenciosa e irrecuperável, sem um único sinal de
+> erro.**
+
+### C-07 · O timeout do resolver Gemini não limita tempo de parede — ALTO
+
+[`superfeed/v2/gemini_resolver.py:272-274`](../../../Portal%20The%20News/RSSPRIME-main/superfeed/v2/gemini_resolver.py):
+
+```python
+try:
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        response = pool.submit(_call).result(timeout=timeout)
+except FutureTimeout:
+    return _defer("timeout", topic, size)
+```
+
+`.result(timeout=…)` levanta no prazo — **mas a exceção sai do bloco `with`, e
+`ThreadPoolExecutor.__exit__` chama `shutdown(wait=True)`.** Python bloqueia até
+a thread terminar antes de o `except` executar. Se a chamada travar por 300 s, o
+ciclo espera 300 s e só então registra "timeout".
+
+**O controle negativo está neste mesmo repositório**, e é o que torna o achado
+indiscutível — [`superfeed/embedding_client.py:318-322`](../../../Portal%20The%20News/RSSPRIME-main/superfeed/embedding_client.py)
+faz a mesma coisa do jeito certo:
+
+```python
+executor = ThreadPoolExecutor(max_workers=1)        # sem `with`
+future = executor.submit(_call_embedding_api, batch)
+try:
+    vectors, billable_chars = future.result(timeout=EMBED_TIMEOUT_SECONDS)
+except FutureTimeout:
+    future.cancel()
+    executor.shutdown(wait=False, cancel_futures=True)      # não espera
+```
+
+| Arquivo | Linha | Padrão |
+| --- | ---: | --- |
+| `superfeed/embedding_client.py` | 318 | **correto** |
+| `superfeed/v2/gemini_resolver.py` | 273 | **bloqueia** |
+| `superfeed/ai_validator.py` | 481 | **bloqueia** |
+
+O autor conhecia o padrão certo — escreveu `wait=False, cancel_futures=True` de
+propósito num arquivo. Nos outros dois, o `with` reintroduz a espera em silêncio.
+
+### C-09 · Migração de runtime derruba e reconstrói uma tabela — BAIXO
+
+[`superfeed/schema.py:206-233`](../../../Portal%20The%20News/RSSPRIME-main/superfeed/schema.py)
+executa, com `PRAGMA foreign_keys=OFF`: cria tabela nova, copia tudo,
+`DROP TABLE sf_raw_items`, renomeia.
+
+**Devo os atenuantes, senão o achado engana.** É o padrão obrigatório do SQLite
+(não existe `ALTER TABLE ... DROP CONSTRAINT`), é guardado por
+`_needs_url_migration()`, está entre `BEGIN;`/`COMMIT;`, e o `finally` fecha a
+conexão. **O risco real que resta** é o que o Codex acertou: roda no caminho de
+**boot da aplicação**, não como passo explícito. Uma base legada grande paga a
+cópia inteira na subida, com FKs desligadas, sem ninguém pedir. Recomendação:
+mover para comando explícito.
