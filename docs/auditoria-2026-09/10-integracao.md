@@ -47,7 +47,8 @@
 │  │  volume: —      │   └──────────────┘               │             │
 │  └──────▲──────────┘   ┌──────────────┐               │             │
 │         └──────────────┤ screen-cron  │◄──────────────┘             │
-│                        │ (AMARELO)    │                             │
+│                        │ VIVO (amarelo│                             │
+│                        │  no painel)  │                             │
 │                        └──────────────┘                             │
 │                                                                     │
 │  ┌──────────────────────────┐                                       │
@@ -121,7 +122,7 @@ do serviço `feed`: `ls -la /app/data/` antes e depois de um deploy, ou
 
 ## 3. Cota compartilhada: o que eu afirmei e o que a medição disse
 
-Esta é a seção onde a auditoria se corrigiu. A versão inicial da FASE 0 afirmou
+Esta é uma das seções onde a auditoria se corrigiu. A versão inicial da FASE 0 afirmou
 que "screena e MNScr compartilham a mesma chave Gemini e o mesmo token TMDB" —
 verdade para os arquivos `.env` do **disco**, e **falsa** para produção.
 
@@ -290,7 +291,7 @@ produção) por cota. O que a auditoria encontrou não foi conflito, foi **ausê
 | Bloqueio real | Natureza |
 | --- | --- |
 | MNScr sem serviço implantado | operacional — o motor editorial depende de um `.bat` na máquina do dono |
-| `screen-cron` degradado | operacional — o relógio de 13 filas está amarelo, e a fila da OMDb rodou 2 de 7 dias |
+| `ratings_omdb` e `airing_series` quebradas | operacional — o agendador está **vivo** (medi fila a fila); só essas duas falham. A OMDb é invocada todo dia e emite requisição em 2 de 10 |
 | Entity Writer nunca executado | de escopo — `content_blocks = 0` |
 | Sem limite de CPU/memória em nenhum serviço | contenção |
 | RSSPRIME possivelmente sem volume | durabilidade |

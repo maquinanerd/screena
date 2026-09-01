@@ -14,8 +14,8 @@ evidência detalhada:
 | --- | --- | --- |
 | 0 | [`00-INVENTARIO.md`](00-INVENTARIO.md) | O denominador: 4 repositórios, 8 serviços, o banco, as chaves |
 | 1 | [`01-screena.md`](01-screena.md) · [`02-mnscr.md`](02-mnscr.md) · [`03-rss-prime.md`](03-rss-prime.md) · [`04-kal-el.md`](04-kal-el.md) | Auditoria de cada repositório nas 8 dimensões |
-| 2 | [`05-codex-screena.md`](05-codex-screena.md) · [`06-codex-mnscr.md`](06-codex-mnscr.md) · [`07-codex-rss-prime.md`](07-codex-rss-prime.md) · [`08-codex-kal-el.md`](08-codex-kal-el.md) | Revisão cega do Codex |
-| 3 | [`09-confronto.md`](09-confronto.md) | Os três baldes: os dois acharam / só eu / só o Codex |
+| 2 | `05-codex-screena.md` · `06-codex-mnscr.md` · `07-codex-rss-prime.md` · `08-codex-kal-el.md` | Revisão cega do Codex — **ver o estado em §10.2** |
+| 3 | `09-confronto.md` | Os três baldes: os dois acharam / só eu / só o Codex — **depende da FASE 2** |
 | 4 | [`10-integracao.md`](10-integracao.md) | Os quatro operando juntos; kal-el × Payload |
 | 5 | [`11-concorrencia.md`](11-concorrencia.md) | 24 concorrentes, mercado brasileiro |
 | 6 | [`12-design.md`](12-design.md) | Design e produto, com medição |
@@ -69,7 +69,7 @@ durante a própria auditoria, e a arquitetura editorial tem um teste que percorr
 o fecho de imports para provar que o worker não alcança o banco errado.
 
 E, ao mesmo tempo: a camada editorial de IA tem **zero linhas**, a fila de notas
-rodou **2 dos últimos 7 dias**, "onde assistir" aparece em **147 de 83.314**
+é invocada todo dia e **só emite requisição em 2 de 10**, "onde assistir" aparece em **147 de 83.314**
 títulos, **62,5%** das fichas não têm sinopse em português, e o motor que
 escreveria as matérias **não tem servidor**.
 
@@ -185,7 +185,7 @@ Ordenadas por (impacto ÷ esforço), com o que cada uma destrava:
    └────────▲───────────┘    └─────────────────────┘    └───────────┬────────────┘
             │                ┌─────────────────────┐                │
             └────────────────┤  screen-cron        │◄───────────────┘
-                             │  13 filas — AMARELO │
+                             │  13 filas · VIVO    │
                              └─────────────────────┘
 
    ┌──────────────────────────────────────────────────────────────────┐
@@ -201,7 +201,14 @@ com teste que percorre o fecho de imports para provar.
 
 # 3. Capítulo por repositório
 
-*(Revisto com o confronto da FASE 3 — ver [`09-confronto.md`](09-confronto.md).)*
+> **Estado da FASE 3.** O confronto com a revisão cega do Codex depende da FASE 2,
+> que está bloqueada por cota até as 04:54 (ver §10.2). Enquanto ela não roda,
+> as sínteses abaixo refletem **apenas a minha auditoria** — e as pistas parciais
+> que o Codex chegou a emitir antes de ser cortado já foram **verificadas por
+> mim** e estão incorporadas: o SSRF do MNScr (confirmado), o `public/` do kal-el
+> (confirmado e **corrigido por PR**), o RapidAPI remanescente do `screena`
+> (confirmado e quantificado) e a autopublicação contra o `CLAUDE.md`
+> (confirmada, com o mecanismo lido em detalhe).
 
 Cada relatório completo está no seu documento. Aqui fica a síntese.
 
@@ -319,7 +326,7 @@ Ordenada por gravidade. Prefixos: **S** = screena, **M** = MNScr,
 | # | Grav. | Repo | Arquivo / local | Achado | Evidência |
 | --- | --- | --- | --- | --- | --- |
 | S-01 | **CRÍTICO** | screena | tabela `content_blocks` | 0 linhas; `entity_writer_jobs`/`logs` = 0 | banco |
-| S-02 | **CRÍTICO** | screena | `api_sync_logs`, fila `ratings_omdb` | Rodou 2 de 7 dias; 923 e 850 de cota contra envelope de 700; 760 de 83.314 títulos com nota | banco |
+| S-02 | **CRÍTICO** | screena | `api_sync_logs`, `runners.ts:703` | Invocada **todo dia**, emite requisição em **2 de 10**; quando emite estoura o envelope (923 e 850 contra 700); **75 de 77 falhas sem `error_code`** | banco + código |
 | M-01 | **CRÍTICO** | MNScr | `app/extractor.py:909` + `pipeline.py:1326`, `cluster_extractor.py:72`, `multi_source_builder.py:200` | `requests` cru com `allow_redirects=True`, ignorando `safe_http` | código |
 | M-02 | **CRÍTICO** | MNScr | painel (ausência) | Motor editorial sem serviço; roda de `.bat` | painel |
 | S-03 | **ALTO** | screena | `watch_availability` | 70.036 de 70.869 com `display_allowed=false`; painel em 147 títulos | banco |

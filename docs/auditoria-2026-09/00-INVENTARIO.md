@@ -143,7 +143,8 @@ Isso tem consequência direta:
 Na sidebar do painel, `screen-cron` aparece **amarelo** enquanto os outros sete
 estão verdes. Isso é **anterior** à minha intervenção — o primeiro screenshot da
 sessão, antes de qualquer clique meu, já o mostrava assim. `screen-cron` é quem roda
-`@screena/sync scheduler:start`, ou seja, **o relógio de todas as filas**.
+`@screena/sync scheduler:start`, ou seja, **o relógio de todas as filas** — que,
+medido na FASE 1, **está funcionando** (ver o aviso abaixo).
 
 > **Atualização da FASE 1.** Medi as filas uma a uma pelo `run_id` que o
 > agendador carimba em cada job: **o agendador está VIVO** — `changes` enfileirou

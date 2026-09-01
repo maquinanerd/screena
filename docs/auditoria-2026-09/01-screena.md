@@ -658,7 +658,7 @@ sem depender de log nem de cor de bolinha.
 | `title_detail_ended` | 30 dias | 2026-08-25 17:27:42 (7 d) | ✅ em dia |
 | `people` | 30 dias | 2026-08-25 17:29:12 (7 d) | ✅ em dia |
 | **`airing_series`** | **1 dia** | **2026-08-25 15:58:50 (7 dias)** | ❌ **7 dias em silêncio numa fila diária** |
-| **`ratings_omdb`** | **1 dia** | rodou **2 dos últimos 7 dias** (`api_sync_logs`) | ❌ **quebrada** |
+| **`ratings_omdb`** | **1 dia** | invocada **todo dia**; emite requisição em **2 de 10** (`api_sync_logs`) | ❌ **quebrada** |
 
 **O agendador está vivo e trabalhando.** Cinco filas rodaram nas últimas horas;
 `changes` enfileirou minutos antes da medição; `movies.last_synced_at` mais
@@ -669,7 +669,7 @@ não determinei, e que agora importa muito menos.
 **Duas filas estão de fato quebradas, e são exatamente as duas que sustentam os
 achados de cobertura:**
 
-- **`ratings_omdb`** — 2 de 7 dias, e nos dois estourando o envelope. É a causa
+- **`ratings_omdb`** — invocada todo dia, emite em 2 de 10, e nos dois estourando o envelope. É a causa
   direta de **0,91% de cobertura de nota**.
 - **`airing_series`** — intervalo diário, **7 dias sem enfileirar**. É a fila que
   mantém fresca a série em exibição, ou seja, exatamente o conteúdo mais
