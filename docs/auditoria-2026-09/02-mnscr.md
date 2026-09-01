@@ -1,12 +1,12 @@
 # FASE 1 — Auditoria do repositório `MNScr`
 
-**Cobertura: abri e li 14 de 297 arquivos versionados (4,7%).**
+**Cobertura: abri e li 20 de 297 arquivos versionados (6,7%).**
 
 Como no relatório do `screena`, o número de arquivos não é o método inteiro:
 
 | Instrumento | Alcance |
 | --- | --- |
-| Leitura integral ou substancial | **14 arquivos**, escolhidos por risco |
+| Leitura integral ou substancial | **20 arquivos**, escolhidos por risco |
 | Varredura por padrão | **100% dos 297**, em 9 varreduras temáticas |
 | Execução da suíte | **3.521 testes** rodados de verdade (`uv run pytest`) |
 | Inspeção de configuração | `.env` (só nomes), `pyproject.toml`, `ci.yml`, manifesto de contratos |
@@ -225,6 +225,81 @@ cada contrato com **hash SHA-256 do schema** e nível de compatibilidade:
 O preflight (`app/cinerie/preflight.py`) confere o contrato antes de enviar, com
 TTL configurável (`MNSCR_CONTRACT_PREFLIGHT_TTL_SECONDS`).
 
+
+### A fronteira com o Cinerie — e um código morto que afirma o contrário
+
+Li `app/cinerie/` procurando defeito na fronteira que o Cinerie depende, e o que
+achei primeiro foi o oposto: **é a peça mais bem construída dos quatro
+repositórios.**
+
+`app/cinerie/forbidden.py` recusa campos **antes** da validação de schema, com
+três varreduras de profundidade diferente e a razão declarada:
+`additionalProperties: false` já recusaria os mesmos campos, *"mas com um
+'propriedade adicional nao permitida' que nao ensina nada: o pipeline
+corrigiria adivinhando"*. As listas vêm de
+`contracts/cinerie/seo-policy.json`, exportado dos mesmos arrays do Screen-App —
+não são redigitadas.
+
+`app/cinerie/outcomes.py` documenta os seis desfechos numa tabela com código
+HTTP e semântica de reenvio, e explica a armadilha do `DEFERRED`: ele chega em
+**429**, *"o codigo que qualquer cliente HTTP trata como 'voce esta rapido
+demais' — mas aqui ele nao fala de taxa, e sim de teto diario da redacao"*. O
+reenvio precisa manter o **mesmo `requestId`**, porque um novo contaria como
+publicação nova e consumiria vaga do teto do dia seguinte.
+
+Os seis desfechos batem exatamente com os cinco do gate no lado do `screena`
+(`apps/cms/src/auto-publication.ts`) mais o `OPERATIONAL_ERROR` do transporte.
+**Os dois lados do contrato concordam.**
+
+#### O defeito
+
+`outcomes.py:266` define `should_resend(result) -> (bool, str)` — a decisão de
+reenvio com **motivo registrado**, um caso por desfecho. Está exportada em
+`__all__`, tem docstring longa e é coberta por teste.
+
+E o docstring declara por que ela existe:
+
+> *"A funcao existe para que a resposta seja uma decisao explicita com motivo
+> registrado, **em vez de um `if` espalhado pelo orquestrador**."*
+
+**Ela nunca é chamada em produção.** `git grep` no código versionado:
+
+| Chamador | Onde |
+| --- | --- |
+| `tests/test_cinerie_delivery.py:573` | teste |
+| `tests/test_cinerie_delivery.py:596` | teste (`resend_not_before`) |
+| `tests/test_cinerie_delivery.py:678` | teste (`resend_not_before`) |
+| — | **nenhum em `app/`** |
+
+E o `if` que a função existia para eliminar **está no orquestrador**, em
+`app/cinerie_service.py:507`:
+
+```python
+if result.outcome == O.DEFERRED:
+    ...
+    return STATUS_DEFERRED
+```
+
+O comportamento **está correto** — `cinerie_service.py` trata `DEFERRED`, guarda
+`next_eligible_at` (linhas 440 e 494) e ainda registra um aviso quando um
+`nextEligibleAt` aparece num desfecho já aceito (linha 472). Não há defeito
+funcional.
+
+O defeito é de **duplicação e de verdade**: a política de reenvio está escrita
+em **dois** lugares que podem divergir, e o docstring do lugar canônico afirma
+que o outro não existe. Quem alterar `should_resend` — por exemplo, para tornar
+`CONFLICT` retentável — vai alterar código morto e ver os testes passarem.
+
+É a forma mais silenciosa do padrão `implementado ≠ chamado`: **testado, verde e
+inerte.**
+
+**Correção sugerida (não apliquei — muda comportamento):** fazer
+`cinerie_service.py` consumir `should_resend`/`resend_not_before` em vez do `if`
+próprio, ou remover as duas funções e o docstring que promete o que elas não
+fazem. A primeira é melhor: o motivo textual que `should_resend` devolve é
+exatamente o que falta no log hoje.
+
+
 ---
 
 ## D6 — Segurança
@@ -401,6 +476,7 @@ enganar quem investiga. Idem os 12 worktrees em `.claude/worktrees/`.
 | M-05 | **MÉDIO** | `app/config.py:90` | `MNSCR_DB_PATH` não definido; banco principal no default relativo | código + config | Rodar de outra pasta cria banco vazio |
 | M-06 | **MÉDIO** | `docs/operations/mnscr-easypanel.md` | Runbook de implantação inexistente | painel | Documentação afirma estado que não existe |
 | M-07 | **MÉDIO** | testes que fazem monkeypatch de `_fetch_html` | Nenhum teste exercita o caminho real de rede | suíte | O defeito M-01 é invisível para 3.521 testes verdes |
+| M-11 | **MÉDIO** | `app/cinerie/outcomes.py:266` × `app/cinerie_service.py:507` | `should_resend()`/`resend_not_before()` exportadas, documentadas e testadas — **chamadas só por teste**; o `if` que elas existiam para eliminar está no orquestrador | `git grep` | Política de reenvio duplicada em dois lugares que podem divergir; o docstring afirma o contrário |
 | M-08 | **BAIXO** | `.env` | Duas famílias `PAYLOAD_CMS_*` e `PAYLOAD_*`, ambas vazias | config | Ambiguidade sobre qual caminho está ativo |
 | M-09 | **BAIXO** | `app/store.py:1478,1481` | `datetime.utcnow()` deprecado; adapter datetime do sqlite3 deprecado | execução | Ruído de warning; quebra em Python futuro |
 | M-10 | **BAIXO** | `build/lib/`, `.claude/worktrees/` (12) | Cópias não versionadas que poluem busca | disco | Contagem inflada em auditoria ingênua |
@@ -416,6 +492,8 @@ enganar quem investiga. Idem os 12 worktrees em `.claude/worktrees/`.
 ## O que mente
 
 1. O **`.env`**, que descreve um publicador WordPress que não existe mais.
+1b. O **docstring de `should_resend`**, que diz existir para evitar "um `if`
+   espalhado pelo orquestrador" — e o `if` está lá, em `cinerie_service.py:507`.
 2. **`docs/operations/mnscr-easypanel.md`** e o comentário de `app/config.py:89`,
    que apontam para uma implantação inexistente.
 3. **A suíte verde**, no sentido preciso de M-07: 3.521 testes passam e nenhum
@@ -438,14 +516,17 @@ Nenhum comentário de código mente.
 
 ---
 
-## Anexo — os 14 arquivos que abri
+## Anexo — os 20 arquivos que abri
 
 `README.md` · `pyproject.toml` · `.github/workflows/ci.yml` · `main.py` ·
 `app/entrypoint.py` (trechos) · `app/config.py` (trechos) ·
 `app/safe_http.py` (cabeçalho + constantes) · `app/extractor.py` (trechos:
 `_get` e `_fetch_html`) · `app/ai_client_gemini.py` (trechos de cota) ·
 `app/event_store.py` (trechos) · `contracts/cinerie/contract-manifest.json` ·
-`MNScr.bat` · `iniciar.bat` · `.env` (só nomes de variáveis)
+`MNScr.bat` · `iniciar.bat` · `.env` (só nomes de variáveis) ·
+`app/cinerie/forbidden.py` · `app/cinerie/outcomes.py` · `app/cinerie_service.py`
+(trechos) · `app/cinerie/client.py` (trechos) · `contracts/cinerie/seo-policy.json`
+(por referência) · `app/editorial_gate/` (inventário de tamanho)
 
 **Não abri:** os 122 arquivos de `tests/` (rodei os 3.521 casos), os 11 de
 `docs/`, os 5 de `config/`, e os subpacotes `factual/`, `delivery/`,
