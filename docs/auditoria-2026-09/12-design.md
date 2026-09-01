@@ -187,6 +187,24 @@ e conteúdo em cirílico apresentado como novidade do dia.
 
 ## 5. Home e listagens
 
+### A estrutura, medida
+
+| Seção | Topo (px) | Altura | Links | Imagens |
+| --- | ---: | ---: | ---: | ---: |
+| `hero` — Destaques | 0 | 480 | 2 | 1 |
+| *(ticker de novidades)* | 480 | ~378 | — | — |
+| Destaques de hoje | 858 | 516 | 3 | 3 |
+| Popular essa semana | 1.380 | 291 | 11 | 10 |
+| Filmes em alta | 1.727 | 627 | 13 | 6 |
+| Séries da semana | 2.736 | 627 | 13 | 6 |
+| Em breve | 3.419 | 488 | 13 | 6 |
+| **Notícias & entrevistas** | 3.963 | **1.864** | 8 | 4 |
+
+**Altura total 8.124 px, 36 imagens, 63 links.** Sete seções, e — ao contrário
+da ficha de filme — **a home abre com imagem** (o hero tem backdrop em `top: 0`,
+com `fetchPriority="high"` e `preload`). O contraste é o achado: a home sabe que
+precisa de imagem na primeira tela; a ficha, não.
+
 A home entrega, em três segundos: hero com filme em destaque (`A Odisseia`,
 ★★★★★, classificação), o ticker de novidades, `DESTAQUES DE HOJE` com abas
 Filmes/Séries e três cards editoriais reais, e `POPULAR ESSA SEMANA` com abas
