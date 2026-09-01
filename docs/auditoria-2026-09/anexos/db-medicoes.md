@@ -88,3 +88,88 @@ user_stats_snapshots
 7. **`users = 2`** — a plataforma de usuário existe em código e não em uso.
 8. **143 de 330 índices nunca foram usados** (43,3%), custando 122 MB.
 9. `api_cache` com 5 GB é metade do banco.
+
+---
+
+# Segunda rodada de medições — 2026-09-01, 01:45–01:50 local
+
+## O catálogo está vivo e ingerindo AGORA
+
+| Métrica | Valor |
+| --- | ---: |
+| `movies` criados na última **1 h** | **3.084** |
+| `movies` criados nas últimas 24 h | 3.486 |
+| `tv_shows` criados na última 1 h | 166 |
+| `tv_shows` criados nas últimas 24 h | 720 |
+| `people` criados nas últimas 24 h | **26.431** |
+| `search_documents` — última atualização | **2026-09-01 04:40:18 UTC** (7 min antes da medição) |
+| `search_documents` — total | 149.136 |
+
+Os totais mudaram **durante a auditoria**: `movies` foi de 48.613 (00:44) para
+51.697 (01:47) — **+6,3% em uma hora**. Onde houver divergência de total entre
+as duas rodadas deste anexo, é isso: o `screen-catalog-worker` está trabalhando.
+
+**Consequência para a leitura de todos os percentuais:** o denominador cresce
+mais rápido que a cobertura de nota, sinopse e oferta. A cobertura relativa
+**piora sozinha** enquanto essas filas não acompanham.
+
+## Sinopse em pt-BR — a maioria das fichas não tem
+
+`entity_translations`, por tipo, com `summary` não vazio:
+
+| Tipo | Com sinopse | Total | Cobertura |
+| --- | ---: | ---: | ---: |
+| `movie/pt-BR` | **19.367** | 51.696 | **37,5%** |
+| `tv/pt-BR` | **13.050** | 34.745 | **37,6%** |
+| `person/pt-BR` | **0** | 62.514 | **0%** |
+
+**62,5% das fichas de filme e 62,4% das de série não têm sinopse em português.**
+E **nenhuma** das 62.514 pessoas com tradução tem resumo.
+
+## Biografia — 0,16% preenchida, e 100% bloqueada
+
+| Métrica | Valor |
+| --- | ---: |
+| `people` com `biography` não vazia | **2.152** |
+| `people` total | 1.315.205 |
+| Cobertura | **0,16%** |
+| `people` com `profile_path` (foto) | 280.384 (21,3%) |
+| `biography_source_status = unknown` | **1.315.149 — 100%** |
+
+As duas linhas juntas dizem a coisa toda: **existem 2.152 biografias no banco, e
+nenhuma delas pode aparecer na tela.** `biography_source_status` está em
+`unknown` para **todas** as 1,3 milhão de pessoas, e `unknown` é justamente o
+estado que a invariante 6 usa para bloquear exibição.
+
+Preencher a coluna `biography` não muda nada: quem decide a exibição é
+`biography_source_status`, que nasce `unknown` e **nada no sistema o altera**.
+
+## `original_language` — a coluna que continua nula
+
+| Tipo | Sem `original_language` | Total | % |
+| --- | ---: | ---: | ---: |
+| `movies` | **22.353** | 51.697 | **43,2%** |
+| `tv_shows` | **20.766** | 34.847 | **59,6%** |
+
+Bate quase exatamente com o que a documentação interna do repositório registra
+(43% dos filmes e 60% das séries). O recorte de cinco idiomas do PR #260 **não
+chegou ao dado de produção** — coerente com `languages = 3` linhas.
+
+## Pôster e backdrop — as imagens EXISTEM
+
+| Tipo | Com `poster_path` | Com `backdrop_path` | Total |
+| --- | ---: | ---: | ---: |
+| `movies` | **47.177 (91,3%)** | 36.166 (70,0%) | 51.697 |
+| `tv_shows` | **32.379 (92,9%)** | 29.391 (84,3%) | 34.847 |
+
+Este é o número que sustenta a sugestão nº 1 da FASE 6. **Mais de 91% dos
+títulos têm pôster no banco**, e a ficha não mostra imagem nenhuma acima da
+dobra. Não é falta de dado; é ordem de blocos.
+
+## Outros
+
+| Métrica | Valor |
+| --- | ---: |
+| `redirects` | 496 (era 479 na 1ª rodada) |
+| `entity_awards` | 182 |
+| `search_documents` | 149.136 |

@@ -257,7 +257,7 @@ faixa de mídia, que reserva altura antes de as imagens chegarem.
 
 | # | Sugestão | Impacto | Esforço | Por quê | Quem faz bem |
 | --- | --- | --- | --- | --- | --- |
-| **1** | **Pôster/backdrop acima da dobra na ficha de filme e série** | altíssimo | **baixo** | Hoje há 0 px de imagem na primeira tela de celular. A imagem já está no banco (`tmdb_images`, 2,17 M linhas) e já é renderizada 840 px abaixo | IMDb, AdoroCinema, Letterboxd |
+| **1** | **Pôster/backdrop acima da dobra na ficha de filme e série** | altíssimo | **baixo** | Hoje há 0 px de imagem na primeira tela de celular. E medi: **91,3% dos filmes e 92,9% das séries já têm `poster_path` no banco**. Não é falta de dado — é ordem de blocos | IMDb, AdoroCinema, Letterboxd |
 | **2** | **Trocar `--c-text-muted` por `--c-text-muted-aa` em todos os usos** | alto | **baixo** | 21 elementos a 2,93:1; o token acessível já existe. É uma troca de variável | — |
 | **3** | **Promover as 70.036 ofertas de `watch_availability`** | altíssimo | médio | "Onde assistir" sai de 147 para dezenas de milhares de títulos e ataca a intenção mais valiosa do mercado brasileiro. Exige decisão humana de licença | JustWatch, Filmow |
 | **4** | **Popular `entity_alternative_titles` e regerar slugs** | alto | médio | Conserta de uma vez 17.937 URLs sem palavra-chave, os títulos em cirílico no ticker e os nomes ilegíveis | IMDb (títulos por região) |
@@ -267,10 +267,11 @@ faixa de mídia, que reserva altura antes de as imagens chegarem.
 | **8** | **Alvos de toque ≥ 44 px em celular** | médio | **baixo** | 18 elementos abaixo do mínimo; é padding | — |
 | **9** | **"Notícias relacionadas" também no filme** | médio | **baixo** | O bloco já existe e funciona na série. É o único bloco editorial vivo | Omelete, Screen Rant |
 | **10** | **Navegação por temporada fixa na ficha de série** | médio | médio | 3.389 px de episódios sem âncora; numa série longa é intransitável | TV Guide, Trakt |
-| **11** | **Biografia na ficha de pessoa** | alto | médio | Depende de destravar `biography_source_status` (decisão de licença). Hoje a página de pessoa é foto + 3 chips | IMDb, AdoroCinema |
+| **11** | **Destravar `biography_source_status`** | alto | médio | Medi: **2.152 biografias já estão no banco e 100% das 1,3 M de pessoas estão em `unknown`**, que bloqueia exibição. O texto existe; o gate nunca é alterado por nada. É decisão de licença, não de código | IMDb, AdoroCinema |
 | **12** | **Sitemap de pessoas** | alto (SEO) | **baixo** | 62.647 pessoas com slug e nenhuma anunciada. É um shard novo | todos |
 | **13** | **Score também na ficha de série** | médio | baixo | O filme mostra, a série não. Contrato visual inconsistente | Metacritic |
 | **14** | **Cache de rota nas fichas** | médio | alto | Tudo é `no-store`; 83.347 URLs no sitemap significam 83 mil renderizações por varredura do Googlebot | — |
+| **14b** | **Sinopse em português nas fichas** | alto | médio | **62,5% dos filmes e 62,4% das séries não têm `summary` em pt-BR.** A ficha abre com um parágrafo truncado ou com nada. É o texto que descreve a obra | todos |
 | **15** | **Corrigir a frase do Score** | baixo | **trivial** | "3 fontes: Metacritic, IMDb e TMDB" com duas visíveis | Metacritic |
 
 ---

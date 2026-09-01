@@ -35,6 +35,11 @@ indexabilidade**.
 | 4 | **`CLAUDE.md:201` proíbe o que a produção faz.** "NUNCA publicar conteudo automaticamente" versus o ADR 0017 (aceito) e `EDITORIAL_AUTO_PUBLISH_ENABLED=true` no serviço `cinerie-cms`. O documento que se declara autoritativo está desatualizado. | **ALTO** | medido no código e no painel |
 | 5 | **3,6 GB de cache expirado nunca apagado.** `api_cache` tem 500.140 linhas vencidas de 561.970 (89%) — metade do banco de 10 GB é lixo com `expires_at` no passado. | **ALTO** | medido no banco |
 
+Uma segunda rodada de medição (01:45) acrescentou três achados do mesmo peso —
+**62,5% das fichas sem sinopse em português**, **2.152 biografias existentes e
+100% bloqueadas** por `biography_source_status = unknown`, e **`original_language`
+nula em 43,2% dos filmes** — todos detalhados em D2.
+
 E o contraponto, que seria desonesto omitir: **a suíte inteira passa
 (7.567/7.567), o typecheck passa, o lint passa e os dois auditores de
 governança passam.** Este não é um repositório descuidado. Os defeitos acima
@@ -164,6 +169,69 @@ seguro é não exibir. Os comentários dizem isso na própria linha
 O efeito colateral é real, porém: **70.036 das 70.869 linhas de
 `watch_availability` estão em `display_allowed = false`** e ninguém as promoveu.
 O default não é o defeito; a **ausência de um processo de promoção rodando** é.
+
+### Segunda rodada de medição — o que a ficha realmente tem para mostrar
+
+Voltei ao banco às 01:45 para medir o **conteúdo** das fichas, não só a
+existência das linhas. Quatro números que mudam a leitura do produto:
+
+**1. A maioria das fichas não tem sinopse em português.**
+
+| Tipo | Com `summary` em pt-BR | Total | Cobertura |
+| --- | ---: | ---: | ---: |
+| `movie` | 19.367 | 51.696 | **37,5%** |
+| `tv` | 13.050 | 34.745 | **37,6%** |
+| `person` | **0** | 62.514 | **0%** |
+
+**62,5% das fichas de filme e 62,4% das de série vão ao ar sem sinopse**, e
+nenhuma das 62.514 pessoas com tradução tem resumo.
+
+**2. Existem 2.152 biografias, e nenhuma pode ser exibida.**
+
+`people.biography` está preenchida em **2.152 de 1.315.205 pessoas (0,16%)**.
+E `biography_source_status` está em **`unknown` para 1.315.149 — 100% delas**.
+
+`unknown` é exatamente o estado que a invariante 6 usa para bloquear exibição.
+Ou seja: o trabalho de trazer a biografia foi feito para 2.152 pessoas e **o
+resultado é invisível**, porque a coluna que governa a exibição nasce `unknown`
+e **nada no sistema a altera**. Encher `biography` não tira ninguém do bloqueio.
+
+**3. `original_language` continua nula em quase metade do catálogo.**
+
+| Tipo | Sem `original_language` | Total | % |
+| --- | ---: | ---: | ---: |
+| `movies` | 22.353 | 51.697 | **43,2%** |
+| `tv_shows` | 20.766 | 34.847 | **59,6%** |
+
+Bate com o que a própria documentação do repositório registra. Combinado com
+`languages = 3` linhas, confirma que **o recorte de cinco idiomas do PR #260 não
+chegou ao dado de produção**.
+
+**4. E o contraponto: as imagens existem.**
+
+| Tipo | Com `poster_path` | Com `backdrop_path` |
+| --- | ---: | ---: |
+| `movies` | **47.177 (91,3%)** | 36.166 (70,0%) |
+| `tv_shows` | **32.379 (92,9%)** | 29.391 (84,3%) |
+
+Mais de 91% dos títulos têm pôster no banco. A ficha não mostrar imagem acima da
+dobra (FASE 6) **não é falta de dado** — é ordem de blocos.
+
+### O catálogo está ingerindo agora
+
+Os totais mudaram **durante a auditoria**: `movies` foi de 48.613 (00:44) para
+51.697 (01:47) — **+3.084 em uma hora, +6,3%**. Nas 24 h: +3.486 filmes, +720
+séries, **+26.431 pessoas**. `search_documents` foi reprojetado 7 minutos antes
+da medição.
+
+Isso é uma boa notícia e um agravante ao mesmo tempo:
+
+- **Boa:** o `screen-catalog-worker` está saudável e trabalhando. A ingestão
+  TMDB não é o problema deste sistema.
+- **Agravante:** o denominador cresce mais rápido que a cobertura de nota
+  (0,91%), de oferta (0,18%) e de sinopse (37,5%). **Esses percentuais pioram
+  sozinhos** enquanto as filas correspondentes não acompanham o ritmo da
+  ingestão. Cada hora de catálogo novo dilui as três.
 
 ### Índices
 
@@ -763,6 +831,10 @@ universos que vão de dezenas a 1,29 milhão de linhas.
 | S-13 | **MÉDIO** | `api-clients/film_show_ratings`, `streaming_availability`, chaves `RAPIDAPI_*` em `screen-app` | Fornecedor descontinuado ainda versionado, aliasado e com chave em produção | código + painel | Superfície e confusão; 21 linhas de resíduo no banco (bloqueadas) |
 | S-14 | **MÉDIO** | produção, cabeçalhos | Sem CSP e sem HSTS | requisição | Defesa em profundidade incompleta |
 | S-15 | **MÉDIO** | `catalog_jobs` | 5.532 dead letters (1,1%) | banco | 3.658 `sync_details` e 1.836 `sync_media` perdidos |
+| S-21 | **ALTO** | `entity_translations` | 62,5% dos filmes e 62,4% das séries sem sinopse pt-BR; 0 de 62.514 pessoas | banco | A maioria das fichas vai ao ar sem o texto que descreve a obra |
+| S-22 | **ALTO** | `people.biography_source_status` | 2.152 biografias preenchidas; **100% das 1,3 M** em `unknown`, que bloqueia exibição | banco | Trabalho feito e invisível; encher `biography` não destrava nada |
+| S-23 | **ALTO** | `movies.original_language`, `tv_shows.original_language` | Nula em 43,2% dos filmes e 59,6% das séries; `languages` tem 3 linhas | banco | O recorte de cinco idiomas não chegou ao dado |
+| S-24 | **MÉDIO** | ritmo de ingestão × filas de enriquecimento | +3.084 filmes/h enquanto nota (0,91%), oferta (0,18%) e sinopse (37,5%) não acompanham | banco | As três coberturas **pioram sozinhas** a cada hora |
 | S-16 | **BAIXO** | `.env` / painel | `TMDB_API_KEY` = `SCREENA_TMDB_API_KEY`; três variáveis de site URL; dois formatos de flag de indexação | hash + painel | Rotação parcial e configuração ambígua |
 | S-17 | **BAIXO** | idempotência por exceção | `duplicate key` aborta transação no servidor | log do Postgres | Ruído permanente no log de erro do banco |
 | S-18 | **BAIXO** | `scripts/typecheck/ensure-prisma-client.mjs` | Só avisa; não gera | execução | Clone limpo dá 10 suítes vermelhas com mensagem confusa |
