@@ -32,7 +32,7 @@ carrega como foi obtida: **medido no banco**, **medido em execução**, **medido
 por requisição**, **lido no código**, **inferido** ou **não determinado**.
 
 **Onde a medição contrariou o que eu já tinha escrito, eu reescrevi.** Isso
-aconteceu **sete** vezes nesta auditoria, e as seis estão marcadas no texto:
+aconteceu **sete** vezes nesta auditoria, e as sete estão marcadas no texto:
 
 1. **As chaves compartilhadas** (FASE 0) — valia para os `.env` do disco, não para produção.
 2. **A volta da fila `people`** (FASE 1) — inferi catálogo vazio; 72% estava sincronizado.
