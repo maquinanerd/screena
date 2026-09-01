@@ -122,7 +122,7 @@ Ordenadas por (impacto ÷ esforço), com o que cada uma destrava:
 | **2** | **Pôster acima da dobra na ficha** | baixo | 91,3% dos filmes já têm `poster_path`. É ordem de blocos, não dado. Maior ganho visual do documento |
 | **3** | **Fechar o `_fetch_html` do MNScr no `safe_get`** | baixo | Fecha um SSRF real, alcançável por URL de feed, contra a LAN do dono |
 | **4** | **Dar modo em lote à CLI de promoção, e então decidir a licença** | baixo (engenharia) + decisão humana | "Onde assistir" sai de 147 para dezenas de milhares. **Atenção:** a CLI exige `--ids` explícito e não tem modo em massa — sem o seletor, a decisão de licença não tem como virar produto |
-| **5** | **Expurgo do `api_cache` vencido** | baixo | Devolve **3,6 GB** — 36% do banco — e reduz a pressão de I/O que hoje mantém o `screen-db` acima de 100% de CPU |
+| **5** | **Subir `next` para `>=15.5.21` e expurgar o `api_cache` vencido** | baixo | Fecha 8 advisories do app público (2 SSRF altas) sem mudar código, e devolve **3,6 GB** — 36% do banco |
 
 > **Uma correção que a medição me impôs.** A primeira versão desta lista dizia
 > "religar o `screen-cron`", tratando o ponto amarelo do painel como prova de
@@ -351,6 +351,8 @@ Ordenada por gravidade. Prefixos: **S** = screena, **M** = MNScr,
 | S-11 | **MÉDIO** | screena | sitemap `movies-1` | 48.611 URLs de um teto de 50.000 | HTTP |
 | S-12 | **MÉDIO** | screena | `api-clients/rapidapi-core` | Nome mente: é infra do OMDb, não removível | código |
 | S-13 | **MÉDIO** | screena | `film_show_ratings`, `streaming_availability`, chaves `RAPIDAPI_*` | Fornecedor descontinuado ainda versionado e com chave em produção; 21 linhas de resíduo (bloqueadas) | código + painel |
+| S-29 | **ALTO** | screena | `apps/web` → `next@15.5.19` | 8 advisories abertas (2 SSRF + 1 DoS altas, + divulgação não autenticada de Server Function); todas corrigidas em `>=15.5.21`; 7 citam `apps/web` | `pnpm audit` |
+| K-12 | **ALTO** | kal-el | `apps/api > image-size` | 2 DoS nos parsers ICNS e JXL/HEIF, no caminho de upload de mídia | `pnpm audit` |
 | S-14 | **MÉDIO** | screena | produção | Sem CSP e sem HSTS | requisição |
 | S-15 | **MÉDIO** | screena | `catalog_jobs` | 5.532 dead letters (1,1%) | banco |
 | S-24 | **MÉDIO** | screena | ingestão × enriquecimento | +3.084 filmes/h; nota, oferta e sinopse não acompanham | banco |
@@ -496,7 +498,7 @@ desta auditoria.
 | 6 | Se `/debug/superfeed/<topic>` do RSS Prime é autenticada | `grep -n "debug/superfeed" -B3 app/server.py` |
 | 7 | Onde `parse_query_filter` é consumido (risco de ReDoS) | `git grep -n "parse_query_filter" -- '*.py'` |
 | 8 | Volume real que o MNScr processa por dia | `sqlite3 data/app.db "SELECT count(*) FROM posts, article_queue, failures;"` |
-| 9 | Vulnerabilidades de dependência, nos quatro | `pnpm audit` (×2), `pip-audit -r requirements.txt`, `uv run pip-audit` |
+| 9 | Vulnerabilidades de dependência **dos dois repositórios Python** | Rodei `pnpm audit` nos dois de TypeScript (resultado abaixo). Nos dois de Python o `pip-audit` é **bloqueado pela política de Controle de Aplicativo desta máquina** (`os error 4551`) — fecha noutro ambiente ou pelo Dependabot |
 | 10 | Cobertura de linhas dos testes, nos quatro | Nenhum tem ferramenta configurada |
 | 11 | Core Web Vitals de campo | CrUX ou RUM — medi TTFB, que não é LCP |
 | 12 | Condição de exposição do Swagger UI do kal-el | `sed -n '84,90p' apps/api/src/app.ts` |

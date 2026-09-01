@@ -441,7 +441,7 @@ propósito** — a URL é fixa, mas fixa no alvo errado para o sistema atual.
 | Volume/linhas do banco de produção e se ele persiste entre deploys | Console do `feed`: `sqlite3 /app/data/articles.db ".tables"`, `SELECT count(*) FROM sf_clusters;` e conferir `mounts` |
 | Provedor de embeddings | `sed -n '1,60p' superfeed/embedding_client.py` |
 | Cadência real do agendador em produção | `TOPIC_DEFINITIONS` em `app/scheduler.py` + logs do serviço |
-| Vulnerabilidades de dependência | `pip-audit -r requirements.txt` |
+| Vulnerabilidades de dependência | **TENTEI E FUI BLOQUEADO**: o `pip-audit` é barrado pela política de Controle de Aplicativo desta máquina (`os error 4551`). Fecha rodando `pip-audit -r requirements.txt` noutro ambiente, ou pelo Dependabot |
 | Quais dos 53 Markdown ainda são verdade | Leitura dirigida; fora do escopo desta passagem |
 
 ---

@@ -350,9 +350,26 @@ Essa é, das quatro bases, a que tem o modelo de autorização mais completo.
 - Upload limitado a 1 arquivo e `MEDIA_MAX_BYTES`.
 - Sem `eval`; sem SQL por concatenação (Drizzle).
 
-### Dependências
+### Dependências — medido
 
-**NÃO DETERMINADO** — não rodei `pnpm audit`.
+```
+29 vulnerabilities found
+Severity: 3 low | 14 moderate | 12 high
+```
+
+**Nenhuma crítica.** As 12 de severidade alta se concentram em dois lugares:
+
+| Onde | Pacote | O quê |
+| --- | --- | --- |
+| `apps/cms > next` | `next` | 8 advisories: DoS com Server Components/Actions, **SSRF** em Server Actions e em rewrites, bypass de Middleware/Proxy |
+| `apps/cms > next > postcss` | `postcss` | leitura arbitrária de arquivo; path traversal no auto-load de source map |
+| **`apps/api > image-size`** | `image-size` | **2 advisories de DoS**: parsers de **ICNS** e de **JXL/HEIF** |
+
+O `image-size` merece destaque porque é o único que está num caminho
+**alcançável por entrada externa**: `apps/api` aceita **upload de mídia**
+(`multipart` com `files: 1` e teto `MEDIA_MAX_BYTES`), e `image-size` é quem
+inspeciona o arquivo recebido. Um ICNS ou HEIF hostil dentro do teto de bytes
+alcança o parser. O teto de tamanho **não protege** contra DoS algorítmico.
 
 ---
 
@@ -467,6 +484,7 @@ fosse o produto é um risco que declaro em vez de esconder.
 | K-09 | **ALTO** | `apps/api/src/services/articles.ts:42` | `published` é alcançável de **três** estados (`draft`, `in_review`, `scheduled`); não há aresta única onde um gate de publicação possa rodar | código | Replicar os tetos do Payload exige modelagem, não só código |
 | K-10 | **MÉDIO** | `articles.ts:46` | Não existe estado `retracted`; publicada só volta para `draft` | código | Retratação e volta-para-edição ficam indistinguíveis no registro |
 | K-11 | **MÉDIO** | `articles.ts:48` | `archived: []` é terminal; e `published → archived` lança `invalidTransition` (exige despublicar antes) | código | Arquivamento por engano é definitivo; a ordem obrigatória não está documentada |
+| K-12 | **ALTO** | `apps/api > image-size` | 2 advisories de DoS nos parsers ICNS e JXL/HEIF, **no caminho de upload de mídia** | `pnpm audit` | Arquivo hostil dentro do teto de bytes alcança o parser; o limite de tamanho não protege contra DoS algorítmico |
 | K-06 | **BAIXO** | `apps/api/src/app.ts:88` | Swagger UI condicional — condição não verificada | código | **NÃO DETERMINADO** se `/docs` fica exposto em produção |
 | K-07 | **BAIXO** | raiz | `kal-el-repository-v2.zip`, `RECOVERY-DIFF.patch` versionados | `git ls-files` | Artefatos de recuperação no controle de versão |
 | K-08 | **BAIXO** | disco | Branch `feat/login-comic-caption`, não `main` | `git branch` | O que auditei pode não ser o que será implantado |
@@ -510,7 +528,6 @@ fosse o produto é um risco que declaro em vez de esconder.
 | Condição de exposição do Swagger UI | `sed -n '84,90p' apps/api/src/app.ts` |
 | Cadência, retry e dead-letter do worker | `sed -n '1,80p' apps/worker/src/index.ts` |
 | Origem do `packages/importer` (WordPress?) | `sed -n '1,40p' packages/importer/src/index.ts` |
-| Vulnerabilidades de dependência | `corepack pnpm audit --audit-level=moderate` |
 | Se `main` difere da branch auditada | `git diff --stat main..feat/login-comic-caption` |
 
 ---

@@ -971,11 +971,55 @@ Presentes em `/pt/filmes/`: `x-content-type-options: nosniff`,
 
 Vazam versão/infra: `x-powered-by: Next.js` e `x-screena-locale: pt`.
 
-### Auditoria de dependências
+### Auditoria de dependências — o número, que eu tinha deixado em aberto
 
-**NÃO DETERMINADO.** Não rodei `pnpm audit` (precisa de rede ao registro e eu
-priorizei medições que ninguém mais faria). Fecha com:
-`corepack pnpm audit --audit-level=moderate --json`.
+`corepack pnpm audit --audit-level=moderate`, rodado no clone limpo:
+
+```
+68 vulnerabilities found
+Severity: 4 low | 29 moderate | 34 high | 1 critical
+```
+
+São **58 advisories distintos** (o total de 68 conta caminhos repetidos).
+
+**O crítico é de desenvolvimento, e isso importa.** É o `vitest@2.1.9` —
+*"When Vitest UI server is listening, arbitrary file can be read"*. É
+`devDependency`, exige rodar `vitest --ui` e expor a porta. **Não vai para
+produção.** Registro a severidade real, não a etiqueta.
+
+#### O que de fato preocupa: o `next` do app público
+
+`apps/web` — o site em `cinerie.com` — resolve para **`next@15.5.19`**
+(confirmei no `pnpm-lock.yaml` e no `node_modules`; o `package.json` declara
+`^15.0.0`).
+
+Cruzando as 25 advisories de `next` com essa versão, **8 continuam abertas**, e
+todas exigem a mesma correção — **`>=15.5.21`**:
+
+| Severidade | Advisory |
+| --- | --- |
+| **high** | Denial of Service in App Router using Server Actions |
+| **high** | **Server-Side Request Forgery** in Server Actions on custom server |
+| **high** | **Server-Side Request Forgery** in rewrites via attacker-controlled input |
+| moderate | Unauthenticated disclosure of internal Server Function |
+| moderate | Cache confusion of response bodies (2 advisories) |
+| moderate | Unbounded Server Action payload in Edge runtime |
+| moderate | Denial of Service in the Image Optimization API |
+
+**7 dessas citam `apps/web` no caminho de dependência** — ou seja, atingem o app
+público, não só o CMS ou o admin.
+
+> **Correção de método, dentro do próprio achado.** Minha primeira consulta
+> devolveu "0 advisories tocam `apps/web`" e eu quase escrevi isso. Era artefato
+> do meu filtro (escape de barra invertida no caminho do Windows). Refeito, são
+> **7**. Um filtro errado que devolve zero parece exatamente com uma boa
+> notícia — e essa é a armadilha que este relatório existe para não cair.
+
+**A correção é barata:** o intervalo declarado já é `^15.0.0`, então
+`corepack pnpm update next --latest` (ou fixar `>=15.5.21`) resolve as oito sem
+mudar código. As demais famílias — `vite`, `brace-expansion`, `js-yaml`,
+`sharp`, `dompurify` (via `@payloadcms/ui > @monaco-editor/react > monaco-editor`)
+— são de build, de teste ou do CMS, e nenhuma está no caminho de render público.
 
 ---
 
@@ -1164,6 +1208,7 @@ universos que vão de dezenas a 1,29 milhão de linhas.
 | S-26 | **MÉDIO** | `services/streaming/bin/promote-watch-availability.ts:5` | Cabeçalho diz que a ferramenta cobre só `streaming_availability`; `guardrails.ts:52` inclui `tmdb` desde então | código | Quem lê o `bin/` conclui que a ferramenta não serve para 99,99% das ofertas |
 | S-27 | **ALTO** | fila `airing_series` | Intervalo **diário**, último enfileiramento em **2026-08-25** — 7 dias de silêncio | banco (`catalog_jobs.run_id`) | A série em exibição, o conteúdo mais perecível, não é atualizada |
 | S-28 | **ALTO** | `watch_offers` × promoção | A fila ingere **5.782 ofertas/dia** para uma tabela onde 98,8% nunca são promovidas | banco | Requisição de TMDB gasta todo dia para dado que não chega à tela |
+| S-29 | **ALTO** | `apps/web` → `next@15.5.19` | **8 advisories abertas**, todas corrigidas em `>=15.5.21`: 2 SSRF e 1 DoS de severidade alta, mais divulgação não autenticada de Server Function interna. 7 citam `apps/web` | `pnpm audit` | O app público roda com SSRF conhecido; a correção não muda código |
 | S-16 | **BAIXO** | `.env` / painel | `TMDB_API_KEY` = `SCREENA_TMDB_API_KEY`; três variáveis de site URL; dois formatos de flag de indexação | hash + painel | Rotação parcial e configuração ambígua |
 | S-17 | **BAIXO** | idempotência por exceção | `duplicate key` aborta transação no servidor | log do Postgres | Ruído permanente no log de erro do banco |
 | S-18 | **BAIXO** | `scripts/typecheck/ensure-prisma-client.mjs` | Só avisa; não gera | execução | Clone limpo dá 10 suítes vermelhas com mensagem confusa |
@@ -1201,7 +1246,6 @@ Nenhum comentário de código, entre os que li, mente.
 | Por que `screen-cron` está amarelo e por que a fila OMDb roda 2/7 dias | Logs do serviço no painel; `SELECT status, count(*), max(created_at) FROM api_sync_logs WHERE provider_api='omdb' GROUP BY 1` |
 | Custo servidor-a-servidor do subrequest do middleware | Instrumentar `/api/seo/redirect` com `Server-Timing`, ou medir de dentro do container |
 | Causa dos 5.532 dead letters por tipo | `pnpm catalog inspect --json` (o formatador de texto descarta a mensagem) |
-| Vulnerabilidades de dependência | `corepack pnpm audit --audit-level=moderate --json` |
 | Cobertura de linhas dos testes | Instalar `@vitest/coverage-v8` e rodar `vitest run --coverage` |
 | URLs nos shards `imagens-1/2` e `videos-1` | `GET /sitemaps/sitemap-pt-BR-imagens-1.xml` e contar `<loc>` |
 | Se os 143 índices sem uso são realmente removíveis | Cruzar `pg_stat_user_indexes` com o `schema.prisma` e as consultas de cada rota |

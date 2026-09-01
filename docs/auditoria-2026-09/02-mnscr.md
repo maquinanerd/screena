@@ -518,7 +518,7 @@ Nenhum comentário de código mente.
 | Volume real do fluxo e se o ciclo dá conta | `SELECT count(*) FROM article_queue WHERE status='queued';` ao longo de um dia |
 | Existência de painel HTTP (`DASHBOARD_TOKEN`) | `git grep -n "Flask\|FastAPI\|http.server" -- '*.py'` |
 | Cota real consumida do Gemini por dia | `SELECT * FROM api_usage;` no banco local |
-| Vulnerabilidades de dependência | `uv run pip-audit` ou `uv run python -m pip_audit` |
+| Vulnerabilidades de dependência | **TENTEI E FUI BLOQUEADO**: `uv run --with pip-audit pip-audit` falha com `Uma política de Controle de Aplicativo bloqueou este arquivo (os error 4551)` — restrição da máquina, não do repositório. Fecha rodando `uv run --with pip-audit pip-audit` num ambiente sem AppLocker, ou pelo Dependabot do GitHub |
 
 ---
 
