@@ -1,8 +1,20 @@
 /**
+ * offer-types.ts — contratos de OFERTA neutros de fornecedor.
+ *
+ * Vinham de `streaming-availability/types.ts`, o diretorio do worker RapidAPI
+ * REMOVIDO em 2026-09-02. Como do lado dos ratings, o nome era acidente de
+ * origem: `WatchOfferRow` e as recusas descrevem a OFERTA que vai para
+ * `watch_availability`, e o caminho vivo — revisao, promocao e os adapters de
+ * persistencia — sempre dependeu deles.
+ *
+ * Apagar junto com o worker teria derrubado a promocao de ofertas, que e
+ * justamente o que destrava "onde assistir".
+ */
+/**
  * types.ts — Tipos do worker de disponibilidade. Modulo PURO.
  */
 
-import type { StreamingAvailabilityKind } from '@screena/streaming-availability-client'
+import type { StreamingAvailabilityKind } from './provider-identity.js'
 
 /** Entidades suportadas nesta fase (nunca pessoa/temporada/episodio). */
 export type StreamingEntityType = StreamingAvailabilityKind

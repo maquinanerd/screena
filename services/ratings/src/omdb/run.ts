@@ -37,7 +37,7 @@ import {
   describeItemFetchError,
   MAX_CONSECUTIVE_ITEM_FAILURES,
   type ItemFetchErrorInfo,
-} from '../film-show-ratings/run.js'
+} from '../item-fetch-error.js'
 import type {
   CachePort,
   EntityLookupPort,

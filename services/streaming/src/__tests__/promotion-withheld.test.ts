@@ -21,7 +21,7 @@
 
 import { describe, expect, it, vi } from 'vitest'
 
-import { STREAMING_AVAILABILITY_PROVIDER_API } from '@screena/streaming-availability-client'
+import { STREAMING_AVAILABILITY_PROVIDER_API } from '../provider-identity.js'
 
 import {
   WITHHELD_OFFER_SOURCES,

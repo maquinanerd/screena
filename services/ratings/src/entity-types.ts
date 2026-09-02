@@ -1,4 +1,15 @@
 /**
+ * entity-types.ts — contratos de rating NEUTROS de fornecedor.
+ *
+ * Vinham de `film-show-ratings/types.ts`, o diretorio do worker RapidAPI
+ * REMOVIDO em 2026-09-02. O nome antigo era um acidente de origem: nada aqui e
+ * especifico daquele fornecedor, e o caminho ATIVO (OMDb) sempre dependeu destes
+ * tipos — `RatingsEntityType`, `RatingDraft`, `ExternalRatingRow` e as recusas
+ * atravessam persistence, ports e o mapper da OMDb.
+ *
+ * Apagar junto com o worker teria derrubado o provedor que produz.
+ */
+/**
  * types.ts — Tipos do worker de ratings (Film/Show Ratings). Modulo PURO.
  */
 

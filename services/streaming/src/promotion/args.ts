@@ -7,7 +7,7 @@
  * mutar; sem `--confirm` e sempre dry-run.
  */
 
-import { STREAMING_AVAILABILITY_DEFAULT_COUNTRY } from '@screena/streaming-availability-client'
+import { STREAMING_AVAILABILITY_DEFAULT_COUNTRY } from '../provider-identity.js'
 
 /** `movie` | `tv` (nunca season/episode/person). */
 export type ReviewKind = 'movie' | 'tv'

@@ -5,7 +5,6 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { describeRatingsGateReason, evaluateRatingsGate } from '../../film-show-ratings/gate.js'
 import { parseOmdbArgs } from '../args.js'
 import { describeOmdbGateReason, evaluateOmdbGate } from '../gate.js'
 
@@ -158,69 +157,17 @@ describe('gate do worker OMDb', () => {
     }
   })
 })
+/*
+ * O BLOCO "T4 — o provedor anterior esta DESLIGADO por configuracao" SAIU em
+ * 2026-09-02.
+ *
+ * Ele provava que o worker RapidAPI estava desligado por CONFIGURACAO. O worker
+ * foi REMOVIDO: nao ha mais o que desligar, e um teste que afirma "aquilo esta
+ * desligado" sobre codigo que nao existe passa por motivo errado — ele mede a
+ * ausencia de um arquivo, nao uma garantia.
+ *
+ * A garantia que resta e mais forte e vive em `tests/governance/
+ * rapidapi-offline-only.test.ts`: nenhum client/worker RapidAPI alcanca o
+ * render, e nenhuma chave aparece hardcoded.
+ */
 
-describe('T4 — o provedor anterior esta DESLIGADO por configuracao', () => {
-  const OLD_BASE = {
-    isProd: false,
-    apply: false,
-    sample: false,
-    hasKey: true,
-    hasDb: true,
-    providerAuthorized: true,
-  }
-
-  it('--apply e bloqueado quando a flag nao esta ligada', () => {
-    const result = evaluateRatingsGate({ ...OLD_BASE, apply: true })
-    expect(result).toEqual({ allowed: false, reason: 'provider-disabled' })
-  })
-
-  it('--sample tambem e bloqueado', () => {
-    const result = evaluateRatingsGate({ ...OLD_BASE, sample: true })
-    expect(result).toEqual({ allowed: false, reason: 'provider-disabled' })
-  })
-
-  it('DESLIGADO por omissao: nenhum chamador antigo ganha rede de graca', () => {
-    // O campo e opcional; ausente significa desligado. E isso que faz o
-    // desligamento valer sem editar todo chamador.
-    const result = evaluateRatingsGate({
-      isProd: false,
-      apply: true,
-      sample: false,
-      hasKey: true,
-      hasDb: true,
-    })
-    expect(result.reason).toBe('provider-disabled')
-  })
-
-  it('dry-run puro continua liberado (relatar o plano nao gasta cota)', () => {
-    const result = evaluateRatingsGate({ ...OLD_BASE })
-    expect(result.allowed).toBe(true)
-  })
-
-  it('com a flag ligada, o gate volta a ser exatamente o de antes', () => {
-    expect(evaluateRatingsGate({ ...OLD_BASE, apply: true, providerEnabled: true }).allowed).toBe(
-      true,
-    )
-    expect(
-      evaluateRatingsGate({ ...OLD_BASE, apply: true, providerEnabled: true, hasKey: false }),
-    ).toEqual({ allowed: false, reason: 'no-api-key' })
-    expect(
-      evaluateRatingsGate({
-        ...OLD_BASE,
-        apply: true,
-        providerEnabled: true,
-        isProd: true,
-        providerAuthorized: false,
-      }),
-    ).toEqual({ allowed: false, reason: 'production-unauthorized' })
-  })
-
-  it('a mensagem diz POR QUE esta desligado e O QUE reativa-lo exige', () => {
-    const message = describeRatingsGateReason('provider-disabled')
-    expect(message).toContain('403')
-    expect(message).toContain('assinatura')
-    expect(message).toContain('OMDb')
-    expect(message).toContain('CINERIE_RATINGS_FILM_SHOW_RATINGS_ENABLED=true')
-    expect(message).toContain('ratings-provider-runbook.md')
-  })
-})

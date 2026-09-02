@@ -109,7 +109,6 @@ const JA_LIAM_CRU: readonly string[] = [
   'services/ingestion/src/__tests__/detail-finalize-guards.test.ts',
   'services/legal/src/__tests__/tmdb-video-license.test.ts',
   'services/news-ingestion/src/__tests__/worker-readiness.test.ts',
-  'services/streaming/src/__tests__/promotion-no-network.test.ts',
   'services/user-platform/src/auth-runtime/__tests__/boundary.test.ts',
   'services/user-platform/src/contracts/__tests__/contract-boundary.test.ts',
   'services/user-platform/src/persistence/__tests__/boundary.test.ts',

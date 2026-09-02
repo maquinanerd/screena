@@ -5,7 +5,7 @@
  * `persistence/*`.
  */
 
-import type { SelectedEntity, StreamingEntityType, WatchOfferRow } from './streaming-availability/types.js'
+import type { SelectedEntity, StreamingEntityType, WatchOfferRow } from './offer-types.js'
 
 /** Status de um ciclo de sync (espelha o enum `SyncStatus` do schema). */
 export type SyncStatus = 'success' | 'partial' | 'failed' | 'empty' | 'aborted'

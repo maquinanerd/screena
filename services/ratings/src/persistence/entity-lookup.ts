@@ -9,7 +9,7 @@
 
 import type { PrismaClient } from '@screena/db/server'
 import type { EntityLookupPort, ResolvedEntity } from '../ports.js'
-import type { RatingsEntityType } from '../film-show-ratings/types.js'
+import type { RatingsEntityType } from '../entity-types.js'
 
 /** Cria um `EntityLookupPort` que resolve em `movies` / `tv_shows` via Prisma. */
 export function createPrismaEntityLookup(prisma: PrismaClient): EntityLookupPort {

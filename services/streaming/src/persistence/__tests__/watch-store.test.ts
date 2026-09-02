@@ -19,7 +19,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { createPrismaWatchStore } from '../watch-store.js'
-import type { WatchOfferRow } from '../../streaming-availability/types.js'
+import type { WatchOfferRow } from '../../offer-types.js'
 
 interface Emitted {
   readonly sql: string

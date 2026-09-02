@@ -23,7 +23,7 @@ import { fileURLToPath } from 'node:url'
 import EmbeddedPostgres from 'embedded-postgres'
 import { PrismaClient } from '@prisma/client'
 
-import { STREAMING_AVAILABILITY_ATTRIBUTION_URL } from '@screena/streaming-availability-client'
+import { STREAMING_AVAILABILITY_ATTRIBUTION_URL } from '../src/provider-identity.js'
 
 import { STREAMING_AUTO_REVIEWER, createPrismaWatchStore } from '../src/persistence/watch-store.js'
 import { createPrismaWatchCreditLookup } from '../src/persistence/watch-credit-lookup.js'

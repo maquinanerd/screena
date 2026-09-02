@@ -9,7 +9,7 @@
 
 import type { OmdbRotationMode } from '@screena/config'
 
-import type { ExternalRatingRow, RatingsEntityType } from './film-show-ratings/types.js'
+import type { ExternalRatingRow, RatingsEntityType } from './entity-types.js'
 
 /** Status de um ciclo de sync (espelha o enum `SyncStatus` do schema). */
 export type SyncStatus = 'success' | 'partial' | 'failed' | 'empty' | 'aborted'
