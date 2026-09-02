@@ -5,10 +5,7 @@
 
 import { describe, expect, it } from 'vitest'
 
-import {
-  describeRatingsGateReason,
-  evaluateRatingsGate,
-} from '../../film-show-ratings/gate.js'
+import { describeRatingsGateReason, evaluateRatingsGate } from '../../film-show-ratings/gate.js'
 import { parseOmdbArgs } from '../args.js'
 import { describeOmdbGateReason, evaluateOmdbGate } from '../gate.js'
 
@@ -29,6 +26,7 @@ describe('parseOmdbArgs', () => {
       // historico); o parser NAO escolhe por conta propria, para que "o
       // agendador nao passou o modo" continue distinguivel de "pediram refresh".
       mode: null,
+      plan: false,
     })
   })
 
@@ -184,7 +182,13 @@ describe('T4 — o provedor anterior esta DESLIGADO por configuracao', () => {
   it('DESLIGADO por omissao: nenhum chamador antigo ganha rede de graca', () => {
     // O campo e opcional; ausente significa desligado. E isso que faz o
     // desligamento valer sem editar todo chamador.
-    const result = evaluateRatingsGate({ isProd: false, apply: true, sample: false, hasKey: true, hasDb: true })
+    const result = evaluateRatingsGate({
+      isProd: false,
+      apply: true,
+      sample: false,
+      hasKey: true,
+      hasDb: true,
+    })
     expect(result.reason).toBe('provider-disabled')
   })
 
