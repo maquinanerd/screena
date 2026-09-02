@@ -36,12 +36,6 @@ importers:
         specifier: ^2.1.0
         version: 2.1.9(@types/node@22.20.0)(happy-dom@20.11.1)(jsdom@30.0.1)(sass@1.77.4)
 
-  api-clients/film_show_ratings:
-    dependencies:
-      '@screena/rapidapi-core':
-        specifier: workspace:*
-        version: link:../rapidapi-core
-
   api-clients/omdb:
     dependencies:
       '@screena/rapidapi-core':
@@ -49,12 +43,6 @@ importers:
         version: link:../rapidapi-core
 
   api-clients/rapidapi-core: {}
-
-  api-clients/streaming_availability:
-    dependencies:
-      '@screena/rapidapi-core':
-        specifier: workspace:*
-        version: link:../rapidapi-core
 
   api-clients/tmdb: {}
 
@@ -384,9 +372,6 @@ importers:
       '@screena/db':
         specifier: workspace:*
         version: link:../../packages/db
-      '@screena/film-show-ratings-client':
-        specifier: workspace:*
-        version: link:../../api-clients/film_show_ratings
       '@screena/legal':
         specifier: workspace:*
         version: link:../legal
@@ -424,9 +409,6 @@ importers:
       '@screena/schemas':
         specifier: workspace:*
         version: link:../../packages/schemas
-      '@screena/streaming-availability-client':
-        specifier: workspace:*
-        version: link:../../api-clients/streaming_availability
     devDependencies:
       '@prisma/client':
         specifier: ^6.1.0
