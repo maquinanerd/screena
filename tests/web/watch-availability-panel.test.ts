@@ -231,7 +231,12 @@ describe("watch-availability — integracao nas paginas de detalhe", () => {
       // que este teste trava: a pagina le o motivo, nao o escreve.
       // Ver tests/web/watch-absence-reason.test.ts para os dois estados.
       expect(clean).toMatch(/reason: watchAbsence \?\? 'no_authorized_provider'/);
-      expect(clean).toMatch(/<SectionBoundary decision=\{watchSection\}>/);
+      // `speak` OPCIONAL no padrao: o bloco passou a mostrar uma FRASE ao leitor
+      // quando some (`section-empty-state.ts`), e a flag e o pedido dessa voz.
+      // O que este guard trava continua sendo a FRONTEIRA — nao um ternario —,
+      // entao ele aceita a fronteira com ou sem a flag e recusaria a volta do
+      // `watch !== null ?`.
+      expect(clean).toMatch(/<SectionBoundary decision=\{watchSection\}( speak)?>/);
       // A fileira deriva da MESMA view licenciada (watchBrandsRow(view)) — a
       // troca de painel nao abriu porta nova de dado.
       expect(clean).toContain("<WatchBrandsRow brands={watchBrandsRow(view)} />");
@@ -242,7 +247,7 @@ describe("watch-availability — integracao nas paginas de detalhe", () => {
       // e a fronteira de secao (ver o teste acima).
       const clean = withoutComments(source);
       if (/onde assistir/i.test(clean)) {
-        expect(clean).toMatch(/<SectionBoundary decision=\{watchSection\}>/);
+        expect(clean).toMatch(/<SectionBoundary decision=\{watchSection\}( speak)?>/);
       }
     });
   }

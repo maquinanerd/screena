@@ -496,7 +496,7 @@ export default async function SeriesPage({
                   </div>
                 )}
               </SectionBoundary>
-              <SectionBoundary decision={ratingsSection}>
+              <SectionBoundary decision={ratingsSection} speak>
                 {(view) => (
                   <div
                     className={
@@ -510,7 +510,7 @@ export default async function SeriesPage({
                   </div>
                 )}
               </SectionBoundary>
-              <SectionBoundary decision={watchSection}>
+              <SectionBoundary decision={watchSection} speak>
                 {(view) => (
                   <div className="detail-aside-block">
                     <p className="detail-aside-block__label">Onde assistir</p>
