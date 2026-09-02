@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Painel interno da Cinerie (Next.js App Router). Namespace tecnico legado: @screena/admin. Le o PostgreSQL local server-side em modo SOMENTE LEITURA (visualizar estado editorial); nao publica, nao edita, nao escreve. Nunca exposto como pagina publica indexavel.",
+  "description": "Painel interno da Cinerie (Next.js App Router). Namespace tecnico legado: @screena/admin. Le o PostgreSQL local server-side. A ESCRITA editorial (revisao/publicacao de content_blocks e article_translations) EXISTE e e real, gateada por ADMIN_EDITORIAL_ACTIONS_ENABLED (default desligada) — nao e read-only puro. Acesso protegido por Basic Auth, fail-closed em producao. Nunca exposto como pagina publica indexavel.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
