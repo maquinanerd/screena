@@ -44,6 +44,10 @@
     // AGENDADOR significa nenhuma fila rodando e nenhuma pista do porque.
     "services/sync/bin/cinerie-scheduler.ts",
     "services/sync/bin/ingestion-status.ts",
+    // O EXPURGO de `api_cache`. Entra pelo mesmo motivo dos demais bins: e o
+    // unico caminho do repositorio que APAGA linha de `api_cache`, e um erro de
+    // tipo aqui so apareceria na hora de recolher 3,6 GB de lixo.
+    "services/sync/bin/purge-api-cache.ts",
     "services/news-ingestion/src/persistence/**/*.ts",
     "services/news-ingestion/bin/editorial.ts",
     // Entrypoint da despublicacao de emergencia: mesmo motivo dos demais bins
