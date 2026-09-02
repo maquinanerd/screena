@@ -36,6 +36,10 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import nextConfig from '../../apps/web/next.config'
+import { TMDB_IMAGE_HOST } from '@screena/public-contracts'
+
+import { middleware } from '../../apps/web/middleware'
+import { BASE_SECURITY_HEADERS } from '../../apps/web/next.config'
 import { REPO_ROOT, readSourceWithoutComments } from '../support/source-text.js'
 
 // ---------------------------------------------------------------------------
@@ -74,7 +78,7 @@ describe('os quatro cabecalhos inocuos saem na regra global', () => {
     ).toHaveLength(1)
   })
 
-  it('a regra global carrega EXATAMENTE os quatro, com os valores decididos', async () => {
+  it('a regra global carrega EXATAMENTE os cinco, com os valores decididos', async () => {
     const rules = await headerRules()
     const global = rules.find((r) => r.source === GLOBAL_SOURCE)
     expect(global).toBeDefined()
@@ -84,6 +88,13 @@ describe('os quatro cabecalhos inocuos saem na regra global', () => {
       { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
       { key: 'X-Frame-Options', value: 'DENY' },
       { key: 'Permissions-Policy', value: expect.any(String) },
+      // O quinto entrou em 2026-09-02. A lista continua EXATA de proposito:
+      // um cabecalho a mais que ninguem decidiu e tao ruim quanto um a menos,
+      // e este teste e o unico lugar onde a lista precisa ser lida inteira.
+      {
+        key: 'Strict-Transport-Security',
+        value: 'max-age=63072000; includeSubDomains; preload',
+      },
     ])
   })
 
@@ -142,7 +153,10 @@ const FEATURES_QUE_NAO_PODEM_ENTRAR = [
 describe('Permissions-Policy desliga o que o app nao usa e nada alem disso', () => {
   it('cada feature medida como nao usada aparece com allowlist VAZIA', async () => {
     const rules = await headerRules()
-    const politica = valueOf(rules.find((r) => r.source === GLOBAL_SOURCE) as HeaderRule, 'Permissions-Policy')
+    const politica = valueOf(
+      rules.find((r) => r.source === GLOBAL_SOURCE) as HeaderRule,
+      'Permissions-Policy',
+    )
     expect(politica).toBeTypeOf('string')
     const faltando = FEATURES_DESLIGADAS.filter((f) => !(politica ?? '').includes(`${f}=()`))
     expect(faltando, `features sem allowlist vazia: ${faltando.join(', ')}`).toEqual([])
@@ -150,7 +164,9 @@ describe('Permissions-Policy desliga o que o app nao usa e nada alem disso', () 
 
   it('a politica NAO cita as tres features que o player de trailer delega', async () => {
     const rules = await headerRules()
-    const politica = valueOf(rules.find((r) => r.source === GLOBAL_SOURCE) as HeaderRule, 'Permissions-Policy') ?? ''
+    const politica =
+      valueOf(rules.find((r) => r.source === GLOBAL_SOURCE) as HeaderRule, 'Permissions-Policy') ??
+      ''
     const intrusas = FEATURES_QUE_NAO_PODEM_ENTRAR.filter((f) =>
       new RegExp(`(^|[,\\s])${f}\\s*=`).test(politica),
     )
@@ -172,25 +188,89 @@ describe('Permissions-Policy desliga o que o app nao usa e nada alem disso', () 
 })
 
 // ---------------------------------------------------------------------------
-// (3) Escopo fechado: CSP e HSTS ficam de fora DESTA leva
+// (3) CSP e HSTS — a "PR propria" que a leva anterior prometeu
 // ---------------------------------------------------------------------------
+//
+// Ate 2026-09-02 esta secao RECUSAVA os dois, com o motivo escrito: "CSP mal
+// calibrado quebra a pagina e HSTS e quase irreversivel: os dois exigem PR
+// propria". Esta e a PR propria, e a recusa virou exigencia.
+//
+// Os dois entram por CAMINHOS DIFERENTES, e isso nao e arbitrario:
+//   HSTS  vai no `next.config`, com os outros quatro. O valor nao tem `:`.
+//   CSP   vai no MIDDLEWARE. O valor e cheio de `:` (`https://image.tmdb.org`,
+//         `data:`), e a regra `/:path*` do config passa chave e valor por
+//         `compileNonPath()` — que so devolve cedo quando NAO ha `:`.
 
-describe('escopo fechado: nem CSP nem HSTS entram por aqui', () => {
-  it('nenhuma regra emite Content-Security-Policy (nem Report-Only) ou HSTS', async () => {
-    const proibidos = [
-      'content-security-policy',
-      'content-security-policy-report-only',
-      'strict-transport-security',
-    ]
+describe('HSTS entra pelo next.config, com os outros quatro', () => {
+  it('emite Strict-Transport-Security na regra que cobre todo path', async () => {
     const rules = await headerRules()
-    const encontrados = rules
-      .flatMap((r) => r.headers.map((h) => h.key.toLowerCase()))
-      .filter((k) => proibidos.includes(k))
-    expect(
-      encontrados,
-      'CSP mal calibrado quebra a pagina e HSTS e quase irreversivel: os dois exigem PR propria. ' +
-        `Encontrados: ${encontrados.join(', ')}`,
-    ).toEqual([])
+    const hsts = rules
+      .flatMap((r) => r.headers)
+      .find((h) => h.key.toLowerCase() === 'strict-transport-security')
+
+    expect(hsts, 'nenhuma regra emite HSTS').toBeDefined()
+    // Os tres pedacos que a lista de preload exige. `max-age` de 2 anos e o
+    // piso; menos que isso e recusado pela lista.
+    expect(hsts!.value).toContain('max-age=63072000')
+    expect(hsts!.value).toContain('includeSubDomains')
+    expect(hsts!.value).toContain('preload')
+  })
+
+  it('o valor do HSTS nao contem `:` — senao `compileNonPath` o corromperia', () => {
+    // A MESMA armadilha que mantem `Permissions-Policy` sem dois-pontos. Um
+    // HSTS corrompido nao avisa: ele simplesmente deixa de proteger.
+    const rules = [...BASE_SECURITY_HEADERS]
+    for (const h of rules) {
+      expect(h.value, `${h.key} contem ':' e seria corrompido`).not.toContain(':')
+    }
+  })
+})
+
+describe('CSP entra pelo middleware, e em REPORT-ONLY', () => {
+  function request(pathname: string): Parameters<typeof middleware>[0] {
+    const url = new URL(`https://cinerie.com${pathname}`)
+    return {
+      nextUrl: {
+        pathname: url.pathname,
+        origin: url.origin,
+        clone: () => new URL(url.toString()),
+      },
+      headers: new Headers(),
+    } as unknown as Parameters<typeof middleware>[0]
+  }
+
+  it('a resposta normal carrega Content-Security-Policy-Report-Only', async () => {
+    const original = globalThis.fetch
+    // Sem rede: o lookup de redirect nao e o assunto aqui.
+    globalThis.fetch = (() => Promise.resolve({ ok: false })) as unknown as typeof fetch
+    const response = await middleware(request('/pt/filmes/a-odisseia/'))
+    globalThis.fetch = original
+
+    const csp = response.headers.get('content-security-policy-report-only')
+    expect(csp, 'o middleware nao emitiu CSP').not.toBeNull()
+
+    // REPORT-ONLY, e nao bloqueante: promover e decisao separada, depois de
+    // olhar os relatos. O teste trava a decisao de HOJE.
+    expect(response.headers.get('content-security-policy')).toBeNull()
+
+    // As diretivas que fecham as portas que nao usamos.
+    expect(csp).toContain("object-src 'none'")
+    expect(csp).toContain("frame-ancestors 'none'")
+    expect(csp).toContain("base-uri 'self'")
+    // E as origens que a pagina REALMENTE usa — sem elas o CSP relataria a
+    // pagina inteira como violacao e o relato viraria ruido.
+    // O host vem da FONTE UNICA, aqui tambem: repetir o literal no teste
+    // burlaria a mesma regra que o codigo passou a respeitar.
+    expect(csp).toContain(`https://${TMDB_IMAGE_HOST}`)
+    expect(csp).toContain('https://www.youtube-nocookie.com')
+  })
+
+  it('o REDIRECT da raiz tambem carrega a politica', async () => {
+    // Um caminho de saida sem CSP nao quebra nada e nao avisa nada — e por isso
+    // que os tres caminhos passam pela mesma funcao.
+    const response = await middleware(request('/'))
+    expect(response.status).toBe(307)
+    expect(response.headers.get('content-security-policy-report-only')).not.toBeNull()
   })
 })
 
@@ -236,9 +316,10 @@ describe('a borda de autenticacao mantem o Referrer-Policy mais restrito', () =>
     const grafiaGlobal = global.headers.find((h) => h.key.toLowerCase() === 'referrer-policy')?.key
     for (const borda of rules.filter((r) => arvoreDe(r.source) !== null)) {
       const grafia = borda.headers.find((h) => h.key.toLowerCase() === 'referrer-policy')?.key
-      expect(grafia, `${borda.source} usa outra grafia da chave; a sobreposicao nao aconteceria`).toBe(
-        grafiaGlobal,
-      )
+      expect(
+        grafia,
+        `${borda.source} usa outra grafia da chave; a sobreposicao nao aconteceria`,
+      ).toBe(grafiaGlobal)
     }
   })
 
@@ -339,9 +420,10 @@ describe('o source da regra global cobre as URLs que o site realmente serve', ()
     for (const borda of rules.filter((r) => arvoreDe(r.source) !== null)) {
       const arvore = arvoreDe(borda.source) as string
       const casa = construirMatcher(borda.source)
-      expect(casa(`/api/${arvore}/qualquer/`), `${borda.source} deveria casar a propria arvore`).not.toBe(
-        false,
-      )
+      expect(
+        casa(`/api/${arvore}/qualquer/`),
+        `${borda.source} deveria casar a propria arvore`,
+      ).not.toBe(false)
       expect(casa('/api/health/'), `${borda.source} nao pode casar /api/health/`).toBe(false)
       expect(casa('/pt/'), `${borda.source} nao pode casar pagina publica`).toBe(false)
     }
