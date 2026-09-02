@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
+import { TMDB_IMAGE_HOST } from "@screena/public-contracts";
+
 import {
   resolveLocale,
   rootRedirectPath,
@@ -25,6 +27,80 @@ import {
  * pode ocorrer direto no middleware, eliminando o subrequest. Mantido via route
  * handler para compatibilidade garantida de build.
  */
+
+/**
+ * CSP em REPORT-ONLY — o cabecalho que o `next.config` nao consegue emitir.
+ *
+ * ============================================================================
+ * POR QUE AQUI, E NAO JUNTO DOS OUTROS QUATRO
+ * ============================================================================
+ * `next.config.ts` aplica os cabecalhos de seguranca na regra `/:path*`, que TEM
+ * parametro — e o Next roda `compileNonPath()` sobre chave e valor quando a
+ * regra tem parametro. Essa funcao so devolve cedo quando NAO ha `:` no valor.
+ * Um CSP e dois-pontos por toda parte (o host de imagem, `data:`), e ali eles
+ * seriam lidos como sintaxe de path-to-regexp. Aqui o cabecalho e escrito direto
+ * na resposta: nenhuma compilacao de rota o toca.
+ *
+ * ============================================================================
+ * POR QUE REPORT-ONLY, E O QUE ISSO SIGNIFICA
+ * ============================================================================
+ * Um CSP mal calibrado nao degrada — ele QUEBRA a pagina, e quebra em silencio
+ * para quem esta com o console fechado. `Report-Only` aplica a mesma politica e
+ * NAO bloqueia nada: o navegador so reporta o que teria sido barrado. E o passo
+ * que permite descobrir o que a politica quebraria antes de ela quebrar.
+ *
+ * Promover para `Content-Security-Policy` (sem `-Report-Only`) e uma decisao
+ * separada, depois de olhar os relatos. Nao ha `report-uri`/`report-to` ainda:
+ * sem coletor, os relatos ficam no console do navegador — que ja e o suficiente
+ * para a primeira calibragem, e nao envia dado de leitor para lugar nenhum.
+ *
+ * ============================================================================
+ * DE ONDE VEM CADA ORIGEM
+ * ============================================================================
+ * `img-src`   O host de imagem vem de `TMDB_IMAGE_HOST`, IMPORTADO de
+ *             `@screena/public-contracts` — o unico lugar do repositorio
+ *             autorizado a escreve-lo (travado por
+ *             `image-host-single-source.test.ts`). Importar em vez de repetir
+ *             nao e so obediencia a regra: e o que impede o CSP de continuar
+ *             liberando um host que o produto deixou de usar. `data:`/`blob:`
+ *             cobrem placeholder e imagem gerada pelo proprio Next.
+ * `frame-src` `youtube-nocookie.com` e o UNICO iframe do site publico, montado
+ *             so apos clique explicito no trailer.
+ * `script-src`/`style-src` precisam de `unsafe-inline` enquanto o App Router
+ *             emitir script e estilo inline no streaming de RSC. Estreitar isso
+ *             exige nonce por request, que e outra PR.
+ * `frame-ancestors 'none'` e o equivalente moderno do `X-Frame-Options: DENY`
+ *             que o `next.config` ja emite — os dois convivem de proposito.
+ */
+const CONTENT_SECURITY_POLICY = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "object-src 'none'",
+  "frame-ancestors 'none'",
+  "form-action 'self'",
+  `img-src 'self' https://${TMDB_IMAGE_HOST} data: blob:`,
+  "media-src 'self'",
+  "font-src 'self' data:",
+  "connect-src 'self'",
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline'",
+  "frame-src https://www.youtube-nocookie.com",
+  "upgrade-insecure-requests",
+].join("; ");
+
+/**
+ * Escreve o CSP na resposta. Uma funcao para os TRES caminhos de saida do
+ * middleware — o redirect da raiz, o redirect persistido e o `next()`.
+ *
+ * Uma funcao, e nao tres `headers.set`: um caminho novo que esquecesse a linha
+ * sairia sem politica nenhuma, e ninguem notaria (a pagina funciona igual).
+ */
+function withSecurityHeaders(response: NextResponse): NextResponse {
+  // Se um dia isto virar bloqueante, e AQUI que o nome do cabecalho muda — em
+  // um lugar so, para os tres caminhos.
+  response.headers.set("Content-Security-Policy-Report-Only", CONTENT_SECURITY_POLICY);
+  return response;
+}
 
 interface PersistedRedirect {
   location: string;
@@ -98,19 +174,19 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
   if (request.nextUrl.pathname === "/") {
     const url = request.nextUrl.clone();
     url.pathname = rootRedirectPath(request.headers.get("accept-language"));
-    return NextResponse.redirect(url, 307);
+    return withSecurityHeaders(NextResponse.redirect(url, 307));
   }
 
   const persisted = await resolvePersistedRedirect(request);
   if (persisted !== null) {
     const destination = new URL(persisted.location, request.nextUrl.origin);
-    return NextResponse.redirect(destination, persisted.statusCode);
+    return withSecurityHeaders(NextResponse.redirect(destination, persisted.statusCode));
   }
 
   const locale = resolveLocale(request.nextUrl.pathname);
   const response = NextResponse.next();
   response.headers.set("x-screena-locale", locale);
-  return response;
+  return withSecurityHeaders(response);
 }
 
 /**

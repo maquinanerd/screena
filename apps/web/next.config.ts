@@ -117,7 +117,7 @@ const PERMISSIONS_POLICY = [
  * `(`/`)` como sintaxe de grupo do path-to-regexp. `Permissions-Policy` e cheio
  * de parenteses; e a ausencia de `:` que o mantem intacto.
  */
-const BASE_SECURITY_HEADERS = [
+export const BASE_SECURITY_HEADERS = [
   // Impede o navegador de adivinhar o tipo do corpo e executar como script algo
   // servido como texto/imagem. Sem efeito colateral conhecido.
   { key: "X-Content-Type-Options", value: "nosniff" },
@@ -140,6 +140,29 @@ const BASE_SECURITY_HEADERS = [
   // CSP e fica para a PR propria.
   { key: "X-Frame-Options", value: "DENY" },
   { key: "Permissions-Policy", value: PERMISSIONS_POLICY },
+  // ==========================================================================
+  // HSTS — e por que ele pode viver AQUI e o CSP nao
+  // ==========================================================================
+  // O valor nao contem `:`, entao ele atravessa `compileNonPath()` intacto,
+  // igual aos quatro acima. O CSP nao tem essa sorte: o host de imagem e
+  // `data:` sao dois-pontos por toda parte, e nesta regra (que TEM parametro,
+  // `/:path*`) eles seriam lidos como sintaxe de path-to-regexp. Por isso o CSP
+  // sai pelo middleware, onde o cabecalho e escrito direto na resposta.
+  //
+  // HSTS E QUASE IRREVERSIVEL, e os numeros refletem isso:
+  //  - `max-age=63072000` (2 anos) e o piso exigido pela lista de preload;
+  //  - `includeSubDomains` cobre `www.` e qualquer subdominio publico futuro;
+  //  - `preload` DECLARA a intencao de entrar na lista dos navegadores. Ele nao
+  //    inscreve nada sozinho — a inscricao e um passo manual em
+  //    hstspreload.org. Enquanto ninguem submeter, o efeito e o de um HSTS
+  //    comum; depois de submetido, sair da lista leva meses.
+  //
+  // O cabecalho so tem efeito sobre HTTPS: um navegador o IGNORA em http, entao
+  // ele nao pode trancar um ambiente local por engano.
+  {
+    key: "Strict-Transport-Security",
+    value: "max-age=63072000; includeSubDomains; preload",
+  },
 ] as const;
 
 /**
