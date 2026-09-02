@@ -1,0 +1,102 @@
+# Dockerfile.admin — servico do painel interno `@screena/admin`.
+#
+# Mesmo PADRAO dos quatro Dockerfiles ja existentes: base pinada por digest,
+# pnpm via corepack, usuario nao-root, HEALTHCHECK com o fetch global do Node.
+# Introduzir multi-stage ou buildpack SO neste servico criaria dois padroes de
+# deploy no mesmo repositorio, e o segundo sempre envelhece.
+#
+# ============================================================================
+# POR QUE ESTE ARQUIVO NAO EXISTIA — E POR QUE ISSO IMPORTA AGORA
+# ============================================================================
+# O `apps/admin` tem 11 paginas, entre elas `review-queue` e
+# `content-blocks/[id]`, e NUNCA foi construido: nenhum Dockerfile, nenhum
+# `build:admin`, nenhum servico no painel. E ele e a UNICA tela onde um humano
+# revisa `content_blocks` — o que torna a camada editorial de IA inutilizavel
+# mesmo depois de gerada, porque nada pode sair de `needs_review` sem revisor.
+#
+# ============================================================================
+# ESTA IMAGEM NAO NASCE ABERTA
+# ============================================================================
+# `apps/admin/middleware.ts` poe HTTP Basic Auth na frente de TODAS as telas, e
+# a decisao e FAIL-CLOSED POR AMBIENTE: em production-like a protecao e sempre
+# exigida, mesmo sem `ADMIN_PROTECTION_ENABLED` ou com ela em `"false"`. Sem
+# usuario/senha em ENV, o middleware responde 401 — ele nega, nao libera.
+#
+# `ENV NODE_ENV=production` abaixo nao e so otimizacao: e o que coloca o
+# middleware no ramo production-like. Remove-lo abriria o painel.
+#
+# ============================================================================
+# ISOLAMENTO
+# ============================================================================
+# O admin le o `screen-db` (`DATABASE_URL`) em modo de leitura editorial, e a
+# ESCRITA de revisao/publicacao e gateada por `ADMIN_EDITORIAL_ACTIONS_ENABLED`
+# (default DESLIGADA). Ele NAO conhece o banco do Payload, NAO fala com o TMDB e
+# NAO recebe credencial de fornecedor nenhum: nenhuma variavel de provider entra
+# aqui, e nenhuma e lida.
+ARG NODE_IMAGE=node:22-bookworm-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3
+FROM ${NODE_IMAGE}
+
+WORKDIR /app
+
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+
+# `openssl` e exigido pelo engine do Prisma; `ca-certificates` pela conexao TLS
+# com o PostgreSQL gerenciado.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
+
+COPY . .
+
+# `NODE_ENV` so entra depois do build: com `production` o pnpm pula as
+# devDependencies, e o `next build` depende delas.
+RUN PNPM_CONFIG_PROD=false pnpm install --frozen-lockfile
+
+# O CLIENT DO PRISMA, ANTES DO BUILD.
+#
+# O admin importa `@screena/db`, que depende do client GERADO. Sem este passo o
+# `next build` morre numa parede de "Cannot find module '@prisma/client'" —
+# exatamente o modo de falha que `scripts/typecheck/ensure-prisma-client.mjs`
+# existe para traduzir em outros contextos.
+RUN pnpm --filter @screena/db db:generate
+
+# BUILD SEM BANCO.
+#
+# O `DATABASE_URL` de build aponta para `127.0.0.1:1`, deliberadamente
+# inalcancavel: se alguma etapa do build tentar abrir conexao, ela FALHA em vez
+# de tocar um banco real. O admin nao tem `generateStaticParams`, entao nenhuma
+# pagina precisa do banco para compilar.
+RUN DATABASE_URL=postgresql://build:build@127.0.0.1:1/screena_build \
+    pnpm --filter @screena/admin build
+
+ENV NODE_ENV=production
+ENV PORT=3006
+
+ARG CINERIE_BUILD_SHA=unknown
+ARG CINERIE_BUILD_VERSION=unknown
+ARG CINERIE_BUILD_TIME=unknown
+ENV CINERIE_BUILD_SHA=${CINERIE_BUILD_SHA} \
+    CINERIE_BUILD_VERSION=${CINERIE_BUILD_VERSION} \
+    CINERIE_BUILD_TIME=${CINERIE_BUILD_TIME}
+
+RUN chown -R node:node /app
+USER node
+
+EXPOSE 3006
+
+# LIVENESS, nao readiness — a mesma razao dos outros servicos: se o healthcheck
+# do container dependesse do PostgreSQL, uma queda do banco faria o orquestrador
+# REINICIAR em loop um container saudavel, e reiniciar nao devolve o banco.
+#
+# A rota `/health` do admin esta atras do Basic Auth, entao o healthcheck aceita
+# **401 como vivo**: um 401 prova que o processo subiu, roteou e aplicou o
+# portao. Aceitar so 200 exigiria embutir credencial no HEALTHCHECK — o que
+# colocaria a senha na definicao da imagem.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:3006/health').then(r=>process.exit((r.status===200||r.status===401)?0:1)).catch(()=>process.exit(1))"
+
+# `exec` mantem o Next como PID 1 para receber SIGTERM diretamente.
+CMD ["sh", "-c", "exec pnpm --filter @screena/admin start"]

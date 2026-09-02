@@ -37,7 +37,7 @@ import {
   describeItemFetchError,
   MAX_CONSECUTIVE_ITEM_FAILURES,
   type ItemFetchErrorInfo,
-} from '../film-show-ratings/run.js'
+} from '../item-fetch-error.js'
 import type {
   CachePort,
   EntityLookupPort,
@@ -52,6 +52,67 @@ import type { ExternalRatingRow, OmdbRejection, RatingsEntityType } from './type
 
 /** Limite conservador de candidatos quando `--limit` nao e informado. */
 export const DEFAULT_OMDB_CANDIDATE_LIMIT = 20
+
+/**
+ * O codigo de erro do CICLO, para `api_sync_logs.error_code`.
+ *
+ * ============================================================================
+ * POR QUE ISTO PRECISA EXISTIR
+ * ============================================================================
+ * Ate aqui a linha do ciclo gravava `errorCode: providerRefusalCode` — e
+ * `providerRefusalCode` so e preenchido no caminho da recusa declarada pela
+ * OMDb (`quota`/`auth`, HTTP 200). Toda falha de REDE/HTTP saia com
+ * `status='failed'` e `error_code` NULL.
+ *
+ * O efeito medido em 2026-09-01: **75 de 77 falhas sem `error_code`**. As duas
+ * com codigo eram as recusas do fornecedor; as outras 75 eram exatamente as que
+ * alguem precisava ler para saber por que a fila nao produz. O item ja carregava
+ * o codigo (`describeItemFetchError` -> `OmdbItemResult.errorCode`) e ele era
+ * descartado na hora de escrever o log.
+ *
+ * Isso viola a regra "todo sync externo gera log" no ponto que importa: um log
+ * que registra a EXISTENCIA da falha e omite a CAUSA nao e auditoria, e carimbo.
+ *
+ * ============================================================================
+ * A PRECEDENCIA
+ * ============================================================================
+ *   1. Recusa do fornecedor (`quota`/`auth`) — fato sobre o DIA. Domina: se a
+ *      cota acabou, o que os itens individuais relataram e consequencia.
+ *   2. Codigo DOMINANTE entre os itens que falharam — o mais frequente, com
+ *      empate resolvido pela PRIMEIRA ocorrencia (ordem estavel: dois ciclos com
+ *      as mesmas falhas gravam o mesmo codigo).
+ *   3. `null` quando nao houve falha nenhuma.
+ *
+ * Ciclo `partial` tambem recebe codigo: "alguns falharam" sem dizer de que e
+ * meia auditoria, e `partial` e justamente o desfecho que esconde uma
+ * degradacao crescente ate ela virar `failed`.
+ */
+export function resolveCycleErrorCode(
+  providerRefusalCode: string | null,
+  items: readonly { readonly ok: boolean; readonly errorCode: string | null }[],
+): string | null {
+  if (providerRefusalCode !== null) return providerRefusalCode
+
+  // `Map` preserva a ordem de insercao, e e disso que sai o desempate estavel.
+  const tally = new Map<string, number>()
+  for (const item of items) {
+    if (item.ok) continue
+    const code = item.errorCode
+    if (code === null || code === '') continue
+    tally.set(code, (tally.get(code) ?? 0) + 1)
+  }
+
+  let dominant: string | null = null
+  let best = 0
+  for (const [code, count] of tally) {
+    // `>` e nao `>=`: mantem a PRIMEIRA ocorrencia em caso de empate.
+    if (count > best) {
+      best = count
+      dominant = code
+    }
+  }
+  return dominant
+}
 
 export { MAX_CONSECUTIVE_ITEM_FAILURES }
 
@@ -492,7 +553,7 @@ export async function runOmdbRatingsSync(
           ? // Modo candidatos: a entidade ja veio da selecao local.
             entry.knownEntityId
           : // Modo `--id`: resolve pelo IMDb id consultado. NUNCA por titulo/ano.
-            (await deps.entities.findByImdbId(entityType, entry.id))?.entityId ?? null
+            ((await deps.entities.findByImdbId(entityType, entry.id))?.entityId ?? null)
 
       if (entityId === null) {
         idsWithoutEntity += 1
@@ -577,15 +638,20 @@ export async function runOmdbRatingsSync(
   else if (rejections.length > 0) status = 'partial'
   else status = 'success'
 
+  // O codigo que sai na linha do ciclo. NAO e mais so `providerRefusalCode`:
+  // ver `resolveCycleErrorCode` para a precedencia e para o defeito que ela
+  // fecha (75 de 77 falhas gravadas sem causa).
+  const cycleErrorCode = resolveCycleErrorCode(providerRefusalCode, itemResults)
+
   // Um unico log por ciclo (nunca um por id). `payload_hash` so faz sentido
   // quando exatamente um id foi consultado.
   await deps.syncLog.write({
     endpoint,
     status,
-    // O UNICO handle consultavel de "a OMDb recusou por cota". Ela nao publica
-    // cabecalho de cota nenhum, entao sem esta coluna o estouro so existiria no
-    // stdout de um processo que ja terminou. Ver PARTE D.4 do relatorio.
-    errorCode: providerRefusalCode,
+    // O UNICO handle consultavel de "a OMDb recusou por cota" — ela nao publica
+    // cabecalho de cota nenhum — E de "por que a rede falhou". Sem esta coluna a
+    // causa so existiria no stdout de um processo que ja terminou.
+    errorCode: cycleErrorCode,
     itemsProcessed: idsQueried,
     itemsCreated: ratingsCreated,
     itemsUpdated: ratingsUpdated,
@@ -618,6 +684,9 @@ export async function runOmdbRatingsSync(
     durationMs,
     quotaCost,
     refreshWindowHours,
-    errorCode: providerRefusalCode,
+    // O MESMO codigo que foi para `api_sync_logs`. Divergir aqui faria o
+    // relatorio em disco (`report.ts:error_code`) contar uma historia diferente
+    // da linha do banco para o mesmo ciclo.
+    errorCode: cycleErrorCode,
   }
 }

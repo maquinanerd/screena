@@ -15,37 +15,36 @@
  * registrando `omdb_child_failed`. A fila fica parada e o painel diz apenas que
  * um filho falhou.
  *
- * Este teste fecha a costura: monta o argv EXATAMENTE como o runner monta e
- * exige que o parser o aceite, com os valores certos do outro lado.
+ * Este teste fecha a costura: pega o argv que o runner monta e exige que o
+ * parser o aceite, com os valores certos do outro lado.
  *
- * Se `runRatingsOmdb` mudar a forma dos argumentos, mude AQUI junto — este
- * arquivo e a copia executavel daquela linha, e e de proposito que ele reproduza
- * a montagem em vez de importa-la: importar o runner traria `node:child_process`
- * e o Prisma para dentro de um teste puro, e um helper compartilhado deixaria os
- * dois lados concordarem entre si e discordarem do que roda.
+ * ============================================================================
+ * ELE IMPORTA A MONTAGEM REAL — E ANTES NAO IMPORTAVA
+ * ============================================================================
+ * Ate 2026-09-01 este arquivo COPIAVA a montagem a mao, com a justificativa de
+ * que importar o runner traria `node:child_process` e o Prisma para dentro de um
+ * teste puro. A justificativa era boa e a conclusao estava errada: uma copia a
+ * mao continua VERDE no dia em que o original muda — que e literalmente o modo
+ * de falha descrito no cabecalho de `child-args.ts`, e o motivo de duas filas
+ * terem falhado em producao todo tique desde que nasceram.
+ *
+ * A montagem foi extraida para `child-args.ts`, que e PURO (zero imports).
+ * Importar de la nao arrasta Prisma nem `child_process`, e a copia deixa de
+ * existir: se o runner mudar a forma, este teste muda junto por construcao.
  */
 
 import { describe, expect, it } from 'vitest'
 
 import { OMDB_BACKGROUND_DAILY_ENVELOPE, planOmdbRotation } from '@screena/config'
 
+// A funcao REAL que `runRatingsOmdb` usa. Import relativo entre servicos, como
+// `services/sync/.../child-cli-contract.test.ts` ja faz na direcao oposta.
+import { buildOmdbChildArgs } from '../../../../sync/src/scheduler/runtime/child-args.js'
 import { parseOmdbArgs } from '../args.js'
 
-/**
- * A montagem de `runRatingsOmdb`, reproduzida literalmente.
- *
- * Ver `services/sync/src/scheduler/runtime/runners.ts`, dentro do laco
- * `for (const slice of plan.slices)`.
- */
-function schedulerArgv(
-  entityType: 'movie' | 'tv',
-  mode: string,
-  slots: number,
-  apply: boolean,
-): string[] {
-  const args = ['--type', entityType, '--mode', mode, '--limit', String(slots)]
-  if (apply) args.push('--apply')
-  return args
+/** Adapta a saida (readonly) para o `string[]` que o parser recebe. */
+function schedulerArgv(entityType: 'movie' | 'tv', mode: string, slots: number): string[] {
+  return [...buildOmdbChildArgs(entityType, mode, slots)]
 }
 
 describe('o argv que o agendador spawna e aceito pelo filho', () => {
@@ -54,7 +53,7 @@ describe('o argv que o agendador spawna e aceito pelo filho', () => {
     expect(plan.slices).toHaveLength(4)
 
     for (const slice of plan.slices) {
-      const argv = schedulerArgv(slice.entityType, slice.mode, slice.slots, true)
+      const argv = schedulerArgv(slice.entityType, slice.mode, slice.slots)
       const parsed = parseOmdbArgs(argv)
 
       expect(parsed.ok, `${argv.join(' ')} -> ${parsed.ok ? '' : parsed.error}`).toBe(true)
@@ -70,12 +69,23 @@ describe('o argv que o agendador spawna e aceito pelo filho', () => {
     }
   })
 
-  it('o ciclo sem --apply (dry-run do agendador) tambem parseia', () => {
+  it('TODO filho spawnado escreve: `--apply` esta sempre no argv', () => {
+    // O defeito que isto trava: enquanto a flag era condicional, um ciclo sem
+    // escrita spawnava o filho, ele fazia um dry-run PURO (sem banco, sem rede),
+    // saia com codigo 0, e o runner somava `slice.slots` a `processed`. A fila
+    // reportava centenas de titulos processados sem ter consultado nenhum.
+    //
+    // Hoje o ciclo sem escrita nao spawna: `runRatingsOmdb` devolve antes, com
+    // as fatias em `skipped` e motivo `dry_run`. Logo, se um filho foi spawnado,
+    // ele escreve — e o argv precisa dizer isso incondicionalmente.
     const plan = planOmdbRotation(OMDB_BACKGROUND_DAILY_ENVELOPE)
     for (const slice of plan.slices) {
-      const parsed = parseOmdbArgs(schedulerArgv(slice.entityType, slice.mode, slice.slots, false))
+      const argv = schedulerArgv(slice.entityType, slice.mode, slice.slots)
+      expect(argv, `fatia ${slice.entityType}/${slice.mode}`).toContain('--apply')
+
+      const parsed = parseOmdbArgs(argv)
       expect(parsed.ok).toBe(true)
-      if (parsed.ok) expect(parsed.args.apply).toBe(false)
+      if (parsed.ok) expect(parsed.args.apply).toBe(true)
     }
   })
 
@@ -83,7 +93,7 @@ describe('o argv que o agendador spawna e aceito pelo filho', () => {
     // Sem isto, o teste acima passaria com um parser que aceitasse qualquer
     // string em `--mode` — e um valor errado escolheria o conjunto errado de
     // candidatos sem que nada reclamasse.
-    const parsed = parseOmdbArgs(schedulerArgv('movie', 'cobertura', 10, true))
+    const parsed = parseOmdbArgs(schedulerArgv('movie', 'cobertura', 10))
     expect(parsed.ok).toBe(false)
     if (!parsed.ok) expect(parsed.error).toContain('--mode invalido')
   })
@@ -102,7 +112,7 @@ describe('o argv que o agendador spawna e aceito pelo filho', () => {
     // `slots <= 0` justamente por isso; se algum dia parar de pular, o filho sai
     // com erro e a fila registra falha. Este teste fixa as duas metades do
     // contrato: o parser recusa, logo o runner PRECISA continuar pulando.
-    expect(parseOmdbArgs(schedulerArgv('tv', 'refresh', 0, true)).ok).toBe(false)
+    expect(parseOmdbArgs(schedulerArgv('tv', 'refresh', 0)).ok).toBe(false)
 
     const plan = planOmdbRotation(2)
     const zeradas = plan.slices.filter((slice) => slice.slots === 0)

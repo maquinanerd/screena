@@ -27,9 +27,9 @@
  */
 
 import { TMDB_PROVIDER_API } from '@screena/tmdb-client'
-import { STREAMING_AVAILABILITY_PROVIDER_API } from '@screena/streaming-availability-client'
+import { STREAMING_AVAILABILITY_PROVIDER_API } from '../provider-identity.js'
 
-import { isSafeDeepLink } from '../streaming-availability/mapping.js'
+import { isSafeDeepLink } from '../safe-deep-link.js'
 import {
   isPromotableOfferType,
   type PromotionCandidate,

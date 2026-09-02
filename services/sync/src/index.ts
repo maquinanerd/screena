@@ -8,5 +8,6 @@
  * nunca importado pelo render publico.
  */
 
+export * from './cache-purge.js'
 export * from './stale-policy.js'
 export * from './scheduler/index.js'

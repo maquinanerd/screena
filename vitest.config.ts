@@ -85,12 +85,6 @@ export default defineConfig({
       '@screena/omdb-client': fileURLToPath(
         new URL('./api-clients/omdb/src/index.ts', import.meta.url),
       ),
-      '@screena/film-show-ratings-client': fileURLToPath(
-        new URL('./api-clients/film_show_ratings/src/index.ts', import.meta.url),
-      ),
-      '@screena/streaming-availability-client': fileURLToPath(
-        new URL('./api-clients/streaming_availability/src/index.ts', import.meta.url),
-      ),
     },
   },
 })

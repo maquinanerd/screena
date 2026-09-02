@@ -427,14 +427,57 @@ async function main(): Promise<void> {
             }
           }
 
+          /**
+           * A DOBRA: onde comeca a primeira imagem da ficha.
+           *
+           * A auditoria de 2026-09-01 mediu `/pt/filmes/a-odisseia/` em 375x812
+           * e achou a primeira imagem em **y = 840 px** — zero pixel de imagem
+           * na primeira tela de uma pagina de filme. A serie ja abria com
+           * midia; o filme nao, porque a reordenacao mobile (`order`) so tinha
+           * sido aplicada a um dos dois verticais.
+           *
+           * Medimos POSICAO RENDERIZADA (`getBoundingClientRect().top`) e nao a
+           * folha de estilo: `order` so tem efeito com o container em `flex`, e
+           * uma regra escrita sem o container ligado passaria numa leitura de
+           * CSS e nao moveria um pixel na tela.
+           */
+          const strip = document.querySelector<HTMLElement>('.media-strip')
+          const heroBlock = document.querySelector<HTMLElement>('.detail-hero')
+          const mediaTop = strip === null ? null : Math.round(strip.getBoundingClientRect().top)
+          const heroTop =
+            heroBlock === null ? null : Math.round(heroBlock.getBoundingClientRect().top)
+
           return {
             docWidth,
             inner,
+            mediaTop,
+            heroTop,
             overflowing: Array.from(new Set(overflowing)).slice(0, 6),
             smallTargets: Array.from(new Set(smallTargets)).slice(0, 6),
             tinyText: Array.from(new Set(tinyText)).slice(0, 6),
           }
         })
+
+        // ======================================================================
+        // A BANDA DE MIDIA PRECISA CABER NA PRIMEIRA TELA DO CELULAR
+        // ======================================================================
+        // Abaixo de 768px a composicao empilha, e o heroi de texto sozinho
+        // passa de uma tela — entao "midia depois do heroi" e o mesmo que
+        // "nenhuma imagem na dobra". Acima de 768px a ordem canonica (heroi e
+        // DEPOIS a banda full-bleed) e a correta e NAO e auditada aqui.
+        const isMobileWidth = width < 768
+        if (isMobileWidth && audit.mediaTop !== null && audit.heroTop !== null) {
+          if (audit.mediaTop >= audit.heroTop) {
+            findings.push({
+              viewport: label,
+              scenario: name,
+              problem:
+                `a banda de midia comeca em y=${audit.mediaTop} e o heroi em ` +
+                `y=${audit.heroTop}: em celular a imagem tem de vir ANTES do texto ` +
+                '(a pagina abre sem nenhuma imagem na primeira tela).',
+            })
+          }
+        }
 
         if (audit.docWidth > audit.inner + 1) {
           findings.push({

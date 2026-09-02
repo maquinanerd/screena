@@ -16,9 +16,7 @@
  * DOIS adapters convivem aqui, e so um esta ativo:
  *  - `omdb/**` — ATIVO. Um payload rende ate tres notas (IMDb, Rotten Tomatoes,
  *    Metacritic).
- *  - `film-show-ratings/**` — DESLIGADO por configuracao desde 2026-08-12 (a
  *    API responde 403 por falta de assinatura). Preservado intacto para voltar
- *    sem reescrita. Ver `film-show-ratings/gate.ts`.
  */
 
 export * from './ports.js'
@@ -27,12 +25,8 @@ export * from './metrics.js'
 export * from './cli/index.js'
 export * from './promotion/types.js'
 export * from './promotion/guardrails.js'
-export * from './film-show-ratings/types.js'
-export * from './film-show-ratings/args.js'
-export * from './film-show-ratings/gate.js'
-export * from './film-show-ratings/mapping.js'
-export * from './film-show-ratings/run.js'
-export * from './film-show-ratings/report.js'
+export * from './entity-types.js'
+export * from './item-fetch-error.js'
 export * from './omdb/types.js'
 export * from './omdb/value.js'
 export * from './omdb/sources.js'

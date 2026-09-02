@@ -37,6 +37,23 @@ export interface OmdbArgs {
    * packages/config/src/omdb-rotation.ts.
    */
   readonly mode: OmdbRotationMode | null
+  /**
+   * `--plan`: EXERCITA A SELECAO contra o Postgres e para antes da rede.
+   *
+   * POR QUE ISTO PRECISOU EXISTIR
+   * ---------------------------------------------------------------------------
+   * O dry-run puro (o default) liga `NOOP_CANDIDATES` e NAO consulta o banco:
+   * ele imprime "ate N candidato(s)", que e a repeticao do `--limit`, nao uma
+   * medicao. Consequencia medida em 2026-09-02: nao existia forma de descobrir
+   * QUANTOS titulos a selecao realmente devolve sem gastar cota — e e
+   * exatamente essa a pergunta quando a fila roda todo dia, gasta zero e nao
+   * entrega nada (`status='empty'`).
+   *
+   * `--plan` fecha essa lacuna: consulta os candidatos de verdade, imprime a
+   * contagem e os primeiros ids, e NAO chama a OMDb. Exige `DATABASE_URL`; nao
+   * exige chave de API, porque nao ha requisicao.
+   */
+  readonly plan: boolean
 }
 
 /** Resultado do parse: sucesso com args, ou falha com mensagem clara. */
@@ -49,6 +66,7 @@ const BOOLEAN_FLAGS: ReadonlySet<string> = new Set([
   'apply',
   'dry-run',
   'ignore-freshness',
+  'plan',
 ])
 const STRING_FLAGS: ReadonlySet<string> = new Set(['type', 'id', 'report', 'mode'])
 const INT_FLAGS: ReadonlySet<string> = new Set(['limit'])
@@ -69,6 +87,7 @@ export function parseOmdbArgs(argv: readonly string[]): OmdbArgsResult {
   let report: string | null = null
   let ignoreFreshness = false
   let mode: OmdbRotationMode | null = null
+  let plan = false
 
   for (let i = 0; i < argv.length; i += 1) {
     const token = argv[i]
@@ -89,6 +108,7 @@ export function parseOmdbArgs(argv: readonly string[]): OmdbArgsResult {
       if (name === 'apply') apply = true
       if (name === 'sample') sample = true
       if (name === 'ignore-freshness') ignoreFreshness = true
+      if (name === 'plan') plan = true
       // `--dry-run` e o default: aceito explicitamente, sem efeito colateral.
       continue
     }
@@ -169,6 +189,21 @@ export function parseOmdbArgs(argv: readonly string[]): OmdbArgsResult {
     return fail('--mode nao se aplica com --id (um id explicito ja e sempre consultado).')
   }
 
+  if (plan && (apply || sample)) {
+    // `--plan` afirma "NAO toca a rede". Aceita-lo junto de uma flag que toca
+    // seria deixar o nome mentir: o operador leria "plano" e gastaria cota.
+    return fail('--plan nao se combina com --apply nem --sample (ele para antes da rede).')
+  }
+
+  if (plan && id !== null) {
+    return fail('--plan nao se aplica com --id (um id explicito nao passa pela selecao).')
+  }
+
+  if (plan && type === null) {
+    // Sem tipo nao ha o que selecionar: a selecao e por tabela (movies/tv_shows).
+    return fail('--plan exige --type=movie|tv (a selecao de candidatos e por tipo).')
+  }
+
   if (mode === 'coverage' && ignoreFreshness) {
     // No modo cobertura nada foi coletado, entao nao ha frescor para ignorar.
     // Aceitar as duas juntas deixaria o operador achando que --ignore-freshness
@@ -179,8 +214,10 @@ export function parseOmdbArgs(argv: readonly string[]): OmdbArgsResult {
   if (ignoreFreshness && id !== null) {
     // `--id` ja ignora frescor por construcao. Aceitar a flag junto sugeriria
     // que ela faz algo aqui — e nao faz.
-    return fail('--ignore-freshness nao se aplica com --id (um id explicito ja e sempre consultado).')
+    return fail(
+      '--ignore-freshness nao se aplica com --id (um id explicito ja e sempre consultado).',
+    )
   }
 
-  return { ok: true, args: { apply, sample, type, id, limit, report, ignoreFreshness, mode } }
+  return { ok: true, args: { apply, sample, type, id, limit, report, ignoreFreshness, mode, plan } }
 }

@@ -9628,6 +9628,88 @@ h4.art-body__heading {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* Ficha de FILME: a mesma midia-primeiro que a serie ja tinha          */
+/* ------------------------------------------------------------------ */
+/* O QUE FOI MEDIDO (auditoria de 2026-09-01, /pt/filmes/a-odisseia/):
+   em 375x812 a PRIMEIRA IMAGEM da pagina comeca em y = 840 px. Ou seja,
+   ZERO pixel de imagem na primeira tela de uma pagina de filme — o leitor
+   rola uma tela inteira de texto antes de ver qualquer coisa do filme.
+   Nenhum dos 24 concorrentes analisados faz isso.
+
+   POR QUE A CORRECAO E SO DE MOBILE, E SO DE ORDEM.
+   No desktop a composicao atual E o canonico: heroi de texto e, abaixo,
+   a banda full-bleed com poster sangrando a esquerda e trailer no centro.
+   Isso nao muda. O que quebra e o EMPILHAMENTO: em telas estreitas o heroi
+   ocupa a dobra inteira e empurra a banda para fora dela.
+
+   POR QUE ESTE BLOCO E QUASE UMA COPIA DO DE CIMA.
+   Porque a resposta ja existia no repositorio e so nao tinha sido aplicada
+   aos dois verticais. A serie recebeu `order: -2 / -1` na tela 08; o filme
+   ficou sem. A auditoria mediu uma ficha de FILME e concluiu que o produto
+   inteiro nao mostrava imagem na dobra — a serie ja mostrava.
+
+   O QUE ESTE BLOCO NAO FAZ. Nao reordena as SECOES de conteudo do filme.
+   O bloco da serie enumera `order: 1..6` porque a tela 08 decidiu uma ordem
+   editorial propria (elenco antes de "a obra"); para filme nao existe
+   decisao equivalente, e inventar uma aqui seria reescrever a pagina a
+   pretexto de subir uma imagem. Sem `order` declarada, todo irmao fica em
+   `0` e mantem a ordem do DOM.
+
+   O DOM NAO MUDA — logo titulo, breadcrumb e JSON-LD continuam onde estao
+   para o rastreador; o que muda e so a ordem VISUAL abaixo de 768px. */
+@media (max-width: 767px) {
+  /* `:has(> .detail-hero)` e a mesma guarda da serie: sem heroi nao ha o que
+     reordenar, e ligar `flex` numa arvore diferente mudaria layout de graca. */
+  main[data-vertical='movie']:has(> .detail-hero) {
+    display: flex;
+    flex-direction: column;
+  }
+
+  main[data-vertical='movie']:has(> .detail-hero) > * {
+    min-width: 0;
+    width: 100%;
+  }
+
+  main[data-vertical='movie'] > .media-strip {
+    order: -2;
+    /* O respiro de 34px existia para separar a banda do heroi ACIMA dela.
+       Na primeira posicao ele vira um recuo no topo da pagina. */
+    padding-top: 0;
+  }
+
+  main[data-vertical='movie'] > .detail-hero {
+    order: -1;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Estado vazio de bloco: a ausencia FALA com o leitor                  */
+/* ------------------------------------------------------------------ */
+/* Uma frase, no lugar do bloco. Nao e placeholder: nao imita o bloco que
+   falta, nao reserva a altura dele e nao promete que ele vem. Le como uma
+   nota da redacao, que e o que e. A cor e a de texto secundario que passa
+   em contraste (`--c-text-muted-aa`), nunca a de 2,93:1. */
+.section-empty {
+  margin: 0;
+  color: var(--c-text-muted-aa);
+  font-size: 14px;
+  line-height: 1.5;
+  max-width: 46ch;
+}
+
+/* Na coluna direita da ficha ela ocupa o lugar do cartao, com o mesmo
+   respiro dos blocos vizinhos — senao a frase encosta no bloco de cima. */
+.detail-hero__aside > .section-empty {
+  padding-top: 14px;
+  border-top: 1px solid var(--c-border-hairline, rgba(0, 0, 0, 0.08));
+}
+
+.detail-hero__aside > .section-empty:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+
 .ant-card[data-entity-type='tv'],
 .ant-card[data-entity-type='season'] {
   --ant-accent-strong: var(--c-accent-series-dark);

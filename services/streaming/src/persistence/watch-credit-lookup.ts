@@ -30,7 +30,7 @@
 
 import type { PrismaClient } from '@screena/db/server'
 import type { SourceCredit } from '@screena/schemas'
-import { STREAMING_AVAILABILITY_PROVIDER_API } from '@screena/streaming-availability-client'
+import { STREAMING_AVAILABILITY_PROVIDER_API } from '../provider-identity.js'
 
 /** Linha crua projetada do SQL. */
 interface CreditRow {

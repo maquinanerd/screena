@@ -31,6 +31,16 @@ Estas 13 invariantes sao a lei do projeto. Nao reescreva o sentido delas; cite-a
 3. **Zero API externa no render** — paginas publicas indexaveis leem apenas PostgreSQL/cache local.
 4. **Zero Gemini no render** — a IA so gera content_blocks offline, salvos e validados.
 5. **Indexacao total** — toda entidade sincronizada e indexada em todos os idiomas publicados; noindex fica so para casos tecnicos (404, erro, entidade sem slug/traducao). Conteudo editorial e alavanca de ranqueamento, nao pre-requisito de indexacao. _(politica atualizada 2026-07; substitui o antigo gate anti-thin de >= 2 blocos)_
+   - **UMA excecao nomeada, e ela e temporaria.** `season` e `episode` estao
+     SUSPENSOS do indice pela valvula de emergencia de 2026-08-27
+     ([`suspended-pages.ts`](apps/web/src/server/seo/suspended-pages.ts)), por
+     decisao do dono e com medicao: a pagina de episodio rendia 64 palavras dentro
+     de `<main>` (mediana de 200 amostradas: 24), sem elenco, sem direcao e sem
+     imagem propria — e eram 3.793.672 URLs de episodio mais 127.870 de temporada,
+     **96,36% de um sitemap que passara de 53.054 para 4.069.444 URLs em cinco
+     dias**. A excecao fica REGISTRADA aqui (e nao so no codigo) porque uma
+     invariante com excecao nao escrita e uma invariante que ninguem sabe se esta
+     valendo. Ela sai quando a decisao por dado da Fase 3 estiver aplicada.
 6. **Dados sem licenca clara** (`license_status` unknown/blocked ou `display_allowed=false`) nao aparecem em pagina indexavel.
 7. **pt-BR publica primeiro** — `en` e `es` sao publicados e indexados quando completos (dado + i18n de UI + hreflang), controlados por **PUBLISHED_LOCALES**; nao nascem mais permanentemente noindex. _(politica atualizada 2026-07)_
 8. **Sem pirataria** — nada de torrent, IPTV, player ilegal, link de download ou embed pirata.
@@ -96,8 +106,9 @@ Fluxo mental: **API externa -> worker (offline, com log) -> PostgreSQL -> [Entit
 | `services/user-platform` | `@screena/user-platform` — identidade, credencial, sessao, tokens, e-mail transacional (runtime de auth WIRED nas rotas `/api/auth/**`). |
 | `services/news-ingestion` | `@screena/news-ingestion` — **workspace ATIVO e real** (nao e placeholder). Plataforma editorial: identidade de item, deduplicacao determinista, ciclo de vida do artigo, slug/redirect, projecao de busca/indexabilidade, metricas e portas. Nucleo PURO em `src/` (sem Prisma), adapters Prisma em `src/persistence/`, CLI de desenvolvimento em `bin/editorial.ts` (com barreira anti-producao) e testes proprios. **Nao reconstroi RSS Prime nem MN26**: implementa o contrato de entrada e a projecao publica governada. Desde a FASE 2C tambem hospeda o **worker de projecao editorial** (`bin/project-editorial.ts`): consome a outbox do CMS por HTTP e projeta no banco publico. E o UNICO processo que fala com os DOIS LADOS — e a ponte e assimetrica: **API do Payload** (HTTP autenticado) de um lado, **banco publico do Screen-App** (Prisma) do outro. Ele NAO abre conexao com o banco do CMS; a proibicao e travada por `tests/governance/editorial-worker-boundary.test.ts`. |
 | `api-clients/imdb`, `api-clients/kaso`, `api-clients/rotten_tomatoes` | Placeholders de roadmap (apenas `README.md`, sem `package.json` nem codigo). Nao sao workspaces ativos. |
+| ~~`api-clients/film_show_ratings`~~, ~~`api-clients/streaming_availability`~~ | **REMOVIDOS em 2026-09-02.** Clients RapidAPI de um fornecedor que o dono aposentou. A IDENTIDADE de cada um sobrevive onde precisa sobreviver — `streaming_availability` e chave viva em `api_providers`, com linhas de `watch_availability` apontando por FK, e vive em `services/streaming/src/provider-identity.ts`. O que morreu foi o caminho EXECUTAVEL: client HTTP, config, worker e cota. |
 | `workers/` | Workers Python (esqueletos/roadmap): ratings, streaming, news e scheduler; TMDB legado/scaffold nao substitui o client TS atual. `rssprime_worker.py` descreve um contrato antigo (inclusive `news_clusters`, tabela que NAO existe) — nao e fonte de verdade. |
-| `api-clients/` | Clients externos; `tmdb`, `rapidapi-core`, `film_show_ratings` e `streaming_availability` sao reais em TS/Node. `imdb`, `kaso` e `rotten_tomatoes` sao placeholders. |
+| `api-clients/` | Clients externos; `tmdb`, `rapidapi-core` e `omdb` sao reais em TS/Node (`rapidapi-core` e infra HTTP compartilhada — hoje do OMDb —, apesar do nome legado). `imdb`, `kaso` e `rotten_tomatoes` sao placeholders. |
 | `database/` | Legado: `migrations/` vazio e `seeds/` so com README. A fonte executavel atual e `packages/db/prisma`. |
 | `prompts/` | Prompts de IA (pt-BR) para os content_blocks. |
 | `docs/` | `SPEC.md`, `BUILD_PLAN.md`, `API_SOURCES.md`, `SEO_PROGRAMMATIC.md`, `RATING_ATTRIBUTION.md`, `ENTITY_WRITER.md`, `CLOUDPANEL_DEPLOY.md`. |
@@ -198,7 +209,22 @@ Um bloco gerado por IA so conta como valor de qualidade se: veio de **payload co
 - **NUNCA** misturar IMDb e Rotten Tomatoes (fontes, escalas, icones, linguagem).
 - **NUNCA** tratar `provider_api` como `rating_source`.
 - **NUNCA** exibir dado sem licenca clara em pagina indexavel.
-- **NUNCA** publicar conteudo automaticamente — publicacao passa por humano.
+- **NUNCA** publicar conteudo automaticamente **fora do ator declarado**. A regra
+  tinha uma contradicao interna e ela foi resolvida em 2026-09-02: esta linha
+  dizia "NUNCA publicar conteudo automaticamente" em termos absolutos, enquanto a
+  secao 7 (ponteiro do ADR 0017) descreve `editorial_auto_publish` subindo ate
+  `published` — a 44 linhas de distancia, o documento que se declara autoritativo
+  afirmava e proibia a mesma coisa, e qualquer decisao podia cita-lo a favor de si.
+  O que vale e o ADR 0017, que e a decisao REGISTRADA com revisao humana:
+  - **`editorial_auto_publish`** e um ator distinto de `draft_ingest`, derivado do
+    ESCOPO da credencial, e pode chegar a `published` — sem atravessar estados que
+    afirmam revisao humana, e sob os tetos diarios de
+    [`docs/operations/editorial-auto-publication-quota.md`](docs/operations/editorial-auto-publication-quota.md).
+  - **Qualquer outro caminho** exige humano. `draft_ingest` continua confinado a
+    `automation_draft`.
+  - **Um agente nunca publica**, e nunca concede a si mesmo esse escopo
+    (invariante 12). Autopublicacao e uma credencial que um humano emitiu, nao uma
+    permissao que um agente assume.
 - **NUNCA** deixar o Entity Writer inventar fatos, criar entidades ou chamar API externa.
 - **NUNCA** confundir "indexacao total" com indexar lixo: a licenca (invariante 6) continua bloqueando dado sem permissao, e mocks/placeholders/dados sem licenca nunca viram pagina indexavel.
 - **NUNCA** colocar API key/secret no frontend ou no repositorio.

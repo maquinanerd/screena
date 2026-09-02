@@ -71,8 +71,6 @@ export const PROVIDER_KINDS = Object.freeze(['data', 'ratings', 'streaming', 'ai
 export const ENUMERATION_SOURCES = Object.freeze([
   { file: 'api-clients/tmdb/src/endpoints.ts', label: 'TMDB endpoints' },
   { file: 'api-clients/tmdb/src/catalog.ts', label: 'TMDB catalog endpoints' },
-  { file: 'api-clients/film_show_ratings/src/client.ts', label: 'Film & Show Ratings client' },
-  { file: 'api-clients/streaming_availability/src/client.ts', label: 'Streaming Availability client' },
 ]);
 
 /** Regex que captura o nome de um metodo-endpoint publico `async get<X>(`. */

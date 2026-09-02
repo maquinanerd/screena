@@ -265,18 +265,6 @@
     "notes": "Escala 10; propria da fonte. provider_api != rating_source."
   },
   {
-    "id": "watch_availability.offers",
-    "provider": "streaming_availability",
-    "provider_api": "streaming_availability",
-    "role": "streaming",
-    "target": "watch_availability (offer_type, provider, country=BR, deep_link, price, display_allowed)",
-    "worker_only": true,
-    "implemented": true,
-    "coverage_state": "blocked_license",
-    "justification": "Ofertas nascem display_allowed=false; atribuicao+linkback a Movie of the Night obrigatorios antes de exibir (invariante 6). Promocao e humana (--confirm).",
-    "notes": "Apenas ofertas legais (addon descartado, filtro anti-pirataria). BR-only. Superficie publica exige carimbo 'Atualizado em' (last_synced_at)."
-  },
-  {
     "id": "content_blocks.editorial",
     "provider": "gemini",
     "provider_api": "gemini",

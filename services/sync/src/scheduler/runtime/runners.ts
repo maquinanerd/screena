@@ -57,7 +57,7 @@ import { backgroundOmdbSlots } from '../quota.js'
 import { dailyScope, hourlySlot, windowSlot } from '../scope.js'
 import { effectiveRank, NO_TRENDING, type TrendingRanks } from '../trending.js'
 import { buildTrendingListJob, TRENDING_COMBOS } from '../trending-jobs.js'
-import { buildCinerieScoreArgs, buildSearchReindexArgs } from './child-args.js'
+import { buildCinerieScoreArgs, buildOmdbChildArgs, buildSearchReindexArgs } from './child-args.js'
 import { describeChildFailure } from './child-failure.js'
 import type { RunReason, RunTally } from '../run-outcome.js'
 import { readSpentToday } from './facts.js'
@@ -76,7 +76,11 @@ const DAY_MS = 24 * HOUR_MS
 
 /** Log estruturado minimo (a mesma forma do servico de catalogo). */
 export interface RunnerLogger {
-  log(level: 'debug' | 'info' | 'warn' | 'error', event: string, fields?: Record<string, unknown>): void
+  log(
+    level: 'debug' | 'info' | 'warn' | 'error',
+    event: string,
+    fields?: Record<string, unknown>,
+  ): void
 }
 
 /** Tudo que um runner precisa. */
@@ -740,6 +744,35 @@ const runRatingsOmdb: QueueRunner = async (deps) => {
   const reasons: RunReason[] = []
   let processed = 0
   let failed = 0
+  let skipped = 0
+
+  // ==========================================================================
+  // SEM `--apply` O FILHO E UM DRY-RUN, E DRY-RUN NAO E TRABALHO
+  // ==========================================================================
+  // `sync-omdb-ratings` sem `--apply` cai no ramo `touchesNetwork === false`:
+  // ele imprime o PLANO, nao consulta candidato (usa `NOOP_CANDIDATES`), nao
+  // toca rede, nao grava nada — e sai com codigo 0.
+  //
+  // O laco abaixo lia esse 0 como sucesso e fazia `processed += slice.slots`.
+  // Resultado: um ciclo sem `--apply` reportava centenas de titulos
+  // "processados", `status` de sucesso e zero cota — indistinguivel, no painel,
+  // de um ciclo que realmente cobriu o catalogo. E o painel media o RELOGIO, nao
+  // o trabalho.
+  //
+  // Os runners irmaos (`enqueue`, `watch_offers`) ja contavam `dry_run` em
+  // `skipped`; este era o unico que nao contava. A guarda sai daqui e nao de
+  // dentro do laco porque a decisao e do CICLO, nao da fatia.
+  if (!deps.apply) {
+    for (const slice of plan.slices) skipped += slice.slots
+    return tally(
+      'ratings_omdb',
+      startedAt,
+      deps.now(),
+      { planned: plan.total, processed: 0, failed: 0, skipped },
+      [{ code: 'dry_run', detail: 'sem --apply: nada foi consultado nem escrito', count: 1 }],
+      { providerApi: 'omdb', requests: 0 },
+    )
+  }
 
   for (const slice of plan.slices) {
     // Um lote de zero slots nao spawna: subir um processo para ele descobrir que
@@ -747,15 +780,9 @@ const runRatingsOmdb: QueueRunner = async (deps) => {
     // nada" e indistinguivel de "quebrou" no painel.
     if (slice.slots <= 0) continue
 
-    const args = [
-      '--type',
-      slice.entityType,
-      '--mode',
-      slice.mode,
-      '--limit',
-      String(slice.slots),
-    ]
-    if (deps.apply) args.push('--apply')
+    // A montagem mora em `child-args.ts` (modulo PURO) para que o teste de
+    // costura importe a funcao REAL em vez de copiar o array.
+    const args = [...buildOmdbChildArgs(slice.entityType, slice.mode, slice.slots)]
     const result = await runScript(
       deps.repoRoot,
       path.join('services', 'ratings', 'bin', 'sync-omdb-ratings.ts'),
@@ -788,7 +815,7 @@ const runRatingsOmdb: QueueRunner = async (deps) => {
     'ratings_omdb',
     startedAt,
     deps.now(),
-    { planned: plan.total, processed, failed, skipped: 0 },
+    { planned: plan.total, processed, failed, skipped },
     reasons,
     // ==========================================================================
     // `requests: 0` AQUI E CORRECAO, NAO OMISSAO

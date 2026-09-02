@@ -2,10 +2,16 @@
 /**
  * bin/promote-watch-availability.ts — Promocao/reversao GOVERNADA de ofertas.
  *
- * Vira o gate `display_allowed` de ofertas ja gravadas do fornecedor
- * `streaming_availability` (pais BR), por SELECAO EXPLICITA de ids. Substitui o
- * SQL manual por um caminho com guardrails: sem `--confirm` e sempre dry-run;
- * com `--confirm` so as linhas elegiveis sao mutadas.
+ * Vira o gate `display_allowed` de ofertas ja gravadas (pais BR por default),
+ * por SELECAO EXPLICITA de ids OU por LOTE de fornecedor. Substitui o SQL manual
+ * por um caminho com guardrails: sem `--confirm` e sempre dry-run; com
+ * `--confirm` so as linhas elegiveis sao mutadas.
+ *
+ * CORRECAO DE CABECALHO (S-26). Ate 2026-09-02 esta linha dizia que a ferramenta
+ * cobria so o fornecedor `streaming_availability`. Isso ja era falso:
+ * `promotion/guardrails.ts` governa TAMBEM o `tmdb`, e a listagem de revisao le
+ * os dois. Um cabecalho que estreita o alcance real ensina o operador a nao usar
+ * a ferramenta no caso em que ela funciona.
  *
  * NAO FAZ: chamar RapidAPI/rede; rodar ingestao/--sample/--apply; criar linha
  * nova; tocar outro provider; encostar em rating/screen_score/external_ratings;
@@ -17,6 +23,8 @@
  *   node "$TSX" services/streaming/bin/promote-watch-availability.ts --ids=1,2,3 --country=BR
  *   # promocao real (so as elegiveis)
  *   node "$TSX" services/streaming/bin/promote-watch-availability.ts --ids=1,2,3 --country=BR --confirm
+ *   # LOTE por fornecedor (dry-run; --limit e obrigatorio e tem teto)
+ *   node "$TSX" services/streaming/bin/promote-watch-availability.ts --provider=tmdb --country=BR --limit=100
  *   # reversao (volta display_allowed=false)
  *   node "$TSX" services/streaming/bin/promote-watch-availability.ts --ids=1,2,3 --country=BR --revoke --confirm
  */
@@ -25,7 +33,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { STREAMING_AVAILABILITY_PROVIDER_API } from '@screena/streaming-availability-client'
+import { STREAMING_AVAILABILITY_PROVIDER_API } from '../src/provider-identity.js'
 import { disconnectPrisma, getPrismaClient } from '@screena/db/server'
 
 import { parsePromoteArgs } from '../src/promotion/args.js'
@@ -70,9 +78,36 @@ async function main(): Promise<void> {
     const store = createPrismaReviewStore(prisma)
     const syncLog = createPrismaSyncLog(prisma, STREAMING_AVAILABILITY_PROVIDER_API)
 
+    // ======================================================================
+    // O LOTE SO ESCOLHE QUAIS IDS ENTRAM
+    // ======================================================================
+    // Ele nao afrouxa nenhuma regra: os ids resolvidos aqui passam pelo MESMO
+    // `runPromotion`, com os mesmos guardrails linha a linha. Reusar
+    // `listCandidates` (a consulta que a revisao ja usa) evita um segundo
+    // caminho de selecao que divergiria do primeiro no primeiro conserto.
+    let selectedIds: readonly string[] = args.ids.map((id) => String(id))
+    if (args.batch !== null) {
+      const candidates = await store.listCandidates({
+        providerApis: [args.batch.providerApi],
+        countryCode: args.country,
+        entityType: null,
+        entityId: null,
+        limit: args.batch.limit,
+      })
+      selectedIds = candidates.map((c) => String(c.id))
+      console.log(
+        `lote: fornecedor=${args.batch.providerApi} pais=${args.country} ` +
+          `teto=${String(args.batch.limit)} · SELECIONADAS=${String(selectedIds.length)}`,
+      )
+      if (selectedIds.length === 0) {
+        console.log('Nada a promover: a consulta nao devolveu nenhuma oferta para este recorte.')
+        return
+      }
+    }
+
     const result = await runPromotion(
       {
-        ids: args.ids.map((id) => String(id)),
+        ids: selectedIds,
         country: args.country,
         confirm: args.confirm,
         revoke: args.revoke,
@@ -88,7 +123,9 @@ async function main(): Promise<void> {
     for (const entry of result.evaluated) {
       const c = entry.candidate
       const decision = entry.eligible ? 'ELEGIVEL' : `rejeitada:${entry.reason}`
-      console.log(`  #${c.id} ${c.entityType}#${c.entityId} "${c.title ?? '—'}" · display_allowed=${c.displayAllowed} · ${decision}`)
+      console.log(
+        `  #${c.id} ${c.entityType}#${c.entityId} "${c.title ?? '—'}" · display_allowed=${c.displayAllowed} · ${decision}`,
+      )
     }
     if (result.idsMissing.length > 0) {
       console.warn(`  ids ausentes (nao existem): ${result.idsMissing.join(', ')}`)
@@ -117,7 +154,11 @@ async function main(): Promise<void> {
       )
       process.exitCode = 1
     }
-    if (args.confirm && result.updated < result.eligibleIds.length && result.refusals.length === 0) {
+    if (
+      args.confirm &&
+      result.updated < result.eligibleIds.length &&
+      result.refusals.length === 0
+    ) {
       console.warn(
         `Atencao: ${result.eligibleIds.length} elegivel(is), mas ${result.updated} mutada(s). ` +
           'Alguma linha saiu do escopo entre a leitura e o update (provider/pais/estado).',
@@ -144,11 +185,17 @@ function writeReport(body: string, filename: string): void {
     writeFileSync(target, `${body}\n`)
     console.log(`Relatorio: ${target}`)
   } catch (error) {
-    console.warn('Nao foi possivel escrever o relatorio:', error instanceof Error ? error.message : error)
+    console.warn(
+      'Nao foi possivel escrever o relatorio:',
+      error instanceof Error ? error.message : error,
+    )
   }
 }
 
 main().catch((error: unknown) => {
-  console.error('Falha na promocao de disponibilidade:', error instanceof Error ? error.message : error)
+  console.error(
+    'Falha na promocao de disponibilidade:',
+    error instanceof Error ? error.message : error,
+  )
   process.exitCode = 1
 })

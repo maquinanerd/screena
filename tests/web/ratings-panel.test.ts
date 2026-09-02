@@ -153,7 +153,7 @@ describe("ratings — wiring ate a pagina e ate o gate de SEO", () => {
         // ...)` continua provando que e a view GOVERNADA que alimenta o painel,
         // e nao um dado qualquer.
         expect(pageCode).toMatch(/decideSection\(ratings,/);
-        expect(pageCode).toMatch(/<SectionBoundary decision=\{ratingsSection\}>/);
+        expect(pageCode).toMatch(/<SectionBoundary decision=\{ratingsSection\}( speak)?>/);
         expect(pageCode).toContain("<RatingsPanel view={view} />");
       });
 
