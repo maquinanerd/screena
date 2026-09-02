@@ -9680,7 +9680,8 @@ h4.art-body__heading {
 
   main[data-vertical='movie'] > .detail-hero {
     order: -1;
-  }}
+  }
+}
 
 /* ------------------------------------------------------------------ */
 /* Estado vazio de bloco: a ausencia FALA com o leitor                  */
