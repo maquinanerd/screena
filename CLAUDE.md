@@ -31,6 +31,16 @@ Estas 13 invariantes sao a lei do projeto. Nao reescreva o sentido delas; cite-a
 3. **Zero API externa no render** — paginas publicas indexaveis leem apenas PostgreSQL/cache local.
 4. **Zero Gemini no render** — a IA so gera content_blocks offline, salvos e validados.
 5. **Indexacao total** — toda entidade sincronizada e indexada em todos os idiomas publicados; noindex fica so para casos tecnicos (404, erro, entidade sem slug/traducao). Conteudo editorial e alavanca de ranqueamento, nao pre-requisito de indexacao. _(politica atualizada 2026-07; substitui o antigo gate anti-thin de >= 2 blocos)_
+   - **UMA excecao nomeada, e ela e temporaria.** `season` e `episode` estao
+     SUSPENSOS do indice pela valvula de emergencia de 2026-08-27
+     ([`suspended-pages.ts`](apps/web/src/server/seo/suspended-pages.ts)), por
+     decisao do dono e com medicao: a pagina de episodio rendia 64 palavras dentro
+     de `<main>` (mediana de 200 amostradas: 24), sem elenco, sem direcao e sem
+     imagem propria — e eram 3.793.672 URLs de episodio mais 127.870 de temporada,
+     **96,36% de um sitemap que passara de 53.054 para 4.069.444 URLs em cinco
+     dias**. A excecao fica REGISTRADA aqui (e nao so no codigo) porque uma
+     invariante com excecao nao escrita e uma invariante que ninguem sabe se esta
+     valendo. Ela sai quando a decisao por dado da Fase 3 estiver aplicada.
 6. **Dados sem licenca clara** (`license_status` unknown/blocked ou `display_allowed=false`) nao aparecem em pagina indexavel.
 7. **pt-BR publica primeiro** — `en` e `es` sao publicados e indexados quando completos (dado + i18n de UI + hreflang), controlados por **PUBLISHED_LOCALES**; nao nascem mais permanentemente noindex. _(politica atualizada 2026-07)_
 8. **Sem pirataria** — nada de torrent, IPTV, player ilegal, link de download ou embed pirata.
@@ -198,7 +208,22 @@ Um bloco gerado por IA so conta como valor de qualidade se: veio de **payload co
 - **NUNCA** misturar IMDb e Rotten Tomatoes (fontes, escalas, icones, linguagem).
 - **NUNCA** tratar `provider_api` como `rating_source`.
 - **NUNCA** exibir dado sem licenca clara em pagina indexavel.
-- **NUNCA** publicar conteudo automaticamente — publicacao passa por humano.
+- **NUNCA** publicar conteudo automaticamente **fora do ator declarado**. A regra
+  tinha uma contradicao interna e ela foi resolvida em 2026-09-02: esta linha
+  dizia "NUNCA publicar conteudo automaticamente" em termos absolutos, enquanto a
+  secao 7 (ponteiro do ADR 0017) descreve `editorial_auto_publish` subindo ate
+  `published` — a 44 linhas de distancia, o documento que se declara autoritativo
+  afirmava e proibia a mesma coisa, e qualquer decisao podia cita-lo a favor de si.
+  O que vale e o ADR 0017, que e a decisao REGISTRADA com revisao humana:
+  - **`editorial_auto_publish`** e um ator distinto de `draft_ingest`, derivado do
+    ESCOPO da credencial, e pode chegar a `published` — sem atravessar estados que
+    afirmam revisao humana, e sob os tetos diarios de
+    [`docs/operations/editorial-auto-publication-quota.md`](docs/operations/editorial-auto-publication-quota.md).
+  - **Qualquer outro caminho** exige humano. `draft_ingest` continua confinado a
+    `automation_draft`.
+  - **Um agente nunca publica**, e nunca concede a si mesmo esse escopo
+    (invariante 12). Autopublicacao e uma credencial que um humano emitiu, nao uma
+    permissao que um agente assume.
 - **NUNCA** deixar o Entity Writer inventar fatos, criar entidades ou chamar API externa.
 - **NUNCA** confundir "indexacao total" com indexar lixo: a licenca (invariante 6) continua bloqueando dado sem permissao, e mocks/placeholders/dados sem licenca nunca viram pagina indexavel.
 - **NUNCA** colocar API key/secret no frontend ou no repositorio.
