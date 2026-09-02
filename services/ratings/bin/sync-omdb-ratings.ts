@@ -68,6 +68,7 @@ import { sanitizePayload } from '@screena/rapidapi-core'
 import { disconnectPrisma, getPrismaClient } from '@screena/db/server'
 
 import { parseOmdbArgs } from '../src/omdb/args.js'
+import { omdbRefreshCutoff } from '../src/omdb/freshness.js'
 import { describeOmdbGateReason, evaluateOmdbGate } from '../src/omdb/gate.js'
 import {
   buildOmdbReport,
@@ -155,6 +156,71 @@ async function main(): Promise<void> {
   const touchesNetwork = args.apply || args.sample
   const mode = omdbRunMode(args)
 
+  // ==========================================================================
+  // `--plan`: A SELECAO, MEDIDA — SEM REDE, SEM COTA, SEM ESCRITA
+  // ==========================================================================
+  // O dry-run puro abaixo liga `NOOP_CANDIDATES` e NAO consulta o banco: ele
+  // imprime "ate N candidato(s)", que e a repeticao do `--limit`. Isso deixava
+  // uma pergunta sem instrumento — QUANTOS titulos a selecao devolve de fato —,
+  // e ela e justamente a pergunta quando a fila roda todo dia, gasta zero e nao
+  // entrega nada: um ciclo real com zero candidatos sai `status='empty'` com
+  // `quota_cost 0` e codigo de saida 0, indistinguivel de um ciclo produtivo na
+  // contabilidade de quem o chamou.
+  //
+  // Este ramo consulta os candidatos REAIS (o mesmo porto Prisma, o mesmo
+  // predicado, o mesmo relogio) e para antes da primeira requisicao. Exige
+  // `DATABASE_URL`; NAO exige chave de API, porque nao ha o que autenticar.
+  if (args.plan) {
+    if (!hasDb) {
+      console.error('--plan exige DATABASE_URL: ele mede a selecao contra o banco.')
+      process.exitCode = 1
+      return
+    }
+
+    const prisma = getPrismaClient()
+    try {
+      const { createPrismaStaleEntityCandidates } =
+        await import('../src/persistence/stale-entity-candidates.js')
+      const now = new Date()
+      const rotationMode = args.mode ?? 'refresh'
+      const limit = args.limit ?? DEFAULT_OMDB_CANDIDATE_LIMIT
+      const selection = await createPrismaStaleEntityCandidates(prisma).selectStaleByType({
+        entityType: args.type as Exclude<typeof args.type, null>,
+        limit,
+        providerApi: OMDB_PROVIDER_API,
+        // A MESMA regra do run: `coverage` ignora frescor por construcao.
+        cutoff: args.ignoreFreshness ? null : omdbRefreshCutoff(now),
+        mode: rotationMode,
+        now,
+      })
+
+      const amostra = selection.candidates
+        .slice(0, 10)
+        .map((c) => c.imdbId)
+        .join(', ')
+
+      console.log(
+        `[plan] modo=${rotationMode} tipo=${args.type} limite=${limit} · ` +
+          `SELECIONADOS=${selection.candidates.length} · ` +
+          `pulados por frescor=${selection.skippedFresh} · ` +
+          'zero requisicao, zero cota, nada gravado.',
+      )
+      if (selection.candidates.length > 0) {
+        console.log(`[plan] primeiros ids: ${amostra}`)
+      } else {
+        // O desfecho que o instrumento existe para nomear.
+        console.log(
+          '[plan] a selecao devolveu ZERO candidatos. Um ciclo real aqui gravaria ' +
+            "status='empty' com cota 0 e sairia com codigo 0 — o que, para quem " +
+            'chama, e indistinguivel de um ciclo que trabalhou.',
+        )
+      }
+    } finally {
+      await disconnectPrisma()
+    }
+    return
+  }
+
   // Dry-run PURO: sem rede, sem DB, sem cliente HTTP, sem chave.
   if (!touchesNetwork) {
     const result = await runOmdbRatingsSync(
@@ -214,15 +280,12 @@ async function main(): Promise<void> {
   const { createPrismaCache } = await import('../src/persistence/cache.js')
   const { createPrismaSyncLog } = await import('../src/persistence/sync-log.js')
   const { createPrismaEntityLookup } = await import('../src/persistence/entity-lookup.js')
-  const { createPrismaStaleEntityCandidates } = await import(
-    '../src/persistence/stale-entity-candidates.js'
-  )
-  const { createPrismaExternalRatings } = await import(
-    '../src/persistence/external-ratings-store.js'
-  )
-  const { createPrismaRatingCreditLookup } = await import(
-    '../src/persistence/rating-credit-lookup.js'
-  )
+  const { createPrismaStaleEntityCandidates } =
+    await import('../src/persistence/stale-entity-candidates.js')
+  const { createPrismaExternalRatings } =
+    await import('../src/persistence/external-ratings-store.js')
+  const { createPrismaRatingCreditLookup } =
+    await import('../src/persistence/rating-credit-lookup.js')
 
   const { createPrismaOmdbBudget } = await import('../src/persistence/omdb-budget-source.js')
 
@@ -255,8 +318,7 @@ async function main(): Promise<void> {
         // Em `--sample` (sem `--apply`) o core nunca resolve nem grava entidade.
         entities: args.apply ? createPrismaEntityLookup(prisma) : NOOP_ENTITIES,
         // Candidatos locais so sao selecionados quando `--id` nao foi informado.
-        candidates:
-          args.id === null ? createPrismaStaleEntityCandidates(prisma) : NOOP_CANDIDATES,
+        candidates: args.id === null ? createPrismaStaleEntityCandidates(prisma) : NOOP_CANDIDATES,
         // A nota nasce fail-closed e, logo apos persistida, a politica de
         // exibicao decide se acende — com base na licenca que o proprietario
         // autorizou (services/legal). Nenhuma recusa e silenciosa: o motivo
@@ -394,9 +456,6 @@ function writeReport(
 }
 
 main().catch((error: unknown) => {
-  console.error(
-    'Falha no sync de ratings (OMDb):',
-    error instanceof Error ? error.message : error,
-  )
+  console.error('Falha no sync de ratings (OMDb):', error instanceof Error ? error.message : error)
   process.exitCode = 1
 })
