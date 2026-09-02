@@ -9680,7 +9680,33 @@ h4.art-body__heading {
 
   main[data-vertical='movie'] > .detail-hero {
     order: -1;
-  }
+  }}
+
+/* ------------------------------------------------------------------ */
+/* Estado vazio de bloco: a ausencia FALA com o leitor                  */
+/* ------------------------------------------------------------------ */
+/* Uma frase, no lugar do bloco. Nao e placeholder: nao imita o bloco que
+   falta, nao reserva a altura dele e nao promete que ele vem. Le como uma
+   nota da redacao, que e o que e. A cor e a de texto secundario que passa
+   em contraste (`--c-text-muted-aa`), nunca a de 2,93:1. */
+.section-empty {
+  margin: 0;
+  color: var(--c-text-muted-aa);
+  font-size: 14px;
+  line-height: 1.5;
+  max-width: 46ch;
+}
+
+/* Na coluna direita da ficha ela ocupa o lugar do cartao, com o mesmo
+   respiro dos blocos vizinhos — senao a frase encosta no bloco de cima. */
+.detail-hero__aside > .section-empty {
+  padding-top: 14px;
+  border-top: 1px solid var(--c-border-hairline, rgba(0, 0, 0, 0.08));
+}
+
+.detail-hero__aside > .section-empty:first-child {
+  padding-top: 0;
+  border-top: none;
 }
 
 .ant-card[data-entity-type='tv'],
