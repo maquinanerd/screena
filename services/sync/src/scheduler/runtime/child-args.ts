@@ -65,3 +65,34 @@ export function buildCinerieScoreArgs(apply: boolean): readonly string[] {
 export function buildSearchReindexArgs(apply: boolean): readonly string[] {
   return apply ? ['search-reindex', '--apply', '--force'] : ['search-reindex', '--dry-run']
 }
+
+/**
+ * Argumentos de `services/ratings/bin/sync-omdb-ratings.ts`, um lote por fatia.
+ *
+ * `--apply` E INCONDICIONAL, e essa e a mudanca de 2026-09-01.
+ * ---------------------------------------------------------------------------
+ * Antes o runner fazia `if (deps.apply) args.push('--apply')`. Sem a flag, o
+ * filho cai no ramo `touchesNetwork === false`: imprime o PLANO, usa
+ * `NOOP_CANDIDATES` (nao consulta o banco), nao toca rede, nao grava — e sai
+ * com codigo 0. O runner lia esse 0 como sucesso e somava `slice.slots` a
+ * `processed`, reportando centenas de titulos "processados" num ciclo que nao
+ * consultou nenhum.
+ *
+ * O ciclo sem escrita agora nao spawna nada: `runRatingsOmdb` devolve antes,
+ * contando as fatias em `skipped` com o motivo `dry_run` — do mesmo jeito que
+ * os runners `enqueue` e `watch_offers` ja faziam. Logo, todo filho que chega a
+ * ser spawnado E um filho que escreve, e a flag nao depende mais de condicao.
+ *
+ * Esta funcao existe (em vez de o array ficar inline no runner) porque o teste
+ * de costura `services/ratings/src/omdb/__tests__/scheduler-argv-seam.test.ts`
+ * precisava COPIAR a montagem a mao — e uma copia a mao continua verde no dia em
+ * que o original muda, que e precisamente o modo de falha descrito no cabecalho
+ * deste arquivo.
+ */
+export function buildOmdbChildArgs(
+  entityType: 'movie' | 'tv',
+  mode: string,
+  slots: number,
+): readonly string[] {
+  return ['--type', entityType, '--mode', mode, '--limit', String(slots), '--apply']
+}
