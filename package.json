@@ -22,6 +22,7 @@
     "test:cms": "corepack pnpm --filter @screena/cms test",
     "test:cms:integration": "corepack pnpm --filter @screena/cms test:integration",
     "seed:cms:dev": "corepack pnpm --filter @screena/cms seed:dev",
+    "build:admin": "corepack pnpm --filter @screena/admin build",
     "build:cms": "corepack pnpm --filter @screena/cms build",
     "test": "node scripts/typecheck/ensure-prisma-client.mjs test && vitest run",
     "test:watch": "vitest",

@@ -259,6 +259,20 @@ jobs:
       - name: Build do app publico
         run: pnpm build
 
+      # BUILD DO ADMIN. Ele tem 11 paginas — entre elas `review-queue` e
+      # `content-blocks/[id]`, a UNICA tela onde um humano revisa bloco
+      # editorial — e nunca foi construido por nada: nem aqui, nem por
+      # Dockerfile. Um app que nao e compilado em CI quebra na primeira vez que
+      # alguem tenta implanta-lo, que e o pior momento possivel para descobrir.
+      #
+      # `DATABASE_URL` inalcancavel de proposito: o admin nao tem
+      # `generateStaticParams`, entao nenhuma pagina precisa do banco para
+      # compilar — e se alguma tentar, ela FALHA aqui em vez de tocar um banco.
+      - name: Build do painel interno (admin)
+        env:
+          DATABASE_URL: postgresql://build:build@127.0.0.1:1/screena_build
+        run: pnpm build:admin
+
       - name: Validadores descartaveis (PostgreSQL efemero, sem banco remoto)
         run: pnpm --filter @screena/web validate:all
 
