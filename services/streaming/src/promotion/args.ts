@@ -30,9 +30,36 @@ export interface ReviewArgs {
 }
 
 /** Argumentos do CLI de promocao/reversao. */
+/**
+ * TETO DURO de uma promocao em LOTE, por invocacao.
+ *
+ * O modo em lote existe porque `--ids` explicito nao escala: sao 70.036 ofertas
+ * com `display_allowed = false`, e sem seletor a decisao de licenca nao tem como
+ * virar produto. Mas "nao escala" nao vira "sem limite": um `--limit` digitado
+ * errado nao pode acender o catalogo inteiro numa tecla.
+ *
+ * 500 e o mesmo teto que a promocao de midia ja usa, e cabe numa revisao humana
+ * de verdade — que e o ponto: quem aperta `--confirm` responde pelo que promoveu.
+ */
+export const PROMOTE_BATCH_MAX_LIMIT = 500
+
+/** A SELECAO em lote: por fornecedor, com teto. */
+export interface PromoteBatch {
+  readonly providerApi: string
+  readonly limit: number
+}
+
 export interface PromoteArgs {
   /** Ids explicitos (inteiros > 0, deduplicados, ordem preservada). */
   readonly ids: readonly number[]
+  /**
+   * `null` = selecao por `--ids`. Nao-nulo = selecao em LOTE.
+   *
+   * O lote NAO afrouxa nenhuma regra: ele so escolhe QUAIS ids entram, e os
+   * mesmos guardrails de elegibilidade rodam depois, linha a linha. `ids` fica
+   * vazio aqui porque quem os resolve e o banco.
+   */
+  readonly batch: PromoteBatch | null
   /** ISO 3166-1 alpha-2 MAIUSCULO. */
   readonly country: string
   /** Sem `--confirm` a execucao e dry-run (nao muta o banco). */
@@ -65,13 +92,18 @@ interface Token {
 function tokenize(
   argv: readonly string[],
   valueFlags: ReadonlySet<string>,
-): { readonly ok: true; readonly tokens: readonly Token[] } | { readonly ok: false; readonly error: string } {
+):
+  | { readonly ok: true; readonly tokens: readonly Token[] }
+  | { readonly ok: false; readonly error: string } {
   const tokens: Token[] = []
   for (let i = 0; i < argv.length; i += 1) {
     const token = argv[i]
     if (token === undefined) continue
     if (!token.startsWith('--')) {
-      return { ok: false, error: `argumento inesperado: "${token}" (use --flag=valor ou --flag valor).` }
+      return {
+        ok: false,
+        error: `argumento inesperado: "${token}" (use --flag=valor ou --flag valor).`,
+      }
     }
 
     const eq = token.indexOf('=')
@@ -81,7 +113,10 @@ function tokenize(
     if (valueFlags.has(name) && value === undefined) {
       const next = argv[i + 1]
       if (next === undefined || next.startsWith('--')) {
-        return { ok: false, error: `a flag "--${name}" exige um valor (use --${name}=valor ou --${name} valor).` }
+        return {
+          ok: false,
+          error: `a flag "--${name}" exige um valor (use --${name}=valor ou --${name} valor).`,
+        }
       }
       value = next
       i += 1
@@ -124,12 +159,14 @@ export function parseReviewArgs(argv: readonly string[]): ReviewArgsResult {
     const { name, value } = token
 
     if (REVIEW_BOOLEAN_FLAGS.has(name)) {
-      if (value !== undefined) return { ok: false, error: `a flag "--${name}" e booleana e nao aceita valor.` }
+      if (value !== undefined)
+        return { ok: false, error: `a flag "--${name}" e booleana e nao aceita valor.` }
       if (name === 'json') json = true
       else report = true
       continue
     }
-    if (!REVIEW_VALUE_FLAGS.has(name)) return { ok: false, error: `flag desconhecida: "--${name}".` }
+    if (!REVIEW_VALUE_FLAGS.has(name))
+      return { ok: false, error: `flag desconhecida: "--${name}".` }
     if (value === undefined || value.trim() === '') {
       return { ok: false, error: `a flag "--${name}" recebeu valor vazio.` }
     }
@@ -146,20 +183,25 @@ export function parseReviewArgs(argv: readonly string[]): ReviewArgsResult {
       case 'country': {
         const normalized = normalizeCountry(value)
         if (normalized === null) {
-          return { ok: false, error: `--country invalido: "${value}". Use ISO 3166-1 alpha-2 (ex.: BR).` }
+          return {
+            ok: false,
+            error: `--country invalido: "${value}". Use ISO 3166-1 alpha-2 (ex.: BR).`,
+          }
         }
         country = normalized
         break
       }
       case 'entity-id': {
         const parsed = parsePositiveInt(value)
-        if (parsed === null) return { ok: false, error: `--entity-id invalido: "${value}". Use um inteiro > 0.` }
+        if (parsed === null)
+          return { ok: false, error: `--entity-id invalido: "${value}". Use um inteiro > 0.` }
         entityId = parsed
         break
       }
       case 'limit': {
         const parsed = parsePositiveInt(value)
-        if (parsed === null) return { ok: false, error: `--limit invalido: "${value}". Use um inteiro > 0.` }
+        if (parsed === null)
+          return { ok: false, error: `--limit invalido: "${value}". Use um inteiro > 0.` }
         limit = parsed
         break
       }
@@ -169,11 +211,21 @@ export function parseReviewArgs(argv: readonly string[]): ReviewArgsResult {
   return { ok: true, args: { kind, country, entityId, limit, report, json } }
 }
 
-const PROMOTE_VALUE_FLAGS: ReadonlySet<string> = new Set(['ids', 'country', 'reviewer'])
+const PROMOTE_VALUE_FLAGS: ReadonlySet<string> = new Set([
+  'ids',
+  'country',
+  'reviewer',
+  'provider',
+  'limit',
+])
 const PROMOTE_BOOLEAN_FLAGS: ReadonlySet<string> = new Set(['confirm', 'revoke', 'report'])
 
 /** Faz o parse de `--ids=1,2,3`: inteiros > 0, deduplicados, ordem preservada. */
-function parseIds(raw: string): { readonly ok: true; readonly ids: readonly number[] } | { readonly ok: false; readonly error: string } {
+function parseIds(
+  raw: string,
+):
+  | { readonly ok: true; readonly ids: readonly number[] }
+  | { readonly ok: false; readonly error: string } {
   const parts = raw
     .split(',')
     .map((part) => part.trim())
@@ -184,7 +236,11 @@ function parseIds(raw: string): { readonly ok: true; readonly ids: readonly numb
   const seen = new Set<number>()
   for (const part of parts) {
     const parsed = parsePositiveInt(part)
-    if (parsed === null) return { ok: false, error: `--ids contem um id invalido: "${part}". Use inteiros > 0 separados por virgula.` }
+    if (parsed === null)
+      return {
+        ok: false,
+        error: `--ids contem um id invalido: "${part}". Use inteiros > 0 separados por virgula.`,
+      }
     if (!seen.has(parsed)) {
       seen.add(parsed)
       ids.push(parsed)
@@ -199,6 +255,8 @@ export function parsePromoteArgs(argv: readonly string[]): PromoteArgsResult {
   if (!tokenized.ok) return { ok: false, error: tokenized.error }
 
   let ids: readonly number[] | null = null
+  let provider: string | null = null
+  let limit: number | null = null
   let country = STREAMING_AVAILABILITY_DEFAULT_COUNTRY
   let confirm = false
   let revoke = false
@@ -209,13 +267,15 @@ export function parsePromoteArgs(argv: readonly string[]): PromoteArgsResult {
     const { name, value } = token
 
     if (PROMOTE_BOOLEAN_FLAGS.has(name)) {
-      if (value !== undefined) return { ok: false, error: `a flag "--${name}" e booleana e nao aceita valor.` }
+      if (value !== undefined)
+        return { ok: false, error: `a flag "--${name}" e booleana e nao aceita valor.` }
       if (name === 'confirm') confirm = true
       if (name === 'revoke') revoke = true
       if (name === 'report') report = true
       continue
     }
-    if (!PROMOTE_VALUE_FLAGS.has(name)) return { ok: false, error: `flag desconhecida: "--${name}".` }
+    if (!PROMOTE_VALUE_FLAGS.has(name))
+      return { ok: false, error: `flag desconhecida: "--${name}".` }
     if (value === undefined || value.trim() === '') {
       return { ok: false, error: `a flag "--${name}" recebeu valor vazio.` }
     }
@@ -230,7 +290,10 @@ export function parsePromoteArgs(argv: readonly string[]): PromoteArgsResult {
       case 'country': {
         const normalized = normalizeCountry(value)
         if (normalized === null) {
-          return { ok: false, error: `--country invalido: "${value}". Use ISO 3166-1 alpha-2 (ex.: BR).` }
+          return {
+            ok: false,
+            error: `--country invalido: "${value}". Use ISO 3166-1 alpha-2 (ex.: BR).`,
+          }
         }
         country = normalized
         break
@@ -239,20 +302,93 @@ export function parsePromoteArgs(argv: readonly string[]): PromoteArgsResult {
         reviewer = value.trim()
         break
       }
+      case 'provider': {
+        provider = value.trim()
+        break
+      }
+      case 'limit': {
+        // `/^\d+$/` ANTES do parse: `Number.parseInt('1.5')` devolve `1`, e um
+        // limite fracionario aceito em silencio promoveria um numero que o
+        // operador nao digitou.
+        const raw = value.trim()
+        if (!/^\d+$/.test(raw)) {
+          return { ok: false, error: `--limit invalido: "${value}". Use inteiro > 0.` }
+        }
+        const parsed = Number.parseInt(raw, 10)
+        if (parsed <= 0) {
+          return { ok: false, error: `--limit invalido: "${value}". Use inteiro > 0.` }
+        }
+        limit = parsed
+        break
+      }
     }
   }
 
-  if (ids === null) {
-    return { ok: false, error: '--ids e obrigatorio (selecao explicita): use --ids=1,2,3.' }
+  // ==========================================================================
+  // UMA SELECAO, NUNCA DUAS
+  // ==========================================================================
+  // `--ids` e `--provider` respondem a mesma pergunta ("quais linhas?") por
+  // caminhos diferentes. Aceitar os dois obrigaria a inventar uma precedencia,
+  // e a precedencia errada promove um conjunto que o operador nao pediu.
+  if (ids !== null && provider !== null) {
+    return {
+      ok: false,
+      error: '--ids e --provider sao selecoes concorrentes: use um ou outro.',
+    }
+  }
+
+  if (ids === null && provider === null) {
+    return {
+      ok: false,
+      error:
+        '--ids e obrigatorio (selecao explicita): use --ids=1,2,3. ' +
+        'Para promover em lote, use --provider=<chave> --limit=<n>.',
+    }
+  }
+
+  if (provider !== null) {
+    // `--limit` NAO tem default no modo lote. Um default aqui seria um numero
+    // que ninguem escolheu decidindo quantas paginas do produto acendem.
+    if (limit === null) {
+      return {
+        ok: false,
+        error: '--limit e obrigatorio com --provider (o lote nunca e ilimitado).',
+      }
+    }
+    if (limit > PROMOTE_BATCH_MAX_LIMIT) {
+      return {
+        ok: false,
+        error:
+          `--limit acima do teto: ${String(limit)} > ${String(PROMOTE_BATCH_MAX_LIMIT)}. ` +
+          'O teto existe para que um erro de digitacao nao acenda o catalogo inteiro.',
+      }
+    }
+  } else if (limit !== null) {
+    return {
+      ok: false,
+      error: '--limit so se aplica com --provider (com --ids a lista ja e o limite).',
+    }
   }
 
   // Promocao REAL exige revisor humano identificado (reviewed_by). Revoke nao.
   if (confirm && !revoke && (reviewer === null || reviewer === '')) {
     return {
       ok: false,
-      error: '--reviewer e obrigatorio para promover com --confirm (identidade humana gravada em reviewed_by).',
+      error:
+        '--reviewer e obrigatorio para promover com --confirm (identidade humana gravada em reviewed_by).',
     }
   }
 
-  return { ok: true, args: { ids, country, confirm, revoke, report, reviewer } }
+  return {
+    ok: true,
+    args: {
+      ids: ids ?? [],
+      batch: provider === null ? null : { providerApi: provider, limit: limit as number },
+      country,
+      confirm,
+      revoke,
+      report,
+      reviewer,
+    },
+  }
 }
