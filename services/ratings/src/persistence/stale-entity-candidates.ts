@@ -77,7 +77,7 @@ import type {
   StaleCandidateSelection,
   StaleEntityCandidateSelectPort,
 } from '../ports.js'
-import type { RatingsEntityType } from '../film-show-ratings/types.js'
+import type { RatingsEntityType } from '../entity-types.js'
 
 /** Linha crua projetada do SQL. */
 interface CandidateRow {

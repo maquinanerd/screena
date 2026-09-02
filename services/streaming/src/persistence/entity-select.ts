@@ -14,7 +14,7 @@
 
 import type { PrismaClient } from '@screena/db/server'
 import type { EntitySelectPort } from '../ports.js'
-import type { SelectedEntity, StreamingEntityType } from '../streaming-availability/types.js'
+import type { SelectedEntity, StreamingEntityType } from '../offer-types.js'
 
 interface EntityRow {
   readonly id: bigint

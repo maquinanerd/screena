@@ -19,7 +19,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { TMDB_PROVIDER_API, TMDB_WATCH_ATTRIBUTION_TEXT } from '@screena/tmdb-client'
-import { STREAMING_AVAILABILITY_PROVIDER_API } from '@screena/streaming-availability-client'
+import { STREAMING_AVAILABILITY_PROVIDER_API } from '../../services/streaming/src/provider-identity.js'
 
 import {
   AUTHORIZATION_BATCH,

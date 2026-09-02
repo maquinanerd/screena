@@ -12,7 +12,7 @@
 
 import type { PrismaClient } from '@screena/db/server'
 import type { EntityCandidateSelectPort, RatingsEntityCandidate } from '../ports.js'
-import type { RatingsEntityType } from '../film-show-ratings/types.js'
+import type { RatingsEntityType } from '../entity-types.js'
 
 /** Cria um `EntityCandidateSelectPort` sobre `movies` / `tv_shows` via Prisma. */
 export function createPrismaEntityCandidates(prisma: PrismaClient): EntityCandidateSelectPort {

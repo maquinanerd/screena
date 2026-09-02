@@ -26,9 +26,9 @@ import { resolveDisplayAllowed } from '@screena/schemas'
 import {
   STREAMING_AVAILABILITY_ATTRIBUTION_URL,
   STREAMING_AVAILABILITY_PROVIDER_API,
-} from '@screena/streaming-availability-client'
+} from '../provider-identity.js'
 
-import type { WatchOfferRow } from '../streaming-availability/types.js'
+import type { WatchOfferRow } from '../offer-types.js'
 import type { WatchReplaceOutcome, WatchStorePort } from '../ports.js'
 import type { WatchCreditLookup } from './watch-credit-lookup.js'
 

@@ -25,7 +25,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { STREAMING_AVAILABILITY_PROVIDER_API } from '@screena/streaming-availability-client'
+import { STREAMING_AVAILABILITY_PROVIDER_API } from '../src/provider-identity.js'
 import { disconnectPrisma, getPrismaClient } from '@screena/db/server'
 
 import { parsePromoteArgs } from '../src/promotion/args.js'

@@ -20,7 +20,7 @@ import type { PrismaClient } from '@screena/db/server'
 import { resolveDisplayAllowed } from '@screena/schemas'
 
 import type { ExternalRatingUpsertOutcome, ExternalRatingsPort } from '../ports.js'
-import type { ExternalRatingRow } from '../film-show-ratings/types.js'
+import type { ExternalRatingRow } from '../entity-types.js'
 import type { RatingCreditLookup } from './rating-credit-lookup.js'
 
 /**

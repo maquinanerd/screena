@@ -25,7 +25,6 @@
     "@screena/cinerie-score": "workspace:*",
     "@screena/config": "workspace:*",
     "@screena/db": "workspace:*",
-    "@screena/film-show-ratings-client": "workspace:*",
     "@screena/legal": "workspace:*",
     "@screena/omdb-client": "workspace:*",
     "@screena/rapidapi-core": "workspace:*",

@@ -12,7 +12,7 @@ export type {
   ExternalRatingRow,
   RatingDraft,
   RatingsEntityType,
-} from '../film-show-ratings/types.js'
+} from '../entity-types.js'
 
 /**
  * Motivos de recusa do adapter OMDb.
