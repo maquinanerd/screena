@@ -68,12 +68,25 @@ export function emptyStateFor(reason: SectionAbsenceReason): SectionEmptyState |
     /* Onde assistir — os DOIS motivos, com frases diferentes            */
     /* ---------------------------------------------------------------- */
     case "no_offer_for_entity":
-      // Temos o dado e ele diz que o titulo nao esta em nenhum servico
-      // acompanhado. Afirmacao sobre a OBRA, sustentada pela cobertura.
+      // ======================================================================
+      // A FRASE E LIMITADA AO QUE ACOMPANHAMOS — E ISSO NAO E MODESTIA
+      // ======================================================================
+      // Ela dizia "Nao encontramos este titulo em NENHUM servico de streaming,
+      // aluguel ou compra no Brasil". Medido em producao em 2026-09-02, logo
+      // apos o deploy: essa frase aparecia em ~99,8% das fichas.
+      //
+      // O motivo e o LIMIAR de `watchAbsenceReasonFor`: ele devolve
+      // `no_offer_for_entity` quando existe **ao menos UMA** oferta exibivel em
+      // QUALQUER titulo do catalogo. Sao 833 exibiveis de 70.869 — o booleano e
+      // `true`, e a frase passa a afirmar sobre a OBRA apoiada numa cobertura de
+      // 1,2%.
+      //
+      // A distincao entre os dois motivos continua correta e continua valendo; o
+      // que nao se sustentava era o ALCANCE da afirmacao. "nos servicos que
+      // acompanhamos" e verdade em qualquer nivel de cobertura, e volta a ser uma
+      // afirmacao forte sozinha quando a licenca liberar as 70.036 represadas.
       return {
-        text:
-          "Não encontramos este título em nenhum serviço de streaming, aluguel " +
-          "ou compra no Brasil.",
+        text: "Não encontramos este título nos serviços que acompanhamos no Brasil.",
       };
     case "no_authorized_provider":
       // NAO sabemos nada sobre este titulo. A frase fala de NOS, e nao dele.
