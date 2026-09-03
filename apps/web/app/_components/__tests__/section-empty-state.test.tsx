@@ -72,8 +72,18 @@ describe("as duas causas de disponibilidade NAO podem falar igual", () => {
   });
 
   it("so a causa com DADO afirma algo sobre a obra", () => {
-    // Temos cobertura e ela diz que o titulo nao esta em lugar nenhum.
     expect(emptyStateFor("no_offer_for_entity")!.text).toMatch(/não encontramos/i);
+  });
+
+  it("mas a afirmacao e LIMITADA ao que acompanhamos", () => {
+    // Medido em producao em 2026-09-02: a frase aparecia em ~99,8% das fichas,
+    // porque `watchAbsenceReasonFor` devolve `no_offer_for_entity` quando existe
+    // ao menos UMA oferta exibivel em QUALQUER titulo — sao 833 de 70.869.
+    // Afirmar "em nenhum servico" com 1,2% de cobertura era exagero.
+    const texto = emptyStateFor("no_offer_for_entity")!.text;
+    expect(texto).toMatch(/que acompanhamos/i);
+    // A REGRESSAO QUE ISTO PEGA: voltar ao alcance ilimitado.
+    expect(texto).not.toMatch(/em nenhum serviço/i);
   });
 
   it("a causa SEM dado fala de NOS, nunca do titulo", () => {
