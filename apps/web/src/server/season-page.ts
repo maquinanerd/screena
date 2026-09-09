@@ -16,6 +16,7 @@ import type { PageSeoResolution } from "@screena/seo";
 
 import {
   buildSeasonPageView,
+  EPISODES_PER_PAGE,
   type SeasonPageView,
 } from "../lib/season-episode-presenter";
 import type { TrailerView } from "../lib/trailer-presenter";
@@ -71,8 +72,15 @@ function prevNext(
 }
 
 export const getSeasonPageData = cache(
-  async (seriesSlug: string, seasonNumber: number): Promise<SeasonPageData | null> => {
+  async (
+    seriesSlug: string,
+    seasonNumber: number,
+    /** Pagina de episodios, 1-based. Valor invalido cai para a primeira. */
+    requestedPage = 1,
+  ): Promise<SeasonPageData | null> => {
     if (!Number.isInteger(seasonNumber) || seasonNumber < 1) return null;
+    const page =
+      Number.isInteger(requestedPage) && requestedPage >= 1 ? requestedPage : 1;
     const prisma = getPrismaClient();
 
     const slugRow = await prisma.slug.findFirst({
@@ -115,17 +123,18 @@ export const getSeasonPageData = cache(
             airDate: true,
             episodeCount: true,
             posterPath: true,
-            episodes: {
-              orderBy: { episodeNumber: "asc" },
-              select: {
-                episodeNumber: true,
-                name: true,
-                overview: true,
-                airDate: true,
-                runtimeMinutes: true,
-                stillPath: true,
-              },
-            },
+            // A LISTA DE EPISODIOS SAIU DAQUI DE PROPOSITO.
+            //
+            // Este `select` aninhado nao tinha `take`: trazia a temporada
+            // INTEIRA, com `overview` (o campo mais longo da linha), a cada
+            // visita. Em temporada de ficcao sao 8-24 linhas e ninguem ve. Em
+            // novela e programa diario (`today`, `neighbours`,
+            // `jornal-nacional`) uma "temporada" e um ano de exibicao, e a
+            // mesma consulta trazia milhares de linhas com texto longo — que
+            // viravam memoria do processo Node e bytes de HTML ao mesmo tempo.
+            //
+            // Agora a fatia da pagina e um `findMany` proprio com `skip`/`take`
+            // (abaixo), e o total vem de um `COUNT`.
           },
         }),
         prisma.season.findMany({
@@ -136,6 +145,60 @@ export const getSeasonPageData = cache(
       ]);
 
     if (series === null || season === null) return null;
+
+    /**
+     * SEGUNDA E ULTIMA IDA AO BANCO — quatro leituras independentes juntas.
+     *
+     * Antes desta leva eram TRES esperas em serie depois do lote inicial: a
+     * lista aninhada de episodios vinha no lote 1, depois `await` do trailer,
+     * depois `await` da resolucao de SEO. Nenhuma das tres depende do
+     * resultado da outra: todas dependem so de `season`, que ja esta resolvida
+     * aqui. Serializa-las somava tres viagens ao PostgreSQL no tempo de
+     * resposta.
+     */
+    const episodesSkip = (page - 1) * EPISODES_PER_PAGE;
+    const [episodeTotal, episodeRows, trailer, resolved] = await Promise.all([
+      prisma.episode.count({ where: { seasonId: season.id } }),
+      prisma.episode.findMany({
+        where: { seasonId: season.id },
+        orderBy: { episodeNumber: "asc" },
+        skip: episodesSkip,
+        take: EPISODES_PER_PAGE,
+        select: {
+          episodeNumber: true,
+          name: true,
+          overview: true,
+          airDate: true,
+          runtimeMinutes: true,
+          stillPath: true,
+        },
+      }),
+      // Sem `tmdb_id` próprio não há chave: `null` direto, sem consultar. Cair
+      // para o id da série mostraria o trailer de OUTRA temporada.
+      season.tmdbId === null
+        ? Promise.resolve(null)
+        : getTrailerForEntity(prisma, "season", season.tmdbId),
+      resolveEntityPageSeo(
+        { entityType: "season", entityId: season.id, languageCode: LANGUAGE_CODE },
+        {
+          language: LANGUAGE_CODE,
+          hasReliableStructuredData: true,
+          displayedRatings: [],
+          canonicalUrl: seasonCanonicalUrl(canonicalSlugRow?.slug ?? seriesSlug, season.seasonNumber) ?? "",
+        },
+        prisma,
+      ),
+    ]);
+
+    /**
+     * Pagina fora da faixa e 404, nao pagina vazia.
+     *
+     * Sem isto, `?pagina=99999` responderia 200 com uma lista vazia — e um
+     * rastreador tem apetite infinito para query que sempre responde 200.
+     * Pagina 1 continua valendo mesmo sem episodio nenhum: a temporada existe,
+     * e a tela ja sabe dizer "Nenhum episódio publicado nesta temporada".
+     */
+    if (page > 1 && episodeRows.length === 0) return null;
 
     const canonicalSlug = canonicalSlugRow?.slug ?? seriesSlug;
     const canonicalUrl = seasonCanonicalUrl(canonicalSlug, season.seasonNumber);
@@ -159,7 +222,7 @@ export const getSeasonPageData = cache(
       seasonPosterPath: season.posterPath,
       seriesPosterPath: series.posterPath,
       seriesBackdropPath: series.backdropPath,
-      episodes: season.episodes.map((episode) => ({
+      episodes: episodeRows.map((episode) => ({
         episodeNumber: episode.episodeNumber,
         name: episode.name,
         overview: episode.overview,
@@ -167,25 +230,12 @@ export const getSeasonPageData = cache(
         runtimeMinutes: episode.runtimeMinutes,
         stillPath: episode.stillPath,
       })),
+      page,
+      totalEpisodes: episodeTotal,
       prevSeasonNumber: prev,
       nextSeasonNumber: next,
     });
 
-    // Sem `tmdb_id` próprio não há chave: `null` direto, sem consultar. Cair
-    // para o id da série mostraria o trailer de OUTRA temporada.
-    const trailer =
-      season.tmdbId === null ? null : await getTrailerForEntity(prisma, "season", season.tmdbId);
-
-    const resolved = await resolveEntityPageSeo(
-      { entityType: "season", entityId: season.id, languageCode: LANGUAGE_CODE },
-      {
-        language: LANGUAGE_CODE,
-        hasReliableStructuredData: true,
-        displayedRatings: [],
-        canonicalUrl,
-      },
-      prisma,
-    );
     // VALVULA 2026-08-27: o par obrigatorio da saida do sitemap.
     // Sair do sitemap nao desindexa; a meta tag desindexa.
     const seo = applyPageSuspension("season", resolved);

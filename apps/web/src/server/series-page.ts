@@ -66,6 +66,11 @@ const SERIES_INDEX_PATH = "/pt/series/";
 export interface SeriesPageData {
   view: SeriesPageView;
   /**
+   * Temporada cujos episodios foram efetivamente lidos, ou `null` quando a
+   * serie nao tem temporada nenhuma. Ver `activeSeason` no corpo.
+   */
+  activeSeasonNumber: number | null;
+  /**
    * Trailer do bloco de midia (telas 06/07). `null` quando nao ha.
    *
    * Ate 20/08/2026 este campo NAO existia e o bloco mostrava o backdrop no
@@ -144,7 +149,19 @@ function yearFromDate(date: Date | null): number | null {
 }
 
 export const getSeriesPageData = cache(
-  async (slug: string): Promise<SeriesPageData | null> => {
+  async (
+    slug: string,
+    /**
+     * Temporada pedida por `?temporada=`, ou `null` para o default canonico.
+     *
+     * Ela entra AQUI, e nao so na rota, porque e ela que decide QUAIS episodios
+     * valem uma ida ao banco. Quem chama tem de passar sempre o mesmo valor em
+     * `generateMetadata` e no componente: esta funcao e memoizada por `cache()`
+     * do React, que compara os ARGUMENTOS, e dois valores diferentes fariam a
+     * mesma requisicao carregar a serie duas vezes.
+     */
+    requestedSeasonNumber: number | null = null,
+  ): Promise<SeriesPageData | null> => {
     const prisma = getPrismaClient();
 
     const slugRow = await prisma.slug.findFirst({
@@ -212,23 +229,29 @@ export const getSeriesPageData = cache(
           where: { tvShowId: entityId },
           orderBy: { seasonNumber: "asc" },
           select: {
+            id: true,
             seasonNumber: true,
             name: true,
             overview: true,
             airDate: true,
             episodeCount: true,
             posterPath: true,
-            episodes: {
-              orderBy: { episodeNumber: "asc" },
-              select: {
-                episodeNumber: true,
-                name: true,
-                overview: true,
-                airDate: true,
-                runtimeMinutes: true,
-                stillPath: true,
-              },
-            },
+            // A LISTA DE EPISODIOS DE TODAS AS TEMPORADAS SAIU DAQUI.
+            //
+            // Este `select` aninhado nao tinha `take` e vinha para CADA
+            // temporada — enquanto a tela desenha os episodios de UMA SO (a
+            // rota escolhe uma em `selectedSeason` e descarta o resto).
+            //
+            // MEDIDO em producao (2026-09-09): `/pt/series/today/` tem 67
+            // temporadas distintas e a temporada 1 sozinha tem 506 episodios.
+            // A pagina carregava os episodios das 67, com `overview` (o campo
+            // mais longo da linha), montava a view de todos, e renderizava os
+            // de uma. E uma ficha INDEXADA e `force-dynamic`: sem cache, isso
+            // acontecia a cada acesso.
+            //
+            // Agora os episodios da temporada ATIVA vem numa consulta propria,
+            // abaixo, dentro de um `Promise.all` que ja existia — sem somar
+            // viagem ao banco.
           },
         }),
         getRelatedNewsForEntity(prisma, ENTITY_TYPE, entityId),
@@ -248,22 +271,24 @@ export const getSeriesPageData = cache(
       reviewStatus: String(block.reviewStatus),
     }));
 
-    const seasonInputs: SeriesSeasonInput[] = seasons.map((season) => ({
-      seasonNumber: season.seasonNumber,
-      name: season.name,
-      overview: season.overview,
-      airYear: yearFromDate(season.airDate),
-      episodeCount: season.episodeCount,
-      posterPath: season.posterPath,
-      episodes: season.episodes.map((episode) => ({
-        episodeNumber: episode.episodeNumber,
-        name: episode.name,
-        overview: episode.overview,
-        airYear: yearFromDate(episode.airDate),
-        runtimeMinutes: episode.runtimeMinutes,
-        stillPath: episode.stillPath,
-      })),
-    }));
+
+    /**
+     * A TEMPORADA ATIVA — a MESMA regra que a rota aplicava sozinha.
+     *
+     * Ela mora aqui agora porque e ela que decide quais episodios valem uma
+     * consulta. A rota passa a LER `activeSeasonNumber` em vez de re-derivar:
+     * duas copias da regra divergiriam no primeiro ajuste, e o sintoma seria a
+     * temporada desenhada aparecer sem episodio nenhum.
+     *
+     * Default canonico: Temporada 1 (a primeira REGULAR). "Especiais"
+     * (temporada 0) so entra quando pedida — ela pode ter dezenas de itens e
+     * nunca deve ser a carga inicial.
+     */
+    const activeSeason =
+      seasons.find((season) => season.seasonNumber === requestedSeasonNumber) ??
+      seasons.find((season) => season.seasonNumber > 0) ??
+      seasons[0] ??
+      null;
 
     // Locale publicado: unica fonte de titulo/metadados (ver `movie-page.ts`).
     const translation =
@@ -276,7 +301,54 @@ export const getSeriesPageData = cache(
         )[0] ?? null;
 
     // O SEXTO gate. Ver `server/image-license.ts` e o gemeo em movie-page.ts.
-    const imageAuthorization = await getImageDisplayAuthorization(prisma);
+    //
+    // Os episodios da temporada ATIVA viajam junto: as duas leituras sao
+    // independentes, e somar um `await` proprio para a segunda pagaria uma
+    // viagem ao PostgreSQL que este `Promise.all` ja estava pagando.
+    const [imageAuthorization, activeSeasonEpisodes] = await Promise.all([
+      getImageDisplayAuthorization(prisma),
+      activeSeason === null
+        ? Promise.resolve([])
+        : prisma.episode.findMany({
+            where: { seasonId: activeSeason.id },
+            orderBy: { episodeNumber: "asc" },
+            select: {
+              episodeNumber: true,
+              name: true,
+              overview: true,
+              airDate: true,
+              runtimeMinutes: true,
+              stillPath: true,
+            },
+          }),
+    ]);
+
+    /**
+     * So a temporada ATIVA carrega episodios; as outras entram com lista vazia.
+     *
+     * Isso e o que a tela sempre mostrou — a rota renderiza `selectedSeason` e
+     * ignora os episodios das demais. A diferenca e que agora eles tambem nao
+     * sao lidos do banco nem convertidos em view.
+     */
+    const seasonInputs: SeriesSeasonInput[] = seasons.map((season) => ({
+      seasonNumber: season.seasonNumber,
+      name: season.name,
+      overview: season.overview,
+      airYear: yearFromDate(season.airDate),
+      episodeCount: season.episodeCount,
+      posterPath: season.posterPath,
+      episodes:
+        activeSeason !== null && season.seasonNumber === activeSeason.seasonNumber
+          ? activeSeasonEpisodes.map((episode) => ({
+              episodeNumber: episode.episodeNumber,
+              name: episode.name,
+              overview: episode.overview,
+              airYear: yearFromDate(episode.airDate),
+              runtimeMinutes: episode.runtimeMinutes,
+              stillPath: episode.stillPath,
+            }))
+          : [],
+    }));
 
     const view = buildSeriesPageView({
       translations,
@@ -394,6 +466,12 @@ export const getSeriesPageData = cache(
 
     return {
       view,
+      /**
+       * Numero da temporada desenhada. A rota usa ESTE valor em vez de
+       * reaplicar a regra de escolha — e a unica temporada cujos episodios
+       * foram lidos.
+       */
+      activeSeasonNumber: activeSeason?.seasonNumber ?? null,
       trailer,
       mediaCounts,
       similar,

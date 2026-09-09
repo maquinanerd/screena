@@ -51,7 +51,15 @@ describe('shell público mínimo · detalhe de série', () => {
   const code = withoutComments(page).replaceAll("'", '"')
 
   it('preserva dados, metadata, canonical, robots e identidade JSON-LD', () => {
-    expect(code).toContain('getSeriesPageData(slug)')
+    // Os DOIS pontos de chamada passam a MESMA temporada, de proposito:
+    // `getSeriesPageData` e memoizado por `cache()` do React, que compara os
+    // ARGUMENTOS. Se `generateMetadata` pedir uma coisa e o componente outra, a
+    // mesma requisicao carrega a serie DUAS vezes, com dois lotes de consultas.
+    // Este par de asercoes e o que impede essa divergencia de voltar em
+    // silencio.
+    expect(code).toContain('getSeriesPageData(slug, seasonNumberFromQuery(query.temporada))')
+    expect(code).toContain('getSeriesPageData(slug, requestedSeasonNumber)')
+    expect(code).toContain('requestedSeasonNumber = seasonNumberFromQuery(query.temporada)')
     expect(code).toContain('canonicalRedirectPath(')
     expect(code).toContain('permanentRedirect(redirectPath)')
     expect(code).toContain('robots: gatePublicRobots(seo.robots)')

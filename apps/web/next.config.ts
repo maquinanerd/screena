@@ -186,6 +186,100 @@ export const BASE_SECURITY_HEADERS = [
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   /**
+   * ==========================================================================
+   * O TIER DE DISCO DO ISR FICA DESLIGADO. O ISR NAO.
+   * ==========================================================================
+   * MEDIDO (2026-08 a 09): o cache de rota das fichas passou a escrever HTML em
+   * `.next/server/app/` dentro da camada gravavel do container. So a arvore de
+   * temporadas sob `pt/series/` acumulou 72 GB em 11 dias — ~46% do que estava
+   * materializado — e a projecao da varredura completa fica entre 150 e 300 GB
+   * num disco de 241 GB. Nenhum disco resolve: o espaco e serie x temporada x
+   * episodio, e nao tem fim.
+   *
+   * E o disco nao estava comprando nada. Um rastreador que varre 3,9 milhoes de
+   * URLs visita cada uma praticamente UMA vez: a taxa de acerto e proxima de
+   * zero, o render acontece nos dois cenarios, e o cache so acrescenta a
+   * escrita. Pagavamos disco para nao economizar render nenhum.
+   *
+   * POR QUE ESTA CHAVE, E NAO MEXER NAS ROTAS
+   * -----------------------------------------
+   * Lido no pacote publicado (`next@15.5.25`, o que roda no container):
+   *   - `dist/server/config-schema.js`     — `isrFlushToDisk: z.boolean().optional()`,
+   *                                          chave validada pelo schema.
+   *   - `dist/server/config-shared.js`     — default `true`. E esse default que
+   *                                          escreveu os 72 GB.
+   *   - `dist/server/next-server.js:680`   — `flushToDisk: !minimalMode &&
+   *                                          experimental.isrFlushToDisk`, no
+   *                                          servidor de PRODUCAO.
+   *   - `.../file-system-cache.js:242`     — `if (!this.flushToDisk || !data) return;`
+   *                                          retorna ANTES de criar o
+   *                                          MultiFileWriter. Nao e escrever e
+   *                                          apagar depois: a escrita nao acontece.
+   *   - `.../file-system-cache.js:235`     — o `memoryCache.set` esta ACIMA dessa
+   *                                          guarda: o cache continua existindo,
+   *                                          em RAM.
+   *   - `dist/build/index.js`              — a propria Vercel forca `false` na
+   *                                          plataforma dela. Caminho de
+   *                                          producao, nao flag de laboratorio.
+   *
+   * O QUE ISTO NAO TOCA: nenhum arquivo de rota, nenhuma linha de
+   * `route-cache-policy.ts`, nenhum `generateStaticParams`, nenhuma decisao de
+   * indexabilidade. Nenhum cabecalho muda — `s-maxage`/`stale-while-revalidate`
+   * derivam do `revalidate`, nao de ONDE o cache mora.
+   *
+   * CONSEQUENCIA DECLARADA: sobra so o LRU em processo, cujo default sao 50 MB
+   * (`config-shared.js:48`) — ~500 fichas a ~95 KB. Alem disso, render no
+   * Postgres. Por isso o teto explicito abaixo. Diferente do disco, ele TEM
+   * teto por construcao — era exatamente o teto que faltava.
+   */
+  experimental: { isrFlushToDisk: false },
+  /**
+   * ==========================================================================
+   * O TETO DO CACHE EM MEMORIA — E DE ONDE SAIU ESTE NUMERO
+   * ==========================================================================
+   * Teto do LRU em processo do ISR (`next-server.js:679`, `maxMemoryCacheSize`).
+   * O default sao 50 MB (`config-shared.js:48`), pequeno demais para um
+   * catalogo de ~67 mil fichas.
+   *
+   * ALCANCE: GLOBAL. Nao e seletivo por rota. Este e o cache incremental do
+   * aplicativo INTEIRO — toda rota `public-static` do registro em
+   * `src/lib/route-cache-policy.ts` passa por ele (fichas de filme e pessoa,
+   * galerias de imagens/videos, ficha de episodio). Rota `public-dynamic`
+   * (home, listagens, busca, noticias, ficha de serie, ficha de temporada) NAO
+   * e afetada: ela nunca foi cacheada, nem em disco nem aqui. O mesmo objeto
+   * serve o cache de `fetch` do Next, que neste app esta vazio por construcao
+   * — a invariante 3 proibe chamada externa no render.
+   *
+   * O QUE ELE CONTA NAO SAO BYTES DE MEMORIA. A funcao de tamanho em
+   * `memory-cache.external.js` devolve, para uma pagina,
+   * `value.html.length + JSON.stringify(value.rscData).length` — CARACTERES. E
+   * `rscData` e um Buffer: `JSON.stringify` o serializa como
+   * `{"type":"Buffer","data":[121,121,...]}`, ou seja cada BYTE vira varios
+   * caracteres na conta. O numero contado, portanto, SUPERESTIMA o custo real.
+   *
+   * O NUMERO, pelo que foi MEDIDO (2026-09-09):
+   *   - ficha de filme em producao (`/pt/filmes/a-origem/`): 77,7 KB de HTML;
+   *   - simulando 5.001 paginas distintas contra este teto, o LRU estabiliza em
+   *     255,9 MB CONTADOS = 1.272 entradas, ~206 KB contados por entrada
+   *     (inflados pelo Buffer acima), com um RSS de processo subindo 65,9 ->
+   *     112,3 MB — ou seja ~46 MB de memoria REAL para 256 MB contados;
+   *   - o host tem 47,0 GB de RAM com 19,7 GB em uso, e o `screen-app` sozinho
+   *     ja opera com 12 GB de RSS.
+   *
+   * Entao o teto guarda ~1.272 fichas por ~46 MB de heap: 0,1% da RAM do host e
+   * 0,4% do que o processo ja usa. E — diferente do disco — TEM teto por
+   * construcao. A evicao e LRU de verdade (`while (totalSize > maxSize) ...` em
+   * `lru-cache.js`, verificado: a pagina reacessada sobrevive, a fria e
+   * evicada), e o cache e um `let` de modulo: reiniciar o container o zera, e
+   * ele volta a encher pelo uso.
+   *
+   * REVISAR ESTE NUMERO quando o servico ganhar um limite de memoria. Hoje ele
+   * NAO TEM: `resources.memoryLimit` do `screen-app` esta em `0` (ilimitado) no
+   * painel, e por isso a folga aqui e deliberadamente conservadora — nao existe
+   * cgroup para conter um erro de estimativa.
+   */
+  cacheMaxMemorySize: 256 * 1024 * 1024,
+  /**
    * REDIRECTS PERMANENTES DE ROTA.
    *
    * `/pt/busca/` era um formulario nu — campo, botao e uma frase instrutiva,

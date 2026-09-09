@@ -61,19 +61,6 @@ function isoDate(date: Date | null): string | null {
   return date === null ? null : date.toISOString().slice(0, 10);
 }
 
-function prevNext(
-  numbers: number[],
-  current: number,
-): { prev: number | null; next: number | null } {
-  const sorted = [...numbers].filter((n) => Number.isInteger(n)).sort((a, b) => a - b);
-  const index = sorted.indexOf(current);
-  if (index === -1) return { prev: null, next: null };
-  return {
-    prev: index > 0 ? (sorted[index - 1] ?? null) : null,
-    next: index < sorted.length - 1 ? (sorted[index + 1] ?? null) : null,
-  };
-}
-
 export const getEpisodePageData = cache(
   async (
     seriesSlug: string,
@@ -120,7 +107,7 @@ export const getEpisodePageData = cache(
 
     if (series === null || season === null) return null;
 
-    const [episode, episodeNumbers] = await Promise.all([
+    const [episode, prevEpisode, nextEpisode] = await Promise.all([
       prisma.episode.findFirst({
         where: { seasonId: season.id, episodeNumber },
         select: {
@@ -136,8 +123,30 @@ export const getEpisodePageData = cache(
           stillPath: true,
         },
       }),
-      prisma.episode.findMany({
-        where: { seasonId: season.id },
+      // VIZINHO ANTERIOR e VIZINHO SEGUINTE, um `LIMIT 1` cada.
+      //
+      // Isto substituiu um `findMany` que trazia TODOS os `episodeNumber` da
+      // temporada so para calcular prev/next em memoria. O custo era o tamanho
+      // da temporada: em novela e programa diario (`today`, `neighbours`,
+      // `jornal-nacional`) uma "temporada" e um ano de exibicao, e cada visita
+      // a um episodio lia centenas de linhas para descobrir dois numeros.
+      //
+      // E o mesmo padrao que `/pt/filmes/` ja pagou e ja corrigiu (varria o
+      // catalogo para exibir 24 cards; caiu para 289 linhas e de 7,5 s para
+      // ~108 ms) — aqui na rota de MAIOR volume do sistema.
+      //
+      // EQUIVALENCIA: o `prevNext` removido ordenava os numeros e devolvia os
+      // adjacentes por POSICAO, nao por `n±1`. Estas duas consultas devolvem
+      // exatamente isso — o maior menor que o atual e o menor maior que o atual
+      // — e portanto atravessam buraco de numeracao do mesmo jeito. Ambas
+      // resolvem pelo indice `@@unique([seasonId, episodeNumber])`.
+      prisma.episode.findFirst({
+        where: { seasonId: season.id, episodeNumber: { lt: episodeNumber } },
+        select: { episodeNumber: true },
+        orderBy: { episodeNumber: "desc" },
+      }),
+      prisma.episode.findFirst({
+        where: { seasonId: season.id, episodeNumber: { gt: episodeNumber } },
         select: { episodeNumber: true },
         orderBy: { episodeNumber: "asc" },
       }),
@@ -152,10 +161,8 @@ export const getEpisodePageData = cache(
     if (canonicalUrl === null || seasonUrl === null || seriesUrl === null) return null;
 
     const seriesTitle = seriesTranslation?.title?.trim() || series.nameOriginal;
-    const { prev, next } = prevNext(
-      episodeNumbers.map((row) => row.episodeNumber),
-      episode.episodeNumber,
-    );
+    const prev = prevEpisode?.episodeNumber ?? null;
+    const next = nextEpisode?.episodeNumber ?? null;
 
     const view = buildEpisodePageView({
       seriesTitle,

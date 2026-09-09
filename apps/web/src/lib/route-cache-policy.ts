@@ -335,9 +335,19 @@ export const ROUTE_CACHE_POLICY: Readonly<Record<string, RouteCachePolicy>> = {
     CATALOG_SURFACE_REVALIDATE_SECONDS,
     "galeria de videos da serie: midia de catalogo, sem dado pessoal",
   ),
-  "/pt/series/[slug]/temporadas/[season]": publicStatic(
-    CATALOG_SURFACE_REVALIDATE_SECONDS,
-    "ficha de temporada: catalogo puro, mesma janela da serie",
+  // A SEGUNDA ficha que le `searchParams` — e pela mesma razao estrutural da
+  // primeira. A lista de episodios passou a ser paginada por `?pagina=`, e
+  // cache de rota e por PATHNAME: `?pagina=2` e `?pagina=7` compartilhariam o
+  // mesmo HTML guardado. Somar `generateStaticParams` a isso e exatamente o par
+  // que derrubou `/pt/series/{slug}/` com 500 em 2026-08-28.
+  //
+  // E aqui o cache nao estava comprando nada mesmo: sao 127.870 URLs de
+  // temporada, o rastreador visita cada uma praticamente uma vez, a taxa de
+  // acerto e proxima de zero — e era esta arvore que acumulava disco. O que
+  // substituiu o cache foi consulta menor: de "a temporada inteira com
+  // `overview`" para uma fatia de 50 mais um `COUNT`.
+  "/pt/series/[slug]/temporadas/[season]": publicDynamic(
+    "ficha de temporada: a lista de episodios depende de `?pagina=` — a mesma razao de `/pt/explorar` e da ficha de serie. Ver o cabecalho de `app/pt/series/[slug]/temporadas/[season]/page.tsx`.",
   ),
   "/pt/series/[slug]/temporadas/[season]/episodios/[episode]": publicStatic(
     CATALOG_SURFACE_REVALIDATE_SECONDS,

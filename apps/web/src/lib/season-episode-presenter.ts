@@ -106,6 +106,40 @@ export interface SeasonEpisodeInput {
   stillPath: string | null;
 }
 
+/**
+ * Episodios por pagina na ficha de temporada.
+ *
+ * 50 e escolhido para ser INVISIVEL no caso normal: temporada de ficcao tem
+ * 8-24 episodios, cabe inteira na primeira pagina, e a navegacao nem aparece.
+ * A paginacao so existe para o caso que produziu o problema — novela e
+ * programa diario, onde uma "temporada" e um ano de exibicao e a lista tinha
+ * centenas ou milhares de linhas, cada uma com `overview`.
+ */
+export const EPISODES_PER_PAGE = 50;
+
+/**
+ * Navegacao entre as fatias de episodios de UMA temporada.
+ *
+ * As URLs sao reais (`?pagina=N`), nao estado de cliente: o botao Voltar do
+ * navegador funciona, o link pode ser compartilhado, e quem esta sem
+ * JavaScript navega igual. A pagina 1 NAO leva query — a URL canonica da
+ * temporada continua sendo exatamente a que sempre foi.
+ */
+export interface SeasonEpisodePaginationView {
+  /** Pagina atual, 1-based e ja normalizada (nunca 0, nunca acima do total). */
+  page: number;
+  /** Total de paginas. `1` quando a temporada cabe inteira. */
+  pageCount: number;
+  /** Total de episodios da temporada (vem do `COUNT`, nao do tamanho da fatia). */
+  totalEpisodes: number;
+  /** `true` quando ha mais de uma pagina — o unico gate para desenhar a navegacao. */
+  hasPages: boolean;
+  prevHref: string | null;
+  nextHref: string | null;
+  /** Ex.: "51–100 de 5.000". Vazio quando ha uma pagina so. */
+  rangeLabel: string | null;
+}
+
 export interface SeasonPresenterInput {
   seriesTitle: string;
   /** Slug canonico pt-BR da serie. */
@@ -118,7 +152,19 @@ export interface SeasonPresenterInput {
   seasonPosterPath: string | null;
   seriesPosterPath: string | null;
   seriesBackdropPath: string | null;
+  /** APENAS a fatia da pagina atual — nunca a temporada inteira. */
   episodes: SeasonEpisodeInput[];
+  /** Pagina atual pedida pela rota (1-based). */
+  page: number;
+  /**
+   * Total de episodios da temporada, vindo de um `COUNT`.
+   *
+   * NAO e `episodes.length`: se fosse, a navegacao sumiria exatamente quando a
+   * fatia fosse a ultima, e a temporada de 5.000 episodios se apresentaria como
+   * tendo 50. E o mesmo cuidado que a listagem de filmes ja toma com
+   * `totalCount`.
+   */
+  totalEpisodes: number;
   prevSeasonNumber: number | null;
   nextSeasonNumber: number | null;
 }
@@ -163,8 +209,49 @@ export interface SeasonPageView {
    */
   backdrop: SeriesImageAsset | null;
   episodes: SeasonEpisodeCardView[];
+  /** Navegacao entre fatias de episodios DESTA temporada. */
+  pagination: SeasonEpisodePaginationView;
   prevSeason: SeasonNavLink | null;
   nextSeason: SeasonNavLink | null;
+}
+
+/**
+ * URL de uma pagina de episodios. Pagina 1 devolve a URL canonica LIMPA, sem
+ * `?pagina=1` — para nao existirem duas URLs com o mesmo conteudo.
+ */
+function seasonPageHref(
+  seriesSlug: string,
+  seasonNumber: number,
+  page: number,
+): string | null {
+  const base = seasonPath(seriesSlug, seasonNumber);
+  if (base === null) return null;
+  return page <= 1 ? base : `${base}?pagina=${page}`;
+}
+
+function buildSeasonPagination(input: SeasonPresenterInput): SeasonEpisodePaginationView {
+  const total = Number.isInteger(input.totalEpisodes) && input.totalEpisodes > 0
+    ? input.totalEpisodes
+    : 0;
+  const pageCount = total === 0 ? 1 : Math.ceil(total / EPISODES_PER_PAGE);
+  const page = Math.min(Math.max(Math.trunc(input.page) || 1, 1), pageCount);
+  const hasPages = pageCount > 1;
+
+  const first = (page - 1) * EPISODES_PER_PAGE + 1;
+  const last = Math.min(page * EPISODES_PER_PAGE, total);
+
+  return {
+    page,
+    pageCount,
+    totalEpisodes: total,
+    hasPages,
+    prevHref: page > 1 ? seasonPageHref(input.seriesSlug, input.seasonNumber, page - 1) : null,
+    nextHref:
+      page < pageCount ? seasonPageHref(input.seriesSlug, input.seasonNumber, page + 1) : null,
+    rangeLabel: hasPages
+      ? `${first.toLocaleString("pt-BR")}–${last.toLocaleString("pt-BR")} de ${total.toLocaleString("pt-BR")}`
+      : null,
+  };
 }
 
 function seasonLink(seriesSlug: string, seasonNumber: number | null): SeasonNavLink | null {
@@ -215,6 +302,7 @@ export function buildSeasonPageView(input: SeasonPresenterInput): SeasonPageView
     ),
     backdrop: imageAsset(input.seriesBackdropPath, BACKDROP_SPEC),
     episodes: episodeCardsFor(input),
+    pagination: buildSeasonPagination(input),
     prevSeason: seasonLink(input.seriesSlug, input.prevSeasonNumber),
     nextSeason: seasonLink(input.seriesSlug, input.nextSeasonNumber),
   };
