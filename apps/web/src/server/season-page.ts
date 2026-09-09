@@ -115,17 +115,14 @@ export const getSeasonPageData = cache(
             airDate: true,
             episodeCount: true,
             posterPath: true,
-            episodes: {
-              orderBy: { episodeNumber: "asc" },
-              select: {
-                episodeNumber: true,
-                name: true,
-                overview: true,
-                airDate: true,
-                runtimeMinutes: true,
-                stillPath: true,
-              },
-            },
+            // A LISTA DE EPISODIOS SAIU DESTE `select`, mas NAO ENCOLHEU.
+            //
+            // Ela vira uma consulta propria logo abaixo, com exatamente as
+            // mesmas linhas, as mesmas colunas e a mesma ordem — a tela continua
+            // mostrando a temporada INTEIRA. O motivo da mudanca e outro: como
+            // consulta separada ela viaja no mesmo `Promise.all` do trailer e da
+            // resolucao de SEO, que antes eram dois `await` em serie depois
+            // deste lote. Menos ida e volta ao PostgreSQL, mesmo resultado.
           },
         }),
         prisma.season.findMany({
@@ -141,6 +138,49 @@ export const getSeasonPageData = cache(
     const canonicalUrl = seasonCanonicalUrl(canonicalSlug, season.seasonNumber);
     const seriesUrl = seriesCanonicalUrl(canonicalSlug);
     if (canonicalUrl === null || seriesUrl === null) return null;
+
+    /**
+     * SEGUNDA E ULTIMA IDA AO BANCO — tres leituras independentes juntas.
+     *
+     * Antes eram tres esperas em SERIE depois do lote inicial: a lista aninhada
+     * de episodios vinha no lote 1, depois `await` do trailer, depois `await`
+     * da resolucao de SEO. Nenhuma das tres depende do resultado da outra —
+     * todas dependem so de `season`, que ja esta resolvida aqui.
+     *
+     * O `findMany` NAO tem `take` de proposito: a ficha de temporada mostra a
+     * temporada inteira, e esse e o comportamento a preservar. O custo de uma
+     * temporada de novela (centenas ou milhares de linhas com `overview`) e
+     * consequencia declarada dessa decisao de produto, nao um descuido.
+     */
+    const [episodeRows, trailer, resolved] = await Promise.all([
+      prisma.episode.findMany({
+        where: { seasonId: season.id },
+        orderBy: { episodeNumber: "asc" },
+        select: {
+          episodeNumber: true,
+          name: true,
+          overview: true,
+          airDate: true,
+          runtimeMinutes: true,
+          stillPath: true,
+        },
+      }),
+      // Sem `tmdb_id` próprio não há chave: `null` direto, sem consultar. Cair
+      // para o id da série mostraria o trailer de OUTRA temporada.
+      season.tmdbId === null
+        ? Promise.resolve(null)
+        : getTrailerForEntity(prisma, "season", season.tmdbId),
+      resolveEntityPageSeo(
+        { entityType: "season", entityId: season.id, languageCode: LANGUAGE_CODE },
+        {
+          language: LANGUAGE_CODE,
+          hasReliableStructuredData: true,
+          displayedRatings: [],
+          canonicalUrl,
+        },
+        prisma,
+      ),
+    ]);
 
     const seriesTitle = seriesTranslation?.title?.trim() || series.nameOriginal;
     const { prev, next } = prevNext(
@@ -159,7 +199,7 @@ export const getSeasonPageData = cache(
       seasonPosterPath: season.posterPath,
       seriesPosterPath: series.posterPath,
       seriesBackdropPath: series.backdropPath,
-      episodes: season.episodes.map((episode) => ({
+      episodes: episodeRows.map((episode) => ({
         episodeNumber: episode.episodeNumber,
         name: episode.name,
         overview: episode.overview,
@@ -171,21 +211,6 @@ export const getSeasonPageData = cache(
       nextSeasonNumber: next,
     });
 
-    // Sem `tmdb_id` próprio não há chave: `null` direto, sem consultar. Cair
-    // para o id da série mostraria o trailer de OUTRA temporada.
-    const trailer =
-      season.tmdbId === null ? null : await getTrailerForEntity(prisma, "season", season.tmdbId);
-
-    const resolved = await resolveEntityPageSeo(
-      { entityType: "season", entityId: season.id, languageCode: LANGUAGE_CODE },
-      {
-        language: LANGUAGE_CODE,
-        hasReliableStructuredData: true,
-        displayedRatings: [],
-        canonicalUrl,
-      },
-      prisma,
-    );
     // VALVULA 2026-08-27: o par obrigatorio da saida do sitemap.
     // Sair do sitemap nao desindexa; a meta tag desindexa.
     const seo = applyPageSuspension("season", resolved);

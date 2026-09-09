@@ -217,11 +217,17 @@ function SeasonGroup({ season }: { season: SeriesSeasonView }): ReactNode {
 
 export async function generateMetadata({
   params,
+  searchParams,
 }: {
   params: Promise<SeriesPageParams>
+  searchParams: Promise<SeriesPageSearchParams>
 }): Promise<Metadata> {
-  const { slug } = await params
-  const data = await getSeriesPageData(slug)
+  const [{ slug }, query] = await Promise.all([params, searchParams])
+  // A MESMA temporada que o componente pede, de proposito: `getSeriesPageData`
+  // e memoizado por `cache()` do React, que compara os ARGUMENTOS. Pedir `null`
+  // aqui e `?temporada=7` ali faria a mesma requisicao carregar a serie duas
+  // vezes, com dois lotes de consultas ao Postgres.
+  const data = await getSeriesPageData(slug, seasonNumberFromQuery(query.temporada))
 
   if (data === null) {
     return {
@@ -254,7 +260,8 @@ export default async function SeriesPage({
   searchParams: Promise<SeriesPageSearchParams>
 }) {
   const [{ slug }, query] = await Promise.all([params, searchParams])
-  const data = await getSeriesPageData(slug)
+  const requestedSeasonNumber = seasonNumberFromQuery(query.temporada)
+  const data = await getSeriesPageData(slug, requestedSeasonNumber)
   if (data === null) notFound()
 
   const redirectPath = canonicalRedirectPath(SERIES_INDEX_PATH, slug, data.canonicalSlug)
@@ -277,15 +284,13 @@ export default async function SeriesPage({
   )
   const castContext = view.blocks.find((block) => block.blockType === 'cast_intro') ?? null
   const newsContext = view.blocks.find((block) => block.blockType === 'news_context') ?? null
-  const requestedSeasonNumber = seasonNumberFromQuery(query.temporada)
-  // Default canônico: Temporada 1 (primeira temporada REGULAR). "Especiais"
-  // (season 0) só aparece quando pedida explicitamente — ela pode ter dezenas
-  // de itens e nunca deve ser a carga inicial da página.
+  // A REGRA DE ESCOLHA MUDOU DE LUGAR, nao de conteudo: ela vive em
+  // `getSeriesPageData` (ver `activeSeason` la), porque e ela que decide quais
+  // episodios valem uma consulta — agora so os da temporada desenhada sao
+  // lidos. Reaplicar a regra aqui criaria uma segunda copia, e no primeiro
+  // ajuste as duas divergiriam: a temporada exibida apareceria sem episodio.
   const selectedSeason =
-    view.seasons.find((season) => season.seasonNumber === requestedSeasonNumber) ??
-    view.seasons.find((season) => season.seasonNumber > 0) ??
-    view.seasons[0] ??
-    null
+    view.seasons.find((season) => season.seasonNumber === data.activeSeasonNumber) ?? null
   const visibleCast = cast.slice(0, 6)
   const visibleNews = relatedNews.slice(0, 3)
 
