@@ -16,7 +16,6 @@ import type { PageSeoResolution } from "@screena/seo";
 
 import {
   buildSeasonPageView,
-  EPISODES_PER_PAGE,
   type SeasonPageView,
 } from "../lib/season-episode-presenter";
 import type { TrailerView } from "../lib/trailer-presenter";
@@ -72,15 +71,8 @@ function prevNext(
 }
 
 export const getSeasonPageData = cache(
-  async (
-    seriesSlug: string,
-    seasonNumber: number,
-    /** Pagina de episodios, 1-based. Valor invalido cai para a primeira. */
-    requestedPage = 1,
-  ): Promise<SeasonPageData | null> => {
+  async (seriesSlug: string, seasonNumber: number): Promise<SeasonPageData | null> => {
     if (!Number.isInteger(seasonNumber) || seasonNumber < 1) return null;
-    const page =
-      Number.isInteger(requestedPage) && requestedPage >= 1 ? requestedPage : 1;
     const prisma = getPrismaClient();
 
     const slugRow = await prisma.slug.findFirst({
@@ -123,18 +115,14 @@ export const getSeasonPageData = cache(
             airDate: true,
             episodeCount: true,
             posterPath: true,
-            // A LISTA DE EPISODIOS SAIU DAQUI DE PROPOSITO.
+            // A LISTA DE EPISODIOS SAIU DESTE `select`, mas NAO ENCOLHEU.
             //
-            // Este `select` aninhado nao tinha `take`: trazia a temporada
-            // INTEIRA, com `overview` (o campo mais longo da linha), a cada
-            // visita. Em temporada de ficcao sao 8-24 linhas e ninguem ve. Em
-            // novela e programa diario (`today`, `neighbours`,
-            // `jornal-nacional`) uma "temporada" e um ano de exibicao, e a
-            // mesma consulta trazia milhares de linhas com texto longo — que
-            // viravam memoria do processo Node e bytes de HTML ao mesmo tempo.
-            //
-            // Agora a fatia da pagina e um `findMany` proprio com `skip`/`take`
-            // (abaixo), e o total vem de um `COUNT`.
+            // Ela vira uma consulta propria logo abaixo, com exatamente as
+            // mesmas linhas, as mesmas colunas e a mesma ordem — a tela continua
+            // mostrando a temporada INTEIRA. O motivo da mudanca e outro: como
+            // consulta separada ela viaja no mesmo `Promise.all` do trailer e da
+            // resolucao de SEO, que antes eram dois `await` em serie depois
+            // deste lote. Menos ida e volta ao PostgreSQL, mesmo resultado.
           },
         }),
         prisma.season.findMany({
@@ -146,24 +134,28 @@ export const getSeasonPageData = cache(
 
     if (series === null || season === null) return null;
 
+    const canonicalSlug = canonicalSlugRow?.slug ?? seriesSlug;
+    const canonicalUrl = seasonCanonicalUrl(canonicalSlug, season.seasonNumber);
+    const seriesUrl = seriesCanonicalUrl(canonicalSlug);
+    if (canonicalUrl === null || seriesUrl === null) return null;
+
     /**
-     * SEGUNDA E ULTIMA IDA AO BANCO — quatro leituras independentes juntas.
+     * SEGUNDA E ULTIMA IDA AO BANCO — tres leituras independentes juntas.
      *
-     * Antes desta leva eram TRES esperas em serie depois do lote inicial: a
-     * lista aninhada de episodios vinha no lote 1, depois `await` do trailer,
-     * depois `await` da resolucao de SEO. Nenhuma das tres depende do
-     * resultado da outra: todas dependem so de `season`, que ja esta resolvida
-     * aqui. Serializa-las somava tres viagens ao PostgreSQL no tempo de
-     * resposta.
+     * Antes eram tres esperas em SERIE depois do lote inicial: a lista aninhada
+     * de episodios vinha no lote 1, depois `await` do trailer, depois `await`
+     * da resolucao de SEO. Nenhuma das tres depende do resultado da outra —
+     * todas dependem so de `season`, que ja esta resolvida aqui.
+     *
+     * O `findMany` NAO tem `take` de proposito: a ficha de temporada mostra a
+     * temporada inteira, e esse e o comportamento a preservar. O custo de uma
+     * temporada de novela (centenas ou milhares de linhas com `overview`) e
+     * consequencia declarada dessa decisao de produto, nao um descuido.
      */
-    const episodesSkip = (page - 1) * EPISODES_PER_PAGE;
-    const [episodeTotal, episodeRows, trailer, resolved] = await Promise.all([
-      prisma.episode.count({ where: { seasonId: season.id } }),
+    const [episodeRows, trailer, resolved] = await Promise.all([
       prisma.episode.findMany({
         where: { seasonId: season.id },
         orderBy: { episodeNumber: "asc" },
-        skip: episodesSkip,
-        take: EPISODES_PER_PAGE,
         select: {
           episodeNumber: true,
           name: true,
@@ -184,26 +176,11 @@ export const getSeasonPageData = cache(
           language: LANGUAGE_CODE,
           hasReliableStructuredData: true,
           displayedRatings: [],
-          canonicalUrl: seasonCanonicalUrl(canonicalSlugRow?.slug ?? seriesSlug, season.seasonNumber) ?? "",
+          canonicalUrl,
         },
         prisma,
       ),
     ]);
-
-    /**
-     * Pagina fora da faixa e 404, nao pagina vazia.
-     *
-     * Sem isto, `?pagina=99999` responderia 200 com uma lista vazia — e um
-     * rastreador tem apetite infinito para query que sempre responde 200.
-     * Pagina 1 continua valendo mesmo sem episodio nenhum: a temporada existe,
-     * e a tela ja sabe dizer "Nenhum episódio publicado nesta temporada".
-     */
-    if (page > 1 && episodeRows.length === 0) return null;
-
-    const canonicalSlug = canonicalSlugRow?.slug ?? seriesSlug;
-    const canonicalUrl = seasonCanonicalUrl(canonicalSlug, season.seasonNumber);
-    const seriesUrl = seriesCanonicalUrl(canonicalSlug);
-    if (canonicalUrl === null || seriesUrl === null) return null;
 
     const seriesTitle = seriesTranslation?.title?.trim() || series.nameOriginal;
     const { prev, next } = prevNext(
@@ -230,8 +207,6 @@ export const getSeasonPageData = cache(
         runtimeMinutes: episode.runtimeMinutes,
         stillPath: episode.stillPath,
       })),
-      page,
-      totalEpisodes: episodeTotal,
       prevSeasonNumber: prev,
       nextSeasonNumber: next,
     });

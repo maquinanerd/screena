@@ -41,91 +41,56 @@ import { getSeasonPageData } from '../../../../../../src/server/season-page'
  * PostgreSQL via `getSeasonPageData`.
  */
 
+export const revalidate = 3600
+
 /**
- * ESTA ROTA E DINAMICA DE PROPOSITO — nao ponha `generateStaticParams` aqui.
+ * `generateStaticParams` VAZIO — e ele que liga o `revalidate` acima.
  *
- * Ate esta leva ela declarava `revalidate = 3600` + `generateStaticParams`
- * devolvendo `[]`, e isso ligava o cache de ROTA. Duas coisas o desfizeram:
+ * MEDIDO (2026-08-28): esta rota declarava `revalidate = 3600` desde 2026-07 e
+ * mesmo assim respondia em producao com
+ * `cache-control: private, no-cache, no-store, max-age=0, must-revalidate`.
+ * A causa nao era leitura de sessao nem `force-dynamic`: era a AUSENCIA desta
+ * funcao. Sem `generateStaticParams`, o Next nao considera a rota dinamica
+ * elegivel a prerender, ela nao entra em `dynamicRoutes` do
+ * `prerender-manifest.json`, `isSSG` fica falso e o render sai com
+ * `revalidate = 0` — que e exatamente o `no-store` observado.
  *
- * 1. A LISTA DE EPISODIOS PASSOU A SER PAGINADA POR `?pagina=`. Cache de rota
- *    e por PATHNAME: `?pagina=2` e `?pagina=7` compartilhariam o mesmo HTML
- *    guardado. E `generateStaticParams` + `await searchParams` e exatamente o
- *    par que derrubou `/pt/series/{slug}/` com 500 em toda serie em
- *    2026-08-28 (`DYNAMIC_SERVER_USAGE` / "Page changed from static to dynamic
- *    at runtime") — no build o Next rebaixaria a rota, em runtime ele nao pode
- *    mais e lanca. Ver o cabecalho de `app/pt/series/[slug]/page.tsx`.
+ * PROVA POR EXPERIMENTO CONTROLADO (`next build` na mesma arvore): sem esta
+ * funcao a tabela do build mostra `f (Dynamic)` e `dynamicRoutes` vem `[]`;
+ * com ela (devolvendo `[]`) a mesma rota vira `. (SSG)` e aparece em
+ * `dynamicRoutes`. Nenhuma outra linha mudou.
  *
- * 2. O CACHE NAO ESTAVA COMPRANDO NADA AQUI. Sao 127.870 URLs de temporada e
- *    o rastreador visita cada uma praticamente uma vez: a taxa de acerto e
- *    proxima de zero, o render acontece nos dois cenarios, e o cache so
- *    acrescentava a escrita. A arvore de temporadas sob `.next/server/app`
- *    acumulou 72 GB em 11 dias por isso.
- *
- * O que substituiu o cache foi CONSULTA MENOR: a pagina lia a temporada
- * inteira (milhares de linhas com `overview`) para desenhar uma tela; agora le
- * uma fatia de `EPISODES_PER_PAGE` mais um `COUNT`. E a mesma troca que
- * `/pt/filmes/` ja fez.
- *
- * `force-dynamic` (a mesma declaracao de `/pt/explorar/` e da ficha de serie,
- * pelo mesmo motivo) torna a leitura da query legal e impede qualquer
- * reclassificacao futura.
+ * Devolve `[]` DE PROPOSITO: nao ha nada para prerenderizar no build (sao ~67
+ * mil URLs e o banco nao esta disponivel la). Cada URL e gerada na primeira
+ * visita e entao guardada pela janela do `revalidate` — que e o comportamento
+ * que a rota sempre quis ter.
  */
-export const dynamic = 'force-dynamic'
+export async function generateStaticParams(): Promise<Record<string, string>[]> {
+  return []
+}
 
 interface SeasonRouteParams {
   slug: string
   season: string
 }
 
-interface SeasonRouteSearchParams {
-  pagina?: string | string[]
-}
-
-/**
- * `?pagina=` -> numero da fatia de episodios.
- *
- * Mesmo formato do `?temporada=` da ficha de serie: SO digitos. Qualquer outra
- * coisa cai para a primeira pagina em vez de 404 — query malformada e ruido de
- * rastreador, nao pedido de erro. Pagina fora da faixa e outra historia e vira
- * 404 em `getSeasonPageData`, para `?pagina=99999` nao responder 200 eterno.
- */
-function pageFromQuery(value: string | string[] | undefined): number {
-  const candidate = Array.isArray(value) ? value[0] : value
-  if (candidate === undefined || !/^\d+$/.test(candidate)) return 1
-  const page = Number(candidate)
-  return Number.isSafeInteger(page) && page >= 1 ? page : 1
-}
-
 export async function generateMetadata({
   params,
-  searchParams,
 }: {
   params: Promise<SeasonRouteParams>
-  searchParams: Promise<SeasonRouteSearchParams>
 }): Promise<Metadata> {
-  const [{ slug, season }, query] = await Promise.all([params, searchParams])
+  const { slug, season } = await params
   const seasonNumber = parseRouteNumber(season)
   if (seasonNumber === null) {
     return { title: 'Temporada não encontrada', robots: { index: false, follow: false } }
   }
-  // A MESMA PAGINA que o componente pede, de proposito: `getSeasonPageData` e
-  // memoizado por `cache()` do React, que compara os ARGUMENTOS. Pedir a
-  // pagina 1 aqui e a pagina N ali faria a mesma requisicao carregar a
-  // temporada DUAS vezes, com dois lotes de consultas ao Postgres.
-  const page = pageFromQuery(query.pagina)
-  const data = await getSeasonPageData(slug, seasonNumber, page)
+  const data = await getSeasonPageData(slug, seasonNumber)
   if (data === null) {
     return { title: 'Temporada não encontrada', robots: { index: false, follow: false } }
   }
 
   const { view, seo, canonicalUrl } = data
-  const baseTitle = `${view.seriesTitle} — ${view.seasonTitle}`
-  // Sem isto, as paginas 1..N teriam titulo identico e o historico do
-  // navegador viraria uma pilha de entradas indistinguiveis na volta.
-  const title =
-    view.pagination.hasPages && view.pagination.page > 1
-      ? `${baseTitle} (página ${view.pagination.page} de ${view.pagination.pageCount})`
-      : baseTitle
+  const title = `${view.seriesTitle} — ${view.seasonTitle}`
   const metadata: Metadata = {
     title,
     robots: gatePublicRobots(seo.robots),
@@ -139,26 +104,17 @@ export async function generateMetadata({
   return metadata
 }
 
-export default async function SeasonPage({
-  params,
-  searchParams,
-}: {
-  params: Promise<SeasonRouteParams>
-  searchParams: Promise<SeasonRouteSearchParams>
-}) {
-  const [{ slug, season }, query] = await Promise.all([params, searchParams])
+export default async function SeasonPage({ params }: { params: Promise<SeasonRouteParams> }) {
+  const { slug, season } = await params
   const seasonNumber = parseRouteNumber(season)
   if (seasonNumber === null) notFound()
 
-  const page = pageFromQuery(query.pagina)
-  const data = await getSeasonPageData(slug, seasonNumber, page)
+  const data = await getSeasonPageData(slug, seasonNumber)
   if (data === null) notFound()
 
   if (slug !== data.canonicalSlug) {
-    // O redirect preserva a fatia: quem chegou por um slug antigo na pagina 3
-    // continua na pagina 3.
     const target = seasonPath(data.canonicalSlug, seasonNumber)
-    if (target !== null) permanentRedirect(page > 1 ? `${target}?pagina=${page}` : target)
+    if (target !== null) permanentRedirect(target)
   }
 
   const { view, trailer, seo, canonicalUrl, seriesUrl } = data
@@ -395,43 +351,6 @@ export default async function SeasonPage({
           ) : (
             <p className="muted">Nenhum episódio publicado nesta temporada.</p>
           )}
-
-          {/* PAGINACAO DE EPISODIOS.
-              So aparece quando a temporada nao cabe numa pagina — temporada de
-              ficcao (8-24 episodios) continua exatamente como estava, sem
-              navegacao nenhuma na tela.
-              Sao LINKS de verdade (`?pagina=N`), nao estado de cliente: o botao
-              Voltar funciona, a URL e compartilhavel, e quem esta sem
-              JavaScript navega igual. Reusa o mesmo `PrevNextNav` das
-              temporadas — que ja emite `rel="prev"`/`rel="next"`. */}
-          {view.pagination.hasPages ? (
-            <>
-              <p className="muted" data-episodes-range>
-                Episódios {view.pagination.rangeLabel}
-              </p>
-              <PrevNextNav
-                ariaLabel="Navegação entre páginas de episódios"
-                previousItemLabel="Página anterior de episódios"
-                nextItemLabel="Próxima página de episódios"
-                previous={
-                  view.pagination.prevHref === null
-                    ? null
-                    : {
-                        href: view.pagination.prevHref,
-                        label: `Página ${view.pagination.page - 1}`,
-                      }
-                }
-                next={
-                  view.pagination.nextHref === null
-                    ? null
-                    : {
-                        href: view.pagination.nextHref,
-                        label: `Página ${view.pagination.page + 1}`,
-                      }
-                }
-              />
-            </>
-          ) : null}
         </section>
 
         {isUnderReview ? (

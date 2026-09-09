@@ -63,11 +63,6 @@ function seasonInput(overrides: Partial<SeasonPresenterInput> = {}): SeasonPrese
       { episodeNumber: 2, name: "Grilled", overview: "b".repeat(300), airDateIso: "2009-03-15", runtimeMinutes: 48, stillPath: "/media/still-2.jpg" },
       { episodeNumber: 1, name: "Seven Thirty-Seven", overview: null, airDateIso: "2009-03-08", runtimeMinutes: 47, stillPath: null },
     ],
-    // A ficha de temporada passou a receber a fatia da pagina, nao a temporada
-    // inteira. O default aqui reproduz o caso comum: uma temporada curta que
-    // cabe inteira na primeira pagina, e portanto NAO ganha navegacao.
-    page: 1,
-    totalEpisodes: 2,
     prevSeasonNumber: 1,
     nextSeasonNumber: 3,
     ...overrides,

@@ -1,6 +1,6 @@
 /**
- * series-page-row-budget.test.ts — QUANTOS EPISODIOS a ficha de SERIE le para
- * desenhar a lista de UMA temporada.
+ * series-page-row-budget.test.ts — QUAIS temporadas a ficha de SERIE consulta
+ * para desenhar a lista de episodios de UMA.
  *
  * ============================================================================
  * O DEFEITO QUE ESTE ARQUIVO TRAVA
@@ -20,50 +20,60 @@
  * inteira.
  *
  * ============================================================================
- * COMO ESTE ARQUIVO MEDE
+ * O QUE ESTE ARQUIVO AFIRMA — E O QUE ELE NAO AFIRMA
  * ============================================================================
- * Um Prisma FALSO com 67 temporadas de 100 episodios (6.700 no total). Ele e
- * generoso: consulta sem escopo de temporada recebe TUDO. O teste (1) prova
- * essa generosidade — sem ele, "poucas linhas" seria indistinguivel de "o fake
- * nao devolve nada", e o arquivo passaria vazio.
+ * NAO existe teto absoluto de linhas aqui, e a primeira versao deste arquivo
+ * errava justamente nisso: ela exigia "<= 150 linhas", numero que so fazia
+ * sentido porque o fake usava temporadas de 100 episodios. Numa serie diaria a
+ * temporada selecionada TEM milhares de episodios, e le-los todos e o
+ * comportamento CORRETO — a ficha mostra a temporada inteira.
  *
- * O teste (3) e o par indispensavel do (2): cortar a leitura e facil, cortar
- * DEMAIS tambem. Se a temporada desenhada vier sem episodio, o corte quebrou a
- * pagina em vez de otimiza-la.
+ * A afirmacao certa nao e sobre quantidade, e sobre ESCOPO: consulta-se a
+ * temporada selecionada, e SOMENTE ela. Por isso o fake registra quais
+ * `seasonId` foram perguntados, e as asercoes comparam com a temporada
+ * desenhada — o que vale igual para uma temporada de 12 e para uma de 5.000.
+ *
+ * O fake e generoso: consulta sem escopo recebe TUDO. O teste (1) prova essa
+ * generosidade — sem ele, "poucas linhas" seria indistinguivel de "o fake nao
+ * devolve nada", e o arquivo passaria vazio.
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /** 67 temporadas: o numero real medido em `/pt/series/today/`. */
 const SEASON_COUNT = 67;
-/** Episodios por temporada no fake. */
-const EPISODES_PER_SEASON = 100;
-const TOTAL_EPISODES = SEASON_COUNT * EPISODES_PER_SEASON;
-
 /**
- * Teto de EPISODIOS lidos por render.
+ * A temporada 1 e a de PROGRAMA DIARIO: 5.000 episodios. As demais tem 100.
  *
- * A tela desenha uma temporada. Ler mais que uma temporada inteira (com folga)
- * so pode significar que o `select` aninhado voltou.
+ * A assimetria e o ponto do arquivo: a temporada cara e justamente a default,
+ * entao um teste que so olhasse "poucas linhas" reprovaria o comportamento
+ * correto.
  */
-const EPISODE_ROW_BUDGET = EPISODES_PER_SEASON + 50;
+const BIG_SEASON_EPISODES = 5_000;
+const SMALL_SEASON_EPISODES = 100;
+const TOTAL_EPISODES = BIG_SEASON_EPISODES + (SEASON_COUNT - 1) * SMALL_SEASON_EPISODES;
 
 let episodeRowsRead = 0;
-let queries: string[] = [];
+/** Quais temporadas tiveram os episodios consultados nesta renderizacao. */
+let queriedSeasonNumbers: number[] = [];
 
 function reset(): void {
   episodeRowsRead = 0;
-  queries = [];
+  queriedSeasonNumbers = [];
 }
 
 const SERIES_ID = 42n;
 
 /** `id` da temporada N — determinista, para o fake casar `seasonId`. */
 const seasonId = (n: number): bigint => BigInt(1_000 + n);
+const seasonNumberOf = (id: bigint): number => Number(id - 1_000n);
+
+const episodesOf = (seasonNumber: number): number =>
+  seasonNumber === 1 ? BIG_SEASON_EPISODES : SMALL_SEASON_EPISODES;
 
 function episodeRow(seasonNumber: number, n: number): Record<string, unknown> {
   return {
-    id: BigInt(seasonNumber * 10_000 + n),
+    id: BigInt(seasonNumber * 100_000 + n),
     tmdbId: null,
     episodeNumber: n,
     name: `T${seasonNumber}E${n}`,
@@ -75,7 +85,7 @@ function episodeRow(seasonNumber: number, n: number): Record<string, unknown> {
 }
 
 function episodesOfSeason(seasonNumber: number): Record<string, unknown>[] {
-  return Array.from({ length: EPISODES_PER_SEASON }, (_u, i) =>
+  return Array.from({ length: episodesOf(seasonNumber) }, (_u, i) =>
     episodeRow(seasonNumber, i + 1),
   );
 }
@@ -89,24 +99,25 @@ const SEASONS = Array.from({ length: SEASON_COUNT }, (_u, i) => {
     name: `Temporada ${seasonNumber}`,
     overview: `Sinopse da temporada ${seasonNumber}.`,
     airDate: new Date(Date.UTC(2000 + i, 0, 1)),
-    episodeCount: EPISODES_PER_SEASON,
+    episodeCount: episodesOf(seasonNumber),
     posterPath: `/poster-${seasonNumber}.jpg`,
   };
 });
 
 function rowsFor(model: string, method: string, args: Record<string, unknown>): unknown {
   const where = (args.where ?? {}) as Record<string, unknown>;
-  queries.push(`${model}.${method}`);
 
   if (model === "episode" && method === "findMany") {
     const scoped = where.seasonId;
     if (typeof scoped === "bigint") {
-      const seasonNumber = Number(scoped - 1_000n);
+      const seasonNumber = seasonNumberOf(scoped);
+      queriedSeasonNumbers.push(seasonNumber);
       const rows = episodesOfSeason(seasonNumber);
       episodeRowsRead += rows.length;
       return rows;
     }
     // SEM ESCOPO: entrega TUDO. E assim que o defeito antigo reaparece.
+    queriedSeasonNumbers.push(...SEASONS.map((s) => s.seasonNumber));
     const all = SEASONS.flatMap((s) => episodesOfSeason(s.seasonNumber));
     episodeRowsRead += all.length;
     return all;
@@ -116,7 +127,9 @@ function rowsFor(model: string, method: string, args: Record<string, unknown>): 
     const select = args.select as { episodes?: unknown } | undefined;
     return SEASONS.map((s) => {
       if (select?.episodes === undefined) return s;
-      // Quem pedir a lista aninhada PAGA por ela — e o teto reprova.
+      // Quem pedir a lista aninhada PAGA por ela, e para TODAS as temporadas —
+      // que era exatamente o defeito.
+      queriedSeasonNumbers.push(s.seasonNumber);
       const rows = episodesOfSeason(s.seasonNumber);
       episodeRowsRead += rows.length;
       return { ...s, episodes: rows };
@@ -193,58 +206,78 @@ beforeEach(() => {
   reset();
 });
 
-describe(`ficha de serie (${SEASON_COUNT} temporadas x ${EPISODES_PER_SEASON} episodios)`, () => {
+describe(`ficha de serie (${SEASON_COUNT} temporadas; a 1a tem ${BIG_SEASON_EPISODES} episodios)`, () => {
   it("(1) CONTROLE: o fake DA todos os episodios quando ninguem escopa", async () => {
     reset();
     await (
       fakePrisma as { episode: { findMany: (a: unknown) => Promise<unknown> } }
     ).episode.findMany({});
     expect(episodeRowsRead).toBe(TOTAL_EPISODES);
+    expect(queriedSeasonNumbers).toHaveLength(SEASON_COUNT);
   });
 
-  it("(2) le os episodios de UMA temporada, nao das 67", async () => {
+  it("(2) consulta UMA temporada, e e a que sera desenhada", async () => {
+    // A afirmacao e sobre ESCOPO, nao sobre quantidade: nao importa se a
+    // temporada tem 12 ou 5.000 episodios, o que nao pode acontecer e perguntar
+    // pelas outras 66.
     const data = await getSeriesPageData("serie-longa");
     expect(data, "a ficha precisa carregar para a medicao valer").not.toBeNull();
-    expect(episodeRowsRead).toBeGreaterThan(0);
-    expect(
-      episodeRowsRead,
-      `consultas: ${[...new Set(queries)].join(" ")}`,
-    ).toBeLessThanOrEqual(EPISODE_ROW_BUDGET);
+    expect(queriedSeasonNumbers).toEqual([data?.activeSeasonNumber]);
   });
 
-  it("(3) a temporada DESENHADA tem episodios — o corte nao cortou demais", async () => {
-    // O par indispensavel do (2). Ler pouco e facil; ler pouco E DEMAIS tambem.
+  it("(3) a temporada selecionada aparece INTEIRA, com seus 5.000 episodios", async () => {
+    // O par indispensavel do (2). Cortar a leitura e facil; cortar DEMAIS
+    // tambem. A ficha mostra a temporada inteira, e um `take` aqui seria
+    // regressao de produto — nao otimizacao.
     const data = await getSeriesPageData("serie-longa");
     expect(data?.activeSeasonNumber).toBe(1);
-    const desenhada = data?.view.seasons.find(
-      (s) => s.seasonNumber === data.activeSeasonNumber,
-    );
-    expect(desenhada?.episodes.length).toBe(EPISODES_PER_SEASON);
+    const desenhada = data?.view.seasons.find((s) => s.seasonNumber === 1);
+    expect(desenhada?.episodes.length).toBe(BIG_SEASON_EPISODES);
+    expect(desenhada?.episodes.at(-1)?.episodeNumber).toBe(BIG_SEASON_EPISODES);
+    // E le exatamente o tamanho da temporada — nem mais (as outras 66), nem
+    // menos (um teto artificial).
+    expect(episodeRowsRead).toBe(BIG_SEASON_EPISODES);
   });
 
-  it("(4) `?temporada=N` carrega os episodios DAQUELA temporada", async () => {
+  it("(4) `?temporada=N` consulta e desenha SO aquela", async () => {
     const data = await getSeriesPageData("serie-longa", 40);
     expect(data?.activeSeasonNumber).toBe(40);
+    expect(queriedSeasonNumbers).toEqual([40]);
     const desenhada = data?.view.seasons.find((s) => s.seasonNumber === 40);
-    expect(desenhada?.episodes.length).toBe(EPISODES_PER_SEASON);
+    expect(desenhada?.episodes.length).toBe(SMALL_SEASON_EPISODES);
     expect(desenhada?.episodes[0]?.title).toBe("T40E1");
-    expect(episodeRowsRead).toBeLessThanOrEqual(EPISODE_ROW_BUDGET);
+    expect(episodeRowsRead).toBe(SMALL_SEASON_EPISODES);
   });
 
-  it("(5) as OUTRAS temporadas continuam na tela, sem episodios", async () => {
-    // A tira de temporadas nao pode sumir: ela e a navegacao da ficha. O que
-    // sai e a lista de episodios das que nao estao sendo desenhadas.
+  it("(5) as temporadas NAO selecionadas nao sao consultadas", async () => {
+    const data = await getSeriesPageData("serie-longa", 40);
+    const naoSelecionadas = SEASONS.map((s) => s.seasonNumber).filter((n) => n !== 40);
+    for (const n of naoSelecionadas) {
+      expect(queriedSeasonNumbers, `a temporada ${n} nao devia ter sido consultada`).not.toContain(n);
+    }
+    expect(data?.view.seasons.find((s) => s.seasonNumber === 1)?.episodes).toEqual([]);
+  });
+
+  it("(6) as outras temporadas CONTINUAM na tela — a tira de navegacao nao sumiu", async () => {
+    // O que sai e a lista de episodios das nao desenhadas, nao as temporadas.
     const data = await getSeriesPageData("serie-longa");
     expect(data?.view.seasons.length).toBe(SEASON_COUNT);
-    const outra = data?.view.seasons.find((s) => s.seasonNumber === 2);
-    expect(outra, "a temporada 2 tem de continuar listada").toBeDefined();
-    expect(outra?.episodes).toEqual([]);
+    expect(data?.view.seasons.find((s) => s.seasonNumber === 2)).toBeDefined();
   });
 
-  it("(6) o custo NAO cresce com o numero de temporadas", async () => {
-    const data = await getSeriesPageData("serie-longa");
-    expect(data).not.toBeNull();
-    // Uma temporada, nao 67. Com o defeito de volta seriam 6.700.
-    expect(episodeRowsRead).toBeLessThan(TOTAL_EPISODES / 10);
+  it("(7) o custo escala com a temporada DESENHADA, nao com o catalogo", async () => {
+    // Uma temporada grande custa mais que uma pequena — e isso esta certo. O
+    // que nao pode e custar o total da serie.
+    reset();
+    await getSeriesPageData("serie-longa");
+    const grande = episodeRowsRead;
+
+    reset();
+    await getSeriesPageData("serie-longa", 40);
+    const pequena = episodeRowsRead;
+
+    expect(grande).toBe(BIG_SEASON_EPISODES);
+    expect(pequena).toBe(SMALL_SEASON_EPISODES);
+    expect(grande).toBeLessThan(TOTAL_EPISODES);
   });
 });

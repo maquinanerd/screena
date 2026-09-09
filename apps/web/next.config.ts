@@ -257,21 +257,34 @@ const nextConfig: NextConfig = {
    * `{"type":"Buffer","data":[121,121,...]}`, ou seja cada BYTE vira varios
    * caracteres na conta. O numero contado, portanto, SUPERESTIMA o custo real.
    *
+   * ESTE NUMERO NAO E O LIMITE DE MEMORIA DO APLICATIVO. Ele limita UM cache
+   * — o incremental do Next. O processo continua alocando tudo o mais
+   * (renderizacao, Prisma, buffers de resposta) fora desta conta, e hoje opera
+   * com 12 GB de RSS. Quem limitaria o aplicativo e o `resources.memoryLimit`
+   * do servico, que esta em `0` (ver abaixo).
+   *
    * O NUMERO, pelo que foi MEDIDO (2026-09-09):
    *   - ficha de filme em producao (`/pt/filmes/a-origem/`): 77,7 KB de HTML;
-   *   - simulando 5.001 paginas distintas contra este teto, o LRU estabiliza em
-   *     255,9 MB CONTADOS = 1.272 entradas, ~206 KB contados por entrada
-   *     (inflados pelo Buffer acima), com um RSS de processo subindo 65,9 ->
-   *     112,3 MB — ou seja ~46 MB de memoria REAL para 256 MB contados;
-   *   - o host tem 47,0 GB de RAM com 19,7 GB em uso, e o `screen-app` sozinho
-   *     ja opera com 12 GB de RSS.
+   *   - numa SIMULACAO com 5.001 paginas sinteticas contra este teto, o LRU
+   *     estabiliza em 255,9 MB CONTADOS = 1.272 entradas, ~206 KB contados por
+   *     entrada (inflados pelo Buffer acima), e o RSS do processo sobe de 65,9
+   *     para 112,3 MB;
+   *   - o host tem 47,0 GB de RAM com 19,7 GB em uso.
    *
-   * Entao o teto guarda ~1.272 fichas por ~46 MB de heap: 0,1% da RAM do host e
-   * 0,4% do que o processo ja usa. E — diferente do disco — TEM teto por
-   * construcao. A evicao e LRU de verdade (`while (totalSize > maxSize) ...` em
+   * Os ~46 MB de RSS daquela corrida sao um resultado DE SIMULACAO, com HTML
+   * sintetico e um mix artificial de paginas — nao uma previsao de consumo em
+   * producao. O que a simulacao autoriza a afirmar e a propriedade, nao a
+   * grandeza: o cache PARA de crescer no teto configurado, e a memoria real
+   * fica ABAIXO do numero contado (porque o contador infla o Buffer). A
+   * grandeza em producao depende do tamanho real das paginas e do trafego, e so
+   * a implantacao mede.
+   *
+   * A evicao e LRU de verdade (`while (totalSize > maxSize) ...` em
    * `lru-cache.js`, verificado: a pagina reacessada sobrevive, a fria e
    * evicada), e o cache e um `let` de modulo: reiniciar o container o zera, e
-   * ele volta a encher pelo uso.
+   * ele volta a encher pelo uso. A REVALIDACAO nao muda — `s-maxage` e
+   * `stale-while-revalidate` derivam do `revalidate` de cada rota, nao de onde
+   * o cache mora.
    *
    * REVISAR ESTE NUMERO quando o servico ganhar um limite de memoria. Hoje ele
    * NAO TEM: `resources.memoryLimit` do `screen-app` esta em `0` (ilimitado) no

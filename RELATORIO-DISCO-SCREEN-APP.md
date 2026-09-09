@@ -1,185 +1,149 @@
-# Desempenho e consumo do `screen-app` — o que foi medido, o que mudou, o que sobra
+# Disco e trabalho desnecessário do `screen-app` — entrega final
 
 > **Data:** 2026-09-09 · **Servidor:** `161.97.181.82` · **Serviço:** `rss_prime / screen-app`
 > **Container medido:** `node@72e45f2112e2`, `next@15.5.25`, `WORKDIR /app`
-> **Branch:** `claude/screen-app-cache-diagnosis-b33828` · **Não implantado.**
+> **PR:** [#276](https://github.com/maquinanerd/screena/pull/276) · **Não implantado. Sem merge.**
+
+> ## O front-end não muda
+>
+> Esta entrega **não altera conteúdo exibido, layout, navegação nem
+> comportamento**. A paginação de temporada que uma versão anterior deste PR
+> havia introduzido **foi removida por completo**, e não foi substituída por
+> "carregar mais", carregamento progressivo nem qualquer corte de conteúdo.
+>
+> Restaram apenas mudanças **internas**: quais linhas são pedidas ao PostgreSQL,
+> em que ordem, e onde o cache do Next é gravado.
 
 ---
 
 ## Nota de método
 
-Este documento separa três origens, porque misturá-las é como uma medição vira promessa.
-
 | Rótulo | O que significa |
 | --- | --- |
 | **MEDIDO (produção)** | Lido do container, do painel ou de uma requisição real a `cinerie.com` hoje. |
 | **MEDIDO (local)** | Executado nesta árvore: testes, simulações contra o pacote `next` instalado, `next build`. |
-| **PROJEÇÃO** | Aritmética sobre números medidos. Não é resultado; é previsão, e está marcada como tal. |
+| **SIMULAÇÃO** | Harness sintético. Autoriza afirmar a **propriedade**, não a grandeza em produção. |
 
-A versão do Next foi conferida **no container** (`15.5.25`), não no `node_modules` local — que estava em `15.5.19` e teria enganado a leitura.
+A versão do Next foi conferida **no container** (`15.5.25`), não no `node_modules` local — que está em `15.5.19` e teria enganado a leitura. As chaves usadas existem e se comportam igual nas duas.
 
 ---
 
-## 1. O que está acontecendo
+## 1. Alterações finais
 
-### 1.1 O disco cresce ~2 GB por hora, medido ao vivo
-
-**MEDIDO (produção):** no início desta sessão o disco marcava `168.2 GB / 241.1 GB (69,8%)`. Cerca de duas horas depois, no mesmo console:
-
-```
-overlay         242G  172G   70G  72% /
-```
-
-**~4 GB em ~2 horas.** Não é um acúmulo histórico parado: é uma taxa corrente.
-
-### 1.2 A causa raiz é uma contradição de duas datas
-
-| Data | Decisão | Efeito |
+| Arquivo | Mudança | Efeito na tela |
 | --- | --- | --- |
-| **27/08/2026** | `season` e `episode` **suspensos do índice** — a página de episódio rendia 64 palavras dentro de `<main>` (mediana de 200 amostras: 24). | As duas rotas passam a valer zero para busca. |
-| **28/08/2026** | As **mesmas rotas** ganham `generateStaticParams()`, que é o que liga o cache em disco do Next. | Passamos a materializar exatamente o que tínhamos declarado sem valor. |
+| `apps/web/next.config.ts` | `experimental.isrFlushToDisk: false` + `cacheMaxMemorySize: 256 MB` | nenhum |
+| `apps/web/src/server/episode-page.ts` | varredura da temporada → **dois `LIMIT 1` indexados** | nenhum |
+| `apps/web/src/server/series-page.ts` | episódios de **todas** as temporadas → **só os da temporada selecionada, exibida por inteiro** | nenhum |
+| `apps/web/app/pt/series/[slug]/page.tsx` | passa a temporada pedida ao loader **nos dois pontos de chamada**; lê `activeSeasonNumber` | nenhum |
+| `apps/web/src/server/season-page.ts` | lista sai do `select` aninhado e vira consulta própria **com as mesmas linhas**, em paralelo com trailer e SEO | nenhum |
+| `apps/web/src/server/__tests__/season-episode-row-budget.test.ts` | **novo** — 14 testes | — |
+| `apps/web/src/server/__tests__/series-page-row-budget.test.ts` | **novo** — 7 testes | — |
+| `tests/web/series-canonical-port.test.ts` | guard textual passa a travar a invariante de deduplicação | — |
 
-Um dia entre declarar sem valor e começar a gravar em disco. Confirmei que a contradição continuava de pé em `main` (`876c5c6`) antes desta leva.
+**Revertidos ao estado de `main`, byte a byte:** `season-episode-presenter.ts`, `route-cache-policy.ts`, a rota `temporadas/[season]/page.tsx` e `tests/web/season-episode-presenter.test.ts`. A rota de temporada volta a ser `public-static` com `revalidate = 3600` e `generateStaticParams` — confirmado no build: o `prerender-manifest` tem de novo **10** rotas dinâmicas, com a temporada entre elas.
 
-**Por que nenhum disco resolve:** o espaço de URL é série × temporada × episódio — não tem fim.
+### 1.1 O que **não** foi limitado, de propósito
 
-**Por que o cache não comprava nada:** um rastreador que varre 3,9 milhões de URLs visita cada uma praticamente **uma vez**. A taxa de acerto é próxima de zero; o render acontece nos dois cenários, e o cache só acrescenta a escrita.
+A ficha de temporada e a ficha de série **carregam e exibem a temporada inteira**. Numa novela isso são centenas ou milhares de linhas com `overview` por requisição.
 
-**Por que ninguém viu:** **MEDIDO (produção)** — a aba *Armazenamento* do EasyPanel para o `screen-app` está **vazia**. Ela lista volumes declarados, e este serviço não tem nenhum: o cache mora na camada gravável do container, invisível para o painel.
+**Esse custo é consequência declarada do comportamento preservado, não um descuido.** Está escrito no código (`season-page.ts`) e travado por teste: `(2) a temporada INTEIRA continua na tela` reprova qualquer `take` reintroduzido ali.
 
-### 1.3 Duas consultas varriam a tabela para desenhar uma tela
-
-- **Ficha de episódio** (3.793.672 URLs) trazia **todos** os `episodeNumber` da temporada — `findMany` sem `take` — para descobrir dois números.
-- **Ficha de série** (indexada, `force-dynamic`, **sem cache algum**) trazia **todas as temporadas com todos os episódios**, incluindo `overview`, para desenhar a lista de **uma**.
-
-**MEDIDO (produção):** `/pt/series/today/` tem **67 temporadas distintas**; só a temporada 1 tem **506 episódios**. A página respondia **429,3 KB**.
+Créditos já estavam limitados antes deste PR (`take: CAST_FETCH_LIMIT` / `CREW_FETCH_LIMIT`) e não foram tocados.
 
 ---
 
-## 2. O que foi alterado
+## 2. Confirmação de que a interface foi preservada
 
-| Arquivo | Mudança |
+| Verificação | Como |
 | --- | --- |
-| `apps/web/next.config.ts` | `experimental.isrFlushToDisk: false` + `cacheMaxMemorySize: 256 MB`, com o porquê e o **alcance global** declarados. |
-| `apps/web/src/server/episode-page.ts` | Varredura da temporada → **dois `LIMIT 1` indexados** (anterior/próximo). `prevNext` removido. |
-| `apps/web/src/server/season-page.ts` | Lista aninhada sem limite → **fatia com `skip`/`take` + `COUNT`**. Três esperas serializadas → **uma**. Página fora da faixa vira 404. |
-| `apps/web/src/server/series-page.ts` | Episódios de **todas** as temporadas → **só os da temporada ativa**, dentro de um `Promise.all` que já existia (zero viagem extra). Expõe `activeSeasonNumber`. |
-| `apps/web/src/lib/season-episode-presenter.ts` | `EPISODES_PER_PAGE = 50`, `SeasonEpisodePaginationView`, `buildSeasonPagination`. |
-| `apps/web/app/pt/series/[slug]/temporadas/[season]/page.tsx` | `force-dynamic` + `?pagina=`; navegação reusando `PrevNextNav`. |
-| `apps/web/app/pt/series/[slug]/page.tsx` | Passa a temporada pedida ao loader **nos dois pontos de chamada**; lê `activeSeasonNumber`. |
-| `apps/web/src/lib/route-cache-policy.ts` | Temporada reclassificada para `public-dynamic`, com o motivo. |
-| `apps/web/src/server/__tests__/season-episode-row-budget.test.ts` | **Novo** — 18 testes. |
-| `apps/web/src/server/__tests__/series-page-row-budget.test.ts` | **Novo** — 6 testes. |
-| `tests/web/series-canonical-port.test.ts` | Guard textual atualizado — passa a travar a invariante de deduplicação. |
-| `tests/web/season-episode-presenter.test.ts` | Campos novos no helper (`tsc` pegou o que o vitest não pega). |
-
-### 2.1 A paginação, e por que **não** virou rota nova
-
-O cabeçalho da própria rota diz: *"A ROTA CANONICA é `/pt/series/{slug}/temporadas/{n}/` — e é a única que existe"*, e `SEASONS_SEGMENT` alimenta diretório, canonical e sitemap pelo mesmo valor. Criar `/pagina/[n]/` contrariaria isso e mexeria no acoplamento com o sitemap, que está **fora de escopo**.
-
-O precedente correto já existia: `/pt/series/[slug]` é `public-dynamic` justamente por causa de `?temporada=`. Segui o mesmo idioma — `force-dynamic`, sem `generateStaticParams`. É exatamente a combinação cuja ausência derrubou aquela rota com 500 em 28/08, e o comentário no arquivo registra isso.
-
-**São links reais, não estado de cliente:** o botão Voltar funciona, a URL é compartilhável, e quem está sem JavaScript navega igual. A página 1 **não** leva query — a URL canônica continua sendo a que sempre foi.
-
-**A paginação é invisível no caso normal.** 50 por página; temporada de ficção tem 8–24 episódios e não ganha navegação nenhuma. Ela existe só para novela e programa diário, que é o que produziu o problema. Travado pelo teste (9).
-
-### 2.2 Créditos: nada a fazer
-
-A tarefa pedia para revisar "listagens sem limite, principalmente episódios e créditos". **Créditos já estavam limitados** — `take: CAST_FETCH_LIMIT` / `CREW_FETCH_LIMIT` em `episode-credits.ts` e `entity-cast.ts`, com os slugs já escopados por lista de ids. Não mexi no que estava certo.
+| Nenhum resíduo de paginação | `grep` por `EPISODES_PER_PAGE`, `pagina=`, `SeasonEpisodePagination`, `buildSeasonPagination`, `pageFromQuery`, `seasonPageHref` em `apps/web` e `tests` → **nenhum** |
+| Presenter, política de cache, rota de temporada e seu teste | `git diff origin/main` → **vazio** |
+| Classificação de renderização restaurada | `prerender-manifest` com **10** rotas; `/pt/series/[slug]/temporadas/[season]` presente como SSG |
+| A temporada continua inteira na tela | teste: 5.000 entram, **5.000 saem**, na ordem |
+| A temporada selecionada da ficha de série continua inteira | teste: `episodes.length === 5.000`, último episódio `#5000` |
+| A tira de temporadas não sumiu | teste: as 67 continuam listadas; só as **não desenhadas** ficam sem episódios |
+| Sem `searchParams` novo em rota estática | a rota voltou a `main`; não lê query |
 
 ---
 
-## 3. Ganhos efetivamente medidos
+## 3. Ganhos medidos
 
-### 3.1 Linhas lidas por render — **MEDIDO (local)**, com controle negativo
+Cada guard novo foi verificado nos **dois sentidos**: passa com o código atual e **fica vermelho** quando o defeito é reintroduzido. Guard que passa nas duas versões não prova nada.
 
-Cada número abaixo foi verificado nos **dois sentidos**: o teste passa com o código novo e **fica vermelho** quando o defeito é reintroduzido. Um guard que passasse nas duas versões não provaria nada.
+### 3.1 Linhas lidas — **MEDIDO (local)**
 
-| Superfície | Antes | Depois | Verificação |
+| Superfície | Antes | Depois | Controle negativo |
 | --- | ---: | ---: | --- |
-| Ficha de episódio (temporada de 5.000) | **5.006** | **8** | vermelho com o `findMany` de volta: `episode.findMany=5000` |
-| Ficha de série (67 temporadas × 100 ep.) | **6.800** | **≤150** | vermelho com o `select` aninhado de volta |
-| Ficha de temporada (5.000 ep.) | **~5.008** | **≤200** | vermelho: "expected 4988 to be less than or equal to 50" |
+| Ficha de episódio (temporada de 5.000) | **5.006** | **8** | vermelho: `episode.findMany=5000` |
+| Ficha de série (67 temporadas) | episódios de **67** temporadas | episódios de **1** | vermelho ao devolver o `select` aninhado |
 
-Propriedade que interessa mais que o número absoluto: **o custo deixou de crescer com o tamanho da temporada**. Testes (5) e (8) comparam episódios distantes e temporadas de tamanhos diferentes e exigem custo igual.
+Na ficha de episódio, o custo deixou de crescer com o tamanho da temporada — testes comparam episódios distantes e exigem custo igual. A equivalência de comportamento está provada: `prev`/`next` corretos, bordas sem vizinho inventado, **lacunas na numeração** e temporada de episódio único passam nas **duas** implementações; só a contagem de linhas as distingue.
 
-Equivalência de comportamento provada empiricamente: os testes de valor (`prev`/`next` corretos, bordas sem vizinho inventado, lacunas na numeração, temporada de episódio único) passam nas **duas** implementações. Só a contagem de linhas as distingue.
+> **Correção em relação à versão anterior deste relatório:** o limite "≤150 linhas" para a ficha de série **não era universal** — ele só fazia sentido porque o harness usava temporadas de 100 episódios. A afirmação certa não é sobre quantidade, é sobre **escopo**: consulta-se a temporada selecionada e **somente ela**. O teste agora registra quais `seasonId` foram perguntados e compara com a temporada desenhada — o que vale igual para uma temporada de 12 e para uma de 5.000. Numa temporada de 5.000 episódios, ler as 5.000 é o comportamento **correto**.
 
-### 3.2 Disco — **MEDIDO (local)**, contra o pacote real
+### 3.2 Idas ao banco por render — **MEDIDO (local)**
+
+Na ficha de temporada, três esperas em série (lista de episódios → trailer → resolução de SEO) viraram **duas**: as três leituras são independentes e agora viajam juntas. **Mesmas linhas, mesmo resultado.** Travado pelo teste `(6)`, que reprova se a lista voltar para dentro do `select` aninhado — o que desfaria o paralelismo em silêncio.
+
+Na ficha de série, `generateMetadata` e o componente passam **o mesmo argumento** ao loader. Como ele é memoizado por `cache()` do React, que compara argumentos, divergir faria a mesma requisição carregar a série **duas vezes**. Travado textualmente em `series-canonical-port.test.ts`.
+
+### 3.3 Disco — **SIMULAÇÃO** contra o pacote real
 
 Instanciando o `FileSystemCache` do `next` instalado e gravando 300 fichas pelo mesmo `set()` do servidor de produção:
 
-| modo | arquivos | disco | tempo | itens em RAM |
-| --- | ---: | ---: | ---: | ---: |
-| `isrFlushToDisk: true` (default) | 900 | **33,7 MB** | 1.136 ms | 300 |
-| `isrFlushToDisk: false` | 0 | **0,0 MB** | 113 ms | 300 |
-
-O cache **continua vivo em RAM** nos dois modos — o ISR não é desligado, só o tier de disco. O harness tem controle negativo: se o modo ligado escrevesse zero, ele aborta como inválido.
-
-### 3.3 O teto de memória segura — **MEDIDO (local)**
-
-5.001 páginas distintas contra o teto de 256 MB:
-
-```
-  disco escrito .................. 0.0 MB
-  entradas guardadas ............. 1272 de 5001 inseridas
-  tamanho contado no LRU ......... 256.0 MB (teto 256.0 MB)
-  pagina REACESSADA sobreviveu ... sim
-  primeira pagina fria sobreviveu  nao (evicada)
-  RSS do processo ................ 65.9 -> 112.3 MB
-```
-
-Responde às quatro exigências: **impede acúmulo** (evicção LRU real, `while (totalSize > maxSize)`), **reaproveita o que é acessado** (a página reacessada sobrevive a 5.000 inserções), **tem teto** e **o teto é o configurado**.
-
-> Uma correção que a medição impôs: a primeira versão deste harness reusava **uma** string de HTML para as 5.000 entradas. Teto e evicção mediam certo, mas o RSS não media nada — o processo "crescia" 6 MB guardando 256 MB. Com bytes próprios por página, o número real apareceu.
-
-### 3.4 Build e suíte — **MEDIDO (local)**
-
-- `next build` → **exit 0**. `prerender-manifest` foi de **10 para 9** rotas dinâmicas: a temporada saiu, como o registro passou a declarar. `/pt/termos` e `/pt/privacidade` continuam prerenderizadas em disco **pelo build** — `isrFlushToDisk` afeta só a escrita em **runtime**.
-- `pnpm test` → **575 arquivos, 7.345 testes, todos verdes**.
-- `pnpm typecheck` (raiz) + `typecheck:apps`, `pnpm lint`, `pnpm audit:invariants` (8 ok, 0 violações), `pnpm audit:render` (2 ok, 0 violações) → todos passam.
-
-### 3.5 Tamanho da resposta — **PROJEÇÃO** sobre medições de produção
-
-**MEDIDO (produção)**, requisições únicas a `cinerie.com`:
-
-| URL | HTML | episódios no HTML | tempo |
+| modo | arquivos | disco | itens em RAM |
 | --- | ---: | ---: | ---: |
-| `/pt/filmes/a-origem/` | 77,7 KB | 0 | 1.008 ms |
-| `/pt/series/ted-lasso/temporadas/1/` | 52,7 KB | 20 | — |
-| `/pt/series/today/temporadas/1/` | 426,0 KB | 506 | 932 ms |
-| `/pt/series/today/` | 429,3 KB | 506 | 2.322 ms |
-| `/pt/series/jornal-nacional/` | 216,8 KB | 210 | 2.733 ms |
+| `isrFlushToDisk: true` (default) | 900 | **33,7 MB** | 300 |
+| `isrFlushToDisk: false` | 0 | **0,0 MB** | 300 |
 
-Dessas duas páginas de temporada sai o custo marginal: **~0,77 KB por episódio**, base **~37 KB**.
+O cache **continua vivo em RAM** nos dois modos: o ISR não é desligado, só o tier de disco. O harness tem controle negativo — se o modo ligado escrevesse zero, ele aborta como inválido.
 
-**PROJEÇÃO:** `/pt/series/today/temporadas/1/` com 50 episódios ≈ **76 KB** (contra 426 KB) — **~82% menor**. `ted-lasso/temporadas/1/` fica **idêntica**: 20 < 50.
+### 3.4 O teto de memória segura — **SIMULAÇÃO**
 
-Isto é aritmética sobre números medidos, **não** um resultado. A medição definitiva exige implantação (§6).
+5.001 páginas sintéticas contra o teto de 256 MB: o LRU estabiliza em **255,9 MB contados / 1.272 entradas**, a página reacessada **sobrevive**, a fria é **evicada**, e o disco fica em **0 MB**.
+
+Isto autoriza afirmar a **propriedade** — o cache para de crescer no teto e reaproveita o que é acessado —, **não** uma grandeza de produção. Ver §4.
+
+### 3.5 Verificações de repositório — **MEDIDO (local)**
+
+- `pnpm test` → **575 arquivos, 7.342 testes, verdes**
+- `pnpm typecheck` (raiz) + `pnpm typecheck:apps` → limpos
+- `pnpm lint` → limpo
+- `pnpm audit:invariants` → 8 ok, **0 violações**
+- `pnpm audit:render` → 2 ok, **0 violações**
+- `next build` → **exit 0**; `/pt/termos` e `/pt/privacidade` continuam prerenderizadas em disco **pelo build** (`isrFlushToDisk` afeta só a escrita em **runtime**)
+
+### 3.6 O que **não** é ganho desta entrega
+
+A projeção de redução de HTML de 426 KB para ~76 KB dependia da paginação e **foi retirada**. Com a lista completa preservada, **o tamanho da resposta da página de temporada não muda**.
 
 ---
 
-## 4. Efeitos e limites da estratégia de cache
+## 4. Alcance e limites da estratégia de cache
 
-**O alcance é GLOBAL, e é preciso dizer isso sem rodeio.** `isrFlushToDisk` e `cacheMaxMemorySize` valem para o aplicativo **inteiro**, não por rota.
+**O alcance é GLOBAL.** `isrFlushToDisk` e `cacheMaxMemorySize` valem para o aplicativo **inteiro**, não por rota.
 
-- **Afetadas:** toda rota `public-static` do registro — fichas de filme e pessoa, galerias de imagens/vídeos, ficha de episódio. Elas param de gravar HTML em disco e passam a viver só no LRU em processo.
-- **Não afetadas:** toda rota `public-dynamic` — home, listagens, busca, notícias, ficha de série e (agora) ficha de temporada. Elas **nunca** foram cacheadas, nem em disco nem em memória.
-- O mesmo objeto serve o cache de `fetch` do Next, que neste app está **vazio por construção**: a invariante 3 proíbe chamada externa no render.
+- **Afetadas:** toda rota `public-static` do registro — fichas de filme e pessoa, galerias, ficha de temporada e de episódio. Param de gravar HTML em disco e passam a viver só no LRU em processo.
+- **Não afetadas:** toda rota `public-dynamic` — home, listagens, busca, notícias, ficha de série. Nunca foram cacheadas.
+- O mesmo objeto serve o cache de `fetch` do Next, **vazio por construção**: a invariante 3 proíbe chamada externa no render.
 
-**O que o teto conta não são bytes de memória.** A função de tamanho devolve `html.length + JSON.stringify(rscData).length`, e `rscData` é um Buffer — `JSON.stringify` o serializa como `{"type":"Buffer","data":[...]}`, então cada byte vira vários caracteres. O número **superestima** o custo real: 256 MB contados deram **~46 MB de RSS** na simulação.
+**A revalidação não muda.** `s-maxage` e `stale-while-revalidate` derivam do `revalidate` de cada rota, não de onde o cache mora. A janela de 1 h da ficha de temporada continua valendo.
 
-**Por que 256 MB e não 512.** O `screen-app` **não tem limite de memória**: **MEDIDO (produção)** — `resources.memoryLimit` e `resources.cpuLimit` estão em `0` (ilimitado) no painel, e o processo já opera com **12 GB de RSS** num host de 47 GB. Sem cgroup para conter um erro de estimativa, a folga é deliberadamente conservadora. 256 MB contados ≈ 1.272 fichas ≈ 0,4% do que o processo já usa.
+**Duas coisas que estes números NÃO significam:**
 
-**Revalidação, descarte e reinício:** a janela de `revalidate` não muda — `s-maxage`/`stale-while-revalidate` derivam dela, não de onde o cache mora. O descarte é LRU por tamanho, verificado. O cache é um `let` de módulo: **reiniciar o container o zera**, e ele volta a encher pelo uso.
+1. **256 MB não é o limite de memória do aplicativo.** É o teto de **um** cache. O processo continua alocando renderização, Prisma e buffers de resposta fora dessa conta — e hoje opera com **12 GB de RSS**. Quem limitaria o aplicativo é `resources.memoryLimit` do serviço, que está em **`0`** (ilimitado).
+2. **Os ~46 MB de RSS da simulação não são consumo garantido em produção.** Aquele número vem de HTML sintético e de um mix artificial de páginas. O que a simulação prova é a propriedade (o cache para no teto; a memória real fica **abaixo** do número contado, porque o contador infla o Buffer do RSC via `JSON.stringify`). A grandeza real depende do tamanho das páginas e do tráfego, e **só a implantação mede**.
 
-**Nenhum serviço novo foi introduzido.** Redis/cacheHandler externo não se justifica: o gargalo medido é o Postgres (§5), não a ausência de um cache compartilhado, e as consultas caíram uma a duas ordens de grandeza sem ele.
+**Compatibilidade com produção verificada:** `isrFlushToDisk` é chave do schema (`config-schema.js`), default `true` (`config-shared.js`), consumida pelo servidor de produção (`next-server.js:680`), e a guarda `if (!this.flushToDisk || !data) return` fica **abaixo** do `memoryCache.set` — tudo lido no pacote `15.5.25` do container.
+
+**Nenhum serviço novo.** Redis/`cacheHandler` externo não se justifica: o gargalo medido é o PostgreSQL, e as consultas caíram sem ele.
 
 ---
 
 ## 5. O que continua consumindo recursos
 
-**MEDIDO (produção), painel de monitoramento:**
+**MEDIDO (produção):**
 
 | serviço | CPU | memória |
 | --- | ---: | ---: |
@@ -187,75 +151,112 @@ Isto é aritmética sobre números medidos, **não** um resultado. A medição d
 | `screen-app` | 69,4% | **12 GB** (sem limite) |
 | `screen-catalog-worker` | 89,0% | 335 MB |
 
-Host: **12 cores com load 17,08** — sobrecarregado em 1,42×. RAM 19,7/47,0 GB.
+Host: **12 cores com load 17,08** (sobrecarregado 1,42×), RAM 19,7/47,0 GB, disco **172 GB / 241 GB**.
 
-1. **O banco é o gargalo, não o app.** 308% são três núcleos saturados. É exatamente o que as reduções de §3.1 atacam, mas o efeito só é observável em produção.
-2. **O rastreamento não foi tocado.** Os 3,9 milhões de URLs `noindex` continuam sendo renderizados. Estas mudanças cortam o custo **por requisição**; não cortam o **número** de requisições. Isso é decisão de SEO, explicitamente fora desta tarefa.
-3. **`screen-app` sem teto de memória.** Zero em `memoryLimit` significa que nada impede o app de pressionar o `screen-db` no mesmo host.
-4. **`screen-cron` em loop de restart.** **MEDIDO:** cinco containers `screen-cron` distintos aparecem simultaneamente na lista, dois consumindo 13,6% e 11,5% de CPU. É CPU do host, não da aplicação — e não foi investigado aqui.
-5. **Volume de log.** O stream de logs do `screen-app` (eventos `section_absent`, um por seção ausente por página) é intenso a ponto de **travar a aba do navegador** que o exibe. Não medi o custo em disco: `/var/lib/docker/containers` não é alcançável de dentro do container.
+1. **O banco é o gargalo.** 308% são três núcleos saturados.
+2. **A temporada inteira continua sendo carregada** — decisão de produto, §1.1.
+3. **O rastreamento não foi tocado.** Os 3,9 M de URLs `noindex` continuam sendo renderizados; isto corta o custo **por requisição**, não o **número** de requisições.
+4. **`screen-app` sem teto de memória** (`memoryLimit = 0`).
+5. **`screen-cron` em loop de restart** — cinco containers simultâneos no painel. Observado, não diagnosticado.
+6. **Volume de log** intenso o bastante para travar a aba do painel que o exibe. Custo em disco não medido (`/var/lib/docker/containers` fora do alcance).
 
-### 5.1 Imagens e armazenamento real — **MEDIDO, não inferido**
+### 5.1 Imagens — **MEDIDO, não inferido**
 
-- **`next/image` não é importado em lugar nenhum** de `apps/web`; não há bloco `images` no `next.config.ts`.
-- Numa carga real de `cinerie.com/pt/`: **28 imagens de `image.tmdb.org`**, 13 do próprio domínio (marca), **zero de `/_next/image`**.
-- No container: **`/app/apps/web/.next/cache/images` não existe** (`No such file or directory`).
+`next/image` **não é importado** em lugar nenhum de `apps/web`; não há bloco `images` no `next.config.ts`; numa carga real de `cinerie.com/pt/` há **28 imagens de `image.tmdb.org`**, 13 do próprio domínio e **zero de `/_next/image`**; e no container **`/app/apps/web/.next/cache/images` não existe**.
 
-Conclusão firme: as imagens são servidas **direto pelo CDN do TMDB**; o otimizador do Next nunca rodou; não há processamento nem armazenamento local de imagem para remover. O efeito colateral de `isrFlushToDisk` sobre o cache do otimizador é **inerte aqui**. Atribuição e licenças permanecem intocadas.
+As imagens vêm **direto do CDN do TMDB**. O otimizador nunca rodou; não há processamento nem armazenamento local a remover. O efeito colateral de `isrFlushToDisk` sobre o cache do otimizador é **inerte aqui**. Atribuição e licenças intocadas.
 
-### 5.2 Atribuição do disco — o que é do app e o que não é
+### 5.2 Atribuição do disco
 
-Não atribuo os 172 GB ao `screen-app`. O que consegui medir:
+Não atribuo os 172 GB ao `screen-app`. Medido: `.next/cache` = **171 MB**; `.next/server/app/pt/series` = **25.920 diretórios**; `/pt/filmes` = **50.465 entradas**. Amostra de **60 diretórios de série** (1 a cada 432): média **3,86 MB**, mediana 1,29 MB.
 
-- `/app/apps/web/.next/cache` → **171 MB** (pequeno).
-- `/app/apps/web/.next/server/app/pt/series` → **25.920 diretórios**.
-- `/app/apps/web/.next/server/app/pt/filmes` → **50.465 entradas**.
-- Amostra de **60 diretórios de série** (1 a cada 432, espalhada pela listagem): média **3,86 MB**, mediana 1,29 MB, mín. 0,05 MB, máx. 32,2 MB.
+**ESTIMATIVA da árvore `/pt/series`: ~98 GB** (IC 95%: **55–140 GB**). É amostragem, não `du` — um `du -sh` sobre `.next/server` **não retornou em 12 minutos**.
 
-**ESTIMATIVA da árvore `/pt/series`: ~98 GB** (IC 95% sobre a média: **55–140 GB**). É amostragem, não `du` — um `du -sh` sobre `.next/server` **não retornou em 12 minutos** e foi abandonado; não é disco lento, é o número de arquivos.
-
-O restante dos 172 GB inclui imagens Docker, dados do PostgreSQL, logs de container e **outros projetos do mesmo host** (`fabrica-de-conteudo` aparece no painel com 4,4 GB de RAM própria). Não foi decomposto.
-
-**Nenhuma limpeza destrutiva foi executada.** O que é descartável está identificado: a árvore `.next/server/app/pt/**` do container em execução — e ela é **zerada por um redeploy**, sem comando de remoção.
+O restante inclui imagens Docker, dados do PostgreSQL, logs de container e **outros projetos do mesmo host**. Não foi decomposto.
 
 ---
 
-## 6. O que falta verificar após a implantação
+## 6. Implantação, verificação e reversão
 
-Nada abaixo é opcional: são as medições que esta tarefa **não** pôde fazer sem implantar.
+**Nada foi implantado, reiniciado ou apagado. O deploy automático está desligado** — merge não implanta.
 
-1. **A taxa de crescimento do disco vai a zero.** `df -h /` no console do serviço, duas leituras espaçadas. Hoje a linha de base é **~2 GB/hora**.
-2. **`.next/server/app` para de ganhar arquivos em runtime.** `ls /app/apps/web/.next/server/app/pt/series | wc -l` — hoje **25.920**; depois do redeploy deve nascer pequeno e **parar de crescer**.
-3. **O tamanho real da resposta** — confirmar a projeção de §3.5:
-   ```bash
-   curl -s -o /dev/null -w '%{size_download} %{time_total}\n' https://cinerie.com/pt/series/today/temporadas/1/
-   ```
-   Comparar com **426,0 KB**. E `?pagina=2`, `?pagina=11` e a volta para a página 1.
-4. **A CPU do `screen-db`.** Hoje **308,2%**. É a métrica que diz se a redução de linhas virou alívio real — e é a única que transforma "linhas lidas" em desempenho.
-5. **A memória do `screen-app`.** Hoje **12 GB**. Vale medir se cai (menos episódios renderizados por request) e vigiar o LRU de 256 MB.
-6. **`pg_stat_statements` ordenado por `total_exec_time`.** Já está montado em `apps/web/scripts/validate-route-cache-real-postgres.ts`. Diz se episódio/temporada eram mesmo o topo, ou se falta índice em outro lugar. Melhor que adivinhar.
-7. **A ficha de série de uma novela.** `/pt/series/today/` era 429,3 KB em 2.322 ms — a mudança de §2 (só a temporada ativa) é a de maior impacto e a única numa página **indexada**.
+### 6.1 Implantação
 
-### Lacunas que assumo, sem inventar resultado
+1. Revisar e mergear a PR #276.
+2. Clicar em **Implantar** no `screen-app`.
 
-- **Nenhum número de "depois" é de produção.** Nada foi implantado; toda comparação depois/antes aqui é local ou projeção.
-- **A decomposição do disco por serviço é estimativa amostrada**, não `du`.
-- **O custo em disco dos logs de container não foi medido** (fora do alcance do console).
-- **O loop do `screen-cron` foi observado, não diagnosticado.**
+### 6.2 Como o disco antigo é liberado — e do que isso depende
+
+O cache já gravado vive na **camada gravável do container em execução**. Ele **não** é apagado por esta mudança e **não** deve ser apagado à mão.
+
+Ele é liberado quando o **container antigo é removido**, o que o redeploy faz ao substituí-lo. Duas condições, ambas verificadas hoje:
+
+- **Não há armazenamento persistente nesse caminho.** A aba *Armazenamento* do serviço está **vazia** — nenhum volume ou bind mount em `/app`. Se houvesse, o conteúdo sobreviveria ao redeploy e precisaria de tratamento próprio.
+- **O container antigo precisa sumir de fato.** Enquanto o Docker mantiver o container parado (e não removido), a camada continua ocupando disco.
+
+### 6.3 Verificação depois do deploy
+
+> **`df` total não precisa zerar nem cair.** Banco, logs, imagens Docker e outros projetos do mesmo host continuam crescendo. Usar o total como critério dá falso negativo.
+
+**A verificação que vale — não há gravação nova deste cache**, inclusive **dentro de diretórios que já existiam**:
+
+```bash
+find /app/apps/web/.next/server/app/pt -type f -mmin -30
+```
+
+Saída **vazia** = nenhum arquivo do cache de rota foi escrito nos últimos 30 minutos. Contar diretórios de séries **não** serve: uma gravação nova dentro de um diretório existente não muda a contagem.
+
+**O comando foi testado no container e tem linha de base "antes" — MEDIDO (produção), hoje:** `find (GNU findutils) 4.9.0`, e a mesma consulta com janela de 60 minutos devolveu, agora:
+
+```
+/app/apps/web/.next/server/app/pt/filmes/homem-aranha-um-novo-dia.html
+/app/apps/web/.next/server/app/pt/filmes/homem-aranha-um-novo-dia.rsc
+/app/apps/web/.next/server/app/pt/filmes/homem-aranha-um-novo-dia.meta
+```
+
+Ou seja: **hoje ela grava, e a checagem enxerga isso** — três arquivos por página. É o que torna o "vazio" de depois uma prova, e não um silêncio ambíguo.
+
+Rodar **depois** de o container estar no ar há mais de 30 minutos (senão a saída pega os arquivos que o próprio build gravou) e **depois** de exercitar algumas fichas, para que a ausência signifique "não grava" e não "ninguém acessou":
+
+```bash
+# 1. exercitar algumas fichas que ANTES seriam materializadas
+for s in a-origem interestelar duna; do curl -s -o /dev/null https://cinerie.com/pt/filmes/$s/; done
+
+# 2. minutos depois, a prova
+find /app/apps/web/.next/server/app/pt -type f -mmin -10 | head -20   # esperado: vazio
+```
+
+Complementos:
+
+```bash
+# contagem RECURSIVA de arquivos, duas leituras espacadas: nao pode subir
+find /app/apps/web/.next/server/app/pt -type f | wc -l
+
+# a pagina continua sendo servida com cache (a revalidacao nao mudou)
+curl -sI https://cinerie.com/pt/filmes/a-origem/ | grep -i cache-control
+```
+
+E as medições que só produção dá:
+
+| O quê | Linha de base de hoje |
+| --- | --- |
+| CPU do `screen-db` | **308,2%** — a métrica que diz se a redução de linhas virou alívio real |
+| Memória do `screen-app` | **12 GB** |
+| `pg_stat_statements` por `total_exec_time` | já montado em `apps/web/scripts/validate-route-cache-real-postgres.ts` |
+
+### 6.4 Reversão
+
+- **Reverter tudo:** `git revert` do commit e novo deploy. O comportamento volta ao de hoje, inclusive a gravação em disco.
+- **Reverter só o cache, mantendo as consultas:** remover `experimental.isrFlushToDisk` e `cacheMaxMemorySize` do `next.config.ts`. O default (`true` / 50 MB) volta na próxima implantação.
+- **Reverter só uma consulta:** os três arquivos de dados são independentes entre si.
+- Nenhuma migração de banco, nenhuma alteração de dado: **a reversão é só um deploy.**
 
 ---
 
-## 7. Como implantar e revisar
+## 7. Fora de escopo, intocado
 
-**O deploy automático está DESLIGADO** — o botão no painel diz *"Ativar Deploy Automático"*. Merge não implanta.
-
-1. Revisar e mergear o PR.
-2. Clicar em **Implantar** no `screen-app`. O redeploy zera a camada gravável: **o disco cai de uma vez**, sem comando destrutivo.
-3. Rodar as verificações de §6, em ordem — a (1) e a (2) primeiro, que são as baratas.
-4. **Recomendado, fora deste PR:** definir `resources.memoryLimit` para o `screen-app`. Hoje é `0`. É o teto que falta, e ele é configuração de plataforma, não de código.
-
-Nem merge nem implantação foram executados nesta tarefa.
+Catálogo, indexação, `noindex`, sitemap, robots, licenças e regras editoriais. Nenhuma série, episódio ou pessoa excluída. Nenhuma configuração de servidor alterada, nenhum serviço reiniciado, nenhum arquivo de produção apagado.
 
 ---
 
-*Medições de produção: console do `screen-app`, painel de monitoramento do EasyPanel e requisições únicas a `cinerie.com` em 2026-09-09. Medições locais: `pnpm test`, `pnpm typecheck`, `pnpm lint`, `pnpm audit:*`, `next build`, e duas simulações contra o `next@15.5.19` desta árvore — com a versão do container (`15.5.25`) conferida em separado.*
+*Medições de produção: console do `screen-app`, painel do EasyPanel e requisições únicas a `cinerie.com` em 2026-09-09. Medições locais: `pnpm test`, `pnpm typecheck`, `pnpm lint`, `pnpm audit:*`, `next build`, e duas simulações contra o `next@15.5.19` desta árvore — com a versão do container (`15.5.25`) conferida em separado.*

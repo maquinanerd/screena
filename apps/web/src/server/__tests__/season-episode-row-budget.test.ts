@@ -14,35 +14,39 @@
  *
  *  - EPISODIO (3.793.672 URLs, a rota de maior volume do sistema) trazia TODOS
  *    os `episodeNumber` da temporada — `findMany` sem `take` — apenas para
- *    descobrir dois numeros: o anterior e o proximo.
- *  - TEMPORADA (127.870 URLs) trazia TODOS os episodios, com `overview` (o
- *    campo mais longo da linha), num `select` aninhado sem `take`.
+ *    descobrir dois numeros: o anterior e o proximo. Em novela e programa
+ *    diario (`today`, `neighbours`, `jornal-nacional`) uma "temporada" e um ano
+ *    de exibicao, e isso eram centenas de linhas por visita.
  *
- * O custo das duas era o tamanho da temporada. Em serie de ficcao isso e uma
- * duzia de linhas e ninguem ve. Em novela e programa diario (`today`,
- * `neighbours`, `jornal-nacional`) uma "temporada" e um ano de exibicao.
+ * A ficha de TEMPORADA aparece aqui por outro motivo. Ela mostra a temporada
+ * INTEIRA, e isso e comportamento a preservar — nao ha teto de linhas a impor.
+ * O que os testes dela travam e o inverso: que a lista continua COMPLETA depois
+ * de a consulta ter mudado de lugar (saiu de um `select` aninhado e virou uma
+ * consulta propria, para viajar em paralelo com o trailer e o SEO). Uma
+ * "otimizacao" que encolhesse a lista seria uma regressao de produto, e e
+ * exatamente isso que o teste (2) recusa.
  *
  * ============================================================================
  * COMO ESTE ARQUIVO MEDE
  * ============================================================================
  * Um Prisma FALSO com uma temporada de 5.000 episodios. Ele e generoso de
  * proposito: se o codigo pedir a temporada inteira, ele DA a temporada inteira.
- * E o que faz o numero denunciar — com o defeito de volta, a contagem sobe de
- * dezenas para milhares e a asercao fica vermelha.
+ * Para o EPISODIO isso faz o numero denunciar — com o defeito de volta, a
+ * contagem sobe de dezenas para milhares. Para a TEMPORADA e o contrario: a
+ * generosidade e o que permite verificar que as 5.000 chegam mesmo a tela.
  *
  * Os testes (1) sao CONTROLE NEGATIVO e nao sao decoracao: sem provar que o
  * fake devolve 5.000 quando ninguem limita, "poucas linhas" seria
  * indistinguivel de "o fake nunca devolveu nada", e o arquivo inteiro passaria
  * vazio — verde pelo motivo errado.
  *
- * O que este arquivo NAO mede: tempo. Linha lida nao e milissegundo, e o
- * numero aqui nao promete velocidade — promete que a consulta parou de crescer
- * com o tamanho da temporada.
+ * O que este arquivo NAO mede: tempo. Linha lida nao e milissegundo, e o numero
+ * aqui nao promete velocidade — promete, para o EPISODIO, que a consulta parou
+ * de crescer com o tamanho da temporada; e, para a TEMPORADA, que a lista
+ * continua completa.
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
-import { EPISODES_PER_PAGE } from "../../lib/season-episode-presenter";
 
 /**
  * Tamanho da temporada falsa. 5.000 e deliberadamente absurdo para uma
@@ -59,14 +63,6 @@ const SEASON_SIZE = 5_000;
  * mesmo assim fica duas ordens de grandeza abaixo de `SEASON_SIZE`.
  */
 const EPISODE_ROW_BUDGET = 200;
-
-/**
- * Teto de linhas para desenhar UMA pagina da ficha de temporada.
- *
- * Uma fatia de `EPISODES_PER_PAGE` mais a lista de numeros de temporada mais
- * meia duzia de linhas de cabecalho. Nao pode depender de `SEASON_SIZE`.
- */
-const SEASON_ROW_BUDGET = EPISODES_PER_PAGE + 150;
 
 let rowsReturned = 0;
 let heaviest: Array<{ what: string; rows: number }> = [];
@@ -354,87 +350,45 @@ describe(`ficha de temporada (temporada falsa de ${SEASON_SIZE})`, () => {
     expect(rowsReturned).toBe(SEASON_SIZE);
   });
 
-  it("(2) a primeira pagina le UMA FATIA, nao a temporada", async () => {
+  it("(2) a temporada INTEIRA continua na tela", async () => {
+    // O guard do comportamento preservado. A consulta dos episodios mudou de
+    // lugar (saiu do `select` aninhado, virou consulta propria em paralelo com
+    // trailer e SEO) e NAO pode ter mudado de tamanho: 5.000 entram, 5.000
+    // saem, na mesma ordem. Qualquer `take` reintroduzido aqui reprova.
     const data = await getSeasonPageData("serie-diaria", 1);
     expect(data, "a pagina precisa carregar para a medicao valer").not.toBeNull();
-    expect(data?.view.episodes.length).toBe(EPISODES_PER_PAGE);
-    expect(rowsReturned, `maiores: ${topOffenders()}`).toBeLessThanOrEqual(SEASON_ROW_BUDGET);
-  });
-
-  it("(3) o total vem do COUNT, nao do tamanho da fatia", async () => {
-    // Sem isto, a temporada de 5.000 episodios se apresentaria como tendo 50 e
-    // a navegacao sumiria — o mesmo cuidado que a listagem de filmes ja toma.
-    const data = await getSeasonPageData("serie-diaria", 1);
-    expect(data?.view.pagination.totalEpisodes).toBe(SEASON_SIZE);
-    expect(data?.view.pagination.pageCount).toBe(SEASON_SIZE / EPISODES_PER_PAGE);
-    expect(data?.view.pagination.hasPages).toBe(true);
-  });
-
-  it("(4) a primeira pagina nao tem 'anterior'; a URL dela NAO leva query", async () => {
-    const data = await getSeasonPageData("serie-diaria", 1);
-    expect(data?.view.pagination.page).toBe(1);
-    expect(data?.view.pagination.prevHref).toBeNull();
-    expect(data?.view.pagination.nextHref).toBe(
-      "/pt/series/serie-diaria/temporadas/1/?pagina=2",
-    );
-  });
-
-  it("(5) a pagina seguinte traz a fatia seguinte e sabe VOLTAR", async () => {
-    const data = await getSeasonPageData("serie-diaria", 1, 2);
-    expect(data?.view.episodes[0]?.episodeNumber).toBe(EPISODES_PER_PAGE + 1);
-    expect(data?.view.episodes.at(-1)?.episodeNumber).toBe(EPISODES_PER_PAGE * 2);
-    // A volta para a pagina 1 e a URL canonica LIMPA, nao `?pagina=1`.
-    expect(data?.view.pagination.prevHref).toBe("/pt/series/serie-diaria/temporadas/1/");
-    expect(data?.view.pagination.nextHref).toBe(
-      "/pt/series/serie-diaria/temporadas/1/?pagina=3",
-    );
-  });
-
-  it("(6) a ULTIMA pagina nao oferece 'proxima'", async () => {
-    const ultima = SEASON_SIZE / EPISODES_PER_PAGE;
-    const data = await getSeasonPageData("serie-diaria", 1, ultima);
-    expect(data?.view.pagination.page).toBe(ultima);
-    expect(data?.view.pagination.nextHref).toBeNull();
+    expect(data?.view.episodes.length).toBe(SEASON_SIZE);
+    expect(data?.view.episodes[0]?.episodeNumber).toBe(1);
     expect(data?.view.episodes.at(-1)?.episodeNumber).toBe(SEASON_SIZE);
   });
 
-  it("(7) pagina fora da faixa e 404, nao pagina vazia com 200", async () => {
-    // Um rastreador tem apetite infinito para query que sempre responde 200.
-    expect(await getSeasonPageData("serie-diaria", 1, 99_999)).toBeNull();
+  it("(3) a ordem e por numero de episodio, crescente", async () => {
+    const data = await getSeasonPageData("serie-diaria", 1);
+    const numeros = data?.view.episodes.map((e) => e.episodeNumber) ?? [];
+    expect(numeros).toEqual([...numeros].sort((a, b) => a - b));
   });
 
-  it("(8) o custo NAO cresce com o tamanho da temporada", async () => {
-    reset();
-    await getSeasonPageData("serie-diaria", 1);
-    const grande = rowsReturned;
-
-    EPISODE_NUMBERS = Array.from({ length: 12 }, (_u, i) => i + 1);
-    reset();
-    await getSeasonPageData("serie-diaria", 1);
-    const pequena = rowsReturned;
-
-    // A temporada de 5.000 pode custar no maximo uma fatia a mais que a de 12.
-    expect(grande - pequena).toBeLessThanOrEqual(EPISODES_PER_PAGE);
-  });
-
-  it("(9) temporada CURTA nao ganha navegacao nenhuma na tela", async () => {
-    // A paginacao tem de ser invisivel no caso normal: 12 episodios cabem numa
-    // pagina, e a tela fica exatamente como estava.
+  it("(4) temporada CURTA aparece inteira, sem sobra", async () => {
     EPISODE_NUMBERS = Array.from({ length: 12 }, (_u, i) => i + 1);
     const data = await getSeasonPageData("serie-diaria", 1);
     expect(data?.view.episodes.length).toBe(12);
-    expect(data?.view.pagination.hasPages).toBe(false);
-    expect(data?.view.pagination.pageCount).toBe(1);
-    expect(data?.view.pagination.rangeLabel).toBeNull();
-    expect(data?.view.pagination.prevHref).toBeNull();
-    expect(data?.view.pagination.nextHref).toBeNull();
   });
 
-  it("(10) temporada VAZIA continua carregando na pagina 1", async () => {
+  it("(5) temporada VAZIA continua sendo uma pagina valida", async () => {
     EPISODE_NUMBERS = [];
     const data = await getSeasonPageData("serie-diaria", 1);
     expect(data, "temporada sem episodio ainda e uma pagina valida").not.toBeNull();
     expect(data?.view.episodes).toEqual([]);
-    expect(data?.view.pagination.hasPages).toBe(false);
+  });
+
+  it("(6) a lista nao vem mais do `select` aninhado da temporada", async () => {
+    // A consulta migrou para poder viajar em paralelo. Se alguem a devolver
+    // para dentro de `season.findFirst`, o custo aparece rotulado como
+    // `season.findFirst>episodes` — e o paralelismo se perde em silencio.
+    reset();
+    await getSeasonPageData("serie-diaria", 1);
+    const aninhada = heaviest.find((h) => h.what === "season.findFirst>episodes");
+    expect(aninhada, "a lista voltou para dentro do select da temporada").toBeUndefined();
+    expect(heaviest.some((h) => h.what === "episode.findMany" && h.rows === SEASON_SIZE)).toBe(true);
   });
 });
