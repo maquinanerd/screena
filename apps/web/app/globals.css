@@ -1013,6 +1013,15 @@ body:has(.art-hero[data-hero-media='true']) .site-header__spacer {
   height: 13px;
   width: auto;
   max-width: 100%;
+  /* NAO ESTICAR. `.footer__credit` e um flex COLUNA: o padrao `align-items:
+     stretch` faz o <img> (item flex) tomar a largura do TEXTO do credito ao
+     lado, e `object-fit: fill` deforma a arte. Medido em 2026-09-11, antes
+     desta linha: o wordmark do TMDB saiu com 489 px e o do IMDb com 149 px,
+     achatados. Marca de terceiro distorcida e violacao, nao ajuste de layout.
+     `object-fit` e a segunda linha de defesa: se algum contexto futuro fixar a
+     largura, a arte encolhe em vez de deformar. */
+  align-self: flex-start;
+  object-fit: contain;
   /* PLACA CLARA: o rodape e escuro e ha marcas de fonte com texto preto (a
      palavra-marca do Metacritic sumiria). A cor da marca NUNCA e alterada:
      quem se adapta e o fundo. `content-box` mantem os 13 px na ARTE. */

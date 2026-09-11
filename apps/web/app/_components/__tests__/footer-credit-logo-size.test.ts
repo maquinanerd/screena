@@ -57,6 +57,21 @@ describe("marca da fonte no rodape: tamanho travado por CSS", () => {
     expect(creditLogoRule()!).toMatch(/width:\s*auto/);
   });
 
+  it("`width: auto` NAO basta: o item flex nao pode esticar na coluna do credito", () => {
+    // Medido em 2026-09-11 com tres marcas no ar: `.footer__credit` e um flex
+    // COLUNA e o padrao `align-items: stretch` deu ao <img> a largura do TEXTO
+    // do credito — 489 px no TMDB, 149 px no IMDb —, e `object-fit: fill`
+    // achatou a arte. `width: auto` sozinho nao impede isso: num item flex
+    // esticado, "auto" É a largura da coluna.
+    const rule = creditLogoRule()!;
+    expect(rule, "sem align-self, o logo estica ate a largura do credito").toMatch(
+      /align-self:\s*(flex-)?start/,
+    );
+    expect(rule, "sem object-fit: contain, largura fixa deforma a marca").toMatch(
+      /object-fit:\s*contain/,
+    );
+  });
+
   it("o reset global que causou o defeito continua la (senao este teste protegeria nada)", () => {
     // CONTROLE POSITIVO: se alguem remover `img { height: auto }`, a premissa
     // deste arquivo muda e o comentario acima passa a mentir.
