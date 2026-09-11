@@ -46,8 +46,13 @@ export type HomeTickerEntityType = "movie" | "tv";
  * `TickerProvider` é um deles.
  */
 export interface TickerProvider {
-  /** Nome do provedor como licenciado (texto; nunca logo). */
+  /** Nome do provedor como licenciado — sempre escrito, com ou sem logo. */
   name: string;
+  /**
+   * Logo da plataforma declarado pela licença do provedor
+   * (`publicWatchProviderLogo`); `null` = só o nome.
+   */
+  logo: { readonly src: string; readonly heightPx: number; readonly widthPx: number | null } | null;
   /** `watch_availability.provider_key` — chave estável. */
   key: string;
   /**

@@ -40,6 +40,7 @@
 
 import {
   publicSourceCredits,
+  publicTrademarkNotices,
   tmdbNonEndorsementDisclaimer,
   type PublicSourceCredit,
 } from "@screena/legal/public-credits";
@@ -164,3 +165,10 @@ export const DATA_CREDITS: readonly PublicSourceCredit[] = publicSourceCredits()
  * Exigência dos termos da API: não pode ser parafraseado nem omitido.
  */
 export const TMDB_DISCLAIMER: string = tmdbNonEndorsementDisclaimer();
+
+/**
+ * Condições de marca das fontes cujo logo está no ar (ex.: a declaração de marca
+ * registrada que o IMDb exige). Derivadas da licença — o rodapé as imprime em
+ * toda página, o que satisfaz a condição onde quer que a marca apareça.
+ */
+export const TRADEMARK_NOTICES: readonly string[] = publicTrademarkNotices();

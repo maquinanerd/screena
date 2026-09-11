@@ -25,11 +25,22 @@
  * Provedor sem `brand` declarada aparece SOZINHO, com o proprio nome, como
  * sempre apareceu. Agrupar e opt-in; nao existe `else`.
  *
+ * ============ O LOGO DA MARCA (2026-09-11) ============
+ *
+ * Cada marca carrega o logo da rota MAIS DIRETA que tiver arquivo presente
+ * (a mesma ordem das rotas: assinatura direta, plano, canal). O arquivo e o
+ * que a licenca do provedor declara — `publicWatchProviderLogo` le a mesma
+ * funcao que gera a licenca. Nenhum caminho de logo e montado aqui.
+ *
  * Sem rede, sem DB, sem `Date`: recebe provedores, devolve marcas.
  */
 
 import { findWatchBrand, watchRouteLabel } from "@screena/public-contracts";
 import type { WatchBrandDeclaration } from "@screena/public-contracts";
+import {
+  publicWatchProviderLogo,
+  type PublicCreditLogo,
+} from "@screena/legal/public-credits";
 
 /** Um provedor canonico do hub, com os titulos que ele carrega. */
 export interface BrowseProviderInput<T> {
@@ -60,6 +71,8 @@ export interface WatchBrowseBrand<T> {
   readonly name: string;
   /** `true` quando veio de declaracao; `false` = provedor sozinho, nome cru. */
   readonly declared: boolean;
+  /** Logo da rota mais direta com arquivo presente; `null` = so o nome. */
+  readonly logo: PublicCreditLogo | null;
   readonly routes: readonly BrowseBrandRoute[];
   readonly titles: readonly T[];
 }
@@ -143,10 +156,19 @@ export function groupBrowseProvidersByBrand<T>(
       }
     }
 
+    // O logo da rota mais DIRETA que tiver arquivo (as rotas ja estao em ordem
+    // de esforco do leitor). O `alt` e o nome da MARCA, que e o que a tela diz.
+    let logo: PublicCreditLogo | null = null;
+    for (const entry of entries) {
+      logo = publicWatchProviderLogo(entry.provider.providerSlug, draft.name);
+      if (logo !== null) break;
+    }
+
     brands.push({
       key: draft.key,
       name: draft.name,
       declared: draft.declared,
+      logo,
       routes: entries.map((entry) => ({
         providerSlug: entry.provider.providerSlug,
         providerName: entry.provider.providerName,

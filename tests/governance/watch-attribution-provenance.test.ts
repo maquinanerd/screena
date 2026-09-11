@@ -84,10 +84,14 @@ describe('proveniencia: uma licenca de streaming POR FORNECEDOR TECNICO', () => 
       // registro grava exatamente essa base — nunca "a fonte permitiu". O
       // arquivo entra pendente: sem ele no repositorio, o painel usa a
       // palavra-marca e nada de grafico vai ao ar.
+      // Os arquivos ENTRARAM em 2026-09-11 (ordem expressa do proprietario):
+      // PNG da entrega licenciada do TMDB — formato MEDIDO na entrega, nao o
+      // `svg` que a leva anterior presumia sem medir.
       expect(entry.license.logoAllowed).toBe(true)
       expect(entry.license.logoBasis).toBe('owner_decision')
-      expect(entry.license.logoAsset?.status).toBe('pending_official_file')
-      expect(entry.license.logoAsset?.path).toBe(`/brand/providers/${entry.license.sourceKey}.svg`)
+      expect(entry.license.logoAsset?.status).toBe('present')
+      expect(entry.license.logoAsset?.format).toBe('png')
+      expect(entry.license.logoAsset?.path).toBe(`/brand/providers/${entry.license.sourceKey}.png`)
       expect(entry.license.reviewQuoteAllowed).toBe(false)
       // Nenhuma leva nova foi inventada: as duas origens pertencem ao lote vigente.
       expect(entry.license.policyVersion).toBe(AUTHORIZATION_BATCH)

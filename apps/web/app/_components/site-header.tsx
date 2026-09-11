@@ -13,9 +13,11 @@
  *    este componente), e a volta ao solido e MEDIDA no layout — acontece quando
  *    o primeiro texto do hero encosta na barra, nao num limiar fixo de 24px.
  *    Materia sem capa nunca entra nesse estado;
- *  - logo por contexto: sublinhado vermelho em /pt/filmes, verde em
- *    /pt/series, neutro no resto (o contexto NUNCA e so a cor: a rota, o
- *    breadcrumb e os labels continuam carregando o sinal — invariante 11);
+ *  - marca POR AREA (artes entregues pelo proprietario em 2026-09-11, ver
+ *    `src/lib/brand-logos.ts`): "cinerie" na home e nas telas neutras,
+ *    "cinerie /cinema" em /pt/filmes, "cinerie /serie e tv" em /pt/series e
+ *    "cinerie /news" em /pt/noticias. O contexto NUNCA e so a marca: a rota, o
+ *    breadcrumb e os labels continuam carregando o sinal — invariante 11;
  *  - paginas sem hero recebem um spacer de 72px (o `{{ showSpacer }}` do
  *    canonico) para o conteudo nao nascer embaixo da barra.
  *
@@ -25,8 +27,14 @@
 
 import { usePathname } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 
+import {
+  brandAreaOf,
+  brandLogoScale,
+  CINERIE_AREA_LOGOS,
+  type BrandLogoFile,
+} from '../../src/lib/brand-logos'
 import {
   HOME_HREF,
   isActiveNavigationPath,
@@ -62,24 +70,14 @@ const ARTICLE_HERO_SELECTOR = '.art-hero[data-hero-media="true"]'
 /** Altura da barra fixa (`--nav-height`), em px. */
 const NAV_HEIGHT_PX = 72
 
-type LogoContext = 'movie' | 'series' | 'neutral'
-
-function logoContextOf(pathname: string | null): LogoContext {
-  if (pathname === null) return 'neutral'
-  if (pathname.startsWith('/pt/filmes')) return 'movie'
-  if (pathname.startsWith('/pt/series')) return 'series'
-  return 'neutral'
+/**
+ * A arte escala pela altura da PALAVRA "cinérie" (`--brand-word-h`, no CSS):
+ * as artes de área são mais altas que a marca-mãe só por causa da barra "/",
+ * e sem o fator a palavra encolheria ao trocar de seção. Ver `brand-logos.ts`.
+ */
+function logoStyle(file: BrandLogoFile): CSSProperties {
+  return { '--logo-scale': brandLogoScale(file) } as CSSProperties
 }
-
-/** Wordmark para barra SÓLIDA (fundo claro), com o sublinhado do contexto. */
-function solidLogoSrc(context: LogoContext): string {
-  if (context === 'movie') return '/brand/cinerie-wordmark-black-cinema.svg'
-  if (context === 'series') return '/brand/cinerie-wordmark-black-serie.svg'
-  return '/brand/cinerie-wordmark-black.svg'
-}
-
-/** Wordmark para barra TRANSPARENTE (sobre imagem escurecida). */
-const INVERSE_LOGO_SRC = '/brand/cinerie-wordmark-white.svg'
 
 export function SiteHeader(): ReactNode {
   const pathname = usePathname()
@@ -159,8 +157,9 @@ export function SiteHeader(): ReactNode {
   }, [pathname])
 
   const overlay = heroRoute && hasHero && !scrolled
-  const context = logoContextOf(pathname)
-  const inNews = pathname !== null && pathname.startsWith('/pt/noticias')
+  // O contexto (e com ele a marca da area) vem SO do pathname.
+  const context = brandAreaOf(pathname)
+  const logos = CINERIE_AREA_LOGOS[context]
 
   return (
     <>
@@ -172,29 +171,36 @@ export function SiteHeader(): ReactNode {
       >
         <div className="site-header__inner">
           <a className="site-header__brand" href={HOME_HREF} aria-label="Cinerie — início">
-            {/* Wordmark aprovada do handoff (uploads/5a–5j); alt vazio: o
-                aria-label do link ja nomeia.
+            {/* Marca da AREA (src/lib/brand-logos.ts); alt vazio: o aria-label
+                do link ja nomeia.
 
                 As DUAS versoes vao no HTML e quem escolhe e o CSS. Trocar o
-                `src` em JS custaria um quadro com a wordmark preta sobre a capa
+                `src` em JS custaria um quadro com a marca preta sobre a capa
                 escura da materia, porque a decisao de transparencia da materia
                 nasce do proprio HTML e nao espera hidratacao. Apenas uma esta
-                visivel; a outra e `display:none`. */}
+                visivel; a outra e `display:none`.
+
+                `width`/`height` sao as dimensoes INTRINSECAS do arquivo: dao a
+                proporcao ao navegador antes do download (sem salto de layout);
+                o tamanho exibido e do CSS. */}
             <img
               alt=""
               className="site-header__logo site-header__logo--solid"
-              height={30}
-              src={solidLogoSrc(context)}
-              width={97}
+              data-logo-area={context}
+              height={logos.solid.height}
+              src={logos.solid.src}
+              style={logoStyle(logos.solid)}
+              width={logos.solid.width}
             />
             <img
               alt=""
               className="site-header__logo site-header__logo--inverse"
-              height={30}
-              src={INVERSE_LOGO_SRC}
-              width={97}
+              data-logo-area={context}
+              height={logos.inverse.height}
+              src={logos.inverse.src}
+              style={logoStyle(logos.inverse)}
+              width={logos.inverse.width}
             />
-            {inNews ? <span aria-hidden="true" className="site-header__news">NEWS</span> : null}
           </a>
 
           <nav aria-label="Principal" className="site-header__nav">

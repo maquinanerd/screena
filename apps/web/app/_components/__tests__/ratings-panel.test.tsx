@@ -268,18 +268,80 @@ describe("fileira dirigida por dado: 0, 1, 2, 3 e 4 fontes", () => {
   });
 });
 
-describe("licenca: a marca grafica da fonte NAO vai ao ar (logo_allowed = false)", () => {
-  it("o slot da marca e o nome em texto — sem svg, sem img, sem cor de marca", () => {
-    const chip = chipSlices(markupOf([IMDB]))[0]!;
+/**
+ * REESCRITO em 2026-09-11. Este bloco se chamava "a marca grafica da fonte NAO
+ * vai ao ar (logo_allowed = false)" e exigia o slot em texto.
+ *
+ * Ordem expressa do proprietario (2026-09-11): "inclua OBRIGATORIAMENTE AS
+ * LOGOS ... dos sites de notas". A permissao ja existia desde 2026-08-20; o que
+ * mudou foi o ARQUIVO entrar no repositorio. A regra que o bloco defendia NAO
+ * caiu — ela ficou mais precisa:
+ *  - a marca so vem do ARQUIVO que a licenca declara (`/brand/sources/`), nunca
+ *    desenhada: `<svg>` e as cores de marca literais seguem proibidos;
+ *  - fonte sem arquivo presente (Rotten Tomatoes) continua em texto;
+ *  - o icone de ESTADO so aparece quando o valor esta na faixa dele.
+ */
+describe("licenca: a marca da fonte vem do ARQUIVO declarado — nunca desenhada", () => {
+  it("IMDb e Metacritic: o slot e a imagem da licenca, com o nome no alt", () => {
+    const chips = chipSlices(markupOf([IMDB, METACRITIC]));
+    const imdb = chips.find((c) => c.includes('data-rating-source="imdb"'))!;
+    const mc = chips.find((c) => c.includes('data-rating-source="metacritic"'))!;
 
-    expect(chip).toContain('class="rating-chip__mark"');
-    expect(chip).toContain(">IMDb<");
-    expect(chip).not.toContain("<svg");
-    expect(chip).not.toContain("<img");
+    expect(imdb).toContain('src="/brand/sources/imdb.webp"');
+    expect(imdb).toContain('alt="IMDb"');
+    expect(mc).toContain('src="/brand/sources/metacritic.webp"');
+    expect(mc).toContain('alt="Metacritic"');
+  });
+
+  it("nenhuma marca e DESENHADA: sem svg e sem as cores de marca do canonico", () => {
+    const markup = markupOf([IMDB, ROTTEN_TOMATOES, METACRITIC]);
+    expect(markup).not.toContain("<svg");
     // As cores de marca do canonico (amarelo IMDb, tomate RT, azul TMDB).
-    expect(chip).not.toContain("#F5C518");
-    expect(chip).not.toContain("#FA320A");
-    expect(chip).not.toContain("#01B4E4");
+    expect(markup).not.toContain("#F5C518");
+    expect(markup).not.toContain("#FA320A");
+    expect(markup).not.toContain("#01B4E4");
+    // Toda imagem da fileira sai de /brand/sources/ — arquivo declarado.
+    const srcs = [...markup.matchAll(/<img[^>]*src="([^"]+)"/g)].map((m) => m[1]);
+    expect(srcs.length).toBeGreaterThan(0);
+    for (const src of srcs) expect(src).toMatch(/^\/brand\/sources\//);
+  });
+
+  it("Rotten Tomatoes SEM palavra-marca no repositorio: o slot fica em texto", () => {
+    const rt = chipSlices(markupOf([ROTTEN_TOMATOES]))[0]!;
+    expect(rt).toContain('class="rating-chip__mark"');
+    expect(rt).toContain(">Rotten Tomatoes<");
+  });
+
+  it("tomate Fresh SO com Tomatometer >= 60%, a esquerda do numero", () => {
+    const fresh = chipSlices(markupOf([ROTTEN_TOMATOES]))[0]!; // 85
+    expect(fresh).toContain('src="/brand/sources/rotten-tomatoes-fresh.webp"');
+    expect(fresh).toContain('alt="Fresh"');
+    // A esquerda do numero: o icone vem ANTES do valor dentro do bloco da nota.
+    const score = fresh.slice(fresh.indexOf('class="rating-chip__score"'));
+    expect(score.indexOf("rotten-tomatoes-fresh")).toBeLessThan(score.indexOf(">85<"));
+
+    const rotten = chipSlices(markupOf([{ ...ROTTEN_TOMATOES, value: 45 }]))[0]!;
+    expect(rotten).toContain(">45<");
+    expect(rotten).not.toContain("rotten-tomatoes-fresh");
+    // Sem o arquivo Rotten Splat, nenhum icone — nunca o tomate no lugar dele.
+    expect(rotten).not.toContain("rating-chip__state");
+  });
+
+  it("limite da faixa: 60 e Fresh, 59 nao e", () => {
+    expect(chipSlices(markupOf([{ ...ROTTEN_TOMATOES, value: 60 }]))[0]!).toContain(
+      "rotten-tomatoes-fresh",
+    );
+    expect(chipSlices(markupOf([{ ...ROTTEN_TOMATOES, value: 59 }]))[0]!).not.toContain(
+      "rotten-tomatoes-fresh",
+    );
+  });
+
+  it("o tomate e do Tomatometer: nota de outra fonte nunca ganha icone de estado", () => {
+    // Metacritic 67 esta "acima de 60" na leitura ingenua; o tomate pertence SO
+    // ao Tomatometer do Rotten Tomatoes (invariante 1).
+    const markup = markupOf([IMDB, METACRITIC]);
+    expect(markup).not.toContain("rotten-tomatoes-fresh");
+    expect(markup).not.toContain("rating-chip__state");
   });
 });
 

@@ -33,6 +33,10 @@
  */
 
 import {
+  publicWatchProviderLogo,
+  type PublicCreditLogo,
+} from "@screena/legal/public-credits";
+import {
   findWatchBrand,
   watchRouteLabel,
   type WatchBrandDeclaration,
@@ -157,6 +161,12 @@ export type WatchDestinationKind =
 export interface WatchAvailabilityOffer {
   providerName: string;
   providerKey: string;
+  /**
+   * `watch_providers.slug` do provedor canonico (`null` sem alias). Identidade
+   * da PLATAFORMA — e por ela que a marca e o logo sao resolvidos, nunca pelo
+   * nome que o fornecedor escreveu.
+   */
+  providerSlug: string | null;
   offerType: WatchAvailabilityOfferType;
   /** URL http/https de destino legal (renderizada com rel nofollow sponsored). */
   destinationUrl: string;
@@ -207,6 +217,11 @@ export interface WatchAvailabilityBrand {
    * `false` = provedor sem marca declarada, exibido sozinho como sempre foi.
    */
   declared: boolean;
+  /**
+   * O LOGO da marca: o arquivo que a licenca da rota mais direta declara
+   * (`publicWatchProviderLogo`). `null` = so o nome (provedor sem arquivo).
+   */
+  logo: PublicCreditLogo | null;
   routes: WatchAvailabilityRoute[];
 }
 
@@ -443,10 +458,18 @@ function groupByDeclaredBrand(
     // `aloneInBrand` decide se a rota DIRETA ganha rotulo: sozinha, "Netflix ·
     // direto" e ruido; ao lado de "plano Premium", "direto" e o que distingue.
     const aloneInBrand = entries.length === 1;
+    // O logo da rota mais DIRETA que tiver arquivo (as rotas ja estao em ordem
+    // de esforco do leitor). O `alt` e o nome da MARCA, que e o que a tela diz.
+    let logo: PublicCreditLogo | null = null;
+    for (const entry of entries) {
+      logo = publicWatchProviderLogo(entry.offer.providerSlug, draft.name);
+      if (logo !== null) break;
+    }
     brands.push({
       key: draft.key,
       name: draft.name,
       declared: draft.declared,
+      logo,
       routes: entries.map((entry) => ({
         label: watchRouteLabel(entry.declaration, { aloneInBrand }),
         offer: entry.offer,
@@ -553,6 +576,7 @@ export function buildWatchAvailabilityView(
       offer: {
         providerName,
         providerKey,
+        providerSlug: trimToNull(row.providerSlug),
         offerType,
         destinationUrl,
         destinationKind,

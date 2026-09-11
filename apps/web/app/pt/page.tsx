@@ -15,6 +15,7 @@ import { excludeEditorialHighlights } from '../../src/lib/home-editorial-present
 import { hasEnoughUpcoming } from '../../src/lib/home-upcoming-presenter'
 import { RANKING_TABS } from '../../src/lib/popular-rankings'
 import { getPopularRankings } from '../../src/server/popular-rankings'
+import { CINERIE_ORGANIZATION_LOGO } from '../../src/lib/brand-logos'
 import { HOME_PATH, SITE_URL, canonicalPublicUrl, publicRobots } from '../../src/lib/site'
 import { getHomeCatalogData } from '../../src/server/home-catalog'
 import { getHomeEditorialHighlights } from '../../src/server/home-editorial'
@@ -79,7 +80,15 @@ const HOME_ORGANIZATION_JSONLD = {
   '@type': 'Organization',
   name: 'Cinerie',
   url: `${SITE_URL}/pt/`,
-  logo: `${SITE_URL}/brand/cinerie-logo-black.svg`,
+  // A marca-mãe em PNG (672x163, entregue em 2026-09-11): raster e acima dos
+  // 112 px mínimos que o Google pede para logo de Organization. O SVG anterior
+  // era texto com fonte não embutida, 78 px de altura.
+  logo: {
+    '@type': 'ImageObject',
+    url: `${SITE_URL}${CINERIE_ORGANIZATION_LOGO.src}`,
+    width: CINERIE_ORGANIZATION_LOGO.width,
+    height: CINERIE_ORGANIZATION_LOGO.height,
+  },
 }
 
 const HOME_WEBSITE_JSONLD = {

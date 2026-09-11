@@ -151,6 +151,39 @@ export const OWNER_DECISION_2026_08_28 = {
 } as const;
 
 /**
+ * ============ A ORDEM DO PROPRIETÁRIO — 11/09/2026 ============
+ *
+ * QUEM DECIDIU: Pablo Eduardo, proprietário da Cinerie, por escrito, em
+ * 11/09/2026, reenviando os arquivos de marca:
+ *
+ *   "substitua as logos, para cada area do site, e inclua OBRIGATORIAMENTE AS
+ *    LOGOS dos serviços de stream e dos sites de notas. ação obrigatória."
+ *
+ * O QUE ISTO MUDA: nenhuma permissão nova — `logo_allowed` já era `true` para
+ * as fontes de nota exibíveis e para os provedores desde 20/08/2026. O que
+ * faltava eram os ARQUIVOS, e eles entraram: IMDb e Metacritic (palavra-marca,
+ * bytes do proprietário), o tomate Fresh (como ÍCONE DE ESTADO, nunca como
+ * logotipo — ver `RATING_STATE_ICONS`) e um logo por provedor registrado
+ * (entrega licenciada do TMDB — ver `PROVIDER_LOGO_FILES`).
+ *
+ * O QUE NÃO MUDA: `licenseMatches` não compara o asset, então nenhuma licença é
+ * supersedida e nenhum `legal sources apply` é necessário para isto ir ao ar.
+ * O crédito textual continua no rodapé; IMDb ≠ Rotten Tomatoes; o ícone de
+ * estado só sai quando o VALOR está na faixa dele.
+ *
+ * Documento canônico: docs/legal/owner-authorization-2026-08-20.md (adendo de
+ * 11/09/2026).
+ * ================================================================
+ */
+export const OWNER_ORDER_2026_09_11 = {
+  decidedBy: DECIDED_BY,
+  decidedOn: "2026-09-11",
+  quote:
+    "substitua as logos, para cada area do site, e inclua OBRIGATORIAMENTE AS LOGOS dos " +
+    "servicos de stream e dos sites de notas. acao obrigatoria.",
+} as const;
+
+/**
  * A nota gravada em `source_licenses.notes` das duas licenças de mídia, dizendo
  * que a linha NASCE no estado que a licença autoriza.
  *
@@ -273,6 +306,17 @@ export interface LicenseLogoAsset {
    * `tests/governance/brand-asset-format.test.ts`. Ver {@link BrandAssetFormat}.
    */
   readonly format: BrandAssetFormat;
+  /**
+   * Dimensoes INTRINSECAS do arquivo: px para raster, `viewBox` para SVG.
+   * `null` enquanto o arquivo nao esta no repositorio.
+   *
+   * Existe para o render reservar a LARGURA antes de a imagem chegar. A altura
+   * de exibicao e declarada (`displayHeightPx`); so a proporcao do arquivo diz
+   * a largura. Sem ela, um logo que chega depois empurra os vizinhos da fileira
+   * (salto de layout — CLS, metrica de Core Web Vitals). Conferido contra os
+   * bytes por `tests/governance/brand-asset-format.test.ts`.
+   */
+  readonly intrinsicSize: { readonly width: number; readonly height: number } | null;
   /**
    * O que a imagem E. Ver {@link BrandAssetKind}.
    *
@@ -438,6 +482,8 @@ export const TMDB_LOGO_ASSET: LicenseLogoAsset = {
   // Vetor de verdade: o arquivo comeca com `<svg xmlns="http`. Conferido por
   // `tests/governance/brand-asset-format.test.ts`, que le o cabecalho.
   format: "svg",
+  // O `viewBox` do arquivo oficial (489.04 x 35.4 — 13,8:1).
+  intrinsicSize: { width: 489.04, height: 35.4 },
   kind: "wordmark",
   // O disclaimer de nao-endosso ja e `attributionText` da licenca e sai no
   // rodape ao lado do logo; os termos do TMDB pedem os DOIS.
@@ -471,8 +517,9 @@ const LOGO_RATIONALE_BY_RATING_SOURCE: Readonly<Record<string, string>> = {
     "Design Toolkit em brand.imdb.com/imdb (logos, tipografia, cores) e as diretrizes pedem " +
     "o statement \"IMDb, IMDb.COM, and the IMDb logo are trademarks of IMDb.com, Inc. or its " +
     "affiliates\" junto ao uso, logo isolado e com clear space; usos fora das guidelines " +
-    "passam por trademarks@amazon.com. Arquivo pendente no repositorio " +
-    "(pending_official_file); ate ele entrar, a coluna usa a palavra-marca na mesma caixa. " +
+    "passam por trademarks@amazon.com. Arquivo NO REPOSITORIO desde 2026-09-11 " +
+    "(/brand/sources/imdb.webp, entregue pelo proprietario com ordem expressa de publicar); " +
+    "o statement de marca sai no rodape de toda pagina (publicTrademarkNotices). " +
     "Credito textual permanece: \"Nota fornecida por IMDb\".",
   rotten_tomatoes:
     "Logo por decisao do proprietario (2026-08-20). Regime do titular: os assets oficiais " +
@@ -481,14 +528,17 @@ const LOGO_RATIONALE_BY_RATING_SOURCE: Readonly<Record<string, string>> = {
     "Fresh/Hot Popcorn >= 60%, Rotten Splat/Stale Popcorn <= 59%, Certified Fresh >= 75%, " +
     "sempre a esquerda do numero e sem alteracao. PLACEMENT OBRIGATORIO quando o arquivo " +
     "entrar: o asset escolhido tem que respeitar a faixa da nota exibida; icone errado para " +
-    "a faixa e pior que nenhum. Ate o arquivo entrar (pending_official_file), palavra-marca " +
-    "na mesma caixa. Tomatometer e Popcornmeter pertencem SO ao Rotten Tomatoes (inv. 1).",
+    "a faixa e pior que nenhum. A PALAVRA-MARCA segue pendente (pending_official_file): o " +
+    "slot mostra o nome em texto. O ICONE Fresh entrou em 2026-09-11 como ICONE DE ESTADO " +
+    "(RATING_STATE_ICONS): so com Tomatometer >= 60%, a esquerda do numero; o Rotten Splat " +
+    "(<= 59%) segue pendente, e sem ele a nota podre sai sem icone. Tomatometer e " +
+    "Popcornmeter pertencem SO ao Rotten Tomatoes (inv. 1).",
   metacritic:
     "Logo por decisao do proprietario (2026-08-20). Regime do titular: nao ha brand kit " +
     "publico; as diretrizes de dados (Fabric/Origin, distribuidor oficial) preveem " +
     "\"Metascore with the Metacritic logo, wordmark and review count\" em site de terceiro, " +
-    "com assets entregues na parceria licenciada. Grafia: so o M maiusculo. Arquivo pendente " +
-    "(pending_official_file); ate entrar, palavra-marca na mesma caixa.",
+    "com assets entregues na parceria licenciada. Grafia: so o M maiusculo. Arquivo NO " +
+    "REPOSITORIO desde 2026-09-11 (/brand/sources/metacritic.webp, entregue pelo proprietario).",
   letterboxd:
     "Sem exibicao, logo sem marca: a EXIBICAO da fonte foi revogada em 2026-08-13 " +
     "(DISPLAY_REVOKED_SOURCES) e um logo para uma fonte que nao aparece seria afirmacao " +
@@ -508,23 +558,26 @@ const LOGO_RATIONALE_RATING_DEFAULT =
 /**
  * O arquivo oficial da marca de cada fonte de nota EXIBIVEL, por fonte.
  *
- * Todos `pending_official_file`: a licenca ja autoriza (decisao do dono), o
- * ARQUIVO ainda nao esta no repositorio. `officialSourceUrl` e onde o titular
- * publica/entrega o oficial (pesquisa de 2026-08-20). Quando o arquivo entrar
- * em `path` e o status virar `present`, o logo sobe sem tocar em componente.
+ * A licenca ja autorizava (decisao do dono, 2026-08-20); faltavam os ARQUIVOS.
+ * Em 2026-09-11 o proprietario reenviou os tres com ordem expressa de publicar
+ * ("inclua OBRIGATORIAMENTE AS LOGOS ... dos sites de notas"), e dois entraram
+ * como palavra-marca: IMDb e Metacritic (`present`). O terceiro nao e
+ * palavra-marca — ver o comentario do Rotten Tomatoes abaixo. `officialSourceUrl`
+ * e onde o titular publica/entrega o oficial (pesquisa de 2026-08-20).
  */
 const RATING_LOGO_ASSETS: Readonly<Record<string, LicenseLogoAsset>> = {
   imdb: {
-    // O arquivo que o dono baixou como `imdb.svg` e WEBP (cabecalho
-    // `RIFF....WEBPVP8L`, 960x484), nao SVG. Quando ele entrar no repositorio,
-    // entra como `.webp` e com `format: "webp"` — raster declarado como vetor e
-    // a mesma familia de defeito do `COLOR_TOKENS`, e
+    // O arquivo que o dono entregou como `imdb.svg` e WEBP (cabecalho
+    // `RIFF....WEBPVP8L`, 960x484), nao SVG. Entrou em 2026-09-11 como `.webp`,
+    // com os bytes do dono e `format: "webp"` — raster declarado como vetor e a
+    // mesma familia de defeito do `COLOR_TOKENS`, e
     // `tests/governance/brand-asset-format.test.ts` le o cabecalho para impedir.
     path: "/brand/sources/imdb.webp",
     officialSourceUrl: "https://brand.imdb.com/imdb",
     alt: "IMDb",
     displayHeightPx: 18,
     format: "webp",
+    intrinsicSize: { width: 960, height: 484 },
     kind: "wordmark",
     // CONDICAO DA FONTE, nao cortesia: o IMDb exige a declaracao de marca
     // registrada em QUALQUER material que exiba a marca. Condicao nao
@@ -533,7 +586,9 @@ const RATING_LOGO_ASSETS: Readonly<Record<string, LicenseLogoAsset>> = {
     displayConditions: [
       "IMDb, IMDb.COM, and the IMDb logo are trademarks of IMDb.com, Inc. or its affiliates.",
     ],
-    status: "pending_official_file",
+    // `present` desde 2026-09-11. A condicao acima e satisfeita pelo rodape
+    // global (`publicTrademarkNotices`), que esta em toda pagina que exibe o logo.
+    status: "present",
   },
   rotten_tomatoes: {
     // ========================================================================
@@ -549,28 +604,107 @@ const RATING_LOGO_ASSETS: Readonly<Record<string, LicenseLogoAsset>> = {
     //
     // O logotipo do Rotten Tomatoes e a PALAVRA-MARCA. Ate ela existir, a fonte
     // e creditada em texto — que e o estado atual e continua valido.
+    //
+    // 2026-09-11: o mesmo tomate foi reenviado com ordem expressa de publicar.
+    // Ele ENTROU — mas pelo unico lugar em que ele e verdadeiro: como ICONE DE
+    // ESTADO derivado do valor (`RATING_STATE_ICONS`), a esquerda do numero e
+    // so com Tomatometer >= 60%. Este slot de palavra-marca continua pendente.
     path: "/brand/sources/rotten-tomatoes.svg",
     officialSourceUrl: "https://www.rottentomatoes.com/help_desk/licensing",
     alt: "Rotten Tomatoes",
     displayHeightPx: 18,
     format: "svg",
+    intrinsicSize: null,
     kind: "wordmark",
     displayConditions: [],
     status: "pending_official_file",
   },
   metacritic: {
-    // Idem IMDb: o arquivo baixado e WEBP (250x57), nao SVG. Resolucao JUSTA —
-    // a 18px de altura ele serve, mas conferir se aguenta 2x antes de promover.
+    // Idem IMDb: o arquivo entregue e WEBP (250x57), nao SVG. Resolucao JUSTA,
+    // conferida antes de promover: a 18px de altura sao 57px de arquivo para 18
+    // de tela — 3,2x, o bastante para telas de densidade 3.
     path: "/brand/sources/metacritic.webp",
     officialSourceUrl: "https://knowledgebase.fabricdata.com/origin/apis-all/metacritic-api-docs",
     alt: "Metacritic",
     displayHeightPx: 18,
     format: "webp",
+    intrinsicSize: { width: 250, height: 57 },
     kind: "wordmark",
     displayConditions: [],
-    status: "pending_official_file",
+    // `present` desde 2026-09-11 (bytes do proprietario, sem recodificacao).
+    status: "present",
   },
 };
+
+/**
+ * ============ ICONES DE ESTADO — DERIVADOS DO VALOR (2026-09-11) ============
+ *
+ * Fresh, Rotten, Certified Fresh e Popcornmeter sao INDICADORES DE RESULTADO:
+ * cada um afirma um juizo sobre o titulo. Por isso nunca ocupam o slot de
+ * logotipo (`kind: "state_icon"` num `LicenseLogoAsset` e recusado por
+ * `brand-asset-format.test.ts`) e vivem AQUI, cada um com a FAIXA do valor em
+ * que e verdadeiro.
+ *
+ * O render so pede o icone passando o VALOR (`publicRatingStateIcon`): se o
+ * numero nao cai na faixa de nenhum icone presente, nao sai icone. Icone errado
+ * para a faixa e pior que nenhum — e o proprio titular que vincula o icone a
+ * faixa (Fresh >= 60%, Rotten <= 59%, sempre a esquerda do numero).
+ *
+ * Estado hoje: o tomate Fresh (entregue pelo proprietario em 2026-08-21 e
+ * reenviado em 2026-09-11 com ordem expressa de publicar) esta `present`; o
+ * Rotten Splat segue `pending_official_file` — sem ele, a nota podre sai sem
+ * icone, nunca com o tomate.
+ */
+export interface RatingStateIconAsset {
+  /** Fonte editorial (`rating_sources.key`). */
+  readonly ratingSource: string;
+  /**
+   * `score_type` a que o icone pertence. O tomate e do Tomatometer (critica); o
+   * Popcornmeter (publico) tem icones proprios e nao herda estes.
+   */
+  readonly scoreType: "critics" | "audience";
+  /** O estado como o titular o chama ("Fresh", "Rotten"). Vira o `alt`. */
+  readonly state: string;
+  /** Faixa do VALOR, na escala da propria fonte: `min <= valor < maxExclusive`. */
+  readonly band: { readonly min: number; readonly maxExclusive: number };
+  readonly path: string;
+  /** Onde o TITULAR publica/entrega o arquivo oficial. */
+  readonly officialSourceUrl: string;
+  readonly displayHeightPx: number;
+  readonly format: BrandAssetFormat;
+  readonly intrinsicSize: { readonly width: number; readonly height: number } | null;
+  readonly kind: "state_icon";
+  readonly status: "present" | "pending_official_file";
+}
+
+export const RATING_STATE_ICONS: readonly RatingStateIconAsset[] = [
+  {
+    ratingSource: "rotten_tomatoes",
+    scoreType: "critics",
+    state: "Fresh",
+    band: { min: 60, maxExclusive: Number.POSITIVE_INFINITY },
+    path: "/brand/sources/rotten-tomatoes-fresh.webp",
+    officialSourceUrl: "https://www.rottentomatoes.com/help_desk/licensing",
+    displayHeightPx: 16,
+    format: "webp",
+    intrinsicSize: { width: 250, height: 255 },
+    kind: "state_icon",
+    status: "present",
+  },
+  {
+    ratingSource: "rotten_tomatoes",
+    scoreType: "critics",
+    state: "Rotten",
+    band: { min: 0, maxExclusive: 60 },
+    path: "/brand/sources/rotten-tomatoes-rotten.webp",
+    officialSourceUrl: "https://www.rottentomatoes.com/help_desk/licensing",
+    displayHeightPx: 16,
+    format: "webp",
+    intrinsicSize: null,
+    kind: "state_icon",
+    status: "pending_official_file",
+  },
+];
 
 const RATING_ATTRIBUTION: Record<string, string> = {
   imdb: "Nota fornecida por IMDb",
@@ -1410,6 +1544,7 @@ const JUSTWATCH_LOGO_ASSET: LicenseLogoAsset = {
   alt: "JustWatch",
   displayHeightPx: 16,
   format: "svg",
+  intrinsicSize: null,
   kind: "wordmark",
   displayConditions: [],
   status: "pending_official_file",
@@ -1471,6 +1606,99 @@ const TMDB_PROVIDER_LOGO_DELIVERY_URL =
   "https://developer.themoviedb.org/reference/movie-watch-providers";
 
 /**
+ * ============ OS ARQUIVOS DOS PROVEDORES — entrega TMDB (2026-09-11) ============
+ *
+ * Um PNG por provedor canonico registrado, em `apps/web/public/brand/providers/`.
+ *
+ * ORIGEM: o `logo_path` que o bloco `watch/providers` do TMDB entrega para cada
+ * `provider_id` (catalogo de provedores da regiao BR, lido em 2026-09-11,
+ * tamanho `w154`), gravado com os BYTES da entrega, sem recodificar. E a origem
+ * que a pesquisa de 2026-08-20 ja registrava para titular sem pagina de marca
+ * (ver PROVIDER_BRAND_PORTALS): o arquivo e TMDB Content, sob a licenca que ja
+ * temos; o direito de EXIBIR a marca do terceiro vem da decisao do proprietario.
+ *
+ * O `provider_id` e o PRIMEIRO alias `tmdb` do provedor em
+ * `services/streaming/src/provider-registry.ts`. `brand-asset-format.test.ts`
+ * confere que TODO provedor registrado tem arquivo e que cabecalho e dimensoes
+ * batem com o declarado aqui.
+ */
+export interface ProviderLogoFile {
+  readonly tmdbProviderId: number;
+  readonly tmdbLogoPath: string;
+  readonly width: number;
+  readonly height: number;
+}
+
+/** [slug, provider_id TMDB, logo_path TMDB, largura, altura]. */
+const PROVIDER_LOGO_FILE_ROWS: readonly (readonly [string, number, string, number, number])[] = [
+  ["netflix", 8, "/rK1KljqmbvO9HQa1PBFLILWah72.png", 154, 154],
+  ["prime-video", 119, "/gMZdpavHmxFNnLpMHwVxfqeux2g.png", 154, 154],
+  ["amazon-video", 10, "/jn6TLbtaTZntTRX9UYucHJvpQx1.png", 154, 154],
+  ["max", 1899, "/skypuy7SXuugIQeYg0IglmzoKaS.png", 154, 154],
+  ["apple-tv", 2, "/qdEGArH3lKfFnAtYXMkSYk5wxuG.png", 154, 154],
+  ["pluto-tv", 300, "/fN4czqaMQNLeF6sSSIjGbAWzvwK.png", 154, 154],
+  ["google-play", 3, "/aZRENwYILujqs0RVOZutTh0BVGV.png", 154, 154],
+  ["disney-plus", 337, "/5eZ872CghnHFLB1j8grszbrx0dx.png", 154, 154],
+  ["globoplay", 307, "/9A6Oxd3F7iXm7mds7CxYOBicojs.png", 154, 154],
+  ["hbo-max-amazon-channel", 1825, "/64fLWeSyZ1KQZhIdvTdy4QHeWty.png", 154, 154],
+  ["claro-video", 167, "/zTJg0WVErBkcJv4S9FkQRUyXjnq.png", 154, 154],
+  ["telecine-amazon-channel", 2156, "/jRpdu5KkWx8ZvPCmBY5c4YHhWuK.png", 154, 154],
+  ["paramount-plus-amazon-channel", 582, "/bxX0YVOCY7bI85BKRlJAAQ2EjUR.png", 154, 154],
+  ["claro-tv-plus", 484, "/olzQMHt2SX7iNy8WDMR299hVFcL.png", 154, 154],
+  ["paramount-plus", 531, "/pkx3klJlwW5JdtaulvDx6hDNtch.png", 154, 154],
+  ["paramount-plus-premium", 2303, "/4N4BMd0Mm0kHAmF7RZgL5lW3cwc.png", 154, 154],
+  ["universal-plus-amazon-channel", 1889, "/j3Q750FwRyIejO5MrNu25Kia57.png", 154, 154],
+  ["oldflix", 499, "/86Ja8MBdaS8Fkjsegy3fQsUgNMu.png", 154, 154],
+  ["mercado-play", 2302, "/1jZnP6bS5nNOqwY7GGJuyLhWEYW.png", 154, 154],
+  ["sony-one-amazon-channel", 2161, "/COoISLyfBkZ9Vgr5NbjmnxacSb.png", 154, 154],
+  ["paramount-plus-apple-tv-channel", 1853, "/xu4LyKTwasTbta1Z0qWtZG48yZ3.png", 154, 154],
+  ["looke", 47, "/jsAseYgBGuHRkl0sJs9AAQHHU8P.png", 154, 154],
+  ["netmovies", 19, "/l8qT4DDRBVZWQouiT5OUnkw45m7.png", 154, 154],
+  ["lionsgate-plus-amazon-channels", 2358, "/1356slxu4QrHOMrEVDKHJXRo5sW.png", 154, 154],
+  ["plex", 538, "/blAEhvx3XX8sV0fFVFk88FFjubs.png", 154, 154],
+  ["belas-artes-a-la-carte", 447, "/azTwwwABsjSV0rSORM5DyKmMPV3.png", 153, 116],
+  ["looke-amazon-channel", 683, "/AezYndUHveajt0XbYnKlGoHlY9i.png", 154, 154],
+  ["mgm-plus-apple-tv-channel", 2142, "/oeic4RyNDK988h5sZctewo6uRwO.png", 154, 154],
+  ["filmelier-plus-amazon-channel", 2356, "/qsa5pNRHmZReAhr4CFBQoaPh253.png", 154, 154],
+  ["gospel-play", 477, "/ue3vrsZiLSLfhncP3vppZVNyLaE.png", 154, 154],
+  ["mgm-plus-amazon-channel", 2141, "/gk7O3l9qHttE9F3hgDNnhbhlOs7.png", 154, 154],
+  ["arte-amazon-channel", 2607, "/tFyIFaAolJqZVmonNoMuZfEi0j1.png", 154, 154],
+  ["reserva-imovision-amazon-channel", 2157, "/c0sG3OmJrwYnUeAISP4IxlQBbSE.png", 154, 154],
+];
+
+export const PROVIDER_LOGO_FILES: Readonly<Record<string, ProviderLogoFile>> =
+  Object.fromEntries(
+    PROVIDER_LOGO_FILE_ROWS.map(([slug, tmdbProviderId, tmdbLogoPath, width, height]) => [
+      slug,
+      { tmdbProviderId, tmdbLogoPath, width, height },
+    ]),
+  );
+
+/**
+ * O asset de marca de UM provedor canonico.
+ *
+ * Declaracao UNICA: a licenca (`streamingProviderEntries`) e a projecao publica
+ * (`publicWatchProviderLogo`, em `public-credits.ts`) chegam aqui. A tela nunca
+ * monta caminho de logo por conta propria.
+ */
+export function providerLogoAsset(slug: string, canonicalName: string): LicenseLogoAsset {
+  const portal = PROVIDER_BRAND_PORTALS[slug] ?? null;
+  const file = PROVIDER_LOGO_FILES[slug] ?? null;
+  return {
+    path: `/brand/providers/${slug}.png`,
+    officialSourceUrl: portal ?? TMDB_PROVIDER_LOGO_DELIVERY_URL,
+    alt: canonicalName,
+    // Icone quadrado (padrao de app). 24px e a caixa do "Onde assistir".
+    displayHeightPx: 24,
+    format: "png",
+    intrinsicSize: file === null ? null : { width: file.width, height: file.height },
+    kind: "wordmark",
+    displayConditions: [],
+    status: file === null ? "pending_official_file" : "present",
+  };
+}
+
+/**
  * Autorização de EXIBIÇÃO por provedor canônico de streaming, POR ORIGEM.
  *
  * Gerada a partir dos provedores REALMENTE registrados em `watch_providers`
@@ -1485,9 +1713,11 @@ const TMDB_PROVIDER_LOGO_DELIVERY_URL =
  * A MARCA (2026-08-20): `logoAllowed: true` POR DECISÃO DO PROPRIETÁRIO, com a
  * base gravada (`logoBasis: "owner_decision"`). O carimbo em bloco anterior
  * (`false` para todos sob um motivo só) foi revogado pelo dono; a pesquisa por
- * titular (PROVIDER_BRAND_PORTALS) passou a decidir QUAL arquivo usar. Todo
- * arquivo entra `pending_official_file`: até estar no repositório, o painel
- * usa a palavra-marca na mesma caixa, e a ausência é logada.
+ * titular (PROVIDER_BRAND_PORTALS) passou a decidir QUAL arquivo usar. Os
+ * arquivos ENTRARAM em 2026-09-11, por ordem expressa do proprietario: um PNG
+ * por provedor registrado, da entrega licenciada do TMDB (`PROVIDER_LOGO_FILES`,
+ * declarado por `providerLogoAsset`). Provedor novo sem arquivo nasce
+ * `pending_official_file` e a tela usa a palavra-marca.
  */
 export function streamingProviderEntries(
   providers: readonly { readonly slug: string; readonly canonicalName: string }[],
@@ -1495,28 +1725,22 @@ export function streamingProviderEntries(
   return providers.flatMap((provider) =>
     STREAMING_ORIGINS.map((origin) => {
       const portal = PROVIDER_BRAND_PORTALS[provider.slug] ?? null;
-      const logoAsset: LicenseLogoAsset = {
-        path: `/brand/providers/${provider.slug}.svg`,
-        officialSourceUrl: portal ?? TMDB_PROVIDER_LOGO_DELIVERY_URL,
-        alt: provider.canonicalName,
-        displayHeightPx: 20,
-        // `svg` porque e o que a decisao anterior registrou e o que o teste de
-        // proveniencia ja afirma. NAO foi medido nesta leva de que formato o
-        // TMDB entrega `logo_path` — trocar sem medir seria substituir uma
-        // decisao registrada por um palpite. Quando os 24 arquivos forem
-        // baixados, `brand-asset-format.test.ts` compara o cabecalho com este
-        // campo e o desvio aparece na hora.
-        format: "svg",
-        kind: "wordmark",
-        displayConditions: [],
-        status: "pending_official_file",
-      };
+      // O asset sai de `providerLogoAsset` — a MESMA funcao que a projecao
+      // publica (`publicWatchProviderLogo`) le. Declaracao unica. O formato foi
+      // MEDIDO na entrega (2026-09-11): o TMDB serve `logo_path` em PNG, nao SVG.
+      const logoAsset = providerLogoAsset(provider.slug, provider.canonicalName);
+      const file = PROVIDER_LOGO_FILES[provider.slug] ?? null;
       const regimeNote =
         portal !== null
           ? `Pagina de marca/imprensa do titular: ${portal}.`
-          : "Titular sem pagina publica de marca localizada (pesquisa 2026-08-20); origem do " +
-            "arquivo: entrega licenciada do TMDB (logo_path do watch/providers) ou pedido " +
-            "direto a assessoria do titular.";
+          : "Titular sem pagina publica de marca localizada (pesquisa 2026-08-20).";
+      const fileNote =
+        file !== null
+          ? `Arquivo no repositorio desde 2026-09-11 (${logoAsset.path}): entrega licenciada ` +
+            `do TMDB, logo_path ${file.tmdbLogoPath} do provider_id ${file.tmdbProviderId}, ` +
+            "bytes sem recodificacao."
+          : "Arquivo pendente (pending_official_file): ate entrar no repositorio, a tela usa " +
+            "a palavra-marca na mesma caixa.";
       return {
         label: `Streaming: ${provider.canonicalName} (${origin.providerApi})`,
         role: "streaming-aggregator" as const,
@@ -1533,9 +1757,8 @@ export function streamingProviderEntries(
           logoRationale:
             `Marca por decisao do proprietario (2026-08-20). ${provider.canonicalName} e marca ` +
             `de titular proprio; a permissao de EXIBIR vem da decisao do dono, nao dos termos ` +
-            `do titular — e o registro grava exatamente isso. ${regimeNote} Arquivo pendente ` +
-            `(pending_official_file): ate entrar no repositorio, o painel usa a palavra-marca ` +
-            `na mesma caixa. O credito textual da origem permanece ao lado, sempre.`,
+            `do titular — e o registro grava exatamente isso. ${regimeNote} ${fileNote} ` +
+            `O credito textual da origem permanece, sempre.`,
           logoAsset,
           scoreAllowed: false,
           reviewQuoteAllowed: false as const,

@@ -305,7 +305,10 @@ describe("o Cinerie Score no cartão — os dois arranjos", () => {
     const card = renderAsideCard(SCORE_TWO_SOURCES);
     const texto = visibleText(card);
     expect(texto).toContain("86");
-    expect(texto).toContain("Cinerie Score");
+    // O rótulo virou a MARCA "cinérie score" (arte do proprietário,
+    // 2026-09-11): o nome continua no documento pelo `alt`.
+    expect(card).toContain('alt="Cinerie Score"');
+    expect(card).toContain('src="/brand/cinerie-score.webp"');
     expect(texto).toContain("de 100 · crítica + público");
     expect(texto).toContain("Composto de 2 fontes: IMDb e Rotten Tomatoes.");
     // O card é o PRIMEIRO bloco; "Avaliações" vem depois, sem `--first`.
@@ -324,6 +327,8 @@ describe("o Cinerie Score no cartão — os dois arranjos", () => {
     const card = renderAsideCard(SCORE_ONE_SOURCE);
     const texto = visibleText(card);
     expect(texto).not.toContain("Cinerie Score");
+    // A marca é imagem: o texto visível sozinho não provaria a ausência dela.
+    expect(card).not.toContain('alt="Cinerie Score"');
     expect(card).not.toContain("score-card__value");
     // "Avaliações" assume o topo: o bloco dela carrega o `--first` e nada de
     // filete pendurado acima (não fica buraco no cartão).

@@ -64,10 +64,14 @@ describe("o que a dispensa NAO tocou", () => {
       }
       // Desde 2026-08-20 (docs/legal/owner-authorization-2026-08-20.md) as tres
       // fontes exibiveis carregam a marca com base owner_decision e arquivo
-      // declarado (pendente ate entrar no repositorio).
+      // declarado. Desde 2026-09-11 o arquivo de IMDb e Metacritic esta no
+      // repositorio; o do Rotten Tomatoes NAO — o que chegou foi o icone de
+      // estado Fresh, que nunca ocupa o slot de palavra-marca.
       expect(entry.license.logoAllowed, entry.label).toBe(true);
       expect(entry.license.logoBasis, entry.label).toBe("owner_decision");
-      expect(entry.license.logoAsset?.status, entry.label).toBe("pending_official_file");
+      expect(entry.license.logoAsset?.status, entry.label).toBe(
+        entry.license.sourceKey === "rotten_tomatoes" ? "pending_official_file" : "present",
+      );
     }
   });
 

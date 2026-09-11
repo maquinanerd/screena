@@ -147,7 +147,9 @@ describe('home pública — design canônico (tela 02)', () => {
     // contexto é `neutral`, então o sublinhado de Início é SEMPRE o vermelho da
     // marca, mesmo quando o hero está exibindo uma série.
     expect(header).toContain('data-context={context}')
-    expect(header).toContain('const context = logoContextOf(pathname)')
+    // `brandAreaOf` (src/lib/brand-logos.ts) substituiu `logoContextOf` quando a
+    // marca passou a ser POR ÁREA (2026-09-11). A regra é a mesma: pathname.
+    expect(header).toContain('const context = brandAreaOf(pathname)')
     expect(header).not.toMatch(/slide|vertical|hero__dot/)
     expect(css).toMatch(/\.site-header \{[^}]*--nav-accent: var\(--c-accent-movie\)/s)
     expect(css).toMatch(
